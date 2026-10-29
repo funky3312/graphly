@@ -1154,10 +1154,12 @@
   <!-- [📌 크롭된 문제 고정 카드 위젯 (Problem Card Widget - 상단 제자리 블라인드 헤더 & 더블클릭 접기)] -->
   <div id="problemCardWidget" class="problem-card-widget" style="display: none;">
     <div id="problemCardHeader" class="problem-card-header">
-      <div class="problem-card-drag-handle" id="problemCardDragHandle" title="클릭하여 접기/펼치기 · 드래그하여 위치 이동">
-        <button id="btnProblemCardToggleMinimize" class="card-btn card-title-fold-btn" title="클릭하여 문제 카드 접기/펼치기 (카드 몸통 더블클릭도 가능)">
-          <span id="iconCardToggle" class="card-fold-chevron">▾</span>
+      <div class="problem-card-title-group">
+        <div class="problem-card-drag-handle" id="problemCardDragHandle" title="드래그하여 문제 카드 위치 이동">
           <span id="problemCardTitle" class="card-title-text">문제 (p.1)</span>
+        </div>
+        <button id="btnProblemCardToggleMinimize" type="button" class="card-btn card-title-fold-btn card-fold-triangle-btn" title="원버튼 문제 카드 접기 / 펼치기">
+          <span id="iconCardToggle" class="card-fold-chevron">▾</span>
         </button>
       </div>
       <div class="problem-card-actions">
@@ -1182,10 +1184,12 @@
   <!-- [📸 캡처된 그래프 스샷 고정 카드 위젯 (Graph Snapshot Card - 상단 제자리 블라인드 헤더 & 더블클릭 접기)] -->
   <div id="graphCardWidget" class="problem-card-widget graph-card-widget" style="display: none;">
     <div id="graphCardHeader" class="problem-card-header">
-      <div class="problem-card-drag-handle" id="graphCardDragHandle" title="클릭하여 접기/펼치기 · 드래그하여 위치 이동">
-        <button id="btnGraphCardToggleMinimize" class="card-btn card-title-fold-btn" title="클릭하여 그래프 카드 접기/펼치기 (카드 몸통 더블클릭도 가능)">
-          <span id="iconGraphCardToggle" class="card-fold-chevron">▾</span>
+      <div class="problem-card-title-group">
+        <div class="problem-card-drag-handle" id="graphCardDragHandle" title="드래그하여 그래프 카드 위치 이동">
           <span id="graphCardTitle" class="card-title-text">#1</span>
+        </div>
+        <button id="btnGraphCardToggleMinimize" type="button" class="card-btn card-title-fold-btn card-fold-triangle-btn" title="원버튼 그래프 카드 접기 / 펼치기">
+          <span id="iconGraphCardToggle" class="card-fold-chevron">▾</span>
         </button>
       </div>
       <div class="problem-card-actions">

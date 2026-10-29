@@ -5567,10 +5567,12 @@ class GraphApp {
       : '';
     el.innerHTML = `
       <div class="problem-card-header">
-        <div class="problem-card-drag-handle" title="클릭하여 접기/펼치기 · 카드 어디든 드래그하여 이동">
-          <button class="card-btn card-title-fold-btn btn-extra-min" title="클릭하여 접기/펼치기 (카드 몸통 더블클릭도 가능)">
-            <span class="card-fold-chevron">▾</span>
+        <div class="problem-card-title-group">
+          <div class="problem-card-drag-handle" title="드래그하여 카드 위치 이동">
             <span class="card-title-text">${titleText}</span>
+          </div>
+          <button type="button" class="card-btn card-title-fold-btn card-fold-triangle-btn btn-extra-min" title="원버튼 접기 / 펼치기">
+            <span class="card-fold-chevron">▾</span>
           </button>
         </div>
         <div class="problem-card-actions">
@@ -5618,13 +5620,12 @@ class GraphApp {
       el.addEventListener(evtName, (e) => e.preventDefault(), { passive: false });
     });
 
-    // 1. 카드 몸통/상단바 드래그 이동 & 몸통 더블클릭(톡톡) 즉시 접기/펼치기
+    // 1. 제목 및 카드 몸통 드래그 이동 전용 (접기 버튼은 드래그에서 완벽 분리!)
     let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
-    let lastBodyTapTime = 0, lastBodyTapX = 0, lastBodyTapY = 0;
     el.addEventListener('pointerdown', (e) => {
       this.bringCardToFront(el);
       if (e.target.closest('.problem-card-resize-handle')) return;
-      if (e.target.closest('.problem-card-actions')) {
+      if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -5637,10 +5638,8 @@ class GraphApp {
       startY = e.clientY;
       initX = cardItem.baseX;
       initY = cardItem.baseY;
-      if (!e.target.closest('.card-title-fold-btn')) {
-        el.classList.add('is-dragging-card');
-        try { el.setPointerCapture(e.pointerId); } catch (err) { }
-      }
+      el.classList.add('is-dragging-card');
+      try { el.setPointerCapture(e.pointerId); } catch (err) { }
     });
     window.addEventListener('pointermove', (e) => {
       if (!isDragging) return;
@@ -5648,15 +5647,13 @@ class GraphApp {
       const dy = e.clientY - startY;
       if (!dragMoved && Math.hypot(dx, dy) > 4) {
         dragMoved = true;
-        el.classList.add('is-dragging-card');
-        try { el.setPointerCapture(e.pointerId); } catch (err) { }
       }
       cardItem.baseX = Math.round(initX + dx);
       cardItem.baseY = Math.round(initY + dy);
       el.style.left = `${cardItem.baseX}px`;
       el.style.top = `${cardItem.baseY}px`;
     });
-    const stopDrag = (e) => {
+    const stopDrag = () => {
       if (isDragging) {
         const wasMoved = dragMoved;
         isDragging = false;
@@ -5664,25 +5661,11 @@ class GraphApp {
         el.classList.remove('is-dragging-card');
         if (wasMoved) {
           el._justDraggedTime = performance.now();
-        } else if (e && e.type === 'pointerup' && (!e.target || !e.target.closest('.card-title-fold-btn, .problem-card-actions, .problem-card-resize-handle'))) {
-          const now = performance.now();
-          if (lastBodyTapTime && (now - lastBodyTapTime < 340) && Math.hypot((e.clientX || 0) - lastBodyTapX, (e.clientY || 0) - lastBodyTapY) < 24) {
-            lastBodyTapTime = 0;
-            toggleExtraMin();
-          } else {
-            lastBodyTapTime = now;
-            lastBodyTapX = e.clientX || 0;
-            lastBodyTapY = e.clientY || 0;
-          }
         }
       }
     };
     window.addEventListener('pointerup', stopDrag);
     window.addEventListener('pointercancel', stopDrag);
-    el.addEventListener('dblclick', (e) => {
-      if (e.target.closest('.problem-card-actions, .card-title-fold-btn, .problem-card-resize-handle')) return;
-      toggleExtraMin();
-    });
 
     // 2. 우하단 리사이즈 핸들 드래그
     const rHandle = el.querySelector('.problem-card-resize-handle');
@@ -5710,7 +5693,6 @@ class GraphApp {
     const btnMin = el.querySelector('.btn-extra-min');
     if (btnMin) {
       btnMin.onclick = () => {
-        if (el._justDraggedTime && performance.now() - el._justDraggedTime < 180) return;
         toggleExtraMin();
       };
     }
@@ -6050,18 +6032,17 @@ class GraphApp {
       pCanvas.addEventListener('pointercancel', endProblemDraw);
     }
 
-    // 1. 문제 카드 몸통/상단바 드래그 이동 & 몸통 더블클릭(톡톡) 즉시 접기/펼치기
+    // 1. 문제 카드 제목 및 몸통 드래그 이동 전용 (삼각형 접기 원버튼과 완벽 분리!)
     if (widget) {
       let isDragging = false;
       let dragMoved = false;
       let startX = 0, startY = 0;
       let initialBaseX = 72, initialBaseY = 18;
-      let lastBodyTapTime = 0, lastBodyTapX = 0, lastBodyTapY = 0;
 
       widget.addEventListener('pointerdown', (e) => {
         this.bringCardToFront(widget);
         if (e.target.closest('.problem-card-resize-handle')) return;
-        if (e.target.closest('.problem-card-actions')) {
+        if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
           e.preventDefault();
           e.stopPropagation();
           return;
@@ -6074,7 +6055,7 @@ class GraphApp {
         startY = e.clientY;
         initialBaseX = (typeof this.problemCardBaseX === 'number') ? this.problemCardBaseX : (parseFloat(widget.style.left) || 72);
         initialBaseY = (typeof this.problemCardBaseY === 'number') ? this.problemCardBaseY : (parseFloat(widget.style.top) || 18);
-        if (!e.target.closest('.card-title-fold-btn') && widget.setPointerCapture) {
+        if (widget.setPointerCapture) {
           widget.classList.add('is-dragging-card');
           try { widget.setPointerCapture(e.pointerId); } catch (err) { }
         }
@@ -6086,10 +6067,6 @@ class GraphApp {
         const dy = e.clientY - startY;
         if (!dragMoved && Math.hypot(dx, dy) > 4) {
           dragMoved = true;
-          widget.classList.add('is-dragging-card');
-          if (widget.setPointerCapture) {
-            try { widget.setPointerCapture(e.pointerId); } catch (err) { }
-          }
         }
         this.problemCardBaseX = Math.round(initialBaseX + dx);
         this.problemCardBaseY = Math.round(initialBaseY + dy);
@@ -6098,7 +6075,7 @@ class GraphApp {
         this.updateProblemCardPosition();
       });
 
-      const stopDrag = (e) => {
+      const stopDrag = () => {
         if (isDragging) {
           const wasMoved = dragMoved;
           isDragging = false;
@@ -6107,25 +6084,11 @@ class GraphApp {
           this.updateProblemCardPosition();
           if (wasMoved) {
             widget._justDraggedTime = performance.now();
-          } else if (e && e.type === 'pointerup' && (!e.target || !e.target.closest('.card-title-fold-btn, .problem-card-actions, .problem-card-resize-handle'))) {
-            const now = performance.now();
-            if (lastBodyTapTime && (now - lastBodyTapTime < 340) && Math.hypot((e.clientX || 0) - lastBodyTapX, (e.clientY || 0) - lastBodyTapY) < 24) {
-              lastBodyTapTime = 0;
-              this.toggleProblemCardMinimize();
-            } else {
-              lastBodyTapTime = now;
-              lastBodyTapX = e.clientX || 0;
-              lastBodyTapY = e.clientY || 0;
-            }
           }
         }
       };
       window.addEventListener('pointerup', stopDrag);
       window.addEventListener('pointercancel', stopDrag);
-      widget.addEventListener('dblclick', (e) => {
-        if (e.target.closest('.problem-card-actions, .card-title-fold-btn, .problem-card-resize-handle')) return;
-        this.toggleProblemCardMinimize();
-      });
     }
 
     // 2. 우하단 리사이즈 핸들 드래그 (문제 이미지와 문제 위 필기가 똑같은 비율로 함께 확대/축소!)
@@ -6166,7 +6129,6 @@ class GraphApp {
     // 3. 상단 왼쪽 제목(▾) 클릭 시 제자리 접기/펼치기 토글
     if (btnToggleMin) {
       btnToggleMin.onclick = () => {
-        if (widget && widget._justDraggedTime && performance.now() - widget._justDraggedTime < 180) return;
         this.toggleProblemCardMinimize();
       };
     }
@@ -6958,10 +6920,12 @@ class GraphApp {
     const bodyH = Math.round(cardW * aspect);
     el.innerHTML = `
       <div class="problem-card-header">
-        <div class="problem-card-drag-handle" title="클릭하여 접기/펼치기 · 카드 어디든 드래그하여 이동">
-          <button class="card-btn card-title-fold-btn btn-extra-min" title="클릭하여 접기/펼치기 (카드 몸통 더블클릭도 가능)">
-            <span class="card-fold-chevron">▾</span>
+        <div class="problem-card-title-group">
+          <div class="problem-card-drag-handle" title="드래그하여 카드 위치 이동">
             <span class="card-title-text">#${caseIdx}</span>
+          </div>
+          <button type="button" class="card-btn card-title-fold-btn card-fold-triangle-btn btn-extra-min" title="원버튼 접기 / 펼치기">
+            <span class="card-fold-chevron">▾</span>
           </button>
         </div>
         <div class="problem-card-actions">
@@ -7015,13 +6979,12 @@ class GraphApp {
       el.addEventListener(evtName, (e) => e.preventDefault(), { passive: false });
     });
 
-    // 몸통/상단바 드래그 이동 & 몸통 더블클릭(톡톡) 즉시 접기/펼치기
+    // 제목 및 몸통 드래그 이동 전용 (삼각형 접기 원버튼과 완벽 분리!)
     let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
-    let lastBodyTapTime = 0, lastBodyTapX = 0, lastBodyTapY = 0;
     el.addEventListener('pointerdown', (e) => {
       this.bringCardToFront(el);
       if (e.target.closest('.problem-card-resize-handle')) return;
-      if (e.target.closest('.problem-card-actions')) {
+      if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -7034,10 +6997,8 @@ class GraphApp {
       startY = e.clientY;
       initX = cardItem.baseX;
       initY = cardItem.baseY;
-      if (!e.target.closest('.card-title-fold-btn')) {
-        el.classList.add('is-dragging-card');
-        try { el.setPointerCapture(e.pointerId); } catch (err) { }
-      }
+      el.classList.add('is-dragging-card');
+      try { el.setPointerCapture(e.pointerId); } catch (err) { }
     });
     window.addEventListener('pointermove', (e) => {
       if (!isDragging) return;
@@ -7045,15 +7006,13 @@ class GraphApp {
       const dy = e.clientY - startY;
       if (!dragMoved && Math.hypot(dx, dy) > 4) {
         dragMoved = true;
-        el.classList.add('is-dragging-card');
-        try { el.setPointerCapture(e.pointerId); } catch (err) { }
       }
       cardItem.baseX = Math.round(initX + dx);
       cardItem.baseY = Math.round(initY + dy);
       el.style.left = `${cardItem.baseX}px`;
       el.style.top = `${cardItem.baseY}px`;
     });
-    const stopDrag = (e) => {
+    const stopDrag = () => {
       if (isDragging) {
         const wasMoved = dragMoved;
         isDragging = false;
@@ -7061,25 +7020,11 @@ class GraphApp {
         el.classList.remove('is-dragging-card');
         if (wasMoved) {
           el._justDraggedTime = performance.now();
-        } else if (e && e.type === 'pointerup' && (!e.target || !e.target.closest('.card-title-fold-btn, .problem-card-actions, .problem-card-resize-handle'))) {
-          const now = performance.now();
-          if (lastBodyTapTime && (now - lastBodyTapTime < 340) && Math.hypot((e.clientX || 0) - lastBodyTapX, (e.clientY || 0) - lastBodyTapY) < 24) {
-            lastBodyTapTime = 0;
-            toggleExtraGraphMin();
-          } else {
-            lastBodyTapTime = now;
-            lastBodyTapX = e.clientX || 0;
-            lastBodyTapY = e.clientY || 0;
-          }
         }
       }
     };
     window.addEventListener('pointerup', stopDrag);
     window.addEventListener('pointercancel', stopDrag);
-    el.addEventListener('dblclick', (e) => {
-      if (e.target.closest('.problem-card-actions, .card-title-fold-btn, .problem-card-resize-handle')) return;
-      toggleExtraGraphMin();
-    });
 
     // 우하단 리사이즈
     const rHandle = el.querySelector('.problem-card-resize-handle');
@@ -7105,7 +7050,6 @@ class GraphApp {
 
     el.querySelector('.btn-extra-restore').onclick = () => this.restoreLiveGraphFromCard(false, cardItem.graphSnapshot, cardItem.caseIdx);
     el.querySelector('.btn-extra-min').onclick = () => {
-      if (el._justDraggedTime && performance.now() - el._justDraggedTime < 180) return;
       toggleExtraGraphMin();
     };
     el.querySelector('.btn-extra-close').onclick = () => {
@@ -7468,18 +7412,17 @@ class GraphApp {
       this.syncGraphCardRectFromWidget();
     };
 
-    // 🌟 그래프 보관 카드 몸통/상단바 드래그 이동 & 몸통 더블클릭(톡톡) 즉시 접기/펼치기 🌟
+    // 🌟 그래프 보관 카드 제목 및 몸통 드래그 이동 전용 (삼각형 접기 원버튼과 완벽 분리!) 🌟
     if (widget) {
       let isDragging = false;
       let dragMoved = false;
       let startX = 0, startY = 0;
       let initialBaseX = 580, initialBaseY = 68;
-      let lastBodyTapTime = 0, lastBodyTapX = 0, lastBodyTapY = 0;
 
       widget.addEventListener('pointerdown', (e) => {
         this.bringCardToFront(widget);
         if (e.target.closest('.problem-card-resize-handle')) return;
-        if (e.target.closest('.problem-card-actions')) {
+        if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
           e.preventDefault();
           e.stopPropagation();
           return;
@@ -7492,10 +7435,8 @@ class GraphApp {
         startY = e.clientY;
         initialBaseX = (typeof this.graphCardBaseX === 'number') ? this.graphCardBaseX : (parseFloat(widget.style.left) || 580);
         initialBaseY = (typeof this.graphCardBaseY === 'number') ? this.graphCardBaseY : (parseFloat(widget.style.top) || 68);
-        if (!e.target.closest('.card-title-fold-btn')) {
-          widget.classList.add('is-dragging-card');
-          try { widget.setPointerCapture(e.pointerId); } catch (err) { }
-        }
+        widget.classList.add('is-dragging-card');
+        try { widget.setPointerCapture(e.pointerId); } catch (err) { }
       });
 
       window.addEventListener('pointermove', (e) => {
@@ -7504,8 +7445,6 @@ class GraphApp {
         const dy = e.clientY - startY;
         if (!dragMoved && Math.hypot(dx, dy) > 4) {
           dragMoved = true;
-          widget.classList.add('is-dragging-card');
-          try { widget.setPointerCapture(e.pointerId); } catch (err) { }
         }
         this.graphCardBaseX = Math.round(initialBaseX + dx);
         this.graphCardBaseY = Math.round(initialBaseY + dy);
@@ -7514,7 +7453,7 @@ class GraphApp {
         this.syncGraphCardRectFromWidget();
       });
 
-      const stopDrag = (e) => {
+      const stopDrag = () => {
         if (isDragging) {
           const wasMoved = dragMoved;
           isDragging = false;
@@ -7523,25 +7462,11 @@ class GraphApp {
           this.syncGraphCardRectFromWidget();
           if (wasMoved) {
             widget._justDraggedTime = performance.now();
-          } else if (e && e.type === 'pointerup' && (!e.target || !e.target.closest('.card-title-fold-btn, .problem-card-actions, .problem-card-resize-handle'))) {
-            const now = performance.now();
-            if (lastBodyTapTime && (now - lastBodyTapTime < 340) && Math.hypot((e.clientX || 0) - lastBodyTapX, (e.clientY || 0) - lastBodyTapY) < 24) {
-              lastBodyTapTime = 0;
-              togglePrimaryGraphMin();
-            } else {
-              lastBodyTapTime = now;
-              lastBodyTapX = e.clientX || 0;
-              lastBodyTapY = e.clientY || 0;
-            }
           }
         }
       };
       window.addEventListener('pointerup', stopDrag);
       window.addEventListener('pointercancel', stopDrag);
-      widget.addEventListener('dblclick', (e) => {
-        if (e.target.closest('.problem-card-actions, .card-title-fold-btn, .problem-card-resize-handle')) return;
-        togglePrimaryGraphMin();
-      });
     }
 
     if (resizeHandle) {
@@ -7599,7 +7524,6 @@ class GraphApp {
     }
     if (btnToggleMin) {
       btnToggleMin.onclick = () => {
-        if (widget && widget._justDraggedTime && performance.now() - widget._justDraggedTime < 180) return;
         togglePrimaryGraphMin();
       };
     }
@@ -13823,6 +13747,46 @@ class GraphApp {
         return;
       }
 
+      // 🌟 [🔤 캔버스 자유 수식 텍스트 라벨: 클릭, 더블클릭 수정, ✕ 삭제, 드래그 이동 최우선 처리] 🌟
+      if (!this.isGraphCovered && this.activeInkTool !== 'eraser' && this.activeInkTool !== 'lasso') {
+        const hitText = this.hitTestTextLabel(pos);
+        if (hitText) {
+          if (e.preventDefault) e.preventDefault();
+          if (e.stopPropagation) e.stopPropagation();
+          if (hitText.isClose) {
+            this.removeTextLabel(hitText.id);
+            return;
+          }
+          const now = Date.now();
+          if (now - this.lastTextClickTime < 340 && this.selectedTextLabelId === hitText.id) {
+            this.startEditingTextLabel(hitText.id, hitText.screenPos);
+            return;
+          }
+          this.lastTextClickTime = now;
+          this.selectedTextLabelId = hitText.id;
+          const selItem = this.textLabels.find(t => t.id === hitText.id);
+          if (selItem && selItem.fontSize) {
+            const slText = document.getElementById('sliderTextLabelSize');
+            const lblText = document.getElementById('lblTextLabelSize');
+            if (slText) slText.value = selItem.fontSize;
+            if (lblText) lblText.textContent = `${selItem.fontSize} pt`;
+          }
+
+          // 드래그 이동 시작
+          this._preDragState = this.getHistorySnapshot();
+          this.isDraggingTextLabel = true;
+          this.draggedTextLabelId = hitText.id;
+          const m = this.screenToMath(pos.x, pos.y);
+          const item = this.textLabels.find(t => t.id === hitText.id);
+          if (item) {
+            this.draggedTextOffset = { dx: item.mathX - m.x, dy: item.mathY - m.y };
+          }
+          this.canvas.style.cursor = 'move';
+          this.render();
+          return;
+        }
+      }
+
       if (this.isTextToolMode) {
         if (e.preventDefault) e.preventDefault();
         if (e.stopPropagation) e.stopPropagation();
@@ -14647,6 +14611,20 @@ class GraphApp {
         return;
       }
 
+      // 🌟 [🔤 캔버스 자유 수식 텍스트 라벨 실시간 드래그 이동 최우선 패스트패스]
+      if (this.isDraggingTextLabel && this.draggedTextLabelId) {
+        this.lastTextClickTime = 0;
+        this.canvas.style.cursor = 'move';
+        const m = this.screenToMath(pos.x, pos.y);
+        const item = this.textLabels.find(t => t.id === this.draggedTextLabelId);
+        if (item) {
+          item.mathX = m.x + this.draggedTextOffset.dx;
+          item.mathY = m.y + this.draggedTextOffset.dy;
+        }
+        this.requestRender();
+        return;
+      }
+
       // 🌟 [컴팩트 스테이지 리사이즈 및 이동 실시간 드래그 처리] 🌟
       if (this.isResizingStage && this.stageDragStart) {
         const stage = this.getCompactGraphStage();
@@ -14864,6 +14842,7 @@ class GraphApp {
 
       // [🔤 캔버스 자유 수식 텍스트 라벨 실시간 드래그 이동]
       if (this.isDraggingTextLabel && this.draggedTextLabelId) {
+        this.lastTextClickTime = 0;
         this.canvas.style.cursor = 'move';
         const m = this.screenToMath(pos.x, pos.y);
         const item = this.textLabels.find(t => t.id === this.draggedTextLabelId);
@@ -18361,7 +18340,7 @@ class GraphApp {
   }
 
   drawTextLabels(ctx, isExport = false) {
-    this.renderedTextLabels = [];
+    if (!isExport) this.renderedTextLabels = [];
     if (!this.textLabels || this.textLabels.length === 0) return;
 
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
@@ -18393,8 +18372,8 @@ class GraphApp {
       ctx.fillText(item.text, s.x, s.y);
 
       const metrics = ctx.measureText(item.text);
-      const textW = Math.max(16, metrics.width);
-      const pad = 4;
+      const textW = Math.max(20, metrics.width);
+      const pad = 10;
       const box = {
         x: s.x - pad,
         y: s.y - fSize / 2 - pad,
@@ -18429,7 +18408,7 @@ class GraphApp {
         ctx.restore();
       }
 
-      this.renderedTextLabels.push({
+      if (!isExport) this.renderedTextLabels.push({
         id: item.id,
         item,
         box,

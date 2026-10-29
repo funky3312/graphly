@@ -6821,3 +6821,121 @@ body:not(.theme-light) .cloud-item-title {
   background: #2563eb !important;
   color: #ffffff !important;
 }
+
+/* ============================================================================
+   🌟 [대표님 피드백 반영: 제목(드래그 전용) + 옆 큰 삼각형 원버튼 접기 분리 & 하단 필기바 Z-Index 최우선 보장]
+   ============================================================================ */
+.problem-card-title-group {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-width: 0;
+  pointer-events: auto !important;
+}
+
+.problem-card-title-group .problem-card-drag-handle {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 26px !important;
+  padding: 0 10px !important;
+  border-radius: 6px !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  color: #f8fafc !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+  cursor: grab !important;
+  user-select: none !important;
+}
+
+body.theme-light .problem-card-title-group .problem-card-drag-handle {
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.14) !important;
+  color: #0f172a !important;
+}
+
+.problem-card-widget.is-dragging-card .problem-card-title-group .problem-card-drag-handle {
+  cursor: grabbing !important;
+}
+
+/* 큰 삼각형 모양 원버튼 접기/펼치기 아이콘 버튼 */
+.card-fold-triangle-btn {
+  width: 30px !important;
+  height: 26px !important;
+  min-width: 30px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 7px !important;
+  background: rgba(0, 210, 211, 0.16) !important;
+  border: 1.5px solid rgba(0, 210, 211, 0.55) !important;
+  color: #00d2d3 !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease !important;
+}
+
+.card-fold-triangle-btn:hover {
+  background: rgba(0, 210, 211, 0.28) !important;
+  border-color: #00d2d3 !important;
+  color: #ffffff !important;
+  transform: scale(1.06);
+}
+
+.card-fold-triangle-btn:active {
+  transform: scale(0.95);
+}
+
+.card-fold-triangle-btn .card-fold-chevron {
+  font-size: 18px !important;
+  line-height: 1 !important;
+  font-weight: 900 !important;
+  display: inline-block !important;
+  transform: scale(1.3) translateY(-0.5px);
+  pointer-events: none !important;
+}
+
+body.theme-light .card-fold-triangle-btn {
+  background: #eff6ff !important;
+  border: 1.5px solid rgba(37, 99, 235, 0.45) !important;
+  color: #2563eb !important;
+}
+
+body.theme-light .card-fold-triangle-btn:hover {
+  background: #dbeafe !important;
+  border-color: #1d4ed8 !important;
+  color: #1e40af !important;
+}
+
+/* 하단 필기 바(#inkFloatingToolbar) 및 주요 툴바가 문제/그래프 카드(z-index: 150~190)에 절대 덮이지 않도록 최상위 우선순위 보장 */
+#inkFloatingToolbar,
+.ink-floating-toolbar {
+  z-index: 450 !important;
+}
+
+.ink-size-flyout-panel {
+  z-index: 460 !important;
+}
+
+.canvas-quick-toolbar {
+  z-index: 400 !important;
+}
+
+.sidebar-rail {
+  z-index: 420 !important;
+}
+
+header {
+  z-index: 430 !important;
+}
+
+.curve-context-bar {
+  z-index: 440 !important;
+}
+
+.pdf-board-nav-bar,
+.lesson-playlist-nav-bar {
+  z-index: 445 !important;
+}
+
