@@ -7211,12 +7211,12 @@ body.theme-light .btn-cloud-export-item:hover {
   left: 605px;
   top: 76px;
   z-index: 465 !important;
-  width: 108px;
+  width: 114px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 7px;
-  padding: 7px 9px 10px 9px;
+  gap: 6px;
+  padding: 7px 9px 9px 9px;
   border-radius: 18px;
   background: rgba(15, 23, 42, 0.93);
   border: 1.5px solid rgba(148, 163, 184, 0.28);
@@ -7276,7 +7276,7 @@ body.theme-light .pill-remote-drag-handle:hover {
   cursor: grabbing;
 }
 
-/* 1층: 전폭 초대형 메인 [✒️ 필기 ⇄ ↖ 이동] 원버튼 */
+/* 0단: 전폭 초대형 메인 [✒️ 필기 ⇄ ↖ 이동] 원버튼 */
 .pill-remote-swap-btn {
   display: flex;
   align-items: center;
@@ -7341,18 +7341,25 @@ body.theme-light .pill-remote-swap-btn.mode-subtool {
   font-weight: 700;
 }
 
+.pill-remote-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
 .pill-remote-sep {
   width: 100%;
   height: 1px;
-  background: rgba(148, 163, 184, 0.22);
-  margin: 1px 0;
+  background: rgba(148, 163, 184, 0.20);
+  margin: 0;
 }
 
 body.theme-light .pill-remote-sep {
   background: rgba(15, 23, 42, 0.10);
 }
 
-/* 2층 & 3층: 2x2 직사각형 그리드 (지우개 · 올가미 / 축소 · 확대) */
+/* 2열 그리드 (지우개 · 올가미 / 축소 · 확대 / 형광펜 · 비우기) */
 .pill-remote-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -7362,7 +7369,7 @@ body.theme-light .pill-remote-sep {
 
 .pill-remote-btn {
   width: 100%;
-  height: 40px;
+  height: 38px;
   border-radius: 11px;
   border: 1.5px solid rgba(148, 163, 184, 0.22);
   background: rgba(255, 255, 255, 0.06);
@@ -7410,6 +7417,100 @@ body.theme-light .pill-remote-btn:hover {
   border-color: #c4b5fd !important;
   color: #ffffff !important;
   box-shadow: 0 4px 12px rgba(139, 92, 246, 0.35);
+}
+
+#btnPillHighlighter.pill-remote-btn.active {
+  background: linear-gradient(135deg, #eab308, #ca8a04) !important;
+  border-color: #fef08a !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(234, 179, 8, 0.35);
+}
+
+/* 5색 컬러 도트 줄 */
+.pill-color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
+  padding: 2px 1px;
+}
+
+.pill-color-dot {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.pill-color-dot:hover {
+  transform: scale(1.15);
+}
+
+.pill-color-dot.active {
+  transform: scale(1.18);
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+}
+
+body.theme-light .pill-color-dot.active {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.28);
+}
+
+/* 하단 레고형 모듈 스위치 바 ([도구] · [줌] · [색상]) */
+.pill-module-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  width: 100%;
+  margin-top: 1px;
+}
+
+.pill-mod-chip {
+  height: 23px;
+  border-radius: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+  color: #94a3b8;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s ease;
+}
+
+body.theme-light .pill-mod-chip {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #64748b;
+}
+
+.pill-mod-chip:hover {
+  color: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+body.theme-light .pill-mod-chip:hover {
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
+.pill-mod-chip.active {
+  background: rgba(56, 189, 248, 0.20);
+  border-color: rgba(56, 189, 248, 0.65);
+  color: #38bdf8;
+}
+
+body.theme-light .pill-mod-chip.active {
+  background: #e0f2fe;
+  border-color: #38bdf8;
+  color: #0284c7;
 }
 
 .pill-remote-close-btn {

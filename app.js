@@ -381,6 +381,8 @@ class GraphApp {
       '.pill-remote-btn',
       '.pill-remote-swap-btn',
       '.pill-remote-close-btn',
+      '.pill-color-dot',
+      '.pill-mod-chip',
       '.ink-color-dot',
       '.color-dot',
       '.func-btn',
@@ -2132,9 +2134,9 @@ class GraphApp {
     const btnQuick = document.getElementById('btnQuickInk');
     const btnClose = document.getElementById('btnInkClose');
 
-    if (btnHeader) btnHeader.onclick = () => this.toggleInkMode();
-    if (btnQuick) btnQuick.onclick = () => this.toggleInkMode();
-    if (btnClose) btnClose.onclick = () => this.toggleInkMode(false);
+    if (btnHeader) btnHeader.onclick = () => this.toggleBottomInkBar();
+    if (btnQuick) btnQuick.onclick = () => this.toggleBottomInkBar();
+    if (btnClose) btnClose.onclick = () => this.toggleBottomInkBar(false);
 
     // 테마 연동 잉크 팔레트 초기 셋팅
     this.updateInkPaletteUI();
@@ -2508,7 +2510,8 @@ class GraphApp {
     if (btnQuick) btnQuick.classList.toggle('active', this.isInkMode);
 
     const dock = document.getElementById('inkFloatingToolbar');
-    if (dock) dock.style.display = this.isInkMode ? 'flex' : 'none';
+    if (dock) dock.style.display = (this.isInkMode && !this.isBottomInkBarHidden) ? 'flex' : 'none';
+    if (btnHeader) btnHeader.classList.toggle('active', Boolean(this.isInkMode && !this.isBottomInkBarHidden));
 
     if (this.isInkMode) {
       // 🌟 [대표님 기획]: 필기 모드로 진입하는 순간 그래프 조작 모드를 즉시 프리징(동결)!
@@ -2608,8 +2611,8 @@ class GraphApp {
 
   setInkColor(color) {
     this.currentInkColor = color;
-    document.querySelectorAll('.ink-color-dot').forEach(dot => {
-      dot.classList.toggle('active', dot.dataset.color === color);
+    document.querySelectorAll('.ink-color-dot, .pill-color-dot').forEach(dot => {
+      dot.classList.toggle('active', (dot.dataset.color || '').toLowerCase() === (color || '').toLowerCase());
     });
     // 가상 연필 팁 악센트 컬러 밴드 즉각 동기화 (번쩍임 없이 단정하게)
     if (this.stylusColorBand) {
@@ -3823,6 +3826,31 @@ class GraphApp {
   // - 켜짐 여부 · 위치(left, top) · 가로/세로 방향을 localStorage에 자동 기억
   // - 초대형 원버튼 [✒️ 필기 ⇄ ↖ 이동] 무한 반복 교대 + [🧼 지우개] + [🪢 올가미] + [－/＋ 연속 줌]
   // ==========================================================================
+  toggleBottomInkBar(showVal = null) {
+    if (!this.isInkMode) {
+      this.toggleInkMode(true);
+    }
+    const nextHidden = (showVal !== null) ? !Boolean(showVal) : !Boolean(this.isBottomInkBarHidden);
+    this.isBottomInkBarHidden = nextHidden;
+
+    const dock = document.getElementById('inkFloatingToolbar');
+    if (dock) {
+      dock.style.display = nextHidden ? 'none' : 'flex';
+    }
+    const btnHeader = document.getElementById('btnInkMode');
+    if (btnHeader) {
+      btnHeader.classList.toggle('active', !nextHidden);
+    }
+    if (typeof this._saveQuickPillRemoteSettings === 'function') {
+      this._saveQuickPillRemoteSettings();
+    }
+    if (nextHidden) {
+      this.showToast('✍️ 하단 필기 바를 숨겼습니다. (우측 ✒️ 버튼으로 언제든 다시 열기)');
+    } else {
+      this.showToast('✍️ 하단 필기 바가 다시 표시되었습니다.');
+    }
+  }
+
   initQuickPillRemote() {
     const remote = document.getElementById('quickPillRemote');
     const handle = document.getElementById('pillRemoteDragHandle');
@@ -3832,22 +3860,35 @@ class GraphApp {
     const btnLasso = document.getElementById('btnPillLasso');
     const btnZoomOut = document.getElementById('btnPillZoomOut');
     const btnZoomIn = document.getElementById('btnPillZoomIn');
+    const btnHighlighter = document.getElementById('btnPillHighlighter');
+    const btnClearAll = document.getElementById('btnPillClearAll');
+    const btnModTools = document.getElementById('btnPillModTools');
+    const btnModZoom = document.getElementById('btnPillModZoom');
+    const btnModColor = document.getElementById('btnPillModColor');
     const btnClose = document.getElementById('btnPillClose');
 
     if (!remote) return;
 
     const STORAGE_KEY = 'graphly_pill_remote_v1';
     this.isQuickPillRemoteOpen = false;
-    this.isQuickPillVertical = false;
+    this.isBottomInkBarHidden = false;
+    this.pillModules = {
+      tools: true,
+      zoom: true,
+      color: false
+    };
 
     const saveRemoteSettings = () => {
       try {
         const rect = remote.getBoundingClientRect();
         const payload = {
           isOpen: Boolean(this.isQuickPillRemoteOpen),
-          isVertical: Boolean(this.isQuickPillVertical),
-          left: Math.round( parseFloat(remote.style.left) || rect.left || 580 ),
-          top: Math.round( parseFloat(remote.style.top) || rect.top || 76 )
+          hideBottomBar: Boolean(this.isBottomInkBarHidden),
+          modTools: Boolean(this.pillModules.tools),
+          modZoom: Boolean(this.pillModules.zoom),
+          modColor: Boolean(this.pillModules.color),
+          left: Math.round(parseFloat(remote.style.left) || rect.left || 605),
+          top: Math.round(parseFloat(remote.style.top) || rect.top || 76)
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       } catch (err) { }
@@ -3859,8 +3900,16 @@ class GraphApp {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw);
-        this.isQuickPillVertical = Boolean(saved.isVertical);
-        remote.classList.toggle('vertical', this.isQuickPillVertical);
+        if (typeof saved.modTools === 'boolean') this.pillModules.tools = saved.modTools;
+        if (typeof saved.modZoom === 'boolean') this.pillModules.zoom = saved.modZoom;
+        if (typeof saved.modColor === 'boolean') this.pillModules.color = saved.modColor;
+        if (typeof saved.hideBottomBar === 'boolean') {
+          this.isBottomInkBarHidden = saved.hideBottomBar;
+          const dock = document.getElementById('inkFloatingToolbar');
+          if (dock && this.isBottomInkBarHidden) dock.style.display = 'none';
+          const btnHeader = document.getElementById('btnInkMode');
+          if (btnHeader) btnHeader.classList.toggle('active', !this.isBottomInkBarHidden);
+        }
         if (typeof saved.left === 'number' && typeof saved.top === 'number') {
           const clampedL = Math.max(64, Math.min((window.innerWidth || 1440) - 120, saved.left));
           const clampedT = Math.max(12, Math.min((window.innerHeight || 900) - 80, saved.top));
@@ -3889,13 +3938,12 @@ class GraphApp {
       };
     }
 
-    // 1. 초대형 메인 원버튼: [✒️ 필기 ⇄ ↖ 이동] 무한 반복 스왑!
-    // (지우개나 올가미 사용 중 누르면 즉시 '필기(pen)'로 복귀, 필기 중이면 '이동(select)', 이동 중이면 '필기(pen)'!)
+    // 0단 기본: 초대형 메인 원버튼 [✒️ 필기 ⇄ ↖ 이동] 무한 반복 스왑!
     if (btnSwap) {
       btnSwap.onclick = (e) => {
         e.stopPropagation();
         if (!this.isInkMode) this.toggleInkMode(true);
-        if (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter') {
+        if (this.activeInkTool === 'pen') {
           this.setActiveInkTool('select');
         } else {
           this.setActiveInkTool('pen');
@@ -3903,7 +3951,7 @@ class GraphApp {
       };
     }
 
-    // 2. [🧼 지우개] 버튼 (한 번 더 누르면 즉시 필기로 복귀!)
+    // 모듈 1 [도구]: 지우개 & 올가미 (한 번 더 누르면 즉시 필기로 복귀!)
     if (btnEraser) {
       btnEraser.onclick = (e) => {
         e.stopPropagation();
@@ -3916,7 +3964,6 @@ class GraphApp {
       };
     }
 
-    // 3. [🪢 올가미] 버튼 (한 번 더 누르면 즉시 필기로 복귀!)
     if (btnLasso) {
       btnLasso.onclick = (e) => {
         e.stopPropagation();
@@ -3929,7 +3976,7 @@ class GraphApp {
       };
     }
 
-    // 4. [－] / [＋] 줌 버튼 (단타 클릭 + 0.3초 이상 꾹 누르면 연속 줌!)
+    // 모듈 2 [줌]: [－] / [＋] 줌 버튼 (단타 클릭 + 0.3초 이상 꾹 누르면 연속 줌!)
     const bindHoldZoom = (btn, delta) => {
       if (!btn) return;
       let holdTimer = null;
@@ -3971,27 +4018,66 @@ class GraphApp {
     bindHoldZoom(btnZoomOut, -0.12);
     bindHoldZoom(btnZoomIn, 0.12);
 
-    // 5. 드래그 손잡이(⋮⋮) PointerEvent 이동 & 더블클릭 시 가로↔세로 전환
+    // 모듈 3 [색상]: 5색 컬러 도트 + 형광펜 + 필기 비우기
+    document.querySelectorAll('.pill-color-dot').forEach(dot => {
+      dot.onclick = (e) => {
+        e.stopPropagation();
+        const color = e.currentTarget.dataset.color;
+        if (color) {
+          this.setInkColor(color);
+        }
+      };
+    });
+
+    if (btnHighlighter) {
+      btnHighlighter.onclick = (e) => {
+        e.stopPropagation();
+        if (!this.isInkMode) this.toggleInkMode(true);
+        if (this.activeInkTool === 'highlighter') {
+          this.setActiveInkTool('pen');
+        } else {
+          this.setActiveInkTool('highlighter');
+        }
+      };
+    }
+
+    if (btnClearAll) {
+      btnClearAll.onclick = (e) => {
+        e.stopPropagation();
+        this.clearAllInk();
+      };
+    }
+
+    // 하단 레고 모듈 스위치 ([도구] · [줌] · [색상] 개별 ON/OFF 폴딩!)
+    if (btnModTools) {
+      btnModTools.onclick = (e) => {
+        e.stopPropagation();
+        this.togglePillModule('tools');
+      };
+    }
+    if (btnModZoom) {
+      btnModZoom.onclick = (e) => {
+        e.stopPropagation();
+        this.togglePillModule('zoom');
+      };
+    }
+    if (btnModColor) {
+      btnModColor.onclick = (e) => {
+        e.stopPropagation();
+        this.togglePillModule('color');
+      };
+    }
+
+    // 상단 드래그 손잡이(⋮⋮⋮) PointerEvent 이동
     if (handle) {
       let isDraggingPill = false;
       let startX = 0, startY = 0;
       let initialLeft = 0, initialTop = 0;
-      let lastTapTime = 0;
 
       handle.addEventListener('pointerdown', (e) => {
         if (e.button && e.button !== 0) return;
         e.preventDefault();
         e.stopPropagation();
-
-        const now = performance.now();
-        if (now - lastTapTime < 280) {
-          this.isQuickPillVertical = !this.isQuickPillVertical;
-          remote.classList.toggle('vertical', this.isQuickPillVertical);
-          saveRemoteSettings();
-          lastTapTime = 0;
-          return;
-        }
-        lastTapTime = now;
 
         isDraggingPill = true;
         startX = e.clientX;
@@ -4020,7 +4106,17 @@ class GraphApp {
       window.addEventListener('pointercancel', endPillDrag, { capture: true });
     }
 
+    this.updateInkPaletteUI();
     this.syncQuickPillRemoteUI();
+  }
+
+  togglePillModule(modKey, forceVal = null) {
+    if (!this.pillModules || !(modKey in this.pillModules)) return;
+    this.pillModules[modKey] = (forceVal !== null) ? Boolean(forceVal) : !this.pillModules[modKey];
+    this.syncQuickPillRemoteUI();
+    if (typeof this._saveQuickPillRemoteSettings === 'function') {
+      this._saveQuickPillRemoteSettings();
+    }
   }
 
   toggleQuickPillRemote(forceVal = null) {
@@ -4034,9 +4130,8 @@ class GraphApp {
     if (btnRail) btnRail.classList.toggle('active', nextState);
 
     if (nextState) {
-      // 화면 밖으로 벗어나 있으면 안전한 위치로 보정
       const rect = remote.getBoundingClientRect();
-      const clampedL = Math.max(64, Math.min((window.innerWidth || 1440) - Math.max(120, rect.width), rect.left || 580));
+      const clampedL = Math.max(64, Math.min((window.innerWidth || 1440) - Math.max(120, rect.width), rect.left || 605));
       const clampedT = Math.max(12, Math.min((window.innerHeight || 900) - Math.max(60, rect.height), rect.top || 76));
       remote.style.left = `${Math.round(clampedL)}px`;
       remote.style.top = `${Math.round(clampedT)}px`;
@@ -4054,11 +4149,18 @@ class GraphApp {
     const iconSwap = document.getElementById('pillSwapIcon');
     const btnEraser = document.getElementById('btnPillEraser');
     const btnLasso = document.getElementById('btnPillLasso');
+    const btnHighlighter = document.getElementById('btnPillHighlighter');
+    const secTools = document.getElementById('pillSecTools');
+    const secZoom = document.getElementById('pillSecZoom');
+    const secColor = document.getElementById('pillSecColor');
+    const btnModTools = document.getElementById('btnPillModTools');
+    const btnModZoom = document.getElementById('btnPillModZoom');
+    const btnModColor = document.getElementById('btnPillModColor');
     if (!btnSwap) return;
 
     const tool = this.activeInkTool || 'pen';
     const isSelect = (tool === 'select');
-    const isPen = (tool === 'pen' || tool === 'highlighter');
+    const isPen = (tool === 'pen');
 
     btnSwap.classList.toggle('mode-pen', isPen);
     btnSwap.classList.toggle('mode-select', isSelect);
@@ -4076,14 +4178,24 @@ class GraphApp {
 
     if (iconSwap) {
       if (isSelect) {
-        iconSwap.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>`;
+        iconSwap.innerHTML = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>`;
       } else {
-        iconSwap.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`;
+        iconSwap.innerHTML = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`;
       }
     }
 
     if (btnEraser) btnEraser.classList.toggle('active', tool === 'eraser');
     if (btnLasso) btnLasso.classList.toggle('active', tool === 'lasso');
+    if (btnHighlighter) btnHighlighter.classList.toggle('active', tool === 'highlighter');
+
+    const mods = this.pillModules || { tools: true, zoom: true, color: false };
+    if (secTools) secTools.style.display = mods.tools ? 'flex' : 'none';
+    if (secZoom) secZoom.style.display = mods.zoom ? 'flex' : 'none';
+    if (secColor) secColor.style.display = mods.color ? 'flex' : 'none';
+
+    if (btnModTools) btnModTools.classList.toggle('active', Boolean(mods.tools));
+    if (btnModZoom) btnModZoom.classList.toggle('active', Boolean(mods.zoom));
+    if (btnModColor) btnModColor.classList.toggle('active', Boolean(mods.color));
   }
 
   // ==========================================================================
@@ -11455,6 +11567,19 @@ class GraphApp {
       this.currentInkColor = palette[0];
       if (dots[0]) dots[0].classList.add('active');
     }
+
+    // 알약 리모컨 5색 팔레트 도트도 테마(라이트/다크)에 맞춰 100% 동기화
+    const pillDots = document.querySelectorAll('.pill-color-dot');
+    const curLower = (this.currentInkColor || '').toLowerCase();
+    pillDots.forEach((dot, idx) => {
+      if (idx < palette.length) {
+        const c = palette[idx];
+        dot.dataset.color = c;
+        dot.style.background = c;
+        dot.style.boxShadow = (c.toLowerCase() === '#ffffff') ? 'inset 0 0 0 1px rgba(0,0,0,0.25)' : '';
+        dot.classList.toggle('active', c.toLowerCase() === curLower);
+      }
+    });
   }
 
   // --- [스마트 수식 입력 모달 & 실시간 자연어 파싱 연동] ---
