@@ -6882,8 +6882,8 @@ class GraphApp {
       return { w, h, dpr };
     };
 
-    const HOLD_MS = 180;
-    const FADE_MS = 560;
+    const HOLD_MS = 1650;
+    const FADE_MS = 750;
 
     const traceSmoothLaserPath = (ctx, pts, w, h) => {
       ctx.beginPath();
@@ -6963,8 +6963,8 @@ class GraphApp {
         ctx.restore();
       });
 
-      // 2) 펜 끝 / 호버 타겟 레이저 포인트 도트 렌더링
-      const showHoverDot = state.hoverPos && ((state.isDrawing) || (now - state.hoverTime < 260));
+      // 2) 펜 끝 / 호버 타겟 레이저 포인트 도트 렌더링 (카드 안에 마우스가 머무는 동안 십자 커서 대신 레이저 도트만 상시 표시)
+      const showHoverDot = Boolean(state.hoverPos);
       if (showHoverDot) {
         const hx = state.hoverPos.nx * w;
         const hy = state.hoverPos.ny * h;
@@ -6988,7 +6988,7 @@ class GraphApp {
 
       ctx.restore();
 
-      if (state.strokes.length > 0 || showHoverDot || state.isDrawing) {
+      if (state.strokes.length > 0 || state.isDrawing) {
         state.rafId = requestAnimationFrame(renderLaserFrame);
       } else {
         state.rafId = null;
@@ -7033,6 +7033,7 @@ class GraphApp {
       this.bringCardToFront(cardWidgetEl);
       e.preventDefault();
       e.stopPropagation();
+      if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       try { laserCanvas.setPointerCapture(e.pointerId); } catch (err) { }
 
       const pos = getNormPos(e);
@@ -7040,6 +7041,10 @@ class GraphApp {
       state.isDrawing = true;
       state.hoverPos = pos;
       state.hoverTime = now;
+      // 연속 필기 시 이전 획들도 사라지지 않고 함께 유지되도록 타이머 연장
+      state.strokes.forEach(st => {
+        if (st.finished) st.finishedAt = now;
+      });
       const stroke = {
         finished: false,
         points: [{ x: pos.nx, y: pos.ny, t: now }]
@@ -7051,6 +7056,7 @@ class GraphApp {
 
     laserCanvas.addEventListener('pointermove', (e) => {
       if (!state.active) return;
+      if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       const pos = getNormPos(e);
       const now = performance.now();
       state.hoverPos = pos;
@@ -7059,18 +7065,16 @@ class GraphApp {
       if (state.isDrawing && state.currentStroke) {
         e.preventDefault();
         e.stopPropagation();
+        state.strokes.forEach(st => {
+          if (st.finished) st.finishedAt = now;
+        });
         const pts = state.currentStroke.points;
         const last = pts[pts.length - 1];
-        // 기존 점들의 타임스탬프를 갱신하여 긋고 있는 동안 줄이 끊기지 않고 유지되도록 처리
-        for (let i = 0; i < pts.length; i++) {
-          if (now - pts[i].t > 550) {
-            pts[i].t = now - 550;
-          }
-        }
         if (!last || Math.hypot(pos.nx - last.x, pos.ny - last.y) > 0.002) {
           pts.push({ x: pos.nx, y: pos.ny, t: now });
         }
       }
+      renderLaserFrame();
       ensureLoop();
     });
 
@@ -7078,10 +7082,10 @@ class GraphApp {
       if (!state.isDrawing) return;
       state.isDrawing = false;
       const now = performance.now();
-      if (state.currentStroke && state.currentStroke.points) {
-        state.currentStroke.finished = true;
-        state.currentStroke.finishedAt = now;
-      }
+      state.strokes.forEach(st => {
+        st.finished = true;
+        st.finishedAt = now;
+      });
       state.currentStroke = null;
       if (e && e.pointerId !== undefined) {
         try { laserCanvas.releasePointerCapture(e.pointerId); } catch (err) { }
@@ -7094,6 +7098,7 @@ class GraphApp {
     laserCanvas.addEventListener('pointerleave', () => {
       if (!state.isDrawing) {
         state.hoverPos = null;
+        renderLaserFrame();
         ensureLoop();
       }
     });

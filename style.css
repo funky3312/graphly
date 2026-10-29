@@ -6999,10 +6999,11 @@ body.theme-light .btn-card-laser.active {
   touch-action: none !important;
 }
 
-.problem-card-widget.card-laser-active .card-laser-canvas {
+.problem-card-widget.card-laser-active .card-laser-canvas,
+.problem-card-widget.card-laser-active .problem-card-body {
   display: block !important;
   pointer-events: auto !important;
-  cursor: crosshair !important;
+  cursor: none !important;
 }
 
 .problem-card-widget.card-laser-active .problem-card-resize-handle {
