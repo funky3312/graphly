@@ -6842,7 +6842,31 @@ class GraphApp {
       return { w, h, dpr };
     };
 
-    const FADE_MS = 750;
+    const HOLD_MS = 180;
+    const FADE_MS = 560;
+
+    const traceSmoothLaserPath = (ctx, pts, w, h) => {
+      ctx.beginPath();
+      if (pts.length === 1) {
+        ctx.moveTo(pts[0].x * w, pts[0].y * h);
+        ctx.lineTo(pts[0].x * w + 0.1, pts[0].y * h + 0.1);
+        return;
+      }
+      ctx.moveTo(pts[0].x * w, pts[0].y * h);
+      if (pts.length === 2) {
+        ctx.lineTo(pts[1].x * w, pts[1].y * h);
+        return;
+      }
+      for (let i = 1; i < pts.length - 1; i++) {
+        const cx = pts[i].x * w;
+        const cy = pts[i].y * h;
+        const mx = ((pts[i].x + pts[i + 1].x) * 0.5) * w;
+        const my = ((pts[i].y + pts[i + 1].y) * 0.5) * h;
+        ctx.quadraticCurveTo(cx, cy, mx, my);
+      }
+      const last = pts[pts.length - 1];
+      ctx.lineTo(last.x * w, last.y * h);
+    };
 
     const renderLaserFrame = () => {
       const now = performance.now();
@@ -6852,56 +6876,50 @@ class GraphApp {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
 
-      // 만료된 포인트/스트로크 정리 (그리는 중인 스트로크는 손을 떼기 전까지 선명하게 유지하되 최근 1.4초 궤적 보존)
+      // 만료된 스트로크 정리 (단일 연속 베지어 곡선으로 렌더링하여 대나무 마디 현상 100% 원천 제거!)
       state.strokes = state.strokes.filter(st => {
         if (!st.points || st.points.length === 0) return false;
-        const maxAge = st.finished ? FADE_MS : 1400;
-        st.points = st.points.filter(pt => (now - pt.t) < maxAge);
-        return st.points.length > 0;
+        if (!st.finished) return true;
+        const elapsed = now - (st.finishedAt || now);
+        return elapsed < (HOLD_MS + FADE_MS);
       });
 
-      // 1) 네온 레이저 궤적 렌더링
+      // 1) 매끄러운 일체형 네온 레이저 궤적 렌더링 (마디 0%)
       state.strokes.forEach(st => {
         const pts = st.points;
         if (!pts || pts.length === 0) return;
+
+        let life = 1.0;
+        if (st.finished) {
+          const elapsed = Math.max(0, now - (st.finishedAt || now));
+          if (elapsed > HOLD_MS) {
+            const t = Math.min(1, (elapsed - HOLD_MS) / FADE_MS);
+            life = Math.pow(1 - t, 1.45);
+          }
+        }
+        if (life <= 0.01) return;
 
         ctx.save();
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
-        for (let i = 1; i < pts.length; i++) {
-          const p0 = pts[i - 1];
-          const p1 = pts[i];
-          const age = now - p1.t;
-          const life = st.finished
-            ? Math.max(0, 1 - age / FADE_MS)
-            : Math.max(0.25, 1 - age / 1400);
-          if (life <= 0.01) continue;
+        // 패스 1: 매끄러운 네온 레드 아우라 + 메인 바디 (단일 패스이므로 교차 마디 전혀 없음)
+        ctx.globalAlpha = life * 0.94;
+        ctx.shadowColor = 'rgba(239, 68, 68, 0.88)';
+        ctx.shadowBlur = 9;
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3.5;
+        traceSmoothLaserPath(ctx, pts, w, h);
+        ctx.stroke();
 
-          // 바깥쪽 루비 레드 글로우
-          ctx.beginPath();
-          ctx.moveTo(p0.x * w, p0.y * h);
-          ctx.lineTo(p1.x * w, p1.y * h);
-          ctx.strokeStyle = `rgba(239, 68, 68, ${(0.55 * life).toFixed(3)})`;
-          ctx.lineWidth = 8.5 * (0.55 + 0.45 * life);
-          ctx.stroke();
+        // 패스 2: 중심부 선명한 화이트-핑크 레이저 코어 광선
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = life * 0.92;
+        ctx.strokeStyle = '#fff1f2';
+        ctx.lineWidth = 1.3;
+        traceSmoothLaserPath(ctx, pts, w, h);
+        ctx.stroke();
 
-          // 중간 선명한 레드 코어
-          ctx.beginPath();
-          ctx.moveTo(p0.x * w, p0.y * h);
-          ctx.lineTo(p1.x * w, p1.y * h);
-          ctx.strokeStyle = `rgba(220, 38, 38, ${(0.92 * life).toFixed(3)})`;
-          ctx.lineWidth = 4.2 * (0.65 + 0.35 * life);
-          ctx.stroke();
-
-          // 중심 화이트-핑크 하이라이트 코어
-          ctx.beginPath();
-          ctx.moveTo(p0.x * w, p0.y * h);
-          ctx.lineTo(p1.x * w, p1.y * h);
-          ctx.strokeStyle = `rgba(255, 241, 242, ${(0.95 * life).toFixed(3)})`;
-          ctx.lineWidth = 1.7 * (0.7 + 0.3 * life);
-          ctx.stroke();
-        }
         ctx.restore();
       });
 
@@ -7021,13 +7039,8 @@ class GraphApp {
       state.isDrawing = false;
       const now = performance.now();
       if (state.currentStroke && state.currentStroke.points) {
-        const len = state.currentStroke.points.length;
-        state.currentStroke.points.forEach((pt, idx) => {
-          // 시작점부터 끝점까지 순차적으로 스르륵 사라지도록 타임스탬프 정렬
-          const ratio = len > 1 ? (idx / (len - 1)) : 1;
-          pt.t = now - (1 - ratio) * 180;
-        });
         state.currentStroke.finished = true;
+        state.currentStroke.finishedAt = now;
       }
       state.currentStroke = null;
       if (e && e.pointerId !== undefined) {
