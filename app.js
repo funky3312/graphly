@@ -378,6 +378,9 @@ class GraphApp {
       '.rail-btn',
       '.quick-fab-btn',
       '.ink-tool-btn',
+      '.pill-remote-btn',
+      '.pill-remote-swap-btn',
+      '.pill-remote-close-btn',
       '.ink-color-dot',
       '.color-dot',
       '.func-btn',
@@ -408,6 +411,7 @@ class GraphApp {
       '.rail-dock',
       '.canvas-quick-toolbar',
       '.ink-floating-toolbar',
+      '.quick-pill-remote',
       '.curve-context-bar',
       '.problem-card-header',
       '.problem-card-actions',
@@ -2315,8 +2319,9 @@ class GraphApp {
     if (btnRailZoomIn) btnRailZoomIn.onclick = () => { this.zoomByStep(0.12); };
     if (btnRailZoomOut) btnRailZoomOut.onclick = () => { this.zoomByStep(-0.12); };
 
-    // 독 드래그 이동
+    // 독 드래그 이동 및 액정타블렛 전용 알약 리모컨 초기화
     this.initInkDockDraggable();
+    this.initQuickPillRemote();
 
     // 🌟 [액정타블렛 특화]: 가상 연필 & 지우개 인디케이터 초기화
     this.virtualStylusEl = document.getElementById('virtualStylusPen');
@@ -2333,6 +2338,7 @@ class GraphApp {
       '#headerShowTab',
       '#sidebarRail',
       '#inkFloatingToolbar',
+      '#quickPillRemote',
       '.canvas-quick-toolbar',
       '#boardModeBar',
       '#nAxisModeBar',
@@ -2392,6 +2398,7 @@ class GraphApp {
       el.closest('.rail-dock') ||
       el.closest('.rail-drawer') ||
       el.closest('.ink-floating-toolbar') ||
+      el.closest('.quick-pill-remote') ||
       el.closest('.canvas-quick-toolbar') ||
       el.closest('.quick-flyout-panel') ||
       el.closest('.board-mode-bar') ||
@@ -2569,6 +2576,7 @@ class GraphApp {
     if (btnEraser) btnEraser.classList.toggle('active', tool === 'eraser');
     if (btnLasso) btnLasso.classList.toggle('active', tool === 'lasso');
 
+    this.syncQuickPillRemoteUI();
     this.syncCurveContextBar();
     if (tool !== 'select') {
       // 🌟 [대표님 기획]: 펜/형광펜/지우개 버튼을 누르는 즉시 그래프 조작 핸들러 및 분할선 조작 즉시 해제 및 프리징!
@@ -3807,6 +3815,275 @@ class GraphApp {
     window.addEventListener('mouseup', () => {
       isDraggingDock = false;
     });
+  }
+
+  // ==========================================================================
+  // [💊 액정타블렛 전용 초직관 알약 리모컨 (Quick Pill Remote)]
+  // - 좌측 레일 아이콘(#btnRailQuickRemote)으로 켜기/끄기 토글
+  // - 켜짐 여부 · 위치(left, top) · 가로/세로 방향을 localStorage에 자동 기억
+  // - 초대형 원버튼 [✒️ 필기 ⇄ ↖ 이동] 무한 반복 교대 + [🧼 지우개] + [🪢 올가미] + [－/＋ 연속 줌]
+  // ==========================================================================
+  initQuickPillRemote() {
+    const remote = document.getElementById('quickPillRemote');
+    const handle = document.getElementById('pillRemoteDragHandle');
+    const btnRail = document.getElementById('btnRailQuickRemote');
+    const btnSwap = document.getElementById('btnPillSwapPenSelect');
+    const btnEraser = document.getElementById('btnPillEraser');
+    const btnLasso = document.getElementById('btnPillLasso');
+    const btnZoomOut = document.getElementById('btnPillZoomOut');
+    const btnZoomIn = document.getElementById('btnPillZoomIn');
+    const btnClose = document.getElementById('btnPillClose');
+
+    if (!remote) return;
+
+    const STORAGE_KEY = 'graphly_pill_remote_v1';
+    this.isQuickPillRemoteOpen = false;
+    this.isQuickPillVertical = false;
+
+    const saveRemoteSettings = () => {
+      try {
+        const rect = remote.getBoundingClientRect();
+        const payload = {
+          isOpen: Boolean(this.isQuickPillRemoteOpen),
+          isVertical: Boolean(this.isQuickPillVertical),
+          left: Math.round( parseFloat(remote.style.left) || rect.left || 580 ),
+          top: Math.round( parseFloat(remote.style.top) || rect.top || 76 )
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      } catch (err) { }
+    };
+    this._saveQuickPillRemoteSettings = saveRemoteSettings;
+
+    // 저장된 세팅 복원
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        this.isQuickPillVertical = Boolean(saved.isVertical);
+        remote.classList.toggle('vertical', this.isQuickPillVertical);
+        if (typeof saved.left === 'number' && typeof saved.top === 'number') {
+          const clampedL = Math.max(64, Math.min((window.innerWidth || 1440) - 120, saved.left));
+          const clampedT = Math.max(12, Math.min((window.innerHeight || 900) - 80, saved.top));
+          remote.style.left = `${clampedL}px`;
+          remote.style.top = `${clampedT}px`;
+        }
+        if (saved.isOpen) {
+          this.isQuickPillRemoteOpen = true;
+          remote.style.display = 'flex';
+          if (btnRail) btnRail.classList.add('active');
+        }
+      }
+    } catch (err) { }
+
+    if (btnRail) {
+      btnRail.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleQuickPillRemote();
+      };
+    }
+
+    if (btnClose) {
+      btnClose.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleQuickPillRemote(false);
+      };
+    }
+
+    // 1. 초대형 메인 원버튼: [✒️ 필기 ⇄ ↖ 이동] 무한 반복 스왑!
+    // (지우개나 올가미 사용 중 누르면 즉시 '필기(pen)'로 복귀, 필기 중이면 '이동(select)', 이동 중이면 '필기(pen)'!)
+    if (btnSwap) {
+      btnSwap.onclick = (e) => {
+        e.stopPropagation();
+        if (!this.isInkMode) this.toggleInkMode(true);
+        if (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter') {
+          this.setActiveInkTool('select');
+        } else {
+          this.setActiveInkTool('pen');
+        }
+      };
+    }
+
+    // 2. [🧼 지우개] 버튼 (한 번 더 누르면 즉시 필기로 복귀!)
+    if (btnEraser) {
+      btnEraser.onclick = (e) => {
+        e.stopPropagation();
+        if (!this.isInkMode) this.toggleInkMode(true);
+        if (this.activeInkTool === 'eraser') {
+          this.setActiveInkTool('pen');
+        } else {
+          this.setActiveInkTool('eraser');
+        }
+      };
+    }
+
+    // 3. [🪢 올가미] 버튼 (한 번 더 누르면 즉시 필기로 복귀!)
+    if (btnLasso) {
+      btnLasso.onclick = (e) => {
+        e.stopPropagation();
+        if (!this.isInkMode) this.toggleInkMode(true);
+        if (this.activeInkTool === 'lasso') {
+          this.setActiveInkTool('pen');
+        } else {
+          this.setActiveInkTool('lasso');
+        }
+      };
+    }
+
+    // 4. [－] / [＋] 줌 버튼 (단타 클릭 + 0.3초 이상 꾹 누르면 연속 줌!)
+    const bindHoldZoom = (btn, delta) => {
+      if (!btn) return;
+      let holdTimer = null;
+      let holdInterval = null;
+      let didHold = false;
+
+      const clearHold = () => {
+        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+        if (holdInterval) { clearInterval(holdInterval); holdInterval = null; }
+      };
+
+      btn.addEventListener('pointerdown', (e) => {
+        if (e.button && e.button !== 0) return;
+        e.stopPropagation();
+        didHold = false;
+        clearHold();
+        holdTimer = setTimeout(() => {
+          didHold = true;
+          holdInterval = setInterval(() => {
+            this.zoomByStep(delta * 0.65);
+          }, 55);
+        }, 300);
+      });
+
+      window.addEventListener('pointerup', clearHold, { capture: true });
+      window.addEventListener('pointercancel', clearHold, { capture: true });
+      btn.addEventListener('pointerleave', clearHold);
+
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        if (didHold) {
+          didHold = false;
+          return;
+        }
+        this.zoomByStep(delta);
+      };
+    };
+
+    bindHoldZoom(btnZoomOut, -0.12);
+    bindHoldZoom(btnZoomIn, 0.12);
+
+    // 5. 드래그 손잡이(⋮⋮) PointerEvent 이동 & 더블클릭 시 가로↔세로 전환
+    if (handle) {
+      let isDraggingPill = false;
+      let startX = 0, startY = 0;
+      let initialLeft = 0, initialTop = 0;
+      let lastTapTime = 0;
+
+      handle.addEventListener('pointerdown', (e) => {
+        if (e.button && e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const now = performance.now();
+        if (now - lastTapTime < 280) {
+          this.isQuickPillVertical = !this.isQuickPillVertical;
+          remote.classList.toggle('vertical', this.isQuickPillVertical);
+          saveRemoteSettings();
+          lastTapTime = 0;
+          return;
+        }
+        lastTapTime = now;
+
+        isDraggingPill = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        const rect = remote.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!isDraggingPill) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const nextL = Math.max(58, Math.min((window.innerWidth || 1920) - 80, initialLeft + dx));
+        const nextT = Math.max(8, Math.min((window.innerHeight || 1080) - 56, initialTop + dy));
+        remote.style.left = `${Math.round(nextL)}px`;
+        remote.style.top = `${Math.round(nextT)}px`;
+      }, { capture: true });
+
+      const endPillDrag = () => {
+        if (!isDraggingPill) return;
+        isDraggingPill = false;
+        saveRemoteSettings();
+      };
+      window.addEventListener('pointerup', endPillDrag, { capture: true });
+      window.addEventListener('pointercancel', endPillDrag, { capture: true });
+    }
+
+    this.syncQuickPillRemoteUI();
+  }
+
+  toggleQuickPillRemote(forceVal = null) {
+    const remote = document.getElementById('quickPillRemote');
+    const btnRail = document.getElementById('btnRailQuickRemote');
+    if (!remote) return;
+
+    const nextState = (forceVal !== null) ? Boolean(forceVal) : !this.isQuickPillRemoteOpen;
+    this.isQuickPillRemoteOpen = nextState;
+    remote.style.display = nextState ? 'flex' : 'none';
+    if (btnRail) btnRail.classList.toggle('active', nextState);
+
+    if (nextState) {
+      // 화면 밖으로 벗어나 있으면 안전한 위치로 보정
+      const rect = remote.getBoundingClientRect();
+      const clampedL = Math.max(64, Math.min((window.innerWidth || 1440) - Math.max(120, rect.width), rect.left || 580));
+      const clampedT = Math.max(12, Math.min((window.innerHeight || 900) - Math.max(60, rect.height), rect.top || 76));
+      remote.style.left = `${Math.round(clampedL)}px`;
+      remote.style.top = `${Math.round(clampedT)}px`;
+      this.syncQuickPillRemoteUI();
+    }
+
+    if (typeof this._saveQuickPillRemoteSettings === 'function') {
+      this._saveQuickPillRemoteSettings();
+    }
+  }
+
+  syncQuickPillRemoteUI() {
+    const btnSwap = document.getElementById('btnPillSwapPenSelect');
+    const lblSwap = document.getElementById('pillSwapLabel');
+    const iconSwap = document.getElementById('pillSwapIcon');
+    const btnEraser = document.getElementById('btnPillEraser');
+    const btnLasso = document.getElementById('btnPillLasso');
+    if (!btnSwap) return;
+
+    const tool = this.activeInkTool || 'pen';
+    const isSelect = (tool === 'select');
+    const isPen = (tool === 'pen' || tool === 'highlighter');
+
+    btnSwap.classList.toggle('mode-pen', isPen);
+    btnSwap.classList.toggle('mode-select', isSelect);
+    btnSwap.classList.toggle('mode-subtool', !isPen && !isSelect);
+
+    if (lblSwap) {
+      if (isSelect) {
+        lblSwap.textContent = '이동';
+      } else if (isPen) {
+        lblSwap.textContent = '필기';
+      } else {
+        lblSwap.textContent = '필기로';
+      }
+    }
+
+    if (iconSwap) {
+      if (isSelect) {
+        iconSwap.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>`;
+      } else {
+        iconSwap.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`;
+      }
+    }
+
+    if (btnEraser) btnEraser.classList.toggle('active', tool === 'eraser');
+    if (btnLasso) btnLasso.classList.toggle('active', tool === 'lasso');
   }
 
   // ==========================================================================
