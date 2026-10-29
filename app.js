@@ -2465,7 +2465,10 @@ class GraphApp {
 
     if (x === undefined || y === undefined || isNaN(x) || isNaN(y)) return;
 
-    // 메뉴 위가 아니고 정상 필기 영역이면 즉시 표출
+    // 메뉴 위가 아니고 정상 필기 영역이면 즉시 표출 (지우개 도구 또는 펜 지우개 버튼 시 지우개 아이콘 자동 전환)
+    const isEraserNow = (this.activeInkTool === 'eraser') || Boolean(this._isTemporaryStylusEraser) || Boolean(e && this.isStylusEraserEvent && this.isStylusEraserEvent(e));
+    if (this.stylusPenSvg) this.stylusPenSvg.style.display = isEraserNow ? 'none' : 'block';
+    if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = isEraserNow ? 'block' : 'none';
     this.virtualStylusEl.style.display = 'block';
 
     // 캔버스 내부 범위로 클램핑하여 마지막 위치 보존
@@ -7676,8 +7679,8 @@ class GraphApp {
     // 🌟 Draw & Hold 기하 도형 & 수학 곡선 렌더링 (직선, 정원, 타원, 직사각형, 삼각형, 이차함수 포물선, 삼차/삼각 개형) 🌟
     if (stroke.shape) {
       const baseSize = (stroke.size || 3) * zoomRatio;
-      // 대표님 피드백 반영: 평소 필압으로 가볍게 쓰는 글씨 굵기와 자연스럽게 어우러지도록 도형 선 굵기를 0.68배로 슬림화!
-      targetCtx.lineWidth = stroke.isHighlighter ? Math.max(8, baseSize * 2.5) : Math.max(1.2, baseSize * 0.68);
+      // 대표님 피드백 반영: 자동완성 도형 선 굵기를 펜 굵기의 0.8배로 조정!
+      targetCtx.lineWidth = stroke.isHighlighter ? Math.max(8, baseSize * 2.5) : Math.max(1.2, baseSize * 0.8);
       targetCtx.strokeStyle = strokeColor;
 
       if (stroke.shape.type === 'line') {

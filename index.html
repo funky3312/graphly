@@ -651,10 +651,25 @@
                 fill="none" stroke="#2d3436" stroke-width="0.6" stroke-linejoin="round" />
         </svg>
 
-        <!-- 지우개 모드 SVG (중심 0,0 정밀 원형 링) -->
-        <svg id="stylusEraserSvg" class="stylus-svg" width="32" height="32" viewBox="-16 -16 32 32" fill="none" style="display: none;">
-          <circle cx="0" cy="0" r="9" fill="rgba(255, 107, 107, 0.25)" stroke="#ff7675" stroke-width="1.8" stroke-dasharray="3 2" />
-          <circle cx="0" cy="0" r="2" fill="#ff7675" />
+        <!-- 🧼 지우개 모드 SVG (지우는 앞코 원점: 0,0 정확히 일치 / 우하단 45° 입체 미술 지우개) -->
+        <svg id="stylusEraserSvg" class="stylus-svg" width="32" height="32" viewBox="0 0 32 32" fill="none" style="display: none; overflow: visible;">
+          <!-- 실제 지워지는 원점(0,0) 정밀 가이드 링 -->
+          <circle cx="0" cy="0" r="5.5" fill="rgba(244, 63, 94, 0.14)" stroke="rgba(244, 63, 94, 0.75)" stroke-width="1.1" />
+          <!-- 하얀 고무 지우개 앞코 (정확히 0,0 포인터 끝에서 지워짐) -->
+          <path d="M 0.5 0.5 C 2.0 -0.6 4.8 0.2 7.8 2.4 L 2.4 7.8 C 0.2 4.8 -0.6 2.0 0.5 0.5 Z" fill="#ffffff" />
+          <polygon points="7.8,2.4 9.6,4.2 4.2,9.6 2.4,7.8" fill="#f1f5f9" />
+          <!-- 지우개 슬리브 케이스 (산뜻한 스카이/로열 블루 2톤 입체) -->
+          <polygon points="9.6,4.2 18.4,13.0 15.6,15.8 6.8,7.0" fill="#38bdf8" />
+          <polygon points="6.8,7.0 15.6,15.8 13.0,18.4 4.2,9.6" fill="#0284c7" />
+          <!-- 슬리브 중앙 화이트 포인트 라인 -->
+          <line x1="8.8" y1="8.2" x2="14.6" y2="14.0" stroke="#ffffff" stroke-width="1.3" stroke-linecap="round" />
+          <!-- 지우개 뒷부분 고무 캡 -->
+          <path d="M 18.4 13.0 L 20.2 14.8 C 21.3 15.9 21.1 17.6 19.8 18.9 L 18.9 19.8 C 17.6 21.1 15.9 21.3 14.8 20.2 L 13.0 18.4 Z" fill="#e2e8f0" />
+          <!-- 선명한 외곽선 (다크/화이트 칠판 모두 시인성 100%) -->
+          <path d="M 0.5 0.5 C 2.0 -0.6 4.8 0.2 7.8 2.4 L 20.2 14.8 C 21.3 15.9 21.1 17.6 19.8 18.9 L 18.9 19.8 C 17.6 21.1 15.9 21.3 14.8 20.2 L 2.4 7.8 C 0.2 4.8 -0.6 2.0 0.5 0.5 Z"
+                fill="none" stroke="#1e293b" stroke-width="0.85" stroke-linejoin="round" />
+          <line x1="9.6" y1="4.2" x2="4.2" y2="9.6" stroke="#475569" stroke-width="0.65" />
+          <line x1="18.4" y1="13.0" x2="13.0" y2="18.4" stroke="#475569" stroke-width="0.65" />
         </svg>
       </div>
 
@@ -827,8 +842,15 @@
           <button id="btnInkHighlighter" class="ink-tool-btn" title="형광펜">
             <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11-6 6v3h3l6-6"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg></span>
           </button>
-          <button id="btnInkEraser" class="ink-tool-btn" title="E">
-            <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg></span>
+          <button id="btnInkEraser" class="ink-tool-btn" title="지우개 (E)">
+            <span class="ink-btn-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21Z"/>
+                <path d="m8.5 8.5 7 7" fill="currentColor" opacity="0.25"/>
+                <path d="m8.5 8.5 7 7"/>
+                <path d="M13 21h8"/>
+              </svg>
+            </span>
           </button>
           <button id="btnInkLasso" class="ink-tool-btn" title="올가미 선택 및 이동 (L)">
             <span class="ink-btn-icon">
