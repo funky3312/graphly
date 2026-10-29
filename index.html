@@ -95,14 +95,16 @@
 
         <div class="rail-sep"></div>
 
-        <!-- 💊 액정타블렛 전용 알약 리모컨 토글 (필기⇄이동 원버튼 스왑 · 지우개 · 올가미 · 확대/축소) -->
-        <button class="rail-btn" id="btnRailQuickRemote" title="알약 리모컨 켜기/끄기 (원하는 위치에 두고 쓰는 필기⇄이동 · 지우개 · 올가미 · 확대/축소 리모컨)">
+        <!-- 🎛️ 액정타블렛 전용 미니 리모컨 토글 (필기⇄이동 원버튼 스왑 · 지우개 · 올가미 · 확대/축소) -->
+        <button class="rail-btn" id="btnRailQuickRemote" title="미니 리모컨 켜기/끄기 (원하는 위치에 두고 쓰는 필기⇄이동 · 지우개 · 올가미 · 확대/축소 리모컨)">
           <span class="rail-icon">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="6" width="20" height="12" rx="6" />
-              <circle cx="8.5" cy="12" r="2.2" fill="currentColor" />
-              <path d="M14 12h4" />
-              <path d="M16 10v4" />
+              <rect x="5" y="2" width="14" height="20" rx="4" />
+              <rect x="8" y="5.5" width="8" height="3.5" rx="1.5" fill="currentColor" />
+              <circle cx="9.8" cy="13" r="1.2" fill="currentColor" />
+              <circle cx="14.2" cy="13" r="1.2" fill="currentColor" />
+              <circle cx="9.8" cy="17" r="1.2" fill="currentColor" />
+              <circle cx="14.2" cy="17" r="1.2" fill="currentColor" />
             </svg>
           </span>
         </button>
@@ -958,14 +960,20 @@
         </button>
       </div>
 
-      <!-- 💊 액정타블렛 전용 초직관 알약 리모컨 (Quick Pill Remote: 필기⇄이동 원버튼 반복 + 지우개 + 올가미 + 축소/확대) -->
+      <!-- 🎛️ 액정타블렛 전용 초직관 세로형 직사각형 리모컨 (Quick Pill Remote: 필기⇄이동 원버튼 반복 + 지우개·올가미 + 축소·확대) -->
       <div id="quickPillRemote" class="quick-pill-remote" style="display: none;">
-        <div id="pillRemoteDragHandle" class="pill-remote-drag-handle" title="드래그하여 원하는 위치로 이동 (더블클릭: 가로↔세로 방향 전환)">⋮⋮</div>
+        <!-- 상단 드래그 헤더 바 + 닫기 버튼 -->
+        <div class="pill-remote-top-bar">
+          <div id="pillRemoteDragHandle" class="pill-remote-drag-handle" title="드래그하여 원하는 위치로 이동">⋮⋮⋮</div>
+          <button type="button" id="btnPillClose" class="pill-remote-close-btn" title="리모컨 숨기기 (좌측 리모컨 아이콘으로 언제든 다시 열기)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
 
-        <!-- 1. 초대형 원버튼: [✒️ 필기 ⇄ ↖ 이동] 무한 반복 스왑 -->
+        <!-- 1층: 전폭 초대형 원버튼 [✒️ 필기 ⇄ ↖ 이동] 무한 반복 스왑 -->
         <button type="button" id="btnPillSwapPenSelect" class="pill-remote-swap-btn mode-pen" title="누를 때마다 [필기 ⇄ 이동] 즉시 전환 (지우개·올가미 사용 중 누르면 즉시 필기로 복귀)">
           <span class="pill-swap-icon" id="pillSwapIcon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
           </span>
           <span class="pill-swap-label" id="pillSwapLabel">필기</span>
           <span class="pill-swap-badge">⇄</span>
@@ -973,37 +981,30 @@
 
         <div class="pill-remote-sep"></div>
 
-        <!-- 2. 자주 쓰는 알짜 도구: [🧼 지우개] & [🪢 올가미] -->
-        <button type="button" id="btnPillEraser" class="pill-remote-btn" title="지우개 (한 번 더 누르면 필기로 복귀)">
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round">
-            <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21Z"/>
-            <path d="m8.5 8.5 7 7" fill="currentColor" opacity="0.25"/>
-            <path d="m8.5 8.5 7 7"/>
-            <path d="M13 21h8"/>
-          </svg>
-        </button>
-        <button type="button" id="btnPillLasso" class="pill-remote-btn" title="올가미 선택 및 이동 (한 번 더 누르면 필기로 복귀)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M7 22a5 5 0 0 1-2-4"/>
-            <path d="M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8c0 4.1-3.8 7.5-8.8 7.9"/>
-            <path d="M14 21a2 2 0 0 1-4 0c0-1.7 2-3 2-5"/>
-          </svg>
-        </button>
-
-        <div class="pill-remote-sep"></div>
-
-        <!-- 3. 큼직한 [－] 축소 / [＋] 확대 (길게 누르면 연속 줌) -->
-        <button type="button" id="btnPillZoomOut" class="pill-remote-btn pill-zoom-btn" title="축소 (꾹 누르면 연속 축소)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        </button>
-        <button type="button" id="btnPillZoomIn" class="pill-remote-btn pill-zoom-btn" title="확대 (꾹 누르면 연속 확대)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        </button>
-
-        <!-- 4. 닫기 버튼 -->
-        <button type="button" id="btnPillClose" class="pill-remote-close-btn" title="리모컨 숨기기 (좌측 리모컨 아이콘으로 언제든 다시 열기)">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+        <!-- 2층 & 3층 (2x2 직사각형 그리드): [🧼 지우개 | 🪢 올가미] & [－ 축소 | ＋ 확대] -->
+        <div class="pill-remote-grid">
+          <button type="button" id="btnPillEraser" class="pill-remote-btn" title="지우개 (한 번 더 누르면 필기로 복귀)">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21Z"/>
+              <path d="m8.5 8.5 7 7" fill="currentColor" opacity="0.25"/>
+              <path d="m8.5 8.5 7 7"/>
+              <path d="M13 21h8"/>
+            </svg>
+          </button>
+          <button type="button" id="btnPillLasso" class="pill-remote-btn" title="올가미 선택 및 이동 (한 번 더 누르면 필기로 복귀)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 22a5 5 0 0 1-2-4"/>
+              <path d="M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8c0 4.1-3.8 7.5-8.8 7.9"/>
+              <path d="M14 21a2 2 0 0 1-4 0c0-1.7 2-3 2-5"/>
+            </svg>
+          </button>
+          <button type="button" id="btnPillZoomOut" class="pill-remote-btn pill-zoom-btn" title="축소 (꾹 누르면 연속 축소)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button type="button" id="btnPillZoomIn" class="pill-remote-btn pill-zoom-btn" title="확대 (꾹 누르면 연속 확대)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
       </div>
 
     </main>

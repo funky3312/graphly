@@ -7204,19 +7204,21 @@ body.theme-light .btn-cloud-export-item:hover {
 
 
 /* =====================================================================
-   [💊 액정타블렛 전용 초직관 알약 리모컨 (Quick Pill Remote)]
+   [💊 액정타블렛 전용 초직관 세로형 직사각형 리모컨 (Quick Pill Remote)]
    ===================================================================== */
 .quick-pill-remote {
   position: fixed;
-  left: 580px;
+  left: 605px;
   top: 76px;
   z-index: 465 !important;
+  width: 108px;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.92);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  padding: 7px 9px 10px 9px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.93);
   border: 1.5px solid rgba(148, 163, 184, 0.28);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.2);
   backdrop-filter: blur(12px);
@@ -7227,25 +7229,28 @@ body.theme-light .btn-cloud-export-item:hover {
 }
 
 body.theme-light .quick-pill-remote {
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.96);
   border-color: rgba(15, 23, 42, 0.14);
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.08);
 }
 
-.quick-pill-remote.vertical {
-  flex-direction: column;
-  border-radius: 26px;
-  padding: 10px 7px;
+.pill-remote-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-bottom: -1px;
 }
 
 .pill-remote-drag-handle {
+  flex: 1;
   cursor: grab;
   color: #94a3b8;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 800;
-  letter-spacing: -1px;
-  padding: 6px 5px;
-  border-radius: 8px;
+  letter-spacing: 0.5px;
+  padding: 3px 4px;
+  border-radius: 7px;
   line-height: 1;
   display: flex;
   align-items: center;
@@ -7271,33 +7276,22 @@ body.theme-light .pill-remote-drag-handle:hover {
   cursor: grabbing;
 }
 
-/* 초대형 메인 [✒️ 필기 ⇄ ↖ 이동] 원버튼 */
+/* 1층: 전폭 초대형 메인 [✒️ 필기 ⇄ ↖ 이동] 원버튼 */
 .pill-remote-swap-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-width: 92px;
-  height: 42px;
-  padding: 0 14px;
-  border-radius: 999px;
+  gap: 5px;
+  width: 100%;
+  height: 44px;
+  padding: 0 8px;
+  border-radius: 12px;
   border: 1.5px solid transparent;
   font-size: 14px;
   font-weight: 800;
   cursor: pointer;
   transition: transform 0.1s ease, box-shadow 0.15s ease, background 0.15s ease;
   white-space: nowrap;
-}
-
-.quick-pill-remote.vertical .pill-remote-swap-btn {
-  min-width: 64px;
-  width: 64px;
-  height: 54px;
-  flex-direction: column;
-  gap: 2px;
-  padding: 4px 6px;
-  border-radius: 18px;
-  font-size: 12.5px;
 }
 
 .pill-remote-swap-btn.mode-pen {
@@ -7342,37 +7336,34 @@ body.theme-light .pill-remote-swap-btn.mode-subtool {
 }
 
 .pill-swap-badge {
-  font-size: 12px;
-  opacity: 0.82;
+  font-size: 11.5px;
+  opacity: 0.85;
   font-weight: 700;
 }
 
-.quick-pill-remote.vertical .pill-swap-badge {
-  display: none;
-}
-
 .pill-remote-sep {
-  width: 1px;
-  height: 24px;
-  background: rgba(148, 163, 184, 0.24);
-  margin: 0 1px;
-}
-
-.quick-pill-remote.vertical .pill-remote-sep {
-  width: 32px;
+  width: 100%;
   height: 1px;
+  background: rgba(148, 163, 184, 0.22);
   margin: 1px 0;
 }
 
 body.theme-light .pill-remote-sep {
-  background: rgba(15, 23, 42, 0.12);
+  background: rgba(15, 23, 42, 0.10);
 }
 
-/* 지우개 · 올가미 · 축소 · 확대 원형 버튼 */
+/* 2층 & 3층: 2x2 직사각형 그리드 (지우개 · 올가미 / 축소 · 확대) */
+.pill-remote-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  width: 100%;
+}
+
 .pill-remote-btn {
-  width: 40px;
+  width: 100%;
   height: 40px;
-  border-radius: 50%;
+  border-radius: 11px;
   border: 1.5px solid rgba(148, 163, 184, 0.22);
   background: rgba(255, 255, 255, 0.06);
   color: #f1f5f9;
@@ -7422,9 +7413,9 @@ body.theme-light .pill-remote-btn:hover {
 }
 
 .pill-remote-close-btn {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
   border: none;
   background: transparent;
   color: #94a3b8;
@@ -7432,13 +7423,8 @@ body.theme-light .pill-remote-btn:hover {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  margin-left: 2px;
+  padding: 0;
   transition: all 0.15s ease;
-}
-
-.quick-pill-remote.vertical .pill-remote-close-btn {
-  margin-left: 0;
-  margin-top: 2px;
 }
 
 .pill-remote-close-btn:hover {
