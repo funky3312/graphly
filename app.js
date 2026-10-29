@@ -122,6 +122,7 @@ class GraphApp {
     this.showArrows = true; // 수학적 표준 상시 고정
     this.showAsymptotes = true;
     this.showGuides = true;
+    this.showGridNumbers = false; // 그리드 눈금 숫자 표시 옵션 (기본 OFF, 설정에서 ON 가능)
     this.showInverseGuide = false; // y = x 항등직선 대칭 기준선 (역함수 모드)
     this.zoomLevel = 1.0;
     this.targetZoom = 1.0;               // 피그마급 스무스 줌 수렴 목표치
@@ -851,6 +852,7 @@ class GraphApp {
       ySpan: this.ySpan,
       showAxes: Boolean(this.showAxes),
       showGuides: Boolean(this.showGuides),
+      showGridNumbers: Boolean(this.showGridNumbers),
       usePiecewise: this.usePiecewise,
       piecewiseBoundaries: this.piecewiseBoundaries,
       piecewiseFuncMap: this.piecewiseFuncMap,
@@ -1181,6 +1183,11 @@ class GraphApp {
         this.showGuides = Boolean(data.showGuides);
         const chkG = document.getElementById('chkGuides');
         if (chkG) chkG.checked = this.showGuides;
+      }
+      if (data.showGridNumbers !== undefined) {
+        this.showGridNumbers = Boolean(data.showGridNumbers);
+        const chkGN = document.getElementById('chkGridNumbers');
+        if (chkGN) chkGN.checked = this.showGridNumbers;
       }
       if (data.usePiecewise !== undefined) {
         this.usePiecewise = data.usePiecewise;
@@ -1515,19 +1522,14 @@ class GraphApp {
           this.updateAxesUI();
         }
       }
-      if (this.isInkMode && this.activeInkTool !== 'select') {
-        this.setActiveInkTool('select');
-      }
-      if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
-        this.closeDrawer();
-      }
-    } else if (this.pdfPageBoardData) {
-      if (this.isInkMode && this.activeInkTool !== 'select') {
-        this.setActiveInkTool('select');
-      }
-      if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
-        this.closeDrawer();
-      }
+    }
+
+    // 🌟 [대표님 피드백 반영: 그래프 모드 진입 및 그래프 추가 시 무조건 ↖ 이동/조작(select) 모드로 시작!]
+    if (this.isInkMode && this.activeInkTool !== 'select') {
+      this.setActiveInkTool('select');
+    }
+    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+      this.closeDrawer();
     }
 
     this.syncControls();
@@ -1982,6 +1984,8 @@ class GraphApp {
     if (chkSnap) chkSnap.checked = Boolean(this.useMagneticSnap);
     const chkGuides = document.getElementById('chkGuides');
     if (chkGuides) chkGuides.checked = Boolean(this.showGuides);
+    const chkGridNumbers = document.getElementById('chkGridNumbers');
+    if (chkGridNumbers) chkGridNumbers.checked = Boolean(this.showGridNumbers);
     const chkAsym = document.getElementById('chkAsymptotes');
     if (chkAsym) chkAsym.checked = Boolean(this.showAsymptotes);
     const chkInv = document.getElementById('chkInverseGuide');
@@ -6669,6 +6673,7 @@ class GraphApp {
       periodicStepY: this.periodicStepY,
       isPiecewiseLocked: Boolean(this.isPiecewiseLocked),
       showInverseGuide: this.showInverseGuide,
+      showGridNumbers: Boolean(this.showGridNumbers),
       dropLines: this.dropLines || [],
       textLabels: this.textLabels || [],
       graphInkStrokes: (this.inkStrokes || []).filter(s => s && (s.target || 'board') === 'graph' && !s.onPdfBoard)
@@ -6712,6 +6717,11 @@ class GraphApp {
         this.showInverseGuide = data.showInverseGuide;
         const chkInv = document.getElementById('chkInverseGuide');
         if (chkInv) chkInv.checked = this.showInverseGuide;
+      }
+      if (data.showGridNumbers !== undefined) {
+        this.showGridNumbers = Boolean(data.showGridNumbers);
+        const chkGN = document.getElementById('chkGridNumbers');
+        if (chkGN) chkGN.checked = this.showGridNumbers;
       }
       if (Array.isArray(data.dropLines)) {
         this.dropLines = JSON.parse(JSON.stringify(data.dropLines));
@@ -6915,6 +6925,11 @@ class GraphApp {
     if (chkGuides) chkGuides.checked = true;
     const btnGrid = document.getElementById('btnQuickGrid');
     if (btnGrid) btnGrid.classList.add('active');
+
+    // 🌟 [대표님 피드백 반영: 그래프 모드 진입 시 아예 ↖ 이동/조작(select) 모드로 즉시 전환!]
+    if (this.isInkMode && this.activeInkTool !== 'select') {
+      this.setActiveInkTool('select');
+    }
 
     this.updateProblemCardPosition();
     this.syncWorkspaceModeUI();
@@ -9232,6 +9247,16 @@ class GraphApp {
         this.showGuides = e.target.checked;
         const btnGrid = document.getElementById('btnQuickGrid');
         if (btnGrid) btnGrid.classList.toggle('active', this.showGuides);
+        this.render();
+      };
+    }
+
+    // 그리드 눈금 숫자 표시 토글
+    const chkGridNumbers = document.getElementById('chkGridNumbers');
+    if (chkGridNumbers) {
+      chkGridNumbers.checked = Boolean(this.showGridNumbers);
+      chkGridNumbers.onchange = (e) => {
+        this.showGridNumbers = Boolean(e.target.checked);
         this.render();
       };
     }
@@ -13947,6 +13972,13 @@ class GraphApp {
     this.selectedHandleIdx = null;
     this.isCurveSelected = true;
 
+    if (this.isInkMode && this.activeInkTool !== 'select') {
+      this.setActiveInkTool('select');
+    }
+    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+      this.closeDrawer();
+    }
+
     this.syncControls();
     this.renderLayerList();
     this.renderFuncList();
@@ -17688,6 +17720,11 @@ class GraphApp {
       this.drawAxes(ctx, squareBounds);
     }
 
+    // 3.5. 그리드 눈금 숫자 표시 (확대·축소에 비례하여 크기가 함께 조절되는 단정한 좌표 숫자)
+    if (this.showGridNumbers && !this.isCleanView) {
+      this.drawGridNumbers(ctx, squareBounds);
+    }
+
     // 4. 대칭의 중심 (활성 그래프 변곡점/점근선교점 등 은은한 십자선 마커)
     if (hasGraphs && !this.isCleanView) {
       this.drawSymmetryCenters(ctx, isExport);
@@ -18450,6 +18487,131 @@ class GraphApp {
       ctx.lineTo(this.screenWidth, s.y);
     }
     ctx.stroke();
+
+    ctx.restore();
+  }
+
+  drawGridNumbers(ctx, bounds = null) {
+    const orig = this.mathToScreen(0, 0);
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    const isLight = curTheme.isLight || this.isMonochromeMode;
+    const textColor = this.isMonochromeMode
+      ? '#000000'
+      : (isLight ? 'rgba(45, 52, 54, 0.78)' : 'rgba(255, 255, 255, 0.78)');
+    const tickColor = this.isMonochromeMode
+      ? '#000000'
+      : (isLight ? 'rgba(45, 52, 54, 0.52)' : 'rgba(255, 255, 255, 0.52)');
+    const haloColor = this.isMonochromeMode
+      ? '#ffffff'
+      : (isLight ? '#ffffff' : (curTheme.bg || '#1e272e'));
+
+    const xStart = bounds ? bounds.minX : 0;
+    const xEnd = bounds ? bounds.maxX : this.screenWidth;
+    const yTop = bounds ? bounds.minY : 0;
+    const yBottom = bounds ? bounds.maxY : this.screenHeight;
+
+    const mLeft = this.screenToMath(xStart, 0).x;
+    const mRight = this.screenToMath(xEnd, 0).x;
+    const mBottom = this.screenToMath(0, yBottom).y;
+    const mTop = this.screenToMath(0, yTop).y;
+
+    const fullSpanX = this.screenToMath(this.screenWidth, 0).x - this.screenToMath(0, 0).x;
+    let step = 1;
+    if (fullSpanX > 90) step = 5;
+    else if (fullSpanX > 45) step = 2;
+
+    // 🌟 확대·축소(zoomLevel)에 비례하여 눈금 숫자 크기와 여백이 함께 커졌다 작아짐!
+    const z = this.zoomLevel || 1.0;
+    const fontPx = Math.max(6.5, Math.min(26, 11 * z));
+    const tickHalf = Math.max(2, Math.min(6, 3 * z));
+    const offsetPx = Math.max(3, Math.min(11, 5 * z));
+    const haloLw = Math.max(2, Math.min(4.5, 2.8 * z));
+
+    const axisLw = (typeof this.axisLineWidth === 'number') ? this.axisLineWidth : 1.8;
+    const arrowMargin = Math.max(16, Math.round(axisLw * 3.4 + 10));
+
+    let fontFam = "'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif";
+    if (this.dropLineFontFamily === 'batang') fontFam = "'KoPubWorld Batang', 'Batang', serif";
+
+    ctx.save();
+    ctx.font = `500 ${fontPx.toFixed(1)}px ${fontFam}`;
+    ctx.fillStyle = textColor;
+    ctx.strokeStyle = haloColor;
+    ctx.lineWidth = haloLw;
+    ctx.lineJoin = 'round';
+
+    const renderedX = [];
+    const renderedY = [];
+
+    const startX = Math.floor(mLeft / step) * step;
+    const endX = Math.ceil(mRight / step) * step;
+
+    // 1. X축 눈금 및 숫자 표시 (y = 0 축 아래쪽)
+    if (orig.y >= yTop && orig.y <= yBottom) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      for (let xVal = startX; xVal <= endX; xVal += step) {
+        if (Math.abs(xVal) < 1e-4) continue;
+        const s = this.mathToScreen(xVal, 0);
+        if (s.x < xStart + 10 || s.x > xEnd - arrowMargin) continue;
+
+        ctx.save();
+        ctx.strokeStyle = tickColor;
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(s.x, orig.y - tickHalf);
+        ctx.lineTo(s.x, orig.y + tickHalf);
+        ctx.stroke();
+        ctx.restore();
+
+        const labelStr = String(Math.round(xVal * 1000) / 1000);
+        const labelY = orig.y + offsetPx;
+        if (labelY + fontPx <= yBottom - 2) {
+          ctx.strokeText(labelStr, s.x, labelY);
+          ctx.fillText(labelStr, s.x, labelY);
+          renderedX.push(Number(labelStr));
+        }
+      }
+    }
+
+    const startY = Math.floor(mBottom / step) * step;
+    const endY = Math.ceil(mTop / step) * step;
+
+    // 2. Y축 눈금 및 숫자 표시 (x = 0 축 왼쪽)
+    if (orig.x >= xStart && orig.x <= xEnd) {
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      for (let yVal = startY; yVal <= endY; yVal += step) {
+        if (Math.abs(yVal) < 1e-4) continue;
+        const s = this.mathToScreen(0, yVal);
+        if (s.y < yTop + arrowMargin || s.y > yBottom - 10) continue;
+
+        ctx.save();
+        ctx.strokeStyle = tickColor;
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(orig.x - tickHalf, s.y);
+        ctx.lineTo(orig.x + tickHalf, s.y);
+        ctx.stroke();
+        ctx.restore();
+
+        const labelStr = String(Math.round(yVal * 1000) / 1000);
+        const labelX = orig.x - offsetPx;
+        if (labelX - fontPx >= xStart + 2) {
+          ctx.strokeText(labelStr, labelX, s.y);
+          ctx.fillText(labelStr, labelX, s.y);
+          renderedY.push(Number(labelStr));
+        }
+      }
+    }
+
+    this._lastRenderedGridNumbers = {
+      fontPx: Number(fontPx.toFixed(2)),
+      zoomLevel: z,
+      step,
+      xLabels: renderedX,
+      yLabels: renderedY
+    };
 
     ctx.restore();
   }
