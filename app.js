@@ -20441,18 +20441,37 @@ class GraphApp {
     this.pushHistoryState();
     const src = this.graphs[idx];
 
-    // 핸들러 깊은 복사
-    const newHandles = (src.handles || []).map(h => ({ ...h }));
-
     // 색상 팔레트 배정
     const palette = ['#ffeaa7', '#00cec9', '#ff7675', '#a29bfe', '#74b9ff', '#fd79a8', '#55efc4'];
     const filteredColors = palette.filter(c => c.toLowerCase() !== (src.color || '').toLowerCase());
     const nextColor = filteredColors[this.graphs.length % filteredColors.length];
 
     // 🌟 [대표님 기획: 복제 시 x축 평행이동 오프셋]: 원본과 겹치지 않게 x축 방향으로만 약간(+1.5) 평행이동 상태로 생성!
+    // 일반 함수(및 연동 해제된 역함수: 로그·무리·유리 등)는 핸들 좌표를 직접 +1.5 이동시켜 곡선과 핸들·점근선이 100% 일치하게 생성!
     const srcOx = (src.freezeOffset && typeof src.freezeOffset.x === 'number') ? src.freezeOffset.x : 0;
     const srcOy = (src.freezeOffset && typeof src.freezeOffset.y === 'number') ? src.freezeOffset.y : 0;
-    const newFreezeOffset = { x: srcOx + 1.5, y: srcOy };
+    const hasOuterTransforms = Boolean(
+      src.isAbsolute ||
+      src.isFrozen ||
+      src.frozenInvertH ||
+      src.frozenInvertV ||
+      src.frozenAbsolute ||
+      (src.transforms && src.transforms.length > 0)
+    );
+
+    let newHandles;
+    let newFreezeOffset;
+    if (hasOuterTransforms) {
+      newHandles = (src.handles || []).map(h => ({ ...h }));
+      newFreezeOffset = { x: parseFloat((srcOx + 1.5).toFixed(3)), y: srcOy };
+    } else {
+      newHandles = (src.handles || []).map(h => ({
+        ...h,
+        x: parseFloat((h.x + srcOx + 1.5).toFixed(3)),
+        y: parseFloat((h.y + srcOy).toFixed(3))
+      }));
+      newFreezeOffset = { x: 0, y: 0 };
+    }
 
     const newGraph = {
       id: Date.now(),
@@ -20509,23 +20528,32 @@ class GraphApp {
     ctx.lineWidth = 1.2;
     ctx.setLineDash([5, 5]);
 
+    let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+    let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+    if (g.transforms && g.transforms.length > 0) {
+      for (const t of g.transforms) {
+        if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
+        if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
+      }
+    }
+
     if (g.type === 'exp_basic') {
-      const y0 = g.handles[0].y;
+      const y0 = g.handles[0].y + oy;
       const s = this.mathToScreen(0, y0);
       ctx.beginPath();
       ctx.moveTo(0, s.y);
       ctx.lineTo(this.screenWidth, s.y);
       ctx.stroke();
     } else if (g.type === 'log_basic') {
-      const x0 = g.handles[0].x;
+      const x0 = g.handles[0].x + ox;
       const s = this.mathToScreen(x0, 0);
       ctx.beginPath();
       ctx.moveTo(s.x, 0);
       ctx.lineTo(s.x, this.screenHeight);
       ctx.stroke();
     } else if (g.type === 'rational_basic') {
-      const x0 = g.handles[0].x;
-      const y0 = g.handles[0].y;
+      const x0 = g.handles[0].x + ox;
+      const y0 = g.handles[0].y + oy;
       const sx = this.mathToScreen(x0, 0).x;
       const sy = this.mathToScreen(0, y0).y;
 
@@ -20536,8 +20564,8 @@ class GraphApp {
       ctx.lineTo(this.screenWidth, sy);
       ctx.stroke();
     } else if (g.type === 'tan_1period') {
-      const x0 = g.handles[0].x;
-      let dx = g.handles.length >= 2 ? g.handles[1].x - x0 : 0.785;
+      const x0 = g.handles[0].x + ox;
+      let dx = g.handles.length >= 2 ? (g.handles[1].x + ox) - x0 : 0.785;
       if (Math.abs(dx) < 0.2) dx = dx >= 0 ? 0.2 : -0.2;
       const omega = Math.PI / (4.0 * Math.abs(dx));
       const halfPeriod = Math.PI / (2.0 * omega);
@@ -20771,29 +20799,41 @@ class GraphApp {
       }
     };
 
+    const hasComplexOuter = Boolean(
+      g.isFrozen ||
+      g.frozenInvertH ||
+      g.frozenInvertV ||
+      g.frozenAbsolute ||
+      (g.transforms && g.transforms.length > 0)
+    );
+
     // [유리함수 특수 케이스: 프리징 아닐 때 상하단 화면 끝 관통 2-브랜치 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
-    if (!this.isPiecewisePeriodic && !g.isFrozen && g.type === 'rational_basic' && g.handles.length >= 2) {
+    if (!this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'rational_basic' && g.handles.length >= 2) {
+      if (!isExport) g._screenPts = [];
       renderSpecialWithPiecewise((filter) => this.drawRationalCurve(ctx, g, gIdx, filter));
       ctx.restore();
       return;
     }
 
     // [로그함수 특수 케이스: 프리징 아닐 때 수직 점근선 상하단 관통 고밀도 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
-    if (!this.isPiecewisePeriodic && !g.isFrozen && g.type === 'log_basic' && g.handles.length >= 2) {
+    if (!this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'log_basic' && g.handles.length >= 2) {
+      if (!isExport) g._screenPts = [];
       renderSpecialWithPiecewise((filter) => this.drawLogCurve(ctx, g, gIdx, filter));
       ctx.restore();
       return;
     }
 
     // [탄젠트 특수 케이스: 프리징 아닐 때 주기별 점근선 상하단 관통 고밀도 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
-    if (!this.isPiecewisePeriodic && !g.isFrozen && g.type === 'tan_1period' && g.handles.length >= 1) {
+    if (!this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'tan_1period' && g.handles.length >= 1) {
+      if (!isExport) g._screenPts = [];
       renderSpecialWithPiecewise((filter) => this.drawTangentCurve(ctx, g, gIdx, filter));
       ctx.restore();
       return;
     }
 
     // [무리함수 특수 케이스: 프리징 아닐 때 시작점 칼고정 고정밀 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
-    if (!this.isPiecewisePeriodic && !g.isFrozen && g.type === 'sqrt_basic' && g.handles.length >= 2) {
+    if (!this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'sqrt_basic' && g.handles.length >= 2) {
+      if (!isExport) g._screenPts = [];
       renderSpecialWithPiecewise((filter) => this.drawSqrtCurve(ctx, g, gIdx, filter));
       ctx.restore();
       return;
@@ -20967,9 +21007,11 @@ class GraphApp {
 
   // --- [유리함수 전용 상하단 무한대 관통 2-브랜치 고밀도 렌더러 (Piecewise 완벽 호환)] ---
   drawRationalCurve(ctx, g, gIdx = null, filterInside = null) {
-    const x0 = g.handles[0].x;
+    const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+    const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+    const x0 = g.handles[0].x + ox;
     const y0 = g.handles[0].y;
-    const k = (g.handles[1].x - x0) * (g.handles[1].y - y0);
+    const k = (g.handles[1].x - g.handles[0].x) * (g.handles[1].y - g.handles[0].y);
 
     const mLeft = this.screenToMath(0, 0).x;
     const mRight = this.screenToMath(this.screenWidth, 0).x;
@@ -21001,6 +21043,7 @@ class GraphApp {
 
         let y = y0 + k / (x - x0);
         if (g.isAbsolute) y = Math.abs(y);
+        y += oy;
 
         const s = this.mathToScreen(x, y);
         const sy = clampScreenY(s.y);
@@ -21039,6 +21082,7 @@ class GraphApp {
 
         let y = y0 + k / (x - x0);
         if (g.isAbsolute) y = Math.abs(y);
+        y += oy;
 
         const s = this.mathToScreen(x, y);
         const sy = clampScreenY(s.y);
@@ -21056,9 +21100,11 @@ class GraphApp {
 
   // --- [로그함수 전용 상하단 무한대 관통 고밀도 렌더러 (Piecewise 완벽 호환)] ---
   drawLogCurve(ctx, g, gIdx = null, filterInside = null) {
-    const x0 = g.handles[0].x;
+    const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+    const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+    const x0 = g.handles[0].x + ox;
     const y0 = g.handles[0].y;
-    const x1 = g.handles[1].x;
+    const x1 = g.handles[1].x + ox;
     const y1 = g.handles[1].y;
     const dx = x1 - x0;
     const dy = y1 - y0;
@@ -21092,6 +21138,7 @@ class GraphApp {
         const u = Math.max(1e-6, (x - x0) / dx);
         let y = y1 + dy * Math.log2(u);
         if (g.isAbsolute) y = Math.abs(y);
+        y += oy;
 
         const s = this.mathToScreen(x, y);
         const sy = clampScreenY(s.y);
@@ -21123,6 +21170,7 @@ class GraphApp {
         const u = Math.max(1e-6, (x0 - x) / -dx);
         let y = y1 + dy * Math.log2(u);
         if (g.isAbsolute) y = Math.abs(y);
+        y += oy;
 
         const s = this.mathToScreen(x, y);
         const sy = clampScreenY(s.y);
@@ -21135,9 +21183,11 @@ class GraphApp {
 
   // --- [탄젠트함수 전용 주기별 상하단 무한대 관통 고밀도 렌더러 (Piecewise 완벽 호환)] ---
   drawTangentCurve(ctx, g, gIdx = null, filterInside = null) {
-    const x0 = g.handles[0].x;
+    const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+    const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+    const x0 = g.handles[0].x + ox;
     const y0 = g.handles[0].y;
-    let dx = g.handles.length >= 2 ? g.handles[1].x - x0 : 0.785;
+    let dx = g.handles.length >= 2 ? (g.handles[1].x + ox) - x0 : 0.785;
     if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
     const A = g.handles.length >= 2 ? g.handles[1].y - y0 : 1.5;
     const omega = Math.PI / (4.0 * Math.abs(dx));
@@ -21178,6 +21228,7 @@ class GraphApp {
         if (Math.abs(cosVal) < 1e-4) continue;
         let y = y0 + A * Math.tan(omega * (x - x0));
         if (g.isAbsolute) y = Math.abs(y);
+        y += oy;
 
         const s = this.mathToScreen(x, y);
         const sy = clampScreenY(s.y);
@@ -21191,9 +21242,11 @@ class GraphApp {
 
   // --- [무리함수 전용 시작점 칼고정 & 들쭉날쭉 잘림 0% 고정밀 렌더러 (Piecewise 완벽 호환)] ---
   drawSqrtCurve(ctx, g, gIdx = null, filterInside = null) {
-    const x0 = g.handles[0].x;
+    const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+    const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+    const x0 = g.handles[0].x + ox;
     const y0 = g.handles[0].y;
-    const x1 = g.handles[1].x;
+    const x1 = g.handles[1].x + ox;
     const y1 = g.handles[1].y;
     let dx = x1 - x0;
     if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
@@ -21235,6 +21288,7 @@ class GraphApp {
 
         let y = y0 + dy * Math.sqrt((x - x0) / dx);
         if (g.isAbsolute) y = Math.abs(y);
+        y += oy;
 
         const s = this.mathToScreen(x, y);
         const sy = clampScreenY(s.y);
@@ -21275,6 +21329,7 @@ class GraphApp {
 
         let y = y0 + dy * Math.sqrt((x0 - x) / -dx);
         if (g.isAbsolute) y = Math.abs(y);
+        y += oy;
 
         const s = this.mathToScreen(x, y);
         const sy = clampScreenY(s.y);
