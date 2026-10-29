@@ -1,0 +1,7 @@
+*.bak*
+_test*
+test_*
+Run_*.bat
+Deploy_*.bat
+sample_math_exam.pdf
+backup_*

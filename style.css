@@ -1,0 +1,6399 @@
+/* Graph Master Web - Premium Studio Aesthetics */
+:root {
+  --bg-dark: #12181f;
+  --panel-bg: rgba(26, 34, 44, 0.85);
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --accent-cyan: #00d2d3;
+  --accent-gold: #feca57;
+  --accent-coral: #ff6b6b;
+  --accent-blue: #54a0ff;
+  --text-main: #f1f2f6;
+  --text-muted: #a4b0be;
+  --btn-hover: rgba(255, 255, 255, 0.06);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, "Malgun Gothic", sans-serif;
+}
+
+html, body {
+  touch-action: none !important;
+  overscroll-behavior: none !important;
+  overscroll-behavior-x: none !important;
+  overscroll-behavior-y: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 상단 네비게이션 헤더 (13인치 액정 타블렛 특화: 38px 초슬림 컴팩트 & 접기 지원) */
+header {
+  height: 38px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--panel-border);
+  backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  z-index: 180;
+  transition: margin-top 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+}
+
+/* 🌟 [대표님 핵심 기획]: 상단 바 숨겼을 때 화면 100% 칠판 극대화 */
+body.header-collapsed header {
+  margin-top: -38px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.header-collapsed .main-workspace {
+  height: 100vh !important;
+}
+
+/* 상단 바 접혔을 때 화면 최상단 중앙에 은은하게 뜨는 미니 복귀 탭 */
+.header-show-tab {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(18, 24, 31, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  padding: 2px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  cursor: pointer;
+  z-index: 99;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  transition: all 0.15s ease;
+}
+
+.header-show-tab:hover {
+  background: rgba(0, 210, 211, 0.22);
+  border-color: var(--accent-cyan);
+  padding-bottom: 4px;
+  color: #ffffff;
+}
+
+body.header-collapsed .header-show-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.logo-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.logo-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  background: linear-gradient(135deg, #00d2d3, #54a0ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.badge-tag {
+  font-size: 9px;
+  padding: 1px 6px;
+  background: rgba(0, 210, 211, 0.15);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(0, 210, 211, 0.3);
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.header-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #00d2d3, #01a3a4);
+  color: #0c2424;
+  font-weight: 700;
+  border: none;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(0, 210, 211, 0.25);
+  flex-shrink: 0;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px rgba(0, 210, 211, 0.4);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  border: 1px solid var(--panel-border);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.btn-secondary:hover {
+  background: var(--btn-hover);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* 상단 바 접기 버튼 */
+.btn-collapse-header {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  border: 1px solid var(--panel-border);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+.btn-collapse-header:hover {
+  background: rgba(0, 210, 211, 0.2);
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+}
+
+#btnCleanView.active {
+  background: rgba(254, 202, 87, 0.18);
+  border-color: #feca57;
+  color: #feca57;
+  box-shadow: 0 0 12px rgba(254, 202, 87, 0.35);
+}
+
+/* ↺ 실행 취소 & ↻ 다시 실행 (Undo / Redo) 버튼 */
+.header-history-group {
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+
+.btn-history {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-main);
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  padding: 0;
+}
+
+.btn-history:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--accent-cyan);
+  transform: translateY(-1px);
+}
+
+.btn-history:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+  color: var(--text-muted);
+}
+
+/* 메인 작업 영역 레이아웃 */
+.main-workspace {
+  flex: 1;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 좌측 플로팅 아이콘 독 & 슬라이드오버 서랍 (바를 완전히 없애고 칠판 위 플로팅) */
+.sidebar-rail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 0;
+  height: 100%;
+  z-index: 220; /* 🌟 대표님 기획: 문제 카드(#problemCardWidget, z-index: 150) 위에 최우선 상단 레이어로 소환 */
+  pointer-events: none;
+}
+
+/* 좌측 플로팅 원형 아이콘 독 (우측 퀵 툴바와 대칭: 바 없이 바탕 위에 동그란 아이콘만 플로팅) */
+.rail-dock {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  width: auto;
+  height: auto;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0;
+  gap: 10px;
+  z-index: 225;
+  pointer-events: auto;
+  contain: layout style;
+}
+
+.rail-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(18, 26, 36, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50% !important; /* 대표님 절대 규칙: 완벽한 원형 동그라미 */
+  cursor: pointer;
+  color: var(--text-main);
+  transition: transform 0.15s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  padding: 0;
+  position: relative;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.rail-btn:hover {
+  background: rgba(35, 48, 64, 0.95);
+  border-color: var(--accent-cyan);
+  color: #ffffff;
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(0, 210, 211, 0.25);
+}
+
+.rail-btn.active {
+  background: rgba(0, 210, 211, 0.22);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  box-shadow: 0 0 14px rgba(0, 210, 211, 0.4);
+}
+
+/* 🌟 [대표님 기획]: 좌측 레일 최상단 직관적 [+] 그래프 추가 버튼 스타일 */
+.rail-add-btn {
+  background: rgba(0, 210, 211, 0.15);
+  border: 1px solid rgba(0, 210, 211, 0.4);
+}
+
+.rail-add-btn:hover {
+  background: rgba(0, 210, 211, 0.28);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 16px rgba(0, 210, 211, 0.4);
+  transform: scale(1.08);
+}
+
+.rail-add-btn:hover {
+  background: rgba(0, 210, 211, 0.22);
+  border-color: rgba(0, 210, 211, 0.7);
+  box-shadow: 0 0 14px rgba(0, 210, 211, 0.35);
+  transform: translateY(-1px) scale(1.02);
+}
+
+.rail-icon {
+  font-size: 19px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rail-label {
+  display: none !important;
+}
+
+.rail-toggle-btn {
+  margin-top: 2px;
+  height: 38px;
+}
+
+/* 🖐️ 좌측 레일 툴바 하단 양손패드 엄지 전용 큼직한 위/아래 줌 [+] / [−] */
+.rail-zoom-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.rail-zoom-action-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(18, 26, 36, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-main);
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  padding: 0;
+}
+
+.rail-zoom-action-btn:hover {
+  background: rgba(35, 48, 64, 0.95);
+  border-color: var(--accent-cyan);
+  color: #ffffff;
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(0, 210, 211, 0.25);
+}
+
+.rail-zoom-action-btn svg {
+  display: block;
+  pointer-events: none;
+}
+
+.rail-zoom-action-btn:hover {
+  background: rgba(0, 210, 211, 0.16);
+  border-color: rgba(0, 210, 211, 0.5);
+  color: var(--accent-cyan, #00d2d3);
+  transform: translateY(-1px);
+}
+
+.rail-zoom-action-btn:active {
+  background: rgba(0, 210, 211, 0.3);
+  border-color: var(--accent-cyan, #00d2d3);
+  color: #ffffff;
+  transform: scale(0.94);
+}
+
+body.theme-light .rail-zoom-dock {
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light .rail-zoom-action-btn {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #1e293b;
+}
+
+body.theme-light .rail-zoom-action-btn:hover {
+  background: rgba(0, 210, 211, 0.12);
+  border-color: #00b4b5;
+  color: #008b8c;
+}
+
+body.theme-light .rail-zoom-action-btn:active {
+  background: rgba(0, 210, 211, 0.25);
+  color: #005f60;
+}
+
+/* 슬라이드오버 서랍 (Drawer - 바 없이 동그란 아이콘 바로 옆에 플로팅되는 글래스모피즘 카드) */
+.rail-drawer {
+  position: absolute;
+  top: 18px;
+  left: 66px;
+  bottom: 18px;
+  width: 310px;
+  height: calc(100% - 36px);
+  background: rgba(18, 24, 34, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  transform: translateX(0);
+  opacity: 1;
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, box-shadow 0.2s ease;
+  overflow: hidden;
+  z-index: 230; /* 🌟 최상단 레이어로 열려 문제 카드에 가려지지 않음 */
+  pointer-events: auto;
+}
+
+/* 서랍 접힘 상태 */
+.sidebar-rail.drawer-collapsed .rail-drawer {
+  transform: translateX(-120%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  box-shadow: none;
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 14, 20, 0.5);
+  flex-shrink: 0;
+}
+
+.drawer-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-drawer-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: all 0.12s ease;
+}
+
+.btn-drawer-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.drawer-body {
+  flex: 1;
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* 상단 상시 노출 그래프 레이어 섹션 (메뉴바가 열려있는 한 항상 고정 노출) */
+.drawer-persistent-layers {
+  padding: 12px 14px 10px 14px;
+  background: rgba(10, 15, 24, 0.55);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  max-height: 230px;
+}
+
+.drawer-persistent-layers .section-title {
+  margin-bottom: 8px;
+}
+
+.drawer-persistent-layers .graph-layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  max-height: 180px;
+  padding-right: 3px;
+}
+
+.drawer-persistent-layers .graph-layer-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.drawer-persistent-layers .graph-layer-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+}
+
+/* 하단 탭 서브패널 전환 컨테이너 */
+.drawer-subpanels-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.drawer-subpanels-container::-webkit-scrollbar {
+  width: 5px;
+}
+
+.drawer-subpanels-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}
+
+.drawer-panel {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.drawer-panel.active {
+  display: flex;
+  animation: fadeIn 0.18s ease-out;
+}
+
+/* 레거시 호환 */
+.sidebar {
+  width: 290px;
+  background: var(--panel-bg);
+  border-right: 1px solid var(--panel-border);
+  backdrop-filter: blur(16px);
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+  overflow-y: auto;
+}
+
+.panel-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* 다중 그래프 레이어 관리 */
+.layer-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.btn-clear-all {
+  background: rgba(255, 118, 117, 0.12);
+  border: 1px solid rgba(255, 118, 117, 0.45);
+  color: #ff7675;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-clear-all:hover {
+  background: #ff7675;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(255, 118, 117, 0.4);
+}
+
+.btn-smart-input {
+  background: rgba(254, 202, 87, 0.12);
+  border: 1px solid rgba(254, 202, 87, 0.45);
+  color: #feca57;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-smart-input:hover {
+  background: #feca57;
+  color: #2d1d00;
+  box-shadow: 0 0 10px rgba(254, 202, 87, 0.4);
+}
+
+.btn-add-graph {
+  background: rgba(0, 210, 211, 0.12);
+  border: 1px solid rgba(0, 210, 211, 0.4);
+  color: var(--accent-cyan);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-add-graph:hover {
+  background: var(--accent-cyan);
+  color: #0c2424;
+  box-shadow: 0 0 10px rgba(0, 210, 211, 0.4);
+}
+
+.graph-layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.layer-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.layer-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.layer-item.active {
+  border-color: var(--accent-cyan);
+  background: rgba(0, 210, 211, 0.08);
+}
+
+.layer-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.layer-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.layer-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.layer-badge {
+  font-size: 9.5px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.btn-del-layer {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  opacity: 0.6;
+  transition: all 0.12s;
+}
+
+.btn-del-layer:hover {
+  opacity: 1;
+  color: var(--accent-coral);
+  background: rgba(255, 107, 107, 0.15);
+}
+
+/* 함수 선택 탭 / 라디오 버튼 */
+.category-tabs {
+  display: flex;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+}
+
+.cat-tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 5px 1px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: center;
+  transition: all 0.12s ease;
+}
+
+.cat-tab-btn.active {
+  background: var(--accent-cyan);
+  color: #0c2424;
+}
+
+.func-list-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.func-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--panel-border);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 8px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.func-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-main);
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.func-btn.active {
+  background: rgba(0, 210, 211, 0.12);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(0, 210, 211, 0.2);
+}
+
+.func-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mini-func-icon {
+  width: 22px;
+  height: 18px;
+  opacity: 0.85;
+  transition: all 0.15s ease;
+}
+
+.func-btn:hover .mini-func-icon {
+  opacity: 1;
+}
+
+.func-btn.active .mini-func-icon {
+  opacity: 1;
+  filter: drop-shadow(0 0 4px var(--accent-cyan));
+}
+
+.func-name-text {
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 변환 & 반전 툴바 */
+.transform-toolbar {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.transform-btn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--panel-border);
+  color: var(--text-main);
+  padding: 6px 0;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.transform-btn:hover {
+  background: var(--btn-hover);
+}
+
+.btn-inverse-highlight:hover {
+  background: rgba(162, 155, 254, 0.35) !important;
+  border-color: #a29bfe !important;
+  box-shadow: 0 0 8px rgba(162, 155, 254, 0.3);
+}
+
+/* 체크박스 & 슬라이더 행 */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  color: var(--text-main);
+}
+
+.toggle-label input[type="checkbox"] {
+  accent-color: var(--accent-cyan);
+  cursor: pointer;
+}
+
+.slider-group {
+  margin-bottom: 10px;
+}
+
+.slider-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  margin-bottom: 5px;
+  color: var(--text-muted);
+}
+
+.slider-bar {
+  width: 100%;
+  height: 5px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  outline: none;
+}
+
+.slider-bar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(0, 210, 211, 0.5);
+}
+
+/* 컬러 피커 팔레트 */
+.color-palette {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.color-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform 0.12s ease;
+}
+
+.color-dot:hover {
+  transform: scale(1.15);
+}
+
+.color-dot.active {
+  border-color: #ffffff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
+/* 캔버스 스테이지 영역 */
+.canvas-container {
+  flex: 1;
+  position: relative;
+  background-color: #1e272e;
+  overflow: hidden;
+  cursor: default;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  touch-action: none !important;
+}
+
+#graphCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+/* [대표님 기획]: 하단 안내창(토스트) 팝업 완전 제거 (시각적 잡음 방지) */
+.toast-msg {
+  display: none !important;
+}
+
+.toast-msg.show {
+  display: none !important;
+}
+
+/* 상단 헤더 완전 제거: 센터 판서 공간 100% 개방 & Chrome x버튼 간섭 원천 차단 */
+header,
+.header-show-tab,
+body.fullscreen-mode header {
+  display: none !important;
+}
+
+.main-workspace,
+body.fullscreen-mode .main-workspace {
+  height: 100vh !important;
+}
+
+body.fullscreen-mode .sidebar-rail {
+  display: flex !important;
+}
+
+#btnFullscreen.active,
+body.fullscreen-mode #btnFullscreen {
+  background: rgba(0, 210, 211, 0.2) !important;
+  border-color: var(--accent-cyan) !important;
+  color: var(--accent-cyan) !important;
+  box-shadow: 0 0 10px rgba(0, 210, 211, 0.3);
+}
+
+.btn-exit-fullscreen,
+body.fullscreen-mode .btn-exit-fullscreen {
+  display: none !important;
+}
+
+/* ==========================================================================
+   [스마트 수식 입력 모달 스타일 - 프리미엄 다크 글래스모피즘]
+   ========================================================================== */
+.smart-modal-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 15, 22, 0.75);
+  backdrop-filter: blur(12px);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.smart-modal-backdrop.show {
+  display: flex;
+  opacity: 1;
+}
+
+.smart-modal-card {
+  width: 100%;
+  max-width: 480px;
+  background: rgba(26, 36, 48, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65), 0 0 20px rgba(0, 210, 211, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateY(12px) scale(0.98);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.smart-modal-backdrop.show .smart-modal-card {
+  transform: translateY(0) scale(1);
+}
+
+.smart-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.smart-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-icon {
+  font-size: 15px;
+  font-weight: 800;
+  color: #feca57;
+  background: rgba(254, 202, 87, 0.15);
+  padding: 3px 7px;
+  border-radius: 5px;
+}
+
+.modal-title-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.badge-smart {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  background: rgba(0, 210, 211, 0.15);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.btn-modal-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.12s ease;
+}
+
+.btn-modal-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.smart-modal-body {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.input-field-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.smart-math-input {
+  width: 100%;
+  background: rgba(15, 22, 30, 0.85);
+  border: 1.5px solid rgba(0, 210, 211, 0.4);
+  border-radius: var(--radius-md);
+  padding: 12px 38px 12px 14px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: 'Consolas', 'Courier New', monospace;
+  outline: none;
+  transition: all 0.2s ease;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.smart-math-input:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 15px rgba(0, 210, 211, 0.35), inset 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.btn-clear-expr {
+  position: absolute;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px;
+  transition: color 0.12s ease;
+}
+
+.btn-clear-expr:hover {
+  color: #fff;
+}
+
+/* 실시간 수식 해석 결과창 */
+.smart-preview-card {
+  background: rgba(0, 210, 211, 0.06);
+  border: 1px solid rgba(0, 210, 211, 0.25);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.smart-preview-card.has-error {
+  background: rgba(255, 107, 107, 0.08);
+  border-color: rgba(255, 107, 107, 0.35);
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 6px var(--accent-cyan);
+}
+
+.smart-preview-card.has-error .preview-dot {
+  background: #ff6b6b;
+  box-shadow: 0 0 6px #ff6b6b;
+}
+
+.preview-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.preview-math {
+  font-size: 16px;
+  font-weight: 700;
+  color: #feca57;
+  font-family: 'Consolas', 'Courier New', monospace;
+  text-shadow: 0 0 8px rgba(254, 202, 87, 0.3);
+}
+
+.smart-preview-card.has-error .preview-math {
+  font-size: 13px;
+  font-weight: 500;
+  color: #ff6b6b;
+  text-shadow: none;
+}
+
+.preview-details {
+  font-size: 11.5px;
+  color: var(--text-main);
+  opacity: 0.85;
+}
+
+/* 터치 키패드 그리드 */
+.touch-keypad {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+
+.key-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
+  color: var(--text-main);
+  border-radius: 6px;
+  padding: 8px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.key-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  transform: translateY(-1px);
+}
+
+.key-btn:active {
+  transform: translateY(0);
+}
+
+.key-btn.key-op {
+  color: #feca57;
+  font-weight: 700;
+}
+
+.key-btn.key-accent {
+  color: var(--accent-cyan);
+  font-weight: 700;
+}
+
+/* 원터치 퀵 칩 */
+.quick-chips-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chips-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.chips-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+  padding: 4px 9px;
+  border-radius: 12px;
+  font-size: 11.5px;
+  font-family: 'Consolas', monospace;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.chip-btn:hover {
+  background: rgba(0, 210, 211, 0.15);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+/* 모달 푸터 버튼 */
+.smart-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid var(--panel-border);
+}
+
+.btn-glow {
+  box-shadow: 0 4px 18px rgba(0, 210, 211, 0.45);
+}
+
+.btn-glow:hover {
+  box-shadow: 0 6px 24px rgba(0, 210, 211, 0.6);
+}
+
+/* ========================================================
+   뷰파인더(Viewfinder) UI 스타일링
+   ======================================================== */
+/* ==========================================================================
+   🌟 [대표님 기획: ⚙️ 설정 패널 & 원터치 캡처영역 버튼 스타일] 🌟
+   ========================================================================== */
+.settings-toggle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.setting-toggle-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.setting-toggle-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(0, 210, 211, 0.3);
+}
+
+.setting-text-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setting-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f1f2f6;
+}
+
+.setting-sub {
+  font-size: 10px;
+  color: #a4b0be;
+}
+
+/* 📷 캡처영역 바깥 원터치 버튼 활성 글로우 */
+#btnRailToggleVf.active {
+  background: rgba(0, 210, 211, 0.22) !important;
+  border-color: var(--accent-cyan) !important;
+  color: var(--accent-cyan) !important;
+  box-shadow: 0 0 12px rgba(0, 210, 211, 0.35) !important;
+}
+
+#btnRailToggleVf.active .rail-icon,
+#btnRailToggleVf.active .rail-label {
+  color: var(--accent-cyan) !important;
+  font-weight: 700 !important;
+}
+
+.vf-toggle-wrap {
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.vf-toggle-wrap input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.vf-toggle-slider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 18px;
+  transition: all 0.2s ease;
+}
+
+.vf-toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 12px;
+  width: 12px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #fff;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.vf-toggle-wrap input:checked+.vf-toggle-slider {
+  background-color: #feca57;
+}
+
+.vf-toggle-wrap input:checked+.vf-toggle-slider:before {
+  transform: translateX(14px);
+  background-color: #1e272e;
+}
+
+.vf-aspect-chips {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.vf-chip {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--panel-border);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 4px 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.vf-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+}
+
+.vf-chip.active {
+  background: rgba(254, 202, 87, 0.18);
+  border-color: #feca57;
+  color: #feca57;
+  font-weight: 700;
+}
+
+.vf-dpi-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.vf-dpi-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.vf-dpi-group {
+  display: flex;
+  gap: 4px;
+}
+
+.dpi-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--panel-border);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.dpi-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+}
+
+.dpi-btn.active {
+  background: rgba(0, 210, 211, 0.15);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   [우측 플로팅 퀵 액션 툴바 & 촤라락 플라이아웃 메뉴]
+   ========================================================================== */
+.canvas-quick-toolbar {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 170;
+  contain: layout style;
+}
+
+.quick-btn-wrapper {
+  position: relative;
+}
+
+.quick-fab-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50% !important;
+  background: rgba(18, 26, 36, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.quick-fab-btn:hover {
+  background: rgba(35, 48, 64, 0.95);
+  border-color: var(--accent-cyan);
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(0, 210, 211, 0.25);
+}
+
+.quick-fab-btn.active {
+  background: rgba(0, 210, 211, 0.22);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  box-shadow: 0 0 14px rgba(0, 210, 211, 0.4);
+}
+
+#btnQuickIntersection.active {
+  background: rgba(254, 202, 87, 0.22);
+  border-color: #feca57;
+  color: #feca57;
+  box-shadow: 0 0 14px rgba(254, 202, 87, 0.45);
+}
+
+#btnQuickNewCanvas:hover {
+  background: rgba(244, 63, 94, 0.22);
+  border-color: #fb7185;
+  color: #fb7185;
+  box-shadow: 0 6px 20px rgba(244, 63, 94, 0.28);
+}
+
+#btnQuickPiecewise.active {
+  background: rgba(162, 155, 254, 0.25);
+  border-color: #a29bfe;
+  color: #a29bfe;
+  box-shadow: 0 0 16px rgba(162, 155, 254, 0.5);
+}
+
+.quick-fab-btn.snap-off {
+  opacity: 0.5;
+  filter: grayscale(0.85);
+}
+
+.quick-fab-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.fab-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* 촤라락 플라이아웃 패널 (좌측으로 부드럽게 전개) */
+.quick-flyout-panel {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 12px);
+  background: rgba(26, 36, 48, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), 0 0 16px rgba(0, 210, 211, 0.15);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 12px;
+  width: 175px;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 250 !important;
+  user-select: none;
+}
+
+.quick-flyout-panel.show {
+  display: flex !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: translateY(-50%) !important;
+  animation: flyoutSlideIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes flyoutSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0) scale(1);
+  }
+}
+
+.flyout-header {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.theme-palette-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.theme-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-main);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-align: left;
+  transition: all 0.14s ease;
+}
+
+.theme-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.theme-chip.active {
+  background: rgba(0, 210, 211, 0.14);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  font-weight: 700;
+}
+
+.theme-color-preview {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.theme-name {
+  flex: 1;
+  white-space: nowrap;
+}
+
+/* --- [✂️ 구간별 합성 함수 (Piecewise) 스타일] --- */
+#btnQuickPiecewise.active {
+  background: rgba(162, 155, 254, 0.22);
+  border-color: #a29bfe;
+  color: #a29bfe;
+  box-shadow: 0 0 14px rgba(162, 155, 254, 0.45);
+}
+
+.piecewise-section {
+  border-left: 3px solid #a29bfe;
+}
+
+.pw-controls-container {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pw-mode-row {
+  display: flex;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  gap: 2px;
+}
+
+.pw-mode-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 4px 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.pw-mode-btn.active {
+  background: #6c5ce7;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(108, 92, 231, 0.35);
+}
+
+.pw-action-row {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-sub-action {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #c8d6e5;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 0;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.btn-sub-action:hover {
+  background: rgba(108, 92, 231, 0.25);
+  border-color: #a29bfe;
+  color: #ffffff;
+}
+
+.pw-slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pw-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pw-label {
+  font-size: 11px;
+  font-weight: bold;
+  color: #a29bfe;
+  width: 44px;
+}
+
+.pw-slider-row input[type="range"] {
+  flex: 1;
+  accent-color: #a29bfe;
+  cursor: pointer;
+}
+
+.num-compact {
+  width: 50px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  text-align: right;
+}
+
+.pw-desc-badge {
+  background: rgba(15, 20, 30, 0.85);
+  border: 1px solid rgba(162, 155, 254, 0.3);
+  color: #a29bfe;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 5px 8px;
+  border-radius: 4px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* 캔버스 N-구간 함수 선택 플로팅 팝오버 */
+.pw-region-popover {
+  position: absolute;
+  display: none;
+  flex-direction: column;
+  gap: 3px;
+  background: rgba(18, 24, 38, 0.96);
+  border: 1px solid rgba(162, 155, 254, 0.65);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 16px rgba(162, 155, 254, 0.3);
+  border-radius: 10px;
+  padding: 6px;
+  min-width: 155px;
+  backdrop-filter: blur(12px);
+  z-index: 120;
+  pointer-events: auto;
+  animation: popIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.pw-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.pw-popover-item:hover {
+  background: rgba(162, 155, 254, 0.22);
+  color: #ffffff;
+  transform: translateX(2px);
+}
+
+.pw-popover-item.active {
+  background: rgba(162, 155, 254, 0.32);
+  border: 1px solid rgba(162, 155, 254, 0.7);
+  color: #a29bfe;
+}
+
+.pw-popover-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px currentColor;
+}
+
+/* --- [📐 사각형 모드 패널 스타일] --- */
+.quad-mode-section {
+  border-left: 3px solid #1dd1a1;
+}
+
+.quad-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+
+.quad-mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  padding: 6px 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.quad-mode-btn:hover {
+  background: rgba(29, 209, 161, 0.14);
+  color: #ffffff;
+}
+
+.quad-mode-btn.active {
+  background: #10ac84;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(16, 172, 132, 0.4);
+}
+
+.quad-mode-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  opacity: 0.85;
+}
+
+/* =====================================================================
+   [🔗 공유 링크 & 학생용 모드 & QR 코드 스타일]
+   ===================================================================== */
+
+/* 1. 상단 복원 안내 바 (Reset Bar) */
+.shared-reset-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 18px;
+  background: linear-gradient(90deg, rgba(0, 210, 211, 0.18), rgba(254, 202, 87, 0.18));
+  border-bottom: 1px solid rgba(0, 210, 211, 0.35);
+  font-size: 12px;
+  color: var(--text-main);
+  animation: slideDown 0.25s ease-out;
+}
+
+.reset-bar-msg strong {
+  color: var(--accent-cyan);
+}
+
+.reset-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-reset-original {
+  background: var(--accent-cyan);
+  color: #0b1e1e;
+  border: none;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 210, 211, 0.3);
+}
+
+.btn-reset-original:hover {
+  background: #20e4e5;
+  transform: translateY(-1px);
+}
+
+.btn-reset-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.btn-reset-close:hover {
+  color: #ffffff;
+}
+
+/* 2. 헤더 공유 버튼 강조 */
+.btn-share-highlight {
+  border-color: rgba(0, 210, 211, 0.5) !important;
+  color: var(--accent-cyan) !important;
+}
+
+.btn-share-highlight:hover {
+  background: rgba(0, 210, 211, 0.15) !important;
+  box-shadow: 0 2px 10px rgba(0, 210, 211, 0.3) !important;
+}
+
+/* 3. 공유 모달 스타일 */
+.share-modal-card {
+  max-width: 540px;
+}
+
+.share-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 22px;
+}
+
+.share-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.share-field-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.share-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.share-link-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--panel-border);
+  color: var(--text-main);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-family: Consolas, monospace;
+  outline: none;
+  user-select: all;
+}
+
+.share-link-input:focus {
+  border-color: var(--accent-cyan);
+}
+
+.share-hint-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* 4. QR 코드 생성 영역 */
+.qr-section {
+  margin-top: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  padding: 14px;
+}
+
+.qr-preview-box {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+#qrCanvas {
+  background: #ffffff;
+  padding: 6px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  flex-shrink: 0;
+}
+
+.qr-meta-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qr-target-badge {
+  display: inline-block;
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 700;
+  color: #feca57;
+  background: rgba(254, 202, 87, 0.15);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.qr-tip-text {
+  font-size: 11.5px;
+  color: var(--text-main);
+  line-height: 1.4;
+}
+
+/* 5. 🎓 학생용 인터랙티브 모드 (Student Mode) */
+body.student-mode .sidebar,
+body.student-mode .sidebar-rail {
+  display: none !important;
+}
+
+body.student-mode .main-workspace {
+  width: 100vw;
+  height: calc(100vh - 46px);
+}
+
+body.student-mode .header {
+  background: rgba(15, 23, 32, 0.85);
+}
+
+body.student-mode #btnOpenShareModal,
+body.student-mode #btnDownload,
+body.student-mode #btnCopy {
+  display: none !important;
+}
+
+/* ❄️ 형상 프리징 (Freeze) 스타일 */
+#btnToggleFreeze.active {
+  background: rgba(0, 210, 211, 0.25) !important;
+  border-color: #00d2d3 !important;
+  color: #fff !important;
+  box-shadow: 0 0 10px rgba(0, 210, 211, 0.35);
+}
+
+.layer-freeze-btn {
+  background: none;
+  border: none;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+  opacity: 0.45;
+  transition: all 0.15s ease;
+  border-radius: 3px;
+}
+
+.layer-freeze-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.layer-freeze-btn.active {
+  opacity: 1;
+  color: #00d2d3;
+  background: rgba(0, 210, 211, 0.2);
+}
+
+.layer-item.is-frozen {
+  border-left: 3px solid #00d2d3 !important;
+}
+
+.layer-frozen-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #00d2d3;
+  background: rgba(0, 210, 211, 0.15);
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+}
+
+/* 🧑‍🏫 라이브 판서 분할 모드 (Stage & Board Mode) 스타일 */
+#btnBoardMode.active,
+#btnQuickBoardMode.active {
+  background: rgba(0, 210, 211, 0.22) !important;
+  border-color: #00d2d3 !important;
+  color: #00d2d3 !important;
+  box-shadow: 0 0 14px rgba(0, 210, 211, 0.4) !important;
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   🌟 [대표님 기획: 상단 중앙 초슬림 캡슐바 (Curve Context Bar)] 🌟
+   - 화면 상단 중앙 플로팅 알약 (38px 다크 글래스모피즘)
+   - 곡선 선택 시 부드럽게 slideDown
+   - 곡선/핸들 드래그 시 은은한 반투명(dimmed 0.25)으로 판서 시야 100% 확보
+   - 빈 공간 클릭 또는 필기 펜 모드 시 즉시 사라짐
+   ========================================================================== */
+.curve-context-bar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 125;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 42px;
+  padding: 0 10px 0 14px;
+  background: rgba(18, 26, 36, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.42), 0 2px 8px rgba(0, 0, 0, 0.2);
+  user-select: none;
+  pointer-events: auto;
+  opacity: 1;
+  transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.22, 1, 0.36, 1), top 0.2s ease;
+  animation: slideDownCapsule 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+body.header-collapsed .curve-context-bar {
+  top: 28px;
+}
+
+@keyframes slideDownCapsule {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.curve-context-bar.dimmed {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.curve-context-bar .ctx-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.curve-context-bar .ctx-color-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 8px currentColor;
+  flex-shrink: 0;
+}
+
+.curve-context-bar .ctx-name {
+  font-size: 12px;
+  color: #f1f2f6;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.curve-context-bar .ctx-sep {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.14);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.curve-context-bar .ctx-btn {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  transition: all 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.curve-context-bar .ctx-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(0, 210, 211, 0.5);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.curve-context-bar .ctx-btn:active {
+  transform: translateY(0);
+}
+
+.curve-context-bar .ctx-btn.active {
+  background: rgba(0, 210, 211, 0.22);
+  border-color: var(--accent-cyan, #00d2d3);
+  color: var(--accent-cyan, #00d2d3);
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(0, 210, 211, 0.3);
+}
+
+.curve-context-bar .ctx-btn-inverse {
+  background: rgba(162, 155, 254, 0.16);
+  border-color: rgba(162, 155, 254, 0.45);
+  color: #a29bfe;
+  font-weight: 700;
+}
+
+.curve-context-bar .ctx-btn-inverse:hover {
+  background: rgba(162, 155, 254, 0.28);
+  border-color: #a29bfe;
+  color: #fff;
+}
+
+.curve-context-bar .ctx-btn-link {
+  background: rgba(255, 107, 107, 0.22);
+  border-color: rgba(255, 107, 107, 0.6);
+  color: #ff7675;
+  font-weight: 700;
+  animation: pulseLinkCapsule 2s infinite;
+}
+
+@keyframes pulseLinkCapsule {
+  0% { box-shadow: 0 0 0 rgba(255, 107, 107, 0); }
+  50% { box-shadow: 0 0 10px rgba(255, 107, 107, 0.4); }
+  100% { box-shadow: 0 0 0 rgba(255, 107, 107, 0); }
+}
+
+.curve-context-bar .ctx-btn-link:hover {
+  background: rgba(255, 107, 107, 0.38);
+  border-color: #ff7675;
+  color: #fff;
+}
+
+.curve-context-bar .ctx-btn-dup {
+  background: rgba(255, 234, 167, 0.15);
+  border-color: rgba(255, 234, 167, 0.4);
+  color: #ffeaa7;
+  font-weight: 700;
+}
+
+.curve-context-bar .ctx-btn-dup:hover {
+  background: rgba(255, 234, 167, 0.28);
+  color: #ffffff;
+}
+
+.curve-context-bar .ctx-btn-del {
+  color: #ff7675;
+  padding: 0 8px;
+}
+
+.curve-context-bar .ctx-btn-del:hover {
+  background: rgba(255, 107, 107, 0.25);
+  border-color: rgba(255, 107, 107, 0.6);
+  color: #ffffff;
+}
+
+.curve-context-bar .ctx-btn-close {
+  padding: 0 8px;
+  color: #a4b0be;
+  font-size: 13px;
+}
+
+.curve-context-bar .ctx-btn-close:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+/* Light Theme support */
+body.theme-light .curve-context-bar {
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
+  color: #1e293b;
+}
+
+body.theme-light .curve-context-bar .ctx-badge .ctx-name {
+  color: #1e293b;
+  font-weight: 700;
+}
+
+body.theme-light .curve-context-bar .ctx-sep {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+body.theme-light .curve-context-bar .ctx-btn {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #334155;
+}
+
+body.theme-light .curve-context-bar .ctx-btn:hover {
+  background: rgba(37, 99, 235, 0.06);
+  border-color: rgba(37, 99, 235, 0.45);
+  color: #2563eb;
+  transform: translateY(-1px);
+}
+
+body.theme-light .curve-context-bar .ctx-btn.active {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: #2563eb;
+  color: #2563eb;
+  font-weight: 700;
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.25);
+}
+
+body.theme-light .curve-context-bar .ctx-btn-inverse {
+  background: rgba(124, 58, 237, 0.08);
+  border-color: rgba(124, 58, 237, 0.3);
+  color: #6d28d9;
+  font-weight: 700;
+}
+
+body.theme-light .curve-context-bar .ctx-btn-inverse:hover {
+  background: rgba(124, 58, 237, 0.16);
+  border-color: #6d28d9;
+  color: #5b21b6;
+}
+
+body.theme-light .curve-context-bar .ctx-btn-link {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.35);
+  color: #dc2626;
+  font-weight: 700;
+}
+
+body.theme-light .curve-context-bar .ctx-btn-dup {
+  background: rgba(217, 119, 6, 0.08);
+  border-color: rgba(217, 119, 6, 0.3);
+  color: #b45309;
+  font-weight: 700;
+}
+
+body.theme-light .curve-context-bar .ctx-btn-dup:hover {
+  background: rgba(217, 119, 6, 0.16);
+  color: #92400e;
+}
+
+body.theme-light .curve-context-bar .ctx-btn-del {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.05);
+  border-color: rgba(220, 38, 38, 0.25);
+}
+
+body.theme-light .curve-context-bar .ctx-btn-del:hover {
+  background: rgba(220, 38, 38, 0.15);
+  border-color: #dc2626;
+  color: #b91c1c;
+}
+
+body.theme-light .curve-context-bar .ctx-btn-close {
+  color: #64748b;
+}
+
+body.theme-light .curve-context-bar .ctx-btn-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #1e293b;
+}
+
+.board-mode-bar {
+  position: absolute;
+  top: 14px;
+  right: 76px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(18, 26, 36, 0.90);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(0, 210, 211, 0.45);
+  padding: 6px 14px;
+  border-radius: 24px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  z-index: 95;
+  animation: fadeInDownBoard 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeInDownBoard {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.board-bar-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #00d2d3;
+  letter-spacing: -0.2px;
+}
+
+.board-pulse-dot {
+  width: 7px;
+  height: 7px;
+  background: #00d2d3;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #00d2d3;
+  animation: boardDotPulse 1.8s infinite ease-in-out;
+}
+
+@keyframes boardDotPulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+
+.board-ratio-selector {
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.38);
+  border-radius: 12px;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.board-ratio-btn {
+  background: transparent;
+  border: none;
+  color: #a4b0be;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.board-ratio-btn:hover {
+  color: #fff;
+}
+
+.board-ratio-btn.active {
+  background: #00d2d3;
+  color: #0c2424;
+  font-weight: 700;
+  box-shadow: 0 0 8px rgba(0, 210, 211, 0.4);
+}
+
+.board-bar-tip {
+  font-size: 11px;
+  color: #a4b0be;
+  padding: 0 4px;
+}
+
+.btn-exit-board {
+  background: rgba(255, 107, 107, 0.16);
+  border: 1px solid rgba(255, 107, 107, 0.45);
+  color: #ff6b6b;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-exit-board:hover {
+  background: #ff6b6b;
+  color: #fff;
+}
+
+/* =====================================================================
+   [🔀 정통 N축 합성함수 해석 모드 UI 스타일]
+   ===================================================================== */
+#btnNAxisMode.active,
+#btnQuickNAxisMode.active {
+  background: linear-gradient(135deg, #6c5ce7, #a29bfe) !important;
+  color: #ffffff !important;
+  border-color: #a29bfe !important;
+  box-shadow: 0 0 14px rgba(162, 155, 254, 0.6) !important;
+}
+
+.n-axis-mode-bar {
+  position: absolute;
+  top: 14px;
+  right: 76px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(18, 22, 36, 0.92);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(162, 155, 254, 0.5);
+  padding: 6px 14px;
+  border-radius: 24px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55), 0 0 16px rgba(162, 155, 254, 0.2);
+  z-index: 95;
+  animation: fadeInDownNAxis 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeInDownNAxis {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.n-axis-bar-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #a29bfe;
+  letter-spacing: -0.2px;
+}
+
+.n-axis-pulse-dot {
+  width: 7px;
+  height: 7px;
+  background: #a29bfe;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #a29bfe;
+  animation: nAxisDotPulse 1.8s infinite ease-in-out;
+}
+
+@keyframes nAxisDotPulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+
+.n-axis-role-selector {
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 14px;
+  padding: 3px 6px;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.n-axis-role-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.n-axis-role-chip.outer .role-badge {
+  background: rgba(0, 210, 211, 0.2);
+  color: #00d2d3;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.n-axis-role-chip.inner .role-badge {
+  background: rgba(254, 202, 87, 0.2);
+  color: #feca57;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.n-axis-role-chip .role-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: #f1f2f6;
+}
+
+.btn-n-axis-swap {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(162, 155, 254, 0.2);
+  border: 1px solid rgba(162, 155, 254, 0.5);
+  color: #dcdde1;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-n-axis-swap:hover {
+  background: #6c5ce7;
+  color: #fff;
+  border-color: #a29bfe;
+  transform: scale(1.05);
+}
+
+.btn-n-axis-swap:hover .swap-icon {
+  transform: rotate(180deg);
+  transition: transform 0.3s ease;
+}
+
+.n-axis-bar-tip {
+  font-size: 11px;
+  color: #a4b0be;
+  padding: 0 4px;
+}
+
+.btn-exit-n-axis {
+  background: rgba(255, 107, 107, 0.16);
+  border: 1px solid rgba(255, 107, 107, 0.45);
+  color: #ff6b6b;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-exit-n-axis:hover {
+  background: #ff6b6b;
+  color: #fff;
+}
+
+.n-axis-zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 2px 4px;
+}
+
+.btn-n-axis-zoom {
+  background: transparent;
+  border: none;
+  color: #a4b0be;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-n-axis-zoom:hover {
+  background: rgba(162, 155, 254, 0.25);
+  color: #fff;
+}
+
+.btn-n-axis-zoom-val {
+  background: rgba(162, 155, 254, 0.15);
+  border: 1px solid rgba(162, 155, 254, 0.35);
+  color: #a29bfe;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-n-axis-zoom-val:hover {
+  background: #6c5ce7;
+  color: #fff;
+}
+
+/* ========================================================
+   [교재 보조 수선(Drop Lines) & 축 좌표 라벨 인라인 에디터]
+   ======================================================== */
+
+.canvas-container.drop-line-active {
+  cursor: crosshair !important;
+}
+
+.drop-line-label-input {
+  position: absolute;
+  z-index: 150;
+  display: none;
+  min-width: 32px;
+  max-width: 140px;
+  padding: 2px 6px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1.5px solid #00d2d3;
+  border-radius: 4px;
+  color: #ffffff;
+  font-family: 'STIX Two Text', 'Times New Roman', 'Cambria Math', serif;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 10px rgba(0, 210, 211, 0.4);
+  outline: none;
+  transform: translate(-50%, -50%);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.drop-line-label-input:focus {
+  border-color: #feca57;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6), 0 0 12px rgba(254, 202, 87, 0.5);
+}
+
+#btnQuickDropLine.active {
+  background: rgba(0, 210, 211, 0.22);
+  border-color: #00d2d3;
+  color: #00d2d3;
+  box-shadow: 0 0 14px rgba(0, 210, 211, 0.45);
+}
+
+/* ========================================================
+   [캔버스 자유 수식 텍스트 라벨 (함수 이름표 & 축 이름표)]
+   ======================================================== */
+
+.canvas-container.text-tool-active {
+  cursor: text !important;
+}
+
+.canvas-text-input {
+  position: absolute;
+  z-index: 160;
+  display: none;
+  min-width: 80px;
+  max-width: 480px;
+  padding: 4px 10px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1.5px solid #a29bfe;
+  border-radius: 6px;
+  color: #ffffff;
+  font-family: 'STIX Two Text', 'Times New Roman', 'Cambria Math', serif;
+  font-size: 20px;
+  font-style: italic;
+  font-weight: 500;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6), 0 0 12px rgba(162, 155, 254, 0.45);
+  outline: none;
+  transform: translate(0, -50%);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.canvas-text-input:focus {
+  border-color: #00d2d3;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.7), 0 0 14px rgba(0, 210, 211, 0.55);
+}
+
+#btnQuickText.active {
+  background: rgba(162, 155, 254, 0.25);
+  border-color: #a29bfe;
+  color: #a29bfe;
+  box-shadow: 0 0 14px rgba(162, 155, 254, 0.5);
+}
+
+/* 📄 교재 흑백 모드 (Monochrome Mode) 버튼 활성화 스타일 */
+#btnMonochromeMode.active {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 12px rgba(15, 23, 42, 0.35) !important;
+  font-weight: 700;
+}
+
+/* =====================================================================
+   [화이트 / 라이트 테마 전용 UI 스타일 정돈]
+   - 시커멓게 번지던 32px 먹물 블러 그림자를 100% 제거
+   - 애플/피그마 스타일의 1px 정갈한 헤어라인 경계선으로 전환
+   ===================================================================== */
+body.theme-light header {
+  background: rgba(255, 255, 255, 0.95);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.03);
+}
+
+body.theme-light .btn-secondary {
+  background: rgba(0, 0, 0, 0.04);
+  color: #1e293b;
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+body.theme-light .btn-secondary:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #0f172a;
+  border-color: rgba(0, 0, 0, 0.20);
+}
+
+body.theme-light .rail-drawer {
+  background: rgba(255, 255, 255, 0.98);
+  border-right: 1px solid rgba(0, 0, 0, 0.10);
+  box-shadow: 3px 0 14px rgba(0, 0, 0, 0.05);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: #1e293b;
+}
+
+body.theme-light .drawer-header {
+  background: rgba(248, 250, 252, 0.95);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light .drawer-title {
+  color: #0f172a;
+}
+
+body.theme-light .btn-drawer-close {
+  color: #64748b;
+}
+
+body.theme-light .btn-drawer-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #0f172a;
+}
+
+body.theme-light .drawer-persistent-layers {
+  background: rgba(248, 250, 252, 0.85);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light .layer-item {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+body.theme-light .layer-title {
+  color: #0f172a;
+}
+
+body.theme-light .cat-tab-btn {
+  color: #64748b;
+}
+
+body.theme-light .cat-tab-btn.active {
+  color: #0f172a;
+  border-bottom-color: #00cec9;
+}
+
+body.theme-light .func-btn {
+  background: rgba(248, 250, 252, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  color: #1e293b;
+}
+
+body.theme-light .func-btn:hover {
+  background: #ffffff;
+  border-color: #00cec9;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light .func-btn.active {
+  background: #f0fdfa;
+  border-color: #00cec9;
+}
+
+body.theme-light .func-name-text {
+  color: #1e293b;
+}
+
+body.theme-light .canvas-quick-toolbar .quick-fab-btn {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.07);
+  color: #0f172a;
+}
+
+body.theme-light .canvas-quick-toolbar .quick-fab-btn:hover {
+  background: #ffffff;
+  border-color: #00cec9;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+body.theme-light .canvas-quick-toolbar .quick-fab-btn.active {
+  background: #f0fdfa;
+  border-color: #00cec9;
+  color: #00cec9;
+}
+
+body.theme-light .board-mode-bar {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  color: #0f172a;
+}
+
+body.theme-light .board-bar-title {
+  color: #0f172a;
+}
+
+body.theme-light .board-ratio-selector {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+body.theme-light .board-ratio-btn {
+  color: #64748b;
+}
+
+body.theme-light .board-ratio-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+body.theme-light .board-bar-tip {
+  color: #64748b;
+}
+
+body.theme-light .btn-exit-board {
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: #475569;
+}
+
+body.theme-light .btn-exit-board:hover {
+  background: rgba(0, 0, 0, 0.10);
+  color: #0f172a;
+}
+
+/* =====================================================================
+   ✍️ [실시간 무한 칠판 필기 플로팅 툴바 (Ink Floating Dock)]
+   - 굿노트/프로크리에이트 스타일 초슬림 글래스모피즘 독
+   ===================================================================== */
+.ink-floating-toolbar {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(18, 26, 36, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.22);
+  z-index: 120;
+  user-select: none;
+  animation: inkDockSlideUp 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes inkDockSlideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.ink-dock-drag-handle {
+  cursor: grab;
+  color: #64748b;
+  font-size: 14px;
+  letter-spacing: -2px;
+  padding: 0 3px;
+  opacity: 0.65;
+  transition: opacity 0.15s;
+}
+.ink-dock-drag-handle:hover {
+  opacity: 1;
+  color: #94a3b8;
+}
+
+.ink-tool-group,
+.ink-color-group,
+.ink-size-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ink-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.14);
+  margin: 0 2px;
+}
+
+.ink-tool-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+  font-size: 15px;
+}
+
+.ink-tool-btn.ink-zoom-val {
+  width: auto !important;
+  min-width: 44px;
+  padding: 0 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+.ink-tool-btn.ink-zoom-val:hover {
+  border-color: #00d2d3;
+  color: #00d2d3;
+}
+
+.ink-zoom-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 🔍 펜 툴바 일체형 큼직한 퀵 줌 버튼 [− | +] */
+.ink-zoom-step-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 19px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.14s ease;
+  touch-action: manipulation;
+}
+
+.ink-zoom-step-btn:hover {
+  background: rgba(0, 210, 211, 0.22);
+  border-color: #00d2d3;
+  color: #00d2d3;
+  transform: translateY(-1px);
+}
+
+.ink-zoom-step-btn:active {
+  background: rgba(0, 210, 211, 0.38);
+  transform: scale(0.92);
+}
+
+body.theme-light .ink-zoom-step-btn {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.16);
+  color: #1e293b;
+}
+
+body.theme-light .ink-zoom-step-btn:hover {
+  background: rgba(0, 210, 211, 0.15);
+  border-color: #00b4b5;
+  color: #008b8c;
+}
+
+.ink-tool-btn:hover {
+  background: rgba(255, 255, 255, 0.10);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.ink-tool-btn.active {
+  background: rgba(0, 210, 211, 0.22);
+  border-color: #00d2d3;
+  color: #00d2d3;
+  box-shadow: 0 0 12px rgba(0, 210, 211, 0.35);
+}
+
+.ink-color-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
+}
+
+.ink-color-dot:hover {
+  transform: scale(1.15);
+}
+
+.ink-color-dot.active {
+  transform: scale(1.22);
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px #00d2d3, 0 0 10px rgba(0, 210, 211, 0.6);
+}
+
+body.theme-light .ink-color-dot {
+  border: 2px solid rgba(0, 0, 0, 0.12);
+}
+
+body.theme-light .ink-color-dot.active {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2.5px #2563eb, 0 2px 8px rgba(37, 99, 235, 0.35);
+}
+
+.ink-size-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.ink-size-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ink-size-btn.active {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.ink-size-circle {
+  border-radius: 50%;
+  background: #cbd5e1;
+  display: block;
+}
+
+.ink-size-btn.active .ink-size-circle {
+  background: #00d2d3;
+}
+
+.ink-close-btn:hover {
+  background: rgba(255, 107, 107, 0.2) !important;
+  color: #ff6b6b !important;
+}
+
+/* 🌟 [캔버스 펜/지우개/올가미 커서 상태] 🌟 */
+/* 브라우저 OS의 crosshair 점멸 및 렉 완벽 차단: cursor: none 적용 */
+canvas.ink-cursor-pen,
+canvas.ink-cursor-highlighter,
+canvas.ink-cursor-eraser {
+  cursor: none !important;
+}
+
+canvas.ink-cursor-lasso {
+  cursor: crosshair !important;
+}
+canvas.ink-cursor-lasso.is-hover-selection {
+  cursor: move !important;
+}
+canvas.ink-cursor-grab {
+  cursor: grab !important;
+}
+canvas.ink-cursor-grabbing {
+  cursor: grabbing !important;
+}
+
+/* 🌟 [필기 모드 상시 가상 연필 & 지우개 인디케이터] 🌟 */
+.virtual-stylus-pen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 15; /* 메뉴 및 플로팅 툴바(z-index: 20~150)보다 낮춰 UI 겹침 원천 차단 */
+  will-change: transform;
+  transform: translate3d(-100px, -100px, 0);
+  transform-origin: 0 0;
+  /* 번쩍임 없이 단정하고 은은한 음영만 유지 (정신사나운 발광 필터 제거) */
+  filter: drop-shadow(1px 2px 3px rgba(0, 0, 0, 0.35));
+  user-select: none;
+  -webkit-user-select: none;
+  contain: layout style paint;
+}
+
+/* 실제 연필로 칠판에 글씨를 쓸 때(터치/다운) 종이를 살짝 누르는 감촉 피드백 (번쩍임 없음) */
+.virtual-stylus-pen.drawing {
+  filter: drop-shadow(1px 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+.virtual-stylus-pen .stylus-svg {
+  display: block;
+  overflow: visible;
+}
+
+/* 라이트 테마 전용 인크 툴바 스타일 */
+body.theme-light .ink-floating-toolbar {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+}
+
+body.theme-light .ink-divider {
+  background: rgba(0, 0, 0, 0.10);
+}
+
+body.theme-light .ink-tool-btn {
+  color: #475569;
+}
+
+body.theme-light .ink-tool-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #0f172a;
+}
+
+body.theme-light .ink-tool-btn.active {
+  background: #f0fdfa;
+  border-color: #00cec9;
+  color: #008b8b;
+  box-shadow: 0 0 10px rgba(0, 206, 201, 0.3);
+}
+
+body.theme-light .ink-size-circle {
+  background: #64748b;
+}
+
+body.theme-light .ink-size-btn.active .ink-size-circle {
+  background: #008b8b;
+}
+
+/* ==========================================================================
+   [📑 닥줌(DocZoom)형 PDF 교재 뷰어 & 2단 문제 박스 크롭 엔진 스타일]
+   ========================================================================== */
+
+/* 상단 헤더 PDF 크롭 버튼 하이라이트 */
+.btn-pdf-highlight {
+  background: linear-gradient(135deg, rgba(0, 210, 211, 0.18), rgba(9, 132, 227, 0.22)) !important;
+  border: 1px solid rgba(0, 210, 211, 0.45) !important;
+  color: #00cec9 !important;
+  font-weight: 600;
+  box-shadow: 0 0 12px rgba(0, 206, 201, 0.18);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-pdf-highlight:hover {
+  background: linear-gradient(135deg, rgba(0, 210, 211, 0.28), rgba(9, 132, 227, 0.35)) !important;
+  border-color: #00d2d3 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 18px rgba(0, 210, 211, 0.35);
+  transform: translateY(-1px);
+}
+
+/* PDF 풀스크린 모달 백드롭 */
+.pdf-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(8, 12, 20, 0.88);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeInModal 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  overscroll-behavior: none !important;
+  overscroll-behavior-x: none !important;
+  overscroll-behavior-y: none !important;
+}
+
+/* PDF 모달 컨테이너 - 광활한 전체화면급 뷰포트 */
+.pdf-modal-container {
+  width: 98vw;
+  height: 96vh;
+  max-width: none;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75), 0 0 40px rgba(0, 210, 211, 0.10);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overscroll-behavior: none !important;
+  overscroll-behavior-x: none !important;
+  overscroll-behavior-y: none !important;
+}
+
+/* PDF 상단 컨트롤 툴바 */
+.pdf-modal-header {
+  height: 56px;
+  padding: 0 20px;
+  background: #1e293b;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+.pdf-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 200px;
+}
+
+.pdf-file-icon {
+  font-size: 18px;
+}
+
+.pdf-file-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f1f5f9;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.pdf-header-btn-subtle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.pdf-header-btn-subtle:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.32);
+  color: #ffffff;
+}
+
+.pdf-header-btn-subtle:active {
+  transform: scale(0.97);
+}
+
+.pdf-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(0, 210, 211, 0.15);
+  border: 1px solid rgba(0, 210, 211, 0.35);
+  color: #00d2d3;
+}
+
+/* 중앙 페이지 이동 & 줌 컨트롤 */
+.pdf-header-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pdf-nav-btn {
+  height: 32px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pdf-nav-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.pdf-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pdf-page-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+}
+
+.pdf-page-input {
+  width: 44px;
+  height: 30px;
+  background: #090d16;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: #00d2d3;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.pdf-page-input:focus {
+  border-color: #00d2d3;
+  outline: none;
+}
+
+.pdf-page-slash {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.pdf-total-pages {
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 24px;
+}
+
+.pdf-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.15);
+  margin: 0 4px;
+}
+
+.pdf-tool-btn {
+  height: 30px;
+  min-width: 30px;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #cbd5e1;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pdf-tool-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.pdf-zoom-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  min-width: 42px;
+  text-align: center;
+}
+
+/* 우측 닥줌 크롭 토글 버튼 */
+.pdf-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pdf-crop-toggle-btn {
+  height: 34px;
+  padding: 0 14px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  color: #f1f5f9;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pdf-crop-toggle-btn:hover {
+  background: rgba(0, 210, 211, 0.15);
+  border-color: rgba(0, 210, 211, 0.4);
+  color: #00d2d3;
+}
+
+.pdf-crop-toggle-btn.active {
+  background: #00cec9 !important;
+  border-color: #00cec9 !important;
+  color: #0f172a !important;
+  box-shadow: 0 0 18px rgba(0, 206, 201, 0.55);
+  animation: pulseCropBtn 1.5s infinite alternate ease-in-out;
+}
+
+@keyframes pulseCropBtn {
+  from { box-shadow: 0 0 12px rgba(0, 206, 201, 0.4); }
+  to { box-shadow: 0 0 22px rgba(0, 206, 201, 0.8); }
+}
+
+/* PDF 세로 연속 스크롤 뷰포트 (즉각적이고 시원시원한 네이티브 스크롤) */
+.pdf-viewport {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  position: relative;
+  background: #090d16;
+  scroll-behavior: auto !important;
+  cursor: default;
+  touch-action: pan-x pan-y;
+  overscroll-behavior: none !important;
+  overscroll-behavior-x: none !important;
+  overscroll-behavior-y: none !important;
+}
+
+.pdf-viewport.crop-mode,
+.pdf-viewport.crop-mode .pdf-page-wrapper,
+.pdf-viewport.crop-mode .pdf-page-canvas {
+  cursor: crosshair !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  touch-action: none !important;
+}
+
+/* 페이지들이 세로로 차례대로 나열되는 컨테이너 */
+.pdf-pages-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  padding: 24px 16px 60px 16px;
+  min-width: 100%;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  overscroll-behavior: none !important;
+}
+
+/* 개별 페이지 래퍼 */
+.pdf-page-wrapper {
+  position: relative;
+  display: inline-block;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75);
+  border-radius: 4px;
+  background: #ffffff;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-user-drag: none !important;
+}
+
+.pdf-page-number-tag {
+  position: absolute;
+  top: -14px;
+  left: 16px;
+  background: #0f172a;
+  color: #00d2d3;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 210, 211, 0.4);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  z-index: 5;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+.pdf-page-canvas {
+  display: block;
+  background: #ffffff;
+  border-radius: 4px;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-user-drag: none !important;
+}
+
+/* 크롭 박스 (네온 민트 점선) */
+.pdf-crop-box {
+  position: absolute;
+  border: 2px dashed #00d2d3;
+  background: rgba(0, 210, 211, 0.22);
+  pointer-events: none !important;
+  z-index: 100;
+  box-sizing: border-box;
+  user-select: none !important;
+}
+
+.crop-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #00d2d3;
+  border: 1.5px solid #ffffff;
+  border-radius: 2px;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+.handle-tl { top: -5px; left: -5px; }
+.handle-tr { top: -5px; right: -5px; }
+.handle-bl { bottom: -5px; left: -5px; }
+.handle-br { bottom: -5px; right: -5px; }
+
+
+
+/* PDF 모달 하단 액션 바 */
+.pdf-modal-footer {
+  height: 52px;
+  padding: 0 20px;
+  background: #1e293b;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.pdf-status-hint {
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.pdf-status-hint b {
+  color: #00d2d3;
+}
+
+.pdf-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ==========================================================================
+   [📌 크롭된 문제 고정 카드 위젯 (Problem Card Widget - 전용 독립 캔버스 & 우측 하단 컨트롤 바)]
+   - 문제 카드 내부에 전용 투명 <canvas id="problemCardCanvas">가 내장되어,
+     메인 칠판 휠 스크롤/줌과 100% 독립적으로 문제 위에만 밑줄·동그라미·형광펜 필기!
+   - 전자칠판 강사의 팔 높이를 배려해 컨트롤러 바를 문제 카드 [우측 하단]에 도킹!
+   ========================================================================== */
+
+.problem-card-widget {
+  position: absolute;
+  top: 18px;
+  left: 72px;
+  width: 520px;
+  min-width: 280px;
+  max-width: 82vw;
+  z-index: 150;
+  background: transparent !important;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  user-select: none;
+  pointer-events: none !important;
+}
+
+/* 🌟 [대표님 지시: 두꺼운 선/음영 싹 걷어내고 깔끔하고 미니멀한 단일 카드 디자인] 🌟 */
+.problem-card-body {
+  position: relative;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+  pointer-events: auto !important;
+  overflow: hidden;
+}
+
+.problem-card-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 9px;
+  pointer-events: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
+}
+
+/* 문제 창 전용 독립 캔버스 (문제 이미지 위에 정확히 1:1 포개짐) */
+.problem-card-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+  pointer-events: auto;
+  touch-action: none !important;
+  cursor: crosshair;
+}
+
+/* 상단 고정 제자리 블라인드 컨트롤러 바 */
+.problem-card-header {
+  order: -1;
+  align-self: flex-start;
+  height: 30px;
+  margin-top: 0;
+  margin-bottom: 5px;
+  padding: 0 7px 0 6px;
+  background: rgba(15, 23, 42, 0.90);
+  backdrop-filter: blur(12px);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  cursor: grab;
+  pointer-events: auto !important;
+  z-index: 15;
+}
+
+.problem-card-header:active {
+  cursor: grabbing;
+}
+
+.problem-card-drag-handle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #e2e8f0;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.card-drag-icon {
+  color: #00d2d3;
+  font-size: 14px;
+}
+
+.problem-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.card-btn {
+  height: 25px;
+  padding: 0 7px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 5px;
+  color: #e2e8f0;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  pointer-events: auto !important;
+  white-space: nowrap;
+}
+
+.card-btn:hover {
+  background: rgba(0, 210, 211, 0.2);
+  border-color: rgba(0, 210, 211, 0.5);
+  color: #ffffff;
+}
+
+.btn-card-close:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #ef4444;
+}
+
+/* 최소화(접기) 상태 */
+.problem-card-widget.minimized .problem-card-body {
+  display: none;
+}
+
+.problem-card-widget.minimized {
+  width: auto !important;
+  min-width: 240px;
+}
+
+.problem-card-widget.minimized .problem-card-header {
+  align-self: flex-start;
+  border-radius: 10px;
+  border: 1.5px solid rgba(0, 210, 211, 0.45);
+}
+
+/* 우하단 리사이즈 핸들 (문제 본문 우하단 모서리) */
+.problem-card-resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, rgba(148, 163, 184, 0.35) 50%);
+  border-radius: 0 0 7px 0;
+  pointer-events: auto !important;
+  z-index: 20;
+  transition: opacity 0.15s ease;
+}
+
+.problem-card-body:hover .problem-card-resize-handle {
+  background: linear-gradient(135deg, transparent 50%, rgba(148, 163, 184, 0.65) 50%);
+}
+
+/* ==========================================================================
+   [📁 PDF 드래그 앤 드롭 오버레이]
+   ========================================================================== */
+
+.pdf-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(8, 12, 20, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.pdf-drop-card {
+  width: 170px;
+  height: 170px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2.5px dashed #00d2d3;
+  border-radius: 24px;
+  background: rgba(15, 23, 42, 0.88);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45), 0 0 32px rgba(0, 210, 211, 0.25);
+  animation: dropCardPulse 2s infinite alternate ease-in-out;
+}
+
+@keyframes dropCardPulse {
+  0% {
+    transform: scale(0.96);
+    border-color: rgba(0, 210, 211, 0.55);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35), 0 0 20px rgba(0, 210, 211, 0.15);
+  }
+  100% {
+    transform: scale(1.04);
+    border-color: rgba(0, 210, 211, 0.95);
+    box-shadow: 0 20px 56px rgba(0, 0, 0, 0.55), 0 0 40px rgba(0, 210, 211, 0.35);
+  }
+}
+
+.drop-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #00d2d3;
+  animation: dropIconFloat 2s infinite ease-in-out;
+}
+
+@keyframes dropIconFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+/* ==========================================================================
+   [🎨 테마 동기화: PDF 뷰어 모달 & 교재 문제 크롭 라이트 테마 전용 스타일]
+   ========================================================================== */
+
+/* 1. PDF 모달 배경 및 컨테이너 */
+body.theme-light .pdf-modal-backdrop {
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(8px);
+}
+
+body.theme-light .pdf-modal-container {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.22);
+}
+
+body.theme-light .pdf-modal-header,
+body.theme-light .pdf-modal-footer {
+  background: #f8fafc;
+  border-color: rgba(0, 0, 0, 0.10);
+}
+
+
+body.theme-light .pdf-header-btn-subtle {
+  color: #1e293b;
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+body.theme-light .pdf-header-btn-subtle:hover {
+  background: #f1f5f9;
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+body.theme-light .pdf-file-title {
+  color: #1e293b;
+  font-weight: 700;
+}
+
+body.theme-light .pdf-file-icon {
+  color: #2563eb;
+}
+
+/* 2. PDF 뷰포트 (종이 흰색과 대비되는 고급 소프트 그레이 배경) */
+body.theme-light .pdf-viewport {
+  background: #e2e8f0 !important;
+}
+
+body.theme-light .pdf-page-wrapper {
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+}
+
+/* 3. PDF 모달 상단/하단 버튼 및 입력 폼 */
+body.theme-light .pdf-tool-btn,
+body.theme-light .pdf-nav-btn {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  color: #1e293b;
+  font-weight: 600;
+}
+
+body.theme-light .pdf-tool-btn:hover,
+body.theme-light .pdf-nav-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+body.theme-light .pdf-zoom-label {
+  color: #1e293b;
+  font-weight: 700;
+}
+
+body.theme-light .pdf-page-indicator {
+  color: #1e293b;
+}
+
+body.theme-light .pdf-page-input {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  color: #1e293b;
+  font-weight: 700;
+}
+
+body.theme-light .pdf-total-pages {
+  color: #64748b;
+}
+
+/* 4. 자르기(Crop) 모드 토글 버튼 & 크롭 박스 */
+body.theme-light .pdf-crop-toggle-btn {
+  background: #ffffff;
+  border: 1.5px solid rgba(37, 99, 235, 0.35);
+  color: #2563eb;
+  font-weight: 700;
+}
+
+body.theme-light .pdf-crop-toggle-btn:hover {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+body.theme-light .pdf-crop-toggle-btn.active {
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35);
+}
+
+body.theme-light .pdf-crop-box {
+  border: 2px dashed #2563eb !important;
+  background: rgba(37, 99, 235, 0.14) !important;
+}
+
+body.theme-light .crop-handle {
+  background: #2563eb !important;
+  border: 1.5px solid #ffffff !important;
+}
+
+body.theme-light .btn-modal-close {
+  color: #64748b;
+}
+
+body.theme-light .btn-modal-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #dc2626;
+}
+
+body.theme-light .pdf-status-hint {
+  color: #475569;
+}
+
+/* 5. PDF 드래그앤드롭 오버레이 */
+body.theme-light .pdf-drop-overlay {
+  background: rgba(241, 245, 249, 0.70) !important;
+}
+
+body.theme-light .pdf-drop-card {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12), 0 0 32px rgba(37, 99, 235, 0.2) !important;
+}
+
+body.theme-light .drop-icon {
+  color: #2563eb !important;
+}
+
+/* ==========================================================================
+   [🎨 테마 동기화: 칠판 위 문제 카드 위젯 (#problemCardWidget) 라이트 테마 전용 스타일]
+   ========================================================================== */
+
+/* 1. 문제 본문 카드 컨테이너: 어두운 칠판용 청록(Cyan) 글로우를 싹 빼고 세련된 화이트 페이퍼 섀도우 적용 */
+body.theme-light .problem-card-body {
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.10) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* 2. 문제 창 하단 도킹 컨트롤러 바: 칠판용 다크 네이비 대신 깔끔한 화이트 글래스모피즘 */
+body.theme-light .problem-card-header {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(0, 0, 0, 0.10) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+}
+
+body.theme-light .problem-card-widget.minimized .problem-card-header {
+  border: 1px solid rgba(0, 0, 0, 0.10) !important;
+}
+
+/* 3. 드래그 핸들 텍스트 및 아이콘 */
+body.theme-light .problem-card-drag-handle {
+  color: #1e293b !important;
+  font-weight: 700 !important;
+}
+
+body.theme-light .card-drag-icon {
+  color: #2563eb !important;
+}
+
+/* 4. 카드 컨트롤 액션 버튼군 */
+body.theme-light .card-btn {
+  background: #f1f5f9 !important;
+  border: 1px solid rgba(0, 0, 0, 0.12) !important;
+  color: #1e293b !important;
+  font-weight: 600 !important;
+}
+
+body.theme-light .card-btn:hover {
+  background: #e2e8f0 !important;
+  border-color: #2563eb !important;
+  color: #2563eb !important;
+}
+
+/* 다시 자르기 버튼 (로열 블루 하이라이트) */
+body.theme-light #btnProblemCardReCrop {
+  background: rgba(37, 99, 235, 0.08) !important;
+  border: 1px solid rgba(37, 99, 235, 0.28) !important;
+  color: #2563eb !important;
+}
+
+body.theme-light #btnProblemCardReCrop:hover {
+  background: rgba(37, 99, 235, 0.16) !important;
+  color: #1d4ed8 !important;
+}
+
+/* 닫기 버튼 (레드 경고) */
+body.theme-light .btn-card-close:hover,
+body.theme-light #btnProblemCardClose:hover {
+  background: rgba(220, 38, 38, 0.12) !important;
+  border-color: #dc2626 !important;
+  color: #dc2626 !important;
+}
+
+/* 5. 우하단 리사이즈 핸들 */
+body.theme-light .problem-card-resize-handle {
+  background: linear-gradient(135deg, transparent 50%, rgba(37, 99, 235, 0.45) 50%) !important;
+}
+
+
+/* ==========================================================================
+   [📱 13인치 액정 타블렛 & 노트북 반응형 뷰포트 최적화]
+   화면 너비 1400px 이하 / 높이 800px 이하 환경에서 상단 메뉴 및 판서 공간 극대화
+   ========================================================================== */
+
+@media (max-width: 1400px) {
+  header {
+    padding: 0 8px;
+    gap: 4px;
+  }
+  .logo-title {
+    font-size: 13px;
+  }
+  .badge-tag {
+    display: none; /* 13인치 좁은 너비에서 배지 숨김으로 여백 확보 */
+  }
+  .header-actions {
+    gap: 4px;
+  }
+  .btn-primary, .btn-secondary {
+    padding: 3px 6px;
+    font-size: 10.5px;
+    gap: 3px;
+  }
+}
+
+@media (max-width: 1150px) {
+  /* 1150px 이하 매우 좁은 환경: 보조 텍스트 숨기고 아이콘 위주 컴팩트 표시 */
+  .btn-secondary .btn-text {
+    display: none;
+  }
+  .btn-primary .btn-text {
+    font-size: 10.5px;
+  }
+}
+
+/* 세로 높이가 750px 이하인 13인치 창 모드 환경 */
+@media (max-height: 750px) {
+  header {
+    height: 34px;
+  }
+  body.header-collapsed header {
+    margin-top: -34px;
+  }
+  .btn-primary, .btn-secondary {
+    padding: 2px 6px;
+    font-size: 10px;
+  }
+}
+/* 좌측 레일 및 우측 툴바 구분선 */
+.rail-sep {
+  width: 28px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 4px 0;
+  flex-shrink: 0;
+}
+
+.quick-sep {
+  width: 24px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 3px auto;
+  flex-shrink: 0;
+}
+
+/* 원클릭 복사 강조 버튼 */
+.quick-fab-copy {
+  background: rgba(0, 210, 211, 0.18) !important;
+  border-color: rgba(0, 210, 211, 0.65) !important;
+  color: var(--accent-cyan) !important;
+  box-shadow: 0 0 14px rgba(0, 210, 211, 0.35) !important;
+}
+
+.quick-fab-copy:hover {
+  background: rgba(0, 210, 211, 0.32) !important;
+  border-color: var(--accent-cyan) !important;
+  transform: translateY(-1px) scale(1.06) !important;
+  box-shadow: 0 0 20px rgba(0, 210, 211, 0.6) !important;
+}
+
+/* ==========================================================================
+   [🌟 시작 인트로 화면 (안 B): 군더더기 없는 퓨어 화이트 스튜디오 & 2단 시차 페이드인]
+   ========================================================================== */
+.welcome-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: radial-gradient(circle at 50% 45%, #ffffff 0%, #f1f5f9 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.22s ease;
+  user-select: none;
+}
+
+.welcome-splash.whiteout-curtain {
+  background: #ffffff !important;
+  transition: none !important;
+}
+
+.welcome-splash.dismissed {
+  opacity: 0;
+  pointer-events: none !important;
+  transform: none !important;
+  transition: opacity 0.22s ease !important;
+}
+
+.welcome-splash.dismissed .splash-card {
+  display: none !important;
+}
+
+.splash-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 780px;
+  padding: 40px 30px;
+  /* 시각적 중심(Optical Center)에 맞춰 전체 블록을 위쪽으로 끌어올림 */
+  margin-bottom: 14vh;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  position: relative;
+}
+
+.splash-glow {
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 500px;
+  height: 280px;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.13) 0%, rgba(14, 165, 233, 0.06) 48%, transparent 72%);
+  filter: blur(42px);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* 1단계: Graphly.net 로고가 먼저 묵직하고 선명하게 등장 */
+.splash-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 46px;
+  opacity: 0;
+  animation: splashLogoIn 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0.05s forwards;
+}
+
+@keyframes splashLogoIn {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.94);
+    filter: blur(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+.splash-logo {
+  font-size: 84px;
+  font-weight: 800;
+  letter-spacing: -2.4px;
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 55%, #2563eb 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #0f172a;
+  margin: 0;
+  /* p, y 하단 꼬리(descender)가 background-clip에 절대 잘리지 않도록 충분한 line-height와 하단 패딩 부여 */
+  line-height: 1.26;
+  padding: 4px 8px 12px 8px;
+}
+
+/* 2단계: 로고 등장 직후(0.38s 뒤) [시작하기] 버튼이 아래에서 스르륵 떠오르며 시선 집중 + 은은한 숨쉬기 광채 */
+.btn-splash-start {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 64px;
+  font-size: 23px;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 12px 32px rgba(37, 99, 235, 0.35), 0 0 0 0 rgba(37, 99, 235, 0.35);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, background 0.2s ease;
+  touch-action: manipulation;
+  opacity: 0;
+  animation:
+    splashBtnFadeIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.38s forwards,
+    splashBtnPulse 2.4s infinite ease-in-out 1.15s;
+}
+
+@keyframes splashBtnFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.92);
+    filter: blur(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes splashBtnPulse {
+  0%, 100% {
+    box-shadow: 0 12px 32px rgba(37, 99, 235, 0.34), 0 0 0 0 rgba(37, 99, 235, 0.28);
+  }
+  50% {
+    box-shadow: 0 16px 38px rgba(37, 99, 235, 0.48), 0 0 0 10px rgba(37, 99, 235, 0);
+  }
+}
+
+.btn-splash-start:hover {
+  transform: translateY(-3px) scale(1.03) !important;
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+  box-shadow: 0 18px 40px rgba(37, 99, 235, 0.48) !important;
+}
+
+.btn-splash-start:active {
+  transform: scale(0.97) !important;
+}
+
+.btn-start-text {
+  letter-spacing: -0.4px;
+}
+
+/* 🌟 [대표님 기획]: 우측 플로팅 액션 바 2열 콤팩트 그리드 & 최상단 ✕ 닫기 */
+.quick-grid-row {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.quick-fab-exit {
+  background: rgba(255, 71, 87, 0.15) !important;
+  border-color: rgba(255, 71, 87, 0.5) !important;
+  color: #ff4757 !important;
+  box-shadow: 0 4px 14px rgba(255, 71, 87, 0.25) !important;
+}
+
+.quick-fab-exit:hover {
+  background: rgba(255, 71, 87, 0.35) !important;
+  border-color: #ff4757 !important;
+  color: #ffffff !important;
+  transform: scale(1.1) !important;
+  box-shadow: 0 6px 20px rgba(255, 71, 87, 0.45) !important;
+}
+
+.canvas-quick-toolbar {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  z-index: 170;
+  max-height: calc(100vh - 28px);
+  overflow: visible !important;
+  padding: 4px;
+  pointer-events: auto;
+}
+
+.canvas-quick-toolbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.canvas-quick-toolbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+}
+
+/* 🌟 [대표님 긴급 해결: 버튼 클릭 시 포커스 링 깜빡임 원천 차단] 🌟 */
+button:focus,
+button:focus-visible,
+.rail-btn:focus,
+.transform-btn:focus,
+.quick-fab-btn:focus,
+.ink-tool-btn:focus,
+.rail-zoom-action-btn:focus {
+  outline: none !important;
+}
+
+/* 🌟 [대표님 긴급 해결: 모든 아이콘 및 버튼 터치/클릭 100% 즉각 반응 보장] 🌟 */
+button,
+.rail-btn,
+.quick-fab-btn,
+.transform-btn,
+.ink-tool-btn,
+.rail-zoom-action-btn,
+.canvas-quick-toolbar,
+.sidebar-rail,
+.curve-context-bar {
+  pointer-events: auto !important;
+  touch-action: none !important;
+  cursor: pointer;
+}
+
+.drawer-panel,
+.rail-drawer,
+.drawer-subpanels-container,
+.graph-layer-list {
+  pointer-events: auto !important;
+  touch-action: pan-y !important;
+}
+
+/* 🌟 [스타일러스 펜 미세 미끄러짐 & 자식 아이콘 타겟 분리로 인한 클릭 씹힘 원천 차단] 🌟
+   버튼 내부의 svg, path, span 등이 pointerdown/pointerup 타겟을 갈라놓지 않도록 버튼 본체로 단일화 */
+button > svg,
+button > span,
+button > i,
+.rail-btn > *,
+.quick-fab-btn > *,
+.ink-tool-btn > *,
+.card-btn > *,
+.func-btn > *,
+.btn-trigger-graph-snap > * {
+  pointer-events: none !important;
+}
+
+
+/* ==========================================================================
+   🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달 전용 스타일
+   ========================================================================== */
+.n-axis-studio-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 18, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  z-index: 250;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: auto !important;
+}
+.n-axis-studio-backdrop.show {
+  display: flex;
+  opacity: 1;
+}
+.n-axis-studio-card {
+  width: min(1160px, 96vw);
+  max-height: 94vh;
+  background: #002320;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(0, 210, 211, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateY(12px) scale(0.98);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.n-axis-studio-backdrop.show .n-axis-studio-card {
+  transform: translateY(0) scale(1);
+}
+.n-axis-studio-header {
+  height: 46px;
+  background: rgba(13, 17, 23, 0.96);
+  padding: 0 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.n-axis-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.n-axis-logo { font-size: 18px; }
+.n-axis-title-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: #00d2d3;
+}
+.n-axis-tag-badge {
+  font-size: 10px;
+  background: rgba(0, 210, 211, 0.15);
+  color: #00d2d3;
+  border: 1px solid rgba(0, 210, 211, 0.3);
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+.btn-n-axis-close {
+  background: transparent;
+  border: none;
+  color: #ff6b6b;
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px 8px;
+  transition: all 0.15s;
+}
+.btn-n-axis-close:hover {
+  background: rgba(255, 107, 107, 0.15);
+  transform: scale(1.1);
+}
+.n-axis-studio-body {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #002320;
+  overflow: hidden;
+}
+#nAxisStudioCanvas {
+  display: block;
+  width: 1140px;
+  height: 680px;
+  max-width: 100%;
+  object-fit: contain;
+  cursor: crosshair;
+}
+.n-axis-control-quadrant {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: 520px;
+  height: 310px;
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 35px rgba(0,0,0,0.45);
+  z-index: 10;
+  pointer-events: auto !important;
+}
+.n-axis-tab-header {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+.n-axis-tab-btn {
+  background: transparent;
+  border: none;
+  color: #a4b0be;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.n-axis-tab-btn:hover { color: #f1f2f6; background: rgba(255,255,255,0.05); }
+.n-axis-tab-btn.active {
+  color: #00d2d3;
+  background: rgba(0, 210, 211, 0.15);
+  border: 1px solid rgba(0, 210, 211, 0.3);
+}
+.n-axis-tab-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.n-axis-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.n-axis-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.n-axis-input-row label {
+  width: 75px;
+  font-weight: 700;
+  font-family: monospace;
+}
+.n-axis-math-input {
+  flex: 1;
+  background: #1e272e;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: #fff;
+  font-family: monospace;
+  font-size: 13px;
+  outline: none;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+.n-axis-math-input:focus {
+  border-color: #00d2d3;
+  box-shadow: 0 0 8px rgba(0, 210, 211, 0.3);
+}
+.n-axis-quick-chips {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+.n-axis-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  font-size: 10px;
+  padding: 2px 6px;
+  cursor: pointer;
+  color: #a4b0be;
+  transition: all 0.15s;
+}
+.n-axis-chip:hover {
+  color: #00d2d3;
+  border-color: #00d2d3;
+  background: rgba(0, 210, 211, 0.1);
+}
+.n-axis-slider-box {
+  background: rgba(0,0,0,0.3);
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.n-axis-slider-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #54a0ff;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.n-axis-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+.n-axis-stat-card {
+  background: rgba(255,255,255,0.04);
+  border-radius: 8px;
+  padding: 4px 8px;
+  border-left: 3px solid #00cec9;
+}
+.n-axis-stat-label { font-size: 9px; color: #a4b0be; }
+.n-axis-stat-val { font-size: 12px; font-weight: 700; font-family: monospace; margin-top: 1px; }
+.n-axis-footer-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.n-axis-btn-action {
+  background: #00d2d3;
+  color: #0f172a;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  padding: 6px 12px;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s;
+}
+.n-axis-btn-action:hover { background: #00cec9; }
+.n-axis-btn-outline {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #f1f2f6;
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.n-axis-btn-outline:hover {
+  border-color: #feca57;
+  color: #feca57;
+  background: rgba(254, 202, 87, 0.08);
+}
+.n-axis-speed-group {
+  display: flex;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 6px;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.n-axis-speed-btn {
+  background: transparent;
+  border: none;
+  color: #a4b0be;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.n-axis-speed-btn.active {
+  background: #00d2d3;
+  color: #0f172a;
+}
+.n-axis-speed-btn:hover:not(.active) { color: #fff; }
+.n-axis-preset-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.n-axis-preset-item {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 6px 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: #f1f2f6;
+}
+.n-axis-preset-item:hover {
+  background: rgba(0, 210, 211, 0.12);
+  border-color: #00d2d3;
+  transform: translateY(-1px);
+}
+.n-axis-preset-title { font-size: 11px; font-weight: 700; color: #00d2d3; margin-bottom: 2px; }
+.n-axis-preset-desc { font-size: 10px; color: #a4b0be; }
+.n-axis-preset-tip {
+  font-size: 11px;
+  color: #a4b0be;
+  line-height: 1.4;
+  background: rgba(255,255,255,0.03);
+  padding: 8px;
+  border-radius: 6px;
+  margin: 6px 0;
+}
+
+
+/* ==========================================================================
+   [화이트보드 / 데스모스 스타일 라이트 테마 (theme-light) - 대표님 기획 하이엔드 UI]
+   ========================================================================== */
+
+/* 1. 좌측 플로팅 독 & 원형 아이콘 버튼 */
+body.theme-light .rail-dock {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+body.theme-light .rail-btn {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: #1e293b;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light .rail-btn:hover {
+  background: #ffffff;
+  border-color: #00cec9;
+  color: #00cec9;
+  box-shadow: 0 6px 18px rgba(0, 206, 201, 0.22);
+  transform: scale(1.08);
+}
+
+body.theme-light .rail-btn.active {
+  background: #f0fdfa;
+  border-color: #00cec9;
+  color: #00cec9;
+  box-shadow: 0 0 14px rgba(0, 206, 201, 0.35);
+}
+
+body.theme-light .rail-add-btn {
+  background: rgba(0, 206, 201, 0.12);
+  border: 1px solid rgba(0, 206, 201, 0.45);
+  color: #00cec9;
+}
+
+body.theme-light .rail-add-btn:hover {
+  background: rgba(0, 206, 201, 0.22);
+  border-color: #00cec9;
+  box-shadow: 0 0 16px rgba(0, 206, 201, 0.4);
+  transform: scale(1.08);
+}
+
+body.theme-light .rail-sep,
+body.theme-light .quick-sep {
+  background: rgba(0, 0, 0, 0.10);
+}
+
+body.theme-light .rail-zoom-dock {
+  background: transparent;
+}
+
+body.theme-light .rail-zoom-action-btn {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: #1e293b;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light .rail-zoom-action-btn:hover {
+  background: #ffffff;
+  border-color: #00cec9;
+  color: #00cec9;
+  box-shadow: 0 6px 18px rgba(0, 206, 201, 0.22);
+  transform: scale(1.08);
+}
+
+/* 2. 우측 1열 플로팅 독 & 원형 아이콘 버튼 */
+body.theme-light .canvas-quick-toolbar .quick-fab-btn {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: #1e293b;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light .canvas-quick-toolbar .quick-fab-btn:hover {
+  background: #ffffff;
+  border-color: #00cec9;
+  color: #00cec9;
+  box-shadow: 0 6px 18px rgba(0, 206, 201, 0.22);
+  transform: scale(1.08);
+}
+
+body.theme-light .canvas-quick-toolbar .quick-fab-btn.active {
+  background: #f0fdfa;
+  border-color: #00cec9;
+  color: #00cec9;
+  box-shadow: 0 0 14px rgba(0, 206, 201, 0.35);
+}
+
+body.theme-light #btnQuickIntersection.active {
+  background: rgba(124, 58, 237, 0.12);
+  border-color: #7c3aed;
+  color: #7c3aed;
+  box-shadow: 0 0 14px rgba(124, 58, 237, 0.28);
+}
+
+body.theme-light .canvas-quick-toolbar #btnQuickNewCanvas:hover {
+  background: #fff1f2;
+  border-color: #e11d48;
+  color: #e11d48;
+  box-shadow: 0 6px 18px rgba(225, 29, 72, 0.22);
+}
+
+body.theme-light .quick-fab-copy {
+  background: rgba(0, 206, 201, 0.12) !important;
+  border-color: rgba(0, 206, 201, 0.5) !important;
+  color: #009688 !important;
+}
+
+body.theme-light .quick-fab-exit {
+  background: rgba(255, 71, 87, 0.08) !important;
+  border-color: rgba(255, 71, 87, 0.35) !important;
+  color: #e11d48 !important;
+  box-shadow: 0 4px 14px rgba(225, 29, 72, 0.12) !important;
+}
+
+body.theme-light .quick-fab-exit:hover {
+  background: rgba(255, 71, 87, 0.22) !important;
+  border-color: #e11d48 !important;
+  color: #e11d48 !important;
+  box-shadow: 0 6px 18px rgba(225, 29, 72, 0.25) !important;
+  transform: scale(1.08);
+}
+
+body.theme-light .quick-flyout-panel {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.14);
+  color: #1e293b;
+}
+
+body.theme-light .flyout-header {
+  color: #64748b;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light .theme-chip {
+  background: #f8fafc;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: #1e293b;
+}
+
+body.theme-light .theme-chip:hover {
+  background: #ffffff;
+  border-color: #00cec9;
+}
+
+body.theme-light .theme-chip.active {
+  background: #f0fdfa;
+  border-color: #00cec9;
+  color: #00cec9;
+}
+
+/* 3. 서랍 (.rail-drawer) 플로팅 글래스 카드 라이트 모드 */
+body.theme-light .rail-drawer {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border: 1px solid rgba(0, 0, 0, 0.12) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04) !important;
+  color: #1e293b !important;
+}
+
+body.theme-light .main-workspace,
+body.theme-light .canvas-container {
+  background-color: #ffffff !important;
+}
+
+/* ==========================================================================
+   🌟 [글씨 크기 / 굵기 화살표 스텝 & 드롭다운 플라이아웃 선택기] 🌟
+   ========================================================================== */
+.ink-size-stepper-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.ink-size-stepper {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  padding: 2px 3px;
+  gap: 2px;
+  transition: all 0.16s ease;
+}
+
+.ink-size-stepper:hover {
+  border-color: rgba(0, 210, 211, 0.4);
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.ink-size-stepper-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.ink-size-stepper-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #00d2d3;
+  transform: scale(1.12);
+}
+
+.ink-size-stepper-btn:active {
+  transform: scale(0.92);
+}
+
+.ink-size-picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: #f1f2f6;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ink-size-picker-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(0, 210, 211, 0.45);
+  color: #00d2d3;
+}
+
+.ink-size-indicator-dot {
+  border-radius: 50%;
+  background: #00d2d3;
+  display: inline-block;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 6px rgba(0, 210, 211, 0.4);
+}
+
+.ink-size-chevron {
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0.2, 1);
+  opacity: 0.75;
+}
+
+.ink-size-picker-btn.open .ink-size-chevron {
+  transform: rotate(180deg);
+}
+
+/* 플라이아웃 패널 */
+.ink-size-flyout-panel {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 256px;
+  padding: 12px 14px;
+  background: rgba(18, 26, 36, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.52), 0 4px 12px rgba(0, 0, 0, 0.25);
+  z-index: 150;
+  user-select: none;
+  animation: inkFlyoutSlideUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes inkFlyoutSlideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.ink-size-flyout-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.flyout-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.flyout-val-badge {
+  background: rgba(0, 210, 211, 0.16);
+  color: #00d2d3;
+  border: 1px solid rgba(0, 210, 211, 0.4);
+  padding: 2px 7px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ink-size-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ink-size-preview-box {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.preview-circle {
+  border-radius: 50%;
+  background: #ffffff;
+  display: block;
+  transition: all 0.15s ease;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+}
+
+.ink-size-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.ink-size-chip {
+  padding: 5px 0 !important;
+  width: 100% !important;
+  height: auto !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #cbd5e1 !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-align: center !important;
+  cursor: pointer !important;
+  transition: all 0.14s ease !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.ink-size-chip:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(0, 210, 211, 0.45) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px) !important;
+}
+
+.ink-size-chip.active {
+  background: rgba(0, 210, 211, 0.22) !important;
+  border-color: #00d2d3 !important;
+  color: #00d2d3 !important;
+  font-weight: 700 !important;
+  box-shadow: 0 0 8px rgba(0, 210, 211, 0.35) !important;
+}
+
+/* 서랍 미세 화살표 스텝 버튼 */
+.btn-step-arrow {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  padding: 0;
+}
+
+.btn-step-arrow:hover {
+  background: rgba(0, 210, 211, 0.18);
+  border-color: #00d2d3;
+  color: #00d2d3;
+  transform: scale(1.08);
+}
+
+.btn-step-arrow:active {
+  transform: scale(0.92);
+}
+
+/* 화이트 테마 전용 스타일 (Light Mode) */
+body.theme-light .ink-size-stepper {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+body.theme-light .ink-size-stepper:hover {
+  border-color: rgba(9, 132, 227, 0.4);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+body.theme-light .ink-size-stepper-btn {
+  color: #475569;
+}
+
+body.theme-light .ink-size-stepper-btn:hover {
+  background: rgba(9, 132, 227, 0.12);
+  color: #0984e3;
+}
+
+body.theme-light .ink-size-picker-btn {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+body.theme-light .ink-size-picker-btn:hover {
+  background: #e2e8f0;
+  color: #0984e3;
+  border-color: rgba(9, 132, 227, 0.35);
+}
+
+body.theme-light .ink-size-flyout-panel {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.14), 0 4px 12px rgba(0, 0, 0, 0.06);
+  color: #1e293b;
+}
+
+body.theme-light .flyout-title {
+  color: #1e293b;
+}
+
+body.theme-light .flyout-val-badge {
+  background: rgba(9, 132, 227, 0.10);
+  color: #0984e3;
+  border-color: rgba(9, 132, 227, 0.3);
+}
+
+body.theme-light .ink-size-preview-row {
+  background: #f8fafc;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light .ink-size-preview-box {
+  background: #ffffff;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+body.theme-light .ink-size-chip {
+  background: #f1f5f9 !important;
+  border-color: rgba(0, 0, 0, 0.10) !important;
+  color: #475569 !important;
+}
+
+body.theme-light .ink-size-chip:hover {
+  background: #e2e8f0 !important;
+  color: #0984e3 !important;
+  border-color: rgba(9, 132, 227, 0.35) !important;
+}
+
+body.theme-light .ink-size-chip.active {
+  background: rgba(9, 132, 227, 0.14) !important;
+  border-color: #0984e3 !important;
+  color: #0984e3 !important;
+  box-shadow: 0 0 8px rgba(9, 132, 227, 0.25) !important;
+}
+
+body.theme-light .btn-step-arrow {
+  background: #f1f5f9;
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #475569;
+}
+
+body.theme-light .btn-step-arrow:hover {
+  background: rgba(9, 132, 227, 0.12);
+  border-color: #0984e3;
+  color: #0984e3;
+}
+
+
+/* ==========================================================================
+   [📸 그래프 스샷 플로팅 트리거 바 & 드래그 캡처 박스 & 그래프 카드 위젯]
+   ========================================================================== */
+/* 우측 상단 X 버튼(#btnExitFullscreen) 바로 왼쪽 옆에 나란히 배치! (하단 필기바 간섭 0%) */
+.graph-snap-floating-bar {
+  position: fixed;
+  top: 18px;
+  right: 62px;
+  z-index: 185;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.btn-return-covered-board {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: #f8fafc;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(10px);
+  border: 1.5px solid rgba(255, 255, 255, 0.24);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: all 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.btn-return-covered-board:hover {
+  background: rgba(30, 41, 59, 0.96);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  transform: scale(1.03);
+}
+
+body.theme-light .btn-return-covered-board {
+  color: #1e293b;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1.5px solid rgba(15, 23, 42, 0.18);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.10);
+}
+
+body.theme-light .btn-return-covered-board:hover {
+  background: #f8fafc;
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.btn-return-covered-board > * {
+  pointer-events: none !important;
+}
+
+.btn-trigger-graph-snap {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  border: 1.5px solid rgba(255, 255, 255, 0.32);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.38), 0 2px 6px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: all 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.btn-trigger-graph-snap:hover {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  transform: scale(1.04);
+  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.52);
+}
+
+.btn-trigger-graph-snap.active {
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35), 0 8px 22px rgba(37, 99, 235, 0.5);
+}
+
+/* 🌟 그래프 보관 영역 드래그 시 무조건 십자(+) 포인터 최우선 적용! 🌟 */
+canvas.graph-snap-crosshair,
+body.graph-snap-crosshair,
+body.graph-snap-crosshair #graphCanvas {
+  cursor: crosshair !important;
+}
+
+.graph-snap-drag-box {
+  position: fixed;
+  z-index: 210;
+  border: 2.2px dashed #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+  border-radius: 8px;
+  pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.18);
+}
+
+.card-btn-restore {
+  background: rgba(37, 99, 235, 0.12) !important;
+  color: #60a5fa !important;
+  border: 1px solid rgba(96, 165, 250, 0.35) !important;
+  font-weight: 700 !important;
+  padding: 0 9px !important;
+}
+
+body.theme-light .card-btn-restore {
+  background: rgba(37, 99, 235, 0.10) !important;
+  color: #2563eb !important;
+  border: 1px solid rgba(37, 99, 235, 0.30) !important;
+}
+
+
+/* 🌟 [그래프 보관 카드 & 문제 카드 이동/리사이즈/하단메뉴 클릭 중 상단 전체화면 종료 X 배지 출현 100% 원천 차단] 🌟 */
+.problem-card-widget,
+.problem-card-widget *,
+.graph-card-widget,
+.graph-card-widget *,
+.problem-card-header,
+.problem-card-actions,
+.card-btn,
+.problem-card-drag-handle,
+.problem-card-resize-handle,
+.problem-card-body,
+.problem-card-canvas,
+.ink-floating-toolbar,
+.ink-dock-drag-handle,
+.curve-context-bar,
+.ctx-btn,
+.pw-popover-item {
+  touch-action: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
+}
+
+
+/* 🌟 [대표님 핵심 기획: 문제 카드 & 그래프 보관 카드 위 필기 제거 -> 카드 몸통 어디든 잡고 슥 끌면 즉시 이동!] 🌟 */
+.problem-card-canvas,
+#problemCardCanvas,
+#graphCardCanvas,
+#btnProblemCardClearInk,
+#btnGraphCardClearInk {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+.problem-card-body,
+.problem-card-img,
+.problem-card-header,
+.problem-card-drag-handle {
+  cursor: grab !important;
+}
+
+.problem-card-widget.is-dragging-card,
+.problem-card-widget.is-dragging-card .problem-card-body,
+.problem-card-widget.is-dragging-card .problem-card-img,
+.problem-card-widget.is-dragging-card .problem-card-header,
+.problem-card-widget.is-dragging-card .problem-card-drag-handle {
+  cursor: grabbing !important;
+}
+
+
+/* 🌟 이동 탭 아이콘(✥) 제거 & 상단 제목+접기(▾/▸) 통합 배지 스타일링 🌟 */
+.card-drag-icon {
+  display: none !important;
+}
+
+.problem-card-widget.minimized .problem-card-header {
+  margin-bottom: 0 !important;
+}
+
+.card-title-fold-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  height: 24px !important;
+  padding: 0 8px !important;
+  border-radius: 6px !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  color: #f1f5f9 !important;
+  font-weight: 700 !important;
+  font-size: 12px !important;
+  cursor: pointer !important;
+  transition: all 0.14s ease !important;
+}
+
+.card-title-fold-btn:hover {
+  background: rgba(0, 210, 211, 0.18) !important;
+  border-color: rgba(0, 210, 211, 0.45) !important;
+  color: #ffffff !important;
+}
+
+.card-fold-chevron {
+  display: inline-block;
+  font-size: 12px;
+  line-height: 1;
+  color: #00d2d3;
+  font-weight: 800;
+}
+
+body.theme-light .card-title-fold-btn {
+  background: rgba(37, 99, 235, 0.07) !important;
+  border: 1px solid rgba(37, 99, 235, 0.22) !important;
+  color: #1e293b !important;
+}
+
+body.theme-light .card-title-fold-btn:hover {
+  background: rgba(37, 99, 235, 0.15) !important;
+  border-color: rgba(37, 99, 235, 0.45) !important;
+  color: #1d4ed8 !important;
+}
+
+body.theme-light .card-fold-chevron {
+  color: #2563eb;
+}
+
+.graph-card-widget .card-title-text {
+  font-weight: 800 !important;
+  font-size: 12.5px !important;
+  color: inherit !important;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  letter-spacing: 0.2px;
+}
+
+
+/* 📤 내보내기 & 공유 플라이아웃 메뉴 스타일 */
+.export-flyout-panel {
+  width: 195px !important;
+  padding: 10px !important;
+}
+
+.export-menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.export-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: var(--text-main, #f1f2f6);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
+}
+
+.export-menu-item:hover {
+  background: rgba(0, 210, 211, 0.16);
+  border-color: rgba(0, 210, 211, 0.5);
+  color: var(--accent-cyan, #00d2d3);
+  transform: translateX(-2px);
+}
+
+.export-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  flex-shrink: 0;
+}
+
+.export-item-text {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+}
+
+.export-item-text kbd {
+  font-size: 10px;
+  font-family: inherit;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+body.theme-light .export-menu-item {
+  background: #f8fafc;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: #1e293b;
+}
+
+body.theme-light .export-menu-item:hover {
+  background: #f0fdfa;
+  border-color: #00cec9;
+  color: #009688;
+}
+
+body.theme-light .export-item-text kbd {
+  background: #e2e8f0;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+
+/* 🌟 다중 문제 카드 (Extra Problem Card) 스타일 */
+.extra-problem-card-widget {
+  z-index: 155;
+}
+
+.extra-problem-card-widget .problem-card-img {
+  height: auto !important;
+  max-height: 80vh;
+}
+
+/* 🔁 구간 분할 주기 반복 컨트롤 라이트/다크 시인성 보강 */
+#btnPwStepMinus,
+#btnPwStepPlus,
+#btnPwStepReset {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  color: #f8fafc !important;
+}
+
+body.theme-light #btnPwStepMinus,
+body.theme-light #btnPwStepPlus,
+body.theme-light #btnPwStepReset {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #1e293b !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+body.theme-light #btnPwStepMatch {
+  background: rgba(245, 158, 11, 0.14) !important;
+  border: 1px solid rgba(217, 119, 6, 0.45) !important;
+  color: #b45309 !important;
+}
+
+
+
+/* 🌟 [구형 내장그래픽(Intel HD Graphics) 0ms 초경량 다이어트: 무거운 실시간 가우시안 유리 블러 제거] 🌟 */
+.problem-card-header,
+body.theme-light .problem-card-header,
+.btn-return-covered-board,
+body.theme-light .btn-return-covered-board,
+body.theme-light .ink-floating-toolbar,
+body.theme-light .curve-context-bar,
+.ink-floating-toolbar,
+.curve-context-bar,
+.is-dragging-card,
+.is-dragging-card * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.problem-card-header {
+  background: rgba(15, 23, 42, 0.96) !important;
+}
+
+body.theme-light .problem-card-header {
+  background: rgba(255, 255, 255, 0.98) !important;
+}
+
+
+/* 🌟 [N축 합성함수 4-분할 스튜디오: 화이트 테마(theme-light) 완벽 동기화 & 칠판 보관 버튼] 🌟 */
+.btn-n-axis-archive {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.28);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-n-axis-archive:hover {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+}
+
+body.theme-light .n-axis-studio-backdrop {
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: none !important;
+}
+
+body.theme-light .n-axis-studio-card {
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+}
+
+body.theme-light .n-axis-studio-header {
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+body.theme-light .n-axis-logo {
+  color: #2563eb;
+}
+
+body.theme-light .n-axis-title-text {
+  color: #0f172a;
+  font-weight: 800;
+}
+
+body.theme-light .n-axis-tag-badge {
+  background: rgba(37, 99, 235, 0.10);
+  color: #2563eb;
+  border: 1px solid rgba(37, 99, 235, 0.28);
+  font-weight: 700;
+}
+
+body.theme-light .btn-n-axis-close {
+  color: #64748b;
+}
+
+body.theme-light .btn-n-axis-close:hover {
+  background: rgba(220, 38, 38, 0.10);
+  color: #dc2626;
+}
+
+body.theme-light .n-axis-studio-body {
+  background: #ffffff;
+}
+
+body.theme-light .n-axis-control-quadrant {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.10);
+  backdrop-filter: none !important;
+}
+
+body.theme-light .n-axis-tab-header {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+body.theme-light .n-axis-tab-btn {
+  color: #64748b;
+}
+
+body.theme-light .n-axis-tab-btn:hover {
+  color: #0f172a;
+  background: #e2e8f0;
+}
+
+body.theme-light .n-axis-tab-btn.active {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.10);
+  border: 1px solid rgba(37, 99, 235, 0.30);
+}
+
+body.theme-light .n-axis-input-group {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+body.theme-light .n-axis-math-input {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+body.theme-light .n-axis-math-input:focus {
+  background: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+body.theme-light .n-axis-chip {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  font-weight: 600;
+}
+
+body.theme-light .n-axis-chip:hover {
+  color: #2563eb;
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+body.theme-light .n-axis-slider-box {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+body.theme-light .n-axis-slider-header {
+  color: #2563eb;
+}
+
+body.theme-light .n-axis-stat-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left-width: 3.5px;
+}
+
+body.theme-light .n-axis-stat-label {
+  color: #64748b;
+  font-weight: 600;
+}
+
+body.theme-light .n-axis-btn-action {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+body.theme-light .n-axis-btn-action:hover {
+  background: #1d4ed8;
+}
+
+body.theme-light .n-axis-btn-outline {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  font-weight: 600;
+}
+
+body.theme-light .n-axis-btn-outline:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.06);
+}
+
+body.theme-light .n-axis-speed-group {
+  background: #e2e8f0;
+  border: 1px solid #cbd5e1;
+}
+
+body.theme-light .n-axis-speed-btn {
+  color: #475569;
+}
+
+body.theme-light .n-axis-speed-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+body.theme-light .n-axis-speed-btn:hover:not(.active) {
+  color: #0f172a;
+}
+
+body.theme-light .n-axis-preset-item {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+
+body.theme-light .n-axis-preset-item:hover {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.04);
+}
+
+body.theme-light .n-axis-preset-title {
+  color: #1e293b;
+}
+
+body.theme-light .n-axis-preset-desc {
+  color: #64748b;
+}
+
+body.theme-light .n-axis-preset-tip {
+  background: rgba(37, 99, 235, 0.06);
+  color: #1d4ed8;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+}
+
+
+/* ==========================================================================
+   🌟 [테마 3단계 완성: 전체 서랍 패널 · 수식/공유 모달 · 인라인 입력창 화이트 테마 완벽 동기화] 🌟
+   ========================================================================== */
+body.theme-light {
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --panel-bg: rgba(255, 255, 255, 0.96);
+  --panel-border: rgba(15, 23, 42, 0.12);
+  --btn-hover: rgba(15, 23, 42, 0.05);
+}
+
+/* 1. 개형 선택 & 구간 분할 & 사각형 패널 */
+body.theme-light .category-tabs {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+body.theme-light .cat-tab-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+body.theme-light .btn-smart-input {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(217, 119, 6, 0.45);
+  color: #b45309;
+}
+
+body.theme-light .btn-smart-input:hover {
+  background: #f59e0b;
+  color: #ffffff;
+}
+
+body.theme-light .btn-clear-all {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.35);
+  color: #dc2626;
+}
+
+body.theme-light .btn-clear-all:hover {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+body.theme-light #btnPwAddBoundary {
+  background: rgba(124, 58, 237, 0.10) !important;
+  border-color: rgba(124, 58, 237, 0.40) !important;
+  color: #6d28d9 !important;
+}
+
+body.theme-light #btnPwSnap {
+  background: rgba(2, 132, 199, 0.10) !important;
+  border-color: rgba(2, 132, 199, 0.40) !important;
+  color: #0284c7 !important;
+}
+
+body.theme-light .quad-mode-grid {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+body.theme-light .quad-mode-btn:hover {
+  background: rgba(16, 172, 132, 0.12);
+  color: #0f172a;
+}
+
+/* 2. 환경 설정 패널 (#panelSettings) */
+body.theme-light .setting-toggle-item {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+body.theme-light .setting-toggle-item:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+body.theme-light .setting-name {
+  color: #0f172a;
+}
+
+body.theme-light .setting-sub {
+  color: #64748b;
+}
+
+body.theme-light .vf-toggle-slider {
+  background-color: #cbd5e1;
+}
+
+body.theme-light .vf-toggle-wrap input:checked + .vf-toggle-slider {
+  background-color: #2563eb;
+}
+
+body.theme-light .vf-toggle-wrap input:checked + .vf-toggle-slider:before {
+  background-color: #ffffff;
+}
+
+body.theme-light .vf-chip,
+body.theme-light .dpi-btn {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+body.theme-light .vf-chip:hover,
+body.theme-light .dpi-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+body.theme-light .vf-chip.active,
+body.theme-light .dpi-btn.active {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+/* 3. 선 스타일 & 칠판 배경 패널 (#panelStyle) */
+body.theme-light .slider-bar {
+  background: #cbd5e1;
+}
+
+body.theme-light .color-dot {
+  border: 1.5px solid rgba(15, 23, 42, 0.18);
+}
+
+body.theme-light .color-dot.active {
+  border-color: #0f172a;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.45);
+}
+
+body.theme-light #selMathFont {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .style-help-box {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+}
+
+body.theme-light .axis-auto-label-text {
+  color: #0f172a !important;
+}
+
+body.theme-light .axis-name-input-box {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+body.theme-light .axis-name-input-box span {
+  color: #475569 !important;
+}
+
+body.theme-light #inputAxisNameX,
+body.theme-light #inputAxisNameY {
+  color: #2563eb !important;
+}
+
+/* 4. 스마트 수식 입력 모달 (#modalSmartInput) & 그래프 공유 모달 (#modalShare) */
+body.theme-light .smart-modal-backdrop {
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: none !important;
+}
+
+body.theme-light .smart-modal-card {
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.20);
+  color: #0f172a;
+}
+
+body.theme-light .smart-modal-header,
+body.theme-light .smart-modal-footer {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+body.theme-light .modal-icon {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.10);
+}
+
+body.theme-light .badge-smart {
+  color: #0284c7;
+  background: rgba(2, 132, 199, 0.10);
+}
+
+body.theme-light .smart-math-input {
+  background: #ffffff;
+  border: 1.5px solid #94a3b8;
+  color: #0f172a;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+body.theme-light .smart-math-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+body.theme-light .btn-clear-expr:hover {
+  color: #dc2626;
+}
+
+body.theme-light .smart-preview-card {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+}
+
+body.theme-light .preview-math {
+  color: #1d4ed8;
+  text-shadow: none;
+}
+
+body.theme-light .key-btn {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+
+body.theme-light .key-btn:hover {
+  background: #e2e8f0;
+}
+
+body.theme-light .key-btn.key-op {
+  color: #d97706;
+}
+
+body.theme-light .key-btn.key-accent {
+  color: #2563eb;
+}
+
+body.theme-light .chip-btn {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+}
+
+body.theme-light .chip-btn:hover {
+  background: rgba(37, 99, 235, 0.10);
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+body.theme-light .share-link-input {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+
+body.theme-light .qr-section {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+}
+
+body.theme-light .qr-target-badge {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+}
+
+/* 5. 구간별 함수 선택 팝오버 (.pw-region-popover) & 캔버스 인라인 에디터 */
+body.theme-light .pw-region-popover {
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.14);
+  backdrop-filter: none !important;
+}
+
+body.theme-light .pw-popover-item {
+  color: #1e293b;
+}
+
+body.theme-light .pw-popover-item:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+body.theme-light .pw-popover-item.active {
+  background: rgba(124, 58, 237, 0.12);
+  border-color: rgba(124, 58, 237, 0.45);
+  color: #6d28d9;
+}
+
+body.theme-light .drop-line-label-input,
+body.theme-light .canvas-text-input {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #2563eb;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.15);
+}
+
+
+/* ==========================================================================
+   🍎 [iOS / iPadOS Safari & 태블릿 주소창 가림 방지 (100dvh 지원 - UI 크기 변형 없음)]
+   ========================================================================== */
+@supports (height: 100dvh) {
+  body,
+  .main-workspace,
+  body.fullscreen-mode .main-workspace,
+  body.header-collapsed .main-workspace {
+    height: 100dvh !important;
+  }
+}
+
+/* ==========================================================================
+   ✏️ [굵기 선택 슬라이더(#sliderInkSize) 터치/마우스 히트박스 확장 & 먹통 방지]
+   ========================================================================== */
+.ink-size-preview-row {
+  cursor: pointer;
+  touch-action: none !important;
+}
+
+#sliderInkSize {
+  height: 26px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  cursor: pointer !important;
+  touch-action: none !important;
+  pointer-events: auto !important;
+}
+
+#sliderInkSize::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+body.theme-light #sliderInkSize::-webkit-slider-runnable-track {
+  background: #cbd5e1;
+}
+
+#sliderInkSize::-webkit-slider-thumb {
+  margin-top: -5px;
+  width: 16px;
+  height: 16px;
+}
+
+/* ==========================================================================
+   📄 [PDF 페이지 통째 열기 (Concept Page Board) 버튼 & 상단 네비게이션 바]
+   ========================================================================== */
+.pdf-open-page-btn {
+  height: 34px;
+  padding: 0 14px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.24), rgba(79, 70, 229, 0.28));
+  border: 1px solid rgba(167, 139, 250, 0.55);
+  border-radius: 8px;
+  color: #f5f3ff;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 10px rgba(124, 58, 237, 0.2);
+}
+
+.pdf-open-page-btn:hover {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.42), rgba(79, 70, 229, 0.48));
+  border-color: #c4b5fd;
+  color: #ffffff;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.4);
+  transform: translateY(-1px);
+}
+
+.pdf-open-page-btn:active {
+  transform: scale(0.97);
+}
+
+.pdf-board-nav-bar {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 999px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38), 0 2px 8px rgba(0, 0, 0, 0.2);
+  user-select: none;
+}
+
+.pdf-board-nav-btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.07);
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.pdf-board-nav-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+
+.pdf-board-nav-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.pdf-board-next-primary {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.85), rgba(79, 70, 229, 0.9));
+  border-color: rgba(167, 139, 250, 0.65);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(124, 58, 237, 0.32);
+}
+
+.pdf-board-next-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  border-color: #ddd6fe;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.5);
+}
+
+.pdf-board-page-pill {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 210, 211, 0.32);
+  background: rgba(0, 210, 211, 0.10);
+  color: #00d2d3;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.pdf-board-page-pill:hover {
+  background: rgba(0, 210, 211, 0.20);
+  border-color: rgba(0, 210, 211, 0.55);
+}
+
+.pdf-board-nav-divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.16);
+  margin: 0 2px;
+}
+
+.pdf-board-close-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  padding: 0;
+}
+
+.pdf-board-close-btn:hover {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fca5a5;
+}
+
+body.theme-light .pdf-board-nav-bar {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(15, 23, 42, 0.14);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06);
+}
+
+body.theme-light .pdf-board-nav-btn {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+
+body.theme-light .pdf-board-nav-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+body.theme-light .pdf-board-next-primary {
+  background: linear-gradient(135deg, #7c3aed, #4f46e5);
+  border-color: #6d28d9;
+  color: #ffffff;
+}
+
+body.theme-light .pdf-board-next-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #6d28d9, #4338ca);
+  color: #ffffff;
+}
+
+body.theme-light .pdf-board-page-pill {
+  background: #f5f3ff;
+  border-color: #c4b5fd;
+  color: #6d28d9;
+}
+
+body.theme-light .pdf-board-page-pill:hover {
+  background: #ede9fe;
+  border-color: #8b5cf6;
+}
+
+body.theme-light .pdf-board-nav-divider {
+  background: #e2e8f0;
+}
+
+body.theme-light .pdf-board-close-btn {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+body.theme-light .pdf-board-close-btn:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}

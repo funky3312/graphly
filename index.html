@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Graphly.net - 수학 그래프 시각화 스튜디오</title>
+  <meta name="theme-color" content="#ffffff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Graphly">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="theme-light">
+  <!-- 🌟 [시작 인트로 화면: 뒤쪽 실제 작업화면이 은은하게 비치는 화이트 글래스 베일 & 무충격 전체화면 진입] 🌟 -->
+  <div id="welcomeSplash" class="welcome-splash">
+    <div class="splash-card">
+      <div class="splash-glow"></div>
+      <div class="splash-brand">
+        <h1 class="splash-logo">Graphly.net</h1>
+      </div>
+      
+      <button id="btnStartApp" class="btn-splash-start" title="클릭하여 시작하기">
+        <span class="btn-start-text">시작하기</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 💡 공유 링크 복원 시 나타나는 리셋 안내 바 -->
+  <div id="sharedResetBar" class="shared-reset-bar" style="display: none;">
+    <span class="reset-bar-msg"><strong>공유받은 그래프</strong>를 탐구 및 조작 중입니다. (원본 링크 불변)</span>
+    <div class="reset-bar-actions">
+      <button id="btnResetToOriginal" class="btn-reset-original">↺ 처음 상태로</button>
+      <button id="btnCloseResetBar" class="btn-reset-close" title="ESC"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+  </div>
+
+  <!-- 메인 작업 공간 -->
+  <div class="main-workspace">
+    <!-- 좌측 컨트롤 패널 -->
+    <!-- 좌측 슬림 아이콘 레일 & 슬라이드오버 서랍 (Canva/Figma 스타일) -->
+    <aside class="sidebar-rail drawer-collapsed" id="sidebarRail">
+      <!-- 56px 수직 아이콘 독 (Dock) -->
+      <div class="rail-dock" id="railDock">
+        <!-- ✂️ PDF 교재 문제 크롭 (C) -->
+        <button class="rail-btn" id="btnPdfImport" title="PDF 교재 / 이미지 문제 불러오기 (Ctrl+V 붙여넣기 지원)">
+          <span class="rail-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
+        </button>
+        <input type="file" id="pdfFileInput" accept="application/pdf,image/*" multiple style="display: none;">
+
+        <div class="rail-sep"></div>
+
+        <!-- ➕ 그래프 추가 & 조작 도구 -->
+        <button class="rail-btn rail-add-btn" data-panel="panelPresets" id="btnRailPresets" title="그래프 추가 (+)">
+          <span class="rail-icon" style="font-size: 24px; font-weight: 700; line-height: 1; color: var(--accent-cyan, #00d2d3);">+</span>
+        </button>
+        <button class="rail-btn" data-panel="panelTransform" id="btnRailTransform" style="display: none;">
+          <span class="rail-icon">↕️</span>
+        </button>
+        <!-- ✂️ 구간 분할 -->
+        <button class="rail-btn" data-panel="panelPiecewise" id="btnRailPiecewise" title="구간 분할 (선추가 / 교점스냅)">
+          <span class="rail-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg></span>
+        </button>
+        <!-- 🔀 N축 합성함수 4-분할 스튜디오 (세계 최초 완성형) -->
+        <button class="rail-btn" id="btnRailNAxis" title="N축 합성함수 4-분할 스튜디오 (세계 최초)">
+          <span class="rail-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg></span>
+        </button>
+        <!-- 📷 원터치 캡처영역 프레임 토글 -->
+        <button class="rail-btn" id="btnRailToggleVf" title="교재 캡처 프레임 켜기/끄기 (저장 전 확인)">
+          <span class="rail-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+        </button>
+        <!-- ◐ 흑백 모드 (대표님 기획: 좌측 배치) -->
+        <button id="btnMonochromeMode" class="rail-btn" title="흑백 모드 (M)">
+          <span class="rail-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/></svg></span>
+        </button>
+        <!-- 🎨 선 스타일 & 칠판 배경 -->
+        <button class="rail-btn" data-panel="panelStyle" id="btnRailStyle" title="선 스타일 & 칠판 배경">
+          <span class="rail-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg></span>
+        </button>
+        <!-- ⚙️ 환경 설정 & 캡처 규격 -->
+        <button class="rail-btn" data-panel="panelSettings" id="btnRailSettings" title="환경 설정 & 캡처 규격">
+          <span class="rail-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+        </button>
+
+        <div class="rail-sep"></div>
+
+        <!-- 🖐️ 좌측 메뉴 툴바 하단 줌 버튼 [확대] / [축소] -->
+        <div class="rail-zoom-dock">
+          <button id="btnRailZoomIn" class="rail-zoom-action-btn" title="화면 확대 (+)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              <line x1="11" y1="8" x2="11" y2="14"></line>
+              <line x1="8" y1="11" x2="14" y2="11"></line>
+            </svg>
+          </button>
+          <button id="btnRailZoomOut" class="rail-zoom-action-btn" title="화면 축소 (−)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              <line x1="8" y1="11" x2="14" y2="11"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <!-- 슬라이드오버 플로팅 서랍 (Drawer) -->
+      <div class="rail-drawer" id="railDrawer">
+        <div class="drawer-header">
+          <span class="drawer-title" id="drawerTitle"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>그래프 추가</span>
+          <button class="btn-drawer-close" id="btnCloseDrawer" title="\"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+
+        <div class="drawer-body">
+          <!-- [상단 레이어 목록 숨김 - 대표님 기획: 서랍 내 레이어 제거하여 개형에 집중] -->
+          <div class="drawer-persistent-layers" id="drawerPersistentLayers" style="display: none;">
+            <span id="lblGraphCount" style="display: none;">0</span>
+            <div id="graphLayerList" class="graph-layer-list"></div>
+          </div>
+
+          <!-- [하단 서랍 탭 패널 컨테이너] -->
+          <div class="drawer-subpanels-container" id="drawerSubpanelsContainer">
+            <!-- 1. 패널: 개형 라이브러리 (기본 열림, 원클릭 자동 추가) -->
+            <div class="drawer-panel active" id="panelPresets">
+              <div class="panel-section" style="border: none; padding: 0;">
+                <div class="section-title" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <span>개형 선택 (클릭 시 자동 추가 & 닫힘)</span>
+                  <div style="display: flex; gap: 4px;">
+                    <button id="btnSmartInput" class="btn-smart-input" style="padding: 3px 8px; font-size: 11px;">𝑓(𝑥) 수식</button>
+                    <button id="btnClearAllGraphs" class="btn-clear-all" style="padding: 3px 8px; font-size: 11px;" title="그려진 그래프와 경계선만 지웁니다 (필기·문제 유지 / Ctrl+Z 복구)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>그래프 비우기</button>
+                  </div>
+                </div>
+                <div class="category-tabs">
+                  <button class="cat-tab-btn active" data-cat="📐 다항함수">다항</button>
+                  <button class="cat-tab-btn" data-cat="📈 지수·로그">지수·로그</button>
+                  <button class="cat-tab-btn" data-cat="🔀 유리·무리">유리·무리</button>
+                  <button class="cat-tab-btn" data-cat="🌊 삼각함수">삼각</button>
+                  <button class="cat-tab-btn" data-cat="🔥 수능 킬러">킬러</button>
+                  <button class="cat-tab-btn" data-cat="📐 평면도형">도형</button>
+                </div>
+                <div id="funcGrid" class="func-list-grid">
+                  <!-- JS로 동적 생성 -->
+                </div>
+              </div>
+
+            <!-- 📐 사각형 모드 (사각형이 활성일 때만 표시) -->
+            <div id="quadModePanel" class="panel-section quad-mode-section" style="display: none; margin-top: 8px;">
+              <div class="section-title">
+                <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>사각형 모드</span>
+              </div>
+              <div class="quad-mode-grid">
+                <button class="quad-mode-btn active" data-qmode="free">자유</button>
+                <button class="quad-mode-btn" data-qmode="parallelogram">평행사변형</button>
+                <button class="quad-mode-btn" data-qmode="rectangle">직사각형</button>
+                <button class="quad-mode-btn" data-qmode="rhombus">마름모</button>
+                <button class="quad-mode-btn" data-qmode="square">정사각형</button>
+              </div>
+              <div class="toggle-row">
+                <label class="toggle-label">
+                  <input type="checkbox" id="chkQuadOrigin">
+                  <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>원점 중심 고정</span>
+                </label>
+              </div>
+              <div class="pw-action-row">
+                <button id="btnQuadDiamond" class="btn-sub-action"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><polygon points="12 2 22 12 12 22 2 12"/></svg>원점 중심 마름모</button>
+              </div>
+              <div class="quad-mode-hint">꼭짓점을 끌면 모양이 유지돼요 · Alt: 각도 자석 해제</div>
+            </div>
+          </div>
+
+          <!-- 3. 패널: 변환 & 대칭 (대표님 기획: 4대 핵심 변환 및 역함수 가위 초슬림 개편) -->
+          <div class="drawer-panel" id="panelTransform" style="display: none;">
+            <div class="panel-section" style="border: none; padding: 0;">
+              <div class="section-title">
+                <span>대칭 & 절댓값 변환</span>
+              </div>
+              <div class="transform-toolbar" style="margin-top: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                <button id="btnInvertV" class="transform-btn" title="x축 대칭 (y -> -y)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="7 15 12 20 17 15"/><polyline points="7 9 12 4 17 9"/><line x1="12" y1="4" x2="12" y2="20"/></svg>x축 대칭</button>
+                <button id="btnInvertH" class="transform-btn" title="y축 대칭 (x -> -x)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="15 7 20 12 15 17"/><polyline points="9 7 4 12 9 17"/><line x1="4" y1="12" x2="20" y2="12"/></svg>y축 대칭</button>
+                <button id="btnCloneInverse" class="transform-btn btn-inverse-highlight" style="background: rgba(162, 155, 254, 0.22); border-color: rgba(162, 155, 254, 0.6); color: #a29bfe; font-weight: 700;" title="y=x 대칭 역함수 생성 & 실시간 연동"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>y=x (역함수)</button>
+                <button id="btnToggleAbs" class="transform-btn" title="|f(x)| 꺾어올리기 절댓값 토글"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>|f(x)| 절댓값</button>
+              </div>
+
+              <!-- 🔗 역함수 대칭 연동 중일 때: 가위로 자르기 버튼 -->
+              <div id="inverseLinkBox" style="margin-top: 8px;">
+                <button id="btnToggleInverseLink" class="transform-btn" style="width: 100%; display: none; background: rgba(255, 107, 107, 0.18); border: 1px solid rgba(255, 107, 107, 0.6); color: #ff7675; font-weight: 700; padding: 8px;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>연동끊기
+                </button>
+              </div>
+
+              <!-- 하단 서브 액션: 복제 및 리셋 -->
+              <div style="display: flex; gap: 6px; margin-top: 8px;">
+                <button id="btnDuplicateGraph" class="transform-btn" style="flex: 1; background: rgba(255, 234, 167, 0.15); border-color: rgba(255, 234, 167, 0.4); color: #ffeaa7;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>그래프 복제</button>
+                <button id="btnResetFreezeOffset" class="transform-btn" style="flex: 1;">↺ 이동 리셋</button>
+              </div>
+
+              <!-- 숨김 유지용 체크박스 DOM (JS 에러 방지용) -->
+              <div style="display: none;">
+                <input type="checkbox" id="chkAbs">
+                <input type="checkbox" id="chkIntersection">
+                <button id="btnFoldAgain"></button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. 패널: 구간 분할 (Piecewise) - 대표님 기획: 2대 핵심 버튼 (+ 선추가, <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>교점스냅) 및 원클릭 즉시 자동 닫힘 -->
+          <div class="drawer-panel" id="panelPiecewise" style="display: none;">
+            <div class="panel-section piecewise-section" style="border: none; padding: 0;">
+              <div class="section-title">
+                <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>구간 분할 합성</span>
+              </div>
+              <div class="pw-action-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;">
+                <button id="btnPwAddBoundary" class="transform-btn" style="background: rgba(162, 155, 254, 0.22); border-color: rgba(162, 155, 254, 0.6); color: #a29bfe; font-weight: 700; padding: 12px 8px; font-size: 13px;" title="세로 분할선 추가 & 서랍 자동 닫힘">
+                  + 선추가
+                </button>
+                <button id="btnPwSnap" class="transform-btn" style="background: rgba(0, 210, 211, 0.18); border-color: rgba(0, 210, 211, 0.5); color: #00d2d3; font-weight: 700; padding: 12px 8px; font-size: 13px;" title="교점에 칼밀착 스냅 & 서랍 자동 닫힘">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>교점스냅
+                </button>
+              </div>
+
+              <!-- 🔁 대표님 핵심 기획: 구간 반복(주기함수) 컨트롤 카드 -->
+              <div class="pw-periodic-card" style="margin-top: 12px; padding: 12px; border-radius: 10px; background: rgba(0, 210, 211, 0.08); border: 1px solid rgba(0, 210, 211, 0.28);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 13px; font-weight: 700; color: #00a8a8; display: flex; align-items: center; gap: 6px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    전구간 주기 반복
+                  </span>
+                  <input type="checkbox" id="chkPwPeriodic" class="styled-checkbox" style="cursor: pointer; width: 18px; height: 18px;">
+                </div>
+                <div id="pwPeriodicControls" style="display: none; margin-top: 10px; font-size: 12px; color: var(--text-main);">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="color: var(--text-muted); font-weight: 600;">기본 주기 (T):</span>
+                    <span id="pwPeriodicPeriodLabel" style="font-weight: 700; color: #00a8a8;">T = 2.0</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="color: var(--text-muted); font-weight: 600;">계단식 이동 (q):</span>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                      <button id="btnPwStepMinus" class="transform-btn" style="padding: 2px 8px; font-size: 13px; font-weight: 800; min-width: 26px; border-radius: 5px; background: rgba(148, 163, 184, 0.2); border: 1px solid rgba(148, 163, 184, 0.45); color: var(--text-main); cursor: pointer;" title="0.1씩 미세 내림">−</button>
+                      <span id="pwPeriodicStepLabel" style="font-weight: 800; min-width: 40px; text-align: center; color: #d97706;">+0</span>
+                      <button id="btnPwStepPlus" class="transform-btn" style="padding: 2px 8px; font-size: 13px; font-weight: 800; min-width: 26px; border-radius: 5px; background: rgba(148, 163, 184, 0.2); border: 1px solid rgba(148, 163, 184, 0.45); color: var(--text-main); cursor: pointer;" title="0.1씩 미세 올림">+</button>
+                    </div>
+                  </div>
+                  <input type="range" id="sliderPwStep" min="-6" max="6" step="0.05" value="0" style="width: 100%; accent-color: #00b8b8; cursor: pointer; margin: 4px 0 8px 0;">
+                  <div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 6px; margin-bottom: 6px;">
+                    <button id="btnPwStepMatch" class="transform-btn" style="padding: 7px 6px; font-size: 11.5px; font-weight: 700; background: rgba(245, 158, 11, 0.18); border: 1px solid rgba(245, 158, 11, 0.55); color: #d97706;" title="주기 경계에서 인접 주기의 끝점이 딱 맞물리도록 q를 자동 계산합니다">
+                      🔗 끝점 맞물림
+                    </button>
+                    <button id="btnPwStepReset" class="transform-btn" style="padding: 7px 6px; font-size: 11.5px; font-weight: 700; background: rgba(148, 163, 184, 0.2); border: 1px solid rgba(148, 163, 184, 0.45); color: var(--text-main);" title="계단식 높이 차 q를 0으로 초기화">
+                      ↺ q = 0
+                    </button>
+                  </div>
+                  <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.35;">
+                    💡 f(x+T) = f(x) + q (슬라이더 조작 시 연속 맞물림 지점에 자석 스냅)
+                  </div>
+                </div>
+              </div>
+
+              <!-- 숨김 유지용 DOM (JS 호환성 및 에러 방지) -->
+              <div style="display: none;">
+                <input type="checkbox" id="chkPiecewise" checked>
+                <div id="pwControls"></div>
+                <button id="btnPwReset"></button>
+                <div id="pwDescBadge"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. 패널: 환경 설정 (Settings) - 대표님 기획: 마그네틱, 그리드, 점근선, 캡처 규격 통합 -->
+          <div class="drawer-panel" id="panelSettings" style="display: none;">
+            <!-- 섹션 1: 조작 & 가이드라인 설정 -->
+            <div class="panel-section" style="border: none; padding: 0;">
+              <div class="section-title">
+                <span>조작 & 가이드라인</span>
+              </div>
+              <div class="settings-toggle-list">
+                <label class="setting-toggle-item">
+                  <div class="setting-text-wrap">
+                    <span class="setting-name"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="m6 15-4-4 6.75-6.77a7.79 7.79 0 0 1 11 11L13 22l-4-4 6.39-6.36a2.14 2.14 0 0 0-3-3L6 15Z"/><path d="m5 8 4 4"/><path d="m12 15 4 4"/></svg>마그네틱 자석 스냅</span>
+                    <span class="setting-sub">x·y축 및 극점에 찰칵 스냅</span>
+                  </div>
+                  <label class="vf-toggle-wrap">
+                    <input type="checkbox" id="chkMagneticSnap" checked>
+                    <span class="vf-toggle-slider"></span>
+                  </label>
+                </label>
+
+                <label class="setting-toggle-item">
+                  <div class="setting-text-wrap">
+                    <span class="setting-name"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="2 2"/><line x1="3" y1="9" x2="21" y2="9" stroke-dasharray="2 2"/><line x1="3" y1="15" x2="21" y2="15" stroke-dasharray="2 2"/><line x1="9" y1="3" x2="9" y2="21" stroke-dasharray="2 2"/><line x1="15" y1="3" x2="15" y2="21" stroke-dasharray="2 2"/></svg>점선 그리드 격자</span>
+                    <span class="setting-sub">좌표평면 보조 모눈 점선</span>
+                  </div>
+                  <label class="vf-toggle-wrap">
+                    <input type="checkbox" id="chkGuides" checked>
+                    <span class="vf-toggle-slider"></span>
+                  </label>
+                </label>
+
+                <label class="setting-toggle-item">
+                  <div class="setting-text-wrap">
+                    <span class="setting-name"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><line x1="12" y1="2" x2="12" y2="22" stroke-dasharray="3 3"/><path d="M3 19c4-1 7-4 8-15"/><path d="M13 20c1-11 4-14 8-15"/></svg>점근선 표시</span>
+                    <span class="setting-sub">분수/지수/로그 점근선 점선</span>
+                  </div>
+                  <label class="vf-toggle-wrap">
+                    <input type="checkbox" id="chkAsymptotes">
+                    <span class="vf-toggle-slider"></span>
+                  </label>
+                </label>
+
+                <label class="setting-toggle-item">
+                  <div class="setting-text-wrap">
+                    <span class="setting-name"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><line x1="3" y1="21" x2="21" y2="3" stroke-dasharray="3 3"/><path d="M4 12c4 0 6-2 8-8"/><path d="M12 20c6-2 8-4 8-8"/></svg>y = x 대칭 기준선</span>
+                    <span class="setting-sub">역함수 대칭 보조 점선</span>
+                  </div>
+                  <label class="vf-toggle-wrap">
+                    <input type="checkbox" id="chkInverseGuide">
+                    <span class="vf-toggle-slider"></span>
+                  </label>
+                </label>
+              </div>
+            </div>
+
+            <!-- 섹션 2: 📷 교재 캡처 규격 & 해상도 -->
+            <div class="panel-section" style="border: none; padding: 0; margin-top: 14px;">
+              <div class="section-title">
+                <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>교재 캡처 규격</span>
+                <label class="vf-toggle-wrap">
+                  <input type="checkbox" id="chkVf">
+                  <span class="vf-toggle-slider"></span>
+                </label>
+              </div>
+
+              <div id="vfControlsArea">
+                <div class="vf-aspect-chips">
+                  <button class="vf-chip active" data-ar="4:3">4:3 표준</button>
+                  <button class="vf-chip" data-ar="1:1">1:1 정방</button>
+                  <button class="vf-chip" data-ar="16:9">16:9 와이드</button>
+                  <button class="vf-chip" data-ar="3:4">3:4 세로</button>
+                </div>
+
+                <div class="slider-group" style="margin-top: 8px;">
+                  <div class="slider-header">
+                    <span>출력 가로 크기</span>
+                    <span id="lblVfSize">3.0 in (7.6 cm)</span>
+                  </div>
+                  <input type="range" id="sliderVfSize" class="slider-bar" min="1.5" max="6.0" step="0.5" value="3.0">
+                </div>
+
+                <div class="slider-group" style="margin-top: 6px;">
+                  <div class="slider-header">
+                    <span>캡처 프레임 (화면 크기)</span>
+                    <span id="lblVfWidth">540 px</span>
+                  </div>
+                  <input type="range" id="sliderVfWidth" class="slider-bar" min="240" max="1400" step="20" value="540">
+                </div>
+
+                <div class="vf-dpi-row">
+                  <span class="vf-dpi-label">출력 해상도:</span>
+                  <div class="vf-dpi-group">
+                    <button class="dpi-btn active" data-dpi="300">300 DPI</button>
+                    <button class="dpi-btn" data-dpi="600">600 DPI</button>
+                    <button class="dpi-btn" data-dpi="150">150 DPI</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 6. 패널: 스타일 & 색상 -->
+          <div class="drawer-panel" id="panelStyle" style="display: none;">
+            <!-- 🌟 [대표님 기획]: 좌측 서랍 내 칠판 배경 테마 전격 장착 🌟 -->
+            <div class="panel-section" style="border: none; padding: 0; margin-bottom: 12px;">
+              <div class="section-title">
+                <span>칠판 / 배경 테마</span>
+              </div>
+              <div class="theme-palette-grid drawer-theme-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 6px;">
+                <button type="button" class="theme-chip active" data-theme="white_paper" style="padding: 7px 10px; display: flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer;">
+                  <span class="theme-color-preview" style="background: #ffffff; border: 1.5px solid #718093; width: 14px; height: 14px; border-radius: 50%; display: inline-block;"></span>
+                  <span class="theme-name" style="font-size: 12px; font-weight: 600;">화이트</span>
+                </button>
+                <button type="button" class="theme-chip" data-theme="chalkboard" style="padding: 7px 10px; display: flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer;">
+                  <span class="theme-color-preview" style="background: #003333; border: 1.5px solid #00d2d3; width: 14px; height: 14px; border-radius: 50%; display: inline-block;"></span>
+                  <span class="theme-name" style="font-size: 12px; font-weight: 600;">초록 칠판</span>
+                </button>
+                <button type="button" class="theme-chip" data-theme="dark_charcoal" style="padding: 7px 10px; display: flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer;">
+                  <span class="theme-color-preview" style="background: #1e272e; border: 1.5px solid #00d2d3; width: 14px; height: 14px; border-radius: 50%; display: inline-block;"></span>
+                  <span class="theme-name" style="font-size: 12px; font-weight: 600;">다크 차콜</span>
+                </button>
+                <button type="button" class="theme-chip" data-theme="deep_black" style="padding: 7px 10px; display: flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer;">
+                  <span class="theme-color-preview" style="background: #080808; border: 1.5px solid #576574; width: 14px; height: 14px; border-radius: 50%; display: inline-block;"></span>
+                  <span class="theme-name" style="font-size: 12px; font-weight: 600;">딥 블랙</span>
+                </button>
+                <button type="button" class="theme-chip" data-theme="postit" style="padding: 7px 10px; display: flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer; grid-column: span 2;">
+                  <span class="theme-color-preview" style="background: #fef7e0; border: 1.5px solid #feca57; width: 14px; height: 14px; border-radius: 50%; display: inline-block;"></span>
+                  <span class="theme-name" style="font-size: 12px; font-weight: 600;">포스트잇</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="panel-section" style="border: none; padding: 0;">
+              <div class="section-title">
+                <span>곡선 굵기 & 줌</span>
+              </div>
+              <div class="slider-group">
+                <div class="slider-header">
+                  <span>선 두께</span>
+                  <span id="lblLw">2.8 pt</span>
+                </div>
+                <input type="range" id="sliderLw" class="slider-bar" min="1.0" max="6.0" step="0.2" value="2.8">
+              </div>
+              <div class="slider-group">
+                <div class="slider-header">
+                  <span>화각 배율 (Zoom)</span>
+                  <span id="lblZoom">100%</span>
+                </div>
+                <input type="range" id="sliderZoom" class="slider-bar" min="0.15" max="3.5" step="0.05" value="1.0">
+              </div>
+            </div>
+
+            <div class="panel-section" style="border: none; padding: 0; margin-top: 10px;">
+              <div class="section-title">
+                <span>곡선 색상</span>
+              </div>
+              <div class="color-palette">
+                <div class="color-dot active" data-color="#00d2d3" style="background:#00d2d3"></div>
+                <div class="color-dot" data-color="#feca57" style="background:#feca57"></div>
+                <div class="color-dot" data-color="#ff9f43" style="background:#ff9f43"></div>
+                <div class="color-dot" data-color="#ff6b6b" style="background:#ff6b6b"></div>
+                <div class="color-dot" data-color="#54a0ff" style="background:#54a0ff"></div>
+                <div class="color-dot" data-color="#1dd1a1" style="background:#1dd1a1"></div>
+                <div class="color-dot" data-color="#ffffff" style="background:#ffffff"></div>
+                <div class="color-dot" data-color="#ff9ff3" style="background:#ff9ff3"></div>
+                <div class="color-dot" data-color="#a29bfe" style="background:#a29bfe"></div>
+                <div class="color-dot" data-color="#48dbfb" style="background:#48dbfb"></div>
+                <div class="color-dot" data-color="#f368e0" style="background:#f368e0"></div>
+                <div class="color-dot" data-color="#ee5253" style="background:#ee5253"></div>
+              </div>
+            </div>
+
+            <div class="panel-section" style="border: none; padding: 0; margin-top: 10px;">
+              <div class="section-title">
+                <span>보조 수선 & 좌표 라벨 (교재 조판)</span>
+              </div>
+              <div class="slider-group">
+                <div class="slider-header">
+                  <span>수식 폰트</span>
+                </div>
+                <select id="selMathFont" class="theme-select" style="width: 100%; padding: 6px 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: var(--radius-sm); color: #fff; font-size: 12px; margin-top: 4px;">
+                  <option value="stix" selected>수능·평가원 정석 (STIX Two / Times)</option>
+                  <option value="pretendard">모던 고딕 (Pretendard)</option>
+                  <option value="batang">교과서 명조 (KoPub 바탕)</option>
+                </select>
+              </div>
+
+              <div class="slider-group" style="margin-top: 8px;">
+                <div class="slider-header">
+                  <span>수선 형태</span>
+                  <div class="vf-aspect-group" style="display: flex; gap: 4px;">
+                    <button id="btnDropLineDashed" class="vf-chip active" style="padding: 2px 8px; font-size: 11px;">점선 (Dashed)</button>
+                    <button id="btnDropLineSolid" class="vf-chip" style="padding: 2px 8px; font-size: 11px;">실선 (Solid)</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="slider-group" style="margin-top: 8px;">
+                <div class="slider-header" style="display: flex; justify-content: space-between; align-items: center;">
+                  <span>라벨 글자 크기</span>
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    <button type="button" id="btnDropLineSizeDown" class="btn-step-arrow" title="글자 작게 (화살표 ◀)">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <span id="lblDropLineFontSize" style="min-width: 40px; text-align: center;">15 pt</span>
+                    <button type="button" id="btnDropLineSizeUp" class="btn-step-arrow" title="글자 크게 (화살표 ▶)">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <input type="range" id="sliderDropLineFontSize" class="slider-bar" min="11" max="22" step="1" value="15">
+              </div>
+
+              <div style="margin-top: 8px; display: flex; gap: 6px;">
+                <button id="btnClearDropLines" class="btn-sub-action" style="flex: 1; color: #ff7675; border-color: rgba(255, 118, 117, 0.4);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>수선 전체 지우기</button>
+              </div>
+              <div class="style-help-box" style="font-size: 11px; color: #a4b0be; margin-top: 6px; line-height: 1.45; background: rgba(0,0,0,0.22); padding: 6px 8px; border-radius: var(--radius-sm);">
+                <strong>보조 수선 도구 (D)</strong>: 극점·교점 클릭 시 x·y축 수선 자동 생성<br>
+                <strong>가위 클릭</strong>: 불필요한 쪽 수선 1초 컷 삭제<br>
+                <strong>좌표 클릭</strong>: <i>a</i>, <i>k</i>, <i>α</i> 등 인라인 수정
+              </div>
+            </div>
+
+            <!-- 수식 텍스트 & 축 이름표 섹션 -->
+            <div class="panel-section" style="border: none; padding: 0; margin-top: 10px;">
+              <div class="section-title">
+                <span>함수 이름표 & 축 이름표</span>
+              </div>
+
+              <!-- 기본 축 이름표 (x, y, O) 자동 표시 체크박스 (기본값: 체크 해제) -->
+              <label class="drawer-checkbox-row" style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="chkShowAxisLabels" style="cursor: pointer;">
+                <span class="axis-auto-label-text" style="font-size: 12px; color: var(--text-main);">기본 축 이름표 (x, y, O) 자동 표시</span>
+              </label>
+
+              <div id="axisLabelsSubPanel" style="display: none;">
+                <div class="slider-group">
+                  <div class="slider-header">
+                    <span>좌표축 이름 (기본 x, y)</span>
+                  </div>
+                  <div style="display: flex; gap: 8px; margin-top: 4px;">
+                    <div class="axis-name-input-box" style="flex: 1; display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.25); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12);">
+                      <span style="font-size: 11px; color: #a4b0be;">가로:</span>
+                      <input type="text" id="inputAxisNameX" value="x" maxlength="6" style="width: 100%; background: transparent; border: none; color: #00d2d3; font-family: 'STIX Two Text', serif; font-style: italic; font-weight: 700; font-size: 13px; text-align: center; outline: none;">
+                    </div>
+                    <div class="axis-name-input-box" style="flex: 1; display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.25); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12);">
+                      <span style="font-size: 11px; color: #a4b0be;">세로:</span>
+                      <input type="text" id="inputAxisNameY" value="y" maxlength="6" style="width: 100%; background: transparent; border: none; color: #00d2d3; font-family: 'STIX Two Text', serif; font-style: italic; font-weight: 700; font-size: 13px; text-align: center; outline: none;">
+                    </div>
+                  </div>
+                </div>
+
+                <div class="slider-group" style="margin-top: 8px;">
+                  <div class="slider-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>축 라벨 (x, y, O) 크기</span>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                      <button type="button" id="btnAxisLabelSizeDown" class="btn-step-arrow" title="축 라벨 작게 (화살표 ◀)">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                      </button>
+                      <span id="lblAxisLabelSize" style="min-width: 40px; text-align: center;">22 pt</span>
+                      <button type="button" id="btnAxisLabelSizeUp" class="btn-step-arrow" title="축 라벨 크게 (화살표 ▶)">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <input type="range" id="sliderAxisLabelSize" class="slider-bar" min="12" max="48" step="1" value="22">
+                </div>
+              </div>
+
+              <div class="slider-group" style="margin-top: 8px;">
+                <div class="slider-header" style="display: flex; justify-content: space-between; align-items: center;">
+                  <span>자유 텍스트 크기</span>
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    <button type="button" id="btnTextLabelSizeDown" class="btn-step-arrow" title="글씨 작게 (화살표 ◀)">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <span id="lblTextLabelSize" style="min-width: 40px; text-align: center;">20 pt</span>
+                    <button type="button" id="btnTextLabelSizeUp" class="btn-step-arrow" title="글씨 크게 (화살표 ▶)">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <input type="range" id="sliderTextLabelSize" class="slider-bar" min="12" max="52" step="1" value="20">
+              </div>
+
+              <div style="margin-top: 8px; display: flex; gap: 6px;">
+                <button id="btnClearTextLabels" class="btn-sub-action" style="flex: 1; color: #ff7675; border-color: rgba(255, 118, 117, 0.4);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>텍스트 전체 지우기</button>
+              </div>
+
+              <div class="style-help-box" style="font-size: 11px; color: #a4b0be; margin-top: 6px; line-height: 1.45; background: rgba(0,0,0,0.22); padding: 6px 8px; border-radius: var(--radius-sm);">
+                <strong>텍스트 도구 (T)</strong>: 캔버스 클릭하여 <i>y=f(x)</i> 등 이름표 부착<br>
+                <strong>드래그</strong>: 텍스트를 원하는 위치로 자유 이동<br>
+                <strong>더블클릭</strong>: 텍스트 내용 인라인 수정 (ESC: 취소)
+              </div>
+            </div>
+          </div>
+        </div> <!-- /.drawer-subpanels-container -->
+      </div> <!-- /.drawer-body -->
+    </div> <!-- /.rail-drawer -->
+    </aside>
+
+    <!-- 중앙 인터랙티브 캔버스 스테이지 -->
+    <main class="canvas-container">
+      <canvas id="graphCanvas"></canvas>
+
+      <!-- 🌟 [대표님 기획: 상단 중앙 초슬림 캡슐바 (Curve Context Bar)] 🌟 -->
+      <div id="curveContextBar" class="curve-context-bar" style="display: none;">
+        <div id="ctxBarBadge" class="ctx-badge" title="현재 선택된 함수">
+          <span id="ctxBarDot" class="ctx-color-dot" style="background: #00d2d3;"></span>
+          <span id="ctxBarName" class="ctx-name">f₁(x)</span>
+        </div>
+        <div class="ctx-sep"></div>
+        <button id="ctxBtnInvertV" class="ctx-btn" title="x축 대칭 (y → -y)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 3px;"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5-5"/><path d="M12 4v16"/></svg>x축
+        </button>
+        <button id="ctxBtnInvertH" class="ctx-btn" title="y축 대칭 (x → -x)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 3px;"><path d="m15 7 5 5-5 5"/><path d="m9 7-5 5 5 5"/><path d="M4 12h16"/></svg>y축
+        </button>
+        <button id="ctxBtnInverse" class="ctx-btn ctx-btn-inverse" title="y=x 대칭 역함수 생성 & 1:1 대칭 연동">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 3px;"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>y=x
+        </button>
+        <button id="ctxBtnToggleLink" class="ctx-btn ctx-btn-link" style="display: none;" title="역함수 연동 해제 (단독 이동)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 3px;"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>연동끊기
+        </button>
+        <button id="ctxBtnToggleAbs" class="ctx-btn" title="|f(x)| 꺾어올리기 절댓값 토글">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 3px;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>|f(x)|
+        </button>
+        <div class="ctx-sep"></div>
+        <button id="ctxBtnDuplicate" class="ctx-btn ctx-btn-dup" title="x축 방향 평행이동 복제">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 3px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>복제
+        </button>
+        <button id="ctxBtnResetFz" class="ctx-btn" title="곡선 위치 원위치 리셋">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 3px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>리셋
+        </button>
+        <button id="ctxBtnDelete" class="ctx-btn ctx-btn-del" title="선택한 그래프 삭제">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </button>
+        <div class="ctx-sep"></div>
+        <button id="ctxBtnClose" class="ctx-btn ctx-btn-close" title="선택 해제 (ESC)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- 🌟 [필기 모드 상시 가상 연필 & 지우개 인디케이터 (글씨 가림 없는 우하단 45° 클래식 연필)] 🌟 -->
+      <div id="virtualStylusPen" class="virtual-stylus-pen" style="display: none;">
+        <!-- ✏️ 알록달록 클래식 연필 SVG (팁 원점: 0,0 / 본체: 우하단 45°로 뻗어 필기 가림 0%) -->
+        <svg id="stylusPenSvg" class="stylus-svg" width="32" height="32" viewBox="0 0 32 32" fill="none" style="display: block; overflow: visible;">
+          <!-- 연필 본체 3면 (알록달록 옐로우/오렌지 입체 패싯) -->
+          <polygon points="4.9,1.1 16.9,13.1 15.0,15.0 3.0,3.0" fill="#f6b93b" />
+          <polygon points="3.0,3.0 15.0,15.0 17.0,17.0 5.0,5.0" fill="#fa983a" />
+          <polygon points="5.0,5.0 17.0,17.0 18.9,15.1 6.9,3.1" fill="#e58e26" />
+
+          <!-- 현재 선택된 잉크 색상 표시 악센트 밴드 -->
+          <polygon id="stylusColorBand" points="4.0,2.0 6.0,4.0 4.0,6.0 2.0,4.0" fill="#00d2d3" stroke="rgba(0,0,0,0.25)" stroke-width="0.3" />
+
+          <!-- 깎인 나무 부분 (부드러운 우드 베이지) -->
+          <polygon points="0,0 4.9,1.1 3.0,3.0" fill="#f8c291" />
+          <polygon points="0,0 3.0,3.0 5.0,5.0" fill="#fad390" />
+          <polygon points="0,0 5.0,5.0 6.9,3.1" fill="#f8c291" />
+
+          <!-- 연필심 (꼭짓점 정확히 0,0 칼끝 스냅) -->
+          <polygon points="0,0 1.8,0.4 1.1,1.1" fill="#2d3436" />
+          <polygon points="0,0 1.1,1.1 0.4,1.8" fill="#1e272e" />
+
+          <!-- 금속 페룰 밴드 (실버) -->
+          <polygon points="16.9,13.1 19.0,15.2 17.1,17.1 15.0,15.0" fill="#d2dae2" stroke="#808e9b" stroke-width="0.3" />
+          <polygon points="15.0,15.0 17.1,17.1 19.1,19.1 17.0,17.0" fill="#bdc3c7" />
+          <polygon points="17.0,17.0 19.1,19.1 21.0,17.2 18.9,15.1" fill="#95a5a6" />
+
+          <!-- 핑크 고무 지우개 팁 -->
+          <path d="M 19.0 15.2 L 21.5 17.7 C 23.0 19.2 23.0 21.2 21.5 22.7 C 20.0 24.2 18.0 24.2 16.5 22.7 L 17.1 17.1 Z" fill="#ff7675" stroke="#e17055" stroke-width="0.3" />
+
+          <!-- 전체 외곽선 (다크 칠판 / 화이트보드 모두 선명한 0.6px 아웃라인) -->
+          <path d="M 0 0 L 4.9 1.1 L 16.9 13.1 L 19.0 15.2 L 21.5 17.7 C 23.0 19.2 23.0 21.2 21.5 22.7 C 20.0 24.2 18.0 24.2 16.5 22.7 L 17.1 17.1 L 17.0 17.0 L 6.9 3.1 Z" 
+                fill="none" stroke="#2d3436" stroke-width="0.6" stroke-linejoin="round" />
+        </svg>
+
+        <!-- 지우개 모드 SVG (중심 0,0 정밀 원형 링) -->
+        <svg id="stylusEraserSvg" class="stylus-svg" width="32" height="32" viewBox="-16 -16 32 32" fill="none" style="display: none;">
+          <circle cx="0" cy="0" r="9" fill="rgba(255, 107, 107, 0.25)" stroke="#ff7675" stroke-width="1.8" stroke-dasharray="3 2" />
+          <circle cx="0" cy="0" r="2" fill="#ff7675" />
+        </svg>
+      </div>
+
+      <!-- [교재 보조 수선 축 좌표 인라인 에디터] -->
+      <input type="text" id="dropLineLabelInput" class="drop-line-label-input" style="display: none;" autocomplete="off" spellcheck="false">
+
+      <!-- [캔버스 자유 수식 텍스트 라벨 인라인 에디터 (함수/축 이름표)] -->
+      <input type="text" id="canvasTextInput" class="canvas-text-input" style="display: none;" autocomplete="off" spellcheck="false" placeholder="함수 또는 축 이름 (예: y = f(x), t, k, α)">
+
+      <!-- [🧑‍🏫 라이브 판서 모드 상단 플로팅 칩 바] -->
+      <div id="boardModeBar" class="board-mode-bar" style="display: none;">
+        <div class="board-bar-title">
+          <span class="board-pulse-dot"></span>
+          <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>라이브 판서 모드</span>
+        </div>
+        <div class="board-ratio-selector">
+          <button id="btnBoardRatio46" class="board-ratio-btn active">4 : 6</button>
+          <button id="btnBoardRatio55" class="board-ratio-btn">5 : 5</button>
+          <button id="btnBoardRatio37" class="board-ratio-btn">3 : 7</button>
+        </div>
+        <span class="board-bar-tip">그래프 클릭 시 핸들러 표시 · 중앙선 드래그 조절</span>
+        <button id="btnExitBoardMode" class="btn-exit-board" title="ESC"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>복귀</button>
+      </div>
+
+      <!-- [🔀 N축 합성함수 해석 모드 상단 플로팅 바] -->
+      <div id="nAxisModeBar" class="n-axis-mode-bar" style="display: none;">
+        <div class="n-axis-bar-title">
+          <span class="n-axis-pulse-dot"></span>
+          <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>N축 합성 모드</span>
+        </div>
+        <div class="n-axis-role-selector">
+          <div class="n-axis-role-chip outer" id="chipNAxisOuter">
+            <span class="role-badge">상단 겉함수 g(t)</span>
+            <span class="role-name" id="txtNAxisOuterName">사차함수</span>
+          </div>
+          <button id="btnNAxisSwap" class="btn-n-axis-swap" title="S">
+            <span class="swap-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M8 21H3v-5"/><path d="M20 4 3 21"/></svg></span>
+            <span class="swap-label">맞바꾸기</span>
+          </button>
+          <div class="n-axis-role-chip inner" id="chipNAxisInner">
+            <span class="role-badge">하단 속함수 f(x) (90° 회전)</span>
+            <span class="role-name" id="txtNAxisInnerName">삼각함수 sin</span>
+          </div>
+        </div>
+        <div class="n-axis-zoom-control">
+          <button id="btnNAxisZoomOut" class="btn-n-axis-zoom"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+          <button id="btnNAxisZoomReset" class="btn-n-axis-zoom-val"><span id="lblNAxisZoom">100%</span></button>
+          <button id="btnNAxisZoomIn" class="btn-n-axis-zoom"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+        </div>
+        <span class="n-axis-bar-tip">휠 스크롤로 화각 줌 · 좌하단 알약/방향키로 x₀ 이동</span>
+        <button id="btnExitNAxisMode" class="btn-exit-n-axis" title="ESC"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>복귀</button>
+      </div>
+
+      <!-- [✂️ 구간별 함수 선택 플로팅 팝오버] -->
+      <div id="pwRegionPopover" class="pw-region-popover"></div>
+
+      <!-- [우측 플로팅 액션 툴바] 원형 아이콘 & 2열 콤팩트 배치로 전체화면 해제 시에도 잘림 0% -->
+      <div class="canvas-quick-toolbar" id="rightActionToolbar">
+        <!-- 1. 우측 최상단 ✕ (전체화면 종료 / 닫기) -->
+        <button id="btnExitFullscreen" class="quick-fab-btn quick-fab-exit" title="전체화면 종료 / 닫기 (ESC)">
+          <span class="fab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+        </button>
+
+        <!-- 2. 전체화면 시작 / 전환 (F11) -->
+        <button id="btnFullscreen" class="quick-fab-btn" title="전체화면 시작 / 전환 (F11)">
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></span>
+        </button>
+
+        <!-- 3. 내보내기 & 공유 플라이아웃 (대표님 기획: 원클릭 복사, PNG 저장, 공유 QR 통합) -->
+        <div class="quick-btn-wrapper" id="wrapQuickExport">
+          <button id="btnExport" class="quick-fab-btn" title="내보내기 & 공유">
+            <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span>
+          </button>
+          <div class="quick-flyout-panel export-flyout-panel" id="panelQuickExport">
+            <div class="flyout-header">내보내기 & 공유</div>
+            <div class="export-menu-list">
+              <button id="btnCopy" class="export-menu-item" title="한글/PPT에 1초 컷 붙여넣기 (Ctrl+C)">
+                <span class="export-item-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+                <span class="export-item-text"><span>원클릭 복사</span><kbd>Ctrl+C</kbd></span>
+              </button>
+              <button id="btnDownload" class="export-menu-item" title="PNG 이미지 저장">
+                <span class="export-item-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
+                <span class="export-item-text"><span>이미지 저장</span><kbd>PNG</kbd></span>
+              </button>
+              <button id="btnOpenShareModal" class="export-menu-item" title="그래프 공유 & 학생용 QR">
+                <span class="export-item-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+                <span class="export-item-text"><span>그래프 공유</span><kbd>QR</kbd></span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. 실행 취소 & 다시 실행 (Undo / Redo - 대표님 기획: 내보내기 바로 아래) -->
+        <button id="btnUndo" class="quick-fab-btn" title="실행 취소 (Ctrl+Z)" disabled>
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg></span>
+        </button>
+        <button id="btnRedo" class="quick-fab-btn" title="다시 실행 (Ctrl+Y)" disabled>
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg></span>
+        </button>
+
+        <div class="quick-sep"></div>
+
+        <!-- 5. 판서 & 수학 킬러 도구 -->
+        <button id="btnInkMode" class="quick-fab-btn" title="실시간 판서 필기 (P)">
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></span>
+        </button>
+        <button id="btnQuickIntersection" class="quick-fab-btn" title="교점 판독">
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+        </button>
+        <button id="btnQuickDropLine" class="quick-fab-btn" title="수선/좌표 라벨 (D)">
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/><circle cx="12" cy="10" r="3"/></svg></span>
+        </button>
+        <button id="btnQuickText" class="quick-fab-btn" title="수식 텍스트 라벨 (T)">
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg></span>
+        </button>
+
+        <div class="quick-sep"></div>
+
+        <!-- 6. 칠판 조작 도구 -->
+        <button id="btnQuickCenter" class="quick-fab-btn" title="원위치 센터 정렬">
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
+        </button>
+        <button id="btnQuickSnap" class="quick-fab-btn active" title="자석 스냅">
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15-4-4 6.75-6.77a7.79 7.79 0 0 1 11 11L13 22l-4-4 6.39-6.36a2.14 2.14 0 0 0-3-3L6 15Z"/><path d="m5 8 4 4"/><path d="m12 15 4 4"/></svg></span>
+        </button>
+        <button id="btnQuickNewCanvas" class="quick-fab-btn" title="새 캔버스 (그래프·필기·문제 전체 초기화 / Ctrl+Z 복구)">
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></span>
+        </button>
+
+        <div class="quick-sep"></div>
+
+        <!-- 7. 우측 줌 버튼 [확대] / [축소] (대표님 기획: 확대 축소 다다익선) -->
+        <button id="btnQuickZoomIn" class="quick-fab-btn" title="화면 확대 (+)">
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></span>
+        </button>
+        <button id="btnQuickZoomOut" class="quick-fab-btn" title="화면 축소 (−)">
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg></span>
+        </button>
+
+        <!-- 호환용 숨김 버튼 (DOM/단축키/테스트 호환용) -->
+        <div id="wrapQuickTheme" style="display: none;">
+          <button id="btnQuickTheme" class="quick-fab-btn" title="칠판 테마">
+            <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg></span>
+          </button>
+          <div class="quick-flyout-panel" id="panelQuickTheme">
+            <div class="theme-palette-grid">
+              <button class="theme-chip" data-theme="chalkboard">초록 칠판</button>
+              <button class="theme-chip" data-theme="dark_charcoal">다크 차콜</button>
+              <button class="theme-chip" data-theme="white_paper">화이트</button>
+              <button class="theme-chip" data-theme="deep_black">딥 블랙</button>
+              <button class="theme-chip" data-theme="postit">포스트잇</button>
+            </div>
+          </div>
+        </div>
+        <button id="btnCleanView" style="display: none;"><span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg></span></button>
+        <button id="btnQuickNAxis" style="display: none;"><span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg></span></button>
+        <button id="btnBoardMode" style="display: none;"></button>
+        <button id="btnNAxisMode" style="display: none;"></button>
+      </div>
+      <!-- ✍️ 실시간 무한 칠판 필기 플로팅 툴바 (Ink Floating Dock) -->
+      <div id="inkFloatingToolbar" class="ink-floating-toolbar" style="display: none;">
+        <div class="ink-dock-drag-handle" id="inkDockDragHandle" title="드래그하여 이동">⋮⋮</div>
+        <div class="ink-tool-group">
+          <button id="btnInkSelect" class="ink-tool-btn" title="V / ESC">
+            <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg></span>
+          </button>
+          <button id="btnInkPen" class="ink-tool-btn active" title="P">
+            <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></span>
+          </button>
+          <button id="btnInkHighlighter" class="ink-tool-btn" title="형광펜">
+            <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11-6 6v3h3l6-6"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg></span>
+          </button>
+          <button id="btnInkEraser" class="ink-tool-btn" title="E">
+            <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg></span>
+          </button>
+          <button id="btnInkLasso" class="ink-tool-btn" title="올가미 선택 및 이동 (L)">
+            <span class="ink-btn-icon">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 22a5 5 0 0 1-2-4"/>
+                <path d="M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8c0 4.1-3.8 7.5-8.8 7.9"/>
+                <path d="M14 21a2 2 0 0 1-4 0c0-1.7 2-3 2-5"/>
+              </svg>
+            </span>
+          </button>
+          <button id="btnInkToggleAxes" class="ink-tool-btn" title="좌표축 표시 / 숨기기 (A)">
+            <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="3" x2="3" y2="21"/><line x1="3" y1="21" x2="21" y2="21"/><polyline points="3,7 7,7"/><polyline points="17,21 17,17"/></svg></span>
+          </button>
+        </div>
+        <div class="ink-divider"></div>
+        <div class="ink-color-group">
+          <button class="ink-color-dot active" data-color="#1e293b" style="background: #1e293b;" title="차콜 블랙"></button>
+          <button class="ink-color-dot" data-color="#2563eb" style="background: #2563eb;" title="로열 블루"></button>
+          <button class="ink-color-dot" data-color="#dc2626" style="background: #dc2626;" title="딥 레드"></button>
+          <button class="ink-color-dot" data-color="#16a34a" style="background: #16a34a;" title="포레스트 그린"></button>
+          <button class="ink-color-dot" data-color="#7c3aed" style="background: #7c3aed;" title="바이올렛"></button>
+        </div>
+        <div class="ink-divider"></div>
+        <div class="ink-size-stepper-wrap" style="position: relative;">
+          <div class="ink-size-stepper">
+            <button type="button" id="btnInkSizeDown" class="ink-size-stepper-btn" title="글씨 가늘게 (화살표 ◀ / 단축키 [)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button type="button" id="btnInkSizePicker" class="ink-size-picker-btn" title="글씨 크기 / 굵기 선택 (화살표 클릭하여 프리셋 & 슬라이더 열기)">
+              <span class="ink-size-indicator-dot" id="inkSizeToolbarDot" style="width: 5px; height: 5px;"></span>
+              <span id="lblCurrentInkSize" class="ink-size-val">4.2 pt</span>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ink-size-chevron"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <button type="button" id="btnInkSizeUp" class="ink-size-stepper-btn" title="글씨 굵게 (화살표 ▶ / 단축키 ])">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+
+          <!-- 🌟 글씨 크기 상세 선택 팝업 (Flyout) 🌟 -->
+          <div id="inkSizeFlyout" class="ink-size-flyout-panel" style="display: none;">
+            <div class="ink-size-flyout-header">
+              <span class="flyout-title">글씨 크기 / 굵기 선택</span>
+              <span id="lblFlyoutSizeVal" class="flyout-val-badge">4.2 pt</span>
+            </div>
+            
+            <!-- 실시간 프리뷰 & 미세 슬라이더 -->
+            <div class="ink-size-preview-row">
+              <div class="ink-size-preview-box">
+                <span id="inkSizePreviewDot" class="preview-circle" style="width: 9px; height: 9px;"></span>
+              </div>
+              <input type="range" id="sliderInkSize" class="slider-bar" min="1.0" max="18.0" step="0.2" value="4.2" style="flex: 1;">
+            </div>
+
+            <!-- 빠른 선택 프리셋 칩 -->
+            <div class="ink-size-preset-grid">
+              <button type="button" class="ink-size-btn ink-size-chip" data-size="1.5" title="1.5 pt (초미세)"><span class="ink-size-circle" style="display:none;"></span>1.5</button>
+              <button type="button" class="ink-size-btn ink-size-chip" data-size="2.2" title="2.2 pt (얇게)"><span class="ink-size-circle" style="display:none;"></span>2.2</button>
+              <button type="button" class="ink-size-btn ink-size-chip" data-size="3.2" title="3.2 pt (약간 얇게)"><span class="ink-size-circle" style="display:none;"></span>3.2</button>
+              <button type="button" class="ink-size-btn ink-size-chip active" data-size="4.2" title="4.2 pt (보통)"><span class="ink-size-circle" style="display:none;"></span>4.2</button>
+              <button type="button" class="ink-size-btn ink-size-chip" data-size="6.0" title="6.0 pt (약간 두껍게)"><span class="ink-size-circle" style="display:none;"></span>6.0</button>
+              <button type="button" class="ink-size-btn ink-size-chip" data-size="8.0" title="8.0 pt (두껍게)"><span class="ink-size-circle" style="display:none;"></span>8.0</button>
+              <button type="button" class="ink-size-btn ink-size-chip" data-size="12.0" title="12.0 pt (특대)"><span class="ink-size-circle" style="display:none;"></span>12.0</button>
+            </div>
+          </div>
+        </div>
+        <div class="ink-divider"></div>
+        <button id="btnInkClearAll" class="ink-tool-btn" title="필기만 지우기 (그래프·문제 유지 / Ctrl+Z 복구)">
+          <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></span>
+        </button>
+        <div class="ink-divider"></div>
+        <!-- 🔍 펜 툴바 일체형 큼직한 퀵 줌 [− | +] -->
+        <div class="ink-zoom-group">
+          <button id="btnInkZoomOut" class="ink-tool-btn ink-zoom-step-btn" title="화면 축소 (−)">
+            <span class="ink-btn-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
+          </button>
+          <button id="btnInkZoomIn" class="ink-tool-btn ink-zoom-step-btn" title="화면 확대 (+)">
+            <span class="ink-btn-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
+          </button>
+        </div>
+        <button id="btnInkClose" class="ink-tool-btn ink-close-btn" title="ESC">
+          <span class="ink-btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+        </button>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- [스마트 수식 입력 모달] -->
+  <div id="modalSmartInput" class="smart-modal-backdrop">
+    <div class="smart-modal-card">
+      <div class="smart-modal-header">
+        <div class="smart-modal-title">
+          <span class="modal-icon">𝑓(𝑥)</span>
+          <span class="modal-title-text">스마트 수식 입력</span>
+          <span class="badge-smart">자연어 인식</span>
+        </div>
+        <button id="btnCloseSmartModal" class="btn-modal-close" title="ESC"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+
+      <div class="smart-modal-body">
+        <div class="input-field-wrapper">
+          <input type="text" id="inputSmartExpr" class="smart-math-input"
+            placeholder="대충 쳐도 인식: x2 + 2x - 3, 2x3 - 6x, 1/x, 루트x 등" autocomplete="off" spellcheck="false">
+          <button id="btnClearExpr" class="btn-clear-expr"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+
+        <!-- 실시간 번역 수식보기 창 -->
+        <div id="previewCard" class="smart-preview-card">
+          <div class="preview-header">
+            <span class="preview-dot"></span>
+            <span id="previewTitle" class="preview-title">실시간 수식 해석 결과</span>
+          </div>
+          <div id="previewMath" class="preview-math">y = x² + 2x - 3</div>
+          <div id="previewDetails" class="preview-details">이차함수 포물선 | 꼭짓점: (-1.0, -4.0)</div>
+        </div>
+
+        <!-- 태블릿/마우스 터치용 미니 키패드 -->
+        <div class="touch-keypad">
+          <button class="key-btn" data-insert="^2">x²</button>
+          <button class="key-btn" data-insert="^3">x³</button>
+          <button class="key-btn" data-insert="sqrt(">√</button>
+          <button class="key-btn" data-insert="1/">1/x</button>
+          <button class="key-btn" data-insert="sin(">sin</button>
+          <button class="key-btn" data-insert="cos(">cos</button>
+          <button class="key-btn" data-insert="tan(">tan</button>
+          <button class="key-btn key-op" data-insert=" + ">+</button>
+          <button class="key-btn key-op" data-insert=" - ">-</button>
+          <button class="key-btn" data-insert="(">(</button>
+          <button class="key-btn" data-insert=")">)</button>
+          <button class="key-btn key-accent" data-insert="x">x</button>
+        </div>
+
+        <!-- 원터치 퀵 칩 -->
+        <div class="quick-chips-area">
+          <span class="chips-label">빠른 킬러 예시:</span>
+          <div class="chips-list">
+            <button class="chip-btn" data-expr="x2 - 4">x² - 4</button>
+            <button class="chip-btn" data-expr="x3 - 3x">x³ - 3x</button>
+            <button class="chip-btn" data-expr="1/(x-1) + 2">1/(x-1) + 2</button>
+            <button class="chip-btn" data-expr="루트x + 1">√x + 1</button>
+            <button class="chip-btn" data-expr="x * sin(x)">x·sin(x)</button>
+            <button class="chip-btn" data-expr="exp(-x^2)">e^(-x²)</button>
+            <button class="chip-btn" data-expr="ln(x)/x">ln(x)/x</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="smart-modal-footer">
+        <button id="btnCancelSmart" class="btn-secondary">취소 (ESC)</button>
+        <button id="btnApplySmartExpr" class="btn-primary btn-glow" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>그래프 생성 & 핸들러 장착</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- [🔗 그래프 공유 & 학생용 모드 & QR 생성 모달] -->
+  <div id="modalShare" class="smart-modal-backdrop">
+    <div class="smart-modal-card share-modal-card">
+      <div class="smart-modal-header">
+        <div class="smart-modal-title">
+          <span class="modal-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+          <span class="modal-title-text">그래프 공유 & QR 코드</span>
+          <span class="badge-smart">서버 0원 URL 복원</span>
+        </div>
+        <button id="btnCloseShareModal" class="btn-modal-close" title="ESC"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+
+      <div class="smart-modal-body share-modal-body">
+        <!-- 1. 기본 편집 링크 -->
+        <div class="share-field-group">
+          <label class="share-field-label">
+            <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>일반 공유 링크 (모든 메뉴 & 레이어 편집 가능)</span>
+          </label>
+          <div class="share-input-row">
+            <input type="text" id="inputShareLink" class="share-link-input" readonly>
+            <button id="btnCopyShareLink" class="btn-primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>링크 복사</button>
+          </div>
+        </div>
+
+        <!-- 2. 학생용 모드 링크 -->
+        <div class="share-field-group">
+          <label class="share-field-label">
+            <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>학생용 인터랙티브 모드 링크 (사이드바 숨김 & 캔버스 몰입)</span>
+          </label>
+          <div class="share-input-row">
+            <input type="text" id="inputStudentLink" class="share-link-input" readonly>
+            <button id="btnCopyStudentLink" class="btn-secondary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>학생 링크 복사</button>
+          </div>
+          <div class="share-hint-text">학생은 로그인 없이 브라우저에서 열어 극점을 만져보고 [↺ 처음 상태로] 되돌릴 수 있습니다.</div>
+        </div>
+
+        <!-- 3. QR 코드 생성 영역 -->
+        <div class="qr-section">
+          <div class="qr-preview-box">
+            <canvas id="qrCanvas" width="180" height="180"></canvas>
+            <div class="qr-meta-info">
+              <span class="qr-target-badge" id="lblQrTarget"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>학생용 모드 QR</span>
+              <span class="qr-tip-text">스마트폰 기본 카메라로 스캔하면 즉시 열립니다!</span>
+              <button id="btnDownloadQr" class="btn-sub-action"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>QR 코드 PNG 다운로드 (교재 삽입용)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="smart-modal-footer">
+        <button id="btnCloseShare" class="btn-secondary">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- [📄 PDF 페이지 통째 칠판 모드 전용 상단 미니 네비게이션 바] -->
+  <div id="pdfBoardNavBar" class="pdf-board-nav-bar" style="display: none;">
+    <button id="btnPdfBoardPrev" class="pdf-board-nav-btn" title="이전 페이지 불러오기 (현재 페이지는 좌상단 카드로 자동 보관)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      <span>이전</span>
+    </button>
+    <button id="btnPdfBoardPageInfo" class="pdf-board-page-pill" title="클릭하여 전체 PDF 교재 뷰어 열기">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span id="lblPdfBoardPageInfo">p.1 / 1</span>
+    </button>
+    <button id="btnPdfBoardNext" class="pdf-board-nav-btn pdf-board-next-primary" title="다음 페이지 불러오기 (현재 페이지는 좌상단 p.N 미니 카드로 자동 접힘)">
+      <span>다음 페이지</span>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+    <div class="pdf-board-nav-divider"></div>
+    <button id="btnPdfBoardClose" class="pdf-board-close-btn" title="PDF 페이지 배경 닫기">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+
+  <!-- [📌 크롭된 문제 고정 카드 위젯 (Problem Card Widget - 상단 제자리 블라인드 헤더 & 더블클릭 접기)] -->
+  <div id="problemCardWidget" class="problem-card-widget" style="display: none;">
+    <div id="problemCardHeader" class="problem-card-header">
+      <div class="problem-card-drag-handle" id="problemCardDragHandle" title="클릭하여 접기/펼치기 · 드래그하여 위치 이동">
+        <button id="btnProblemCardToggleMinimize" class="card-btn card-title-fold-btn" title="클릭하여 문제 카드 접기/펼치기 (카드 몸통 더블클릭도 가능)">
+          <span id="iconCardToggle" class="card-fold-chevron">▾</span>
+          <span id="problemCardTitle" class="card-title-text">문제 (p.1)</span>
+        </button>
+      </div>
+      <div class="problem-card-actions">
+        <button id="btnProblemCardReCrop" class="card-btn" title="PDF 교재 다시 열기 / 다음 문제 캡처 (C)">
+          <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>다음 캡처</span>
+        </button>
+        <button id="btnProblemCardClearInk" class="card-btn" title="문제 위 밑줄/필기만 지우기">
+          <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></span>
+        </button>
+        <button id="btnProblemCardClose" class="card-btn btn-card-close" title="닫기">
+          <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+        </button>
+      </div>
+    </div>
+    <div id="problemCardBody" class="problem-card-body">
+      <img id="problemCardImg" class="problem-card-img" alt="크롭된 문제" draggable="false" />
+      <canvas id="problemCardCanvas" class="problem-card-canvas"></canvas>
+      <div id="problemCardResizeHandle" class="problem-card-resize-handle" title="드래그하여 문제 크기 조절"></div>
+    </div>
+  </div>
+
+  <!-- [📸 캡처된 그래프 스샷 고정 카드 위젯 (Graph Snapshot Card - 상단 제자리 블라인드 헤더 & 더블클릭 접기)] -->
+  <div id="graphCardWidget" class="problem-card-widget graph-card-widget" style="display: none;">
+    <div id="graphCardHeader" class="problem-card-header">
+      <div class="problem-card-drag-handle" id="graphCardDragHandle" title="클릭하여 접기/펼치기 · 드래그하여 위치 이동">
+        <button id="btnGraphCardToggleMinimize" class="card-btn card-title-fold-btn" title="클릭하여 그래프 카드 접기/펼치기 (카드 몸통 더블클릭도 가능)">
+          <span id="iconGraphCardToggle" class="card-fold-chevron">▾</span>
+          <span id="graphCardTitle" class="card-title-text">#1</span>
+        </button>
+      </div>
+      <div class="problem-card-actions">
+        <button id="btnGraphCardRestore" class="card-btn card-btn-restore" title="칠판 덮개를 걷어내고 실시간 그래프 다시 수정/조작하기">
+          <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>그래프 복구</span>
+        </button>
+        <button id="btnGraphCardClearInk" class="card-btn" title="그래프 위 필기만 지우기">
+          <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></span>
+        </button>
+        <button id="btnGraphCardClose" class="card-btn btn-card-close" title="그래프 카드 닫기 및 실시간 그래프 복구">
+          <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+        </button>
+      </div>
+    </div>
+    <div id="graphCardBody" class="problem-card-body">
+      <img id="graphCardImg" class="problem-card-img" alt="캡처된 그래프 스샷" draggable="false" />
+      <canvas id="graphCardCanvas" class="problem-card-canvas"></canvas>
+      <div id="graphCardResizeHandle" class="problem-card-resize-handle" title="드래그하여 그래프 크기 조절"></div>
+    </div>
+  </div>
+
+  <!-- [📦 우측 상단 X 버튼 바로 옆: 실시간 그래프 보관 트리거 버튼 & 드래그 오버레이] -->
+  <div id="graphSnapFloatingBar" class="graph-snap-floating-bar" style="display: none;">
+    <button id="btnReturnToCoveredBoard" class="btn-return-covered-board" style="display: none;" title="새 스샷을 찍지 않고 방금 판서하던 칠판(보관 카드 화면)으로 즉시 돌아갑니다">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+      <span>칠판 복귀</span>
+    </button>
+    <button id="btnTriggerGraphSnap" class="btn-trigger-graph-snap" title="사용할 그래프 영역을 드래그하여 보관 카드로 띄우고 백지 칠판으로 전환합니다">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+      <span id="lblTriggerGraphSnap">그래프 보관</span>
+    </button>
+  </div>
+  <div id="graphSnapDragBox" class="graph-snap-drag-box" style="display: none;"></div>
+
+  <!-- [📑 닥줌형 PDF 교재 뷰어 & 2단 문제 박스 캡처 모달] -->
+  <div id="modalPdfViewer" class="pdf-modal-backdrop" style="display: none;">
+    <div class="pdf-modal-container">
+      <!-- 상단 컨트롤 툴바 (단일 통합 헤더) -->
+      <div class="pdf-modal-header">
+        <div class="pdf-header-left">
+          <span class="pdf-file-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
+          <span id="pdfFileName" class="pdf-file-title">수능_모의고사_기출.pdf</span>
+          <button id="btnPdfOpenAnother" class="pdf-header-btn-subtle" title="다른 PDF 파일 열기">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span>다른 PDF 열기</span>
+          </button>
+        </div>
+
+        <div class="pdf-header-center">
+          <!-- 줌 컨트롤 -->
+          <button id="btnPdfZoomOut" class="pdf-tool-btn" title="축소">−</button>
+          <span id="lblPdfZoom" class="pdf-zoom-label">125%</span>
+          <button id="btnPdfZoomIn" class="pdf-tool-btn" title="확대">+</button>
+          <button id="btnPdfZoomFit" class="pdf-tool-btn" title="너비 맞춤">맞춤</button>
+
+          <div class="pdf-divider"></div>
+
+          <!-- 페이지 이동 -->
+          <button id="btnPdfPrevPage" class="pdf-nav-btn" title="이전 페이지 (PageUp / [)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px;"><polyline points="18 15 12 9 6 15"/></svg>이전</button>
+          <div class="pdf-page-indicator">
+            <input type="number" id="inputPdfCurrentPage" min="1" value="1" class="pdf-page-input">
+            <span class="pdf-page-slash">/</span>
+            <span id="lblPdfTotalPages" class="pdf-total-pages">1</span>
+          </div>
+          <button id="btnPdfNextPage" class="pdf-nav-btn" title="다음 페이지 (PageDown / ])"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px;"><polyline points="6 9 12 15 18 9"/></svg>다음</button>
+
+          <div class="pdf-divider"></div>
+
+          <!-- ✂️ 문제 캡처 토글 버튼 (중앙 네비게이션 바로 옆 전진 배치로 클릭 거리 대폭 단축!) -->
+          <button id="btnPdfCropToggle" class="pdf-crop-toggle-btn" title="문제 캡처 모드 (C)">
+            <span class="crop-btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg></span>
+            <span class="crop-btn-text">문제 캡처 (C)</span>
+          </button>
+
+          <!-- 📄 이 페이지 열기 버튼 (개념 설명용: 해당 PDF 페이지 전체를 칠판 캔버스로 바로 삽입!) -->
+          <button id="btnPdfOpenFullPage" class="pdf-open-page-btn" title="현재 PDF 페이지 전체를 칠판 캔버스로 바로 불러와 자유롭게 확대·축소하며 판서하고 그래프를 그립니다">
+            <span class="open-page-btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg></span>
+            <span class="open-page-btn-text">이 페이지 열기</span>
+          </button>
+        </div>
+
+        <div class="pdf-header-right">
+          <button id="btnClosePdfModal" class="btn-modal-close" title="돌아가기 (ESC)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+      </div>
+
+      <!-- PDF 세로 연속 스크롤 뷰포트 (하단 바 전면 제거로 바닥 끝까지 100% 풀스크린 시원한 뷰포트 확보!) -->
+      <div id="pdfViewport" class="pdf-viewport">
+        <div id="pdfPagesContainer" class="pdf-pages-container">
+          <!-- 페이지들이 아래로 쭈욱 렌더링됨 -->
+        </div>
+
+        <!-- 드래그 선택 사각형 오버레이 -->
+        <div id="pdfCropBox" class="pdf-crop-box" style="display: none;">
+          <div class="crop-handle handle-tl"></div>
+          <div class="crop-handle handle-tr"></div>
+          <div class="crop-handle handle-bl"></div>
+          <div class="crop-handle handle-br"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- [📁 PDF 파일 드래그 앤 드롭 오버레이] -->
+  <div id="pdfDropOverlay" class="pdf-drop-overlay" style="display: none;">
+    <div class="pdf-drop-card">
+      <div class="drop-icon">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="12" y1="18" x2="12" y2="12"/>
+          <polyline points="9 15 12 12 15 15"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- 토스트 팝업 메시지 -->
+  <div id="toastMsg" class="toast-msg"></div>
+
+  <!-- 스크립트 로드 -->
+  <script src="lib/pdf.worker.min.js"></script>
+  <script src="lib/pdf.min.js"></script>
+  <script src="engine.js"></script>
+  <script src="app.js"></script>
+  <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
+  <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
+    <div class="n-axis-studio-card">
+      <div class="n-axis-studio-header">
+        <div class="n-axis-header-title">
+          <span class="n-axis-logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg></span>
+          <span class="n-axis-title-text">N축 합성함수 4-분할 스튜디오</span>
+          <span class="n-axis-tag-badge">실시간 궤적 & 극점 스냅</span>
+        </div>
+        <div class="n-axis-header-actions" style="display:flex; align-items:center; gap:8px;">
+          <button id="btnNAxisArchiveToBoard" class="btn-n-axis-archive" title="현재 N축 4분할 화면을 칠판 보관 카드로 즉시 띄웁니다">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+            <span>칠판에 보관</span>
+          </button>
+          <button id="btnCloseNAxisStudio" class="btn-n-axis-close" title="닫기 (ESC)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+      </div>
+
+      <div class="n-axis-studio-body">
+        <canvas id="nAxisStudioCanvas" width="1140" height="680"></canvas>
+
+        <!-- 우하단: 탭형 컨트롤러 & 수능 킬러 분석실 -->
+        <div class="n-axis-control-quadrant">
+          <div class="n-axis-tab-header">
+            <button class="n-axis-tab-btn active" id="tabBtnNAxisCustom"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>수식 직접 입력</button>
+            <button class="n-axis-tab-btn" id="tabBtnNAxisPresets"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>킬러 기출 프리셋</button>
+          </div>
+
+          <!-- 탭 1: 직접 입력 -->
+          <div id="tabContentNAxisCustom" class="n-axis-tab-content">
+            <div class="n-axis-input-group">
+              <div class="n-axis-input-row">
+                <label style="color:#54a0ff;">속함수 g(x):</label>
+                <input type="text" id="inputNAxisG" class="n-axis-math-input" value="2.5 * cos(x)" placeholder="예: 2.5*cos(x), x^2 - 1.8">
+              </div>
+              <div class="n-axis-quick-chips">
+                <span class="n-axis-chip" data-target="inputNAxisG" data-val="sin(x)">sin</span>
+                <span class="n-axis-chip" data-target="inputNAxisG" data-val="cos(x)">cos</span>
+                <span class="n-axis-chip" data-target="inputNAxisG" data-val="x^2 - 1.8">x²-1.8</span>
+                <span class="n-axis-chip" data-target="inputNAxisG" data-val="0.4*x^3 - 1.6*x">x³-3x</span>
+                <span class="n-axis-chip" data-target="inputNAxisG" data-val="abs(x) - 1">|x|-1</span>
+              </div>
+
+              <div class="n-axis-input-row" style="margin-top: 4px;">
+                <label style="color:#ff6b6b;">겉함수 f(t):</label>
+                <input type="text" id="inputNAxisF" class="n-axis-math-input" value="t^3 - 3*t" placeholder="예: t^3 - 3*t, 0.25*(t^4 - 4*t^2)">
+              </div>
+              <div class="n-axis-quick-chips">
+                <span class="n-axis-chip" data-target="inputNAxisF" data-val="t^3 - 3*t">t³-3t</span>
+                <span class="n-axis-chip" data-target="inputNAxisF" data-val="0.25*(t^4 - 4*t^2)">t⁴-4t²</span>
+                <span class="n-axis-chip" data-target="inputNAxisF" data-val="abs(t) - 1.5">|t|-1.5</span>
+                <span class="n-axis-chip" data-target="inputNAxisF" data-val="cos(t)">cos(t)</span>
+                <span class="n-axis-chip" data-target="inputNAxisF" data-val="1.2*t">일차 t</span>
+              </div>
+            </div>
+
+            <!-- 슬라이더 바 -->
+            <div class="n-axis-slider-box">
+              <div class="n-axis-slider-header">
+                <span>입력 x 탐색 슬라이더</span>
+                <span id="lblNAxisCurX">x = 0.50</span>
+              </div>
+              <input type="range" id="sliderNAxisX" min="-3.2" max="3.2" step="0.01" value="0.5">
+            </div>
+
+            <!-- 실시간 3단계 추적 스탯 -->
+            <div class="n-axis-stats-grid">
+              <div class="n-axis-stat-card" style="border-left-color: #54a0ff;">
+                <div class="n-axis-stat-label">1) 입력 x</div>
+                <div class="n-axis-stat-val" id="dispNAxisX" style="color: #54a0ff;">0.50</div>
+              </div>
+              <div class="n-axis-stat-card" style="border-left-color: #feca57;">
+                <div class="n-axis-stat-label">2) 속함수 t = g(x)</div>
+                <div class="n-axis-stat-val" id="dispNAxisT" style="color: #feca57;">2.19</div>
+              </div>
+              <div class="n-axis-stat-card" style="border-left-color: #00d2d3;">
+                <div class="n-axis-stat-label">3) 최종 y = f(g(x))</div>
+                <div class="n-axis-stat-val" id="dispNAxisY" style="color: #00d2d3;">3.98</div>
+              </div>
+            </div>
+
+            <div class="n-axis-footer-actions">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <button id="btnNAxisAutoPlay" class="n-axis-btn-action"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="vertical-align:-2px;margin-right:3px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>자동 순항</button>
+                <div class="n-axis-speed-group">
+                  <button class="n-axis-speed-btn" data-speed="0.5">0.5x</button>
+                  <button class="n-axis-speed-btn active" data-speed="1.0">1.0x</button>
+                  <button class="n-axis-speed-btn" data-speed="2.0">2.0x</button>
+                </div>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button id="btnNAxisAutoFit" class="n-axis-btn-outline"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>치역 맞춤</button>
+                <button id="btnNAxisSwap" class="n-axis-btn-outline"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M8 21H3v-5"/><path d="M20 4 3 21"/></svg>겉 ⇄ 속</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 탭 2: 킬러 기출 프리셋 -->
+          <div id="tabContentNAxisPresets" class="n-axis-tab-content" style="display: none;">
+            <div class="n-axis-preset-grid">
+              <div class="n-axis-preset-item" data-preset="csat2022">
+                <div class="n-axis-preset-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polygon points="2 4 5 20 19 20 22 4 15 10 12 3 9 10 2 4"/></svg>2022 수능 22번형</div>
+                <div class="n-axis-preset-desc">g(x)=2.5cos(x) ➔ f(t)=t³-3t (삼각+삼차)</div>
+              </div>
+              <div class="n-axis-preset-item" data-preset="mock2023">
+                <div class="n-axis-preset-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>2023 6평 20번형</div>
+                <div class="n-axis-preset-desc">g(x)=0.8x²-1.8 ➔ f(t)=0.25(t⁴-4t²) (이차+사차)</div>
+              </div>
+              <div class="n-axis-preset-item" data-preset="absKiller">
+                <div class="n-axis-preset-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>절댓값 미분불가형</div>
+                <div class="n-axis-preset-desc">g(x)=0.4x³-1.6x ➔ f(t)=|t|-1.5 (첨점)</div>
+              </div>
+              <div class="n-axis-preset-item" data-preset="sinBasic">
+                <div class="n-axis-preset-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M2 12c2.5-3 5-3 7.5 0s5 3 7.5 0 5-3 7.5 0"/></svg>1주기 사인 기본형</div>
+                <div class="n-axis-preset-desc">g(x)=2sin(x) ➔ f(t)=t³-3t (한 주기 진동)</div>
+              </div>
+            </div>
+            <div class="n-axis-preset-tip">
+              프리셋을 누르면 수식과 최적 범위가 0.1초 만에 세팅되며, 언제든 '직접 입력' 탭에서 숫자를 수정할 수 있습니다!
+            </div>
+            <div class="n-axis-footer-actions">
+              <button id="btnNAxisGoCustom" class="n-axis-btn-action"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>수식 직접 수정하기</button>
+              <button id="btnNAxisAutoFit2" class="n-axis-btn-outline"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>치역 자동 맞춤</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+  </script>
+</body>
+
+</html>

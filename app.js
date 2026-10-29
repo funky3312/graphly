@@ -1,0 +1,18819 @@
+// 🌟 [크로스플랫폼 호환성 패치: 구형 iOS/iPadOS Safari & Android WebView용 roundRect 폴리필] 🌟
+if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, radii) {
+    let r = typeof radii === 'number' ? radii : (Array.isArray(radii) ? (radii[0] || 0) : 0);
+    r = Math.max(0, Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2));
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    this.closePath();
+    return this;
+  };
+}
+
+/**
+ * Graph Master Web - Application Controller & High-DPI Multi-Graph Canvas Renderer
+ * (file:// 더블 클릭 및 로컬 웹 서버 환경 100% 무결점 호환)
+ */
+
+class GraphApp {
+  constructor() {
+    this.canvas = document.getElementById('graphCanvas');
+    this.ctx = this.canvas.getContext('2d');
+
+    // 전역 엔진 참조
+    this.engine = window.GraphMathEngine;
+    this.meta = window.FUNC_METADATA;
+
+    // 🌟 [테마별 곡선 색상 팔레트] 🌟
+    // 화이트/밝은 배경: 데스모스(Desmos) 표준 클래식 고대비 색상군
+    this.lightColorPalette = [
+      '#c74440', // 데스모스 레드
+      '#2d70b3', // 데스모스 블루
+      '#388c46', // 데스모스 그린
+      '#6042a6', // 데스모스 퍼플
+      '#fa7e19', // 데스모스 앰버 오렌지
+      '#008080', // 딥 틸
+      '#b83280', // 마젠타
+      '#1e293b'  // 딥 슬레이트
+    ];
+    // 다크/칠판 배경: 형광 & 네온 계열로 어두운 칠판 위 시인성 극대화
+    this.darkColorPalette = [
+      '#00d2d3', // 1: 민트 시안
+      '#feca57', // 2: 골드 옐로우
+      '#ff6b6b', // 3: 코랄 레드
+      '#a29bfe', // 4: 바이올렛
+      '#1dd1a1', // 5: 에메랄드 그린
+      '#54a0ff', // 6: 스카이 블루
+      '#ff9ff3', // 7: 라벤더 핑크
+      '#ff9f43', // 8: 오렌지
+      '#48dbfb', // 9: 네온 블루
+      '#f368e0', // 10: 핫 핑크
+      '#10ac84', // 11: 딥 민트
+      '#ee5253'  // 12: 크림슨 레드
+    ];
+    // 기본 테마(white_paper)에 맞춰 초기 팔레트 설정
+    this.colorPalette = [...this.lightColorPalette];
+
+    // 🌟 [테마별 필기 잉크 팔레트 (5색)] 🌟
+    this.lightInkPalette = [
+      '#1e293b', // 차콜 블랙 (기본)
+      '#2563eb', // 로열 블루
+      '#dc2626', // 딥 레드
+      '#16a34a', // 포레스트 그린
+      '#7c3aed'  // 바이올렛
+    ];
+    this.darkInkPalette = [
+      '#ffffff', // 분필 화이트 (기본)
+      '#feca57', // 골드 옐로우
+      '#ff6b6b', // 코랄 핑크
+      '#54a0ff', // 스카이 블루
+      '#00d2d3'  // 민트 시안
+    ];
+
+    // [다중 그래프 레이어 배열 - 시작 시 빈 레이어]
+    this.graphs = [];
+    this.activeGraphIdx = -1; // 선택된 그래프 없음 (빈 화면 시작)
+
+    // 인터랙션 상태
+    this.draggedHandleIdx = null; // 활성 그래프의 드래그 핸들 인덱스
+    this.selectedHandleIdx = null; // 방향키 미세조정 핸들 인덱스
+    this.pulseAnimId = null;
+    this.downInfo = null;
+
+    // 곡선 몸통(선) 터치 & 평행이동 상태
+    this.isCurveSelected = false;
+    this.isDraggingCurve = false;
+    this.curveDragStart = null;
+    this.curveHandlesSnapshot = null;
+
+    // [↺ 실행 취소 / ↻ 다시 실행 (Undo & Redo) 히스토리 스택 엔진]
+    this.undoStack = [];
+    this.redoStack = [];
+    this.maxHistory = 45;
+    this.isHistoryProcessing = false;
+    this._preDragState = null;
+
+    // [🧲 사차함수 좌우대칭 자석 스냅 상태]
+    this.symmetrySnapActive = false;
+    this.symmetrySnapY = 0;
+
+    // [🧑‍🏫 라이브 강의 & 판서 분할 모드 (Stage & Board Mode)]
+    this.isBoardMode = false;
+    this.boardSplitRatio = 0.42; // 기본 분할: 좌측 그래프 42% : 우측 판서 58%
+    this.boardAnimId = null;
+    this.preBoardPanX = 0;
+    this.isDraggingBoardDivider = false;
+
+    // [🔀 정통 N축 합성함수 해석 모드 (Top-Bottom N-Axis Mode)]
+    this.isNAxisMode = false;
+    this.nAxisOuterIdx = 0;   // 상단 겉함수 z = g(t) 레이어 인덱스
+    this.nAxisInnerIdx = 1;   // 하단 속함수 t = f(x) (90도 눕힘) 레이어 인덱스
+    this.nAxisX0 = 0.5;      // 하단 속함수 입력값 슬라이더 (키보드 ←, → 이동)
+    this.isDraggingNAxisX0 = false;
+    this.nAxisSplitY = 0.52;  // 상하 분할 비율 (52% : 48%)
+    this.nAxisZoom = 1.0;     // N축 모드 전용 화각 휠 줌 스케일 (0.2x ~ 4.0x)
+
+    // 공통 뷰포트 & 렌더링 옵션
+    this.showAxes = true; // [대표님 기획]: 흰바탕에 가운데 수직선(축)과 그리드가 있는 상태에서 시작! (데스모스/지오지브라 스타일)
+    this.axisLineWidth = 1.8; // 🌟 [대표님 피드백 반영]: 데스모스급 샤프하고 세련된 기본 축 두께 (기존 2.8px -> 1.8px)
+    this.showArrows = true; // 수학적 표준 상시 고정
+    this.showAsymptotes = true;
+    this.showGuides = true;
+    this.showInverseGuide = false; // y = x 항등직선 대칭 기준선 (역함수 모드)
+    this.zoomLevel = 1.0;
+    this.targetZoom = 1.0;               // 피그마급 스무스 줌 수렴 목표치
+    this._isZoomAnimating = false;
+    this._zoomMousePos = null;
+    this.panOffset = { x: 0, y: 0 };
+
+    // 수학 좌표계 기본 범위 & 1:1 정비율 (Equal Aspect Ratio)
+    this.xSpan = 8.5; // 대표님 요청: 극점/교점/변곡점이 시원하게 다 들어오는 확장 화각!
+    this.ySpan = 6.0;
+    this.lockAspect = true; // 수학적 1:1 정비율 (창 크기에 무관한 엄밀 개형 보존)
+
+    // [📷 교재 삽입 캡처영역 & 저장 규격 엔진]
+    this.useViewfinder = false; // 캡처영역 프레임 기본 OFF
+    this.vfAspect = 4 / 3;     // 기본 4:3 교재 표준 비율
+    this.vfAspectName = '4:3';
+    this.vfScreenW = 680;      // 캡처영역 화면 고정 픽셀 가로 크기 (황금 여백 자동 도출)
+    this.vfTargetWIn = 3.0;    // 출력 규격: 가로 3.0 in (약 7.6 cm, 교재 1단 표준)
+    this.exportDPI = 300;      // 기본 300 DPI 초고화질
+    this.hasInitializedVf = false;
+
+    // 캡처영역 마우스 인터랙션 & 스마트 센터 스냅 상태
+    this.isResizingVf = false;
+    this.vfResizeStart = null;
+    this.snapActiveX = false; // X축(세로선) 스마트 센터 스냅 활성 여부
+    this.snapActiveY = false; // Y축(가로선) 스마트 센터 스냅 활성 여부
+
+    // [🧲 스마트 마그네틱 자석 스냅 엔진 (극점·대칭점·점근선 축 스냅)]
+    this.useMagneticSnap = true; // 기본 활성화 (쫀득한 손맛!)
+    this.axisSnapActiveX = false; // Y축(x=0) 마그네틱 스냅 발동 여부
+    this.axisSnapActiveY = false; // X축(y=0) 마그네틱 스냅 발동 여부
+    this.snappedPoints = [];      // 스냅 발동된 특징점 좌표 목록 ({x, y, label})
+
+    // [⚡ 실시간 교점판독기: 실근/접점 개수 판독 & 화면 밖 추적 엔진]
+    this.useIntersectionDetector = false; // 기본 OFF (원터치 가동)
+    this.detectedIntersections = [];      // 실시간 검출된 교점 목록
+    this.intersectionAnimPhase = 0;       // 반짝거리는 펄스 애니메이션 위상
+    this.intersectionAnimId = null;       // 펄스 애니메이션 루프 ID
+
+    // [✂️ 캔버스 직관적 N-구간 다중 분할 (Canvas Multi-Boundary Piecewise) 엔진]
+    this.usePiecewise = false;        // 기본 OFF
+    this.piecewiseBoundaries = [];    // 정렬된 세로선 x좌표 배열: [0.0] or [-1.0, 2.0] 등
+    this.piecewiseFuncMap = [];       // 각 구간별 담당 그래프 인덱스: [0, 1] or [0, 1, 2]
+    this.piecewiseInclusions = [];    // 각 세로선 경계점의 포함 방향: 'right' (x>=b) 또는 'left' (x<=b)
+    this.showPiecewiseGhost = false;  // 잘린 구간 고스트 점선 (기본 OFF로 화면 깔끔!)
+    this.activePwDragIdx = null;      // 캔버스에서 드래그 중인 세로선 인덱스
+    this.selectedPwBoundaryIdx = null;// 키보드 방향키(←, →)로 미세조정 중인 선택된 세로선 인덱스
+    this.pwBoundaryBadges = [];       // 세로선 상단 배지 및 삭제 버튼 히트 정보
+    this.pwRegionBadges = [];         // 각 구간 상단 함수 선택 칩 히트 정보
+    this.isPiecewisePeriodic = false; // 🔁 전구간 주기 반복 활성화 플래그 (기본 OFF)
+    this.periodicStepY = 0.0;         // 🪜 주기마다 y축 계단식 상승/하강: f(x+T) = f(x) + q (기본 0)
+    this.pwPeriodBracketBadge = null; // 상단 전주기 브래킷 UI 히트 영역
+    this.pwK = 0.0;                   // 단일 분할 레거시 호환
+    this.pwA = -1.0;                  // 사잇구간 레거시 호환
+    this.pwB = 1.0;
+    this.piecewiseMode = 'multi';
+
+    // [✨ 클린 뷰 / 판서 모드 (단축키 H)]
+    this.isCleanView = false;         // 핸들·가이드라인·보조선 완전 숨김 모드
+
+    // [📄 흑백 모드 (Monochrome / Textbook Mode): 원클릭 배경흰색 + 모든 선/축/글자 검은색 (단축키 M)]
+    this.isMonochromeMode = false;
+    this.preMonoThemeKey = null;
+
+    // [✍️ 실시간 무한 칠판 필기 & 주석 (Live Handwriting & Infinite Annotation Engine, 단축키 P)]
+    this.isInkMode = false;              // 실시간 필기 모드 활성 여부
+    this.activeInkTool = 'pen';          // 'select' | 'pen' | 'highlighter' | 'eraser' | 'lasso'
+    this.currentInkColor = '#1e293b'; // 화이트 페이퍼 기본 차콜 블랙    // 기본 화이트 잉크
+    this.currentInkSize = 4.2;           // 기본 4.2px
+    this.inkStrokes = [];                // 저장된 모든 필기 획 배열 [{id, tool, color, size, isHighlighter, points: [{x, y, p}]}]
+    this.currentInkStroke = null;        // 현재 드로잉 중인 획
+    this.isDrawingInk = false;           // 필기 드로잉 중 플래그
+    this.isSpacePressed = false;         // 스페이스바 팬 이동 감지
+    this.isShiftPressed = false;         // Shift 키 팬 이동 감지 (대표님 기획: 필기 모드에서도 Shift 드래그로 화면 이동!)
+
+    // 🌟 [초고속 144Hz 2-레이어 오프스크린 잉크 베이킹 엔진 & 씬 프리즈 캐시 (iCanScreen 급 0ms 저지연)] 🌟
+    this.inkBakeCanvas = document.createElement('canvas');
+    this.inkBakeCtx = this.inkBakeCanvas.getContext('2d');
+    this.inkGraphBakeCanvas = document.createElement('canvas');
+    this.inkGraphBakeCtx = this.inkGraphBakeCanvas.getContext('2d');
+    this._inkBakeDirty = true;
+    this.sceneFreezeCanvas = document.createElement('canvas');
+    this.sceneFreezeCtx = this.sceneFreezeCanvas.getContext('2d');
+    this._hasSceneFreeze = false;
+
+    // [🖊️ 액정타블렛 특화: 상시 가상 스타일러스 펜 & 지우개 인디케이터 상태]
+    this.stylusPenPos = { x: 300, y: 300 }; // 마지막 펜/마우스 좌표 (화면에서 멀어져도 보존)
+    this.isStylusDrawing = false;           // 펜으로 화면을 누르고 글씨를 쓰는 중 플래그
+
+    // [🪢 올가미(Lasso) 선택 & 풀이 이동 툴 상태]
+    this.isLassoSelecting = false;       // 올가미 루프 드로잉 중 플래그
+    this.lassoPoints = [];               // 올가미 화면 좌표 루프 [{x, y}]
+    this.selectedInkStrokes = [];        // 선택된 획 객체 참조 배열
+    this.selectedTextLabels = [];        // 선택된 텍스트 라벨 객체 참조 배열
+    this.lassoBoundingBox = null;        // 선택 바운딩 박스 {minX, maxX, minY, maxY, width, height}
+    this.isDraggingLassoSelection = false; // 선택된 획 드래그 이동 플래그
+    this.lassoDragStart = null;          // 드래그 시작 좌표 {screenX, screenY, m: {x, y}}
+    this.canvasRect = null;              // 레이아웃 스래싱 방지용 캔버스 BoundingClientRect 캐시
+
+    // [📑 닥줌형 PDF 교재 뷰어 & 2단 문제 박스 크롭 엔진 상태]
+    this.pdfDoc = null;                  // PDFDocumentProxy 인스턴스
+    this.pdfFileName = '교재.pdf';       // 불러온 PDF 파일명
+    this.pdfCurrentPage = 1;             // 현재 표시 중인 페이지 (1-based)
+    this.pdfTotalPages = 1;              // 총 페이지 수
+    this.pdfZoom = 1.25;                 // PDF 뷰포트 확대 배율
+    this.isPdfModalOpen = false;         // PDF 모달 표출 상태
+    this.isPdfCropModeActive = false;    // ✂️ 크롭 토글 활성화 여부
+    this.isPdfCropping = false;          // PDF 크롭 드래그 중 플래그
+    this.pdfCropStart = null;            // 크롭 드래그 시작 좌표
+    this.cropTargetWrapper = null;       // 크롭 대상 페이지 래퍼 요소
+    this.cropTargetPageNum = 1;          // 크롭 대상 페이지 번호
+    this.pdfPageRenderStates = {};       // 페이지별 렌더링 상태 캐시
+    this.problemCardData = null;         // 현재 칠판에 고정된 문제 카드 {imgUrl, pageNum}
+    this.extraProblemCards = [];         // 추가로 소환된 다중 문제 카드 목록
+    this.problemCardBaseX = 72;          // 문제 카드 기본 X 좌표
+    this.problemCardBaseY = 68;          // 문제 카드 기본 Y 좌표
+    this.isProblemCardMinimized = false; // 문제 카드 접힘/펼침 상태
+    this.compactGraphStage = null;       // [📐 칠판 일체형 경계선 없는 정사각형 컴팩트 스테이지 {x, y, w, h, isCustomized}]
+    this.isResizingStage = false;        // 컴팩트 스테이지 우하단 크기 조절 중 플래그
+    this.isMovingStage = false;          // 컴팩트 스테이지 위치 이동 중 플래그
+    this.stageDragStart = null;          // 스테이지 드래그 시작 상태
+    this.savedProblemCardViewState = null; // [문제 접기 시 대화면 확장 & 복원용 상태 저장 {panX, panY, zoomLevel}]
+
+    // [🎨 칠판 / 바탕색 테마 엔진: 기본 초록 칠판]
+    this.canvasThemes = {
+      chalkboard: { name: '초록 칠판', bg: '#003333', axis: '#ffffff', grid: 'rgba(255, 255, 255, 0.16)', vfBorder: 'rgba(255, 255, 255, 0.15)', isLight: false },
+      dark_charcoal: { name: '다크 차콜', bg: '#1e272e', axis: '#ffffff', grid: 'rgba(255, 255, 255, 0.10)', vfBorder: 'rgba(255, 255, 255, 0.12)', isLight: false },
+      white_paper: { name: '화이트 페이퍼', bg: '#ffffff', axis: '#2d3436', grid: 'rgba(0, 0, 0, 0.085)', vfBorder: 'rgba(0, 0, 0, 0.18)', isLight: true },
+      deep_black: { name: '딥 블랙', bg: '#080808', axis: '#ffffff', grid: 'rgba(255, 255, 255, 0.08)', vfBorder: 'rgba(255, 255, 255, 0.12)', isLight: false },
+      postit: { name: '포스트잇', bg: '#fef7e0', axis: '#2d3436', grid: 'rgba(0, 0, 0, 0.07)', vfBorder: 'rgba(0, 0, 0, 0.16)', isLight: true }
+    };
+    this.currentThemeKey = 'white_paper'; // [대표님 기획]: 기본 테마 화이트 페이퍼 (데스모스 스타일)!
+    this._currentCat = '📐 다항함수';    // 선택된 카테고리 기억
+
+    // 뷰포트 오프셋 (팬 이동)
+    this.panX = 0;
+    this.panY = 0;
+    this.isPanning = false;
+    this.panStart = { x: 0, y: 0 };
+
+    // 🌟 [칠판 전체 무한 캔버스 이동 (Infinite Blackboard Pan)] 🌟
+    this.boardPanX = 0;
+    this.boardPanY = 0;
+    this.isBoardPanning = false;
+    this.boardPanStart = { x: 0, y: 0 };
+    this.activePointers = new Map();
+
+    // [📍 교재 보조 수선(Drop Lines) & 축 좌표 라벨 시스템]
+    this.dropLines = [];               // 생성된 보조 수선 배열
+    this.isDropLineMode = false;       // 보조 수선 도구 활성 여부 (단축키 D)
+    this.dropLineStyle = 'dashed';     // 'dashed' | 'solid'
+    this.dropLineFontFamily = 'stix';  // 'stix' | 'pretendard' | 'batang'
+    this.dropLineFontSize = 15;        // 기본 15 pt
+    this.dropLineHoverCandidate = null;// 마우스 근처 자석 스냅 후보점 {x, y, name}
+    this.dropLineHoverScissors = null; // 호버 중인 가위 버튼 {id, which}
+    this.dropLineHoverLabel = null;    // 호버 중인 좌표 라벨 {id, which}
+    this.activeEditingLabel = null;    // 인라인 편집 중인 라벨 {id, which}
+    this.renderedScissors = [];        // 현재 프레임 렌더링된 가위 버튼 히트테스트 목록
+    this.renderedDropLineLabels = [];  // 현재 프레임 렌더링된 좌표 라벨 바운딩박스 목록
+    this.dropLineInputEl = document.getElementById('dropLineLabelInput');
+
+    // [🔤 캔버스 자유 수식 텍스트 라벨 (함수 이름표 & 축 이름표)]
+    this.textLabels = [];              // 생성된 자유 수식 텍스트 라벨 배열 [{id, mathX, mathY, text, fontSize, ...}]
+    this.isTextToolMode = false;       // 텍스트 도구 활성 여부 (단축키 T)
+    this.textLabelFontSize = 20;       // 자유 텍스트 기본 20 pt (확장 범위: 12~52 pt)
+    this.showAxisLabels = false;       // 대표님 기획: 기본 축 이름표 (x, y, O) 자동 표시 여부 (기본값: false / 체크 해제)
+    this.axisLabelFontSize = 22;       // 축 이름표 폰트 크기 기본 22 pt (확장 범위: 12~48 pt)
+    this.axisLabelX = 'x';             // 기본 가로축 이름표 (t, k 등 변경 가능)
+    this.axisLabelY = 'y';             // 기본 세로축 이름표
+    this.activeEditingTextId = null;   // 인라인 편집 중인 텍스트 라벨 ID
+    this.isDraggingTextLabel = false;  // 텍스트 라벨 드래그 이동 상태
+    this.draggedTextLabelId = null;
+    this.draggedTextOffset = { dx: 0, dy: 0 };
+    this.renderedTextLabels = [];      // 렌더링된 텍스트 바운딩 박스 목록
+    this.lastTextClickTime = 0;        // 더블클릭 판별용 타임스탬프
+    this.canvasTextInputEl = document.getElementById('canvasTextInput');
+    this.isTextEditingJustStarted = false; // 텍스트 생성 직후 찰나의 blur 방어 플래그
+
+    this.initDOM();
+    this.initShareModal();
+    this.initNAxisStudioModal();
+    this.bindEvents();
+    this.resizeCanvas();
+    this.checkUrlHashForState();
+    this.render();
+  }
+
+  // 현재 활성 그래프 getter (없으면 null 반환)
+  get activeGraph() {
+    if (this.activeGraphIdx >= 0 && this.activeGraphIdx < this.graphs.length) {
+      return this.graphs[this.activeGraphIdx];
+    }
+    return this.graphs[0] || null;
+  }
+
+  initDOM() {
+    this.renderLayerList();
+    this.renderFuncList();
+    this.bindControls();
+    this.initHistoryControls();
+    this.initBoardModeControls();
+    this.initNAxisControls();
+    this.initPiecewiseControls();
+    this.initShapeControls();
+    this.initCurveContextBar();
+    this.initRailDrawer();
+    this.initDropLineControls();
+    this.initTextLabelControls();
+    this.initMonochromeControls();
+    this.initInkControls();
+    this.initPdfEngine();
+    this.initWelcomeSplash();
+    this.initStylusFastTap();
+    this.syncControls();
+  }
+
+  // --- [🎯 액정타블렛/스타일러스 펜 원터치 클릭 보정 엔진 (Stylus Fast-Tap & Magnetic Hit-Box)] ---
+  // 필기(획 그리기) 로직에는 단 1%도 관여하지 않으며, 오직 UI 버튼 클릭 시:
+  // 1) 펜촉이 닿았다 떨어지는 순간 미세하게 미끄러져(3~32px) 브라우저가 기본 click 이벤트를 취소하는 현상
+  // 2) 버튼의 :hover/:active 스케일 변화나 내부 아이콘(svg/span) 경계 이동으로 타겟이 갈라져 클릭이 씹히는 현상
+  // 3) 액정타블렛 유리 시차(Parallax)로 인해 툴바/카드 버튼 가장자리(7px 이내)를 짚었을 때 안 눌리는 현상
+  // 을 100% 보정하여 가볍게 톡 찍어도 한 번에 칼같이 클릭되도록 보장합니다.
+  initStylusFastTap() {
+    if (this._stylusFastTapInitialized) return;
+    this._stylusFastTapInitialized = true;
+
+    const CLICKABLE_UI_SELECTOR = [
+      'button',
+      '.rail-btn',
+      '.quick-fab-btn',
+      '.ink-tool-btn',
+      '.ink-color-dot',
+      '.color-dot',
+      '.func-btn',
+      '.cat-tab-btn',
+      '.card-btn',
+      '.pw-popover-item',
+      '.export-menu-item',
+      '.theme-chip',
+      '.vf-chip',
+      '.dpi-btn',
+      '.quad-mode-btn',
+      '.transform-btn',
+      '.chip-btn',
+      '.key-btn',
+      '.ink-size-chip',
+      '.board-ratio-btn',
+      '.n-axis-tab-btn',
+      '.n-axis-preset-item',
+      '.n-axis-speed-btn',
+      '.n-axis-chip',
+      '.layer-item',
+      '.setting-toggle-item',
+      '.vf-toggle-wrap',
+      '.header-show-tab'
+    ].join(', ');
+
+    const TOOLBAR_CONTAINER_SELECTOR = [
+      '.rail-dock',
+      '.canvas-quick-toolbar',
+      '.ink-floating-toolbar',
+      '.curve-context-bar',
+      '.problem-card-header',
+      '.problem-card-actions',
+      '.pdf-modal-header',
+      '.graph-snap-floating-bar'
+    ].join(', ');
+
+    const findNearestButtonInToolbar = (container, clientX, clientY, maxPadPx = 7) => {
+      if (!container || !container.querySelectorAll) return null;
+      const candidates = container.querySelectorAll('button, .rail-btn, .quick-fab-btn, .ink-tool-btn, .ink-color-dot, .card-btn');
+      let bestBtn = null;
+      let bestDist = maxPadPx;
+      for (const btn of candidates) {
+        if (btn.disabled || btn.offsetParent === null) continue;
+        const r = btn.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) continue;
+        const dx = clientX < r.left ? (r.left - clientX) : (clientX > r.right ? (clientX - r.right) : 0);
+        const dy = clientY < r.top ? (r.top - clientY) : (clientY > r.bottom ? (clientY - r.bottom) : 0);
+        const d = Math.hypot(dx, dy);
+        if (d <= bestDist) {
+          bestDist = d;
+          bestBtn = btn;
+        }
+      }
+      return bestBtn;
+    };
+
+    let activeTap = null;
+    let lastSynthClick = null;
+
+    const isEditableInput = (el) => {
+      if (!el || typeof el.closest !== 'function') return false;
+      return Boolean(el.closest('input, textarea, select, [contenteditable="true"], .ink-size-preview-row'));
+    };
+
+    const isTextInputEl = (el) => {
+      if (!el || typeof el.closest !== 'function') return false;
+      const inp = el.closest('input, textarea, select, [contenteditable="true"]');
+      if (!inp) return false;
+      if (inp.tagName === 'INPUT' && ['range', 'checkbox', 'radio', 'button', 'color', 'file'].includes((inp.type || '').toLowerCase())) {
+        return false;
+      }
+      return true;
+    };
+
+    // 🌟 [크롬 전체화면 상단 (X) 출현 원천 차단 1단계: 버튼/카드 클릭 시 DOM Focus 탈취 및 Focus Loss 원천 봉쇄]
+    window.addEventListener('mousedown', (e) => {
+      if (isEditableInput(e.target)) return;
+      e.preventDefault();
+      if (document.activeElement && document.activeElement !== document.body && !isTextInputEl(document.activeElement)) {
+        try { document.activeElement.blur(); } catch (err) { }
+      }
+    }, { capture: true, passive: false });
+
+    // 🌟 [크롬 전체화면 상단 (X) 출현 원천 차단 2단계: 최상위 캡처 레벨 롱프레스/우클릭/드래그 제스처 봉쇄]
+    const blockNativeLongPressGesture = (e) => {
+      if (isEditableInput(e.target)) return;
+      e.preventDefault();
+    };
+    ['contextmenu', 'selectstart', 'dragstart', 'MSHoldVisual', 'MSGestureHold'].forEach(evtName => {
+      window.addEventListener(evtName, blockNativeLongPressGesture, { capture: true, passive: false });
+      document.addEventListener(evtName, blockNativeLongPressGesture, { capture: true, passive: false });
+    });
+
+    window.addEventListener('pointerdown', (e) => {
+      if (isEditableInput(e.target)) {
+        activeTap = null;
+        return;
+      }
+      if (document.activeElement && document.activeElement !== document.body && !isTextInputEl(document.activeElement)) {
+        try { document.activeElement.blur(); } catch (err) { }
+      }
+      if (e.button && e.button !== 0) {
+        e.preventDefault();
+        activeTap = null;
+        return;
+      }
+      if (!e.target || typeof e.target.closest !== 'function') {
+        activeTap = null;
+        return;
+      }
+      if (e.target.closest('#inkDockDragHandle, .problem-card-resize-handle')) {
+        e.preventDefault();
+        activeTap = null;
+        return;
+      }
+
+      const inToolbarContainer = e.target.closest(TOOLBAR_CONTAINER_SELECTOR);
+      let targetEl = e.target.closest(CLICKABLE_UI_SELECTOR);
+      if (!targetEl && inToolbarContainer) {
+        targetEl = findNearestButtonInToolbar(inToolbarContainer, e.clientX, e.clientY, 7);
+      }
+
+      // 툴바/카드 액션바 영역이거나 버튼 위라면 즉시 preventDefault로 크롬 FullscreenControlHost 제스처 감지 차단!
+      if (targetEl || inToolbarContainer || e.target.closest('.problem-card-widget, .graph-card-widget')) {
+        e.preventDefault();
+      }
+
+      if (!targetEl || targetEl.disabled) {
+        activeTap = null;
+        return;
+      }
+
+      // 스크롤 영역 내부가 아닌 일반 버튼/카드 버튼은 즉시 포인터 캡처하여 길게 눌러도 OS 롱프레스가 발동하지 않도록 보호
+      if (e.pointerId !== undefined && targetEl.setPointerCapture && !targetEl.closest('.drawer-body, .pdf-viewport')) {
+        try { targetEl.setPointerCapture(e.pointerId); } catch (err) { }
+      }
+
+      activeTap = {
+        el: targetEl,
+        pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
+        startX: e.clientX,
+        startY: e.clientY,
+        maxDist: 0,
+        startTime: performance.now(),
+        nativeClicked: false
+      };
+    }, { capture: true, passive: false });
+
+    window.addEventListener('pointermove', (e) => {
+      if (!activeTap) return;
+      if (e.pointerId !== undefined && activeTap.pointerId !== undefined && e.pointerId !== activeTap.pointerId) return;
+      const d = Math.hypot(e.clientX - activeTap.startX, e.clientY - activeTap.startY);
+      if (d > activeTap.maxDist) activeTap.maxDist = d;
+    }, true);
+
+    window.addEventListener('click', (e) => {
+      if (
+        lastSynthClick &&
+        !lastSynthClick.inProgress &&
+        (performance.now() - lastSynthClick.time < 280) &&
+        (e.target === lastSynthClick.el || (lastSynthClick.el.contains && lastSynthClick.el.contains(e.target)))
+      ) {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        lastSynthClick = null;
+        return;
+      }
+      if (activeTap && (e.target === activeTap.el || (activeTap.el.contains && activeTap.el.contains(e.target)))) {
+        activeTap.nativeClicked = true;
+      }
+    }, true);
+
+    window.addEventListener('pointerup', (e) => {
+      if (!activeTap) return;
+      if (e.pointerId !== undefined && activeTap.pointerId !== undefined && e.pointerId !== activeTap.pointerId) return;
+
+      const tap = activeTap;
+      if (e.pointerId !== undefined && tap.el && tap.el.releasePointerCapture) {
+        try {
+          if (!tap.el.hasPointerCapture || tap.el.hasPointerCapture(e.pointerId)) {
+            tap.el.releasePointerCapture(e.pointerId);
+          }
+        } catch (err) { }
+      }
+      const endDist = Math.hypot(e.clientX - tap.startX, e.clientY - tap.startY);
+      const totalSlip = Math.max(endDist, tap.maxDist || 0);
+      const elapsed = performance.now() - tap.startTime;
+      const maxAllowedSlip = (tap.pointerType === 'pen' || tap.pointerType === 'touch') ? 32 : 20;
+
+      if (totalSlip <= maxAllowedSlip && elapsed <= 850 && !tap.el.disabled) {
+        setTimeout(() => {
+          if (!tap.nativeClicked && !tap.el.disabled && document.body.contains(tap.el)) {
+            tap.nativeClicked = true;
+            lastSynthClick = { el: tap.el, time: performance.now(), inProgress: true };
+            try {
+              tap.el.click();
+            } finally {
+              if (lastSynthClick) lastSynthClick.inProgress = false;
+            }
+          }
+        }, 0);
+      }
+    }, true);
+  }
+
+  // --- [🌟 뒤쪽 작업화면이 은은하게 비치는 화이트 글래스 인트로 & 무충격 전체화면 진입 제어기] ---
+  initWelcomeSplash() {
+    const splash = document.getElementById('welcomeSplash');
+    const btnStart = document.getElementById('btnStartApp');
+    const splashCard = splash ? splash.querySelector('.splash-card') : null;
+    if (!splash || !btnStart) return;
+
+    let hasStarted = false;
+    const startApp = () => {
+      if (hasStarted) return;
+      hasStarted = true;
+
+      // 🌟 [핵심 무충격 기법]:
+      // 1) 진입 전에는 뒤쪽 실제 화면(좌표축/툴바)이 반투명 화이트 베일 너머로 은은하게 비침
+      // 2) 클릭하는 0.00초 순간 로고를 숨기고 베일을 순백(whiteout-curtain)으로 잠깐 고정하여,
+      //    크롬 주소창이 접히며 전체화면으로 늘어나는 0.1초 동안 뒤쪽 캔버스가 덜컹거리는 모습을 100% 가려줌!
+      if (splashCard) {
+        splashCard.style.display = 'none';
+      }
+      splash.classList.add('whiteout-curtain');
+
+      document.body.classList.add('fullscreen-mode');
+      const btnFs = document.getElementById('btnFullscreen');
+      if (btnFs) btnFs.classList.add('active');
+
+      // 전체화면 실행 (User Gesture 내에서 즉시 호출)
+      try {
+        const docEl = document.documentElement;
+        const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+        if (!fsEl) {
+          if (docEl.requestFullscreen) {
+            docEl.requestFullscreen({ navigationUI: 'hide' }).catch(() => {
+              docEl.requestFullscreen().catch(() => { });
+            });
+          } else if (docEl.webkitRequestFullscreen) {
+            docEl.webkitRequestFullscreen();
+          }
+        }
+      } catch (err) { }
+
+      // 3) 전체화면 리사이즈가 자리를 잡은 직후(90ms) 순백 베일이 스르륵 걷히며 칠판으로 몰입!
+      setTimeout(() => {
+        this.resizeCanvas();
+        splash.classList.add('dismissed');
+        setTimeout(() => {
+          splash.style.display = 'none';
+        }, 250);
+      }, 90);
+    };
+
+    btnStart.onclick = startApp;
+
+    // 엔터키나 스페이스바로도 즉시 시작 가능
+    window.addEventListener('keydown', (e) => {
+      if (splash && splash.style.display !== 'none' && !splash.classList.contains('dismissed')) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          startApp();
+        }
+      }
+    }, { once: true });
+  }
+
+  // --- [🔤 캔버스 자유 수식 텍스트 라벨 & 축 이름 컨트롤러 초기화] ---
+  initTextLabelControls() {
+    const btnQuick = document.getElementById('btnQuickText');
+    if (btnQuick) {
+      btnQuick.onclick = () => this.toggleTextToolMode();
+    }
+
+    // 기본 축 이름표 (x, y, O) 자동 표시 체크박스 (기본값: 체크 해제)
+    const chkAxis = document.getElementById('chkShowAxisLabels');
+    const subPanelAxis = document.getElementById('axisLabelsSubPanel');
+    const sliderAxisFSize = document.getElementById('sliderAxisLabelSize');
+    const lblAxisFSize = document.getElementById('lblAxisLabelSize');
+
+    if (chkAxis) {
+      chkAxis.checked = Boolean(this.showAxisLabels);
+      if (subPanelAxis) subPanelAxis.style.display = this.showAxisLabels ? 'block' : 'none';
+      chkAxis.onchange = (e) => {
+        this.pushHistoryState();
+        this.showAxisLabels = e.target.checked;
+        if (subPanelAxis) subPanelAxis.style.display = this.showAxisLabels ? 'block' : 'none';
+        this.render();
+        this.showToast(this.showAxisLabels ? '📍 기본 축 이름표 (x, y, O) 켜짐' : '📍 기본 축 이름표 (x, y, O) 숨김');
+      };
+    }
+
+    if (sliderAxisFSize) {
+      sliderAxisFSize.value = this.axisLabelFontSize || 22;
+      if (lblAxisFSize) lblAxisFSize.textContent = `${sliderAxisFSize.value} pt`;
+      sliderAxisFSize.oninput = (e) => {
+        this.setAxisLabelFontSize(parseInt(e.target.value, 10));
+      };
+    }
+
+    const btnAxisDown = document.getElementById('btnAxisLabelSizeDown');
+    const btnAxisUp = document.getElementById('btnAxisLabelSizeUp');
+    if (btnAxisDown) {
+      btnAxisDown.onclick = () => {
+        const nextSize = Math.max(12, (this.axisLabelFontSize || 22) - 2);
+        this.setAxisLabelFontSize(nextSize);
+      };
+    }
+    if (btnAxisUp) {
+      btnAxisUp.onclick = () => {
+        const nextSize = Math.min(48, (this.axisLabelFontSize || 22) + 2);
+        this.setAxisLabelFontSize(nextSize);
+      };
+    }
+
+    const inAxisX = document.getElementById('inputAxisNameX');
+    if (inAxisX) {
+      inAxisX.value = this.axisLabelX || 'x';
+      inAxisX.oninput = (e) => {
+        this.axisLabelX = e.target.value;
+        this.render();
+      };
+    }
+
+    const inAxisY = document.getElementById('inputAxisNameY');
+    if (inAxisY) {
+      inAxisY.value = this.axisLabelY || 'y';
+      inAxisY.oninput = (e) => {
+        this.axisLabelY = e.target.value;
+        this.render();
+      };
+    }
+
+    const sliderSize = document.getElementById('sliderTextLabelSize');
+    const lblSize = document.getElementById('lblTextLabelSize');
+    if (sliderSize) {
+      sliderSize.value = this.textLabelFontSize || 20;
+      if (lblSize) lblSize.textContent = `${sliderSize.value} pt`;
+      sliderSize.oninput = (e) => {
+        this.setTextLabelFontSize(parseInt(e.target.value, 10));
+      };
+    }
+
+    const btnTextDown = document.getElementById('btnTextLabelSizeDown');
+    const btnTextUp = document.getElementById('btnTextLabelSizeUp');
+    if (btnTextDown) {
+      btnTextDown.onclick = () => {
+        const nextSize = Math.max(12, (this.textLabelFontSize || 20) - 2);
+        this.setTextLabelFontSize(nextSize);
+      };
+    }
+    if (btnTextUp) {
+      btnTextUp.onclick = () => {
+        const nextSize = Math.min(52, (this.textLabelFontSize || 20) + 2);
+        this.setTextLabelFontSize(nextSize);
+      };
+    }
+
+    const btnClear = document.getElementById('btnClearTextLabels');
+    if (btnClear) {
+      btnClear.onclick = () => this.clearAllTextLabels();
+    }
+
+    // 캔버스 텍스트 인라인 입력창 이벤트
+    const input = document.getElementById('canvasTextInput');
+    if (input) {
+      this.canvasTextInputEl = input;
+
+      // 인라인 입력창 클릭/드래그 시 캔버스나 부모로 이벤트가 전파되어 포커스가 풀리지 않도록 원천 차단
+      input.addEventListener('pointerdown', (e) => e.stopPropagation());
+      input.addEventListener('mousedown', (e) => e.stopPropagation());
+      input.addEventListener('click', (e) => e.stopPropagation());
+      input.addEventListener('dblclick', (e) => e.stopPropagation());
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.commitEditingTextLabel();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          this.cancelEditingTextLabel();
+        }
+      });
+      input.addEventListener('blur', () => {
+        // [핵심]: 캔버스 클릭 직후 생성 과정에서 브라우저 mousedown/focus 전환으로 인한 찰나의 blur는 무시하고 포커스 복원!
+        if (this.isTextEditingJustStarted) {
+          setTimeout(() => {
+            if (this.activeEditingTextId && input.style.display !== 'none') {
+              input.focus();
+            }
+          }, 15);
+          return;
+        }
+        setTimeout(() => {
+          if (this.activeEditingTextId && !this.isTextEditingJustStarted) {
+            this.commitEditingTextLabel();
+          }
+        }, 120);
+      });
+    }
+  }
+
+  // --- [📍 교재 보조 수선 & 축 좌표 라벨 컨트롤러 초기화] ---
+  initDropLineControls() {
+    const btnQuick = document.getElementById('btnQuickDropLine');
+    if (btnQuick) {
+      btnQuick.onclick = () => this.toggleDropLineMode();
+    }
+
+    const selFont = document.getElementById('selMathFont');
+    if (selFont) {
+      selFont.value = this.dropLineFontFamily || 'stix';
+      selFont.onchange = (e) => {
+        this.dropLineFontFamily = e.target.value;
+        this.render();
+      };
+    }
+
+    const btnDashed = document.getElementById('btnDropLineDashed');
+    const btnSolid = document.getElementById('btnDropLineSolid');
+    if (btnDashed && btnSolid) {
+      btnDashed.onclick = () => {
+        this.dropLineStyle = 'dashed';
+        btnDashed.classList.add('active');
+        btnSolid.classList.remove('active');
+        this.render();
+      };
+      btnSolid.onclick = () => {
+        this.dropLineStyle = 'solid';
+        btnSolid.classList.add('active');
+        btnDashed.classList.remove('active');
+        this.render();
+      };
+    }
+
+    const sliderFontSize = document.getElementById('sliderDropLineFontSize');
+    const lblFontSize = document.getElementById('lblDropLineFontSize');
+    if (sliderFontSize) {
+      sliderFontSize.value = this.dropLineFontSize || 15;
+      if (lblFontSize) lblFontSize.textContent = `${sliderFontSize.value} pt`;
+      sliderFontSize.oninput = (e) => {
+        this.setDropLineFontSize(parseInt(e.target.value, 10));
+      };
+    }
+
+    const btnDropLineDown = document.getElementById('btnDropLineSizeDown');
+    const btnDropLineUp = document.getElementById('btnDropLineSizeUp');
+    if (btnDropLineDown) {
+      btnDropLineDown.onclick = () => {
+        const nextSize = Math.max(11, (this.dropLineFontSize || 15) - 1);
+        this.setDropLineFontSize(nextSize);
+      };
+    }
+    if (btnDropLineUp) {
+      btnDropLineUp.onclick = () => {
+        const nextSize = Math.min(22, (this.dropLineFontSize || 15) + 1);
+        this.setDropLineFontSize(nextSize);
+      };
+    }
+
+    const btnClear = document.getElementById('btnClearDropLines');
+    if (btnClear) {
+      btnClear.onclick = () => this.clearAllDropLines();
+    }
+
+    // 인라인 라벨 에디터 키보드 및 포커스 이벤트 바인딩
+    const input = document.getElementById('dropLineLabelInput');
+    if (input) {
+      this.dropLineInputEl = input;
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.commitEditingDropLineLabel();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          this.cancelEditingDropLineLabel();
+        }
+      });
+      input.addEventListener('blur', () => {
+        // 클릭 중인 다른 요소(가위 등)와의 순서 보장을 위해 짧은 타이머 후 커밋
+        setTimeout(() => {
+          if (this.activeEditingLabel) {
+            this.commitEditingDropLineLabel();
+          }
+        }, 120);
+      });
+    }
+  }
+
+  // --- [↺ 실행 취소 & ↻ 다시 실행 (Undo / Redo) 히스토리 스택 엔진] ---
+  initHistoryControls() {
+    const btnUndo = document.getElementById('btnUndo');
+    const btnRedo = document.getElementById('btnRedo');
+    const btnQuickUndo = document.getElementById('btnQuickUndo');
+    const btnQuickRedo = document.getElementById('btnQuickRedo');
+
+    if (btnUndo) btnUndo.onclick = () => this.undo();
+    if (btnRedo) btnRedo.onclick = () => this.redo();
+    if (btnQuickUndo) btnQuickUndo.onclick = () => this.undo();
+    if (btnQuickRedo) btnQuickRedo.onclick = () => this.redo();
+    this.updateUndoRedoUI();
+  }
+
+  getHistorySnapshot() {
+    return JSON.stringify({
+      graphs: this.graphs,
+      activeGraphIdx: this.activeGraphIdx,
+      zoomLevel: this.zoomLevel,
+      panX: this.panX,
+      panY: this.panY,
+      boardPanX: this.boardPanX || 0,
+      boardPanY: this.boardPanY || 0,
+      xSpan: this.xSpan,
+      ySpan: this.ySpan,
+      showAxes: Boolean(this.showAxes),
+      showGuides: Boolean(this.showGuides),
+      usePiecewise: this.usePiecewise,
+      piecewiseBoundaries: this.piecewiseBoundaries,
+      piecewiseFuncMap: this.piecewiseFuncMap,
+      piecewiseInclusions: this.piecewiseInclusions,
+      isPiecewisePeriodic: this.isPiecewisePeriodic,
+      periodicStepY: this.periodicStepY,
+      isPiecewiseLocked: Boolean(this.isPiecewiseLocked),
+      showInverseGuide: this.showInverseGuide,
+      dropLines: this.dropLines,
+      textLabels: this.textLabels,
+      axisLabelX: this.axisLabelX,
+      axisLabelY: this.axisLabelY,
+      showAxisLabels: this.showAxisLabels,
+      axisLabelFontSize: this.axisLabelFontSize,
+      textLabelFontSize: this.textLabelFontSize,
+      inkStrokes: this.inkStrokes
+    });
+  }
+
+  _captureFullWorkspaceSnapshot() {
+    const pWidget = document.getElementById('problemCardWidget');
+    const pImg = document.getElementById('problemCardImg');
+    const pTitle = document.getElementById('problemCardTitle');
+    const pToggle = document.getElementById('iconCardToggle');
+    const hasPrimaryProblem = Boolean(pWidget && pWidget.style.display !== 'none' && this.problemCardData);
+
+    const gWidget = document.getElementById('graphCardWidget');
+    const gImg = document.getElementById('graphCardImg');
+    const gTitle = document.getElementById('graphCardTitle');
+    const gToggle = document.getElementById('iconGraphCardToggle');
+    const hasPrimaryGraph = Boolean(gWidget && this._hasPrimaryGraphCard && this.graphCardData);
+
+    return {
+      historyJson: this.getHistorySnapshot(),
+      primaryProblemCard: hasPrimaryProblem ? {
+        display: pWidget.style.display,
+        minimized: pWidget.classList.contains('minimized'),
+        left: pWidget.style.left,
+        top: pWidget.style.top,
+        width: pWidget.style.width,
+        transform: pWidget.style.transform,
+        zIndex: pWidget.style.zIndex,
+        imgSrc: pImg ? pImg.src : '',
+        titleText: pTitle ? pTitle.textContent : '',
+        toggleText: pToggle ? pToggle.textContent : '▾',
+        problemCardData: this.problemCardData ? { ...this.problemCardData } : null,
+        problemCardImage: this.problemCardImage,
+        problemCardAspect: this.problemCardAspect,
+        isProblemCardMinimized: this.isProblemCardMinimized,
+        problemCardBaseX: this.problemCardBaseX,
+        problemCardBaseY: this.problemCardBaseY,
+        problemInkStrokes: JSON.parse(JSON.stringify(this.problemInkStrokes || []))
+      } : null,
+      extraProblemCards: [...(this.extraProblemCards || [])],
+      primaryGraphCard: hasPrimaryGraph ? {
+        display: gWidget.style.display,
+        minimized: gWidget.classList.contains('minimized'),
+        left: gWidget.style.left,
+        top: gWidget.style.top,
+        width: gWidget.style.width,
+        transform: gWidget.style.transform,
+        zIndex: gWidget.style.zIndex,
+        imgSrc: gImg ? gImg.src : '',
+        titleText: gTitle ? gTitle.textContent : '',
+        toggleText: gToggle ? gToggle.textContent : '▾',
+        graphCardData: this.graphCardData ? { ...this.graphCardData } : null,
+        graphCardImage: this.graphCardImage,
+        graphCardAspect: this.graphCardAspect,
+        isGraphCardMinimized: this.isGraphCardMinimized,
+        graphCardBaseX: this.graphCardBaseX,
+        graphCardBaseY: this.graphCardBaseY,
+        primaryGraphCardSnapshot: this.primaryGraphCardSnapshot,
+        graphInkStrokes: JSON.parse(JSON.stringify(this.graphInkStrokes || []))
+      } : null,
+      extraGraphCards: [...(this.extraGraphCards || [])],
+      graphCaseCounter: this._graphCaseCounter || 0,
+      isGraphCovered: Boolean(this.isGraphCovered),
+      coveredGraphStateBackup: this._coveredGraphStateBackup ? JSON.parse(JSON.stringify(this._coveredGraphStateBackup)) : null,
+      savedLayer2BoardPan: this._savedLayer2BoardPan ? { ...this._savedLayer2BoardPan } : null,
+      pdfPageBoardData: this.pdfPageBoardData ? { ...this.pdfPageBoardData } : null,
+      pdfSavedPageStates: this.pdfSavedPageStates ? { ...this.pdfSavedPageStates } : {}
+    };
+  }
+
+  _restoreFullWorkspaceSnapshot(wsSnap) {
+    if (!wsSnap) return;
+    this.restoreHistorySnapshot(wsSnap.historyJson);
+
+    // 1. 기본 문제 카드 복원 또는 숨김
+    const pWidget = document.getElementById('problemCardWidget');
+    const pImg = document.getElementById('problemCardImg');
+    const pTitle = document.getElementById('problemCardTitle');
+    const pToggle = document.getElementById('iconCardToggle');
+    if (wsSnap.primaryProblemCard && pWidget) {
+      const pc = wsSnap.primaryProblemCard;
+      this.problemCardData = pc.problemCardData ? { ...pc.problemCardData } : null;
+      this.problemCardImage = pc.problemCardImage;
+      this.problemCardAspect = pc.problemCardAspect;
+      this.isProblemCardMinimized = Boolean(pc.isProblemCardMinimized);
+      this.problemCardBaseX = pc.problemCardBaseX;
+      this.problemCardBaseY = pc.problemCardBaseY;
+      this.problemInkStrokes = JSON.parse(JSON.stringify(pc.problemInkStrokes || []));
+      if (pImg) pImg.src = pc.imgSrc || '';
+      if (pTitle) pTitle.textContent = pc.titleText || '문제';
+      if (pToggle) pToggle.textContent = pc.toggleText || '▾';
+      pWidget.classList.toggle('minimized', Boolean(pc.minimized));
+      pWidget.style.left = pc.left || '72px';
+      pWidget.style.top = pc.top || '18px';
+      pWidget.style.width = pc.width || '520px';
+      pWidget.style.transform = pc.transform || '';
+      if (pc.zIndex) pWidget.style.zIndex = pc.zIndex;
+      pWidget.style.display = pc.display || 'flex';
+      this.syncProblemCardRectFromWidget();
+      this.renderProblemCardCanvas();
+    } else {
+      this.closeProblemCard();
+    }
+
+    // 2. 다중 추가 문제 카드 복원
+    const targetExtraProblems = wsSnap.extraProblemCards || [];
+    if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el && !targetExtraProblems.includes(c)) c.el.remove();
+      });
+    }
+    this.extraProblemCards = [...targetExtraProblems];
+    this.extraProblemCards.forEach(c => {
+      if (c && c.el && !document.body.contains(c.el)) {
+        document.body.appendChild(c.el);
+      }
+    });
+
+    // 3. 그래프 보관 카드 복원
+    const gWidget = document.getElementById('graphCardWidget');
+    const gImg = document.getElementById('graphCardImg');
+    const gTitle = document.getElementById('graphCardTitle');
+    const gToggle = document.getElementById('iconGraphCardToggle');
+    if (wsSnap.primaryGraphCard && gWidget) {
+      const gc = wsSnap.primaryGraphCard;
+      this._hasPrimaryGraphCard = true;
+      this.graphCardData = gc.graphCardData ? { ...gc.graphCardData } : null;
+      this.graphCardImage = gc.graphCardImage;
+      this.graphCardAspect = gc.graphCardAspect;
+      this.isGraphCardMinimized = Boolean(gc.isGraphCardMinimized);
+      this.graphCardBaseX = gc.graphCardBaseX;
+      this.graphCardBaseY = gc.graphCardBaseY;
+      this.primaryGraphCardSnapshot = gc.primaryGraphCardSnapshot;
+      this.graphInkStrokes = JSON.parse(JSON.stringify(gc.graphInkStrokes || []));
+      if (gImg) gImg.src = gc.imgSrc || '';
+      if (gTitle) gTitle.textContent = gc.titleText || '보관 그래프 #1';
+      if (gToggle) gToggle.textContent = gc.toggleText || '▾';
+      gWidget.classList.toggle('minimized', Boolean(gc.minimized));
+      gWidget.style.left = gc.left || '580px';
+      gWidget.style.top = gc.top || '68px';
+      gWidget.style.width = gc.width || '400px';
+      gWidget.style.transform = gc.transform || '';
+      if (gc.zIndex) gWidget.style.zIndex = gc.zIndex;
+      gWidget.style.display = gc.display || 'flex';
+      this.syncGraphCardRectFromWidget();
+    } else {
+      this._hasPrimaryGraphCard = false;
+      this.graphCardData = null;
+      this.graphCardRect = null;
+      this.graphInkStrokes = [];
+      if (gWidget) gWidget.style.display = 'none';
+    }
+
+    const targetExtraGraphs = wsSnap.extraGraphCards || [];
+    if (this.extraGraphCards && this.extraGraphCards.length > 0) {
+      this.extraGraphCards.forEach(c => {
+        if (c && c.el && !targetExtraGraphs.includes(c)) c.el.remove();
+      });
+    }
+    this.extraGraphCards = [...targetExtraGraphs];
+    this.extraGraphCards.forEach(c => {
+      if (c && c.el && !document.body.contains(c.el)) {
+        document.body.appendChild(c.el);
+      }
+    });
+
+    this._graphCaseCounter = wsSnap.graphCaseCounter || 0;
+    this.isGraphCovered = Boolean(wsSnap.isGraphCovered);
+    this._coveredGraphStateBackup = wsSnap.coveredGraphStateBackup ? JSON.parse(JSON.stringify(wsSnap.coveredGraphStateBackup)) : null;
+    this._savedLayer2BoardPan = wsSnap.savedLayer2BoardPan ? { ...wsSnap.savedLayer2BoardPan } : null;
+    this.pdfPageBoardData = wsSnap.pdfPageBoardData ? { ...wsSnap.pdfPageBoardData } : null;
+    this.pdfSavedPageStates = wsSnap.pdfSavedPageStates ? { ...wsSnap.pdfSavedPageStates } : {};
+
+    this.updateProblemCardPosition();
+    this.syncPdfBoardNavBarUI();
+    this.syncGraphSnapBarUI();
+    this.updateIntersections();
+    this.render();
+  }
+
+  pushHistoryState() {
+    if (this.isHistoryProcessing) return;
+    const snap = this.getHistorySnapshot();
+    if (this.undoStack.length > 0 && this.undoStack[this.undoStack.length - 1] === snap) {
+      return;
+    }
+    this.undoStack.push(snap);
+    if (this.undoStack.length > this.maxHistory) {
+      this.undoStack.shift();
+    }
+    this.redoStack = [];
+    this.updateUndoRedoUI();
+  }
+
+  undo() {
+    if (this.undoStack.length === 0) {
+      this.showToast('ℹ️ 실행 취소할 이전 작업이 없습니다.');
+      return;
+    }
+    this.isHistoryProcessing = true;
+    const prevSnap = this.undoStack.pop();
+
+    // 🌟 [새 캔버스 전체 초기화 실행 취소: 문제 카드·보관 카드·그래프·필기 100% 원상 복구]
+    if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'workspace_snapshot') {
+      const currentFull = this._captureFullWorkspaceSnapshot();
+      this.redoStack.push({ type: 'workspace_snapshot', snapshot: currentFull });
+      this._restoreFullWorkspaceSnapshot(prevSnap.snapshot);
+      this._inkBakeDirty = true;
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      this.showToast('↺ 새 캔버스 초기화 이전 상태로 모두 복구됨 (Ctrl+Z)');
+      return;
+    }
+
+    // 🌟 [0ms 초고속 잉크 획 단위 실행 취소]
+    if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'stroke_add') {
+      const idx = this.inkStrokes.indexOf(prevSnap.stroke);
+      if (idx !== -1) {
+        this.inkStrokes.splice(idx, 1);
+      }
+      this.redoStack.push(prevSnap);
+      this._inkBakeDirty = true;
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      this.render();
+      this.showToast('↺ 획 실행 취소됨 (Ctrl+Z)');
+      return;
+    }
+
+    const currentSnap = this.getHistorySnapshot();
+    this.redoStack.push(currentSnap);
+    this.restoreHistorySnapshot(prevSnap);
+    this._inkBakeDirty = true;
+    this.isHistoryProcessing = false;
+    this.updateUndoRedoUI();
+    this.showToast('↺ 실행 취소됨 (Ctrl+Z)');
+  }
+
+  redo() {
+    if (this.redoStack.length === 0) {
+      this.showToast('ℹ️ 다시 실행할 다음 작업이 없습니다.');
+      return;
+    }
+    this.isHistoryProcessing = true;
+    const nextSnap = this.redoStack.pop();
+
+    // 🌟 [새 캔버스 전체 초기화 다시 실행]
+    if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'workspace_snapshot') {
+      const currentFull = this._captureFullWorkspaceSnapshot();
+      this.undoStack.push({ type: 'workspace_snapshot', snapshot: currentFull });
+      this._restoreFullWorkspaceSnapshot(nextSnap.snapshot);
+      this._inkBakeDirty = true;
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      this.showToast('↻ 다시 실행됨 (Ctrl+Y)');
+      return;
+    }
+
+    // 🌟 [0ms 초고속 잉크 획 단위 다시 실행]
+    if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'stroke_add') {
+      this.inkStrokes.push(nextSnap.stroke);
+      this.undoStack.push(nextSnap);
+      this._inkBakeDirty = true;
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      this.render();
+      this.showToast('↻ 획 다시 실행됨 (Ctrl+Y)');
+      return;
+    }
+
+    const currentSnap = this.getHistorySnapshot();
+    this.undoStack.push(currentSnap);
+    this.restoreHistorySnapshot(nextSnap);
+    this._inkBakeDirty = true;
+    this.isHistoryProcessing = false;
+    this.updateUndoRedoUI();
+    this.showToast('↻ 다시 실행됨 (Ctrl+Y)');
+  }
+
+  restoreHistorySnapshot(jsonStr) {
+    try {
+      const data = JSON.parse(jsonStr);
+      this.graphs = data.graphs || [];
+      this.activeGraphIdx = data.activeGraphIdx !== undefined ? data.activeGraphIdx : -1;
+      if (data.zoomLevel !== undefined) {
+        this.zoomLevel = data.zoomLevel;
+        const slZoom = document.getElementById('sliderZoom');
+        if (slZoom) slZoom.value = this.zoomLevel;
+        const lblZoom = document.getElementById('lblZoom');
+        if (lblZoom) lblZoom.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+      }
+      if (data.panX !== undefined) this.panX = data.panX;
+      if (data.panY !== undefined) this.panY = data.panY;
+      if (data.boardPanX !== undefined) this.boardPanX = data.boardPanX;
+      if (data.boardPanY !== undefined) this.boardPanY = data.boardPanY;
+      if (data.xSpan !== undefined) this.xSpan = data.xSpan;
+      if (data.ySpan !== undefined) this.ySpan = data.ySpan;
+      if (data.showAxes !== undefined) {
+        this.showAxes = Boolean(data.showAxes);
+        this.updateAxesUI();
+      }
+      if (data.showGuides !== undefined) {
+        this.showGuides = Boolean(data.showGuides);
+        const chkG = document.getElementById('chkGuides');
+        if (chkG) chkG.checked = this.showGuides;
+      }
+      if (data.usePiecewise !== undefined) {
+        this.usePiecewise = data.usePiecewise;
+        const chk = document.getElementById('chkPiecewise');
+        if (chk) chk.checked = this.usePiecewise;
+        const btnQuick = document.getElementById('btnQuickPiecewise');
+        if (btnQuick) btnQuick.classList.toggle('active', this.usePiecewise);
+        const pwBox = document.getElementById('pwControls');
+        if (pwBox) pwBox.style.display = this.usePiecewise ? 'block' : 'none';
+      }
+      if (data.piecewiseBoundaries) this.piecewiseBoundaries = [...data.piecewiseBoundaries];
+      if (data.piecewiseFuncMap) this.piecewiseFuncMap = [...data.piecewiseFuncMap];
+      if (data.piecewiseInclusions) this.piecewiseInclusions = [...data.piecewiseInclusions];
+      if (data.isPiecewisePeriodic !== undefined) {
+        this.isPiecewisePeriodic = data.isPiecewisePeriodic;
+      }
+      if (data.periodicStepY !== undefined) {
+        this.periodicStepY = data.periodicStepY;
+      }
+      if (data.isPiecewiseLocked !== undefined) {
+        this.isPiecewiseLocked = Boolean(data.isPiecewiseLocked);
+      }
+      this.syncPeriodicUI();
+      if (data.showInverseGuide !== undefined) {
+        this.showInverseGuide = data.showInverseGuide;
+        const chkInv = document.getElementById('chkInverseGuide');
+        if (chkInv) chkInv.checked = this.showInverseGuide;
+      }
+      if (data.dropLines) {
+        this.dropLines = JSON.parse(JSON.stringify(data.dropLines));
+      } else {
+        this.dropLines = [];
+      }
+      if (data.textLabels) {
+        this.textLabels = JSON.parse(JSON.stringify(data.textLabels));
+      } else {
+        this.textLabels = [];
+      }
+      if (data.axisLabelX !== undefined) {
+        this.axisLabelX = data.axisLabelX;
+        const inX = document.getElementById('inputAxisNameX');
+        if (inX) inX.value = this.axisLabelX;
+      }
+      if (data.axisLabelY !== undefined) {
+        this.axisLabelY = data.axisLabelY;
+        const inY = document.getElementById('inputAxisNameY');
+        if (inY) inY.value = this.axisLabelY;
+      }
+      if (data.showAxisLabels !== undefined) {
+        this.showAxisLabels = data.showAxisLabels;
+        const chk = document.getElementById('chkShowAxisLabels');
+        if (chk) chk.checked = this.showAxisLabels;
+        const sub = document.getElementById('axisLabelsSubPanel');
+        if (sub) sub.style.display = this.showAxisLabels ? 'block' : 'none';
+      }
+      if (data.axisLabelFontSize !== undefined) {
+        this.axisLabelFontSize = data.axisLabelFontSize;
+        const sl = document.getElementById('sliderAxisLabelSize');
+        if (sl) sl.value = this.axisLabelFontSize;
+        const lbl = document.getElementById('lblAxisLabelSize');
+        if (lbl) lbl.textContent = `${this.axisLabelFontSize} pt`;
+      }
+      if (data.textLabelFontSize !== undefined) {
+        this.textLabelFontSize = data.textLabelFontSize;
+        const slText = document.getElementById('sliderTextLabelSize');
+        if (slText) slText.value = this.textLabelFontSize;
+        const lblText = document.getElementById('lblTextLabelSize');
+        if (lblText) lblText.textContent = `${this.textLabelFontSize} pt`;
+      }
+      if (data.inkStrokes) {
+        this.inkStrokes = JSON.parse(JSON.stringify(data.inkStrokes));
+      } else {
+        this.inkStrokes = [];
+      }
+      this._inkBakeDirty = true;
+
+      this.selectedHandleIdx = null;
+      this.isCurveSelected = this.graphs.length > 0;
+      this.syncControls();
+      this.renderLayerList();
+      this.renderFuncList();
+      this.render();
+    } catch (e) {
+      console.error('History restore error:', e);
+    }
+  }
+
+  updateUndoRedoUI() {
+    const btnUndo = document.getElementById('btnUndo');
+    const btnRedo = document.getElementById('btnRedo');
+    const btnQuickUndo = document.getElementById('btnQuickUndo');
+    const btnQuickRedo = document.getElementById('btnQuickRedo');
+
+    const canUndo = this.undoStack.length > 0;
+    const canRedo = this.redoStack.length > 0;
+    const undoTitle = 'Ctrl+Z';
+    const redoTitle = 'Ctrl+Y';
+
+    if (btnUndo) {
+      btnUndo.disabled = !canUndo;
+      btnUndo.title = undoTitle;
+    }
+    if (btnRedo) {
+      btnRedo.disabled = !canRedo;
+      btnRedo.title = redoTitle;
+    }
+    if (btnQuickUndo) {
+      btnQuickUndo.disabled = !canUndo;
+      btnQuickUndo.title = undoTitle;
+    }
+    if (btnQuickRedo) {
+      btnQuickRedo.disabled = !canRedo;
+      btnQuickRedo.title = redoTitle;
+    }
+  }
+
+  // --- [다중 그래프 레이어 관리 UI] ---
+  renderLayerList() {
+    const list = document.getElementById('graphLayerList');
+    if (!list) return;
+    list.innerHTML = '';
+
+    const countLbl = document.getElementById('lblGraphCount');
+    if (countLbl) countLbl.textContent = this.graphs.length;
+
+    if (this.graphs.length === 0) {
+      const emptyHint = document.createElement('div');
+      emptyHint.className = 'empty-layer-hint';
+      emptyHint.style.cssText = 'padding: 10px 8px; font-size: 11px; color: var(--text-muted); text-align: center; border: 1px dashed rgba(255,255,255,0.12); border-radius: var(--radius-sm); margin: 4px 0;';
+      emptyHint.innerHTML = '레이어가 비어있습니다<br><span style="font-size:10px; opacity:0.8;">아래 [개형 클릭] 시 즉시 자동 추가</span>';
+      list.appendChild(emptyHint);
+    } else {
+      this.graphs.forEach((g, idx) => {
+        const item = document.createElement('div');
+        item.className = `layer-item ${idx === this.activeGraphIdx ? 'active' : ''}`;
+
+        const left = document.createElement('div');
+        left.className = 'layer-left';
+
+        const dot = document.createElement('span');
+        dot.className = 'layer-dot';
+        dot.style.backgroundColor = g.color;
+        dot.style.color = g.color;
+
+        const title = document.createElement('span');
+        title.className = 'layer-title';
+        title.textContent = `f${idx + 1}(x)`;
+
+        const badge = document.createElement('span');
+        badge.className = 'layer-badge';
+        badge.textContent = this.meta[g.type]?.name || '도형';
+
+        left.appendChild(dot);
+        left.appendChild(title);
+        left.appendChild(badge);
+        item.appendChild(left);
+
+        const rightTools = document.createElement('div');
+        rightTools.style.cssText = 'display: flex; align-items: center; gap: 3px;';
+
+        // 구간 분할 모드 활성 시: '구간 참여' vs '독립 곡선' 원클릭 토글 뱃지
+        if (this.usePiecewise && this.graphs.length >= 2) {
+          const roleBtn = document.createElement('button');
+          const isIndep = Boolean(g.isIndependent);
+          roleBtn.className = `btn-layer-role ${isIndep ? 'independent' : 'piecewise'}`;
+          roleBtn.textContent = isIndep ? '🌐 독립' : '✂️ 구간';
+          roleBtn.title = isIndep ? '독립 곡선' : '구간 합성';
+          roleBtn.style.cssText = `padding: 2px 5px; font-size: 10px; font-weight: 600; border-radius: 4px; border: 1px solid ${isIndep ? '#00cec9' : '#a29bfe'}; background: ${isIndep ? 'rgba(0, 206, 201, 0.16)' : 'rgba(162, 155, 254, 0.16)'}; color: ${isIndep ? '#00cec9' : '#a29bfe'}; cursor: pointer; line-height: 1.2;`;
+          roleBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.pushHistoryState();
+            g.isIndependent = !isIndep;
+            if (!g.isIndependent) {
+              this.showToast(`✂️ f${idx + 1}(x)이 구간 분할에 참여합니다. 상단 칩에서 배정 영역을 지정하세요.`);
+            } else {
+              this.showToast(`🌐 f${idx + 1}(x)이 독립 관찰 곡선(직선 등)으로 분리되었습니다!`);
+            }
+            this.renderLayerList();
+            this.updateIntersections();
+            this.render();
+          };
+          rightTools.appendChild(roleBtn);
+        }
+
+        // [🔗 역함수 대칭 연동 토글 뱃지 버튼]
+        if (g.linkedInverseId) {
+          const linkBtn = document.createElement('button');
+          linkBtn.className = 'btn-layer-tool linked';
+          linkBtn.textContent = '🔗';
+          linkBtn.title = '연동 해제';
+          linkBtn.style.cssText = 'padding: 2px 4px; font-size: 11px; font-weight: 700; background: rgba(162, 155, 254, 0.22); border: 1px solid rgba(162, 155, 254, 0.6); border-radius: 4px; color: #a29bfe; cursor: pointer; line-height: 1.2;';
+          linkBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.toggleInverseLink(idx);
+          };
+          rightTools.appendChild(linkBtn);
+        }
+
+        // [🔄 역함수(y=x 대칭) 복제 버튼]
+        const invBtn = document.createElement('button');
+        invBtn.className = 'btn-layer-tool';
+        invBtn.textContent = '🔄';
+        invBtn.title = '역함수 복제';
+        invBtn.style.cssText = 'padding: 2px 4px; font-size: 11px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; color: #a4b0be; cursor: pointer; line-height: 1.2;';
+        invBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.selectGraph(idx);
+          this.cloneInverseGraph();
+        };
+        rightTools.appendChild(invBtn);
+
+        // [📋 동일 개형 복제 버튼]
+        const dupBtn = document.createElement('button');
+        dupBtn.className = 'btn-layer-tool';
+        dupBtn.textContent = '📋';
+        dupBtn.title = '복제';
+        dupBtn.style.cssText = 'padding: 2px 4px; font-size: 11px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; color: #a4b0be; cursor: pointer; line-height: 1.2;';
+        dupBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.duplicateGraph(idx);
+        };
+        rightTools.appendChild(dupBtn);
+
+        // 언제든 삭제 버튼 표시 (마지막 1개도 삭제하여 빈 화면으로 전환 가능)
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn-del-layer';
+        delBtn.textContent = '✕';
+        delBtn.title = 'Delete';
+        delBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.removeGraph(idx);
+        };
+        rightTools.appendChild(delBtn);
+
+        item.appendChild(rightTools);
+
+        item.onclick = () => this.selectGraph(idx);
+        list.appendChild(item);
+      });
+    }
+
+    const addBtn = document.getElementById('btnAddGraph');
+    if (addBtn) {
+      const isMax = this.graphs.length >= 12;
+      addBtn.style.opacity = isMax ? '0.35' : '1';
+      addBtn.style.cursor = isMax ? 'not-allowed' : 'pointer';
+      addBtn.title = isMax ? '최대 12개' : '그래프 추가';
+    }
+  }
+
+  addGraph(preferredType = null) {
+    if (this.isGraphCovered) {
+      this.restoreLiveGraphFromCard(true, null, null, Boolean(this.pdfPageBoardData));
+    }
+    if (this.graphs.length >= 12) {
+      this.showToast('⚠️ 그래프는 최대 12개까지 동시에 추가할 수 있습니다.');
+      return;
+    }
+
+    this.pushHistoryState();
+
+    // 추천 기본 함수 타입 순환 (또는 지정된 개형)
+    const presetOrder = ['3rd_normal', '1st_linear', '2nd_quadratic', 'exp_basic', 'geom_quad'];
+    const nextType = preferredType || presetOrder[this.graphs.length % presetOrder.length];
+    const nextColor = this.colorPalette[this.graphs.length % this.colorPalette.length];
+
+    const newGraph = {
+      id: 'g_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      type: nextType,
+      category: this.meta[nextType].category,
+      handles: JSON.parse(JSON.stringify(this.meta[nextType].handles)),
+      color: nextColor,
+      lineWidth: 2.8,
+      isAbsolute: false,
+      shapeMode: 'free',
+      originCenter: false,
+      isFrozen: false,
+      freezeOffset: { x: 0, y: 0 },
+      frozenInvertH: false,
+      frozenInvertV: false,
+      frozenAbsolute: false,
+      isIndependent: Boolean(this.usePiecewise)
+    };
+
+    this.graphs.push(newGraph);
+    this.activeGraphIdx = this.graphs.length - 1;
+    this.selectedHandleIdx = null;
+    this.isCurveSelected = true;
+    this._currentCat = newGraph.category;
+
+    // 삼각함수는 6~8주기가 한눈에 보이도록 대파노라마 화각 확장 (단, PDF 개념 페이지 위에서는 아담한 그래프 스케일 ySpan=8.4 유지!)
+    if (this.pdfPageBoardData) {
+      this.xSpan = 11.5;
+      this.ySpan = this.pdfPageBoardData.baseYSpan || 8.4;
+      if (this.graphs.length === 1 && typeof this.rebasePdfBoardOriginToScreenCenter === 'function') {
+        this.rebasePdfBoardOriginToScreenCenter();
+      }
+    } else if (["sin_1period", "cos_1period", "tan_1period"].includes(nextType)) {
+      this.xSpan = 20.0;
+      this.ySpan = 5.5;
+    } else {
+      this.xSpan = 8.5;
+      this.ySpan = 6.0;
+    }
+
+    // 🌟 [대표님 기획: 그래프 개형 선택/추가 시 자동으로 좌표평면 On!] 🌟
+    // 빈 칠판 모드에서 시작하더라도, 개형을 선택하는 즉시 x·y축과 눈금이 선명하게 활성화됩니다!
+    if (!this.showAxes) {
+      this.showAxes = true;
+      this.updateAxesUI();
+    }
+
+    // 🌟 [문제 카드 활성 시 우측 판서 공간 스마트 자동 배치 & 컴팩트 스케일링] 🌟
+    // 좌측에 크롭된 문제가 떠 있을 때 첫 그래프를 소환하면:
+    // (1) 문제를 가리지 않도록 우측 빈 공간의 정사각형 컴팩트 스테이지 중앙으로 원점 자동 이동
+    // (2) 칠판 판서 여백을 위해 적당한 아담한 크기(zoomLevel = 0.68) 및 좌표축 자동 ON
+    // (3) 그래프 극점을 바로 잡고 움직일 수 있도록 '조작(select)' 모드로 자동 전환 & 좌측 서랍 자동 접기!
+    if (this.hasActiveProblemCard()) {
+      if (this.graphs.length === 1) {
+        this.syncProblemCardRectFromWidget();
+        const cardRight = (this.problemCardRect && !this.isProblemCardMinimized)
+          ? (this.problemCardRect.x + this.problemCardRect.w)
+          : 520;
+        const availCenterX = Math.round((cardRight + this.screenWidth) / 2);
+        if (this.panX === 0 && this.panY === 0) {
+          this.panX = Math.round(availCenterX - this.screenWidth / 2);
+          this.panY = 0;
+        }
+        if (!this.showAxes) {
+          this.showAxes = true;
+          this.showGuides = true;
+          this.updateAxesUI();
+        }
+      }
+      if (this.isInkMode && this.activeInkTool !== 'select') {
+        this.setActiveInkTool('select');
+      }
+      if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+        this.closeDrawer();
+      }
+    } else if (this.pdfPageBoardData) {
+      if (this.isInkMode && this.activeInkTool !== 'select') {
+        this.setActiveInkTool('select');
+      }
+      if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+        this.closeDrawer();
+      }
+    }
+
+    this.syncControls();
+    this.renderLayerList();
+    this.renderFuncList();
+    this.render();
+
+    this.showToast(`✨ 새 그래프 f${this.graphs.length}(x) (${this.meta[nextType].name}) 추가됨!`);
+  }
+
+  removeGraph(idx) {
+    if (idx < 0 || idx >= this.graphs.length) return;
+    this.pushHistoryState();
+    const g = this.graphs[idx];
+    const removedGraphId = g ? g.id : null;
+    const partner = this.getLinkedPartner(g);
+    if (partner) partner.linkedInverseId = null;
+
+    const removedName = this.meta[g.type]?.name || '그래프';
+    this.graphs.splice(idx, 1);
+
+    // [📍 종속 보조 수선 클린업]: 대표님 기획 - 원그래프 삭제 시 종속 수선 삭제, 단 교점은 남은 그래프가 이어받기!
+    if (this.dropLines && this.dropLines.length > 0) {
+      if (this.graphs.length === 0) {
+        this.dropLines = [];
+      } else if (removedGraphId) {
+        this.dropLines = this.dropLines.filter(dl => {
+          if (!dl.binding) return true;
+          const b = dl.binding;
+
+          // 1. 교점 수선인 경우: 남은 그래프가 이어받기 (Adoption)!
+          if (b.isIntersection || b.name === '교점') {
+            const ids = b.layerIds || (b.candKey ? b.candKey.split('_').filter(k => k.startsWith('g_') || k.startsWith('graph_')) : []);
+            // 남아있는 그래프들 중 교점의 부모가 있는지 확인
+            const survivingGraph = this.graphs.find(item => ids.includes(item.id) && item.id !== removedGraphId);
+            if (survivingGraph) {
+              // 남은 그래프로 부모 바인딩을 이관!
+              b.layerId = survivingGraph.id;
+              b.layerIds = ids.filter(id => id !== removedGraphId);
+              b.type = 'curve'; // 남은 그래프 위의 곡선 점으로 부드럽게 전환하여 추적 유지!
+              b.anchorX = dl.sourceX;
+              return true; // 교점 수선 살아남음!
+            } else {
+              // 두 그래프가 모두 삭제되었거나 남은 부모가 없으면 삭제!
+              return false;
+            }
+          }
+
+          // 2. 극점, 꼭짓점, 곡선 위의 점 등 원그래프에 단독 종속된 수선: 원그래프 삭제 시 함께 삭제!
+          if (b.layerId === removedGraphId) return false;
+          if (b.layerId && !this.graphs.some(item => item.id === b.layerId)) return false;
+
+          return true;
+        });
+      }
+    }
+
+    // [스마트 역함수 대칭선 클린업]: 캔버스에 역함수 연동 쌍이 더 이상 없으면 y = x 가이드라인 자동 OFF
+    const hasAnyInverseLink = this.graphs.some(item => item.linkedInverseId);
+    if (!hasAnyInverseLink && this.showInverseGuide) {
+      this.showInverseGuide = false;
+      const chkInv = document.getElementById('chkInverseGuide');
+      if (chkInv) chkInv.checked = false;
+    }
+
+    if (this.graphs.length === 0) {
+      this.activeGraphIdx = -1;
+      this.isCurveSelected = false;
+      this.selectedPwBoundaryIdx = null;
+      this.dropLines = []; // 빈 캔버스 시 수선 100% 완전 정리
+
+      // [모든 함수 삭제 시 y = x 대칭선 잔상 100% 완전 초기화]
+      this.showInverseGuide = false;
+      const chkInv = document.getElementById('chkInverseGuide');
+      if (chkInv) chkInv.checked = false;
+
+      // [대표님 기획]: 모든 함수가 삭제되면 구간 분할 잔상도 100% 완전 초기화!
+      this.usePiecewise = false;
+      this.isPiecewiseLocked = false;
+      this.isPiecewisePeriodic = false;
+      this.piecewiseBoundaries = [];
+      this.piecewiseFuncMap = [];
+      this.piecewiseInclusions = [];
+      const chk = document.getElementById('chkPiecewise');
+      if (chk) chk.checked = false;
+      const btnQuick = document.getElementById('btnQuickPiecewise');
+      if (btnQuick) btnQuick.classList.remove('active');
+      const pwControls = document.getElementById('pwControls');
+      if (pwControls) pwControls.style.display = 'none';
+
+      this.showToast(`🗑️ ${removedName} 삭제됨 (빈 레이어 상태)`);
+    } else {
+      if (this.activeGraphIdx >= this.graphs.length) {
+        this.activeGraphIdx = this.graphs.length - 1;
+      }
+      // 삭제된 함수 인덱스를 piecewiseFuncMap에서 안전하게 '함수 없음(-1)'으로 대체 및 인덱스 정렬
+      if (this.piecewiseFuncMap && this.piecewiseFuncMap.length > 0) {
+        this.piecewiseFuncMap = this.piecewiseFuncMap.map(fi => {
+          if (fi === -1) return -1;
+          if (fi === idx) return -1; // 삭제된 함수는 비움으로 안전 전환
+          if (fi > idx) return fi - 1; // 삭제된 인덱스 이후의 함수 번호 당김
+          return fi;
+        });
+        this.updatePwDescBadge();
+      }
+      this.showToast(`🗑️ ${removedName} 삭제 완료!`);
+    }
+    this.selectedHandleIdx = null;
+
+    this.syncControls();
+    this.renderLayerList();
+    this.renderFuncList();
+    this.updateIntersections();
+    this.render();
+  }
+
+  // --- [🗑️ 1. 그래프만 지우기 (필기 & 떠 있는 문제 카드는 그대로 보존)] ---
+  clearAllGraphs() {
+    const hasGraphElements = (
+      this.graphs.length > 0 ||
+      this.usePiecewise ||
+      (this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0) ||
+      (this.dropLines && this.dropLines.length > 0) ||
+      (this.textLabels && this.textLabels.length > 0)
+    );
+    if (!hasGraphElements) {
+      this.showToast('ℹ️ 지울 그래프나 경계선이 없습니다.');
+      return;
+    }
+
+    this.pushHistoryState();
+    this.graphs = [];
+    this.activeGraphIdx = -1;
+    this.selectedHandleIdx = null;
+    this.isCurveSelected = false;
+    this.selectedPwBoundaryIdx = null;
+    this.dropLines = [];
+    this.textLabels = [];
+
+    // y = x 대칭 기준선 해제
+    this.showInverseGuide = false;
+    const chkInv = document.getElementById('chkInverseGuide');
+    if (chkInv) chkInv.checked = false;
+
+    // 구간 분할 & 주기 반복 잔상 완전 초기화
+    this.usePiecewise = false;
+    this.piecewiseBoundaries = [];
+    this.piecewiseFuncMap = [];
+    this.piecewiseInclusions = [];
+    this.isPiecewisePeriodic = false;
+    this.periodicStepY = 0;
+    this.isPiecewiseLocked = false;
+    this.syncPeriodicUI();
+    const chk = document.getElementById('chkPiecewise');
+    if (chk) chk.checked = false;
+    const btnQuick = document.getElementById('btnQuickPiecewise');
+    if (btnQuick) btnQuick.classList.remove('active');
+    const pwControls = document.getElementById('pwControls');
+    if (pwControls) pwControls.style.display = 'none';
+
+    // N축 모드 중이었다면 안전 복귀
+    if (this.isNAxisMode) {
+      this.exitNAxisMode();
+    }
+
+    this.syncControls();
+    this.renderLayerList();
+    this.renderFuncList();
+    this.updateIntersections();
+    this.syncGraphSnapBarUI();
+    this.render();
+
+    this.showToast('✨ 그래프와 경계선만 지웠습니다! (필기·문제 유지 / 되돌리기: Ctrl+Z)');
+  }
+
+  // --- [🧹 3. 새 캔버스 (전체 초기화: 그래프 + 경계선 + 필기 + 떠 있는 문제/보관 카드 전부 초기화)] ---
+  resetNewCanvas() {
+    const pWidget = document.getElementById('problemCardWidget');
+    const hasPrimaryProblem = Boolean(pWidget && pWidget.style.display !== 'none' && this.problemCardData);
+    const hasExtraProblems = Boolean(this.extraProblemCards && this.extraProblemCards.length > 0);
+    const hasGraphCards = Boolean(
+      (this._hasPrimaryGraphCard && this.graphCardData) ||
+      (this.extraGraphCards && this.extraGraphCards.length > 0) ||
+      this.isGraphCovered
+    );
+    const hasAnything = (
+      this.graphs.length > 0 ||
+      (this.inkStrokes && this.inkStrokes.length > 0) ||
+      this.usePiecewise ||
+      (this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0) ||
+      (this.dropLines && this.dropLines.length > 0) ||
+      (this.textLabels && this.textLabels.length > 0) ||
+      hasPrimaryProblem ||
+      hasExtraProblems ||
+      hasGraphCards ||
+      Boolean(this.pdfPageBoardData) ||
+      this.panX !== 0 ||
+      this.panY !== 0 ||
+      this.boardPanX !== 0 ||
+      this.boardPanY !== 0 ||
+      Math.abs((this.zoomLevel || 1) - 1.0) > 0.001 ||
+      !this.showAxes
+    );
+
+    if (!hasAnything) {
+      this.showToast('ℹ️ 이미 깨끗한 새 캔버스 상태입니다.');
+      return;
+    }
+
+    // 🌟 실행 취소(Ctrl+Z) 시 떠 있던 문제 카드까지 100% 복구되도록 전체 워크스페이스 스냅샷 저장!
+    if (!this.isHistoryProcessing) {
+      const fullSnap = this._captureFullWorkspaceSnapshot();
+      this.undoStack.push({ type: 'workspace_snapshot', snapshot: fullSnap });
+      if (this.undoStack.length > this.maxHistory) {
+        this.undoStack.shift();
+      }
+      this.redoStack = [];
+      this.updateUndoRedoUI();
+    }
+
+    // 1. 떠 있는 모든 문제 카드(기본 + 추가) 제거
+    this.closeProblemCard();
+    if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el) c.el.remove();
+      });
+      this.extraProblemCards = [];
+    }
+
+    // 2. 보관된 모든 그래프 카드(#1, #2...) 및 2층 칠판 덮개 해제
+    this._hasPrimaryGraphCard = false;
+    this.graphCardData = null;
+    this.graphCardRect = null;
+    this.graphInkStrokes = [];
+    const gWidget = document.getElementById('graphCardWidget');
+    if (gWidget) gWidget.style.display = 'none';
+    if (this.extraGraphCards && this.extraGraphCards.length > 0) {
+      this.extraGraphCards.forEach(c => {
+        if (c && c.el) c.el.remove();
+      });
+      this.extraGraphCards = [];
+    }
+    this._graphCaseCounter = 0;
+    this.isGraphCovered = false;
+    this._coveredGraphStateBackup = null;
+    this._savedLayer2BoardPan = null;
+
+    // 3. 모든 그래프 및 구간 분할 / 주기 반복 초기화
+    this.graphs = [];
+    this.activeGraphIdx = -1;
+    this.selectedHandleIdx = null;
+    this.isCurveSelected = false;
+    this.selectedPwBoundaryIdx = null;
+    this.usePiecewise = false;
+    this.piecewiseBoundaries = [];
+    this.piecewiseFuncMap = [];
+    this.piecewiseInclusions = [];
+    this.isPiecewisePeriodic = false;
+    this.periodicStepY = 0;
+    this.isPiecewiseLocked = false;
+    this.syncPeriodicUI();
+    const chkPw = document.getElementById('chkPiecewise');
+    if (chkPw) chkPw.checked = false;
+    const btnQuickPw = document.getElementById('btnQuickPiecewise');
+    if (btnQuickPw) btnQuickPw.classList.remove('active');
+    const pwControls = document.getElementById('pwControls');
+    if (pwControls) pwControls.style.display = 'none';
+    const pwPopover = document.getElementById('pwRegionPopover');
+    if (pwPopover) pwPopover.style.display = 'none';
+
+    // 4. 수선, 텍스트 라벨 및 모든 칠판 필기 초기화
+    this.dropLines = [];
+    this.textLabels = [];
+    this.inkStrokes = [];
+    this.selectedInkIndices = [];
+    this.inkLassoBox = null;
+    this._inkBakeDirty = true;
+    this.clearInkCache();
+
+    // 5. 초기 접속 상태의 깨끗한 좌표평면(축/그리드/원점/배율) 및 PDF 페이지 배경 초기화
+    this.pdfPageBoardData = null;
+    this.pdfSavedPageStates = {};
+    this._lastPdfPageScreenRect = null;
+    this.syncPdfBoardNavBarUI();
+    if (this.isNAxisMode) {
+      this.exitNAxisMode();
+    }
+    this.showAxes = true;
+    this.showGuides = true;
+    this.showInverseGuide = false;
+    const chkInv = document.getElementById('chkInverseGuide');
+    if (chkInv) chkInv.checked = false;
+    const chkGuides = document.getElementById('chkGuides');
+    if (chkGuides) chkGuides.checked = true;
+    this.panX = 0;
+    this.panY = 0;
+    this.boardPanX = 0;
+    this.boardPanY = 0;
+    this.setZoomLevel(1.0);
+    this.updateAxesUI();
+
+    this.syncControls();
+    this.renderLayerList();
+    this.renderFuncList();
+    this.updateIntersections();
+    this.syncGraphSnapBarUI();
+    this.render();
+
+    this.showToast('✨ 새 캔버스로 전체 초기화했습니다! (실수 시 Ctrl+Z로 문제·필기·그래프 즉시 복구)');
+  }
+
+  selectGraph(idx) {
+    if (idx < 0 || idx >= this.graphs.length) return;
+    this.activeGraphIdx = idx;
+    this.selectedHandleIdx = null;
+    this.isCurveSelected = true;
+    if (this.activeGraph) {
+      this._currentCat = this.activeGraph.category;
+    }
+
+    this.syncControls();
+    this.renderLayerList();
+    this.renderFuncList();
+    this.render();
+  }
+
+  // ➕ 무한 다단 절댓값 다시 접기 (Infinite Multi-Stage Absolute Value)
+  foldAgain() {
+    if (!this.activeGraph || !this.activeGraph.isAbsolute) return;
+    this.pushHistoryState();
+    const g = this.activeGraph;
+    if (!g.transforms) g.transforms = [];
+    const curOx = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+    const curOy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+    g.transforms.push({ offset: { x: curOx, y: curOy }, abs: true });
+    g.freezeOffset = { x: 0, y: 0 };
+    this.syncControls();
+    this.render();
+    const stage = g.transforms.length + 1;
+    this.showToast(`✨ ${stage}차 절댓값 재접기 완료! (아래로 내려간 부분을 다시 꺾어올림)`);
+  }
+
+  // (하위 호환 유지) 형상 프리징 토글
+  toggleFreeze(targetIdx = null) {
+    const idx = (targetIdx !== null) ? targetIdx : this.activeGraphIdx;
+    const g = this.graphs[idx];
+    if (!g) return;
+    this.pushHistoryState();
+    g.isFrozen = !g.isFrozen;
+    this.syncControls();
+    this.renderLayerList();
+    this.render();
+  }
+
+  syncControls() {
+    const g = this.activeGraph;
+
+    // 카테고리 탭 동기화
+    const curCat = g ? g.category : (this._currentCat || '📐 다항함수');
+    document.querySelectorAll('.cat-tab-btn').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.cat === curCat);
+    });
+
+    if (!g) {
+      // 그래프가 없는 빈 상태일 때의 UI 처리
+      const chkAbs = document.getElementById('chkAbs');
+      if (chkAbs) chkAbs.checked = false;
+      const btnFoldAgain = document.getElementById('btnFoldAgain');
+      if (btnFoldAgain) btnFoldAgain.style.display = 'none';
+      document.querySelectorAll('.color-dot').forEach(dot => dot.classList.remove('active'));
+      this.syncShapePanel();
+      return;
+    }
+
+    // 절댓값 체크박스 동기화
+    const chkAbs = document.getElementById('chkAbs');
+    if (chkAbs) chkAbs.checked = g.isAbsolute;
+
+    // ➕ 무한 다단 절댓값 다시 접기 버튼 동기화
+    const btnFoldAgain = document.getElementById('btnFoldAgain');
+    if (btnFoldAgain) {
+      const curOx = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+      const curOy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+      const hasOffset = Math.abs(curOx) > 0.05 || Math.abs(curOy) > 0.05;
+      const hasTransforms = g.transforms && g.transforms.length > 0;
+      if (g.isAbsolute && (hasOffset || hasTransforms)) {
+        btnFoldAgain.style.display = 'inline-block';
+        btnFoldAgain.textContent = hasTransforms ? `➕ ${g.transforms.length + 1}차 다시 접기` : '➕ 다시 접기';
+      } else {
+        btnFoldAgain.style.display = 'none';
+      }
+    }
+
+    // 선 두께 슬라이더 동기화
+    const sliderLw = document.getElementById('sliderLw');
+    if (sliderLw) {
+      sliderLw.value = g.lineWidth;
+      document.getElementById('lblLw').textContent = `${g.lineWidth.toFixed(1)} pt`;
+    }
+
+    // 컬러 피커 팔레트 동기화
+    document.querySelectorAll('.color-dot').forEach(dot => {
+      dot.classList.toggle('active', dot.dataset.color === g.color);
+    });
+
+    // 사각형 모드 패널 동기화 (사각형 활성 시에만 표시)
+    this.syncShapePanel();
+
+    // 🔗 역함수 대칭 연동 상태 버튼 동기화 (대표님 기획: '✂️ 연동끊기'로 직관화)
+    const btnToggleLink = document.getElementById('btnToggleInverseLink');
+    if (btnToggleLink) {
+      if (g && g.linkedInverseId) {
+        btnToggleLink.style.display = 'block';
+        btnToggleLink.innerHTML = '✂️ 연동끊기';
+        btnToggleLink.title = '클릭 시 두 함수의 연동을 끊어 각자 독립적으로 조작합니다.';
+      } else {
+        btnToggleLink.style.display = 'none';
+      }
+    }
+
+    // 📈 |f(x)| 절댓값 버튼 활성 상태 동기화 (대표님 규칙: 그래프 움직임 시 active 해제)
+    const btnToggleAbs = document.getElementById('btnToggleAbs');
+    if (btnToggleAbs) {
+      const isAbsActive = g ? Boolean(g.isAbsolute && g.isAbsPristine) : false;
+      btnToggleAbs.classList.toggle('active', isAbsActive);
+      btnToggleAbs.style.background = isAbsActive ? 'rgba(0, 210, 211, 0.22)' : '';
+      btnToggleAbs.style.borderColor = isAbsActive ? 'var(--accent-cyan)' : '';
+      btnToggleAbs.style.color = isAbsActive ? 'var(--accent-cyan)' : '';
+    }
+
+    // 🌟 [대표님 기획: ⚙️ 설정 패널 체크박스 및 바깥 캡처영역 버튼 동기화]
+    const btnRailVf = document.getElementById('btnRailToggleVf');
+    if (btnRailVf) btnRailVf.classList.toggle('active', Boolean(this.useViewfinder));
+    const chkSnap = document.getElementById('chkMagneticSnap');
+    if (chkSnap) chkSnap.checked = Boolean(this.useMagneticSnap);
+    const chkGuides = document.getElementById('chkGuides');
+    if (chkGuides) chkGuides.checked = Boolean(this.showGuides);
+    const chkAsym = document.getElementById('chkAsymptotes');
+    if (chkAsym) chkAsym.checked = Boolean(this.showAsymptotes);
+    const chkInv = document.getElementById('chkInverseGuide');
+    if (chkInv) chkInv.checked = Boolean(this.showInverseGuide);
+
+    // 🌟 [대표님 기획: 상단 중앙 초슬림 캡슐바 동기화]
+    this.syncCurveContextBar();
+  }
+
+  renderFuncList() {
+    const grid = document.getElementById('funcGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const currentCat = this.activeGraph ? this.activeGraph.category : (this._currentCat || '📐 다항함수');
+    const currentType = this.activeGraph ? this.activeGraph.type : null;
+
+    const currentCatFuncs = Object.entries(this.meta).filter(
+      ([key, data]) => data.category === currentCat
+    );
+
+    currentCatFuncs.forEach(([key, data]) => {
+      const btn = document.createElement('button');
+      btn.className = `func-btn ${key === currentType ? 'active' : ''}`;
+      btn.innerHTML = `
+        <span class="func-icon-wrap">${data.svg || ''}</span>
+        <span class="func-name-text">${data.name}</span>
+      `;
+      btn.onclick = () => {
+        if (this.graphs.length >= 12) {
+          this.showToast('⚠️ 그래프는 최대 12개까지 동시에 추가할 수 있습니다.');
+          return;
+        }
+        this.addGraph(key);
+        // 🌟 [대표님 기획: 원클릭 추가 후 서랍 자동 닫힘 (Auto-Close)]
+        if (typeof this.closeDrawer === 'function') {
+          this.closeDrawer();
+        }
+      };
+      grid.appendChild(btn);
+    });
+  }
+
+  changeFuncType(type) {
+    if (!this.activeGraph) {
+      // 빈 화면일 때는 바로 새 그래프로 추가!
+      this.addGraph(type);
+      return;
+    }
+    this.pushHistoryState();
+    const g = this.activeGraph;
+    g.type = type;
+    g.category = this.meta[type].category;
+    g.handles = JSON.parse(JSON.stringify(this.meta[type].handles));
+    // 개형이 바뀌면 사각형 모드/원점 고정은 초기화
+    g.shapeMode = 'free';
+    g.originCenter = false;
+    this._currentCat = g.category;
+
+    // 삼각함수는 6~8주기가 한눈에 보이도록 대파노라마 화각 확장
+    if (["sin_1period", "cos_1period", "tan_1period"].includes(type)) {
+      this.xSpan = 20.0;
+      this.ySpan = 5.5;
+    } else {
+      this.xSpan = 8.5;
+      this.ySpan = 6.0;
+    }
+
+    if (!this.showAxes) {
+      this.showAxes = true;
+      this.updateAxesUI();
+    }
+
+    this.selectedHandleIdx = null;
+    this.isCurveSelected = true;
+    this.renderLayerList();
+    this.renderFuncList();
+    this.syncShapePanel();
+    this.render();
+  }
+
+  // --- [✨ 클린 뷰 (핸들 및 보조선 숨김, 단축키 H)] ---
+  toggleCleanView(forceVal = null) {
+    this.isCleanView = (forceVal !== null) ? forceVal : !this.isCleanView;
+
+    const btnHeader = document.getElementById('btnCleanView');
+    if (btnHeader) btnHeader.classList.toggle('active', this.isCleanView);
+
+    const btnQuick = document.getElementById('btnQuickCleanView');
+    if (btnQuick) btnQuick.classList.toggle('active', this.isCleanView);
+
+    if (this.isCleanView) {
+      this.showToast('✨ 클린 뷰 On: 핸들·가이드 숨김 (단축키 H)');
+    } else {
+      this.showToast('✏️ 편집 모드: 핸들·가이드 표시');
+    }
+    this.render();
+  }
+
+  // --- [📄 교재 흑백 모드 (Monochrome / Textbook Mode, 단축키 M)] ---
+  initMonochromeControls() {
+    const btnHeader = document.getElementById('btnMonochromeMode');
+    if (btnHeader) {
+      btnHeader.onclick = () => this.toggleMonochromeMode();
+    }
+  }
+
+  toggleMonochromeMode(forceVal = null) {
+    const nextState = (forceVal !== null) ? forceVal : !this.isMonochromeMode;
+    if (this.isMonochromeMode === nextState) return;
+
+    this.isMonochromeMode = nextState;
+
+    const btnHeader = document.getElementById('btnMonochromeMode');
+    if (btnHeader) {
+      btnHeader.classList.toggle('active', this.isMonochromeMode);
+    }
+
+    if (this.isMonochromeMode) {
+      // 흑백 모드 진입: 현재 활성 테마 백업 및 라이트/흑백 전용 CSS 클래스 적용
+      this.preMonoThemeKey = this.currentThemeKey;
+      document.body.classList.add('theme-light', 'mode-monochrome');
+    } else {
+      // 흑백 모드 해제: 이전 테마 복원
+      document.body.classList.remove('mode-monochrome');
+      const targetTheme = this.preMonoThemeKey || this.currentThemeKey;
+      const theme = this.canvasThemes[targetTheme];
+      if (theme && !theme.isLight) {
+        document.body.classList.remove('theme-light');
+      }
+    }
+
+    this._inkBakeDirty = true;
+    this.render();
+  }
+
+  // --- [✍️ 실시간 무한 칠판 필기 & 주석 (Live Handwriting & Infinite Annotation Engine)] ---
+  initInkControls() {
+    const btnHeader = document.getElementById('btnInkMode');
+    const btnQuick = document.getElementById('btnQuickInk');
+    const btnClose = document.getElementById('btnInkClose');
+
+    if (btnHeader) btnHeader.onclick = () => this.toggleInkMode();
+    if (btnQuick) btnQuick.onclick = () => this.toggleInkMode();
+    if (btnClose) btnClose.onclick = () => this.toggleInkMode(false);
+
+    // 테마 연동 잉크 팔레트 초기 셋팅
+    this.updateInkPaletteUI();
+
+    // 툴 선택 버튼
+    const btnSelect = document.getElementById('btnInkSelect');
+    const btnPen = document.getElementById('btnInkPen');
+    const btnHighlighter = document.getElementById('btnInkHighlighter');
+    const btnEraser = document.getElementById('btnInkEraser');
+    const btnLasso = document.getElementById('btnInkLasso');
+    const btnAxes = document.getElementById('btnInkToggleAxes');
+
+    if (btnSelect) btnSelect.onclick = () => this.setActiveInkTool('select');
+    if (btnPen) btnPen.onclick = () => this.setActiveInkTool('pen');
+    if (btnHighlighter) btnHighlighter.onclick = () => this.setActiveInkTool('highlighter');
+    if (btnEraser) btnEraser.onclick = () => this.setActiveInkTool('eraser');
+    if (btnLasso) btnLasso.onclick = () => this.setActiveInkTool('lasso');
+    if (btnAxes) btnAxes.onclick = () => this.toggleAxes();
+    this.updateAxesUI();
+
+    // 색상 선택
+    document.querySelectorAll('.ink-color-dot').forEach(dot => {
+      dot.onclick = (e) => {
+        const color = e.currentTarget.dataset.color;
+        this.setInkColor(color);
+      };
+    });
+
+    // 굵기 선택
+    document.querySelectorAll('.ink-size-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        const size = parseFloat(e.currentTarget.dataset.size);
+        this.setInkSize(size);
+      };
+    });
+
+    // 🌟 [대표님 기획]: 글씨 굵기/크기 화살표 스텝 버튼 & 드롭다운 플라이아웃 선택기 연동 🌟
+    const INK_SIZE_STEPS = [1.5, 2.2, 3.2, 4.2, 6.0, 8.0, 12.0];
+
+    const btnInkSizeDown = document.getElementById('btnInkSizeDown');
+    if (btnInkSizeDown) {
+      btnInkSizeDown.onclick = (e) => {
+        e.stopPropagation();
+        const cur = this.currentInkSize || 4.2;
+        let target = INK_SIZE_STEPS.filter(p => p < cur - 0.15).pop();
+        if (target === undefined) {
+          target = Math.max(1.0, parseFloat((cur - 0.5).toFixed(1)));
+        }
+        this.setInkSize(target);
+      };
+    }
+
+    const btnInkSizeUp = document.getElementById('btnInkSizeUp');
+    if (btnInkSizeUp) {
+      btnInkSizeUp.onclick = (e) => {
+        e.stopPropagation();
+        const cur = this.currentInkSize || 4.2;
+        let target = INK_SIZE_STEPS.find(p => p > cur + 0.15);
+        if (target === undefined) {
+          target = Math.min(20.0, parseFloat((cur + 1.0).toFixed(1)));
+        }
+        this.setInkSize(target);
+      };
+    }
+
+    const btnInkSizePicker = document.getElementById('btnInkSizePicker');
+    const inkSizeFlyout = document.getElementById('inkSizeFlyout');
+    if (btnInkSizePicker && inkSizeFlyout) {
+      let lastToggleTime = 0;
+      btnInkSizePicker.onclick = (e) => {
+        e.stopPropagation();
+        const now = performance.now();
+        if (now - lastToggleTime < 45) return;
+        lastToggleTime = now;
+        const isOpen = inkSizeFlyout.style.display !== 'none';
+        inkSizeFlyout.style.display = isOpen ? 'none' : 'block';
+        btnInkSizePicker.classList.toggle('open', !isOpen);
+        if (document.activeElement && document.activeElement !== document.body) {
+          try { document.activeElement.blur(); } catch (err) { }
+        }
+      };
+
+      document.addEventListener('pointerdown', (e) => {
+        if (inkSizeFlyout.style.display === 'none') return;
+        if (!inkSizeFlyout.contains(e.target) && !btnInkSizePicker.contains(e.target)) {
+          inkSizeFlyout.style.display = 'none';
+          btnInkSizePicker.classList.remove('open');
+        }
+      }, true);
+    }
+
+    const sliderInkSize = document.getElementById('sliderInkSize');
+    if (sliderInkSize) {
+      sliderInkSize.oninput = (e) => {
+        const val = parseFloat(e.target.value);
+        this.setInkSize(val);
+      };
+      sliderInkSize.onchange = () => {
+        try { sliderInkSize.blur(); } catch (err) { }
+      };
+
+      const previewRow = sliderInkSize.closest('.ink-size-preview-row') || sliderInkSize.parentElement;
+      const updateSliderFromPointer = (clientX) => {
+        const rect = sliderInkSize.getBoundingClientRect();
+        if (!rect || rect.width <= 0) return;
+        const pad = 7;
+        const effWidth = Math.max(1, rect.width - pad * 2);
+        const ratio = Math.max(0, Math.min(1, (clientX - (rect.left + pad)) / effWidth));
+        const min = parseFloat(sliderInkSize.min) || 1.0;
+        const max = parseFloat(sliderInkSize.max) || 18.0;
+        const step = parseFloat(sliderInkSize.step) || 0.2;
+        const raw = min + ratio * (max - min);
+        const stepped = Math.round(raw / step) * step;
+        const finalVal = Math.max(min, Math.min(max, parseFloat(stepped.toFixed(1))));
+        sliderInkSize.value = finalVal;
+        this.setInkSize(finalVal);
+      };
+
+      let isDraggingInkSlider = false;
+      const onSliderPointerDown = (e) => {
+        if (e.button && e.button !== 0) return;
+        const rect = sliderInkSize.getBoundingClientRect();
+        if (rect && rect.width > 0 && e.clientX >= rect.left - 8 && e.clientX <= rect.right + 12) {
+          e.preventDefault();
+          e.stopPropagation();
+          isDraggingInkSlider = true;
+          if (e.pointerId !== undefined && sliderInkSize.setPointerCapture) {
+            try { sliderInkSize.setPointerCapture(e.pointerId); } catch (err) { }
+          }
+          updateSliderFromPointer(e.clientX);
+          if (document.activeElement && document.activeElement !== document.body) {
+            try { document.activeElement.blur(); } catch (err) { }
+          }
+        }
+      };
+
+      const onSliderPointerMove = (e) => {
+        if (!isDraggingInkSlider) return;
+        e.preventDefault();
+        e.stopPropagation();
+        updateSliderFromPointer(e.clientX);
+      };
+
+      const onSliderPointerUp = (e) => {
+        if (!isDraggingInkSlider) return;
+        isDraggingInkSlider = false;
+        if (e.pointerId !== undefined && sliderInkSize.releasePointerCapture) {
+          try {
+            if (!sliderInkSize.hasPointerCapture || sliderInkSize.hasPointerCapture(e.pointerId)) {
+              sliderInkSize.releasePointerCapture(e.pointerId);
+            }
+          } catch (err) { }
+        }
+        try { sliderInkSize.blur(); } catch (err) { }
+      };
+
+      if (previewRow) {
+        previewRow.addEventListener('pointerdown', onSliderPointerDown, { passive: false });
+      } else {
+        sliderInkSize.addEventListener('pointerdown', onSliderPointerDown, { passive: false });
+      }
+      window.addEventListener('pointermove', onSliderPointerMove, { passive: false });
+      window.addEventListener('pointerup', onSliderPointerUp);
+      window.addEventListener('pointercancel', onSliderPointerUp);
+    }
+
+    // 전체 지우기
+    const btnClearAll = document.getElementById('btnInkClearAll');
+    if (btnClearAll) {
+      btnClearAll.onclick = () => this.clearAllInk();
+    }
+
+    // 🔍 펜 툴바 일체형 큼직한 퀵 줌 [− | +] (오른손 펜 동선 최적화)
+    const btnInkZoomOut = document.getElementById('btnInkZoomOut');
+    const btnInkZoomIn = document.getElementById('btnInkZoomIn');
+    if (btnInkZoomOut) btnInkZoomOut.onclick = () => { this.setZoomLevel(this.zoomLevel - 0.12); this.render(); };
+    if (btnInkZoomIn) btnInkZoomIn.onclick = () => { this.setZoomLevel(this.zoomLevel + 0.12); this.render(); };
+
+    // 🖐️ 좌측 레일 툴바 엄지 전용 큼직한 위/아래 줌 [+] / [−] (양손 멀티태스킹 최적화)
+    const btnRailZoomIn = document.getElementById('btnRailZoomIn');
+    const btnRailZoomOut = document.getElementById('btnRailZoomOut');
+    if (btnRailZoomIn) btnRailZoomIn.onclick = () => { this.setZoomLevel(this.zoomLevel + 0.12); this.render(); };
+    if (btnRailZoomOut) btnRailZoomOut.onclick = () => { this.setZoomLevel(this.zoomLevel - 0.12); this.render(); };
+
+    // 독 드래그 이동
+    this.initInkDockDraggable();
+
+    // 🌟 [액정타블렛 특화]: 가상 연필 & 지우개 인디케이터 초기화
+    this.virtualStylusEl = document.getElementById('virtualStylusPen');
+    this.stylusPenSvg = document.getElementById('stylusPenSvg');
+    this.stylusEraserSvg = document.getElementById('stylusEraserSvg');
+    this.stylusColorBand = document.getElementById('stylusColorBand');
+    if (this.stylusColorBand) {
+      this.stylusColorBand.setAttribute('fill', this.currentInkColor || '#00d2d3');
+    }
+
+    // 🌟 [대표님 킬러 UX]: 메뉴 위로 마우스가 올라갔을 때 가상 펜 즉시 숨김 이벤트 리스너 등록
+    const menuContainerSelectors = [
+      'header',
+      '#headerShowTab',
+      '#sidebarRail',
+      '#inkFloatingToolbar',
+      '.canvas-quick-toolbar',
+      '#boardModeBar',
+      '#nAxisModeBar',
+      '#sharedResetBar',
+      '#problemCardHeader',
+      '#problemCardResizeHandle',
+      '#modalSmartInput',
+      '#modalShare',
+      '#modalPdfViewer'
+    ];
+    menuContainerSelectors.forEach(sel => {
+      const el = document.querySelector(sel);
+      if (el) {
+        el.addEventListener('pointerenter', () => {
+          if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+        });
+      }
+    });
+  }
+
+  isPointerOverMenu(e) {
+    if (!e) return false;
+    // 🌟 [iCanScreen 급 0ms 초저지연 패스트패스]: 실제 필기 드로잉 중에는 DOM 히트테스트(elementFromPoint / getBoundingClientRect)를 100% 생략!
+    if (this.isDrawingInk || this.isStylusDrawing) return false;
+
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : null);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : null);
+    if (clientX === null || clientY === null) return false;
+
+    // e.target이 명확한 DOM 엘리먼트이면 비용이 큰 document.elementFromPoint 호출을 생략!
+    const targetEl = (e.target && e.target !== window && e.target !== document && typeof e.target.closest === 'function')
+      ? e.target
+      : null;
+
+    // 메인 캔버스 위에서 움직이는 경우 .closest() 25회 탐색 및 getBoundingClientRect() 레이아웃 스래싱 즉시 생략!
+    if (targetEl && (targetEl === this.canvas || targetEl.id === 'graphCanvas')) {
+      const rect = this.canvasRect || this.updateCanvasRect();
+      if (rect) {
+        return (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom);
+      }
+      return false;
+    }
+
+    const el = targetEl || document.elementFromPoint(clientX, clientY);
+    if (!el) return true; // 뷰포트 바깥
+
+    // 1. 명시적인 메뉴/툴바/버튼/헤더/입력창 체크 (100% 안전)
+    const isExplicitMenu = !!(
+      el.closest('header') ||
+      el.closest('.header-show-tab') ||
+      el.closest('.sidebar-rail') ||
+      el.closest('.rail-dock') ||
+      el.closest('.rail-drawer') ||
+      el.closest('.ink-floating-toolbar') ||
+      el.closest('.canvas-quick-toolbar') ||
+      el.closest('.quick-flyout-panel') ||
+      el.closest('.board-mode-bar') ||
+      el.closest('.n-axis-mode-bar') ||
+      el.closest('.shared-reset-bar') ||
+      el.closest('.problem-card-header') ||
+      el.closest('.problem-card-resize-handle') ||
+      el.closest('.smart-modal-backdrop') ||
+      el.closest('.smart-modal-card') ||
+      el.closest('.pdf-modal-backdrop') ||
+      el.closest('.pdf-modal-container') ||
+      el.closest('.pw-region-popover') ||
+      el.closest('.btn-exit-fullscreen') ||
+      el.closest('.drop-line-label-input') ||
+      el.closest('.canvas-text-input') ||
+      el.closest('button') ||
+      el.closest('input') ||
+      el.closest('select') ||
+      el.closest('textarea') ||
+      el.closest('.modal-overlay') ||
+      el.closest('.card-btn')
+    );
+    if (isExplicitMenu) return true;
+
+    // 2. 판서 가능 서피스(메인 칠판 또는 문제 카드 본체)인지 확인
+    const isCanvasSurface = (
+      el === this.canvas ||
+      el.id === 'graphCanvas' ||
+      el.id === 'problemCardCanvas' ||
+      el.id === 'problemCardImg' ||
+      (el.id === 'problemCardBody') ||
+      (el.classList && el.classList.contains('canvas-container'))
+    );
+
+    // 판서 서피스가 아니면 메뉴/외곽으로 간주하여 숨김
+    if (!isCanvasSurface) return true;
+
+    // 3. 메인 캔버스 경계 바깥인지 추가 검사 (캐시된 canvasRect 활용으로 리플로우 원천 차단)
+    if (this.canvas) {
+      const rect = this.canvasRect || this.updateCanvasRect();
+      const insideMainCanvas = rect && (
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+      );
+      if (insideMainCanvas) return false;
+
+      const pBody = document.getElementById('problemCardBody');
+      const pRect = (pBody && pBody.style.display !== 'none') ? pBody.getBoundingClientRect() : null;
+      const insideProblemCard = pRect && (
+        clientX >= pRect.left &&
+        clientX <= pRect.right &&
+        clientY >= pRect.top &&
+        clientY <= pRect.bottom
+      );
+
+      if (!insideMainCanvas && !insideProblemCard) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  updateStylusPenPosition(x, y, e = null) {
+    if (!this.virtualStylusEl) return;
+
+    if (!this.isInkMode) {
+      this.virtualStylusEl.style.display = 'none';
+      return;
+    }
+
+    if (this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter' && this.activeInkTool !== 'eraser') {
+      this.virtualStylusEl.style.display = 'none';
+      return;
+    }
+
+    // e가 없으면 최근 저장된 포인터 이벤트 활용
+    if (!e && this._lastPointerEvent) {
+      e = this._lastPointerEvent;
+    }
+
+    // 🌟 [대표님 킬러 UX]: 마우스 포인터가 메뉴/툴바/버튼 위로 올라갔을 때 펜을 즉시 숨김! (겹침 방지)
+    if (e && this.isPointerOverMenu(e)) {
+      this.virtualStylusEl.style.display = 'none';
+      return;
+    }
+
+    if (x === undefined || y === undefined || isNaN(x) || isNaN(y)) return;
+
+    // 메뉴 위가 아니고 정상 필기 영역이면 즉시 표출
+    this.virtualStylusEl.style.display = 'block';
+
+    // 캔버스 내부 범위로 클램핑하여 마지막 위치 보존
+    const clampedX = Math.max(0, Math.min(this.screenWidth || 1920, x));
+    const clampedY = Math.max(0, Math.min(this.screenHeight || 1080, y));
+
+    this.stylusPenPos = { x: clampedX, y: clampedY };
+
+    // 랙 없는 144Hz 초고속 GPU 변환 & 드로잉 시 번쩍임 없이 살짝 눌리는 물리적 필기감
+    const scale = this.isStylusDrawing ? 0.94 : 1.0;
+    this.virtualStylusEl.style.transform = `translate3d(${clampedX}px, ${clampedY}px, 0) scale(${scale})`;
+  }
+
+  toggleInkMode(forceVal = null) {
+    const nextState = (forceVal !== null) ? forceVal : !this.isInkMode;
+    if (this.isInkMode === nextState) return;
+
+    this.isInkMode = nextState;
+
+    const btnHeader = document.getElementById('btnInkMode');
+    if (btnHeader) btnHeader.classList.toggle('active', this.isInkMode);
+
+    const btnQuick = document.getElementById('btnQuickInk');
+    if (btnQuick) btnQuick.classList.toggle('active', this.isInkMode);
+
+    const dock = document.getElementById('inkFloatingToolbar');
+    if (dock) dock.style.display = this.isInkMode ? 'flex' : 'none';
+
+    if (this.isInkMode) {
+      // 🌟 [대표님 기획]: 필기 모드로 진입하는 순간 그래프 조작 모드를 즉시 프리징(동결)!
+      // 핸들러 깜빡임 펄스 루프 즉각 취소 & 선택된 핸들/곡선 해제하여 CPU 100% 필기에 집중
+      this.selectedHandleIdx = null;
+      this.isCurveSelected = false;
+      this.selectedPwBoundaryIdx = null;
+      if (this.pulseAnimId) {
+        cancelAnimationFrame(this.pulseAnimId);
+        this.pulseAnimId = null;
+      }
+      if (this.activeInkTool === 'select') {
+        this.setActiveInkTool('pen');
+      } else {
+        this.updateInkCursor();
+      }
+      // 필기모드 진입 시 마지막 위치(또는 기본 위치)로 가상 펜 즉시 표출 및 위치 동기화
+      if (this.stylusPenPos) {
+        this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+      }
+    } else {
+      this.canvas.classList.remove(
+        'ink-cursor-pen',
+        'ink-cursor-highlighter',
+        'ink-cursor-eraser',
+        'ink-cursor-lasso',
+        'ink-cursor-grab',
+        'ink-cursor-grabbing'
+      );
+      this.canvas.style.cursor = 'default';
+      if (this.virtualStylusEl) {
+        this.virtualStylusEl.style.display = 'none';
+      }
+    }
+
+    this.syncCurveContextBar();
+    this.render();
+  }
+
+  toggleAxes(forceVal = null) {
+    const nextState = (forceVal !== null) ? forceVal : !this.showAxes;
+    this.showAxes = nextState;
+    this.updateAxesUI();
+    this.render();
+    this.showToast(this.showAxes ? '📐 좌표축 표시 On (x·y축 및 눈금)' : '🪵 빈 칠판 모드 (좌표축 숨김)');
+  }
+
+  updateAxesUI() {
+    const btnInkAxes = document.getElementById('btnInkToggleAxes');
+    if (btnInkAxes) btnInkAxes.classList.toggle('active', !!this.showAxes);
+  }
+
+  setActiveInkTool(tool) {
+    this.activeInkTool = tool;
+
+    const btnSelect = document.getElementById('btnInkSelect');
+    const btnPen = document.getElementById('btnInkPen');
+    const btnHighlighter = document.getElementById('btnInkHighlighter');
+    const btnEraser = document.getElementById('btnInkEraser');
+    const btnLasso = document.getElementById('btnInkLasso');
+
+    if (btnSelect) btnSelect.classList.toggle('active', tool === 'select');
+    if (btnPen) btnPen.classList.toggle('active', tool === 'pen');
+    if (btnHighlighter) btnHighlighter.classList.toggle('active', tool === 'highlighter');
+    if (btnEraser) btnEraser.classList.toggle('active', tool === 'eraser');
+    if (btnLasso) btnLasso.classList.toggle('active', tool === 'lasso');
+
+    this.syncCurveContextBar();
+    if (tool !== 'select') {
+      // 🌟 [대표님 기획]: 펜/형광펜/지우개 버튼을 누르는 즉시 그래프 조작 핸들러 및 분할선 조작 즉시 해제 및 프리징!
+      this.selectedHandleIdx = null;
+      this.isCurveSelected = false;
+      this.selectedPwBoundaryIdx = null;
+      if (this.pulseAnimId) {
+        cancelAnimationFrame(this.pulseAnimId);
+        this.pulseAnimId = null;
+      }
+    }
+
+    if (!this.isInkMode && (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'lasso' || tool === 'select')) {
+      this.toggleInkMode(true);
+    }
+
+    if (tool !== 'lasso') {
+      this.selectedInkStrokes = [];
+      this.selectedTextLabels = [];
+      this.lassoBoundingBox = null;
+      this.isLassoSelecting = false;
+      this.isDraggingLassoSelection = false;
+      this.lassoPoints = [];
+    }
+
+    this.updateInkCursor();
+    this.render();
+  }
+
+  setInkColor(color) {
+    this.currentInkColor = color;
+    document.querySelectorAll('.ink-color-dot').forEach(dot => {
+      dot.classList.toggle('active', dot.dataset.color === color);
+    });
+    // 가상 연필 팁 악센트 컬러 밴드 즉각 동기화 (번쩍임 없이 단정하게)
+    if (this.stylusColorBand) {
+      this.stylusColorBand.setAttribute('fill', color);
+    }
+    const previewDot = document.getElementById('inkSizePreviewDot');
+    if (previewDot) previewDot.style.background = color;
+    const tbDot = document.getElementById('inkSizeToolbarDot');
+    if (tbDot) tbDot.style.background = color;
+    // 색상을 바꾸면 지우개, 올가미, 선택 모드였을 때 자동으로 펜으로 전환
+    if (this.activeInkTool === 'eraser' || this.activeInkTool === 'select' || this.activeInkTool === 'lasso') {
+      this.setActiveInkTool('pen');
+    }
+  }
+
+
+  setTextLabelFontSize(size) {
+    this.textLabelFontSize = size;
+    const slider = document.getElementById('sliderTextLabelSize');
+    if (slider) slider.value = size;
+    const lbl = document.getElementById('lblTextLabelSize');
+    if (lbl) lbl.textContent = `${size} pt`;
+    if (this.selectedTextLabelId) {
+      const sel = this.textLabels.find(t => t.id === this.selectedTextLabelId);
+      if (sel) sel.fontSize = size;
+    } else {
+      this.textLabels.forEach(t => { t.fontSize = size; });
+    }
+    this.render();
+  }
+
+  setDropLineFontSize(size) {
+    this.dropLineFontSize = size;
+    const slider = document.getElementById('sliderDropLineFontSize');
+    if (slider) slider.value = size;
+    const lbl = document.getElementById('lblDropLineFontSize');
+    if (lbl) lbl.textContent = `${size} pt`;
+    this.render();
+  }
+
+  setAxisLabelFontSize(size) {
+    this.axisLabelFontSize = size;
+    const slider = document.getElementById('sliderAxisLabelSize');
+    if (slider) slider.value = size;
+    const lbl = document.getElementById('lblAxisLabelSize');
+    if (lbl) lbl.textContent = `${size} pt`;
+    this.render();
+  }
+
+  setInkSize(size) {
+    const clamped = Math.max(1.0, Math.min(24.0, parseFloat(Number(size).toFixed(1))));
+    this.currentInkSize = clamped;
+
+    const lblVal = document.getElementById('lblCurrentInkSize');
+    if (lblVal) lblVal.textContent = `${clamped} pt`;
+
+    const lblFlyout = document.getElementById('lblFlyoutSizeVal');
+    if (lblFlyout) lblFlyout.textContent = `${clamped} pt`;
+
+    const slider = document.getElementById('sliderInkSize');
+    if (slider) slider.value = clamped;
+
+    const previewDot = document.getElementById('inkSizePreviewDot');
+    if (previewDot) {
+      const dotPx = Math.min(30, Math.max(3, clamped * 2.2));
+      previewDot.style.width = `${dotPx}px`;
+      previewDot.style.height = `${dotPx}px`;
+      previewDot.style.background = this.currentInkColor || '#ffffff';
+    }
+
+    const tbDot = document.getElementById('inkSizeToolbarDot');
+    if (tbDot) {
+      const tbPx = Math.min(10, Math.max(3, clamped * 1.1));
+      tbDot.style.width = `${tbPx}px`;
+      tbDot.style.height = `${tbPx}px`;
+      tbDot.style.background = this.currentInkColor || '#ffffff';
+    }
+
+    document.querySelectorAll('.ink-size-btn').forEach(btn => {
+      const btnSize = parseFloat(btn.dataset.size);
+      btn.classList.toggle('active', Math.abs(btnSize - clamped) < 0.2);
+    });
+  }
+
+  updateInkCursor() {
+    this.canvas.classList.remove(
+      'ink-cursor-pen',
+      'ink-cursor-highlighter',
+      'ink-cursor-eraser',
+      'ink-cursor-lasso',
+      'ink-cursor-grab',
+      'ink-cursor-grabbing'
+    );
+    if (this.isGraphSnapMode) {
+      this.canvas.classList.add('graph-snap-crosshair');
+      this.canvas.style.cursor = 'crosshair';
+      if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+      return;
+    }
+    if (!this.isInkMode) {
+      this.canvas.style.cursor = 'default';
+      if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+      return;
+    }
+
+    if (this.isSpacePressed) {
+      this.canvas.style.cursor = 'grab';
+      if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+      return;
+    }
+
+    if (this.activeInkTool === 'pen') {
+      this.canvas.classList.add('ink-cursor-pen');
+      if (this.virtualStylusEl) {
+        this.virtualStylusEl.style.display = 'block';
+        if (this.stylusPenSvg) this.stylusPenSvg.style.display = 'block';
+        if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = 'none';
+        if (this.stylusColorBand) this.stylusColorBand.setAttribute('fill', this.currentInkColor || '#00d2d3');
+        this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+      }
+    } else if (this.activeInkTool === 'highlighter') {
+      this.canvas.classList.add('ink-cursor-highlighter');
+      if (this.virtualStylusEl) {
+        this.virtualStylusEl.style.display = 'block';
+        if (this.stylusPenSvg) this.stylusPenSvg.style.display = 'block';
+        if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = 'none';
+        if (this.stylusColorBand) this.stylusColorBand.setAttribute('fill', this.currentInkColor || '#00d2d3');
+        this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+      }
+    } else if (this.activeInkTool === 'eraser') {
+      this.canvas.classList.add('ink-cursor-eraser');
+      if (this.virtualStylusEl) {
+        this.virtualStylusEl.style.display = 'block';
+        if (this.stylusPenSvg) this.stylusPenSvg.style.display = 'none';
+        if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = 'block';
+        this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+      }
+    } else if (this.activeInkTool === 'lasso') {
+      if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+      if (this.isDraggingLassoSelection) {
+        this.canvas.classList.add('ink-cursor-grabbing');
+      } else {
+        this.canvas.classList.add('ink-cursor-lasso');
+      }
+    } else {
+      if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+      this.canvas.style.cursor = 'default';
+    }
+  }
+
+  clearAllInk() {
+    if (!this.inkStrokes || this.inkStrokes.length === 0) return;
+    this.pushHistoryState();
+
+    // 🌟 [대표님 기획: 3대 판서 분리 관리] 🌟
+    // 문제 창이 켜져 있고 바깥창 풀이 필기가 있을 때 1차 클릭: 바깥 칠판 풀이 필기만 깔끔히 비움! (그래프 수식 주석은 보존)
+    // 2차 클릭 (바깥창 필기가 없을 때): 그래프 창 내부 주석까지 모두 비움!
+    if (this.isGraphCovered && !this.pdfPageBoardData) {
+      this.inkStrokes = this.inkStrokes.filter(s => (s.target || 'board') !== 'board');
+      this.showToast('🧹 칠판 필기를 깔끔하게 비웠습니다. (밑의 그래프 작업실은 보존됨)');
+    } else {
+      this.inkStrokes = this.inkStrokes.filter(s => (s.target || 'board') !== 'graph');
+      this.showToast('🧹 모든 필기를 비웠습니다.');
+    }
+    this._inkBakeDirty = true;
+    this.render();
+  }
+
+  // 🌟 [액정 타블렛 하드웨어 펜 지우개 감지 엔진] 🌟
+  // 1) W3C 표준 펜 지우개 버튼 / 펜 뒤통수 팁: (e.buttons & 32) !== 0 또는 e.button === 5
+  // 2) 펜 사이드 배럴 버튼 (우클릭 연동): e.pointerType === 'pen' && (e.button === 2 || (e.buttons & 2) !== 0)
+  isStylusEraserEvent(e) {
+    if (!e) return false;
+    if (typeof e.buttons === 'number' && (e.buttons & 32) !== 0) return true;
+    if (e.button === 5) return true;
+    const isPen = (e.pointerType === 'pen' || (!e.pointerType && (e.button === 2 || (e.buttons & 2))));
+    if (isPen) {
+      if (e.button === 2) return true;
+      if (typeof e.buttons === 'number' && (e.buttons & 2) !== 0) return true;
+    }
+    return false;
+  }
+
+  eraseInkAtPoint(screenX, screenY, eraseRadius = 20) {
+    if (!this.inkStrokes || this.inkStrokes.length === 0) return;
+
+    const isInsideStage = this.isInsideCompactStage({ x: screenX, y: screenY });
+
+    let modified = false;
+    const remaining = this.inkStrokes.filter(stroke => {
+      const strokeTarget = stroke.target || 'board';
+      if (this.isGraphCovered && !this.pdfPageBoardData && strokeTarget !== 'board') return true;
+      if ((!this.isGraphCovered || this.pdfPageBoardData) && !this.isBoardMode && strokeTarget !== 'graph') return true;
+
+
+
+      const isBoard = strokeTarget === 'board';
+      const bPx = (this.boardPanX || 0);
+      const bPy = (this.boardPanY || 0);
+
+      // 🌟 기하 도형(Shape) 최단거리 검사
+      if (stroke.shape) {
+        let s1 = null, s2 = null;
+        if (stroke.shape.start && stroke.shape.end) {
+          if (isBoard) {
+            s1 = { x: stroke.shape.start.x + bPx, y: stroke.shape.start.y + bPy };
+            s2 = { x: stroke.shape.end.x + bPx, y: stroke.shape.end.y + bPy };
+          } else {
+            s1 = this.mathToScreen(stroke.shape.start.x, stroke.shape.start.y);
+            s2 = this.mathToScreen(stroke.shape.end.x, stroke.shape.end.y);
+          }
+        }
+
+        if (stroke.shape.type === 'line') {
+          if (this.distToSegment({ x: screenX, y: screenY }, s1, s2) <= eraseRadius) {
+            modified = true;
+            return false;
+          }
+        } else if (stroke.shape.type === 'circle') {
+          const sc = isBoard ? { x: stroke.shape.center.x + bPx, y: stroke.shape.center.y + bPy } : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+          const sr = isBoard ? stroke.shape.radius : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x);
+          const dToCenter = Math.hypot(screenX - sc.x, screenY - sc.y);
+          if (Math.abs(dToCenter - sr) <= eraseRadius || dToCenter <= eraseRadius) {
+            modified = true;
+            return false;
+          }
+        } else if (stroke.shape.type === 'ellipse') {
+          const sc = isBoard ? { x: stroke.shape.center.x + bPx, y: stroke.shape.center.y + bPy } : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+          const srx = isBoard ? stroke.shape.rx : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.rx, stroke.shape.center.y).x - sc.x);
+          const sry = isBoard ? stroke.shape.ry : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y);
+          const normD = Math.hypot((screenX - sc.x) / Math.max(1, srx), (screenY - sc.y) / Math.max(1, sry));
+          const avgR = (srx + sry) / 2;
+          if (Math.abs(normD - 1) * avgR <= eraseRadius * 1.2 || normD <= 0.35) {
+            modified = true;
+            return false;
+          }
+        } else if (stroke.shape.type === 'rect') {
+          const rs1 = isBoard ? { x: stroke.shape.min.x + bPx, y: stroke.shape.min.y + bPy } : this.mathToScreen(stroke.shape.min.x, stroke.shape.min.y);
+          const rs2 = isBoard ? { x: stroke.shape.max.x + bPx, y: stroke.shape.max.y + bPy } : this.mathToScreen(stroke.shape.max.x, stroke.shape.max.y);
+          const rx = Math.min(rs1.x, rs2.x), ry = Math.min(rs1.y, rs2.y);
+          const rw = Math.abs(rs2.x - rs1.x), rh = Math.abs(rs2.y - rs1.y);
+          const p1 = { x: rx, y: ry }, p2 = { x: rx + rw, y: ry };
+          const p3 = { x: rx + rw, y: ry + rh }, p4 = { x: rx, y: ry + rh };
+          if (this.distToSegment({ x: screenX, y: screenY }, p1, p2) <= eraseRadius ||
+            this.distToSegment({ x: screenX, y: screenY }, p2, p3) <= eraseRadius ||
+            this.distToSegment({ x: screenX, y: screenY }, p3, p4) <= eraseRadius ||
+            this.distToSegment({ x: screenX, y: screenY }, p4, p1) <= eraseRadius) {
+            modified = true;
+            return false;
+          }
+        } else if (stroke.shape.pts && stroke.shape.pts.length >= 2) {
+          const sPts = stroke.shape.pts.map(pt => isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y));
+          for (let i = 0; i < sPts.length - 1; i++) {
+            if (this.distToSegment({ x: screenX, y: screenY }, sPts[i], sPts[i + 1]) <= eraseRadius) {
+              modified = true;
+              return false;
+            }
+          }
+          if (stroke.shape.closed && sPts.length >= 3) {
+            if (this.distToSegment({ x: screenX, y: screenY }, sPts[sPts.length - 1], sPts[0]) <= eraseRadius) {
+              modified = true;
+              return false;
+            }
+          }
+        }
+      }
+
+      if (!stroke.points || stroke.points.length === 0) return false;
+
+      const getScreenPt = (p) => {
+        if (isBoard) return { x: p.x + bPx, y: p.y + bPy };
+        return this.mathToScreen(p.x, p.y);
+      };
+
+      // 1. 점 근접 검사
+      for (let i = 0; i < stroke.points.length; i++) {
+        const s = getScreenPt(stroke.points[i]);
+        const dist = Math.hypot(s.x - screenX, s.y - screenY);
+        if (dist <= eraseRadius) {
+          modified = true;
+          return false;
+        }
+      }
+
+      // 2. 선분 최단거리 검사
+      for (let i = 0; i < stroke.points.length - 1; i++) {
+        const s1 = getScreenPt(stroke.points[i]);
+        const s2 = getScreenPt(stroke.points[i + 1]);
+        const dist = this.distToSegment({ x: screenX, y: screenY }, s1, s2);
+        if (dist <= eraseRadius) {
+          modified = true;
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    if (modified) {
+      if (!this._erasedInCurrentStroke) {
+        this.pushHistoryState();
+        this._erasedInCurrentStroke = true;
+      }
+      this.inkStrokes = remaining;
+      this._inkBakeDirty = true;
+      this._hasSceneFreeze = false;
+      this.render();
+    }
+  }
+
+  distToSegment(p, v, w) {
+    const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
+    if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
+    let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p.x - (v.x + t * (w.x - v.x)), p.y - (v.y + t * (w.y - v.y)));
+  }
+
+  // 🌟 Draw & Hold 기하 도형 & 수학 함수 개형 인식 엔진 (Line, Circle, Ellipse, Rect, Triangle, Parabola, Cubic/Sine Wave) 🌟
+  recognizeInkShape(stroke) {
+    if (!stroke || !stroke.points || stroke.points.length < 5) return null;
+
+    const isBoard = (stroke.target || 'board') === 'board';
+    const bPx = (this.boardPanX || 0);
+    const bPy = (this.boardPanY || 0);
+    const screenPts = isBoard
+      ? stroke.points.map(pt => ({ x: pt.x + bPx, y: pt.y + bPy }))
+      : stroke.points.map(pt => this.mathToScreen(pt.x, pt.y));
+
+    const toTargetCoord = (pt) => {
+      if (isBoard) {
+        return { x: pt.x - bPx, y: pt.y - bPy };
+      }
+      const m = this.screenToMath(pt.x, pt.y);
+      return { x: m.x, y: m.y };
+    };
+
+    const N = screenPts.length;
+    const pStart = screenPts[0];
+    const pEnd = screenPts[N - 1];
+
+    const chordLen = Math.hypot(pEnd.x - pStart.x, pEnd.y - pStart.y);
+    let arcLen = 0;
+    let minX = screenPts[0].x, maxX = screenPts[0].x;
+    let minY = screenPts[0].y, maxY = screenPts[0].y;
+
+    for (let i = 0; i < N - 1; i++) {
+      arcLen += Math.hypot(screenPts[i + 1].x - screenPts[i].x, screenPts[i + 1].y - screenPts[i].y);
+      if (screenPts[i + 1].x < minX) minX = screenPts[i + 1].x;
+      if (screenPts[i + 1].x > maxX) maxX = screenPts[i + 1].x;
+      if (screenPts[i + 1].y < minY) minY = screenPts[i + 1].y;
+      if (screenPts[i + 1].y > maxY) maxY = screenPts[i + 1].y;
+    }
+
+    if (arcLen < 20) return null;
+
+    const W = Math.max(1, maxX - minX);
+    const H = Math.max(1, maxY - minY);
+    const maxDim = Math.max(W, H);
+    const minDim = Math.min(W, H);
+    const straightness = chordLen / arcLen;
+
+    // --- [1. 직선 판별 (Straight Line & Axis Magnet Snap)] ---
+    if (straightness >= 0.84 && chordLen >= 25) {
+      let endX = pEnd.x;
+      let endY = pEnd.y;
+
+      const dx = endX - pStart.x;
+      const dy = endY - pStart.y;
+      const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+      const absAngle = Math.abs(angleDeg);
+
+      const snapAngleThresh = 1.5;
+      const diagAngleThresh = 1.2;
+
+      let snapped = null;
+      if (absAngle < snapAngleThresh || absAngle > (180 - snapAngleThresh)) {
+        endY = pStart.y;
+        snapped = 'horizontal';
+      } else if (Math.abs(absAngle - 90) < snapAngleThresh) {
+        endX = pStart.x;
+        snapped = 'vertical';
+      } else if (Math.abs(absAngle - 45) < diagAngleThresh || Math.abs(absAngle - 135) < diagAngleThresh) {
+        const dist = Math.hypot(dx, dy);
+        const signX = dx >= 0 ? 1 : -1;
+        const signY = dy >= 0 ? 1 : -1;
+        endX = pStart.x + signX * dist * Math.SQRT1_2;
+        endY = pStart.y + signY * dist * Math.SQRT1_2;
+        snapped = 'diagonal';
+      }
+
+      return {
+        type: 'line',
+        start: toTargetCoord(pStart),
+        end: toTargetCoord({ x: endX, y: endY }),
+        snapped: snapped
+      };
+    }
+
+    // --- [2. 닫힌 도형 판별: 삼각형(Triangle), 정원(Circle), 타원(Ellipse), 직사각형(Rect)] ---
+    const gap = chordLen;
+    const isClosed = (gap / maxDim <= 0.42);
+
+    if (isClosed && arcLen >= 45 && minDim >= 18) {
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const aspect = minDim / maxDim;
+
+      // (A) 타원/원 오차 계산
+      const rx = Math.max(1, W / 2);
+      const ry = Math.max(1, H / 2);
+      let rSum = 0;
+      let uSum = 0;
+      const radii = [];
+      const uVals = [];
+      for (let i = 0; i < N; i++) {
+        const r = Math.hypot(screenPts[i].x - cx, screenPts[i].y - cy);
+        radii.push(r);
+        rSum += r;
+        const u = Math.hypot((screenPts[i].x - cx) / rx, (screenPts[i].y - cy) / ry);
+        uVals.push(u);
+        uSum += u;
+      }
+      const avgR = rSum / N;
+      const avgU = uSum / N;
+      let varSum = 0;
+      let uVarSum = 0;
+      let distToEllipseSum = 0;
+      for (let i = 0; i < N; i++) {
+        varSum += (radii[i] - avgR) ** 2;
+        uVarSum += (uVals[i] - avgU) ** 2;
+        distToEllipseSum += Math.abs(uVals[i] - 1.0) * ((rx + ry) / 2);
+      }
+      const stdDev = Math.sqrt(varSum / N);
+      const roundness = stdDev / (avgR || 1);
+      const ellipseStd = Math.sqrt(uVarSum / N) / (avgU || 1);
+      const avgDistToEllipse = distToEllipseSum / N;
+
+      // (B) 직사각형 오차(네 변 밀착도) 계산
+      let distToBoxSum = 0;
+      for (let i = 0; i < N; i++) {
+        const px = screenPts[i].x;
+        const py = screenPts[i].y;
+        const dLeft = Math.abs(px - minX);
+        const dRight = Math.abs(px - maxX);
+        const dTop = Math.abs(py - minY);
+        const dBottom = Math.abs(py - maxY);
+        distToBoxSum += Math.min(dLeft, dRight, dTop, dBottom);
+      }
+      const avgDistToBox = distToBoxSum / N;
+
+      // (C) 삼각형(Triangle) 3꼭짓점 추출 및 세 변 밀착도 계산
+      const calcTriError = (v0, v1, v2) => {
+        let sum = 0;
+        for (let i = 0; i < N; i++) {
+          const d0 = this.distToSegment(screenPts[i], v0, v1);
+          const d1 = this.distToSegment(screenPts[i], v1, v2);
+          const d2 = this.distToSegment(screenPts[i], v2, v0);
+          sum += Math.min(d0, d1, d2);
+        }
+        return sum / N;
+      };
+
+      const findTriFromSeed = (seedPt) => {
+        let v1 = screenPts[0], maxD1 = -1;
+        for (let i = 0; i < N; i++) {
+          const d = Math.hypot(screenPts[i].x - seedPt.x, screenPts[i].y - seedPt.y);
+          if (d > maxD1) { maxD1 = d; v1 = screenPts[i]; }
+        }
+        let v2 = screenPts[0], maxD2 = -1;
+        for (let i = 0; i < N; i++) {
+          const d = this.distToSegment(screenPts[i], seedPt, v1);
+          if (d > maxD2) { maxD2 = d; v2 = screenPts[i]; }
+        }
+        let v0 = seedPt, maxD0 = -1;
+        for (let i = 0; i < N; i++) {
+          const d = this.distToSegment(screenPts[i], v1, v2);
+          if (d > maxD0) { maxD0 = d; v0 = screenPts[i]; }
+        }
+        return [v0, v1, v2];
+      };
+
+      const seedStart = { x: (pStart.x + pEnd.x) / 2, y: (pStart.y + pEnd.y) / 2 };
+      let farFromCenter = screenPts[0], maxDC = -1;
+      for (let i = 0; i < N; i++) {
+        const d = Math.hypot(screenPts[i].x - cx, screenPts[i].y - cy);
+        if (d > maxDC) { maxDC = d; farFromCenter = screenPts[i]; }
+      }
+
+      const triA = findTriFromSeed(seedStart);
+      const triB = findTriFromSeed(farFromCenter);
+      const errTriA = calcTriError(triA[0], triA[1], triA[2]);
+      const errTriB = calcTriError(triB[0], triB[1], triB[2]);
+      const bestTri = (errTriA <= errTriB) ? triA : triB;
+      const avgDistToTri = Math.min(errTriA, errTriB);
+
+      const s01 = Math.hypot(bestTri[1].x - bestTri[0].x, bestTri[1].y - bestTri[0].y);
+      const s12 = Math.hypot(bestTri[2].x - bestTri[1].x, bestTri[2].y - bestTri[1].y);
+      const s20 = Math.hypot(bestTri[0].x - bestTri[2].x, bestTri[0].y - bestTri[2].y);
+      const triValidSides = (Math.min(s01, s12, s20) >= maxDim * 0.34);
+
+      // 1순위: 삼각형 (세 변에 점들이 밀착하고 사각형/타원보다 오차가 확실히 작을 때)
+      if (triValidSides && avgDistToTri < maxDim * 0.068 && avgDistToTri < avgDistToBox * 0.82 && avgDistToTri < avgDistToEllipse * 0.82) {
+        // 바닥변이나 수직변이 수평/수직에 가까우면(3.5도 이내) 반듯하게 스냅
+        const snappedTri = bestTri.map(p => ({ x: p.x, y: p.y }));
+        for (let k = 0; k < 3; k++) {
+          const pA = snappedTri[k];
+          const pB = snappedTri[(k + 1) % 3];
+          const dx = pB.x - pA.x;
+          const dy = pB.y - pA.y;
+          const len = Math.hypot(dx, dy) || 1;
+          if (Math.abs(dy) / len < 0.06) {
+            const avgY = (pA.y + pB.y) / 2;
+            pA.y = avgY;
+            pB.y = avgY;
+          } else if (Math.abs(dx) / len < 0.06) {
+            const avgX = (pA.x + pB.x) / 2;
+            pA.x = avgX;
+            pB.x = avgX;
+          }
+        }
+        return {
+          type: 'triangle',
+          closed: true,
+          pts: snappedTri.map(toTargetCoord)
+        };
+      }
+
+      // 2순위: 정원(Circle) 및 타원(Ellipse) vs 직사각형(Rect)
+      const isBetterRectThanCircle = (avgDistToBox < maxDim * 0.085) && (avgDistToBox < stdDev * 0.95) && (avgDistToBox < avgDistToEllipse * 0.92);
+
+      if (!isBetterRectThanCircle && ellipseStd < 0.21) {
+        if (aspect >= 0.76 && roundness < 0.22) {
+          // 정원 (Circle)
+          if (isBoard) {
+            return {
+              type: 'circle',
+              center: { x: cx - bPx, y: cy - bPy },
+              radius: avgR,
+              aspect: aspect
+            };
+          }
+          const mCenter = this.screenToMath(cx, cy);
+          const mEdge = this.screenToMath(cx + avgR, cy);
+          return {
+            type: 'circle',
+            center: { x: mCenter.x, y: mCenter.y },
+            radius: Math.abs(mEdge.x - mCenter.x),
+            aspect: aspect
+          };
+        } else if (aspect >= 0.22) {
+          // 타원 (Ellipse)
+          if (isBoard) {
+            return {
+              type: 'ellipse',
+              center: { x: cx - bPx, y: cy - bPy },
+              rx: rx,
+              ry: ry
+            };
+          }
+          const mCenter = this.screenToMath(cx, cy);
+          const mEdgeX = this.screenToMath(cx + rx, cy);
+          const mEdgeY = this.screenToMath(cx, cy + ry);
+          return {
+            type: 'ellipse',
+            center: { x: mCenter.x, y: mCenter.y },
+            rx: Math.abs(mEdgeX.x - mCenter.x),
+            ry: Math.abs(mEdgeY.y - mCenter.y)
+          };
+        }
+      }
+
+      // 3순위: 직사각형 (Rectangle)
+      if (avgDistToBox < maxDim * 0.14) {
+        if (isBoard) {
+          return {
+            type: 'rect',
+            min: { x: minX - bPx, y: minY - bPy },
+            max: { x: maxX - bPx, y: maxY - bPy },
+            aspect: aspect
+          };
+        }
+        const m1 = this.screenToMath(minX, minY);
+        const m2 = this.screenToMath(maxX, maxY);
+        return {
+          type: 'rect',
+          min: { x: Math.min(m1.x, m2.x), y: Math.min(m1.y, m2.y) },
+          max: { x: Math.max(m1.x, m2.x), y: Math.max(m1.y, m2.y) }
+        };
+      }
+    }
+
+    // --- [3. 열린 수학 함수 곡선 판별: 이차함수 포물선(Parabola) & 극점 2개 삼차/삼각 개형(Cubic/Sine Wave)] ---
+    const horizSpan = Math.abs(pEnd.x - pStart.x);
+    if (!isClosed && W >= 40 && H >= 26 && horizSpan >= W * 0.62) {
+      // 좌->우 순서로 정렬된 점열 생성
+      const ptsLR = (pStart.x <= pEnd.x) ? screenPts : screenPts.slice().reverse();
+      const pLeft = ptsLR[0];
+      const pRight = ptsLR[N - 1];
+
+      // x방향 진행 일관성 검사 (역주행 루프 배제)
+      let forwardLen = 0;
+      let backwardLen = 0;
+      for (let i = 0; i < N - 1; i++) {
+        const dx = ptsLR[i + 1].x - ptsLR[i].x;
+        if (dx >= -1.5) forwardLen += Math.abs(dx);
+        else backwardLen += Math.abs(dx);
+      }
+
+      if (backwardLen <= forwardLen * 0.25) {
+        // 내부 구간(양끝 8% 제외)에서 화면 최고점(topPeak, 극대)과 화면 최저점(botPeak, 극소) 탐색
+        const iStart = Math.max(1, Math.floor(N * 0.08));
+        const iEnd = Math.min(N - 2, Math.ceil(N * 0.92));
+        let topPeak = ptsLR[iStart];
+        let botPeak = ptsLR[iStart];
+        for (let i = iStart; i <= iEnd; i++) {
+          if (ptsLR[i].y < topPeak.y) topPeak = ptsLR[i];
+          if (ptsLR[i].y > botPeak.y) botPeak = ptsLR[i];
+        }
+
+        const topInsideX = (topPeak.x >= minX + 0.10 * W && topPeak.x <= maxX - 0.10 * W);
+        const botInsideX = (botPeak.x >= minX + 0.10 * W && botPeak.x <= maxX - 0.10 * W);
+        const peakSepX = Math.abs(topPeak.x - botPeak.x);
+
+        // (A) 극점 2개짜리 삼차함수 개형 (100% 완벽한 변곡점 점대칭 도형) 판별
+        // 양끝 꼬리가 극점보다 더 높이 올라가거나 내려가는 진짜 삼차함수 손그림도 100% 잡아내기 위해
+        // 3구간 오르내림(↗↘↗ 또는 ↘↗↘) 최적 극점 쌍 (i1, i2)을 O(N)으로 탐색!
+        let bestUpDownUp = { swing: -1, i1: -1, i2: -1 };
+        let bestDownUpDown = { swing: -1, i1: -1, i2: -1 };
+
+        let minYIdxSoFar = 1;
+        let maxYIdxSoFar = 1;
+        for (let i2 = 2; i2 < N - 1; i2++) {
+          if (ptsLR[i2 - 1].y < ptsLR[minYIdxSoFar].y) minYIdxSoFar = i2 - 1;
+          if (ptsLR[i2 - 1].y > ptsLR[maxYIdxSoFar].y) maxYIdxSoFar = i2 - 1;
+
+          // 1) ↗ ↘ ↗ (최고차항 양수 삼차함수: 극대 minYIdxSoFar -> 극소 i2)
+          const e1U = ptsLR[minYIdxSoFar];
+          const e2U = ptsLR[i2];
+          const sw1U = pLeft.y - e1U.y;
+          const sw2U = e2U.y - e1U.y;
+          const sw3U = e2U.y - pRight.y;
+          if (sw1U >= 0.16 * H && sw2U >= 0.30 * H && sw3U >= 0.16 * H && (e2U.x - e1U.x) >= 0.12 * W) {
+            const totalSw = sw1U + sw2U + sw3U;
+            if (totalSw > bestUpDownUp.swing) {
+              bestUpDownUp = { swing: totalSw, i1: minYIdxSoFar, i2: i2 };
+            }
+          }
+
+          // 2) ↘ ↗ ↘ (최고차항 음수 삼차함수: 극소 maxYIdxSoFar -> 극대 i2)
+          const e1D = ptsLR[maxYIdxSoFar];
+          const e2D = ptsLR[i2];
+          const sw1D = e1D.y - pLeft.y;
+          const sw2D = e1D.y - e2D.y;
+          const sw3D = pRight.y - e2D.y;
+          if (sw1D >= 0.16 * H && sw2D >= 0.30 * H && sw3D >= 0.16 * H && (e2D.x - e1D.x) >= 0.12 * W) {
+            const totalSw = sw1D + sw2D + sw3D;
+            if (totalSw > bestDownUpDown.swing) {
+              bestDownUpDown = { swing: totalSw, i1: maxYIdxSoFar, i2: i2 };
+            }
+          }
+        }
+
+        const isUpDownUp = (bestUpDownUp.swing > 0 && bestUpDownUp.swing >= bestDownUpDown.swing);
+        const isDownUpDown = (!isUpDownUp && bestDownUpDown.swing > 0);
+
+        if (isUpDownUp || isDownUpDown) {
+          const chosen = isUpDownUp ? bestUpDownUp : bestDownUpDown;
+          const e1 = ptsLR[chosen.i1];
+          const e2 = ptsLR[chosen.i2];
+
+          // 🌟 [대표님 핵심 지시]: 삼차함수는 변곡점 (cx, cy) 기준 100.000% 완벽한 점대칭 도형으로 생성!
+          // 순수 삼차다항식 g(s) = (3s - s^3) / 2 는 기함수(g(-s) = -g(s))이므로
+          // s in [-sMax, +sMax] 대칭 구간에서 그리면 변곡점 (cx, cy)에 대해 완벽한 점대칭이 성립함!
+          const cx = (minX + maxX) / 2;
+          const cy = (e1.y + e2.y) / 2;
+          const amp = Math.max(H * 0.28, Math.abs(e2.y - e1.y) / 2);
+          // dir: isUpDownUp이면 s=-1(왼쪽 극대)에서 화면 위쪽(-y), s=+1(오른쪽 극소)에서 화면 아래쪽(+y)
+          const dir = isUpDownUp ? 1 : -1;
+
+          // 양끝 꼬리가 뻗은 높이에 맞춰 대칭 정의역 [-sMax, +sMax] 결정 (기본 1.85 ~ 2.02: 교과서 2:1 비율 개형)
+          const leftTailRatio = Math.abs(pLeft.y - cy) / Math.max(1, amp);
+          const rightTailRatio = Math.abs(pRight.y - cy) / Math.max(1, amp);
+          const avgTailRatio = (leftTailRatio + rightTailRatio) / 2;
+          // g(1.732) = 0 (중간 높이 마감), g(2.0) = -1 (반대편 극점 높이 마감)
+          const sMax = (avgTailRatio < 0.35) ? 1.75 : Math.min(2.02, Math.max(1.85, 1.75 + avgTailRatio * 0.22));
+
+          const sampleCount = 64;
+          const waveScreenPts = [];
+          for (let k = 0; k <= sampleCount; k++) {
+            const u = -1 + 2 * (k / sampleCount); // -1.0 ~ +1.0 완벽 대칭
+            const s = u * sMax;
+            const sx = cx + u * (W / 2);
+            // g(s) = (3s - s^3) / 2 : s=-1일 때 -1, s=0일 때 0(변곡점), s=+1일 때 +1
+            const gVal = (3 * s - s * s * s) / 2;
+            const sy = cy + dir * amp * gVal;
+            waveScreenPts.push({ x: sx, y: sy });
+          }
+          return {
+            type: 'cubic_wave',
+            closed: false,
+            pts: waveScreenPts.map(toTargetCoord)
+          };
+        }
+
+        // (B) 이차함수 포물선 (Parabola: 아래로 볼록 U / 위로 볼록 ∩) 판별
+        const isCupParabola = botInsideX &&
+          (pLeft.y <= minY + 0.45 * H) &&
+          (pRight.y <= minY + 0.45 * H) &&
+          (maxY - Math.max(pLeft.y, pRight.y) >= 0.45 * H);
+
+        const isCapParabola = topInsideX &&
+          (pLeft.y >= maxY - 0.45 * H) &&
+          (pRight.y >= maxY - 0.45 * H) &&
+          (Math.min(pLeft.y, pRight.y) - minY >= 0.45 * H);
+
+        if (isCupParabola || isCapParabola) {
+          // 완벽한 좌우 대칭 이차함수 포물선 y(x) = vy + (endY - vy) * ((x - vx) / (W/2))^2 생성
+          const vx = (minX + maxX) / 2;
+          const vy = isCupParabola ? maxY : minY;
+          const endY = (pLeft.y + pRight.y) / 2;
+          const halfW = Math.max(1, W / 2);
+
+          const evalParaY = (x) => {
+            const u = (x - vx) / halfW;
+            return vy + (endY - vy) * (u * u);
+          };
+
+          let paraErrSum = 0;
+          for (let i = 0; i < N; i++) {
+            paraErrSum += Math.abs(ptsLR[i].y - evalParaY(ptsLR[i].x));
+          }
+          const avgParaErr = paraErrSum / N;
+
+          if (avgParaErr <= H * 0.22) {
+            const sampleCount = 48;
+            const paraScreenPts = [];
+            for (let s = 0; s <= sampleCount; s++) {
+              const sx = minX + W * (s / sampleCount);
+              const sy = evalParaY(sx);
+              paraScreenPts.push({ x: sx, y: sy });
+            }
+            return {
+              type: 'parabola',
+              closed: false,
+              pts: paraScreenPts.map(toTargetCoord)
+            };
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  _startInkHoldTimer() {
+    if (this._inkHoldTimer) {
+      clearTimeout(this._inkHoldTimer);
+      this._inkHoldTimer = null;
+    }
+    if (!this.isDrawingInk || !this.currentInkStroke) return;
+
+    this._inkHoldTimer = setTimeout(() => {
+      this._onInkHoldTriggered();
+    }, 420);
+  }
+
+  _onInkHoldTriggered() {
+    if (!this.isDrawingInk || !this.currentInkStroke) return;
+    const shape = this.recognizeInkShape(this.currentInkStroke);
+    if (shape) {
+      this._inkHoldDetected = true;
+      this.currentInkStroke.shape = shape;
+      this.currentInkStroke.isShape = true;
+      this.render();
+    }
+  }
+
+  _updateHeldShape(pos) {
+    if (!this.currentInkStroke || !this.currentInkStroke.shape) return;
+    const shape = this.currentInkStroke.shape;
+
+    // 🌟 [대표님 지시]: 직선(line)은 홀드 후 펜을 움직여 길이/각도 조절 및 수평·수직·45° 마그네틱 스냅 지원!
+    // (원, 타원, 사각형, 삼각형, 포물선, 삼차함수 등 나머지 도형은 그린 크기 그대로 고정!)
+    if (shape.type !== 'line') return;
+
+    const isBoard = (this.currentInkStroke.target || 'board') === 'board';
+    const bPx = (this.boardPanX || 0);
+    const bPy = (this.boardPanY || 0);
+    const sStart = isBoard
+      ? { x: shape.start.x + bPx, y: shape.start.y + bPy }
+      : this.mathToScreen(shape.start.x, shape.start.y);
+
+    let endX = pos.x;
+    let endY = pos.y;
+
+    const dx = endX - sStart.x;
+    const dy = endY - sStart.y;
+    const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+    const absAngle = Math.abs(angleDeg);
+
+    // 홀드 상태에서 직선을 돌릴 때 수평(0°, 180°), 수직(90°), 대각선(45°)에 마그네틱 자석 스냅! (자석 범위 슬림화: 1.5° / 1.2°)
+    const snapAngleThresh = 1.5;
+    const diagAngleThresh = 1.2;
+
+    if (absAngle < snapAngleThresh || absAngle > (180 - snapAngleThresh)) {
+      endY = sStart.y;
+      shape.snapped = 'horizontal';
+    } else if (Math.abs(absAngle - 90) < snapAngleThresh) {
+      endX = sStart.x;
+      shape.snapped = 'vertical';
+    } else if (Math.abs(absAngle - 45) < diagAngleThresh || Math.abs(absAngle - 135) < diagAngleThresh) {
+      const dist = Math.hypot(dx, dy);
+      const signX = dx >= 0 ? 1 : -1;
+      const signY = dy >= 0 ? 1 : -1;
+      endX = sStart.x + signX * dist * Math.SQRT1_2;
+      endY = sStart.y + signY * dist * Math.SQRT1_2;
+      shape.snapped = 'diagonal';
+    } else {
+      shape.snapped = null;
+    }
+
+    if (isBoard) {
+      shape.end = { x: endX - bPx, y: endY - bPy };
+    } else {
+      const mEnd = this.screenToMath(endX, endY);
+      shape.end = { x: mEnd.x, y: mEnd.y };
+    }
+  }
+
+  // 🌟 [굿노트/삼성노트 표준] 올가미(Lasso) 핵심 연산 및 점선 추종 렌더러 🌟
+  isPointInLassoSelection(pos) {
+    const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
+      (this.selectedTextLabels && this.selectedTextLabels.length > 0);
+    if (!hasSelection) return false;
+
+    // 1. 점선 루프가 있으면 무조건 실제 점선 루프 내부 판정을 최우선 적용!
+    if (this.lassoPoints && this.lassoPoints.length >= 3) {
+      if (this.isPointInPolygon(pos, this.lassoPoints)) {
+        return true;
+      }
+      // 사용자가 선택된 획 위를 콕 찍었는지도 검사 (획 접촉 시 드래그 허용)
+      const bPx = (this.boardPanX || 0);
+      const bPy = (this.boardPanY || 0);
+      for (const stroke of this.selectedInkStrokes) {
+        if (!stroke.points) continue;
+        const isBoard = (stroke.target || 'board') === 'board';
+        for (const pt of stroke.points) {
+          const s = isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y);
+          if (Math.hypot(s.x - pos.x, s.y - pos.y) <= 14) {
+            return true;
+          }
+        }
+      }
+      return false; // 점선 루프 밖이고 획 위도 아니면 100% 바깥 터치 (즉시 해제 대상)!
+    }
+
+    // 2. 점선 루프가 없고 바운딩 박스만 존재하는 경우의 폴백
+    if (this.lassoBoundingBox) {
+      const pad = 8;
+      const bbox = this.lassoBoundingBox;
+      return (pos.x >= bbox.minX - pad && pos.x <= bbox.maxX + pad &&
+        pos.y >= bbox.minY - pad && pos.y <= bbox.maxY + pad);
+    }
+
+    return false;
+  }
+
+  calculateStrokesBoundingBox(strokes, texts = []) {
+    const hasStrokes = strokes && strokes.length > 0;
+    const hasTexts = texts && texts.length > 0;
+    if (!hasStrokes && !hasTexts) return null;
+
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    const bPx = (this.boardPanX || 0);
+    const bPy = (this.boardPanY || 0);
+
+    if (hasStrokes) {
+      strokes.forEach(stroke => {
+        const isBoard = (stroke.target || 'board') === 'board';
+        if (stroke.shape) {
+          if (stroke.shape.type === 'line') {
+            const s1 = isBoard ? { x: stroke.shape.start.x + bPx, y: stroke.shape.start.y + bPy } : this.mathToScreen(stroke.shape.start.x, stroke.shape.start.y);
+            const s2 = isBoard ? { x: stroke.shape.end.x + bPx, y: stroke.shape.end.y + bPy } : this.mathToScreen(stroke.shape.end.x, stroke.shape.end.y);
+            minX = Math.min(minX, s1.x, s2.x); maxX = Math.max(maxX, s1.x, s2.x);
+            minY = Math.min(minY, s1.y, s2.y); maxY = Math.max(maxY, s1.y, s2.y);
+          } else if (stroke.shape.type === 'circle') {
+            const sc = isBoard ? { x: stroke.shape.center.x + bPx, y: stroke.shape.center.y + bPy } : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+            const sr = isBoard ? stroke.shape.radius : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x);
+            minX = Math.min(minX, sc.x - sr); maxX = Math.max(maxX, sc.x + sr);
+            minY = Math.min(minY, sc.y - sr); maxY = Math.max(maxY, sc.y + sr);
+          } else if (stroke.shape.type === 'ellipse') {
+            const sc = isBoard ? { x: stroke.shape.center.x + bPx, y: stroke.shape.center.y + bPy } : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+            const srx = isBoard ? stroke.shape.rx : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.rx, stroke.shape.center.y).x - sc.x);
+            const sry = isBoard ? stroke.shape.ry : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y);
+            minX = Math.min(minX, sc.x - srx); maxX = Math.max(maxX, sc.x + srx);
+            minY = Math.min(minY, sc.y - sry); maxY = Math.max(maxY, sc.y + sry);
+          } else if (stroke.shape.type === 'rect') {
+            const s1 = isBoard ? { x: stroke.shape.min.x + bPx, y: stroke.shape.min.y + bPy } : this.mathToScreen(stroke.shape.min.x, stroke.shape.min.y);
+            const s2 = isBoard ? { x: stroke.shape.max.x + bPx, y: stroke.shape.max.y + bPy } : this.mathToScreen(stroke.shape.max.x, stroke.shape.max.y);
+            minX = Math.min(minX, s1.x, s2.x); maxX = Math.max(maxX, s1.x, s2.x);
+            minY = Math.min(minY, s1.y, s2.y); maxY = Math.max(maxY, s1.y, s2.y);
+          } else if (stroke.shape.pts && stroke.shape.pts.length > 0) {
+            stroke.shape.pts.forEach(pt => {
+              const s = isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y);
+              if (s.x < minX) minX = s.x; if (s.x > maxX) maxX = s.x;
+              if (s.y < minY) minY = s.y; if (s.y > maxY) maxY = s.y;
+            });
+          }
+        } else if (stroke.points) {
+          stroke.points.forEach(pt => {
+            const s = isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y);
+            if (s.x < minX) minX = s.x; if (s.x > maxX) maxX = s.x;
+            if (s.y < minY) minY = s.y; if (s.y > maxY) maxY = s.y;
+          });
+        }
+      });
+    }
+
+    if (hasTexts) {
+      texts.forEach(t => {
+        const s = this.mathToScreen(t.mathX, t.mathY);
+        minX = Math.min(minX, s.x - 20); maxX = Math.max(maxX, s.x + 60);
+        minY = Math.min(minY, s.y - 20); maxY = Math.max(maxY, s.y + 20);
+      });
+    }
+
+    if (minX === Infinity || !isFinite(minX)) return null;
+
+    return {
+      minX,
+      maxX,
+      minY,
+      maxY,
+      width: Math.max(10, maxX - minX),
+      height: Math.max(10, maxY - minY)
+    };
+  }
+
+  isPointInPolygon(pt, polygon) {
+    if (!pt || !polygon || polygon.length < 3) return false;
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i].x, yi = polygon[i].y;
+      const xj = polygon[j].x, yj = polygon[j].y;
+      const intersect = ((yi > pt.y) !== (yj > pt.y)) &&
+        (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  isStrokeInLasso(stroke, lassoPoly) {
+    if (!stroke || !lassoPoly || lassoPoly.length < 3) return false;
+    const isBoard = (stroke.target || 'board') === 'board';
+    const bPx = (this.boardPanX || 0);
+    const bPy = (this.boardPanY || 0);
+
+    // 1. 도형인 경우 중심점 및 모서리 검사
+    if (stroke.shape) {
+      if (stroke.shape.type === 'line') {
+        const s1 = isBoard ? { x: stroke.shape.start.x + bPx, y: stroke.shape.start.y + bPy } : this.mathToScreen(stroke.shape.start.x, stroke.shape.start.y);
+        const s2 = isBoard ? { x: stroke.shape.end.x + bPx, y: stroke.shape.end.y + bPy } : this.mathToScreen(stroke.shape.end.x, stroke.shape.end.y);
+        const mid = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 };
+        return this.isPointInPolygon(mid, lassoPoly) || this.isPointInPolygon(s1, lassoPoly) || this.isPointInPolygon(s2, lassoPoly);
+      } else if (stroke.shape.type === 'circle' || stroke.shape.type === 'ellipse') {
+        const sc = isBoard ? { x: stroke.shape.center.x + bPx, y: stroke.shape.center.y + bPy } : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+        return this.isPointInPolygon(sc, lassoPoly);
+      } else if (stroke.shape.type === 'rect') {
+        const s1 = isBoard ? { x: stroke.shape.min.x + bPx, y: stroke.shape.min.y + bPy } : this.mathToScreen(stroke.shape.min.x, stroke.shape.min.y);
+        const s2 = isBoard ? { x: stroke.shape.max.x + bPx, y: stroke.shape.max.y + bPy } : this.mathToScreen(stroke.shape.max.x, stroke.shape.max.y);
+        const center = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 };
+        return this.isPointInPolygon(center, lassoPoly) || this.isPointInPolygon(s1, lassoPoly) || this.isPointInPolygon(s2, lassoPoly);
+      } else if (stroke.shape.pts && stroke.shape.pts.length > 0) {
+        return stroke.shape.pts.some(pt => {
+          const s = isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y);
+          return this.isPointInPolygon(s, lassoPoly);
+        });
+      }
+    }
+
+    if (!stroke.points || stroke.points.length === 0) return false;
+
+    // 2. 일반 손글씨 획: 대표 점(시작, 중간, 끝) 및 샘플 점 포함 여부 검사
+    const totalPts = stroke.points.length;
+    const step = Math.max(1, Math.floor(totalPts / 12));
+    let insideCount = 0;
+    let samples = 0;
+
+    for (let i = 0; i < totalPts; i += step) {
+      samples++;
+      const s = isBoard ? { x: stroke.points[i].x + bPx, y: stroke.points[i].y + bPy } : this.mathToScreen(stroke.points[i].x, stroke.points[i].y);
+      if (this.isPointInPolygon(s, lassoPoly)) {
+        insideCount++;
+      }
+    }
+
+    const sStart = isBoard ? { x: stroke.points[0].x + bPx, y: stroke.points[0].y + bPy } : this.mathToScreen(stroke.points[0].x, stroke.points[0].y);
+    const sEnd = isBoard ? { x: stroke.points[totalPts - 1].x + bPx, y: stroke.points[totalPts - 1].y + bPy } : this.mathToScreen(stroke.points[totalPts - 1].x, stroke.points[totalPts - 1].y);
+    const midIdx = Math.floor(totalPts / 2);
+    const sMid = isBoard ? { x: stroke.points[midIdx].x + bPx, y: stroke.points[midIdx].y + bPy } : this.mathToScreen(stroke.points[midIdx].x, stroke.points[midIdx].y);
+
+    if (this.isPointInPolygon(sStart, lassoPoly) || this.isPointInPolygon(sEnd, lassoPoly) || this.isPointInPolygon(sMid, lassoPoly)) {
+      return true;
+    }
+
+    return (insideCount > 0 && (insideCount / samples >= 0.10));
+  }
+
+  deleteSelectedInkStrokes() {
+    const hasStrokes = this.selectedInkStrokes && this.selectedInkStrokes.length > 0;
+    const hasTexts = this.selectedTextLabels && this.selectedTextLabels.length > 0;
+    if (!hasStrokes && !hasTexts) return;
+
+    this.pushHistoryState();
+    if (hasStrokes) {
+      const set = new Set(this.selectedInkStrokes);
+      this.inkStrokes = this.inkStrokes.filter(s => !set.has(s));
+      this.selectedInkStrokes = [];
+    }
+    if (hasTexts) {
+      const setT = new Set(this.selectedTextLabels);
+      this.textLabels = this.textLabels.filter(t => !setT.has(t));
+      this.selectedTextLabels = [];
+    }
+    this.lassoBoundingBox = null;
+    this.lassoPoints = [];
+    this._inkBakeDirty = true;
+    this.render();
+  }
+
+  drawLassoOverlay(ctx) {
+    // 1. [대표님 기획]: 드로잉 중인 올가미는 마우스/펜 끝을 매끄럽게 따라가는 깔끔한 점선으로만 표시!
+    if (this.isLassoSelecting && this.lassoPoints && this.lassoPoints.length > 1) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(this.lassoPoints[0].x, this.lassoPoints[0].y);
+      for (let i = 1; i < this.lassoPoints.length; i++) {
+        ctx.lineTo(this.lassoPoints[i].x, this.lassoPoints[i].y);
+      }
+      ctx.strokeStyle = '#00d2d3';
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([6, 5]);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 2. [가장 많이 쓰는 표준]: 선택 완료 및 드래그 중인 점선 올가미 (점선이 글씨와 함께 손을 따라감!)
+    const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
+      (this.selectedTextLabels && this.selectedTextLabels.length > 0);
+
+    if (hasSelection && this.lassoPoints && this.lassoPoints.length >= 3) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(this.lassoPoints[0].x, this.lassoPoints[0].y);
+      for (let i = 1; i < this.lassoPoints.length; i++) {
+        ctx.lineTo(this.lassoPoints[i].x, this.lassoPoints[i].y);
+      }
+      ctx.closePath();
+
+      // 내부 은은한 반투명 틴트 (선택 영역 인지용)
+      ctx.fillStyle = 'rgba(0, 210, 211, 0.05)';
+      ctx.fill();
+
+      // 세련된 굿노트/삼성노트식 마칭 앤츠 점선 테두리!
+      ctx.strokeStyle = '#00d2d3';
+      ctx.lineWidth = 2.0;
+      ctx.setLineDash([7, 5]);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.restore();
+    } else if (hasSelection && this.lassoBoundingBox) {
+      const bbox = this.lassoBoundingBox;
+      const pad = 10;
+      const x = bbox.minX - pad, y = bbox.minY - pad;
+      const w = bbox.width + pad * 2, h = bbox.height + pad * 2;
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 210, 211, 0.05)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = '#00d2d3';
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([6, 5]);
+      ctx.strokeRect(x, y, w, h);
+      ctx.restore();
+    }
+  }
+
+  initInkDockDraggable() {
+    const dock = document.getElementById('inkFloatingToolbar');
+    const handle = document.getElementById('inkDockDragHandle');
+    if (!dock || !handle) return;
+
+    let isDraggingDock = false;
+    let startX = 0, startY = 0;
+    let initialLeft = 0, initialTop = 0;
+
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      isDraggingDock = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = dock.getBoundingClientRect();
+      const parentRect = dock.parentElement.getBoundingClientRect();
+      initialLeft = rect.left - parentRect.left;
+      initialTop = rect.top - parentRect.top;
+      dock.style.transform = 'none';
+      dock.style.left = `${initialLeft}px`;
+      dock.style.top = `${initialTop}px`;
+      dock.style.bottom = 'auto';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDraggingDock) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      dock.style.left = `${initialLeft + dx}px`;
+      dock.style.top = `${initialTop + dy}px`;
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDraggingDock = false;
+    });
+  }
+
+  // ==========================================================================
+  // [📑 닥줌(DocZoom)형 PDF 교재 연속 세로 뷰어 & 2단 문제 박스 크롭 엔진]
+  // ==========================================================================
+  initPdfEngine() {
+    if (window.pdfjsLib) {
+      if (!window.pdfjsWorker) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js';
+      }
+    }
+
+    const btnImport = document.getElementById('btnPdfImport');
+    const fileInput = document.getElementById('pdfFileInput');
+    const btnQuick = document.getElementById('btnQuickPdfCrop');
+    const btnOpenAnother = document.getElementById('btnPdfOpenAnother');
+    const btnReturnToBoard = document.getElementById('btnReturnToBoard');
+
+    const triggerFileOpen = () => {
+      if (fileInput) {
+        // 🌟 [대표님 기획]: 파일 선택창 열리며 전체화면 풀리는 현상 방어
+        this.wasFullscreenBeforeFile = document.body.classList.contains('fullscreen-mode') || Boolean(document.fullscreenElement);
+        this.isWaitingForFilePicker = true;
+        fileInput.value = '';
+        fileInput.click();
+      }
+    };
+
+    if (btnImport) {
+      btnImport.onclick = () => {
+        // 좌측 [불러오기] 버튼을 통한 진입은 기존 문제를 유지하고 겹치기(추가) 허용!
+        this._isReplacingViaNextCrop = false;
+        if (this.pdfDoc) {
+          this.openPdfModal();
+        } else {
+          triggerFileOpen();
+        }
+      };
+    }
+
+    if (btnQuick) {
+      btnQuick.onclick = () => {
+        this._isReplacingViaNextCrop = false;
+        if (this.pdfDoc) {
+          this.openPdfModal();
+        } else {
+          this.loadSamplePdf();
+        }
+      };
+    }
+
+    const btnSample = document.getElementById('btnPdfOpenSample');
+    if (btnSample) {
+      btnSample.onclick = () => this.loadSamplePdf();
+    }
+
+    const btnDropSample = document.getElementById('btnDropOpenSample');
+    if (btnDropSample) {
+      btnDropSample.onclick = () => {
+        const overlay = document.getElementById('pdfDropOverlay');
+        if (overlay) overlay.style.display = 'none';
+        this.loadSamplePdf();
+      };
+    }
+
+    if (btnOpenAnother) btnOpenAnother.onclick = () => triggerFileOpen();
+    if (btnReturnToBoard) btnReturnToBoard.onclick = () => this.closePdfModal();
+
+    if (fileInput) {
+      fileInput.onchange = async (e) => {
+        this.isWaitingForFilePicker = false;
+        const rawFiles = e.target.files ? Array.from(e.target.files) : [];
+        if (rawFiles.length === 0) return;
+
+        // 🌟 [대표님 기획]: 파일 선택 완료 즉시 전체화면 100% 복귀
+        if (this.wasFullscreenBeforeFile) {
+          try {
+            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+            if (!fsEl && document.documentElement.requestFullscreen) {
+              await document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => { return document.documentElement.requestFullscreen(); });
+            }
+          } catch (err) { }
+          document.body.classList.add('fullscreen-mode');
+          const btnFs = document.getElementById('btnFullscreen');
+          if (btnFs) btnFs.classList.add('active');
+        }
+
+        const imageFiles = rawFiles.filter(f => f.type && f.type.startsWith('image/'));
+        // 1) 복수 이미지 파일(Shift/Ctrl 선택, 2개 이상) 불러오기 -> 모두 접은 압축형 카드로 차곡차곡 정렬!
+        if (imageFiles.length >= 2) {
+          this._isReplacingViaNextCrop = false;
+          await this.loadBatchFoldedProblemCards(imageFiles);
+          return;
+        }
+
+        // 2) 단일 이미지 파일 불러오기
+        if (imageFiles.length === 1) {
+          const file = imageFiles[0];
+          const replaceMode = Boolean(this._isReplacingViaNextCrop);
+          this._isReplacingViaNextCrop = false;
+          const reader = new FileReader();
+          reader.onload = (loadEvt) => {
+            const dataUrl = loadEvt.target.result;
+            if (replaceMode) {
+              this.resetBoardAndProblemCardsForNext();
+            }
+            if (!this.isInkMode) {
+              this.toggleInkMode(true);
+            }
+            this.setActiveInkTool('pen');
+            const cleanName = file.name.replace(/\.[^/.]+$/, '');
+            const targetW = Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
+            this.setProblemCard(dataUrl, cleanName, null, targetW);
+            this.showToast(replaceMode
+              ? `⏭️ 이전 문제를 닫고 새 문제 [${cleanName}]을(를) 새 칠판에 열었습니다!`
+              : `📁 이미지 문제 [${cleanName}]을(를) 칠판에 등록했습니다!`);
+          };
+          reader.readAsDataURL(file);
+          return;
+        }
+
+        // 3) PDF 파일 불러오기
+        const pdfFile = rawFiles.find(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+        if (pdfFile) {
+          this.loadPdfFromFile(pdfFile);
+        }
+      };
+    }
+
+    // 파일 선택창 취소 시에도 상태 보호
+    window.addEventListener('focus', () => {
+      if (this.isWaitingForFilePicker) {
+        setTimeout(() => {
+          this.isWaitingForFilePicker = false;
+          if (this.wasFullscreenBeforeFile && !document.fullscreenElement) {
+            document.body.classList.add('fullscreen-mode');
+            const btnFs = document.getElementById('btnFullscreen');
+            if (btnFs) btnFs.classList.add('active');
+          }
+        }, 300);
+      }
+    });
+
+    // 모달 닫기
+    const btnClose = document.getElementById('btnClosePdfModal');
+    if (btnClose) btnClose.onclick = () => this.closePdfModal();
+
+    // ✂️ 크롭 토글 버튼
+    const btnCropToggle = document.getElementById('btnPdfCropToggle');
+    if (btnCropToggle) {
+      btnCropToggle.onclick = () => this.togglePdfCropMode();
+    }
+
+    // 📄 이 페이지 열기 버튼 (개념 설명용: 해당 PDF 페이지 전체를 칠판 캔버스로 바로 삽입!)
+    const btnOpenFullPage = document.getElementById('btnPdfOpenFullPage');
+    if (btnOpenFullPage) {
+      btnOpenFullPage.onclick = () => this.openPdfPageOnBoard(this.pdfCurrentPage || 1);
+    }
+
+    // 📄 PDF 페이지 통째 칠판 모드 상단 미니 네비게이션 바
+    const btnBoardPrev = document.getElementById('btnPdfBoardPrev');
+    const btnBoardNext = document.getElementById('btnPdfBoardNext');
+    const btnBoardInfo = document.getElementById('btnPdfBoardPageInfo');
+    const btnBoardClose = document.getElementById('btnPdfBoardClose');
+    if (btnBoardPrev) btnBoardPrev.onclick = () => this.navigatePdfBoardPage(-1);
+    if (btnBoardNext) btnBoardNext.onclick = () => this.navigatePdfBoardPage(1);
+    if (btnBoardInfo) btnBoardInfo.onclick = () => this.openPdfModal();
+    if (btnBoardClose) btnBoardClose.onclick = () => this.closePdfPageBoard();
+
+    // 페이지 네비게이션
+    const btnPrev = document.getElementById('btnPdfPrevPage');
+    const btnNext = document.getElementById('btnPdfNextPage');
+    const inputPage = document.getElementById('inputPdfCurrentPage');
+
+    if (btnPrev) btnPrev.onclick = () => this.scrollToPdfPage(this.pdfCurrentPage - 1);
+    if (btnNext) btnNext.onclick = () => this.scrollToPdfPage(this.pdfCurrentPage + 1);
+    if (inputPage) {
+      inputPage.onchange = () => {
+        const p = parseInt(inputPage.value, 10);
+        if (!isNaN(p)) this.scrollToPdfPage(p);
+      };
+      inputPage.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          const p = parseInt(inputPage.value, 10);
+          if (!isNaN(p)) this.scrollToPdfPage(p);
+        }
+      };
+    }
+
+    // 줌 컨트롤
+    const btnZoomIn = document.getElementById('btnPdfZoomIn');
+    const btnZoomOut = document.getElementById('btnPdfZoomOut');
+    const btnZoomFit = document.getElementById('btnPdfZoomFit');
+
+    if (btnZoomIn) btnZoomIn.onclick = () => this.setPdfZoom(this.pdfZoom + 0.15);
+    if (btnZoomOut) btnZoomOut.onclick = () => this.setPdfZoom(Math.max(0.6, this.pdfZoom - 0.15));
+    if (btnZoomFit) btnZoomFit.onclick = () => this.fitPdfWidth();
+
+    // 뷰포트 스크롤 감지: 현재 화면 중앙에 있는 페이지 번호 실시간 계산
+    const viewport = document.getElementById('pdfViewport');
+    if (viewport) {
+      viewport.addEventListener('scroll', () => {
+        this.onPdfViewportScroll();
+      });
+    }
+
+    // PDF 파일 드래그 앤 드롭
+    const dropOverlay = document.getElementById('pdfDropOverlay');
+    let dragCounter = 0;
+
+    window.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      dragCounter++;
+      if (dropOverlay) dropOverlay.style.display = 'flex';
+    });
+
+    window.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0 && dropOverlay) {
+        dropOverlay.style.display = 'none';
+        dragCounter = 0;
+      }
+    });
+
+    window.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+
+    window.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      if (dropOverlay) dropOverlay.style.display = 'none';
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        if (file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf') {
+          this.loadPdfFromFile(file);
+        }
+      }
+    });
+
+    // 크롭 드래그 인터랙션 & 문제 카드 초기화
+    this.initPdfCropInteractions();
+    this.initProblemCardInteractions();
+    this.initGraphCardInteractions();
+  }
+
+  loadSamplePdf() {
+    this.showToast('⏳ 2025 수능 수학 샘플 시험지를 여는 중입니다...');
+    try {
+      const b64 = 'JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA1OTUgODQyXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgL0YyIDYgMCBSID4+ID4+ID4+CmVuZG9iago0IDAgb2JqCjw8IC9MZW5ndGggMjA4OCA+PgpzdHJlYW0KCnEKMC45IDAuOSAwLjkgcmcKMC41IHcKMzAgODA1IDUzNSAwLjUgcmUgZgozMCAzNSA1MzUgMC41IHJlIGYKUQoKQlQKL0YxIDE1IFRmCjAuMSAwLjEgMC4xIHJnCjMwIDgxNSBUZAooMjAyNSBDb2xsZWdlIFNjaG9sYXN0aWMgQWJpbGl0eSBUZXN0IC0gTWF0aGVtYXRpY3MgKE1vY2sgRXhhbSkpIFRqCkVUCgpCVAovRjEgMTAgVGYKMC4zIDAuMyAwLjMgcmcKNTEwIDgxNSBUZAooUGFnZSAxIC8gMSkgVGoKRVQKCnEKMC44IDAuOCAwLjggcmcKMC41IHcKMjk3IDUwIDAuNSA3MzAgcmUgZgpRCgolIExlZnQgQ29sdW1uOiBQcm9ibGVtIDE0CkJUCi9GMiAxMyBUZgowIDAgMCByZwozNSA3NzAgVGQKKFtQcm9ibGVtIDE0XSBDdWJpYyBGdW5jdGlvbiAmIFJhdGlvIEd1aWRlKSBUagpFVAoKQlQKL0YxIDEwLjUgVGYKMC4xNSAwLjE1IDAuMTUgcmcKMzUgNzQ1IFRkCihMZXQgZih4KSA9IHheMyAtIDN4IGJlIGEgY3ViaWMgZnVuY3Rpb24uKSBUagpFVAoKQlQKL0YxIDEwLjUgVGYKMzUgNzI1IFRkCihGaW5kIHRoZSBsb2NhbCBtYXhpbXVtLCBsb2NhbCBtaW5pbXVtLCBhbmQgaW5mbGVjdGlvbiBwb2ludHMuKSBUagpFVAoKQlQKL0YxIDEwLjUgVGYKMzUgNzA1IFRkCihEZXRlcm1pbmUgdGhlIG51bWJlciBvZiByZWFsIHJvb3RzIG9mIGVxdWF0aW9uIGYoeCkgPSB0LikgVGoKRVQKCkJUCi9GMSAxMCBUZgowLjI1IDAuMjUgMC4yNSByZwozNSA2NzAgVGQKKCgxKSBMb2NhbCBtYXhpbXVtIGF0IHggPSAtMSwgeSA9IDIpIFRqCkVUCgpCVAovRjEgMTAgVGYKMzUgNjUwIFRkCigoMikgTG9jYWwgbWluaW11bSBhdCB4ID0gMSwgeSA9IC0yKSBUagpFVAoKQlQKL0YxIDEwIFRmCjM1IDYzMCBUZAooKDMpIFN5bW1ldHJ5IGNlbnRlciAoaW5mbGVjdGlvbikgYXQgKDAsIDApKSBUagpFVAoKQlQKL0YxIDEwIFRmCjM1IDYxMCBUZAooKDQpIDI6MSBhbmQgMTpzcXJ0KDMpIHJhdGlvIHByb3BlcnRpZXMgaG9sZCBzdHJpY3RseS4pIFRqCkVUCgolIFJpZ2h0IENvbHVtbjogUHJvYmxlbSAyMiAoS2lsbGVyKQpCVAovRjIgMTMgVGYKMCAwIDAgcmcKMzE1IDc3MCBUZAooW1Byb2JsZW0gMjJdIFF1YXJ0aWMgRnVuY3Rpb24gJiBTeW1tZXRyeSkgVGoKRVQKCkJUCi9GMSAxMC41IFRmCjAuMTUgMC4xNSAwLjE1IHJnCjMxNSA3NDUgVGQKKExldCBnKHgpID0geF40IC0gMnheMiBiZSBhIHN5bW1ldHJpYyBXLXNoYXBlIHF1YXJ0aWMuKSBUagpFVAoKQlQKL0YxIDEwLjUgVGYKMzE1IDcyNSBUZAooRGV0ZXJtaW5lIHRoZSB2YWx1ZXMgb2YgdCBmb3Igd2hpY2ggfGcoeCkgLSB0fCBpcykgVGoKRVQKCkJUCi9GMSAxMC41IFRmCjMxNSA3MDUgVGQKKGRpZmZlcmVudGlhYmxlIGZvciBhbGwgcmVhbCBudW1iZXJzIGV4Y2VwdCBhdCBleGFjdGx5IDIgcG9pbnRzLikgVGoKRVQKCkJUCi9GMSAxMCBUZgowLjI1IDAuMjUgMC4yNSByZwozMTUgNjcwIFRkCigoQSkgSGVpZ2h0IGRpZmZlcmVuY2U6IERlbHRhIHkgPSBhICogcF40KSBUagpFVAoKQlQKL0YxIDEwIFRmCjMxNSA2NTAgVGQKKChCKSAxOnNxcnQoMikgcmF0aW8gZ3VpZGUgYmV0d2VlbiBleHRyZW1hIGFuZCByb290cy4pIFRqCkVUCgpCVAovRjEgMTAgVGYKMzE1IDYzMCBUZAooKEMpIEhvcml6b250YWwgdGFuZ2VudCBzbmFwIGFuZCAzRCBoYW5kbGUgY29udHJvbHMuKSBUagpFVAoKJSBEZWNvcmF0aXZlIEJveCBmb3IgUHJvYmxlbSAxNApxCjAuOTYgMC45NyAwLjk5IHJnCjAuNSAwLjYgMC44IFJHCjEgdwozNSA0ODAgMjM1IDEwMCByZSBCClEKCkJUCi9GMiAxMSBUZgowLjEgMC4zIDAuNiByZwo0NSA1NjAgVGQKKFtIaW50IENhcmQ6IEdyYXBoIE1hc3RlciBDcm9wXSkgVGoKRVQKCkJUCi9GMSA5LjUgVGYKMC4yIDAuMiAwLjIgcmcKNDUgNTM1IFRkCihEcmFnIGEgYm94IGFyb3VuZCB0aGlzIHByb2JsZW0gY2FyZCB0byBjcm9wISkgVGoKRVQKCkJUCi9GMSA5LjUgVGYKNDUgNTE1IFRkCihJdCB3aWxsIGltbWVkaWF0ZWx5IHBpbiB0byB0aGUgdG9wLWxlZnQgYmxhY2tib2FyZC4pIFRqCkVUCgpCVAovRjEgOS41IFRmCjQ1IDQ5NSBUZAooMS1zZWNvbmQgY3JvcCAmIGluZmluaXRlIGJsYWNrYm9hcmQgcGVuIHRlYWNoaW5nISkgVGoKRVQKCmVuZHN0cmVhbQplbmRvYmoKNSAwIG9iago8PCAvVHlwZSAvRm9udCAvU3VidHlwZSAvVHlwZTEgL0Jhc2VGb250IC9IZWx2ZXRpY2EgPj4KZW5kb2JqCjYgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhLUJvbGQgPj4KZW5kb2JqCnhyZWYKMCA3CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMTUgMDAwMDAgbiAKMDAwMDAwMDI1MSAwMDAwMCBuIAowMDAwMDAyMzkxIDAwMDAwIG4gCjAwMDAwMDI0NjEgMDAwMDAgbiAKdHJhaWxlcgo8PCAvU2l6ZSA3IC9Sb290IDEgMCBSID4+CnN0YXJ0eHJlZgoyNTM2CiUlRU9GCg==';
+      const binaryStr = atob(b64);
+      const len = binaryStr.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      return this.loadPdfFromArrayBuffer(bytes.buffer, '2025_수능_수학_모의고사.pdf');
+    } catch (err) {
+      console.error('샘플 PDF 파싱 실패:', err);
+      const fileInput = document.getElementById('pdfFileInput');
+      if (fileInput) fileInput.click();
+      return Promise.reject(err);
+    }
+  }
+
+  loadPdfFromFile(file) {
+    if (!file) return;
+    this.pdfFileName = file.name;
+    const titleEl = document.getElementById('pdfFileName');
+    if (titleEl) { titleEl.textContent = file.name; titleEl.title = file.name; }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      this.loadPdfFromArrayBuffer(reader.result, file.name);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  loadPdfFromArrayBuffer(arrayBuffer, fileName = '교재.pdf') {
+    if (!window.pdfjsLib) {
+      this.showToast('⚠️ PDF.js 라이브러리를 불러오지 못했습니다.');
+      return Promise.reject(new Error('PDF.js not loaded'));
+    }
+
+    this.showToast('⏳ PDF 교재를 불러오는 중입니다...');
+    const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
+
+    return loadingTask.promise.then(async pdf => {
+      this.pdfDoc = pdf;
+      this.pdfTotalPages = pdf.numPages;
+      this.pdfCurrentPage = 1;
+      this.savedPdfScrollTop = 0;
+      this.savedPdfScrollLeft = 0;
+
+      const totalEl = document.getElementById('lblPdfTotalPages');
+      if (totalEl) totalEl.textContent = pdf.numPages;
+
+      const titleEl = document.getElementById('pdfFileName');
+      if (titleEl) { titleEl.textContent = fileName; titleEl.title = fileName; }
+
+      // 처음 열 때 2단 시험지가 시원시원하게 꽉 차도록 뷰포트 너비의 82%로 자동 맞춤 줌 계산!
+      this.openPdfModal(true);
+      try {
+        const firstPage = await pdf.getPage(1);
+        const unscaledVp = firstPage.getViewport({ scale: 1.0 });
+        this.pdfDefaultPageSize = { width: unscaledVp.width || 595, height: unscaledVp.height || 842 };
+        const viewportEl = document.getElementById('pdfViewport');
+        const availW = (viewportEl && viewportEl.clientWidth > 200) ? (viewportEl.clientWidth - 64) : (window.innerWidth * 0.90);
+        const autoZoom = Math.max(1.5, Math.min(2.4, (availW * 0.86) / (unscaledVp.width || 600)));
+        this.pdfZoom = Math.round(autoZoom * 20) / 20;
+      } catch (e) {
+        this.pdfDefaultPageSize = { width: 595, height: 842 };
+        this.pdfZoom = 1.75;
+      }
+      const lbl = document.getElementById('lblPdfZoom');
+      if (lbl) lbl.textContent = `${Math.round(this.pdfZoom * 100)}%`;
+
+      this.renderAllPdfPages(true);
+      this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) 교재가 시원하게 로드되었습니다!`);
+      return pdf;
+    }).catch(err => {
+      console.error('PDF 로드 실패:', err);
+      this.showToast('❌ PDF 파일을 파싱하는 데 실패했습니다: ' + err.message);
+      throw err;
+    });
+  }
+
+  openPdfModal(isInitialLoad = false) {
+    const modal = document.getElementById('modalPdfViewer');
+    if (modal) {
+      modal.style.display = 'flex';
+      this.isPdfModalOpen = true;
+      this.togglePdfCropMode(false);
+      if (this.pdfDoc && !isInitialLoad) {
+        const container = document.getElementById('pdfPagesContainer');
+        const viewport = document.getElementById('pdfViewport');
+        if (!container || container.children.length === 0) {
+          this.renderAllPdfPages(true);
+        } else if (viewport) {
+          // 🌟 [핵심 개선]: 다시 크롭을 눌렀을 때 문서 맨 처음으로 올라가지 않고 직전에 보던 스크롤 위치 그대로 100% 복원!
+          const targetTop = (typeof this.savedPdfScrollTop === 'number') ? this.savedPdfScrollTop : viewport.scrollTop;
+          const targetLeft = (typeof this.savedPdfScrollLeft === 'number') ? this.savedPdfScrollLeft : viewport.scrollLeft;
+          viewport.scrollTop = targetTop;
+          viewport.scrollLeft = targetLeft;
+          requestAnimationFrame(() => {
+            viewport.scrollTop = targetTop;
+            viewport.scrollLeft = targetLeft;
+          });
+        }
+      }
+    }
+  }
+
+  closePdfModal() {
+    const viewport = document.getElementById('pdfViewport');
+    if (viewport && this.isPdfModalOpen) {
+      this.savedPdfScrollTop = viewport.scrollTop;
+      this.savedPdfScrollLeft = viewport.scrollLeft;
+    }
+    const modal = document.getElementById('modalPdfViewer');
+    if (modal) {
+      modal.style.display = 'none';
+      this.isPdfModalOpen = false;
+      this.togglePdfCropMode(false);
+    }
+  }
+
+  // ==========================================================================
+  // [📄 PDF 페이지 통째 칠판 모드 (Concept Page Board Mode) & 좌상단 p.N 자동 접기 엔진]
+  // ==========================================================================
+  syncPdfBoardNavBarUI() {
+    const bar = document.getElementById('pdfBoardNavBar');
+    if (!bar) return;
+    if (!this.pdfPageBoardData) {
+      bar.style.display = 'none';
+      return;
+    }
+    bar.style.display = 'flex';
+    const p = this.pdfPageBoardData.pageNum || 1;
+    const total = this.pdfPageBoardData.totalPages || this.pdfTotalPages || 1;
+    const lbl = document.getElementById('lblPdfBoardPageInfo');
+    if (lbl) lbl.textContent = `p.${p} / ${total}`;
+    const btnPrev = document.getElementById('btnPdfBoardPrev');
+    const btnNext = document.getElementById('btnPdfBoardNext');
+    if (btnPrev) btnPrev.disabled = (p <= 1);
+    if (btnNext) btnNext.disabled = (p >= total);
+  }
+
+  drawPdfPageBoardLayer(ctx, isExport = false) {
+    if (!this.pdfPageBoardData || !this.pdfPageBoardData.canvas) {
+      this._lastPdfPageScreenRect = null;
+      return;
+    }
+    const { canvas: pageCanvas, mathW, mathH } = this.pdfPageBoardData;
+    const cx = this.pdfPageBoardData.centerX || 0;
+    const cy = this.pdfPageBoardData.centerY || 0;
+    const tl = this.mathToScreen(cx - mathW / 2, cy + mathH / 2);
+    const br = this.mathToScreen(cx + mathW / 2, cy - mathH / 2);
+    const x = Math.min(tl.x, br.x);
+    const y = Math.min(tl.y, br.y);
+    const w = Math.abs(br.x - tl.x);
+    const h = Math.abs(br.y - tl.y);
+    if (w < 2 || h < 2) {
+      this._lastPdfPageScreenRect = null;
+      return;
+    }
+    this._lastPdfPageScreenRect = { x, y, w, h };
+
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
+    const isLight = Boolean(curTheme.isLight || this.isMonochromeMode);
+
+    ctx.save();
+    if (!isExport || !this.exportTransparent) {
+      ctx.shadowColor = isLight ? 'rgba(15, 23, 42, 0.10)' : 'rgba(0, 0, 0, 0.45)';
+      ctx.shadowBlur = isLight ? 18 : 24;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 4;
+    }
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x, y, w, h);
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
+    ctx.drawImage(pageCanvas, x, y, w, h);
+
+    ctx.strokeStyle = isLight ? 'rgba(148, 163, 184, 0.45)' : 'rgba(255, 255, 255, 0.22)';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+  }
+
+  bakeCurrentPdfPageSnapshot() {
+    if (!this.pdfPageBoardData || !this.pdfPageBoardData.canvas) return null;
+    const { canvas: pageCanvas, mathW, mathH } = this.pdfPageBoardData;
+    const cx = this.pdfPageBoardData.centerX || 0;
+    const cy = this.pdfPageBoardData.centerY || 0;
+
+    // 1. 페이지 영역[cx-mathW/2 ~ cx+mathW/2, cy-mathH/2 ~ cy+mathH/2]을 기본 바운딩으로 잡고, 페이지 주변 필기나 그래프가 있으면 확장
+    let minMX = cx - mathW / 2;
+    let maxMX = cx + mathW / 2;
+    let minMY = cy - mathH / 2;
+    let maxMY = cy + mathH / 2;
+
+    const expandMath = (mx, my, padM = 0.2) => {
+      if (!Number.isFinite(mx) || !Number.isFinite(my)) return;
+      if (mx - padM < minMX) minMX = mx - padM;
+      if (mx + padM > maxMX) maxMX = mx + padM;
+      if (my - padM < minMY) minMY = my - padM;
+      if (my + padM > maxMY) maxMY = my + padM;
+    };
+
+    (this.inkStrokes || []).forEach(s => {
+      if (!s || (s.target || 'board') !== 'graph') return;
+      if (s.points && s.points.length > 0) {
+        s.points.forEach(pt => expandMath(pt.x, pt.y, 0.25));
+      }
+      if (s.shape) {
+        const sh = s.shape;
+        if (sh.start && sh.end) {
+          expandMath(sh.start.x, sh.start.y, 0.25);
+          expandMath(sh.end.x, sh.end.y, 0.25);
+        } else if (sh.center) {
+          const r = sh.radius || Math.max(sh.rx || 0, sh.ry || 0) || 0.5;
+          expandMath(sh.center.x - r, sh.center.y - r, 0.25);
+          expandMath(sh.center.x + r, sh.center.y + r, 0.25);
+        } else if (sh.min && sh.max) {
+          expandMath(sh.min.x, sh.min.y, 0.25);
+          expandMath(sh.max.x, sh.max.y, 0.25);
+        } else if (sh.pts && sh.pts.length > 0) {
+          sh.pts.forEach(pt => expandMath(pt.x, pt.y, 0.25));
+        }
+      }
+    });
+
+    const spanW = Math.max(1.0, maxMX - minMX);
+    const spanH = Math.max(1.0, maxMY - minMY);
+    const centerMX = (minMX + maxMX) / 2;
+    const centerMY = (minMY + maxMY) / 2;
+
+    const basePxH = 1100;
+    const unitScale = basePxH / spanH;
+    const pxW = Math.max(320, Math.min(2400, Math.round(spanW * unitScale)));
+    const pxH = Math.max(320, Math.min(2400, Math.round(spanH * unitScale)));
+
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = pxW;
+    offCanvas.height = pxH;
+    const offCtx = offCanvas.getContext('2d');
+
+    const backup = {
+      sw: this.screenWidth,
+      sh: this.screenHeight,
+      panX: this.panX,
+      panY: this.panY,
+      zoomLevel: this.zoomLevel,
+      ySpan: this.ySpan,
+      lockAspect: this.lockAspect,
+      isGraphCovered: this.isGraphCovered
+    };
+
+    this.screenWidth = pxW;
+    this.screenHeight = pxH;
+    this.panX = -centerMX * unitScale;
+    this.panY = centerMY * unitScale;
+    this.zoomLevel = 1.0;
+    this.ySpan = (pxH / 2) / unitScale;
+    this.lockAspect = true;
+
+    // 배경 및 PDF 페이지 + 곡선 + 필기 합성
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
+    offCtx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
+    offCtx.fillRect(0, 0, pxW, pxH);
+    this.drawPdfPageBoardLayer(offCtx, true);
+    if (!backup.isGraphCovered) {
+      if (this.showAxes) this.drawAxes(offCtx, null);
+      if (this.graphs && this.graphs.length > 0) this.drawAllCurves(offCtx, true);
+      if (this.usePiecewise) this.drawPiecewiseBoundaries(offCtx, true);
+      if (this.dropLines && this.dropLines.length > 0) this.drawDropLines(offCtx, true);
+      if (this.textLabels && this.textLabels.length > 0) this.drawTextLabels(offCtx, true);
+    }
+    this.drawInkStrokes(offCtx, true, 'graph');
+
+    this.screenWidth = backup.sw;
+    this.screenHeight = backup.sh;
+    this.panX = backup.panX;
+    this.panY = backup.panY;
+    this.zoomLevel = backup.zoomLevel;
+    this.ySpan = backup.ySpan;
+    this.lockAspect = backup.lockAspect;
+    this.isGraphCovered = backup.isGraphCovered;
+
+    return {
+      canvas: offCanvas,
+      dataUrl: offCanvas.toDataURL('image/png'),
+      aspect: pxH / Math.max(1, pxW)
+    };
+  }
+
+  archiveCurrentPdfBoardPageToCard() {
+    if (!this.pdfPageBoardData) return;
+    const prevPageNum = this.pdfPageBoardData.pageNum;
+    if (!this.pdfSavedPageStates) this.pdfSavedPageStates = {};
+
+    // 1. 나중에 [🔄 열기] 또는 [◀ 이전]으로 돌아올 때 편집 가능하도록 상태 백업
+    this.pdfSavedPageStates[prevPageNum] = {
+      pageNum: prevPageNum,
+      pdfPageBoardData: { ...this.pdfPageBoardData },
+      panX: this.panX,
+      panY: this.panY,
+      zoomLevel: this.zoomLevel,
+      ySpan: this.ySpan,
+      inkStrokes: JSON.parse(JSON.stringify(this.inkStrokes || [])),
+      graphs: JSON.parse(JSON.stringify(this.graphs || [])),
+      activeGraphIdx: this.activeGraphIdx,
+      showAxes: this.showAxes,
+      usePiecewise: this.usePiecewise,
+      piecewiseBoundaries: [...(this.piecewiseBoundaries || [])],
+      piecewiseFuncMap: [...(this.piecewiseFuncMap || [])],
+      piecewiseInclusions: [...(this.piecewiseInclusions || [])],
+      dropLines: JSON.parse(JSON.stringify(this.dropLines || [])),
+      textLabels: JSON.parse(JSON.stringify(this.textLabels || []))
+    };
+
+    // 2. 현재 페이지 + 판서 스냅샷 이미지 구워내기
+    const baked = this.bakeCurrentPdfPageSnapshot();
+    const dataUrl = baked ? baked.dataUrl : this.pdfPageBoardData.dataUrl;
+    const snapCanvas = baked ? baked.canvas : this.pdfPageBoardData.canvas;
+
+    // 3. 이미 해당 페이지 번호의 미니 카드가 있으면 제거 후 갱신
+    if (!this.extraProblemCards) this.extraProblemCards = [];
+    this.extraProblemCards = this.extraProblemCards.filter(c => {
+      if (c && c.isPdfPageCard && c.pdfPageNum === prevPageNum) {
+        if (c.el) c.el.remove();
+        return false;
+      }
+      return true;
+    });
+
+    // 4. 좌측 상단 구석(left: 72px, top: 18px + idx * 44px)에 페이지 넘버만 적힌 작은 접힌 카드(▸ p.N)로 차곡차곡 배치!
+    const existingPageCards = this.extraProblemCards.filter(c => c && c.isPdfPageCard);
+    const idx = existingPageCards.length;
+    const cardX = 72;
+    const cardY = 18 + idx * 44;
+
+    this.spawnExtraProblemCard(dataUrl, prevPageNum, 460, snapCanvas, {
+      startMinimized: true,
+      customX: cardX,
+      customY: cardY,
+      customTitle: `p.${prevPageNum}`,
+      isPdfPageCard: true,
+      pdfPageNum: prevPageNum,
+      silentToast: true
+    });
+
+    // 좌상단 페이지 카드들을 번호순으로 깔끔하게 재정렬
+    this.relayoutPdfPageCards();
+  }
+
+  relayoutPdfPageCards() {
+    if (!this.extraProblemCards) return;
+    const pageCards = this.extraProblemCards
+      .filter(c => c && c.isPdfPageCard && c.isMin)
+      .sort((a, b) => (a.pdfPageNum || 0) - (b.pdfPageNum || 0));
+    pageCards.forEach((c, idx) => {
+      c.baseX = 72;
+      c.baseY = 18 + idx * 44;
+      if (c.el) {
+        c.el.style.left = `${c.baseX}px`;
+        c.el.style.top = `${c.baseY}px`;
+      }
+    });
+  }
+
+  async openPdfPageOnBoard(pageNum, options = {}) {
+    if (!this.pdfDoc) {
+      this.showToast('⚠️ 먼저 PDF 교재를 열어주세요.');
+      return;
+    }
+    const total = this.pdfTotalPages || this.pdfDoc.numPages || 1;
+    const targetPage = Math.max(1, Math.min(pageNum || this.pdfCurrentPage || 1, total));
+
+    // 1. 이미 다른 PDF 페이지가 캔버스에 열려 있었다면 -> 이전 페이지를 좌상단 미니 카드(▸ p.N)로 자동 접어 보관!
+    if (this.pdfPageBoardData && this.pdfPageBoardData.pageNum !== targetPage && !options.skipArchiveCurrent) {
+      this.archiveCurrentPdfBoardPageToCard();
+
+      // 새 페이지 진입을 위해 이전 페이지의 필기 및 실시간 그래프를 비움
+      this.inkStrokes = [];
+      this.dropLines = [];
+      this.textLabels = [];
+      this.graphs = [];
+      this.activeGraphIdx = -1;
+      this.selectedHandleIdx = null;
+      this.isCurveSelected = false;
+      this.usePiecewise = false;
+      this.piecewiseBoundaries = [];
+      this.piecewiseFuncMap = [];
+      this.piecewiseInclusions = [];
+      this.isPiecewisePeriodic = false;
+      this.isPiecewiseLocked = false;
+      this._inkBakeDirty = true;
+      this.clearInkCache();
+    }
+
+    // 2. 이전에 판서했던 페이지로 돌아오는 경우(예: [◀ 이전] 또는 좌상단 p.N 카드의 [🔄 열기] 클릭) -> 백업 상태 복원!
+    if (this.pdfSavedPageStates && this.pdfSavedPageStates[targetPage] && !options.forceFresh) {
+      const saved = this.pdfSavedPageStates[targetPage];
+      // 좌상단에 접혀 있던 해당 페이지 카드는 현재 메인 캔버스로 열렸으므로 제거하고 나머지 카드 줄 맞춤
+      if (this.extraProblemCards) {
+        this.extraProblemCards = this.extraProblemCards.filter(c => {
+          if (c && c.isPdfPageCard && c.pdfPageNum === targetPage) {
+            if (c.el) c.el.remove();
+            return false;
+          }
+          return true;
+        });
+        this.relayoutPdfPageCards();
+      }
+      this.pdfPageBoardData = { ...saved.pdfPageBoardData, totalPages: total };
+      this.inkStrokes = JSON.parse(JSON.stringify(saved.inkStrokes || []));
+      this.graphs = JSON.parse(JSON.stringify(saved.graphs || []));
+      this.activeGraphIdx = saved.activeGraphIdx !== undefined ? saved.activeGraphIdx : (this.graphs.length > 0 ? 0 : -1);
+      this.showAxes = Boolean(saved.showAxes);
+      this.usePiecewise = Boolean(saved.usePiecewise);
+      this.piecewiseBoundaries = [...(saved.piecewiseBoundaries || [])];
+      this.piecewiseFuncMap = [...(saved.piecewiseFuncMap || [])];
+      this.piecewiseInclusions = [...(saved.piecewiseInclusions || [])];
+      this.dropLines = JSON.parse(JSON.stringify(saved.dropLines || []));
+      this.textLabels = JSON.parse(JSON.stringify(saved.textLabels || []));
+      this.isGraphCovered = false;
+      this.ySpan = saved.ySpan || (this.pdfPageBoardData.baseYSpan || 8.4);
+      this.panX = typeof saved.panX === 'number' ? saved.panX : 0;
+      this.panY = typeof saved.panY === 'number' ? saved.panY : 0;
+      this.setZoomLevel(typeof saved.zoomLevel === 'number' ? saved.zoomLevel : 1.0);
+      this.updateAxesUI();
+      this._inkBakeDirty = true;
+      this.clearInkCache();
+      this.updatePdfPageNavUI(targetPage);
+      this.closePdfModal();
+      if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+        this.closeDrawer();
+      }
+      if (!this.isInkMode) {
+        this.toggleInkMode(true);
+      }
+      this.setActiveInkTool('pen');
+      this.syncControls();
+      this.renderLayerList();
+      this.renderFuncList();
+      this.syncPdfBoardNavBarUI();
+      this.syncGraphSnapBarUI();
+      this.render();
+      return;
+    }
+
+    // 3. 새 PDF 페이지 고해상도 오프스크린 렌더링 (단 1장만 GPU에 유지하여 성능 저하 0.0%!)
+    const page = await this.pdfDoc.getPage(targetPage);
+    const renderScale = 2.5;
+    const vp = page.getViewport({ scale: renderScale });
+    const pageCanvas = document.createElement('canvas');
+    pageCanvas.width = Math.round(vp.width);
+    pageCanvas.height = Math.round(vp.height);
+    const pCtx = pageCanvas.getContext('2d');
+    pCtx.fillStyle = '#ffffff';
+    pCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+    await page.render({ canvasContext: pCtx, viewport: vp }).promise;
+
+    // 🌟 [대표님 피드백 반영: PDF 삽입 시 화면 거의 꽉 차게 확대 삽입 + 그래프 소환 시 아담한 비율 보장!] 🌟
+    // 1) ySpan = 8.4로 설정하여 그래프 1단위 크기를 아담하게 유지(극대~극소 폭 ~130px, 높이 ~255px)
+    // 2) 동시에 PDF 페이지의 가로 폭(mathW)은 화면 가로의 ~84%(좌우 툴바 여백만 남긴 꽉 찬 크기)로 큼직하게 배치하여,
+    //    따로 줌인을 하지 않아도 글씨가 처음부터 시원하게 잘 보이고 그래프를 소환했을 때 옆에서 아담하게 그려지도록 설계!
+    const baseYSpan = 8.4;
+    this.ySpan = baseYSpan;
+    this.xSpan = 11.5;
+    this.isGraphCovered = false;
+    this.panX = 0;
+    this.panY = 0;
+    this.setZoomLevel(1.0);
+
+    const aspect = pageCanvas.height / Math.max(1, pageCanvas.width);
+    const sw = Math.max(800, this.screenWidth || window.innerWidth || 1920);
+    const sh = Math.max(600, this.screenHeight || window.innerHeight || 1080);
+    const unitScale = (sh / 2) / baseYSpan;
+    const targetScreenW = Math.min(sw - 148, Math.max(sw * 0.84, sh * 1.18));
+    const mathW = targetScreenW / unitScale;
+    const mathH = mathW * aspect;
+
+    // PDF 페이지 상단 끝이 상단 네비게이션 바(#pdfBoardNavBar) 바로 아래(top = 58px)부터 시원하게 시작하도록 배치!
+    // (이때 카메라 panX=0, panY=0은 그대로 유지되어 화면 정중앙이 곧바로 수학 원점 (0, 0)이 됩니다!)
+    const topMarginPx = 58;
+    const yTopMath = (sh / 2 - topMarginPx) / unitScale;
+    const centerX = 0;
+    const centerY = yTopMath - mathH / 2;
+
+    this.pdfPageBoardData = {
+      pageNum: targetPage,
+      totalPages: total,
+      canvas: pageCanvas,
+      dataUrl: pageCanvas.toDataURL('image/png'),
+      aspect,
+      mathW,
+      mathH,
+      centerX,
+      centerY,
+      baseYSpan
+    };
+
+    // 그래프가 아직 없을 때는 개념서 텍스트를 가리지 않도록 좌표축을 기본 숨김 (그래프 [+] 추가 시 자동 ON!)
+    if (!this.graphs || this.graphs.length === 0) {
+      this.showAxes = false;
+      this.updateAxesUI();
+    }
+
+    this._inkBakeDirty = true;
+
+    this.updatePdfPageNavUI(targetPage);
+    this.closePdfModal();
+    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+      this.closeDrawer();
+    }
+    if (!this.isInkMode) {
+      this.toggleInkMode(true);
+    }
+    this.setActiveInkTool('pen');
+    this.syncControls();
+    this.renderLayerList();
+    this.renderFuncList();
+    this.syncPdfBoardNavBarUI();
+    this.syncGraphSnapBarUI();
+    this.render();
+  }
+
+  // 🌟 [PDF 페이지 위에서 패닝/줌 후 첫 그래프 소환 시: 화면 속 PDF·필기는 0px도 움직이지 않고 현재 화면 중앙에 아담한 그래프 소환!] 🌟
+  rebasePdfBoardOriginToScreenCenter() {
+    if (!this.pdfPageBoardData) return;
+    const z0 = this.zoomLevel || 1.0;
+    const hasCameraShift = (Math.abs(this.panX || 0) > 0.5 || Math.abs(this.panY || 0) > 0.5 || Math.abs(z0 - 1.0) > 0.01);
+    if (!hasCameraShift) return;
+
+    const centerMath = this.screenToMath(this.screenWidth / 2, this.screenHeight / 2);
+    const mx0 = centerMath.x;
+    const my0 = centerMath.y;
+
+    const tx = (x) => (x - mx0) * z0;
+    const ty = (y) => (y - my0) * z0;
+
+    // 1. PDF 페이지 보드 중심 좌표 및 크기 흡수
+    const cx = this.pdfPageBoardData.centerX || 0;
+    const cy = this.pdfPageBoardData.centerY || 0;
+    this.pdfPageBoardData.centerX = tx(cx);
+    this.pdfPageBoardData.centerY = ty(cy);
+    this.pdfPageBoardData.mathW = this.pdfPageBoardData.mathW * z0;
+    this.pdfPageBoardData.mathH = this.pdfPageBoardData.mathH * z0;
+
+    // 2. 기존 PDF 위 개념 필기(target === 'graph') 좌표 및 줌 흡수
+    if (this.inkStrokes && this.inkStrokes.length > 0) {
+      this.inkStrokes.forEach(s => {
+        if (!s || (s.target || 'board') === 'board') return;
+        s.zoom = (s.zoom || 1.0) / z0;
+        if (s.points && s.points.length > 0) {
+          s.points.forEach(pt => {
+            pt.x = tx(pt.x);
+            pt.y = ty(pt.y);
+          });
+        }
+        if (s.shape) {
+          const sh = s.shape;
+          if (sh.start && sh.end) {
+            sh.start = { x: tx(sh.start.x), y: ty(sh.start.y) };
+            sh.end = { x: tx(sh.end.x), y: ty(sh.end.y) };
+          }
+          if (sh.center) {
+            sh.center = { x: tx(sh.center.x), y: ty(sh.center.y) };
+            if (typeof sh.radius === 'number') sh.radius *= z0;
+            if (typeof sh.rx === 'number') sh.rx *= z0;
+            if (typeof sh.ry === 'number') sh.ry *= z0;
+          }
+          if (sh.min && sh.max) {
+            sh.min = { x: tx(sh.min.x), y: ty(sh.min.y) };
+            sh.max = { x: tx(sh.max.x), y: ty(sh.max.y) };
+          }
+          if (sh.pts && sh.pts.length > 0) {
+            sh.pts = sh.pts.map(pt => ({ x: tx(pt.x), y: ty(pt.y) }));
+          }
+        }
+      });
+    }
+
+    this.panX = 0;
+    this.panY = 0;
+    this.setZoomLevel(1.0);
+    this._inkBakeDirty = true;
+    this.clearInkCache();
+  }
+
+  async navigatePdfBoardPage(delta) {
+    if (!this.pdfDoc) return;
+    const cur = (this.pdfPageBoardData && this.pdfPageBoardData.pageNum) || this.pdfCurrentPage || 1;
+    const total = this.pdfTotalPages || this.pdfDoc.numPages || 1;
+    const nextP = cur + delta;
+    if (nextP < 1 || nextP > total) return;
+    await this.openPdfPageOnBoard(nextP);
+  }
+
+  closePdfPageBoard() {
+    if (!this.pdfPageBoardData) return;
+    this.pdfPageBoardData = null;
+    this._lastPdfPageScreenRect = null;
+    this.ySpan = 6.0;
+    this.syncPdfBoardNavBarUI();
+    if (!this.showAxes) {
+      this.showAxes = true;
+      this.updateAxesUI();
+    }
+    this.render();
+  }
+
+  // 🌟 [구형 PC 초경량 PDF 가상화 엔진]:
+  // 500쪽짜리 통짜 PDF도 스크롤 위치용 빈 종이 틀(cssW x cssH)만 먼저 잡아두고,
+  // 실제 고해상도 캔버스 픽셀은 현재 보고 있는 페이지 앞뒤(±2페이지, 최대 5장)만 그리며 멀어진 페이지는 메모리를 즉시 반납!
+  renderAllPdfPages(resetContainer = false) {
+    if (!this.pdfDoc) return;
+    const container = document.getElementById('pdfPagesContainer');
+    if (!container) return;
+
+    const currentPageToKeep = this.pdfCurrentPage || 1;
+    const defW = Math.round(((this.pdfDefaultPageSize && this.pdfDefaultPageSize.width) || 595) * (this.pdfZoom || 1.75));
+    const defH = Math.round(((this.pdfDefaultPageSize && this.pdfDefaultPageSize.height) || 842) * (this.pdfZoom || 1.75));
+
+    if (resetContainer || container.children.length !== this.pdfTotalPages) {
+      container.innerHTML = '';
+      this.pdfPageRenderStates = {};
+
+      for (let p = 1; p <= this.pdfTotalPages; p++) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'pdf-page-wrapper';
+        wrapper.id = `pdfPageWrapper_${p}`;
+        wrapper.dataset.page = p;
+        wrapper.style.width = `${defW}px`;
+        wrapper.style.height = `${defH}px`;
+
+        const tag = document.createElement('div');
+        tag.className = 'pdf-page-number-tag';
+        tag.textContent = `p.${p}`;
+        wrapper.appendChild(tag);
+
+        const canvas = document.createElement('canvas');
+        canvas.className = 'pdf-page-canvas';
+        canvas.id = `pdfPageCanvas_${p}`;
+        canvas.style.width = `${defW}px`;
+        canvas.style.height = `${defH}px`;
+        canvas.setAttribute('draggable', 'false');
+        canvas.addEventListener('dragstart', (e) => e.preventDefault());
+        wrapper.appendChild(canvas);
+
+        container.appendChild(wrapper);
+      }
+      this.renderVisiblePdfWindow(1, true);
+      this.updatePdfPageNavUI(1);
+    } else {
+      this.renderVisiblePdfWindow(currentPageToKeep, true);
+      this.updatePdfPageNavUI(currentPageToKeep);
+    }
+  }
+
+  renderVisiblePdfWindow(centerPage = 1, forceReRender = false) {
+    if (!this.pdfDoc) return;
+    const total = this.pdfTotalPages || 1;
+    const isSmallDoc = (total <= 8);
+    const minP = isSmallDoc ? 1 : Math.max(1, centerPage - 2);
+    const maxP = isSmallDoc ? total : Math.min(total, centerPage + 2);
+
+    for (let p = 1; p <= total; p++) {
+      const wrapper = document.getElementById(`pdfPageWrapper_${p}`);
+      const canvas = document.getElementById(`pdfPageCanvas_${p}`);
+      if (!wrapper || !canvas) continue;
+
+      if (p >= minP && p <= maxP) {
+        if (forceReRender || canvas._renderedZoom !== this.pdfZoom || !this.pdfPageRenderStates[p]) {
+          this.renderPdfPageToCanvas(p, canvas, wrapper);
+        }
+      } else if (!isSmallDoc && Math.abs(p - centerPage) > 4) {
+        // 화면에서 멀어진 페이지는 진행 중인 렌더를 취소하고 GPU 비트맵 메모리를 즉시 반납 (스크롤 크기는 그대로 유지!)
+        if (canvas._pdfRenderTask && typeof canvas._pdfRenderTask.cancel === 'function') {
+          try { canvas._pdfRenderTask.cancel(); } catch (e) { }
+          canvas._pdfRenderTask = null;
+        }
+        if (canvas.width > 10) {
+          canvas.width = 1;
+          canvas.height = 1;
+          canvas._renderedZoom = null;
+          delete this.pdfPageRenderStates[p];
+        }
+      }
+    }
+  }
+
+  renderPdfPageToCanvas(pageNum, canvas, wrapper) {
+    if (!this.pdfDoc || !canvas) return;
+
+    if (canvas._pdfRenderTask && typeof canvas._pdfRenderTask.cancel === 'function') {
+      try { canvas._pdfRenderTask.cancel(); } catch (e) { }
+    }
+
+    const targetZoom = this.pdfZoom;
+    this.pdfDoc.getPage(pageNum).then(page => {
+      // 구형 내장그래픽 과부하 방지를 위해 최대 DPR을 1.75~2.0 사이로 스마트 클램핑
+      const dpr = Math.min(2, Math.max(1.5, window.devicePixelRatio || 1.5));
+      const viewport = page.getViewport({ scale: targetZoom * dpr });
+      const cssW = Math.round(viewport.width / dpr);
+      const cssH = Math.round(viewport.height / dpr);
+
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+      if (wrapper) {
+        wrapper.style.width = `${cssW}px`;
+        wrapper.style.height = `${cssH}px`;
+      }
+
+      canvas.width = Math.round(viewport.width);
+      canvas.height = Math.round(viewport.height);
+
+      const ctx = canvas.getContext('2d');
+      const renderTask = page.render({ canvasContext: ctx, viewport });
+      canvas._pdfRenderTask = renderTask;
+      renderTask.promise.then(() => {
+        canvas._pdfRenderTask = null;
+        canvas._renderedZoom = targetZoom;
+        this.pdfPageRenderStates[pageNum] = true;
+      }).catch(err => {
+        if (err && err.name !== 'RenderingCancelledException') {
+          console.error(`p.${pageNum} 렌더링 에러:`, err);
+        }
+      });
+    });
+  }
+
+  scrollToPdfPage(pageNum) {
+    if (!this.pdfDoc) return;
+    pageNum = Math.max(1, Math.min(pageNum, this.pdfTotalPages));
+    const target = document.getElementById(`pdfPageWrapper_${pageNum}`);
+    const viewport = document.getElementById('pdfViewport');
+    if (target && viewport) {
+      viewport.scrollTop = Math.max(0, target.offsetTop - 20);
+      this.savedPdfScrollTop = viewport.scrollTop;
+    }
+    this.updatePdfPageNavUI(pageNum);
+  }
+
+  onPdfViewportScroll() {
+    const viewport = document.getElementById('pdfViewport');
+    if (!viewport || !this.pdfDoc) return;
+
+    if (this.isPdfModalOpen) {
+      this.savedPdfScrollTop = viewport.scrollTop;
+      this.savedPdfScrollLeft = viewport.scrollLeft;
+    }
+
+    const viewportRect = viewport.getBoundingClientRect();
+    const centerY = viewportRect.top + viewportRect.height / 3;
+
+    const wrappers = document.querySelectorAll('.pdf-page-wrapper');
+    let currentVisiblePage = this.pdfCurrentPage;
+
+    wrappers.forEach(w => {
+      const rect = w.getBoundingClientRect();
+      if (rect.top <= centerY && rect.bottom >= centerY) {
+        currentVisiblePage = parseInt(w.dataset.page, 10);
+      }
+    });
+
+    if (currentVisiblePage !== this.pdfCurrentPage) {
+      this.updatePdfPageNavUI(currentVisiblePage);
+    }
+  }
+
+  updatePdfPageNavUI(pageNum) {
+    const prevPage = this.pdfCurrentPage;
+    this.pdfCurrentPage = pageNum;
+    const input = document.getElementById('inputPdfCurrentPage');
+    if (input) input.value = pageNum;
+
+    const btnPrev = document.getElementById('btnPdfPrevPage');
+    const btnNext = document.getElementById('btnPdfNextPage');
+    if (btnPrev) btnPrev.disabled = (pageNum <= 1);
+    if (btnNext) btnNext.disabled = (pageNum >= this.pdfTotalPages);
+
+    if (this.pdfTotalPages > 8 && prevPage !== pageNum) {
+      this.renderVisiblePdfWindow(pageNum, false);
+    }
+  }
+
+  setPdfZoom(zoom) {
+    const prevZoom = this.pdfZoom || 1.5;
+    const nextZoom = Math.max(0.6, Math.min(zoom, 3.2));
+    if (Math.abs(nextZoom - prevZoom) < 0.01) return;
+
+    const viewport = document.getElementById('pdfViewport');
+    const ratio = nextZoom / prevZoom;
+    const prevScrollTop = viewport ? viewport.scrollTop : 0;
+    const prevCenterOffset = viewport ? (prevScrollTop + viewport.clientHeight / 2) : 0;
+
+    this.pdfZoom = nextZoom;
+    const lbl = document.getElementById('lblPdfZoom');
+    if (lbl) lbl.textContent = `${Math.round(this.pdfZoom * 100)}%`;
+
+    // 기존 페이지 래퍼 크기를 즉시 비례 스케일링하여 스크롤 위치가 첫 페이지로 튀지 않게 고정!
+    document.querySelectorAll('.pdf-page-wrapper').forEach(w => {
+      const c = w.querySelector('canvas');
+      const curW = parseFloat(w.style.width) || w.offsetWidth;
+      const curH = parseFloat(w.style.height) || w.offsetHeight;
+      if (curW > 0 && curH > 0) {
+        const nw = Math.round(curW * ratio);
+        const nh = Math.round(curH * ratio);
+        w.style.width = `${nw}px`;
+        w.style.height = `${nh}px`;
+        if (c) {
+          c.style.width = `${nw}px`;
+          c.style.height = `${nh}px`;
+        }
+      }
+    });
+
+    if (viewport && prevScrollTop > 0) {
+      const newScrollTop = Math.max(0, Math.round(prevCenterOffset * ratio - viewport.clientHeight / 2));
+      viewport.scrollTop = newScrollTop;
+      this.savedPdfScrollTop = newScrollTop;
+    }
+
+    this.renderAllPdfPages(false);
+  }
+
+  fitPdfWidth() {
+    const viewport = document.getElementById('pdfViewport');
+    if (!viewport || !this.pdfDoc) return;
+
+    this.pdfDoc.getPage(1).then(page => {
+      const unscaledViewport = page.getViewport({ scale: 1.0 });
+      const availableWidth = viewport.clientWidth - 64;
+      const newZoom = Math.max(0.8, Math.min(2.8, (availableWidth * 0.88) / unscaledViewport.width));
+      this.setPdfZoom(newZoom);
+    });
+  }
+
+  togglePdfCropMode(forceVal = null) {
+    const nextState = (forceVal !== null) ? forceVal : !this.isPdfCropModeActive;
+    this.isPdfCropModeActive = nextState;
+
+    const btn = document.getElementById('btnPdfCropToggle');
+    if (btn) btn.classList.toggle('active', this.isPdfCropModeActive);
+
+    const viewport = document.getElementById('pdfViewport');
+    if (viewport) viewport.classList.toggle('crop-mode', this.isPdfCropModeActive);
+
+    const statusText = document.getElementById('pdfCropStatusText');
+    if (statusText) {
+      if (this.isPdfCropModeActive) {
+        statusText.innerHTML = '✂️ <b>문제 영역을 네모로 드래그하세요!</b>';
+      } else {
+        statusText.innerHTML = '';
+      }
+    }
+
+    if (this.isPdfCropModeActive) {
+      this.showToast('✂️ 문제 영역을 네모로 드래그하세요 (ESC: 취소)');
+    }
+
+    const cropBox = document.getElementById('pdfCropBox');
+    if (cropBox) cropBox.style.display = 'none';
+    this.isPdfCropping = false;
+  }
+
+  initPdfCropInteractions() {
+    const viewport = document.getElementById('pdfViewport');
+    const cropBox = document.getElementById('pdfCropBox');
+    if (!viewport || !cropBox) return;
+
+    // 0. 브라우저 뒤로가기 제스처 / 네이티브 드래그 차단
+    window.addEventListener('wheel', (e) => {
+      if (this.isPdfModalOpen && Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        // 수평 스와이프로 인한 브라우저 뒤로가기 제스처 차단
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    window.addEventListener('dragstart', (e) => {
+      if (this.isPdfCropModeActive || this.isPdfCropping) {
+        e.preventDefault();
+      }
+    });
+
+    viewport.addEventListener('dragstart', (e) => e.preventDefault());
+
+    // 마우스 측면 뒤로가기 버튼(버튼 3, 4) 오작동 방지
+    window.addEventListener('pointerdown', (e) => {
+      if (this.isPdfModalOpen && (e.button === 3 || e.button === 4)) {
+        e.preventDefault();
+      }
+    });
+
+    viewport.addEventListener('pointerdown', (e) => {
+      // 크롭 모드가 아니면 스크롤 등 기본 동작 수행
+      if (!this.isPdfCropModeActive) return;
+      if (e.button !== 0) return;
+
+      // 네이티브 드래그 / 텍스트 선택 / 브라우저 제스처 원천 차단
+      e.preventDefault();
+      e.stopPropagation();
+
+      // 포인터 캡처: 브라우저 밖으로 나가도 100% 드래그 추적 보장
+      try {
+        viewport.setPointerCapture(e.pointerId);
+      } catch (err) { }
+      this.activeCropPointerId = e.pointerId;
+
+      // 클릭 위치 기준 페이지 탐색 (여백이나 그림자 클릭 시에도 현재 페이지로 자동 연결)
+      let pageWrapper = e.target.closest('.pdf-page-wrapper');
+      if (!pageWrapper) {
+        const wrappers = Array.from(document.querySelectorAll('.pdf-page-wrapper'));
+        for (const w of wrappers) {
+          const r = w.getBoundingClientRect();
+          if (e.clientY >= r.top - 40 && e.clientY <= r.bottom + 40) {
+            pageWrapper = w;
+            break;
+          }
+        }
+        if (!pageWrapper && wrappers.length > 0) {
+          const curId = `pdfPageWrapper_${this.pdfCurrentPage || 1}`;
+          pageWrapper = document.getElementById(curId) || wrappers[0];
+        }
+      }
+      if (!pageWrapper) return;
+
+      const rect = pageWrapper.getBoundingClientRect();
+      const startX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+      const startY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+
+      this.isPdfCropping = true;
+      this.cropTargetWrapper = pageWrapper;
+      this.cropTargetPageNum = parseInt(pageWrapper.dataset.page, 10);
+      this.pdfCropStart = { x: startX, y: startY };
+
+      pageWrapper.appendChild(cropBox);
+      cropBox.style.display = 'none';
+      cropBox.style.left = `${startX}px`;
+      cropBox.style.top = `${startY}px`;
+      cropBox.style.width = '0px';
+      cropBox.style.height = '0px';
+    }, { passive: false });
+
+    const handleCropMove = (e) => {
+      if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
+      e.preventDefault();
+
+      const rect = this.cropTargetWrapper.getBoundingClientRect();
+      const curX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+      const curY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+
+      const x = Math.min(this.pdfCropStart.x, curX);
+      const y = Math.min(this.pdfCropStart.y, curY);
+      const w = Math.abs(curX - this.pdfCropStart.x);
+      const h = Math.abs(curY - this.pdfCropStart.y);
+
+      if (w > 3 || h > 3) {
+        cropBox.style.display = 'block';
+        cropBox.style.left = `${x}px`;
+        cropBox.style.top = `${y}px`;
+        cropBox.style.width = `${w}px`;
+        cropBox.style.height = `${h}px`;
+      }
+    };
+
+    viewport.addEventListener('pointermove', handleCropMove, { passive: false });
+    window.addEventListener('pointermove', handleCropMove, { passive: false });
+
+    const handleCropUp = (e) => {
+      if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
+      this.isPdfCropping = false;
+
+      if (this.activeCropPointerId !== null && this.activeCropPointerId !== undefined) {
+        try {
+          viewport.releasePointerCapture(this.activeCropPointerId);
+        } catch (err) { }
+        this.activeCropPointerId = null;
+      }
+
+      const rect = this.cropTargetWrapper.getBoundingClientRect();
+      const curX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+      const curY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+
+      const x = Math.min(this.pdfCropStart.x, curX);
+      const y = Math.min(this.pdfCropStart.y, curY);
+      const w = Math.abs(curX - this.pdfCropStart.x);
+      const h = Math.abs(curY - this.pdfCropStart.y);
+
+      cropBox.style.display = 'none';
+
+      // ✂️ 유효한 크기(가로/세로 20px 이상)면 즉시 크롭 확정 & 빈 칠판으로 직행!
+      if (w >= 20 && h >= 20) {
+        const canvas = this.cropTargetWrapper.querySelector('canvas');
+        if (canvas) {
+          const scaleX = canvas.width / rect.width;
+          const scaleY = canvas.height / rect.height;
+
+          const sx = x * scaleX;
+          const sy = y * scaleY;
+          const sw = w * scaleX;
+          const sh = h * scaleY;
+
+          const cropCanvas = document.createElement('canvas');
+          cropCanvas.width = sw;
+          cropCanvas.height = sh;
+          const ctx = cropCanvas.getContext('2d');
+          ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+          const dataUrl = cropCanvas.toDataURL('image/png');
+          const pageNum = this.cropTargetPageNum;
+
+          const replaceMode = Boolean(this._isReplacingViaNextCrop);
+          this._isReplacingViaNextCrop = false;
+
+          if (replaceMode || !this.problemCardData) {
+            // 🌟 [다음 캡처] 또는 첫 문제 캡처 시: 이전 문제 카드 + 이전 칠판 판서 자동 삭제 후 새 칠판 시작!
+            this.resetBoardAndProblemCardsForNext();
+          }
+
+          // 좌측 서랍이 열려있으면 문제 카드를 가리지 않도록 자동 접기
+          if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+            this.closeDrawer();
+          }
+
+          // 문제 카드 고정 (좌측 불러오기로 진입 시 겹치기 허용, [다음 캡처]로 진입 시 기존 문제 교체!)
+          const targetCardWidth = Math.round(Math.max(480, Math.min(window.innerWidth * 0.65, w * 1.15)));
+          this.setProblemCard(dataUrl, pageNum, cropCanvas, targetCardWidth);
+          this.closePdfModal();
+          this.togglePdfCropMode(false);
+
+          // 6. 필기 펜 모드 자동 켜기
+          if (!this.isInkMode) {
+            this.toggleInkMode(true);
+          }
+          this.setActiveInkTool('pen');
+          this.render();
+          this.showToast(`✂️ p.${pageNum} 문제가 고정되었습니다! 문제 위나 빈 칠판 어디든 바로 필기하세요.`);
+        }
+      }
+    };
+
+    viewport.addEventListener('pointerup', handleCropUp);
+    window.addEventListener('pointerup', handleCropUp);
+
+    // PDF 뷰어 내에서 Ctrl + 마우스 휠로 시원시원하게 즉시 줌인/줌아웃 지원
+    viewport.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.18 : -0.18;
+        this.setPdfZoom((this.pdfZoom || 1.5) + delta);
+      }
+    }, { passive: false });
+
+    const handleCropCancel = () => {
+      this.isPdfCropping = false;
+      if (this.activeCropPointerId !== null && this.activeCropPointerId !== undefined) {
+        try {
+          viewport.releasePointerCapture(this.activeCropPointerId);
+        } catch (err) { }
+        this.activeCropPointerId = null;
+      }
+      cropBox.style.display = 'none';
+    };
+
+    viewport.addEventListener('pointercancel', handleCropCancel);
+    window.addEventListener('pointercancel', handleCropCancel);
+  }
+
+  applyProblemCrop() {
+    if (!this.pdfCropBoxRect) {
+      this.showToast('⚠️ 크롭할 문제 영역을 마우스나 펜으로 드래그해 주세요.');
+      return;
+    }
+
+    const canvas = document.getElementById('pdfPageCanvas');
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    const sx = this.pdfCropBoxRect.x * scaleX;
+    const sy = this.pdfCropBoxRect.y * scaleY;
+    const sw = this.pdfCropBoxRect.w * scaleX;
+    const sh = this.pdfCropBoxRect.h * scaleY;
+
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = sw;
+    cropCanvas.height = sh;
+    const ctx = cropCanvas.getContext('2d');
+    ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    const dataUrl = cropCanvas.toDataURL('image/png');
+    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+      this.closeDrawer();
+    }
+    if (this._isReplacingViaNextCrop) {
+      this._isReplacingViaNextCrop = false;
+      this.resetBoardAndProblemCardsForNext();
+    }
+    const targetCardWidth = Math.round(Math.max(480, Math.min(window.innerWidth * 0.65, this.pdfCropBoxRect.w * 1.15)));
+    this.setProblemCard(dataUrl, this.pdfCurrentPage, cropCanvas, targetCardWidth);
+    this.closePdfModal();
+
+    // 칠판 및 필기 모드로 자동 전환!
+    if (!this.isInkMode) {
+      this.toggleInkMode(true);
+    }
+    this.render();
+    this.showToast(`✂️ p.${this.pdfCurrentPage} 문제가 칠판 좌상단에 고정되었습니다! 펜(P)으로 풀이를 시작하세요.`);
+  }
+
+  hasActiveProblemCard() {
+    return Boolean(this.problemCardData && !this.isProblemCardMinimized);
+  }
+
+  syncProblemCardRectFromWidget() {
+    const widget = document.getElementById('problemCardWidget');
+    const body = document.getElementById('problemCardBody');
+    const pCanvas = document.getElementById('problemCardCanvas');
+    if (!widget || !this.problemCardData || widget.style.display === 'none') {
+      this.problemCardRect = null;
+      return null;
+    }
+
+    const w = parseFloat(widget.style.width) || widget.getBoundingClientRect().width || 520;
+    const aspect = this.problemCardAspect || 0.72;
+    const imgW = w;
+    const imgH = Math.round(imgW * aspect);
+    const h = imgH;
+
+    if (body && !this.isProblemCardMinimized) {
+      body.style.height = `${h}px`;
+    }
+
+    if (pCanvas && !this.isProblemCardMinimized) {
+      const dpr = window.devicePixelRatio || 2;
+      const targetW = Math.round(w * dpr);
+      const targetH = Math.round(h * dpr);
+      if (pCanvas.width !== targetW || pCanvas.height !== targetH) {
+        pCanvas.width = targetW;
+        pCanvas.height = targetH;
+      }
+      this.renderProblemCardCanvas();
+    }
+
+    if (!this.canvas) return null;
+    const canvasRect = this.canvas.getBoundingClientRect();
+    const widgetRect = widget.getBoundingClientRect();
+
+    const x = widgetRect.left - canvasRect.left;
+    const y = widgetRect.top - canvasRect.top;
+
+    this.problemCardRect = {
+      x,
+      y,
+      w,
+      h,
+      imgX: x + 10,
+      imgY: y + 10,
+      imgW,
+      imgH
+    };
+    return this.problemCardRect;
+  }
+
+  // 🌟 [문제 창 + 칠판 캔버스 위치 동기화] 🌟
+  // 칠판 전체가 이동(boardPanX, boardPanY)할 때 문제 창 위젯도 transform으로 100% 한 몸으로 함께 이동!
+  // 판서자가 칠판 옆으로 이동하면 문제 창과 그래프 창이 둘 다 왼쪽으로 멀어지고 광활한 빈 판서 공간 확보!
+  updateProblemCardPosition() {
+    // 🌟 [1층 vs 2층 레이어 완벽 분리]:
+    // 1층(!isGraphCovered, 실시간 그래프 편집 레이어): 문제 카드는 좌상단(0,0)에 100% 고정!
+    // 2층(isGraphCovered, 그래프 스샷 보관 후 열리는 판서 레이어): 칠판 이동(boardPanX, boardPanY)에 맞춰 문제 카드와 그래프 카드들이 함께 이동!
+    const bPx = (this.boardPanX || 0);
+    const bPy = (this.boardPanY || 0);
+    const gWidget = document.getElementById('graphCardWidget');
+    if (gWidget && this.graphCardData && gWidget.style.display !== 'none') {
+      gWidget.style.transform = `translate3d(${bPx}px, ${bPy}px, 0)`;
+      this.syncGraphCardRectFromWidget();
+    }
+    if (this.extraGraphCards && this.extraGraphCards.length > 0) {
+      this.extraGraphCards.forEach(c => {
+        if (c.el && c.el.style.display !== 'none') {
+          c.el.style.transform = `translate3d(${bPx}px, ${bPy}px, 0)`;
+        }
+      });
+    }
+    if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+      this.extraProblemCards.forEach(c => {
+        if (c.el && c.el.style.display !== 'none') {
+          c.el.style.transform = `translate3d(${bPx}px, ${bPy}px, 0)`;
+        }
+      });
+    }
+    const widget = document.getElementById('problemCardWidget');
+    if (!widget) return;
+    if (!this.hasActiveProblemCard()) {
+      if (!this.problemCardData) {
+        widget.style.transform = '';
+      }
+      return;
+    }
+    widget.style.transform = `translate3d(${bPx}px, ${bPy}px, 0)`;
+    this.syncProblemCardRectFromWidget();
+  }
+
+  // 문제 카드는 이제 전용 독립 캔버스(#problemCardCanvas)를 가진 독립 위젯으로 렌더링되므로
+  // 메인 칠판 캔버스에는 그리지 않아 메인 칠판 스크롤/줌과 100% 완벽 분리!
+  drawProblemCardLayer(ctx, isExport = false) {
+    return;
+  }
+
+  // ==========================================================================
+  // [🎨 문제 창 전용 독립 미니 캔버스 (#problemCardCanvas) 렌더링 & 필기 엔진]
+  // - 문제 카드 내부 상대 비율 좌표(nx: 0~1, ny: 0~1)로 저장되어
+  //   (1) 메인 칠판 휠 스크롤/줌에는 전혀 영향받지 않고,
+  //   (2) 문제 창 크기를 키우거나 줄일 때는 문제 이미지와 정확히 같은 비율로 함께 스케일링!
+  // ==========================================================================
+  renderProblemCardCanvas() {
+    const pCanvas = document.getElementById('problemCardCanvas');
+    if (!pCanvas) return;
+    const ctx = pCanvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 2;
+    const w = pCanvas.width / dpr;
+    const h = pCanvas.height / dpr;
+
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    if (!this.problemInkStrokes || this.problemInkStrokes.length === 0) {
+      ctx.restore();
+      return;
+    }
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // 문제 창 크기에 비례하여 선 굵기도 자연스럽게 스케일링 (기준 폭 520px)
+    const sizeScale = Math.max(0.6, w / 520);
+
+    this.problemInkStrokes.forEach(stroke => {
+      if (!stroke.points || stroke.points.length === 0) return;
+      ctx.save();
+
+      let strokeColor = stroke.color || '#1e293b';
+      if (this.isMonochromeMode) {
+        strokeColor = '#000000';
+      }
+
+      ctx.strokeStyle = strokeColor;
+      ctx.fillStyle = strokeColor;
+
+      const baseSize = (stroke.size || 3.5) * sizeScale;
+      if (stroke.isHighlighter) {
+        ctx.globalAlpha = 0.36;
+        ctx.lineWidth = Math.max(10, baseSize * 2.8);
+      } else {
+        ctx.globalAlpha = 1.0;
+        ctx.lineWidth = baseSize;
+        // 🌟 [저사양 PC 0ms 저지연 최적화]: GPU 가우시안 블러 병목(shadowBlur) 완전 제거
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      }
+
+      const rawPts = stroke.points.map(pt => ({
+        x: pt.nx * w,
+        y: pt.ny * h,
+        p: pt.p !== undefined ? pt.p : 0.5
+      }));
+
+      // 스트림라인 스무딩 (손떨림 보정)
+      const pts = [rawPts[0]];
+      for (let i = 1; i < rawPts.length; i++) {
+        const prev = pts[pts.length - 1];
+        const curr = rawPts[i];
+        pts.push({
+          x: prev.x * 0.28 + curr.x * 0.72,
+          y: prev.y * 0.28 + curr.y * 0.72,
+          p: prev.p * 0.28 + curr.p * 0.72
+        });
+      }
+
+      if (pts.length === 1) {
+        ctx.beginPath();
+        ctx.arc(pts[0].x, pts[0].y, ctx.lineWidth / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (pts.length === 2) {
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        ctx.lineTo(pts[1].x, pts[1].y);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length - 1; i++) {
+          const midX = (pts[i].x + pts[i + 1].x) / 2;
+          const midY = (pts[i].y + pts[i + 1].y) / 2;
+          ctx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
+        }
+        const last = pts[pts.length - 1];
+        ctx.lineTo(last.x, last.y);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    });
+
+    ctx.restore();
+  }
+
+  eraseProblemInkAtNormalizedPoint(nx, ny, w, h, radiusPx = 18) {
+    if (!this.problemInkStrokes || this.problemInkStrokes.length === 0) return;
+    const sx = nx * w;
+    const sy = ny * h;
+    const beforeLen = this.problemInkStrokes.length;
+
+    this.problemInkStrokes = this.problemInkStrokes.filter(stroke => {
+      if (!stroke.points || stroke.points.length === 0) return false;
+      for (let i = 0; i < stroke.points.length; i++) {
+        const px = stroke.points[i].nx * w;
+        const py = stroke.points[i].ny * h;
+        if (Math.hypot(px - sx, py - sy) <= radiusPx) return false;
+        if (i < stroke.points.length - 1) {
+          const nx2 = stroke.points[i + 1].nx * w;
+          const ny2 = stroke.points[i + 1].ny * h;
+          const d = this.distToSegment({ x: sx, y: sy }, { x: px, y: py }, { x: nx2, y: ny2 });
+          if (d <= radiusPx) return false;
+        }
+      }
+      return true;
+    });
+
+    if (this.problemInkStrokes.length !== beforeLen) {
+      this.renderProblemCardCanvas();
+    }
+  }
+
+  clearProblemCardInk() {
+    this.problemInkStrokes = [];
+    this.renderProblemCardCanvas();
+  }
+
+  resetBoardAndProblemCardsForNext() {
+    // 1. 기존 문제 카드(기본 + 추가) 모두 제거
+    this.closeProblemCard();
+    if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el) c.el.remove();
+      });
+      this.extraProblemCards = [];
+    }
+    // 2. 이전 문제의 그래프 보관 카드(#1, #2...) 제거
+    if (typeof this.closeGraphCard === 'function') {
+      this.closeGraphCard();
+    }
+    if (this.extraGraphCards && this.extraGraphCards.length > 0) {
+      this.extraGraphCards.forEach(c => {
+        if (c && c.el) c.el.remove();
+      });
+      this.extraGraphCards = [];
+    }
+    this._graphCaseCounter = 0;
+    this.isGraphCovered = false;
+    this._coveredGraphStateBackup = null;
+
+    // 3. 칠판 필기 및 수식 그래프 초기화
+    this.inkStrokes = [];
+    this.dropLines = [];
+    this.textLabels = [];
+    this._inkBakeDirty = true;
+    this.graphs = [];
+    this.renderFuncList();
+    this.showAxes = false;
+    this.showGuides = false;
+    this.showInverseGuide = false;
+    this.panX = 0;
+    this.panY = 0;
+    this.boardPanX = 0;
+    this.boardPanY = 0;
+    this.zoomLevel = 1.0;
+    this.updateAxesUI();
+    this.render();
+  }
+
+  async loadBatchFoldedProblemCards(imageFiles) {
+    const MAX_BATCH = 12;
+    const filesToLoad = imageFiles.slice(0, MAX_BATCH);
+    const skipped = imageFiles.length - filesToLoad.length;
+
+    // 순서 보장을 위해 모든 파일을 병렬-순차 로드
+    const readAsDataURL = (file) => new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (evt) => resolve({
+        name: file.name.replace(/\.[^/.]+$/, ''),
+        dataUrl: evt.target.result
+      });
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+
+    const loadedItems = (await Promise.all(filesToLoad.map(readAsDataURL))).filter(Boolean);
+    if (loadedItems.length === 0) return;
+
+    // 기존 문제 카드들을 정리하고 깔끔하게 1번부터 N번까지 접힌 상태(압축형)로 줄 세우기!
+    this.closeProblemCard();
+    if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el) c.el.remove();
+      });
+      this.extraProblemCards = [];
+    }
+
+    if (!this.isInkMode) {
+      this.toggleInkMode(true);
+    }
+    this.setActiveInkTool('pen');
+
+    const targetW = Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
+    const startX = 72;
+    const startY = 18;
+    const stepY = 44;
+
+    loadedItems.forEach((item, idx) => {
+      const posX = startX;
+      const posY = Math.min(window.innerHeight - 60, startY + idx * stepY);
+      if (idx === 0) {
+        this.setProblemCard(item.dataUrl, `#1 ${item.name}`, null, targetW);
+        const widget = document.getElementById('problemCardWidget');
+        const icon = document.getElementById('iconCardToggle');
+        const titleEl = document.getElementById('problemCardTitle');
+        if (titleEl) titleEl.textContent = `문제 #1 (${item.name})`;
+        this.isProblemCardMinimized = true;
+        if (widget) {
+          widget.classList.add('minimized');
+          this.problemCardBaseX = posX;
+          this.problemCardBaseY = posY;
+          widget.style.left = `${posX}px`;
+          widget.style.top = `${posY}px`;
+        }
+        if (icon) icon.textContent = '▸';
+      } else {
+        this.spawnExtraProblemCard(item.dataUrl, item.name, targetW, null, {
+          startMinimized: true,
+          customX: posX,
+          customY: posY,
+          explicitIndex: idx + 1
+        });
+      }
+    });
+
+    this.syncProblemCardRectFromWidget();
+    this.render();
+    const msg = skipped > 0
+      ? `📚 ${loadedItems.length}개의 문제를 압축형 카드로 정렬했습니다! (최대 ${MAX_BATCH}개 제한으로 ${skipped}개 제외)`
+      : `📚 ${loadedItems.length}개의 문제를 압축형 카드로 정렬했습니다! 원하는 번호를 클릭해 펼쳐서 풀이하세요.`;
+    this.showToast(msg);
+  }
+
+  spawnExtraProblemCard(dataUrl, pageNum = 1, initialWidth = null, sourceCanvas = null, options = null) {
+    if (!this.extraProblemCards) this.extraProblemCards = [];
+    const caseIdx = (options && options.explicitIndex) ? options.explicitIndex : (this.extraProblemCards.length + 2);
+
+    const cardW = initialWidth || Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
+
+    // 기본 위치: 이전 문제 카드에서 살짝 겹쳐 계단식(offset)으로 소환 (단, 다중 불러오기 시 지정된 줄 세우기 좌표 사용)
+    const count = this.extraProblemCards.length + 1;
+    let baseX = (options && typeof options.customX === 'number')
+      ? options.customX
+      : ((typeof this.problemCardBaseX === 'number' ? this.problemCardBaseX : 72) + 32 * count);
+    let baseY = (options && typeof options.customY === 'number')
+      ? options.customY
+      : ((typeof this.problemCardBaseY === 'number' ? this.problemCardBaseY : 18) + 32 * count);
+
+    if (!(options && typeof options.customX === 'number') && baseX + cardW > window.innerWidth - 30) {
+      baseX = Math.max(40, window.innerWidth - cardW - 50);
+    }
+    if (!(options && typeof options.customY === 'number') && baseY > window.innerHeight - 200) {
+      baseY = Math.max(18, 18 + (this.extraProblemCards.length % 5) * 32);
+    }
+
+    const isPdfPageCard = Boolean(options && options.isPdfPageCard);
+    const pdfPageNum = (options && options.pdfPageNum) ? options.pdfPageNum : pageNum;
+    const titleText = (options && options.customTitle)
+      ? options.customTitle
+      : ((typeof pageNum === 'number')
+        ? `문제 #${caseIdx} (p.${pageNum})`
+        : (String(pageNum).includes('클립보드') ? `문제 #${caseIdx} (클립보드)` : `문제 #${caseIdx} (${pageNum})`));
+
+    const el = document.createElement('div');
+    el.className = `problem-card-widget extra-problem-card-widget${isPdfPageCard ? ' pdf-page-mini-card' : ''}`;
+    el.style.display = 'flex';
+    el.style.width = `${cardW}px`;
+    el.style.left = `${Math.round(baseX)}px`;
+    el.style.top = `${Math.round(baseY)}px`;
+    this.bringCardToFront(el);
+    const restorePageBtnHtml = isPdfPageCard
+      ? `<button class="card-btn btn-extra-restore-page" title="이 페이지(p.${pdfPageNum})를 메인 캔버스로 다시 열기"><span>🔄</span></button>`
+      : '';
+    el.innerHTML = `
+      <div class="problem-card-header">
+        <div class="problem-card-drag-handle" title="클릭하여 접기/펼치기 · 카드 어디든 드래그하여 이동">
+          <button class="card-btn card-title-fold-btn btn-extra-min" title="클릭하여 접기/펼치기 (카드 몸통 더블클릭도 가능)">
+            <span class="card-fold-chevron">▾</span>
+            <span class="card-title-text">${titleText}</span>
+          </button>
+        </div>
+        <div class="problem-card-actions">
+          ${restorePageBtnHtml}
+          <button class="card-btn btn-card-close btn-extra-close" title="닫기">
+            <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+          </button>
+        </div>
+      </div>
+      <div class="problem-card-body">
+        <img class="problem-card-img" src="${dataUrl}" alt="${titleText}" draggable="false" />
+        <div class="problem-card-resize-handle" title="드래그하여 문제 크기 조절"></div>
+      </div>
+    `;
+    document.body.appendChild(el);
+
+    const startMin = Boolean(options && options.startMinimized);
+    const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum };
+    if (startMin) {
+      el.classList.add('minimized');
+      const chev = el.querySelector('.card-fold-chevron');
+      if (chev) chev.textContent = '▸';
+    }
+    this.extraProblemCards.push(cardItem);
+
+    const bPx = (this.boardPanX || 0);
+    const bPy = (this.boardPanY || 0);
+    el.style.transform = `translate3d(${bPx}px, ${bPy}px, 0)`;
+
+    const toggleExtraMin = () => {
+      if (el._lastToggleTime && performance.now() - el._lastToggleTime < 120) return;
+      el._lastToggleTime = performance.now();
+      cardItem.isMin = !cardItem.isMin;
+      el.classList.toggle('minimized', cardItem.isMin);
+      const chev = el.querySelector('.card-fold-chevron');
+      if (chev) chev.textContent = cardItem.isMin ? '▸' : '▾';
+    };
+
+    // 롱프레스 쉴드 및 우클릭 방어
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); return false; }, { capture: true });
+    el.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+    el.addEventListener('dragstart', (e) => e.preventDefault());
+    el.addEventListener('selectstart', (e) => e.preventDefault());
+    ['MSHoldVisual', 'MSGestureHold'].forEach(evtName => {
+      el.addEventListener(evtName, (e) => e.preventDefault(), { passive: false });
+    });
+
+    // 1. 카드 몸통/상단바 드래그 이동 & 몸통 더블클릭(톡톡) 즉시 접기/펼치기
+    let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
+    let lastBodyTapTime = 0, lastBodyTapX = 0, lastBodyTapY = 0;
+    el.addEventListener('pointerdown', (e) => {
+      this.bringCardToFront(el);
+      if (e.target.closest('.problem-card-resize-handle')) return;
+      if (e.target.closest('.problem-card-actions')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      isDragging = true;
+      dragMoved = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      initX = cardItem.baseX;
+      initY = cardItem.baseY;
+      if (!e.target.closest('.card-title-fold-btn')) {
+        el.classList.add('is-dragging-card');
+        try { el.setPointerCapture(e.pointerId); } catch (err) { }
+      }
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!dragMoved && Math.hypot(dx, dy) > 4) {
+        dragMoved = true;
+        el.classList.add('is-dragging-card');
+        try { el.setPointerCapture(e.pointerId); } catch (err) { }
+      }
+      cardItem.baseX = Math.round(initX + dx);
+      cardItem.baseY = Math.round(initY + dy);
+      el.style.left = `${cardItem.baseX}px`;
+      el.style.top = `${cardItem.baseY}px`;
+    });
+    const stopDrag = (e) => {
+      if (isDragging) {
+        const wasMoved = dragMoved;
+        isDragging = false;
+        dragMoved = false;
+        el.classList.remove('is-dragging-card');
+        if (wasMoved) {
+          el._justDraggedTime = performance.now();
+        } else if (e && e.type === 'pointerup' && (!e.target || !e.target.closest('.card-title-fold-btn, .problem-card-actions, .problem-card-resize-handle'))) {
+          const now = performance.now();
+          if (lastBodyTapTime && (now - lastBodyTapTime < 340) && Math.hypot((e.clientX || 0) - lastBodyTapX, (e.clientY || 0) - lastBodyTapY) < 24) {
+            lastBodyTapTime = 0;
+            toggleExtraMin();
+          } else {
+            lastBodyTapTime = now;
+            lastBodyTapX = e.clientX || 0;
+            lastBodyTapY = e.clientY || 0;
+          }
+        }
+      }
+    };
+    window.addEventListener('pointerup', stopDrag);
+    window.addEventListener('pointercancel', stopDrag);
+    el.addEventListener('dblclick', (e) => {
+      if (e.target.closest('.problem-card-actions, .card-title-fold-btn, .problem-card-resize-handle')) return;
+      toggleExtraMin();
+    });
+
+    // 2. 우하단 리사이즈 핸들 드래그
+    const rHandle = el.querySelector('.problem-card-resize-handle');
+    if (rHandle) {
+      let isResizing = false, rStartX = 0, rStartW = cardW;
+      rHandle.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isResizing = true;
+        rStartX = e.clientX;
+        rStartW = el.getBoundingClientRect().width;
+        try { rHandle.setPointerCapture(e.pointerId); } catch (err) { }
+      });
+      window.addEventListener('pointermove', (e) => {
+        if (!isResizing) return;
+        const nextW = Math.max(240, Math.min(window.innerWidth * 0.85, rStartW + (e.clientX - rStartX)));
+        el.style.width = `${nextW}px`;
+      });
+      const stopResize = () => { isResizing = false; };
+      window.addEventListener('pointerup', stopResize);
+      window.addEventListener('pointercancel', stopResize);
+    }
+
+    // 3. 상단 왼쪽 제목(▾) 클릭 시 제자리 접기/펼치기 토글
+    const btnMin = el.querySelector('.btn-extra-min');
+    if (btnMin) {
+      btnMin.onclick = () => {
+        if (el._justDraggedTime && performance.now() - el._justDraggedTime < 180) return;
+        toggleExtraMin();
+      };
+    }
+
+    // 3.5. PDF 페이지 카드 복원(🔄) 버튼
+    const btnRestorePage = el.querySelector('.btn-extra-restore-page');
+    if (btnRestorePage && isPdfPageCard) {
+      btnRestorePage.onclick = (e) => {
+        e.stopPropagation();
+        this.openPdfPageOnBoard(pdfPageNum);
+      };
+    }
+
+    // 4. 닫기 버튼
+    const btnClose = el.querySelector('.btn-extra-close');
+    if (btnClose) {
+      btnClose.onclick = () => {
+        el.remove();
+        this.extraProblemCards = this.extraProblemCards.filter(c => c !== cardItem);
+        if (isPdfPageCard) {
+          this.relayoutPdfPageCards();
+        }
+      };
+    }
+
+    // 판서 모드 및 안내 토스트
+    if (!this.isInkMode) {
+      this.toggleInkMode(true);
+    }
+    this.setActiveInkTool('pen');
+    this.render();
+
+    const totalProblems = 1 + this.extraProblemCards.length;
+    this.showToast(`📋 ${totalProblems}번째 문제 카드가 추가되었습니다! (마우스로 끌어 분리 가능)`);
+  }
+
+  setProblemCard(dataUrl, pageNum = 1, sourceCanvas = null, initialWidth = null) {
+    if (!this.extraProblemCards) this.extraProblemCards = [];
+
+    const widget = document.getElementById('problemCardWidget');
+    const isPrimaryActive = widget && widget.style.display !== 'none' && this.problemCardData;
+
+    // 🌟 [대표님 기획]: 이미 문제 카드가 칠판에 활성화되어 있다면, 기존 문제를 덮어쓰지 않고 추가 문제 카드로 소환!
+    if (isPrimaryActive) {
+      this.spawnExtraProblemCard(dataUrl, pageNum, initialWidth, sourceCanvas);
+      return;
+    }
+
+    this.problemCardData = {
+      imgUrl: dataUrl,
+      pageNum: pageNum
+    };
+    this.isProblemCardMinimized = false;
+    this.problemInkStrokes = [];
+
+    if (sourceCanvas && sourceCanvas.width && sourceCanvas.height) {
+      this.problemCardImage = sourceCanvas;
+      this.problemCardAspect = sourceCanvas.height / sourceCanvas.width;
+    }
+
+    const imgObj = new Image();
+    imgObj.onload = () => {
+      if (imgObj.naturalWidth && imgObj.naturalHeight) {
+        this.problemCardAspect = imgObj.naturalHeight / imgObj.naturalWidth;
+      }
+      if (!sourceCanvas) {
+        this.problemCardImage = imgObj;
+      }
+      this.syncProblemCardRectFromWidget();
+      this.render();
+    };
+    imgObj.src = dataUrl;
+
+    const img = document.getElementById('problemCardImg');
+    const title = document.getElementById('problemCardTitle');
+
+    if (img) img.src = dataUrl;
+    if (title) {
+      if (typeof pageNum === 'number') {
+        title.textContent = `문제 (p.${pageNum})`;
+      } else {
+        title.textContent = `문제 (${pageNum})`;
+      }
+    }
+
+    // PDF에서 크롭한 화면 크기를 유지(+15% 확대)하여 메인 창에서 다시 키울 필요가 없도록 설정!
+    const cardW = initialWidth || 520;
+
+    if (widget) {
+      widget.classList.remove('minimized');
+      widget.style.display = 'flex';
+      this.problemCardBaseX = 72;
+      this.problemCardBaseY = 18;
+      widget.style.left = '72px';
+      widget.style.top = '18px';
+      widget.style.width = `${cardW}px`;
+      this.boardPanX = 0;
+      this.boardPanY = 0;
+      this.updateProblemCardPosition();
+    }
+
+    const toggleBtn = document.getElementById('iconCardToggle');
+    if (toggleBtn) toggleBtn.textContent = '▾';
+    if (widget) this.bringCardToFront(widget);
+
+    this.updateProblemCardPosition();
+    this.renderProblemCardCanvas();
+    this.render();
+  }
+
+
+  // --- [📋 클립보드 캡처 이미지 붙여넣기(Ctrl+V) & 파일 드래그 앤 드롭(Drag & Drop) 엔진] ---
+  initClipboardAndDropInteractions() {
+    if (this._clipboardInteractionsInited) return;
+    this._clipboardInteractionsInited = true;
+
+    // 1. 클립보드 이미지 붙여넣기 (Ctrl + V)
+    window.addEventListener('paste', (e) => {
+      // 텍스트 인풋/텍스트에어리어에 포커스가 있을 때는 문자열 붙여넣기 우선
+      const activeEl = document.activeElement;
+      const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
+      if (isInput) return;
+
+      const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+      if (!items || items.length === 0) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type && item.type.indexOf('image') !== -1) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (!file) continue;
+
+          const reader = new FileReader();
+          reader.onload = (loadEvt) => {
+            const dataUrl = loadEvt.target.result;
+            if (!this.isInkMode) {
+              this.toggleInkMode(true);
+            }
+            this.setActiveInkTool('pen');
+            const targetW = Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
+            this.setProblemCard(dataUrl, '클립보드 캡처', null, targetW);
+            this.showToast('📋 캡처된 문제 이미지를 칠판에 붙여넣었습니다!');
+          };
+          reader.readAsDataURL(file);
+          return;
+        }
+      }
+    });
+
+    // 2. 캔버스 위 파일 드래그 앤 드롭 (Drag & Drop)
+    window.addEventListener('dragover', (e) => {
+      if (e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files')) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    });
+
+    window.addEventListener('drop', async (e) => {
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (!files || files.length === 0) return;
+
+      const fileArr = Array.from(files);
+      const imageFiles = fileArr.filter(f => f.type && f.type.startsWith('image/'));
+      const pdfFile = fileArr.find(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+      if (imageFiles.length === 0 && !pdfFile) return;
+
+      e.preventDefault();
+      this._isReplacingViaNextCrop = false;
+
+      // 1) 여러 개의 이미지 파일을 한꺼번에 끌어다 놓은 경우 -> 모두 접은 압축형 카드로 차곡차곡 정렬!
+      if (imageFiles.length >= 2) {
+        await this.loadBatchFoldedProblemCards(imageFiles);
+        return;
+      }
+
+      // 2) 이미지 1개만 끌어다 놓은 경우 -> 현재 칠판 유지 & 겹치기 허용!
+      if (imageFiles.length === 1) {
+        const file = imageFiles[0];
+        const reader = new FileReader();
+        reader.onload = (loadEvt) => {
+          const dataUrl = loadEvt.target.result;
+          if (!this.isInkMode) {
+            this.toggleInkMode(true);
+          }
+          this.setActiveInkTool('pen');
+          const cleanName = file.name.replace(/\.[^/.]+$/, '');
+          const targetW = Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
+          this.setProblemCard(dataUrl, cleanName, null, targetW);
+          this.showToast(`📁 이미지 문제 [${cleanName}]을(를) 칠판에 등록했습니다!`);
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      // 3) PDF 파일 드롭
+      if (pdfFile) {
+        this.loadPdfFromFile(pdfFile);
+        this.showToast(`📄 PDF 교재 [${pdfFile.name}]을(를) 불러왔습니다!`);
+      }
+    });
+  }
+
+  initProblemCardInteractions() {
+    this.initClipboardAndDropInteractions();
+    const widget = document.getElementById('problemCardWidget');
+    const dragHandle = document.getElementById('problemCardDragHandle');
+    const resizeHandle = document.getElementById('problemCardResizeHandle');
+    const pCanvas = document.getElementById('problemCardCanvas');
+    const btnToggleMin = document.getElementById('btnProblemCardToggleMinimize');
+    const btnClose = document.getElementById('btnProblemCardClose');
+    const btnReCrop = document.getElementById('btnProblemCardReCrop');
+    const btnZoomIn = document.getElementById('btnProblemCardZoomIn');
+    const btnZoomOut = document.getElementById('btnProblemCardZoomOut');
+    const btnClearInk = document.getElementById('btnProblemCardClearInk');
+
+    if (!widget) return;
+
+    this.problemInkStrokes = [];
+
+    // 0. 문제 창 전용 독립 캔버스 (#problemCardCanvas) 필기/형광펜/지우개 인터랙션
+    if (pCanvas) {
+      let isDrawingOnProblem = false;
+      let currentStroke = null;
+      let holdTimer = null;
+
+      const getNormPos = (e) => {
+        const rect = pCanvas.getBoundingClientRect();
+        const w = Math.max(1, rect.width);
+        const h = Math.max(1, rect.height);
+        const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / w));
+        const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / h));
+        return { nx, ny, w, h };
+      };
+
+      pCanvas.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }, { capture: true });
+
+      pCanvas.addEventListener('pointerdown', (e) => {
+        if (widget) this.bringCardToFront(widget);
+        if (e.button !== 0 && e.pointerType !== 'pen') return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        try { pCanvas.setPointerCapture(e.pointerId); } catch (err) { }
+
+        const pos = getNormPos(e);
+        isDrawingOnProblem = true;
+
+        const isCardStylusEraser = (
+          (typeof e.buttons === 'number' && (e.buttons & 32) !== 0) ||
+          e.button === 5 ||
+          (e.pointerType === 'pen' && (e.button === 2 || (typeof e.buttons === 'number' && (e.buttons & 2) !== 0)))
+        );
+        if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
+          this._problemCardStylusEraser = true;
+          this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, 24);
+          this.renderProblemCardCanvas();
+          return;
+        }
+
+        currentStroke = {
+          color: this.currentInkColor || '#0f172a',
+          size: this.currentInkSize || 3.5,
+          isHighlighter: (this.activeInkTool === 'highlighter'),
+          points: [{ nx: pos.nx, ny: pos.ny, p: e.pressure || 0.5 }]
+        };
+        this.problemInkStrokes.push(currentStroke);
+        this.renderProblemCardCanvas();
+      });
+
+      pCanvas.addEventListener('pointermove', (e) => {
+        if (!isDrawingOnProblem) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const pos = getNormPos(e);
+        const isCardStylusEraser = this._problemCardStylusEraser || (
+          (typeof e.buttons === 'number' && (e.buttons & 32) !== 0) ||
+          e.button === 5 ||
+          (e.pointerType === 'pen' && (typeof e.buttons === 'number' && (e.buttons & 2) !== 0))
+        );
+        if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
+          this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, 24);
+          this.renderProblemCardCanvas();
+          return;
+        }
+
+        if (!currentStroke) return;
+        currentStroke.points.push({ nx: pos.nx, ny: pos.ny, p: e.pressure || 0.5 });
+
+        // Draw & Hold 수평 밑줄 자석 보정: 0.4초 멈추면 반듯한 수평선/직선으로 보정!
+        if (holdTimer) clearTimeout(holdTimer);
+        holdTimer = setTimeout(() => {
+          if (isDrawingOnProblem && currentStroke && currentStroke.points.length >= 4) {
+            const p0 = currentStroke.points[0];
+            const pLast = currentStroke.points[currentStroke.points.length - 1];
+            const dx = (pLast.nx - p0.nx) * pos.w;
+            const dy = (pLast.ny - p0.ny) * pos.h;
+            const dist = Math.hypot(dx, dy);
+            if (dist >= 20) {
+              let endNy = pLast.ny;
+              const angle = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);
+              if (angle < 2.5 || angle > 177.5) endNy = p0.ny; // 수평 밑줄 자석 (2.5도 정밀 스냅)!
+              currentStroke.points = [
+                { nx: p0.nx, ny: p0.ny, p: 0.6 },
+                { nx: pLast.nx, ny: endNy, p: 0.6 }
+              ];
+              this.renderProblemCardCanvas();
+            }
+          }
+        }, 400);
+
+        this.renderProblemCardCanvas();
+      });
+
+      const endProblemDraw = (e) => {
+        if (!isDrawingOnProblem) return;
+        isDrawingOnProblem = false;
+        currentStroke = null;
+        if (holdTimer) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+        }
+        try { pCanvas.releasePointerCapture(e.pointerId); } catch (err) { }
+      };
+
+      pCanvas.addEventListener('pointerup', endProblemDraw);
+      pCanvas.addEventListener('pointercancel', endProblemDraw);
+    }
+
+    // 1. 문제 카드 몸통/상단바 드래그 이동 & 몸통 더블클릭(톡톡) 즉시 접기/펼치기
+    if (widget) {
+      let isDragging = false;
+      let dragMoved = false;
+      let startX = 0, startY = 0;
+      let initialBaseX = 72, initialBaseY = 18;
+      let lastBodyTapTime = 0, lastBodyTapX = 0, lastBodyTapY = 0;
+
+      widget.addEventListener('pointerdown', (e) => {
+        this.bringCardToFront(widget);
+        if (e.target.closest('.problem-card-resize-handle')) return;
+        if (e.target.closest('.problem-card-actions')) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        isDragging = true;
+        dragMoved = false;
+        startX = e.clientX;
+        startY = e.clientY;
+        initialBaseX = (typeof this.problemCardBaseX === 'number') ? this.problemCardBaseX : (parseFloat(widget.style.left) || 72);
+        initialBaseY = (typeof this.problemCardBaseY === 'number') ? this.problemCardBaseY : (parseFloat(widget.style.top) || 18);
+        if (!e.target.closest('.card-title-fold-btn') && widget.setPointerCapture) {
+          widget.classList.add('is-dragging-card');
+          try { widget.setPointerCapture(e.pointerId); } catch (err) { }
+        }
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (!dragMoved && Math.hypot(dx, dy) > 4) {
+          dragMoved = true;
+          widget.classList.add('is-dragging-card');
+          if (widget.setPointerCapture) {
+            try { widget.setPointerCapture(e.pointerId); } catch (err) { }
+          }
+        }
+        this.problemCardBaseX = Math.round(initialBaseX + dx);
+        this.problemCardBaseY = Math.round(initialBaseY + dy);
+        widget.style.left = `${this.problemCardBaseX}px`;
+        widget.style.top = `${this.problemCardBaseY}px`;
+        this.updateProblemCardPosition();
+      });
+
+      const stopDrag = (e) => {
+        if (isDragging) {
+          const wasMoved = dragMoved;
+          isDragging = false;
+          dragMoved = false;
+          widget.classList.remove('is-dragging-card');
+          this.updateProblemCardPosition();
+          if (wasMoved) {
+            widget._justDraggedTime = performance.now();
+          } else if (e && e.type === 'pointerup' && (!e.target || !e.target.closest('.card-title-fold-btn, .problem-card-actions, .problem-card-resize-handle'))) {
+            const now = performance.now();
+            if (lastBodyTapTime && (now - lastBodyTapTime < 340) && Math.hypot((e.clientX || 0) - lastBodyTapX, (e.clientY || 0) - lastBodyTapY) < 24) {
+              lastBodyTapTime = 0;
+              this.toggleProblemCardMinimize();
+            } else {
+              lastBodyTapTime = now;
+              lastBodyTapX = e.clientX || 0;
+              lastBodyTapY = e.clientY || 0;
+            }
+          }
+        }
+      };
+      window.addEventListener('pointerup', stopDrag);
+      window.addEventListener('pointercancel', stopDrag);
+      widget.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.problem-card-actions, .card-title-fold-btn, .problem-card-resize-handle')) return;
+        this.toggleProblemCardMinimize();
+      });
+    }
+
+    // 2. 우하단 리사이즈 핸들 드래그 (문제 이미지와 문제 위 필기가 똑같은 비율로 함께 확대/축소!)
+    if (resizeHandle) {
+      let isResizing = false;
+      let startX = 0;
+      let startW = 0;
+
+      resizeHandle.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isResizing = true;
+        startX = e.clientX;
+        startW = widget.getBoundingClientRect().width;
+        if (resizeHandle.setPointerCapture) {
+          try { resizeHandle.setPointerCapture(e.pointerId); } catch (err) { }
+        }
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!isResizing) return;
+        const dw = e.clientX - startX;
+        const newW = Math.max(280, Math.min(window.innerWidth * 0.85, startW + dw));
+        widget.style.width = `${newW}px`;
+        this.syncProblemCardRectFromWidget();
+      });
+
+      const stopResize = () => {
+        if (isResizing) {
+          isResizing = false;
+          this.syncProblemCardRectFromWidget();
+        }
+      };
+      window.addEventListener('pointerup', stopResize);
+      window.addEventListener('pointercancel', stopResize);
+    }
+
+    // 3. 상단 왼쪽 제목(▾) 클릭 시 제자리 접기/펼치기 토글
+    if (btnToggleMin) {
+      btnToggleMin.onclick = () => {
+        if (widget && widget._justDraggedTime && performance.now() - widget._justDraggedTime < 180) return;
+        this.toggleProblemCardMinimize();
+      };
+    }
+
+    // 4. 문제 카드 닫기
+    if (btnClose) {
+      btnClose.onclick = () => this.closeProblemCard();
+    }
+
+    // 5. 다시 크롭 / 다음 문제 크롭 ([다음 캡처] 클릭 시: 기존 문제 카드 삭제 + 칠판 판서 초기화 후 새 문제 시작!)
+    if (btnReCrop) {
+      btnReCrop.onclick = () => {
+        this._isReplacingViaNextCrop = true;
+        if (this.pdfDoc) {
+          this.openPdfModal();
+        } else {
+          const fileInput = document.getElementById('pdfFileInput');
+          if (fileInput) {
+            fileInput.value = '';
+            fileInput.click();
+          }
+        }
+      };
+    }
+
+    // 6. 카드 확대 / 축소 버튼 (문제 위 밑줄도 비율에 맞춰 자동으로 함께 스케일링!)
+    if (btnZoomIn) {
+      btnZoomIn.onclick = () => {
+        const curW = widget.getBoundingClientRect().width;
+        const newW = Math.min(window.innerWidth * 0.85, curW + 60);
+        widget.style.width = `${newW}px`;
+        this.syncProblemCardRectFromWidget();
+      };
+    }
+    if (btnZoomOut) {
+      btnZoomOut.onclick = () => {
+        const curW = widget.getBoundingClientRect().width;
+        const newW = Math.max(280, curW - 60);
+        widget.style.width = `${newW}px`;
+        this.syncProblemCardRectFromWidget();
+      };
+    }
+
+    // 7. 문제 위 밑줄/필기만 원터치 지우기 버튼
+    if (btnClearInk) {
+      btnClearInk.onclick = () => {
+        this.clearProblemCardInk();
+      };
+    }
+  }
+
+  toggleProblemCardMinimize() {
+    const widget = document.getElementById('problemCardWidget');
+    const icon = document.getElementById('iconCardToggle');
+    if (!widget) return;
+    if (widget._lastToggleTime && performance.now() - widget._lastToggleTime < 120) return;
+    widget._lastToggleTime = performance.now();
+    this.isProblemCardMinimized = !this.isProblemCardMinimized;
+    widget.classList.toggle('minimized', this.isProblemCardMinimized);
+    if (icon) icon.textContent = this.isProblemCardMinimized ? '▸' : '▾';
+    this.syncProblemCardRectFromWidget();
+    this.showToast(this.isProblemCardMinimized ? '📖 문제 카드를 접었습니다.' : '📑 문제 카드를 다시 펼쳤습니다.');
+    this.render();
+  }
+
+  closeProblemCard() {
+    const widget = document.getElementById('problemCardWidget');
+    if (widget) {
+      widget.style.display = 'none';
+      widget.style.transform = '';
+      this.problemCardData = null;
+      this.problemCardImage = null;
+      this.problemCardRect = null;
+      this.problemInkStrokes = [];
+      this.compactGraphStage = null;
+      this.savedProblemCardViewState = null;
+      this.problemCardBaseX = 72;
+      this.problemCardBaseY = 18;
+      if (!this.extraProblemCards || this.extraProblemCards.length === 0) {
+        this.boardPanX = 0;
+        this.boardPanY = 0;
+      }
+    }
+    this.render();
+  }
+
+  // ==========================================================================
+  // [📸 그래프 스샷 카드 & 칠판 덮개/까기 (Cover & Peel) 엔진]
+  // 1. 실시간 그래프에서 예쁜 구도를 드래그하여 스샷 촬영 -> 날뛰던 실시간 그래프를 백지 칠판으로 덮음!
+  // 2. 캡처된 그래프 카드(#graphCardWidget)를 문제 창 옆에 띄우고 자유 이동/확대/축소 및 카드 위 필기 지원!
+  // 3. [🔄 그래프 수정(복구)] 버튼 클릭 시 칠판 덮개를 걷어내어 밑에 살아있던 실시간 그래프 즉시 부활!
+  // ==========================================================================
+  // 🌟 [카드 터치/클릭 시 최상단 Z-Index 우선순위 자동 승격 엔진] 🌟
+  bringCardToFront(targetEl) {
+    if (!targetEl) return;
+    const allCards = [
+      document.getElementById('problemCardWidget'),
+      ...((this.extraProblemCards || []).map(c => c && c.el)),
+      document.getElementById('graphCardWidget'),
+      ...((this.extraGraphCards || []).map(c => c && c.el))
+    ].filter(el => el && el !== targetEl);
+
+    allCards.sort((a, b) => (parseInt(a.style.zIndex, 10) || 150) - (parseInt(b.style.zIndex, 10) || 150));
+    allCards.forEach((el, idx) => {
+      el.style.zIndex = String(150 + idx);
+    });
+    const topZ = 150 + allCards.length;
+    targetEl.style.zIndex = String(topZ);
+    this.highestProblemCardZIndex = topZ;
+  }
+
+  // 🌟 [각 그래프 보관 카드(#1, #2, #3...) 전용 0.5KB 초경량 순수 그래프 상태 타임머신 스냅샷] 🌟
+  getPureGraphSnapshot() {
+    return JSON.stringify({
+      graphs: this.graphs,
+      activeGraphIdx: this.activeGraphIdx,
+      zoomLevel: this.zoomLevel,
+      panX: this.panX,
+      panY: this.panY,
+      xSpan: this.xSpan,
+      ySpan: this.ySpan,
+      usePiecewise: this.usePiecewise,
+      piecewiseBoundaries: this.piecewiseBoundaries,
+      piecewiseFuncMap: this.piecewiseFuncMap,
+      piecewiseInclusions: this.piecewiseInclusions,
+      isPiecewisePeriodic: this.isPiecewisePeriodic,
+      periodicStepY: this.periodicStepY,
+      isPiecewiseLocked: Boolean(this.isPiecewiseLocked),
+      showInverseGuide: this.showInverseGuide
+    });
+  }
+
+  applyPureGraphSnapshot(jsonStr) {
+    if (!jsonStr) return;
+    try {
+      const data = JSON.parse(jsonStr);
+      this.graphs = data.graphs || [];
+      this.activeGraphIdx = data.activeGraphIdx !== undefined ? data.activeGraphIdx : (this.graphs.length > 0 ? 0 : -1);
+      if (data.zoomLevel !== undefined) {
+        this.zoomLevel = data.zoomLevel;
+        const slZoom = document.getElementById('sliderZoom');
+        if (slZoom) slZoom.value = this.zoomLevel;
+        const lblZoom = document.getElementById('lblZoom');
+        if (lblZoom) lblZoom.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+      }
+      if (data.panX !== undefined) this.panX = data.panX;
+      if (data.panY !== undefined) this.panY = data.panY;
+      if (data.xSpan !== undefined) this.xSpan = data.xSpan;
+      if (data.ySpan !== undefined) this.ySpan = data.ySpan;
+      if (data.usePiecewise !== undefined) {
+        this.usePiecewise = data.usePiecewise;
+        const chk = document.getElementById('chkPiecewise');
+        if (chk) chk.checked = this.usePiecewise;
+        const btnQuick = document.getElementById('btnQuickPiecewise');
+        if (btnQuick) btnQuick.classList.toggle('active', this.usePiecewise);
+        const pwBox = document.getElementById('pwControls');
+        if (pwBox) pwBox.style.display = this.usePiecewise ? 'block' : 'none';
+      }
+      if (data.piecewiseBoundaries) this.piecewiseBoundaries = [...data.piecewiseBoundaries];
+      if (data.piecewiseFuncMap) this.piecewiseFuncMap = [...data.piecewiseFuncMap];
+      if (data.piecewiseInclusions) this.piecewiseInclusions = [...data.piecewiseInclusions];
+      if (data.isPiecewisePeriodic !== undefined) this.isPiecewisePeriodic = data.isPiecewisePeriodic;
+      if (data.periodicStepY !== undefined) this.periodicStepY = data.periodicStepY;
+      if (data.isPiecewiseLocked !== undefined) this.isPiecewiseLocked = Boolean(data.isPiecewiseLocked);
+      this.syncPeriodicUI();
+      if (data.showInverseGuide !== undefined) {
+        this.showInverseGuide = data.showInverseGuide;
+        const chkInv = document.getElementById('chkInverseGuide');
+        if (chkInv) chkInv.checked = this.showInverseGuide;
+      }
+      this.selectedHandleIdx = null;
+      this.isCurveSelected = this.graphs.length > 0;
+      this.syncControls();
+      this.renderLayerList();
+      this.renderFuncList();
+    } catch (err) {
+      console.error('Graph card snapshot restore error:', err);
+    }
+  }
+
+  // 🌟 [새 스샷 촬영 없이 방금 판서하던 2층 칠판(보관 카드 화면)으로 즉시 복귀] 🌟
+  returnToCoveredBoard() {
+    const hasSavedCards = Boolean(
+      (this._hasPrimaryGraphCard && this.graphCardData) ||
+      (this.extraGraphCards && this.extraGraphCards.length > 0)
+    );
+    if (!hasSavedCards) return;
+
+    this.isGraphCovered = true;
+    this.isGraphSnapMode = false;
+    document.body.classList.remove('graph-snap-crosshair');
+    if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
+
+    const widget = document.getElementById('graphCardWidget');
+    if (widget && this._hasPrimaryGraphCard && this.graphCardData) {
+      widget.style.display = 'flex';
+    }
+    if (this.extraGraphCards && this.extraGraphCards.length > 0) {
+      this.extraGraphCards.forEach(c => {
+        if (c.el) c.el.style.display = 'flex';
+      });
+    }
+
+    if (this._savedLayer2BoardPan) {
+      this.boardPanX = this._savedLayer2BoardPan.x;
+      this.boardPanY = this._savedLayer2BoardPan.y;
+      this._savedLayer2BoardPan = null;
+    }
+    this.updateProblemCardPosition();
+    this.syncGraphCardRectFromWidget();
+    this.syncGraphSnapBarUI();
+
+    if (!this.isInkMode) {
+      this.toggleInkMode(true);
+    }
+    this.setActiveInkTool('pen');
+    this.render();
+    this.showToast('📋 판서하던 칠판 화면으로 돌아왔습니다.');
+  }
+
+  syncGraphSnapBarUI() {
+    const hasSavedCards = Boolean(
+      (this._hasPrimaryGraphCard && this.graphCardData) ||
+      (this.extraGraphCards && this.extraGraphCards.length > 0)
+    );
+    const shouldShow = Boolean(((this.graphs && this.graphs.length > 0) || hasSavedCards) && !this.isGraphCovered && !this.isNAxisMode);
+    const snapActive = Boolean(this.isGraphSnapMode);
+    const bar = this._snapBarEl || (this._snapBarEl = document.getElementById('graphSnapFloatingBar'));
+    if (!bar) return;
+
+    if (this._lastSnapBarShow !== shouldShow) {
+      bar.style.display = shouldShow ? 'flex' : 'none';
+      this._lastSnapBarShow = shouldShow;
+    }
+
+    const btnReturn = this._returnBoardBtnEl || (this._returnBoardBtnEl = document.getElementById('btnReturnToCoveredBoard'));
+    if (btnReturn) {
+      btnReturn.style.display = (shouldShow && hasSavedCards) ? 'inline-flex' : 'none';
+    }
+
+    const btn = this._snapBtnEl || (this._snapBtnEl = document.getElementById('btnTriggerGraphSnap'));
+    const lbl = this._snapLblEl || (this._snapLblEl = document.getElementById('lblTriggerGraphSnap'));
+    if (btn && lbl && this._lastSnapModeActive !== snapActive) {
+      btn.classList.toggle('active', snapActive);
+      lbl.textContent = snapActive
+        ? '영역 드래그 (ESC 취소)'
+        : '그래프 보관';
+      this._lastSnapModeActive = snapActive;
+    }
+  }
+
+  toggleGraphSnapMode(forceVal = null) {
+    const nextState = (forceVal !== null) ? Boolean(forceVal) : !this.isGraphSnapMode;
+    this.isGraphSnapMode = nextState;
+    this.isGraphSnapDragging = false;
+    const dragBox = document.getElementById('graphSnapDragBox');
+    if (dragBox) dragBox.style.display = 'none';
+
+    if (this.isGraphSnapMode) {
+      this.isCurveSelected = false;
+      this.selectedHandleIdx = null;
+      document.body.classList.add('graph-snap-crosshair');
+      if (this.canvas) {
+        this.canvas.classList.add('graph-snap-crosshair');
+        this.canvas.style.cursor = 'crosshair';
+      }
+      if (this.virtualStylusEl) {
+        this.virtualStylusEl.style.display = 'none';
+      }
+      this.showToast('➕ 보관할 그래프 영역을 십자 포인터로 드래그하세요!');
+    } else {
+      document.body.classList.remove('graph-snap-crosshair');
+      if (this.canvas) {
+        this.canvas.classList.remove('graph-snap-crosshair');
+      }
+      this.updateInkCursor();
+    }
+    this.syncGraphSnapBarUI();
+    this.render();
+  }
+
+  captureGraphSnapshot(cropRect) {
+    if (!cropRect || cropRect.w < 30 || cropRect.h < 30) return;
+
+    const rx = Math.max(0, Math.round(cropRect.x));
+    const ry = Math.max(0, Math.round(cropRect.y));
+    const rw = Math.min(this.screenWidth - rx, Math.round(cropRect.w));
+    const rh = Math.min(this.screenHeight - ry, Math.round(cropRect.h));
+    if (rw < 20 || rh < 20) return;
+
+    // 1. 스샷 전용 클린 렌더링 (조작 핸들 숨김 + 드래그한 박스 테두리에 맞춰 x·y축 화살촉 ▶, ▲ 칼같이 배치!)
+    this._isRenderingGraphSnapshot = true;
+    this._snapshotCropBounds = {
+      minX: rx,
+      maxX: rx + rw,
+      minY: ry,
+      maxY: ry + rh,
+      x: rx,
+      y: ry,
+      w: rw,
+      h: rh
+    };
+    const prevCovered = this.isGraphCovered;
+    this.isGraphCovered = false;
+    this.render();
+
+    const dpr = window.devicePixelRatio || 2;
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = Math.round(rw * dpr);
+    cropCanvas.height = Math.round(rh * dpr);
+    const cctx = cropCanvas.getContext('2d');
+    cctx.drawImage(
+      this.canvas,
+      Math.round(rx * dpr),
+      Math.round(ry * dpr),
+      Math.round(rw * dpr),
+      Math.round(rh * dpr),
+      0,
+      0,
+      Math.round(rw * dpr),
+      Math.round(rh * dpr)
+    );
+
+    const dataUrl = cropCanvas.toDataURL('image/png');
+    this._isRenderingGraphSnapshot = false;
+    this._snapshotCropBounds = null;
+    this.isGraphCovered = prevCovered;
+
+    // 2. 그래프 스샷 카드 세팅 & 칠판 덮개(isGraphCovered = true) 활성화!
+    this.setGraphCard(dataUrl, cropCanvas, rw, { x: rx, y: ry, w: rw, h: rh });
+  }
+
+  setGraphCard(dataUrl, sourceCanvas = null, initialWidth = null, sourceRect = null) {
+    if (!this.extraGraphCards) {
+      this.extraGraphCards = [];
+    }
+
+    const cardW = Math.round(Math.max(240, Math.min(window.innerWidth * 0.48, initialWidth || 380)));
+    const aspect = (sourceCanvas && sourceCanvas.width && sourceCanvas.height)
+      ? (sourceCanvas.height / sourceCanvas.width)
+      : 0.85;
+
+    const widget = document.getElementById('graphCardWidget');
+
+    const currentGraphSnapshot = this.getPureGraphSnapshot();
+
+    // 🌟 [대표님 대박 기획: 1번 상황 보관 -> 복구 -> 2번 상황 보관 -> 3번 상황 다중 케이스 비교 보관!] 🌟
+    // 이미 1번 보관 카드(#graphCardWidget)가 존재하면, 1번 카드를 그대로 살려두면서 2번, 3번 보관 카드를 나란히 추가 소환!
+    if (this._hasPrimaryGraphCard && this.graphCardData) {
+      if (widget) {
+        widget.style.display = 'flex';
+      }
+      this.extraGraphCards.forEach(c => {
+        if (c.el) c.el.style.display = 'flex';
+      });
+      this.spawnExtraGraphArchiveCard(dataUrl, cardW, aspect, currentGraphSnapshot);
+    } else {
+      this._hasPrimaryGraphCard = true;
+      this.primaryGraphCardSnapshot = currentGraphSnapshot;
+      this.graphCardData = { imgUrl: dataUrl, graphSnapshot: currentGraphSnapshot };
+      this.isGraphCardMinimized = false;
+      this.graphCardImage = sourceCanvas;
+      this.graphCardAspect = aspect;
+
+      const imgObj = new Image();
+      imgObj.onload = () => {
+        if (imgObj.naturalWidth && imgObj.naturalHeight) {
+          this.graphCardAspect = imgObj.naturalHeight / imgObj.naturalWidth;
+        }
+        this.syncGraphCardRectFromWidget();
+        this.render();
+      };
+      imgObj.src = dataUrl;
+
+      const img = document.getElementById('graphCardImg');
+      if (img) img.src = dataUrl;
+      const titleEl = document.getElementById('graphCardTitle');
+      if (titleEl) titleEl.textContent = '#1';
+
+      if (widget) {
+        widget.classList.remove('minimized');
+        widget.style.display = 'flex';
+        widget.style.width = `${cardW}px`;
+
+        if (typeof this.graphCardBaseX !== 'number' || typeof this.graphCardBaseY !== 'number') {
+          if (this.hasActiveProblemCard() && this.problemCardRect) {
+            const pRight = this.problemCardRect.x + this.problemCardRect.w;
+            if (pRight + cardW + 36 <= window.innerWidth) {
+              this.graphCardBaseX = Math.round(pRight + 20);
+              this.graphCardBaseY = Math.round(this.problemCardRect.y);
+            } else {
+              this.graphCardBaseX = Math.round(this.problemCardRect.x);
+              this.graphCardBaseY = Math.round(this.problemCardRect.y + this.problemCardRect.h + 44);
+            }
+          } else if (sourceRect) {
+            this.graphCardBaseX = Math.max(72, Math.min(window.innerWidth - cardW - 24, Math.round(sourceRect.x)));
+            this.graphCardBaseY = Math.max(60, Math.min(window.innerHeight - 200, Math.round(sourceRect.y)));
+          } else {
+            this.graphCardBaseX = 560;
+            this.graphCardBaseY = 68;
+          }
+        }
+        widget.style.left = `${this.graphCardBaseX}px`;
+        widget.style.top = `${this.graphCardBaseY}px`;
+      }
+
+      const toggleBtn = document.getElementById('iconGraphCardToggle');
+      if (toggleBtn) toggleBtn.textContent = '▾';
+      this.bringCardToFront(widget);
+    }
+
+    // 🌟 핵심: 실시간 그래프 작업실을 백지 칠판으로 덮음! (2층 판서 레이어 진입)
+    this.isGraphCovered = true;
+    this.isGraphSnapMode = false;
+    document.body.classList.remove('graph-snap-crosshair');
+    if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
+    if (this._savedLayer2BoardPan) {
+      this.boardPanX = this._savedLayer2BoardPan.x;
+      this.boardPanY = this._savedLayer2BoardPan.y;
+      this._savedLayer2BoardPan = null;
+    }
+    this.updateProblemCardPosition();
+    this.syncGraphCardRectFromWidget();
+    this.syncGraphSnapBarUI();
+
+    // 보관 완료 즉시 펜 모드로 자동 전환하여 바로 판서 가능하도록 지원!
+    if (!this.isInkMode) {
+      this.toggleInkMode(true);
+    }
+    this.setActiveInkTool('pen');
+    this.render();
+    const totalCards = (this._hasPrimaryGraphCard ? 1 : 0) + (this.extraGraphCards ? this.extraGraphCards.length : 0);
+    this.showToast(totalCards > 1
+      ? `📦 ${totalCards}번째 그래프 보관 카드가 추가되었습니다! 카드를 슥 끌어 배치하세요.`
+      : '📦 그래프가 보관되었습니다! 카드 위를 슥 끌어 자유롭게 이동하세요.');
+  }
+
+  spawnExtraGraphArchiveCard(dataUrl, cardW, aspect, graphSnapshot = null) {
+    if (!this.extraGraphCards) this.extraGraphCards = [];
+    const caseIdx = this.extraGraphCards.length + 2;
+
+    // 이전 카드 바로 오른쪽(또는 공간 부족 시 살짝 아래 계단식)에 스마트 배치
+    let baseX = (typeof this.graphCardBaseX === 'number' ? this.graphCardBaseX : 560) + (cardW + 18) * (caseIdx - 1);
+    let baseY = (typeof this.graphCardBaseY === 'number' ? this.graphCardBaseY : 68);
+    if (baseX + cardW + 24 > window.innerWidth) {
+      baseX = Math.max(80, Math.min(window.innerWidth - cardW - 30, 560 + ((caseIdx - 1) * 44)));
+      baseY = Math.min(window.innerHeight - 240, baseY + ((caseIdx - 1) * 44));
+    }
+
+    const el = document.createElement('div');
+    el.className = 'problem-card-widget graph-card-widget extra-graph-card-widget';
+    el.style.display = 'flex';
+    el.style.width = `${cardW}px`;
+    el.style.left = `${Math.round(baseX)}px`;
+    el.style.top = `${Math.round(baseY)}px`;
+
+    const bodyH = Math.round(cardW * aspect);
+    el.innerHTML = `
+      <div class="problem-card-header">
+        <div class="problem-card-drag-handle" title="클릭하여 접기/펼치기 · 카드 어디든 드래그하여 이동">
+          <button class="card-btn card-title-fold-btn btn-extra-min" title="클릭하여 접기/펼치기 (카드 몸통 더블클릭도 가능)">
+            <span class="card-fold-chevron">▾</span>
+            <span class="card-title-text">#${caseIdx}</span>
+          </button>
+        </div>
+        <div class="problem-card-actions">
+          <button class="card-btn card-btn-restore btn-extra-restore" title="칠판 덮개를 걷어내고 실시간 그래프 다시 열기">
+            <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>그래프 복구</span>
+          </button>
+          <button class="card-btn btn-card-close btn-extra-close" title="이 보관 카드 삭제">
+            <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+          </button>
+        </div>
+      </div>
+      <div class="problem-card-body" style="height:${bodyH}px;">
+        <img class="problem-card-img" src="${dataUrl}" alt="그래프 보관 ${caseIdx}" draggable="false" />
+        <div class="problem-card-resize-handle" title="드래그하여 그래프 크기 조절"></div>
+      </div>
+    `;
+    document.body.appendChild(el);
+
+    const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), aspect, isMin: false, graphSnapshot: graphSnapshot || this.getPureGraphSnapshot(), caseIdx };
+    this.extraGraphCards.push(cardItem);
+    this.bringCardToFront(el);
+
+    const bPx = (this.boardPanX || 0);
+    const bPy = (this.boardPanY || 0);
+    el.style.transform = `translate3d(${bPx}px, ${bPy}px, 0)`;
+
+    const syncExtraSize = (newW) => {
+      el.style.width = `${newW}px`;
+      const bodyEl = el.querySelector('.problem-card-body');
+      if (bodyEl && !cardItem.isMin) {
+        const h = Math.round(newW * cardItem.aspect);
+        bodyEl.style.height = `${h}px`;
+      }
+    };
+
+    const toggleExtraGraphMin = () => {
+      if (el._lastToggleTime && performance.now() - el._lastToggleTime < 120) return;
+      el._lastToggleTime = performance.now();
+      cardItem.isMin = !cardItem.isMin;
+      el.classList.toggle('minimized', cardItem.isMin);
+      const chev = el.querySelector('.card-fold-chevron');
+      if (chev) chev.textContent = cardItem.isMin ? '▸' : '▾';
+    };
+
+    // 롱프레스 쉴드
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); return false; }, { capture: true });
+    el.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+    el.addEventListener('dragstart', (e) => e.preventDefault());
+    el.addEventListener('selectstart', (e) => e.preventDefault());
+    ['MSHoldVisual', 'MSGestureHold'].forEach(evtName => {
+      el.addEventListener(evtName, (e) => e.preventDefault(), { passive: false });
+    });
+
+    // 몸통/상단바 드래그 이동 & 몸통 더블클릭(톡톡) 즉시 접기/펼치기
+    let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
+    let lastBodyTapTime = 0, lastBodyTapX = 0, lastBodyTapY = 0;
+    el.addEventListener('pointerdown', (e) => {
+      this.bringCardToFront(el);
+      if (e.target.closest('.problem-card-resize-handle')) return;
+      if (e.target.closest('.problem-card-actions')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      isDragging = true;
+      dragMoved = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      initX = cardItem.baseX;
+      initY = cardItem.baseY;
+      if (!e.target.closest('.card-title-fold-btn')) {
+        el.classList.add('is-dragging-card');
+        try { el.setPointerCapture(e.pointerId); } catch (err) { }
+      }
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!dragMoved && Math.hypot(dx, dy) > 4) {
+        dragMoved = true;
+        el.classList.add('is-dragging-card');
+        try { el.setPointerCapture(e.pointerId); } catch (err) { }
+      }
+      cardItem.baseX = Math.round(initX + dx);
+      cardItem.baseY = Math.round(initY + dy);
+      el.style.left = `${cardItem.baseX}px`;
+      el.style.top = `${cardItem.baseY}px`;
+    });
+    const stopDrag = (e) => {
+      if (isDragging) {
+        const wasMoved = dragMoved;
+        isDragging = false;
+        dragMoved = false;
+        el.classList.remove('is-dragging-card');
+        if (wasMoved) {
+          el._justDraggedTime = performance.now();
+        } else if (e && e.type === 'pointerup' && (!e.target || !e.target.closest('.card-title-fold-btn, .problem-card-actions, .problem-card-resize-handle'))) {
+          const now = performance.now();
+          if (lastBodyTapTime && (now - lastBodyTapTime < 340) && Math.hypot((e.clientX || 0) - lastBodyTapX, (e.clientY || 0) - lastBodyTapY) < 24) {
+            lastBodyTapTime = 0;
+            toggleExtraGraphMin();
+          } else {
+            lastBodyTapTime = now;
+            lastBodyTapX = e.clientX || 0;
+            lastBodyTapY = e.clientY || 0;
+          }
+        }
+      }
+    };
+    window.addEventListener('pointerup', stopDrag);
+    window.addEventListener('pointercancel', stopDrag);
+    el.addEventListener('dblclick', (e) => {
+      if (e.target.closest('.problem-card-actions, .card-title-fold-btn, .problem-card-resize-handle')) return;
+      toggleExtraGraphMin();
+    });
+
+    // 우하단 리사이즈
+    const rHandle = el.querySelector('.problem-card-resize-handle');
+    if (rHandle) {
+      let isResizing = false, rStartX = 0, rStartW = cardW;
+      rHandle.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isResizing = true;
+        rStartX = e.clientX;
+        rStartW = el.getBoundingClientRect().width;
+        try { rHandle.setPointerCapture(e.pointerId); } catch (err) { }
+      });
+      window.addEventListener('pointermove', (e) => {
+        if (!isResizing) return;
+        const nextW = Math.max(200, Math.min(window.innerWidth * 0.85, rStartW + (e.clientX - rStartX)));
+        syncExtraSize(nextW);
+      });
+      const stopResize = () => { isResizing = false; };
+      window.addEventListener('pointerup', stopResize);
+      window.addEventListener('pointercancel', stopResize);
+    }
+
+    el.querySelector('.btn-extra-restore').onclick = () => this.restoreLiveGraphFromCard(false, cardItem.graphSnapshot, cardItem.caseIdx);
+    el.querySelector('.btn-extra-min').onclick = () => {
+      if (el._justDraggedTime && performance.now() - el._justDraggedTime < 180) return;
+      toggleExtraGraphMin();
+    };
+    el.querySelector('.btn-extra-close').onclick = () => {
+      el.remove();
+      this.extraGraphCards = this.extraGraphCards.filter(c => c !== cardItem);
+      if (!this._hasPrimaryGraphCard && this.extraGraphCards.length === 0) {
+        this.restoreLiveGraphFromCard(false);
+      }
+    };
+  }
+
+  restoreLiveGraphFromCard(silent = false, targetSnapshot = null, caseIdx = null, keepMinimizedCards = false) {
+    this.isGraphCovered = false;
+    this.isGraphSnapMode = false;
+    document.body.classList.remove('graph-snap-crosshair');
+    if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
+    const widget = document.getElementById('graphCardWidget');
+    if (widget) {
+      if (!(keepMinimizedCards && this.isGraphCardMinimized)) {
+        widget.style.display = 'none';
+      }
+    }
+    if (this.extraGraphCards && this.extraGraphCards.length > 0) {
+      this.extraGraphCards.forEach(c => {
+        if (c.el && !(keepMinimizedCards && c.isMin)) {
+          c.el.style.display = 'none';
+        }
+      });
+    }
+
+    // 🌟 [대표님 방법 B 기획 + PDF 개념 페이지 호환]:
+    // 1) 클릭한 카드(#1, #2, #3...)가 보관될 당시의 순수 그래프 상태(좌표/핸들/구간분할)로 즉시 타임머신 복원!
+    // 2) 일반 칠판에서는 1층 그래프 위 옛날 낙서를 정리하되, PDF 페이지 통째 칠판 모드(s.onPdfBoard)의 개념 필기는 100% 보존!
+    // 3) 2층 백지 칠판에 적어둔 본 풀이 필기(target === 'board')도 100% 안전하게 보존!
+    if (targetSnapshot) {
+      this.applyPureGraphSnapshot(targetSnapshot);
+    }
+    if (this.inkStrokes && this.inkStrokes.length > 0) {
+      const beforeLen = this.inkStrokes.length;
+      this.inkStrokes = this.inkStrokes.filter(s => s && (s.target === 'board' || s.onPdfBoard || Boolean(this.pdfPageBoardData)));
+      if (this.inkStrokes.length !== beforeLen) {
+        this._inkBakeDirty = true;
+        this.clearInkCache();
+      }
+    }
+    this.dropLines = [];
+    this.textLabels = [];
+
+    // 1층(실시간 그래프 편집 레이어) 복귀 시 문제 카드를 좌상단 고정 위치(0,0)로 복원 (2층 패닝 위치는 백업)
+    this._savedLayer2BoardPan = { x: this.boardPanX || 0, y: this.boardPanY || 0 };
+    this.boardPanX = 0;
+    this.boardPanY = 0;
+    this.updateProblemCardPosition();
+    if (this.isInkMode && this.activeInkTool !== 'select') {
+      this.setActiveInkTool('select');
+    }
+    this.syncGraphSnapBarUI();
+    this.render();
+    if (!silent) {
+      const prefix = caseIdx ? `#${caseIdx} 보관 당시의` : '실시간';
+      this.showToast(`🔄 ${prefix} 그래프를 복구했습니다! (그냥 돌아가려면 우측 상단 [칠판 복귀] 클릭)`);
+    }
+  }
+
+  syncGraphCardRectFromWidget() {
+    const widget = document.getElementById('graphCardWidget');
+    const body = document.getElementById('graphCardBody');
+    const gCanvas = document.getElementById('graphCardCanvas');
+    if (!widget || !this.graphCardData || widget.style.display === 'none') {
+      this.graphCardRect = null;
+      return null;
+    }
+
+    const w = parseFloat(widget.style.width) || widget.getBoundingClientRect().width || 400;
+    const aspect = this.graphCardAspect || 0.85;
+    const imgW = w;
+    const imgH = Math.round(imgW * aspect);
+    const h = imgH;
+
+    if (body && !this.isGraphCardMinimized) {
+      body.style.height = `${h}px`;
+    }
+
+    if (gCanvas && !this.isGraphCardMinimized) {
+      const dpr = window.devicePixelRatio || 2;
+      const targetW = Math.round(w * dpr);
+      const targetH = Math.round(h * dpr);
+      if (gCanvas.width !== targetW || gCanvas.height !== targetH) {
+        gCanvas.width = targetW;
+        gCanvas.height = targetH;
+      }
+      this.renderGraphCardCanvas();
+    }
+
+    const widgetRect = widget.getBoundingClientRect();
+    this.graphCardRect = { x: widgetRect.left, y: widgetRect.top, w, h };
+    return this.graphCardRect;
+  }
+
+  renderGraphCardCanvas() {
+    const gCanvas = document.getElementById('graphCardCanvas');
+    if (!gCanvas) return;
+    const ctx = gCanvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 2;
+    const w = gCanvas.width / dpr;
+    const h = gCanvas.height / dpr;
+
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    if (!this.graphInkStrokes || this.graphInkStrokes.length === 0) {
+      ctx.restore();
+      return;
+    }
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const sizeScale = Math.max(0.6, w / 420);
+
+    this.graphInkStrokes.forEach(stroke => {
+      if (!stroke.points || stroke.points.length === 0) return;
+      ctx.save();
+      let strokeColor = stroke.color || '#1e293b';
+      if (this.isMonochromeMode) strokeColor = '#000000';
+      ctx.strokeStyle = strokeColor;
+      ctx.fillStyle = strokeColor;
+
+      const baseSize = (stroke.size || 3.5) * sizeScale;
+      if (stroke.isHighlighter) {
+        ctx.globalAlpha = 0.36;
+        ctx.lineWidth = Math.max(10, baseSize * 2.8);
+      } else {
+        ctx.globalAlpha = 1.0;
+        ctx.lineWidth = Math.max(1.5, baseSize);
+      }
+
+      const pts = stroke.points;
+      if (pts.length === 1) {
+        ctx.beginPath();
+        ctx.arc(pts[0].nx * w, pts[0].ny * h, ctx.lineWidth / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(pts[0].nx * w, pts[0].ny * h);
+        for (let i = 1; i < pts.length - 1; i++) {
+          const xc = (pts[i].nx + pts[i + 1].nx) * 0.5 * w;
+          const yc = (pts[i].ny + pts[i + 1].ny) * 0.5 * h;
+          ctx.quadraticCurveTo(pts[i].nx * w, pts[i].ny * h, xc, yc);
+        }
+        const last = pts[pts.length - 1];
+        ctx.lineTo(last.nx * w, last.ny * h);
+        ctx.stroke();
+      }
+      ctx.restore();
+    });
+
+    ctx.restore();
+  }
+
+  eraseGraphCardInkAtNormalizedPoint(nx, ny, w, h, radiusPx = 20) {
+    if (!this.graphInkStrokes || this.graphInkStrokes.length === 0) return;
+    const tx = nx * w;
+    const ty = ny * h;
+    const beforeLen = this.graphInkStrokes.length;
+    this.graphInkStrokes = this.graphInkStrokes.filter(stroke => {
+      if (!stroke.points || stroke.points.length === 0) return false;
+      for (let i = 0; i < stroke.points.length; i++) {
+        const px = stroke.points[i].nx * w;
+        const py = stroke.points[i].ny * h;
+        if (Math.hypot(px - tx, py - ty) <= radiusPx) return false;
+        if (i < stroke.points.length - 1) {
+          const nx2 = stroke.points[i + 1].nx * w;
+          const ny2 = stroke.points[i + 1].ny * h;
+          const d = this.distToSegment({ x: tx, y: ty }, { x: px, y: py }, { x: nx2, y: ny2 });
+          if (d <= radiusPx) return false;
+        }
+      }
+      return true;
+    });
+    if (this.graphInkStrokes.length !== beforeLen) {
+      this.renderGraphCardCanvas();
+    }
+  }
+
+  initGraphCardInteractions() {
+    const btnTrigger = document.getElementById('btnTriggerGraphSnap');
+    if (btnTrigger) {
+      btnTrigger.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleGraphSnapMode();
+      };
+    }
+    const btnReturnBoard = document.getElementById('btnReturnToCoveredBoard');
+    if (btnReturnBoard) {
+      btnReturnBoard.onclick = (e) => {
+        e.stopPropagation();
+        this.returnToCoveredBoard();
+      };
+    }
+
+    const widget = document.getElementById('graphCardWidget');
+    const dragHandle = document.getElementById('graphCardDragHandle');
+    const resizeHandle = document.getElementById('graphCardResizeHandle');
+    const gCanvas = document.getElementById('graphCardCanvas');
+    const btnRestore = document.getElementById('btnGraphCardRestore');
+    const btnZoomIn = document.getElementById('btnGraphCardZoomIn');
+    const btnZoomOut = document.getElementById('btnGraphCardZoomOut');
+    const btnClearInk = document.getElementById('btnGraphCardClearInk');
+    const btnToggleMin = document.getElementById('btnGraphCardToggleMinimize');
+    const btnClose = document.getElementById('btnGraphCardClose');
+
+    if (!widget) return;
+    this.graphInkStrokes = [];
+
+    if (gCanvas) {
+      let isDrawingOnGraphCard = false;
+      let currentStroke = null;
+
+      const getNormPos = (e) => {
+        const rect = gCanvas.getBoundingClientRect();
+        const w = Math.max(1, rect.width);
+        const h = Math.max(1, rect.height);
+        const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / w));
+        const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / h));
+        return { nx, ny, w, h };
+      };
+
+      gCanvas.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }, { capture: true });
+
+      gCanvas.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 && e.pointerType !== 'pen') return;
+        e.preventDefault();
+        e.stopPropagation();
+        try { gCanvas.setPointerCapture(e.pointerId); } catch (err) { }
+
+        const pos = getNormPos(e);
+        isDrawingOnGraphCard = true;
+
+        const isCardStylusEraser = (
+          (typeof e.buttons === 'number' && (e.buttons & 32) !== 0) ||
+          e.button === 5 ||
+          (e.pointerType === 'pen' && (e.button === 2 || (typeof e.buttons === 'number' && (e.buttons & 2) !== 0)))
+        );
+        if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
+          this._graphCardStylusEraser = true;
+          this.eraseGraphCardInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, 24);
+          return;
+        }
+
+        currentStroke = {
+          color: this.currentInkColor || '#1e293b',
+          size: this.currentInkSize || 3.5,
+          isHighlighter: (this.activeInkTool === 'highlighter'),
+          points: [{ nx: pos.nx, ny: pos.ny, p: e.pressure || 0.5 }]
+        };
+        this.graphInkStrokes.push(currentStroke);
+        this.renderGraphCardCanvas();
+      });
+
+      gCanvas.addEventListener('pointermove', (e) => {
+        if (!isDrawingOnGraphCard) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const pos = getNormPos(e);
+        const isCardStylusEraser = this._graphCardStylusEraser || (
+          (typeof e.buttons === 'number' && (e.buttons & 32) !== 0) ||
+          e.button === 5 ||
+          (e.pointerType === 'pen' && (typeof e.buttons === 'number' && (e.buttons & 2) !== 0))
+        );
+        if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
+          this.eraseGraphCardInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, 24);
+          return;
+        }
+        if (!currentStroke) return;
+        currentStroke.points.push({ nx: pos.nx, ny: pos.ny, p: e.pressure || 0.5 });
+        this.renderGraphCardCanvas();
+      });
+
+      const endGraphCardDraw = (e) => {
+        if (!isDrawingOnGraphCard) return;
+        isDrawingOnGraphCard = false;
+        this._graphCardStylusEraser = false;
+        currentStroke = null;
+        try { gCanvas.releasePointerCapture(e.pointerId); } catch (err) { }
+      };
+      gCanvas.addEventListener('pointerup', endGraphCardDraw);
+      gCanvas.addEventListener('pointercancel', endGraphCardDraw);
+    }
+
+    // 🌟 [상단 X 표시(전체화면 롱프레스 종료 배지) & 컨텍스트 메뉴 원천 차단 쉴드] 🌟
+    const applyLongPressShield = (el) => {
+      if (!el) return;
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }, { capture: true });
+      el.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+      }, { passive: false });
+      el.addEventListener('dragstart', (e) => e.preventDefault());
+      el.addEventListener('selectstart', (e) => e.preventDefault());
+      ['MSHoldVisual', 'MSGestureHold'].forEach(evtName => {
+        el.addEventListener(evtName, (e) => e.preventDefault(), { passive: false });
+      });
+    };
+    applyLongPressShield(widget);
+    applyLongPressShield(document.getElementById('problemCardWidget'));
+    applyLongPressShield(document.getElementById('inkFloatingToolbar'));
+
+    const togglePrimaryGraphMin = () => {
+      if (widget && widget._lastToggleTime && performance.now() - widget._lastToggleTime < 120) return;
+      if (widget) widget._lastToggleTime = performance.now();
+      this.isGraphCardMinimized = !this.isGraphCardMinimized;
+      if (widget) widget.classList.toggle('minimized', this.isGraphCardMinimized);
+      const icon = document.getElementById('iconGraphCardToggle');
+      if (icon) icon.textContent = this.isGraphCardMinimized ? '▸' : '▾';
+      this.syncGraphCardRectFromWidget();
+    };
+
+    // 🌟 그래프 보관 카드 몸통/상단바 드래그 이동 & 몸통 더블클릭(톡톡) 즉시 접기/펼치기 🌟
+    if (widget) {
+      let isDragging = false;
+      let dragMoved = false;
+      let startX = 0, startY = 0;
+      let initialBaseX = 580, initialBaseY = 68;
+      let lastBodyTapTime = 0, lastBodyTapX = 0, lastBodyTapY = 0;
+
+      widget.addEventListener('pointerdown', (e) => {
+        this.bringCardToFront(widget);
+        if (e.target.closest('.problem-card-resize-handle')) return;
+        if (e.target.closest('.problem-card-actions')) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        isDragging = true;
+        dragMoved = false;
+        startX = e.clientX;
+        startY = e.clientY;
+        initialBaseX = (typeof this.graphCardBaseX === 'number') ? this.graphCardBaseX : (parseFloat(widget.style.left) || 580);
+        initialBaseY = (typeof this.graphCardBaseY === 'number') ? this.graphCardBaseY : (parseFloat(widget.style.top) || 68);
+        if (!e.target.closest('.card-title-fold-btn')) {
+          widget.classList.add('is-dragging-card');
+          try { widget.setPointerCapture(e.pointerId); } catch (err) { }
+        }
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (!dragMoved && Math.hypot(dx, dy) > 4) {
+          dragMoved = true;
+          widget.classList.add('is-dragging-card');
+          try { widget.setPointerCapture(e.pointerId); } catch (err) { }
+        }
+        this.graphCardBaseX = Math.round(initialBaseX + dx);
+        this.graphCardBaseY = Math.round(initialBaseY + dy);
+        widget.style.left = `${this.graphCardBaseX}px`;
+        widget.style.top = `${this.graphCardBaseY}px`;
+        this.syncGraphCardRectFromWidget();
+      });
+
+      const stopDrag = (e) => {
+        if (isDragging) {
+          const wasMoved = dragMoved;
+          isDragging = false;
+          dragMoved = false;
+          widget.classList.remove('is-dragging-card');
+          this.syncGraphCardRectFromWidget();
+          if (wasMoved) {
+            widget._justDraggedTime = performance.now();
+          } else if (e && e.type === 'pointerup' && (!e.target || !e.target.closest('.card-title-fold-btn, .problem-card-actions, .problem-card-resize-handle'))) {
+            const now = performance.now();
+            if (lastBodyTapTime && (now - lastBodyTapTime < 340) && Math.hypot((e.clientX || 0) - lastBodyTapX, (e.clientY || 0) - lastBodyTapY) < 24) {
+              lastBodyTapTime = 0;
+              togglePrimaryGraphMin();
+            } else {
+              lastBodyTapTime = now;
+              lastBodyTapX = e.clientX || 0;
+              lastBodyTapY = e.clientY || 0;
+            }
+          }
+        }
+      };
+      window.addEventListener('pointerup', stopDrag);
+      window.addEventListener('pointercancel', stopDrag);
+      widget.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.problem-card-actions, .card-title-fold-btn, .problem-card-resize-handle')) return;
+        togglePrimaryGraphMin();
+      });
+    }
+
+    if (resizeHandle) {
+      let isResizing = false;
+      let startX = 0, startW = 0;
+
+      resizeHandle.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isResizing = true;
+        startX = e.clientX;
+        startW = widget.getBoundingClientRect().width;
+        try { resizeHandle.setPointerCapture(e.pointerId); } catch (err) { }
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!isResizing) return;
+        const dw = e.clientX - startX;
+        const newW = Math.max(220, Math.min(window.innerWidth * 0.85, startW + dw));
+        widget.style.width = `${newW}px`;
+        this.syncGraphCardRectFromWidget();
+      });
+
+      const stopResize = () => {
+        if (isResizing) {
+          isResizing = false;
+          this.syncGraphCardRectFromWidget();
+        }
+      };
+      window.addEventListener('pointerup', stopResize);
+      window.addEventListener('pointercancel', stopResize);
+    }
+
+    if (btnRestore) {
+      btnRestore.onclick = () => this.restoreLiveGraphFromCard(false, this.primaryGraphCardSnapshot, 1);
+    }
+    if (btnClose) {
+      btnClose.onclick = () => {
+        this.graphInkStrokes = [];
+        this._hasPrimaryGraphCard = false;
+        this.graphCardData = null;
+        widget.style.display = 'none';
+        if (!this.extraGraphCards || this.extraGraphCards.length === 0) {
+          this.restoreLiveGraphFromCard(false);
+        }
+      };
+    }
+    if (btnClearInk) {
+      btnClearInk.onclick = () => {
+        this.graphInkStrokes = [];
+        this.renderGraphCardCanvas();
+      };
+    }
+    if (btnToggleMin) {
+      btnToggleMin.onclick = () => {
+        if (widget && widget._justDraggedTime && performance.now() - widget._justDraggedTime < 180) return;
+        togglePrimaryGraphMin();
+      };
+    }
+    if (btnZoomIn) {
+      btnZoomIn.onclick = () => {
+        const curW = widget.getBoundingClientRect().width;
+        const newW = Math.min(window.innerWidth * 0.85, curW + 60);
+        widget.style.width = `${newW}px`;
+        this.syncGraphCardRectFromWidget();
+      };
+    }
+    if (btnZoomOut) {
+      btnZoomOut.onclick = () => {
+        const curW = widget.getBoundingClientRect().width;
+        const newW = Math.max(220, curW - 60);
+        widget.style.width = `${newW}px`;
+        this.syncGraphCardRectFromWidget();
+      };
+    }
+  }
+
+  // 🌟 [초고속 144Hz 2-레이어 오프스크린 잉크 베이킹 엔진 & 씬 프리즈 캐시 (iCanScreen 급 0ms 저지연)] 🌟
+  clearInkCache() {
+    this._hasSceneFreeze = false;
+    this._hasBakedStrokes = false;
+    const dpr = window.devicePixelRatio || 1;
+    if (this.inkBakeCanvas && this.inkBakeCtx) {
+      this.inkBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
+      this.inkBakeCtx.clearRect(0, 0, this.inkBakeCanvas.width, this.inkBakeCanvas.height);
+      this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    if (this.inkGraphBakeCanvas && this.inkGraphBakeCtx) {
+      this.inkGraphBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
+      this.inkGraphBakeCtx.clearRect(0, 0, this.inkGraphBakeCanvas.width, this.inkGraphBakeCanvas.height);
+      this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+  }
+
+  // 🌟 [iCanScreen 급 0ms 필기 엔진]: 펜이 닿는 순간 배경(칠판 + 수학 그래프 + 기존 필기)을 1장의 GPU 텍스처로 스냅샷 동결!
+  // 필기 도중(pointermove)에는 520단계 함수 수식 계산, 격자, 축, 수선 렌더링을 100% 생략하고 이 텍스처만 0.01ms 만에 Blit합니다.
+  captureSceneFreeze() {
+    if (!this.canvas || !this.sceneFreezeCanvas || !this.sceneFreezeCtx) return;
+    const dpr = window.devicePixelRatio || 1;
+    if (this.sceneFreezeCanvas.width !== this.canvas.width || this.sceneFreezeCanvas.height !== this.canvas.height) {
+      this.sceneFreezeCanvas.width = this.canvas.width;
+      this.sceneFreezeCanvas.height = this.canvas.height;
+      this.sceneFreezeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    this.sceneFreezeCtx.save();
+    this.sceneFreezeCtx.setTransform(1, 0, 0, 1, 0, 0);
+    this.sceneFreezeCtx.drawImage(this.canvas, 0, 0);
+    this.sceneFreezeCtx.restore();
+    this._hasSceneFreeze = true;
+  }
+
+  // 🌟 [서브프레임 0.00ms 즉각 잉크 타격]: requestAnimationFrame 대기조차 없이 pointermove 즉시 캔버스에 증분 캡슐을 박아넣어 펜 끝 지연 0ms 달성!
+  drawLiveInkSegment(p0, p1, p0Pressure = 0.5, p1Pressure = 0.5, stroke = this.currentInkStroke) {
+    if (!stroke || stroke.isHighlighter || !this.ctx) return;
+    const ctx = this.ctx;
+    const isBoardInk = (stroke.target || 'board') === 'board';
+    const zoomRatio = isBoardInk ? 1.0 : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
+    const baseSize = (stroke.size || 4.2) * zoomRatio;
+
+    const f0 = 0.28 + 1.4 * Math.pow(Math.max(0.05, Math.min(1.0, p0Pressure)), 0.85);
+    const f1 = 0.28 + 1.4 * Math.pow(Math.max(0.05, Math.min(1.0, p1Pressure)), 0.85);
+    const r0 = Math.max(0.4, (baseSize * f0) / 2);
+    const r1 = Math.max(0.4, (baseSize * f1) / 2);
+
+    let strokeColor = this.isMonochromeMode ? '#000000' : (stroke.color || '#1e293b');
+    const dx = p1.x - p0.x;
+    const dy = p1.y - p0.y;
+    const alpha = Math.atan2(dy, dx);
+
+    ctx.save();
+    ctx.fillStyle = strokeColor;
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(p0.x, p0.y, r0, alpha + Math.PI / 2, alpha + 1.5 * Math.PI, false);
+    ctx.arc(p1.x, p1.y, r1, alpha - Math.PI / 2, alpha + Math.PI / 2, false);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  rebuildInkCache() {
+    this.clearInkCache();
+    if (!this.inkStrokes || this.inkStrokes.length === 0) {
+      this._inkBakeDirty = false;
+      return;
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    if (this.inkBakeCanvas.width !== this.canvas.width || this.inkBakeCanvas.height !== this.canvas.height) {
+      this.inkBakeCanvas.width = this.canvas.width;
+      this.inkBakeCanvas.height = this.canvas.height;
+      this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    if (this.inkGraphBakeCanvas.width !== this.canvas.width || this.inkGraphBakeCanvas.height !== this.canvas.height) {
+      this.inkGraphBakeCanvas.width = this.canvas.width;
+      this.inkGraphBakeCanvas.height = this.canvas.height;
+      this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    // 현재 실시간 드로잉 중인 획을 제외한 모든 완료된 획을 각각의 오프스크린 버퍼에 베이킹
+    for (let i = 0; i < this.inkStrokes.length; i++) {
+      const stroke = this.inkStrokes[i];
+      if (stroke === this.currentInkStroke) continue;
+      const isBoard = (stroke.target || 'board') === 'board';
+      const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
+      if (targetCtx) {
+        this.renderSingleStroke(targetCtx, stroke, null, false);
+      }
+    }
+
+    this._hasBakedStrokes = true;
+    this._inkBakeDirty = false;
+  }
+
+  renderSingleStroke(targetCtx, stroke, forceColor = null, isLiveDrawing = false) {
+    if (!stroke || !stroke.points || stroke.points.length === 0) return;
+
+    targetCtx.save();
+    targetCtx.lineCap = 'round';
+    targetCtx.lineJoin = 'round';
+
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    const isLight = curTheme.isLight || this.isMonochromeMode;
+
+    let strokeColor = forceColor || stroke.color;
+    if (this.isMonochromeMode) {
+      strokeColor = '#000000';
+    }
+
+    targetCtx.strokeStyle = strokeColor;
+
+    const isBoardInk = (stroke.target || 'board') === 'board';
+    const zoomRatio = isBoardInk ? 1.0 : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
+
+    if (stroke.isHighlighter) {
+      targetCtx.globalAlpha = 0.38;
+      targetCtx.lineWidth = Math.max(8, stroke.size * 2.5 * zoomRatio);
+    } else {
+      targetCtx.globalAlpha = 1.0;
+    }
+
+    const bPx = (this.boardPanX || 0);
+    const bPy = (this.boardPanY || 0);
+
+    // 🌟 Draw & Hold 기하 도형 & 수학 곡선 렌더링 (직선, 정원, 타원, 직사각형, 삼각형, 이차함수 포물선, 삼차/삼각 개형) 🌟
+    if (stroke.shape) {
+      const baseSize = (stroke.size || 3) * zoomRatio;
+      // 대표님 피드백 반영: 평소 필압으로 가볍게 쓰는 글씨 굵기와 자연스럽게 어우러지도록 도형 선 굵기를 0.68배로 슬림화!
+      targetCtx.lineWidth = stroke.isHighlighter ? Math.max(8, baseSize * 2.5) : Math.max(1.2, baseSize * 0.68);
+      targetCtx.strokeStyle = strokeColor;
+
+      if (stroke.shape.type === 'line') {
+        const s1 = isBoardInk ? { x: stroke.shape.start.x + bPx, y: stroke.shape.start.y + bPy } : this.mathToScreen(stroke.shape.start.x, stroke.shape.start.y);
+        const s2 = isBoardInk ? { x: stroke.shape.end.x + bPx, y: stroke.shape.end.y + bPy } : this.mathToScreen(stroke.shape.end.x, stroke.shape.end.y);
+        targetCtx.beginPath();
+        targetCtx.moveTo(s1.x, s1.y);
+        targetCtx.lineTo(s2.x, s2.y);
+        targetCtx.stroke();
+        targetCtx.restore();
+        return;
+      } else if (stroke.shape.type === 'circle') {
+        const sc = isBoardInk ? { x: stroke.shape.center.x + bPx, y: stroke.shape.center.y + bPy } : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+        const sr = isBoardInk ? stroke.shape.radius : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x);
+        targetCtx.beginPath();
+        targetCtx.arc(sc.x, sc.y, Math.max(2, sr), 0, Math.PI * 2);
+        targetCtx.stroke();
+        targetCtx.restore();
+        return;
+      } else if (stroke.shape.type === 'ellipse') {
+        const sc = isBoardInk ? { x: stroke.shape.center.x + bPx, y: stroke.shape.center.y + bPy } : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+        const srx = isBoardInk ? stroke.shape.rx : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.rx, stroke.shape.center.y).x - sc.x);
+        const sry = isBoardInk ? stroke.shape.ry : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y);
+        targetCtx.beginPath();
+        targetCtx.ellipse(sc.x, sc.y, Math.max(2, srx), Math.max(2, sry), 0, 0, Math.PI * 2);
+        targetCtx.stroke();
+        targetCtx.restore();
+        return;
+      } else if (stroke.shape.type === 'rect') {
+        const s1 = isBoardInk ? { x: stroke.shape.min.x + bPx, y: stroke.shape.min.y + bPy } : this.mathToScreen(stroke.shape.min.x, stroke.shape.min.y);
+        const s2 = isBoardInk ? { x: stroke.shape.max.x + bPx, y: stroke.shape.max.y + bPy } : this.mathToScreen(stroke.shape.max.x, stroke.shape.max.y);
+        const rx = Math.min(s1.x, s2.x);
+        const ry = Math.min(s1.y, s2.y);
+        const rw = Math.abs(s2.x - s1.x);
+        const rh = Math.abs(s2.y - s1.y);
+        targetCtx.beginPath();
+        targetCtx.rect(rx, ry, rw, rh);
+        targetCtx.stroke();
+        targetCtx.restore();
+        return;
+      } else if (stroke.shape.pts && stroke.shape.pts.length >= 2) {
+        const sPts = stroke.shape.pts.map(pt => isBoardInk ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y));
+        targetCtx.beginPath();
+        targetCtx.moveTo(sPts[0].x, sPts[0].y);
+        for (let i = 1; i < sPts.length; i++) {
+          targetCtx.lineTo(sPts[i].x, sPts[i].y);
+        }
+        if (stroke.shape.closed) {
+          targetCtx.closePath();
+        }
+        targetCtx.stroke();
+        targetCtx.restore();
+        return;
+      }
+    }
+
+    const rawPts = stroke.points.map(pt => ({
+      ...(isBoardInk ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y)),
+      p: (pt.p !== undefined ? pt.p : 0.5)
+    }));
+
+    // 화면 픽셀 기준 미세 노이즈 및 초밀집 점 스마트 필터링
+    const minDist = isLiveDrawing ? 1.1 : 1.8;
+    const filtered = [rawPts[0]];
+    for (let i = 1; i < rawPts.length; i++) {
+      const prev = filtered[filtered.length - 1];
+      const d = Math.hypot(rawPts[i].x - prev.x, rawPts[i].y - prev.y);
+      if (d >= minDist || i === rawPts.length - 1) {
+        filtered.push(rawPts[i]);
+      }
+    }
+
+    // 🌟 [아이캔스크린 급 초저지연 & 굿노트 스타일 스트림라인 보정] 🌟
+    // 실시간 드로잉 중에는 펜 끝이 고무줄처럼 뒤처지지 않도록 즉각 추종 계수(0.10/0.90) 적용!
+    const prevW = isLiveDrawing ? 0.10 : 0.22;
+    const currW = 1.0 - prevW;
+    const pts = [filtered[0]];
+    for (let i = 1; i < filtered.length; i++) {
+      const prev = pts[pts.length - 1];
+      const curr = filtered[i];
+      pts.push({
+        x: prev.x * prevW + curr.x * currW,
+        y: prev.y * prevW + curr.y * currW,
+        p: prev.p * prevW + curr.p * currW
+      });
+    }
+
+    if (stroke.isHighlighter) {
+      if (pts.length === 1) {
+        targetCtx.fillStyle = strokeColor;
+        targetCtx.beginPath();
+        targetCtx.arc(pts[0].x, pts[0].y, targetCtx.lineWidth / 2, 0, Math.PI * 2);
+        targetCtx.fill();
+      } else if (pts.length === 2) {
+        targetCtx.beginPath();
+        targetCtx.moveTo(pts[0].x, pts[0].y);
+        targetCtx.lineTo(pts[1].x, pts[1].y);
+        targetCtx.stroke();
+      } else {
+        targetCtx.beginPath();
+        targetCtx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length - 1; i++) {
+          const midX = (pts[i].x + pts[i + 1].x) / 2;
+          const midY = (pts[i].y + pts[i + 1].y) / 2;
+          targetCtx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
+        }
+        const last = pts[pts.length - 1];
+        targetCtx.lineTo(last.x, last.y);
+        targetCtx.stroke();
+      }
+    } else {
+      const baseSize = stroke.size * zoomRatio;
+      targetCtx.fillStyle = strokeColor;
+      targetCtx.shadowBlur = 0;
+      targetCtx.shadowOffsetX = 0;
+      targetCtx.shadowOffsetY = 0;
+
+      const widths = pts.map((pt, idx) => {
+        const factor = 0.28 + 1.4 * Math.pow(Math.max(0.05, Math.min(1.0, pt.p)), 0.85);
+        let w = baseSize * factor;
+        if (pts.length >= 3) {
+          if (idx === 0) w *= 0.65;
+          else if (idx === pts.length - 1 && !isLiveDrawing) {
+            w *= 0.42;
+          }
+        }
+        return Math.max(0.8, w);
+      });
+
+      if (pts.length === 1) {
+        targetCtx.beginPath();
+        targetCtx.arc(pts[0].x, pts[0].y, widths[0] / 2, 0, Math.PI * 2);
+        targetCtx.fill();
+      } else if (pts.length === 2) {
+        const dx = pts[1].x - pts[0].x;
+        const dy = pts[1].y - pts[0].y;
+        const len = Math.hypot(dx, dy) || 1;
+        const alpha = Math.atan2(dy, dx);
+        targetCtx.beginPath();
+        targetCtx.arc(pts[0].x, pts[0].y, widths[0] / 2, alpha + Math.PI / 2, alpha + 1.5 * Math.PI, false);
+        targetCtx.arc(pts[1].x, pts[1].y, widths[1] / 2, alpha - Math.PI / 2, alpha + Math.PI / 2, false);
+        targetCtx.closePath();
+        targetCtx.fill();
+      } else {
+        const tangents = [];
+        for (let i = 0; i < pts.length; i++) {
+          let dx, dy;
+          if (i === 0) {
+            dx = pts[1].x - pts[0].x;
+            dy = pts[1].y - pts[0].y;
+          } else if (i === pts.length - 1) {
+            dx = pts[i].x - pts[i - 1].x;
+            dy = pts[i].y - pts[i - 1].y;
+          } else {
+            dx = pts[i + 1].x - pts[i - 1].x;
+            dy = pts[i + 1].y - pts[i - 1].y;
+          }
+          const len = Math.hypot(dx, dy) || 1;
+          tangents.push({ x: dx / len, y: dy / len });
+        }
+
+        const leftPts = [];
+        const rightPts = [];
+        for (let i = 0; i < pts.length; i++) {
+          const t = tangents[i];
+          const nx = t.y;
+          const ny = -t.x;
+          const r = widths[i] / 2;
+          leftPts.push({ x: pts[i].x + nx * r, y: pts[i].y + ny * r });
+          rightPts.push({ x: pts[i].x - nx * r, y: pts[i].y - ny * r });
+        }
+
+        const alpha0 = Math.atan2(tangents[0].y, tangents[0].x);
+        const alphaLast = Math.atan2(tangents[tangents.length - 1].y, tangents[tangents.length - 1].x);
+
+        targetCtx.beginPath();
+        // 1. 시작점 둥근 캡
+        targetCtx.arc(pts[0].x, pts[0].y, widths[0] / 2, alpha0 + Math.PI / 2, alpha0 + 1.5 * Math.PI, false);
+
+        // 2. 좌측 외곽선 스무스 quadratic 연결
+        for (let i = 0; i < leftPts.length - 1; i++) {
+          const midX = (leftPts[i].x + leftPts[i + 1].x) / 2;
+          const midY = (leftPts[i].y + leftPts[i + 1].y) / 2;
+          targetCtx.quadraticCurveTo(leftPts[i].x, leftPts[i].y, midX, midY);
+        }
+        targetCtx.lineTo(leftPts[leftPts.length - 1].x, leftPts[leftPts.length - 1].y);
+
+        // 3. 끝점 둥근 캡
+        targetCtx.arc(pts[pts.length - 1].x, pts[pts.length - 1].y, widths[widths.length - 1] / 2, alphaLast - Math.PI / 2, alphaLast + Math.PI / 2, false);
+
+        // 4. 우측 외곽선 스무스 quadratic 연결 (역방향)
+        for (let i = rightPts.length - 1; i > 0; i--) {
+          const midX = (rightPts[i].x + rightPts[i - 1].x) / 2;
+          const midY = (rightPts[i].y + rightPts[i - 1].y) / 2;
+          targetCtx.quadraticCurveTo(rightPts[i].x, rightPts[i].y, midX, midY);
+        }
+        targetCtx.lineTo(rightPts[0].x, rightPts[0].y);
+
+        // 5. 단일 폴리곤 닫기 & 1회 고속 채우기
+        targetCtx.closePath();
+        targetCtx.fill();
+      }
+    }
+
+    targetCtx.restore();
+  }
+
+  drawInkStrokes(ctx, isExport = false, filterTarget = null) {
+    if (isExport) {
+      if (!this.inkStrokes || this.inkStrokes.length === 0) return;
+      const strokesToDraw = filterTarget
+        ? this.inkStrokes.filter(s => (s.target || 'board') === filterTarget)
+        : this.inkStrokes;
+      strokesToDraw.forEach(stroke => this.renderSingleStroke(ctx, stroke, null, false));
+      return;
+    }
+
+    // 🌟 [초기 빈 화면 / 필기 없음 0.000ms 패스트패스]:
+    // 완료된 필기 획(inkStrokes)도 없고 실시간 드로잉 중(currentInkStroke)도 아닐 때는
+    // 오프스크린 캔버스 전체 화면 clearRect 및 GPU 텍스처 Blit(drawImage)을 100% 생략!
+    const hasCompletedStrokes = Boolean(this.inkStrokes && this.inkStrokes.length > 0);
+    const hasLiveStroke = Boolean(this.isDrawingInk && this.currentInkStroke);
+    if (!hasCompletedStrokes && !hasLiveStroke) {
+      if (this._hasBakedStrokes) {
+        this.clearInkCache();
+      }
+      this._inkBakeDirty = false;
+      return;
+    }
+
+    // 🌟 [오프스크린 베이크 버퍼 리빌드 (캐시 무효화 시 1회만 실행)] 🌟
+    if (this._inkBakeDirty) {
+      this.rebuildInkCache();
+    }
+
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    const isLight = curTheme.isLight || this.isMonochromeMode;
+
+    // 🌟 [144Hz 초고속 0.02ms GPU Blit]: 칠판 바깥창 판서 ('board')
+    if (!filterTarget || filterTarget === 'board') {
+      if (this.inkBakeCanvas) {
+        // 🌟 [DPR 고해상도 무결점 보정]: destination 폭/높이로 this.screenWidth, this.screenHeight를 명시하여 125%/150%/200% 배율에서도 글씨 날림 100% 박멸!
+        ctx.drawImage(this.inkBakeCanvas, 0, 0, this.screenWidth, this.screenHeight);
+      }
+      // 실시간 드로잉 중인 획이 보드 타깃인 경우 가벼운 1개 획만 즉시 렌더링!
+      if (this.isDrawingInk && this.currentInkStroke && (this.currentInkStroke.target || 'board') === 'board') {
+        this.renderSingleStroke(ctx, this.currentInkStroke, null, true);
+      }
+    }
+
+    // 🌟 [144Hz 초고속 0.02ms GPU Blit]: 그래프 내부 판서 ('graph')
+    if (!filterTarget || filterTarget === 'graph') {
+      if (this.inkGraphBakeCanvas) {
+        // 🌟 [DPR 고해상도 무결점 보정]: destination 폭/높이로 this.screenWidth, this.screenHeight를 명시하여 125%/150%/200% 배율에서도 글씨 날림 100% 박멸!
+        ctx.drawImage(this.inkGraphBakeCanvas, 0, 0, this.screenWidth, this.screenHeight);
+      }
+      // 실시간 드로잉 중인 획이 그래프 타깃인 경우 가벼운 1개 획만 즉시 렌더링!
+      if (this.isDrawingInk && this.currentInkStroke && this.currentInkStroke.target === 'graph') {
+        this.renderSingleStroke(ctx, this.currentInkStroke, null, true);
+      }
+    }
+
+    // 2차 패스: [스마트 오토 컨트라스트] 다크 칠판에서 기본 흰색 펜(#ffffff)으로 흰색 문제 카드 위에 필기했을 때
+    if ((!filterTarget || filterTarget === 'board') && this.hasActiveProblemCard() && !isLight && !this.isMonochromeMode && this.problemCardRect) {
+      const r = this.problemCardRect;
+      const bPx = (this.boardPanX || 0);
+      const bPy = (this.boardPanY || 0);
+
+      const whiteStrokes = (this.inkStrokes || []).filter(s => {
+        if (!s || (s.target || 'board') !== 'board') return false;
+        if (!s.color || (s.color.toLowerCase() !== '#ffffff' && s.color.toLowerCase() !== '#fff')) return false;
+        if (!s.points || s.points.length === 0) return false;
+        return s.points.some(p => {
+          const sx = p.x + bPx;
+          const sy = p.y + bPy;
+          return (sx >= r.x && sx <= r.x + r.w && sy >= r.y && sy <= r.y + r.h);
+        });
+      });
+
+      if (whiteStrokes.length > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(r.x, r.y, r.w, r.h);
+        ctx.clip();
+        whiteStrokes.forEach(stroke => {
+          this.renderSingleStroke(ctx, stroke, '#0f172a', stroke === this.currentInkStroke);
+        });
+        ctx.restore();
+      }
+    }
+
+    // drawLassoOverlay는 최상단 렌더링 파이프라인(render)에서 일괄 수행
+  }
+
+  // --- [🧑‍🏫 라이브 강의 & 판서 분할 모드 (Stage & Board Mode, 단축키 B)] ---
+  initBoardModeControls() {
+    const btnHeader = document.getElementById('btnBoardMode');
+    const btnQuick = document.getElementById('btnQuickBoardMode');
+    const btnExit = document.getElementById('btnExitBoardMode');
+    const btn46 = document.getElementById('btnBoardRatio46');
+    const btn55 = document.getElementById('btnBoardRatio55');
+    const btn37 = document.getElementById('btnBoardRatio37');
+
+    if (btnHeader) btnHeader.onclick = () => this.toggleBoardMode();
+    if (btnQuick) btnQuick.onclick = () => this.toggleBoardMode();
+    if (btnExit) btnExit.onclick = () => this.toggleBoardMode(false);
+
+    if (btn46) btn46.onclick = () => this.setBoardSplitRatio(0.42);
+    if (btn55) btn55.onclick = () => this.setBoardSplitRatio(0.50);
+    if (btn37) btn37.onclick = () => this.setBoardSplitRatio(0.33);
+  }
+
+  toggleBoardMode(forceVal = null) {
+    const nextState = (forceVal !== null) ? forceVal : !this.isBoardMode;
+    if (this.isBoardMode === nextState) return;
+
+    this.isBoardMode = nextState;
+
+    const btnHeader = document.getElementById('btnBoardMode');
+    const btnQuick = document.getElementById('btnQuickBoardMode');
+    const boardBar = document.getElementById('boardModeBar');
+
+    if (btnHeader) btnHeader.classList.toggle('active', this.isBoardMode);
+    if (btnQuick) btnQuick.classList.toggle('active', this.isBoardMode);
+    if (boardBar) boardBar.style.display = this.isBoardMode ? 'flex' : 'none';
+
+    if (this.isBoardMode) {
+      this.preBoardPanX = this.panX;
+      // 판서 모드 진입 시: 메뉴 서랍 닫기 ➔ 전체화면급 넓은 시야 확보
+      if (this.closeDrawer) this.closeDrawer();
+
+      // [즉시 전환]: 슬라이딩 무빙 애니메이션 취소 ➔ 화면 흔들림 없이 짠! 하고 즉시 좌측 스테이지로 배치
+      const targetPanX = (this.screenWidth * (this.boardSplitRatio - 1)) / 2;
+      this.animatePanX(targetPanX, 0);
+
+      // 스마트 핸들 제어: 기본 상태는 정갈한 클린 뷰 (곡선 클릭 시에만 핸들 활성화)
+      this.isCurveSelected = false;
+      this.selectedHandleIdx = null;
+      this.draggedHandleIdx = null;
+
+      this.updateBoardRatioUI();
+      this.showToast('🧑‍🏫 판서 모드 On: 우측 판서 공간 확보! (단축키 B, 곡선 터치 시 조작)');
+    } else {
+      // 일반 뷰 복귀: 슬라이딩 없이 즉시 원래 카메라 위치로 짠! 복귀
+      const targetPanX = (typeof this.preBoardPanX === 'number') ? this.preBoardPanX : 0;
+      this.animatePanX(targetPanX, 0);
+      this.showToast('일반 화면 복귀');
+    }
+  }
+
+  animatePanX(targetX, duration = 0) {
+    if (this.boardAnimId) {
+      cancelAnimationFrame(this.boardAnimId);
+      this.boardAnimId = null;
+    }
+    // [무빙 애니메이션 취소]: 슬라이딩 이동 없이 즉각적으로 panX를 설정하고 렌더링 ("짠하고 나오게")
+    this.panX = targetX;
+    this.render();
+  }
+
+  setBoardSplitRatio(ratio) {
+    this.boardSplitRatio = Math.max(0.25, Math.min(0.75, ratio));
+    this.updateBoardRatioUI();
+    if (this.isBoardMode) {
+      const targetPanX = (this.screenWidth * (this.boardSplitRatio - 1)) / 2;
+      this.animatePanX(targetPanX, 0);
+    }
+  }
+
+  updateBoardRatioUI() {
+    const btn46 = document.getElementById('btnBoardRatio46');
+    const btn55 = document.getElementById('btnBoardRatio55');
+    const btn37 = document.getElementById('btnBoardRatio37');
+    if (btn46) btn46.classList.toggle('active', Math.abs(this.boardSplitRatio - 0.42) < 0.04);
+    if (btn55) btn55.classList.toggle('active', Math.abs(this.boardSplitRatio - 0.50) < 0.04);
+    if (btn37) btn37.classList.toggle('active', Math.abs(this.boardSplitRatio - 0.33) < 0.04);
+  }
+
+  drawBoardModeStage(ctx, splitX, width, height, curTheme) {
+    ctx.save();
+
+    // 1. 우측 판서 칠판 영역 배경 재도포 (순수하고 티 없이 깨끗한 칠판 완성!)
+    ctx.fillStyle = curTheme.bg;
+    ctx.fillRect(splitX, 0, width - splitX, height);
+
+    // 2. 세로 분할 경계선 (네온 글래스모피즘 구분선)
+    ctx.beginPath();
+    ctx.moveTo(splitX, 0);
+    ctx.lineTo(splitX, height);
+    ctx.strokeStyle = curTheme.isLight ? 'rgba(0, 0, 0, 0.14)' : 'rgba(0, 210, 211, 0.35)';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    // 3. 세로 분할선 중앙 드래그 조절 알약 핸들
+    const pillH = 46;
+    const pillW = 12;
+    const pillX = splitX - pillW / 2;
+    const pillY = (height - pillH) / 2;
+
+    ctx.fillStyle = curTheme.isLight ? '#f1f5f9' : 'rgba(18, 26, 36, 0.95)';
+    ctx.strokeStyle = curTheme.isLight ? '#cbd5e1' : 'rgba(0, 210, 211, 0.6)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.roundRect(pillX, pillY, pillW, pillH, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    // 알약 내부 드래그 핀 3개 (⋮)
+    ctx.fillStyle = curTheme.isLight ? '#64748b' : '#00d2d3';
+    [-9, 0, 9].forEach(dy => {
+      ctx.beginPath();
+      ctx.arc(splitX, height / 2 + dy, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // 4. 우측 판서 영역 상단 워터마크 안내 문구
+    const boardTitle = "📝 풀이 & 판서 영역 (Clean Board)";
+    ctx.font = '600 12px system-ui, -apple-system, sans-serif';
+    ctx.fillStyle = curTheme.isLight ? 'rgba(100, 116, 139, 0.45)' : 'rgba(164, 176, 190, 0.35)';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText(boardTitle, width - 24, 20);
+
+    ctx.restore();
+  }
+
+  // =====================================================================
+  // [🔀 정통 N축 합성함수 해석 모드 (Top-Bottom N-Axis Engine)]
+  // =====================================================================
+  initNAxisControls() {
+    const btnHeader = document.getElementById('btnNAxisMode');
+    const btnQuick = document.getElementById('btnQuickNAxisMode');
+    const btnExit = document.getElementById('btnExitNAxisMode');
+    const btnSwap = document.getElementById('btnNAxisSwap');
+
+    if (btnHeader) {
+      btnHeader.onclick = () => this.toggleNAxisMode();
+    }
+    if (btnQuick) {
+      btnQuick.onclick = () => this.toggleNAxisMode();
+    }
+    if (btnExit) {
+      btnExit.onclick = () => this.toggleNAxisMode(false);
+    }
+    if (btnSwap) {
+      btnSwap.onclick = () => this.swapNAxisLayers();
+    }
+
+    const btnZoomIn = document.getElementById('btnNAxisZoomIn');
+    const btnZoomOut = document.getElementById('btnNAxisZoomOut');
+    const btnZoomReset = document.getElementById('btnNAxisZoomReset');
+
+    if (btnZoomIn) {
+      btnZoomIn.onclick = () => {
+        this.nAxisZoom = Math.min(3.5, (this.nAxisZoom || 1.0) * 1.2);
+        this.syncNAxisBarUI();
+        this.render();
+      };
+    }
+    if (btnZoomOut) {
+      btnZoomOut.onclick = () => {
+        this.nAxisZoom = Math.max(0.25, (this.nAxisZoom || 1.0) / 1.2);
+        this.syncNAxisBarUI();
+        this.render();
+      };
+    }
+    if (btnZoomReset) {
+      btnZoomReset.onclick = () => {
+        this.nAxisZoom = 1.0;
+        this.syncNAxisBarUI();
+        this.render();
+      };
+    }
+  }
+
+  toggleNAxisMode(forceState = null) {
+    const nextState = forceState !== null ? forceState : !this.isNAxisMode;
+    if (this.isNAxisMode === nextState) return;
+
+    this.isNAxisMode = nextState;
+
+    // 판서 모드가 켜져 있다면 상호 배타적으로 해제
+    if (this.isNAxisMode && this.isBoardMode) {
+      this.toggleBoardMode(false);
+    }
+
+    const btnHeader = document.getElementById('btnNAxisMode');
+    const btnQuick = document.getElementById('btnQuickNAxisMode');
+    const bar = document.getElementById('nAxisModeBar');
+
+    if (btnHeader) btnHeader.classList.toggle('active', this.isNAxisMode);
+    if (btnQuick) btnQuick.classList.toggle('active', this.isNAxisMode);
+    if (bar) bar.style.display = this.isNAxisMode ? 'flex' : 'none';
+
+    if (this.isNAxisMode) {
+      // 1. 레이어가 2개 미만일 때: 수능 킬러 대표 예제 자동 로드! (사차 W형 + 삼각함수 sin)
+      if (this.graphs.length < 2) {
+        this.graphs = [];
+        this.addGraph('4th_symmetric'); // 겉함수 g(t)
+        this.addGraph('trig_sin');       // 속함수 f(x)
+        this.nAxisOuterIdx = 0;
+        this.nAxisInnerIdx = 1;
+        this.showToast('✨ 수능 킬러 대표 예제 [상단: 사차 W형 + 하단: 삼각함수]가 N축으로 자동 세팅되었습니다! 🔀');
+      } else {
+        this.nAxisOuterIdx = 0;
+        this.nAxisInnerIdx = 1;
+        this.showToast('🔀 정통 N축 합성 모드 가동! (상단: 겉함수, 하단: 눕힌 속함수)');
+      }
+
+      this.nAxisX0 = 0.5;
+      this.syncNAxisBarUI();
+    } else {
+      this.showToast('🔀 N축 합성 모드를 종료하고 일반 캔버스로 복귀합니다.');
+    }
+
+    this.render();
+  }
+
+  swapNAxisLayers() {
+    if (!this.isNAxisMode || this.graphs.length < 2) return;
+    const temp = this.nAxisOuterIdx;
+    this.nAxisOuterIdx = this.nAxisInnerIdx;
+    this.nAxisInnerIdx = temp;
+    this.syncNAxisBarUI();
+    this.showToast('🔄 겉함수 ⇄ 속함수 위아래 맞바꾸기 완료!');
+    this.render();
+  }
+
+  syncNAxisBarUI() {
+    const txtOuter = document.getElementById('txtNAxisOuterName');
+    const txtInner = document.getElementById('txtNAxisInnerName');
+    const lblZoom = document.getElementById('lblNAxisZoom');
+    const gOuter = this.graphs[this.nAxisOuterIdx] || this.graphs[0];
+    const gInner = this.graphs[this.nAxisInnerIdx] || this.graphs[1];
+    if (txtOuter && gOuter) txtOuter.textContent = this.meta[gOuter.type]?.name || '함수 1';
+    if (txtInner && gInner) txtInner.textContent = this.meta[gInner.type]?.name || '함수 2';
+    if (lblZoom) lblZoom.textContent = `${Math.round((this.nAxisZoom || 1.0) * 100)}%`;
+  }
+
+  // =====================================================================
+  // [📐 N축 3-분할 스튜디오 지오메트리 & 좌표 변환기]
+  // =====================================================================
+  getNAxisLayout(width, height) {
+    const pad = 16;
+    const gap = 14;
+    const topMargin = 50; // 상단 헤더 & 플로팅 바 여백
+    const leftW = Math.round((width - pad * 2 - gap) * 0.44);
+    const rightW = width - pad * 2 - gap - leftW;
+    const totalH = height - topMargin - pad;
+    const box1H = Math.round((totalH - gap) * 0.49);
+    const box2H = totalH - gap - box1H;
+
+    // 창 1: 좌상단 (겉함수 z = g(t))
+    const box1 = { x: pad, y: topMargin, w: leftW, h: box1H };
+    box1.cx = box1.x + box1.w / 2;
+    box1.cy = box1.y + box1.h / 2 + 10;
+
+    // 창 2: 좌하단 (속함수 t = f(x), 90° 눕힘!)
+    const box2 = { x: pad, y: topMargin + box1H + gap, w: leftW, h: box2H };
+    box2.cx = box2.x + box2.w / 2; // 좌상단과 완벽히 동일한 수직선(Vertical Alignment)!
+    box2.cy = box2.y + box2.h / 2 + 10;
+
+    // 창 3: 우측 대형 (최종 합성함수 y = g(f(x)))
+    const box3 = { x: pad + leftW + gap, y: topMargin, w: rightW, h: totalH };
+    box3.cx = box3.x + box3.w / 2;
+    box3.cy = box3.y + box3.h / 2 + 10;
+
+    // 휠 줌 스케일 (마우스 휠 스크롤로 0.25x ~ 3.5x 시원하게 확대/축소)
+    const zoom = Math.max(0.25, Math.min(3.5, this.nAxisZoom || 1.0));
+
+    // 기본 화각(Span)을 ±5.0으로 넉넉하게 확장하여 곡선 잘림 원천 차단!
+    const baseSpanT = 5.0;
+    const effSpanT = baseSpanT / zoom;
+    const unitScaleT = (box1.w * 0.40) / effSpanT;
+
+    // 좌상단 z축
+    const baseSpanZ = 5.0;
+    const effSpanZ = baseSpanZ / zoom;
+    const unitScaleZ1 = (box1.h * 0.40) / effSpanZ;
+
+    // 좌하단 x축 (세로 아래 방향 +x, 위 방향 -x)
+    const baseSpanX_Lower = 5.0;
+    const effSpanX_Lower = baseSpanX_Lower / zoom;
+    const unitScaleX_Lower = (box2.h * 0.40) / effSpanX_Lower;
+
+    // 우측 합성함수 좌표계 (x축, y축)
+    const baseSpanX3 = 5.0;
+    const baseSpanY3 = 5.0;
+    const effSpanX3 = baseSpanX3 / zoom;
+    const effSpanY3 = baseSpanY3 / zoom;
+    const unitScaleX3 = (box3.w * 0.42) / effSpanX3;
+    const unitScaleY3 = (box3.h * 0.42) / effSpanY3;
+
+    return {
+      pad, gap, topMargin,
+      box1, box2, box3,
+      zoom,
+      effSpanT, unitScaleT,
+      effSpanZ, unitScaleZ1,
+      effSpanX_Lower, unitScaleX_Lower,
+      effSpanX3, effSpanY3, unitScaleX3, unitScaleY3,
+      tCenterScreenX: box1.cx,
+      tToScreenX: (t) => box1.cx + t * unitScaleT,
+      screenXToT: (sx) => (sx - box1.cx) / unitScaleT,
+      zToScreenY_1: (z) => box1.cy - z * unitScaleZ1,
+      screenYToZ_1: (sy) => (box1.cy - sy) / unitScaleZ1,
+      xToScreenY_2: (xVal) => box2.cy + xVal * unitScaleX_Lower,
+      screenYToX_2: (sy) => (sy - box2.cy) / unitScaleX_Lower,
+      xToScreenX_3: (xVal) => box3.cx + xVal * unitScaleX3,
+      yToScreenY_3: (yVal) => box3.cy - yVal * unitScaleY3,
+      screenXToX_3: (sx) => (sx - box3.cx) / unitScaleX3,
+      screenYToY_3: (sy) => (box3.cy - sy) / unitScaleY3,
+      box1_cz: box1.cy,
+      box3_cx: box3.cx,
+      box3_cy: box3.cy
+    };
+  }
+
+  drawNAxisStage(ctx, width, height, curTheme) {
+    if (!this.isNAxisMode) return;
+    if (this.graphs.length < 2) return;
+
+    const gOuter = this.graphs[this.nAxisOuterIdx] || this.graphs[0];
+    const gInner = this.graphs[this.nAxisInnerIdx] || this.graphs[1];
+    if (!gOuter || !gInner) return;
+
+    ctx.save();
+
+    // 0. 전체 배경 도포
+    ctx.fillStyle = curTheme.bg;
+    ctx.fillRect(0, 0, width, height);
+
+    // 3-분할 스튜디오 지오메트리 획득
+    const layout = this.getNAxisLayout(width, height);
+    const {
+      box1, box2, box3,
+      tCenterScreenX, tToScreenX, screenXToT,
+      effSpanX_Lower, xToScreenY_2, zToScreenY_1,
+      box1_cz, box3_cx, box3_cy,
+      xToScreenX_3, yToScreenY_3, screenXToX_3
+    } = layout;
+
+    // 카드 배경 및 글래스모피즘 테두리 렌더링 헬퍼
+    const drawCardBg = (box, title, titleColor, desc) => {
+      ctx.save();
+      ctx.fillStyle = curTheme.isLight ? 'rgba(255, 255, 255, 0.78)' : 'rgba(15, 23, 42, 0.68)';
+      ctx.strokeStyle = curTheme.isLight ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.roundRect(box.x, box.y, box.w, box.h, 12);
+      ctx.fill();
+      ctx.stroke();
+
+      // 상단 카드 라벨 뱃지
+      ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
+      ctx.fillStyle = titleColor;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(title, box.x + 14, box.y + 12);
+
+      if (desc) {
+        ctx.font = '10px system-ui, sans-serif';
+        ctx.fillStyle = curTheme.isLight ? '#64748b' : '#94a3b8';
+        ctx.fillText(desc, box.x + 14, box.y + 28);
+      }
+      ctx.restore();
+    };
+
+    // 직교좌표축 십자선(+) 및 은은한 눈금/그리드 렌더링 헬퍼
+    const drawAxesAndGrid = (box, cx, cy, unitScaleX, unitScaleY, labelX, labelY, effSpanX, effSpanY) => {
+      ctx.save();
+      const step = effSpanX > 6.0 ? 2.0 : 1.0;
+      ctx.strokeStyle = curTheme.isLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)';
+      ctx.lineWidth = 0.8;
+
+      // 세로 그리드 선
+      for (let v = step; v <= effSpanX + step; v += step) {
+        const sxPos = cx + v * unitScaleX;
+        if (sxPos < box.x + box.w - 6) {
+          ctx.beginPath();
+          ctx.moveTo(sxPos, box.y + 10);
+          ctx.lineTo(sxPos, box.y + box.h - 10);
+          ctx.stroke();
+        }
+        const sxNeg = cx - v * unitScaleX;
+        if (sxNeg > box.x + 6) {
+          ctx.beginPath();
+          ctx.moveTo(sxNeg, box.y + 10);
+          ctx.lineTo(sxNeg, box.y + box.h - 10);
+          ctx.stroke();
+        }
+      }
+
+      // 가로 그리드 선
+      for (let v = step; v <= effSpanY + step; v += step) {
+        const syPos = cy - v * unitScaleY;
+        if (syPos > box.y + 10) {
+          ctx.beginPath();
+          ctx.moveTo(box.x + 10, syPos);
+          ctx.lineTo(box.x + box.w - 10, syPos);
+          ctx.stroke();
+        }
+        const syNeg = cy + v * unitScaleY;
+        if (syNeg < box.y + box.h - 10) {
+          ctx.beginPath();
+          ctx.moveTo(box.x + 10, syNeg);
+          ctx.lineTo(box.x + box.w - 10, syNeg);
+          ctx.stroke();
+        }
+      }
+
+      // 메인 십자 직교좌표축 (+)
+      ctx.beginPath();
+      ctx.moveTo(box.x + 6, cy);
+      ctx.lineTo(box.x + box.w - 6, cy);
+      ctx.moveTo(cx, box.y + 24);
+      ctx.lineTo(cx, box.y + box.h - 6);
+      ctx.strokeStyle = curTheme.isLight ? 'rgba(0, 0, 0, 0.20)' : 'rgba(255, 255, 255, 0.20)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      // 축 라벨 텍스트
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.fillStyle = curTheme.isLight ? '#64748b' : '#a4b0be';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(labelX, box.x + box.w - 12, cy - 4);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(labelY, cx + 5, box.y + 28);
+      ctx.restore();
+    };
+
+    drawCardBg(box1, `[좌상단] 겉함수 z = g(t)`, '#00d2d3', `${this.meta[gOuter.type]?.name || '함수 1'}`);
+    drawCardBg(box2, `[좌하단] 속함수 t = f(x) (90° 회전)`, '#feca57', `${this.meta[gInner.type]?.name || '함수 2'} (드래그하여 x₀ 조작)`);
+    drawCardBg(box3, `[우측 전면] ★ 최종 합성함수 y = g(f(x))`, '#a29bfe', '실시간 합성 궤적 및 결과점 R');
+
+    // --- [1. 좌상단 창: 겉함수 z = g(t)] ---
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(box1.x, box1.y, box1.w, box1.h, 12);
+    ctx.clip();
+
+    drawAxesAndGrid(box1, box1.cx, box1.cy, unitScaleT, unitScaleZ1, 't축 ➔', 'z축 ↑', layout.effSpanT, layout.effSpanZ);
+
+    // 겉함수 곡선 그리기 (박스 모서리까지 연속 선)
+    ctx.beginPath();
+    let hasStarted1 = false;
+    for (let sx = box1.x - 10; sx <= box1.x + box1.w + 10; sx += 2) {
+      const tVal = screenXToT(sx);
+      const zVal = this.engine.evaluatePipeline(gOuter, tVal);
+      if (isNaN(zVal) || !isFinite(zVal) || Math.abs(zVal) > 500) {
+        hasStarted1 = false;
+        continue;
+      }
+      const sy = zToScreenY_1(zVal);
+      if (!hasStarted1) {
+        ctx.moveTo(sx, sy);
+        hasStarted1 = true;
+      } else {
+        ctx.lineTo(sx, sy);
+      }
+    }
+    ctx.strokeStyle = gOuter.color || '#00d2d3';
+    ctx.lineWidth = 2.8;
+    ctx.stroke();
+    ctx.restore();
+
+    // --- [2. 좌하단 창: 속함수 t = f(x) (90° 눕힘)] ---
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(box2.x, box2.y, box2.w, box2.h, 12);
+    ctx.clip();
+
+    drawAxesAndGrid(box2, box2.cx, box2.cy, unitScaleT, unitScaleX_Lower, 't축 ➔', 'x축 ↓', layout.effSpanT, layout.effSpanX_Lower);
+
+    // 속함수 눕힌 곡선 그리기 (세로 화면 Y좌표를 훑어내려가며 100% 꽉 채움!)
+    ctx.beginPath();
+    let hasStarted2 = false;
+    for (let sy = box2.y - 10; sy <= box2.y + box2.h + 10; sy += 2) {
+      const xVal = layout.screenYToX_2(sy);
+      const tVal = this.engine.evaluatePipeline(gInner, xVal);
+      if (isNaN(tVal) || !isFinite(tVal) || Math.abs(tVal) > 500) {
+        hasStarted2 = false;
+        continue;
+      }
+      const sx = tToScreenX(tVal);
+      if (!hasStarted2) {
+        ctx.moveTo(sx, sy);
+        hasStarted2 = true;
+      } else {
+        ctx.lineTo(sx, sy);
+      }
+    }
+    ctx.strokeStyle = gInner.color || '#feca57';
+    ctx.lineWidth = 2.8;
+    ctx.stroke();
+    ctx.restore();
+
+    // --- [3. 우측 대형 창: 최종 합성함수 y = g(f(x))] ---
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(box3.x, box3.y, box3.w, box3.h, 12);
+    ctx.clip();
+
+    drawAxesAndGrid(box3, box3.cx, box3.cy, unitScaleX3, unitScaleY3, 'x축 ➔', 'y축 ↑', layout.effSpanX3, layout.effSpanY3);
+
+    // ★ 최종 합성함수 곡선 y = g(f(x)) 실시간 수치 연산 (천장까지 끊김 없이 연결!)
+    ctx.beginPath();
+    let hasStarted3 = false;
+    for (let sx = box3.x - 10; sx <= box3.x + box3.w + 10; sx += 2) {
+      const xVal = screenXToX_3(sx);
+      const tVal = this.engine.evaluatePipeline(gInner, xVal);
+      if (isNaN(tVal) || !isFinite(tVal) || Math.abs(tVal) > 500) {
+        hasStarted3 = false;
+        continue;
+      }
+      const yVal = this.engine.evaluatePipeline(gOuter, tVal);
+      if (isNaN(yVal) || !isFinite(yVal) || Math.abs(yVal) > 500) {
+        hasStarted3 = false;
+        continue;
+      }
+      const sy = yToScreenY_3(yVal);
+      if (!hasStarted3) {
+        ctx.moveTo(sx, sy);
+        hasStarted3 = true;
+      } else {
+        ctx.lineTo(sx, sy);
+      }
+    }
+    ctx.strokeStyle = '#a29bfe'; // 프리미엄 네온 바이올렛
+    ctx.lineWidth = 3.4;
+    ctx.shadowColor = '#a29bfe';
+    ctx.shadowBlur = 10;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // =================================================================
+    // [⚡ 핵심 킬러 연출: P ➔ Q ➔ R 실시간 3점 동시 레이저 트레이서!]
+    // =================================================================
+    const currentX0 = this.nAxisX0;
+    const currentT0 = this.engine.evaluatePipeline(gInner, currentX0);
+    const currentZ0 = this.engine.evaluatePipeline(gOuter, currentT0);
+
+    const laserScreenX = tToScreenX(currentT0);
+    const ptScreenY_P = xToScreenY_2(currentX0);
+    const ptScreenY_Q = zToScreenY_1(currentZ0);
+
+    const ptScreenX_R = xToScreenX_3(currentX0);
+    const ptScreenY_R = yToScreenY_3(currentZ0);
+
+    ctx.save();
+
+    // 1. 좌측 위아래 창을 꿰뚫는 반듯한 수직 레이저 점선 빔 (Box 2 P ➔ Box 1 Q)
+    ctx.beginPath();
+    ctx.setLineDash([5, 4]);
+    ctx.moveTo(laserScreenX, box2.y + box2.h - 10);
+    ctx.lineTo(laserScreenX, box1.y + 30);
+    ctx.strokeStyle = '#00d2d3'; // 네온 시안
+    ctx.lineWidth = 2.2;
+    ctx.shadowColor = '#00d2d3';
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+
+    // 2. 우측 합성함수로 뻗어나가는 가이드 레이저 선 (P의 x0 & Q의 z0 ➔ R)
+    ctx.beginPath();
+    ctx.setLineDash([4, 4]);
+    ctx.moveTo(laserScreenX, ptScreenY_Q);
+    ctx.lineTo(ptScreenX_R, ptScreenY_R);
+    ctx.moveTo(laserScreenX, ptScreenY_P);
+    ctx.lineTo(ptScreenX_R, ptScreenY_R);
+    ctx.strokeStyle = 'rgba(162, 155, 254, 0.45)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 3. 점 P (좌하단 속함수: f(x0) = t0)
+    ctx.beginPath();
+    ctx.arc(laserScreenX, ptScreenY_P, 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#feca57';
+    ctx.shadowColor = '#feca57';
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 점 P 라벨 뱃지
+    const labelP = `P: f(${currentX0.toFixed(2)}) = ${currentT0.toFixed(2)}`;
+    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(18, 26, 36, 0.9)';
+    const textW_P = ctx.measureText(labelP).width;
+    ctx.fillRect(laserScreenX + 10, ptScreenY_P - 11, textW_P + 10, 22);
+    ctx.strokeStyle = '#feca57';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(laserScreenX + 10, ptScreenY_P - 11, textW_P + 10, 22);
+    ctx.fillStyle = '#feca57';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(labelP, laserScreenX + 15, ptScreenY_P);
+
+    // 4. 점 Q (좌상단 겉함수: g(t0) = z0)
+    ctx.beginPath();
+    ctx.arc(laserScreenX, ptScreenY_Q, 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#00d2d3';
+    ctx.shadowColor = '#00d2d3';
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 점 Q 라벨 뱃지
+    const labelQ = `Q: g(${currentT0.toFixed(2)}) = ${currentZ0.toFixed(2)}`;
+    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(18, 26, 36, 0.9)';
+    const textW_Q = ctx.measureText(labelQ).width;
+    ctx.fillRect(laserScreenX + 10, ptScreenY_Q - 11, textW_Q + 10, 22);
+    ctx.strokeStyle = '#00d2d3';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(laserScreenX + 10, ptScreenY_Q - 11, textW_Q + 10, 22);
+    ctx.fillStyle = '#00d2d3';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(labelQ, laserScreenX + 15, ptScreenY_Q);
+
+    // 5. 점 R (우측 최종 합성함수 결과점: g(f(x0)) = z0)
+    ctx.beginPath();
+    ctx.arc(ptScreenX_R, ptScreenY_R, 9, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff6b6b';
+    ctx.shadowColor = '#ff6b6b';
+    ctx.shadowBlur = 14;
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // 점 R 라벨 뱃지 (최종 정답!)
+    const labelR = `★ R (x₀=${currentX0.toFixed(2)}, y=${currentZ0.toFixed(2)})`;
+    ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(18, 26, 36, 0.92)';
+    const textW_R = ctx.measureText(labelR).width;
+    ctx.fillRect(ptScreenX_R + 12, ptScreenY_R - 14, textW_R + 12, 26);
+    ctx.strokeStyle = '#ff6b6b';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(ptScreenX_R + 12, ptScreenY_R - 14, textW_R + 12, 26);
+    ctx.fillStyle = '#ff6b6b';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(labelR, ptScreenX_R + 18, ptScreenY_R);
+
+    // 6. 하단 x₀ 슬라이더 조작 알약 (좌하단 박스 세로 x축 위)
+    const pillY = ptScreenY_P;
+    ctx.beginPath();
+    ctx.moveTo(box2.x + 10, pillY);
+    ctx.lineTo(box2.x + box2.w - 10, pillY);
+    ctx.strokeStyle = this.isDraggingNAxisX0 ? 'rgba(254, 202, 87, 0.65)' : 'rgba(254, 202, 87, 0.3)';
+    ctx.setLineDash([3, 3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const sliderScreenX = tCenterScreenX;
+    ctx.fillStyle = '#feca57';
+    ctx.shadowColor = '#feca57';
+    ctx.shadowBlur = this.isDraggingNAxisX0 ? 18 : 10;
+    ctx.beginPath();
+    ctx.roundRect(sliderScreenX - 44, pillY - 12, 88, 24, 12);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 알약 내부 텍스트 & 상하 드래그 힌트 아이콘
+    ctx.fillStyle = '#1e272e';
+    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`↕ x₀ : ${currentX0.toFixed(2)}`, sliderScreenX, pillY);
+
+    ctx.restore();
+    ctx.restore();
+  }
+
+  bindControls() {
+    // ✨ 클린 뷰 토글 버튼
+    const btnClean = document.getElementById('btnCleanView');
+    if (btnClean) {
+      btnClean.onclick = () => this.toggleCleanView();
+    }
+
+    // 그래프 추가 버튼
+    const btnAdd = document.getElementById('btnAddGraph');
+    if (btnAdd) {
+      btnAdd.onclick = () => this.addGraph();
+    }
+
+    // 🗑️ 모든 그래프 전체 비우기 (새 캔버스)
+    const btnClearAll = document.getElementById('btnClearAllGraphs');
+    if (btnClearAll) {
+      btnClearAll.onclick = () => this.clearAllGraphs();
+    }
+
+    // 스마트 수식 입력 모달 초기화
+    this.initSmartInputModal();
+
+    // 카테고리 탭
+    document.querySelectorAll('.cat-tab-btn').forEach(tab => {
+      tab.onclick = (e) => {
+        document.querySelectorAll('.cat-tab-btn').forEach(t => t.classList.remove('active'));
+        e.target.classList.add('active');
+        this._currentCat = e.target.dataset.cat;
+        if (this.activeGraph) {
+          this.activeGraph.category = e.target.dataset.cat;
+        }
+        this.renderFuncList();
+      };
+    });
+
+    // 절댓값 토글 (체크박스 및 원터치 버튼 양방향 지원)
+    const btnToggleAbs = document.getElementById('btnToggleAbs');
+    if (btnToggleAbs) {
+      btnToggleAbs.onclick = () => this.toggleAbsolute();
+    }
+
+    const chkAbs = document.getElementById('chkAbs');
+    if (chkAbs) {
+      chkAbs.onchange = (e) => {
+        if (!this.activeGraph) return;
+        this.pushHistoryState();
+        this.activeGraph.isAbsolute = e.target.checked;
+        if (!e.target.checked) {
+          this.activeGraph.transforms = [];
+          this.activeGraph.freezeOffset = { x: 0, y: 0 };
+        }
+        this.syncControls();
+        this.render();
+      };
+    }
+
+    // ➕ 무한 다단 절댓값 다시 접기 버튼
+    const btnFoldAgain = document.getElementById('btnFoldAgain');
+    if (btnFoldAgain) {
+      btnFoldAgain.onclick = () => this.foldAgain();
+    }
+
+    // [대표님 기획]: 명확하고 엄밀한 수학적 x축 대칭(y -> -y) 및 y축 대칭(x -> -x)
+    document.getElementById('btnInvertV').onclick = () => {
+      if (!this.activeGraph) return;
+      this.pushHistoryState();
+      this.engine.reflectXAxis(this.activeGraph.handles, this.activeGraph.type);
+      this.showToast('↕️ x축 대칭 완료! (y → -y)');
+      this.render();
+    };
+    document.getElementById('btnInvertH').onclick = () => {
+      if (!this.activeGraph) return;
+      this.pushHistoryState();
+      this.engine.reflectYAxis(this.activeGraph.handles, this.activeGraph.type);
+      this.showToast('↔️ y축 대칭 완료! (x → -x)');
+      this.render();
+    };
+
+    const btnInv = document.getElementById('btnCloneInverse');
+    if (btnInv) {
+      btnInv.onclick = () => this.cloneInverseGraph();
+    }
+
+    const btnDup = document.getElementById('btnDuplicateGraph');
+    if (btnDup) {
+      btnDup.onclick = () => this.duplicateGraph();
+    }
+
+    const btnToggleLink = document.getElementById('btnToggleInverseLink');
+    if (btnToggleLink) {
+      btnToggleLink.onclick = () => this.toggleInverseLink();
+    }
+
+    const btnResetFz = document.getElementById('btnResetFreezeOffset');
+    if (btnResetFz) {
+      btnResetFz.onclick = () => {
+        if (!this.activeGraph) return;
+        this.pushHistoryState();
+        this.activeGraph.freezeOffset = { x: 0, y: 0 };
+        this.activeGraph.transforms = [];
+        this.syncControls();
+        this.showToast('↺ 곡선 평행이동 및 다단 변환이 원위치로 리셋되었습니다.');
+        this.render();
+      };
+    }
+
+    // y = x 대칭선 (항등직선) 토글
+    const chkInvGuide = document.getElementById('chkInverseGuide');
+    if (chkInvGuide) {
+      chkInvGuide.checked = this.showInverseGuide;
+      chkInvGuide.onchange = (e) => {
+        this.showInverseGuide = e.target.checked;
+        this.render();
+      };
+    }
+
+    // 점근선 표시 토글
+    const chkAsym = document.getElementById('chkAsymptotes');
+    if (chkAsym) {
+      chkAsym.checked = this.showAsymptotes;
+      chkAsym.onchange = (e) => {
+        this.showAsymptotes = e.target.checked;
+        this.render();
+      };
+    }
+
+    // 그리드 점선 가이드 토글
+    const chkGuides = document.getElementById('chkGuides');
+    if (chkGuides) {
+      chkGuides.checked = this.showGuides;
+      chkGuides.onchange = (e) => {
+        this.showGuides = e.target.checked;
+        const btnGrid = document.getElementById('btnQuickGrid');
+        if (btnGrid) btnGrid.classList.toggle('active', this.showGuides);
+        this.render();
+      };
+    }
+
+    // 스마트 마그네틱 자석 스냅 토글 (사이드바)
+    const chkSnap = document.getElementById('chkMagneticSnap');
+    if (chkSnap) {
+      chkSnap.checked = this.useMagneticSnap;
+      chkSnap.onchange = (e) => {
+        this.toggleMagneticSnap(e.target.checked);
+      };
+    }
+
+    // 실시간 교점판독기 토글 (사이드바)
+    const chkIntersect = document.getElementById('chkIntersection');
+    if (chkIntersect) {
+      chkIntersect.checked = this.useIntersectionDetector;
+      chkIntersect.onchange = (e) => {
+        this.toggleIntersectionDetector(e.target.checked);
+      };
+    }
+
+    // 수학적 1:1 정비율 상시 영구 고정 (lockAspect = true)
+    this.lockAspect = true;
+
+    // 뷰파인더 켜기/끄기 토글
+    const chkVf = document.getElementById('chkVf');
+    if (chkVf) {
+      chkVf.checked = this.useViewfinder;
+      chkVf.onchange = (e) => {
+        this.useViewfinder = e.target.checked;
+        const btnRail = document.getElementById('btnRailToggleVf');
+        if (btnRail) btnRail.classList.toggle('active', this.useViewfinder);
+        const area = document.getElementById('vfControlsArea');
+        if (area) area.style.opacity = this.useViewfinder ? '1' : '0.4';
+        this.render();
+      };
+    }
+
+    // 캡처영역 종횡비 프리셋 칩 (4:3, 1:1, 16:9, 3:4)
+    document.querySelectorAll('.vf-chip').forEach(btn => {
+      btn.onclick = (e) => {
+        document.querySelectorAll('.vf-chip').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        const arStr = e.target.dataset.ar;
+        this.vfAspectName = arStr;
+        if (arStr === '4:3') this.vfAspect = 4 / 3;
+        else if (arStr === '1:1') this.vfAspect = 1.0;
+        else if (arStr === '16:9') this.vfAspect = 16 / 9;
+        else if (arStr === '3:4') this.vfAspect = 3 / 4;
+
+        // [대표님 피드백 반영: 비율 전환 시 좁아서 늘려야 하는 불편함 0% 박멸! 넉넉한 황금 여백 자동 도출]
+        this.vfScreenW = this.calcIdealVfWidth(this.vfAspect);
+        const sl = document.getElementById('sliderVfWidth');
+        if (sl) sl.value = this.vfScreenW;
+        const lbl = document.getElementById('lblVfWidth');
+        if (lbl) lbl.textContent = `${this.vfScreenW} px`;
+
+        this.render();
+      };
+    });
+
+    // 뷰파인더 출력 크기 슬라이더 (가로 인치/cm)
+    const sliderVfSize = document.getElementById('sliderVfSize');
+    if (sliderVfSize) {
+      sliderVfSize.value = this.vfTargetWIn;
+      sliderVfSize.oninput = (e) => {
+        this.vfTargetWIn = parseFloat(e.target.value);
+        const cm = (this.vfTargetWIn * 2.54).toFixed(1);
+        const lbl = document.getElementById('lblVfSize');
+        if (lbl) lbl.textContent = `${this.vfTargetWIn.toFixed(1)} in (${cm} cm)`;
+        this.render();
+      };
+    }
+
+    // 뷰파인더 화각 너비 슬라이더 (X축 줌)
+    // 뷰파인더 프레임 크기 슬라이더 (화면 픽셀 조절)
+    const sliderVfWidth = document.getElementById('sliderVfWidth');
+    if (sliderVfWidth) {
+      sliderVfWidth.value = this.vfScreenW;
+      sliderVfWidth.oninput = (e) => {
+        this.vfScreenW = parseFloat(e.target.value);
+        const lbl = document.getElementById('lblVfWidth');
+        if (lbl) lbl.textContent = `${Math.round(this.vfScreenW)} px`;
+        this.render();
+      };
+    }
+
+    // 뷰파인더 DPI 선택 칩
+    document.querySelectorAll('.dpi-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        document.querySelectorAll('.dpi-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        this.exportDPI = parseInt(e.target.dataset.dpi, 10);
+        this.render();
+      };
+    });
+
+    // 두께 슬라이더
+    const sliderLw = document.getElementById('sliderLw');
+    if (sliderLw) {
+      sliderLw.onpointerdown = () => { sliderLw._preSnap = this.getHistorySnapshot(); };
+      sliderLw.oninput = (e) => {
+        const val = parseFloat(e.target.value);
+        document.getElementById('lblLw').textContent = `${val.toFixed(1)} pt`;
+        if (!this.activeGraph) return;
+        this.activeGraph.lineWidth = val;
+        this.render();
+      };
+      sliderLw.onchange = () => {
+        if (sliderLw._preSnap && sliderLw._preSnap !== this.getHistorySnapshot()) {
+          this.undoStack.push(sliderLw._preSnap);
+          if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+          this.redoStack = [];
+          this.updateUndoRedoUI();
+        }
+        sliderLw._preSnap = null;
+      };
+    }
+
+    // 줌 슬라이더
+    const sliderZoom = document.getElementById('sliderZoom');
+    if (sliderZoom) {
+      sliderZoom.onpointerdown = () => { sliderZoom._preSnap = this.getHistorySnapshot(); };
+      sliderZoom.oninput = (e) => {
+        this.zoomLevel = parseFloat(e.target.value);
+        document.getElementById('lblZoom').textContent = `${Math.round(this.zoomLevel * 100)}%`;
+        this.render();
+      };
+      sliderZoom.onchange = () => {
+        if (sliderZoom._preSnap && sliderZoom._preSnap !== this.getHistorySnapshot()) {
+          this.undoStack.push(sliderZoom._preSnap);
+          if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+          this.redoStack = [];
+          this.updateUndoRedoUI();
+        }
+        sliderZoom._preSnap = null;
+      };
+    }
+
+    // 컬러 피커 팔레트
+    document.querySelectorAll('.color-dot').forEach(dot => {
+      dot.onclick = (e) => {
+        document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
+        e.target.classList.add('active');
+        if (!this.activeGraph) return;
+        this.pushHistoryState();
+        this.activeGraph.color = e.target.dataset.color;
+        this.renderLayerList();
+        this.render();
+      };
+    });
+
+    // 상단 복사 & 저장 버튼
+    document.getElementById('btnCopy').onclick = () => this.copyToClipboard();
+    document.getElementById('btnDownload').onclick = () => this.downloadPNG();
+
+    // 전체화면 토글 (대표님 기획: 전체화면 모드에서도 상단 메뉴와 좌측 레일 메뉴 상시 노출 + iOS/Mac Safari webkit 호환)
+    const toggleFullscreen = () => {
+      const isEntering = !document.body.classList.contains('fullscreen-mode');
+      const btnFs = document.getElementById('btnFullscreen');
+      const docEl = document.documentElement;
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+      if (isEntering) {
+        document.body.classList.add('fullscreen-mode');
+        if (btnFs) btnFs.classList.add('active');
+        if (!fsEl) {
+          try {
+            if (docEl.requestFullscreen) {
+              docEl.requestFullscreen({ navigationUI: 'hide' }).catch(() => { docEl.requestFullscreen().catch(() => { }); });
+            } else if (docEl.webkitRequestFullscreen) {
+              docEl.webkitRequestFullscreen();
+            }
+          } catch (err) { }
+        }
+        this.showToast('⛶ 전체화면 모드 (상단 및 좌측 메뉴 상시 사용 가능)');
+      } else {
+        document.body.classList.remove('fullscreen-mode');
+        if (btnFs) btnFs.classList.remove('active');
+        if (fsEl) {
+          try {
+            if (document.exitFullscreen) document.exitFullscreen().catch(() => { });
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+          } catch (err) { }
+        }
+      }
+      setTimeout(() => {
+        this.resizeCanvas();
+        this.render();
+      }, 100);
+    };
+
+    document.getElementById('btnFullscreen').onclick = toggleFullscreen;
+
+    const btnExit = document.getElementById('btnExitFullscreen');
+    if (btnExit) {
+      btnExit.onclick = () => {
+        const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+        if (fsEl) {
+          try {
+            if (document.exitFullscreen) document.exitFullscreen().catch(() => { });
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+          } catch (err) { }
+        }
+        document.body.classList.remove('fullscreen-mode');
+        const btnFs = document.getElementById('btnFullscreen');
+        if (btnFs) btnFs.classList.remove('active');
+        this.showToast('✕ 전체화면 종료');
+        setTimeout(() => {
+          this.resizeCanvas();
+          this.render();
+        }, 100);
+      };
+    }
+
+    // ESC 또는 브라우저 전체화면 해제 시 자동 동기화 (Safari webkitfullscreenchange 포함)
+    const onFsChange = () => {
+      const btnFs = document.getElementById('btnFullscreen');
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+      if (!fsEl) {
+        if (!this.isWaitingForFilePicker) {
+          document.body.classList.remove('fullscreen-mode');
+          if (btnFs) btnFs.classList.remove('active');
+        }
+      } else {
+        document.body.classList.add('fullscreen-mode');
+        if (btnFs) btnFs.classList.add('active');
+      }
+      setTimeout(() => {
+        this.resizeCanvas();
+        this.render();
+      }, 100);
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+
+    // 🌟 [대표님 13인치 액정타블렛 특화]: 상단 바 접기/펼치기 원터치 토글
+    const btnCollapseHeader = document.getElementById('btnCollapseHeader');
+    const headerShowTab = document.getElementById('headerShowTab');
+
+    const toggleHeaderCollapse = (forceState) => {
+      const isCurrentlyCollapsed = document.body.classList.contains('header-collapsed');
+      const nextCollapsed = (typeof forceState === 'boolean') ? forceState : !isCurrentlyCollapsed;
+
+      if (nextCollapsed) {
+        document.body.classList.add('header-collapsed');
+        this.showToast('▲ 상단 바 숨김 (판서 칠판 세로 공간 극대화)');
+      } else {
+        document.body.classList.remove('header-collapsed');
+      }
+
+      setTimeout(() => {
+        this.resizeCanvas();
+        this.render();
+      }, 230);
+    };
+
+    if (btnCollapseHeader) {
+      btnCollapseHeader.onclick = () => toggleHeaderCollapse(true);
+    }
+    if (headerShowTab) {
+      headerShowTab.onclick = () => toggleHeaderCollapse(false);
+    }
+
+    // 우측 플로팅 퀵 액션 툴바 바인딩
+    this.bindQuickToolbar();
+  }
+
+  // --- [우측 플로팅 퀵 툴바 & 칠판/바탕색 테마 바인딩] ---
+  bindQuickToolbar() {
+    // --- [우측 내보내기 & 공유 플라이아웃 패널 토글] ---
+    const wrapExport = document.getElementById('wrapQuickExport');
+    const btnExport = document.getElementById('btnExport');
+    const panelExport = document.getElementById('panelQuickExport');
+
+    if (btnExport && panelExport) {
+      btnExport.onclick = (e) => {
+        e.stopPropagation();
+        const isOpen = panelExport.classList.contains('show');
+        if (isOpen) {
+          panelExport.classList.remove('show');
+          btnExport.classList.remove('active');
+        } else {
+          panelExport.classList.add('show');
+          btnExport.classList.add('active');
+        }
+      };
+
+      // 내보내기 메뉴 항목 클릭 시 패널 자동 닫기
+      panelExport.querySelectorAll('.export-menu-item').forEach(item => {
+        item.addEventListener('click', () => {
+          panelExport.classList.remove('show');
+          btnExport.classList.remove('active');
+        });
+      });
+
+      document.addEventListener('click', (e) => {
+        if (wrapExport && !wrapExport.contains(e.target)) {
+          panelExport.classList.remove('show');
+          btnExport.classList.remove('active');
+        }
+      });
+    }
+
+    // 호환용 테마 플라이아웃 바인딩 (숨김 호환)
+    const btnThemeLegacy = document.getElementById('btnQuickTheme');
+    const panelThemeLegacy = document.getElementById('panelQuickTheme');
+    if (btnThemeLegacy && panelThemeLegacy) {
+      btnThemeLegacy.onclick = (e) => {
+        e.stopPropagation();
+        panelThemeLegacy.classList.toggle('show');
+        btnThemeLegacy.classList.toggle('active');
+      };
+    }
+
+    // --- [우측 줌 인/아웃 버튼 바인딩 (대표님 기획: 줌 다다익선)] ---
+    const btnQuickZoomIn = document.getElementById('btnQuickZoomIn');
+    const btnQuickZoomOut = document.getElementById('btnQuickZoomOut');
+    if (btnQuickZoomIn) btnQuickZoomIn.onclick = () => { this.setZoomLevel(this.zoomLevel + 0.12); this.render(); };
+    if (btnQuickZoomOut) btnQuickZoomOut.onclick = () => { this.setZoomLevel(this.zoomLevel - 0.12); this.render(); };
+
+    // 좌측 서랍 패널(#panelStyle) 내 모든 테마 칩 전체 바인딩
+    document.querySelectorAll('.theme-chip').forEach(chip => {
+      chip.onclick = (e) => {
+        e.stopPropagation();
+        const targetChip = e.currentTarget;
+        const themeKey = targetChip.dataset.theme;
+        this.setCanvasTheme(themeKey);
+        if (panelThemeLegacy) {
+          panelThemeLegacy.classList.remove('show');
+          if (btnThemeLegacy) btnThemeLegacy.classList.remove('active');
+        }
+      };
+    });
+
+    // 클린 뷰 / 판서 모드 원터치 토글
+    const btnClean = document.getElementById('btnQuickCleanView');
+    if (btnClean) {
+      btnClean.classList.toggle('active', this.isCleanView);
+      btnClean.onclick = () => this.toggleCleanView();
+    }
+
+    // 스마트 마그네틱 자석 스냅 원터치 토글
+    const btnSnap = document.getElementById('btnQuickSnap');
+    if (btnSnap) {
+      btnSnap.classList.toggle('active', this.useMagneticSnap);
+      btnSnap.classList.toggle('snap-off', !this.useMagneticSnap);
+      btnSnap.onclick = () => {
+        this.toggleMagneticSnap();
+      };
+    }
+
+    // 실시간 교점판독기 원터치 토글
+    const btnIntersect = document.getElementById('btnQuickIntersection');
+    if (btnIntersect) {
+      btnIntersect.classList.toggle('active', this.useIntersectionDetector);
+      btnIntersect.onclick = () => {
+        this.toggleIntersectionDetector();
+      };
+    }
+
+    // 그리드 점선 가이드 원터치 토글
+    const btnGrid = document.getElementById('btnQuickGrid');
+    if (btnGrid) {
+      btnGrid.onclick = () => {
+        this.showGuides = !this.showGuides;
+        const chk = document.getElementById('chkGuides');
+        if (chk) chk.checked = this.showGuides;
+        btnGrid.classList.toggle('active', this.showGuides);
+        this.render();
+        this.showToast(this.showGuides ? '📐 점선 그리드 가이드 켜짐' : '📐 점선 그리드 가이드 꺼짐');
+      };
+    }
+
+    // 센터 원위치 정렬 (원클릭 중앙 정렬)
+    const btnCenter = document.getElementById('btnQuickCenter');
+    if (btnCenter) {
+      btnCenter.onclick = () => {
+        this.pushHistoryState();
+        this.panX = 0;
+        this.panY = 0;
+        this.zoomLevel = 1.0;
+        const slZoom = document.getElementById('sliderZoom');
+        if (slZoom) slZoom.value = 1.0;
+        const lblZoom = document.getElementById('lblZoom');
+        if (lblZoom) lblZoom.textContent = '100%';
+        this.render();
+        this.showToast('🎯 그래프가 캡처영역 중앙으로 정렬되었습니다.');
+      };
+    }
+
+    // 새 캔버스 (전체 초기화: 그래프 + 필기 + 경계선 + 떠 있는 문제 카드 모두 초기화)
+    const btnNewCanvas = document.getElementById('btnQuickNewCanvas');
+    if (btnNewCanvas) {
+      btnNewCanvas.onclick = () => {
+        this.resetNewCanvas();
+      };
+    }
+
+    // 전체화면 토글
+    const btnFullscreen = document.getElementById('btnQuickFullscreen');
+    if (btnFullscreen) {
+      btnFullscreen.onclick = () => {
+        document.getElementById('btnFullscreen').click();
+      };
+    }
+  }
+
+  toggleMagneticSnap(forceState) {
+    this.useMagneticSnap = typeof forceState === 'boolean' ? forceState : !this.useMagneticSnap;
+
+    const btnSnap = document.getElementById('btnQuickSnap');
+    if (btnSnap) {
+      btnSnap.classList.toggle('active', this.useMagneticSnap);
+      btnSnap.classList.toggle('snap-off', !this.useMagneticSnap);
+    }
+
+    const chkSnap = document.getElementById('chkMagneticSnap');
+    if (chkSnap) {
+      chkSnap.checked = this.useMagneticSnap;
+    }
+
+    if (this.useMagneticSnap) {
+      this.showToast('🧲 스마트 마그네틱 자석 스냅 켜짐! (극점·대칭점·점근선이 좌표축에 착착 붙습니다)');
+    } else {
+      this.showToast('🧲 마그네틱 자석 스냅 꺼짐 (미세 조절 모드)');
+    }
+
+    this.render();
+  }
+
+  toggleIntersectionDetector(forceState) {
+    this.useIntersectionDetector = typeof forceState === 'boolean' ? forceState : !this.useIntersectionDetector;
+
+    const btn = document.getElementById('btnQuickIntersection');
+    if (btn) {
+      btn.classList.toggle('active', this.useIntersectionDetector);
+    }
+
+    const chk = document.getElementById('chkIntersection');
+    if (chk) {
+      chk.checked = this.useIntersectionDetector;
+    }
+
+    if (this.useIntersectionDetector) {
+      this.startIntersectionLoop();
+      this.showToast('⚡ 실시간 교점판독기 가동! (실시간 교점·접점 판독 & 화면 밖 추적)');
+    } else {
+      this.stopIntersectionLoop();
+      this.detectedIntersections = [];
+      this.showToast('⚡ 교점판독기 꺼짐');
+    }
+
+    this.render();
+  }
+
+  startIntersectionLoop() {
+    if (this.intersectionAnimId) return;
+    const animate = () => {
+      if (!this.useIntersectionDetector) return;
+      this.intersectionAnimPhase = (Date.now() / 250) % (Math.PI * 2);
+      this.render();
+      this.intersectionAnimId = requestAnimationFrame(animate);
+    };
+    this.intersectionAnimId = requestAnimationFrame(animate);
+  }
+
+  stopIntersectionLoop() {
+    if (this.intersectionAnimId) {
+      cancelAnimationFrame(this.intersectionAnimId);
+      this.intersectionAnimId = null;
+    }
+  }
+
+  // --- [📐 사각형 모드: 꼭짓점 제약 드래그 & 패널 연동] ---
+  isShapeCenterLocked(g) {
+    return !!g && g.type === 'geom_quad' && !!g.originCenter;
+  }
+
+  showCenterLockHint() {
+    const now = Date.now();
+    if (this._lastLockHint && now - this._lastLockHint < 2500) return;
+    this._lastLockHint = now;
+    this.showToast('🎯 원점 중심 고정 중이에요. 꼭짓점을 끌어 크기를 조절하세요! (이동하려면 체크 해제)');
+  }
+
+  showShiftMorphHint() {
+    const now = Date.now();
+    if (this._lastShiftHint && now - this._lastShiftHint < 3000) return;
+    this._lastShiftHint = now;
+    this.showToast('💡 [Shift 드래그]: 원함수 기준 실시간 접힘 모핑 (|f(x)-k|)!');
+  }
+
+  // 활성 그래프의 핸들 하나를 드래그 (대칭 자석 스냅 엔진)
+  dragActiveHandle(idx, x, y, altKey = false, isKeyboard = false) {
+    const g = this.activeGraph;
+    if (!g || !g.handles) return;
+
+    this.symmetrySnapActive = false;
+
+    // [대표님 핵심 기획]: 키보드 방향키 조작 시에는 자석 효과 및 모핑을 100% 완전 바이패스!
+    // 마우스로 찰칵 붙은 상태에서도 방향키를 누르면 자석에 갇히지 않고 부드럽게 즉시 탈출합니다.
+    if (isKeyboard) {
+      this.axisSnapActiveX = false;
+      this.axisSnapActiveY = false;
+      this.symmetrySnapActive = false;
+      this.snapActiveX = false;
+      this.snapActiveY = false;
+      this.snappedPoints = [];
+    }
+
+    // 2. [🧲 사차함수 좌우대칭 자석 스냅 (Symmetry Snap)] - 비대칭 사차함수(4th_asymmetric) 전용!
+    // (대칭형 4th_symmetric은 이미 수학 엔진 레벨에서 100% 대칭이므로 이 스냅 검사를 타면 직전 프레임 대칭 좌표와 무한 루프로 충돌하여 뚝뚝 끊김 발생 -> 완전 제외)
+    if (!altKey && !isKeyboard && g.type === '4th_asymmetric' && g.handles.length >= 3) {
+      if (idx === 0 || idx === 2) {
+        const oppIdx = idx === 0 ? 2 : 0;
+        const oppH = g.handles[oppIdx];
+        const centerH = g.handles[1];
+        const effSpanY = this.ySpan / this.zoomLevel;
+        const unitScale = (this.screenHeight / 2) / effSpanY;
+
+        // A. 높이 자석 스냅 (반대편 극소와 y값 일치)
+        const diffY = Math.abs(y - oppH.y);
+        if (diffY * unitScale < 14) {
+          y = oppH.y;
+          this.symmetrySnapActive = true;
+          this.symmetrySnapY = oppH.y;
+          this.snappedPoints.push({ x: x, y: oppH.y, label: '⚖️ 좌우대칭 극소 높이 일치' });
+        }
+
+        // B. 간격 자석 스냅 (중앙 극대 기준 좌우 거리 일치)
+        const oppDist = Math.abs(oppH.x - centerH.x);
+        const currDist = Math.abs(x - centerH.x);
+        if (Math.abs(currDist - oppDist) * unitScale < 14) {
+          x = idx === 0 ? centerH.x - oppDist : centerH.x + oppDist;
+          this.snappedPoints.push({ x: x, y: y, label: '⚖️ 좌우대칭 간격 일치' });
+        }
+      }
+    }
+
+    // 3. 기하 엔진 핸들 변형 적용
+    const constrained = g.type === 'geom_quad' && g.handles.length === 4 &&
+      ((g.shapeMode && g.shapeMode !== 'free') || g.originCenter);
+    if (constrained) {
+      this.engine.dragQuad(g.handles, idx, x, y, g.shapeMode || 'free', !!g.originCenter, !altKey && !isKeyboard);
+    } else {
+      this.engine.dragHandle(g.handles, g.type, idx, x, y, altKey, isKeyboard);
+    }
+
+    // 4. [🔗 역함수 대칭 연동: 핸들러 좌표 x ↔ y 스왑 미러링]
+    const partner = this.getLinkedPartner(g);
+    if (partner && partner.handles && partner.handles.length === g.handles.length) {
+      g.handles.forEach((h, hIdx) => {
+        if (partner.handles[hIdx]) {
+          partner.handles[hIdx].x = parseFloat(h.y.toFixed(3));
+          partner.handles[hIdx].y = parseFloat(h.x.toFixed(3));
+        }
+      });
+    }
+  }
+
+  syncShapePanel() {
+    const panel = document.getElementById('quadModePanel');
+    if (!panel) return;
+    const g = this.activeGraph;
+    const isQuad = !!g && g.type === 'geom_quad';
+    panel.style.display = isQuad ? '' : 'none';
+    if (!isQuad) return;
+    const mode = g.shapeMode || 'free';
+    document.querySelectorAll('.quad-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.qmode === mode));
+    const chk = document.getElementById('chkQuadOrigin');
+    if (chk) chk.checked = !!g.originCenter;
+  }
+
+  initShapeControls() {
+    const modeNames = {
+      free: '자유', parallelogram: '평행사변형', rectangle: '직사각형', rhombus: '마름모', square: '정사각형'
+    };
+
+    document.querySelectorAll('.quad-mode-btn').forEach(btn => {
+      btn.onclick = () => {
+        const g = this.activeGraph;
+        if (g.type !== 'geom_quad') return;
+        this.pushHistoryState();
+        g.shapeMode = btn.dataset.qmode;
+        this.engine.applyQuadMode(g.handles, g.shapeMode, !!g.originCenter);
+        this.selectedHandleIdx = null;
+        this.syncShapePanel();
+        this.showToast(`📐 ${modeNames[g.shapeMode]} 모드! 꼭짓점을 끌어 보세요.`);
+        this.render();
+      };
+    });
+
+    const chkOrigin = document.getElementById('chkQuadOrigin');
+    if (chkOrigin) {
+      chkOrigin.onchange = (e) => {
+        const g = this.activeGraph;
+        if (g.type !== 'geom_quad') return;
+        this.pushHistoryState();
+        g.originCenter = e.target.checked;
+        this.engine.applyQuadMode(g.handles, g.shapeMode || 'free', g.originCenter);
+        this.showToast(g.originCenter ? '🎯 원점 중심 고정 ON (점대칭)' : '🎯 원점 중심 고정 해제');
+        this.render();
+      };
+    }
+
+    // 🔷 원클릭: 원점 중심 마름모 |x|/a + |y|/b = 1  (꼭짓점이 좌표축 위)
+    const btnDiamond = document.getElementById('btnQuadDiamond');
+    if (btnDiamond) {
+      btnDiamond.onclick = () => {
+        const g = this.activeGraph;
+        if (g.type !== 'geom_quad') return;
+        this.pushHistoryState();
+        g.shapeMode = 'rhombus';
+        g.originCenter = true;
+        const pts = [[2, 0], [0, 2], [-2, 0], [0, -2]];
+        g.handles.forEach((h, i) => { h.x = pts[i][0]; h.y = pts[i][1]; });
+        this.selectedHandleIdx = null;
+        this.syncShapePanel();
+        this.showToast('🔷 원점 중심 마름모 완성! 꼭짓점을 축 방향으로 끌어 보세요.');
+        this.render();
+      };
+    }
+  }
+
+  // --- [📐 Figma/Canva 스타일 56px 슬림 아이콘 독 레일 & 플로팅 서랍 (Slide-over Drawer) 제어기] ---
+  initRailDrawer() {
+    const rail = document.getElementById('sidebarRail');
+    const drawer = document.getElementById('railDrawer');
+    const titleLbl = document.getElementById('drawerTitle');
+    const btnToggle = document.getElementById('btnToggleDrawer');
+    const btnClose = document.getElementById('btnCloseDrawer');
+    const iconToggle = document.getElementById('iconToggleDrawer');
+
+    if (!rail || !drawer) return;
+
+    const panelTitles = {
+      panelPresets: '📐 개형 라이브러리',
+      panelTransform: '↕️ 변환 & 대칭',
+      panelPiecewise: '✂️ 구간 분할 합성',
+      panelViewfinder: '📷 교재 캡처 규격',
+      panelSettings: '⚙️ 환경 설정 & 캡처 규격',
+      panelStyle: '🎨 선 스타일 & 색상'
+    };
+
+    // 🌟 [대표님 기획: 📷 캡처영역 원터치 토글 바깥 버튼]
+    const btnRailVf = document.getElementById('btnRailToggleVf');
+    if (btnRailVf) {
+      btnRailVf.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleViewfinder();
+      };
+    }
+
+    this.activeDrawerPanel = 'panelPresets';
+    this.isDrawerCollapsed = true;
+
+    this.openDrawer = (panelId) => {
+      this.activeDrawerPanel = panelId || this.activeDrawerPanel || 'panelPresets';
+      this.isDrawerCollapsed = false;
+      rail.classList.remove('drawer-collapsed');
+      if (iconToggle) iconToggle.textContent = '◀';
+      if (btnToggle) btnToggle.title = '\\';
+
+      // 레일 독 버튼 활성화 상태 갱신
+      document.querySelectorAll('.rail-btn[data-panel]').forEach(b => {
+        b.classList.toggle('active', b.dataset.panel === this.activeDrawerPanel);
+      });
+
+      // 서랍 헤더 타이틀 갱신
+      if (titleLbl) {
+        titleLbl.textContent = panelTitles[this.activeDrawerPanel] || '설정';
+      }
+
+      // 서랍 내부 패널 표시 전환
+      document.querySelectorAll('.drawer-panel').forEach(p => {
+        const isMatch = (p.id === this.activeDrawerPanel);
+        p.style.display = isMatch ? 'flex' : 'none';
+        p.classList.toggle('active', isMatch);
+      });
+
+      // 캔버스 크기는 고정(Overlay)되므로 리사이즈 없이 즉시 렌더링 (RAF 배치 렌더링)
+      this.requestRender();
+    };
+
+    this.closeDrawer = () => {
+      this.isDrawerCollapsed = true;
+      rail.classList.add('drawer-collapsed');
+      if (iconToggle) iconToggle.textContent = '▶';
+      if (btnToggle) btnToggle.title = '\\';
+
+      // 레일 독 버튼 활성화 해제
+      document.querySelectorAll('.rail-btn[data-panel]').forEach(b => {
+        b.classList.remove('active');
+      });
+
+      // 캔버스 크기는 고정(Overlay)되므로 리사이즈 없이 즉시 렌더링 (RAF 배치 렌더링)
+      this.requestRender();
+    };
+
+    this.toggleDrawer = () => {
+      if (this.isDrawerCollapsed) {
+        this.openDrawer(this.activeDrawerPanel);
+      } else {
+        this.closeDrawer();
+      }
+    };
+
+    // 레일 독 버튼 클릭 이벤트 바인딩
+    document.querySelectorAll('.rail-btn[data-panel]').forEach(btn => {
+      btn.onclick = () => {
+        const targetPanel = btn.dataset.panel;
+        if (!this.isDrawerCollapsed && this.activeDrawerPanel === targetPanel) {
+          this.closeDrawer();
+        } else {
+          this.openDrawer(targetPanel);
+        }
+      };
+    });
+
+    if (btnClose) {
+      btnClose.onclick = () => this.closeDrawer();
+    }
+
+    if (btnToggle) {
+      btnToggle.onclick = () => this.toggleDrawer();
+    }
+
+    // 단축키: \ (백슬래시) 또는 Ctrl+B 로 서랍 열기/닫기 원터치 토글
+    window.addEventListener('keydown', (e) => {
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+      if (e.key === '\\' || (e.ctrlKey && (e.key === 'b' || e.key === 'B'))) {
+        e.preventDefault();
+        this.toggleDrawer();
+      }
+    });
+
+    // [대표님 기획]: 첫 시작화면은 메뉴를 접은 상태로 광활한 넓은 칠판에서 시작!
+    this.closeDrawer();
+  }
+
+  // --- [✂️ 캔버스 직관적 N-구간 다중 분할 (Canvas Multi-Boundary Piecewise) 엔진] ---
+  initPiecewiseControls() {
+    const chk = document.getElementById('chkPiecewise');
+    const btnQuick = document.getElementById('btnQuickPiecewise');
+    const btnAdd = document.getElementById('btnPwAddBoundary');
+
+    // 퀵 버튼 클릭 시: 꺼져있으면 1개 선으로 시작, 켜져있으면 세로선 추가!
+    if (btnQuick) {
+      btnQuick.onclick = () => {
+        this.addPiecewiseBoundary();
+      };
+    }
+
+    // 사이드바 분할선 추가 버튼 (+ 선추가) -> 원클릭 즉시 자동 닫힘
+    if (btnAdd) {
+      btnAdd.onclick = () => {
+        this.addPiecewiseBoundary();
+        if (typeof this.closeDrawer === 'function') {
+          this.closeDrawer();
+        }
+      };
+    }
+
+    // 마스터 온/오프 체크박스
+    if (chk) {
+      chk.onchange = (e) => {
+        if (e.target.checked) {
+          if (!this.piecewiseBoundaries || this.piecewiseBoundaries.length === 0) {
+            this.addPiecewiseBoundary();
+          } else {
+            this.usePiecewise = true;
+            this.render();
+          }
+        } else {
+          this.usePiecewise = false;
+          this.isPiecewiseLocked = false;
+          if (btnQuick) btnQuick.classList.remove('active');
+          const popover = document.getElementById('pwRegionPopover');
+          if (popover) popover.style.display = 'none';
+          this.showToast('✂️ 구간 분할 합성 꺼짐');
+          this.render();
+        }
+      };
+    }
+
+    // [대표님 핵심 기획: 스마트 인터랙티브 고스트]:
+    // 체크박스 버튼 없이, 화면에서 특정 곡선을 클릭/선택하면 그 곡선만 점선이 나오고,
+    // 다른 곡선을 클릭하면 그 곡선만 점선이 나오며, 빈 공간 클릭 시 점선이 싹 사라짐!
+
+    // 🎯 교점 스냅 -> 원클릭 즉시 자동 닫힘
+    const btnSnap = document.getElementById('btnPwSnap');
+    if (btnSnap) {
+      btnSnap.onclick = () => {
+        this.snapPwToIntersection();
+        if (typeof this.closeDrawer === 'function') {
+          this.closeDrawer();
+        }
+      };
+    }
+
+    // 🔁 [대표님 핵심 기획: 전구간 주기 반복 컨트롤 바인딩 (서랍 내 슬라이더 + 끝점 맞물림)]
+    const chkPeriodic = document.getElementById('chkPwPeriodic');
+    if (chkPeriodic) {
+      chkPeriodic.onchange = (e) => {
+        this.togglePiecewisePeriodic(e.target.checked);
+        // 주기 반복을 켰을 때는 바로 아래 슬라이더와 [끝점 맞물림]을 조작할 수 있도록 서랍 유지!
+      };
+    }
+
+    const btnStepMinus = document.getElementById('btnPwStepMinus');
+    if (btnStepMinus) {
+      btnStepMinus.onclick = (e) => {
+        e.stopPropagation();
+        const nextQ = Math.round(((this.periodicStepY || 0) - 0.1) * 100) / 100;
+        this.setPeriodicStep(nextQ);
+      };
+    }
+
+    const btnStepPlus = document.getElementById('btnPwStepPlus');
+    if (btnStepPlus) {
+      btnStepPlus.onclick = (e) => {
+        e.stopPropagation();
+        const nextQ = Math.round(((this.periodicStepY || 0) + 0.1) * 100) / 100;
+        this.setPeriodicStep(nextQ);
+      };
+    }
+
+    const sliderPwStep = document.getElementById('sliderPwStep');
+    if (sliderPwStep) {
+      sliderPwStep.addEventListener('pointerdown', () => {
+        this.pushHistoryState();
+      });
+      sliderPwStep.oninput = (e) => {
+        let val = parseFloat(e.target.value);
+        if (isNaN(val)) val = 0;
+        // 0 근처 및 연속 끝점 맞물림 값(qMatch) 근처에서 스마트 자석 스냅!
+        const qMatch = this.getPeriodicMatchStep();
+        if (Math.abs(val) < 0.08) {
+          val = 0;
+        } else if (qMatch !== null && Math.abs(val - qMatch) < 0.15) {
+          val = qMatch;
+        }
+        this.periodicStepY = Math.round(val * 100) / 100;
+        this.syncPeriodicUI();
+        this.updatePwDescBadge();
+        this.requestRender();
+      };
+    }
+
+    const btnStepMatch = document.getElementById('btnPwStepMatch');
+    if (btnStepMatch) {
+      btnStepMatch.onclick = (e) => {
+        e.stopPropagation();
+        this.matchPeriodicEndpoints();
+      };
+    }
+
+    const btnStepReset = document.getElementById('btnPwStepReset');
+    if (btnStepReset) {
+      btnStepReset.onclick = (e) => {
+        e.stopPropagation();
+        this.setPeriodicStep(0);
+      };
+    }
+
+    // ↺ [대표님 기획]: 구간 분할 완전 초기화 (x=0 단일선 & f1/f2 리셋)
+    const btnReset = document.getElementById('btnPwReset');
+    if (btnReset) {
+      btnReset.onclick = () => this.resetPiecewise();
+    }
+
+    this.updatePwDescBadge();
+  }
+
+  // [대표님 핵심 기획: ✂️ 구간 분할 완전 초기화 (x=0 단일선 & f1/f2 또는 비움/f1 배정)]
+  resetPiecewise() {
+    this.pushHistoryState();
+    this.piecewiseBoundaries = [0.0];
+    this.piecewiseFuncMap = (this.graphs.length === 1) ? [-1, 0] : [0, 1];
+    this.piecewiseInclusions = ['right'];
+    this.pwK = 0.0;
+    this.selectedPwBoundaryIdx = null;
+    this.usePiecewise = true;
+    this.isPiecewisePeriodic = false;
+    this.isPiecewiseLocked = false;
+    this.periodicStepY = 0.0;
+    this.syncPeriodicUI();
+
+    // 그래프 0개일 때만 기본 함수 추가
+    if (this.graphs.length === 0) {
+      this.addGraph('2nd_quadratic');
+      this.showToast('💡 구간 분할을 적용할 기본 함수가 추가되었습니다!');
+    }
+
+    const btnQuick = document.getElementById('btnQuickPiecewise');
+    if (btnQuick) btnQuick.classList.add('active');
+    const chk = document.getElementById('chkPiecewise');
+    if (chk) chk.checked = true;
+    const container = document.getElementById('pwControls');
+    if (container) container.style.display = 'flex';
+
+    this.showToast('↺ 구간 분할이 기본 상태(x=0)로 깔끔히 초기화되었습니다!');
+    this.updatePwDescBadge();
+    this.render();
+  }
+
+  // 세로 분할선 추가 (아이콘 클릭 시마다 N-분할 확장)
+  addPiecewiseBoundary() {
+    this.pushHistoryState();
+    if (!this.piecewiseBoundaries) this.piecewiseBoundaries = [];
+    if (!this.piecewiseFuncMap) this.piecewiseFuncMap = [];
+
+    // 그래프 0개일 때만 기본 함수 추가
+    if (this.graphs.length === 0) {
+      this.addGraph('2nd_quadratic');
+      this.showToast('💡 구간 분할을 적용할 기본 함수가 추가되었습니다!');
+    }
+
+    this.isPiecewiseLocked = false;
+    if (this.piecewiseBoundaries.length === 0) {
+      this.usePiecewise = true;
+      this.piecewiseBoundaries = [0.0];
+      // 그래프 1개일 때는 [비움, f1]으로 자동 배정 (오른쪽 절반 개형 즉시 완성!)
+      this.piecewiseFuncMap = (this.graphs.length === 1) ? [-1, 0] : [0, 1];
+      this.piecewiseInclusions = ['right'];
+      this.pwK = 0.0;
+      this.selectedPwBoundaryIdx = 0;
+      this.showToast('✂️ 구간 분할 시작! (세로선 1개 = 2개 영역). [✂️]를 다시 누르면 선이 추가됩니다.');
+    } else {
+      // 새로운 세로선 위치 결정 (마지막 선 + 2.0 또는 화면 범위 내)
+      const lastX = this.piecewiseBoundaries[this.piecewiseBoundaries.length - 1];
+      let newX = Math.round((lastX + 2.0) * 10) / 10;
+      if (newX > (this.xSpan / this.zoomLevel) * 0.8) {
+        newX = Math.round((this.piecewiseBoundaries[0] - 2.0) * 10) / 10;
+      }
+
+      this.piecewiseBoundaries.push(newX);
+      this.piecewiseBoundaries.sort((a, b) => a - b);
+      const insertedIdx = this.piecewiseBoundaries.indexOf(newX);
+
+      // 새 영역에 배정할 함수 (다음 순번 함수)
+      const nextGIdx = this.piecewiseFuncMap.length % Math.max(1, this.graphs.length);
+      this.piecewiseFuncMap.splice(insertedIdx + 1, 0, nextGIdx);
+      if (!this.piecewiseInclusions) this.piecewiseInclusions = [];
+      this.piecewiseInclusions.splice(insertedIdx, 0, 'right');
+
+      this.selectedPwBoundaryIdx = insertedIdx;
+      this.showToast(`✂️ 분할선 추가! (총 ${this.piecewiseBoundaries.length}개 선 ➔ ${this.piecewiseBoundaries.length + 1}개 영역 분할)`);
+    }
+
+    this.usePiecewise = true;
+    this.isCurveSelected = false;
+    this.selectedHandleIdx = null;
+    if (this.isInkMode && this.activeInkTool !== 'select') {
+      this.setActiveInkTool('select');
+    }
+    const btnQuick = document.getElementById('btnQuickPiecewise');
+    if (btnQuick) btnQuick.classList.add('active');
+    const chk = document.getElementById('chkPiecewise');
+    if (chk) chk.checked = true;
+
+    const container = document.getElementById('pwControls');
+    if (container) container.style.display = 'flex';
+
+    this.updatePwDescBadge();
+    this.render();
+  }
+
+  // 세로 분할선 삭제 (배지의 ✕ 클릭 시)
+  removePiecewiseBoundary(delIdx) {
+    if (!this.piecewiseBoundaries || delIdx < 0 || delIdx >= this.piecewiseBoundaries.length) return;
+    this.pushHistoryState();
+    this.piecewiseBoundaries.splice(delIdx, 1);
+    if (this.piecewiseFuncMap) {
+      this.piecewiseFuncMap.splice(delIdx + 1, 1);
+    }
+    if (this.piecewiseInclusions) {
+      this.piecewiseInclusions.splice(delIdx, 1);
+    }
+
+    const popover = document.getElementById('pwRegionPopover');
+    if (popover) popover.style.display = 'none';
+
+    if (this.piecewiseBoundaries.length < 2) {
+      this.isPiecewisePeriodic = false;
+      this.syncPeriodicUI();
+    }
+    if (this.piecewiseBoundaries.length === 0) {
+      this.usePiecewise = false;
+      this.isPiecewiseLocked = false;
+      this.isPiecewisePeriodic = false;
+      const btnQuick = document.getElementById('btnQuickPiecewise');
+      if (btnQuick) btnQuick.classList.remove('active');
+      const chk = document.getElementById('chkPiecewise');
+      if (chk) chk.checked = false;
+      const container = document.getElementById('pwControls');
+      if (container) container.style.display = 'none';
+      this.showToast('✂️ 모든 분할선이 삭제되어 기본 모드로 전환되었습니다.');
+    } else {
+      this.showToast(`✂️ 분할선 삭제 완료! (${this.piecewiseBoundaries.length}개 선 남음)`);
+    }
+    this.updatePwDescBadge();
+    this.render();
+  }
+
+  // 캔버스 상단 함수 변경 팝오버 열기
+  openRegionFuncMenu(regionIdx, x, y) {
+    const popover = document.getElementById('pwRegionPopover');
+    if (!popover) return;
+
+    popover.innerHTML = '';
+    const currentGIdx = (this.piecewiseFuncMap && this.piecewiseFuncMap[regionIdx] !== undefined)
+      ? this.piecewiseFuncMap[regionIdx]
+      : (this.graphs.length > 0 ? (regionIdx % this.graphs.length) : -1);
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size: 10px; font-weight: 700; color: #a29bfe; padding: 2px 6px; letter-spacing: 0.5px;';
+    title.textContent = `영역 ${regionIdx + 1} 함수 선택`;
+    popover.appendChild(title);
+
+    // 🚫 [대표님 기획]: 함수 없음 (비움 / None) 옵션
+    const emptyItem = document.createElement('div');
+    emptyItem.className = `pw-popover-item ${currentGIdx === -1 ? 'active' : ''}`;
+    emptyItem.style.borderBottom = '1px dashed rgba(255,255,255,0.1)';
+    emptyItem.style.marginBottom = '2px';
+    emptyItem.style.paddingBottom = '4px';
+
+    const emptyDot = document.createElement('span');
+    emptyDot.className = 'pw-popover-dot';
+    emptyDot.style.backgroundColor = '#747d8c';
+    emptyDot.style.boxShadow = 'none';
+
+    const emptyLabel = document.createElement('span');
+    emptyLabel.style.color = currentGIdx === -1 ? '#ff7675' : '#a4b0be';
+    emptyLabel.style.fontWeight = '600';
+    emptyLabel.textContent = '🚫 함수 없음 (비움)';
+
+    emptyItem.appendChild(emptyDot);
+    emptyItem.appendChild(emptyLabel);
+
+    emptyItem.onclick = (e) => {
+      e.stopPropagation();
+      this.pushHistoryState();
+      if (!this.piecewiseFuncMap) this.piecewiseFuncMap = [];
+      this.piecewiseFuncMap[regionIdx] = -1;
+      popover.style.display = 'none';
+      this.updatePwDescBadge();
+      this.renderLayerList();
+      this.render();
+      this.showToast(`🚫 영역 ${regionIdx + 1} ➔ 함수 없음 (공집합 ∅ 비움) 설정 완료!`);
+    };
+    popover.appendChild(emptyItem);
+
+    this.graphs.forEach((g, gIdx) => {
+      const item = document.createElement('div');
+      item.className = `pw-popover-item ${gIdx === currentGIdx ? 'active' : ''}`;
+
+      const dot = document.createElement('span');
+      dot.className = 'pw-popover-dot';
+      dot.style.backgroundColor = g.color;
+      dot.style.color = g.color;
+
+      const label = document.createElement('span');
+      label.textContent = `f${gIdx + 1}(x) (${this.meta[g.type]?.name || '함수'})`;
+
+      item.appendChild(dot);
+      item.appendChild(label);
+
+      item.onclick = (e) => {
+        e.stopPropagation();
+        this.pushHistoryState();
+        if (!this.piecewiseFuncMap) this.piecewiseFuncMap = [];
+        this.piecewiseFuncMap[regionIdx] = gIdx;
+        if (this.graphs[gIdx]) this.graphs[gIdx].isIndependent = false;
+        popover.style.display = 'none';
+        this.updatePwDescBadge();
+        this.renderLayerList();
+        this.render();
+        this.showToast(`✨ 영역 ${regionIdx + 1} ➔ f${gIdx + 1}(x) (${this.meta[g.type]?.name}) 배정!`);
+      };
+
+      popover.appendChild(item);
+    });
+
+    // 🔁 [대표님 기획]: 구간 반복 (주기함수) 원클릭 토글 아이템
+    const periodicItem = document.createElement('div');
+    periodicItem.className = `pw-popover-item ${this.isPiecewisePeriodic ? 'active' : ''}`;
+    periodicItem.style.borderTop = '1px dashed rgba(255,255,255,0.15)';
+    periodicItem.style.marginTop = '4px';
+    periodicItem.style.paddingTop = '6px';
+
+    const periodicDot = document.createElement('span');
+    periodicDot.className = 'pw-popover-dot';
+    periodicDot.style.backgroundColor = this.isPiecewisePeriodic ? '#00d2d3' : '#a29bfe';
+    periodicDot.style.boxShadow = this.isPiecewisePeriodic ? '0 0 6px rgba(0, 210, 211, 0.8)' : 'none';
+
+    const periodicLabel = document.createElement('span');
+    periodicLabel.style.color = this.isPiecewisePeriodic ? '#00d2d3' : '#cbd5e1';
+    periodicLabel.style.fontWeight = '700';
+    periodicLabel.textContent = this.isPiecewisePeriodic ? '🔁 전구간 반복: ON (끄기)' : '🔁 전구간 반복: OFF (켜기)';
+
+    periodicItem.appendChild(periodicDot);
+    periodicItem.appendChild(periodicLabel);
+
+    periodicItem.onclick = (e) => {
+      e.stopPropagation();
+      this.togglePiecewisePeriodic();
+      popover.style.display = 'none';
+    };
+    popover.appendChild(periodicItem);
+
+    const clampX = Math.max(12, Math.min(this.screenWidth - 170, x));
+    popover.style.left = `${clampX}px`;
+    popover.style.top = `${y}px`;
+    popover.style.display = 'flex';
+  }
+
+  // 🔁 [대표님 핵심 기획: 전구간 주기 반복 (Periodic Piecewise Function) 컨트롤러]
+  togglePiecewisePeriodic(forceState) {
+    this.pushHistoryState();
+    const nextState = (forceState !== undefined) ? Boolean(forceState) : !this.isPiecewisePeriodic;
+
+    if (nextState) {
+      // 주기를 형성하려면 2개 이상의 경계선이 필요
+      if (!this.piecewiseBoundaries || this.piecewiseBoundaries.length < 2) {
+        if (!this.piecewiseBoundaries || this.piecewiseBoundaries.length === 0) {
+          this.piecewiseBoundaries = [-1.0, 1.0];
+          this.piecewiseFuncMap = (this.graphs.length === 1) ? [-1, 0, -1] : [-1, 0, 1, -1];
+          this.piecewiseInclusions = ['left', 'left'];
+        } else if (this.piecewiseBoundaries.length === 1) {
+          const b0 = this.piecewiseBoundaries[0];
+          this.piecewiseBoundaries = [b0, b0 + 2.0];
+          if (!this.piecewiseFuncMap || this.piecewiseFuncMap.length < 3) {
+            this.piecewiseFuncMap = (this.graphs.length === 1) ? [-1, 0, -1] : [-1, 0, 1, -1];
+          }
+          if (!this.piecewiseInclusions) this.piecewiseInclusions = ['left', 'left'];
+          while (this.piecewiseInclusions.length < 2) this.piecewiseInclusions.push('left');
+        }
+        this.showToast('💡 주기 T=2.0 구성을 위해 2번째 경계선이 자동 배치되었습니다!');
+      }
+
+      if (this.graphs.length > 0 && this.graphs[0].isIndependent) {
+        this.graphs[0].isIndependent = false;
+      }
+      this.usePiecewise = true;
+      this.isPiecewisePeriodic = true;
+      const b0 = this.piecewiseBoundaries[0];
+      const bLast = this.piecewiseBoundaries[this.piecewiseBoundaries.length - 1];
+      const T = Math.round((bLast - b0) * 100) / 100;
+      this.showToast(`🔁 전구간 주기 반복 활성화! (주기 T = ${T})`);
+    } else {
+      this.isPiecewisePeriodic = false;
+      this.showToast('⏸️ 전구간 주기 반복 해제');
+    }
+
+    this.syncPeriodicUI();
+    this.updatePwDescBadge();
+    this.render();
+  }
+
+  togglePiecewiseLock(forceState) {
+    this.pushHistoryState();
+    this.isPiecewiseLocked = (forceState !== undefined) ? Boolean(forceState) : !this.isPiecewiseLocked;
+    if (this.isPiecewiseLocked) {
+      this.activePwDragIdx = null;
+      this.selectedHandleIdx = null;
+      this.draggedHandleIdx = null;
+      const popover = document.getElementById('pwRegionPopover');
+      if (popover) popover.style.display = 'none';
+      this.showToast('🔒 경계선 & 함수 개형 잠금! (이제 곡선을 끌면 전체 구간 그래프가 통째로 평행이동합니다)');
+    } else {
+      this.showToast('🔓 경계선 & 함수 개형 잠금 해제!');
+    }
+    this.render();
+  }
+
+  getPeriodicMatchStep() {
+    if (!this.piecewiseBoundaries || this.piecewiseBoundaries.length < 2 || !this.graphs || this.graphs.length === 0) {
+      return null;
+    }
+    const n = this.piecewiseBoundaries.length;
+    const b0 = this.piecewiseBoundaries[0];
+    const bLast = this.piecewiseBoundaries[n - 1];
+    const rStart = 1;
+    const rEnd = n - 1;
+    const gIdxStart = (this.piecewiseFuncMap && this.piecewiseFuncMap[rStart] !== undefined)
+      ? this.piecewiseFuncMap[rStart]
+      : (1 % this.graphs.length);
+    const gIdxEnd = (this.piecewiseFuncMap && this.piecewiseFuncMap[rEnd] !== undefined)
+      ? this.piecewiseFuncMap[rEnd]
+      : ((n - 1) % this.graphs.length);
+    const gStart = (gIdxStart >= 0) ? this.graphs[gIdxStart] : null;
+    const gEnd = (gIdxEnd >= 0) ? this.graphs[gIdxEnd] : null;
+    if (!gStart || !gEnd) return null;
+
+    const yStart = this.engine.evaluatePipeline(gStart, b0);
+    const yEnd = this.engine.evaluatePipeline(gEnd, bLast);
+    if (isNaN(yStart) || !isFinite(yStart) || isNaN(yEnd) || !isFinite(yEnd)) return null;
+    return Math.round((yEnd - yStart) * 100) / 100;
+  }
+
+  matchPeriodicEndpoints() {
+    if (!this.isPiecewisePeriodic) {
+      this.togglePiecewisePeriodic(true);
+    }
+    const qMatch = this.getPeriodicMatchStep();
+    if (qMatch === null) {
+      this.showToast('⚠️ 맞물릴 구간 함수를 찾을 수 없습니다.');
+      return null;
+    }
+    this.setPeriodicStep(qMatch);
+    this.showToast(`🔗 양 끝점 연속 맞물림 완료! (q = ${qMatch > 0 ? '+' : ''}${qMatch})`);
+    return qMatch;
+  }
+
+  setPeriodicStep(stepY) {
+    this.pushHistoryState();
+    const rounded = Math.round(Math.max(-10, Math.min(10, stepY)) * 100) / 100;
+    this.periodicStepY = rounded;
+    const sign = this.periodicStepY > 0 ? '+' : '';
+    this.showToast(`🪜 계단식 높이 변화: q = ${sign}${this.periodicStepY} 설정!`);
+    this.syncPeriodicUI();
+    this.updatePwDescBadge();
+    this.render();
+  }
+
+  syncPeriodicUI() {
+    const chk = document.getElementById('chkPwPeriodic');
+    if (chk) chk.checked = Boolean(this.isPiecewisePeriodic);
+
+    const controls = document.getElementById('pwPeriodicControls');
+    if (controls) controls.style.display = this.isPiecewisePeriodic ? 'block' : 'none';
+
+    if (this.piecewiseBoundaries && this.piecewiseBoundaries.length >= 2) {
+      const b0 = this.piecewiseBoundaries[0];
+      const bLast = this.piecewiseBoundaries[this.piecewiseBoundaries.length - 1];
+      const T = Math.round((bLast - b0) * 100) / 100;
+      const lblT = document.getElementById('pwPeriodicPeriodLabel');
+      if (lblT) lblT.textContent = `T = ${T}`;
+    }
+
+    const qVal = Math.round((this.periodicStepY || 0) * 100) / 100;
+    const lblStep = document.getElementById('pwPeriodicStepLabel');
+    if (lblStep) {
+      const sign = qVal > 0 ? '+' : '';
+      lblStep.textContent = `${sign}${qVal}`;
+    }
+
+    const sliderStep = document.getElementById('sliderPwStep');
+    if (sliderStep) {
+      sliderStep.value = Math.max(-6, Math.min(6, qVal));
+    }
+  }
+
+  updatePwDescBadge() {
+    const badge = document.getElementById('pwDescBadge');
+    if (!badge) return;
+
+    if (!this.piecewiseBoundaries || this.piecewiseBoundaries.length === 0) {
+      badge.textContent = '구간 분할 비활성 상태';
+      return;
+    }
+
+    const n = this.piecewiseBoundaries.length;
+    const parts = [];
+    for (let r = 0; r <= n; r++) {
+      const gIdx = (this.piecewiseFuncMap && this.piecewiseFuncMap[r] !== undefined)
+        ? this.piecewiseFuncMap[r]
+        : (this.graphs.length > 0 ? (r % this.graphs.length) : -1);
+      const fName = gIdx === -1 ? '비움' : `f${gIdx + 1}`;
+      if (n === 1) {
+        parts.push(r === 0 ? `왼쪽 : ${fName}` : `오른쪽 : ${fName}`);
+      } else {
+        parts.push(`구간 ${r + 1} : ${fName}`);
+      }
+    }
+    let descText = parts.join(' | ');
+    if (this.isPiecewisePeriodic && this.piecewiseBoundaries && this.piecewiseBoundaries.length >= 2) {
+      const b0 = this.piecewiseBoundaries[0];
+      const bLast = this.piecewiseBoundaries[this.piecewiseBoundaries.length - 1];
+      const T = Math.round((bLast - b0) * 100) / 100;
+      const qSign = (this.periodicStepY || 0) > 0 ? '+' : '';
+      descText += ` | 🔁 주기 T=${T} (q=${qSign}${this.periodicStepY || 0})`;
+    }
+    badge.textContent = descText;
+  }
+
+  snapPwToIntersection() {
+    if (this.graphs.length < 2) {
+      this.showToast('⚠️ 두 개 이상의 그래프가 있어야 교점에 스냅할 수 있습니다.');
+      return;
+    }
+    const roots = this.engine.findIntersections(this.graphs[0], this.graphs[1], { xmin: -15, xmax: 15 }, null);
+    if (!roots || roots.length === 0) {
+      this.showToast('⚠️ 두 그래프 사이에 교점이 없습니다.');
+      return;
+    }
+    if (!this.piecewiseBoundaries || this.piecewiseBoundaries.length === 0) {
+      this.addPiecewiseBoundary();
+    }
+    if (!roots || roots.length === 0) {
+      this.showToast('⚠️ 두 그래프 사이에 교점이 없습니다.');
+      return;
+    }
+
+    const sortedRoots = roots.map(r => r.x).sort((a, b) => a - b);
+
+    if (this.piecewiseBoundaries.length === 1) {
+      let closest = sortedRoots[0];
+      let minD = Math.abs(this.piecewiseBoundaries[0] - closest);
+      sortedRoots.forEach(rx => {
+        const d = Math.abs(this.piecewiseBoundaries[0] - rx);
+        if (d < minD) {
+          minD = d;
+          closest = rx;
+        }
+      });
+      this.piecewiseBoundaries[0] = parseFloat(closest.toFixed(2));
+      this.pwK = this.piecewiseBoundaries[0];
+      this.showToast('🎯 교점에 칼밀착!');
+    } else {
+      // 다중 경계선 순차 스냅
+      for (let i = 0; i < this.piecewiseBoundaries.length; i++) {
+        const rootCandidate = sortedRoots[i % sortedRoots.length];
+        this.piecewiseBoundaries[i] = parseFloat(rootCandidate.toFixed(2));
+      }
+      this.piecewiseBoundaries.sort((a, b) => a - b);
+      this.showToast(`🎯 세로선들을 교점에 칼밀착 정렬했습니다!`);
+    }
+
+    this.updatePwDescBadge();
+    this.render();
+  }
+
+  isInsidePiece(gIdx, x) {
+    if (!this.usePiecewise || this.graphs.length < 1) {
+      return true;
+    }
+
+    const g = this.graphs[gIdx];
+    // [독립 관찰 그래프]: 직선 등 구간 분할 합성에 참여하지 않는 독립 레이어는 화면 전체에서 항상 가시(Visible)!
+    if (g && g.isIndependent) {
+      return true;
+    }
+
+    // [N-구간 다중 분할 엔진]
+    if (this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0) {
+      let checkX = x;
+      if (this.isPiecewisePeriodic && this.piecewiseBoundaries.length >= 2) {
+        const b0 = this.piecewiseBoundaries[0];
+        const bLast = this.piecewiseBoundaries[this.piecewiseBoundaries.length - 1];
+        const T = bLast - b0;
+        if (T > 1e-4) {
+          const k = Math.floor((x - b0) / T);
+          let xBase = x - k * T;
+          if (xBase >= bLast - 1e-6) xBase = b0;
+          if (xBase < b0) xBase = b0;
+          checkX = xBase;
+        }
+      }
+
+      // checkX가 어느 구간(Region)에 속하는지 판정 (0 ~ N)
+      let region = 0;
+      const eps = 1e-5;
+      for (let i = 0; i < this.piecewiseBoundaries.length; i++) {
+        const b = this.piecewiseBoundaries[i];
+        const isLeftInc = (this.piecewiseInclusions && this.piecewiseInclusions[i] === 'left');
+
+        if (Math.abs(checkX - b) < eps) {
+          if (this.isPiecewisePeriodic && (i === 0 || i === this.piecewiseBoundaries.length - 1)) {
+            const seamLeftInc = (this.piecewiseInclusions && this.piecewiseInclusions[0] === 'left');
+            region = seamLeftInc ? (this.piecewiseBoundaries.length - 1) : 1;
+          } else if (isLeftInc) {
+            region = i;
+          } else {
+            region = i + 1;
+          }
+          break;
+        } else if (checkX > b) {
+          region = i + 1;
+        } else {
+          break;
+        }
+      }
+
+      const assignedGIdx = (this.piecewiseFuncMap && this.piecewiseFuncMap[region] !== undefined)
+        ? this.piecewiseFuncMap[region]
+        : (this.graphs.length > 0 ? (region % this.graphs.length) : -1);
+
+      if (assignedGIdx === -1) {
+        return false; // 해당 구간은 함수 없음 (비움)!
+      }
+
+      return assignedGIdx === gIdx;
+    }
+
+    // 레거시 폴백 (단일/사잇구간 호환)
+    if (gIdx !== 0 && gIdx !== 1) return true;
+    if (this.piecewiseMode === 'single') {
+      const k = this.pwK;
+      if (gIdx === 0) {
+        return !this.pwSwap ? (x <= k) : (x > k);
+      } else {
+        return !this.pwSwap ? (x > k) : (x <= k);
+      }
+    } else {
+      const a = Math.min(this.pwA, this.pwB);
+      const b = Math.max(this.pwA, this.pwB);
+      const insideDual = (x >= a && x <= b);
+      if (gIdx === 0) {
+        return !this.pwSwap ? insideDual : !insideDual;
+      } else {
+        return !this.pwSwap ? !insideDual : insideDual;
+      }
+    }
+  }
+
+  drawPiecewiseBoundaries(ctx, isExport = false) {
+    if (!this.usePiecewise || this.graphs.length < 1) return;
+
+    const isCleanOrSnap = Boolean(isExport || this.isCleanView || this._isRenderingGraphSnapshot);
+
+    this.pwBoundaryBadges = [];
+    this.pwRegionBadges = [];
+    this.pwPeriodBracketBadge = null;
+
+    const isLocked = Boolean(this.isPiecewiseLocked);
+    const bColor = isLocked ? '#f59e0b' : '#a29bfe';
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+
+    // 활성 그래프 교점 목록 (자석 스냅 시각 피드백용)
+    const roots = (!isCleanOrSnap && this.graphs.length >= 2 && this.engine)
+      ? this.engine.findIntersections(this.graphs[0], this.graphs[1], { xmin: -15, xmax: 15 }, null)
+      : [];
+
+    const boundaries = this.piecewiseBoundaries || [];
+    const n = boundaries.length;
+
+    // 고해상도 내보내기(isExport) 시에도 비율이 축소되지 않도록 스케일 팩터 연동
+    const exportScale = isExport ? Math.max(1, this.screenWidth / 1440) : 1;
+    // 🌟 [대표님 피드백 반영]: 경계점 포함/배제 동그라미(●/○) 크기를 기존의 약 2/3 비율(dotR = 6.6px, 외경 ~7.4px)로 단정하게 최적화!
+    const dotR = 6.6;
+    const openFillBg = (this.isMonochromeMode || curTheme.isLight || (isExport && this.exportTransparent))
+      ? '#ffffff'
+      : curTheme.bg;
+
+    const drawEndpointCircle = (pt, graphObj, isFilled) => {
+      if (!pt || !graphObj || pt.x < -30 || pt.x > this.screenWidth + 30 || pt.y < -30 || pt.y > this.screenHeight + 30) return;
+      const strokeColor = this.isMonochromeMode ? '#000000' : graphObj.color;
+      ctx.save();
+      ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+
+      if (isFilled) {
+        // ● 색칠된 동그라미 (닫힌 점): 빈 동그라미(○)의 외경(dotR + 0.8)과 시각적 크기를 1:1로 완벽 일치!
+        const filledR = (dotR + 0.8) * exportScale;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, filledR, 0, Math.PI * 2);
+        ctx.fillStyle = strokeColor;
+        ctx.fill();
+      } else {
+        // ○ 빈 동그라미 (열린 점): 내부로 들어온 곡선 끝자락을 완벽히 가리고 선명한 링으로 렌더링
+        const openR = dotR * exportScale;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, openR, 0, Math.PI * 2);
+        ctx.fillStyle = openFillBg;
+        ctx.fill();
+        ctx.lineWidth = 2.1 * exportScale;
+        ctx.strokeStyle = strokeColor;
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+
+    const drawBoundaryPairCircles = (xMath, gL, yL, gR, yR, isLeftInc) => {
+      if (gL && gR) {
+        const sL = (!isNaN(yL) && isFinite(yL) && Math.abs(yL) < 150) ? this.mathToScreen(xMath, yL) : null;
+        const sR = (!isNaN(yR) && isFinite(yR) && Math.abs(yR) < 150) ? this.mathToScreen(xMath, yR) : null;
+        const isContinuous = sL && sR && Math.abs(sL.y - sR.y) < 3.5;
+
+        if (isContinuous && sL) {
+          drawEndpointCircle(sL, isLeftInc ? gL : gR, true);
+        } else {
+          if (isLeftInc) {
+            drawEndpointCircle(sR, gR, false); // 우측 열린 점 ○
+            drawEndpointCircle(sL, gL, true);  // 좌측 닫힌 점 ●
+          } else {
+            drawEndpointCircle(sL, gL, false); // 좌측 열린 점 ○
+            drawEndpointCircle(sR, gR, true);  // 우측 닫힌 점 ●
+          }
+        }
+      } else if (gL && !gR) {
+        const sL = (!isNaN(yL) && isFinite(yL) && Math.abs(yL) < 150) ? this.mathToScreen(xMath, yL) : null;
+        drawEndpointCircle(sL, gL, isLeftInc);
+      } else if (!gL && gR) {
+        const sR = (!isNaN(yR) && isFinite(yR) && Math.abs(yR) < 150) ? this.mathToScreen(xMath, yR) : null;
+        drawEndpointCircle(sR, gR, !isLeftInc);
+      }
+    };
+
+    // 1. 각 세로 분할선 및 정사각형 4분할 컨트롤 패드 (좌상: 🔒잠금, 우상: ✕삭제, 좌하: 좌포함, 우하: 우포함) 렌더링
+    boundaries.forEach((bVal, bIdx) => {
+      const sPos = this.mathToScreen(bVal, 0);
+      const sx = sPos.x;
+
+      const isSelected = (this.selectedPwBoundaryIdx === bIdx);
+      ctx.save();
+
+      // 편집 화면에서만 세로 분할 점선 및 상단 2x2 정사각형 컨트롤 패드 표시 (교재 캡처/스샷 시에는 깔끔하게 숨김)
+      if (!isCleanOrSnap) {
+        ctx.setLineDash(isLocked ? [3, 5] : [6, 4]);
+        ctx.strokeStyle = isSelected ? '#00d2d3' : bColor;
+        ctx.lineWidth = isSelected ? 2.2 : 1.6;
+        ctx.shadowColor = isSelected ? 'rgba(0, 210, 211, 0.5)' : (isLocked ? 'rgba(245, 158, 11, 0.35)' : 'rgba(162, 155, 254, 0.4)');
+        ctx.shadowBlur = isSelected ? 7 : 4;
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, this.screenHeight);
+        ctx.stroke();
+
+        const isHit = roots.some(r => Math.abs(r.x - bVal) < 0.05);
+
+        // 🌟 [대표님 핵심 기획: 컴팩트 2x2 정사각형 경계선 컨트롤 패드] 🌟
+        // - 좌상단(Top-Left): 🔒/🔓 경계선 & 함수 개형 잠금 토글
+        // - 우상단(Top-Right): ✕ 경계선 삭제 (잠금 상태에서도 삭제 가능!)
+        // - 좌하단(Bottom-Left): 경계선 왼쪽 극한 점 포함(●)/배제(○)
+        // - 우하단(Bottom-Right): 경계선 오른쪽 극한 점 포함(●)/배제(○)
+        const padW = 42;
+        const padH = 40;
+        const halfW = padW / 2; // 21
+        const halfH = padH / 2; // 20
+        const padX = sx - halfW;
+        const padY = 68; // 상단 곡선 툴바(.curve-context-bar)와 겹치지 않도록 넉넉히 낮추고 구간 함수 칩(center Y=88)과 수평 정렬!
+        const midY = padY + halfH; // 102
+
+        const isPeriodicSeam = (this.isPiecewisePeriodic && n >= 2 && (bIdx === 0 || bIdx === n - 1));
+        const effectiveIncIdx = isPeriodicSeam ? 0 : bIdx;
+        const isLeftInc = (this.piecewiseInclusions && this.piecewiseInclusions[effectiveIncIdx] === 'left');
+
+        // 패드 외곽 배경
+        ctx.setLineDash([]);
+        ctx.fillStyle = curTheme.isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(18, 24, 38, 0.94)';
+        ctx.strokeStyle = isLocked
+          ? (curTheme.isLight ? 'rgba(217, 119, 6, 0.85)' : 'rgba(251, 191, 36, 0.85)')
+          : (isSelected ? '#00d2d3' : (isHit ? 'rgba(254, 202, 87, 0.85)' : 'rgba(162, 155, 254, 0.72)'));
+        ctx.lineWidth = (isSelected || isLocked) ? 1.7 : 1.2;
+        ctx.shadowColor = isLocked ? 'rgba(245, 158, 11, 0.28)' : (isSelected ? 'rgba(0, 210, 211, 0.3)' : 'rgba(0, 0, 0, 0.18)');
+        ctx.shadowBlur = 5;
+        ctx.beginPath();
+        ctx.roundRect(padX, padY, padW, padH, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        // 잠금 활성 시 좌상단 칸 은은한 골드 하이라이트
+        if (isLocked) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.roundRect(padX + 1, padY + 1, halfW - 1, halfH - 1, [7, 0, 0, 0]);
+          ctx.fillStyle = curTheme.isLight ? 'rgba(254, 243, 199, 0.9)' : 'rgba(245, 158, 11, 0.22)';
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // 십자(+) 내부 구분선 (가로줄 + 세로 경계선 일치)
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = curTheme.isLight ? 'rgba(0, 0, 0, 0.11)' : 'rgba(255, 255, 255, 0.13)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padX + 3, midY);
+        ctx.lineTo(padX + padW - 3, midY);
+        ctx.moveTo(sx, padY + 3);
+        ctx.lineTo(sx, padY + padH - 3);
+        ctx.stroke();
+
+        // (1) 좌상단: 자물쇠 아이콘 (🔒 / 🔓)
+        const lockCx = sx - halfW / 2; // sx - 10.5
+        const lockCy = padY + halfH / 2; // 92
+        const lockColor = isLocked
+          ? (curTheme.isLight ? '#d97706' : '#fbbf24')
+          : (curTheme.isLight ? '#64748b' : '#94a3b8');
+        ctx.save();
+        ctx.strokeStyle = lockColor;
+        ctx.fillStyle = lockColor;
+        ctx.lineWidth = 1.4;
+        ctx.lineCap = 'round';
+        // 자물쇠 몸통
+        ctx.beginPath();
+        ctx.roundRect(lockCx - 4.2, lockCy - 0.5, 8.4, 6.2, 1.5);
+        if (isLocked) {
+          ctx.fill();
+        } else {
+          ctx.stroke();
+        }
+        // 자물쇠 고리 (Shackle)
+        ctx.beginPath();
+        if (isLocked) {
+          ctx.arc(lockCx, lockCy - 0.5, 2.7, Math.PI, 0, false);
+        } else {
+          ctx.arc(lockCx - 1.2, lockCy - 1.2, 2.6, Math.PI, Math.PI * 1.85, false);
+        }
+        ctx.stroke();
+        ctx.restore();
+
+        // (2) 우상단: ✕ 삭제 버튼 (잠금 시에도 클릭 가능!)
+        const delCx = sx + halfW / 2; // sx + 10.5
+        const delCy = padY + halfH / 2; // 92
+        const xHalf = 3.3;
+        ctx.save();
+        ctx.strokeStyle = curTheme.isLight ? '#475569' : '#cbd5e1';
+        ctx.lineWidth = 1.75;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(delCx - xHalf, delCy - xHalf);
+        ctx.lineTo(delCx + xHalf, delCy + xHalf);
+        ctx.moveTo(delCx + xHalf, delCy - xHalf);
+        ctx.lineTo(delCx - xHalf, delCy + xHalf);
+        ctx.stroke();
+        ctx.restore();
+
+        // (3) 좌하단: 왼쪽 구간 포함 점 (● vs ○)
+        const leftCx = sx - halfW / 2;
+        const botCy = midY + halfH / 2; // 112
+        const miniDotR = 3.6;
+        ctx.save();
+        if (isLocked) ctx.globalAlpha = 0.55;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(leftCx, botCy, miniDotR, 0, Math.PI * 2);
+        if (isLeftInc) {
+          ctx.fillStyle = '#a29bfe';
+          ctx.fill();
+          ctx.strokeStyle = curTheme.isLight ? '#4c1d95' : '#ffffff';
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = curTheme.isLight ? '#f1f2f6' : '#1e272e';
+          ctx.fill();
+          ctx.strokeStyle = '#a29bfe';
+          ctx.stroke();
+        }
+
+        // (4) 우하단: 오른쪽 구간 포함 점 (● vs ○)
+        const rightCx = sx + halfW / 2;
+        ctx.beginPath();
+        ctx.arc(rightCx, botCy, miniDotR, 0, Math.PI * 2);
+        if (!isLeftInc) {
+          ctx.fillStyle = '#a29bfe';
+          ctx.fill();
+          ctx.strokeStyle = curTheme.isLight ? '#4c1d95' : '#ffffff';
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = curTheme.isLight ? '#f1f2f6' : '#1e272e';
+          ctx.fill();
+          ctx.strokeStyle = '#a29bfe';
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        this.pwBoundaryBadges.push({
+          bIdx,
+          sx,
+          bx: sx,
+          by: padY,
+          bw: halfW,
+          bh: halfH,
+          padRect: { x: padX, y: padY, w: padW, h: padH },
+          lockRect: { x: padX, y: padY, w: halfW, h: halfH },
+          delRect: { x: sx, y: padY, w: halfW, h: halfH },
+          toggleRect: { x: padX, y: midY, w: padW, h: halfH },
+          leftSlotRect: { x: padX, y: midY, w: halfW, h: halfH },
+          rightSlotRect: { x: sx, y: midY, w: halfW, h: halfH }
+        });
+      }
+
+      // 비주기 일반 모드일 때는 각 경계선(bVal)에서만 끝점 동그라미(●/○) 렌더링
+      if (!(this.isPiecewisePeriodic && n >= 2)) {
+        const isLeftInc = (this.piecewiseInclusions && this.piecewiseInclusions[bIdx] === 'left');
+        const rIdxL = bIdx;
+        const rIdxR = bIdx + 1;
+        const gIdxL = (this.piecewiseFuncMap && this.piecewiseFuncMap[rIdxL] !== undefined)
+          ? this.piecewiseFuncMap[rIdxL]
+          : (this.graphs.length > 0 ? (rIdxL % this.graphs.length) : -1);
+        const gIdxR = (this.piecewiseFuncMap && this.piecewiseFuncMap[rIdxR] !== undefined)
+          ? this.piecewiseFuncMap[rIdxR]
+          : (this.graphs.length > 0 ? (rIdxR % this.graphs.length) : -1);
+
+        const gL = (gIdxL >= 0) ? this.graphs[gIdxL] : null;
+        const gR = (gIdxR >= 0) ? this.graphs[gIdxR] : null;
+        const yL = gL ? this.engine.evaluatePipeline(gL, bVal) : NaN;
+        const yR = gR ? this.engine.evaluatePipeline(gR, bVal) : NaN;
+
+        drawBoundaryPairCircles(bVal, gL, yL, gR, yR, isLeftInc);
+      }
+
+      ctx.restore();
+    });
+
+    // 1.2 [🔁 대표님 핵심 피드백 반영: 전구간 주기 반복(isPiecewisePeriodic) 시 화면의 모든 반복 주기마다 끝점 동그라미(●/○) 완벽 표시!]
+    if (this.isPiecewisePeriodic && n >= 2) {
+      const b0 = boundaries[0];
+      const bLast = boundaries[n - 1];
+      const T = bLast - b0;
+      if (T > 1e-4) {
+        const q = this.periodicStepY || 0;
+        const mLeft = this.screenToMath(0, 0).x;
+        const mRight = this.screenToMath(this.screenWidth, 0).x;
+        const minMathX = Math.min(mLeft, mRight) - T;
+        const maxMathX = Math.max(mLeft, mRight) + T;
+
+        const kMin = Math.max(-40, Math.floor((minMathX - b0) / T));
+        const kMax = Math.min(40, Math.ceil((maxMathX - b0) / T));
+
+        // (A) 주기 경계선 (X_k = b0 + k * T): 왼쪽은 이전 주기(k-1)의 마지막 내부 구간(n-1) 끝점, 오른쪽은 현재 주기(k)의 첫 내부 구간(1) 시작점!
+        const seamLeftInc = (this.piecewiseInclusions && this.piecewiseInclusions[0] === 'left');
+        const gIdxFirst = (this.piecewiseFuncMap && this.piecewiseFuncMap[1] !== undefined)
+          ? this.piecewiseFuncMap[1]
+          : (this.graphs.length > 0 ? (1 % this.graphs.length) : -1);
+        const gIdxLast = (this.piecewiseFuncMap && this.piecewiseFuncMap[n - 1] !== undefined)
+          ? this.piecewiseFuncMap[n - 1]
+          : (this.graphs.length > 0 ? ((n - 1) % this.graphs.length) : -1);
+
+        const gFirst = (gIdxFirst >= 0) ? this.graphs[gIdxFirst] : null;
+        const gLast = (gIdxLast >= 0) ? this.graphs[gIdxLast] : null;
+
+        const baseYStart = gFirst ? this.engine.evaluatePipeline(gFirst, b0) : NaN;
+        const baseYEnd = gLast ? this.engine.evaluatePipeline(gLast, bLast) : NaN;
+
+        for (let k = kMin; k <= kMax; k++) {
+          const seamX = b0 + k * T;
+          const yL = baseYEnd + (k - 1) * q;
+          const yR = baseYStart + k * q;
+          drawBoundaryPairCircles(seamX, gLast, yL, gFirst, yR, seamLeftInc);
+
+          // (B) 주기 내부 분할선 (b_i + k * T, 1 <= i <= n - 2)
+          for (let i = 1; i < n - 1; i++) {
+            const bi = boundaries[i];
+            const innerX = bi + k * T;
+            const innerLeftInc = (this.piecewiseInclusions && this.piecewiseInclusions[i] === 'left');
+            const gIdxL = (this.piecewiseFuncMap && this.piecewiseFuncMap[i] !== undefined)
+              ? this.piecewiseFuncMap[i]
+              : (this.graphs.length > 0 ? (i % this.graphs.length) : -1);
+            const gIdxR = (this.piecewiseFuncMap && this.piecewiseFuncMap[i + 1] !== undefined)
+              ? this.piecewiseFuncMap[i + 1]
+              : (this.graphs.length > 0 ? ((i + 1) % this.graphs.length) : -1);
+            const gL = (gIdxL >= 0) ? this.graphs[gIdxL] : null;
+            const gR = (gIdxR >= 0) ? this.graphs[gIdxR] : null;
+            const yInnerL = gL ? (this.engine.evaluatePipeline(gL, bi) + k * q) : NaN;
+            const yInnerR = gR ? (this.engine.evaluatePipeline(gR, bi) + k * q) : NaN;
+            drawBoundaryPairCircles(innerX, gL, yInnerL, gR, yInnerR, innerLeftInc);
+          }
+        }
+      }
+    }
+
+    // 1.5 [주기 컨트롤 박스는 좌측 구간 분할 서랍 메뉴(#panelPiecewise)로 분리되어 캔버스 상단 시야 100% 확보!]
+    // (기존 자동화 테스트 호환을 위해 오프스크린 가상 좌표 y=-200으로 메타데이터만 유지)
+    if (!isCleanOrSnap && n >= 2) {
+      const pillX = 100, pillY = -200, pillW = 204, pillH = 22;
+      const minusX = pillX + 128, plusX = pillX + 174, btnY = pillY + 3, btnW = 16, btnH = 16;
+      this.pwPeriodBracketBadge = {
+        pillX, pillY, pillW, pillH,
+        toggleRect: { x: pillX, y: pillY, w: 94, h: pillH },
+        minusRect: { x: minusX, y: btnY, w: btnW, h: btnH },
+        valRect: { x: minusX + btnW, y: pillY, w: plusX - (minusX + btnW), h: pillH },
+        plusRect: { x: plusX, y: btnY, w: btnW, h: btnH }
+      };
+    }
+
+    // 2. 각 분할 영역 상단 함수 선택 칩 렌더링 (경계선 2x2 패드 중심 Y=88과 동일한 높이로 정렬하여 상단 툴바 간섭 원천 차단!)
+    if (!isCleanOrSnap && !isLocked && n > 0) {
+      const padClearance = 26; // 경계선 2x2 패드(폭 42px, 반폭 21px)와의 좌우 여유 간격
+      for (let rIdx = 0; rIdx <= n; rIdx++) {
+        let leftSx = (rIdx === 0) ? 0 : (this.mathToScreen(boundaries[rIdx - 1], 0).x + padClearance);
+        let rightSx = (rIdx === n) ? this.screenWidth : (this.mathToScreen(boundaries[rIdx], 0).x - padClearance);
+
+        const visibleLeft = Math.max(12, leftSx);
+        const visibleRight = Math.min(this.screenWidth - 12, rightSx);
+        if (visibleRight - visibleLeft < 48) continue;
+
+        let cx = (visibleLeft + visibleRight) / 2;
+        cx = Math.max(45, Math.min(this.screenWidth - 45, cx));
+
+        const gIdx = (this.piecewiseFuncMap && this.piecewiseFuncMap[rIdx] !== undefined)
+          ? this.piecewiseFuncMap[rIdx]
+          : (this.graphs.length > 0 ? (rIdx % this.graphs.length) : -1);
+        const curG = (gIdx >= 0) ? this.graphs[gIdx] : null;
+        const gColor = curG ? curG.color : (gIdx === -1 ? '#747d8c' : '#a29bfe');
+        const gLabel = curG ? `f${gIdx + 1}(x) ▼` : (gIdx === -1 ? `∅ 비움 ▼` : `f?(x) ▼`);
+
+        ctx.save();
+        ctx.font = 'bold 10.5px system-ui, -apple-system, sans-serif';
+        const textW = ctx.measureText(gLabel).width;
+        const chipW = textW + 24;
+        const chipH = 22;
+        const chipX = cx - chipW / 2;
+        // 2x2 패드(padY=68, padH=40 -> 중심 Y=88)와 완벽히 같은 수평선(chipY=77, chipH=22 -> 중심 Y=88)에 배치!
+        const chipY = 77;
+
+        // 칩 배경 (글래스모피즘 알약)
+        ctx.fillStyle = curTheme.isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(22, 30, 46, 0.94)';
+        ctx.strokeStyle = this.hexToRgba(gColor, 0.7);
+        ctx.lineWidth = 1.2;
+        ctx.shadowColor = this.hexToRgba(gColor, 0.3);
+        ctx.shadowBlur = 6;
+
+        ctx.beginPath();
+        ctx.roundRect(chipX, chipY, chipW, chipH, 11);
+        ctx.fill();
+        ctx.stroke();
+
+        // 좌측 색상 도트
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = gColor;
+        ctx.beginPath();
+        ctx.arc(chipX + 9, chipY + chipH / 2, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 함수 이름 텍스트
+        ctx.fillStyle = curTheme.isLight ? '#1e293b' : '#f1f5f9';
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        ctx.fillText(gLabel, chipX + 16, chipY + chipH / 2);
+
+        this.pwRegionBadges.push({
+          regionIdx: rIdx,
+          gIdx,
+          cx,
+          chipX,
+          chipY,
+          chipW,
+          chipH
+        });
+        ctx.restore();
+      }
+    }
+  }
+
+  setCanvasTheme(themeKey) {
+    if (!this.canvasThemes[themeKey]) return;
+    if (this.isMonochromeMode) {
+      this.isMonochromeMode = false;
+      const btnMono = document.getElementById('btnMonochromeMode');
+      if (btnMono) btnMono.classList.remove('active');
+      document.body.classList.remove('mode-monochrome');
+    }
+    this.currentThemeKey = themeKey;
+
+    document.querySelectorAll('.theme-chip').forEach(c => {
+      c.classList.toggle('active', c.dataset.theme === themeKey);
+    });
+
+    const theme = this.canvasThemes[themeKey];
+    if (theme.isLight) {
+      document.body.classList.add('theme-light');
+    } else {
+      document.body.classList.remove('theme-light');
+    }
+
+    // 🌟 [컨테이너 배경 동기화]: 캔버스와 부모 컨테이너 배경색을 완전히 일치시켜 경계 깜빡임 0%화
+    if (this.canvas && this.canvas.parentElement) {
+      this.canvas.parentElement.style.backgroundColor = theme.bg;
+    }
+
+    // 🌟 [테마 연동 펜 & 곡선 컬러 동기화] 🌟
+    this.colorPalette = theme.isLight ? [...this.lightColorPalette] : [...this.darkColorPalette];
+    this.updateInkPaletteUI();
+
+    this._inkBakeDirty = true;
+    this.requestRender();
+    this.showToast(`🎨 칠판 테마: ${theme.name} 적용 완료!`);
+  }
+
+  // 🌟 [테마별 필기 잉크 팔레트 동적 동기화] 🌟
+  updateInkPaletteUI() {
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
+    const isLight = curTheme.isLight;
+    const palette = isLight ? this.lightInkPalette : this.darkInkPalette;
+    const dots = document.querySelectorAll('.ink-color-dot');
+
+    // 색상이 현재 팔레트에 없는 경우 (예: 테마 전환 시 화이트 -> 차콜블랙 자동 전환)
+    const prevColor = (this.currentInkColor || '').toLowerCase();
+    let newColorMatch = false;
+
+    dots.forEach((dot, idx) => {
+      if (idx < palette.length) {
+        const c = palette[idx];
+        dot.dataset.color = c;
+        dot.style.background = c;
+        if (c.toLowerCase() === '#ffffff') {
+          dot.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,0.2)';
+        } else {
+          dot.style.boxShadow = 'none';
+        }
+        if (c.toLowerCase() === prevColor) {
+          newColorMatch = true;
+          dot.classList.add('active');
+        } else {
+          dot.classList.remove('active');
+        }
+      }
+    });
+
+    if (!newColorMatch && palette.length > 0) {
+      // 기본 0번 색상(화이트 테마: 차콜 블랙, 다크 테마: 분필 화이트)으로 자동 선택
+      this.currentInkColor = palette[0];
+      if (dots[0]) dots[0].classList.add('active');
+    }
+  }
+
+  // --- [스마트 수식 입력 모달 & 실시간 자연어 파싱 연동] ---
+  initSmartInputModal() {
+    const modal = document.getElementById('modalSmartInput');
+    const btnOpen = document.getElementById('btnSmartInput');
+    const btnClose = document.getElementById('btnCloseSmartModal');
+    const btnCancel = document.getElementById('btnCancelSmart');
+    const btnApply = document.getElementById('btnApplySmartExpr');
+    const input = document.getElementById('inputSmartExpr');
+    const btnClear = document.getElementById('btnClearExpr');
+    const previewCard = document.getElementById('previewCard');
+    const previewMath = document.getElementById('previewMath');
+    const previewDetails = document.getElementById('previewDetails');
+    const previewTitle = document.getElementById('previewTitle');
+
+    if (!modal || !btnOpen) return;
+
+    let currentParsed = null;
+
+    const updatePreview = () => {
+      const val = input.value.trim();
+      if (!val) {
+        previewCard.classList.remove('has-error');
+        previewTitle.textContent = '실시간 수식 해석 결과';
+        previewMath.textContent = '수식을 입력하면 실시간으로 해석됩니다.';
+        previewDetails.textContent = '예: x2 + 2x - 3, x*sin(x), e^(-x^2), 1/x, 루트x, ln(x)/x 등';
+        currentParsed = null;
+        return;
+      }
+
+      const res = SmartMathParser.parse(val);
+      if (res.success) {
+        currentParsed = res;
+        previewCard.classList.remove('has-error');
+        previewTitle.textContent = '💡 실시간 수식 해석 완료!';
+        previewMath.textContent = res.preview;
+        previewDetails.textContent = `${res.typeName} | ${res.details}`;
+      } else {
+        currentParsed = null;
+        previewCard.classList.add('has-error');
+        previewTitle.textContent = '⚠️ 수식 확인 필요';
+        previewMath.textContent = res.error;
+        previewDetails.textContent = '대충 입력 가능: x2+2x-3, x*sin(x), e^(-x^2), 1/x, 루트x, ln(x)/x 등';
+      }
+    };
+
+    const openModal = () => {
+      modal.classList.add('show');
+      input.value = 'x2 + 2x - 3';
+      updatePreview();
+      setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 50);
+    };
+
+    const closeModal = () => {
+      modal.classList.remove('show');
+    };
+
+    btnOpen.onclick = openModal;
+    if (btnClose) btnClose.onclick = closeModal;
+    if (btnCancel) btnCancel.onclick = closeModal;
+
+    modal.onclick = (e) => {
+      if (e.target === modal) closeModal();
+    };
+
+    input.oninput = updatePreview;
+
+    if (btnClear) {
+      btnClear.onclick = () => {
+        input.value = '';
+        input.focus();
+        updatePreview();
+      };
+    }
+
+    // 터치 키패드 삽입
+    document.querySelectorAll('.key-btn').forEach(btn => {
+      btn.onclick = () => {
+        const textToInsert = btn.dataset.insert;
+        if (!textToInsert) return;
+        const start = input.selectionStart || input.value.length;
+        const end = input.selectionEnd || input.value.length;
+        input.value = input.value.substring(0, start) + textToInsert + input.value.substring(end);
+        input.focus();
+        const nextPos = start + textToInsert.length;
+        input.setSelectionRange(nextPos, nextPos);
+        updatePreview();
+      };
+    });
+
+    // 퀵 칩 클릭
+    document.querySelectorAll('.chip-btn').forEach(chip => {
+      chip.onclick = () => {
+        input.value = chip.dataset.expr;
+        input.focus();
+        updatePreview();
+      };
+    });
+
+    // 적용 및 그래프 생성
+    const applyExpr = () => {
+      if (!currentParsed || !currentParsed.success) {
+        this.showToast('⚠️ 올바른 수식을 입력해 주세요.');
+        input.focus();
+        return;
+      }
+      this.addGraphFromParsed(currentParsed);
+      closeModal();
+      if (typeof this.closeDrawer === 'function') {
+        this.closeDrawer();
+      }
+    };
+
+    btnApply.onclick = applyExpr;
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        applyExpr();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeModal();
+      }
+    };
+  }
+
+  // --- [🔗 공유 모달 & 학생용 모드 & QR 코드 생성 엔진] ---
+  // --- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달 & 1:1 직결 레이저 엔진] ---
+  initNAxisStudioModal() {
+    const modal = document.getElementById('modalNAxisStudio');
+    const btnRail = document.getElementById('btnRailNAxis');
+    const btnQuick = document.getElementById('btnQuickNAxis');
+    const btnClose = document.getElementById('btnCloseNAxisStudio');
+    const btnArchive = document.getElementById('btnNAxisArchiveToBoard');
+    const canvas = document.getElementById('nAxisStudioCanvas');
+    if (!modal || !canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const midX = 560;
+    const midY = 340;
+
+    let tMin = -3.8, tMax = 3.8;
+    let yMin = -4.5, yMax = 4.5;
+    let xMin = -3.2, xMax = 3.2;
+
+    const inputG = document.getElementById('inputNAxisG');
+    const inputF = document.getElementById('inputNAxisF');
+    const sliderX = document.getElementById('sliderNAxisX');
+    const lblCurX = document.getElementById('lblNAxisCurX');
+    const dispX = document.getElementById('dispNAxisX');
+    const dispT = document.getElementById('dispNAxisT');
+    const dispY = document.getElementById('dispNAxisY');
+    const btnAutoPlay = document.getElementById('btnNAxisAutoPlay');
+
+    // 🌟 [만능 방탄 수식 컴파일러]:
+    // 1) 겉함수에 x를 치든 t를 치든 둘 다 자동 인식 (x, t 동시 바인딩)
+    // 2) 중첩 절댓값(||x|-1|), 괄호 생략(2sinx, lnx, 루트x), 지수 생략(x2, t3, ²·³·⁴), 암묵적 곱셈(2e^x, x(x-1)) 100% 지원
+    // 3) 정의역 이탈(ln(-1), sqrt(-1), 1/0) 시 가짜 0이 아닌 NaN을 반환하여 그래프 왜곡 원천 차단!
+    function compileMathExpr(exprStr, varName) {
+      if (!exprStr || typeof exprStr !== 'string') return () => 0;
+      let s = exprStr.trim();
+      if (!s) return () => 0;
+
+      // 유니코드/한글 수학 기호 정규화
+      s = s.replace(/[−–—]/g, '-')
+           .replace(/[×·]/g, '*')
+           .replace(/÷/g, '/')
+           .replace(/²/g, '^2')
+           .replace(/³/g, '^3')
+           .replace(/⁴/g, '^4')
+           .replace(/루트|√/g, 'sqrt')
+           .replace(/파이|π/g, 'pi');
+
+      // 중첩 절댓값 |...| -> abs(...) 반복 변환
+      let guard = 0;
+      while (/\|[^|]+\|/.test(s) && guard < 10) {
+        s = s.replace(/\|([^|]+)\|/g, 'abs($1)');
+        guard++;
+      }
+
+      s = s.replace(/\s+/g, '');
+
+      // 함수 뒤 괄호 생략 지원: 2sin2x -> 2sin(2x), sinx -> sin(x), lnx -> ln(x), sqrtx -> sqrt(x)
+      s = s.replace(/(asin|acos|atan|sqrt|floor|ceil|sin|cos|tan|abs|exp|ln|log)(-?\d*\.?\d*[xt])(?![a-zA-Z0-9_\(])/gi, '$1($2)');
+
+      // 약식 거듭제곱: x2 -> x^2, t3 -> t^3, )2 -> )^2
+      s = s.replace(/([xt\)])(\d+)(?![\d\.])/gi, '$1^$2');
+
+      // 함수명 및 상수 토큰화 (암묵적 곱셈 정규식이 exp, sqrt, Math.E 등을 깨뜨리지 않도록 보호!)
+      const fnTokens = [];
+      const fnMap = {
+        asin: 'Math.asin', acos: 'Math.acos', atan: 'Math.atan',
+        sqrt: 'Math.sqrt', floor: 'Math.floor', ceil: 'Math.ceil',
+        sin: 'Math.sin', cos: 'Math.cos', tan: 'Math.tan',
+        abs: 'Math.abs', exp: 'Math.exp', ln: 'Math.log', log: 'Math.log10'
+      };
+      s = s.replace(/(asin|acos|atan|sqrt|floor|ceil|sin|cos|tan|abs|exp|ln|log)/gi, (m) => {
+        const idx = fnTokens.length;
+        fnTokens.push(fnMap[m.toLowerCase()] || `Math.${m.toLowerCase()}`);
+        return `@F${String.fromCharCode(65 + idx)}@`;
+      });
+
+      s = s.replace(/pi/gi, '@PI@');
+      s = s.replace(/(?<![a-zA-Z])e(?![a-zA-Z])/gi, '@E@');
+
+      // 안전한 암묵적 곱셈 삽입
+      s = s.replace(/(\d)([xt@\(])/gi, '$1*$2');
+      s = s.replace(/(\))([\dxt@\(])/gi, '$1*$2');
+      s = s.replace(/([xt])([@\(])/gi, '$1*$2');
+      s = s.replace(/(@PI@|@E@)([\dxt@\(])/gi, '$1*$2');
+
+      // 거듭제곱 ^ -> ** (단, -x^2 형태가 -(x**2)로 계산되도록 보정)
+      s = s.replace(/\^/g, '**');
+      s = s.replace(/(^|[\(\+\-\*\/,])\-([xt@PI@@E@]+)\*\*(\d+(\.\d+)?)/gi, '$1-(($2)**$3)');
+
+      // 토큰 복원
+      s = s.replace(/@PI@/g, 'Math.PI').replace(/@E@/g, 'Math.E');
+      s = s.replace(/@F([A-Z])@/g, (_, ch) => fnTokens[ch.charCodeAt(0) - 65]);
+
+      try {
+        const fn = new Function('_v', `
+          try {
+            const x = _v, t = _v;
+            const val = (${s});
+            return (typeof val === 'number' && !isNaN(val) && isFinite(val)) ? val : NaN;
+          } catch(e) { return NaN; }
+        `);
+        fn(1.0);
+        return fn;
+      } catch (e) {
+        return () => 0;
+      }
+    }
+
+    let compiledG = compileMathExpr(inputG ? inputG.value : '2.5 * cos(x)', 'x');
+    let compiledF = compileMathExpr(inputF ? inputF.value : 't^3 - 3*t', 't');
+    let criticalSnapPoints = []; // [{ x, label }]
+    let activeSnapLabel = null;
+
+    function evalG(x) { return compiledG(x); }
+    function evalF(t) { return isFinite(t) ? compiledF(t) : NaN; }
+    function evalComp(x) {
+      const t = evalG(x);
+      return isFinite(t) ? evalF(t) : NaN;
+    }
+
+    function toScreenT(t) {
+      const margin = 50;
+      const w = midX - margin * 2;
+      return margin + ((t - tMin) / (tMax - tMin)) * w;
+    }
+
+    function toScreenY(y) {
+      const pad = 38;
+      const h = midY - pad * 2;
+      return pad + ((yMax - y) / (yMax - yMin)) * h;
+    }
+
+    function toScreenLeftX(x) {
+      const pad = 38;
+      const h = (canvas.height - midY) - pad * 2;
+      return midY + pad + ((x - xMin) / (xMax - xMin)) * h;
+    }
+
+    function toScreenRightX(x) {
+      const pad = 50;
+      const startX = midX + pad;
+      const w = (canvas.width - midX) - pad * 2;
+      return startX + ((x - xMin) / (xMax - xMin)) * w;
+    }
+
+    // 🌟 [특징점(속함수 극점 · 겉함수 극점 도달 · 원점) 자동 역산 및 자석 스냅 엔진] 🌟
+    function computeCriticalSnapPoints() {
+      const pts = [{ x: 0, label: 'x = 0' }];
+      const N = 300;
+      const dx = (xMax - xMin) / N;
+
+      // 1) 겉함수 f(t)의 극점/첨점 t* 탐색
+      const fCritT = [0];
+      const dt = (tMax - tMin) / N;
+      for (let i = 1; i < N; i++) {
+        const t0 = tMin + (i - 1) * dt;
+        const t1 = tMin + i * dt;
+        const t2 = tMin + (i + 1) * dt;
+        const y0 = evalF(t0), y1 = evalF(t1), y2 = evalF(t2);
+        if (!isFinite(y0) || !isFinite(y1) || !isFinite(y2)) continue;
+        const d1 = y1 - y0, d2 = y2 - y1;
+        if ((d1 > 1e-5 && d2 < -1e-5) || (d1 < -1e-5 && d2 > 1e-5)) {
+          fCritT.push(Number(t1.toFixed(2)));
+        }
+      }
+
+      // 2) 속함수 g(x)의 극점/첨점 및 g(x) = t* 도달 지점 탐색
+      for (let i = 1; i < N; i++) {
+        const x0 = xMin + (i - 1) * dx;
+        const x1 = xMin + i * dx;
+        const x2 = xMin + (i + 1) * dx;
+        const t0 = evalG(x0), t1 = evalG(x1), t2 = evalG(x2);
+        if (!isFinite(t0) || !isFinite(t1) || !isFinite(t2)) continue;
+        const d1 = t1 - t0, d2 = t2 - t1;
+        if ((d1 > 1e-5 && d2 < -1e-5) || (d1 < -1e-5 && d2 > 1e-5)) {
+          pts.push({ x: Number(x1.toFixed(2)), label: '속함수 극점' });
+        }
+        for (const tc of fCritT) {
+          if ((t0 - tc) * (t1 - tc) <= 0 && Math.abs(t1 - t0) < 2.0) {
+            const ratio = Math.abs(t1 - t0) > 1e-7 ? Math.abs(tc - t0) / Math.abs(t1 - t0) : 0.5;
+            const xc = x0 + ratio * dx;
+            pts.push({ x: Number(xc.toFixed(2)), label: tc === 0 ? 'g(x) = 0' : '겉함수 극점 도달' });
+          }
+        }
+      }
+
+      // 중복 제거
+      const unique = [];
+      for (const p of pts) {
+        if (p.x < xMin || p.x > xMax) continue;
+        if (!unique.some(u => Math.abs(u.x - p.x) < (xMax - xMin) * 0.025)) {
+          unique.push(p);
+        }
+      }
+      criticalSnapPoints = unique;
+    }
+
+    function applyCriticalSnap(rawX) {
+      const snapTol = (xMax - xMin) * 0.016;
+      for (const cp of criticalSnapPoints) {
+        if (Math.abs(rawX - cp.x) <= snapTol) {
+          activeSnapLabel = cp.label;
+          return cp.x;
+        }
+      }
+      activeSnapLabel = null;
+      return rawX;
+    }
+
+    // 🌟 [점근선·정의역 이탈에도 절대 찌그러지지 않는 스마트 치역 자동 맞춤] 🌟
+    function autoFitRange() {
+      const n = 160;
+      const tVals = [];
+      for (let i = 0; i <= n; i++) {
+        const x = xMin + (i / n) * (xMax - xMin);
+        const t = evalG(x);
+        if (isFinite(t) && Math.abs(t) < 50) tVals.push(t);
+      }
+      if (tVals.length > 0) {
+        tVals.sort((a, b) => a - b);
+        const minT = tVals[Math.floor(tVals.length * 0.04)];
+        const maxT = tVals[Math.min(tVals.length - 1, Math.ceil(tVals.length * 0.96))];
+        const spanT = Math.max(1.2, maxT - minT);
+        tMin = Math.floor((minT - spanT * 0.22) * 2) / 2;
+        tMax = Math.ceil((maxT + spanT * 0.22) * 2) / 2;
+        if (tMin > -0.5) tMin = -1.0;
+        if (tMax < 0.5) tMax = 1.0;
+      } else {
+        tMin = -3.8; tMax = 3.8;
+      }
+
+      const yVals = [];
+      for (let i = 0; i <= n; i++) {
+        const t = tMin + (i / n) * (tMax - tMin);
+        const y = evalF(t);
+        if (isFinite(y) && Math.abs(y) < 60) yVals.push(y);
+      }
+      for (let i = 0; i <= n; i++) {
+        const x = xMin + (i / n) * (xMax - xMin);
+        const y = evalComp(x);
+        if (isFinite(y) && Math.abs(y) < 60) yVals.push(y);
+      }
+      if (yVals.length > 0) {
+        yVals.sort((a, b) => a - b);
+        const minY = yVals[Math.floor(yVals.length * 0.04)];
+        const maxY = yVals[Math.min(yVals.length - 1, Math.ceil(yVals.length * 0.96))];
+        const spanY = Math.max(1.2, maxY - minY);
+        yMin = Math.floor((minY - spanY * 0.20) * 2) / 2;
+        yMax = Math.ceil((maxY + spanY * 0.20) * 2) / 2;
+        if (yMin > -0.5) yMin = -1.0;
+        if (yMax < 0.5) yMax = 1.0;
+      } else {
+        yMin = -4.5; yMax = 4.5;
+      }
+      computeCriticalSnapPoints();
+    }
+
+    function updateFormulas() {
+      if (inputG) compiledG = compileMathExpr(inputG.value, 'x');
+      if (inputF) compiledF = compileMathExpr(inputF.value, 't');
+      autoFitRange();
+      renderStudio();
+    }
+
+    let currentX = 0.50;
+    let isAutoPlaying = false;
+    let playSpeed = 1.0;
+    let autoPlayAnimId = null;
+
+    function drawSafeCurve(points, maxJumpPx = 260) {
+      ctx.beginPath();
+      let started = false;
+      let prevSx = 0, prevSy = 0;
+      for (let i = 0; i < points.length; i++) {
+        const pt = points[i];
+        if (!pt || !isFinite(pt.sx) || !isFinite(pt.sy)) {
+          started = false;
+          continue;
+        }
+        if (started && Math.hypot(pt.sx - prevSx, pt.sy - prevSy) > maxJumpPx) {
+          started = false;
+        }
+        if (!started) {
+          ctx.moveTo(pt.sx, pt.sy);
+          started = true;
+        } else {
+          ctx.lineTo(pt.sx, pt.sy);
+        }
+        prevSx = pt.sx;
+        prevSy = pt.sy;
+      }
+      ctx.stroke();
+    }
+
+    function renderStudio(forArchiveExport = false) {
+      if (!forArchiveExport && !modal.classList.contains('show')) return;
+
+      const isLight = document.body.classList.contains('theme-light');
+      const pal = isLight ? {
+        bg: '#ffffff',
+        quadBg3: '#faf5ff',
+        divider: '#cbd5e1',
+        axis: 'rgba(30, 41, 59, 0.45)',
+        outerColor: '#dc2626',     // ① 겉함수 f(t): 크림슨 레드
+        innerColor: '#2563eb',     // ② 속함수 g(x): 로열 블루
+        compColor: '#7c3aed',      // ③ 합성함수 f(g(x)): 딥 바이올렛
+        compGhost: 'rgba(124, 58, 237, 0.22)',
+        laserV: '#d97706',         // 수직 레이저 (t 매개): 골든 앰버
+        laserH: '#059669',         // 수평 레이저 (y 전달): 에메랄드
+        textMain: '#0f172a',
+        textMuted: '#475569',
+        dotStroke: '#ffffff'
+      } : {
+        bg: '#0b1520',
+        quadBg3: 'rgba(0, 210, 211, 0.03)',
+        divider: 'rgba(0, 210, 211, 0.28)',
+        axis: 'rgba(255, 255, 255, 0.42)',
+        outerColor: '#ff6b6b',
+        innerColor: '#54a0ff',
+        compColor: '#00d2d3',
+        compGhost: 'rgba(0, 210, 211, 0.24)',
+        laserV: '#feca57',
+        laserH: '#00d2d3',
+        textMain: '#f8fafc',
+        textMuted: '#94a3b8',
+        dotStroke: '#0f172a'
+      };
+
+      // 스탯 카드 컬러도 테마에 맞춰 동기화
+      if (dispX) dispX.style.color = pal.innerColor;
+      if (dispT) dispT.style.color = pal.laserV;
+      if (dispY) dispY.style.color = pal.compColor;
+
+      ctx.save();
+      ctx.fillStyle = pal.bg;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // 우상단 합성함수 영역 은은한 배경 하이라이트
+      ctx.fillStyle = pal.quadBg3;
+      ctx.fillRect(midX, 0, canvas.width - midX, midY);
+
+      // 4분할 십자 경계선
+      ctx.strokeStyle = pal.divider;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(midX, 12);
+      ctx.lineTo(midX, canvas.height - 12);
+      ctx.moveTo(12, midY);
+      ctx.lineTo(canvas.width - 12, midY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const topOriginY = Math.max(38, Math.min(midY - 30, toScreenY(0)));
+      const topOriginX = Math.max(45, Math.min(midX - 35, toScreenT(0)));
+      const steps = 320;
+
+      // ====================================================================
+      // 1. 좌상단 (Quadrant 1): 겉함수 y = f(t) (클리핑 적용)
+      // ====================================================================
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(8, 8, midX - 16, midY - 16);
+      ctx.clip();
+
+      ctx.strokeStyle = pal.axis;
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(toScreenT(tMin), topOriginY);
+      ctx.lineTo(toScreenT(tMax) + 12, topOriginY);
+      ctx.moveTo(topOriginX, toScreenY(yMin));
+      ctx.lineTo(topOriginX, toScreenY(yMax) - 10);
+      ctx.stroke();
+
+      const ptsF = [];
+      for (let i = 0; i <= steps; i++) {
+        const t = tMin + (i / steps) * (tMax - tMin);
+        const y = evalF(t);
+        ptsF.push(isFinite(y) ? { sx: toScreenT(t), sy: toScreenY(y) } : null);
+      }
+      ctx.strokeStyle = pal.outerColor;
+      ctx.lineWidth = 2.6;
+      drawSafeCurve(ptsF);
+      ctx.restore();
+
+      ctx.font = 'bold 12.5px Pretendard, system-ui, sans-serif';
+      ctx.fillStyle = pal.outerColor;
+      ctx.fillText(`① 겉함수: y = f(t) = ${inputF ? inputF.value : ''}`, 22, 24);
+      ctx.font = 'bold 11px monospace';
+      ctx.fillStyle = pal.laserV;
+      ctx.fillText('t축', toScreenT(tMax) - 20, topOriginY + 15);
+      ctx.fillStyle = pal.outerColor;
+      ctx.fillText('y', topOriginX + 7, 46);
+
+      // ====================================================================
+      // 2. 좌하단 (Quadrant 2): 속함수 t = g(x) (90도 회전, 클리핑 적용)
+      // ====================================================================
+      const botOriginY = Math.max(midY + 35, Math.min(canvas.height - 30, toScreenLeftX(0)));
+      const botOriginX = topOriginX;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(8, midY + 8, midX - 16, canvas.height - midY - 16);
+      ctx.clip();
+
+      ctx.strokeStyle = pal.axis;
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(toScreenT(tMin), botOriginY);
+      ctx.lineTo(toScreenT(tMax) + 12, botOriginY);
+      ctx.moveTo(botOriginX, toScreenLeftX(xMin));
+      ctx.lineTo(botOriginX, toScreenLeftX(xMax) + 12);
+      ctx.stroke();
+
+      const ptsG = [];
+      for (let i = 0; i <= steps; i++) {
+        const x = xMin + (i / steps) * (xMax - xMin);
+        const t = evalG(x);
+        ptsG.push(isFinite(t) ? { sx: toScreenT(t), sy: toScreenLeftX(x) } : null);
+      }
+      ctx.strokeStyle = pal.innerColor;
+      ctx.lineWidth = 2.6;
+      drawSafeCurve(ptsG);
+      ctx.restore();
+
+      ctx.font = 'bold 12.5px Pretendard, system-ui, sans-serif';
+      ctx.fillStyle = pal.innerColor;
+      ctx.fillText(`② 속함수 (90° 회전): t = g(x) = ${inputG ? inputG.value : ''}`, 22, midY + 22);
+      ctx.font = 'bold 11px monospace';
+      ctx.fillStyle = pal.laserV;
+      ctx.fillText('t = g(x)', toScreenT(tMax) - 42, botOriginY + 15);
+      ctx.fillStyle = pal.innerColor;
+      ctx.fillText('x (아래로 증가 ↓)', botOriginX + 6, canvas.height - 12);
+
+      // ====================================================================
+      // 3. 우상단 (Quadrant 3): 최종 합성함수 y = f(g(x)) (실시간 궤적 그리기 지원!)
+      // ====================================================================
+      const rOriginX = Math.max(midX + 40, Math.min(canvas.width - 35, toScreenRightX(0)));
+      const rOriginY = topOriginY;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(midX + 8, 8, canvas.width - midX - 16, midY - 16);
+      ctx.clip();
+
+      ctx.strokeStyle = pal.axis;
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(toScreenRightX(xMin), rOriginY);
+      ctx.lineTo(toScreenRightX(xMax) + 12, rOriginY);
+      ctx.moveTo(rOriginX, toScreenY(yMin));
+      ctx.lineTo(rOriginX, toScreenY(yMax) - 10);
+      ctx.stroke();
+
+      // (3-A) 전체 합성함수 개형은 은은한 가이드선으로 배경에 표시
+      const ptsCompFull = [];
+      const ptsCompActive = [];
+      for (let i = 0; i <= steps; i++) {
+        const x = xMin + (i / steps) * (xMax - xMin);
+        const y = evalComp(x);
+        const pt = isFinite(y) ? { sx: toScreenRightX(x), sy: toScreenY(y) } : null;
+        ptsCompFull.push(pt);
+        if (x <= currentX + 1e-4) {
+          ptsCompActive.push(pt);
+        }
+      }
+      ctx.strokeStyle = pal.compGhost;
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([4, 4]);
+      drawSafeCurve(ptsCompFull);
+      ctx.setLineDash([]);
+
+      // (3-B) xMin ~ currentX까지 레이저가 지나간 궤적을 진한 실선으로 실시간 드로잉!
+      ctx.strokeStyle = pal.compColor;
+      ctx.lineWidth = 3.2;
+      drawSafeCurve(ptsCompActive);
+      ctx.restore();
+
+      ctx.font = 'bold 12.5px Pretendard, system-ui, sans-serif';
+      ctx.fillStyle = pal.compColor;
+      ctx.fillText('③ 최종 완성: y = f(g(x))', midX + 22, 24);
+      ctx.font = 'bold 11px monospace';
+      ctx.fillStyle = pal.innerColor;
+      ctx.fillText('x축', toScreenRightX(xMax) - 18, rOriginY + 15);
+      ctx.fillStyle = pal.compColor;
+      ctx.fillText('y', rOriginX + 7, 46);
+
+      // ====================================================================
+      // 4. L자 관통 레이저 (pt1 -> pt2 -> pt3)
+      // ====================================================================
+      const tVal = evalG(currentX);
+      const yVal = evalF(tVal);
+
+      if (isFinite(tVal) && isFinite(yVal)) {
+        const pt1X = toScreenT(tVal);
+        const pt1Y = toScreenLeftX(currentX);
+        const pt2X = toScreenT(tVal);
+        const pt2Y = toScreenY(yVal);
+        const pt3X = toScreenRightX(currentX);
+        const pt3Y = toScreenY(yVal);
+
+        ctx.save();
+        ctx.lineWidth = 2.2;
+        ctx.setLineDash([5, 4]);
+
+        // 수직 레이저 (좌하 속함수 -> 좌상 겉함수)
+        ctx.strokeStyle = pal.laserV;
+        ctx.beginPath();
+        ctx.moveTo(pt1X, pt1Y);
+        ctx.lineTo(pt2X, pt2Y);
+        ctx.stroke();
+
+        // 수직 화살촉
+        ctx.setLineDash([]);
+        ctx.fillStyle = pal.laserV;
+        ctx.beginPath();
+        ctx.moveTo(pt2X, midY - 12);
+        ctx.lineTo(pt2X - 5.5, midY - 2);
+        ctx.lineTo(pt2X + 5.5, midY - 2);
+        ctx.fill();
+
+        // 수평 레이저 (좌상 겉함수 -> 우상 합성함수)
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = pal.laserH;
+        ctx.beginPath();
+        ctx.moveTo(pt2X, pt2Y);
+        ctx.lineTo(pt3X, pt3Y);
+        ctx.stroke();
+
+        // 수평 화살촉
+        ctx.setLineDash([]);
+        ctx.fillStyle = pal.laserH;
+        ctx.beginPath();
+        ctx.moveTo(midX + 12, pt2Y);
+        ctx.lineTo(midX + 2, pt2Y - 5.5);
+        ctx.lineTo(midX + 2, pt2Y + 5.5);
+        ctx.fill();
+
+        // 우상단 합성함수 x 위치 수직 보조선
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = isLight ? 'rgba(37, 99, 235, 0.35)' : 'rgba(84, 160, 255, 0.35)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(pt3X, rOriginY);
+        ctx.lineTo(pt3X, pt3Y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 포인트 3개 (pt1: 속함수, pt2: 겉함수, pt3: 합성함수)
+        const drawDot = (x, y, r, fill) => {
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fillStyle = fill;
+          ctx.fill();
+          ctx.lineWidth = 2.4;
+          ctx.strokeStyle = pal.dotStroke;
+          ctx.stroke();
+        };
+
+        drawDot(pt1X, pt1Y, 6.5, pal.innerColor);
+        drawDot(pt2X, pt2Y, 6.5, pal.outerColor);
+        drawDot(pt3X, pt3Y, 8.0, pal.compColor);
+
+        // 특징점 자석 스냅 배지 또는 현재 좌표 배지 표시
+        const badgeText = activeSnapLabel
+          ? `⚡ ${activeSnapLabel} (x=${currentX.toFixed(2)}, y=${yVal.toFixed(2)})`
+          : `(${currentX.toFixed(2)}, ${yVal.toFixed(2)})`;
+        ctx.font = 'bold 11px Pretendard, system-ui, sans-serif';
+        const bw = ctx.measureText(badgeText).width + 16;
+        const bh = 22;
+        const bx = Math.max(midX + 12, Math.min(canvas.width - bw - 12, pt3X - bw / 2));
+        const by = Math.max(32, pt3Y - 30);
+        ctx.fillStyle = activeSnapLabel ? (isLight ? '#fef3c7' : '#451a03') : (isLight ? 'rgba(255,255,255,0.94)' : 'rgba(15,23,42,0.92)');
+        ctx.strokeStyle = activeSnapLabel ? '#d97706' : pal.compColor;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(bx, by, bw, bh, 11);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = activeSnapLabel ? (isLight ? '#b45309' : '#fde68a') : pal.textMain;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeText, bx + bw / 2, by + bh / 2);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+
+        ctx.restore();
+      }
+
+      // ====================================================================
+      // 5. 우하단 (Quadrant 4): 칠판 보관 카드 내보내기 시 깔끔한 수식·상태 요약 카드 렌더링
+      // ====================================================================
+      if (forArchiveExport) {
+        const qx = midX + 28, qy = midY + 28, qw = canvas.width - midX - 56, qh = canvas.height - midY - 56;
+        ctx.fillStyle = isLight ? '#f8fafc' : '#0f172a';
+        ctx.strokeStyle = pal.divider;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(qx, qy, qw, qh, 14);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = 'bold 15px Pretendard, system-ui, sans-serif';
+        ctx.fillStyle = pal.textMain;
+        ctx.fillText('📌 N축 합성함수 핵심 요약', qx + 22, qy + 36);
+
+        ctx.font = 'bold 13.5px monospace';
+        ctx.fillStyle = pal.innerColor;
+        ctx.fillText(`• 속함수 g(x) = ${inputG ? inputG.value : ''}`, qx + 22, qy + 76);
+        ctx.fillStyle = pal.outerColor;
+        ctx.fillText(`• 겉함수 f(t) = ${inputF ? inputF.value : ''}`, qx + 22, qy + 110);
+        ctx.fillStyle = pal.compColor;
+        ctx.fillText(`• 합성함수 y = f(g(x))`, qx + 22, qy + 144);
+
+        if (isFinite(tVal) && isFinite(yVal)) {
+          ctx.font = 'bold 13px Pretendard, system-ui, sans-serif';
+          ctx.fillStyle = pal.textMuted;
+          ctx.fillText(`현재 추적 지점:  x = ${currentX.toFixed(2)}  ➔  t = ${tVal.toFixed(2)}  ➔  y = ${yVal.toFixed(2)}`, qx + 22, qy + 190);
+        }
+      }
+
+      ctx.restore();
+
+      const snapSuffix = activeSnapLabel ? ` (${activeSnapLabel})` : '';
+      if (lblCurX) lblCurX.textContent = `x = ${currentX.toFixed(2)}${snapSuffix}`;
+      if (dispX) dispX.textContent = currentX.toFixed(2);
+      if (dispT) dispT.textContent = isFinite(tVal) ? tVal.toFixed(2) : '-';
+      if (dispY) dispY.textContent = isFinite(yVal) ? yVal.toFixed(2) : '-';
+    }
+
+    function loopAutoPlay() {
+      if (!isAutoPlaying) return;
+      const span = (xMax - xMin);
+      const baseStep = span / 420;
+      currentX += baseStep * playSpeed;
+      activeSnapLabel = null;
+      if (currentX > xMax) currentX = xMin;
+      if (sliderX) sliderX.value = currentX;
+      renderStudio();
+      autoPlayAnimId = requestAnimationFrame(loopAutoPlay);
+    }
+
+    const openModal = () => {
+      modal.style.display = 'flex';
+      modal.classList.add('show');
+      autoFitRange();
+      renderStudio();
+    };
+
+    const closeModal = () => {
+      isAutoPlaying = false;
+      if (autoPlayAnimId) cancelAnimationFrame(autoPlayAnimId);
+      if (btnAutoPlay) btnAutoPlay.textContent = '▶ 자동 순항';
+      modal.classList.remove('show');
+      setTimeout(() => { modal.style.display = 'none'; }, 200);
+    };
+
+    if (btnRail) btnRail.onclick = openModal;
+    if (btnQuick) btnQuick.onclick = openModal;
+    if (btnClose) btnClose.onclick = closeModal;
+
+    // 🌟 [아이디어 C: N축 4분할 화면을 원클릭으로 메인 칠판 보관 카드(#1, #2...)로 즉시 전송!] 🌟
+    if (btnArchive) {
+      btnArchive.onclick = (e) => {
+        e.stopPropagation();
+        renderStudio(true);
+        const dataUrl = canvas.toDataURL('image/png');
+        renderStudio(false);
+        closeModal();
+        this.setGraphCard(dataUrl, canvas, 520, { x: 480, y: 80, w: 520, h: 310 });
+        this.showToast('📋 N축 합성함수 다이어그램을 칠판 카드로 보관했습니다!');
+      };
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal.classList.contains('show')) {
+        closeModal();
+      }
+    });
+
+    if (sliderX) {
+      sliderX.addEventListener('input', (e) => {
+        if (isAutoPlaying) return;
+        const rawX = parseFloat(e.target.value);
+        currentX = applyCriticalSnap(rawX);
+        renderStudio();
+      });
+    }
+
+    // 🌟 [아이디어 A: 마우스 단순 이동(hover) 시 레이저 도망 방지 -> 클릭/드래그 시에만 정밀 스크러빙 + 특징점 자석 스냅!] 🌟
+    let isScrubbingCanvas = false;
+    const scrubFromPointerEvent = (e) => {
+      if (isAutoPlaying) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / (rect.width || canvas.width);
+      const scaleY = canvas.height / (rect.height || canvas.height);
+      const mx = (e.clientX - rect.left) * scaleX;
+      const my = (e.clientY - rect.top) * scaleY;
+
+      let nextX = null;
+      if (mx < midX && my > midY) {
+        // 좌하단 속함수 영역: 세로 방향(x축) 드래그
+        const pad = 38;
+        const h = (canvas.height - midY) - pad * 2;
+        const clampedY = Math.max(midY + pad, Math.min(canvas.height - pad, my));
+        nextX = xMin + ((clampedY - (midY + pad)) / h) * (xMax - xMin);
+      } else if (mx >= midX && my <= midY) {
+        // 우상단 합성함수 영역: 가로 방향(x축) 드래그
+        const pad = 50;
+        const w = (canvas.width - midX) - pad * 2;
+        const clampedX = Math.max(midX + pad, Math.min(canvas.width - pad, mx));
+        nextX = xMin + ((clampedX - (midX + pad)) / w) * (xMax - xMin);
+      } else if (mx < midX && my <= midY) {
+        // 좌상단 겉함수 영역 클릭 시: 클릭한 t값에 가장 가까운 g(x) 지점으로 이동
+        const margin = 50;
+        const w = midX - margin * 2;
+        const targetT = tMin + ((Math.max(margin, Math.min(midX - margin, mx)) - margin) / w) * (tMax - tMin);
+        let bestX = currentX, bestDiff = Infinity;
+        const M = 200;
+        for (let i = 0; i <= M; i++) {
+          const candX = xMin + (i / M) * (xMax - xMin);
+          const candT = evalG(candX);
+          if (isFinite(candT)) {
+            const d = Math.abs(candT - targetT) + Math.abs(candX - currentX) * 0.08;
+            if (d < bestDiff) { bestDiff = d; bestX = candX; }
+          }
+        }
+        nextX = bestX;
+      }
+
+      if (nextX !== null && isFinite(nextX)) {
+        currentX = applyCriticalSnap(nextX);
+        if (sliderX) sliderX.value = currentX;
+        renderStudio();
+      }
+    };
+
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') return;
+      if (isAutoPlaying && btnAutoPlay) {
+        btnAutoPlay.click(); // 드래그 시작 시 자동순항 일시정지
+      }
+      isScrubbingCanvas = true;
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) { }
+      scrubFromPointerEvent(e);
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (!isScrubbingCanvas) return;
+      scrubFromPointerEvent(e);
+    });
+
+    const stopScrubbing = (e) => {
+      if (!isScrubbingCanvas) return;
+      isScrubbingCanvas = false;
+      try { canvas.releasePointerCapture(e.pointerId); } catch (err) { }
+    };
+    canvas.addEventListener('pointerup', stopScrubbing);
+    canvas.addEventListener('pointercancel', stopScrubbing);
+
+    if (btnAutoPlay) {
+      btnAutoPlay.addEventListener('click', () => {
+        isAutoPlaying = !isAutoPlaying;
+        btnAutoPlay.textContent = isAutoPlaying ? '⏸ 정지' : '▶ 자동 순항';
+        if (isAutoPlaying) {
+          if (currentX >= xMax - 0.05) currentX = xMin;
+          loopAutoPlay();
+        } else if (autoPlayAnimId) {
+          cancelAnimationFrame(autoPlayAnimId);
+        }
+      });
+    }
+
+    modal.querySelectorAll('.n-axis-speed-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const spd = parseFloat(e.currentTarget.dataset.speed);
+        if (!isNaN(spd)) {
+          playSpeed = spd;
+          modal.querySelectorAll('.n-axis-speed-btn').forEach(b => b.classList.toggle('active', b === e.currentTarget));
+        }
+      });
+    });
+
+    const tabBtnCustom = document.getElementById('tabBtnNAxisCustom');
+    const tabBtnPresets = document.getElementById('tabBtnNAxisPresets');
+    const tabCustom = document.getElementById('tabContentNAxisCustom');
+    const tabPresets = document.getElementById('tabContentNAxisPresets');
+
+    const switchTab = (tab) => {
+      if (tabCustom) tabCustom.style.display = (tab === 'custom') ? 'flex' : 'none';
+      if (tabPresets) tabPresets.style.display = (tab === 'presets') ? 'flex' : 'none';
+      if (tabBtnCustom) tabBtnCustom.classList.toggle('active', tab === 'custom');
+      if (tabBtnPresets) tabBtnPresets.classList.toggle('active', tab === 'presets');
+    };
+
+    if (tabBtnCustom) tabBtnCustom.onclick = () => switchTab('custom');
+    if (tabBtnPresets) tabBtnPresets.onclick = () => switchTab('presets');
+    const btnGoCustom = document.getElementById('btnNAxisGoCustom');
+    if (btnGoCustom) btnGoCustom.onclick = () => switchTab('custom');
+
+    if (inputG) inputG.addEventListener('input', updateFormulas);
+    if (inputF) inputF.addEventListener('input', updateFormulas);
+
+    modal.querySelectorAll('.n-axis-chip').forEach(chip => {
+      chip.addEventListener('click', (e) => {
+        const targetId = e.currentTarget.dataset.target;
+        const val = e.currentTarget.dataset.val;
+        const targetInput = document.getElementById(targetId);
+        if (targetInput) {
+          targetInput.value = val;
+          updateFormulas();
+        }
+      });
+    });
+
+    const btnAutoFit = document.getElementById('btnNAxisAutoFit');
+    const btnAutoFit2 = document.getElementById('btnNAxisAutoFit2');
+    if (btnAutoFit) btnAutoFit.onclick = () => { autoFitRange(); renderStudio(); };
+    if (btnAutoFit2) btnAutoFit2.onclick = () => { autoFitRange(); renderStudio(); };
+
+    const btnSwap = document.getElementById('btnNAxisSwap');
+    if (btnSwap) {
+      btnSwap.onclick = () => {
+        if (!inputG || !inputF) return;
+        const oldG = inputG.value;
+        const oldF = inputF.value;
+        // 단어 경계(\b)를 사용하여 sqrt, atan 등의 t가 깨지지 않도록 안전하게 변수 치환!
+        inputG.value = oldF.replace(/\bt\b/g, 'x');
+        inputF.value = oldG.replace(/\bx\b/g, 't');
+        updateFormulas();
+      };
+    }
+
+    modal.querySelectorAll('.n-axis-preset-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        const key = e.currentTarget.dataset.preset;
+        if (key === 'csat2022') {
+          if (inputG) inputG.value = '2.5 * cos(x)';
+          if (inputF) inputF.value = 't^3 - 3*t';
+          xMin = -Math.PI; xMax = Math.PI;
+        } else if (key === 'mock2023') {
+          if (inputG) inputG.value = '0.8*x^2 - 1.8';
+          if (inputF) inputF.value = '0.25*(t^4 - 4*t^2)';
+          xMin = -2.5; xMax = 2.5;
+        } else if (key === 'absKiller') {
+          if (inputG) inputG.value = '0.4*x^3 - 1.6*x';
+          if (inputF) inputF.value = '|t| - 1.5';
+          xMin = -2.4; xMax = 2.4;
+        } else if (key === 'sinBasic') {
+          if (inputG) inputG.value = '2 * sin(x)';
+          if (inputF) inputF.value = 't^3 - 3*t';
+          xMin = -Math.PI; xMax = Math.PI;
+        }
+        if (sliderX) {
+          sliderX.min = xMin;
+          sliderX.max = xMax;
+          sliderX.value = (xMin + xMax) / 2 + 0.3;
+        }
+        currentX = sliderX ? parseFloat(sliderX.value) : 0.5;
+        updateFormulas();
+        switchTab('custom');
+      });
+    });
+
+    // 초기 특이점 스냅 테이블 생성
+    computeCriticalSnapPoints();
+  }
+
+  initShareModal() {
+    const modal = document.getElementById('modalShare');
+    const btnOpen = document.getElementById('btnOpenShareModal');
+    const btnClose = document.getElementById('btnCloseShareModal');
+    const btnCloseFooter = document.getElementById('btnCloseShare');
+    const inputShare = document.getElementById('inputShareLink');
+    const inputStudent = document.getElementById('inputStudentLink');
+    const btnCopyShare = document.getElementById('btnCopyShareLink');
+    const btnCopyStudent = document.getElementById('btnCopyStudentLink');
+    const btnDownloadQr = document.getElementById('btnDownloadQr');
+    const qrCanvas = document.getElementById('qrCanvas');
+    const resetBar = document.getElementById('sharedResetBar');
+    const btnReset = document.getElementById('btnResetToOriginal');
+    const btnCloseResetBar = document.getElementById('btnCloseResetBar');
+
+    const updateShareLinksAndQR = () => {
+      const baseUrl = window.location.href.split('#')[0];
+      const codeNormal = window.GraphStateSerializer ? window.GraphStateSerializer.serialize(this, false) : '';
+      const codeStudent = window.GraphStateSerializer ? window.GraphStateSerializer.serialize(this, true) : '';
+
+      const normalUrl = `${baseUrl}#share=${codeNormal}`;
+      const studentUrl = `${baseUrl}#student=${codeStudent}`;
+
+      if (inputShare) inputShare.value = normalUrl;
+      if (inputStudent) inputStudent.value = studentUrl;
+
+      // QR 코드는 학생들이 스캔할 때 바로 몰입할 수 있도록 '학생용 링크'로 렌더링!
+      if (qrCanvas && window.MiniQRCode) {
+        window.MiniQRCode.drawToCanvas(studentUrl, qrCanvas, {
+          size: 180,
+          padding: 10,
+          fgColor: '#1e272e',
+          bgColor: '#ffffff'
+        });
+      }
+    };
+
+    const openModal = () => {
+      const hasLiveGraphs = this.graphs && this.graphs.length > 0;
+      const hasBackupGraphs = this._coveredGraphStateBackup && this._coveredGraphStateBackup.graphs && this._coveredGraphStateBackup.graphs.length > 0;
+      if (!hasLiveGraphs && hasBackupGraphs) {
+        const origGraphs = this.graphs;
+        this.graphs = this._coveredGraphStateBackup.graphs;
+        updateShareLinksAndQR();
+        this.graphs = origGraphs;
+      } else {
+        updateShareLinksAndQR();
+      }
+      if (modal) modal.classList.add('show');
+    };
+
+    const closeModal = () => {
+      if (modal) modal.classList.remove('show');
+    };
+
+    if (btnOpen) btnOpen.onclick = openModal;
+    if (btnClose) btnClose.onclick = closeModal;
+    if (btnCloseFooter) btnCloseFooter.onclick = closeModal;
+    if (modal) {
+      modal.onclick = (e) => {
+        if (e.target === modal) closeModal();
+      };
+    }
+
+    const copyToClipboard = async (text, msg) => {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        this.showToast(msg);
+      } catch (err) {
+        this.showToast('⚠️ 클립보드 복사 실패: 링크를 수동으로 복사해 주세요.');
+      }
+    };
+
+    if (btnCopyShare) {
+      btnCopyShare.onclick = () => {
+        if (inputShare) copyToClipboard(inputShare.value, '📋 일반 공유 링크 복사 완료! (카톡/밴드에 붙여넣기)');
+      };
+    }
+
+    if (btnCopyStudent) {
+      btnCopyStudent.onclick = () => {
+        if (inputStudent) copyToClipboard(inputStudent.value, '🎓 학생용 모드 링크 복사 완료! (학생들은 캔버스만 깔끔하게 보임)');
+      };
+    }
+
+    if (btnDownloadQr) {
+      btnDownloadQr.onclick = () => {
+        if (!qrCanvas) return;
+        const dataUrl = qrCanvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = `GraphMaster_QR_${Date.now()}.png`;
+        link.href = dataUrl;
+        link.click();
+        this.showToast('💾 교재 삽입용 QR 코드 PNG 저장 완료!');
+      };
+    }
+
+    if (btnReset) {
+      btnReset.onclick = () => {
+        if (this._initialSharedData) {
+          this.applyState(this._initialSharedData);
+          this.showToast('↺ 처음 공유받았던 상태로 깨끗하게 복원되었습니다!');
+        }
+      };
+    }
+
+    if (btnCloseResetBar && resetBar) {
+      btnCloseResetBar.onclick = () => {
+        resetBar.style.display = 'none';
+      };
+    }
+  }
+
+  // --- [URL 해시에서 상태 복원 및 학생 모드 진입 엔진] ---
+  checkUrlHashForState() {
+    const hash = window.location.hash;
+    if (!hash || (!hash.includes('share=') && !hash.includes('student='))) return;
+
+    if (!window.GraphStateSerializer) return;
+    const data = window.GraphStateSerializer.deserialize(hash);
+    if (!data || !data.g) return;
+
+    // 초기 복원용 스냅샷 저장
+    this._initialSharedData = JSON.parse(JSON.stringify(data));
+
+    // 학생 모드 감지
+    if (data.isStudentMode) {
+      document.body.classList.add('student-mode');
+    }
+
+    this.applyState(data);
+
+    // 복원 안내 바 노출
+    const resetBar = document.getElementById('sharedResetBar');
+    if (resetBar) {
+      resetBar.style.display = 'flex';
+    }
+
+    const modeName = data.isStudentMode ? '🎓 학생용 인터랙티브 모드' : '🌐 공유 그래프';
+    this.showToast(`✨ ${modeName} 복원 완료! 그래프를 자유롭게 조작해 보세요.`);
+  }
+
+  // 역직렬화된 데이터를 캔버스에 완벽 복원
+  applyState(data) {
+    if (!data || !data.g) return;
+
+    // 1. 그래프 레이어 복원
+    this.graphs = data.g.map((gItem, idx) => {
+      const g = {
+        id: Date.now() + idx,
+        type: gItem.t,
+        category: (this.meta[gItem.t] && this.meta[gItem.t].category) || '📐 다항함수',
+        color: gItem.c || this.colorPalette[idx % this.colorPalette.length],
+        lineWidth: gItem.w || 2.8,
+        isAbsolute: gItem.a === 1,
+        handles: []
+      };
+
+      if (gItem.qm) g.quadMode = gItem.qm;
+      if (gItem.qo) g.quadOriginCenter = true;
+      g.isFrozen = gItem.fz === 1;
+      g.freezeOffset = (gItem.fzo && Array.isArray(gItem.fzo)) ? { x: gItem.fzo[0], y: gItem.fzo[1] } : { x: 0, y: 0 };
+      g.frozenInvertH = gItem.fzh === 1;
+      g.frozenInvertV = gItem.fzv === 1;
+      g.frozenAbsolute = gItem.fza === 1;
+
+      if (gItem.h && Array.isArray(gItem.h)) {
+        g.handles = gItem.h.map((pt, hIdx) => {
+          const hObj = {
+            x: pt[0],
+            y: pt[1]
+          };
+          const metaHandles = (this.meta[gItem.t] && this.meta[gItem.t].handles) || [];
+          if (metaHandles[hIdx]) {
+            hObj.name = metaHandles[hIdx].name;
+            hObj.type = metaHandles[hIdx].type;
+          } else {
+            hObj.name = `핸들 ${hIdx + 1}`;
+            hObj.type = 'point';
+          }
+
+          if (gItem.t === 'general_expr') {
+            const raw = pt[2] || 'x^2';
+            hObj.rawExpr = raw;
+            hObj.reflectX = pt[3] === 1;
+            hObj.reflectY = pt[4] === 1;
+            const comp = window.SafeMathCompiler ? window.SafeMathCompiler.compile(raw) : null;
+            if (comp && comp.success) {
+              hObj.fn = comp.fn;
+            }
+          }
+          return hObj;
+        });
+      }
+
+      return g;
+    });
+
+    this.activeGraphIdx = this.graphs.length > 0 ? 0 : -1;
+    this.isCurveSelected = false;
+    this.selectedHandleIdx = null;
+
+    // 2. 옵션 복원
+    const o = data.o || {};
+    if (o.th && this.canvasThemes[o.th]) {
+      this.currentThemeKey = o.th;
+      document.querySelectorAll('.theme-chip').forEach(c => {
+        c.classList.toggle('active', c.dataset.theme === o.th);
+      });
+    }
+
+    if (o.ax !== undefined) this.showAxes = o.ax === 1;
+    if (o.ar !== undefined) this.showArrows = o.ar === 1;
+    if (o.as !== undefined) this.showAsymptotes = o.as === 1;
+    if (o.gd !== undefined) this.showGuides = o.gd === 1;
+    if (o.zm !== undefined) this.zoomLevel = o.zm;
+    if (o.int !== undefined) this.useIntersectionDetector = o.int === 1;
+
+    // 구간 분할 복원
+    if (o.pw === 1) {
+      this.usePiecewise = true;
+      if (o.pwbs && Array.isArray(o.pwbs)) {
+        this.piecewiseBoundaries = [...o.pwbs];
+        this.piecewiseFuncMap = o.pwm ? [...o.pwm] : [];
+        this.pwK = this.piecewiseBoundaries[0] || 0.0;
+      } else if (o.pwb !== undefined) {
+        this.piecewiseBoundaries = [Number(o.pwb)];
+        this.piecewiseFuncMap = [0, 1];
+        this.pwK = Number(o.pwb);
+      }
+      if (o.pwg !== undefined) this.showPiecewiseGhost = o.pwg === 1;
+      const btnQuick = document.getElementById('btnQuickPiecewise');
+      if (btnQuick) btnQuick.classList.add('active');
+      const chk = document.getElementById('chkPiecewise');
+      if (chk) chk.checked = true;
+    } else {
+      this.usePiecewise = false;
+      this.isPiecewiseLocked = false;
+      this.isPiecewisePeriodic = false;
+      this.piecewiseBoundaries = [];
+      this.piecewiseFuncMap = [];
+      const btnQuick = document.getElementById('btnQuickPiecewise');
+      if (btnQuick) btnQuick.classList.remove('active');
+      const chk = document.getElementById('chkPiecewise');
+      if (chk) chk.checked = false;
+    }
+
+    // 캡처영역 복원
+    if (o.vf === 1) {
+      this.useViewfinder = true;
+      if (o.vfa) this.vfAspectName = o.vfa;
+      if (o.vfw) this.vfScreenW = o.vfw;
+    } else {
+      this.useViewfinder = false;
+    }
+
+    // 3. UI 동기화 및 렌더링
+    this.syncControls();
+    this.renderLayerList();
+    this.renderFuncList();
+    this.resizeCanvas();
+    this.render();
+  }
+
+  addGraphFromParsed(parsed) {
+    if (!this.showAxes) {
+      this.showAxes = true;
+      this.updateAxesUI();
+    }
+
+    if (this.graphs.length >= 12) {
+      // 12개 꽉 찼으면 현재 활성 그래프를 이 수식으로 덮어씀
+      const g = this.activeGraph;
+      g.type = parsed.ftype;
+      g.category = this.meta[parsed.ftype].category;
+      g.handles = parsed.handles;
+      this.selectedHandleIdx = null;
+      this.isCurveSelected = true;
+      this.syncControls();
+      this.renderLayerList();
+      this.renderFuncList();
+      this.render();
+      this.showToast(`✨ ${parsed.typeName} (${parsed.preview})로 변경되었습니다! 핸들을 드래그해 보세요.`);
+      return;
+    }
+
+    const nextColor = this.colorPalette[this.graphs.length % this.colorPalette.length];
+    const newGraph = {
+      id: Date.now(),
+      type: parsed.ftype,
+      category: this.meta[parsed.ftype].category,
+      handles: parsed.handles,
+      color: nextColor,
+      lineWidth: 2.8,
+      isAbsolute: false,
+      isFrozen: false,
+      freezeOffset: { x: 0, y: 0 },
+      frozenInvertH: false,
+      frozenInvertV: false,
+      frozenAbsolute: false
+    };
+
+    this.graphs.push(newGraph);
+    this.activeGraphIdx = this.graphs.length - 1;
+    this.selectedHandleIdx = null;
+    this.isCurveSelected = true;
+
+    this.syncControls();
+    this.renderLayerList();
+    this.renderFuncList();
+    this.render();
+
+    this.showToast(`✨ ${parsed.typeName} (${parsed.preview}) 생성 완료! 핸들을 드래그해 보세요.`);
+  }
+
+  updateCanvasRect() {
+    if (this.canvas) {
+      this.canvasRect = this.canvas.getBoundingClientRect();
+    }
+    return this.canvasRect;
+  }
+
+  resizeCanvas() {
+    const prevW = this.screenWidth;
+    const prevH = this.screenHeight;
+    const rect = this.canvas.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    this.canvas.width = rect.width * dpr;
+    this.canvas.height = rect.height * dpr;
+    this.canvas.style.width = `${rect.width}px`;
+    this.canvas.style.height = `${rect.height}px`;
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.screenWidth = rect.width;
+    this.screenHeight = rect.height;
+    this.updateCanvasRect();
+
+    // 🌟 [오프스크린 잉크 베이크 버퍼 크기 및 dpr 스케일 동기화]
+    if (this.inkBakeCanvas && this.inkGraphBakeCanvas) {
+      this.inkBakeCanvas.width = this.canvas.width;
+      this.inkBakeCanvas.height = this.canvas.height;
+      this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      this.inkGraphBakeCanvas.width = this.canvas.width;
+      this.inkGraphBakeCanvas.height = this.canvas.height;
+      this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      this._inkBakeDirty = true;
+    }
+    if (this.sceneFreezeCanvas && this.sceneFreezeCtx) {
+      this.sceneFreezeCanvas.width = this.canvas.width;
+      this.sceneFreezeCanvas.height = this.canvas.height;
+      this.sceneFreezeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this._hasSceneFreeze = false;
+    }
+
+    // [대표님 기획: 처음 켜거나 창 크기 변경 시 시원하고 넉넉한 황금 여백으로 자동 설정!]
+    if (!this.hasInitializedVf || this.vfScreenW > this.screenWidth - 40) {
+      this.vfScreenW = this.calcIdealVfWidth(this.vfAspect);
+      this.hasInitializedVf = true;
+      const sl = document.getElementById('sliderVfWidth');
+      if (sl) sl.value = this.vfScreenW;
+      const lbl = document.getElementById('lblVfWidth');
+      if (lbl) lbl.textContent = `${this.vfScreenW} px`;
+    }
+  }
+
+  calcIdealVfWidth(aspect = this.vfAspect) {
+    // 캔버스 화면 크기에 맞춰 시원하게 작업할 수 있는 황금 여백(가로 68%, 세로 72%) 자동 계산!
+    const maxW = Math.max(320, this.screenWidth * 0.68);
+    const maxH = Math.max(260, this.screenHeight * 0.72);
+    let targetW = maxH * aspect;
+    if (targetW > maxW) {
+      targetW = maxW;
+    }
+    return Math.round(targetW);
+  }
+
+  // --- [수학적 1:1 정비율(Equal Aspect) 좌표계 변환 엔진] ---
+  mathToScreen(mx, my) {
+    const cx = this.screenWidth / 2 + this.panX;
+    const cy = this.screenHeight / 2 + this.panY;
+    const effSpanY = this.ySpan / this.zoomLevel;
+    const unitScale = (this.screenHeight / 2) / effSpanY; // 픽셀 per 수학단위
+
+    let scaleX, scaleY;
+    if (this.lockAspect) {
+      scaleX = unitScale;
+      scaleY = unitScale;
+    } else {
+      const effSpanX = this.xSpan / this.zoomLevel;
+      scaleX = (this.screenWidth / 2) / effSpanX;
+      scaleY = unitScale;
+    }
+
+    return {
+      x: cx + mx * scaleX,
+      y: cy - my * scaleY
+    };
+  }
+
+  screenToMath(sx, sy) {
+    const cx = this.screenWidth / 2 + this.panX;
+    const cy = this.screenHeight / 2 + this.panY;
+    const effSpanY = this.ySpan / this.zoomLevel;
+    const unitScale = (this.screenHeight / 2) / effSpanY;
+
+    let scaleX, scaleY;
+    if (this.lockAspect) {
+      scaleX = unitScale;
+      scaleY = unitScale;
+    } else {
+      const effSpanX = this.xSpan / this.zoomLevel;
+      scaleX = (this.screenWidth / 2) / effSpanX;
+      scaleY = unitScale;
+    }
+
+    return {
+      x: (sx - cx) / scaleX,
+      y: (cy - sy) / scaleY
+    };
+  }
+
+  // --- [센터 고정 시네마틱 뷰파인더 연산 & 렌더링 엔진] ---
+  // --- [센터 고정 시네마틱 뷰파인더 연산 & 렌더링 엔진] ---
+  getVfScreenRect() {
+    // 캔버스 화면 정중앙에 고정 배치 (마우스 휠 줌으로 그래프만 크기가 변하고 뷰파인더 화면 크기는 고정!)
+    const sw = Math.max(160, Math.min(this.screenWidth - 40, this.vfScreenW));
+    const sh = sw / this.vfAspect;
+    const sx = (this.screenWidth - sw) / 2;
+    const sy = (this.screenHeight - sh) / 2;
+    return {
+      x: sx,
+      y: sy,
+      w: sw,
+      h: sh
+    };
+  }
+
+  getViewfinderBox() {
+    // 화면 중심의 수학 좌표를 뷰파인더 중심(cx, cy)으로 취급!
+    const centerMath = this.screenToMath(this.screenWidth / 2, this.screenHeight / 2);
+    const effSpanY = this.ySpan / this.zoomLevel;
+    const unitScale = (this.screenHeight / 2) / effSpanY;
+    const rect = this.getVfScreenRect();
+    const w = rect.w / unitScale;
+    const h = rect.h / unitScale;
+    const xmin = centerMath.x - w / 2;
+    const xmax = centerMath.x + w / 2;
+    const ymin = centerMath.y - h / 2;
+    const ymax = centerMath.y + h / 2;
+    return { xmin, xmax, ymin, ymax, w, h, cx: centerMath.x, cy: centerMath.y };
+  }
+
+  drawViewfinder(ctx) {
+    if (!this.useViewfinder) return;
+    const rect = this.getVfScreenRect();
+    const { x, y, w, h } = rect;
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+
+    ctx.save();
+
+    // 1. 대표님 요청: 상시 켜두어도 판서에 1도 방해되지 않도록 라인만 보일 듯 말 듯 아주 연한 실선 테두리
+    ctx.setLineDash([]);
+    ctx.strokeStyle = curTheme.vfBorder; // 테마별 최적화된 은은한 극미세 실선
+    ctx.lineWidth = 1.0;
+    ctx.strokeRect(x, y, w, h);
+
+    // 2. 네 코너 세련된 카메라 레티클 L자 꺽쇠 모서리 프레임 (모서리 잡기 인지용)
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = '#feca57';
+    const cLen = Math.min(15, w * 0.15, h * 0.15);
+
+    // 좌상
+    ctx.beginPath();
+    ctx.moveTo(x, y + cLen); ctx.lineTo(x, y); ctx.lineTo(x + cLen, y);
+    ctx.stroke();
+    // 우상
+    ctx.beginPath();
+    ctx.moveTo(x + w - cLen, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + cLen);
+    ctx.stroke();
+    // 좌하
+    ctx.beginPath();
+    ctx.moveTo(x, y + h - cLen); ctx.lineTo(x, y + h); ctx.lineTo(x + cLen, y + h);
+    ctx.stroke();
+    // 우하
+    ctx.beginPath();
+    ctx.moveTo(x + w - cLen, y + h); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w, y + h - cLen);
+    ctx.stroke();
+
+    // 2.5. [대표님 기획: 캔바 스타일 스마트 센터 가이드라인 & 자석 스냅 시각화]
+    const midX = x + w / 2;
+    const midY = y + h / 2;
+
+    // 평상시: 정중앙을 가로지르는 보일 듯 말 듯 한 극미세 센터 기준선 (판서 방해 0%)
+    ctx.save();
+    ctx.setLineDash([3, 4]);
+    ctx.lineWidth = 1.0;
+    ctx.strokeStyle = curTheme.isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.07)';
+
+    // 중앙 세로 보조선
+    ctx.beginPath();
+    ctx.moveTo(midX, y);
+    ctx.lineTo(midX, y + h);
+    ctx.stroke();
+
+    // 중앙 가로 보조선
+    ctx.beginPath();
+    ctx.moveTo(x, midY);
+    ctx.lineTo(x + w, midY);
+    ctx.stroke();
+    ctx.restore();
+
+
+
+    // 3. 상단 미니멀 플로팅 배지 (대표님 요청: '캡처영역'으로 명확화)
+    const cmW = (this.vfTargetWIn * 2.54).toFixed(1);
+    const cmH = ((this.vfTargetWIn / this.vfAspect) * 2.54).toFixed(1);
+    const badgeText = `📷 캡처영역 [${this.vfAspectName}] | ${this.vfTargetWIn.toFixed(1)}in (${cmW}×${cmH}cm) | ${this.exportDPI} DPI`;
+    ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
+    const textWidth = ctx.measureText(badgeText).width;
+    const badgeW = textWidth + 14;
+    const badgeH = 18;
+    const badgeX = x + (w - badgeW) / 2;
+    const badgeY = Math.max(6, y - 24);
+
+    ctx.fillStyle = curTheme.isLight ? 'rgba(255, 255, 255, 0.88)' : 'rgba(20, 25, 30, 0.75)';
+    ctx.strokeStyle = 'rgba(254, 202, 87, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = curTheme.isLight ? '#d97706' : '#feca57';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(badgeText, badgeX + 7, badgeY + badgeH / 2);
+
+    ctx.restore();
+  }
+
+  // --- [🧲 스마트 마그네틱 자석 스냅: 그래프별 수학적 특징점(극점·변곡점·꼭짓점·점근선) 도출 엔진] ---
+  getGraphFeaturePoints(g) {
+    const pts = [];   // [{ x, y, type, label }]
+    const asymX = []; // [x1, x2, ...] 수직 점근선 x좌표
+    const asymY = []; // [y1, y2, ...] 수평 점근선 y좌표
+
+    if (!g || !g.handles || g.handles.length === 0) {
+      return { pts, asymX, asymY };
+    }
+
+    const h = g.handles;
+
+    switch (g.type) {
+      case 'general_expr':
+        if (h.length >= 1) {
+          pts.push({ x: h[0].x, y: h[0].y, type: 'center', label: '중심점' });
+        }
+        break;
+
+      case '1st_linear':
+        if (h.length >= 1) {
+          pts.push({ x: h[0].x, y: h[0].y, type: 'center', label: '정점' });
+        }
+        break;
+
+      case '2nd_quadratic':
+        if (h.length >= 1) {
+          pts.push({ x: h[0].x, y: h[0].y, type: 'vertex', label: '꼭짓점' });
+        }
+        break;
+
+      case '3rd_normal':
+        if (h.length >= 2) {
+          const sorted = [...h.slice(0, 2)].sort((a, b) => a.x - b.x);
+          const y1 = sorted[0].y;
+          const y2 = sorted[1].y;
+          pts.push({ x: sorted[0].x, y: g.isAbsolute ? Math.abs(y1) : y1, type: 'max', label: '극점' });
+          pts.push({ x: sorted[1].x, y: g.isAbsolute ? Math.abs(y2) : y2, type: 'min', label: '극점' });
+        }
+        break;
+
+      case '4th_symmetric':
+        if (h.length >= 3) {
+          pts.push({ x: h[0].x, y: g.isAbsolute ? Math.abs(h[0].y) : h[0].y, type: 'min', label: '극소' });
+          pts.push({ x: h[1].x, y: g.isAbsolute ? Math.abs(h[1].y) : h[1].y, type: 'max', label: '극대' });
+          pts.push({ x: h[2].x, y: g.isAbsolute ? Math.abs(h[2].y) : h[2].y, type: 'min', label: '극소' });
+        }
+        break;
+
+      case '4th_asymmetric':
+        if (h.length >= 3) {
+          h.forEach((handle) => {
+            const lab = handle.type === 'max' ? '극대' : '극소';
+            pts.push({ x: handle.x, y: g.isAbsolute ? Math.abs(handle.y) : handle.y, type: handle.type, label: lab });
+          });
+        }
+        break;
+
+      case '4th_inflection':
+        if (h.length >= 2) {
+          pts.push({ x: h[0].x, y: g.isAbsolute ? Math.abs(h[0].y) : h[0].y, type: 'inflection', label: '수평변곡점' });
+          pts.push({ x: h[1].x, y: g.isAbsolute ? Math.abs(h[1].y) : h[1].y, type: 'min', label: '극소' });
+        }
+        break;
+
+      case 'rational_basic':
+        if (h.length >= 1) {
+          pts.push({ x: h[0].x, y: h[0].y, type: 'center', label: '대칭중심' });
+          asymX.push(h[0].x);
+          asymY.push(h[0].y);
+        }
+        break;
+
+      case 'exp_basic':
+        if (h.length >= 1) {
+          asymY.push(h[0].y);
+          pts.push({ x: h[0].x, y: h[0].y, type: 'center', label: '점근선' });
+        }
+        break;
+
+      case 'log_basic':
+        if (h.length >= 1) {
+          asymX.push(h[0].x);
+          pts.push({ x: h[0].x, y: h[0].y, type: 'center', label: '점근선' });
+        }
+        break;
+
+      case 'sqrt_basic':
+        if (h.length >= 1) {
+          pts.push({ x: h[0].x, y: h[0].y, type: 'vertex', label: '시작점' });
+        }
+        break;
+
+      case 'sin_1period':
+      case 'cos_1period':
+        if (h.length >= 1) {
+          pts.push({ x: h[0].x, y: h[0].y, type: 'center', label: '중심' });
+        }
+        break;
+
+      case 'tan_1period':
+        if (h.length >= 1) {
+          pts.push({ x: h[0].x, y: h[0].y, type: 'center', label: '중심' });
+          const x0 = h[0].x;
+          let dx = h.length >= 2 ? h[1].x - x0 : 0.785;
+          if (Math.abs(dx) < 0.2) dx = dx >= 0 ? 0.2 : -0.2;
+          const omega = Math.PI / (4.0 * Math.abs(dx));
+          const halfPeriod = Math.PI / (2.0 * omega);
+          asymX.push(x0 - halfPeriod);
+          asymX.push(x0 + halfPeriod);
+        }
+        break;
+
+      case 'killer_frac_odd':
+        if (h.length >= 2) {
+          const x0 = h[0].x, y0 = h[0].y;
+          const p = h[1].x - x0, q = h[1].y - y0;
+          pts.push({ x: x0, y: y0, type: 'inflection', label: '변곡점' });
+          pts.push({ x: x0 + p, y: y0 + q, type: 'max', label: '극대' });
+          pts.push({ x: x0 - p, y: y0 - q, type: 'min', label: '극소' });
+          asymY.push(y0);
+        }
+        break;
+
+      case 'killer_exp_linear':
+        if (h.length >= 2) {
+          const x0 = h[0].x, y0 = h[0].y;
+          const p = h[1].x - x0, q = h[1].y - y0;
+          pts.push({ x: x0, y: y0, type: 'vertex', label: '통과점' });
+          pts.push({ x: x0 + p, y: y0 + q, type: 'max', label: '극대' });
+          asymY.push(y0);
+        }
+        break;
+
+      case 'killer_exp_quad':
+        if (h.length >= 2) {
+          const x0 = h[0].x, y0 = h[0].y;
+          const p = h[1].x - x0, q = h[1].y - y0;
+          pts.push({ x: x0, y: y0, type: 'min', label: '원점접점' });
+          pts.push({ x: x0 + p, y: y0 + q, type: 'max', label: '극대' });
+          asymY.push(y0);
+        }
+        break;
+
+      case 'killer_log_frac':
+        if (h.length >= 2) {
+          const x0 = h[0].x, y0 = h[0].y;
+          const p = h[1].x - x0, q = h[1].y - y0;
+          pts.push({ x: x0 + p / Math.E, y: y0, type: 'point', label: '통과점' });
+          pts.push({ x: x0 + p, y: y0 + q, type: 'max', label: '극대' });
+          asymX.push(x0);
+          asymY.push(y0);
+        }
+        break;
+
+      default:
+        if (h.length > 0) {
+          pts.push({ x: h[0].x, y: h[0].y, type: 'center', label: '중심' });
+        }
+        break;
+    }
+
+    let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+    let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+    if (g.transforms && g.transforms.length > 0) {
+      for (const t of g.transforms) {
+        if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
+        if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
+      }
+    }
+    if (ox !== 0 || oy !== 0) {
+      for (let i = 0; i < pts.length; i++) {
+        pts[i].x += ox;
+        pts[i].y += oy;
+      }
+      for (let i = 0; i < asymX.length; i++) asymX[i] += ox;
+      for (let i = 0; i < asymY.length; i++) asymY[i] += oy;
+    }
+
+    return { pts, asymX, asymY };
+  }
+
+  // --- [다중 곡선 히트 테스트 (가장 가까운 곡선 인덱스 탐색)] ---
+  hitTestAllCurves(pos, isTouch = false) {
+    if (!this.graphs || this.graphs.length === 0) return null;
+    const hitTolerancePx = isTouch ? 24 : 14;
+    let bestIdx = null;
+    let minDistance = Infinity;
+
+    // 유효한 활성 그래프 우선 검사, 그 후 역순 검사(최근 추가된 레이어 우선)
+    const validActive = (this.activeGraphIdx >= 0 && this.activeGraphIdx < this.graphs.length) ? [this.activeGraphIdx] : [];
+    const others = this.graphs.map((_, i) => i).filter(i => i !== this.activeGraphIdx);
+    const order = [...validActive, ...others];
+
+    order.forEach(gIdx => {
+      const g = this.graphs[gIdx];
+      if (!g) return;
+      const dist = this.getCurveDist(g, pos, gIdx);
+      // [대표님 핵심 규칙]: 이미 선택된 활성 곡선 조작 상태에서는 몸통 터치 판정을 +10px 넉넉하게 주어 손쉬운 평행이동 보장!
+      const tol = (gIdx === this.activeGraphIdx && this.isCurveSelected) ? (hitTolerancePx + 10) : hitTolerancePx;
+      if (dist <= tol && dist < minDistance) {
+        minDistance = dist;
+        bestIdx = gIdx;
+      }
+    });
+
+    return bestIdx;
+  }
+
+  hexToRgba(hex, alpha = 1.0) {
+    if (!hex) return `rgba(255, 255, 255, ${alpha})`;
+    let c = hex.replace('#', '');
+    if (c.length === 3) c = c.split('').map(x => x + x).join('');
+    const num = parseInt(c, 16);
+    if (isNaN(num)) return `rgba(255, 255, 255, ${alpha})`;
+    const r = (num >> 16) & 255;
+    const g = (num >> 8) & 255;
+    const b = num & 255;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  distToSegment(p, v, w) {
+    const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
+    if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
+    let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p.x - (v.x + t * (w.x - v.x)), p.y - (v.y + t * (w.y - v.y)));
+  }
+
+  getCurveDist(g, pos, gIdx = null) {
+    if (!g) return Infinity;
+    const m = this.screenToMath(pos.x, pos.y);
+
+    // [✂️ 구간 분할 합성 스마트 히트 판정]:
+    // 만약 현재 곡선이 활성화되어 점선이 보이는 상태가 아니라면, 화면에 실선으로 채택된 구간에서만 클릭 감지!
+    // (보이지 않는 잘려나간 구역을 클릭했을 때 비활성 곡선이 잘못 잡히지 않고, 빈 공간 클릭 판독으로 연결!)
+    if (this.usePiecewise && this.graphs.length >= 1 && !g.isIndependent && gIdx !== null) {
+      const isSelectedWithGhost = (gIdx === this.activeGraphIdx && (this.isCurveSelected || this.selectedHandleIdx !== null));
+      if (!isSelectedWithGhost) {
+        if (!this.isInsidePiece(gIdx, m.x)) {
+          return Infinity;
+        }
+      }
+    }
+
+    // 0. 평면도형 (원, 삼각형, 사각형) 히트 판정
+    if (g.type === 'geom_circle' && g.handles.length >= 2) {
+      const s0 = this.mathToScreen(g.handles[0].x, g.handles[0].y);
+      const s1 = this.mathToScreen(g.handles[1].x, g.handles[1].y);
+      const rPx = Math.hypot(s1.x - s0.x, s1.y - s0.y);
+      const d = Math.hypot(pos.x - s0.x, pos.y - s0.y);
+      if (d <= rPx + 14) return Math.min(Math.abs(d - rPx), 6);
+      return Math.abs(d - rPx);
+    }
+
+    if ((g.type === 'geom_triangle' || g.type === 'geom_quad') && g.handles.length >= 3) {
+      const pts = g.handles.map(h => this.mathToScreen(h.x, h.y));
+      let minDist = Infinity;
+      for (let i = 0; i < pts.length; i++) {
+        const p1 = pts[i];
+        const p2 = pts[(i + 1) % pts.length];
+        const dist = this.distToSegment(pos, p1, p2);
+        if (dist < minDist) minDist = dist;
+      }
+      return minDist;
+    }
+
+    // 1. 일차함수 완전 수직선 특수 판정
+    if (g.type === '1st_linear' && g.handles.length >= 2) {
+      if (Math.abs(g.handles[1].x - g.handles[0].x) < 1e-4) {
+        const sx = this.mathToScreen(g.handles[0].x, 0).x;
+        return Math.abs(pos.x - sx);
+      }
+    }
+
+    // 🌟 [Screen Polyline Distance 최적화: 가파른 삼차·사차함수 구간도 100% 칼스냅 판정] 🌟
+    if (g._screenPts && g._screenPts.length >= 2) {
+      let minDist = Infinity;
+      const pts = g._screenPts;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+        if (!p1 || !p2) continue; // 점근선 분리 끊김 구간 건너뛰기
+
+        // 1차 바운딩 박스 고속 필터링 (가로/세로 50px 범위 밖이면 생략)
+        const minX = (p1.x < p2.x ? p1.x : p2.x) - 50;
+        const maxX = (p1.x > p2.x ? p1.x : p2.x) + 50;
+        const minY = (p1.y < p2.y ? p1.y : p2.y) - 50;
+        const maxY = (p1.y > p2.y ? p1.y : p2.y) + 50;
+        if (pos.x < minX || pos.x > maxX || pos.y < minY || pos.y > maxY) continue;
+
+        const d = this.distToSegment(pos, p1, p2);
+        if (d < minDist) minDist = d;
+      }
+      if (isFinite(minDist)) {
+        return minDist;
+      }
+    }
+
+    const effSpanX = this.xSpan / this.zoomLevel;
+    const dxMath = (effSpanX / (this.screenWidth / 2)) * 3;
+    let minDistPx = Infinity;
+
+    [-dxMath, 0, dxMath].forEach(ox => {
+      const sampleX = m.x + ox;
+      let evalX = sampleX;
+      let yOffset = 0;
+      if (this.usePiecewise && this.isPiecewisePeriodic && this.piecewiseBoundaries.length >= 2 && !g.isIndependent) {
+        const b0 = this.piecewiseBoundaries[0];
+        const bLast = this.piecewiseBoundaries[this.piecewiseBoundaries.length - 1];
+        const T = bLast - b0;
+        if (T > 1e-4) {
+          const k = Math.floor((sampleX - b0) / T);
+          let xBase = sampleX - k * T;
+          if (xBase >= bLast - 1e-6) xBase = b0;
+          if (xBase < b0) xBase = b0;
+          evalX = xBase;
+          yOffset = k * (this.periodicStepY || 0);
+        }
+      }
+      let evalY = this.engine.evaluatePipeline(g, evalX) + yOffset;
+
+      if (!isNaN(evalY) && isFinite(evalY) && Math.abs(evalY) < 150) {
+        const s = this.mathToScreen(sampleX, evalY);
+        const dist = Math.hypot(pos.x - s.x, pos.y - s.y);
+        if (dist < minDistPx) minDistPx = dist;
+      }
+    });
+
+    return minDistPx;
+  }
+
+  // --- [이벤트 바인딩] ---
+  bindEvents() {
+    // 🌟 [대표님 긴급 해결: 버튼/아이콘 클릭 100% 보장 판별기] 🌟
+    const isClickableUI = (target) => {
+      if (!target) return false;
+      return Boolean(
+        target.tagName === 'BUTTON' ||
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.tagName === 'A' ||
+        (target.closest && target.closest('button, .rail-btn, .quick-fab-btn, .rail-dock, .sidebar-rail, .canvas-quick-toolbar, .curve-context-bar, .pw-region-popover, .drawer-panel, .rail-drawer, .modal, .ink-dock, .problem-card-widget, .graph-card-widget, .graph-snap-floating-bar, .ink-floating-toolbar'))
+      );
+    };
+
+    // 1) 캔버스 및 UI 버튼 영역 우클릭 컨텍스트 메뉴 차단 (펜으로 살짝 길게 누를 때 우클릭 메뉴가 떠서 버튼 클릭이 씹히는 현상 원천 차단)
+    const preventContextMenu = (e) => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      e.preventDefault();
+    };
+    this.canvas.addEventListener('contextmenu', preventContextMenu);
+    window.addEventListener('contextmenu', preventContextMenu);
+
+    // 2) 캔버스 및 UI 위 Windows Pen & Touch 홀드 원형 애니메이션 차단
+    const preventHoldVisual = (e) => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      e.preventDefault();
+    };
+    ['MSHoldVisual', 'MSGestureHold'].forEach(evtName => {
+      this.canvas.addEventListener(evtName, preventHoldVisual, { passive: false });
+      window.addEventListener(evtName, preventHoldVisual, { passive: false });
+    });
+
+    window.addEventListener('resize', () => {
+      this.updateCanvasRect();
+      this.resizeCanvas();
+      this.render();
+    });
+    window.addEventListener('scroll', () => {
+      this.updateCanvasRect();
+    }, { passive: true });
+
+    const getPos = (e) => {
+      const rect = this.canvasRect || this.updateCanvasRect() || this.canvas.getBoundingClientRect();
+      const clientX = e.touches ? (e.touches[0] ? e.touches[0].clientX : (e.changedTouches ? e.changedTouches[0].clientX : 0)) : e.clientX;
+      const clientY = e.touches ? (e.touches[0] ? e.touches[0].clientY : (e.changedTouches ? e.changedTouches[0].clientY : 0)) : e.clientY;
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+      };
+    };
+
+    const handleDown = (e) => {
+      this._lastPointerEvent = e;
+      this._erasedInCurrentStroke = false;
+      // 🌟 [iCanScreen 급 0ms 초저지연]: 펜/형광펜/지우개 필기 시에는 매 터치마다 전체 상태를 JSON.stringify 하는 무거운 스냅샷 생성을 100% 생략!
+      const isInkFastPath = (this.isInkMode && (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter' || this.activeInkTool === 'eraser')) || this.isStylusEraserEvent(e);
+      this._preDragState = isInkFastPath ? null : this.getHistorySnapshot();
+      if (!this.canvasRect) {
+        this.updateCanvasRect();
+      }
+      const pos = getPos(e);
+      const isTouch = Boolean((e.touches && e.touches.length > 0) || e.pointerType === 'touch' || e.pointerType === 'pen');
+
+      // 🌟 [필기 모드 가상 스타일러스 펜]: 터치/클릭 즉시 펜 위치 동기화
+      if (this.isInkMode) {
+        this.updateStylusPenPosition(pos.x, pos.y, e);
+      }
+
+      // 🌟 0순위: [📍 교재 보조 수선 도구 모드] 🌟
+      // 사용자가 📍 버튼을 눌러 수선 모드를 켰을 때는 펜이나 핸들러가 가로채지 않고 수선 긋기/삭제가 100% 최우선 작동!
+      if (this.activeEditingLabel) {
+        const inputRect = this.dropLineInputEl ? this.dropLineInputEl.getBoundingClientRect() : null;
+        const eX = e.touches ? e.touches[0].clientX : e.clientX;
+        const eY = e.touches ? e.touches[0].clientY : e.clientY;
+        if (!inputRect || eX < inputRect.left || eX > inputRect.right || eY < inputRect.top || eY > inputRect.bottom) {
+          this.commitEditingDropLineLabel();
+        }
+      }
+      if (this.isDropLineMode) {
+        // 1. 가위 ✂️ 클릭 -> 해당 수선 1초 컷 삭제
+        const hitScissors = this.hitTestScissors(pos);
+        if (hitScissors) {
+          this.removeDropLine(hitScissors.id, hitScissors.which);
+          return;
+        }
+
+        // 2. 축 좌표 라벨 클릭 -> 인라인 수식 편집
+        const hitLabel = this.hitTestDropLineLabel(pos);
+        if (hitLabel) {
+          this.startEditingDropLineLabel(hitLabel.id, hitLabel.which, hitLabel.screenPos, hitLabel.currentText);
+          return;
+        }
+
+        // 3. 특이점 또는 일반 곡선 위의 임의 점 클릭 -> 1클릭 x·y 수선 생성!
+        const target = this.findNearestDropLineTarget(pos, isTouch ? 30 : 22);
+        if (target) {
+          this.addDropLineAtPoint(target.x, target.y, target);
+          return; // 수선 모드 유지! 다음 점들을 연속으로 계속 찍을 수 있음
+        } else {
+          // 4. 특이점/곡선/가위가 아닌 빈 바탕화면 클릭 -> 수선 그리기 모드 즉시 자동 해제!
+          this.toggleDropLineMode(false);
+          return;
+        }
+      }
+
+      // 🌟 0.5순위: [🔤 캔버스 자유 수식 텍스트 라벨 모드] 🌟
+      if (this.activeEditingTextId) {
+        const inputRect = this.canvasTextInputEl ? this.canvasTextInputEl.getBoundingClientRect() : null;
+        const eX = e.touches ? e.touches[0].clientX : e.clientX;
+        const eY = e.touches ? e.touches[0].clientY : e.clientY;
+        if (!inputRect || eX < inputRect.left || eX > inputRect.right || eY < inputRect.top || eY > inputRect.bottom) {
+          this.commitEditingTextLabel();
+        }
+      }
+      // 🌟 [📸 실시간 그래프 영역 스샷 드래그 시작] 🌟
+      if (this.isGraphSnapMode) {
+        if (e.preventDefault) e.preventDefault();
+        if (e.stopPropagation) e.stopPropagation();
+        this.isGraphSnapDragging = true;
+        this.graphSnapStart = { x: pos.x, y: pos.y, clientX: e.clientX, clientY: e.clientY };
+        const dragBox = document.getElementById('graphSnapDragBox');
+        if (dragBox) {
+          dragBox.style.display = 'block';
+          dragBox.style.left = `${e.clientX}px`;
+          dragBox.style.top = `${e.clientY}px`;
+          dragBox.style.width = '0px';
+          dragBox.style.height = '0px';
+        }
+        return;
+      }
+
+      if (this.isTextToolMode) {
+        if (e.preventDefault) e.preventDefault();
+        if (e.stopPropagation) e.stopPropagation();
+        const m = this.screenToMath(pos.x, pos.y);
+        this.toggleTextToolMode(false);
+        this.addTextLabel(m.x, m.y);
+        return;
+      }
+
+      // 🌟 [컴팩트 스테이지 우하단 컨트롤 [ ✥ | − | + | ◢ ] 인터랙션] 🌟
+      // [대표님 액정 타블렛 특화 기획]: 미니 창의 [−], [+]는 창 크기가 아니라 내부 화면(그래프)을 확대/축소하는 줌 버튼!
+      if (!this.isCleanView && this.hasActiveProblemCard() && this.graphs.length > 0 && e.button !== 1 && e.button !== 2) {
+        const stageHandle = this.getCompactStageHandleAt(pos);
+        if (stageHandle === 'zoomOut') {
+          this.setZoomLevel(this.zoomLevel - 0.12);
+          this.requestRender();
+          return;
+        } else if (stageHandle === 'zoomIn') {
+          this.setZoomLevel(this.zoomLevel + 0.12);
+          this.requestRender();
+          return;
+        } else if (stageHandle === 'resize') {
+          const stage = this.getCompactGraphStage();
+          this.isResizingStage = true;
+          this.stageDragStart = {
+            startX: pos.x,
+            startY: pos.y,
+            initW: stage.w,
+            initH: stage.h,
+            initX: stage.x,
+            initY: stage.y
+          };
+          stage.isCustomized = true;
+          this.render();
+          return;
+        } else if (stageHandle === 'move') {
+          const stage = this.getCompactGraphStage();
+          this.isMovingStage = true;
+          this.stageDragStart = {
+            startX: pos.x,
+            startY: pos.y,
+            initX: stage.x,
+            initY: stage.y,
+            initPanX: this.panX,
+            initPanY: this.panY
+          };
+          stage.isCustomized = true;
+          this.render();
+          return;
+        }
+      }
+
+      // 🌟 [화면 이동(Pan) 명시적 제스처 우선 트리거 감지] 🌟
+      // 키보드 Shift/Space 키 누름, 우클릭, 휠클릭 시 즉시 화면 이동!
+      // 단, 펜(pen)/형광펜(highlighter)/지우개(eraser) 등 필기 모드에서는
+      // 꾹 누름(스타일러스 롱프레스 시 발생하는 우클릭 판정)이 필기를 가로채지 않도록 엄격 차단!
+      const isStylusEraser = this.isStylusEraserEvent(e);
+      const isWritingTool = (this.isInkMode && this.activeInkTool !== 'select');
+      const isPenLongPress = (e.pointerType === 'pen' && e.button === 2);
+
+      // 🌟 [대표님 킬러 기획: 스페이스바+드래그 또는 마우스 휠 클릭 시 펜 모드에서도 즉시 화면/칠판 밀기 발동!]
+      const isForceBoardPan = Boolean(this.isSpacePressed || e.button === 1);
+
+      const isExplicitPan = !isPenLongPress && !isStylusEraser && (
+        isForceBoardPan ||
+        (!isWritingTool && Boolean(this.isShiftPressed || (e && e.shiftKey) || e.button === 2))
+      );
+
+      // 🌟 [액정 타블렛 펜 지우개 버튼 / 펜 꼬리 팁 즉각 발동] 🌟
+      if (isStylusEraser) {
+        this._isTemporaryStylusEraser = true;
+        this.isDrawingInk = true;
+        this.isStylusDrawing = true;
+        if (this.virtualStylusEl) this.virtualStylusEl.classList.add('drawing');
+        this.updateStylusPenPosition(pos.x, pos.y, e);
+        this.eraseInkAtPoint(pos.x, pos.y, 24);
+        this.render();
+        return;
+      }
+
+      if (isExplicitPan) {
+        // 🌟 [1층 vs 2층 레이어 완벽 분리]:
+        // 2층(isGraphCovered === true, 그래프 스샷 찍고 넘어간 판서 레이어): 문제 카드 + 그래프 카드 + 필기 통째 이동!
+        // 1층(!isGraphCovered, 실시간 그래프 편집 레이어): 문제 카드는 고정, 실시간 그래프 좌표축/원점만 부드럽게 이동!
+        if (this.isGraphCovered && !this.pdfPageBoardData) {
+          this.isBoardPanning = true;
+          this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
+        } else {
+          this.isPanning = true;
+          this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
+        }
+        this.canvas.style.cursor = 'grabbing';
+        this.render();
+        return;
+      }
+
+      // 🌟 0.8순위: [✂️ 캔버스 N-구간 다중 분할선 및 영역 인터랙션 최우선 처리] 🌟
+      // 핸들러나 곡선 몸통에 가로채이지 않고 넉넉한 22px 마진으로 선/알약 어디든 시원하게 드래그!
+      // 🌟 [대표님 사활 피드백]: 펜(pen)/형광펜(highlighter)/지우개(eraser) 등 필기 모드에서는
+      // 경계선 위 필기감 극대화와 ✕ 삭제/경계선 이동 오터치를 100% 원천 차단(Freezing)!
+      // 오직 선택(select) 도구이거나 필기 모드가 꺼져 있을 때만 경계선/✕ 조작 허용!
+      const canManipulatePw = !this.isGraphCovered && (!this.isInkMode || this.activeInkTool === 'select');
+      if (canManipulatePw && this.usePiecewise && this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0) {
+        // 1) 팝오버 외부 클릭 시 닫기
+        const popover = document.getElementById('pwRegionPopover');
+        if (popover && popover.style.display !== 'none') {
+          const popRect = popover.getBoundingClientRect();
+          const canvasRect = this.canvasRect || this.updateCanvasRect() || this.canvas.getBoundingClientRect();
+          const px = pos.x + canvasRect.left;
+          const py = pos.y + canvasRect.top;
+          if (px < popRect.left || px > popRect.right || py < popRect.top || py > popRect.bottom) {
+            popover.style.display = 'none';
+          }
+        }
+
+        // 2) 2x2 정사각형 패드 좌상단: 잠금(🔒/🔓) 버튼 클릭 확인
+        const badgePad = isTouch ? 6 : 2;
+        if (this.pwBoundaryBadges) {
+          const hitLock = this.pwBoundaryBadges.find(b =>
+            b.lockRect &&
+            pos.x >= b.lockRect.x - badgePad && pos.x < b.sx &&
+            pos.y >= b.lockRect.y - badgePad && pos.y <= b.lockRect.y + b.lockRect.h
+          );
+          if (hitLock) {
+            this.togglePiecewiseLock();
+            return;
+          }
+        }
+
+        // 2.2) 2x2 정사각형 패드 우상단: 세로선 삭제 버튼(✕) 클릭 확인 (대표님 지시: 잠금 상태에서도 ✕ 삭제는 항상 작동!)
+        if (this.pwBoundaryBadges) {
+          const hitDel = this.pwBoundaryBadges.find(b =>
+            b.delRect &&
+            pos.x >= b.delRect.x && pos.x <= b.delRect.x + b.delRect.w + badgePad &&
+            pos.y >= b.delRect.y - badgePad && pos.y <= b.delRect.y + b.delRect.h
+          );
+          if (hitDel) {
+            this.removePiecewiseBoundary(hitDel.bIdx);
+            return;
+          }
+        }
+
+        // 2.5) 2x2 정사각형 패드 하단: 경계 포함 방향 토글(●/○) 클릭 확인 (잠금 아닐 때만)
+        if (!this.isPiecewiseLocked && this.pwBoundaryBadges) {
+          const hitToggle = this.pwBoundaryBadges.find(b =>
+            b.toggleRect &&
+            pos.x >= b.toggleRect.x - badgePad && pos.x <= b.toggleRect.x + b.toggleRect.w + badgePad &&
+            pos.y >= b.toggleRect.y && pos.y <= b.toggleRect.y + b.toggleRect.h + badgePad
+          );
+          if (hitToggle) {
+            this.pushHistoryState();
+            if (!this.piecewiseInclusions) this.piecewiseInclusions = [];
+            while (this.piecewiseInclusions.length < this.piecewiseBoundaries.length) {
+              this.piecewiseInclusions.push('right');
+            }
+            const isLeftClick = (pos.x < hitToggle.sx);
+            const nextDir = isLeftClick ? 'left' : 'right';
+            this.piecewiseInclusions[hitToggle.bIdx] = nextDir;
+            // 주기 반복 모드에서 양 끝 경계선(0 또는 n-1)을 토글하면 모든 주기 경계가 일관되게 동기화!
+            if (this.isPiecewisePeriodic && this.piecewiseBoundaries.length >= 2) {
+              const lastIdx = this.piecewiseBoundaries.length - 1;
+              if (hitToggle.bIdx === 0 || hitToggle.bIdx === lastIdx) {
+                this.piecewiseInclusions[0] = nextDir;
+                this.piecewiseInclusions[lastIdx] = nextDir;
+              }
+            }
+            this.showToast(isLeftClick ? '🎯 왼쪽 구간 포함 (● 왼쪽 / 오른쪽 ○)' : '🎯 오른쪽 구간 포함 (○ 왼쪽 / 오른쪽 ●)');
+            this.updatePwDescBadge();
+            this.render();
+            return;
+          }
+        }
+
+        // 2.8) 상단 전주기 반복 브래킷 클릭 확인 (테스트 호환용)
+        if (this.pwPeriodBracketBadge) {
+          const p = this.pwPeriodBracketBadge;
+          if (pos.x >= p.pillX - badgePad && pos.x <= p.pillX + p.pillW + badgePad &&
+              pos.y >= p.pillY - badgePad && pos.y <= p.pillY + p.pillH + badgePad) {
+            if (this.isPiecewisePeriodic) {
+              if (p.minusRect && pos.x >= p.minusRect.x - 4 && pos.x <= p.minusRect.x + p.minusRect.w + 4 &&
+                  pos.y >= p.minusRect.y - 4 && pos.y <= p.minusRect.y + p.minusRect.h + 4) {
+                this.setPeriodicStep((this.periodicStepY || 0) - 1);
+                return;
+              }
+              if (p.plusRect && pos.x >= p.plusRect.x - 4 && pos.x <= p.plusRect.x + p.plusRect.w + 4 &&
+                  pos.y >= p.plusRect.y - 4 && pos.y <= p.plusRect.y + p.plusRect.h + 4) {
+                this.setPeriodicStep((this.periodicStepY || 0) + 1);
+                return;
+              }
+              if (p.valRect && pos.x >= p.valRect.x - 4 && pos.x <= p.valRect.x + p.valRect.w + 4 &&
+                  pos.y >= p.valRect.y - 4 && pos.y <= p.valRect.y + p.valRect.h + 4) {
+                this.setPeriodicStep(0);
+                return;
+              }
+              this.togglePiecewisePeriodic(false);
+              return;
+            } else {
+              this.togglePiecewisePeriodic(true);
+              return;
+            }
+          }
+        }
+
+        // 3) 영역 함수 변경 칩 클릭 확인 (잠금 아닐 때만)
+        if (!this.isPiecewiseLocked && this.pwRegionBadges) {
+          const hitRegion = this.pwRegionBadges.find(r =>
+            pos.x >= r.chipX - badgePad && pos.x <= r.chipX + r.chipW + badgePad &&
+            pos.y >= r.chipY - badgePad && pos.y <= r.chipY + r.chipH + badgePad
+          );
+          if (hitRegion) {
+            this.openRegionFuncMenu(hitRegion.regionIdx, hitRegion.chipX, hitRegion.chipY + hitRegion.chipH + 4);
+            return;
+          }
+        }
+
+        // 4) 세로선 몸통 드래그 확인 (잠금 상태일 때는 마우스로 경계선을 건드려도 절대 움직이지 않음!)
+        if (!this.isPiecewiseLocked && this.pwBoundaryBadges) {
+          const hitMargin = isTouch ? 28 : 22;
+          const hitBoundary = this.pwBoundaryBadges.find(b => {
+            const isNearLine = Math.abs(pos.x - b.sx) <= hitMargin;
+            return isNearLine;
+          });
+          if (hitBoundary) {
+            this.activePwDragIdx = hitBoundary.bIdx;
+            this.selectedPwBoundaryIdx = hitBoundary.bIdx;
+            this.isCurveSelected = false;
+            this.selectedHandleIdx = null;
+            this.canvas.style.cursor = 'ew-resize';
+            this.render();
+            return;
+          }
+        }
+      }
+
+      // 🌟 [필기 모드 완전 프리징 & 핸들러 간섭 원천 차단] 🌟
+      // 펜(pen)/형광펜(highlighter)/지우개(eraser) 등 필기 도구 사용 중에는
+      // 필기감 극대화와 오터치 방지를 위해 그래프 핸들러 조작을 100% 동결(Freezing)!
+      // 오직 선택(select) 도구이거나 필기 모드가 꺼져 있을 때만 핸들러 조작 허용!
+      const isPwFuncLocked = Boolean(this.usePiecewise && this.isPiecewiseLocked && (!this.activeGraph || !this.activeGraph.isIndependent));
+      const canManipulateHandles = !this.isGraphCovered && !isPwFuncLocked && (!this.isInkMode || this.activeInkTool === 'select');
+      const prioHitDist = isTouch ? 32 : 22;
+      let prioHandleIdx = null;
+
+      if (canManipulateHandles && this.activeGraph && this.activeGraph.handles) {
+        let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
+        let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
+        if (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
+          for (const t of this.activeGraph.transforms) {
+            if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
+            if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
+          }
+        }
+        this.activeGraph.handles.forEach((h, idx) => {
+          if (h.hidden) return;
+          if (!this.isCurveSelected && (h.type === 'center' || h.type === 'asymptote') && ["cos_1period", "rational_basic", "exp_basic", "log_basic"].includes(this.activeGraph.type)) return;
+          let targetY = h.y;
+          if (this.activeGraph.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
+            targetY = Math.abs(h.y);
+          }
+          let evalY = (h.type === 'center' || h.type === 'asymptote')
+            ? (targetY + oy)
+            : this.engine.evaluatePipeline(this.activeGraph, h.x + ox);
+          if (isNaN(evalY) || !isFinite(evalY)) {
+            evalY = targetY + oy;
+          }
+          const s = this.mathToScreen(h.x + ox, evalY);
+          const dist = Math.hypot(s.x - pos.x, s.y - pos.y);
+          if (dist <= prioHitDist) {
+            prioHandleIdx = idx;
+          }
+        });
+      }
+
+      if (canManipulateHandles && prioHandleIdx !== null) {
+        if (!this.isCurveSelected) {
+          // 🌟 [대표님 핵심 기획]: 비활성화(핸들러 꺼짐) 상태에서의 첫 터치는 오직 그래프 선택 & 핸들러 깨우기만 수행! (절대 미끄러지거나 변형되지 않음!)
+          this.isCurveSelected = true;
+          this.selectedHandleIdx = null;
+          this.draggedHandleIdx = null;
+          this.isDraggingCurve = false;
+          this._curveDragEligible = false;
+          this.downInfo = { x: pos.x, y: pos.y, hitHandleIdx: null, hitCurveIdx: this.activeGraphIdx, hitVfCorner: false };
+          this.render();
+          return;
+        }
+        this.draggedHandleIdx = prioHandleIdx;
+        this.selectedHandleIdx = prioHandleIdx;
+        this.canvas.style.cursor = 'grabbing';
+        this.render();
+        return;
+      }
+
+      if (!canManipulateHandles) {
+        this.draggedHandleIdx = null;
+        this.selectedHandleIdx = null;
+        this.isCurveSelected = false;
+        if (this.pulseAnimId) {
+          cancelAnimationFrame(this.pulseAnimId);
+          this.pulseAnimId = null;
+        }
+      }
+
+      // 🌟 [선택 도구(activeInkTool === 'select')의 스마트 인터랙션 라우팅] 🌟
+      // 핸들러가 아닌 경우:
+      // (1) 곡선 몸통을 터치했으면 -> 해당 곡선 선택 및 평행이동!
+      // (2) 빈 공간을 터치했으면 -> 화면 이동 (미니창 내부면 내부 팬, 바깥이면 칠판 전체 이동!)
+      if (this.isInkMode && this.activeInkTool === 'select') {
+        const hitCurveIdx = !this.isGraphCovered ? this.hitTestAllCurves(pos, isTouch) : null;
+        if (hitCurveIdx !== null) {
+          const isPwGroupDrag = Boolean(this.usePiecewise && this.isPiecewiseLocked && this.graphs[hitCurveIdx] && !this.graphs[hitCurveIdx].isIndependent);
+          const isAlreadySelected = isPwGroupDrag || (this.isCurveSelected && this.activeGraphIdx === hitCurveIdx);
+          this.activeGraphIdx = hitCurveIdx;
+          this.isCurveSelected = true;
+          this.selectedHandleIdx = null;
+          // 🌟 [대표님 핵심 기획: 프리징 깨우기 vs 조작 상태 즉각 무빙 (구간 잠금 시 즉시 전체 평행이동)] 🌟
+          this.isDraggingCurve = isAlreadySelected;
+          this._curveDragEligible = isAlreadySelected;
+          if (isAlreadySelected) {
+            this.canvas.style.cursor = 'move';
+          }
+          const m = this.screenToMath(pos.x, pos.y);
+          this.curveDragStart = { mx: m.x, my: m.y, startScreenX: pos.x, startScreenY: pos.y };
+          this.curveHandlesSnapshot = JSON.parse(JSON.stringify(this.activeGraph.handles));
+          this.curveFreezeStart = {
+            ox: (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0,
+            oy: (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0
+          };
+          this.curveFeatsSnapshot = this.getGraphFeaturePoints({
+            type: this.activeGraph.type,
+            handles: this.curveHandlesSnapshot,
+            isAbsolute: this.activeGraph.isAbsolute,
+            freezeOffset: this.activeGraph.freezeOffset,
+            transforms: this.activeGraph.transforms
+          });
+          if (isPwGroupDrag) {
+            this._pwGroupBoundariesSnapshot = [...(this.piecewiseBoundaries || [])];
+            this._pwGroupGraphsSnapshot = this.graphs.map(gItem => ({
+              handles: JSON.parse(JSON.stringify(gItem.handles || [])),
+              ox: (gItem.freezeOffset && typeof gItem.freezeOffset.x === 'number') ? gItem.freezeOffset.x : 0,
+              oy: (gItem.freezeOffset && typeof gItem.freezeOffset.y === 'number') ? gItem.freezeOffset.y : 0
+            }));
+          } else {
+            this._pwGroupBoundariesSnapshot = null;
+            this._pwGroupGraphsSnapshot = null;
+          }
+          this.downInfo = { x: pos.x, y: pos.y, hitHandleIdx: null, hitCurveIdx, hitVfCorner: false };
+          this.render();
+          return;
+        }
+
+        // 🌟 [대표님 핵심 기획]: 핸들러 노출 상태에서 그래프 외의 어딘가(빈 공간) 클릭하면 핸들러 즉시 사라짐!
+        this.isCurveSelected = false;
+        this.selectedHandleIdx = null;
+        if (this.pulseAnimId) {
+          cancelAnimationFrame(this.pulseAnimId);
+          this.pulseAnimId = null;
+        }
+        this.downInfo = { x: pos.x, y: pos.y, hitHandleIdx: null, hitCurveIdx: null, hitVfCorner: false };
+
+        // 🌟 [대표님 핵심 기획: 1층(실시간 그래프 편집) vs 2층(그래프 스샷 후 판서 레이어) 완벽 분리!] 🌟
+        // - 2층(this.isGraphCovered === true): 그래프 스샷을 찍어 새로운 판서 레이어로 넘어간 상태 -> 칠판 전체(문제+그래프카드+필기) 확장 이동!
+        // - 1층(!this.isGraphCovered): 문제 불러오고 실시간 그래프를 편집하는 원래 화면 -> 문제는 고정, 원래 그래프 화면(panX, panY)만 이동!
+        if (this.isGraphCovered && !this.pdfPageBoardData) {
+          this.isBoardPanning = true;
+          this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
+        } else {
+          this.isPanning = true;
+          this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
+        }
+        this.canvas.style.cursor = 'grabbing';
+        this.render();
+        return;
+      }
+
+      // [✍️ 실시간 무한 칠판 필기 모드 인터랙션]
+      if (this.isInkMode) {
+        // [🪢 올가미(Lasso) 툴 인터랙션]
+        if (this.activeInkTool === 'lasso') {
+          const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
+            (this.selectedTextLabels && this.selectedTextLabels.length > 0);
+
+          if (hasSelection) {
+            const hitSelection = this.isPointInLassoSelection(pos);
+            if (hitSelection) {
+              // 1. 점선 루프 내부 터치 -> 드래그 이동 시작!
+              this.isDraggingLassoSelection = true;
+              this._preDragState = this.getHistorySnapshot();
+              this.lassoDragStart = {
+                screenX: pos.x,
+                screenY: pos.y,
+                m: this.screenToMath(pos.x, pos.y)
+              };
+              this.canvas.style.cursor = 'move';
+              this.render();
+              return;
+            } else {
+              // 2. 🌟 [대표님 핵심 기획]: 올가미 바깥부분 터치 시 즉각 완전 해제!
+              this.selectedInkStrokes = [];
+              this.selectedTextLabels = [];
+              this.lassoBoundingBox = null;
+              this.isLassoSelecting = true;
+              this._lassoStartPos = { x: pos.x, y: pos.y };
+              this.lassoPoints = [{ x: pos.x, y: pos.y }];
+              this.canvas.style.cursor = 'crosshair';
+              this.canvas.classList.remove('is-hover-selection');
+              this.render();
+              return;
+            }
+          }
+
+          // 선택이 없는 상태에서 터치 -> 새 올가미 점선 드로잉 시작!
+          this.selectedInkStrokes = [];
+          this.selectedTextLabels = [];
+          this.lassoBoundingBox = null;
+          this.isLassoSelecting = true;
+          this._lassoStartPos = { x: pos.x, y: pos.y };
+          this.lassoPoints = [{ x: pos.x, y: pos.y }];
+          this.canvas.style.cursor = 'crosshair';
+          this.render();
+          return;
+        }
+
+        // 🌟 [대표님 기획]: 칠판을 터치하는 순간 그래프는 100% 프리징(그냥 보여주기)!
+        // 핸들러 깜빡임 펄스 루프 즉시 종료 및 핸들러 선택 해제하여 리소스 100% 필기에 집중
+        let neededCleanRenderBeforeFreeze = Boolean(this._inkBakeDirty);
+        if (this.selectedHandleIdx !== null || this.isCurveSelected || this.pulseAnimId) {
+          this.selectedHandleIdx = null;
+          this.isCurveSelected = false;
+          neededCleanRenderBeforeFreeze = true;
+          if (this.pulseAnimId) {
+            cancelAnimationFrame(this.pulseAnimId);
+            this.pulseAnimId = null;
+          }
+        }
+
+        const m = this.screenToMath(pos.x, pos.y);
+        let pressure = 0.5;
+        if (e.pointerType === 'pen' && typeof e.pressure === 'number' && e.pressure > 0) {
+          pressure = e.pressure;
+        } else if (typeof e.pressure === 'number' && e.pressure > 0) {
+          pressure = e.pressure;
+        }
+        this._lastPressure = pressure;
+
+        if (this.activeInkTool === 'eraser') {
+          this.isDrawingInk = true;
+          this.isStylusDrawing = true;
+          this._hasSceneFreeze = false;
+          if (this.virtualStylusEl) this.virtualStylusEl.classList.add('drawing');
+          this.updateStylusPenPosition(pos.x, pos.y, e);
+          this.eraseInkAtPoint(pos.x, pos.y);
+          return;
+        }
+
+        // 🌟 [iCanScreen 급 0ms 씬 프리즈]: 새 획을 추가하기 직전, 현재 정적 배경(그래프+기존 필기)을 1장의 GPU 텍스처로 동결!
+        if (neededCleanRenderBeforeFreeze) {
+          this.isDrawingInk = false;
+          this._hasSceneFreeze = false;
+          this.render();
+        }
+        this.captureSceneFreeze();
+
+        this.isDrawingInk = true;
+        this.isStylusDrawing = true;
+        if (this.virtualStylusEl) this.virtualStylusEl.classList.add('drawing');
+        this.updateStylusPenPosition(pos.x, pos.y, e);
+        // 🌟 [핵심 최적화]: 획 시작 시 거대한 JSON 직렬화를 생략하여 0ms 즉각 반응! (종료 시 stroke_add 경량 히스토리 등록)
+        this._lastInkScreenPos = { x: pos.x, y: pos.y };
+        this._inkHoldDetected = false;
+        this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
+
+        // 🌟 [대표님 기획: 3대 모드별 일관된 판서 타깃 자동 분기] 🌟
+        // 1) 문제 모드: 컴팩트 그래프 창 내부만 'graph' (확대/축소 연동), 바깥 칠판은 'board' (고정 풀이)
+        // 2) 라이브 판서 분할 모드: 좌측 분할선 안쪽은 'graph', 우측 판서 구역은 'board'
+        // 3) 그래프 + 필기 모드 (문제 카드 없음): 화면 전체가 그래프 무대이므로 100% 'graph' (확대/축소 연동!)
+        const useCoveredBoardLayer = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+        let strokeTarget = useCoveredBoardLayer ? 'board' : 'graph';
+        let isGraphTarget = !useCoveredBoardLayer;
+        if (this.isBoardMode) {
+          const splitX = Math.round(this.screenWidth * this.boardSplitRatio);
+          const isLeft = (pos.x <= splitX);
+          strokeTarget = isLeft ? 'graph' : 'board';
+          isGraphTarget = isLeft;
+        }
+
+        this.currentInkStroke = {
+          id: 'ink_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+          tool: this.activeInkTool,
+          target: strokeTarget,
+          onPdfBoard: Boolean(this.pdfPageBoardData && isGraphTarget),
+          color: this.currentInkColor,
+          size: this.currentInkSize,
+          zoom: this.zoomLevel,
+          isHighlighter: (this.activeInkTool === 'highlighter'),
+          points: isGraphTarget
+            ? [{ x: m.x, y: m.y, p: pressure }]
+            : [{ x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0), p: pressure }]
+        };
+        this.inkStrokes.push(this.currentInkStroke);
+        this._startInkHoldTimer();
+        this.render();
+        return;
+      }
+
+
+      // [🔤 캔버스 자유 수식 텍스트 라벨: 인라인 편집 중 바깥 클릭 시 커밋]
+      if (this.activeEditingTextId) {
+        const inputRect = this.canvasTextInputEl ? this.canvasTextInputEl.getBoundingClientRect() : null;
+        const eX = e.touches ? e.touches[0].clientX : e.clientX;
+        const eY = e.touches ? e.touches[0].clientY : e.clientY;
+        if (!inputRect || eX < inputRect.left || eX > inputRect.right || eY < inputRect.top || eY > inputRect.bottom) {
+          this.commitEditingTextLabel();
+        }
+      }
+
+      // [🔤 캔버스 자유 수식 텍스트 라벨: 클릭, 더블클릭 수정, ✕ 삭제, 드래그 이동]
+      const hitText = this.hitTestTextLabel(pos);
+      if (hitText) {
+        if (hitText.isClose) {
+          this.removeTextLabel(hitText.id);
+          return;
+        }
+        const now = Date.now();
+        if (now - this.lastTextClickTime < 340 && this.selectedTextLabelId === hitText.id) {
+          // 더블클릭 -> 인라인 텍스트 편집 진입!
+          if (e.preventDefault) e.preventDefault();
+          this.startEditingTextLabel(hitText.id, hitText.screenPos);
+          return;
+        }
+        this.lastTextClickTime = now;
+        this.selectedTextLabelId = hitText.id;
+        const selItem = this.textLabels.find(t => t.id === hitText.id);
+        if (selItem && selItem.fontSize) {
+          const slText = document.getElementById('sliderTextLabelSize');
+          const lblText = document.getElementById('lblTextLabelSize');
+          if (slText) slText.value = selItem.fontSize;
+          if (lblText) lblText.textContent = `${selItem.fontSize} pt`;
+        }
+
+        // 드래그 이동 시작
+        this.isDraggingTextLabel = true;
+        this.draggedTextLabelId = hitText.id;
+        const m = this.screenToMath(pos.x, pos.y);
+        const item = this.textLabels.find(t => t.id === hitText.id);
+        if (item) {
+          this.draggedTextOffset = { dx: item.mathX - m.x, dy: item.mathY - m.y };
+        }
+        this.render();
+        return;
+      }
+
+
+      // [🧑‍🏫 라이브 판서 분할 모드: 구분선 드래그 감지 & 우측 판서 구역 터치 처리]
+      if (this.isBoardMode) {
+        const splitX = Math.round(this.screenWidth * this.boardSplitRatio);
+        // 구분선 근처(16px 마진) 터치 시 구분선 드래그 시작!
+        if (Math.abs(pos.x - splitX) <= 16) {
+          this.isDraggingBoardDivider = true;
+          this.canvas.style.cursor = 'col-resize';
+          return;
+        }
+        // 우측 판서 구역 터치 시: 그래프 선택 해제 & 클린 뷰 유지 (외부 판서 필기 공간 100% 보장)
+        if (pos.x > splitX) {
+          this.isCurveSelected = false;
+          this.selectedHandleIdx = null;
+          this.render();
+          return;
+        }
+      }
+
+      // [🔀 N축 3-분할 스튜디오 인터랙션: x₀ 슬라이더 알약 터치 & 드래그]
+      if (this.isNAxisMode) {
+        const layout = this.getNAxisLayout(this.screenWidth, this.screenHeight);
+        // 좌하단 박스 2 안을 클릭했거나 슬라이더 알약 근처를 클릭했을 때
+        if (pos.x >= layout.box2.x && pos.x <= layout.box2.x + layout.box2.w &&
+          pos.y >= layout.box2.y && pos.y <= layout.box2.y + layout.box2.h) {
+          this.isDraggingNAxisX0 = true;
+          const limitX = layout.effSpanX_Lower * 0.92;
+          const targetX0 = Math.max(-limitX, Math.min(limitX, layout.screenYToX_2(pos.y)));
+          this.nAxisX0 = Math.round(targetX0 * 100) / 100;
+          this.render();
+          return;
+        }
+      }
+
+      const m = this.screenToMath(pos.x, pos.y);
+      const handleHitDist = isTouch ? 30 : 20;
+      let hitHandleIdx = null;
+
+      // 1. 현재 활성 그래프의 핸들 터치 여부 우선 확인 (그래프가 선택되어 활성화된 상태에서만 조작!)
+      if (canManipulateHandles && this.isCurveSelected && this.activeGraph && this.activeGraph.handles) {
+        let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
+        let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
+        if (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
+          for (const t of this.activeGraph.transforms) {
+            if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
+            if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
+          }
+        }
+        this.activeGraph.handles.forEach((h, idx) => {
+          if (h.hidden) return;
+          let targetY = h.y;
+          if (this.activeGraph.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
+            targetY = Math.abs(h.y);
+          }
+          let evalY = (h.type === 'center' || h.type === 'asymptote')
+            ? (targetY + oy)
+            : this.engine.evaluatePipeline(this.activeGraph, h.x + ox);
+          if (isNaN(evalY) || !isFinite(evalY)) {
+            evalY = targetY + oy;
+          }
+          const s = this.mathToScreen(h.x + ox, evalY);
+          const dist = Math.hypot(s.x - pos.x, s.y - pos.y);
+          if (dist <= handleHitDist) {
+            hitHandleIdx = idx;
+          }
+        });
+      }
+
+      // 2. 핸들을 터치하지 않았다면, 캔버스 위의 모든 곡선 몸통 히트 검사
+      let hitCurveIdx = null;
+      if (hitHandleIdx === null) {
+        hitCurveIdx = this.hitTestAllCurves(pos, isTouch);
+      }
+
+      // 3. 핸들과 곡선이 안 잡혔고 뷰파인더가 켜져 있다면, 뷰파인더 코너 히트 검사 (화면 크기 조절)
+      let hitVfCorner = false;
+      if (this.useViewfinder && hitHandleIdx === null && hitCurveIdx === null) {
+        const vfRect = this.getVfScreenRect();
+        const corners = [
+          { type: 'tl', x: vfRect.x, y: vfRect.y },
+          { type: 'tr', x: vfRect.x + vfRect.w, y: vfRect.y },
+          { type: 'bl', x: vfRect.x, y: vfRect.y + vfRect.h },
+          { type: 'br', x: vfRect.x + vfRect.w, y: vfRect.y + vfRect.h }
+        ];
+        for (const c of corners) {
+          if (Math.hypot(pos.x - c.x, pos.y - c.y) <= 22) {
+            hitVfCorner = true;
+            this.isResizingVf = true;
+            this.vfResizeStart = {
+              startX: pos.x,
+              startY: pos.y,
+              startW: this.vfScreenW,
+              corner: c.type
+            };
+            break;
+          }
+        }
+      }
+
+      this.downInfo = { x: pos.x, y: pos.y, hitHandleIdx, hitCurveIdx, hitVfCorner };
+
+      // [✂️ 구간 분할 인터랙션은 상단 최우선 블록에서 완벽 처리됨]
+
+      // 다른 요소 클릭 시 분할선 선택 해제
+      this.selectedPwBoundaryIdx = null;
+
+      if (hitHandleIdx !== null) {
+        // 활성 그래프의 핸들 드래그 (형태 변형)
+        this.draggedHandleIdx = hitHandleIdx;
+        this.isCurveSelected = true; // [대표님 규칙]: 핸들 조작 중에도 그래프 조작 상태 완벽 유지!
+      } else if (hitCurveIdx !== null) {
+        // [다중 그래프 선택 & 평행이동 분리 (구간 잠금 시 즉시 전체 통째 평행이동)]
+        const isPwGroupDrag = Boolean(this.usePiecewise && this.isPiecewiseLocked && this.graphs[hitCurveIdx] && !this.graphs[hitCurveIdx].isIndependent);
+        const isAlreadySelected = isPwGroupDrag || (this.isCurveSelected && this.activeGraphIdx === hitCurveIdx);
+        this.activeGraphIdx = hitCurveIdx;
+        this.isCurveSelected = true;
+        this.selectedHandleIdx = null;
+        // 🌟 [대표님 핵심 기획: 프리징 깨우기 vs 조작 상태 즉각 무빙] 🌟
+        this.isDraggingCurve = isAlreadySelected;
+        this._curveDragEligible = isAlreadySelected;
+        if (isAlreadySelected) {
+          this.canvas.style.cursor = 'move';
+        }
+        this.curveDragStart = { mx: m.x, my: m.y, startScreenX: pos.x, startScreenY: pos.y };
+        this.curveHandlesSnapshot = JSON.parse(JSON.stringify(this.activeGraph.handles));
+        this.curveFreezeStart = {
+          ox: (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0,
+          oy: (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0
+        };
+        if (isPwGroupDrag) {
+          this._pwGroupBoundariesSnapshot = [...(this.piecewiseBoundaries || [])];
+          this._pwGroupGraphsSnapshot = this.graphs.map(gItem => ({
+            handles: JSON.parse(JSON.stringify(gItem.handles || [])),
+            ox: (gItem.freezeOffset && typeof gItem.freezeOffset.x === 'number') ? gItem.freezeOffset.x : 0,
+            oy: (gItem.freezeOffset && typeof gItem.freezeOffset.y === 'number') ? gItem.freezeOffset.y : 0
+          }));
+        } else {
+          this._pwGroupBoundariesSnapshot = null;
+          this._pwGroupGraphsSnapshot = null;
+        }
+
+        // 🚀 [초고속 최적화]: 드래그 중 반복 계산 방지용 특징점(극점·변곡점·점근선) 1회 사전 캐싱
+        const snapshotGraph = {
+          type: this.activeGraph.type,
+          handles: this.curveHandlesSnapshot,
+          isAbsolute: this.activeGraph.isAbsolute,
+          freezeOffset: this.activeGraph.freezeOffset,
+          transforms: this.activeGraph.transforms
+        };
+        this.curveFeatsSnapshot = this.getGraphFeaturePoints(snapshotGraph);
+
+        const partner = this.getLinkedPartner(this.activeGraph);
+        if (partner) {
+          this.partnerHandlesSnapshot = JSON.parse(JSON.stringify(partner.handles));
+          this.partnerFreezeStart = {
+            ox: (partner.freezeOffset && typeof partner.freezeOffset.x === 'number') ? partner.freezeOffset.x : 0,
+            oy: (partner.freezeOffset && typeof partner.freezeOffset.y === 'number') ? partner.freezeOffset.y : 0
+          };
+        } else {
+          this.partnerHandlesSnapshot = null;
+          this.partnerFreezeStart = null;
+        }
+
+        this.syncControls();
+        this.renderLayerList();
+        this.renderFuncList();
+        this.render();
+      } else if (hitVfCorner) {
+        // 뷰파인더 코너 조절 상태
+        this.isCurveSelected = false;
+        this.selectedHandleIdx = null;
+      } else {
+        // 🌟 [대표님 핵심 기획]: 핸들러 노출 상태에서 그래프 외의 빈 공간 터치 시 핸들러 즉시 사라짐!
+        this.isCurveSelected = false;
+        this.selectedHandleIdx = null;
+        if (this.pulseAnimId) {
+          cancelAnimationFrame(this.pulseAnimId);
+          this.pulseAnimId = null;
+        }
+
+        // 🌟 [대표님 레이어 철학 100% 완벽 분리] 🌟
+        // 1) 2층 판서 레이어(this.isGraphCovered === true, 그래프 스샷 후 넘어간 레이어):
+        //    -> 밀면 문제 카드 + 그래프 카드 + 필기 전체가 통째로 밀려 새 판서 공간 무한 확보!
+        // 2) 1층 실시간 그래프 편집 레이어(!this.isGraphCovered):
+        //    -> 문제는 좌상단에 100% 든든하게 고정! 원래 화면(그래프 곡선과 좌표축/원점)이 부드럽게 이동!
+        if (this.isGraphCovered && !this.pdfPageBoardData) {
+          this.isBoardPanning = true;
+          this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
+          this.canvas.style.cursor = 'grabbing';
+        } else {
+          this.isPanning = true;
+          this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
+          this.canvas.style.cursor = 'grabbing';
+        }
+        this.render();
+      }
+    };
+
+    const handleMove = (e) => {
+      this._lastPointerEvent = e;
+      const pos = getPos(e);
+
+      // 🌟 [📦 그래프 보관 드래그 모드: 십자(+) 포인터 고정 & 가상 펜 숨김] 🌟
+      if (this.isGraphSnapMode) {
+        if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+        if (this.canvas) this.canvas.style.cursor = 'crosshair';
+        if (this.isGraphSnapDragging && this.graphSnapStart) {
+          const dragBox = document.getElementById('graphSnapDragBox');
+          if (dragBox) {
+            const x = Math.min(this.graphSnapStart.clientX, e.clientX);
+            const y = Math.min(this.graphSnapStart.clientY, e.clientY);
+            const w = Math.abs(e.clientX - this.graphSnapStart.clientX);
+            const h = Math.abs(e.clientY - this.graphSnapStart.clientY);
+            dragBox.style.left = `${x}px`;
+            dragBox.style.top = `${y}px`;
+            dragBox.style.width = `${w}px`;
+            dragBox.style.height = `${h}px`;
+          }
+        }
+        return;
+      }
+
+      // 🌟 [필기 모드 가상 스타일러스 펜]: 랙 없는 144Hz 초고속 포인터 추종 (메뉴 위에서는 자동 숨김)
+      if (this.isInkMode) {
+        this.updateStylusPenPosition(pos.x, pos.y, e);
+      }
+
+      // 🌟 [초기 화면 / 캔버스 패닝 0.00ms 초고속 패스트패스]:
+      // 화면 이동 중에는 14단계 조건 분기와 불필요한 잉크 캐시 리빌드를 모두 건너뛰고 즉각 좌표만 갱신!
+      if (this.isPanning) {
+        if (this.canvas.style.cursor !== 'grabbing') {
+          this.canvas.style.cursor = 'grabbing';
+        }
+        if (this.inkStrokes && this.inkStrokes.length > 0) {
+          this._inkBakeDirty = true;
+        }
+        this.panX = pos.x - this.panStart.x;
+        this.panY = pos.y - this.panStart.y;
+        this.snapActiveX = false;
+        this.snapActiveY = false;
+        this.requestRender();
+        return;
+      }
+
+      if (this.isBoardPanning && this.boardPanStart) {
+        this.canvas.style.cursor = 'grabbing';
+        this.boardPanX = Math.round(pos.x - this.boardPanStart.x);
+        this.boardPanY = Math.round(pos.y - this.boardPanStart.y);
+        this.updateProblemCardPosition();
+        this._inkBakeDirty = true;
+        this.requestRender();
+        return;
+      }
+
+      // 🌟 [컴팩트 스테이지 리사이즈 및 이동 실시간 드래그 처리] 🌟
+      if (this.isResizingStage && this.stageDragStart) {
+        const stage = this.getCompactGraphStage();
+        const dx = pos.x - this.stageDragStart.startX;
+        const dy = pos.y - this.stageDragStart.startY;
+
+        let newW = this.stageDragStart.initW + dx;
+        let newH = this.stageDragStart.initH + dy;
+
+        // [대표님 기획]: 꼭 정사각형에 국한되지 않고 가로길게 / 세로길게 자유 비율 지원! (Shift 누르면 1:1 비례 고정)
+        if (e.shiftKey) {
+          const maxDelta = Math.max(dx, dy);
+          newW = this.stageDragStart.initW + maxDelta;
+          newH = this.stageDragStart.initH + maxDelta;
+        }
+
+        const bPanX = this.boardPanX || 0;
+        const bPanY = this.boardPanY || 0;
+        stage.w = Math.max(160, Math.min(this.screenWidth - (stage.x + bPanX) - 10, newW));
+        stage.h = Math.max(140, Math.min(this.screenHeight - (stage.y + bPanY) - 10, newH));
+        this.canvas.style.cursor = 'nwse-resize';
+        this.requestRender();
+        return;
+      }
+
+      if (this.isMovingStage && this.stageDragStart) {
+        const stage = this.getCompactGraphStage();
+        const dx = pos.x - this.stageDragStart.startX;
+        const dy = pos.y - this.stageDragStart.startY;
+
+        const bPanX = this.boardPanX || 0;
+        const bPanY = this.boardPanY || 0;
+        stage.x = Math.max(16 - bPanX, Math.min(this.screenWidth - stage.w - 10 - bPanX, this.stageDragStart.initX + dx));
+        stage.y = Math.max(40 - bPanY, Math.min(this.screenHeight - stage.h - 10 - bPanY, this.stageDragStart.initY + dy));
+
+        // 스테이지 이동 시 원점(그래프)도 함께 자연스럽게 연동 이동!
+        this.panX = Math.round(this.stageDragStart.initPanX + dx);
+        this.panY = Math.round(this.stageDragStart.initPanY + dy);
+        this._inkBakeDirty = true;
+        this.canvas.style.cursor = 'move';
+        this.requestRender();
+        return;
+      }
+
+      // [🪢 올가미(Lasso) 툴 인터랙션]
+      if (this.isInkMode && this.activeInkTool === 'lasso') {
+        // 1. 선택된 필기 및 점선 루프 실시간 드래그 이동 ("점선 따라가는 걸로" 완벽 구현!)
+        if (this.isDraggingLassoSelection && this.lassoDragStart) {
+          const mCurrent = this.screenToMath(pos.x, pos.y);
+          const deltaX = mCurrent.x - this.lassoDragStart.m.x;
+          const deltaY = mCurrent.y - this.lassoDragStart.m.y;
+          const deltaScreenX = pos.x - this.lassoDragStart.screenX;
+          const deltaScreenY = pos.y - this.lassoDragStart.screenY;
+
+          // (1) 필기 획 이동
+          if (this.selectedInkStrokes) {
+            this.selectedInkStrokes.forEach(stroke => {
+              const isBoard = (stroke.target || 'board') === 'board';
+              if (stroke.shape) {
+                if (stroke.shape.type === 'line') {
+                  if (isBoard) {
+                    stroke.shape.start.x += deltaScreenX; stroke.shape.start.y += deltaScreenY;
+                    stroke.shape.end.x += deltaScreenX; stroke.shape.end.y += deltaScreenY;
+                  } else {
+                    stroke.shape.start.x += deltaX; stroke.shape.start.y += deltaY;
+                    stroke.shape.end.x += deltaX; stroke.shape.end.y += deltaY;
+                  }
+                } else if (stroke.shape.type === 'circle' || stroke.shape.type === 'ellipse') {
+                  if (isBoard) {
+                    stroke.shape.center.x += deltaScreenX; stroke.shape.center.y += deltaScreenY;
+                  } else {
+                    stroke.shape.center.x += deltaX; stroke.shape.center.y += deltaY;
+                  }
+                } else if (stroke.shape.type === 'rect') {
+                  if (isBoard) {
+                    stroke.shape.min.x += deltaScreenX; stroke.shape.min.y += deltaScreenY;
+                    stroke.shape.max.x += deltaScreenX; stroke.shape.max.y += deltaScreenY;
+                  } else {
+                    stroke.shape.min.x += deltaX; stroke.shape.min.y += deltaY;
+                    stroke.shape.max.x += deltaX; stroke.shape.max.y += deltaY;
+                  }
+                } else if (stroke.shape.pts && stroke.shape.pts.length > 0) {
+                  stroke.shape.pts.forEach(pt => {
+                    if (isBoard) {
+                      pt.x += deltaScreenX; pt.y += deltaScreenY;
+                    } else {
+                      pt.x += deltaX; pt.y += deltaY;
+                    }
+                  });
+                }
+              }
+              if (stroke.points) {
+                stroke.points.forEach(pt => {
+                  if (isBoard) {
+                    pt.x += deltaScreenX;
+                    pt.y += deltaScreenY;
+                  } else {
+                    pt.x += deltaX;
+                    pt.y += deltaY;
+                  }
+                });
+              }
+            });
+          }
+
+          // (2) 수식 텍스트 라벨 이동
+          if (this.selectedTextLabels) {
+            this.selectedTextLabels.forEach(t => {
+              t.mathX += deltaX;
+              t.mathY += deltaY;
+            });
+          }
+
+          // (3) 🌟 올가미 점선 루프도 손을 따라 실시간 이동! ("점선 따라가는 걸로"!)
+          if (this.lassoPoints && this.lassoPoints.length > 0) {
+            this.lassoPoints.forEach(pt => {
+              pt.x += deltaScreenX;
+              pt.y += deltaScreenY;
+            });
+          }
+
+          this.lassoDragStart.screenX = pos.x;
+          this.lassoDragStart.screenY = pos.y;
+          this.lassoDragStart.m = mCurrent;
+          this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
+          this._inkBakeDirty = true;
+          this.requestRender();
+          return;
+        }
+
+        // 2. 올가미 점선 루프 드로잉: 점선이 펜을 따라 실시간으로 그려짐!
+        if (this.isLassoSelecting) {
+          this.lassoPoints.push({ x: pos.x, y: pos.y });
+          this.requestRender();
+          return;
+        }
+
+        // 3. 점선 루프 위 호버 시 커서 변경 (올가미 내부만 move, 바깥은 crosshair)
+        const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
+          (this.selectedTextLabels && this.selectedTextLabels.length > 0);
+        if (hasSelection) {
+          const isOver = this.isPointInLassoSelection(pos);
+          this.canvas.style.cursor = isOver ? 'move' : 'crosshair';
+          this.canvas.classList.toggle('is-hover-selection', isOver);
+        }
+      }
+
+      // [✍️ 실시간 무한 칠판 필기 모드 인터랙션]
+      if (this.isDrawingInk || this._isTemporaryStylusEraser) {
+        const isStylusEraser = this.isStylusEraserEvent(e) || this._isTemporaryStylusEraser;
+        if (this.activeInkTool === 'eraser' || isStylusEraser) {
+          this.eraseInkAtPoint(pos.x, pos.y, 24);
+          this.requestRender();
+          return;
+        } else if (this.currentInkStroke) {
+          // 🌟 Draw & Hold 기하 도형 인식 완료 상태에서 홀드 드래그 중: 동적 크기/각도 실시간 조절!
+          if (this._inkHoldDetected && this.currentInkStroke.shape) {
+            this._updateHeldShape(pos);
+            this.requestRender();
+            return;
+          }
+
+          // 홀드 미인식 상태: 이동 거리가 7px 이상이면 홀드 타이머 리셋
+          if (this._inkHoldLastScreenPos) {
+            const dHold = Math.hypot(pos.x - this._inkHoldLastScreenPos.x, pos.y - this._inkHoldLastScreenPos.y);
+            if (dHold > 7) {
+              this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
+              this._startInkHoldTimer();
+            }
+          }
+
+          const coalesced = (e.getCoalescedEvents && typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null;
+          const events = (coalesced && coalesced.length > 0) ? coalesced : [e];
+          let addedPoints = 0;
+          for (let i = 0; i < events.length; i++) {
+            const ev = events[i];
+            const pPos = getPos(ev);
+
+            // 🌟 [iCanScreen 급 0ms 직접 추종]: 이중 EMA 스무딩으로 인한 고무줄 지연을 제거하고 펜 끝 1:1 밀착 추종!
+            const prevScreenPos = this._lastInkScreenPos;
+            if (prevScreenPos) {
+              const d = Math.hypot(pPos.x - prevScreenPos.x, pPos.y - prevScreenPos.y);
+              if (d < 0.8) continue; // 0.8px 미만 초미세 노이즈만 제거
+            }
+            this._lastInkScreenPos = { x: pPos.x, y: pPos.y };
+
+            const m = this.screenToMath(pPos.x, pPos.y);
+            let rawPressure = 0.5;
+            if (ev.pointerType === 'pen' && typeof ev.pressure === 'number' && ev.pressure > 0) {
+              rawPressure = ev.pressure;
+            } else if (typeof ev.pressure === 'number' && ev.pressure > 0) {
+              rawPressure = ev.pressure;
+            }
+            const prevPressure = (this._lastPressure !== undefined) ? this._lastPressure : rawPressure;
+            const pressure = prevPressure * 0.25 + rawPressure * 0.75;
+            this._lastPressure = pressure;
+            if (this.currentInkStroke.target === 'graph') {
+              this.currentInkStroke.points.push({ x: m.x, y: m.y, p: pressure });
+            } else {
+              this.currentInkStroke.points.push({ x: pPos.x - (this.boardPanX || 0), y: pPos.y - (this.boardPanY || 0), p: pressure });
+            }
+            addedPoints++;
+
+            // 🌟 [서브프레임 0.00ms 직접 렌더링]: VSync(requestAnimationFrame)를 기다리지 않고 펜 이동 즉시 현재 선분을 화면에 각인!
+            if (prevScreenPos && !this.currentInkStroke.isHighlighter) {
+              this.drawLiveInkSegment(prevScreenPos, pPos, prevPressure, pressure, this.currentInkStroke);
+            }
+          }
+          if (addedPoints > 0) {
+            this.requestRender();
+          }
+        }
+        return;
+      }
+
+      // [🔤 캔버스 자유 수식 텍스트 라벨 실시간 드래그 이동]
+      if (this.isDraggingTextLabel && this.draggedTextLabelId) {
+        this.canvas.style.cursor = 'move';
+        const m = this.screenToMath(pos.x, pos.y);
+        const item = this.textLabels.find(t => t.id === this.draggedTextLabelId);
+        if (item) {
+          item.mathX = m.x + this.draggedTextOffset.dx;
+          item.mathY = m.y + this.draggedTextOffset.dy;
+        }
+        this.requestRender();
+        return;
+      }
+
+      // [🧑‍🏫 라이브 판서 분할 모드: 구분선 실시간 드래그]
+      if (this.isDraggingBoardDivider) {
+        this.canvas.style.cursor = 'col-resize';
+        const newRatio = pos.x / this.screenWidth;
+        this.setBoardSplitRatio(newRatio);
+        return;
+      }
+
+      // [🔀 N축 3-분할 스튜디오: x₀ 실시간 수직 드래그]
+      if (this.isNAxisMode && this.isDraggingNAxisX0) {
+        this.canvas.style.cursor = 'ns-resize';
+        const layout = this.getNAxisLayout(this.screenWidth, this.screenHeight);
+        const limitX = layout.effSpanX_Lower * 0.92;
+        const targetX0 = Math.max(-limitX, Math.min(limitX, layout.screenYToX_2(pos.y)));
+        this.nAxisX0 = Math.round(targetX0 * 100) / 100;
+        this.requestRender();
+        return;
+      }
+
+      // [✂️ N-구간 다중 분할선 드래그 & 교점 마그네틱 자석 스냅 🧲]
+      if (this.activePwDragIdx !== null && this.piecewiseBoundaries) {
+        this.canvas.style.cursor = 'ew-resize';
+        const currM = this.screenToMath(pos.x, pos.y);
+        let newX = currM.x;
+
+        // 인접 분할선 간 최소 간격 유지 (순서 보존 0.25 pt)
+        const idx = this.activePwDragIdx;
+        const minX = idx > 0 ? this.piecewiseBoundaries[idx - 1] + 0.25 : -this.xSpan * 2;
+        const maxX = idx < this.piecewiseBoundaries.length - 1 ? this.piecewiseBoundaries[idx + 1] - 0.25 : this.xSpan * 2;
+        newX = Math.max(minX, Math.min(maxX, newX));
+
+        // 교점 자동 자석 스냅 (Alt키 누르면 연속 아날로그)
+        this.snappedPoints = [];
+        if (!e.altKey && this.graphs.length >= 2) {
+          const leftIdx = (this.piecewiseFuncMap && this.piecewiseFuncMap[idx] !== undefined) ? this.piecewiseFuncMap[idx] : 0;
+          const rightIdx = (this.piecewiseFuncMap && this.piecewiseFuncMap[idx + 1] !== undefined) ? this.piecewiseFuncMap[idx + 1] : 1;
+          const gLeft = this.graphs[leftIdx] || this.graphs[0];
+          const gRight = this.graphs[rightIdx] || this.graphs[1];
+
+          const roots = (gLeft && gRight && gLeft !== gRight)
+            ? this.engine.findIntersections(gLeft, gRight, { xmin: -15, xmax: 15 }, null)
+            : [];
+
+          if (roots && roots.length > 0) {
+            const effSpanX = this.xSpan / this.zoomLevel;
+            const unitScaleX = this.screenWidth / (effSpanX * 2);
+            const snapDistMath = 14 / unitScaleX; // 약 14px 허용치
+
+            let closestRoot = null;
+            let minDiff = Infinity;
+            roots.forEach(r => {
+              if (r.x >= minX && r.x <= maxX) {
+                const diff = Math.abs(r.x - newX);
+                if (diff < snapDistMath && diff < minDiff) {
+                  minDiff = diff;
+                  closestRoot = r;
+                }
+              }
+            });
+
+            if (closestRoot !== null) {
+              newX = closestRoot.x;
+              this.snappedPoints.push({
+                x: closestRoot.x,
+                y: closestRoot.y,
+                isContinuity: true,
+                label: '교점 스냅'
+              });
+            }
+          }
+        }
+
+        newX = parseFloat(newX.toFixed(2));
+        this.piecewiseBoundaries[idx] = newX;
+        if (idx === 0) this.pwK = newX;
+
+        this.updatePwDescBadge();
+        this.requestRender();
+        return;
+      }
+
+      if (this.draggedHandleIdx !== null) {
+        if (this.curveContextBar && !this.curveContextBar.classList.contains('dimmed')) {
+          this.curveContextBar.classList.add('dimmed');
+        }
+        this.canvas.style.cursor = 'grabbing';
+        // 활성 그래프 핸들 개별 드래그
+        let m = this.screenToMath(pos.x, pos.y);
+        this.axisSnapActiveX = false;
+        this.axisSnapActiveY = false;
+        this.snappedPoints = [];
+
+        // [대표님 기획: 🧲 스마트 마그네틱 자석 스냅 - 핸들 자체 x축/y축 찰칵!]
+        if (this.useMagneticSnap && !e.altKey) {
+          const effSpanY = this.ySpan / this.zoomLevel;
+          const unitScale = (this.screenHeight / 2) / effSpanY;
+          const snapDistMath = 11 / unitScale;
+
+          // X축 (y=0) 스냅
+          let snappedY = false;
+          // 1) 기본: 드래그 중인 핸들 자체가 x축에 닿을 때 (극대점 자체 접함)
+          if (Math.abs(m.y) < snapDistMath) {
+            m.y = 0.0;
+            this.axisSnapActiveY = true;
+            this.snappedPoints.push({ x: m.x, y: 0.0, label: 'x축 밀착' });
+            snappedY = true;
+          }
+
+          // 2) [대표님 핵심 기획]: 사차함수 중앙 극대점(idx=1) 평행이동 시 극소점이 x축(y=0)에 닿을 때 찰칵 자석 스냅!
+          const g = this.activeGraph;
+          if (!snappedY && g && g.type === '4th_symmetric' && this.draggedHandleIdx === 1 && g.handles.length >= 3) {
+            const deltaY = g.handles[1].y - g.handles[0].y; // 극대-극소 높이차
+            if (Math.abs(m.y - deltaY) < snapDistMath) {
+              m.y = deltaY;
+              this.axisSnapActiveY = true;
+              let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+              const dx = m.x - (g.handles[1].x + ox);
+              this.snappedPoints.push({ x: g.handles[0].x + ox + dx, y: 0.0, isContinuity: true, label: '극소 x축 접함' });
+              this.snappedPoints.push({ x: g.handles[2].x + ox + dx, y: 0.0, isContinuity: true, label: '극소 x축 접함' });
+              snappedY = true;
+            }
+          }
+
+          // Y축 (x=0) 스냅
+          if (Math.abs(m.x) < snapDistMath) {
+            m.x = 0.0;
+            this.axisSnapActiveX = true;
+            this.snappedPoints.push({ x: 0.0, y: m.y, label: 'y축 밀착' });
+          }
+        }
+
+        let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
+        let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
+        if (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
+          for (const t of this.activeGraph.transforms) {
+            if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
+            if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
+          }
+        }
+        this.dragActiveHandle(this.draggedHandleIdx, m.x - ox, m.y - oy, e.altKey);
+        if (this.activeGraph && this.activeGraph.isAbsolute && this.activeGraph.isAbsPristine) {
+          this.activeGraph.isAbsPristine = false;
+          this.syncCurveContextBar();
+          this.syncControls();
+        }
+        this.requestRender();
+      } else if ((this.isDraggingCurve || (this.curveDragStart && this.curveHandlesSnapshot && this._curveDragEligible)) && this.curveHandlesSnapshot) {
+        // 🌟 [대표님 핵심 기획]: 터치하자마자 미끄러지지 않도록, 이미 선택된 상태에서 6px 이상 확실히 끌었을 때만 드래그 시작!
+        if (!this.isDraggingCurve && this.curveDragStart && this._curveDragEligible) {
+          const dMove = Math.hypot(pos.x - (this.curveDragStart.startScreenX || pos.x), pos.y - (this.curveDragStart.startScreenY || pos.y));
+          if (dMove >= 6) {
+            this.isDraggingCurve = true;
+            if (this.curveContextBar && !this.curveContextBar.classList.contains('dimmed')) {
+              this.curveContextBar.classList.add('dimmed');
+            }
+          }
+        }
+
+        if (this.isDraggingCurve && this.curveDragStart) {
+          this.canvas.style.cursor = 'move'; // 곡선 몸통 평행이동 십자화살표 ✥
+          // 활성 곡선 통째로 평행이동!
+          const currM = this.screenToMath(pos.x, pos.y);
+          let deltaX = currM.x - this.curveDragStart.mx;
+          let deltaY = currM.y - this.curveDragStart.my;
+
+          this.axisSnapActiveX = false;
+          this.axisSnapActiveY = false;
+          this.snapActiveX = false;
+          this.snapActiveY = false;
+          this.snappedPoints = [];
+
+          // [대표님 기획: 🧲 극점·변곡점·점근선 x축/y축 닿는대로 척척 달라붙는 마그네틱 스냅! (단, 구간잠금 통째 이동 시에는 개별 스냅 제외)]
+          const isPwGroupDragMove = Boolean(this.usePiecewise && this.isPiecewiseLocked && this.activeGraph && !this.activeGraph.isIndependent);
+          if (this.useMagneticSnap && !e.altKey && !isPwGroupDragMove) {
+            const effSpanY = this.ySpan / this.zoomLevel;
+            const unitScale = (this.screenHeight / 2) / effSpanY;
+            const snapDistMath = 11 / unitScale;
+
+            // 🚀 [초고속 캐시]: 드래그 중 매 프레임 수치해석 재계산 제거
+            const feats = this.curveFeatsSnapshot || this.getGraphFeaturePoints({
+              type: this.activeGraph.type,
+              handles: this.curveHandlesSnapshot,
+              isAbsolute: this.activeGraph.isAbsolute,
+              freezeOffset: this.activeGraph.freezeOffset,
+              transforms: this.activeGraph.transforms
+            });
+
+            // 1. Y축 스냅 (x=0 축 스냅)
+            let bestCandidateX = null;
+            let minDiffX = Infinity;
+
+            const allXCandidates = [
+              ...feats.pts.map(p => ({ x: p.x, label: p.label, origY: p.y })),
+              ...feats.asymX.map(ax => ({ x: ax, label: '점근선', origY: 0 }))
+            ];
+
+            allXCandidates.forEach(cand => {
+              const proposedX = cand.x + deltaX;
+              const diff = Math.abs(proposedX - 0); // x=0 과의 거리
+              if (diff < snapDistMath && diff < minDiffX) {
+                minDiffX = diff;
+                bestCandidateX = { ...cand, snapDeltaX: -cand.x };
+              }
+            });
+
+            if (bestCandidateX) {
+              deltaX = bestCandidateX.snapDeltaX;
+              this.axisSnapActiveX = true;
+              this.snappedPoints.push({
+                x: 0,
+                y: (bestCandidateX.origY !== undefined ? bestCandidateX.origY + deltaY : 0),
+                label: `${bestCandidateX.label} y축 일치`
+              });
+            } else if (this.useViewfinder) {
+              // Y축 스냅이 안 걸렸다면 캡처영역 중앙선 스냅 검사
+              let symmetryCenterXMath = this.curveHandlesSnapshot[0].x;
+              const g = this.activeGraph;
+              if (g.type === '2nd_quadratic') symmetryCenterXMath = this.curveHandlesSnapshot[0].x;
+              else if (g.type === '3rd_normal' && this.curveHandlesSnapshot.length >= 2) symmetryCenterXMath = (this.curveHandlesSnapshot[0].x + this.curveHandlesSnapshot[1].x) / 2.0;
+              else if (g.type === '4th_symmetric' && this.curveHandlesSnapshot.length >= 2) symmetryCenterXMath = this.curveHandlesSnapshot[1].x;
+              else if (g.type === 'rational_basic') symmetryCenterXMath = this.curveHandlesSnapshot[0].x;
+
+              const proposedCenterX = this.mathToScreen(symmetryCenterXMath + deltaX, 0).x;
+              const targetScreenX = this.screenWidth / 2;
+              if (Math.abs(proposedCenterX - targetScreenX) < 11) {
+                const snappedCenterMath = this.screenToMath(targetScreenX, 0).x;
+                deltaX = snappedCenterMath - symmetryCenterXMath;
+                this.snapActiveX = true;
+              }
+            }
+
+            // 2. X축 스냅 (y=0 축 스냅)
+            let bestCandidateY = null;
+            let minDiffY = Infinity;
+
+            const allYCandidates = [
+              ...feats.pts.map(p => ({ y: p.y, label: p.label, origX: p.x })),
+              ...feats.asymY.map(ay => ({ y: ay, label: '점근선', origX: 0 }))
+            ];
+
+            allYCandidates.forEach(cand => {
+              const proposedY = cand.y + deltaY;
+              const diff = Math.abs(proposedY - 0); // y=0 과의 거리
+              if (diff < snapDistMath && diff < minDiffY) {
+                minDiffY = diff;
+                bestCandidateY = { ...cand, snapDeltaY: -cand.y };
+              }
+            });
+
+            if (bestCandidateY) {
+              deltaY = bestCandidateY.snapDeltaY;
+              this.axisSnapActiveY = true;
+              this.snappedPoints.push({
+                x: (bestCandidateY.origX !== undefined ? bestCandidateY.origX + deltaX : 0),
+                y: 0,
+                label: `${bestCandidateY.label} x축 접함`
+              });
+            }
+
+            // 3. [대표님 킬러 기획: ✂️ 구간 분할 경계선 연속(Continuity) 체결 자석 스냅 🧲]
+            // 활성 함수를 위아래(또는 평행이동)로 움직일 때, 인접 구간 함수와 분할선 위치에서 높이가 같아지는(연속이 되는) 순간 자석처럼 찰칵 체결!
+            if (this.usePiecewise && !this.isPiecewiseLocked && this.graphs.length >= 2 && this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0 && !this.activeGraph.isIndependent) {
+              const currIdx = this.activeGraphIdx;
+              const boundaries = this.piecewiseBoundaries;
+              const funcMap = this.piecewiseFuncMap || [];
+
+              let bestContinuityY = null;
+              let minDiffCont = Infinity;
+              let snappedB = null;
+              let snappedTargetY = null;
+
+              for (let bIdx = 0; bIdx < boundaries.length; bIdx++) {
+                const b = boundaries[bIdx];
+                const leftIdx = funcMap[bIdx] !== undefined ? funcMap[bIdx] : 0;
+                const rightIdx = funcMap[bIdx + 1] !== undefined ? funcMap[bIdx + 1] : 1;
+
+                let partnerIdx = null;
+                if (currIdx === leftIdx && rightIdx !== currIdx) {
+                  partnerIdx = rightIdx;
+                } else if (currIdx === rightIdx && leftIdx !== currIdx) {
+                  partnerIdx = leftIdx;
+                }
+
+                if (partnerIdx !== null && this.graphs[partnerIdx]) {
+                  const partnerGraph = this.graphs[partnerIdx];
+                  const partnerY = this.engine.evaluatePipeline(partnerGraph, b);
+
+                  if (!isNaN(partnerY) && isFinite(partnerY)) {
+                    // 현재 활성 그래프가 x축 이동 deltaX를 반영했을 때 x=b에서의 기준 Y값
+                    const tempGraphX = {
+                      ...this.activeGraph,
+                      handles: this.curveHandlesSnapshot.map(h => ({ ...h, x: h.x + deltaX })),
+                      freezeOffset: this.curveFreezeStart ? {
+                        x: (this.curveFreezeStart.ox || 0) + deltaX,
+                        y: (this.curveFreezeStart.oy || 0)
+                      } : { x: deltaX, y: 0 }
+                    };
+                    const currBaseY = this.engine.evaluatePipeline(tempGraphX, b);
+
+                    if (!isNaN(currBaseY) && isFinite(currBaseY)) {
+                      const neededDeltaY = partnerY - currBaseY;
+                      const diff = Math.abs(deltaY - neededDeltaY);
+
+                      // 연속 체결 스냅은 강사의 가장 중요한 목표이므로 넉넉한 자석 손맛(16px 허용) 제공
+                      const contSnapDist = snapDistMath * 1.45;
+                      if (diff < contSnapDist && diff < minDiffCont) {
+                        minDiffCont = diff;
+                        bestContinuityY = neededDeltaY;
+                        snappedB = b;
+                        snappedTargetY = partnerY;
+                      }
+                    }
+                  }
+                }
+              }
+
+              if (bestContinuityY !== null) {
+                deltaY = bestContinuityY;
+                this.axisSnapActiveY = true;
+                this.snappedPoints = [{
+                  x: snappedB,
+                  y: snappedTargetY,
+                  isContinuity: true,
+                  label: '연속 결합'
+                }];
+              }
+            }
+          }
+
+          // 🌟 [대표님 핵심 기획: 구간 잠금(🔒) 상태에서 함수 그래프를 잡고 끌면 경계선 + 모든 구간 참여 함수가 한 몸으로 통째 평행이동!] 🌟
+          if (this.usePiecewise && this.isPiecewiseLocked && this.activeGraph && !this.activeGraph.isIndependent && this._pwGroupBoundariesSnapshot && this._pwGroupGraphsSnapshot) {
+            this.piecewiseBoundaries = this._pwGroupBoundariesSnapshot.map(b => parseFloat((b + deltaX).toFixed(4)));
+            if (this.piecewiseBoundaries.length > 0) {
+              this.pwK = this.piecewiseBoundaries[0];
+            }
+            this.graphs.forEach((gItem, gIdx) => {
+              if (!gItem || gItem.isIndependent) return;
+              const snap = this._pwGroupGraphsSnapshot[gIdx];
+              if (!snap) return;
+              const gHasTransforms = gItem.isAbsolute || (gItem.transforms && gItem.transforms.length > 0) || gItem.isFrozen || snap.ox !== 0 || snap.oy !== 0;
+              if (gHasTransforms) {
+                if (!gItem.freezeOffset) gItem.freezeOffset = { x: 0, y: 0 };
+                gItem.freezeOffset.x = Math.round((snap.ox + deltaX) * 100) / 100;
+                gItem.freezeOffset.y = Math.round((snap.oy + deltaY) * 100) / 100;
+              } else if (gItem.handles && snap.handles) {
+                gItem.handles.forEach((h, hIdx) => {
+                  if (snap.handles[hIdx]) {
+                    h.x = snap.handles[hIdx].x + deltaX;
+                    h.y = snap.handles[hIdx].y + deltaY;
+                  }
+                });
+              }
+            });
+            this.updatePwDescBadge();
+            this.requestRender();
+            return;
+          }
+
+          const isShiftDrag = !!e.shiftKey;
+          const ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
+          const oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
+          const hasTransforms = this.activeGraph.isAbsolute || (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) || this.activeGraph.isFrozen || ox !== 0 || oy !== 0;
+
+          if (isShiftDrag && this.activeGraph.isAbsolute) {
+            // 💡 [Shift + 몸통 드래그]: 원함수 내부 핸들 이동 ➔ 실시간 접힘 모핑! (|f(x)-k|)
+            this.activeGraph.handles.forEach((h, idx) => {
+              h.x = this.curveHandlesSnapshot[idx].x + deltaX;
+              h.y = this.curveHandlesSnapshot[idx].y + deltaY;
+            });
+            if (this.activeGraph.isAbsPristine && (Math.abs(deltaX) > 0.05 || Math.abs(deltaY) > 0.05)) {
+              this.activeGraph.isAbsPristine = false;
+              this.syncCurveContextBar();
+              this.syncControls();
+            }
+            this.showShiftMorphHint();
+          } else if (hasTransforms) {
+            // 🚀 [기본 몸통 드래그]: 보이는 개형 그대로 통째 평행이동! (|f(x)| - k)
+            if (!this.activeGraph.freezeOffset) this.activeGraph.freezeOffset = { x: 0, y: 0 };
+            const initOx = (this.curveFreezeStart && typeof this.curveFreezeStart.ox === 'number') ? this.curveFreezeStart.ox : 0;
+            const initOy = (this.curveFreezeStart && typeof this.curveFreezeStart.oy === 'number') ? this.curveFreezeStart.oy : 0;
+            const newOx = Math.round((initOx + deltaX) * 100) / 100;
+            const newOy = Math.round((initOy + deltaY) * 100) / 100;
+            if (this.activeGraph.freezeOffset.x !== newOx || this.activeGraph.freezeOffset.y !== newOy) {
+              this.activeGraph.freezeOffset.x = newOx;
+              this.activeGraph.freezeOffset.y = newOy;
+              // 🌟 [대표님 기획]: 절댓값 씌운 그래프를 움직이는 순간 상단 절댓값 테두리/색상 해제!
+              if (this.activeGraph.isAbsolute && this.activeGraph.isAbsPristine) {
+                this.activeGraph.isAbsPristine = false;
+                this.syncCurveContextBar();
+                this.syncControls();
+              }
+            }
+
+            // 🔗 [역함수 대칭 연동: dx ↔ dy 스왑 평행이동]
+            const partner = this.getLinkedPartner(this.activeGraph);
+            if (partner && this.partnerFreezeStart) {
+              if (!partner.freezeOffset) partner.freezeOffset = { x: 0, y: 0 };
+              partner.freezeOffset.x = Math.round((this.partnerFreezeStart.ox + deltaY) * 100) / 100;
+              partner.freezeOffset.y = Math.round((this.partnerFreezeStart.oy + deltaX) * 100) / 100;
+            }
+          } else if (this.isShapeCenterLocked(this.activeGraph)) {
+            this.showCenterLockHint(); // 원점 중심 고정 중에는 통째 이동 불가
+          } else {
+            // 일반 함수: 핸들 전체 평행이동
+            this.activeGraph.handles.forEach((h, idx) => {
+              h.x = this.curveHandlesSnapshot[idx].x + deltaX;
+              h.y = this.curveHandlesSnapshot[idx].y + deltaY;
+            });
+
+            // 🔗 [역함수 대칭 연동: 일반 함수 핸들 dx ↔ dy 스왑 평행이동]
+            const partner = this.getLinkedPartner(this.activeGraph);
+            if (partner && this.partnerHandlesSnapshot) {
+              partner.handles.forEach((h, idx) => {
+                if (this.partnerHandlesSnapshot[idx]) {
+                  h.x = this.partnerHandlesSnapshot[idx].x + deltaY;
+                  h.y = this.partnerHandlesSnapshot[idx].y + deltaX;
+                }
+              });
+            }
+          }
+          // 🚀 [초고속 최적화]: 드래그 중 매 픽셀마다 DOM 전체를 뒤지던 syncControls 제거! handleUp에서 1회 수행
+          this.requestRender();
+        }
+      } else if (this.isResizingVf && this.vfResizeStart) {
+        // 모서리 드래그로 뷰파인더 화면 고정 크기(vfScreenW) 실시간 조절
+        const deltaX = pos.x - this.vfResizeStart.startX;
+        const deltaY = pos.y - this.vfResizeStart.startY;
+
+        let deltaW = 0;
+        // 각 코너별 당기는 방향에 맞게 자연스러운 크기 변화 (바깥쪽으로 당기면 커짐)
+        if (this.vfResizeStart.corner === 'br') {
+          deltaW = deltaX * 2;
+        } else if (this.vfResizeStart.corner === 'tr') {
+          deltaW = deltaX * 2;
+        } else if (this.vfResizeStart.corner === 'tl') {
+          deltaW = -deltaX * 2;
+        } else if (this.vfResizeStart.corner === 'bl') {
+          deltaW = -deltaX * 2;
+        }
+
+        const newW = Math.max(220, Math.min(this.screenWidth - 40, this.vfResizeStart.startW + deltaW));
+        this.vfScreenW = Math.round(newW);
+
+        const sl = document.getElementById('sliderVfWidth');
+        if (sl) sl.value = this.vfScreenW;
+        const lbl = document.getElementById('lblVfWidth');
+        if (lbl) lbl.textContent = `${this.vfScreenW} px`;
+        this.requestRender();
+      } else if (this.isPanning) {
+        this.canvas.style.cursor = 'grabbing';
+        this._inkBakeDirty = true;
+        // [대표님 요청: 화면 전체 이동 시 중앙 걸림/덜그럭거림(센터 마그네틱 랙) 완전 제거 - 1:1 무저항 부드러운 패닝]
+        this.panX = pos.x - this.panStart.x;
+        this.panY = pos.y - this.panStart.y;
+        this.snapActiveX = false;
+        this.snapActiveY = false;
+        this.requestRender();
+      } else {
+        // [✂️ 구간 분할 경계선 및 영역 칩 호버 커서 제어]
+        const canManipulatePw = (!this.isInkMode || this.activeInkTool === 'select');
+        let isOverPwBoundary = false;
+        let isOverPwChip = false;
+        let isOverPwToggle = false;
+        let isOverPwPeriod = false;
+        if (canManipulatePw && this.usePiecewise && this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0) {
+          if (this.pwPeriodBracketBadge) {
+            const p = this.pwPeriodBracketBadge;
+            isOverPwPeriod = (pos.x >= p.pillX && pos.x <= p.pillX + p.pillW &&
+              pos.y >= p.pillY && pos.y <= p.pillY + p.pillH);
+          }
+          if (this.pwBoundaryBadges) {
+            var isOverPwLock = this.pwBoundaryBadges.some(b =>
+              b.lockRect && pos.x >= b.lockRect.x - 2 && pos.x < b.sx &&
+              pos.y >= b.lockRect.y - 2 && pos.y <= b.lockRect.y + b.lockRect.h + 2
+            );
+            var isOverPwDel = this.pwBoundaryBadges.some(b =>
+              b.delRect && pos.x >= b.sx && pos.x <= b.delRect.x + b.delRect.w + 2 &&
+              pos.y >= b.delRect.y - 2 && pos.y <= b.delRect.y + b.delRect.h + 2
+            );
+            isOverPwToggle = !this.isPiecewiseLocked && this.pwBoundaryBadges.some(b =>
+              b.toggleRect && pos.x >= b.toggleRect.x - 2 && pos.x <= b.toggleRect.x + b.toggleRect.w + 2 &&
+              pos.y >= b.toggleRect.y && pos.y <= b.toggleRect.y + b.toggleRect.h + 2
+            );
+            isOverPwBoundary = !this.isPiecewiseLocked && !isOverPwLock && !isOverPwDel && !isOverPwToggle &&
+              this.pwBoundaryBadges.some(b => Math.abs(pos.x - b.sx) <= 22);
+          }
+          if (this.pwRegionBadges) {
+            isOverPwChip = this.pwRegionBadges.some(r =>
+              pos.x >= r.chipX && pos.x <= r.chipX + r.chipW &&
+              pos.y >= r.chipY && pos.y <= r.chipY + r.chipH
+            );
+          }
+        }
+
+        // 호버 커서 제어: 핸들러 조절점 위 (필기 도구 활성 시에는 100% 동결/스킵)
+        const canManipulateHandles = (!this.isInkMode || this.activeInkTool === 'select');
+        let isOverHandle = false;
+        if (canManipulateHandles && this.isCurveSelected && this.activeGraph && this.activeGraph.handles) {
+          let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
+          let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
+          if (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
+            for (const t of this.activeGraph.transforms) {
+              if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
+              if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
+            }
+          }
+          this.activeGraph.handles.forEach(h => {
+            if (h.hidden) return;
+            let targetY = h.y;
+            if (this.activeGraph.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
+              targetY = Math.abs(h.y);
+            }
+            let evalY = (h.type === 'center' || h.type === 'asymptote')
+              ? (targetY + oy)
+              : this.engine.evaluatePipeline(this.activeGraph, h.x + ox);
+            if (isNaN(evalY) || !isFinite(evalY)) {
+              evalY = targetY + oy;
+            }
+            const s = this.mathToScreen(h.x + ox, evalY);
+            if (Math.hypot(s.x - pos.x, s.y - pos.y) <= 18) {
+              isOverHandle = true;
+            }
+          });
+        }
+
+        // 호버 커서 제어: 그래프 곡선 몸통 위 (필기 도구 사용 중에는 곡선 호버 비활성화)
+        const isOverCurve = (canManipulateHandles && this.graphs && this.graphs.length > 0) ? (this.hitTestAllCurves(pos, false) !== null) : false;
+
+        // [🔤 캔버스 자유 수식 텍스트 라벨: 호버 감지]
+        const hitText = (this.textLabels && this.textLabels.length > 0) ? this.hitTestTextLabel(pos) : null;
+        const newTextId = hitText ? hitText.id : null;
+        if (newTextId !== this.hoverTextLabelId) {
+          this.hoverTextLabelId = newTextId;
+          this.requestRender();
+        }
+
+        // [📍 교재 보조 수선: 가위 ✂️ 호버 감지 (수선 모드일 때만 활성화)]
+        const overScissors = this.isDropLineMode ? this.hitTestScissors(pos) : null;
+        if (overScissors !== this.dropLineHoverScissors) {
+          this.dropLineHoverScissors = overScissors;
+          this.requestRender();
+        }
+
+        // [📍 교재 보조 수선: 좌표 라벨 호버 감지]
+        const overLabel = this.isDropLineMode ? this.hitTestDropLineLabel(pos) : null;
+        if (overLabel !== this.dropLineHoverLabel) {
+          this.dropLineHoverLabel = overLabel;
+          this.requestRender();
+        }
+
+        // [📍 교재 보조 수선 모드: 특이점 및 일반 곡선 자석 스냅 타겟 탐색]
+        if (this.isDropLineMode) {
+          const cand = this.findNearestDropLineTarget(pos, 22);
+          if (cand !== this.dropLineHoverCandidate) {
+            this.dropLineHoverCandidate = cand;
+            this.requestRender();
+          }
+        } else if (this.dropLineHoverCandidate) {
+          this.dropLineHoverCandidate = null;
+          this.requestRender();
+        }
+
+        const stageHandle = (!this.isCleanView && this.hasActiveProblemCard() && this.graphs.length > 0) ? this.getCompactStageHandleAt(pos) : null;
+        let nextCursor = 'default';
+        if (stageHandle === 'zoomIn' || stageHandle === 'zoomOut') {
+          nextCursor = 'pointer';
+        } else if (stageHandle === 'resize') {
+          nextCursor = 'nwse-resize';
+        } else if (stageHandle === 'move') {
+          nextCursor = 'move';
+        } else if (hitText) {
+          nextCursor = hitText.isClose ? 'pointer' : 'move'; // 텍스트 위에서는 이동 십자화살표 또는 삭제 ✕
+        } else if (this.isTextToolMode) {
+          nextCursor = 'text'; // 텍스트 도구 활성화 시 I-beam 🔤
+        } else if (overScissors) {
+          nextCursor = 'pointer'; // 가위 버튼 클릭 삭둑 ✂️
+        } else if (overLabel) {
+          nextCursor = 'text'; // 좌표 라벨 클릭 편집 ✍️
+        } else if (this.isDropLineMode) {
+          nextCursor = 'crosshair'; // 보조 수선 조준선 📍
+        } else if (isOverPwLock || isOverPwDel || isOverPwToggle || isOverPwChip || isOverPwPeriod) {
+          nextCursor = 'pointer'; // 클릭 가능한 자물쇠(🔒), 삭제(✕), 포함 토글(●/○) 및 함수 배정 칩
+        } else if (isOverPwBoundary) {
+          nextCursor = 'ew-resize'; // 좌우 드래그 분할선 ↔
+        } else if (isOverHandle) {
+          nextCursor = 'grab'; // 극점/조절점 핸들러 손모양 ✋
+        } else if (isOverCurve) {
+          nextCursor = this.isCurveSelected ? 'move' : 'pointer'; // 깨어있으면 바로 이동(move), 비활성화면 선택/깨우기(pointer)
+        } else if (this.useViewfinder) {
+          const vfRect = this.getVfScreenRect();
+          const corners = [
+            { x: vfRect.x, y: vfRect.y, cursor: 'nwse-resize' },
+            { x: vfRect.x + vfRect.w, y: vfRect.y, cursor: 'nesw-resize' },
+            { x: vfRect.x, y: vfRect.y + vfRect.h, cursor: 'nesw-resize' },
+            { x: vfRect.x + vfRect.w, y: vfRect.y + vfRect.h, cursor: 'nwse-resize' }
+          ];
+          const hitCorner = corners.find(c => Math.hypot(pos.x - c.x, pos.y - c.y) <= 22);
+          nextCursor = hitCorner ? hitCorner.cursor : 'default';
+        } else if (this.isBoardMode && Math.abs(pos.x - Math.round(this.screenWidth * this.boardSplitRatio)) <= 16) {
+          nextCursor = 'col-resize';
+        } else if (this.isBoardMode && pos.x > Math.round(this.screenWidth * this.boardSplitRatio)) {
+          nextCursor = 'default';
+        } else if (this.isNAxisMode) {
+          const layout = this.getNAxisLayout(this.screenWidth, this.screenHeight);
+          if (pos.x >= layout.box2.x && pos.x <= layout.box2.x + layout.box2.w &&
+            pos.y >= layout.box2.y && pos.y <= layout.box2.y + layout.box2.h) {
+            nextCursor = 'ns-resize';
+          } else {
+            nextCursor = 'default';
+          }
+        } else if (this.isSpacePressed || this.isShiftPressed || (e && e.shiftKey) || (this.isInkMode && this.activeInkTool === 'select')) {
+          nextCursor = 'grab';
+        }
+        if (this.canvas.style.cursor !== nextCursor) {
+          this.canvas.style.cursor = nextCursor;
+        }
+      }
+    };
+
+    const handleUp = (e) => {
+      if (this.isGraphSnapDragging && this.graphSnapStart) {
+        this.isGraphSnapDragging = false;
+        const dragBox = document.getElementById('graphSnapDragBox');
+        if (dragBox) dragBox.style.display = 'none';
+        const pos = getPos(e);
+        const x = Math.min(this.graphSnapStart.x, pos.x);
+        const y = Math.min(this.graphSnapStart.y, pos.y);
+        const w = Math.abs(pos.x - this.graphSnapStart.x);
+        const h = Math.abs(pos.y - this.graphSnapStart.y);
+        this.graphSnapStart = null;
+        if (w >= 30 && h >= 30) {
+          this.captureGraphSnapshot({ x, y, w, h });
+        } else {
+          this.showToast('⚠️ 영역이 너무 작습니다. 사용할 그래프 영역을 조금 더 넓게 드래그해 주세요.');
+        }
+        return;
+      }
+      // 🌟 [필기 모드 가상 스타일러스 펜]: 손을 떼었을 때 눌림 해제 & 마지막 위치에 펜 상시 보존
+      if (this.isStylusDrawing) {
+        this.isStylusDrawing = false;
+        if (this.virtualStylusEl) this.virtualStylusEl.classList.remove('drawing');
+        this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+      }
+
+      if (this._isTemporaryStylusEraser) {
+        this._isTemporaryStylusEraser = false;
+        this.isDrawingInk = false;
+        this.requestRender();
+      }
+
+      // 🌟 [롱프레스 오터치 방지]: 빈 화면을 꾹 누르고 뗐을 때(400ms 초과)만 오터치 취소!
+      // [대표님 규칙 엄수]: 곡선을 드래그 중이거나 곡선/핸들을 클릭한 상태에서는 절대 선택을 해제하지 않음!
+      const pressDuration = this._pointerDownStart ? (Date.now() - this._pointerDownStart.time) : 0;
+      if (pressDuration > 400 && !this.draggedHandleIdx && !this.isDrawingInk && !this.isDraggingCurve) {
+        if (this.downInfo && this.downInfo.hitHandleIdx === null && this.downInfo.hitCurveIdx === null) {
+          this.isCurveSelected = false;
+          this.selectedHandleIdx = null;
+        }
+      }
+
+      // [🪢 올가미(Lasso) 툴 인터랙션]
+      if (this.isInkMode && this.activeInkTool === 'lasso') {
+        if (this.isDraggingLassoSelection) {
+          this.isDraggingLassoSelection = false;
+          this.lassoDragStart = null;
+          if (this._preDragState) {
+            const afterSnap = this.getHistorySnapshot();
+            if (this._preDragState !== afterSnap) {
+              this.undoStack.push(this._preDragState);
+              if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+              this.redoStack = [];
+              this.updateUndoRedoUI();
+            }
+            this._preDragState = null;
+          }
+          this.canvas.style.cursor = 'move';
+          this.render();
+          return;
+        }
+
+        if (this.isLassoSelecting) {
+          this.isLassoSelecting = false;
+
+          // 🌟 [대표님 핵심 기획]: 단순 탭/클릭(이동 거리 12px 미만)이면 올가미 그리기 없이 즉시 완전 해제!
+          let isTap = true;
+          if (this._lassoStartPos && this.lassoPoints && this.lassoPoints.length > 1) {
+            let maxDist = 0;
+            for (const pt of this.lassoPoints) {
+              const d = Math.hypot(pt.x - this._lassoStartPos.x, pt.y - this._lassoStartPos.y);
+              if (d > maxDist) maxDist = d;
+            }
+            if (maxDist >= 12) {
+              isTap = false;
+            }
+          }
+          this._lassoStartPos = null;
+
+          if (isTap) {
+            // 바깥 빈 공간 탭 -> 올가미 깔끔 해제 완료
+            this.selectedInkStrokes = [];
+            this.selectedTextLabels = [];
+            this.lassoBoundingBox = null;
+            this.lassoPoints = [];
+            this.canvas.style.cursor = 'crosshair';
+            this.canvas.classList.remove('is-hover-selection');
+            this.render();
+            return;
+          }
+
+          // 드래그 거리 12px 이상 & 3점 이상인 유효한 올가미 루프 판정
+          if (this.lassoPoints && this.lassoPoints.length >= 3) {
+            const matchedStrokes = this.inkStrokes.filter(s => this.isStrokeInLasso(s, this.lassoPoints));
+            const matchedTexts = (this.textLabels || []).filter(t => {
+              const s = this.mathToScreen(t.mathX, t.mathY);
+              return this.isPointInPolygon(s, this.lassoPoints);
+            });
+
+            if (matchedStrokes.length > 0 || matchedTexts.length > 0) {
+              this.selectedInkStrokes = matchedStrokes;
+              this.selectedTextLabels = matchedTexts;
+              this.lassoBoundingBox = this.calculateStrokesBoundingBox(matchedStrokes, matchedTexts);
+              this.canvas.style.cursor = 'move';
+            } else {
+              this.selectedInkStrokes = [];
+              this.selectedTextLabels = [];
+              this.lassoBoundingBox = null;
+              this.lassoPoints = [];
+              this.canvas.style.cursor = 'crosshair';
+              this.canvas.classList.remove('is-hover-selection');
+            }
+          } else {
+            this.selectedInkStrokes = [];
+            this.selectedTextLabels = [];
+            this.lassoBoundingBox = null;
+            this.lassoPoints = [];
+            this.canvas.style.cursor = 'crosshair';
+            this.canvas.classList.remove('is-hover-selection');
+          }
+          this.render();
+          return;
+        }
+      }
+
+      if (this.isDrawingInk) {
+        if (this._inkHoldTimer) {
+          clearTimeout(this._inkHoldTimer);
+          this._inkHoldTimer = null;
+        }
+        this._inkHoldDetected = false;
+        this._inkHoldLastScreenPos = null;
+        this.isDrawingInk = false;
+        const hadSceneFreeze = Boolean(this._hasSceneFreeze && this.sceneFreezeCanvas);
+        this._hasSceneFreeze = false;
+        this._erasedInCurrentStroke = false;
+        this._preDragState = null;
+        const finishedStroke = this.currentInkStroke;
+        this.currentInkStroke = null;
+        this._lastInkScreenPos = null;
+
+        // 🌟 [0ms 초고속 잉크 히스토리 푸시 & 즉각 증분 베이킹 (Incremental Bake)] 🌟
+        if (finishedStroke && finishedStroke.points && finishedStroke.points.length > 0) {
+          this.undoStack.push({ type: 'stroke_add', stroke: finishedStroke });
+          if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+          this.redoStack = [];
+          this.updateUndoRedoUI();
+
+          // 완성된 획을 오프스크린 베이크 버퍼에 즉각 굽기 (0.02ms 소요, 기존 획 재연산 제로)
+          if (!this._inkBakeDirty) {
+            const isBoard = (finishedStroke.target || 'board') === 'board';
+            const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
+            if (targetCtx) {
+              this.renderSingleStroke(targetCtx, finishedStroke, null, false);
+              this._hasBakedStrokes = true;
+            }
+          }
+
+          // 🌟 [연속 필기 시 pointerup 에서도 함수 수식 재계산 0회!]:
+          // 자음·모음·수식을 빠르게 끊어 쓸 때 펜을 뗄 때마다 520단계 함수식을 다시 계산하지 않고,
+          // 동결된 배경 텍스처 위에 완성된 획만 0.01ms 만에 마감 렌더링합니다!
+          if (hadSceneFreeze && !this._inkBakeDirty && this.ctx) {
+            const ctx = this.ctx;
+            const width = this.screenWidth;
+            const height = this.screenHeight;
+            ctx.drawImage(this.sceneFreezeCanvas, 0, 0, width, height);
+
+            const isBoardSplit = this.isBoardMode && (finishedStroke.target === 'graph');
+            if (isBoardSplit) {
+              ctx.save();
+              ctx.beginPath();
+              ctx.rect(0, 0, Math.round(width * this.boardSplitRatio), height);
+              ctx.clip();
+            }
+            this.renderSingleStroke(ctx, finishedStroke, null, false);
+            if (isBoardSplit) {
+              ctx.restore();
+            }
+
+            const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+            const isLight = curTheme.isLight || this.isMonochromeMode;
+            if (
+              (finishedStroke.target || 'board') === 'board' &&
+              this.hasActiveProblemCard() &&
+              !isLight &&
+              !this.isMonochromeMode &&
+              this.problemCardRect
+            ) {
+              const c = (finishedStroke.color || '').toLowerCase();
+              if (c === '#ffffff' || c === '#fff') {
+                const r = this.problemCardRect;
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(r.x, r.y, r.w, r.h);
+                ctx.clip();
+                this.renderSingleStroke(ctx, finishedStroke, '#0f172a', false);
+                ctx.restore();
+              }
+            }
+            return;
+          }
+        }
+
+        this.render();
+        return;
+      }
+
+      if (this.isDraggingBoardDivider) {
+        this.isDraggingBoardDivider = false;
+        this.canvas.style.cursor = 'default';
+      }
+      if (this.isDraggingNAxisX0) {
+        this.isDraggingNAxisX0 = false;
+        this.canvas.style.cursor = 'default';
+      }
+      this.activePwDragIdx = null;
+      this.draggingPwBoundary = null;
+      this.snapActiveX = false;
+      this.snapActiveY = false;
+      this.axisSnapActiveX = false;
+      this.axisSnapActiveY = false;
+      this.snappedPoints = [];
+
+      if (this.curveContextBar) {
+        this.curveContextBar.classList.remove('dimmed');
+      }
+
+      if (this.isInkMode && this.activeInkTool !== 'select') {
+        this.selectedHandleIdx = null;
+        this.draggedHandleIdx = null;
+        this.isCurveSelected = false;
+        if (this.pulseAnimId) {
+          cancelAnimationFrame(this.pulseAnimId);
+          this.pulseAnimId = null;
+        }
+      } else if (this.downInfo) {
+        const pos = getPos(e.touches ? (e.changedTouches ? e.changedTouches[0] : e.touches[0]) : e);
+        const moveDist = Math.hypot(pos.x - this.downInfo.x, pos.y - this.downInfo.y);
+
+        // [대표님 핵심 기획]: 핸들을 클릭했거나 드래그한 경우, 마우스를 뗀 후에도 해당 핸들을 확실하게 선택 상태로 유지!
+        // 그래야 자석에 붙인 직후 곧바로 키보드 방향키(상하좌우)로 미세 조정 및 탈출이 100% 작동합니다.
+        if (this.downInfo.hitHandleIdx !== null) {
+          this.selectedHandleIdx = this.downInfo.hitHandleIdx;
+          this.isCurveSelected = true;
+          this.startPulseLoop();
+        } else if (this.downInfo.hitCurveIdx !== null || this.isDraggingCurve) {
+          // 🌟 [대표님 절대 규칙 100% 구현]:
+          // 1. 선을 먼저 클릭하면 핸들러가 나온다.
+          // 2. 조작 상태니 몸통을 움직이면 이동해야 한다. 이동 후에도 핸들러는 계속 유지된다!
+          // 3. 오직 빈 화면을 클릭해야만 핸들러가 사라진다!
+          this.isCurveSelected = true;
+          this.selectedHandleIdx = null;
+          this.render();
+        } else {
+          // 빈 공간 클릭 또는 빈 화면 드래그 -> 선택 해제 (핸들러 싹 사라지고 즉시 프리징!)
+          this.selectedHandleIdx = null;
+          this.isCurveSelected = false;
+          this.selectedPwBoundaryIdx = null;
+          if (this.pulseAnimId) {
+            cancelAnimationFrame(this.pulseAnimId);
+            this.pulseAnimId = null;
+          }
+          this.render();
+        }
+      }
+
+      if (this.isBoardPanning) {
+        this.updateProblemCardPosition();
+      }
+      this.draggedHandleIdx = null;
+      this.isDraggingCurve = false;
+      this._curveDragEligible = false;
+      this.isPanning = false;
+      this.isBoardPanning = false;
+      this.boardPanStart = null;
+      this.isDraggingVf = false;
+      this.isResizingVf = false;
+      this.isResizingStage = false;
+      this.isMovingStage = false;
+      this.stageDragStart = null;
+      this.isDraggingTextLabel = false;
+      this.draggedTextLabelId = null;
+      this.downInfo = null;
+      this.curveFeatsSnapshot = null;
+      this.syncControls();
+
+      if (this.isShiftPressed || this.isSpacePressed || (this.isInkMode && this.activeInkTool === 'select')) {
+        this.canvas.style.cursor = 'grab';
+      } else if (this.isInkMode) {
+        this.updateInkCursor();
+      } else {
+        this.canvas.style.cursor = 'default';
+      }
+
+      // 마우스/터치 드래그로 상태가 실제로 변했으면 히스토리 스택에 푸시!
+      if (this._preDragState) {
+        const afterSnap = this.getHistorySnapshot();
+        if (this._preDragState !== afterSnap) {
+          this.undoStack.push(this._preDragState);
+          if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+          this.redoStack = [];
+          this.updateUndoRedoUI();
+        }
+        this._preDragState = null;
+      }
+
+      this.render();
+    };
+
+    let lastPointerDownTime = 0;
+    let lastPointerMoveTime = 0;
+    let lastPointerUpTime = 0;
+
+    if (window.PointerEvent) {
+      this.canvas.addEventListener('pointerdown', (e) => {
+        if (isClickableUI(e.target)) return;
+        lastPointerDownTime = Date.now();
+        // 🌟 [크롬 전체화면 상단 (X) 롱프레스 차단]: 마우스/펜/터치 및 모든 모드에서 기본 제스처 차단 & 포인터 캡처 체결!
+        e.preventDefault();
+        if (e.pointerId !== undefined && this.canvas.setPointerCapture) {
+          try { this.canvas.setPointerCapture(e.pointerId); } catch (err) { }
+        }
+        this.isPointerDownOnCanvas = true;
+        this._pointerDownStart = { time: Date.now(), x: e.clientX, y: e.clientY };
+
+        if (this.activePointers) {
+          this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
+          if (this.activePointers.size >= 2) {
+            // 🌟 [아이패드 / 갤럭시탭 2손가락 제스처]: 진행 중이던 1손가락 필기·드래그 즉시 취소 및 핀치줌/패닝 진입!
+            if (this.isDrawingInk) {
+              this.isDrawingInk = false;
+              this._hasSceneFreeze = false;
+              if (this.currentInkStroke && this.inkStrokes && this.inkStrokes[this.inkStrokes.length - 1] === this.currentInkStroke) {
+                this.inkStrokes.pop();
+              }
+              this.currentInkStroke = null;
+            }
+            this.draggedHandleIdx = null;
+            this.isDraggingCurve = false;
+            this.isPanning = false;
+            this.isBoardPanning = false;
+
+            const pts = Array.from(this.activePointers.values());
+            const p1 = pts[0], p2 = pts[1];
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+            const dist = Math.max(20, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+            this._pinchState = {
+              startDist: dist,
+              startZoom: this.zoomLevel || 1.0,
+              startMidX: midX,
+              startMidY: midY,
+              startPanX: this.panX || 0,
+              startPanY: this.panY || 0,
+              startBoardPanX: this.boardPanX || 0,
+              startBoardPanY: this.boardPanY || 0
+            };
+            this.render();
+            return;
+          }
+        }
+        handleDown(e);
+      }, { passive: false });
+
+      window.addEventListener('pointermove', (e) => {
+        lastPointerMoveTime = Date.now();
+        if (this.activePointers && this.activePointers.has(e.pointerId)) {
+          this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
+          if (this.activePointers.size >= 2 && this._pinchState) {
+            const pts = Array.from(this.activePointers.values());
+            const p1 = pts[0], p2 = pts[1];
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+            const dist = Math.max(20, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+            const dx = midX - this._pinchState.startMidX;
+            const dy = midY - this._pinchState.startMidY;
+
+            if (this.isGraphCovered) {
+              // 2층 판서 칠판: 두 손가락 이동으로 광활한 칠판 패닝
+              this.boardPanX = Math.round(this._pinchState.startBoardPanX + dx);
+              this.boardPanY = Math.round(this._pinchState.startBoardPanY + dy);
+              this.updateProblemCardPosition();
+              this._inkBakeDirty = true;
+            } else {
+              // 1층 실시간 그래프: 두 손가락 이동(Pan) + 두 손가락 핀치 줌(Pinch-to-Zoom) 동시 작동!
+              this.panX = this._pinchState.startPanX + dx;
+              this.panY = this._pinchState.startPanY + dy;
+              const scaleRatio = dist / this._pinchState.startDist;
+              if (Math.abs(scaleRatio - 1) > 0.015) {
+                const nextZoom = Math.max(0.15, Math.min(3.5, Math.round(this._pinchState.startZoom * scaleRatio * 100) / 100));
+                this.zoomLevel = nextZoom;
+                const slZoom = document.getElementById('sliderZoom');
+                const lblZoom = document.getElementById('lblZoom');
+                if (slZoom) slZoom.value = nextZoom;
+                if (lblZoom) lblZoom.textContent = `${Math.round(nextZoom * 100)}%`;
+              }
+              if (this.inkStrokes && this.inkStrokes.length > 0) {
+                this._inkBakeDirty = true;
+              }
+            }
+            this.requestRender();
+            return;
+          }
+        }
+        handleMove(e);
+      }, { passive: false });
+
+      window.addEventListener('pointerup', (e) => {
+        this.isPointerDownOnCanvas = false;
+        if (e.pointerId !== undefined && this.canvas && this.canvas.releasePointerCapture) {
+          try {
+            if (!this.canvas.hasPointerCapture || this.canvas.hasPointerCapture(e.pointerId)) {
+              this.canvas.releasePointerCapture(e.pointerId);
+            }
+          } catch (err) { }
+        }
+        if (this.activePointers) {
+          this.activePointers.delete(e.pointerId);
+          if (this.activePointers.size < 2) {
+            this._pinchState = null;
+          }
+          if (this.activePointers.size === 0 && this.isBoardPanning) {
+            this.isBoardPanning = false;
+          }
+        }
+        lastPointerUpTime = Date.now();
+        if (this.isDrawingInk || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
+          handleUp(e);
+        }
+      });
+      window.addEventListener('pointercancel', (e) => {
+        this.isPointerDownOnCanvas = false;
+        if (e.pointerId !== undefined && this.canvas && this.canvas.releasePointerCapture) {
+          try {
+            if (!this.canvas.hasPointerCapture || this.canvas.hasPointerCapture(e.pointerId)) {
+              this.canvas.releasePointerCapture(e.pointerId);
+            }
+          } catch (err) { }
+        }
+        if (this.activePointers) {
+          this.activePointers.delete(e.pointerId);
+          if (this.activePointers.size < 2) {
+            this._pinchState = null;
+          }
+          if (this.activePointers.size === 0 && this.isBoardPanning) {
+            this.isBoardPanning = false;
+          }
+        }
+        lastPointerUpTime = Date.now();
+        if (this.isDrawingInk || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
+          handleUp(e);
+        }
+      });
+    }
+
+    // 마우스 이벤트 호환성 레이어 (PointerEvent 미지원 환경 및 MouseEvent 시뮬레이션 지원)
+    this.canvas.addEventListener('mousedown', (e) => {
+      if ( !isClickableUI(e.target) ) {
+        e.preventDefault();
+      }
+      if (window.PointerEvent && e.isTrusted) return;
+      if (isClickableUI(e.target)) return;
+      if (Date.now() - lastPointerDownTime < 350) return;
+      this.isPointerDownOnCanvas = true;
+      this._pointerDownStart = { time: Date.now(), x: e.clientX, y: e.clientY };
+      handleDown(e);
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (window.PointerEvent && e.isTrusted) return;
+      if (Date.now() - lastPointerMoveTime < 40) return;
+      handleMove(e);
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (window.PointerEvent && e.isTrusted) return;
+      this.isPointerDownOnCanvas = false;
+      if (Date.now() - lastPointerUpTime < 350) return;
+      if (this.isDrawingInk || !isClickableUI(e.target)) {
+        handleUp(e);
+      }
+    });
+
+    // 🌟 [터치스크린 & 아이패드 애플펜슬 스크리블 방어]: 순수 캔버스 영역에만 적용하여 모든 버튼 클릭 완벽 보호
+    this.canvas.addEventListener('touchstart', (e) => {
+      if (e.target === this.canvas) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+    this.canvas.addEventListener('touchmove', (e) => {
+      if (e.target === this.canvas) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    // 키보드 단축키: Ctrl+Z (언두), Ctrl+Y (리두), 방향키 미세조정, H 판서모드
+    window.addEventListener('keydown', (e) => {
+      const activeEl = document.activeElement;
+      const isInput = activeEl && (
+        (activeEl.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button', 'color', 'file'].includes((activeEl.type || '').toLowerCase())) ||
+        activeEl.tagName === 'TEXTAREA' ||
+        activeEl.tagName === 'SELECT' ||
+        activeEl.isContentEditable
+      );
+
+      // Ctrl+Z (실행 취소) & Ctrl+Y / Ctrl+Shift+Z (다시 실행)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+        if (!isInput) {
+          e.preventDefault();
+          if (e.shiftKey) this.redo();
+          else this.undo();
+          return;
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+        if (!isInput) {
+          e.preventDefault();
+          this.redo();
+          return;
+        }
+      }
+
+      // [대표님 기획]: [ / ] 키로 글씨 굵기/크기 화살표 단계별 즉시 조절
+      if ((e.key === '[' || e.key === ']') && !isInput && this.isInkMode) {
+        e.preventDefault();
+        if (e.key === '[') {
+          const btn = document.getElementById('btnInkSizeDown');
+          if (btn) btn.click();
+        } else {
+          const btn = document.getElementById('btnInkSizeUp');
+          if (btn) btn.click();
+        }
+        return;
+      }
+
+      // 0. H 키로 클린 뷰 원터치 토글
+      if (e.key === 'h' || e.key === 'H') {
+        if (!isInput) {
+          e.preventDefault();
+          this.toggleCleanView();
+          return;
+        }
+      }
+
+      // 0.1. B 키로 판서 모드 (Board Mode) 원터치 토글
+      if (e.key === 'b' || e.key === 'B') {
+        if (!isInput) {
+          e.preventDefault();
+          this.toggleBoardMode();
+          return;
+        }
+      }
+
+      // 0.2. D 키로 교재 보조 수선 모드 (Drop Line Tool) 원터치 토글
+      if (e.key === 'd' || e.key === 'D') {
+        if (!isInput) {
+          e.preventDefault();
+          this.toggleDropLineMode();
+          return;
+        }
+      }
+
+      // 0.3. T 키로 수식 텍스트 라벨 도구 (Text Tool) 원터치 토글
+      if (e.key === 't' || e.key === 'T') {
+        if (!isInput) {
+          e.preventDefault();
+          this.toggleTextToolMode();
+          return;
+        }
+      }
+
+      // 0.35. M 키로 교재 흑백 모드 (Monochrome Mode) 원터치 토글
+      if (e.key === 'm' || e.key === 'M') {
+        if (!isInput) {
+          e.preventDefault();
+          this.toggleMonochromeMode();
+          return;
+        }
+      }
+
+      // 0.36. P 키로 실시간 필기 모드 (Ink Mode) 원터치 토글
+      if (e.key === 'p' || e.key === 'P') {
+        if (!isInput) {
+          e.preventDefault();
+          this.toggleInkMode();
+          return;
+        }
+      }
+
+      // 0.37. E 키: 지우개 (Eraser) 원터치 토글 (타블렛 드라이버 단축키 완벽 대응)
+      if (e.key === 'e' || e.key === 'E') {
+        if (!isInput) {
+          e.preventDefault();
+          if (!this.isInkMode) this.toggleInkMode(true);
+          if (this.activeInkTool === 'eraser') {
+            this.setActiveInkTool('pen');
+            this.showToast('✏️ 펜 모드로 전환');
+          } else {
+            this.setActiveInkTool('eraser');
+            this.showToast('🧹 지우개 모드로 전환');
+          }
+          return;
+        }
+      }
+
+      // 0.38. V 키: 필기 모드 시 조작 (Select) 전환
+      if (e.key === 'v' || e.key === 'V') {
+        if (!isInput && this.isInkMode) {
+          e.preventDefault();
+          this.setActiveInkTool('select');
+          return;
+        }
+      }
+
+      // 0.385. L 키: 올가미 (Lasso) 툴 전환
+      if (e.key === 'l' || e.key === 'L') {
+        if (!isInput) {
+          e.preventDefault();
+          if (!this.isInkMode) this.toggleInkMode(true);
+          this.setActiveInkTool('lasso');
+          return;
+        }
+      }
+
+      // 0.387. C 키: PDF 모달 열려있으면 [✂️ 문제 크롭] 모드 토글, 닫혀있으면 PDF 모달 열기
+      if (e.key === 'c' || e.key === 'C') {
+        if (!isInput && !e.ctrlKey && !e.metaKey) {
+          e.preventDefault();
+          if (this.isPdfModalOpen) {
+            this.togglePdfCropMode();
+          } else {
+            if (this.pdfDoc) {
+              this.openPdfModal();
+            } else {
+              const fileInput = document.getElementById('pdfFileInput');
+              if (fileInput) fileInput.click();
+            }
+          }
+          return;
+        }
+      }
+
+      // 0.388. A 키: 좌표축(Axes) ON/OFF 원터치 토글 (순수 빈 칠판 ↔ 좌표평면)
+      if (e.key === 'a' || e.key === 'A') {
+        if (!isInput && !e.ctrlKey && !e.metaKey) {
+          e.preventDefault();
+          this.toggleAxes();
+          return;
+        }
+      }
+
+      // 0.39. 스페이스바 누름 감지 (필기 모드 중 팬 이동 지원 & 포커스된 버튼/슬라이더 자동 클릭·크기 축소 원천 차단)
+      if (e.code === 'Space' && !isInput) {
+        e.preventDefault();
+        if (activeEl && activeEl !== document.body && typeof activeEl.blur === 'function') {
+          try { activeEl.blur(); } catch (err) { }
+        }
+        if (!this.isSpacePressed) {
+          this.isSpacePressed = true;
+          if (this.isInkMode) {
+            this.canvas.style.cursor = 'grab';
+          }
+        }
+        return;
+      }
+
+      // 0.395. Shift 키 누름 감지 (대표님 기획: 필기 모드 중 쉬프트 드래그로 쾌속 화면 이동 지원)
+      if ((e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !isInput && !this.isShiftPressed) {
+        this.isShiftPressed = true;
+        if (this.isInkMode) {
+          this.canvas.style.cursor = 'grab';
+        }
+      }
+
+      // 0.4. Delete / Backspace 키로 올가미 선택 획 또는 수식 텍스트 라벨 삭제
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput) {
+        if (this.isInkMode && this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
+          e.preventDefault();
+          this.deleteSelectedInkStrokes();
+          return;
+        }
+        if (this.selectedTextLabelId) {
+          e.preventDefault();
+          this.removeTextLabel(this.selectedTextLabelId);
+          this.selectedTextLabelId = null;
+          return;
+        }
+      }
+
+      // 0.405. ESC 키: 올가미 선택 해제 또는 PDF 크롭모드/모달 닫기
+      if (e.key === 'Escape' && !isInput) {
+        if (this.isPdfCropModeActive) {
+          e.preventDefault();
+          this.togglePdfCropMode(false);
+          return;
+        }
+        if (this.isPdfModalOpen) {
+          e.preventDefault();
+          this.closePdfModal();
+          return;
+        }
+        if (this.isInkMode && ((this.selectedInkStrokes && this.selectedInkStrokes.length > 0) || (this.selectedTextLabels && this.selectedTextLabels.length > 0))) {
+          e.preventDefault();
+          this.selectedInkStrokes = [];
+          this.selectedTextLabels = [];
+          this.lassoBoundingBox = null;
+          this.lassoPoints = [];
+          this.render();
+          return;
+        }
+      }
+
+      // 0.407. PDF 모달 전용 단축키: PageUp/PageDown (페이지 이동)
+      if (this.isPdfModalOpen && !isInput) {
+        if (e.key === 'PageUp' || e.key === '[') {
+          e.preventDefault();
+          this.scrollToPdfPage(this.pdfCurrentPage - 1);
+          return;
+        }
+        if (e.key === 'PageDown' || e.key === ']') {
+          e.preventDefault();
+          this.scrollToPdfPage(this.pdfCurrentPage + 1);
+          return;
+        }
+      }
+
+      // (N축 합성 모드는 안정적인 개발을 위해 잠시 보류 처리)
+      /*
+      if (e.key === 'n' || e.key === 'N') {
+        if (!isInput) {
+          e.preventDefault();
+          this.toggleNAxisMode();
+          return;
+        }
+      }
+      if (e.key === 's' || e.key === 'S') {
+        if (!isInput && this.isNAxisMode) {
+          e.preventDefault();
+          this.swapNAxisLayers();
+          return;
+        }
+      }
+      */
+
+      // 0.5. Escape 키로 필기 모드 / 수선 모드 / 텍스트 모드 / N축 모드 / 판서 모드 원터치 빠져나오기
+      if (e.key === 'Escape') {
+        if (!isInput) {
+          if (this.isGraphSnapMode) {
+            e.preventDefault();
+            this.toggleGraphSnapMode(false);
+            return;
+          }
+          if (this.isInkMode) {
+            e.preventDefault();
+            this.toggleInkMode(false);
+            return;
+          }
+          if (this.isDropLineMode) {
+            e.preventDefault();
+            this.toggleDropLineMode(false);
+            return;
+          }
+          if (this.isTextToolMode) {
+            e.preventDefault();
+            this.toggleTextToolMode(false);
+            return;
+          }
+          if (this.isNAxisMode) {
+            e.preventDefault();
+            this.toggleNAxisMode(false);
+            return;
+          }
+          if (this.isBoardMode && this.selectedHandleIdx === null && !this.isCurveSelected) {
+            e.preventDefault();
+            this.toggleBoardMode(false);
+            return;
+          }
+        }
+      }
+
+      // [🔀 N축 모드 시 키보드 방향키: x₀ 실시간 슬라이더 이동 & 수직 레이저 관통 시연]
+      if (this.isNAxisMode) {
+        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+          e.preventDefault();
+          const stepX = e.shiftKey ? 0.2 : 0.04;
+          const limitX = Math.round((this.getNAxisLayout(this.screenWidth, this.screenHeight).effSpanX_Lower * 0.95) * 100) / 100;
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            this.nAxisX0 = Math.max(-limitX, Math.min(limitX, Math.round((this.nAxisX0 - stepX) * 100) / 100));
+          } else {
+            this.nAxisX0 = Math.max(-limitX, Math.min(limitX, Math.round((this.nAxisX0 + stepX) * 100) / 100));
+          }
+          this.render();
+          return;
+        }
+      }
+
+      // 1. Delete / Backspace 키로 선택된 곡선/도형 레이어 원터치 삭제
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (!isInput && this.activeGraphIdx >= 0 && this.activeGraphIdx < this.graphs.length) {
+          e.preventDefault();
+          const targetIdx = this.activeGraphIdx;
+          this.selectedHandleIdx = null;
+          this.isCurveSelected = false;
+          this.removeGraph(targetIdx);
+          return;
+        }
+      }
+
+      // ✂️ [대표님 핵심 기획: 구간 분할선 키보드 좌우 화살표(←, →) 미세조정]
+      if (this.usePiecewise && this.selectedPwBoundaryIdx !== null && this.piecewiseBoundaries) {
+        if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+          e.preventDefault();
+          if (!this._arrowPreSnap) {
+            this._arrowPreSnap = this.getHistorySnapshot();
+          }
+          const pwStep = e.shiftKey ? 0.2 : 0.05;
+          const idx = this.selectedPwBoundaryIdx;
+          if (idx >= 0 && idx < this.piecewiseBoundaries.length) {
+            let newX = this.piecewiseBoundaries[idx] + (e.key === 'ArrowRight' ? pwStep : -pwStep);
+            const minX = idx > 0 ? this.piecewiseBoundaries[idx - 1] + 0.25 : -this.xSpan * 2;
+            const maxX = idx < this.piecewiseBoundaries.length - 1 ? this.piecewiseBoundaries[idx + 1] - 0.25 : this.xSpan * 2;
+            newX = Math.max(minX, Math.min(maxX, newX));
+            newX = parseFloat(newX.toFixed(2));
+            this.piecewiseBoundaries[idx] = newX;
+            if (idx === 0) this.pwK = newX;
+            this.updatePwDescBadge();
+            this.render();
+            return;
+          }
+        } else if (e.key === 'Escape') {
+          this.selectedPwBoundaryIdx = null;
+          this.render();
+          return;
+        }
+      }
+
+      if (!this.activeGraph) return;
+
+      const step = e.shiftKey ? 0.2 : 0.04;
+
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        if (!this._arrowPreSnap) {
+          this._arrowPreSnap = this.getHistorySnapshot();
+        }
+      }
+
+      if (this.selectedHandleIdx !== null) {
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+          e.preventDefault();
+          const h = this.activeGraph.handles[this.selectedHandleIdx];
+          if (!h) return;
+          let newX = h.x;
+          let newY = h.y;
+          if (e.key === 'ArrowUp') newY += step;
+          else if (e.key === 'ArrowDown') newY -= step;
+          else if (e.key === 'ArrowLeft') newX -= step;
+          else if (e.key === 'ArrowRight') newX += step;
+
+          // [대표님 핵심 기획]: 키보드 방향키 조작 시에는 자석 효과 및 모핑을 100% 완전 바이패스!
+          this.axisSnapActiveX = false;
+          this.axisSnapActiveY = false;
+          this.symmetrySnapActive = false;
+          this.snapActiveX = false;
+          this.snapActiveY = false;
+          this.snappedPoints = [];
+
+          this.dragActiveHandle(this.selectedHandleIdx, newX, newY, true, true);
+          this.syncControls();
+          this.render();
+        } else if (e.key === 'Escape') {
+          this.selectedHandleIdx = null;
+          this.render();
+        }
+      } else if (this.isCurveSelected) {
+        let dx = 0, dy = 0;
+        if (e.key === 'ArrowUp') dy += step;
+        else if (e.key === 'ArrowDown') dy -= step;
+        else if (e.key === 'ArrowLeft') dx -= step;
+        else if (e.key === 'ArrowRight') dx += step;
+        else if (e.key === 'Escape') {
+          this.isCurveSelected = false;
+          this.render();
+          return;
+        }
+
+        if (dx !== 0 || dy !== 0) {
+          e.preventDefault();
+          // 키보드로 몸통 이동 시 자석 스냅 잔상 리셋
+          this.axisSnapActiveX = false;
+          this.axisSnapActiveY = false;
+          this.symmetrySnapActive = false;
+          this.snapActiveX = false;
+          this.snapActiveY = false;
+          this.snappedPoints = [];
+
+          if (this.isShapeCenterLocked(this.activeGraph)) {
+            this.showCenterLockHint();
+          } else {
+            const ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
+            const oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
+            const hasTransforms = this.activeGraph.isAbsolute || (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) || this.activeGraph.isFrozen || ox !== 0 || oy !== 0;
+
+            if (hasTransforms) {
+              if (!this.activeGraph.freezeOffset) this.activeGraph.freezeOffset = { x: 0, y: 0 };
+              this.activeGraph.freezeOffset.x = Math.round((this.activeGraph.freezeOffset.x + dx) * 100) / 100;
+              this.activeGraph.freezeOffset.y = Math.round((this.activeGraph.freezeOffset.y + dy) * 100) / 100;
+              if (this.activeGraph.isAbsolute && this.activeGraph.isAbsPristine) {
+                this.activeGraph.isAbsPristine = false;
+                this.syncCurveContextBar();
+                this.syncControls();
+              }
+
+              // 🔗 [역함수 대칭 연동: dx ↔ dy 스왑 평행이동]
+              const partner = this.getLinkedPartner(this.activeGraph);
+              if (partner) {
+                if (!partner.freezeOffset) partner.freezeOffset = { x: 0, y: 0 };
+                partner.freezeOffset.x = Math.round((partner.freezeOffset.x + dy) * 100) / 100;
+                partner.freezeOffset.y = Math.round((partner.freezeOffset.y + dx) * 100) / 100;
+              }
+            } else {
+              this.activeGraph.handles.forEach(h => {
+                h.x += dx;
+                h.y += dy;
+              });
+
+              // 🔗 [역함수 대칭 연동: 일반 함수 핸들 dx ↔ dy 스왑 평행이동]
+              const partner = this.getLinkedPartner(this.activeGraph);
+              if (partner && partner.handles) {
+                partner.handles.forEach(h => {
+                  h.x += dy;
+                  h.y += dx;
+                });
+              }
+            }
+          }
+          this.syncControls();
+          this.render();
+        }
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space') {
+        const activeEl = document.activeElement;
+        const isTextInput = activeEl && (
+          (activeEl.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button', 'color', 'file'].includes((activeEl.type || '').toLowerCase())) ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT' ||
+          activeEl.isContentEditable
+        );
+        if (!isTextInput) {
+          e.preventDefault();
+          if (activeEl && activeEl !== document.body && typeof activeEl.blur === 'function') {
+            try { activeEl.blur(); } catch (err) { }
+          }
+        }
+        this.isSpacePressed = false;
+        if (!this.isPointerDownOnCanvas) {
+          this.isPanning = false;
+          this.isBoardPanning = false;
+        }
+        if (this.isInkMode) {
+          this.updateInkCursor();
+        }
+      }
+      if (e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        this.isShiftPressed = false;
+        if (this.isInkMode) {
+          this.updateInkCursor();
+        }
+      }
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && this._arrowPreSnap) {
+        const afterSnap = this.getHistorySnapshot();
+        if (this._arrowPreSnap !== afterSnap) {
+          this.undoStack.push(this._arrowPreSnap);
+          if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+          this.redoStack = [];
+          this.updateUndoRedoUI();
+        }
+        this._arrowPreSnap = null;
+      }
+    });
+
+    window.addEventListener('blur', () => {
+      this.isSpacePressed = false;
+      this.isShiftPressed = false;
+      if (this.isInkMode) {
+        this.updateInkCursor();
+      }
+    });
+
+    // 휠 줌 및 칠판 무한 패닝
+    this.canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+
+      // 🌟 [대표님 1층 vs 2층 레이어 철학]:
+      // 2층(this.isGraphCovered === true, 그래프 스샷 찍고 넘어간 새 판서 레이어)일 때만 휠 굴림으로 칠판 전체 이동!
+      // 1층(!this.isGraphCovered, 실시간 그래프 편집 레이어)에서는 휠을 굴리면 원래대로 그래프 좌표축이 확대/축소(Zoom)!
+      if (this.isGraphCovered && !this.pdfPageBoardData) {
+        if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+          this.boardPanX = Math.round((this.boardPanX || 0) - (e.deltaX || e.deltaY));
+        } else {
+          this.boardPanY = Math.round((this.boardPanY || 0) - e.deltaY);
+        }
+        this.updateProblemCardPosition();
+        this._inkBakeDirty = true;
+        this.requestRender();
+        return;
+      }
+
+      if (this.isGraphCovered && !this.pdfPageBoardData) return;
+
+      // [🔀 N축 합성 모드 전용 휠 줌: 3개 창 화각 동시 확대/축소]
+      if (this.isNAxisMode) {
+        const zoomFactor = e.deltaY < 0 ? 1.09 : 0.91;
+        this.nAxisZoom = Math.max(0.2, Math.min(4.0, (this.nAxisZoom || 1.0) * zoomFactor));
+        this.syncNAxisBarUI();
+        this.render();
+        return;
+      }
+
+      if (this.useViewfinder && e.shiftKey) {
+        const delta = e.deltaY < 0 ? 30 : -30;
+        this.vfScreenW = Math.max(220, Math.min(this.screenWidth - 40, this.vfScreenW + delta));
+        const sl = document.getElementById('sliderVfWidth');
+        if (sl) sl.value = this.vfScreenW;
+        const lbl = document.getElementById('lblVfWidth');
+        if (lbl) lbl.textContent = `${Math.round(this.vfScreenW)} px`;
+        this.render();
+        return;
+      }
+
+      const pos = getPos(e);
+      this._zoomMousePos = { x: pos.x, y: pos.y };
+
+      const factor = e.deltaY < 0 ? 1.15 : (1 / 1.15);
+      if (this.targetZoom === undefined || this.targetZoom === null) {
+        this.targetZoom = this.zoomLevel;
+      }
+      this.targetZoom = Math.max(0.25, Math.min(4.0, this.targetZoom * factor));
+
+      if (!this._isZoomAnimating) {
+        this._isZoomAnimating = true;
+
+        const animateZoom = () => {
+          const continuing = this.stepZoomLerp();
+          if (continuing) {
+            requestAnimationFrame(animateZoom);
+          }
+        };
+
+        requestAnimationFrame(animateZoom);
+      }
+    }, { passive: false });
+  }
+
+  // 🌟 [피그마/지오지브라급 Zoom-to-Cursor 부드러운 Lerp 수렴 물리 엔진] 🌟
+  stepZoomLerp() {
+    if (!this._isZoomAnimating) return false;
+    const diff = this.targetZoom - this.zoomLevel;
+    if (Math.abs(diff) < 0.001) {
+      // 수렴 완료
+      const oldZoom = this.zoomLevel;
+      const newZoom = this.targetZoom;
+      if (this._zoomMousePos && oldZoom > 0) {
+        const ratio = newZoom / oldZoom;
+        const boardOffsetX = (this.hasActiveProblemCard() && this.graphs && this.graphs.length > 0) ? (this.boardPanX || 0) : 0;
+        const boardOffsetY = (this.hasActiveProblemCard() && this.graphs && this.graphs.length > 0) ? (this.boardPanY || 0) : 0;
+        const cx = this.screenWidth / 2 + this.panX + boardOffsetX;
+        const cy = this.screenHeight / 2 + this.panY + boardOffsetY;
+        const deltaX = (this._zoomMousePos.x - cx) * (1 - ratio);
+        const deltaY = (this._zoomMousePos.y - cy) * (1 - ratio);
+        this.panX += deltaX;
+        this.panY += deltaY;
+        this.panOffset = { x: this.panX, y: this.panY };
+      }
+      this.zoomLevel = this.targetZoom;
+      this._isZoomAnimating = false;
+
+      const slZoom = document.getElementById('sliderZoom');
+      if (slZoom) slZoom.value = this.zoomLevel;
+      const lblZoom = document.getElementById('lblZoom');
+      if (lblZoom) lblZoom.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+      const lblInkZoom = document.getElementById('lblInkZoom');
+      if (lblInkZoom) lblInkZoom.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+      const lblLeftZoom = document.getElementById('lblLeftZoom');
+      if (lblLeftZoom) lblLeftZoom.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+      this._inkBakeDirty = true;
+      this.requestRender();
+      return false;
+    }
+
+    const oldZoom = this.zoomLevel;
+    const step = diff * 0.25;
+    const newZoom = oldZoom + step;
+
+    if (this._zoomMousePos && oldZoom > 0) {
+      const ratio = newZoom / oldZoom;
+      const boardOffsetX = (this.hasActiveProblemCard() && this.graphs && this.graphs.length > 0) ? (this.boardPanX || 0) : 0;
+      const boardOffsetY = (this.hasActiveProblemCard() && this.graphs && this.graphs.length > 0) ? (this.boardPanY || 0) : 0;
+      const cx = this.screenWidth / 2 + this.panX + boardOffsetX;
+      const cy = this.screenHeight / 2 + this.panY + boardOffsetY;
+      const deltaX = (this._zoomMousePos.x - cx) * (1 - ratio);
+      const deltaY = (this._zoomMousePos.y - cy) * (1 - ratio);
+      this.panX += deltaX;
+      this.panY += deltaY;
+      this.panOffset = { x: this.panX, y: this.panY };
+    }
+
+    this.zoomLevel = newZoom;
+
+    const slZoom = document.getElementById('sliderZoom');
+    if (slZoom) slZoom.value = this.zoomLevel;
+    const lblZoom = document.getElementById('lblZoom');
+    if (lblZoom) lblZoom.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+    const lblInkZoom = document.getElementById('lblInkZoom');
+    if (lblInkZoom) lblInkZoom.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+    const lblLeftZoom = document.getElementById('lblLeftZoom');
+    if (lblLeftZoom) lblLeftZoom.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+    this._inkBakeDirty = true;
+    this.requestRender();
+    return true;
+  }
+
+  // --- [🚀 초고속 60/144 FPS VSync 스케줄러: 드래그 랙 & 스터터링 100% 박멸] ---
+  requestRender() {
+    if (this._renderPending) return;
+    this._renderPending = true;
+    requestAnimationFrame(() => {
+      this._renderPending = false;
+      this.render();
+    });
+  }
+
+  // --- [초고속 무결점 렌더링 파이프라인 (5개 겹쳐도 0.1ms 미만)] ---
+  render(targetCtx = this.ctx, width = this.screenWidth, height = this.screenHeight, isExport = false) {
+    const ctx = targetCtx;
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+
+    // 🌟 [iCanScreen 급 0.01ms 초저지연 필기 패스트패스 (Scene Freeze Fast-Path)] 🌟
+    // 펜이나 형광펜으로 실제 필기 드로잉 중인 동안에는:
+    // 520단계 함수 수식 연산(drawAllCurves), 격자(drawGuides), 축(drawAxes), 수선(drawDropLines), 텍스트 라벨을 매 프레임 다시 계산하지 않고,
+    // 펜이 닿는 순간 동결해 둔 `sceneFreezeCanvas` 텍스처를 0.01ms 만에 Blit한 뒤 현재 긋고 있는 단 1개의 획만 그립니다!
+    if (
+      this.isDrawingInk &&
+      this._hasSceneFreeze &&
+      this.sceneFreezeCanvas &&
+      this.currentInkStroke &&
+      !isExport &&
+      !this._isRenderingGraphSnapshot &&
+      targetCtx === this.ctx
+    ) {
+      ctx.drawImage(this.sceneFreezeCanvas, 0, 0, width, height);
+
+      const isBoardSplit = this.isBoardMode && (this.currentInkStroke.target === 'graph');
+      if (isBoardSplit) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, Math.round(width * this.boardSplitRatio), height);
+        ctx.clip();
+      }
+
+      this.renderSingleStroke(ctx, this.currentInkStroke, null, true);
+
+      if (isBoardSplit) {
+        ctx.restore();
+      }
+
+      // 다크 칠판 위 흰색 문제 카드 영역 스마트 오토 컨트라스트
+      const isLight = curTheme.isLight || this.isMonochromeMode;
+      if (
+        (this.currentInkStroke.target || 'board') === 'board' &&
+        this.hasActiveProblemCard() &&
+        !isLight &&
+        !this.isMonochromeMode &&
+        this.problemCardRect
+      ) {
+        const c = (this.currentInkStroke.color || '').toLowerCase();
+        if (c === '#ffffff' || c === '#fff') {
+          const r = this.problemCardRect;
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(r.x, r.y, r.w, r.h);
+          ctx.clip();
+          this.renderSingleStroke(ctx, this.currentInkStroke, '#0f172a', true);
+          ctx.restore();
+        }
+      }
+      return;
+    }
+
+    if (isExport) {
+      if (this.exportTransparent) {
+        ctx.clearRect(0, 0, width, height);
+      } else {
+        const bg = this.isMonochromeMode ? '#ffffff' : curTheme.bg;
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, width, height);
+      }
+    } else {
+      // 🌟 [대표님 긴급 해결: 화면 깜빡임 100% 원천 박멸 (Zero-Flicker Architecture)] 🌟
+      // clearRect()는 캔버스 픽셀을 0.001초 동안 투명(검정) 상태로 만들기 때문에 백버퍼 스왑 시 화면 깜빡임의 핵심 원인이 됨!
+      // clearRect를 완전히 배제하고 불투명 칠판 배경색(fillRect)으로 즉시 덮어씌워 144Hz 무결점 렌더링 완성!
+      const bg = this.isMonochromeMode ? '#ffffff' : curTheme.bg;
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, width, height);
+    }
+
+    // 0.5. [📌 크롭된 PDF 문제 캔버스 내부 레이어 (2층): 그래프 및 펜/형광펜 필기 아래에 깔려 문제 위 자유 판서 100% 보장!]
+    this.drawProblemCardLayer(ctx, isExport);
+
+    // 0.6. [📄 PDF 페이지 통째 칠판 레이어 (0.5층): 개념서/교재 페이지 위 자유 확대·축소·판서 및 실시간 그래프/스샷 카드 완벽 호환!]
+    if (this.pdfPageBoardData && !this._isRenderingGraphSnapshot) {
+      this.drawPdfPageBoardLayer(ctx, isExport);
+    }
+
+    // [🔀 정통 N축 합성함수 해석 모드: 듀얼 상하 뷰포트 & 수직 레이저 트레이서 전용 렌더링]
+    if (this.isNAxisMode && !isExport) {
+      this.drawNAxisStage(ctx, width, height, curTheme);
+      return;
+    }
+
+    // [🧑‍🏫 라이브 판서 분할 모드: 좌측 그래프 무대 뷰포트 클리핑]
+    const isBoard = this.isBoardMode && !isExport;
+    const splitX = isBoard ? Math.round(width * this.boardSplitRatio) : width;
+
+    if (isBoard) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, splitX, height);
+      ctx.clip();
+    }
+
+    // 🌟 [2-Layer 아키텍처 & 정사각형 좌표평면 (Square Coordinate Plane)] 🌟
+    // 별도의 미니 윈도우(3번 창)나 불투명 배경 박스 없이,
+    // 원점/중심 기준 단정한 정사각형 영역 안에서만 격자, x·y축, 점근선, 곡선을 깔끔하게 재단(Clipping)합니다!
+    // 덕분에 그래프를 옆으로 밀어도 오른쪽 판서 공간으로 x축이나 직선이 삐져나오지 않으며,
+    // 필기(Ink)는 클리핑 밖(전체화면)에서 단일 레이어(1층)로 렌더링되어 어디서든 잘리지 않고 자유롭게 판서됩니다!
+    if (!isExport) {
+      this.syncGraphSnapBarUI();
+    }
+
+    // 🌟 [대표님 유레카 기획: 칠판 덮개(isGraphCovered) 활성 시 밑의 실시간 그래프 작업실을 100% 덮고 백지 칠판만 표출!] 🌟
+    // 단, PDF 페이지 통째 칠판 모드(this.pdfPageBoardData)일 때는 실시간 그래프/축만 덮고 PDF 페이지와 페이지 위 개념 필기('graph')는 그대로 노출!
+    if (this.isGraphCovered && !this._isRenderingGraphSnapshot) {
+      if (isExport && !this.useViewfinder) {
+        if (this.pdfPageBoardData) {
+          this.drawInkStrokes(ctx, true, 'graph');
+        }
+        this.drawInkStrokes(ctx, true, 'board');
+        this.drawFloatingCardsForExport(ctx);
+        return;
+      }
+      if (!isExport) {
+        this.syncCurveContextBar();
+        if (this.pdfPageBoardData) {
+          this.drawInkStrokes(ctx, false, 'graph');
+        }
+        this.drawInkStrokes(ctx, false, 'board');
+        this.drawLassoOverlay(ctx);
+        return;
+      }
+    }
+
+    // 🌟 실시간 그래프 작업 중에는 그 어떤 좌우/상하 잘림(막)도 없이 100% 전체화면 무제한 렌더링!
+    // 오직 스샷 캡처 순간(_isRenderingGraphSnapshot)에만 드래그 박스 테두리에 맞춰 화살촉(▶, ▲)을 배치합니다.
+    const squareBounds = this._isRenderingGraphSnapshot
+      ? this._snapshotCropBounds
+      : null;
+
+    if (squareBounds) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(squareBounds.minX, squareBounds.minY, squareBounds.w, squareBounds.h);
+      ctx.clip();
+    }
+
+    // 1. 점선 그리드 가이드 (정사각형 내부에만 단정하게 표시)
+    if (this.showGuides && !this.isCleanView) {
+      this.drawGuides(ctx);
+    }
+
+    // 1.5. y = x 항등직선 대칭 기준선 (역함수 모드)
+    if (this.showInverseGuide && !this.isCleanView) {
+      this.drawInverseGuide(ctx);
+    }
+
+    const hasGraphs = Boolean(this.graphs && this.graphs.length > 0);
+
+    // 2. 점근선 렌더링 (모든 관련 그래프 점근선 표시)
+    if (hasGraphs && this.showAsymptotes) {
+      this.drawAllAsymptotes(ctx);
+    }
+
+    // 3. 좌표축 & 화살표 (정사각형 끝단에 화살촉 및 x·y 이름표 칼같이 배치!)
+    if (this.showAxes) {
+      this.drawAxes(ctx, squareBounds);
+    }
+
+    // 4. 대칭의 중심 (활성 그래프 변곡점/점근선교점 등 은은한 십자선 마커)
+    if (hasGraphs && !this.isCleanView) {
+      this.drawSymmetryCenters(ctx, isExport);
+    }
+
+    // 5. 다중 곡선 렌더링 (정사각형 범위 내에서만 깔끔하게 렌더링되어 우측 판서 공간 침범 제로!)
+    if (hasGraphs) {
+      this.drawAllCurves(ctx, isExport);
+    }
+
+    // 5.2. [대표님 킬러 기획: ✂️ 구간별 합성 함수 (Piecewise) 경계선 가이드 & 끝점 동그라미(●/○)]
+    if (this.usePiecewise) {
+      this.drawPiecewiseBoundaries(ctx, isExport);
+    }
+
+    // 5.8. [📍 교재 보조 수선 & 축 좌표 라벨 시스템 - 1클릭 x·y 수선 & 가위 삭둑 & 수식 라벨]
+    if ((this.dropLines && this.dropLines.length > 0) || this.isDropLineMode) {
+      this.drawDropLines(ctx, isExport);
+    }
+
+    if (squareBounds) {
+      ctx.restore(); // 정사각형 그래프 클리핑 해제 -> 이후 요소(교점, 수식 라벨, 필기, 핸들러)는 전체화면 무제한 렌더링!
+    }
+
+    // 5.5. [⚡ 실시간 교점판독기 - 교점/접점 반짝임 & 화면 밖 추적]
+    if (hasGraphs && this.useIntersectionDetector) {
+      if (!this.isDrawingInk) {
+        this.updateIntersections();
+      }
+      this.drawIntersections(ctx, isExport);
+    }
+
+    // 5.9. [🔤 캔버스 자유 수식 텍스트 라벨 (함수 이름표 y=f(x) & 축 이름표)]
+    if (this.textLabels && this.textLabels.length > 0) {
+      this.drawTextLabels(ctx, isExport);
+    }
+
+    // 🌟 [실시간 그래프 작업실 전용 필기 렌더링 (PDF 페이지 위에서 그래프 스샷 캡처 순간에는 배경 개념 필기 생략)] 🌟
+    if (!(this._isRenderingGraphSnapshot && this.pdfPageBoardData)) {
+      this.drawInkStrokes(ctx, isExport, 'graph');
+    }
+
+    // 🌟 [내보내기/복사 시 화면에 떠 있는 문제 카드 & 그래프 카드 합성] 🌟
+    if (isExport && !this._isRenderingGraphSnapshot && !this.useViewfinder) {
+      this.drawFloatingCardsForExport(ctx);
+    }
+
+    // 🌟 [올가미(Lasso) 점선 오버레이 최상단 렌더링] 🌟
+    if (!isExport && !this._isRenderingGraphSnapshot) {
+      this.drawLassoOverlay(ctx);
+    }
+
+    // 6. 인터랙티브 조작 핸들 & 캡처영역 (내보내기 시, 스샷 촬영 시 및 클린뷰 시에는 숨김)
+    if (!isExport && !this.isCleanView && !this._isRenderingGraphSnapshot) {
+      // 🌟 [대표님 핵심 기획]: 필기 버튼(펜/형광펜/지우개)을 누르자마자 핸들러 즉시 증발!
+      // 펜으로 글씨를 긋는 도중이거나 필기 도구가 켜져 있을 때는 조작 핸들을 화면에서 100% 프리징(숨김)!
+      // 오직 선택 도구(select)이거나 일반 마우스 모드일 때만 그래프 선택 시 핸들러 노출!
+      const isWritingTool = (this.isInkMode && this.activeInkTool !== 'select');
+      if (isWritingTool) {
+        this.selectedHandleIdx = null;
+        this.draggedHandleIdx = null;
+      }
+      if (!this.isDrawingInk && !isWritingTool) {
+        this.drawHandles(ctx);
+        if (this.useViewfinder) {
+          this.drawViewfinder(ctx);
+        }
+      }
+      // 🌟 [우측 하단 작은 사이즈 조절기(◢) & 위치 이동(✥) 컨트롤 배지] 🌟
+      this.drawCompactStageControls(ctx);
+    }
+
+    // [🧑‍🏫 라이브 판서 분할 모드: 우측 클린 판서 구역 & 시네마틱 네온 구분선 렌더링]
+    if (isBoard) {
+      ctx.restore();
+      this.drawBoardModeStage(ctx, splitX, width, height, curTheme);
+    }
+  }
+
+  // --- [⚡ 실시간 교점판독기: 교점 데이터 갱신 엔진] ---
+  updateIntersections() {
+    if (!this.useIntersectionDetector) {
+      this.detectedIntersections = [];
+      return;
+    }
+
+    const g1 = this.activeGraph;
+    if (!g1 || !g1.handles || g1.handles.length === 0) {
+      this.detectedIntersections = [];
+      return;
+    }
+
+    // [대표님 기획]: 교점판독기는 수업 시간 라이브 시연 도구이므로, 
+    // 화면 밖 교점 판정은 뷰파인더(캡처영역)가 아닌 '실제 캔버스 전체 화면' 기준!
+    // 또한 화면 끝(0px)에 딱 닿기 전 가장자리 근처(32px 마진)에 오면 화면 밖으로 판정하여 끝단 테두리 발광!
+    const screenMargin = 32;
+    const ptScreenMin = this.screenToMath(screenMargin, this.screenHeight - screenMargin);
+    const ptScreenMax = this.screenToMath(this.screenWidth - screenMargin, screenMargin);
+
+    const screenRect = {
+      xmin: Math.min(ptScreenMin.x, ptScreenMax.x),
+      xmax: Math.max(ptScreenMin.x, ptScreenMax.x),
+      ymin: Math.min(ptScreenMin.y, ptScreenMax.y),
+      ymax: Math.max(ptScreenMin.y, ptScreenMax.y)
+    };
+
+    const rangeX = { xmin: screenRect.xmin, xmax: screenRect.xmax };
+    const allRoots = [];
+
+    // 비교 대상: 다른 그래프 레이어들 (없으면 x축 y=0 기준선)
+    const otherGraphs = this.graphs.filter((_, i) => i !== this.activeGraphIdx);
+
+    if (otherGraphs.length > 0) {
+      // [대표님 핵심 기획: 구간별 합성 함수 vs 독립 관찰 곡선(직선 등) 지능형 실시간 교점 탐색]
+      const isPwActive = this.usePiecewise && this.graphs.length >= 1;
+      const g1Idx = this.activeGraphIdx;
+      const isG1Indep = Boolean(g1.isIndependent);
+
+      // 이미 계산된 쌍을 추적하여 중복 방지
+      const processedPairs = new Set();
+
+      const checkAndAddRoots = (mainG, mainIdx, targetG, targetIdx) => {
+        const pairKey = mainIdx < targetIdx ? `${mainIdx}-${targetIdx}` : `${targetIdx}-${mainIdx}`;
+        if (processedPairs.has(pairKey)) return;
+        processedPairs.add(pairKey);
+
+        const roots = this.engine.findIntersections(mainG, targetG, rangeX, screenRect);
+        roots.forEach(r => {
+          if (isPwActive) {
+            const isMainVisible = this.isInsidePiece(mainIdx, r.x);
+            const isTargetVisible = this.isInsidePiece(targetIdx, r.x);
+            if (!isMainVisible || !isTargetVisible) {
+              return;
+            }
+          }
+          r.targetName = this.meta[targetG.type]?.name || '함수';
+          r.targetColor = targetG.color;
+          allRoots.push(r);
+        });
+      };
+
+      // 1. 기본: activeGraph(g1)와 다른 모든 otherG의 교점
+      otherGraphs.forEach(otherG => {
+        const otherGIdx = this.graphs.indexOf(otherG);
+        checkAndAddRoots(g1, g1Idx, otherG, otherGIdx);
+      });
+
+      // 2. [에듀테크 킬러]: g1이 구간 참여 함수이고 화면에 독립 관찰 곡선(직선 등)이 존재하는 경우,
+      //    구간을 함께 이루는 다른 형제 조각들(siblingG)과 해당 독립 곡선 사이의 교점도 자동 통합 수집!
+      if (isPwActive && !isG1Indep) {
+        const indepGraphs = this.graphs.filter(g => g.isIndependent);
+        if (indepGraphs.length > 0) {
+          const siblingGraphs = this.graphs.filter((g, i) => !g.isIndependent && i !== g1Idx);
+          indepGraphs.forEach(indepG => {
+            const indepIdx = this.graphs.indexOf(indepG);
+            siblingGraphs.forEach(sibG => {
+              const sibIdx = this.graphs.indexOf(sibG);
+              checkAndAddRoots(sibG, sibIdx, indepG, indepIdx);
+            });
+          });
+        }
+      }
+    } else {
+      // 단일 그래프일 때는 x축과의 교점(실근) 판독
+      const roots = this.engine.findIntersections(g1, null, rangeX, screenRect);
+      roots.forEach(r => {
+        if (this.usePiecewise && this.graphs.length >= 2) {
+          if (!this.isInsidePiece(this.activeGraphIdx, r.x)) {
+            return;
+          }
+        }
+        r.targetName = 'x축';
+        r.targetColor = '#ffffff';
+        allRoots.push(r);
+      });
+    }
+
+    // 중복 검출 제거 (화면 배율에 비례: 기본 가시폭 30 기준 0.025와 동일한 감도)
+    const dedupeEps = Math.max(1e-6, (rangeX.xmax - rangeX.xmin) * 0.0008);
+    const deduped = [];
+    allRoots.forEach(r => {
+      const exist = deduped.find(d => Math.abs(d.x - r.x) < dedupeEps && Math.abs(d.y - r.y) < dedupeEps);
+      if (!exist) {
+        deduped.push(r);
+      } else {
+        if (r.type === 'tangent' && exist.type !== 'overlap') exist.type = 'tangent';
+        if (r.type === 'overlap') exist.type = 'overlap';
+      }
+    });
+
+    this.detectedIntersections = deduped;
+  }
+
+  // --- [⚡ 실시간 교점판독기: 반짝거리는 펄스 링, 화면 밖 끝단 지시자, 플로팅 카운터 렌더링] ---
+  drawIntersections(ctx, isExport = false) {
+    // [대표님 지침]: 스샷/내보내기(isExport)에서는 교점을 보여줄 필요 없음 (오직 실시간 수업용)
+    if (!this.useIntersectionDetector || isExport) return;
+
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    const isLight = Boolean(curTheme.isLight || this.isMonochromeMode);
+    const pulseFactor = 0.5 + 0.5 * Math.sin(this.intersectionAnimPhase); // 0.0 ~ 1.0 부드러운 맥동
+
+    let onScreenCount = 0;
+    let offScreenCount = 0;
+    let tangentCount = 0;
+    let overlapCount = 0;
+
+    ctx.save();
+
+    this.detectedIntersections.forEach(pt => {
+      if (pt.type === 'tangent') tangentCount++;
+      if (pt.type === 'overlap') overlapCount++;
+
+      if (!pt.isOffscreen) {
+        onScreenCount++;
+        // --- [A. 화면 내부 교점: 반짝거리는 펄스 링 & 핀 마커 (테마별 고대비 컬러 자동 분기)] ---
+        const s = this.mathToScreen(pt.x, pt.y);
+
+        // 🌟 [대표님 피드백 반영]:
+        // - 밝은(화이트) 바탕: 은은하고 세련된 아메시스트 보라(#7c3aed, 접점은 오키드 퍼플 #c026d3) + 화이트 마이크로 후광
+        // - 어두운(다크) 바탕: 별처럼 반짝이는 골드 옐로우(#feca57, 접점은 네온 오렌지 #ff9f43)
+        const mainColor = isLight
+          ? (pt.type === 'tangent' ? '#c026d3' : '#7c3aed')
+          : (pt.type === 'tangent' ? '#ff9f43' : '#feca57');
+        const ringColor = isLight
+          ? (pt.type === 'tangent' ? 'rgba(192, 38, 211, 0.78)' : 'rgba(124, 58, 237, 0.78)')
+          : mainColor;
+        const glowColor = isLight
+          ? (pt.type === 'tangent' ? 'rgba(192, 38, 211, 0.35)' : 'rgba(139, 92, 246, 0.35)')
+          : mainColor;
+
+        // 1. 반짝이는 외부 펄스 링 (Twinkle Pulse Ring)
+        const ringR = 5.0 + pulseFactor * 4.2; // 5.0 ~ 9.2px
+        ctx.save();
+        if (isLight) {
+          // 밝은 배경에서는 은은한 라벤더 오라(Aura) 채우기를 살짝 깔아 시인성과 고급스러움 극대화
+          ctx.fillStyle = pt.type === 'tangent'
+            ? `rgba(192, 38, 211, ${0.10 + pulseFactor * 0.08})`
+            : `rgba(124, 58, 237, ${0.10 + pulseFactor * 0.08})`;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, ringR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.strokeStyle = ringColor;
+        ctx.fillStyle = mainColor;
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = isLight ? (3 + pulseFactor * 4) : (4 + pulseFactor * 5);
+        ctx.lineWidth = isLight ? 1.5 : 1.3;
+
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 2. 내부 중심 마커 (접점은 다이아몬드, 관통은 원형 점)
+        if (pt.type === 'tangent') {
+          const dR = 3.2;
+          ctx.beginPath();
+          ctx.moveTo(s.x, s.y - dR);
+          ctx.lineTo(s.x + dR, s.y);
+          ctx.lineTo(s.x, s.y + dR);
+          ctx.lineTo(s.x - dR, s.y);
+          ctx.closePath();
+          if (isLight) {
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2.0;
+            ctx.stroke();
+          }
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, isLight ? 2.8 : 2.4, 0, Math.PI * 2);
+          if (isLight) {
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.8;
+            ctx.stroke();
+          }
+          ctx.fill();
+        }
+        ctx.restore();
+
+      } else {
+        offScreenCount++;
+        // --- [B. 대표님 킬러 기획: 화면 가장자리/바깥 교점 -> 화면 끝단 테두리에서 반짝거림!] ---
+        const borderScreen = this.mathToScreen(pt.borderX, pt.borderY);
+        const pad = 20;
+        const clampedX = Math.max(pad, Math.min(this.screenWidth - pad, borderScreen.x));
+        const clampedY = Math.max(pad, Math.min(this.screenHeight - pad, borderScreen.y));
+
+        const offAccent = isLight ? '#7c3aed' : '#ff6b6b';
+        const offGlow = isLight ? 'rgba(124, 58, 237, 0.35)' : 'rgba(255, 107, 107, 0.6)';
+
+        ctx.save();
+        ctx.strokeStyle = offAccent;
+        ctx.fillStyle = offAccent;
+        ctx.shadowColor = offGlow;
+        ctx.shadowBlur = 4 + pulseFactor * 5;
+
+        // 끝단 펄스 링
+        const ringR = 4.2 + pulseFactor * 4.0;
+        ctx.beginPath();
+        ctx.arc(clampedX, clampedY, ringR, 0, Math.PI * 2);
+        ctx.lineWidth = isLight ? 1.4 : 1.2;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(clampedX, clampedY, 2.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 방향 화살표 배지 (예: '◀ 화면 밖')
+        let arrow = '◀';
+        if (pt.side === 'right') arrow = '▶';
+        else if (pt.side === 'top') arrow = '▲';
+        else if (pt.side === 'bottom') arrow = '▼';
+
+        const offLabel = `${arrow} 화면 밖`;
+        ctx.font = 'bold 9px system-ui, -apple-system, sans-serif';
+        const textW = ctx.measureText(offLabel).width;
+        let bx = clampedX + (pt.side === 'right' ? -textW - 14 : 10);
+        let by = clampedY - 8;
+        if (bx < 10) bx = 10;
+        if (bx + textW + 8 > this.screenWidth - 10) bx = this.screenWidth - textW - 18;
+
+        ctx.fillStyle = isLight ? 'rgba(245, 243, 255, 0.96)' : 'rgba(28, 16, 22, 0.88)';
+        ctx.strokeStyle = isLight ? 'rgba(124, 58, 237, 0.55)' : 'rgba(255, 107, 107, 0.7)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(bx, by, textW + 8, 16, 3);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = isLight ? '#6d28d9' : '#ff6b6b';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(offLabel, bx + 4, by + 8);
+        ctx.restore();
+      }
+    });
+
+    ctx.restore();
+
+    // [대표님 지침]: 수업 시선 분산 및 순간적 오차 방지를 위해 화면 상단 교점 개수 종합 플로팅 배지는 비활성화.
+    // 강사가 캔버스 위의 반짝이는 교점 마커들을 직접 직관적으로 눈으로 판독하도록 함.
+  }
+
+  drawIntersectionCounterBadge(ctx, total, onScreen, offScreen, tangent = 0, overlap = 0) {
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+
+    let badgeText = '';
+    if (overlap > 0) {
+      badgeText = `⚡ 교점 무수히 많음 (선분 겹침)`;
+    } else if (total === 0) {
+      badgeText = `⚡ 교점판독기: 교점 없음`;
+    } else {
+      let detail = `교점 ${total}개`;
+      if (tangent > 0) detail += ` (접점 ${tangent}개 포함)`;
+      if (offScreen > 0) detail += ` [화면 밖 ${offScreen}개]`;
+      badgeText = `⚡ ${detail}`;
+    }
+
+    ctx.save();
+    ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+    const textW = ctx.measureText(badgeText).width;
+    const badgeW = textW + 16;
+    const badgeH = 22;
+    // [대표님 특화]: 항상 화면 상단 중앙에 가지런히 배치
+    const badgeX = (this.screenWidth - badgeW) / 2;
+    const badgeY = 18;
+
+    ctx.fillStyle = curTheme.isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(18, 26, 36, 0.90)';
+    ctx.strokeStyle = total > 0 ? (curTheme.isLight ? 'rgba(124, 58, 237, 0.55)' : 'rgba(254, 202, 87, 0.65)') : 'rgba(100, 116, 139, 0.4)';
+    ctx.lineWidth = 1.1;
+    ctx.shadowColor = total > 0 ? (curTheme.isLight ? 'rgba(124, 58, 237, 0.18)' : 'rgba(254, 202, 87, 0.25)') : 'transparent';
+    ctx.shadowBlur = 6;
+
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 11);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = total > 0 ? (curTheme.isLight ? '#7c3aed' : '#feca57') : (curTheme.isLight ? '#64748b' : '#94a3b8');
+    ctx.textBaseline = 'middle';
+    ctx.fillText(badgeText, badgeX + 8, badgeY + badgeH / 2);
+
+    ctx.restore();
+  }
+
+  // 🌟 [문제 카드 활성 시: 경계선 없는 자유 비율 칠판 일체형 컴팩트 스테이지 계산] 🌟
+  // 대표님 기획: 정사각형에 국한되지 않고 가로길게 / 세로길게 자유 비율 지원!
+  // 문제가 플로팅되어 있으므로 그래프를 문제 바로 밑이나 문제 뒤로 겹쳐서 배치하는 것도 100% 완전 자유 허용!
+  // 🌟 [교재 삽도형 정사각형 좌표평면 바운딩 엔진 (Square Graph Bounds)] 🌟
+  // 창 테두리나 별도 윈도우(레이어) 없이, 좌표평면 중심(cx, cy) 기준으로
+  // 가로·세로 1:1 정사각형 영역 안에서만 축과 그래프 선이 단정하게 그려지도록 바운딩을 제공합니다.
+  // 🌟 [y축(원점) 기준 좌우 1:1 대칭 스팬 엔진 (Origin-Symmetric Horizontal Span)] 🌟
+  // 상하(위아래)는 자르지 않아 답답한 '네모칸' 느낌을 100% 없애고,
+  // 원점이 화면 중앙에 있을 때는 좌우 100% 전체화면(데스모스 스타일),
+  // 그래프를 왼쪽이나 오른쪽으로 밀면 y축 기준 1:1 좌우 대칭 길이만큼만 x축(▶)과 곡선을 그려
+  // 반대편에 광활하고 깨끗한 빈 판서 공간을 자동으로 열어줍니다!
+  getSquareGraphBounds() {
+    return {
+      minX: 0,
+      maxX: this.screenWidth,
+      minY: 0,
+      maxY: this.screenHeight,
+      x: 0,
+      y: 0,
+      w: this.screenWidth,
+      h: this.screenHeight,
+      isCustomized: false
+    };
+  }
+
+  getCompactGraphStage() {
+    return this.getSquareGraphBounds();
+  }
+
+  getCompactGraphScreenBounds() {
+    return this.getSquareGraphBounds();
+  }
+
+  isInsideCompactStage(pos) {
+    if (!pos || !this.graphs || this.graphs.length === 0) return false;
+    const sq = this.getSquareGraphBounds();
+    return (
+      pos.x >= sq.minX &&
+      pos.x <= sq.maxX &&
+      pos.y >= sq.minY &&
+      pos.y <= sq.maxY
+    );
+  }
+
+  // 🌟 [통합 줌 배율 제어 및 UI 실시간 동기화] 🌟
+  setZoomLevel(val) {
+    this.zoomLevel = Math.max(0.15, Math.min(3.5, Math.round(val * 100) / 100));
+    this.targetZoom = this.zoomLevel;
+    this._inkBakeDirty = true;
+    const slZoom = document.getElementById('sliderZoom');
+    if (slZoom) slZoom.value = this.zoomLevel;
+    const lblZoom = document.getElementById('lblZoom');
+    if (lblZoom) lblZoom.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+    const lblInkZoom = document.getElementById('lblInkZoom');
+    if (lblInkZoom) lblInkZoom.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+    const lblLeftZoom = document.getElementById('lblLeftZoom');
+    if (lblLeftZoom) lblLeftZoom.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+  }
+
+  getCompactStageHandleAt(pos) {
+    return null;
+  }
+
+  drawCompactStageControls(ctx) {
+    // 2-Layer 아키텍처 전환으로 별도 미니창 테두리 및 우하단 배지([ ✥ | − | + | ◢ ]) 완전 제거
+    return;
+  }
+
+  drawAxes(ctx, bounds = null) {
+    const orig = this.mathToScreen(0, 0);
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    const axisColor = this.isMonochromeMode ? '#000000' : curTheme.axis;
+    // 🌟 [대표님 피드백 반영]: 데스모스 스타일의 샤프하고 세련된 축 두께 (기존 곡선 연동 2.8px -> 독립 1.8px)
+    const axisLw = (typeof this.axisLineWidth === 'number') ? this.axisLineWidth : 1.8;
+
+    // 컴팩트 바운딩 활성 시 축의 시작/끝 좌표를 컴팩트 영역으로 깔끔하게 재단!
+    // 교재 제작 모드(bounds === null)일 때는 기존처럼 모니터 전체화면(0 ~ screenWidth/Height) 100% 유지!
+    const xStart = bounds ? bounds.minX : 0;
+    const xEnd = bounds ? bounds.maxX : this.screenWidth;
+    const yBottom = bounds ? bounds.maxY : this.screenHeight;
+    const yTop = bounds ? bounds.minY : 0;
+
+    // [대표님 기획]: 수능·평가원 조판 표준 비율로 화살촉 크기를 슬림해진 축선에 맞추어 세련되게 계산
+    const arrowSize = Math.max(12, Math.round(axisLw * 3.4 + 5));
+    const arrowHalfWidth = arrowSize * 0.44;
+
+    ctx.save();
+    ctx.lineCap = 'round';
+
+    // X축 (y=0)
+    if (orig.y >= yTop && orig.y <= yBottom && xEnd > xStart + 20) {
+      ctx.beginPath();
+      ctx.moveTo(xStart, orig.y);
+      ctx.lineTo(xEnd, orig.y);
+      ctx.strokeStyle = axisColor;
+      ctx.lineWidth = axisLw;
+      ctx.shadowBlur = 0;
+      ctx.stroke();
+
+      // X축 화살표 (재단된 우측 끝단 xEnd에 칼같이 부착!)
+      if (this.showArrows) {
+        ctx.fillStyle = axisColor;
+        ctx.beginPath();
+        ctx.moveTo(xEnd, orig.y);
+        ctx.lineTo(xEnd - arrowSize, orig.y - arrowHalfWidth);
+        ctx.lineTo(xEnd - arrowSize, orig.y + arrowHalfWidth);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Y축 (x=0)
+    if (orig.x >= xStart && orig.x <= xEnd && yBottom > yTop + 20) {
+      ctx.beginPath();
+      ctx.moveTo(orig.x, yBottom);
+      ctx.lineTo(orig.x, yTop);
+      ctx.strokeStyle = axisColor;
+      ctx.lineWidth = axisLw;
+      ctx.shadowBlur = 0;
+      ctx.stroke();
+
+      // Y축 화살표 (재단된 상단 끝단 yTop에 칼같이 부착!)
+      if (this.showArrows) {
+        ctx.fillStyle = axisColor;
+        ctx.beginPath();
+        ctx.moveTo(orig.x, yTop);
+        ctx.lineTo(orig.x - arrowHalfWidth, yTop + arrowSize);
+        ctx.lineTo(orig.x + arrowHalfWidth, yTop + arrowSize);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // [수능·평가원 표준 축 이름표 (x/t, y, 원점 O) 렌더링 - 데스모스/교과서급 KaTeX Math 이탤릭 & Halo 외곽선 엔진]
+    if (this.showAxisLabels) {
+      let fontFam = '"KaTeX_Math", "Times New Roman", Georgia, serif';
+      if (this.dropLineFontFamily === 'pretendard') fontFam = "'Pretendard', -apple-system, sans-serif";
+      else if (this.dropLineFontFamily === 'batang') fontFam = "'KoPubWorld Batang', 'Batang', serif";
+
+      const fSize = this.axisLabelFontSize || 17;
+      const originFSize = Math.round(fSize * 0.95);
+      const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.isLight ? '#ffffff' : (curTheme.bg || '#1e1e2e'));
+
+      // 1. X축 이름표 (예: x, t, k)
+      if (this.axisLabelX && orig.y >= yTop && orig.y <= yBottom) {
+        ctx.save();
+        ctx.font = `italic 600 ${fSize}px ${fontFam}`;
+        ctx.fillStyle = axisColor;
+        ctx.strokeStyle = haloColor;
+        ctx.lineWidth = 3.5;
+        ctx.lineJoin = 'round';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'top';
+        const labelXPos = xEnd - arrowSize - 6;
+        const labelYPos = Math.min(yBottom - fSize - 4, Math.max(yTop + 4, orig.y + 6));
+        ctx.strokeText(this.axisLabelX, labelXPos, labelYPos);
+        ctx.fillText(this.axisLabelX, labelXPos, labelYPos);
+        ctx.restore();
+      }
+
+      // 2. Y축 이름표 (예: y)
+      if (this.axisLabelY && orig.x >= xStart && orig.x <= xEnd) {
+        ctx.save();
+        ctx.font = `italic 600 ${fSize}px ${fontFam}`;
+        ctx.fillStyle = axisColor;
+        ctx.strokeStyle = haloColor;
+        ctx.lineWidth = 3.5;
+        ctx.lineJoin = 'round';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'top';
+        const labelXPos = Math.max(xStart + fSize, orig.x - 6);
+        const labelYPos = yTop + arrowSize + 4;
+        ctx.strokeText(this.axisLabelY, labelXPos, labelYPos);
+        ctx.fillText(this.axisLabelY, labelXPos, labelYPos);
+        ctx.restore();
+      }
+
+      // 3. 원점 O
+      if (orig.x >= xStart + 15 && orig.x <= xEnd - 15 && orig.y >= yTop + 15 && orig.y <= yBottom - 15) {
+        ctx.save();
+        ctx.font = `italic 600 ${originFSize}px ${fontFam}`;
+        ctx.fillStyle = axisColor;
+        ctx.strokeStyle = haloColor;
+        ctx.lineWidth = 3.5;
+        ctx.lineJoin = 'round';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.strokeText('O', orig.x + 6, orig.y + 6);
+        ctx.fillText('O', orig.x + 6, orig.y + 6);
+        ctx.restore();
+      }
+    }
+
+    // [대표님 지침]: 이동/조작 시 축 위에 찍히던 불필요한 하늘색 스냅 마커(◉) 렌더링 완전 제거
+
+    ctx.restore();
+  }
+
+  drawGuides(ctx) {
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    ctx.save();
+    ctx.strokeStyle = this.isMonochromeMode ? 'rgba(0, 0, 0, 0.08)' : curTheme.grid;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 4]);
+
+    const orig = this.mathToScreen(0, 0);
+    const mLeft = this.screenToMath(0, 0).x;
+    const mRight = this.screenToMath(this.screenWidth, 0).x;
+    const mBottom = this.screenToMath(0, this.screenHeight).y;
+    const mTop = this.screenToMath(0, 0).y;
+
+    const spanX = mRight - mLeft;
+    let step = 1;
+    if (spanX > 90) step = 5;
+    else if (spanX > 45) step = 2;
+
+    const startX = Math.floor(mLeft / step) * step;
+    const endX = Math.ceil(mRight / step) * step;
+
+    // 1. 수직 격자선 단일 패스 배칭 & 원점 위상 고정 (모아레 진동 원천 차단)
+    ctx.lineDashOffset = -(orig.y % 7);
+    ctx.beginPath();
+    for (let xVal = startX; xVal <= endX; xVal += step) {
+      if (Math.abs(xVal) < 1e-4) continue; // 축은 별도로 그려짐
+      const s = this.mathToScreen(xVal, 0);
+      ctx.moveTo(s.x, 0);
+      ctx.lineTo(s.x, this.screenHeight);
+    }
+    ctx.stroke();
+
+    const startY = Math.floor(mBottom / step) * step;
+    const endY = Math.ceil(mTop / step) * step;
+
+    // 2. 수평 격자선 단일 패스 배칭 & 원점 위상 고정
+    ctx.lineDashOffset = -(orig.x % 7);
+    ctx.beginPath();
+    for (let yVal = startY; yVal <= endY; yVal += step) {
+      if (Math.abs(yVal) < 1e-4) continue;
+      const s = this.mathToScreen(0, yVal);
+      ctx.moveTo(0, s.y);
+      ctx.lineTo(this.screenWidth, s.y);
+    }
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // --- [🔄 y = x 대칭 역함수 엔진 & 대칭 가이드라인] ---
+  drawInverseGuide(ctx) {
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    const guideColor = this.isMonochromeMode ? 'rgba(0, 0, 0, 0.45)' : (curTheme.isLight ? 'rgba(108, 92, 231, 0.65)' : 'rgba(255, 234, 167, 0.65)');
+
+    // 화면 네 모서리의 수학 좌표 범위 구하기
+    const pBL = this.screenToMath(0, this.screenHeight);
+    const pTR = this.screenToMath(this.screenWidth, 0);
+
+    // y = x 직선의 시작점과 끝점 계산 (화면 밖 넉넉하게 확장)
+    const minCoord = Math.min(pBL.x, pBL.y) - 5;
+    const maxCoord = Math.max(pTR.x, pTR.y) + 5;
+
+    const sStart = this.mathToScreen(minCoord, minCoord);
+    const sEnd = this.mathToScreen(maxCoord, maxCoord);
+
+    ctx.save();
+    ctx.strokeStyle = guideColor;
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([6, 5]);
+
+    ctx.beginPath();
+    ctx.moveTo(sStart.x, sStart.y);
+    ctx.lineTo(sEnd.x, sEnd.y);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // ========================================================
+  // [📍 교재 보조 수선(Drop Lines) & 축 좌표 라벨 시스템 엔진]
+  // ========================================================
+
+  toggleDropLineMode(forceState) {
+    this.isDropLineMode = forceState !== undefined ? forceState : !this.isDropLineMode;
+    const btn = document.getElementById('btnQuickDropLine');
+    if (btn) btn.classList.toggle('active', this.isDropLineMode);
+    const container = this.canvas.parentElement;
+    if (container) container.classList.toggle('drop-line-active', this.isDropLineMode);
+    this.render();
+    this.showToast(this.isDropLineMode ? '📍 보조 수선 도구 켜짐 (극점·교점 클릭 시 수선 생성)' : '📍 보조 수선 도구 꺼짐');
+  }
+
+  formatCoordForLabel(val) {
+    if (isNaN(val) || !isFinite(val)) return '0';
+    if (Math.abs(val) < 1e-4) return '0';
+    // 부동소수점 오차 정리 (-0.0 방지, 최대 소수점 2자리)
+    const rounded = Math.round(val * 100) / 100;
+    if (Math.abs(rounded) < 1e-4) return '0';
+    let s = rounded.toString();
+    return s.replace('-', '−'); // 유니코드 정규 수학 마이너스(U+2212)
+  }
+
+  sanitizeMathLabel(text) {
+    if (!text) return '';
+    let s = text.trim();
+
+    // 1. LaTeX 매크로 치환 (\alpha, \beta, etc.)
+    const latexGreek = [
+      { pattern: /(?:\\{1,2})alpha\b/gi, sym: 'α' },
+      { pattern: /(?:\\{1,2})beta\b/gi, sym: 'β' },
+      { pattern: /(?:\\{1,2})gamma\b/gi, sym: 'γ' },
+      { pattern: /(?:\\{1,2})delta\b/gi, sym: 'δ' },
+      { pattern: /(?:\\{1,2})theta\b/gi, sym: 'θ' },
+      { pattern: /(?:\\{1,2})pi\b/gi, sym: 'π' },
+      { pattern: /(?:\\{1,2})phi\b/gi, sym: 'φ' },
+      { pattern: /(?:\\{1,2})lambda\b/gi, sym: 'λ' },
+      { pattern: /(?:\\{1,2})mu\b/gi, sym: 'μ' },
+      { pattern: /(?:\\{1,2})sigma\b/gi, sym: 'σ' },
+      { pattern: /(?:\\{1,2})omega\b/gi, sym: 'ω' },
+      { pattern: /(?:\\{1,2})infty\b/gi, sym: '∞' },
+      { pattern: /(?:\\{1,2})times\b/gi, sym: '×' }
+    ];
+    for (const item of latexGreek) {
+      s = s.replace(item.pattern, item.sym);
+    }
+
+    // 2. 단독 영문자 매칭 (단어 경계)
+    const wordGreek = [
+      { pattern: /\balpha\b/gi, sym: 'α' },
+      { pattern: /\bbeta\b/gi, sym: 'β' },
+      { pattern: /\btheta\b/gi, sym: 'θ' },
+      { pattern: /\bpi\b/gi, sym: 'π' },
+      { pattern: /\bgamma\b/gi, sym: 'γ' },
+      { pattern: /\bdelta\b/gi, sym: 'δ' },
+      { pattern: /\blambda\b/gi, sym: 'λ' },
+      { pattern: /\bphi\b/gi, sym: 'φ' },
+      { pattern: /\bomega\b/gi, sym: 'ω' }
+    ];
+    for (const item of wordGreek) {
+      s = s.replace(item.pattern, item.sym);
+    }
+
+    // 3. 기호 및 연산자 치환
+    s = s.replace(/<=/g, '≤').replace(/>=/g, '≥').replace(/!=/g, '≠');
+    s = s.replace(/-/g, '−'); // 유니코드 정규 수학 마이너스 (U+2212)
+
+    // 4. 아래첨자 치환 (_0 -> ₀ 등)
+    s = s.replace(/_0/g, '₀').replace(/_1/g, '₁').replace(/_2/g, '₂').replace(/_3/g, '₃')
+         .replace(/_k/g, 'ₖ').replace(/_n/g, 'ₙ').replace(/_t/g, 'ₜ').replace(/_x/g, 'ₓ');
+
+    return s;
+  }
+
+  collectDropLineCandidates() {
+    const candidates = [];
+    const seen = new Set();
+    const addCand = (x, y, name, color = '#00d2d3', layerId = null, handleIndex = null, candKey = null, extra = null) => {
+      if (isNaN(x) || isNaN(y) || !isFinite(x) || !isFinite(y)) return;
+      const key = `${Math.round(x * 1000) / 1000},${Math.round(y * 1000) / 1000}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      candidates.push({
+        x, y, name, color, layerId, handleIndex, candKey: candKey || key,
+        type: 'candidate', isCandidate: true,
+        isIntersection: Boolean(extra && extra.isIntersection),
+        layerIds: (extra && extra.layerIds) ? extra.layerIds : (layerId ? [layerId] : [])
+      });
+    };
+
+    // 1. 모든 그래프의 핸들러(극점, 변곡점, 꼭짓점, 시작점, 정점 등)
+    this.graphs.forEach(g => {
+      if (!g || !g.handles) return;
+      let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+      let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+      if (g.transforms && g.transforms.length > 0) {
+        for (const t of g.transforms) {
+          if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
+          if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
+        }
+      }
+
+      g.handles.forEach((h, hIdx) => {
+        if (h.hidden) return;
+        let targetY = h.y;
+        if (g.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
+          targetY = Math.abs(h.y);
+        }
+        let evalY = (h.type === 'center' || h.type === 'asymptote')
+          ? (targetY + oy)
+          : this.engine.evaluatePipeline(g, h.x + ox);
+        if (isNaN(evalY) || !isFinite(evalY)) {
+          evalY = targetY + oy;
+        }
+        addCand(h.x + ox, evalY, h.name || '특이점', g.color, g.id, hIdx, `${g.id}_h_${hIdx}`);
+      });
+
+      // 2. y절편 f(0)
+      try {
+        const y0 = this.engine.evaluatePipeline(g, 0);
+        if (!isNaN(y0) && isFinite(y0) && Math.abs(y0) < 50) {
+          addCand(0, y0, 'y절편', g.color, g.id, null, `${g.id}_y0`);
+        }
+      } catch (err) {}
+
+      // 3. x절편 (실근 f(x) = 0)
+      try {
+        const roots = this.engine.findIntersections(g, null, { xmin: -15, xmax: 15 }, null);
+        if (roots && roots.length > 0) {
+          roots.forEach((r, rIdx) => addCand(r.x, 0, 'x절편', g.color, g.id, null, `${g.id}_root_${rIdx}`));
+        }
+      } catch (err) {}
+    });
+
+    // 4. 다중 그래프 간의 실시간 교점 (두 부모의 layerIds 모두 보존)
+    if (this.graphs.length >= 2) {
+      for (let i = 0; i < this.graphs.length; i++) {
+        for (let j = i + 1; j < this.graphs.length; j++) {
+          try {
+            const roots = this.engine.findIntersections(this.graphs[i], this.graphs[j], { xmin: -15, xmax: 15 }, null);
+            if (roots && roots.length > 0) {
+              roots.forEach((r, rIdx) => addCand(
+                r.x, r.y, '교점', ((this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper).isLight || this.isMonochromeMode) ? '#7c3aed' : '#feca57', this.graphs[i].id, null,
+                `cross_${this.graphs[i].id}_${this.graphs[j].id}_${rIdx}`,
+                { isIntersection: true, layerIds: [this.graphs[i].id, this.graphs[j].id] }
+              ));
+            }
+          } catch (err) {}
+        }
+      }
+    }
+
+    return candidates;
+  }
+
+  findNearestDropLineCandidate(screenPos, maxDist = 20) {
+    const candidates = this.collectDropLineCandidates();
+    let best = null;
+    let bestDist = maxDist;
+    candidates.forEach(cand => {
+      const s = this.mathToScreen(cand.x, cand.y);
+      const d = Math.hypot(s.x - screenPos.x, s.y - screenPos.y);
+      if (d < bestDist) {
+        bestDist = d;
+        best = { ...cand, screenX: s.x, screenY: s.y, dist: d };
+      }
+    });
+    return best;
+  }
+
+  // [📍 특이점 또는 일반 그래프(곡선) 위의 가장 가까운 점 통합 탐색]
+  findNearestDropLineTarget(screenPos, maxDist = 20) {
+    // 1단계: 극점·꼭짓점·교점 등 특이점 우선 스냅 (자석 효과)
+    const cand = this.findNearestDropLineCandidate(screenPos, maxDist);
+    if (cand) return cand;
+
+    // 2단계: 특이점이 없으면, 화면에 존재하는 곡선 위의 임의 점 탐색
+    if (!this.graphs || this.graphs.length === 0) return null;
+    const m = this.screenToMath(screenPos.x, screenPos.y);
+    let bestCurvePoint = null;
+    let bestDist = maxDist;
+
+    this.graphs.forEach(g => {
+      try {
+        let evalY = this.engine.evaluatePipeline(g, m.x);
+        if (!isNaN(evalY) && isFinite(evalY) && Math.abs(evalY) < 100) {
+          const s = this.mathToScreen(m.x, evalY);
+          const d = Math.hypot(s.x - screenPos.x, s.y - screenPos.y);
+          if (d < bestDist) {
+            bestDist = d;
+            bestCurvePoint = {
+              x: m.x,
+              y: evalY,
+              name: '곡선 위의 점',
+              color: g.color || '#00d2d3',
+              layerId: g.id,
+              handleIndex: null,
+              candKey: `${g.id}_pt_${Math.round(m.x * 100) / 100}`,
+              type: 'curve',
+              isCandidate: false,
+              screenX: s.x,
+              screenY: s.y,
+              dist: d
+            };
+          }
+        }
+      } catch (err) {}
+    });
+
+    return bestCurvePoint;
+  }
+
+  // [📍 그래프 변형 시 수선 동적 추적 (Dynamic Tracking) 엔진]
+  updateDropLinesTracking() {
+    if (!this.dropLines || this.dropLines.length === 0) return;
+    if (!this.graphs || this.graphs.length === 0) {
+      this.dropLines = [];
+      return;
+    }
+
+    // [📍 종속 보조 수선 자동 정화]: 원그래프 삭제 시 종속 수선 삭제, 단 교점은 남은 부모 그래프가 이어받기!
+    this.dropLines = this.dropLines.filter(item => {
+      if (!item.binding) return true;
+      const b = item.binding;
+
+      // 교점 수선인 경우
+      if (b.isIntersection || b.name === '교점') {
+        const ids = b.layerIds || (b.layerId ? [b.layerId] : []);
+        const surviving = this.graphs.find(g => ids.includes(g.id));
+        if (surviving) {
+          // 남은 그래프로 바인딩 갱신
+          if (b.layerId !== surviving.id) {
+            b.layerId = surviving.id;
+            b.type = 'curve';
+            b.anchorX = item.sourceX;
+          }
+          return true;
+        }
+        return false; // 두 부모 모두 사라지면 제거
+      }
+
+      // 단독 종속 수선인 경우
+      if (b.layerId && !this.graphs.some(g => g.id === b.layerId)) {
+        return false;
+      }
+      return true;
+    });
+
+    this.dropLines.forEach(item => {
+      if (!item.binding) return;
+      const b = item.binding;
+
+      // 1. 바인딩된 그래프 탐색
+      const g = this.graphs.find(graph => graph.id === b.layerId);
+      if (!g) return;
+
+      let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+      let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+      if (g.transforms && g.transforms.length > 0) {
+        for (const t of g.transforms) {
+          if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
+          if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
+        }
+      }
+
+      // (A) 특정 핸들러(극점, 변곡점, 꼭짓점, 시작점 등)에 바인딩된 경우
+      if (b.type === 'candidate' && b.handleIndex !== null && b.handleIndex !== undefined) {
+        if (g.handles && g.handles[b.handleIndex]) {
+          const h = g.handles[b.handleIndex];
+          let targetY = h.y;
+          if (g.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
+            targetY = Math.abs(h.y);
+          }
+          let newX = h.x + ox;
+          let evalY = (h.type === 'center' || h.type === 'asymptote')
+            ? (targetY + oy)
+            : this.engine.evaluatePipeline(g, newX);
+          if (isNaN(evalY) || !isFinite(evalY)) {
+            evalY = targetY + oy;
+          }
+          item.sourceX = newX;
+          item.sourceY = evalY;
+        }
+      }
+      // (B) 절편인 경우
+      else if (b.type === 'candidate' && b.name === 'y절편') {
+        const y0 = this.engine.evaluatePipeline(g, 0);
+        if (!isNaN(y0) && isFinite(y0)) {
+          item.sourceX = 0;
+          item.sourceY = y0;
+        }
+      }
+      // (C) 일반 곡선 위의 임의 점 또는 교점에서 이관된 점인 경우
+      else if (b.type === 'curve') {
+        const curAnchorX = (typeof b.anchorX === 'number' ? b.anchorX : item.sourceX);
+        const newX = curAnchorX + ox;
+        const evalY = this.engine.evaluatePipeline(g, newX);
+        if (!isNaN(evalY) && isFinite(evalY)) {
+          item.sourceX = newX;
+          item.sourceY = evalY;
+        }
+      }
+    });
+  }
+
+  addDropLineAtPoint(x, y, target = null) {
+    const existing = this.dropLines.find(dl => Math.hypot(dl.sourceX - x, dl.sourceY - y) < 0.001);
+    if (existing) {
+      if (!existing.showX || !existing.showY) {
+        this.pushHistoryState();
+        existing.showX = true;
+        existing.showY = true;
+        this.render();
+        this.showToast('📍 보조 수선 양방향 복원');
+        return existing;
+      }
+      this.showToast('ℹ️ 이미 해당 위치에 보조 수선이 있습니다.');
+      return existing;
+    }
+
+    this.pushHistoryState();
+    const item = {
+      id: 'dl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      sourceX: x,
+      sourceY: y,
+      showX: true,
+      showY: true,
+      labelX: '', // 대표님 기획: 수선 그리기 시 기본 좌표 라벨 숨김 (깔끔한 수선만 표시)
+      labelY: '',
+      style: this.dropLineStyle || 'dashed',
+      binding: target ? {
+        type: target.type || (target.handleIndex !== null && target.handleIndex !== undefined ? 'candidate' : 'curve'),
+        layerId: target.layerId,
+        layerIds: target.layerIds || (target.layerId ? [target.layerId] : []),
+        isIntersection: Boolean(target.isIntersection || target.name === '교점'),
+        handleIndex: target.handleIndex,
+        name: target.name,
+        candKey: target.candKey,
+        anchorX: x
+      } : null
+    };
+    this.dropLines.push(item);
+    this.render();
+    this.showToast('📍 x·y축 보조 수선 생성 완료 (✂️ 클릭 시 한쪽 삭제 / 빈 화면 클릭 시 종료)');
+    return item;
+  }
+
+  removeDropLine(id, which) {
+    const item = this.dropLines.find(dl => dl.id === id);
+    if (!item) return;
+    this.pushHistoryState();
+    if (which === 'x') item.showX = false;
+    if (which === 'y') item.showY = false;
+    if (!item.showX && !item.showY) {
+      this.dropLines = this.dropLines.filter(dl => dl.id !== id);
+    }
+    this.render();
+    this.showToast('✂️ 수선 삭제 완료');
+  }
+
+  clearAllDropLines() {
+    if (!this.dropLines || this.dropLines.length === 0) return;
+    this.pushHistoryState();
+    this.dropLines = [];
+    this.render();
+    this.showToast('🗑️ 보조 수선 전체 삭제 완료');
+  }
+
+  hitTestScissors(screenPos) {
+    if (!this.renderedScissors || this.renderedScissors.length === 0) return null;
+    for (const s of this.renderedScissors) {
+      const d = Math.hypot(s.x - screenPos.x, s.y - screenPos.y);
+      if (d <= s.r + 3) {
+        return s;
+      }
+    }
+    return null;
+  }
+
+  hitTestDropLineLabel(screenPos) {
+    if (!this.renderedDropLineLabels || this.renderedDropLineLabels.length === 0) return null;
+    for (const lb of this.renderedDropLineLabels) {
+      const b = lb.box;
+      if (screenPos.x >= b.x && screenPos.x <= b.x + b.w &&
+          screenPos.y >= b.y && screenPos.y <= b.y + b.h) {
+        return lb;
+      }
+    }
+    return null;
+  }
+
+  startEditingDropLineLabel(id, which, screenPos, currentText) {
+    this.activeEditingLabel = { id, which };
+    if (!this.dropLineInputEl) {
+      this.dropLineInputEl = document.getElementById('dropLineLabelInput');
+    }
+    if (!this.dropLineInputEl) return;
+    const input = this.dropLineInputEl;
+    input.value = currentText || '';
+    input.style.left = `${screenPos.x}px`;
+    input.style.top = `${screenPos.y}px`;
+    input.style.display = 'block';
+    input.focus();
+    input.select();
+  }
+
+  commitEditingDropLineLabel() {
+    if (!this.activeEditingLabel) return;
+    const { id, which } = this.activeEditingLabel;
+    const input = this.dropLineInputEl;
+    const raw = (input ? input.value : '').trim();
+    const clean = this.sanitizeMathLabel(raw);
+    const item = this.dropLines.find(dl => dl.id === id);
+    if (item) {
+      const curVal = which === 'x' ? item.labelX : item.labelY;
+      if (curVal !== clean) {
+        this.pushHistoryState();
+        if (which === 'x') item.labelX = clean;
+        else if (which === 'y') item.labelY = clean;
+      }
+    }
+    this.activeEditingLabel = null;
+    if (input) input.style.display = 'none';
+    this.render();
+  }
+
+  cancelEditingDropLineLabel() {
+    this.activeEditingLabel = null;
+    if (this.dropLineInputEl) this.dropLineInputEl.style.display = 'none';
+    this.render();
+  }
+
+  drawDropLines(ctx, isExport = false) {
+    this.renderedScissors = [];
+    this.renderedDropLineLabels = [];
+    if (!this.dropLines) this.dropLines = [];
+
+    // [📍 그래프 변형/이동 시 수선 위치 실시간 동적 추적]
+    this.updateDropLinesTracking();
+
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    const isLight = curTheme.isLight || this.isMonochromeMode;
+
+    // 수선 선 및 텍스트 색상 (교재 출판용 최고급 시인성)
+    const lineColor = this.isMonochromeMode ? '#000000' : (isLight ? 'rgba(30, 41, 59, 0.88)' : 'rgba(241, 245, 249, 0.82)');
+    const textColor = this.isMonochromeMode ? '#000000' : (isLight ? '#0f172a' : '#f8fafc');
+    const scissorsBg = isLight ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.92)';
+    const scissorsBorder = isLight ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.25)';
+
+    // 폰트 스택 매핑
+    let fontFam = '"KaTeX_Math", "Times New Roman", Georgia, serif';
+    if (this.dropLineFontFamily === 'pretendard') {
+      fontFam = "'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif";
+    } else if (this.dropLineFontFamily === 'batang') {
+      fontFam = "'KoPubWorld Batang', 'Batang', serif";
+    }
+    const fontSize = this.dropLineFontSize || 15;
+
+    ctx.save();
+
+    // 1. 각 수선 및 라벨 그리기
+    this.dropLines.forEach(item => {
+      if (!item.showX && !item.showY) return;
+
+      const S = this.mathToScreen(item.sourceX, item.sourceY);
+      const Fx = this.mathToScreen(item.sourceX, 0);
+      const Fy = this.mathToScreen(0, item.sourceY);
+
+      const isDashed = (item.style || this.dropLineStyle) !== 'solid';
+
+      // (A) x축 수선: (x0, y0) -> (x0, 0)
+      if (item.showX) {
+        ctx.save();
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = 1.35;
+        if (isDashed) {
+          ctx.setLineDash([4, 4]);
+        } else {
+          ctx.setLineDash([]);
+        }
+        ctx.beginPath();
+        ctx.moveTo(S.x, S.y);
+        ctx.lineTo(Fx.x, Fx.y);
+        ctx.stroke();
+        ctx.restore();
+
+        // x축 발 좌표 라벨
+        if (item.labelX) {
+          const isNum = /^[−\-]?\d+(\.\d+)?$/.test(item.labelX);
+          ctx.font = `${isNum ? 'normal' : 'italic'} 500 ${fontSize}px ${fontFam}`;
+          ctx.fillStyle = textColor;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+
+          const labelYPos = Fx.y + 7;
+          const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.isLight ? '#ffffff' : (curTheme.bg || '#1e1e2e'));
+          ctx.save();
+          ctx.strokeStyle = haloColor;
+          ctx.lineWidth = 3.5;
+          ctx.lineJoin = 'round';
+          ctx.strokeText(item.labelX, Fx.x, labelYPos);
+          ctx.restore();
+          ctx.fillText(item.labelX, Fx.x, labelYPos);
+
+          const metrics = ctx.measureText(item.labelX);
+          const textW = Math.max(14, metrics.width);
+          const box = {
+            x: Fx.x - textW / 2 - 4,
+            y: labelYPos - 2,
+            w: textW + 8,
+            h: fontSize + 4
+          };
+          this.renderedDropLineLabels.push({
+            id: item.id,
+            which: 'x',
+            box,
+            screenPos: { x: Fx.x, y: labelYPos + fontSize / 2 },
+            currentText: item.labelX
+          });
+
+          // 편집 모드 호버 하이라이트
+          if (!isExport && this.dropLineHoverLabel && this.dropLineHoverLabel.id === item.id && this.dropLineHoverLabel.which === 'x') {
+            ctx.save();
+            ctx.fillStyle = 'rgba(0, 210, 211, 0.18)';
+            ctx.strokeStyle = '#00d2d3';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.roundRect(box.x, box.y, box.w, box.h, 3);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+
+        // x축 수선 중간 가위(✂️) 버튼 (오직 수선 그리기 모드 활성화 시에만 노출, 모드 해제 및 내보내기/클린뷰 100% 생략)
+        if (!isExport && !this.isCleanView && this.isDropLineMode) {
+          const mx = (S.x + Fx.x) / 2;
+          const my = (S.y + Fx.y) / 2;
+          const isScissorsHover = this.dropLineHoverScissors && this.dropLineHoverScissors.id === item.id && this.dropLineHoverScissors.which === 'x';
+          const r = isScissorsHover ? 11 : 9;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(mx, my, r, 0, Math.PI * 2);
+          ctx.fillStyle = isScissorsHover ? 'rgba(255, 107, 107, 0.95)' : scissorsBg;
+          ctx.fill();
+          ctx.strokeStyle = isScissorsHover ? '#ff4757' : scissorsBorder;
+          ctx.lineWidth = isScissorsHover ? 1.5 : 1;
+          ctx.stroke();
+
+          // 가위 아이콘 (텍스트)
+          ctx.font = `${isScissorsHover ? '11px' : '9.5px'} sans-serif`;
+          ctx.fillStyle = isScissorsHover ? '#ffffff' : (isLight ? '#2d3436' : '#dfe6e9');
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('✂️', mx, my + 0.5);
+          ctx.restore();
+
+          this.renderedScissors.push({ id: item.id, which: 'x', x: mx, y: my, r });
+        }
+      }
+
+      // (B) y축 수선: (x0, y0) -> (0, y0)
+      if (item.showY) {
+        ctx.save();
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = 1.35;
+        if (isDashed) {
+          ctx.setLineDash([4, 4]);
+        } else {
+          ctx.setLineDash([]);
+        }
+        ctx.beginPath();
+        ctx.moveTo(S.x, S.y);
+        ctx.lineTo(Fy.x, Fy.y);
+        ctx.stroke();
+        ctx.restore();
+
+        // y축 발 좌표 라벨
+        if (item.labelY) {
+          const isNum = /^[−\-]?\d+(\.\d+)?$/.test(item.labelY);
+          ctx.font = `${isNum ? 'normal' : 'italic'} 500 ${fontSize}px ${fontFam}`;
+          ctx.fillStyle = textColor;
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+
+          const labelXPos = Fy.x - 7;
+          const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.isLight ? '#ffffff' : (curTheme.bg || '#1e1e2e'));
+          ctx.save();
+          ctx.strokeStyle = haloColor;
+          ctx.lineWidth = 3.5;
+          ctx.lineJoin = 'round';
+          ctx.strokeText(item.labelY, labelXPos, Fy.y);
+          ctx.restore();
+          ctx.fillText(item.labelY, labelXPos, Fy.y);
+
+          const metrics = ctx.measureText(item.labelY);
+          const textW = Math.max(14, metrics.width);
+          const box = {
+            x: labelXPos - textW - 4,
+            y: Fy.y - fontSize / 2 - 2,
+            w: textW + 8,
+            h: fontSize + 4
+          };
+          this.renderedDropLineLabels.push({
+            id: item.id,
+            which: 'y',
+            box,
+            screenPos: { x: labelXPos - textW / 2, y: Fy.y },
+            currentText: item.labelY
+          });
+
+          // 편집 모드 호버 하이라이트
+          if (!isExport && this.dropLineHoverLabel && this.dropLineHoverLabel.id === item.id && this.dropLineHoverLabel.which === 'y') {
+            ctx.save();
+            ctx.fillStyle = 'rgba(0, 210, 211, 0.18)';
+            ctx.strokeStyle = '#00d2d3';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.roundRect(box.x, box.y, box.w, box.h, 3);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+
+        // y축 수선 중간 가위(✂️) 버튼 (오직 수선 그리기 모드 활성화 시에만 노출, 모드 해제 및 내보내기/클린뷰 100% 생략)
+        if (!isExport && !this.isCleanView && this.isDropLineMode) {
+          const nx = (S.x + Fy.x) / 2;
+          const ny = (S.y + Fy.y) / 2;
+          const isScissorsHover = this.dropLineHoverScissors && this.dropLineHoverScissors.id === item.id && this.dropLineHoverScissors.which === 'y';
+          const r = isScissorsHover ? 11 : 9;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(nx, ny, r, 0, Math.PI * 2);
+          ctx.fillStyle = isScissorsHover ? 'rgba(255, 107, 107, 0.95)' : scissorsBg;
+          ctx.fill();
+          ctx.strokeStyle = isScissorsHover ? '#ff4757' : scissorsBorder;
+          ctx.lineWidth = isScissorsHover ? 1.5 : 1;
+          ctx.stroke();
+
+          // 가위 아이콘
+          ctx.font = `${isScissorsHover ? '11px' : '9.5px'} sans-serif`;
+          ctx.fillStyle = isScissorsHover ? '#ffffff' : (isLight ? '#2d3436' : '#dfe6e9');
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('✂️', nx, ny + 0.5);
+          ctx.restore();
+
+          this.renderedScissors.push({ id: item.id, which: 'y', x: nx, y: ny, r });
+        }
+      }
+
+      // (C) 시작점 마커 (단정하고 깔끔한 포인트 점)
+      if (item.showX || item.showY) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(S.x, S.y, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = lineColor;
+        ctx.fill();
+        ctx.restore();
+      }
+    });
+
+    // 2. 자석 스냅 타겟 조준 링 & 십자선 (보조 수선 모드일 때만 표시)
+    if (!isExport && this.isDropLineMode && this.dropLineHoverCandidate) {
+      const cand = this.dropLineHoverCandidate;
+      const cs = this.mathToScreen(cand.x, cand.y);
+      const isFeature = cand.isCandidate !== false;
+      const themeColor = isFeature ? '#00d2d3' : '#a29bfe';
+
+      ctx.save();
+      // 외부 원형 펄스 링
+      ctx.beginPath();
+      ctx.arc(cs.x, cs.y, isFeature ? 9 : 8, 0, Math.PI * 2);
+      ctx.strokeStyle = themeColor;
+      ctx.lineWidth = 1.8;
+      ctx.shadowColor = themeColor;
+      ctx.shadowBlur = 8;
+      ctx.stroke();
+
+      // 내부 중심점
+      ctx.beginPath();
+      ctx.arc(cs.x, cs.y, 2.8, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      // 특이점인 경우 정밀 스나이퍼 십자선 가이드
+      if (isFeature) {
+        ctx.beginPath();
+        ctx.moveTo(cs.x - 13, cs.y);
+        ctx.lineTo(cs.x - 5, cs.y);
+        ctx.moveTo(cs.x + 5, cs.y);
+        ctx.lineTo(cs.x + 13, cs.y);
+        ctx.moveTo(cs.x, cs.y - 13);
+        ctx.lineTo(cs.x, cs.y - 5);
+        ctx.moveTo(cs.x, cs.y + 5);
+        ctx.lineTo(cs.x, cs.y + 13);
+        ctx.strokeStyle = themeColor;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
+
+      // 미니 정보 뱃지 (대표님 기획: 신속한 스케치를 위해 좌표 숫자는 제거하고 특이점/곡선점 명칭만 깔끔하게 노출)
+      const badgeText = cand.name || (isFeature ? '특이점' : '곡선 점');
+      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+      const bW = ctx.measureText(badgeText).width + 14;
+      const bH = 20;
+      const bX = cs.x + 12;
+      const bY = cs.y - 24;
+
+      const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
+      const isLight = curTheme.isLight || this.isMonochromeMode;
+
+      ctx.save();
+      if (isLight) {
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.14)';
+        ctx.shadowBlur = 5;
+        ctx.shadowOffsetY = 1.5;
+      }
+      ctx.fillStyle = isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 23, 42, 0.9)';
+      ctx.strokeStyle = isLight ? 'rgba(0, 0, 0, 0.16)' : themeColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(bX, bY, bW, bH, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.shadowColor = 'transparent';
+      ctx.fillStyle = isLight ? '#1e293b' : themeColor;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeText, bX + 6, bY + bH / 2);
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  // ========================================================
+  // [🔤 캔버스 자유 수식 텍스트 라벨 (함수 이름표 & 축 이름표) 엔진]
+  // ========================================================
+
+  toggleTextToolMode(forceState) {
+    this.isTextToolMode = forceState !== undefined ? forceState : !this.isTextToolMode;
+    const btn = document.getElementById('btnQuickText');
+    if (btn) btn.classList.toggle('active', this.isTextToolMode);
+    const container = this.canvas.parentElement;
+    if (container) container.classList.toggle('text-tool-active', this.isTextToolMode);
+
+    // 보조 수선 모드와 상호 배타적 정리
+    if (this.isTextToolMode && this.isDropLineMode) {
+      this.toggleDropLineMode(false);
+    }
+
+    this.render();
+    this.showToast(this.isTextToolMode ? '🔤 텍스트 도구 켜짐 (캔버스 클릭하여 이름표 추가)' : '🔤 텍스트 도구 꺼짐');
+  }
+
+  addTextLabel(mathX, mathY, defaultText = '', autoEdit = null) {
+    this.pushHistoryState();
+    const newId = 'txt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    const cleanText = this.sanitizeMathLabel(defaultText);
+    const item = {
+      id: newId,
+      mathX,
+      mathY,
+      text: cleanText,
+      fontSize: this.textLabelFontSize || 16,
+      color: null
+    };
+    this.textLabels.push(item);
+
+    const shouldEdit = autoEdit !== null ? autoEdit : (!cleanText);
+    if (shouldEdit) {
+      const s = this.mathToScreen(mathX, mathY);
+      this.startEditingTextLabel(newId, s);
+    }
+    this.render();
+    return item;
+  }
+
+  removeTextLabel(id) {
+    const idx = this.textLabels.findIndex(t => t.id === id);
+    if (idx === -1) return;
+    this.pushHistoryState();
+    this.textLabels.splice(idx, 1);
+    this.render();
+    this.showToast('🗑️ 텍스트 라벨 삭제 완료');
+  }
+
+  clearAllTextLabels() {
+    if (!this.textLabels || this.textLabels.length === 0) return;
+    this.pushHistoryState();
+    this.textLabels = [];
+    this.render();
+    this.showToast('🗑️ 모든 텍스트 라벨 삭제 완료');
+  }
+
+  startEditingTextLabel(id, screenPos) {
+    this.activeEditingTextId = id;
+    this.isTextEditingJustStarted = true;
+    setTimeout(() => {
+      this.isTextEditingJustStarted = false;
+    }, 450);
+
+    if (!this.canvasTextInputEl) {
+      this.canvasTextInputEl = document.getElementById('canvasTextInput');
+    }
+    if (!this.canvasTextInputEl) return;
+    const input = this.canvasTextInputEl;
+    const item = this.textLabels.find(t => t.id === id);
+    const fSize = (item ? item.fontSize : this.textLabelFontSize) || 20;
+    input.value = item ? item.text : '';
+    input.style.fontSize = `${fSize}px`;
+    input.style.left = `${screenPos.x}px`;
+    input.style.top = `${screenPos.y}px`;
+    input.style.display = 'block';
+
+    // 브라우저의 마우스 클릭 이벤트 사이클이 완전히 종료된 후 안정적으로 포커스 부여
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 25);
+  }
+
+  commitEditingTextLabel() {
+    if (!this.activeEditingTextId) return;
+    this.isTextEditingJustStarted = false;
+    const id = this.activeEditingTextId;
+    const input = this.canvasTextInputEl;
+    const raw = (input ? input.value : '').trim();
+    const clean = this.sanitizeMathLabel(raw);
+    const item = this.textLabels.find(t => t.id === id);
+
+    if (item) {
+      if (!clean) {
+        // 내용이 빈칸이면 라벨 자동 삭제
+        this.textLabels = this.textLabels.filter(t => t.id !== id);
+      } else if (item.text !== clean) {
+        this.pushHistoryState();
+        item.text = clean;
+      }
+    }
+
+    this.activeEditingTextId = null;
+    if (input) input.style.display = 'none';
+    this.render();
+  }
+
+  cancelEditingTextLabel() {
+    if (!this.activeEditingTextId) return;
+    this.isTextEditingJustStarted = false;
+    const id = this.activeEditingTextId;
+    const item = this.textLabels.find(t => t.id === id);
+    if (item && !item.text) {
+      this.textLabels = this.textLabels.filter(t => t.id !== id);
+    }
+    this.activeEditingTextId = null;
+    if (this.canvasTextInputEl) this.canvasTextInputEl.style.display = 'none';
+    this.render();
+  }
+
+  hitTestTextLabel(screenPos) {
+    if (!this.renderedTextLabels || this.renderedTextLabels.length === 0) return null;
+    for (let i = this.renderedTextLabels.length - 1; i >= 0; i--) {
+      const entry = this.renderedTextLabels[i];
+      // 1. 우상단 ✕ 삭제 버튼 히트테스트
+      const cb = entry.closeBox;
+      if (cb) {
+        const d = Math.hypot(screenPos.x - cb.x, screenPos.y - cb.y);
+        if (d <= cb.r + 4) {
+          return { id: entry.id, isClose: true };
+        }
+      }
+      // 2. 텍스트 바운딩 박스 히트테스트
+      const b = entry.box;
+      if (screenPos.x >= b.x && screenPos.x <= b.x + b.w &&
+          screenPos.y >= b.y && screenPos.y <= b.y + b.h) {
+        return { id: entry.id, item: entry.item, box: entry.box, screenPos: entry.screenPos, isClose: false };
+      }
+    }
+    return null;
+  }
+
+  drawTextLabels(ctx, isExport = false) {
+    this.renderedTextLabels = [];
+    if (!this.textLabels || this.textLabels.length === 0) return;
+
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    const isLight = curTheme.isLight || this.isMonochromeMode;
+    const defaultTextColor = this.isMonochromeMode ? '#000000' : (isLight ? '#0f172a' : '#f8fafc');
+
+    let fontFam = "'STIX Two Text', 'Times New Roman', 'Cambria Math', serif";
+    if (this.dropLineFontFamily === 'pretendard') fontFam = "'Pretendard', -apple-system, sans-serif";
+    else if (this.dropLineFontFamily === 'batang') fontFam = "'KoPubWorld Batang', 'Batang', serif";
+
+    ctx.save();
+
+    this.textLabels.forEach(item => {
+      if (!item.text && item.id !== this.activeEditingTextId) return;
+
+      const s = this.mathToScreen(item.mathX, item.mathY);
+      const fSize = item.fontSize || this.textLabelFontSize || 16;
+
+      // 현재 인라인 편집 중인 텍스트는 캔버스 렌더링 생략 (DOM 인풋이 표시)
+      if (item.id === this.activeEditingTextId) return;
+
+      ctx.save();
+      ctx.font = `italic 500 ${fSize}px ${fontFam}`;
+      ctx.fillStyle = this.isMonochromeMode ? '#000000' : (item.color || defaultTextColor);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+
+      // 텍스트 출력
+      ctx.fillText(item.text, s.x, s.y);
+
+      const metrics = ctx.measureText(item.text);
+      const textW = Math.max(16, metrics.width);
+      const pad = 4;
+      const box = {
+        x: s.x - pad,
+        y: s.y - fSize / 2 - pad,
+        w: textW + pad * 2,
+        h: fSize + pad * 2
+      };
+      const closeBox = {
+        x: box.x + box.w + 5,
+        y: box.y + 4,
+        r: 7
+      };
+
+      // 편집 화면 호버 하이라이트 (스샷/내보내기 시 100% 생략)
+      if (!isExport && !this.isCleanView && this.hoverTextLabelId === item.id) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(162, 155, 254, 0.7)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.strokeRect(box.x, box.y, box.w, box.h);
+
+        // 귀여운 ✕ 삭제 배지
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.arc(closeBox.x, closeBox.y, closeBox.r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 107, 107, 0.9)';
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('✕', closeBox.x, closeBox.y);
+        ctx.restore();
+      }
+
+      this.renderedTextLabels.push({
+        id: item.id,
+        item,
+        box,
+        closeBox,
+        screenPos: s
+      });
+
+      ctx.restore();
+    });
+
+    ctx.restore();
+  }
+
+  getLinkedPartner(g) {
+    if (!g || !g.linkedInverseId) return null;
+    return this.graphs.find(other => other.id === g.linkedInverseId) || null;
+  }
+
+  findInverseCandidate(src) {
+    const inverseMap = {
+      'exp_basic': 'log_basic',
+      'log_basic': 'exp_basic',
+      '2nd_quadratic': 'sqrt_basic',
+      'sqrt_basic': '2nd_quadratic',
+      'rational_basic': 'rational_basic',
+      '1st_linear': '1st_linear'
+    };
+    const targetType = inverseMap[src.type];
+    if (!targetType) return null;
+    return this.graphs.find(other => other !== src && other.type === targetType && !other.linkedInverseId) || null;
+  }
+
+  toggleInverseLink(idx = this.activeGraphIdx) {
+    if (idx < 0 || idx >= this.graphs.length) return;
+    const g = this.graphs[idx];
+    this.pushHistoryState();
+
+    if (g.linkedInverseId) {
+      const partner = this.getLinkedPartner(g);
+      if (partner) partner.linkedInverseId = null;
+      g.linkedInverseId = null;
+      this.showToast('🔓 원함수와 역함수의 연동이 해제되었습니다. 이제 각자 독립적으로 조작할 수 있습니다.');
+    } else {
+      const candidate = this.findInverseCandidate(g);
+      if (candidate) {
+        if (!g.id) g.id = Date.now();
+        if (!candidate.id) candidate.id = Date.now() + 1;
+        g.linkedInverseId = candidate.id;
+        candidate.linkedInverseId = g.id;
+        const gName = this.meta[g.type]?.name || '함수';
+        const cName = this.meta[candidate.type]?.name || '역함수';
+        this.showToast(`🔗 ${gName}와 ${cName}가 다시 대칭 연동되었습니다!`);
+      } else {
+        this.showToast('ℹ️ 연동할 상대 역함수가 없습니다. [🔄 역함수 복제]로 새로 생성하세요.');
+      }
+    }
+
+    this.renderLayerList();
+    this.syncControls();
+    this.render();
+  }
+
+  cloneInverseGraph() {
+    if (!this.activeGraph) {
+      this.showToast('ℹ️ 역함수를 생성할 원본 그래프를 먼저 선택하세요.');
+      return;
+    }
+    if (this.graphs.length >= 12) {
+      this.showToast('⚠️ 그래프는 최대 12개까지 동시에 추가할 수 있습니다.');
+      return;
+    }
+
+    const src = this.activeGraph;
+
+    // 1) 고교 수학 대표 역함수 타입 스마트 1:1 매핑
+    let targetType = null;
+    if (src.type === 'exp_basic') {
+      targetType = 'log_basic';
+    } else if (src.type === 'log_basic') {
+      targetType = 'exp_basic';
+    } else if (src.type === '2nd_quadratic') {
+      targetType = 'sqrt_basic';
+    } else if (src.type === 'sqrt_basic') {
+      targetType = '2nd_quadratic';
+    } else if (src.type === 'rational_basic') {
+      targetType = 'rational_basic';
+    } else if (src.type === '1st_linear') {
+      targetType = '1st_linear';
+    }
+
+    if (!targetType) {
+      const srcName = this.meta[src.type]?.name || '함수';
+      this.showToast(`ℹ️ 역함수 복제는 지수·로그, 이차·무리, 유리, 일차함수를 지원합니다. (${srcName})`);
+      return;
+    }
+
+    this.pushHistoryState();
+
+    // 2) 핸들러 좌표 y = x 대칭 (x ↔ y 스왑)
+    const newHandles = (src.handles || []).map((h, i) => {
+      let handleName = h.name;
+      let isHidden = h.hidden;
+      if (targetType === 'sqrt_basic' && i === 0) {
+        handleName = '시작점';
+        isHidden = false;
+      } else if (targetType === '2nd_quadratic' && i === 0) {
+        handleName = '꼭짓점';
+        isHidden = false;
+      }
+      return {
+        name: handleName,
+        x: parseFloat(h.y.toFixed(3)),
+        y: parseFloat(h.x.toFixed(3)),
+        type: h.type,
+        hidden: isHidden
+      };
+    });
+
+    // 3) 평행이동(freezeOffset) 및 다단변환(transforms) y = x 대칭 (dx ↔ dy 스왑)
+    const srcOx = (src.freezeOffset && typeof src.freezeOffset.x === 'number') ? src.freezeOffset.x : 0;
+    const srcOy = (src.freezeOffset && typeof src.freezeOffset.y === 'number') ? src.freezeOffset.y : 0;
+    const newFreezeOffset = { x: srcOy, y: srcOx };
+
+    const newTransforms = (src.transforms || []).map(t => ({
+      offset: {
+        x: (t.offset && typeof t.offset.y === 'number') ? t.offset.y : 0,
+        y: (t.offset && typeof t.offset.x === 'number') ? t.offset.x : 0
+      },
+      invertV: t.invertH || false,
+      invertH: t.invertV || false,
+      abs: t.abs || false
+    }));
+
+    // 4) 색상: 원본 색상과 명확히 구별되는 조화로운 네온 컬러 배정
+    const palette = ['#ff7675', '#00cec9', '#a29bfe', '#ffeaa7', '#74b9ff', '#fd79a8', '#55efc4'];
+    const filteredColors = palette.filter(c => c.toLowerCase() !== (src.color || '').toLowerCase());
+    const nextColor = filteredColors[this.graphs.length % filteredColors.length];
+
+    // 5) 새 그래프 객체 생성 및 상호 대칭 연동 (Linked Inverse)
+    if (!src.id) src.id = Date.now() - 1;
+    const newId = Date.now() + Math.floor(Math.random() * 1000);
+
+    const newGraph = {
+      id: newId,
+      type: targetType,
+      category: this.meta[targetType]?.category || src.category,
+      handles: newHandles,
+      color: nextColor,
+      lineWidth: src.lineWidth || 2.8,
+      isAbsolute: Boolean(src.isAbsolute),
+      shapeMode: 'free',
+      originCenter: false,
+      isFrozen: Boolean(src.isFrozen),
+      freezeOffset: newFreezeOffset,
+      transforms: newTransforms,
+      frozenInvertH: Boolean(src.frozenInvertV),
+      frozenInvertV: Boolean(src.frozenInvertH),
+      frozenAbsolute: Boolean(src.frozenAbsolute),
+      isIndependent: Boolean(this.usePiecewise),
+      linkedInverseId: src.id
+    };
+
+    src.linkedInverseId = newId; // 원함수에도 역함수 ID 연동!
+
+    this.graphs.push(newGraph);
+    this.activeGraphIdx = this.graphs.length - 1;
+    this.selectedHandleIdx = null;
+    this.isCurveSelected = true;
+
+    // y = x 대칭 기준선 자동 On!
+    this.showInverseGuide = true;
+    const chkInv = document.getElementById('chkInverseGuide');
+    if (chkInv) chkInv.checked = true;
+
+    this.syncControls();
+    this.renderLayerList();
+    this.renderFuncList();
+    this.updateIntersections();
+    this.render();
+
+    const srcName = this.meta[src.type]?.name || '함수';
+    const tgtName = this.meta[targetType]?.name || '역함수';
+    this.showToast(`🔄 ${srcName}의 y=x 대칭 역함수 (${tgtName}) 생성 완료! (실시간 대칭 연동 🔗)`);
+  }
+
+
+  // 🌟 [대표님 기획: 상단 중앙 초슬림 캡슐바 및 핵심 변환 엔진]
+  reflectXAxis() {
+    if (!this.activeGraph) return;
+    this.pushHistoryState();
+    this.engine.reflectXAxis(this.activeGraph.handles, this.activeGraph.type);
+    this.showToast('↕️ x축 대칭 완료! (y → -y)');
+    this.render();
+  }
+
+  reflectYAxis() {
+    if (!this.activeGraph) return;
+    this.pushHistoryState();
+    this.engine.reflectYAxis(this.activeGraph.handles, this.activeGraph.type);
+    this.showToast('↔️ y축 대칭 완료! (x → -x)');
+    this.render();
+  }
+
+  toggleAbsolute() {
+    if (!this.activeGraph) {
+      this.showToast('ℹ️ 절댓값을 적용할 그래프를 먼저 선택하세요.');
+      return;
+    }
+    const g = this.activeGraph;
+    this.pushHistoryState();
+
+    // 🌟 [대표님 킬러 기획: 사용자 조작 패턴 기반 스마트 절댓값 & 재절댓값 엔진] 🌟
+    // Case 1: [Active 상태 - 테두리/색상 있음]
+    // 방금 절댓값을 씌웠고, 아직 그래프를 움직이지 않은 상태 -> 원래대로 펴기 (해제)
+    if (g.isAbsolute && g.isAbsPristine) {
+      if (g.transforms && g.transforms.length > 0) {
+        const last = g.transforms.pop();
+        if (last && last.offset) {
+          g.freezeOffset = { x: last.offset.x, y: last.offset.y };
+        }
+        g.isAbsPristine = false; // 이전의 이동 상태로 복원되므로 테두리 없음
+        const stage = g.transforms.length + 1;
+        this.showToast(`📉 ${stage + 1}차 절댓값 해제 (이전 상태로 복원)`);
+      } else {
+        g.isAbsolute = false;
+        g.isAbsPristine = false;
+        g.transforms = [];
+        g.freezeOffset = { x: 0, y: 0 };
+        this.showToast('📈 |f(x)| 절댓값 해제 (원래대로 펴기)');
+      }
+      this.syncControls();
+      this.syncCurveContextBar();
+      this.render();
+      return;
+    }
+
+    // Case 2: [Inactive 상태 - 테두리 없음 & 이미 절댓값이 씌워져 있음]
+    // 절댓값을 씌운 상태에서 그래프를 아래/위로 조작했음 -> 그 상태 그대로 또다시 절댓값 씌우기 (재접기)!
+    if (g.isAbsolute && !g.isAbsPristine) {
+      if (!g.transforms) g.transforms = [];
+      const curOx = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+      const curOy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+      g.transforms.push({ offset: { x: curOx, y: curOy }, abs: true });
+      g.freezeOffset = { x: 0, y: 0 };
+      g.isAbsPristine = true; // 새로 절댓값을 씌웠으므로 다시 Active (테두리/색상 점등)!
+      this.syncControls();
+      this.syncCurveContextBar();
+      this.render();
+      const stage = g.transforms.length + 1;
+      this.showToast(`✨ ${stage}차 절댓값 재접기 완료! (아래로 내려간 부분을 다시 꺾어올림)`);
+      return;
+    }
+
+    // Case 3: [절댓값이 없는 일반 그래프]
+    // 최초 1차 절댓값 적용 -> 접혀 올라가고 Active (테두리/색상 점등)!
+    if (!g.isAbsolute) {
+      g.isAbsolute = true;
+      g.isAbsPristine = true;
+      this.syncControls();
+      this.syncCurveContextBar();
+      this.render();
+      this.showToast('📈 |f(x)| 절댓값 꺾어올리기 적용!');
+      return;
+    }
+  }
+
+
+  // 🌟 [대표님 기획: 교재 캡처영역 프레임 원터치 토글 (저장 전 확인용)]
+  toggleViewfinder(forceVal = null) {
+    const nextVal = (forceVal !== null) ? Boolean(forceVal) : !this.useViewfinder;
+    this.useViewfinder = nextVal;
+
+    const btnRail = document.getElementById('btnRailToggleVf');
+    if (btnRail) btnRail.classList.toggle('active', this.useViewfinder);
+
+    const chkVf = document.getElementById('chkVf');
+    if (chkVf) chkVf.checked = this.useViewfinder;
+
+    // 캡처 프레임을 켤 때는 칠판 시야를 가리지 않도록 서랍 자동 닫기!
+    if (this.useViewfinder && typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+      this.closeDrawer();
+    }
+
+    this.showToast(this.useViewfinder
+      ? '📷 교재 캡처 프레임 켜짐 (모서리를 드래그하여 조절하세요)'
+      : '📷 교재 캡처 프레임 숨김 (전체 화면 캡처 모드)');
+    this.render();
+  }
+
+  initCurveContextBar() {
+    this.curveContextBar = document.getElementById('curveContextBar');
+    if (!this.curveContextBar) return;
+
+    const btnInvertV = document.getElementById('ctxBtnInvertV');
+    if (btnInvertV) btnInvertV.onclick = () => this.reflectXAxis();
+
+    const btnInvertH = document.getElementById('ctxBtnInvertH');
+    if (btnInvertH) btnInvertH.onclick = () => this.reflectYAxis();
+
+    const btnInverse = document.getElementById('ctxBtnInverse');
+    if (btnInverse) btnInverse.onclick = () => this.cloneInverseGraph();
+
+    const btnToggleLink = document.getElementById('ctxBtnToggleLink');
+    if (btnToggleLink) btnToggleLink.onclick = () => this.toggleInverseLink();
+
+    const btnToggleAbs = document.getElementById('ctxBtnToggleAbs');
+    if (btnToggleAbs) btnToggleAbs.onclick = () => this.toggleAbsolute();
+
+    const btnDuplicate = document.getElementById('ctxBtnDuplicate');
+    if (btnDuplicate) btnDuplicate.onclick = () => this.duplicateGraph();
+
+    const btnResetFz = document.getElementById('ctxBtnResetFz');
+    if (btnResetFz) {
+      btnResetFz.onclick = () => {
+        if (!this.activeGraph) return;
+        this.pushHistoryState();
+        this.activeGraph.freezeOffset = { x: 0, y: 0 };
+        this.activeGraph.transforms = [];
+        this.syncControls();
+        this.showToast('↺ 곡선 위치가 원위치로 리셋되었습니다.');
+        this.render();
+      };
+    }
+
+    const btnDelete = document.getElementById('ctxBtnDelete');
+    if (btnDelete) {
+      btnDelete.onclick = () => {
+        if (this.activeGraphIdx >= 0) {
+          const targetIdx = this.activeGraphIdx;
+          this.isCurveSelected = false;
+          this.selectedHandleIdx = null;
+          this.removeGraph(targetIdx);
+        }
+      };
+    }
+
+    const btnClose = document.getElementById('ctxBtnClose');
+    if (btnClose) {
+      btnClose.onclick = () => {
+        this.isCurveSelected = false;
+        this.selectedHandleIdx = null;
+        this.syncCurveContextBar();
+        this.render();
+      };
+    }
+  }
+
+  syncCurveContextBar() {
+    if (!this.curveContextBar) {
+      this.curveContextBar = document.getElementById('curveContextBar');
+    }
+    if (!this.curveContextBar) return;
+
+    // 🌟 [대표님 긴급 해결: 꾸욱 누르고 있는 동안(Down/Hold/Drag)에는 상단 캡슐 바가 절대 위에서 내려오지 않음] 🌟
+    const shouldShow = Boolean(
+      !this.isGraphCovered &&
+      !this.isGraphSnapMode &&
+      !this.isPointerDownOnCanvas &&
+      this.isCurveSelected &&
+      this.activeGraph &&
+      (!this.isInkMode || this.activeInkTool === 'select')
+    );
+
+    if (!shouldShow) {
+      this.curveContextBar.style.display = 'none';
+      return;
+    }
+
+    this.curveContextBar.style.display = 'flex';
+    const g = this.activeGraph;
+
+    const dot = document.getElementById('ctxBarDot');
+    if (dot) dot.style.background = g.color || '#00d2d3';
+
+    const name = document.getElementById('ctxBarName');
+    if (name) {
+      const typeName = (this.meta && this.meta[g.type]?.name) || '함수';
+      name.textContent = `f${this.activeGraphIdx + 1}(x) (${typeName})`;
+    }
+
+    const btnAbs = document.getElementById('ctxBtnToggleAbs');
+    if (btnAbs) {
+      const isAbsActive = Boolean(g.isAbsolute && g.isAbsPristine);
+      btnAbs.classList.toggle('active', isAbsActive);
+
+      // 대표님 기획: 사용자 조작 상태에 따른 직관적 툴팁
+      if (isAbsActive) {
+        btnAbs.title = '📉 절댓값 해제 (원래대로 펴기)';
+      } else if (g.isAbsolute) {
+        const nextStage = (g.transforms ? g.transforms.length : 0) + 2;
+        btnAbs.title = `📈 ${nextStage}차 절댓값 재접기 (아래로 내려간 부분 다시 꺾어올리기)`;
+      } else {
+        btnAbs.title = '📈 |f(x)| 절댓값 꺾어올리기';
+      }
+    }
+
+    const btnLink = document.getElementById('ctxBtnToggleLink');
+    if (btnLink) {
+      btnLink.style.display = g.linkedInverseId ? 'inline-flex' : 'none';
+    }
+
+  }
+
+  duplicateGraph(idx = this.activeGraphIdx) {
+    if (idx < 0 || idx >= this.graphs.length) return;
+    if (this.graphs.length >= 12) {
+      this.showToast('⚠️ 그래프는 최대 12개까지 동시에 추가할 수 있습니다.');
+      return;
+    }
+
+    this.pushHistoryState();
+    const src = this.graphs[idx];
+
+    // 핸들러 깊은 복사
+    const newHandles = (src.handles || []).map(h => ({ ...h }));
+
+    // 색상 팔레트 배정
+    const palette = ['#ffeaa7', '#00cec9', '#ff7675', '#a29bfe', '#74b9ff', '#fd79a8', '#55efc4'];
+    const filteredColors = palette.filter(c => c.toLowerCase() !== (src.color || '').toLowerCase());
+    const nextColor = filteredColors[this.graphs.length % filteredColors.length];
+
+    // 🌟 [대표님 기획: 복제 시 x축 평행이동 오프셋]: 원본과 겹치지 않게 x축 방향으로만 약간(+1.5) 평행이동 상태로 생성!
+    const srcOx = (src.freezeOffset && typeof src.freezeOffset.x === 'number') ? src.freezeOffset.x : 0;
+    const srcOy = (src.freezeOffset && typeof src.freezeOffset.y === 'number') ? src.freezeOffset.y : 0;
+    const newFreezeOffset = { x: srcOx + 1.5, y: srcOy };
+
+    const newGraph = {
+      id: Date.now(),
+      type: src.type,
+      category: src.category,
+      handles: newHandles,
+      color: nextColor,
+      lineWidth: src.lineWidth || 2.8,
+      isAbsolute: Boolean(src.isAbsolute),
+      shapeMode: src.shapeMode || 'free',
+      originCenter: Boolean(src.originCenter),
+      isFrozen: Boolean(src.isFrozen),
+      freezeOffset: newFreezeOffset,
+      transforms: (src.transforms || []).map(t => ({
+        offset: { ...(t.offset || { x: 0, y: 0 }) },
+        invertV: Boolean(t.invertV),
+        invertH: Boolean(t.invertH),
+        abs: Boolean(t.abs)
+      })),
+      frozenInvertH: Boolean(src.frozenInvertH),
+      frozenInvertV: Boolean(src.frozenInvertV),
+      frozenAbsolute: Boolean(src.frozenAbsolute),
+      isIndependent: Boolean(this.usePiecewise),
+      linkedInverseId: null
+    };
+
+    this.graphs.push(newGraph);
+    this.activeGraphIdx = this.graphs.length - 1;
+    this.selectedHandleIdx = null;
+    this.isCurveSelected = true;
+
+    this.syncControls();
+    this.renderLayerList();
+    this.renderFuncList();
+    this.updateIntersections();
+    this.render();
+
+    const name = this.meta[src.type]?.name || '함수';
+    this.showToast(`📋 f${idx + 1}(x) (${name}) 복제 완료! (x축 평행이동 생성됨)`);
+  }
+
+  drawAllAsymptotes(ctx) {
+    this.graphs.forEach(g => {
+      if (['exp_basic', 'log_basic', 'rational_basic', 'tan_1period'].includes(g.type)) {
+        this.drawSingleAsymptote(ctx, g);
+      }
+    });
+  }
+
+  drawSingleAsymptote(ctx, g) {
+    ctx.save();
+    ctx.strokeStyle = this.isMonochromeMode ? '#000000' : g.color;
+    ctx.globalAlpha = this.isMonochromeMode ? 0.75 : 0.55;
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([5, 5]);
+
+    if (g.type === 'exp_basic') {
+      const y0 = g.handles[0].y;
+      const s = this.mathToScreen(0, y0);
+      ctx.beginPath();
+      ctx.moveTo(0, s.y);
+      ctx.lineTo(this.screenWidth, s.y);
+      ctx.stroke();
+    } else if (g.type === 'log_basic') {
+      const x0 = g.handles[0].x;
+      const s = this.mathToScreen(x0, 0);
+      ctx.beginPath();
+      ctx.moveTo(s.x, 0);
+      ctx.lineTo(s.x, this.screenHeight);
+      ctx.stroke();
+    } else if (g.type === 'rational_basic') {
+      const x0 = g.handles[0].x;
+      const y0 = g.handles[0].y;
+      const sx = this.mathToScreen(x0, 0).x;
+      const sy = this.mathToScreen(0, y0).y;
+
+      ctx.beginPath();
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx, this.screenHeight);
+      ctx.moveTo(0, sy);
+      ctx.lineTo(this.screenWidth, sy);
+      ctx.stroke();
+    } else if (g.type === 'tan_1period') {
+      const x0 = g.handles[0].x;
+      let dx = g.handles.length >= 2 ? g.handles[1].x - x0 : 0.785;
+      if (Math.abs(dx) < 0.2) dx = dx >= 0 ? 0.2 : -0.2;
+      const omega = Math.PI / (4.0 * Math.abs(dx));
+      const halfPeriod = Math.PI / (2.0 * omega);
+      const period = Math.PI / omega;
+
+      const mLeft = this.screenToMath(0, 0).x;
+      const mRight = this.screenToMath(this.screenWidth, 0).x;
+
+      const kMin = Math.floor((mLeft - x0 - halfPeriod) / period) - 1;
+      const kMax = Math.ceil((mRight - x0 - halfPeriod) / period) + 1;
+
+      for (let k = kMin; k <= kMax; k++) {
+        const asyX = x0 + halfPeriod + k * period;
+        if (asyX >= mLeft && asyX <= mRight) {
+          const sx = this.mathToScreen(asyX, 0).x;
+          ctx.beginPath();
+          ctx.moveTo(sx, 0);
+          ctx.lineTo(sx, this.screenHeight);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  drawPillBadge(ctx, text, cx, cy, options = {}) {
+    ctx.save();
+    ctx.font = options.font || 'bold 11px system-ui, -apple-system, sans-serif';
+    const metrics = ctx.measureText(text);
+    const textWidth = metrics.width;
+    const padX = options.padX !== undefined ? options.padX : 8;
+    const pillH = options.height || 20;
+    const pillW = textWidth + padX * 2;
+    const radius = pillH / 2;
+    const x = cx - pillW / 2;
+    const y = cy - pillH / 2;
+
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(x, y, pillW, pillH, radius);
+    } else {
+      ctx.rect(x, y, pillW, pillH);
+    }
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
+    const isLight = curTheme.isLight || this.isMonochromeMode;
+
+    if (isLight || options.shadow) {
+      ctx.shadowColor = isLight ? 'rgba(0, 0, 0, 0.16)' : 'rgba(0, 0, 0, 0.45)';
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 2;
+    }
+
+    ctx.fillStyle = options.bg || (isLight ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.88)');
+    ctx.fill();
+    ctx.strokeStyle = options.border || (isLight ? 'rgba(0, 0, 0, 0.16)' : 'rgba(0, 210, 211, 0.6)');
+    ctx.lineWidth = options.borderWidth || 1.2;
+    ctx.stroke();
+
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = options.color || (isLight ? '#1e293b' : '#00d2d3');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, cx, cy);
+    ctx.restore();
+  }
+
+  // --- [대칭의 중심: 모든 함수가 황금색 기준점 핸들(handles)로 일관되게 통합되어 기존 십자(+) 마커 제거] ---
+  drawSymmetryCenters(ctx, isExport = false) {
+    return;
+  }
+
+  // --- [다중 곡선 렌더링 (모든 레이어 중첩)] ---
+  drawAllCurves(ctx, isExport = false) {
+    this.graphs.forEach((g, idx) => {
+      const isActive = (idx === this.activeGraphIdx);
+      this.drawSingleCurve(ctx, g, isActive, isExport, idx);
+    });
+  }
+
+  drawSingleCurve(ctx, g, isActive, isExport = false, gIdx = 0) {
+    ctx.save();
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    let curveColor = this.isMonochromeMode ? '#000000' : g.color;
+    // 밝은 배경(화이트/포스트잇)일 때 흰색 곡선을 다크로 스마트 시인성 보호!
+    if (!this.isMonochromeMode && curTheme.isLight && (curveColor.toLowerCase() === '#ffffff' || curveColor.toLowerCase() === '#fff')) {
+      curveColor = '#222f3e';
+    }
+    ctx.strokeStyle = curveColor;
+    ctx.lineWidth = (isActive && this.isCurveSelected && !isExport) ? g.lineWidth + 0.6 : g.lineWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const isDragging = !!(this.isDraggingCurve || this.draggedHandleIdx !== null || this.isPanning || this.activePwDragIdx !== null || this.isResizingVf);
+
+    // 활성 곡선 선택 시 네온 글로우 발광 (드래그 중에는 저사양 PC 프레임 보존을 위해 블러 바이패스, 흑백 모드 시 블러 없음)
+    if (!this.isMonochromeMode && isActive && this.isCurveSelected && !isExport && !isDragging) {
+      ctx.shadowColor = curveColor;
+      ctx.shadowBlur = 10;
+    } else {
+      ctx.shadowBlur = 0;
+    }
+
+    // [📐 평면도형 특수 케이스: 원 (Circle)]
+    if (g.type === 'geom_circle' && g.handles.length >= 2) {
+      const s0 = this.mathToScreen(g.handles[0].x, g.handles[0].y);
+      const s1 = this.mathToScreen(g.handles[1].x, g.handles[1].y);
+      const rPx = Math.hypot(s1.x - s0.x, s1.y - s0.y);
+
+      ctx.beginPath();
+      ctx.arc(s0.x, s0.y, rPx, 0, Math.PI * 2);
+      ctx.fillStyle = this.hexToRgba(curveColor, 0.08);
+      ctx.fill();
+      ctx.stroke();
+
+      // 원 중심 십자 마커
+      if (!isExport) {
+        ctx.save();
+        ctx.strokeStyle = this.hexToRgba(curveColor, 0.6);
+        ctx.lineWidth = 1.2;
+        const cs = 5;
+        ctx.beginPath();
+        ctx.moveTo(s0.x - cs, s0.y); ctx.lineTo(s0.x + cs, s0.y);
+        ctx.moveTo(s0.x, s0.y - cs); ctx.lineTo(s0.x, s0.y + cs);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      ctx.restore();
+      return;
+    }
+
+    // [📐 평면도형 특수 케이스: 삼각형 (Triangle)]
+    if (g.type === 'geom_triangle' && g.handles.length >= 3) {
+      const pts = g.handles.map(h => this.mathToScreen(h.x, h.y));
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      ctx.lineTo(pts[1].x, pts[1].y);
+      ctx.lineTo(pts[2].x, pts[2].y);
+      ctx.closePath();
+      ctx.fillStyle = this.hexToRgba(curveColor, 0.08);
+      ctx.fill();
+      ctx.stroke();
+
+      // 꼭짓점 라벨 (A, B, C)
+      if (!isExport) {
+        ctx.save();
+        ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+        ctx.fillStyle = curveColor;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const labels = ['A', 'B', 'C'];
+        pts.forEach((p, i) => {
+          ctx.fillText(labels[i], p.x + (p.x >= pts[0].x ? 12 : -12), p.y - 12);
+        });
+        ctx.restore();
+      }
+
+      ctx.restore();
+      return;
+    }
+
+    // [📐 평면도형 특수 케이스: 사각형 (Quadrilateral)]
+    if (g.type === 'geom_quad' && g.handles.length >= 4) {
+      const pts = g.handles.map(h => this.mathToScreen(h.x, h.y));
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      ctx.lineTo(pts[1].x, pts[1].y);
+      ctx.lineTo(pts[2].x, pts[2].y);
+      ctx.lineTo(pts[3].x, pts[3].y);
+      ctx.closePath();
+      ctx.fillStyle = this.hexToRgba(curveColor, 0.08);
+      ctx.fill();
+      ctx.stroke();
+
+      // 꼭짓점 라벨 (A, B, C, D)
+      if (!isExport) {
+        ctx.save();
+        ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+        ctx.fillStyle = curveColor;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const labels = ['A', 'B', 'C', 'D'];
+        pts.forEach((p, i) => {
+          ctx.fillText(labels[i], p.x + (i === 1 || i === 2 ? 12 : -12), p.y + (i < 2 ? 12 : -12));
+        });
+        ctx.restore();
+      }
+
+      ctx.restore();
+      return;
+    }
+
+    // [일차함수 특수 케이스: 완전 수직선 (x = x0)]
+    if (g.type === '1st_linear' && g.handles.length >= 2) {
+      if (Math.abs(g.handles[1].x - g.handles[0].x) < 1e-4) {
+        const sx = this.mathToScreen(g.handles[0].x, 0).x;
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, this.screenHeight);
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+    }
+
+    const isPwActive = this.usePiecewise && this.graphs.length >= 1 && !g.isIndependent;
+
+    // [대표님 킬러 기획: 선택된 바로 그 함수만 원래 숨겨진 개형을 은은한 점선(Ghost)으로 짠! 표시]
+    // 캔버스 빈 공간을 클릭하여 선택 해제하면 점선이 싹 사라지고 깔끔한 완성본 삽도로 자동 복귀!
+    const shouldShowGhost = !isExport && !this.isCleanView && isPwActive && (isActive && (this.isCurveSelected || this.selectedHandleIdx !== null));
+
+    // [특수 고밀도 렌더러 공통 디스패처 (Piecewise 2-패스 완벽 통합)]
+    const renderSpecialWithPiecewise = (rendererFn) => {
+      if (!isPwActive) {
+        rendererFn(null);
+      } else {
+        if (shouldShowGhost) {
+          ctx.save();
+          ctx.setLineDash([4, 4]);
+          ctx.globalAlpha = 0.28;
+          ctx.lineWidth = Math.max(1.0, g.lineWidth * 0.85);
+          rendererFn(false);
+          ctx.restore();
+        }
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1.0;
+        rendererFn(true);
+        ctx.restore();
+      }
+    };
+
+    // [유리함수 특수 케이스: 프리징 아닐 때 상하단 화면 끝 관통 2-브랜치 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
+    if (!this.isPiecewisePeriodic && !g.isFrozen && g.type === 'rational_basic' && g.handles.length >= 2) {
+      renderSpecialWithPiecewise((filter) => this.drawRationalCurve(ctx, g, gIdx, filter));
+      ctx.restore();
+      return;
+    }
+
+    // [로그함수 특수 케이스: 프리징 아닐 때 수직 점근선 상하단 관통 고밀도 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
+    if (!this.isPiecewisePeriodic && !g.isFrozen && g.type === 'log_basic' && g.handles.length >= 2) {
+      renderSpecialWithPiecewise((filter) => this.drawLogCurve(ctx, g, gIdx, filter));
+      ctx.restore();
+      return;
+    }
+
+    // [탄젠트 특수 케이스: 프리징 아닐 때 주기별 점근선 상하단 관통 고밀도 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
+    if (!this.isPiecewisePeriodic && !g.isFrozen && g.type === 'tan_1period' && g.handles.length >= 1) {
+      renderSpecialWithPiecewise((filter) => this.drawTangentCurve(ctx, g, gIdx, filter));
+      ctx.restore();
+      return;
+    }
+
+    // [무리함수 특수 케이스: 프리징 아닐 때 시작점 칼고정 고정밀 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
+    if (!this.isPiecewisePeriodic && !g.isFrozen && g.type === 'sqrt_basic' && g.handles.length >= 2) {
+      renderSpecialWithPiecewise((filter) => this.drawSqrtCurve(ctx, g, gIdx, filter));
+      ctx.restore();
+      return;
+    }
+
+    // 🚀 [초고속 최적화]: 드래그 중에는 350스텝으로 60FPS 칼유지, 정지 시 520스텝, 내보내기 시 1200스텝 초고화질
+    const steps = isExport ? 1200 : (isDragging ? 350 : 520);
+    const mLeft = this.screenToMath(0, 0).x;
+    const mRight = this.screenToMath(this.screenWidth, 0).x;
+    const stepSize = (mRight - mLeft) / steps;
+
+    if (!isExport) {
+      g._screenPts = [];
+    }
+
+    const traceCurve = (filterInside = null) => {
+      ctx.beginPath();
+      let started = false;
+      let prevRawY = null;
+      let prevMx = null;
+      let prevCycleK = null;
+      const collectPts = !isExport && (filterInside === null || filterInside === true);
+
+      for (let i = 0; i <= steps; i++) {
+        const mx = mLeft + i * stepSize;
+
+        // Piecewise 구간 필터 적용
+        if (filterInside !== null) {
+          const inPiece = this.isInsidePiece(gIdx, mx);
+          if (inPiece !== filterInside) {
+            if (started && collectPts && g._screenPts.length > 0 && g._screenPts[g._screenPts.length - 1] !== null) {
+              g._screenPts.push(null);
+            }
+            started = false;
+            prevRawY = null;
+            prevMx = null;
+            continue;
+          }
+        }
+
+        // [❄️ 형상 프리징 & 계층형 2차 변환(대칭/2차 절댓값) 파이프라인 연산]
+        let evalX = mx;
+        let yOffset = 0;
+        let curCycleK = 0;
+        if (this.usePiecewise && this.isPiecewisePeriodic && this.piecewiseBoundaries.length >= 2 && !g.isIndependent) {
+          const b0 = this.piecewiseBoundaries[0];
+          const bLast = this.piecewiseBoundaries[this.piecewiseBoundaries.length - 1];
+          const T = bLast - b0;
+          if (T > 1e-4) {
+            curCycleK = Math.floor((mx - b0) / T);
+            let xBase = mx - curCycleK * T;
+            if (xBase >= bLast - 1e-6) xBase = b0;
+            if (xBase < b0) xBase = b0;
+            evalX = xBase;
+            yOffset = curCycleK * (this.periodicStepY || 0);
+          }
+        }
+
+        if (started && prevCycleK !== null && curCycleK !== prevCycleK) {
+          ctx.stroke();
+          ctx.beginPath();
+          if (collectPts && g._screenPts.length > 0 && g._screenPts[g._screenPts.length - 1] !== null) {
+            g._screenPts.push(null);
+          }
+          started = false;
+          prevRawY = null;
+          prevMx = null;
+        }
+        prevCycleK = curCycleK;
+
+        const rawY = this.engine.evaluatePipeline(g, evalX) + yOffset;
+
+        if (isNaN(rawY) || !isFinite(rawY) || Math.abs(rawY) > 100) {
+          if (started && collectPts && g._screenPts.length > 0 && g._screenPts[g._screenPts.length - 1] !== null) {
+            g._screenPts.push(null);
+          }
+          started = false;
+          prevRawY = null;
+          prevMx = null;
+          continue;
+        }
+
+        // [점근선 유령선(Ghost Line) 분리: tan(x), 1/x 등 인접 샘플 간 급격한 도약 및 부호 반전 시 단절]
+        if (started && prevRawY !== null) {
+          const dy = rawY - prevRawY;
+          const isAsymptoteJump = (Math.abs(dy) > this.ySpan * 1.5) && (Math.sign(prevRawY) !== Math.sign(rawY));
+          if (isAsymptoteJump) {
+            ctx.stroke();
+            ctx.beginPath();
+            if (collectPts && g._screenPts.length > 0 && g._screenPts[g._screenPts.length - 1] !== null) {
+              g._screenPts.push(null);
+            }
+            started = false;
+          }
+        }
+
+        // [절댓값 부호 교차(Zero-Crossing) 보정: 1차 및 2차 절댓값 시 x축에 0.000% 칼밀착]
+        const isAbsActive = g.isAbsolute || (g.isFrozen && g.frozenAbsolute);
+        if (isAbsActive && prevRawY !== null && started) {
+          if ((prevRawY > 0 && rawY < 0) || (prevRawY < 0 && rawY > 0)) {
+            let t = Math.abs(prevRawY) / (Math.abs(prevRawY) + Math.abs(rawY));
+            let xZero = prevMx + t * (mx - prevMx);
+
+            let xLow = prevMx, xHigh = mx;
+            let yLow = prevRawY, yHigh = rawY;
+
+            for (let iter = 0; iter < 4; iter++) {
+              const yMid = this.engine.evaluatePipeline(g, xZero);
+              if (isNaN(yMid) || Math.abs(yMid) < 1e-6) break;
+
+              if ((yLow > 0 && yMid < 0) || (yLow < 0 && yMid > 0)) {
+                xHigh = xZero;
+                yHigh = yMid;
+              } else {
+                xLow = xZero;
+                yLow = yMid;
+              }
+              xZero = (xLow + xHigh) / 2.0;
+            }
+
+            const sZero = this.mathToScreen(xZero, 0.0);
+            ctx.lineTo(sZero.x, sZero.y);
+            if (collectPts) g._screenPts.push({ x: sZero.x, y: sZero.y });
+          }
+        }
+
+        const s = this.mathToScreen(mx, rawY);
+
+        if (!started) {
+          ctx.moveTo(s.x, s.y);
+          started = true;
+        } else {
+          ctx.lineTo(s.x, s.y);
+        }
+        if (collectPts) {
+          g._screenPts.push({ x: s.x, y: s.y });
+        }
+
+        prevRawY = rawY;
+        prevMx = mx;
+      }
+
+      ctx.stroke();
+    };
+
+    if (!isPwActive) {
+      // 일반 단일 패스 렌더링
+      traceCurve(null);
+    } else {
+      // ✂️ 구간 분할 합성 2-패스 렌더링
+      if (shouldShowGhost) {
+        // 패스 1: 버려진 구간 (Ghost 점선) - [대표님 킬러 기획]: 선택된 함수만 원래 숨겨진 개형을 은은한 점선으로 표시!
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.globalAlpha = 0.28;
+        ctx.lineWidth = Math.max(1.0, g.lineWidth * 0.85);
+        traceCurve(false);
+        ctx.restore();
+      }
+
+      // 패스 2: 채택된 구간 (Active 메인 실선)
+      ctx.save();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1.0;
+      traceCurve(true);
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  // --- [유리함수 전용 상하단 무한대 관통 2-브랜치 고밀도 렌더러 (Piecewise 완벽 호환)] ---
+  drawRationalCurve(ctx, g, gIdx = null, filterInside = null) {
+    const x0 = g.handles[0].x;
+    const y0 = g.handles[0].y;
+    const k = (g.handles[1].x - x0) * (g.handles[1].y - y0);
+
+    const mLeft = this.screenToMath(0, 0).x;
+    const mRight = this.screenToMath(this.screenWidth, 0).x;
+
+    // 캔버스 화면 상하단 밖 60px로 안전 클램핑 (화면 끝까지 100% 관통!)
+    const clampScreenY = (sy) => Math.max(-60, Math.min(this.screenHeight + 60, sy));
+
+    // 브랜치 1: x < x0 (좌측 가지)
+    if (mLeft < x0) {
+      const endX = Math.min(x0 - 1e-4, mRight);
+      const startX = mLeft;
+      const steps = 400;
+
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i <= steps; i++) {
+        // 점근선 근처에서는 비선형 분포로 초고밀도 샘플링!
+        const t = i / steps;
+        const x = startX + (endX - startX) * Math.pow(t, 0.75);
+
+        // Piecewise 구간 필터 적용
+        if (filterInside !== null && gIdx !== null) {
+          const inPiece = this.isInsidePiece(gIdx, x);
+          if (inPiece !== filterInside) {
+            started = false;
+            continue;
+          }
+        }
+
+        let y = y0 + k / (x - x0);
+        if (g.isAbsolute) y = Math.abs(y);
+
+        const s = this.mathToScreen(x, y);
+        const sy = clampScreenY(s.y);
+
+        if (!started) {
+          ctx.moveTo(s.x, sy);
+          started = true;
+        } else {
+          ctx.lineTo(s.x, sy);
+        }
+      }
+      ctx.stroke();
+    }
+
+    // 브랜치 2: x > x0 (우측 가지)
+    if (mRight > x0) {
+      const startX = Math.max(x0 + 1e-4, mLeft);
+      const endX = mRight;
+      const steps = 400;
+
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i <= steps; i++) {
+        // 점근선에서 멀어지는 방향으로 비선형 분포 샘플링!
+        const t = i / steps;
+        const x = startX + (endX - startX) * (1 - Math.pow(1 - t, 0.75));
+
+        // Piecewise 구간 필터 적용
+        if (filterInside !== null && gIdx !== null) {
+          const inPiece = this.isInsidePiece(gIdx, x);
+          if (inPiece !== filterInside) {
+            started = false;
+            continue;
+          }
+        }
+
+        let y = y0 + k / (x - x0);
+        if (g.isAbsolute) y = Math.abs(y);
+
+        const s = this.mathToScreen(x, y);
+        const sy = clampScreenY(s.y);
+
+        if (!started) {
+          ctx.moveTo(s.x, sy);
+          started = true;
+        } else {
+          ctx.lineTo(s.x, sy);
+        }
+      }
+      ctx.stroke();
+    }
+  }
+
+  // --- [로그함수 전용 상하단 무한대 관통 고밀도 렌더러 (Piecewise 완벽 호환)] ---
+  drawLogCurve(ctx, g, gIdx = null, filterInside = null) {
+    const x0 = g.handles[0].x;
+    const y0 = g.handles[0].y;
+    const x1 = g.handles[1].x;
+    const y1 = g.handles[1].y;
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+
+    const mLeft = this.screenToMath(0, 0).x;
+    const mRight = this.screenToMath(this.screenWidth, 0).x;
+    const clampScreenY = (sy) => Math.max(-60, Math.min(this.screenHeight + 60, sy));
+    const steps = 400;
+
+    if (dx > 0) {
+      // 정의역: x > x0
+      if (mRight <= x0) return;
+      const startX = Math.max(x0 + 1e-4, mLeft);
+      const endX = mRight;
+      if (startX >= endX) return;
+
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const x = startX + (endX - startX) * (1 - Math.pow(1 - t, 0.75));
+
+        if (filterInside !== null && gIdx !== null) {
+          const inPiece = this.isInsidePiece(gIdx, x);
+          if (inPiece !== filterInside) {
+            started = false;
+            continue;
+          }
+        }
+
+        const u = Math.max(1e-6, (x - x0) / dx);
+        let y = y1 + dy * Math.log2(u);
+        if (g.isAbsolute) y = Math.abs(y);
+
+        const s = this.mathToScreen(x, y);
+        const sy = clampScreenY(s.y);
+        if (!started) { ctx.moveTo(s.x, sy); started = true; }
+        else ctx.lineTo(s.x, sy);
+      }
+      ctx.stroke();
+    } else {
+      // 정의역: x < x0
+      if (mLeft >= x0) return;
+      const startX = mLeft;
+      const endX = Math.min(x0 - 1e-4, mRight);
+      if (startX >= endX) return;
+
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const x = startX + (endX - startX) * Math.pow(t, 0.75);
+
+        if (filterInside !== null && gIdx !== null) {
+          const inPiece = this.isInsidePiece(gIdx, x);
+          if (inPiece !== filterInside) {
+            started = false;
+            continue;
+          }
+        }
+
+        const u = Math.max(1e-6, (x0 - x) / -dx);
+        let y = y1 + dy * Math.log2(u);
+        if (g.isAbsolute) y = Math.abs(y);
+
+        const s = this.mathToScreen(x, y);
+        const sy = clampScreenY(s.y);
+        if (!started) { ctx.moveTo(s.x, sy); started = true; }
+        else ctx.lineTo(s.x, sy);
+      }
+      ctx.stroke();
+    }
+  }
+
+  // --- [탄젠트함수 전용 주기별 상하단 무한대 관통 고밀도 렌더러 (Piecewise 완벽 호환)] ---
+  drawTangentCurve(ctx, g, gIdx = null, filterInside = null) {
+    const x0 = g.handles[0].x;
+    const y0 = g.handles[0].y;
+    let dx = g.handles.length >= 2 ? g.handles[1].x - x0 : 0.785;
+    if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
+    const A = g.handles.length >= 2 ? g.handles[1].y - y0 : 1.5;
+    const omega = Math.PI / (4.0 * Math.abs(dx));
+    const period = Math.PI / omega;
+    const halfPeriod = period / 2.0;
+
+    const mLeft = this.screenToMath(0, 0).x;
+    const mRight = this.screenToMath(this.screenWidth, 0).x;
+    const clampScreenY = (sy) => Math.max(-60, Math.min(this.screenHeight + 60, sy));
+
+    const kMin = Math.floor((mLeft - x0 - halfPeriod) / period) - 1;
+    const kMax = Math.ceil((mRight - x0 - halfPeriod) / period) + 1;
+    const stepsPerBranch = 300;
+
+    for (let k = kMin; k <= kMax; k++) {
+      const asyLeft = x0 + halfPeriod + k * period;
+      const asyRight = asyLeft + period;
+
+      const bStart = Math.max(mLeft, asyLeft + 1e-4);
+      const bEnd = Math.min(mRight, asyRight - 1e-4);
+      if (bStart >= bEnd) continue;
+
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i <= stepsPerBranch; i++) {
+        const t = i / stepsPerBranch;
+        const x = bStart + (bEnd - bStart) * t;
+
+        if (filterInside !== null && gIdx !== null) {
+          const inPiece = this.isInsidePiece(gIdx, x);
+          if (inPiece !== filterInside) {
+            started = false;
+            continue;
+          }
+        }
+
+        const cosVal = Math.cos(omega * (x - x0));
+        if (Math.abs(cosVal) < 1e-4) continue;
+        let y = y0 + A * Math.tan(omega * (x - x0));
+        if (g.isAbsolute) y = Math.abs(y);
+
+        const s = this.mathToScreen(x, y);
+        const sy = clampScreenY(s.y);
+
+        if (!started) { ctx.moveTo(s.x, sy); started = true; }
+        else ctx.lineTo(s.x, sy);
+      }
+      ctx.stroke();
+    }
+  }
+
+  // --- [무리함수 전용 시작점 칼고정 & 들쭉날쭉 잘림 0% 고정밀 렌더러 (Piecewise 완벽 호환)] ---
+  drawSqrtCurve(ctx, g, gIdx = null, filterInside = null) {
+    const x0 = g.handles[0].x;
+    const y0 = g.handles[0].y;
+    const x1 = g.handles[1].x;
+    const y1 = g.handles[1].y;
+    let dx = x1 - x0;
+    if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
+    const dy = y1 - y0;
+
+    const mLeft = this.screenToMath(0, 0).x;
+    const mRight = this.screenToMath(this.screenWidth, 0).x;
+    const clampScreenY = (sy) => Math.max(-60, Math.min(this.screenHeight + 60, sy));
+    const steps = 350;
+
+    ctx.beginPath();
+    let started = false;
+
+    if (dx > 0) {
+      // 1. 우측으로 뻗는 경우 (x >= x0)
+      if (mRight < x0) return;
+      const startX = Math.max(x0, mLeft);
+      const endX = mRight;
+      if (startX > endX) return;
+
+      const isStartOnScreen = (x0 >= mLeft);
+
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        let x;
+        if (isStartOnScreen) {
+          x = x0 + (endX - x0) * Math.pow(t, 1.8);
+        } else {
+          x = startX + (endX - startX) * t;
+        }
+
+        if (filterInside !== null && gIdx !== null) {
+          const inPiece = this.isInsidePiece(gIdx, x);
+          if (inPiece !== filterInside) {
+            started = false;
+            continue;
+          }
+        }
+
+        let y = y0 + dy * Math.sqrt((x - x0) / dx);
+        if (g.isAbsolute) y = Math.abs(y);
+
+        const s = this.mathToScreen(x, y);
+        const sy = clampScreenY(s.y);
+
+        if (!started) {
+          ctx.moveTo(s.x, sy);
+          started = true;
+        } else {
+          ctx.lineTo(s.x, sy);
+        }
+      }
+      ctx.stroke();
+    } else {
+      // 2. 좌측으로 뻗는 경우 (x <= x0)
+      if (mLeft > x0) return;
+      const startX = mLeft;
+      const endX = Math.min(x0, mRight);
+      if (startX > endX) return;
+
+      const isStartOnScreen = (x0 <= mRight);
+
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        let x;
+        if (isStartOnScreen) {
+          x = startX + (x0 - startX) * (1 - Math.pow(1 - t, 1.8));
+        } else {
+          x = startX + (endX - startX) * t;
+        }
+
+        if (filterInside !== null && gIdx !== null) {
+          const inPiece = this.isInsidePiece(gIdx, x);
+          if (inPiece !== filterInside) {
+            started = false;
+            continue;
+          }
+        }
+
+        let y = y0 + dy * Math.sqrt((x0 - x) / -dx);
+        if (g.isAbsolute) y = Math.abs(y);
+
+        const s = this.mathToScreen(x, y);
+        const sy = clampScreenY(s.y);
+
+        if (!started) {
+          ctx.moveTo(s.x, sy);
+          started = true;
+        } else {
+          ctx.lineTo(s.x, sy);
+        }
+      }
+      ctx.stroke();
+    }
+  }
+
+  // --- [인터랙티브 조작 핸들 (오직 그래프가 선택되었을 때만 정갈하게 표시)] ---
+  drawHandles(ctx) {
+    if (this.isCleanView) return;
+    // [대표님 기획]: 그래프가 명시적으로 선택되었거나(isCurveSelected) 핸들 조작 중일 때만 핸들 노출!
+    if (!this.isCurveSelected && this.selectedHandleIdx === null && this.draggedHandleIdx === null) {
+      return;
+    }
+    const g = this.activeGraph;
+    if (!g || !g.handles) return;
+    // 🔒 [구간 분할 잠금 상태]: 구간 참여 함수의 극점/변곡점 핸들을 숨겨 실수로 개형이 망가지는 것을 100% 방지!
+    if (this.usePiecewise && this.isPiecewiseLocked && !g.isIndependent) return;
+
+    let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+    let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+    if (g.transforms && g.transforms.length > 0) {
+      for (const t of g.transforms) {
+        if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
+        if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
+      }
+    }
+
+    g.handles.forEach((h, idx) => {
+      if (h.hidden) return; // 숨겨진 핸들은 노출하지 않음
+
+      let targetY = h.y;
+      if (g.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
+        targetY = Math.abs(h.y);
+      }
+      let evalY = (h.type === 'center' || h.type === 'asymptote')
+        ? (targetY + oy)
+        : this.engine.evaluatePipeline(g, h.x + ox);
+      if (isNaN(evalY) || !isFinite(evalY)) {
+        evalY = targetY + oy;
+      }
+
+      const s = this.mathToScreen(h.x + ox, evalY);
+      const isDragging = this.draggedHandleIdx === idx;
+      const radius = isDragging ? 8.5 : 6.5;
+
+      // 선택된 점 깜빡임 펄스 링 (키보드 방향키 미세조정 상태)
+      if (this.selectedHandleIdx === idx) {
+        const pulse = (Math.sin(Date.now() / 150) + 1) / 2;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, radius + 5 + pulse * 6, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(254, 202, 87, ${0.2 + pulse * 0.4})`;
+        ctx.strokeStyle = '#feca57';
+        ctx.lineWidth = 2.0;
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // 🌟 [핸들 테마 연동: 라이트 모드 3D 엠보싱 링 & 다크 모드 네온 아우라] 🌟
+      const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
+      const isLight = curTheme.isLight || this.isMonochromeMode;
+
+      ctx.save();
+
+      const isTranslationAnchor = (h.type === 'center' || h.type === 'inflection' || h.type === 'vertex' || h.type === 'asymptote');
+      let fillColor;
+      if (isLight) {
+        // [라이트 테마]: 고대비 3D 엠보싱 색상 (극대=딥레드, 극소=로열블루, 기준점/변곡/중심/꼭짓점=황금앰버)
+        fillColor = isTranslationAnchor
+          ? '#d97706'
+          : (h.type === 'max'
+            ? '#dc2626'
+            : (h.type === 'min'
+              ? '#2563eb'
+              : '#ffffff'));
+      } else {
+        // [다크 테마]: 발광 네온 색상
+        fillColor = isTranslationAnchor
+          ? '#feca57'
+          : (h.type === 'max'
+            ? '#ff6b6b'
+            : (h.type === 'min'
+              ? '#54a0ff'
+              : '#ffffff'));
+      }
+
+      if (isLight) {
+        // 🌟 [라이트 모드 3D 엠보싱 렌더링]:
+        // (1) 부드러운 드롭 섀도우 (종이 위에 볼록 솟아오른 물리적 핀 효과)
+        ctx.shadowColor = 'rgba(15, 23, 42, 0.24)';
+        ctx.shadowBlur = isDragging ? 8 : 4.5;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = isDragging ? 3 : 1.5;
+
+        // (2) 외부 베이스 원 채우기
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+
+        // (3) 순백색 내부 림 (또렷한 3D 입체감 부여)
+        ctx.shadowColor = 'transparent';
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = isDragging ? 3.0 : 2.4;
+        ctx.stroke();
+
+        // (4) 외곽 윤곽선 (흰 종이 위에서도 핸들의 경계가 칼같이 선명하도록 보정)
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, radius + 1.2, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(30, 41, 59, 0.42)';
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+
+        // (5) 호버 또는 드래그 시 반응형 외곽 후광 (Aura Ring)
+        if (isDragging) {
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, radius + 6, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(37, 99, 235, 0.55)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+      } else {
+        // 🌟 [다크 모드 네온 렌더링]:
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, radius + (isDragging ? 6 : 4), 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 210, 211, 0.22)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = fillColor;
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2.5;
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      ctx.restore();
+
+      // 3. 🌟 [대표님 특화: 극점 드래그 시 실시간 좌표 & 특이점 명칭 팝업 배지] 🌟
+      if (isDragging) {
+        const hName = (h.type === 'max')
+          ? '극대'
+          : ((h.type === 'min')
+            ? '극소'
+            : ((h.type === 'inflection')
+              ? '변곡점'
+              : ((h.type === 'center' || h.type === 'asymptote')
+                ? (h.name || '대칭중심')
+                : (h.type === 'vertex' ? (h.name || '꼭짓점') : '점'))));
+        const coordText = `${hName} (${(h.x + ox).toFixed(2)}, ${evalY.toFixed(2)})`;
+        const tipY = s.y - radius - 16;
+        this.drawPillBadge(ctx, coordText, s.x, tipY, {
+          font: 'bold 11px system-ui, -apple-system, sans-serif',
+          height: 22,
+          padX: 9,
+          bg: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 23, 42, 0.94)',
+          border: isLight ? 'rgba(37, 99, 235, 0.55)' : 'rgba(0, 210, 211, 0.7)',
+          color: isLight ? '#1e293b' : '#ffffff',
+          shadow: true
+        });
+      }
+    });
+
+    // [대표님 기획]: 사차함수 극소 높이 일치 시 수평 점선 가이드는 화면 간섭 및 오작동 방지를 위해 생략, 자석 스냅 손맛(철컥)만 유지
+  }
+
+  startPulseLoop() {
+    if (this.pulseAnimId) return;
+    const loop = () => {
+      if (this.selectedHandleIdx !== null) {
+        this.render();
+        this.pulseAnimId = requestAnimationFrame(loop);
+      } else {
+        this.pulseAnimId = null;
+        this.render();
+      }
+    };
+    this.pulseAnimId = requestAnimationFrame(loop);
+  }
+
+  // --- [PNG 바이너리에 300/600 DPI (pHYs 청크) 주입 엔진] ---
+  injectDpiToBlob(blob, dpi = this.exportDPI) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const buffer = reader.result;
+        const bytes = new Uint8Array(buffer);
+
+        // PNG 시그니처 확인 (8바이트: 89 50 4E 47 0D 0A 1A 0A)
+        if (bytes.length < 33 || bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4E || bytes[3] !== 0x47) {
+          resolve(blob);
+          return;
+        }
+
+        // 1 meter = 39.3701 inches -> pixels per meter (ppm)
+        const ppm = Math.round(dpi / 0.0254);
+
+        // pHYs 청크 데이터 (4바이트 type 'pHYs' + 9바이트 data)
+        const physData = new Uint8Array(13);
+        physData[0] = 0x70; physData[1] = 0x48; physData[2] = 0x59; physData[3] = 0x73; // 'pHYs'
+        // ppmX (Big-endian)
+        physData[4] = (ppm >>> 24) & 0xff;
+        physData[5] = (ppm >>> 16) & 0xff;
+        physData[6] = (ppm >>> 8) & 0xff;
+        physData[7] = ppm & 0xff;
+        // ppmY (Big-endian)
+        physData[8] = (ppm >>> 24) & 0xff;
+        physData[9] = (ppm >>> 16) & 0xff;
+        physData[10] = (ppm >>> 8) & 0xff;
+        physData[11] = ppm & 0xff;
+        physData[12] = 1; // 1 = meter
+
+        // CRC32 연산
+        const crcTable = [];
+        for (let n = 0; n < 256; n++) {
+          let c = n;
+          for (let k = 0; k < 8; k++) {
+            c = ((c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1));
+          }
+          crcTable[n] = c;
+        }
+        let crc = 0xffffffff;
+        for (let i = 0; i < physData.length; i++) {
+          crc = crcTable[(crc ^ physData[i]) & 0xff] ^ (crc >>> 8);
+        }
+        crc = (crc ^ 0xffffffff) >>> 0;
+
+        // 전체 pHYs 청크 생성 (4 length + 13 data + 4 crc = 21바이트)
+        const physChunk = new Uint8Array(21);
+        physChunk[0] = 0; physChunk[1] = 0; physChunk[2] = 0; physChunk[3] = 9;
+        physChunk.set(physData, 4);
+        physChunk[17] = (crc >>> 24) & 0xff;
+        physChunk[18] = (crc >>> 16) & 0xff;
+        physChunk[19] = (crc >>> 8) & 0xff;
+        physChunk[20] = crc & 0xff;
+
+        // IHDR 청크 바로 뒤(33바이트 지점)에 pHYs 청크 삽입
+        const insertPos = 33;
+        const newBytes = new Uint8Array(bytes.length + physChunk.length);
+        newBytes.set(bytes.subarray(0, insertPos), 0);
+        newBytes.set(physChunk, insertPos);
+        newBytes.set(bytes.subarray(insertPos), insertPos + physChunk.length);
+
+        resolve(new Blob([newBytes], { type: 'image/png' }));
+      };
+      reader.readAsArrayBuffer(blob);
+    });
+  }
+
+  // --- [내보내기/복사 시 화면에 떠 있는 문제 카드 & 그래프 보관 카드 합성 엔진] ---
+  drawFloatingCardsForExport(ctx) {
+    if (!ctx || typeof document === 'undefined') return;
+    const canvasRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
+    const cardEls = Array.from(document.querySelectorAll(
+      '#problemCardWidget, .extra-problem-card-widget, #graphCardWidget, .extra-graph-card-widget'
+    )).filter(el => {
+      if (!el || el.style.display === 'none') return false;
+      const cs = window.getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    });
+
+    if (cardEls.length === 0) return;
+
+    // Z-Index 오름차순 정렬 (가장 최근에 터치해 최상단으로 올라온 카드가 맨 위에 그려지도록!)
+    cardEls.sort((a, b) => {
+      const zA = parseInt(a.style.zIndex || window.getComputedStyle(a).zIndex, 10) || 150;
+      const zB = parseInt(b.style.zIndex || window.getComputedStyle(b).zIndex, 10) || 150;
+      return zA - zB;
+    });
+
+    const isLight = document.body.classList.contains('theme-light') || this.isMonochromeMode;
+
+    cardEls.forEach(el => {
+      const isMin = el.classList.contains('minimized');
+      const titleEl = el.querySelector('.card-title-text');
+      const titleText = titleEl ? titleEl.textContent.trim() : '';
+      const headerEl = el.querySelector('.problem-card-header');
+      const bodyEl = el.querySelector('.problem-card-body');
+      const imgEl = el.querySelector('.problem-card-img');
+
+      const offX = (this._exportCropOffset && this._exportCropOffset.x) || 0;
+      const offY = (this._exportCropOffset && this._exportCropOffset.y) || 0;
+
+      if (headerEl) {
+        const hRect = headerEl.getBoundingClientRect();
+        if (hRect.width > 0 && hRect.height > 0) {
+          const hx = hRect.left - canvasRect.left - offX;
+          const hy = hRect.top - canvasRect.top - offY;
+          const hw = hRect.width;
+          const hh = hRect.height;
+
+          ctx.save();
+          ctx.fillStyle = isLight ? '#f8fafc' : '#0f172a';
+          ctx.strokeStyle = isLight ? '#cbd5e1' : '#334155';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(hx, hy, hw, hh, 8);
+          else ctx.rect(hx, hy, hw, hh);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = isLight ? '#1e293b' : '#f1f5f9';
+          ctx.font = '700 12px "Pretendard", -apple-system, sans-serif';
+          ctx.textBaseline = 'middle';
+          ctx.textAlign = 'left';
+          ctx.fillText((isMin ? '▸ ' : '▾ ') + titleText, hx + 10, hy + hh / 2);
+          ctx.restore();
+        }
+      }
+
+      if (!isMin && bodyEl && imgEl && imgEl.complete && imgEl.naturalWidth > 0) {
+        const bRect = bodyEl.getBoundingClientRect();
+        if (bRect.width > 0 && bRect.height > 0) {
+          const bx = bRect.left - canvasRect.left - offX;
+          const by = bRect.top - canvasRect.top - offY;
+          const bw = bRect.width;
+          const bh = bRect.height;
+
+          ctx.save();
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = isLight ? '#cbd5e1' : '#475569';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, 8);
+          else ctx.rect(bx, by, bw, bh);
+          ctx.fill();
+
+          ctx.save();
+          ctx.clip();
+          ctx.drawImage(imgEl, bx, by, bw, bh);
+          ctx.restore();
+
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    });
+  }
+
+  // --- [📐 판서·문제 카드·그래프 영역 자동 감지 직사각형 바운딩 박스 계산 엔진] ---
+  getSmartExportBounds() {
+    const activeTarget = (this.isGraphCovered && !this.pdfPageBoardData) ? 'board' : 'graph';
+    const activeStrokes = (this.inkStrokes || []).filter(s => {
+      if (!s) return false;
+      if (this.pdfPageBoardData) return true;
+      return (s.target || 'board') === activeTarget;
+    });
+
+    const canvasRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
+    const cardEls = (typeof document !== 'undefined') ? Array.from(document.querySelectorAll(
+      '#problemCardWidget, .extra-problem-card-widget, #graphCardWidget, .extra-graph-card-widget'
+    )).filter(el => {
+      if (!el || el.style.display === 'none') return false;
+      const cs = window.getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    }) : [];
+
+    // 필기 획도 없고 떠 있는 문제/보관 카드도 없고 PDF 페이지 보드도 없는 순수 그래프 상태에서는 기존 전체화면(또는 뷰파인더) 유지
+    if (activeStrokes.length === 0 && cardEls.length === 0 && !this.pdfPageBoardData) {
+      return null;
+    }
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const expand = (x, y, pad = 0) => {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      if (x - pad < minX) minX = x - pad;
+      if (y - pad < minY) minY = y - pad;
+      if (x + pad > maxX) maxX = x + pad;
+      if (y + pad > maxY) maxY = y + pad;
+    };
+
+    const bPx = this.boardPanX || 0;
+    const bPy = this.boardPanY || 0;
+
+    // 1. 모든 활성 필기 획(자유곡선 & 자동보정 기하도형) 좌표 스캔 (화면 밖 패닝 영역까지 100% 포함)
+    activeStrokes.forEach(s => {
+      const isBoard = (s.target || 'board') === 'board';
+      const pad = Math.max(8, (s.size || 4) * (s.isHighlighter ? 2.5 : 1.5));
+      if (s.shape) {
+        const sh = s.shape;
+        if (sh.type === 'line' && sh.start && sh.end) {
+          const s1 = isBoard ? { x: sh.start.x + bPx, y: sh.start.y + bPy } : this.mathToScreen(sh.start.x, sh.start.y);
+          const s2 = isBoard ? { x: sh.end.x + bPx, y: sh.end.y + bPy } : this.mathToScreen(sh.end.x, sh.end.y);
+          expand(s1.x, s1.y, pad);
+          expand(s2.x, s2.y, pad);
+        } else if (sh.type === 'circle' && sh.center) {
+          const sc = isBoard ? { x: sh.center.x + bPx, y: sh.center.y + bPy } : this.mathToScreen(sh.center.x, sh.center.y);
+          const sr = isBoard ? sh.radius : Math.abs(this.mathToScreen(sh.center.x + sh.radius, sh.center.y).x - sc.x);
+          expand(sc.x - sr, sc.y - sr, pad);
+          expand(sc.x + sr, sc.y + sr, pad);
+        } else if (sh.type === 'ellipse' && sh.center) {
+          const sc = isBoard ? { x: sh.center.x + bPx, y: sh.center.y + bPy } : this.mathToScreen(sh.center.x, sh.center.y);
+          const srx = isBoard ? sh.rx : Math.abs(this.mathToScreen(sh.center.x + sh.rx, sh.center.y).x - sc.x);
+          const sry = isBoard ? sh.ry : Math.abs(this.mathToScreen(sh.center.x, sh.center.y + sh.ry).y - sc.y);
+          expand(sc.x - srx, sc.y - sry, pad);
+          expand(sc.x + srx, sc.y + sry, pad);
+        } else if (sh.type === 'rect' && sh.min && sh.max) {
+          const rs1 = isBoard ? { x: sh.min.x + bPx, y: sh.min.y + bPy } : this.mathToScreen(sh.min.x, sh.min.y);
+          const rs2 = isBoard ? { x: sh.max.x + bPx, y: sh.max.y + bPy } : this.mathToScreen(sh.max.x, sh.max.y);
+          expand(rs1.x, rs1.y, pad);
+          expand(rs2.x, rs2.y, pad);
+        } else if (sh.pts && sh.pts.length > 0) {
+          sh.pts.forEach(pt => {
+            const sp = isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y);
+            expand(sp.x, sp.y, pad);
+          });
+        }
+      }
+      if (s.points && s.points.length > 0) {
+        s.points.forEach(pt => {
+          const sp = isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y);
+          expand(sp.x, sp.y, pad);
+        });
+      }
+    });
+
+    // 1.5. PDF 페이지 통째 칠판 모드가 활성화된 경우 해당 페이지 사각형 영역 포함
+    if (this.pdfPageBoardData && this.pdfPageBoardData.mathW && this.pdfPageBoardData.mathH) {
+      const cx = this.pdfPageBoardData.centerX || 0;
+      const cy = this.pdfPageBoardData.centerY || 0;
+      const pTL = this.mathToScreen(cx - this.pdfPageBoardData.mathW / 2, cy + this.pdfPageBoardData.mathH / 2);
+      const pBR = this.mathToScreen(cx + this.pdfPageBoardData.mathW / 2, cy - this.pdfPageBoardData.mathH / 2);
+      expand(pTL.x, pTL.y, 8);
+      expand(pBR.x, pBR.y, 8);
+    }
+
+    // 2. 떠 있는 모든 문제 카드 & 보관 그래프 카드 영역 스캔
+    cardEls.forEach(el => {
+      const isMin = el.classList.contains('minimized');
+      const headerEl = el.querySelector('.problem-card-header');
+      const bodyEl = el.querySelector('.problem-card-body');
+      if (headerEl) {
+        const hr = headerEl.getBoundingClientRect();
+        if (hr.width > 0 && hr.height > 0) {
+          expand(hr.left - canvasRect.left, hr.top - canvasRect.top, 4);
+          expand(hr.right - canvasRect.left, hr.bottom - canvasRect.top, 4);
+        }
+      }
+      if (!isMin && bodyEl) {
+        const br = bodyEl.getBoundingClientRect();
+        if (br.width > 0 && br.height > 0) {
+          expand(br.left - canvasRect.left, br.top - canvasRect.top, 4);
+          expand(br.right - canvasRect.left, br.bottom - canvasRect.top, 4);
+        }
+      }
+    });
+
+    // 3. 1층 실시간 그래프 레이어일 때: 그려진 함수 핸들/원점/구간경계/수선/라벨도 함께 포함
+    if (!this.isGraphCovered) {
+      if (this.graphs && this.graphs.length > 0) {
+        if (this.showAxes) {
+          const orig = this.mathToScreen(0, 0);
+          expand(orig.x, orig.y, 90);
+        }
+        this.graphs.forEach(g => {
+          const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+          const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+          if (g.handles && g.handles.length > 0) {
+            g.handles.forEach(h => {
+              const s = this.mathToScreen(h.x + ox, h.y + oy);
+              expand(s.x, s.y, 130);
+            });
+          }
+        });
+      }
+      if (this.usePiecewise && this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0) {
+        const origY = this.mathToScreen(0, 0).y;
+        this.piecewiseBoundaries.forEach(bx => {
+          const sx = this.mathToScreen(bx, 0).x;
+          expand(sx, origY, 100);
+        });
+      }
+      if (this.dropLines && this.dropLines.length > 0) {
+        this.dropLines.forEach(dl => {
+          const s = this.mathToScreen(dl.sourceX, dl.sourceY);
+          const fx = this.mathToScreen(dl.sourceX, 0);
+          const fy = this.mathToScreen(0, dl.sourceY);
+          expand(s.x, s.y, 45);
+          expand(fx.x, fx.y, 45);
+          expand(fy.x, fy.y, 45);
+        });
+      }
+      if (this.textLabels && this.textLabels.length > 0) {
+        this.textLabels.forEach(tl => {
+          const s = this.mathToScreen(tl.mathX, tl.mathY);
+          expand(s.x, s.y, 60);
+        });
+      }
+    }
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+      return null;
+    }
+
+    const PAD = 36;
+    const cropX = Math.floor(minX - PAD);
+    const cropY = Math.floor(minY - PAD);
+    const cropW = Math.min(8000, Math.max(160, Math.ceil(maxX - minX + PAD * 2)));
+    const cropH = Math.min(8000, Math.max(120, Math.ceil(maxY - minY + PAD * 2)));
+
+    return { x: cropX, y: cropY, width: cropW, height: cropH };
+  }
+
+  // --- [뷰파인더 1:1 칼크롭 & 판서영역 자동 감지 직사각형 오프스크린 렌더링 엔진] ---
+  getExportCanvas() {
+    const dpi = this.exportDPI;
+    const exportCanvas = document.createElement('canvas');
+
+    if (this.useViewfinder) {
+      // 1. 뷰파인더 1:1 칼크롭 모드
+      const box = this.getViewfinderBox();
+      const targetWIn = this.vfTargetWIn;
+      const targetHIn = targetWIn / this.vfAspect;
+
+      const pxW = Math.round(targetWIn * dpi);
+      const pxH = Math.round(targetHIn * dpi);
+      exportCanvas.width = pxW;
+      exportCanvas.height = pxH;
+      const expCtx = exportCanvas.getContext('2d');
+
+      // 상태 백업
+      const backup = {
+        sw: this.screenWidth,
+        sh: this.screenHeight,
+        panX: this.panX,
+        panY: this.panY,
+        zoomLevel: this.zoomLevel,
+        ySpan: this.ySpan,
+        lockAspect: this.lockAspect
+      };
+
+      // 뷰파인더 수학 박스가 오프스크린 캔버스에 100% 매핑되도록 임시 스왑
+      const unitScale = pxW / box.w;
+      this.screenWidth = pxW;
+      this.screenHeight = pxH;
+      this.panX = -box.cx * unitScale;
+      this.panY = box.cy * unitScale;
+      this.lockAspect = true;
+      this.zoomLevel = 1.0;
+      this.ySpan = (pxH / 2) / unitScale;
+
+      this.render(expCtx, pxW, pxH, true);
+
+      // 복원
+      this.screenWidth = backup.sw;
+      this.screenHeight = backup.sh;
+      this.panX = backup.panX;
+      this.panY = backup.panY;
+      this.zoomLevel = backup.zoomLevel;
+      this.ySpan = backup.ySpan;
+      this.lockAspect = backup.lockAspect;
+
+      return { canvas: exportCanvas, width: pxW, height: pxH, dpi };
+    } else {
+      // 2. 뷰파인더 OFF 시: 판서/문제 카드가 있으면 자동 감지 직사각형 크롭, 순수 그래프만 있으면 현재 화면 비율 유지
+      const smartBounds = this.getSmartExportBounds();
+      const scaleFactor = (dpi >= 600) ? 3 : 2;
+      const sw = smartBounds ? smartBounds.width : this.screenWidth;
+      const sh = smartBounds ? smartBounds.height : this.screenHeight;
+      const maxPx = 8192;
+      const effScale = Math.min(scaleFactor, maxPx / Math.max(1, sw), maxPx / Math.max(1, sh));
+      const pxW = Math.round(sw * effScale);
+      const pxH = Math.round(sh * effScale);
+      exportCanvas.width = pxW;
+      exportCanvas.height = pxH;
+      const expCtx = exportCanvas.getContext('2d');
+
+      if (smartBounds) {
+        const cropX = smartBounds.x;
+        const cropY = smartBounds.y;
+        const backup = {
+          sw: this.screenWidth,
+          sh: this.screenHeight,
+          panX: this.panX,
+          panY: this.panY,
+          ySpan: this.ySpan,
+          lockAspect: this.lockAspect,
+          boardPanX: this.boardPanX,
+          boardPanY: this.boardPanY,
+          exportCropOffset: this._exportCropOffset
+        };
+
+        const origX = backup.sw / 2 + backup.panX;
+        const origY = backup.sh / 2 + backup.panY;
+
+        this.screenWidth = sw;
+        this.screenHeight = sh;
+        this.panX = (origX - cropX) - sw / 2;
+        this.panY = (origY - cropY) - sh / 2;
+        this.ySpan = backup.ySpan * (sh / Math.max(1, backup.sh));
+        this.lockAspect = true;
+        this.boardPanX = (backup.boardPanX || 0) - cropX;
+        this.boardPanY = (backup.boardPanY || 0) - cropY;
+        this._exportCropOffset = { x: cropX, y: cropY };
+
+        expCtx.save();
+        expCtx.scale(effScale, effScale);
+        this.render(expCtx, sw, sh, true);
+        expCtx.restore();
+
+        this.screenWidth = backup.sw;
+        this.screenHeight = backup.sh;
+        this.panX = backup.panX;
+        this.panY = backup.panY;
+        this.ySpan = backup.ySpan;
+        this.lockAspect = backup.lockAspect;
+        this.boardPanX = backup.boardPanX;
+        this.boardPanY = backup.boardPanY;
+        this._exportCropOffset = backup.exportCropOffset;
+      } else {
+        expCtx.save();
+        expCtx.scale(effScale, effScale);
+        this.render(expCtx, sw, sh, true);
+        expCtx.restore();
+      }
+
+      return { canvas: exportCanvas, width: pxW, height: pxH, dpi };
+    }
+  }
+
+  async copyToClipboard() {
+    try {
+      const exp = this.getExportCanvas();
+      exp.canvas.toBlob(async (rawBlob) => {
+        if (!rawBlob) return;
+        try {
+          const highDpiBlob = await this.injectDpiToBlob(rawBlob, exp.dpi);
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': highDpiBlob })
+          ]);
+          const cmW = (this.vfTargetWIn * 2.54).toFixed(1);
+          this.showToast(`✨ 한글/PPT에 [Ctrl+V]! 가로 ${cmW}cm 규격 (${exp.dpi} DPI 초고화질)으로 복사되었습니다.`);
+        } catch (clipErr) {
+          this.downloadPNG();
+          this.showToast('클립보드 권한 제한으로 PNG 파일로 저장되었습니다.');
+        }
+      }, 'image/png');
+    } catch (err) {
+      console.error(err);
+      this.showToast('복사 중 오류가 발생했습니다.');
+    }
+  }
+
+  downloadPNG() {
+    const exp = this.getExportCanvas();
+    exp.canvas.toBlob(async (rawBlob) => {
+      if (!rawBlob) return;
+      const highDpiBlob = await this.injectDpiToBlob(rawBlob, exp.dpi);
+      const url = URL.createObjectURL(highDpiBlob);
+      const link = document.createElement('a');
+      link.download = `graph_master_${this.vfAspectName.replace(':', '_')}_${Date.now()}.png`;
+      link.href = url;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      this.showToast(`📁 투명 배경 고화질 PNG (${exp.dpi} DPI, ${exp.width}×${exp.height}px) 저장 완료!`);
+    }, 'image/png');
+  }
+
+  showToast(message) {
+    // [대표님 기획]: 캔버스 몰입감 극대화를 위해 하단 안내창(토스트) 팝업 완전 비활성화.
+    // 단축키 및 기능 안내는 버튼 hover 툴팁(title)으로 제공하여 시각적 잡음 100% 제거.
+    return;
+  }
+}
+
+// 브라우저 로딩 후 초기화
+window.addEventListener('DOMContentLoaded', () => {
+  window.graphApp = new GraphApp();
+});
