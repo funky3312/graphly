@@ -5237,11 +5237,11 @@ class GraphApp {
   // 칠판 전체가 이동(boardPanX, boardPanY)할 때 문제 창 위젯도 transform으로 100% 한 몸으로 함께 이동!
   // 판서자가 칠판 옆으로 이동하면 문제 창과 그래프 창이 둘 다 왼쪽으로 멀어지고 광활한 빈 판서 공간 확보!
   updateProblemCardPosition() {
-    // 🌟 [1층 vs 2층 레이어 완벽 분리]:
-    // 1층(!isGraphCovered, 실시간 그래프 편집 레이어): 문제 카드는 좌상단(0,0)에 100% 고정!
-    // 2층(isGraphCovered, 그래프 스샷 보관 후 열리는 판서 레이어): 칠판 이동(boardPanX, boardPanY)에 맞춰 문제 카드와 그래프 카드들이 함께 이동!
-    const bPx = (this.boardPanX || 0);
-    const bPy = (this.boardPanY || 0);
+    // 🌟 [1층 vs 2층 레이어 & 카드 접힘 일관성 규칙 (대표님 제1안 확정)]:
+    // - 1층(!isGraphCovered, 실시간 그래프 편집 모드): 문제 카드는 화면 좌상단(0,0)에 100% 고정!
+    // - 2층(isGraphCovered, 판서 모드): 문제 카드와 그래프 카드가 펼쳐져 있든(▾) 접혀 있든(▸) 모두 칠판 이동(boardPanX, boardPanY)과 100% 한 몸으로 함께 이동!
+    const bPx = this.isGraphCovered ? (this.boardPanX || 0) : 0;
+    const bPy = this.isGraphCovered ? (this.boardPanY || 0) : 0;
     const gWidget = document.getElementById('graphCardWidget');
     if (gWidget && this.graphCardData && gWidget.style.display !== 'none') {
       gWidget.style.transform = `translate3d(${bPx}px, ${bPy}px, 0)`;
@@ -5263,7 +5263,7 @@ class GraphApp {
     }
     const widget = document.getElementById('problemCardWidget');
     if (!widget) return;
-    if (!this.hasActiveProblemCard()) {
+    if (!this.problemCardData || widget.style.display === 'none') {
       if (!this.problemCardData) {
         widget.style.transform = '';
       }
@@ -5579,6 +5579,9 @@ class GraphApp {
           </button>
         </div>
         <div class="problem-card-actions">
+          <button type="button" class="card-btn btn-card-laser" title="카드 위 레이저 포인터 켜기/끄기 (켜면 카드 안에서 줄을 그어 설명할 수 있습니다)">
+            <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5" fill="currentColor"/><circle cx="12" cy="12" r="7.5" stroke-dasharray="2.5 2.5"/><line x1="12" y1="1.5" x2="12" y2="4.5"/><line x1="12" y1="19.5" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4.5" y2="12"/><line x1="19.5" y1="12" x2="22.5" y2="12"/></svg></span>
+          </button>
           ${restorePageBtnHtml}
           <button class="card-btn btn-card-close btn-extra-close" title="닫기">
             <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
@@ -5591,6 +5594,7 @@ class GraphApp {
       </div>
     `;
     document.body.appendChild(el);
+    this.attachCardLaserSystem(el);
 
     const startMin = Boolean(options && options.startMinimized);
     const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum };
@@ -6192,6 +6196,7 @@ class GraphApp {
     this.isProblemCardMinimized = !this.isProblemCardMinimized;
     widget.classList.toggle('minimized', this.isProblemCardMinimized);
     if (icon) icon.textContent = this.isProblemCardMinimized ? '▸' : '▾';
+    this.updateProblemCardPosition();
     this.syncProblemCardRectFromWidget();
     this.showToast(this.isProblemCardMinimized ? '📖 문제 카드를 접었습니다.' : '📑 문제 카드를 다시 펼쳤습니다.');
     this.render();
@@ -6241,6 +6246,254 @@ class GraphApp {
     const topZ = 150 + allCards.length;
     targetEl.style.zIndex = String(topZ);
     this.highestProblemCardZIndex = topZ;
+  }
+
+  // 🔴 [카드 전용 상단 레이저 포인터 시스템 (문제 카드 & 그래프 카드 공용)]
+  // - 카드 상단 메뉴의 [🔴 레이저] 아이콘을 켜면 카드 몸통 안에서 드래그 시 카드가 이동하지 않고
+  //   네온 레드 레이저 줄(잔상 궤적 + 끝점 타겟 포인트)이 스윽 그어졌다가 0.75초 뒤 사르륵 사라집니다!
+  // - 액정타블렛 / M2·M4 아이패드 호버링 시에도 카드 위에 빨간 레이저 포인트가 실시간 노출됩니다.
+  attachCardLaserSystem(cardWidgetEl) {
+    if (!cardWidgetEl || cardWidgetEl._cardLaserAttached) return;
+    cardWidgetEl._cardLaserAttached = true;
+
+    const bodyEl = cardWidgetEl.querySelector('.problem-card-body');
+    const laserBtn = cardWidgetEl.querySelector('.btn-card-laser');
+    if (!bodyEl || !laserBtn) return;
+
+    let laserCanvas = bodyEl.querySelector('.card-laser-canvas');
+    if (!laserCanvas) {
+      laserCanvas = document.createElement('canvas');
+      laserCanvas.className = 'card-laser-canvas';
+      bodyEl.appendChild(laserCanvas);
+    }
+
+    const state = {
+      active: false,
+      isDrawing: false,
+      strokes: [],
+      currentStroke: null,
+      hoverPos: null,
+      hoverTime: 0,
+      rafId: null
+    };
+    cardWidgetEl._cardLaserState = state;
+
+    const syncCanvasSize = () => {
+      const rect = bodyEl.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 2;
+      const w = Math.max(1, Math.round(rect.width));
+      const h = Math.max(1, Math.round(rect.height));
+      const targetW = Math.round(w * dpr);
+      const targetH = Math.round(h * dpr);
+      if (laserCanvas.width !== targetW || laserCanvas.height !== targetH) {
+        laserCanvas.width = targetW;
+        laserCanvas.height = targetH;
+      }
+      return { w, h, dpr };
+    };
+
+    const FADE_MS = 750;
+
+    const renderLaserFrame = () => {
+      const now = performance.now();
+      const { w, h, dpr } = syncCanvasSize();
+      const ctx = laserCanvas.getContext('2d');
+      ctx.save();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+
+      // 만료된 포인트/스트로크 정리 (그리는 중인 스트로크는 손을 떼기 전까지 선명하게 유지하되 최근 1.4초 궤적 보존)
+      state.strokes = state.strokes.filter(st => {
+        if (!st.points || st.points.length === 0) return false;
+        const maxAge = st.finished ? FADE_MS : 1400;
+        st.points = st.points.filter(pt => (now - pt.t) < maxAge);
+        return st.points.length > 0;
+      });
+
+      // 1) 네온 레이저 궤적 렌더링
+      state.strokes.forEach(st => {
+        const pts = st.points;
+        if (!pts || pts.length === 0) return;
+
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        for (let i = 1; i < pts.length; i++) {
+          const p0 = pts[i - 1];
+          const p1 = pts[i];
+          const age = now - p1.t;
+          const life = st.finished
+            ? Math.max(0, 1 - age / FADE_MS)
+            : Math.max(0.25, 1 - age / 1400);
+          if (life <= 0.01) continue;
+
+          // 바깥쪽 루비 레드 글로우
+          ctx.beginPath();
+          ctx.moveTo(p0.x * w, p0.y * h);
+          ctx.lineTo(p1.x * w, p1.y * h);
+          ctx.strokeStyle = `rgba(239, 68, 68, ${(0.55 * life).toFixed(3)})`;
+          ctx.lineWidth = 8.5 * (0.55 + 0.45 * life);
+          ctx.stroke();
+
+          // 중간 선명한 레드 코어
+          ctx.beginPath();
+          ctx.moveTo(p0.x * w, p0.y * h);
+          ctx.lineTo(p1.x * w, p1.y * h);
+          ctx.strokeStyle = `rgba(220, 38, 38, ${(0.92 * life).toFixed(3)})`;
+          ctx.lineWidth = 4.2 * (0.65 + 0.35 * life);
+          ctx.stroke();
+
+          // 중심 화이트-핑크 하이라이트 코어
+          ctx.beginPath();
+          ctx.moveTo(p0.x * w, p0.y * h);
+          ctx.lineTo(p1.x * w, p1.y * h);
+          ctx.strokeStyle = `rgba(255, 241, 242, ${(0.95 * life).toFixed(3)})`;
+          ctx.lineWidth = 1.7 * (0.7 + 0.3 * life);
+          ctx.stroke();
+        }
+        ctx.restore();
+      });
+
+      // 2) 펜 끝 / 호버 타겟 레이저 포인트 도트 렌더링
+      const showHoverDot = state.hoverPos && ((state.isDrawing) || (now - state.hoverTime < 260));
+      if (showHoverDot) {
+        const hx = state.hoverPos.nx * w;
+        const hy = state.hoverPos.ny * h;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(hx, hy, state.isDrawing ? 8.5 : 7.0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.32)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(hx, hy, state.isDrawing ? 4.6 : 3.8, 0, Math.PI * 2);
+        ctx.fillStyle = '#ef4444';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(hx, hy, 2.0, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.restore();
+      }
+
+      ctx.restore();
+
+      if (state.strokes.length > 0 || showHoverDot || state.isDrawing) {
+        state.rafId = requestAnimationFrame(renderLaserFrame);
+      } else {
+        state.rafId = null;
+      }
+    };
+
+    const ensureLoop = () => {
+      if (!state.rafId) {
+        state.rafId = requestAnimationFrame(renderLaserFrame);
+      }
+    };
+
+    const getNormPos = (e) => {
+      const rect = bodyEl.getBoundingClientRect();
+      const w = Math.max(1, rect.width);
+      const h = Math.max(1, rect.height);
+      const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / w));
+      const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / h));
+      return { nx, ny };
+    };
+
+    laserBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      state.active = !state.active;
+      cardWidgetEl.classList.toggle('card-laser-active', state.active);
+      laserBtn.classList.toggle('active', state.active);
+      if (state.active) {
+        syncCanvasSize();
+      } else {
+        state.isDrawing = false;
+        state.strokes = [];
+        state.currentStroke = null;
+        state.hoverPos = null;
+        const ctx = laserCanvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, laserCanvas.width, laserCanvas.height);
+      }
+    });
+
+    laserCanvas.addEventListener('pointerdown', (e) => {
+      if (!state.active) return;
+      this.bringCardToFront(cardWidgetEl);
+      e.preventDefault();
+      e.stopPropagation();
+      try { laserCanvas.setPointerCapture(e.pointerId); } catch (err) { }
+
+      const pos = getNormPos(e);
+      const now = performance.now();
+      state.isDrawing = true;
+      state.hoverPos = pos;
+      state.hoverTime = now;
+      const stroke = {
+        finished: false,
+        points: [{ x: pos.nx, y: pos.ny, t: now }]
+      };
+      state.currentStroke = stroke;
+      state.strokes.push(stroke);
+      ensureLoop();
+    });
+
+    laserCanvas.addEventListener('pointermove', (e) => {
+      if (!state.active) return;
+      const pos = getNormPos(e);
+      const now = performance.now();
+      state.hoverPos = pos;
+      state.hoverTime = now;
+
+      if (state.isDrawing && state.currentStroke) {
+        e.preventDefault();
+        e.stopPropagation();
+        const pts = state.currentStroke.points;
+        const last = pts[pts.length - 1];
+        // 기존 점들의 타임스탬프를 갱신하여 긋고 있는 동안 줄이 끊기지 않고 유지되도록 처리
+        for (let i = 0; i < pts.length; i++) {
+          if (now - pts[i].t > 550) {
+            pts[i].t = now - 550;
+          }
+        }
+        if (!last || Math.hypot(pos.nx - last.x, pos.ny - last.y) > 0.002) {
+          pts.push({ x: pos.nx, y: pos.ny, t: now });
+        }
+      }
+      ensureLoop();
+    });
+
+    const finishLaserStroke = (e) => {
+      if (!state.isDrawing) return;
+      state.isDrawing = false;
+      const now = performance.now();
+      if (state.currentStroke && state.currentStroke.points) {
+        const len = state.currentStroke.points.length;
+        state.currentStroke.points.forEach((pt, idx) => {
+          // 시작점부터 끝점까지 순차적으로 스르륵 사라지도록 타임스탬프 정렬
+          const ratio = len > 1 ? (idx / (len - 1)) : 1;
+          pt.t = now - (1 - ratio) * 180;
+        });
+        state.currentStroke.finished = true;
+      }
+      state.currentStroke = null;
+      if (e && e.pointerId !== undefined) {
+        try { laserCanvas.releasePointerCapture(e.pointerId); } catch (err) { }
+      }
+      ensureLoop();
+    };
+
+    laserCanvas.addEventListener('pointerup', finishLaserStroke);
+    laserCanvas.addEventListener('pointercancel', finishLaserStroke);
+    laserCanvas.addEventListener('pointerleave', () => {
+      if (!state.isDrawing) {
+        state.hoverPos = null;
+        ensureLoop();
+      }
+    });
   }
 
   // 🌟 [각 그래프 보관 카드(#1, #2, #3...) 전용 0.5KB 초경량 순수 그래프 상태 타임머신 스냅샷] 🌟
@@ -6932,6 +7185,9 @@ class GraphApp {
           </button>
         </div>
         <div class="problem-card-actions">
+          <button type="button" class="card-btn btn-card-laser" title="카드 위 레이저 포인터 켜기/끄기 (켜면 카드 안에서 줄을 그어 설명할 수 있습니다)">
+            <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5" fill="currentColor"/><circle cx="12" cy="12" r="7.5" stroke-dasharray="2.5 2.5"/><line x1="12" y1="1.5" x2="12" y2="4.5"/><line x1="12" y1="19.5" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4.5" y2="12"/><line x1="19.5" y1="12" x2="22.5" y2="12"/></svg></span>
+          </button>
           <button class="card-btn card-btn-restore btn-extra-restore" title="칠판 덮개를 걷어내고 실시간 그래프 다시 열기">
             <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>그래프 복구</span>
           </button>
@@ -6946,6 +7202,7 @@ class GraphApp {
       </div>
     `;
     document.body.appendChild(el);
+    this.attachCardLaserSystem(el);
 
     const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), aspect, isMin: false, graphSnapshot: graphSnapshot || this.getPureGraphSnapshot(), caseIdx };
     this.extraGraphCards.push(cardItem);
@@ -7404,6 +7661,8 @@ class GraphApp {
     applyLongPressShield(widget);
     applyLongPressShield(document.getElementById('problemCardWidget'));
     applyLongPressShield(document.getElementById('inkFloatingToolbar'));
+    this.attachCardLaserSystem(widget);
+    this.attachCardLaserSystem(document.getElementById('problemCardWidget'));
 
     const togglePrimaryGraphMin = () => {
       if (widget && widget._lastToggleTime && performance.now() - widget._lastToggleTime < 120) return;

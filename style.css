@@ -6939,3 +6939,71 @@ header {
   z-index: 445 !important;
 }
 
+/* 🔴 [카드 전용 상단 레이저 토글 버튼 & 카드 내부 잔상 레이저 캔버스] */
+.btn-card-laser {
+  width: 28px !important;
+  height: 26px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 7px !important;
+  color: #f87171 !important;
+  border: 1px solid rgba(248, 113, 113, 0.28) !important;
+  background: rgba(239, 68, 68, 0.08) !important;
+  transition: all 0.16s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+.btn-card-laser:hover {
+  background: rgba(239, 68, 68, 0.18) !important;
+  border-color: rgba(248, 113, 113, 0.55) !important;
+  color: #ef4444 !important;
+  transform: translateY(-1px);
+}
+
+.btn-card-laser.active {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+  border-color: #fca5a5 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+}
+
+body.theme-light .btn-card-laser {
+  color: #dc2626 !important;
+  background: rgba(239, 68, 68, 0.08) !important;
+  border-color: rgba(220, 38, 38, 0.28) !important;
+}
+
+body.theme-light .btn-card-laser.active {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+  border-color: #dc2626 !important;
+}
+
+.card-laser-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.card-laser-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  pointer-events: none;
+  z-index: 6;
+  touch-action: none !important;
+}
+
+.problem-card-widget.card-laser-active .card-laser-canvas {
+  display: block !important;
+  pointer-events: auto !important;
+  cursor: crosshair !important;
+}
+
+.problem-card-widget.card-laser-active .problem-card-resize-handle {
+  z-index: 12 !important;
+}
