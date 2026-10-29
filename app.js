@@ -4491,7 +4491,8 @@ class GraphApp {
       if (!this.isInkMode) {
         this.toggleInkMode(true);
       }
-      this.setActiveInkTool('pen');
+      // 🌟 [대표님 피드백 반영]: PDF 1페이지를 불러왔을 때는 이전 도구가 무엇이었든 무조건 이동 모드(select)로 시작하여 확대/초점 조절부터 편하게!
+      this.setActiveInkTool('select');
       this.syncControls();
       this.renderLayerList();
       this.renderFuncList();
@@ -4571,7 +4572,8 @@ class GraphApp {
     if (!this.isInkMode) {
       this.toggleInkMode(true);
     }
-    this.setActiveInkTool('pen');
+    // 🌟 [대표님 피드백 반영]: PDF 1페이지를 불러왔을 때는 이전 도구가 무엇이었든 무조건 이동 모드(select)로 시작하여 확대/초점 조절부터 편하게!
+    this.setActiveInkTool('select');
     this.syncControls();
     this.renderLayerList();
     this.renderFuncList();
@@ -4773,6 +4775,10 @@ class GraphApp {
       if (wrapper) {
         wrapper.style.width = `${cssW}px`;
         wrapper.style.height = `${cssH}px`;
+        if (targetZoom > 0) {
+          wrapper._basePdfW = cssW / targetZoom;
+          wrapper._basePdfH = cssH / targetZoom;
+        }
       }
 
       canvas.width = Math.round(viewport.width);
@@ -4848,10 +4854,11 @@ class GraphApp {
     }
   }
 
-  setPdfZoom(zoom) {
+  setPdfZoom(zoom, options = null) {
     const prevZoom = this.pdfZoom || 1.5;
     const nextZoom = Math.max(0.6, Math.min(zoom, 3.2));
-    if (Math.abs(nextZoom - prevZoom) < 0.01) return;
+    const isFastPreview = Boolean(options && options.fastPreview);
+    if (!isFastPreview && Math.abs(nextZoom - prevZoom) < 0.01) return;
 
     const viewport = document.getElementById('pdfViewport');
     const ratio = nextZoom / prevZoom;
@@ -4865,27 +4872,67 @@ class GraphApp {
     // 기존 페이지 래퍼 크기를 즉시 비례 스케일링하여 스크롤 위치가 첫 페이지로 튀지 않게 고정!
     document.querySelectorAll('.pdf-page-wrapper').forEach(w => {
       const c = w.querySelector('canvas');
-      const curW = parseFloat(w.style.width) || w.offsetWidth;
-      const curH = parseFloat(w.style.height) || w.offsetHeight;
-      if (curW > 0 && curH > 0) {
-        const nw = Math.round(curW * ratio);
-        const nh = Math.round(curH * ratio);
+      if (!w._basePdfW || !w._basePdfH) {
+        const curW = parseFloat(w.style.width) || w.offsetWidth;
+        const curH = parseFloat(w.style.height) || w.offsetHeight;
+        if (curW > 0 && curH > 0) {
+          w._basePdfW = curW / prevZoom;
+          w._basePdfH = curH / prevZoom;
+        }
+      }
+      if (w._basePdfW && w._basePdfH) {
+        const nw = Math.round(w._basePdfW * nextZoom);
+        const nh = Math.round(w._basePdfH * nextZoom);
         w.style.width = `${nw}px`;
         w.style.height = `${nh}px`;
         if (c) {
           c.style.width = `${nw}px`;
           c.style.height = `${nh}px`;
         }
+      } else {
+        const curW = parseFloat(w.style.width) || w.offsetWidth;
+        const curH = parseFloat(w.style.height) || w.offsetHeight;
+        if (curW > 0 && curH > 0) {
+          const nw = Math.round(curW * ratio);
+          const nh = Math.round(curH * ratio);
+          w.style.width = `${nw}px`;
+          w.style.height = `${nh}px`;
+          if (c) {
+            c.style.width = `${nw}px`;
+            c.style.height = `${nh}px`;
+          }
+        }
       }
     });
 
-    if (viewport && prevScrollTop > 0) {
-      const newScrollTop = Math.max(0, Math.round(prevCenterOffset * ratio - viewport.clientHeight / 2));
-      viewport.scrollTop = newScrollTop;
-      this.savedPdfScrollTop = newScrollTop;
+    if (viewport) {
+      if (options && typeof options.anchorContentY === 'number' && typeof options.anchorRatio === 'number') {
+        const newScrollTop = Math.max(0, Math.round(options.anchorContentY * options.anchorRatio - options.currentMidY));
+        const newScrollLeft = Math.max(0, Math.round(options.anchorContentX * options.anchorRatio - options.currentMidX));
+        viewport.scrollTop = newScrollTop;
+        viewport.scrollLeft = newScrollLeft;
+        this.savedPdfScrollTop = newScrollTop;
+        this.savedPdfScrollLeft = newScrollLeft;
+      } else if (prevScrollTop > 0) {
+        const newScrollTop = Math.max(0, Math.round(prevCenterOffset * ratio - viewport.clientHeight / 2));
+        viewport.scrollTop = newScrollTop;
+        this.savedPdfScrollTop = newScrollTop;
+      }
     }
 
-    this.renderAllPdfPages(false);
+    if (isFastPreview) {
+      if (this._pdfPinchRenderTimer) clearTimeout(this._pdfPinchRenderTimer);
+      this._pdfPinchRenderTimer = setTimeout(() => {
+        this._pdfPinchRenderTimer = null;
+        this.renderAllPdfPages(false);
+      }, 160);
+    } else {
+      if (this._pdfPinchRenderTimer) {
+        clearTimeout(this._pdfPinchRenderTimer);
+        this._pdfPinchRenderTimer = null;
+      }
+      this.renderAllPdfPages(false);
+    }
   }
 
   fitPdfWidth() {
@@ -4956,7 +5003,103 @@ class GraphApp {
       }
     });
 
+    // 🌟 [아이패드 / 태블릿 PDF 모달 뷰어(#pdfViewport) 두 손가락 핀치 줌 & 두 손가락 스크롤] 🌟
+    this._pdfTouchPointers = new Map();
+    this._pdfPinchState = null;
+
+    const startPdfViewerPinch = (p1, p2) => {
+      this.isPdfCropping = false;
+      if (cropBox) cropBox.style.display = 'none';
+      if (this.activeCropPointerId !== null && this.activeCropPointerId !== undefined) {
+        try { viewport.releasePointerCapture(this.activeCropPointerId); } catch (err) { }
+        this.activeCropPointerId = null;
+      }
+      const vRect = viewport.getBoundingClientRect();
+      const midX = (p1.x + p2.x) / 2 - vRect.left;
+      const midY = (p1.y + p2.y) / 2 - vRect.top;
+      const dist = Math.max(20, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+      this._pdfPinchState = {
+        startDist: dist,
+        startZoom: this.pdfZoom || 1.5,
+        startMidX: midX,
+        startMidY: midY,
+        contentX: viewport.scrollLeft + midX,
+        contentY: viewport.scrollTop + midY
+      };
+    };
+
+    const movePdfViewerPinch = (p1, p2) => {
+      if (!this._pdfPinchState) startPdfViewerPinch(p1, p2);
+      const vRect = viewport.getBoundingClientRect();
+      const midX = (p1.x + p2.x) / 2 - vRect.left;
+      const midY = (p1.y + p2.y) / 2 - vRect.top;
+      const dist = Math.max(20, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+      const scaleRatio = dist / this._pdfPinchState.startDist;
+      const nextZoom = Math.max(0.6, Math.min(3.2, Math.round(this._pdfPinchState.startZoom * scaleRatio * 100) / 100));
+      const actualRatio = nextZoom / this._pdfPinchState.startZoom;
+      this.setPdfZoom(nextZoom, {
+        fastPreview: true,
+        anchorContentX: this._pdfPinchState.contentX,
+        anchorContentY: this._pdfPinchState.contentY,
+        anchorRatio: actualRatio,
+        currentMidX: midX,
+        currentMidY: midY
+      });
+    };
+
+    const endPdfViewerPinch = () => {
+      if (this._pdfPinchState) {
+        this._pdfPinchState = null;
+        if (this._pdfPinchRenderTimer) {
+          clearTimeout(this._pdfPinchRenderTimer);
+          this._pdfPinchRenderTimer = null;
+        }
+        this.renderAllPdfPages(false);
+      }
+    };
+
+    // iOS / iPadOS Safari & Android TouchEvents 직결 지원
+    viewport.addEventListener('touchstart', (e) => {
+      if (e.touches && e.touches.length >= 2) {
+        e.preventDefault();
+        startPdfViewerPinch(
+          { x: e.touches[0].clientX, y: e.touches[0].clientY },
+          { x: e.touches[1].clientX, y: e.touches[1].clientY }
+        );
+      }
+    }, { passive: false });
+
+    viewport.addEventListener('touchmove', (e) => {
+      if (e.touches && e.touches.length >= 2) {
+        e.preventDefault();
+        movePdfViewerPinch(
+          { x: e.touches[0].clientX, y: e.touches[0].clientY },
+          { x: e.touches[1].clientX, y: e.touches[1].clientY }
+        );
+      }
+    }, { passive: false });
+
+    const onPdfTouchEnd = (e) => {
+      if (!e.touches || e.touches.length < 2) {
+        if (!e.touches || e.touches.length === 0) {
+          this._pdfTouchPointers.clear();
+        }
+        endPdfViewerPinch();
+      }
+    };
+    viewport.addEventListener('touchend', onPdfTouchEnd, { passive: false });
+    viewport.addEventListener('touchcancel', onPdfTouchEnd, { passive: false });
+
     viewport.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') {
+        this._pdfTouchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (this._pdfTouchPointers.size >= 2) {
+          e.preventDefault();
+          const pts = Array.from(this._pdfTouchPointers.values());
+          startPdfViewerPinch(pts[0], pts[1]);
+          return;
+        }
+      }
       // 크롭 모드가 아니면 스크롤 등 기본 동작 수행
       if (!this.isPdfCropModeActive) return;
       if (e.button !== 0) return;
@@ -5007,6 +5150,15 @@ class GraphApp {
     }, { passive: false });
 
     const handleCropMove = (e) => {
+      if (e.pointerType === 'touch' && this._pdfTouchPointers && this._pdfTouchPointers.has(e.pointerId)) {
+        this._pdfTouchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (this._pdfTouchPointers.size >= 2) {
+          e.preventDefault();
+          const pts = Array.from(this._pdfTouchPointers.values());
+          movePdfViewerPinch(pts[0], pts[1]);
+          return;
+        }
+      }
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
       e.preventDefault();
 
@@ -5032,6 +5184,12 @@ class GraphApp {
     window.addEventListener('pointermove', handleCropMove, { passive: false });
 
     const handleCropUp = (e) => {
+      if (this._pdfTouchPointers && this._pdfTouchPointers.has(e.pointerId)) {
+        this._pdfTouchPointers.delete(e.pointerId);
+        if (this._pdfTouchPointers.size < 2) {
+          endPdfViewerPinch();
+        }
+      }
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
       this.isPdfCropping = false;
 
@@ -5116,7 +5274,13 @@ class GraphApp {
       }
     }, { passive: false });
 
-    const handleCropCancel = () => {
+    const handleCropCancel = (e) => {
+      if (e && this._pdfTouchPointers && e.pointerId !== undefined) {
+        this._pdfTouchPointers.delete(e.pointerId);
+      }
+      if (!this._pdfTouchPointers || this._pdfTouchPointers.size < 2) {
+        endPdfViewerPinch();
+      }
       this.isPdfCropping = false;
       if (this.activeCropPointerId !== null && this.activeCropPointerId !== undefined) {
         try {
@@ -16578,42 +16742,15 @@ class GraphApp {
         this.isPointerDownOnCanvas = true;
         this._pointerDownStart = { time: Date.now(), x: e.clientX, y: e.clientY };
 
-        if (this.activePointers) {
-          this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
+        if (this.activePointers && e.pointerType !== 'mouse' && e.pointerType !== 'pen') {
+          const nowT = Date.now();
+          for (const [k, v] of this.activePointers.entries()) {
+            if (nowT - (v.time || 0) > 2500) this.activePointers.delete(k);
+          }
+          this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType, time: nowT });
           if (this.activePointers.size >= 2) {
-            // 🌟 [아이패드 / 갤럭시탭 2손가락 제스처]: 진행 중이던 1손가락 필기·드래그 즉시 취소 및 핀치줌/패닝 진입!
-            if (this.isDrawingInk) {
-              this.isDrawingInk = false;
-              this._hasSceneFreeze = false;
-              if (this.currentInkStroke && this.inkStrokes && this.inkStrokes[this.inkStrokes.length - 1] === this.currentInkStroke) {
-                this.inkStrokes.pop();
-              }
-              this.currentInkStroke = null;
-            }
-            this.draggedHandleIdx = null;
-            this.isDraggingCurve = false;
-            this.isPanning = false;
-            this.isBoardPanning = false;
-
             const pts = Array.from(this.activePointers.values());
-            const p1 = pts[0], p2 = pts[1];
-            const midX = (p1.x + p2.x) / 2;
-            const midY = (p1.y + p2.y) / 2;
-            const dist = Math.max(20, Math.hypot(p2.x - p1.x, p2.y - p1.y));
-            this._pinchState = {
-              startDist: dist,
-              startZoom: this.zoomLevel || 1.0,
-              startBoardZoom: this.boardZoom || 1.0,
-              startBoardZoomOffsetX: this.boardZoomOffsetX || 0,
-              startBoardZoomOffsetY: this.boardZoomOffsetY || 0,
-              startMidX: midX,
-              startMidY: midY,
-              startPanX: this.panX || 0,
-              startPanY: this.panY || 0,
-              startBoardPanX: this.boardPanX || 0,
-              startBoardPanY: this.boardPanY || 0
-            };
-            this.render();
+            this._startCanvasTwoFingerPinch(pts[0], pts[1]);
             return;
           }
         }
@@ -16623,51 +16760,10 @@ class GraphApp {
       window.addEventListener('pointermove', (e) => {
         lastPointerMoveTime = Date.now();
         if (this.activePointers && this.activePointers.has(e.pointerId)) {
-          this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
+          this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType, time: Date.now() });
           if (this.activePointers.size >= 2 && this._pinchState) {
             const pts = Array.from(this.activePointers.values());
-            const p1 = pts[0], p2 = pts[1];
-            const midX = (p1.x + p2.x) / 2;
-            const midY = (p1.y + p2.y) / 2;
-            const dist = Math.max(20, Math.hypot(p2.x - p1.x, p2.y - p1.y));
-            const dx = midX - this._pinchState.startMidX;
-            const dy = midY - this._pinchState.startMidY;
-
-            if (this.isGraphCovered) {
-              // 2층 판서 칠판: 두 손가락 이동(패닝) + 두 손가락 핀치(판서 글씨만 확대/축소, 문제·그래프 카드는 크기 그대로!)
-              this.boardPanX = Math.round(this._pinchState.startBoardPanX + dx);
-              this.boardPanY = Math.round(this._pinchState.startBoardPanY + dy);
-              this.updateProblemCardPosition();
-
-              const scaleRatio = dist / this._pinchState.startDist;
-              if (Math.abs(scaleRatio - 1) > 0.015) {
-                const oldBZ = this._pinchState.startBoardZoom || 1.0;
-                const nextBZ = Math.max(0.25, Math.min(3.5, Math.round(oldBZ * scaleRatio * 100) / 100));
-                const startBx = (this._pinchState.startMidX - this._pinchState.startBoardPanX - (this._pinchState.startBoardZoomOffsetX || 0)) / oldBZ;
-                const startBy = (this._pinchState.startMidY - this._pinchState.startBoardPanY - (this._pinchState.startBoardZoomOffsetY || 0)) / oldBZ;
-                this.boardZoom = nextBZ;
-                this.boardZoomOffsetX = midX - this.boardPanX - startBx * nextBZ;
-                this.boardZoomOffsetY = midY - this.boardPanY - startBy * nextBZ;
-              }
-              this._inkBakeDirty = true;
-            } else {
-              // 1층 실시간 그래프: 두 손가락 이동(Pan) + 두 손가락 핀치 줌(Pinch-to-Zoom) 동시 작동!
-              this.panX = this._pinchState.startPanX + dx;
-              this.panY = this._pinchState.startPanY + dy;
-              const scaleRatio = dist / this._pinchState.startDist;
-              if (Math.abs(scaleRatio - 1) > 0.015) {
-                const nextZoom = Math.max(0.15, Math.min(3.5, Math.round(this._pinchState.startZoom * scaleRatio * 100) / 100));
-                this.zoomLevel = nextZoom;
-                const slZoom = document.getElementById('sliderZoom');
-                const lblZoom = document.getElementById('lblZoom');
-                if (slZoom) slZoom.value = nextZoom;
-                if (lblZoom) lblZoom.textContent = `${Math.round(nextZoom * 100)}%`;
-              }
-              if (this.inkStrokes && this.inkStrokes.length > 0) {
-                this._inkBakeDirty = true;
-              }
-            }
-            this.requestRender();
+            this._moveCanvasTwoFingerPinch(pts[0], pts[1]);
             return;
           }
         }
@@ -16748,17 +16844,43 @@ class GraphApp {
       }
     });
 
-    // 🌟 [터치스크린 & 아이패드 애플펜슬 스크리블 방어]: 순수 캔버스 영역에만 적용하여 모든 버튼 클릭 완벽 보호
+    // 🌟 [터치스크린 & 아이패드 애플펜슬 스크리블 방어 + iPadOS 2손가락 핀치 줌 직결 엔진]:
+    // touchstart의 e.preventDefault()로 인해 일부 iPadOS Safari에서 2번째 손가락 pointerdown이 생략되는 현상까지 100% 방어!
     this.canvas.addEventListener('touchstart', (e) => {
       if (e.target === this.canvas) {
         e.preventDefault();
+      }
+      if (e.touches && e.touches.length >= 2) {
+        e.preventDefault();
+        this._startCanvasTwoFingerPinch(
+          { x: e.touches[0].clientX, y: e.touches[0].clientY },
+          { x: e.touches[1].clientX, y: e.touches[1].clientY }
+        );
       }
     }, { passive: false });
     this.canvas.addEventListener('touchmove', (e) => {
       if (e.target === this.canvas) {
         e.preventDefault();
       }
+      if (e.touches && e.touches.length >= 2) {
+        e.preventDefault();
+        this._moveCanvasTwoFingerPinch(
+          { x: e.touches[0].clientX, y: e.touches[0].clientY },
+          { x: e.touches[1].clientX, y: e.touches[1].clientY }
+        );
+      }
     }, { passive: false });
+    const onCanvasTouchEnd = (e) => {
+      if (!e.touches || e.touches.length < 2) {
+        if (!e.touches || e.touches.length === 0) {
+          if (this.activePointers) this.activePointers.clear();
+          this.isBoardPanning = false;
+        }
+        this._pinchState = null;
+      }
+    };
+    this.canvas.addEventListener('touchend', onCanvasTouchEnd, { passive: false });
+    this.canvas.addEventListener('touchcancel', onCanvasTouchEnd, { passive: false });
 
     // 키보드 단축키: Ctrl+Z (언두), Ctrl+Y (리두), 방향키 미세조정, H 판서모드
     window.addEventListener('keydown', (e) => {
@@ -18026,6 +18148,97 @@ class GraphApp {
     this._inkBakeDirty = true;
     this._hasSceneFreeze = false;
     return clamped;
+  }
+
+  _startCanvasTwoFingerPinch(p1, p2) {
+    if (this.isDrawingInk) {
+      this.isDrawingInk = false;
+      this._hasSceneFreeze = false;
+      if (this.currentInkStroke && this.inkStrokes && this.inkStrokes[this.inkStrokes.length - 1] === this.currentInkStroke) {
+        this.inkStrokes.pop();
+      }
+      this.currentInkStroke = null;
+    }
+    this.draggedHandleIdx = null;
+    this.isDraggingCurve = false;
+    this.isPanning = false;
+    this.isBoardPanning = false;
+
+    const midX = (p1.x + p2.x) / 2;
+    const midY = (p1.y + p2.y) / 2;
+    const dist = Math.max(20, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+    this._pinchState = {
+      startDist: dist,
+      startZoom: this.zoomLevel || 1.0,
+      startBoardZoom: this.boardZoom || 1.0,
+      startBoardZoomOffsetX: this.boardZoomOffsetX || 0,
+      startBoardZoomOffsetY: this.boardZoomOffsetY || 0,
+      startMidX: midX,
+      startMidY: midY,
+      startPanX: this.panX || 0,
+      startPanY: this.panY || 0,
+      startBoardPanX: this.boardPanX || 0,
+      startBoardPanY: this.boardPanY || 0
+    };
+    this.render();
+  }
+
+  _moveCanvasTwoFingerPinch(p1, p2) {
+    if (!this._pinchState) {
+      this._startCanvasTwoFingerPinch(p1, p2);
+    }
+    const midX = (p1.x + p2.x) / 2;
+    const midY = (p1.y + p2.y) / 2;
+    const dist = Math.max(20, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+    const dx = midX - this._pinchState.startMidX;
+    const dy = midY - this._pinchState.startMidY;
+
+    if (this.isGraphCovered && !this.pdfPageBoardData) {
+      // 2층 일반 판서 칠판: 두 손가락 이동(패닝) + 두 손가락 핀치(판서 글씨만 확대/축소, 문제·그래프 카드는 크기 그대로!)
+      this.boardPanX = Math.round(this._pinchState.startBoardPanX + dx);
+      this.boardPanY = Math.round(this._pinchState.startBoardPanY + dy);
+      this.updateProblemCardPosition();
+
+      const scaleRatio = dist / this._pinchState.startDist;
+      if (Math.abs(scaleRatio - 1) > 0.015) {
+        const oldBZ = this._pinchState.startBoardZoom || 1.0;
+        const nextBZ = Math.max(0.25, Math.min(3.5, Math.round(oldBZ * scaleRatio * 100) / 100));
+        const startBx = (this._pinchState.startMidX - this._pinchState.startBoardPanX - (this._pinchState.startBoardZoomOffsetX || 0)) / oldBZ;
+        const startBy = (this._pinchState.startMidY - this._pinchState.startBoardPanY - (this._pinchState.startBoardZoomOffsetY || 0)) / oldBZ;
+        this.boardZoom = nextBZ;
+        this.boardZoomOffsetX = midX - this.boardPanX - startBx * nextBZ;
+        this.boardZoomOffsetY = midY - this.boardPanY - startBy * nextBZ;
+      }
+      this._inkBakeDirty = true;
+    } else {
+      // 1층 실시간 그래프 및 PDF 1페이지 보드(pdfPageBoardData): 두 손가락 이동(Pan) + 두 손가락 핀치 중심점 기준 줌(Pinch-to-Zoom) 동시 작동!
+      const scaleRatio = dist / this._pinchState.startDist;
+      const oldZoom = this._pinchState.startZoom || 1.0;
+      let nextZoom = oldZoom;
+      if (Math.abs(scaleRatio - 1) > 0.015) {
+        nextZoom = Math.max(0.15, Math.min(3.5, Math.round(oldZoom * scaleRatio * 100) / 100));
+        this.zoomLevel = nextZoom;
+        this.targetZoom = nextZoom;
+        this._isZoomAnimating = false;
+        const slZoom = document.getElementById('sliderZoom');
+        const lblZoom = document.getElementById('lblZoom');
+        const lblInkZoom = document.getElementById('lblInkZoom');
+        const lblLeftZoom = document.getElementById('lblLeftZoom');
+        if (slZoom) slZoom.value = nextZoom;
+        if (lblZoom) lblZoom.textContent = `${Math.round(nextZoom * 100)}%`;
+        if (lblInkZoom) lblInkZoom.textContent = `${Math.round(nextZoom * 100)}%`;
+        if (lblLeftZoom) lblLeftZoom.textContent = `${Math.round(nextZoom * 100)}%`;
+      }
+      const ratio = nextZoom / oldZoom;
+      const cx = (this.screenWidth || window.innerWidth) / 2 + this._pinchState.startPanX;
+      const cy = (this.screenHeight || window.innerHeight) / 2 + this._pinchState.startPanY;
+      const zoomDeltaX = (this._pinchState.startMidX - cx) * (1 - ratio);
+      const zoomDeltaY = (this._pinchState.startMidY - cy) * (1 - ratio);
+      this.panX = Math.round(this._pinchState.startPanX + dx + zoomDeltaX);
+      this.panY = Math.round(this._pinchState.startPanY + dy + zoomDeltaY);
+      this._inkBakeDirty = true;
+    }
+    this.requestRender();
   }
 
   zoomByStep(delta) {
