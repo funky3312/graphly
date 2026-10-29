@@ -7537,3 +7537,21 @@ body.theme-light .pill-mod-chip.active {
 #btnQuickCenter {
   display: none !important;
 }
+
+/* 🌟 [대표님 피드백: 필기 바 굵기 조절을 팝업·원·pt 없이 깔끔한 ◀ 숫자 ▶ 0.2 스텝으로 슬림화] 🌟 */
+#inkSizeFlyout {
+  display: none !important;
+}
+.ink-size-stepper .ink-size-val {
+  min-width: 26px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #f1f5f9;
+  padding: 0 3px;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+body.light-ui-theme .ink-size-stepper .ink-size-val {
+  color: #1e293b;
+}

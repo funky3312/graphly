@@ -901,15 +901,11 @@
         <div class="ink-divider"></div>
         <div class="ink-size-stepper-wrap" style="position: relative;">
           <div class="ink-size-stepper">
-            <button type="button" id="btnInkSizeDown" class="ink-size-stepper-btn" title="글씨 가늘게 (화살표 ◀ / 단축키 [)">
+            <button type="button" id="btnInkSizeDown" class="ink-size-stepper-btn" title="글씨 가늘게 (-0.2 / 단축키 [)">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
-            <button type="button" id="btnInkSizePicker" class="ink-size-picker-btn" title="글씨 크기 / 굵기 선택 (화살표 클릭하여 프리셋 & 슬라이더 열기)">
-              <span class="ink-size-indicator-dot" id="inkSizeToolbarDot" style="width: 5px; height: 5px;"></span>
-              <span id="lblCurrentInkSize" class="ink-size-val">4.2 pt</span>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ink-size-chevron"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <button type="button" id="btnInkSizeUp" class="ink-size-stepper-btn" title="글씨 굵게 (화살표 ▶ / 단축키 ])">
+            <span id="lblCurrentInkSize" class="ink-size-val" title="현재 펜 굵기 (◀ ▶ 화살표로 0.2 단위 조절)">4.2</span>
+            <button type="button" id="btnInkSizeUp" class="ink-size-stepper-btn" title="글씨 굵게 (+0.2 / 단축키 ])">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
           </div>

@@ -2173,18 +2173,20 @@ class GraphApp {
       };
     });
 
-    // 🌟 [대표님 기획]: 글씨 굵기/크기 화살표 스텝 버튼 & 드롭다운 플라이아웃 선택기 연동 🌟
-    const INK_SIZE_STEPS = [1.5, 2.2, 3.2, 4.2, 6.0, 8.0, 12.0];
+    // 🌟 [대표님 피드백]: 글씨 굵기/크기 ◀ ▶ 화살표 0.2 단위 직관 조절 & 영구 기억 🌟
+    try {
+      const savedInkSize = parseFloat(localStorage.getItem('graphly_ink_size_v1'));
+      if (!isNaN(savedInkSize) && savedInkSize >= 1.0 && savedInkSize <= 24.0) {
+        this.setInkSize(savedInkSize);
+      }
+    } catch (err) { }
 
     const btnInkSizeDown = document.getElementById('btnInkSizeDown');
     if (btnInkSizeDown) {
       btnInkSizeDown.onclick = (e) => {
         e.stopPropagation();
         const cur = this.currentInkSize || 4.2;
-        let target = INK_SIZE_STEPS.filter(p => p < cur - 0.15).pop();
-        if (target === undefined) {
-          target = Math.max(1.0, parseFloat((cur - 0.5).toFixed(1)));
-        }
+        const target = Math.max(1.0, parseFloat((cur - 0.2).toFixed(1)));
         this.setInkSize(target);
       };
     }
@@ -2194,10 +2196,7 @@ class GraphApp {
       btnInkSizeUp.onclick = (e) => {
         e.stopPropagation();
         const cur = this.currentInkSize || 4.2;
-        let target = INK_SIZE_STEPS.find(p => p > cur + 0.15);
-        if (target === undefined) {
-          target = Math.min(20.0, parseFloat((cur + 1.0).toFixed(1)));
-        }
+        const target = Math.min(18.0, parseFloat((cur + 0.2).toFixed(1)));
         this.setInkSize(target);
       };
     }
@@ -2665,9 +2664,12 @@ class GraphApp {
   setInkSize(size) {
     const clamped = Math.max(1.0, Math.min(24.0, parseFloat(Number(size).toFixed(1))));
     this.currentInkSize = clamped;
+    try {
+      localStorage.setItem('graphly_ink_size_v1', String(clamped));
+    } catch (err) { }
 
     const lblVal = document.getElementById('lblCurrentInkSize');
-    if (lblVal) lblVal.textContent = `${clamped} pt`;
+    if (lblVal) lblVal.textContent = clamped.toFixed(1);
 
     const lblFlyout = document.getElementById('lblFlyoutSizeVal');
     if (lblFlyout) lblFlyout.textContent = `${clamped} pt`;
