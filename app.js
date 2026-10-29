@@ -12105,6 +12105,63 @@ class GraphApp {
         resetBar.style.display = 'none';
       };
     }
+
+    // 📚 [통째 수업 세트: 공유 모달에서 기출 게시판 / 내 보관함 / 내 드라이브(.graphly)로 원클릭 등록]
+    const inpDeckTitle = document.getElementById('inputShareModalDeckTitle');
+    const inpDeckTags = document.getElementById('inputShareModalDeckTags');
+    const btnShareToComm = document.getElementById('btnShareModalToCommunity');
+    const btnShareToLib = document.getElementById('btnShareModalToLibrary');
+    const btnShareExportFile = document.getElementById('btnShareModalExportFile');
+
+    const getShareModalSlides = () => {
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
+        this.saveCurrentSlideIntoPlaylist();
+        return JSON.parse(JSON.stringify(this.lessonPlaylistSlides));
+      }
+      const fallbackTitle = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : '공유된 수업 세트';
+      return [this.serializeFullSlideState(fallbackTitle)];
+    };
+
+    if (btnShareToComm) {
+      btnShareToComm.onclick = async () => {
+        const slides = getShareModalSlides();
+        const defaultTitle = slides.length > 1
+          ? `수능/모의고사 ${slides.length}문항 통째 수업 세트`
+          : (slides[0].slideTitle || '');
+        const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
+        if (!title) {
+          this.showToast('⚠️ 게시판에 등록할 수업/시험지 제목을 입력해 주세요!');
+          if (inpDeckTitle) inpDeckTitle.focus();
+          return;
+        }
+        const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : (slides.length > 1 ? '#풀세트 #통째수업' : '#기출그래프');
+        await this.publishCurrentToCommunity(title, tags, slides);
+      };
+    }
+
+    if (btnShareToLib) {
+      btnShareToLib.onclick = async () => {
+        const slides = getShareModalSlides();
+        const defaultTitle = slides.length > 1
+          ? `수업 슬라이드 ${slides.length}문항 풀세트 (${new Date().toLocaleDateString('ko-KR')})`
+          : `수업 세팅 (${new Date().toLocaleDateString('ko-KR')})`;
+        const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
+        const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : (slides.length > 1 ? '#풀세트' : '#수학그래프');
+        await this.saveCurrentToMyLibrary(title, tags, slides);
+      };
+    }
+
+    if (btnShareExportFile) {
+      btnShareExportFile.onclick = () => {
+        const slides = getShareModalSlides();
+        const defaultTitle = slides.length > 1
+          ? `Graphly_${slides.length}문항_통째수업세트`
+          : (slides[0].slideTitle || 'Graphly_수업노트');
+        const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
+        const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : '#풀세트';
+        this.exportGraphlyDeckFile(title, tags, slides);
+      };
+    }
   }
 
   // --- [URL 해시에서 상태 복원 및 학생 모드 진입 엔진 (#cloud= 통합 패키지 & #share= 호환)] ---
@@ -12274,6 +12331,58 @@ class GraphApp {
       btnStartPlaylist.onclick = () => this.startPlaylistFromSelectedLibraryItems();
     }
 
+    const btnBundleComm = document.getElementById('btnBundleSelectedToCommunity');
+    const btnBundleFile = document.getElementById('btnBundleSelectedToFile');
+    const btnExportFile = document.getElementById('btnExportGraphlyFile');
+    const btnImportFile = document.getElementById('btnImportGraphlyFile');
+    const inpImportFile = document.getElementById('inputImportGraphlyFile');
+
+    if (btnBundleComm) {
+      btnBundleComm.onclick = () => this.bundleSelectedLibraryItemsToCommunity();
+    }
+    if (btnBundleFile) {
+      btnBundleFile.onclick = () => this.bundleSelectedLibraryItemsToFile();
+    }
+    if (btnExportFile) {
+      btnExportFile.onclick = () => {
+        const inpTitle = document.getElementById('inputCloudSaveTitle');
+        const inpTags = document.getElementById('inputCloudSaveTags');
+        const slides = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
+          ? (this.saveCurrentSlideIntoPlaylist(), JSON.parse(JSON.stringify(this.lessonPlaylistSlides)))
+          : [this.serializeFullSlideState((inpTitle && inpTitle.value.trim()) || '수업 노트')];
+        const defaultTitle = slides.length > 1
+          ? `Graphly_${slides.length}문항_통째수업세트`
+          : (slides[0].slideTitle || 'Graphly_수업노트');
+        const rawTitle = (inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : defaultTitle;
+        const rawTags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : '#통째수업';
+        this.exportGraphlyDeckFile(rawTitle, rawTags, slides);
+      };
+    }
+    if (btnImportFile && inpImportFile) {
+      btnImportFile.onclick = () => {
+        inpImportFile.value = '';
+        inpImportFile.click();
+      };
+      inpImportFile.onchange = (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) this.importGraphlyDeckFile(file);
+      };
+    }
+
+    // 화면에 .graphly 파일을 드래그 앤 드롭해도 0.1초 만에 즉시 열리도록 지원!
+    if (!this._graphlyDropListenerAttached) {
+      this._graphlyDropListenerAttached = true;
+      window.addEventListener('drop', (e) => {
+        if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+        const f = e.dataTransfer.files[0];
+        if (f && f.name && f.name.toLowerCase().endsWith('.graphly')) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.importGraphlyDeckFile(f);
+        }
+      }, true);
+    }
+
     if (inputSearch) {
       inputSearch.oninput = () => this.renderCommunityHubList();
     }
@@ -12307,6 +12416,17 @@ class GraphApp {
   openCloudHubModal() {
     const modalCloud = document.getElementById('modalCloudHub');
     if (!modalCloud) return;
+    if (this.isLessonPlaylistActive) {
+      this.saveCurrentSlideIntoPlaylist();
+    }
+    const lblBoxTitle = document.getElementById('lblCloudSaveBoxTitle');
+    if (lblBoxTitle) {
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1) {
+        lblBoxTitle.innerHTML = `📚 현재 수업 슬라이드 전체 <strong>(총 ${this.lessonPlaylistSlides.length}문항 풀세트)</strong> 통째 저장 · 게시판 공유 · 내 드라이브 백업`;
+      } else {
+        lblBoxTitle.textContent = '💾 현재 화면(판서 + 문제 카드 + #1,#2 보관 그래프 + 실시간 그래프) 저장 및 공유';
+      }
+    }
     modalCloud.classList.add('show');
     this.syncCloudAuthUI();
     this.renderMyLibraryList();
@@ -12414,69 +12534,76 @@ class GraphApp {
       });
     }
 
-    return {
-      slideTitle: title || '문항 슬라이드',
+    const slideObj = {
+      version: '2.0',
+      slideTitle: title || (hasPrimaryProblem && pTitle ? pTitle.textContent : '문항'),
+      timestamp: Date.now(),
       historyJson: this.getHistorySnapshot(),
       isGraphCovered: Boolean(this.isGraphCovered),
       coveredGraphStateBackup: this._coveredGraphStateBackup ? JSON.parse(JSON.stringify(this._coveredGraphStateBackup)) : null,
       savedLayer2BoardPan: this._savedLayer2BoardPan ? { ...this._savedLayer2BoardPan } : null,
-      graphCaseCounter: this._graphCaseCounter || 0,
       graphSessionArchived: Boolean(this._graphSessionArchived),
+      graphCaseCounter: this._graphCaseCounter || 0,
       primaryProblemCard: hasPrimaryProblem ? {
-        display: pWidget.style.display,
-        minimized: pWidget.classList.contains('minimized'),
-        left: pWidget.style.left,
-        top: pWidget.style.top,
-        width: pWidget.style.width,
-        zIndex: pWidget.style.zIndex,
-        imgSrc: pImg ? pImg.src : (this.problemCardData && this.problemCardData.dataUrl ? this.problemCardData.dataUrl : ''),
-        titleText: pTitle ? pTitle.textContent : '문제',
-        toggleText: pToggle ? pToggle.textContent : '▾',
         problemCardData: this.problemCardData ? { ...this.problemCardData } : null,
         problemCardAspect: this.problemCardAspect,
         isProblemCardMinimized: Boolean(this.isProblemCardMinimized),
         problemCardBaseX: this.problemCardBaseX,
         problemCardBaseY: this.problemCardBaseY,
-        problemInkStrokes: JSON.parse(JSON.stringify(this.problemInkStrokes || []))
+        problemInkStrokes: JSON.parse(JSON.stringify(this.problemInkStrokes || [])),
+        imgSrc: pImg ? pImg.src : '',
+        titleText: pTitle ? pTitle.textContent : '문제',
+        toggleText: pToggle ? pToggle.textContent : '▾',
+        minimized: pWidget.classList.contains('minimized'),
+        left: pWidget.style.left,
+        top: pWidget.style.top,
+        width: pWidget.style.width,
+        zIndex: pWidget.style.zIndex,
+        display: pWidget.style.display
       } : null,
       extraProblems,
       primaryGraphCard: hasPrimaryGraph ? {
-        display: gWidget.style.display,
-        minimized: gWidget.classList.contains('minimized'),
-        left: gWidget.style.left,
-        top: gWidget.style.top,
-        width: gWidget.style.width,
-        zIndex: gWidget.style.zIndex,
-        imgSrc: gImg ? gImg.src : (this.graphCardData && this.graphCardData.dataUrl ? this.graphCardData.dataUrl : ''),
-        titleText: gTitle ? gTitle.textContent : '#1',
-        toggleText: gToggle ? gToggle.textContent : '▾',
         graphCardData: this.graphCardData ? { ...this.graphCardData } : null,
         graphCardAspect: this.graphCardAspect,
         isGraphCardMinimized: Boolean(this.isGraphCardMinimized),
         graphCardBaseX: this.graphCardBaseX,
         graphCardBaseY: this.graphCardBaseY,
         primaryGraphCardSnapshot: this.primaryGraphCardSnapshot ? JSON.parse(JSON.stringify(this.primaryGraphCardSnapshot)) : null,
-        graphInkStrokes: JSON.parse(JSON.stringify(this.graphInkStrokes || []))
+        graphInkStrokes: JSON.parse(JSON.stringify(this.graphInkStrokes || [])),
+        imgSrc: gImg ? gImg.src : '',
+        titleText: gTitle ? gTitle.textContent : '#1',
+        toggleText: gToggle ? gToggle.textContent : '▾',
+        minimized: gWidget.classList.contains('minimized'),
+        left: gWidget.style.left,
+        top: gWidget.style.top,
+        width: gWidget.style.width,
+        zIndex: gWidget.style.zIndex,
+        display: gWidget.style.display
       } : null,
       extraGraphs
     };
+    return slideObj;
   }
 
-  // 직렬화된 슬라이드 데이터를 현재 화면에 100% 복원 (문제 카드 + #1,#2 보관 그래프 카드 + 필기 + 그래프 모드 완벽 복원)
+  // 직렬화된 슬라이드 JSON 객체를 현재 워크스페이스에 100% 무손실 복원
   deserializeFullSlideState(slideData) {
     if (!slideData) return;
 
-    // 기존 다중 카드 DOM 정리
+    // 기존 추가 카드들 정리
     if (this.extraProblemCards && this.extraProblemCards.length > 0) {
-      this.extraProblemCards.forEach(c => { if (c && c.el) c.el.remove(); });
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el && c.el.parentNode) c.el.parentNode.removeChild(c.el);
+      });
+      this.extraProblemCards = [];
     }
-    this.extraProblemCards = [];
-
     if (this.extraGraphCards && this.extraGraphCards.length > 0) {
-      this.extraGraphCards.forEach(c => { if (c && c.el) c.el.remove(); });
+      this.extraGraphCards.forEach(c => {
+        if (c && c.el && c.el.parentNode) c.el.parentNode.removeChild(c.el);
+      });
+      this.extraGraphCards = [];
     }
-    this.extraGraphCards = [];
 
+    // 기본 히스토리 상태(판서 획, 텍스트, 뷰포트, 실시간 그래프) 복원
     if (slideData.historyJson) {
       this.restoreHistorySnapshot(slideData.historyJson);
     }
@@ -12619,12 +12746,12 @@ class GraphApp {
     return parts.join(' · ');
   }
 
-  // Firestore REST API 헬퍼 (SDK 미로드 환경이나 비로그인 환경에서도 100% 작동 보장)
-  async _firestoreRestWrite(collectionName, docId, payloadObj) {
+  // Firestore 단일 문서 직접 쓰기 헬퍼
+  async _firestoreRestWriteSingleDoc(collectionName, docId, jsonStr) {
     const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}?documentId=${encodeURIComponent(docId)}`;
     const body = {
       fields: {
-        jsonPayload: { stringValue: JSON.stringify(payloadObj) },
+        jsonPayload: { stringValue: jsonStr },
         createdAt: { integerValue: String(Date.now()) },
         ownerUid: { stringValue: (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous' }
       }
@@ -12635,7 +12762,6 @@ class GraphApp {
       body: JSON.stringify(body)
     });
     if (!res.ok && res.status === 409) {
-      // 이미 존재하면 PATCH로 업데이트
       const patchUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
       await fetch(patchUrl, {
         method: 'PATCH',
@@ -12646,15 +12772,93 @@ class GraphApp {
     return docId;
   }
 
+  // Firestore REST API 헬퍼 (대용량 30문항 모의고사 풀세트도 1MB 제한 없이 자동 분할 업로드 지원!)
+  async _firestoreRestWrite(collectionName, docId, payloadObj) {
+    const fullStr = JSON.stringify(payloadObj);
+    try {
+      localStorage.setItem('graphly_full_doc_' + docId, fullStr);
+    } catch (e) { }
+
+    const CHUNK_LIMIT = 700000; // ~700KB 단위로 안전 분할
+    if (fullStr.length <= CHUNK_LIMIT) {
+      return await this._firestoreRestWriteSingleDoc(collectionName, docId, fullStr);
+    }
+
+    // 대용량 풀세트(예: 30문항 스캔 이미지 포함)인 경우 청크 분할 병렬 업로드
+    const chunks = [];
+    for (let i = 0; i < fullStr.length; i += CHUNK_LIMIT) {
+      chunks.push(fullStr.slice(i, i + CHUNK_LIMIT));
+    }
+    const prefix = `${docId}_part_`;
+    await Promise.all(chunks.map((cStr, idx) => {
+      return this._firestoreRestWriteSingleDoc('shared_workspaces', `${prefix}${idx}`, JSON.stringify({ partIndex: idx, data: cStr }));
+    }));
+
+    // 목록 조회용 경량 매니페스트 문서 생성 (게시판 목록 로딩 0.1초 보장!)
+    const manifestObj = {
+      ...payloadObj,
+      slideData: null,
+      playlistSlides: null,
+      _isChunked: true,
+      _chunkDocPrefix: prefix,
+      _chunkCount: chunks.length
+    };
+    return await this._firestoreRestWriteSingleDoc(collectionName, docId, JSON.stringify(manifestObj));
+  }
+
   async _firestoreRestReadDoc(collectionName, docId) {
+    try {
+      const localFull = localStorage.getItem('graphly_full_doc_' + docId);
+      if (localFull) return JSON.parse(localFull);
+    } catch (e) { }
+
     const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
     const res = await fetch(url);
     if (!res.ok) return null;
     const data = await res.json();
     if (data && data.fields && data.fields.jsonPayload && data.fields.jsonPayload.stringValue) {
-      return JSON.parse(data.fields.jsonPayload.stringValue);
+      const parsed = JSON.parse(data.fields.jsonPayload.stringValue);
+      return await this._resolveChunkedItem(parsed);
     }
     return null;
+  }
+
+  // 분할 저장된 대용량 수업 세트일 경우 병렬로 청크를 재조립하여 반환
+  async _resolveChunkedItem(item) {
+    if (!item || !item._isChunked || !item._chunkCount || !item._chunkDocPrefix) return item;
+    if ((Array.isArray(item.playlistSlides) && item.playlistSlides.length > 0) || item.slideData) {
+      return item;
+    }
+    if (item.id) {
+      try {
+        const localFull = localStorage.getItem('graphly_full_doc_' + item.id);
+        if (localFull) return JSON.parse(localFull);
+      } catch (e) { }
+    }
+    try {
+      const indices = Array.from({ length: item._chunkCount }, (_, i) => i);
+      const parts = await Promise.all(indices.map(async (idx) => {
+        const chunkDocId = `${item._chunkDocPrefix}${idx}`;
+        const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/shared_workspaces/${encodeURIComponent(chunkDocId)}`;
+        const r = await fetch(url);
+        if (!r.ok) return '';
+        const d = await r.json();
+        if (d && d.fields && d.fields.jsonPayload && d.fields.jsonPayload.stringValue) {
+          const pObj = JSON.parse(d.fields.jsonPayload.stringValue);
+          return pObj.data || '';
+        }
+        return '';
+      }));
+      const joined = parts.join('');
+      if (joined) {
+        const fullItem = JSON.parse(joined);
+        if (item.id) {
+          try { localStorage.setItem('graphly_full_doc_' + item.id, joined); } catch (e) { }
+        }
+        return fullItem;
+      }
+    } catch (e) { }
+    return item;
   }
 
   async _firestoreRestListCollection(collectionName, pageSize = 50) {
@@ -12680,24 +12884,47 @@ class GraphApp {
     await fetch(url, { method: 'DELETE' });
   }
 
-  // 1. 내 보관함에 현재 칠판/그래프 저장
-  async saveCurrentToMyLibrary() {
+  // 1. 내 보관함에 현재 칠판/그래프 또는 N문항 통째 수업 슬라이드 저장
+  async saveCurrentToMyLibrary(customTitle = null, customTags = null, customSlidesArray = null) {
     const inpTitle = document.getElementById('inputCloudSaveTitle');
     const inpTags = document.getElementById('inputCloudSaveTags');
-    const rawTitle = (inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : `수업 세팅 (${new Date().toLocaleDateString('ko-KR')})`;
-    const rawTags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : '#수학그래프';
 
-    const slideData = this.serializeFullSlideState(rawTitle);
+    if (this.isLessonPlaylistActive && !customSlidesArray) {
+      this.saveCurrentSlideIntoPlaylist();
+    }
+
+    const slides = Array.isArray(customSlidesArray) && customSlidesArray.length > 0
+      ? JSON.parse(JSON.stringify(customSlidesArray))
+      : (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1
+        ? JSON.parse(JSON.stringify(this.lessonPlaylistSlides))
+        : null);
+
+    const isDeck = Boolean(slides && slides.length > 1);
+    const defaultTitle = isDeck
+      ? `수업 슬라이드 ${slides.length}문항 풀세트 (${new Date().toLocaleDateString('ko-KR')})`
+      : `수업 세팅 (${new Date().toLocaleDateString('ko-KR')})`;
+
+    const rawTitle = customTitle || ((inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : defaultTitle);
+    const rawTags = customTags || ((inpTags && inpTags.value.trim()) ? inpTags.value.trim() : (isDeck ? '#통째수업 #풀세트' : '#수학그래프'));
+
+    const primarySlide = isDeck ? slides[0] : (slides ? slides[0] : this.serializeFullSlideState(rawTitle));
+    const summaryText = isDeck
+      ? `📚 ${slides.length}문항 통째 수업 · ${this._buildSlideSummaryBadge(primarySlide)}`
+      : this._buildSlideSummaryBadge(primarySlide);
+
     const itemId = 'lib_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const itemObj = {
       id: itemId,
       title: rawTitle,
       tags: rawTags,
-      summary: this._buildSlideSummaryBadge(slideData),
+      summary: summaryText,
+      isPlaylist: isDeck,
+      slideCount: isDeck ? slides.length : 1,
+      playlistSlides: isDeck ? slides : [primarySlide],
       ownerUid: (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'local_user',
       authorName: (this.cloudUser && this.cloudUser.displayName) ? this.cloudUser.displayName : '내 보관함',
       createdAt: Date.now(),
-      slideData
+      slideData: primarySlide
     };
 
     this.myLibraryCache.unshift(itemObj);
@@ -12706,8 +12933,10 @@ class GraphApp {
     } catch (e) { }
 
     this.renderMyLibraryList();
-    if (inpTitle) inpTitle.value = '';
-    this.showToast(`📁 [${rawTitle}] 내 보관함에 저장되었습니다!`);
+    if (!customTitle && inpTitle) inpTitle.value = '';
+    this.showToast(isDeck
+      ? `📚 [${rawTitle}] (${slides.length}문항 통째 수업 세트) 내 보관함에 저장 완료!`
+      : `📁 [${rawTitle}] 내 보관함에 저장되었습니다!`);
 
     try {
       await this._firestoreRestWrite('user_library', itemId, itemObj);
@@ -12715,29 +12944,48 @@ class GraphApp {
     return itemObj;
   }
 
-  // 2. 전국 기출/변형 그래프 공유 게시판에 등록
-  async publishCurrentToCommunity() {
+  // 2. 전국 기출/변형 그래프 공유 게시판에 등록 (단일 문항 또는 30문항 모의고사 통째 수업 풀세트 모두 지원!)
+  async publishCurrentToCommunity(customTitle = null, customTags = null, customSlidesArray = null) {
     const inpTitle = document.getElementById('inputCloudSaveTitle');
     const inpTags = document.getElementById('inputCloudSaveTags');
-    const rawTitle = (inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : '';
-    if (!rawTitle) {
-      this.showToast('⚠️ 게시판에 공유할 제목(예: 2025 9월 고3 22번 그래프)을 먼저 입력해 주세요!');
-      if (inpTitle) inpTitle.focus();
-      return;
-    }
-    const rawTags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : '#기출그래프';
 
-    const slideData = this.serializeFullSlideState(rawTitle);
+    if (this.isLessonPlaylistActive && !customSlidesArray) {
+      this.saveCurrentSlideIntoPlaylist();
+    }
+
+    const slides = Array.isArray(customSlidesArray) && customSlidesArray.length > 0
+      ? JSON.parse(JSON.stringify(customSlidesArray))
+      : (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1
+        ? JSON.parse(JSON.stringify(this.lessonPlaylistSlides))
+        : null);
+
+    const isDeck = Boolean(slides && slides.length > 1);
+    const rawTitle = customTitle || ((inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : '');
+    if (!rawTitle) {
+      this.showToast('⚠️ 게시판에 공유할 제목(예: 2025 9월 모평 1~30번 풀세트)을 먼저 입력해 주세요!');
+      if (inpTitle) inpTitle.focus();
+      return null;
+    }
+    const rawTags = customTags || ((inpTags && inpTags.value.trim()) ? inpTags.value.trim() : (isDeck ? '#모의고사풀세트 #통째수업' : '#기출그래프'));
+
+    const primarySlide = isDeck ? slides[0] : (slides ? slides[0] : this.serializeFullSlideState(rawTitle));
+    const summaryText = isDeck
+      ? `📚 ${slides.length}문항 통째 수업 · ${this._buildSlideSummaryBadge(primarySlide)}`
+      : this._buildSlideSummaryBadge(primarySlide);
+
     const itemId = 'comm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const commObj = {
       id: itemId,
       title: rawTitle,
       tags: rawTags,
-      summary: this._buildSlideSummaryBadge(slideData),
+      summary: summaryText,
+      isPlaylist: isDeck,
+      slideCount: isDeck ? slides.length : 1,
+      playlistSlides: isDeck ? slides : [primarySlide],
       ownerUid: (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous',
       authorName: (this.cloudUser && this.cloudUser.displayName) ? `${this.cloudUser.displayName} 선생님` : '익명 선생님',
       createdAt: Date.now(),
-      slideData
+      slideData: primarySlide
     };
 
     // 내 보관함과 기출 게시판 양쪽에 모두 추가
@@ -12748,16 +12996,216 @@ class GraphApp {
       localStorage.setItem('graphly_community_hub_v1', JSON.stringify(this.communityHubCache));
     } catch (e) { }
 
-    if (inpTitle) inpTitle.value = '';
+    if (!customTitle && inpTitle) inpTitle.value = '';
     this.renderMyLibraryList();
     this.renderCommunityHubList();
-    this.showToast(`🌐 [${rawTitle}] 기출 공유 게시판 및 내 보관함에 등록 완료!`);
+    this.showToast(isDeck
+      ? `🌐 [${rawTitle}] (${slides.length}문항 통째 수업 세트) 기출 공유 게시판 등록 완료!`
+      : `🌐 [${rawTitle}] 기출 공유 게시판 및 내 보관함에 등록 완료!`);
 
     try {
       await this._firestoreRestWrite('community_hub', itemId, commObj);
       await this._firestoreRestWrite('user_library', itemId, commObj);
     } catch (e) { }
     return commObj;
+  }
+
+  // 보관함/게시판 항목을 칠판으로 즉시 불러오기 (N문항 통째 세트면 즉시 1/N 슬라이드 모드로 실행!)
+  async loadCloudItemToWorkspace(item, closeModal = true) {
+    if (!item) return;
+    const resolved = await this._resolveChunkedItem(item);
+    const slides = Array.isArray(resolved.playlistSlides) && resolved.playlistSlides.length > 0
+      ? resolved.playlistSlides
+      : (resolved.slideData ? [resolved.slideData] : []);
+
+    if (!slides.length) {
+      this.showToast('⚠️ 불러올 슬라이드 데이터가 없습니다.');
+      return;
+    }
+
+    if (slides.length > 1 || resolved.isPlaylist) {
+      this.startLessonPlaylist(slides, 0);
+      this.showToast(`🎯 [${resolved.title}] (${slides.length}문항 통째 수업) 시작! 1번부터 넘기며 그래프를 조작해 보세요.`);
+    } else {
+      this.isLessonPlaylistActive = false;
+      this.syncLessonPlaylistNavBarUI();
+      this.deserializeFullSlideState(slides[0]);
+      this.showToast(`⚡ [${resolved.title}] 세팅을 내 칠판으로 가져왔습니다!`);
+    }
+
+    if (closeModal) {
+      const modalCloud = document.getElementById('modalCloudHub');
+      if (modalCloud) modalCloud.classList.remove('show');
+    }
+  }
+
+  // 게시판의 수업 세트/그래프를 내 보관함으로 원클릭 복사
+  async importCommunityItemToMyLibrary(item) {
+    if (!item) return null;
+    const resolved = await this._resolveChunkedItem(item);
+    const newId = 'lib_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const cloned = JSON.parse(JSON.stringify(resolved));
+    cloned.id = newId;
+    cloned.ownerUid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'local_user';
+    cloned.createdAt = Date.now();
+
+    this.myLibraryCache.unshift(cloned);
+    try {
+      localStorage.setItem('graphly_my_library_v1', JSON.stringify(this.myLibraryCache));
+    } catch (e) { }
+    this.renderMyLibraryList();
+    this.showToast(`📥 [${cloned.title}] 세트를 내 클라우드 보관함에 담았습니다!`);
+
+    try {
+      await this._firestoreRestWrite('user_library', newId, cloned);
+    } catch (e) { }
+    return cloned;
+  }
+
+  // ============================================================================
+  // 💾 [내 드라이브(구글 드라이브/PC/아이패드) .graphly 수업 세트 파일 저장 & 불러오기]
+  // ============================================================================
+  exportGraphlyDeckFile(title = 'Graphly_수업세트', tags = '#통째수업', slidesArray = null) {
+    let slides = slidesArray;
+    if (!Array.isArray(slides) || !slides.length) {
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
+        this.saveCurrentSlideIntoPlaylist();
+        slides = JSON.parse(JSON.stringify(this.lessonPlaylistSlides));
+      } else {
+        slides = [this.serializeFullSlideState(title)];
+      }
+    }
+    const isDeck = slides.length > 1;
+    const packObj = {
+      format: 'GraphlyLessonPack',
+      version: '2.0',
+      title: title || (isDeck ? `Graphly_${slides.length}문항_수업세트` : 'Graphly_수업노트'),
+      tags: tags || '#수학그래프',
+      summary: isDeck
+        ? `📚 ${slides.length}문항 통째 수업 · ${this._buildSlideSummaryBadge(slides[0])}`
+        : this._buildSlideSummaryBadge(slides[0]),
+      createdAt: Date.now(),
+      isPlaylist: isDeck,
+      slideCount: slides.length,
+      playlistSlides: slides,
+      slideData: slides[0]
+    };
+
+    const jsonStr = JSON.stringify(packObj);
+    const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+    const safeFileName = String(packObj.title).replace(/[\/:*?"<>|]/g, '_').trim() || 'Graphly_Lesson';
+    const fileName = safeFileName.endsWith('.graphly') ? safeFileName : `${safeFileName}.graphly`;
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+    this.showToast(`💾 [${fileName}] 저장 완료! 내 드라이브(구글 드라이브/PC/아이패드)에 보관하고 언제든 바로 여세요.`);
+    return packObj;
+  }
+
+  async importGraphlyDeckFile(file) {
+    if (!file) return null;
+    try {
+      const text = await file.text();
+      const pack = JSON.parse(text);
+      const slides = Array.isArray(pack.playlistSlides) && pack.playlistSlides.length > 0
+        ? pack.playlistSlides
+        : (pack.slideData ? [pack.slideData] : (pack.historyJson ? [pack] : []));
+
+      if (!slides.length) {
+        this.showToast('⚠️ 올바른 .graphly 수업 파일이 아닙니다.');
+        return null;
+      }
+
+      const title = pack.title || file.name.replace(/\.(graphly|json)$/i, '') || '불러온 수업 세트';
+      const tags = pack.tags || (slides.length > 1 ? '#드라이브풀세트' : '#드라이브노트');
+
+      // 1) 내 보관함에도 자동 등록하여 언제든 재사용 가능하게 보장
+      await this.saveCurrentToMyLibrary(title, tags, slides);
+
+      // 2) 즉시 칠판 또는 1/N 슬라이드 모드로 오픈!
+      if (slides.length > 1 || pack.isPlaylist) {
+        this.startLessonPlaylist(slides, 0);
+      } else {
+        this.isLessonPlaylistActive = false;
+        this.syncLessonPlaylistNavBarUI();
+        this.deserializeFullSlideState(slides[0]);
+      }
+
+      const modalCloud = document.getElementById('modalCloudHub');
+      if (modalCloud) modalCloud.classList.remove('show');
+
+      this.showToast(slides.length > 1
+        ? `📂 [${title}] (${slides.length}문항 통째 수업) 파일을 열었습니다! 1번부터 넘기며 수업하세요.`
+        : `📂 [${title}] 수업 파일을 성공적으로 불러왔습니다!`);
+      return pack;
+    } catch (err) {
+      this.showToast('⚠️ 파일을 읽는 중 오류가 발생했습니다.');
+      return null;
+    }
+  }
+
+  // 체크한 보관함 문항들을 하나의 N문항 풀세트로 묶어 슬라이드 배열 반환
+  _collectSelectedLibrarySlides() {
+    const checkedBoxes = Array.from(document.querySelectorAll('#myLibraryList .cloud-item-chk:checked'));
+    const selectedSlides = [];
+    checkedBoxes.forEach(box => {
+      const idx = parseInt(box.getAttribute('data-lib-idx'), 10);
+      const item = this.myLibraryCache[idx];
+      if (!item) return;
+      if (Array.isArray(item.playlistSlides) && item.playlistSlides.length > 0) {
+        item.playlistSlides.forEach((sl, sIdx) => {
+          const cloneSlide = JSON.parse(JSON.stringify(sl));
+          if (!cloneSlide.slideTitle) {
+            cloneSlide.slideTitle = item.playlistSlides.length > 1 ? `${item.title || '문항'} (${sIdx + 1})` : (item.title || `문항 ${selectedSlides.length + 1}`);
+          }
+          selectedSlides.push(cloneSlide);
+        });
+      } else if (item.slideData) {
+        const cloneSlide = JSON.parse(JSON.stringify(item.slideData));
+        cloneSlide.slideTitle = item.title || cloneSlide.slideTitle || `문항 ${selectedSlides.length + 1}`;
+        selectedSlides.push(cloneSlide);
+      }
+    });
+    return selectedSlides;
+  }
+
+  async bundleSelectedLibraryItemsToCommunity() {
+    const selectedSlides = this._collectSelectedLibrarySlides();
+    if (!selectedSlides.length) {
+      this.showToast('⚠️ 게시판에 묶어서 공유할 문항을 1개 이상 체크해 주세요!');
+      return null;
+    }
+    const inpTitle = document.getElementById('inputCloudSaveTitle');
+    const inpTags = document.getElementById('inputCloudSaveTags');
+    const defaultTitle = selectedSlides.length > 1
+      ? `${selectedSlides[0].slideTitle || '모의고사'} 외 총 ${selectedSlides.length}문항 통째 수업 세트`
+      : (selectedSlides[0].slideTitle || '기출 그래프 수업');
+    const title = (inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : defaultTitle;
+    const tags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : (selectedSlides.length > 1 ? '#통째수업 #풀세트' : '#기출그래프');
+    return await this.publishCurrentToCommunity(title, tags, selectedSlides);
+  }
+
+  bundleSelectedLibraryItemsToFile() {
+    const selectedSlides = this._collectSelectedLibrarySlides();
+    if (!selectedSlides.length) {
+      this.showToast('⚠️ 내 드라이브 파일로 저장할 문항을 1개 이상 체크해 주세요!');
+      return null;
+    }
+    const inpTitle = document.getElementById('inputCloudSaveTitle');
+    const inpTags = document.getElementById('inputCloudSaveTags');
+    const defaultTitle = selectedSlides.length > 1
+      ? `Graphly_${selectedSlides.length}문항_통째수업세트`
+      : (selectedSlides[0].slideTitle || 'Graphly_수업노트');
+    const title = (inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : defaultTitle;
+    const tags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : '#통째수업';
+    return this.exportGraphlyDeckFile(title, tags, selectedSlides);
   }
 
   async fetchMyLibraryFromCloud() {
@@ -12770,7 +13218,12 @@ class GraphApp {
         if (filtered.length > 0) {
           const map = new Map();
           [...this.myLibraryCache, ...filtered].forEach(it => {
-            if (it && it.id) map.set(it.id, it);
+            if (it && it.id) {
+              const prev = map.get(it.id);
+              if (!prev || (!it._isChunked) || (!prev.playlistSlides && !prev.slideData)) {
+                map.set(it.id, it);
+              }
+            }
           });
           this.myLibraryCache = Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
           try {
@@ -12788,7 +13241,12 @@ class GraphApp {
       if (remoteItems && remoteItems.length > 0) {
         const map = new Map();
         [...this.communityHubCache, ...remoteItems].forEach(it => {
-          if (it && it.id) map.set(it.id, it);
+          if (it && it.id) {
+            const prev = map.get(it.id);
+            if (!prev || (!it._isChunked) || (!prev.playlistSlides && !prev.slideData)) {
+              map.set(it.id, it);
+            }
+          }
         });
         this.communityHubCache = Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         try {
@@ -12807,7 +13265,7 @@ class GraphApp {
     if (!listEl) return;
 
     if (!this.myLibraryCache || this.myLibraryCache.length === 0) {
-      listEl.innerHTML = `<div class="cloud-empty-msg">아직 보관함에 저장된 수업 세팅이 없습니다.<br>위 입력창에 제목을 적고 <strong>[📁 내 보관함에 저장]</strong>을 눌러보세요!</div>`;
+      listEl.innerHTML = `<div class="cloud-empty-msg">아직 보관함에 저장된 수업 세팅이 없습니다.<br>위 입력창에 제목을 적고 <strong>[📁 내 보관함에 저장]</strong> 또는 <strong>[📂 내 드라이브 파일 열기]</strong>를 눌러보세요!</div>`;
       this.updateSelectedPlaylistCount();
       return;
     }
@@ -12817,11 +13275,16 @@ class GraphApp {
       const row = document.createElement('div');
       row.className = 'cloud-item-row';
       const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('ko-KR') : '';
+      const slideCnt = item.slideCount || (Array.isArray(item.playlistSlides) ? item.playlistSlides.length : 1);
+      const deckBadgeHtml = (slideCnt > 1 || item.isPlaylist)
+        ? `<span class="cloud-deck-badge">📚 ${slideCnt}문항 풀세트</span>`
+        : '';
+
       row.innerHTML = `
         <div class="cloud-item-left">
           <input type="checkbox" class="cloud-item-chk" data-lib-idx="${idx}" checked>
           <div class="cloud-item-info">
-            <div class="cloud-item-title">${item.title || '제목 없음'}</div>
+            <div class="cloud-item-title">${deckBadgeHtml}${item.title || '제목 없음'}</div>
             <div class="cloud-item-meta">
               <span class="cloud-summary-pill">${item.summary || '수업 슬라이드'}</span>
               <span class="cloud-tag-pill">${item.tags || '#수학'}</span>
@@ -12830,8 +13293,10 @@ class GraphApp {
           </div>
         </div>
         <div class="cloud-item-actions">
-          <button type="button" class="btn-cloud-load" data-load-idx="${idx}">⚡ 바로 열기</button>
-          <button type="button" class="btn-cloud-share-item" data-share-idx="${idx}" title="이 세팅을 학생/선생님에게 링크로 공유">🔗 공유</button>
+          <button type="button" class="btn-cloud-load" data-load-idx="${idx}">${slideCnt > 1 ? `▶ ${slideCnt}문항 수업 시작` : '⚡ 바로 열기'}</button>
+          <button type="button" class="btn-cloud-pub-item" data-pub-idx="${idx}" title="이 수업 세트를 기출 공유 게시판에 바로 등록">🌐 게시판 공유</button>
+          <button type="button" class="btn-cloud-export-item" data-export-idx="${idx}" title="내 드라이브(.graphly) 파일로 다운로드">💾 파일</button>
+          <button type="button" class="btn-cloud-share-item" data-share-idx="${idx}" title="학생/선생님에게 링크·QR로 공유">🔗 링크</button>
           <button type="button" class="btn-cloud-del-item" data-del-idx="${idx}" title="삭제">🗑️</button>
         </div>
       `;
@@ -12841,20 +13306,35 @@ class GraphApp {
 
       const btnLoad = row.querySelector('.btn-cloud-load');
       if (btnLoad) {
-        btnLoad.onclick = () => {
-          this.deserializeFullSlideState(item.slideData);
-          const modalCloud = document.getElementById('modalCloudHub');
-          if (modalCloud) modalCloud.classList.remove('show');
-          this.showToast(`⚡ [${item.title}] 세팅을 불러왔습니다!`);
+        btnLoad.onclick = () => this.loadCloudItemToWorkspace(item, true);
+      }
+
+      const btnPub = row.querySelector('.btn-cloud-pub-item');
+      if (btnPub) {
+        btnPub.onclick = async () => {
+          const resolved = await this._resolveChunkedItem(item);
+          const slides = Array.isArray(resolved.playlistSlides) && resolved.playlistSlides.length > 0
+            ? resolved.playlistSlides
+            : (resolved.slideData ? [resolved.slideData] : []);
+          await this.publishCurrentToCommunity(resolved.title || '기출 수업 세트', resolved.tags || '#기출', slides);
+        };
+      }
+
+      const btnExport = row.querySelector('.btn-cloud-export-item');
+      if (btnExport) {
+        btnExport.onclick = async () => {
+          const resolved = await this._resolveChunkedItem(item);
+          const slides = Array.isArray(resolved.playlistSlides) && resolved.playlistSlides.length > 0
+            ? resolved.playlistSlides
+            : (resolved.slideData ? [resolved.slideData] : []);
+          this.exportGraphlyDeckFile(resolved.title || 'Graphly_수업세트', resolved.tags || '#수학', slides);
         };
       }
 
       const btnShare = row.querySelector('.btn-cloud-share-item');
       if (btnShare) {
         btnShare.onclick = async () => {
-          this.deserializeFullSlideState(item.slideData);
-          const modalCloud = document.getElementById('modalCloudHub');
-          if (modalCloud) modalCloud.classList.remove('show');
+          await this.loadCloudItemToWorkspace(item, true);
           if (this._openShareModalWithCloudPackage) {
             this._openShareModalWithCloudPackage();
           }
@@ -12903,7 +13383,7 @@ class GraphApp {
     if (!listEl) return;
 
     if (filtered.length === 0) {
-      listEl.innerHTML = `<div class="cloud-empty-msg">검색된 기출/변형 그래프가 없습니다.<br>위에서 제목(예: <strong>2025 9월 고3 22번 그래프</strong>)을 입력하고 <strong>[🌐 기출 게시판 등록]</strong>으로 첫 게시물을 올려보세요!</div>`;
+      listEl.innerHTML = `<div class="cloud-empty-msg">검색된 기출/변형 수업 세트가 없습니다.<br>위에서 제목(예: <strong>2025 9월 모평 1~30번 풀세트</strong>)을 입력하고 <strong>[🌐 기출 게시판 등록]</strong>으로 첫 게시물을 올려보세요!</div>`;
       return;
     }
 
@@ -12912,10 +13392,15 @@ class GraphApp {
       const row = document.createElement('div');
       row.className = 'cloud-item-row';
       const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('ko-KR') : '';
+      const slideCnt = item.slideCount || (Array.isArray(item.playlistSlides) ? item.playlistSlides.length : 1);
+      const deckBadgeHtml = (slideCnt > 1 || item.isPlaylist)
+        ? `<span class="cloud-deck-badge">📚 ${slideCnt}문항 풀세트</span>`
+        : '';
+
       row.innerHTML = `
         <div class="cloud-item-left">
           <div class="cloud-item-info">
-            <div class="cloud-item-title">${item.title || '기출 그래프'}</div>
+            <div class="cloud-item-title">${deckBadgeHtml}${item.title || '기출 그래프'}</div>
             <div class="cloud-item-meta">
               <span class="cloud-summary-pill">${item.summary || '그래프 세팅'}</span>
               <span class="cloud-tag-pill">${item.tags || '#기출'}</span>
@@ -12924,17 +13409,30 @@ class GraphApp {
           </div>
         </div>
         <div class="cloud-item-actions">
-          <button type="button" class="btn-cloud-load">⚡ 내 칠판으로 가져오기</button>
+          <button type="button" class="btn-cloud-load">${slideCnt > 1 ? `▶ ${slideCnt}문항 통째 수업 시작` : '⚡ 내 칠판으로 가져오기'}</button>
+          <button type="button" class="btn-cloud-import-lib" title="내 클라우드 보관함으로 복사">📥 내 보관함 담기</button>
+          <button type="button" class="btn-cloud-export-item" title="내 드라이브(.graphly) 파일로 다운로드">💾 드라이브 저장</button>
         </div>
       `;
 
       const btnLoad = row.querySelector('.btn-cloud-load');
       if (btnLoad) {
-        btnLoad.onclick = () => {
-          this.deserializeFullSlideState(item.slideData);
-          const modalCloud = document.getElementById('modalCloudHub');
-          if (modalCloud) modalCloud.classList.remove('show');
-          this.showToast(`⚡ [${item.title}] 세팅을 내 칠판으로 가져왔습니다!`);
+        btnLoad.onclick = () => this.loadCloudItemToWorkspace(item, true);
+      }
+
+      const btnImportLib = row.querySelector('.btn-cloud-import-lib');
+      if (btnImportLib) {
+        btnImportLib.onclick = () => this.importCommunityItemToMyLibrary(item);
+      }
+
+      const btnExport = row.querySelector('.btn-cloud-export-item');
+      if (btnExport) {
+        btnExport.onclick = async () => {
+          const resolved = await this._resolveChunkedItem(item);
+          const slides = Array.isArray(resolved.playlistSlides) && resolved.playlistSlides.length > 0
+            ? resolved.playlistSlides
+            : (resolved.slideData ? [resolved.slideData] : []);
+          this.exportGraphlyDeckFile(resolved.title || 'Graphly_기출세트', resolved.tags || '#기출', slides);
         };
       }
 
@@ -12946,24 +13444,11 @@ class GraphApp {
   // 🎯 [수업 슬라이드(PPT) 플레이리스트 모드: 1번 ➔ 2번 ➔ 3번 연속 수업 & 필기 자동 보존]
   // ============================================================================
   startPlaylistFromSelectedLibraryItems() {
-    const checkedBoxes = Array.from(document.querySelectorAll('#myLibraryList .cloud-item-chk:checked'));
-    if (!checkedBoxes.length) {
+    const selectedSlides = this._collectSelectedLibrarySlides();
+    if (!selectedSlides.length) {
       this.showToast('⚠️ 수업 슬라이드로 시작할 문항을 1개 이상 체크해 주세요!');
       return;
     }
-    const selectedSlides = [];
-    // 체크된 항목들을 순서대로(또는 저장 역순이면 위에서부터) 슬라이드 배열로 복제
-    checkedBoxes.forEach(box => {
-      const idx = parseInt(box.getAttribute('data-lib-idx'), 10);
-      const item = this.myLibraryCache[idx];
-      if (item && item.slideData) {
-        const cloneSlide = JSON.parse(JSON.stringify(item.slideData));
-        cloneSlide.slideTitle = item.title || cloneSlide.slideTitle || `문항 ${selectedSlides.length + 1}`;
-        selectedSlides.push(cloneSlide);
-      }
-    });
-
-    if (!selectedSlides.length) return;
     this.startLessonPlaylist(selectedSlides, 0);
 
     const modalCloud = document.getElementById('modalCloudHub');
@@ -13055,7 +13540,7 @@ class GraphApp {
       localStorage.setItem('graphly_cloud_share_' + shortId, JSON.stringify(pkg));
     } catch (e) { }
 
-    // Firestore 클라우드에 업로드
+    // Firestore 클라우드에 업로드 (30문항 대용량이어도 자동 분할 업로드!)
     try {
       await this._firestoreRestWrite('shared_workspaces', shortId, pkg);
     } catch (e) { }

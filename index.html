@@ -1041,7 +1041,23 @@
           <div class="share-hint-text">학생은 로그인 없이 브라우저에서 열어 극점을 만져보고 [↺ 처음 상태로] 되돌릴 수 있습니다.</div>
         </div>
 
-        <!-- 3. QR 코드 생성 영역 -->
+        <!-- 3. 기출 게시판 통째 공유 & 내 드라이브(.graphly) 파일 저장 -->
+        <div class="share-field-group share-deck-hub-group">
+          <label class="share-field-label">
+            <span>📚 이 수업(전체 슬라이드·판서·그래프)을 게시판 또는 내 드라이브에 통째 등록</span>
+          </label>
+          <div class="share-input-row" style="margin-bottom: 6px;">
+            <input type="text" id="inputShareModalDeckTitle" class="share-link-input" placeholder="수업/시험지 제목 (예: 2025 9월 모의고사 1~30번 풀세트)">
+            <input type="text" id="inputShareModalDeckTags" class="share-link-input" style="max-width: 165px;" placeholder="#모의고사 #풀세트">
+          </div>
+          <div class="share-deck-btn-row">
+            <button type="button" id="btnShareModalToCommunity" class="btn-primary share-deck-btn">🌐 기출 게시판에 통째 공유</button>
+            <button type="button" id="btnShareModalToLibrary" class="btn-secondary share-deck-btn">📁 내 보관함에 통째 저장</button>
+            <button type="button" id="btnShareModalExportFile" class="btn-secondary share-deck-btn">💾 내 드라이브 저장 (.graphly)</button>
+          </div>
+        </div>
+
+        <!-- 4. QR 코드 생성 영역 -->
         <div class="qr-section">
           <div class="qr-preview-box">
             <canvas id="qrCanvas" width="180" height="180"></canvas>
@@ -1123,14 +1139,21 @@
       </div>
 
       <div class="smart-modal-body cloud-hub-body">
-        <!-- 1. 현재 칠판/그래프 즉시 저장 바 -->
+        <!-- 1. 현재 칠판/그래프/전체 슬라이드 즉시 저장 & 내 드라이브 파일 백업 바 -->
         <div class="cloud-save-box">
-          <div class="cloud-save-box-title">💾 현재 화면(판서 + 문제 카드 + #1,#2 보관 그래프 + 실시간 그래프) 저장 및 공유</div>
+          <div class="cloud-save-box-header">
+            <div id="lblCloudSaveBoxTitle" class="cloud-save-box-title">💾 현재 화면(판서 + 문제 카드 + #1,#2 보관 그래프 + 실시간 그래프) 저장 및 공유</div>
+            <div class="cloud-drive-file-btns">
+              <button type="button" id="btnExportGraphlyFile" class="btn-cloud-drive-file" title="현재 수업(단일 문항 또는 N문항 전체 슬라이드 세트)을 내 드라이브(구글 드라이브/PC/아이패드)에 .graphly 파일로 다운로드합니다">💾 내 드라이브 파일 저장 (.graphly)</button>
+              <button type="button" id="btnImportGraphlyFile" class="btn-cloud-drive-file btn-cloud-drive-open" title="내 드라이브(구글 드라이브/PC/아이패드)에 저장된 .graphly 수업 파일을 0.1초 만에 불러옵니다">📂 내 드라이브 파일 열기</button>
+              <input type="file" id="inputImportGraphlyFile" accept=".graphly,.json" style="display: none;">
+            </div>
+          </div>
           <div class="cloud-save-inputs">
-            <input type="text" id="inputCloudSaveTitle" class="cloud-input-title" placeholder="제목 입력 (예: 2025 9월 고3 22번 / 오늘 고3 수업 1번)">
-            <input type="text" id="inputCloudSaveTags" class="cloud-input-tags" placeholder="태그 (예: #삼차함수 #구간분할 #고3)">
+            <input type="text" id="inputCloudSaveTitle" class="cloud-input-title" placeholder="제목 입력 (예: 2025 9월 모의고사 1~30번 풀세트 / 오늘 고3 수업)">
+            <input type="text" id="inputCloudSaveTags" class="cloud-input-tags" placeholder="태그 (예: #9월모평 #30문항풀세트 #고3)">
             <button type="button" id="btnSaveToMyLibrary" class="btn-primary cloud-save-btn">📁 내 보관함에 저장</button>
-            <button type="button" id="btnPublishToCommunity" class="btn-secondary cloud-pub-btn" title="전국 선생님들이 검색해서 쓸 수 있도록 기출 게시판에도 함께 등록합니다">🌐 기출 게시판 등록</button>
+            <button type="button" id="btnPublishToCommunity" class="btn-secondary cloud-pub-btn" title="전국 선생님들이 검색해서 1번부터 넘기며 바로 수업할 수 있도록 기출 게시판에도 함께 등록합니다">🌐 기출 게시판 등록</button>
           </div>
         </div>
 
@@ -1152,7 +1175,12 @@
               <span>전체 선택</span>
             </label>
             <div class="cloud-playlist-actions">
-              <span class="cloud-playlist-hint">💡 오늘 수업할 문항들을 체크한 뒤 시작하면 PPT처럼 넘기며 수업합니다!</span>
+              <button type="button" id="btnBundleSelectedToCommunity" class="btn-bundle-deck" title="체크한 문항들을 하나의 N문항 풀세트로 묶어 기출 공유 게시판에 통째 공유합니다">
+                🌐 선택 문항 묶어 게시판 공유
+              </button>
+              <button type="button" id="btnBundleSelectedToFile" class="btn-bundle-deck" title="체크한 문항들을 하나의 .graphly 수업 파일로 묶어 내 드라이브에 저장합니다">
+                💾 선택 문항 내 드라이브 저장
+              </button>
               <button type="button" id="btnStartLessonPlaylist" class="btn-start-playlist">
                 ▶ 선택 문항으로 수업 슬라이드 시작 (<span id="lblSelectedPlaylistCount">0</span>)
               </button>

@@ -7014,3 +7014,190 @@ body.theme-light .btn-card-laser.active {
   z-index: 500 !important;
   pointer-events: none !important;
 }
+
+/* 📚 [통째 수업 세트(1~30문항 풀세트) 게시판 공유 & 내 드라이브(.graphly) 파일 연동 스타일] */
+.cloud-save-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.cloud-save-box-header .cloud-save-box-title {
+  margin-bottom: 0 !important;
+}
+
+.cloud-drive-file-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-cloud-drive-file {
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  background: rgba(14, 165, 233, 0.14);
+  color: #38bdf8;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-cloud-drive-file:hover {
+  background: rgba(14, 165, 233, 0.28);
+  border-color: #38bdf8;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.btn-cloud-drive-open {
+  border-color: rgba(168, 85, 247, 0.45);
+  background: rgba(168, 85, 247, 0.14);
+  color: #c084fc;
+}
+
+.btn-cloud-drive-open:hover {
+  background: rgba(168, 85, 247, 0.28);
+  border-color: #c084fc;
+  color: #ffffff;
+}
+
+body.theme-light .btn-cloud-drive-file {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  color: #0369a1;
+}
+
+body.theme-light .btn-cloud-drive-file:hover {
+  background: #bae6fd;
+  color: #0c4a6e;
+}
+
+body.theme-light .btn-cloud-drive-open {
+  background: #f3e8ff;
+  border-color: #d8b4fe;
+  color: #7e22ce;
+}
+
+body.theme-light .btn-cloud-drive-open:hover {
+  background: #e9d5ff;
+  color: #581c87;
+}
+
+.btn-bundle-deck {
+  padding: 6px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(30, 41, 59, 0.75);
+  color: #e2e8f0;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-bundle-deck:hover {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: #60a5fa;
+  color: #ffffff;
+}
+
+body.theme-light .btn-bundle-deck {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+
+body.theme-light .btn-bundle-deck:hover {
+  background: #dbeafe;
+  border-color: #60a5fa;
+  color: #1d4ed8;
+}
+
+.cloud-deck-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.35);
+  margin-right: 4px;
+}
+
+.share-deck-hub-group {
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+body.theme-light .share-deck-hub-group {
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+}
+
+.share-deck-btn-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.share-deck-btn {
+  flex: 1;
+  min-width: 130px;
+  padding: 7px 10px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  border-radius: 8px !important;
+  cursor: pointer;
+}
+
+.btn-cloud-import-lib,
+.btn-cloud-pub-item,
+.btn-cloud-export-item {
+  padding: 5px 9px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-cloud-import-lib:hover,
+.btn-cloud-pub-item:hover,
+.btn-cloud-export-item:hover {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: #60a5fa;
+  color: #ffffff;
+}
+
+body.theme-light .btn-cloud-import-lib,
+body.theme-light .btn-cloud-pub-item,
+body.theme-light .btn-cloud-export-item {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+body.theme-light .btn-cloud-import-lib:hover,
+body.theme-light .btn-cloud-pub-item:hover,
+body.theme-light .btn-cloud-export-item:hover {
+  background: #e0f2fe;
+  border-color: #38bdf8;
+  color: #0369a1;
+}
+
