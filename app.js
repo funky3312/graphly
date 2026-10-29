@@ -307,8 +307,16 @@ class GraphApp {
     this.isPdfToGraphCropMode = false;
     this.isPdfToGraphCropDragging = false;
 
+    this.lessonPlaylistSlides = [];
+    this.lessonPlaylistIndex = 0;
+    this.isLessonPlaylistActive = false;
+    this.cloudUser = null;
+    this.myLibraryCache = [];
+    this.communityHubCache = [];
+
     this.initDOM();
     this.initShareModal();
+    this.initCloudHubAndPlaylist();
     this.initNAxisStudioModal();
     this.bindEvents();
     this.resizeCanvas();
@@ -11802,26 +11810,42 @@ class GraphApp {
     const btnReset = document.getElementById('btnResetToOriginal');
     const btnCloseResetBar = document.getElementById('btnCloseResetBar');
 
-    const updateShareLinksAndQR = () => {
+    const renderQr = (urlStr) => {
+      if (qrCanvas && window.MiniQRCode && urlStr) {
+        try {
+          window.MiniQRCode.drawToCanvas(urlStr, qrCanvas, {
+            size: 180,
+            padding: 10,
+            fgColor: '#1e272e',
+            bgColor: '#ffffff'
+          });
+        } catch (err) { }
+      }
+    };
+
+    const updateShareLinksAndQR = async () => {
       const baseUrl = window.location.href.split('#')[0];
       const codeNormal = window.GraphStateSerializer ? window.GraphStateSerializer.serialize(this, false) : '';
       const codeStudent = window.GraphStateSerializer ? window.GraphStateSerializer.serialize(this, true) : '';
 
-      const normalUrl = `${baseUrl}#share=${codeNormal}`;
-      const studentUrl = `${baseUrl}#student=${codeStudent}`;
+      const fallbackNormalUrl = `${baseUrl}#share=${codeNormal}`;
+      const fallbackStudentUrl = `${baseUrl}#student=${codeStudent}`;
 
-      if (inputShare) inputShare.value = normalUrl;
-      if (inputStudent) inputStudent.value = studentUrl;
+      if (inputShare) inputShare.value = fallbackNormalUrl;
+      if (inputStudent) inputStudent.value = fallbackStudentUrl;
+      renderQr(fallbackStudentUrl);
 
-      // QR 코드는 학생들이 스캔할 때 바로 몰입할 수 있도록 '학생용 링크'로 렌더링!
-      if (qrCanvas && window.MiniQRCode) {
-        window.MiniQRCode.drawToCanvas(studentUrl, qrCanvas, {
-          size: 180,
-          padding: 10,
-          fgColor: '#1e272e',
-          bgColor: '#ffffff'
-        });
-      }
+      // 🌟 [대표님 핵심 기획]: 필기 페이지 + 문제 카드 + #1,#2 보관 그래프 카드(복구 가능) + 수업 슬라이드를 통째로 짧은 클라우드 링크로 생성!
+      try {
+        const shortId = await this.createCloudSharePackage();
+        if (shortId) {
+          const cloudNormalUrl = `${baseUrl}#cloud=${shortId}`;
+          const cloudStudentUrl = `${baseUrl}#cloud=${shortId}&student=1`;
+          if (inputShare) inputShare.value = cloudNormalUrl;
+          if (inputStudent) inputStudent.value = cloudStudentUrl;
+          renderQr(cloudStudentUrl);
+        }
+      } catch (err) { }
     };
 
     const openModal = () => {
@@ -11837,6 +11861,8 @@ class GraphApp {
       }
       if (modal) modal.classList.add('show');
     };
+
+    this._openShareModalWithCloudPackage = openModal;
 
     const closeModal = () => {
       if (modal) modal.classList.remove('show');
@@ -11871,13 +11897,13 @@ class GraphApp {
 
     if (btnCopyShare) {
       btnCopyShare.onclick = () => {
-        if (inputShare) copyToClipboard(inputShare.value, '📋 일반 공유 링크 복사 완료! (카톡/밴드에 붙여넣기)');
+        if (inputShare) copyToClipboard(inputShare.value, '📋 판서+그래프 공유 링크 복사 완료! (카톡/밴드에 붙여넣기)');
       };
     }
 
     if (btnCopyStudent) {
       btnCopyStudent.onclick = () => {
-        if (inputStudent) copyToClipboard(inputStudent.value, '🎓 학생용 모드 링크 복사 완료! (학생들은 캔버스만 깔끔하게 보임)');
+        if (inputStudent) copyToClipboard(inputStudent.value, '🎓 학생용 판서+그래프 복습 링크 복사 완료!');
       };
     }
 
@@ -11895,7 +11921,10 @@ class GraphApp {
 
     if (btnReset) {
       btnReset.onclick = () => {
-        if (this._initialSharedData) {
+        if (this._initialSharedCloudPkg) {
+          this.applyCloudSharePackage(this._initialSharedCloudPkg);
+          this.showToast('↺ 처음 공유받았던 판서 & 그래프 상태로 깨끗하게 복원되었습니다!');
+        } else if (this._initialSharedData) {
           this.applyState(this._initialSharedData);
           this.showToast('↺ 처음 공유받았던 상태로 깨끗하게 복원되었습니다!');
         }
@@ -11909,10 +11938,22 @@ class GraphApp {
     }
   }
 
-  // --- [URL 해시에서 상태 복원 및 학생 모드 진입 엔진] ---
+  // --- [URL 해시에서 상태 복원 및 학생 모드 진입 엔진 (#cloud= 통합 패키지 & #share= 호환)] ---
   checkUrlHashForState() {
     const hash = window.location.hash;
-    if (!hash || (!hash.includes('share=') && !hash.includes('student='))) return;
+    if (!hash) return;
+
+    if (hash.includes('cloud=')) {
+      const m = hash.match(/cloud=([A-Za-z0-9_-]+)/);
+      if (m && m[1]) {
+        const shortId = m[1];
+        const isStudent = hash.includes('student=1') || hash.includes('student=true');
+        this.restoreFromCloudShareId(shortId, isStudent);
+      }
+      return;
+    }
+
+    if (!hash.includes('share=') && !hash.includes('student=')) return;
 
     if (!window.GraphStateSerializer) return;
     const data = window.GraphStateSerializer.deserialize(hash);
@@ -11936,6 +11977,966 @@ class GraphApp {
 
     const modeName = data.isStudentMode ? '🎓 학생용 인터랙티브 모드' : '🌐 공유 그래프';
     this.showToast(`✨ ${modeName} 복원 완료! 그래프를 자유롭게 조작해 보세요.`);
+  }
+
+  // ============================================================================
+  // ☁️ [클라우드 보관함 · 수업 슬라이드(PPT) · 기출 게시판 & 통합 공유 엔진]
+  // ============================================================================
+  initCloudHubAndPlaylist() {
+    this._firebaseProjectId = 'graphly-net';
+    this._firebaseConfig = {
+      apiKey: "AIzaSyDW9F0xpg05IfG82L3H5nBMTXOs9XYtwpU",
+      authDomain: "graphly-net.firebaseapp.com",
+      projectId: "graphly-net",
+      storageBucket: "graphly-net.firebasestorage.app",
+      messagingSenderId: "934768067823",
+      appId: "1:934768067823:web:c7601110f7d4878680071a",
+      measurementId: "G-FRVVPNGN57"
+    };
+
+    // 로컬 캐시 먼저 로드 (0.0ms 즉시 반응 보장)
+    try {
+      const savedLib = localStorage.getItem('graphly_my_library_v1');
+      if (savedLib) this.myLibraryCache = JSON.parse(savedLib);
+    } catch (e) {
+      this.myLibraryCache = [];
+    }
+    try {
+      const savedComm = localStorage.getItem('graphly_community_hub_v1');
+      if (savedComm) this.communityHubCache = JSON.parse(savedComm);
+    } catch (e) {
+      this.communityHubCache = [];
+    }
+
+    // 비동기로 Firebase SDK 초기화 (판서/초기 로딩 블로킹 0%)
+    const tryInitFirebase = () => {
+      if (window.firebase && window.firebase.apps) {
+        try {
+          if (!window.firebase.apps.length) {
+            window.firebase.initializeApp(this._firebaseConfig);
+          }
+          this._fbAuth = window.firebase.auth ? window.firebase.auth() : null;
+          this._fbDb = window.firebase.firestore ? window.firebase.firestore() : null;
+          if (this._fbAuth) {
+            this._fbAuth.onAuthStateChanged((user) => {
+              this.cloudUser = user ? {
+                uid: user.uid,
+                displayName: user.displayName || (user.email ? user.email.split('@')[0] : '선생님'),
+                email: user.email || ''
+              } : null;
+              this.syncCloudAuthUI();
+              if (this.cloudUser) {
+                this.fetchMyLibraryFromCloud();
+              }
+            });
+          }
+        } catch (err) { }
+      }
+    };
+    setTimeout(tryInitFirebase, 400);
+
+    // 모달 및 버튼 바인딩
+    const btnCloudHub = document.getElementById('btnCloudHub');
+    const modalCloud = document.getElementById('modalCloudHub');
+    const btnCloseCloud = document.getElementById('btnCloseCloudHub');
+    const btnAuth = document.getElementById('btnCloudGoogleLogin');
+    const btnSaveLib = document.getElementById('btnSaveToMyLibrary');
+    const btnPubComm = document.getElementById('btnPublishToCommunity');
+    const tabBtnLib = document.getElementById('tabBtnMyLibrary');
+    const tabBtnComm = document.getElementById('tabBtnCommunityHub');
+    const panelLib = document.getElementById('panelCloudMyLibrary');
+    const panelComm = document.getElementById('panelCloudCommunityHub');
+    const chkAll = document.getElementById('chkCloudSelectAll');
+    const btnStartPlaylist = document.getElementById('btnStartLessonPlaylist');
+    const inputSearch = document.getElementById('inputCommunitySearch');
+    const btnRefreshComm = document.getElementById('btnRefreshCommunity');
+
+    if (btnCloudHub) {
+      btnCloudHub.onclick = () => this.openCloudHubModal();
+    }
+    if (btnCloseCloud) {
+      btnCloseCloud.onclick = () => {
+        if (modalCloud) modalCloud.classList.remove('show');
+      };
+    }
+    if (modalCloud) {
+      modalCloud.onclick = (e) => {
+        if (e.target === modalCloud) modalCloud.classList.remove('show');
+      };
+    }
+
+    if (btnAuth) {
+      btnAuth.onclick = () => this.handleCloudGoogleAuth();
+    }
+    if (btnSaveLib) {
+      btnSaveLib.onclick = () => this.saveCurrentToMyLibrary();
+    }
+    if (btnPubComm) {
+      btnPubComm.onclick = () => this.publishCurrentToCommunity();
+    }
+
+    if (tabBtnLib && tabBtnComm && panelLib && panelComm) {
+      tabBtnLib.onclick = () => {
+        tabBtnLib.classList.add('active');
+        tabBtnComm.classList.remove('active');
+        panelLib.style.display = 'block';
+        panelComm.style.display = 'none';
+        this.renderMyLibraryList();
+      };
+      tabBtnComm.onclick = () => {
+        tabBtnComm.classList.add('active');
+        tabBtnLib.classList.remove('active');
+        panelComm.style.display = 'block';
+        panelLib.style.display = 'none';
+        this.fetchCommunityHubFromCloud();
+        this.renderCommunityHubList();
+      };
+    }
+
+    if (chkAll) {
+      chkAll.onchange = () => {
+        const boxes = document.querySelectorAll('#myLibraryList .cloud-item-chk');
+        boxes.forEach(b => { b.checked = chkAll.checked; });
+        this.updateSelectedPlaylistCount();
+      };
+    }
+
+    if (btnStartPlaylist) {
+      btnStartPlaylist.onclick = () => this.startPlaylistFromSelectedLibraryItems();
+    }
+
+    if (inputSearch) {
+      inputSearch.oninput = () => this.renderCommunityHubList();
+    }
+    if (btnRefreshComm) {
+      btnRefreshComm.onclick = () => this.fetchCommunityHubFromCloud(true);
+    }
+
+    // 수업 슬라이드(PPT) 상단 네비게이션 바 바인딩
+    const btnPrev = document.getElementById('btnPlaylistPrev');
+    const btnNext = document.getElementById('btnPlaylistNext');
+    const btnInfo = document.getElementById('btnPlaylistSlideInfo');
+    const btnShareAll = document.getElementById('btnPlaylistShareAll');
+    const btnClosePlaylist = document.getElementById('btnPlaylistClose');
+
+    if (btnPrev) btnPrev.onclick = () => this.stepLessonPlaylist(-1);
+    if (btnNext) btnNext.onclick = () => this.stepLessonPlaylist(1);
+    if (btnInfo) btnInfo.onclick = () => this.openCloudHubModal();
+    if (btnShareAll) {
+      btnShareAll.onclick = () => {
+        this.saveCurrentSlideIntoPlaylist();
+        if (this._openShareModalWithCloudPackage) {
+          this._openShareModalWithCloudPackage();
+        }
+      };
+    }
+    if (btnClosePlaylist) {
+      btnClosePlaylist.onclick = () => this.closeLessonPlaylistMode();
+    }
+  }
+
+  openCloudHubModal() {
+    const modalCloud = document.getElementById('modalCloudHub');
+    if (!modalCloud) return;
+    modalCloud.classList.add('show');
+    this.syncCloudAuthUI();
+    this.renderMyLibraryList();
+    this.renderCommunityHubList();
+    this.fetchMyLibraryFromCloud();
+    this.fetchCommunityHubFromCloud();
+  }
+
+  syncCloudAuthUI() {
+    const lblStatus = document.getElementById('lblCloudUserStatus');
+    const lblBtn = document.getElementById('lblCloudAuthBtnText');
+    if (this.cloudUser) {
+      if (lblStatus) lblStatus.textContent = `🟢 ${this.cloudUser.displayName}님 연동중`;
+      if (lblBtn) lblBtn.textContent = '로그아웃';
+    } else {
+      if (lblStatus) lblStatus.textContent = '로컬/클라우드 연동';
+      if (lblBtn) lblBtn.textContent = '구글 로그인';
+    }
+  }
+
+  async handleCloudGoogleAuth() {
+    if (this.cloudUser && this._fbAuth) {
+      try {
+        await this._fbAuth.signOut();
+        this.cloudUser = null;
+        this.syncCloudAuthUI();
+        this.showToast('로그아웃 되었습니다.');
+      } catch (e) { }
+      return;
+    }
+    if (!window.firebase || !this._fbAuth) {
+      this.showToast('⚠️ 구글 로그인 모듈을 불러오는 중입니다. 잠시 후 다시 눌러주세요.');
+      return;
+    }
+    try {
+      const provider = new window.firebase.auth.GoogleAuthProvider();
+      const result = await this._fbAuth.signInWithPopup(provider);
+      if (result && result.user) {
+        this.cloudUser = {
+          uid: result.user.uid,
+          displayName: result.user.displayName || (result.user.email ? result.user.email.split('@')[0] : '선생님'),
+          email: result.user.email || ''
+        };
+        this.syncCloudAuthUI();
+        this.showToast(`🎉 환영합니다, ${this.cloudUser.displayName}님! 어디서든 내 보관함이 자동 동기화됩니다.`);
+        await this.fetchMyLibraryFromCloud();
+      }
+    } catch (err) {
+      this.showToast('⚠️ 구글 로그인 창이 닫혔거나 취소되었습니다.');
+    }
+  }
+
+  // 현재 워크스페이스(판서 + 문제 카드 + #1,#2 그래프 카드 + 실시간 그래프)를 100% 직렬화 가능한 JSON 객체로 추출
+  serializeFullSlideState(title = '') {
+    const pWidget = document.getElementById('problemCardWidget');
+    const pImg = document.getElementById('problemCardImg');
+    const pTitle = document.getElementById('problemCardTitle');
+    const pToggle = document.getElementById('iconCardToggle');
+    const hasPrimaryProblem = Boolean(pWidget && pWidget.style.display !== 'none' && this.problemCardData);
+
+    const gWidget = document.getElementById('graphCardWidget');
+    const gImg = document.getElementById('graphCardImg');
+    const gTitle = document.getElementById('graphCardTitle');
+    const gToggle = document.getElementById('iconGraphCardToggle');
+    const hasPrimaryGraph = Boolean(gWidget && this._hasPrimaryGraphCard && this.graphCardData);
+
+    const extraProblems = [];
+    if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el && document.body.contains(c.el) && c.el.style.display !== 'none') {
+          const imgEl = c.el.querySelector('.problem-card-img');
+          const titleEl = c.el.querySelector('.card-title-text');
+          extraProblems.push({
+            dataUrl: imgEl ? imgEl.src : '',
+            cardW: parseFloat(c.el.style.width) || 460,
+            titleText: titleEl ? titleEl.textContent : '문제',
+            baseX: c.baseX,
+            baseY: c.baseY,
+            isMin: Boolean(c.isMin),
+            isPdfPageCard: Boolean(c.isPdfPageCard),
+            pdfPageNum: c.pdfPageNum || null
+          });
+        }
+      });
+    }
+
+    const extraGraphs = [];
+    if (this.extraGraphCards && this.extraGraphCards.length > 0) {
+      this.extraGraphCards.forEach(c => {
+        if (c && c.el && document.body.contains(c.el) && c.el.style.display !== 'none') {
+          const imgEl = c.el.querySelector('.problem-card-img');
+          const titleEl = c.el.querySelector('.card-title-text');
+          extraGraphs.push({
+            dataUrl: imgEl ? imgEl.src : '',
+            cardW: parseFloat(c.el.style.width) || 360,
+            aspect: c.aspect || 0.65,
+            titleText: titleEl ? titleEl.textContent : `#${c.caseIdx || 2}`,
+            baseX: c.baseX,
+            baseY: c.baseY,
+            isMin: Boolean(c.isMin),
+            caseIdx: c.caseIdx || 2,
+            graphSnapshot: c.graphSnapshot ? JSON.parse(JSON.stringify(c.graphSnapshot)) : null
+          });
+        }
+      });
+    }
+
+    return {
+      slideTitle: title || '문항 슬라이드',
+      historyJson: this.getHistorySnapshot(),
+      isGraphCovered: Boolean(this.isGraphCovered),
+      coveredGraphStateBackup: this._coveredGraphStateBackup ? JSON.parse(JSON.stringify(this._coveredGraphStateBackup)) : null,
+      savedLayer2BoardPan: this._savedLayer2BoardPan ? { ...this._savedLayer2BoardPan } : null,
+      graphCaseCounter: this._graphCaseCounter || 0,
+      graphSessionArchived: Boolean(this._graphSessionArchived),
+      primaryProblemCard: hasPrimaryProblem ? {
+        display: pWidget.style.display,
+        minimized: pWidget.classList.contains('minimized'),
+        left: pWidget.style.left,
+        top: pWidget.style.top,
+        width: pWidget.style.width,
+        zIndex: pWidget.style.zIndex,
+        imgSrc: pImg ? pImg.src : (this.problemCardData && this.problemCardData.dataUrl ? this.problemCardData.dataUrl : ''),
+        titleText: pTitle ? pTitle.textContent : '문제',
+        toggleText: pToggle ? pToggle.textContent : '▾',
+        problemCardData: this.problemCardData ? { ...this.problemCardData } : null,
+        problemCardAspect: this.problemCardAspect,
+        isProblemCardMinimized: Boolean(this.isProblemCardMinimized),
+        problemCardBaseX: this.problemCardBaseX,
+        problemCardBaseY: this.problemCardBaseY,
+        problemInkStrokes: JSON.parse(JSON.stringify(this.problemInkStrokes || []))
+      } : null,
+      extraProblems,
+      primaryGraphCard: hasPrimaryGraph ? {
+        display: gWidget.style.display,
+        minimized: gWidget.classList.contains('minimized'),
+        left: gWidget.style.left,
+        top: gWidget.style.top,
+        width: gWidget.style.width,
+        zIndex: gWidget.style.zIndex,
+        imgSrc: gImg ? gImg.src : (this.graphCardData && this.graphCardData.dataUrl ? this.graphCardData.dataUrl : ''),
+        titleText: gTitle ? gTitle.textContent : '#1',
+        toggleText: gToggle ? gToggle.textContent : '▾',
+        graphCardData: this.graphCardData ? { ...this.graphCardData } : null,
+        graphCardAspect: this.graphCardAspect,
+        isGraphCardMinimized: Boolean(this.isGraphCardMinimized),
+        graphCardBaseX: this.graphCardBaseX,
+        graphCardBaseY: this.graphCardBaseY,
+        primaryGraphCardSnapshot: this.primaryGraphCardSnapshot ? JSON.parse(JSON.stringify(this.primaryGraphCardSnapshot)) : null,
+        graphInkStrokes: JSON.parse(JSON.stringify(this.graphInkStrokes || []))
+      } : null,
+      extraGraphs
+    };
+  }
+
+  // 직렬화된 슬라이드 데이터를 현재 화면에 100% 복원 (문제 카드 + #1,#2 보관 그래프 카드 + 필기 + 그래프 모드 완벽 복원)
+  deserializeFullSlideState(slideData) {
+    if (!slideData) return;
+
+    // 기존 다중 카드 DOM 정리
+    if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+      this.extraProblemCards.forEach(c => { if (c && c.el) c.el.remove(); });
+    }
+    this.extraProblemCards = [];
+
+    if (this.extraGraphCards && this.extraGraphCards.length > 0) {
+      this.extraGraphCards.forEach(c => { if (c && c.el) c.el.remove(); });
+    }
+    this.extraGraphCards = [];
+
+    if (slideData.historyJson) {
+      this.restoreHistorySnapshot(slideData.historyJson);
+    }
+
+    // 1. 기본 문제 카드 복원
+    const pWidget = document.getElementById('problemCardWidget');
+    const pImg = document.getElementById('problemCardImg');
+    const pTitle = document.getElementById('problemCardTitle');
+    const pToggle = document.getElementById('iconCardToggle');
+    if (slideData.primaryProblemCard && pWidget) {
+      const pc = slideData.primaryProblemCard;
+      this.problemCardData = pc.problemCardData ? { ...pc.problemCardData } : { dataUrl: pc.imgSrc };
+      this.problemCardAspect = pc.problemCardAspect || 0.65;
+      this.isProblemCardMinimized = Boolean(pc.isProblemCardMinimized);
+      this.problemCardBaseX = typeof pc.problemCardBaseX === 'number' ? pc.problemCardBaseX : 72;
+      this.problemCardBaseY = typeof pc.problemCardBaseY === 'number' ? pc.problemCardBaseY : 18;
+      this.problemInkStrokes = JSON.parse(JSON.stringify(pc.problemInkStrokes || []));
+      if (pc.imgSrc) {
+        const imgObj = new Image();
+        imgObj.src = pc.imgSrc;
+        this.problemCardImage = imgObj;
+      }
+      if (pImg) pImg.src = pc.imgSrc || '';
+      if (pTitle) pTitle.textContent = pc.titleText || '문제';
+      if (pToggle) pToggle.textContent = pc.toggleText || (pc.minimized ? '▸' : '▾');
+      pWidget.classList.toggle('minimized', Boolean(pc.minimized));
+      pWidget.style.left = pc.left || '72px';
+      pWidget.style.top = pc.top || '18px';
+      pWidget.style.width = pc.width || '520px';
+      if (pc.zIndex) pWidget.style.zIndex = pc.zIndex;
+      pWidget.style.display = pc.display || 'flex';
+      this.syncProblemCardRectFromWidget();
+      this.renderProblemCardCanvas();
+    } else {
+      this.closeProblemCard();
+    }
+
+    // 2. 추가 문제 카드 복원
+    if (Array.isArray(slideData.extraProblems)) {
+      slideData.extraProblems.forEach(ep => {
+        this.spawnExtraProblemCard(ep.dataUrl, ep.cardW || 460, ep.titleText || '문제', {
+          baseX: ep.baseX,
+          baseY: ep.baseY,
+          startMinimized: ep.isMin,
+          isPdfPageCard: ep.isPdfPageCard,
+          pdfPageNum: ep.pdfPageNum
+        });
+      });
+    }
+
+    // 3. 기본 그래프 보관 카드(#1) 복원
+    const gWidget = document.getElementById('graphCardWidget');
+    const gImg = document.getElementById('graphCardImg');
+    const gTitle = document.getElementById('graphCardTitle');
+    const gToggle = document.getElementById('iconGraphCardToggle');
+    if (slideData.primaryGraphCard && gWidget) {
+      const gc = slideData.primaryGraphCard;
+      this._hasPrimaryGraphCard = true;
+      this.graphCardData = gc.graphCardData ? { ...gc.graphCardData } : { dataUrl: gc.imgSrc };
+      this.graphCardAspect = gc.graphCardAspect || 0.65;
+      this.isGraphCardMinimized = Boolean(gc.isGraphCardMinimized);
+      this.graphCardBaseX = typeof gc.graphCardBaseX === 'number' ? gc.graphCardBaseX : 580;
+      this.graphCardBaseY = typeof gc.graphCardBaseY === 'number' ? gc.graphCardBaseY : 18;
+      this.primaryGraphCardSnapshot = gc.primaryGraphCardSnapshot ? JSON.parse(JSON.stringify(gc.primaryGraphCardSnapshot)) : null;
+      this.graphInkStrokes = JSON.parse(JSON.stringify(gc.graphInkStrokes || []));
+      if (gc.imgSrc) {
+        const gImgObj = new Image();
+        gImgObj.src = gc.imgSrc;
+        this.graphCardImage = gImgObj;
+      }
+      if (gImg) gImg.src = gc.imgSrc || '';
+      if (gTitle) gTitle.textContent = gc.titleText || '#1';
+      if (gToggle) gToggle.textContent = gc.toggleText || (gc.minimized ? '▸' : '▾');
+      gWidget.classList.toggle('minimized', Boolean(gc.minimized));
+      gWidget.style.left = gc.left || '580px';
+      gWidget.style.top = gc.top || '18px';
+      gWidget.style.width = gc.width || '400px';
+      if (gc.zIndex) gWidget.style.zIndex = gc.zIndex;
+      gWidget.style.display = gc.display || 'flex';
+      this.syncGraphCardRectFromWidget();
+    } else {
+      this._hasPrimaryGraphCard = false;
+      this.graphCardData = null;
+      this.graphCardRect = null;
+      this.graphInkStrokes = [];
+      if (gWidget) gWidget.style.display = 'none';
+    }
+
+    // 4. 추가 그래프 보관 카드(#2, #3...) 복원
+    if (Array.isArray(slideData.extraGraphs)) {
+      slideData.extraGraphs.forEach(eg => {
+        this.spawnExtraGraphArchiveCard(eg.dataUrl, eg.cardW || 360, eg.aspect || 0.65, eg.graphSnapshot || null);
+        const created = this.extraGraphCards[this.extraGraphCards.length - 1];
+        if (created && created.el) {
+          created.baseX = eg.baseX;
+          created.baseY = eg.baseY;
+          created.el.style.left = `${Math.round(eg.baseX)}px`;
+          created.el.style.top = `${Math.round(eg.baseY)}px`;
+          if (eg.isMin) {
+            created.isMin = true;
+            created.el.classList.add('minimized');
+            const chev = created.el.querySelector('.card-fold-chevron');
+            if (chev) chev.textContent = '▸';
+          }
+        }
+      });
+    }
+
+    this._graphCaseCounter = slideData.graphCaseCounter || 0;
+    this.isGraphCovered = slideData.isGraphCovered !== undefined ? Boolean(slideData.isGraphCovered) : true;
+    this._coveredGraphStateBackup = slideData.coveredGraphStateBackup ? JSON.parse(JSON.stringify(slideData.coveredGraphStateBackup)) : null;
+    this._savedLayer2BoardPan = slideData.savedLayer2BoardPan ? { ...slideData.savedLayer2BoardPan } : null;
+    this._graphSessionArchived = Boolean(slideData.graphSessionArchived);
+
+    this.updateProblemCardPosition();
+    this.syncWorkspaceModeUI();
+    this.syncGraphSnapBarUI();
+    this._inkBakeDirty = true;
+    this.updateIntersections();
+    this.render();
+  }
+
+  _buildSlideSummaryBadge(slideData) {
+    if (!slideData) return '빈 슬라이드';
+    const parts = [];
+    let gCount = 0;
+    try {
+      const h = typeof slideData.historyJson === 'string' ? JSON.parse(slideData.historyJson) : slideData.historyJson;
+      if (h && Array.isArray(h.graphs)) gCount = h.graphs.length;
+    } catch (e) { }
+    if (gCount === 0 && slideData.coveredGraphStateBackup && Array.isArray(slideData.coveredGraphStateBackup.graphs)) {
+      gCount = slideData.coveredGraphStateBackup.graphs.length;
+    }
+    const gCards = (slideData.primaryGraphCard ? 1 : 0) + (Array.isArray(slideData.extraGraphs) ? slideData.extraGraphs.length : 0);
+    const pCards = (slideData.primaryProblemCard ? 1 : 0) + (Array.isArray(slideData.extraProblems) ? slideData.extraProblems.length : 0);
+    if (pCards > 0) parts.push(`문제카드 ${pCards}개`);
+    if (gCards > 0) parts.push(`보관그래프 #${gCards}`);
+    if (gCount > 0) parts.push(`함수 ${gCount}개`);
+    if (parts.length === 0) parts.push('판서 노트');
+    return parts.join(' · ');
+  }
+
+  // Firestore REST API 헬퍼 (SDK 미로드 환경이나 비로그인 환경에서도 100% 작동 보장)
+  async _firestoreRestWrite(collectionName, docId, payloadObj) {
+    const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}?documentId=${encodeURIComponent(docId)}`;
+    const body = {
+      fields: {
+        jsonPayload: { stringValue: JSON.stringify(payloadObj) },
+        createdAt: { integerValue: String(Date.now()) },
+        ownerUid: { stringValue: (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous' }
+      }
+    };
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok && res.status === 409) {
+      // 이미 존재하면 PATCH로 업데이트
+      const patchUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
+      await fetch(patchUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+    }
+    return docId;
+  }
+
+  async _firestoreRestReadDoc(collectionName, docId) {
+    const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && data.fields && data.fields.jsonPayload && data.fields.jsonPayload.stringValue) {
+      return JSON.parse(data.fields.jsonPayload.stringValue);
+    }
+    return null;
+  }
+
+  async _firestoreRestListCollection(collectionName, pageSize = 50) {
+    const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}?pageSize=${pageSize}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data || !Array.isArray(data.documents)) return [];
+    const items = [];
+    data.documents.forEach(doc => {
+      try {
+        if (doc.fields && doc.fields.jsonPayload && doc.fields.jsonPayload.stringValue) {
+          items.push(JSON.parse(doc.fields.jsonPayload.stringValue));
+        }
+      } catch (e) { }
+    });
+    items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return items;
+  }
+
+  async _firestoreRestDeleteDoc(collectionName, docId) {
+    const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
+    await fetch(url, { method: 'DELETE' });
+  }
+
+  // 1. 내 보관함에 현재 칠판/그래프 저장
+  async saveCurrentToMyLibrary() {
+    const inpTitle = document.getElementById('inputCloudSaveTitle');
+    const inpTags = document.getElementById('inputCloudSaveTags');
+    const rawTitle = (inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : `수업 세팅 (${new Date().toLocaleDateString('ko-KR')})`;
+    const rawTags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : '#수학그래프';
+
+    const slideData = this.serializeFullSlideState(rawTitle);
+    const itemId = 'lib_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const itemObj = {
+      id: itemId,
+      title: rawTitle,
+      tags: rawTags,
+      summary: this._buildSlideSummaryBadge(slideData),
+      ownerUid: (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'local_user',
+      authorName: (this.cloudUser && this.cloudUser.displayName) ? this.cloudUser.displayName : '내 보관함',
+      createdAt: Date.now(),
+      slideData
+    };
+
+    this.myLibraryCache.unshift(itemObj);
+    try {
+      localStorage.setItem('graphly_my_library_v1', JSON.stringify(this.myLibraryCache));
+    } catch (e) { }
+
+    this.renderMyLibraryList();
+    if (inpTitle) inpTitle.value = '';
+    this.showToast(`📁 [${rawTitle}] 내 보관함에 저장되었습니다!`);
+
+    try {
+      await this._firestoreRestWrite('user_library', itemId, itemObj);
+    } catch (e) { }
+    return itemObj;
+  }
+
+  // 2. 전국 기출/변형 그래프 공유 게시판에 등록
+  async publishCurrentToCommunity() {
+    const inpTitle = document.getElementById('inputCloudSaveTitle');
+    const inpTags = document.getElementById('inputCloudSaveTags');
+    const rawTitle = (inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : '';
+    if (!rawTitle) {
+      this.showToast('⚠️ 게시판에 공유할 제목(예: 2025 9월 고3 22번 그래프)을 먼저 입력해 주세요!');
+      if (inpTitle) inpTitle.focus();
+      return;
+    }
+    const rawTags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : '#기출그래프';
+
+    const slideData = this.serializeFullSlideState(rawTitle);
+    const itemId = 'comm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const commObj = {
+      id: itemId,
+      title: rawTitle,
+      tags: rawTags,
+      summary: this._buildSlideSummaryBadge(slideData),
+      ownerUid: (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous',
+      authorName: (this.cloudUser && this.cloudUser.displayName) ? `${this.cloudUser.displayName} 선생님` : '익명 선생님',
+      createdAt: Date.now(),
+      slideData
+    };
+
+    // 내 보관함과 기출 게시판 양쪽에 모두 추가
+    this.myLibraryCache.unshift(commObj);
+    this.communityHubCache.unshift(commObj);
+    try {
+      localStorage.setItem('graphly_my_library_v1', JSON.stringify(this.myLibraryCache));
+      localStorage.setItem('graphly_community_hub_v1', JSON.stringify(this.communityHubCache));
+    } catch (e) { }
+
+    if (inpTitle) inpTitle.value = '';
+    this.renderMyLibraryList();
+    this.renderCommunityHubList();
+    this.showToast(`🌐 [${rawTitle}] 기출 공유 게시판 및 내 보관함에 등록 완료!`);
+
+    try {
+      await this._firestoreRestWrite('community_hub', itemId, commObj);
+      await this._firestoreRestWrite('user_library', itemId, commObj);
+    } catch (e) { }
+    return commObj;
+  }
+
+  async fetchMyLibraryFromCloud() {
+    try {
+      const remoteItems = await this._firestoreRestListCollection('user_library', 60);
+      if (remoteItems && remoteItems.length > 0) {
+        const filtered = this.cloudUser
+          ? remoteItems.filter(it => it.ownerUid === this.cloudUser.uid || it.ownerUid === 'local_user')
+          : remoteItems;
+        if (filtered.length > 0) {
+          const map = new Map();
+          [...this.myLibraryCache, ...filtered].forEach(it => {
+            if (it && it.id) map.set(it.id, it);
+          });
+          this.myLibraryCache = Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          try {
+            localStorage.setItem('graphly_my_library_v1', JSON.stringify(this.myLibraryCache));
+          } catch (e) { }
+          this.renderMyLibraryList();
+        }
+      }
+    } catch (e) { }
+  }
+
+  async fetchCommunityHubFromCloud(showToastOnDone = false) {
+    try {
+      const remoteItems = await this._firestoreRestListCollection('community_hub', 80);
+      if (remoteItems && remoteItems.length > 0) {
+        const map = new Map();
+        [...this.communityHubCache, ...remoteItems].forEach(it => {
+          if (it && it.id) map.set(it.id, it);
+        });
+        this.communityHubCache = Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        try {
+          localStorage.setItem('graphly_community_hub_v1', JSON.stringify(this.communityHubCache));
+        } catch (e) { }
+        this.renderCommunityHubList();
+        if (showToastOnDone) this.showToast('🌐 최신 기출 게시판 목록을 불러왔습니다!');
+      }
+    } catch (e) { }
+  }
+
+  renderMyLibraryList() {
+    const listEl = document.getElementById('myLibraryList');
+    const badgeEl = document.getElementById('badgeMyLibraryCount');
+    if (badgeEl) badgeEl.textContent = String(this.myLibraryCache.length);
+    if (!listEl) return;
+
+    if (!this.myLibraryCache || this.myLibraryCache.length === 0) {
+      listEl.innerHTML = `<div class="cloud-empty-msg">아직 보관함에 저장된 수업 세팅이 없습니다.<br>위 입력창에 제목을 적고 <strong>[📁 내 보관함에 저장]</strong>을 눌러보세요!</div>`;
+      this.updateSelectedPlaylistCount();
+      return;
+    }
+
+    listEl.innerHTML = '';
+    this.myLibraryCache.forEach((item, idx) => {
+      const row = document.createElement('div');
+      row.className = 'cloud-item-row';
+      const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('ko-KR') : '';
+      row.innerHTML = `
+        <div class="cloud-item-left">
+          <input type="checkbox" class="cloud-item-chk" data-lib-idx="${idx}" checked>
+          <div class="cloud-item-info">
+            <div class="cloud-item-title">${item.title || '제목 없음'}</div>
+            <div class="cloud-item-meta">
+              <span class="cloud-summary-pill">${item.summary || '수업 슬라이드'}</span>
+              <span class="cloud-tag-pill">${item.tags || '#수학'}</span>
+              <span>${dateStr}</span>
+            </div>
+          </div>
+        </div>
+        <div class="cloud-item-actions">
+          <button type="button" class="btn-cloud-load" data-load-idx="${idx}">⚡ 바로 열기</button>
+          <button type="button" class="btn-cloud-share-item" data-share-idx="${idx}" title="이 세팅을 학생/선생님에게 링크로 공유">🔗 공유</button>
+          <button type="button" class="btn-cloud-del-item" data-del-idx="${idx}" title="삭제">🗑️</button>
+        </div>
+      `;
+
+      const chk = row.querySelector('.cloud-item-chk');
+      if (chk) chk.onchange = () => this.updateSelectedPlaylistCount();
+
+      const btnLoad = row.querySelector('.btn-cloud-load');
+      if (btnLoad) {
+        btnLoad.onclick = () => {
+          this.deserializeFullSlideState(item.slideData);
+          const modalCloud = document.getElementById('modalCloudHub');
+          if (modalCloud) modalCloud.classList.remove('show');
+          this.showToast(`⚡ [${item.title}] 세팅을 불러왔습니다!`);
+        };
+      }
+
+      const btnShare = row.querySelector('.btn-cloud-share-item');
+      if (btnShare) {
+        btnShare.onclick = async () => {
+          this.deserializeFullSlideState(item.slideData);
+          const modalCloud = document.getElementById('modalCloudHub');
+          if (modalCloud) modalCloud.classList.remove('show');
+          if (this._openShareModalWithCloudPackage) {
+            this._openShareModalWithCloudPackage();
+          }
+        };
+      }
+
+      const btnDel = row.querySelector('.btn-cloud-del-item');
+      if (btnDel) {
+        btnDel.onclick = async () => {
+          const removed = this.myLibraryCache.splice(idx, 1)[0];
+          try {
+            localStorage.setItem('graphly_my_library_v1', JSON.stringify(this.myLibraryCache));
+          } catch (e) { }
+          this.renderMyLibraryList();
+          if (removed && removed.id) {
+            try { await this._firestoreRestDeleteDoc('user_library', removed.id); } catch (e) { }
+          }
+        };
+      }
+
+      listEl.appendChild(row);
+    });
+
+    this.updateSelectedPlaylistCount();
+  }
+
+  updateSelectedPlaylistCount() {
+    const checked = document.querySelectorAll('#myLibraryList .cloud-item-chk:checked');
+    const lbl = document.getElementById('lblSelectedPlaylistCount');
+    if (lbl) lbl.textContent = String(checked ? checked.length : 0);
+  }
+
+  renderCommunityHubList() {
+    const listEl = document.getElementById('communityHubList');
+    const badgeEl = document.getElementById('badgeCommunityCount');
+    const inpSearch = document.getElementById('inputCommunitySearch');
+    const q = (inpSearch && inpSearch.value.trim().toLowerCase()) ? inpSearch.value.trim().toLowerCase() : '';
+
+    const filtered = (this.communityHubCache || []).filter(item => {
+      if (!q) return true;
+      const hay = `${item.title || ''} ${item.tags || ''} ${item.authorName || ''} ${item.summary || ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+
+    if (badgeEl) badgeEl.textContent = String(this.communityHubCache.length);
+    if (!listEl) return;
+
+    if (filtered.length === 0) {
+      listEl.innerHTML = `<div class="cloud-empty-msg">검색된 기출/변형 그래프가 없습니다.<br>위에서 제목(예: <strong>2025 9월 고3 22번 그래프</strong>)을 입력하고 <strong>[🌐 기출 게시판 등록]</strong>으로 첫 게시물을 올려보세요!</div>`;
+      return;
+    }
+
+    listEl.innerHTML = '';
+    filtered.forEach((item) => {
+      const row = document.createElement('div');
+      row.className = 'cloud-item-row';
+      const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('ko-KR') : '';
+      row.innerHTML = `
+        <div class="cloud-item-left">
+          <div class="cloud-item-info">
+            <div class="cloud-item-title">${item.title || '기출 그래프'}</div>
+            <div class="cloud-item-meta">
+              <span class="cloud-summary-pill">${item.summary || '그래프 세팅'}</span>
+              <span class="cloud-tag-pill">${item.tags || '#기출'}</span>
+              <span>👨‍🏫 ${item.authorName || '선생님'} · ${dateStr}</span>
+            </div>
+          </div>
+        </div>
+        <div class="cloud-item-actions">
+          <button type="button" class="btn-cloud-load">⚡ 내 칠판으로 가져오기</button>
+        </div>
+      `;
+
+      const btnLoad = row.querySelector('.btn-cloud-load');
+      if (btnLoad) {
+        btnLoad.onclick = () => {
+          this.deserializeFullSlideState(item.slideData);
+          const modalCloud = document.getElementById('modalCloudHub');
+          if (modalCloud) modalCloud.classList.remove('show');
+          this.showToast(`⚡ [${item.title}] 세팅을 내 칠판으로 가져왔습니다!`);
+        };
+      }
+
+      listEl.appendChild(row);
+    });
+  }
+
+  // ============================================================================
+  // 🎯 [수업 슬라이드(PPT) 플레이리스트 모드: 1번 ➔ 2번 ➔ 3번 연속 수업 & 필기 자동 보존]
+  // ============================================================================
+  startPlaylistFromSelectedLibraryItems() {
+    const checkedBoxes = Array.from(document.querySelectorAll('#myLibraryList .cloud-item-chk:checked'));
+    if (!checkedBoxes.length) {
+      this.showToast('⚠️ 수업 슬라이드로 시작할 문항을 1개 이상 체크해 주세요!');
+      return;
+    }
+    const selectedSlides = [];
+    // 체크된 항목들을 순서대로(또는 저장 역순이면 위에서부터) 슬라이드 배열로 복제
+    checkedBoxes.forEach(box => {
+      const idx = parseInt(box.getAttribute('data-lib-idx'), 10);
+      const item = this.myLibraryCache[idx];
+      if (item && item.slideData) {
+        const cloneSlide = JSON.parse(JSON.stringify(item.slideData));
+        cloneSlide.slideTitle = item.title || cloneSlide.slideTitle || `문항 ${selectedSlides.length + 1}`;
+        selectedSlides.push(cloneSlide);
+      }
+    });
+
+    if (!selectedSlides.length) return;
+    this.startLessonPlaylist(selectedSlides, 0);
+
+    const modalCloud = document.getElementById('modalCloudHub');
+    if (modalCloud) modalCloud.classList.remove('show');
+  }
+
+  startLessonPlaylist(slidesArray, startIndex = 0) {
+    if (!Array.isArray(slidesArray) || slidesArray.length === 0) return;
+    this.lessonPlaylistSlides = JSON.parse(JSON.stringify(slidesArray));
+    this.lessonPlaylistIndex = Math.max(0, Math.min(slidesArray.length - 1, startIndex));
+    this.isLessonPlaylistActive = true;
+
+    this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
+    this.syncLessonPlaylistNavBarUI();
+    this.showToast(`🎯 수업 슬라이드 시작! (${this.lessonPlaylistIndex + 1} / ${this.lessonPlaylistSlides.length} : ${this.lessonPlaylistSlides[this.lessonPlaylistIndex].slideTitle || '문항'})`);
+  }
+
+  saveCurrentSlideIntoPlaylist() {
+    if (!this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) return;
+    const curSlide = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
+    const title = curSlide ? curSlide.slideTitle : `문항 ${this.lessonPlaylistIndex + 1}`;
+    this.lessonPlaylistSlides[this.lessonPlaylistIndex] = this.serializeFullSlideState(title);
+  }
+
+  stepLessonPlaylist(delta) {
+    if (!this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) return;
+    const nextIdx = this.lessonPlaylistIndex + delta;
+    if (nextIdx < 0 || nextIdx >= this.lessonPlaylistSlides.length) return;
+
+    // 1. 현재 슬라이드에서 판서한 필기/그래프 카드 변동을 현재 슬라이드에 자동 백업!
+    this.saveCurrentSlideIntoPlaylist();
+
+    // 2. 목표 슬라이드 로드
+    this.lessonPlaylistIndex = nextIdx;
+    const targetSlide = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
+    this.deserializeFullSlideState(targetSlide);
+    this.syncLessonPlaylistNavBarUI();
+    this.showToast(`🎯 [${this.lessonPlaylistIndex + 1} / ${this.lessonPlaylistSlides.length}] ${targetSlide.slideTitle || '문항'}`);
+  }
+
+  closeLessonPlaylistMode() {
+    this.saveCurrentSlideIntoPlaylist();
+    this.isLessonPlaylistActive = false;
+    this.syncLessonPlaylistNavBarUI();
+    this.showToast('수업 슬라이드 모드를 종료했습니다. (현재 판서는 그대로 유지됩니다)');
+  }
+
+  syncLessonPlaylistNavBarUI() {
+    const navBar = document.getElementById('lessonPlaylistNavBar');
+    if (!navBar) return;
+    if (!this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) {
+      navBar.style.display = 'none';
+      return;
+    }
+    navBar.style.display = 'flex';
+    const total = this.lessonPlaylistSlides.length;
+    const cur = this.lessonPlaylistIndex + 1;
+    const curSlide = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
+    const lbl = document.getElementById('lblPlaylistSlideInfo');
+    if (lbl) {
+      lbl.textContent = `${cur} / ${total} · ${curSlide && curSlide.slideTitle ? curSlide.slideTitle : '문항'}`;
+    }
+    const btnPrev = document.getElementById('btnPlaylistPrev');
+    const btnNext = document.getElementById('btnPlaylistNext');
+    if (btnPrev) btnPrev.disabled = (this.lessonPlaylistIndex <= 0);
+    if (btnNext) btnNext.disabled = (this.lessonPlaylistIndex >= total - 1);
+  }
+
+  // ============================================================================
+  // 🔗 [학생용/강사용 판서 페이지 + #1,#2 그래프 카드 + 전체 슬라이드 통째 클라우드 링크 생성/복원]
+  // ============================================================================
+  async createCloudSharePackage() {
+    if (this.isLessonPlaylistActive) {
+      this.saveCurrentSlideIntoPlaylist();
+    }
+    const shortId = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const pkg = {
+      id: shortId,
+      createdAt: Date.now(),
+      isPlaylist: Boolean(this.isLessonPlaylistActive && this.lessonPlaylistSlides && this.lessonPlaylistSlides.length > 1),
+      playlistSlides: (this.isLessonPlaylistActive && this.lessonPlaylistSlides && this.lessonPlaylistSlides.length > 0)
+        ? this.lessonPlaylistSlides
+        : [this.serializeFullSlideState('공유된 수업 노트')],
+      currentIndex: this.isLessonPlaylistActive ? this.lessonPlaylistIndex : 0
+    };
+
+    // 로컬 캐시에도 즉시 저장 (오프라인/동일 브라우저 즉시 복원 보장)
+    try {
+      localStorage.setItem('graphly_cloud_share_' + shortId, JSON.stringify(pkg));
+    } catch (e) { }
+
+    // Firestore 클라우드에 업로드
+    try {
+      await this._firestoreRestWrite('shared_workspaces', shortId, pkg);
+    } catch (e) { }
+
+    return shortId;
+  }
+
+  async restoreFromCloudShareId(shortId, isStudent = false) {
+    if (!shortId) return;
+    let pkg = null;
+    try {
+      const localRaw = localStorage.getItem('graphly_cloud_share_' + shortId);
+      if (localRaw) pkg = JSON.parse(localRaw);
+    } catch (e) { }
+
+    if (!pkg) {
+      try {
+        pkg = await this._firestoreRestReadDoc('shared_workspaces', shortId);
+      } catch (e) { }
+    }
+
+    if (!pkg || !Array.isArray(pkg.playlistSlides) || !pkg.playlistSlides.length) {
+      this.showToast('⚠️ 공유된 수업 노트를 찾을 수 없습니다.');
+      return;
+    }
+
+    this._initialSharedCloudPkg = JSON.parse(JSON.stringify(pkg));
+
+    if (isStudent) {
+      document.body.classList.add('student-mode');
+    }
+
+    this.applyCloudSharePackage(pkg);
+
+    const resetBar = document.getElementById('sharedResetBar');
+    if (resetBar) {
+      resetBar.style.display = 'flex';
+    }
+    this.showToast('✨ 공유된 수업 판서 & 그래프 노트가 복원되었습니다! 카드의 [그래프 복구]로 그래프를 직접 조작해 보세요.');
+  }
+
+  applyCloudSharePackage(pkg) {
+    if (!pkg || !Array.isArray(pkg.playlistSlides) || !pkg.playlistSlides.length) return;
+    if (pkg.playlistSlides.length > 1 || pkg.isPlaylist) {
+      this.startLessonPlaylist(pkg.playlistSlides, pkg.currentIndex || 0);
+    } else {
+      this.isLessonPlaylistActive = false;
+      this.syncLessonPlaylistNavBarUI();
+      this.deserializeFullSlideState(pkg.playlistSlides[0]);
+    }
   }
 
   // 역직렬화된 데이터를 캔버스에 완벽 복원

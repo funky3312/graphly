@@ -54,6 +54,10 @@
           <span class="rail-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
         </button>
         <input type="file" id="pdfFileInput" accept="application/pdf,image/*" multiple style="display: none;">
+        <!-- ☁️ 클라우드 보관함 · 수업 슬라이드(PPT) · 기출 게시판 -->
+        <button class="rail-btn" id="btnCloudHub" title="클라우드 보관함 · 수업 슬라이드(PPT) · 기출 그래프 게시판">
+          <span class="rail-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg></span>
+        </button>
 
         <div class="rail-sep"></div>
 
@@ -1054,6 +1058,99 @@
     </button>
   </div>
 
+  <!-- [🎯 수업 슬라이드(PPT) 플레이리스트 상단 미니 네비게이션 바] -->
+  <div id="lessonPlaylistNavBar" class="pdf-board-nav-bar lesson-playlist-nav-bar" style="display: none;">
+    <button id="btnPlaylistPrev" class="pdf-board-nav-btn" title="이전 문항으로 이동 (현재 판서 필기와 그래프 카드는 자동 보존)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      <span>이전</span>
+    </button>
+    <button id="btnPlaylistSlideInfo" class="pdf-board-page-pill lesson-playlist-pill" title="클릭하여 클라우드 보관함 열기">
+      <span>🎯</span>
+      <span id="lblPlaylistSlideInfo">1 / 1 · 문항</span>
+    </button>
+    <button id="btnPlaylistNext" class="pdf-board-nav-btn pdf-board-next-primary" title="다음 문항으로 이동 (현재 판서 필기와 그래프 카드는 자동 보존)">
+      <span>다음 문항</span>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+    <div class="pdf-board-nav-divider"></div>
+    <button id="btnPlaylistShareAll" class="pdf-board-nav-btn lesson-playlist-share-btn" title="오늘 수업한 전체 슬라이드(판서+그래프 카드)를 학생들에게 링크/QR로 통째 공유">
+      <span>🔗 수업 통째 공유</span>
+    </button>
+    <button id="btnPlaylistClose" class="pdf-board-close-btn" title="수업 슬라이드 모드 종료">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+
+  <!-- [☁️ 클라우드 내 보관함 · 수업 슬라이드(PPT) · 기출 그래프 공유 게시판 모달] -->
+  <div id="modalCloudHub" class="smart-modal-backdrop">
+    <div class="smart-modal-card cloud-hub-modal-card">
+      <div class="smart-modal-header cloud-hub-header">
+        <div class="smart-modal-title">
+          <span class="modal-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg></span>
+          <span class="modal-title-text">클라우드 보관함 &amp; 기출 게시판</span>
+          <span class="badge-smart">수업 슬라이드(PPT) 연동</span>
+        </div>
+        <div class="cloud-auth-area">
+          <span id="lblCloudUserStatus" class="cloud-user-status">연동 대기</span>
+          <button type="button" id="btnCloudGoogleLogin" class="btn-cloud-auth">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px;margin-right:4px;"><path d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 15.25 5 12c0-3.25 3.36-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81Z"/></svg>
+            <span id="lblCloudAuthBtnText">구글 로그인</span>
+          </button>
+          <button id="btnCloseCloudHub" class="btn-modal-close" title="닫기 (ESC)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+      </div>
+
+      <div class="smart-modal-body cloud-hub-body">
+        <!-- 1. 현재 칠판/그래프 즉시 저장 바 -->
+        <div class="cloud-save-box">
+          <div class="cloud-save-box-title">💾 현재 화면(판서 + 문제 카드 + #1,#2 보관 그래프 + 실시간 그래프) 저장 및 공유</div>
+          <div class="cloud-save-inputs">
+            <input type="text" id="inputCloudSaveTitle" class="cloud-input-title" placeholder="제목 입력 (예: 2025 9월 고3 22번 / 오늘 고3 수업 1번)">
+            <input type="text" id="inputCloudSaveTags" class="cloud-input-tags" placeholder="태그 (예: #삼차함수 #구간분할 #고3)">
+            <button type="button" id="btnSaveToMyLibrary" class="btn-primary cloud-save-btn">📁 내 보관함에 저장</button>
+            <button type="button" id="btnPublishToCommunity" class="btn-secondary cloud-pub-btn" title="전국 선생님들이 검색해서 쓸 수 있도록 기출 게시판에도 함께 등록합니다">🌐 기출 게시판 등록</button>
+          </div>
+        </div>
+
+        <!-- 2. 탭 전환 (내 보관함 vs 기출 공유 게시판) -->
+        <div class="cloud-tabs-bar">
+          <button type="button" id="tabBtnMyLibrary" class="cloud-tab-btn active">
+            📁 내 클라우드 보관함 <span id="badgeMyLibraryCount" class="cloud-tab-count">0</span>
+          </button>
+          <button type="button" id="tabBtnCommunityHub" class="cloud-tab-btn">
+            🌐 기출/변형 공유 게시판 <span id="badgeCommunityCount" class="cloud-tab-count">0</span>
+          </button>
+        </div>
+
+        <!-- 탭 1: 내 보관함 & 수업 슬라이드(PPT) 실행 -->
+        <div id="panelCloudMyLibrary" class="cloud-tab-panel">
+          <div class="cloud-playlist-toolbar">
+            <label class="cloud-chk-all-label">
+              <input type="checkbox" id="chkCloudSelectAll">
+              <span>전체 선택</span>
+            </label>
+            <div class="cloud-playlist-actions">
+              <span class="cloud-playlist-hint">💡 오늘 수업할 문항들을 체크한 뒤 시작하면 PPT처럼 넘기며 수업합니다!</span>
+              <button type="button" id="btnStartLessonPlaylist" class="btn-start-playlist">
+                ▶ 선택 문항으로 수업 슬라이드 시작 (<span id="lblSelectedPlaylistCount">0</span>)
+              </button>
+            </div>
+          </div>
+          <div id="myLibraryList" class="cloud-item-list"></div>
+        </div>
+
+        <!-- 탭 2: 전국 기출/변형 그래프 공유 게시판 -->
+        <div id="panelCloudCommunityHub" class="cloud-tab-panel" style="display: none;">
+          <div class="cloud-search-toolbar">
+            <input type="text" id="inputCommunitySearch" class="cloud-search-input" placeholder="🔍 기출 연도, 문항 번호, 단원, 함수 이름으로 검색 (예: 2025 9월 22번, 삼차함수, 구간분할)...">
+            <button type="button" id="btnRefreshCommunity" class="btn-secondary" style="padding: 7px 12px;">↻ 새로고침</button>
+          </div>
+          <div id="communityHubList" class="cloud-item-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- [📌 크롭된 문제 고정 카드 위젯 (Problem Card Widget - 상단 제자리 블라인드 헤더 & 더블클릭 접기)] -->
   <div id="problemCardWidget" class="problem-card-widget" style="display: none;">
     <div id="problemCardHeader" class="problem-card-header">
@@ -1223,6 +1320,10 @@
   <!-- 스크립트 로드 -->
   <script src="lib/pdf.worker.min.js"></script>
   <script src="lib/pdf.min.js"></script>
+  <!-- Firebase SDK (Auth & Firestore - Non-blocking) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js"></script>
   <script src="app.js"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
