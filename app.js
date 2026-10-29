@@ -12444,17 +12444,15 @@ class GraphApp {
     const lblBoxTitle = document.getElementById('lblCloudSaveBoxTitle');
     if (lblBoxTitle) {
       if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1) {
-        lblBoxTitle.innerHTML = `📚 현재 수업 슬라이드 전체 <strong>(총 ${this.lessonPlaylistSlides.length}문항 풀세트)</strong> 통째 저장 · 게시판 공유 · 내 드라이브 백업`;
+        lblBoxTitle.innerHTML = `📚 현재 수업 슬라이드 전체 <strong>(총 ${this.lessonPlaylistSlides.length}문항 풀세트)</strong> 내 보관함 · 내 드라이브(.graphly) 백업`;
       } else {
-        lblBoxTitle.textContent = '💾 현재 화면(판서 + 문제 카드 + #1,#2 보관 그래프 + 실시간 그래프) 저장 및 공유';
+        lblBoxTitle.textContent = '💾 현재 화면(판서 + 문제 카드 + #1,#2 보관 그래프 + 실시간 그래프) 내 보관함 · 내 드라이브 저장';
       }
     }
     modalCloud.classList.add('show');
     this.syncCloudAuthUI();
     this.renderMyLibraryList();
-    this.renderCommunityHubList();
     this.fetchMyLibraryFromCloud();
-    this.fetchCommunityHubFromCloud();
   }
 
   syncCloudAuthUI() {
@@ -13316,9 +13314,8 @@ class GraphApp {
         </div>
         <div class="cloud-item-actions">
           <button type="button" class="btn-cloud-load" data-load-idx="${idx}">${slideCnt > 1 ? `▶ ${slideCnt}문항 수업 시작` : '⚡ 바로 열기'}</button>
-          <button type="button" class="btn-cloud-pub-item" data-pub-idx="${idx}" title="이 수업 세트를 기출 공유 게시판에 바로 등록">🌐 게시판 공유</button>
           <button type="button" class="btn-cloud-export-item" data-export-idx="${idx}" title="내 드라이브(.graphly) 파일로 다운로드">💾 파일</button>
-          <button type="button" class="btn-cloud-share-item" data-share-idx="${idx}" title="학생/선생님에게 링크·QR로 공유">🔗 링크</button>
+          <button type="button" class="btn-cloud-share-item" data-share-idx="${idx}" title="외부 카페/단톡방/학생에게 링크·QR로 공유">🔗 링크</button>
           <button type="button" class="btn-cloud-del-item" data-del-idx="${idx}" title="삭제">🗑️</button>
         </div>
       `;
