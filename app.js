@@ -6909,6 +6909,7 @@ class GraphApp {
     };
 
     const renderLaserFrame = () => {
+      state.rafId = null;
       const now = performance.now();
       const { w, h, dpr } = syncCanvasSize();
       const ctx = laserCanvas.getContext('2d');
@@ -6988,10 +6989,8 @@ class GraphApp {
 
       ctx.restore();
 
-      if (state.strokes.length > 0 || state.isDrawing) {
+      if ((state.strokes.length > 0 || state.isDrawing) && !state.rafId) {
         state.rafId = requestAnimationFrame(renderLaserFrame);
-      } else {
-        state.rafId = null;
       }
     };
 
@@ -7019,6 +7018,10 @@ class GraphApp {
       if (state.active) {
         syncCanvasSize();
       } else {
+        if (state.rafId) {
+          cancelAnimationFrame(state.rafId);
+          state.rafId = null;
+        }
         state.isDrawing = false;
         state.strokes = [];
         state.currentStroke = null;
@@ -7074,7 +7077,6 @@ class GraphApp {
           pts.push({ x: pos.nx, y: pos.ny, t: now });
         }
       }
-      renderLaserFrame();
       ensureLoop();
     });
 
@@ -7098,7 +7100,6 @@ class GraphApp {
     laserCanvas.addEventListener('pointerleave', () => {
       if (!state.isDrawing) {
         state.hoverPos = null;
-        renderLaserFrame();
         ensureLoop();
       }
     });
