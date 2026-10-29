@@ -2799,7 +2799,7 @@ class GraphApp {
     return false;
   }
 
-  eraseInkAtPoint(screenX, screenY, eraseRadius = 20) {
+  eraseInkAtPoint(screenX, screenY, eraseRadius = 9) {
     if (!this.inkStrokes || this.inkStrokes.length === 0) return;
 
     const isInsideStage = this.isInsideCompactStage({ x: screenX, y: screenY });
@@ -2838,7 +2838,7 @@ class GraphApp {
           const sc = isBoard ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
           const sr = isBoard ? (stroke.shape.radius * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x);
           const dToCenter = Math.hypot(screenX - sc.x, screenY - sc.y);
-          if (Math.abs(dToCenter - sr) <= eraseRadius || dToCenter <= eraseRadius) {
+          if (Math.abs(dToCenter - sr) <= eraseRadius) {
             modified = true;
             return false;
           }
@@ -2848,7 +2848,7 @@ class GraphApp {
           const sry = isBoard ? (stroke.shape.ry * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y);
           const normD = Math.hypot((screenX - sc.x) / Math.max(1, srx), (screenY - sc.y) / Math.max(1, sry));
           const avgR = (srx + sry) / 2;
-          if (Math.abs(normD - 1) * avgR <= eraseRadius * 1.2 || normD <= 0.35) {
+          if (Math.abs(normD - 1) * avgR <= eraseRadius) {
             modified = true;
             return false;
           }
@@ -15209,7 +15209,7 @@ class GraphApp {
         this.isStylusDrawing = true;
         if (this.virtualStylusEl) this.virtualStylusEl.classList.add('drawing');
         this.updateStylusPenPosition(pos.x, pos.y, e);
-        this.eraseInkAtPoint(pos.x, pos.y, 24);
+        this.eraseInkAtPoint(pos.x, pos.y, 10);
         this.render();
         return;
       }
@@ -16140,7 +16140,7 @@ class GraphApp {
       if (this.isDrawingInk || this._isTemporaryStylusEraser) {
         const isStylusEraser = this.isStylusEraserEvent(e) || this._isTemporaryStylusEraser;
         if (this.activeInkTool === 'eraser' || isStylusEraser) {
-          this.eraseInkAtPoint(pos.x, pos.y, 24);
+          this.eraseInkAtPoint(pos.x, pos.y, 10);
           this.requestRender();
           return;
         } else if (this.currentInkStroke) {
