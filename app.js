@@ -507,10 +507,7 @@ class GraphApp {
         return;
       }
 
-      // 스크롤 영역 내부가 아닌 일반 버튼/카드 버튼은 즉시 포인터 캡처하여 길게 눌러도 OS 롱프레스가 발동하지 않도록 보호
-      if (e.pointerId !== undefined && targetEl.setPointerCapture && !targetEl.closest('.drawer-body, .pdf-viewport')) {
-        try { targetEl.setPointerCapture(e.pointerId); } catch (err) { }
-      }
+      // 버튼 클릭 시 setPointerCapture로 인한 포인터 독점(카드/툴바 조작 불능) 원천 방지
 
       activeTap = {
         el: targetEl,
@@ -2324,11 +2321,15 @@ class GraphApp {
       '#boardModeBar',
       '#nAxisModeBar',
       '#sharedResetBar',
+      '#lessonPlaylistNavBar',
+      '#problemCardWidget',
+      '#graphCardWidget',
       '#problemCardHeader',
       '#problemCardResizeHandle',
       '#modalSmartInput',
       '#modalShare',
-      '#modalPdfViewer'
+      '#modalPdfViewer',
+      '#modalCloudHub'
     ];
     menuContainerSelectors.forEach(sel => {
       const el = document.querySelector(sel);
@@ -2342,8 +2343,6 @@ class GraphApp {
 
   isPointerOverMenu(e) {
     if (!e) return false;
-    // 🌟 [iCanScreen 급 0ms 초저지연 패스트패스]: 실제 필기 드로잉 중에는 DOM 히트테스트(elementFromPoint / getBoundingClientRect)를 100% 생략!
-    if (this.isDrawingInk || this.isStylusDrawing) return false;
 
     const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : null);
     const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : null);
@@ -2354,11 +2353,14 @@ class GraphApp {
       ? e.target
       : null;
 
-    // 메인 캔버스 위에서 움직이는 경우 .closest() 25회 탐색 및 getBoundingClientRect() 레이아웃 스래싱 즉시 생략!
+    // 메인 캔버스 위에서 움직이는 경우 (단, 드로잉 중이 아니면 실제 마우스 위치에 카드/툴바가 있는지 확인)
     if (targetEl && (targetEl === this.canvas || targetEl.id === 'graphCanvas')) {
+      if (this.isDrawingInk || this.isStylusDrawing) {
+        return false;
+      }
       const rect = this.canvasRect || this.updateCanvasRect();
-      if (rect) {
-        return (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom);
+      if (rect && (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom)) {
+        return true;
       }
       return false;
     }
@@ -2366,7 +2368,7 @@ class GraphApp {
     const el = targetEl || document.elementFromPoint(clientX, clientY);
     if (!el) return true; // 뷰포트 바깥
 
-    // 1. 명시적인 메뉴/툴바/버튼/헤더/입력창 체크 (100% 안전)
+    // 1. 명시적인 메뉴/툴바/문제카드/그래프카드/버튼/헤더/입력창 체크 -> 가상 펜 즉시 숨김 & 기본 마우스 커서 노출!
     const isExplicitMenu = !!(
       el.closest('header') ||
       el.closest('.header-show-tab') ||
@@ -2379,7 +2381,13 @@ class GraphApp {
       el.closest('.board-mode-bar') ||
       el.closest('.n-axis-mode-bar') ||
       el.closest('.shared-reset-bar') ||
+      el.closest('.lesson-playlist-nav-bar') ||
+      el.closest('.pdf-board-nav-bar') ||
+      el.closest('.graph-snap-floating-bar') ||
+      el.closest('.problem-card-widget') ||
+      el.closest('.graph-card-widget') ||
       el.closest('.problem-card-header') ||
+      el.closest('.problem-card-body') ||
       el.closest('.problem-card-resize-handle') ||
       el.closest('.smart-modal-backdrop') ||
       el.closest('.smart-modal-card') ||
@@ -2398,20 +2406,15 @@ class GraphApp {
     );
     if (isExplicitMenu) return true;
 
-    // 2. 판서 가능 서피스(메인 칠판 또는 문제 카드 본체)인지 확인
+    // 2. 판서 가능 서피스(오직 메인 칠판 캔버스만!)인지 확인
     const isCanvasSurface = (
       el === this.canvas ||
       el.id === 'graphCanvas' ||
-      el.id === 'problemCardCanvas' ||
-      el.id === 'problemCardImg' ||
-      (el.id === 'problemCardBody') ||
       (el.classList && el.classList.contains('canvas-container'))
     );
 
-    // 판서 서피스가 아니면 메뉴/외곽으로 간주하여 숨김
     if (!isCanvasSurface) return true;
 
-    // 3. 메인 캔버스 경계 바깥인지 추가 검사 (캐시된 canvasRect 활용으로 리플로우 원천 차단)
     if (this.canvas) {
       const rect = this.canvasRect || this.updateCanvasRect();
       const insideMainCanvas = rect && (
@@ -2420,20 +2423,7 @@ class GraphApp {
         clientY >= rect.top &&
         clientY <= rect.bottom
       );
-      if (insideMainCanvas) return false;
-
-      const pBody = document.getElementById('problemCardBody');
-      const pRect = (pBody && pBody.style.display !== 'none') ? pBody.getBoundingClientRect() : null;
-      const insideProblemCard = pRect && (
-        clientX >= pRect.left &&
-        clientX <= pRect.right &&
-        clientY >= pRect.top &&
-        clientY <= pRect.bottom
-      );
-
-      if (!insideMainCanvas && !insideProblemCard) {
-        return true;
-      }
+      if (!insideMainCanvas) return true;
     }
 
     return false;
@@ -5645,8 +5635,8 @@ class GraphApp {
       startY = e.clientY;
       initX = cardItem.baseX;
       initY = cardItem.baseY;
+      if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       el.classList.add('is-dragging-card');
-      try { el.setPointerCapture(e.pointerId); } catch (err) { }
     });
     window.addEventListener('pointermove', (e) => {
       if (!isDragging) return;
@@ -5684,7 +5674,6 @@ class GraphApp {
         isResizing = true;
         rStartX = e.clientX;
         rStartW = el.getBoundingClientRect().width;
-        try { rHandle.setPointerCapture(e.pointerId); } catch (err) { }
       });
       window.addEventListener('pointermove', (e) => {
         if (!isResizing) return;
@@ -6062,10 +6051,8 @@ class GraphApp {
         startY = e.clientY;
         initialBaseX = (typeof this.problemCardBaseX === 'number') ? this.problemCardBaseX : (parseFloat(widget.style.left) || 72);
         initialBaseY = (typeof this.problemCardBaseY === 'number') ? this.problemCardBaseY : (parseFloat(widget.style.top) || 18);
-        if (widget.setPointerCapture) {
-          widget.classList.add('is-dragging-card');
-          try { widget.setPointerCapture(e.pointerId); } catch (err) { }
-        }
+        if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+        widget.classList.add('is-dragging-card');
       });
 
       window.addEventListener('pointermove', (e) => {
@@ -6110,9 +6097,7 @@ class GraphApp {
         isResizing = true;
         startX = e.clientX;
         startW = widget.getBoundingClientRect().width;
-        if (resizeHandle.setPointerCapture) {
-          try { resizeHandle.setPointerCapture(e.pointerId); } catch (err) { }
-        }
+        if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       });
 
       window.addEventListener('pointermove', (e) => {
@@ -7257,8 +7242,8 @@ class GraphApp {
       startY = e.clientY;
       initX = cardItem.baseX;
       initY = cardItem.baseY;
+      if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       el.classList.add('is-dragging-card');
-      try { el.setPointerCapture(e.pointerId); } catch (err) { }
     });
     window.addEventListener('pointermove', (e) => {
       if (!isDragging) return;
@@ -7296,7 +7281,6 @@ class GraphApp {
         isResizing = true;
         rStartX = e.clientX;
         rStartW = el.getBoundingClientRect().width;
-        try { rHandle.setPointerCapture(e.pointerId); } catch (err) { }
       });
       window.addEventListener('pointermove', (e) => {
         if (!isResizing) return;
@@ -7697,8 +7681,8 @@ class GraphApp {
         startY = e.clientY;
         initialBaseX = (typeof this.graphCardBaseX === 'number') ? this.graphCardBaseX : (parseFloat(widget.style.left) || 580);
         initialBaseY = (typeof this.graphCardBaseY === 'number') ? this.graphCardBaseY : (parseFloat(widget.style.top) || 68);
+        if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
         widget.classList.add('is-dragging-card');
-        try { widget.setPointerCapture(e.pointerId); } catch (err) { }
       });
 
       window.addEventListener('pointermove', (e) => {
@@ -7741,7 +7725,6 @@ class GraphApp {
         isResizing = true;
         startX = e.clientX;
         startW = widget.getBoundingClientRect().width;
-        try { resizeHandle.setPointerCapture(e.pointerId); } catch (err) { }
       });
 
       window.addEventListener('pointermove', (e) => {
@@ -14800,6 +14783,18 @@ class GraphApp {
 
     const handleMove = (e) => {
       this._lastPointerEvent = e;
+      // 🛡️ [포인터 상태 자가 치유 가드]: 카드나 툴바 위로 획이 지나가며 pointerup이 누락되어 마우스 버튼을 뗐는데도(e.buttons === 0)
+      // 드로잉/패닝 상태가 고착되는 현상을 0.00ms 만에 자동 감지하여 즉시 해제!
+      if (
+        e &&
+        (e.pointerType === 'mouse' || !e.pointerType) &&
+        typeof e.buttons === 'number' &&
+        e.buttons === 0 &&
+        (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isLassoSelecting)
+      ) {
+        this.isPointerDownOnCanvas = false;
+        handleUp(e);
+      }
       const pos = getPos(e);
 
       // 🌟 [✂️ PDF 문제 스샷 후 그래프 모드 진입 드래그 중] 🌟
@@ -16068,11 +16063,8 @@ class GraphApp {
       this.canvas.addEventListener('pointerdown', (e) => {
         if (isClickableUI(e.target)) return;
         lastPointerDownTime = Date.now();
-        // 🌟 [크롬 전체화면 상단 (X) 롱프레스 차단]: 마우스/펜/터치 및 모든 모드에서 기본 제스처 차단 & 포인터 캡처 체결!
+        // 🌟 [크롬 전체화면 상단 (X) 롱프레스 차단]: 기본 제스처 차단 (단, setPointerCapture로 카드/툴바 클릭을 가로채지 않도록 전역 window 리스너 사용)
         e.preventDefault();
-        if (e.pointerId !== undefined && this.canvas.setPointerCapture) {
-          try { this.canvas.setPointerCapture(e.pointerId); } catch (err) { }
-        }
         this.isPointerDownOnCanvas = true;
         this._pointerDownStart = { time: Date.now(), x: e.clientX, y: e.clientY };
 
@@ -16156,7 +16148,7 @@ class GraphApp {
           }
         }
         handleMove(e);
-      }, { passive: false });
+      }, { capture: true, passive: false });
 
       window.addEventListener('pointerup', (e) => {
         this.isPointerDownOnCanvas = false;
@@ -16177,10 +16169,10 @@ class GraphApp {
           }
         }
         lastPointerUpTime = Date.now();
-        if (this.isDrawingInk || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
+        if (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
           handleUp(e);
         }
-      });
+      }, true);
       window.addEventListener('pointercancel', (e) => {
         this.isPointerDownOnCanvas = false;
         if (e.pointerId !== undefined && this.canvas && this.canvas.releasePointerCapture) {
@@ -16200,10 +16192,10 @@ class GraphApp {
           }
         }
         lastPointerUpTime = Date.now();
-        if (this.isDrawingInk || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
+        if (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
           handleUp(e);
         }
-      });
+      }, true);
     }
 
     // 마우스 이벤트 호환성 레이어 (PointerEvent 미지원 환경 및 MouseEvent 시뮬레이션 지원)

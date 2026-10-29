@@ -7007,3 +7007,10 @@ body.theme-light .btn-card-laser.active {
 .problem-card-widget.card-laser-active .problem-card-resize-handle {
   z-index: 12 !important;
 }
+
+/* 🛡️ [가상 펜/지우개 커서가 카드(150~190)나 하단 필기 툴바(450) 뒤로 숨지 않도록 z-index 상향 & 클릭 간섭 0% 보장] */
+#virtualStylusPen,
+.virtual-stylus-pen {
+  z-index: 500 !important;
+  pointer-events: none !important;
+}
