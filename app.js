@@ -5966,6 +5966,24 @@ class GraphApp {
     this.renderProblemCardCanvas();
   }
 
+  closeGraphCard() {
+    const gWidget = document.getElementById('graphCardWidget');
+    if (gWidget) {
+      gWidget.style.display = 'none';
+      gWidget.style.transform = '';
+      gWidget.classList.remove('minimized');
+    }
+    this._hasPrimaryGraphCard = false;
+    this.primaryGraphCardSnapshot = null;
+    this.graphCardData = null;
+    this.graphCardImage = null;
+    this.graphCardRect = null;
+    this.isGraphCardMinimized = false;
+    this.graphInkStrokes = [];
+    this.graphCardBaseX = undefined;
+    this.graphCardBaseY = undefined;
+  }
+
   resetBoardAndProblemCardsForNext() {
     // 1. 기존 문제 카드(기본 + 추가) 모두 제거
     this.closeProblemCard();
@@ -5975,10 +5993,8 @@ class GraphApp {
       });
       this.extraProblemCards = [];
     }
-    // 2. 이전 문제의 그래프 보관 카드(#1, #2...) 제거
-    if (typeof this.closeGraphCard === 'function') {
-      this.closeGraphCard();
-    }
+    // 2. 이전 문제의 그래프 보관 카드(#1, #2...) 완벽 제거
+    this.closeGraphCard();
     if (this.extraGraphCards && this.extraGraphCards.length > 0) {
       this.extraGraphCards.forEach(c => {
         if (c && c.el) c.el.remove();
@@ -5986,16 +6002,33 @@ class GraphApp {
       this.extraGraphCards = [];
     }
     this._graphCaseCounter = 0;
-    this.isGraphCovered = false;
+    this._graphSessionArchived = false;
+    this.isGraphCovered = true;
     this._coveredGraphStateBackup = null;
+    this._suspendedPdfBoardState = null;
 
-    // 3. 칠판 필기 및 수식 그래프 초기화
+    // 3. 칠판 필기 및 수식 그래프 100% 완전 초기화
     this.inkStrokes = [];
     this.dropLines = [];
     this.textLabels = [];
+    this.selectedLassoStrokeIndices = [];
+    this.lassoBounds = null;
     this._inkBakeDirty = true;
+    this.clearInkCache();
+
     this.graphs = [];
-    this.renderFuncList();
+    this.activeGraphIdx = -1;
+    this.selectedHandleIdx = null;
+    this.isCurveSelected = false;
+    this.selectedPwBoundaryIdx = null;
+    this.usePiecewise = false;
+    this.piecewiseBoundaries = [];
+    this.piecewiseFuncMap = [];
+    this.piecewiseInclusions = [];
+    this.isPiecewisePeriodic = false;
+    this.periodicStepY = 0;
+    this.isPiecewiseLocked = false;
+
     this.showAxes = false;
     this.showGuides = false;
     this.showInverseGuide = false;
@@ -6003,8 +6036,15 @@ class GraphApp {
     this.panY = 0;
     this.boardPanX = 0;
     this.boardPanY = 0;
+    this.boardZoom = 1.0;
+    this.boardZoomOffsetX = 0;
+    this.boardZoomOffsetY = 0;
     this.zoomLevel = 1.0;
     this.updateAxesUI();
+    this.syncControls();
+    this.renderLayerList();
+    this.renderFuncList();
+    this.syncGraphSnapBarUI();
     this.render();
   }
 
