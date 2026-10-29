@@ -7639,10 +7639,12 @@ class GraphApp {
       this.extraGraphCards = [];
     }
 
-    const cardW = Math.round(Math.max(240, Math.min(window.innerWidth * 0.48, initialWidth || 380)));
     const aspect = (sourceCanvas && sourceCanvas.width && sourceCanvas.height)
       ? (sourceCanvas.height / sourceCanvas.width)
       : 0.85;
+    // 🌟 [대표님 핵심 UX: 어떤 크기로 시원하게 캡처하든 판서 모드에서는 세로 높이(185px, 기존의 절반급)를 일관되게 맞춰 칼각 나열!] 🌟
+    const targetBodyH = 185;
+    const cardW = Math.round(Math.max(180, Math.min(340, targetBodyH / Math.max(0.35, aspect))));
 
     const widget = document.getElementById('graphCardWidget');
 
@@ -7685,6 +7687,10 @@ class GraphApp {
         widget.classList.remove('minimized');
         widget.style.display = 'flex';
         widget.style.width = `${cardW}px`;
+        const primaryBody = document.getElementById('graphCardBody');
+        if (primaryBody) {
+          primaryBody.style.height = `${Math.round(cardW * aspect)}px`;
+        }
 
         if (typeof this.graphCardBaseX !== 'number' || typeof this.graphCardBaseY !== 'number') {
           if (this.hasActiveProblemCard() && this.problemCardRect) {
@@ -7726,12 +7732,30 @@ class GraphApp {
     if (!this.extraGraphCards) this.extraGraphCards = [];
     const caseIdx = this.extraGraphCards.length + 2;
 
-    // 이전 카드 바로 오른쪽(또는 공간 부족 시 살짝 아래 계단식)에 스마트 배치
-    let baseX = (typeof this.graphCardBaseX === 'number' ? this.graphCardBaseX : 560) + (cardW + 18) * (caseIdx - 1);
-    let baseY = (typeof this.graphCardBaseY === 'number' ? this.graphCardBaseY : 68);
-    if (baseX + cardW + 24 > window.innerWidth) {
-      baseX = Math.max(80, Math.min(window.innerWidth - cardW - 30, 560 + ((caseIdx - 1) * 44)));
-      baseY = Math.min(window.innerHeight - 240, baseY + ((caseIdx - 1) * 44));
+    // 🌟 직전 보관 카드의 실제 오른쪽 끝(prevRight + 14px)과 동일한 상단(prevTop)에 칼각 일렬 배치!
+    const primaryWidget = document.getElementById('graphCardWidget');
+    const firstX = (typeof this.graphCardBaseX === 'number') ? this.graphCardBaseX : 560;
+    const firstY = (typeof this.graphCardBaseY === 'number') ? this.graphCardBaseY : 68;
+    const firstW = (primaryWidget && parseFloat(primaryWidget.style.width)) ? parseFloat(primaryWidget.style.width) : 220;
+
+    let prevX = firstX;
+    let prevY = firstY;
+    let prevW = firstW;
+    if (this.extraGraphCards.length > 0) {
+      const lastCard = this.extraGraphCards[this.extraGraphCards.length - 1];
+      if (lastCard) {
+        prevX = (typeof lastCard.baseX === 'number') ? lastCard.baseX : firstX;
+        prevY = (typeof lastCard.baseY === 'number') ? lastCard.baseY : firstY;
+        prevW = (lastCard.el && parseFloat(lastCard.el.style.width)) ? parseFloat(lastCard.el.style.width) : cardW;
+      }
+    }
+
+    let baseX = Math.round(prevX + prevW + 14);
+    let baseY = Math.round(prevY);
+    if (baseX + cardW + 20 > window.innerWidth) {
+      // 화면 오른쪽 끝에 닿으면 1번 카드 바로 아래 줄(2행)로 깔끔하게 줄바꿈 정렬
+      baseX = Math.max(72, Math.min(window.innerWidth - cardW - 24, firstX));
+      baseY = Math.min(window.innerHeight - 230, prevY + 232);
     }
 
     const el = document.createElement('div');
