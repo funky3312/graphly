@@ -6404,6 +6404,7 @@ body.theme-light .pdf-board-close-btn:hover {
 body.workspace-board-mode #btnQuickIntersection,
 body.workspace-board-mode #btnQuickDropLine,
 body.workspace-board-mode #btnQuickText,
+body.workspace-board-mode #btnQuickCenter,
 body.workspace-board-mode #btnQuickSnap,
 body.workspace-board-mode #btnRailPiecewise,
 body.workspace-board-mode #btnRailToggleVf,
@@ -7531,4 +7532,8 @@ body.theme-light .pill-mod-chip.active {
 .pill-remote-close-btn:hover {
   background: rgba(244, 63, 94, 0.18);
   color: #f43f5e;
+}
+
+#btnQuickCenter {
+  display: none !important;
 }
