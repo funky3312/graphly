@@ -262,9 +262,12 @@ class GraphApp {
     this.isPanning = false;
     this.panStart = { x: 0, y: 0 };
 
-    // 🌟 [칠판 전체 무한 캔버스 이동 (Infinite Blackboard Pan)] 🌟
+    // 🌟 [칠판 전체 무한 캔버스 이동 & 판서 전용 독립 줌 (Infinite Blackboard Pan & Board-Only Zoom)] 🌟
     this.boardPanX = 0;
     this.boardPanY = 0;
+    this.boardZoom = 1.0;
+    this.boardZoomOffsetX = 0;
+    this.boardZoomOffsetY = 0;
     this.isBoardPanning = false;
     this.boardPanStart = { x: 0, y: 0 };
     this.activePointers = new Map();
@@ -841,6 +844,9 @@ class GraphApp {
       panY: this.panY,
       boardPanX: this.boardPanX || 0,
       boardPanY: this.boardPanY || 0,
+      boardZoom: this.boardZoom || 1.0,
+      boardZoomOffsetX: this.boardZoomOffsetX || 0,
+      boardZoomOffsetY: this.boardZoomOffsetY || 0,
       xSpan: this.xSpan,
       ySpan: this.ySpan,
       showAxes: Boolean(this.showAxes),
@@ -1162,6 +1168,9 @@ class GraphApp {
       if (data.panY !== undefined) this.panY = data.panY;
       if (data.boardPanX !== undefined) this.boardPanX = data.boardPanX;
       if (data.boardPanY !== undefined) this.boardPanY = data.boardPanY;
+      this.boardZoom = (typeof data.boardZoom === 'number') ? data.boardZoom : 1.0;
+      this.boardZoomOffsetX = (typeof data.boardZoomOffsetX === 'number') ? data.boardZoomOffsetX : 0;
+      this.boardZoomOffsetY = (typeof data.boardZoomOffsetY === 'number') ? data.boardZoomOffsetY : 0;
       if (data.xSpan !== undefined) this.xSpan = data.xSpan;
       if (data.ySpan !== undefined) this.ySpan = data.ySpan;
       if (data.showAxes !== undefined) {
@@ -1826,6 +1835,9 @@ class GraphApp {
     this.panY = 0;
     this.boardPanX = 0;
     this.boardPanY = 0;
+    this.boardZoom = 1.0;
+    this.boardZoomOffsetX = 0;
+    this.boardZoomOffsetY = 0;
     this.setZoomLevel(1.0);
     this.updateAxesUI();
 
@@ -2287,17 +2299,17 @@ class GraphApp {
       btnClearAll.onclick = () => this.clearAllInk();
     }
 
-    // 🔍 펜 툴바 일체형 큼직한 퀵 줌 [− | +] (오른손 펜 동선 최적화)
+    // 🔍 펜 툴바 일체형 큼직한 퀵 줌 [− | +] (판서 모드에서는 판서 글씨만 독립 줌, 그래프 모드에서는 그래프 줌!)
     const btnInkZoomOut = document.getElementById('btnInkZoomOut');
     const btnInkZoomIn = document.getElementById('btnInkZoomIn');
-    if (btnInkZoomOut) btnInkZoomOut.onclick = () => { this.setZoomLevel(this.zoomLevel - 0.12); this.render(); };
-    if (btnInkZoomIn) btnInkZoomIn.onclick = () => { this.setZoomLevel(this.zoomLevel + 0.12); this.render(); };
+    if (btnInkZoomOut) btnInkZoomOut.onclick = () => { this.zoomByStep(-0.12); };
+    if (btnInkZoomIn) btnInkZoomIn.onclick = () => { this.zoomByStep(0.12); };
 
     // 🖐️ 좌측 레일 툴바 엄지 전용 큼직한 위/아래 줌 [+] / [−] (양손 멀티태스킹 최적화)
     const btnRailZoomIn = document.getElementById('btnRailZoomIn');
     const btnRailZoomOut = document.getElementById('btnRailZoomOut');
-    if (btnRailZoomIn) btnRailZoomIn.onclick = () => { this.setZoomLevel(this.zoomLevel + 0.12); this.render(); };
-    if (btnRailZoomOut) btnRailZoomOut.onclick = () => { this.setZoomLevel(this.zoomLevel - 0.12); this.render(); };
+    if (btnRailZoomIn) btnRailZoomIn.onclick = () => { this.zoomByStep(0.12); };
+    if (btnRailZoomOut) btnRailZoomOut.onclick = () => { this.zoomByStep(-0.12); };
 
     // 독 드래그 이동
     this.initInkDockDraggable();
@@ -2787,16 +2799,15 @@ class GraphApp {
 
 
       const isBoard = strokeTarget === 'board';
-      const bPx = (this.boardPanX || 0);
-      const bPy = (this.boardPanY || 0);
+      const bz = this.boardZoom || 1.0;
 
       // 🌟 기하 도형(Shape) 최단거리 검사
       if (stroke.shape) {
         let s1 = null, s2 = null;
         if (stroke.shape.start && stroke.shape.end) {
           if (isBoard) {
-            s1 = { x: stroke.shape.start.x + bPx, y: stroke.shape.start.y + bPy };
-            s2 = { x: stroke.shape.end.x + bPx, y: stroke.shape.end.y + bPy };
+            s1 = this.boardToScreen(stroke.shape.start.x, stroke.shape.start.y);
+            s2 = this.boardToScreen(stroke.shape.end.x, stroke.shape.end.y);
           } else {
             s1 = this.mathToScreen(stroke.shape.start.x, stroke.shape.start.y);
             s2 = this.mathToScreen(stroke.shape.end.x, stroke.shape.end.y);
@@ -2809,17 +2820,17 @@ class GraphApp {
             return false;
           }
         } else if (stroke.shape.type === 'circle') {
-          const sc = isBoard ? { x: stroke.shape.center.x + bPx, y: stroke.shape.center.y + bPy } : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
-          const sr = isBoard ? stroke.shape.radius : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x);
+          const sc = isBoard ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+          const sr = isBoard ? (stroke.shape.radius * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x);
           const dToCenter = Math.hypot(screenX - sc.x, screenY - sc.y);
           if (Math.abs(dToCenter - sr) <= eraseRadius || dToCenter <= eraseRadius) {
             modified = true;
             return false;
           }
         } else if (stroke.shape.type === 'ellipse') {
-          const sc = isBoard ? { x: stroke.shape.center.x + bPx, y: stroke.shape.center.y + bPy } : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
-          const srx = isBoard ? stroke.shape.rx : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.rx, stroke.shape.center.y).x - sc.x);
-          const sry = isBoard ? stroke.shape.ry : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y);
+          const sc = isBoard ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+          const srx = isBoard ? (stroke.shape.rx * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.rx, stroke.shape.center.y).x - sc.x);
+          const sry = isBoard ? (stroke.shape.ry * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y);
           const normD = Math.hypot((screenX - sc.x) / Math.max(1, srx), (screenY - sc.y) / Math.max(1, sry));
           const avgR = (srx + sry) / 2;
           if (Math.abs(normD - 1) * avgR <= eraseRadius * 1.2 || normD <= 0.35) {
@@ -2827,8 +2838,8 @@ class GraphApp {
             return false;
           }
         } else if (stroke.shape.type === 'rect') {
-          const rs1 = isBoard ? { x: stroke.shape.min.x + bPx, y: stroke.shape.min.y + bPy } : this.mathToScreen(stroke.shape.min.x, stroke.shape.min.y);
-          const rs2 = isBoard ? { x: stroke.shape.max.x + bPx, y: stroke.shape.max.y + bPy } : this.mathToScreen(stroke.shape.max.x, stroke.shape.max.y);
+          const rs1 = isBoard ? this.boardToScreen(stroke.shape.min.x, stroke.shape.min.y) : this.mathToScreen(stroke.shape.min.x, stroke.shape.min.y);
+          const rs2 = isBoard ? this.boardToScreen(stroke.shape.max.x, stroke.shape.max.y) : this.mathToScreen(stroke.shape.max.x, stroke.shape.max.y);
           const rx = Math.min(rs1.x, rs2.x), ry = Math.min(rs1.y, rs2.y);
           const rw = Math.abs(rs2.x - rs1.x), rh = Math.abs(rs2.y - rs1.y);
           const p1 = { x: rx, y: ry }, p2 = { x: rx + rw, y: ry };
@@ -2841,7 +2852,7 @@ class GraphApp {
             return false;
           }
         } else if (stroke.shape.pts && stroke.shape.pts.length >= 2) {
-          const sPts = stroke.shape.pts.map(pt => isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y));
+          const sPts = stroke.shape.pts.map(pt => isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y));
           for (let i = 0; i < sPts.length - 1; i++) {
             if (this.distToSegment({ x: screenX, y: screenY }, sPts[i], sPts[i + 1]) <= eraseRadius) {
               modified = true;
@@ -2860,7 +2871,7 @@ class GraphApp {
       if (!stroke.points || stroke.points.length === 0) return false;
 
       const getScreenPt = (p) => {
-        if (isBoard) return { x: p.x + bPx, y: p.y + bPy };
+        if (isBoard) return this.boardToScreen(p.x, p.y);
         return this.mathToScreen(p.x, p.y);
       };
 
@@ -2913,15 +2924,14 @@ class GraphApp {
     if (!stroke || !stroke.points || stroke.points.length < 5) return null;
 
     const isBoard = (stroke.target || 'board') === 'board';
-    const bPx = (this.boardPanX || 0);
-    const bPy = (this.boardPanY || 0);
+    const bz = this.boardZoom || 1.0;
     const screenPts = isBoard
-      ? stroke.points.map(pt => ({ x: pt.x + bPx, y: pt.y + bPy }))
+      ? stroke.points.map(pt => this.boardToScreen(pt.x, pt.y))
       : stroke.points.map(pt => this.mathToScreen(pt.x, pt.y));
 
     const toTargetCoord = (pt) => {
       if (isBoard) {
-        return { x: pt.x - bPx, y: pt.y - bPy };
+        return this.screenToBoard(pt.x, pt.y);
       }
       const m = this.screenToMath(pt.x, pt.y);
       return { x: m.x, y: m.y };
@@ -3127,8 +3137,8 @@ class GraphApp {
           if (isBoard) {
             return {
               type: 'circle',
-              center: { x: cx - bPx, y: cy - bPy },
-              radius: avgR,
+              center: this.screenToBoard(cx, cy),
+              radius: avgR / bz,
               aspect: aspect
             };
           }
@@ -3145,9 +3155,9 @@ class GraphApp {
           if (isBoard) {
             return {
               type: 'ellipse',
-              center: { x: cx - bPx, y: cy - bPy },
-              rx: rx,
-              ry: ry
+              center: this.screenToBoard(cx, cy),
+              rx: rx / bz,
+              ry: ry / bz
             };
           }
           const mCenter = this.screenToMath(cx, cy);
@@ -3167,8 +3177,8 @@ class GraphApp {
         if (isBoard) {
           return {
             type: 'rect',
-            min: { x: minX - bPx, y: minY - bPy },
-            max: { x: maxX - bPx, y: maxY - bPy },
+            min: this.screenToBoard(minX, minY),
+            max: this.screenToBoard(maxX, maxY),
             aspect: aspect
           };
         }
@@ -3377,10 +3387,8 @@ class GraphApp {
     if (shape.type !== 'line') return;
 
     const isBoard = (this.currentInkStroke.target || 'board') === 'board';
-    const bPx = (this.boardPanX || 0);
-    const bPy = (this.boardPanY || 0);
     const sStart = isBoard
-      ? { x: shape.start.x + bPx, y: shape.start.y + bPy }
+      ? this.boardToScreen(shape.start.x, shape.start.y)
       : this.mathToScreen(shape.start.x, shape.start.y);
 
     let endX = pos.x;
@@ -3413,7 +3421,7 @@ class GraphApp {
     }
 
     if (isBoard) {
-      shape.end = { x: endX - bPx, y: endY - bPy };
+      shape.end = this.screenToBoard(endX, endY);
     } else {
       const mEnd = this.screenToMath(endX, endY);
       shape.end = { x: mEnd.x, y: mEnd.y };
@@ -3446,7 +3454,7 @@ class GraphApp {
         if (!stroke.points) continue;
         const isBoard = (stroke.target || 'board') === 'board';
         for (const pt of stroke.points) {
-          const s = isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y);
+          const s = isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
           if (Math.hypot(s.x - pos.x, s.y - pos.y) <= 14) {
             return true;
           }
@@ -3473,44 +3481,43 @@ class GraphApp {
 
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
-    const bPx = (this.boardPanX || 0);
-    const bPy = (this.boardPanY || 0);
+    const bz = this.boardZoom || 1.0;
 
     if (hasStrokes) {
       strokes.forEach(stroke => {
         const isBoard = (stroke.target || 'board') === 'board';
         if (stroke.shape) {
           if (stroke.shape.type === 'line') {
-            const s1 = isBoard ? { x: stroke.shape.start.x + bPx, y: stroke.shape.start.y + bPy } : this.mathToScreen(stroke.shape.start.x, stroke.shape.start.y);
-            const s2 = isBoard ? { x: stroke.shape.end.x + bPx, y: stroke.shape.end.y + bPy } : this.mathToScreen(stroke.shape.end.x, stroke.shape.end.y);
+            const s1 = isBoard ? this.boardToScreen(stroke.shape.start.x, stroke.shape.start.y) : this.mathToScreen(stroke.shape.start.x, stroke.shape.start.y);
+            const s2 = isBoard ? this.boardToScreen(stroke.shape.end.x, stroke.shape.end.y) : this.mathToScreen(stroke.shape.end.x, stroke.shape.end.y);
             minX = Math.min(minX, s1.x, s2.x); maxX = Math.max(maxX, s1.x, s2.x);
             minY = Math.min(minY, s1.y, s2.y); maxY = Math.max(maxY, s1.y, s2.y);
           } else if (stroke.shape.type === 'circle') {
-            const sc = isBoard ? { x: stroke.shape.center.x + bPx, y: stroke.shape.center.y + bPy } : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
-            const sr = isBoard ? stroke.shape.radius : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x);
+            const sc = isBoard ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+            const sr = isBoard ? (stroke.shape.radius * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x);
             minX = Math.min(minX, sc.x - sr); maxX = Math.max(maxX, sc.x + sr);
             minY = Math.min(minY, sc.y - sr); maxY = Math.max(maxY, sc.y + sr);
           } else if (stroke.shape.type === 'ellipse') {
-            const sc = isBoard ? { x: stroke.shape.center.x + bPx, y: stroke.shape.center.y + bPy } : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
-            const srx = isBoard ? stroke.shape.rx : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.rx, stroke.shape.center.y).x - sc.x);
-            const sry = isBoard ? stroke.shape.ry : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y);
+            const sc = isBoard ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+            const srx = isBoard ? (stroke.shape.rx * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.rx, stroke.shape.center.y).x - sc.x);
+            const sry = isBoard ? (stroke.shape.ry * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y);
             minX = Math.min(minX, sc.x - srx); maxX = Math.max(maxX, sc.x + srx);
             minY = Math.min(minY, sc.y - sry); maxY = Math.max(maxY, sc.y + sry);
           } else if (stroke.shape.type === 'rect') {
-            const s1 = isBoard ? { x: stroke.shape.min.x + bPx, y: stroke.shape.min.y + bPy } : this.mathToScreen(stroke.shape.min.x, stroke.shape.min.y);
-            const s2 = isBoard ? { x: stroke.shape.max.x + bPx, y: stroke.shape.max.y + bPy } : this.mathToScreen(stroke.shape.max.x, stroke.shape.max.y);
+            const s1 = isBoard ? this.boardToScreen(stroke.shape.min.x, stroke.shape.min.y) : this.mathToScreen(stroke.shape.min.x, stroke.shape.min.y);
+            const s2 = isBoard ? this.boardToScreen(stroke.shape.max.x, stroke.shape.max.y) : this.mathToScreen(stroke.shape.max.x, stroke.shape.max.y);
             minX = Math.min(minX, s1.x, s2.x); maxX = Math.max(maxX, s1.x, s2.x);
             minY = Math.min(minY, s1.y, s2.y); maxY = Math.max(maxY, s1.y, s2.y);
           } else if (stroke.shape.pts && stroke.shape.pts.length > 0) {
             stroke.shape.pts.forEach(pt => {
-              const s = isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y);
+              const s = isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
               if (s.x < minX) minX = s.x; if (s.x > maxX) maxX = s.x;
               if (s.y < minY) minY = s.y; if (s.y > maxY) maxY = s.y;
             });
           }
         } else if (stroke.points) {
           stroke.points.forEach(pt => {
-            const s = isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y);
+            const s = isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
             if (s.x < minX) minX = s.x; if (s.x > maxX) maxX = s.x;
             if (s.y < minY) minY = s.y; if (s.y > maxY) maxY = s.y;
           });
@@ -3555,21 +3562,20 @@ class GraphApp {
     if (!stroke || !stroke.shape) return [];
     const sh = stroke.shape;
     const isBoard = (stroke.target || 'board') === 'board';
-    const bPx = (this.boardPanX || 0);
-    const bPy = (this.boardPanY || 0);
+    const bz = this.boardZoom || 1.0;
     const pts = [];
 
     if (sh.type === 'line' && sh.start && sh.end) {
-      const s1 = isBoard ? { x: sh.start.x + bPx, y: sh.start.y + bPy } : this.mathToScreen(sh.start.x, sh.start.y);
-      const s2 = isBoard ? { x: sh.end.x + bPx, y: sh.end.y + bPy } : this.mathToScreen(sh.end.x, sh.end.y);
+      const s1 = isBoard ? this.boardToScreen(sh.start.x, sh.start.y) : this.mathToScreen(sh.start.x, sh.start.y);
+      const s2 = isBoard ? this.boardToScreen(sh.end.x, sh.end.y) : this.mathToScreen(sh.end.x, sh.end.y);
       const steps = 16;
       for (let k = 0; k <= steps; k++) {
         const t = k / steps;
         pts.push({ x: s1.x + (s2.x - s1.x) * t, y: s1.y + (s2.y - s1.y) * t });
       }
     } else if (sh.type === 'circle' && sh.center) {
-      const sc = isBoard ? { x: sh.center.x + bPx, y: sh.center.y + bPy } : this.mathToScreen(sh.center.x, sh.center.y);
-      const sr = isBoard ? sh.radius : Math.abs(this.mathToScreen(sh.center.x + sh.radius, sh.center.y).x - sc.x);
+      const sc = isBoard ? this.boardToScreen(sh.center.x, sh.center.y) : this.mathToScreen(sh.center.x, sh.center.y);
+      const sr = isBoard ? (sh.radius * bz) : Math.abs(this.mathToScreen(sh.center.x + sh.radius, sh.center.y).x - sc.x);
       pts.push(sc);
       const steps = 24;
       for (let k = 0; k < steps; k++) {
@@ -3577,9 +3583,9 @@ class GraphApp {
         pts.push({ x: sc.x + sr * Math.cos(ang), y: sc.y + sr * Math.sin(ang) });
       }
     } else if (sh.type === 'ellipse' && sh.center) {
-      const sc = isBoard ? { x: sh.center.x + bPx, y: sh.center.y + bPy } : this.mathToScreen(sh.center.x, sh.center.y);
-      const srx = isBoard ? sh.rx : Math.abs(this.mathToScreen(sh.center.x + sh.rx, sh.center.y).x - sc.x);
-      const sry = isBoard ? sh.ry : Math.abs(this.mathToScreen(sh.center.x, sh.center.y + sh.ry).y - sc.y);
+      const sc = isBoard ? this.boardToScreen(sh.center.x, sh.center.y) : this.mathToScreen(sh.center.x, sh.center.y);
+      const srx = isBoard ? (sh.rx * bz) : Math.abs(this.mathToScreen(sh.center.x + sh.rx, sh.center.y).x - sc.x);
+      const sry = isBoard ? (sh.ry * bz) : Math.abs(this.mathToScreen(sh.center.x, sh.center.y + sh.ry).y - sc.y);
       pts.push(sc);
       const steps = 24;
       for (let k = 0; k < steps; k++) {
@@ -3587,8 +3593,8 @@ class GraphApp {
         pts.push({ x: sc.x + srx * Math.cos(ang), y: sc.y + sry * Math.sin(ang) });
       }
     } else if (sh.type === 'rect' && sh.min && sh.max) {
-      const s1 = isBoard ? { x: sh.min.x + bPx, y: sh.min.y + bPy } : this.mathToScreen(sh.min.x, sh.min.y);
-      const s2 = isBoard ? { x: sh.max.x + bPx, y: sh.max.y + bPy } : this.mathToScreen(sh.max.x, sh.max.y);
+      const s1 = isBoard ? this.boardToScreen(sh.min.x, sh.min.y) : this.mathToScreen(sh.min.x, sh.min.y);
+      const s2 = isBoard ? this.boardToScreen(sh.max.x, sh.max.y) : this.mathToScreen(sh.max.x, sh.max.y);
       const x1 = Math.min(s1.x, s2.x);
       const x2 = Math.max(s1.x, s2.x);
       const y1 = Math.min(s1.y, s2.y);
@@ -3606,7 +3612,7 @@ class GraphApp {
         pts.push({ x: x2, y }); // 우측 변 (우상 ~ 우하)
       }
     } else if (sh.pts && sh.pts.length > 0) {
-      const sPts = sh.pts.map(pt => isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y));
+      const sPts = sh.pts.map(pt => isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y));
       let cx = 0, cy = 0;
       sPts.forEach(p => {
         pts.push(p);
@@ -3661,16 +3667,16 @@ class GraphApp {
 
     for (let i = 0; i < totalPts; i += step) {
       samples++;
-      const s = isBoard ? { x: stroke.points[i].x + bPx, y: stroke.points[i].y + bPy } : this.mathToScreen(stroke.points[i].x, stroke.points[i].y);
+      const s = isBoard ? this.boardToScreen(stroke.points[i].x, stroke.points[i].y) : this.mathToScreen(stroke.points[i].x, stroke.points[i].y);
       if (this.isPointInPolygon(s, lassoPoly)) {
         insideCount++;
       }
     }
 
-    const sStart = isBoard ? { x: stroke.points[0].x + bPx, y: stroke.points[0].y + bPy } : this.mathToScreen(stroke.points[0].x, stroke.points[0].y);
-    const sEnd = isBoard ? { x: stroke.points[totalPts - 1].x + bPx, y: stroke.points[totalPts - 1].y + bPy } : this.mathToScreen(stroke.points[totalPts - 1].x, stroke.points[totalPts - 1].y);
+    const sStart = isBoard ? this.boardToScreen(stroke.points[0].x, stroke.points[0].y) : this.mathToScreen(stroke.points[0].x, stroke.points[0].y);
+    const sEnd = isBoard ? this.boardToScreen(stroke.points[totalPts - 1].x, stroke.points[totalPts - 1].y) : this.mathToScreen(stroke.points[totalPts - 1].x, stroke.points[totalPts - 1].y);
     const midIdx = Math.floor(totalPts / 2);
-    const sMid = isBoard ? { x: stroke.points[midIdx].x + bPx, y: stroke.points[midIdx].y + bPy } : this.mathToScreen(stroke.points[midIdx].x, stroke.points[midIdx].y);
+    const sMid = isBoard ? this.boardToScreen(stroke.points[midIdx].x, stroke.points[midIdx].y) : this.mathToScreen(stroke.points[midIdx].x, stroke.points[midIdx].y);
 
     if (this.isPointInPolygon(sStart, lassoPoly) || this.isPointInPolygon(sEnd, lassoPoly) || this.isPointInPolygon(sMid, lassoPoly)) {
       return true;
@@ -6683,7 +6689,13 @@ class GraphApp {
 
     // 2. 판서 모드 패닝 좌표 백업 후 좌상단(72px, 18px) 문제 참조 카드 위치 고정
     if (this.isGraphCovered) {
-      this._savedLayer2BoardPan = { x: this.boardPanX || 0, y: this.boardPanY || 0 };
+      this._savedLayer2BoardPan = {
+        x: this.boardPanX || 0,
+        y: this.boardPanY || 0,
+        zoom: this.boardZoom || 1.0,
+        zOx: this.boardZoomOffsetX || 0,
+        zOy: this.boardZoomOffsetY || 0
+      };
     }
     this.boardPanX = 0;
     this.boardPanY = 0;
@@ -6890,6 +6902,9 @@ class GraphApp {
     } else if (this._savedLayer2BoardPan) {
       this.boardPanX = this._savedLayer2BoardPan.x;
       this.boardPanY = this._savedLayer2BoardPan.y;
+      if (typeof this._savedLayer2BoardPan.zoom === 'number') this.boardZoom = this._savedLayer2BoardPan.zoom;
+      if (typeof this._savedLayer2BoardPan.zOx === 'number') this.boardZoomOffsetX = this._savedLayer2BoardPan.zOx;
+      if (typeof this._savedLayer2BoardPan.zOy === 'number') this.boardZoomOffsetY = this._savedLayer2BoardPan.zOy;
       this._savedLayer2BoardPan = null;
     }
 
@@ -7365,7 +7380,13 @@ class GraphApp {
     const chkGuides = document.getElementById('chkGuides');
     if (chkGuides) chkGuides.checked = true;
 
-    this._savedLayer2BoardPan = { x: this.boardPanX || 0, y: this.boardPanY || 0 };
+    this._savedLayer2BoardPan = {
+      x: this.boardPanX || 0,
+      y: this.boardPanY || 0,
+      zoom: this.boardZoom || 1.0,
+      zOx: this.boardZoomOffsetX || 0,
+      zOy: this.boardZoomOffsetY || 0
+    };
     this.boardPanX = 0;
     this.boardPanY = 0;
     this.updateProblemCardPosition();
@@ -7829,7 +7850,9 @@ class GraphApp {
     if (!stroke || stroke.isHighlighter || !this.ctx) return;
     const ctx = this.ctx;
     const isBoardInk = (stroke.target || 'board') === 'board';
-    const zoomRatio = isBoardInk ? 1.0 : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
+    const zoomRatio = isBoardInk
+      ? ((this.boardZoom || 1.0) / (stroke.boardZoom || 1.0))
+      : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
     const baseSize = (stroke.size || 4.2) * zoomRatio;
 
     const f0 = 0.28 + 1.4 * Math.pow(Math.max(0.05, Math.min(1.0, p0Pressure)), 0.85);
@@ -7906,7 +7929,10 @@ class GraphApp {
     targetCtx.strokeStyle = strokeColor;
 
     const isBoardInk = (stroke.target || 'board') === 'board';
-    const zoomRatio = isBoardInk ? 1.0 : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
+    const bz = this.boardZoom || 1.0;
+    const zoomRatio = isBoardInk
+      ? (bz / (stroke.boardZoom || 1.0))
+      : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
 
     if (stroke.isHighlighter) {
       targetCtx.globalAlpha = 0.38;
@@ -7914,9 +7940,6 @@ class GraphApp {
     } else {
       targetCtx.globalAlpha = 1.0;
     }
-
-    const bPx = (this.boardPanX || 0);
-    const bPy = (this.boardPanY || 0);
 
     // 🌟 Draw & Hold 기하 도형 & 수학 곡선 렌더링 (직선, 정원, 타원, 직사각형, 삼각형, 이차함수 포물선, 삼차/삼각 개형) 🌟
     if (stroke.shape) {
@@ -7926,8 +7949,8 @@ class GraphApp {
       targetCtx.strokeStyle = strokeColor;
 
       if (stroke.shape.type === 'line') {
-        const s1 = isBoardInk ? { x: stroke.shape.start.x + bPx, y: stroke.shape.start.y + bPy } : this.mathToScreen(stroke.shape.start.x, stroke.shape.start.y);
-        const s2 = isBoardInk ? { x: stroke.shape.end.x + bPx, y: stroke.shape.end.y + bPy } : this.mathToScreen(stroke.shape.end.x, stroke.shape.end.y);
+        const s1 = isBoardInk ? this.boardToScreen(stroke.shape.start.x, stroke.shape.start.y) : this.mathToScreen(stroke.shape.start.x, stroke.shape.start.y);
+        const s2 = isBoardInk ? this.boardToScreen(stroke.shape.end.x, stroke.shape.end.y) : this.mathToScreen(stroke.shape.end.x, stroke.shape.end.y);
         targetCtx.beginPath();
         targetCtx.moveTo(s1.x, s1.y);
         targetCtx.lineTo(s2.x, s2.y);
@@ -7935,25 +7958,25 @@ class GraphApp {
         targetCtx.restore();
         return;
       } else if (stroke.shape.type === 'circle') {
-        const sc = isBoardInk ? { x: stroke.shape.center.x + bPx, y: stroke.shape.center.y + bPy } : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
-        const sr = isBoardInk ? stroke.shape.radius : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x);
+        const sc = isBoardInk ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+        const sr = isBoardInk ? (stroke.shape.radius * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x);
         targetCtx.beginPath();
         targetCtx.arc(sc.x, sc.y, Math.max(2, sr), 0, Math.PI * 2);
         targetCtx.stroke();
         targetCtx.restore();
         return;
       } else if (stroke.shape.type === 'ellipse') {
-        const sc = isBoardInk ? { x: stroke.shape.center.x + bPx, y: stroke.shape.center.y + bPy } : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
-        const srx = isBoardInk ? stroke.shape.rx : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.rx, stroke.shape.center.y).x - sc.x);
-        const sry = isBoardInk ? stroke.shape.ry : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y);
+        const sc = isBoardInk ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
+        const srx = isBoardInk ? (stroke.shape.rx * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.rx, stroke.shape.center.y).x - sc.x);
+        const sry = isBoardInk ? (stroke.shape.ry * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y);
         targetCtx.beginPath();
         targetCtx.ellipse(sc.x, sc.y, Math.max(2, srx), Math.max(2, sry), 0, 0, Math.PI * 2);
         targetCtx.stroke();
         targetCtx.restore();
         return;
       } else if (stroke.shape.type === 'rect') {
-        const s1 = isBoardInk ? { x: stroke.shape.min.x + bPx, y: stroke.shape.min.y + bPy } : this.mathToScreen(stroke.shape.min.x, stroke.shape.min.y);
-        const s2 = isBoardInk ? { x: stroke.shape.max.x + bPx, y: stroke.shape.max.y + bPy } : this.mathToScreen(stroke.shape.max.x, stroke.shape.max.y);
+        const s1 = isBoardInk ? this.boardToScreen(stroke.shape.min.x, stroke.shape.min.y) : this.mathToScreen(stroke.shape.min.x, stroke.shape.min.y);
+        const s2 = isBoardInk ? this.boardToScreen(stroke.shape.max.x, stroke.shape.max.y) : this.mathToScreen(stroke.shape.max.x, stroke.shape.max.y);
         const rx = Math.min(s1.x, s2.x);
         const ry = Math.min(s1.y, s2.y);
         const rw = Math.abs(s2.x - s1.x);
@@ -7964,7 +7987,7 @@ class GraphApp {
         targetCtx.restore();
         return;
       } else if (stroke.shape.pts && stroke.shape.pts.length >= 2) {
-        const sPts = stroke.shape.pts.map(pt => isBoardInk ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y));
+        const sPts = stroke.shape.pts.map(pt => isBoardInk ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y));
         targetCtx.beginPath();
         targetCtx.moveTo(sPts[0].x, sPts[0].y);
         for (let i = 1; i < sPts.length; i++) {
@@ -7980,7 +8003,7 @@ class GraphApp {
     }
 
     const rawPts = stroke.points.map(pt => ({
-      ...(isBoardInk ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y)),
+      ...(isBoardInk ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y)),
       p: (pt.p !== undefined ? pt.p : 0.5)
     }));
 
@@ -8201,9 +8224,8 @@ class GraphApp {
         if (!s.color || (s.color.toLowerCase() !== '#ffffff' && s.color.toLowerCase() !== '#fff')) return false;
         if (!s.points || s.points.length === 0) return false;
         return s.points.some(p => {
-          const sx = p.x + bPx;
-          const sy = p.y + bPy;
-          return (sx >= r.x && sx <= r.x + r.w && sy >= r.y && sy <= r.y + r.h);
+          const sp = this.boardToScreen(p.x, p.y);
+          return (sp.x >= r.x && sp.x <= r.x + r.w && sp.y >= r.y && sp.y <= r.y + r.h);
         });
       });
 
@@ -9364,8 +9386,8 @@ class GraphApp {
     // --- [우측 줌 인/아웃 버튼 바인딩 (대표님 기획: 줌 다다익선)] ---
     const btnQuickZoomIn = document.getElementById('btnQuickZoomIn');
     const btnQuickZoomOut = document.getElementById('btnQuickZoomOut');
-    if (btnQuickZoomIn) btnQuickZoomIn.onclick = () => { this.setZoomLevel(this.zoomLevel + 0.12); this.render(); };
-    if (btnQuickZoomOut) btnQuickZoomOut.onclick = () => { this.setZoomLevel(this.zoomLevel - 0.12); this.render(); };
+    if (btnQuickZoomIn) btnQuickZoomIn.onclick = () => { this.zoomByStep(0.12); };
+    if (btnQuickZoomOut) btnQuickZoomOut.onclick = () => { this.zoomByStep(-0.12); };
 
     // 좌측 서랍 패널(#panelStyle) 내 모든 테마 칩 전체 바인딩
     document.querySelectorAll('.theme-chip').forEach(chip => {
@@ -15002,6 +15024,7 @@ class GraphApp {
           isGraphTarget = isLeft;
         }
 
+        const bPt0 = this.screenToBoard(pos.x, pos.y);
         this.currentInkStroke = {
           id: 'ink_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
           tool: this.activeInkTool,
@@ -15010,10 +15033,11 @@ class GraphApp {
           color: this.currentInkColor,
           size: this.currentInkSize,
           zoom: this.zoomLevel,
+          boardZoom: this.boardZoom || 1.0,
           isHighlighter: (this.activeInkTool === 'highlighter'),
           points: isGraphTarget
             ? [{ x: m.x, y: m.y, p: pressure }]
-            : [{ x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0), p: pressure }]
+            : [{ x: bPt0.x, y: bPt0.y, p: pressure }]
         };
         this.inkStrokes.push(this.currentInkStroke);
         this._startInkHoldTimer();
@@ -15423,27 +15447,30 @@ class GraphApp {
 
           // (1) 필기 획 이동
           if (this.selectedInkStrokes) {
+            const bz = this.boardZoom || 1.0;
+            const deltaBoardX = deltaScreenX / bz;
+            const deltaBoardY = deltaScreenY / bz;
             this.selectedInkStrokes.forEach(stroke => {
               const isBoard = (stroke.target || 'board') === 'board';
               if (stroke.shape) {
                 if (stroke.shape.type === 'line') {
                   if (isBoard) {
-                    stroke.shape.start.x += deltaScreenX; stroke.shape.start.y += deltaScreenY;
-                    stroke.shape.end.x += deltaScreenX; stroke.shape.end.y += deltaScreenY;
+                    stroke.shape.start.x += deltaBoardX; stroke.shape.start.y += deltaBoardY;
+                    stroke.shape.end.x += deltaBoardX; stroke.shape.end.y += deltaBoardY;
                   } else {
                     stroke.shape.start.x += deltaX; stroke.shape.start.y += deltaY;
                     stroke.shape.end.x += deltaX; stroke.shape.end.y += deltaY;
                   }
                 } else if (stroke.shape.type === 'circle' || stroke.shape.type === 'ellipse') {
                   if (isBoard) {
-                    stroke.shape.center.x += deltaScreenX; stroke.shape.center.y += deltaScreenY;
+                    stroke.shape.center.x += deltaBoardX; stroke.shape.center.y += deltaBoardY;
                   } else {
                     stroke.shape.center.x += deltaX; stroke.shape.center.y += deltaY;
                   }
                 } else if (stroke.shape.type === 'rect') {
                   if (isBoard) {
-                    stroke.shape.min.x += deltaScreenX; stroke.shape.min.y += deltaScreenY;
-                    stroke.shape.max.x += deltaScreenX; stroke.shape.max.y += deltaScreenY;
+                    stroke.shape.min.x += deltaBoardX; stroke.shape.min.y += deltaBoardY;
+                    stroke.shape.max.x += deltaBoardX; stroke.shape.max.y += deltaBoardY;
                   } else {
                     stroke.shape.min.x += deltaX; stroke.shape.min.y += deltaY;
                     stroke.shape.max.x += deltaX; stroke.shape.max.y += deltaY;
@@ -15451,7 +15478,7 @@ class GraphApp {
                 } else if (stroke.shape.pts && stroke.shape.pts.length > 0) {
                   stroke.shape.pts.forEach(pt => {
                     if (isBoard) {
-                      pt.x += deltaScreenX; pt.y += deltaScreenY;
+                      pt.x += deltaBoardX; pt.y += deltaBoardY;
                     } else {
                       pt.x += deltaX; pt.y += deltaY;
                     }
@@ -15461,8 +15488,8 @@ class GraphApp {
               if (stroke.points) {
                 stroke.points.forEach(pt => {
                   if (isBoard) {
-                    pt.x += deltaScreenX;
-                    pt.y += deltaScreenY;
+                    pt.x += deltaBoardX;
+                    pt.y += deltaBoardY;
                   } else {
                     pt.x += deltaX;
                     pt.y += deltaY;
@@ -15566,7 +15593,8 @@ class GraphApp {
             if (this.currentInkStroke.target === 'graph') {
               this.currentInkStroke.points.push({ x: m.x, y: m.y, p: pressure });
             } else {
-              this.currentInkStroke.points.push({ x: pPos.x - (this.boardPanX || 0), y: pPos.y - (this.boardPanY || 0), p: pressure });
+              const bPt = this.screenToBoard(pPos.x, pPos.y);
+              this.currentInkStroke.points.push({ x: bPt.x, y: bPt.y, p: pressure });
             }
             addedPoints++;
 
@@ -16578,6 +16606,9 @@ class GraphApp {
             this._pinchState = {
               startDist: dist,
               startZoom: this.zoomLevel || 1.0,
+              startBoardZoom: this.boardZoom || 1.0,
+              startBoardZoomOffsetX: this.boardZoomOffsetX || 0,
+              startBoardZoomOffsetY: this.boardZoomOffsetY || 0,
               startMidX: midX,
               startMidY: midY,
               startPanX: this.panX || 0,
@@ -16606,10 +16637,21 @@ class GraphApp {
             const dy = midY - this._pinchState.startMidY;
 
             if (this.isGraphCovered) {
-              // 2층 판서 칠판: 두 손가락 이동으로 광활한 칠판 패닝
+              // 2층 판서 칠판: 두 손가락 이동(패닝) + 두 손가락 핀치(판서 글씨만 확대/축소, 문제·그래프 카드는 크기 그대로!)
               this.boardPanX = Math.round(this._pinchState.startBoardPanX + dx);
               this.boardPanY = Math.round(this._pinchState.startBoardPanY + dy);
               this.updateProblemCardPosition();
+
+              const scaleRatio = dist / this._pinchState.startDist;
+              if (Math.abs(scaleRatio - 1) > 0.015) {
+                const oldBZ = this._pinchState.startBoardZoom || 1.0;
+                const nextBZ = Math.max(0.25, Math.min(3.5, Math.round(oldBZ * scaleRatio * 100) / 100));
+                const startBx = (this._pinchState.startMidX - this._pinchState.startBoardPanX - (this._pinchState.startBoardZoomOffsetX || 0)) / oldBZ;
+                const startBy = (this._pinchState.startMidY - this._pinchState.startBoardPanY - (this._pinchState.startBoardZoomOffsetY || 0)) / oldBZ;
+                this.boardZoom = nextBZ;
+                this.boardZoomOffsetX = midX - this.boardPanX - startBx * nextBZ;
+                this.boardZoomOffsetY = midY - this.boardPanY - startBy * nextBZ;
+              }
               this._inkBakeDirty = true;
             } else {
               // 1층 실시간 그래프: 두 손가락 이동(Pan) + 두 손가락 핀치 줌(Pinch-to-Zoom) 동시 작동!
@@ -17230,13 +17272,10 @@ class GraphApp {
       // 2층(this.isGraphCovered === true, 그래프 스샷 찍고 넘어간 새 판서 레이어)일 때만 휠 굴림으로 칠판 전체 이동!
       // 1층(!this.isGraphCovered, 실시간 그래프 편집 레이어)에서는 휠을 굴리면 원래대로 그래프 좌표축이 확대/축소(Zoom)!
       if (this.isGraphCovered && !this.pdfPageBoardData) {
-        if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-          this.boardPanX = Math.round((this.boardPanX || 0) - (e.deltaX || e.deltaY));
-        } else {
-          this.boardPanY = Math.round((this.boardPanY || 0) - e.deltaY);
-        }
-        this.updateProblemCardPosition();
-        this._inkBakeDirty = true;
+        // 🌟 [대표님 피드백 반영]: 판서 모드에서 휠을 굴리면 문제/그래프 카드는 그대로 두고 판서(글씨·도형)만 마우스 커서 기준으로 확대/축소!
+        const pos = getPos(e);
+        const factor = e.deltaY < 0 ? 1.12 : (1 / 1.12);
+        this.setBoardZoom((this.boardZoom || 1.0) * factor, pos.x, pos.y);
         this.requestRender();
         return;
       }
@@ -17957,6 +17996,49 @@ class GraphApp {
       pos.y >= sq.minY &&
       pos.y <= sq.maxY
     );
+  }
+
+  // 🌟 [판서 모드 전용 좌표 변환 & 독립 줌 엔진: 문제/그래프 카드는 그대로 두고 판서 글씨·도형만 확대/축소!] 🌟
+  boardToScreen(bx, by) {
+    const bz = this.boardZoom || 1.0;
+    return {
+      x: bx * bz + (this.boardZoomOffsetX || 0) + (this.boardPanX || 0),
+      y: by * bz + (this.boardZoomOffsetY || 0) + (this.boardPanY || 0)
+    };
+  }
+
+  screenToBoard(sx, sy) {
+    const bz = this.boardZoom || 1.0;
+    return {
+      x: (sx - (this.boardPanX || 0) - (this.boardZoomOffsetX || 0)) / bz,
+      y: (sy - (this.boardPanY || 0) - (this.boardZoomOffsetY || 0)) / bz
+    };
+  }
+
+  setBoardZoom(nextZoom, pivotScreenX = null, pivotScreenY = null) {
+    const oldZoom = this.boardZoom || 1.0;
+    const clamped = Math.max(0.25, Math.min(3.5, Math.round(nextZoom * 100) / 100));
+    if (Math.abs(clamped - oldZoom) < 0.001) return clamped;
+    const px = (typeof pivotScreenX === 'number') ? pivotScreenX : ((this.screenWidth || window.innerWidth) / 2);
+    const py = (typeof pivotScreenY === 'number') ? pivotScreenY : ((this.screenHeight || window.innerHeight) / 2);
+    const bx = (px - (this.boardPanX || 0) - (this.boardZoomOffsetX || 0)) / oldZoom;
+    const by = (py - (this.boardPanY || 0) - (this.boardZoomOffsetY || 0)) / oldZoom;
+    this.boardZoom = clamped;
+    this.boardZoomOffsetX = px - (this.boardPanX || 0) - bx * clamped;
+    this.boardZoomOffsetY = py - (this.boardPanY || 0) - by * clamped;
+    this._inkBakeDirty = true;
+    this._hasSceneFreeze = false;
+    return clamped;
+  }
+
+  zoomByStep(delta) {
+    if (this.isGraphCovered && !this.pdfPageBoardData) {
+      this.setBoardZoom((this.boardZoom || 1.0) + delta);
+      this.render();
+      return;
+    }
+    this.setZoomLevel(this.zoomLevel + delta);
+    this.render();
   }
 
   // 🌟 [통합 줌 배율 제어 및 UI 실시간 동기화] 🌟
@@ -20787,42 +20869,43 @@ class GraphApp {
     const bPy = this.boardPanY || 0;
 
     // 1. 모든 활성 필기 획(자유곡선 & 자동보정 기하도형) 좌표 스캔 (화면 밖 패닝 영역까지 100% 포함)
+    const bz = this.boardZoom || 1.0;
     activeStrokes.forEach(s => {
       const isBoard = (s.target || 'board') === 'board';
       const pad = Math.max(8, (s.size || 4) * (s.isHighlighter ? 2.5 : 1.5));
       if (s.shape) {
         const sh = s.shape;
         if (sh.type === 'line' && sh.start && sh.end) {
-          const s1 = isBoard ? { x: sh.start.x + bPx, y: sh.start.y + bPy } : this.mathToScreen(sh.start.x, sh.start.y);
-          const s2 = isBoard ? { x: sh.end.x + bPx, y: sh.end.y + bPy } : this.mathToScreen(sh.end.x, sh.end.y);
+          const s1 = isBoard ? this.boardToScreen(sh.start.x, sh.start.y) : this.mathToScreen(sh.start.x, sh.start.y);
+          const s2 = isBoard ? this.boardToScreen(sh.end.x, sh.end.y) : this.mathToScreen(sh.end.x, sh.end.y);
           expand(s1.x, s1.y, pad);
           expand(s2.x, s2.y, pad);
         } else if (sh.type === 'circle' && sh.center) {
-          const sc = isBoard ? { x: sh.center.x + bPx, y: sh.center.y + bPy } : this.mathToScreen(sh.center.x, sh.center.y);
-          const sr = isBoard ? sh.radius : Math.abs(this.mathToScreen(sh.center.x + sh.radius, sh.center.y).x - sc.x);
+          const sc = isBoard ? this.boardToScreen(sh.center.x, sh.center.y) : this.mathToScreen(sh.center.x, sh.center.y);
+          const sr = isBoard ? (sh.radius * bz) : Math.abs(this.mathToScreen(sh.center.x + sh.radius, sh.center.y).x - sc.x);
           expand(sc.x - sr, sc.y - sr, pad);
           expand(sc.x + sr, sc.y + sr, pad);
         } else if (sh.type === 'ellipse' && sh.center) {
-          const sc = isBoard ? { x: sh.center.x + bPx, y: sh.center.y + bPy } : this.mathToScreen(sh.center.x, sh.center.y);
-          const srx = isBoard ? sh.rx : Math.abs(this.mathToScreen(sh.center.x + sh.rx, sh.center.y).x - sc.x);
-          const sry = isBoard ? sh.ry : Math.abs(this.mathToScreen(sh.center.x, sh.center.y + sh.ry).y - sc.y);
+          const sc = isBoard ? this.boardToScreen(sh.center.x, sh.center.y) : this.mathToScreen(sh.center.x, sh.center.y);
+          const srx = isBoard ? (sh.rx * bz) : Math.abs(this.mathToScreen(sh.center.x + sh.rx, sh.center.y).x - sc.x);
+          const sry = isBoard ? (sh.ry * bz) : Math.abs(this.mathToScreen(sh.center.x, sh.center.y + sh.ry).y - sc.y);
           expand(sc.x - srx, sc.y - sry, pad);
           expand(sc.x + srx, sc.y + sry, pad);
         } else if (sh.type === 'rect' && sh.min && sh.max) {
-          const rs1 = isBoard ? { x: sh.min.x + bPx, y: sh.min.y + bPy } : this.mathToScreen(sh.min.x, sh.min.y);
-          const rs2 = isBoard ? { x: sh.max.x + bPx, y: sh.max.y + bPy } : this.mathToScreen(sh.max.x, sh.max.y);
+          const rs1 = isBoard ? this.boardToScreen(sh.min.x, sh.min.y) : this.mathToScreen(sh.min.x, sh.min.y);
+          const rs2 = isBoard ? this.boardToScreen(sh.max.x, sh.max.y) : this.mathToScreen(sh.max.x, sh.max.y);
           expand(rs1.x, rs1.y, pad);
           expand(rs2.x, rs2.y, pad);
         } else if (sh.pts && sh.pts.length > 0) {
           sh.pts.forEach(pt => {
-            const sp = isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y);
+            const sp = isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
             expand(sp.x, sp.y, pad);
           });
         }
       }
       if (s.points && s.points.length > 0) {
         s.points.forEach(pt => {
-          const sp = isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y);
+          const sp = isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
           expand(sp.x, sp.y, pad);
         });
       }
@@ -20991,6 +21074,9 @@ class GraphApp {
           lockAspect: this.lockAspect,
           boardPanX: this.boardPanX,
           boardPanY: this.boardPanY,
+          boardZoom: this.boardZoom,
+          boardZoomOffsetX: this.boardZoomOffsetX,
+          boardZoomOffsetY: this.boardZoomOffsetY,
           exportCropOffset: this._exportCropOffset
         };
 
@@ -21020,6 +21106,9 @@ class GraphApp {
         this.lockAspect = backup.lockAspect;
         this.boardPanX = backup.boardPanX;
         this.boardPanY = backup.boardPanY;
+        this.boardZoom = backup.boardZoom;
+        this.boardZoomOffsetX = backup.boardZoomOffsetX;
+        this.boardZoomOffsetY = backup.boardZoomOffsetY;
         this._exportCropOffset = backup.exportCropOffset;
       } else {
         expCtx.save();
