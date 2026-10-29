@@ -4212,7 +4212,7 @@ body.theme-light .problem-card-resize-handle {
   inset: 0;
   z-index: 9999;
   background: radial-gradient(circle at 50% 45%, #ffffff 0%, #f1f5f9 100%);
-  display: flex;
+  display: none !important;
   align-items: center;
   justify-content: center;
   transition: opacity 0.22s ease;
@@ -6396,4 +6396,60 @@ body.theme-light .pdf-board-close-btn {
 body.theme-light .pdf-board-close-btn:hover {
   background: #fee2e2;
   color: #ef4444;
+}
+
+/* ==========================================================================
+   [📝 판서 모드 (workspace-board-mode) vs 📈 그래프 모드 (workspace-graph-mode) UI 분리]
+   ========================================================================== */
+body.workspace-board-mode #btnQuickIntersection,
+body.workspace-board-mode #btnQuickDropLine,
+body.workspace-board-mode #btnQuickText,
+body.workspace-board-mode #btnQuickSnap,
+body.workspace-board-mode #btnRailPiecewise,
+body.workspace-board-mode #btnRailToggleVf,
+body.workspace-board-mode #btnInkToggleAxes {
+  display: none !important;
+}
+
+.pdf-to-graph-crop-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pdf-to-graph-crop-guide {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #f8fafc;
+  font-size: 12.5px;
+  font-weight: 700;
+  border: 1px solid rgba(0, 210, 211, 0.45);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+}
+
+body.theme-light .pdf-to-graph-crop-guide {
+  background: rgba(255, 255, 255, 0.96);
+  color: #1e293b;
+  border-color: rgba(124, 58, 237, 0.45);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.10);
+}
+
+
+/* 판서 모드에서 좌측 상단 [📈 그래프 모드로 전환] 버튼 전용 강조 스타일 */
+.rail-btn.rail-graph-mode-switch {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.14), rgba(124, 58, 237, 0.14));
+  border: 1.5px solid rgba(37, 99, 235, 0.45);
+  color: #2563eb;
+}
+.rail-btn.rail-graph-mode-switch:hover {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.24), rgba(124, 58, 237, 0.24));
+  border-color: #2563eb;
+  transform: translateY(-1px);
+}
+body:not(.theme-light) .rail-btn.rail-graph-mode-switch {
+  background: linear-gradient(135deg, rgba(0, 210, 211, 0.18), rgba(162, 155, 254, 0.18));
+  border: 1.5px solid rgba(0, 210, 211, 0.55);
+  color: #00d2d3;
 }

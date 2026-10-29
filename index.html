@@ -20,7 +20,7 @@
 
 <body class="theme-light">
   <!-- 🌟 [시작 인트로 화면: 뒤쪽 실제 작업화면이 은은하게 비치는 화이트 글래스 베일 & 무충격 전체화면 진입] 🌟 -->
-  <div id="welcomeSplash" class="welcome-splash">
+  <div id="welcomeSplash" class="welcome-splash dismissed" style="display: none;">
     <div class="splash-card">
       <div class="splash-glow"></div>
       <div class="splash-brand">
@@ -1112,13 +1112,24 @@
 
   <!-- [📦 우측 상단 X 버튼 바로 옆: 실시간 그래프 보관 트리거 버튼 & 드래그 오버레이] -->
   <div id="graphSnapFloatingBar" class="graph-snap-floating-bar" style="display: none;">
-    <button id="btnReturnToCoveredBoard" class="btn-return-covered-board" style="display: none;" title="새 스샷을 찍지 않고 방금 판서하던 칠판(보관 카드 화면)으로 즉시 돌아갑니다">
+    <button id="btnReturnToCoveredBoard" class="btn-return-covered-board" style="display: none;" title="새 스샷을 찍지 않고 방금 판서하던 칠판 화면으로 즉시 돌아갑니다">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
-      <span>칠판 복귀</span>
+      <span>판서 복귀</span>
     </button>
-    <button id="btnTriggerGraphSnap" class="btn-trigger-graph-snap" title="사용할 그래프 영역을 드래그하여 보관 카드로 띄우고 백지 칠판으로 전환합니다">
+    <button id="btnTriggerGraphSnap" class="btn-trigger-graph-snap" title="사용할 그래프 영역을 드래그하여 판서 모드로 이쁘게 삽입합니다">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
       <span id="lblTriggerGraphSnap">그래프 보관</span>
+    </button>
+  </div>
+
+  <!-- [✂️ PDF 전체화면 판서 모드 ➔ 문제 스샷 후 그래프 모드 진입 플로팅 바] -->
+  <div id="pdfToGraphCropFloatingBar" class="graph-snap-floating-bar pdf-to-graph-crop-bar" style="display: none;">
+    <span class="pdf-to-graph-crop-guide">✂️ 그래프 모드에 띄울 문제 영역을 드래그하세요</span>
+    <button id="btnSkipPdfCropToGraph" class="btn-trigger-graph-snap" title="문제 캡처 없이 바로 광활한 그래프 모드로 진입합니다">
+      <span>문제 없이 바로 그래프 모드 ▶</span>
+    </button>
+    <button id="btnCancelPdfCropToGraph" class="btn-return-covered-board" title="취소 (ESC)">
+      <span>✕ 취소</span>
     </button>
   </div>
   <div id="graphSnapDragBox" class="graph-snap-drag-box" style="display: none;"></div>

@@ -300,6 +300,13 @@ class GraphApp {
     this.canvasTextInputEl = document.getElementById('canvasTextInput');
     this.isTextEditingJustStarted = false; // 텍스트 생성 직후 찰나의 blur 방어 플래그
 
+    this.isGraphCovered = true; // 🌟 [대표님 기획]: 첫 시작 화면(기본 본진)은 깨끗한 무지 판서 모드로 시작!
+    this._graphSessionArchived = false;
+    this._suspendedPdfBoardState = null;
+    this._isTempPdfProblemCard = false;
+    this.isPdfToGraphCropMode = false;
+    this.isPdfToGraphCropDragging = false;
+
     this.initDOM();
     this.initShareModal();
     this.initNAxisStudioModal();
@@ -335,7 +342,13 @@ class GraphApp {
     this.initPdfEngine();
     this.initWelcomeSplash();
     this.initStylusFastTap();
+    if (!this.isInkMode) {
+      this.toggleInkMode(true);
+    }
+    this.setActiveInkTool('pen');
     this.syncControls();
+    this.syncWorkspaceModeUI();
+    this.syncGraphSnapBarUI();
   }
 
   // --- [🎯 액정타블렛/스타일러스 펜 원터치 클릭 보정 엔진 (Stylus Fast-Tap & Magnetic Hit-Box)] ---
@@ -560,67 +573,22 @@ class GraphApp {
     }, true);
   }
 
-  // --- [🌟 뒤쪽 작업화면이 은은하게 비치는 화이트 글래스 인트로 & 무충격 전체화면 진입 제어기] ---
+  // --- [🌟 초기 인트로 화면 제거: 접속/앱 실행 즉시 0.0초 만에 판서 모드로 직행 (우측 전체화면 버튼은 그대로 유지)] ---
   initWelcomeSplash() {
     const splash = document.getElementById('welcomeSplash');
     const btnStart = document.getElementById('btnStartApp');
-    const splashCard = splash ? splash.querySelector('.splash-card') : null;
-    if (!splash || !btnStart) return;
-
-    let hasStarted = false;
-    const startApp = () => {
-      if (hasStarted) return;
-      hasStarted = true;
-
-      // 🌟 [핵심 무충격 기법]:
-      // 1) 진입 전에는 뒤쪽 실제 화면(좌표축/툴바)이 반투명 화이트 베일 너머로 은은하게 비침
-      // 2) 클릭하는 0.00초 순간 로고를 숨기고 베일을 순백(whiteout-curtain)으로 잠깐 고정하여,
-      //    크롬 주소창이 접히며 전체화면으로 늘어나는 0.1초 동안 뒤쪽 캔버스가 덜컹거리는 모습을 100% 가려줌!
-      if (splashCard) {
-        splashCard.style.display = 'none';
-      }
-      splash.classList.add('whiteout-curtain');
-
-      document.body.classList.add('fullscreen-mode');
-      const btnFs = document.getElementById('btnFullscreen');
-      if (btnFs) btnFs.classList.add('active');
-
-      // 전체화면 실행 (User Gesture 내에서 즉시 호출)
-      try {
-        const docEl = document.documentElement;
-        const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-        if (!fsEl) {
-          if (docEl.requestFullscreen) {
-            docEl.requestFullscreen({ navigationUI: 'hide' }).catch(() => {
-              docEl.requestFullscreen().catch(() => { });
-            });
-          } else if (docEl.webkitRequestFullscreen) {
-            docEl.webkitRequestFullscreen();
-          }
-        }
-      } catch (err) { }
-
-      // 3) 전체화면 리사이즈가 자리를 잡은 직후(90ms) 순백 베일이 스르륵 걷히며 칠판으로 몰입!
-      setTimeout(() => {
-        this.resizeCanvas();
-        splash.classList.add('dismissed');
-        setTimeout(() => {
+    if (splash) {
+      splash.classList.add('dismissed');
+      splash.style.display = 'none';
+    }
+    if (btnStart) {
+      btnStart.onclick = () => {
+        if (splash) {
+          splash.classList.add('dismissed');
           splash.style.display = 'none';
-        }, 250);
-      }, 90);
-    };
-
-    btnStart.onclick = startApp;
-
-    // 엔터키나 스페이스바로도 즉시 시작 가능
-    window.addEventListener('keydown', (e) => {
-      if (splash && splash.style.display !== 'none' && !splash.classList.contains('dismissed')) {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          startApp();
         }
-      }
-    }, { once: true });
+      };
+    }
   }
 
   // --- [🔤 캔버스 자유 수식 텍스트 라벨 & 축 이름 컨트롤러 초기화] ---
@@ -952,7 +920,10 @@ class GraphApp {
       coveredGraphStateBackup: this._coveredGraphStateBackup ? JSON.parse(JSON.stringify(this._coveredGraphStateBackup)) : null,
       savedLayer2BoardPan: this._savedLayer2BoardPan ? { ...this._savedLayer2BoardPan } : null,
       pdfPageBoardData: this.pdfPageBoardData ? { ...this.pdfPageBoardData } : null,
-      pdfSavedPageStates: this.pdfSavedPageStates ? { ...this.pdfSavedPageStates } : {}
+      pdfSavedPageStates: this.pdfSavedPageStates ? { ...this.pdfSavedPageStates } : {},
+      suspendedPdfBoardState: this._suspendedPdfBoardState ? { ...this._suspendedPdfBoardState } : null,
+      isTempPdfProblemCard: Boolean(this._isTempPdfProblemCard),
+      graphSessionArchived: Boolean(this._graphSessionArchived)
     };
   }
 
@@ -1058,10 +1029,15 @@ class GraphApp {
     this._savedLayer2BoardPan = wsSnap.savedLayer2BoardPan ? { ...wsSnap.savedLayer2BoardPan } : null;
     this.pdfPageBoardData = wsSnap.pdfPageBoardData ? { ...wsSnap.pdfPageBoardData } : null;
     this.pdfSavedPageStates = wsSnap.pdfSavedPageStates ? { ...wsSnap.pdfSavedPageStates } : {};
+    this._suspendedPdfBoardState = wsSnap.suspendedPdfBoardState ? { ...wsSnap.suspendedPdfBoardState } : null;
+    this._isTempPdfProblemCard = Boolean(wsSnap.isTempPdfProblemCard);
+    this._graphSessionArchived = Boolean(wsSnap.graphSessionArchived);
 
     this.updateProblemCardPosition();
     this.syncPdfBoardNavBarUI();
+    this.syncWorkspaceModeUI();
     this.syncGraphSnapBarUI();
+    this._inkBakeDirty = true;
     this.updateIntersections();
     this.render();
   }
@@ -1442,8 +1418,8 @@ class GraphApp {
   }
 
   addGraph(preferredType = null) {
-    if (this.isGraphCovered) {
-      this.restoreLiveGraphFromCard(true, null, null, Boolean(this.pdfPageBoardData));
+    if (this.isGraphCovered || this._graphSessionArchived || this.pdfPageBoardData) {
+      this.enterGraphModeFromBoard();
     }
     if (this.graphs.length >= 12) {
       this.showToast('⚠️ 그래프는 최대 12개까지 동시에 추가할 수 있습니다.');
@@ -1739,6 +1715,7 @@ class GraphApp {
       this.boardPanX !== 0 ||
       this.boardPanY !== 0 ||
       Math.abs((this.zoomLevel || 1) - 1.0) > 0.001 ||
+      !this.isGraphCovered ||
       !this.showAxes
     );
 
@@ -1781,9 +1758,17 @@ class GraphApp {
       this.extraGraphCards = [];
     }
     this._graphCaseCounter = 0;
-    this.isGraphCovered = false;
+    this.isGraphCovered = true;
+    this._graphSessionArchived = false;
+    this._suspendedPdfBoardState = null;
+    this._isTempPdfProblemCard = false;
     this._coveredGraphStateBackup = null;
     this._savedLayer2BoardPan = null;
+    this._suspendedPdfBoardState = null;
+    this._isTempPdfProblemCard = false;
+    this._graphSessionArchived = false;
+    this.isPdfToGraphCropMode = false;
+    this.isPdfToGraphCropDragging = false;
 
     // 3. 모든 그래프 및 구간 분할 / 주기 반복 초기화
     this.graphs = [];
@@ -1839,14 +1824,19 @@ class GraphApp {
     this.setZoomLevel(1.0);
     this.updateAxesUI();
 
+    if (!this.isInkMode) {
+      this.toggleInkMode(true);
+    }
+    this.setActiveInkTool('pen');
     this.syncControls();
     this.renderLayerList();
     this.renderFuncList();
     this.updateIntersections();
+    this.syncWorkspaceModeUI();
     this.syncGraphSnapBarUI();
     this.render();
 
-    this.showToast('✨ 새 캔버스로 전체 초기화했습니다! (실수 시 Ctrl+Z로 문제·필기·그래프 즉시 복구)');
+    this.showToast('✨ 새 캔버스(판서 모드)로 전체 초기화했습니다! (실수 시 Ctrl+Z로 문제·필기·그래프 즉시 복구)');
   }
 
   selectGraph(idx) {
@@ -2688,7 +2678,7 @@ class GraphApp {
       'ink-cursor-grab',
       'ink-cursor-grabbing'
     );
-    if (this.isGraphSnapMode) {
+    if (this.isGraphSnapMode || this.isPdfToGraphCropMode) {
       this.canvas.classList.add('graph-snap-crosshair');
       this.canvas.style.cursor = 'crosshair';
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
@@ -2754,10 +2744,13 @@ class GraphApp {
     // 2차 클릭 (바깥창 필기가 없을 때): 그래프 창 내부 주석까지 모두 비움!
     if (this.isGraphCovered && !this.pdfPageBoardData) {
       this.inkStrokes = this.inkStrokes.filter(s => (s.target || 'board') !== 'board');
-      this.showToast('🧹 칠판 필기를 깔끔하게 비웠습니다. (밑의 그래프 작업실은 보존됨)');
+      this.showToast('🧹 판서 모드 필기를 깔끔하게 비웠습니다.');
+    } else if (this.pdfPageBoardData) {
+      this.inkStrokes = this.inkStrokes.filter(s => !s.onPdfBoard && (s.target || 'board') !== 'board');
+      this.showToast('🧹 PDF 페이지 위 필기를 깔끔하게 비웠습니다.');
     } else {
-      this.inkStrokes = this.inkStrokes.filter(s => (s.target || 'board') !== 'graph');
-      this.showToast('🧹 모든 필기를 비웠습니다.');
+      this.inkStrokes = this.inkStrokes.filter(s => (s.target || 'board') !== 'graph' || Boolean(s.onPdfBoard));
+      this.showToast('🧹 그래프 모드 필기를 비웠습니다.');
     }
     this._inkBakeDirty = true;
     this.render();
@@ -2788,6 +2781,7 @@ class GraphApp {
       const strokeTarget = stroke.target || 'board';
       if (this.isGraphCovered && !this.pdfPageBoardData && strokeTarget !== 'board') return true;
       if ((!this.isGraphCovered || this.pdfPageBoardData) && !this.isBoardMode && strokeTarget !== 'graph') return true;
+      if (strokeTarget === 'graph' && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return true;
 
 
 
@@ -3436,10 +3430,18 @@ class GraphApp {
       if (this.isPointInPolygon(pos, this.lassoPoints)) {
         return true;
       }
-      // 사용자가 선택된 획 위를 콕 찍었는지도 검사 (획 접촉 시 드래그 허용)
+      // 사용자가 선택된 획/도형 위를 콕 찍었는지도 검사 (획/도형 접촉 시 드래그 허용)
       const bPx = (this.boardPanX || 0);
       const bPy = (this.boardPanY || 0);
       for (const stroke of this.selectedInkStrokes) {
+        if (stroke.shape) {
+          const shapePts = this.getShapeSampleScreenPoints(stroke);
+          for (const s of shapePts) {
+            if (Math.hypot(s.x - pos.x, s.y - pos.y) <= 16) {
+              return true;
+            }
+          }
+        }
         if (!stroke.points) continue;
         const isBoard = (stroke.target || 'board') === 'board';
         for (const pt of stroke.points) {
@@ -3548,33 +3550,104 @@ class GraphApp {
     return inside;
   }
 
-  isStrokeInLasso(stroke, lassoPoly) {
-    if (!stroke || !lassoPoly || lassoPoly.length < 3) return false;
+  getShapeSampleScreenPoints(stroke) {
+    if (!stroke || !stroke.shape) return [];
+    const sh = stroke.shape;
     const isBoard = (stroke.target || 'board') === 'board';
     const bPx = (this.boardPanX || 0);
     const bPy = (this.boardPanY || 0);
+    const pts = [];
 
-    // 1. 도형인 경우 중심점 및 모서리 검사
-    if (stroke.shape) {
-      if (stroke.shape.type === 'line') {
-        const s1 = isBoard ? { x: stroke.shape.start.x + bPx, y: stroke.shape.start.y + bPy } : this.mathToScreen(stroke.shape.start.x, stroke.shape.start.y);
-        const s2 = isBoard ? { x: stroke.shape.end.x + bPx, y: stroke.shape.end.y + bPy } : this.mathToScreen(stroke.shape.end.x, stroke.shape.end.y);
-        const mid = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 };
-        return this.isPointInPolygon(mid, lassoPoly) || this.isPointInPolygon(s1, lassoPoly) || this.isPointInPolygon(s2, lassoPoly);
-      } else if (stroke.shape.type === 'circle' || stroke.shape.type === 'ellipse') {
-        const sc = isBoard ? { x: stroke.shape.center.x + bPx, y: stroke.shape.center.y + bPy } : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
-        return this.isPointInPolygon(sc, lassoPoly);
-      } else if (stroke.shape.type === 'rect') {
-        const s1 = isBoard ? { x: stroke.shape.min.x + bPx, y: stroke.shape.min.y + bPy } : this.mathToScreen(stroke.shape.min.x, stroke.shape.min.y);
-        const s2 = isBoard ? { x: stroke.shape.max.x + bPx, y: stroke.shape.max.y + bPy } : this.mathToScreen(stroke.shape.max.x, stroke.shape.max.y);
-        const center = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 };
-        return this.isPointInPolygon(center, lassoPoly) || this.isPointInPolygon(s1, lassoPoly) || this.isPointInPolygon(s2, lassoPoly);
-      } else if (stroke.shape.pts && stroke.shape.pts.length > 0) {
-        return stroke.shape.pts.some(pt => {
-          const s = isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y);
-          return this.isPointInPolygon(s, lassoPoly);
-        });
+    if (sh.type === 'line' && sh.start && sh.end) {
+      const s1 = isBoard ? { x: sh.start.x + bPx, y: sh.start.y + bPy } : this.mathToScreen(sh.start.x, sh.start.y);
+      const s2 = isBoard ? { x: sh.end.x + bPx, y: sh.end.y + bPy } : this.mathToScreen(sh.end.x, sh.end.y);
+      const steps = 16;
+      for (let k = 0; k <= steps; k++) {
+        const t = k / steps;
+        pts.push({ x: s1.x + (s2.x - s1.x) * t, y: s1.y + (s2.y - s1.y) * t });
       }
+    } else if (sh.type === 'circle' && sh.center) {
+      const sc = isBoard ? { x: sh.center.x + bPx, y: sh.center.y + bPy } : this.mathToScreen(sh.center.x, sh.center.y);
+      const sr = isBoard ? sh.radius : Math.abs(this.mathToScreen(sh.center.x + sh.radius, sh.center.y).x - sc.x);
+      pts.push(sc);
+      const steps = 24;
+      for (let k = 0; k < steps; k++) {
+        const ang = (k / steps) * Math.PI * 2;
+        pts.push({ x: sc.x + sr * Math.cos(ang), y: sc.y + sr * Math.sin(ang) });
+      }
+    } else if (sh.type === 'ellipse' && sh.center) {
+      const sc = isBoard ? { x: sh.center.x + bPx, y: sh.center.y + bPy } : this.mathToScreen(sh.center.x, sh.center.y);
+      const srx = isBoard ? sh.rx : Math.abs(this.mathToScreen(sh.center.x + sh.rx, sh.center.y).x - sc.x);
+      const sry = isBoard ? sh.ry : Math.abs(this.mathToScreen(sh.center.x, sh.center.y + sh.ry).y - sc.y);
+      pts.push(sc);
+      const steps = 24;
+      for (let k = 0; k < steps; k++) {
+        const ang = (k / steps) * Math.PI * 2;
+        pts.push({ x: sc.x + srx * Math.cos(ang), y: sc.y + sry * Math.sin(ang) });
+      }
+    } else if (sh.type === 'rect' && sh.min && sh.max) {
+      const s1 = isBoard ? { x: sh.min.x + bPx, y: sh.min.y + bPy } : this.mathToScreen(sh.min.x, sh.min.y);
+      const s2 = isBoard ? { x: sh.max.x + bPx, y: sh.max.y + bPy } : this.mathToScreen(sh.max.x, sh.max.y);
+      const x1 = Math.min(s1.x, s2.x);
+      const x2 = Math.max(s1.x, s2.x);
+      const y1 = Math.min(s1.y, s2.y);
+      const y2 = Math.max(s1.y, s2.y);
+      // 중심점 + 네 꼭짓점(좌상, 우상, 우하, 좌하) + 4변 테두리 촘촘 샘플링
+      pts.push({ x: (x1 + x2) / 2, y: (y1 + y2) / 2 });
+      const edgeSteps = 10;
+      for (let k = 0; k <= edgeSteps; k++) {
+        const t = k / edgeSteps;
+        const x = x1 + (x2 - x1) * t;
+        const y = y1 + (y2 - y1) * t;
+        pts.push({ x, y: y1 }); // 상단 변 (좌상 ~ 우상)
+        pts.push({ x, y: y2 }); // 하단 변 (좌하 ~ 우하)
+        pts.push({ x: x1, y }); // 좌측 변 (좌상 ~ 좌하)
+        pts.push({ x: x2, y }); // 우측 변 (우상 ~ 우하)
+      }
+    } else if (sh.pts && sh.pts.length > 0) {
+      const sPts = sh.pts.map(pt => isBoard ? { x: pt.x + bPx, y: pt.y + bPy } : this.mathToScreen(pt.x, pt.y));
+      let cx = 0, cy = 0;
+      sPts.forEach(p => {
+        pts.push(p);
+        cx += p.x;
+        cy += p.y;
+      });
+      pts.push({ x: cx / sPts.length, y: cy / sPts.length });
+      // 삼각형 등 꼭짓점 개수가 적은 다각형은 각 변 위에도 샘플점 추가
+      if (sPts.length <= 8) {
+        const segSteps = 8;
+        const count = sh.closed ? sPts.length : (sPts.length - 1);
+        for (let i = 0; i < count; i++) {
+          const a = sPts[i];
+          const b = sPts[(i + 1) % sPts.length];
+          for (let k = 1; k < segSteps; k++) {
+            const t = k / segSteps;
+            pts.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+          }
+        }
+      }
+    }
+    return pts;
+  }
+
+  isStrokeInLasso(stroke, lassoPoly) {
+    if (!stroke || !lassoPoly || lassoPoly.length < 3) return false;
+    const isBoard = (stroke.target || 'board') === 'board';
+    if (this.isGraphCovered && !this.pdfPageBoardData && !isBoard) return false;
+    if (!this.isGraphCovered && isBoard) return false;
+    if (!isBoard && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
+    const bPx = (this.boardPanX || 0);
+    const bPy = (this.boardPanY || 0);
+
+    // 1. 도형인 경우: 네 꼭짓점(좌상·우상·우하·좌하), 테두리 둘레 샘플점, 중심점 전수 검사!
+    if (stroke.shape) {
+      const samplePts = this.getShapeSampleScreenPoints(stroke);
+      for (let i = 0; i < samplePts.length; i++) {
+        if (this.isPointInPolygon(samplePts[i], lassoPoly)) {
+          return true;
+        }
+      }
+      return false;
     }
 
     if (!stroke.points || stroke.points.length === 0) return false;
@@ -4393,7 +4466,9 @@ class GraphApp {
       this.piecewiseInclusions = [...(saved.piecewiseInclusions || [])];
       this.dropLines = JSON.parse(JSON.stringify(saved.dropLines || []));
       this.textLabels = JSON.parse(JSON.stringify(saved.textLabels || []));
-      this.isGraphCovered = false;
+      this._suspendedPdfBoardState = null;
+      this._isTempPdfProblemCard = false;
+      this.enterBoardMode();
       this.ySpan = saved.ySpan || (this.pdfPageBoardData.baseYSpan || 8.4);
       this.panX = typeof saved.panX === 'number' ? saved.panX : 0;
       this.panY = typeof saved.panY === 'number' ? saved.panY : 0;
@@ -4438,7 +4513,9 @@ class GraphApp {
     const baseYSpan = 8.4;
     this.ySpan = baseYSpan;
     this.xSpan = 11.5;
-    this.isGraphCovered = false;
+    this._suspendedPdfBoardState = null;
+    this._isTempPdfProblemCard = false;
+    this.enterBoardMode();
     this.panX = 0;
     this.panY = 0;
     this.setZoomLevel(1.0);
@@ -4561,6 +4638,9 @@ class GraphApp {
 
   async navigatePdfBoardPage(delta) {
     if (!this.pdfDoc) return;
+    if (this._suspendedPdfBoardState && !this.pdfPageBoardData) {
+      this._restoreBoardModeStateAfterGraph();
+    }
     const cur = (this.pdfPageBoardData && this.pdfPageBoardData.pageNum) || this.pdfCurrentPage || 1;
     const total = this.pdfTotalPages || this.pdfDoc.numPages || 1;
     const nextP = cur + delta;
@@ -4571,13 +4651,18 @@ class GraphApp {
   closePdfPageBoard() {
     if (!this.pdfPageBoardData) return;
     this.pdfPageBoardData = null;
+    this._suspendedPdfBoardState = null;
     this._lastPdfPageScreenRect = null;
     this.ySpan = 6.0;
     this.syncPdfBoardNavBarUI();
-    if (!this.showAxes) {
+    if (!this.hasBoardStateToReturn()) {
+      this.isGraphCovered = false;
       this.showAxes = true;
+      this.showGuides = true;
       this.updateAxesUI();
     }
+    this.syncWorkspaceModeUI();
+    this.syncGraphSnapBarUI();
     this.render();
   }
 
@@ -5423,6 +5508,7 @@ class GraphApp {
       }
     });
 
+    this.enterBoardMode();
     this.syncProblemCardRectFromWidget();
     this.render();
     const msg = skipped > 0
@@ -5653,18 +5739,23 @@ class GraphApp {
     this.showToast(`📋 ${totalProblems}번째 문제 카드가 추가되었습니다! (마우스로 끌어 분리 가능)`);
   }
 
-  setProblemCard(dataUrl, pageNum = 1, sourceCanvas = null, initialWidth = null) {
+  setProblemCard(dataUrl, pageNum = 1, sourceCanvas = null, initialWidth = null, options = null) {
     if (!this.extraProblemCards) this.extraProblemCards = [];
+    const keepGraphMode = Boolean(options && options.keepGraphMode);
+    if (!keepGraphMode) {
+      this.enterBoardMode();
+    }
 
     const widget = document.getElementById('problemCardWidget');
     const isPrimaryActive = widget && widget.style.display !== 'none' && this.problemCardData;
 
     // 🌟 [대표님 기획]: 이미 문제 카드가 칠판에 활성화되어 있다면, 기존 문제를 덮어쓰지 않고 추가 문제 카드로 소환!
-    if (isPrimaryActive) {
+    if (isPrimaryActive && !keepGraphMode) {
       this.spawnExtraProblemCard(dataUrl, pageNum, initialWidth, sourceCanvas);
       return;
     }
 
+    this._isTempPdfProblemCard = Boolean(options && options.isTempPdfCard);
     this.problemCardData = {
       imgUrl: dataUrl,
       pageNum: pageNum
@@ -6196,7 +6287,10 @@ class GraphApp {
       isPiecewisePeriodic: this.isPiecewisePeriodic,
       periodicStepY: this.periodicStepY,
       isPiecewiseLocked: Boolean(this.isPiecewiseLocked),
-      showInverseGuide: this.showInverseGuide
+      showInverseGuide: this.showInverseGuide,
+      dropLines: this.dropLines || [],
+      textLabels: this.textLabels || [],
+      graphInkStrokes: (this.inkStrokes || []).filter(s => s && (s.target || 'board') === 'graph' && !s.onPdfBoard)
     });
   }
 
@@ -6238,6 +6332,17 @@ class GraphApp {
         const chkInv = document.getElementById('chkInverseGuide');
         if (chkInv) chkInv.checked = this.showInverseGuide;
       }
+      if (Array.isArray(data.dropLines)) {
+        this.dropLines = JSON.parse(JSON.stringify(data.dropLines));
+      }
+      if (Array.isArray(data.textLabels)) {
+        this.textLabels = JSON.parse(JSON.stringify(data.textLabels));
+      }
+      if (Array.isArray(data.graphInkStrokes)) {
+        const preservedStrokes = (this.inkStrokes || []).filter(s => s && ((s.target || 'board') === 'board' || s.onPdfBoard));
+        this.inkStrokes = [...preservedStrokes, ...JSON.parse(JSON.stringify(data.graphInkStrokes))];
+        this._inkBakeDirty = true;
+      }
       this.selectedHandleIdx = null;
       this.isCurveSelected = this.graphs.length > 0;
       this.syncControls();
@@ -6248,52 +6353,384 @@ class GraphApp {
     }
   }
 
-  // 🌟 [새 스샷 촬영 없이 방금 판서하던 2층 칠판(보관 카드 화면)으로 즉시 복귀] 🌟
-  returnToCoveredBoard() {
-    const hasSavedCards = Boolean(
-      (this._hasPrimaryGraphCard && this.graphCardData) ||
-      (this.extraGraphCards && this.extraGraphCards.length > 0)
-    );
-    if (!hasSavedCards) return;
+  // ==========================================================================
+  // [📝 판서 모드 (Board Mode) ↔ 📈 그래프 모드 (Graph Mode) 완전 분리 엔진]
+  // ==========================================================================
+  syncWorkspaceModeUI() {
+    const isBoard = Boolean(this.isGraphCovered);
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.toggle('workspace-board-mode', isBoard);
+      document.body.classList.toggle('workspace-graph-mode', !isBoard);
+    }
 
+    // 🌟 [대표님 기획]: 판서 모드에서는 [+] 버튼 대신 [📈 그래프 모드로 전환] 버튼으로 변신,
+    // 그래프 모드로 넘어오면 원래의 [+] (함수 추가) 버튼으로 작동!
+    const btnPresets = document.getElementById('btnRailPresets');
+    if (btnPresets) {
+      if (isBoard) {
+        btnPresets.classList.add('rail-graph-mode-switch');
+        btnPresets.classList.remove('active');
+        btnPresets.title = '그래프 모드로 전환 (📈)';
+        btnPresets.innerHTML = `<span class="rail-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 16c2.5-6 4.5-6 7 0s4.5 6 7-6"/></svg></span>`;
+      } else {
+        btnPresets.classList.remove('rail-graph-mode-switch');
+        btnPresets.title = '그래프 추가 (+)';
+        btnPresets.innerHTML = `<span class="rail-icon" style="font-size: 24px; font-weight: 700; line-height: 1; color: var(--accent-cyan, #00d2d3);">+</span>`;
+      }
+    }
+
+    const graphOnlyIds = [
+      'btnQuickIntersection',
+      'btnQuickDropLine',
+      'btnQuickText',
+      'btnQuickSnap',
+      'btnRailPiecewise',
+      'btnRailNAxis',
+      'btnRailToggleVf',
+      'btnInkToggleAxes'
+    ];
+    graphOnlyIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.style.display = isBoard ? 'none' : '';
+      }
+    });
+    const axesDivider = document.querySelector('#btnInkToggleAxes + .ink-toolbar-divider');
+    if (axesDivider) {
+      axesDivider.style.display = isBoard ? 'none' : '';
+    }
+    const quickDivider = document.querySelector('#btnQuickSnap + .quick-toolbar-divider');
+    if (quickDivider) {
+      quickDivider.style.display = isBoard ? 'none' : '';
+    }
+  }
+
+  hasBoardStateToReturn() {
+    // 🌟 판서 모드가 기본 홈(본진)이므로 그래프 모드에서는 언제든 우상단 [↩ 판서 복귀]로 돌아갈 수 있음!
+    return true;
+  }
+
+  enterBoardMode() {
+    if (!this.isGraphCovered) {
+      this._coveredGraphStateBackup = this.getPureGraphSnapshot();
+    }
     this.isGraphCovered = true;
     this.isGraphSnapMode = false;
+    this.isPdfToGraphCropMode = false;
+    this.isPdfToGraphCropDragging = false;
+    this.isCurveSelected = false;
+    this.selectedHandleIdx = null;
     document.body.classList.remove('graph-snap-crosshair');
     if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
 
+    const gWidget = document.getElementById('graphCardWidget');
+    if (gWidget && this._hasPrimaryGraphCard && this.graphCardData) {
+      gWidget.style.display = 'flex';
+    }
+    if (this.extraGraphCards && this.extraGraphCards.length > 0) {
+      this.extraGraphCards.forEach(c => {
+        if (c && c.el) c.el.style.display = 'flex';
+      });
+    }
+    if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el) c.el.style.display = 'flex';
+      });
+    }
+
+    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed && (this.activeDrawerPanel === 'panelPresets' || this.activeDrawerPanel === 'panelPiecewise')) {
+      this.closeDrawer();
+    }
+    this.syncWorkspaceModeUI();
+    this.syncGraphSnapBarUI();
+    this._inkBakeDirty = true;
+  }
+
+  enterGraphModeFromBoard(options = {}) {
+    this.isPdfToGraphCropMode = false;
+    this.isPdfToGraphCropDragging = false;
+    this.isGraphSnapMode = false;
+    this.isGraphSnapDragging = false;
+    const dragBox = document.getElementById('graphSnapDragBox');
+    if (dragBox) dragBox.style.display = 'none';
+    document.body.classList.remove('graph-snap-crosshair');
+    if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
+
+    // 1. PDF 전체화면 판서 중이었다면 PDF 보드 상태와 카메라를 일시 정지(백업)하고 광활한 그래프 모드로 전환!
+    if (this.pdfPageBoardData) {
+      this._suspendedPdfBoardState = {
+        pdfPageBoardData: this.pdfPageBoardData,
+        panX: this.panX,
+        panY: this.panY,
+        zoomLevel: this.zoomLevel,
+        xSpan: this.xSpan,
+        ySpan: this.ySpan
+      };
+      this.pdfPageBoardData = null;
+      this.syncPdfBoardNavBarUI();
+    }
+
+    // 2. 판서 모드 패닝 좌표 백업 후 좌상단(72px, 18px) 문제 참조 카드 위치 고정
+    if (this.isGraphCovered) {
+      this._savedLayer2BoardPan = { x: this.boardPanX || 0, y: this.boardPanY || 0 };
+    }
+    this.boardPanX = 0;
+    this.boardPanY = 0;
+
+    // 3. 보관된 그래프 카드(#1, #2...) 및 접혀 있는 추가 문제 카드는 그래프 모드 작업 중 숨김 (현재 펼쳐진 문제 카드만 좌상단에 참조용으로 유지!)
+    const gWidget = document.getElementById('graphCardWidget');
+    if (gWidget) gWidget.style.display = 'none';
+    if (this.extraGraphCards && this.extraGraphCards.length > 0) {
+      this.extraGraphCards.forEach(c => {
+        if (c && c.el) c.el.style.display = 'none';
+      });
+    }
+    if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el && c.isMin) {
+          c.el.style.display = 'none';
+        }
+      });
+    }
+
+    // 4. 이전 그래프를 이미 보관 카드로 구웠거나(_graphSessionArchived) 새 그래프 세션을 여는 경우 깨끗한 좌표평면으로 초기화
+    if (this._graphSessionArchived || Boolean(options && options.resetGraphCanvas) || !this.graphs || this.graphs.length === 0) {
+      this.graphs = [];
+      this.activeGraphIdx = -1;
+      this.selectedHandleIdx = null;
+      this.isCurveSelected = false;
+      this.selectedPwBoundaryIdx = null;
+      this.usePiecewise = false;
+      this.piecewiseBoundaries = [];
+      this.piecewiseFuncMap = [];
+      this.piecewiseInclusions = [];
+      this.isPiecewisePeriodic = false;
+      this.periodicStepY = 0;
+      this.isPiecewiseLocked = false;
+      this.dropLines = [];
+      this.textLabels = [];
+      if (this.inkStrokes && this.inkStrokes.length > 0) {
+        this.inkStrokes = this.inkStrokes.filter(s => s && ((s.target || 'board') === 'board' || s.onPdfBoard));
+      }
+      this.panX = 0;
+      this.panY = 0;
+      this.xSpan = 8.5;
+      this.ySpan = 6.0;
+      this.setZoomLevel(1.0);
+      this._graphSessionArchived = false;
+    }
+
+    this.isGraphCovered = false;
+    this.showAxes = true;
+    this.showGuides = true;
+    this.updateAxesUI();
+    const chkGuides = document.getElementById('chkGuides');
+    if (chkGuides) chkGuides.checked = true;
+    const btnGrid = document.getElementById('btnQuickGrid');
+    if (btnGrid) btnGrid.classList.add('active');
+
+    this.updateProblemCardPosition();
+    this.syncWorkspaceModeUI();
+    this.syncGraphSnapBarUI();
+    this._inkBakeDirty = true;
+    this.clearInkCache();
+    this.renderLayerList();
+    this.renderFuncList();
+    this.render();
+  }
+
+  startPdfBoardToGraphCrop(pendingGraphType = null) {
+    if (!this.pdfPageBoardData) {
+      if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+        this.closeDrawer();
+      }
+      this.enterGraphModeFromBoard();
+      if (pendingGraphType) {
+        this.addGraph(pendingGraphType);
+      }
+      return;
+    }
+    this.isPdfToGraphCropMode = true;
+    this.isPdfToGraphCropDragging = false;
+    this._pendingPdfToGraphType = pendingGraphType || null;
+    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+      this.closeDrawer();
+    }
+    document.body.classList.add('graph-snap-crosshair');
+    if (this.canvas) {
+      this.canvas.classList.add('graph-snap-crosshair');
+      this.canvas.style.cursor = 'crosshair';
+    }
+    if (this.virtualStylusEl) {
+      this.virtualStylusEl.style.display = 'none';
+    }
+    this.syncGraphSnapBarUI();
+    this.render();
+  }
+
+  cancelPdfBoardToGraphCrop() {
+    this.isPdfToGraphCropMode = false;
+    this.isPdfToGraphCropDragging = false;
+    this._pendingPdfToGraphType = null;
+    const dragBox = document.getElementById('graphSnapDragBox');
+    if (dragBox) dragBox.style.display = 'none';
+    document.body.classList.remove('graph-snap-crosshair');
+    if (this.canvas) {
+      this.canvas.classList.remove('graph-snap-crosshair');
+    }
+    this.updateInkCursor();
+    this.syncGraphSnapBarUI();
+    this.render();
+  }
+
+  completePdfBoardToGraphCrop(cropRect = null) {
+    const pendingType = this._pendingPdfToGraphType;
+    this.isPdfToGraphCropMode = false;
+    this.isPdfToGraphCropDragging = false;
+    this._pendingPdfToGraphType = null;
+    const dragBox = document.getElementById('graphSnapDragBox');
+    if (dragBox) dragBox.style.display = 'none';
+    document.body.classList.remove('graph-snap-crosshair');
+    if (this.canvas) {
+      this.canvas.classList.remove('graph-snap-crosshair');
+    }
+
+    let croppedDataUrl = null;
+    let croppedCanvas = null;
+    let croppedW = 420;
+    const pdfPageNum = (this.pdfPageBoardData && this.pdfPageBoardData.pageNum) || 1;
+
+    if (cropRect && cropRect.w >= 25 && cropRect.h >= 25 && this.canvas) {
+      const rx = Math.max(0, Math.round(cropRect.x));
+      const ry = Math.max(0, Math.round(cropRect.y));
+      const rw = Math.min(this.screenWidth - rx, Math.round(cropRect.w));
+      const rh = Math.min(this.screenHeight - ry, Math.round(cropRect.h));
+      if (rw >= 20 && rh >= 20) {
+        const dpr = window.devicePixelRatio || 2;
+        croppedCanvas = document.createElement('canvas');
+        croppedCanvas.width = Math.round(rw * dpr);
+        croppedCanvas.height = Math.round(rh * dpr);
+        const cctx = croppedCanvas.getContext('2d');
+        cctx.drawImage(
+          this.canvas,
+          Math.round(rx * dpr),
+          Math.round(ry * dpr),
+          Math.round(rw * dpr),
+          Math.round(rh * dpr),
+          0,
+          0,
+          Math.round(rw * dpr),
+          Math.round(rh * dpr)
+        );
+        croppedDataUrl = croppedCanvas.toDataURL('image/png');
+        croppedW = Math.round(Math.max(300, Math.min(540, rw)));
+      }
+    }
+
+    // PDF 판서 상태를 일시 보관하고 광활한 그래프 모드로 전환!
+    this.enterGraphModeFromBoard({ resetGraphCanvas: true });
+
+    // 드래그한 문제 영역이 있으면 좌상단(72px, 18px) 참조 문제 카드로 띄움!
+    if (croppedDataUrl) {
+      this.closeProblemCard();
+      this.setProblemCard(croppedDataUrl, pdfPageNum, croppedCanvas, croppedW, {
+        keepGraphMode: true,
+        isTempPdfCard: true
+      });
+    }
+
+    if (pendingType) {
+      this.addGraph(pendingType);
+    } else {
+      if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+        this.closeDrawer();
+      }
+      this.showToast('📈 그래프 모드로 전환되었습니다. 좌측 [+] 버튼으로 함수를 추가하세요!');
+    }
+  }
+
+  _restoreBoardModeStateAfterGraph() {
+    this._coveredGraphStateBackup = this.getPureGraphSnapshot();
+    this.isGraphCovered = true;
+    this.isGraphSnapMode = false;
+    this.isGraphSnapDragging = false;
+    this.isPdfToGraphCropMode = false;
+    this.isPdfToGraphCropDragging = false;
+    document.body.classList.remove('graph-snap-crosshair');
+    if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
+
+    // 1. PDF 전체화면에서 임시로 크롭해 왔던 문제 카드가 있으면 판서 모드 복귀 시 자동 정리
+    if (this._isTempPdfProblemCard) {
+      this._isTempPdfProblemCard = false;
+      this.closeProblemCard();
+    }
+
+    // 2. 일시 정지해 두었던 PDF 전체화면 보드 상태가 있으면 100% 원상 복원!
+    if (this._suspendedPdfBoardState) {
+      const s = this._suspendedPdfBoardState;
+      this._suspendedPdfBoardState = null;
+      this.pdfPageBoardData = s.pdfPageBoardData;
+      this.panX = typeof s.panX === 'number' ? s.panX : 0;
+      this.panY = typeof s.panY === 'number' ? s.panY : 0;
+      this.xSpan = s.xSpan || 11.5;
+      this.ySpan = s.ySpan || 8.4;
+      this.setZoomLevel(typeof s.zoomLevel === 'number' ? s.zoomLevel : 1.0);
+      this.syncPdfBoardNavBarUI();
+    } else if (this._savedLayer2BoardPan) {
+      this.boardPanX = this._savedLayer2BoardPan.x;
+      this.boardPanY = this._savedLayer2BoardPan.y;
+      this._savedLayer2BoardPan = null;
+    }
+
+    // 3. 보관된 모든 그래프 카드(#1, #2...) 및 추가 문제 카드 다시 표시
     const widget = document.getElementById('graphCardWidget');
     if (widget && this._hasPrimaryGraphCard && this.graphCardData) {
       widget.style.display = 'flex';
     }
     if (this.extraGraphCards && this.extraGraphCards.length > 0) {
       this.extraGraphCards.forEach(c => {
-        if (c.el) c.el.style.display = 'flex';
+        if (c && c.el) c.el.style.display = 'flex';
+      });
+    }
+    if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el) c.el.style.display = 'flex';
       });
     }
 
-    if (this._savedLayer2BoardPan) {
-      this.boardPanX = this._savedLayer2BoardPan.x;
-      this.boardPanY = this._savedLayer2BoardPan.y;
-      this._savedLayer2BoardPan = null;
+    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed && (this.activeDrawerPanel === 'panelPresets' || this.activeDrawerPanel === 'panelPiecewise')) {
+      this.closeDrawer();
     }
     this.updateProblemCardPosition();
     this.syncGraphCardRectFromWidget();
+    this.syncWorkspaceModeUI();
     this.syncGraphSnapBarUI();
+    this._inkBakeDirty = true;
+    this.clearInkCache();
 
     if (!this.isInkMode) {
       this.toggleInkMode(true);
     }
     this.setActiveInkTool('pen');
     this.render();
-    this.showToast('📋 판서하던 칠판 화면으로 돌아왔습니다.');
+  }
+
+  // 🌟 [새 스샷 촬영 없이 방금 판서하던 칠판(판서 모드) 화면으로 즉시 복귀] 🌟
+  returnToCoveredBoard() {
+    if (!this.hasBoardStateToReturn()) return;
+    this._restoreBoardModeStateAfterGraph();
+    this.showToast('📋 판서 모드로 돌아왔습니다.');
   }
 
   syncGraphSnapBarUI() {
-    const hasSavedCards = Boolean(
-      (this._hasPrimaryGraphCard && this.graphCardData) ||
-      (this.extraGraphCards && this.extraGraphCards.length > 0)
-    );
-    const shouldShow = Boolean(((this.graphs && this.graphs.length > 0) || hasSavedCards) && !this.isGraphCovered && !this.isNAxisMode);
+    const pdfCropBar = this._pdfCropBarEl || (this._pdfCropBarEl = document.getElementById('pdfToGraphCropFloatingBar'));
+    if (pdfCropBar) {
+      pdfCropBar.style.display = this.isPdfToGraphCropMode ? 'flex' : 'none';
+    }
+
+    const hasGraphs = Boolean(this.graphs && this.graphs.length > 0);
+    const hasReturn = this.hasBoardStateToReturn();
+    const shouldShow = Boolean((hasGraphs || hasReturn) && !this.isGraphCovered && !this.isNAxisMode && !this.isPdfToGraphCropMode);
     const snapActive = Boolean(this.isGraphSnapMode);
     const bar = this._snapBarEl || (this._snapBarEl = document.getElementById('graphSnapFloatingBar'));
     if (!bar) return;
@@ -6305,11 +6742,14 @@ class GraphApp {
 
     const btnReturn = this._returnBoardBtnEl || (this._returnBoardBtnEl = document.getElementById('btnReturnToCoveredBoard'));
     if (btnReturn) {
-      btnReturn.style.display = (shouldShow && hasSavedCards) ? 'inline-flex' : 'none';
+      btnReturn.style.display = (shouldShow && hasReturn) ? 'inline-flex' : 'none';
     }
 
     const btn = this._snapBtnEl || (this._snapBtnEl = document.getElementById('btnTriggerGraphSnap'));
     const lbl = this._snapLblEl || (this._snapLblEl = document.getElementById('lblTriggerGraphSnap'));
+    if (btn) {
+      btn.style.display = (shouldShow && (hasGraphs || hasReturn)) ? 'inline-flex' : 'none';
+    }
     if (btn && lbl && this._lastSnapModeActive !== snapActive) {
       btn.classList.toggle('active', snapActive);
       lbl.textContent = snapActive
@@ -6479,26 +6919,9 @@ class GraphApp {
       this.bringCardToFront(widget);
     }
 
-    // 🌟 핵심: 실시간 그래프 작업실을 백지 칠판으로 덮음! (2층 판서 레이어 진입)
-    this.isGraphCovered = true;
-    this.isGraphSnapMode = false;
-    document.body.classList.remove('graph-snap-crosshair');
-    if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
-    if (this._savedLayer2BoardPan) {
-      this.boardPanX = this._savedLayer2BoardPan.x;
-      this.boardPanY = this._savedLayer2BoardPan.y;
-      this._savedLayer2BoardPan = null;
-    }
-    this.updateProblemCardPosition();
-    this.syncGraphCardRectFromWidget();
-    this.syncGraphSnapBarUI();
-
-    // 보관 완료 즉시 펜 모드로 자동 전환하여 바로 판서 가능하도록 지원!
-    if (!this.isInkMode) {
-      this.toggleInkMode(true);
-    }
-    this.setActiveInkTool('pen');
-    this.render();
+    // 🌟 핵심: 그래프 스샷 보관 완료 -> 판서 모드(isGraphCovered = true)로 즉시 복귀!
+    this._graphSessionArchived = true;
+    this._restoreBoardModeStateAfterGraph();
     const totalCards = (this._hasPrimaryGraphCard ? 1 : 0) + (this.extraGraphCards ? this.extraGraphCards.length : 0);
     this.showToast(totalCards > 1
       ? `📦 ${totalCards}번째 그래프 보관 카드가 추가되었습니다! 카드를 슥 끌어 배치하세요.`
@@ -6680,15 +7103,32 @@ class GraphApp {
     el.querySelector('.btn-extra-close').onclick = () => {
       el.remove();
       this.extraGraphCards = this.extraGraphCards.filter(c => c !== cardItem);
-      if (!this._hasPrimaryGraphCard && this.extraGraphCards.length === 0) {
+      if (!this._hasPrimaryGraphCard && this.extraGraphCards.length === 0 && !this.hasBoardStateToReturn()) {
         this.restoreLiveGraphFromCard(false);
+      } else {
+        this.render();
       }
     };
   }
 
   restoreLiveGraphFromCard(silent = false, targetSnapshot = null, caseIdx = null, keepMinimizedCards = false) {
+    if (this.pdfPageBoardData) {
+      this._suspendedPdfBoardState = {
+        pdfPageBoardData: this.pdfPageBoardData,
+        panX: this.panX,
+        panY: this.panY,
+        zoomLevel: this.zoomLevel,
+        xSpan: this.xSpan,
+        ySpan: this.ySpan
+      };
+      this.pdfPageBoardData = null;
+      this.syncPdfBoardNavBarUI();
+    }
+
     this.isGraphCovered = false;
+    this._graphSessionArchived = false;
     this.isGraphSnapMode = false;
+    this.isPdfToGraphCropMode = false;
     document.body.classList.remove('graph-snap-crosshair');
     if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
     const widget = document.getElementById('graphCardWidget');
@@ -6704,26 +7144,31 @@ class GraphApp {
         }
       });
     }
-
-    // 🌟 [대표님 방법 B 기획 + PDF 개념 페이지 호환]:
-    // 1) 클릭한 카드(#1, #2, #3...)가 보관될 당시의 순수 그래프 상태(좌표/핸들/구간분할)로 즉시 타임머신 복원!
-    // 2) 일반 칠판에서는 1층 그래프 위 옛날 낙서를 정리하되, PDF 페이지 통째 칠판 모드(s.onPdfBoard)의 개념 필기는 100% 보존!
-    // 3) 2층 백지 칠판에 적어둔 본 풀이 필기(target === 'board')도 100% 안전하게 보존!
-    if (targetSnapshot) {
-      this.applyPureGraphSnapshot(targetSnapshot);
+    if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el && c.isMin) {
+          c.el.style.display = 'none';
+        }
+      });
     }
+
     if (this.inkStrokes && this.inkStrokes.length > 0) {
-      const beforeLen = this.inkStrokes.length;
-      this.inkStrokes = this.inkStrokes.filter(s => s && (s.target === 'board' || s.onPdfBoard || Boolean(this.pdfPageBoardData)));
-      if (this.inkStrokes.length !== beforeLen) {
-        this._inkBakeDirty = true;
-        this.clearInkCache();
-      }
+      this.inkStrokes = this.inkStrokes.filter(s => s && ((s.target || 'board') === 'board' || s.onPdfBoard));
     }
     this.dropLines = [];
     this.textLabels = [];
 
-    // 1층(실시간 그래프 편집 레이어) 복귀 시 문제 카드를 좌상단 고정 위치(0,0)로 복원 (2층 패닝 위치는 백업)
+    if (targetSnapshot) {
+      this.applyPureGraphSnapshot(targetSnapshot);
+    }
+    this._inkBakeDirty = true;
+    this.clearInkCache();
+    this.showAxes = true;
+    this.showGuides = true;
+    this.updateAxesUI();
+    const chkGuides = document.getElementById('chkGuides');
+    if (chkGuides) chkGuides.checked = true;
+
     this._savedLayer2BoardPan = { x: this.boardPanX || 0, y: this.boardPanY || 0 };
     this.boardPanX = 0;
     this.boardPanY = 0;
@@ -6731,11 +7176,12 @@ class GraphApp {
     if (this.isInkMode && this.activeInkTool !== 'select') {
       this.setActiveInkTool('select');
     }
+    this.syncWorkspaceModeUI();
     this.syncGraphSnapBarUI();
     this.render();
     if (!silent) {
       const prefix = caseIdx ? `#${caseIdx} 보관 당시의` : '실시간';
-      this.showToast(`🔄 ${prefix} 그래프를 복구했습니다! (그냥 돌아가려면 우측 상단 [칠판 복귀] 클릭)`);
+      this.showToast(`🔄 ${prefix} 그래프를 복구했습니다! (돌아가려면 상단 [판서 복귀] 클릭)`);
     }
   }
 
@@ -6873,6 +7319,20 @@ class GraphApp {
       btnReturnBoard.onclick = (e) => {
         e.stopPropagation();
         this.returnToCoveredBoard();
+      };
+    }
+    const btnSkipPdfCrop = document.getElementById('btnSkipPdfCropToGraph');
+    if (btnSkipPdfCrop) {
+      btnSkipPdfCrop.onclick = (e) => {
+        e.stopPropagation();
+        this.completePdfBoardToGraphCrop(null);
+      };
+    }
+    const btnCancelPdfCrop = document.getElementById('btnCancelPdfCropToGraph');
+    if (btnCancelPdfCrop) {
+      btnCancelPdfCrop.onclick = (e) => {
+        e.stopPropagation();
+        this.cancelPdfBoardToGraphCrop();
       };
     }
 
@@ -7116,8 +7576,10 @@ class GraphApp {
         this._hasPrimaryGraphCard = false;
         this.graphCardData = null;
         widget.style.display = 'none';
-        if (!this.extraGraphCards || this.extraGraphCards.length === 0) {
+        if ((!this.extraGraphCards || this.extraGraphCards.length === 0) && !this.hasBoardStateToReturn()) {
           this.restoreLiveGraphFromCard(false);
+        } else {
+          this.render();
         }
       };
     }
@@ -7238,6 +7700,7 @@ class GraphApp {
       const stroke = this.inkStrokes[i];
       if (stroke === this.currentInkStroke) continue;
       const isBoard = (stroke.target || 'board') === 'board';
+      if (!isBoard && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
       const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
       if (targetCtx) {
         this.renderSingleStroke(targetCtx, stroke, null, false);
@@ -7494,7 +7957,12 @@ class GraphApp {
     if (isExport) {
       if (!this.inkStrokes || this.inkStrokes.length === 0) return;
       const strokesToDraw = filterTarget
-        ? this.inkStrokes.filter(s => (s.target || 'board') === filterTarget)
+        ? this.inkStrokes.filter(s => {
+            const t = s.target || 'board';
+            if (t !== filterTarget) return false;
+            if (t === 'graph' && Boolean(s.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
+            return true;
+          })
         : this.inkStrokes;
       strokesToDraw.forEach(stroke => this.renderSingleStroke(ctx, stroke, null, false));
       return;
@@ -9113,6 +9581,18 @@ class GraphApp {
     document.querySelectorAll('.rail-btn[data-panel]').forEach(btn => {
       btn.onclick = () => {
         const targetPanel = btn.dataset.panel;
+        if (targetPanel === 'panelPresets' && this.isGraphCovered) {
+          if (this.pdfPageBoardData) {
+            this.startPdfBoardToGraphCrop(null);
+            return;
+          }
+          if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+            this.closeDrawer();
+          }
+          this.enterGraphModeFromBoard();
+          this.showToast('📈 그래프 모드로 전환되었습니다. 좌측 [+] 버튼으로 함수를 추가하세요!');
+          return;
+        }
         if (!this.isDrawerCollapsed && this.activeDrawerPanel === targetPanel) {
           this.closeDrawer();
         } else {
@@ -11461,6 +11941,9 @@ class GraphApp {
   // 역직렬화된 데이터를 캔버스에 완벽 복원
   applyState(data) {
     if (!data || !data.g) return;
+    if (this.isGraphCovered) {
+      this.enterGraphModeFromBoard();
+    }
 
     // 1. 그래프 레이어 복원
     this.graphs = data.g.map((gItem, idx) => {
@@ -11581,6 +12064,9 @@ class GraphApp {
   }
 
   addGraphFromParsed(parsed) {
+    if (this.isGraphCovered || this._graphSessionArchived || this.pdfPageBoardData) {
+      this.enterGraphModeFromBoard();
+    }
     if (!this.showAxes) {
       this.showAxes = true;
       this.updateAxesUI();
@@ -12302,6 +12788,22 @@ class GraphApp {
         if (!inputRect || eX < inputRect.left || eX > inputRect.right || eY < inputRect.top || eY > inputRect.bottom) {
           this.commitEditingTextLabel();
         }
+      }
+      // 🌟 [✂️ PDF 전체화면 판서 모드 ➔ 문제 영역 스샷 후 그래프 모드 진입 드래그 시작] 🌟
+      if (this.isPdfToGraphCropMode) {
+        if (e.preventDefault) e.preventDefault();
+        if (e.stopPropagation) e.stopPropagation();
+        this.isPdfToGraphCropDragging = true;
+        this.pdfToGraphCropStart = { x: pos.x, y: pos.y, clientX: e.clientX, clientY: e.clientY };
+        const dragBox = document.getElementById('graphSnapDragBox');
+        if (dragBox) {
+          dragBox.style.display = 'block';
+          dragBox.style.left = `${e.clientX}px`;
+          dragBox.style.top = `${e.clientY}px`;
+          dragBox.style.width = '0px';
+          dragBox.style.height = '0px';
+        }
+        return;
       }
       // 🌟 [📸 실시간 그래프 영역 스샷 드래그 시작] 🌟
       if (this.isGraphSnapMode) {
@@ -13073,6 +13575,25 @@ class GraphApp {
       this._lastPointerEvent = e;
       const pos = getPos(e);
 
+      // 🌟 [✂️ PDF 문제 스샷 후 그래프 모드 진입 드래그 중] 🌟
+      if (this.isPdfToGraphCropMode) {
+        if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+        if (this.canvas) this.canvas.style.cursor = 'crosshair';
+        if (this.isPdfToGraphCropDragging && this.pdfToGraphCropStart) {
+          const dragBox = document.getElementById('graphSnapDragBox');
+          if (dragBox) {
+            const x = Math.min(this.pdfToGraphCropStart.clientX, e.clientX);
+            const y = Math.min(this.pdfToGraphCropStart.clientY, e.clientY);
+            const w = Math.abs(e.clientX - this.pdfToGraphCropStart.clientX);
+            const h = Math.abs(e.clientY - this.pdfToGraphCropStart.clientY);
+            dragBox.style.left = `${x}px`;
+            dragBox.style.top = `${y}px`;
+            dragBox.style.width = `${w}px`;
+            dragBox.style.height = `${h}px`;
+          }
+        }
+        return;
+      }
       // 🌟 [📦 그래프 보관 드래그 모드: 십자(+) 포인터 고정 & 가상 펜 숨김] 🌟
       if (this.isGraphSnapMode) {
         if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
@@ -13973,6 +14494,23 @@ class GraphApp {
     };
 
     const handleUp = (e) => {
+      if (this.isPdfToGraphCropDragging && this.pdfToGraphCropStart) {
+        this.isPdfToGraphCropDragging = false;
+        const dragBox = document.getElementById('graphSnapDragBox');
+        if (dragBox) dragBox.style.display = 'none';
+        const pos = getPos(e);
+        const x = Math.min(this.pdfToGraphCropStart.x, pos.x);
+        const y = Math.min(this.pdfToGraphCropStart.y, pos.y);
+        const w = Math.abs(pos.x - this.pdfToGraphCropStart.x);
+        const h = Math.abs(pos.y - this.pdfToGraphCropStart.y);
+        this.pdfToGraphCropStart = null;
+        if (w >= 25 && h >= 25) {
+          this.completePdfBoardToGraphCrop({ x, y, w, h });
+        } else {
+          this.completePdfBoardToGraphCrop(null);
+        }
+        return;
+      }
       if (this.isGraphSnapDragging && this.graphSnapStart) {
         this.isGraphSnapDragging = false;
         const dragBox = document.getElementById('graphSnapDragBox');
@@ -14716,6 +15254,11 @@ class GraphApp {
       // 0.5. Escape 키로 필기 모드 / 수선 모드 / 텍스트 모드 / N축 모드 / 판서 모드 원터치 빠져나오기
       if (e.key === 'Escape') {
         if (!isInput) {
+          if (this.isPdfToGraphCropMode) {
+            e.preventDefault();
+            this.cancelPdfBoardToGraphCrop();
+            return;
+          }
           if (this.isGraphSnapMode) {
             e.preventDefault();
             this.toggleGraphSnapMode(false);
@@ -18490,8 +19033,10 @@ class GraphApp {
     const activeTarget = (this.isGraphCovered && !this.pdfPageBoardData) ? 'board' : 'graph';
     const activeStrokes = (this.inkStrokes || []).filter(s => {
       if (!s) return false;
-      if (this.pdfPageBoardData) return true;
-      return (s.target || 'board') === activeTarget;
+      if (this.pdfPageBoardData) return Boolean(s.onPdfBoard);
+      if ((s.target || 'board') !== activeTarget) return false;
+      if (activeTarget === 'graph' && Boolean(s.onPdfBoard)) return false;
+      return true;
     });
 
     const canvasRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
