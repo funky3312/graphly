@@ -7561,7 +7561,6 @@ class GraphApp {
       'btnQuickSnap',
       'btnRailPiecewise',
       'btnRailNAxis',
-      'btnRailToggleVf',
       'btnInkToggleAxes'
     ];
     graphOnlyIds.forEach(id => {
@@ -10745,7 +10744,7 @@ class GraphApp {
       panelTransform: '↕️ 변환 & 대칭',
       panelPiecewise: '✂️ 구간 분할 합성',
       panelViewfinder: '📷 교재 캡처 규격',
-      panelSettings: '⚙️ 환경 설정 & 캡처 규격',
+      panelSettings: '⚙️ 환경 설정',
       panelStyle: '🎨 선 스타일 & 색상'
     };
 
@@ -18450,14 +18449,7 @@ class GraphApp {
         }
       }
 
-      // 0.35. M 키로 교재 흑백 모드 (Monochrome Mode) 원터치 토글
-      if (e.key === 'm' || e.key === 'M') {
-        if (!isInput) {
-          e.preventDefault();
-          this.toggleMonochromeMode();
-          return;
-        }
-      }
+      // 0.35. 흑백 모드(M) 단축키 비활성화 (판서 프로그램 체제 전환)
 
       // 0.36. P 키로 실시간 필기 모드 (Ink Mode) 원터치 토글
       if (e.key === 'p' || e.key === 'P') {
