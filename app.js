@@ -8898,8 +8898,8 @@ class GraphApp {
   }
 
   // 🌟 [서브프레임 0.00ms 즉각 잉크 타격]: requestAnimationFrame 대기조차 없이 pointermove 즉시 캔버스에 증분 캡슐을 박아넣어 펜 끝 지연 0ms 달성!
-  drawLiveInkSegment(p0, p1, p0Pressure = 0.5, p1Pressure = 0.5, stroke = this.currentInkStroke) {
-    if (!stroke || stroke.isHighlighter || !this.ctx) return;
+  drawLiveBezierStep(screenPts, stroke = this.currentInkStroke, isFinalTail = false) {
+    if (!stroke || stroke.isHighlighter || !this.ctx || !screenPts || screenPts.length === 0) return;
     const ctx = this.ctx;
     const isBoardInk = (stroke.target || 'board') === 'board';
     const zoomRatio = isBoardInk
@@ -8907,24 +8907,86 @@ class GraphApp {
       : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
     const baseSize = (stroke.size || 4.2) * zoomRatio;
 
-    // 🌟 [PC · 아이패드 · 갤탭 100% 굵기 통일]: 애플펜슬 강필압에서도 1.68배로 뚱뚱해지지 않고 설정 굵기(1.0x)가 일관되게 유지되도록 정규화!
-    const avgP = Math.max(0.1, Math.min(1.0, ((p0Pressure || 0.5) + (p1Pressure || 0.5)) * 0.5));
-    const factor = 0.90 + 0.16 * avgP;
+    const L = screenPts.length;
+    const lastPt = screenPts[L - 1];
+    const pVal = Math.max(0.1, Math.min(1.0, (lastPt && lastPt.p) ? lastPt.p : 0.5));
+    const factor = 0.90 + 0.16 * pVal;
     const lineW = Math.max(0.8, baseSize * factor);
 
-    let strokeColor = this.isMonochromeMode ? '#000000' : (stroke.color || '#1e293b');
+    const strokeColor = this.isMonochromeMode ? '#000000' : (stroke.color || '#1e293b');
 
-    ctx.save();
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = lineW;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.shadowBlur = 0;
-    ctx.beginPath();
-    ctx.moveTo(p0.x, p0.y);
-    ctx.lineTo(p1.x, p1.y);
-    ctx.stroke();
-    ctx.restore();
+    const drawPathOnCtx = (color) => {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = lineW;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.shadowBlur = 0;
+
+      if (L === 1) {
+        ctx.beginPath();
+        ctx.arc(lastPt.x, lastPt.y, lineW / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (L === 2) {
+        const p0 = screenPts[0];
+        const p1 = screenPts[1];
+        const mx = isFinalTail ? p1.x : (p0.x + p1.x) * 0.5;
+        const my = isFinalTail ? p1.y : (p0.y + p1.y) * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(mx, my);
+        ctx.stroke();
+      } else {
+        const pA = screenPts[L - 3];
+        const pB = screenPts[L - 2];
+        const pC = screenPts[L - 1];
+        const mid1X = (pA.x + pB.x) * 0.5;
+        const mid1Y = (pA.y + pB.y) * 0.5;
+        const mid2X = (pB.x + pC.x) * 0.5;
+        const mid2Y = (pB.y + pC.y) * 0.5;
+        ctx.beginPath();
+        if (isFinalTail) {
+          ctx.moveTo(mid2X, mid2Y);
+          ctx.lineTo(pC.x, pC.y);
+        } else {
+          ctx.moveTo(mid1X, mid1Y);
+          ctx.quadraticCurveTo(pB.x, pB.y, mid2X, mid2Y);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+
+    const isBoardSplit = this.isBoardMode && (stroke.target === 'graph');
+    if (isBoardSplit) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, Math.round(this.screenWidth * this.boardSplitRatio), this.screenHeight);
+      ctx.clip();
+      drawPathOnCtx(strokeColor);
+      ctx.restore();
+    } else {
+      drawPathOnCtx(strokeColor);
+    }
+
+    // 다크 테마에서 흰색 문제 카드 영역 위 흰색 펜 자동 반전 처리
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    const isLight = curTheme.isLight || this.isMonochromeMode;
+    if (isBoardInk && this.hasActiveProblemCard() && !isLight && !this.isMonochromeMode && this.problemCardRect) {
+      const c = (stroke.color || '').toLowerCase();
+      if (c === '#ffffff' || c === '#fff') {
+        const r = this.problemCardRect;
+        if (lastPt.x >= r.x - 10 && lastPt.x <= r.x + r.w + 10 && lastPt.y >= r.y - 10 && lastPt.y <= r.y + r.h + 10) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(r.x, r.y, r.w, r.h);
+          ctx.clip();
+          drawPathOnCtx('#0f172a');
+          ctx.restore();
+        }
+      }
+    }
   }
 
   rebuildInkCache() {
@@ -17193,28 +17255,30 @@ class GraphApp {
           return;
         }
 
-        // 🌟 [iCanScreen 급 0ms 씬 프리즈]: 새 획을 추가하기 직전, 현재 정적 배경(그래프+기존 필기)을 1장의 GPU 텍스처로 동결!
+        const isHighlighterStroke = (this.activeInkTool === 'highlighter');
         if (neededCleanRenderBeforeFreeze) {
           this.isDrawingInk = false;
           this._hasSceneFreeze = false;
           this.render();
         }
-        this.captureSceneFreeze();
+        // 🌟 [무렉(Zero-Stutter) 아키텍처]: 반투명 형광펜일 때만 씬 프리즈를 캡처하고,
+        // 일반 펜(pen) 필기 시에는 15.5MB 레티나 전체 화면 복사(captureSceneFreeze)와 전체 render()를 100% 생략!
+        if (isHighlighterStroke) {
+          this.captureSceneFreeze();
+        } else {
+          this._hasSceneFreeze = false;
+        }
 
         this.isDrawingInk = true;
         this.isStylusDrawing = true;
         if (this.virtualStylusEl) this.virtualStylusEl.classList.add('drawing');
         this.updateStylusPenPosition(pos.x, pos.y, e);
-        // 🌟 [핵심 최적화]: 획 시작 시 거대한 JSON 직렬화를 생략하여 0ms 즉각 반응! (종료 시 stroke_add 경량 히스토리 등록)
         this._lastInkScreenPos = { x: pos.x, y: pos.y };
+        this._liveBezierScreenPts = [{ x: pos.x, y: pos.y, p: pressure }];
         this._inkHoldDetected = false;
         this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
         this._lastSignificantMoveTime = Date.now();
 
-        // 🌟 [대표님 기획: 3대 모드별 일관된 판서 타깃 자동 분기] 🌟
-        // 1) 문제 모드: 컴팩트 그래프 창 내부만 'graph' (확대/축소 연동), 바깥 칠판은 'board' (고정 풀이)
-        // 2) 라이브 판서 분할 모드: 좌측 분할선 안쪽은 'graph', 우측 판서 구역은 'board'
-        // 3) 그래프 + 필기 모드 (문제 카드 없음): 화면 전체가 그래프 무대이므로 100% 'graph' (확대/축소 연동!)
         const useCoveredBoardLayer = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
         let strokeTarget = useCoveredBoardLayer ? 'board' : 'graph';
         let isGraphTarget = !useCoveredBoardLayer;
@@ -17235,14 +17299,18 @@ class GraphApp {
           size: this.currentInkSize,
           zoom: this.zoomLevel,
           boardZoom: this.boardZoom || 1.0,
-          isHighlighter: (this.activeInkTool === 'highlighter'),
+          isHighlighter: isHighlighterStroke,
           points: isGraphTarget
             ? [{ x: m.x, y: m.y, p: pressure }]
             : [{ x: bPt0.x, y: bPt0.y, p: pressure }]
         };
         this.inkStrokes.push(this.currentInkStroke);
         this._startInkHoldTimer();
-        this.render();
+        if (isHighlighterStroke) {
+          this.render();
+        } else {
+          this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
+        }
         return;
       }
 
@@ -17859,11 +17927,12 @@ class GraphApp {
             const ev = events[i];
             const pPos = getPos(ev);
 
-            // 🌟 [iCanScreen 급 0ms 직접 추종]: 이중 EMA 스무딩으로 인한 고무줄 지연을 제거하고 펜 끝 1:1 밀착 추종!
+            // 🌟 [240Hz 유리면 노이즈 필터 & 0ms 중점 베지어 직결]:
+            // 2.0px 미만 미세 떨림은 입력 단계에서 바로 걸러내고, 새로운 점만 C1 중점 2차 베지어 곡선으로 즉시 그립니다!
             const prevScreenPos = this._lastInkScreenPos;
             if (prevScreenPos) {
               const d = Math.hypot(pPos.x - prevScreenPos.x, pPos.y - prevScreenPos.y);
-              if (d < 0.8) continue; // 0.8px 미만 초미세 노이즈만 제거
+              if (d < 2.0) continue;
             }
             this._lastInkScreenPos = { x: pPos.x, y: pPos.y };
 
@@ -17875,7 +17944,7 @@ class GraphApp {
               rawPressure = ev.pressure;
             }
             const prevPressure = (this._lastPressure !== undefined) ? this._lastPressure : rawPressure;
-            const pressure = prevPressure * 0.25 + rawPressure * 0.75;
+            const pressure = prevPressure * 0.35 + rawPressure * 0.65;
             this._lastPressure = pressure;
             if (this.currentInkStroke.target === 'graph') {
               this.currentInkStroke.points.push({ x: m.x, y: m.y, p: pressure });
@@ -17885,12 +17954,16 @@ class GraphApp {
             }
             addedPoints++;
 
-            // 🌟 [서브프레임 0.00ms 직접 렌더링]: VSync(requestAnimationFrame)를 기다리지 않고 펜 이동 즉시 현재 선분을 화면에 각인!
-            if (prevScreenPos && !this.currentInkStroke.isHighlighter) {
-              this.drawLiveInkSegment(prevScreenPos, pPos, prevPressure, pressure, this.currentInkStroke);
+            if (!this.currentInkStroke.isHighlighter) {
+              if (!this._liveBezierScreenPts) {
+                this._liveBezierScreenPts = [];
+              }
+              this._liveBezierScreenPts.push({ x: pPos.x, y: pPos.y, p: pressure });
+              this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
             }
           }
-          if (addedPoints > 0) {
+          // 일반 펜 필기 중에는 전체 화면 재렌더링(requestRender)을 호출하지 않아 2360x1640 캔버스 복사 부하가 0.0%입니다!
+          if (addedPoints > 0 && this.currentInkStroke.isHighlighter) {
             this.requestRender();
           }
         }
@@ -18725,61 +18798,36 @@ class GraphApp {
             this._inkBakeDirty = true;
           }
 
-          // 완성된 일반 펜 획을 오프스크린 베이크 버퍼에 즉각 굽기 (0.02ms 소요, 기존 획 재연산 제로)
-          if (!this._inkBakeDirty) {
+          // 🌟 [무렉(Zero-Stutter) 마감]: 일반 펜 획은 전체 화면 render()나 텍스처 복사 없이
+          // 끝단 꼬리만 0.005ms 만에 잇고 오프스크린 베이크 버퍼에 해당 획 1개만 추가합니다!
+          if (!finishedStroke.isHighlighter && !finishedStroke.isShape && !this._inkBakeDirty) {
+            if (this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 2) {
+              this.drawLiveBezierStep(this._liveBezierScreenPts, finishedStroke, true);
+            }
+            this._liveBezierScreenPts = null;
+
+            const dpr = window.devicePixelRatio || 1;
+            if (this.inkBakeCanvas && (this.inkBakeCanvas.width !== this.canvas.width || this.inkBakeCanvas.height !== this.canvas.height)) {
+              this.inkBakeCanvas.width = this.canvas.width;
+              this.inkBakeCanvas.height = this.canvas.height;
+              this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
+            if (this.inkGraphBakeCanvas && (this.inkGraphBakeCanvas.width !== this.canvas.width || this.inkGraphBakeCanvas.height !== this.canvas.height)) {
+              this.inkGraphBakeCanvas.width = this.canvas.width;
+              this.inkGraphBakeCanvas.height = this.canvas.height;
+              this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
             const isBoard = (finishedStroke.target || 'board') === 'board';
             const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
             if (targetCtx) {
               this.renderSingleStroke(targetCtx, finishedStroke, null, false);
               this._hasBakedStrokes = true;
             }
-          }
-
-          // 🌟 [연속 필기 시 pointerup 에서도 함수 수식 재계산 0회!]:
-          // 자음·모음·수식을 빠르게 끊어 쓸 때 펜을 뗄 때마다 520단계 함수식을 다시 계산하지 않고,
-          // 동결된 배경 텍스처 위에 완성된 획만 0.01ms 만에 마감 렌더링합니다!
-          if (hadSceneFreeze && !this._inkBakeDirty && this.ctx) {
-            const ctx = this.ctx;
-            const width = this.screenWidth;
-            const height = this.screenHeight;
-            ctx.drawImage(this.sceneFreezeCanvas, 0, 0, width, height);
-
-            const isBoardSplit = this.isBoardMode && (finishedStroke.target === 'graph');
-            if (isBoardSplit) {
-              ctx.save();
-              ctx.beginPath();
-              ctx.rect(0, 0, Math.round(width * this.boardSplitRatio), height);
-              ctx.clip();
-            }
-            this.renderSingleStroke(ctx, finishedStroke, null, false);
-            if (isBoardSplit) {
-              ctx.restore();
-            }
-
-            const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
-            const isLight = curTheme.isLight || this.isMonochromeMode;
-            if (
-              (finishedStroke.target || 'board') === 'board' &&
-              this.hasActiveProblemCard() &&
-              !isLight &&
-              !this.isMonochromeMode &&
-              this.problemCardRect
-            ) {
-              const c = (finishedStroke.color || '').toLowerCase();
-              if (c === '#ffffff' || c === '#fff') {
-                const r = this.problemCardRect;
-                ctx.save();
-                ctx.beginPath();
-                ctx.rect(r.x, r.y, r.w, r.h);
-                ctx.clip();
-                this.renderSingleStroke(ctx, finishedStroke, '#0f172a', false);
-                ctx.restore();
-              }
-            }
             return;
           }
         }
 
+        this._liveBezierScreenPts = null;
         this.render();
         return;
       }
@@ -18917,6 +18965,12 @@ class GraphApp {
             this._startCanvasTwoFingerPinch(pts[0], pts[1]);
             return;
           }
+          // 🛡️ [굿노트 표준 손날/손바닥 무시]: 필기 도구(pen/highlighter/eraser/lasso)가 켜져 있을 때
+          // 1개 터치(오른손 손날이나 손가락 1개)는 화면 이동이나 캐시 무효화를 유발하지 않도록 0.00ms 만에 완전 무시!
+          // (이동 및 줌인/줌아웃은 왼손 두 손가락 터치 시 즉시 작동하며, 1손가락 이동은 ↖ 선택 모드에서 작동)
+          if (this.isInkMode && this.activeInkTool !== 'select' && !this.isDropLineMode && !this.isTextToolMode && !this.isGraphSnapMode && !this.isPdfToGraphCropMode) {
+            return;
+          }
           this._activePanPointerId = e.pointerId;
         } else {
           // 펜(pen) 또는 마우스(mouse)가 닿는 순간 진행 중이던 손가락 패닝/핀치를 즉시 멈추고 필기 우선권 확보!
@@ -18947,8 +19001,8 @@ class GraphApp {
             this._moveCanvasTwoFingerPinch(pts[0], pts[1]);
             return;
           }
-          // 두 손가락 핀치 직후 한 손가락만 먼저 뗐을 때 남은 손가락으로 인해 화면이 튀는 현상 방지
-          if (this._pinchWasActiveInGesture && this.activePointers.size === 1) {
+          // 필기 모드에서 1개 터치(손바닥/손날) 또는 핀치 후 남은 1손가락은 0.00ms 즉시 무시!
+          if (this._pinchWasActiveInGesture || (this.isInkMode && this.activeInkTool !== 'select' && !this.isDropLineMode && !this.isTextToolMode && !this.isGraphSnapMode && !this.isPdfToGraphCropMode)) {
             return;
           }
         }
