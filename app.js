@@ -208,9 +208,20 @@ class GraphApp {
     this.sceneFreezeCtx = this.sceneFreezeCanvas.getContext('2d');
     this._hasSceneFreeze = false;
 
-    // [🖊️ 액정타블렛 특화: 상시 가상 스타일러스 펜 & 지우개 인디케이터 상태]
+    // [🖊️ 액정타블렛 / 아이패드 / 전자칠판 맞춤형: 가상 스타일러스 펜 & 지우개 포인터 표시 상태]
+    // - 아이패드·태블릿(직접 화면에 펜을 대는 기기): 기본값 OFF (false)
+    // - PC·액정타블렛(마우스/펜 호버 기기): 기본값 ON (true)
+    // - 환경 설정(⚙️)의 [펜 포인터 표시] 스위치로 언제든 켜고 끌 수 있으며 localStorage에 보존됨
     this.stylusPenPos = { x: 300, y: 300 }; // 마지막 펜/마우스 좌표 (화면에서 멀어져도 보존)
     this.isStylusDrawing = false;           // 펜으로 화면을 누르고 글씨를 쓰는 중 플래그
+    const _uaStr = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+    const _isDirectTouchTablet = /iPad|iPhone|iPod|Android/i.test(_uaStr) || (typeof navigator !== 'undefined' && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    this.showVirtualStylus = !_isDirectTouchTablet;
+    try {
+      const savedStylusPref = localStorage.getItem('graphly_show_virtual_stylus_v1');
+      if (savedStylusPref === 'true') this.showVirtualStylus = true;
+      else if (savedStylusPref === 'false') this.showVirtualStylus = false;
+    } catch (err) { }
 
     // [🪢 올가미(Lasso) 선택 & 풀이 이동 툴 상태]
     this.isLassoSelecting = false;       // 올가미 루프 드로잉 중 플래그
@@ -2016,6 +2027,8 @@ class GraphApp {
     // 🌟 [대표님 기획: ⚙️ 설정 패널 체크박스 및 바깥 캡처영역 버튼 동기화]
     const btnRailVf = document.getElementById('btnRailToggleVf');
     if (btnRailVf) btnRailVf.classList.toggle('active', Boolean(this.useViewfinder));
+    const chkStylus = document.getElementById('chkShowVirtualStylus');
+    if (chkStylus) chkStylus.checked = Boolean(this.showVirtualStylus);
     const chkSnap = document.getElementById('chkMagneticSnap');
     if (chkSnap) chkSnap.checked = Boolean(this.useMagneticSnap);
     const chkGuides = document.getElementById('chkGuides');
@@ -2491,8 +2504,10 @@ class GraphApp {
   updateStylusPenPosition(x, y, e = null) {
     if (!this.virtualStylusEl) return;
 
-    if (!this.isInkMode) {
-      this.virtualStylusEl.style.display = 'none';
+    if (!this.showVirtualStylus || !this.isInkMode) {
+      if (this.virtualStylusEl.style.display !== 'none') {
+        this.virtualStylusEl.style.display = 'none';
+      }
       return;
     }
 
@@ -2771,30 +2786,45 @@ class GraphApp {
     }
 
     if (this.activeInkTool === 'pen') {
-      this.canvas.classList.add('ink-cursor-pen');
-      if (this.virtualStylusEl) {
-        this.virtualStylusEl.style.display = 'block';
-        if (this.stylusPenSvg) this.stylusPenSvg.style.display = 'block';
-        if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = 'none';
-        if (this.stylusColorBand) this.stylusColorBand.setAttribute('fill', this.currentInkColor || '#00d2d3');
-        this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+      if (this.showVirtualStylus) {
+        this.canvas.classList.add('ink-cursor-pen');
+        if (this.virtualStylusEl) {
+          this.virtualStylusEl.style.display = 'block';
+          if (this.stylusPenSvg) this.stylusPenSvg.style.display = 'block';
+          if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = 'none';
+          if (this.stylusColorBand) this.stylusColorBand.setAttribute('fill', this.currentInkColor || '#00d2d3');
+          this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+        }
+      } else {
+        if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+        this.canvas.style.cursor = 'crosshair';
       }
     } else if (this.activeInkTool === 'highlighter') {
-      this.canvas.classList.add('ink-cursor-highlighter');
-      if (this.virtualStylusEl) {
-        this.virtualStylusEl.style.display = 'block';
-        if (this.stylusPenSvg) this.stylusPenSvg.style.display = 'block';
-        if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = 'none';
-        if (this.stylusColorBand) this.stylusColorBand.setAttribute('fill', this.currentInkColor || '#00d2d3');
-        this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+      if (this.showVirtualStylus) {
+        this.canvas.classList.add('ink-cursor-highlighter');
+        if (this.virtualStylusEl) {
+          this.virtualStylusEl.style.display = 'block';
+          if (this.stylusPenSvg) this.stylusPenSvg.style.display = 'block';
+          if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = 'none';
+          if (this.stylusColorBand) this.stylusColorBand.setAttribute('fill', this.currentInkColor || '#00d2d3');
+          this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+        }
+      } else {
+        if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+        this.canvas.style.cursor = 'crosshair';
       }
     } else if (this.activeInkTool === 'eraser') {
-      this.canvas.classList.add('ink-cursor-eraser');
-      if (this.virtualStylusEl) {
-        this.virtualStylusEl.style.display = 'block';
-        if (this.stylusPenSvg) this.stylusPenSvg.style.display = 'none';
-        if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = 'block';
-        this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+      if (this.showVirtualStylus) {
+        this.canvas.classList.add('ink-cursor-eraser');
+        if (this.virtualStylusEl) {
+          this.virtualStylusEl.style.display = 'block';
+          if (this.stylusPenSvg) this.stylusPenSvg.style.display = 'none';
+          if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = 'block';
+          this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+        }
+      } else {
+        if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+        this.canvas.style.cursor = 'crosshair';
       }
     } else if (this.activeInkTool === 'lasso') {
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
@@ -10109,6 +10139,15 @@ class GraphApp {
       };
     }
 
+    // 필기 모드 가상 펜 포인터 표시 토글 (아이패드·전자칠판 OFF / 액정타블렛·PC ON)
+    const chkStylus = document.getElementById('chkShowVirtualStylus');
+    if (chkStylus) {
+      chkStylus.checked = Boolean(this.showVirtualStylus);
+      chkStylus.onchange = (e) => {
+        this.toggleVirtualStylus(Boolean(e.target.checked));
+      };
+    }
+
     // 스마트 마그네틱 자석 스냅 토글 (사이드바)
     const chkSnap = document.getElementById('chkMagneticSnap');
     if (chkSnap) {
@@ -10513,6 +10552,32 @@ class GraphApp {
       btnFullscreen.onclick = () => {
         document.getElementById('btnFullscreen').click();
       };
+    }
+  }
+
+  toggleVirtualStylus(forceState) {
+    this.showVirtualStylus = typeof forceState === 'boolean' ? forceState : !this.showVirtualStylus;
+    try {
+      localStorage.setItem('graphly_show_virtual_stylus_v1', String(this.showVirtualStylus));
+    } catch (err) { }
+
+    const chkStylus = document.getElementById('chkShowVirtualStylus');
+    if (chkStylus) {
+      chkStylus.checked = Boolean(this.showVirtualStylus);
+    }
+
+    if (this.showVirtualStylus && this._lastPointerEvent && this._lastPointerEvent.pointerType === 'touch') {
+      this._lastPointerEvent = null;
+    }
+    if (!this.showVirtualStylus && this.virtualStylusEl) {
+      this.virtualStylusEl.style.display = 'none';
+    }
+    this.updateInkCursor();
+
+    if (this.showVirtualStylus) {
+      this.showToast('🖊️ 펜 포인터 표시 켜짐 (액정타블렛·PC 권장)');
+    } else {
+      this.showToast('🖊️ 펜 포인터 표시 꺼짐 (아이패드·전자칠판 권장)');
     }
   }
 
@@ -18599,6 +18664,8 @@ class GraphApp {
           }
         } else if (this.isSpacePressed || this.isShiftPressed || (e && e.shiftKey) || (this.isInkMode && this.activeInkTool === 'select')) {
           nextCursor = 'grab';
+        } else if (this.isInkMode && !this.showVirtualStylus && (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter' || this.activeInkTool === 'eraser')) {
+          nextCursor = 'crosshair';
         }
         if (this.canvas.style.cursor !== nextCursor) {
           this.canvas.style.cursor = nextCursor;
@@ -18974,13 +19041,13 @@ class GraphApp {
         !this.isPdfToGraphCropMode
       );
 
-      // 🛡️ [팜 리젝션: 애플펜슬 필기 중 + 펜 뗀 직후 900ms 연속 필기 보호 쿨다운]
-      // 글자의 획과 획 사이(0.02~0.8초)에 펜촉을 살짝 떼더라도, 화면에 닿아있는 손날이 절대 화면을 움직이지 못하게 잠금!
+      // 🛡️ [팜 리젝션: 애플펜슬 필기 중 + 펜 뗀 직후 450ms 연속 필기 보호 쿨다운]
+      // 글자의 획과 획 사이(0.02~0.45초)에 펜촉을 살짝 떼더라도, 화면에 닿아있는 손날이 절대 화면을 움직이지 못하게 잠금!
       const isPenRecentlyActive = () => {
         if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) && this._activeDrawingPointerType === 'pen') {
           return true;
         }
-        if (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 900)) {
+        if (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450)) {
           return true;
         }
         return false;
@@ -19003,6 +19070,7 @@ class GraphApp {
           if (this.activePointers) {
             this.activePointers.clear();
           }
+          this._pinchWasActiveInGesture = false;
           this._touchPanDeadzoneLocked = false;
           if (this.isPanning || this.isBoardPanning || this._pinchState) {
             this.isPanning = false;
@@ -19019,7 +19087,7 @@ class GraphApp {
         }
 
         // 2) 터치(touch) 입력:
-        // 펜슬 필기 중이거나 펜을 뗀 지 900ms 이내(연속 필기 중)에는 터치를 0.00ms 만에 완전 무시!
+        // 펜슬 필기 중이거나 펜을 뗀 지 450ms 이내(연속 필기 중)에는 터치를 0.00ms 만에 완전 무시!
         if (isPenRecentlyActive()) {
           return;
         }
@@ -19039,6 +19107,7 @@ class GraphApp {
           // 손바닥 전체가 닿아 터치 포인트가 3개 이상 찍힌 경우: 즉시 취소하고 무시!
           if (this.activePointers.size >= 3) {
             this._pinchState = null;
+            this._pinchWasActiveInGesture = false;
             this._touchPanDeadzoneLocked = false;
             this.isPanning = false;
             this.isBoardPanning = false;
@@ -19060,7 +19129,10 @@ class GraphApp {
             return;
           }
 
-          // 🌟 1손가락 터치: 그래프 모드(select)와 필기 모드(pen) 구분 없이 100% 동일한 handleDown(e) 경로로 진입!
+          // 🌟 1손가락 터치: 이전 2손가락 제스처 잔류 플래그(_pinchWasActiveInGesture)를 확실히 초기화하고
+          // 그래프 모드(select)와 필기 모드(pen) 구분 없이 100% 동일한 handleDown(e) 경로로 진입!
+          this._pinchWasActiveInGesture = false;
+          this._pinchState = null;
           this._activePanPointerId = e.pointerId;
         }
 
@@ -19112,6 +19184,7 @@ class GraphApp {
           if (isPenRecentlyActive()) {
             if (this.activePointers) this.activePointers.clear();
             this._pinchState = null;
+            this._pinchWasActiveInGesture = false;
             this._touchPanDeadzoneLocked = false;
             this.isPanning = false;
             this.isBoardPanning = false;
@@ -19239,7 +19312,7 @@ class GraphApp {
     //    iPadOS Safari가 간헐적으로 두 번째 pointerdown을 누락하더라도 100% 두 손가락 이동/줌아웃이 작동하도록 연결합니다!
     const isPenBusyForTouch = () => {
       if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) && this._activeDrawingPointerType === 'pen') return true;
-      if (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 900)) return true;
+      if (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450)) return true;
       return false;
     };
     this.canvas.addEventListener('touchstart', (e) => {
@@ -19248,14 +19321,20 @@ class GraphApp {
         this._lastPenActiveTime = Date.now();
         if (this.activePointers) this.activePointers.clear();
         this._pinchState = null;
+        this._pinchWasActiveInGesture = false;
         if (e.target === this.canvas) {
           e.preventDefault();
         }
         return;
       }
       if (isPenBusyForTouch()) return;
+      if (e.touches && e.touches.length === 1) {
+        this._pinchWasActiveInGesture = false;
+        this._pinchState = null;
+      }
       if (e.touches && e.touches.length >= 3) {
         this._pinchState = null;
+        this._pinchWasActiveInGesture = false;
         this.isPanning = false;
         this.isBoardPanning = false;
         return;
