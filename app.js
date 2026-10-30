@@ -7955,7 +7955,7 @@ class GraphApp {
     if (btn && lbl && this._lastSnapModeActive !== snapActive) {
       btn.classList.toggle('active', snapActive);
       lbl.textContent = snapActive
-        ? '영역 드래그 (ESC 취소)'
+        ? '취소'
         : '그래프 보관';
       this._lastSnapModeActive = snapActive;
     }
