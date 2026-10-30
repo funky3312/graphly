@@ -9196,9 +9196,12 @@ class GraphApp {
     } else {
       targetCtx.beginPath();
       targetCtx.moveTo(pts[0].x, pts[0].y);
+      const firstMidX = (pts[0].x + pts[1].x) * 0.5;
+      const firstMidY = (pts[0].y + pts[1].y) * 0.5;
+      targetCtx.lineTo(firstMidX, firstMidY);
       for (let i = 1; i < pts.length - 1; i++) {
-        const midX = (pts[i].x + pts[i + 1].x) / 2;
-        const midY = (pts[i].y + pts[i + 1].y) / 2;
+        const midX = (pts[i].x + pts[i + 1].x) * 0.5;
+        const midY = (pts[i].y + pts[i + 1].y) * 0.5;
         targetCtx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
       }
       const last = pts[pts.length - 1];
@@ -17306,6 +17309,7 @@ class GraphApp {
         if (this.virtualStylusEl) this.virtualStylusEl.classList.add('drawing');
         this.updateStylusPenPosition(pos.x, pos.y, e);
         this._lastInkScreenPos = { x: pos.x, y: pos.y };
+        this._prevRawInkScreenPos = null;
         this._lastRawInkScreenPos = { x: pos.x, y: pos.y };
         this._lastMoveEventScreenPos = { x: pos.x, y: pos.y };
         this._liveBezierScreenPts = [{ x: pos.x, y: pos.y, p: pressure }];
@@ -17981,24 +17985,40 @@ class GraphApp {
             }
           }
 
-          const coalesced = (e.getCoalescedEvents && typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null;
-          const events = (coalesced && coalesced.length > 0) ? coalesced : [e];
+          // 🛡️ [iPadOS Safari getCoalescedEvents 역주행/중복 패킷 원천 차단]:
+          // iPadOS WebKit의 getCoalescedEvents()는 직전 프레임의 샘플이 중복/역순으로 섞여 나와
+          // 원을 그릴 때 이전 위치로 되돌아가 현(chord)을 따라 두 줄로 겹쳐 그리는 계단식 마디(Staircase Overlap)를 유발합니다!
+          // 따라서 단일 pointermove 이벤트([e])만 사용하고, 진행 방향 역주행(dot < 0) 패킷을 완벽히 걸러냅니다.
+          const events = [e];
           let addedPoints = 0;
           for (let i = 0; i < events.length; i++) {
             const ev = events[i];
             const pPos = getPos(ev);
-            this._lastRawInkScreenPos = { x: pPos.x, y: pPos.y };
 
-            // 🌟 [실시간 인플레이스 스트림라인 보정 & 100% 무변형 베지어 일치]:
-            // 1) 아이패드 유리면 위의 2.6px 미만 미세 손떨림 노이즈를 입력 단계에서 컷오프하고,
-            // 2) 직전 확정 점들과 가중 평균(Streamline Stabilization)을 실시간으로 적용한 좌표를
-            //    실시간 드로잉(_liveBezierScreenPts)과 저장 점열(currentInkStroke.points) 양쪽에 100% 동일하게 넣습니다!
-            //    -> 쓰는 즉시 유려한 명필 곡선이 그려지며, 나중에 render()가 호출되어도 필체가 절대 바뀌지 않습니다!
-            const prevScreenPos = this._lastInkScreenPos;
-            if (prevScreenPos) {
-              const d = Math.hypot(pPos.x - prevScreenPos.x, pPos.y - prevScreenPos.y);
-              if (d < 2.6) continue;
+            const lastRaw = this._lastRawInkScreenPos;
+            if (lastRaw) {
+              const rawDist = Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y);
+              if (rawDist < 2.4) continue;
+
+              // 🛡️ [역주행 점프 컷오프 (Monotonic Forward Guard)]:
+              // 원을 그리며 전진하는 도중 45px 이내에서 갑자기 95도 이상 뒤로 튀는 좌표(dot < -0.08)는
+              // 하드웨어/브라우저의 지연 중복 패킷이므로 즉시 폐기하여 두 줄 겹침(계단 마디)을 0%로 박멸!
+              if (this._prevRawInkScreenPos && rawDist < 45) {
+                const vxPrev = lastRaw.x - this._prevRawInkScreenPos.x;
+                const vyPrev = lastRaw.y - this._prevRawInkScreenPos.y;
+                const vxNew = pPos.x - lastRaw.x;
+                const vyNew = pPos.y - lastRaw.y;
+                const lenPrev = Math.hypot(vxPrev, vyPrev);
+                if (lenPrev > 0.5) {
+                  const cosAngle = (vxPrev * vxNew + vyPrev * vyNew) / (lenPrev * rawDist);
+                  if (cosAngle < -0.08) {
+                    continue;
+                  }
+                }
+              }
             }
+            this._prevRawInkScreenPos = lastRaw ? { x: lastRaw.x, y: lastRaw.y } : { x: pPos.x, y: pPos.y };
+            this._lastRawInkScreenPos = { x: pPos.x, y: pPos.y };
 
             let sx = pPos.x;
             let sy = pPos.y;
@@ -18006,12 +18026,12 @@ class GraphApp {
             if (liveLen >= 2) {
               const pPrev1 = this._liveBezierScreenPts[liveLen - 1];
               const pPrev2 = this._liveBezierScreenPts[liveLen - 2];
-              sx = pPrev2.x * 0.16 + pPrev1.x * 0.36 + pPos.x * 0.48;
-              sy = pPrev2.y * 0.16 + pPrev1.y * 0.36 + pPos.y * 0.48;
+              sx = pPrev2.x * 0.12 + pPrev1.x * 0.33 + pPos.x * 0.55;
+              sy = pPrev2.y * 0.12 + pPrev1.y * 0.33 + pPos.y * 0.55;
             } else if (liveLen === 1) {
               const pPrev1 = this._liveBezierScreenPts[0];
-              sx = pPrev1.x * 0.35 + pPos.x * 0.65;
-              sy = pPrev1.y * 0.35 + pPos.y * 0.65;
+              sx = pPrev1.x * 0.30 + pPos.x * 0.70;
+              sy = pPrev1.y * 0.30 + pPos.y * 0.70;
             }
             this._lastInkScreenPos = { x: sx, y: sy };
 
@@ -18869,6 +18889,7 @@ class GraphApp {
         }
 
         this._inkHoldDetected = false;
+        this._prevRawInkScreenPos = null;
         this._lastRawInkScreenPos = null;
         this._lastMoveEventScreenPos = null;
         this._inkHoldLastScreenPos = null;
