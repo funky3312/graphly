@@ -58,9 +58,9 @@
         <button class="rail-btn" id="btnCloudHub" title="내 클라우드 보관함 · 수업 슬라이드(PPT) · 내 드라이브 파일 저장/열기">
           <span class="rail-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg></span>
         </button>
-        <!-- ✨ 새 캔버스 (그래프·필기·문제 전체 초기화 / 깨끗한 새 칠판) -->
-        <button class="rail-btn" id="btnQuickNewCanvas" title="새 캔버스 (그래프·필기·문제 전체 초기화 / Ctrl+Z 복구)">
-          <span class="rail-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6.5"/><path d="m18.5 2.5 1 2.5 2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1 1-2.5Z" fill="currentColor" stroke-width="1.2"/></svg></span>
+        <!-- ➕ 캔버스 추가 (현재 작업 자동 보존 후 다음 슬라이드 캔버스 열기) -->
+        <button class="rail-btn" id="btnQuickNewCanvas" title="캔버스 추가 (현재 작업 보존 후 다음 슬라이드 열기)">
+          <span class="rail-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><line x1="18" y1="3" x2="18" y2="9" stroke-width="2.1"/><line x1="15" y1="6" x2="21" y2="6" stroke-width="2.1"/><path d="m18.5 2.5 0 0" opacity="0"/></svg></span>
         </button>
 
         <div class="rail-sep"></div>
@@ -810,6 +810,9 @@
         </button>
         <button id="btnRedo" class="quick-fab-btn" title="다시 실행 (Ctrl+Y)" disabled>
           <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg></span>
+        </button>
+        <button id="btnClearCurrentCanvas" class="quick-fab-btn quick-fab-danger" title="현재 캔버스 비우기 (현재 슬라이드의 문제·그래프·판서 초기화 / Ctrl+Z 복구)">
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></span>
         </button>
 
         <div class="quick-sep"></div>

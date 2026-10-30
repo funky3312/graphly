@@ -10476,6 +10476,12 @@ class GraphApp {
         this.handleNewCanvasButtonClick();
       };
     }
+    const btnClearCurrentCanvas = document.getElementById('btnClearCurrentCanvas');
+    if (btnClearCurrentCanvas) {
+      btnClearCurrentCanvas.onclick = () => {
+        this.clearCurrentCanvasOnly();
+      };
+    }
 
     // 전체화면 토글
     const btnFullscreen = document.getElementById('btnQuickFullscreen');
@@ -14728,13 +14734,8 @@ class GraphApp {
       this.isLessonPlaylistActive = true;
     }
 
-    // 2. 아무 작업 내용도 없는 첫 백지 상태면 안내만 표시
-    if (!this.hasAnyWorkspaceContent() && (!this.isLessonPlaylistActive || !this.lessonPlaylistSlides || this.lessonPlaylistSlides.length <= 1)) {
-      this.resetNewCanvas();
-      return;
-    }
-
-    // 3. 현재 캔버스에 작업물이 있으면 현재 슬라이드에 자동 보존하고 깨끗한 다음 번호 캔버스 추가!
+    // 2. 첫 1페이지 상태에서 눌러도 무조건 1번 슬라이드를 보존하고 새 2번 캔버스를 추가!
+    // 3. 현재 캔버스를 현재 슬라이드에 자동 보존하고 깨끗한 다음 번호 캔버스 추가!
     if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
       const firstSlide = this.serializeFullSlideState('1');
       this.lessonPlaylistSlides = [firstSlide];
@@ -14796,6 +14797,86 @@ class GraphApp {
     this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
     this.syncLessonPlaylistNavBarUI();
     this.showToast(`🗑️ [${delIdx + 1}번] 슬라이드를 삭제했습니다.`);
+  }
+
+  clearCurrentCanvasOnly() {
+    // 1) PDF 한 페이지 통째 모드인 경우: 현재 PDF 페이지 위에 그린 그래프·보관카드(#1,#2)·문제카드·판서만 싹 비움 (다른 페이지는 보존!)
+    if (this.pdfPageBoardData) {
+      const hasOnPage = (
+        (this.graphs && this.graphs.length > 0) ||
+        (this.inkStrokes && this.inkStrokes.length > 0) ||
+        (this.dropLines && this.dropLines.length > 0) ||
+        (this.textLabels && this.textLabels.length > 0) ||
+        Boolean(this._hasPrimaryGraphCard && this.graphCardData) ||
+        Boolean(this.extraGraphCards && this.extraGraphCards.length > 0)
+      );
+      if (!hasOnPage) {
+        this.showToast('ℹ️ 현재 페이지에 지울 판서나 그래프가 없습니다.');
+        return;
+      }
+      if (!this.isHistoryProcessing) {
+        const fullSnap = this._captureFullWorkspaceSnapshot();
+        this.undoStack.push({ type: 'workspace_snapshot', snapshot: fullSnap });
+        if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+        this.redoStack = [];
+        this.updateUndoRedoUI();
+      }
+      this.closeGraphCard();
+      if (this.extraGraphCards && this.extraGraphCards.length > 0) {
+        this.extraGraphCards.forEach(c => { if (c && c.el) c.el.remove(); });
+        this.extraGraphCards = [];
+      }
+      this._graphCaseCounter = 0;
+      this._graphSessionArchived = false;
+      this._coveredGraphStateBackup = null;
+      this.graphs = [];
+      this.activeGraphIdx = -1;
+      this.selectedHandleIdx = null;
+      this.isCurveSelected = false;
+      this.usePiecewise = false;
+      this.piecewiseBoundaries = [];
+      this.piecewiseFuncMap = [];
+      this.piecewiseInclusions = [];
+      this.dropLines = [];
+      this.textLabels = [];
+      this.inkStrokes = [];
+      this.selectedInkIndices = [];
+      this.inkLassoBox = null;
+      this._inkBakeDirty = true;
+      this.clearInkCache();
+      this.archiveCurrentPdfBoardPageToCard();
+      this.syncControls();
+      this.renderLayerList();
+      this.renderFuncList();
+      this.syncGraphSnapBarUI();
+      this.render();
+      this.showToast('🧹 현재 PDF 페이지의 판서·그래프만 깨끗하게 비웠습니다! (Ctrl+Z 복구 가능)');
+      return;
+    }
+
+    // 2) 다중 슬라이드 묶음(1, 2, 3...) 작업 중인 경우: 다른 슬라이드는 그대로 두고 현재 보고 있는 캔버스 내용만 백지로 비움!
+    if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1) {
+      if (!this.hasAnyWorkspaceContent()) {
+        this.showToast('ℹ️ 이미 현재 캔버스가 깨끗한 상태입니다.');
+        return;
+      }
+      if (!this.isHistoryProcessing) {
+        const fullSnap = this._captureFullWorkspaceSnapshot();
+        this.undoStack.push({ type: 'workspace_snapshot', snapshot: fullSnap });
+        if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+        this.redoStack = [];
+        this.updateUndoRedoUI();
+      }
+      this.resetBoardAndProblemCardsForNext();
+      const curNum = (this.lessonPlaylistIndex || 0) + 1;
+      this.lessonPlaylistSlides[this.lessonPlaylistIndex] = this.serializeFullSlideState(String(curNum));
+      this.syncLessonPlaylistNavBarUI();
+      this.showToast(`🧹 [${curNum}번 캔버스] 내용만 깨끗하게 비웠습니다! (다른 슬라이드 유지 / Ctrl+Z 복구)`);
+      return;
+    }
+
+    // 3) 단독 1페이지 작업 중인 경우: 기존 전체 초기화(resetNewCanvas) 실행
+    this.resetNewCanvas();
   }
 
   clearAllSlidesAndReset() {
