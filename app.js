@@ -4832,7 +4832,7 @@ class GraphApp {
   syncPdfBoardNavBarUI() {
     const bar = document.getElementById('pdfBoardNavBar');
     if (!bar) return;
-    if (!this.pdfPageBoardData) {
+    if (!this.pdfPageBoardData || !this.isGraphCovered) {
       bar.style.display = 'none';
       this._syncTopSlideMiniTabUI();
       return;
@@ -4855,9 +4855,14 @@ class GraphApp {
     if (chipsEl) {
       chipsEl.innerHTML = '';
       this.pdfWorkedPages.forEach((pageNum) => {
+        const chipKey = `pdf:${pageNum}`;
+        const isActive = (pageNum === p);
+        const isDelOpen = (isActive && this.pdfWorkedPages.length > 1 && this._openSlideChipDelKey === chipKey);
         const chip = document.createElement('div');
-        chip.className = 'slide-chip-item' + (pageNum === p ? ' active' : '');
-        chip.title = `p.${pageNum} 캔버스로 이동`;
+        chip.className = 'slide-chip-item' + (isActive ? ' active' : '') + (isDelOpen ? ' del-open' : '');
+        chip.title = isActive && this.pdfWorkedPages.length > 1
+          ? `다시 누르면 아래에 삭제(✕) 버튼이 표시됩니다`
+          : `p.${pageNum} 캔버스로 이동`;
         const span = document.createElement('span');
         span.className = 'slide-chip-label';
         span.textContent = `p.${pageNum}`;
@@ -4871,14 +4876,20 @@ class GraphApp {
           delBtn.textContent = '✕';
           delBtn.onclick = (e) => {
             e.stopPropagation();
+            this._openSlideChipDelKey = null;
             this.deletePdfPageSlide(pageNum);
           };
           chip.appendChild(delBtn);
         }
 
-        chip.onclick = () => {
+        chip.onclick = (e) => {
+          e.stopPropagation();
           if (pageNum !== p) {
+            this._openSlideChipDelKey = null;
             this.openPdfPageOnBoard(pageNum);
+          } else if (this.pdfWorkedPages.length > 1) {
+            this._openSlideChipDelKey = (this._openSlideChipDelKey === chipKey) ? null : chipKey;
+            this.syncPdfBoardNavBarUI();
           }
         };
         chipsEl.appendChild(chip);
@@ -7566,6 +7577,15 @@ class GraphApp {
     const quickDivider = document.querySelector('#btnQuickSnap + .quick-toolbar-divider');
     if (quickDivider) {
       quickDivider.style.display = isBoard ? 'none' : '';
+    }
+    if (!isBoard) {
+      this._openSlideChipDelKey = null;
+    }
+    if (typeof this.syncPdfBoardNavBarUI === 'function') {
+      this.syncPdfBoardNavBarUI();
+    }
+    if (typeof this.syncLessonPlaylistNavBarUI === 'function') {
+      this.syncLessonPlaylistNavBarUI();
     }
   }
 
@@ -14721,6 +14741,10 @@ class GraphApp {
   }
 
   handleNewCanvasButtonClick() {
+    this._openSlideChipDelKey = null;
+    if (!this.isGraphCovered) {
+      this.enterBoardMode();
+    }
     // 1. 만약 PDF 통째 페이지 모드 중이면 현재 페이지를 저장하고 새 백지 슬라이드로 전환
     if (this.pdfPageBoardData) {
       this.archiveCurrentPdfBoardPageToCard();
@@ -14895,6 +14919,11 @@ class GraphApp {
     const lblMini = document.getElementById('lblTopSlideMiniTab');
     if (!miniTab) return;
 
+    if (!this.isGraphCovered) {
+      miniTab.style.display = 'none';
+      return;
+    }
+
     const hasPdfBar = Boolean(this.pdfPageBoardData);
     const hasPlaylistBar = Boolean(!hasPdfBar && this.isLessonPlaylistActive && this.lessonPlaylistSlides && this.lessonPlaylistSlides.length >= 1);
 
@@ -14920,10 +14949,22 @@ class GraphApp {
   syncLessonPlaylistNavBarUI() {
     const navBar = document.getElementById('lessonPlaylistNavBar');
     if (!navBar) return;
-    if (this.pdfPageBoardData || !this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) {
+    if (!this.isGraphCovered || this.pdfPageBoardData || !this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) {
       navBar.style.display = 'none';
       this._syncTopSlideMiniTabUI();
       return;
+    }
+
+    if (!this._boundCloseSlideDelOnOutside) {
+      this._boundCloseSlideDelOnOutside = true;
+      window.addEventListener('pointerdown', (ev) => {
+        if (!this._openSlideChipDelKey) return;
+        const t = ev.target;
+        if (t && t.closest && t.closest('.slide-chip-item')) return;
+        this._openSlideChipDelKey = null;
+        this.syncPdfBoardNavBarUI();
+        this.syncLessonPlaylistNavBarUI();
+      }, { capture: true });
     }
 
     const total = this.lessonPlaylistSlides.length;
@@ -14938,11 +14979,16 @@ class GraphApp {
     if (chipsEl) {
       chipsEl.innerHTML = '';
       this.lessonPlaylistSlides.forEach((s, idx) => {
+        const chipKey = `playlist:${idx}`;
+        const isActive = (idx === this.lessonPlaylistIndex);
+        const isDelOpen = (isActive && total > 1 && this._openSlideChipDelKey === chipKey);
         const chip = document.createElement('div');
-        chip.className = 'slide-chip-item' + (idx === this.lessonPlaylistIndex ? ' active' : '');
+        chip.className = 'slide-chip-item' + (isActive ? ' active' : '') + (isDelOpen ? ' del-open' : '');
         const rawTitle = (s && s.slideTitle) ? String(s.slideTitle).trim() : '';
         const shortLabel = (rawTitle && rawTitle.startsWith('p.')) ? rawTitle : String(idx + 1);
-        chip.title = `${idx + 1}번 캔버스 (${rawTitle || '슬라이드'})`;
+        chip.title = isActive && total > 1
+          ? `다시 누르면 아래에 삭제(✕) 버튼이 표시됩니다`
+          : `${idx + 1}번 캔버스 (${rawTitle || '슬라이드'})`;
 
         const span = document.createElement('span');
         span.className = 'slide-chip-label';
@@ -14957,12 +15003,22 @@ class GraphApp {
           delBtn.textContent = '✕';
           delBtn.onclick = (e) => {
             e.stopPropagation();
+            this._openSlideChipDelKey = null;
             this.deletePlaylistSlideAt(idx);
           };
           chip.appendChild(delBtn);
         }
 
-        chip.onclick = () => this.jumpToPlaylistSlide(idx);
+        chip.onclick = (e) => {
+          e.stopPropagation();
+          if (idx !== this.lessonPlaylistIndex) {
+            this._openSlideChipDelKey = null;
+            this.jumpToPlaylistSlide(idx);
+          } else if (total > 1) {
+            this._openSlideChipDelKey = (this._openSlideChipDelKey === chipKey) ? null : chipKey;
+            this.syncLessonPlaylistNavBarUI();
+          }
+        };
         chipsEl.appendChild(chip);
       });
     }
