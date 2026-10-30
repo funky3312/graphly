@@ -8907,24 +8907,23 @@ class GraphApp {
       : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
     const baseSize = (stroke.size || 4.2) * zoomRatio;
 
-    const f0 = 0.28 + 1.4 * Math.pow(Math.max(0.05, Math.min(1.0, p0Pressure)), 0.85);
-    const f1 = 0.28 + 1.4 * Math.pow(Math.max(0.05, Math.min(1.0, p1Pressure)), 0.85);
-    const r0 = Math.max(0.4, (baseSize * f0) / 2);
-    const r1 = Math.max(0.4, (baseSize * f1) / 2);
+    // 🌟 [PC · 아이패드 · 갤탭 100% 굵기 통일]: 애플펜슬 강필압에서도 1.68배로 뚱뚱해지지 않고 설정 굵기(1.0x)가 일관되게 유지되도록 정규화!
+    const avgP = Math.max(0.1, Math.min(1.0, ((p0Pressure || 0.5) + (p1Pressure || 0.5)) * 0.5));
+    const factor = 0.90 + 0.16 * avgP;
+    const lineW = Math.max(0.8, baseSize * factor);
 
     let strokeColor = this.isMonochromeMode ? '#000000' : (stroke.color || '#1e293b');
-    const dx = p1.x - p0.x;
-    const dy = p1.y - p0.y;
-    const alpha = Math.atan2(dy, dx);
 
     ctx.save();
-    ctx.fillStyle = strokeColor;
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = lineW;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.shadowBlur = 0;
     ctx.beginPath();
-    ctx.arc(p0.x, p0.y, r0, alpha + Math.PI / 2, alpha + 1.5 * Math.PI, false);
-    ctx.arc(p1.x, p1.y, r1, alpha - Math.PI / 2, alpha + Math.PI / 2, false);
-    ctx.closePath();
-    ctx.fill();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -9019,8 +9018,8 @@ class GraphApp {
     // 🌟 Draw & Hold 기하 도형 & 수학 곡선 렌더링 (직선, 정원, 타원, 직사각형, 삼각형, 이차함수 포물선, 삼차/삼각 개형) 🌟
     if (stroke.shape) {
       const baseSize = (stroke.size || 3) * zoomRatio;
-      // 대표님 피드백 반영: 자동완성 도형 선 굵기를 펜 굵기의 0.8배로 조정!
-      targetCtx.lineWidth = stroke.isHighlighter ? Math.max(8, baseSize * 2.5) : Math.max(1.2, baseSize * 0.8);
+      // PC · 아이패드 통일된 펜 굵기(1.0x)와 이질감 없이 매칭되는 도형 선 굵기(0.95배)
+      targetCtx.lineWidth = stroke.isHighlighter ? Math.max(8, baseSize * 2.5) : Math.max(1.2, baseSize * 0.95);
       targetCtx.strokeStyle = strokeColor;
 
       if (stroke.shape.type === 'line') {
@@ -9082,8 +9081,9 @@ class GraphApp {
       p: (pt.p !== undefined ? pt.p : 0.5)
     }));
 
-    // 화면 픽셀 기준 미세 노이즈 및 초밀집 점 스마트 필터링
-    const minDist = isLiveDrawing ? 1.1 : 1.8;
+    // 🌟 [PC · 아이패드 · 갤탭 통합 스트림라인 엔진]:
+    // 240Hz 아이패드 유리면 위에서 발생하는 1~2px 미세 손떨림 노이즈를 2.8px 간격으로 정규화하여 PC와 동일한 곡선 밀도 확보!
+    const minDist = isLiveDrawing ? 2.2 : 2.8;
     const filtered = [rawPts[0]];
     for (let i = 1; i < rawPts.length; i++) {
       const prev = filtered[filtered.length - 1];
@@ -9093,136 +9093,63 @@ class GraphApp {
       }
     }
 
-    // 🌟 [아이캔스크린 급 초저지연 & 굿노트 스타일 스트림라인 보정] 🌟
-    // 실시간 드로잉 중에는 펜 끝이 고무줄처럼 뒤처지지 않도록 즉각 추종 계수(0.10/0.90) 적용!
-    const prevW = isLiveDrawing ? 0.10 : 0.22;
-    const currW = 1.0 - prevW;
-    const pts = [filtered[0]];
-    for (let i = 1; i < filtered.length; i++) {
-      const prev = pts[pts.length - 1];
-      const curr = filtered[i];
-      pts.push({
-        x: prev.x * prevW + curr.x * currW,
-        y: prev.y * prevW + curr.y * currW,
-        p: prev.p * prevW + curr.p * currW
-      });
+    // 🌟 양 끝점은 100% 고정한 채 중간 점들의 유리면 손떨림만 매끄럽게 정돈하는 대칭 가우시안 스트림라인 필터
+    let pts = filtered;
+    const passes = isLiveDrawing ? 1 : 2;
+    for (let pass = 0; pass < passes; pass++) {
+      if (pts.length < 3) break;
+      const nextPts = [pts[0]];
+      for (let i = 1; i < pts.length - 1; i++) {
+        nextPts.push({
+          x: pts[i - 1].x * 0.22 + pts[i].x * 0.56 + pts[i + 1].x * 0.22,
+          y: pts[i - 1].y * 0.22 + pts[i].y * 0.56 + pts[i + 1].y * 0.22,
+          p: pts[i - 1].p * 0.22 + pts[i].p * 0.56 + pts[i + 1].p * 0.22
+        });
+      }
+      nextPts.push(pts[pts.length - 1]);
+      pts = nextPts;
     }
 
-    if (stroke.isHighlighter) {
-      if (pts.length === 1) {
-        targetCtx.fillStyle = strokeColor;
-        targetCtx.beginPath();
-        targetCtx.arc(pts[0].x, pts[0].y, targetCtx.lineWidth / 2, 0, Math.PI * 2);
-        targetCtx.fill();
-      } else if (pts.length === 2) {
-        targetCtx.beginPath();
-        targetCtx.moveTo(pts[0].x, pts[0].y);
-        targetCtx.lineTo(pts[1].x, pts[1].y);
-        targetCtx.stroke();
-      } else {
-        targetCtx.beginPath();
-        targetCtx.moveTo(pts[0].x, pts[0].y);
-        for (let i = 1; i < pts.length - 1; i++) {
-          const midX = (pts[i].x + pts[i + 1].x) / 2;
-          const midY = (pts[i].y + pts[i + 1].y) / 2;
-          targetCtx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
-        }
-        const last = pts[pts.length - 1];
-        targetCtx.lineTo(last.x, last.y);
-        targetCtx.stroke();
+    if (!stroke.isHighlighter) {
+      const baseSize = (stroke.size || 4.2) * zoomRatio;
+      let pSum = 0;
+      for (let i = 0; i < pts.length; i++) {
+        pSum += Math.max(0.1, Math.min(1.0, pts[i].p || 0.5));
       }
+      const avgP = pSum / Math.max(1, pts.length);
+      // PC 마우스(p=0.5 -> 0.98x)와 아이패드 애플펜슬(p=0.75 -> 1.02x)의 굵기를 1.0배로 완벽 통일!
+      const factor = 0.90 + 0.16 * avgP;
+      targetCtx.lineWidth = Math.max(0.8, baseSize * factor);
+    }
+
+    targetCtx.fillStyle = strokeColor;
+    targetCtx.strokeStyle = strokeColor;
+    targetCtx.lineCap = 'round';
+    targetCtx.lineJoin = 'round';
+    targetCtx.shadowBlur = 0;
+    targetCtx.shadowOffsetX = 0;
+    targetCtx.shadowOffsetY = 0;
+
+    if (pts.length === 1) {
+      targetCtx.beginPath();
+      targetCtx.arc(pts[0].x, pts[0].y, targetCtx.lineWidth / 2, 0, Math.PI * 2);
+      targetCtx.fill();
+    } else if (pts.length === 2) {
+      targetCtx.beginPath();
+      targetCtx.moveTo(pts[0].x, pts[0].y);
+      targetCtx.lineTo(pts[1].x, pts[1].y);
+      targetCtx.stroke();
     } else {
-      const baseSize = stroke.size * zoomRatio;
-      targetCtx.fillStyle = strokeColor;
-      targetCtx.shadowBlur = 0;
-      targetCtx.shadowOffsetX = 0;
-      targetCtx.shadowOffsetY = 0;
-
-      const widths = pts.map((pt, idx) => {
-        const factor = 0.28 + 1.4 * Math.pow(Math.max(0.05, Math.min(1.0, pt.p)), 0.85);
-        let w = baseSize * factor;
-        if (pts.length >= 3) {
-          if (idx === 0) w *= 0.65;
-          else if (idx === pts.length - 1 && !isLiveDrawing) {
-            w *= 0.42;
-          }
-        }
-        return Math.max(0.8, w);
-      });
-
-      if (pts.length === 1) {
-        targetCtx.beginPath();
-        targetCtx.arc(pts[0].x, pts[0].y, widths[0] / 2, 0, Math.PI * 2);
-        targetCtx.fill();
-      } else if (pts.length === 2) {
-        const dx = pts[1].x - pts[0].x;
-        const dy = pts[1].y - pts[0].y;
-        const len = Math.hypot(dx, dy) || 1;
-        const alpha = Math.atan2(dy, dx);
-        targetCtx.beginPath();
-        targetCtx.arc(pts[0].x, pts[0].y, widths[0] / 2, alpha + Math.PI / 2, alpha + 1.5 * Math.PI, false);
-        targetCtx.arc(pts[1].x, pts[1].y, widths[1] / 2, alpha - Math.PI / 2, alpha + Math.PI / 2, false);
-        targetCtx.closePath();
-        targetCtx.fill();
-      } else {
-        const tangents = [];
-        for (let i = 0; i < pts.length; i++) {
-          let dx, dy;
-          if (i === 0) {
-            dx = pts[1].x - pts[0].x;
-            dy = pts[1].y - pts[0].y;
-          } else if (i === pts.length - 1) {
-            dx = pts[i].x - pts[i - 1].x;
-            dy = pts[i].y - pts[i - 1].y;
-          } else {
-            dx = pts[i + 1].x - pts[i - 1].x;
-            dy = pts[i + 1].y - pts[i - 1].y;
-          }
-          const len = Math.hypot(dx, dy) || 1;
-          tangents.push({ x: dx / len, y: dy / len });
-        }
-
-        const leftPts = [];
-        const rightPts = [];
-        for (let i = 0; i < pts.length; i++) {
-          const t = tangents[i];
-          const nx = t.y;
-          const ny = -t.x;
-          const r = widths[i] / 2;
-          leftPts.push({ x: pts[i].x + nx * r, y: pts[i].y + ny * r });
-          rightPts.push({ x: pts[i].x - nx * r, y: pts[i].y - ny * r });
-        }
-
-        const alpha0 = Math.atan2(tangents[0].y, tangents[0].x);
-        const alphaLast = Math.atan2(tangents[tangents.length - 1].y, tangents[tangents.length - 1].x);
-
-        targetCtx.beginPath();
-        // 1. 시작점 둥근 캡
-        targetCtx.arc(pts[0].x, pts[0].y, widths[0] / 2, alpha0 + Math.PI / 2, alpha0 + 1.5 * Math.PI, false);
-
-        // 2. 좌측 외곽선 스무스 quadratic 연결
-        for (let i = 0; i < leftPts.length - 1; i++) {
-          const midX = (leftPts[i].x + leftPts[i + 1].x) / 2;
-          const midY = (leftPts[i].y + leftPts[i + 1].y) / 2;
-          targetCtx.quadraticCurveTo(leftPts[i].x, leftPts[i].y, midX, midY);
-        }
-        targetCtx.lineTo(leftPts[leftPts.length - 1].x, leftPts[leftPts.length - 1].y);
-
-        // 3. 끝점 둥근 캡
-        targetCtx.arc(pts[pts.length - 1].x, pts[pts.length - 1].y, widths[widths.length - 1] / 2, alphaLast - Math.PI / 2, alphaLast + Math.PI / 2, false);
-
-        // 4. 우측 외곽선 스무스 quadratic 연결 (역방향)
-        for (let i = rightPts.length - 1; i > 0; i--) {
-          const midX = (rightPts[i].x + rightPts[i - 1].x) / 2;
-          const midY = (rightPts[i].y + rightPts[i - 1].y) / 2;
-          targetCtx.quadraticCurveTo(rightPts[i].x, rightPts[i].y, midX, midY);
-        }
-        targetCtx.lineTo(rightPts[0].x, rightPts[0].y);
-
-        // 5. 단일 폴리곤 닫기 & 1회 고속 채우기
-        targetCtx.closePath();
-        targetCtx.fill();
+      targetCtx.beginPath();
+      targetCtx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length - 1; i++) {
+        const midX = (pts[i].x + pts[i + 1].x) / 2;
+        const midY = (pts[i].y + pts[i + 1].y) / 2;
+        targetCtx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
       }
+      const last = pts[pts.length - 1];
+      targetCtx.lineTo(last.x, last.y);
+      targetCtx.stroke();
     }
 
     targetCtx.restore();
