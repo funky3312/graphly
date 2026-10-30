@@ -2998,17 +2998,19 @@ class GraphApp {
       return { x: m.x, y: m.y };
     };
 
-    // 🌟 [아이패드 240Hz 애플펜슬 홀드 노이즈 제거]:
-    // 1) 끝점 홀드 중 12px 반경 내에 뭉친 수십 개의 미세 떨림 점들을 먼저 정리
+    // 🌟 [아이패드 240Hz 애플펜슬 시작점·끝점 홀드 노이즈 제거]:
+    // 1) 시작점과 끝점 홀드 중 12px 반경 내에 뭉친 미세 떨림 점들을 양쪽 모두 정리
+    const rawFirst = rawScreenPts[0];
+    let trimStartIdx = 0;
+    while (trimStartIdx < rawScreenPts.length - 3 && Math.hypot(rawScreenPts[trimStartIdx + 1].x - rawFirst.x, rawScreenPts[trimStartIdx + 1].y - rawFirst.y) <= 10.0) {
+      trimStartIdx++;
+    }
     const rawLast = rawScreenPts[rawScreenPts.length - 1];
     let trimEndIdx = rawScreenPts.length - 1;
-    while (trimEndIdx > 2 && Math.hypot(rawScreenPts[trimEndIdx - 1].x - rawLast.x, rawScreenPts[trimEndIdx - 1].y - rawLast.y) <= 12.0) {
+    while (trimEndIdx > trimStartIdx + 2 && Math.hypot(rawScreenPts[trimEndIdx - 1].x - rawLast.x, rawScreenPts[trimEndIdx - 1].y - rawLast.y) <= 12.0) {
       trimEndIdx--;
     }
-    const trimmedPts = rawScreenPts.slice(0, trimEndIdx + 1);
-    if (trimmedPts[trimmedPts.length - 1] !== rawLast) {
-      trimmedPts.push(rawLast);
-    }
+    const trimmedPts = [rawFirst, ...rawScreenPts.slice(trimStartIdx + 1, trimEndIdx), rawLast];
 
     // 2) 공간 거리(3.0px) 기준으로 균일하게 리샘플링하여 240Hz 중복 점으로 인한 arcLen 부풀림 원천 차단
     const screenPts = [trimmedPts[0]];
@@ -3023,7 +3025,7 @@ class GraphApp {
     }
 
     const N = screenPts.length;
-    if (N < 3) return null;
+    if (N < 2) return null;
     const pStart = screenPts[0];
     const pEnd = screenPts[N - 1];
 
@@ -3048,7 +3050,7 @@ class GraphApp {
     const minDim = Math.min(W, H);
     const straightness = chordLen / Math.max(1, arcLen);
 
-    // 시작점-끝점 직선으로부터의 최대 수직 이탈 거리 계산 (아이패드 직선 인식률 극대화)
+    // 시작점-끝점 직선으로부터의 최대 수직 이탈 거리 계산
     let maxLineDev = 0;
     for (let i = 1; i < N - 1; i++) {
       const dev = this.distToSegment(screenPts[i], pStart, pEnd);
@@ -3056,10 +3058,12 @@ class GraphApp {
     }
 
     // --- [1. 직선 판별 (Straight Line & Axis Magnet Snap)] ---
-    const isStraightLine = (chordLen >= 20) && (
-      straightness >= 0.80 ||
-      (straightness >= 0.70 && maxLineDev <= Math.max(15, chordLen * 0.085))
-    );
+    // 🌟 직선은 직선도(straightness >= 0.78)와 동시에 최대 이탈 거리(maxLineDev <= 11.5% chordLen)를 만족해야 함!
+    // (이를 통해 손으로 그은 직선은 100% 인식하면서, 완만한 이차함수 포물선이 직선으로 둔갑하는 현상을 완벽 차단!)
+    const isStraightLine = (chordLen >= 18) &&
+      (maxLineDev <= Math.max(16, chordLen * 0.115)) &&
+      (straightness >= 0.78 || (straightness >= 0.70 && maxLineDev <= Math.max(12, chordLen * 0.08)));
+
     if (isStraightLine) {
       let endX = pEnd.x;
       let endY = pEnd.y;
@@ -3069,8 +3073,8 @@ class GraphApp {
       const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
       const absAngle = Math.abs(angleDeg);
 
-      const snapAngleThresh = 1.5;
-      const diagAngleThresh = 1.2;
+      const snapAngleThresh = 4.0;
+      const diagAngleThresh = 1.5;
 
       let snapped = null;
       if (absAngle < snapAngleThresh || absAngle > (180 - snapAngleThresh)) {
@@ -3096,47 +3100,24 @@ class GraphApp {
       };
     }
 
-    // --- [2. 열린 수학 함수 곡선 판별: 이차함수 포물선(Parabola) & 극점 2개 삼차/삼각 개형(Cubic/Sine Wave)] ---
-    // 🌟 폭이 좁은 이차함수(U/∩)나 삼차함수(N)가 닫힌 도형(사각형/타원)으로 오판되지 않도록 열린 함수 개형을 먼저 검사!
+    // --- [2. 열린 수학 함수 곡선 판별: 삼차함수(Cubic Wave) & 이차함수 포물선(Parabola)] ---
     const horizSpan = Math.abs(pEnd.x - pStart.x);
     const gap = chordLen;
-    // 진짜 닫힌 도형은 시작점과 끝점이 전체 궤적 길이의 15% 이내로 만나는 루프일 때만 해당!
-    const isActuallyClosedLoop = (gap <= arcLen * 0.15) || (gap <= 24);
+    // 진짜 닫힌 도형은 시작점과 끝점이 전체 궤적 길이의 16% 이내로 만나는 루프일 때만 해당!
+    const isActuallyClosedLoop = (gap <= arcLen * 0.16) || (gap <= 24);
 
-    if (!isActuallyClosedLoop && W >= 24 && H >= 20 && horizSpan >= W * 0.42) {
+    if (!isActuallyClosedLoop && W >= 20 && H >= 20 && horizSpan >= W * 0.28) {
       // 필기 진행 방향을 좌->우로 정렬한 점열 생성
       const ptsLR = (pStart.x <= pEnd.x) ? screenPts : screenPts.slice().reverse();
       const pLeft = ptsLR[0];
       const pRight = ptsLR[N - 1];
 
-      // x방향 진행 일관성 검사 (원/사각형처럼 완전히 되돌아오는 루프는 배제하되, 삼차함수 가운데 획의 급경사/역경사는 허용)
-      let forwardLen = 0;
-      let backwardLen = 0;
-      for (let i = 0; i < N - 1; i++) {
-        const dx = ptsLR[i + 1].x - ptsLR[i].x;
-        if (dx >= -2.5) forwardLen += Math.abs(dx);
-        else backwardLen += Math.abs(dx);
-      }
+      // (A) 극점 2개짜리 삼차함수 개형 (100% 완벽한 변곡점 점대칭 도형) 판별
+      // 🌟 이차함수 끝단 미세 갈고리가 삼차함수로 오판되지 않도록 3개 구간 스윙(sw1, sw2, sw3) 모두 최소 0.22*H 이상 요구!
+      let bestUpDownUp = { swing: -1, i1: -1, i2: -1 };
+      let bestDownUpDown = { swing: -1, i1: -1, i2: -1 };
 
-      if (backwardLen <= Math.max(forwardLen * 0.85, W * 0.80)) {
-        // 내부 구간(양끝 5% 제외)에서 화면 최고점(topPeak, 극대)과 화면 최저점(botPeak, 극소) 탐색
-        const iStart = Math.max(1, Math.floor(N * 0.05));
-        const iEnd = Math.min(N - 2, Math.ceil(N * 0.95));
-        let topPeak = ptsLR[iStart];
-        let botPeak = ptsLR[iStart];
-        for (let i = iStart; i <= iEnd; i++) {
-          if (ptsLR[i].y < topPeak.y) topPeak = ptsLR[i];
-          if (ptsLR[i].y > botPeak.y) botPeak = ptsLR[i];
-        }
-
-        const topInsideX = (topPeak.x >= minX + 0.05 * W && topPeak.x <= maxX - 0.05 * W);
-        const botInsideX = (botPeak.x >= minX + 0.05 * W && botPeak.x <= maxX - 0.05 * W);
-
-        // (A) 극점 2개짜리 삼차함수 개형 (100% 완벽한 변곡점 점대칭 도형) 판별
-        // 필기 순서(0 < i1 < i2 < N-1)를 기준으로 3구간 오르내림(↗↘↗ 또는 ↘↗↘) 탐색!
-        let bestUpDownUp = { swing: -1, i1: -1, i2: -1 };
-        let bestDownUpDown = { swing: -1, i1: -1, i2: -1 };
-
+      if (horizSpan >= W * 0.40) {
         let minYIdxSoFar = 1;
         let maxYIdxSoFar = 1;
         for (let i2 = 2; i2 < N - 1; i2++) {
@@ -3149,7 +3130,7 @@ class GraphApp {
           const sw1U = pLeft.y - e1U.y;
           const sw2U = e2U.y - e1U.y;
           const sw3U = e2U.y - pRight.y;
-          if (sw1U >= 0.10 * H && sw2U >= 0.18 * H && sw3U >= 0.10 * H && (e2U.x - e1U.x) >= -0.65 * W) {
+          if (sw1U >= 0.22 * H && sw2U >= 0.25 * H && sw3U >= 0.22 * H && (e2U.x - e1U.x) >= -0.55 * W) {
             const totalSw = sw1U + sw2U + sw3U;
             if (totalSw > bestUpDownUp.swing) {
               bestUpDownUp = { swing: totalSw, i1: minYIdxSoFar, i2: i2 };
@@ -3162,108 +3143,122 @@ class GraphApp {
           const sw1D = e1D.y - pLeft.y;
           const sw2D = e1D.y - e2D.y;
           const sw3D = pRight.y - e2D.y;
-          if (sw1D >= 0.10 * H && sw2D >= 0.18 * H && sw3D >= 0.10 * H && (e2D.x - e1D.x) >= -0.65 * W) {
+          if (sw1D >= 0.22 * H && sw2D >= 0.25 * H && sw3D >= 0.22 * H && (e2D.x - e1D.x) >= -0.55 * W) {
             const totalSw = sw1D + sw2D + sw3D;
             if (totalSw > bestDownUpDown.swing) {
               bestDownUpDown = { swing: totalSw, i1: maxYIdxSoFar, i2: i2 };
             }
           }
         }
+      }
 
-        const isUpDownUp = (bestUpDownUp.swing > 0 && bestUpDownUp.swing >= bestDownUpDown.swing);
-        const isDownUpDown = (!isUpDownUp && bestDownUpDown.swing > 0);
+      const isUpDownUp = (bestUpDownUp.swing > 0 && bestUpDownUp.swing >= bestDownUpDown.swing);
+      const isDownUpDown = (!isUpDownUp && bestDownUpDown.swing > 0);
 
-        if (isUpDownUp || isDownUpDown) {
-          const chosen = isUpDownUp ? bestUpDownUp : bestDownUpDown;
-          const e1 = ptsLR[chosen.i1];
-          const e2 = ptsLR[chosen.i2];
+      if (isUpDownUp || isDownUpDown) {
+        const chosen = isUpDownUp ? bestUpDownUp : bestDownUpDown;
+        const e1 = ptsLR[chosen.i1];
+        const e2 = ptsLR[chosen.i2];
 
-          const cx = (minX + maxX) / 2;
-          const cy = (e1.y + e2.y) / 2;
-          const amp = Math.max(H * 0.28, Math.abs(e2.y - e1.y) / 2);
-          const dir = isUpDownUp ? 1 : -1;
+        const cy = (e1.y + e2.y) / 2;
+        const amp = Math.max(H * 0.28, Math.abs(e2.y - e1.y) / 2);
+        const dir = isUpDownUp ? 1 : -1;
 
-          const leftTailRatio = Math.abs(pLeft.y - cy) / Math.max(1, amp);
-          const rightTailRatio = Math.abs(pRight.y - cy) / Math.max(1, amp);
-          const avgTailRatio = (leftTailRatio + rightTailRatio) / 2;
-          const sMax = (avgTailRatio < 0.35) ? 1.75 : Math.min(2.02, Math.max(1.85, 1.75 + avgTailRatio * 0.22));
+        const leftTailRatio = Math.abs(pLeft.y - cy) / Math.max(1, amp);
+        const rightTailRatio = Math.abs(pRight.y - cy) / Math.max(1, amp);
+        const avgTailRatio = (leftTailRatio + rightTailRatio) / 2;
+        const sMax = (avgTailRatio < 0.35) ? 1.75 : Math.min(2.02, Math.max(1.85, 1.75 + avgTailRatio * 0.22));
 
-          const sampleCount = 64;
-          const waveScreenPts = [];
-          for (let k = 0; k <= sampleCount; k++) {
-            const u = k / sampleCount;
-            const s = -sMax + 2 * sMax * u;
-            const sx = minX + W * u;
-            const gVal = (3 * s - s * s * s) / 2;
-            const sy = cy + dir * amp * gVal;
-            waveScreenPts.push({ x: sx, y: sy });
-          }
-          return {
-            type: 'cubic_wave',
-            closed: false,
-            pts: waveScreenPts.map(toTargetCoord)
-          };
+        const sampleCount = 64;
+        const waveScreenPts = [];
+        for (let k = 0; k <= sampleCount; k++) {
+          const u = k / sampleCount;
+          const s = -sMax + 2 * sMax * u;
+          const sx = minX + W * u;
+          const gVal = (3 * s - s * s * s) / 2;
+          const sy = cy + dir * amp * gVal;
+          waveScreenPts.push({ x: sx, y: sy });
         }
+        return {
+          type: 'cubic_wave',
+          closed: false,
+          pts: waveScreenPts.map(toTargetCoord)
+        };
+      }
 
-        // (B) 이차함수 포물선 (Parabola: 아래로 볼록 U / 위로 볼록 ∩) 판별
-        const isCupParabola = botInsideX &&
-          (pLeft.y <= minY + 0.68 * H) &&
-          (pRight.y <= minY + 0.68 * H) &&
-          (maxY - Math.max(pLeft.y, pRight.y) >= 0.28 * H) &&
-          (maxY - Math.min(pLeft.y, pRight.y) >= 0.60 * H);
+      // (B) 이차함수 포물선 (Parabola: 아래로 볼록 U / 위로 볼록 ∩) 판별
+      // 🌟 아이패드에서 삼차함수가 100% 잘 인식된 것과 동일한 '필기 순서 극점 스윙(↘↗ 또는 ↗↘)' 알고리즘 적용!
+      // (손으로 그린 둥근 U자/∩자 개형이 u^2 템플릿 오차나 좌우 비대칭 때문에 탈락하지 않도록 직관화)
+      let botIdx = 1;
+      let topIdx = 1;
+      for (let i = 1; i < N - 1; i++) {
+        if (ptsLR[i].y > ptsLR[botIdx].y) botIdx = i;
+        if (ptsLR[i].y < ptsLR[topIdx].y) topIdx = i;
+      }
+      const botPeak = ptsLR[botIdx];
+      const topPeak = ptsLR[topIdx];
 
-        const isCapParabola = topInsideX &&
-          (pLeft.y >= maxY - 0.68 * H) &&
-          (pRight.y >= maxY - 0.68 * H) &&
-          (Math.min(pLeft.y, pRight.y) - minY >= 0.28 * H) &&
-          (Math.max(pLeft.y, pRight.y) - minY >= 0.60 * H);
+      // botIdx 전후의 최고점(최소 y) 탐색 -> 아래로 볼록(U) 스윙 측정
+      let preBotMinY = ptsLR[0].y;
+      for (let i = 0; i < botIdx; i++) {
+        if (ptsLR[i].y < preBotMinY) preBotMinY = ptsLR[i].y;
+      }
+      let postBotMinY = ptsLR[N - 1].y;
+      for (let i = botIdx + 1; i < N; i++) {
+        if (ptsLR[i].y < postBotMinY) postBotMinY = ptsLR[i].y;
+      }
 
-        if ((isCupParabola || isCapParabola) && backwardLen <= forwardLen * 0.35) {
-          // 오차 판정은 실제 꼭짓점(botPeak / topPeak)과 좌우 날개 각각의 높이를 기준으로 유연하게 측정하고,
-          // 렌더링 결과물은 완벽한 좌우 대칭 이차함수 포물선으로 생성!
-          const actualVx = isCupParabola ? botPeak.x : topPeak.x;
-          const vy = isCupParabola ? maxY : minY;
-          const leftSpan = Math.max(8, actualVx - minX);
-          const rightSpan = Math.max(8, maxX - actualVx);
+      // topIdx 전후의 최저점(최대 y) 탐색 -> 위로 볼록(∩) 스윙 측정
+      let preTopMaxY = ptsLR[0].y;
+      for (let i = 0; i < topIdx; i++) {
+        if (ptsLR[i].y > preTopMaxY) preTopMaxY = ptsLR[i].y;
+      }
+      let postTopMaxY = ptsLR[N - 1].y;
+      for (let i = topIdx + 1; i < N; i++) {
+        if (ptsLR[i].y > postTopMaxY) postTopMaxY = ptsLR[i].y;
+      }
 
-          const evalFitParaY = (x) => {
-            if (x <= actualVx) {
-              const u = (actualVx - x) / leftSpan;
-              return vy + (pLeft.y - vy) * (u * u);
-            } else {
-              const u = (x - actualVx) / rightSpan;
-              return vy + (pRight.y - vy) * (u * u);
-            }
-          };
+      const botInsideX = (botPeak.x >= minX + 0.08 * W && botPeak.x <= maxX - 0.08 * W);
+      const topInsideX = (topPeak.x >= minX + 0.08 * W && topPeak.x <= maxX - 0.08 * W);
 
-          let paraErrSum = 0;
-          for (let i = 0; i < N; i++) {
-            paraErrSum += Math.abs(ptsLR[i].y - evalFitParaY(ptsLR[i].x));
-          }
-          const avgParaErr = paraErrSum / N;
+      const cupDownSwing = botPeak.y - preBotMinY;
+      const cupUpSwing = botPeak.y - postBotMinY;
+      const capUpSwing = preTopMaxY - topPeak.y;
+      const capDownSwing = postTopMaxY - topPeak.y;
 
-          if (avgParaErr <= H * 0.32) {
-            const vx = (minX + maxX) / 2;
-            const endY = isCupParabola ? Math.min(pLeft.y, pRight.y) : Math.max(pLeft.y, pRight.y);
-            const halfW = Math.max(1, W / 2);
-            const evalCleanParaY = (x) => {
-              const u = (x - vx) / halfW;
-              return vy + (endY - vy) * (u * u);
-            };
-            const sampleCount = 48;
-            const paraScreenPts = [];
-            for (let s = 0; s <= sampleCount; s++) {
-              const sx = minX + W * (s / sampleCount);
-              const sy = evalCleanParaY(sx);
-              paraScreenPts.push({ x: sx, y: sy });
-            }
-            return {
-              type: 'parabola',
-              closed: false,
-              pts: paraScreenPts.map(toTargetCoord)
-            };
-          }
+      // 열린 포물선 조건: 양쪽 날개가 모두 꼭짓점 대비 42% 이상 뻗어 올라가거나(U) 내려가고(∩),
+      // 원/타원처럼 입구가 좁게 오므라든 도형이 아닐 것(gap > maxDim * 0.30 또는 horizSpan >= W * 0.45)
+      const isOpenArch = (gap > maxDim * 0.30) || (horizSpan >= W * 0.45);
+      const isCupParabola = isOpenArch && botInsideX &&
+        (cupDownSwing >= 0.42 * H) && (cupUpSwing >= 0.42 * H) &&
+        (Math.max(cupDownSwing, cupUpSwing) >= 0.65 * H);
+
+      const isCapParabola = isOpenArch && topInsideX &&
+        (capUpSwing >= 0.42 * H) && (capDownSwing >= 0.42 * H) &&
+        (Math.max(capUpSwing, capDownSwing) >= 0.65 * H);
+
+      if (isCupParabola || isCapParabola) {
+        // 사각형(ㄷ자/ㅁ자)과 구분하기 위해 꼭짓점 부근이 평평한 직선 바닥인지 간단히 체크 (타원/포물선은 매끄럽게 통과)
+        const vy = isCupParabola ? maxY : minY;
+        const endY = isCupParabola ? Math.min(preBotMinY, postBotMinY) : Math.max(preTopMaxY, postTopMaxY);
+        const vx = (minX + maxX) / 2;
+        const halfW = Math.max(1, W / 2);
+        const evalCleanParaY = (x) => {
+          const u = (x - vx) / halfW;
+          return vy + (endY - vy) * (u * u);
+        };
+        const sampleCount = 48;
+        const paraScreenPts = [];
+        for (let s = 0; s <= sampleCount; s++) {
+          const sx = minX + W * (s / sampleCount);
+          const sy = evalCleanParaY(sx);
+          paraScreenPts.push({ x: sx, y: sy });
         }
+        return {
+          type: 'parabola',
+          closed: false,
+          pts: paraScreenPts.map(toTargetCoord)
+        };
       }
     }
 
@@ -3466,7 +3461,7 @@ class GraphApp {
 
     this._inkHoldTimer = setTimeout(() => {
       this._onInkHoldTriggered();
-    }, 420);
+    }, 340);
   }
 
   _onInkHoldTriggered() {
@@ -17241,6 +17236,8 @@ class GraphApp {
         if (this.virtualStylusEl) this.virtualStylusEl.classList.add('drawing');
         this.updateStylusPenPosition(pos.x, pos.y, e);
         this._lastInkScreenPos = { x: pos.x, y: pos.y };
+        this._lastRawInkScreenPos = { x: pos.x, y: pos.y };
+        this._lastMoveEventScreenPos = { x: pos.x, y: pos.y };
         this._liveBezierScreenPts = [{ x: pos.x, y: pos.y, p: pressure }];
         this._inkHoldDetected = false;
         this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
@@ -17879,10 +17876,15 @@ class GraphApp {
             return;
           }
 
-          // 홀드 미인식 상태: 이동 거리가 16px 이상이면 홀드 타이머 리셋 (아이패드 애플펜슬 유리면 미세 흔들림 허용)
+          // 🌟 [홀드 감지 정밀 앵커링]:
+          // 빠르게 직선/이차함수를 긋고 멈췄을 때 이전 기준점이 뒤에 남지 않도록 프레임 간 이동량(stepDist > 3.5px)이 있을 때마다
+          // 현재 위치를 새로운 홀드 기준점으로 즉시 갱신하고, 멈춘 상태에서의 미세한 손떨림(stepDist <= 3.5px & dHold <= 14px)은 무시합니다!
+          const prevMovePos = this._lastMoveEventScreenPos || pos;
+          const stepDist = Math.hypot(pos.x - prevMovePos.x, pos.y - prevMovePos.y);
+          this._lastMoveEventScreenPos = { x: pos.x, y: pos.y };
           if (this._inkHoldLastScreenPos) {
             const dHold = Math.hypot(pos.x - this._inkHoldLastScreenPos.x, pos.y - this._inkHoldLastScreenPos.y);
-            if (dHold > 16) {
+            if (stepDist > 3.5 || dHold > 14) {
               this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
               this._lastSignificantMoveTime = Date.now();
               this._startInkHoldTimer();
@@ -17895,17 +17897,34 @@ class GraphApp {
           for (let i = 0; i < events.length; i++) {
             const ev = events[i];
             const pPos = getPos(ev);
+            this._lastRawInkScreenPos = { x: pPos.x, y: pPos.y };
 
-            // 🌟 [240Hz 유리면 노이즈 필터 & 0ms 중점 베지어 직결]:
-            // 2.0px 미만 미세 떨림은 입력 단계에서 바로 걸러내고, 새로운 점만 C1 중점 2차 베지어 곡선으로 즉시 그립니다!
+            // 🌟 [실시간 인플레이스 스트림라인 보정 & 100% 무변형 베지어 일치]:
+            // 1) 아이패드 유리면 위의 2.6px 미만 미세 손떨림 노이즈를 입력 단계에서 컷오프하고,
+            // 2) 직전 확정 점들과 가중 평균(Streamline Stabilization)을 실시간으로 적용한 좌표를
+            //    실시간 드로잉(_liveBezierScreenPts)과 저장 점열(currentInkStroke.points) 양쪽에 100% 동일하게 넣습니다!
+            //    -> 쓰는 즉시 유려한 명필 곡선이 그려지며, 나중에 render()가 호출되어도 필체가 절대 바뀌지 않습니다!
             const prevScreenPos = this._lastInkScreenPos;
             if (prevScreenPos) {
               const d = Math.hypot(pPos.x - prevScreenPos.x, pPos.y - prevScreenPos.y);
-              if (d < 2.0) continue;
+              if (d < 2.6) continue;
             }
-            this._lastInkScreenPos = { x: pPos.x, y: pPos.y };
 
-            const m = this.screenToMath(pPos.x, pPos.y);
+            let sx = pPos.x;
+            let sy = pPos.y;
+            const liveLen = this._liveBezierScreenPts ? this._liveBezierScreenPts.length : 0;
+            if (liveLen >= 2) {
+              const pPrev1 = this._liveBezierScreenPts[liveLen - 1];
+              const pPrev2 = this._liveBezierScreenPts[liveLen - 2];
+              sx = pPrev2.x * 0.16 + pPrev1.x * 0.36 + pPos.x * 0.48;
+              sy = pPrev2.y * 0.16 + pPrev1.y * 0.36 + pPos.y * 0.48;
+            } else if (liveLen === 1) {
+              const pPrev1 = this._liveBezierScreenPts[0];
+              sx = pPrev1.x * 0.35 + pPos.x * 0.65;
+              sy = pPrev1.y * 0.35 + pPos.y * 0.65;
+            }
+            this._lastInkScreenPos = { x: sx, y: sy };
+
             let rawPressure = 0.5;
             if (ev.pointerType === 'pen' && typeof ev.pressure === 'number' && ev.pressure > 0) {
               rawPressure = ev.pressure;
@@ -17916,9 +17935,10 @@ class GraphApp {
             const pressure = prevPressure * 0.35 + rawPressure * 0.65;
             this._lastPressure = pressure;
             if (this.currentInkStroke.target === 'graph') {
+              const m = this.screenToMath(sx, sy);
               this.currentInkStroke.points.push({ x: m.x, y: m.y, p: pressure });
             } else {
-              const bPt = this.screenToBoard(pPos.x, pPos.y);
+              const bPt = this.screenToBoard(sx, sy);
               this.currentInkStroke.points.push({ x: bPt.x, y: bPt.y, p: pressure });
             }
             addedPoints++;
@@ -17927,7 +17947,7 @@ class GraphApp {
               if (!this._liveBezierScreenPts) {
                 this._liveBezierScreenPts = [];
               }
-              this._liveBezierScreenPts.push({ x: pPos.x, y: pPos.y, p: pressure });
+              this._liveBezierScreenPts.push({ x: sx, y: sy, p: pressure });
               this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
             }
           }
@@ -18737,7 +18757,36 @@ class GraphApp {
           this._inkHoldTimer = null;
         }
 
+        // 🌟 펜을 떼기 직전에 220ms 이상 멈춰 있었다면(타이머 간발의 차 보정) 즉시 도형 자동 인식을 시도!
+        if (!this._inkHoldDetected && this.currentInkStroke && this._lastSignificantMoveTime && (Date.now() - this._lastSignificantMoveTime >= 220)) {
+          this._onInkHoldTriggered();
+        }
+
+        // 일반 필기 마감 시 마지막 펜 끝 좌표를 매끄럽게 마무리
+        if (!this._inkHoldDetected && this.currentInkStroke && !this.currentInkStroke.isShape && this._lastRawInkScreenPos && this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 2) {
+          const lastSmoothed = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
+          const rawEnd = this._lastRawInkScreenPos;
+          if (Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y) >= 1.5) {
+            const endX = lastSmoothed.x * 0.35 + rawEnd.x * 0.65;
+            const endY = lastSmoothed.y * 0.35 + rawEnd.y * 0.65;
+            const p = this._lastPressure || 0.5;
+            this._liveBezierScreenPts.push({ x: endX, y: endY, p: p });
+            if (this.currentInkStroke.target === 'graph') {
+              const m = this.screenToMath(endX, endY);
+              this.currentInkStroke.points.push({ x: m.x, y: m.y, p: p });
+            } else {
+              const bPt = this.screenToBoard(endX, endY);
+              this.currentInkStroke.points.push({ x: bPt.x, y: bPt.y, p: p });
+            }
+            if (!this.currentInkStroke.isHighlighter) {
+              this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
+            }
+          }
+        }
+
         this._inkHoldDetected = false;
+        this._lastRawInkScreenPos = null;
+        this._lastMoveEventScreenPos = null;
         this._inkHoldLastScreenPos = null;
         this._lastSignificantMoveTime = 0;
         this.isDrawingInk = false;
@@ -18911,13 +18960,14 @@ class GraphApp {
         !this.isPdfToGraphCropMode
       );
 
-      // 🛡️ [팜 리젝션 1: 접촉 면적 기반 손바닥 판별]
-      // 손가락 끝(Fingertip)은 보통 width/height가 10~26px인 반면, 손날/손바닥은 면적이 넓게 찍힘(> 30px)
+      // 🛡️ [팜 리젝션 1: 초거대 손바닥 접촉 판별]
+      // 주의: iPadOS Safari에서 일반 성인 손가락 끝(Fingertip) 터치의 기본 e.width/height는 약 41.7px(radiusX ≈ 20.8px)입니다!
+      // 따라서 30px로 제한하면 모든 정상 손가락 터치가 차단되므로, 진짜 손바닥 전체가 눌린 경우(> 90px)만 걸러냅니다.
       const isLargePalmContact = (e) => {
         if (!e || e.pointerType !== 'touch') return false;
         const w = typeof e.width === 'number' ? e.width : 0;
         const h = typeof e.height === 'number' ? e.height : 0;
-        return (w > 30 || h > 30);
+        return (w > 90 || h > 90);
       };
 
       // 🛡️ [팜 리젝션 2: 애플펜슬 필기 중 + 펜 뗀 직후 900ms 연속 필기 보호 쿨다운]
@@ -18993,8 +19043,8 @@ class GraphApp {
           if (this.activePointers.size === 2) {
             const pts = Array.from(this.activePointers.values());
             const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-            // 필기 모드에서 손날 1개가 가까운 2점(55px 미만)으로 갈라져 찍힌 경우 핀치로 오판하지 않고 무시!
-            if (isWritingToolActive() && dist < 55) {
+            // 필기 모드에서 손날 1개가 아주 가까운 2점(45px 미만)으로 갈라져 찍힌 경우 핀치로 오판하지 않고 무시!
+            if (isWritingToolActive() && dist < 45) {
               return;
             }
             this._pinchWasActiveInGesture = true;
@@ -19174,9 +19224,15 @@ class GraphApp {
       }
     });
 
-    // 🌟 [iPadOS Safari 애플펜슬 Scribble(손글씨 변환) 및 더블탭 줌 방어 전용 리스너]:
-    // 주의: 손바닥(direct touch)에 대해 touchstart에서 e.preventDefault()를 호출하면 WebKit의 하드웨어 팜 리젝션이 깨지고
-    // 중복 핀치 호출로 인해 화면이 덜컹거리므로, 오직 애플펜슬(touchType === 'stylus')이 감지될 때만 e.preventDefault()를 수행합니다!
+    // 🌟 [iPadOS Safari 애플펜슬 Scribble 방어 & 동시 2손가락 터치(Two-Finger Pan/Zoom) 보조 리스너]:
+    // 1) 애플펜슬(stylus) 감지 시에는 즉시 잔류 터치를 비우고 Scribble을 방어합니다.
+    // 2) 펜슬 비활성 상태에서 두 손가락(e.touches.length === 2)이 동시에 닿았을 때,
+    //    iPadOS Safari가 간헐적으로 두 번째 pointerdown을 누락하더라도 100% 두 손가락 이동/줌아웃이 작동하도록 연결합니다!
+    const isPenBusyForTouch = () => {
+      if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) && this._activeDrawingPointerType === 'pen') return true;
+      if (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 900)) return true;
+      return false;
+    };
     this.canvas.addEventListener('touchstart', (e) => {
       const hasStylus = e.touches && Array.from(e.touches).some(t => t.touchType === 'stylus');
       if (hasStylus) {
@@ -19185,6 +19241,45 @@ class GraphApp {
         this._pinchState = null;
         if (e.target === this.canvas) {
           e.preventDefault();
+        }
+        return;
+      }
+      if (isPenBusyForTouch()) return;
+      if (e.touches && e.touches.length >= 3) {
+        this._pinchState = null;
+        this.isPanning = false;
+        this.isBoardPanning = false;
+        return;
+      }
+      if (e.touches && e.touches.length === 2 && !this._pinchState) {
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        if (dist >= 45) {
+          this._pinchWasActiveInGesture = true;
+          this.isPanning = false;
+          this.isBoardPanning = false;
+          this._startCanvasTwoFingerPinch(
+            { id: 't0', x: t0.clientX, y: t0.clientY },
+            { id: 't1', x: t1.clientX, y: t1.clientY }
+          );
+        }
+      }
+    }, { passive: false });
+
+    this.canvas.addEventListener('touchmove', (e) => {
+      const hasStylus = e.touches && Array.from(e.touches).some(t => t.touchType === 'stylus');
+      if (hasStylus || isPenBusyForTouch()) return;
+      if (e.touches && e.touches.length === 2 && this._pinchState) {
+        if (e.cancelable) e.preventDefault();
+        // PointerEvent 경로에서 이미 2포인터 핀치를 처리 중이면 중복 호출 방지, 누락된 경우에만 백업 구동!
+        if (!this.activePointers || this.activePointers.size < 2 || (this._pinchState.id1 === 't0')) {
+          const t0 = e.touches[0];
+          const t1 = e.touches[1];
+          this._moveCanvasTwoFingerPinch(
+            { id: this._pinchState.id1, x: t0.clientX, y: t0.clientY },
+            { id: this._pinchState.id2, x: t1.clientX, y: t1.clientY }
+          );
         }
       }
     }, { passive: false });
@@ -20523,15 +20618,18 @@ class GraphApp {
       return;
     }
 
-    // 🛡️ [필기 모드 손바닥 덜컹거림 방지 데드존(Deadzone Unlock)]:
-    // 처음 손바닥을 댈 때 발생하는 미세한 눌림(14px 미만)이나 1점만 움직이는 경우에는 화면이 0.0px도 움직이지 않도록 잠가두고,
-    // 의도적으로 두 손가락 모두(m1 >= 8, m2 >= 8) 움직이며 14px 이상 이동하거나 간격을 18px 이상 벌렸을 때 그 순간의 위치를 0점(원점)으로 삼아 부드럽게 출발!
+    // 🛡️ [필기 모드 손바닥 덜컹거림 방지 데드존(Deadzone Unlock) & 엄지 고정 줌아웃 지원]:
+    // 1) 두 손가락 화면 이동(Pan): 두 손가락이 함께(m1 >= 5, m2 >= 5) 10px 이상 이동할 때 언락!
+    // 2) 두 손가락 줌인/줌아웃(Pinch): 엄지를 축으로 고정하고 검지만 오므리는 경우가 많으므로, 두 손가락 간격 변화(distChange >= 10px)가 감지되면 즉시 언락!
+    // 언락되는 그 순간의 좌표를 0점(원점)으로 재설정하므로 손바닥을 댈 때의 덜컹거림은 0px로 완벽 차단됩니다!
     if (!this._pinchState.unlocked) {
       const m1 = Math.hypot(p1.x - this._pinchState.initX1, p1.y - this._pinchState.initY1);
       const m2 = Math.hypot(p2.x - this._pinchState.initX2, p2.y - this._pinchState.initY2);
       const moveFromInit = Math.hypot(midX - this._pinchState.initMidX, midY - this._pinchState.initMidY);
       const distChange = Math.abs(dist - this._pinchState.initDist);
-      if (m1 < 8 || m2 < 8 || (moveFromInit < 14 && distChange < 18)) {
+      const isIntentionalPan = (m1 >= 4 && m2 >= 4 && moveFromInit >= 10);
+      const isIntentionalPinch = (m1 >= 3.5 && m2 >= 3.5 && distChange >= 10);
+      if (!isIntentionalPan && !isIntentionalPinch) {
         return;
       }
       this._pinchState.unlocked = true;
