@@ -17148,14 +17148,13 @@ class GraphApp {
           return;
         }
 
-        // 🌟 [대표님 핵심 기획]: 핸들러 노출 상태에서 그래프 외의 어딘가(빈 공간) 클릭하면 핸들러 즉시 사라짐!
-        this.isCurveSelected = false;
-        this.selectedHandleIdx = null;
-        if (this.pulseAnimId) {
-          cancelAnimationFrame(this.pulseAnimId);
-          this.pulseAnimId = null;
-        }
-        this.downInfo = { x: pos.x, y: pos.y, hitHandleIdx: null, hitCurveIdx: null, hitVfCorner: false };
+        // 🌟 [대표님 핵심 기획]:
+        // 누르는 순간(pointerdown)이나 손날/손가락(touch) 접촉, 또는 화면 이동(드래그) 중에는 핸들러를 절대 끄지 않음!
+        // 오직 펜슬(pen)이나 마우스(mouse)로 빈 공간을 이동 없이 '툭' 건드리고 뗐을 때(handleUp)만 핸들러 해제!
+        const downPType = (e && e.pointerType) ? e.pointerType : (e && e.touches ? 'touch' : 'mouse');
+        this.downInfo = { x: pos.x, y: pos.y, hitHandleIdx: null, hitCurveIdx: null, hitVfCorner: false, pointerType: downPType };
+        this._touchPanDeadzoneLocked = (downPType === 'touch');
+        this._touchPanInitPos = { x: pos.x, y: pos.y };
 
         // 🌟 [대표님 핵심 기획: 1층(실시간 그래프 편집) vs 2층(그래프 스샷 후 판서 레이어) 완벽 분리!] 🌟
         // - 2층(this.isGraphCovered === true): 그래프 스샷을 찍어 새로운 판서 레이어로 넘어간 상태 -> 칠판 전체(문제+그래프카드+필기) 확장 이동!
@@ -17168,7 +17167,9 @@ class GraphApp {
           this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
         }
         this.canvas.style.cursor = 'grabbing';
-        this.render();
+        if (!this._touchPanDeadzoneLocked) {
+          this.render();
+        }
         return;
       }
 
@@ -17493,7 +17494,8 @@ class GraphApp {
         }
       }
 
-      this.downInfo = { x: pos.x, y: pos.y, hitHandleIdx, hitCurveIdx, hitVfCorner };
+      const downPTypeGen = (e && e.pointerType) ? e.pointerType : (e && e.touches ? 'touch' : 'mouse');
+      this.downInfo = { x: pos.x, y: pos.y, hitHandleIdx, hitCurveIdx, hitVfCorner, pointerType: downPTypeGen };
 
       // [✂️ 구간 분할 인터랙션은 상단 최우선 블록에서 완벽 처리됨]
 
@@ -17566,13 +17568,11 @@ class GraphApp {
         this.isCurveSelected = false;
         this.selectedHandleIdx = null;
       } else {
-        // 🌟 [대표님 핵심 기획]: 핸들러 노출 상태에서 그래프 외의 빈 공간 터치 시 핸들러 즉시 사라짐!
-        this.isCurveSelected = false;
-        this.selectedHandleIdx = null;
-        if (this.pulseAnimId) {
-          cancelAnimationFrame(this.pulseAnimId);
-          this.pulseAnimId = null;
-        }
+        // 🌟 [대표님 핵심 기획]:
+        // 누르는 순간(pointerdown)이나 손날/손가락(touch) 접촉, 화면 드래그 이동 중에는 핸들러를 절대 끄지 않음!
+        // 오직 펜슬(pen)이나 마우스(mouse)로 빈 공간을 이동 없이 '툭' 건드리고 뗐을 때(handleUp)만 핸들러 해제!
+        this._touchPanDeadzoneLocked = (downPTypeGen === 'touch');
+        this._touchPanInitPos = { x: pos.x, y: pos.y };
 
         // 🌟 [대표님 레이어 철학 100% 완벽 분리] 🌟
         // 1) 2층 판서 레이어(this.isGraphCovered === true, 그래프 스샷 후 넘어간 레이어):
@@ -17588,7 +17588,9 @@ class GraphApp {
           this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
           this.canvas.style.cursor = 'grabbing';
         }
-        this.render();
+        if (!this._touchPanDeadzoneLocked) {
+          this.render();
+        }
       }
     };
 
@@ -18721,15 +18723,7 @@ class GraphApp {
         this.requestRender();
       }
 
-      // 🌟 [롱프레스 오터치 방지]: 빈 화면을 꾹 누르고 뗐을 때(400ms 초과)만 오터치 취소!
-      // [대표님 규칙 엄수]: 곡선을 드래그 중이거나 곡선/핸들을 클릭한 상태에서는 절대 선택을 해제하지 않음!
-      const pressDuration = this._pointerDownStart ? (Date.now() - this._pointerDownStart.time) : 0;
-      if (pressDuration > 400 && !this.draggedHandleIdx && !this.isDrawingInk && !this.isDraggingCurve) {
-        if (this.downInfo && this.downInfo.hitHandleIdx === null && this.downInfo.hitCurveIdx === null) {
-          this.isCurveSelected = false;
-          this.selectedHandleIdx = null;
-        }
-      }
+      // 🌟 [손날 롱프레스 해제 방지]: 손날을 대고 자세를 잡을 때(400ms 초과) 핸들러가 꺼지지 않도록 보호!
 
       // [🪢 올가미(Lasso) 툴 인터랙션]
       if (this.isInkMode && this.activeInkTool === 'lasso') {
@@ -18972,13 +18966,21 @@ class GraphApp {
           this.selectedHandleIdx = null;
           this.render();
         } else {
-          // 빈 공간 클릭 또는 빈 화면 드래그 -> 선택 해제 (핸들러 싹 사라지고 즉시 프리징!)
-          this.selectedHandleIdx = null;
-          this.isCurveSelected = false;
-          this.selectedPwBoundaryIdx = null;
-          if (this.pulseAnimId) {
-            cancelAnimationFrame(this.pulseAnimId);
-            this.pulseAnimId = null;
+          // 🌟 [대표님 핵심 기획]:
+          // 1) 손날이나 손가락(touch)으로 화면을 건드리거나 이동할 때는 핸들러가 절대 사라지지 않음!
+          // 2) 펜슬(pen)이나 마우스(mouse)로도 화면을 드래그 이동(moveDist >= 8px)할 때는 핸들러 유지!
+          // 3) 오직 펜슬(pen)이나 마우스(mouse)로 그래프 밖 빈 공간을 이동 없이 '툭' 건드렸을 때(moveDist < 8px)만 핸들러 해제!
+          const upPType = (e && e.pointerType)
+            ? e.pointerType
+            : ((this.downInfo && this.downInfo.pointerType) ? this.downInfo.pointerType : (e && (e.touches || e.changedTouches) ? 'touch' : 'mouse'));
+          if ((upPType === 'pen' || upPType === 'mouse') && moveDist < 8) {
+            this.selectedHandleIdx = null;
+            this.isCurveSelected = false;
+            this.selectedPwBoundaryIdx = null;
+            if (this.pulseAnimId) {
+              cancelAnimationFrame(this.pulseAnimId);
+              this.pulseAnimId = null;
+            }
           }
           this.render();
         }
