@@ -8685,3 +8685,118 @@ body:not(.theme-light) .btn-cloud-drive-file {
   justify-content: center;
   border-radius: 6px !important;
 }
+
+
+/* 🌟 [대표님 기획: 좌상단 '불러오기(#modalCloudHub)' & 상단 바 'PDF 캡처' 전용 스타일] 🌟 */
+.cloud-import-source-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.btn-import-source {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #f8fafc;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+body:not(.theme-light) .btn-import-source {
+  background: rgba(30, 41, 59, 0.78);
+  border-color: rgba(148, 163, 184, 0.28);
+  color: #f8fafc;
+}
+.btn-import-source:hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+  transform: translateY(-1px);
+}
+body:not(.theme-light) .btn-import-source:hover {
+  border-color: #60a5fa;
+  background: rgba(37, 99, 235, 0.18);
+}
+.btn-resume-open-pdf {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.11), rgba(29, 78, 216, 0.06)) !important;
+  border: 1.5px solid rgba(37, 99, 235, 0.48) !important;
+}
+.btn-resume-open-pdf:hover {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.18), rgba(29, 78, 216, 0.12)) !important;
+  border-color: #2563eb !important;
+}
+.import-source-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+.import-source-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.import-source-main {
+  font-size: 13.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.resume-pdf-filename {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body:not(.theme-light) .resume-pdf-filename {
+  color: #93c5fd;
+}
+.import-source-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.16);
+  color: #475569;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+body:not(.theme-light) .import-source-badge {
+  background: rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
+}
+.import-source-badge.badge-blue {
+  background: #2563eb;
+  color: #ffffff;
+}
+.slim-pdf-capture-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px !important;
+  width: auto !important;
+  padding: 0 9px !important;
+  border-radius: 999px !important;
+  background: rgba(37, 99, 235, 0.12) !important;
+  border: 1px solid rgba(37, 99, 235, 0.38) !important;
+  color: #2563eb !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  cursor: pointer;
+}
+body:not(.theme-light) .slim-pdf-capture-btn {
+  background: rgba(37, 99, 235, 0.24) !important;
+  border-color: rgba(96, 165, 250, 0.5) !important;
+  color: #93c5fd !important;
+}
+.slim-pdf-capture-btn:hover {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}

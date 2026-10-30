@@ -4567,6 +4567,7 @@ class GraphApp {
 
     const triggerFileOpen = () => {
       if (fileInput) {
+        this._isReplacingViaNextCrop = false;
         // 🌟 [대표님 기획]: 파일 선택창 열리며 전체화면 풀리는 현상 방어
         this.wasFullscreenBeforeFile = document.body.classList.contains('fullscreen-mode') || Boolean(document.fullscreenElement);
         this.isWaitingForFilePicker = true;
@@ -4574,16 +4575,12 @@ class GraphApp {
         fileInput.click();
       }
     };
+    this.triggerLocalFileExplorer = triggerFileOpen;
 
     if (btnImport) {
       btnImport.onclick = () => {
-        // 좌측 [불러오기] 버튼을 통한 진입은 기존 문제를 유지하고 겹치기(추가) 허용!
         this._isReplacingViaNextCrop = false;
-        if (this.pdfDoc) {
-          this.openPdfModal();
-        } else {
-          triggerFileOpen();
-        }
+        triggerFileOpen();
       };
     }
 
@@ -4620,6 +4617,8 @@ class GraphApp {
         this.isWaitingForFilePicker = false;
         const rawFiles = e.target.files ? Array.from(e.target.files) : [];
         if (rawFiles.length === 0) return;
+        const modalCloud = document.getElementById('modalCloudHub');
+        if (modalCloud) modalCloud.classList.remove('show');
 
         // 🌟 [대표님 기획]: 파일 선택 완료 즉시 전체화면 100% 복귀
         if (this.wasFullscreenBeforeFile) {
@@ -4662,7 +4661,10 @@ class GraphApp {
             const targetW = Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
             this.setProblemCard(dataUrl, cleanName, null, targetW);
             if (replaceMode) {
-              this._finalizeAppendedCaptureSlide(`문제 ${ (this.lessonPlaylistSlides ? this.lessonPlaylistSlides.length : 1) + 1 }`);
+              this._finalizeAppendedCaptureSlide('');
+            } else if (this.isLessonPlaylistActive) {
+              this.saveCurrentSlideIntoPlaylist();
+              this.syncLessonPlaylistNavBarUI();
             }
             this.showToast(replaceMode
               ? `⏭️ 이전 문제를 닫고 새 문제 [${cleanName}]을(를) 새 칠판에 열었습니다!`
@@ -4701,9 +4703,14 @@ class GraphApp {
       }
     });
 
-    // 모달 닫기
+    // 모달 닫기 (캡처 없이 닫을 때는 _isReplacingViaNextCrop 플래그 초기화)
     const btnClose = document.getElementById('btnClosePdfModal');
-    if (btnClose) btnClose.onclick = () => this.closePdfModal();
+    if (btnClose) {
+      btnClose.onclick = () => {
+        this._isReplacingViaNextCrop = false;
+        this.closePdfModal();
+      };
+    }
 
     // ✂️ 크롭 토글 버튼
     const btnCropToggle = document.getElementById('btnPdfCropToggle');
@@ -4841,21 +4848,108 @@ class GraphApp {
     reader.readAsArrayBuffer(file);
   }
 
-  loadPdfFromArrayBuffer(arrayBuffer, fileName = '교재.pdf') {
+  _saveLastPdfToIndexedDB(uint8Bytes, fileName) {
+    try {
+      if (!window.indexedDB || !uint8Bytes) return;
+      const req = window.indexedDB.open('graphly_pdf_cache_db', 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('last_pdf')) {
+          db.createObjectStore('last_pdf');
+        }
+      };
+      req.onsuccess = (e) => {
+        try {
+          const db = e.target.result;
+          const tx = db.transaction('last_pdf', 'readwrite');
+          tx.objectStore('last_pdf').put({
+            bytes: uint8Bytes,
+            fileName: fileName || '교재.pdf',
+            savedAt: Date.now()
+          }, 'current');
+        } catch (err) { }
+      };
+    } catch (err) { }
+  }
+
+  _loadLastPdfFromIndexedDB() {
+    return new Promise((resolve) => {
+      try {
+        if (!window.indexedDB) return resolve(null);
+        const req = window.indexedDB.open('graphly_pdf_cache_db', 1);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('last_pdf')) {
+            db.createObjectStore('last_pdf');
+          }
+        };
+        req.onsuccess = (e) => {
+          try {
+            const db = e.target.result;
+            const tx = db.transaction('last_pdf', 'readonly');
+            const getReq = tx.objectStore('last_pdf').get('current');
+            getReq.onsuccess = () => resolve(getReq.result || null);
+            getReq.onerror = () => resolve(null);
+          } catch (err) {
+            resolve(null);
+          }
+        };
+        req.onerror = () => resolve(null);
+      } catch (err) {
+        resolve(null);
+      }
+    });
+  }
+
+  async resumeOrOpenCurrentPdf(isNextCaptureSlide = false) {
+    this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
+    if (this.pdfDoc) {
+      this.openPdfModal(false, true);
+      return true;
+    }
+    if (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0) {
+      await this.loadPdfFromArrayBuffer(this._cachedPdfBytes, this.pdfFileName || '교재.pdf', { preserveScroll: true });
+      this.togglePdfCropMode(true);
+      return true;
+    }
+    const cachedRec = await this._loadLastPdfFromIndexedDB();
+    if (cachedRec && cachedRec.bytes) {
+      await this.loadPdfFromArrayBuffer(cachedRec.bytes, cachedRec.fileName || '교재.pdf', { preserveScroll: true });
+      this.togglePdfCropMode(true);
+      return true;
+    }
+    if (this.triggerLocalFileExplorer) {
+      this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
+      this.triggerLocalFileExplorer();
+    }
+    return false;
+  }
+
+  loadPdfFromArrayBuffer(arrayBuffer, fileName = '교재.pdf', options = null) {
     if (!window.pdfjsLib) {
       this.showToast('⚠️ PDF.js 라이브러리를 불러오지 못했습니다.');
       return Promise.reject(new Error('PDF.js not loaded'));
     }
 
+    // PDF.js Worker가 ArrayBuffer를 transfer(detach)해도 원본이 손실되지 않도록 안전 복제본 보관
+    const clonedBytes = new Uint8Array(arrayBuffer instanceof Uint8Array ? arrayBuffer : new Uint8Array(arrayBuffer)).slice();
+    this._cachedPdfBytes = clonedBytes;
+    this.pdfFileName = fileName;
+    if (!(options && options.skipIdbSave)) {
+      this._saveLastPdfToIndexedDB(clonedBytes, fileName);
+    }
+
     this.showToast('⏳ PDF 문서를 불러오는 중입니다...');
-    const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
+    const loadingTask = window.pdfjsLib.getDocument({ data: clonedBytes.slice() });
 
     return loadingTask.promise.then(async pdf => {
       this.pdfDoc = pdf;
       this.pdfTotalPages = pdf.numPages;
-      this.pdfCurrentPage = 1;
-      this.savedPdfScrollTop = 0;
-      this.savedPdfScrollLeft = 0;
+      if (!(options && options.preserveScroll)) {
+        this.pdfCurrentPage = 1;
+        this.savedPdfScrollTop = 0;
+        this.savedPdfScrollLeft = 0;
+      }
 
       const totalEl = document.getElementById('lblPdfTotalPages');
       if (totalEl) totalEl.textContent = pdf.numPages;
@@ -4863,8 +4957,8 @@ class GraphApp {
       const titleEl = document.getElementById('pdfFileName');
       if (titleEl) { titleEl.textContent = fileName; titleEl.title = fileName; }
 
-      // 처음 열 때 2단 시험지가 시원시원하게 꽉 차도록 뷰포트 너비의 82%로 자동 맞춤 줌 계산!
-      this.openPdfModal(true);
+      // 처음 열 때 2단 시험지가 시원시원하게 꽉 차도록 뷰포트 너비의 82%로 자동 맞춤 줌 계산 + 즉시 캡처 모드 활성화!
+      this.openPdfModal(true, true);
       try {
         const firstPage = await pdf.getPage(1);
         const unscaledVp = firstPage.getViewport({ scale: 1.0 });
@@ -4881,7 +4975,8 @@ class GraphApp {
       if (lbl) lbl.textContent = `${Math.round(this.pdfZoom * 100)}%`;
 
       this.renderAllPdfPages(true);
-      this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) 문서가 시원하게 로드되었습니다!`);
+      this.syncLessonPlaylistNavBarUI();
+      this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) 로드 완료! 원하는 문제를 네모로 드래그하세요.`);
       return pdf;
     }).catch(err => {
       console.error('PDF 로드 실패:', err);
@@ -4890,12 +4985,12 @@ class GraphApp {
     });
   }
 
-  openPdfModal(isInitialLoad = false) {
+  openPdfModal(isInitialLoad = false, autoCropMode = true) {
     const modal = document.getElementById('modalPdfViewer');
     if (modal) {
       modal.style.display = 'flex';
       this.isPdfModalOpen = true;
-      this.togglePdfCropMode(false);
+      this.togglePdfCropMode(Boolean(autoCropMode));
       if (this.pdfDoc && !isInitialLoad) {
         const container = document.getElementById('pdfPagesContainer');
         const viewport = document.getElementById('pdfViewport');
@@ -6059,8 +6154,6 @@ class GraphApp {
           if (replaceMode) {
             this._archiveCurrentBeforeNextCapture();
             this.resetBoardAndProblemCardsForNext();
-          } else if (!this.problemCardData) {
-            this.resetBoardAndProblemCardsForNext();
           }
 
           // 좌측 서랍이 열려있으면 문제 카드를 가리지 않도록 자동 접기
@@ -6068,11 +6161,14 @@ class GraphApp {
             this.closeDrawer();
           }
 
-          // 문제 카드 고정 (좌측 불러오기로 진입 시 겹치기 허용, [다음 캡처]로 진입 시 새 슬라이드 캔버스에 고정!)
+          // 문제 카드 고정 (일반 진입/새 캔버스 진입 시 현재 슬라이드에 추가/배치, [다음 캡처]로 진입 시 새 슬라이드 캔버스에 고정!)
           const targetCardWidth = Math.round(Math.max(480, Math.min(window.innerWidth * 0.65, w * 1.15)));
           this.setProblemCard(dataUrl, pageNum, cropCanvas, targetCardWidth);
           if (replaceMode) {
-            this._finalizeAppendedCaptureSlide(`문항 ${(this.lessonPlaylistSlides ? this.lessonPlaylistSlides.length : 1) + 1}`);
+            this._finalizeAppendedCaptureSlide('');
+          } else if (this.isLessonPlaylistActive) {
+            this.saveCurrentSlideIntoPlaylist();
+            this.syncLessonPlaylistNavBarUI();
           }
           this.closePdfModal();
           this.togglePdfCropMode(false);
@@ -6158,7 +6254,10 @@ class GraphApp {
     const targetCardWidth = Math.round(Math.max(480, Math.min(window.innerWidth * 0.65, this.pdfCropBoxRect.w * 1.15)));
     this.setProblemCard(dataUrl, this.pdfCurrentPage, cropCanvas, targetCardWidth);
     if (wasReplaceCrop) {
-      this._finalizeAppendedCaptureSlide(`문항 ${(this.lessonPlaylistSlides ? this.lessonPlaylistSlides.length : 1) + 1}`);
+      this._finalizeAppendedCaptureSlide('');
+    } else if (this.isLessonPlaylistActive) {
+      this.saveCurrentSlideIntoPlaylist();
+      this.syncLessonPlaylistNavBarUI();
     }
     this.closePdfModal();
 
@@ -7207,19 +7306,11 @@ class GraphApp {
       btnClose.onclick = () => this.closeProblemCard();
     }
 
-    // 5. 다시 크롭 / 다음 문제 크롭 ([다음 캡처] 클릭 시: 기존 문제 카드 삭제 + 칠판 판서 초기화 후 새 문제 시작!)
+    // 5. 다시 크롭 / 다음 문제 크롭 ([다음 캡처] 클릭 시: 현재 슬라이드 자동 보관 + 열려있는 PDF(또는 캐시 복구) 즉시 오픈!)
     if (btnReCrop) {
-      btnReCrop.onclick = () => {
-        this._isReplacingViaNextCrop = true;
-        if (this.pdfDoc) {
-          this.openPdfModal();
-        } else {
-          const fileInput = document.getElementById('pdfFileInput');
-          if (fileInput) {
-            fileInput.value = '';
-            fileInput.click();
-          }
-        }
+      btnReCrop.onclick = (e) => {
+        if (e) e.stopPropagation();
+        this.resumeOrOpenCurrentPdf(true);
       };
     }
 
@@ -13662,7 +13753,8 @@ class GraphApp {
         const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
         const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : (slides.length > 1 ? '#풀세트' : '#수학그래프');
         await this.saveCurrentToMyLibrary(title, tags, slides);
-        flashButtonLabel(btnShareToLib, '✅ 저장됨', '클라우드에 저장');
+        if (inpDeckTitle) inpDeckTitle.value = '';
+        flashButtonLabel(btnShareToLib, '✅ 클라우드 저장됨', '☁️ 클라우드에 저장');
       };
     }
 
@@ -13675,7 +13767,8 @@ class GraphApp {
         const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
         const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : '#수업노트';
         this.exportGraphlyDeckFile(title, tags, slides);
-        flashButtonLabel(btnShareExportFile, '✅ 저장됨', '파일 저장 (.graphly)');
+        if (inpDeckTitle) inpDeckTitle.value = '';
+        flashButtonLabel(btnShareExportFile, '✅ 파일 저장됨', '💻 내 기기에 파일 저장 (.graphly)');
       };
     }
   }
@@ -13842,6 +13935,26 @@ class GraphApp {
       btnStartPlaylist.onclick = () => this.startPlaylistFromSelectedLibraryItems();
     }
 
+    const btnResumePdfHub = document.getElementById('btnResumeOpenPdfFromHub');
+    const btnOpenLocalHub = document.getElementById('btnOpenLocalFileFromHub');
+    if (btnResumePdfHub) {
+      btnResumePdfHub.onclick = () => {
+        if (modalCloud) modalCloud.classList.remove('show');
+        this.resumeOrOpenCurrentPdf(false);
+      };
+    }
+    if (btnOpenLocalHub) {
+      btnOpenLocalHub.onclick = () => {
+        this._isReplacingViaNextCrop = false;
+        if (this.triggerLocalFileExplorer) {
+          this.triggerLocalFileExplorer();
+        } else {
+          const fi = document.getElementById('pdfFileInput');
+          if (fi) { fi.value = ''; fi.click(); }
+        }
+      };
+    }
+
     const btnBundleComm = document.getElementById('btnBundleSelectedToCommunity');
     const btnBundleFile = document.getElementById('btnBundleSelectedToFile');
     const btnExportFile = document.getElementById('btnExportGraphlyFile');
@@ -13906,7 +14019,11 @@ class GraphApp {
     const btnNext = document.getElementById('btnPlaylistNext');
     const btnInfo = document.getElementById('btnPlaylistSlideInfo');
     const btnAddSlide = document.getElementById('btnPlaylistAddSlide');
+    const btnPlaylistOpenPdf = document.getElementById('btnPlaylistOpenPdf');
     const btnShareAll = document.getElementById('btnPlaylistShareAll');
+    if (btnPlaylistOpenPdf) {
+      btnPlaylistOpenPdf.onclick = () => this.resumeOrOpenCurrentPdf(false);
+    }
     const btnClearAllSlides = document.getElementById('btnPlaylistClearAll');
     const btnHidePlaylistBar = document.getElementById('btnPlaylistHideBar');
     const btnClosePlaylist = document.getElementById('btnPlaylistClose');
@@ -13943,6 +14060,17 @@ class GraphApp {
     if (!modalCloud) return;
     if (this.isLessonPlaylistActive) {
       this.saveCurrentSlideIntoPlaylist();
+    }
+    const btnResumePdf = document.getElementById('btnResumeOpenPdfFromHub');
+    const lblResumeName = document.getElementById('lblResumePdfFileName');
+    const hasOpenPdf = Boolean(this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0));
+    if (btnResumePdf) {
+      btnResumePdf.style.display = hasOpenPdf ? 'flex' : 'none';
+    }
+    if (lblResumeName && hasOpenPdf) {
+      const fName = this.pdfFileName || '교재.pdf';
+      const curP = this.pdfCurrentPage || 1;
+      lblResumeName.textContent = `(${fName} · p.${curP})`;
     }
     const chkAll = document.getElementById('chkCloudSelectAll');
     if (chkAll) chkAll.checked = false;
@@ -14665,10 +14793,7 @@ class GraphApp {
       const title = pack.title || file.name.replace(/\.(graphly|json)$/i, '') || '불러온 수업 세트';
       const tags = pack.tags || (slides.length > 1 ? '#드라이브풀세트' : '#드라이브노트');
 
-      // 1) 내 보관함에도 자동 등록하여 언제든 재사용 가능하게 보장
-      await this.saveCurrentToMyLibrary(title, tags, slides);
-
-      // 2) 즉시 칠판 또는 1/N 슬라이드 모드로 오픈!
+      // 즉시 칠판 또는 1/N 슬라이드 모드로 오픈! (불필요한 클라우드 보관함 중복 자동저장 방지)
       if (slides.length > 1 || pack.isPlaylist) {
         this.startLessonPlaylist(slides, 0);
       } else {
@@ -14829,7 +14954,6 @@ class GraphApp {
         </div>
         <div class="cloud-item-actions">
           <button type="button" class="btn-cloud-load" data-load-idx="${idx}">열기</button>
-          <button type="button" class="btn-cloud-export-item" data-export-idx="${idx}" title="파일(.graphly)로 저장">파일</button>
           <button type="button" class="btn-cloud-del-item" data-del-idx="${idx}" title="삭제">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
           </button>
@@ -15375,8 +15499,13 @@ class GraphApp {
 
     const btnPrev = document.getElementById('btnPlaylistPrev');
     const btnNext = document.getElementById('btnPlaylistNext');
+    const btnOpenPdf = document.getElementById('btnPlaylistOpenPdf');
     if (btnPrev) btnPrev.disabled = (this.lessonPlaylistIndex <= 0);
     if (btnNext) btnNext.disabled = (this.lessonPlaylistIndex >= total - 1);
+    if (btnOpenPdf) {
+      const hasOpenPdf = Boolean(this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0));
+      btnOpenPdf.style.display = hasOpenPdf ? 'inline-flex' : 'none';
+    }
 
     if (this.isTopSlideBarHidden) {
       navBar.style.display = 'none';
