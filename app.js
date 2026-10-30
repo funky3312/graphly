@@ -4393,38 +4393,64 @@ class GraphApp {
       };
     }
 
-    // 상단 드래그 손잡이(⋮⋮⋮) PointerEvent 이동
-    if (handle) {
+    // 상단 드래그 손잡이(⋮⋮⋮) 및 리모컨 빈 배경 영역 PointerEvent 이동 (뒷창 캔버스 필기 누수 100% 원천 차단!)
+    if (remote) {
       let isDraggingPill = false;
+      let dragPointerId = null;
       let startX = 0, startY = 0;
       let initialLeft = 0, initialTop = 0;
 
-      handle.addEventListener('pointerdown', (e) => {
+      const startPillDrag = (e) => {
         if (e.button && e.button !== 0) return;
+        // 닫기 버튼이나 기능 버튼을 누른 경우에는 버튼 클릭으로 동작 (단, 드래그 시작 플래그는 UI로 고정하여 캔버스 필기 차단!)
+        if (e.target && e.target.closest && e.target.closest('button')) {
+          this._activeGestureStartedOnUI = true;
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
 
         isDraggingPill = true;
+        this.isDraggingPillRemote = true;
+        this._activeGestureStartedOnUI = true;
+        this.isDrawingInk = false;
+        this.isStylusDrawing = false;
+        this.currentInkStroke = null;
+        dragPointerId = e.pointerId;
+        if (remote.setPointerCapture && e.pointerId !== undefined) {
+          try { remote.setPointerCapture(e.pointerId); } catch (err) { }
+        }
         startX = e.clientX;
         startY = e.clientY;
         const rect = remote.getBoundingClientRect();
         initialLeft = rect.left;
         initialTop = rect.top;
-      });
+      };
+
+      remote.addEventListener('pointerdown', startPillDrag);
 
       window.addEventListener('pointermove', (e) => {
         if (!isDraggingPill) return;
+        if (dragPointerId !== null && e.pointerId !== undefined && e.pointerId !== dragPointerId) return;
+        e.preventDefault();
+        e.stopPropagation();
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
         const nextL = Math.max(58, Math.min((window.innerWidth || 1920) - 80, initialLeft + dx));
         const nextT = Math.max(8, Math.min((window.innerHeight || 1080) - 56, initialTop + dy));
         remote.style.left = `${Math.round(nextL)}px`;
         remote.style.top = `${Math.round(nextT)}px`;
-      }, { capture: true });
+      }, { capture: true, passive: false });
 
-      const endPillDrag = () => {
+      const endPillDrag = (e) => {
         if (!isDraggingPill) return;
+        if (dragPointerId !== null && e && e.pointerId !== undefined && e.pointerId !== dragPointerId) return;
         isDraggingPill = false;
+        this.isDraggingPillRemote = false;
+        if (remote.releasePointerCapture && dragPointerId !== null && dragPointerId !== undefined) {
+          try { remote.releasePointerCapture(dragPointerId); } catch (err) { }
+        }
+        dragPointerId = null;
         saveRemoteSettings();
       };
       window.addEventListener('pointerup', endPillDrag, { capture: true });
@@ -13918,14 +13944,8 @@ class GraphApp {
     if (this.isLessonPlaylistActive) {
       this.saveCurrentSlideIntoPlaylist();
     }
-    const lblBoxTitle = document.getElementById('lblCloudSaveBoxTitle');
-    if (lblBoxTitle) {
-      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1) {
-        lblBoxTitle.innerHTML = `📚 현재 수업 슬라이드 전체 <strong>(총 ${this.lessonPlaylistSlides.length}문항 풀세트)</strong> 내 보관함 · 내 드라이브(.graphly) 백업`;
-      } else {
-        lblBoxTitle.textContent = '💾 현재 화면(판서 + 문제 카드 + #1,#2 보관 그래프 + 실시간 그래프) 내 보관함 · 내 드라이브 저장';
-      }
-    }
+    const chkAll = document.getElementById('chkCloudSelectAll');
+    if (chkAll) chkAll.checked = false;
     modalCloud.classList.add('show');
     this.syncCloudAuthUI();
     this.renderMyLibraryList();
@@ -13933,13 +13953,10 @@ class GraphApp {
   }
 
   syncCloudAuthUI() {
-    const lblStatus = document.getElementById('lblCloudUserStatus');
     const lblBtn = document.getElementById('lblCloudAuthBtnText');
     if (this.cloudUser) {
-      if (lblStatus) lblStatus.textContent = `🟢 ${this.cloudUser.displayName}님 연동중`;
-      if (lblBtn) lblBtn.textContent = '로그아웃';
+      if (lblBtn) lblBtn.textContent = `${this.cloudUser.displayName} · 로그아웃`;
     } else {
-      if (lblStatus) lblStatus.textContent = '로컬/클라우드 연동';
       if (lblBtn) lblBtn.textContent = '구글 로그인';
     }
   }
@@ -14804,26 +14821,37 @@ class GraphApp {
 
       row.innerHTML = `
         <div class="cloud-item-left">
-          <input type="checkbox" class="cloud-item-chk" data-lib-idx="${idx}" checked>
+          <input type="checkbox" class="cloud-item-chk" data-lib-idx="${idx}">
           <div class="cloud-item-info">
-            <div class="cloud-item-title">${deckBadgeHtml}${item.title || '제목 없음'}</div>
-            <div class="cloud-item-meta">
-              <span class="cloud-summary-pill">${item.summary || '수업 슬라이드'}</span>
-              <span class="cloud-tag-pill">${item.tags || '#수학'}</span>
-              <span>${dateStr}</span>
-            </div>
+            <div class="cloud-item-title" title="클릭하여 열기">${deckBadgeHtml}<span>${item.title || '제목 없음'}</span></div>
+            <span class="cloud-item-date">${dateStr}</span>
           </div>
         </div>
         <div class="cloud-item-actions">
           <button type="button" class="btn-cloud-load" data-load-idx="${idx}">열기</button>
-          <button type="button" class="btn-cloud-export-item" data-export-idx="${idx}">파일</button>
-          <button type="button" class="btn-cloud-share-item" data-share-idx="${idx}">링크</button>
-          <button type="button" class="btn-cloud-del-item" data-del-idx="${idx}" title="삭제">🗑️</button>
+          <button type="button" class="btn-cloud-export-item" data-export-idx="${idx}" title="파일(.graphly)로 저장">파일</button>
+          <button type="button" class="btn-cloud-del-item" data-del-idx="${idx}" title="삭제">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
         </div>
       `;
 
       const chk = row.querySelector('.cloud-item-chk');
-      if (chk) chk.onchange = () => this.updateSelectedPlaylistCount();
+      if (chk) {
+        chk.onchange = () => {
+          const allBoxes = document.querySelectorAll('#myLibraryList .cloud-item-chk');
+          const chkAll = document.getElementById('chkCloudSelectAll');
+          if (chkAll && allBoxes.length > 0) {
+            chkAll.checked = Array.from(allBoxes).every(b => b.checked);
+          }
+          this.updateSelectedPlaylistCount();
+        };
+      }
+
+      const titleEl = row.querySelector('.cloud-item-title');
+      if (titleEl) {
+        titleEl.onclick = () => this.loadCloudItemToWorkspace(item, true);
+      }
 
       const btnLoad = row.querySelector('.btn-cloud-load');
       if (btnLoad) {
@@ -16729,7 +16757,7 @@ class GraphApp {
 
   // --- [이벤트 바인딩] ---
   bindEvents() {
-    // 🌟 [대표님 긴급 해결: 버튼/아이콘 클릭 100% 보장 판별기] 🌟
+    // 🌟 [대표님 긴급 해결: 모달·리모컨·버튼·오버레이 위 조작 시 뒷창 캔버스 필기 간섭 100% 원천 차단 판별기] 🌟
     const isClickableUI = (target) => {
       if (!target) return false;
       return Boolean(
@@ -16737,9 +16765,24 @@ class GraphApp {
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'SELECT' ||
+        target.tagName === 'LABEL' ||
         target.tagName === 'A' ||
-        (target.closest && target.closest('button, .rail-btn, .quick-fab-btn, .rail-dock, .sidebar-rail, .canvas-quick-toolbar, .curve-context-bar, .pw-region-popover, .drawer-panel, .rail-drawer, .modal, .ink-dock, .problem-card-widget, .graph-card-widget, .graph-snap-floating-bar, .ink-floating-toolbar, .lasso-action-floating-bar'))
+        (target.closest && target.closest('button, .rail-btn, .quick-fab-btn, .rail-dock, .sidebar-rail, .canvas-quick-toolbar, .curve-context-bar, .pw-region-popover, .drawer-panel, .rail-drawer, .modal, .smart-modal-backdrop, .smart-modal-card, .pdf-modal-backdrop, .pdf-modal-container, .n-axis-studio-backdrop, .n-axis-studio-card, .smart-note-viewer-overlay, .viewer-graph-touch-bar, .pdf-board-nav-bar, .lesson-playlist-nav-bar, .top-slide-bar-mini-tab, .quick-pill-remote, .ink-dock, .problem-card-widget, .graph-card-widget, .graph-snap-floating-bar, .ink-floating-toolbar, .lasso-action-floating-bar'))
       );
+    };
+
+    const isAnyModalOrOverlayBlockingCanvas = () => {
+      if (this.isDraggingPillRemote || this._activeGestureStartedOnUI) return true;
+      if (this.isPdfModalOpen || this.isNAxisStudioOpen) return true;
+      const mCloud = document.getElementById('modalCloudHub');
+      if (mCloud && mCloud.classList.contains('show')) return true;
+      const mShare = document.getElementById('modalShare');
+      if (mShare && mShare.classList.contains('show')) return true;
+      const mSmart = document.getElementById('modalSmartInput');
+      if (mSmart && mSmart.classList.contains('show')) return true;
+      const viewer = document.getElementById('smartNoteViewerOverlay');
+      if (viewer && viewer.style.display !== 'none' && !document.body.classList.contains('viewer-graph-touch-mode')) return true;
+      return false;
     };
 
     // 1) 캔버스 및 UI 버튼 영역 우클릭 컨텍스트 메뉴 차단 (펜으로 살짝 길게 누를 때 우클릭 메뉴가 떠서 버튼 클릭이 씹히는 현상 원천 차단)
@@ -19247,8 +19290,21 @@ class GraphApp {
         return false;
       };
 
+      // 🛡️ [전역 pointerdown 출처 추적기]: 모달창·리모컨·카드·버튼 등 캔버스 외부 UI에서 시작된 터치/펜 드래그가
+      // 이동 도중 캔버스로 빠져나가 뒷창에 글씨가 써지는 현상을 100% 원천 봉쇄합니다!
+      window.addEventListener('pointerdown', (e) => {
+        if (e.target !== this.canvas || isClickableUI(e.target)) {
+          this._activeGestureStartedOnUI = true;
+          this._activeUIPointerId = e.pointerId;
+        } else {
+          this._activeGestureStartedOnUI = false;
+          this._activeUIPointerId = null;
+        }
+      }, { capture: true });
+
       this.canvas.addEventListener('pointerdown', (e) => {
-        if (isClickableUI(e.target)) return;
+        if (isClickableUI(e.target) || isAnyModalOrOverlayBlockingCanvas()) return;
+        this._activeGestureStartedOnUI = false;
         const nowT = Date.now();
         lastPointerDownTime = nowT;
 
@@ -19343,10 +19399,14 @@ class GraphApp {
       }, { passive: false });
 
       window.addEventListener('pointermove', (e) => {
+        // 🛡️ 모달 창이 열려 있거나 리모컨/카드/버튼 등 UI에서 시작된 드래그 중에는 뒷창 캔버스 필기·이동을 100% 차단!
+        if (this.isDraggingPillRemote || this._activeGestureStartedOnUI || isAnyModalOrOverlayBlockingCanvas() || isClickableUI(e.target)) {
+          return;
+        }
         const nowT = Date.now();
         lastPointerMoveTime = nowT;
 
-        // 🌟 [WebKit 애플펜슬 pointerdown 삼킴(Swallowed Stroke) 0.00ms 자동 구출 엔진]:
+        // 🌟 [WebKit 애플펜슬 pointerdown 삼킴(Swallowed Stroke) 0.00ms 자동 구출 엔진 - 오직 순수 캔버스 위에서만 작동!]:
         if (e.pointerType === 'pen') {
           this._lastPenActiveTime = nowT;
           this._touchPanDeadzoneLocked = false;
@@ -19362,7 +19422,7 @@ class GraphApp {
             !this.isDraggingLassoSelection &&
             !this.isResizingLassoSelection &&
             isWritingToolActive() &&
-            (e.target === this.canvas || !isClickableUI(e.target))
+            e.target === this.canvas
           ) {
             if (this.activePointers) this.activePointers.clear();
             this._pinchState = null;
@@ -19421,6 +19481,10 @@ class GraphApp {
       }, { capture: true, passive: false });
 
       const finishPointer = (e) => {
+        if (this._activeGestureStartedOnUI && (this._activeUIPointerId === null || e.pointerId === undefined || e.pointerId === this._activeUIPointerId)) {
+          this._activeGestureStartedOnUI = false;
+          this._activeUIPointerId = null;
+        }
         const nowT = Date.now();
         if (e.pointerType === 'pen') {
           this._lastPenActiveTime = nowT;

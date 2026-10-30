@@ -8526,3 +8526,162 @@ body.viewer-graph-touch-mode #sharedResetBar {
     display: none;
   }
 }
+
+
+/* 🌟 [대표님 피드백 반영: 클라우드 보관함(#modalCloudHub) 미니멀·클린 리디자인] 🌟 */
+.cloud-hub-modal-card {
+  max-width: 640px !important;
+  width: 92vw !important;
+}
+.btn-cloud-header-file {
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(148, 163, 184, 0.10);
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: all 0.15s ease;
+}
+body:not(.theme-light) .btn-cloud-header-file {
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.btn-cloud-header-file:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+}
+.cloud-hub-body {
+  gap: 12px !important;
+  padding: 16px 20px 20px !important;
+}
+.cloud-save-box {
+  background: rgba(148, 163, 184, 0.07) !important;
+  border: 1px solid rgba(148, 163, 184, 0.22) !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+}
+.cloud-save-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+.cloud-input-title {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+}
+.btn-cloud-drive-file {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  border: 1px solid rgba(148, 163, 184, 0.38) !important;
+  background: #ffffff !important;
+  color: #334155 !important;
+}
+body:not(.theme-light) .btn-cloud-drive-file {
+  background: rgba(30, 41, 59, 0.9) !important;
+  color: #e2e8f0 !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+.btn-cloud-drive-file:hover {
+  border-color: #2563eb !important;
+  color: #2563eb !important;
+}
+.cloud-playlist-toolbar {
+  margin-bottom: 6px !important;
+  padding: 8px 12px !important;
+  border-radius: 9px !important;
+  background: rgba(148, 163, 184, 0.07) !important;
+}
+.cloud-count-sub {
+  font-weight: 600;
+  color: #64748b;
+  font-size: 12px;
+}
+.cloud-item-list {
+  gap: 6px !important;
+  max-height: 360px !important;
+}
+.cloud-item-row {
+  padding: 9px 12px !important;
+  border-radius: 9px !important;
+  gap: 10px !important;
+}
+.cloud-item-info {
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  flex: 1;
+  min-width: 0;
+}
+.cloud-item-title {
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  cursor: pointer;
+}
+.cloud-item-title:hover {
+  color: #2563eb !important;
+}
+.cloud-deck-badge {
+  font-size: 11px !important;
+  padding: 2px 7px !important;
+  border-radius: 6px !important;
+  background: rgba(37, 99, 235, 0.10) !important;
+  color: #2563eb !important;
+  border: 1px solid rgba(37, 99, 235, 0.22) !important;
+  box-shadow: none !important;
+  margin-right: 0 !important;
+  flex-shrink: 0;
+}
+.cloud-item-date {
+  font-size: 11.5px;
+  color: #94a3b8;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-cloud-export-item {
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: transparent;
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-cloud-export-item:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+.btn-cloud-load {
+  height: 28px !important;
+  padding: 0 11px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+}
+.btn-cloud-del-item {
+  height: 28px !important;
+  width: 28px !important;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px !important;
+}
