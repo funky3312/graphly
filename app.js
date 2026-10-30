@@ -18014,15 +18014,26 @@ class GraphApp {
             let sx = pPos.x;
             let sy = pPos.y;
             const liveLen = this._liveBezierScreenPts ? this._liveBezierScreenPts.length : 0;
-            if (liveLen >= 2) {
-              const pPrev1 = this._liveBezierScreenPts[liveLen - 1];
-              const pPrev2 = this._liveBezierScreenPts[liveLen - 2];
-              sx = pPrev2.x * 0.12 + pPrev1.x * 0.33 + pPos.x * 0.55;
-              sy = pPrev2.y * 0.12 + pPrev1.y * 0.33 + pPos.y * 0.55;
-            } else if (liveLen === 1) {
-              const pPrev1 = this._liveBezierScreenPts[0];
-              sx = pPrev1.x * 0.30 + pPos.x * 0.70;
-              sy = pPrev1.y * 0.30 + pPos.y * 0.70;
+            // 🌟 [속도 적응형 스트림라인 & 형광펜 1:1 밀착 추적]:
+            // 느린 세필 필기(step < 14px)에서는 미세 손떨림을 잡아주고, 빠른 획이나 형광펜에서는 펜촉을 지연 없이 1:1로 바짝 따라갑니다!
+            if (!this.currentInkStroke.isHighlighter) {
+              const stepD = lastRaw ? Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y) : 0;
+              const smoothScale = stepD > 12 ? Math.max(0, 1 - (stepD - 12) / 28) : 1.0;
+              if (liveLen >= 2 && smoothScale > 0.01) {
+                const pPrev1 = this._liveBezierScreenPts[liveLen - 1];
+                const pPrev2 = this._liveBezierScreenPts[liveLen - 2];
+                const w2 = 0.12 * smoothScale;
+                const w1 = 0.33 * smoothScale;
+                const w0 = 1.0 - w1 - w2;
+                sx = pPrev2.x * w2 + pPrev1.x * w1 + pPos.x * w0;
+                sy = pPrev2.y * w2 + pPrev1.y * w1 + pPos.y * w0;
+              } else if (liveLen === 1 && smoothScale > 0.01) {
+                const pPrev1 = this._liveBezierScreenPts[0];
+                const w1 = 0.30 * smoothScale;
+                const w0 = 1.0 - w1;
+                sx = pPrev1.x * w1 + pPos.x * w0;
+                sy = pPrev1.y * w1 + pPos.y * w0;
+              }
             }
             this._lastInkScreenPos = { x: sx, y: sy };
 
@@ -18044,11 +18055,12 @@ class GraphApp {
             }
             addedPoints++;
 
+            if (!this._liveBezierScreenPts) {
+              this._liveBezierScreenPts = [];
+            }
+            this._liveBezierScreenPts.push({ x: sx, y: sy, p: pressure });
+
             if (!this.currentInkStroke.isHighlighter) {
-              if (!this._liveBezierScreenPts) {
-                this._liveBezierScreenPts = [];
-              }
-              this._liveBezierScreenPts.push({ x: sx, y: sy, p: pressure });
               this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
             }
           }
@@ -18862,8 +18874,8 @@ class GraphApp {
           const lastSmoothed = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
           const rawEnd = this._lastRawInkScreenPos;
           if (Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y) >= 1.5) {
-            const endX = lastSmoothed.x * 0.35 + rawEnd.x * 0.65;
-            const endY = lastSmoothed.y * 0.35 + rawEnd.y * 0.65;
+            const endX = this.currentInkStroke.isHighlighter ? rawEnd.x : (lastSmoothed.x * 0.20 + rawEnd.x * 0.80);
+            const endY = this.currentInkStroke.isHighlighter ? rawEnd.y : (lastSmoothed.y * 0.20 + rawEnd.y * 0.80);
             const p = this._lastPressure || 0.5;
             this._liveBezierScreenPts.push({ x: endX, y: endY, p: p });
             if (this.currentInkStroke.target === 'graph') {
