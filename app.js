@@ -220,6 +220,15 @@ class GraphApp {
     this.lassoBoundingBox = null;        // 선택 바운딩 박스 {minX, maxX, minY, maxY, width, height}
     this.isDraggingLassoSelection = false; // 선택된 획 드래그 이동 플래그
     this.lassoDragStart = null;          // 드래그 시작 좌표 {screenX, screenY, m: {x, y}}
+    this.isResizingLassoSelection = false; // 선택된 영역 모서리 크기 조절 플래그
+    this.lassoResizeStart = null;          // 크기 조절 시작 스냅샷
+    this.boardPaperType = 'blank';         // 칠판 배경 속지 ('blank' | 'grid' | 'lined' | 'dot')
+    try {
+      const savedPaper = localStorage.getItem('graphly_board_paper_v1');
+      if (savedPaper && ['blank', 'grid', 'lined', 'dot'].includes(savedPaper)) {
+        this.boardPaperType = savedPaper;
+      }
+    } catch (err) { }
     this.canvasRect = null;              // 레이아웃 스래싱 방지용 캔버스 BoundingClientRect 캐시
 
     // [📑 닥줌형 PDF 교재 뷰어 & 2단 문제 박스 크롭 엔진 상태]
@@ -351,6 +360,8 @@ class GraphApp {
     this.initTextLabelControls();
     this.initMonochromeControls();
     this.initInkControls();
+    this.initLassoActionBar();
+    this.initBoardPaperControls();
     this.initPdfEngine();
     this.initWelcomeSplash();
     this.initStylusFastTap();
@@ -383,6 +394,9 @@ class GraphApp {
       '.pill-remote-close-btn',
       '.pill-color-dot',
       '.pill-mod-chip',
+      '.lasso-color-dot',
+      '.lasso-action-btn',
+      '.board-paper-chip',
       '.ink-color-dot',
       '.color-dot',
       '.func-btn',
@@ -413,6 +427,7 @@ class GraphApp {
       '.rail-dock',
       '.canvas-quick-toolbar',
       '.ink-floating-toolbar',
+      '.lasso-action-floating-bar',
       '.quick-pill-remote',
       '.curve-context-bar',
       '.problem-card-header',
@@ -2339,6 +2354,7 @@ class GraphApp {
       '#headerShowTab',
       '#sidebarRail',
       '#inkFloatingToolbar',
+      '#lassoActionFloatingBar',
       '#quickPillRemote',
       '.canvas-quick-toolbar',
       '#boardModeBar',
@@ -2399,6 +2415,7 @@ class GraphApp {
       el.closest('.rail-dock') ||
       el.closest('.rail-drawer') ||
       el.closest('.ink-floating-toolbar') ||
+      el.closest('.lasso-action-floating-bar') ||
       el.closest('.quick-pill-remote') ||
       el.closest('.canvas-quick-toolbar') ||
       el.closest('.quick-flyout-panel') ||
@@ -2601,7 +2618,10 @@ class GraphApp {
       this.lassoBoundingBox = null;
       this.isLassoSelecting = false;
       this.isDraggingLassoSelection = false;
+      this.isResizingLassoSelection = false;
+      this.lassoResizeStart = null;
       this.lassoPoints = [];
+      this.syncLassoActionBarUI();
     }
 
     this.updateInkCursor();
@@ -3018,7 +3038,8 @@ class GraphApp {
 
     // --- [2. 닫힌 도형 판별: 삼각형(Triangle), 정원(Circle), 타원(Ellipse), 직사각형(Rect)] ---
     const gap = chordLen;
-    const isClosed = (gap / maxDim <= 0.42);
+    const closedRatioLimit = stroke.isHighlighter ? 0.56 : 0.42;
+    const isClosed = (gap / maxDim <= closedRatioLimit);
 
     if (isClosed && arcLen >= 45 && minDim >= 18) {
       const cx = (minX + maxX) / 2;
@@ -3702,6 +3723,192 @@ class GraphApp {
     return (insideCount > 0 && (insideCount / samples >= 0.10));
   }
 
+  initLassoActionBar() {
+    const bar = document.getElementById('lassoActionFloatingBar');
+    if (!bar) return;
+
+    bar.querySelectorAll('.lasso-color-dot').forEach(dot => {
+      dot.onclick = (e) => {
+        e.stopPropagation();
+        const color = e.currentTarget.dataset.color;
+        if (color) this.changeSelectedLassoColor(color);
+      };
+    });
+
+    const btnDup = document.getElementById('btnLassoDuplicate');
+    if (btnDup) {
+      btnDup.onclick = (e) => {
+        e.stopPropagation();
+        this.duplicateSelectedLassoStrokes();
+      };
+    }
+
+    const btnDel = document.getElementById('btnLassoDelete');
+    if (btnDel) {
+      btnDel.onclick = (e) => {
+        e.stopPropagation();
+        this.deleteSelectedInkStrokes();
+      };
+    }
+  }
+
+  syncLassoActionBarUI() {
+    const bar = document.getElementById('lassoActionFloatingBar');
+    if (!bar) return;
+
+    const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
+      (this.selectedTextLabels && this.selectedTextLabels.length > 0);
+
+    if (
+      !this.isInkMode ||
+      this.activeInkTool !== 'lasso' ||
+      !hasSelection ||
+      !this.lassoBoundingBox ||
+      this.isLassoSelecting ||
+      this.isDraggingLassoSelection ||
+      this.isResizingLassoSelection
+    ) {
+      bar.style.display = 'none';
+      return;
+    }
+
+    const bbox = this.lassoBoundingBox;
+    const pad = 10;
+    const cx = Math.max(125, Math.min((this.screenWidth || 1280) - 125, (bbox.minX + bbox.maxX) / 2));
+    const topEdge = bbox.minY - pad;
+    const bottomEdge = bbox.maxY + pad;
+
+    bar.style.display = 'flex';
+    bar.style.left = `${Math.round(cx)}px`;
+    if (topEdge >= 64) {
+      bar.style.top = `${Math.round(topEdge - 10)}px`;
+      bar.style.transform = 'translate(-50%, -100%)';
+    } else {
+      bar.style.top = `${Math.round(bottomEdge + 10)}px`;
+      bar.style.transform = 'translate(-50%, 0)';
+    }
+  }
+
+  changeSelectedLassoColor(color) {
+    const hasStrokes = this.selectedInkStrokes && this.selectedInkStrokes.length > 0;
+    const hasTexts = this.selectedTextLabels && this.selectedTextLabels.length > 0;
+    if (!hasStrokes && !hasTexts) return;
+
+    this.pushHistoryState();
+    if (hasStrokes) {
+      this.selectedInkStrokes.forEach(s => {
+        s.color = color;
+      });
+    }
+    if (hasTexts) {
+      this.selectedTextLabels.forEach(t => {
+        t.color = color;
+      });
+    }
+    this._inkBakeDirty = true;
+    this.render();
+  }
+
+  duplicateSelectedLassoStrokes() {
+    const hasStrokes = this.selectedInkStrokes && this.selectedInkStrokes.length > 0;
+    const hasTexts = this.selectedTextLabels && this.selectedTextLabels.length > 0;
+    if (!hasStrokes && !hasTexts) return;
+
+    this.pushHistoryState();
+    const offsetPx = 28;
+    const bz = this.boardZoom || 1.0;
+    const dBoardX = offsetPx / bz;
+    const dBoardY = offsetPx / bz;
+    const m0 = this.screenToMath(0, 0);
+    const m1 = this.screenToMath(offsetPx, offsetPx);
+    const dMathX = m1.x - m0.x;
+    const dMathY = m1.y - m0.y;
+
+    const newStrokes = [];
+    if (hasStrokes) {
+      this.selectedInkStrokes.forEach(orig => {
+        const clone = JSON.parse(JSON.stringify(orig));
+        clone.id = 'ink_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+        const isBoard = (clone.target || 'board') === 'board';
+        const dx = isBoard ? dBoardX : dMathX;
+        const dy = isBoard ? dBoardY : dMathY;
+
+        if (clone.points) {
+          clone.points.forEach(pt => {
+            pt.x += dx;
+            pt.y += dy;
+          });
+        }
+        if (clone.shape) {
+          if (clone.shape.type === 'line') {
+            clone.shape.start.x += dx; clone.shape.start.y += dy;
+            clone.shape.end.x += dx; clone.shape.end.y += dy;
+          } else if (clone.shape.type === 'circle' || clone.shape.type === 'ellipse') {
+            clone.shape.center.x += dx; clone.shape.center.y += dy;
+          } else if (clone.shape.type === 'rect') {
+            clone.shape.min.x += dx; clone.shape.min.y += dy;
+            clone.shape.max.x += dx; clone.shape.max.y += dy;
+          } else if (clone.shape.pts) {
+            clone.shape.pts.forEach(pt => {
+              pt.x += dx;
+              pt.y += dy;
+            });
+          }
+        }
+        this.inkStrokes.push(clone);
+        newStrokes.push(clone);
+      });
+    }
+
+    const newTexts = [];
+    if (hasTexts) {
+      this.selectedTextLabels.forEach(origT => {
+        const cloneT = JSON.parse(JSON.stringify(origT));
+        cloneT.id = 'txt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+        cloneT.mathX += dMathX;
+        cloneT.mathY += dMathY;
+        this.textLabels.push(cloneT);
+        newTexts.push(cloneT);
+      });
+    }
+
+    this.selectedInkStrokes = newStrokes;
+    this.selectedTextLabels = newTexts;
+    if (this.lassoPoints && this.lassoPoints.length > 0) {
+      this.lassoPoints = this.lassoPoints.map(pt => ({ x: pt.x + offsetPx, y: pt.y + offsetPx }));
+    }
+    this.lassoBoundingBox = this.calculateStrokesBoundingBox(newStrokes, newTexts);
+    this._inkBakeDirty = true;
+    this.render();
+    this.showToast('📋 선택한 필기/도형이 복제되었습니다! 바로 드래그하여 이동하세요.');
+  }
+
+  getLassoResizeHandleAt(pos) {
+    const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
+      (this.selectedTextLabels && this.selectedTextLabels.length > 0);
+    if (!hasSelection || !this.lassoBoundingBox) return null;
+
+    const bbox = this.lassoBoundingBox;
+    const pad = 10;
+    const x1 = bbox.minX - pad;
+    const y1 = bbox.minY - pad;
+    const x2 = bbox.maxX + pad;
+    const y2 = bbox.maxY + pad;
+
+    const corners = [
+      { key: 'br', x: x2, y: y2 },
+      { key: 'tr', x: x2, y: y1 },
+      { key: 'bl', x: x1, y: y2 },
+      { key: 'tl', x: x1, y: y1 }
+    ];
+    for (const c of corners) {
+      if (Math.hypot(pos.x - c.x, pos.y - c.y) <= 15) {
+        return c.key;
+      }
+    }
+    return null;
+  }
+
   deleteSelectedInkStrokes() {
     const hasStrokes = this.selectedInkStrokes && this.selectedInkStrokes.length > 0;
     const hasTexts = this.selectedTextLabels && this.selectedTextLabels.length > 0;
@@ -3721,11 +3928,12 @@ class GraphApp {
     this.lassoBoundingBox = null;
     this.lassoPoints = [];
     this._inkBakeDirty = true;
+    this.syncLassoActionBarUI();
     this.render();
   }
 
   drawLassoOverlay(ctx) {
-    // 1. [대표님 기획]: 드로잉 중인 올가미는 마우스/펜 끝을 매끄럽게 따라가는 깔끔한 점선으로만 표시!
+    // 1. 드로잉 중인 올가미는 마우스/펜 끝을 매끄럽게 따라가는 깔끔한 점선으로 표시
     if (this.isLassoSelecting && this.lassoPoints && this.lassoPoints.length > 1) {
       ctx.save();
       ctx.beginPath();
@@ -3742,9 +3950,13 @@ class GraphApp {
       ctx.restore();
     }
 
-    // 2. [가장 많이 쓰는 표준]: 선택 완료 및 드래그 중인 점선 올가미 (점선이 글씨와 함께 손을 따라감!)
+    // 2. 선택 완료 및 드래그/리사이즈 중인 올가미 오버레이 + 4모서리 크기조절 핸들
     const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
       (this.selectedTextLabels && this.selectedTextLabels.length > 0);
+
+    if (hasSelection && !this.lassoBoundingBox) {
+      this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
+    }
 
     if (hasSelection && this.lassoPoints && this.lassoPoints.length >= 3) {
       ctx.save();
@@ -3755,33 +3967,55 @@ class GraphApp {
       }
       ctx.closePath();
 
-      // 내부 은은한 반투명 틴트 (선택 영역 인지용)
-      ctx.fillStyle = 'rgba(0, 210, 211, 0.05)';
+      ctx.fillStyle = 'rgba(0, 210, 211, 0.045)';
       ctx.fill();
 
-      // 세련된 굿노트/삼성노트식 마칭 앤츠 점선 테두리!
       ctx.strokeStyle = '#00d2d3';
-      ctx.lineWidth = 2.0;
+      ctx.lineWidth = 1.9;
       ctx.setLineDash([7, 5]);
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.stroke();
       ctx.restore();
-    } else if (hasSelection && this.lassoBoundingBox) {
+    }
+
+    if (hasSelection && this.lassoBoundingBox) {
       const bbox = this.lassoBoundingBox;
       const pad = 10;
-      const x = bbox.minX - pad, y = bbox.minY - pad;
-      const w = bbox.width + pad * 2, h = bbox.height + pad * 2;
+      const x1 = bbox.minX - pad;
+      const y1 = bbox.minY - pad;
+      const x2 = bbox.maxX + pad;
+      const y2 = bbox.maxY + pad;
+      const w = x2 - x1;
+      const h = y2 - y1;
 
       ctx.save();
-      ctx.fillStyle = 'rgba(0, 210, 211, 0.05)';
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = '#00d2d3';
-      ctx.lineWidth = 1.8;
-      ctx.setLineDash([6, 5]);
-      ctx.strokeRect(x, y, w, h);
+      ctx.strokeStyle = 'rgba(2, 132, 199, 0.55)';
+      ctx.lineWidth = 1.25;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(x1, y1, w, h);
+
+      // 4모서리 크기 조절 핸들 렌더링 (우하단 메인 핸들 강조)
+      ctx.setLineDash([]);
+      const corners = [
+        { x: x1, y: y1, r: 5.5 },
+        { x: x2, y: y1, r: 5.5 },
+        { x: x1, y: y2, r: 5.5 },
+        { x: x2, y: y2, r: 7.0, isMain: true }
+      ];
+      corners.forEach(c => {
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+        ctx.fillStyle = c.isMain ? '#0284c7' : '#ffffff';
+        ctx.fill();
+        ctx.lineWidth = 2.0;
+        ctx.strokeStyle = c.isMain ? '#ffffff' : '#0284c7';
+        ctx.stroke();
+      });
       ctx.restore();
     }
+
+    this.syncLassoActionBarUI();
   }
 
   initInkDockDraggable() {
@@ -8548,15 +8782,21 @@ class GraphApp {
       this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
-    // 현재 실시간 드로잉 중인 획을 제외한 모든 완료된 획을 각각의 오프스크린 버퍼에 베이킹
-    for (let i = 0; i < this.inkStrokes.length; i++) {
-      const stroke = this.inkStrokes[i];
-      if (stroke === this.currentInkStroke) continue;
-      const isBoard = (stroke.target || 'board') === 'board';
-      if (!isBoard && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
-      const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
-      if (targetCtx) {
-        this.renderSingleStroke(targetCtx, stroke, null, false);
+    // 🌟 [대표님 피드백: 형광펜 언더레이 2-Pass 베이킹 (검은 글씨 절대 가리지 않음!)] 🌟
+    // Pass 1 (하단 레이어): 모든 형광펜(isHighlighter === true) 획을 먼저 바닥에 렌더링
+    // Pass 2 (상단 레이어): 일반 펜(!isHighlighter) 획을 그 위에 선명하게 렌더링
+    for (let pass = 0; pass < 2; pass++) {
+      const wantHighlighter = (pass === 0);
+      for (let i = 0; i < this.inkStrokes.length; i++) {
+        const stroke = this.inkStrokes[i];
+        if (!stroke || stroke === this.currentInkStroke) continue;
+        if (Boolean(stroke.isHighlighter) !== wantHighlighter) continue;
+        const isBoard = (stroke.target || 'board') === 'board';
+        if (!isBoard && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+        const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
+        if (targetCtx) {
+          this.renderSingleStroke(targetCtx, stroke, null, false);
+        }
       }
     }
 
@@ -8576,7 +8816,21 @@ class GraphApp {
 
     let strokeColor = forceColor || stroke.color;
     if (this.isMonochromeMode) {
-      strokeColor = '#000000';
+      strokeColor = stroke.isHighlighter ? '#cbd5e1' : '#000000';
+    } else if (stroke.isHighlighter) {
+      // 🌟 [스마트 형광펜 컬러 매핑]: 검은 펜(#1e293b)으로 필기하다 형광펜만 눌러도 즉시 영롱한 노란 형광펜(#facc15) 발색!
+      const rawLower = (strokeColor || '').toLowerCase();
+      if (rawLower === '#1e293b' || rawLower === '#000000' || rawLower === '#0f172a' || rawLower === '#2d3436' || rawLower === '#ffffff' || rawLower === '#fff') {
+        strokeColor = isLight ? '#facc15' : '#fde047';
+      } else if (rawLower === '#2563eb') {
+        strokeColor = '#38bdf8';
+      } else if (rawLower === '#dc2626') {
+        strokeColor = '#fb7185';
+      } else if (rawLower === '#16a34a') {
+        strokeColor = '#4ade80';
+      } else if (rawLower === '#7c3aed') {
+        strokeColor = '#c084fc';
+      }
     }
 
     targetCtx.strokeStyle = strokeColor;
@@ -8588,8 +8842,11 @@ class GraphApp {
       : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
 
     if (stroke.isHighlighter) {
-      targetCtx.globalAlpha = 0.38;
-      targetCtx.lineWidth = Math.max(8, stroke.size * 2.5 * zoomRatio);
+      targetCtx.globalAlpha = isLight ? 0.36 : 0.34;
+      if (isLight && !this.isMonochromeMode) {
+        targetCtx.globalCompositeOperation = 'multiply';
+      }
+      targetCtx.lineWidth = Math.max(10, stroke.size * 2.6 * zoomRatio);
     } else {
       targetCtx.globalAlpha = 1.0;
     }
@@ -8817,7 +9074,8 @@ class GraphApp {
             return true;
           })
         : this.inkStrokes;
-      strokesToDraw.forEach(stroke => this.renderSingleStroke(ctx, stroke, null, false));
+      strokesToDraw.filter(s => s && s.isHighlighter).forEach(stroke => this.renderSingleStroke(ctx, stroke, null, false));
+      strokesToDraw.filter(s => s && !s.isHighlighter).forEach(stroke => this.renderSingleStroke(ctx, stroke, null, false));
       return;
     }
 
@@ -11617,6 +11875,89 @@ class GraphApp {
     this.showToast(`🎨 칠판 테마: ${theme.name} 적용 완료!`);
   }
 
+  initBoardPaperControls() {
+    document.querySelectorAll('.board-paper-chip').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.paper === this.boardPaperType);
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const paper = e.currentTarget.dataset.paper;
+        if (paper) this.setBoardPaperType(paper);
+      };
+    });
+  }
+
+  setBoardPaperType(paperType) {
+    if (!['blank', 'grid', 'lined', 'dot'].includes(paperType)) return;
+    this.boardPaperType = paperType;
+    try {
+      localStorage.setItem('graphly_board_paper_v1', paperType);
+    } catch (err) { }
+
+    document.querySelectorAll('.board-paper-chip').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.paper === paperType);
+    });
+
+    this._hasSceneFreeze = false;
+    this.render();
+    const names = { blank: '무지', grid: '모눈 노트', lined: '가로줄 노트', dot: '도트 노트' };
+    this.showToast(`📋 칠판 배경 속지: ${names[paperType] || paperType} 적용!`);
+  }
+
+  drawBoardPaperBackground(ctx, width, height, curTheme) {
+    if (!this.boardPaperType || this.boardPaperType === 'blank') return;
+
+    const isLight = Boolean((curTheme && curTheme.isLight) || this.isMonochromeMode);
+    const bz = this.boardZoom || 1.0;
+    const baseStep = (this.boardPaperType === 'lined') ? 40 : 34;
+    let step = baseStep * bz;
+    while (step < 18) step *= 2;
+    while (step > 76) step /= 2;
+
+    const origin = this.boardToScreen(0, 0);
+    const startX = ((origin.x % step) + step) % step;
+    const startY = ((origin.y % step) + step) % step;
+
+    ctx.save();
+    if (this.boardPaperType === 'grid') {
+      ctx.strokeStyle = isLight ? 'rgba(148, 163, 184, 0.25)' : 'rgba(255, 255, 255, 0.075)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = startX; x <= width; x += step) {
+        const rx = Math.round(x) + 0.5;
+        ctx.moveTo(rx, 0);
+        ctx.lineTo(rx, height);
+      }
+      for (let y = startY; y <= height; y += step) {
+        const ry = Math.round(y) + 0.5;
+        ctx.moveTo(0, ry);
+        ctx.lineTo(width, ry);
+      }
+      ctx.stroke();
+    } else if (this.boardPaperType === 'lined') {
+      ctx.strokeStyle = isLight ? 'rgba(148, 163, 184, 0.32)' : 'rgba(255, 255, 255, 0.10)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let y = startY; y <= height; y += step) {
+        const ry = Math.round(y) + 0.5;
+        ctx.moveTo(0, ry);
+        ctx.lineTo(width, ry);
+      }
+      ctx.stroke();
+    } else if (this.boardPaperType === 'dot') {
+      ctx.fillStyle = isLight ? 'rgba(100, 116, 139, 0.34)' : 'rgba(255, 255, 255, 0.18)';
+      const r = 1.3;
+      ctx.beginPath();
+      for (let x = startX; x <= width; x += step) {
+        for (let y = startY; y <= height; y += step) {
+          ctx.moveTo(x + r, y);
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+        }
+      }
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   // 🌟 [테마별 필기 잉크 팔레트 동적 동기화] 🌟
   updateInkPaletteUI() {
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
@@ -11663,6 +12004,17 @@ class GraphApp {
         dot.style.background = c;
         dot.style.boxShadow = (c.toLowerCase() === '#ffffff') ? 'inset 0 0 0 1px rgba(0,0,0,0.25)' : '';
         dot.classList.toggle('active', c.toLowerCase() === curLower);
+      }
+    });
+
+    // 올가미 플로팅 바 5색 팔레트 도트도 테마에 맞춰 동기화
+    const lassoDots = document.querySelectorAll('.lasso-color-dot');
+    lassoDots.forEach((dot, idx) => {
+      if (idx < palette.length) {
+        const c = palette[idx];
+        dot.dataset.color = c;
+        dot.style.background = c;
+        dot.style.boxShadow = (c.toLowerCase() === '#ffffff') ? 'inset 0 0 0 1px rgba(0,0,0,0.25)' : '';
       }
     });
   }
@@ -15042,7 +15394,7 @@ class GraphApp {
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'SELECT' ||
         target.tagName === 'A' ||
-        (target.closest && target.closest('button, .rail-btn, .quick-fab-btn, .rail-dock, .sidebar-rail, .canvas-quick-toolbar, .curve-context-bar, .pw-region-popover, .drawer-panel, .rail-drawer, .modal, .ink-dock, .problem-card-widget, .graph-card-widget, .graph-snap-floating-bar, .ink-floating-toolbar'))
+        (target.closest && target.closest('button, .rail-btn, .quick-fab-btn, .rail-dock, .sidebar-rail, .canvas-quick-toolbar, .curve-context-bar, .pw-region-popover, .drawer-panel, .rail-drawer, .modal, .ink-dock, .problem-card-widget, .graph-card-widget, .graph-snap-floating-bar, .ink-floating-toolbar, .lasso-action-floating-bar'))
       );
     };
 
@@ -15601,6 +15953,36 @@ class GraphApp {
             (this.selectedTextLabels && this.selectedTextLabels.length > 0);
 
           if (hasSelection) {
+            const hitResize = this.getLassoResizeHandleAt(pos);
+            if (hitResize) {
+              this.isResizingLassoSelection = true;
+              this._preDragState = this.getHistorySnapshot();
+              const bbox = this.lassoBoundingBox;
+              const pad = 10;
+              const x1 = bbox.minX - pad, y1 = bbox.minY - pad;
+              const x2 = bbox.maxX + pad, y2 = bbox.maxY + pad;
+              const anchorMap = {
+                br: { ax: x1, ay: y1, cx: x2, cy: y2 },
+                tl: { ax: x2, ay: y2, cx: x1, cy: y1 },
+                tr: { ax: x1, ay: y2, cx: x2, cy: y1 },
+                bl: { ax: x2, ay: y1, cx: x1, cy: y2 }
+              };
+              const info = anchorMap[hitResize] || anchorMap.br;
+              this.lassoResizeStart = {
+                handle: hitResize,
+                anchorX: info.ax,
+                anchorY: info.ay,
+                startCornerX: info.cx,
+                startCornerY: info.cy,
+                strokesSnap: (this.selectedInkStrokes || []).map(s => JSON.parse(JSON.stringify(s))),
+                textsSnap: (this.selectedTextLabels || []).map(t => JSON.parse(JSON.stringify(t))),
+                lassoPointsSnap: (this.lassoPoints || []).map(p => ({ x: p.x, y: p.y }))
+              };
+              this.canvas.style.cursor = (hitResize === 'br' || hitResize === 'tl') ? 'nwse-resize' : 'nesw-resize';
+              this.syncLassoActionBarUI();
+              this.render();
+              return;
+            }
             const hitSelection = this.isPointInLassoSelection(pos);
             if (hitSelection) {
               // 1. 점선 루프 내부 터치 -> 드래그 이동 시작!
@@ -15979,7 +16361,7 @@ class GraphApp {
         (e.pointerType === 'mouse' || !e.pointerType) &&
         typeof e.buttons === 'number' &&
         e.buttons === 0 &&
-        (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isLassoSelecting)
+        (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isLassoSelecting)
       ) {
         this.isPointerDownOnCanvas = false;
         handleUp(e);
@@ -16117,6 +16499,85 @@ class GraphApp {
 
       // [🪢 올가미(Lasso) 툴 인터랙션]
       if (this.isInkMode && this.activeInkTool === 'lasso') {
+        // 0. 모서리 핸들 드래그로 선택된 필기·도형·수식 비율 크기 조절!
+        if (this.isResizingLassoSelection && this.lassoResizeStart) {
+          const rs = this.lassoResizeStart;
+          const initVx = rs.startCornerX - rs.anchorX;
+          const initVy = rs.startCornerY - rs.anchorY;
+          const curVx = pos.x - rs.anchorX;
+          const curVy = pos.y - rs.anchorY;
+          const denom = Math.max(100, initVx * initVx + initVy * initVy);
+          const rawScale = (curVx * initVx + curVy * initVy) / denom;
+          const scale = Math.max(0.22, Math.min(4.5, rawScale));
+
+          const scaleScreenPt = (sp) => ({
+            x: rs.anchorX + (sp.x - rs.anchorX) * scale,
+            y: rs.anchorY + (sp.y - rs.anchorY) * scale
+          });
+
+          if (this.selectedInkStrokes && rs.strokesSnap) {
+            this.selectedInkStrokes.forEach((stroke, idx) => {
+              const snap = rs.strokesSnap[idx];
+              if (!snap) return;
+              const isBoard = (stroke.target || 'board') === 'board';
+              const toScr = (pt) => isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
+              const fromScr = (sp) => isBoard ? this.screenToBoard(sp.x, sp.y) : this.screenToMath(sp.x, sp.y);
+
+              stroke.size = Math.max(1.0, Math.min(28.0, parseFloat(((snap.size || 4.2) * scale).toFixed(2))));
+
+              if (snap.points && stroke.points) {
+                stroke.points = snap.points.map(pt => {
+                  const sp = scaleScreenPt(toScr(pt));
+                  const np = fromScr(sp);
+                  return { x: np.x, y: np.y, p: pt.p };
+                });
+              }
+
+              if (snap.shape && stroke.shape) {
+                if (snap.shape.type === 'line') {
+                  stroke.shape.start = fromScr(scaleScreenPt(toScr(snap.shape.start)));
+                  stroke.shape.end = fromScr(scaleScreenPt(toScr(snap.shape.end)));
+                } else if (snap.shape.type === 'circle') {
+                  stroke.shape.center = fromScr(scaleScreenPt(toScr(snap.shape.center)));
+                  stroke.shape.radius = snap.shape.radius * scale;
+                } else if (snap.shape.type === 'ellipse') {
+                  stroke.shape.center = fromScr(scaleScreenPt(toScr(snap.shape.center)));
+                  stroke.shape.rx = snap.shape.rx * scale;
+                  stroke.shape.ry = snap.shape.ry * scale;
+                } else if (snap.shape.type === 'rect') {
+                  const p1 = fromScr(scaleScreenPt(toScr(snap.shape.min)));
+                  const p2 = fromScr(scaleScreenPt(toScr(snap.shape.max)));
+                  stroke.shape.min = { x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y) };
+                  stroke.shape.max = { x: Math.max(p1.x, p2.x), y: Math.max(p1.y, p2.y) };
+                } else if (snap.shape.pts) {
+                  stroke.shape.pts = snap.shape.pts.map(pt => fromScr(scaleScreenPt(toScr(pt))));
+                }
+              }
+            });
+          }
+
+          if (this.selectedTextLabels && rs.textsSnap) {
+            this.selectedTextLabels.forEach((t, idx) => {
+              const snapT = rs.textsSnap[idx];
+              if (!snapT) return;
+              const sp = scaleScreenPt(this.mathToScreen(snapT.mathX, snapT.mathY));
+              const nm = this.screenToMath(sp.x, sp.y);
+              t.mathX = nm.x;
+              t.mathY = nm.y;
+              t.fontSize = Math.round(Math.max(10, Math.min(64, (snapT.fontSize || 20) * scale)));
+            });
+          }
+
+          if (rs.lassoPointsSnap && rs.lassoPointsSnap.length > 0) {
+            this.lassoPoints = rs.lassoPointsSnap.map(pt => scaleScreenPt(pt));
+          }
+
+          this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
+          this._inkBakeDirty = true;
+          this.requestRender();
+          return;
+        }
+
         // 1. 선택된 필기 및 점선 루프 실시간 드래그 이동 ("점선 따라가는 걸로" 완벽 구현!)
         if (this.isDraggingLassoSelection && this.lassoDragStart) {
           const mCurrent = this.screenToMath(pos.x, pos.y);
@@ -16215,9 +16676,15 @@ class GraphApp {
         const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
           (this.selectedTextLabels && this.selectedTextLabels.length > 0);
         if (hasSelection) {
-          const isOver = this.isPointInLassoSelection(pos);
-          this.canvas.style.cursor = isOver ? 'move' : 'crosshair';
-          this.canvas.classList.toggle('is-hover-selection', isOver);
+          const hitHandle = this.getLassoResizeHandleAt(pos);
+          if (hitHandle) {
+            this.canvas.style.cursor = (hitHandle === 'br' || hitHandle === 'tl') ? 'nwse-resize' : 'nesw-resize';
+            this.canvas.classList.add('is-hover-selection');
+          } else {
+            const isOver = this.isPointInLassoSelection(pos);
+            this.canvas.style.cursor = isOver ? 'move' : 'crosshair';
+            this.canvas.classList.toggle('is-hover-selection', isOver);
+          }
         }
       }
 
@@ -16983,6 +17450,24 @@ class GraphApp {
 
       // [🪢 올가미(Lasso) 툴 인터랙션]
       if (this.isInkMode && this.activeInkTool === 'lasso') {
+        if (this.isResizingLassoSelection) {
+          this.isResizingLassoSelection = false;
+          this.lassoResizeStart = null;
+          if (this._preDragState) {
+            const afterSnap = this.getHistorySnapshot();
+            if (this._preDragState !== afterSnap) {
+              this.undoStack.push(this._preDragState);
+              if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+              this.redoStack = [];
+              this.updateUndoRedoUI();
+            }
+            this._preDragState = null;
+          }
+          this.canvas.style.cursor = 'move';
+          this.syncLassoActionBarUI();
+          this.render();
+          return;
+        }
         if (this.isDraggingLassoSelection) {
           this.isDraggingLassoSelection = false;
           this.lassoDragStart = null;
@@ -17087,7 +17572,12 @@ class GraphApp {
           this.redoStack = [];
           this.updateUndoRedoUI();
 
-          // 완성된 획을 오프스크린 베이크 버퍼에 즉각 굽기 (0.02ms 소요, 기존 획 재연산 제로)
+          // 형광펜(isHighlighter) 획은 완료 즉시 하단 레이어(Pass 1)로 내려가 검은 글씨 뒤로 깔리도록 캐시 리빌드!
+          if (finishedStroke.isHighlighter || finishedStroke.isShape) {
+            this._inkBakeDirty = true;
+          }
+
+          // 완성된 일반 펜 획을 오프스크린 베이크 버퍼에 즉각 굽기 (0.02ms 소요, 기존 획 재연산 제로)
           if (!this._inkBakeDirty) {
             const isBoard = (finishedStroke.target || 'board') === 'board';
             const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
@@ -17308,7 +17798,7 @@ class GraphApp {
           }
         }
         lastPointerUpTime = Date.now();
-        if (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
+        if (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
           handleUp(e);
         }
       }, true);
@@ -17331,7 +17821,7 @@ class GraphApp {
           }
         }
         lastPointerUpTime = Date.now();
-        if (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
+        if (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
           handleUp(e);
         }
       }, true);
@@ -18114,6 +18604,11 @@ class GraphApp {
       const bg = this.isMonochromeMode ? '#ffffff' : curTheme.bg;
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, width, height);
+    }
+
+    // 0.4. [📋 칠판 배경 속지 레이어 (무지 / 모눈 / 가로줄 / 도트): 판서 모드에서 칠판 이동·줌과 1:1 연동!]
+    if (this.isGraphCovered && !this.pdfPageBoardData && !this._isRenderingGraphSnapshot) {
+      this.drawBoardPaperBackground(ctx, width, height, curTheme);
     }
 
     // 0.5. [📌 크롭된 PDF 문제 캔버스 내부 레이어 (2층): 그래프 및 펜/형광펜 필기 아래에 깔려 문제 위 자유 판서 100% 보장!]

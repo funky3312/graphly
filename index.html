@@ -289,8 +289,21 @@
             </div>
           </div>
 
-          <!-- 5. 패널: 환경 설정 (Settings) - 대표님 기획: 마그네틱, 그리드, 점근선, 캡처 규격 통합 -->
+          <!-- 5. 패널: 환경 설정 (Settings) - 대표님 기획: 칠판 배경 속지, 마그네틱, 그리드, 점근선, 캡처 규격 통합 -->
           <div class="drawer-panel" id="panelSettings" style="display: none;">
+            <!-- 섹션 0: 📋 칠판 배경 속지 (무지 / 모눈 / 가로줄 / 도트) -->
+            <div class="panel-section" style="border: none; padding: 0; margin-bottom: 14px;">
+              <div class="section-title">
+                <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>칠판 배경 속지</span>
+              </div>
+              <div class="vf-aspect-chips board-paper-chips" id="boardPaperTypeGroup" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px;">
+                <button type="button" class="vf-chip board-paper-chip active" data-paper="blank">무지</button>
+                <button type="button" class="vf-chip board-paper-chip" data-paper="grid">모눈</button>
+                <button type="button" class="vf-chip board-paper-chip" data-paper="lined">가로줄</button>
+                <button type="button" class="vf-chip board-paper-chip" data-paper="dot">도트</button>
+              </div>
+            </div>
+
             <!-- 섹션 1: 조작 & 가이드라인 설정 -->
             <div class="panel-section" style="border: none; padding: 0;">
               <div class="section-title">
@@ -953,6 +966,26 @@
         </div>
         <button id="btnInkClose" class="ink-tool-btn ink-close-btn" title="하단 필기 바 숨기기 (필기 기능은 계속 작동하며 우측 ✒️ 버튼으로 언제든 다시 열기)">
           <span class="ink-btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+        </button>
+      </div>
+
+      <!-- 🪢 올가미(Lasso) 선택 전용 플로팅 미니 액션 바 (색상 일괄 변경 · 복제 · 삭제) -->
+      <div id="lassoActionFloatingBar" class="lasso-action-floating-bar" style="display: none;">
+        <div class="lasso-color-group">
+          <button type="button" class="lasso-color-dot" data-color="#1e293b" style="background: #1e293b;" title="선택 영역 색상 변경"></button>
+          <button type="button" class="lasso-color-dot" data-color="#2563eb" style="background: #2563eb;" title="선택 영역 색상 변경"></button>
+          <button type="button" class="lasso-color-dot" data-color="#dc2626" style="background: #dc2626;" title="선택 영역 색상 변경"></button>
+          <button type="button" class="lasso-color-dot" data-color="#16a34a" style="background: #16a34a;" title="선택 영역 색상 변경"></button>
+          <button type="button" class="lasso-color-dot" data-color="#7c3aed" style="background: #7c3aed;" title="선택 영역 색상 변경"></button>
+        </div>
+        <div class="lasso-bar-sep"></div>
+        <button type="button" id="btnLassoDuplicate" class="lasso-action-btn" title="선택한 필기/도형 복제">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span>복제</span>
+        </button>
+        <button type="button" id="btnLassoDelete" class="lasso-action-btn lasso-action-del" title="선택한 필기/도형 삭제 (Delete)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          <span>삭제</span>
         </button>
       </div>
 
