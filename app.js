@@ -2504,7 +2504,7 @@ class GraphApp {
   updateStylusPenPosition(x, y, e = null) {
     if (!this.virtualStylusEl) return;
 
-    if (!this.showVirtualStylus || !this.isInkMode) {
+    if (!this.showVirtualStylus || !this.isInkMode || this.isDropLineMode || this.isTextToolMode) {
       if (this.virtualStylusEl.style.display !== 'none') {
         this.virtualStylusEl.style.display = 'none';
       }
@@ -17278,7 +17278,17 @@ class GraphApp {
     }, { passive: true });
 
     const getPos = (e) => {
-      const rect = this.canvasRect || this.updateCanvasRect() || this.canvas.getBoundingClientRect();
+      let rect = this.canvasRect;
+      if (!this.isDrawingInk && this.canvas) {
+        rect = this.canvas.getBoundingClientRect();
+        this.canvasRect = rect;
+        if (rect.width > 0 && rect.height > 0 && (Math.abs(rect.width - this.screenWidth) > 1 || Math.abs(rect.height - this.screenHeight) > 1)) {
+          this.resizeCanvas();
+          rect = this.canvasRect || this.canvas.getBoundingClientRect();
+        }
+      } else if (!rect) {
+        rect = this.updateCanvasRect() || this.canvas.getBoundingClientRect();
+      }
       const clientX = e.touches ? (e.touches[0] ? e.touches[0].clientX : (e.changedTouches ? e.changedTouches[0].clientX : 0)) : e.clientX;
       const clientY = e.touches ? (e.touches[0] ? e.touches[0].clientY : (e.changedTouches ? e.changedTouches[0].clientY : 0)) : e.clientY;
       return {
@@ -19270,10 +19280,13 @@ class GraphApp {
 
         // [📍 교재 보조 수선 모드: 특이점 및 일반 곡선 자석 스냅 타겟 탐색 (손날 touch 제외)]
         if (this.isDropLineMode && (!e || e.pointerType !== 'touch')) {
-          const snapRadius = (this._isAimingDropLine || (e && e.pointerType === 'pen')) ? 36 : 24;
+          const snapRadius = (this._isAimingDropLine || (e && e.pointerType === 'pen')) ? 32 : 24;
           const cand = this.findNearestDropLineTarget(pos, snapRadius);
-          if (cand !== this.dropLineHoverCandidate) {
-            this.dropLineHoverCandidate = cand;
+          const prev = this.dropLineHoverCandidate;
+          const changed = (Boolean(prev) !== Boolean(cand)) ||
+            (prev && cand && (Math.abs(prev.x - cand.x) > 1e-6 || Math.abs(prev.y - cand.y) > 1e-6 || prev.name !== cand.name || prev.isCandidate !== cand.isCandidate));
+          this.dropLineHoverCandidate = cand;
+          if (changed) {
             this.requestRender();
           }
         } else if (!this.isDropLineMode && this.dropLineHoverCandidate) {
@@ -22231,6 +22244,10 @@ class GraphApp {
 
   toggleDropLineMode(forceState) {
     this.isDropLineMode = forceState !== undefined ? forceState : !this.isDropLineMode;
+    if (!this.isDropLineMode) {
+      this.dropLineHoverCandidate = null;
+      this._isAimingDropLine = false;
+    }
     const btn = document.getElementById('btnQuickDropLine');
     if (btn) btn.classList.toggle('active', this.isDropLineMode);
     const container = this.canvas.parentElement;
@@ -22300,7 +22317,60 @@ class GraphApp {
     return s;
   }
 
+  // [📍 화면 렌더링과 100% 동일한 구간분할/주기함수 반영 곡선 Y값 평가 헬퍼]
+  evaluateGraphAtForScreen(g, gIdx, mx) {
+    if (!g) return NaN;
+    if (this.usePiecewise && this.graphs && this.graphs.length >= 1 && !g.isIndependent && gIdx !== null && gIdx !== undefined) {
+      if (!this.isInsidePiece(gIdx, mx)) {
+        return NaN;
+      }
+    }
+    let evalX = mx;
+    let yOffset = 0;
+    if (this.usePiecewise && this.isPiecewisePeriodic && this.piecewiseBoundaries && this.piecewiseBoundaries.length >= 2 && !g.isIndependent) {
+      const b0 = this.piecewiseBoundaries[0];
+      const bLast = this.piecewiseBoundaries[this.piecewiseBoundaries.length - 1];
+      const T = bLast - b0;
+      if (T > 1e-4) {
+        const curCycleK = Math.floor((mx - b0) / T);
+        let xBase = mx - curCycleK * T;
+        if (xBase >= bLast - 1e-6) xBase = b0;
+        if (xBase < b0) xBase = b0;
+        evalX = xBase;
+        yOffset = curCycleK * (this.periodicStepY || 0);
+      }
+    }
+    return this.engine.evaluatePipeline(g, evalX) + yOffset;
+  }
+
   collectDropLineCandidates() {
+    // 🚀 [0.00ms 초고속 캐싱]: 마우스 호버(pointermove) 때마다 5000스텝 수치해석(findIntersections)을 재실행하여
+    // 포인터가 마우스를 뒤따라오며 렉이 걸리던 현상을 원천 차단!
+    const sigParts = [
+      this.usePiecewise ? 1 : 0,
+      this.isPiecewisePeriodic ? 1 : 0,
+      this.periodicStepY || 0,
+      (this.piecewiseBoundaries || []).join(','),
+      (this.piecewiseFuncMap || []).join(','),
+      this.currentThemeKey || '',
+      this.isMonochromeMode ? 1 : 0
+    ];
+    if (this.graphs) {
+      for (let i = 0; i < this.graphs.length; i++) {
+        const g = this.graphs[i];
+        if (!g) continue;
+        const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+        const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+        const hSig = (g.handles || []).map(h => `${h.x.toFixed(4)}:${h.y.toFixed(4)}:${h.type}:${h.hidden ? 1 : 0}`).join(';');
+        const tSig = (g.transforms || []).map(t => `${t.type || ''}:${t.offset ? t.offset.x : 0}:${t.offset ? t.offset.y : 0}:${t.invertH ? 1 : 0}:${t.invertV ? 1 : 0}:${t.absolute ? 1 : 0}`).join(';');
+        sigParts.push(`${g.id}|${g.type}|${g.color}|${g.isAbsolute ? 1 : 0}|${g.isFrozen ? 1 : 0}|${g.frozenInvertH ? 1 : 0}|${g.frozenInvertV ? 1 : 0}|${g.frozenAbsolute ? 1 : 0}|${g.isIndependent ? 1 : 0}|${g.customExpr || ''}|${ox.toFixed(4)},${oy.toFixed(4)}|${hSig}|${tSig}`);
+      }
+    }
+    const cacheSig = sigParts.join('||');
+    if (this._dropLineCandCacheKey === cacheSig && this._dropLineCandCacheList) {
+      return this._dropLineCandCacheList;
+    }
+
     const candidates = [];
     const seen = new Set();
     const addCand = (x, y, name, color = '#00d2d3', layerId = null, handleIndex = null, candKey = null, extra = null) => {
@@ -22316,9 +22386,12 @@ class GraphApp {
       });
     };
 
-    // 1. 모든 그래프의 핸들러(극점, 변곡점, 꼭짓점, 시작점, 정점 등)
-    this.graphs.forEach(g => {
+    const offCurveCenterTypes = new Set(['exp_basic', 'log_basic', 'rational_basic', 'killer_log_frac', 'geom_circle']);
+
+    // 1. 모든 그래프의 실제 곡선 위 특이점 핸들러(극점, 변곡점, 꼭짓점, 시작점, 대칭중심 등)
+    this.graphs.forEach((g, gIdx) => {
       if (!g || !g.handles) return;
+      if (g.type === 'geom_circle' || g.type === 'geom_triangle' || g.type === 'geom_quad') return;
       let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
       let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
       if (g.transforms && g.transforms.length > 0) {
@@ -22329,23 +22402,35 @@ class GraphApp {
       }
 
       g.handles.forEach((h, hIdx) => {
-        if (h.hidden || h.type === 'point') return;
-        let targetY = h.y;
-        if (g.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
-          targetY = Math.abs(h.y);
+        if (h.hidden || h.type === 'point' || h.type === 'asymptote') return;
+        // 점근선 교점(곡선 밖 허공의 기준점)은 곡선 위 수선 타겟에서 제외하여 엉뚱한 허공으로 튀는 현상 방지!
+        if (h.type === 'center' && offCurveCenterTypes.has(g.type)) return;
+
+        const candX = h.x + ox;
+        const evalY = this.evaluateGraphAtForScreen(g, gIdx, candX);
+        if (isNaN(evalY) || !isFinite(evalY) || Math.abs(evalY) > 100) return;
+
+        let labelName = h.name || '특이점';
+        if (g.type === 'cos_1period' && h.type === 'center') {
+          labelName = '극대';
         }
-        let evalY = (h.type === 'center' || h.type === 'asymptote')
-          ? (targetY + oy)
-          : this.engine.evaluatePipeline(g, h.x + ox);
-        if (isNaN(evalY) || !isFinite(evalY)) {
-          evalY = targetY + oy;
-        }
-        addCand(h.x + ox, evalY, h.name || '특이점', g.color, g.id, hIdx, `${g.id}_h_${hIdx}`);
+        addCand(candX, evalY, labelName, g.color, g.id, hIdx, `${g.id}_h_${hIdx}`);
       });
+
+      // 기함수 분수형(ax/(x²+b))의 대칭 극소점 보강
+      if (g.type === 'killer_frac_odd' && g.handles.length >= 2) {
+        const x0 = g.handles[0].x + ox;
+        const p = (g.handles[1].x + ox) - x0;
+        const symX = x0 - p;
+        const symY = this.evaluateGraphAtForScreen(g, gIdx, symX);
+        if (!isNaN(symY) && isFinite(symY)) {
+          addCand(symX, symY, '극소', g.color, g.id, null, `${g.id}_sym_min`);
+        }
+      }
 
       // 2. y절편 f(0)
       try {
-        const y0 = this.engine.evaluatePipeline(g, 0);
+        const y0 = this.evaluateGraphAtForScreen(g, gIdx, 0);
         if (!isNaN(y0) && isFinite(y0) && Math.abs(y0) < 50) {
           addCand(0, y0, 'y절편', g.color, g.id, null, `${g.id}_y0`);
         }
@@ -22355,7 +22440,10 @@ class GraphApp {
       try {
         const roots = this.engine.findIntersections(g, null, { xmin: -15, xmax: 15 }, null);
         if (roots && roots.length > 0) {
-          roots.forEach((r, rIdx) => addCand(r.x, 0, 'x절편', g.color, g.id, null, `${g.id}_root_${rIdx}`));
+          roots.forEach((r, rIdx) => {
+            if (this.usePiecewise && !g.isIndependent && !this.isInsidePiece(gIdx, r.x)) return;
+            addCand(r.x, 0, 'x절편', g.color, g.id, null, `${g.id}_root_${rIdx}`);
+          });
         }
       } catch (err) {}
     });
@@ -22367,21 +22455,29 @@ class GraphApp {
           try {
             const roots = this.engine.findIntersections(this.graphs[i], this.graphs[j], { xmin: -15, xmax: 15 }, null);
             if (roots && roots.length > 0) {
-              roots.forEach((r, rIdx) => addCand(
-                r.x, r.y, '교점', ((this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper).isLight || this.isMonochromeMode) ? '#7c3aed' : '#feca57', this.graphs[i].id, null,
-                `cross_${this.graphs[i].id}_${this.graphs[j].id}_${rIdx}`,
-                { isIntersection: true, layerIds: [this.graphs[i].id, this.graphs[j].id] }
-              ));
+              roots.forEach((r, rIdx) => {
+                if (this.usePiecewise) {
+                  if (!this.graphs[i].isIndependent && !this.isInsidePiece(i, r.x)) return;
+                  if (!this.graphs[j].isIndependent && !this.isInsidePiece(j, r.x)) return;
+                }
+                addCand(
+                  r.x, r.y, '교점', ((this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper).isLight || this.isMonochromeMode) ? '#7c3aed' : '#feca57', this.graphs[i].id, null,
+                  `cross_${this.graphs[i].id}_${this.graphs[j].id}_${rIdx}`,
+                  { isIntersection: true, layerIds: [this.graphs[i].id, this.graphs[j].id] }
+                );
+              });
             }
           } catch (err) {}
         }
       }
     }
 
+    this._dropLineCandCacheKey = cacheSig;
+    this._dropLineCandCacheList = candidates;
     return candidates;
   }
 
-  findNearestDropLineCandidate(screenPos, maxDist = 20) {
+  findNearestDropLineCandidate(screenPos, maxDist = 11) {
     const candidates = this.collectDropLineCandidates();
     let best = null;
     let bestDist = maxDist;
@@ -22396,44 +22492,135 @@ class GraphApp {
     return best;
   }
 
-  // [📍 특이점 또는 일반 그래프(곡선) 위의 가장 가까운 점 통합 탐색]
-  findNearestDropLineTarget(screenPos, maxDist = 20) {
-    // 1단계: 극점·꼭짓점·교점 등 특이점 우선 스냅 (자석 효과)
-    const cand = this.findNearestDropLineCandidate(screenPos, maxDist);
-    if (cand) return cand;
-
-    // 2단계: 특이점이 없으면, 화면에 존재하는 곡선 위의 임의 점 탐색
+  // [📍 특이점 또는 일반 그래프(곡선) 위의 2D 직교 최단거리 점 통합 탐색]
+  findNearestDropLineTarget(screenPos, maxDist = 24) {
     if (!this.graphs || this.graphs.length === 0) return null;
-    const m = this.screenToMath(screenPos.x, screenPos.y);
-    let bestCurvePoint = null;
-    let bestDist = maxDist;
 
-    this.graphs.forEach(g => {
+    // 1단계: 화면 공간(Screen Space)에서 마우스 포인터와 곡선 사이의 '진짜 2D 직교 최단거리 점' 탐색!
+    // 기존에는 마우스 X좌표(m.x)에서만 수직으로 f(m.x)를 구했기 때문에,
+    // 기울기가 가파른 삼차·사차·지수·로그·유리함수 곡선 옆으로 마우스가 4~6px만 벗어나도
+    // 타겟 점이 마우스보다 15~25px 앞서가거나(먼저 가거나) 뒤처지고(뒤따라오거나), 조금만 더 가팔라지면 위치를 아예 못 찾았습니다!
+    let bestCurvePoint = null;
+    let bestCurveDist = maxDist;
+
+    const evalScreenPoint = (g, gIdx, sx) => {
+      const mx = this.screenToMath(sx, screenPos.y).x;
+      const my = this.evaluateGraphAtForScreen(g, gIdx, mx);
+      if (isNaN(my) || !isFinite(my) || Math.abs(my) > 100) return null;
+      const s = this.mathToScreen(mx, my);
+      const d = Math.hypot(s.x - screenPos.x, s.y - screenPos.y);
+      return { mx, my, sx: s.x, sy: s.y, d };
+    };
+
+    const refineInterval = (g, gIdx, leftSx, rightSx) => {
+      let a = leftSx;
+      let b = rightSx;
+      const phi = (Math.sqrt(5) - 1) / 2;
+      let x1 = b - phi * (b - a);
+      let x2 = a + phi * (b - a);
+      let p1 = evalScreenPoint(g, gIdx, x1);
+      let p2 = evalScreenPoint(g, gIdx, x2);
+      for (let iter = 0; iter < 9; iter++) {
+        const d1 = p1 ? p1.d : Infinity;
+        const d2 = p2 ? p2.d : Infinity;
+        if (d1 < d2) {
+          b = x2;
+          x2 = x1;
+          p2 = p1;
+          x1 = b - phi * (b - a);
+          p1 = evalScreenPoint(g, gIdx, x1);
+        } else {
+          a = x1;
+          x1 = x2;
+          p1 = p2;
+          x2 = a + phi * (b - a);
+          p2 = evalScreenPoint(g, gIdx, x2);
+        }
+      }
+      const mid = evalScreenPoint(g, gIdx, (a + b) * 0.5);
+      let best = mid;
+      if (p1 && (!best || p1.d < best.d)) best = p1;
+      if (p2 && (!best || p2.d < best.d)) best = p2;
+      return best;
+    };
+
+    const searchRadiusPx = Math.ceil(maxDist);
+    this.graphs.forEach((g, gIdx) => {
+      if (!g || g.type === 'geom_circle' || g.type === 'geom_triangle' || g.type === 'geom_quad') return;
       try {
-        let evalY = this.engine.evaluatePipeline(g, m.x);
-        if (!isNaN(evalY) && isFinite(evalY) && Math.abs(evalY) < 100) {
-          const s = this.mathToScreen(m.x, evalY);
-          const d = Math.hypot(s.x - screenPos.x, s.y - screenPos.y);
-          if (d < bestDist) {
-            bestDist = d;
-            bestCurvePoint = {
-              x: m.x,
-              y: evalY,
-              name: '곡선 점',
-              color: g.color || '#00d2d3',
-              layerId: g.id,
-              handleIndex: null,
-              candKey: `${g.id}_pt_${Math.round(m.x * 100) / 100}`,
-              type: 'curve',
-              isCandidate: false,
-              screenX: s.x,
-              screenY: s.y,
-              dist: d
-            };
+        let localBest = null;
+        let prevSample = null;
+        const crossingIntervals = [];
+
+        for (let dx = -searchRadiusPx; dx <= searchRadiusPx; dx += 1) {
+          const sx = screenPos.x + dx;
+          const pt = evalScreenPoint(g, gIdx, sx);
+          if (pt) {
+            if (!localBest || pt.d < localBest.d) {
+              localBest = pt;
+            }
+            if (prevSample) {
+              const dyPrev = prevSample.sy - screenPos.y;
+              const dyCurr = pt.sy - screenPos.y;
+              // 가파른 구간에서 마우스 높이를 가로지르는 경우(Zero-Crossing) 정밀 탐색 구간 추가
+              if ((dyPrev * dyCurr <= 0) && Math.abs(prevSample.sy - pt.sy) < this.screenHeight * 1.5) {
+                crossingIntervals.push([prevSample.sx, pt.sx]);
+              }
+            }
           }
+          prevSample = pt;
+        }
+
+        if (localBest) {
+          const refined = refineInterval(g, gIdx, localBest.sx - 1.2, localBest.sx + 1.2);
+          if (refined && refined.d < localBest.d) {
+            localBest = refined;
+          }
+        }
+        for (let cIdx = 0; cIdx < crossingIntervals.length; cIdx++) {
+          const [cLeft, cRight] = crossingIntervals[cIdx];
+          const refinedCross = refineInterval(g, gIdx, cLeft, cRight);
+          if (refinedCross && (!localBest || refinedCross.d < localBest.d)) {
+            localBest = refinedCross;
+          }
+        }
+
+        if (localBest && localBest.d < bestCurveDist) {
+          bestCurveDist = localBest.d;
+          bestCurvePoint = {
+            x: localBest.mx,
+            y: localBest.my,
+            name: '곡선 점',
+            color: g.color || '#00d2d3',
+            layerId: g.id,
+            handleIndex: null,
+            candKey: `${g.id}_pt_${Math.round(localBest.mx * 100) / 100}`,
+            type: 'curve',
+            isCandidate: false,
+            screenX: localBest.sx,
+            screenY: localBest.sy,
+            dist: localBest.d
+          };
         }
       } catch (err) {}
     });
+
+    // 2단계: 극점·꼭짓점·절편·교점 등 특이점 자석 스냅!
+    // 기존에는 특이점 스냅 반경이 24~36px로 너무 넓어서 곡선을 따라 마우스를 움직일 때
+    // 특이점 24px 전부터 타겟이 앞으로 휙 점프하고(먼저 가거나), 지나간 뒤에도 24px 동안 뒤에 끌려오던(뒤따라오거나) 문제가 발생했습니다.
+    // 이제 조준 링 반경(10px, 펜 조준 시 13px) 안에 실제로 들어왔을 때만 칼같이 자석 스냅되도록 조율합니다!
+    const featureSnapRadius = Math.min(maxDist, (this._isAimingDropLine || maxDist > 28) ? 13 : 10);
+    const cand = this.findNearestDropLineCandidate(screenPos, featureSnapRadius);
+    if (cand) return cand;
+
+    // 곡선 위의 직교 최단거리 점이 특이점 바로 옆(9px 이내)이고 마우스도 곡선에 밀착해 있다면 특이점으로 매끄럽게 스냅
+    if (bestCurvePoint && bestCurvePoint.dist <= 12) {
+      const curveSnapCand = this.findNearestDropLineCandidate(
+        { x: bestCurvePoint.screenX, y: bestCurvePoint.screenY },
+        9
+      );
+      if (curveSnapCand) return curveSnapCand;
+    }
 
     return bestCurvePoint;
   }
