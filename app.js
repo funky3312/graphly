@@ -2506,6 +2506,12 @@ class GraphApp {
       e = this._lastPointerEvent;
     }
 
+    // 🌟 [아이패드/태블릿 손가락 터치 시 가상 펜 아이콘 숨김]
+    if (e && e.pointerType === 'touch') {
+      this.virtualStylusEl.style.display = 'none';
+      return;
+    }
+
     // 🌟 [대표님 킬러 UX]: 마우스 포인터가 메뉴/툴바/버튼 위로 올라갔을 때 펜을 즉시 숨김! (겹침 방지)
     if (e && this.isPointerOverMenu(e)) {
       this.virtualStylusEl.style.display = 'none';
@@ -16772,8 +16778,13 @@ class GraphApp {
       const isWritingTool = (this.isInkMode && this.activeInkTool !== 'select');
       const isPenLongPress = (e.pointerType === 'pen' && e.button === 2);
 
-      // 🌟 [대표님 킬러 기획: 스페이스바+드래그 또는 마우스 휠 클릭 시 펜 모드에서도 즉시 화면/칠판 밀기 발동!]
-      const isForceBoardPan = Boolean(this.isSpacePressed || e.button === 1);
+      // 🌟 [아이패드/태블릿 왼손 손가락 이동·줌 & 오른손 펜슬 필기 완벽 분리]:
+      // 필기 도구(pen/highlighter/eraser/lasso)가 켜져 있을 때 손가락(e.pointerType === 'touch')이 닿으면
+      // 절대 필기되지 않고 즉시 1손가락 화면 이동(Pan) 발동! (2손가락은 즉시 핀치 줌으로 작동)
+      const isFingerTouchInWritingTool = Boolean(isWritingTool && e && e.pointerType === 'touch');
+
+      // 🌟 [대표님 킬러 기획: 스페이스바+드래그, 마우스 휠 클릭, 또는 태블릿 손가락 터치 시 펜 모드에서도 즉시 화면/칠판 밀기 발동!]
+      const isForceBoardPan = Boolean(this.isSpacePressed || e.button === 1 || isFingerTouchInWritingTool);
 
       const isExplicitPan = !isPenLongPress && !isStylusEraser && (
         isForceBoardPan ||
@@ -18902,6 +18913,12 @@ class GraphApp {
         lastPointerDownTime = Date.now();
         // 🌟 [크롬 전체화면 상단 (X) 롱프레스 차단]: 기본 제스처 차단 (단, setPointerCapture로 카드/툴바 클릭을 가로채지 않도록 전역 window 리스너 사용)
         e.preventDefault();
+
+        // 🛡️ [아이패드 팜 리젝션 & 양손 분리]: 오른손 애플펜슬로 필기 중일 때 왼손 손가락/손바닥 터치는 완벽 무시!
+        if (e.pointerType === 'touch' && (this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) && this._activeDrawingPointerType === 'pen') {
+          return;
+        }
+
         this.isPointerDownOnCanvas = true;
         this._pointerDownStart = { time: Date.now(), x: e.clientX, y: e.clientY };
 
@@ -18912,16 +18929,34 @@ class GraphApp {
           }
           this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType, time: nowT });
           if (this.activePointers.size >= 2) {
+            this._pinchWasActiveInGesture = true;
             const pts = Array.from(this.activePointers.values());
             this._startCanvasTwoFingerPinch(pts[0], pts[1]);
             return;
           }
+          this._activePanPointerId = e.pointerId;
+        } else {
+          // 펜(pen) 또는 마우스(mouse)가 닿는 순간 진행 중이던 손가락 패닝/핀치를 즉시 멈추고 필기 우선권 확보!
+          if (this.isPanning || this.isBoardPanning || this._pinchState) {
+            this.isPanning = false;
+            this.isBoardPanning = false;
+            this._pinchState = null;
+            this._activePanPointerId = null;
+          }
+          this._activeDrawingPointerId = e.pointerId;
+          this._activeDrawingPointerType = e.pointerType || 'mouse';
         }
         handleDown(e);
       }, { passive: false });
 
       window.addEventListener('pointermove', (e) => {
         lastPointerMoveTime = Date.now();
+        // 오른손 펜슬 필기 도중에는 왼손 손가락(다른 pointerId)의 움직임이 펜 궤적을 절대 간섭하지 못하도록 차단!
+        if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
+          if (e.pointerId !== undefined && e.pointerId !== this._activeDrawingPointerId) {
+            return;
+          }
+        }
         if (this.activePointers && this.activePointers.has(e.pointerId)) {
           this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType, time: Date.now() });
           if (this.activePointers.size >= 2 && this._pinchState) {
@@ -18929,12 +18964,31 @@ class GraphApp {
             this._moveCanvasTwoFingerPinch(pts[0], pts[1]);
             return;
           }
+          // 두 손가락 핀치 직후 한 손가락만 먼저 뗐을 때 남은 손가락으로 인해 화면이 튀는 현상 방지
+          if (this._pinchWasActiveInGesture && this.activePointers.size === 1) {
+            return;
+          }
         }
         handleMove(e);
       }, { capture: true, passive: false });
 
-      window.addEventListener('pointerup', (e) => {
+      const finishPointer = (e) => {
+        // 오른손 펜슬 필기 도중 왼손 손가락을 떼더라도 펜슬 획이 끊기지 않도록 보호!
+        if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
+          if (e.pointerId !== undefined && e.pointerId !== this._activeDrawingPointerId) {
+            if (this.activePointers) {
+              this.activePointers.delete(e.pointerId);
+              if (this.activePointers.size < 2) this._pinchState = null;
+              if (this.activePointers.size === 0) this._pinchWasActiveInGesture = false;
+            }
+            return;
+          }
+        }
+
         this.isPointerDownOnCanvas = false;
+        this._activeDrawingPointerId = null;
+        this._activeDrawingPointerType = null;
+
         if (e.pointerId !== undefined && this.canvas && this.canvas.releasePointerCapture) {
           try {
             if (!this.canvas.hasPointerCapture || this.canvas.hasPointerCapture(e.pointerId)) {
@@ -18943,42 +18997,32 @@ class GraphApp {
           } catch (err) { }
         }
         if (this.activePointers) {
+          const wasTouch = this.activePointers.has(e.pointerId);
           this.activePointers.delete(e.pointerId);
           if (this.activePointers.size < 2) {
-            this._pinchState = null;
-          }
-          if (this.activePointers.size === 0 && this.isBoardPanning) {
-            this.isBoardPanning = false;
-          }
-        }
-        lastPointerUpTime = Date.now();
-        if (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
-          handleUp(e);
-        }
-      }, true);
-      window.addEventListener('pointercancel', (e) => {
-        this.isPointerDownOnCanvas = false;
-        if (e.pointerId !== undefined && this.canvas && this.canvas.releasePointerCapture) {
-          try {
-            if (!this.canvas.hasPointerCapture || this.canvas.hasPointerCapture(e.pointerId)) {
-              this.canvas.releasePointerCapture(e.pointerId);
+            if (this._pinchState) {
+              this._pinchState = null;
+              this.isPanning = false;
+              this.isBoardPanning = false;
             }
-          } catch (err) { }
-        }
-        if (this.activePointers) {
-          this.activePointers.delete(e.pointerId);
-          if (this.activePointers.size < 2) {
-            this._pinchState = null;
           }
-          if (this.activePointers.size === 0 && this.isBoardPanning) {
-            this.isBoardPanning = false;
+          if (this.activePointers.size === 0) {
+            this._pinchWasActiveInGesture = false;
+            this._activePanPointerId = null;
+            if (wasTouch) {
+              this.isPanning = false;
+              this.isBoardPanning = false;
+            }
           }
         }
         lastPointerUpTime = Date.now();
         if (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
           handleUp(e);
         }
-      }, true);
+      };
+
+      window.addEventListener('pointerup', finishPointer, true);
+      window.addEventListener('pointercancel', finishPointer, true);
     }
 
     // 마우스 이벤트 호환성 레이어 (PointerEvent 미지원 환경 및 MouseEvent 시뮬레이션 지원)
