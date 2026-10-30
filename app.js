@@ -3466,7 +3466,7 @@ class GraphApp {
 
     this._inkHoldTimer = setTimeout(() => {
       this._onInkHoldTriggered();
-    }, 320);
+    }, 420);
   }
 
   _onInkHoldTriggered() {
@@ -8909,9 +8909,7 @@ class GraphApp {
 
     const L = screenPts.length;
     const lastPt = screenPts[L - 1];
-    const pVal = Math.max(0.1, Math.min(1.0, (lastPt && lastPt.p) ? lastPt.p : 0.5));
-    const factor = 0.90 + 0.16 * pVal;
-    const lineW = Math.max(0.8, baseSize * factor);
+    const lineW = Math.max(0.8, baseSize * 0.98);
 
     const strokeColor = this.isMonochromeMode ? '#000000' : (stroke.color || '#1e293b');
 
@@ -9143,45 +9141,14 @@ class GraphApp {
       p: (pt.p !== undefined ? pt.p : 0.5)
     }));
 
-    // 🌟 [PC · 아이패드 · 갤탭 통합 스트림라인 엔진]:
-    // 240Hz 아이패드 유리면 위에서 발생하는 1~2px 미세 손떨림 노이즈를 2.8px 간격으로 정규화하여 PC와 동일한 곡선 밀도 확보!
-    const minDist = isLiveDrawing ? 2.2 : 2.8;
-    const filtered = [rawPts[0]];
-    for (let i = 1; i < rawPts.length; i++) {
-      const prev = filtered[filtered.length - 1];
-      const d = Math.hypot(rawPts[i].x - prev.x, rawPts[i].y - prev.y);
-      if (d >= minDist || i === rawPts.length - 1) {
-        filtered.push(rawPts[i]);
-      }
-    }
-
-    // 🌟 양 끝점은 100% 고정한 채 중간 점들의 유리면 손떨림만 매끄럽게 정돈하는 대칭 가우시안 스트림라인 필터
-    let pts = filtered;
-    const passes = isLiveDrawing ? 1 : 2;
-    for (let pass = 0; pass < passes; pass++) {
-      if (pts.length < 3) break;
-      const nextPts = [pts[0]];
-      for (let i = 1; i < pts.length - 1; i++) {
-        nextPts.push({
-          x: pts[i - 1].x * 0.22 + pts[i].x * 0.56 + pts[i + 1].x * 0.22,
-          y: pts[i - 1].y * 0.22 + pts[i].y * 0.56 + pts[i + 1].y * 0.22,
-          p: pts[i - 1].p * 0.22 + pts[i].p * 0.56 + pts[i + 1].p * 0.22
-        });
-      }
-      nextPts.push(pts[pts.length - 1]);
-      pts = nextPts;
-    }
+    // 🌟 [실시간 드로잉(drawLiveBezierStep)과 캐시 베이킹(renderSingleStroke) 100.0% 무변형 일치]:
+    // 사후에 가우시안 필터로 좌표를 깎으면 나중에 render()가 호출될 때 이전에 쓴 글자들의 필체가 바뀌어 보이므로,
+    // 입력 단계(2.0px 필터)에서 확정된 점들을 변형 없이 그대로 중점 2차 베지어 곡선으로 그려 필체 변화를 0%로 차단합니다!
+    const pts = rawPts;
 
     if (!stroke.isHighlighter) {
       const baseSize = (stroke.size || 4.2) * zoomRatio;
-      let pSum = 0;
-      for (let i = 0; i < pts.length; i++) {
-        pSum += Math.max(0.1, Math.min(1.0, pts[i].p || 0.5));
-      }
-      const avgP = pSum / Math.max(1, pts.length);
-      // PC 마우스(p=0.5 -> 0.98x)와 아이패드 애플펜슬(p=0.75 -> 1.02x)의 굵기를 1.0배로 완벽 통일!
-      const factor = 0.90 + 0.16 * avgP;
-      targetCtx.lineWidth = Math.max(0.8, baseSize * factor);
+      targetCtx.lineWidth = Math.max(0.8, baseSize * 0.98);
     }
 
     targetCtx.fillStyle = strokeColor;
@@ -18769,13 +18736,7 @@ class GraphApp {
           clearTimeout(this._inkHoldTimer);
           this._inkHoldTimer = null;
         }
-        if (!this._inkHoldDetected && this.currentInkStroke && !this.currentInkStroke.shape && this._lastSignificantMoveTime && (Date.now() - this._lastSignificantMoveTime >= 180)) {
-          const shapeOnUp = this.recognizeInkShape(this.currentInkStroke);
-          if (shapeOnUp) {
-            this.currentInkStroke.shape = shapeOnUp;
-            this.currentInkStroke.isShape = true;
-          }
-        }
+
         this._inkHoldDetected = false;
         this._inkHoldLastScreenPos = null;
         this._lastSignificantMoveTime = 0;
