@@ -1,7 +1,7 @@
 {
-  "name": "Graphly.net - 수학 그래프 & 판서 스튜디오",
+  "name": "Graphly.net",
   "short_name": "Graphly",
-  "description": "수학 강사를 위한 실시간 함수 그래프 시각화 및 스마트 판서 스튜디오",
+  "description": "",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

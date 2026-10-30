@@ -1115,7 +1115,7 @@ class GraphApp {
       this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
-      this.showToast('↺ 새 캔버스 초기화 이전 상태로 모두 복구됨 (Ctrl+Z)');
+      this.showToast('↺ 새 캔버스 초기화 이전 상태로 모두 복구됨');
       return;
     }
 
@@ -1130,7 +1130,7 @@ class GraphApp {
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       this.render();
-      this.showToast('↺ 획 실행 취소됨 (Ctrl+Z)');
+      this.showToast('↺ 획 실행 취소됨');
       return;
     }
 
@@ -1140,7 +1140,7 @@ class GraphApp {
     this._inkBakeDirty = true;
     this.isHistoryProcessing = false;
     this.updateUndoRedoUI();
-    this.showToast('↺ 실행 취소됨 (Ctrl+Z)');
+    this.showToast('↺ 실행 취소됨');
   }
 
   redo() {
@@ -1159,7 +1159,7 @@ class GraphApp {
       this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
-      this.showToast('↻ 다시 실행됨 (Ctrl+Y)');
+      this.showToast('↻ 다시 실행됨');
       return;
     }
 
@@ -1171,7 +1171,7 @@ class GraphApp {
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       this.render();
-      this.showToast('↻ 획 다시 실행됨 (Ctrl+Y)');
+      this.showToast('↻ 획 다시 실행됨');
       return;
     }
 
@@ -1181,7 +1181,7 @@ class GraphApp {
     this._inkBakeDirty = true;
     this.isHistoryProcessing = false;
     this.updateUndoRedoUI();
-    this.showToast('↻ 다시 실행됨 (Ctrl+Y)');
+    this.showToast('↻ 다시 실행됨');
   }
 
   restoreHistorySnapshot(jsonStr) {
@@ -1313,8 +1313,8 @@ class GraphApp {
 
     const canUndo = this.undoStack.length > 0;
     const canRedo = this.redoStack.length > 0;
-    const undoTitle = 'Ctrl+Z';
-    const redoTitle = 'Ctrl+Y';
+    const undoTitle = '실행 취소';
+    const redoTitle = '다시 실행';
 
     if (btnUndo) {
       btnUndo.disabled = !canUndo;
@@ -1347,7 +1347,7 @@ class GraphApp {
       const emptyHint = document.createElement('div');
       emptyHint.className = 'empty-layer-hint';
       emptyHint.style.cssText = 'padding: 10px 8px; font-size: 11px; color: var(--text-muted); text-align: center; border: 1px dashed rgba(255,255,255,0.12); border-radius: var(--radius-sm); margin: 4px 0;';
-      emptyHint.innerHTML = '레이어가 비어있습니다<br><span style="font-size:10px; opacity:0.8;">아래 [개형 클릭] 시 즉시 자동 추가</span>';
+      emptyHint.innerHTML = '그래프 없음';
       list.appendChild(emptyHint);
     } else {
       this.graphs.forEach((g, idx) => {
@@ -1650,7 +1650,7 @@ class GraphApp {
       const pwControls = document.getElementById('pwControls');
       if (pwControls) pwControls.style.display = 'none';
 
-      this.showToast(`🗑️ ${removedName} 삭제됨 (빈 레이어 상태)`);
+      this.showToast(`🗑️ ${removedName} 삭제됨`);
     } else {
       if (this.activeGraphIdx >= this.graphs.length) {
         this.activeGraphIdx = this.graphs.length - 1;
@@ -1732,7 +1732,7 @@ class GraphApp {
     this.syncGraphSnapBarUI();
     this.render();
 
-    this.showToast('✨ 그래프와 경계선만 지웠습니다! (필기·문제 유지 / 되돌리기: Ctrl+Z)');
+    this.showToast('✨ 그래프와 경계선만 지웠습니다!');
   }
 
   // --- [🧹 3. 새 캔버스 (전체 초기화: 그래프 + 경계선 + 필기 + 떠 있는 문제/보관 카드 전부 초기화)] ---
@@ -1891,7 +1891,7 @@ class GraphApp {
     this.syncGraphSnapBarUI();
     this.render();
 
-    this.showToast('✨ 새 캔버스(판서 모드)로 전체 초기화했습니다! (실수 시 Ctrl+Z로 문제·필기·그래프 즉시 복구)');
+    this.showToast('✨ 새 캔버스(필기 모드)로 전체 초기화했습니다!');
   }
 
   selectGraph(idx) {
@@ -1922,7 +1922,7 @@ class GraphApp {
     this.syncControls();
     this.render();
     const stage = g.transforms.length + 1;
-    this.showToast(`✨ ${stage}차 절댓값 재접기 완료! (아래로 내려간 부분을 다시 꺾어올림)`);
+    this.showToast(`✨ ${stage}차 절댓값 재접기 완료!`);
   }
 
   // (하위 호환 유지) 형상 프리징 토글
@@ -2812,7 +2812,7 @@ class GraphApp {
     // 2차 클릭 (바깥창 필기가 없을 때): 그래프 창 내부 주석까지 모두 비움!
     if (this.isGraphCovered && !this.pdfPageBoardData) {
       this.inkStrokes = this.inkStrokes.filter(s => (s.target || 'board') !== 'board');
-      this.showToast('🧹 판서 모드 필기를 깔끔하게 비웠습니다.');
+      this.showToast('🧹 필기 모드 필기를 깔끔하게 비웠습니다.');
     } else if (this.pdfPageBoardData) {
       this.inkStrokes = this.inkStrokes.filter(s => !s.onPdfBoard && (s.target || 'board') !== 'board');
       this.showToast('🧹 PDF 페이지 위 필기를 깔끔하게 비웠습니다.');
@@ -4099,7 +4099,7 @@ class GraphApp {
       this._saveQuickPillRemoteSettings();
     }
     if (nextHidden) {
-      this.showToast('✍️ 하단 필기 바를 숨겼습니다. (우측 ✒️ 버튼으로 언제든 다시 열기)');
+      this.showToast('✍️ 하단 필기 바를 숨겼습니다.');
     } else {
       this.showToast('✍️ 하단 필기 바가 다시 표시되었습니다.');
     }
@@ -4575,6 +4575,13 @@ class GraphApp {
           return;
         }
 
+        // 2.5) .graphly / .json 파일 불러오기
+        const graphlyFile = rawFiles.find(f => f.name && /\.(graphly|json)$/i.test(f.name));
+        if (graphlyFile) {
+          this.importGraphlyDeckFile(graphlyFile);
+          return;
+        }
+
         // 3) PDF 파일 불러오기
         const pdfFile = rawFiles.find(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
         if (pdfFile) {
@@ -4743,7 +4750,7 @@ class GraphApp {
       return Promise.reject(new Error('PDF.js not loaded'));
     }
 
-    this.showToast('⏳ PDF 교재를 불러오는 중입니다...');
+    this.showToast('⏳ PDF 문서를 불러오는 중입니다...');
     const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
 
     return loadingTask.promise.then(async pdf => {
@@ -4777,7 +4784,7 @@ class GraphApp {
       if (lbl) lbl.textContent = `${Math.round(this.pdfZoom * 100)}%`;
 
       this.renderAllPdfPages(true);
-      this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) 교재가 시원하게 로드되었습니다!`);
+      this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) 문서가 시원하게 로드되었습니다!`);
       return pdf;
     }).catch(err => {
       console.error('PDF 로드 실패:', err);
@@ -4860,9 +4867,7 @@ class GraphApp {
         const isDelOpen = (isActive && this.pdfWorkedPages.length > 1 && this._openSlideChipDelKey === chipKey);
         const chip = document.createElement('div');
         chip.className = 'slide-chip-item' + (isActive ? ' active' : '') + (isDelOpen ? ' del-open' : '');
-        chip.title = isActive && this.pdfWorkedPages.length > 1
-          ? `다시 누르면 아래에 삭제(✕) 버튼이 표시됩니다`
-          : `p.${pageNum} 캔버스로 이동`;
+        chip.title = '';
         const span = document.createElement('span');
         span.className = 'slide-chip-label';
         span.textContent = `p.${pageNum}`;
@@ -4872,7 +4877,7 @@ class GraphApp {
           const delBtn = document.createElement('button');
           delBtn.type = 'button';
           delBtn.className = 'slide-chip-del';
-          delBtn.title = `p.${pageNum} 슬라이드 삭제`;
+          delBtn.title = '삭제';
           delBtn.textContent = '✕';
           delBtn.onclick = (e) => {
             e.stopPropagation();
@@ -5122,7 +5127,7 @@ class GraphApp {
 
   async openPdfPageOnBoard(pageNum, options = {}) {
     if (!this.pdfDoc) {
-      this.showToast('⚠️ 먼저 PDF 교재를 열어주세요.');
+      this.showToast('⚠️ 먼저 PDF 문서를 열어주세요.');
       return;
     }
     const total = this.pdfTotalPages || this.pdfDoc.numPages || 1;
@@ -5686,7 +5691,7 @@ class GraphApp {
     }
 
     if (this.isPdfCropModeActive) {
-      this.showToast('✂️ 문제 영역을 네모로 드래그하세요 (ESC: 취소)');
+      this.showToast('✂️ 문제 영역을 네모로 드래그하세요');
     }
 
     const cropBox = document.getElementById('pdfCropBox');
@@ -5981,7 +5986,7 @@ class GraphApp {
           }
           this.setActiveInkTool('pen');
           this.render();
-          this.showToast(`✂️ p.${pageNum} 문제가 고정되었습니다! 문제 위나 빈 칠판 어디든 바로 필기하세요.`);
+          this.showToast(`✂️ p.${pageNum} 문제가 고정되었습니다! 문제 위나 빈 캔버스 어디든 바로 필기하세요.`);
         }
       }
     };
@@ -6065,7 +6070,7 @@ class GraphApp {
       this.toggleInkMode(true);
     }
     this.render();
-    this.showToast(`✂️ p.${this.pdfCurrentPage} 문제가 칠판 좌상단에 고정되었습니다! 펜(P)으로 풀이를 시작하세요.`);
+    this.showToast(`✂️ p.${this.pdfCurrentPage} 문제가 캔버스 좌상단에 고정되었습니다! 펜(P)으로 풀이를 시작하세요.`);
   }
 
   hasActiveProblemCard() {
@@ -6500,15 +6505,15 @@ class GraphApp {
     el.innerHTML = `
       <div class="problem-card-header">
         <div class="problem-card-title-group">
-          <div class="problem-card-drag-handle" title="드래그하여 카드 위치 이동">
+          <div class="problem-card-drag-handle">
             <span class="card-title-text">${titleText}</span>
           </div>
-          <button type="button" class="card-btn card-title-fold-btn card-fold-triangle-btn btn-extra-min" title="원버튼 접기 / 펼치기">
+          <button type="button" class="card-btn card-title-fold-btn card-fold-triangle-btn btn-extra-min">
             <span class="card-fold-chevron">▾</span>
           </button>
         </div>
         <div class="problem-card-actions">
-          <button type="button" class="card-btn btn-card-laser" title="카드 위 레이저 포인터 켜기/끄기 (켜면 카드 안에서 줄을 그어 설명할 수 있습니다)">
+          <button type="button" class="card-btn btn-card-laser" title="레이저 포인터">
             <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5" fill="currentColor"/><circle cx="12" cy="12" r="7.5" stroke-dasharray="2.5 2.5"/><line x1="12" y1="1.5" x2="12" y2="4.5"/><line x1="12" y1="19.5" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4.5" y2="12"/><line x1="19.5" y1="12" x2="22.5" y2="12"/></svg></span>
           </button>
           ${restorePageBtnHtml}
@@ -6519,7 +6524,7 @@ class GraphApp {
       </div>
       <div class="problem-card-body">
         <img class="problem-card-img" src="${dataUrl}" alt="${titleText}" draggable="false" />
-        <div class="problem-card-resize-handle" title="드래그하여 문제 크기 조절"></div>
+        <div class="problem-card-resize-handle"></div>
       </div>
     `;
     document.body.appendChild(el);
@@ -6661,7 +6666,7 @@ class GraphApp {
     this.render();
 
     const totalProblems = 1 + this.extraProblemCards.length;
-    this.showToast(`📋 ${totalProblems}번째 문제 카드가 추가되었습니다! (마우스로 끌어 분리 가능)`);
+    this.showToast(`📋 ${totalProblems}번째 문제 카드가 추가되었습니다!`);
   }
 
   setProblemCard(dataUrl, pageNum = 1, sourceCanvas = null, initialWidth = null, options = null) {
@@ -6775,7 +6780,7 @@ class GraphApp {
             this.setActiveInkTool('pen');
             const targetW = Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
             this.setProblemCard(dataUrl, '클립보드 캡처', null, targetW);
-            this.showToast('📋 캡처된 문제 이미지를 칠판에 붙여넣었습니다!');
+            this.showToast('📋 캡처된 문제 이미지를 캔버스에 붙여넣었습니다!');
           };
           reader.readAsDataURL(file);
           return;
@@ -6822,7 +6827,7 @@ class GraphApp {
           const cleanName = file.name.replace(/\.[^/.]+$/, '');
           const targetW = Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
           this.setProblemCard(dataUrl, cleanName, null, targetW);
-          this.showToast(`📁 이미지 문제 [${cleanName}]을(를) 칠판에 등록했습니다!`);
+          this.showToast(`📁 이미지 문제 [${cleanName}]을(를) 캔버스에 등록했습니다!`);
         };
         reader.readAsDataURL(file);
         return;
@@ -6831,7 +6836,7 @@ class GraphApp {
       // 3) PDF 파일 드롭
       if (pdfFile) {
         this.loadPdfFromFile(pdfFile);
-        this.showToast(`📄 PDF 교재 [${pdfFile.name}]을(를) 불러왔습니다!`);
+        this.showToast(`📄 PDF 문서 [${pdfFile.name}]을(를) 불러왔습니다!`);
       }
     });
   }
@@ -7545,11 +7550,11 @@ class GraphApp {
       if (isBoard) {
         btnPresets.classList.add('rail-graph-mode-switch');
         btnPresets.classList.remove('active');
-        btnPresets.title = '그래프 모드로 전환 (📈)';
+        btnPresets.title = '그래프 모드';
         btnPresets.innerHTML = `<span class="rail-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 16c2.5-6 4.5-6 7 0s4.5 6 7-6"/></svg></span>`;
       } else {
         btnPresets.classList.remove('rail-graph-mode-switch');
-        btnPresets.title = '그래프 추가 (+)';
+        btnPresets.title = '그래프 추가';
         btnPresets.innerHTML = `<span class="rail-icon" style="font-size: 24px; font-weight: 700; line-height: 1; color: var(--accent-cyan, #00d2d3);">+</span>`;
       }
     }
@@ -7916,7 +7921,7 @@ class GraphApp {
   returnToCoveredBoard() {
     if (!this.hasBoardStateToReturn()) return;
     this._restoreBoardModeStateAfterGraph();
-    this.showToast('📋 판서 모드로 돌아왔습니다.');
+    this.showToast('📋 필기 모드로 돌아왔습니다.');
   }
 
   syncGraphSnapBarUI() {
@@ -8176,28 +8181,28 @@ class GraphApp {
     el.innerHTML = `
       <div class="problem-card-header">
         <div class="problem-card-title-group">
-          <div class="problem-card-drag-handle" title="드래그하여 카드 위치 이동">
+          <div class="problem-card-drag-handle">
             <span class="card-title-text">#${caseIdx}</span>
           </div>
-          <button type="button" class="card-btn card-title-fold-btn card-fold-triangle-btn btn-extra-min" title="원버튼 접기 / 펼치기">
+          <button type="button" class="card-btn card-title-fold-btn card-fold-triangle-btn btn-extra-min">
             <span class="card-fold-chevron">▾</span>
           </button>
         </div>
         <div class="problem-card-actions">
-          <button type="button" class="card-btn btn-card-laser" title="카드 위 레이저 포인터 켜기/끄기 (켜면 카드 안에서 줄을 그어 설명할 수 있습니다)">
+          <button type="button" class="card-btn btn-card-laser" title="레이저 포인터">
             <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5" fill="currentColor"/><circle cx="12" cy="12" r="7.5" stroke-dasharray="2.5 2.5"/><line x1="12" y1="1.5" x2="12" y2="4.5"/><line x1="12" y1="19.5" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4.5" y2="12"/><line x1="19.5" y1="12" x2="22.5" y2="12"/></svg></span>
           </button>
-          <button class="card-btn card-btn-restore btn-extra-restore" title="칠판 덮개를 걷어내고 실시간 그래프 다시 열기">
-            <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>그래프 복구</span>
+          <button class="card-btn card-btn-restore btn-extra-restore">
+            <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>그래프 수정</span>
           </button>
-          <button class="card-btn btn-card-close btn-extra-close" title="이 보관 카드 삭제">
+          <button class="card-btn btn-card-close btn-extra-close" title="삭제">
             <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
           </button>
         </div>
       </div>
       <div class="problem-card-body" style="height:${bodyH}px;">
         <img class="problem-card-img" src="${dataUrl}" alt="그래프 보관 ${caseIdx}" draggable="false" />
-        <div class="problem-card-resize-handle" title="드래그하여 그래프 크기 조절"></div>
+        <div class="problem-card-resize-handle"></div>
       </div>
     `;
     document.body.appendChild(el);
@@ -8397,7 +8402,7 @@ class GraphApp {
     this.render();
     if (!silent) {
       const prefix = caseIdx ? `#${caseIdx} 보관 당시의` : '실시간';
-      this.showToast(`🔄 ${prefix} 그래프를 복구했습니다! (돌아가려면 상단 [판서 복귀] 클릭)`);
+      this.showToast(`🔄 ${prefix} 그래프를 복구했습니다!`);
     }
   }
 
@@ -9314,7 +9319,7 @@ class GraphApp {
       this.draggedHandleIdx = null;
 
       this.updateBoardRatioUI();
-      this.showToast('🧑‍🏫 판서 모드 On: 우측 판서 공간 확보! (단축키 B, 곡선 터치 시 조작)');
+      this.showToast('🧑‍🏫 필기 모드 On: 우측 필기 공간 확보!');
     } else {
       // 일반 뷰 복귀: 슬라이딩 없이 즉시 원래 카메라 위치로 짠! 복귀
       const targetPanX = (typeof this.preBoardPanX === 'number') ? this.preBoardPanX : 0;
@@ -9479,7 +9484,7 @@ class GraphApp {
       } else {
         this.nAxisOuterIdx = 0;
         this.nAxisInnerIdx = 1;
-        this.showToast('🔀 정통 N축 합성 모드 가동! (상단: 겉함수, 하단: 눕힌 속함수)');
+        this.showToast('🔀 정통 N축 합성 모드 가동!');
       }
 
       this.nAxisX0 = 0.5;
@@ -10024,14 +10029,14 @@ class GraphApp {
       if (!this.activeGraph) return;
       this.pushHistoryState();
       this.engine.reflectXAxis(this.activeGraph.handles, this.activeGraph.type);
-      this.showToast('↕️ x축 대칭 완료! (y → -y)');
+      this.showToast('↕️ x축 대칭 완료!');
       this.render();
     };
     document.getElementById('btnInvertH').onclick = () => {
       if (!this.activeGraph) return;
       this.pushHistoryState();
       this.engine.reflectYAxis(this.activeGraph.handles, this.activeGraph.type);
-      this.showToast('↔️ y축 대칭 완료! (x → -x)');
+      this.showToast('↔️ y축 대칭 완료!');
       this.render();
     };
 
@@ -10276,7 +10281,7 @@ class GraphApp {
             }
           } catch (err) { }
         }
-        this.showToast('⛶ 전체화면 모드 (상단 및 좌측 메뉴 상시 사용 가능)');
+        this.showToast('⛶ 전체화면 모드');
       } else {
         document.body.classList.remove('fullscreen-mode');
         if (btnFs) btnFs.classList.remove('active');
@@ -10347,7 +10352,7 @@ class GraphApp {
 
       if (nextCollapsed) {
         document.body.classList.add('header-collapsed');
-        this.showToast('▲ 상단 바 숨김 (판서 칠판 세로 공간 극대화)');
+        this.showToast('▲ 상단 바 숨김');
       } else {
         document.body.classList.remove('header-collapsed');
       }
@@ -10527,9 +10532,9 @@ class GraphApp {
     }
 
     if (this.useMagneticSnap) {
-      this.showToast('🧲 스마트 마그네틱 자석 스냅 켜짐! (극점·대칭점·점근선이 좌표축에 착착 붙습니다)');
+      this.showToast('🧲 스마트 마그네틱 자석 스냅 켜짐!');
     } else {
-      this.showToast('🧲 마그네틱 자석 스냅 꺼짐 (미세 조절 모드)');
+      this.showToast('🧲 마그네틱 자석 스냅 꺼짐');
     }
 
     this.render();
@@ -10550,7 +10555,7 @@ class GraphApp {
 
     if (this.useIntersectionDetector) {
       this.startIntersectionLoop();
-      this.showToast('⚡ 실시간 교점판독기 가동! (실시간 교점·접점 판독 & 화면 밖 추적)');
+      this.showToast('⚡ 실시간 교점판독기 가동!');
     } else {
       this.stopIntersectionLoop();
       this.detectedIntersections = [];
@@ -10587,7 +10592,7 @@ class GraphApp {
     const now = Date.now();
     if (this._lastLockHint && now - this._lastLockHint < 2500) return;
     this._lastLockHint = now;
-    this.showToast('🎯 원점 중심 고정 중이에요. 꼭짓점을 끌어 크기를 조절하세요! (이동하려면 체크 해제)');
+    this.showToast('🎯 원점 중심 고정 중이에요. 꼭짓점을 끌어 크기를 조절하세요!');
   }
 
   showShiftMorphHint() {
@@ -10741,12 +10746,12 @@ class GraphApp {
     if (!rail || !drawer) return;
 
     const panelTitles = {
-      panelPresets: '📐 개형 라이브러리',
-      panelTransform: '↕️ 변환 & 대칭',
-      panelPiecewise: '✂️ 구간 분할 합성',
-      panelViewfinder: '📷 교재 캡처 규격',
-      panelSettings: '⚙️ 환경 설정',
-      panelStyle: '🎨 선 스타일 & 색상'
+      panelPresets: '그래프 추가',
+      panelTransform: '변환 & 대칭',
+      panelPiecewise: '구간 분할',
+      panelViewfinder: '캡처 규격',
+      panelSettings: '환경 설정',
+      panelStyle: '스타일 & 배경'
     };
 
     // 🌟 [대표님 기획: 📷 캡처영역 원터치 토글 바깥 버튼]
@@ -11140,10 +11145,7 @@ class GraphApp {
       ? this.piecewiseFuncMap[regionIdx]
       : (this.graphs.length > 0 ? (regionIdx % this.graphs.length) : -1);
 
-    const title = document.createElement('div');
-    title.style.cssText = 'font-size: 10px; font-weight: 700; color: #a29bfe; padding: 2px 6px; letter-spacing: 0.5px;';
-    title.textContent = `영역 ${regionIdx + 1} 함수 선택`;
-    popover.appendChild(title);
+    // 영역 선택 헤더 생략 (미니멀 드롭다운)
 
     // 🚫 [대표님 기획]: 함수 없음 (비움 / None) 옵션
     const emptyItem = document.createElement('div');
@@ -11160,7 +11162,7 @@ class GraphApp {
     const emptyLabel = document.createElement('span');
     emptyLabel.style.color = currentGIdx === -1 ? '#ff7675' : '#a4b0be';
     emptyLabel.style.fontWeight = '600';
-    emptyLabel.textContent = '🚫 함수 없음 (비움)';
+    emptyLabel.textContent = '비움';
 
     emptyItem.appendChild(emptyDot);
     emptyItem.appendChild(emptyLabel);
@@ -11188,7 +11190,7 @@ class GraphApp {
       dot.style.color = g.color;
 
       const label = document.createElement('span');
-      label.textContent = `f${gIdx + 1}(x) (${this.meta[g.type]?.name || '함수'})`;
+      label.textContent = `f${gIdx + 1} (${this.meta[g.type]?.name || '함수'})`;
 
       item.appendChild(dot);
       item.appendChild(label);
@@ -11224,7 +11226,7 @@ class GraphApp {
     const periodicLabel = document.createElement('span');
     periodicLabel.style.color = this.isPiecewisePeriodic ? '#00d2d3' : '#cbd5e1';
     periodicLabel.style.fontWeight = '700';
-    periodicLabel.textContent = this.isPiecewisePeriodic ? '🔁 전구간 반복: ON (끄기)' : '🔁 전구간 반복: OFF (켜기)';
+    periodicLabel.textContent = this.isPiecewisePeriodic ? '🔁 주기 반복 ON' : '🔁 주기 반복 OFF';
 
     periodicItem.appendChild(periodicDot);
     periodicItem.appendChild(periodicLabel);
@@ -11294,7 +11296,7 @@ class GraphApp {
       this.draggedHandleIdx = null;
       const popover = document.getElementById('pwRegionPopover');
       if (popover) popover.style.display = 'none';
-      this.showToast('🔒 경계선 & 함수 개형 잠금! (이제 곡선을 끌면 전체 구간 그래프가 통째로 평행이동합니다)');
+      this.showToast('🔒 경계선 & 함수 개형 잠금!');
     } else {
       this.showToast('🔓 경계선 & 함수 개형 잠금 해제!');
     }
@@ -11995,7 +11997,7 @@ class GraphApp {
 
     this._inkBakeDirty = true;
     this.requestRender();
-    this.showToast(`🎨 칠판 테마: ${theme.name} 적용 완료!`);
+    this.showToast(`🎨 캔버스 테마: ${theme.name} 적용 완료!`);
   }
 
   initBoardPaperControls() {
@@ -12023,7 +12025,7 @@ class GraphApp {
     this._hasSceneFreeze = false;
     this.render();
     const names = { blank: '무지', grid: '모눈 노트', lined: '가로줄 노트', dot: '도트 노트' };
-    this.showToast(`📋 칠판 배경 속지: ${names[paperType] || paperType} 적용!`);
+    this.showToast(`📋 캔버스 배경 속지: ${names[paperType] || paperType} 적용!`);
   }
 
   drawBoardPaperBackground(ctx, width, height, curTheme) {
@@ -12939,7 +12941,7 @@ class GraphApp {
         renderStudio(false);
         closeModal();
         this.setGraphCard(dataUrl, canvas, 520, { x: 480, y: 80, w: 520, h: 310 });
-        this.showToast('📋 N축 합성함수 다이어그램을 칠판 카드로 보관했습니다!');
+        this.showToast('📋 N축 합성함수 다이어그램을 캔버스 카드로 보관했습니다!');
       };
     }
 
@@ -13191,7 +13193,7 @@ class GraphApp {
     const syncFilterUI = () => {
       const allSlides = this._getActiveSlidesForExport('수업 노트');
       const totalCnt = allSlides.length;
-      if (lblTotalCount) lblTotalCount.textContent = `(${totalCnt}장)`;
+      if (lblTotalCount) lblTotalCount.textContent = `(${totalCnt})`;
       if (btnScopeCur) btnScopeCur.classList.toggle('active', this.exportScope === 'current');
       if (btnScopeAll) btnScopeAll.classList.toggle('active', this.exportScope === 'all');
 
@@ -13283,14 +13285,14 @@ class GraphApp {
     if (btnModalCopyImg) {
       btnModalCopyImg.onclick = async () => {
         await this.copyToClipboard(this.exportFilter);
-        flashButtonLabel(lblModalCopyImg, '✅ 클립보드 복사 완료! (Ctrl+V)', '클립보드 이미지 복사 (Ctrl+C)');
+        flashButtonLabel(lblModalCopyImg, '✅ 복사됨', '이미지 복사');
       };
     }
 
     if (btnModalSavePng) {
       btnModalSavePng.onclick = async () => {
         await this.downloadExportImages(this.exportScope, this.exportFilter);
-        flashButtonLabel(lblModalSavePng, '✅ 직사각형 PNG 저장 완료!', '직사각형 PNG 이미지 저장');
+        flashButtonLabel(lblModalSavePng, '✅ 저장됨', 'PNG 저장');
       };
     }
 
@@ -13359,7 +13361,7 @@ class GraphApp {
         }
         if (inputShare) {
           await copyTextToClipboard(inputShare.value);
-          flashButtonLabel(lblBtnCopyShare, '✅ 복사됨!', '링크 복사');
+          flashButtonLabel(lblBtnCopyShare, '✅ 복사됨', '링크 복사');
         }
       };
     }
@@ -13431,7 +13433,7 @@ class GraphApp {
         const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
         const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : (slides.length > 1 ? '#풀세트' : '#수학그래프');
         await this.saveCurrentToMyLibrary(title, tags, slides);
-        flashButtonLabel(btnShareToLib, '✅ 내 보관함 저장 완료!', '📁 내 보관함에 저장');
+        flashButtonLabel(btnShareToLib, '✅ 저장됨', '클라우드에 저장');
       };
     }
 
@@ -13444,7 +13446,7 @@ class GraphApp {
         const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
         const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : '#수업노트';
         this.exportGraphlyDeckFile(title, tags, slides);
-        flashButtonLabel(btnShareExportFile, '✅ .graphly 파일 저장됨!', '💾 파일로 저장 (.graphly)');
+        flashButtonLabel(btnShareExportFile, '✅ 저장됨', '파일 저장 (.graphly)');
       };
     }
   }
@@ -14347,7 +14349,7 @@ class GraphApp {
       this.isLessonPlaylistActive = false;
       this.syncLessonPlaylistNavBarUI();
       this.deserializeFullSlideState(slides[0]);
-      this.showToast(`⚡ [${resolved.title}] 세팅을 내 칠판으로 가져왔습니다!`);
+      this.showToast(`⚡ [${resolved.title}] 세팅을 내 캔버스으로 가져왔습니다!`);
     }
 
     if (closeModal) {
@@ -14582,7 +14584,7 @@ class GraphApp {
     if (!listEl) return;
 
     if (!this.myLibraryCache || this.myLibraryCache.length === 0) {
-      listEl.innerHTML = `<div class="cloud-empty-msg">아직 보관함에 저장된 수업 세팅이 없습니다.<br>위 입력창에 제목을 적고 <strong>[📁 내 보관함에 저장]</strong> 또는 <strong>[📂 내 드라이브 파일 열기]</strong>를 눌러보세요!</div>`;
+      listEl.innerHTML = `<div class="cloud-empty-msg">저장된 항목이 없습니다.</div>`;
       this.updateSelectedPlaylistCount();
       return;
     }
@@ -14594,7 +14596,7 @@ class GraphApp {
       const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('ko-KR') : '';
       const slideCnt = item.slideCount || (Array.isArray(item.playlistSlides) ? item.playlistSlides.length : 1);
       const deckBadgeHtml = (slideCnt > 1 || item.isPlaylist)
-        ? `<span class="cloud-deck-badge">📚 ${slideCnt}문항 풀세트</span>`
+        ? `<span class="cloud-deck-badge">${slideCnt}슬라이드</span>`
         : '';
 
       row.innerHTML = `
@@ -14610,9 +14612,9 @@ class GraphApp {
           </div>
         </div>
         <div class="cloud-item-actions">
-          <button type="button" class="btn-cloud-load" data-load-idx="${idx}">${slideCnt > 1 ? `▶ ${slideCnt}문항 수업 시작` : '⚡ 바로 열기'}</button>
-          <button type="button" class="btn-cloud-export-item" data-export-idx="${idx}" title="내 드라이브(.graphly) 파일로 다운로드">💾 파일</button>
-          <button type="button" class="btn-cloud-share-item" data-share-idx="${idx}" title="외부 카페/단톡방/학생에게 링크·QR로 공유">🔗 링크</button>
+          <button type="button" class="btn-cloud-load" data-load-idx="${idx}">열기</button>
+          <button type="button" class="btn-cloud-export-item" data-export-idx="${idx}">파일</button>
+          <button type="button" class="btn-cloud-share-item" data-share-idx="${idx}">링크</button>
           <button type="button" class="btn-cloud-del-item" data-del-idx="${idx}" title="삭제">🗑️</button>
         </div>
       `;
@@ -14710,7 +14712,7 @@ class GraphApp {
       const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('ko-KR') : '';
       const slideCnt = item.slideCount || (Array.isArray(item.playlistSlides) ? item.playlistSlides.length : 1);
       const deckBadgeHtml = (slideCnt > 1 || item.isPlaylist)
-        ? `<span class="cloud-deck-badge">📚 ${slideCnt}문항 풀세트</span>`
+        ? `<span class="cloud-deck-badge">${slideCnt}슬라이드</span>`
         : '';
 
       row.innerHTML = `
@@ -14762,7 +14764,7 @@ class GraphApp {
   startPlaylistFromSelectedLibraryItems() {
     const selectedSlides = this._collectSelectedLibrarySlides();
     if (!selectedSlides.length) {
-      this.showToast('⚠️ 수업 슬라이드로 시작할 문항을 1개 이상 체크해 주세요!');
+      this.showToast('⚠️ 슬라이드로 시작할 문항을 1개 이상 체크해 주세요!');
       return;
     }
     this.startLessonPlaylist(selectedSlides, 0);
@@ -14809,7 +14811,7 @@ class GraphApp {
     this.saveCurrentSlideIntoPlaylist();
     this.isLessonPlaylistActive = false;
     this.syncLessonPlaylistNavBarUI();
-    this.showToast('수업 슬라이드 모드를 종료했습니다. (현재 판서는 그대로 유지됩니다)');
+    this.showToast('슬라이드 모드를 종료했습니다.');
   }
 
   hasAnyWorkspaceContent() {
@@ -14954,7 +14956,7 @@ class GraphApp {
         Boolean(this.extraGraphCards && this.extraGraphCards.length > 0)
       );
       if (!hasOnPage) {
-        this.showToast('ℹ️ 현재 페이지에 지울 판서나 그래프가 없습니다.');
+        this.showToast('ℹ️ 현재 페이지에 지울 필기나 그래프가 없습니다.');
         return;
       }
       if (!this.isHistoryProcessing) {
@@ -14993,7 +14995,7 @@ class GraphApp {
       this.renderFuncList();
       this.syncGraphSnapBarUI();
       this.render();
-      this.showToast('🧹 현재 PDF 페이지의 판서·그래프만 깨끗하게 비웠습니다! (Ctrl+Z 복구 가능)');
+      this.showToast('🧹 현재 PDF 페이지의 필기·그래프만 깨끗하게 비웠습니다!');
       return;
     }
 
@@ -15014,7 +15016,7 @@ class GraphApp {
       const curNum = (this.lessonPlaylistIndex || 0) + 1;
       this.lessonPlaylistSlides[this.lessonPlaylistIndex] = this.serializeFullSlideState(String(curNum));
       this.syncLessonPlaylistNavBarUI();
-      this.showToast(`🧹 [${curNum}번 캔버스] 내용만 깨끗하게 비웠습니다! (다른 슬라이드 유지 / Ctrl+Z 복구)`);
+      this.showToast(`🧹 [${curNum}번 캔버스] 내용만 깨끗하게 비웠습니다!`);
       return;
     }
 
@@ -15024,7 +15026,7 @@ class GraphApp {
 
   clearAllSlidesAndReset() {
     this.resetNewCanvas();
-    this.showToast('🗑️ 모든 슬라이드를 비우고 깨끗한 초기 캔버스로 돌아왔습니다! (Ctrl+Z 복구 가능)');
+    this.showToast('🗑️ 모든 슬라이드를 비우고 깨끗한 초기 캔버스로 돌아왔습니다!');
   }
 
   toggleTopSlideBarHidden(hide) {
@@ -15105,9 +15107,7 @@ class GraphApp {
         chip.className = 'slide-chip-item' + (isActive ? ' active' : '') + (isDelOpen ? ' del-open' : '');
         const rawTitle = (s && s.slideTitle) ? String(s.slideTitle).trim() : '';
         const shortLabel = (rawTitle && rawTitle.startsWith('p.')) ? rawTitle : String(idx + 1);
-        chip.title = isActive && total > 1
-          ? `다시 누르면 아래에 삭제(✕) 버튼이 표시됩니다`
-          : `${idx + 1}번 캔버스 (${rawTitle || '슬라이드'})`;
+        chip.title = '';
 
         const span = document.createElement('span');
         span.className = 'slide-chip-label';
@@ -15118,7 +15118,7 @@ class GraphApp {
           const delBtn = document.createElement('button');
           delBtn.type = 'button';
           delBtn.className = 'slide-chip-del';
-          delBtn.title = `${idx + 1}번 슬라이드만 삭제`;
+          delBtn.title = '삭제';
           delBtn.textContent = '✕';
           delBtn.onclick = (e) => {
             e.stopPropagation();
@@ -15582,11 +15582,11 @@ class GraphApp {
         box.style.top = `${(hs.ny * 100).toFixed(2)}%`;
         box.style.width = `${(hs.nw * 100).toFixed(2)}%`;
         box.style.height = `${(hs.nh * 100).toFixed(2)}%`;
-        box.title = `${hs.label || '#' + (hIdx + 1)} 그래프 클릭하여 직접 조작하기`;
+        box.title = '';
 
         const badge = document.createElement('span');
         badge.className = 'viewer-hotspot-badge';
-        badge.textContent = `📈 ${hs.label || '#' + (hIdx + 1)} 터치하여 조작`;
+        badge.textContent = `📈 ${hs.label || '#' + (hIdx + 1)}`;
         box.appendChild(badge);
 
         box.onclick = (e) => {
@@ -15598,9 +15598,10 @@ class GraphApp {
     }
 
     if (hintEl) {
-      hintEl.innerHTML = hotspots.length > 0
-        ? `💡 사진처럼 확대·이동 가능 · <strong>이미지 속 [${hotspots.map(h => h.label || '그래프').join(', ')}] 영역을 터치하면 그래프를 직접 움직여볼 수 있습니다!</strong>`
-        : `💡 두 손가락(또는 마우스 휠)으로 판서 화면을 확대·축소하며 볼 수 있습니다.`;
+      hintEl.textContent = hotspots.length > 0
+        ? '그래프 영역을 터치하면 직접 조작할 수 있습니다'
+        : '';
+      hintEl.style.display = hotspots.length > 0 ? '' : 'none';
     }
 
     this.fitSmartViewerStageToScreen();
@@ -15671,7 +15672,7 @@ class GraphApp {
     const touchBar = document.getElementById('viewerGraphTouchBar');
     const lblTitle = document.getElementById('lblViewerGraphTouchTitle');
     if (lblTitle) {
-      lblTitle.textContent = `📈 ${hotspot.label || '#1'} 그래프 직접 조작`;
+      lblTitle.textContent = `${hotspot.label || '#1'} 그래프`;
     }
     this._renderViewerGraphCurveChips();
     if (touchBar) touchBar.style.display = 'flex';
@@ -20883,7 +20884,7 @@ class GraphApp {
       }
 
       g.handles.forEach((h, hIdx) => {
-        if (h.hidden) return;
+        if (h.hidden || h.type === 'point') return;
         let targetY = h.y;
         if (g.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
           targetY = Math.abs(h.y);
@@ -20973,7 +20974,7 @@ class GraphApp {
             bestCurvePoint = {
               x: m.x,
               y: evalY,
-              name: '곡선 위의 점',
+              name: '곡선 점',
               color: g.color || '#00d2d3',
               layerId: g.id,
               handleIndex: null,
@@ -21123,7 +21124,7 @@ class GraphApp {
     };
     this.dropLines.push(item);
     this.render();
-    this.showToast('📍 x·y축 보조 수선 생성 완료 (✂️ 클릭 시 한쪽 삭제 / 빈 화면 클릭 시 종료)');
+    this.showToast('📍 x·y축 보조 수선 생성 완료');
     return item;
   }
 
@@ -21918,7 +21919,7 @@ class GraphApp {
 
     const srcName = this.meta[src.type]?.name || '함수';
     const tgtName = this.meta[targetType]?.name || '역함수';
-    this.showToast(`🔄 ${srcName}의 y=x 대칭 역함수 (${tgtName}) 생성 완료! (실시간 대칭 연동 🔗)`);
+    this.showToast(`🔄 ${srcName}의 y=x 대칭 역함수 (${tgtName}) 생성 완료!`);
   }
 
 
@@ -21927,7 +21928,7 @@ class GraphApp {
     if (!this.activeGraph) return;
     this.pushHistoryState();
     this.engine.reflectXAxis(this.activeGraph.handles, this.activeGraph.type);
-    this.showToast('↕️ x축 대칭 완료! (y → -y)');
+    this.showToast('↕️ x축 대칭 완료!');
     this.render();
   }
 
@@ -21935,7 +21936,7 @@ class GraphApp {
     if (!this.activeGraph) return;
     this.pushHistoryState();
     this.engine.reflectYAxis(this.activeGraph.handles, this.activeGraph.type);
-    this.showToast('↔️ y축 대칭 완료! (x → -x)');
+    this.showToast('↔️ y축 대칭 완료!');
     this.render();
   }
 
@@ -21958,13 +21959,13 @@ class GraphApp {
         }
         g.isAbsPristine = false; // 이전의 이동 상태로 복원되므로 테두리 없음
         const stage = g.transforms.length + 1;
-        this.showToast(`📉 ${stage + 1}차 절댓값 해제 (이전 상태로 복원)`);
+        this.showToast(`📉 ${stage + 1}차 절댓값 해제`);
       } else {
         g.isAbsolute = false;
         g.isAbsPristine = false;
         g.transforms = [];
         g.freezeOffset = { x: 0, y: 0 };
-        this.showToast('📈 |f(x)| 절댓값 해제 (원래대로 펴기)');
+        this.showToast('📈 |f(x)| 절댓값 해제');
       }
       this.syncControls();
       this.syncCurveContextBar();
@@ -21985,7 +21986,7 @@ class GraphApp {
       this.syncCurveContextBar();
       this.render();
       const stage = g.transforms.length + 1;
-      this.showToast(`✨ ${stage}차 절댓값 재접기 완료! (아래로 내려간 부분을 다시 꺾어올림)`);
+      this.showToast(`✨ ${stage}차 절댓값 재접기 완료!`);
       return;
     }
 
@@ -22128,14 +22129,7 @@ class GraphApp {
       btnAbs.classList.toggle('active', isAbsActive);
 
       // 대표님 기획: 사용자 조작 상태에 따른 직관적 툴팁
-      if (isAbsActive) {
-        btnAbs.title = '📉 절댓값 해제 (원래대로 펴기)';
-      } else if (g.isAbsolute) {
-        const nextStage = (g.transforms ? g.transforms.length : 0) + 2;
-        btnAbs.title = `📈 ${nextStage}차 절댓값 재접기 (아래로 내려간 부분 다시 꺾어올리기)`;
-      } else {
-        btnAbs.title = '📈 |f(x)| 절댓값 꺾어올리기';
-      }
+      btnAbs.title = '';
     }
 
     const btnLink = document.getElementById('ctxBtnToggleLink');
@@ -22224,7 +22218,7 @@ class GraphApp {
     this.render();
 
     const name = this.meta[src.type]?.name || '함수';
-    this.showToast(`📋 f${idx + 1}(x) (${name}) 복제 완료! (x축 평행이동 생성됨)`);
+    this.showToast(`📋 f${idx + 1}(x) (${name}) 복제 완료!`);
   }
 
   drawAllAsymptotes(ctx) {

@@ -11,8 +11,8 @@ const FUNC_METADATA = {
     category: "📐 다항함수",
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><line x1="4" y1="16" x2="20" y2="4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
-      { name: "회전 정점", x: 0.0, y: 0.0, type: "vertex" },
-      { name: "기울기 조절", x: 2.0, y: 2.0, type: "point" }
+      { name: "기준점", x: 0.0, y: 0.0, type: "vertex" },
+      { name: "기울기", x: 2.0, y: 2.0, type: "point" }
     ]
   },
   "2nd_quadratic": {
@@ -39,8 +39,8 @@ const FUNC_METADATA = {
     category: "📐 다항함수",
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 17 C10 17, 10 3, 20 3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
-      { name: "변곡점 (멈칫점)", x: 0.0, y: 0.0, type: "inflection" },
-      { name: "곡률/기울기", x: 1.2, y: 1.7, type: "point" }
+      { name: "변곡점", x: 0.0, y: 0.0, type: "inflection" },
+      { name: "조절점", x: 1.2, y: 1.7, type: "point" }
     ]
   },
   "4th_symmetric": {
@@ -48,9 +48,9 @@ const FUNC_METADATA = {
     category: "📐 다항함수",
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 5 Q6 17 8.5 11 Q12 6 15.5 11 Q18 17 20 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
-      { name: "좌측 극소", x: -1.5, y: -2.0, type: "min" },
-      { name: "중앙 극대", x: 0.0, y: 1.0, type: "max" },
-      { name: "우측 극소", x: 1.5, y: -2.0, type: "min" }
+      { name: "극소", x: -1.5, y: -2.0, type: "min" },
+      { name: "극대", x: 0.0, y: 1.0, type: "max" },
+      { name: "극소", x: 1.5, y: -2.0, type: "min" }
     ]
   },
   "4th_asymmetric": {
@@ -58,9 +58,9 @@ const FUNC_METADATA = {
     category: "📐 다항함수",
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 7 Q6.5 14 9 10 Q11 6 13 11 Q16 20 20 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
-      { name: "좌측 극소", x: -1.5, y: -1.8, type: "min" },
-      { name: "중앙 극대", x: -0.1, y: 1.0, type: "max" },
-      { name: "우측 극소", x: 1.5, y: -3.0, type: "min" }
+      { name: "극소", x: -1.5, y: -1.8, type: "min" },
+      { name: "극대", x: -0.1, y: 1.0, type: "max" },
+      { name: "극소", x: 1.5, y: -3.0, type: "min" }
     ]
   },
   "4th_inflection": {
@@ -68,8 +68,8 @@ const FUNC_METADATA = {
     category: "📐 다항함수",
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 5 C6 9.5 7.5 9.5 9.5 9.5 C11.5 9.5 12.5 16 14.5 16 C16.5 16 18 10 20 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
-      { name: "수평변곡점(걸침)", x: -1.0, y: 1.0, type: "inflection" },
-      { name: "극솟점", x: 1.0, y: -2.0, type: "min" }
+      { name: "변곡점", x: -1.0, y: 1.0, type: "inflection" },
+      { name: "극소", x: 1.0, y: -2.0, type: "min" }
     ]
   },
   "4th_basic_bowl": {
@@ -77,8 +77,8 @@ const FUNC_METADATA = {
     category: "📐 다항함수",
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 5 C7 19, 17 19, 20 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
-      { name: "극솟점", x: 0.0, y: -2.0, type: "min" },
-      { name: "곡률 조절점", x: 1.4, y: 1.8, type: "point" }
+      { name: "극소", x: 0.0, y: -2.0, type: "min" },
+      { name: "조절점", x: 1.4, y: 1.8, type: "point" }
     ]
   },
 
@@ -88,8 +88,8 @@ const FUNC_METADATA = {
     category: "📈 지수·로그",
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 17 Q14 16 20 3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
-      { name: "점근선 기준점", x: 0.0, y: 0.0, type: "center" },
-      { name: "성장 조절점", x: 1.0, y: 2.0, type: "point" }
+      { name: "기준점", x: 0.0, y: 0.0, type: "center" },
+      { name: "조절점", x: 1.0, y: 2.0, type: "point" }
     ]
   },
   "log_basic": {
@@ -97,8 +97,8 @@ const FUNC_METADATA = {
     category: "📈 지수·로그",
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M6 18 Q7 7 20 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
-      { name: "점근선 기준점", x: 0.0, y: 0.0, type: "center" },
-      { name: "상승 조절점", x: 2.0, y: 1.0, type: "point" }
+      { name: "기준점", x: 0.0, y: 0.0, type: "center" },
+      { name: "조절점", x: 2.0, y: 1.0, type: "point" }
     ]
   },
 
@@ -109,7 +109,7 @@ const FUNC_METADATA = {
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 10 Q10 10 10 4 M14 18 Q14 12 20 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
       { name: "대칭중심", x: 0.0, y: 0.0, type: "center" },
-      { name: "곡률 조절점", x: 1.0, y: 1.0, type: "point" }
+      { name: "조절점", x: 1.0, y: 1.0, type: "point" }
     ]
   },
   "sqrt_basic": {
@@ -118,7 +118,7 @@ const FUNC_METADATA = {
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><circle cx="6" cy="14" r="1.8" fill="currentColor"/><path d="M6 14 Q10 6 20 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
       { name: "시작점", x: 0.0, y: 0.0, type: "vertex" },
-      { name: "방향/두께", x: 2.0, y: 2.0, type: "point" }
+      { name: "조절점", x: 2.0, y: 2.0, type: "point" }
     ]
   },
 
@@ -129,7 +129,7 @@ const FUNC_METADATA = {
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 10 Q8 2 12 10 Q16 18 20 10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
       { name: "대칭중심", x: 0.0, y: 0.0, type: "center" },
-      { name: "진폭·주기 조절", x: 1.57, y: 1.5, type: "point" }
+      { name: "조절점", x: 1.57, y: 1.5, type: "point" }
     ]
   },
   "cos_1period": {
@@ -138,7 +138,7 @@ const FUNC_METADATA = {
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 4 Q8 17 12 17 Q16 17 20 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
       { name: "대칭중심", x: 0.0, y: 0.0, type: "center" },
-      { name: "진폭·주기 조절", x: 6.28, y: 1.5, type: "point" }
+      { name: "조절점", x: 6.28, y: 1.5, type: "point" }
     ]
   },
   "tan_1period": {
@@ -147,7 +147,7 @@ const FUNC_METADATA = {
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M6 18 Q12 10 18 2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
       { name: "대칭중심", x: 0.0, y: 0.0, type: "center" },
-      { name: "주기·곡률 조절", x: 0.785, y: 1.5, type: "point" }
+      { name: "조절점", x: 0.785, y: 1.5, type: "point" }
     ]
   },
 
@@ -158,7 +158,7 @@ const FUNC_METADATA = {
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 10 C7 10 8 5 10 5 C12 5 12 15 14 15 C16 15 17 10 20 10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
       { name: "대칭중심", x: 0.0, y: 0.0, type: "center" },
-      { name: "극대점", x: 1.5, y: 1.5, type: "max" }
+      { name: "극대", x: 1.5, y: 1.5, type: "max" }
     ]
   },
   "killer_exp_linear": {
@@ -167,7 +167,7 @@ const FUNC_METADATA = {
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 14 Q7 14 9 5 Q12 5 20 13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
       { name: "통과점(원점)", x: 0.0, y: 0.0, type: "vertex", hidden: true },
-      { name: "극대점", x: 1.5, y: 1.8, type: "max" }
+      { name: "극대", x: 1.5, y: 1.8, type: "max" }
     ]
   },
   "killer_exp_quad": {
@@ -176,7 +176,7 @@ const FUNC_METADATA = {
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 14 C7 14 8 14 10 6 C12 6 14 13 20 13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
       { name: "원점 접점", x: 0.0, y: 0.0, type: "min", hidden: true },
-      { name: "극대점", x: 2.0, y: 1.8, type: "max" }
+      { name: "극대", x: 2.0, y: 1.8, type: "max" }
     ]
   },
   "killer_log_frac": {
@@ -184,20 +184,20 @@ const FUNC_METADATA = {
     category: "🔥 수능 킬러",
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M5 18 Q6 6 10 6 Q14 6 20 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
-      { name: "점근선 기준점", x: 0.0, y: 0.0, type: "center" },
-      { name: "극대점", x: 2.718, y: 1.2, type: "max" }
+      { name: "기준점", x: 0.0, y: 0.0, type: "center" },
+      { name: "극대", x: 2.718, y: 1.2, type: "max" }
     ]
   },
 
   // 6. 📐 평면도형 (수능/내신 기하 융합 3대 도형)
   "geom_circle": {
-    name: "원 (Circle)",
+    name: "원",
     category: "📐 평면도형",
     isGeometry: true,
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><circle cx="12" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>`,
     handles: [
-      { name: "원 중심", x: 0.0, y: 0.0, type: "center" },
-      { name: "반지름 조절", x: 2.5, y: 0.0, type: "point" }
+      { name: "중심", x: 0.0, y: 0.0, type: "center" },
+      { name: "반지름", x: 2.5, y: 0.0, type: "point" }
     ]
   },
   "geom_triangle": {
@@ -206,9 +206,9 @@ const FUNC_METADATA = {
     isGeometry: true,
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><polygon points="12,3 4,17 20,17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg>`,
     handles: [
-      { name: "꼭짓점 A", x: -2.0, y: -1.5, type: "vertex" },
-      { name: "꼭짓점 B", x: 2.0, y: -1.5, type: "vertex" },
-      { name: "꼭짓점 C", x: 0.0, y: 2.0, type: "vertex" }
+      { name: "A", x: -2.0, y: -1.5, type: "vertex" },
+      { name: "B", x: 2.0, y: -1.5, type: "vertex" },
+      { name: "C", x: 0.0, y: 2.0, type: "vertex" }
     ]
   },
   "geom_quad": {
@@ -217,10 +217,10 @@ const FUNC_METADATA = {
     isGeometry: true,
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><polygon points="5,5 19,5 17,16 7,16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg>`,
     handles: [
-      { name: "꼭짓점 A", x: -2.0, y: -1.5, type: "vertex" },
-      { name: "꼭짓점 B", x: 2.0, y: -1.5, type: "vertex" },
-      { name: "꼭짓점 C", x: 2.0, y: 1.5, type: "vertex" },
-      { name: "꼭짓점 D", x: -2.0, y: 1.5, type: "vertex" }
+      { name: "A", x: -2.0, y: -1.5, type: "vertex" },
+      { name: "B", x: 2.0, y: -1.5, type: "vertex" },
+      { name: "C", x: 2.0, y: 1.5, type: "vertex" },
+      { name: "D", x: -2.0, y: 1.5, type: "vertex" }
     ]
   },
 
@@ -230,7 +230,7 @@ const FUNC_METADATA = {
     category: "🌐 범용 수식",
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 16 Q8 4 12 10 T20 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
-      { name: "평행이동 중심", x: 0.0, y: 0.0, type: "center" }
+      { name: "중심", x: 0.0, y: 0.0, type: "center" }
     ]
   }
 };
@@ -2192,8 +2192,8 @@ class SmartMathParser {
           preview,
           details: `기울기 m = ${m.toFixed(2)}, Y절편 = ${n.toFixed(2)}`,
           handles: [
-            { name: '회전 정점', x: 0.0, y: n, type: 'vertex' },
-            { name: '기울기 조절', x: 2.0, y: n + 2.0 * m, type: 'point' }
+            { name: '기준점', x: 0.0, y: n, type: 'vertex' },
+            { name: '기울기', x: 2.0, y: n + 2.0 * m, type: 'point' }
           ]
         };
       }
@@ -2285,7 +2285,7 @@ class SmartMathParser {
         details: '임의 수식 렌더링 | 평행이동 & 대칭 지원',
         expr: compRes.cleanExpr,
         handles: [
-          { name: '평행이동 중심', x: 0.0, y: 0.0, type: 'center', fn: compRes.fn, rawExpr: compRes.cleanExpr }
+          { name: '중심', x: 0.0, y: 0.0, type: 'center', fn: compRes.fn, rawExpr: compRes.cleanExpr }
         ]
       };
     }
