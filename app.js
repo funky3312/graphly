@@ -16919,6 +16919,7 @@ class GraphApp {
     };
 
     this._uiPointerIds = new Set();
+    this._initInkDiagHud();
     const isAnyModalOrOverlayBlockingCanvas = () => {
       if (this.isDraggingPillRemote) return true;
       if (this.isPdfModalOpen || this.isNAxisStudioOpen) return true;
@@ -19447,15 +19448,29 @@ class GraphApp {
       // 손바닥(touch)이 문제 카드나 툴바에 닿아 있더라도 애플펜슬(pen)의 필기(pointerdown/pointermove)는 절대 가로막히지 않습니다!
       window.addEventListener('pointerdown', (e) => {
         if (!this._uiPointerIds) this._uiPointerIds = new Set();
-        if (e.target !== this.canvas || isClickableUI(e.target) || isAnyModalOrOverlayBlockingCanvas()) {
+        const isNotCanvas = (e.target !== this.canvas);
+        const isUI = isClickableUI(e.target);
+        const isModal = isAnyModalOrOverlayBlockingCanvas();
+        if (isNotCanvas || isUI || isModal) {
           if (e.pointerId !== undefined) this._uiPointerIds.add(e.pointerId);
+          if (e.pointerType === 'pen') {
+            const tName = e.target ? (e.target.id ? '#' + e.target.id : (e.target.className ? '.' + String(e.target.className).split(' ')[0] : e.target.tagName)) : 'null';
+            this._logInkDiag('warn', `⚠️ [펜 터치가 캔버스 밖 UI에 닿음] target=${tName} (id=${e.pointerId})`);
+          }
         } else {
           if (e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
         }
+        this._updateInkDiagLive(e, 'win:pointerdown');
       }, { capture: true });
 
       this.canvas.addEventListener('pointerdown', (e) => {
-        if (isClickableUI(e.target) || isAnyModalOrOverlayBlockingCanvas()) return;
+        this._updateInkDiagLive(e, 'cvs:pointerdown');
+        if (isClickableUI(e.target) || isAnyModalOrOverlayBlockingCanvas()) {
+          if (e.pointerType === 'pen') {
+            this._logInkDiag('error', `🚨 [획 시작 차단] isClickableUI 또는 모달 가드에 막힘 (id=${e.pointerId})`);
+          }
+          return;
+        }
         if (this._uiPointerIds && e.pointerId !== undefined) {
           this._uiPointerIds.delete(e.pointerId);
         }
@@ -19491,11 +19506,26 @@ class GraphApp {
           this._pointerDownStart = { time: nowT, x: e.clientX, y: e.clientY };
           this._activeDrawingPointerId = e.pointerId;
           this._activeDrawingPointerType = e.pointerType || 'mouse';
+          this._diagStrokeStartInfo = {
+            time: nowT,
+            pointerId: e.pointerId,
+            pointerType: e.pointerType || 'mouse',
+            startMethod: 'pointerdown',
+            minP: typeof e.pressure === 'number' ? e.pressure : -1,
+            maxP: typeof e.pressure === 'number' ? e.pressure : -1,
+            moveEvents: 0
+          };
           handleDown(e);
+          if (e.pointerType === 'pen' && !this.isDrawingInk && isWritingToolActive()) {
+            this._logInkDiag('error', `🚨 [획 시작 실패] pointerdown(pen) 진입했으나 handleDown 내부에서 필기가 시작되지 않음! (tool=${this.activeInkTool}, inkMode=${this.isInkMode})`);
+          }
           return;
         }
 
         // 2) 터치(touch) 입력: 펜슬 필기 중이거나 펜을 뗀 지 450ms 이내에는 터치 무시
+        if (e.pointerType === 'touch') {
+          this._logInkDiag('touch', `🖐️ [터치 감지] type=touch, id=${e.pointerId}, 크기=${Math.round(e.width || 0)}x${Math.round(e.height || 0)} (만약 펜으로 그은 거라면 펜이 touch로 오인식된 것!)`);
+        }
         if (isPenRecentlyActive()) {
           return;
         }
@@ -19555,12 +19585,21 @@ class GraphApp {
       }, { passive: false });
 
       window.addEventListener('pointermove', (e) => {
+        if (e.pointerType === 'pen') {
+          this._updateInkDiagLive(e, 'win:pointermove');
+        }
         // 🛡️ 모달 창이 열려 있거나 리모컨 드래그 중에는 뒷창 캔버스 필기·이동을 100% 차단!
         if (this.isDraggingPillRemote || isAnyModalOrOverlayBlockingCanvas()) {
+          if (e.pointerType === 'pen') {
+            this._logInkDiag('error', `🚨 [pointermove 차단] 모달 또는 리모컨 드래그 상태 (isDraggingPill=${this.isDraggingPillRemote})`);
+          }
           return;
         }
         // 해당 포인터 자체가 UI 버튼/모달 위에서 시작된 경우에만 무시 (손바닥이 카드에 닿아도 펜의 pointerId는 정상 필기!)
         if (this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId)) {
+          if (e.pointerType === 'pen') {
+            this._logInkDiag('error', `🚨 [pointermove 차단] 펜 포인터(id=${e.pointerId})가 UI 영역에서 시작된 것으로 기록됨`);
+          }
           return;
         }
         // 아직 필기/드로잉 중이 아닐 때만 UI 위 호버를 무시 (필기 중 배지나 툴바 근처를 스쳐도 획이 끊기지 않도록 보호)
@@ -19575,6 +19614,14 @@ class GraphApp {
           this._lastPenActiveTime = nowT;
           this._touchPanDeadzoneLocked = false;
           const isPenPressing = (typeof e.pressure === 'number' && e.pressure > 0.005) || (typeof e.buttons === 'number' && e.buttons > 0);
+          if (!this.isDrawingInk && !this.isStylusDrawing && !this.isLassoSelecting && isWritingToolActive()) {
+            if (!isPenPressing) {
+              this._logInkDiag('error', `🚨 [원인 발견: 획 시작 씹힘] pointerdown 없이 pointermove(pen)가 왔으나 pressure=${e.pressure}, buttons=${e.buttons} 이라 무시됨! (짭플펜슬 필압=0 현상)`);
+            } else if (e.target !== this.canvas) {
+              const tName = e.target ? (e.target.id || e.target.className || e.target.tagName) : 'null';
+              this._logInkDiag('error', `🚨 [원인 발견: 획 시작 씹힘] pointermove(pen)의 target이 캔버스가 아님 (${tName})`);
+            }
+          }
           if (
             isPenPressing &&
             !this.isDrawingInk &&
@@ -19599,6 +19646,16 @@ class GraphApp {
             this._pointerDownStart = { time: nowT, x: e.clientX, y: e.clientY };
             this._activeDrawingPointerId = e.pointerId;
             this._activeDrawingPointerType = 'pen';
+            this._diagStrokeStartInfo = {
+              time: nowT,
+              pointerId: e.pointerId,
+              pointerType: 'pen',
+              startMethod: 'pointermove(구출)',
+              minP: typeof e.pressure === 'number' ? e.pressure : -1,
+              maxP: typeof e.pressure === 'number' ? e.pressure : -1,
+              moveEvents: 0
+            };
+            this._logInkDiag('warn', `⚡ [pointerdown 누락 ➔ pointermove 자동 구출 발동] id=${e.pointerId}, p=${(e.pressure || 0).toFixed(2)}, btn=${e.buttons}`);
             handleDown(e);
           }
         }
@@ -19606,7 +19663,17 @@ class GraphApp {
         // 오른손 펜슬 필기 도중에는 다른 포인터(손바닥/손가락)의 움직임을 100% 차단!
         if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
           if (e.pointerId !== undefined && e.pointerId !== this._activeDrawingPointerId) {
+            if (e.pointerType === 'pen') {
+              this._logInkDiag('error', `🚨 [원인 발견: 중간 끊김] 필기 중 펜의 pointerId가 ${this._activeDrawingPointerId} ➔ ${e.pointerId} 로 변경되어 차단됨!`);
+            }
             return;
+          }
+        }
+        if (this.isDrawingInk && this._diagStrokeStartInfo && e.pointerId === this._activeDrawingPointerId) {
+          this._diagStrokeStartInfo.moveEvents++;
+          if (typeof e.pressure === 'number') {
+            this._diagStrokeStartInfo.minP = Math.min(this._diagStrokeStartInfo.minP, e.pressure);
+            this._diagStrokeStartInfo.maxP = Math.max(this._diagStrokeStartInfo.maxP, e.pressure);
           }
         }
 
@@ -19653,6 +19720,22 @@ class GraphApp {
         const nowT = Date.now();
         if (e.pointerType === 'pen') {
           this._lastPenActiveTime = nowT;
+          this._updateInkDiagLive(e, 'win:' + e.type);
+        }
+
+        // 만약 그리는 중인 펜 포인터 자체가 pointercancel 당한 경우 즉시 빨간 경보!
+        if (this.isDrawingInk && e.pointerId === this._activeDrawingPointerId) {
+          const pts = this.currentInkStroke && this.currentInkStroke.points ? this.currentInkStroke.points.length : 0;
+          const dur = this._diagStrokeStartInfo ? (nowT - this._diagStrokeStartInfo.time) : 0;
+          const sMethod = this._diagStrokeStartInfo ? this._diagStrokeStartInfo.startMethod : '?';
+          const mEvts = this._diagStrokeStartInfo ? this._diagStrokeStartInfo.moveEvents : 0;
+          if (e.type === 'pointercancel') {
+            this._logInkDiag('error', `🚨 [원인 발견: 획 중간 끊김] iPadOS가 그리는 중인 펜(id=${e.pointerId})에 pointercancel(강제 취소)을 보냄! (점 ${pts}개, ${dur}ms)`);
+          } else if (pts <= 2 || mEvts <= 1) {
+            this._logInkDiag('warn', `⚠️ [초단타 획 종료] ${e.type}(id=${e.pointerId}) | 점 ${pts}개, move=${mEvts}회, ${dur}ms (시작:${sMethod})`);
+          } else {
+            this._logInkDiag('ok', `✅ [획 정상 완료] 점 ${pts}개 (move=${mEvts}회, ${dur}ms, 시작:${sMethod})`);
+          }
         }
 
         // ✏️ [최우선 0순위 보호]: 오른손 펜슬 필기 도중 다른 포인터(손바닥/손가락)가 떨어지거나 pointercancel 될 때는
@@ -19771,7 +19854,16 @@ class GraphApp {
     };
     this.canvas.addEventListener('touchstart', (e) => {
       const nowT = Date.now();
+      const touchTypes = e.touches ? Array.from(e.touches).map(t => t.touchType || 'direct').join(',') : 'none';
       const hasStylus = e.touches && Array.from(e.touches).some(t => t.touchType === 'stylus');
+      this._lastTouchStartTypes = touchTypes;
+      if (hasStylus) {
+        setTimeout(() => {
+          if (!this.isDrawingInk && (Date.now() - (this._lastPenActiveTime || 0) > 100)) {
+            this._logInkDiag('error', `🚨 [원인 발견: WebKit 이벤트 삼킴] touchstart(stylus)는 감지되었으나 50ms 내 pointerdown(pen)이 오지 않아 획이 씹힘!`);
+          }
+        }, 60);
+      }
       if (hasStylus) {
         this._lastPenActiveTime = nowT;
         if (!this.isDrawingInk && !this.isStylusDrawing && this._touchCameraSnapshot && (nowT - this._touchCameraSnapshot.time < 220)) {
@@ -21132,6 +21224,126 @@ class GraphApp {
     this._inkBakeDirty = true;
     this._hasSceneFreeze = false;
     return clamped;
+  }
+
+  _initInkDiagHud() {
+    if (typeof document === 'undefined' || document.getElementById('inkDiagHud')) return;
+    this._inkDiagLogs = [];
+    const hud = document.createElement('div');
+    hud.id = 'inkDiagHud';
+    hud.style.cssText = [
+      'position:fixed',
+      'top:58px',
+      'right:14px',
+      'width:370px',
+      'max-width:92vw',
+      'background:rgba(15, 23, 42, 0.92)',
+      'color:#f8fafc',
+      'border:1.5px solid rgba(56, 189, 248, 0.55)',
+      'border-radius:12px',
+      'padding:10px 12px',
+      'font-family:monospace, -apple-system, sans-serif',
+      'font-size:11.5px',
+      'line-height:1.45',
+      'z-index:99999',
+      'box-shadow:0 10px 28px rgba(0,0,0,0.45)',
+      'pointer-events:none',
+      'backdrop-filter:blur(8px)'
+    ].join(';');
+
+    hud.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.15); padding-bottom:5px;">
+        <span style="font-weight:700; color:#38bdf8; font-size:12px;">🔬 실시간 필기 씹힘 자동 진단기</span>
+        <div style="display:flex; gap:5px; pointer-events:auto;">
+          <button type="button" id="btnInkDiagClear" style="background:#334155; color:#fff; border:none; border-radius:6px; padding:2px 7px; font-size:11px; cursor:pointer;">지우기</button>
+          <button type="button" id="btnInkDiagCopy" style="background:#0284c7; color:#fff; border:none; border-radius:6px; padding:2px 7px; font-size:11px; cursor:pointer;">복사</button>
+          <button type="button" id="btnInkDiagClose" style="background:#475569; color:#fff; border:none; border-radius:6px; padding:2px 6px; font-size:11px; cursor:pointer;">✕</button>
+        </div>
+      </div>
+      <div id="inkDiagLiveBar" style="background:rgba(30,41,59,0.9); padding:4px 7px; border-radius:6px; margin-bottom:6px; color:#bae6fd; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+        대기 중... 평소처럼 글씨를 써보세요!
+      </div>
+      <div id="inkDiagLogList" style="max-height:190px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; pointer-events:auto;">
+        <div style="color:#94a3b8; font-size:11px;">글씨가 안 써지거나 끊기는 순간 여기에 빨간색으로 정확한 원인이 자동 기록됩니다.</div>
+      </div>
+    `;
+    document.body.appendChild(hud);
+
+    const btnClear = document.getElementById('btnInkDiagClear');
+    if (btnClear) {
+      btnClear.onclick = (ev) => {
+        ev.stopPropagation();
+        this._inkDiagLogs = [];
+        const list = document.getElementById('inkDiagLogList');
+        if (list) list.innerHTML = '<div style="color:#94a3b8; font-size:11px;">기록이 초기화되었습니다. 글씨를 써보세요!</div>';
+      };
+    }
+    const btnCopy = document.getElementById('btnInkDiagCopy');
+    if (btnCopy) {
+      btnCopy.onclick = (ev) => {
+        ev.stopPropagation();
+        const txt = (this._inkDiagLogs || []).join('\n');
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(() => this.showToast('📋 진단 로그가 복사되었습니다!'));
+        }
+      };
+    }
+    const btnClose = document.getElementById('btnInkDiagClose');
+    if (btnClose) {
+      btnClose.onclick = (ev) => {
+        ev.stopPropagation();
+        hud.style.display = 'none';
+      };
+    }
+  }
+
+  _updateInkDiagLive(e, stage) {
+    const bar = document.getElementById('inkDiagLiveBar');
+    if (!bar || !e) return;
+    const p = typeof e.pressure === 'number' ? e.pressure.toFixed(2) : '-';
+    const btn = e.buttons !== undefined ? e.buttons : '-';
+    const tType = this._lastTouchStartTypes || '-';
+    bar.textContent = `[${stage}] type=${e.pointerType} | id=${e.pointerId} | p=${p} | btn=${btn} | touch=${tType}`;
+  }
+
+  _logInkDiag(level, msg) {
+    if (!this._inkDiagLogs) this._inkDiagLogs = [];
+    const now = new Date();
+    const timeStr = `${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}.${String(now.getMilliseconds()).padStart(3, '0').slice(0, 2)}`;
+    const line = `[${timeStr}] ${msg}`;
+    // 직전과 완전히 동일한 메시지가 80ms 내 연속 중복 찍히는 것만 압축
+    if (this._lastDiagMsg === msg && (Date.now() - (this._lastDiagTime || 0) < 120)) {
+      return;
+    }
+    this._lastDiagMsg = msg;
+    this._lastDiagTime = Date.now();
+    this._inkDiagLogs.unshift(line);
+    if (this._inkDiagLogs.length > 40) this._inkDiagLogs.pop();
+
+    const list = document.getElementById('inkDiagLogList');
+    if (!list) return;
+    list.innerHTML = '';
+    for (const item of this._inkDiagLogs.slice(0, 14)) {
+      const row = document.createElement('div');
+      let bg = 'rgba(30, 41, 59, 0.75)';
+      let color = '#e2e8f0';
+      let border = 'transparent';
+      if (item.includes('🚨')) {
+        bg = 'rgba(127, 29, 29, 0.88)';
+        color = '#fecaca';
+        border = '#ef4444';
+      } else if (item.includes('⚠️') || item.includes('⚡') || item.includes('🖐️')) {
+        bg = 'rgba(120, 53, 15, 0.82)';
+        color = '#fde68a';
+        border = '#f59e0b';
+      } else if (item.includes('✅')) {
+        bg = 'rgba(6, 78, 59, 0.65)';
+        color = '#a7f3d0';
+      }
+      row.style.cssText = `background:${bg}; color:${color}; border-left:3px solid ${border}; padding:3px 6px; border-radius:4px; font-size:11px; word-break:break-all;`;
+      row.textContent = item;
+      list.appendChild(row);
+    }
   }
 
   _saveTouchCameraSnapshot() {
