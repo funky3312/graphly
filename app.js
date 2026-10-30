@@ -6779,6 +6779,7 @@ class GraphApp {
     `;
     document.body.appendChild(el);
     this.attachCardLaserSystem(el);
+    this.attachCardDoubleTapDocking(el);
 
     const startMin = Boolean(options && options.startMinimized);
     const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum };
@@ -6811,6 +6812,7 @@ class GraphApp {
       }
       const chev = el.querySelector('.card-fold-chevron');
       if (chev) chev.textContent = nextMin ? '▸' : '▾';
+      if (this.relayoutLeftDockedCards) this.relayoutLeftDockedCards(true);
     };
     el._toggleCardMin = toggleExtraMin;
 
@@ -6866,6 +6868,10 @@ class GraphApp {
         el.classList.remove('is-dragging-card');
         if (wasMoved) {
           el._justDraggedTime = performance.now();
+          if (el._isLeftDocked) {
+            el._isLeftDocked = false;
+          }
+          this.relayoutLeftDockedCards(true);
         }
       }
     };
@@ -7292,6 +7298,12 @@ class GraphApp {
           this.updateProblemCardPosition();
           if (wasMoved) {
             widget._justDraggedTime = performance.now();
+            if (widget._isLeftDocked) {
+              widget._isLeftDocked = false;
+              this.relayoutLeftDockedCards(true);
+            } else {
+              this.relayoutLeftDockedCards(true);
+            }
           }
         }
       };
@@ -7404,6 +7416,7 @@ class GraphApp {
     if (icon) icon.textContent = nextMin ? '▸' : '▾';
     this.updateProblemCardPosition();
     this.syncProblemCardRectFromWidget();
+    if (this.relayoutLeftDockedCards) this.relayoutLeftDockedCards(true);
     this.showToast(nextMin ? '📖 문제 카드를 접었습니다.' : '📑 문제 카드를 다시 펼쳤습니다.');
     this.render();
   }
@@ -7452,6 +7465,144 @@ class GraphApp {
     const topZ = 150 + allCards.length;
     targetEl.style.zIndex = String(topZ);
     this.highestProblemCardZIndex = topZ;
+  }
+
+  // 🌟 [대표님 킬러 기획: 카드 더블클릭("너 저리가!") ➔ 확 접은 상태로 좌측에 위아래 줄맞춰 차곡차곡 자동 정렬] 🌟
+  _setCardBasePosition(el, x, y, animate = true) {
+    if (!el) return;
+    const rx = Math.round(x);
+    const ry = Math.round(y);
+    if (animate) {
+      el.classList.add('dock-animating');
+      if (el._dockAnimTimer) clearTimeout(el._dockAnimTimer);
+      el._dockAnimTimer = setTimeout(() => {
+        el.classList.remove('dock-animating');
+      }, 240);
+    }
+    el.style.left = `${rx}px`;
+    el.style.top = `${ry}px`;
+
+    if (el.id === 'problemCardWidget') {
+      this.problemCardBaseX = rx;
+      this.problemCardBaseY = ry;
+      this.syncProblemCardRectFromWidget();
+    } else if (el.id === 'graphCardWidget') {
+      this.graphCardBaseX = rx;
+      this.graphCardBaseY = ry;
+      this.syncGraphCardRectFromWidget();
+    } else {
+      const ep = (this.extraProblemCards || []).find(c => c && c.el === el);
+      if (ep) {
+        ep.baseX = rx;
+        ep.baseY = ry;
+      }
+      const eg = (this.extraGraphCards || []).find(c => c && c.el === el);
+      if (eg) {
+        eg.baseX = rx;
+        eg.baseY = ry;
+      }
+    }
+  }
+
+  relayoutLeftDockedCards(animate = true) {
+    const dockX = 72;
+    let curY = 18;
+    const gapY = 8;
+
+    const pWidget = document.getElementById('problemCardWidget');
+    const isPVisible = Boolean(pWidget && this.problemCardData && pWidget.style.display !== 'none');
+
+    // 기본 문제 카드가 좌상단 홈 위치(left ~ 72px, top ~ 18px)에 있고 아직 별도 도킹 순번을 받지 않았다면 맨 위 기준점으로 유지
+    if (isPVisible && !pWidget._isLeftDocked) {
+      const px = (typeof this.problemCardBaseX === 'number') ? this.problemCardBaseX : (parseFloat(pWidget.style.left) || 72);
+      const py = (typeof this.problemCardBaseY === 'number') ? this.problemCardBaseY : (parseFloat(pWidget.style.top) || 18);
+      if (Math.abs(px - dockX) <= 32 && py <= 48) {
+        const pRect = pWidget.getBoundingClientRect();
+        const pH = Math.max(32, Math.round(pRect.height || pWidget.offsetHeight || 34));
+        curY = Math.round(py + pH + gapY);
+      }
+    }
+
+    const allCandidates = [
+      isPVisible ? pWidget : null,
+      ...((this.extraProblemCards || []).map(c => (c && c.el && c.el.style.display !== 'none') ? c.el : null)),
+      (this._hasPrimaryGraphCard && this.graphCardData) ? document.getElementById('graphCardWidget') : null,
+      ...((this.extraGraphCards || []).map(c => (c && c.el && c.el.style.display !== 'none') ? c.el : null))
+    ].filter(el => el && el._isLeftDocked);
+
+    allCandidates.sort((a, b) => (a._leftDockOrder || 0) - (b._leftDockOrder || 0));
+
+    allCandidates.forEach((el) => {
+      this._setCardBasePosition(el, dockX, curY, animate);
+      const rect = el.getBoundingClientRect();
+      const h = Math.max(32, Math.round(rect.height || el.offsetHeight || 34));
+      curY += h + gapY;
+    });
+  }
+
+  dockCardToLeftStack(cardEl) {
+    if (!cardEl) return;
+    // 1. 펼쳐져 있으면 즉시 확 접기(minimized)
+    if (!cardEl.classList.contains('minimized') && typeof cardEl._toggleCardMin === 'function') {
+      cardEl._lastToggleTime = 0;
+      cardEl._toggleCardMin();
+    }
+    // 2. 좌측 도킹 큐에 등록 (새로 더블클릭한 카드는 기존 정렬된 카드 바로 밑으로 줄맞춤!)
+    if (!this._leftDockOrderCounter) this._leftDockOrderCounter = 1;
+    if (!cardEl._isLeftDocked) {
+      cardEl._isLeftDocked = true;
+      cardEl._leftDockOrder = (++this._leftDockOrderCounter);
+    }
+    this.relayoutLeftDockedCards(true);
+  }
+
+  attachCardDoubleTapDocking(cardEl) {
+    if (!cardEl || cardEl._doubleTapDockAttached) return;
+    cardEl._doubleTapDockAttached = true;
+
+    const shouldIgnoreTarget = (target) => {
+      if (!target || !target.closest) return false;
+      return Boolean(
+        target.closest('button') ||
+        target.closest('.card-btn') ||
+        target.closest('.card-fold-triangle-btn') ||
+        target.closest('.card-title-fold-btn') ||
+        target.closest('.problem-card-actions') ||
+        target.closest('.problem-card-resize-handle')
+      );
+    };
+
+    // 1) 포인터 기반 빠른 더블탭 (아이패드 펜슬·손가락·PC 마우스 공용)
+    cardEl.addEventListener('pointerup', (e) => {
+      if (e.button && e.button !== 0) return;
+      if (cardEl.classList.contains('card-laser-active')) return;
+      if (shouldIgnoreTarget(e.target)) return;
+      if (cardEl._justDraggedTime && performance.now() - cardEl._justDraggedTime < 120) return;
+
+      const now = performance.now();
+      const dt = now - (cardEl._lastTapUpTime || 0);
+      const dist = Math.hypot(e.clientX - (cardEl._lastTapUpX || 0), e.clientY - (cardEl._lastTapUpY || 0));
+
+      if (dt > 15 && dt <= 340 && dist <= 28) {
+        cardEl._lastTapUpTime = 0;
+        e.preventDefault();
+        e.stopPropagation();
+        this.dockCardToLeftStack(cardEl);
+      } else {
+        cardEl._lastTapUpTime = now;
+        cardEl._lastTapUpX = e.clientX;
+        cardEl._lastTapUpY = e.clientY;
+      }
+    });
+
+    // 2) 표준 dblclick 이벤트 폴백 지원
+    cardEl.addEventListener('dblclick', (e) => {
+      if (cardEl.classList.contains('card-laser-active')) return;
+      if (shouldIgnoreTarget(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.dockCardToLeftStack(cardEl);
+    });
   }
 
   // 🔴 [카드 전용 상단 레이저 포인터 시스템 (문제 카드 & 그래프 카드 공용)]
@@ -8566,6 +8717,7 @@ class GraphApp {
     `;
     document.body.appendChild(el);
     this.attachCardLaserSystem(el);
+    this.attachCardDoubleTapDocking(el);
 
     const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), aspect, isMin: false, graphSnapshot: graphSnapshot || this.getPureGraphSnapshot(), caseIdx };
     this.extraGraphCards.push(cardItem);
@@ -8603,6 +8755,7 @@ class GraphApp {
       }
       const chev = el.querySelector('.card-fold-chevron');
       if (chev) chev.textContent = nextMin ? '▸' : '▾';
+      if (this.relayoutLeftDockedCards) this.relayoutLeftDockedCards(true);
     };
     el._toggleCardMin = toggleExtraGraphMin;
 
@@ -8658,6 +8811,10 @@ class GraphApp {
         el.classList.remove('is-dragging-card');
         if (wasMoved) {
           el._justDraggedTime = performance.now();
+          if (el._isLeftDocked) {
+            el._isLeftDocked = false;
+          }
+          this.relayoutLeftDockedCards(true);
         }
       }
     };
@@ -9074,6 +9231,8 @@ class GraphApp {
     applyLongPressShield(document.getElementById('inkFloatingToolbar'));
     this.attachCardLaserSystem(widget);
     this.attachCardLaserSystem(document.getElementById('problemCardWidget'));
+    this.attachCardDoubleTapDocking(widget);
+    this.attachCardDoubleTapDocking(document.getElementById('problemCardWidget'));
 
     const togglePrimaryGraphMin = () => {
       if (!widget) return;
@@ -9093,6 +9252,7 @@ class GraphApp {
       const icon = document.getElementById('iconGraphCardToggle');
       if (icon) icon.textContent = nextMin ? '▸' : '▾';
       this.syncGraphCardRectFromWidget();
+      if (this.relayoutLeftDockedCards) this.relayoutLeftDockedCards(true);
     };
     if (widget) widget._toggleCardMin = togglePrimaryGraphMin;
 
@@ -9145,6 +9305,12 @@ class GraphApp {
           this.syncGraphCardRectFromWidget();
           if (wasMoved) {
             widget._justDraggedTime = performance.now();
+            if (widget._isLeftDocked) {
+              widget._isLeftDocked = false;
+              this.relayoutLeftDockedCards(true);
+            } else {
+              this.relayoutLeftDockedCards(true);
+            }
           }
         }
       };

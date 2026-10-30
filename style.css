@@ -9104,3 +9104,8 @@ body.theme-light .pdf-crop-active-pill .pdf-crop-active-cancel-x {
   background: rgba(15, 23, 42, 0.1);
   color: #0f172a;
 }
+
+/* 📌 카드 더블클릭 좌측 차곡차곡 자동 정렬 애니메이션 (드래그 중에는 즉시 반응, 정렬 시에는 스르륵 이동) */
+.problem-card-widget.dock-animating {
+  transition: left 0.22s cubic-bezier(0.22, 1, 0.36, 1), top 0.22s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
