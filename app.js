@@ -8053,6 +8053,10 @@ class GraphApp {
 
     const currentGraphSnapshot = this.getPureGraphSnapshot();
 
+    // 🌟 핵심: 먼저 판서 모드 상태(문제 카드 펼침 등)를 복원한 뒤 그래프 카드 위치를 계산해야 문제 카드와 절대 겹치지 않음!
+    this._graphSessionArchived = true;
+    this._restoreBoardModeStateAfterGraph();
+
     // 🌟 [대표님 대박 기획: 1번 상황 보관 -> 복구 -> 2번 상황 보관 -> 3번 상황 다중 케이스 비교 보관!] 🌟
     // 이미 1번 보관 카드(#graphCardWidget)가 존재하면, 1번 카드를 그대로 살려두면서 2번, 3번 보관 카드를 나란히 추가 소환!
     if (this._hasPrimaryGraphCard && this.graphCardData) {
@@ -8095,7 +8099,7 @@ class GraphApp {
           primaryBody.style.height = `${Math.round(cardW * aspect)}px`;
         }
 
-        if (typeof this.graphCardBaseX !== 'number' || typeof this.graphCardBaseY !== 'number') {
+        this.syncProblemCardRectFromWidget(); if (true) {
           if (this.hasActiveProblemCard() && this.problemCardRect) {
             const pRight = this.problemCardRect.x + this.problemCardRect.w;
             if (pRight + cardW + 36 <= window.innerWidth) {
@@ -10375,13 +10379,10 @@ class GraphApp {
     if (btnExport && panelExport) {
       btnExport.onclick = (e) => {
         e.stopPropagation();
-        const isOpen = panelExport.classList.contains('show');
-        if (isOpen) {
-          panelExport.classList.remove('show');
-          btnExport.classList.remove('active');
-        } else {
-          panelExport.classList.add('show');
-          btnExport.classList.add('active');
+        panelExport.classList.remove('show');
+        btnExport.classList.remove('active');
+        if (this._openShareModalWithCloudPackage) {
+          this._openShareModalWithCloudPackage();
         }
       };
 
@@ -13137,6 +13138,13 @@ class GraphApp {
   }
 
   initShareModal() {
+    this.exportScope = 'current';
+    this.exportFilter = {
+      includeProblem: true,
+      includeGraph: true,
+      includeInk: true
+    };
+
     const modal = document.getElementById('modalShare');
     const btnOpen = document.getElementById('btnOpenShareModal');
     const btnClose = document.getElementById('btnCloseShareModal');
@@ -13144,52 +13152,163 @@ class GraphApp {
     const inputShare = document.getElementById('inputShareLink');
     const inputStudent = document.getElementById('inputStudentLink');
     const btnCopyShare = document.getElementById('btnCopyShareLink');
+    const lblBtnCopyShare = document.getElementById('lblBtnCopyShareLink');
     const btnCopyStudent = document.getElementById('btnCopyStudentLink');
     const btnDownloadQr = document.getElementById('btnDownloadQr');
     const qrCanvas = document.getElementById('qrCanvas');
     const resetBar = document.getElementById('sharedResetBar');
     const btnReset = document.getElementById('btnResetToOriginal');
+    const btnReturnViewer = document.getElementById('btnReturnToSmartViewer');
     const btnCloseResetBar = document.getElementById('btnCloseResetBar');
+
+    const btnScopeCur = document.getElementById('btnExportScopeCurrent');
+    const btnScopeAll = document.getElementById('btnExportScopeAll');
+    const lblTotalCount = document.getElementById('lblExportTotalSlidesCount');
+    const chkProblem = document.getElementById('chkExportLayerProblem');
+    const chkGraph = document.getElementById('chkExportLayerGraph');
+    const chkInk = document.getElementById('chkExportLayerInk');
+    const lblProblem = document.getElementById('lblExportLayerProblem');
+    const lblGraph = document.getElementById('lblExportLayerGraph');
+    const lblInk = document.getElementById('lblExportLayerInk');
+    const lblSummary = document.getElementById('lblExportFilterSummary');
+
+    const btnModalCopyImg = document.getElementById('btnExportModalCopyImg');
+    const lblModalCopyImg = document.getElementById('lblExportModalCopyImg');
+    const btnModalSavePng = document.getElementById('btnExportModalSavePng');
+    const lblModalSavePng = document.getElementById('lblExportModalSavePng');
+    const btnPreviewViewer = document.getElementById('btnPreviewSmartViewer');
+
+    this._initSmartNoteViewerEvents();
+
+    const flashButtonLabel = (el, tempText, origText, ms = 1800) => {
+      if (!el) return;
+      el.textContent = tempText;
+      setTimeout(() => {
+        el.textContent = origText;
+      }, ms);
+    };
+
+    const syncFilterUI = () => {
+      const allSlides = this._getActiveSlidesForExport('수업 노트');
+      const totalCnt = allSlides.length;
+      if (lblTotalCount) lblTotalCount.textContent = `(${totalCnt}장)`;
+      if (btnScopeCur) btnScopeCur.classList.toggle('active', this.exportScope === 'current');
+      if (btnScopeAll) btnScopeAll.classList.toggle('active', this.exportScope === 'all');
+
+      if (chkProblem) chkProblem.checked = Boolean(this.exportFilter.includeProblem);
+      if (chkGraph) chkGraph.checked = Boolean(this.exportFilter.includeGraph);
+      if (chkInk) chkInk.checked = Boolean(this.exportFilter.includeInk);
+      if (lblProblem) lblProblem.classList.toggle('active', Boolean(this.exportFilter.includeProblem));
+      if (lblGraph) lblGraph.classList.toggle('active', Boolean(this.exportFilter.includeGraph));
+      if (lblInk) lblInk.classList.toggle('active', Boolean(this.exportFilter.includeInk));
+
+      const parts = [];
+      if (this.exportFilter.includeProblem) parts.push('문제');
+      if (this.exportFilter.includeGraph) parts.push('그래프');
+      if (this.exportFilter.includeInk) parts.push('필기');
+      const scopeText = (this.exportScope === 'all' && totalCnt > 1)
+        ? `전체 슬라이드(${totalCnt}장)`
+        : '현재 슬라이드';
+      if (lblSummary) {
+        lblSummary.textContent = `✨ ${scopeText}의 [${parts.join(' + ')}] 영역만 깔끔한 직사각형으로 자동 스캔하여 내보냅니다.`;
+      }
+    };
 
     const renderQr = (urlStr) => {
       if (qrCanvas && window.MiniQRCode && urlStr) {
         try {
           window.MiniQRCode.drawToCanvas(urlStr, qrCanvas, {
-            size: 180,
-            padding: 10,
-            fgColor: '#1e272e',
+            size: 116,
+            padding: 6,
+            fgColor: '#0f172a',
             bgColor: '#ffffff'
           });
         } catch (err) { }
       }
     };
 
+    let shareLinkGenerationPromise = null;
     const updateShareLinksAndQR = async () => {
+      syncFilterUI();
       const baseUrl = window.location.href.split('#')[0];
       const codeNormal = window.GraphStateSerializer ? window.GraphStateSerializer.serialize(this, false) : '';
-      const codeStudent = window.GraphStateSerializer ? window.GraphStateSerializer.serialize(this, true) : '';
-
       const fallbackNormalUrl = `${baseUrl}#share=${codeNormal}`;
-      const fallbackStudentUrl = `${baseUrl}#student=${codeStudent}`;
-
       if (inputShare) inputShare.value = fallbackNormalUrl;
-      if (inputStudent) inputStudent.value = fallbackStudentUrl;
-      renderQr(fallbackStudentUrl);
+      if (inputStudent) inputStudent.value = fallbackNormalUrl;
+      renderQr(fallbackNormalUrl);
 
-      // 🌟 [대표님 핵심 기획]: 필기 페이지 + 문제 카드 + #1,#2 보관 그래프 카드(복구 가능) + 수업 슬라이드를 통째로 짧은 클라우드 링크로 생성!
-      try {
-        const shortId = await this.createCloudSharePackage();
-        if (shortId) {
-          const cloudNormalUrl = `${baseUrl}#cloud=${shortId}`;
-          const cloudStudentUrl = `${baseUrl}#cloud=${shortId}&student=1`;
-          if (inputShare) inputShare.value = cloudNormalUrl;
-          if (inputStudent) inputStudent.value = cloudStudentUrl;
-          renderQr(cloudStudentUrl);
-        }
-      } catch (err) { }
+      const genTask = (async () => {
+        try {
+          const shortId = await this.createCloudSharePackage(this.exportScope, this.exportFilter);
+          if (shortId) {
+            const cloudUrl = `${baseUrl}#cloud=${shortId}`;
+            if (inputShare) inputShare.value = cloudUrl;
+            if (inputStudent) inputStudent.value = cloudUrl;
+            renderQr(cloudUrl);
+            return cloudUrl;
+          }
+        } catch (err) { }
+        return fallbackNormalUrl;
+      })();
+      shareLinkGenerationPromise = genTask;
+      return await genTask;
     };
 
-    const openModal = () => {
+    if (btnScopeCur) {
+      btnScopeCur.onclick = () => {
+        this.exportScope = 'current';
+        updateShareLinksAndQR();
+      };
+    }
+    if (btnScopeAll) {
+      btnScopeAll.onclick = () => {
+        this.exportScope = 'all';
+        updateShareLinksAndQR();
+      };
+    }
+
+    const onLayerToggle = (key, chkEl) => {
+      if (!chkEl) return;
+      this.exportFilter[key] = Boolean(chkEl.checked);
+      if (!this.exportFilter.includeProblem && !this.exportFilter.includeGraph && !this.exportFilter.includeInk) {
+        this.exportFilter[key] = true;
+        chkEl.checked = true;
+      }
+      updateShareLinksAndQR();
+    };
+    if (chkProblem) chkProblem.onchange = () => onLayerToggle('includeProblem', chkProblem);
+    if (chkGraph) chkGraph.onchange = () => onLayerToggle('includeGraph', chkGraph);
+    if (chkInk) chkInk.onchange = () => onLayerToggle('includeInk', chkInk);
+
+    if (btnModalCopyImg) {
+      btnModalCopyImg.onclick = async () => {
+        await this.copyToClipboard(this.exportFilter);
+        flashButtonLabel(lblModalCopyImg, '✅ 클립보드 복사 완료! (Ctrl+V)', '클립보드 이미지 복사 (Ctrl+C)');
+      };
+    }
+
+    if (btnModalSavePng) {
+      btnModalSavePng.onclick = async () => {
+        await this.downloadExportImages(this.exportScope, this.exportFilter);
+        flashButtonLabel(lblModalSavePng, '✅ 직사각형 PNG 저장 완료!', '직사각형 PNG 이미지 저장');
+      };
+    }
+
+    if (btnPreviewViewer) {
+      btnPreviewViewer.onclick = async () => {
+        if (modal) modal.classList.remove('show');
+        const pkg = await this.buildExportSharePackageObject(this.exportScope, this.exportFilter);
+        this._initialSharedCloudPkg = JSON.parse(JSON.stringify(pkg));
+        await this.openSmartNoteViewer(pkg);
+      };
+    }
+
+    const openModal = (defaultScope = null) => {
+      if (defaultScope === 'all' || defaultScope === 'current') {
+        this.exportScope = defaultScope;
+      } else {
+        this.exportScope = 'current';
+      }
       const hasLiveGraphs = this.graphs && this.graphs.length > 0;
       const hasBackupGraphs = this._coveredGraphStateBackup && this._coveredGraphStateBackup.graphs && this._coveredGraphStateBackup.graphs.length > 0;
       if (!hasLiveGraphs && hasBackupGraphs) {
@@ -13209,7 +13328,7 @@ class GraphApp {
       if (modal) modal.classList.remove('show');
     };
 
-    if (btnOpen) btnOpen.onclick = openModal;
+    if (btnOpen) btnOpen.onclick = () => openModal();
     if (btnClose) btnClose.onclick = closeModal;
     if (btnCloseFooter) btnCloseFooter.onclick = closeModal;
     if (modal) {
@@ -13218,7 +13337,7 @@ class GraphApp {
       };
     }
 
-    const copyToClipboard = async (text, msg) => {
+    const copyTextToClipboard = async (text) => {
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
           await navigator.clipboard.writeText(text);
@@ -13230,21 +13349,27 @@ class GraphApp {
           document.execCommand('copy');
           document.body.removeChild(ta);
         }
-        this.showToast(msg);
-      } catch (err) {
-        this.showToast('⚠️ 클립보드 복사 실패: 링크를 수동으로 복사해 주세요.');
-      }
+      } catch (err) { }
     };
 
     if (btnCopyShare) {
-      btnCopyShare.onclick = () => {
-        if (inputShare) copyToClipboard(inputShare.value, '📋 판서+그래프 공유 링크 복사 완료! (카톡/밴드에 붙여넣기)');
+      btnCopyShare.onclick = async () => {
+        if (shareLinkGenerationPromise) {
+          await shareLinkGenerationPromise;
+        }
+        if (inputShare) {
+          await copyTextToClipboard(inputShare.value);
+          flashButtonLabel(lblBtnCopyShare, '✅ 복사됨!', '링크 복사');
+        }
       };
     }
 
     if (btnCopyStudent) {
-      btnCopyStudent.onclick = () => {
-        if (inputStudent) copyToClipboard(inputStudent.value, '🎓 학생용 판서+그래프 복습 링크 복사 완료!');
+      btnCopyStudent.onclick = async () => {
+        if (shareLinkGenerationPromise) {
+          await shareLinkGenerationPromise;
+        }
+        if (inputStudent) await copyTextToClipboard(inputStudent.value);
       };
     }
 
@@ -13256,7 +13381,6 @@ class GraphApp {
         link.download = `GraphMaster_QR_${Date.now()}.png`;
         link.href = dataUrl;
         link.click();
-        this.showToast('💾 교재 삽입용 QR 코드 PNG 저장 완료!');
       };
     }
 
@@ -13264,10 +13388,19 @@ class GraphApp {
       btnReset.onclick = () => {
         if (this._initialSharedCloudPkg) {
           this.applyCloudSharePackage(this._initialSharedCloudPkg);
-          this.showToast('↺ 처음 공유받았던 판서 & 그래프 상태로 깨끗하게 복원되었습니다!');
         } else if (this._initialSharedData) {
           this.applyState(this._initialSharedData);
-          this.showToast('↺ 처음 공유받았던 상태로 깨끗하게 복원되었습니다!');
+        }
+      };
+    }
+
+    if (btnReturnViewer) {
+      btnReturnViewer.onclick = async () => {
+        if (this._initialSharedCloudPkg) {
+          await this.openSmartNoteViewer(this._initialSharedCloudPkg);
+        } else {
+          const pkg = await this.buildExportSharePackageObject('current', this.exportFilter);
+          await this.openSmartNoteViewer(pkg);
         }
       };
     }
@@ -13278,61 +13411,45 @@ class GraphApp {
       };
     }
 
-    // 📚 [통째 수업 세트: 공유 모달에서 기출 게시판 / 내 보관함 / 내 드라이브(.graphly)로 원클릭 등록]
+    // 📚 [내 보관함 / 내 드라이브(.graphly) 저장 (선택한 범위 & 요소 필터 반영)]
     const inpDeckTitle = document.getElementById('inputShareModalDeckTitle');
     const inpDeckTags = document.getElementById('inputShareModalDeckTags');
-    const btnShareToComm = document.getElementById('btnShareModalToCommunity');
     const btnShareToLib = document.getElementById('btnShareModalToLibrary');
     const btnShareExportFile = document.getElementById('btnShareModalExportFile');
 
-    const getShareModalSlides = () => {
+    const getShareModalFilteredSlides = () => {
       const fallbackTitle = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : '공유된 수업 세트';
-      return this._getActiveSlidesForExport(fallbackTitle);
+      return this._getFilteredSlidesForExport(fallbackTitle, this.exportScope, this.exportFilter);
     };
-
-    if (btnShareToComm) {
-      btnShareToComm.onclick = async () => {
-        const slides = getShareModalSlides();
-        const defaultTitle = slides.length > 1
-          ? `수능/모의고사 ${slides.length}문항 통째 수업 세트`
-          : (slides[0].slideTitle || '');
-        const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
-        if (!title) {
-          this.showToast('⚠️ 게시판에 등록할 수업/시험지 제목을 입력해 주세요!');
-          if (inpDeckTitle) inpDeckTitle.focus();
-          return;
-        }
-        const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : (slides.length > 1 ? '#풀세트 #통째수업' : '#기출그래프');
-        await this.publishCurrentToCommunity(title, tags, slides);
-      };
-    }
 
     if (btnShareToLib) {
       btnShareToLib.onclick = async () => {
-        const slides = getShareModalSlides();
+        const slides = getShareModalFilteredSlides();
         const defaultTitle = slides.length > 1
-          ? `수업 슬라이드 ${slides.length}문항 풀세트 (${new Date().toLocaleDateString('ko-KR')})`
-          : `수업 세팅 (${new Date().toLocaleDateString('ko-KR')})`;
+          ? `수업 슬라이드 ${slides.length}문항 (${new Date().toLocaleDateString('ko-KR')})`
+          : `수업 노트 (${new Date().toLocaleDateString('ko-KR')})`;
         const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
         const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : (slides.length > 1 ? '#풀세트' : '#수학그래프');
         await this.saveCurrentToMyLibrary(title, tags, slides);
+        flashButtonLabel(btnShareToLib, '✅ 내 보관함 저장 완료!', '📁 내 보관함에 저장');
       };
     }
 
     if (btnShareExportFile) {
       btnShareExportFile.onclick = () => {
-        const slides = getShareModalSlides();
+        const slides = getShareModalFilteredSlides();
         const defaultTitle = slides.length > 1
-          ? `Graphly_${slides.length}문항_통째수업세트`
+          ? `Graphly_${slides.length}문항_수업세트`
           : (slides[0].slideTitle || 'Graphly_수업노트');
         const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
-        const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : '#풀세트';
+        const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : '#수업노트';
         this.exportGraphlyDeckFile(title, tags, slides);
+        flashButtonLabel(btnShareExportFile, '✅ .graphly 파일 저장됨!', '💾 파일로 저장 (.graphly)');
       };
     }
   }
 
-  // --- [URL 해시에서 상태 복원 및 학생 모드 진입 엔진 (#cloud= 통합 패키지 & #share= 호환)] ---
+  // --- [URL 해시에서 상태 복원 및 스마트 판서 이미지 뷰어 자동 진입 엔진 (#cloud= & #share=)] ---
   checkUrlHashForState() {
     const hash = window.location.hash;
     if (!hash) return;
@@ -13353,24 +13470,19 @@ class GraphApp {
     const data = window.GraphStateSerializer.deserialize(hash);
     if (!data || !data.g) return;
 
-    // 초기 복원용 스냅샷 저장
     this._initialSharedData = JSON.parse(JSON.stringify(data));
-
-    // 학생 모드 감지
-    if (data.isStudentMode) {
-      document.body.classList.add('student-mode');
-    }
-
     this.applyState(data);
 
-    // 복원 안내 바 노출
-    const resetBar = document.getElementById('sharedResetBar');
-    if (resetBar) {
-      resetBar.style.display = 'flex';
-    }
-
-    const modeName = data.isStudentMode ? '🎓 학생용 인터랙티브 모드' : '🌐 공유 그래프';
-    this.showToast(`✨ ${modeName} 복원 완료! 그래프를 자유롭게 조작해 보세요.`);
+    // #share= / #student= 단일 그래프 링크도 스마트 이미지 뷰어(그래프 터치 조작 포함)로 즉시 오픈!
+    setTimeout(async () => {
+      const pkg = await this.buildExportSharePackageObject('current', {
+        includeProblem: true,
+        includeGraph: true,
+        includeInk: true
+      });
+      this._initialSharedCloudPkg = JSON.parse(JSON.stringify(pkg));
+      await this.openSmartNoteViewer(pkg);
+    }, 120);
   }
 
   // ============================================================================
@@ -15061,23 +15173,163 @@ class GraphApp {
     return [this.serializeFullSlideState(fallbackTitle)];
   }
 
-  async createCloudSharePackage() {
-    const activeSlides = this._getActiveSlidesForExport('공유된 수업 노트');
+  _applyExportFilterToSlideData(rawSlide, filterOpts = null) {
+    const slide = JSON.parse(JSON.stringify(rawSlide));
+    if (!filterOpts) return slide;
+    const incProb = filterOpts.includeProblem !== false;
+    const incGraph = filterOpts.includeGraph !== false;
+    const incInk = filterOpts.includeInk !== false;
+
+    if (!incProb) {
+      slide.primaryProblemCard = null;
+      slide.extraProblems = [];
+      slide.pdfPageBoardData = null;
+    } else if (!incInk && slide.primaryProblemCard) {
+      slide.primaryProblemCard.problemInkStrokes = [];
+    }
+
+    if (!incGraph) {
+      slide.primaryGraphCard = null;
+      slide.extraGraphs = [];
+      slide.coveredGraphStateBackup = null;
+    } else if (!incInk && slide.primaryGraphCard) {
+      slide.primaryGraphCard.graphInkStrokes = [];
+    }
+
+    if (slide.historyJson) {
+      try {
+        const hObj = typeof slide.historyJson === 'string' ? JSON.parse(slide.historyJson) : slide.historyJson;
+        if (!incInk) {
+          hObj.inkStrokes = [];
+        }
+        if (!incGraph) {
+          hObj.graphs = [];
+          hObj.dropLines = [];
+          hObj.textLabels = [];
+          hObj.usePiecewise = false;
+        }
+        slide.historyJson = JSON.stringify(hObj);
+      } catch (e) { }
+    }
+    return slide;
+  }
+
+  _getFilteredSlidesForExport(fallbackTitle = '공유된 수업 노트', scope = 'current', filterOpts = null) {
+    const effScope = scope || this.exportScope || 'current';
+    const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+    let slides = [];
+    if (effScope === 'all') {
+      slides = this._getActiveSlidesForExport(fallbackTitle);
+    } else {
+      slides = [this.serializeFullSlideState(fallbackTitle)];
+    }
+    return slides.map(s => this._applyExportFilterToSlideData(s, effFilter));
+  }
+
+  async _waitForSlideImagesReady() {
+    const imgs = Array.from(document.querySelectorAll(
+      '#problemCardImg, #graphCardImg, .extra-problem-card-widget .problem-card-img, .extra-graph-card-widget .problem-card-img'
+    ));
+    if (this.pdfPageBoardData && this.pdfPageBoardData.img) {
+      imgs.push(this.pdfPageBoardData.img);
+    }
+    await Promise.all(imgs.map(img => {
+      if (!img || !img.src) return Promise.resolve();
+      if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+      if (typeof img.decode === 'function') {
+        return img.decode().catch(() => {});
+      }
+      return new Promise(res => {
+        img.onload = () => res();
+        img.onerror = () => res();
+        setTimeout(res, 120);
+      });
+    }));
+    this.syncProblemCardRectFromWidget();
+    this.renderProblemCardCanvas();
+    this.syncGraphCardRectFromWidget();
+    this.renderGraphCardCanvas();
+    if (this.pdfPageBoardData && this.pdfPageBoardData.img && !this.pdfPageBoardData.canvas && this.pdfPageBoardData.img.naturalWidth > 0) {
+      const offC = document.createElement('canvas');
+      offC.width = this.pdfPageBoardData.img.naturalWidth;
+      offC.height = this.pdfPageBoardData.img.naturalHeight;
+      offC.getContext('2d').drawImage(this.pdfPageBoardData.img, 0, 0);
+      this.pdfPageBoardData.canvas = offC;
+    }
+  }
+
+  captureCurrentSlideViewerSnapshot(filterOpts = null, forCloud = false) {
+    const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+    const smartBounds = this.getSmartExportBounds(effFilter);
+    const hotspots = this.extractGraphHotspotsForBounds(smartBounds, effFilter);
+    const exp = this.getExportCanvas(effFilter, smartBounds, forCloud ? 1.6 : null);
+    let dataUrl = '';
+    try {
+      dataUrl = forCloud
+        ? exp.canvas.toDataURL('image/jpeg', 0.88)
+        : exp.canvas.toDataURL('image/png');
+    } catch (e) {
+      dataUrl = exp.canvas.toDataURL('image/png');
+    }
+    return {
+      canvas: exp.canvas,
+      width: exp.width,
+      height: exp.height,
+      dpi: exp.dpi,
+      dataUrl,
+      hotspots
+    };
+  }
+
+  async buildExportSharePackageObject(scope = 'current', filterOpts = null) {
+    const effScope = scope || this.exportScope || 'current';
+    const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+    const rawSlides = (effScope === 'all')
+      ? this._getActiveSlidesForExport('공유된 수업 노트')
+      : [this.serializeFullSlideState('공유된 수업 노트')];
+    const filteredSlides = rawSlides.map(s => this._applyExportFilterToSlideData(s, effFilter));
+
+    if (filteredSlides.length === 1) {
+      await this._waitForSlideImagesReady();
+      const snap = this.captureCurrentSlideViewerSnapshot(effFilter, true);
+      filteredSlides[0].viewerSnapshotDataUrl = snap.dataUrl;
+      filteredSlides[0].viewerSnapshotWidth = snap.width;
+      filteredSlides[0].viewerSnapshotHeight = snap.height;
+      filteredSlides[0].viewerGraphHotspots = snap.hotspots;
+    } else {
+      const backupCurrent = this.serializeFullSlideState('backup');
+      for (let i = 0; i < filteredSlides.length; i++) {
+        this.deserializeFullSlideState(rawSlides[i]);
+        await this._waitForSlideImagesReady();
+        const snap = this.captureCurrentSlideViewerSnapshot(effFilter, true);
+        filteredSlides[i].viewerSnapshotDataUrl = snap.dataUrl;
+        filteredSlides[i].viewerSnapshotWidth = snap.width;
+        filteredSlides[i].viewerSnapshotHeight = snap.height;
+        filteredSlides[i].viewerGraphHotspots = snap.hotspots;
+      }
+      this.deserializeFullSlideState(backupCurrent);
+    }
+
     const shortId = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const pkg = {
+    return {
       id: shortId,
       createdAt: Date.now(),
-      isPlaylist: activeSlides.length > 1,
-      playlistSlides: activeSlides,
-      currentIndex: this.isLessonPlaylistActive ? this.lessonPlaylistIndex : 0
+      exportScope: effScope,
+      exportFilter: { ...effFilter },
+      isPlaylist: filteredSlides.length > 1,
+      playlistSlides: filteredSlides,
+      currentIndex: 0
     };
+  }
 
-    // 로컬 캐시에도 즉시 저장 (오프라인/동일 브라우저 즉시 복원 보장)
+  async createCloudSharePackage(scope = null, filterOpts = null) {
+    const pkg = await this.buildExportSharePackageObject(scope || this.exportScope || 'current', filterOpts || this.exportFilter);
+    const shortId = pkg.id;
+
     try {
       localStorage.setItem('graphly_cloud_share_' + shortId, JSON.stringify(pkg));
     } catch (e) { }
 
-    // Firestore 클라우드에 업로드 (30문항 대용량이어도 자동 분할 업로드!)
     try {
       await this._firestoreRestWrite('shared_workspaces', shortId, pkg);
     } catch (e) { }
@@ -15100,23 +15352,421 @@ class GraphApp {
     }
 
     if (!pkg || !Array.isArray(pkg.playlistSlides) || !pkg.playlistSlides.length) {
-      this.showToast('⚠️ 공유된 수업 노트를 찾을 수 없습니다.');
       return;
     }
 
     this._initialSharedCloudPkg = JSON.parse(JSON.stringify(pkg));
+    this.applyCloudSharePackage(pkg);
 
-    if (isStudent) {
-      document.body.classList.add('student-mode');
+    // 🌟 [대표님 핵심 기획]: 공유 링크를 열면 기기(폰·폴드·패드·PC) 불문 먼저 깔끔한 직사각형 스캔 이미지 뷰어로 오픈!
+    // 이미지 속 그래프(#1, #2)를 누르면 즉시 그래프 조작으로 이동하고, [✏️ 편집하기]를 누르면 전체 칠판 편집으로 전환!
+    await this.openSmartNoteViewer(pkg);
+  }
+
+  // ============================================================================
+  // 🖼️ [스마트 판서 이미지 뷰어 & 이미지 속 그래프(#1, #2) 원터치 조작 엔진]
+  // ============================================================================
+  _initSmartNoteViewerEvents() {
+    if (this._smartViewerEventsBound) return;
+    this._smartViewerEventsBound = true;
+
+    this._viewerZoom = 1.0;
+    this._viewerPanX = 0;
+    this._viewerPanY = 0;
+    this._viewerSlideIdx = 0;
+    this._viewerPkg = null;
+
+    const overlay = document.getElementById('smartNoteViewerOverlay');
+    const viewport = document.getElementById('smartNoteViewerViewport');
+    const stage = document.getElementById('smartNoteViewerStage');
+    const btnPrev = document.getElementById('btnViewerPrevSlide');
+    const btnNext = document.getElementById('btnViewerNextSlide');
+    const btnZoomIn = document.getElementById('btnViewerZoomIn');
+    const btnZoomOut = document.getElementById('btnViewerZoomOut');
+    const btnZoomFit = document.getElementById('btnViewerZoomFit');
+    const btnDownload = document.getElementById('btnViewerDownloadPng');
+    const btnEdit = document.getElementById('btnViewerEnterEdit');
+
+    const btnTouchReset = document.getElementById('btnViewerGraphReset');
+    const btnTouchBack = document.getElementById('btnViewerGraphBackToViewer');
+
+    if (btnPrev) {
+      btnPrev.onclick = () => {
+        if (this._viewerPkg && this._viewerSlideIdx > 0) {
+          this.switchSmartViewerSlide(this._viewerSlideIdx - 1);
+        }
+      };
+    }
+    if (btnNext) {
+      btnNext.onclick = () => {
+        if (this._viewerPkg && this._viewerSlideIdx < this._viewerPkg.playlistSlides.length - 1) {
+          this.switchSmartViewerSlide(this._viewerSlideIdx + 1);
+        }
+      };
+    }
+    if (btnZoomIn) {
+      btnZoomIn.onclick = () => this.setSmartViewerZoom(this._viewerZoom * 1.25);
+    }
+    if (btnZoomOut) {
+      btnZoomOut.onclick = () => this.setSmartViewerZoom(this._viewerZoom / 1.25);
+    }
+    if (btnZoomFit) {
+      btnZoomFit.onclick = () => this.fitSmartViewerStageToScreen();
+    }
+    if (btnDownload) {
+      btnDownload.onclick = () => {
+        const img = document.getElementById('smartNoteViewerImg');
+        if (!img || !img.src) return;
+        const link = document.createElement('a');
+        link.download = `Graphly_판서노트_${this._viewerSlideIdx + 1}_${Date.now()}.png`;
+        link.href = img.src;
+        link.click();
+      };
+    }
+    if (btnEdit) {
+      btnEdit.onclick = () => {
+        this.exitSmartNoteViewerToEditMode();
+      };
     }
 
-    this.applyCloudSharePackage(pkg);
+    if (btnTouchReset) {
+      btnTouchReset.onclick = () => {
+        if (this._activeViewerHotspot && this._activeViewerHotspot.graphSnapshot) {
+          this.applyPureGraphSnapshot(this._activeViewerHotspot.graphSnapshot);
+          this.autoCenterGraphForTouchViewer();
+          this._renderViewerGraphCurveChips();
+          this.render();
+        }
+      };
+    }
+    if (btnTouchBack) {
+      btnTouchBack.onclick = () => {
+        this.exitViewerGraphTouchModeToViewer();
+      };
+    }
+
+    if (viewport) {
+      let isDraggingStage = false;
+      let dragStartX = 0, dragStartY = 0;
+      let panStartX = 0, panStartY = 0;
+      let pinchStartDist = 0;
+      let pinchStartZoom = 1.0;
+
+      viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.12 : (1 / 1.12);
+        this.setSmartViewerZoom(this._viewerZoom * factor);
+      }, { passive: false });
+
+      viewport.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.viewer-graph-hotspot')) return;
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
+        isDraggingStage = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        panStartX = this._viewerPanX || 0;
+        panStartY = this._viewerPanY || 0;
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!isDraggingStage) return;
+        this._viewerPanX = panStartX + (e.clientX - dragStartX);
+        this._viewerPanY = panStartY + (e.clientY - dragStartY);
+        this._applySmartViewerTransform();
+      });
+
+      window.addEventListener('pointerup', () => {
+        isDraggingStage = false;
+      });
+
+      viewport.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches.length === 2) {
+          isDraggingStage = false;
+          pinchStartDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          pinchStartZoom = this._viewerZoom || 1.0;
+        }
+      }, { passive: true });
+
+      viewport.addEventListener('touchmove', (e) => {
+        if (e.touches && e.touches.length === 2 && pinchStartDist > 10) {
+          e.preventDefault();
+          const dist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          const ratio = dist / pinchStartDist;
+          this.setSmartViewerZoom(pinchStartZoom * ratio);
+        }
+      }, { passive: false });
+    }
+  }
+
+  async openSmartNoteViewer(pkg) {
+    if (!pkg || !Array.isArray(pkg.playlistSlides) || !pkg.playlistSlides.length) return;
+    this._viewerPkg = pkg;
+    document.body.classList.remove('viewer-graph-touch-mode');
+    const touchBar = document.getElementById('viewerGraphTouchBar');
+    if (touchBar) touchBar.style.display = 'none';
+
+    const overlay = document.getElementById('smartNoteViewerOverlay');
+    if (overlay) overlay.style.display = 'flex';
+
+    const startIdx = Math.max(0, Math.min(pkg.playlistSlides.length - 1, pkg.currentIndex || 0));
+    await this.switchSmartViewerSlide(startIdx);
+  }
+
+  async switchSmartViewerSlide(idx) {
+    if (!this._viewerPkg || !this._viewerPkg.playlistSlides[idx]) return;
+    this._viewerSlideIdx = idx;
+    const slide = this._viewerPkg.playlistSlides[idx];
+    const total = this._viewerPkg.playlistSlides.length;
+
+    const navGroup = document.getElementById('viewerSlideNavGroup');
+    const chipsBox = document.getElementById('viewerSlideChips');
+    const btnPrev = document.getElementById('btnViewerPrevSlide');
+    const btnNext = document.getElementById('btnViewerNextSlide');
+
+    if (navGroup) {
+      navGroup.style.display = total > 1 ? 'inline-flex' : 'none';
+    }
+    if (btnPrev) btnPrev.disabled = (idx <= 0);
+    if (btnNext) btnNext.disabled = (idx >= total - 1);
+    if (chipsBox) {
+      chipsBox.innerHTML = '';
+      for (let i = 0; i < total; i++) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'viewer-slide-chip' + (i === idx ? ' active' : '');
+        const sTitle = this._viewerPkg.playlistSlides[i].slideTitle || '';
+        chip.textContent = /^p\.\d+$/i.test(sTitle.trim()) ? sTitle.trim() : String(i + 1);
+        chip.onclick = () => this.switchSmartViewerSlide(i);
+        chipsBox.appendChild(chip);
+      }
+    }
+
+    // 슬라이드 스캔 이미지가 없으면 실시간 생성
+    if (!slide.viewerSnapshotDataUrl) {
+      this.deserializeFullSlideState(slide);
+      await this._waitForSlideImagesReady();
+      const snap = this.captureCurrentSlideViewerSnapshot(this._viewerPkg.exportFilter || null, false);
+      slide.viewerSnapshotDataUrl = snap.dataUrl;
+      slide.viewerSnapshotWidth = snap.width;
+      slide.viewerSnapshotHeight = snap.height;
+      slide.viewerGraphHotspots = snap.hotspots;
+    }
+
+    const imgEl = document.getElementById('smartNoteViewerImg');
+    const hotspotsEl = document.getElementById('smartNoteViewerHotspots');
+    const hintEl = document.getElementById('smartNoteViewerHint');
+
+    if (imgEl) {
+      await new Promise((res) => {
+        imgEl.onload = () => res();
+        imgEl.onerror = () => res();
+        imgEl.src = slide.viewerSnapshotDataUrl;
+        if (imgEl.complete && imgEl.naturalWidth > 0) res();
+      });
+    }
+
+    const hotspots = Array.isArray(slide.viewerGraphHotspots) ? slide.viewerGraphHotspots : [];
+    if (hotspotsEl) {
+      hotspotsEl.innerHTML = '';
+      hotspots.forEach((hs, hIdx) => {
+        if (!hs || !hs.graphSnapshot) return;
+        const box = document.createElement('div');
+        box.className = 'viewer-graph-hotspot';
+        box.style.left = `${(hs.nx * 100).toFixed(2)}%`;
+        box.style.top = `${(hs.ny * 100).toFixed(2)}%`;
+        box.style.width = `${(hs.nw * 100).toFixed(2)}%`;
+        box.style.height = `${(hs.nh * 100).toFixed(2)}%`;
+        box.title = `${hs.label || '#' + (hIdx + 1)} 그래프 클릭하여 직접 조작하기`;
+
+        const badge = document.createElement('span');
+        badge.className = 'viewer-hotspot-badge';
+        badge.textContent = `📈 ${hs.label || '#' + (hIdx + 1)} 터치하여 조작`;
+        box.appendChild(badge);
+
+        box.onclick = (e) => {
+          e.stopPropagation();
+          this.enterViewerGraphTouchMode(hs, idx);
+        };
+        hotspotsEl.appendChild(box);
+      });
+    }
+
+    if (hintEl) {
+      hintEl.innerHTML = hotspots.length > 0
+        ? `💡 사진처럼 확대·이동 가능 · <strong>이미지 속 [${hotspots.map(h => h.label || '그래프').join(', ')}] 영역을 터치하면 그래프를 직접 움직여볼 수 있습니다!</strong>`
+        : `💡 두 손가락(또는 마우스 휠)으로 판서 화면을 확대·축소하며 볼 수 있습니다.`;
+    }
+
+    this.fitSmartViewerStageToScreen();
+  }
+
+  fitSmartViewerStageToScreen() {
+    const viewport = document.getElementById('smartNoteViewerViewport');
+    const imgEl = document.getElementById('smartNoteViewerImg');
+    if (!viewport || !imgEl) return;
+
+    const vw = Math.max(240, viewport.clientWidth - 28);
+    const vh = Math.max(200, viewport.clientHeight - 48);
+    const iw = Math.max(1, imgEl.naturalWidth || 1000);
+    const ih = Math.max(1, imgEl.naturalHeight || 700);
+
+    const fitScale = Math.min(vw / iw, vh / ih, 1.0);
+    const displayW = Math.round(iw * fitScale);
+    const displayH = Math.round(ih * fitScale);
+
+    imgEl.style.width = `${displayW}px`;
+    imgEl.style.height = `${displayH}px`;
+
+    this._viewerZoom = 1.0;
+    this._viewerPanX = 0;
+    this._viewerPanY = 0;
+    this._applySmartViewerTransform();
+  }
+
+  setSmartViewerZoom(nextZoom) {
+    this._viewerZoom = Math.max(0.5, Math.min(4.0, nextZoom));
+    this._applySmartViewerTransform();
+  }
+
+  _applySmartViewerTransform() {
+    const stage = document.getElementById('smartNoteViewerStage');
+    const lblZoom = document.getElementById('lblViewerZoom');
+    if (stage) {
+      stage.style.transform = `translate3d(${Math.round(this._viewerPanX || 0)}px, ${Math.round(this._viewerPanY || 0)}px, 0) scale(${(this._viewerZoom || 1.0).toFixed(3)})`;
+    }
+    if (lblZoom) {
+      lblZoom.textContent = `${Math.round((this._viewerZoom || 1.0) * 100)}%`;
+    }
+  }
+
+  enterViewerGraphTouchMode(hotspot, slideIdx = 0) {
+    if (!hotspot || !hotspot.graphSnapshot) return;
+    this._activeViewerHotspot = hotspot;
+    this._viewerSlideIdx = slideIdx;
+
+    const overlay = document.getElementById('smartNoteViewerOverlay');
+    if (overlay) overlay.style.display = 'none';
+
+    document.body.classList.add('viewer-graph-touch-mode');
+    this.isGraphCovered = false;
+    this.isInkMode = false;
+    document.body.classList.remove('ink-mode-active');
+
+    this.applyPureGraphSnapshot(hotspot.graphSnapshot);
+    this.showAxes = true;
+    this.showGuides = true;
+    this.activeGraphIdx = (this.graphs && this.graphs.length > 0) ? 0 : -1;
+    this.isCurveSelected = (this.activeGraphIdx >= 0);
+    this.selectedHandleIdx = null;
+
+    this.resizeCanvas();
+    this.autoCenterGraphForTouchViewer();
+
+    const touchBar = document.getElementById('viewerGraphTouchBar');
+    const lblTitle = document.getElementById('lblViewerGraphTouchTitle');
+    if (lblTitle) {
+      lblTitle.textContent = `📈 ${hotspot.label || '#1'} 그래프 직접 조작`;
+    }
+    this._renderViewerGraphCurveChips();
+    if (touchBar) touchBar.style.display = 'flex';
+
+    this.updateIntersections();
+    this.render();
+  }
+
+  _renderViewerGraphCurveChips() {
+    const box = document.getElementById('viewerGraphCurveChips');
+    if (!box) return;
+    box.innerHTML = '';
+    if (!this.graphs || this.graphs.length <= 1) return;
+    this.graphs.forEach((g, idx) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'viewer-curve-chip' + (idx === this.activeGraphIdx ? ' active' : '');
+      btn.textContent = `f${idx + 1}`;
+      btn.style.borderColor = g.color || '#60a5fa';
+      btn.onclick = () => {
+        this.activeGraphIdx = idx;
+        this.isCurveSelected = true;
+        this.selectedHandleIdx = null;
+        this._renderViewerGraphCurveChips();
+        this.render();
+      };
+      box.appendChild(btn);
+    });
+  }
+
+  autoCenterGraphForTouchViewer() {
+    if (!this.graphs || this.graphs.length === 0) return;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    const expandPt = (x, y) => {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    };
+    expandPt(0, 0);
+    this.graphs.forEach(g => {
+      const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+      const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+      if (g.handles) {
+        g.handles.forEach(h => expandPt(h.x + ox, h.y + oy));
+      }
+    });
+    if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return;
+
+    const midX = (minX + maxX) / 2;
+    const midY = (minY + maxY) / 2;
+    const spanX = Math.max(4.5, (maxX - minX) * 1.65);
+    const spanY = Math.max(4.5, (maxY - minY) * 1.65);
+
+    const sw = Math.max(300, this.screenWidth || window.innerWidth);
+    const sh = Math.max(300, this.screenHeight || window.innerHeight);
+    const aspect = sw / sh;
+    const neededYSpan = Math.max(spanY / 2, (spanX / 2) / Math.max(0.45, aspect));
+    this.ySpan = Math.max(3.2, Math.min(14.0, neededYSpan));
+    this.zoomLevel = 1.0;
+
+    const unitPx = (sh / 2) / this.ySpan;
+    this.panX = -midX * unitPx;
+    this.panY = midY * unitPx;
+  }
+
+  exitViewerGraphTouchModeToViewer() {
+    document.body.classList.remove('viewer-graph-touch-mode');
+    const touchBar = document.getElementById('viewerGraphTouchBar');
+    if (touchBar) touchBar.style.display = 'none';
+
+    const overlay = document.getElementById('smartNoteViewerOverlay');
+    if (overlay) overlay.style.display = 'flex';
+  }
+
+  exitSmartNoteViewerToEditMode() {
+    const overlay = document.getElementById('smartNoteViewerOverlay');
+    if (overlay) overlay.style.display = 'none';
+    document.body.classList.remove('viewer-graph-touch-mode');
+    document.body.classList.remove('student-mode');
+    const touchBar = document.getElementById('viewerGraphTouchBar');
+    if (touchBar) touchBar.style.display = 'none';
+
+    if (this._viewerPkg) {
+      this._viewerPkg.currentIndex = this._viewerSlideIdx || 0;
+      this.applyCloudSharePackage(this._viewerPkg);
+    }
 
     const resetBar = document.getElementById('sharedResetBar');
     if (resetBar) {
       resetBar.style.display = 'flex';
     }
-    this.showToast('✨ 공유된 수업 판서 & 그래프 노트가 복원되었습니다! 카드의 [그래프 복구]로 그래프를 직접 조작해 보세요.');
+    this.resizeCanvas();
+    this.render();
   }
 
   applyCloudSharePackage(pkg) {
@@ -19110,8 +19760,12 @@ class GraphApp {
     // 0.5. [📌 크롭된 PDF 문제 캔버스 내부 레이어 (2층): 그래프 및 펜/형광펜 필기 아래에 깔려 문제 위 자유 판서 100% 보장!]
     this.drawProblemCardLayer(ctx, isExport);
 
+    const expFilter = (isExport && this._activeExportFilter)
+      ? this._activeExportFilter
+      : { includeProblem: true, includeGraph: true, includeInk: true };
+
     // 0.6. [📄 PDF 페이지 통째 칠판 레이어 (0.5층): 개념서/교재 페이지 위 자유 확대·축소·판서 및 실시간 그래프/스샷 카드 완벽 호환!]
-    if (this.pdfPageBoardData && !this._isRenderingGraphSnapshot) {
+    if (this.pdfPageBoardData && !this._isRenderingGraphSnapshot && expFilter.includeProblem !== false) {
       this.drawPdfPageBoardLayer(ctx, isExport);
     }
 
@@ -19145,11 +19799,13 @@ class GraphApp {
     // 단, PDF 페이지 통째 칠판 모드(this.pdfPageBoardData)일 때는 실시간 그래프/축만 덮고 PDF 페이지와 페이지 위 개념 필기('graph')는 그대로 노출!
     if (this.isGraphCovered && !this._isRenderingGraphSnapshot) {
       if (isExport && !this.useViewfinder) {
-        if (this.pdfPageBoardData) {
-          this.drawInkStrokes(ctx, true, 'graph');
+        this.drawFloatingCardsForExport(ctx, expFilter);
+        if (expFilter.includeInk !== false) {
+          if (this.pdfPageBoardData && expFilter.includeProblem !== false) {
+            this.drawInkStrokes(ctx, true, 'graph');
+          }
+          this.drawInkStrokes(ctx, true, 'board');
         }
-        this.drawInkStrokes(ctx, true, 'board');
-        this.drawFloatingCardsForExport(ctx);
         return;
       }
       if (!isExport) {
@@ -19241,13 +19897,13 @@ class GraphApp {
     }
 
     // 🌟 [실시간 그래프 작업실 전용 필기 렌더링 (PDF 페이지 위에서 그래프 스샷 캡처 순간에는 배경 개념 필기 생략)] 🌟
-    if (!(this._isRenderingGraphSnapshot && this.pdfPageBoardData)) {
+    if (!(this._isRenderingGraphSnapshot && this.pdfPageBoardData) && (!isExport || expFilter.includeInk !== false)) {
       this.drawInkStrokes(ctx, isExport, 'graph');
     }
 
     // 🌟 [내보내기/복사 시 화면에 떠 있는 문제 카드 & 그래프 카드 합성] 🌟
     if (isExport && !this._isRenderingGraphSnapshot && !this.useViewfinder) {
-      this.drawFloatingCardsForExport(ctx);
+      this.drawFloatingCardsForExport(ctx, expFilter);
     }
 
     // 🌟 [올가미(Lasso) 점선 오버레이 최상단 렌더링] 🌟
@@ -21428,6 +22084,13 @@ class GraphApp {
   }
 
   syncCurveContextBar() {
+    if (document.body.classList.contains('viewer-graph-touch-mode')) {
+      if (typeof this._renderViewerGraphCurveChips === 'function') {
+        this._renderViewerGraphCurveChips();
+      }
+      if (this.curveContextBar) this.curveContextBar.style.display = 'none';
+      return;
+    }
     if (!this.curveContextBar) {
       this.curveContextBar = document.getElementById('curveContextBar');
     }
@@ -22641,13 +23304,25 @@ class GraphApp {
     });
   }
 
-  // --- [내보내기/복사 시 화면에 떠 있는 문제 카드 & 그래프 보관 카드 합성 엔진] ---
-  drawFloatingCardsForExport(ctx) {
+  // --- [내보내기/복사 시 화면에 떠 있는 문제 카드 & 그래프 보관 카드 합성 엔진 (요소 필터 완벽 연동)] ---
+  drawFloatingCardsForExport(ctx, filterOpts = null) {
     if (!ctx || typeof document === 'undefined') return;
+    const effFilter = filterOpts || this._activeExportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+    const incProb = effFilter.includeProblem !== false;
+    const incGraph = effFilter.includeGraph !== false;
+    const incInk = effFilter.includeInk !== false;
+
     const canvasRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
-    const cardEls = Array.from(document.querySelectorAll(
-      '#problemCardWidget, .extra-problem-card-widget, #graphCardWidget, .extra-graph-card-widget'
-    )).filter(el => {
+    const selectors = [];
+    if (incProb) {
+      selectors.push('#problemCardWidget', '.extra-problem-card-widget');
+    }
+    if (incGraph) {
+      selectors.push('#graphCardWidget', '.extra-graph-card-widget');
+    }
+    if (selectors.length === 0) return;
+
+    const cardEls = Array.from(document.querySelectorAll(selectors.join(', '))).filter(el => {
       if (!el || el.style.display === 'none') return false;
       const cs = window.getComputedStyle(el);
       if (cs.display === 'none' || cs.visibility === 'hidden') return false;
@@ -22657,7 +23332,6 @@ class GraphApp {
 
     if (cardEls.length === 0) return;
 
-    // Z-Index 오름차순 정렬 (가장 최근에 터치해 최상단으로 올라온 카드가 맨 위에 그려지도록!)
     cardEls.sort((a, b) => {
       const zA = parseInt(a.style.zIndex || window.getComputedStyle(a).zIndex, 10) || 150;
       const zB = parseInt(b.style.zIndex || window.getComputedStyle(b).zIndex, 10) || 150;
@@ -22724,6 +23398,12 @@ class GraphApp {
           ctx.save();
           ctx.clip();
           ctx.drawImage(imgEl, bx, by, bw, bh);
+          if (incInk) {
+            const cardInkCanvas = bodyEl.querySelector('.problem-card-canvas');
+            if (cardInkCanvas && cardInkCanvas.width > 0 && cardInkCanvas.height > 0) {
+              ctx.drawImage(cardInkCanvas, bx, by, bw, bh);
+            }
+          }
           ctx.restore();
 
           ctx.stroke();
@@ -22733,30 +23413,131 @@ class GraphApp {
     });
   }
 
-  // --- [📐 판서·문제 카드·그래프 영역 자동 감지 직사각형 바운딩 박스 계산 엔진] ---
-  getSmartExportBounds() {
+  // --- [📈 스캔된 직사각형 이미지 내부의 개별 그래프(#1, #2...) 터치 핫스팟 좌표 추출] ---
+  extractGraphHotspotsForBounds(smartBounds = null, filterOpts = null) {
+    const effFilter = filterOpts || this._activeExportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+    if (effFilter.includeGraph === false) return [];
+
+    const cropX = smartBounds ? smartBounds.x : 0;
+    const cropY = smartBounds ? smartBounds.y : 0;
+    const cropW = Math.max(1, smartBounds ? smartBounds.width : (this.screenWidth || window.innerWidth));
+    const cropH = Math.max(1, smartBounds ? smartBounds.height : (this.screenHeight || window.innerHeight));
+    const canvasRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
+
+    const hotspots = [];
+
+    // 1. 판서 모드에 떠 있는 기본 그래프 보관 카드 (#1)
+    const gWidget = document.getElementById('graphCardWidget');
+    if (gWidget && gWidget.style.display !== 'none' && !gWidget.classList.contains('minimized')) {
+      const bodyEl = gWidget.querySelector('.problem-card-body');
+      const headerEl = gWidget.querySelector('.problem-card-header');
+      const titleEl = document.getElementById('graphCardTitle');
+      const snap = this.primaryGraphCardSnapshot || (this.graphCardData && this.graphCardData.graphSnapshot) || (this._coveredGraphStateBackup ? JSON.stringify(this._coveredGraphStateBackup) : null);
+      if (bodyEl && snap) {
+        const bRect = bodyEl.getBoundingClientRect();
+        const hRect = headerEl ? headerEl.getBoundingClientRect() : bRect;
+        if (bRect.width > 0 && bRect.height > 0) {
+          const left = bRect.left - canvasRect.left;
+          const top = Math.min(bRect.top, hRect.width > 0 ? hRect.top : bRect.top) - canvasRect.top;
+          const right = bRect.right - canvasRect.left;
+          const bottom = bRect.bottom - canvasRect.top;
+          hotspots.push({
+            id: 'graph_card_1',
+            caseIdx: 1,
+            label: (titleEl && titleEl.textContent.trim()) ? titleEl.textContent.trim() : '#1',
+            nx: Math.max(0, Math.min(0.95, (left - cropX) / cropW)),
+            ny: Math.max(0, Math.min(0.95, (top - cropY) / cropH)),
+            nw: Math.max(0.05, Math.min(1.0, (right - left) / cropW)),
+            nh: Math.max(0.05, Math.min(1.0, (bottom - top) / cropH)),
+            graphSnapshot: typeof snap === 'string' ? snap : JSON.stringify(snap)
+          });
+        }
+      }
+    }
+
+    // 2. 판서 모드에 떠 있는 추가 그래프 보관 카드 (#2, #3...)
+    if (Array.isArray(this.extraGraphCards) && this.extraGraphCards.length > 0) {
+      this.extraGraphCards.forEach((c, idx) => {
+        if (!c || !c.el || c.el.style.display === 'none' || c.isMin || c.el.classList.contains('minimized')) return;
+        const bodyEl = c.el.querySelector('.problem-card-body');
+        const headerEl = c.el.querySelector('.problem-card-header');
+        const titleEl = c.el.querySelector('.card-title-text');
+        const snap = c.graphSnapshot;
+        if (bodyEl && snap) {
+          const bRect = bodyEl.getBoundingClientRect();
+          const hRect = headerEl ? headerEl.getBoundingClientRect() : bRect;
+          if (bRect.width > 0 && bRect.height > 0) {
+            const left = bRect.left - canvasRect.left;
+            const top = Math.min(bRect.top, hRect.width > 0 ? hRect.top : bRect.top) - canvasRect.top;
+            const right = bRect.right - canvasRect.left;
+            const bottom = bRect.bottom - canvasRect.top;
+            hotspots.push({
+              id: `graph_card_${c.caseIdx || idx + 2}`,
+              caseIdx: c.caseIdx || idx + 2,
+              label: (titleEl && titleEl.textContent.trim()) ? titleEl.textContent.trim() : `#${c.caseIdx || idx + 2}`,
+              nx: Math.max(0, Math.min(0.95, (left - cropX) / cropW)),
+              ny: Math.max(0, Math.min(0.95, (top - cropY) / cropH)),
+              nw: Math.max(0.05, Math.min(1.0, (right - left) / cropW)),
+              nh: Math.max(0.05, Math.min(1.0, (bottom - top) / cropH)),
+              graphSnapshot: typeof snap === 'string' ? snap : JSON.stringify(snap)
+            });
+          }
+        }
+      });
+    }
+
+    // 3. 실시간 그래프 모드(!isGraphCovered)에서 공유한 경우 전체 그래프 영역을 #1 핫스팟으로 등록
+    if (hotspots.length === 0 && !this.isGraphCovered && this.graphs && this.graphs.length > 0) {
+      hotspots.push({
+        id: 'graph_live_1',
+        caseIdx: 1,
+        label: '#1',
+        nx: 0.04,
+        ny: 0.04,
+        nw: 0.92,
+        nh: 0.92,
+        graphSnapshot: this.getPureGraphSnapshot()
+      });
+    }
+
+    return hotspots;
+  }
+
+  // --- [📐 선택된 요소(문제·그래프·필기) 영역만 자동 감지하는 직사각형 바운딩 박스 계산 엔진] ---
+  getSmartExportBounds(filterOpts = null) {
+    const effFilter = filterOpts || this._activeExportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+    const incProb = effFilter.includeProblem !== false;
+    const incGraph = effFilter.includeGraph !== false;
+    const incInk = effFilter.includeInk !== false;
+
     const activeTarget = (this.isGraphCovered && !this.pdfPageBoardData) ? 'board' : 'graph';
-    const activeStrokes = (this.inkStrokes || []).filter(s => {
+    const activeStrokes = incInk ? (this.inkStrokes || []).filter(s => {
       if (!s) return false;
       if (this.pdfPageBoardData) return Boolean(s.onPdfBoard);
       if ((s.target || 'board') !== activeTarget) return false;
       if (activeTarget === 'graph' && Boolean(s.onPdfBoard)) return false;
       return true;
-    });
-
-    const canvasRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
-    const cardEls = (typeof document !== 'undefined') ? Array.from(document.querySelectorAll(
-      '#problemCardWidget, .extra-problem-card-widget, #graphCardWidget, .extra-graph-card-widget'
-    )).filter(el => {
-      if (!el || el.style.display === 'none') return false;
-      const cs = window.getComputedStyle(el);
-      if (cs.display === 'none' || cs.visibility === 'hidden') return false;
-      const r = el.getBoundingClientRect();
-      return r.width > 0 && r.height > 0;
     }) : [];
 
-    // 필기 획도 없고 떠 있는 문제/보관 카드도 없고 PDF 페이지 보드도 없는 순수 그래프 상태에서는 기존 전체화면(또는 뷰파인더) 유지
-    if (activeStrokes.length === 0 && cardEls.length === 0 && !this.pdfPageBoardData) {
+    const canvasRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
+    const selectors = [];
+    if (incProb) selectors.push('#problemCardWidget', '.extra-problem-card-widget');
+    if (incGraph) selectors.push('#graphCardWidget', '.extra-graph-card-widget');
+
+    const cardEls = (typeof document !== 'undefined' && selectors.length > 0)
+      ? Array.from(document.querySelectorAll(selectors.join(', '))).filter(el => {
+          if (!el || el.style.display === 'none') return false;
+          const cs = window.getComputedStyle(el);
+          if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        })
+      : [];
+
+    const hasPdfBoard = Boolean(incProb && this.pdfPageBoardData);
+    const hasLiveGraph = Boolean(incGraph && !this.isGraphCovered && this.graphs && this.graphs.length > 0);
+
+    if (activeStrokes.length === 0 && cardEls.length === 0 && !hasPdfBoard && !hasLiveGraph) {
       return null;
     }
 
@@ -22769,10 +23550,7 @@ class GraphApp {
       if (y + pad > maxY) maxY = y + pad;
     };
 
-    const bPx = this.boardPanX || 0;
-    const bPy = this.boardPanY || 0;
-
-    // 1. 모든 활성 필기 획(자유곡선 & 자동보정 기하도형) 좌표 스캔 (화면 밖 패닝 영역까지 100% 포함)
+    // 1. 선택된 필기 획 스캔
     const bz = this.boardZoom || 1.0;
     activeStrokes.forEach(s => {
       const isBoard = (s.target || 'board') === 'board';
@@ -22815,8 +23593,8 @@ class GraphApp {
       }
     });
 
-    // 1.5. PDF 페이지 통째 칠판 모드가 활성화된 경우 해당 페이지 사각형 영역 포함
-    if (this.pdfPageBoardData && this.pdfPageBoardData.mathW && this.pdfPageBoardData.mathH) {
+    // 1.5. PDF 페이지 통째 칠판 모드가 활성화된 경우
+    if (hasPdfBoard && this.pdfPageBoardData.mathW && this.pdfPageBoardData.mathH) {
       const cx = this.pdfPageBoardData.centerX || 0;
       const cy = this.pdfPageBoardData.centerY || 0;
       const pTL = this.mathToScreen(cx - this.pdfPageBoardData.mathW / 2, cy + this.pdfPageBoardData.mathH / 2);
@@ -22825,7 +23603,7 @@ class GraphApp {
       expand(pBR.x, pBR.y, 8);
     }
 
-    // 2. 떠 있는 모든 문제 카드 & 보관 그래프 카드 영역 스캔
+    // 2. 선택된 문제 카드 & 그래프 보관 카드 영역 스캔
     cardEls.forEach(el => {
       const isMin = el.classList.contains('minimized');
       const headerEl = el.querySelector('.problem-card-header');
@@ -22846,12 +23624,12 @@ class GraphApp {
       }
     });
 
-    // 3. 1층 실시간 그래프 레이어일 때: 그려진 함수 핸들/원점/구간경계/수선/라벨도 함께 포함
-    if (!this.isGraphCovered) {
+    // 3. 실시간 그래프 레이어일 때 함수 핸들/원점/구간경계/수선/라벨 포함
+    if (incGraph && !this.isGraphCovered) {
       if (this.graphs && this.graphs.length > 0) {
         if (this.showAxes) {
           const orig = this.mathToScreen(0, 0);
-          expand(orig.x, orig.y, 90);
+          expand(orig.x, orig.y, 110);
         }
         this.graphs.forEach(g => {
           const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
@@ -22859,7 +23637,7 @@ class GraphApp {
           if (g.handles && g.handles.length > 0) {
             g.handles.forEach(h => {
               const s = this.mathToScreen(h.x + ox, h.y + oy);
-              expand(s.x, s.y, 130);
+              expand(s.x, s.y, 150);
             });
           }
         });
@@ -22868,7 +23646,7 @@ class GraphApp {
         const origY = this.mathToScreen(0, 0).y;
         this.piecewiseBoundaries.forEach(bx => {
           const sx = this.mathToScreen(bx, 0).x;
-          expand(sx, origY, 100);
+          expand(sx, origY, 110);
         });
       }
       if (this.dropLines && this.dropLines.length > 0) {
@@ -22902,66 +23680,24 @@ class GraphApp {
     return { x: cropX, y: cropY, width: cropW, height: cropH };
   }
 
-  // --- [뷰파인더 1:1 칼크롭 & 판서영역 자동 감지 직사각형 오프스크린 렌더링 엔진] ---
-  getExportCanvas() {
+  // --- [선택된 요소 직사각형 자동 스캔 오프스크린 렌더링 엔진] ---
+  getExportCanvas(filterOpts = null, precomputedBounds = undefined, customScale = null) {
     const dpi = this.exportDPI;
     const exportCanvas = document.createElement('canvas');
+    const prevFilter = this._activeExportFilter;
+    this._activeExportFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
 
-    if (this.useViewfinder) {
-      // 1. 뷰파인더 1:1 칼크롭 모드
-      const box = this.getViewfinderBox();
-      const targetWIn = this.vfTargetWIn;
-      const targetHIn = targetWIn / this.vfAspect;
-
-      const pxW = Math.round(targetWIn * dpi);
-      const pxH = Math.round(targetHIn * dpi);
-      exportCanvas.width = pxW;
-      exportCanvas.height = pxH;
-      const expCtx = exportCanvas.getContext('2d');
-
-      // 상태 백업
-      const backup = {
-        sw: this.screenWidth,
-        sh: this.screenHeight,
-        panX: this.panX,
-        panY: this.panY,
-        zoomLevel: this.zoomLevel,
-        ySpan: this.ySpan,
-        lockAspect: this.lockAspect
-      };
-
-      // 뷰파인더 수학 박스가 오프스크린 캔버스에 100% 매핑되도록 임시 스왑
-      const unitScale = pxW / box.w;
-      this.screenWidth = pxW;
-      this.screenHeight = pxH;
-      this.panX = -box.cx * unitScale;
-      this.panY = box.cy * unitScale;
-      this.lockAspect = true;
-      this.zoomLevel = 1.0;
-      this.ySpan = (pxH / 2) / unitScale;
-
-      this.render(expCtx, pxW, pxH, true);
-
-      // 복원
-      this.screenWidth = backup.sw;
-      this.screenHeight = backup.sh;
-      this.panX = backup.panX;
-      this.panY = backup.panY;
-      this.zoomLevel = backup.zoomLevel;
-      this.ySpan = backup.ySpan;
-      this.lockAspect = backup.lockAspect;
-
-      return { canvas: exportCanvas, width: pxW, height: pxH, dpi };
-    } else {
-      // 2. 뷰파인더 OFF 시: 판서/문제 카드가 있으면 자동 감지 직사각형 크롭, 순수 그래프만 있으면 현재 화면 비율 유지
-      const smartBounds = this.getSmartExportBounds();
-      const scaleFactor = (dpi >= 600) ? 3 : 2;
+    try {
+      const smartBounds = (precomputedBounds !== undefined)
+        ? precomputedBounds
+        : this.getSmartExportBounds(this._activeExportFilter);
+      const scaleFactor = customScale || ((dpi >= 600) ? 3 : 2);
       const sw = smartBounds ? smartBounds.width : this.screenWidth;
       const sh = smartBounds ? smartBounds.height : this.screenHeight;
       const maxPx = 8192;
       const effScale = Math.min(scaleFactor, maxPx / Math.max(1, sw), maxPx / Math.max(1, sh));
-      const pxW = Math.round(sw * effScale);
-      const pxH = Math.round(sh * effScale);
+      const pxW = Math.max(1, Math.round(sw * effScale));
+      const pxH = Math.max(1, Math.round(sh * effScale));
       exportCanvas.width = pxW;
       exportCanvas.height = pxH;
       const expCtx = exportCanvas.getContext('2d');
@@ -23022,45 +23758,72 @@ class GraphApp {
       }
 
       return { canvas: exportCanvas, width: pxW, height: pxH, dpi };
+    } finally {
+      this._activeExportFilter = prevFilter;
     }
   }
 
-  async copyToClipboard() {
+  async copyToClipboard(filterOpts = null) {
     try {
-      const exp = this.getExportCanvas();
-      exp.canvas.toBlob(async (rawBlob) => {
-        if (!rawBlob) return;
-        try {
-          const highDpiBlob = await this.injectDpiToBlob(rawBlob, exp.dpi);
-          await navigator.clipboard.write([
-            new ClipboardItem({ 'image/png': highDpiBlob })
-          ]);
-          const cmW = (this.vfTargetWIn * 2.54).toFixed(1);
-          this.showToast(`✨ 한글/PPT에 [Ctrl+V]! 가로 ${cmW}cm 규격 (${exp.dpi} DPI 초고화질)으로 복사되었습니다.`);
-        } catch (clipErr) {
-          this.downloadPNG();
-          this.showToast('클립보드 권한 제한으로 PNG 파일로 저장되었습니다.');
-        }
-      }, 'image/png');
+      await this._waitForSlideImagesReady();
+      const exp = this.getExportCanvas(filterOpts);
+      return await new Promise((resolve) => {
+        exp.canvas.toBlob(async (rawBlob) => {
+          if (!rawBlob) { resolve(false); return; }
+          try {
+            const highDpiBlob = await this.injectDpiToBlob(rawBlob, exp.dpi);
+            await navigator.clipboard.write([
+              new ClipboardItem({ 'image/png': highDpiBlob })
+            ]);
+            resolve(true);
+          } catch (clipErr) {
+            this.downloadPNG(filterOpts);
+            resolve(false);
+          }
+        }, 'image/png');
+      });
     } catch (err) {
       console.error(err);
-      this.showToast('복사 중 오류가 발생했습니다.');
+      return false;
     }
   }
 
-  downloadPNG() {
-    const exp = this.getExportCanvas();
-    exp.canvas.toBlob(async (rawBlob) => {
-      if (!rawBlob) return;
-      const highDpiBlob = await this.injectDpiToBlob(rawBlob, exp.dpi);
-      const url = URL.createObjectURL(highDpiBlob);
-      const link = document.createElement('a');
-      link.download = `graph_master_${this.vfAspectName.replace(':', '_')}_${Date.now()}.png`;
-      link.href = url;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      this.showToast(`📁 투명 배경 고화질 PNG (${exp.dpi} DPI, ${exp.width}×${exp.height}px) 저장 완료!`);
-    }, 'image/png');
+  downloadPNG(filterOpts = null, customFileName = null) {
+    const exp = this.getExportCanvas(filterOpts);
+    return new Promise((resolve) => {
+      exp.canvas.toBlob(async (rawBlob) => {
+        if (!rawBlob) { resolve(false); return; }
+        const highDpiBlob = await this.injectDpiToBlob(rawBlob, exp.dpi);
+        const url = URL.createObjectURL(highDpiBlob);
+        const link = document.createElement('a');
+        link.download = customFileName || `Graphly_스캔_${Date.now()}.png`;
+        link.href = url;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        resolve(true);
+      }, 'image/png');
+    });
+  }
+
+  async downloadExportImages(scope = 'current', filterOpts = null) {
+    const effScope = scope || this.exportScope || 'current';
+    const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+
+    if (effScope === 'all') {
+      const allSlides = this._getActiveSlidesForExport('수업 노트');
+      if (allSlides.length > 1) {
+        const backupCurrent = this.serializeFullSlideState('backup');
+        for (let i = 0; i < allSlides.length; i++) {
+          this.deserializeFullSlideState(allSlides[i]);
+          await this._waitForSlideImagesReady();
+          await this.downloadPNG(effFilter, `Graphly_슬라이드_${i + 1}_${Date.now()}.png`);
+        }
+        this.deserializeFullSlideState(backupCurrent);
+        return;
+      }
+    }
+    await this._waitForSlideImagesReady();
+    await this.downloadPNG(effFilter, `Graphly_스캔_${Date.now()}.png`);
   }
 
   showToast(message) {
