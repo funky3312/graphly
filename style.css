@@ -4875,7 +4875,7 @@ body.theme-light #btnQuickIntersection.active {
   box-shadow: 0 0 14px rgba(124, 58, 237, 0.28);
 }
 
-body.theme-light .canvas-quick-toolbar #btnQuickNewCanvas:hover {
+body.theme-light #btnQuickNewCanvas:hover {
   background: #fff1f2;
   border-color: #e11d48;
   color: #e11d48;
