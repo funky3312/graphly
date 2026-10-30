@@ -7307,6 +7307,9 @@ class GraphApp {
         ctx.lineTo(pts[1].x * w, pts[1].y * h);
         return;
       }
+      const firstMx = ((pts[0].x + pts[1].x) * 0.5) * w;
+      const firstMy = ((pts[0].y + pts[1].y) * 0.5) * h;
+      ctx.lineTo(firstMx, firstMy);
       for (let i = 1; i < pts.length - 1; i++) {
         const cx = pts[i].x * w;
         const cy = pts[i].y * h;
@@ -7327,7 +7330,7 @@ class GraphApp {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
 
-      // 만료된 스트로크 정리 (단일 연속 베지어 곡선으로 렌더링하여 대나무 마디 현상 100% 원천 제거!)
+      // 만료된 스트로크 정리
       state.strokes = state.strokes.filter(st => {
         if (!st.points || st.points.length === 0) return false;
         if (!st.finished) return true;
@@ -7335,7 +7338,8 @@ class GraphApp {
         return elapsed < (HOLD_MS + FADE_MS);
       });
 
-      // 1) 매끄러운 일체형 네온 레이저 궤적 렌더링 (마디 0%)
+      // 1) 🌟 [대표님 기획: 사라지는 일반 빨간색 펜 글씨 (#dc2626)]:
+      // 번지는 네온/흰색 심지를 제거하고, 쓰는 동안은 또렷한 빨간색 일반 볼펜 글씨로 써지다가 멈추면 사르륵 사라집니다!
       state.strokes.forEach(st => {
         const pts = st.points;
         if (!pts || pts.length === 0) return;
@@ -7353,46 +7357,31 @@ class GraphApp {
         ctx.save();
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-
-        // 패스 1: 매끄러운 네온 레드 아우라 + 메인 바디 (단일 패스이므로 교차 마디 전혀 없음)
-        ctx.globalAlpha = life * 0.94;
-        ctx.shadowColor = 'rgba(239, 68, 68, 0.88)';
-        ctx.shadowBlur = 9;
-        ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 3.5;
-        traceSmoothLaserPath(ctx, pts, w, h);
-        ctx.stroke();
-
-        // 패스 2: 중심부 선명한 화이트-핑크 레이저 코어 광선
         ctx.shadowBlur = 0;
-        ctx.globalAlpha = life * 0.92;
-        ctx.strokeStyle = '#fff1f2';
-        ctx.lineWidth = 1.3;
-        traceSmoothLaserPath(ctx, pts, w, h);
-        ctx.stroke();
-
+        ctx.globalAlpha = life;
+        ctx.strokeStyle = '#dc2626';
+        ctx.fillStyle = '#dc2626';
+        ctx.lineWidth = 2.5;
+        if (pts.length === 1) {
+          ctx.beginPath();
+          ctx.arc(pts[0].x * w, pts[0].y * h, 1.3, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          traceSmoothLaserPath(ctx, pts, w, h);
+          ctx.stroke();
+        }
         ctx.restore();
       });
 
-      // 2) 펜 끝 / 호버 타겟 레이저 포인트 도트 렌더링 (카드 안에 마우스가 머무는 동안 십자 커서 대신 레이저 도트만 상시 표시)
-      const showHoverDot = Boolean(state.hoverPos);
+      // 2) 호버 시(필기 중이 아닐 때, 그리고 펜 포인터 표시가 켜져 있을 때만) 작고 깔끔한 빨간 펜촉 포인트 표시
+      const showHoverDot = Boolean(state.hoverPos && !state.isDrawing && this.showVirtualStylus);
       if (showHoverDot) {
         const hx = state.hoverPos.nx * w;
         const hy = state.hoverPos.ny * h;
         ctx.save();
         ctx.beginPath();
-        ctx.arc(hx, hy, state.isDrawing ? 8.5 : 7.0, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.32)';
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(hx, hy, state.isDrawing ? 4.6 : 3.8, 0, Math.PI * 2);
-        ctx.fillStyle = '#ef4444';
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(hx, hy, 2.0, 0, Math.PI * 2);
-        ctx.fillStyle = '#ffffff';
+        ctx.arc(hx, hy, 3.2, 0, Math.PI * 2);
+        ctx.fillStyle = '#dc2626';
         ctx.fill();
         ctx.restore();
       }
@@ -7485,8 +7474,24 @@ class GraphApp {
         });
         const pts = state.currentStroke.points;
         const last = pts[pts.length - 1];
-        if (!last || Math.hypot(pos.nx - last.x, pos.ny - last.y) > 0.002) {
-          pts.push({ x: pos.nx, y: pos.ny, t: now });
+        const rect = bodyEl.getBoundingClientRect();
+        const rw = Math.max(1, rect.width);
+        const rh = Math.max(1, rect.height);
+        const pxDist = last ? Math.hypot((pos.nx - last.x) * rw, (pos.ny - last.y) * rh) : 999;
+        if (pxDist >= 2.0) {
+          let sx = pos.nx;
+          let sy = pos.ny;
+          if (pts.length >= 2 && pxDist < 18) {
+            const p1 = pts[pts.length - 1];
+            const p2 = pts[pts.length - 2];
+            sx = p2.x * 0.12 + p1.x * 0.33 + pos.nx * 0.55;
+            sy = p2.y * 0.12 + p1.y * 0.33 + pos.ny * 0.55;
+          } else if (pts.length === 1 && pxDist < 18) {
+            const p1 = pts[0];
+            sx = p1.x * 0.28 + pos.nx * 0.72;
+            sy = p1.y * 0.28 + pos.ny * 0.72;
+          }
+          pts.push({ x: sx, y: sy, t: now });
         }
       }
       ensureLoop();
