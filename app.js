@@ -11122,10 +11122,17 @@ class GraphApp {
     this.render();
   }
 
-  // 캔버스 상단 함수 변경 팝오버 열기
+  // 캔버스 상단 함수 변경 팝오버 열기 (같은 영역 칩 다시 클릭 시 접기 토글 지원)
   openRegionFuncMenu(regionIdx, x, y) {
     const popover = document.getElementById('pwRegionPopover');
     if (!popover) return;
+
+    if (popover.style.display !== 'none' && this._openPwRegionIdx === regionIdx) {
+      popover.style.display = 'none';
+      this._openPwRegionIdx = null;
+      return;
+    }
+    this._openPwRegionIdx = regionIdx;
 
     popover.innerHTML = '';
     const currentGIdx = (this.piecewiseFuncMap && this.piecewiseFuncMap[regionIdx] !== undefined)
@@ -11904,12 +11911,12 @@ class GraphApp {
           : (this.graphs.length > 0 ? (rIdx % this.graphs.length) : -1);
         const curG = (gIdx >= 0) ? this.graphs[gIdx] : null;
         const gColor = curG ? curG.color : (gIdx === -1 ? '#747d8c' : '#a29bfe');
-        const gLabel = curG ? `f${gIdx + 1}(x) ▼` : (gIdx === -1 ? `∅ 비움 ▼` : `f?(x) ▼`);
+        const gLabel = curG ? `f${gIdx + 1}` : (gIdx === -1 ? `비움` : `f?`);
 
         ctx.save();
-        ctx.font = 'bold 10.5px system-ui, -apple-system, sans-serif';
+        ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
         const textW = ctx.measureText(gLabel).width;
-        const chipW = textW + 24;
+        const chipW = Math.max(40, textW + 24);
         const chipH = 22;
         const chipX = cx - chipW / 2;
         // 2x2 패드(padY=68, padH=40 -> 중심 Y=88)와 완벽히 같은 수평선(chipY=77, chipH=22 -> 중심 Y=88)에 배치!
@@ -11943,6 +11950,7 @@ class GraphApp {
         this.pwRegionBadges.push({
           regionIdx: rIdx,
           gIdx,
+          label: gLabel,
           cx,
           chipX,
           chipY,
@@ -16156,7 +16164,20 @@ class GraphApp {
       // 오직 선택(select) 도구이거나 필기 모드가 꺼져 있을 때만 경계선/✕ 조작 허용!
       const canManipulatePw = !this.isGraphCovered && (!this.isInkMode || this.activeInkTool === 'select');
       if (canManipulatePw && this.usePiecewise && this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0) {
-        // 1) 팝오버 외부 클릭 시 닫기
+        // 1) 영역 함수 변경 칩 클릭인지 먼저 확인 (열려있는 같은 칩을 다시 누르면 접히도록!)
+        const badgePad = isTouch ? 6 : 2;
+        const hitRegionChip = (!this.isPiecewiseLocked && this.pwRegionBadges)
+          ? this.pwRegionBadges.find(r =>
+              pos.x >= r.chipX - badgePad && pos.x <= r.chipX + r.chipW + badgePad &&
+              pos.y >= r.chipY - badgePad && pos.y <= r.chipY + r.chipH + badgePad
+            )
+          : null;
+        if (hitRegionChip) {
+          this.openRegionFuncMenu(hitRegionChip.regionIdx, hitRegionChip.chipX, hitRegionChip.chipY + hitRegionChip.chipH + 4);
+          return;
+        }
+
+        // 1.5) 팝오버 외부 클릭 시 닫기
         const popover = document.getElementById('pwRegionPopover');
         if (popover && popover.style.display !== 'none') {
           const popRect = popover.getBoundingClientRect();
@@ -16165,11 +16186,11 @@ class GraphApp {
           const py = pos.y + canvasRect.top;
           if (px < popRect.left || px > popRect.right || py < popRect.top || py > popRect.bottom) {
             popover.style.display = 'none';
+            this._openPwRegionIdx = null;
           }
         }
 
         // 2) 2x2 정사각형 패드 좌상단: 잠금(🔒/🔓) 버튼 클릭 확인
-        const badgePad = isTouch ? 6 : 2;
         if (this.pwBoundaryBadges) {
           const hitLock = this.pwBoundaryBadges.find(b =>
             b.lockRect &&
@@ -21435,8 +21456,7 @@ class GraphApp {
 
     const name = document.getElementById('ctxBarName');
     if (name) {
-      const typeName = (this.meta && this.meta[g.type]?.name) || '함수';
-      name.textContent = `f${this.activeGraphIdx + 1}(x) (${typeName})`;
+      name.textContent = `f${this.activeGraphIdx + 1}`;
     }
 
     const btnAbs = document.getElementById('ctxBtnToggleAbs');
