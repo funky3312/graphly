@@ -4728,12 +4728,27 @@ class GraphApp {
     const btnBoardPrev = document.getElementById('btnPdfBoardPrev');
     const btnBoardNext = document.getElementById('btnPdfBoardNext');
     const btnBoardInfo = document.getElementById('btnPdfBoardPageInfo');
+    const btnBoardOpenModal = document.getElementById('btnPdfBoardOpenModal');
+    const btnBoardDelCur = document.getElementById('btnPdfBoardDeleteCurrent');
     const btnBoardClose = document.getElementById('btnPdfBoardClose');
     const btnBoardClearAll = document.getElementById('btnPdfBoardClearAll');
     const btnBoardHideBar = document.getElementById('btnPdfBoardHideBar');
     if (btnBoardPrev) btnBoardPrev.onclick = () => this.navigatePdfBoardPage(-1);
     if (btnBoardNext) btnBoardNext.onclick = () => this.navigatePdfBoardPage(1);
-    if (btnBoardInfo) btnBoardInfo.onclick = () => this.openPdfModal();
+    if (btnBoardInfo) {
+      btnBoardInfo.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleSlideGridPopover();
+      };
+    }
+    if (btnBoardOpenModal) btnBoardOpenModal.onclick = () => this.openPdfModal();
+    if (btnBoardDelCur) {
+      btnBoardDelCur.onclick = (e) => {
+        e.stopPropagation();
+        const curP = (this.pdfPageBoardData && this.pdfPageBoardData.pageNum) || 1;
+        this.deletePdfPageSlide(curP);
+      };
+    }
     if (btnBoardClose) btnBoardClose.onclick = () => this.closePdfPageBoard();
     if (btnBoardClearAll) btnBoardClearAll.onclick = () => this.clearAllSlidesAndReset();
     if (btnBoardHideBar) btnBoardHideBar.onclick = () => this.toggleTopSlideBarHidden(true);
@@ -5044,48 +5059,41 @@ class GraphApp {
     }
 
     const lbl = document.getElementById('lblPdfBoardPageInfo');
-    if (lbl) lbl.textContent = `p.${p}/${total}`;
+    const arrowChar = this._isSlideGridOpen ? '▴' : '▾';
+    if (lbl) lbl.textContent = `📄 p.${p}/${total} ${arrowChar}`;
     const btnPrev = document.getElementById('btnPdfBoardPrev');
     const btnNext = document.getElementById('btnPdfBoardNext');
     if (btnPrev) btnPrev.disabled = (p <= 1 && this.pdfWorkedPages.indexOf(p) <= 0);
     if (btnNext) btnNext.disabled = (p >= total);
 
+    const gridPop = document.getElementById('pdfBoardGridPopover');
+    if (gridPop) {
+      gridPop.style.display = (!this.isTopSlideBarHidden && this._isSlideGridOpen) ? 'flex' : 'none';
+    }
+    const btnDelCur = document.getElementById('btnPdfBoardDeleteCurrent');
+    if (btnDelCur) {
+      btnDelCur.disabled = (this.pdfWorkedPages.length <= 1);
+    }
+
     const chipsEl = document.getElementById('pdfBoardSlideChips');
     if (chipsEl) {
       chipsEl.innerHTML = '';
       this.pdfWorkedPages.forEach((pageNum) => {
-        const chipKey = `pdf:${pageNum}`;
         const isActive = (pageNum === p);
-        const isDelOpen = (isActive && this.pdfWorkedPages.length > 1 && this._openSlideChipDelKey === chipKey);
         const chip = document.createElement('div');
-        chip.className = 'slide-chip-item' + (isActive ? ' active' : '') + (isDelOpen ? ' del-open' : '');
-        chip.title = '';
+        chip.className = 'slide-chip-item' + (isActive ? ' active' : '');
+        chip.title = `p.${pageNum} 이동`;
         const span = document.createElement('span');
         span.className = 'slide-chip-label';
         span.textContent = `p.${pageNum}`;
         chip.appendChild(span);
 
-        if (this.pdfWorkedPages.length > 1) {
-          const delBtn = document.createElement('button');
-          delBtn.type = 'button';
-          delBtn.className = 'slide-chip-del';
-          delBtn.title = '삭제';
-          delBtn.textContent = '✕';
-          delBtn.onclick = (e) => {
-            e.stopPropagation();
-            this._openSlideChipDelKey = null;
-            this.deletePdfPageSlide(pageNum);
-          };
-          chip.appendChild(delBtn);
-        }
-
         chip.onclick = (e) => {
           e.stopPropagation();
+          this._isSlideGridOpen = false;
           if (pageNum !== p) {
-            this._openSlideChipDelKey = null;
             this.openPdfPageOnBoard(pageNum);
-          } else if (this.pdfWorkedPages.length > 1) {
-            this._openSlideChipDelKey = (this._openSlideChipDelKey === chipKey) ? null : chipKey;
+          } else {
             this.syncPdfBoardNavBarUI();
           }
         };
@@ -8015,12 +8023,11 @@ class GraphApp {
 
   startPdfBoardToGraphCrop(pendingGraphType = null) {
     if (!this.pdfPageBoardData) {
-      if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
-        this.closeDrawer();
-      }
       this.enterGraphModeFromBoard();
       if (pendingGraphType) {
         this.addGraph(pendingGraphType);
+      } else if (typeof this.openDrawer === 'function') {
+        this.openDrawer('panelPresets');
       }
       return;
     }
@@ -8038,6 +8045,8 @@ class GraphApp {
     if (this.virtualStylusEl) {
       this.virtualStylusEl.style.display = 'none';
     }
+    const btnStartCrop = document.getElementById('btnStartPdfCropToGraph');
+    if (btnStartCrop) btnStartCrop.classList.remove('active-crop-wait');
     this.syncGraphSnapBarUI();
     this.render();
   }
@@ -8048,6 +8057,8 @@ class GraphApp {
     this._pendingPdfToGraphType = null;
     const dragBox = document.getElementById('graphSnapDragBox');
     if (dragBox) dragBox.style.display = 'none';
+    const btnStartCrop = document.getElementById('btnStartPdfCropToGraph');
+    if (btnStartCrop) btnStartCrop.classList.remove('active-crop-wait');
     document.body.classList.remove('graph-snap-crosshair');
     if (this.canvas) {
       this.canvas.classList.remove('graph-snap-crosshair');
@@ -8064,6 +8075,8 @@ class GraphApp {
     this._pendingPdfToGraphType = null;
     const dragBox = document.getElementById('graphSnapDragBox');
     if (dragBox) dragBox.style.display = 'none';
+    const btnStartCrop = document.getElementById('btnStartPdfCropToGraph');
+    if (btnStartCrop) btnStartCrop.classList.remove('active-crop-wait');
     document.body.classList.remove('graph-snap-crosshair');
     if (this.canvas) {
       this.canvas.classList.remove('graph-snap-crosshair');
@@ -8115,11 +8128,9 @@ class GraphApp {
 
     if (pendingType) {
       this.addGraph(pendingType);
-    } else {
-      if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
-        this.closeDrawer();
-      }
-      this.showToast('📈 그래프 모드로 전환되었습니다. 좌측 [+] 버튼으로 함수를 추가하세요!');
+    } else if (typeof this.openDrawer === 'function') {
+      // 🌟 [대표님 피드백 반영]: 선택하자마자 즉시 그래프 추가 서랍(panelPresets)을 열어 동선을 절반으로 단축!
+      this.openDrawer('panelPresets');
     }
   }
 
@@ -8849,6 +8860,20 @@ class GraphApp {
       btnReturnBoard.onclick = (e) => {
         e.stopPropagation();
         this.returnToCoveredBoard();
+      };
+    }
+    const btnStartPdfCrop = document.getElementById('btnStartPdfCropToGraph');
+    if (btnStartPdfCrop) {
+      btnStartPdfCrop.onclick = (e) => {
+        e.stopPropagation();
+        this.isPdfToGraphCropMode = true;
+        btnStartPdfCrop.classList.add('active-crop-wait');
+        document.body.classList.add('graph-snap-crosshair');
+        if (this.canvas) {
+          this.canvas.classList.add('graph-snap-crosshair');
+          this.canvas.style.cursor = 'crosshair';
+        }
+        this.showToast('✂️ 가져갈 문제 영역을 드래그하면 즉시 그래프 추가 창이 열립니다!');
       };
     }
     const btnSkipPdfCrop = document.getElementById('btnSkipPdfCropToGraph');
@@ -11161,14 +11186,15 @@ class GraphApp {
         const targetPanel = btn.dataset.panel;
         if (targetPanel === 'panelPresets' && this.isGraphCovered) {
           if (this.pdfPageBoardData) {
-            this.startPdfBoardToGraphCrop(null);
+            if (this.isPdfToGraphCropMode) {
+              this.cancelPdfBoardToGraphCrop();
+            } else {
+              this.startPdfBoardToGraphCrop(null);
+            }
             return;
           }
-          if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
-            this.closeDrawer();
-          }
           this.enterGraphModeFromBoard();
-          this.showToast('📈 그래프 모드로 전환되었습니다. 좌측 [+] 버튼으로 함수를 추가하세요!');
+          this.openDrawer('panelPresets');
           return;
         }
         if (!this.isDrawerCollapsed && this.activeDrawerPanel === targetPanel) {
@@ -14047,9 +14073,21 @@ class GraphApp {
     const btnClosePlaylist = document.getElementById('btnPlaylistClose');
     const btnMiniTab = document.getElementById('topSlideBarMiniTab');
 
+    const btnPlaylistDelCur = document.getElementById('btnPlaylistDeleteCurrent');
     if (btnPrev) btnPrev.onclick = () => this.stepLessonPlaylist(-1);
     if (btnNext) btnNext.onclick = () => this.stepLessonPlaylist(1);
-    if (btnInfo) btnInfo.onclick = () => this.openCloudHubModal();
+    if (btnInfo) {
+      btnInfo.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleSlideGridPopover();
+      };
+    }
+    if (btnPlaylistDelCur) {
+      btnPlaylistDelCur.onclick = (e) => {
+        e.stopPropagation();
+        this.deletePlaylistSlideAt(this.lessonPlaylistIndex);
+      };
+    }
     if (btnAddSlide) btnAddSlide.onclick = () => this.handleNewCanvasButtonClick();
     if (btnShareAll) {
       btnShareAll.onclick = () => {
@@ -15402,8 +15440,17 @@ class GraphApp {
     this.showToast('🗑️ 모든 슬라이드를 비우고 깨끗한 초기 캔버스로 돌아왔습니다!');
   }
 
+  toggleSlideGridPopover(forceOpen) {
+    this._isSlideGridOpen = typeof forceOpen === 'boolean' ? forceOpen : !this._isSlideGridOpen;
+    this.syncPdfBoardNavBarUI();
+    this.syncLessonPlaylistNavBarUI();
+  }
+
   toggleTopSlideBarHidden(hide) {
     this.isTopSlideBarHidden = typeof hide === 'boolean' ? hide : !this.isTopSlideBarHidden;
+    if (this.isTopSlideBarHidden) {
+      this._isSlideGridOpen = false;
+    }
     this.syncPdfBoardNavBarUI();
     this.syncLessonPlaylistNavBarUI();
   }
@@ -15431,11 +15478,11 @@ class GraphApp {
       if (hasPdfBar) {
         const p = this.pdfPageBoardData.pageNum || 1;
         const cnt = (this.pdfWorkedPages && this.pdfWorkedPages.length) || 1;
-        lblMini.textContent = `▾ p.${p} (${cnt})`;
+        lblMini.textContent = `📄 p.${p} (${cnt}) ▾`;
       } else {
         const cur = (this.lessonPlaylistIndex || 0) + 1;
         const total = this.lessonPlaylistSlides.length;
-        lblMini.textContent = `▾ ${cur}/${total}`;
+        lblMini.textContent = `📑 ${cur} / ${total} ▾`;
       }
     }
   }
@@ -15452,9 +15499,10 @@ class GraphApp {
     if (!this._boundCloseSlideDelOnOutside) {
       this._boundCloseSlideDelOnOutside = true;
       window.addEventListener('pointerdown', (ev) => {
-        if (!this._openSlideChipDelKey) return;
+        if (!this._isSlideGridOpen && !this._openSlideChipDelKey) return;
         const t = ev.target;
-        if (t && t.closest && t.closest('.slide-chip-item')) return;
+        if (t && t.closest && (t.closest('.slide-grid-popover') || t.closest('#btnPlaylistSlideInfo') || t.closest('#btnPdfBoardPageInfo'))) return;
+        this._isSlideGridOpen = false;
         this._openSlideChipDelKey = null;
         this.syncPdfBoardNavBarUI();
         this.syncLessonPlaylistNavBarUI();
@@ -15463,51 +15511,43 @@ class GraphApp {
 
     const total = this.lessonPlaylistSlides.length;
     const cur = this.lessonPlaylistIndex + 1;
-    const curSlide = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
+    const arrowChar = this._isSlideGridOpen ? '▴' : '▾';
     const lbl = document.getElementById('lblPlaylistSlideInfo');
     if (lbl) {
-      lbl.textContent = `${cur} / ${total} · ${curSlide && curSlide.slideTitle ? curSlide.slideTitle : '문항'}`;
+      lbl.textContent = `📑 ${cur} / ${total} ${arrowChar}`;
+    }
+
+    const gridPop = document.getElementById('playlistGridPopover');
+    if (gridPop) {
+      gridPop.style.display = (!this.isTopSlideBarHidden && this._isSlideGridOpen) ? 'flex' : 'none';
+    }
+    const btnDelCur = document.getElementById('btnPlaylistDeleteCurrent');
+    if (btnDelCur) {
+      btnDelCur.disabled = (total <= 1);
     }
 
     const chipsEl = document.getElementById('playlistSlideChips');
     if (chipsEl) {
       chipsEl.innerHTML = '';
       this.lessonPlaylistSlides.forEach((s, idx) => {
-        const chipKey = `playlist:${idx}`;
         const isActive = (idx === this.lessonPlaylistIndex);
-        const isDelOpen = (isActive && total > 1 && this._openSlideChipDelKey === chipKey);
         const chip = document.createElement('div');
-        chip.className = 'slide-chip-item' + (isActive ? ' active' : '') + (isDelOpen ? ' del-open' : '');
+        chip.className = 'slide-chip-item' + (isActive ? ' active' : '');
         const rawTitle = (s && s.slideTitle) ? String(s.slideTitle).trim() : '';
         const shortLabel = (rawTitle && rawTitle.startsWith('p.')) ? rawTitle : String(idx + 1);
-        chip.title = '';
+        chip.title = `${idx + 1}번 캔버스로 이동`;
 
         const span = document.createElement('span');
         span.className = 'slide-chip-label';
         span.textContent = shortLabel;
         chip.appendChild(span);
 
-        if (total > 1) {
-          const delBtn = document.createElement('button');
-          delBtn.type = 'button';
-          delBtn.className = 'slide-chip-del';
-          delBtn.title = '삭제';
-          delBtn.textContent = '✕';
-          delBtn.onclick = (e) => {
-            e.stopPropagation();
-            this._openSlideChipDelKey = null;
-            this.deletePlaylistSlideAt(idx);
-          };
-          chip.appendChild(delBtn);
-        }
-
         chip.onclick = (e) => {
           e.stopPropagation();
+          this._isSlideGridOpen = false;
           if (idx !== this.lessonPlaylistIndex) {
-            this._openSlideChipDelKey = null;
             this.jumpToPlaylistSlide(idx);
-          } else if (total > 1) {
-            this._openSlideChipDelKey = (this._openSlideChipDelKey === chipKey) ? null : chipKey;
+          } else {
             this.syncLessonPlaylistNavBarUI();
           }
         };
