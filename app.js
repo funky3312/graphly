@@ -7378,6 +7378,8 @@ class GraphApp {
 
     laserCanvas.addEventListener('pointerdown', (e) => {
       if (!state.active) return;
+      // 🛡️ [손가락 레이저 필기 차단]: 아이패드에서 손가락(touch)으로 카드를 만지면 레이저가 그어지지 않고 카드 이동(버블링)으로 작동!
+      if (e.pointerType === 'touch') return;
       this.bringCardToFront(cardWidgetEl);
       e.preventDefault();
       e.stopPropagation();
@@ -7403,7 +7405,7 @@ class GraphApp {
     });
 
     laserCanvas.addEventListener('pointermove', (e) => {
-      if (!state.active) return;
+      if (!state.active || e.pointerType === 'touch') return;
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       const pos = getNormPos(e);
       const now = performance.now();
@@ -17112,6 +17114,10 @@ class GraphApp {
 
       // [✍️ 실시간 무한 칠판 필기 모드 인터랙션]
       if (this.isInkMode) {
+        // 🛡️ [손가락 필기 100% 원천 차단]: 손가락(touch)으로는 어떤 경우에도 글씨/형광펜/지우개/올가미가 작동하지 않도록 이중 잠금!
+        if (e && (e.pointerType === 'touch' || (e.touches && e.touches.length > 0))) {
+          return;
+        }
         // [🪢 올가미(Lasso) 툴 인터랙션]
         if (this.activeInkTool === 'lasso') {
           const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
