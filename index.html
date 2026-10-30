@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261031_23">
+  <link rel="stylesheet" href="style.css?v=20261031_24">
 </head>
 
 <body class="theme-light">
@@ -1548,7 +1548,7 @@
     </button>
   </div>
 
-  <!-- [✂️ PDF 전체화면 판서 모드 ➔ 좌측 [+] 버튼 바로 옆 2지선다(캡처 후 이동 / 바로 이동) 팝업 바] -->
+  <!-- [✂️ PDF 전체화면 판서 모드 ➔ 좌측 [+] 버튼 바로 옆 위아래 균형 2지선다 팝업] -->
   <div id="pdfToGraphCropFloatingBar" class="graph-snap-floating-bar pdf-to-graph-crop-bar" style="display: none;">
     <button id="btnStartPdfCropToGraph" class="btn-trigger-graph-snap pdf-crop-choice-btn">
       <span>✂️ 캡처 후 이동</span>
@@ -1556,10 +1556,12 @@
     <button id="btnSkipPdfCropToGraph" class="btn-trigger-graph-snap pdf-skip-choice-btn">
       <span>▶ 바로 이동</span>
     </button>
-    <button id="btnCancelPdfCropToGraph" class="btn-return-covered-board pdf-cancel-choice-btn" title="닫기">
-      <span>✕</span>
-    </button>
   </div>
+  <!-- [✂️ 캡처 후 이동 클릭 시: 좌측 메뉴는 사라지고 상단에 작게 뜨는 캡처 상태/취소 버튼] -->
+  <button type="button" id="btnCancelPdfCropToGraph" class="pdf-crop-active-pill" style="display: none;" title="클릭하여 캡처 취소">
+    <span>✂️ 문제 영역 드래그</span>
+    <span class="pdf-crop-active-cancel-x">✕</span>
+  </button>
   <div id="graphSnapDragBox" class="graph-snap-drag-box" style="display: none;"></div>
 
   <!-- [📑 닥줌형 PDF 교재 뷰어 & 2단 문제 박스 캡처 모달] -->
@@ -1660,7 +1662,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261031_4"></script>
-  <script src="app.js?v=20261031_23"></script>
+  <script src="app.js?v=20261031_24"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

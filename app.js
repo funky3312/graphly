@@ -8057,6 +8057,37 @@ class GraphApp {
     this.render();
   }
 
+  openPdfToGraphChoiceMenu(pendingGraphType = null) {
+    if (!this.pdfPageBoardData) {
+      this.enterGraphModeFromBoard();
+      if (pendingGraphType) {
+        this.addGraph(pendingGraphType);
+      } else if (typeof this.openDrawer === 'function') {
+        this.openDrawer('panelPresets');
+      }
+      return;
+    }
+    this._isPdfCropChoiceMenuOpen = true;
+    this.isPdfToGraphCropMode = false;
+    this.isPdfToGraphCropDragging = false;
+    this._pendingPdfToGraphType = pendingGraphType || null;
+    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+      this.closeDrawer();
+    }
+    if (!this._boundClosePdfChoiceOnOutside) {
+      this._boundClosePdfChoiceOnOutside = true;
+      window.addEventListener('pointerdown', (ev) => {
+        if (!this._isPdfCropChoiceMenuOpen) return;
+        const t = ev.target;
+        if (t && t.closest && (t.closest('#pdfToGraphCropFloatingBar') || t.closest('#btnRailPresets'))) return;
+        this._isPdfCropChoiceMenuOpen = false;
+        this.syncGraphSnapBarUI();
+      }, { capture: true });
+    }
+    this.syncGraphSnapBarUI();
+    this.render();
+  }
+
   startPdfBoardToGraphCrop(pendingGraphType = null) {
     if (!this.pdfPageBoardData) {
       this.enterGraphModeFromBoard();
@@ -8067,9 +8098,13 @@ class GraphApp {
       }
       return;
     }
+    // 🌟 [대표님 피드백 반영]: [✂️ 캡처 후 이동]을 누르면 좌측 선택 바는 즉시 사라지고 캡처 모드로 전환!
+    this._isPdfCropChoiceMenuOpen = false;
     this.isPdfToGraphCropMode = true;
     this.isPdfToGraphCropDragging = false;
-    this._pendingPdfToGraphType = pendingGraphType || null;
+    if (pendingGraphType !== null) {
+      this._pendingPdfToGraphType = pendingGraphType;
+    }
     if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
       this.closeDrawer();
     }
@@ -8081,20 +8116,17 @@ class GraphApp {
     if (this.virtualStylusEl) {
       this.virtualStylusEl.style.display = 'none';
     }
-    const btnStartCrop = document.getElementById('btnStartPdfCropToGraph');
-    if (btnStartCrop) btnStartCrop.classList.remove('active-crop-wait');
     this.syncGraphSnapBarUI();
     this.render();
   }
 
   cancelPdfBoardToGraphCrop() {
+    this._isPdfCropChoiceMenuOpen = false;
     this.isPdfToGraphCropMode = false;
     this.isPdfToGraphCropDragging = false;
     this._pendingPdfToGraphType = null;
     const dragBox = document.getElementById('graphSnapDragBox');
     if (dragBox) dragBox.style.display = 'none';
-    const btnStartCrop = document.getElementById('btnStartPdfCropToGraph');
-    if (btnStartCrop) btnStartCrop.classList.remove('active-crop-wait');
     document.body.classList.remove('graph-snap-crosshair');
     if (this.canvas) {
       this.canvas.classList.remove('graph-snap-crosshair');
@@ -8106,6 +8138,7 @@ class GraphApp {
 
   completePdfBoardToGraphCrop(cropRect = null) {
     const pendingType = this._pendingPdfToGraphType;
+    this._isPdfCropChoiceMenuOpen = false;
     this.isPdfToGraphCropMode = false;
     this.isPdfToGraphCropDragging = false;
     this._pendingPdfToGraphType = null;
@@ -8249,7 +8282,11 @@ class GraphApp {
   syncGraphSnapBarUI() {
     const pdfCropBar = this._pdfCropBarEl || (this._pdfCropBarEl = document.getElementById('pdfToGraphCropFloatingBar'));
     if (pdfCropBar) {
-      pdfCropBar.style.display = this.isPdfToGraphCropMode ? 'flex' : 'none';
+      pdfCropBar.style.display = this._isPdfCropChoiceMenuOpen ? 'flex' : 'none';
+    }
+    const pdfCropCancelPill = this._pdfCropCancelPillEl || (this._pdfCropCancelPillEl = document.getElementById('btnCancelPdfCropToGraph'));
+    if (pdfCropCancelPill) {
+      pdfCropCancelPill.style.display = this.isPdfToGraphCropMode ? 'inline-flex' : 'none';
     }
 
     const hasGraphs = Boolean(this.graphs && this.graphs.length > 0);
@@ -8902,13 +8939,7 @@ class GraphApp {
     if (btnStartPdfCrop) {
       btnStartPdfCrop.onclick = (e) => {
         e.stopPropagation();
-        this.isPdfToGraphCropMode = true;
-        btnStartPdfCrop.classList.add('active-crop-wait');
-        document.body.classList.add('graph-snap-crosshair');
-        if (this.canvas) {
-          this.canvas.classList.add('graph-snap-crosshair');
-          this.canvas.style.cursor = 'crosshair';
-        }
+        this.startPdfBoardToGraphCrop(this._pendingPdfToGraphType || null);
         this.showToast('✂️ 가져갈 문제 영역을 드래그하면 즉시 그래프 추가 창이 열립니다!');
       };
     }
@@ -11222,10 +11253,10 @@ class GraphApp {
         const targetPanel = btn.dataset.panel;
         if (targetPanel === 'panelPresets' && this.isGraphCovered) {
           if (this.pdfPageBoardData) {
-            if (this.isPdfToGraphCropMode) {
+            if (this._isPdfCropChoiceMenuOpen || this.isPdfToGraphCropMode) {
               this.cancelPdfBoardToGraphCrop();
             } else {
-              this.startPdfBoardToGraphCrop(null);
+              this.openPdfToGraphChoiceMenu(null);
             }
             return;
           }
