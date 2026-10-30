@@ -9001,3 +9001,24 @@ body.theme-light .pdf-to-graph-crop-bar {
   min-width: 30px !important;
   padding: 0 8px !important;
 }
+
+/* ✋ PDF 모달 상단 [이동] 버튼 활성화 스타일 및 드래그 이동 커서 */
+.pdf-pan-mode-btn.active {
+  background: #3b82f6 !important;
+  border-color: #60a5fa !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.5) !important;
+  animation: none !important;
+}
+
+.pdf-viewport:not(.crop-mode),
+.pdf-viewport:not(.crop-mode) .pdf-page-wrapper,
+.pdf-viewport:not(.crop-mode) .pdf-page-canvas {
+  cursor: grab;
+}
+
+.pdf-viewport.panning-active,
+.pdf-viewport.panning-active .pdf-page-wrapper,
+.pdf-viewport.panning-active .pdf-page-canvas {
+  cursor: grabbing !important;
+}

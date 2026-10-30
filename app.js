@@ -4712,10 +4712,17 @@ class GraphApp {
       };
     }
 
-    // ✂️ 크롭 토글 버튼
+    // ✋ 이동 모드 & ✂️ 영역 캡처 모드 버튼
+    const btnPanMode = document.getElementById('btnPdfPanMode');
+    if (btnPanMode) {
+      btnPanMode.onclick = () => {
+        this.togglePdfCropMode(false);
+        this.showToast('✋ PDF 이동 모드입니다. 다음 문제로 이동한 뒤 [영역 캡처]를 눌러주세요.');
+      };
+    }
     const btnCropToggle = document.getElementById('btnPdfCropToggle');
     if (btnCropToggle) {
-      btnCropToggle.onclick = () => this.togglePdfCropMode();
+      btnCropToggle.onclick = () => this.togglePdfCropMode(true);
     }
 
     // 📄 이 페이지 열기 버튼 (개념 설명용: 해당 PDF 페이지 전체를 칠판 캔버스로 바로 삽입!)
@@ -4916,21 +4923,22 @@ class GraphApp {
     });
   }
 
-  async resumeOrOpenCurrentPdf(isNextCaptureSlide = false) {
+  async resumeOrOpenCurrentPdf(isNextCaptureSlide = false, options = null) {
     this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
+    const autoCrop = !(options && options.startInPanMode);
     if (this.pdfDoc) {
-      this.openPdfModal(false, true);
+      this.openPdfModal(false, autoCrop);
       return true;
     }
     if (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0) {
       await this.loadPdfFromArrayBuffer(this._cachedPdfBytes, this.pdfFileName || '교재.pdf', { preserveScroll: true });
-      this.togglePdfCropMode(true);
+      this.togglePdfCropMode(autoCrop);
       return true;
     }
     const cachedRec = await this._loadLastPdfFromIndexedDB();
     if (cachedRec && cachedRec.bytes) {
       await this.loadPdfFromArrayBuffer(cachedRec.bytes, cachedRec.fileName || '교재.pdf', { preserveScroll: true });
-      this.togglePdfCropMode(true);
+      this.togglePdfCropMode(autoCrop);
       return true;
     }
     if (this.triggerLocalFileExplorer) {
@@ -5877,6 +5885,8 @@ class GraphApp {
 
     const btn = document.getElementById('btnPdfCropToggle');
     if (btn) btn.classList.toggle('active', this.isPdfCropModeActive);
+    const btnPan = document.getElementById('btnPdfPanMode');
+    if (btnPan) btnPan.classList.toggle('active', !this.isPdfCropModeActive);
 
     const viewport = document.getElementById('pdfViewport');
     if (viewport) viewport.classList.toggle('crop-mode', this.isPdfCropModeActive);
@@ -6024,8 +6034,20 @@ class GraphApp {
           return;
         }
       }
-      // 크롭 모드가 아니면 스크롤 등 기본 동작 수행
-      if (!this.isPdfCropModeActive) return;
+      // ✋ [이동 모드(!this.isPdfCropModeActive)]: 마우스/펜슬/손가락 드래그로 PDF 뷰포트 상하좌우 직접 이동 지원!
+      if (!this.isPdfCropModeActive) {
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
+        this._isPdfViewportPanning = true;
+        this._pdfViewportPanStart = {
+          clientX: e.clientX,
+          clientY: e.clientY,
+          scrollLeft: viewport.scrollLeft,
+          scrollTop: viewport.scrollTop,
+          pointerId: e.pointerId
+        };
+        viewport.classList.add('panning-active');
+        return;
+      }
       if (e.button !== 0) return;
 
       // 네이티브 드래그 / 텍스트 선택 / 브라우저 제스처 원천 차단
@@ -6082,6 +6104,20 @@ class GraphApp {
           movePdfViewerPinch(pts[0], pts[1]);
           return;
         }
+      }
+      if (this._isPdfViewportPanning && this._pdfViewportPanStart && (!this._pdfTouchPointers || this._pdfTouchPointers.size < 2)) {
+        const dx = e.clientX - this._pdfViewportPanStart.clientX;
+        const dy = e.clientY - this._pdfViewportPanStart.scrollTop !== undefined ? (e.clientY - this._pdfViewportPanStart.clientY) : 0;
+        viewport.scrollLeft = this._pdfViewportPanStart.scrollLeft - dx;
+        viewport.scrollTop = this._pdfViewportPanStart.scrollTop - dy;
+        this.savedPdfScrollLeft = viewport.scrollLeft;
+        this.savedPdfScrollTop = viewport.scrollTop;
+        return;
+      }
+      if (this._isPdfViewportPanning) {
+        this._isPdfViewportPanning = false;
+        this._pdfViewportPanStart = null;
+        viewport.classList.remove('panning-active');
       }
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
       e.preventDefault();
@@ -14066,7 +14102,7 @@ class GraphApp {
     const btnPlaylistOpenPdf = document.getElementById('btnPlaylistOpenPdf');
     const btnShareAll = document.getElementById('btnPlaylistShareAll');
     if (btnPlaylistOpenPdf) {
-      btnPlaylistOpenPdf.onclick = () => this.resumeOrOpenCurrentPdf(false);
+      btnPlaylistOpenPdf.onclick = () => this.resumeOrOpenCurrentPdf(false, { startInPanMode: true });
     }
     const btnClearAllSlides = document.getElementById('btnPlaylistClearAll');
     const btnHidePlaylistBar = document.getElementById('btnPlaylistHideBar');
