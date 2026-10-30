@@ -19474,21 +19474,23 @@ class GraphApp {
         if (this._uiPointerIds && e.pointerId !== undefined) {
           this._uiPointerIds.delete(e.pointerId);
         }
+        // 🌟 [핵심 복구 (037ec61 초기 버전과 100% 동일)]:
+        // 캔버스에 닿는 모든 포인터(손날 touch 포함!)에 즉시 e.preventDefault()를 선언하여
+        // iPadOS Safari가 손날 터치를 브라우저 기본 제스처(스크롤/드래그/롱프레스)로 가로채서 직후의 펜슬 입력을 삼키는 현상을 원천 차단!
+        if (e.cancelable !== false) {
+          e.preventDefault();
+        }
         const nowT = Date.now();
         lastPointerDownTime = nowT;
 
-        // 1) 펜(pen) 또는 마우스(mouse) 입력: 최우선 순위로 즉시 필기 진입 & 방금 직전(220ms 이내) 손날 터치 미세 이동만 롤백!
+        // 1) 펜(pen) 또는 마우스(mouse) 입력: 최우선 순위로 즉시 필기 진입!
         if (e.pointerType === 'pen' || e.pointerType === 'mouse' || !e.pointerType) {
-          e.preventDefault();
           if (e.pointerType === 'pen') {
             this._lastPenActiveTime = nowT;
-            if (this._touchCameraSnapshot && (nowT - this._touchCameraSnapshot.time < 220)) {
+            if (!this._diagPureInkMode && this._touchCameraSnapshot && (nowT - this._touchCameraSnapshot.time < 220)) {
               this._restoreTouchCameraSnapshot();
             } else {
               this._touchCameraSnapshot = null;
-            }
-            if (this.canvas && this.canvas.setPointerCapture && e.pointerId !== undefined) {
-              try { this.canvas.setPointerCapture(e.pointerId); } catch (err) { }
             }
           }
           if (this.activePointers) {
@@ -19515,6 +19517,7 @@ class GraphApp {
             maxP: typeof e.pressure === 'number' ? e.pressure : -1,
             moveEvents: 0
           };
+          this._logInkDiag('ok', `✏️ [펜 진입 성공] id=${e.pointerId}, p=${typeof e.pressure === 'number' ? e.pressure.toFixed(2) : '-'}, btn=${e.buttons}`);
           handleDown(e);
           if (e.pointerType === 'pen' && !this.isDrawingInk && isWritingToolActive()) {
             this._logInkDiag('error', `🚨 [획 시작 실패] pointerdown(pen) 진입했으나 handleDown 내부에서 필기가 시작되지 않음! (tool=${this.activeInkTool}, inkMode=${this.isInkMode})`);
@@ -19522,9 +19525,16 @@ class GraphApp {
           return;
         }
 
-        // 2) 터치(touch) 입력: 펜슬 필기 중이거나 펜을 뗀 지 450ms 이내에는 터치 무시
+        // 2) 터치(touch) 입력 진단 로그 (접촉 크기 WxH 및 touchType 표시)
         if (e.pointerType === 'touch') {
-          this._logInkDiag('touch', `🖐️ [터치 감지] type=touch, id=${e.pointerId}, 크기=${Math.round(e.width || 0)}x${Math.round(e.height || 0)} (만약 펜으로 그은 거라면 펜이 touch로 오인식된 것!)`);
+          const w = Math.round(e.width || 0);
+          const h = Math.round(e.height || 0);
+          const tTypes = this._lastTouchStartTypes || 'direct';
+          this._logInkDiag('touch', `🖐️ [터치 입력] id=${e.pointerId}, 면적=${w}x${h}px, touchType=${tTypes}`);
+        }
+        // 🧪 [초기 순정 필기 모드(037ec61) ON 상태일 때]: 필기 도구에서는 1손가락 터치를 0.00ms 만에 완전 무시!
+        if (this._diagPureInkMode && isWritingToolActive()) {
+          return;
         }
         if (isPenRecentlyActive()) {
           return;
@@ -19853,20 +19863,21 @@ class GraphApp {
       return false;
     };
     this.canvas.addEventListener('touchstart', (e) => {
-      const nowT = Date.now();
-      const touchTypes = e.touches ? Array.from(e.touches).map(t => t.touchType || 'direct').join(',') : 'none';
-      const hasStylus = e.touches && Array.from(e.touches).some(t => t.touchType === 'stylus');
-      this._lastTouchStartTypes = touchTypes;
-      if (hasStylus) {
-        setTimeout(() => {
-          if (!this.isDrawingInk && (Date.now() - (this._lastPenActiveTime || 0) > 100)) {
-            this._logInkDiag('error', `🚨 [원인 발견: WebKit 이벤트 삼킴] touchstart(stylus)는 감지되었으나 50ms 내 pointerdown(pen)이 오지 않아 획이 씹힘!`);
-          }
-        }, 60);
+      // 🌟 [핵심 복구 (037ec61 초기 버전과 100% 동일)]:
+      // 손날(direct touch)이 먼저 닿더라도 캔버스 위에서는 무조건 e.preventDefault()를 호출해야
+      // iPadOS Safari가 브라우저 기본 제스처 모드로 빠지지 않고 뒤이어 들어오는 펜슬(stylus) 이벤트를 100% 정상 전달합니다!
+      if (e.target === this.canvas && e.cancelable !== false) {
+        e.preventDefault();
       }
+      const nowT = Date.now();
+      const touchDetails = e.touches
+        ? Array.from(e.touches).map(t => `${t.touchType || 'direct'}(r=${Math.round(t.radiusX || 0)})`).join(', ')
+        : 'none';
+      const hasStylus = e.touches && Array.from(e.touches).some(t => t.touchType === 'stylus');
+      this._lastTouchStartTypes = touchDetails;
       if (hasStylus) {
         this._lastPenActiveTime = nowT;
-        if (!this.isDrawingInk && !this.isStylusDrawing && this._touchCameraSnapshot && (nowT - this._touchCameraSnapshot.time < 220)) {
+        if (!this._diagPureInkMode && !this.isDrawingInk && !this.isStylusDrawing && this._touchCameraSnapshot && (nowT - this._touchCameraSnapshot.time < 220)) {
           this._restoreTouchCameraSnapshot();
         } else {
           this._touchCameraSnapshot = null;
@@ -19874,12 +19885,14 @@ class GraphApp {
         if (this.activePointers) this.activePointers.clear();
         this._pinchState = null;
         this._pinchWasActiveInGesture = false;
-        if (e.target === this.canvas) {
-          e.preventDefault();
-        }
+        setTimeout(() => {
+          if (!this.isDrawingInk && (Date.now() - (this._lastPenActiveTime || 0) > 100)) {
+            this._logInkDiag('error', `🚨 [WebKit 이벤트 삼킴] touchstart(stylus)는 왔으나 pointerdown(pen)이 누락됨!`);
+          }
+        }, 60);
         return;
       }
-      if (isPenBusyForTouch()) return;
+      if (this._diagPureInkMode || isPenBusyForTouch()) return;
       if (e.touches && e.touches.length === 1) {
         this._pinchWasActiveInGesture = false;
         this._pinchState = null;
@@ -19915,7 +19928,7 @@ class GraphApp {
       }
     }, { passive: true });
     this.canvas.addEventListener('touchcancel', () => {
-      if (this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || isPenBusyForTouch()) {
+      if (this._diagPureInkMode || this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || isPenBusyForTouch()) {
         this._touchCameraSnapshot = null;
         return;
       }
@@ -19933,8 +19946,11 @@ class GraphApp {
     }, { passive: true });
 
     this.canvas.addEventListener('touchmove', (e) => {
+      if (e.target === this.canvas && e.cancelable !== false) {
+        e.preventDefault();
+      }
       const hasStylus = e.touches && Array.from(e.touches).some(t => t.touchType === 'stylus');
-      if (hasStylus || isPenBusyForTouch()) return;
+      if (this._diagPureInkMode || hasStylus || isPenBusyForTouch()) return;
       if (e.touches && e.touches.length === 2 && this._pinchState) {
         if (e.cancelable) e.preventDefault();
         // PointerEvent 경로에서 이미 2포인터 핀치를 처리 중이면 중복 호출 방지, 누락된 경우에만 백업 구동!
@@ -21254,7 +21270,8 @@ class GraphApp {
     hud.innerHTML = `
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.15); padding-bottom:5px;">
         <span style="font-weight:700; color:#38bdf8; font-size:12px;">🔬 실시간 필기 씹힘 자동 진단기</span>
-        <div style="display:flex; gap:5px; pointer-events:auto;">
+        <div style="display:flex; gap:4px; pointer-events:auto;">
+          <button type="button" id="btnInkDiagPureMode" style="background:#0f766e; color:#fff; border:1px solid #14b8a6; border-radius:6px; padding:2px 7px; font-size:11px; font-weight:700; cursor:pointer;">🧪 순정모드: OFF</button>
           <button type="button" id="btnInkDiagClear" style="background:#334155; color:#fff; border:none; border-radius:6px; padding:2px 7px; font-size:11px; cursor:pointer;">지우기</button>
           <button type="button" id="btnInkDiagCopy" style="background:#0284c7; color:#fff; border:none; border-radius:6px; padding:2px 7px; font-size:11px; cursor:pointer;">복사</button>
           <button type="button" id="btnInkDiagClose" style="background:#475569; color:#fff; border:none; border-radius:6px; padding:2px 6px; font-size:11px; cursor:pointer;">✕</button>
@@ -21269,6 +21286,17 @@ class GraphApp {
     `;
     document.body.appendChild(hud);
 
+    this._diagPureInkMode = false;
+    const btnPure = document.getElementById('btnInkDiagPureMode');
+    if (btnPure) {
+      btnPure.onclick = (ev) => {
+        ev.stopPropagation();
+        this._diagPureInkMode = !this._diagPureInkMode;
+        btnPure.textContent = this._diagPureInkMode ? '🧪 순정모드: ON' : '🧪 순정모드: OFF';
+        btnPure.style.background = this._diagPureInkMode ? '#dc2626' : '#0f766e';
+        this._logInkDiag('warn', this._diagPureInkMode ? '⚡ [순정모드 ON] 모든 손날 패닝·롤백 가드를 끄고 초기 필기 엔진(037ec61)으로 작동합니다!' : '⚡ [순정모드 OFF] 기본 모드로 복귀했습니다.');
+      };
+    }
     const btnClear = document.getElementById('btnInkDiagClear');
     if (btnClear) {
       btnClear.onclick = (ev) => {
