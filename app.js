@@ -6157,17 +6157,24 @@ class GraphApp {
       return null;
     }
 
-    const w = parseFloat(widget.style.width) || widget.getBoundingClientRect().width || 520;
+    const isMin = Boolean(this.isProblemCardMinimized || widget.classList.contains('minimized'));
+    const rawStyleW = parseFloat(widget.style.width);
+    if (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 240) {
+      widget._savedExpandedWidth = `${Math.round(rawStyleW)}px`;
+    }
+    const w = (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 240)
+      ? rawStyleW
+      : (parseFloat(widget._savedExpandedWidth) || (Number.isFinite(rawStyleW) && rawStyleW >= 240 ? rawStyleW : 0) || (!isMin ? widget.getBoundingClientRect().width : 520) || 520);
     const aspect = this.problemCardAspect || 0.72;
     const imgW = w;
     const imgH = Math.round(imgW * aspect);
     const h = imgH;
 
-    if (body && !this.isProblemCardMinimized) {
+    if (body && !isMin) {
       body.style.height = `${h}px`;
     }
 
-    if (pCanvas && !this.isProblemCardMinimized) {
+    if (pCanvas && !isMin) {
       const dpr = window.devicePixelRatio || 2;
       const targetW = Math.round(w * dpr);
       const targetH = Math.round(h * dpr);
@@ -6176,6 +6183,9 @@ class GraphApp {
         pCanvas.height = targetH;
       }
       this.renderProblemCardCanvas();
+    }
+    if (!isMin && typeof widget._syncCardLaserSize === 'function') {
+      widget._syncCardLaserSize();
     }
 
     if (!this.canvas) return null;
@@ -6614,18 +6624,33 @@ class GraphApp {
     const bPy = (this.boardPanY || 0);
     el.style.transform = `translate3d(${bPx}px, ${bPy}px, 0)`;
 
+    el._savedExpandedWidth = `${Math.round(cardW)}px`;
     const toggleExtraMin = () => {
-      if (el._lastToggleTime && performance.now() - el._lastToggleTime < 120) return;
+      if (el._lastToggleTime && performance.now() - el._lastToggleTime < 75) return;
       el._lastToggleTime = performance.now();
-      cardItem.isMin = !cardItem.isMin;
-      el.classList.toggle('minimized', cardItem.isMin);
+      const wasMin = el.classList.contains('minimized');
+      if (!wasMin) {
+        const curW = parseFloat(el.style.width) || Math.round(el.getBoundingClientRect().width);
+        if (curW >= 200) el._savedExpandedWidth = `${Math.round(curW)}px`;
+      }
+      const nextMin = !wasMin;
+      cardItem.isMin = nextMin;
+      el.classList.toggle('minimized', nextMin);
+      if (!nextMin && el._savedExpandedWidth) {
+        el.style.width = el._savedExpandedWidth;
+        if (typeof el._syncCardLaserSize === 'function') el._syncCardLaserSize();
+      }
       const chev = el.querySelector('.card-fold-chevron');
-      if (chev) chev.textContent = cardItem.isMin ? '▸' : '▾';
+      if (chev) chev.textContent = nextMin ? '▸' : '▾';
     };
+    el._toggleCardMin = toggleExtraMin;
 
-    // 롱프레스 쉴드 및 우클릭 방어
+    // 롱프레스 쉴드 및 우클릭 방어 (버튼 터치 시 click 이벤트가 죽지 않도록 버튼 영역은 touchstart preventDefault 제외)
     el.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); return false; }, { capture: true });
-    el.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+    el.addEventListener('touchstart', (e) => {
+      if (e.target && e.target.closest('button, .card-btn, .card-fold-triangle-btn, .problem-card-actions')) return;
+      e.preventDefault();
+    }, { passive: false });
     el.addEventListener('dragstart', (e) => e.preventDefault());
     el.addEventListener('selectstart', (e) => e.preventDefault());
     ['MSHoldVisual', 'MSGestureHold'].forEach(evtName => {
@@ -6638,7 +6663,6 @@ class GraphApp {
       this.bringCardToFront(el);
       if (e.target.closest('.problem-card-resize-handle')) return;
       if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-        e.preventDefault();
         e.stopPropagation();
         return;
       }
@@ -6700,10 +6724,16 @@ class GraphApp {
       window.addEventListener('pointercancel', stopResize);
     }
 
-    // 3. 상단 왼쪽 제목(▾) 클릭 시 제자리 접기/펼치기 토글
+    // 3. 상단 왼쪽 제목(▾) 클릭 시 제자리 접기/펼치기 토글 (pointerup + click 이중 바인딩으로 빠른 연속 터치 100% 반응 보장)
     const btnMin = el.querySelector('.btn-extra-min');
     if (btnMin) {
-      btnMin.onclick = () => {
+      btnMin.addEventListener('pointerup', (e) => {
+        if (e.button && e.button !== 0) return;
+        e.stopPropagation();
+        toggleExtraMin();
+      });
+      btnMin.onclick = (e) => {
+        if (e) e.stopPropagation();
         toggleExtraMin();
       };
     }
@@ -7050,11 +7080,11 @@ class GraphApp {
       let startX = 0, startY = 0;
       let initialBaseX = 72, initialBaseY = 18;
 
+      widget._toggleCardMin = () => this.toggleProblemCardMinimize();
       widget.addEventListener('pointerdown', (e) => {
         this.bringCardToFront(widget);
         if (e.target.closest('.problem-card-resize-handle')) return;
         if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-          e.preventDefault();
           e.stopPropagation();
           return;
         }
@@ -7133,9 +7163,15 @@ class GraphApp {
       window.addEventListener('pointercancel', stopResize);
     }
 
-    // 3. 상단 왼쪽 제목(▾) 클릭 시 제자리 접기/펼치기 토글
+    // 3. 상단 왼쪽 제목(▾) 클릭 시 제자리 접기/펼치기 토글 (pointerup + click 이중 바인딩으로 빠른 연속 탭 100% 작동 보장)
     if (btnToggleMin) {
-      btnToggleMin.onclick = () => {
+      btnToggleMin.addEventListener('pointerup', (e) => {
+        if (e.button && e.button !== 0) return;
+        e.stopPropagation();
+        this.toggleProblemCardMinimize();
+      });
+      btnToggleMin.onclick = (e) => {
+        if (e) e.stopPropagation();
         this.toggleProblemCardMinimize();
       };
     }
@@ -7191,14 +7227,23 @@ class GraphApp {
     const widget = document.getElementById('problemCardWidget');
     const icon = document.getElementById('iconCardToggle');
     if (!widget) return;
-    if (widget._lastToggleTime && performance.now() - widget._lastToggleTime < 120) return;
+    if (widget._lastToggleTime && performance.now() - widget._lastToggleTime < 75) return;
     widget._lastToggleTime = performance.now();
-    this.isProblemCardMinimized = !this.isProblemCardMinimized;
-    widget.classList.toggle('minimized', this.isProblemCardMinimized);
-    if (icon) icon.textContent = this.isProblemCardMinimized ? '▸' : '▾';
+    const wasMin = widget.classList.contains('minimized');
+    if (!wasMin) {
+      const curW = parseFloat(widget.style.width) || Math.round(widget.getBoundingClientRect().width);
+      if (curW >= 240) widget._savedExpandedWidth = `${Math.round(curW)}px`;
+    }
+    const nextMin = !wasMin;
+    this.isProblemCardMinimized = nextMin;
+    widget.classList.toggle('minimized', nextMin);
+    if (!nextMin && widget._savedExpandedWidth) {
+      widget.style.width = widget._savedExpandedWidth;
+    }
+    if (icon) icon.textContent = nextMin ? '▸' : '▾';
     this.updateProblemCardPosition();
     this.syncProblemCardRectFromWidget();
-    this.showToast(this.isProblemCardMinimized ? '📖 문제 카드를 접었습니다.' : '📑 문제 카드를 다시 펼쳤습니다.');
+    this.showToast(nextMin ? '📖 문제 카드를 접었습니다.' : '📑 문제 카드를 다시 펼쳤습니다.');
     this.render();
   }
 
@@ -7279,8 +7324,18 @@ class GraphApp {
     cardWidgetEl._cardLaserState = state;
 
     const syncCanvasSize = () => {
-      const rect = bodyEl.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 2;
+      if (cardWidgetEl.classList.contains('minimized')) {
+        const fallbackW = Math.max(1, Math.round((laserCanvas.width || 520 * dpr) / dpr));
+        const fallbackH = Math.max(1, Math.round((laserCanvas.height || 360 * dpr) / dpr));
+        return { w: fallbackW, h: fallbackH, dpr };
+      }
+      const rect = bodyEl.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10) {
+        const fallbackW = Math.max(1, Math.round((laserCanvas.width || 520 * dpr) / dpr));
+        const fallbackH = Math.max(1, Math.round((laserCanvas.height || 360 * dpr) / dpr));
+        return { w: fallbackW, h: fallbackH, dpr };
+      }
       const w = Math.max(1, Math.round(rect.width));
       const h = Math.max(1, Math.round(rect.height));
       const targetW = Math.round(w * dpr);
@@ -7291,6 +7346,7 @@ class GraphApp {
       }
       return { w, h, dpr };
     };
+    cardWidgetEl._syncCardLaserSize = syncCanvasSize;
 
     const HOLD_MS = 1650;
     const FADE_MS = 750;
@@ -7408,13 +7464,21 @@ class GraphApp {
       return { nx, ny };
     };
 
-    laserBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    const handleLaserBtnToggle = (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      if (laserBtn._lastToggleTime && performance.now() - laserBtn._lastToggleTime < 75) return;
+      laserBtn._lastToggleTime = performance.now();
       state.active = !state.active;
       cardWidgetEl.classList.toggle('card-laser-active', state.active);
       laserBtn.classList.toggle('active', state.active);
       if (state.active) {
+        // 접혀 있는 상태에서 레이저 버튼을 켜면 자동으로 카드를 펼쳐서 즉시 필기 가능하도록 처리!
+        if (cardWidgetEl.classList.contains('minimized') && typeof cardWidgetEl._toggleCardMin === 'function') {
+          cardWidgetEl._toggleCardMin();
+        }
         syncCanvasSize();
       } else {
         if (state.rafId) {
@@ -7428,7 +7492,12 @@ class GraphApp {
         const ctx = laserCanvas.getContext('2d');
         if (ctx) ctx.clearRect(0, 0, laserCanvas.width, laserCanvas.height);
       }
+    };
+    laserBtn.addEventListener('pointerup', (e) => {
+      if (e.button && e.button !== 0) return;
+      handleLaserBtnToggle(e);
     });
+    laserBtn.addEventListener('click', handleLaserBtnToggle);
 
     laserCanvas.addEventListener('pointerdown', (e) => {
       if (!state.active) return;
@@ -8303,18 +8372,34 @@ class GraphApp {
       }
     };
 
+    el._savedExpandedWidth = `${Math.round(cardW)}px`;
     const toggleExtraGraphMin = () => {
-      if (el._lastToggleTime && performance.now() - el._lastToggleTime < 120) return;
+      if (el._lastToggleTime && performance.now() - el._lastToggleTime < 75) return;
       el._lastToggleTime = performance.now();
-      cardItem.isMin = !cardItem.isMin;
-      el.classList.toggle('minimized', cardItem.isMin);
+      const wasMin = el.classList.contains('minimized');
+      if (!wasMin) {
+        const curW = parseFloat(el.style.width) || Math.round(el.getBoundingClientRect().width);
+        if (curW >= 180) el._savedExpandedWidth = `${Math.round(curW)}px`;
+      }
+      const nextMin = !wasMin;
+      cardItem.isMin = nextMin;
+      el.classList.toggle('minimized', nextMin);
+      if (!nextMin) {
+        const restoredW = parseFloat(el._savedExpandedWidth) || cardW;
+        syncExtraSize(restoredW);
+        if (typeof el._syncCardLaserSize === 'function') el._syncCardLaserSize();
+      }
       const chev = el.querySelector('.card-fold-chevron');
-      if (chev) chev.textContent = cardItem.isMin ? '▸' : '▾';
+      if (chev) chev.textContent = nextMin ? '▸' : '▾';
     };
+    el._toggleCardMin = toggleExtraGraphMin;
 
-    // 롱프레스 쉴드
+    // 롱프레스 쉴드 (버튼 터치 시 click 이벤트 보장)
     el.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); return false; }, { capture: true });
-    el.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+    el.addEventListener('touchstart', (e) => {
+      if (e.target && e.target.closest('button, .card-btn, .card-fold-triangle-btn, .problem-card-actions')) return;
+      e.preventDefault();
+    }, { passive: false });
     el.addEventListener('dragstart', (e) => e.preventDefault());
     el.addEventListener('selectstart', (e) => e.preventDefault());
     ['MSHoldVisual', 'MSGestureHold'].forEach(evtName => {
@@ -8327,7 +8412,6 @@ class GraphApp {
       this.bringCardToFront(el);
       if (e.target.closest('.problem-card-resize-handle')) return;
       if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-        e.preventDefault();
         e.stopPropagation();
         return;
       }
@@ -8390,9 +8474,18 @@ class GraphApp {
     }
 
     el.querySelector('.btn-extra-restore').onclick = () => this.restoreLiveGraphFromCard(false, cardItem.graphSnapshot, cardItem.caseIdx);
-    el.querySelector('.btn-extra-min').onclick = () => {
-      toggleExtraGraphMin();
-    };
+    const btnExtraGraphMin = el.querySelector('.btn-extra-min');
+    if (btnExtraGraphMin) {
+      btnExtraGraphMin.addEventListener('pointerup', (e) => {
+        if (e.button && e.button !== 0) return;
+        e.stopPropagation();
+        toggleExtraGraphMin();
+      });
+      btnExtraGraphMin.onclick = (e) => {
+        if (e) e.stopPropagation();
+        toggleExtraGraphMin();
+      };
+    }
     el.querySelector('.btn-extra-close').onclick = () => {
       el.remove();
       this.extraGraphCards = this.extraGraphCards.filter(c => c !== cardItem);
@@ -8493,17 +8586,24 @@ class GraphApp {
       return null;
     }
 
-    const w = parseFloat(widget.style.width) || widget.getBoundingClientRect().width || 400;
+    const isMin = Boolean(this.isGraphCardMinimized || widget.classList.contains('minimized'));
+    const rawStyleW = parseFloat(widget.style.width);
+    if (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 200) {
+      widget._savedExpandedWidth = `${Math.round(rawStyleW)}px`;
+    }
+    const w = (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 200)
+      ? rawStyleW
+      : (parseFloat(widget._savedExpandedWidth) || (Number.isFinite(rawStyleW) && rawStyleW >= 200 ? rawStyleW : 0) || (!isMin ? widget.getBoundingClientRect().width : 400) || 400);
     const aspect = this.graphCardAspect || 0.85;
     const imgW = w;
     const imgH = Math.round(imgW * aspect);
     const h = imgH;
 
-    if (body && !this.isGraphCardMinimized) {
+    if (body && !isMin) {
       body.style.height = `${h}px`;
     }
 
-    if (gCanvas && !this.isGraphCardMinimized) {
+    if (gCanvas && !isMin) {
       const dpr = window.devicePixelRatio || 2;
       const targetW = Math.round(w * dpr);
       const targetH = Math.round(h * dpr);
@@ -8512,6 +8612,9 @@ class GraphApp {
         gCanvas.height = targetH;
       }
       this.renderGraphCardCanvas();
+    }
+    if (!isMin && typeof widget._syncCardLaserSize === 'function') {
+      widget._syncCardLaserSize();
     }
 
     const widgetRect = widget.getBoundingClientRect();
@@ -8737,6 +8840,7 @@ class GraphApp {
         return false;
       }, { capture: true });
       el.addEventListener('touchstart', (e) => {
+        if (e.target && e.target.closest('button, .card-btn, .card-fold-triangle-btn, .problem-card-actions, .ink-tool-btn, .ink-color-dot, .ink-size-stepper-btn, .ink-size-chip, input')) return;
         e.preventDefault();
       }, { passive: false });
       el.addEventListener('dragstart', (e) => e.preventDefault());
@@ -8752,14 +8856,25 @@ class GraphApp {
     this.attachCardLaserSystem(document.getElementById('problemCardWidget'));
 
     const togglePrimaryGraphMin = () => {
-      if (widget && widget._lastToggleTime && performance.now() - widget._lastToggleTime < 120) return;
-      if (widget) widget._lastToggleTime = performance.now();
-      this.isGraphCardMinimized = !this.isGraphCardMinimized;
-      if (widget) widget.classList.toggle('minimized', this.isGraphCardMinimized);
+      if (!widget) return;
+      if (widget._lastToggleTime && performance.now() - widget._lastToggleTime < 75) return;
+      widget._lastToggleTime = performance.now();
+      const wasMin = widget.classList.contains('minimized');
+      if (!wasMin) {
+        const curW = parseFloat(widget.style.width) || Math.round(widget.getBoundingClientRect().width);
+        if (curW >= 200) widget._savedExpandedWidth = `${Math.round(curW)}px`;
+      }
+      const nextMin = !wasMin;
+      this.isGraphCardMinimized = nextMin;
+      widget.classList.toggle('minimized', nextMin);
+      if (!nextMin && widget._savedExpandedWidth) {
+        widget.style.width = widget._savedExpandedWidth;
+      }
       const icon = document.getElementById('iconGraphCardToggle');
-      if (icon) icon.textContent = this.isGraphCardMinimized ? '▸' : '▾';
+      if (icon) icon.textContent = nextMin ? '▸' : '▾';
       this.syncGraphCardRectFromWidget();
     };
+    if (widget) widget._toggleCardMin = togglePrimaryGraphMin;
 
     // 🌟 그래프 보관 카드 제목 및 몸통 드래그 이동 전용 (삼각형 접기 원버튼과 완벽 분리!) 🌟
     if (widget) {
@@ -8772,7 +8887,6 @@ class GraphApp {
         this.bringCardToFront(widget);
         if (e.target.closest('.problem-card-resize-handle')) return;
         if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-          e.preventDefault();
           e.stopPropagation();
           return;
         }
@@ -8871,7 +8985,13 @@ class GraphApp {
       };
     }
     if (btnToggleMin) {
-      btnToggleMin.onclick = () => {
+      btnToggleMin.addEventListener('pointerup', (e) => {
+        if (e.button && e.button !== 0) return;
+        e.stopPropagation();
+        togglePrimaryGraphMin();
+      });
+      btnToggleMin.onclick = (e) => {
+        if (e) e.stopPropagation();
         togglePrimaryGraphMin();
       };
     }

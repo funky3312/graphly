@@ -3809,9 +3809,11 @@ body.theme-light .ink-size-btn.active .ink-size-circle {
   color: #ef4444;
 }
 
-/* 최소화(접기) 상태 */
-.problem-card-widget.minimized .problem-card-body {
-  display: none;
+/* 최소화(접기) 상태 (레이저가 켜진 상태에서도 접기 시 무조건 몸통/레이저 캔버스 숨김 보장!) */
+.problem-card-widget.minimized .problem-card-body,
+.problem-card-widget.minimized .card-laser-canvas {
+  display: none !important;
+  pointer-events: none !important;
 }
 
 .problem-card-widget.minimized {
@@ -6999,8 +7001,8 @@ body.theme-light .btn-card-laser.active {
   touch-action: none !important;
 }
 
-.problem-card-widget.card-laser-active .card-laser-canvas,
-.problem-card-widget.card-laser-active .problem-card-body {
+.problem-card-widget.card-laser-active:not(.minimized) .card-laser-canvas,
+.problem-card-widget.card-laser-active:not(.minimized) .problem-card-body {
   display: block !important;
   pointer-events: auto !important;
   cursor: none !important;
