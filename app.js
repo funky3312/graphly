@@ -17658,8 +17658,17 @@ class GraphApp {
       // 단, 펜슬 필기 중(isDrawingInk)일 때는 절대 패닝이 필기를 가로채지 못하도록 최우선 보호!
       if (!this.isDrawingInk && !this._isTemporaryStylusEraser) {
         if ((this.isPanning || this.isBoardPanning) && this._touchPanDeadzoneLocked && this._touchPanInitPos) {
+          // 🛡️ [1단계: 55ms 손날 착지 유예 시간(Grace Period)]:
+          // 손날이 처음 유리에 닿는 0~55ms 동안 살이 눌리며 중심점이 밀리는 현상을 원점에 그대로 흡수하여 덜컹거림을 원천 차단!
+          const useGrace = Boolean((e && e.isTrusted) || this._forceGracePeriodForTest);
+          if (useGrace && this._touchGestureStartTime && (Date.now() - this._touchGestureStartTime < 55)) {
+            this._touchPanInitPos = { x: pos.x, y: pos.y };
+            this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
+            this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
+            return;
+          }
           const dPan = Math.hypot(pos.x - this._touchPanInitPos.x, pos.y - this._touchPanInitPos.y);
-          if (dPan < 12) {
+          if (dPan < 15) {
             return;
           }
           this._touchPanDeadzoneLocked = false;
@@ -19043,8 +19052,7 @@ class GraphApp {
         !this.isPdfToGraphCropMode
       );
 
-      // 🛡️ [팜 리젝션: 애플펜슬 필기 중 + 펜 뗀 직후 450ms 연속 필기 보호 쿨다운]
-      // 글자의 획과 획 사이(0.02~0.45초)에 펜촉을 살짝 떼더라도, 화면에 닿아있는 손날이 절대 화면을 움직이지 못하게 잠금!
+      // 🛡️ [팜 리젝션 3대 엔진: ① 취소/펜진입 시 스냅샷 롤백, ② 55ms 유예시간, ③ 반경확대(width > 54) 및 손날2점 필터]
       const isPenRecentlyActive = () => {
         if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) && this._activeDrawingPointerType === 'pen') {
           return true;
@@ -19055,16 +19063,27 @@ class GraphApp {
         return false;
       };
 
+      const isPalmRadiusExpanded = (ev) => {
+        if (!ev || ev.pointerType !== 'touch') return false;
+        const w = typeof ev.width === 'number' ? ev.width : 0;
+        const h = typeof ev.height === 'number' ? ev.height : 0;
+        // 아이패드 일반 손가락 끝은 약 41.67px. 손날이 눌려 면적이 54px을 초과하면 즉시 손바닥으로 판정!
+        return (w > 54 || h > 54);
+      };
+
       this.canvas.addEventListener('pointerdown', (e) => {
         if (isClickableUI(e.target)) return;
         const nowT = Date.now();
         lastPointerDownTime = nowT;
 
-        // 1) 펜(pen) 또는 마우스(mouse) 입력: 최우선 순위로 즉시 필기 진입 & 모든 터치/이동 상태 강제 초기화!
+        // 1) 펜(pen) 또는 마우스(mouse) 입력: 최우선 순위로 즉시 필기 진입 & 직전 손날 터치로 인한 미세 이동 100% 롤백!
         if (e.pointerType === 'pen' || e.pointerType === 'mouse' || !e.pointerType) {
           e.preventDefault();
           if (e.pointerType === 'pen') {
             this._lastPenActiveTime = nowT;
+            if (this._touchCameraSnapshot && (nowT - this._touchCameraSnapshot.time < 550)) {
+              this._restoreTouchCameraSnapshot();
+            }
             if (this.canvas && this.canvas.setPointerCapture && e.pointerId !== undefined) {
               try { this.canvas.setPointerCapture(e.pointerId); } catch (err) { }
             }
@@ -19089,14 +19108,27 @@ class GraphApp {
         }
 
         // 2) 터치(touch) 입력:
-        // 펜슬 필기 중이거나 펜을 뗀 지 450ms 이내(연속 필기 중)에는 터치를 0.00ms 만에 완전 무시!
-        if (isPenRecentlyActive()) {
+        // 펜슬 필기 중이거나 펜을 뗀 지 600ms 이내, 또는 처음부터 넓은 손바닥 면적(> 54px)이면 즉시 차단!
+        if (isPenRecentlyActive() || isPalmRadiusExpanded(e)) {
+          if (isPalmRadiusExpanded(e)) {
+            if (this.activePointers) this.activePointers.clear();
+            this._pinchState = null;
+            this._pinchWasActiveInGesture = false;
+            this._touchPanDeadzoneLocked = false;
+            this.isPanning = false;
+            this.isBoardPanning = false;
+            this._restoreTouchCameraSnapshot();
+          }
           return;
         }
 
         if (this.activePointers) {
           for (const [k, v] of this.activePointers.entries()) {
             if (nowT - (v.time || 0) > 1200) this.activePointers.delete(k);
+          }
+          if (this.activePointers.size === 0) {
+            this._saveTouchCameraSnapshot();
+            this._touchGestureStartTime = nowT;
           }
           this.activePointers.set(e.pointerId, {
             id: e.pointerId,
@@ -19106,13 +19138,14 @@ class GraphApp {
             time: nowT
           });
 
-          // 손바닥 전체가 닿아 터치 포인트가 3개 이상 찍힌 경우: 즉시 취소하고 무시!
+          // 손바닥 전체가 닿아 터치 포인트가 3개 이상 찍힌 경우: 즉시 취소하고 원위치 롤백!
           if (this.activePointers.size >= 3) {
             this._pinchState = null;
             this._pinchWasActiveInGesture = false;
             this._touchPanDeadzoneLocked = false;
             this.isPanning = false;
             this.isBoardPanning = false;
+            this._restoreTouchCameraSnapshot();
             return;
           }
 
@@ -19122,12 +19155,13 @@ class GraphApp {
             this.isBoardPanning = false;
             const pts = Array.from(this.activePointers.values());
             const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-            // 필기 모드에서 손날 1개가 아주 가까운 2점(45px 미만)으로 갈라져 찍힌 경우 핀치나 이동으로 오판하지 않고 무시!
-            if (isWritingToolActive() && dist < 45) {
+            // 필기 모드에서 손날과 새끼손가락 마디가 동시에 닿은 경우(70px 미만): 두 손가락 핀치/이동으로 오판하지 않고 즉시 무시!
+            if (isWritingToolActive() && dist < 70) {
+              this._restoreTouchCameraSnapshot();
               return;
             }
             this._pinchWasActiveInGesture = true;
-            this._startCanvasTwoFingerPinch(pts[0], pts[1]);
+            this._startCanvasTwoFingerPinch(pts[0], pts[1], Boolean(e.isTrusted || this._forceGracePeriodForTest));
             return;
           }
 
@@ -19151,6 +19185,9 @@ class GraphApp {
         if (e.pointerType === 'pen') {
           this._lastPenActiveTime = nowT;
           this._touchPanDeadzoneLocked = false;
+          if (this._touchCameraSnapshot && (nowT - this._touchCameraSnapshot.time < 550)) {
+            this._restoreTouchCameraSnapshot();
+          }
           const isPenPressing = (typeof e.pressure === 'number' && e.pressure > 0.005) || (typeof e.buttons === 'number' && e.buttons > 0);
           if (
             isPenPressing &&
@@ -19164,6 +19201,7 @@ class GraphApp {
           ) {
             if (this.activePointers) this.activePointers.clear();
             this._pinchState = null;
+            this._pinchWasActiveInGesture = false;
             this.isPanning = false;
             this.isBoardPanning = false;
             this.isPointerDownOnCanvas = true;
@@ -19183,13 +19221,15 @@ class GraphApp {
 
         // 터치(touch) 이동 처리
         if (e.pointerType === 'touch') {
-          if (isPenRecentlyActive()) {
+          // 이동 도중 손날이 눌려 면적이 54px 초과로 넓어지거나 펜이 활성화된 경우 즉시 취소 및 원위치 롤백!
+          if (isPenRecentlyActive() || isPalmRadiusExpanded(e)) {
             if (this.activePointers) this.activePointers.clear();
             this._pinchState = null;
             this._pinchWasActiveInGesture = false;
             this._touchPanDeadzoneLocked = false;
             this.isPanning = false;
             this.isBoardPanning = false;
+            this._restoreTouchCameraSnapshot();
             return;
           }
           if (this.activePointers && this.activePointers.has(e.pointerId)) {
@@ -19223,6 +19263,19 @@ class GraphApp {
           this._lastPenActiveTime = nowT;
         }
 
+        // 🛡️ [핵심 1: iPadOS가 뒤늦게 손날(Palm)임을 인식해 pointercancel을 보낸 경우 즉시 초기 카메라 좌표로 무애니메이션 롤백!]
+        if (e.type === 'pointercancel' && e.pointerType === 'touch') {
+          if (this.activePointers) this.activePointers.clear();
+          this._pinchState = null;
+          this._pinchWasActiveInGesture = false;
+          this._touchPanDeadzoneLocked = false;
+          this._activePanPointerId = null;
+          this.isPanning = false;
+          this.isBoardPanning = false;
+          this._restoreTouchCameraSnapshot();
+          return;
+        }
+
         // 1) 오른손 펜슬 필기 도중 다른 포인터(손바닥/손가락)가 떨어지거나 pointercancel 될 때는 펜슬 획을 절대 건드리지 않고 즉시 종료!
         if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
           if (e.pointerId !== undefined && e.pointerId !== this._activeDrawingPointerId) {
@@ -19237,7 +19290,7 @@ class GraphApp {
           }
         }
 
-        // 2) 터치(touch) 포인터 종료 시 정리
+        // 2) 터치(touch) 포인터 정상 종료(pointerup) 시 정리
         if (e.pointerType === 'touch') {
           const wasInMap = this.activePointers ? this.activePointers.has(e.pointerId) : false;
           const hadPinch = Boolean(this._pinchState || this._pinchWasActiveInGesture);
@@ -19251,6 +19304,7 @@ class GraphApp {
             if (this.activePointers.size === 0) {
               this._pinchWasActiveInGesture = false;
               this._activePanPointerId = null;
+              this._touchCameraSnapshot = null;
             }
           }
           if (hadPinch || (!wasInMap && !wasActivePan)) {
@@ -19318,9 +19372,13 @@ class GraphApp {
       return false;
     };
     this.canvas.addEventListener('touchstart', (e) => {
+      const nowT = Date.now();
       const hasStylus = e.touches && Array.from(e.touches).some(t => t.touchType === 'stylus');
       if (hasStylus) {
-        this._lastPenActiveTime = Date.now();
+        this._lastPenActiveTime = nowT;
+        if (this._touchCameraSnapshot && (nowT - this._touchCameraSnapshot.time < 550)) {
+          this._restoreTouchCameraSnapshot();
+        }
         if (this.activePointers) this.activePointers.clear();
         this._pinchState = null;
         this._pinchWasActiveInGesture = false;
@@ -19339,23 +19397,35 @@ class GraphApp {
         this._pinchWasActiveInGesture = false;
         this.isPanning = false;
         this.isBoardPanning = false;
+        this._restoreTouchCameraSnapshot();
         return;
       }
       if (e.touches && e.touches.length === 2 && !this._pinchState) {
         const t0 = e.touches[0];
         const t1 = e.touches[1];
         const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
-        if (dist >= 45) {
+        const minDist = (this.isInkMode && this.activeInkTool !== 'select') ? 70 : 45;
+        if (dist >= minDist) {
           this._pinchWasActiveInGesture = true;
           this.isPanning = false;
           this.isBoardPanning = false;
           this._startCanvasTwoFingerPinch(
             { id: 't0', x: t0.clientX, y: t0.clientY },
-            { id: 't1', x: t1.clientX, y: t1.clientY }
+            { id: 't1', x: t1.clientX, y: t1.clientY },
+            Boolean(e.isTrusted || this._forceGracePeriodForTest)
           );
         }
       }
     }, { passive: false });
+    this.canvas.addEventListener('touchcancel', () => {
+      if (this.activePointers) this.activePointers.clear();
+      this._pinchState = null;
+      this._pinchWasActiveInGesture = false;
+      this._touchPanDeadzoneLocked = false;
+      this.isPanning = false;
+      this.isBoardPanning = false;
+      this._restoreTouchCameraSnapshot();
+    }, { passive: true });
 
     this.canvas.addEventListener('touchmove', (e) => {
       const hasStylus = e.touches && Array.from(e.touches).some(t => t.touchType === 'stylus');
@@ -20651,7 +20721,48 @@ class GraphApp {
     return clamped;
   }
 
-  _startCanvasTwoFingerPinch(p1, p2) {
+  _saveTouchCameraSnapshot() {
+    this._touchCameraSnapshot = {
+      time: Date.now(),
+      panX: this.panX || 0,
+      panY: this.panY || 0,
+      boardPanX: this.boardPanX || 0,
+      boardPanY: this.boardPanY || 0,
+      zoomLevel: this.zoomLevel || 1.0,
+      boardZoom: this.boardZoom || 1.0,
+      boardZoomOffsetX: this.boardZoomOffsetX || 0,
+      boardZoomOffsetY: this.boardZoomOffsetY || 0
+    };
+  }
+
+  _restoreTouchCameraSnapshot() {
+    const snap = this._touchCameraSnapshot;
+    if (!snap) return;
+    const changed = (
+      this.panX !== snap.panX ||
+      this.panY !== snap.panY ||
+      this.boardPanX !== snap.boardPanX ||
+      this.boardPanY !== snap.boardPanY ||
+      this.zoomLevel !== snap.zoomLevel ||
+      this.boardZoom !== snap.boardZoom
+    );
+    this.panX = snap.panX;
+    this.panY = snap.panY;
+    this.boardPanX = snap.boardPanX;
+    this.boardPanY = snap.boardPanY;
+    this.zoomLevel = snap.zoomLevel;
+    this.boardZoom = snap.boardZoom;
+    this.boardZoomOffsetX = snap.boardZoomOffsetX;
+    this.boardZoomOffsetY = snap.boardZoomOffsetY;
+    this._touchCameraSnapshot = null;
+    if (changed) {
+      this.updateProblemCardPosition();
+      this._inkBakeDirty = true;
+      this.render();
+    }
+  }
+
+  _startCanvasTwoFingerPinch(p1, p2, useGrace = false) {
     // 🛡️ 애플펜슬로 필기 중일 때는 어떤 경우에도 획을 취소(pop)하거나 핀치를 시작하지 않음!
     if (this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) {
       return;
@@ -20668,7 +20779,9 @@ class GraphApp {
     this._pinchState = {
       id1: p1.id,
       id2: p2.id,
-      unlocked: !isWritingTool,
+      startTime: Date.now(),
+      useGrace: Boolean(useGrace),
+      unlocked: !isWritingTool && !useGrace,
       initX1: p1.x,
       initY1: p1.y,
       initX2: p2.x,
@@ -20704,15 +20817,22 @@ class GraphApp {
       (p1.id !== undefined && this._pinchState.id1 !== undefined && p1.id !== this._pinchState.id1) ||
       (p2.id !== undefined && this._pinchState.id2 !== undefined && p2.id !== this._pinchState.id2)
     ) {
-      this._startCanvasTwoFingerPinch(p1, p2);
+      this._startCanvasTwoFingerPinch(p1, p2, this._pinchState.useGrace);
       return;
     }
 
-    // 🛡️ [필기 모드 손바닥 덜컹거림 방지 데드존(Deadzone Unlock) & 엄지 고정 줌아웃 지원]:
-    // 1) 두 손가락 화면 이동(Pan): 두 손가락이 함께(m1 >= 5, m2 >= 5) 10px 이상 이동할 때 언락!
-    // 2) 두 손가락 줌인/줌아웃(Pinch): 엄지를 축으로 고정하고 검지만 오므리는 경우가 많으므로, 두 손가락 간격 변화(distChange >= 10px)가 감지되면 즉시 언락!
-    // 언락되는 그 순간의 좌표를 0점(원점)으로 재설정하므로 손바닥을 댈 때의 덜컹거림은 0px로 완벽 차단됩니다!
+    // 🛡️ [필기 모드 손바닥 덜컹거림 방지: 55ms 유예 시간(Grace Period) + 데드존 언락]:
     if (!this._pinchState.unlocked) {
+      if (this._pinchState.useGrace && this._pinchState.startTime && (Date.now() - this._pinchState.startTime < 55)) {
+        this._pinchState.initX1 = p1.x;
+        this._pinchState.initY1 = p1.y;
+        this._pinchState.initX2 = p2.x;
+        this._pinchState.initY2 = p2.y;
+        this._pinchState.initMidX = midX;
+        this._pinchState.initMidY = midY;
+        this._pinchState.initDist = dist;
+        return;
+      }
       const m1 = Math.hypot(p1.x - this._pinchState.initX1, p1.y - this._pinchState.initY1);
       const m2 = Math.hypot(p2.x - this._pinchState.initX2, p2.y - this._pinchState.initY2);
       const moveFromInit = Math.hypot(midX - this._pinchState.initMidX, midY - this._pinchState.initMidY);
