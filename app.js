@@ -16790,15 +16790,18 @@ class GraphApp {
       }
       const pos = getPos(e);
       const isTouch = Boolean((e.touches && e.touches.length > 0) || e.pointerType === 'touch' || e.pointerType === 'pen');
+      // 🛡️ [아이패드 손날(touch) vs 펜슬/마우스(pen/mouse) 완벽 분리]:
+      // 수선(📍), 텍스트(🔤), 영역캡처(📸) 등 정밀 도구 모드에서는 손날(e.pointerType === 'touch')이 닿아도
+      // 절대 모드가 풀리거나 오작동하지 않고 오직 펜슬(pen)과 마우스(mouse)로만 작동합니다!
+      const isFingerOrPalmTouch = Boolean(e && (e.pointerType === 'touch' || (e.touches && e.touches.length > 0 && !e.pointerType)));
 
       // 🌟 [필기 모드 가상 스타일러스 펜]: 터치/클릭 즉시 펜 위치 동기화
-      if (this.isInkMode) {
+      if (this.isInkMode && !isFingerOrPalmTouch) {
         this.updateStylusPenPosition(pos.x, pos.y, e);
       }
 
-      // 🌟 0순위: [📍 교재 보조 수선 도구 모드] 🌟
-      // 사용자가 📍 버튼을 눌러 수선 모드를 켰을 때는 펜이나 핸들러가 가로채지 않고 수선 긋기/삭제가 100% 최우선 작동!
-      if (this.activeEditingLabel) {
+      // 🌟 0순위: [📍 교재 보조 수선 도구 모드 (손날 100% 차단 + 터치&슬라이드 조준 후 pointerup 발사)] 🌟
+      if (this.activeEditingLabel && !isFingerOrPalmTouch) {
         const inputRect = this.dropLineInputEl ? this.dropLineInputEl.getBoundingClientRect() : null;
         const eX = e.touches ? e.touches[0].clientX : e.clientX;
         const eY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -16806,10 +16809,11 @@ class GraphApp {
           this.commitEditingDropLineLabel();
         }
       }
-      if (this.isDropLineMode) {
+      if (this.isDropLineMode && !isFingerOrPalmTouch) {
         // 1. 가위 ✂️ 클릭 -> 해당 수선 1초 컷 삭제
         const hitScissors = this.hitTestScissors(pos);
         if (hitScissors) {
+          this._isAimingDropLine = false;
           this.removeDropLine(hitScissors.id, hitScissors.which);
           return;
         }
@@ -16817,24 +16821,23 @@ class GraphApp {
         // 2. 축 좌표 라벨 클릭 -> 인라인 수식 편집
         const hitLabel = this.hitTestDropLineLabel(pos);
         if (hitLabel) {
+          this._isAimingDropLine = false;
           this.startEditingDropLineLabel(hitLabel.id, hitLabel.which, hitLabel.screenPos, hitLabel.currentText);
           return;
         }
 
-        // 3. 특이점 또는 일반 곡선 위의 임의 점 클릭 -> 1클릭 x·y 수선 생성!
-        const target = this.findNearestDropLineTarget(pos, isTouch ? 30 : 22);
-        if (target) {
-          this.addDropLineAtPoint(target.x, target.y, target);
-          return; // 수선 모드 유지! 다음 점들을 연속으로 계속 찍을 수 있음
-        } else {
-          // 4. 특이점/곡선/가위가 아닌 빈 바탕화면 클릭 -> 수선 그리기 모드 즉시 자동 해제!
-          this.toggleDropLineMode(false);
-          return;
-        }
+        // 3. 🌟 [아이패드 무호버 환경 & PC 겸용 '조준(Aim) ➔ 뗄 때(pointerup) 생성' 구조]:
+        // 펜이 닿는 순간 바로 찍거나 모드를 해제하지 않고, 펜을 대고 곡선을 쓱 따라가며
+        // 극대·극소·변곡점·y절편·교점 라벨을 눈으로 보고 원하는 지점에서 펜을 뗄 때(pointerup) 수선을 생성합니다!
+        this._isAimingDropLine = true;
+        this._dropLineAimStartPos = { x: pos.x, y: pos.y };
+        this.dropLineHoverCandidate = this.findNearestDropLineTarget(pos, isTouch ? 36 : 24);
+        this.render();
+        return;
       }
 
-      // 🌟 0.5순위: [🔤 캔버스 자유 수식 텍스트 라벨 모드] 🌟
-      if (this.activeEditingTextId) {
+      // 🌟 0.5순위: [🔤 캔버스 자유 수식 텍스트 라벨 모드 (손날 100% 차단)] 🌟
+      if (this.activeEditingTextId && !isFingerOrPalmTouch) {
         const inputRect = this.canvasTextInputEl ? this.canvasTextInputEl.getBoundingClientRect() : null;
         const eX = e.touches ? e.touches[0].clientX : e.clientX;
         const eY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -16843,7 +16846,7 @@ class GraphApp {
         }
       }
       // 🌟 [✂️ PDF 전체화면 판서 모드 ➔ 문제 영역 스샷 후 그래프 모드 진입 드래그 시작] 🌟
-      if (this.isPdfToGraphCropMode) {
+      if (this.isPdfToGraphCropMode && !isFingerOrPalmTouch) {
         if (e.preventDefault) e.preventDefault();
         if (e.stopPropagation) e.stopPropagation();
         this.isPdfToGraphCropDragging = true;
@@ -16859,7 +16862,7 @@ class GraphApp {
         return;
       }
       // 🌟 [📸 실시간 그래프 영역 스샷 드래그 시작] 🌟
-      if (this.isGraphSnapMode) {
+      if (this.isGraphSnapMode && !isFingerOrPalmTouch) {
         if (e.preventDefault) e.preventDefault();
         if (e.stopPropagation) e.stopPropagation();
         this.isGraphSnapDragging = true;
@@ -16876,7 +16879,7 @@ class GraphApp {
       }
 
       // 🌟 [🔤 캔버스 자유 수식 텍스트 라벨: 클릭, 더블클릭 수정, ✕ 삭제, 드래그 이동 최우선 처리] 🌟
-      if (!this.isGraphCovered && this.activeInkTool !== 'eraser' && this.activeInkTool !== 'lasso') {
+      if (!this.isGraphCovered && this.activeInkTool !== 'eraser' && this.activeInkTool !== 'lasso' && !isFingerOrPalmTouch) {
         const hitText = this.hitTestTextLabel(pos);
         if (hitText) {
           if (e.preventDefault) e.preventDefault();
@@ -16915,7 +16918,7 @@ class GraphApp {
         }
       }
 
-      if (this.isTextToolMode) {
+      if (this.isTextToolMode && !isFingerOrPalmTouch) {
         if (e.preventDefault) e.preventDefault();
         if (e.stopPropagation) e.stopPropagation();
         const m = this.screenToMath(pos.x, pos.y);
@@ -16973,12 +16976,13 @@ class GraphApp {
       // 꾹 누름(스타일러스 롱프레스 시 발생하는 우클릭 판정)이 필기를 가로채지 않도록 엄격 차단!
       const isStylusEraser = this.isStylusEraserEvent(e);
       const isWritingTool = (this.isInkMode && this.activeInkTool !== 'select');
+      const isPrecisionTool = Boolean(this.isDropLineMode || this.isTextToolMode || this.isGraphSnapMode || this.isPdfToGraphCropMode);
       const isPenLongPress = (e.pointerType === 'pen' && e.button === 2);
 
-      // 🌟 [아이패드/태블릿 왼손 손가락 이동·줌 & 오른손 펜슬 필기 완벽 분리]:
-      // 필기 도구(pen/highlighter/eraser/lasso)가 켜져 있을 때 손가락(e.pointerType === 'touch')이 닿으면
-      // 절대 필기되지 않고 즉시 1손가락 화면 이동(Pan) 발동! (2손가락은 즉시 핀치 줌으로 작동)
-      const isFingerTouchInWritingTool = Boolean(isWritingTool && e && e.pointerType === 'touch');
+      // 🌟 [아이패드/태블릿 왼손 손가락 이동·줌 & 오른손 펜슬 필기/정밀도구 완벽 분리]:
+      // 필기 도구 또는 보조수선·텍스트·캡처 도구가 켜져 있을 때 손가락/손날(e.pointerType === 'touch')이 닿으면
+      // 절대 도구가 오작동하거나 풀리지 않고 12px 손날 무진동 데드존을 거쳐 1손가락 화면 이동으로만 작동!
+      const isFingerTouchInWritingTool = Boolean((isWritingTool || isPrecisionTool) && e && e.pointerType === 'touch');
 
       // 🌟 [대표님 킬러 기획: 스페이스바+드래그, 마우스 휠 클릭, 또는 태블릿 손가락 터치 시 펜 모드에서도 즉시 화면/칠판 밀기 발동!]
       const isForceBoardPan = Boolean(this.isSpacePressed || e.button === 1 || isFingerTouchInWritingTool);
@@ -18755,14 +18759,15 @@ class GraphApp {
           this.requestRender();
         }
 
-        // [📍 교재 보조 수선 모드: 특이점 및 일반 곡선 자석 스냅 타겟 탐색]
-        if (this.isDropLineMode) {
-          const cand = this.findNearestDropLineTarget(pos, 22);
+        // [📍 교재 보조 수선 모드: 특이점 및 일반 곡선 자석 스냅 타겟 탐색 (손날 touch 제외)]
+        if (this.isDropLineMode && (!e || e.pointerType !== 'touch')) {
+          const snapRadius = (this._isAimingDropLine || (e && e.pointerType === 'pen')) ? 36 : 24;
+          const cand = this.findNearestDropLineTarget(pos, snapRadius);
           if (cand !== this.dropLineHoverCandidate) {
             this.dropLineHoverCandidate = cand;
             this.requestRender();
           }
-        } else if (this.dropLineHoverCandidate) {
+        } else if (!this.isDropLineMode && this.dropLineHoverCandidate) {
           this.dropLineHoverCandidate = null;
           this.requestRender();
         }
@@ -18827,6 +18832,38 @@ class GraphApp {
     };
 
     const handleUp = (e) => {
+      // 🌟 [📍 교재 보조 수선 모드: 조준 후 펜/마우스를 뗄 때(pointerup) 수선 생성!] 🌟
+      if (this.isDropLineMode && this._isAimingDropLine) {
+        if (e && e.pointerType === 'touch') {
+          return;
+        }
+        this._isAimingDropLine = false;
+        const upPos = getPos(e);
+        const aimStart = this._dropLineAimStartPos || upPos;
+        const moveDist = Math.hypot(upPos.x - aimStart.x, upPos.y - aimStart.y);
+        this._dropLineAimStartPos = null;
+        const isPen = Boolean(e && e.pointerType === 'pen');
+        const target = this.dropLineHoverCandidate || this.findNearestDropLineTarget(upPos, isPen ? 36 : 24);
+        if (target) {
+          this.addDropLineAtPoint(target.x, target.y, target);
+          if (isPen) {
+            this.dropLineHoverCandidate = null;
+            this.render();
+          }
+          return;
+        } else {
+          // 곡선 밖 빈 공간에서 뗀 경우:
+          // - 펜이나 마우스로 빈 공간을 드래그 없이 제자리에서 '툭' 친 경우(moveDist < 8px)에만 수선 모드 해제!
+          // - 조준을 위해 드래그하다가 빈 공간에서 뗀 경우(moveDist >= 8px)에는 수선만 안 찍고 모드는 그대로 유지!
+          if (moveDist < 8) {
+            this.toggleDropLineMode(false);
+          } else {
+            this.dropLineHoverCandidate = null;
+            this.render();
+          }
+          return;
+        }
+      }
       if (this.isPdfToGraphCropDragging && this.pdfToGraphCropStart) {
         this.isPdfToGraphCropDragging = false;
         const dragBox = document.getElementById('graphSnapDragBox');
@@ -20862,14 +20899,46 @@ class GraphApp {
       zoomLevel: this.zoomLevel || 1.0,
       boardZoom: this.boardZoom || 1.0,
       boardZoomOffsetX: this.boardZoomOffsetX || 0,
-      boardZoomOffsetY: this.boardZoomOffsetY || 0
+      boardZoomOffsetY: this.boardZoomOffsetY || 0,
+      isCurveSelected: Boolean(this.isCurveSelected),
+      selectedHandleIdx: this.selectedHandleIdx,
+      activeGraphIdx: this.activeGraphIdx,
+      activeHandles: (this.activeGraph && this.activeGraph.handles)
+        ? this.activeGraph.handles.map(h => ({ ...h }))
+        : null,
+      activeFreezeOffset: (this.activeGraph && this.activeGraph.freezeOffset)
+        ? { ...this.activeGraph.freezeOffset }
+        : null
     };
   }
 
   _restoreTouchCameraSnapshot() {
     const snap = this._touchCameraSnapshot;
     if (!snap) return;
+    let curveRestored = false;
+    if ((this.draggedHandleIdx !== null || this.isDraggingCurve) && snap.activeHandles && this.graphs && this.graphs[snap.activeGraphIdx]) {
+      const g = this.graphs[snap.activeGraphIdx];
+      if (g.handles && g.handles.length === snap.activeHandles.length) {
+        g.handles.forEach((h, i) => {
+          h.x = snap.activeHandles[i].x;
+          h.y = snap.activeHandles[i].y;
+        });
+        curveRestored = true;
+      }
+      if (snap.activeFreezeOffset && g.freezeOffset) {
+        g.freezeOffset.x = snap.activeFreezeOffset.x;
+        g.freezeOffset.y = snap.activeFreezeOffset.y;
+        curveRestored = true;
+      }
+    }
+    this.draggedHandleIdx = null;
+    this.isDraggingCurve = false;
+    this._curveDragEligible = false;
+    this.isCurveSelected = snap.isCurveSelected;
+    this.selectedHandleIdx = snap.selectedHandleIdx;
+
     const changed = (
+      curveRestored ||
       this.panX !== snap.panX ||
       this.panY !== snap.panY ||
       this.boardPanX !== snap.boardPanX ||
