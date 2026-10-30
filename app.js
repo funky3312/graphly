@@ -7547,18 +7547,18 @@ class GraphApp {
         const rw = Math.max(1, rect.width);
         const rh = Math.max(1, rect.height);
         const pxDist = last ? Math.hypot((pos.nx - last.x) * rw, (pos.ny - last.y) * rh) : 999;
-        if (pxDist >= 2.0) {
+        if (pxDist >= 1.2) {
           let sx = pos.nx;
           let sy = pos.ny;
-          if (pts.length >= 2 && pxDist < 18) {
+          if (pts.length >= 2 && pxDist < 14) {
             const p1 = pts[pts.length - 1];
             const p2 = pts[pts.length - 2];
-            sx = p2.x * 0.12 + p1.x * 0.33 + pos.nx * 0.55;
-            sy = p2.y * 0.12 + p1.y * 0.33 + pos.ny * 0.55;
-          } else if (pts.length === 1 && pxDist < 18) {
+            sx = p2.x * 0.08 + p1.x * 0.24 + pos.nx * 0.68;
+            sy = p2.y * 0.08 + p1.y * 0.24 + pos.ny * 0.68;
+          } else if (pts.length === 1 && pxDist < 14) {
             const p1 = pts[0];
-            sx = p1.x * 0.28 + pos.nx * 0.72;
-            sy = p1.y * 0.28 + pos.ny * 0.72;
+            sx = p1.x * 0.20 + pos.nx * 0.80;
+            sy = p1.y * 0.20 + pos.ny * 0.80;
           }
           pts.push({ x: sx, y: sy, t: now });
         }
@@ -7568,8 +7568,19 @@ class GraphApp {
 
     const finishLaserStroke = (e) => {
       if (!state.isDrawing) return;
-      state.isDrawing = false;
       const now = performance.now();
+      if (e && e.clientX !== undefined && state.currentStroke && state.currentStroke.points && state.currentStroke.points.length >= 1) {
+        const endPos = getNormPos(e);
+        const pts = state.currentStroke.points;
+        const last = pts[pts.length - 1];
+        const rect = bodyEl.getBoundingClientRect();
+        const rw = Math.max(1, rect.width);
+        const rh = Math.max(1, rect.height);
+        if (last && Math.hypot((endPos.nx - last.x) * rw, (endPos.ny - last.y) * rh) >= 0.8) {
+          pts.push({ x: endPos.nx, y: endPos.ny, t: now });
+        }
+      }
+      state.isDrawing = false;
       state.strokes.forEach(st => {
         st.finished = true;
         st.finishedAt = now;
@@ -18114,24 +18125,7 @@ class GraphApp {
             const lastRaw = this._lastRawInkScreenPos;
             if (lastRaw) {
               const rawDist = Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y);
-              if (rawDist < 2.4) continue;
-
-              // 🛡️ [역주행 점프 컷오프 (Monotonic Forward Guard)]:
-              // 원을 그리며 전진하는 도중 45px 이내에서 갑자기 95도 이상 뒤로 튀는 좌표(dot < -0.08)는
-              // 하드웨어/브라우저의 지연 중복 패킷이므로 즉시 폐기하여 두 줄 겹침(계단 마디)을 0%로 박멸!
-              if (this._prevRawInkScreenPos && rawDist < 45) {
-                const vxPrev = lastRaw.x - this._prevRawInkScreenPos.x;
-                const vyPrev = lastRaw.y - this._prevRawInkScreenPos.y;
-                const vxNew = pPos.x - lastRaw.x;
-                const vyNew = pPos.y - lastRaw.y;
-                const lenPrev = Math.hypot(vxPrev, vyPrev);
-                if (lenPrev > 0.5) {
-                  const cosAngle = (vxPrev * vxNew + vyPrev * vyNew) / (lenPrev * rawDist);
-                  if (cosAngle < -0.08) {
-                    continue;
-                  }
-                }
-              }
+              if (rawDist < 1.4) continue;
             }
             this._prevRawInkScreenPos = lastRaw ? { x: lastRaw.x, y: lastRaw.y } : { x: pPos.x, y: pPos.y };
             this._lastRawInkScreenPos = { x: pPos.x, y: pPos.y };
@@ -18994,11 +18988,15 @@ class GraphApp {
           this._onInkHoldTriggered();
         }
 
-        // 일반 필기 마감 시 마지막 펜 끝 좌표를 매끄럽게 마무리
-        if (!this._inkHoldDetected && this.currentInkStroke && !this.currentInkStroke.isShape && this._lastRawInkScreenPos && this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 2) {
+        // 일반 필기 마감 시 마지막 펜 끝 좌표를 매끄럽게 마무리 (짧은 획 L===1 포함 100% 마감!)
+        const upPos = getPos(e.touches ? (e.changedTouches ? e.changedTouches[0] : e.touches[0]) : e);
+        if (upPos && Number.isFinite(upPos.x) && Number.isFinite(upPos.y)) {
+          this._lastRawInkScreenPos = { x: upPos.x, y: upPos.y };
+        }
+        if (!this._inkHoldDetected && this.currentInkStroke && !this.currentInkStroke.isShape && this._lastRawInkScreenPos && this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
           const lastSmoothed = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
           const rawEnd = this._lastRawInkScreenPos;
-          if (Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y) >= 1.5) {
+          if (Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y) >= 0.8) {
             const endX = this.currentInkStroke.isHighlighter ? rawEnd.x : (lastSmoothed.x * 0.20 + rawEnd.x * 0.80);
             const endY = this.currentInkStroke.isHighlighter ? rawEnd.y : (lastSmoothed.y * 0.20 + rawEnd.y * 0.80);
             const p = this._lastPressure || 0.5;
