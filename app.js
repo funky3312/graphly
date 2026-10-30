@@ -6848,11 +6848,21 @@ class GraphApp {
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       el.classList.add('is-dragging-card');
     });
+    el._cancelCardDrag = () => {
+      isDragging = false;
+      dragMoved = false;
+      el.classList.remove('is-dragging-card');
+    };
     window.addEventListener('pointermove', (e) => {
       if (!isDragging) return;
+      if (e.pointerType === 'mouse' && typeof e.buttons === 'number' && e.buttons === 0) {
+        el._cancelCardDrag();
+        return;
+      }
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
-      if (!dragMoved && Math.hypot(dx, dy) > 4) {
+      if (!dragMoved) {
+        if (Math.hypot(dx, dy) <= 5) return;
         dragMoved = true;
       }
       cardItem.baseX = Math.round(initX + dx);
@@ -7275,11 +7285,21 @@ class GraphApp {
         widget.classList.add('is-dragging-card');
       });
 
+      widget._cancelCardDrag = () => {
+        isDragging = false;
+        dragMoved = false;
+        widget.classList.remove('is-dragging-card');
+      };
       window.addEventListener('pointermove', (e) => {
         if (!isDragging) return;
+        if (e.pointerType === 'mouse' && typeof e.buttons === 'number' && e.buttons === 0) {
+          widget._cancelCardDrag();
+          return;
+        }
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
-        if (!dragMoved && Math.hypot(dx, dy) > 4) {
+        if (!dragMoved) {
+          if (Math.hypot(dx, dy) <= 5) return;
           dragMoved = true;
         }
         this.problemCardBaseX = Math.round(initialBaseX + dx);
@@ -7542,6 +7562,10 @@ class GraphApp {
 
   dockCardToLeftStack(cardEl) {
     if (!cardEl) return;
+    // 0. 진행 중인 드래그 상태를 즉시 강제 종료 (더블클릭 후 마우스를 따라다니는 현상 100% 원천 차단!)
+    if (typeof cardEl._cancelCardDrag === 'function') {
+      cardEl._cancelCardDrag();
+    }
     // 1. 펼쳐져 있으면 즉시 확 접기(minimized)
     if (!cardEl.classList.contains('minimized') && typeof cardEl._toggleCardMin === 'function') {
       cardEl._lastToggleTime = 0;
@@ -7585,8 +7609,8 @@ class GraphApp {
 
       if (dt > 15 && dt <= 340 && dist <= 28) {
         cardEl._lastTapUpTime = 0;
-        e.preventDefault();
-        e.stopPropagation();
+        // ⚠️ 주의: 여기서 e.stopPropagation()을 호출하면 window의 pointerup(stopDrag)이 못 받아서
+        // isDragging이 true로 남아 마우스를 따라다니게 됨! 따라서 절대 stopPropagation 하지 않고 _cancelCardDrag로 즉시 해제!
         this.dockCardToLeftStack(cardEl);
       } else {
         cardEl._lastTapUpTime = now;
@@ -7600,7 +7624,6 @@ class GraphApp {
       if (cardEl.classList.contains('card-laser-active')) return;
       if (shouldIgnoreTarget(e.target)) return;
       e.preventDefault();
-      e.stopPropagation();
       this.dockCardToLeftStack(cardEl);
     });
   }
@@ -8791,11 +8814,21 @@ class GraphApp {
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       el.classList.add('is-dragging-card');
     });
+    el._cancelCardDrag = () => {
+      isDragging = false;
+      dragMoved = false;
+      el.classList.remove('is-dragging-card');
+    };
     window.addEventListener('pointermove', (e) => {
       if (!isDragging) return;
+      if (e.pointerType === 'mouse' && typeof e.buttons === 'number' && e.buttons === 0) {
+        el._cancelCardDrag();
+        return;
+      }
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
-      if (!dragMoved && Math.hypot(dx, dy) > 4) {
+      if (!dragMoved) {
+        if (Math.hypot(dx, dy) <= 5) return;
         dragMoved = true;
       }
       cardItem.baseX = Math.round(initX + dx);
@@ -9282,11 +9315,21 @@ class GraphApp {
         widget.classList.add('is-dragging-card');
       });
 
+      widget._cancelCardDrag = () => {
+        isDragging = false;
+        dragMoved = false;
+        widget.classList.remove('is-dragging-card');
+      };
       window.addEventListener('pointermove', (e) => {
         if (!isDragging) return;
+        if (e.pointerType === 'mouse' && typeof e.buttons === 'number' && e.buttons === 0) {
+          widget._cancelCardDrag();
+          return;
+        }
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
-        if (!dragMoved && Math.hypot(dx, dy) > 4) {
+        if (!dragMoved) {
+          if (Math.hypot(dx, dy) <= 5) return;
           dragMoved = true;
         }
         this.graphCardBaseX = Math.round(initialBaseX + dx);
