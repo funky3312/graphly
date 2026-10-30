@@ -19443,28 +19443,58 @@ class GraphApp {
         return false;
       };
 
-      // 🛡️ [포인터별(pointerId) UI 출처 추적기]:
-      // 단일 전역 플래그(_activeGestureStartedOnUI) 대신 pointerId별 Set(_uiPointerIds)으로 추적하여,
-      // 손바닥(touch)이 문제 카드나 툴바에 닿아 있더라도 애플펜슬(pen)의 필기(pointerdown/pointermove)는 절대 가로막히지 않습니다!
+      // 🛡️ [포인터별(pointerId) UI 출처 및 터치 궤적 정밀 추적기]:
+      const getTargetShortName = (el) => {
+        if (!el) return 'null';
+        if (el === this.canvas) return 'canvas';
+        if (el.id) return '#' + el.id;
+        if (el.className && typeof el.className === 'string') return '.' + el.className.trim().split(/\s+/)[0];
+        return el.tagName || 'unknown';
+      };
+
       window.addEventListener('pointerdown', (e) => {
         if (!this._uiPointerIds) this._uiPointerIds = new Set();
+        if (!this._diagTouchTrackMap) this._diagTouchTrackMap = new Map();
         const isNotCanvas = (e.target !== this.canvas);
         const isUI = isClickableUI(e.target);
         const isModal = isAnyModalOrOverlayBlockingCanvas();
+        const tName = getTargetShortName(e.target);
+        const w = Math.round(e.width || 0);
+        const h = Math.round(e.height || 0);
+
+        if (e.pointerId !== undefined) {
+          this._diagTouchTrackMap.set(e.pointerId, {
+            id: e.pointerId,
+            type: e.pointerType,
+            startX: e.clientX,
+            startY: e.clientY,
+            lastX: e.clientX,
+            lastY: e.clientY,
+            maxDist: 0,
+            moveCount: 0,
+            w,
+            h,
+            target: tName,
+            startTime: Date.now(),
+            loggedMoveAlert: false
+          });
+        }
+
         if (isNotCanvas || isUI || isModal) {
           if (e.pointerId !== undefined) this._uiPointerIds.add(e.pointerId);
           if (e.pointerType === 'pen') {
-            const tName = e.target ? (e.target.id ? '#' + e.target.id : (e.target.className ? '.' + String(e.target.className).split(' ')[0] : e.target.tagName)) : 'null';
-            this._logInkDiag('warn', `⚠️ [펜 터치가 캔버스 밖 UI에 닿음] target=${tName} (id=${e.pointerId})`);
+            this._logInkDiag('warn', `⚠️ [펜이 UI에 닿음] id=${e.pointerId}, target=${tName}`);
+          } else if (e.pointerType === 'touch') {
+            this._logInkDiag('touch', `🖐️ [UI 위 터치] id=${e.pointerId}, ${w}x${h}px, target=${tName}`);
           }
         } else {
           if (e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
         }
-        this._updateInkDiagLive(e, 'win:pointerdown');
+        this._updateInkDiagLive(e, 'win:down');
       }, { capture: true });
 
       this.canvas.addEventListener('pointerdown', (e) => {
-        this._updateInkDiagLive(e, 'cvs:pointerdown');
+        this._updateInkDiagLive(e, 'cvs:down');
         if (isClickableUI(e.target) || isAnyModalOrOverlayBlockingCanvas()) {
           if (e.pointerType === 'pen') {
             this._logInkDiag('error', `🚨 [획 시작 차단] isClickableUI 또는 모달 가드에 막힘 (id=${e.pointerId})`);
@@ -19474,19 +19504,18 @@ class GraphApp {
         if (this._uiPointerIds && e.pointerId !== undefined) {
           this._uiPointerIds.delete(e.pointerId);
         }
-        // 🌟 [핵심 복구 (037ec61 초기 버전과 100% 동일)]:
-        // 캔버스에 닿는 모든 포인터(손날 touch 포함!)에 즉시 e.preventDefault()를 선언하여
-        // iPadOS Safari가 손날 터치를 브라우저 기본 제스처(스크롤/드래그/롱프레스)로 가로채서 직후의 펜슬 입력을 삼키는 현상을 원천 차단!
-        if (e.cancelable !== false) {
-          e.preventDefault();
-        }
         const nowT = Date.now();
         lastPointerDownTime = nowT;
 
         // 1) 펜(pen) 또는 마우스(mouse) 입력: 최우선 순위로 즉시 필기 진입!
+        // 주의: e.preventDefault()는 오직 pen/mouse에만 호출하여 iPadOS 하드웨어 팜리젝션을 보호합니다!
         if (e.pointerType === 'pen' || e.pointerType === 'mouse' || !e.pointerType) {
+          if (e.cancelable !== false) {
+            e.preventDefault();
+          }
           if (e.pointerType === 'pen') {
             this._lastPenActiveTime = nowT;
+            this._lastPenDownTime = nowT;
             if (!this._diagPureInkMode && this._touchCameraSnapshot && (nowT - this._touchCameraSnapshot.time < 220)) {
               this._restoreTouchCameraSnapshot();
             } else {
@@ -19517,22 +19546,21 @@ class GraphApp {
             maxP: typeof e.pressure === 'number' ? e.pressure : -1,
             moveEvents: 0
           };
-          this._logInkDiag('ok', `✏️ [펜 진입 성공] id=${e.pointerId}, p=${typeof e.pressure === 'number' ? e.pressure.toFixed(2) : '-'}, btn=${e.buttons}`);
+          this._logInkDiag('ok', `✏️ [펜 진입] id=${e.pointerId}, p=${typeof e.pressure === 'number' ? e.pressure.toFixed(2) : '-'}, btn=${e.buttons}`);
           handleDown(e);
           if (e.pointerType === 'pen' && !this.isDrawingInk && isWritingToolActive()) {
-            this._logInkDiag('error', `🚨 [획 시작 실패] pointerdown(pen) 진입했으나 handleDown 내부에서 필기가 시작되지 않음! (tool=${this.activeInkTool}, inkMode=${this.isInkMode})`);
+            this._logInkDiag('error', `🚨 [획 시작 실패] pointerdown(pen) 진입했으나 handleDown 내부에서 필기가 안 켜짐! (tool=${this.activeInkTool})`);
           }
           return;
         }
 
-        // 2) 터치(touch) 입력 진단 로그 (접촉 크기 WxH 및 touchType 표시)
+        // 2) 터치(touch) 입력 진단 로그 (접촉 크기 WxH 및 좌표 표시)
         if (e.pointerType === 'touch') {
           const w = Math.round(e.width || 0);
           const h = Math.round(e.height || 0);
-          const tTypes = this._lastTouchStartTypes || 'direct';
-          this._logInkDiag('touch', `🖐️ [터치 입력] id=${e.pointerId}, 면적=${w}x${h}px, touchType=${tTypes}`);
+          this._logInkDiag('touch', `🖐️ [캔버스 터치 시작] id=${e.pointerId}, 면적=${w}x${h}px, 좌표=(${Math.round(e.clientX)},${Math.round(e.clientY)})`);
         }
-        // 🧪 [초기 순정 필기 모드(037ec61) ON 상태일 때]: 필기 도구에서는 1손가락 터치를 0.00ms 만에 완전 무시!
+        // 🧪 [순정모드(a7671a3) ON 상태일 때]: 필기 도구에서는 touch에 preventDefault도 호출하지 않고 0.00ms 만에 완전 무시!
         if (this._diagPureInkMode && isWritingToolActive()) {
           return;
         }
@@ -19582,8 +19610,6 @@ class GraphApp {
             return;
           }
 
-          // 🌟 1손가락 터치: 이전 2손가락 제스처 잔류 플래그(_pinchWasActiveInGesture)를 확실히 초기화하고
-          // 그래프 모드(select)와 필기 모드(pen) 구분 없이 100% 동일한 handleDown(e) 경로로 진입!
           this._pinchWasActiveInGesture = false;
           this._pinchState = null;
           this._activePanPointerId = e.pointerId;
@@ -19595,9 +19621,21 @@ class GraphApp {
       }, { passive: false });
 
       window.addEventListener('pointermove', (e) => {
-        if (e.pointerType === 'pen') {
-          this._updateInkDiagLive(e, 'win:pointermove');
+        // 모든 포인터(pen + touch)의 실제 이동 궤적 추적
+        if (this._diagTouchTrackMap && e.pointerId !== undefined && this._diagTouchTrackMap.has(e.pointerId)) {
+          const tr = this._diagTouchTrackMap.get(e.pointerId);
+          tr.moveCount++;
+          tr.lastX = e.clientX;
+          tr.lastY = e.clientY;
+          const d = Math.hypot(e.clientX - tr.startX, e.clientY - tr.startY);
+          if (d > tr.maxDist) tr.maxDist = d;
+          if (e.pointerType === 'touch' && !tr.loggedMoveAlert && tr.maxDist >= 18) {
+            tr.loggedMoveAlert = true;
+            this._logInkDiag('error', `🚨 [터치로 드래그 이동 감지!] id=${e.pointerId}, 면적=${tr.w}x${tr.h}px, 이동=${Math.round(tr.maxDist)}px, target=${tr.target} (방금 펜을 그은 거라면 펜이 touch로 오인식됨!)`);
+          }
         }
+        this._updateInkDiagLive(e, 'win:move');
+
         // 🛡️ 모달 창이 열려 있거나 리모컨 드래그 중에는 뒷창 캔버스 필기·이동을 100% 차단!
         if (this.isDraggingPillRemote || isAnyModalOrOverlayBlockingCanvas()) {
           if (e.pointerType === 'pen') {
@@ -19628,7 +19666,7 @@ class GraphApp {
             if (!isPenPressing) {
               this._logInkDiag('error', `🚨 [원인 발견: 획 시작 씹힘] pointerdown 없이 pointermove(pen)가 왔으나 pressure=${e.pressure}, buttons=${e.buttons} 이라 무시됨! (짭플펜슬 필압=0 현상)`);
             } else if (e.target !== this.canvas) {
-              const tName = e.target ? (e.target.id || e.target.className || e.target.tagName) : 'null';
+              const tName = getTargetShortName(e.target);
               this._logInkDiag('error', `🚨 [원인 발견: 획 시작 씹힘] pointermove(pen)의 target이 캔버스가 아님 (${tName})`);
             }
           }
@@ -19642,7 +19680,7 @@ class GraphApp {
             isWritingToolActive() &&
             e.target === this.canvas
           ) {
-            if (this._touchCameraSnapshot && (nowT - this._touchCameraSnapshot.time < 220)) {
+            if (!this._diagPureInkMode && this._touchCameraSnapshot && (nowT - this._touchCameraSnapshot.time < 220)) {
               this._restoreTouchCameraSnapshot();
             } else {
               this._touchCameraSnapshot = null;
@@ -19689,6 +19727,9 @@ class GraphApp {
 
         // 터치(touch) 이동 처리
         if (e.pointerType === 'touch') {
+          if (this._diagPureInkMode && isWritingToolActive()) {
+            return;
+          }
           if (isPenRecentlyActive()) {
             if (this.activePointers) this.activePointers.clear();
             this._pinchState = null;
@@ -19728,9 +19769,19 @@ class GraphApp {
           this._uiPointerIds.delete(e.pointerId);
         }
         const nowT = Date.now();
+        this._updateInkDiagLive(e, 'win:' + e.type);
+        if (this._diagTouchTrackMap && e.pointerId !== undefined && this._diagTouchTrackMap.has(e.pointerId)) {
+          const tr = this._diagTouchTrackMap.get(e.pointerId);
+          this._diagTouchTrackMap.delete(e.pointerId);
+          if (e.pointerType === 'touch') {
+            this._logInkDiag(
+              tr.maxDist >= 18 ? 'error' : 'touch',
+              `🖐️ [터치 종료(${e.type === 'pointercancel' ? '취소됨' : '떼어짐'})] id=${e.pointerId}, ${tr.w}x${tr.h}px, 총이동=${Math.round(tr.maxDist)}px(move=${tr.moveCount}회), target=${tr.target}`
+            );
+          }
+        }
         if (e.pointerType === 'pen') {
           this._lastPenActiveTime = nowT;
-          this._updateInkDiagLive(e, 'win:' + e.type);
         }
 
         // 만약 그리는 중인 펜 포인터 자체가 pointercancel 당한 경우 즉시 빨간 경보!
@@ -19773,7 +19824,7 @@ class GraphApp {
           this._activePanPointerId = null;
           this.isPanning = false;
           this.isBoardPanning = false;
-          if (this._touchCameraSnapshot && (nowT - this._touchCameraSnapshot.time < 220)) {
+          if (!this._diagPureInkMode && this._touchCameraSnapshot && (nowT - this._touchCameraSnapshot.time < 220)) {
             this._restoreTouchCameraSnapshot();
           } else {
             this._touchCameraSnapshot = null;
@@ -19798,7 +19849,7 @@ class GraphApp {
               this._touchCameraSnapshot = null;
             }
           }
-          if (hadPinch || (!wasInMap && !wasActivePan)) {
+          if (hadPinch || (this._diagPureInkMode && isWritingToolActive()) || (!wasInMap && !wasActivePan)) {
             this.isPanning = false;
             this.isBoardPanning = false;
             return;
@@ -19854,28 +19905,27 @@ class GraphApp {
     });
 
     // 🌟 [iPadOS Safari 애플펜슬 Scribble 방어 & 동시 2손가락 터치(Two-Finger Pan/Zoom) 보조 리스너]:
-    // 1) 애플펜슬(stylus) 감지 시에는 즉시 잔류 터치를 비우고 Scribble을 방어합니다.
-    // 2) 펜슬 비활성 상태에서 두 손가락(e.touches.length === 2)이 동시에 닿았을 때,
-    //    iPadOS Safari가 간헐적으로 두 번째 pointerdown을 누락하더라도 100% 두 손가락 이동/줌아웃이 작동하도록 연결합니다!
+    // 주의: 손바닥(direct touch)에 대해 touchstart에서 e.preventDefault()를 호출하면 WebKit 하드웨어 팜리젝션이 깨지므로,
+    // 오직 stylus(펜)가 감지될 때만 e.preventDefault()를 수행합니다! (a7671a3 원칙 100% 준수)
     const isPenBusyForTouch = () => {
       if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) && this._activeDrawingPointerType === 'pen') return true;
-      if (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450)) return true;
+      const cooldown = this._diagPureInkMode ? 900 : 450;
+      if (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < cooldown)) return true;
       return false;
     };
     this.canvas.addEventListener('touchstart', (e) => {
-      // 🌟 [핵심 복구 (037ec61 초기 버전과 100% 동일)]:
-      // 손날(direct touch)이 먼저 닿더라도 캔버스 위에서는 무조건 e.preventDefault()를 호출해야
-      // iPadOS Safari가 브라우저 기본 제스처 모드로 빠지지 않고 뒤이어 들어오는 펜슬(stylus) 이벤트를 100% 정상 전달합니다!
-      if (e.target === this.canvas && e.cancelable !== false) {
-        e.preventDefault();
-      }
       const nowT = Date.now();
       const touchDetails = e.touches
         ? Array.from(e.touches).map(t => `${t.touchType || 'direct'}(r=${Math.round(t.radiusX || 0)})`).join(', ')
         : 'none';
       const hasStylus = e.touches && Array.from(e.touches).some(t => t.touchType === 'stylus');
       this._lastTouchStartTypes = touchDetails;
+      this._logInkDiag(hasStylus ? 'ok' : 'touch', `📱 [touchstart] 총 ${e.touches ? e.touches.length : 0}개: ${touchDetails}`);
+
       if (hasStylus) {
+        if (e.target === this.canvas && e.cancelable !== false) {
+          e.preventDefault();
+        }
         this._lastPenActiveTime = nowT;
         if (!this._diagPureInkMode && !this.isDrawingInk && !this.isStylusDrawing && this._touchCameraSnapshot && (nowT - this._touchCameraSnapshot.time < 220)) {
           this._restoreTouchCameraSnapshot();
@@ -19885,11 +19935,10 @@ class GraphApp {
         if (this.activePointers) this.activePointers.clear();
         this._pinchState = null;
         this._pinchWasActiveInGesture = false;
-        setTimeout(() => {
-          if (!this.isDrawingInk && (Date.now() - (this._lastPenActiveTime || 0) > 100)) {
-            this._logInkDiag('error', `🚨 [WebKit 이벤트 삼킴] touchstart(stylus)는 왔으나 pointerdown(pen)이 누락됨!`);
-          }
-        }, 60);
+        // 만약 touchstart(stylus)는 왔는데 pointerdown(pen)이 최근 80ms 내 안 왔다면 WebKit 삼킴 경보!
+        if (!this.isDrawingInk && (!this._lastPenDownTime || (nowT - this._lastPenDownTime > 80))) {
+          this._logInkDiag('error', `🚨 [원인 발견: WebKit 이벤트 삼킴] touchstart에는 stylus가 들어왔으나 pointerdown(pen)이 누락됨! (${touchDetails})`);
+        }
         return;
       }
       if (this._diagPureInkMode || isPenBusyForTouch()) return;
@@ -19946,9 +19995,6 @@ class GraphApp {
     }, { passive: true });
 
     this.canvas.addEventListener('touchmove', (e) => {
-      if (e.target === this.canvas && e.cancelable !== false) {
-        e.preventDefault();
-      }
       const hasStylus = e.touches && Array.from(e.touches).some(t => t.touchType === 'stylus');
       if (this._diagPureInkMode || hasStylus || isPenBusyForTouch()) return;
       if (e.touches && e.touches.length === 2 && this._pinchState) {
@@ -21249,9 +21295,9 @@ class GraphApp {
     hud.id = 'inkDiagHud';
     hud.style.cssText = [
       'position:fixed',
-      'top:58px',
-      'right:14px',
-      'width:370px',
+      'top:52px',
+      'left:64px',
+      'width:390px',
       'max-width:92vw',
       'background:rgba(15, 23, 42, 0.92)',
       'color:#f8fafc',
@@ -21280,7 +21326,7 @@ class GraphApp {
       <div id="inkDiagLiveBar" style="background:rgba(30,41,59,0.9); padding:4px 7px; border-radius:6px; margin-bottom:6px; color:#bae6fd; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
         대기 중... 평소처럼 글씨를 써보세요!
       </div>
-      <div id="inkDiagLogList" style="max-height:190px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; pointer-events:auto;">
+      <div id="inkDiagLogList" style="max-height:210px; overflow-y:hidden; display:flex; flex-direction:column; gap:4px; pointer-events:none;">
         <div style="color:#94a3b8; font-size:11px;">글씨가 안 써지거나 끊기는 순간 여기에 빨간색으로 정확한 원인이 자동 기록됩니다.</div>
       </div>
     `;
@@ -21329,9 +21375,12 @@ class GraphApp {
     const bar = document.getElementById('inkDiagLiveBar');
     if (!bar || !e) return;
     const p = typeof e.pressure === 'number' ? e.pressure.toFixed(2) : '-';
-    const btn = e.buttons !== undefined ? e.buttons : '-';
-    const tType = this._lastTouchStartTypes || '-';
-    bar.textContent = `[${stage}] type=${e.pointerType} | id=${e.pointerId} | p=${p} | btn=${btn} | touch=${tType}`;
+    const w = Math.round(e.width || 0);
+    const h = Math.round(e.height || 0);
+    const tr = (this._diagTouchTrackMap && e.pointerId !== undefined) ? this._diagTouchTrackMap.get(e.pointerId) : null;
+    const dist = tr ? Math.round(tr.maxDist) : 0;
+    const mv = tr ? tr.moveCount : 0;
+    bar.textContent = `[${stage}] ${e.pointerType}(id=${e.pointerId}) | ${w}x${h}px | 이동=${dist}px(${mv}회) | p=${p}`;
   }
 
   _logInkDiag(level, msg) {
