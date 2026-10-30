@@ -1,4 +1,4 @@
-const CACHE_NAME = 'graphly-pwa-v20261031-2';
+const CACHE_NAME = 'graphly-pwa-v20261031-3';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
