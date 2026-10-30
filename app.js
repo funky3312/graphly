@@ -7956,7 +7956,7 @@ class GraphApp {
       btn.classList.toggle('active', snapActive);
       lbl.textContent = snapActive
         ? '취소'
-        : '그래프 보관';
+        : '카드 추가';
       this._lastSnapModeActive = snapActive;
     }
   }
