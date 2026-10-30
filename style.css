@@ -7553,8 +7553,9 @@ body.theme-light .pill-mod-chip.active {
   font-variant-numeric: tabular-nums;
   user-select: none;
 }
+body.theme-light .ink-size-stepper .ink-size-val,
 body.light-ui-theme .ink-size-stepper .ink-size-val {
-  color: #1e293b;
+  color: #0f172a !important;
 }
 
 
