@@ -955,6 +955,10 @@ class GraphApp {
       savedLayer2BoardPan: this._savedLayer2BoardPan ? { ...this._savedLayer2BoardPan } : null,
       pdfPageBoardData: this.pdfPageBoardData ? { ...this.pdfPageBoardData } : null,
       pdfSavedPageStates: this.pdfSavedPageStates ? { ...this.pdfSavedPageStates } : {},
+      pdfWorkedPages: Array.isArray(this.pdfWorkedPages) ? [...this.pdfWorkedPages] : [],
+      isLessonPlaylistActive: Boolean(this.isLessonPlaylistActive),
+      lessonPlaylistSlides: Array.isArray(this.lessonPlaylistSlides) ? JSON.parse(JSON.stringify(this.lessonPlaylistSlides)) : [],
+      lessonPlaylistIndex: this.lessonPlaylistIndex || 0,
       suspendedPdfBoardState: this._suspendedPdfBoardState ? { ...this._suspendedPdfBoardState } : null,
       isTempPdfProblemCard: Boolean(this._isTempPdfProblemCard),
       graphSessionArchived: Boolean(this._graphSessionArchived)
@@ -1063,12 +1067,17 @@ class GraphApp {
     this._savedLayer2BoardPan = wsSnap.savedLayer2BoardPan ? { ...wsSnap.savedLayer2BoardPan } : null;
     this.pdfPageBoardData = wsSnap.pdfPageBoardData ? { ...wsSnap.pdfPageBoardData } : null;
     this.pdfSavedPageStates = wsSnap.pdfSavedPageStates ? { ...wsSnap.pdfSavedPageStates } : {};
+    this.pdfWorkedPages = Array.isArray(wsSnap.pdfWorkedPages) ? [...wsSnap.pdfWorkedPages] : [];
+    this.isLessonPlaylistActive = Boolean(wsSnap.isLessonPlaylistActive);
+    this.lessonPlaylistSlides = Array.isArray(wsSnap.lessonPlaylistSlides) ? JSON.parse(JSON.stringify(wsSnap.lessonPlaylistSlides)) : [];
+    this.lessonPlaylistIndex = wsSnap.lessonPlaylistIndex || 0;
     this._suspendedPdfBoardState = wsSnap.suspendedPdfBoardState ? { ...wsSnap.suspendedPdfBoardState } : null;
     this._isTempPdfProblemCard = Boolean(wsSnap.isTempPdfProblemCard);
     this._graphSessionArchived = Boolean(wsSnap.graphSessionArchived);
 
     this.updateProblemCardPosition();
     this.syncPdfBoardNavBarUI();
+    this.syncLessonPlaylistNavBarUI();
     this.syncWorkspaceModeUI();
     this.syncGraphSnapBarUI();
     this._inkBakeDirty = true;
@@ -1839,11 +1848,17 @@ class GraphApp {
     this._inkBakeDirty = true;
     this.clearInkCache();
 
-    // 5. 초기 접속 상태의 깨끗한 좌표평면(축/그리드/원점/배율) 및 PDF 페이지 배경 초기화
+    // 5. 초기 시작 뷰 및 좌표축(축/그리드/줌/팬) 및 PDF 개념 보드 & 슬라이드 묶음 초기화
     this.pdfPageBoardData = null;
     this.pdfSavedPageStates = {};
+    this.pdfWorkedPages = [];
     this._lastPdfPageScreenRect = null;
+    this.isLessonPlaylistActive = false;
+    this.lessonPlaylistSlides = [];
+    this.lessonPlaylistIndex = 0;
+    this.isTopSlideBarHidden = false;
     this.syncPdfBoardNavBarUI();
+    this.syncLessonPlaylistNavBarUI();
     if (this.isNAxisMode) {
       this.exitNAxisMode();
     }
@@ -2361,6 +2376,8 @@ class GraphApp {
       '#nAxisModeBar',
       '#sharedResetBar',
       '#lessonPlaylistNavBar',
+      '#pdfBoardNavBar',
+      '#topSlideBarMiniTab',
       '#problemCardWidget',
       '#graphCardWidget',
       '#problemCardHeader',
@@ -2424,6 +2441,7 @@ class GraphApp {
       el.closest('.shared-reset-bar') ||
       el.closest('.lesson-playlist-nav-bar') ||
       el.closest('.pdf-board-nav-bar') ||
+      el.closest('.top-slide-bar-mini-tab') ||
       el.closest('.graph-snap-floating-bar') ||
       el.closest('.problem-card-widget') ||
       el.closest('.graph-card-widget') ||
@@ -4536,6 +4554,7 @@ class GraphApp {
           reader.onload = (loadEvt) => {
             const dataUrl = loadEvt.target.result;
             if (replaceMode) {
+              this._archiveCurrentBeforeNextCapture();
               this.resetBoardAndProblemCardsForNext();
             }
             if (!this.isInkMode) {
@@ -4545,6 +4564,9 @@ class GraphApp {
             const cleanName = file.name.replace(/\.[^/.]+$/, '');
             const targetW = Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
             this.setProblemCard(dataUrl, cleanName, null, targetW);
+            if (replaceMode) {
+              this._finalizeAppendedCaptureSlide(`문제 ${ (this.lessonPlaylistSlides ? this.lessonPlaylistSlides.length : 1) + 1 }`);
+            }
             this.showToast(replaceMode
               ? `⏭️ 이전 문제를 닫고 새 문제 [${cleanName}]을(를) 새 칠판에 열었습니다!`
               : `📁 이미지 문제 [${cleanName}]을(를) 칠판에 등록했습니다!`);
@@ -4596,10 +4618,14 @@ class GraphApp {
     const btnBoardNext = document.getElementById('btnPdfBoardNext');
     const btnBoardInfo = document.getElementById('btnPdfBoardPageInfo');
     const btnBoardClose = document.getElementById('btnPdfBoardClose');
+    const btnBoardClearAll = document.getElementById('btnPdfBoardClearAll');
+    const btnBoardHideBar = document.getElementById('btnPdfBoardHideBar');
     if (btnBoardPrev) btnBoardPrev.onclick = () => this.navigatePdfBoardPage(-1);
     if (btnBoardNext) btnBoardNext.onclick = () => this.navigatePdfBoardPage(1);
     if (btnBoardInfo) btnBoardInfo.onclick = () => this.openPdfModal();
     if (btnBoardClose) btnBoardClose.onclick = () => this.closePdfPageBoard();
+    if (btnBoardClearAll) btnBoardClearAll.onclick = () => this.clearAllSlidesAndReset();
+    if (btnBoardHideBar) btnBoardHideBar.onclick = () => this.toggleTopSlideBarHidden(true);
 
     // 페이지 네비게이션
     const btnPrev = document.getElementById('btnPdfPrevPage');
@@ -4808,25 +4834,72 @@ class GraphApp {
     if (!bar) return;
     if (!this.pdfPageBoardData) {
       bar.style.display = 'none';
+      this._syncTopSlideMiniTabUI();
       return;
     }
-    bar.style.display = 'flex';
     const p = this.pdfPageBoardData.pageNum || 1;
     const total = this.pdfPageBoardData.totalPages || this.pdfTotalPages || 1;
+    if (!Array.isArray(this.pdfWorkedPages)) this.pdfWorkedPages = [];
+    if (!this.pdfWorkedPages.includes(p)) {
+      this.pdfWorkedPages.push(p);
+    }
+
     const lbl = document.getElementById('lblPdfBoardPageInfo');
-    if (lbl) lbl.textContent = `p.${p} / ${total}`;
+    if (lbl) lbl.textContent = `p.${p}/${total}`;
     const btnPrev = document.getElementById('btnPdfBoardPrev');
     const btnNext = document.getElementById('btnPdfBoardNext');
-    if (btnPrev) btnPrev.disabled = (p <= 1);
+    if (btnPrev) btnPrev.disabled = (p <= 1 && this.pdfWorkedPages.indexOf(p) <= 0);
     if (btnNext) btnNext.disabled = (p >= total);
+
+    const chipsEl = document.getElementById('pdfBoardSlideChips');
+    if (chipsEl) {
+      chipsEl.innerHTML = '';
+      this.pdfWorkedPages.forEach((pageNum) => {
+        const chip = document.createElement('div');
+        chip.className = 'slide-chip-item' + (pageNum === p ? ' active' : '');
+        chip.title = `p.${pageNum} 캔버스로 이동`;
+        const span = document.createElement('span');
+        span.className = 'slide-chip-label';
+        span.textContent = `p.${pageNum}`;
+        chip.appendChild(span);
+
+        if (this.pdfWorkedPages.length > 1) {
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'slide-chip-del';
+          delBtn.title = `p.${pageNum} 슬라이드 삭제`;
+          delBtn.textContent = '✕';
+          delBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.deletePdfPageSlide(pageNum);
+          };
+          chip.appendChild(delBtn);
+        }
+
+        chip.onclick = () => {
+          if (pageNum !== p) {
+            this.openPdfPageOnBoard(pageNum);
+          }
+        };
+        chipsEl.appendChild(chip);
+      });
+    }
+
+    if (this.isTopSlideBarHidden) {
+      bar.style.display = 'none';
+    } else {
+      bar.style.display = 'flex';
+    }
+    this._syncTopSlideMiniTabUI();
   }
 
   drawPdfPageBoardLayer(ctx, isExport = false) {
-    if (!this.pdfPageBoardData || !this.pdfPageBoardData.canvas) {
+    const pageCanvas = this.pdfPageBoardData && (this.pdfPageBoardData.canvas || (this.pdfPageBoardData.img && this.pdfPageBoardData.img.complete ? this.pdfPageBoardData.img : null));
+    if (!this.pdfPageBoardData || !pageCanvas) {
       this._lastPdfPageScreenRect = null;
       return;
     }
-    const { canvas: pageCanvas, mathW, mathH } = this.pdfPageBoardData;
+    const { mathW, mathH } = this.pdfPageBoardData;
     const cx = this.pdfPageBoardData.centerX || 0;
     const cy = this.pdfPageBoardData.centerY || 0;
     const tl = this.mathToScreen(cx - mathW / 2, cy + mathH / 2);
@@ -4976,11 +5049,21 @@ class GraphApp {
     if (!this.pdfPageBoardData) return;
     const prevPageNum = this.pdfPageBoardData.pageNum;
     if (!this.pdfSavedPageStates) this.pdfSavedPageStates = {};
+    if (!Array.isArray(this.pdfWorkedPages)) this.pdfWorkedPages = [];
+    if (!this.pdfWorkedPages.includes(prevPageNum)) {
+      this.pdfWorkedPages.push(prevPageNum);
+    }
 
-    // 1. 나중에 [🔄 열기] 또는 [◀ 이전]으로 돌아올 때 편집 가능하도록 상태 백업
+    // 🌟 [대표님 핵심 기획]:
+    // 1) 좌측에 접힌 미니 카드(▸ p.N)를 생성하지 않고 상단 슬라이드 칩으로 깔끔하게 관리!
+    // 2) 해당 페이지에서 작업한 그래프 보관 카드(#1, #2...), 실시간 그래프, 판서 필기를 페이지별 독립 슬라이드로 100% 귀속 저장!
+    const fullSlide = this.serializeFullSlideState(`p.${prevPageNum}`);
+    fullSlide.pdfPageNum = prevPageNum;
+
     this.pdfSavedPageStates[prevPageNum] = {
       pageNum: prevPageNum,
       pdfPageBoardData: { ...this.pdfPageBoardData },
+      fullSlide,
       panX: this.panX,
       panY: this.panY,
       zoomLevel: this.zoomLevel,
@@ -4996,55 +5079,34 @@ class GraphApp {
       dropLines: JSON.parse(JSON.stringify(this.dropLines || [])),
       textLabels: JSON.parse(JSON.stringify(this.textLabels || []))
     };
-
-    // 2. 현재 페이지 + 판서 스냅샷 이미지 구워내기
-    const baked = this.bakeCurrentPdfPageSnapshot();
-    const dataUrl = baked ? baked.dataUrl : this.pdfPageBoardData.dataUrl;
-    const snapCanvas = baked ? baked.canvas : this.pdfPageBoardData.canvas;
-
-    // 3. 이미 해당 페이지 번호의 미니 카드가 있으면 제거 후 갱신
-    if (!this.extraProblemCards) this.extraProblemCards = [];
-    this.extraProblemCards = this.extraProblemCards.filter(c => {
-      if (c && c.isPdfPageCard && c.pdfPageNum === prevPageNum) {
-        if (c.el) c.el.remove();
-        return false;
-      }
-      return true;
-    });
-
-    // 4. 좌측 상단 구석(left: 72px, top: 18px + idx * 44px)에 페이지 넘버만 적힌 작은 접힌 카드(▸ p.N)로 차곡차곡 배치!
-    const existingPageCards = this.extraProblemCards.filter(c => c && c.isPdfPageCard);
-    const idx = existingPageCards.length;
-    const cardX = 72;
-    const cardY = 18 + idx * 44;
-
-    this.spawnExtraProblemCard(dataUrl, prevPageNum, 460, snapCanvas, {
-      startMinimized: true,
-      customX: cardX,
-      customY: cardY,
-      customTitle: `p.${prevPageNum}`,
-      isPdfPageCard: true,
-      pdfPageNum: prevPageNum,
-      silentToast: true
-    });
-
-    // 좌상단 페이지 카드들을 번호순으로 깔끔하게 재정렬
-    this.relayoutPdfPageCards();
   }
 
   relayoutPdfPageCards() {
-    if (!this.extraProblemCards) return;
-    const pageCards = this.extraProblemCards
-      .filter(c => c && c.isPdfPageCard && c.isMin)
-      .sort((a, b) => (a.pdfPageNum || 0) - (b.pdfPageNum || 0));
-    pageCards.forEach((c, idx) => {
-      c.baseX = 72;
-      c.baseY = 18 + idx * 44;
-      if (c.el) {
-        c.el.style.left = `${c.baseX}px`;
-        c.el.style.top = `${c.baseY}px`;
-      }
-    });
+    // 좌측 접힌 페이지 미니 카드 방식 폐지 (상단 슬라이드 바 칩으로 일원화)
+  }
+
+  async deletePdfPageSlide(pageNum) {
+    if (!Array.isArray(this.pdfWorkedPages)) return;
+    const idx = this.pdfWorkedPages.indexOf(pageNum);
+    if (idx === -1) return;
+
+    this.pdfWorkedPages.splice(idx, 1);
+    if (this.pdfSavedPageStates) {
+      delete this.pdfSavedPageStates[pageNum];
+    }
+
+    if (this.pdfWorkedPages.length === 0) {
+      this.resetNewCanvas();
+      return;
+    }
+
+    if (this.pdfPageBoardData && this.pdfPageBoardData.pageNum === pageNum) {
+      const nextTarget = this.pdfWorkedPages[Math.min(idx, this.pdfWorkedPages.length - 1)];
+      await this.openPdfPageOnBoard(nextTarget, { skipArchiveCurrent: true });
+    } else {
+      this.syncPdfBoardNavBarUI();
+    }
+    this.showToast(`🗑️ p.${pageNum} 슬라이드를 삭제했습니다.`);
   }
 
   async openPdfPageOnBoard(pageNum, options = {}) {
@@ -5054,12 +5116,38 @@ class GraphApp {
     }
     const total = this.pdfTotalPages || this.pdfDoc.numPages || 1;
     const targetPage = Math.max(1, Math.min(pageNum || this.pdfCurrentPage || 1, total));
+    if (!Array.isArray(this.pdfWorkedPages)) this.pdfWorkedPages = [];
 
-    // 1. 이미 다른 PDF 페이지가 캔버스에 열려 있었다면 -> 이전 페이지를 좌상단 미니 카드(▸ p.N)로 자동 접어 보관!
+    // 1. 이미 다른 PDF 페이지가 캔버스에 열려 있었다면 -> 이전 페이지의 모든 상태(그래프 카드 #1,#2 포함)를 해당 페이지 슬라이드에 백업하고 새 캔버스처럼 완전 초기화!
     if (this.pdfPageBoardData && this.pdfPageBoardData.pageNum !== targetPage && !options.skipArchiveCurrent) {
       this.archiveCurrentPdfBoardPageToCard();
+    }
 
-      // 새 페이지 진입을 위해 이전 페이지의 필기 및 실시간 그래프를 비움
+    if (!this.pdfWorkedPages.includes(targetPage)) {
+      this.pdfWorkedPages.push(targetPage);
+    }
+
+    // 이전 페이지의 그래프 카드(#1, #2...), 문제 카드, 필기, 실시간 그래프를 100% 깨끗하게 비워 페이지 간 간섭 원천 차단!
+    if (!this.pdfPageBoardData || this.pdfPageBoardData.pageNum !== targetPage || options.skipArchiveCurrent) {
+      this.closeProblemCard();
+      if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+        this.extraProblemCards.forEach(c => { if (c && c.el) c.el.remove(); });
+        this.extraProblemCards = [];
+      }
+      this.closeGraphCard();
+      if (this.extraGraphCards && this.extraGraphCards.length > 0) {
+        this.extraGraphCards.forEach(c => { if (c && c.el) c.el.remove(); });
+        this.extraGraphCards = [];
+      }
+      this._graphCaseCounter = 0;
+      this._graphSessionArchived = false;
+      this._coveredGraphStateBackup = null;
+      this._savedLayer2BoardPan = null;
+      this.boardPanX = 0;
+      this.boardPanY = 0;
+      this.boardZoom = 1.0;
+      this.boardZoomOffsetX = 0;
+      this.boardZoomOffsetY = 0;
       this.inkStrokes = [];
       this.dropLines = [];
       this.textLabels = [];
@@ -5077,19 +5165,11 @@ class GraphApp {
       this.clearInkCache();
     }
 
-    // 2. 이전에 판서했던 페이지로 돌아오는 경우(예: [◀ 이전] 또는 좌상단 p.N 카드의 [🔄 열기] 클릭) -> 백업 상태 복원!
+    // 2. 이전에 작업했던 페이지로 돌아오는 경우 -> 해당 페이지에 귀속된 그래프 보관 카드(#1,#2), 실시간 그래프, 필기 100% 복원!
     if (this.pdfSavedPageStates && this.pdfSavedPageStates[targetPage] && !options.forceFresh) {
       const saved = this.pdfSavedPageStates[targetPage];
-      // 좌상단에 접혀 있던 해당 페이지 카드는 현재 메인 캔버스로 열렸으므로 제거하고 나머지 카드 줄 맞춤
-      if (this.extraProblemCards) {
-        this.extraProblemCards = this.extraProblemCards.filter(c => {
-          if (c && c.isPdfPageCard && c.pdfPageNum === targetPage) {
-            if (c.el) c.el.remove();
-            return false;
-          }
-          return true;
-        });
-        this.relayoutPdfPageCards();
+      if (saved.fullSlide) {
+        this.deserializeFullSlideState(saved.fullSlide);
       }
       this.pdfPageBoardData = { ...saved.pdfPageBoardData, totalPages: total };
       this.inkStrokes = JSON.parse(JSON.stringify(saved.inkStrokes || []));
@@ -5120,7 +5200,6 @@ class GraphApp {
       if (!this.isInkMode) {
         this.toggleInkMode(true);
       }
-      // 🌟 [대표님 피드백 반영]: PDF 1페이지를 불러왔을 때는 이전 도구가 무엇이었든 무조건 이동 모드(select)로 시작하여 확대/초점 조절부터 편하게!
       this.setActiveInkTool('select');
       this.syncControls();
       this.renderLayerList();
@@ -5864,8 +5943,10 @@ class GraphApp {
           const replaceMode = Boolean(this._isReplacingViaNextCrop);
           this._isReplacingViaNextCrop = false;
 
-          if (replaceMode || !this.problemCardData) {
-            // 🌟 [다음 캡처] 또는 첫 문제 캡처 시: 이전 문제 카드 + 이전 칠판 판서 자동 삭제 후 새 칠판 시작!
+          if (replaceMode) {
+            this._archiveCurrentBeforeNextCapture();
+            this.resetBoardAndProblemCardsForNext();
+          } else if (!this.problemCardData) {
             this.resetBoardAndProblemCardsForNext();
           }
 
@@ -5874,9 +5955,12 @@ class GraphApp {
             this.closeDrawer();
           }
 
-          // 문제 카드 고정 (좌측 불러오기로 진입 시 겹치기 허용, [다음 캡처]로 진입 시 기존 문제 교체!)
+          // 문제 카드 고정 (좌측 불러오기로 진입 시 겹치기 허용, [다음 캡처]로 진입 시 새 슬라이드 캔버스에 고정!)
           const targetCardWidth = Math.round(Math.max(480, Math.min(window.innerWidth * 0.65, w * 1.15)));
           this.setProblemCard(dataUrl, pageNum, cropCanvas, targetCardWidth);
+          if (replaceMode) {
+            this._finalizeAppendedCaptureSlide(`문항 ${(this.lessonPlaylistSlides ? this.lessonPlaylistSlides.length : 1) + 1}`);
+          }
           this.closePdfModal();
           this.togglePdfCropMode(false);
 
@@ -5952,12 +6036,17 @@ class GraphApp {
     if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
       this.closeDrawer();
     }
-    if (this._isReplacingViaNextCrop) {
+    const wasReplaceCrop = Boolean(this._isReplacingViaNextCrop);
+    if (wasReplaceCrop) {
       this._isReplacingViaNextCrop = false;
+      this._archiveCurrentBeforeNextCapture();
       this.resetBoardAndProblemCardsForNext();
     }
     const targetCardWidth = Math.round(Math.max(480, Math.min(window.innerWidth * 0.65, this.pdfCropBoxRect.w * 1.15)));
     this.setProblemCard(dataUrl, this.pdfCurrentPage, cropCanvas, targetCardWidth);
+    if (wasReplaceCrop) {
+      this._finalizeAppendedCaptureSlide(`문항 ${(this.lessonPlaylistSlides ? this.lessonPlaylistSlides.length : 1) + 1}`);
+    }
     this.closePdfModal();
 
     // 칠판 및 필기 모드로 자동 전환!
@@ -10380,11 +10469,11 @@ class GraphApp {
       };
     }
 
-    // 새 캔버스 (전체 초기화: 그래프 + 필기 + 경계선 + 떠 있는 문제 카드 모두 초기화)
+    // ✨ 새 캔버스 (현재 작업이 있으면 이전 슬라이드에 자동 보관 후 깨끗한 다음 번호 캔버스 오픈!)
     const btnNewCanvas = document.getElementById('btnQuickNewCanvas');
     if (btnNewCanvas) {
       btnNewCanvas.onclick = () => {
-        this.resetNewCanvas();
+        this.handleNewCanvasButtonClick();
       };
     }
 
@@ -13164,12 +13253,8 @@ class GraphApp {
     const btnShareExportFile = document.getElementById('btnShareModalExportFile');
 
     const getShareModalSlides = () => {
-      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
-        this.saveCurrentSlideIntoPlaylist();
-        return JSON.parse(JSON.stringify(this.lessonPlaylistSlides));
-      }
       const fallbackTitle = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : '공유된 수업 세트';
-      return [this.serializeFullSlideState(fallbackTitle)];
+      return this._getActiveSlidesForExport(fallbackTitle);
     };
 
     if (btnShareToComm) {
@@ -13440,16 +13525,21 @@ class GraphApp {
       btnRefreshComm.onclick = () => this.fetchCommunityHubFromCloud(true);
     }
 
-    // 수업 슬라이드(PPT) 상단 네비게이션 바 바인딩
+    // 수업 슬라이드(캔버스 묶음) 상단 초슬림 바 바인딩
     const btnPrev = document.getElementById('btnPlaylistPrev');
     const btnNext = document.getElementById('btnPlaylistNext');
     const btnInfo = document.getElementById('btnPlaylistSlideInfo');
+    const btnAddSlide = document.getElementById('btnPlaylistAddSlide');
     const btnShareAll = document.getElementById('btnPlaylistShareAll');
+    const btnClearAllSlides = document.getElementById('btnPlaylistClearAll');
+    const btnHidePlaylistBar = document.getElementById('btnPlaylistHideBar');
     const btnClosePlaylist = document.getElementById('btnPlaylistClose');
+    const btnMiniTab = document.getElementById('topSlideBarMiniTab');
 
     if (btnPrev) btnPrev.onclick = () => this.stepLessonPlaylist(-1);
     if (btnNext) btnNext.onclick = () => this.stepLessonPlaylist(1);
     if (btnInfo) btnInfo.onclick = () => this.openCloudHubModal();
+    if (btnAddSlide) btnAddSlide.onclick = () => this.handleNewCanvasButtonClick();
     if (btnShareAll) {
       btnShareAll.onclick = () => {
         this.saveCurrentSlideIntoPlaylist();
@@ -13457,6 +13547,15 @@ class GraphApp {
           this._openShareModalWithCloudPackage();
         }
       };
+    }
+    if (btnClearAllSlides) {
+      btnClearAllSlides.onclick = () => this.clearAllSlidesAndReset();
+    }
+    if (btnHidePlaylistBar) {
+      btnHidePlaylistBar.onclick = () => this.toggleTopSlideBarHidden(true);
+    }
+    if (btnMiniTab) {
+      btnMiniTab.onclick = () => this.toggleTopSlideBarHidden(false);
     }
     if (btnClosePlaylist) {
       btnClosePlaylist.onclick = () => this.closeLessonPlaylistMode();
@@ -13628,7 +13727,18 @@ class GraphApp {
         zIndex: gWidget.style.zIndex,
         display: gWidget.style.display
       } : null,
-      extraGraphs
+      extraGraphs,
+      pdfPageBoardData: this.pdfPageBoardData ? {
+        pageNum: this.pdfPageBoardData.pageNum,
+        totalPages: this.pdfPageBoardData.totalPages,
+        dataUrl: this.pdfPageBoardData.dataUrl,
+        aspect: this.pdfPageBoardData.aspect,
+        mathW: this.pdfPageBoardData.mathW,
+        mathH: this.pdfPageBoardData.mathH,
+        centerX: this.pdfPageBoardData.centerX,
+        centerY: this.pdfPageBoardData.centerY,
+        baseYSpan: this.pdfPageBoardData.baseYSpan
+      } : null
     };
     return slideObj;
   }
@@ -13765,6 +13875,25 @@ class GraphApp {
     this._coveredGraphStateBackup = slideData.coveredGraphStateBackup ? JSON.parse(JSON.stringify(slideData.coveredGraphStateBackup)) : null;
     this._savedLayer2BoardPan = slideData.savedLayer2BoardPan ? { ...slideData.savedLayer2BoardPan } : null;
     this._graphSessionArchived = Boolean(slideData.graphSessionArchived);
+
+    if (slideData.pdfPageBoardData && slideData.pdfPageBoardData.dataUrl) {
+      const pbd = { ...slideData.pdfPageBoardData };
+      const imgObj = new Image();
+      imgObj.onload = () => {
+        const offC = document.createElement('canvas');
+        offC.width = imgObj.naturalWidth || 1200;
+        offC.height = imgObj.naturalHeight || 1680;
+        const offCtx = offC.getContext('2d');
+        offCtx.drawImage(imgObj, 0, 0);
+        pbd.canvas = offC;
+        this.requestRender();
+      };
+      imgObj.src = pbd.dataUrl;
+      pbd.img = imgObj;
+      this.pdfPageBoardData = pbd;
+    } else if (!slideData.pdfPageBoardData) {
+      this.pdfPageBoardData = null;
+    }
 
     this.updateProblemCardPosition();
     this.syncWorkspaceModeUI();
@@ -13937,15 +14066,10 @@ class GraphApp {
     const inpTitle = document.getElementById('inputCloudSaveTitle');
     const inpTags = document.getElementById('inputCloudSaveTags');
 
-    if (this.isLessonPlaylistActive && !customSlidesArray) {
-      this.saveCurrentSlideIntoPlaylist();
-    }
-
+    const autoSlides = (!customSlidesArray) ? this._getActiveSlidesForExport() : null;
     const slides = Array.isArray(customSlidesArray) && customSlidesArray.length > 0
       ? JSON.parse(JSON.stringify(customSlidesArray))
-      : (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1
-        ? JSON.parse(JSON.stringify(this.lessonPlaylistSlides))
-        : null);
+      : (autoSlides && autoSlides.length > 1 ? autoSlides : null);
 
     const isDeck = Boolean(slides && slides.length > 1);
     const defaultTitle = isDeck
@@ -14543,14 +14667,184 @@ class GraphApp {
     this.showToast('수업 슬라이드 모드를 종료했습니다. (현재 판서는 그대로 유지됩니다)');
   }
 
+  hasAnyWorkspaceContent() {
+    const pWidget = document.getElementById('problemCardWidget');
+    const hasPrimaryProblem = Boolean(pWidget && pWidget.style.display !== 'none' && this.problemCardData);
+    const hasExtraProblems = Boolean(this.extraProblemCards && this.extraProblemCards.length > 0);
+    const hasGraphCards = Boolean(
+      (this._hasPrimaryGraphCard && this.graphCardData) ||
+      (this.extraGraphCards && this.extraGraphCards.length > 0)
+    );
+    const hasBackedUpGraphs = Boolean(
+      this._coveredGraphStateBackup &&
+      Array.isArray(this._coveredGraphStateBackup.graphs) &&
+      this._coveredGraphStateBackup.graphs.length > 0
+    );
+    return Boolean(
+      (this.graphs && this.graphs.length > 0) ||
+      hasBackedUpGraphs ||
+      (this.inkStrokes && this.inkStrokes.length > 0) ||
+      (this.dropLines && this.dropLines.length > 0) ||
+      (this.textLabels && this.textLabels.length > 0) ||
+      hasPrimaryProblem ||
+      hasExtraProblems ||
+      hasGraphCards ||
+      Boolean(this.pdfPageBoardData)
+    );
+  }
+
+  _archiveCurrentBeforeNextCapture() {
+    if (!this.hasAnyWorkspaceContent()) return;
+    if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
+      const firstSlide = this.serializeFullSlideState('1');
+      this.lessonPlaylistSlides = [firstSlide];
+      this.lessonPlaylistIndex = 0;
+      this.isLessonPlaylistActive = true;
+    } else {
+      this.saveCurrentSlideIntoPlaylist();
+    }
+  }
+
+  _finalizeAppendedCaptureSlide(title = '') {
+    if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) return;
+    const nextIdx = this.lessonPlaylistSlides.length + 1;
+    const newSlide = this.serializeFullSlideState(title || String(nextIdx));
+    this.lessonPlaylistSlides.push(newSlide);
+    this.lessonPlaylistIndex = this.lessonPlaylistSlides.length - 1;
+    this.syncLessonPlaylistNavBarUI();
+  }
+
+  handleNewCanvasButtonClick() {
+    // 1. 만약 PDF 통째 페이지 모드 중이면 현재 페이지를 저장하고 새 백지 슬라이드로 전환
+    if (this.pdfPageBoardData) {
+      this.archiveCurrentPdfBoardPageToCard();
+      const pdfSlides = (this.pdfWorkedPages || []).map(pNum => {
+        const st = this.pdfSavedPageStates && this.pdfSavedPageStates[pNum];
+        return st && st.fullSlide ? st.fullSlide : this.serializeFullSlideState(`p.${pNum}`);
+      });
+      this.pdfPageBoardData = null;
+      this.syncPdfBoardNavBarUI();
+      this.lessonPlaylistSlides = pdfSlides;
+      this.isLessonPlaylistActive = true;
+    }
+
+    // 2. 아무 작업 내용도 없는 첫 백지 상태면 안내만 표시
+    if (!this.hasAnyWorkspaceContent() && (!this.isLessonPlaylistActive || !this.lessonPlaylistSlides || this.lessonPlaylistSlides.length <= 1)) {
+      this.resetNewCanvas();
+      return;
+    }
+
+    // 3. 현재 캔버스에 작업물이 있으면 현재 슬라이드에 자동 보존하고 깨끗한 다음 번호 캔버스 추가!
+    if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
+      const firstSlide = this.serializeFullSlideState('1');
+      this.lessonPlaylistSlides = [firstSlide];
+      this.lessonPlaylistIndex = 0;
+      this.isLessonPlaylistActive = true;
+    } else {
+      this.saveCurrentSlideIntoPlaylist();
+    }
+
+    this.resetBoardAndProblemCardsForNext();
+    const nextNum = this.lessonPlaylistSlides.length + 1;
+    const blankSlide = this.serializeFullSlideState(String(nextNum));
+    this.lessonPlaylistSlides.push(blankSlide);
+    this.lessonPlaylistIndex = this.lessonPlaylistSlides.length - 1;
+    this.syncLessonPlaylistNavBarUI();
+    this.showToast(`✨ 이전 작업을 [${nextNum - 1}번]에 자동 보관하고 깨끗한 [${nextNum}번 캔버스]를 열었습니다!`);
+  }
+
+  jumpToPlaylistSlide(targetIdx) {
+    if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) return;
+    if (targetIdx < 0 || targetIdx >= this.lessonPlaylistSlides.length) return;
+    if (targetIdx === this.lessonPlaylistIndex) return;
+    this.saveCurrentSlideIntoPlaylist();
+    this.lessonPlaylistIndex = targetIdx;
+    this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
+    this.syncLessonPlaylistNavBarUI();
+  }
+
+  deletePlaylistSlideAt(delIdx) {
+    if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) return;
+    if (delIdx < 0 || delIdx >= this.lessonPlaylistSlides.length) return;
+
+    this.saveCurrentSlideIntoPlaylist();
+    this.lessonPlaylistSlides.splice(delIdx, 1);
+
+    if (this.lessonPlaylistSlides.length === 0) {
+      this.resetNewCanvas();
+      return;
+    }
+
+    if (this.lessonPlaylistSlides.length === 1) {
+      // 1장만 남으면 해당 슬라이드를 복원하고 상단 바는 깔끔하게 숨김(단독 1페이지 상태)
+      const remaining = this.lessonPlaylistSlides[0];
+      this.isLessonPlaylistActive = false;
+      this.lessonPlaylistSlides = [];
+      this.lessonPlaylistIndex = 0;
+      this.deserializeFullSlideState(remaining);
+      this.syncLessonPlaylistNavBarUI();
+      this.showToast(`🗑️ [${delIdx + 1}번] 슬라이드를 삭제했습니다.`);
+      return;
+    }
+
+    if (this.lessonPlaylistIndex >= this.lessonPlaylistSlides.length) {
+      this.lessonPlaylistIndex = this.lessonPlaylistSlides.length - 1;
+    } else if (delIdx < this.lessonPlaylistIndex) {
+      this.lessonPlaylistIndex = Math.max(0, this.lessonPlaylistIndex - 1);
+    }
+
+    this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
+    this.syncLessonPlaylistNavBarUI();
+    this.showToast(`🗑️ [${delIdx + 1}번] 슬라이드를 삭제했습니다.`);
+  }
+
+  clearAllSlidesAndReset() {
+    this.resetNewCanvas();
+    this.showToast('🗑️ 모든 슬라이드를 비우고 깨끗한 초기 캔버스로 돌아왔습니다! (Ctrl+Z 복구 가능)');
+  }
+
+  toggleTopSlideBarHidden(hide) {
+    this.isTopSlideBarHidden = typeof hide === 'boolean' ? hide : !this.isTopSlideBarHidden;
+    this.syncPdfBoardNavBarUI();
+    this.syncLessonPlaylistNavBarUI();
+  }
+
+  _syncTopSlideMiniTabUI() {
+    const miniTab = document.getElementById('topSlideBarMiniTab');
+    const lblMini = document.getElementById('lblTopSlideMiniTab');
+    if (!miniTab) return;
+
+    const hasPdfBar = Boolean(this.pdfPageBoardData);
+    const hasPlaylistBar = Boolean(!hasPdfBar && this.isLessonPlaylistActive && this.lessonPlaylistSlides && this.lessonPlaylistSlides.length >= 1);
+
+    if (!this.isTopSlideBarHidden || (!hasPdfBar && !hasPlaylistBar)) {
+      miniTab.style.display = 'none';
+      return;
+    }
+
+    miniTab.style.display = 'inline-flex';
+    if (lblMini) {
+      if (hasPdfBar) {
+        const p = this.pdfPageBoardData.pageNum || 1;
+        const cnt = (this.pdfWorkedPages && this.pdfWorkedPages.length) || 1;
+        lblMini.textContent = `▾ p.${p} (${cnt})`;
+      } else {
+        const cur = (this.lessonPlaylistIndex || 0) + 1;
+        const total = this.lessonPlaylistSlides.length;
+        lblMini.textContent = `▾ ${cur}/${total}`;
+      }
+    }
+  }
+
   syncLessonPlaylistNavBarUI() {
     const navBar = document.getElementById('lessonPlaylistNavBar');
     if (!navBar) return;
-    if (!this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) {
+    if (this.pdfPageBoardData || !this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) {
       navBar.style.display = 'none';
+      this._syncTopSlideMiniTabUI();
       return;
     }
-    navBar.style.display = 'flex';
+
     const total = this.lessonPlaylistSlides.length;
     const cur = this.lessonPlaylistIndex + 1;
     const curSlide = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
@@ -14558,27 +14852,79 @@ class GraphApp {
     if (lbl) {
       lbl.textContent = `${cur} / ${total} · ${curSlide && curSlide.slideTitle ? curSlide.slideTitle : '문항'}`;
     }
+
+    const chipsEl = document.getElementById('playlistSlideChips');
+    if (chipsEl) {
+      chipsEl.innerHTML = '';
+      this.lessonPlaylistSlides.forEach((s, idx) => {
+        const chip = document.createElement('div');
+        chip.className = 'slide-chip-item' + (idx === this.lessonPlaylistIndex ? ' active' : '');
+        const rawTitle = (s && s.slideTitle) ? String(s.slideTitle).trim() : '';
+        const shortLabel = (rawTitle && rawTitle.startsWith('p.')) ? rawTitle : String(idx + 1);
+        chip.title = `${idx + 1}번 캔버스 (${rawTitle || '슬라이드'})`;
+
+        const span = document.createElement('span');
+        span.className = 'slide-chip-label';
+        span.textContent = shortLabel;
+        chip.appendChild(span);
+
+        if (total > 1) {
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'slide-chip-del';
+          delBtn.title = `${idx + 1}번 슬라이드만 삭제`;
+          delBtn.textContent = '✕';
+          delBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.deletePlaylistSlideAt(idx);
+          };
+          chip.appendChild(delBtn);
+        }
+
+        chip.onclick = () => this.jumpToPlaylistSlide(idx);
+        chipsEl.appendChild(chip);
+      });
+    }
+
     const btnPrev = document.getElementById('btnPlaylistPrev');
     const btnNext = document.getElementById('btnPlaylistNext');
     if (btnPrev) btnPrev.disabled = (this.lessonPlaylistIndex <= 0);
     if (btnNext) btnNext.disabled = (this.lessonPlaylistIndex >= total - 1);
+
+    if (this.isTopSlideBarHidden) {
+      navBar.style.display = 'none';
+    } else {
+      navBar.style.display = 'flex';
+    }
+    this._syncTopSlideMiniTabUI();
   }
 
   // ============================================================================
   // 🔗 [학생용/강사용 판서 페이지 + #1,#2 그래프 카드 + 전체 슬라이드 통째 클라우드 링크 생성/복원]
   // ============================================================================
-  async createCloudSharePackage() {
-    if (this.isLessonPlaylistActive) {
+  _getActiveSlidesForExport(fallbackTitle = '공유된 수업 노트') {
+    if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
       this.saveCurrentSlideIntoPlaylist();
+      return JSON.parse(JSON.stringify(this.lessonPlaylistSlides));
     }
+    if (this.pdfPageBoardData && Array.isArray(this.pdfWorkedPages) && this.pdfWorkedPages.length > 1) {
+      this.archiveCurrentPdfBoardPageToCard();
+      return this.pdfWorkedPages.map(pNum => {
+        const st = this.pdfSavedPageStates && this.pdfSavedPageStates[pNum];
+        return st && st.fullSlide ? JSON.parse(JSON.stringify(st.fullSlide)) : this.serializeFullSlideState(`p.${pNum}`);
+      });
+    }
+    return [this.serializeFullSlideState(fallbackTitle)];
+  }
+
+  async createCloudSharePackage() {
+    const activeSlides = this._getActiveSlidesForExport('공유된 수업 노트');
     const shortId = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const pkg = {
       id: shortId,
       createdAt: Date.now(),
-      isPlaylist: Boolean(this.isLessonPlaylistActive && this.lessonPlaylistSlides && this.lessonPlaylistSlides.length > 1),
-      playlistSlides: (this.isLessonPlaylistActive && this.lessonPlaylistSlides && this.lessonPlaylistSlides.length > 0)
-        ? this.lessonPlaylistSlides
-        : [this.serializeFullSlideState('공유된 수업 노트')],
+      isPlaylist: activeSlides.length > 1,
+      playlistSlides: activeSlides,
       currentIndex: this.isLessonPlaylistActive ? this.lessonPlaylistIndex : 0
     };
 

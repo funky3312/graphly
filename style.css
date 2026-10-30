@@ -7676,3 +7676,220 @@ body.theme-light .lasso-action-btn.lasso-action-del:hover {
   font-weight: 700 !important;
   padding: 6px 4px !important;
 }
+
+/* ==========================================================================
+   🎯 [초슬림 통합 슬라이드 바 (문제 캡처 · PDF 통째 · 그래프 캔버스 묶음) & 감추기 마이크로 탭]
+   ========================================================================== */
+.slim-slide-nav-bar {
+  padding: 4px 7px !important;
+  gap: 4px !important;
+  max-width: calc(100vw - 160px);
+}
+
+.slim-nav-arrow {
+  width: 26px !important;
+  height: 26px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 50% !important;
+  flex-shrink: 0;
+}
+
+.slim-next-btn {
+  height: 26px !important;
+  padding: 0 9px !important;
+  font-size: 11.5px !important;
+  gap: 3px !important;
+  flex-shrink: 0;
+}
+
+.slim-page-pill {
+  height: 26px !important;
+  padding: 0 8px !important;
+  font-size: 11.5px !important;
+  gap: 4px !important;
+  flex-shrink: 0;
+}
+
+.slide-chips-strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 48vw;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 1px 2px;
+}
+.slide-chips-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.slide-chip-item {
+  display: inline-flex;
+  align-items: center;
+  height: 25px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(255, 255, 255, 0.07);
+  color: #cbd5e1;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 0 8px;
+  gap: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.14s ease;
+  user-select: none;
+}
+
+.slide-chip-item:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.slide-chip-item.active {
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  border-color: #60a5fa;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+  padding-right: 6px;
+}
+
+body.theme-light .slide-chip-item {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+body.theme-light .slide-chip-item:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
+body.theme-light .slide-chip-item.active {
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  border-color: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+}
+
+.slide-chip-label {
+  line-height: 1;
+  pointer-events: none;
+}
+
+.slide-chip-del {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.22);
+  color: rgba(255, 255, 255, 0.9);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.slide-chip-item.active .slide-chip-del,
+.slide-chip-item:hover .slide-chip-del {
+  display: inline-flex;
+}
+
+.slide-chip-del:hover {
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  transform: scale(1.12);
+}
+
+.slim-icon-btn {
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0;
+}
+
+.slim-add-slide-btn {
+  color: #38bdf8 !important;
+  border-color: rgba(56, 189, 248, 0.35) !important;
+  background: rgba(56, 189, 248, 0.12) !important;
+}
+.slim-add-slide-btn:hover {
+  background: rgba(56, 189, 248, 0.24) !important;
+  color: #ffffff !important;
+}
+body.theme-light .slim-add-slide-btn {
+  color: #0284c7 !important;
+  border-color: rgba(2, 132, 199, 0.35) !important;
+  background: rgba(2, 132, 199, 0.08) !important;
+}
+body.theme-light .slim-add-slide-btn:hover {
+  background: rgba(2, 132, 199, 0.18) !important;
+  color: #0369a1 !important;
+}
+
+.slim-danger-btn:hover {
+  background: rgba(239, 68, 68, 0.2) !important;
+  border-color: #ef4444 !important;
+  color: #ef4444 !important;
+}
+
+/* 🙈 상단 슬라이드 바 감추기 상태일 때 천장 베젤 끝에 붙는 초박형 미니 탭 */
+.top-slide-bar-mini-tab {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 446;
+  height: 18px;
+  padding: 0 11px;
+  border-radius: 0 0 10px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-top: none;
+  background: rgba(15, 23, 42, 0.75);
+  color: #e2e8f0;
+  font-size: 10.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.42;
+  transition: all 0.16s ease;
+  user-select: none;
+}
+
+.top-slide-bar-mini-tab:hover {
+  opacity: 1;
+  height: 22px;
+  background: rgba(37, 99, 235, 0.95);
+  color: #ffffff;
+  border-color: #60a5fa;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+body.theme-light .top-slide-bar-mini-tab {
+  background: rgba(255, 255, 255, 0.88);
+  color: #334155;
+  border-color: rgba(15, 23, 42, 0.18);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+}
+
+body.theme-light .top-slide-bar-mini-tab:hover {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
