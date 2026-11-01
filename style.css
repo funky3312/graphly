@@ -996,12 +996,14 @@ body.fullscreen-mode .sidebar-rail {
   display: flex !important;
 }
 
-#btnFullscreen.active,
-body.fullscreen-mode #btnFullscreen {
-  background: rgba(0, 210, 211, 0.2) !important;
-  border-color: var(--accent-cyan) !important;
-  color: var(--accent-cyan) !important;
-  box-shadow: 0 0 10px rgba(0, 210, 211, 0.3);
+body.fullscreen-mode #btnFullscreen #iconFullscreenEnter,
+#btnFullscreen.quick-fab-exit #iconFullscreenEnter {
+  display: none !important;
+}
+
+body.fullscreen-mode #btnFullscreen #iconFullscreenExit,
+#btnFullscreen.quick-fab-exit #iconFullscreenExit {
+  display: inline-flex !important;
 }
 
 .btn-exit-fullscreen,

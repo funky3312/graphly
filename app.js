@@ -4736,9 +4736,7 @@ class GraphApp {
               await document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => { return document.documentElement.requestFullscreen(); });
             }
           } catch (err) { }
-          document.body.classList.add('fullscreen-mode');
-          const btnFs = document.getElementById('btnFullscreen');
-          if (btnFs) btnFs.classList.add('active');
+          this.syncFullscreenButtonUI(true);
         }
 
         const imageFiles = rawFiles.filter(f => f.type && f.type.startsWith('image/'));
@@ -4803,9 +4801,7 @@ class GraphApp {
         setTimeout(() => {
           this.isWaitingForFilePicker = false;
           if (this.wasFullscreenBeforeFile && !document.fullscreenElement) {
-            document.body.classList.add('fullscreen-mode');
-            const btnFs = document.getElementById('btnFullscreen');
-            if (btnFs) btnFs.classList.add('active');
+            this.syncFullscreenButtonUI(true);
           }
         }, 300);
       }
@@ -11691,15 +11687,28 @@ class GraphApp {
     document.getElementById('btnCopy').onclick = () => this.copyToClipboard();
     document.getElementById('btnDownload').onclick = () => this.downloadPNG();
 
-    // 전체화면 토글 (대표님 기획: 전체화면 모드에서도 상단 메뉴와 좌측 레일 메뉴 상시 노출 + iOS/Mac Safari webkit 호환)
+    // 전체화면 원버튼 토글 (전체화면 시작 ⛶ ⇄ 전체화면 종료 ✕ 단일 버튼 스왑)
+    this.syncFullscreenButtonUI = (isFs = document.body.classList.contains('fullscreen-mode')) => {
+      const active = Boolean(isFs);
+      document.body.classList.toggle('fullscreen-mode', active);
+      const btnFs = document.getElementById('btnFullscreen');
+      const iconEnter = document.getElementById('iconFullscreenEnter');
+      const iconExit = document.getElementById('iconFullscreenExit');
+      if (btnFs) {
+        btnFs.classList.toggle('active', active);
+        btnFs.classList.toggle('quick-fab-exit', active);
+        btnFs.title = active ? '전체화면 종료' : '전체화면';
+      }
+      if (iconEnter) iconEnter.style.display = active ? 'none' : 'inline-flex';
+      if (iconExit) iconExit.style.display = active ? 'inline-flex' : 'none';
+    };
+
     const toggleFullscreen = () => {
       const isEntering = !document.body.classList.contains('fullscreen-mode');
-      const btnFs = document.getElementById('btnFullscreen');
       const docEl = document.documentElement;
       const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
       if (isEntering) {
-        document.body.classList.add('fullscreen-mode');
-        if (btnFs) btnFs.classList.add('active');
+        this.syncFullscreenButtonUI(true);
         if (!fsEl) {
           try {
             if (docEl.requestFullscreen) {
@@ -11711,14 +11720,14 @@ class GraphApp {
         }
         this.showToast('⛶ 전체화면 모드');
       } else {
-        document.body.classList.remove('fullscreen-mode');
-        if (btnFs) btnFs.classList.remove('active');
+        this.syncFullscreenButtonUI(false);
         if (fsEl) {
           try {
             if (document.exitFullscreen) document.exitFullscreen().catch(() => { });
             else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
           } catch (err) { }
         }
+        this.showToast('✕ 전체화면 종료');
       }
       setTimeout(() => {
         this.resizeCanvas();
@@ -11726,41 +11735,18 @@ class GraphApp {
       }, 100);
     };
 
-    document.getElementById('btnFullscreen').onclick = toggleFullscreen;
-
-    const btnExit = document.getElementById('btnExitFullscreen');
-    if (btnExit) {
-      btnExit.onclick = () => {
-        const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-        if (fsEl) {
-          try {
-            if (document.exitFullscreen) document.exitFullscreen().catch(() => { });
-            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-          } catch (err) { }
-        }
-        document.body.classList.remove('fullscreen-mode');
-        const btnFs = document.getElementById('btnFullscreen');
-        if (btnFs) btnFs.classList.remove('active');
-        this.showToast('✕ 전체화면 종료');
-        setTimeout(() => {
-          this.resizeCanvas();
-          this.render();
-        }, 100);
-      };
-    }
+    const btnFsMain = document.getElementById('btnFullscreen');
+    if (btnFsMain) btnFsMain.onclick = toggleFullscreen;
 
     // ESC 또는 브라우저 전체화면 해제 시 자동 동기화 (Safari webkitfullscreenchange 포함)
     const onFsChange = () => {
-      const btnFs = document.getElementById('btnFullscreen');
       const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
       if (!fsEl) {
         if (!this.isWaitingForFilePicker) {
-          document.body.classList.remove('fullscreen-mode');
-          if (btnFs) btnFs.classList.remove('active');
+          this.syncFullscreenButtonUI(false);
         }
       } else {
-        document.body.classList.add('fullscreen-mode');
-        if (btnFs) btnFs.classList.add('active');
+        this.syncFullscreenButtonUI(true);
       }
       setTimeout(() => {
         this.resizeCanvas();

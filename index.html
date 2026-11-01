@@ -920,14 +920,10 @@
 
       <!-- [우측 플로팅 액션 툴바] 원형 아이콘 & 2열 콤팩트 배치로 전체화면 해제 시에도 잘림 0% -->
       <div class="canvas-quick-toolbar" id="rightActionToolbar">
-        <!-- 1. 우측 최상단 ✕ (전체화면 종료 / 닫기) -->
-        <button id="btnExitFullscreen" class="quick-fab-btn quick-fab-exit" title="전체화면 종료">
-          <span class="fab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
-        </button>
-
-        <!-- 2. 전체화면 시작 / 전환 (F11) -->
+        <!-- 1. 전체화면 시작(⛶) ⇄ 전체화면 종료(✕) 원버튼 토글 -->
         <button id="btnFullscreen" class="quick-fab-btn" title="전체화면">
-          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></span>
+          <span class="fab-icon" id="iconFullscreenEnter"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></span>
+          <span class="fab-icon" id="iconFullscreenExit" style="display: none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
         </button>
 
         <!-- 3. 내보내기 & 공유 플라이아웃 (대표님 기획: 원클릭 복사, PNG 저장, 공유 QR 통합) -->
@@ -1788,7 +1784,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261031_4"></script>
-  <script src="app.js?v=20261101_25"></script>
+  <script src="app.js?v=20261102_01"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
