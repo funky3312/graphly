@@ -15339,6 +15339,13 @@ class GraphApp {
     if (!this._isApplyingAudioTimelineState) {
       this.stopAudioPlayback(false);
       this.audioSyncData = slideData.audioSyncData ? JSON.parse(JSON.stringify(slideData.audioSyncData)) : null;
+      if (!this._isCapturingExportSnapshots) {
+        const hasLoadedAudio = Boolean(this.audioSyncData && this.audioSyncData.durationMs > 0);
+        this._isAudioSyncPlayerVisible = hasLoadedAudio;
+        if (hasLoadedAudio) {
+          this.audioPlayCurrentMs = this.audioSyncData.durationMs;
+        }
+      }
       this.syncAudioRecordUI();
     }
 
