@@ -6380,9 +6380,11 @@ class GraphApp {
     const total = this.pdfTotalPages || this.pdfDoc.numPages || 1;
     const targetPage = Math.max(1, Math.min(pageNum || this.pdfCurrentPage || 1, total));
 
-    // 🌟 [대표님 핵심 기획: 슬라이드 완전 일원화]
-    // [✂️ 다음 캡처]를 누른 뒤 [📄 이 페이지 열기]를 클릭하면 이전 슬라이드를 자동 보관하고 깨끗한 다음 슬라이드에 삽입합니다!
-    const replaceMode = Boolean(this._isReplacingViaNextCrop);
+    // 🌟 [대표님 핵심 기획: 슬라이드 완전 일원화 & 자동 다음 슬라이드 오픈]
+    // 슬라이드를 미리 추가(+)하지 않고도 [PDF]를 눌러 [📄 이 페이지 열기]를 클릭하면,
+    // 현재 슬라이드에 이미 내용이 있을 경우 자동으로 이전 슬라이드를 보관하고 깨끗한 다음 슬라이드에 삽입합니다!
+    const hasExistingContent = !Boolean(options && options.skipArchiveCurrent) && this.hasAnyWorkspaceContent();
+    const replaceMode = Boolean(this._isReplacingViaNextCrop || hasExistingContent);
     this._isReplacingViaNextCrop = false;
     if (replaceMode) {
       this._archiveCurrentBeforeNextCapture();
@@ -6474,6 +6476,13 @@ class GraphApp {
       this._finalizeAppendedCaptureSlide('');
     } else if (this.isLessonPlaylistActive) {
       this.saveCurrentSlideIntoPlaylist();
+      this.syncLessonPlaylistNavBarUI();
+    } else {
+      // PDF 한 페이지를 처음 불러왔을 때도 즉시 상단 슬라이드바(📑 1/1 + [PDF] 버튼)를 활성화하여 다음 페이지 추가가 원클릭으로 가능하도록!
+      const firstSlide = this.serializeFullSlideState('1');
+      this.lessonPlaylistSlides = [firstSlide];
+      this.lessonPlaylistIndex = 0;
+      this.isLessonPlaylistActive = true;
       this.syncLessonPlaylistNavBarUI();
     }
 
@@ -16593,10 +16602,20 @@ class GraphApp {
     const btnNext = document.getElementById('btnPlaylistNext');
     const btnInfo = document.getElementById('btnPlaylistSlideInfo');
     const btnAddSlide = document.getElementById('btnPlaylistAddSlide');
+    const btnPlaylistOpenPdf = document.getElementById('btnPlaylistOpenPdf');
     const btnClearAllSlides = document.getElementById('btnPlaylistClearAll');
     const btnHidePlaylistBar = document.getElementById('btnPlaylistHideBar');
     const btnClosePlaylist = document.getElementById('btnPlaylistClose');
     const btnMiniTab = document.getElementById('topSlideBarMiniTab');
+
+    if (btnPlaylistOpenPdf) {
+      btnPlaylistOpenPdf.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        // 현재 슬라이드에 이미 내용이 있으면(+)를 누르지 않았더라도 자동으로 다음 슬라이드에 열리도록 true 전달!
+        const autoNextSlide = this.hasAnyWorkspaceContent();
+        this.resumeOrOpenCurrentPdf(autoNextSlide, { startInPanMode: true });
+      };
+    }
 
     const btnPlaylistDelCur = document.getElementById('btnPlaylistDeleteCurrent');
     if (btnPrev) btnPrev.onclick = () => this.stepLessonPlaylist(-1);
@@ -18900,8 +18919,13 @@ class GraphApp {
 
     const btnPrev = document.getElementById('btnPlaylistPrev');
     const btnNext = document.getElementById('btnPlaylistNext');
+    const btnOpenPdf = document.getElementById('btnPlaylistOpenPdf');
     if (btnPrev) btnPrev.disabled = (this.lessonPlaylistIndex <= 0);
     if (btnNext) btnNext.disabled = (this.lessonPlaylistIndex >= total - 1);
+    if (btnOpenPdf) {
+      const hasOpenPdf = Boolean(this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0));
+      btnOpenPdf.style.display = hasOpenPdf ? 'inline-flex' : 'none';
+    }
 
     if (this.isTopSlideBarHidden) {
       navBar.style.display = 'none';
