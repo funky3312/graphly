@@ -8590,6 +8590,14 @@ class GraphApp {
 
   dockCardToLeftStack(cardEl) {
     if (!cardEl) return;
+    // 🛡️ 카드 위 필기 모드(.card-ink-active)나 전역 레이저/스티커 도구 활성 상태에서는 더블클릭 도킹 원천 차단 (필기 중 카드 도망 방지!)
+    if (
+      cardEl.classList.contains('card-ink-active') ||
+      cardEl.classList.contains('card-laser-active') ||
+      (this.isInkMode && (this.activeInkTool === 'laser' || this.activeInkTool === 'sticker'))
+    ) {
+      return;
+    }
     // 0. 진행 중인 드래그 상태를 즉시 강제 종료 (더블클릭 후 마우스를 따라다니는 현상 100% 원천 차단!)
     if (typeof cardEl._cancelCardDrag === 'function') {
       cardEl._cancelCardDrag();
@@ -8612,6 +8620,12 @@ class GraphApp {
     if (!cardEl || cardEl._doubleTapDockAttached) return;
     cardEl._doubleTapDockAttached = true;
 
+    const isCardWritingBlocked = () => Boolean(
+      cardEl.classList.contains('card-ink-active') ||
+      cardEl.classList.contains('card-laser-active') ||
+      (this.isInkMode && (this.activeInkTool === 'laser' || this.activeInkTool === 'sticker'))
+    );
+
     const shouldIgnoreTarget = (target) => {
       if (!target || !target.closest) return false;
       return Boolean(
@@ -8620,14 +8634,18 @@ class GraphApp {
         target.closest('.card-fold-triangle-btn') ||
         target.closest('.card-title-fold-btn') ||
         target.closest('.problem-card-actions') ||
-        target.closest('.problem-card-resize-handle')
+        target.closest('.problem-card-resize-handle') ||
+        target.closest('.card-sticker-item') ||
+        target.closest('.card-stickers-layer') ||
+        target.closest('.problem-card-canvas') ||
+        target.closest('.card-laser-canvas')
       );
     };
 
     // 1) 포인터 기반 빠른 더블탭 (아이패드 펜슬·손가락·PC 마우스 공용)
     cardEl.addEventListener('pointerup', (e) => {
       if (e.button && e.button !== 0) return;
-      if (cardEl.classList.contains('card-laser-active')) return;
+      if (isCardWritingBlocked()) return;
       if (shouldIgnoreTarget(e.target)) return;
       if (cardEl._justDraggedTime && performance.now() - cardEl._justDraggedTime < 120) return;
 
@@ -8649,7 +8667,7 @@ class GraphApp {
 
     // 2) 표준 dblclick 이벤트 폴백 지원
     cardEl.addEventListener('dblclick', (e) => {
-      if (cardEl.classList.contains('card-laser-active')) return;
+      if (isCardWritingBlocked()) return;
       if (shouldIgnoreTarget(e.target)) return;
       e.preventDefault();
       this.dockCardToLeftStack(cardEl);
