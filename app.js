@@ -16576,7 +16576,6 @@ class GraphApp {
     const btnNext = document.getElementById('btnPlaylistNext');
     const btnInfo = document.getElementById('btnPlaylistSlideInfo');
     const btnAddSlide = document.getElementById('btnPlaylistAddSlide');
-    const btnShareAll = document.getElementById('btnPlaylistShareAll');
     const btnClearAllSlides = document.getElementById('btnPlaylistClearAll');
     const btnHidePlaylistBar = document.getElementById('btnPlaylistHideBar');
     const btnClosePlaylist = document.getElementById('btnPlaylistClose');
@@ -16598,16 +16597,12 @@ class GraphApp {
       };
     }
     if (btnAddSlide) btnAddSlide.onclick = () => this.handleNewCanvasButtonClick();
-    if (btnShareAll) {
-      btnShareAll.onclick = () => {
-        this.saveCurrentSlideIntoPlaylist();
-        if (this._openShareModalWithCloudPackage) {
-          this._openShareModalWithCloudPackage();
-        }
-      };
-    }
     if (btnClearAllSlides) {
-      btnClearAllSlides.onclick = () => this.clearAllSlidesAndReset();
+      btnClearAllSlides.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        this._isSlideGridOpen = false;
+        this.clearAllSlidesAndReset();
+      };
     }
     if (btnHidePlaylistBar) {
       btnHidePlaylistBar.onclick = () => this.toggleTopSlideBarHidden(true);
@@ -18820,7 +18815,7 @@ class GraphApp {
     }
     const btnDelCur = document.getElementById('btnPlaylistDeleteCurrent');
     if (btnDelCur) {
-      btnDelCur.disabled = (total <= 1);
+      btnDelCur.disabled = false;
     }
 
     const chipsEl = document.getElementById('playlistSlideChips');

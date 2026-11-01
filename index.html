@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261102_20">
+  <link rel="stylesheet" href="style.css?v=20261102_21">
 </head>
 
 <body class="theme-light">
@@ -1545,7 +1545,7 @@
       <span>목록</span>
     </button>
     <div class="pdf-board-nav-divider"></div>
-    <button id="btnPdfBoardClearAll" class="pdf-board-close-btn slim-icon-btn slim-danger-btn" title="전체 초기화">
+    <button id="btnPdfBoardDeleteCurrent" class="pdf-board-close-btn slim-icon-btn slim-danger-btn" title="현재 슬라이드 삭제">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
     </button>
     <button id="btnPdfBoardHideBar" class="pdf-board-close-btn slim-icon-btn" title="슬라이드 바 접기">
@@ -1558,7 +1558,7 @@
     <div id="pdfBoardGridPopover" class="slide-grid-popover" style="display: none;">
       <div class="slide-grid-popover-header">
         <span class="slide-grid-popover-title">열어본 PDF 페이지</span>
-        <button type="button" id="btnPdfBoardDeleteCurrent" class="slide-grid-del-current-btn" title="현재 페이지 슬라이드 삭제">🗑️ 현재 삭제</button>
+        <button type="button" id="btnPdfBoardClearAll" class="slide-grid-del-current-btn" title="전체 슬라이드 비우기">🗑️ 전체 비우기</button>
       </div>
       <div id="pdfBoardSlideChips" class="slide-chips-strip slide-chips-grid"></div>
     </div>
@@ -1579,10 +1579,7 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     </button>
     <div class="pdf-board-nav-divider"></div>
-    <button id="btnPlaylistShareAll" class="pdf-board-close-btn slim-icon-btn" title="내보내기">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-    </button>
-    <button id="btnPlaylistClearAll" class="pdf-board-close-btn slim-icon-btn slim-danger-btn" title="전체 초기화">
+    <button id="btnPlaylistDeleteCurrent" class="pdf-board-close-btn slim-icon-btn slim-danger-btn" title="현재 슬라이드 삭제">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
     </button>
     <button id="btnPlaylistHideBar" class="pdf-board-close-btn slim-icon-btn" title="슬라이드 바 접기">
@@ -1595,7 +1592,7 @@
     <div id="playlistGridPopover" class="slide-grid-popover" style="display: none;">
       <div class="slide-grid-popover-header">
         <span class="slide-grid-popover-title">캔버스 목록</span>
-        <button type="button" id="btnPlaylistDeleteCurrent" class="slide-grid-del-current-btn" title="현재 슬라이드 삭제">🗑️ 현재 삭제</button>
+        <button type="button" id="btnPlaylistClearAll" class="slide-grid-del-current-btn" title="전체 슬라이드 비우기">🗑️ 전체 비우기</button>
       </div>
       <div id="playlistSlideChips" class="slide-chips-strip slide-chips-grid"></div>
     </div>
@@ -1935,8 +1932,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261102_20"></script>
-  <script src="app.js?v=20261102_20"></script>
+  <script src="engine.js?v=20261102_21"></script>
+  <script src="app.js?v=20261102_21"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
