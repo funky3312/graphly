@@ -2383,6 +2383,13 @@ class GraphApp {
     this.virtualStylusEl = document.getElementById('virtualStylusPen');
     this.stylusPenSvg = document.getElementById('stylusPenSvg');
     this.stylusEraserSvg = document.getElementById('stylusEraserSvg');
+    this.stylusHighlighterSvg = document.getElementById('stylusHighlighterSvg');
+    this.stylusLaserSvg = document.getElementById('stylusLaserSvg');
+    this.stylusArrowSvg = document.getElementById('stylusArrowSvg');
+    this.stylusGrabSvg = document.getElementById('stylusGrabSvg');
+    this.stylusGrabbingSvg = document.getElementById('stylusGrabbingSvg');
+    this.stylusCrosshairSvg = document.getElementById('stylusCrosshairSvg');
+    this.stylusClickRippleEl = document.getElementById('stylusClickRipple');
     this.stylusColorBand = document.getElementById('stylusColorBand');
     if (this.stylusColorBand) {
       this.stylusColorBand.setAttribute('fill', this.currentInkColor || '#00d2d3');
@@ -2552,6 +2559,12 @@ class GraphApp {
     const isEraserNow = (this.activeInkTool === 'eraser') || Boolean(this._isTemporaryStylusEraser) || Boolean(e && this.isStylusEraserEvent && this.isStylusEraserEvent(e));
     if (this.stylusPenSvg) this.stylusPenSvg.style.display = isEraserNow ? 'none' : 'block';
     if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = isEraserNow ? 'block' : 'none';
+    if (this.stylusHighlighterSvg) this.stylusHighlighterSvg.style.display = 'none';
+    if (this.stylusLaserSvg) this.stylusLaserSvg.style.display = 'none';
+    if (this.stylusArrowSvg) this.stylusArrowSvg.style.display = 'none';
+    if (this.stylusGrabSvg) this.stylusGrabSvg.style.display = 'none';
+    if (this.stylusGrabbingSvg) this.stylusGrabbingSvg.style.display = 'none';
+    if (this.stylusCrosshairSvg) this.stylusCrosshairSvg.style.display = 'none';
     this.virtualStylusEl.style.display = 'block';
 
     // 캔버스 내부 범위로 클램핑하여 마지막 위치 보존
@@ -3006,7 +3019,23 @@ class GraphApp {
       return true;
     });
 
+    if (this.isAudioRecording && !this.isAudioRecordPaused) {
+      this.recordAudioCursorPoint(screenX, screenY, '#f43f5e', true, { cursorKind: 'eraser' });
+    }
+
     if (modified) {
+      if (this.isAudioRecording && !this.isAudioRecordPaused) {
+        const eraseTimeMs = this.getAudioRecordElapsedMs();
+        const remainingSet = new Set(remaining);
+        if (!this.audioErasedStrokes) this.audioErasedStrokes = [];
+        for (const st of this.inkStrokes) {
+          if (st && !remainingSet.has(st)) {
+            const cloned = JSON.parse(JSON.stringify(st));
+            cloned.erasedAt = eraseTimeMs;
+            this.audioErasedStrokes.push(cloned);
+          }
+        }
+      }
       if (!this._erasedInCurrentStroke) {
         this.pushHistoryState();
         this._erasedInCurrentStroke = true;
@@ -26634,6 +26663,10 @@ class GraphApp {
     this.audioRecordedChunks = [];
     this.audioTimeline = [];
     this.audioLaserStrokes = [];
+    this.audioErasedStrokes = [];
+    this.audioLaserStrokes = [];
+    this.audioErasedStrokes = [];
+    this.audioErasedStrokes = [];
     this.audioInitialState = null;
     this.audioFinalState = null;
     this.audioSyncData = null;
@@ -26871,8 +26904,29 @@ class GraphApp {
             }
           }
         }
-        // 일반 캔버스 위 호버링 (펜 모드 꺼져 있거나 선택 모드에서 마우스/펜으로 동그라미 치며 가리키는 경우도 모두 포함!)
-        const isDown = Boolean(this.isDrawingInk || this.isStylusDrawing);
+        if (cardEl) {
+          // 카드 헤더나 리사이즈 핸들을 잡고 이동/조작하는 경우
+          const isDownCard = (typeof e.buttons === 'number' && e.buttons > 0);
+          this.recordAudioCursorPoint(
+            e.clientX,
+            e.clientY,
+            this.currentInkColor || '#00d2d3',
+            isDownCard,
+            { cursorKind: isDownCard ? 'grabbing' : 'grab' }
+          );
+          return;
+        }
+        // 일반 캔버스 위 호버링 및 그래프 극점 드래그/조작 모두 포함!
+        const isDown = Boolean(
+          this.isDrawingInk ||
+          this.isStylusDrawing ||
+          this.draggedHandleIdx !== null ||
+          this.isDraggingCurve ||
+          this.activePwDragIdx !== null ||
+          this.isPanning ||
+          this.isBoardPanning ||
+          (typeof e.buttons === 'number' && e.buttons > 0)
+        );
         this.recordAudioCursorPoint(e.clientX, e.clientY, this.currentInkColor || '#00d2d3', isDown);
       }, { passive: true });
     }
@@ -26941,6 +26995,7 @@ class GraphApp {
     const initialState = this.audioInitialState;
     const timeline = this.audioTimeline ? [...this.audioTimeline] : [];
     const laserStrokes = this.audioLaserStrokes ? [...this.audioLaserStrokes] : [];
+    const erasedStrokes = this.audioErasedStrokes ? [...this.audioErasedStrokes] : [];
     const mimeType = this._audioMimeType || 'audio/wav';
     const fallbackSilentUrl = this._createSilentWavDataUrl(durationMs);
 
@@ -26953,7 +27008,8 @@ class GraphApp {
       initialState,
       finalState,
       timeline,
-      laserStrokes
+      laserStrokes,
+      erasedStrokes
     };
     this.audioSyncData = segAudioSyncData;
 
@@ -27015,6 +27071,7 @@ class GraphApp {
     this.audioRecordedChunks = [];
     this.audioTimeline = [];
     this.audioLaserStrokes = [];
+    this.audioErasedStrokes = [];
     this.audioRecordStartMs = performance.now();
     this.audioRecordPauseStartMs = this.isAudioRecordPaused ? performance.now() : 0;
     this.audioRecordTotalPausedMs = 0;
@@ -27124,6 +27181,8 @@ class GraphApp {
       piecewiseBoundaries: JSON.parse(JSON.stringify(this.piecewiseBoundaries || [])),
       piecewiseFuncMap: JSON.parse(JSON.stringify(this.piecewiseFuncMap || [])),
       piecewiseInclusions: JSON.parse(JSON.stringify(this.piecewiseInclusions || [])),
+      isDropLineMode: Boolean(this.isDropLineMode),
+      dropLineHoverCandidate: this.dropLineHoverCandidate ? JSON.parse(JSON.stringify(this.dropLineHoverCandidate)) : null,
       dropLines: JSON.parse(JSON.stringify(this.dropLines || [])),
       textLabels: JSON.parse(JSON.stringify(this.textLabels || [])),
       probCardVisible: Boolean(pWidget && pWidget.style.display !== 'none' && this.problemCardData),
@@ -27168,6 +27227,8 @@ class GraphApp {
       this.piecewiseBoundaries = JSON.parse(JSON.stringify(kf.piecewiseBoundaries || []));
       this.piecewiseFuncMap = JSON.parse(JSON.stringify(kf.piecewiseFuncMap || []));
       this.piecewiseInclusions = JSON.parse(JSON.stringify(kf.piecewiseInclusions || []));
+      if (kf.isDropLineMode !== undefined) this.isDropLineMode = Boolean(kf.isDropLineMode);
+      this.dropLineHoverCandidate = kf.dropLineHoverCandidate ? JSON.parse(JSON.stringify(kf.dropLineHoverCandidate)) : null;
       this.dropLines = JSON.parse(JSON.stringify(kf.dropLines || []));
       this.textLabels = JSON.parse(JSON.stringify(kf.textLabels || []));
 
@@ -27242,6 +27303,8 @@ class GraphApp {
       kf.boardZoom,
       kf.usePiecewise,
       kf.piecewiseBoundaries,
+      kf.isDropLineMode,
+      kf.dropLineHoverCandidate ? `${Math.round(kf.dropLineHoverCandidate.x * 100)},${Math.round(kf.dropLineHoverCandidate.y * 100)}` : '',
       kf.dropLines.length,
       kf.textLabels,
       kf.probCardVisible,
@@ -27279,13 +27342,52 @@ class GraphApp {
     return document.getElementById(cardKey);
   }
 
+  _detectCurrentAudioCursorKind(isDrawing = false, extraMeta = null) {
+    if (extraMeta && extraMeta.cursorKind) return extraMeta.cursorKind;
+    if (extraMeta && extraMeta.isLaser) return 'laser';
+    if (this.isDropLineMode) return 'crosshair';
+    if (this.isTextToolMode) return 'arrow';
+
+    const isDraggingNow = Boolean(
+      isDrawing ||
+      this.draggedHandleIdx !== null ||
+      this.isDraggingCurve ||
+      this.activePwDragIdx !== null ||
+      this.isPanning ||
+      this.isBoardPanning ||
+      this.isMovingStage ||
+      this.isResizingStage
+    );
+
+    if (this.isInkMode) {
+      if (this.activeInkTool === 'eraser' || this._isTemporaryStylusEraser) return 'eraser';
+      if (this.activeInkTool === 'highlighter') return 'highlighter';
+      if (this.activeInkTool === 'lasso') return isDraggingNow ? 'grabbing' : 'crosshair';
+      if (this.activeInkTool === 'pen') return 'pen';
+      // select 모드
+      if (isDraggingNow) return 'grabbing';
+      const curStyle = (this.canvas && this.canvas.style && this.canvas.style.cursor) || 'default';
+      if (curStyle === 'grab' || curStyle === 'move' || curStyle === 'pointer' || curStyle === 'ew-resize') return 'grab';
+      return 'arrow';
+    }
+
+    // 순수 그래프 조작 모드 (!this.isInkMode)
+    if (isDraggingNow) return 'grabbing';
+    const curStyle = (this.canvas && this.canvas.style && this.canvas.style.cursor) || 'default';
+    if (curStyle === 'grab' || curStyle === 'move' || curStyle === 'pointer' || curStyle === 'ew-resize') return 'grab';
+    return 'arrow';
+  }
+
   recordAudioCursorPoint(screenX, screenY, color = null, isDrawing = false, extraMeta = null) {
     if (!this.isAudioRecording || this.isAudioRecordPaused) return;
     const t = this.getAudioRecordElapsedMs();
-    // 60fps(16ms) 초고밀도 샘플링으로 호버링 동그라미 포인팅과 레이저 움직임을 유튜버 영상처럼 매끄럽게 기록!
-    if (!isDrawing && (t - this._lastAudioCursorRecordMs < 16)) return;
-    if (isDrawing && (t - this._lastAudioCursorRecordMs < 14)) return;
+    const cursorKind = this._detectCurrentAudioCursorKind(isDrawing, extraMeta);
+    const kindChanged = (cursorKind !== this._lastRecordedCursorKind);
+    // 60fps(16ms) 초고밀도 샘플링 (단, 포인터 모양이 바뀌는 순간에는 딜레이 없이 즉시 기록!)
+    if (!kindChanged && !isDrawing && (t - this._lastAudioCursorRecordMs < 16)) return;
+    if (!kindChanged && isDrawing && (t - this._lastAudioCursorRecordMs < 14)) return;
     this._lastAudioCursorRecordMs = t;
+    this._lastRecordedCursorKind = cursorKind;
 
     const entry = {
       t,
@@ -27293,7 +27395,8 @@ class GraphApp {
       x: Math.round(screenX * 10) / 10,
       y: Math.round(screenY * 10) / 10,
       color: color || this.currentInkColor || '#00d2d3',
-      isDrawing: Boolean(isDrawing)
+      isDrawing: Boolean(isDrawing),
+      cursorKind
     };
 
     if (extraMeta && extraMeta.cardKey) {
@@ -27477,7 +27580,8 @@ class GraphApp {
       initialState: this.audioInitialState,
       finalState: this.audioFinalState,
       timeline: this.audioTimeline,
-      laserStrokes: this.audioLaserStrokes || []
+      laserStrokes: this.audioLaserStrokes || [],
+      erasedStrokes: this.audioErasedStrokes || []
     };
 
     if (this.isAudioMicMuted) {
@@ -27752,7 +27856,8 @@ class GraphApp {
         y: p1.y + (p2.y - p1.y) * alpha,
         color: prev.color || '#00d2d3',
         isDrawing: Boolean(prev.isDrawing),
-        isLaser: Boolean(prev.isLaser)
+        isLaser: Boolean(prev.isLaser),
+        cursorKind: prev.cursorKind || (prev.isLaser ? 'laser' : 'pen')
       };
     }
     if (prev && Math.abs(playMs - prev.t) <= 600) {
@@ -27763,7 +27868,8 @@ class GraphApp {
         y: p1.y,
         color: prev.color || '#00d2d3',
         isDrawing: Boolean(prev.isDrawing),
-        isLaser: Boolean(prev.isLaser)
+        isLaser: Boolean(prev.isLaser),
+        cursorKind: prev.cursorKind || (prev.isLaser ? 'laser' : 'pen')
       };
     }
     return null;
@@ -27873,17 +27979,60 @@ class GraphApp {
     });
   }
 
-  positionReplayVirtualStylus(screenX, screenY, color = '#00d2d3', isDrawing = true) {
+  positionReplayVirtualStylus(screenX, screenY, color = '#00d2d3', isDrawing = true, cursorKind = 'pen') {
     if (!this.virtualStylusEl) return;
     if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return;
-    if (this.stylusPenSvg) this.stylusPenSvg.style.display = 'block';
-    if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = 'none';
+
+    const kind = cursorKind || 'pen';
+    const svgs = {
+      pen: this.stylusPenSvg || document.getElementById('stylusPenSvg'),
+      highlighter: this.stylusHighlighterSvg || document.getElementById('stylusHighlighterSvg'),
+      eraser: this.stylusEraserSvg || document.getElementById('stylusEraserSvg'),
+      laser: this.stylusLaserSvg || document.getElementById('stylusLaserSvg'),
+      arrow: this.stylusArrowSvg || document.getElementById('stylusArrowSvg'),
+      grab: this.stylusGrabSvg || document.getElementById('stylusGrabSvg'),
+      grabbing: this.stylusGrabbingSvg || document.getElementById('stylusGrabbingSvg'),
+      crosshair: this.stylusCrosshairSvg || document.getElementById('stylusCrosshairSvg')
+    };
+
+    Object.keys(svgs).forEach(k => {
+      if (svgs[k]) {
+        svgs[k].style.display = (k === kind) ? 'block' : 'none';
+      }
+    });
+    // 폴백: 만약 해당 SVG가 없으면 기본 펜 표시
+    if (!svgs[kind] && svgs.pen) {
+      svgs.pen.style.display = 'block';
+    }
+
     if (this.stylusColorBand && color) {
       this.stylusColorBand.setAttribute('fill', color);
     }
+    const hlTip = document.getElementById('stylusHighlighterTip');
+    const hlBand = document.getElementById('stylusHighlighterBand');
+    if (kind === 'highlighter' && color) {
+      if (hlTip) hlTip.setAttribute('fill', color);
+      if (hlBand) hlBand.setAttribute('fill', color);
+    }
+
+    // 마우스 클릭 / 그래프 핸들 잡기 시작 순간 ScreenStudio 스타일 클릭 파동(Click Ripple) 발동!
+    const wasDrawing = Boolean(this._prevReplayIsDrawing);
+    const prevKind = this._prevReplayCursorKind || 'pen';
+    if ((!wasDrawing && isDrawing && kind !== 'pen' && kind !== 'highlighter') || (prevKind !== 'grabbing' && kind === 'grabbing')) {
+      const rippleEl = this.stylusClickRippleEl || document.getElementById('stylusClickRipple');
+      if (rippleEl) {
+        rippleEl.classList.remove('pulse-active');
+        void rippleEl.offsetWidth;
+        rippleEl.classList.add('pulse-active');
+      }
+    }
+    this._prevReplayIsDrawing = Boolean(isDrawing);
+    this._prevReplayCursorKind = kind;
+    this._currentReplayCursorKind = kind;
+
     this.virtualStylusEl.style.display = 'block';
     this.virtualStylusEl.classList.toggle('drawing', Boolean(isDrawing));
-    const scale = isDrawing ? 0.94 : 1.0;
+    const scale = (isDrawing && (kind === 'pen' || kind === 'highlighter' || kind === 'eraser')) ? 0.94 : 1.0;
     this.virtualStylusEl.style.transform = `translate3d(${Math.round(screenX * 10) / 10}px, ${Math.round(screenY * 10) / 10}px, 0) scale(${scale})`;
   }
 
@@ -28032,19 +28181,23 @@ class GraphApp {
   }
 
   _drawAudioReplayInkStrokes(ctx, filterTarget = null) {
-    if (!this.inkStrokes || this.inkStrokes.length === 0) return;
     const playMs = this.audioPlayCurrentMs || 0;
     const viewMode = this.audioReplayViewMode || 'video';
+    const activeErased = (viewMode === 'video' && this.audioSyncData && Array.isArray(this.audioSyncData.erasedStrokes))
+      ? this.audioSyncData.erasedStrokes.filter(st => st && (typeof st.erasedAt !== 'number' || playMs < st.erasedAt))
+      : [];
+    const baseStrokes = [...(this.inkStrokes || []), ...activeErased];
+    if (baseStrokes.length === 0) return;
 
     const candidates = filterTarget
-      ? this.inkStrokes.filter(s => {
+      ? baseStrokes.filter(s => {
           if (!s) return false;
           const t = s.target || 'board';
           if (t !== filterTarget) return false;
           if (t === 'graph' && Boolean(s.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
           return true;
         })
-      : this.inkStrokes.filter(Boolean);
+      : baseStrokes.filter(Boolean);
 
     const prepared = [];
     for (let i = 0; i < candidates.length; i++) {
@@ -28209,16 +28362,26 @@ class GraphApp {
     this.render();
 
     if (this._activeReplayTipScreen) {
+      const tipKind = this._activeReplayTipScreen.isLaser
+        ? 'laser'
+        : (this._activeReplayTipScreen.isHighlighter ? 'highlighter' : 'pen');
       this.positionReplayVirtualStylus(
         this._activeReplayTipScreen.x,
         this._activeReplayTipScreen.y,
         this._activeReplayTipScreen.color,
-        true
+        true,
+        tipKind
       );
     } else {
       const hoverCursor = this._getInterpolatedCursorAt(playMs);
       if (hoverCursor) {
-        this.positionReplayVirtualStylus(hoverCursor.x, hoverCursor.y, hoverCursor.color, hoverCursor.isDrawing);
+        this.positionReplayVirtualStylus(
+          hoverCursor.x,
+          hoverCursor.y,
+          hoverCursor.color,
+          hoverCursor.isDrawing,
+          hoverCursor.cursorKind || (hoverCursor.isLaser ? 'laser' : 'pen')
+        );
       } else if (this.virtualStylusEl && this.isAudioPlaying) {
         this.virtualStylusEl.style.display = 'none';
       }

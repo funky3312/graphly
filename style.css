@@ -9486,3 +9486,36 @@ body.theme-light .audio-btn-mic-toggle.is-muted {
   box-shadow: none;
   opacity: 0.5;
 }
+
+
+/* 리플레이 포인터 클릭/잡기 파동(Click Ripple) 이펙트 */
+.stylus-click-ripple {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;
+  margin-top: -12px;
+  border-radius: 50%;
+  border: 2.2px solid #38bdf8;
+  background: rgba(56, 189, 248, 0.22);
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.3);
+}
+
+.stylus-click-ripple.pulse-active {
+  animation: stylusClickPulse 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes stylusClickPulse {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.65);
+  }
+}
