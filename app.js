@@ -1061,11 +1061,13 @@ class GraphApp {
       if (gc.zIndex) gWidget.style.zIndex = gc.zIndex;
       gWidget.style.display = gc.display || 'flex';
       this.syncGraphCardRectFromWidget();
+      this.renderGraphCardCanvas();
     } else {
       this._hasPrimaryGraphCard = false;
       this.graphCardData = null;
       this.graphCardRect = null;
       this.graphInkStrokes = [];
+      this.renderGraphCardCanvas();
       if (gWidget) gWidget.style.display = 'none';
     }
 
@@ -14320,7 +14322,8 @@ class GraphApp {
     this.exportFilter = {
       includeProblem: true,
       includeGraph: true,
-      includeInk: true
+      includeInk: true,
+      includeAudio: true
     };
 
     const modal = document.getElementById('modalShare');
@@ -14345,9 +14348,14 @@ class GraphApp {
     const chkProblem = document.getElementById('chkExportLayerProblem');
     const chkGraph = document.getElementById('chkExportLayerGraph');
     const chkInk = document.getElementById('chkExportLayerInk');
+    const chkAudio = document.getElementById('chkExportLayerAudio');
     const lblProblem = document.getElementById('lblExportLayerProblem');
     const lblGraph = document.getElementById('lblExportLayerGraph');
     const lblInk = document.getElementById('lblExportLayerInk');
+    const lblAudio = document.getElementById('lblExportLayerAudio');
+    const btnStage1 = document.getElementById('btnExportPresetStage1');
+    const btnStage2 = document.getElementById('btnExportPresetStage2');
+    const btnStage3 = document.getElementById('btnExportPresetStage3');
     const lblSummary = document.getElementById('lblExportFilterSummary');
 
     const btnModalCopyImg = document.getElementById('btnExportModalCopyImg');
@@ -14373,17 +14381,32 @@ class GraphApp {
       if (btnScopeCur) btnScopeCur.classList.toggle('active', this.exportScope === 'current');
       if (btnScopeAll) btnScopeAll.classList.toggle('active', this.exportScope === 'all');
 
-      if (chkProblem) chkProblem.checked = Boolean(this.exportFilter.includeProblem);
-      if (chkGraph) chkGraph.checked = Boolean(this.exportFilter.includeGraph);
-      if (chkInk) chkInk.checked = Boolean(this.exportFilter.includeInk);
-      if (lblProblem) lblProblem.classList.toggle('active', Boolean(this.exportFilter.includeProblem));
-      if (lblGraph) lblGraph.classList.toggle('active', Boolean(this.exportFilter.includeGraph));
-      if (lblInk) lblInk.classList.toggle('active', Boolean(this.exportFilter.includeInk));
+      const incP = Boolean(this.exportFilter.includeProblem);
+      const incG = Boolean(this.exportFilter.includeGraph);
+      const incI = Boolean(this.exportFilter.includeInk);
+      const incA = this.exportFilter.includeAudio !== false;
+
+      if (chkProblem) chkProblem.checked = incP;
+      if (chkGraph) chkGraph.checked = incG;
+      if (chkInk) chkInk.checked = incI;
+      if (chkAudio) chkAudio.checked = incA;
+      if (lblProblem) lblProblem.classList.toggle('active', incP);
+      if (lblGraph) lblGraph.classList.toggle('active', incG);
+      if (lblInk) lblInk.classList.toggle('active', incI);
+      if (lblAudio) lblAudio.classList.toggle('active', incA);
+
+      const isStage1 = (incP && incG && !incI && !incA);
+      const isStage2 = (incP && incG && incI && !incA);
+      const isStage3 = (incP && incG && incI && incA);
+      if (btnStage1) btnStage1.classList.toggle('active', isStage1);
+      if (btnStage2) btnStage2.classList.toggle('active', isStage2);
+      if (btnStage3) btnStage3.classList.toggle('active', isStage3);
 
       const parts = [];
-      if (this.exportFilter.includeProblem) parts.push('문제');
-      if (this.exportFilter.includeGraph) parts.push('그래프');
-      if (this.exportFilter.includeInk) parts.push('필기');
+      if (incP) parts.push('문제');
+      if (incG) parts.push('그래프');
+      if (incI) parts.push('필기');
+      if (incA) parts.push('음성');
       const isMultiSlideAll = (this.exportScope === 'all' && totalCnt > 1);
       const scopeText = isMultiSlideAll
         ? `전체 슬라이드(${totalCnt}장)`
@@ -14454,7 +14477,7 @@ class GraphApp {
     const onLayerToggle = (key, chkEl) => {
       if (!chkEl) return;
       this.exportFilter[key] = Boolean(chkEl.checked);
-      if (!this.exportFilter.includeProblem && !this.exportFilter.includeGraph && !this.exportFilter.includeInk) {
+      if (!this.exportFilter.includeProblem && !this.exportFilter.includeGraph && !this.exportFilter.includeInk && !this.exportFilter.includeAudio) {
         this.exportFilter[key] = true;
         chkEl.checked = true;
       }
@@ -14463,6 +14486,30 @@ class GraphApp {
     if (chkProblem) chkProblem.onchange = () => onLayerToggle('includeProblem', chkProblem);
     if (chkGraph) chkGraph.onchange = () => onLayerToggle('includeGraph', chkGraph);
     if (chkInk) chkInk.onchange = () => onLayerToggle('includeInk', chkInk);
+    if (chkAudio) chkAudio.onchange = () => onLayerToggle('includeAudio', chkAudio);
+
+    const applyStagePreset = (stageNum) => {
+      if (stageNum === 1) {
+        this.exportFilter.includeProblem = true;
+        this.exportFilter.includeGraph = true;
+        this.exportFilter.includeInk = false;
+        this.exportFilter.includeAudio = false;
+      } else if (stageNum === 2) {
+        this.exportFilter.includeProblem = true;
+        this.exportFilter.includeGraph = true;
+        this.exportFilter.includeInk = true;
+        this.exportFilter.includeAudio = false;
+      } else {
+        this.exportFilter.includeProblem = true;
+        this.exportFilter.includeGraph = true;
+        this.exportFilter.includeInk = true;
+        this.exportFilter.includeAudio = true;
+      }
+      updateShareLinksAndQR();
+    };
+    if (btnStage1) btnStage1.onclick = () => applyStagePreset(1);
+    if (btnStage2) btnStage2.onclick = () => applyStagePreset(2);
+    if (btnStage3) btnStage3.onclick = () => applyStagePreset(3);
 
     if (btnModalCopyImg) {
       btnModalCopyImg.onclick = async () => {
@@ -14610,14 +14657,32 @@ class GraphApp {
       return this._getFilteredSlidesForExport(fallbackTitle, this.exportScope, this.exportFilter);
     };
 
+    const getExportStageSuffixLabel = () => {
+      const f = this.exportFilter || {};
+      const p = f.includeProblem !== false;
+      const g = f.includeGraph !== false;
+      const i = f.includeInk !== false;
+      const a = f.includeAudio !== false;
+      if (p && g && !i && !a) return '[1차·문제+그래프]';
+      if (p && g && i && !a) return '[2차·해설노트]';
+      if (p && g && i && a) return '[3차·음성강의]';
+      const names = [];
+      if (p) names.push('문제');
+      if (g) names.push('그래프');
+      if (i) names.push('필기');
+      if (a) names.push('음성');
+      return `[${names.join('+')}]`;
+    };
+
     if (btnShareToLib) {
       btnShareToLib.onclick = async () => {
         const slides = getShareModalFilteredSlides();
+        const stageSuffix = getExportStageSuffixLabel();
         const defaultTitle = slides.length > 1
-          ? `수업 슬라이드 ${slides.length}문항 (${new Date().toLocaleDateString('ko-KR')})`
-          : `수업 노트 (${new Date().toLocaleDateString('ko-KR')})`;
+          ? `수업 슬라이드 ${slides.length}문항 ${stageSuffix} (${new Date().toLocaleDateString('ko-KR')})`
+          : `수업 노트 ${stageSuffix} (${new Date().toLocaleDateString('ko-KR')})`;
         const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
-        const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : (slides.length > 1 ? '#풀세트' : '#수학그래프');
+        const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : (slides.length > 1 ? `#풀세트 ${stageSuffix}` : `#수학그래프 ${stageSuffix}`);
         await this.saveCurrentToMyLibrary(title, tags, slides);
         if (inpDeckTitle) inpDeckTitle.value = '';
         flashButtonLabel(btnShareToLib, '✅ 클라우드 저장됨', '☁️ 클라우드에 저장');
@@ -14627,11 +14692,12 @@ class GraphApp {
     if (btnShareExportFile) {
       btnShareExportFile.onclick = () => {
         const slides = getShareModalFilteredSlides();
+        const stageSuffix = getExportStageSuffixLabel();
         const defaultTitle = slides.length > 1
-          ? `Graphly_${slides.length}문항_수업세트`
-          : (slides[0].slideTitle || 'Graphly_수업노트');
+          ? `Graphly_${slides.length}문항_${stageSuffix}`
+          : `${slides[0].slideTitle || 'Graphly_수업노트'}_${stageSuffix}`;
         const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
-        const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : '#수업노트';
+        const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : `#수업노트 ${stageSuffix}`;
         this.exportGraphlyDeckFile(title, tags, slides);
         if (inpDeckTitle) inpDeckTitle.value = '';
         flashButtonLabel(btnShareExportFile, '✅ 파일 저장됨', '💻 내 기기에 파일 저장 (.graphly)');
@@ -15176,9 +15242,10 @@ class GraphApp {
     // 2. 추가 문제 카드 복원
     if (Array.isArray(slideData.extraProblems)) {
       slideData.extraProblems.forEach(ep => {
-        this.spawnExtraProblemCard(ep.dataUrl, ep.cardW || 460, ep.titleText || '문제', {
-          baseX: ep.baseX,
-          baseY: ep.baseY,
+        this.spawnExtraProblemCard(ep.dataUrl, ep.pdfPageNum || 1, ep.cardW || 460, null, {
+          customX: ep.baseX,
+          customY: ep.baseY,
+          customTitle: ep.titleText || '문제',
           startMinimized: ep.isMin,
           isPdfPageCard: ep.isPdfPageCard,
           pdfPageNum: ep.pdfPageNum
@@ -15270,7 +15337,7 @@ class GraphApp {
     }
 
     if (!this._isApplyingAudioTimelineState) {
-      this.stopAudioPlayback(true);
+      this.stopAudioPlayback(false);
       this.audioSyncData = slideData.audioSyncData ? JSON.parse(JSON.stringify(slideData.audioSyncData)) : null;
       this.syncAudioRecordUI();
     }
@@ -16026,6 +16093,7 @@ class GraphApp {
   }
 
   saveCurrentSlideIntoPlaylist() {
+    if (this._isCapturingExportSnapshots) return;
     if (!this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) return;
     const curSlide = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
     const title = curSlide ? curSlide.slideTitle : `문항 ${this.lessonPlaylistIndex + 1}`;
@@ -16408,15 +16476,22 @@ class GraphApp {
   // ============================================================================
   _getActiveSlidesForExport(fallbackTitle = '공유된 수업 노트') {
     if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
-      this.saveCurrentSlideIntoPlaylist();
+      if (!this._isCapturingExportSnapshots) {
+        this.saveCurrentSlideIntoPlaylist();
+      }
       return JSON.parse(JSON.stringify(this.lessonPlaylistSlides));
     }
     if (this.pdfPageBoardData && Array.isArray(this.pdfWorkedPages) && this.pdfWorkedPages.length > 1) {
-      this.archiveCurrentPdfBoardPageToCard();
+      if (!this._isCapturingExportSnapshots) {
+        this.archiveCurrentPdfBoardPageToCard();
+      }
       return this.pdfWorkedPages.map(pNum => {
         const st = this.pdfSavedPageStates && this.pdfSavedPageStates[pNum];
         return st && st.fullSlide ? JSON.parse(JSON.stringify(st.fullSlide)) : this.serializeFullSlideState(`p.${pNum}`);
       });
+    }
+    if (this._isCapturingExportSnapshots && this._exportSnapshotLoopBackupCurrent) {
+      return [JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent))];
     }
     return [this.serializeFullSlideState(fallbackTitle)];
   }
@@ -16427,21 +16502,54 @@ class GraphApp {
     const incProb = filterOpts.includeProblem !== false;
     const incGraph = filterOpts.includeGraph !== false;
     const incInk = filterOpts.includeInk !== false;
+    const incAudio = filterOpts.includeAudio !== false;
 
     if (!incProb) {
       slide.primaryProblemCard = null;
       slide.extraProblems = [];
       slide.pdfPageBoardData = null;
-    } else if (!incInk && slide.primaryProblemCard) {
-      slide.primaryProblemCard.problemInkStrokes = [];
+    } else if (!incInk) {
+      if (slide.primaryProblemCard) {
+        slide.primaryProblemCard.problemInkStrokes = [];
+      }
+      if (Array.isArray(slide.extraProblems)) {
+        slide.extraProblems.forEach(ep => {
+          if (ep) ep.problemInkStrokes = [];
+        });
+      }
     }
 
     if (!incGraph) {
       slide.primaryGraphCard = null;
       slide.extraGraphs = [];
       slide.coveredGraphStateBackup = null;
-    } else if (!incInk && slide.primaryGraphCard) {
-      slide.primaryGraphCard.graphInkStrokes = [];
+    } else if (!incInk) {
+      if (slide.primaryGraphCard) {
+        slide.primaryGraphCard.graphInkStrokes = [];
+      }
+      if (Array.isArray(slide.extraGraphs)) {
+        slide.extraGraphs.forEach(eg => {
+          if (eg) eg.graphInkStrokes = [];
+        });
+      }
+    }
+
+    if (!incAudio) {
+      slide.audioSyncData = null;
+    } else if (slide.audioSyncData && !incInk) {
+      slide.audioSyncData.laserStrokes = [];
+      if (slide.audioSyncData.initialState) {
+        slide.audioSyncData.initialState = this._applyExportFilterToSlideData(
+          slide.audioSyncData.initialState,
+          { includeProblem: incProb, includeGraph: incGraph, includeInk: false, includeAudio: false }
+        );
+      }
+      if (slide.audioSyncData.finalState) {
+        slide.audioSyncData.finalState = this._applyExportFilterToSlideData(
+          slide.audioSyncData.finalState,
+          { includeProblem: incProb, includeGraph: incGraph, includeInk: false, includeAudio: false }
+        );
+      }
     }
 
     if (slide.historyJson) {
@@ -16455,6 +16563,12 @@ class GraphApp {
           hObj.dropLines = [];
           hObj.textLabels = [];
           hObj.usePiecewise = false;
+        } else if (!incProb && !incInk && slide.isGraphCovered && !slide.primaryGraphCard && (!slide.extraGraphs || slide.extraGraphs.length === 0)) {
+          // 그래프만 내보내기할 때 칠판 판서 모드로 덮여 있던 실시간 그래프가 있으면 자동으로 꺼내서 복원
+          if ((!hObj.graphs || hObj.graphs.length === 0) && slide.coveredGraphStateBackup && Array.isArray(slide.coveredGraphStateBackup.graphs) && slide.coveredGraphStateBackup.graphs.length > 0) {
+            hObj.graphs = JSON.parse(JSON.stringify(slide.coveredGraphStateBackup.graphs));
+          }
+          slide.isGraphCovered = false;
         }
         slide.historyJson = JSON.stringify(hObj);
       } catch (e) { }
@@ -16464,10 +16578,12 @@ class GraphApp {
 
   _getFilteredSlidesForExport(fallbackTitle = '공유된 수업 노트', scope = 'current', filterOpts = null) {
     const effScope = scope || this.exportScope || 'current';
-    const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+    const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
     let slides = [];
     if (effScope === 'all') {
       slides = this._getActiveSlidesForExport(fallbackTitle);
+    } else if (this._isCapturingExportSnapshots && this._exportSnapshotLoopBackupCurrent) {
+      slides = [JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent))];
     } else {
       slides = [this.serializeFullSlideState(fallbackTitle)];
     }
@@ -16530,23 +16646,23 @@ class GraphApp {
 
   async buildExportSharePackageObject(scope = 'current', filterOpts = null) {
     const effScope = scope || this.exportScope || 'current';
-    const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+    const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
     const rawSlides = (effScope === 'all')
       ? this._getActiveSlidesForExport('공유된 수업 노트')
-      : [this.serializeFullSlideState('공유된 수업 노트')];
+      : (this._isCapturingExportSnapshots && this._exportSnapshotLoopBackupCurrent
+          ? [JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent))]
+          : [this.serializeFullSlideState('공유된 수업 노트')]);
     const filteredSlides = rawSlides.map(s => this._applyExportFilterToSlideData(s, effFilter));
 
-    if (filteredSlides.length === 1) {
-      await this._waitForSlideImagesReady();
-      const snap = this.captureCurrentSlideViewerSnapshot(effFilter, true);
-      filteredSlides[0].viewerSnapshotDataUrl = snap.dataUrl;
-      filteredSlides[0].viewerSnapshotWidth = snap.width;
-      filteredSlides[0].viewerSnapshotHeight = snap.height;
-      filteredSlides[0].viewerGraphHotspots = snap.hotspots;
-    } else {
-      const backupCurrent = this.serializeFullSlideState('backup');
+    const isOuterLoop = !this._isCapturingExportSnapshots;
+    if (isOuterLoop) {
+      this._isCapturingExportSnapshots = true;
+      this._exportSnapshotLoopRawSlides = JSON.parse(JSON.stringify(rawSlides));
+      this._exportSnapshotLoopBackupCurrent = this.serializeFullSlideState('backup');
+    }
+    try {
       for (let i = 0; i < filteredSlides.length; i++) {
-        this.deserializeFullSlideState(rawSlides[i]);
+        this.deserializeFullSlideState(filteredSlides[i]);
         await this._waitForSlideImagesReady();
         const snap = this.captureCurrentSlideViewerSnapshot(effFilter, true);
         filteredSlides[i].viewerSnapshotDataUrl = snap.dataUrl;
@@ -16554,7 +16670,16 @@ class GraphApp {
         filteredSlides[i].viewerSnapshotHeight = snap.height;
         filteredSlides[i].viewerGraphHotspots = snap.hotspots;
       }
-      this.deserializeFullSlideState(backupCurrent);
+    } finally {
+      if (isOuterLoop) {
+        this._isCapturingExportSnapshots = false;
+        const backupToRestore = this._exportSnapshotLoopBackupCurrent;
+        this._exportSnapshotLoopRawSlides = null;
+        this._exportSnapshotLoopBackupCurrent = null;
+        if (backupToRestore) {
+          this.deserializeFullSlideState(backupToRestore);
+        }
+      }
     }
 
     const nowMs = Date.now();
@@ -24704,7 +24829,7 @@ class GraphApp {
   drawSingleCurve(ctx, g, isActive, isExport = false, gIdx = 0) {
     ctx.save();
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
-    let curveColor = this.isMonochromeMode ? '#000000' : g.color;
+    let curveColor = this.isMonochromeMode ? '#000000' : (g.color || '#2563eb');
     // 밝은 배경(화이트/포스트잇)일 때 흰색 곡선을 다크로 스마트 시인성 보호!
     if (!this.isMonochromeMode && curTheme.isLight && (curveColor.toLowerCase() === '#ffffff' || curveColor.toLowerCase() === '#fff')) {
       curveColor = '#222f3e';
@@ -26431,7 +26556,7 @@ class GraphApp {
     const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
 
     if (effScope === 'all') {
-      const allSlides = this._getActiveSlidesForExport('수업 노트');
+      const allSlides = this._getFilteredSlidesForExport('수업 노트', 'all', effFilter);
       if (allSlides.length > 1) {
         const backupCurrent = this.serializeFullSlideState('backup');
         const canvasItems = [];

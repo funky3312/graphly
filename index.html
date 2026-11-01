@@ -1248,6 +1248,19 @@
                 <input type="checkbox" id="chkExportLayerInk" checked>
                 <span>필기</span>
               </label>
+              <label class="export-layer-chip active" id="lblExportLayerAudio">
+                <input type="checkbox" id="chkExportLayerAudio" checked>
+                <span>음성</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="export-filter-row export-stage-preset-row">
+            <span class="export-step-label">단계별 저장</span>
+            <div class="export-stage-preset-group">
+              <button type="button" id="btnExportPresetStage1" class="export-stage-preset-chip" data-stage="1" title="학생들이 직접 풀 수 있도록 필기와 음성을 제외하고 [문제 + 그래프]만 저장/공유합니다">1차: 문제+그래프</button>
+              <button type="button" id="btnExportPresetStage2" class="export-stage-preset-chip" data-stage="2" title="음성을 제외하고 [문제 + 그래프 + 필기] 해설 노트만 저장/공유합니다">2차: +필기 해설</button>
+              <button type="button" id="btnExportPresetStage3" class="export-stage-preset-chip active" data-stage="3" title="[문제 + 그래프 + 필기 + 음성] 전체 강의를 저장/공유합니다">3차: +음성 강의</button>
             </div>
           </div>
           <div class="export-filter-hint" id="lblExportFilterSummary" style="display: none;"></div>
@@ -1724,7 +1737,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261031_4"></script>
-  <script src="app.js?v=20261101_14"></script>
+  <script src="app.js?v=20261101_15"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

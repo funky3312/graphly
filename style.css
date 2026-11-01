@@ -9393,3 +9393,53 @@ body.theme-light .audio-btn-pause-rec {
   color: #0f172a !important;
   box-shadow: 0 0 12px rgba(0, 210, 211, 0.45);
 }
+
+
+/* 1차·2차·3차 단계별 저장 원클릭 프리셋 칩 */
+.export-stage-preset-row {
+  padding-top: 4px;
+  border-top: 1px dashed rgba(148, 163, 184, 0.18);
+}
+
+.export-stage-preset-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.export-stage-preset-chip {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(30, 41, 59, 0.55);
+  color: #cbd5e1;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+body.theme-light .export-stage-preset-chip {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.export-stage-preset-chip:hover {
+  border-color: #60a5fa;
+  color: #ffffff;
+}
+
+body.theme-light .export-stage-preset-chip:hover {
+  border-color: #3b82f6;
+  color: #1d4ed8;
+}
+
+.export-stage-preset-chip.active {
+  background: linear-gradient(135deg, #0ea5e9, #2563eb) !important;
+  border-color: #60a5fa !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
