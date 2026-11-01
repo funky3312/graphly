@@ -345,6 +345,9 @@ class GraphApp {
     this.myLibraryCache = [];
     this.communityHubCache = [];
 
+    // 👑 [구독(Pro) vs 비구독(Free) 개수 제한 컨트롤 타워 & ⭐ 내 그래프 보관함 초기화]
+    this.initCustomGraphPresets();
+
     this.initDOM();
     this.initShareModal();
     this.initCloudHubAndPlaylist();
@@ -1922,7 +1925,7 @@ class GraphApp {
     this.activeGraphIdx = idx;
     this.selectedHandleIdx = null;
     this.isCurveSelected = true;
-    if (this.activeGraph) {
+    if (this.activeGraph && this._currentCat !== '⭐ 내 그래프') {
       this._currentCat = this.activeGraph.category;
     }
 
@@ -1963,8 +1966,10 @@ class GraphApp {
   syncControls() {
     const g = this.activeGraph;
 
-    // 카테고리 탭 동기화
-    const curCat = g ? g.category : (this._currentCat || '📐 다항함수');
+    // 카테고리 탭 동기화 (⭐ 내 그래프 탭 열람 중일 때는 현재 탭 고정 유지)
+    const curCat = (this._currentCat === '⭐ 내 그래프')
+      ? '⭐ 내 그래프'
+      : (g ? g.category : (this._currentCat || '📐 다항함수'));
     document.querySelectorAll('.cat-tab-btn').forEach(tab => {
       tab.classList.toggle('active', tab.dataset.cat === curCat);
     });
@@ -2061,7 +2066,13 @@ class GraphApp {
     if (!grid) return;
     grid.innerHTML = '';
 
-    const currentCat = this.activeGraph ? this.activeGraph.category : (this._currentCat || '📐 다항함수');
+    const currentCat = (this._currentCat === '⭐ 내 그래프')
+      ? '⭐ 내 그래프'
+      : (this.activeGraph ? this.activeGraph.category : (this._currentCat || '📐 다항함수'));
+    if (currentCat === '⭐ 내 그래프') {
+      this.renderCustomGraphPresetList(grid);
+      return;
+    }
     const currentType = this.activeGraph ? this.activeGraph.type : null;
 
     const currentCatFuncs = Object.entries(this.meta).filter(
@@ -8445,8 +8456,18 @@ class GraphApp {
   applyPureGraphSnapshot(jsonStr) {
     if (!jsonStr) return;
     try {
-      const data = JSON.parse(jsonStr);
-      this.graphs = data.graphs || [];
+      const data = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+      this.graphs = JSON.parse(JSON.stringify(data.graphs || []));
+      this.graphs.forEach(g => {
+        if (g && g.type === 'general_expr' && Array.isArray(g.handles)) {
+          g.handles.forEach(h => {
+            if (h && h.rawExpr && window.SafeMathCompiler) {
+              const comp = window.SafeMathCompiler.compile(h.rawExpr);
+              if (comp && comp.success) h.fn = comp.fn;
+            }
+          });
+        }
+      });
       this.activeGraphIdx = data.activeGraphIdx !== undefined ? data.activeGraphIdx : (this.graphs.length > 0 ? 0 : -1);
       if (data.zoomLevel !== undefined) {
         this.zoomLevel = data.zoomLevel;
@@ -11277,11 +11298,14 @@ class GraphApp {
     // 카테고리 탭
     document.querySelectorAll('.cat-tab-btn').forEach(tab => {
       tab.onclick = (e) => {
+        const btn = e.currentTarget || (e.target && e.target.closest ? e.target.closest('.cat-tab-btn') : e.target);
+        if (!btn) return;
+        const nextCat = btn.dataset.cat;
         document.querySelectorAll('.cat-tab-btn').forEach(t => t.classList.remove('active'));
-        e.target.classList.add('active');
-        this._currentCat = e.target.dataset.cat;
-        if (this.activeGraph) {
-          this.activeGraph.category = e.target.dataset.cat;
+        btn.classList.add('active');
+        this._currentCat = nextCat;
+        if (this.activeGraph && nextCat !== '⭐ 내 그래프') {
+          this.activeGraph.category = nextCat;
         }
         this.renderFuncList();
       };
@@ -15286,6 +15310,582 @@ class GraphApp {
     } else {
       if (lblBtn) lblBtn.textContent = '구글 로그인';
     }
+    if (typeof this.onCustomGraphUserChanged === 'function') {
+      this.onCustomGraphUserChanged();
+    }
+  }
+
+  // ============================================================================
+  // 👑 [구독(Pro) vs 비구독(Free) 요금제 정책 및 개수 제한 컨트롤 타워]
+  // - 추후 무료/유료 개수 제한을 변경할 때 아래 SUBSCRIPTION_QUOTA_CONFIG 객체의 숫자만 바꾸면
+  //   [⭐ 내 그래프], 슬라이드 생성, 빠른 보관함 등 모든 제한과 결제 유도 모달이 자동 연동됩니다!
+  // ============================================================================
+  getSubscriptionQuotaConfig() {
+    if (!this.SUBSCRIPTION_QUOTA_CONFIG) {
+      this.SUBSCRIPTION_QUOTA_CONFIG = {
+        enforceCustomGraphLimit: true, // ⭐ 내 그래프 개수 제한 적용 스위치 (true: 무료 회원 제한 적용)
+        freeMaxCustomGraphs: 3,        // 비구독(무료) 회원: ⭐ 내 그래프 최대 3개까지 등록 가능
+        proMaxCustomGraphs: 100,       // Pro 구독 회원: ⭐ 내 그래프 최대 100개(사실상 무제한) 등록 가능
+        freeMaxSlides: 3,              // 비구독(무료) 회원: 슬라이드 연속 생성 기준 (향후 연동용)
+        proMaxSlides: 100,             // Pro 구독 회원: 슬라이드 최대 100장
+        freeMaxQuickLibrary: 3,        // 비구독(무료) 회원: 빠른 보관함 최대 3개
+        proMaxQuickLibrary: 200        // Pro 구독 회원: 빠른 보관함 최대 200개
+      };
+    }
+    return this.SUBSCRIPTION_QUOTA_CONFIG;
+  }
+
+  isProSubscriber() {
+    if (this.isProUser === true) return true;
+    if (this.cloudUser && this.cloudUser.isPro === true) return true;
+    try {
+      if (localStorage.getItem('graphly_pro_active_v1') === 'true') return true;
+    } catch (e) { }
+    return false;
+  }
+
+  setProSubscriptionStatus(isPro) {
+    this.isProUser = Boolean(isPro);
+    if (this.cloudUser) {
+      this.cloudUser.isPro = Boolean(isPro);
+    }
+    try {
+      if (isPro) {
+        localStorage.setItem('graphly_pro_active_v1', 'true');
+      } else {
+        localStorage.removeItem('graphly_pro_active_v1');
+      }
+    } catch (e) { }
+    this.renderFuncList();
+  }
+
+  getCustomGraphQuotaStatus() {
+    const cfg = this.getSubscriptionQuotaConfig();
+    const isPro = this.isProSubscriber();
+    const currentCount = Array.isArray(this.customGraphPresets) ? this.customGraphPresets.length : 0;
+    const maxLimit = isPro ? cfg.proMaxCustomGraphs : cfg.freeMaxCustomGraphs;
+    const isReached = Boolean(cfg.enforceCustomGraphLimit && !isPro && currentCount >= maxLimit);
+    const badgeText = isPro
+      ? `👑 Pro 무제한 (${currentCount}개)`
+      : `무료 ${currentCount} / ${maxLimit}`;
+    return {
+      isPro,
+      currentCount,
+      maxLimit,
+      isReached,
+      badgeText
+    };
+  }
+
+  // ============================================================================
+  // ⭐ [개인별 '자주 쓰는 내 그래프' 보관함 (My Custom Graph Presets) 엔진]
+  // - 단일 함수뿐만 아니라 다중 함수(f1, f2...) + 구간 분할(Piecewise) + 주기·계단형(T, q) +
+  //   절댓값(|f(x)|) + 보조 수선까지 현재 그래프 상태를 0.5KB 초경량 스냅샷으로 통째 저장/복원!
+  // ============================================================================
+  initCustomGraphPresets() {
+    this.getSubscriptionQuotaConfig();
+    this.isProUser = false;
+    try {
+      this.isProUser = localStorage.getItem('graphly_pro_active_v1') === 'true';
+      if (typeof window !== 'undefined' && window.location && window.location.search.includes('paymentStatus=success')) {
+        localStorage.setItem('graphly_pro_active_v1', 'true');
+        this.isProUser = true;
+      }
+    } catch (e) { }
+    this.customGraphPresets = [];
+    this._renamingCustomGraphId = null;
+    this._loadCustomGraphsFromStorage();
+  }
+
+  _getCustomGraphsStorageKey() {
+    const uid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest';
+    return `graphly_custom_graphs_v1_${uid}`;
+  }
+
+  _loadCustomGraphsFromStorage() {
+    try {
+      const key = this._getCustomGraphsStorageKey();
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          this.customGraphPresets = parsed;
+          return;
+        }
+      }
+      // 로그인 직후 해당 계정 키에 데이터가 없으면 비로그인(guest) 시절 등록해둔 그래프를 자동 승계
+      if (this.cloudUser && this.cloudUser.uid) {
+        const guestRaw = localStorage.getItem('graphly_custom_graphs_v1_guest');
+        if (guestRaw) {
+          const guestParsed = JSON.parse(guestRaw);
+          if (Array.isArray(guestParsed) && guestParsed.length > 0) {
+            this.customGraphPresets = guestParsed;
+            localStorage.setItem(key, JSON.stringify(this.customGraphPresets));
+            return;
+          }
+        }
+      }
+    } catch (e) { }
+    this.customGraphPresets = [];
+  }
+
+  _canSyncCustomGraphsToFirestore() {
+    return Boolean(
+      this.cloudUser &&
+      this.cloudUser.uid &&
+      !this.cloudUser.isReviewerTest &&
+      typeof window !== 'undefined' &&
+      window.location &&
+      /^https?:$/i.test(window.location.protocol)
+    );
+  }
+
+  _saveCustomGraphsToStorage() {
+    try {
+      const key = this._getCustomGraphsStorageKey();
+      localStorage.setItem(key, JSON.stringify(this.customGraphPresets || []));
+    } catch (e) { }
+    if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestWriteSingleDoc === 'function') {
+      const docId = `cg_user_${this.cloudUser.uid}`;
+      this._firestoreRestWriteSingleDoc('user_custom_graphs', docId, JSON.stringify(this.customGraphPresets || [])).catch(() => { });
+    }
+  }
+
+  async onCustomGraphUserChanged() {
+    this._loadCustomGraphsFromStorage();
+    if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestReadDoc === 'function') {
+      try {
+        const docId = `cg_user_${this.cloudUser.uid}`;
+        const remoteList = await this._firestoreRestReadDoc('user_custom_graphs', docId);
+        if (Array.isArray(remoteList) && remoteList.length > 0) {
+          const map = new Map();
+          [...remoteList, ...(this.customGraphPresets || [])].forEach(item => {
+            if (item && item.id) map.set(item.id, item);
+          });
+          this.customGraphPresets = Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          try {
+            localStorage.setItem(this._getCustomGraphsStorageKey(), JSON.stringify(this.customGraphPresets));
+          } catch (e) { }
+        }
+      } catch (e) { }
+    }
+    if (this._currentCat === '⭐ 내 그래프') {
+      this.renderFuncList();
+    }
+  }
+
+  _buildSmartCustomGraphName() {
+    if (!this.graphs || this.graphs.length === 0) return '나만의 그래프';
+    const shortTypeNames = {
+      '1st_linear': '일차',
+      '2nd_quadratic': '이차',
+      '3rd_normal': '삼차',
+      '3rd_inflection': '삼차변곡',
+      '4th_symmetric': '사차W',
+      '4th_asymmetric': '비대칭사차',
+      '4th_inflection': '사차변곡',
+      'exp_basic': '지수',
+      'log_basic': '로그',
+      'rational_basic': '유리',
+      'sqrt_basic': '무리',
+      'sin_1period': 'sin',
+      'cos_1period': 'cos',
+      'tan_1period': 'tan',
+      'killer_exp_linear': 'x·eˣ',
+      'killer_exp_quad': 'x²·eˣ',
+      'killer_log_frac': 'lnx/x',
+      'killer_frac_odd': 'x/(x²+1)',
+      'geom_circle': '원',
+      'geom_triangle': '삼각형',
+      'geom_quad': '사각형',
+      'general_expr': '수식'
+    };
+    const names = this.graphs.slice(0, 3).map(g => {
+      const base = shortTypeNames[g.type] || (this.meta[g.type] && this.meta[g.type].name) || '함수';
+      return g.isAbsolute ? `|${base}|` : base;
+    });
+    const joined = names.join('+') + (this.graphs.length > 3 ? ` 외` : '');
+    if (this.usePiecewise && this.isPiecewisePeriodic) {
+      const isStep = Math.abs(this.periodicStepY || 0) > 1e-3;
+      return `${isStep ? '계단주기' : '주기반복'} (${joined})`;
+    }
+    if (this.usePiecewise && this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0) {
+      return `구간분할 (${joined})`;
+    }
+    return joined;
+  }
+
+  _buildSmartCustomGraphBadge() {
+    const parts = [];
+    const gCount = (this.graphs || []).length;
+    if (this.usePiecewise && this.isPiecewisePeriodic && this.piecewiseBoundaries && this.piecewiseBoundaries.length >= 2) {
+      const T = Math.round((this.piecewiseBoundaries[this.piecewiseBoundaries.length - 1] - this.piecewiseBoundaries[0]) * 100) / 100;
+      const q = Math.round((this.periodicStepY || 0) * 100) / 100;
+      parts.push(Math.abs(q) > 1e-3 ? `🔁 주기 T=${T}·계단 q=${q > 0 ? '+' : ''}${q}` : `🔁 주기 T=${T}`);
+    } else if (this.usePiecewise && this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0) {
+      parts.push(`✂️ ${this.piecewiseBoundaries.length + 1}구간 분할`);
+    }
+    parts.push(`함수 ${gCount}개`);
+    if ((this.graphs || []).some(g => g && g.isAbsolute)) {
+      parts.push('|f(x)|');
+    }
+    if (this.dropLines && this.dropLines.length > 0) {
+      parts.push(`수선 ${this.dropLines.length}`);
+    }
+    return parts.join(' · ');
+  }
+
+  _generateCustomGraphSvgThumb() {
+    const W = 44;
+    const H = 30;
+    const xMin = -4.8;
+    const xMax = 4.8;
+    const steps = 48;
+    const allY = [];
+    const polylines = [];
+
+    const evalPiecewiseAtX = (xVal) => {
+      const boundaries = this.piecewiseBoundaries || [];
+      const n = boundaries.length;
+      if (n === 0 || !this.graphs || this.graphs.length === 0) return null;
+      let evalX = xVal;
+      let yOffset = 0;
+      let rIdx = 0;
+      if (this.isPiecewisePeriodic && n >= 2) {
+        const b0 = boundaries[0];
+        const bLast = boundaries[n - 1];
+        const T = bLast - b0;
+        if (T > 1e-4) {
+          const k = Math.floor((xVal - b0) / T);
+          evalX = xVal - k * T;
+          if (evalX >= bLast - 1e-6) evalX = b0;
+          if (evalX < b0) evalX = b0;
+          yOffset = k * (this.periodicStepY || 0);
+        }
+        rIdx = 1;
+        for (let i = 1; i < n - 1; i++) {
+          if (evalX >= boundaries[i]) rIdx = i + 1;
+        }
+      } else {
+        rIdx = 0;
+        for (let i = 0; i < n; i++) {
+          if (xVal >= boundaries[i]) rIdx = i + 1;
+        }
+      }
+      const gIdx = (this.piecewiseFuncMap && this.piecewiseFuncMap[rIdx] !== undefined)
+        ? this.piecewiseFuncMap[rIdx]
+        : (rIdx % this.graphs.length);
+      if (gIdx < 0 || !this.graphs[gIdx]) return null;
+      const g = this.graphs[gIdx];
+      const y = this.engine.evaluatePipeline(g, evalX) + yOffset;
+      if (isNaN(y) || !isFinite(y) || Math.abs(y) > 80) return null;
+      return { y, color: g.color || '#00d2d3', rIdx };
+    };
+
+    if (this.usePiecewise && this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0) {
+      let curPts = [];
+      let prevRIdx = null;
+      let curColor = '#00d2d3';
+      for (let i = 0; i <= steps; i++) {
+        const x = xMin + (xMax - xMin) * (i / steps);
+        const res = evalPiecewiseAtX(x);
+        if (!res) {
+          if (curPts.length >= 2) polylines.push({ pts: curPts, color: curColor });
+          curPts = [];
+          prevRIdx = null;
+          continue;
+        }
+        allY.push(res.y);
+        if (prevRIdx !== null && res.rIdx !== prevRIdx) {
+          if (curPts.length >= 2) polylines.push({ pts: curPts, color: curColor });
+          curPts = [];
+        }
+        curColor = res.color;
+        prevRIdx = res.rIdx;
+        curPts.push({ x, y: res.y });
+      }
+      if (curPts.length >= 2) polylines.push({ pts: curPts, color: curColor });
+    }
+
+    (this.graphs || []).forEach(g => {
+      if (!g) return;
+      if (this.usePiecewise && this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0 && !g.isIndependent) {
+        return;
+      }
+      const color = g.color || '#00d2d3';
+      if (g.type === 'geom_circle' || g.type === 'geom_triangle' || g.type === 'geom_quad') {
+        if (Array.isArray(g.handles) && g.handles.length >= 2) {
+          const pts = g.handles.map(h => ({ x: h.x, y: h.y }));
+          pts.forEach(p => allY.push(p.y));
+          polylines.push({ pts: [...pts, pts[0]], color });
+        }
+        return;
+      }
+      let curPts = [];
+      for (let i = 0; i <= steps; i++) {
+        const x = xMin + (xMax - xMin) * (i / steps);
+        const y = this.engine.evaluatePipeline(g, x);
+        if (isNaN(y) || !isFinite(y) || Math.abs(y) > 80) {
+          if (curPts.length >= 2) polylines.push({ pts: curPts, color });
+          curPts = [];
+          continue;
+        }
+        allY.push(y);
+        curPts.push({ x, y });
+      }
+      if (curPts.length >= 2) polylines.push({ pts: curPts, color });
+    });
+
+    let yMin = allY.length ? Math.min(...allY, -1.5) : -3;
+    let yMax = allY.length ? Math.max(...allY, 1.5) : 3;
+    if (yMax - yMin < 2.0) {
+      const mid = (yMax + yMin) / 2;
+      yMin = mid - 1.5;
+      yMax = mid + 1.5;
+    }
+
+    const toSvgX = (x) => (3 + ((x - xMin) / (xMax - xMin)) * (W - 6)).toFixed(1);
+    const toSvgY = (y) => (H - 3 - ((y - yMin) / (yMax - yMin)) * (H - 6)).toFixed(1);
+
+    let boundaryLinesSvg = '';
+    if (this.usePiecewise && Array.isArray(this.piecewiseBoundaries)) {
+      this.piecewiseBoundaries.forEach(bx => {
+        if (bx >= xMin && bx <= xMax) {
+          const sx = toSvgX(bx);
+          boundaryLinesSvg += `<line x1="${sx}" y1="2" x2="${sx}" y2="${H - 2}" stroke="#a29bfe" stroke-width="0.9" stroke-dasharray="2,2" opacity="0.75"/>`;
+        }
+      });
+    }
+
+    const pathsSvg = polylines.map(pl => {
+      const d = pl.pts.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${toSvgX(p.x)},${toSvgY(p.y)}`).join(' ');
+      return `<path d="${d}" fill="none" stroke="${pl.color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+    }).join('');
+
+    const zeroY = toSvgY(0);
+    const zeroX = toSvgX(0);
+    const axesSvg = `<line x1="2" y1="${zeroY}" x2="${W - 2}" y2="${zeroY}" stroke="currentColor" stroke-width="0.6" opacity="0.28"/><line x1="${zeroX}" y1="2" x2="${zeroX}" y2="${H - 2}" stroke="currentColor" stroke-width="0.6" opacity="0.28"/>`;
+
+    return `<svg width="42" height="28" viewBox="0 0 ${W} ${H}" fill="none">${axesSvg}${boundaryLinesSvg}${pathsSvg}</svg>`;
+  }
+
+  saveCurrentGraphToCustomPresets(customName = '') {
+    if (!this.graphs || this.graphs.length === 0) {
+      this.showToast('⚠️ 먼저 캔버스에 등록할 그래프를 그려주세요!');
+      return null;
+    }
+
+    // 👑 구독(Pro) vs 비구독(Free) 개수 제한 체크
+    const quota = this.getCustomGraphQuotaStatus();
+    if (quota.isReached) {
+      this.showToast(`👑 무료 버전은 [⭐ 내 그래프]를 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Pro 업그레이드 시 무제한 등록됩니다!`);
+      if (typeof this.openProPricingModal === 'function') {
+        this.openProPricingModal();
+      }
+      return null;
+    }
+
+    const cleanName = (customName && String(customName).trim())
+      ? String(customName).trim()
+      : this._buildSmartCustomGraphName();
+    const badge = this._buildSmartCustomGraphBadge();
+    const svgThumb = this._generateCustomGraphSvgThumb();
+
+    // 순수 수학 그래프 + 구간분할 + 주기·계단형 + 보조수선 + 텍스트라벨 스냅샷 (필기 낙서는 제외하여 깨끗한 재사용 보장)
+    const rawSnapObj = JSON.parse(this.getPureGraphSnapshot());
+    rawSnapObj.graphInkStrokes = [];
+
+    const newItem = {
+      id: 'cg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      name: cleanName,
+      badge: badge,
+      svgThumb: svgThumb,
+      createdAt: Date.now(),
+      snapshot: JSON.stringify(rawSnapObj)
+    };
+
+    if (!Array.isArray(this.customGraphPresets)) {
+      this.customGraphPresets = [];
+    }
+    this.customGraphPresets.unshift(newItem);
+    this._saveCustomGraphsToStorage();
+
+    this._currentCat = '⭐ 내 그래프';
+    this.renderFuncList();
+    this.showToast(`⭐ [${newItem.name}] 그래프가 내 그래프 보관함에 등록되었습니다!`);
+    return newItem;
+  }
+
+  loadCustomGraphPreset(presetId) {
+    if (!Array.isArray(this.customGraphPresets)) return false;
+    const item = this.customGraphPresets.find(it => it && it.id === presetId);
+    if (!item || !item.snapshot) return false;
+
+    if (this.isGraphCovered || this._graphSessionArchived || this.pdfPageBoardData) {
+      this.enterGraphModeFromBoard();
+    }
+    if (!this.showAxes) {
+      this.showAxes = true;
+      this.updateAxesUI();
+    }
+
+    this.pushHistoryState();
+    this.applyPureGraphSnapshot(item.snapshot);
+    this.updatePwDescBadge();
+    this.updateIntersections();
+
+    if (this.isInkMode && this.activeInkTool !== 'select') {
+      this.setActiveInkTool('select');
+    }
+    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+      this.closeDrawer();
+    }
+
+    this.render();
+    this.showToast(`⭐ [${item.name}] 그래프를 소환했습니다! 핸들을 드래그해 조절하세요.`);
+    return true;
+  }
+
+  deleteCustomGraphPreset(presetId) {
+    if (!Array.isArray(this.customGraphPresets)) return false;
+    const idx = this.customGraphPresets.findIndex(it => it && it.id === presetId);
+    if (idx === -1) return false;
+    const removed = this.customGraphPresets.splice(idx, 1)[0];
+    this._saveCustomGraphsToStorage();
+    this.renderFuncList();
+    this.showToast(`🗑️ [${removed ? removed.name : '그래프'}] 항목을 삭제했습니다.`);
+    return true;
+  }
+
+  renameCustomGraphPreset(presetId, newName) {
+    if (!Array.isArray(this.customGraphPresets)) return false;
+    const item = this.customGraphPresets.find(it => it && it.id === presetId);
+    if (!item) return false;
+    const trimmed = String(newName || '').trim();
+    if (trimmed) {
+      item.name = trimmed;
+      this._saveCustomGraphsToStorage();
+      this.showToast(`✏️ [${trimmed}] 이름으로 변경되었습니다.`);
+    }
+    this._renamingCustomGraphId = null;
+    this.renderFuncList();
+    return true;
+  }
+
+  renderCustomGraphPresetList(gridEl) {
+    const grid = gridEl || document.getElementById('funcGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const quota = this.getCustomGraphQuotaStatus();
+
+    // 1번 고정 카드: [➕ 현재 그래프 등록] + 구독/비구독 잔여 한도 배지
+    const regWrap = document.createElement('div');
+    regWrap.className = 'custom-graph-register-wrap';
+
+    const btnAdd = document.createElement('button');
+    btnAdd.type = 'button';
+    btnAdd.id = 'btnRegisterCurrentGraph';
+    btnAdd.className = 'custom-graph-add-btn';
+    btnAdd.innerHTML = `
+      <span>➕ 현재 그래프 등록</span>
+      <span class="custom-graph-quota-badge">${quota.badgeText}</span>
+    `;
+    btnAdd.onclick = (e) => {
+      e.stopPropagation();
+      this.saveCurrentGraphToCustomPresets();
+    };
+    regWrap.appendChild(btnAdd);
+    grid.appendChild(regWrap);
+
+    if (!Array.isArray(this.customGraphPresets) || this.customGraphPresets.length === 0) {
+      const emptyBox = document.createElement('div');
+      emptyBox.className = 'custom-graph-empty';
+      emptyBox.innerHTML = `
+        <div style="font-weight:700; margin-bottom:4px;">⭐ 등록된 나만의 그래프가 없습니다</div>
+        <div>구간 분할 · 계단형 주기 · 다중 함수 세트를 만든 뒤<br>위의 <b>[➕ 현재 그래프 등록]</b>을 누르면 언제든 1초 만에 꺼내 쓸 수 있습니다!</div>
+      `;
+      grid.appendChild(emptyBox);
+      return;
+    }
+
+    this.customGraphPresets.forEach((item) => {
+      if (!item) return;
+      const card = document.createElement('div');
+      card.className = 'custom-graph-card';
+      card.setAttribute('data-custom-graph-id', item.id);
+
+      const isRenaming = (this._renamingCustomGraphId === item.id);
+      if (isRenaming) {
+        card.innerHTML = `
+          <div style="display:flex; align-items:center; gap:6px; width:100%;">
+            <input type="text" class="custom-graph-rename-input" value="${(item.name || '').replace(/"/g, '&quot;')}"
+              style="flex:1; min-width:0; padding:5px 8px; border-radius:6px; border:1px solid #f59e0b; background:rgba(0,0,0,0.25); color:inherit; font-size:12px; font-weight:600;" />
+            <button type="button" class="custom-graph-act-btn save" title="저장" style="width:auto; padding:0 8px; background:#f59e0b; color:#fff; font-weight:700;">확인</button>
+          </div>
+        `;
+        const inp = card.querySelector('.custom-graph-rename-input');
+        const btnSave = card.querySelector('.custom-graph-act-btn.save');
+        if (inp) {
+          inp.onclick = (ev) => ev.stopPropagation();
+          inp.onkeydown = (ev) => {
+            ev.stopPropagation();
+            if (ev.key === 'Enter') {
+              this.renameCustomGraphPreset(item.id, inp.value);
+            } else if (ev.key === 'Escape') {
+              this._renamingCustomGraphId = null;
+              this.renderFuncList();
+            }
+          };
+          setTimeout(() => { inp.focus(); inp.select(); }, 20);
+        }
+        if (btnSave) {
+          btnSave.onclick = (ev) => {
+            ev.stopPropagation();
+            this.renameCustomGraphPreset(item.id, inp ? inp.value : item.name);
+          };
+        }
+        grid.appendChild(card);
+        return;
+      }
+
+      card.innerHTML = `
+        <div class="custom-graph-card-left">
+          <div class="custom-graph-thumb-box">${item.svgThumb || '📈'}</div>
+          <div class="custom-graph-info">
+            <div class="custom-graph-title">${item.name || '나만의 그래프'}</div>
+            <div class="custom-graph-meta">${item.badge || '커스텀 그래프'}</div>
+          </div>
+        </div>
+        <div class="custom-graph-actions">
+          <button type="button" class="custom-graph-act-btn edit" title="이름 변경">✏️</button>
+          <button type="button" class="custom-graph-act-btn del" title="삭제">✕</button>
+        </div>
+      `;
+
+      card.onclick = () => {
+        this.loadCustomGraphPreset(item.id);
+      };
+
+      const btnEdit = card.querySelector('.custom-graph-act-btn.edit');
+      if (btnEdit) {
+        btnEdit.onclick = (ev) => {
+          ev.stopPropagation();
+          this._renamingCustomGraphId = item.id;
+          this.renderFuncList();
+        };
+      }
+
+      const btnDel = card.querySelector('.custom-graph-act-btn.del');
+      if (btnDel) {
+        btnDel.onclick = (ev) => {
+          ev.stopPropagation();
+          this.deleteCustomGraphPreset(item.id);
+        };
+      }
+
+      grid.appendChild(card);
+    });
   }
 
   handleCloudEmailPasswordLogin() {
