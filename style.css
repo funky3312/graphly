@@ -7220,7 +7220,7 @@ body.theme-light .btn-cloud-export-item:hover {
   left: 605px;
   top: 76px;
   z-index: 465 !important;
-  width: 114px;
+  width: 122px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -7469,22 +7469,23 @@ body.theme-light .pill-color-dot.active {
   box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.28);
 }
 
-/* 하단 레고형 모듈 스위치 바 ([도구] · [줌] · [색상]) */
+/* 상단 고정 레고형 4모듈 스위치 바 ([도구] · [줌] · [색상] · [기타]) */
 .pill-module-bar {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 4px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2.5px;
   width: 100%;
-  margin-top: 1px;
+  margin-top: 0px;
 }
 
 .pill-mod-chip {
-  height: 23px;
-  border-radius: 7px;
+  height: 22px;
+  border-radius: 6px;
   border: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(255, 255, 255, 0.04);
   color: #94a3b8;
-  font-size: 10.5px;
+  font-size: 9.5px;
+  letter-spacing: -0.3px;
   font-weight: 700;
   cursor: pointer;
   padding: 0;

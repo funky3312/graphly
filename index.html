@@ -1105,7 +1105,7 @@
         </button>
       </div>
 
-      <!-- 🧩 액정타블렛 전용 레고형 접이식 직사각형 리모컨 (Quick Pill Remote: 필기⇄이동 + [도구] · [줌] · [색상] 모듈러 폴딩) -->
+      <!-- 🧩 액정타블렛 전용 레고형 접이식 직사각형 리모컨 (Quick Pill Remote: 필기⇄이동 직하단 고정 4옵션 [도구·줌·색상·기타] + 하단 펼침) -->
       <div id="quickPillRemote" class="quick-pill-remote" style="display: none;">
         <!-- 상단 드래그 헤더 바 + 닫기 버튼 -->
         <div class="pill-remote-top-bar">
@@ -1123,6 +1123,14 @@
           <span class="pill-swap-label" id="pillSwapLabel">필기</span>
           <span class="pill-swap-badge">⇄</span>
         </button>
+
+        <!-- 🌟 고정형 4단 모듈 선택 스위치 ([도구] · [줌] · [색상] · [기타] — 최상단 필기/이동 바로 밑에 고정되어 켜고 꺼도 버튼 위치 불변!) -->
+        <div class="pill-module-bar">
+          <button type="button" id="btnPillModTools" class="pill-mod-chip active" title="지우개 · 올가미 켜기/끄기">도구</button>
+          <button type="button" id="btnPillModZoom" class="pill-mod-chip active" title="축소 · 확대 켜기/끄기">줌</button>
+          <button type="button" id="btnPillModColor" class="pill-mod-chip" title="5색 펜 색상 켜기/끄기">색상</button>
+          <button type="button" id="btnPillModExtra" class="pill-mod-chip" title="형광펜 · 필기 비우기 켜기/끄기">기타</button>
+        </div>
 
         <!-- 모듈 1: [도구] 섹션 (🧼 지우개 | 🪢 올가미) -->
         <div id="pillSecTools" class="pill-remote-section">
@@ -1159,7 +1167,7 @@
           </div>
         </div>
 
-        <!-- 모듈 3: [색상] 섹션 (5색 컬러 도트 + 🖍️ 형광펜 | 🗑️ 필기 비우기) -->
+        <!-- 모듈 3: [색상] 섹션 (순수 5색 컬러 도트) -->
         <div id="pillSecColor" class="pill-remote-section" style="display: none;">
           <div class="pill-remote-sep"></div>
           <div class="pill-color-row">
@@ -1169,6 +1177,11 @@
             <button type="button" class="pill-color-dot" data-color="#16a34a" style="background: #16a34a;" ></button>
             <button type="button" class="pill-color-dot" data-color="#7c3aed" style="background: #7c3aed;" ></button>
           </div>
+        </div>
+
+        <!-- 모듈 4: [기타] 섹션 (🖍️ 형광펜 | 🗑️ 필기 비우기) -->
+        <div id="pillSecExtra" class="pill-remote-section" style="display: none;">
+          <div class="pill-remote-sep"></div>
           <div class="pill-remote-grid">
             <button type="button" id="btnPillHighlighter" class="pill-remote-btn" title="형광펜">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11-6 6v3h3l6-6"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg>
@@ -1177,14 +1190,6 @@
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             </button>
           </div>
-        </div>
-
-        <!-- 하단 레고형 모듈 선택 스위치 ([도구] · [줌] · [색상] 원하는 조합만 켜고 접기!) -->
-        <div class="pill-remote-sep"></div>
-        <div class="pill-module-bar">
-          <button type="button" id="btnPillModTools" class="pill-mod-chip active">도구</button>
-          <button type="button" id="btnPillModZoom" class="pill-mod-chip active">줌</button>
-          <button type="button" id="btnPillModColor" class="pill-mod-chip">색상</button>
         </div>
       </div>
 
@@ -1783,7 +1788,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261031_4"></script>
-  <script src="app.js?v=20261101_22"></script>
+  <script src="app.js?v=20261101_23"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

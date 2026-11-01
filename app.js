@@ -4240,6 +4240,7 @@ class GraphApp {
     const btnModTools = document.getElementById('btnPillModTools');
     const btnModZoom = document.getElementById('btnPillModZoom');
     const btnModColor = document.getElementById('btnPillModColor');
+    const btnModExtra = document.getElementById('btnPillModExtra');
     const btnClose = document.getElementById('btnPillClose');
 
     if (!remote) return;
@@ -4250,7 +4251,8 @@ class GraphApp {
     this.pillModules = {
       tools: true,
       zoom: true,
-      color: false
+      color: false,
+      extra: false
     };
 
     const saveRemoteSettings = () => {
@@ -4262,6 +4264,7 @@ class GraphApp {
           modTools: Boolean(this.pillModules.tools),
           modZoom: Boolean(this.pillModules.zoom),
           modColor: Boolean(this.pillModules.color),
+          modExtra: Boolean(this.pillModules.extra),
           left: Math.round(parseFloat(remote.style.left) || rect.left || 605),
           top: Math.round(parseFloat(remote.style.top) || rect.top || 76)
         };
@@ -4278,6 +4281,7 @@ class GraphApp {
         if (typeof saved.modTools === 'boolean') this.pillModules.tools = saved.modTools;
         if (typeof saved.modZoom === 'boolean') this.pillModules.zoom = saved.modZoom;
         if (typeof saved.modColor === 'boolean') this.pillModules.color = saved.modColor;
+        if (typeof saved.modExtra === 'boolean') this.pillModules.extra = saved.modExtra;
         if (typeof saved.hideBottomBar === 'boolean') {
           this.isBottomInkBarHidden = saved.hideBottomBar;
           const dock = document.getElementById('inkFloatingToolbar');
@@ -4442,6 +4446,12 @@ class GraphApp {
         this.togglePillModule('color');
       };
     }
+    if (btnModExtra) {
+      btnModExtra.onclick = (e) => {
+        e.stopPropagation();
+        this.togglePillModule('extra');
+      };
+    }
 
     // 상단 드래그 손잡이(⋮⋮⋮) 및 리모컨 빈 배경 영역 PointerEvent 이동 (뒷창 캔버스 필기 누수 100% 원천 차단!)
     if (remote) {
@@ -4554,9 +4564,11 @@ class GraphApp {
     const secTools = document.getElementById('pillSecTools');
     const secZoom = document.getElementById('pillSecZoom');
     const secColor = document.getElementById('pillSecColor');
+    const secExtra = document.getElementById('pillSecExtra');
     const btnModTools = document.getElementById('btnPillModTools');
     const btnModZoom = document.getElementById('btnPillModZoom');
     const btnModColor = document.getElementById('btnPillModColor');
+    const btnModExtra = document.getElementById('btnPillModExtra');
     if (!btnSwap) return;
 
     const tool = this.activeInkTool || 'pen';
@@ -4589,14 +4601,16 @@ class GraphApp {
     if (btnLasso) btnLasso.classList.toggle('active', tool === 'lasso');
     if (btnHighlighter) btnHighlighter.classList.toggle('active', tool === 'highlighter');
 
-    const mods = this.pillModules || { tools: true, zoom: true, color: false };
+    const mods = this.pillModules || { tools: true, zoom: true, color: false, extra: false };
     if (secTools) secTools.style.display = mods.tools ? 'flex' : 'none';
     if (secZoom) secZoom.style.display = mods.zoom ? 'flex' : 'none';
     if (secColor) secColor.style.display = mods.color ? 'flex' : 'none';
+    if (secExtra) secExtra.style.display = mods.extra ? 'flex' : 'none';
 
     if (btnModTools) btnModTools.classList.toggle('active', Boolean(mods.tools));
     if (btnModZoom) btnModZoom.classList.toggle('active', Boolean(mods.zoom));
     if (btnModColor) btnModColor.classList.toggle('active', Boolean(mods.color));
+    if (btnModExtra) btnModExtra.classList.toggle('active', Boolean(mods.extra));
   }
 
   // ==========================================================================
