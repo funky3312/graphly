@@ -14104,7 +14104,8 @@ class GraphApp {
       if (defaultScope === 'all' || defaultScope === 'current') {
         this.exportScope = defaultScope;
       } else {
-        this.exportScope = 'current';
+        const allSlides = this._getActiveSlidesForExport('수업 노트');
+        this.exportScope = (allSlides && allSlides.length > 1) ? 'all' : 'current';
       }
       const hasLiveGraphs = this.graphs && this.graphs.length > 0;
       const hasBackupGraphs = this._coveredGraphStateBackup && this._coveredGraphStateBackup.graphs && this._coveredGraphStateBackup.graphs.length > 0;
@@ -16159,10 +16160,13 @@ class GraphApp {
       this.deserializeFullSlideState(backupCurrent);
     }
 
-    const shortId = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const nowMs = Date.now();
+    const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+    const shortId = 's' + nowMs.toString(36) + Math.random().toString(36).slice(2, 6);
     return {
       id: shortId,
-      createdAt: Date.now(),
+      createdAt: nowMs,
+      expiresAt: nowMs + TWO_WEEKS_MS,
       exportScope: effScope,
       exportFilter: { ...effFilter },
       isPlaylist: filteredSlides.length > 1,
@@ -16171,7 +16175,43 @@ class GraphApp {
     };
   }
 
+  async _purgeExpiredSharedWorkspaces() {
+    const nowMs = Date.now();
+    const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('graphly_cloud_share_') || k.startsWith('graphly_full_doc_s'))) {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            const obj = JSON.parse(raw);
+            const exp = obj.expiresAt || ((obj.createdAt || 0) + TWO_WEEKS_MS);
+            if (obj.createdAt && nowMs > exp) {
+              localStorage.removeItem(k);
+            }
+          }
+        }
+      }
+    } catch (e) { }
+    try {
+      const remoteDocs = await this._firestoreRestListCollection('shared_workspaces', 40);
+      for (const doc of remoteDocs) {
+        if (!doc || !doc.id) continue;
+        const exp = doc.expiresAt || ((doc.createdAt || 0) + TWO_WEEKS_MS);
+        if (doc.createdAt && nowMs > exp) {
+          if (doc._isChunked && doc._chunkCount && doc._chunkDocPrefix) {
+            for (let c = 0; c < doc._chunkCount; c++) {
+              this._firestoreRestDeleteDoc('shared_workspaces', `${doc._chunkDocPrefix}${c}`).catch(() => {});
+            }
+          }
+          this._firestoreRestDeleteDoc('shared_workspaces', doc.id).catch(() => {});
+        }
+      }
+    } catch (e) { }
+  }
+
   async createCloudSharePackage(scope = null, filterOpts = null) {
+    this._purgeExpiredSharedWorkspaces().catch(() => {});
     const pkg = await this.buildExportSharePackageObject(scope || this.exportScope || 'current', filterOpts || this.exportFilter);
     const shortId = pkg.id;
 
@@ -16198,6 +16238,17 @@ class GraphApp {
       try {
         pkg = await this._firestoreRestReadDoc('shared_workspaces', shortId);
       } catch (e) { }
+    }
+
+    if (pkg) {
+      const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+      const exp = pkg.expiresAt || ((pkg.createdAt || 0) + TWO_WEEKS_MS);
+      if (pkg.createdAt && Date.now() > exp) {
+        try { localStorage.removeItem('graphly_cloud_share_' + shortId); } catch (e) { }
+        this._firestoreRestDeleteDoc('shared_workspaces', shortId).catch(() => {});
+        this.showToast('⏰ 유효기간(14일)이 만료된 공유 링크입니다.');
+        return;
+      }
     }
 
     if (!pkg || !Array.isArray(pkg.playlistSlides) || !pkg.playlistSlides.length) {
