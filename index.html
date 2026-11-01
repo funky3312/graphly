@@ -801,7 +801,12 @@
         <div id="audioSyncRecordingGroup" class="audio-sync-group" style="display: none;">
           <span id="badgeAudioRecState" class="audio-rec-badge"><span class="audio-rec-dot"></span><span id="lblAudioRecBadgeText">REC</span></span>
           <span id="lblAudioRecordTimer" class="audio-sync-time">00:00</span>
-          <span id="lblAudioRecHint" class="audio-rec-hint">음성·필기·펜포인터·그래프 실시간 동기화 중</span>
+          <button type="button" id="btnAudioMicMuteToggle" class="audio-sync-btn audio-btn-mic-toggle" title="마이크 음성 켜기 / 끄기 (무음 필기 애니메이션 녹화)">
+            <span id="dotAudioMicLevel" class="audio-mic-level-dot"></span>
+            <span id="iconAudioMicMute">🎤</span>
+            <span id="lblAudioMicMute">마이크 ON</span>
+          </button>
+          <span id="lblAudioRecHint" class="audio-rec-hint">슬라이드를 넘기면 문제별로 자동 분할·연속 녹음됩니다</span>
           <button type="button" id="btnAudioPauseRecord" class="audio-sync-btn audio-btn-pause-rec" title="녹음 일시정지 / 이어녹음">
             <span id="iconAudioPauseRecord">⏸</span>
             <span id="lblAudioPauseRecord">일시정지</span>
@@ -1737,7 +1742,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261031_4"></script>
-  <script src="app.js?v=20261101_17"></script>
+  <script src="app.js?v=20261101_18"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

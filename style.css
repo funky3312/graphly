@@ -9443,3 +9443,46 @@ body.theme-light .export-stage-preset-chip:hover {
   color: #ffffff !important;
   box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
 }
+
+
+/* 마이크 ON/OFF 토글 및 실시간 음성 입력 레벨 표시등 */
+.audio-btn-mic-toggle {
+  background: rgba(16, 185, 129, 0.16) !important;
+  border-color: rgba(16, 185, 129, 0.55) !important;
+  color: #a7f3d0 !important;
+  font-weight: 700;
+}
+
+body.theme-light .audio-btn-mic-toggle {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border-color: #059669 !important;
+  color: #047857 !important;
+}
+
+.audio-btn-mic-toggle.is-muted {
+  background: rgba(100, 116, 139, 0.25) !important;
+  border-color: rgba(148, 163, 184, 0.45) !important;
+  color: #cbd5e1 !important;
+}
+
+body.theme-light .audio-btn-mic-toggle.is-muted {
+  background: #e2e8f0 !important;
+  border-color: #94a3b8 !important;
+  color: #475569 !important;
+}
+
+.audio-mic-level-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+  display: inline-block;
+  transition: transform 0.08s ease, opacity 0.12s ease, background 0.12s ease;
+}
+
+.audio-btn-mic-toggle.is-muted .audio-mic-level-dot {
+  background: #94a3b8;
+  box-shadow: none;
+  opacity: 0.5;
+}

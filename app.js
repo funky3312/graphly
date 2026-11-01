@@ -16112,6 +16112,11 @@ class GraphApp {
     const nextIdx = this.lessonPlaylistIndex + delta;
     if (nextIdx < 0 || nextIdx >= this.lessonPlaylistSlides.length) return;
 
+    const wasRecording = Boolean(this.isAudioRecording);
+    if (wasRecording) {
+      this._finalizeCurrentSlideAudioSegmentBeforeSwitch();
+    }
+
     // 1. 현재 슬라이드에서 판서한 필기/그래프 카드 변동을 현재 슬라이드에 자동 백업!
     this.saveCurrentSlideIntoPlaylist();
 
@@ -16119,6 +16124,9 @@ class GraphApp {
     this.lessonPlaylistIndex = nextIdx;
     const targetSlide = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
     this.deserializeFullSlideState(targetSlide);
+    if (wasRecording) {
+      this._beginNextSlideAudioSegmentAfterSwitch();
+    }
     this.syncLessonPlaylistNavBarUI();
     this.showToast(`🎯 [${this.lessonPlaylistIndex + 1} / ${this.lessonPlaylistSlides.length}] ${targetSlide.slideTitle || '문항'}`);
   }
@@ -16219,9 +16227,16 @@ class GraphApp {
     if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) return;
     if (targetIdx < 0 || targetIdx >= this.lessonPlaylistSlides.length) return;
     if (targetIdx === this.lessonPlaylistIndex) return;
+    const wasRecording = Boolean(this.isAudioRecording);
+    if (wasRecording) {
+      this._finalizeCurrentSlideAudioSegmentBeforeSwitch();
+    }
     this.saveCurrentSlideIntoPlaylist();
     this.lessonPlaylistIndex = targetIdx;
     this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
+    if (wasRecording) {
+      this._beginNextSlideAudioSegmentAfterSwitch();
+    }
     this.syncLessonPlaylistNavBarUI();
   }
 
@@ -16592,7 +16607,11 @@ class GraphApp {
     } else if (this._isCapturingExportSnapshots && this._exportSnapshotLoopBackupCurrent) {
       slides = [JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent))];
     } else {
-      slides = [this.serializeFullSlideState(fallbackTitle)];
+      const curPlaylistSlide = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex])
+        ? this.lessonPlaylistSlides[this.lessonPlaylistIndex]
+        : null;
+      const effTitle = (curPlaylistSlide && curPlaylistSlide.slideTitle) ? curPlaylistSlide.slideTitle : fallbackTitle;
+      slides = [this.serializeFullSlideState(effTitle)];
     }
     return slides.map(s => this._applyExportFilterToSlideData(s, effFilter));
   }
@@ -26605,6 +26624,8 @@ class GraphApp {
   initAudioSyncControls() {
     this.isAudioRecording = false;
     this.isAudioRecordPaused = false;
+    this.isAudioMicMuted = false;
+    this._pendingSlideAudioFinalizers = [];
     this.audioRecordStartMs = 0;
     this.audioRecordPauseStartMs = 0;
     this.audioRecordTotalPausedMs = 0;
@@ -26631,6 +26652,7 @@ class GraphApp {
     this._enteredAudioFromViewerSlideIdx = null;
 
     const btnFab = document.getElementById('btnAudioRecordToggle');
+    const btnMicMute = document.getElementById('btnAudioMicMuteToggle');
     const btnPauseRec = document.getElementById('btnAudioPauseRecord');
     const btnStopRec = document.getElementById('btnAudioStopRecord');
     const btnPlayPause = document.getElementById('btnAudioPlayPause');
@@ -26658,6 +26680,13 @@ class GraphApp {
         } else {
           this.startAudioRecording();
         }
+      };
+    }
+
+    if (btnMicMute) {
+      btnMicMute.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleAudioMicMute();
       };
     }
 
@@ -26884,6 +26913,140 @@ class GraphApp {
     }
     this.syncAudioRecordUI();
     return this.isAudioRecordPaused;
+  }
+
+  toggleAudioMicMute(forceMuted = null) {
+    this.isAudioMicMuted = (typeof forceMuted === 'boolean') ? forceMuted : !this.isAudioMicMuted;
+    if (this.audioMediaStream) {
+      try {
+        this.audioMediaStream.getAudioTracks().forEach(tr => {
+          tr.enabled = !this.isAudioMicMuted;
+        });
+      } catch (e) { }
+    }
+    this.syncAudioRecordUI();
+    return this.isAudioMicMuted;
+  }
+
+  // 🌟 [원테이크 통째 강의 녹음 + 슬라이드별 자동 챕터 분할 엔진]:
+  // 선생님이 녹음 버튼을 한 번 켜고 1번 ➔ 2번 ➔ ... ➔ 10번 슬라이드를 넘기며 통째로 강의를 찍을 때,
+  // 슬라이드를 넘기는 순간 이전 슬라이드의 음성·필기·그래프 타임라인을 해당 슬라이드에 자동 분할 저장하고
+  // 다음 슬라이드 녹음을 0.00초 딜레이로 즉시 이어갑니다!
+  // 덕분에 ① 전체 슬라이드 재생 시 1~10번이 한 영상처럼 자동 연속 재생되고, ② 8번 슬라이드 1장만 골라 보낼 때도 8번 설명 음성만 정확히 분리되어 전송됩니다!
+  _finalizeCurrentSlideAudioSegmentBeforeSwitch() {
+    if (!this.isAudioRecording) return;
+    const durationMs = Math.max(300, this.getAudioRecordElapsedMs());
+    this._recordAudioWorkspaceStateIfNeeded(true);
+    const finalState = this._captureAudioWorkspaceKeyframe();
+    const initialState = this.audioInitialState;
+    const timeline = this.audioTimeline ? [...this.audioTimeline] : [];
+    const laserStrokes = this.audioLaserStrokes ? [...this.audioLaserStrokes] : [];
+    const mimeType = this._audioMimeType || 'audio/wav';
+    const fallbackSilentUrl = this._createSilentWavDataUrl(durationMs);
+
+    const segAudioSyncData = {
+      version: '1.0',
+      createdAt: Date.now(),
+      durationMs,
+      mimeType,
+      audioDataUrl: fallbackSilentUrl,
+      initialState,
+      finalState,
+      timeline,
+      laserStrokes
+    };
+    this.audioSyncData = segAudioSyncData;
+
+    const prevRecorder = this.audioMediaRecorder;
+    const prevChunks = this.audioRecordedChunks ? [...this.audioRecordedChunks] : [];
+    const targetSlideIdx = this.lessonPlaylistIndex;
+    const wasMuted = Boolean(this.isAudioMicMuted);
+    this.audioMediaRecorder = null;
+    this.audioRecordedChunks = [];
+
+    if (prevRecorder && prevRecorder.state !== 'inactive') {
+      if (!this._pendingSlideAudioFinalizers) this._pendingSlideAudioFinalizers = [];
+      const p = new Promise((resolve) => {
+        prevRecorder.onstop = async () => {
+          try {
+            if (!wasMuted && prevChunks.length > 0) {
+              const blob = new Blob(prevChunks, { type: mimeType });
+              const dataUrl = await new Promise((res) => {
+                const reader = new FileReader();
+                reader.onloadend = () => res(reader.result || '');
+                reader.onerror = () => res('');
+                reader.readAsDataURL(blob);
+              });
+              if (dataUrl) {
+                segAudioSyncData.audioDataUrl = dataUrl;
+                if (this.lessonPlaylistSlides && this.lessonPlaylistSlides[targetSlideIdx] && this.lessonPlaylistSlides[targetSlideIdx].audioSyncData) {
+                  this.lessonPlaylistSlides[targetSlideIdx].audioSyncData.audioDataUrl = dataUrl;
+                }
+              }
+            }
+          } catch (e) { }
+          resolve();
+        };
+        try {
+          prevRecorder.stop();
+        } catch (e) {
+          resolve();
+        }
+      });
+      this._pendingSlideAudioFinalizers.push(p);
+    }
+  }
+
+  _beginNextSlideAudioSegmentAfterSwitch() {
+    if (!this.isAudioRecording) return;
+    const markPreExisting = (arr) => {
+      if (!Array.isArray(arr)) return;
+      arr.forEach(st => {
+        if (st && st.tStart === undefined) {
+          st.preExisting = true;
+        }
+      });
+    };
+    markPreExisting(this.inkStrokes);
+    markPreExisting(this.problemInkStrokes);
+    markPreExisting(this.graphInkStrokes);
+
+    this.audioSyncData = null;
+    this.audioRecordedChunks = [];
+    this.audioTimeline = [];
+    this.audioLaserStrokes = [];
+    this.audioRecordStartMs = performance.now();
+    this.audioRecordPauseStartMs = this.isAudioRecordPaused ? performance.now() : 0;
+    this.audioRecordTotalPausedMs = 0;
+    this._lastAudioCursorRecordMs = -100;
+    this._lastAudioStateRecordMs = -100;
+    this._lastRecordedStateHash = '';
+    this.audioInitialState = this._captureAudioWorkspaceKeyframe();
+    this._recordAudioWorkspaceStateIfNeeded(true);
+
+    if (this.audioMediaStream && window.MediaRecorder) {
+      try {
+        this.audioMediaStream.getAudioTracks().forEach(tr => {
+          tr.enabled = !this.isAudioMicMuted;
+        });
+        const chosenMime = this._audioMimeType && this._audioMimeType !== 'audio/wav' ? this._audioMimeType : '';
+        const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 };
+        const recorder = new MediaRecorder(this.audioMediaStream, recOpts);
+        recorder.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size > 0) {
+            this.audioRecordedChunks.push(ev.data);
+          }
+        };
+        recorder.start(250);
+        if (this.isAudioRecordPaused && recorder.state === 'recording') {
+          try { recorder.pause(); } catch (e) { }
+        }
+        this.audioMediaRecorder = recorder;
+      } catch (e) {
+        this.audioMediaRecorder = null;
+      }
+    }
+    this.syncAudioRecordUI();
   }
 
   formatAudioTimeMmSs(ms) {
@@ -27188,6 +27351,11 @@ class GraphApp {
           }
         });
         this.audioMediaStream = stream;
+        try {
+          stream.getAudioTracks().forEach(tr => {
+            tr.enabled = !this.isAudioMicMuted;
+          });
+        } catch (e) { }
         const candidates = [
           'audio/webm;codecs=opus',
           'audio/webm',
@@ -27312,6 +27480,16 @@ class GraphApp {
       laserStrokes: this.audioLaserStrokes || []
     };
 
+    if (this.isAudioMicMuted) {
+      this.audioSyncData.audioDataUrl = this._createSilentWavDataUrl(durationMs);
+    }
+    if (this._pendingSlideAudioFinalizers && this._pendingSlideAudioFinalizers.length > 0) {
+      await Promise.all(this._pendingSlideAudioFinalizers).catch(() => {});
+      this._pendingSlideAudioFinalizers = [];
+    }
+    if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex]) {
+      this.saveCurrentSlideIntoPlaylist();
+    }
     this.audioPlayCurrentMs = durationMs;
     this._isAudioSyncPlayerVisible = true;
     this.audioReplayViewMode = 'video';
@@ -27359,6 +27537,14 @@ class GraphApp {
       if (btnPauseRec) btnPauseRec.classList.toggle('is-paused', isPaused);
       if (iconPauseRec) iconPauseRec.textContent = isPaused ? '▶' : '⏸';
       if (lblPauseRec) lblPauseRec.textContent = isPaused ? '이어녹음' : '일시정지';
+
+      const btnMic = document.getElementById('btnAudioMicMuteToggle');
+      const iconMic = document.getElementById('iconAudioMicMute');
+      const lblMic = document.getElementById('lblAudioMicMute');
+      const isMuted = Boolean(this.isAudioMicMuted);
+      if (btnMic) btnMic.classList.toggle('is-muted', isMuted);
+      if (iconMic) iconMic.textContent = isMuted ? '🔇' : '🎤';
+      if (lblMic) lblMic.textContent = isMuted ? '무음 녹화' : '마이크 ON';
       return;
     }
 
@@ -27980,6 +28166,24 @@ class GraphApp {
       if (nextMs >= maxDur) {
         this.audioPlayCurrentMs = maxDur;
         this._renderAudioReplayAtCurrentTime();
+        // 🌟 다중 슬라이드 연속 강의인 경우: 현재 슬라이드 재생이 끝나면 다음 슬라이드로 자동 이동하여 끊김 없이 이어서 재생!
+        if (
+          this.isLessonPlaylistActive &&
+          Array.isArray(this.lessonPlaylistSlides) &&
+          this.lessonPlaylistIndex + 1 < this.lessonPlaylistSlides.length &&
+          this.lessonPlaylistSlides[this.lessonPlaylistIndex + 1] &&
+          this.lessonPlaylistSlides[this.lessonPlaylistIndex + 1].audioSyncData &&
+          this.lessonPlaylistSlides[this.lessonPlaylistIndex + 1].audioSyncData.durationMs > 0
+        ) {
+          const keepViewMode = this.audioReplayViewMode || 'video';
+          this.pauseAudioPlayback(true);
+          this.stepLessonPlaylist(1);
+          if (this._enteredAudioFromViewerSlideIdx !== null) {
+            this._enteredAudioFromViewerSlideIdx = this.lessonPlaylistIndex;
+          }
+          this.playAudioSync(0, keepViewMode);
+          return;
+        }
         this.pauseAudioPlayback(true);
         return;
       }
