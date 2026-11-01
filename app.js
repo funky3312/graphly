@@ -16690,7 +16690,7 @@ class GraphApp {
     }
 
     const nowMs = Date.now();
-    const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+    const TWO_WEEKS_MS = 7 * 24 * 60 * 60 * 1000; // 🌟 [대표님 정책]: 공유 링크 & QR 자동 소멸 기한 7일(7일간 유효)
     const shortId = 's' + nowMs.toString(36) + Math.random().toString(36).slice(2, 6);
     return {
       id: shortId,
@@ -16706,7 +16706,7 @@ class GraphApp {
 
   async _purgeExpiredSharedWorkspaces() {
     const nowMs = Date.now();
-    const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+    const TWO_WEEKS_MS = 7 * 24 * 60 * 60 * 1000; // 🌟 [대표님 정책]: 공유 링크 & QR 자동 소멸 기한 7일(7일간 유효)
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i);
@@ -16770,12 +16770,12 @@ class GraphApp {
     }
 
     if (pkg) {
-      const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+      const TWO_WEEKS_MS = 7 * 24 * 60 * 60 * 1000; // 🌟 [대표님 정책]: 공유 링크 & QR 자동 소멸 기한 7일(7일간 유효)
       const exp = pkg.expiresAt || ((pkg.createdAt || 0) + TWO_WEEKS_MS);
       if (pkg.createdAt && Date.now() > exp) {
         try { localStorage.removeItem('graphly_cloud_share_' + shortId); } catch (e) { }
         this._firestoreRestDeleteDoc('shared_workspaces', shortId).catch(() => {});
-        this.showToast('⏰ 유효기간(14일)이 만료된 공유 링크입니다.');
+        this.showToast('⏰ 유효기간(7일)이 만료된 공유 링크입니다.');
         return;
       }
     }
