@@ -4724,8 +4724,8 @@ class GraphApp {
           return;
         }
 
-        // 2.5) .graphly / .json 파일 불러오기
-        const graphlyFile = rawFiles.find(f => f.name && /\.(graphly|json)$/i.test(f.name));
+        // 2.5) .graphly.html / .graphly / .json 파일 불러오기
+        const graphlyFile = rawFiles.find(f => f.name && (/\.(graphly|json)$/i.test(f.name) || /\.graphly\.html$/i.test(f.name)));
         if (graphlyFile) {
           this.importGraphlyDeckFile(graphlyFile);
           return;
@@ -14792,6 +14792,18 @@ class GraphApp {
 
   // --- [URL 해시에서 상태 복원 및 스마트 판서 이미지 뷰어 자동 진입 엔진 (#cloud= & #share=)] ---
   checkUrlHashForState() {
+    if (!this._selfLaunchMessageBound) {
+      this._selfLaunchMessageBound = true;
+      window.addEventListener('message', (e) => {
+        if (!e || !e.data || e.data.type !== 'GRAPHLY_AUTO_OPEN_DECK' || !e.data.pack) return;
+        this.loadGraphlyPackObject(e.data.pack, e.data.pack.title || '더블클릭 수업 파일', true);
+      });
+      if (window.parent && window.parent !== window) {
+        try {
+          window.parent.postMessage({ type: 'GRAPHLY_APP_READY' }, '*');
+        } catch (err) { }
+      }
+    }
     const hash = window.location.hash;
     if (!hash) return;
 
@@ -15016,7 +15028,8 @@ class GraphApp {
       window.addEventListener('drop', (e) => {
         if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
         const f = e.dataTransfer.files[0];
-        if (f && f.name && f.name.toLowerCase().endsWith('.graphly')) {
+        const lowerName = (f && f.name) ? f.name.toLowerCase() : '';
+        if (f && (lowerName.endsWith('.graphly') || lowerName.endsWith('.graphly.html'))) {
           e.preventDefault();
           e.stopPropagation();
           this.importGraphlyDeckFile(f);
@@ -15777,6 +15790,98 @@ class GraphApp {
   // ============================================================================
   // 💾 [내 드라이브(구글 드라이브/PC/아이패드) .graphly 수업 세트 파일 저장 & 불러오기]
   // ============================================================================
+  _buildSelfLaunchingGraphlyHtml(packObj) {
+    const safeTitle = String((packObj && packObj.title) || 'Graphly 수업 노트')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    const escapedJson = JSON.stringify(packObj).replace(/<\/script>/gi, '<\\/script>');
+    const originUrl = (window.location && /^https?:/i.test(window.location.protocol))
+      ? window.location.origin + window.location.pathname
+      : 'https://graphly.net/';
+    return [
+      '<!DOCTYPE html>',
+      '<html lang="ko"><head><meta charset="UTF-8">',
+      '<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">',
+      `<title>${safeTitle} - Graphly</title>`,
+      '<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0f172a;}iframe{position:fixed;inset:0;width:100vw;height:100vh;border:0;display:block;}</style>',
+      '</head><body>',
+      `<script id="graphly-package-json" type="application/json">${escapedJson}</script>`,
+      `<iframe id="graphlyAppFrame" src="${originUrl}" allow="microphone; clipboard-read; clipboard-write; fullscreen"></iframe>`,
+      '<script>',
+      '(function(){',
+      '  var raw = document.getElementById("graphly-package-json").textContent;',
+      '  var pack = JSON.parse(raw);',
+      '  var frame = document.getElementById("graphlyAppFrame");',
+      '  var sent = false;',
+      '  function sendPack(){',
+      '    if (!frame || !frame.contentWindow) return;',
+      '    frame.contentWindow.postMessage({ type: "GRAPHLY_AUTO_OPEN_DECK", pack: pack }, "*");',
+      '  }',
+      '  window.addEventListener("message", function(e){',
+      '    if (e && e.data && e.data.type === "GRAPHLY_APP_READY") { sent = true; sendPack(); }',
+      '  });',
+      '  frame.addEventListener("load", function(){',
+      '    sendPack();',
+      '    setTimeout(function(){ if (!sent) sendPack(); }, 350);',
+      '  });',
+      '})();',
+      '</script></body></html>'
+    ].join('\n');
+  }
+
+  _extractGraphlyPackFromText(text) {
+    if (!text || typeof text !== 'string') return null;
+    const trimmed = text.trim();
+    if (trimmed.startsWith('{')) {
+      return JSON.parse(trimmed);
+    }
+    const markerStart = trimmed.indexOf('<script id="graphly-package-json" type="application/json">');
+    if (markerStart !== -1) {
+      const jsonStart = markerStart + '<script id="graphly-package-json" type="application/json">'.length;
+      const jsonEnd = trimmed.indexOf('</script>', jsonStart);
+      if (jsonEnd !== -1) {
+        const rawJson = trimmed.slice(jsonStart, jsonEnd).replace(/<\\\/script>/gi, '</script>');
+        return JSON.parse(rawJson);
+      }
+    }
+    return JSON.parse(trimmed);
+  }
+
+  loadGraphlyPackObject(pack, fallbackTitle = '불러온 수업 세트', autoPlayIfAudio = false) {
+    if (!pack) return null;
+    const slides = Array.isArray(pack.playlistSlides) && pack.playlistSlides.length > 0
+      ? pack.playlistSlides
+      : (pack.slideData ? [pack.slideData] : (pack.historyJson ? [pack] : []));
+    if (!slides.length) {
+      this.showToast('⚠️ 올바른 Graphly 수업 파일이 아닙니다.');
+      return null;
+    }
+    const title = pack.title || fallbackTitle;
+    if (slides.length > 1 || pack.isPlaylist) {
+      this.startLessonPlaylist(slides, 0);
+    } else {
+      this.isLessonPlaylistActive = false;
+      this.syncLessonPlaylistNavBarUI();
+      this.deserializeFullSlideState(slides[0]);
+    }
+    const modalCloud = document.getElementById('modalCloudHub');
+    if (modalCloud) modalCloud.classList.remove('show');
+
+    const hasAudio = Boolean(this.audioSyncData && this.audioSyncData.durationMs > 0);
+    if (hasAudio && autoPlayIfAudio) {
+      this._isAudioSyncPlayerVisible = true;
+      this.setAudioReplayViewMode('video', true);
+      this.seekAudioSync(0, false);
+      this.playAudioSync(0);
+    }
+
+    this.showToast(slides.length > 1
+      ? `📂 [${title}] (${slides.length}문항 통째 수업) 파일을 열었습니다! 1번부터 넘기며 수업하세요.`
+      : `📂 [${title}] 수업 파일을 성공적으로 불러왔습니다!`);
+    return pack;
+  }
+
   exportGraphlyDeckFile(title = 'Graphly_수업세트', tags = '#통째수업', slidesArray = null) {
     let slides = slidesArray;
     if (!Array.isArray(slides) || !slides.length) {
@@ -15803,10 +15908,13 @@ class GraphApp {
       slideData: slides[0]
     };
 
-    const jsonStr = JSON.stringify(packObj);
-    const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
-    const safeFileName = String(packObj.title).replace(/[\/:*?"<>|]/g, '_').trim() || 'Graphly_Lesson';
-    const fileName = safeFileName.endsWith('.graphly') ? safeFileName : `${safeFileName}.graphly`;
+    const htmlStr = this._buildSelfLaunchingGraphlyHtml(packObj);
+    const blob = new Blob([htmlStr], { type: 'text/html;charset=utf-8' });
+    const safeFileName = String(packObj.title)
+      .replace(/\.graphly(\.html)?$/i, '')
+      .replace(/[\/:*?"<>|]/g, '_')
+      .trim() || 'Graphly_Lesson';
+    const fileName = `${safeFileName}.graphly.html`;
 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -15817,7 +15925,7 @@ class GraphApp {
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 2000);
 
-    this.showToast(`💾 [${fileName}] 저장 완료! 내 드라이브(구글 드라이브/PC/아이패드)에 보관하고 언제든 바로 여세요.`);
+    this.showToast(`💾 [${fileName}] 저장 완료! 더블클릭하면 브라우저가 자동 실행되며 바로 열립니다.`);
     return packObj;
   }
 
@@ -15825,35 +15933,9 @@ class GraphApp {
     if (!file) return null;
     try {
       const text = await file.text();
-      const pack = JSON.parse(text);
-      const slides = Array.isArray(pack.playlistSlides) && pack.playlistSlides.length > 0
-        ? pack.playlistSlides
-        : (pack.slideData ? [pack.slideData] : (pack.historyJson ? [pack] : []));
-
-      if (!slides.length) {
-        this.showToast('⚠️ 올바른 .graphly 수업 파일이 아닙니다.');
-        return null;
-      }
-
-      const title = pack.title || file.name.replace(/\.(graphly|json)$/i, '') || '불러온 수업 세트';
-      const tags = pack.tags || (slides.length > 1 ? '#드라이브풀세트' : '#드라이브노트');
-
-      // 즉시 칠판 또는 1/N 슬라이드 모드로 오픈! (불필요한 클라우드 보관함 중복 자동저장 방지)
-      if (slides.length > 1 || pack.isPlaylist) {
-        this.startLessonPlaylist(slides, 0);
-      } else {
-        this.isLessonPlaylistActive = false;
-        this.syncLessonPlaylistNavBarUI();
-        this.deserializeFullSlideState(slides[0]);
-      }
-
-      const modalCloud = document.getElementById('modalCloudHub');
-      if (modalCloud) modalCloud.classList.remove('show');
-
-      this.showToast(slides.length > 1
-        ? `📂 [${title}] (${slides.length}문항 통째 수업) 파일을 열었습니다! 1번부터 넘기며 수업하세요.`
-        : `📂 [${title}] 수업 파일을 성공적으로 불러왔습니다!`);
-      return pack;
+      const pack = this._extractGraphlyPackFromText(text);
+      const cleanName = file.name ? file.name.replace(/\.(graphly\.html|graphly|json|html)$/i, '') : '불러온 수업 세트';
+      return this.loadGraphlyPackObject(pack, cleanName, false);
     } catch (err) {
       this.showToast('⚠️ 파일을 읽는 중 오류가 발생했습니다.');
       return null;
