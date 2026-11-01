@@ -5261,6 +5261,18 @@ class GraphApp {
   openPdfModal(isInitialLoad = false, autoCropMode = false) {
     const modal = document.getElementById('modalPdfViewer');
     if (modal) {
+      // 🌟 [핵심: 다음 캡처 / PDF 모달 진입 순간 자동 녹화 컷 & 대기 엔진]:
+      // 녹음 중 [다음 캡처]를 눌러 PDF 창에 들어가는 즉시 이전 슬라이드 녹화를 종료(저장)하고,
+      // PDF에서 문제를 고르는 동안에는 음성 녹음과 포인터 추적을 100% 중단하여 허공 포인터/공백 녹음을 원천 차단합니다!
+      if (this.isAudioRecording && !this.isAudioRecordPaused) {
+        this._autoPausedByPdfModal = true;
+        this.isAudioRecordPaused = true;
+        this.audioRecordPauseStartMs = performance.now();
+        if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'recording') {
+          try { this.audioMediaRecorder.pause(); } catch (e) {}
+        }
+        this.syncAudioRecordUI();
+      }
       modal.style.display = 'flex';
       this.isPdfModalOpen = true;
       this.togglePdfCropMode(Boolean(autoCropMode));
@@ -5296,6 +5308,24 @@ class GraphApp {
       modal.style.display = 'none';
       this.isPdfModalOpen = false;
       this.togglePdfCropMode(false);
+    }
+    // 만약 PDF 창을 열었다가 자동 일시정지된 상태(_autoPausedByPdfModal)에서 돌아온 경우 즉시 녹화 재개!
+    if (this.isAudioRecording && this._autoPausedByPdfModal) {
+      this._autoPausedByPdfModal = false;
+      if (this.isAudioRecordPaused) {
+        const pausedDelta = Math.max(0, performance.now() - (this.audioRecordPauseStartMs || performance.now()));
+        this.audioRecordTotalPausedMs = (this.audioRecordTotalPausedMs || 0) + pausedDelta;
+        this.isAudioRecordPaused = false;
+        this.audioRecordPauseStartMs = 0;
+        if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'paused') {
+          try { this.audioMediaRecorder.resume(); } catch (e) {}
+        }
+      }
+      if (this.getAudioRecordElapsedMs() < 600) {
+        this.audioInitialState = this._captureAudioWorkspaceKeyframe();
+      }
+      this._recordAudioWorkspaceStateIfNeeded(true);
+      this.syncAudioRecordUI();
     }
   }
 
@@ -8630,6 +8660,9 @@ class GraphApp {
     this.syncWorkspaceModeUI();
     this.syncGraphSnapBarUI();
     this._inkBakeDirty = true;
+    if (this.isAudioRecording) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
   }
 
   enterGraphModeFromBoard(options = {}) {
@@ -8702,6 +8735,15 @@ class GraphApp {
       this.dropLines = [];
       this.textLabels = [];
       if (this.inkStrokes && this.inkStrokes.length > 0) {
+        if (this.isAudioRecording) {
+          const nowT = this.getAudioRecordElapsedMs();
+          if (!this.audioErasedStrokes) this.audioErasedStrokes = [];
+          this.inkStrokes.forEach(s => {
+            if (s && (s.target || 'board') !== 'board' && !s.onPdfBoard) {
+              this.audioErasedStrokes.push({ ...s, erasedAt: nowT });
+            }
+          });
+        }
         this.inkStrokes = this.inkStrokes.filter(s => s && ((s.target || 'board') === 'board' || s.onPdfBoard));
       }
       this.panX = 0;
@@ -8734,6 +8776,9 @@ class GraphApp {
     this.renderLayerList();
     this.renderFuncList();
     this.render();
+    if (this.isAudioRecording) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
   }
 
   openPdfToGraphChoiceMenu(pendingGraphType = null) {
@@ -14528,7 +14573,7 @@ class GraphApp {
       includeProblem: true,
       includeGraph: true,
       includeInk: true,
-      includeAudio: false
+      includeAudio: true
     };
 
     const modal = document.getElementById('modalShare');
@@ -14589,7 +14634,7 @@ class GraphApp {
       const incP = Boolean(this.exportFilter.includeProblem);
       const incG = Boolean(this.exportFilter.includeGraph);
       const incI = Boolean(this.exportFilter.includeInk);
-      const incA = Boolean(this.exportFilter.includeAudio);
+      const incA = this.exportFilter.includeAudio !== false;
 
       if (chkProblem) chkProblem.checked = incP;
       if (chkGraph) chkGraph.checked = incG;
@@ -14867,7 +14912,7 @@ class GraphApp {
       const p = f.includeProblem !== false;
       const g = f.includeGraph !== false;
       const i = f.includeInk !== false;
-      const a = Boolean(f.includeAudio);
+      const a = f.includeAudio !== false;
       if (p && g && !i && !a) return '[1차·문제+그래프]';
       if (p && g && i && !a) return '[2차·해설노트]';
       if (p && g && i && a) return '[3차·음성강의]';
@@ -17192,9 +17237,18 @@ class GraphApp {
       this.isLessonPlaylistActive = true;
     }
     const nextIdx = this.lessonPlaylistSlides.length + 1;
+    // 새 슬라이드는 이전 슬라이드의 audioSyncData를 물려받지 않도록 초기화 후 직렬화
+    this.audioSyncData = null;
     const newSlide = this.serializeFullSlideState(title || String(nextIdx));
     this.lessonPlaylistSlides.push(newSlide);
     this.lessonPlaylistIndex = this.lessonPlaylistSlides.length - 1;
+    this._isAudioWaitingForNextSlideSetup = false;
+    this._alreadyArchivedBeforePdfModal = false;
+    if (this._autoPausedByPdfModal) {
+      this._autoPausedByPdfModal = false;
+      this.isAudioRecordPaused = false;
+      this.audioRecordPauseStartMs = 0;
+    }
     if (this.isAudioRecording) {
       this._beginNextSlideAudioSegmentAfterSwitch();
     }
@@ -17203,6 +17257,10 @@ class GraphApp {
 
   handleNewCanvasButtonClick() {
     this._openSlideChipDelKey = null;
+    const wasRecording = Boolean(this.isAudioRecording);
+    if (wasRecording) {
+      this._finalizeCurrentSlideAudioSegmentBeforeSwitch();
+    }
     if (!this.isGraphCovered) {
       this.enterBoardMode();
     }
@@ -17220,10 +17278,14 @@ class GraphApp {
     }
 
     this.resetBoardAndProblemCardsForNext();
+    this.audioSyncData = null;
     const nextNum = this.lessonPlaylistSlides.length + 1;
     const blankSlide = this.serializeFullSlideState(String(nextNum));
     this.lessonPlaylistSlides.push(blankSlide);
     this.lessonPlaylistIndex = this.lessonPlaylistSlides.length - 1;
+    if (wasRecording) {
+      this._beginNextSlideAudioSegmentAfterSwitch();
+    }
     this.syncLessonPlaylistNavBarUI();
     this.showToast(`✨ 이전 작업을 [${nextNum - 1}번]에 자동 보관하고 깨끗한 [${nextNum}번 캔버스]를 열었습니다!`);
   }
@@ -27851,6 +27913,16 @@ class GraphApp {
       };
     }
 
+    const btnHideRecBar = document.getElementById('btnAudioHideRecBar');
+    if (btnHideRecBar) {
+      btnHideRecBar.onclick = (e) => {
+        e.stopPropagation();
+        this._isRecBarStealthHidden = true;
+        this.syncAudioRecordUI();
+        this.showToast('🕵️ 상단 녹화 바를 숨겼습니다. 우측 [🎙️] 버튼을 누르면 녹음이 완료됩니다.');
+      };
+    }
+
     // 스마트 노트 뷰어(#smartNoteViewerStage)에서 필기 수식 직접 클릭 시 해당 시점 재생 연동
     const viewerStage = document.getElementById('smartNoteViewerStage');
     if (viewerStage && !viewerStage._audioClickBound) {
@@ -27900,16 +27972,42 @@ class GraphApp {
       this._globalAudioHoverBound = true;
       window.addEventListener('pointermove', (e) => {
         if (e.pointerType === 'pen') this._markStylusPenDetected();
-        if (!this.isAudioRecording) return;
+        if (!this.isAudioRecording || this.isAudioRecordPaused || this.isPdfModalOpen || this._isAudioWaitingForNextSlideSetup) return;
         if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) return;
         const tEl = e.target;
         if (tEl && tEl.closest && (
+          tEl.closest('.pdf-modal-backdrop') ||
+          tEl.closest('#modalPdfViewer') ||
+          tEl.closest('.smart-modal-backdrop') ||
+          tEl.closest('.n-axis-studio-backdrop') ||
           tEl.closest('.audio-sync-floating-bar') ||
           tEl.closest('.quick-pill-remote') ||
-          tEl.closest('.floating-left-rail') ||
-          tEl.closest('.floating-drawer') ||
-          tEl.closest('.smart-modal-backdrop')
+          tEl.closest('.rail-dock') ||
+          tEl.closest('#railDock') ||
+          tEl.closest('.rail-drawer') ||
+          tEl.closest('#railDrawer') ||
+          tEl.closest('.canvas-quick-toolbar') ||
+          tEl.closest('#rightActionToolbar') ||
+          tEl.closest('.ink-floating-toolbar') ||
+          tEl.closest('#inkFloatingToolbar') ||
+          tEl.closest('.lesson-playlist-nav-bar') ||
+          tEl.closest('#lessonPlaylistNavBar') ||
+          tEl.closest('.curve-context-bar') ||
+          tEl.closest('#curveContextBar') ||
+          tEl.closest('.lasso-action-floating-bar') ||
+          tEl.closest('#lassoActionFloatingBar') ||
+          tEl.closest('.graph-snap-floating-bar') ||
+          tEl.closest('.pw-region-popover')
         )) {
+          // 메뉴/서랍/모달 위로 마우스가 올라간 순간 가상 펜을 숨김 처리하여 허공에 붕 뜨는 현상 100% 차단!
+          if (this._lastRecordedCursorKind !== 'hidden' && Array.isArray(this.audioTimeline)) {
+            this._lastRecordedCursorKind = 'hidden';
+            this.audioTimeline.push({
+              t: this.getAudioRecordElapsedMs(),
+              type: 'cursor',
+              hidden: true
+            });
+          }
           return;
         }
         const cardEl = (tEl && tEl.closest)
@@ -28187,6 +28285,20 @@ class GraphApp {
   _captureAudioWorkspaceKeyframe() {
     const pWidget = document.getElementById('problemCardWidget');
     const gWidget = document.getElementById('graphCardWidget');
+    const probW = pWidget ? (parseFloat(pWidget.style.width) || pWidget.offsetWidth || 520) : 520;
+    const graphW = gWidget ? (parseFloat(gWidget.style.width) || gWidget.offsetWidth || 260) : 260;
+    const extraGraphStates = (this.extraGraphCards || []).map(c => ({
+      baseX: c && typeof c.baseX === 'number' ? c.baseX : 560,
+      baseY: c && typeof c.baseY === 'number' ? c.baseY : 68,
+      w: (c && c.el) ? (parseFloat(c.el.style.width) || c.el.offsetWidth || 260) : 260,
+      min: Boolean(c && (c.isMin || (c.el && c.el.classList.contains('minimized'))))
+    }));
+    const extraProbStates = (this.extraProblemCards || []).map(c => ({
+      baseX: c && typeof c.baseX === 'number' ? c.baseX : 72,
+      baseY: c && typeof c.baseY === 'number' ? c.baseY : 120,
+      w: (c && c.el) ? (parseFloat(c.el.style.width) || c.el.offsetWidth || 480) : 480,
+      min: Boolean(c && (c.isMin || (c.el && c.el.classList.contains('minimized'))))
+    }));
     return {
       isGraphCovered: Boolean(this.isGraphCovered),
       isBoardMode: Boolean(this.isBoardMode),
@@ -28212,6 +28324,9 @@ class GraphApp {
       piecewiseBoundaries: JSON.parse(JSON.stringify(this.piecewiseBoundaries || [])),
       piecewiseFuncMap: JSON.parse(JSON.stringify(this.piecewiseFuncMap || [])),
       piecewiseInclusions: JSON.parse(JSON.stringify(this.piecewiseInclusions || [])),
+      isPiecewisePeriodic: Boolean(this.isPiecewisePeriodic),
+      periodicStepY: typeof this.periodicStepY === 'number' ? this.periodicStepY : 0,
+      isPiecewiseLocked: Boolean(this.isPiecewiseLocked),
       isDropLineMode: Boolean(this.isDropLineMode),
       dropLineHoverCandidate: this.dropLineHoverCandidate ? JSON.parse(JSON.stringify(this.dropLineHoverCandidate)) : null,
       dropLines: JSON.parse(JSON.stringify(this.dropLines || [])),
@@ -28220,11 +28335,16 @@ class GraphApp {
       probCardMin: Boolean(this.isProblemCardMinimized),
       probCardBaseX: this.problemCardBaseX,
       probCardBaseY: this.problemCardBaseY,
+      probCardW: probW,
       graphCardVisible: Boolean(gWidget && gWidget.style.display !== 'none' && this._hasPrimaryGraphCard && this.graphCardData),
       graphCardMin: Boolean(this.isGraphCardMinimized),
       graphCardBaseX: this.graphCardBaseX,
       graphCardBaseY: this.graphCardBaseY,
-      extraGraphsCount: (this.extraGraphCards || []).length
+      graphCardW: graphW,
+      extraGraphsCount: (this.extraGraphCards || []).length,
+      extraGraphStates,
+      extraProbsCount: (this.extraProblemCards || []).length,
+      extraProbStates
     };
   }
 
@@ -28258,6 +28378,9 @@ class GraphApp {
       this.piecewiseBoundaries = JSON.parse(JSON.stringify(kf.piecewiseBoundaries || []));
       this.piecewiseFuncMap = JSON.parse(JSON.stringify(kf.piecewiseFuncMap || []));
       this.piecewiseInclusions = JSON.parse(JSON.stringify(kf.piecewiseInclusions || []));
+      if (kf.isPiecewisePeriodic !== undefined) this.isPiecewisePeriodic = Boolean(kf.isPiecewisePeriodic);
+      if (typeof kf.periodicStepY === 'number') this.periodicStepY = kf.periodicStepY;
+      if (kf.isPiecewiseLocked !== undefined) this.isPiecewiseLocked = Boolean(kf.isPiecewiseLocked);
       if (kf.isDropLineMode !== undefined) this.isDropLineMode = Boolean(kf.isDropLineMode);
       this.dropLineHoverCandidate = kf.dropLineHoverCandidate ? JSON.parse(JSON.stringify(kf.dropLineHoverCandidate)) : null;
       this.dropLines = JSON.parse(JSON.stringify(kf.dropLines || []));
@@ -28276,11 +28399,15 @@ class GraphApp {
           this.problemCardBaseY = kf.probCardBaseY;
           pWidget.style.top = `${Math.round(kf.probCardBaseY)}px`;
         }
+        if (typeof kf.probCardW === 'number' && kf.probCardW >= 200 && !kf.probCardMin) {
+          pWidget.style.width = `${Math.round(kf.probCardW)}px`;
+          this.syncProblemCardRectFromWidget();
+        }
       }
 
       const gWidget = document.getElementById('graphCardWidget');
       if (gWidget && this._hasPrimaryGraphCard && this.graphCardData) {
-        gWidget.style.display = kf.graphCardVisible ? 'flex' : 'none';
+        gWidget.style.display = (kf.graphCardVisible && this.isGraphCovered) ? 'flex' : 'none';
         gWidget.classList.toggle('minimized', Boolean(kf.graphCardMin));
         this.isGraphCardMinimized = Boolean(kf.graphCardMin);
         if (typeof kf.graphCardBaseX === 'number') {
@@ -28291,6 +28418,10 @@ class GraphApp {
           this.graphCardBaseY = kf.graphCardBaseY;
           gWidget.style.top = `${Math.round(kf.graphCardBaseY)}px`;
         }
+        if (typeof kf.graphCardW === 'number' && kf.graphCardW >= 140 && !kf.graphCardMin) {
+          gWidget.style.width = `${Math.round(kf.graphCardW)}px`;
+          if (typeof this.syncGraphCardRectFromWidget === 'function') this.syncGraphCardRectFromWidget();
+        }
       }
 
       if (this.extraGraphCards && this.extraGraphCards.length > 0) {
@@ -28298,6 +28429,37 @@ class GraphApp {
         this.extraGraphCards.forEach((c, idx) => {
           if (c && c.el) {
             c.el.style.display = (!this.isGraphCovered || idx >= visibleCount) ? 'none' : 'flex';
+            const st = Array.isArray(kf.extraGraphStates) ? kf.extraGraphStates[idx] : null;
+            if (st) {
+              if (typeof st.baseX === 'number') {
+                c.baseX = st.baseX;
+                c.el.style.left = `${Math.round(st.baseX)}px`;
+              }
+              if (typeof st.baseY === 'number') {
+                c.baseY = st.baseY;
+                c.el.style.top = `${Math.round(st.baseY)}px`;
+              }
+              c.isMin = Boolean(st.min);
+              c.el.classList.toggle('minimized', Boolean(st.min));
+            }
+          }
+        });
+      }
+
+      if (this.extraProblemCards && this.extraProblemCards.length > 0 && Array.isArray(kf.extraProbStates)) {
+        this.extraProblemCards.forEach((c, idx) => {
+          const st = kf.extraProbStates[idx];
+          if (c && c.el && st) {
+            if (typeof st.baseX === 'number') {
+              c.baseX = st.baseX;
+              c.el.style.left = `${Math.round(st.baseX)}px`;
+            }
+            if (typeof st.baseY === 'number') {
+              c.baseY = st.baseY;
+              c.el.style.top = `${Math.round(st.baseY)}px`;
+            }
+            c.isMin = Boolean(st.min);
+            c.el.classList.toggle('minimized', Boolean(st.min));
           }
         });
       }
@@ -28314,9 +28476,9 @@ class GraphApp {
   }
 
   _recordAudioWorkspaceStateIfNeeded(force = false) {
-    if (!this.isAudioRecording || this._isApplyingAudioTimelineState) return;
+    if (!this.isAudioRecording || this.isAudioRecordPaused || this.isPdfModalOpen || this._isAudioWaitingForNextSlideSetup || this._isApplyingAudioTimelineState) return;
     const t = this.getAudioRecordElapsedMs();
-    const isActivelyDraggingGraph = (this.draggedHandleIdx !== null || this.isDraggingCurve || this.activePwDragIdx !== null);
+    const isActivelyDraggingGraph = (this.draggedHandleIdx !== null || this.isDraggingCurve || this.activePwDragIdx !== null || this.isPanning || this.isBoardPanning);
     const minInterval = isActivelyDraggingGraph ? 16 : 32;
     if (!force && (t - this._lastAudioStateRecordMs < minInterval)) return;
 
@@ -28332,8 +28494,12 @@ class GraphApp {
       Math.round(kf.boardPanX),
       Math.round(kf.boardPanY),
       kf.boardZoom,
+      Math.round(kf.boardZoomOffsetX || 0),
+      Math.round(kf.boardZoomOffsetY || 0),
       kf.usePiecewise,
       kf.piecewiseBoundaries,
+      kf.isPiecewisePeriodic,
+      kf.periodicStepY,
       kf.isDropLineMode,
       kf.dropLineHoverCandidate ? `${Math.round(kf.dropLineHoverCandidate.x * 100)},${Math.round(kf.dropLineHoverCandidate.y * 100)}` : '',
       kf.dropLines.length,
@@ -28342,11 +28508,15 @@ class GraphApp {
       kf.probCardMin,
       kf.probCardBaseX,
       kf.probCardBaseY,
+      Math.round(kf.probCardW || 0),
       kf.graphCardVisible,
       kf.graphCardMin,
       kf.graphCardBaseX,
       kf.graphCardBaseY,
-      kf.extraGraphsCount
+      Math.round(kf.graphCardW || 0),
+      kf.extraGraphsCount,
+      kf.extraGraphStates,
+      kf.extraProbStates
     ]);
     if (!force && hash === this._lastRecordedStateHash) return;
     this._lastRecordedStateHash = hash;
@@ -28410,7 +28580,7 @@ class GraphApp {
   }
 
   recordAudioCursorPoint(screenX, screenY, color = null, isDrawing = false, extraMeta = null) {
-    if (!this.isAudioRecording || this.isAudioRecordPaused) return;
+    if (!this.isAudioRecording || this.isAudioRecordPaused || this.isPdfModalOpen || this._isAudioWaitingForNextSlideSetup) return;
     const t = this.getAudioRecordElapsedMs();
     const cursorKind = this._detectCurrentAudioCursorKind(isDrawing, extraMeta);
     const kindChanged = (cursorKind !== this._lastRecordedCursorKind);
@@ -28522,6 +28692,10 @@ class GraphApp {
 
     this.isAudioRecording = true;
     this.isAudioRecordPaused = false;
+    this._isRecBarStealthHidden = false;
+    this._isAudioWaitingForNextSlideSetup = false;
+    this._alreadyArchivedBeforePdfModal = false;
+    this._autoPausedByPdfModal = false;
     this.audioRecordStartMs = performance.now();
     this.audioRecordPauseStartMs = 0;
     this.audioRecordTotalPausedMs = 0;
@@ -28652,7 +28826,7 @@ class GraphApp {
 
     if (!bar) return;
     if (this.isAudioRecording) {
-      bar.style.display = 'flex';
+      bar.style.display = this._isRecBarStealthHidden ? 'none' : 'flex';
       if (recGroup) recGroup.style.display = 'flex';
       if (playGroup) playGroup.style.display = 'none';
       const badgeEl = document.getElementById('badgeAudioRecState');
@@ -28749,13 +28923,30 @@ class GraphApp {
     merged.panX = lerp(kfA.panX, kfB.panX);
     merged.panY = lerp(kfA.panY, kfB.panY);
     merged.zoomLevel = lerp(kfA.zoomLevel, kfB.zoomLevel);
+    merged.xSpan = lerp(kfA.xSpan || 8.5, kfB.xSpan || 8.5);
+    merged.ySpan = lerp(kfA.ySpan || 6.0, kfB.ySpan || 6.0);
     merged.boardPanX = lerp(kfA.boardPanX, kfB.boardPanX);
     merged.boardPanY = lerp(kfA.boardPanY, kfB.boardPanY);
     merged.boardZoom = lerp(kfA.boardZoom, kfB.boardZoom);
+    merged.boardZoomOffsetX = lerp(kfA.boardZoomOffsetX || 0, kfB.boardZoomOffsetX || 0);
+    merged.boardZoomOffsetY = lerp(kfA.boardZoomOffsetY || 0, kfB.boardZoomOffsetY || 0);
     merged.probCardBaseX = lerp(kfA.probCardBaseX, kfB.probCardBaseX);
     merged.probCardBaseY = lerp(kfA.probCardBaseY, kfB.probCardBaseY);
+    merged.probCardW = lerp(kfA.probCardW || 520, kfB.probCardW || 520);
     merged.graphCardBaseX = lerp(kfA.graphCardBaseX, kfB.graphCardBaseX);
     merged.graphCardBaseY = lerp(kfA.graphCardBaseY, kfB.graphCardBaseY);
+    merged.graphCardW = lerp(kfA.graphCardW || 260, kfB.graphCardW || 260);
+    merged.periodicStepY = lerp(kfA.periodicStepY || 0, kfB.periodicStepY || 0);
+    if (Array.isArray(kfA.extraGraphStates) && Array.isArray(kfB.extraGraphStates) && kfA.extraGraphStates.length === kfB.extraGraphStates.length) {
+      merged.extraGraphStates = kfA.extraGraphStates.map((stA, idx) => {
+        const stB = kfB.extraGraphStates[idx] || stA;
+        return {
+          ...stA,
+          baseX: lerp(stA.baseX, stB.baseX),
+          baseY: lerp(stA.baseY, stB.baseY)
+        };
+      });
+    }
 
     if (
       Array.isArray(kfA.piecewiseBoundaries) &&
@@ -28877,6 +29068,19 @@ class GraphApp {
       }
     }
     if (!prev && !next) return null;
+    if (prev && prev.hidden) return null;
+    if (prev && next && next.hidden) {
+      const p1 = this._resolveCursorEventScreenPos(prev);
+      if (!p1) return null;
+      return {
+        x: p1.x,
+        y: p1.y,
+        color: prev.color || '#00d2d3',
+        isDrawing: Boolean(prev.isDrawing),
+        isLaser: Boolean(prev.isLaser),
+        cursorKind: prev.cursorKind || (prev.isLaser ? 'laser' : 'pen')
+      };
+    }
     if (prev && next && (next.t - prev.t) <= 800) {
       const p1 = this._resolveCursorEventScreenPos(prev);
       const p2 = this._resolveCursorEventScreenPos(next);
