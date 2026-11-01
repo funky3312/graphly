@@ -24163,8 +24163,9 @@ class GraphApp {
       return;
     }
 
-    // 🚀 [초고속 최적화]: 드래그 중에는 350스텝으로 60FPS 칼유지, 정지 시 520스텝, 내보내기 시 1200스텝 초고화질
-    const steps = isExport ? 1200 : (isDragging ? 350 : 520);
+    // 🚀 [초고밀도 렌더링 & 절댓값 첨점(Cusp) 칼고정 엔진]:
+    // 확대·축소 시 샘플 그리드가 이동하며 절댓값 꺾인 점(x축 접점)이나 극점이 들썩거리며 떨리는 현상을 0.000%로 원천 박멸!
+    const steps = isExport ? 1500 : (isDragging ? 600 : 840);
     const mLeft = this.screenToMath(0, 0).x;
     const mRight = this.screenToMath(this.screenWidth, 0).x;
     const stepSize = (mRight - mLeft) / steps;
@@ -24173,13 +24174,114 @@ class GraphApp {
       g._screenPts = [];
     }
 
+    const hasTransformAbs = Boolean(g.transforms && g.transforms.some(t => t && t.abs));
+    const isAbsActive = Boolean(g.isAbsolute || (g.isFrozen && g.frozenAbsolute) || g.frozenAbsolute || hasTransformAbs);
+
+    // 절댓값(Math.abs) 적용 직전의 '부호 있는(Signed) 내부 함수값 배열'을 반환하는 헬퍼:
+    // 기존에는 evaluatePipeline()이 이미 Math.abs()를 씌운 양수(>= 0)만 반환했기 때문에
+    // (prevRawY > 0 && rawY < 0) 부호 반전 조건이 영원히 false가 되어 x축 첨점 보정이 작동하지 않았던 문제를 완벽 해결!
+    const getSignedFoldValues = (evalX) => {
+      const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+      const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+      const folds = [];
+      if (g.transforms && g.transforms.length > 0) {
+        let curX = evalX;
+        let totalOx = ox;
+        for (const t of g.transforms) {
+          if (t.offset && typeof t.offset.x === 'number') totalOx += t.offset.x;
+        }
+        curX -= totalOx;
+        let y = this.engine.evaluate(g.type, g.handles, curX);
+        if (g.isAbsolute) {
+          folds.push(y);
+          y = Math.abs(y);
+        }
+        for (const t of g.transforms) {
+          if (t.offset && typeof t.offset.y === 'number') y += t.offset.y;
+          if (t.invertV) y = -y;
+          if (t.abs) {
+            folds.push(y);
+            y = Math.abs(y);
+          }
+        }
+        y += oy;
+        if (g.frozenAbsolute) {
+          folds.push(y);
+        }
+        return folds;
+      }
+      let baseX = evalX - ox;
+      if (g.frozenInvertH) baseX = -baseX;
+      let y = this.engine.evaluate(g.type, g.handles, baseX);
+      if (g.isAbsolute) {
+        folds.push(y);
+        y = Math.abs(y);
+      }
+      if (g.frozenInvertV) y = -y;
+      y += oy;
+      if (g.frozenAbsolute) {
+        folds.push(y);
+      }
+      return folds;
+    };
+
+    const bisectFoldRoot = (xA, xB, fA, fB, stageIdx) => {
+      let xLow = xA, xHigh = xB;
+      let yLow = fA, yHigh = fB;
+      const denom0 = Math.abs(yLow) + Math.abs(yHigh);
+      let xZero = denom0 > 1e-14 ? (xLow + (Math.abs(yLow) / denom0) * (xHigh - xLow)) : (0.5 * (xLow + xHigh));
+      for (let iter = 0; iter < 16; iter++) {
+        const fArr = getSignedFoldValues(xZero);
+        const yMid = fArr[stageIdx];
+        if (yMid === undefined || isNaN(yMid) || Math.abs(yMid) < 1e-12) break;
+        if ((yLow > 0 && yMid < 0) || (yLow < 0 && yMid > 0)) {
+          xHigh = xZero;
+          yHigh = yMid;
+        } else {
+          xLow = xZero;
+          yLow = yMid;
+        }
+        const denom = Math.abs(yLow) + Math.abs(yHigh);
+        const secant = denom > 1e-14 ? (xLow + (Math.abs(yLow) / denom) * (xHigh - xLow)) : (0.5 * (xLow + xHigh));
+        xZero = (iter % 2 === 0 && secant > Math.min(xLow, xHigh) && secant < Math.max(xLow, xHigh))
+          ? secant
+          : (0.5 * (xLow + xHigh));
+      }
+      return xZero;
+    };
+
+    // 그래프의 극점·꼭짓점 등 핸들 X좌표도 샘플링에 고정하여 축소 시 극점이 들썩거리는 현상까지 원천 방지
+    const pinnedHandleXs = [];
+    if (g.handles && g.handles.length > 0 && !(this.usePiecewise && this.isPiecewisePeriodic && !g.isIndependent)) {
+      let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+      if (g.transforms && g.transforms.length > 0) {
+        for (const t of g.transforms) {
+          if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
+        }
+      }
+      for (let hIdx = 0; hIdx < g.handles.length; hIdx++) {
+        const hx = g.handles[hIdx].x + ox;
+        if (hx > mLeft && hx < mRight) pinnedHandleXs.push(hx);
+      }
+    }
+
     const traceCurve = (filterInside = null) => {
       ctx.beginPath();
       let started = false;
       let prevRawY = null;
       let prevMx = null;
+      let prevEvalX = null;
+      let prevFolds = null;
       let prevCycleK = null;
       const collectPts = !isExport && (filterInside === null || filterInside === true);
+
+      const emitScreenPoint = (targetMx, targetEvalX, yOff) => {
+        const yVal = this.engine.evaluatePipeline(g, targetEvalX) + yOff;
+        if (isNaN(yVal) || !isFinite(yVal) || Math.abs(yVal) > 100) return;
+        const sp = this.mathToScreen(targetMx, yVal);
+        ctx.lineTo(sp.x, sp.y);
+        if (collectPts) g._screenPts.push({ x: sp.x, y: sp.y });
+      };
 
       for (let i = 0; i <= steps; i++) {
         const mx = mLeft + i * stepSize;
@@ -24194,6 +24296,8 @@ class GraphApp {
             started = false;
             prevRawY = null;
             prevMx = null;
+            prevEvalX = null;
+            prevFolds = null;
             continue;
           }
         }
@@ -24225,6 +24329,8 @@ class GraphApp {
           started = false;
           prevRawY = null;
           prevMx = null;
+          prevEvalX = null;
+          prevFolds = null;
         }
         prevCycleK = curCycleK;
 
@@ -24237,8 +24343,12 @@ class GraphApp {
           started = false;
           prevRawY = null;
           prevMx = null;
+          prevEvalX = null;
+          prevFolds = null;
           continue;
         }
+
+        const curFolds = isAbsActive ? getSignedFoldValues(evalX) : null;
 
         // [점근선 유령선(Ghost Line) 분리: tan(x), 1/x 등 인접 샘플 간 급격한 도약 및 부호 반전 시 단절]
         if (started && prevRawY !== null) {
@@ -24254,33 +24364,58 @@ class GraphApp {
           }
         }
 
-        // [절댓값 부호 교차(Zero-Crossing) 보정: 1차 및 2차 절댓값 시 x축에 0.000% 칼밀착]
-        const isAbsActive = g.isAbsolute || (g.isFrozen && g.frozenAbsolute);
-        if (isAbsActive && prevRawY !== null && started) {
-          if ((prevRawY > 0 && rawY < 0) || (prevRawY < 0 && rawY > 0)) {
-            let t = Math.abs(prevRawY) / (Math.abs(prevRawY) + Math.abs(rawY));
-            let xZero = prevMx + t * (mx - prevMx);
+        // 🌟 [절댓값 부호 교차(Zero-Crossing) & 첨점(Cusp) 0.000% 칼밀착 엔진]:
+        // 부호 있는(Signed) 내부 함수값(prevFolds ↔ curFolds)의 부호 반전을 추적하여,
+        // 확대·축소 중 샘플 그리드가 어떻게 이동하든 x축 꺾인 점(첨점)을 1e-9 정밀도로 정확히 찾아 박아줍니다!
+        if (started && prevMx !== null && prevEvalX !== null) {
+          const extraEvalPoints = [];
 
-            let xLow = prevMx, xHigh = mx;
-            let yLow = prevRawY, yHigh = rawY;
-
-            for (let iter = 0; iter < 4; iter++) {
-              const yMid = this.engine.evaluatePipeline(g, xZero);
-              if (isNaN(yMid) || Math.abs(yMid) < 1e-6) break;
-
-              if ((yLow > 0 && yMid < 0) || (yLow < 0 && yMid > 0)) {
-                xHigh = xZero;
-                yHigh = yMid;
-              } else {
-                xLow = xZero;
-                yLow = yMid;
-              }
-              xZero = (xLow + xHigh) / 2.0;
+          // (A) 구간 내 고정 핸들(극점·꼭짓점) 삽입
+          for (let pIdx = 0; pIdx < pinnedHandleXs.length; pIdx++) {
+            const hx = pinnedHandleXs[pIdx];
+            if (hx > prevMx && hx < mx) {
+              extraEvalPoints.push(hx);
             }
+          }
 
-            const sZero = this.mathToScreen(xZero, 0.0);
-            ctx.lineTo(sZero.x, sZero.y);
-            if (collectPts) g._screenPts.push({ x: sZero.x, y: sZero.y });
+          // (B) 절댓값 꺾인 점(Zero-Crossing) 정밀 탐색 및 전후 서브샘플링
+          if (isAbsActive && prevFolds && curFolds && prevFolds.length === curFolds.length) {
+            const dxEval = evalX - prevEvalX;
+            if (Math.abs(dxEval) > 1e-9 && Math.abs(dxEval) < 2.0) {
+              for (let k = 0; k < curFolds.length; k++) {
+                const f1 = prevFolds[k];
+                const f2 = curFolds[k];
+                if (isNaN(f1) || isNaN(f2)) continue;
+                if ((f1 > 0 && f2 < 0) || (f1 < 0 && f2 > 0)) {
+                  const rEval = bisectFoldRoot(prevEvalX, evalX, f1, f2, k);
+                  const rMx = prevMx + (rEval - prevEvalX);
+                  extraEvalPoints.push(rMx);
+                } else if (Math.abs(f1) < 0.6 && Math.abs(f2) < 0.6) {
+                  // 한 스텝 안에서 x축 아래로 아주 살짝 내려갔다 올라오는 미세 이중근 구간 검사
+                  const midEval = 0.5 * (prevEvalX + evalX);
+                  const midFolds = getSignedFoldValues(midEval);
+                  const fMid = midFolds[k];
+                  if (fMid !== undefined && !isNaN(fMid) && ((f1 > 0 && fMid < 0) || (f1 < 0 && fMid > 0))) {
+                    const rEval1 = bisectFoldRoot(prevEvalX, midEval, f1, fMid, k);
+                    const rEval2 = bisectFoldRoot(midEval, evalX, fMid, f2, k);
+                    extraEvalPoints.push(prevMx + (rEval1 - prevEvalX));
+                    extraEvalPoints.push(prevMx + (midEval - prevEvalX));
+                    extraEvalPoints.push(prevMx + (rEval2 - prevEvalX));
+                  }
+                }
+              }
+            }
+          }
+
+          if (extraEvalPoints.length > 0) {
+            extraEvalPoints.sort((a, b) => a - b);
+            for (let eIdx = 0; eIdx < extraEvalPoints.length; eIdx++) {
+              const subMx = extraEvalPoints[eIdx];
+              if (subMx <= prevMx + 1e-9 || subMx >= mx - 1e-9) continue;
+              if (eIdx > 0 && Math.abs(subMx - extraEvalPoints[eIdx - 1]) < 1e-7) continue;
+              const subEvalX = prevEvalX + (subMx - prevMx);
+              emitScreenPoint(subMx, subEvalX, yOffset);
+            }
           }
         }
 
@@ -24298,6 +24433,8 @@ class GraphApp {
 
         prevRawY = rawY;
         prevMx = mx;
+        prevEvalX = evalX;
+        prevFolds = curFolds;
       }
 
       ctx.stroke();
