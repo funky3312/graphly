@@ -5287,69 +5287,18 @@ class GraphApp {
   // [📄 PDF 페이지 통째 칠판 모드 (Concept Page Board Mode) & 좌상단 p.N 자동 접기 엔진]
   // ==========================================================================
   syncPdfBoardNavBarUI() {
+    // 🌟 [상단 슬라이드 바 100% 일원화]:
+    // PDF 한 페이지 통째 삽입 시에도 별도의 #pdfBoardNavBar(📄 p.1/10)를 띄우지 않고,
+    // 모든 슬라이드(문제 캡처, PDF 통째 페이지, 백지/그래프)를 단일 #lessonPlaylistNavBar(📑 1 / 2)로 일원화합니다!
     const bar = document.getElementById('pdfBoardNavBar');
-    if (!bar) return;
-    if (!this.pdfPageBoardData || !this.isGraphCovered) {
-      bar.style.display = 'none';
-      this._syncTopSlideMiniTabUI();
-      return;
-    }
-    const p = this.pdfPageBoardData.pageNum || 1;
-    const total = this.pdfPageBoardData.totalPages || this.pdfTotalPages || 1;
-    if (!Array.isArray(this.pdfWorkedPages)) this.pdfWorkedPages = [];
-    if (!this.pdfWorkedPages.includes(p)) {
-      this.pdfWorkedPages.push(p);
-    }
-
-    const lbl = document.getElementById('lblPdfBoardPageInfo');
-    const arrowChar = this._isSlideGridOpen ? '▴' : '▾';
-    if (lbl) lbl.textContent = `📄 p.${p}/${total} ${arrowChar}`;
-    const btnPrev = document.getElementById('btnPdfBoardPrev');
-    const btnNext = document.getElementById('btnPdfBoardNext');
-    if (btnPrev) btnPrev.disabled = (p <= 1 && this.pdfWorkedPages.indexOf(p) <= 0);
-    if (btnNext) btnNext.disabled = (p >= total);
-
+    if (bar) bar.style.display = 'none';
     const gridPop = document.getElementById('pdfBoardGridPopover');
-    if (gridPop) {
-      gridPop.style.display = (!this.isTopSlideBarHidden && this._isSlideGridOpen) ? 'flex' : 'none';
-    }
-    const btnDelCur = document.getElementById('btnPdfBoardDeleteCurrent');
-    if (btnDelCur) {
-      btnDelCur.disabled = (this.pdfWorkedPages.length <= 1);
-    }
-
-    const chipsEl = document.getElementById('pdfBoardSlideChips');
-    if (chipsEl) {
-      chipsEl.innerHTML = '';
-      this.pdfWorkedPages.forEach((pageNum) => {
-        const isActive = (pageNum === p);
-        const chip = document.createElement('div');
-        chip.className = 'slide-chip-item' + (isActive ? ' active' : '');
-        chip.title = `p.${pageNum} 이동`;
-        const span = document.createElement('span');
-        span.className = 'slide-chip-label';
-        span.textContent = `p.${pageNum}`;
-        chip.appendChild(span);
-
-        chip.onclick = (e) => {
-          e.stopPropagation();
-          this._isSlideGridOpen = false;
-          if (pageNum !== p) {
-            this.openPdfPageOnBoard(pageNum);
-          } else {
-            this.syncPdfBoardNavBarUI();
-          }
-        };
-        chipsEl.appendChild(chip);
-      });
-    }
-
-    if (this.isTopSlideBarHidden) {
-      bar.style.display = 'none';
+    if (gridPop) gridPop.style.display = 'none';
+    if (typeof this.syncLessonPlaylistNavBarUI === 'function') {
+      this.syncLessonPlaylistNavBarUI();
     } else {
-      bar.style.display = 'flex';
+      this._syncTopSlideMiniTabUI();
     }
-    this._syncTopSlideMiniTabUI();
   }
 
   drawPdfPageBoardLayer(ctx, isExport = false) {
@@ -5582,120 +5531,43 @@ class GraphApp {
     }
     const total = this.pdfTotalPages || this.pdfDoc.numPages || 1;
     const targetPage = Math.max(1, Math.min(pageNum || this.pdfCurrentPage || 1, total));
-    if (!Array.isArray(this.pdfWorkedPages)) this.pdfWorkedPages = [];
 
-    // 1. 이미 다른 PDF 페이지가 캔버스에 열려 있었다면 -> 이전 페이지의 모든 상태(그래프 카드 #1,#2 포함)를 해당 페이지 슬라이드에 백업하고 새 캔버스처럼 완전 초기화!
-    if (this.pdfPageBoardData && this.pdfPageBoardData.pageNum !== targetPage && !options.skipArchiveCurrent) {
-      this.archiveCurrentPdfBoardPageToCard();
+    // 🌟 [대표님 핵심 기획: 슬라이드 완전 일원화]
+    // [✂️ 다음 캡처]를 누른 뒤 [📄 이 페이지 열기]를 클릭하면 이전 슬라이드를 자동 보관하고 깨끗한 다음 슬라이드에 삽입합니다!
+    const replaceMode = Boolean(this._isReplacingViaNextCrop);
+    this._isReplacingViaNextCrop = false;
+    if (replaceMode) {
+      this._archiveCurrentBeforeNextCapture();
     }
 
-    if (!this.pdfWorkedPages.includes(targetPage)) {
-      this.pdfWorkedPages.push(targetPage);
-    }
+    // 현재 캔버스의 이전 문제 카드·그래프 카드·필기·PDF 보드 데이터를 100% 깨끗하게 초기화하여 슬라이드 간 섞임 원천 차단!
+    this.resetBoardAndProblemCardsForNext();
 
-    // 이전 페이지의 그래프 카드(#1, #2...), 문제 카드, 필기, 실시간 그래프를 100% 깨끗하게 비워 페이지 간 간섭 원천 차단!
-    if (!this.pdfPageBoardData || this.pdfPageBoardData.pageNum !== targetPage || options.skipArchiveCurrent) {
-      this.closeProblemCard();
-      if (this.extraProblemCards && this.extraProblemCards.length > 0) {
-        this.extraProblemCards.forEach(c => { if (c && c.el) c.el.remove(); });
-        this.extraProblemCards = [];
-      }
-      this.closeGraphCard();
-      if (this.extraGraphCards && this.extraGraphCards.length > 0) {
-        this.extraGraphCards.forEach(c => { if (c && c.el) c.el.remove(); });
-        this.extraGraphCards = [];
-      }
-      this._graphCaseCounter = 0;
-      this._graphSessionArchived = false;
-      this._coveredGraphStateBackup = null;
-      this._savedLayer2BoardPan = null;
-      this.boardPanX = 0;
-      this.boardPanY = 0;
-      this.boardZoom = 1.0;
-      this.boardZoomOffsetX = 0;
-      this.boardZoomOffsetY = 0;
-      this.inkStrokes = [];
-      this.dropLines = [];
-      this.textLabels = [];
-      this.graphs = [];
-      this.activeGraphIdx = -1;
-      this.selectedHandleIdx = null;
-      this.isCurveSelected = false;
-      this.usePiecewise = false;
-      this.piecewiseBoundaries = [];
-      this.piecewiseFuncMap = [];
-      this.piecewiseInclusions = [];
-      this.isPiecewisePeriodic = false;
-      this.isPiecewiseLocked = false;
-      this._inkBakeDirty = true;
-      this.clearInkCache();
+    // PDF 페이지 출판급 초고해상도(~330 DPI, 가로 2800px) 오프스크린 렌더링 (동일 문서 내에서는 메모리 캐시 재사용으로 슬라이드 전환 0ms!)
+    if (this._pdfPageCanvasCacheDoc !== this.pdfDoc) {
+      this._pdfPageCanvasCacheDoc = this.pdfDoc;
+      this._pdfPageCanvasCache = {};
     }
-
-    // 2. 이전에 작업했던 페이지로 돌아오는 경우 -> 해당 페이지에 귀속된 그래프 보관 카드(#1,#2), 실시간 그래프, 필기 100% 복원!
-    if (this.pdfSavedPageStates && this.pdfSavedPageStates[targetPage] && !options.forceFresh) {
-      const saved = this.pdfSavedPageStates[targetPage];
-      if (saved.fullSlide) {
-        this.deserializeFullSlideState(saved.fullSlide);
-      }
-      this.pdfPageBoardData = { ...saved.pdfPageBoardData, totalPages: total };
-      this.inkStrokes = JSON.parse(JSON.stringify(saved.inkStrokes || []));
-      this.graphs = JSON.parse(JSON.stringify(saved.graphs || []));
-      this.activeGraphIdx = saved.activeGraphIdx !== undefined ? saved.activeGraphIdx : (this.graphs.length > 0 ? 0 : -1);
-      this.showAxes = Boolean(saved.showAxes);
-      this.usePiecewise = Boolean(saved.usePiecewise);
-      this.piecewiseBoundaries = [...(saved.piecewiseBoundaries || [])];
-      this.piecewiseFuncMap = [...(saved.piecewiseFuncMap || [])];
-      this.piecewiseInclusions = [...(saved.piecewiseInclusions || [])];
-      this.dropLines = JSON.parse(JSON.stringify(saved.dropLines || []));
-      this.textLabels = JSON.parse(JSON.stringify(saved.textLabels || []));
-      this._suspendedPdfBoardState = null;
-      this._isTempPdfProblemCard = false;
-      this.enterBoardMode();
-      this.ySpan = saved.ySpan || (this.pdfPageBoardData.baseYSpan || 8.4);
-      this.panX = typeof saved.panX === 'number' ? saved.panX : 0;
-      this.panY = typeof saved.panY === 'number' ? saved.panY : 0;
-      this.setZoomLevel(typeof saved.zoomLevel === 'number' ? saved.zoomLevel : 1.0);
-      this.updateAxesUI();
-      this._inkBakeDirty = true;
-      this.clearInkCache();
-      this.updatePdfPageNavUI(targetPage);
-      this.closePdfModal();
-      if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
-        this.closeDrawer();
-      }
-      if (!this.isInkMode) {
-        this.toggleInkMode(true);
-      }
-      this.setActiveInkTool('select');
-      this.syncControls();
-      this.renderLayerList();
-      this.renderFuncList();
-      this.syncPdfBoardNavBarUI();
-      this.syncGraphSnapBarUI();
-      this.render();
-      return;
+    let pageCanvas = this._pdfPageCanvasCache && this._pdfPageCanvasCache[targetPage];
+    if (!pageCanvas) {
+      const page = await this.pdfDoc.getPage(targetPage);
+      const baseVp = page.getViewport({ scale: 1.0 });
+      const targetMinPxW = 2800;
+      const renderScale = Math.max(4.2, Math.min(4.8, targetMinPxW / Math.max(1, baseVp.width)));
+      const vp = page.getViewport({ scale: renderScale });
+      pageCanvas = document.createElement('canvas');
+      pageCanvas.width = Math.round(vp.width);
+      pageCanvas.height = Math.round(vp.height);
+      const pCtx = pageCanvas.getContext('2d');
+      pCtx.imageSmoothingEnabled = true;
+      pCtx.imageSmoothingQuality = 'high';
+      pCtx.fillStyle = '#ffffff';
+      pCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      await page.render({ canvasContext: pCtx, viewport: vp }).promise;
+      this._pdfPageCanvasCache[targetPage] = pageCanvas;
     }
-
-    // 3. 새 PDF 페이지 출판급 초고해상도(~330 DPI, 가로 2800px) 오프스크린 렌더링 (단 1장만 GPU에 유지 + PNG 인코딩 지연 처리로 페이지 전환 속도 0ms!)
-    const page = await this.pdfDoc.getPage(targetPage);
-    const baseVp = page.getViewport({ scale: 1.0 });
-    const targetMinPxW = 2800;
-    const renderScale = Math.max(4.2, Math.min(4.8, targetMinPxW / Math.max(1, baseVp.width)));
-    const vp = page.getViewport({ scale: renderScale });
-    const pageCanvas = document.createElement('canvas');
-    pageCanvas.width = Math.round(vp.width);
-    pageCanvas.height = Math.round(vp.height);
-    const pCtx = pageCanvas.getContext('2d');
-    pCtx.imageSmoothingEnabled = true;
-    pCtx.imageSmoothingQuality = 'high';
-    pCtx.fillStyle = '#ffffff';
-    pCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-    await page.render({ canvasContext: pCtx, viewport: vp }).promise;
 
     // 🌟 [대표님 피드백 반영: PDF 삽입 시 화면 거의 꽉 차게 확대 삽입 + 그래프 소환 시 아담한 비율 보장!] 🌟
-    // 1) ySpan = 8.4로 설정하여 그래프 1단위 크기를 아담하게 유지(극대~극소 폭 ~130px, 높이 ~255px)
-    // 2) 동시에 PDF 페이지의 가로 폭(mathW)은 화면 가로의 ~84%(좌우 툴바 여백만 남긴 꽉 찬 크기)로 큼직하게 배치하여,
-    //    따로 줌인을 하지 않아도 글씨가 처음부터 시원하게 잘 보이고 그래프를 소환했을 때 옆에서 아담하게 그려지도록 설계!
     const baseYSpan = 8.4;
     this.ySpan = baseYSpan;
     this.xSpan = 11.5;
@@ -5714,8 +5586,6 @@ class GraphApp {
     const mathW = targetScreenW / unitScale;
     const mathH = mathW * aspect;
 
-    // PDF 페이지 상단 끝이 상단 네비게이션 바(#pdfBoardNavBar) 바로 아래(top = 58px)부터 시원하게 시작하도록 배치!
-    // (이때 카메라 panX=0, panY=0은 그대로 유지되어 화면 정중앙이 곧바로 수학 원점 (0, 0)이 됩니다!)
     const topMarginPx = 58;
     const yTopMath = (sh / 2 - topMarginPx) / unitScale;
     const centerX = 0;
@@ -5734,7 +5604,6 @@ class GraphApp {
       baseYSpan
     };
 
-    // 그래프가 아직 없을 때는 개념서 텍스트를 가리지 않도록 좌표축을 기본 숨김 (그래프 [+] 추가 시 자동 ON!)
     if (!this.graphs || this.graphs.length === 0) {
       this.showAxes = false;
       this.updateAxesUI();
@@ -5750,8 +5619,16 @@ class GraphApp {
     if (!this.isInkMode) {
       this.toggleInkMode(true);
     }
-    // 🌟 [대표님 피드백 반영]: PDF 1페이지를 불러왔을 때는 이전 도구가 무엇이었든 무조건 이동 모드(select)로 시작하여 확대/초점 조절부터 편하게!
+    // PDF 1페이지를 불러왔을 때는 이전 도구가 무엇이었든 무조건 이동 모드(select)로 시작하여 확대/초점 조절부터 편하게!
     this.setActiveInkTool('select');
+
+    if (replaceMode) {
+      this._finalizeAppendedCaptureSlide('');
+    } else if (this.isLessonPlaylistActive) {
+      this.saveCurrentSlideIntoPlaylist();
+      this.syncLessonPlaylistNavBarUI();
+    }
+
     this.syncControls();
     this.renderLayerList();
     this.renderFuncList();
@@ -7097,6 +6974,9 @@ class GraphApp {
     this.isGraphCovered = true;
     this._coveredGraphStateBackup = null;
     this._suspendedPdfBoardState = null;
+    this.pdfPageBoardData = null;
+    this._lastPdfPageScreenRect = null;
+    this.ySpan = 6.0;
 
     // 3. 칠판 필기 및 수식 그래프 100% 완전 초기화
     this.inkStrokes = [];
@@ -15492,7 +15372,11 @@ class GraphApp {
       pdfPageBoardData: this.pdfPageBoardData ? {
         pageNum: this.pdfPageBoardData.pageNum,
         totalPages: this.pdfPageBoardData.totalPages,
-        dataUrl: this.pdfPageBoardData.dataUrl || (this.pdfPageBoardData.canvas ? (this.pdfPageBoardData.dataUrl = this.encodeCanvasSmartWebP(this.pdfPageBoardData.canvas, 1.0)) : ''),
+        dataUrl: this.pdfPageBoardData.dataUrl || (
+          (this.pdfPageBoardData.canvas && !(this._pdfPageCanvasCache && this._pdfPageCanvasCacheDoc === this.pdfDoc && this._pdfPageCanvasCache[this.pdfPageBoardData.pageNum]))
+            ? (this.pdfPageBoardData.dataUrl = this.encodeCanvasSmartWebP(this.pdfPageBoardData.canvas, 1.0))
+            : ''
+        ),
         aspect: this.pdfPageBoardData.aspect,
         mathW: this.pdfPageBoardData.mathW,
         mathH: this.pdfPageBoardData.mathH,
@@ -15639,23 +15523,36 @@ class GraphApp {
     this._savedLayer2BoardPan = slideData.savedLayer2BoardPan ? { ...slideData.savedLayer2BoardPan } : null;
     this._graphSessionArchived = Boolean(slideData.graphSessionArchived);
 
-    if (slideData.pdfPageBoardData && slideData.pdfPageBoardData.dataUrl) {
+    if (slideData.pdfPageBoardData) {
       const pbd = { ...slideData.pdfPageBoardData };
-      const imgObj = new Image();
-      imgObj.onload = () => {
-        const offC = document.createElement('canvas');
-        offC.width = imgObj.naturalWidth || 1200;
-        offC.height = imgObj.naturalHeight || 1680;
-        const offCtx = offC.getContext('2d');
-        offCtx.drawImage(imgObj, 0, 0);
-        pbd.canvas = offC;
-        this.requestRender();
-      };
-      imgObj.src = pbd.dataUrl;
-      pbd.img = imgObj;
+      const validDirectCanvas = (pbd.canvas && typeof pbd.canvas.getContext === 'function') ? pbd.canvas : null;
+      const cachedCanvas = validDirectCanvas || ((this._pdfPageCanvasCache && this._pdfPageCanvasCacheDoc === this.pdfDoc && pbd.pageNum)
+        ? this._pdfPageCanvasCache[pbd.pageNum]
+        : null);
+      pbd.canvas = cachedCanvas || null;
+      if (cachedCanvas) {
+        pbd.canvas = cachedCanvas;
+      }
+      if (pbd.dataUrl) {
+        const imgObj = new Image();
+        imgObj.onload = () => {
+          if (!pbd.canvas) {
+            const offC = document.createElement('canvas');
+            offC.width = imgObj.naturalWidth || 1200;
+            offC.height = imgObj.naturalHeight || 1680;
+            const offCtx = offC.getContext('2d');
+            offCtx.drawImage(imgObj, 0, 0);
+            pbd.canvas = offC;
+          }
+          this.requestRender();
+        };
+        imgObj.src = pbd.dataUrl;
+        pbd.img = imgObj;
+      }
       this.pdfPageBoardData = pbd;
-    } else if (!slideData.pdfPageBoardData) {
+    } else {
       this.pdfPageBoardData = null;
+      this._lastPdfPageScreenRect = null;
     }
 
     if (!this._isApplyingAudioTimelineState) {
@@ -16593,21 +16490,10 @@ class GraphApp {
     if (!this.isGraphCovered) {
       this.enterBoardMode();
     }
-    // 1. 만약 PDF 통째 페이지 모드 중이면 현재 페이지를 저장하고 새 백지 슬라이드로 전환
-    if (this.pdfPageBoardData) {
-      this.archiveCurrentPdfBoardPageToCard();
-      const pdfSlides = (this.pdfWorkedPages || []).map(pNum => {
-        const st = this.pdfSavedPageStates && this.pdfSavedPageStates[pNum];
-        return st && st.fullSlide ? st.fullSlide : this.serializeFullSlideState(`p.${pNum}`);
-      });
-      this.pdfPageBoardData = null;
-      this.syncPdfBoardNavBarUI();
-      this.lessonPlaylistSlides = pdfSlides;
-      this.isLessonPlaylistActive = true;
-    }
 
-    // 2. 첫 1페이지 상태에서 눌러도 무조건 1번 슬라이드를 보존하고 새 2번 캔버스를 추가!
-    // 3. 현재 캔버스를 현재 슬라이드에 자동 보존하고 깨끗한 다음 번호 캔버스 추가!
+    // 🌟 [슬라이드 저장소 100% 일원화]:
+    // 현재 슬라이드가 문제 캡처든, PDF 한 페이지 통째 삽입이든, 백지/그래프든 상관없이
+    // 무조건 lessonPlaylistSlides에 현재 슬라이드를 보존하고 깨끗한 다음 번호 캔버스를 추가합니다!
     if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
       const firstSlide = this.serializeFullSlideState('1');
       this.lessonPlaylistSlides = [firstSlide];
@@ -16723,7 +16609,9 @@ class GraphApp {
       this.inkLassoBox = null;
       this._inkBakeDirty = true;
       this.clearInkCache();
-      this.archiveCurrentPdfBoardPageToCard();
+      if (this.isLessonPlaylistActive) {
+        this.saveCurrentSlideIntoPlaylist();
+      }
       this.syncControls();
       this.renderLayerList();
       this.renderFuncList();
@@ -16788,32 +16676,25 @@ class GraphApp {
       return;
     }
 
-    const hasPdfBar = Boolean(this.pdfPageBoardData);
-    const hasPlaylistBar = Boolean(!hasPdfBar && this.isLessonPlaylistActive && this.lessonPlaylistSlides && this.lessonPlaylistSlides.length >= 1);
+    const hasPlaylistBar = Boolean(this.isLessonPlaylistActive && this.lessonPlaylistSlides && this.lessonPlaylistSlides.length >= 1);
 
-    if (!this.isTopSlideBarHidden || (!hasPdfBar && !hasPlaylistBar)) {
+    if (!this.isTopSlideBarHidden || !hasPlaylistBar) {
       miniTab.style.display = 'none';
       return;
     }
 
     miniTab.style.display = 'inline-flex';
     if (lblMini) {
-      if (hasPdfBar) {
-        const p = this.pdfPageBoardData.pageNum || 1;
-        const cnt = (this.pdfWorkedPages && this.pdfWorkedPages.length) || 1;
-        lblMini.textContent = `📄 p.${p} (${cnt}) ▾`;
-      } else {
-        const cur = (this.lessonPlaylistIndex || 0) + 1;
-        const total = this.lessonPlaylistSlides.length;
-        lblMini.textContent = `📑 ${cur} / ${total} ▾`;
-      }
+      const cur = (this.lessonPlaylistIndex || 0) + 1;
+      const total = this.lessonPlaylistSlides.length;
+      lblMini.textContent = `📑 ${cur} / ${total} ▾`;
     }
   }
 
   syncLessonPlaylistNavBarUI() {
     const navBar = document.getElementById('lessonPlaylistNavBar');
     if (!navBar) return;
-    if (!this.isGraphCovered || this.pdfPageBoardData || !this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) {
+    if (!this.isGraphCovered || !this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) {
       navBar.style.display = 'none';
       this._syncTopSlideMiniTabUI();
       return;
@@ -16827,7 +16708,6 @@ class GraphApp {
         if (t && t.closest && (t.closest('.slide-grid-popover') || t.closest('#btnPlaylistSlideInfo') || t.closest('#btnPdfBoardPageInfo'))) return;
         this._isSlideGridOpen = false;
         this._openSlideChipDelKey = null;
-        this.syncPdfBoardNavBarUI();
         this.syncLessonPlaylistNavBarUI();
       }, { capture: true });
     }
@@ -16856,9 +16736,8 @@ class GraphApp {
         const isActive = (idx === this.lessonPlaylistIndex);
         const chip = document.createElement('div');
         chip.className = 'slide-chip-item' + (isActive ? ' active' : '');
-        const rawTitle = (s && s.slideTitle) ? String(s.slideTitle).trim() : '';
-        const shortLabel = (rawTitle && rawTitle.startsWith('p.')) ? rawTitle : String(idx + 1);
-        chip.title = `${idx + 1}번 캔버스로 이동`;
+        const shortLabel = String(idx + 1);
+        chip.title = `${idx + 1}번 슬라이드로 이동`;
 
         const span = document.createElement('span');
         span.className = 'slide-chip-label';
@@ -16900,25 +16779,32 @@ class GraphApp {
   // 🔗 [학생용/강사용 판서 페이지 + #1,#2 그래프 카드 + 전체 슬라이드 통째 클라우드 링크 생성/복원]
   // ============================================================================
   _getActiveSlidesForExport(fallbackTitle = '공유된 수업 노트') {
+    const ensurePdfDataUrls = (slides) => {
+      if (!Array.isArray(slides)) return slides;
+      slides.forEach(s => {
+        if (s && s.pdfPageBoardData && !s.pdfPageBoardData.dataUrl) {
+          const cv = s.pdfPageBoardData.canvas || (this._pdfPageCanvasCache && s.pdfPageBoardData.pageNum ? this._pdfPageCanvasCache[s.pdfPageBoardData.pageNum] : null);
+          if (cv) {
+            s.pdfPageBoardData.dataUrl = this.encodeCanvasSmartWebP(cv, 0.92);
+          }
+        }
+      });
+      return slides;
+    };
     if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
       if (!this._isCapturingExportSnapshots) {
         this.saveCurrentSlideIntoPlaylist();
       }
+      ensurePdfDataUrls(this.lessonPlaylistSlides);
       return JSON.parse(JSON.stringify(this.lessonPlaylistSlides));
     }
-    if (this.pdfPageBoardData && Array.isArray(this.pdfWorkedPages) && this.pdfWorkedPages.length > 1) {
-      if (!this._isCapturingExportSnapshots) {
-        this.archiveCurrentPdfBoardPageToCard();
-      }
-      return this.pdfWorkedPages.map(pNum => {
-        const st = this.pdfSavedPageStates && this.pdfSavedPageStates[pNum];
-        return st && st.fullSlide ? JSON.parse(JSON.stringify(st.fullSlide)) : this.serializeFullSlideState(`p.${pNum}`);
-      });
-    }
     if (this._isCapturingExportSnapshots && this._exportSnapshotLoopBackupCurrent) {
+      ensurePdfDataUrls([this._exportSnapshotLoopBackupCurrent]);
       return [JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent))];
     }
-    return [this.serializeFullSlideState(fallbackTitle)];
+    const singleSlide = this.serializeFullSlideState(fallbackTitle);
+    ensurePdfDataUrls([singleSlide]);
+    return [JSON.parse(JSON.stringify(singleSlide))];
   }
 
   _applyExportFilterToSlideData(rawSlide, filterOpts = null) {
