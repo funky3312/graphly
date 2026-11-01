@@ -5444,11 +5444,11 @@ class GraphApp {
       return;
     }
 
-    // 3. 새 PDF 페이지 초고해상도(Ultra-HD ~310 DPI, 가로 최소 2560px) 오프스크린 렌더링 (단 1장만 GPU에 유지하여 성능 저하 0.0%!)
+    // 3. 새 PDF 페이지 타협 없는 최고 해상도(5K급 ~380 DPI, 가로 최소 3200px, 무손실 PNG) 오프스크린 렌더링 (단 1장만 GPU에 유지!)
     const page = await this.pdfDoc.getPage(targetPage);
     const baseVp = page.getViewport({ scale: 1.0 });
-    const targetMinPxW = 2560;
-    const renderScale = Math.max(4.0, Math.min(4.8, targetMinPxW / Math.max(1, baseVp.width)));
+    const targetMinPxW = 3200;
+    const renderScale = Math.max(4.8, Math.min(5.5, targetMinPxW / Math.max(1, baseVp.width)));
     const vp = page.getViewport({ scale: renderScale });
     const pageCanvas = document.createElement('canvas');
     pageCanvas.width = Math.round(vp.width);
@@ -5716,8 +5716,8 @@ class GraphApp {
 
       // 🌟 [Ultra-HD PDF 뷰어 & 문제 캡처 해상도]:
       // 낮은 배율(100%~150%)에서 문제를 한눈에 보고 캡처하더라도 인쇄급(최소 3.6x ~ 최대 5.2x, ~300+ DPI) 벡터 화질이 추출되도록 백킹 캔버스 해상도 대폭 상향!
-      const dpr = Math.min(3.2, Math.max(2.4, (window.devicePixelRatio || 2) * 1.35));
-      const renderScale = Math.max(3.6, Math.min(5.2, targetZoom * dpr));
+      const dpr = Math.min(3.5, Math.max(2.6, (window.devicePixelRatio || 2.5) * 1.4));
+      const renderScale = Math.max(4.0, Math.min(5.6, targetZoom * dpr));
       const viewport = page.getViewport({ scale: renderScale });
 
       canvas.style.width = `${cssW}px`;
@@ -6416,7 +6416,7 @@ class GraphApp {
       if (!this.pdfDoc || !normCrop || normCrop.nw <= 0 || normCrop.nh <= 0) return;
       const page = await this.pdfDoc.getPage(pageNum);
       const baseVp = page.getViewport({ scale: 1.0 });
-      const ultraScale = 4.4;
+      const ultraScale = 5.0;
       const fullVp = page.getViewport({
         scale: ultraScale,
         offsetX: -normCrop.nx * baseVp.width * ultraScale,
@@ -6424,7 +6424,7 @@ class GraphApp {
       });
       const targetW = Math.max(1, Math.round(normCrop.nw * baseVp.width * ultraScale));
       const targetH = Math.max(1, Math.round(normCrop.nh * baseVp.height * ultraScale));
-      if (targetW > 4200 || targetH > 4200) return;
+      if (targetW > 5200 || targetH > 5200) return;
 
       const vecCanvas = document.createElement('canvas');
       vecCanvas.width = targetW;
@@ -16347,12 +16347,10 @@ class GraphApp {
     const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
     const smartBounds = this.getSmartExportBounds(effFilter);
     const hotspots = this.extractGraphHotspotsForBounds(smartBounds, effFilter);
-    const exp = this.getExportCanvas(effFilter, smartBounds, forCloud ? 2.4 : null);
+    const exp = this.getExportCanvas(effFilter, smartBounds, forCloud ? 3.0 : null);
     let dataUrl = '';
     try {
-      dataUrl = forCloud
-        ? this.encodeCanvasSmartWebP(exp.canvas, 0.90)
-        : exp.canvas.toDataURL('image/png');
+      dataUrl = exp.canvas.toDataURL('image/png');
     } catch (e) {
       dataUrl = exp.canvas.toDataURL('image/png');
     }
@@ -17109,19 +17107,15 @@ class GraphApp {
     return this.canvasRect;
   }
 
-  encodeCanvasSmartWebP(canvas, quality = 0.92) {
+  encodeCanvasSmartWebP(canvas, quality = 1.0) {
     if (!canvas) return '';
-    try {
-      const webpUrl = canvas.toDataURL('image/webp', quality);
-      if (webpUrl && webpUrl.startsWith('data:image/webp')) {
-        return webpUrl;
-      }
-    } catch (e) { }
+    // 🌟 [대표님 철학 반영: 타협 없는 최고 화질 우선]:
+    // 수식·명조체 텍스트 획의 미세한 손실 압축(YUV 서브샘플링)조차 원천 배제하기 위해 100% 무손실(Lossless) PNG 포맷으로 고정!
     return canvas.toDataURL('image/png');
   }
 
   getCanvasDpr() {
-    return Math.min(3, Math.max(2, window.devicePixelRatio || 2));
+    return Math.min(3, Math.max(2.5, window.devicePixelRatio || 2.5));
   }
 
   resizeCanvas() {
