@@ -451,6 +451,38 @@
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:3px;vertical-align:-2px;"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/></svg>붓펜
                 </button>
               </div>
+
+              <!-- 📏 필기 글씨 크기 (펜 굵기) - 좌측 스타일 메뉴 통합 -->
+              <div class="slider-group" style="margin-top: 12px;">
+                <div class="slider-header" style="display: flex; align-items: center; justify-content: space-between;">
+                  <span>글씨 크기 (펜 굵기)</span>
+                  <div class="ink-size-stepper" style="display: inline-flex; align-items: center; gap: 4px;">
+                    <button type="button" id="btnInkSizeDown" class="ink-size-stepper-btn" title="글씨 크기 줄이기 ([)">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <span id="lblCurrentInkSize" class="ink-size-val" style="min-width: 28px; text-align: center;">4.2</span>
+                    <span id="lblFlyoutSizeVal" style="display: none;">4.2 pt</span>
+                    <button type="button" id="btnInkSizeUp" class="ink-size-stepper-btn" title="글씨 크기 키우기 (])">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="ink-size-preview-row" style="margin-top: 4px;">
+                  <div class="ink-size-preview-box" style="display: none;">
+                    <span id="inkSizePreviewDot" class="preview-circle" style="width: 9px; height: 9px;"></span>
+                  </div>
+                  <input type="range" id="sliderInkSize" class="slider-bar" min="1.0" max="18.0" step="0.2" value="4.2" style="width: 100%;">
+                </div>
+                <div class="ink-size-preset-grid" style="margin-top: 6px;">
+                  <button type="button" class="ink-size-btn ink-size-chip" data-size="1.5"><span class="ink-size-circle" style="display:none;"></span>1.5</button>
+                  <button type="button" class="ink-size-btn ink-size-chip" data-size="2.2"><span class="ink-size-circle" style="display:none;"></span>2.2</button>
+                  <button type="button" class="ink-size-btn ink-size-chip" data-size="3.2"><span class="ink-size-circle" style="display:none;"></span>3.2</button>
+                  <button type="button" class="ink-size-btn ink-size-chip active" data-size="4.2"><span class="ink-size-circle" style="display:none;"></span>4.2</button>
+                  <button type="button" class="ink-size-btn ink-size-chip" data-size="6.0"><span class="ink-size-circle" style="display:none;"></span>6.0</button>
+                  <button type="button" class="ink-size-btn ink-size-chip" data-size="8.0"><span class="ink-size-circle" style="display:none;"></span>8.0</button>
+                  <button type="button" class="ink-size-btn ink-size-chip" data-size="12.0"><span class="ink-size-circle" style="display:none;"></span>12.0</button>
+                </div>
+              </div>
             </div>
 
             <!-- 🌟 [대표님 기획]: 좌측 서랍 내 칠판 배경 테마 전격 장착 🌟 -->
@@ -1033,45 +1065,6 @@
           <button class="ink-color-dot" data-color="#dc2626" style="background: #dc2626;" ></button>
           <button class="ink-color-dot" data-color="#16a34a" style="background: #16a34a;" ></button>
           <button class="ink-color-dot" data-color="#7c3aed" style="background: #7c3aed;" ></button>
-        </div>
-        <div class="ink-divider"></div>
-        <div class="ink-size-stepper-wrap" style="position: relative;">
-          <div class="ink-size-stepper">
-            <button type="button" id="btnInkSizeDown" class="ink-size-stepper-btn">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-            </button>
-            <span id="lblCurrentInkSize" class="ink-size-val">4.2</span>
-            <button type="button" id="btnInkSizeUp" class="ink-size-stepper-btn">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-          </div>
-
-          <!-- 🌟 글씨 크기 상세 선택 팝업 (Flyout) 🌟 -->
-          <div id="inkSizeFlyout" class="ink-size-flyout-panel" style="display: none;">
-            <div class="ink-size-flyout-header">
-              <span class="flyout-title">펜 굵기</span>
-              <span id="lblFlyoutSizeVal" class="flyout-val-badge">4.2 pt</span>
-            </div>
-            
-            <!-- 실시간 프리뷰 & 미세 슬라이더 -->
-            <div class="ink-size-preview-row">
-              <div class="ink-size-preview-box">
-                <span id="inkSizePreviewDot" class="preview-circle" style="width: 9px; height: 9px;"></span>
-              </div>
-              <input type="range" id="sliderInkSize" class="slider-bar" min="1.0" max="18.0" step="0.2" value="4.2" style="flex: 1;">
-            </div>
-
-            <!-- 빠른 선택 프리셋 칩 -->
-            <div class="ink-size-preset-grid">
-              <button type="button" class="ink-size-btn ink-size-chip" data-size="1.5" ><span class="ink-size-circle" style="display:none;"></span>1.5</button>
-              <button type="button" class="ink-size-btn ink-size-chip" data-size="2.2" ><span class="ink-size-circle" style="display:none;"></span>2.2</button>
-              <button type="button" class="ink-size-btn ink-size-chip" data-size="3.2" ><span class="ink-size-circle" style="display:none;"></span>3.2</button>
-              <button type="button" class="ink-size-btn ink-size-chip active" data-size="4.2" ><span class="ink-size-circle" style="display:none;"></span>4.2</button>
-              <button type="button" class="ink-size-btn ink-size-chip" data-size="6.0" ><span class="ink-size-circle" style="display:none;"></span>6.0</button>
-              <button type="button" class="ink-size-btn ink-size-chip" data-size="8.0" ><span class="ink-size-circle" style="display:none;"></span>8.0</button>
-              <button type="button" class="ink-size-btn ink-size-chip" data-size="12.0" ><span class="ink-size-circle" style="display:none;"></span>12.0</button>
-            </div>
-          </div>
         </div>
         <div class="ink-divider"></div>
         <button id="btnInkClearAll" class="ink-tool-btn" title="필기 비우기">
@@ -1790,7 +1783,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261031_4"></script>
-  <script src="app.js?v=20261101_21"></script>
+  <script src="app.js?v=20261101_22"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
