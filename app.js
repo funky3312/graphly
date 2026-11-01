@@ -8557,7 +8557,6 @@ class GraphApp {
       'btnQuickIntersection',
       'btnQuickDropLine',
       'btnQuickText',
-      'btnQuickSnap',
       'btnRailPiecewise',
       'btnRailNAxis',
       'btnInkToggleAxes'
