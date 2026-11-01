@@ -4109,6 +4109,10 @@ class GraphApp {
     this.lassoBoundingBox = null;
     this.lassoPoints = [];
     this._inkBakeDirty = true;
+    if (this.activeInkTool === 'lasso') {
+      this.setActiveInkTool('pen');
+      return;
+    }
     this.syncLassoActionBarUI();
     this.render();
   }
@@ -7775,13 +7779,18 @@ class GraphApp {
 
       const endProblemDraw = (e) => {
         if (!isDrawingOnProblem) return;
+        const wasOneShotEraser = (this.activeInkTool === 'eraser' && !this._problemCardStylusEraser);
         isDrawingOnProblem = false;
+        this._problemCardStylusEraser = false;
         currentStroke = null;
         if (holdTimer) {
           clearTimeout(holdTimer);
           holdTimer = null;
         }
         try { pCanvas.releasePointerCapture(e.pointerId); } catch (err) { }
+        if (wasOneShotEraser) {
+          this.setActiveInkTool('pen');
+        }
       };
 
       pCanvas.addEventListener('pointerup', endProblemDraw);
@@ -9899,10 +9908,14 @@ class GraphApp {
 
       const endGraphCardDraw = (e) => {
         if (!isDrawingOnGraphCard) return;
+        const wasOneShotEraser = (this.activeInkTool === 'eraser' && !this._graphCardStylusEraser);
         isDrawingOnGraphCard = false;
         this._graphCardStylusEraser = false;
         currentStroke = null;
         try { gCanvas.releasePointerCapture(e.pointerId); } catch (err) { }
+        if (wasOneShotEraser) {
+          this.setActiveInkTool('pen');
+        }
       };
       gCanvas.addEventListener('pointerup', endGraphCardDraw);
       gCanvas.addEventListener('pointercancel', endGraphCardDraw);
@@ -19077,7 +19090,13 @@ class GraphApp {
               this.render();
               return;
             } else {
-              // 2. 🌟 [대표님 핵심 기획]: 올가미 바깥부분 터치 시 즉각 완전 해제!
+              // 2. 🌟 [대표님 핵심 기획]: 올가미 바깥부분 터치 시 즉각 완전 해제 준비 (2손가락 핀치 시 복원용 백업 보관)!
+              this._lassoPrePinchBackup = {
+                strokes: this.selectedInkStrokes,
+                texts: this.selectedTextLabels,
+                bbox: this.lassoBoundingBox,
+                points: this.lassoPoints
+              };
               this.selectedInkStrokes = [];
               this.selectedTextLabels = [];
               this.lassoBoundingBox = null;
@@ -20721,16 +20740,17 @@ class GraphApp {
             }
           }
           this._lassoStartPos = null;
+          this._lassoPrePinchBackup = null;
 
           if (isTap) {
-            // 바깥 빈 공간 탭 -> 올가미 깔끔 해제 완료
+            // 🌟 [굿노트급 올가미 자동 복귀]: 바깥 빈 공간을 펜/마우스로 '톡' 찍어 해제하면 즉시 필기(pen) 모드로 자동 복귀!
+            // (아이패드 손바닥/손가락 터치는 isFingerOrPalmTouch에서 100% 사전 차단되어 절대 풀리지 않음)
             this.selectedInkStrokes = [];
             this.selectedTextLabels = [];
             this.lassoBoundingBox = null;
             this.lassoPoints = [];
-            this.canvas.style.cursor = 'crosshair';
             this.canvas.classList.remove('is-hover-selection');
-            this.render();
+            this.setActiveInkTool('pen');
             return;
           }
 
@@ -20824,6 +20844,7 @@ class GraphApp {
         this.isDrawingInk = false;
         const hadSceneFreeze = Boolean(this._hasSceneFreeze && this.sceneFreezeCanvas);
         this._hasSceneFreeze = false;
+        const wasOneShotEraser = (this.activeInkTool === 'eraser' && !this._isTemporaryStylusEraser);
         this._erasedInCurrentStroke = false;
         this._preDragState = null;
         const finishedStroke = this.currentInkStroke;
@@ -20832,6 +20853,11 @@ class GraphApp {
         }
         this.currentInkStroke = null;
         this._lastInkScreenPos = null;
+        if (wasOneShotEraser) {
+          this._liveBezierScreenPts = null;
+          this.setActiveInkTool('pen');
+          return;
+        }
 
         // 🌟 [0ms 초고속 잉크 히스토리 푸시 & 즉각 증분 베이킹 (Incremental Bake)] 🌟
         if (finishedStroke && finishedStroke.points && finishedStroke.points.length > 0) {
@@ -21176,6 +21202,13 @@ class GraphApp {
               }
               this.isDrawingInk = false;
               this.isStylusDrawing = false;
+              if (this.isLassoSelecting && this._lassoPrePinchBackup) {
+                this.selectedInkStrokes = this._lassoPrePinchBackup.strokes || [];
+                this.selectedTextLabels = this._lassoPrePinchBackup.texts || [];
+                this.lassoBoundingBox = this._lassoPrePinchBackup.bbox || null;
+                this.lassoPoints = this._lassoPrePinchBackup.points || [];
+                this._lassoPrePinchBackup = null;
+              }
               this.isLassoSelecting = false;
               this._isAimingDropLine = false;
               this.isPdfToGraphCropDragging = false;
