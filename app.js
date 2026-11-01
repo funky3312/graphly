@@ -19153,6 +19153,7 @@ class GraphApp {
         filteredSlides[i].viewerSnapshotHeight = snap.height;
         filteredSlides[i].viewerGraphHotspots = snap.hotspots;
         filteredSlides[i].viewerStickerHotspots = snap.stickerHotspots;
+        filteredSlides[i].viewerSmartBounds = snap.smartBounds;
       }
     } finally {
       if (isOuterLoop) {
@@ -19474,6 +19475,7 @@ class GraphApp {
       slide.viewerSnapshotHeight = snap.height;
       slide.viewerGraphHotspots = snap.hotspots;
       slide.viewerStickerHotspots = snap.stickerHotspots;
+      slide.viewerSmartBounds = snap.smartBounds;
     }
 
     const imgEl = document.getElementById('smartNoteViewerImg');
@@ -29294,12 +29296,58 @@ class GraphApp {
     }
 
     const PAD = 36;
-    const cropX = Math.floor(minX - PAD);
-    const cropY = Math.floor(minY - PAD);
-    const cropW = Math.min(8000, Math.max(160, Math.ceil(maxX - minX + PAD * 2)));
-    const cropH = Math.min(8000, Math.max(120, Math.ceil(maxY - minY + PAD * 2)));
+    const baseW = Math.max(800, Math.round(this.screenWidth || window.innerWidth || 1280));
+    const baseH = Math.max(500, Math.round(this.screenHeight || window.innerHeight || 720));
 
-    return { x: cropX, y: cropY, width: cropW, height: cropH };
+    const contentLeft = Math.floor(minX - PAD);
+    const contentTop = Math.floor(minY - PAD);
+    const contentRight = Math.ceil(maxX + PAD);
+    const contentBottom = Math.ceil(maxY + PAD);
+
+    // 🌟 [대표님 핵심 기획: 기본 캡처 최소 영역 = 모니터 화면 1개 크기 보장 + 화면 밖 필기 시 자동 확장]
+    // 1) 좁은 영역에 조그만 원 하나만 그리더라도 그것만 잘려서 과도하게 확대되지 않도록,
+    //    기본적으로 현재 모니터 화면 1개 크기(0 ~ baseW, 0 ~ baseH)를 최소 캡처 영역으로 유지합니다.
+    // 2) 필기나 카드가 모니터 화면 영역을 넘어가서 작성된 경우에만 넘어간 만큼 캡처 영역을 자동 확장합니다.
+    const overlapsScreenX = (contentRight >= 0 && contentLeft <= baseW);
+    const overlapsScreenY = (contentBottom >= 0 && contentTop <= baseH);
+
+    let cropLeft, cropRight, cropTop, cropBottom;
+    if (overlapsScreenX) {
+      cropLeft = Math.min(0, contentLeft);
+      cropRight = Math.max(baseW, contentRight);
+    } else {
+      const spanW = contentRight - contentLeft;
+      if (spanW < baseW) {
+        const midX = (contentLeft + contentRight) / 2;
+        cropLeft = Math.floor(midX - baseW / 2);
+        cropRight = cropLeft + baseW;
+      } else {
+        cropLeft = contentLeft;
+        cropRight = contentRight;
+      }
+    }
+
+    if (overlapsScreenY) {
+      cropTop = Math.min(0, contentTop);
+      cropBottom = Math.max(baseH, contentBottom);
+    } else {
+      const spanH = contentBottom - contentTop;
+      if (spanH < baseH) {
+        const midY = (contentTop + contentBottom) / 2;
+        cropTop = Math.floor(midY - baseH / 2);
+        cropBottom = cropTop + baseH;
+      } else {
+        cropTop = contentTop;
+        cropBottom = contentBottom;
+      }
+    }
+
+    const cropX = Math.floor(cropLeft);
+    const cropY = Math.floor(cropTop);
+    const cropW = Math.min(8000, Math.max(baseW, Math.ceil(cropRight - cropLeft)));
+    const cropH = Math.min(8000, Math.max(baseH, Math.ceil(cropBottom - cropTop)));
+
+    return { x: cropX, y: cropY, width: cropW, height: cropH, w: cropW, h: cropH };
   }
 
   // --- [선택된 요소 직사각형 자동 스캔 오프스크린 렌더링 엔진] ---
