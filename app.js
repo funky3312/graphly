@@ -26591,6 +26591,9 @@ class GraphApp {
       boardSplitRatio: this.boardSplitRatio || 0.4,
       graphs: JSON.parse(JSON.stringify(this.graphs || [])),
       activeGraphIdx: this.activeGraphIdx,
+      isCurveSelected: Boolean(this.isCurveSelected),
+      selectedHandleIdx: this.selectedHandleIdx,
+      draggedHandleIdx: this.draggedHandleIdx,
       panX: this.panX || 0,
       panY: this.panY || 0,
       zoomLevel: this.zoomLevel || 1.0,
@@ -26631,6 +26634,9 @@ class GraphApp {
       if (typeof kf.boardSplitRatio === 'number') this.boardSplitRatio = kf.boardSplitRatio;
       this.graphs = JSON.parse(JSON.stringify(kf.graphs || []));
       this.activeGraphIdx = typeof kf.activeGraphIdx === 'number' ? kf.activeGraphIdx : (this.graphs.length > 0 ? 0 : -1);
+      if (kf.isCurveSelected !== undefined) this.isCurveSelected = Boolean(kf.isCurveSelected);
+      if (kf.selectedHandleIdx !== undefined) this.selectedHandleIdx = kf.selectedHandleIdx;
+      if (kf.draggedHandleIdx !== undefined) this.draggedHandleIdx = kf.draggedHandleIdx;
       this.panX = kf.panX || 0;
       this.panY = kf.panY || 0;
       this.zoomLevel = kf.zoomLevel || 1.0;
@@ -26704,7 +26710,9 @@ class GraphApp {
   _recordAudioWorkspaceStateIfNeeded(force = false) {
     if (!this.isAudioRecording || this._isApplyingAudioTimelineState) return;
     const t = this.getAudioRecordElapsedMs();
-    if (!force && (t - this._lastAudioStateRecordMs < 45)) return;
+    const isActivelyDraggingGraph = (this.draggedHandleIdx !== null || this.isDraggingCurve || this.activePwDragIdx !== null);
+    const minInterval = isActivelyDraggingGraph ? 16 : 32;
+    if (!force && (t - this._lastAudioStateRecordMs < minInterval)) return;
 
     const kf = this._captureAudioWorkspaceKeyframe();
     const hash = JSON.stringify([
@@ -26867,11 +26875,15 @@ class GraphApp {
     this.audioInitialState = this._captureAudioWorkspaceKeyframe();
     this._recordAudioWorkspaceStateIfNeeded(true);
 
-    if (!this.isInkMode) {
-      this.toggleInkMode(true);
-    }
-    if (this.activeInkTool === 'select' || this.activeInkTool === 'eraser') {
-      this.setActiveInkTool('pen');
+    // 칠판 모드(isGraphCovered)에서 녹음을 시작할 때만 자동으로 펜 도구를 켜주고,
+    // 실시간 그래프 모드(!isGraphCovered)에서는 선생님이 그래프 극점 핸들을 바로 잡고 움직일 수 있도록 현재 도구 상태(선택/이동 또는 필기)를 그대로 존중!
+    if (this.isGraphCovered) {
+      if (!this.isInkMode) {
+        this.toggleInkMode(true);
+      }
+      if (this.activeInkTool === 'select' || this.activeInkTool === 'eraser') {
+        this.setActiveInkTool('pen');
+      }
     }
 
     const lblTimer = document.getElementById('lblAudioRecordTimer');
@@ -27030,6 +27042,73 @@ class GraphApp {
     }
   }
 
+  _interpolateAudioWorkspaceKeyframes(kfA, kfB, alpha) {
+    if (!kfA) return kfB;
+    if (!kfB || alpha <= 0) return kfA;
+    if (alpha >= 1) return kfB;
+    if (Boolean(kfA.isGraphCovered) !== Boolean(kfB.isGraphCovered)) return kfA;
+
+    const merged = JSON.parse(JSON.stringify(kfA));
+    const lerp = (a, b) => (typeof a === 'number' && typeof b === 'number') ? (a + (b - a) * alpha) : a;
+
+    merged.panX = lerp(kfA.panX, kfB.panX);
+    merged.panY = lerp(kfA.panY, kfB.panY);
+    merged.zoomLevel = lerp(kfA.zoomLevel, kfB.zoomLevel);
+    merged.boardPanX = lerp(kfA.boardPanX, kfB.boardPanX);
+    merged.boardPanY = lerp(kfA.boardPanY, kfB.boardPanY);
+    merged.boardZoom = lerp(kfA.boardZoom, kfB.boardZoom);
+    merged.probCardBaseX = lerp(kfA.probCardBaseX, kfB.probCardBaseX);
+    merged.probCardBaseY = lerp(kfA.probCardBaseY, kfB.probCardBaseY);
+    merged.graphCardBaseX = lerp(kfA.graphCardBaseX, kfB.graphCardBaseX);
+    merged.graphCardBaseY = lerp(kfA.graphCardBaseY, kfB.graphCardBaseY);
+
+    if (
+      Array.isArray(kfA.piecewiseBoundaries) &&
+      Array.isArray(kfB.piecewiseBoundaries) &&
+      kfA.piecewiseBoundaries.length === kfB.piecewiseBoundaries.length
+    ) {
+      merged.piecewiseBoundaries = kfA.piecewiseBoundaries.map((v, i) => lerp(v, kfB.piecewiseBoundaries[i]));
+    }
+
+    if (
+      Array.isArray(kfA.graphs) &&
+      Array.isArray(kfB.graphs) &&
+      kfA.graphs.length === kfB.graphs.length
+    ) {
+      for (let gIdx = 0; gIdx < merged.graphs.length; gIdx++) {
+        const gA = kfA.graphs[gIdx];
+        const gB = kfB.graphs[gIdx];
+        const gM = merged.graphs[gIdx];
+        if (!gA || !gB || gA.type !== gB.type) continue;
+        if (gA.freezeOffset && gB.freezeOffset) {
+          gM.freezeOffset = {
+            x: lerp(gA.freezeOffset.x || 0, gB.freezeOffset.x || 0),
+            y: lerp(gA.freezeOffset.y || 0, gB.freezeOffset.y || 0)
+          };
+        }
+        if (Array.isArray(gA.transforms) && Array.isArray(gB.transforms) && gA.transforms.length === gB.transforms.length) {
+          for (let tIdx = 0; tIdx < gM.transforms.length; tIdx++) {
+            const tA = gA.transforms[tIdx];
+            const tB = gB.transforms[tIdx];
+            if (tA && tB && tA.offset && tB.offset) {
+              gM.transforms[tIdx].offset = {
+                x: lerp(tA.offset.x || 0, tB.offset.x || 0),
+                y: lerp(tA.offset.y || 0, tB.offset.y || 0)
+              };
+            }
+          }
+        }
+        if (Array.isArray(gA.handles) && Array.isArray(gB.handles) && gA.handles.length === gB.handles.length) {
+          for (let hIdx = 0; hIdx < gM.handles.length; hIdx++) {
+            gM.handles[hIdx].x = lerp(gA.handles[hIdx].x, gB.handles[hIdx].x);
+            gM.handles[hIdx].y = lerp(gA.handles[hIdx].y, gB.handles[hIdx].y);
+          }
+        }
+      }
+    }
+    return merged;
+  }
+
   _applyAudioTimelineStateAt(playMs) {
     if (!this.audioSyncData) return;
     if (this.audioReplayViewMode === 'note') {
@@ -27038,20 +27117,26 @@ class GraphApp {
       }
       return;
     }
-    let chosenState = this.audioSyncData.initialState || null;
+    let prevEv = this.audioSyncData.initialState ? { t: 0, state: this.audioSyncData.initialState } : null;
+    let nextEv = null;
     const timeline = this.audioSyncData.timeline || [];
     for (let i = 0; i < timeline.length; i++) {
       const ev = timeline[i];
-      if (ev && ev.type === 'state') {
+      if (ev && ev.type === 'state' && ev.state) {
         if (ev.t <= playMs) {
-          chosenState = ev.state;
+          prevEv = ev;
         } else {
+          nextEv = ev;
           break;
         }
       }
     }
-    if (chosenState) {
-      this._applyAudioWorkspaceKeyframe(chosenState);
+    if (prevEv && nextEv && (nextEv.t - prevEv.t) > 0 && (nextEv.t - prevEv.t) <= 450) {
+      const alpha = Math.max(0, Math.min(1, (playMs - prevEv.t) / (nextEv.t - prevEv.t)));
+      const interpState = this._interpolateAudioWorkspaceKeyframes(prevEv.state, nextEv.state, alpha);
+      this._applyAudioWorkspaceKeyframe(interpState);
+    } else if (prevEv && prevEv.state) {
+      this._applyAudioWorkspaceKeyframe(prevEv.state);
     }
   }
 
