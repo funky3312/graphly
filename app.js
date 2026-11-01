@@ -3322,11 +3322,118 @@ class GraphApp {
     return true;
   }
 
+  syncWorkspaceStickerOverlay() {
+    if (typeof document === 'undefined') return;
+    const overlay = document.getElementById('workspaceStickerOverlay');
+    if (!overlay) return;
+    if (this._omitStickersForViewerSnapshot) {
+      overlay.innerHTML = '';
+      return;
+    }
+    overlay.innerHTML = '';
+    const hasStickers = Array.isArray(this.boardStickers) && this.boardStickers.length > 0;
+    const hasDraft = Boolean(this.isDrawingSticker && this.stickerDraftStart && this.stickerDraftCurrent);
+    if (!hasStickers && !hasDraft) return;
+
+    if (hasStickers) {
+      for (let i = 0; i < this.boardStickers.length; i++) {
+        const stk = this.boardStickers[i];
+        const rect = this.getBoardStickerScreenRect(stk);
+        if (!rect || rect.w < 4 || rect.h < 4) continue;
+
+        const itemEl = document.createElement('div');
+        itemEl.className = 'card-sticker-item workspace-sticker-item' + (stk.revealed ? ' revealed' : '');
+        itemEl.dataset.stickerId = stk.id;
+        itemEl.style.left = `${rect.x.toFixed(1)}px`;
+        itemEl.style.top = `${rect.y.toFixed(1)}px`;
+        itemEl.style.width = `${rect.w.toFixed(1)}px`;
+        itemEl.style.height = `${rect.h.toFixed(1)}px`;
+
+        const badgeEl = document.createElement('span');
+        badgeEl.className = 'card-sticker-badge';
+        badgeEl.textContent = stk.revealed ? '🔓' : ((rect.w >= 64 && rect.h >= 24) ? '🔒 터치' : '🔒');
+        itemEl.appendChild(badgeEl);
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'card-sticker-del-btn';
+        delBtn.title = '스티커 삭제';
+        delBtn.textContent = '✕';
+        delBtn.addEventListener('pointerdown', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+        });
+        delBtn.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          this.removeBoardStickerById(stk.id);
+        });
+        itemEl.appendChild(delBtn);
+
+        let downPt = null;
+        itemEl.addEventListener('pointerdown', (ev) => {
+          if (ev.target && ev.target.closest && ev.target.closest('.card-sticker-del-btn')) return;
+          if (this.isInkMode && this.activeInkTool === 'sticker') return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (this.isInkMode && this.activeInkTool === 'eraser') {
+            this.removeBoardStickerById(stk.id);
+            return;
+          }
+          downPt = { x: ev.clientX, y: ev.clientY };
+        });
+        itemEl.addEventListener('pointerenter', (ev) => {
+          if (this.isInkMode && this.activeInkTool === 'eraser' && ev.buttons > 0) {
+            this.removeBoardStickerById(stk.id);
+          }
+        });
+        itemEl.addEventListener('pointerup', (ev) => {
+          if (ev.target && ev.target.closest && ev.target.closest('.card-sticker-del-btn')) return;
+          if (this.isInkMode && this.activeInkTool === 'sticker') return;
+          if (!downPt) return;
+          const dist = Math.hypot(ev.clientX - downPt.x, ev.clientY - downPt.y);
+          downPt = null;
+          if (dist <= 14) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            stk.revealed = !stk.revealed;
+            if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+            this.render();
+          }
+        });
+
+        overlay.appendChild(itemEl);
+      }
+    }
+
+    if (hasDraft) {
+      const s = this.stickerDraftStart;
+      const c = this.stickerDraftCurrent;
+      const dx = Math.min(s.x, c.x);
+      const dy = Math.min(s.y, c.y);
+      const dw = Math.abs(c.x - s.x);
+      const dh = Math.abs(c.y - s.y);
+      if (dw >= 2 && dh >= 2) {
+        const draftEl = document.createElement('div');
+        draftEl.className = 'workspace-sticker-draft';
+        draftEl.style.left = `${dx.toFixed(1)}px`;
+        draftEl.style.top = `${dy.toFixed(1)}px`;
+        draftEl.style.width = `${dw.toFixed(1)}px`;
+        draftEl.style.height = `${dh.toFixed(1)}px`;
+        overlay.appendChild(draftEl);
+      }
+    }
+  }
+
   drawBoardStickers(ctx, isExport = false) {
+    if (!isExport) {
+      this.syncWorkspaceStickerOverlay();
+      return;
+    }
     if (this._omitStickersForViewerSnapshot) return;
     const hasStickers = Array.isArray(this.boardStickers) && this.boardStickers.length > 0;
-    const hasDraft = Boolean(!isExport && this.isDrawingSticker && this.stickerDraftStart && this.stickerDraftCurrent);
-    if (!hasStickers && !hasDraft) return;
+    const hasDraft = false;
+    if (!hasStickers) return;
 
     if (hasStickers) {
       for (let i = 0; i < this.boardStickers.length; i++) {
@@ -8154,6 +8261,7 @@ class GraphApp {
       }, { capture: true });
 
       pCanvas.addEventListener('pointerdown', (e) => {
+        if (this.activeInkTool === 'sticker' || this.activeInkTool === 'laser') return;
         if (e.pointerType === 'pen') this._markStylusPenDetected();
         if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) return;
         if (widget) this.bringCardToFront(widget);
@@ -8940,6 +9048,7 @@ class GraphApp {
       let extraHoldTimer = null;
 
       extraInkCanvas.addEventListener('pointerdown', (e) => {
+        if (this.activeInkTool === 'sticker' || this.activeInkTool === 'laser') return;
         if (e.pointerType === 'pen') this._markStylusPenDetected();
         if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) return;
         this.bringCardToFront(cardWidgetEl);
@@ -9422,6 +9531,7 @@ class GraphApp {
         tappedExistingCardSticker = null;
       }
 
+      if (e.pointerType === 'pen') this._markStylusPenDetected();
       this.bringCardToFront(cardWidgetEl);
       e.preventDefault();
       e.stopPropagation();
@@ -9429,7 +9539,7 @@ class GraphApp {
 
       const pos = getNormPos(e);
       isDrawingCardSticker = true;
-      cardStickerStart = { nx: pos.nx, ny: pos.ny, clientX: e.clientX, clientY: e.clientY };
+      cardStickerStart = { nx: pos.nx, ny: pos.ny, lastNx: pos.nx, lastNy: pos.ny, clientX: e.clientX, clientY: e.clientY };
 
       cardStickerDraftEl = document.createElement('div');
       cardStickerDraftEl.className = 'card-sticker-draft';
@@ -9440,11 +9550,13 @@ class GraphApp {
       stickersLayer.appendChild(cardStickerDraftEl);
     }, { capture: true });
 
-    bodyEl.addEventListener('pointermove', (e) => {
+    const moveCardStickerDrag = (e) => {
       if (!isDrawingCardSticker || !cardStickerStart) return;
       e.preventDefault();
       e.stopPropagation();
       const pos = getNormPos(e);
+      cardStickerStart.lastNx = pos.nx;
+      cardStickerStart.lastNy = pos.ny;
       const nx = Math.min(cardStickerStart.nx, pos.nx);
       const ny = Math.min(cardStickerStart.ny, pos.ny);
       const nw = Math.abs(pos.nx - cardStickerStart.nx);
@@ -9455,7 +9567,9 @@ class GraphApp {
         cardStickerDraftEl.style.width = `${(nw * 100).toFixed(2)}%`;
         cardStickerDraftEl.style.height = `${(nh * 100).toFixed(2)}%`;
       }
-    }, { capture: true });
+    };
+    bodyEl.addEventListener('pointermove', moveCardStickerDrag, { capture: true });
+    window.addEventListener('pointermove', moveCardStickerDrag, { capture: true });
 
     const finishCardStickerDrag = (e) => {
       if (!isDrawingCardSticker || !cardStickerStart) return;
@@ -9468,7 +9582,9 @@ class GraphApp {
         try { bodyEl.releasePointerCapture(e.pointerId); } catch (err) { }
       }
 
-      const endPos = (e && e.clientX !== undefined) ? getNormPos(e) : { nx: cardStickerStart.nx, ny: cardStickerStart.ny };
+      const endPos = (e && typeof e.clientX === 'number')
+        ? getNormPos(e)
+        : { nx: cardStickerStart.lastNx ?? cardStickerStart.nx, ny: cardStickerStart.lastNy ?? cardStickerStart.ny };
       const rect = bodyEl.getBoundingClientRect();
       const rw = Math.max(1, rect.width);
       const rh = Math.max(1, rect.height);
@@ -9480,7 +9596,7 @@ class GraphApp {
       const pxH = nh * rh;
       cardStickerStart = null;
 
-      if (pxW >= 16 && pxH >= 12) {
+      if (pxW >= 10 && pxH >= 10) {
         const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
         const newStk = {
           id: 'cstk_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
@@ -9516,6 +9632,8 @@ class GraphApp {
 
     bodyEl.addEventListener('pointerup', finishCardStickerDrag, { capture: true });
     bodyEl.addEventListener('pointercancel', finishCardStickerDrag, { capture: true });
+    window.addEventListener('pointerup', finishCardStickerDrag, { capture: true });
+    window.addEventListener('pointercancel', finishCardStickerDrag, { capture: true });
   }
 
   // 🌟 [각 그래프 보관 카드(#1, #2, #3...) 전용 0.5KB 초경량 순수 그래프 상태 타임머신 스냅샷] 🌟
@@ -20407,7 +20525,7 @@ class GraphApp {
       }
 
       // 🌟 [🔤 캔버스 자유 수식 텍스트 라벨: 클릭, 더블클릭 수정, ✕ 삭제, 드래그 이동 최우선 처리] 🌟
-      if (!this.isGraphCovered && this.activeInkTool !== 'eraser' && this.activeInkTool !== 'lasso' && !isFingerOrPalmTouch) {
+      if (!this.isGraphCovered && this.activeInkTool !== 'eraser' && this.activeInkTool !== 'lasso' && this.activeInkTool !== 'sticker' && this.activeInkTool !== 'laser' && !isFingerOrPalmTouch) {
         const hitText = this.hitTestTextLabel(pos);
         if (hitText) {
           if (e.preventDefault) e.preventDefault();
@@ -22566,7 +22684,7 @@ class GraphApp {
         this.stickerDraftCurrent = null;
         this._pendingStickerTap = null;
 
-        if (sw >= 16 && sh >= 14) {
+        if (sw >= 10 && sh >= 10) {
           const isBoardTarget = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
           const p1 = isBoardTarget ? this.screenToBoard(sx, sy) : this.screenToMath(sx, sy);
           const p2 = isBoardTarget ? this.screenToBoard(sx + sw, sy + sh) : this.screenToMath(sx + sw, sy + sh);
@@ -23054,7 +23172,7 @@ class GraphApp {
 
       // 🛡️ [순정 상태]: 오직 펜슬이 현재 화면에 닿아 실제로 그리는 중일 때만 터치 간섭 차단 (펜을 뗀 직후 쿨다운 제거)
       const isPenRecentlyActive = () => {
-        if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) && this._activeDrawingPointerType === 'pen') {
+        if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || this.isDrawingSticker) && this._activeDrawingPointerType === 'pen') {
           return true;
         }
         return false;
@@ -23165,7 +23283,7 @@ class GraphApp {
           };
           this._logInkDiag('ok', `✏️ [펜 진입] id=${e.pointerId}, p=${typeof e.pressure === 'number' ? e.pressure.toFixed(2) : '-'}, btn=${e.buttons}`);
           handleDown(e);
-          if (e.pointerType === 'pen' && !this.isDrawingInk && isWritingToolActive()) {
+          if (e.pointerType === 'pen' && !this.isDrawingInk && !this.isDrawingSticker && isWritingToolActive()) {
             this._logInkDiag('error', `🚨 [획 시작 실패] pointerdown(pen) 진입했으나 handleDown 내부에서 필기가 안 켜짐! (tool=${this.activeInkTool})`);
           }
           return;
@@ -23296,7 +23414,7 @@ class GraphApp {
           return;
         }
         // 해당 포인터 자체가 UI 버튼/모달 위에서 시작된 경우에만 무시 (손바닥이 카드에 닿아도 펜의 pointerId는 정상 필기!)
-        if (this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId)) {
+        if (this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId) && !this.isDrawingSticker && !this._tappingBoardSticker) {
           if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
           if (e.pointerType === 'pen') {
             this._logInkDiag('error', `🚨 [pointermove 차단] 펜 포인터(id=${e.pointerId})가 UI 영역에서 시작된 것으로 기록됨`);
@@ -23304,7 +23422,7 @@ class GraphApp {
           return;
         }
         // 🌟 아직 필기/드로잉 중이 아닐 때 메뉴/슬라이드바/툴바/비필기 카드 위로 마우스가 올라가면 가상 펜을 즉시 숨기고 해당 UI 고유 커서(손가락/손바닥)를 노출!
-        if (!this.isDrawingInk && !this.isStylusDrawing && !this.isLassoSelecting) {
+        if (!this.isDrawingInk && !this.isStylusDrawing && !this.isLassoSelecting && !this.isDrawingSticker && !this._tappingBoardSticker) {
           const overMenuOrBlockedCard = this.isPointerOverMenu(e);
           if (overMenuOrBlockedCard) {
             if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
@@ -23330,7 +23448,7 @@ class GraphApp {
           this._lastPenActiveTime = nowT;
           this._touchPanDeadzoneLocked = false;
           const isPenPressing = (typeof e.pressure === 'number' && e.pressure > 0.005) || (typeof e.buttons === 'number' && e.buttons > 0);
-          if (!this.isDrawingInk && !this.isStylusDrawing && !this.isLassoSelecting && isWritingToolActive()) {
+          if (!this.isDrawingInk && !this.isStylusDrawing && !this.isLassoSelecting && !this.isDrawingSticker && !this._tappingBoardSticker && isWritingToolActive()) {
             if (!isPenPressing) {
               this._logInkDiag('error', `🚨 [원인 발견: 획 시작 씹힘] pointerdown 없이 pointermove(pen)가 왔으나 pressure=${e.pressure}, buttons=${e.buttons} 이라 무시됨! (짭플펜슬 필압=0 현상)`);
             } else if (e.target !== this.canvas) {
@@ -23343,6 +23461,8 @@ class GraphApp {
             !this.isDrawingInk &&
             !this.isStylusDrawing &&
             !this.isLassoSelecting &&
+            !this.isDrawingSticker &&
+            !this._tappingBoardSticker &&
             !this.isDraggingLassoSelection &&
             !this.isResizingLassoSelection &&
             isWritingToolActive() &&
@@ -23373,7 +23493,7 @@ class GraphApp {
         }
 
         // 오른손 펜슬 필기 도중에는 다른 포인터(손바닥/손가락)의 움직임을 100% 차단!
-        if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
+        if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || this.isDrawingSticker) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
           if (e.pointerId !== undefined && e.pointerId !== this._activeDrawingPointerId) {
             if (e.pointerType === 'pen') {
               this._logInkDiag('error', `🚨 [원인 발견: 중간 끊김] 필기 중 펜의 pointerId가 ${this._activeDrawingPointerId} ➔ ${e.pointerId} 로 변경되어 차단됨!`);
@@ -23461,7 +23581,7 @@ class GraphApp {
 
         // ✏️ [최우선 0순위 보호]: 오른손 펜슬 필기 도중 다른 포인터(손바닥/손가락)가 떨어지거나 pointercancel 될 때는
         // 펜슬 획을 절대 건드리지 않고, 카메라 롤백(render)도 호출하지 않아 그리는 중인 글씨가 지워지지 않도록 100% 보호!
-        if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
+        if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || this.isDrawingSticker) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
           if (e.pointerId !== undefined && e.pointerId !== this._activeDrawingPointerId) {
             if (this.activePointers) {
               this.activePointers.delete(e.pointerId);
@@ -23519,7 +23639,7 @@ class GraphApp {
         }
 
         lastPointerUpTime = nowT;
-        if (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
+        if (this.isDrawingInk || this.isStylusDrawing || this.isDrawingSticker || this._tappingBoardSticker || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
           handleUp(e);
         }
       };
@@ -23549,7 +23669,7 @@ class GraphApp {
       if (window.PointerEvent && e.isTrusted) return;
       this.isPointerDownOnCanvas = false;
       if (Date.now() - lastPointerUpTime < 350) return;
-      if (this.isDrawingInk || !isClickableUI(e.target)) {
+      if (this.isDrawingInk || this.isDrawingSticker || this._tappingBoardSticker || !isClickableUI(e.target)) {
         handleUp(e);
       }
     });
@@ -28652,7 +28772,7 @@ class GraphApp {
             }
           }
           if (!this._omitStickersForViewerSnapshot) {
-            const cardStickers = this.getCardStickersArray(wEl);
+            const cardStickers = this.getCardStickersArray(el);
             if (Array.isArray(cardStickers) && cardStickers.length > 0) {
               cardStickers.forEach(stk => {
                 if (!stk || stk.revealed) return;

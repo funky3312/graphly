@@ -5449,15 +5449,15 @@ body.theme-light .card-btn-restore {
   touch-action: none !important;
 }
 
-body:not(.ink-laser-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-canvas,
-body:not(.ink-laser-tool-active) #problemCardWidget.card-ink-active:not(.minimized) #problemCardCanvas,
-body:not(.ink-laser-tool-active) #graphCardWidget.card-ink-active:not(.minimized) #graphCardCanvas {
+body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-canvas,
+body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active) #problemCardWidget.card-ink-active:not(.minimized) #problemCardCanvas,
+body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active) #graphCardWidget.card-ink-active:not(.minimized) #graphCardCanvas {
   pointer-events: auto !important;
   cursor: none !important;
 }
 
-body:not(.ink-laser-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-body,
-body:not(.ink-laser-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-img {
+body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-body,
+body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-img {
   cursor: none !important;
 }
 
@@ -9788,15 +9788,35 @@ body.theme-light .pill-remote-btn.pill-sticker-btn.active {
   box-shadow: 0 2px 8px rgba(202, 138, 4, 0.25) !important;
 }
 
-body.ink-sticker-tool-active .problem-card-body {
+body.ink-sticker-tool-active #graphCanvas,
+body.ink-sticker-tool-active .problem-card-body,
+body.ink-sticker-tool-active .problem-card-img,
+body.ink-sticker-tool-active .problem-card-widget.card-ink-active .problem-card-body,
+body.ink-sticker-tool-active .problem-card-widget.card-ink-active .problem-card-img {
   cursor: crosshair !important;
+}
+
+.workspace-sticker-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 210 !important;
+  overflow: hidden;
+}
+
+body.ink-sticker-tool-active .workspace-sticker-overlay .workspace-sticker-item {
+  pointer-events: none !important;
+}
+
+body.ink-sticker-tool-active .workspace-sticker-overlay .workspace-sticker-item .card-sticker-del-btn {
+  pointer-events: auto !important;
 }
 
 .card-stickers-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 6;
+  z-index: 25 !important;
   overflow: hidden;
   border-radius: inherit;
 }
@@ -9907,12 +9927,13 @@ body.ink-sticker-tool-active .problem-card-body {
   background: #dc2626;
 }
 
-.card-sticker-draft {
+.card-sticker-draft,
+.workspace-sticker-draft {
   position: absolute;
   pointer-events: none;
   border-radius: 7px;
   background: rgba(250, 204, 21, 0.68);
   border: 2px solid #ca8a04;
   box-shadow: 0 4px 12px rgba(202, 138, 4, 0.25);
-  z-index: 8;
+  z-index: 26 !important;
 }
