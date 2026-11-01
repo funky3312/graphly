@@ -9767,3 +9767,152 @@ body.theme-light .custom-graph-empty {
   border-color: #cbd5e1;
   color: #64748b;
 }
+
+
+/* ==========================================================================
+   🟨 [가림막 포스트잇 '스티커' 도구 (#btnInkSticker · #btnPillSticker · 카드/뷰어 스티커)]
+   ========================================================================== */
+.ink-tool-btn.ink-sticker-btn.active,
+.pill-remote-btn.pill-sticker-btn.active {
+  background: linear-gradient(135deg, rgba(250, 204, 21, 0.28), rgba(234, 179, 8, 0.22)) !important;
+  border-color: #eab308 !important;
+  color: #fde047 !important;
+  box-shadow: 0 0 12px rgba(234, 179, 8, 0.32) !important;
+}
+
+body.theme-light .ink-tool-btn.ink-sticker-btn.active,
+body.theme-light .pill-remote-btn.pill-sticker-btn.active {
+  background: linear-gradient(135deg, #fef08a, #fde047) !important;
+  border-color: #ca8a04 !important;
+  color: #854d0e !important;
+  box-shadow: 0 2px 8px rgba(202, 138, 4, 0.25) !important;
+}
+
+body.ink-sticker-tool-active .problem-card-body {
+  cursor: crosshair !important;
+}
+
+.card-stickers-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.card-sticker-item,
+.viewer-sticker-hotspot {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer !important;
+  user-select: none;
+  touch-action: none;
+  box-sizing: border-box;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #fef08a 0%, #fde047 68%, #facc15 100%);
+  border: 1.5px solid #eab308;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.12s ease;
+  overflow: hidden;
+  z-index: 7;
+}
+
+.card-sticker-item::after,
+.viewer-sticker-hotspot::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  background: linear-gradient(135deg, transparent 50%, rgba(202, 138, 4, 0.38) 50%);
+  pointer-events: none;
+}
+
+.card-sticker-item:hover,
+.viewer-sticker-hotspot:hover {
+  border-color: #ca8a04;
+  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.card-sticker-item.revealed,
+.viewer-sticker-hotspot.revealed {
+  background: rgba(250, 204, 21, 0.06) !important;
+  border: 1.5px dashed rgba(202, 138, 4, 0.65) !important;
+  box-shadow: none !important;
+}
+
+.card-sticker-item.revealed::after,
+.viewer-sticker-hotspot.revealed::after {
+  display: none;
+}
+
+.card-sticker-badge {
+  font-size: 11px;
+  font-weight: 800;
+  color: #854d0e;
+  background: rgba(255, 255, 255, 0.62);
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(202, 138, 4, 0.28);
+  pointer-events: none;
+  white-space: nowrap;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.card-sticker-item.revealed .card-sticker-badge,
+.viewer-sticker-hotspot.revealed .card-sticker-badge {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  font-size: 9.5px;
+  padding: 1px 4px;
+  opacity: 0.68;
+  background: rgba(254, 240, 138, 0.85);
+}
+
+.card-sticker-del-btn {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(15, 23, 42, 0.68);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer !important;
+  opacity: 0;
+  transition: opacity 0.14s ease, background 0.14s ease;
+  padding: 0;
+  z-index: 2;
+}
+
+.card-sticker-item:hover .card-sticker-del-btn {
+  opacity: 1;
+}
+
+.card-sticker-del-btn:hover {
+  background: #dc2626;
+}
+
+.card-sticker-draft {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 7px;
+  background: rgba(250, 204, 21, 0.68);
+  border: 2px solid #ca8a04;
+  box-shadow: 0 4px 12px rgba(202, 138, 4, 0.25);
+  z-index: 8;
+}

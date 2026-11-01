@@ -341,6 +341,15 @@ class GraphApp {
     this.lessonPlaylistSlides = [];
     this.lessonPlaylistIndex = 0;
     this.isLessonPlaylistActive = false;
+    this.boardStickers = [];
+    this.problemCardStickers = [];
+    this.graphCardStickers = [];
+    this.isDrawingSticker = false;
+    this.stickerDraftStart = null;
+    this.stickerDraftCurrent = null;
+    this._pendingStickerTap = null;
+    this._tappingBoardSticker = null;
+    this._hoveredBoardStickerId = null;
     this.cloudUser = null;
     this.myLibraryCache = [];
     this.communityHubCache = [];
@@ -443,7 +452,10 @@ class GraphApp {
       '.setting-toggle-item',
       '.vf-toggle-wrap',
       '.header-show-tab',
-      '.audio-sync-btn'
+      '.audio-sync-btn',
+      '.card-sticker-item',
+      '.card-sticker-del-btn',
+      '.viewer-sticker-hotspot'
     ].join(', ');
 
     const TOOLBAR_CONTAINER_SELECTOR = [
@@ -913,7 +925,8 @@ class GraphApp {
       showAxisLabels: this.showAxisLabels,
       axisLabelFontSize: this.axisLabelFontSize,
       textLabelFontSize: this.textLabelFontSize,
-      inkStrokes: this.inkStrokes
+      inkStrokes: this.inkStrokes,
+      boardStickers: this.boardStickers
     });
   }
 
@@ -949,7 +962,8 @@ class GraphApp {
         isProblemCardMinimized: this.isProblemCardMinimized,
         problemCardBaseX: this.problemCardBaseX,
         problemCardBaseY: this.problemCardBaseY,
-        problemInkStrokes: JSON.parse(JSON.stringify(this.problemInkStrokes || []))
+        problemInkStrokes: JSON.parse(JSON.stringify(this.problemInkStrokes || [])),
+        problemCardStickers: JSON.parse(JSON.stringify(this.problemCardStickers || []))
       } : null,
       extraProblemCards: [...(this.extraProblemCards || [])],
       primaryGraphCard: hasPrimaryGraph ? {
@@ -970,7 +984,8 @@ class GraphApp {
         graphCardBaseX: this.graphCardBaseX,
         graphCardBaseY: this.graphCardBaseY,
         primaryGraphCardSnapshot: this.primaryGraphCardSnapshot,
-        graphInkStrokes: JSON.parse(JSON.stringify(this.graphInkStrokes || []))
+        graphInkStrokes: JSON.parse(JSON.stringify(this.graphInkStrokes || [])),
+        graphCardStickers: JSON.parse(JSON.stringify(this.graphCardStickers || []))
       } : null,
       extraGraphCards: [...(this.extraGraphCards || [])],
       graphCaseCounter: this._graphCaseCounter || 0,
@@ -1007,6 +1022,8 @@ class GraphApp {
       this.problemCardBaseX = pc.problemCardBaseX;
       this.problemCardBaseY = pc.problemCardBaseY;
       this.problemInkStrokes = JSON.parse(JSON.stringify(pc.problemInkStrokes || []));
+      this.problemCardStickers = JSON.parse(JSON.stringify(pc.problemCardStickers || []));
+      if (typeof pWidget._renderCardStickers === 'function') pWidget._renderCardStickers();
       if (pImg) pImg.src = pc.imgSrc || '';
       if (pTitle) pTitle.textContent = pc.titleText || '문제';
       if (pToggle) pToggle.textContent = pc.toggleText || '▾';
@@ -1053,6 +1070,8 @@ class GraphApp {
       this.graphCardBaseY = gc.graphCardBaseY;
       this.primaryGraphCardSnapshot = gc.primaryGraphCardSnapshot;
       this.graphInkStrokes = JSON.parse(JSON.stringify(gc.graphInkStrokes || []));
+      this.graphCardStickers = JSON.parse(JSON.stringify(gc.graphCardStickers || []));
+      if (typeof gWidget._renderCardStickers === 'function') gWidget._renderCardStickers();
       if (gImg) gImg.src = gc.imgSrc || '';
       if (gTitle) gTitle.textContent = gc.titleText || '보관 그래프 #1';
       if (gToggle) gToggle.textContent = gc.toggleText || '▾';
@@ -1145,6 +1164,40 @@ class GraphApp {
       return;
     }
 
+    // 🌟 [0ms 초고속 칠판/카드 가림막 스티커 실행 취소]
+    if (typeof prevSnap === 'object' && prevSnap !== null && (prevSnap.type === 'sticker_add' || prevSnap.type === 'sticker_delete')) {
+      if (!Array.isArray(this.boardStickers)) this.boardStickers = [];
+      if (prevSnap.type === 'sticker_add') {
+        const idx = this.boardStickers.indexOf(prevSnap.sticker);
+        if (idx !== -1) this.boardStickers.splice(idx, 1);
+      } else {
+        this.boardStickers.push(prevSnap.sticker);
+      }
+      this.redoStack.push(prevSnap);
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      this.render();
+      this.showToast('↺ 스티커 실행 취소됨');
+      return;
+    }
+    if (typeof prevSnap === 'object' && prevSnap !== null && (prevSnap.type === 'card_sticker_add' || prevSnap.type === 'card_sticker_delete')) {
+      const arr = prevSnap.stickersArr || this.getCardStickersArray(prevSnap.cardEl);
+      if (Array.isArray(arr)) {
+        if (prevSnap.type === 'card_sticker_add') {
+          const idx = arr.indexOf(prevSnap.sticker);
+          if (idx !== -1) arr.splice(idx, 1);
+        } else {
+          arr.push(prevSnap.sticker);
+        }
+      }
+      if (typeof prevSnap.renderFn === 'function') prevSnap.renderFn();
+      this.redoStack.push(prevSnap);
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      this.showToast('↺ 카드 스티커 실행 취소됨');
+      return;
+    }
+
     // 🌟 [0ms 초고속 카드 위 필기 획 단위 실행 취소]
     if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'card_stroke_add') {
       if (Array.isArray(prevSnap.strokesArr)) {
@@ -1200,6 +1253,40 @@ class GraphApp {
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       this.showToast('↻ 다시 실행됨');
+      return;
+    }
+
+    // 🌟 [0ms 초고속 칠판/카드 가림막 스티커 다시 실행]
+    if (typeof nextSnap === 'object' && nextSnap !== null && (nextSnap.type === 'sticker_add' || nextSnap.type === 'sticker_delete')) {
+      if (!Array.isArray(this.boardStickers)) this.boardStickers = [];
+      if (nextSnap.type === 'sticker_add') {
+        this.boardStickers.push(nextSnap.sticker);
+      } else {
+        const idx = this.boardStickers.indexOf(nextSnap.sticker);
+        if (idx !== -1) this.boardStickers.splice(idx, 1);
+      }
+      this.undoStack.push(nextSnap);
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      this.render();
+      this.showToast('↻ 스티커 다시 실행됨');
+      return;
+    }
+    if (typeof nextSnap === 'object' && nextSnap !== null && (nextSnap.type === 'card_sticker_add' || nextSnap.type === 'card_sticker_delete')) {
+      const arr = nextSnap.stickersArr || this.getCardStickersArray(nextSnap.cardEl);
+      if (Array.isArray(arr)) {
+        if (nextSnap.type === 'card_sticker_add') {
+          arr.push(nextSnap.sticker);
+        } else {
+          const idx = arr.indexOf(nextSnap.sticker);
+          if (idx !== -1) arr.splice(idx, 1);
+        }
+      }
+      if (typeof nextSnap.renderFn === 'function') nextSnap.renderFn();
+      this.undoStack.push(nextSnap);
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      this.showToast('↻ 카드 스티커 다시 실행됨');
       return;
     }
 
@@ -1344,6 +1431,11 @@ class GraphApp {
         this.inkStrokes = JSON.parse(JSON.stringify(data.inkStrokes));
       } else {
         this.inkStrokes = [];
+      }
+      if (Array.isArray(data.boardStickers)) {
+        this.boardStickers = JSON.parse(JSON.stringify(data.boardStickers));
+      } else {
+        this.boardStickers = [];
       }
       this._inkBakeDirty = true;
 
@@ -1896,6 +1988,13 @@ class GraphApp {
     this.dropLines = [];
     this.textLabels = [];
     this.inkStrokes = [];
+    this.boardStickers = [];
+    this.problemCardStickers = [];
+    this.graphCardStickers = [];
+    const pWReset = document.getElementById('problemCardWidget');
+    if (pWReset && typeof pWReset._renderCardStickers === 'function') pWReset._renderCardStickers();
+    const gWReset = document.getElementById('graphCardWidget');
+    if (gWReset && typeof gWReset._renderCardStickers === 'function') gWReset._renderCardStickers();
     this.selectedInkIndices = [];
     this.inkLassoBox = null;
     this._inkBakeDirty = true;
@@ -2241,6 +2340,7 @@ class GraphApp {
     const btnEraser = document.getElementById('btnInkEraser');
     const btnLasso = document.getElementById('btnInkLasso');
     const btnLaser = document.getElementById('btnInkLaser');
+    const btnSticker = document.getElementById('btnInkSticker');
     const btnAxes = document.getElementById('btnInkToggleAxes');
 
     if (btnSelect) btnSelect.onclick = () => this.setActiveInkTool('select');
@@ -2249,6 +2349,7 @@ class GraphApp {
     if (btnEraser) btnEraser.onclick = () => this.setActiveInkTool('eraser');
     if (btnLasso) btnLasso.onclick = () => this.setActiveInkTool('lasso');
     if (btnLaser) btnLaser.onclick = () => this.setActiveInkTool('laser');
+    if (btnSticker) btnSticker.onclick = () => this.setActiveInkTool('sticker');
     if (btnAxes) btnAxes.onclick = () => this.toggleAxes();
     this.updateAxesUI();
 
@@ -2810,6 +2911,7 @@ class GraphApp {
     }
     if (document.body) {
       document.body.classList.toggle('ink-laser-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'laser'));
+      document.body.classList.toggle('ink-sticker-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'sticker'));
     }
 
     this.syncCurveContextBar();
@@ -2838,6 +2940,7 @@ class GraphApp {
     const btnEraser = document.getElementById('btnInkEraser');
     const btnLasso = document.getElementById('btnInkLasso');
     const btnLaser = document.getElementById('btnInkLaser');
+    const btnSticker = document.getElementById('btnInkSticker');
 
     if (btnSelect) btnSelect.classList.toggle('active', tool === 'select');
     if (btnPen) btnPen.classList.toggle('active', tool === 'pen');
@@ -2845,6 +2948,7 @@ class GraphApp {
     if (btnEraser) btnEraser.classList.toggle('active', tool === 'eraser');
     if (btnLasso) btnLasso.classList.toggle('active', tool === 'lasso');
     if (btnLaser) btnLaser.classList.toggle('active', tool === 'laser');
+    if (btnSticker) btnSticker.classList.toggle('active', tool === 'sticker');
 
     this.syncQuickPillRemoteUI();
     this.syncCurveContextBar();
@@ -2859,11 +2963,12 @@ class GraphApp {
       }
     }
 
-    if (!this.isInkMode && (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'lasso' || tool === 'laser' || tool === 'select')) {
+    if (!this.isInkMode && (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'lasso' || tool === 'laser' || tool === 'sticker' || tool === 'select')) {
       this.toggleInkMode(true);
     }
     if (document.body) {
       document.body.classList.toggle('ink-laser-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'laser'));
+      document.body.classList.toggle('ink-sticker-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'sticker'));
     }
 
     if (tool !== 'lasso') {
@@ -2896,7 +3001,7 @@ class GraphApp {
     const tbDot = document.getElementById('inkSizeToolbarDot');
     if (tbDot) tbDot.style.background = color;
     // 색상을 바꾸면 지우개, 올가미, 레이저, 선택 모드였을 때 자동으로 펜으로 전환
-    if (this.activeInkTool === 'eraser' || this.activeInkTool === 'select' || this.activeInkTool === 'lasso' || this.activeInkTool === 'laser') {
+    if (this.activeInkTool === 'eraser' || this.activeInkTool === 'select' || this.activeInkTool === 'lasso' || this.activeInkTool === 'laser' || this.activeInkTool === 'sticker') {
       this.setActiveInkTool('pen');
     }
   }
@@ -3042,6 +3147,9 @@ class GraphApp {
         if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
         this.canvas.style.cursor = 'crosshair';
       }
+    } else if (this.activeInkTool === 'sticker') {
+      if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+      this.canvas.style.cursor = 'crosshair';
     } else if (this.activeInkTool === 'lasso') {
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       if (this.isDraggingLassoSelection) {
@@ -3059,21 +3167,32 @@ class GraphApp {
     const hasCardInk = Boolean(
       (this.problemInkStrokes && this.problemInkStrokes.length > 0) ||
       (this.graphInkStrokes && this.graphInkStrokes.length > 0) ||
-      (this.extraProblemCards && this.extraProblemCards.some(c => c && c.el && c.el._cardInkStrokes && c.el._cardInkStrokes.length > 0)) ||
-      (this.extraGraphCards && this.extraGraphCards.some(c => c && c.el && c.el._cardInkStrokes && c.el._cardInkStrokes.length > 0))
+      (this.problemCardStickers && this.problemCardStickers.length > 0) ||
+      (this.graphCardStickers && this.graphCardStickers.length > 0) ||
+      (this.extraProblemCards && this.extraProblemCards.some(c => c && c.el && ((c.el._cardInkStrokes && c.el._cardInkStrokes.length > 0) || (c.el._cardStickers && c.el._cardStickers.length > 0)))) ||
+      (this.extraGraphCards && this.extraGraphCards.some(c => c && c.el && ((c.el._cardInkStrokes && c.el._cardInkStrokes.length > 0) || (c.el._cardStickers && c.el._cardStickers.length > 0))))
     );
-    if ((!this.inkStrokes || this.inkStrokes.length === 0) && !hasCardInk) return;
+    const hasBoardStickers = Boolean(this.boardStickers && this.boardStickers.length > 0);
+    if ((!this.inkStrokes || this.inkStrokes.length === 0) && !hasCardInk && !hasBoardStickers) return;
     this.pushHistoryState();
     if (hasCardInk) {
       this.problemInkStrokes = [];
       this.graphInkStrokes = [];
+      this.problemCardStickers = [];
+      this.graphCardStickers = [];
       this.renderProblemCardCanvas();
       this.renderGraphCardCanvas();
+      const pW = document.getElementById('problemCardWidget');
+      if (pW && typeof pW._renderCardStickers === 'function') pW._renderCardStickers();
+      const gW = document.getElementById('graphCardWidget');
+      if (gW && typeof gW._renderCardStickers === 'function') gW._renderCardStickers();
       if (this.extraProblemCards) {
         this.extraProblemCards.forEach(c => {
           if (c && c.el) {
             c.el._cardInkStrokes = [];
+            c.el._cardStickers = [];
             if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+            if (typeof c.el._renderCardStickers === 'function') c.el._renderCardStickers();
           }
         });
       }
@@ -3081,9 +3200,20 @@ class GraphApp {
         this.extraGraphCards.forEach(c => {
           if (c && c.el) {
             c.el._cardInkStrokes = [];
+            c.el._cardStickers = [];
             if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+            if (typeof c.el._renderCardStickers === 'function') c.el._renderCardStickers();
           }
         });
+      }
+    }
+    if (hasBoardStickers) {
+      if (this.isGraphCovered && !this.pdfPageBoardData) {
+        this.boardStickers = (this.boardStickers || []).filter(s => (s.target || 'board') !== 'board');
+      } else if (this.pdfPageBoardData) {
+        this.boardStickers = (this.boardStickers || []).filter(s => !s.onPdfBoard && (s.target || 'board') !== 'board');
+      } else {
+        this.boardStickers = (this.boardStickers || []).filter(s => (s.target || 'board') !== 'graph' || Boolean(s.onPdfBoard));
       }
     }
 
@@ -3119,7 +3249,227 @@ class GraphApp {
     return false;
   }
 
+  getCardStickersArray(cardWidgetEl) {
+    if (!cardWidgetEl) return [];
+    if (cardWidgetEl.id === 'problemCardWidget') {
+      if (!Array.isArray(this.problemCardStickers)) this.problemCardStickers = [];
+      return this.problemCardStickers;
+    }
+    if (cardWidgetEl.id === 'graphCardWidget') {
+      if (!Array.isArray(this.graphCardStickers)) this.graphCardStickers = [];
+      return this.graphCardStickers;
+    }
+    if (!Array.isArray(cardWidgetEl._cardStickers)) {
+      cardWidgetEl._cardStickers = [];
+    }
+    return cardWidgetEl._cardStickers;
+  }
+
+  getBoardStickerScreenRect(stk) {
+    if (!stk) return null;
+    const stkTarget = stk.target || 'board';
+    if (this.isGraphCovered && !this.pdfPageBoardData && stkTarget !== 'board') return null;
+    if ((!this.isGraphCovered || this.pdfPageBoardData) && !this.isBoardMode && stkTarget !== 'graph') return null;
+    if (stkTarget === 'graph' && Boolean(stk.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return null;
+    if (this._isAudioReplayActive && this.audioSyncData && this.audioReplayViewMode === 'video') {
+      if (typeof stk.tStart === 'number' && stk.tStart > (this.audioPlayCurrentMs || 0)) {
+        return null;
+      }
+    }
+    const isBoard = (stkTarget === 'board');
+    const p1 = isBoard ? this.boardToScreen(stk.x1, stk.y1) : this.mathToScreen(stk.x1, stk.y1);
+    const p2 = isBoard ? this.boardToScreen(stk.x2, stk.y2) : this.mathToScreen(stk.x2, stk.y2);
+    if (!p1 || !p2 || !Number.isFinite(p1.x) || !Number.isFinite(p2.x)) return null;
+    const x = Math.min(p1.x, p2.x);
+    const y = Math.min(p1.y, p2.y);
+    const w = Math.abs(p2.x - p1.x);
+    const h = Math.abs(p2.y - p1.y);
+    return { x, y, w, h };
+  }
+
+  findBoardStickerAtScreenPos(pos) {
+    if (!pos || !Array.isArray(this.boardStickers) || this.boardStickers.length === 0) return null;
+    for (let i = this.boardStickers.length - 1; i >= 0; i--) {
+      const stk = this.boardStickers[i];
+      const rect = this.getBoardStickerScreenRect(stk);
+      if (!rect || rect.w < 4 || rect.h < 4) continue;
+      if (pos.x >= rect.x && pos.x <= rect.x + rect.w && pos.y >= rect.y && pos.y <= rect.y + rect.h) {
+        const isDeleteBtn = (
+          rect.w >= 34 &&
+          rect.h >= 22 &&
+          pos.x >= rect.x + rect.w - 22 &&
+          pos.x <= rect.x + rect.w &&
+          pos.y >= rect.y &&
+          pos.y <= rect.y + 22
+        );
+        return { sticker: stk, index: i, rect, isDeleteBtn };
+      }
+    }
+    return null;
+  }
+
+  deleteBoardSticker(stk) {
+    if (!stk || !Array.isArray(this.boardStickers)) return false;
+    const idx = this.boardStickers.indexOf(stk);
+    if (idx === -1) return false;
+    this.boardStickers.splice(idx, 1);
+    this.undoStack.push({ type: 'sticker_delete', sticker: stk });
+    if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+    this.redoStack = [];
+    this.updateUndoRedoUI();
+    if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+    this.render();
+    return true;
+  }
+
+  drawBoardStickers(ctx, isExport = false) {
+    if (this._omitStickersForViewerSnapshot) return;
+    const hasStickers = Array.isArray(this.boardStickers) && this.boardStickers.length > 0;
+    const hasDraft = Boolean(!isExport && this.isDrawingSticker && this.stickerDraftStart && this.stickerDraftCurrent);
+    if (!hasStickers && !hasDraft) return;
+
+    if (hasStickers) {
+      for (let i = 0; i < this.boardStickers.length; i++) {
+        const stk = this.boardStickers[i];
+        const rect = this.getBoardStickerScreenRect(stk);
+        if (!rect || rect.w < 4 || rect.h < 4) continue;
+        const { x, y, w, h } = rect;
+        const r = Math.min(7, w / 3, h / 3);
+
+        if (stk.revealed) {
+          if (isExport) continue; // 내보내기 이미지에서는 열린 스티커의 점선 테두리를 숨겨 깔끔하게 출력
+          ctx.save();
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(x, y, w, h, r);
+          else ctx.rect(x, y, w, h);
+          ctx.fillStyle = 'rgba(250, 204, 21, 0.06)';
+          ctx.fill();
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([5, 4]);
+          ctx.strokeStyle = 'rgba(202, 138, 4, 0.72)';
+          ctx.stroke();
+          ctx.setLineDash([]);
+          if (w >= 28 && h >= 18) {
+            ctx.font = '700 10px "Pretendard", sans-serif';
+            ctx.fillStyle = '#ca8a04';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText('🔓', x + 5, y + 4);
+          }
+          if (this._hoveredBoardStickerId === stk.id && w >= 34 && h >= 22) {
+            const bx = x + w - 11;
+            const by = y + 11;
+            ctx.beginPath();
+            ctx.arc(bx, by, 8.5, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.74)';
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '700 10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('✕', bx, by + 0.5);
+          }
+          ctx.restore();
+        } else {
+          ctx.save();
+          ctx.shadowColor = 'rgba(15, 23, 42, 0.22)';
+          ctx.shadowBlur = 8;
+          ctx.shadowOffsetY = 2;
+          const grad = ctx.createLinearGradient(x, y, x + w, y + h);
+          grad.addColorStop(0, '#fef08a');
+          grad.addColorStop(0.68, '#fde047');
+          grad.addColorStop(1, '#facc15');
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(x, y, w, h, r);
+          else ctx.rect(x, y, w, h);
+          ctx.fillStyle = grad;
+          ctx.fill();
+          ctx.shadowColor = 'transparent';
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = '#eab308';
+          ctx.stroke();
+
+          // 우하단 포스트잇 접힌 모서리 포인트
+          if (w >= 24 && h >= 18) {
+            const fold = Math.min(10, w * 0.2, h * 0.25);
+            ctx.beginPath();
+            ctx.moveTo(x + w - fold, y + h);
+            ctx.lineTo(x + w, y + h - fold);
+            ctx.lineTo(x + w, y + h);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(202, 138, 4, 0.34)';
+            ctx.fill();
+          }
+
+          if (!isExport && w >= 32 && h >= 20) {
+            const labelText = (w >= 68 && h >= 26) ? '🔒 터치' : '🔒';
+            ctx.font = '800 11px "Pretendard", sans-serif';
+            const tw = ctx.measureText(labelText).width;
+            const pw = tw + 12;
+            const ph = 18;
+            const px = x + (w - pw) / 2;
+            const py = y + (h - ph) / 2;
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 9);
+            else ctx.rect(px, py, pw, ph);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+            ctx.fill();
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(202, 138, 4, 0.28)';
+            ctx.stroke();
+            ctx.fillStyle = '#854d0e';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(labelText, x + w / 2, y + h / 2 + 0.5);
+          }
+
+          if (!isExport && this._hoveredBoardStickerId === stk.id && w >= 34 && h >= 22) {
+            const bx = x + w - 11;
+            const by = y + 11;
+            ctx.beginPath();
+            ctx.arc(bx, by, 8.5, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.74)';
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '700 10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('✕', bx, by + 0.5);
+          }
+          ctx.restore();
+        }
+      }
+    }
+
+    if (hasDraft) {
+      const s = this.stickerDraftStart;
+      const c = this.stickerDraftCurrent;
+      const dx = Math.min(s.x, c.x);
+      const dy = Math.min(s.y, c.y);
+      const dw = Math.abs(c.x - s.x);
+      const dh = Math.abs(c.y - s.y);
+      if (dw >= 4 && dh >= 4) {
+        ctx.save();
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(dx, dy, dw, dh, 7);
+        else ctx.rect(dx, dy, dw, dh);
+        ctx.fillStyle = 'rgba(250, 204, 21, 0.68)';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ca8a04';
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
   eraseInkAtPoint(screenX, screenY, eraseRadius = 9) {
+    if (Array.isArray(this.boardStickers) && this.boardStickers.length > 0) {
+      const hitStk = this.findBoardStickerAtScreenPos({ x: screenX, y: screenY });
+      if (hitStk && hitStk.sticker) {
+        this.deleteBoardSticker(hitStk.sticker);
+      }
+    }
     if (!this.inkStrokes || this.inkStrokes.length === 0) return;
 
     const isInsideStage = this.isInsideCompactStage({ x: screenX, y: screenY });
@@ -4458,6 +4808,7 @@ class GraphApp {
     const btnEraser = document.getElementById('btnPillEraser');
     const btnLasso = document.getElementById('btnPillLasso');
     const btnLaser = document.getElementById('btnPillLaser');
+    const btnSticker = document.getElementById('btnPillSticker');
     const btnZoomOut = document.getElementById('btnPillZoomOut');
     const btnZoomIn = document.getElementById('btnPillZoomIn');
     const btnHighlighter = document.getElementById('btnPillHighlighter');
@@ -4588,6 +4939,18 @@ class GraphApp {
           this.setActiveInkTool('pen');
         } else {
           this.setActiveInkTool('laser');
+        }
+      };
+    }
+
+    if (btnSticker) {
+      btnSticker.onclick = (e) => {
+        e.stopPropagation();
+        if (!this.isInkMode) this.toggleInkMode(true);
+        if (this.activeInkTool === 'sticker') {
+          this.setActiveInkTool('pen');
+        } else {
+          this.setActiveInkTool('sticker');
         }
       };
     }
@@ -4798,6 +5161,7 @@ class GraphApp {
     const btnEraser = document.getElementById('btnPillEraser');
     const btnLasso = document.getElementById('btnPillLasso');
     const btnLaser = document.getElementById('btnPillLaser');
+    const btnSticker = document.getElementById('btnPillSticker');
     const btnHighlighter = document.getElementById('btnPillHighlighter');
     const secTools = document.getElementById('pillSecTools');
     const secZoom = document.getElementById('pillSecZoom');
@@ -4838,6 +5202,7 @@ class GraphApp {
     if (btnEraser) btnEraser.classList.toggle('active', tool === 'eraser');
     if (btnLasso) btnLasso.classList.toggle('active', tool === 'lasso');
     if (btnLaser) btnLaser.classList.toggle('active', tool === 'laser');
+    if (btnSticker) btnSticker.classList.toggle('active', tool === 'sticker');
     if (btnHighlighter) btnHighlighter.classList.toggle('active', tool === 'highlighter');
 
     const mods = this.pillModules || { tools: true, zoom: true, color: false, extra: false };
@@ -8899,6 +9264,240 @@ class GraphApp {
         ensureLoop();
       }
     });
+
+    // 🟨 [카드 위 가림막 '스티커' 레이어 (.card-stickers-layer): 연속 드래그 생성 & 원터치 열림/닫힘 토글]
+    let stickersLayer = bodyEl.querySelector('.card-stickers-layer');
+    if (!stickersLayer) {
+      stickersLayer = document.createElement('div');
+      stickersLayer.className = 'card-stickers-layer';
+      bodyEl.appendChild(stickersLayer);
+    }
+
+    const renderCardStickers = () => {
+      if (!stickersLayer) return;
+      stickersLayer.innerHTML = '';
+      const arr = this.getCardStickersArray(cardWidgetEl);
+      if (!Array.isArray(arr) || arr.length === 0) return;
+      const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData && this.audioReplayViewMode === 'video');
+
+      arr.forEach((stk) => {
+        if (!stk) return;
+        if (isAudioReplay && typeof stk.tStart === 'number' && stk.tStart > (this.audioPlayCurrentMs || 0)) {
+          return;
+        }
+        const itemEl = document.createElement('div');
+        itemEl.className = 'card-sticker-item' + (stk.revealed ? ' revealed' : '');
+        itemEl.dataset.stickerId = stk.id || '';
+        itemEl.style.left = `${(stk.nx * 100).toFixed(2)}%`;
+        itemEl.style.top = `${(stk.ny * 100).toFixed(2)}%`;
+        itemEl.style.width = `${(stk.nw * 100).toFixed(2)}%`;
+        itemEl.style.height = `${(stk.nh * 100).toFixed(2)}%`;
+
+        const badgeEl = document.createElement('span');
+        badgeEl.className = 'card-sticker-badge';
+        badgeEl.textContent = stk.revealed ? '🔓' : '🔒 터치';
+        itemEl.appendChild(badgeEl);
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'card-sticker-del-btn';
+        delBtn.title = '스티커 삭제';
+        delBtn.textContent = '✕';
+        delBtn.addEventListener('pointerdown', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+        });
+        delBtn.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const curArr = this.getCardStickersArray(cardWidgetEl);
+          const idx = curArr.indexOf(stk);
+          if (idx !== -1) {
+            curArr.splice(idx, 1);
+            this.undoStack.push({
+              type: 'card_sticker_delete',
+              cardEl: cardWidgetEl,
+              stickersArr: curArr,
+              sticker: stk,
+              renderFn: renderCardStickers
+            });
+            if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+            this.redoStack = [];
+            this.updateUndoRedoUI();
+            if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+            renderCardStickers();
+          }
+        });
+        itemEl.appendChild(delBtn);
+
+        let downPt = null;
+        itemEl.addEventListener('pointerdown', (ev) => {
+          if (ev.target && ev.target.closest && ev.target.closest('.card-sticker-del-btn')) return;
+          if (this.isInkMode && this.activeInkTool === 'sticker') {
+            // 스티커 도구 활성 상태에서는 살짝 드래그하면 새 스티커 생성, 제자리 탭이면 토글하도록 부모(bodyEl)에 위임
+            return;
+          }
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (this.isInkMode && this.activeInkTool === 'eraser') {
+            const curArr = this.getCardStickersArray(cardWidgetEl);
+            const idx = curArr.indexOf(stk);
+            if (idx !== -1) {
+              curArr.splice(idx, 1);
+              this.undoStack.push({
+                type: 'card_sticker_delete',
+                cardEl: cardWidgetEl,
+                stickersArr: curArr,
+                sticker: stk,
+                renderFn: renderCardStickers
+              });
+              if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+              this.redoStack = [];
+              this.updateUndoRedoUI();
+              if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+              renderCardStickers();
+            }
+            return;
+          }
+          downPt = { x: ev.clientX, y: ev.clientY };
+        });
+
+        itemEl.addEventListener('pointerup', (ev) => {
+          if (ev.target && ev.target.closest && ev.target.closest('.card-sticker-del-btn')) return;
+          if (this.isInkMode && this.activeInkTool === 'sticker') return;
+          if (!downPt) return;
+          const dist = Math.hypot(ev.clientX - downPt.x, ev.clientY - downPt.y);
+          downPt = null;
+          if (dist <= 12) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            stk.revealed = !stk.revealed;
+            itemEl.classList.toggle('revealed', stk.revealed);
+            badgeEl.textContent = stk.revealed ? '🔓' : '🔒 터치';
+            if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+          }
+        });
+
+        stickersLayer.appendChild(itemEl);
+      });
+    };
+    cardWidgetEl._renderCardStickers = renderCardStickers;
+    renderCardStickers();
+
+    // 카드 몸통 위에서 [스티커] 도구로 드래그하여 연속 가림막 생성
+    let isDrawingCardSticker = false;
+    let cardStickerStart = null;
+    let cardStickerDraftEl = null;
+    let tappedExistingCardSticker = null;
+
+    bodyEl.addEventListener('pointerdown', (e) => {
+      if (!(this.isInkMode && this.activeInkTool === 'sticker')) return;
+      if (e.button && e.button !== 0) return;
+      if (e.target && e.target.closest && e.target.closest('.card-sticker-del-btn')) return;
+      if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) return;
+
+      const hitItemEl = (e.target && e.target.closest) ? e.target.closest('.card-sticker-item') : null;
+      if (hitItemEl && hitItemEl.dataset.stickerId) {
+        const curArr = this.getCardStickersArray(cardWidgetEl);
+        tappedExistingCardSticker = curArr.find(s => s && s.id === hitItemEl.dataset.stickerId) || null;
+      } else {
+        tappedExistingCardSticker = null;
+      }
+
+      this.bringCardToFront(cardWidgetEl);
+      e.preventDefault();
+      e.stopPropagation();
+      try { bodyEl.setPointerCapture(e.pointerId); } catch (err) { }
+
+      const pos = getNormPos(e);
+      isDrawingCardSticker = true;
+      cardStickerStart = { nx: pos.nx, ny: pos.ny, clientX: e.clientX, clientY: e.clientY };
+
+      cardStickerDraftEl = document.createElement('div');
+      cardStickerDraftEl.className = 'card-sticker-draft';
+      cardStickerDraftEl.style.left = `${(pos.nx * 100).toFixed(2)}%`;
+      cardStickerDraftEl.style.top = `${(pos.ny * 100).toFixed(2)}%`;
+      cardStickerDraftEl.style.width = '0%';
+      cardStickerDraftEl.style.height = '0%';
+      stickersLayer.appendChild(cardStickerDraftEl);
+    }, { capture: true });
+
+    bodyEl.addEventListener('pointermove', (e) => {
+      if (!isDrawingCardSticker || !cardStickerStart) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const pos = getNormPos(e);
+      const nx = Math.min(cardStickerStart.nx, pos.nx);
+      const ny = Math.min(cardStickerStart.ny, pos.ny);
+      const nw = Math.abs(pos.nx - cardStickerStart.nx);
+      const nh = Math.abs(pos.ny - cardStickerStart.ny);
+      if (cardStickerDraftEl) {
+        cardStickerDraftEl.style.left = `${(nx * 100).toFixed(2)}%`;
+        cardStickerDraftEl.style.top = `${(ny * 100).toFixed(2)}%`;
+        cardStickerDraftEl.style.width = `${(nw * 100).toFixed(2)}%`;
+        cardStickerDraftEl.style.height = `${(nh * 100).toFixed(2)}%`;
+      }
+    }, { capture: true });
+
+    const finishCardStickerDrag = (e) => {
+      if (!isDrawingCardSticker || !cardStickerStart) return;
+      isDrawingCardSticker = false;
+      if (cardStickerDraftEl && cardStickerDraftEl.parentNode) {
+        cardStickerDraftEl.parentNode.removeChild(cardStickerDraftEl);
+      }
+      cardStickerDraftEl = null;
+      if (e && e.pointerId !== undefined) {
+        try { bodyEl.releasePointerCapture(e.pointerId); } catch (err) { }
+      }
+
+      const endPos = (e && e.clientX !== undefined) ? getNormPos(e) : { nx: cardStickerStart.nx, ny: cardStickerStart.ny };
+      const rect = bodyEl.getBoundingClientRect();
+      const rw = Math.max(1, rect.width);
+      const rh = Math.max(1, rect.height);
+      const nx = Math.min(cardStickerStart.nx, endPos.nx);
+      const ny = Math.min(cardStickerStart.ny, endPos.ny);
+      const nw = Math.abs(endPos.nx - cardStickerStart.nx);
+      const nh = Math.abs(endPos.ny - cardStickerStart.ny);
+      const pxW = nw * rw;
+      const pxH = nh * rh;
+      cardStickerStart = null;
+
+      if (pxW >= 16 && pxH >= 12) {
+        const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+        const newStk = {
+          id: 'cstk_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          nx,
+          ny,
+          nw,
+          nh,
+          color: '#facc15',
+          revealed: false,
+          tStart: recT
+        };
+        const curArr = this.getCardStickersArray(cardWidgetEl);
+        curArr.push(newStk);
+        this.undoStack.push({
+          type: 'card_sticker_add',
+          cardEl: cardWidgetEl,
+          stickersArr: curArr,
+          sticker: newStk,
+          renderFn: renderCardStickers
+        });
+        if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+        this.redoStack = [];
+        this.updateUndoRedoUI();
+        if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+        renderCardStickers();
+      } else if (tappedExistingCardSticker) {
+        tappedExistingCardSticker.revealed = !tappedExistingCardSticker.revealed;
+        if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+        renderCardStickers();
+      }
+      tappedExistingCardSticker = null;
+    };
+
+    bodyEl.addEventListener('pointerup', finishCardStickerDrag, { capture: true });
+    bodyEl.addEventListener('pointercancel', finishCardStickerDrag, { capture: true });
   }
 
   // 🌟 [각 그래프 보관 카드(#1, #2, #3...) 전용 0.5KB 초경량 순수 그래프 상태 타임머신 스냅샷] 🌟
@@ -16514,7 +17113,9 @@ class GraphApp {
             baseY: c.baseY,
             isMin: Boolean(c.isMin),
             isPdfPageCard: Boolean(c.isPdfPageCard),
-            pdfPageNum: c.pdfPageNum || null
+            pdfPageNum: c.pdfPageNum || null,
+            cardInkStrokes: JSON.parse(JSON.stringify(c.el._cardInkStrokes || [])),
+            cardStickers: JSON.parse(JSON.stringify(c.el._cardStickers || []))
           });
         }
       });
@@ -16535,7 +17136,9 @@ class GraphApp {
             baseY: c.baseY,
             isMin: Boolean(c.isMin),
             caseIdx: c.caseIdx || 2,
-            graphSnapshot: c.graphSnapshot ? JSON.parse(JSON.stringify(c.graphSnapshot)) : null
+            graphSnapshot: c.graphSnapshot ? JSON.parse(JSON.stringify(c.graphSnapshot)) : null,
+            cardInkStrokes: JSON.parse(JSON.stringify(c.el._cardInkStrokes || [])),
+            cardStickers: JSON.parse(JSON.stringify(c.el._cardStickers || []))
           });
         }
       });
@@ -16558,6 +17161,7 @@ class GraphApp {
         problemCardBaseX: this.problemCardBaseX,
         problemCardBaseY: this.problemCardBaseY,
         problemInkStrokes: JSON.parse(JSON.stringify(this.problemInkStrokes || [])),
+        problemCardStickers: JSON.parse(JSON.stringify(this.problemCardStickers || [])),
         imgSrc: (pImg && pImg.src) ? pImg.src : (this.problemCardData && this.problemCardData.imgUrl ? this.problemCardData.imgUrl : ''),
         titleText: pTitle ? pTitle.textContent : '문제',
         toggleText: pToggle ? pToggle.textContent : '▾',
@@ -16577,6 +17181,7 @@ class GraphApp {
         graphCardBaseY: this.graphCardBaseY,
         primaryGraphCardSnapshot: this.primaryGraphCardSnapshot ? JSON.parse(JSON.stringify(this.primaryGraphCardSnapshot)) : null,
         graphInkStrokes: JSON.parse(JSON.stringify(this.graphInkStrokes || [])),
+        graphCardStickers: JSON.parse(JSON.stringify(this.graphCardStickers || [])),
         imgSrc: gImg ? gImg.src : '',
         titleText: gTitle ? gTitle.textContent : '#1',
         toggleText: gToggle ? gToggle.textContent : '▾',
@@ -16644,6 +17249,8 @@ class GraphApp {
       this.problemCardBaseX = typeof pc.problemCardBaseX === 'number' ? pc.problemCardBaseX : 72;
       this.problemCardBaseY = typeof pc.problemCardBaseY === 'number' ? pc.problemCardBaseY : 18;
       this.problemInkStrokes = JSON.parse(JSON.stringify(pc.problemInkStrokes || []));
+      this.problemCardStickers = JSON.parse(JSON.stringify(pc.problemCardStickers || []));
+      if (typeof pWidget._renderCardStickers === 'function') pWidget._renderCardStickers();
       if (pc.imgSrc) {
         const imgObj = new Image();
         imgObj.src = pc.imgSrc;
@@ -16675,6 +17282,13 @@ class GraphApp {
           isPdfPageCard: ep.isPdfPageCard,
           pdfPageNum: ep.pdfPageNum
         });
+        const createdProb = this.extraProblemCards[this.extraProblemCards.length - 1];
+        if (createdProb && createdProb.el) {
+          createdProb.el._cardInkStrokes = JSON.parse(JSON.stringify(ep.cardInkStrokes || []));
+          createdProb.el._cardStickers = JSON.parse(JSON.stringify(ep.cardStickers || []));
+          if (typeof createdProb.el._renderCardInkCanvas === 'function') createdProb.el._renderCardInkCanvas();
+          if (typeof createdProb.el._renderCardStickers === 'function') createdProb.el._renderCardStickers();
+        }
       });
     }
 
@@ -16693,6 +17307,8 @@ class GraphApp {
       this.graphCardBaseY = typeof gc.graphCardBaseY === 'number' ? gc.graphCardBaseY : 18;
       this.primaryGraphCardSnapshot = gc.primaryGraphCardSnapshot ? JSON.parse(JSON.stringify(gc.primaryGraphCardSnapshot)) : null;
       this.graphInkStrokes = JSON.parse(JSON.stringify(gc.graphInkStrokes || []));
+      this.graphCardStickers = JSON.parse(JSON.stringify(gc.graphCardStickers || []));
+      if (typeof gWidget._renderCardStickers === 'function') gWidget._renderCardStickers();
       if (gc.imgSrc) {
         const gImgObj = new Image();
         gImgObj.src = gc.imgSrc;
@@ -16722,6 +17338,10 @@ class GraphApp {
         this.spawnExtraGraphArchiveCard(eg.dataUrl, eg.cardW || 360, eg.aspect || 0.65, eg.graphSnapshot || null);
         const created = this.extraGraphCards[this.extraGraphCards.length - 1];
         if (created && created.el) {
+          created.el._cardInkStrokes = JSON.parse(JSON.stringify(eg.cardInkStrokes || []));
+          created.el._cardStickers = JSON.parse(JSON.stringify(eg.cardStickers || []));
+          if (typeof created.el._renderCardInkCanvas === 'function') created.el._renderCardInkCanvas();
+          if (typeof created.el._renderCardStickers === 'function') created.el._renderCardStickers();
           created.baseX = eg.baseX;
           created.baseY = eg.baseY;
           created.el.style.left = `${Math.round(eg.baseX)}px`;
@@ -18177,7 +18797,14 @@ class GraphApp {
     const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
     const smartBounds = this.getSmartExportBounds(effFilter);
     const hotspots = this.extractGraphHotspotsForBounds(smartBounds, effFilter);
-    const exp = this.getExportCanvas(effFilter, smartBounds, forCloud ? 3.0 : null);
+    const stickerHotspots = this.extractStickerHotspotsForBounds(smartBounds, effFilter);
+    this._omitStickersForViewerSnapshot = true;
+    let exp;
+    try {
+      exp = this.getExportCanvas(effFilter, smartBounds, forCloud ? 3.0 : null);
+    } finally {
+      this._omitStickersForViewerSnapshot = false;
+    }
     let dataUrl = '';
     try {
       dataUrl = exp.canvas.toDataURL('image/png');
@@ -18191,6 +18818,7 @@ class GraphApp {
       dpi: exp.dpi,
       dataUrl,
       hotspots,
+      stickerHotspots,
       smartBounds
     };
   }
@@ -18220,6 +18848,7 @@ class GraphApp {
         filteredSlides[i].viewerSnapshotWidth = snap.width;
         filteredSlides[i].viewerSnapshotHeight = snap.height;
         filteredSlides[i].viewerGraphHotspots = snap.hotspots;
+        filteredSlides[i].viewerStickerHotspots = snap.stickerHotspots;
       }
     } finally {
       if (isOuterLoop) {
@@ -18436,7 +19065,7 @@ class GraphApp {
       }, { passive: false });
 
       viewport.addEventListener('pointerdown', (e) => {
-        if (e.target.closest('.viewer-graph-hotspot')) return;
+        if (e.target.closest('.viewer-graph-hotspot, .viewer-sticker-hotspot')) return;
         if (e.button !== 0 && e.pointerType === 'mouse') return;
         isDraggingStage = true;
         dragStartX = e.clientX;
@@ -18540,6 +19169,7 @@ class GraphApp {
       slide.viewerSnapshotWidth = snap.width;
       slide.viewerSnapshotHeight = snap.height;
       slide.viewerGraphHotspots = snap.hotspots;
+      slide.viewerStickerHotspots = snap.stickerHotspots;
     }
 
     const imgEl = document.getElementById('smartNoteViewerImg');
@@ -18578,6 +19208,28 @@ class GraphApp {
           this.enterViewerGraphTouchMode(hs, idx);
         };
         hotspotsEl.appendChild(box);
+      });
+
+      const stickerHotspots = Array.isArray(slide.viewerStickerHotspots) ? slide.viewerStickerHotspots : [];
+      stickerHotspots.forEach((sh) => {
+        if (!sh) return;
+        const sBox = document.createElement('div');
+        sBox.className = 'viewer-sticker-hotspot' + (sh.revealed ? ' revealed' : '');
+        sBox.style.left = `${(sh.nx * 100).toFixed(2)}%`;
+        sBox.style.top = `${(sh.ny * 100).toFixed(2)}%`;
+        sBox.style.width = `${(sh.nw * 100).toFixed(2)}%`;
+        sBox.style.height = `${(sh.nh * 100).toFixed(2)}%`;
+        const b = document.createElement('span');
+        b.className = 'card-sticker-badge';
+        b.textContent = sh.revealed ? '🔓' : '🔒 터치';
+        sBox.appendChild(b);
+        sBox.onclick = (e) => {
+          e.stopPropagation();
+          sh.revealed = !sh.revealed;
+          sBox.classList.toggle('revealed', sh.revealed);
+          b.textContent = sh.revealed ? '🔓' : '🔒 터치';
+        };
+        hotspotsEl.appendChild(sBox);
       });
     }
 
@@ -20086,6 +20738,41 @@ class GraphApp {
         }
       }
 
+      // 🟨 [칠판 위 가림막 '스티커' 원터치 열림/닫힘 토글 & 삭제 & 연속 드래그 생성]
+      if (!isFingerOrPalmTouch && this.activeInkTool !== 'eraser' && !this.isStylusEraserEvent(e)) {
+        const hitSticker = this.findBoardStickerAtScreenPos(pos);
+        if (hitSticker && hitSticker.sticker) {
+          if (hitSticker.isDeleteBtn) {
+            this.deleteBoardSticker(hitSticker.sticker);
+            return;
+          }
+          if (this.isInkMode && this.activeInkTool === 'sticker') {
+            this._pendingStickerTap = hitSticker.sticker;
+            this.isDrawingSticker = true;
+            this.stickerDraftStart = { x: pos.x, y: pos.y };
+            this.stickerDraftCurrent = { x: pos.x, y: pos.y };
+            this.render();
+            return;
+          } else {
+            this._tappingBoardSticker = {
+              sticker: hitSticker.sticker,
+              startX: pos.x,
+              startY: pos.y,
+              moved: false
+            };
+            return;
+          }
+        }
+        if (this.isInkMode && this.activeInkTool === 'sticker') {
+          this._pendingStickerTap = null;
+          this.isDrawingSticker = true;
+          this.stickerDraftStart = { x: pos.x, y: pos.y };
+          this.stickerDraftCurrent = { x: pos.x, y: pos.y };
+          this.render();
+          return;
+        }
+      }
+
       // 🌟 [선택 도구(activeInkTool === 'select')의 스마트 인터랙션 라우팅] 🌟
       // 핸들러가 아닌 경우:
       // (1) 곡선 몸통을 터치했으면 -> 해당 곡선 선택 및 평행이동!
@@ -20715,6 +21402,18 @@ class GraphApp {
             dragBox.style.height = `${h}px`;
           }
         }
+        return;
+      }
+
+      if (this._tappingBoardSticker) {
+        if (Math.hypot(pos.x - this._tappingBoardSticker.startX, pos.y - this._tappingBoardSticker.startY) > 10) {
+          this._tappingBoardSticker.moved = true;
+        }
+        return;
+      }
+      if (this.isDrawingSticker && this.stickerDraftStart) {
+        this.stickerDraftCurrent = { x: pos.x, y: pos.y };
+        this.requestRender();
         return;
       }
 
@@ -21748,9 +22447,25 @@ class GraphApp {
           this.requestRender();
         }
 
+        const hitStickerHover = (!this.isDrawingInk && !this.isDrawingSticker && this.activeInkTool !== 'eraser')
+          ? this.findBoardStickerAtScreenPos(pos)
+          : null;
+        const newHoverStickerId = hitStickerHover ? hitStickerHover.sticker.id : null;
+        if (newHoverStickerId !== this._hoveredBoardStickerId) {
+          this._hoveredBoardStickerId = newHoverStickerId;
+          this.requestRender();
+        }
+        if (hitStickerHover && this.virtualStylusEl && !this.isAudioPlaying) {
+          this.virtualStylusEl.style.display = 'none';
+        }
+
         const stageHandle = (!this.isCleanView && this.hasActiveProblemCard() && this.graphs.length > 0) ? this.getCompactStageHandleAt(pos) : null;
         let nextCursor = 'default';
-        if (stageHandle === 'zoomIn' || stageHandle === 'zoomOut') {
+        if (hitStickerHover) {
+          nextCursor = 'pointer';
+        } else if (this.isInkMode && this.activeInkTool === 'sticker') {
+          nextCursor = 'crosshair';
+        } else if (stageHandle === 'zoomIn' || stageHandle === 'zoomOut') {
           nextCursor = 'pointer';
         } else if (stageHandle === 'resize') {
           nextCursor = 'nwse-resize';
@@ -21808,6 +22523,62 @@ class GraphApp {
     };
 
     const handleUp = (e) => {
+      if (this._tappingBoardSticker) {
+        const tapInfo = this._tappingBoardSticker;
+        this._tappingBoardSticker = null;
+        if (!tapInfo.moved && tapInfo.sticker) {
+          tapInfo.sticker.revealed = !tapInfo.sticker.revealed;
+          if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+          this.render();
+        }
+        return;
+      }
+      if (this.isDrawingSticker && this.stickerDraftStart) {
+        const upPos = getPos(e.touches ? (e.changedTouches ? e.changedTouches[0] : e.touches[0]) : e);
+        const start = this.stickerDraftStart;
+        const cur = (upPos && Number.isFinite(upPos.x)) ? upPos : (this.stickerDraftCurrent || start);
+        const sx = Math.min(start.x, cur.x);
+        const sy = Math.min(start.y, cur.y);
+        const sw = Math.abs(cur.x - start.x);
+        const sh = Math.abs(cur.y - start.y);
+        const pendingTap = this._pendingStickerTap;
+
+        this.isDrawingSticker = false;
+        this.stickerDraftStart = null;
+        this.stickerDraftCurrent = null;
+        this._pendingStickerTap = null;
+
+        if (sw >= 16 && sh >= 14) {
+          const isBoardTarget = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+          const p1 = isBoardTarget ? this.screenToBoard(sx, sy) : this.screenToMath(sx, sy);
+          const p2 = isBoardTarget ? this.screenToBoard(sx + sw, sy + sh) : this.screenToMath(sx + sw, sy + sh);
+          const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+          const newSticker = {
+            id: 'stk_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+            target: isBoardTarget ? 'board' : 'graph',
+            onPdfBoard: Boolean(this.pdfPageBoardData && !isBoardTarget),
+            x1: p1.x,
+            y1: p1.y,
+            x2: p2.x,
+            y2: p2.y,
+            color: '#facc15',
+            revealed: false,
+            tStart: recT
+          };
+          if (!Array.isArray(this.boardStickers)) this.boardStickers = [];
+          this.boardStickers.push(newSticker);
+          this.undoStack.push({ type: 'sticker_add', sticker: newSticker });
+          if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+          this.redoStack = [];
+          this.updateUndoRedoUI();
+          if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+        } else if (pendingTap) {
+          pendingTap.revealed = !pendingTap.revealed;
+          if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+        }
+        this.render();
+        return;
+      }
       // 🌟 [📍 교재 보조 수선 모드: 조준 후 펜/마우스를 뗄 때(pointerup) 수선 생성!] 🌟
       if (this.isDropLineMode && this._isAimingDropLine) {
         if (e && e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) {
@@ -23614,6 +24385,7 @@ class GraphApp {
             this.drawInkStrokes(ctx, true, 'graph');
           }
           this.drawInkStrokes(ctx, true, 'board');
+          this.drawBoardStickers(ctx, true);
         }
         return;
       }
@@ -23623,6 +24395,7 @@ class GraphApp {
           this.drawInkStrokes(ctx, false, 'graph');
         }
         this.drawInkStrokes(ctx, false, 'board');
+        this.drawBoardStickers(ctx, false);
         this.drawMainLaserStrokes(ctx);
         this.drawLassoOverlay(ctx);
         return;
@@ -23709,6 +24482,7 @@ class GraphApp {
     // 🌟 [실시간 그래프 작업실 전용 필기 렌더링 (PDF 페이지 위에서 그래프 스샷 캡처 순간에는 배경 개념 필기 생략)] 🌟
     if (!(this._isRenderingGraphSnapshot && this.pdfPageBoardData) && (!isExport || expFilter.includeInk !== false)) {
       this.drawInkStrokes(ctx, isExport, 'graph');
+      this.drawBoardStickers(ctx, isExport);
     }
 
     // 🌟 [내보내기/복사 시 화면에 떠 있는 문제 카드 & 그래프 카드 합성] 🌟
@@ -27859,6 +28633,33 @@ class GraphApp {
               ctx.drawImage(cardInkCanvas, bx, by, bw, bh);
             }
           }
+          if (!this._omitStickersForViewerSnapshot) {
+            const cardStickers = this.getCardStickersArray(wEl);
+            if (Array.isArray(cardStickers) && cardStickers.length > 0) {
+              cardStickers.forEach(stk => {
+                if (!stk || stk.revealed) return;
+                const sx = bx + stk.nx * bw;
+                const sy = by + stk.ny * bh;
+                const sw = stk.nw * bw;
+                const sh = stk.nh * bh;
+                if (sw < 4 || sh < 4) return;
+                ctx.save();
+                const grad = ctx.createLinearGradient(sx, sy, sx + sw, sy + sh);
+                grad.addColorStop(0, '#fef08a');
+                grad.addColorStop(0.68, '#fde047');
+                grad.addColorStop(1, '#facc15');
+                ctx.beginPath();
+                if (ctx.roundRect) ctx.roundRect(sx, sy, sw, sh, 6);
+                else ctx.rect(sx, sy, sw, sh);
+                ctx.fillStyle = grad;
+                ctx.fill();
+                ctx.lineWidth = 1.4;
+                ctx.strokeStyle = '#eab308';
+                ctx.stroke();
+                ctx.restore();
+              });
+            }
+          }
           ctx.restore();
 
           ctx.stroke();
@@ -27958,6 +28759,78 @@ class GraphApp {
     return hotspots;
   }
 
+  // --- [🟨 스캔된 직사각형 이미지 내부의 가림막 스티커(칠판 + 문제/그래프 카드) 터치 핫스팟 추출] ---
+  extractStickerHotspotsForBounds(smartBounds = null, filterOpts = null) {
+    const effFilter = filterOpts || this._activeExportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+    const incProb = effFilter.includeProblem !== false;
+    const incGraph = effFilter.includeGraph !== false;
+
+    const cropX = smartBounds ? smartBounds.x : 0;
+    const cropY = smartBounds ? smartBounds.y : 0;
+    const cropW = Math.max(1, smartBounds ? smartBounds.width : (this.screenWidth || window.innerWidth));
+    const cropH = Math.max(1, smartBounds ? smartBounds.height : (this.screenHeight || window.innerHeight));
+    const canvasRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
+
+    const stickerHotspots = [];
+
+    // 1. 칠판/그래프 캔버스 위 스티커
+    if (Array.isArray(this.boardStickers) && this.boardStickers.length > 0) {
+      this.boardStickers.forEach((stk) => {
+        const r = this.getBoardStickerScreenRect(stk);
+        if (!r || r.w < 4 || r.h < 4) return;
+        stickerHotspots.push({
+          id: stk.id,
+          nx: Math.max(0, Math.min(0.99, (r.x - cropX) / cropW)),
+          ny: Math.max(0, Math.min(0.99, (r.y - cropY) / cropH)),
+          nw: Math.max(0.01, Math.min(1.0, r.w / cropW)),
+          nh: Math.max(0.01, Math.min(1.0, r.h / cropH)),
+          revealed: Boolean(stk.revealed),
+          color: stk.color || '#facc15'
+        });
+      });
+    }
+
+    // 2. 문제 카드 및 그래프 보관 카드 위 스티커
+    const selectors = [];
+    if (incProb) selectors.push('#problemCardWidget', '.extra-problem-card-widget');
+    if (incGraph && this.isGraphCovered) selectors.push('#graphCardWidget', '.extra-graph-card-widget');
+    if (typeof document !== 'undefined' && selectors.length > 0) {
+      const cardEls = Array.from(document.querySelectorAll(selectors.join(', '))).filter(el => {
+        if (!el || el.style.display === 'none' || el.classList.contains('minimized')) return false;
+        const cs = window.getComputedStyle(el);
+        return cs.display !== 'none' && cs.visibility !== 'hidden';
+      });
+      cardEls.forEach((el) => {
+        const bodyEl = el.querySelector('.problem-card-body');
+        if (!bodyEl) return;
+        const bRect = bodyEl.getBoundingClientRect();
+        if (bRect.width <= 0 || bRect.height <= 0) return;
+        const arr = this.getCardStickersArray(el);
+        if (!Array.isArray(arr) || arr.length === 0) return;
+        const bx = bRect.left - canvasRect.left;
+        const by = bRect.top - canvasRect.top;
+        arr.forEach((stk) => {
+          if (!stk) return;
+          const sx = bx + stk.nx * bRect.width;
+          const sy = by + stk.ny * bRect.height;
+          const sw = stk.nw * bRect.width;
+          const sh = stk.nh * bRect.height;
+          stickerHotspots.push({
+            id: stk.id,
+            nx: Math.max(0, Math.min(0.99, (sx - cropX) / cropW)),
+            ny: Math.max(0, Math.min(0.99, (sy - cropY) / cropH)),
+            nw: Math.max(0.01, Math.min(1.0, sw / cropW)),
+            nh: Math.max(0.01, Math.min(1.0, sh / cropH)),
+            revealed: Boolean(stk.revealed),
+            color: stk.color || '#facc15'
+          });
+        });
+      });
+    }
+
+    return stickerHotspots;
+  }
+
   // --- [📐 선택된 요소(문제·그래프·필기) 영역만 자동 감지하는 직사각형 바운딩 박스 계산 엔진] ---
   getSmartExportBounds(filterOpts = null) {
     const effFilter = filterOpts || this._activeExportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
@@ -27991,8 +28864,9 @@ class GraphApp {
 
     const hasPdfBoard = Boolean(incProb && this.pdfPageBoardData);
     const hasLiveGraph = Boolean(incGraph && !this.isGraphCovered && this.graphs && this.graphs.length > 0);
+    const activeBoardStickers = (this.boardStickers || []).filter(stk => Boolean(this.getBoardStickerScreenRect(stk)));
 
-    if (activeStrokes.length === 0 && cardEls.length === 0 && !hasPdfBoard && !hasLiveGraph) {
+    if (activeStrokes.length === 0 && activeBoardStickers.length === 0 && cardEls.length === 0 && !hasPdfBoard && !hasLiveGraph) {
       return null;
     }
 
@@ -28045,6 +28919,14 @@ class GraphApp {
           const sp = isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
           expand(sp.x, sp.y, pad);
         });
+      }
+    });
+
+    activeBoardStickers.forEach(stk => {
+      const r = this.getBoardStickerScreenRect(stk);
+      if (r && r.w > 0 && r.h > 0) {
+        expand(r.x, r.y, 8);
+        expand(r.x + r.w, r.y + r.h, 8);
       }
     });
 
@@ -29103,7 +29985,10 @@ class GraphApp {
       extraGraphsCount: (this.extraGraphCards || []).length,
       extraGraphStates,
       extraProbsCount: (this.extraProblemCards || []).length,
-      extraProbStates
+      extraProbStates,
+      boardStickers: JSON.parse(JSON.stringify(this.boardStickers || [])),
+      problemCardStickers: JSON.parse(JSON.stringify(this.problemCardStickers || [])),
+      graphCardStickers: JSON.parse(JSON.stringify(this.graphCardStickers || []))
     };
   }
 
@@ -29144,6 +30029,19 @@ class GraphApp {
       this.dropLineHoverCandidate = kf.dropLineHoverCandidate ? JSON.parse(JSON.stringify(kf.dropLineHoverCandidate)) : null;
       this.dropLines = JSON.parse(JSON.stringify(kf.dropLines || []));
       this.textLabels = JSON.parse(JSON.stringify(kf.textLabels || []));
+      if (Array.isArray(kf.boardStickers)) {
+        this.boardStickers = JSON.parse(JSON.stringify(kf.boardStickers));
+      }
+      if (Array.isArray(kf.problemCardStickers)) {
+        this.problemCardStickers = JSON.parse(JSON.stringify(kf.problemCardStickers));
+        const pW = document.getElementById('problemCardWidget');
+        if (pW && typeof pW._renderCardStickers === 'function') pW._renderCardStickers();
+      }
+      if (Array.isArray(kf.graphCardStickers)) {
+        this.graphCardStickers = JSON.parse(JSON.stringify(kf.graphCardStickers));
+        const gW = document.getElementById('graphCardWidget');
+        if (gW && typeof gW._renderCardStickers === 'function') gW._renderCardStickers();
+      }
 
       const pWidget = document.getElementById('problemCardWidget');
       if (pWidget && this.problemCardData) {
