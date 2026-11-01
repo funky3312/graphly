@@ -16576,11 +16576,7 @@ class GraphApp {
     const btnNext = document.getElementById('btnPlaylistNext');
     const btnInfo = document.getElementById('btnPlaylistSlideInfo');
     const btnAddSlide = document.getElementById('btnPlaylistAddSlide');
-    const btnPlaylistOpenPdf = document.getElementById('btnPlaylistOpenPdf');
     const btnShareAll = document.getElementById('btnPlaylistShareAll');
-    if (btnPlaylistOpenPdf) {
-      btnPlaylistOpenPdf.onclick = () => this.resumeOrOpenCurrentPdf(false, { startInPanMode: true });
-    }
     const btnClearAllSlides = document.getElementById('btnPlaylistClearAll');
     const btnHidePlaylistBar = document.getElementById('btnPlaylistHideBar');
     const btnClosePlaylist = document.getElementById('btnPlaylistClose');
@@ -18857,13 +18853,8 @@ class GraphApp {
 
     const btnPrev = document.getElementById('btnPlaylistPrev');
     const btnNext = document.getElementById('btnPlaylistNext');
-    const btnOpenPdf = document.getElementById('btnPlaylistOpenPdf');
     if (btnPrev) btnPrev.disabled = (this.lessonPlaylistIndex <= 0);
     if (btnNext) btnNext.disabled = (this.lessonPlaylistIndex >= total - 1);
-    if (btnOpenPdf) {
-      const hasOpenPdf = Boolean(this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0));
-      btnOpenPdf.style.display = hasOpenPdf ? 'inline-flex' : 'none';
-    }
 
     if (this.isTopSlideBarHidden) {
       navBar.style.display = 'none';
