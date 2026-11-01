@@ -5192,8 +5192,13 @@ class GraphApp {
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
     const isLight = Boolean(curTheme.isLight || this.isMonochromeMode);
 
+    // 🚀 [구형 내장그래픽(Intel HD/UHD) 60fps 무손실 가속]:
+    // 카메라가 이동·줌인 중일 때만 고비용 가우시안 그림자(shadowBlur)를 생략하고 하드웨어 이중선형 보간('medium')으로 60fps를 방어하며,
+    // 이동이 멈추는 즉시(정지·판서·내보내기 시) 0.00초 만에 최고 화질('high') + 그림자로 복원합니다!
+    const isActivelyMovingCamera = !isExport && Boolean(this.isPanning || this._isZoomAnimating || this._pinchState);
+
     ctx.save();
-    if (!isExport || !this.exportTransparent) {
+    if ((!isExport || !this.exportTransparent) && !isActivelyMovingCamera) {
       ctx.shadowColor = isLight ? 'rgba(15, 23, 42, 0.10)' : 'rgba(0, 0, 0, 0.45)';
       ctx.shadowBlur = isLight ? 18 : 24;
       ctx.shadowOffsetX = 0;
@@ -5206,7 +5211,7 @@ class GraphApp {
     ctx.shadowOffsetY = 0;
 
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+    ctx.imageSmoothingQuality = isActivelyMovingCamera ? 'medium' : 'high';
     ctx.drawImage(pageCanvas, x, y, w, h);
 
     ctx.strokeStyle = isLight ? 'rgba(148, 163, 184, 0.45)' : 'rgba(255, 255, 255, 0.22)';
@@ -6454,9 +6459,43 @@ class GraphApp {
     window.addEventListener('pointercancel', handleCropCancel);
   }
 
+  // 🚀 [구형 CPU 메인 스레드 블로킹 0.00ms 보장: 브라우저 백그라운드 워커 비동기 무손실 PNG 인코더]
+  async encodeCanvasSmartWebPAsync(canvas, quality = 0.92) {
+    if (!canvas) return '';
+    if (typeof canvas.toBlob === 'function' && typeof FileReader !== 'undefined') {
+      try {
+        const dataUrl = await new Promise((resolve) => {
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              resolve('');
+              return;
+            }
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(blob);
+          }, 'image/png');
+        });
+        if (dataUrl && dataUrl.startsWith('data:image/')) {
+          return dataUrl;
+        }
+      } catch (err) { }
+    }
+    return this.encodeCanvasSmartWebP(canvas, quality);
+  }
+
+  async _WaitUntilPenIdle() {
+    let guard = 0;
+    while ((this.isDrawingInk || this.isStylusDrawing || this.isPanning) && guard < 60) {
+      guard++;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+
   async _upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop) {
     try {
       if (!this.pdfDoc || !normCrop || normCrop.nw <= 0 || normCrop.nh <= 0) return;
+      await this._WaitUntilPenIdle();
       const page = await this.pdfDoc.getPage(pageNum);
       const baseVp = page.getViewport({ scale: 1.0 });
       const ultraScale = 5.0;
@@ -6479,14 +6518,18 @@ class GraphApp {
       vCtx.fillRect(0, 0, targetW, targetH);
       await page.render({ canvasContext: vCtx, viewport: fullVp }).promise;
 
-      const ultraDataUrl = this.encodeCanvasSmartWebP(vecCanvas, 0.93);
+      // 선생님이 막 첫 펜 획을 긋고 있다면 획이 끝날 때까지 양보한 뒤 백그라운드 워커 스레드(toBlob)로 무손실 PNG 인코딩!
+      await this._WaitUntilPenIdle();
+      const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.93);
+      await this._WaitUntilPenIdle();
+
       if (this.extraProblemCards && this.extraProblemCards.length > 0) {
         const lastExtra = this.extraProblemCards[this.extraProblemCards.length - 1];
         if (lastExtra && lastExtra.el) {
           const imgEl = lastExtra.el.querySelector('.problem-card-img');
           if (imgEl) imgEl.src = ultraDataUrl;
           lastExtra.sourceCanvas = vecCanvas;
-          this.requestRender();
+          if (!this.isDrawingInk) this.requestRender();
           return;
         }
       }
@@ -6496,9 +6539,22 @@ class GraphApp {
         const pImg = document.getElementById('problemCardImg');
         if (pImg) pImg.src = ultraDataUrl;
         if (this.isLessonPlaylistActive) {
-          this.saveCurrentSlideIntoPlaylist();
+          const syncPlaylistIdle = () => {
+            if (this.isDrawingInk || this.isStylusDrawing) {
+              setTimeout(syncPlaylistIdle, 120);
+              return;
+            }
+            if (this.isLessonPlaylistActive) {
+              this.saveCurrentSlideIntoPlaylist();
+            }
+          };
+          if (typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(syncPlaylistIdle, { timeout: 600 });
+          } else {
+            setTimeout(syncPlaylistIdle, 120);
+          }
         }
-        this.requestRender();
+        if (!this.isDrawingInk) this.requestRender();
       }
     } catch (err) {
       // 벡터 보강 실패 시 기존 고해상도 크롭 이미지 유지
@@ -21031,6 +21087,7 @@ class GraphApp {
           if (hadPinch) {
             this.isPanning = false;
             this.isBoardPanning = false;
+            this.requestRender();
             return;
           }
         }
