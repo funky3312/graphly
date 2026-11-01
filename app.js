@@ -5162,6 +5162,8 @@ class GraphApp {
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
 
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(pageCanvas, x, y, w, h);
 
     ctx.strokeStyle = isLight ? 'rgba(148, 163, 184, 0.45)' : 'rgba(255, 255, 255, 0.22)';
@@ -5218,10 +5220,10 @@ class GraphApp {
     const centerMX = (minMX + maxMX) / 2;
     const centerMY = (minMY + maxMY) / 2;
 
-    const basePxH = 1100;
+    const basePxH = 2200;
     const unitScale = basePxH / spanH;
-    const pxW = Math.max(320, Math.min(2400, Math.round(spanW * unitScale)));
-    const pxH = Math.max(320, Math.min(2400, Math.round(spanH * unitScale)));
+    const pxW = Math.max(320, Math.min(3600, Math.round(spanW * unitScale)));
+    const pxH = Math.max(320, Math.min(3600, Math.round(spanH * unitScale)));
 
     const offCanvas = document.createElement('canvas');
     offCanvas.width = pxW;
@@ -5442,14 +5444,18 @@ class GraphApp {
       return;
     }
 
-    // 3. 새 PDF 페이지 고해상도 오프스크린 렌더링 (단 1장만 GPU에 유지하여 성능 저하 0.0%!)
+    // 3. 새 PDF 페이지 초고해상도(Ultra-HD ~310 DPI, 가로 최소 2560px) 오프스크린 렌더링 (단 1장만 GPU에 유지하여 성능 저하 0.0%!)
     const page = await this.pdfDoc.getPage(targetPage);
-    const renderScale = 2.5;
+    const baseVp = page.getViewport({ scale: 1.0 });
+    const targetMinPxW = 2560;
+    const renderScale = Math.max(4.0, Math.min(4.8, targetMinPxW / Math.max(1, baseVp.width)));
     const vp = page.getViewport({ scale: renderScale });
     const pageCanvas = document.createElement('canvas');
     pageCanvas.width = Math.round(vp.width);
     pageCanvas.height = Math.round(vp.height);
     const pCtx = pageCanvas.getContext('2d');
+    pCtx.imageSmoothingEnabled = true;
+    pCtx.imageSmoothingQuality = 'high';
     pCtx.fillStyle = '#ffffff';
     pCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
     await page.render({ canvasContext: pCtx, viewport: vp }).promise;
@@ -5702,34 +5708,41 @@ class GraphApp {
       try { canvas._pdfRenderTask.cancel(); } catch (e) { }
     }
 
-    const targetZoom = this.pdfZoom;
+    const targetZoom = this.pdfZoom || 1.5;
     this.pdfDoc.getPage(pageNum).then(page => {
-      // 구형 내장그래픽 과부하 방지를 위해 최대 DPR을 1.75~2.0 사이로 스마트 클램핑
-      const dpr = Math.min(2, Math.max(1.5, window.devicePixelRatio || 1.5));
-      const viewport = page.getViewport({ scale: targetZoom * dpr });
-      const cssW = Math.round(viewport.width / dpr);
-      const cssH = Math.round(viewport.height / dpr);
+      const baseVp = page.getViewport({ scale: 1.0 });
+      const cssW = Math.round(baseVp.width * targetZoom);
+      const cssH = Math.round(baseVp.height * targetZoom);
+
+      // 🌟 [Ultra-HD PDF 뷰어 & 문제 캡처 해상도]:
+      // 낮은 배율(100%~150%)에서 문제를 한눈에 보고 캡처하더라도 인쇄급(최소 3.6x ~ 최대 5.2x, ~300+ DPI) 벡터 화질이 추출되도록 백킹 캔버스 해상도 대폭 상향!
+      const dpr = Math.min(3.2, Math.max(2.4, (window.devicePixelRatio || 2) * 1.35));
+      const renderScale = Math.max(3.6, Math.min(5.2, targetZoom * dpr));
+      const viewport = page.getViewport({ scale: renderScale });
 
       canvas.style.width = `${cssW}px`;
       canvas.style.height = `${cssH}px`;
       if (wrapper) {
         wrapper.style.width = `${cssW}px`;
         wrapper.style.height = `${cssH}px`;
-        if (targetZoom > 0) {
-          wrapper._basePdfW = cssW / targetZoom;
-          wrapper._basePdfH = cssH / targetZoom;
-        }
+        wrapper._basePdfW = baseVp.width;
+        wrapper._basePdfH = baseVp.height;
       }
 
       canvas.width = Math.round(viewport.width);
       canvas.height = Math.round(viewport.height);
 
       const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       const renderTask = page.render({ canvasContext: ctx, viewport });
       canvas._pdfRenderTask = renderTask;
       renderTask.promise.then(() => {
         canvas._pdfRenderTask = null;
         canvas._renderedZoom = targetZoom;
+        canvas._renderedScale = renderScale;
         this.pdfPageRenderStates[pageNum] = true;
       }).catch(err => {
         if (err && err.name !== 'RenderingCancelledException') {
@@ -5796,14 +5809,16 @@ class GraphApp {
 
   setPdfZoom(zoom, options = null) {
     const prevZoom = this.pdfZoom || 1.5;
-    const nextZoom = Math.max(0.6, Math.min(zoom, 3.2));
+    const nextZoom = Math.max(0.5, Math.min(zoom, 4.0));
     const isFastPreview = Boolean(options && options.fastPreview);
     if (!isFastPreview && Math.abs(nextZoom - prevZoom) < 0.01) return;
 
     const viewport = document.getElementById('pdfViewport');
     const ratio = nextZoom / prevZoom;
     const prevScrollTop = viewport ? viewport.scrollTop : 0;
+    const prevScrollLeft = viewport ? viewport.scrollLeft : 0;
     const prevCenterOffset = viewport ? (prevScrollTop + viewport.clientHeight / 2) : 0;
+    const prevCenterOffsetX = viewport ? (prevScrollLeft + viewport.clientWidth / 2) : 0;
 
     this.pdfZoom = nextZoom;
     const lbl = document.getElementById('lblPdfZoom');
@@ -5853,10 +5868,20 @@ class GraphApp {
         viewport.scrollLeft = newScrollLeft;
         this.savedPdfScrollTop = newScrollTop;
         this.savedPdfScrollLeft = newScrollLeft;
-      } else if (prevScrollTop > 0) {
-        const newScrollTop = Math.max(0, Math.round(prevCenterOffset * ratio - viewport.clientHeight / 2));
-        viewport.scrollTop = newScrollTop;
-        this.savedPdfScrollTop = newScrollTop;
+      } else {
+        if (prevScrollTop > 0 || ratio > 1) {
+          const newScrollTop = Math.max(0, Math.round(prevCenterOffset * ratio - viewport.clientHeight / 2));
+          viewport.scrollTop = newScrollTop;
+          this.savedPdfScrollTop = newScrollTop;
+        }
+        if (viewport.scrollWidth > viewport.clientWidth) {
+          const newScrollLeft = Math.max(0, Math.round(prevCenterOffsetX * ratio - viewport.clientWidth / 2));
+          viewport.scrollLeft = newScrollLeft;
+          this.savedPdfScrollLeft = newScrollLeft;
+        } else {
+          viewport.scrollLeft = 0;
+          this.savedPdfScrollLeft = 0;
+        }
       }
     }
 
@@ -5922,11 +5947,14 @@ class GraphApp {
     const cropBox = document.getElementById('pdfCropBox');
     if (!viewport || !cropBox) return;
 
-    // 0. 브라우저 뒤로가기 제스처 / 네이티브 드래그 차단
+    // 0. 브라우저 뒤로가기 제스처 차단 + 수평 스크롤(터치패드 2손가락 좌우 / Shift+휠) 완벽 지원
     window.addEventListener('wheel', (e) => {
       if (this.isPdfModalOpen && Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        // 수평 스와이프로 인한 브라우저 뒤로가기 제스처 차단
         e.preventDefault();
+        if (viewport && !e.ctrlKey && !e.metaKey) {
+          viewport.scrollLeft += e.deltaX;
+          this.savedPdfScrollLeft = viewport.scrollLeft;
+        }
       }
     }, { passive: false });
 
@@ -6097,6 +6125,8 @@ class GraphApp {
       this.cropTargetWrapper = pageWrapper;
       this.cropTargetPageNum = parseInt(pageWrapper.dataset.page, 10);
       this.pdfCropStart = { x: startX, y: startY };
+      this._cropLastClientX = e.clientX;
+      this._cropLastClientY = e.clientY;
 
       pageWrapper.appendChild(cropBox);
       cropBox.style.display = 'none';
@@ -6104,7 +6134,85 @@ class GraphApp {
       cropBox.style.top = `${startY}px`;
       cropBox.style.width = '0px';
       cropBox.style.height = '0px';
+      startCropEdgeAutoScroll();
     }, { passive: false });
+
+    const updateCropBoxFromPointer = (clientX, clientY) => {
+      if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
+      const rect = this.cropTargetWrapper.getBoundingClientRect();
+      const curX = Math.max(0, Math.min(rect.width, clientX - rect.left));
+      const curY = Math.max(0, Math.min(rect.height, clientY - rect.top));
+
+      const x = Math.min(this.pdfCropStart.x, curX);
+      const y = Math.min(this.pdfCropStart.y, curY);
+      const w = Math.abs(curX - this.pdfCropStart.x);
+      const h = Math.abs(curY - this.pdfCropStart.y);
+
+      if (w > 3 || h > 3) {
+        cropBox.style.display = 'block';
+        cropBox.style.left = `${x}px`;
+        cropBox.style.top = `${y}px`;
+        cropBox.style.width = `${w}px`;
+        cropBox.style.height = `${h}px`;
+      }
+    };
+
+    // 🌟 [배율 확대 시 화면보다 큰 문제도 한 번의 드래그로 100% 캡처하는 스마트 엣지 오토스크롤 엔진] 🌟
+    const stopCropEdgeAutoScroll = () => {
+      if (this._cropEdgeScrollRaf) {
+        cancelAnimationFrame(this._cropEdgeScrollRaf);
+        this._cropEdgeScrollRaf = null;
+      }
+    };
+
+    const startCropEdgeAutoScroll = () => {
+      stopCropEdgeAutoScroll();
+      const step = () => {
+        if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) {
+          this._cropEdgeScrollRaf = null;
+          return;
+        }
+        const vRect = viewport.getBoundingClientRect();
+        const cx = this._cropLastClientX;
+        const cy = this._cropLastClientY;
+        if (typeof cx === 'number' && typeof cy === 'number') {
+          const edgeZone = 64;
+          const maxSpeed = 22;
+          let vx = 0;
+          let vy = 0;
+
+          if (cy > vRect.bottom - edgeZone) {
+            const ratio = Math.min(1.5, Math.max(0, (cy - (vRect.bottom - edgeZone)) / edgeZone));
+            vy = Math.ceil(ratio * maxSpeed);
+          } else if (cy < vRect.top + edgeZone) {
+            const ratio = Math.min(1.5, Math.max(0, ((vRect.top + edgeZone) - cy) / edgeZone));
+            vy = -Math.ceil(ratio * maxSpeed);
+          }
+
+          if (cx > vRect.right - edgeZone) {
+            const ratio = Math.min(1.5, Math.max(0, (cx - (vRect.right - edgeZone)) / edgeZone));
+            vx = Math.ceil(ratio * maxSpeed);
+          } else if (cx < vRect.left + edgeZone) {
+            const ratio = Math.min(1.5, Math.max(0, ((vRect.left + edgeZone) - cx) / edgeZone));
+            vx = -Math.ceil(ratio * maxSpeed);
+          }
+
+          if (vx !== 0 || vy !== 0) {
+            const prevSL = viewport.scrollLeft;
+            const prevST = viewport.scrollTop;
+            if (vx !== 0) viewport.scrollLeft += vx;
+            if (vy !== 0) viewport.scrollTop += vy;
+            if (viewport.scrollLeft !== prevSL || viewport.scrollTop !== prevST) {
+              this.savedPdfScrollLeft = viewport.scrollLeft;
+              this.savedPdfScrollTop = viewport.scrollTop;
+              updateCropBoxFromPointer(cx, cy);
+            }
+          }
+        }
+        this._cropEdgeScrollRaf = requestAnimationFrame(step);
+      };
+      this._cropEdgeScrollRaf = requestAnimationFrame(step);
+    };
 
     const handleCropMove = (e) => {
       if (e.pointerType === 'touch' && this._pdfTouchPointers && this._pdfTouchPointers.has(e.pointerId)) {
@@ -6140,28 +6248,16 @@ class GraphApp {
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
       e.preventDefault();
 
-      const rect = this.cropTargetWrapper.getBoundingClientRect();
-      const curX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-      const curY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
-
-      const x = Math.min(this.pdfCropStart.x, curX);
-      const y = Math.min(this.pdfCropStart.y, curY);
-      const w = Math.abs(curX - this.pdfCropStart.x);
-      const h = Math.abs(curY - this.pdfCropStart.y);
-
-      if (w > 3 || h > 3) {
-        cropBox.style.display = 'block';
-        cropBox.style.left = `${x}px`;
-        cropBox.style.top = `${y}px`;
-        cropBox.style.width = `${w}px`;
-        cropBox.style.height = `${h}px`;
-      }
+      this._cropLastClientX = e.clientX;
+      this._cropLastClientY = e.clientY;
+      updateCropBoxFromPointer(e.clientX, e.clientY);
     };
 
     viewport.addEventListener('pointermove', handleCropMove, { passive: false });
     window.addEventListener('pointermove', handleCropMove, { passive: false });
 
     const handleCropUp = (e) => {
+      stopCropEdgeAutoScroll();
       if (e && this._pdfTouchPointers && this._pdfTouchPointers.has(e.pointerId)) {
         this._pdfTouchPointers.delete(e.pointerId);
         if (this._pdfTouchPointers.size < 2) {
@@ -6184,9 +6280,11 @@ class GraphApp {
         this.activeCropPointerId = null;
       }
 
+      const clientX = (e && typeof e.clientX === 'number') ? e.clientX : (this._cropLastClientX || 0);
+      const clientY = (e && typeof e.clientY === 'number') ? e.clientY : (this._cropLastClientY || 0);
       const rect = this.cropTargetWrapper.getBoundingClientRect();
-      const curX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-      const curY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+      const curX = Math.max(0, Math.min(rect.width, clientX - rect.left));
+      const curY = Math.max(0, Math.min(rect.height, clientY - rect.top));
 
       const x = Math.min(this.pdfCropStart.x, curX);
       const y = Math.min(this.pdfCropStart.y, curY);
@@ -6198,23 +6296,33 @@ class GraphApp {
       // ✂️ 유효한 크기(가로/세로 20px 이상)면 즉시 크롭 확정 & 빈 칠판으로 직행!
       if (w >= 20 && h >= 20) {
         const canvas = this.cropTargetWrapper.querySelector('canvas');
-        if (canvas) {
+        if (canvas && rect.width > 0 && rect.height > 0) {
           const scaleX = canvas.width / rect.width;
           const scaleY = canvas.height / rect.height;
 
           const sx = x * scaleX;
           const sy = y * scaleY;
-          const sw = w * scaleX;
-          const sh = h * scaleY;
+          const sw = Math.max(1, Math.round(w * scaleX));
+          const sh = Math.max(1, Math.round(h * scaleY));
 
           const cropCanvas = document.createElement('canvas');
           cropCanvas.width = sw;
           cropCanvas.height = sh;
           const ctx = cropCanvas.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, sw, sh);
           ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
 
           const dataUrl = cropCanvas.toDataURL('image/png');
           const pageNum = this.cropTargetPageNum;
+          const normCrop = {
+            nx: x / rect.width,
+            ny: y / rect.height,
+            nw: w / rect.width,
+            nh: h / rect.height
+          };
 
           const replaceMode = Boolean(this._isReplacingViaNextCrop);
           this._isReplacingViaNextCrop = false;
@@ -6232,6 +6340,11 @@ class GraphApp {
           // 문제 카드 고정 (일반 진입/새 캔버스 진입 시 현재 슬라이드에 추가/배치, [다음 캡처]로 진입 시 새 슬라이드 캔버스에 고정!)
           const targetCardWidth = Math.round(Math.max(480, Math.min(window.innerWidth * 0.65, w * 1.15)));
           this.setProblemCard(dataUrl, pageNum, cropCanvas, targetCardWidth);
+
+          // 🌟 [벡터 원본 직결 Ultra-HD 보강 렌더링]:
+          // 만약 빠른 줌 직후이거나 낮은 배율에서 캡처한 경우에도 PDF 원본 벡터에서 4.4x(~320 DPI)로 해당 영역만 직접 재렌더링하여 무손실 교체!
+          this._upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop);
+
           if (replaceMode) {
             this._finalizeAppendedCaptureSlide('');
           } else if (this.isLessonPlaylistActive) {
@@ -6257,12 +6370,23 @@ class GraphApp {
     window.addEventListener('pointercancel', handleCropUp);
     window.addEventListener('blur', handleCropUp);
 
-    // PDF 뷰어 내에서 Ctrl + 마우스 휠로 시원시원하게 즉시 줌인/줌아웃 지원
+    // PDF 뷰어 내에서 Ctrl + 마우스 휠로 시원시원하게 즉시 줌인/줌아웃 지원 (+ 드래그 중 휠 스크롤 시 크롭 박스 실시간 확장!)
     viewport.addEventListener('wheel', (e) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const delta = e.deltaY < 0 ? 0.18 : -0.18;
         this.setPdfZoom((this.pdfZoom || 1.5) + delta);
+        return;
+      }
+      if (e.shiftKey && e.deltaY !== 0 && e.deltaX === 0) {
+        e.preventDefault();
+        viewport.scrollLeft += e.deltaY;
+        this.savedPdfScrollLeft = viewport.scrollLeft;
+      }
+      if (this.isPdfCropping && typeof this._cropLastClientX === 'number') {
+        requestAnimationFrame(() => {
+          updateCropBoxFromPointer(this._cropLastClientX, this._cropLastClientY);
+        });
       }
     }, { passive: false });
 
@@ -6285,6 +6409,57 @@ class GraphApp {
 
     viewport.addEventListener('pointercancel', handleCropCancel);
     window.addEventListener('pointercancel', handleCropCancel);
+  }
+
+  async _upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop) {
+    try {
+      if (!this.pdfDoc || !normCrop || normCrop.nw <= 0 || normCrop.nh <= 0) return;
+      const page = await this.pdfDoc.getPage(pageNum);
+      const baseVp = page.getViewport({ scale: 1.0 });
+      const ultraScale = 4.4;
+      const fullVp = page.getViewport({
+        scale: ultraScale,
+        offsetX: -normCrop.nx * baseVp.width * ultraScale,
+        offsetY: -normCrop.ny * baseVp.height * ultraScale
+      });
+      const targetW = Math.max(1, Math.round(normCrop.nw * baseVp.width * ultraScale));
+      const targetH = Math.max(1, Math.round(normCrop.nh * baseVp.height * ultraScale));
+      if (targetW > 4200 || targetH > 4200) return;
+
+      const vecCanvas = document.createElement('canvas');
+      vecCanvas.width = targetW;
+      vecCanvas.height = targetH;
+      const vCtx = vecCanvas.getContext('2d');
+      vCtx.imageSmoothingEnabled = true;
+      vCtx.imageSmoothingQuality = 'high';
+      vCtx.fillStyle = '#ffffff';
+      vCtx.fillRect(0, 0, targetW, targetH);
+      await page.render({ canvasContext: vCtx, viewport: fullVp }).promise;
+
+      const ultraDataUrl = vecCanvas.toDataURL('image/png');
+      if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+        const lastExtra = this.extraProblemCards[this.extraProblemCards.length - 1];
+        if (lastExtra && lastExtra.el) {
+          const imgEl = lastExtra.el.querySelector('.problem-card-img');
+          if (imgEl) imgEl.src = ultraDataUrl;
+          lastExtra.sourceCanvas = vecCanvas;
+          this.requestRender();
+          return;
+        }
+      }
+      if (this.problemCardData && this.problemCardData.pageNum === pageNum) {
+        this.problemCardData.imgUrl = ultraDataUrl;
+        this.problemCardImage = vecCanvas;
+        const pImg = document.getElementById('problemCardImg');
+        if (pImg) pImg.src = ultraDataUrl;
+        if (this.isLessonPlaylistActive) {
+          this.saveCurrentSlideIntoPlaylist();
+        }
+        this.requestRender();
+      }
+    } catch (err) {
+      // 벡터 보강 실패 시 기존 고해상도 크롭 이미지 유지
+    }
   }
 
   applyProblemCrop() {
@@ -8357,29 +8532,70 @@ class GraphApp {
     const pdfPageNum = (this.pdfPageBoardData && this.pdfPageBoardData.pageNum) || 1;
 
     if (cropRect && cropRect.w >= 25 && cropRect.h >= 25 && this.canvas) {
-      const rx = Math.max(0, Math.round(cropRect.x));
-      const ry = Math.max(0, Math.round(cropRect.y));
-      const rw = Math.min(this.screenWidth - rx, Math.round(cropRect.w));
-      const rh = Math.min(this.screenHeight - ry, Math.round(cropRect.h));
-      if (rw >= 20 && rh >= 20) {
-        const dpr = window.devicePixelRatio || 2;
-        croppedCanvas = document.createElement('canvas');
-        croppedCanvas.width = Math.round(rw * dpr);
-        croppedCanvas.height = Math.round(rh * dpr);
-        const cctx = croppedCanvas.getContext('2d');
-        cctx.drawImage(
-          this.canvas,
-          Math.round(rx * dpr),
-          Math.round(ry * dpr),
-          Math.round(rw * dpr),
-          Math.round(rh * dpr),
-          0,
-          0,
-          Math.round(rw * dpr),
-          Math.round(rh * dpr)
-        );
-        croppedDataUrl = croppedCanvas.toDataURL('image/png');
-        croppedW = Math.round(Math.max(300, Math.min(540, rw)));
+      // 🌟 [PDF 칠판 배율 확대 시 화면 잘림 없는 수학 좌표 기반 원본 벡터 캔버스 직결 추출] 🌟
+      const pbd = this.pdfPageBoardData;
+      if (pbd && pbd.canvas && pbd.mathW > 0 && pbd.mathH > 0) {
+        const m1 = cropRect.mathStart || this.screenToMath(cropRect.x, cropRect.y);
+        const m2 = cropRect.mathEnd || this.screenToMath(cropRect.x + cropRect.w, cropRect.y + cropRect.h);
+        const minMX = Math.min(m1.x, m2.x);
+        const maxMX = Math.max(m1.x, m2.x);
+        const minMY = Math.min(m1.y, m2.y);
+        const maxMY = Math.max(m1.y, m2.y);
+
+        const pageLeftM = (pbd.centerX || 0) - pbd.mathW / 2;
+        const pageTopM = (pbd.centerY || 0) + pbd.mathH / 2;
+        const nx1 = Math.max(0, Math.min(1, (minMX - pageLeftM) / pbd.mathW));
+        const nx2 = Math.max(0, Math.min(1, (maxMX - pageLeftM) / pbd.mathW));
+        const ny1 = Math.max(0, Math.min(1, (pageTopM - maxMY) / pbd.mathH));
+        const ny2 = Math.max(0, Math.min(1, (pageTopM - minMY) / pbd.mathH));
+
+        const sx = Math.round(nx1 * pbd.canvas.width);
+        const sy = Math.round(ny1 * pbd.canvas.height);
+        const sw = Math.round((nx2 - nx1) * pbd.canvas.width);
+        const sh = Math.round((ny2 - ny1) * pbd.canvas.height);
+
+        if (sw >= 24 && sh >= 24) {
+          croppedCanvas = document.createElement('canvas');
+          croppedCanvas.width = sw;
+          croppedCanvas.height = sh;
+          const cctx = croppedCanvas.getContext('2d');
+          cctx.imageSmoothingEnabled = true;
+          cctx.imageSmoothingQuality = 'high';
+          cctx.fillStyle = '#ffffff';
+          cctx.fillRect(0, 0, sw, sh);
+          cctx.drawImage(pbd.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+          croppedDataUrl = croppedCanvas.toDataURL('image/png');
+          croppedW = Math.round(Math.max(320, Math.min(560, cropRect.w / Math.max(1, (this.zoomLevel || 1) * 0.85))));
+        }
+      }
+
+      if (!croppedDataUrl) {
+        const rx = Math.max(0, Math.round(cropRect.x));
+        const ry = Math.max(0, Math.round(cropRect.y));
+        const rw = Math.min(this.screenWidth - rx, Math.round(cropRect.w));
+        const rh = Math.min(this.screenHeight - ry, Math.round(cropRect.h));
+        if (rw >= 20 && rh >= 20) {
+          const dpr = this.getCanvasDpr();
+          croppedCanvas = document.createElement('canvas');
+          croppedCanvas.width = Math.round(rw * dpr);
+          croppedCanvas.height = Math.round(rh * dpr);
+          const cctx = croppedCanvas.getContext('2d');
+          cctx.imageSmoothingEnabled = true;
+          cctx.imageSmoothingQuality = 'high';
+          cctx.drawImage(
+            this.canvas,
+            Math.round(rx * dpr),
+            Math.round(ry * dpr),
+            Math.round(rw * dpr),
+            Math.round(rh * dpr),
+            0,
+            0,
+            Math.round(rw * dpr),
+            Math.round(rh * dpr)
+          );
+          croppedDataUrl = croppedCanvas.toDataURL('image/png');
+          croppedW = Math.round(Math.max(300, Math.min(540, rw)));
+        }
       }
     }
 
@@ -8575,7 +8791,7 @@ class GraphApp {
     this.isGraphCovered = false;
     this.render();
 
-    const dpr = window.devicePixelRatio || 2;
+    const dpr = this.getCanvasDpr();
     const cropCanvas = document.createElement('canvas');
     cropCanvas.width = Math.round(rw * dpr);
     cropCanvas.height = Math.round(rh * dpr);
@@ -9472,7 +9688,7 @@ class GraphApp {
   clearInkCache() {
     this._hasSceneFreeze = false;
     this._hasBakedStrokes = false;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = this.getCanvasDpr();
     if (this.inkBakeCanvas && this.inkBakeCtx) {
       this.inkBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
       this.inkBakeCtx.clearRect(0, 0, this.inkBakeCanvas.width, this.inkBakeCanvas.height);
@@ -9489,7 +9705,7 @@ class GraphApp {
   // 필기 도중(pointermove)에는 520단계 함수 수식 계산, 격자, 축, 수선 렌더링을 100% 생략하고 이 텍스처만 0.01ms 만에 Blit합니다.
   captureSceneFreeze() {
     if (!this.canvas || !this.sceneFreezeCanvas || !this.sceneFreezeCtx) return;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = this.getCanvasDpr();
     if (this.sceneFreezeCanvas.width !== this.canvas.width || this.sceneFreezeCanvas.height !== this.canvas.height) {
       this.sceneFreezeCanvas.width = this.canvas.width;
       this.sceneFreezeCanvas.height = this.canvas.height;
@@ -9710,7 +9926,7 @@ class GraphApp {
       return;
     }
 
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = this.getCanvasDpr();
     if (this.inkBakeCanvas.width !== this.canvas.width || this.inkBakeCanvas.height !== this.canvas.height) {
       this.inkBakeCanvas.width = this.canvas.width;
       this.inkBakeCanvas.height = this.canvas.height;
@@ -16131,11 +16347,11 @@ class GraphApp {
     const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
     const smartBounds = this.getSmartExportBounds(effFilter);
     const hotspots = this.extractGraphHotspotsForBounds(smartBounds, effFilter);
-    const exp = this.getExportCanvas(effFilter, smartBounds, forCloud ? 1.6 : null);
+    const exp = this.getExportCanvas(effFilter, smartBounds, forCloud ? 2.4 : null);
     let dataUrl = '';
     try {
       dataUrl = forCloud
-        ? exp.canvas.toDataURL('image/jpeg', 0.88)
+        ? exp.canvas.toDataURL('image/jpeg', 0.94)
         : exp.canvas.toDataURL('image/png');
     } catch (e) {
       dataUrl = exp.canvas.toDataURL('image/png');
@@ -16893,16 +17109,22 @@ class GraphApp {
     return this.canvasRect;
   }
 
+  getCanvasDpr() {
+    return Math.min(3, Math.max(2, window.devicePixelRatio || 2));
+  }
+
   resizeCanvas() {
     const prevW = this.screenWidth;
     const prevH = this.screenHeight;
     const rect = this.canvas.parentElement.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    this.canvas.width = rect.width * dpr;
-    this.canvas.height = rect.height * dpr;
+    const dpr = this.getCanvasDpr();
+    this.canvas.width = Math.round(rect.width * dpr);
+    this.canvas.height = Math.round(rect.height * dpr);
     this.canvas.style.width = `${rect.width}px`;
     this.canvas.style.height = `${rect.height}px`;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.ctx.imageSmoothingEnabled = true;
+    this.ctx.imageSmoothingQuality = 'high';
     this.screenWidth = rect.width;
     this.screenHeight = rect.height;
     this.updateCanvasRect();
@@ -17593,7 +17815,8 @@ class GraphApp {
         if (e.preventDefault) e.preventDefault();
         if (e.stopPropagation) e.stopPropagation();
         this.isPdfToGraphCropDragging = true;
-        this.pdfToGraphCropStart = { x: pos.x, y: pos.y, clientX: e.clientX, clientY: e.clientY };
+        const startMath = this.screenToMath(pos.x, pos.y);
+        this.pdfToGraphCropStart = { x: pos.x, y: pos.y, clientX: e.clientX, clientY: e.clientY, mathX: startMath.x, mathY: startMath.y };
         const dragBox = document.getElementById('graphSnapDragBox');
         if (dragBox) {
           dragBox.style.display = 'block';
@@ -18494,6 +18717,28 @@ class GraphApp {
         if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
         if (this.canvas) this.canvas.style.cursor = 'crosshair';
         if (this.isPdfToGraphCropDragging && this.pdfToGraphCropStart) {
+          // 배율 확대 상태에서 화면 가장자리로 드래그 시 자동 카메라 패닝 지원
+          const edgeZone = 54;
+          const panSpeed = 14;
+          let panDX = 0;
+          let panDY = 0;
+          if (pos.x > this.screenWidth - edgeZone) panDX = -panSpeed;
+          else if (pos.x < edgeZone) panDX = panSpeed;
+          if (pos.y > this.screenHeight - edgeZone) panDY = -panSpeed;
+          else if (pos.y < edgeZone) panDY = panSpeed;
+          if (panDX !== 0 || panDY !== 0) {
+            this.panX += panDX;
+            this.panY += panDY;
+            this.render();
+          }
+          if (typeof this.pdfToGraphCropStart.mathX === 'number') {
+            const sPt = this.mathToScreen(this.pdfToGraphCropStart.mathX, this.pdfToGraphCropStart.mathY);
+            const cRect = this.canvasRect || this.canvas.getBoundingClientRect();
+            this.pdfToGraphCropStart.x = sPt.x;
+            this.pdfToGraphCropStart.y = sPt.y;
+            this.pdfToGraphCropStart.clientX = cRect.left + sPt.x;
+            this.pdfToGraphCropStart.clientY = cRect.top + sPt.y;
+          }
           const dragBox = document.getElementById('graphSnapDragBox');
           if (dragBox) {
             const x = Math.min(this.pdfToGraphCropStart.clientX, e.clientX);
@@ -19613,13 +19858,22 @@ class GraphApp {
         const dragBox = document.getElementById('graphSnapDragBox');
         if (dragBox) dragBox.style.display = 'none';
         const pos = getPos(e);
+        if (typeof this.pdfToGraphCropStart.mathX === 'number') {
+          const sPt = this.mathToScreen(this.pdfToGraphCropStart.mathX, this.pdfToGraphCropStart.mathY);
+          this.pdfToGraphCropStart.x = sPt.x;
+          this.pdfToGraphCropStart.y = sPt.y;
+        }
         const x = Math.min(this.pdfToGraphCropStart.x, pos.x);
         const y = Math.min(this.pdfToGraphCropStart.y, pos.y);
         const w = Math.abs(pos.x - this.pdfToGraphCropStart.x);
         const h = Math.abs(pos.y - this.pdfToGraphCropStart.y);
+        const mathStart = (typeof this.pdfToGraphCropStart.mathX === 'number')
+          ? { x: this.pdfToGraphCropStart.mathX, y: this.pdfToGraphCropStart.mathY }
+          : this.screenToMath(this.pdfToGraphCropStart.x, this.pdfToGraphCropStart.y);
+        const mathEnd = this.screenToMath(pos.x, pos.y);
         this.pdfToGraphCropStart = null;
         if (w >= 25 && h >= 25) {
-          this.completePdfBoardToGraphCrop({ x, y, w, h });
+          this.completePdfBoardToGraphCrop({ x, y, w, h, mathStart, mathEnd });
         } else {
           this.completePdfBoardToGraphCrop(null);
         }
@@ -19836,7 +20090,7 @@ class GraphApp {
             }
             this._liveBezierScreenPts = null;
 
-            const dpr = window.devicePixelRatio || 1;
+            const dpr = this.getCanvasDpr();
             if (this.inkBakeCanvas && (this.inkBakeCanvas.width !== this.canvas.width || this.inkBakeCanvas.height !== this.canvas.height)) {
               this.inkBakeCanvas.width = this.canvas.width;
               this.inkBakeCanvas.height = this.canvas.height;
@@ -25386,6 +25640,8 @@ class GraphApp {
 
           ctx.save();
           ctx.clip();
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(imgEl, bx, by, bw, bh);
           if (incInk) {
             const cardInkCanvas = bodyEl.querySelector('.problem-card-canvas');

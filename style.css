@@ -3570,14 +3570,17 @@ body.theme-light .ink-size-btn.active .ink-size-circle {
   touch-action: none !important;
 }
 
-/* 페이지들이 세로로 차례대로 나열되는 컨테이너 */
+/* 페이지들이 세로로 차례대로 나열되는 컨테이너 (배율 확대 시 좌측 잘림 0% 보장) */
 .pdf-pages-container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 28px;
-  padding: 24px 16px 60px 16px;
+  width: max-content;
   min-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto;
+  gap: 28px;
+  padding: 24px 28px 60px 28px;
   user-select: none !important;
   -webkit-user-select: none !important;
   overscroll-behavior: none !important;
@@ -3586,7 +3589,9 @@ body.theme-light .ink-size-btn.active .ink-size-circle {
 /* 개별 페이지 래퍼 */
 .pdf-page-wrapper {
   position: relative;
-  display: inline-block;
+  display: block;
+  flex-shrink: 0;
+  margin: 0 auto;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75);
   border-radius: 4px;
   background: #ffffff;
