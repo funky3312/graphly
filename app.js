@@ -6045,6 +6045,9 @@ class GraphApp {
       // ✋ [이동 모드(!this.isPdfCropModeActive)]: 마우스/펜슬/손가락 드래그로 PDF 뷰포트 상하좌우 직접 이동 지원!
       if (!this.isPdfCropModeActive) {
         if (e.button !== 0 && e.pointerType === 'mouse') return;
+        if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
+          e.preventDefault();
+        }
         this._isPdfViewportPanning = true;
         this._pdfViewportPanStart = {
           clientX: e.clientX,
@@ -6114,8 +6117,15 @@ class GraphApp {
         }
       }
       if (this._isPdfViewportPanning && this._pdfViewportPanStart && (!this._pdfTouchPointers || this._pdfTouchPointers.size < 2)) {
+        // 마우스/펜 버튼을 이미 뗀 상태(buttons === 0)면 즉시 패닝 종료!
+        if ((e.pointerType === 'mouse' || e.pointerType === 'pen') && typeof e.buttons === 'number' && e.buttons === 0) {
+          this._isPdfViewportPanning = false;
+          this._pdfViewportPanStart = null;
+          viewport.classList.remove('panning-active');
+          return;
+        }
         const dx = e.clientX - this._pdfViewportPanStart.clientX;
-        const dy = e.clientY - this._pdfViewportPanStart.scrollTop !== undefined ? (e.clientY - this._pdfViewportPanStart.clientY) : 0;
+        const dy = e.clientY - this._pdfViewportPanStart.clientY;
         viewport.scrollLeft = this._pdfViewportPanStart.scrollLeft - dx;
         viewport.scrollTop = this._pdfViewportPanStart.scrollTop - dy;
         this.savedPdfScrollLeft = viewport.scrollLeft;
@@ -6152,11 +6162,17 @@ class GraphApp {
     window.addEventListener('pointermove', handleCropMove, { passive: false });
 
     const handleCropUp = (e) => {
-      if (this._pdfTouchPointers && this._pdfTouchPointers.has(e.pointerId)) {
+      if (e && this._pdfTouchPointers && this._pdfTouchPointers.has(e.pointerId)) {
         this._pdfTouchPointers.delete(e.pointerId);
         if (this._pdfTouchPointers.size < 2) {
           endPdfViewerPinch();
         }
+      }
+      // 🌟 [핵심 버그 수정]: pointerup / pointercancel 즉시 PDF 이동(Panning) 상태를 확실하게 해제하여 마우스를 따라다니지 않도록 차단!
+      if (this._isPdfViewportPanning) {
+        this._isPdfViewportPanning = false;
+        this._pdfViewportPanStart = null;
+        viewport.classList.remove('panning-active');
       }
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
       this.isPdfCropping = false;
@@ -6238,6 +6254,8 @@ class GraphApp {
 
     viewport.addEventListener('pointerup', handleCropUp);
     window.addEventListener('pointerup', handleCropUp);
+    window.addEventListener('pointercancel', handleCropUp);
+    window.addEventListener('blur', handleCropUp);
 
     // PDF 뷰어 내에서 Ctrl + 마우스 휠로 시원시원하게 즉시 줌인/줌아웃 지원
     viewport.addEventListener('wheel', (e) => {
