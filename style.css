@@ -5429,14 +5429,36 @@ body.theme-light .card-btn-restore {
 }
 
 
-/* 🌟 [대표님 핵심 기획: 문제 카드 & 그래프 보관 카드 위 필기 제거 -> 카드 몸통 어디든 잡고 슥 끌면 즉시 이동!] 🌟 */
-.problem-card-canvas,
-#problemCardCanvas,
-#graphCardCanvas,
+/* 🌟 [대표님 킬러 기획: 카드 기본 상태는 몸통 잡고 슥 이동(pointer-events: none) + 상단 [✒️] 토글 ON 시 카드 위 밑줄·필기·지우개 허용!] 🌟 */
 #btnProblemCardClearInk,
 #btnGraphCardClearInk {
   display: none !important;
   pointer-events: none !important;
+}
+
+.problem-card-canvas,
+#problemCardCanvas,
+#graphCardCanvas {
+  display: block !important;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 5 !important;
+  pointer-events: none !important;
+  touch-action: none !important;
+}
+
+body:not(.ink-laser-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-canvas,
+body:not(.ink-laser-tool-active) #problemCardWidget.card-ink-active:not(.minimized) #problemCardCanvas,
+body:not(.ink-laser-tool-active) #graphCardWidget.card-ink-active:not(.minimized) #graphCardCanvas {
+  pointer-events: auto !important;
+  cursor: none !important;
+}
+
+body:not(.ink-laser-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-body,
+body:not(.ink-laser-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-img {
+  cursor: none !important;
 }
 
 .problem-card-body,
@@ -6949,7 +6971,7 @@ header {
   z-index: 445 !important;
 }
 
-/* 🔴 [카드 전용 상단 레이저 토글 버튼 & 카드 내부 잔상 레이저 캔버스] */
+/* ✒️ [카드 전용 상단 필기 잠금/허용 토글 버튼([✒️]) & 전역 레이저 연동 캔버스] */
 .btn-card-laser {
   width: 28px !important;
   height: 26px !important;
@@ -6958,36 +6980,36 @@ header {
   align-items: center !important;
   justify-content: center !important;
   border-radius: 7px !important;
-  color: #f87171 !important;
-  border: 1px solid rgba(248, 113, 113, 0.28) !important;
-  background: rgba(239, 68, 68, 0.08) !important;
+  color: #38bdf8 !important;
+  border: 1px solid rgba(56, 189, 248, 0.32) !important;
+  background: rgba(56, 189, 248, 0.10) !important;
   transition: all 0.16s cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
 
 .btn-card-laser:hover {
-  background: rgba(239, 68, 68, 0.18) !important;
-  border-color: rgba(248, 113, 113, 0.55) !important;
-  color: #ef4444 !important;
+  background: rgba(56, 189, 248, 0.22) !important;
+  border-color: rgba(56, 189, 248, 0.65) !important;
+  color: #0ea5e9 !important;
   transform: translateY(-1px);
 }
 
 .btn-card-laser.active {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
-  border-color: #fca5a5 !important;
+  background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%) !important;
+  border-color: #7dd3fc !important;
   color: #ffffff !important;
-  box-shadow: 0 0 12px rgba(239, 68, 68, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+  box-shadow: 0 0 12px rgba(37, 99, 235, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
 }
 
 body.theme-light .btn-card-laser {
-  color: #dc2626 !important;
-  background: rgba(239, 68, 68, 0.08) !important;
-  border-color: rgba(220, 38, 38, 0.28) !important;
+  color: #0284c7 !important;
+  background: rgba(2, 132, 199, 0.08) !important;
+  border-color: rgba(2, 132, 199, 0.28) !important;
 }
 
 body.theme-light .btn-card-laser.active {
   color: #ffffff !important;
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
-  border-color: #dc2626 !important;
+  background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%) !important;
+  border-color: #1d4ed8 !important;
 }
 
 .card-laser-icon {
@@ -7002,21 +7024,27 @@ body.theme-light .btn-card-laser.active {
   inset: 0;
   width: 100%;
   height: 100%;
-  display: none;
+  display: block;
   pointer-events: none;
-  z-index: 6;
+  z-index: 8;
   touch-action: none !important;
 }
 
-.problem-card-widget.card-laser-active:not(.minimized) .card-laser-canvas,
-.problem-card-widget.card-laser-active:not(.minimized) .problem-card-body {
+body.ink-laser-tool-active .problem-card-widget:not(.minimized) .card-laser-canvas,
+.problem-card-widget.card-laser-active:not(.minimized) .card-laser-canvas {
   display: block !important;
   pointer-events: auto !important;
   cursor: none !important;
+  z-index: 9 !important;
 }
 
-.problem-card-widget.card-laser-active .problem-card-resize-handle {
-  z-index: 12 !important;
+body.ink-laser-tool-active .problem-card-widget:not(.minimized) .problem-card-body,
+.problem-card-widget.card-laser-active:not(.minimized) .problem-card-body {
+  cursor: none !important;
+}
+
+.problem-card-widget .problem-card-resize-handle {
+  z-index: 15 !important;
 }
 
 /* 🛡️ [가상 펜/지우개 커서가 카드(150~190)나 하단 필기 툴바(450) 뒤로 숨지 않도록 z-index 상향 & 클릭 간섭 0% 보장] */

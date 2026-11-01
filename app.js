@@ -1145,6 +1145,20 @@ class GraphApp {
       return;
     }
 
+    // 🌟 [0ms 초고속 카드 위 필기 획 단위 실행 취소]
+    if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'card_stroke_add') {
+      if (Array.isArray(prevSnap.strokesArr)) {
+        const idx = prevSnap.strokesArr.indexOf(prevSnap.stroke);
+        if (idx !== -1) prevSnap.strokesArr.splice(idx, 1);
+      }
+      if (typeof prevSnap.renderFn === 'function') prevSnap.renderFn();
+      this.redoStack.push(prevSnap);
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      this.showToast('↺ 카드 필기 실행 취소됨');
+      return;
+    }
+
     // 🌟 [0ms 초고속 잉크 획 단위 실행 취소]
     if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'stroke_add') {
       const idx = this.inkStrokes.indexOf(prevSnap.stroke);
@@ -1186,6 +1200,19 @@ class GraphApp {
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       this.showToast('↻ 다시 실행됨');
+      return;
+    }
+
+    // 🌟 [0ms 초고속 카드 위 필기 획 단위 다시 실행]
+    if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'card_stroke_add') {
+      if (Array.isArray(nextSnap.strokesArr)) {
+        nextSnap.strokesArr.push(nextSnap.stroke);
+      }
+      if (typeof nextSnap.renderFn === 'function') nextSnap.renderFn();
+      this.undoStack.push(nextSnap);
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      this.showToast('↻ 카드 필기 다시 실행됨');
       return;
     }
 
@@ -2213,6 +2240,7 @@ class GraphApp {
     const btnHighlighter = document.getElementById('btnInkHighlighter');
     const btnEraser = document.getElementById('btnInkEraser');
     const btnLasso = document.getElementById('btnInkLasso');
+    const btnLaser = document.getElementById('btnInkLaser');
     const btnAxes = document.getElementById('btnInkToggleAxes');
 
     if (btnSelect) btnSelect.onclick = () => this.setActiveInkTool('select');
@@ -2220,6 +2248,7 @@ class GraphApp {
     if (btnHighlighter) btnHighlighter.onclick = () => this.setActiveInkTool('highlighter');
     if (btnEraser) btnEraser.onclick = () => this.setActiveInkTool('eraser');
     if (btnLasso) btnLasso.onclick = () => this.setActiveInkTool('lasso');
+    if (btnLaser) btnLaser.onclick = () => this.setActiveInkTool('laser');
     if (btnAxes) btnAxes.onclick = () => this.toggleAxes();
     this.updateAxesUI();
 
@@ -2460,10 +2489,10 @@ class GraphApp {
       '#topSlideBarMiniTab',
       '#curveContextBar',
       '#graphSnapFloatingBar',
-      '#problemCardWidget',
-      '#graphCardWidget',
       '#problemCardHeader',
+      '#graphCardHeader',
       '#problemCardResizeHandle',
+      '#graphCardResizeHandle',
       '#modalSmartInput',
       '#modalShare',
       '#modalPdfViewer',
@@ -2507,6 +2536,24 @@ class GraphApp {
 
     const el = targetEl || document.elementFromPoint(clientX, clientY);
     if (!el || typeof el.closest !== 'function') return true; // 뷰포트 바깥
+
+    // 🌟 [대표님 킬러 기획: 카드 위 [✒️ 필기] ON 또는 [🔴 레이저] 도구 활성 시 카드 몸통 위에서도 가상 펜/레이저 포인터 표시!]
+    const cardBodyEl = el.closest('.problem-card-body');
+    if (cardBodyEl && !el.closest('.problem-card-header, .problem-card-resize-handle, button, .card-btn')) {
+      const parentCard = cardBodyEl.closest('.problem-card-widget, .graph-card-widget, .extra-problem-card-widget, .extra-graph-card-widget');
+      if (parentCard && !parentCard.classList.contains('minimized')) {
+        const isGlobalLaser = Boolean(this.isInkMode && this.activeInkTool === 'laser');
+        const isCardInkOn = Boolean(
+          parentCard.classList.contains('card-ink-active') &&
+          this.isInkMode &&
+          (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter' || this.activeInkTool === 'eraser')
+        );
+        if (isGlobalLaser || isCardInkOn) {
+          return false;
+        }
+      }
+      return true;
+    }
 
     // 1. 명시적인 메뉴/툴바/문제카드/그래프카드/버튼/헤더/입력창 체크 -> 가상 펜 즉시 숨김 & 해당 아이콘(손가락/손바닥) 커서 노출!
     const isExplicitMenu = !!(
@@ -2644,7 +2691,7 @@ class GraphApp {
       return;
     }
 
-    if (this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter' && this.activeInkTool !== 'eraser') {
+    if (this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter' && this.activeInkTool !== 'eraser' && this.activeInkTool !== 'laser') {
       this.virtualStylusEl.style.display = 'none';
       return;
     }
@@ -2660,7 +2707,7 @@ class GraphApp {
       return;
     }
 
-    // 🌟 [대표님 킬러 UX]: 화면 밖이거나 메뉴/툴바/슬라이드바/카드 위로 올라갔을 때 가상 펜을 즉시 숨김!
+    // 🌟 [대표님 킬러 UX]: 화면 밖이거나 메뉴/툴바/슬라이드바/비필기 카드 위로 올라갔을 때 가상 펜을 즉시 숨김!
     if (this._isPointerInsideWindow === false || (e && this.isPointerOverMenu(e))) {
       this.virtualStylusEl.style.display = 'none';
       return;
@@ -2672,10 +2719,11 @@ class GraphApp {
       return;
     }
 
-    // 메뉴 위가 아니고 정상 필기 영역이면 즉시 표출 (펜 / 형광펜 / 지우개 아이콘 자동 전환)
+    // 메뉴 위가 아니고 정상 필기 영역이면 즉시 표출 (펜 / 형광펜 / 지우개 / 레이저 아이콘 자동 전환)
     const isEraserNow = (this.activeInkTool === 'eraser') || Boolean(this._isTemporaryStylusEraser) || Boolean(e && this.isStylusEraserEvent && this.isStylusEraserEvent(e));
-    const isHighlighterNow = !isEraserNow && (this.activeInkTool === 'highlighter');
-    const isPenNow = !isEraserNow && !isHighlighterNow;
+    const isLaserNow = !isEraserNow && (this.activeInkTool === 'laser');
+    const isHighlighterNow = !isEraserNow && !isLaserNow && (this.activeInkTool === 'highlighter');
+    const isPenNow = !isEraserNow && !isLaserNow && !isHighlighterNow;
 
     if (this.stylusPenSvg) this.stylusPenSvg.style.display = isPenNow ? 'block' : 'none';
     if (this.stylusHighlighterSvg) {
@@ -2689,7 +2737,7 @@ class GraphApp {
       }
     }
     if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = isEraserNow ? 'block' : 'none';
-    if (this.stylusLaserSvg) this.stylusLaserSvg.style.display = 'none';
+    if (this.stylusLaserSvg) this.stylusLaserSvg.style.display = isLaserNow ? 'block' : 'none';
     if (this.stylusArrowSvg) this.stylusArrowSvg.style.display = 'none';
     if (this.stylusPointerSvg) this.stylusPointerSvg.style.display = 'none';
     if (this.stylusGrabSvg) this.stylusGrabSvg.style.display = 'none';
@@ -2760,6 +2808,9 @@ class GraphApp {
         this.virtualStylusEl.style.display = 'none';
       }
     }
+    if (document.body) {
+      document.body.classList.toggle('ink-laser-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'laser'));
+    }
 
     this.syncCurveContextBar();
     this.render();
@@ -2786,17 +2837,19 @@ class GraphApp {
     const btnHighlighter = document.getElementById('btnInkHighlighter');
     const btnEraser = document.getElementById('btnInkEraser');
     const btnLasso = document.getElementById('btnInkLasso');
+    const btnLaser = document.getElementById('btnInkLaser');
 
     if (btnSelect) btnSelect.classList.toggle('active', tool === 'select');
     if (btnPen) btnPen.classList.toggle('active', tool === 'pen');
     if (btnHighlighter) btnHighlighter.classList.toggle('active', tool === 'highlighter');
     if (btnEraser) btnEraser.classList.toggle('active', tool === 'eraser');
     if (btnLasso) btnLasso.classList.toggle('active', tool === 'lasso');
+    if (btnLaser) btnLaser.classList.toggle('active', tool === 'laser');
 
     this.syncQuickPillRemoteUI();
     this.syncCurveContextBar();
     if (tool !== 'select') {
-      // 🌟 [대표님 기획]: 펜/형광펜/지우개 버튼을 누르는 즉시 그래프 조작 핸들러 및 분할선 조작 즉시 해제 및 프리징!
+      // 🌟 [대표님 기획]: 펜/형광펜/지우개/레이저 버튼을 누르는 즉시 그래프 조작 핸들러 및 분할선 조작 즉시 해제 및 프리징!
       this.selectedHandleIdx = null;
       this.isCurveSelected = false;
       this.selectedPwBoundaryIdx = null;
@@ -2806,8 +2859,11 @@ class GraphApp {
       }
     }
 
-    if (!this.isInkMode && (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'lasso' || tool === 'select')) {
+    if (!this.isInkMode && (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'lasso' || tool === 'laser' || tool === 'select')) {
       this.toggleInkMode(true);
+    }
+    if (document.body) {
+      document.body.classList.toggle('ink-laser-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'laser'));
     }
 
     if (tool !== 'lasso') {
@@ -2839,8 +2895,8 @@ class GraphApp {
     if (previewDot) previewDot.style.background = color;
     const tbDot = document.getElementById('inkSizeToolbarDot');
     if (tbDot) tbDot.style.background = color;
-    // 색상을 바꾸면 지우개, 올가미, 선택 모드였을 때 자동으로 펜으로 전환
-    if (this.activeInkTool === 'eraser' || this.activeInkTool === 'select' || this.activeInkTool === 'lasso') {
+    // 색상을 바꾸면 지우개, 올가미, 레이저, 선택 모드였을 때 자동으로 펜으로 전환
+    if (this.activeInkTool === 'eraser' || this.activeInkTool === 'select' || this.activeInkTool === 'lasso' || this.activeInkTool === 'laser') {
       this.setActiveInkTool('pen');
     }
   }
@@ -2976,6 +3032,16 @@ class GraphApp {
         if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
         this.canvas.style.cursor = 'crosshair';
       }
+    } else if (this.activeInkTool === 'laser') {
+      if (this.showVirtualStylus) {
+        this.canvas.classList.add('ink-cursor-pen');
+        if (this.virtualStylusEl) {
+          this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, this._lastPointerEvent);
+        }
+      } else {
+        if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+        this.canvas.style.cursor = 'crosshair';
+      }
     } else if (this.activeInkTool === 'lasso') {
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       if (this.isDraggingLassoSelection) {
@@ -2990,8 +3056,36 @@ class GraphApp {
   }
 
   clearAllInk() {
-    if (!this.inkStrokes || this.inkStrokes.length === 0) return;
+    const hasCardInk = Boolean(
+      (this.problemInkStrokes && this.problemInkStrokes.length > 0) ||
+      (this.graphInkStrokes && this.graphInkStrokes.length > 0) ||
+      (this.extraProblemCards && this.extraProblemCards.some(c => c && c.el && c.el._cardInkStrokes && c.el._cardInkStrokes.length > 0)) ||
+      (this.extraGraphCards && this.extraGraphCards.some(c => c && c.el && c.el._cardInkStrokes && c.el._cardInkStrokes.length > 0))
+    );
+    if ((!this.inkStrokes || this.inkStrokes.length === 0) && !hasCardInk) return;
     this.pushHistoryState();
+    if (hasCardInk) {
+      this.problemInkStrokes = [];
+      this.graphInkStrokes = [];
+      this.renderProblemCardCanvas();
+      this.renderGraphCardCanvas();
+      if (this.extraProblemCards) {
+        this.extraProblemCards.forEach(c => {
+          if (c && c.el) {
+            c.el._cardInkStrokes = [];
+            if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+          }
+        });
+      }
+      if (this.extraGraphCards) {
+        this.extraGraphCards.forEach(c => {
+          if (c && c.el) {
+            c.el._cardInkStrokes = [];
+            if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+          }
+        });
+      }
+    }
 
     // 🌟 [대표님 기획: 3대 판서 분리 관리] 🌟
     // 문제 창이 켜져 있고 바깥창 풀이 필기가 있을 때 1차 클릭: 바깥 칠판 풀이 필기만 깔끔히 비움! (그래프 수식 주석은 보존)
@@ -4363,6 +4457,7 @@ class GraphApp {
     const btnSwap = document.getElementById('btnPillSwapPenSelect');
     const btnEraser = document.getElementById('btnPillEraser');
     const btnLasso = document.getElementById('btnPillLasso');
+    const btnLaser = document.getElementById('btnPillLaser');
     const btnZoomOut = document.getElementById('btnPillZoomOut');
     const btnZoomIn = document.getElementById('btnPillZoomIn');
     const btnHighlighter = document.getElementById('btnPillHighlighter');
@@ -4481,6 +4576,18 @@ class GraphApp {
           this.setActiveInkTool('pen');
         } else {
           this.setActiveInkTool('lasso');
+        }
+      };
+    }
+
+    if (btnLaser) {
+      btnLaser.onclick = (e) => {
+        e.stopPropagation();
+        if (!this.isInkMode) this.toggleInkMode(true);
+        if (this.activeInkTool === 'laser') {
+          this.setActiveInkTool('pen');
+        } else {
+          this.setActiveInkTool('laser');
         }
       };
     }
@@ -4690,6 +4797,7 @@ class GraphApp {
     const iconSwap = document.getElementById('pillSwapIcon');
     const btnEraser = document.getElementById('btnPillEraser');
     const btnLasso = document.getElementById('btnPillLasso');
+    const btnLaser = document.getElementById('btnPillLaser');
     const btnHighlighter = document.getElementById('btnPillHighlighter');
     const secTools = document.getElementById('pillSecTools');
     const secZoom = document.getElementById('pillSecZoom');
@@ -4729,6 +4837,7 @@ class GraphApp {
 
     if (btnEraser) btnEraser.classList.toggle('active', tool === 'eraser');
     if (btnLasso) btnLasso.classList.toggle('active', tool === 'lasso');
+    if (btnLaser) btnLaser.classList.toggle('active', tool === 'laser');
     if (btnHighlighter) btnHighlighter.classList.toggle('active', tool === 'highlighter');
 
     const mods = this.pillModules || { tools: true, zoom: true, color: false, extra: false };
@@ -6950,6 +7059,9 @@ class GraphApp {
       ctx.save();
 
       let strokeColor = stroke.color || '#1e293b';
+      if (!stroke.isHighlighter && (strokeColor.toLowerCase() === '#ffffff' || strokeColor.toLowerCase() === '#fff')) {
+        strokeColor = '#0f172a';
+      }
       if (this.isMonochromeMode) {
         strokeColor = '#000000';
       }
@@ -7259,8 +7371,8 @@ class GraphApp {
           </button>
         </div>
         <div class="problem-card-actions">
-          <button type="button" class="card-btn btn-card-laser" title="레이저 포인터">
-            <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5" fill="currentColor"/><circle cx="12" cy="12" r="7.5" stroke-dasharray="2.5 2.5"/><line x1="12" y1="1.5" x2="12" y2="4.5"/><line x1="12" y1="19.5" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4.5" y2="12"/><line x1="19.5" y1="12" x2="22.5" y2="12"/></svg></span>
+          <button type="button" class="card-btn btn-card-laser" title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
+            <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></span>
           </button>
           <button type="button" class="card-btn btn-extra-recrop" title="다음 캡처 (새 슬라이드에 다음 문제 캡처)">
             <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>다음 캡처</span>
@@ -7521,7 +7633,10 @@ class GraphApp {
     const cardW = initialWidth || 520;
 
     if (widget) {
-      widget.classList.remove('minimized');
+      widget.classList.remove('minimized', 'card-ink-active', 'card-laser-active');
+      const pInkBtn = document.getElementById('btnProblemCardLaser');
+      if (pInkBtn) pInkBtn.classList.remove('active');
+      if (widget._cardLaserState) widget._cardLaserState.active = false;
       widget.style.display = 'flex';
       this.problemCardBaseX = 72;
       this.problemCardBaseY = 18;
@@ -7774,12 +7889,27 @@ class GraphApp {
       const endProblemDraw = (e) => {
         if (!isDrawingOnProblem) return;
         const wasOneShotEraser = (this.activeInkTool === 'eraser' && !this._problemCardStylusEraser);
+        const finishedCardStroke = currentStroke;
         isDrawingOnProblem = false;
         this._problemCardStylusEraser = false;
         currentStroke = null;
         if (holdTimer) {
           clearTimeout(holdTimer);
           holdTimer = null;
+        }
+        if (finishedCardStroke && finishedCardStroke.points && finishedCardStroke.points.length > 0) {
+          if (this.isAudioRecording) {
+            finishedCardStroke.tEnd = this.getAudioRecordElapsedMs();
+          }
+          this.undoStack.push({
+            type: 'card_stroke_add',
+            strokesArr: this.problemInkStrokes,
+            stroke: finishedCardStroke,
+            renderFn: () => this.renderProblemCardCanvas()
+          });
+          if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+          this.redoStack = [];
+          this.updateUndoRedoUI();
         }
         try { pCanvas.releasePointerCapture(e.pointerId); } catch (err) { }
         if (wasOneShotEraser) {
@@ -8332,44 +8462,279 @@ class GraphApp {
       return { nx, ny };
     };
 
-    const handleLaserBtnToggle = (e) => {
+    // 🌟 추가 문제 카드 / 추가 그래프 보관 카드에도 전용 정규화 필기 캔버스(.problem-card-canvas) 자동 장착!
+    let extraInkCanvas = bodyEl.querySelector('.problem-card-canvas');
+    if (!extraInkCanvas) {
+      extraInkCanvas = document.createElement('canvas');
+      extraInkCanvas.className = 'problem-card-canvas';
+      bodyEl.insertBefore(extraInkCanvas, laserCanvas);
+      cardWidgetEl._cardInkStrokes = [];
+
+      const renderExtraCardInk = () => {
+        const dpr = window.devicePixelRatio || 2;
+        if (!cardWidgetEl.classList.contains('minimized')) {
+          const rect = bodyEl.getBoundingClientRect();
+          if (rect.width >= 10 && rect.height >= 10) {
+            const tw = Math.round(rect.width * dpr);
+            const th = Math.round(rect.height * dpr);
+            if (extraInkCanvas.width !== tw || extraInkCanvas.height !== th) {
+              extraInkCanvas.width = tw;
+              extraInkCanvas.height = th;
+            }
+          }
+        }
+        const w = Math.max(1, (extraInkCanvas.width || 520 * dpr) / dpr);
+        const h = Math.max(1, (extraInkCanvas.height || 360 * dpr) / dpr);
+        const cCtx = extraInkCanvas.getContext('2d');
+        if (!cCtx) return;
+        cCtx.save();
+        cCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        cCtx.clearRect(0, 0, w, h);
+        const strokes = cardWidgetEl._cardInkStrokes || [];
+        if (strokes.length === 0) {
+          cCtx.restore();
+          return;
+        }
+        cCtx.lineCap = 'round';
+        cCtx.lineJoin = 'round';
+        const sizeScale = Math.max(0.6, w / 480);
+        const isProbExtra = cardWidgetEl.classList.contains('extra-problem-card-widget');
+        const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
+        const cRect = isAudioReplay ? extraInkCanvas.getBoundingClientRect() : null;
+
+        strokes.forEach(rawSt => {
+          let st = rawSt;
+          if (isAudioReplay) {
+            const repInfo = this.getPartialStrokeForReplay(rawSt, this.audioPlayCurrentMs, this.audioReplayViewMode);
+            if (!repInfo || !repInfo.stroke) return;
+            st = repInfo.stroke;
+            if (repInfo.isCurrentlyWriting && repInfo.tipPoint && cRect && cRect.width > 0) {
+              this._activeReplayTipScreen = {
+                x: cRect.left + repInfo.tipPoint.nx * cRect.width,
+                y: cRect.top + repInfo.tipPoint.ny * cRect.height,
+                color: st.color || '#0f172a',
+                isHighlighter: Boolean(st.isHighlighter)
+              };
+            }
+          }
+          if (!st.points || st.points.length === 0) return;
+          cCtx.save();
+          let col = st.color || '#1e293b';
+          if (isProbExtra && !st.isHighlighter && (col.toLowerCase() === '#ffffff' || col.toLowerCase() === '#fff')) {
+            col = '#0f172a';
+          }
+          if (this.isMonochromeMode) col = '#000000';
+          cCtx.strokeStyle = col;
+          cCtx.fillStyle = col;
+          const baseSize = (st.size || 3.5) * sizeScale;
+          cCtx.globalAlpha = st.isHighlighter ? 0.36 : 1.0;
+          cCtx.lineWidth = st.isHighlighter ? Math.max(10, baseSize * 2.8) : Math.max(1.5, baseSize);
+          const pts = st.points;
+          if (pts.length === 1) {
+            cCtx.beginPath();
+            cCtx.arc(pts[0].nx * w, pts[0].ny * h, cCtx.lineWidth / 2, 0, Math.PI * 2);
+            cCtx.fill();
+          } else {
+            cCtx.beginPath();
+            cCtx.moveTo(pts[0].nx * w, pts[0].ny * h);
+            for (let i = 1; i < pts.length - 1; i++) {
+              const xc = (pts[i].nx + pts[i + 1].nx) * 0.5 * w;
+              const yc = (pts[i].ny + pts[i + 1].ny) * 0.5 * h;
+              cCtx.quadraticCurveTo(pts[i].nx * w, pts[i].ny * h, xc, yc);
+            }
+            const last = pts[pts.length - 1];
+            cCtx.lineTo(last.nx * w, last.ny * h);
+            cCtx.stroke();
+          }
+          cCtx.restore();
+        });
+        cCtx.restore();
+      };
+      cardWidgetEl._renderCardInkCanvas = renderExtraCardInk;
+
+      let isDrawingExtraInk = false;
+      let curExtraStroke = null;
+      let extraHoldTimer = null;
+
+      extraInkCanvas.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'pen') this._markStylusPenDetected();
+        if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) return;
+        this.bringCardToFront(cardWidgetEl);
+        if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') return;
+        e.preventDefault();
+        e.stopPropagation();
+        try { extraInkCanvas.setPointerCapture(e.pointerId); } catch (err) { }
+        const rect = extraInkCanvas.getBoundingClientRect();
+        const rw = Math.max(1, rect.width);
+        const rh = Math.max(1, rect.height);
+        const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rw));
+        const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rh));
+        isDrawingExtraInk = true;
+
+        const isCardStylusEraser = (
+          (typeof e.buttons === 'number' && (e.buttons & 32) !== 0) ||
+          e.button === 5 ||
+          (e.pointerType === 'pen' && (e.button === 2 || (typeof e.buttons === 'number' && (e.buttons & 2) !== 0)))
+        );
+        if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
+          cardWidgetEl._extraStylusEraser = true;
+          const sx = nx * rw, sy = ny * rh;
+          cardWidgetEl._cardInkStrokes = (cardWidgetEl._cardInkStrokes || []).filter(st => {
+            if (!st.points) return false;
+            return !st.points.some(pt => Math.hypot(pt.nx * rw - sx, pt.ny * rh - sy) <= 22);
+          });
+          renderExtraCardInk();
+          return;
+        }
+        const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+        curExtraStroke = {
+          color: this.currentInkColor || '#0f172a',
+          size: this.currentInkSize || 3.5,
+          isHighlighter: (this.activeInkTool === 'highlighter'),
+          tStart: recT,
+          tEnd: recT,
+          points: [{ nx, ny, p: e.pressure || 0.5, t: recT }]
+        };
+        cardWidgetEl._cardInkStrokes.push(curExtraStroke);
+        renderExtraCardInk();
+      });
+
+      extraInkCanvas.addEventListener('pointermove', (e) => {
+        if (!isDrawingExtraInk) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = extraInkCanvas.getBoundingClientRect();
+        const rw = Math.max(1, rect.width);
+        const rh = Math.max(1, rect.height);
+        const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rw));
+        const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rh));
+        if (this.activeInkTool === 'eraser' || cardWidgetEl._extraStylusEraser) {
+          const sx = nx * rw, sy = ny * rh;
+          cardWidgetEl._cardInkStrokes = (cardWidgetEl._cardInkStrokes || []).filter(st => {
+            if (!st.points) return false;
+            return !st.points.some(pt => Math.hypot(pt.nx * rw - sx, pt.ny * rh - sy) <= 22);
+          });
+          renderExtraCardInk();
+          return;
+        }
+        if (!curExtraStroke) return;
+        const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+        if (recT !== undefined) {
+          curExtraStroke.tEnd = recT;
+          this.recordAudioCursorPoint(e.clientX, e.clientY, curExtraStroke.color, true);
+        }
+        curExtraStroke.points.push({ nx, ny, p: e.pressure || 0.5, t: recT });
+        if (extraHoldTimer) clearTimeout(extraHoldTimer);
+        extraHoldTimer = setTimeout(() => {
+          if (isDrawingExtraInk && curExtraStroke && curExtraStroke.points.length >= 4) {
+            const p0 = curExtraStroke.points[0];
+            const pLast = curExtraStroke.points[curExtraStroke.points.length - 1];
+            const dx = (pLast.nx - p0.nx) * rw;
+            const dy = (pLast.ny - p0.ny) * rh;
+            if (Math.hypot(dx, dy) >= 20) {
+              let endNy = pLast.ny;
+              const angle = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);
+              if (angle < 2.5 || angle > 177.5) endNy = p0.ny;
+              const snapT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : pLast.t;
+              if (snapT !== undefined) curExtraStroke.tEnd = snapT;
+              curExtraStroke.points = [
+                { nx: p0.nx, ny: p0.ny, p: 0.6, t: p0.t },
+                { nx: pLast.nx, ny: endNy, p: 0.6, t: snapT }
+              ];
+              renderExtraCardInk();
+            }
+          }
+        }, 400);
+        renderExtraCardInk();
+      });
+
+      const endExtraCardInk = (e) => {
+        if (!isDrawingExtraInk) return;
+        const wasOneShotEraser = (this.activeInkTool === 'eraser' && !cardWidgetEl._extraStylusEraser);
+        const finishedSt = curExtraStroke;
+        isDrawingExtraInk = false;
+        cardWidgetEl._extraStylusEraser = false;
+        curExtraStroke = null;
+        if (extraHoldTimer) {
+          clearTimeout(extraHoldTimer);
+          extraHoldTimer = null;
+        }
+        if (finishedSt && finishedSt.points && finishedSt.points.length > 0) {
+          if (this.isAudioRecording) finishedSt.tEnd = this.getAudioRecordElapsedMs();
+          this.undoStack.push({
+            type: 'card_stroke_add',
+            strokesArr: cardWidgetEl._cardInkStrokes,
+            stroke: finishedSt,
+            renderFn: renderExtraCardInk
+          });
+          if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+          this.redoStack = [];
+          this.updateUndoRedoUI();
+        }
+        try { extraInkCanvas.releasePointerCapture(e.pointerId); } catch (err) { }
+        if (wasOneShotEraser) this.setActiveInkTool('pen');
+      };
+      extraInkCanvas.addEventListener('pointerup', endExtraCardInk);
+      extraInkCanvas.addEventListener('pointercancel', endExtraCardInk);
+    }
+
+    // 🌟 [대표님 킬러 기획: 카드 상단 [✒️] 버튼 = '카드 몸통 드래그 이동 ⇄ 카드 위 밑줄·필기 고정' 토글!]
+    const handleCardInkBtnToggle = (e) => {
       if (e) {
         e.preventDefault();
         e.stopPropagation();
       }
-      if (laserBtn._lastToggleTime && performance.now() - laserBtn._lastToggleTime < 75) return;
-      laserBtn._lastToggleTime = performance.now();
-      state.active = !state.active;
-      cardWidgetEl.classList.toggle('card-laser-active', state.active);
-      laserBtn.classList.toggle('active', state.active);
-      if (state.active) {
-        // 접혀 있는 상태에서 레이저 버튼을 켜면 자동으로 카드를 펼쳐서 즉시 필기 가능하도록 처리!
+      const nextInkActive = !cardWidgetEl.classList.contains('card-ink-active');
+      cardWidgetEl.classList.toggle('card-ink-active', nextInkActive);
+      laserBtn.classList.toggle('active', nextInkActive);
+
+      if (nextInkActive) {
+        // 접혀 있는 상태에서 [✒️] 버튼을 켜면 자동으로 카드를 펼쳐서 즉시 필기 가능하도록 처리!
         if (cardWidgetEl.classList.contains('minimized') && typeof cardWidgetEl._toggleCardMin === 'function') {
           cardWidgetEl._toggleCardMin();
         }
-        syncCanvasSize();
-      } else {
-        if (state.rafId) {
-          cancelAnimationFrame(state.rafId);
-          state.rafId = null;
+        if (!this.isInkMode) {
+          this.toggleInkMode(true);
         }
-        state.isDrawing = false;
-        state.strokes = [];
-        state.currentStroke = null;
-        state.hoverPos = null;
-        const ctx = laserCanvas.getContext('2d');
-        if (ctx) ctx.clearRect(0, 0, laserCanvas.width, laserCanvas.height);
+        if (this.activeInkTool === 'select' || this.activeInkTool === 'lasso' || this.activeInkTool === 'laser') {
+          this.setActiveInkTool('pen');
+        }
+        if (cardWidgetEl.id === 'problemCardWidget') {
+          this.syncProblemCardRectFromWidget();
+          this.renderProblemCardCanvas();
+        } else if (cardWidgetEl.id === 'graphCardWidget') {
+          this.syncGraphCardRectFromWidget();
+          this.renderGraphCardCanvas();
+        } else if (typeof cardWidgetEl._renderCardInkCanvas === 'function') {
+          cardWidgetEl._renderCardInkCanvas();
+        }
+        syncCanvasSize();
       }
     };
+    let handledInkToggleOnPointerUp = false;
     laserBtn.addEventListener('pointerup', (e) => {
       if (e.button && e.button !== 0) return;
-      handleLaserBtnToggle(e);
+      handledInkToggleOnPointerUp = true;
+      handleCardInkBtnToggle(e);
+      setTimeout(() => { handledInkToggleOnPointerUp = false; }, 120);
     });
-    laserBtn.addEventListener('click', handleLaserBtnToggle);
+    laserBtn.addEventListener('click', (e) => {
+      if (handledInkToggleOnPointerUp) {
+        handledInkToggleOnPointerUp = false;
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        return;
+      }
+      handleCardInkBtnToggle(e);
+    });
+
+    const isLaserActiveOnCard = () => Boolean((this.isInkMode && this.activeInkTool === 'laser') || state.active);
 
     laserCanvas.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'pen') this._markStylusPenDetected();
-      if (!state.active) return;
+      if (!isLaserActiveOnCard()) return;
       // 🛡️ [손가락 레이저 필기 차단 vs 전자칠판 허용]: 아이패드/태블릿에서는 손가락(touch)으로 카드를 만지면 카드 이동(버블링)으로 작동하고, 전자칠판에서는 레이저가 작동!
       if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) return;
       this.bringCardToFront(cardWidgetEl);
@@ -8420,8 +8785,13 @@ class GraphApp {
 
     laserCanvas.addEventListener('pointermove', (e) => {
       if (e.pointerType === 'pen') this._markStylusPenDetected();
-      if (!state.active || (e.pointerType === 'touch' && this.isStylusPalmRejectionActive())) return;
-      if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+      if (!isLaserActiveOnCard() || (e.pointerType === 'touch' && this.isStylusPalmRejectionActive())) return;
+      if (this.showVirtualStylus && this.canvas) {
+        const cRect = this.canvasRect || this.updateCanvasRect();
+        if (cRect) {
+          this.updateStylusPenPosition(e.clientX - cRect.left, e.clientY - cRect.top, e);
+        }
+      }
       const pos = getNormPos(e);
       const now = performance.now();
       state.hoverPos = pos;
@@ -9288,7 +9658,12 @@ class GraphApp {
       if (titleEl) titleEl.textContent = '#1';
 
       if (widget) {
-        widget.classList.remove('minimized');
+        this.graphInkStrokes = [];
+        this.renderGraphCardCanvas();
+        widget.classList.remove('minimized', 'card-ink-active', 'card-laser-active');
+        const gInkBtn = document.getElementById('btnGraphCardLaser');
+        if (gInkBtn) gInkBtn.classList.remove('active');
+        if (widget._cardLaserState) widget._cardLaserState.active = false;
         widget.style.display = 'flex';
         widget.style.width = `${cardW}px`;
         const primaryBody = document.getElementById('graphCardBody');
@@ -9381,8 +9756,8 @@ class GraphApp {
           </button>
         </div>
         <div class="problem-card-actions">
-          <button type="button" class="card-btn btn-card-laser" title="레이저 포인터">
-            <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5" fill="currentColor"/><circle cx="12" cy="12" r="7.5" stroke-dasharray="2.5 2.5"/><line x1="12" y1="1.5" x2="12" y2="4.5"/><line x1="12" y1="19.5" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4.5" y2="12"/><line x1="19.5" y1="12" x2="22.5" y2="12"/></svg></span>
+          <button type="button" class="card-btn btn-card-laser" title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
+            <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></span>
           </button>
           <button class="card-btn card-btn-restore btn-extra-restore">
             <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>그래프 수정</span>
@@ -9927,9 +10302,24 @@ class GraphApp {
       const endGraphCardDraw = (e) => {
         if (!isDrawingOnGraphCard) return;
         const wasOneShotEraser = (this.activeInkTool === 'eraser' && !this._graphCardStylusEraser);
+        const finishedCardStroke = currentStroke;
         isDrawingOnGraphCard = false;
         this._graphCardStylusEraser = false;
         currentStroke = null;
+        if (finishedCardStroke && finishedCardStroke.points && finishedCardStroke.points.length > 0) {
+          if (this.isAudioRecording) {
+            finishedCardStroke.tEnd = this.getAudioRecordElapsedMs();
+          }
+          this.undoStack.push({
+            type: 'card_stroke_add',
+            strokesArr: this.graphInkStrokes,
+            stroke: finishedCardStroke,
+            renderFn: () => this.renderGraphCardCanvas()
+          });
+          if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+          this.redoStack = [];
+          this.updateUndoRedoUI();
+        }
         try { gCanvas.releasePointerCapture(e.pointerId); } catch (err) { }
         if (wasOneShotEraser) {
           this.setActiveInkTool('pen');
@@ -19890,6 +20280,59 @@ class GraphApp {
           return;
         }
 
+        // 🔴 [전역 레이저 포인터 (칠판 바탕화면 위 그으면 1.65초 유지 후 0.75초 동안 사르륵 소멸!)]:
+        if (this.activeInkTool === 'laser') {
+          this.isDrawingInk = true;
+          this.isStylusDrawing = true;
+          this._hasSceneFreeze = false;
+          if (this.virtualStylusEl) this.virtualStylusEl.classList.add('drawing');
+          this.updateStylusPenPosition(pos.x, pos.y, e);
+
+          if (!Array.isArray(this.mainLaserStrokes)) this.mainLaserStrokes = [];
+          const nowPerf = performance.now();
+          const HOLD_MS = 1650;
+          // 연속 필기 시 이전 레이저 획들의 소멸 타이머도 함께 연장!
+          this.mainLaserStrokes.forEach(st => {
+            if (st && st.finished) st.finishedAt = nowPerf;
+          });
+
+          const isBoardTarget = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+          const bPt0 = this.screenToBoard(pos.x, pos.y);
+          const coord0 = isBoardTarget ? { x: bPt0.x, y: bPt0.y } : { x: m.x, y: m.y };
+          const recT0 = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+          let recLaserStroke = null;
+          if (recT0 !== undefined) {
+            if (!Array.isArray(this.audioLaserStrokes)) this.audioLaserStrokes = [];
+            this.audioLaserStrokes.forEach(ls => {
+              if (ls && ls.cardKey === 'main_canvas' && typeof ls.holdUntil === 'number' && recT0 <= ls.holdUntil + 200) {
+                ls.holdUntil = recT0 + HOLD_MS;
+              }
+            });
+            recLaserStroke = {
+              cardKey: 'main_canvas',
+              isBoard: isBoardTarget,
+              tStart: recT0,
+              tEnd: recT0,
+              holdUntil: recT0 + HOLD_MS,
+              points: [{ x: coord0.x, y: coord0.y, t: recT0 }]
+            };
+            this.audioLaserStrokes.push(recLaserStroke);
+            this.recordAudioCursorPoint(pos.x, pos.y, '#dc2626', true, { isLaser: true, cursorKind: 'laser' });
+          }
+
+          this.currentMainLaserStroke = {
+            isBoard: isBoardTarget,
+            finished: false,
+            finishedAt: 0,
+            _recLaserStroke: recLaserStroke,
+            _lastScreen: { x: pos.x, y: pos.y },
+            points: [{ x: coord0.x, y: coord0.y, t: nowPerf }]
+          };
+          this.mainLaserStrokes.push(this.currentMainLaserStroke);
+          this._ensureMainLaserLoop();
+          return;
+        }
+
         const isHighlighterStroke = (this.activeInkTool === 'highlighter');
         if (neededCleanRenderBeforeFreeze) {
           this.isDrawingInk = false;
@@ -20574,6 +21017,43 @@ class GraphApp {
         if (this.activeInkTool === 'eraser' || isStylusEraser) {
           this.eraseInkAtPoint(pos.x, pos.y, 10);
           this.requestRender();
+          return;
+        } else if (this.activeInkTool === 'laser' && this.currentMainLaserStroke) {
+          const nowPerf = performance.now();
+          const HOLD_MS = 1650;
+          if (Array.isArray(this.mainLaserStrokes)) {
+            this.mainLaserStrokes.forEach(st => {
+              if (st && st.finished) st.finishedAt = nowPerf;
+            });
+          }
+          const lastS = this.currentMainLaserStroke._lastScreen || pos;
+          const stepD = Math.hypot(pos.x - lastS.x, pos.y - lastS.y);
+          if (stepD >= 1.2) {
+            const sx = lastS.x * 0.22 + pos.x * 0.78;
+            const sy = lastS.y * 0.22 + pos.y * 0.78;
+            this.currentMainLaserStroke._lastScreen = { x: sx, y: sy };
+            const isBoardTarget = Boolean(this.currentMainLaserStroke.isBoard);
+            const coord = isBoardTarget ? this.screenToBoard(sx, sy) : this.screenToMath(sx, sy);
+            this.currentMainLaserStroke.points.push({ x: coord.x, y: coord.y, t: nowPerf });
+            const recTMove = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+            if (recTMove !== undefined) {
+              if (this.currentMainLaserStroke._recLaserStroke) {
+                const rls = this.currentMainLaserStroke._recLaserStroke;
+                rls.tEnd = recTMove;
+                rls.holdUntil = recTMove + HOLD_MS;
+                rls.points.push({ x: coord.x, y: coord.y, t: recTMove });
+              }
+              if (Array.isArray(this.audioLaserStrokes)) {
+                this.audioLaserStrokes.forEach(ls => {
+                  if (ls && ls.cardKey === 'main_canvas' && typeof ls.holdUntil === 'number' && recTMove <= ls.holdUntil + 200) {
+                    ls.holdUntil = recTMove + HOLD_MS;
+                  }
+                });
+              }
+              this.recordAudioCursorPoint(sx, sy, '#dc2626', true, { isLaser: true, cursorKind: 'laser' });
+            }
+            this._ensureMainLaserLoop();
+          }
           return;
         } else if (this.currentInkStroke) {
           // 🌟 Draw & Hold 기하 도형 인식 완료 상태에서 홀드 드래그 중: 동적 크기/각도 실시간 조절!
@@ -21525,6 +22005,28 @@ class GraphApp {
           clearTimeout(this._inkHoldTimer);
           this._inkHoldTimer = null;
         }
+        if (this.activeInkTool === 'laser' && this.currentMainLaserStroke) {
+          const nowPerf = performance.now();
+          const HOLD_MS = 1650;
+          const recTUp = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+          if (recTUp !== undefined && this.currentMainLaserStroke._recLaserStroke) {
+            this.currentMainLaserStroke._recLaserStroke.tEnd = recTUp;
+            this.currentMainLaserStroke._recLaserStroke.holdUntil = recTUp + HOLD_MS;
+          }
+          if (Array.isArray(this.mainLaserStrokes)) {
+            this.mainLaserStrokes.forEach(st => {
+              if (st) {
+                st.finished = true;
+                st.finishedAt = nowPerf;
+              }
+            });
+          }
+          this.currentMainLaserStroke = null;
+          this.isDrawingInk = false;
+          this._hasSceneFreeze = false;
+          this._ensureMainLaserLoop();
+          return;
+        }
 
         // 🌟 펜을 떼기 직전에 220ms 이상 멈춰 있었다면(타이머 간발의 차 보정) 즉시 도형 자동 인식을 시도!
         if (!this._inkHoldDetected && this.currentInkStroke && this._lastSignificantMoveTime && (Date.now() - this._lastSignificantMoveTime >= 220)) {
@@ -22012,10 +22514,23 @@ class GraphApp {
           }
           return;
         }
-        // 🌟 아직 필기/드로잉 중이 아닐 때 메뉴/슬라이드바/툴바/카드 위로 마우스가 올라가면 가상 펜을 즉시 숨기고 해당 UI 고유 커서(손가락/손바닥)를 노출!
-        if (!this.isDrawingInk && !this.isStylusDrawing && !this.isLassoSelecting && (isClickableUI(e.target) || this.isPointerOverMenu(e))) {
-          if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
-          return;
+        // 🌟 아직 필기/드로잉 중이 아닐 때 메뉴/슬라이드바/툴바/비필기 카드 위로 마우스가 올라가면 가상 펜을 즉시 숨기고 해당 UI 고유 커서(손가락/손바닥)를 노출!
+        if (!this.isDrawingInk && !this.isStylusDrawing && !this.isLassoSelecting) {
+          const overMenuOrBlockedCard = this.isPointerOverMenu(e);
+          if (overMenuOrBlockedCard) {
+            if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
+            return;
+          }
+          // 카드 위 [✒️ 필기]가 켜져 있거나 전역 [🔴 레이저] 도구가 켜져 있어 카드 몸통 위를 지나는 경우 가상 펜 위치를 부드럽게 갱신!
+          if (e.target && e.target.closest && e.target.closest('.problem-card-body')) {
+            const cPos = getPos(e);
+            this.updateStylusPenPosition(cPos.x, cPos.y, e);
+            return;
+          }
+          if (isClickableUI(e.target)) {
+            if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
+            return;
+          }
         }
         const nowT = Date.now();
         lastPointerMoveTime = nowT;
@@ -23108,6 +23623,7 @@ class GraphApp {
           this.drawInkStrokes(ctx, false, 'graph');
         }
         this.drawInkStrokes(ctx, false, 'board');
+        this.drawMainLaserStrokes(ctx);
         this.drawLassoOverlay(ctx);
         return;
       }
@@ -23200,8 +23716,9 @@ class GraphApp {
       this.drawFloatingCardsForExport(ctx, expFilter);
     }
 
-    // 🌟 [올가미(Lasso) 점선 오버레이 최상단 렌더링] 🌟
+    // 🌟 [전역 레이저 포인터 잔상 & 올가미(Lasso) 점선 오버레이 최상단 렌더링] 🌟
     if (!isExport && !this._isRenderingGraphSnapshot) {
+      this.drawMainLaserStrokes(ctx);
       this.drawLassoOverlay(ctx);
     }
 
@@ -23230,6 +23747,118 @@ class GraphApp {
       ctx.restore();
       this.drawBoardModeStage(ctx, splitX, width, height, curTheme);
     }
+  }
+
+  _ensureMainLaserLoop() {
+    if (this._mainLaserRafId) return;
+    const step = () => {
+      this._mainLaserRafId = null;
+      this.render();
+      const hasActiveLive = Array.isArray(this.mainLaserStrokes) && this.mainLaserStrokes.length > 0;
+      if (hasActiveLive && !this._mainLaserRafId) {
+        this._mainLaserRafId = requestAnimationFrame(step);
+      }
+    };
+    this._mainLaserRafId = requestAnimationFrame(step);
+  }
+
+  drawMainLaserStrokes(ctx) {
+    const HOLD_MS = 1650;
+    const FADE_MS = 750;
+    const nowPerf = performance.now();
+
+    const drawSmoothScreenLaser = (screenPts, life) => {
+      if (!screenPts || screenPts.length === 0 || life <= 0.01) return;
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = life;
+      ctx.strokeStyle = '#dc2626';
+      ctx.fillStyle = '#dc2626';
+      ctx.lineWidth = 2.6;
+      if (screenPts.length === 1) {
+        ctx.beginPath();
+        ctx.arc(screenPts[0].x, screenPts[0].y, 1.4, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(screenPts[0].x, screenPts[0].y);
+        if (screenPts.length === 2) {
+          ctx.lineTo(screenPts[1].x, screenPts[1].y);
+        } else {
+          const firstMx = (screenPts[0].x + screenPts[1].x) * 0.5;
+          const firstMy = (screenPts[0].y + screenPts[1].y) * 0.5;
+          ctx.lineTo(firstMx, firstMy);
+          for (let i = 1; i < screenPts.length - 1; i++) {
+            const mx = (screenPts[i].x + screenPts[i + 1].x) * 0.5;
+            const my = (screenPts[i].y + screenPts[i + 1].y) * 0.5;
+            ctx.quadraticCurveTo(screenPts[i].x, screenPts[i].y, mx, my);
+          }
+          const last = screenPts[screenPts.length - 1];
+          ctx.lineTo(last.x, last.y);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+
+    // 1) 음성/화면 재생 모드일 때 녹화된 메인 칠판 레이저 스트로크 재현
+    if (this._isAudioReplayActive && this.audioSyncData && Array.isArray(this.audioSyncData.laserStrokes)) {
+      const playMs = this.audioPlayCurrentMs || 0;
+      const mainLasers = this.audioSyncData.laserStrokes.filter(ls => ls && ls.cardKey === 'main_canvas');
+      for (let i = 0; i < mainLasers.length; i++) {
+        const ls = mainLasers[i];
+        const tStart = ls.tStart || 0;
+        const tEnd = (typeof ls.tEnd === 'number' && ls.tEnd >= tStart) ? ls.tEnd : (tStart + 120);
+        const holdUntil = (typeof ls.holdUntil === 'number' && ls.holdUntil >= tEnd) ? ls.holdUntil : (tEnd + HOLD_MS);
+        if (playMs < tStart || playMs > holdUntil + FADE_MS) continue;
+        let life = 1.0;
+        if (playMs > holdUntil) {
+          const fadeRatio = Math.min(1, (playMs - holdUntil) / FADE_MS);
+          life = Math.pow(1 - fadeRatio, 1.45);
+        }
+        if (life <= 0.01) continue;
+        const rep = this.getPartialStrokeForReplay(ls, playMs, 'video');
+        if (!rep || !rep.stroke || !rep.stroke.points || rep.stroke.points.length === 0) continue;
+        const isBoard = Boolean(ls.isBoard);
+        const sPts = rep.stroke.points.map(pt => isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y));
+        if (rep.isCurrentlyWriting && rep.tipPoint) {
+          const tipS = isBoard ? this.boardToScreen(rep.tipPoint.x, rep.tipPoint.y) : this.mathToScreen(rep.tipPoint.x, rep.tipPoint.y);
+          this._activeReplayTipScreen = {
+            x: tipS.x,
+            y: tipS.y,
+            color: '#dc2626',
+            isHighlighter: false,
+            isLaser: true
+          };
+        }
+        drawSmoothScreenLaser(sPts, life);
+      }
+    }
+
+    // 2) 실시간 메인 칠판 레이저 스트로크 렌더링 및 소멸 정리
+    if (!Array.isArray(this.mainLaserStrokes) || this.mainLaserStrokes.length === 0) return;
+    this.mainLaserStrokes = this.mainLaserStrokes.filter(st => {
+      if (!st || !st.points || st.points.length === 0) return false;
+      if (!st.finished) return true;
+      return (nowPerf - (st.finishedAt || nowPerf)) < (HOLD_MS + FADE_MS);
+    });
+
+    this.mainLaserStrokes.forEach(st => {
+      let life = 1.0;
+      if (st.finished) {
+        const elapsed = Math.max(0, nowPerf - (st.finishedAt || nowPerf));
+        if (elapsed > HOLD_MS) {
+          const t = Math.min(1, (elapsed - HOLD_MS) / FADE_MS);
+          life = Math.pow(1 - t, 1.45);
+        }
+      }
+      if (life <= 0.01) return;
+      const isBoard = Boolean(st.isBoard);
+      const sPts = st.points.map(pt => isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y));
+      drawSmoothScreenLaser(sPts, life);
+    });
   }
 
   // --- [⚡ 실시간 교점판독기: 교점 데이터 갱신 엔진] ---
@@ -28142,8 +28771,15 @@ class GraphApp {
               if (rect.width > 0 && rect.height > 0 && e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
                 const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
                 const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-                const isLaser = cardEl.classList.contains('card-laser-active');
-                const cardBodyKind = isLaser ? 'laser' : (isDownCard ? 'grabbing' : 'grab');
+                const isLaser = Boolean((this.isInkMode && this.activeInkTool === 'laser') || cardEl.classList.contains('card-laser-active'));
+                const isCardInkOn = Boolean(
+                  cardEl.classList.contains('card-ink-active') &&
+                  this.isInkMode &&
+                  (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter' || this.activeInkTool === 'eraser')
+                );
+                const cardBodyKind = isLaser
+                  ? 'laser'
+                  : (isCardInkOn ? this.activeInkTool : (isDownCard ? 'grabbing' : 'grab'));
                 this.recordAudioCursorPoint(
                   e.clientX,
                   e.clientY,
@@ -28685,6 +29321,7 @@ class GraphApp {
 
     if (this.isInkMode) {
       if (this.activeInkTool === 'eraser' || this._isTemporaryStylusEraser) return 'eraser';
+      if (this.activeInkTool === 'laser') return 'laser';
       if (this.activeInkTool === 'highlighter') return 'highlighter';
       if (this.activeInkTool === 'lasso') return isDraggingNow ? 'grabbing' : 'crosshair';
       if (this.activeInkTool === 'pen') return 'pen';
@@ -29724,6 +30361,16 @@ class GraphApp {
     this._applyAudioTimelineStateAt(playMs);
     this.renderProblemCardCanvas();
     this.renderGraphCardCanvas();
+    if (this.extraProblemCards) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el && typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+      });
+    }
+    if (this.extraGraphCards) {
+      this.extraGraphCards.forEach(c => {
+        if (c && c.el && typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+      });
+    }
     this._renderAudioReplayCardLasers(playMs);
     this.render();
 
