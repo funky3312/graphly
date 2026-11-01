@@ -14384,9 +14384,15 @@ class GraphApp {
       if (this.exportFilter.includeProblem) parts.push('문제');
       if (this.exportFilter.includeGraph) parts.push('그래프');
       if (this.exportFilter.includeInk) parts.push('필기');
-      const scopeText = (this.exportScope === 'all' && totalCnt > 1)
+      const isMultiSlideAll = (this.exportScope === 'all' && totalCnt > 1);
+      const scopeText = isMultiSlideAll
         ? `전체 슬라이드(${totalCnt}장)`
         : '현재 슬라이드';
+      if (lblModalSavePng) {
+        lblModalSavePng.textContent = isMultiSlideAll
+          ? `통합 PDF 저장 (${totalCnt}장·1파일)`
+          : 'PNG 저장';
+      }
       if (lblSummary) {
         lblSummary.textContent = `✨ ${scopeText}의 [${parts.join(' + ')}] 영역만 깔끔한 직사각형으로 자동 스캔하여 내보냅니다.`;
       }
@@ -14467,8 +14473,11 @@ class GraphApp {
 
     if (btnModalSavePng) {
       btnModalSavePng.onclick = async () => {
+        const allSlides = this._getActiveSlidesForExport('수업 노트');
+        const isMulti = (this.exportScope === 'all' && allSlides.length > 1);
+        const origLabel = isMulti ? `통합 PDF 저장 (${allSlides.length}장·1파일)` : 'PNG 저장';
         await this.downloadExportImages(this.exportScope, this.exportFilter);
-        flashButtonLabel(lblModalSavePng, '✅ 저장됨', 'PNG 저장');
+        flashButtonLabel(lblModalSavePng, '✅ 저장됨', origLabel);
       };
     }
 
@@ -16702,7 +16711,11 @@ class GraphApp {
       btnZoomFit.onclick = () => this.fitSmartViewerStageToScreen();
     }
     if (btnDownload) {
-      btnDownload.onclick = () => {
+      btnDownload.onclick = async () => {
+        if (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides) && this._viewerPkg.playlistSlides.length > 1) {
+          await this.downloadViewerSlidesAsSinglePdf(this._viewerPkg);
+          return;
+        }
         const img = document.getElementById('smartNoteViewerImg');
         if (!img || !img.src) return;
         const link = document.createElement('a');
@@ -16819,6 +16832,13 @@ class GraphApp {
 
     if (navGroup) {
       navGroup.style.display = total > 1 ? 'inline-flex' : 'none';
+    }
+    const btnViewerDl = document.getElementById('btnViewerDownloadPng');
+    if (btnViewerDl) {
+      const spanDl = btnViewerDl.querySelector('span');
+      if (spanDl) {
+        spanDl.textContent = total > 1 ? `통합 PDF 저장 (${total}장)` : '이미지 저장';
+      }
     }
     if (btnPrev) btnPrev.disabled = (idx <= 0);
     if (btnNext) btnNext.disabled = (idx >= total - 1);
@@ -26265,6 +26285,147 @@ class GraphApp {
     });
   }
 
+  // 🌟 [다중 슬라이드 단일 파일(Multi-Page PDF 1.4) 통합 빌더]:
+  // 슬라이드 10장을 내보낼 때 낱장 PNG 10개로 흩어지지 않고, 모든 슬라이드를 1개의 고화질 다중 페이지 PDF 문서(.pdf)로 묶어줍니다!
+  buildMultiPagePdfBlobFromCanvases(canvasItems = []) {
+    if (!Array.isArray(canvasItems) || canvasItems.length === 0) return null;
+    const encoder = new TextEncoder();
+    const chunks = [];
+    let offset = 0;
+
+    const pushBytes = (bytes) => {
+      chunks.push(bytes);
+      offset += bytes.byteLength;
+    };
+    const pushStr = (str) => {
+      pushBytes(encoder.encode(str));
+    };
+
+    // PDF 1.4 헤더 + 바이너리 마커
+    pushBytes(new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 0x0a, 0x25, 0xe2, 0xe3, 0xcf, 0xd3, 0x0a]));
+
+    const xrefOffsets = [0];
+    // Object 1: Catalog
+    xrefOffsets[1] = offset;
+    pushStr('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+
+    // Object 2: Pages
+    const kidsRef = canvasItems.map((_, idx) => `${3 + idx * 3} 0 R`).join(' ');
+    xrefOffsets[2] = offset;
+    pushStr(`2 0 obj\n<< /Type /Pages /Kids [${kidsRef}] /Count ${canvasItems.length} >>\nendobj\n`);
+
+    for (let idx = 0; idx < canvasItems.length; idx++) {
+      const item = canvasItems[idx];
+      const srcCanvas = item && item.canvas ? item.canvas : item;
+      const pxW = Math.max(1, (srcCanvas && srcCanvas.width) || 1200);
+      const pxH = Math.max(1, (srcCanvas && srcCanvas.height) || 800);
+      const bgColor = (item && item.bgColor) ? item.bgColor : '#ffffff';
+
+      // 투명 영역이 검게 변하지 않도록 배경색이 입혀진 합성 캔버스 생성 후 고화질 JPEG 바이트 추출
+      const compCanvas = document.createElement('canvas');
+      compCanvas.width = pxW;
+      compCanvas.height = pxH;
+      const compCtx = compCanvas.getContext('2d');
+      compCtx.fillStyle = bgColor;
+      compCtx.fillRect(0, 0, pxW, pxH);
+      if (srcCanvas) {
+        compCtx.drawImage(srcCanvas, 0, 0);
+      }
+
+      const jpegDataUrl = compCanvas.toDataURL('image/jpeg', 0.96);
+      const b64 = jpegDataUrl.split(',')[1] || '';
+      const binStr = atob(b64);
+      const jpegBytes = new Uint8Array(binStr.length);
+      for (let k = 0; k < binStr.length; k++) {
+        jpegBytes[k] = binStr.charCodeAt(k);
+      }
+
+      const pageObjId = 3 + idx * 3;
+      const contentObjId = 4 + idx * 3;
+      const imgObjId = 5 + idx * 3;
+      const ptW = Math.max(72, Math.round(pxW * 0.5));
+      const ptH = Math.max(72, Math.round(pxH * 0.5));
+
+      xrefOffsets[pageObjId] = offset;
+      pushStr(
+        `${pageObjId} 0 obj\n` +
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${ptW} ${ptH}] ` +
+        `/Resources << /XObject << /Im0 ${imgObjId} 0 R >> >> /Contents ${contentObjId} 0 R >>\n` +
+        `endobj\n`
+      );
+
+      const contentStream = `q\n${ptW} 0 0 ${ptH} 0 0 cm\n/Im0 Do\nQ\n`;
+      const contentBytes = encoder.encode(contentStream);
+      xrefOffsets[contentObjId] = offset;
+      pushStr(`${contentObjId} 0 obj\n<< /Length ${contentBytes.byteLength} >>\nstream\n`);
+      pushBytes(contentBytes);
+      pushStr(`\nendstream\nendobj\n`);
+
+      xrefOffsets[imgObjId] = offset;
+      pushStr(
+        `${imgObjId} 0 obj\n` +
+        `<< /Type /XObject /Subtype /Image /Width ${pxW} /Height ${pxH} ` +
+        `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.byteLength} >>\n` +
+        `stream\n`
+      );
+      pushBytes(jpegBytes);
+      pushStr(`\nendstream\nendobj\n`);
+    }
+
+    const xrefStart = offset;
+    const totalObjs = 2 + canvasItems.length * 3;
+    pushStr(`xref\n0 ${totalObjs + 1}\n0000000000 65535 f \n`);
+    for (let id = 1; id <= totalObjs; id++) {
+      pushStr(`${String(xrefOffsets[id]).padStart(10, '0')} 00000 n \n`);
+    }
+    pushStr(`trailer\n<< /Size ${totalObjs + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`);
+
+    return new Blob(chunks, { type: 'application/pdf' });
+  }
+
+  async downloadViewerSlidesAsSinglePdf(pkg = this._viewerPkg) {
+    if (!pkg || !Array.isArray(pkg.playlistSlides) || pkg.playlistSlides.length === 0) return false;
+    const slides = pkg.playlistSlides;
+    const canvasItems = [];
+    for (let i = 0; i < slides.length; i++) {
+      const sl = slides[i];
+      let dataUrl = sl.viewerSnapshotDataUrl;
+      if (!dataUrl) {
+        this.deserializeFullSlideState(sl);
+        await this._waitForSlideImagesReady();
+        const snap = this.captureCurrentSlideViewerSnapshot(pkg.exportFilter || null, false);
+        dataUrl = snap.dataUrl;
+        sl.viewerSnapshotDataUrl = dataUrl;
+      }
+      if (dataUrl) {
+        const c = await new Promise((resolve) => {
+          const im = new Image();
+          im.onload = () => {
+            const off = document.createElement('canvas');
+            off.width = Math.max(1, im.naturalWidth || 1200);
+            off.height = Math.max(1, im.naturalHeight || 800);
+            off.getContext('2d').drawImage(im, 0, 0);
+            resolve(off);
+          };
+          im.onerror = () => resolve(null);
+          im.src = dataUrl;
+        });
+        if (c) canvasItems.push({ canvas: c, bgColor: '#ffffff' });
+      }
+    }
+    if (canvasItems.length === 0) return false;
+    const pdfBlob = this.buildMultiPagePdfBlobFromCanvases(canvasItems);
+    if (!pdfBlob) return false;
+    const url = URL.createObjectURL(pdfBlob);
+    const link = document.createElement('a');
+    link.download = `Graphly_슬라이드노트_${canvasItems.length}장_${Date.now()}.pdf`;
+    link.href = url;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    this.showToast(`📄 전체 슬라이드(${canvasItems.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
+    return true;
+  }
+
   async downloadExportImages(scope = 'current', filterOpts = null) {
     const effScope = scope || this.exportScope || 'current';
     const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
@@ -26273,17 +26434,32 @@ class GraphApp {
       const allSlides = this._getActiveSlidesForExport('수업 노트');
       if (allSlides.length > 1) {
         const backupCurrent = this.serializeFullSlideState('backup');
+        const canvasItems = [];
         for (let i = 0; i < allSlides.length; i++) {
           this.deserializeFullSlideState(allSlides[i]);
           await this._waitForSlideImagesReady();
-          await this.downloadPNG(effFilter, `Graphly_슬라이드_${i + 1}_${Date.now()}.png`);
+          const exp = this.getExportCanvas(effFilter);
+          const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
+          const bgColor = (!this.isMonochromeMode && curTheme && curTheme.bg) ? curTheme.bg : '#ffffff';
+          canvasItems.push({ canvas: exp.canvas, bgColor });
         }
         this.deserializeFullSlideState(backupCurrent);
-        return;
+        const pdfBlob = this.buildMultiPagePdfBlobFromCanvases(canvasItems);
+        if (pdfBlob) {
+          const url = URL.createObjectURL(pdfBlob);
+          const link = document.createElement('a');
+          link.download = `Graphly_슬라이드노트_${allSlides.length}장_${Date.now()}.pdf`;
+          link.href = url;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+          this.showToast(`📄 전체 슬라이드(${allSlides.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
+          return pdfBlob;
+        }
       }
     }
     await this._waitForSlideImagesReady();
     await this.downloadPNG(effFilter, `Graphly_스캔_${Date.now()}.png`);
+    return null;
   }
 
 
@@ -26296,7 +26472,10 @@ class GraphApp {
   // ==========================================================================
   initAudioSyncControls() {
     this.isAudioRecording = false;
+    this.isAudioRecordPaused = false;
     this.audioRecordStartMs = 0;
+    this.audioRecordPauseStartMs = 0;
+    this.audioRecordTotalPausedMs = 0;
     this.audioMediaRecorder = null;
     this.audioMediaStream = null;
     this.audioRecordedChunks = [];
@@ -26320,6 +26499,7 @@ class GraphApp {
     this._enteredAudioFromViewerSlideIdx = null;
 
     const btnFab = document.getElementById('btnAudioRecordToggle');
+    const btnPauseRec = document.getElementById('btnAudioPauseRecord');
     const btnStopRec = document.getElementById('btnAudioStopRecord');
     const btnPlayPause = document.getElementById('btnAudioPlayPause');
     const scrubber = document.getElementById('audioSyncScrubber');
@@ -26346,6 +26526,13 @@ class GraphApp {
         } else {
           this.startAudioRecording();
         }
+      };
+    }
+
+    if (btnPauseRec) {
+      btnPauseRec.onclick = (e) => {
+        e.stopPropagation();
+        this.togglePauseAudioRecording();
       };
     }
 
@@ -26532,7 +26719,39 @@ class GraphApp {
 
   getAudioRecordElapsedMs() {
     if (!this.isAudioRecording || !this.audioRecordStartMs) return 0;
-    return Math.max(0, Math.round(performance.now() - this.audioRecordStartMs));
+    const now = this.isAudioRecordPaused
+      ? (this.audioRecordPauseStartMs || performance.now())
+      : performance.now();
+    const pausedTotal = this.audioRecordTotalPausedMs || 0;
+    return Math.max(0, Math.round(now - this.audioRecordStartMs - pausedTotal));
+  }
+
+  togglePauseAudioRecording(forcePause = null) {
+    if (!this.isAudioRecording) return false;
+    const nextPaused = (typeof forcePause === 'boolean') ? forcePause : !this.isAudioRecordPaused;
+    if (nextPaused === this.isAudioRecordPaused) return this.isAudioRecordPaused;
+
+    if (nextPaused) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+      this.isAudioRecordPaused = true;
+      this.audioRecordPauseStartMs = performance.now();
+      if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'recording') {
+        try { this.audioMediaRecorder.pause(); } catch (e) {}
+      }
+      this.showToast('⏸ 녹음이 일시정지되었습니다. [▶ 이어녹음]을 누르면 끊김 없이 이어집니다.');
+    } else {
+      const pausedDelta = Math.max(0, performance.now() - (this.audioRecordPauseStartMs || performance.now()));
+      this.audioRecordTotalPausedMs = (this.audioRecordTotalPausedMs || 0) + pausedDelta;
+      this.isAudioRecordPaused = false;
+      this.audioRecordPauseStartMs = 0;
+      if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'paused') {
+        try { this.audioMediaRecorder.resume(); } catch (e) {}
+      }
+      this._recordAudioWorkspaceStateIfNeeded(true);
+      this.showToast('▶ 녹음을 이어서 진행합니다!');
+    }
+    this.syncAudioRecordUI();
+    return this.isAudioRecordPaused;
   }
 
   formatAudioTimeMmSs(ms) {
@@ -26766,7 +26985,7 @@ class GraphApp {
   }
 
   recordAudioCursorPoint(screenX, screenY, color = null, isDrawing = false, extraMeta = null) {
-    if (!this.isAudioRecording) return;
+    if (!this.isAudioRecording || this.isAudioRecordPaused) return;
     const t = this.getAudioRecordElapsedMs();
     // 60fps(16ms) 초고밀도 샘플링으로 호버링 동그라미 포인팅과 레이저 움직임을 유튜버 영상처럼 매끄럽게 기록!
     if (!isDrawing && (t - this._lastAudioCursorRecordMs < 16)) return;
@@ -26868,7 +27087,10 @@ class GraphApp {
     }
 
     this.isAudioRecording = true;
+    this.isAudioRecordPaused = false;
     this.audioRecordStartMs = performance.now();
+    this.audioRecordPauseStartMs = 0;
+    this.audioRecordTotalPausedMs = 0;
     this._lastAudioCursorRecordMs = -100;
     this._lastAudioStateRecordMs = -100;
     this._lastRecordedStateHash = '';
@@ -26905,6 +27127,9 @@ class GraphApp {
     this._recordAudioWorkspaceStateIfNeeded(true);
     this.audioFinalState = this._captureAudioWorkspaceKeyframe();
     this.isAudioRecording = false;
+    this.isAudioRecordPaused = false;
+    this.audioRecordPauseStartMs = 0;
+    this.audioRecordTotalPausedMs = 0;
 
     if (this._audioRecordTimerId) {
       clearInterval(this._audioRecordTimerId);
@@ -26985,6 +27210,23 @@ class GraphApp {
       bar.style.display = 'flex';
       if (recGroup) recGroup.style.display = 'flex';
       if (playGroup) playGroup.style.display = 'none';
+      const badgeEl = document.getElementById('badgeAudioRecState');
+      const badgeTxt = document.getElementById('lblAudioRecBadgeText');
+      const hintEl = document.getElementById('lblAudioRecHint');
+      const btnPauseRec = document.getElementById('btnAudioPauseRecord');
+      const iconPauseRec = document.getElementById('iconAudioPauseRecord');
+      const lblPauseRec = document.getElementById('lblAudioPauseRecord');
+      const isPaused = Boolean(this.isAudioRecordPaused);
+      if (badgeEl) badgeEl.classList.toggle('is-paused', isPaused);
+      if (badgeTxt) badgeTxt.textContent = isPaused ? 'PAUSED' : 'REC';
+      if (hintEl) {
+        hintEl.textContent = isPaused
+          ? '녹음 일시정지됨 (이어녹음 시 끊김 없이 연결)'
+          : '음성·필기·펜포인터·그래프 실시간 동기화 중';
+      }
+      if (btnPauseRec) btnPauseRec.classList.toggle('is-paused', isPaused);
+      if (iconPauseRec) iconPauseRec.textContent = isPaused ? '▶' : '⏸';
+      if (lblPauseRec) lblPauseRec.textContent = isPaused ? '이어녹음' : '일시정지';
       return;
     }
 

@@ -9355,3 +9355,41 @@ body.audio-replay-active #virtualStylusPen {
   z-index: 2650 !important;
   pointer-events: none !important;
 }
+
+/* 녹음 중 일시정지 / 이어녹음 배지 및 버튼 스타일 */
+.audio-rec-badge.is-paused {
+  background: rgba(245, 158, 11, 0.2) !important;
+  border-color: rgba(245, 158, 11, 0.65) !important;
+  color: #fbbf24 !important;
+}
+
+body.theme-light .audio-rec-badge.is-paused {
+  background: rgba(245, 158, 11, 0.14) !important;
+  color: #d97706 !important;
+}
+
+.audio-rec-badge.is-paused .audio-rec-dot {
+  background: #f59e0b !important;
+  box-shadow: 0 0 6px #f59e0b !important;
+  animation: none !important;
+}
+
+.audio-btn-pause-rec {
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(245, 158, 11, 0.55) !important;
+  color: #fde68a !important;
+  font-weight: 700;
+}
+
+body.theme-light .audio-btn-pause-rec {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: #d97706 !important;
+  color: #b45309 !important;
+}
+
+.audio-btn-pause-rec.is-paused {
+  background: linear-gradient(135deg, #00d2d3, #0ea5e9) !important;
+  border-color: #38bdf8 !important;
+  color: #0f172a !important;
+  box-shadow: 0 0 12px rgba(0, 210, 211, 0.45);
+}

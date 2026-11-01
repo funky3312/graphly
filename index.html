@@ -799,9 +799,13 @@
       <div id="audioSyncFloatingBar" class="audio-sync-floating-bar" style="display: none;">
         <!-- 상태 1: 녹음 중 (Recording) -->
         <div id="audioSyncRecordingGroup" class="audio-sync-group" style="display: none;">
-          <span class="audio-rec-badge"><span class="audio-rec-dot"></span>REC</span>
+          <span id="badgeAudioRecState" class="audio-rec-badge"><span class="audio-rec-dot"></span><span id="lblAudioRecBadgeText">REC</span></span>
           <span id="lblAudioRecordTimer" class="audio-sync-time">00:00</span>
-          <span class="audio-rec-hint">음성·필기·펜포인터·그래프 실시간 동기화 중</span>
+          <span id="lblAudioRecHint" class="audio-rec-hint">음성·필기·펜포인터·그래프 실시간 동기화 중</span>
+          <button type="button" id="btnAudioPauseRecord" class="audio-sync-btn audio-btn-pause-rec" title="녹음 일시정지 / 이어녹음">
+            <span id="iconAudioPauseRecord">⏸</span>
+            <span id="lblAudioPauseRecord">일시정지</span>
+          </button>
           <button type="button" id="btnAudioStopRecord" class="audio-sync-btn audio-btn-stop" title="녹음 완료">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
             <span>녹음 완료</span>
@@ -1720,7 +1724,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261031_4"></script>
-  <script src="app.js?v=20261101_13"></script>
+  <script src="app.js?v=20261101_14"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
