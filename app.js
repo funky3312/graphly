@@ -5444,11 +5444,11 @@ class GraphApp {
       return;
     }
 
-    // 3. 새 PDF 페이지 타협 없는 최고 해상도(5K급 ~380 DPI, 가로 최소 3200px, 무손실 PNG) 오프스크린 렌더링 (단 1장만 GPU에 유지!)
+    // 3. 새 PDF 페이지 출판급 초고해상도(~330 DPI, 가로 2800px) 오프스크린 렌더링 (단 1장만 GPU에 유지 + PNG 인코딩 지연 처리로 페이지 전환 속도 0ms!)
     const page = await this.pdfDoc.getPage(targetPage);
     const baseVp = page.getViewport({ scale: 1.0 });
-    const targetMinPxW = 3200;
-    const renderScale = Math.max(4.8, Math.min(5.5, targetMinPxW / Math.max(1, baseVp.width)));
+    const targetMinPxW = 2800;
+    const renderScale = Math.max(4.2, Math.min(4.8, targetMinPxW / Math.max(1, baseVp.width)));
     const vp = page.getViewport({ scale: renderScale });
     const pageCanvas = document.createElement('canvas');
     pageCanvas.width = Math.round(vp.width);
@@ -5493,7 +5493,7 @@ class GraphApp {
       pageNum: targetPage,
       totalPages: total,
       canvas: pageCanvas,
-      dataUrl: this.encodeCanvasSmartWebP(pageCanvas, 0.92),
+      dataUrl: '',
       aspect,
       mathW,
       mathH,
@@ -14949,7 +14949,7 @@ class GraphApp {
       pdfPageBoardData: this.pdfPageBoardData ? {
         pageNum: this.pdfPageBoardData.pageNum,
         totalPages: this.pdfPageBoardData.totalPages,
-        dataUrl: this.pdfPageBoardData.dataUrl,
+        dataUrl: this.pdfPageBoardData.dataUrl || (this.pdfPageBoardData.canvas ? (this.pdfPageBoardData.dataUrl = this.encodeCanvasSmartWebP(this.pdfPageBoardData.canvas, 1.0)) : ''),
         aspect: this.pdfPageBoardData.aspect,
         mathW: this.pdfPageBoardData.mathW,
         mathH: this.pdfPageBoardData.mathH,
@@ -17115,7 +17115,7 @@ class GraphApp {
   }
 
   getCanvasDpr() {
-    return Math.min(3, Math.max(2.5, window.devicePixelRatio || 2.5));
+    return Math.min(2.5, Math.max(2.0, window.devicePixelRatio || 2.0));
   }
 
   resizeCanvas() {
