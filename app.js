@@ -12743,13 +12743,9 @@ class GraphApp {
     this.isPiecewiseLocked = (forceState !== undefined) ? Boolean(forceState) : !this.isPiecewiseLocked;
     if (this.isPiecewiseLocked) {
       this.activePwDragIdx = null;
-      this.selectedHandleIdx = null;
-      this.draggedHandleIdx = null;
-      const popover = document.getElementById('pwRegionPopover');
-      if (popover) popover.style.display = 'none';
-      this.showToast('🔒 경계선 & 함수 개형 잠금!');
+      this.showToast('🔒 경계선 고정! (핸들: 모양 조절 / 곡선 드래그: 전체 이동)');
     } else {
-      this.showToast('🔓 경계선 & 함수 개형 잠금 해제!');
+      this.showToast('🔓 경계선 고정 해제!');
     }
     this.render();
   }
@@ -13346,19 +13342,36 @@ class GraphApp {
       };
     }
 
-    // 2. 각 분할 영역 상단 함수 선택 칩 렌더링 (경계선 2x2 패드 중심 Y=88과 동일한 높이로 정렬하여 상단 툴바 간섭 원천 차단!)
-    if (!isCleanOrSnap && !isLocked && n > 0) {
-      const padClearance = 26; // 경계선 2x2 패드(폭 42px, 반폭 21px)와의 좌우 여유 간격
+    // 2. 각 분할 영역 상단 함수 선택 칩 렌더링
+    // - 양 끝 구간(rIdx===0, rIdx===n)은 화면 끝과 중점이 아닌 첫/마지막 경계선 바로 옆(±54px)에 집중 배치!
+    // - 내부 구간(1 <= rIdx < n)은 두 경계선의 정중앙에 배치하되, 간격이 좁아지면(< 96px) 숨기지 않고 패드 바로 아래(chipY=114)로 살짝 내려서 표시!
+    if (!isCleanOrSnap && n > 0) {
+      let prevNarrowCx = -9999;
+      let prevNarrowY = 114;
       for (let rIdx = 0; rIdx <= n; rIdx++) {
-        let leftSx = (rIdx === 0) ? 0 : (this.mathToScreen(boundaries[rIdx - 1], 0).x + padClearance);
-        let rightSx = (rIdx === n) ? this.screenWidth : (this.mathToScreen(boundaries[rIdx], 0).x - padClearance);
+        let cx = 0;
+        let chipY = 77;
 
-        const visibleLeft = Math.max(12, leftSx);
-        const visibleRight = Math.min(this.screenWidth - 12, rightSx);
-        if (visibleRight - visibleLeft < 48) continue;
+        if (rIdx === 0) {
+          const firstBx = this.mathToScreen(boundaries[0], 0).x;
+          cx = firstBx - 54;
+        } else if (rIdx === n) {
+          const lastBx = this.mathToScreen(boundaries[n - 1], 0).x;
+          cx = lastBx + 54;
+        } else {
+          const bLeftSx = this.mathToScreen(boundaries[rIdx - 1], 0).x;
+          const bRightSx = this.mathToScreen(boundaries[rIdx], 0).x;
+          const rawGap = bRightSx - bLeftSx;
+          cx = (bLeftSx + bRightSx) / 2;
+          if (rawGap < 96) {
+            // 경계선 사이가 좁아졌을 때 알약이 사라지지 않고 2x2 패드(padY=68, padH=40 -> 하단 108) 바로 아래로 살짝 내려옴
+            chipY = (Math.abs(cx - prevNarrowCx) < 44 && prevNarrowY === 114) ? 138 : 114;
+            prevNarrowCx = cx;
+            prevNarrowY = chipY;
+          }
+        }
 
-        let cx = (visibleLeft + visibleRight) / 2;
-        cx = Math.max(45, Math.min(this.screenWidth - 45, cx));
+        cx = Math.max(36, Math.min(this.screenWidth - 36, cx));
 
         const gIdx = (this.piecewiseFuncMap && this.piecewiseFuncMap[rIdx] !== undefined)
           ? this.piecewiseFuncMap[rIdx]
@@ -13373,8 +13386,6 @@ class GraphApp {
         const chipW = Math.max(40, textW + 24);
         const chipH = 22;
         const chipX = cx - chipW / 2;
-        // 2x2 패드(padY=68, padH=40 -> 중심 Y=88)와 완벽히 같은 수평선(chipY=77, chipH=22 -> 중심 Y=88)에 배치!
-        const chipY = 77;
 
         // 칩 배경 (글래스모피즘 알약)
         ctx.fillStyle = curTheme.isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(22, 30, 46, 0.94)';
@@ -18742,9 +18753,9 @@ class GraphApp {
       // 오직 선택(select) 도구이거나 필기 모드가 꺼져 있을 때만 경계선/✕ 조작 허용!
       const canManipulatePw = !this.isGraphCovered && (!this.isInkMode || this.activeInkTool === 'select');
       if (canManipulatePw && this.usePiecewise && this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0) {
-        // 1) 영역 함수 변경 칩 클릭인지 먼저 확인 (열려있는 같은 칩을 다시 누르면 접히도록!)
+        // 1) 영역 함수 변경 칩 클릭인지 먼저 확인 (잠금 상태에서도 함수 전환 허용)
         const badgePad = isTouch ? 6 : 2;
-        const hitRegionChip = (!this.isPiecewiseLocked && this.pwRegionBadges)
+        const hitRegionChip = this.pwRegionBadges
           ? this.pwRegionBadges.find(r =>
               pos.x >= r.chipX - badgePad && pos.x <= r.chipX + r.chipW + badgePad &&
               pos.y >= r.chipY - badgePad && pos.y <= r.chipY + r.chipH + badgePad
@@ -18854,44 +18865,12 @@ class GraphApp {
             }
           }
         }
-
-        // 3) 영역 함수 변경 칩 클릭 확인 (잠금 아닐 때만)
-        if (!this.isPiecewiseLocked && this.pwRegionBadges) {
-          const hitRegion = this.pwRegionBadges.find(r =>
-            pos.x >= r.chipX - badgePad && pos.x <= r.chipX + r.chipW + badgePad &&
-            pos.y >= r.chipY - badgePad && pos.y <= r.chipY + r.chipH + badgePad
-          );
-          if (hitRegion) {
-            this.openRegionFuncMenu(hitRegion.regionIdx, hitRegion.chipX, hitRegion.chipY + hitRegion.chipH + 4);
-            return;
-          }
-        }
-
-        // 4) 세로선 몸통 드래그 확인 (잠금 상태일 때는 마우스로 경계선을 건드려도 절대 움직이지 않음!)
-        if (!this.isPiecewiseLocked && this.pwBoundaryBadges) {
-          const hitMargin = isTouch ? 28 : 22;
-          const hitBoundary = this.pwBoundaryBadges.find(b => {
-            const isNearLine = Math.abs(pos.x - b.sx) <= hitMargin;
-            return isNearLine;
-          });
-          if (hitBoundary) {
-            this.activePwDragIdx = hitBoundary.bIdx;
-            this.selectedPwBoundaryIdx = hitBoundary.bIdx;
-            this.isCurveSelected = false;
-            this.selectedHandleIdx = null;
-            this.canvas.style.cursor = 'ew-resize';
-            this.render();
-            return;
-          }
-        }
       }
 
-      // 🌟 [필기 모드 완전 프리징 & 핸들러 간섭 원천 차단] 🌟
-      // 펜(pen)/형광펜(highlighter)/지우개(eraser) 등 필기 도구 사용 중에는
-      // 필기감 극대화와 오터치 방지를 위해 그래프 핸들러 조작을 100% 동결(Freezing)!
-      // 오직 선택(select) 도구이거나 필기 모드가 꺼져 있을 때만 핸들러 조작 허용!
-      const isPwFuncLocked = Boolean(this.usePiecewise && this.isPiecewiseLocked && (!this.activeGraph || !this.activeGraph.isIndependent));
-      const canManipulateHandles = !this.isGraphCovered && !isPwFuncLocked && (!this.isInkMode || this.activeInkTool === 'select');
+      // 🌟 [필기 모드 완전 프리징 & 핸들러 최우선 판정 (세로 경계선 몸통 드래그보다 1순위!)] 🌟
+      // 핸들러(동그라미 조절점)와 구간 분할 세로선이 겹쳐 있을 때 핸들러가 무조건 먼저 잡히도록 최우선 판정하며,
+      // 경계선 잠금(isPiecewiseLocked) 상태에서도 핸들러를 통한 함수 개형 조절은 100% 열려 있습니다!
+      const canManipulateHandles = !this.isGraphCovered && (!this.isInkMode || this.activeInkTool === 'select');
       const prioHitDist = isTouch ? 32 : 22;
       let prioHandleIdx = null;
 
@@ -18942,6 +18921,24 @@ class GraphApp {
         this.canvas.style.cursor = 'grabbing';
         this.render();
         return;
+      }
+
+      // 4) 세로선 몸통 드래그 확인 (그래프 핸들러가 아닐 때만 작동하며, 잠금 상태일 때는 고정!)
+      if (canManipulatePw && this.usePiecewise && !this.isPiecewiseLocked && this.pwBoundaryBadges && this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0) {
+        const hitMargin = isTouch ? 28 : 22;
+        const hitBoundary = this.pwBoundaryBadges.find(b => {
+          const isNearLine = Math.abs(pos.x - b.sx) <= hitMargin;
+          return isNearLine;
+        });
+        if (hitBoundary) {
+          this.activePwDragIdx = hitBoundary.bIdx;
+          this.selectedPwBoundaryIdx = hitBoundary.bIdx;
+          this.isCurveSelected = false;
+          this.selectedHandleIdx = null;
+          this.canvas.style.cursor = 'ew-resize';
+          this.render();
+          return;
+        }
       }
 
       if (!canManipulateHandles) {
@@ -20540,10 +20537,10 @@ class GraphApp {
           nextCursor = 'crosshair'; // 보조 수선 조준선 📍
         } else if (isOverPwLock || isOverPwDel || isOverPwToggle || isOverPwChip || isOverPwPeriod) {
           nextCursor = 'pointer'; // 클릭 가능한 자물쇠(🔒), 삭제(✕), 포함 토글(●/○) 및 함수 배정 칩
+        } else if (isOverHandle) {
+          nextCursor = 'grab'; // 극점/조절점 핸들러 손모양 ✋ (세로 분할선 몸통보다 최우선!)
         } else if (isOverPwBoundary) {
           nextCursor = 'ew-resize'; // 좌우 드래그 분할선 ↔
-        } else if (isOverHandle) {
-          nextCursor = 'grab'; // 극점/조절점 핸들러 손모양 ✋
         } else if (isOverCurve) {
           nextCursor = this.isCurveSelected ? 'move' : 'pointer'; // 깨어있으면 바로 이동(move), 비활성화면 선택/깨우기(pointer)
         } else if (this.useViewfinder) {
@@ -26125,8 +26122,7 @@ class GraphApp {
     }
     const g = this.activeGraph;
     if (!g || !g.handles) return;
-    // 🔒 [구간 분할 잠금 상태]: 구간 참여 함수의 극점/변곡점 핸들을 숨겨 실수로 개형이 망가지는 것을 100% 방지!
-    if (this.usePiecewise && this.isPiecewiseLocked && !g.isIndependent) return;
+    // 🔒 [구간 분할 잠금 상태에서도 핸들러는 그대로 표시하여 개별 함수 모양(극점·기울기) 조절 허용!]
 
     let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
     let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
