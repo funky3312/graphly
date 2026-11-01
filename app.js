@@ -8102,8 +8102,30 @@ class GraphApp {
       state.strokes.forEach(st => {
         if (st.finished) st.finishedAt = now;
       });
+      const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+      let recLaserStroke = null;
+      if (recT !== undefined) {
+        const cardKey = this.getAudioCardKey(cardWidgetEl);
+        if (!Array.isArray(this.audioLaserStrokes)) this.audioLaserStrokes = [];
+        // 연속 레이저 필기 시 직전 미소멸 레이저 획들의 유지 시간(holdUntil)도 함께 연장!
+        this.audioLaserStrokes.forEach(ls => {
+          if (ls && ls.cardKey === cardKey && typeof ls.holdUntil === 'number' && recT <= ls.holdUntil + 200) {
+            ls.holdUntil = recT + HOLD_MS;
+          }
+        });
+        recLaserStroke = {
+          cardKey,
+          tStart: recT,
+          tEnd: recT,
+          holdUntil: recT + HOLD_MS,
+          points: [{ nx: pos.nx, ny: pos.ny, t: recT }]
+        };
+        this.audioLaserStrokes.push(recLaserStroke);
+        this.recordAudioCursorPoint(e.clientX, e.clientY, '#dc2626', true, { cardKey, nx: pos.nx, ny: pos.ny, isLaser: true });
+      }
       const stroke = {
         finished: false,
+        _recLaserStroke: recLaserStroke,
         points: [{ x: pos.nx, y: pos.ny, t: now }]
       };
       state.currentStroke = stroke;
@@ -8118,6 +8140,8 @@ class GraphApp {
       const now = performance.now();
       state.hoverPos = pos;
       state.hoverTime = now;
+      const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+      const cardKey = (recT !== undefined) ? this.getAudioCardKey(cardWidgetEl) : null;
 
       if (state.isDrawing && state.currentStroke) {
         e.preventDefault();
@@ -8145,7 +8169,25 @@ class GraphApp {
             sy = p1.y * 0.20 + pos.ny * 0.80;
           }
           pts.push({ x: sx, y: sy, t: now });
+          if (recT !== undefined && state.currentStroke._recLaserStroke) {
+            const rls = state.currentStroke._recLaserStroke;
+            rls.tEnd = recT;
+            rls.holdUntil = recT + HOLD_MS;
+            rls.points.push({ nx: sx, ny: sy, t: recT });
+            if (Array.isArray(this.audioLaserStrokes)) {
+              this.audioLaserStrokes.forEach(ls => {
+                if (ls && ls.cardKey === cardKey && typeof ls.holdUntil === 'number' && recT <= ls.holdUntil + 200) {
+                  ls.holdUntil = recT + HOLD_MS;
+                }
+              });
+            }
+          }
         }
+        if (recT !== undefined) {
+          this.recordAudioCursorPoint(e.clientX, e.clientY, '#dc2626', true, { cardKey, nx: pos.nx, ny: pos.ny, isLaser: true });
+        }
+      } else if (recT !== undefined) {
+        this.recordAudioCursorPoint(e.clientX, e.clientY, '#dc2626', false, { cardKey, nx: pos.nx, ny: pos.ny, isLaser: true });
       }
       ensureLoop();
     });
@@ -8153,6 +8195,7 @@ class GraphApp {
     const finishLaserStroke = (e) => {
       if (!state.isDrawing) return;
       const now = performance.now();
+      const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
       if (e && e.clientX !== undefined && state.currentStroke && state.currentStroke.points && state.currentStroke.points.length >= 1) {
         const endPos = getNormPos(e);
         const pts = state.currentStroke.points;
@@ -8162,6 +8205,22 @@ class GraphApp {
         const rh = Math.max(1, rect.height);
         if (last && Math.hypot((endPos.nx - last.x) * rw, (endPos.ny - last.y) * rh) >= 0.8) {
           pts.push({ x: endPos.nx, y: endPos.ny, t: now });
+          if (recT !== undefined && state.currentStroke._recLaserStroke) {
+            state.currentStroke._recLaserStroke.points.push({ nx: endPos.nx, ny: endPos.ny, t: recT });
+          }
+        }
+      }
+      if (recT !== undefined && state.currentStroke && state.currentStroke._recLaserStroke) {
+        const rls = state.currentStroke._recLaserStroke;
+        rls.tEnd = recT;
+        rls.holdUntil = recT + HOLD_MS;
+        const cardKey = rls.cardKey;
+        if (Array.isArray(this.audioLaserStrokes)) {
+          this.audioLaserStrokes.forEach(ls => {
+            if (ls && ls.cardKey === cardKey && typeof ls.holdUntil === 'number' && recT <= ls.holdUntil + 200) {
+              ls.holdUntil = recT + HOLD_MS;
+            }
+          });
         }
       }
       state.isDrawing = false;
@@ -26242,6 +26301,7 @@ class GraphApp {
     this.audioMediaStream = null;
     this.audioRecordedChunks = [];
     this.audioTimeline = [];
+    this.audioLaserStrokes = [];
     this.audioInitialState = null;
     this.audioFinalState = null;
     this.audioSyncData = null;
@@ -26420,6 +26480,53 @@ class GraphApp {
           this.enterAudioLectureFromViewer(this._viewerSlideIdx || 0, 'note', Math.max(0, hitSt.tStart - 40));
         }
       });
+    }
+
+    // 🌟 [전역 호버링 & 카드 위 포인팅 60fps 추적]:
+    // 칠판 위뿐만 아니라 문제 카드(#problemCardWidget)·그래프 보관 카드(#graphCardWidget) 위에서
+    // 펜을 띄운 채(호버링 모드) 동그라미를 치며 설명하는 모든 움직임을 빠짐없이 60fps로 기록합니다!
+    if (!this._globalAudioHoverBound) {
+      this._globalAudioHoverBound = true;
+      window.addEventListener('pointermove', (e) => {
+        if (!this.isAudioRecording) return;
+        if (e.pointerType === 'touch') return;
+        const tEl = e.target;
+        if (tEl && tEl.closest && (
+          tEl.closest('.audio-sync-floating-bar') ||
+          tEl.closest('.quick-pill-remote') ||
+          tEl.closest('.floating-left-rail') ||
+          tEl.closest('.floating-drawer') ||
+          tEl.closest('.smart-modal-backdrop')
+        )) {
+          return;
+        }
+        const cardEl = (tEl && tEl.closest)
+          ? tEl.closest('#problemCardWidget, #graphCardWidget, .extra-problem-card-widget, .extra-graph-card-widget')
+          : null;
+        if (cardEl && !cardEl.classList.contains('minimized')) {
+          const bodyEl = cardEl.querySelector('.problem-card-body');
+          if (bodyEl) {
+            const rect = bodyEl.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0 && e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
+              const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+              const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+              const isLaser = cardEl.classList.contains('card-laser-active');
+              const isDown = (typeof e.buttons === 'number' && e.buttons > 0);
+              this.recordAudioCursorPoint(
+                e.clientX,
+                e.clientY,
+                isLaser ? '#dc2626' : (this.currentInkColor || '#00d2d3'),
+                isDown,
+                { cardKey: this.getAudioCardKey(cardEl), nx, ny, isLaser }
+              );
+              return;
+            }
+          }
+        }
+        // 일반 캔버스 위 호버링 (펜 모드 꺼져 있거나 선택 모드에서 마우스/펜으로 동그라미 치며 가리키는 경우도 모두 포함!)
+        const isDown = Boolean(this.isDrawingInk || this.isStylusDrawing);
+        this.recordAudioCursorPoint(e.clientX, e.clientY, this.currentInkColor || '#00d2d3', isDown);
+      }, { passive: true });
     }
   }
 
@@ -26635,20 +26742,58 @@ class GraphApp {
     });
   }
 
-  recordAudioCursorPoint(screenX, screenY, color = null, isDrawing = false) {
+  getAudioCardKey(cardEl) {
+    if (!cardEl) return null;
+    if (cardEl.id === 'problemCardWidget') return 'problem_main';
+    if (cardEl.id === 'graphCardWidget') return 'graph_main';
+    if (cardEl.id) return cardEl.id;
+    return null;
+  }
+
+  getCardElementByAudioKey(cardKey) {
+    if (!cardKey) return null;
+    if (cardKey === 'problem_main') return document.getElementById('problemCardWidget');
+    if (cardKey === 'graph_main') return document.getElementById('graphCardWidget');
+    return document.getElementById(cardKey);
+  }
+
+  recordAudioCursorPoint(screenX, screenY, color = null, isDrawing = false, extraMeta = null) {
     if (!this.isAudioRecording) return;
     const t = this.getAudioRecordElapsedMs();
-    if (!isDrawing && (t - this._lastAudioCursorRecordMs < 38)) return;
-    if (isDrawing && (t - this._lastAudioCursorRecordMs < 24)) return;
+    // 60fps(16ms) 초고밀도 샘플링으로 호버링 동그라미 포인팅과 레이저 움직임을 유튜버 영상처럼 매끄럽게 기록!
+    if (!isDrawing && (t - this._lastAudioCursorRecordMs < 16)) return;
+    if (isDrawing && (t - this._lastAudioCursorRecordMs < 14)) return;
     this._lastAudioCursorRecordMs = t;
-    this.audioTimeline.push({
+
+    const entry = {
       t,
       type: 'cursor',
       x: Math.round(screenX * 10) / 10,
       y: Math.round(screenY * 10) / 10,
       color: color || this.currentInkColor || '#00d2d3',
       isDrawing: Boolean(isDrawing)
-    });
+    };
+
+    if (extraMeta && extraMeta.cardKey) {
+      entry.cardKey = extraMeta.cardKey;
+      entry.nx = Math.round((extraMeta.nx || 0) * 10000) / 10000;
+      entry.ny = Math.round((extraMeta.ny || 0) * 10000) / 10000;
+      if (extraMeta.isLaser) entry.isLaser = true;
+    } else {
+      const isBoard = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+      entry.isBoard = isBoard;
+      if (isBoard) {
+        const bPt = this.screenToBoard(screenX, screenY);
+        entry.bx = Math.round(bPt.x * 10) / 10;
+        entry.by = Math.round(bPt.y * 10) / 10;
+      } else {
+        const mPt = this.screenToMath(screenX, screenY);
+        entry.mx = Math.round(mPt.x * 1000) / 1000;
+        entry.my = Math.round(mPt.y * 1000) / 1000;
+      }
+    }
+
+    this.audioTimeline.push(entry);
   }
 
   async startAudioRecording() {
@@ -26794,7 +26939,8 @@ class GraphApp {
       audioDataUrl,
       initialState: this.audioInitialState,
       finalState: this.audioFinalState,
-      timeline: this.audioTimeline
+      timeline: this.audioTimeline,
+      laserStrokes: this.audioLaserStrokes || []
     };
 
     this.audioPlayCurrentMs = durationMs;
@@ -26909,6 +27055,32 @@ class GraphApp {
     }
   }
 
+  _resolveCursorEventScreenPos(ev) {
+    if (!ev) return null;
+    if (ev.cardKey && typeof ev.nx === 'number' && typeof ev.ny === 'number') {
+      const cardEl = this.getCardElementByAudioKey(ev.cardKey);
+      if (cardEl && cardEl.style.display !== 'none' && !cardEl.classList.contains('minimized')) {
+        const bodyEl = cardEl.querySelector('.problem-card-body');
+        if (bodyEl) {
+          const r = bodyEl.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) {
+            return {
+              x: r.left + ev.nx * r.width,
+              y: r.top + ev.ny * r.height
+            };
+          }
+        }
+      }
+    }
+    if (typeof ev.bx === 'number' && typeof ev.by === 'number' && this.isGraphCovered && !this.pdfPageBoardData) {
+      return this.boardToScreen(ev.bx, ev.by);
+    }
+    if (typeof ev.mx === 'number' && typeof ev.my === 'number' && (!this.isGraphCovered || this.pdfPageBoardData)) {
+      return this.mathToScreen(ev.mx, ev.my);
+    }
+    return { x: ev.x, y: ev.y };
+  }
+
   _getInterpolatedCursorAt(playMs) {
     if (!this.audioSyncData || !Array.isArray(this.audioSyncData.timeline)) return null;
     const timeline = this.audioSyncData.timeline;
@@ -26925,19 +27097,135 @@ class GraphApp {
       }
     }
     if (!prev && !next) return null;
-    if (prev && next && (next.t - prev.t) <= 650) {
+    if (prev && next && (next.t - prev.t) <= 800) {
+      const p1 = this._resolveCursorEventScreenPos(prev);
+      const p2 = this._resolveCursorEventScreenPos(next);
+      if (!p1 || !p2) return null;
       const alpha = Math.max(0, Math.min(1, (playMs - prev.t) / Math.max(1, next.t - prev.t)));
       return {
-        x: prev.x + (next.x - prev.x) * alpha,
-        y: prev.y + (next.y - prev.y) * alpha,
+        x: p1.x + (p2.x - p1.x) * alpha,
+        y: p1.y + (p2.y - p1.y) * alpha,
         color: prev.color || '#00d2d3',
-        isDrawing: Boolean(prev.isDrawing)
+        isDrawing: Boolean(prev.isDrawing),
+        isLaser: Boolean(prev.isLaser)
       };
     }
-    if (prev && Math.abs(playMs - prev.t) <= 450) {
-      return prev;
+    if (prev && Math.abs(playMs - prev.t) <= 600) {
+      const p1 = this._resolveCursorEventScreenPos(prev);
+      if (!p1) return null;
+      return {
+        x: p1.x,
+        y: p1.y,
+        color: prev.color || '#00d2d3',
+        isDrawing: Boolean(prev.isDrawing),
+        isLaser: Boolean(prev.isLaser)
+      };
     }
     return null;
+  }
+
+  _renderAudioReplayCardLasers(playMs) {
+    const allCardEls = [
+      document.getElementById('problemCardWidget'),
+      ...((this.extraProblemCards || []).map(c => c && c.el)),
+      document.getElementById('graphCardWidget'),
+      ...((this.extraGraphCards || []).map(c => c && c.el))
+    ].filter(Boolean);
+
+    const laserStrokes = (this.audioSyncData && Array.isArray(this.audioSyncData.laserStrokes))
+      ? this.audioSyncData.laserStrokes
+      : [];
+
+    const FADE_MS = 750;
+    const HOLD_MS = 1650;
+
+    allCardEls.forEach(cardEl => {
+      const bodyEl = cardEl.querySelector('.problem-card-body');
+      const laserCanvas = bodyEl ? bodyEl.querySelector('.card-laser-canvas') : null;
+      if (!bodyEl || !laserCanvas) return;
+      const cardKey = this.getAudioCardKey(cardEl);
+      const syncFn = cardEl._syncCardLaserSize;
+      const { w, h, dpr } = (typeof syncFn === 'function')
+        ? syncFn()
+        : { w: Math.max(1, bodyEl.clientWidth || 520), h: Math.max(1, bodyEl.clientHeight || 360), dpr: window.devicePixelRatio || 2 };
+
+      const ctx = laserCanvas.getContext('2d');
+      if (!ctx) return;
+      ctx.save();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+
+      const cardLasers = laserStrokes.filter(ls => ls && ls.cardKey === cardKey);
+      for (let i = 0; i < cardLasers.length; i++) {
+        const ls = cardLasers[i];
+        const tStart = ls.tStart || 0;
+        const tEnd = (typeof ls.tEnd === 'number' && ls.tEnd >= tStart) ? ls.tEnd : (tStart + 120);
+        const holdUntil = (typeof ls.holdUntil === 'number' && ls.holdUntil >= tEnd) ? ls.holdUntil : (tEnd + HOLD_MS);
+        if (playMs < tStart || playMs > holdUntil + FADE_MS) continue;
+
+        let life = 1.0;
+        if (playMs > holdUntil) {
+          const fadeRatio = Math.min(1, (playMs - holdUntil) / FADE_MS);
+          life = Math.pow(1 - fadeRatio, 1.45);
+        }
+        if (life <= 0.01) continue;
+
+        const rep = this.getPartialStrokeForReplay(ls, playMs, 'video');
+        if (!rep || !rep.stroke || !rep.stroke.points || rep.stroke.points.length === 0) continue;
+        const pts = rep.stroke.points;
+
+        if (rep.isCurrentlyWriting && rep.tipPoint) {
+          const r = bodyEl.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) {
+            this._activeReplayTipScreen = {
+              x: r.left + rep.tipPoint.nx * r.width,
+              y: r.top + rep.tipPoint.ny * r.height,
+              color: '#dc2626',
+              isHighlighter: false,
+              isLaser: true
+            };
+          }
+        }
+
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = life;
+        ctx.strokeStyle = '#dc2626';
+        ctx.fillStyle = '#dc2626';
+        ctx.lineWidth = 2.5;
+
+        if (pts.length === 1) {
+          ctx.beginPath();
+          ctx.arc(pts[0].nx * w, pts[0].ny * h, 1.3, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(pts[0].nx * w, pts[0].ny * h);
+          if (pts.length === 2) {
+            ctx.lineTo(pts[1].nx * w, pts[1].ny * h);
+          } else {
+            const firstMx = ((pts[0].nx + pts[1].nx) * 0.5) * w;
+            const firstMy = ((pts[0].ny + pts[1].ny) * 0.5) * h;
+            ctx.lineTo(firstMx, firstMy);
+            for (let k = 1; k < pts.length - 1; k++) {
+              const cx = pts[k].nx * w;
+              const cy = pts[k].ny * h;
+              const mx = ((pts[k].nx + pts[k + 1].nx) * 0.5) * w;
+              const my = ((pts[k].ny + pts[k + 1].ny) * 0.5) * h;
+              ctx.quadraticCurveTo(cx, cy, mx, my);
+            }
+            const last = pts[pts.length - 1];
+            ctx.lineTo(last.nx * w, last.ny * h);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      ctx.restore();
+    });
   }
 
   positionReplayVirtualStylus(screenX, screenY, color = '#00d2d3', isDrawing = true) {
@@ -27057,7 +27345,8 @@ class GraphApp {
       if (playMs >= tB) {
         slicedPts.push(pB);
         interpTip = pB;
-      } else if (playMs >= tA) {
+        if (playMs === tB) break;
+      } else if (playMs > tA) {
         const segSpan = Math.max(1, tB - tA);
         const alpha = Math.max(0, Math.min(1, (playMs - tA) / segSpan));
         if (pA.nx !== undefined) {
@@ -27253,6 +27542,7 @@ class GraphApp {
     this._applyAudioTimelineStateAt(playMs);
     this.renderProblemCardCanvas();
     this.renderGraphCardCanvas();
+    this._renderAudioReplayCardLasers(playMs);
     this.render();
 
     if (this._activeReplayTipScreen) {
