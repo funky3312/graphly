@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261102_08">
+  <link rel="stylesheet" href="style.css?v=20261102_09">
 </head>
 
 <body class="theme-light">
@@ -969,8 +969,8 @@
 
         <div class="quick-sep"></div>
 
-        <!-- 5. 판서 & 수학 킬러 도구 -->
-        <button id="btnAudioRecordToggle" class="quick-fab-btn" title="음성 녹음 및 강의 재생">
+        <!-- 5. 판서 & 수학 킬러 도구 (음성 녹음 버튼은 본질 기능 집중을 위해 숨김 처리) -->
+        <button id="btnAudioRecordToggle" class="quick-fab-btn" title="음성 녹음 및 강의 재생" style="display: none;">
           <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg></span>
         </button>
         <button id="btnInkMode" class="quick-fab-btn" title="필기">
@@ -1301,8 +1301,8 @@
                 <input type="checkbox" id="chkExportLayerInk" checked>
                 <span>필기</span>
               </label>
-              <label class="export-layer-chip active" id="lblExportLayerAudio">
-                <input type="checkbox" id="chkExportLayerAudio" checked>
+              <label class="export-layer-chip" id="lblExportLayerAudio" style="display: none;">
+                <input type="checkbox" id="chkExportLayerAudio">
                 <span>음성</span>
               </label>
             </div>
@@ -1311,9 +1311,9 @@
           <div class="export-filter-row export-stage-preset-row">
             <span class="export-step-label">단계별 저장</span>
             <div class="export-stage-preset-group">
-              <button type="button" id="btnExportPresetStage1" class="export-stage-preset-chip" data-stage="1" title="학생들이 직접 풀 수 있도록 필기와 음성을 제외하고 [문제 + 그래프]만 저장/공유합니다">1차: 문제+그래프</button>
-              <button type="button" id="btnExportPresetStage2" class="export-stage-preset-chip" data-stage="2" title="음성을 제외하고 [문제 + 그래프 + 필기] 해설 노트만 저장/공유합니다">2차: +필기 해설</button>
-              <button type="button" id="btnExportPresetStage3" class="export-stage-preset-chip active" data-stage="3" title="[문제 + 그래프 + 필기 + 음성] 전체 강의를 저장/공유합니다">3차: +음성 강의</button>
+              <button type="button" id="btnExportPresetStage1" class="export-stage-preset-chip" data-stage="1" title="학생들이 직접 풀 수 있도록 필기를 제외하고 [문제 + 그래프]만 저장/공유합니다">1차: 문제+그래프</button>
+              <button type="button" id="btnExportPresetStage2" class="export-stage-preset-chip active" data-stage="2" title="[문제 + 그래프 + 필기] 완성형 해설 노트를 저장/공유합니다">2차: +필기 해설</button>
+              <button type="button" id="btnExportPresetStage3" class="export-stage-preset-chip" data-stage="3" style="display: none;" title="[문제 + 그래프 + 필기 + 음성] 전체 강의를 저장/공유합니다">3차: +음성 강의</button>
             </div>
           </div>
           <div class="export-filter-hint" id="lblExportFilterSummary" style="display: none;"></div>
@@ -1858,8 +1858,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261102_08"></script>
-  <script src="app.js?v=20261102_08"></script>
+  <script src="engine.js?v=20261102_09"></script>
+  <script src="app.js?v=20261102_09"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

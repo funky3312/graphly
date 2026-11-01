@@ -14528,7 +14528,7 @@ class GraphApp {
       includeProblem: true,
       includeGraph: true,
       includeInk: true,
-      includeAudio: true
+      includeAudio: false
     };
 
     const modal = document.getElementById('modalShare');
@@ -14589,7 +14589,7 @@ class GraphApp {
       const incP = Boolean(this.exportFilter.includeProblem);
       const incG = Boolean(this.exportFilter.includeGraph);
       const incI = Boolean(this.exportFilter.includeInk);
-      const incA = this.exportFilter.includeAudio !== false;
+      const incA = Boolean(this.exportFilter.includeAudio);
 
       if (chkProblem) chkProblem.checked = incP;
       if (chkGraph) chkGraph.checked = incG;
@@ -14867,7 +14867,7 @@ class GraphApp {
       const p = f.includeProblem !== false;
       const g = f.includeGraph !== false;
       const i = f.includeInk !== false;
-      const a = f.includeAudio !== false;
+      const a = Boolean(f.includeAudio);
       if (p && g && !i && !a) return '[1차·문제+그래프]';
       if (p && g && i && !a) return '[2차·해설노트]';
       if (p && g && i && a) return '[3차·음성강의]';
