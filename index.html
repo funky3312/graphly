@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261102_18">
+  <link rel="stylesheet" href="style.css?v=20261102_19">
 </head>
 
 <body class="theme-light">
@@ -489,6 +489,44 @@
                   <button type="button" class="ink-size-btn ink-size-chip" data-size="12.0"><span class="ink-size-circle" style="display:none;"></span>12.0</button>
                 </div>
               </div>
+
+              <!-- 🖍️ 형광펜 크기 조절 (글씨 크기 바로 아래 통합) -->
+              <div class="slider-group" style="margin-top: 10px;">
+                <div class="slider-header" style="display: flex; align-items: center; justify-content: space-between;">
+                  <span>형광펜 크기</span>
+                  <div class="ink-size-stepper" style="display: inline-flex; align-items: center; gap: 4px;">
+                    <button type="button" id="btnHighlighterSizeDown" class="ink-size-stepper-btn" title="형광펜 크기 줄이기">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <span id="lblCurrentHighlighterSize" class="ink-size-val" style="min-width: 28px; text-align: center;">16</span>
+                    <button type="button" id="btnHighlighterSizeUp" class="ink-size-stepper-btn" title="형광펜 크기 키우기">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="ink-size-preview-row" style="margin-top: 4px;">
+                  <input type="range" id="sliderHighlighterSize" class="slider-bar" min="6" max="44" step="2" value="16" style="width: 100%;">
+                </div>
+              </div>
+
+              <!-- 🧼 지우개 크기 조절 (형광펜 크기 바로 아래 통합) -->
+              <div class="slider-group" style="margin-top: 10px;">
+                <div class="slider-header" style="display: flex; align-items: center; justify-content: space-between;">
+                  <span>지우개 크기</span>
+                  <div class="ink-size-stepper" style="display: inline-flex; align-items: center; gap: 4px;">
+                    <button type="button" id="btnEraserSizeDown" class="ink-size-stepper-btn" title="지우개 크기 줄이기">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <span id="lblCurrentEraserSize" class="ink-size-val" style="min-width: 28px; text-align: center;">14</span>
+                    <button type="button" id="btnEraserSizeUp" class="ink-size-stepper-btn" title="지우개 크기 키우기">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="ink-size-preview-row" style="margin-top: 4px;">
+                  <input type="range" id="sliderEraserSize" class="slider-bar" min="4" max="44" step="2" value="14" style="width: 100%;">
+                </div>
+              </div>
             </div>
 
             <!-- 🌟 [대표님 기획]: 좌측 서랍 내 칠판 배경 테마 전격 장착 🌟 -->
@@ -765,7 +803,7 @@
         <!-- 🧼 지우개 모드 SVG (지우는 앞코 원점: 0,0 정확히 일치 / 정밀 슬림 입체 지우개) -->
         <svg id="stylusEraserSvg" class="stylus-svg" width="20" height="20" viewBox="0 0 32 32" fill="none" style="display: none; overflow: visible;">
           <!-- 실제 지워지는 원점(0,0) 정밀 가이드 링 -->
-          <circle cx="0" cy="0" r="4.5" fill="rgba(244, 63, 94, 0.16)" stroke="rgba(244, 63, 94, 0.82)" stroke-width="1.4" />
+          <circle id="stylusEraserRing" cx="0" cy="0" r="4.5" fill="rgba(244, 63, 94, 0.16)" stroke="rgba(244, 63, 94, 0.82)" stroke-width="1.4" />
           <!-- 하얀 고무 지우개 앞코 (정확히 0,0 포인터 끝에서 지워짐) -->
           <path d="M 0.5 0.5 C 2.0 -0.6 4.8 0.2 7.8 2.4 L 2.4 7.8 C 0.2 4.8 -0.6 2.0 0.5 0.5 Z" fill="#ffffff" />
           <polygon points="7.8,2.4 9.6,4.2 4.2,9.6 2.4,7.8" fill="#f1f5f9" />
@@ -1901,8 +1939,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261102_18"></script>
-  <script src="app.js?v=20261102_18"></script>
+  <script src="engine.js?v=20261102_19"></script>
+  <script src="app.js?v=20261102_19"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

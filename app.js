@@ -192,6 +192,8 @@ class GraphApp {
     this.activeInkTool = 'pen';          // 'select' | 'pen' | 'highlighter' | 'eraser' | 'lasso'
     this.currentInkColor = '#1e293b'; // 화이트 페이퍼 기본 차콜 블랙    // 기본 화이트 잉크
     this.currentInkSize = 4.2;           // 기본 4.2px
+    this.currentHighlighterSize = 16;    // 기본 16px (형광펜 크기)
+    this.currentEraserSize = 14;         // 기본 14px (지우개 크기)
     this.inkPenStyle = 'ballpen';        // 필기 펜 스타일 ('ballpen' | 'fountain' | 'brush')
     try {
       const savedPenStyle = localStorage.getItem('graphly_ink_pen_style_v1');
@@ -2498,6 +2500,114 @@ class GraphApp {
       window.addEventListener('pointercancel', onSliderPointerUp);
     }
 
+    // 🖍️ 형광펜 크기 & 🧼 지우개 크기 슬라이더/스테퍼 연동 (스타일 메뉴 통합)
+    const bindSmoothStyleSlider = (sliderEl, applyFn) => {
+      if (!sliderEl) return;
+      sliderEl.oninput = (e) => {
+        applyFn(parseFloat(e.target.value));
+      };
+      sliderEl.onchange = () => {
+        try { sliderEl.blur(); } catch (err) { }
+      };
+      const rowEl = sliderEl.closest('.ink-size-preview-row') || sliderEl.parentElement;
+      const updateFromX = (clientX) => {
+        const rect = sliderEl.getBoundingClientRect();
+        if (!rect || rect.width <= 0) return;
+        const pad = 7;
+        const effWidth = Math.max(1, rect.width - pad * 2);
+        const ratio = Math.max(0, Math.min(1, (clientX - (rect.left + pad)) / effWidth));
+        const min = parseFloat(sliderEl.min) || 4;
+        const max = parseFloat(sliderEl.max) || 44;
+        const step = parseFloat(sliderEl.step) || 2;
+        const raw = min + ratio * (max - min);
+        const stepped = Math.round(raw / step) * step;
+        const finalVal = Math.max(min, Math.min(max, Math.round(stepped)));
+        sliderEl.value = finalVal;
+        applyFn(finalVal);
+      };
+      let dragging = false;
+      const onDown = (e) => {
+        if (e.button && e.button !== 0) return;
+        const rect = sliderEl.getBoundingClientRect();
+        if (rect && rect.width > 0 && e.clientX >= rect.left - 8 && e.clientX <= rect.right + 12) {
+          e.preventDefault();
+          e.stopPropagation();
+          dragging = true;
+          if (e.pointerId !== undefined && sliderEl.setPointerCapture) {
+            try { sliderEl.setPointerCapture(e.pointerId); } catch (err) { }
+          }
+          updateFromX(e.clientX);
+        }
+      };
+      const onMove = (e) => {
+        if (!dragging) return;
+        e.preventDefault();
+        e.stopPropagation();
+        updateFromX(e.clientX);
+      };
+      const onUp = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        if (e.pointerId !== undefined && sliderEl.releasePointerCapture) {
+          try { sliderEl.releasePointerCapture(e.pointerId); } catch (err) { }
+        }
+      };
+      (rowEl || sliderEl).addEventListener('pointerdown', onDown, { passive: false });
+      window.addEventListener('pointermove', onMove, { passive: false });
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+    };
+
+    try {
+      const savedHlSize = parseFloat(localStorage.getItem('graphly_highlighter_size_v1'));
+      if (!isNaN(savedHlSize) && savedHlSize >= 6 && savedHlSize <= 48) {
+        this.setHighlighterSize(savedHlSize);
+      } else {
+        this.setHighlighterSize(this.currentHighlighterSize || 16);
+      }
+    } catch (err) { }
+
+    const btnHlDown = document.getElementById('btnHighlighterSizeDown');
+    if (btnHlDown) {
+      btnHlDown.onclick = (e) => {
+        e.stopPropagation();
+        this.setHighlighterSize((this.currentHighlighterSize || 16) - 2);
+      };
+    }
+    const btnHlUp = document.getElementById('btnHighlighterSizeUp');
+    if (btnHlUp) {
+      btnHlUp.onclick = (e) => {
+        e.stopPropagation();
+        this.setHighlighterSize((this.currentHighlighterSize || 16) + 2);
+      };
+    }
+    bindSmoothStyleSlider(document.getElementById('sliderHighlighterSize'), (val) => this.setHighlighterSize(val));
+
+    try {
+      const savedErSize = parseFloat(localStorage.getItem('graphly_eraser_size_v1'));
+      if (!isNaN(savedErSize) && savedErSize >= 4 && savedErSize <= 48) {
+        this.setEraserSize(savedErSize);
+      } else {
+        this.setEraserSize(this.currentEraserSize || 14);
+      }
+    } catch (err) { }
+
+    const btnErDown = document.getElementById('btnEraserSizeDown');
+    if (btnErDown) {
+      btnErDown.onclick = (e) => {
+        e.stopPropagation();
+        this.setEraserSize((this.currentEraserSize || 14) - 2);
+      };
+    }
+    const btnErUp = document.getElementById('btnEraserSizeUp');
+    if (btnErUp) {
+      btnErUp.onclick = (e) => {
+        e.stopPropagation();
+        this.setEraserSize((this.currentEraserSize || 14) + 2);
+      };
+    }
+    bindSmoothStyleSlider(document.getElementById('sliderEraserSize'), (val) => this.setEraserSize(val));
+
     // 전체 지우기
     const btnClearAll = document.getElementById('btnInkClearAll');
     if (btnClearAll) {
@@ -3078,6 +3188,38 @@ class GraphApp {
     });
   }
 
+  setHighlighterSize(size) {
+    const clamped = Math.max(6, Math.min(44, Math.round(Number(size) || 16)));
+    this.currentHighlighterSize = clamped;
+    try {
+      localStorage.setItem('graphly_highlighter_size_v1', String(clamped));
+    } catch (err) { }
+    const lbl = document.getElementById('lblCurrentHighlighterSize');
+    if (lbl) lbl.textContent = String(clamped);
+    const slider = document.getElementById('sliderHighlighterSize');
+    if (slider) slider.value = clamped;
+    const hlGlow = document.getElementById('stylusHighlighterGlow');
+    if (hlGlow) {
+      hlGlow.setAttribute('r', String(Math.max(4, Math.min(15, +(clamped * 0.42).toFixed(1)))));
+    }
+  }
+
+  setEraserSize(size) {
+    const clamped = Math.max(4, Math.min(44, Math.round(Number(size) || 14)));
+    this.currentEraserSize = clamped;
+    try {
+      localStorage.setItem('graphly_eraser_size_v1', String(clamped));
+    } catch (err) { }
+    const lbl = document.getElementById('lblCurrentEraserSize');
+    if (lbl) lbl.textContent = String(clamped);
+    const slider = document.getElementById('sliderEraserSize');
+    if (slider) slider.value = clamped;
+    const erRing = document.getElementById('stylusEraserRing') || (this.stylusEraserSvg ? this.stylusEraserSvg.querySelector('circle') : null);
+    if (erRing) {
+      erRing.setAttribute('r', String(Math.max(2.5, Math.min(22, +(clamped * 0.45).toFixed(1)))));
+    }
+  }
+
   updateInkCursor() {
     this.canvas.classList.remove(
       'ink-cursor-pen',
@@ -3570,7 +3712,8 @@ class GraphApp {
     }
   }
 
-  eraseInkAtPoint(screenX, screenY, eraseRadius = 9) {
+  eraseInkAtPoint(screenX, screenY, eraseRadius = null) {
+    eraseRadius = (typeof eraseRadius === 'number' && !isNaN(eraseRadius)) ? eraseRadius : (this.currentEraserSize || 14);
     if (Array.isArray(this.boardStickers) && this.boardStickers.length > 0) {
       const hitStk = this.findBoardStickerAtScreenPos({ x: screenX, y: screenY });
       if (hitStk && hitStk.sticker) {
@@ -7495,7 +7638,8 @@ class GraphApp {
       const baseSize = (stroke.size || 3.5) * sizeScale;
       if (stroke.isHighlighter) {
         ctx.globalAlpha = 0.36;
-        ctx.lineWidth = Math.max(10, baseSize * 2.8);
+        const hlW = stroke.highlighterSize ? (stroke.highlighterSize * sizeScale) : Math.max(10, baseSize * 2.8);
+        ctx.lineWidth = Math.max(4, hlW);
       } else {
         ctx.globalAlpha = 1.0;
         ctx.lineWidth = baseSize;
@@ -7551,7 +7695,8 @@ class GraphApp {
     ctx.restore();
   }
 
-  eraseProblemInkAtNormalizedPoint(nx, ny, w, h, radiusPx = 18) {
+  eraseProblemInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null) {
+    radiusPx = (typeof radiusPx === 'number' && !isNaN(radiusPx)) ? radiusPx : Math.max(6, (this.currentEraserSize || 14) * 1.25);
     if (!this.problemInkStrokes || this.problemInkStrokes.length === 0) return;
     const sx = nx * w;
     const sy = ny * h;
@@ -8232,7 +8377,7 @@ class GraphApp {
         );
         if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
           this._problemCardStylusEraser = true;
-          this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, 24);
+          this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h);
           this.renderProblemCardCanvas();
           return;
         }
@@ -8248,7 +8393,8 @@ class GraphApp {
         const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
         currentStroke = {
           color: this.currentInkColor || '#0f172a',
-          size: this.currentInkSize || 3.5,
+          size: (this.activeInkTool === 'highlighter') ? parseFloat(((this.currentHighlighterSize || 16) / 2.8).toFixed(2)) : (this.currentInkSize || 3.5),
+          highlighterSize: (this.activeInkTool === 'highlighter') ? (this.currentHighlighterSize || 16) : undefined,
           isHighlighter: (this.activeInkTool === 'highlighter'),
           tStart: recT,
           tEnd: recT,
@@ -8270,7 +8416,7 @@ class GraphApp {
           (e.pointerType === 'pen' && (typeof e.buttons === 'number' && (e.buttons & 2) !== 0))
         );
         if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
-          this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, 24);
+          this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h);
           this.renderProblemCardCanvas();
           return;
         }
@@ -8970,7 +9116,8 @@ class GraphApp {
           cCtx.fillStyle = col;
           const baseSize = (st.size || 3.5) * sizeScale;
           cCtx.globalAlpha = st.isHighlighter ? 0.36 : 1.0;
-          cCtx.lineWidth = st.isHighlighter ? Math.max(10, baseSize * 2.8) : Math.max(1.5, baseSize);
+          const extraHlW = st.highlighterSize ? (st.highlighterSize * sizeScale) : Math.max(10, baseSize * 2.8);
+          cCtx.lineWidth = st.isHighlighter ? Math.max(4, extraHlW) : Math.max(1.5, baseSize);
           const pts = st.points;
           if (pts.length === 1) {
             cCtx.beginPath();
@@ -9022,9 +9169,10 @@ class GraphApp {
         if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
           cardWidgetEl._extraStylusEraser = true;
           const sx = nx * rw, sy = ny * rh;
+          const extraEraseR = Math.max(6, (this.currentEraserSize || 14) * 1.25);
           cardWidgetEl._cardInkStrokes = (cardWidgetEl._cardInkStrokes || []).filter(st => {
             if (!st.points) return false;
-            return !st.points.some(pt => Math.hypot(pt.nx * rw - sx, pt.ny * rh - sy) <= 22);
+            return !st.points.some(pt => Math.hypot(pt.nx * rw - sx, pt.ny * rh - sy) <= extraEraseR);
           });
           renderExtraCardInk();
           return;
@@ -9032,7 +9180,8 @@ class GraphApp {
         const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
         curExtraStroke = {
           color: this.currentInkColor || '#0f172a',
-          size: this.currentInkSize || 3.5,
+          size: (this.activeInkTool === 'highlighter') ? parseFloat(((this.currentHighlighterSize || 16) / 2.8).toFixed(2)) : (this.currentInkSize || 3.5),
+          highlighterSize: (this.activeInkTool === 'highlighter') ? (this.currentHighlighterSize || 16) : undefined,
           isHighlighter: (this.activeInkTool === 'highlighter'),
           tStart: recT,
           tEnd: recT,
@@ -9053,9 +9202,10 @@ class GraphApp {
         const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rh));
         if (this.activeInkTool === 'eraser' || cardWidgetEl._extraStylusEraser) {
           const sx = nx * rw, sy = ny * rh;
+          const extraEraseR = Math.max(6, (this.currentEraserSize || 14) * 1.25);
           cardWidgetEl._cardInkStrokes = (cardWidgetEl._cardInkStrokes || []).filter(st => {
             if (!st.points) return false;
-            return !st.points.some(pt => Math.hypot(pt.nx * rw - sx, pt.ny * rh - sy) <= 22);
+            return !st.points.some(pt => Math.hypot(pt.nx * rw - sx, pt.ny * rh - sy) <= extraEraseR);
           });
           renderExtraCardInk();
           return;
@@ -10793,7 +10943,8 @@ class GraphApp {
       const baseSize = (stroke.size || 3.5) * sizeScale;
       if (stroke.isHighlighter) {
         ctx.globalAlpha = 0.36;
-        ctx.lineWidth = Math.max(10, baseSize * 2.8);
+        const gHlW = stroke.highlighterSize ? (stroke.highlighterSize * sizeScale) : Math.max(10, baseSize * 2.8);
+        ctx.lineWidth = Math.max(4, gHlW);
       } else {
         ctx.globalAlpha = 1.0;
         ctx.lineWidth = Math.max(1.5, baseSize);
@@ -10822,7 +10973,8 @@ class GraphApp {
     ctx.restore();
   }
 
-  eraseGraphCardInkAtNormalizedPoint(nx, ny, w, h, radiusPx = 20) {
+  eraseGraphCardInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null) {
+    radiusPx = (typeof radiusPx === 'number' && !isNaN(radiusPx)) ? radiusPx : Math.max(6, (this.currentEraserSize || 14) * 1.25);
     if (!this.graphInkStrokes || this.graphInkStrokes.length === 0) return;
     const tx = nx * w;
     const ty = ny * h;
@@ -10936,7 +11088,7 @@ class GraphApp {
         );
         if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
           this._graphCardStylusEraser = true;
-          this.eraseGraphCardInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, 24);
+          this.eraseGraphCardInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h);
           return;
         }
 
@@ -10951,7 +11103,8 @@ class GraphApp {
         const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
         currentStroke = {
           color: this.currentInkColor || '#1e293b',
-          size: this.currentInkSize || 3.5,
+          size: (this.activeInkTool === 'highlighter') ? parseFloat(((this.currentHighlighterSize || 16) / 2.8).toFixed(2)) : (this.currentInkSize || 3.5),
+          highlighterSize: (this.activeInkTool === 'highlighter') ? (this.currentHighlighterSize || 16) : undefined,
           isHighlighter: (this.activeInkTool === 'highlighter'),
           tStart: recT,
           tEnd: recT,
@@ -10972,7 +11125,7 @@ class GraphApp {
           (e.pointerType === 'pen' && (typeof e.buttons === 'number' && (e.buttons & 2) !== 0))
         );
         if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
-          this.eraseGraphCardInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, 24);
+          this.eraseGraphCardInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h);
           return;
         }
         if (!currentStroke) return;
@@ -11534,7 +11687,8 @@ class GraphApp {
       if (isLight && !this.isMonochromeMode) {
         targetCtx.globalCompositeOperation = 'multiply';
       }
-      targetCtx.lineWidth = Math.max(10, stroke.size * 2.6 * zoomRatio);
+      const hlBase = stroke.highlighterSize ? stroke.highlighterSize : Math.max(10, (stroke.size || 4.2) * 2.6);
+      targetCtx.lineWidth = Math.max(4, hlBase * zoomRatio);
     } else {
       targetCtx.globalAlpha = 1.0;
     }
@@ -11543,7 +11697,8 @@ class GraphApp {
     if (stroke.shape) {
       const baseSize = (stroke.size || 3) * zoomRatio;
       // PC · 아이패드 통일된 펜 굵기(1.0x)와 이질감 없이 매칭되는 도형 선 굵기(0.95배)
-      targetCtx.lineWidth = stroke.isHighlighter ? Math.max(8, baseSize * 2.5) : Math.max(1.2, baseSize * 0.95);
+      const hlShapeBase = stroke.highlighterSize ? (stroke.highlighterSize * zoomRatio) : Math.max(8, baseSize * 2.5);
+      targetCtx.lineWidth = stroke.isHighlighter ? Math.max(4, hlShapeBase) : Math.max(1.2, baseSize * 0.95);
       targetCtx.strokeStyle = strokeColor;
 
       if (stroke.shape.type === 'line') {
@@ -20600,7 +20755,7 @@ class GraphApp {
         this.isStylusDrawing = true;
         if (this.virtualStylusEl) this.virtualStylusEl.classList.add('drawing');
         this.updateStylusPenPosition(pos.x, pos.y, e);
-        this.eraseInkAtPoint(pos.x, pos.y, 10);
+        this.eraseInkAtPoint(pos.x, pos.y);
         this.render();
         return;
       }
@@ -21156,7 +21311,8 @@ class GraphApp {
           target: strokeTarget,
           onPdfBoard: Boolean(this.pdfPageBoardData && isGraphTarget),
           color: this.currentInkColor,
-          size: this.currentInkSize,
+          size: isHighlighterStroke ? parseFloat(((this.currentHighlighterSize || 16) / 2.6).toFixed(2)) : this.currentInkSize,
+          highlighterSize: isHighlighterStroke ? (this.currentHighlighterSize || 16) : undefined,
           zoom: this.zoomLevel,
           boardZoom: this.boardZoom || 1.0,
           isHighlighter: isHighlighterStroke,
@@ -21779,7 +21935,7 @@ class GraphApp {
       if (this.isDrawingInk || this._isTemporaryStylusEraser) {
         const isStylusEraser = this.isStylusEraserEvent(e) || this._isTemporaryStylusEraser;
         if (this.activeInkTool === 'eraser' || isStylusEraser) {
-          this.eraseInkAtPoint(pos.x, pos.y, 10);
+          this.eraseInkAtPoint(pos.x, pos.y);
           this.requestRender();
           return;
         } else if (this.activeInkTool === 'laser' && this.currentMainLaserStroke) {
