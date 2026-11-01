@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261101_02">
+  <link rel="stylesheet" href="style.css?v=20261101_03">
 </head>
 
 <body class="theme-light">
@@ -435,6 +435,24 @@
 
           <!-- 6. 패널: 스타일 & 색상 -->
           <div class="drawer-panel" id="panelStyle" style="display: none;">
+            <!-- ✒️ [대표님 기획: 굿노트 스타일 3종 필기 펜 촉 선택 (볼펜 · 만년필 · 붓펜)] -->
+            <div class="panel-section" style="border: none; padding: 0; margin-bottom: 12px;">
+              <div class="section-title">
+                <span>필기 펜 스타일</span>
+              </div>
+              <div class="ink-pen-style-grid" id="inkPenStyleGroup" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 6px;">
+                <button type="button" class="vf-chip ink-pen-style-chip active" data-pen-style="ballpen" title="필압에 관계없이 처음부터 끝까지 일정한 굵기">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:3px;vertical-align:-2px;"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>볼펜
+                </button>
+                <button type="button" class="vf-chip ink-pen-style-chip" data-pen-style="fountain" title="부드러운 필압 반응과 날렵한 획 끝 삐침 (명필 보정)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:3px;vertical-align:-2px;"><path d="m12 19 7-7 3 3-7 7-3-3z"/><path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="m2 2 7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>만년필
+                </button>
+                <button type="button" class="vf-chip ink-pen-style-chip" data-pen-style="brush" title="필압에 따라 굵고 가는 대비가 뚜렷한 붓펜 스타일">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:3px;vertical-align:-2px;"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/></svg>붓펜
+                </button>
+              </div>
+            </div>
+
             <!-- 🌟 [대표님 기획]: 좌측 서랍 내 칠판 배경 테마 전격 장착 🌟 -->
             <div class="panel-section" style="border: none; padding: 0; margin-bottom: 12px;">
               <div class="section-title">
@@ -1662,7 +1680,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261031_4"></script>
-  <script src="app.js?v=20261101_02"></script>
+  <script src="app.js?v=20261101_03"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

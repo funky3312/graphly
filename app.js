@@ -192,6 +192,13 @@ class GraphApp {
     this.activeInkTool = 'pen';          // 'select' | 'pen' | 'highlighter' | 'eraser' | 'lasso'
     this.currentInkColor = '#1e293b'; // 화이트 페이퍼 기본 차콜 블랙    // 기본 화이트 잉크
     this.currentInkSize = 4.2;           // 기본 4.2px
+    this.inkPenStyle = 'ballpen';        // 필기 펜 스타일 ('ballpen' | 'fountain' | 'brush')
+    try {
+      const savedPenStyle = localStorage.getItem('graphly_ink_pen_style_v1');
+      if (savedPenStyle && ['ballpen', 'fountain', 'brush'].includes(savedPenStyle)) {
+        this.inkPenStyle = savedPenStyle;
+      }
+    } catch (err) { }
     this.inkStrokes = [];                // 저장된 모든 필기 획 배열 [{id, tool, color, size, isHighlighter, points: [{x, y, p}]}]
     this.currentInkStroke = null;        // 현재 드로잉 중인 획
     this.isDrawingInk = false;           // 필기 드로잉 중 플래그
@@ -9476,6 +9483,99 @@ class GraphApp {
     this._hasSceneFreeze = true;
   }
 
+  // ✒️ [굿노트 3종 필기 펜 스타일 전환 및 가변 필압·속도 굵기 연산 엔진]
+  setInkPenStyle(styleKey, showMsg = true) {
+    if (!['ballpen', 'fountain', 'brush'].includes(styleKey)) return;
+    this.inkPenStyle = styleKey;
+    try {
+      localStorage.setItem('graphly_ink_pen_style_v1', styleKey);
+    } catch (err) { }
+    document.querySelectorAll('.ink-pen-style-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.dataset.penStyle === styleKey);
+    });
+    if (showMsg) {
+      const labels = {
+        ballpen: '🖊️ 볼펜 스타일 (일정한 굵기)',
+        fountain: '✒️ 만년필 스타일 (부드러운 필압 · 날렵한 삐침)',
+        brush: '🖌️ 붓펜 스타일 (강한 필압 대비 · 붓 터치)'
+      };
+      this.showToast(labels[styleKey] || '펜 스타일 변경');
+    }
+  }
+
+  computePenStyleWidth(baseSize, p, penStyle = 'ballpen') {
+    if (!penStyle || penStyle === 'ballpen') {
+      return Math.max(0.8, baseSize * 0.98);
+    }
+    const clampedP = Math.max(0.04, Math.min(1.0, (typeof p === 'number' && !isNaN(p)) ? p : 0.5));
+    if (penStyle === 'fountain') {
+      // 만년필: 가벼운 터치(0.44x) ~ 중간(0.96x) ~ 힘준 획(1.36x)
+      const factor = 0.40 + 0.96 * Math.pow(clampedP, 0.85);
+      return Math.max(0.55, baseSize * factor);
+    }
+    if (penStyle === 'brush') {
+      // 붓펜: 아주 가는 삐침(0.24x) ~ 중간(0.96x) ~ 묵직한 붓 획(1.75x)
+      const factor = 0.20 + 1.55 * Math.pow(clampedP, 1.05);
+      return Math.max(0.40, baseSize * factor);
+    }
+    return Math.max(0.8, baseSize * 0.98);
+  }
+
+  drawVariableWidthQuadSegment(ctx, x0, y0, cx, cy, x1, y1, w0, w1) {
+    if (Math.abs(w1 - w0) < 0.22) {
+      ctx.lineWidth = (w0 + w1) * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.quadraticCurveTo(cx, cy, x1, y1);
+      ctx.stroke();
+      return;
+    }
+    const subSteps = 4;
+    let prevX = x0;
+    let prevY = y0;
+    for (let s = 1; s <= subSteps; s++) {
+      const t = s / subSteps;
+      const invT = 1 - t;
+      const nx = invT * invT * x0 + 2 * invT * t * cx + t * t * x1;
+      const ny = invT * invT * y0 + 2 * invT * t * cy + t * t * y1;
+      const tMid = (s - 0.5) / subSteps;
+      ctx.lineWidth = w0 + (w1 - w0) * tMid;
+      ctx.beginPath();
+      ctx.moveTo(prevX, prevY);
+      ctx.lineTo(nx, ny);
+      ctx.stroke();
+      prevX = nx;
+      prevY = ny;
+    }
+  }
+
+  drawVariableWidthLineSegment(ctx, x0, y0, x1, y1, w0, w1) {
+    if (Math.abs(w1 - w0) < 0.22) {
+      ctx.lineWidth = (w0 + w1) * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+      return;
+    }
+    const subSteps = 3;
+    let prevX = x0;
+    let prevY = y0;
+    for (let s = 1; s <= subSteps; s++) {
+      const t = s / subSteps;
+      const nx = x0 + (x1 - x0) * t;
+      const ny = y0 + (y1 - y0) * t;
+      const tMid = (s - 0.5) / subSteps;
+      ctx.lineWidth = w0 + (w1 - w0) * tMid;
+      ctx.beginPath();
+      ctx.moveTo(prevX, prevY);
+      ctx.lineTo(nx, ny);
+      ctx.stroke();
+      prevX = nx;
+      prevY = ny;
+    }
+  }
+
   // 🌟 [서브프레임 0.00ms 즉각 잉크 타격]: requestAnimationFrame 대기조차 없이 pointermove 즉시 캔버스에 증분 캡슐을 박아넣어 펜 끝 지연 0ms 달성!
   drawLiveBezierStep(screenPts, stroke = this.currentInkStroke, isFinalTail = false) {
     if (!stroke || stroke.isHighlighter || !this.ctx || !screenPts || screenPts.length === 0) return;
@@ -9485,10 +9585,11 @@ class GraphApp {
       ? ((this.boardZoom || 1.0) / (stroke.boardZoom || 1.0))
       : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
     const baseSize = (stroke.size || 4.2) * zoomRatio;
+    const penStyle = stroke.penStyle || 'ballpen';
 
     const L = screenPts.length;
     const lastPt = screenPts[L - 1];
-    const lineW = Math.max(0.8, baseSize * 0.98);
+    const lineW = this.computePenStyleWidth(baseSize, lastPt.p, penStyle);
 
     const strokeColor = this.isMonochromeMode ? '#000000' : (stroke.color || '#1e293b');
 
@@ -9510,10 +9611,16 @@ class GraphApp {
         const p1 = screenPts[1];
         const mx = isFinalTail ? p1.x : (p0.x + p1.x) * 0.5;
         const my = isFinalTail ? p1.y : (p0.y + p1.y) * 0.5;
-        ctx.beginPath();
-        ctx.moveTo(p0.x, p0.y);
-        ctx.lineTo(mx, my);
-        ctx.stroke();
+        if (penStyle === 'ballpen') {
+          ctx.beginPath();
+          ctx.moveTo(p0.x, p0.y);
+          ctx.lineTo(mx, my);
+          ctx.stroke();
+        } else {
+          const w0 = this.computePenStyleWidth(baseSize, p0.p, penStyle);
+          const w1 = this.computePenStyleWidth(baseSize, isFinalTail ? p1.p : (p0.p + p1.p) * 0.5, penStyle);
+          this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, mx, my, w0, w1);
+        }
       } else {
         const pA = screenPts[L - 3];
         const pB = screenPts[L - 2];
@@ -9522,15 +9629,26 @@ class GraphApp {
         const mid1Y = (pA.y + pB.y) * 0.5;
         const mid2X = (pB.x + pC.x) * 0.5;
         const mid2Y = (pB.y + pC.y) * 0.5;
-        ctx.beginPath();
-        if (isFinalTail) {
-          ctx.moveTo(mid2X, mid2Y);
-          ctx.lineTo(pC.x, pC.y);
+        if (penStyle === 'ballpen') {
+          ctx.beginPath();
+          if (isFinalTail) {
+            ctx.moveTo(mid2X, mid2Y);
+            ctx.lineTo(pC.x, pC.y);
+          } else {
+            ctx.moveTo(mid1X, mid1Y);
+            ctx.quadraticCurveTo(pB.x, pB.y, mid2X, mid2Y);
+          }
+          ctx.stroke();
         } else {
-          ctx.moveTo(mid1X, mid1Y);
-          ctx.quadraticCurveTo(pB.x, pB.y, mid2X, mid2Y);
+          const wMid1 = this.computePenStyleWidth(baseSize, (pA.p + pB.p) * 0.5, penStyle);
+          const wMid2 = this.computePenStyleWidth(baseSize, (pB.p + pC.p) * 0.5, penStyle);
+          if (isFinalTail) {
+            const wEnd = this.computePenStyleWidth(baseSize, pC.p, penStyle);
+            this.drawVariableWidthLineSegment(ctx, mid2X, mid2Y, pC.x, pC.y, wMid2, wEnd);
+          } else {
+            this.drawVariableWidthQuadSegment(ctx, mid1X, mid1Y, pB.x, pB.y, mid2X, mid2Y, wMid1, wMid2);
+          }
         }
-        ctx.stroke();
       }
       ctx.restore();
     };
@@ -9724,10 +9842,11 @@ class GraphApp {
     // 사후에 가우시안 필터로 좌표를 깎으면 나중에 render()가 호출될 때 이전에 쓴 글자들의 필체가 바뀌어 보이므로,
     // 입력 단계(2.0px 필터)에서 확정된 점들을 변형 없이 그대로 중점 2차 베지어 곡선으로 그려 필체 변화를 0%로 차단합니다!
     const pts = rawPts;
+    const baseSize = (stroke.size || 4.2) * zoomRatio;
+    const penStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
 
     if (!stroke.isHighlighter) {
-      const baseSize = (stroke.size || 4.2) * zoomRatio;
-      targetCtx.lineWidth = Math.max(0.8, baseSize * 0.98);
+      targetCtx.lineWidth = this.computePenStyleWidth(baseSize, pts[0].p, penStyle);
     }
 
     targetCtx.fillStyle = strokeColor;
@@ -9743,11 +9862,17 @@ class GraphApp {
       targetCtx.arc(pts[0].x, pts[0].y, targetCtx.lineWidth / 2, 0, Math.PI * 2);
       targetCtx.fill();
     } else if (pts.length === 2) {
-      targetCtx.beginPath();
-      targetCtx.moveTo(pts[0].x, pts[0].y);
-      targetCtx.lineTo(pts[1].x, pts[1].y);
-      targetCtx.stroke();
-    } else {
+      if (penStyle === 'ballpen') {
+        targetCtx.beginPath();
+        targetCtx.moveTo(pts[0].x, pts[0].y);
+        targetCtx.lineTo(pts[1].x, pts[1].y);
+        targetCtx.stroke();
+      } else {
+        const w0 = this.computePenStyleWidth(baseSize, pts[0].p, penStyle);
+        const w1 = this.computePenStyleWidth(baseSize, pts[1].p, penStyle);
+        this.drawVariableWidthLineSegment(targetCtx, pts[0].x, pts[0].y, pts[1].x, pts[1].y, w0, w1);
+      }
+    } else if (penStyle === 'ballpen') {
       targetCtx.beginPath();
       targetCtx.moveTo(pts[0].x, pts[0].y);
       const firstMidX = (pts[0].x + pts[1].x) * 0.5;
@@ -9761,6 +9886,26 @@ class GraphApp {
       const last = pts[pts.length - 1];
       targetCtx.lineTo(last.x, last.y);
       targetCtx.stroke();
+    } else {
+      const firstMidX = (pts[0].x + pts[1].x) * 0.5;
+      const firstMidY = (pts[0].y + pts[1].y) * 0.5;
+      const w0 = this.computePenStyleWidth(baseSize, pts[0].p, penStyle);
+      let prevMidW = this.computePenStyleWidth(baseSize, (pts[0].p + pts[1].p) * 0.5, penStyle);
+      this.drawVariableWidthLineSegment(targetCtx, pts[0].x, pts[0].y, firstMidX, firstMidY, w0, prevMidW);
+      let prevMidX = firstMidX;
+      let prevMidY = firstMidY;
+      for (let i = 1; i < pts.length - 1; i++) {
+        const midX = (pts[i].x + pts[i + 1].x) * 0.5;
+        const midY = (pts[i].y + pts[i + 1].y) * 0.5;
+        const nextMidW = this.computePenStyleWidth(baseSize, (pts[i].p + pts[i + 1].p) * 0.5, penStyle);
+        this.drawVariableWidthQuadSegment(targetCtx, prevMidX, prevMidY, pts[i].x, pts[i].y, midX, midY, prevMidW, nextMidW);
+        prevMidX = midX;
+        prevMidY = midY;
+        prevMidW = nextMidW;
+      }
+      const last = pts[pts.length - 1];
+      const wEnd = this.computePenStyleWidth(baseSize, last.p, penStyle);
+      this.drawVariableWidthLineSegment(targetCtx, prevMidX, prevMidY, last.x, last.y, prevMidW, wEnd);
     }
 
     targetCtx.restore();
@@ -11036,6 +11181,16 @@ class GraphApp {
     const btnQuickZoomOut = document.getElementById('btnQuickZoomOut');
     if (btnQuickZoomIn) btnQuickZoomIn.onclick = () => { this.zoomByStep(0.12); };
     if (btnQuickZoomOut) btnQuickZoomOut.onclick = () => { this.zoomByStep(-0.12); };
+
+    // 좌측 서랍 패널(#panelStyle) 내 필기 펜 스타일(볼펜/만년필/붓펜) 칩 바인딩
+    document.querySelectorAll('.ink-pen-style-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.dataset.penStyle === this.inkPenStyle);
+      chip.onclick = (e) => {
+        e.stopPropagation();
+        const styleKey = e.currentTarget.dataset.penStyle;
+        this.setInkPenStyle(styleKey);
+      };
+    });
 
     // 좌측 서랍 패널(#panelStyle) 내 모든 테마 칩 전체 바인딩
     document.querySelectorAll('.theme-chip').forEach(chip => {
@@ -17925,10 +18080,14 @@ class GraphApp {
 
         const m = this.screenToMath(pos.x, pos.y);
         let pressure = 0.5;
-        if (e.pointerType === 'pen' && typeof e.pressure === 'number' && e.pressure > 0) {
+        const hasRealHardwarePressure = (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01);
+        this._strokeHasRealPressure = hasRealHardwarePressure;
+        if (hasRealHardwarePressure) {
           pressure = e.pressure;
-        } else if (typeof e.pressure === 'number' && e.pressure > 0) {
-          pressure = e.pressure;
+        } else if (this.inkPenStyle === 'fountain') {
+          pressure = 0.42;
+        } else if (this.inkPenStyle === 'brush') {
+          pressure = 0.34;
         }
         this._lastPressure = pressure;
 
@@ -17983,6 +18142,7 @@ class GraphApp {
         this.currentInkStroke = {
           id: 'ink_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
           tool: this.activeInkTool,
+          penStyle: isHighlighterStroke ? 'ballpen' : (this.inkPenStyle || 'ballpen'),
           target: strokeTarget,
           onPdfBoard: Boolean(this.pdfPageBoardData && isGraphTarget),
           color: this.currentInkColor,
@@ -18666,13 +18826,19 @@ class GraphApp {
             this._lastInkScreenPos = { x: sx, y: sy };
 
             let rawPressure = 0.5;
-            if (ev.pointerType === 'pen' && typeof ev.pressure === 'number' && ev.pressure > 0) {
+            if (typeof ev.pressure === 'number' && ev.pressure > 0) {
               rawPressure = ev.pressure;
-            } else if (typeof ev.pressure === 'number' && ev.pressure > 0) {
-              rawPressure = ev.pressure;
+              if (Math.abs(rawPressure - 0.5) > 0.01) {
+                this._strokeHasRealPressure = true;
+              }
             }
-            const prevPressure = (this._lastPressure !== undefined) ? this._lastPressure : rawPressure;
-            const pressure = prevPressure * 0.35 + rawPressure * 0.65;
+            const moveStepDist = lastRaw ? Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y) : 0;
+            const velPressure = Math.max(0.18, Math.min(0.92, 0.78 - (moveStepDist / 48) * 0.52));
+            const targetPressure = this._strokeHasRealPressure
+              ? (rawPressure * 0.85 + velPressure * 0.15)
+              : velPressure;
+            const prevPressure = (this._lastPressure !== undefined) ? this._lastPressure : targetPressure;
+            const pressure = prevPressure * 0.35 + targetPressure * 0.65;
             this._lastPressure = pressure;
             if (this.currentInkStroke.target === 'graph') {
               const m = this.screenToMath(sx, sy);
@@ -19544,7 +19710,13 @@ class GraphApp {
           if (Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y) >= 0.8) {
             const endX = this.currentInkStroke.isHighlighter ? rawEnd.x : (lastSmoothed.x * 0.20 + rawEnd.x * 0.80);
             const endY = this.currentInkStroke.isHighlighter ? rawEnd.y : (lastSmoothed.y * 0.20 + rawEnd.y * 0.80);
-            const p = this._lastPressure || 0.5;
+            const curPenStyle = this.currentInkStroke.penStyle || 'ballpen';
+            let p = this._lastPressure || 0.5;
+            if (curPenStyle === 'fountain') {
+              p = Math.max(0.10, p * 0.42);
+            } else if (curPenStyle === 'brush') {
+              p = Math.max(0.06, p * 0.25);
+            }
             this._liveBezierScreenPts.push({ x: endX, y: endY, p: p });
             if (this.currentInkStroke.target === 'graph') {
               const m = this.screenToMath(endX, endY);

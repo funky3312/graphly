@@ -9109,3 +9109,22 @@ body.theme-light .pdf-crop-active-pill .pdf-crop-active-cancel-x {
 .problem-card-widget.dock-animating {
   transition: left 0.22s cubic-bezier(0.22, 1, 0.36, 1), top 0.22s cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
+
+
+/* ✒️ 굿노트 스타일 3종 필기 펜 촉 선택 칩 (#panelStyle) */
+.ink-pen-style-grid .ink-pen-style-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+.ink-pen-style-grid .ink-pen-style-chip.active {
+  background: rgba(0, 210, 211, 0.16);
+  border-color: #00d2d3;
+  color: #00d2d3;
+  box-shadow: 0 0 0 1px rgba(0, 210, 211, 0.28);
+}
