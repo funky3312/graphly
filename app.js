@@ -4932,7 +4932,8 @@ class GraphApp {
 
   async resumeOrOpenCurrentPdf(isNextCaptureSlide = false, options = null) {
     this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
-    const autoCrop = !(options && options.startInPanMode);
+    // 🌟 [대표님 핵심 지침]: 어디서든 PDF를 열면 먼저 캡처할 문제 위치로 화면을 이동시켜야 하므로 무조건 [✋ 이동] 모드가 기본 우선!
+    const autoCrop = Boolean(options && options.startInCropMode);
     if (this.pdfDoc) {
       this.openPdfModal(false, autoCrop);
       return true;
@@ -4987,8 +4988,8 @@ class GraphApp {
       const titleEl = document.getElementById('pdfFileName');
       if (titleEl) { titleEl.textContent = fileName; titleEl.title = fileName; }
 
-      // 처음 열 때 2단 시험지가 시원시원하게 꽉 차도록 뷰포트 너비의 82%로 자동 맞춤 줌 계산 + 즉시 캡처 모드 활성화!
-      this.openPdfModal(true, true);
+      // 처음 열 때도 무조건 [✋ 이동] 모드로 먼저 열려 원하는 문제 위치로 자유롭게 이동한 뒤 [✂️ 영역 캡처]를 누를 수 있도록 통일!
+      this.openPdfModal(true, false);
       try {
         const firstPage = await pdf.getPage(1);
         const unscaledVp = firstPage.getViewport({ scale: 1.0 });
@@ -5006,7 +5007,7 @@ class GraphApp {
 
       this.renderAllPdfPages(true);
       this.syncLessonPlaylistNavBarUI();
-      this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) 로드 완료! 원하는 문제를 네모로 드래그하세요.`);
+      this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) 로드 완료! 화면을 이동한 뒤 [✂️ 영역 캡처]를 눌러주세요.`);
       return pdf;
     }).catch(err => {
       console.error('PDF 로드 실패:', err);
@@ -5015,7 +5016,7 @@ class GraphApp {
     });
   }
 
-  openPdfModal(isInitialLoad = false, autoCropMode = true) {
+  openPdfModal(isInitialLoad = false, autoCropMode = false) {
     const modal = document.getElementById('modalPdfViewer');
     if (modal) {
       modal.style.display = 'flex';
