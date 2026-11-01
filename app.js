@@ -595,16 +595,23 @@ class GraphApp {
       if (
         lastSynthClick &&
         !lastSynthClick.inProgress &&
-        (performance.now() - lastSynthClick.time < 280) &&
-        (e.target === lastSynthClick.el || (lastSynthClick.el.contains && lastSynthClick.el.contains(e.target)))
+        (performance.now() - lastSynthClick.time < 420)
       ) {
+        // 합성 클릭 직후 모달(#modalPdfViewer 등)이 열리며 커서 아래 DOM(예: #btnPdfOpenAnother)이 바뀌어도 지연 도착한 고스트 click을 100% 원천 차단!
         e.stopImmediatePropagation();
         e.preventDefault();
         lastSynthClick = null;
         return;
       }
-      if (activeTap && (e.target === activeTap.el || (activeTap.el.contains && activeTap.el.contains(e.target)))) {
-        activeTap.nativeClicked = true;
+      if (activeTap) {
+        const clickDist = Math.hypot((e.clientX || 0) - activeTap.startX, (e.clientY || 0) - activeTap.startY);
+        if (
+          e.target === activeTap.el ||
+          (activeTap.el.contains && activeTap.el.contains(e.target)) ||
+          clickDist <= 36
+        ) {
+          activeTap.nativeClicked = true;
+        }
       }
     }, true);
 
@@ -636,7 +643,7 @@ class GraphApp {
               if (lastSynthClick) lastSynthClick.inProgress = false;
             }
           }
-        }, 0);
+        }, 24);
       }
     }, true);
   }
@@ -5529,7 +5536,16 @@ class GraphApp {
       };
     }
 
-    if (btnOpenAnother) btnOpenAnother.onclick = () => triggerFileOpen(Boolean(this._isReplacingViaNextCrop));
+    if (btnOpenAnother) {
+      btnOpenAnother.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        // [다음 캡처] 클릭으로 PDF 모달이 열리는 순간 같은 좌표에 위치한 [다른 파일 열기]가 고스트 클릭/더블탭으로 눌리는 현상 원천 차단!
+        if (this._lastPdfModalOpenAt && (performance.now() - this._lastPdfModalOpenAt < 650)) {
+          return;
+        }
+        triggerFileOpen(Boolean(this._isReplacingViaNextCrop));
+      };
+    }
     if (btnReturnToBoard) btnReturnToBoard.onclick = () => this.closePdfModal();
 
     if (fileInput) {
@@ -6060,6 +6076,7 @@ class GraphApp {
       }
       modal.style.display = 'flex';
       this.isPdfModalOpen = true;
+      this._lastPdfModalOpenAt = performance.now();
       this.togglePdfCropMode(Boolean(autoCropMode));
       if (this.pdfDoc && !isInitialLoad) {
         const container = document.getElementById('pdfPagesContainer');
