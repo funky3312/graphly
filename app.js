@@ -5493,7 +5493,7 @@ class GraphApp {
       pageNum: targetPage,
       totalPages: total,
       canvas: pageCanvas,
-      dataUrl: pageCanvas.toDataURL('image/png'),
+      dataUrl: this.encodeCanvasSmartWebP(pageCanvas, 0.92),
       aspect,
       mathW,
       mathH,
@@ -6315,7 +6315,7 @@ class GraphApp {
           ctx.fillRect(0, 0, sw, sh);
           ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
 
-          const dataUrl = cropCanvas.toDataURL('image/png');
+          const dataUrl = this.encodeCanvasSmartWebP(cropCanvas, 0.93);
           const pageNum = this.cropTargetPageNum;
           const normCrop = {
             nx: x / rect.width,
@@ -6436,7 +6436,7 @@ class GraphApp {
       vCtx.fillRect(0, 0, targetW, targetH);
       await page.render({ canvasContext: vCtx, viewport: fullVp }).promise;
 
-      const ultraDataUrl = vecCanvas.toDataURL('image/png');
+      const ultraDataUrl = this.encodeCanvasSmartWebP(vecCanvas, 0.93);
       if (this.extraProblemCards && this.extraProblemCards.length > 0) {
         const lastExtra = this.extraProblemCards[this.extraProblemCards.length - 1];
         if (lastExtra && lastExtra.el) {
@@ -8564,7 +8564,7 @@ class GraphApp {
           cctx.fillStyle = '#ffffff';
           cctx.fillRect(0, 0, sw, sh);
           cctx.drawImage(pbd.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-          croppedDataUrl = croppedCanvas.toDataURL('image/png');
+          croppedDataUrl = this.encodeCanvasSmartWebP(croppedCanvas, 0.93);
           croppedW = Math.round(Math.max(320, Math.min(560, cropRect.w / Math.max(1, (this.zoomLevel || 1) * 0.85))));
         }
       }
@@ -14910,13 +14910,13 @@ class GraphApp {
       graphSessionArchived: Boolean(this._graphSessionArchived),
       graphCaseCounter: this._graphCaseCounter || 0,
       primaryProblemCard: hasPrimaryProblem ? {
-        problemCardData: this.problemCardData ? { ...this.problemCardData } : null,
+        problemCardData: this.problemCardData ? { pageNum: this.problemCardData.pageNum } : null,
         problemCardAspect: this.problemCardAspect,
         isProblemCardMinimized: Boolean(this.isProblemCardMinimized),
         problemCardBaseX: this.problemCardBaseX,
         problemCardBaseY: this.problemCardBaseY,
         problemInkStrokes: JSON.parse(JSON.stringify(this.problemInkStrokes || [])),
-        imgSrc: pImg ? pImg.src : '',
+        imgSrc: (pImg && pImg.src) ? pImg.src : (this.problemCardData && this.problemCardData.imgUrl ? this.problemCardData.imgUrl : ''),
         titleText: pTitle ? pTitle.textContent : '문제',
         toggleText: pToggle ? pToggle.textContent : '▾',
         minimized: pWidget.classList.contains('minimized'),
@@ -14928,7 +14928,7 @@ class GraphApp {
       } : null,
       extraProblems,
       primaryGraphCard: hasPrimaryGraph ? {
-        graphCardData: this.graphCardData ? { ...this.graphCardData } : null,
+        graphCardData: {},
         graphCardAspect: this.graphCardAspect,
         isGraphCardMinimized: Boolean(this.isGraphCardMinimized),
         graphCardBaseX: this.graphCardBaseX,
@@ -14991,7 +14991,7 @@ class GraphApp {
     const pToggle = document.getElementById('iconCardToggle');
     if (slideData.primaryProblemCard && pWidget) {
       const pc = slideData.primaryProblemCard;
-      this.problemCardData = pc.problemCardData ? { ...pc.problemCardData } : { dataUrl: pc.imgSrc };
+      this.problemCardData = { ...(pc.problemCardData || {}), imgUrl: pc.imgSrc || (pc.problemCardData && pc.problemCardData.imgUrl) || '' };
       this.problemCardAspect = pc.problemCardAspect || 0.65;
       this.isProblemCardMinimized = Boolean(pc.isProblemCardMinimized);
       this.problemCardBaseX = typeof pc.problemCardBaseX === 'number' ? pc.problemCardBaseX : 72;
@@ -15038,7 +15038,7 @@ class GraphApp {
     if (slideData.primaryGraphCard && gWidget) {
       const gc = slideData.primaryGraphCard;
       this._hasPrimaryGraphCard = true;
-      this.graphCardData = gc.graphCardData ? { ...gc.graphCardData } : { dataUrl: gc.imgSrc };
+      this.graphCardData = { ...(gc.graphCardData || {}), dataUrl: gc.imgSrc || (gc.graphCardData && gc.graphCardData.dataUrl) || '' };
       this.graphCardAspect = gc.graphCardAspect || 0.65;
       this.isGraphCardMinimized = Boolean(gc.isGraphCardMinimized);
       this.graphCardBaseX = typeof gc.graphCardBaseX === 'number' ? gc.graphCardBaseX : 580;
@@ -16351,7 +16351,7 @@ class GraphApp {
     let dataUrl = '';
     try {
       dataUrl = forCloud
-        ? exp.canvas.toDataURL('image/jpeg', 0.94)
+        ? this.encodeCanvasSmartWebP(exp.canvas, 0.90)
         : exp.canvas.toDataURL('image/png');
     } catch (e) {
       dataUrl = exp.canvas.toDataURL('image/png');
@@ -17107,6 +17107,17 @@ class GraphApp {
       this.canvasRect = this.canvas.getBoundingClientRect();
     }
     return this.canvasRect;
+  }
+
+  encodeCanvasSmartWebP(canvas, quality = 0.92) {
+    if (!canvas) return '';
+    try {
+      const webpUrl = canvas.toDataURL('image/webp', quality);
+      if (webpUrl && webpUrl.startsWith('data:image/webp')) {
+        return webpUrl;
+      }
+    } catch (e) { }
+    return canvas.toDataURL('image/png');
   }
 
   getCanvasDpr() {
