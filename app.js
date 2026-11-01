@@ -16613,6 +16613,7 @@ class GraphApp {
     if (btnClosePlaylist) {
       btnClosePlaylist.onclick = () => this.closeLessonPlaylistMode();
     }
+    this.initAccidentalRefreshProtection();
   }
 
   openCloudHubModal() {
@@ -18518,6 +18519,7 @@ class GraphApp {
       (this.graphs && this.graphs.length > 0) ||
       hasBackedUpGraphs ||
       (this.inkStrokes && this.inkStrokes.length > 0) ||
+      (this.boardStickers && this.boardStickers.length > 0) ||
       (this.dropLines && this.dropLines.length > 0) ||
       (this.textLabels && this.textLabels.length > 0) ||
       hasPrimaryProblem ||
@@ -18525,6 +18527,39 @@ class GraphApp {
       hasGraphCards ||
       Boolean(this.pdfPageBoardData)
     );
+  }
+
+  hasUnsavedWorkToProtect() {
+    if (this.hasAnyWorkspaceContent()) return true;
+    if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1) return true;
+    if (this.isAudioRecording || this.audioBlob || (Array.isArray(this.audioTimeline) && this.audioTimeline.length > 0)) return true;
+    if (this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0)) return true;
+    return false;
+  }
+
+  initAccidentalRefreshProtection() {
+    if (this._boundRefreshProtection) return;
+    this._boundRefreshProtection = true;
+
+    // 1차 방어: 작업 중 실수로 눌린 새로고침 단축키(F5, Ctrl+R, Cmd+R) 즉시 차단!
+    window.addEventListener('keydown', (e) => {
+      if (!this.hasUnsavedWorkToProtect()) return;
+      const isF5 = (e.key === 'F5' || e.code === 'F5');
+      const isCtrlOrCmdR = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'r' || e.key === 'R' || e.code === 'KeyR');
+      if (isF5 || isCtrlOrCmdR) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showToast('🛡️ 작업 보호: 실수로 인한 새로고침(F5 / Ctrl+R)을 방지했습니다.');
+      }
+    }, { capture: true });
+
+    // 2차 방어: 브라우저 새로고침 버튼 클릭, 탭 닫기(Ctrl+W / ✕), 뒤로가기 시 브라우저 확인 팝업 표출!
+    window.addEventListener('beforeunload', (e) => {
+      if (!this.hasUnsavedWorkToProtect()) return;
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    });
   }
 
   _archiveCurrentBeforeNextCapture() {
