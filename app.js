@@ -4671,9 +4671,11 @@ class GraphApp {
     const btnOpenAnother = document.getElementById('btnPdfOpenAnother');
     const btnReturnToBoard = document.getElementById('btnReturnToBoard');
 
-    const triggerFileOpen = () => {
+    const triggerFileOpen = (preserveReplaceFlag = false) => {
       if (fileInput) {
-        this._isReplacingViaNextCrop = false;
+        if (!preserveReplaceFlag) {
+          this._isReplacingViaNextCrop = false;
+        }
         // 🌟 [대표님 기획]: 파일 선택창 열리며 전체화면 풀리는 현상 방어
         this.wasFullscreenBeforeFile = document.body.classList.contains('fullscreen-mode') || Boolean(document.fullscreenElement);
         this.isWaitingForFilePicker = true;
@@ -4715,7 +4717,7 @@ class GraphApp {
       };
     }
 
-    if (btnOpenAnother) btnOpenAnother.onclick = () => triggerFileOpen();
+    if (btnOpenAnother) btnOpenAnother.onclick = () => triggerFileOpen(Boolean(this._isReplacingViaNextCrop));
     if (btnReturnToBoard) btnReturnToBoard.onclick = () => this.closePdfModal();
 
     if (fileInput) {
@@ -4942,6 +4944,7 @@ class GraphApp {
     this.initPdfCropInteractions();
     this.initProblemCardInteractions();
     this.initGraphCardInteractions();
+    this._preloadLastPdfFromIndexedDBOnBoot();
   }
 
   loadSamplePdf() {
@@ -4976,28 +4979,95 @@ class GraphApp {
     reader.readAsArrayBuffer(file);
   }
 
-  _saveLastPdfToIndexedDB(uint8Bytes, fileName) {
+  _savePdfViewStateMeta() {
     try {
-      if (!window.indexedDB || !uint8Bytes) return;
-      const req = window.indexedDB.open('graphly_pdf_cache_db', 1);
-      req.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains('last_pdf')) {
-          db.createObjectStore('last_pdf');
-        }
+      const meta = {
+        fileName: this.pdfFileName || '교재.pdf',
+        currentPage: this.pdfCurrentPage || 1,
+        scrollTop: typeof this.savedPdfScrollTop === 'number' ? this.savedPdfScrollTop : 0,
+        scrollLeft: typeof this.savedPdfScrollLeft === 'number' ? this.savedPdfScrollLeft : 0,
+        zoom: typeof this.pdfZoom === 'number' ? this.pdfZoom : 1.75,
+        savedAt: Date.now()
       };
-      req.onsuccess = (e) => {
-        try {
-          const db = e.target.result;
-          const tx = db.transaction('last_pdf', 'readwrite');
-          tx.objectStore('last_pdf').put({
-            bytes: uint8Bytes,
-            fileName: fileName || '교재.pdf',
-            savedAt: Date.now()
-          }, 'current');
-        } catch (err) { }
-      };
+      localStorage.setItem('graphly_last_pdf_view_state_v1', JSON.stringify(meta));
     } catch (err) { }
+  }
+
+  _loadPdfViewStateMeta() {
+    try {
+      const raw = localStorage.getItem('graphly_last_pdf_view_state_v1');
+      return raw ? JSON.parse(raw) : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async _preloadLastPdfFromIndexedDBOnBoot() {
+    try {
+      const meta = this._loadPdfViewStateMeta();
+      if (meta) {
+        if (meta.fileName && !this.pdfFileName) this.pdfFileName = meta.fileName;
+        if (typeof meta.currentPage === 'number' && meta.currentPage >= 1) this.pdfCurrentPage = meta.currentPage;
+        if (typeof meta.scrollTop === 'number') this.savedPdfScrollTop = meta.scrollTop;
+        if (typeof meta.scrollLeft === 'number') this.savedPdfScrollLeft = meta.scrollLeft;
+        if (typeof meta.zoom === 'number' && meta.zoom >= 0.5) this.pdfZoom = meta.zoom;
+      }
+      const cachedRec = await this._loadLastPdfFromIndexedDB();
+      if (cachedRec && cachedRec.bytes && (!this._cachedPdfBytes || !this._cachedPdfBytes.byteLength)) {
+        const rawBytes = cachedRec.bytes;
+        const normBytes = rawBytes instanceof Uint8Array
+          ? rawBytes
+          : (rawBytes instanceof ArrayBuffer ? new Uint8Array(rawBytes) : (rawBytes && rawBytes.buffer ? new Uint8Array(rawBytes.buffer) : null));
+        if (normBytes && normBytes.byteLength > 0) {
+          this._cachedPdfBytes = normBytes;
+          if (cachedRec.fileName) this.pdfFileName = cachedRec.fileName;
+          if (typeof cachedRec.currentPage === 'number' && cachedRec.currentPage >= 1 && !meta) {
+            this.pdfCurrentPage = cachedRec.currentPage;
+          }
+          this.syncLessonPlaylistNavBarUI();
+        }
+      }
+    } catch (err) { }
+  }
+
+  _saveLastPdfToIndexedDB(uint8Bytes, fileName) {
+    this._savePdfViewStateMeta();
+    const p = new Promise((resolve) => {
+      try {
+        if (!window.indexedDB || !uint8Bytes) return resolve(false);
+        const req = window.indexedDB.open('graphly_pdf_cache_db', 1);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('last_pdf')) {
+            db.createObjectStore('last_pdf');
+          }
+        };
+        req.onsuccess = (e) => {
+          try {
+            const db = e.target.result;
+            const tx = db.transaction('last_pdf', 'readwrite');
+            tx.objectStore('last_pdf').put({
+              bytes: uint8Bytes,
+              fileName: fileName || '교재.pdf',
+              currentPage: this.pdfCurrentPage || 1,
+              scrollTop: this.savedPdfScrollTop || 0,
+              scrollLeft: this.savedPdfScrollLeft || 0,
+              zoom: this.pdfZoom || 1.75,
+              savedAt: Date.now()
+            }, 'current');
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+          } catch (err) {
+            resolve(false);
+          }
+        };
+        req.onerror = () => resolve(false);
+      } catch (err) {
+        resolve(false);
+      }
+    });
+    this._lastPdfIdbSavePromise = p;
+    return p;
   }
 
   _loadLastPdfFromIndexedDB() {
@@ -5034,23 +5104,52 @@ class GraphApp {
     // 🌟 [대표님 핵심 지침]: 어디서든 PDF를 열면 먼저 캡처할 문제 위치로 화면을 이동시켜야 하므로 무조건 [✋ 이동] 모드가 기본 우선!
     const autoCrop = Boolean(options && options.startInCropMode);
     if (this.pdfDoc) {
+      this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
       this.openPdfModal(false, autoCrop);
       return true;
     }
+    if (this._lastPdfIdbSavePromise) {
+      try { await this._lastPdfIdbSavePromise; } catch (e) { }
+    }
+    const meta = this._loadPdfViewStateMeta();
+    if (meta) {
+      if (typeof meta.currentPage === 'number' && meta.currentPage >= 1) this.pdfCurrentPage = meta.currentPage;
+      if (typeof meta.scrollTop === 'number') this.savedPdfScrollTop = meta.scrollTop;
+      if (typeof meta.scrollLeft === 'number') this.savedPdfScrollLeft = meta.scrollLeft;
+      if (typeof meta.zoom === 'number' && meta.zoom >= 0.5) this.pdfZoom = meta.zoom;
+    } else if (this.problemCardData && typeof this.problemCardData.pageNum === 'number' && this.problemCardData.pageNum >= 1) {
+      this.pdfCurrentPage = this.problemCardData.pageNum;
+    }
     if (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0) {
-      await this.loadPdfFromArrayBuffer(this._cachedPdfBytes, this.pdfFileName || '교재.pdf', { preserveScroll: true });
+      this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
+      await this.loadPdfFromArrayBuffer(this._cachedPdfBytes, this.pdfFileName || (meta && meta.fileName) || '교재.pdf', { preserveScroll: true, skipIdbSave: true });
+      this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
       this.togglePdfCropMode(autoCrop);
       return true;
     }
     const cachedRec = await this._loadLastPdfFromIndexedDB();
     if (cachedRec && cachedRec.bytes) {
-      await this.loadPdfFromArrayBuffer(cachedRec.bytes, cachedRec.fileName || '교재.pdf', { preserveScroll: true });
-      this.togglePdfCropMode(autoCrop);
-      return true;
+      const rawBytes = cachedRec.bytes;
+      const normBytes = rawBytes instanceof Uint8Array
+        ? rawBytes
+        : (rawBytes instanceof ArrayBuffer ? new Uint8Array(rawBytes) : (rawBytes && rawBytes.buffer ? new Uint8Array(rawBytes.buffer) : null));
+      if (normBytes && normBytes.byteLength > 0) {
+        if (!meta) {
+          if (typeof cachedRec.currentPage === 'number' && cachedRec.currentPage >= 1) this.pdfCurrentPage = cachedRec.currentPage;
+          if (typeof cachedRec.scrollTop === 'number') this.savedPdfScrollTop = cachedRec.scrollTop;
+          if (typeof cachedRec.scrollLeft === 'number') this.savedPdfScrollLeft = cachedRec.scrollLeft;
+          if (typeof cachedRec.zoom === 'number' && cachedRec.zoom >= 0.5) this.pdfZoom = cachedRec.zoom;
+        }
+        this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
+        await this.loadPdfFromArrayBuffer(normBytes, cachedRec.fileName || '교재.pdf', { preserveScroll: true, skipIdbSave: true });
+        this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
+        this.togglePdfCropMode(autoCrop);
+        return true;
+      }
     }
     if (this.triggerLocalFileExplorer) {
       this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
-      this.triggerLocalFileExplorer();
+      this.triggerLocalFileExplorer(Boolean(isNextCaptureSlide));
     }
     return false;
   }
@@ -5065,6 +5164,12 @@ class GraphApp {
     const clonedBytes = new Uint8Array(arrayBuffer instanceof Uint8Array ? arrayBuffer : new Uint8Array(arrayBuffer)).slice();
     this._cachedPdfBytes = clonedBytes;
     this.pdfFileName = fileName;
+    const preserveScroll = Boolean(options && options.preserveScroll);
+    if (!preserveScroll) {
+      this.pdfCurrentPage = 1;
+      this.savedPdfScrollTop = 0;
+      this.savedPdfScrollLeft = 0;
+    }
     if (!(options && options.skipIdbSave)) {
       this._saveLastPdfToIndexedDB(clonedBytes, fileName);
     }
@@ -5075,10 +5180,12 @@ class GraphApp {
     return loadingTask.promise.then(async pdf => {
       this.pdfDoc = pdf;
       this.pdfTotalPages = pdf.numPages;
-      if (!(options && options.preserveScroll)) {
+      if (!preserveScroll) {
         this.pdfCurrentPage = 1;
         this.savedPdfScrollTop = 0;
         this.savedPdfScrollLeft = 0;
+      } else {
+        this.pdfCurrentPage = Math.max(1, Math.min(pdf.numPages, this.pdfCurrentPage || 1));
       }
 
       const totalEl = document.getElementById('lblPdfTotalPages');
@@ -5093,18 +5200,38 @@ class GraphApp {
         const firstPage = await pdf.getPage(1);
         const unscaledVp = firstPage.getViewport({ scale: 1.0 });
         this.pdfDefaultPageSize = { width: unscaledVp.width || 595, height: unscaledVp.height || 842 };
-        const viewportEl = document.getElementById('pdfViewport');
-        const availW = (viewportEl && viewportEl.clientWidth > 200) ? (viewportEl.clientWidth - 64) : (window.innerWidth * 0.90);
-        const autoZoom = Math.max(1.5, Math.min(2.4, (availW * 0.86) / (unscaledVp.width || 600)));
-        this.pdfZoom = Math.round(autoZoom * 20) / 20;
+        if (!preserveScroll || typeof this.pdfZoom !== 'number' || this.pdfZoom < 0.5) {
+          const viewportEl = document.getElementById('pdfViewport');
+          const availW = (viewportEl && viewportEl.clientWidth > 200) ? (viewportEl.clientWidth - 64) : (window.innerWidth * 0.90);
+          const autoZoom = Math.max(1.5, Math.min(2.4, (availW * 0.86) / (unscaledVp.width || 600)));
+          this.pdfZoom = Math.round(autoZoom * 20) / 20;
+        }
       } catch (e) {
         this.pdfDefaultPageSize = { width: 595, height: 842 };
-        this.pdfZoom = 1.75;
+        if (!preserveScroll || typeof this.pdfZoom !== 'number') this.pdfZoom = 1.75;
       }
       const lbl = document.getElementById('lblPdfZoom');
       if (lbl) lbl.textContent = `${Math.round(this.pdfZoom * 100)}%`;
 
       this.renderAllPdfPages(true);
+      if (preserveScroll) {
+        const viewport = document.getElementById('pdfViewport');
+        if (viewport) {
+          if (typeof this.savedPdfScrollTop === 'number' && this.savedPdfScrollTop > 0) {
+            const targetTop = this.savedPdfScrollTop;
+            const targetLeft = typeof this.savedPdfScrollLeft === 'number' ? this.savedPdfScrollLeft : 0;
+            viewport.scrollTop = targetTop;
+            viewport.scrollLeft = targetLeft;
+            requestAnimationFrame(() => {
+              viewport.scrollTop = targetTop;
+              viewport.scrollLeft = targetLeft;
+            });
+          } else if (this.pdfCurrentPage > 1) {
+            this.scrollToPdfPage(this.pdfCurrentPage);
+          }
+        }
+      }
+      this._savePdfViewStateMeta();
       this.syncLessonPlaylistNavBarUI();
       this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) 로드 완료! 화면을 이동한 뒤 [✂️ 영역 캡처]를 눌러주세요.`);
       return pdf;
@@ -5147,6 +5274,7 @@ class GraphApp {
       this.savedPdfScrollTop = viewport.scrollTop;
       this.savedPdfScrollLeft = viewport.scrollLeft;
     }
+    this._savePdfViewStateMeta();
     const modal = document.getElementById('modalPdfViewer');
     if (modal) {
       modal.style.display = 'none';
@@ -5765,8 +5893,8 @@ class GraphApp {
 
         container.appendChild(wrapper);
       }
-      this.renderVisiblePdfWindow(1, true);
-      this.updatePdfPageNavUI(1);
+      this.renderVisiblePdfWindow(currentPageToKeep, true);
+      this.updatePdfPageNavUI(currentPageToKeep);
     } else {
       this.renderVisiblePdfWindow(currentPageToKeep, true);
       this.updatePdfPageNavUI(currentPageToKeep);
@@ -7140,6 +7268,9 @@ class GraphApp {
           <button type="button" class="card-btn btn-card-laser" title="레이저 포인터">
             <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5" fill="currentColor"/><circle cx="12" cy="12" r="7.5" stroke-dasharray="2.5 2.5"/><line x1="12" y1="1.5" x2="12" y2="4.5"/><line x1="12" y1="19.5" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4.5" y2="12"/><line x1="19.5" y1="12" x2="22.5" y2="12"/></svg></span>
           </button>
+          <button type="button" class="card-btn btn-extra-recrop" title="다음 캡처 (새 슬라이드에 다음 문제 캡처)">
+            <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>다음 캡처</span>
+          </button>
           ${restorePageBtnHtml}
           <button class="card-btn btn-card-close btn-extra-close" title="닫기">
             <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
@@ -7303,6 +7434,15 @@ class GraphApp {
       btnRestorePage.onclick = (e) => {
         e.stopPropagation();
         this.openPdfPageOnBoard(pdfPageNum);
+      };
+    }
+
+    // 3.8. 다음 캡처 버튼
+    const btnExtraReCrop = el.querySelector('.btn-extra-recrop');
+    if (btnExtraReCrop) {
+      btnExtraReCrop.onclick = (e) => {
+        if (e) e.stopPropagation();
+        this.resumeOrOpenCurrentPdf(true);
       };
     }
 
@@ -14856,6 +14996,18 @@ class GraphApp {
   checkUrlHashForState() {
     if (!this._selfLaunchMessageBound) {
       this._selfLaunchMessageBound = true;
+      if (typeof window.name === 'string' && window.name.startsWith('GRAPHLY_AUTOPACK:')) {
+        try {
+          const rawPack = window.name.slice('GRAPHLY_AUTOPACK:'.length);
+          window.name = '';
+          const parsedPack = JSON.parse(rawPack);
+          if (parsedPack) {
+            setTimeout(() => {
+              this.loadGraphlyPackObject(parsedPack, parsedPack.title || '더블클릭 수업 파일', true);
+            }, 60);
+          }
+        } catch (err) { }
+      }
       window.addEventListener('message', (e) => {
         if (!e || !e.data || e.data.type !== 'GRAPHLY_AUTO_OPEN_DECK' || !e.data.pack) return;
         this.loadGraphlyPackObject(e.data.pack, e.data.pack.title || '더블클릭 수업 파일', true);
@@ -15873,6 +16025,9 @@ class GraphApp {
       '<script>',
       '(function(){',
       '  var raw = document.getElementById("graphly-package-json").textContent;',
+      '  if (window.top === window && window.location.protocol === "file:" && navigator.onLine !== false) {',
+      '    try { window.name = "GRAPHLY_AUTOPACK:" + raw; window.location.replace("' + originUrl + '"); return; } catch (err) {}',
+      '  }',
       '  var pack = JSON.parse(raw);',
       '  var frame = document.getElementById("graphlyAppFrame");',
       '  var sent = false;',
@@ -16394,7 +16549,9 @@ class GraphApp {
   }
 
   _archiveCurrentBeforeNextCapture() {
-    if (!this.hasAnyWorkspaceContent()) return;
+    if (this.isAudioRecording) {
+      this._finalizeCurrentSlideAudioSegmentBeforeSwitch();
+    }
     if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
       const firstSlide = this.serializeFullSlideState('1');
       this.lessonPlaylistSlides = [firstSlide];
@@ -16406,11 +16563,18 @@ class GraphApp {
   }
 
   _finalizeAppendedCaptureSlide(title = '') {
-    if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) return;
+    if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
+      const firstSlide = this.serializeFullSlideState('1');
+      this.lessonPlaylistSlides = [firstSlide];
+      this.isLessonPlaylistActive = true;
+    }
     const nextIdx = this.lessonPlaylistSlides.length + 1;
     const newSlide = this.serializeFullSlideState(title || String(nextIdx));
     this.lessonPlaylistSlides.push(newSlide);
     this.lessonPlaylistIndex = this.lessonPlaylistSlides.length - 1;
+    if (this.isAudioRecording) {
+      this._beginNextSlideAudioSegmentAfterSwitch();
+    }
     this.syncLessonPlaylistNavBarUI();
   }
 
