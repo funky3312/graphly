@@ -1549,15 +1549,14 @@
       </div>
 
       <div class="smart-modal-body cloud-hub-body">
-        <!-- 🔑 일반 ID/PW 로그인 입력창 (토스페이먼츠 심사 및 이메일 계정 로그인 지원) -->
+        <!-- 🔑 일반 ID/PW 로그인 입력창 -->
         <div id="cloudEmailLoginBox" style="display: none; background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 10px; padding: 12px; margin-bottom: 10px;">
-          <div style="font-size: 12px; font-weight: 700; color: #3b82f6; margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size: 12px; font-weight: 700; color: #3b82f6; margin-bottom: 8px;">
             <span>🔑 이메일 ID / 비밀번호 로그인</span>
-            <span style="font-size:11px; color:#64748b;">테스트 계정: test@cubiolab.com / toss1234!</span>
           </div>
           <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-            <input type="email" id="inputCloudEmailId" value="test@cubiolab.com" placeholder="이메일 아이디" style="flex:1; min-width:150px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
-            <input type="password" id="inputCloudEmailPw" value="toss1234!" placeholder="비밀번호" style="flex:1; min-width:120px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
+            <input type="email" id="inputCloudEmailId" placeholder="이메일 아이디" style="flex:1; min-width:150px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
+            <input type="password" id="inputCloudEmailPw" placeholder="비밀번호" style="flex:1; min-width:120px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
             <button type="button" id="btnSubmitCloudEmailLogin" class="btn-primary" style="padding:7px 14px; font-size:12.5px; font-weight:700; border-radius:7px;">로그인</button>
           </div>
         </div>
@@ -1646,8 +1645,8 @@
         <div style="background:rgba(148,163,184,0.08); border:1px solid rgba(148,163,184,0.25); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
           <div style="font-size:12px; font-weight:700;">구매자 정보 (로그인 없이 비회원 카드결제 가능)</div>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <input type="text" id="inputProBuyerName" value="비회원구매자" placeholder="구매자 성명" style="flex:1; min-width:130px; padding:8px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.4); font-size:12.5px;">
-            <input type="email" id="inputProBuyerEmail" value="test@cubiolab.com" placeholder="이메일 주소" style="flex:1.4; min-width:170px; padding:8px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.4); font-size:12.5px;">
+            <input type="text" id="inputProBuyerName" placeholder="구매자 성명 (미입력 시 비회원)" style="flex:1; min-width:130px; padding:8px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.4); font-size:12.5px;">
+            <input type="email" id="inputProBuyerEmail" placeholder="이메일 주소 (영수증 수신용)" style="flex:1.4; min-width:170px; padding:8px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.4); font-size:12.5px;">
           </div>
         </div>
 
