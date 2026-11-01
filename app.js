@@ -28058,6 +28058,20 @@ class GraphApp {
         );
         this.recordAudioCursorPoint(e.clientX, e.clientY, this.currentInkColor || '#00d2d3', isDown);
       }, { passive: true });
+
+      const hideReplayStylusOnRelease = () => {
+        if (!this.isAudioRecording || this.isAudioRecordPaused) return;
+        if (this._lastRecordedCursorKind && this._lastRecordedCursorKind !== 'hidden' && Array.isArray(this.audioTimeline)) {
+          this._lastRecordedCursorKind = 'hidden';
+          this.audioTimeline.push({
+            t: this.getAudioRecordElapsedMs(),
+            type: 'cursor',
+            hidden: true
+          });
+        }
+      };
+      window.addEventListener('pointerup', hideReplayStylusOnRelease, { passive: true });
+      window.addEventListener('pointercancel', hideReplayStylusOnRelease, { passive: true });
     }
   }
 
@@ -28581,6 +28595,18 @@ class GraphApp {
 
   recordAudioCursorPoint(screenX, screenY, color = null, isDrawing = false, extraMeta = null) {
     if (!this.isAudioRecording || this.isAudioRecordPaused || this.isPdfModalOpen || this._isAudioWaitingForNextSlideSetup) return;
+    // 🌟 [대표님 피드백 반영: 단순 마우스/펜 허공 이동(호버링)은 기록하지 않고 실제 필기·지우기·레이저·드래그 시에만 포인터 기록!]
+    if (!isDrawing) {
+      if (this._lastRecordedCursorKind && this._lastRecordedCursorKind !== 'hidden' && Array.isArray(this.audioTimeline)) {
+        this._lastRecordedCursorKind = 'hidden';
+        this.audioTimeline.push({
+          t: this.getAudioRecordElapsedMs(),
+          type: 'cursor',
+          hidden: true
+        });
+      }
+      return;
+    }
     const t = this.getAudioRecordElapsedMs();
     const cursorKind = this._detectCurrentAudioCursorKind(isDrawing, extraMeta);
     const kindChanged = (cursorKind !== this._lastRecordedCursorKind);
@@ -29068,7 +29094,7 @@ class GraphApp {
       }
     }
     if (!prev && !next) return null;
-    if (prev && prev.hidden) return null;
+    if (!prev || prev.hidden || !prev.isDrawing) return null;
     if (prev && next && next.hidden) {
       const p1 = this._resolveCursorEventScreenPos(prev);
       if (!p1) return null;
