@@ -2397,6 +2397,7 @@ class GraphApp {
     this.stylusHighlighterSvg = document.getElementById('stylusHighlighterSvg');
     this.stylusLaserSvg = document.getElementById('stylusLaserSvg');
     this.stylusArrowSvg = document.getElementById('stylusArrowSvg');
+    this.stylusPointerSvg = document.getElementById('stylusPointerSvg');
     this.stylusGrabSvg = document.getElementById('stylusGrabSvg');
     this.stylusGrabbingSvg = document.getElementById('stylusGrabbingSvg');
     this.stylusCrosshairSvg = document.getElementById('stylusCrosshairSvg');
@@ -2405,22 +2406,60 @@ class GraphApp {
     if (this.stylusColorBand) {
       this.stylusColorBand.setAttribute('fill', this.currentInkColor || '#00d2d3');
     }
+    this._isPointerInsideWindow = true;
 
-    // 🌟 [대표님 킬러 UX]: 메뉴 위로 마우스가 올라갔을 때 가상 펜 즉시 숨김 이벤트 리스너 등록
+    // 🌟 [대표님 킬러 UX]: 화면 밖으로 마우스가 나가면 가상 펜 즉시 숨김 + 녹화 중에도 포인터 숨김(hidden: true) 기록!
+    if (!this._windowPointerLeaveBound) {
+      this._windowPointerLeaveBound = true;
+      const handleWindowPointerLeave = () => {
+        this._isPointerInsideWindow = false;
+        if (this.virtualStylusEl && !this.isAudioPlaying) {
+          this.virtualStylusEl.style.display = 'none';
+        }
+        if (this.isAudioRecording && !this.isAudioRecordPaused && Array.isArray(this.audioTimeline) && this._lastRecordedCursorKind !== 'hidden') {
+          this._lastRecordedCursorKind = 'hidden';
+          this.audioTimeline.push({
+            t: this.getAudioRecordElapsedMs(),
+            type: 'cursor',
+            hidden: true
+          });
+        }
+      };
+      document.addEventListener('mouseleave', handleWindowPointerLeave);
+      document.addEventListener('pointerleave', handleWindowPointerLeave);
+      if (document.documentElement) {
+        document.documentElement.addEventListener('mouseleave', handleWindowPointerLeave);
+        document.documentElement.addEventListener('pointerleave', handleWindowPointerLeave);
+      }
+      window.addEventListener('blur', handleWindowPointerLeave);
+      window.addEventListener('mouseout', (ev) => {
+        if (!ev.relatedTarget && !ev.toElement) {
+          handleWindowPointerLeave();
+        }
+      });
+    }
+
+    // 🌟 [대표님 킬러 UX]: 메뉴/툴바/슬라이드바/카드 위로 마우스가 올라갔을 때 가상 펜 즉시 숨김 -> 해당 요소 고유 커서(손가락/손바닥) 노출!
     const menuContainerSelectors = [
       'header',
       '#headerShowTab',
       '#sidebarRail',
+      '#railDock',
+      '#railDrawer',
+      '#rightActionToolbar',
       '#inkFloatingToolbar',
       '#lassoActionFloatingBar',
       '#quickPillRemote',
       '.canvas-quick-toolbar',
       '#boardModeBar',
       '#nAxisModeBar',
+      '#audioSyncFloatingBar',
       '#sharedResetBar',
       '#lessonPlaylistNavBar',
       '#pdfBoardNavBar',
       '#topSlideBarMiniTab',
+      '#curveContextBar',
+      '#graphSnapFloatingBar',
       '#problemCardWidget',
       '#graphCardWidget',
       '#problemCardHeader',
@@ -2434,25 +2473,27 @@ class GraphApp {
       const el = document.querySelector(sel);
       if (el) {
         el.addEventListener('pointerenter', () => {
-          if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+          if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
         });
       }
     });
   }
 
   isPointerOverMenu(e) {
+    if (this._isPointerInsideWindow === false) return true;
     if (!e) return false;
 
     const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : null);
     const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : null);
     if (clientX === null || clientY === null) return false;
+    if (clientX < 0 || clientY < 0 || clientX > window.innerWidth || clientY > window.innerHeight) return true;
 
     // e.target이 명확한 DOM 엘리먼트이면 비용이 큰 document.elementFromPoint 호출을 생략!
     const targetEl = (e.target && e.target !== window && e.target !== document && typeof e.target.closest === 'function')
       ? e.target
       : null;
 
-    // 메인 캔버스 위에서 움직이는 경우 (단, 드로잉 중이 아니면 실제 마우스 위치에 카드/툴바가 있는지 확인)
+    // 메인 캔버스 위에서 움직이는 경우
     if (targetEl && (targetEl === this.canvas || targetEl.id === 'graphCanvas')) {
       if (this.isDrawingInk || this.isStylusDrawing) {
         return false;
@@ -2465,47 +2506,66 @@ class GraphApp {
     }
 
     const el = targetEl || document.elementFromPoint(clientX, clientY);
-    if (!el) return true; // 뷰포트 바깥
+    if (!el || typeof el.closest !== 'function') return true; // 뷰포트 바깥
 
-    // 1. 명시적인 메뉴/툴바/문제카드/그래프카드/버튼/헤더/입력창 체크 -> 가상 펜 즉시 숨김 & 기본 마우스 커서 노출!
+    // 1. 명시적인 메뉴/툴바/문제카드/그래프카드/버튼/헤더/입력창 체크 -> 가상 펜 즉시 숨김 & 해당 아이콘(손가락/손바닥) 커서 노출!
     const isExplicitMenu = !!(
       el.closest('header') ||
       el.closest('.header-show-tab') ||
       el.closest('.sidebar-rail') ||
+      el.closest('#railDock') ||
       el.closest('.rail-dock') ||
+      el.closest('#railDrawer') ||
       el.closest('.rail-drawer') ||
+      el.closest('#rightActionToolbar') ||
       el.closest('.ink-floating-toolbar') ||
+      el.closest('#inkFloatingToolbar') ||
       el.closest('.lasso-action-floating-bar') ||
+      el.closest('#lassoActionFloatingBar') ||
       el.closest('.quick-pill-remote') ||
+      el.closest('#quickPillRemote') ||
       el.closest('.canvas-quick-toolbar') ||
       el.closest('.quick-flyout-panel') ||
       el.closest('.board-mode-bar') ||
       el.closest('.n-axis-mode-bar') ||
       el.closest('.audio-sync-floating-bar') ||
+      el.closest('#audioSyncFloatingBar') ||
       el.closest('.shared-reset-bar') ||
       el.closest('.lesson-playlist-nav-bar') ||
+      el.closest('#lessonPlaylistNavBar') ||
       el.closest('.pdf-board-nav-bar') ||
       el.closest('.top-slide-bar-mini-tab') ||
+      el.closest('.curve-context-bar') ||
+      el.closest('#curveContextBar') ||
       el.closest('.graph-snap-floating-bar') ||
+      el.closest('#graphSnapFloatingBar') ||
       el.closest('.problem-card-widget') ||
       el.closest('.graph-card-widget') ||
+      el.closest('.extra-problem-card-widget') ||
+      el.closest('.extra-graph-card-widget') ||
       el.closest('.problem-card-header') ||
       el.closest('.problem-card-body') ||
       el.closest('.problem-card-resize-handle') ||
       el.closest('.smart-modal-backdrop') ||
       el.closest('.smart-modal-card') ||
       el.closest('.pdf-modal-backdrop') ||
+      el.closest('#modalPdfViewer') ||
       el.closest('.pdf-modal-container') ||
+      el.closest('.n-axis-studio-backdrop') ||
       el.closest('.pw-region-popover') ||
       el.closest('.btn-exit-fullscreen') ||
       el.closest('.drop-line-label-input') ||
       el.closest('.canvas-text-input') ||
       el.closest('button') ||
+      el.closest('a') ||
+      el.closest('label') ||
       el.closest('input') ||
       el.closest('select') ||
       el.closest('textarea') ||
+      el.closest('[role="button"]') ||
       el.closest('.modal-overlay') ||
-      el.closest('.card-btn')
+      el.closest('.card-btn') ||
+      el.closest('.slide-num-chip')
     );
     if (isExplicitMenu) return true;
 
@@ -2600,21 +2660,38 @@ class GraphApp {
       return;
     }
 
-    // 🌟 [대표님 킬러 UX]: 마우스 포인터가 메뉴/툴바/버튼 위로 올라갔을 때 펜을 즉시 숨김! (겹침 방지)
-    if (e && this.isPointerOverMenu(e)) {
+    // 🌟 [대표님 킬러 UX]: 화면 밖이거나 메뉴/툴바/슬라이드바/카드 위로 올라갔을 때 가상 펜을 즉시 숨김!
+    if (this._isPointerInsideWindow === false || (e && this.isPointerOverMenu(e))) {
       this.virtualStylusEl.style.display = 'none';
       return;
     }
 
     if (x === undefined || y === undefined || isNaN(x) || isNaN(y)) return;
+    if (x < 0 || y < 0 || x > (window.innerWidth || 1920) || y > (window.innerHeight || 1080)) {
+      this.virtualStylusEl.style.display = 'none';
+      return;
+    }
 
-    // 메뉴 위가 아니고 정상 필기 영역이면 즉시 표출 (지우개 도구 또는 펜 지우개 버튼 시 지우개 아이콘 자동 전환)
+    // 메뉴 위가 아니고 정상 필기 영역이면 즉시 표출 (펜 / 형광펜 / 지우개 아이콘 자동 전환)
     const isEraserNow = (this.activeInkTool === 'eraser') || Boolean(this._isTemporaryStylusEraser) || Boolean(e && this.isStylusEraserEvent && this.isStylusEraserEvent(e));
-    if (this.stylusPenSvg) this.stylusPenSvg.style.display = isEraserNow ? 'none' : 'block';
+    const isHighlighterNow = !isEraserNow && (this.activeInkTool === 'highlighter');
+    const isPenNow = !isEraserNow && !isHighlighterNow;
+
+    if (this.stylusPenSvg) this.stylusPenSvg.style.display = isPenNow ? 'block' : 'none';
+    if (this.stylusHighlighterSvg) {
+      this.stylusHighlighterSvg.style.display = isHighlighterNow ? 'block' : 'none';
+      if (isHighlighterNow) {
+        const hlTip = document.getElementById('stylusHighlighterTip');
+        const hlBand = document.getElementById('stylusHighlighterBand');
+        const col = this.currentInkColor || '#facc15';
+        if (hlTip) hlTip.setAttribute('fill', col);
+        if (hlBand) hlBand.setAttribute('fill', col);
+      }
+    }
     if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = isEraserNow ? 'block' : 'none';
-    if (this.stylusHighlighterSvg) this.stylusHighlighterSvg.style.display = 'none';
     if (this.stylusLaserSvg) this.stylusLaserSvg.style.display = 'none';
     if (this.stylusArrowSvg) this.stylusArrowSvg.style.display = 'none';
+    if (this.stylusPointerSvg) this.stylusPointerSvg.style.display = 'none';
     if (this.stylusGrabSvg) this.stylusGrabSvg.style.display = 'none';
     if (this.stylusGrabbingSvg) this.stylusGrabbingSvg.style.display = 'none';
     if (this.stylusCrosshairSvg) this.stylusCrosshairSvg.style.display = 'none';
@@ -2871,11 +2948,8 @@ class GraphApp {
       if (this.showVirtualStylus) {
         this.canvas.classList.add('ink-cursor-pen');
         if (this.virtualStylusEl) {
-          this.virtualStylusEl.style.display = 'block';
-          if (this.stylusPenSvg) this.stylusPenSvg.style.display = 'block';
-          if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = 'none';
           if (this.stylusColorBand) this.stylusColorBand.setAttribute('fill', this.currentInkColor || '#00d2d3');
-          this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+          this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, this._lastPointerEvent);
         }
       } else {
         if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
@@ -2885,11 +2959,8 @@ class GraphApp {
       if (this.showVirtualStylus) {
         this.canvas.classList.add('ink-cursor-highlighter');
         if (this.virtualStylusEl) {
-          this.virtualStylusEl.style.display = 'block';
-          if (this.stylusPenSvg) this.stylusPenSvg.style.display = 'block';
-          if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = 'none';
           if (this.stylusColorBand) this.stylusColorBand.setAttribute('fill', this.currentInkColor || '#00d2d3');
-          this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+          this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, this._lastPointerEvent);
         }
       } else {
         if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
@@ -2899,10 +2970,7 @@ class GraphApp {
       if (this.showVirtualStylus) {
         this.canvas.classList.add('ink-cursor-eraser');
         if (this.virtualStylusEl) {
-          this.virtualStylusEl.style.display = 'block';
-          if (this.stylusPenSvg) this.stylusPenSvg.style.display = 'none';
-          if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = 'block';
-          this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+          this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, this._lastPointerEvent);
         }
       } else {
         if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
@@ -21910,6 +21978,9 @@ class GraphApp {
       }, { passive: false });
 
       window.addEventListener('pointermove', (e) => {
+        this._isPointerInsideWindow = true;
+        this._lastPointerEvent = e;
+
         // 모든 포인터(pen + touch)의 실제 이동 궤적 추적
         if (this._diagTouchTrackMap && e.pointerId !== undefined && this._diagTouchTrackMap.has(e.pointerId)) {
           const tr = this._diagTouchTrackMap.get(e.pointerId);
@@ -21925,8 +21996,9 @@ class GraphApp {
         }
         this._updateInkDiagLive(e, 'win:move');
 
-        // 🛡️ 모달 창이 열려 있거나 리모컨 드래그 중에는 뒷창 캔버스 필기·이동을 100% 차단!
+        // 🛡️ 모달 창이 열려 있거나 리모컨 드래그 중에는 가상 펜을 즉시 숨기고 뒷창 캔버스 필기·이동을 100% 차단!
         if (this.isDraggingPillRemote || isAnyModalOrOverlayBlockingCanvas()) {
+          if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
           if (e.pointerType === 'pen') {
             this._logInkDiag('error', `🚨 [pointermove 차단] 모달 또는 리모컨 드래그 상태 (isDraggingPill=${this.isDraggingPillRemote})`);
           }
@@ -21934,13 +22006,15 @@ class GraphApp {
         }
         // 해당 포인터 자체가 UI 버튼/모달 위에서 시작된 경우에만 무시 (손바닥이 카드에 닿아도 펜의 pointerId는 정상 필기!)
         if (this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId)) {
+          if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
           if (e.pointerType === 'pen') {
             this._logInkDiag('error', `🚨 [pointermove 차단] 펜 포인터(id=${e.pointerId})가 UI 영역에서 시작된 것으로 기록됨`);
           }
           return;
         }
-        // 아직 필기/드로잉 중이 아닐 때만 UI 위 호버를 무시 (필기 중 배지나 툴바 근처를 스쳐도 획이 끊기지 않도록 보호)
-        if (!this.isDrawingInk && !this.isStylusDrawing && !this.isLassoSelecting && isClickableUI(e.target)) {
+        // 🌟 아직 필기/드로잉 중이 아닐 때 메뉴/슬라이드바/툴바/카드 위로 마우스가 올라가면 가상 펜을 즉시 숨기고 해당 UI 고유 커서(손가락/손바닥)를 노출!
+        if (!this.isDrawingInk && !this.isStylusDrawing && !this.isLassoSelecting && (isClickableUI(e.target) || this.isPointerOverMenu(e))) {
+          if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
           return;
         }
         const nowT = Date.now();
@@ -27970,18 +28044,45 @@ class GraphApp {
     // 펜을 띄운 채(호버링 모드) 동그라미를 치며 설명하는 모든 움직임을 빠짐없이 60fps로 기록합니다!
     if (!this._globalAudioHoverBound) {
       this._globalAudioHoverBound = true;
-      window.addEventListener('pointermove', (e) => {
+      const handleAudioPointerSample = (e, forceClickDown = false) => {
         if (e.pointerType === 'pen') this._markStylusPenDetected();
         if (!this.isAudioRecording || this.isAudioRecordPaused || this.isPdfModalOpen || this._isAudioWaitingForNextSlideSetup) return;
         if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) return;
+        if (e.clientX < 0 || e.clientY < 0 || e.clientX > window.innerWidth || e.clientY > window.innerHeight) {
+          if (this._lastRecordedCursorKind !== 'hidden' && Array.isArray(this.audioTimeline)) {
+            this._lastRecordedCursorKind = 'hidden';
+            this.audioTimeline.push({
+              t: this.getAudioRecordElapsedMs(),
+              type: 'cursor',
+              hidden: true
+            });
+          }
+          return;
+        }
         const tEl = e.target;
+        // PDF 모달이나 녹화 컨트롤바 자체 위에서는 포인터 숨김
         if (tEl && tEl.closest && (
           tEl.closest('.pdf-modal-backdrop') ||
           tEl.closest('#modalPdfViewer') ||
+          tEl.closest('.audio-sync-floating-bar') ||
+          tEl.closest('#audioSyncFloatingBar')
+        )) {
+          if (this._lastRecordedCursorKind !== 'hidden' && Array.isArray(this.audioTimeline)) {
+            this._lastRecordedCursorKind = 'hidden';
+            this.audioTimeline.push({
+              t: this.getAudioRecordElapsedMs(),
+              type: 'cursor',
+              hidden: true
+            });
+          }
+          return;
+        }
+        // 🌟 [대표님 핵심 UX]: 메뉴바 / 슬라이드 선택바 / 툴바 / 서랍 위로 마우스가 올라가면 펜이 사라지고 손가락(pointer) 또는 화살표(arrow) 아이콘으로 즉시 전환 기록!
+        if (tEl && tEl.closest && (
           tEl.closest('.smart-modal-backdrop') ||
           tEl.closest('.n-axis-studio-backdrop') ||
-          tEl.closest('.audio-sync-floating-bar') ||
           tEl.closest('.quick-pill-remote') ||
+          tEl.closest('#quickPillRemote') ||
           tEl.closest('.rail-dock') ||
           tEl.closest('#railDock') ||
           tEl.closest('.rail-drawer') ||
@@ -27997,56 +28098,76 @@ class GraphApp {
           tEl.closest('.lasso-action-floating-bar') ||
           tEl.closest('#lassoActionFloatingBar') ||
           tEl.closest('.graph-snap-floating-bar') ||
-          tEl.closest('.pw-region-popover')
+          tEl.closest('#graphSnapFloatingBar') ||
+          tEl.closest('.pw-region-popover') ||
+          tEl.closest('header')
         )) {
-          // 메뉴/서랍/모달 위로 마우스가 올라간 순간 가상 펜을 숨김 처리하여 허공에 붕 뜨는 현상 100% 차단!
-          if (this._lastRecordedCursorKind !== 'hidden' && Array.isArray(this.audioTimeline)) {
-            this._lastRecordedCursorKind = 'hidden';
-            this.audioTimeline.push({
-              t: this.getAudioRecordElapsedMs(),
-              type: 'cursor',
-              hidden: true
-            });
-          }
+          const isDragHandle = Boolean(tEl.closest('.ink-dock-drag-handle, .pill-drag-handle'));
+          const isInteractiveBtn = Boolean(tEl.closest(
+            'button, a, label, input, select, summary, [role="button"], .preset-card, .rail-btn, .ink-tool-btn, .ink-color-dot, .quick-fab-btn, .slide-num-chip, .cat-tab-btn, .card-btn, .ctx-btn, .lasso-action-btn, .pw-popover-item, .custom-preset-chip, .export-preset-btn'
+          ));
+          const isDownUI = forceClickDown || (typeof e.buttons === 'number' && e.buttons > 0);
+          const uiCursorKind = isDragHandle
+            ? (isDownUI ? 'grabbing' : 'grab')
+            : (isInteractiveBtn ? 'pointer' : 'arrow');
+          this.recordAudioCursorPoint(
+            e.clientX,
+            e.clientY,
+            this.currentInkColor || '#00d2d3',
+            isDownUI,
+            { cursorKind: uiCursorKind, uiScreen: true }
+          );
           return;
         }
         const cardEl = (tEl && tEl.closest)
           ? tEl.closest('#problemCardWidget, #graphCardWidget, .extra-problem-card-widget, .extra-graph-card-widget')
           : null;
-        if (cardEl && !cardEl.classList.contains('minimized')) {
-          const bodyEl = cardEl.querySelector('.problem-card-body');
-          if (bodyEl) {
-            const rect = bodyEl.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0 && e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
-              const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-              const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-              const isLaser = cardEl.classList.contains('card-laser-active');
-              const isDown = (typeof e.buttons === 'number' && e.buttons > 0);
-              this.recordAudioCursorPoint(
-                e.clientX,
-                e.clientY,
-                isLaser ? '#dc2626' : (this.currentInkColor || '#00d2d3'),
-                isDown,
-                { cardKey: this.getAudioCardKey(cardEl), nx, ny, isLaser }
-              );
-              return;
+        if (cardEl) {
+          const isDownCard = forceClickDown || (typeof e.buttons === 'number' && e.buttons > 0);
+          // 카드 상단 버튼([레이저], [그래프 수정], [접기], [✕]) 위에서는 손가락(pointer) 아이콘!
+          if (tEl.closest('button, .card-btn, .problem-card-actions button')) {
+            this.recordAudioCursorPoint(
+              e.clientX,
+              e.clientY,
+              this.currentInkColor || '#00d2d3',
+              isDownCard,
+              { cursorKind: 'pointer', uiScreen: true }
+            );
+            return;
+          }
+          if (!cardEl.classList.contains('minimized')) {
+            const bodyEl = cardEl.querySelector('.problem-card-body');
+            if (bodyEl) {
+              const rect = bodyEl.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0 && e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+                const isLaser = cardEl.classList.contains('card-laser-active');
+                const cardBodyKind = isLaser ? 'laser' : (isDownCard ? 'grabbing' : 'grab');
+                this.recordAudioCursorPoint(
+                  e.clientX,
+                  e.clientY,
+                  isLaser ? '#dc2626' : (this.currentInkColor || '#00d2d3'),
+                  isDownCard,
+                  { cardKey: this.getAudioCardKey(cardEl), nx, ny, isLaser, cursorKind: cardBodyKind }
+                );
+                return;
+              }
             }
           }
-        }
-        if (cardEl) {
-          // 카드 헤더나 리사이즈 핸들을 잡고 이동/조작하는 경우
-          const isDownCard = (typeof e.buttons === 'number' && e.buttons > 0);
+          // 카드 헤더나 리사이즈 핸들을 잡고 이동/조작하는 경우 손바닥(grab/grabbing) 아이콘!
           this.recordAudioCursorPoint(
             e.clientX,
             e.clientY,
             this.currentInkColor || '#00d2d3',
             isDownCard,
-            { cursorKind: isDownCard ? 'grabbing' : 'grab' }
+            { cursorKind: isDownCard ? 'grabbing' : 'grab', uiScreen: true }
           );
           return;
         }
         // 일반 캔버스 위 호버링 및 그래프 극점 드래그/조작 모두 포함!
         const isDown = Boolean(
+          forceClickDown ||
           this.isDrawingInk ||
           this.isStylusDrawing ||
           this.draggedHandleIdx !== null ||
@@ -28057,7 +28178,9 @@ class GraphApp {
           (typeof e.buttons === 'number' && e.buttons > 0)
         );
         this.recordAudioCursorPoint(e.clientX, e.clientY, this.currentInkColor || '#00d2d3', isDown);
-      }, { passive: true });
+      };
+      window.addEventListener('pointermove', (e) => handleAudioPointerSample(e, false), { passive: true });
+      window.addEventListener('pointerdown', (e) => handleAudioPointerSample(e, true), { passive: true });
     }
   }
 
@@ -28602,7 +28725,9 @@ class GraphApp {
       cursorKind
     };
 
-    if (extraMeta && extraMeta.cardKey) {
+    if (extraMeta && extraMeta.uiScreen) {
+      entry.uiScreen = true;
+    } else if (extraMeta && extraMeta.cardKey) {
       entry.cardKey = extraMeta.cardKey;
       entry.nx = Math.round((extraMeta.nx || 0) * 10000) / 10000;
       entry.ny = Math.round((extraMeta.ny || 0) * 10000) / 10000;
@@ -29030,6 +29155,9 @@ class GraphApp {
 
   _resolveCursorEventScreenPos(ev) {
     if (!ev) return null;
+    if (ev.uiScreen) {
+      return { x: ev.x, y: ev.y };
+    }
     if (ev.cardKey && typeof ev.nx === 'number' && typeof ev.ny === 'number') {
       const cardEl = this.getCardElementByAudioKey(ev.cardKey);
       if (cardEl && cardEl.style.display !== 'none' && !cardEl.classList.contains('minimized')) {
@@ -29227,6 +29355,7 @@ class GraphApp {
       eraser: this.stylusEraserSvg || document.getElementById('stylusEraserSvg'),
       laser: this.stylusLaserSvg || document.getElementById('stylusLaserSvg'),
       arrow: this.stylusArrowSvg || document.getElementById('stylusArrowSvg'),
+      pointer: this.stylusPointerSvg || document.getElementById('stylusPointerSvg'),
       grab: this.stylusGrabSvg || document.getElementById('stylusGrabSvg'),
       grabbing: this.stylusGrabbingSvg || document.getElementById('stylusGrabbingSvg'),
       crosshair: this.stylusCrosshairSvg || document.getElementById('stylusCrosshairSvg')
