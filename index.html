@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261102_04">
+  <link rel="stylesheet" href="style.css?v=20261102_05">
 </head>
 
 <body class="theme-light">
@@ -384,6 +384,11 @@
                     <span class="vf-toggle-slider"></span>
                   </label>
                 </label>
+              </div>
+              <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(148,163,184,0.2);">
+                <button type="button" id="btnOpenProPricingFromSettings" class="btn-primary" style="width:100%; padding:10px 12px; border-radius:9px; font-size:12.5px; font-weight:700; background:linear-gradient(135deg,#2563eb,#4f46e5); color:#fff; border:none; cursor:pointer;">
+                  👑 Pro 이용권 구매 · 사업자 정보 안내
+                </button>
               </div>
             </div>
 
@@ -1527,8 +1532,14 @@
           <span class="modal-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><polyline points="9 14 12 11 15 14"/></svg></span>
           <span class="modal-title-text">불러오기</span>
         </div>
-        <div class="cloud-auth-area">
+        <div class="cloud-auth-area" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
           <span id="lblCloudUserStatus" class="cloud-user-status" style="display: none;"></span>
+          <button type="button" id="btnOpenProPricingFromHub" class="btn-cloud-auth" style="background:linear-gradient(135deg,#2563eb,#4f46e5);color:#fff;border:none;font-weight:700;">
+            <span>👑 이용권 결제</span>
+          </button>
+          <button type="button" id="btnCloudEmailLoginToggle" class="btn-cloud-auth" title="일반 이메일 ID/PW 로그인">
+            <span>🔑 ID/PW 로그인</span>
+          </button>
           <button type="button" id="btnCloudGoogleLogin" class="btn-cloud-auth">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px;margin-right:4px;"><path d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 15.25 5 12c0-3.25 3.36-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81Z"/></svg>
             <span id="lblCloudAuthBtnText">구글 로그인</span>
@@ -1538,6 +1549,18 @@
       </div>
 
       <div class="smart-modal-body cloud-hub-body">
+        <!-- 🔑 일반 ID/PW 로그인 입력창 (토스페이먼츠 심사 및 이메일 계정 로그인 지원) -->
+        <div id="cloudEmailLoginBox" style="display: none; background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 10px; padding: 12px; margin-bottom: 10px;">
+          <div style="font-size: 12px; font-weight: 700; color: #3b82f6; margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
+            <span>🔑 이메일 ID / 비밀번호 로그인</span>
+            <span style="font-size:11px; color:#64748b;">테스트 계정: test@cubiolab.com / toss1234!</span>
+          </div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <input type="email" id="inputCloudEmailId" value="test@cubiolab.com" placeholder="이메일 아이디" style="flex:1; min-width:150px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
+            <input type="password" id="inputCloudEmailPw" value="toss1234!" placeholder="비밀번호" style="flex:1; min-width:120px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
+            <button type="button" id="btnSubmitCloudEmailLogin" class="btn-primary" style="padding:7px 14px; font-size:12.5px; font-weight:700; border-radius:7px;">로그인</button>
+          </div>
+        </div>
         <!-- 1. 내 기기 및 열려있는 PDF에서 불러오기 -->
         <div class="cloud-import-source-box">
           <!-- 열려있는 PDF가 있을 때만 최상단에 자동 표시 (새 캔버스 추가 후 원래 PDF로 돌아가거나 현재 화면에 추가 캡처할 때!) -->
@@ -1587,6 +1610,56 @@
             </div>
           </div>
           <div id="myLibraryList" class="cloud-item-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- [👑 Graphly Pro 이용권 결제 & 사업자 정보 모달 (비회원/회원 토스페이먼츠 카드결제 즉시 연동)] -->
+  <div id="modalProPricing" class="smart-modal-backdrop">
+    <div class="smart-modal-card" style="max-width: 560px; width: 94%;">
+      <div class="smart-modal-header">
+        <div class="smart-modal-title">
+          <span class="modal-icon">👑</span>
+          <span class="modal-title-text">Graphly 이용권 구매 (비회원/회원 카드결제)</span>
+        </div>
+        <button type="button" id="btnCloseProPricingModal" class="btn-modal-close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <div class="smart-modal-body" style="display:flex; flex-direction:column; gap:12px; max-height:78vh; overflow-y:auto;">
+        <!-- 요금제 선택 카드 -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div id="cardPlanPro1M" class="pro-plan-select-card active" style="border:2px solid #2563eb; background:rgba(37,99,235,0.08); border-radius:12px; padding:14px; cursor:pointer;">
+            <div style="font-size:11px; font-weight:800; color:#2563eb; margin-bottom:4px;">얼리버드 특가 BEST</div>
+            <div style="font-size:15px; font-weight:800;">Graphly Pro 1개월권</div>
+            <div style="font-size:22px; font-weight:800; color:#2563eb; margin:4px 0;">3,900원 <span style="font-size:11px; font-weight:600; color:#64748b;">/ 30일(VAT포함)</span></div>
+            <div style="font-size:11.5px; color:#475569;">제공기간: 결제일로부터 30일 (단건 이용권)</div>
+          </div>
+          <div id="cardPlanPro1Y" class="pro-plan-select-card" style="border:1.5px solid rgba(148,163,184,0.35); background:rgba(148,163,184,0.05); border-radius:12px; padding:14px; cursor:pointer;">
+            <div style="font-size:11px; font-weight:800; color:#4f46e5; margin-bottom:4px;">2개월 무료 할인</div>
+            <div style="font-size:15px; font-weight:800;">Graphly Pro 1년권</div>
+            <div style="font-size:22px; font-weight:800; color:#0f172a; margin:4px 0;">39,000원 <span style="font-size:11px; font-weight:600; color:#64748b;">/ 365일(VAT포함)</span></div>
+            <div style="font-size:11.5px; color:#475569;">제공기간: 결제일로부터 365일 (단건 이용권)</div>
+          </div>
+        </div>
+
+        <!-- 비회원/회원 주문자 정보 -->
+        <div style="background:rgba(148,163,184,0.08); border:1px solid rgba(148,163,184,0.25); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+          <div style="font-size:12px; font-weight:700;">구매자 정보 (로그인 없이 비회원 카드결제 가능)</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <input type="text" id="inputProBuyerName" value="비회원구매자" placeholder="구매자 성명" style="flex:1; min-width:130px; padding:8px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.4); font-size:12.5px;">
+            <input type="email" id="inputProBuyerEmail" value="test@cubiolab.com" placeholder="이메일 주소" style="flex:1.4; min-width:170px; padding:8px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.4); font-size:12.5px;">
+          </div>
+        </div>
+
+        <button type="button" id="btnProModalPayNow" class="btn-primary" style="width:100%; padding:13px; border-radius:10px; font-size:15px; font-weight:800; background:linear-gradient(135deg,#2563eb,#4f46e5); color:#fff; border:none; cursor:pointer;">
+          💳 토스페이먼츠 카드 결제하기 (3,900원)
+        </button>
+
+        <!-- 환불 규정 및 사업자 정보 명시 -->
+        <div style="font-size:11.5px; color:#64748b; line-height:1.65; border-top:1px solid rgba(148,163,184,0.22); padding-top:10px;">
+          <strong>[서비스 제공 및 환불 안내]</strong> 결제 완료 즉시 권한이 활성화되며, 결제일로부터 7일 이내 미사용 시 100% 전액 환불됩니다. 중도 해지 시 잔여 일수 일할 계산 금액에서 위약금(10%) 공제 후 환불됩니다.<br>
+          <strong>상호명:</strong> 큐비오랩 (CubioLab) | <strong>대표자:</strong> 이광철 | <strong>사업자등록번호:</strong> 354-08-03569<br>
+          <strong>주소:</strong> 경기도 양주시 옥정로 222, 6층 606호(옥정동, 스카이타워) | <strong>고객센터:</strong> 070-8018-8238 | <strong>이메일:</strong> help@cubiolab.com
         </div>
       </div>
     </div>
@@ -1779,12 +1852,14 @@
   <!-- 스크립트 로드 -->
   <script src="lib/pdf.worker.min.js"></script>
   <script src="lib/pdf.min.js"></script>
+  <!-- Toss Payments SDK (Standard Card Checkout) -->
+  <script src="https://js.tosspayments.com/v1/payment" defer></script>
   <!-- Firebase SDK (Auth & Firestore - Non-blocking) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261102_04"></script>
-  <script src="app.js?v=20261102_04"></script>
+  <script src="engine.js?v=20261102_05"></script>
+  <script src="app.js?v=20261102_05"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

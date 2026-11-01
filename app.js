@@ -15031,6 +15031,57 @@ class GraphApp {
     if (btnAuth) {
       btnAuth.onclick = () => this.handleCloudGoogleAuth();
     }
+    const btnEmailToggle = document.getElementById('btnCloudEmailLoginToggle');
+    const boxEmailLogin = document.getElementById('cloudEmailLoginBox');
+    const btnSubmitEmail = document.getElementById('btnSubmitCloudEmailLogin');
+    if (btnEmailToggle && boxEmailLogin) {
+      btnEmailToggle.onclick = () => {
+        boxEmailLogin.style.display = boxEmailLogin.style.display === 'none' ? 'block' : 'none';
+      };
+    }
+    if (btnSubmitEmail) {
+      btnSubmitEmail.onclick = () => this.handleCloudEmailPasswordLogin();
+    }
+    const btnOpenProHub = document.getElementById('btnOpenProPricingFromHub');
+    const btnOpenProSettings = document.getElementById('btnOpenProPricingFromSettings');
+    const modalPro = document.getElementById('modalProPricing');
+    const btnClosePro = document.getElementById('btnCloseProPricingModal');
+    const cardPro1M = document.getElementById('cardPlanPro1M');
+    const cardPro1Y = document.getElementById('cardPlanPro1Y');
+    const btnPayNow = document.getElementById('btnProModalPayNow');
+    this._selectedProPlan = { name: 'Graphly Pro 1개월 이용권 (30일)', amount: 3900 };
+    const selectProPlan = (name, amount, is1M) => {
+      this._selectedProPlan = { name, amount };
+      if (cardPro1M && cardPro1Y) {
+        cardPro1M.style.border = is1M ? '2px solid #2563eb' : '1.5px solid rgba(148,163,184,0.35)';
+        cardPro1M.style.background = is1M ? 'rgba(37,99,235,0.08)' : 'rgba(148,163,184,0.05)';
+        cardPro1Y.style.border = !is1M ? '2px solid #2563eb' : '1.5px solid rgba(148,163,184,0.35)';
+        cardPro1Y.style.background = !is1M ? 'rgba(37,99,235,0.08)' : 'rgba(148,163,184,0.05)';
+      }
+      if (btnPayNow) {
+        btnPayNow.textContent = `💳 토스페이먼츠 카드 결제하기 (${amount.toLocaleString('ko-KR')}원)`;
+      }
+    };
+    if (cardPro1M) cardPro1M.onclick = () => selectProPlan('Graphly Pro 1개월 이용권 (30일)', 3900, true);
+    if (cardPro1Y) cardPro1Y.onclick = () => selectProPlan('Graphly Pro 1년 이용권 (365일)', 39000, false);
+    if (btnOpenProHub) {
+      btnOpenProHub.onclick = () => {
+        if (modalCloud) modalCloud.classList.remove('show');
+        this.openProPricingModal();
+      };
+    }
+    if (btnOpenProSettings) {
+      btnOpenProSettings.onclick = () => this.openProPricingModal();
+    }
+    if (btnClosePro && modalPro) {
+      btnClosePro.onclick = () => modalPro.classList.remove('show');
+      modalPro.onclick = (ev) => {
+        if (ev.target === modalPro) modalPro.classList.remove('show');
+      };
+    }
+    if (btnPayNow) {
+      btnPayNow.onclick = () => this.requestTossPaymentFromStudio();
+    }
     if (btnSaveLib) {
       btnSaveLib.onclick = () => this.saveCurrentToMyLibrary();
     }
@@ -15228,11 +15279,72 @@ class GraphApp {
 
   syncCloudAuthUI() {
     const lblBtn = document.getElementById('lblCloudAuthBtnText');
+    const boxEmailLogin = document.getElementById('cloudEmailLoginBox');
     if (this.cloudUser) {
       if (lblBtn) lblBtn.textContent = `${this.cloudUser.displayName} · 로그아웃`;
+      if (boxEmailLogin) boxEmailLogin.style.display = 'none';
     } else {
       if (lblBtn) lblBtn.textContent = '구글 로그인';
     }
+  }
+
+  handleCloudEmailPasswordLogin() {
+    const inpEmail = document.getElementById('inputCloudEmailId');
+    const inpPw = document.getElementById('inputCloudEmailPw');
+    const email = (inpEmail && inpEmail.value ? inpEmail.value : '').trim();
+    const pw = (inpPw && inpPw.value ? inpPw.value : '').trim();
+    if (!email || !pw) {
+      this.showToast('⚠️ 이메일 아이디와 비밀번호를 입력해 주세요.');
+      return;
+    }
+    this.cloudUser = {
+      uid: 'email_' + email.replace(/[^a-zA-Z0-9]/g, '_'),
+      displayName: email.split('@')[0] || '테스트회원',
+      email: email
+    };
+    this.syncCloudAuthUI();
+    this.showToast(`🎉 환영합니다, ${this.cloudUser.displayName}님! 로그인이 완료되었습니다.`);
+    this.renderMyLibraryList();
+  }
+
+  openProPricingModal() {
+    const modalPro = document.getElementById('modalProPricing');
+    if (!modalPro) return;
+    if (this.cloudUser) {
+      const inpName = document.getElementById('inputProBuyerName');
+      const inpEmail = document.getElementById('inputProBuyerEmail');
+      if (inpName && this.cloudUser.displayName) inpName.value = this.cloudUser.displayName;
+      if (inpEmail && this.cloudUser.email) inpEmail.value = this.cloudUser.email;
+    }
+    modalPro.classList.add('show');
+  }
+
+  requestTossPaymentFromStudio() {
+    if (typeof window.TossPayments !== 'function') {
+      this.showToast('⚠️ 토스페이먼츠 결제 모듈을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.');
+      return;
+    }
+    const plan = this._selectedProPlan || { name: 'Graphly Pro 1개월 이용권 (30일)', amount: 3900 };
+    const inpName = document.getElementById('inputProBuyerName');
+    const inpEmail = document.getElementById('inputProBuyerEmail');
+    const customerName = (inpName && inpName.value ? inpName.value.trim() : '') || '비회원구매자';
+    const customerEmail = (inpEmail && inpEmail.value ? inpEmail.value.trim() : '') || 'test@cubiolab.com';
+    const tossClientKey = 'test_ck_DnyRpQWGrNaNRPo2mQylVKwv1M9E';
+    const tossPayments = window.TossPayments(tossClientKey);
+    const orderId = 'GRAPHLY_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const baseUrl = window.location.origin + window.location.pathname;
+    tossPayments.requestPayment('카드', {
+      amount: Number(plan.amount) || 3900,
+      orderId: orderId,
+      orderName: plan.name,
+      customerName: customerName,
+      customerEmail: customerEmail,
+      successUrl: baseUrl + '?paymentStatus=success',
+      failUrl: baseUrl + '?paymentStatus=fail'
+    }).catch((err) => {
+      if (err && err.code === 'USER_CANCEL') return;
+      this.showToast('⚠️ ' + (err && err.message ? err.message : '결제 요청 중 오류가 발생했습니다.'));
+    });
   }
 
   async handleCloudGoogleAuth() {
