@@ -5485,17 +5485,10 @@ class GraphApp {
       };
     }
 
-    // ✋ 이동 모드 & ✂️ 영역 캡처 모드 버튼
-    const btnPanMode = document.getElementById('btnPdfPanMode');
-    if (btnPanMode) {
-      btnPanMode.onclick = () => {
-        this.togglePdfCropMode(false);
-        this.showToast('✋ PDF 이동 모드입니다. 다음 문제로 이동한 뒤 [영역 캡처]를 눌러주세요.');
-      };
-    }
+    // ✂️ 영역 캡처 온/오프 토글 스위치 (기본 꺼짐=이동 모드 ⇄ 클릭 시 켜짐=영역 캡처 모드 ⇄ 재클릭 시 꺼짐=이동 모드)
     const btnCropToggle = document.getElementById('btnPdfCropToggle');
     if (btnCropToggle) {
-      btnCropToggle.onclick = () => this.togglePdfCropMode(true);
+      btnCropToggle.onclick = () => this.togglePdfCropMode();
     }
 
     // 📄 이 페이지 열기 버튼 (개념 설명용: 해당 PDF 페이지 전체를 칠판 캔버스로 바로 삽입!)
@@ -6717,13 +6710,15 @@ class GraphApp {
   }
 
   togglePdfCropMode(forceVal = null) {
-    const nextState = (forceVal !== null) ? forceVal : !this.isPdfCropModeActive;
+    const prevState = Boolean(this.isPdfCropModeActive);
+    const nextState = (forceVal !== null) ? Boolean(forceVal) : !prevState;
     this.isPdfCropModeActive = nextState;
 
     const btn = document.getElementById('btnPdfCropToggle');
-    if (btn) btn.classList.toggle('active', this.isPdfCropModeActive);
-    const btnPan = document.getElementById('btnPdfPanMode');
-    if (btnPan) btnPan.classList.toggle('active', !this.isPdfCropModeActive);
+    if (btn) {
+      btn.classList.toggle('active', this.isPdfCropModeActive);
+      btn.setAttribute('aria-pressed', this.isPdfCropModeActive ? 'true' : 'false');
+    }
 
     const viewport = document.getElementById('pdfViewport');
     if (viewport) viewport.classList.toggle('crop-mode', this.isPdfCropModeActive);
@@ -6737,7 +6732,13 @@ class GraphApp {
       }
     }
 
-    if (this.isPdfCropModeActive) {
+    if (forceVal === null) {
+      if (this.isPdfCropModeActive) {
+        this.showToast('✂️ 영역 캡처 켜짐: 원하는 문제 영역을 네모로 드래그하세요');
+      } else {
+        this.showToast('✋ 영역 캡처 꺼짐: 드래그하여 PDF 화면을 이동할 수 있습니다');
+      }
+    } else if (this.isPdfCropModeActive) {
       this.showToast('✂️ 문제 영역을 네모로 드래그하세요');
     }
 
@@ -6938,7 +6939,6 @@ class GraphApp {
       cropBox.style.top = `${startY}px`;
       cropBox.style.width = '0px';
       cropBox.style.height = '0px';
-      startCropEdgeAutoScroll();
     }, { passive: false });
 
     const updateCropBoxFromPointer = (clientX, clientY) => {
@@ -6961,61 +6961,12 @@ class GraphApp {
       }
     };
 
-    // 🌟 [배율 확대 시 화면보다 큰 문제도 한 번의 드래그로 100% 캡처하는 스마트 엣지 오토스크롤 엔진] 🌟
+    // 🌟 [대표님 피드백 반영: 영역 캡처 드래그 중 자동 스크롤 전면 비활성화 (한 화면에 맞춘 안정적 캡처 보장)] 🌟
     const stopCropEdgeAutoScroll = () => {
       if (this._cropEdgeScrollRaf) {
         cancelAnimationFrame(this._cropEdgeScrollRaf);
         this._cropEdgeScrollRaf = null;
       }
-    };
-
-    const startCropEdgeAutoScroll = () => {
-      stopCropEdgeAutoScroll();
-      const step = () => {
-        if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) {
-          this._cropEdgeScrollRaf = null;
-          return;
-        }
-        const vRect = viewport.getBoundingClientRect();
-        const cx = this._cropLastClientX;
-        const cy = this._cropLastClientY;
-        if (typeof cx === 'number' && typeof cy === 'number') {
-          const edgeZone = 64;
-          const maxSpeed = 22;
-          let vx = 0;
-          let vy = 0;
-
-          if (cy > vRect.bottom - edgeZone) {
-            const ratio = Math.min(1.5, Math.max(0, (cy - (vRect.bottom - edgeZone)) / edgeZone));
-            vy = Math.ceil(ratio * maxSpeed);
-          } else if (cy < vRect.top + edgeZone) {
-            const ratio = Math.min(1.5, Math.max(0, ((vRect.top + edgeZone) - cy) / edgeZone));
-            vy = -Math.ceil(ratio * maxSpeed);
-          }
-
-          if (cx > vRect.right - edgeZone) {
-            const ratio = Math.min(1.5, Math.max(0, (cx - (vRect.right - edgeZone)) / edgeZone));
-            vx = Math.ceil(ratio * maxSpeed);
-          } else if (cx < vRect.left + edgeZone) {
-            const ratio = Math.min(1.5, Math.max(0, ((vRect.left + edgeZone) - cx) / edgeZone));
-            vx = -Math.ceil(ratio * maxSpeed);
-          }
-
-          if (vx !== 0 || vy !== 0) {
-            const prevSL = viewport.scrollLeft;
-            const prevST = viewport.scrollTop;
-            if (vx !== 0) viewport.scrollLeft += vx;
-            if (vy !== 0) viewport.scrollTop += vy;
-            if (viewport.scrollLeft !== prevSL || viewport.scrollTop !== prevST) {
-              this.savedPdfScrollLeft = viewport.scrollLeft;
-              this.savedPdfScrollTop = viewport.scrollTop;
-              updateCropBoxFromPointer(cx, cy);
-            }
-          }
-        }
-        this._cropEdgeScrollRaf = requestAnimationFrame(step);
-      };
-      this._cropEdgeScrollRaf = requestAnimationFrame(step);
     };
 
     const handleCropMove = (e) => {
@@ -21480,33 +21431,11 @@ class GraphApp {
       }
       const pos = getPos(e);
 
-      // 🌟 [✂️ PDF 문제 스샷 후 그래프 모드 진입 드래그 중] 🌟
+      // 🌟 [✂️ PDF 문제 스샷 후 그래프 모드 진입 드래그 중: 자동 스크롤/패닝 없이 한 화면에서 안정적 캡처] 🌟
       if (this.isPdfToGraphCropMode) {
         if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
         if (this.canvas) this.canvas.style.cursor = 'crosshair';
         if (this.isPdfToGraphCropDragging && this.pdfToGraphCropStart) {
-          // 배율 확대 상태에서 화면 가장자리로 드래그 시 자동 카메라 패닝 지원
-          const edgeZone = 54;
-          const panSpeed = 14;
-          let panDX = 0;
-          let panDY = 0;
-          if (pos.x > this.screenWidth - edgeZone) panDX = -panSpeed;
-          else if (pos.x < edgeZone) panDX = panSpeed;
-          if (pos.y > this.screenHeight - edgeZone) panDY = -panSpeed;
-          else if (pos.y < edgeZone) panDY = panSpeed;
-          if (panDX !== 0 || panDY !== 0) {
-            this.panX += panDX;
-            this.panY += panDY;
-            this.render();
-          }
-          if (typeof this.pdfToGraphCropStart.mathX === 'number') {
-            const sPt = this.mathToScreen(this.pdfToGraphCropStart.mathX, this.pdfToGraphCropStart.mathY);
-            const cRect = this.canvasRect || this.canvas.getBoundingClientRect();
-            this.pdfToGraphCropStart.x = sPt.x;
-            this.pdfToGraphCropStart.y = sPt.y;
-            this.pdfToGraphCropStart.clientX = cRect.left + sPt.x;
-            this.pdfToGraphCropStart.clientY = cRect.top + sPt.y;
-          }
           const dragBox = document.getElementById('graphSnapDragBox');
           if (dragBox) {
             const x = Math.min(this.pdfToGraphCropStart.clientX, e.clientX);
