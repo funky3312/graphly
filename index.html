@@ -795,6 +795,37 @@
         <button id="btnExitNAxisMode" class="btn-exit-n-axis" title="ESC"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>복귀</button>
       </div>
 
+      <!-- [🎙️ 실시간 음성·필기·펜포인터·그래프 동기화 녹음 & 리플레이 컨트롤 바] -->
+      <div id="audioSyncFloatingBar" class="audio-sync-floating-bar" style="display: none;">
+        <!-- 상태 1: 녹음 중 (Recording) -->
+        <div id="audioSyncRecordingGroup" class="audio-sync-group" style="display: none;">
+          <span class="audio-rec-badge"><span class="audio-rec-dot"></span>REC</span>
+          <span id="lblAudioRecordTimer" class="audio-sync-time">00:00</span>
+          <span class="audio-rec-hint">음성·필기·펜포인터·그래프 실시간 동기화 중</span>
+          <button type="button" id="btnAudioStopRecord" class="audio-sync-btn audio-btn-stop" title="녹음 완료">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+            <span>녹음 완료</span>
+          </button>
+        </div>
+
+        <!-- 상태 2: 재생 및 노트 클릭 모드 (Playback & Interactive Note) -->
+        <div id="audioSyncPlayerGroup" class="audio-sync-group" style="display: none;">
+          <button type="button" id="btnAudioPlayPause" class="audio-sync-btn audio-btn-play" title="재생 / 일시정지">
+            <span id="iconAudioPlayPause">▶</span>
+          </button>
+          <span id="lblAudioPlayTime" class="audio-sync-time">00:00 / 00:00</span>
+          <input type="range" id="audioSyncScrubber" class="audio-sync-scrubber" min="0" max="1000" step="10" value="0">
+          <button type="button" id="btnAudioReplayViewMode" class="audio-sync-btn audio-btn-mode active-video" title="영상처럼 차근차근 써지며 재생할지, 완성된 노트를 보며 원하는 필기를 클릭해 들을지 전환합니다">
+            <span id="lblAudioReplayViewMode">🎬 영상 모드</span>
+          </button>
+          <button type="button" id="btnAudioSyncSpeed" class="audio-sync-btn audio-btn-speed" title="재생 배속 변경">1.0x</button>
+          <button type="button" id="btnAudioReRecord" class="audio-sync-btn audio-btn-rerecord" title="새로 녹음">🎙️ 재녹음</button>
+          <button type="button" id="btnAudioSyncDelete" class="audio-sync-btn audio-btn-del" title="녹음 삭제">🗑️</button>
+          <button type="button" id="btnAudioBackToViewer" class="audio-sync-btn audio-btn-viewer-back" style="display: none;" title="노트 뷰어로 돌아가기">↩ 뷰어</button>
+          <button type="button" id="btnAudioSyncCloseBar" class="audio-sync-btn audio-btn-close" title="플레이어 접기">✕</button>
+        </div>
+      </div>
+
       <!-- [✂️ 구간별 함수 선택 플로팅 팝오버] -->
       <div id="pwRegionPopover" class="pw-region-popover"></div>
 
@@ -848,6 +879,9 @@
         <div class="quick-sep"></div>
 
         <!-- 5. 판서 & 수학 킬러 도구 -->
+        <button id="btnAudioRecordToggle" class="quick-fab-btn" title="음성 녹음 및 강의 재생">
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg></span>
+        </button>
         <button id="btnInkMode" class="quick-fab-btn" title="필기">
           <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></span>
         </button>
@@ -1294,6 +1328,12 @@
       </div>
 
       <div class="smart-viewer-right">
+        <button type="button" id="btnViewerPlayAudioLecture" class="viewer-top-btn viewer-top-btn-audio" style="display: none;" title="처음부터 펜 포인터와 함께 영상처럼 생생하게 재생합니다">
+          <span>🎬 강의 전체 재생</span>
+        </button>
+        <button type="button" id="btnViewerNoteClickAudio" class="viewer-top-btn viewer-top-btn-note-audio" style="display: none;" title="완성된 필기노트에서 원하는 수식을 클릭해 해당 부분 설명만 바로 듣습니다">
+          <span>📝 필기 클릭해 듣기</span>
+        </button>
         <div class="viewer-zoom-group">
           <button type="button" id="btnViewerZoomOut" class="viewer-zoom-btn">−</button>
           <button type="button" id="btnViewerZoomFit" class="viewer-zoom-label"><span id="lblViewerZoom">맞춤</span></button>
@@ -1680,7 +1720,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261031_4"></script>
-  <script src="app.js?v=20261101_10"></script>
+  <script src="app.js?v=20261101_11"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

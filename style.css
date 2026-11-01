@@ -9133,3 +9133,225 @@ body.theme-light .pdf-crop-active-pill .pdf-crop-active-cancel-x {
   color: #00d2d3;
   box-shadow: 0 0 0 1px rgba(0, 210, 211, 0.28);
 }
+
+
+/* ==========================================================================
+   🎙️ 실시간 음성·필기·펜포인터·그래프 동기화 녹음 & 리플레이 스튜디오
+   ========================================================================== */
+#btnAudioRecordToggle.is-recording {
+  background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+  border-color: #f87171 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.35), 0 6px 16px rgba(239, 68, 68, 0.45) !important;
+  animation: audioFabPulse 1.4s infinite ease-in-out;
+}
+
+#btnAudioRecordToggle.has-audio:not(.is-recording) {
+  border-color: #00d2d3 !important;
+  color: #00d2d3 !important;
+  box-shadow: 0 0 0 2px rgba(0, 210, 211, 0.24) !important;
+}
+
+@keyframes audioFabPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.07); }
+}
+
+.audio-sync-floating-bar {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2550;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.94);
+  border: 1.5px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: #f8fafc;
+  user-select: none;
+  max-width: calc(100vw - 140px);
+  overflow-x: auto;
+}
+
+body.theme-light .audio-sync-floating-bar {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(15, 23, 42, 0.16);
+  color: #0f172a;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
+}
+
+.audio-sync-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.audio-rec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  color: #f87171;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+body.theme-light .audio-rec-badge {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.audio-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+  animation: audioDotBlink 1s infinite ease-in-out;
+}
+
+@keyframes audioDotBlink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(0.82); }
+}
+
+.audio-sync-time {
+  font-family: 'JetBrains Mono', 'Pretendard', monospace;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #e2e8f0;
+  min-width: 44px;
+  text-align: center;
+}
+
+body.theme-light .audio-sync-time {
+  color: #1e293b;
+}
+
+.audio-rec-hint {
+  font-size: 12px;
+  font-weight: 500;
+  color: #94a3b8;
+  padding: 0 4px;
+}
+
+body.theme-light .audio-rec-hint {
+  color: #475569;
+}
+
+@media (max-width: 900px) {
+  .audio-rec-hint {
+    display: none;
+  }
+}
+
+.audio-sync-scrubber {
+  width: 150px;
+  height: 5px;
+  accent-color: #00d2d3;
+  cursor: pointer;
+}
+
+.audio-sync-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(30, 41, 59, 0.85);
+  color: #f1f5f9;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+body.theme-light .audio-sync-btn {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+
+.audio-sync-btn:hover {
+  border-color: #00d2d3;
+  color: #00d2d3;
+}
+
+.audio-btn-stop {
+  background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+  border-color: #f87171 !important;
+  color: #ffffff !important;
+  font-weight: 700;
+}
+
+.audio-btn-play {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: linear-gradient(135deg, #00d2d3, #0ea5e9) !important;
+  border-color: #38bdf8 !important;
+  color: #0f172a !important;
+  font-weight: 800;
+}
+
+.audio-btn-mode.active-video {
+  background: rgba(0, 210, 211, 0.18);
+  border-color: #00d2d3;
+  color: #00d2d3;
+}
+
+.audio-btn-mode.active-note {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: #f59e0b;
+  color: #fbbf24;
+}
+
+body.theme-light .audio-btn-mode.active-note {
+  color: #d97706;
+  border-color: #d97706;
+}
+
+.audio-btn-viewer-back {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #60a5fa;
+  color: #93c5fd;
+}
+
+body.theme-light .audio-btn-viewer-back {
+  color: #2563eb;
+  border-color: #3b82f6;
+}
+
+.viewer-top-btn-audio {
+  background: linear-gradient(135deg, #00d2d3, #0284c7) !important;
+  border-color: #38bdf8 !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+}
+
+.viewer-top-btn-note-audio {
+  background: rgba(245, 158, 11, 0.18) !important;
+  border-color: #f59e0b !important;
+  color: #fde68a !important;
+  font-weight: 700 !important;
+}
+
+/* 가상 펜 포인터 리플레이 시 카드 위에서도 항상 최상단에 표시 */
+body.audio-replay-active #virtualStylusPen {
+  z-index: 2650 !important;
+  pointer-events: none !important;
+}

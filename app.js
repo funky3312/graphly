@@ -380,6 +380,7 @@ class GraphApp {
     this.initInkControls();
     this.initLassoActionBar();
     this.initBoardPaperControls();
+    this.initAudioSyncControls();
     this.initPdfEngine();
     this.initWelcomeSplash();
     this.initStylusFastTap();
@@ -438,7 +439,8 @@ class GraphApp {
       '.layer-item',
       '.setting-toggle-item',
       '.vf-toggle-wrap',
-      '.header-show-tab'
+      '.header-show-tab',
+      '.audio-sync-btn'
     ].join(', ');
 
     const TOOLBAR_CONTAINER_SELECTOR = [
@@ -451,7 +453,8 @@ class GraphApp {
       '.problem-card-header',
       '.problem-card-actions',
       '.pdf-modal-header',
-      '.graph-snap-floating-bar'
+      '.graph-snap-floating-bar',
+      '.audio-sync-floating-bar'
     ].join(', ');
 
     const findNearestButtonInToolbar = (container, clientX, clientY, maxPadPx = 7) => {
@@ -2458,6 +2461,7 @@ class GraphApp {
       el.closest('.quick-flyout-panel') ||
       el.closest('.board-mode-bar') ||
       el.closest('.n-axis-mode-bar') ||
+      el.closest('.audio-sync-floating-bar') ||
       el.closest('.shared-reset-bar') ||
       el.closest('.lesson-playlist-nav-bar') ||
       el.closest('.pdf-board-nav-bar') ||
@@ -2553,6 +2557,9 @@ class GraphApp {
     const clampedY = Math.max(0, Math.min(this.screenHeight || 1080, y));
 
     this.stylusPenPos = { x: clampedX, y: clampedY };
+    if (this.isAudioRecording && !this.isDrawingInk) {
+      this.recordAudioCursorPoint(clampedX, clampedY, this.currentInkColor, false);
+    }
 
     // 랙 없는 144Hz 초고속 GPU 변환 & 드로잉 시 번쩍임 없이 살짝 눌리는 물리적 필기감
     const scale = this.isStylusDrawing ? 0.94 : 1.0;
@@ -3508,6 +3515,11 @@ class GraphApp {
       this._inkHoldDetected = true;
       this.currentInkStroke.shape = shape;
       this.currentInkStroke.isShape = true;
+      if (this.isAudioRecording) {
+        const recT = this.getAudioRecordElapsedMs();
+        this.currentInkStroke.tEnd = recT;
+        this.currentInkStroke.shapeSnapAt = recT;
+      }
       this.render();
     }
   }
@@ -6653,7 +6665,25 @@ class GraphApp {
     // 문제 창 크기에 비례하여 선 굵기도 자연스럽게 스케일링 (기준 폭 520px)
     const sizeScale = Math.max(0.6, w / 520);
 
-    this.problemInkStrokes.forEach(stroke => {
+    const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
+    const pRect = isAudioReplay ? pCanvas.getBoundingClientRect() : null;
+
+    this.problemInkStrokes.forEach(rawStroke => {
+      let stroke = rawStroke;
+      let repInfo = null;
+      if (isAudioReplay) {
+        repInfo = this.getPartialStrokeForReplay(rawStroke, this.audioPlayCurrentMs, this.audioReplayViewMode);
+        if (!repInfo || !repInfo.stroke) return;
+        stroke = repInfo.stroke;
+        if (repInfo.isCurrentlyWriting && repInfo.tipPoint && pRect && pRect.width > 0) {
+          this._activeReplayTipScreen = {
+            x: pRect.left + repInfo.tipPoint.nx * pRect.width,
+            y: pRect.top + repInfo.tipPoint.ny * pRect.height,
+            color: stroke.color || '#0f172a',
+            isHighlighter: Boolean(stroke.isHighlighter)
+          };
+        }
+      }
       if (!stroke.points || stroke.points.length === 0) return;
       ctx.save();
 
@@ -7389,11 +7419,22 @@ class GraphApp {
           return;
         }
 
+        if (this.shouldInterceptStrokeClickForAudio()) {
+          const hitCardSt = this.hitTestCardAudioStroke(this.problemInkStrokes, pos.nx, pos.ny, pos.w, pos.h);
+          if (hitCardSt) {
+            isDrawingOnProblem = false;
+            this.seekAndPlayAudioAt(Math.max(0, hitCardSt.tStart - 40), hitCardSt);
+            return;
+          }
+        }
+        const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
         currentStroke = {
           color: this.currentInkColor || '#0f172a',
           size: this.currentInkSize || 3.5,
           isHighlighter: (this.activeInkTool === 'highlighter'),
-          points: [{ nx: pos.nx, ny: pos.ny, p: e.pressure || 0.5 }]
+          tStart: recT,
+          tEnd: recT,
+          points: [{ nx: pos.nx, ny: pos.ny, p: e.pressure || 0.5, t: recT }]
         };
         this.problemInkStrokes.push(currentStroke);
         this.renderProblemCardCanvas();
@@ -7417,7 +7458,12 @@ class GraphApp {
         }
 
         if (!currentStroke) return;
-        currentStroke.points.push({ nx: pos.nx, ny: pos.ny, p: e.pressure || 0.5 });
+        const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+        if (recT !== undefined) {
+          currentStroke.tEnd = recT;
+          this.recordAudioCursorPoint(e.clientX, e.clientY, currentStroke.color, true);
+        }
+        currentStroke.points.push({ nx: pos.nx, ny: pos.ny, p: e.pressure || 0.5, t: recT });
 
         // Draw & Hold 수평 밑줄 자석 보정: 0.4초 멈추면 반듯한 수평선/직선으로 보정!
         if (holdTimer) clearTimeout(holdTimer);
@@ -7432,9 +7478,11 @@ class GraphApp {
               let endNy = pLast.ny;
               const angle = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);
               if (angle < 2.5 || angle > 177.5) endNy = p0.ny; // 수평 밑줄 자석 (2.5도 정밀 스냅)!
+              const snapT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : pLast.t;
+              if (snapT !== undefined) currentStroke.tEnd = snapT;
               currentStroke.points = [
-                { nx: p0.nx, ny: p0.ny, p: 0.6 },
-                { nx: pLast.nx, ny: endNy, p: 0.6 }
+                { nx: p0.nx, ny: p0.ny, p: 0.6, t: p0.t },
+                { nx: pLast.nx, ny: endNy, p: 0.6, t: snapT }
               ];
               this.renderProblemCardCanvas();
             }
@@ -9287,7 +9335,24 @@ class GraphApp {
     ctx.lineJoin = 'round';
     const sizeScale = Math.max(0.6, w / 420);
 
-    this.graphInkStrokes.forEach(stroke => {
+    const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
+    const gRect = isAudioReplay ? gCanvas.getBoundingClientRect() : null;
+
+    this.graphInkStrokes.forEach(rawStroke => {
+      let stroke = rawStroke;
+      if (isAudioReplay) {
+        const repInfo = this.getPartialStrokeForReplay(rawStroke, this.audioPlayCurrentMs, this.audioReplayViewMode);
+        if (!repInfo || !repInfo.stroke) return;
+        stroke = repInfo.stroke;
+        if (repInfo.isCurrentlyWriting && repInfo.tipPoint && gRect && gRect.width > 0) {
+          this._activeReplayTipScreen = {
+            x: gRect.left + repInfo.tipPoint.nx * gRect.width,
+            y: gRect.top + repInfo.tipPoint.ny * gRect.height,
+            color: stroke.color || '#1e293b',
+            isHighlighter: Boolean(stroke.isHighlighter)
+          };
+        }
+      }
       if (!stroke.points || stroke.points.length === 0) return;
       ctx.save();
       let strokeColor = stroke.color || '#1e293b';
@@ -9443,11 +9508,22 @@ class GraphApp {
           return;
         }
 
+        if (this.shouldInterceptStrokeClickForAudio()) {
+          const hitCardSt = this.hitTestCardAudioStroke(this.graphInkStrokes, pos.nx, pos.ny, pos.w, pos.h);
+          if (hitCardSt) {
+            isDrawingOnGraphCard = false;
+            this.seekAndPlayAudioAt(Math.max(0, hitCardSt.tStart - 40), hitCardSt);
+            return;
+          }
+        }
+        const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
         currentStroke = {
           color: this.currentInkColor || '#1e293b',
           size: this.currentInkSize || 3.5,
           isHighlighter: (this.activeInkTool === 'highlighter'),
-          points: [{ nx: pos.nx, ny: pos.ny, p: e.pressure || 0.5 }]
+          tStart: recT,
+          tEnd: recT,
+          points: [{ nx: pos.nx, ny: pos.ny, p: e.pressure || 0.5, t: recT }]
         };
         this.graphInkStrokes.push(currentStroke);
         this.renderGraphCardCanvas();
@@ -9468,7 +9544,12 @@ class GraphApp {
           return;
         }
         if (!currentStroke) return;
-        currentStroke.points.push({ nx: pos.nx, ny: pos.ny, p: e.pressure || 0.5 });
+        const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+        if (recT !== undefined) {
+          currentStroke.tEnd = recT;
+          this.recordAudioCursorPoint(e.clientX, e.clientY, currentStroke.color, true);
+        }
+        currentStroke.points.push({ nx: pos.nx, ny: pos.ny, p: e.pressure || 0.5, t: recT });
         this.renderGraphCardCanvas();
       });
 
@@ -10159,6 +10240,12 @@ class GraphApp {
         : this.inkStrokes;
       strokesToDraw.filter(s => s && s.isHighlighter).forEach(stroke => this.renderSingleStroke(ctx, stroke, null, false));
       strokesToDraw.filter(s => s && !s.isHighlighter).forEach(stroke => this.renderSingleStroke(ctx, stroke, null, false));
+      return;
+    }
+
+    // 🌟 [실시간 음성·필기·펜포인터 동기화 리플레이 패스] 🌟
+    if (this._isAudioReplayActive && this.audioSyncData) {
+      this._drawAudioReplayInkStrokes(ctx, filterTarget);
       return;
     }
 
@@ -14956,7 +15043,8 @@ class GraphApp {
         centerX: this.pdfPageBoardData.centerX,
         centerY: this.pdfPageBoardData.centerY,
         baseYSpan: this.pdfPageBoardData.baseYSpan
-      } : null
+      } : null,
+      audioSyncData: this.audioSyncData ? JSON.parse(JSON.stringify(this.audioSyncData)) : null
     };
     return slideObj;
   }
@@ -15113,6 +15201,12 @@ class GraphApp {
       this.pdfPageBoardData = null;
     }
 
+    if (!this._isApplyingAudioTimelineState) {
+      this.stopAudioPlayback(true);
+      this.audioSyncData = slideData.audioSyncData ? JSON.parse(JSON.stringify(slideData.audioSyncData)) : null;
+      this.syncAudioRecordUI();
+    }
+
     this.updateProblemCardPosition();
     this.syncWorkspaceModeUI();
     this.syncGraphSnapBarUI();
@@ -15134,6 +15228,7 @@ class GraphApp {
     }
     const gCards = (slideData.primaryGraphCard ? 1 : 0) + (Array.isArray(slideData.extraGraphs) ? slideData.extraGraphs.length : 0);
     const pCards = (slideData.primaryProblemCard ? 1 : 0) + (Array.isArray(slideData.extraProblems) ? slideData.extraProblems.length : 0);
+    if (slideData.audioSyncData && slideData.audioSyncData.durationMs > 0) parts.push('🎙️음성강의');
     if (pCards > 0) parts.push(`문제카드 ${pCards}개`);
     if (gCards > 0) parts.push(`보관그래프 #${gCards}`);
     if (gCount > 0) parts.push(`함수 ${gCount}개`);
@@ -16360,7 +16455,8 @@ class GraphApp {
       height: exp.height,
       dpi: exp.dpi,
       dataUrl,
-      hotspots
+      hotspots,
+      smartBounds
     };
   }
 
@@ -16730,11 +16826,34 @@ class GraphApp {
       });
     }
 
+    const hasAudio = Boolean(slide.audioSyncData && slide.audioSyncData.durationMs > 0);
+    const btnPlayAudio = document.getElementById('btnViewerPlayAudioLecture');
+    const btnNoteAudio = document.getElementById('btnViewerNoteClickAudio');
+    if (btnPlayAudio) {
+      btnPlayAudio.style.display = hasAudio ? 'inline-flex' : 'none';
+      btnPlayAudio.onclick = (e) => {
+        e.stopPropagation();
+        this.enterAudioLectureFromViewer(idx, 'video', 0);
+      };
+    }
+    if (btnNoteAudio) {
+      btnNoteAudio.style.display = hasAudio ? 'inline-flex' : 'none';
+      btnNoteAudio.onclick = (e) => {
+        e.stopPropagation();
+        this.enterAudioLectureFromViewer(idx, 'note', null);
+      };
+    }
+
     if (hintEl) {
-      hintEl.textContent = hotspots.length > 0
-        ? '그래프 영역을 터치하면 직접 조작할 수 있습니다'
-        : '';
-      hintEl.style.display = hotspots.length > 0 ? '' : 'none';
+      if (hasAudio) {
+        hintEl.textContent = '🎧 상단 [🎬 강의 전체 재생]을 누르거나, 이해가 안 되는 필기 수식을 직접 터치하면 음성과 함께 필기가 재생됩니다';
+        hintEl.style.display = '';
+      } else {
+        hintEl.textContent = hotspots.length > 0
+          ? '그래프 영역을 터치하면 직접 조작할 수 있습니다'
+          : '';
+        hintEl.style.display = hotspots.length > 0 ? '' : 'none';
+      }
     }
 
     this.fitSmartViewerStageToScreen();
@@ -17815,6 +17934,17 @@ class GraphApp {
           this.commitEditingTextLabel();
         }
       }
+      // 🌟 [🎧 노트 클릭 모드: 원하는 필기 수식을 톡 클릭하면 즉시 해당 타임스탬프 음성과 펜 포인터 재생!] 🌟
+      if (this.shouldInterceptStrokeClickForAudio()) {
+        const hitAudioSt = this.hitTestAudioStrokeAtScreenPos(pos.x, pos.y);
+        if (hitAudioSt) {
+          if (e.preventDefault) e.preventDefault();
+          if (e.stopPropagation) e.stopPropagation();
+          this.seekAndPlayAudioAt(Math.max(0, hitAudioSt.tStart - 40), hitAudioSt);
+          return;
+        }
+      }
+
       // 🌟 [✂️ PDF 전체화면 판서 모드 ➔ 문제 영역 스샷 후 그래프 모드 진입 드래그 시작] 🌟
       if (this.isPdfToGraphCropMode && !isFingerOrPalmTouch) {
         if (e.preventDefault) e.preventDefault();
@@ -18437,6 +18567,10 @@ class GraphApp {
         }
 
         const bPt0 = this.screenToBoard(pos.x, pos.y);
+        const recT0 = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+        if (recT0 !== undefined) {
+          this.recordAudioCursorPoint(pos.x, pos.y, this.currentInkColor, true);
+        }
         this.currentInkStroke = {
           id: 'ink_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
           tool: this.activeInkTool,
@@ -18448,9 +18582,11 @@ class GraphApp {
           zoom: this.zoomLevel,
           boardZoom: this.boardZoom || 1.0,
           isHighlighter: isHighlighterStroke,
+          tStart: recT0,
+          tEnd: recT0,
           points: isGraphTarget
-            ? [{ x: m.x, y: m.y, p: pressure }]
-            : [{ x: bPt0.x, y: bPt0.y, p: pressure }]
+            ? [{ x: m.x, y: m.y, p: pressure, t: recT0 }]
+            : [{ x: bPt0.x, y: bPt0.y, p: pressure, t: recT0 }]
         };
         this.inkStrokes.push(this.currentInkStroke);
         this._startInkHoldTimer();
@@ -19160,12 +19296,17 @@ class GraphApp {
             const prevPressure = (this._lastPressure !== undefined) ? this._lastPressure : targetPressure;
             const pressure = prevPressure * 0.35 + targetPressure * 0.65;
             this._lastPressure = pressure;
+            const recTMove = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+            if (recTMove !== undefined) {
+              this.currentInkStroke.tEnd = recTMove;
+              this.recordAudioCursorPoint(sx, sy, this.currentInkStroke.color, true);
+            }
             if (this.currentInkStroke.target === 'graph') {
               const m = this.screenToMath(sx, sy);
-              this.currentInkStroke.points.push({ x: m.x, y: m.y, p: pressure });
+              this.currentInkStroke.points.push({ x: m.x, y: m.y, p: pressure, t: recTMove });
             } else {
               const bPt = this.screenToBoard(sx, sy);
-              this.currentInkStroke.points.push({ x: bPt.x, y: bPt.y, p: pressure });
+              this.currentInkStroke.points.push({ x: bPt.x, y: bPt.y, p: pressure, t: recTMove });
             }
             addedPoints++;
 
@@ -20047,12 +20188,16 @@ class GraphApp {
               p = Math.max(0.06, p * 0.25);
             }
             this._liveBezierScreenPts.push({ x: endX, y: endY, p: p });
+            const recTUp = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+            if (recTUp !== undefined) {
+              this.currentInkStroke.tEnd = recTUp;
+            }
             if (this.currentInkStroke.target === 'graph') {
               const m = this.screenToMath(endX, endY);
-              this.currentInkStroke.points.push({ x: m.x, y: m.y, p: p });
+              this.currentInkStroke.points.push({ x: m.x, y: m.y, p: p, t: recTUp });
             } else {
               const bPt = this.screenToBoard(endX, endY);
-              this.currentInkStroke.points.push({ x: bPt.x, y: bPt.y, p: p });
+              this.currentInkStroke.points.push({ x: bPt.x, y: bPt.y, p: p, t: recTUp });
             }
             if (!this.currentInkStroke.isHighlighter) {
               this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
@@ -20072,6 +20217,9 @@ class GraphApp {
         this._erasedInCurrentStroke = false;
         this._preDragState = null;
         const finishedStroke = this.currentInkStroke;
+        if (finishedStroke && this.isAudioRecording) {
+          finishedStroke.tEnd = this.getAudioRecordElapsedMs();
+        }
         this.currentInkStroke = null;
         this._lastInkScreenPos = null;
 
@@ -21397,6 +21545,9 @@ class GraphApp {
 
   // --- [초고속 무결점 렌더링 파이프라인 (5개 겹쳐도 0.1ms 미만)] ---
   render(targetCtx = this.ctx, width = this.screenWidth, height = this.screenHeight, isExport = false) {
+    if (this.isAudioRecording && !isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) {
+      this._recordAudioWorkspaceStateIfNeeded();
+    }
     const ctx = targetCtx;
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
 
@@ -26074,6 +26225,1240 @@ class GraphApp {
     }
     await this._waitForSlideImagesReady();
     await this.downloadPNG(effFilter, `Graphly_스캔_${Date.now()}.png`);
+  }
+
+
+  // ==========================================================================
+  // [🎙️ 실시간 음성 녹음 + 펜 포인터 1획1점(Point-by-Point) 필기·그래프 조작 동기화 리플레이 엔진]
+  // 1) 녹음 시작 시 모든 필기 획(칠판, 그래프, 문제 카드, 그래프 보관 카드)의 모든 점마다 정밀 밀리초(pt.t) 기록!
+  // 2) 펜 포인터(#virtualStylusPen) 이동 궤적과 실시간 그래프 조작(극점 드래그, 모드 전환, 카드 보관) 타임라인 기록!
+  // 3) [🎬 영상 모드] 재생 시 미래의 필기는 감췄다가 선생님 음성에 맞춰 펜 포인터 끝에서 선이 주욱 그어지고 숫자가 한 획씩 써짐!
+  // 4) [📝 노트 클릭 모드] 전환 시 완성된 필기노트를 한눈에 보다가 이해 안 되는 수식을 톡 클릭하면 즉시 그 부분 음성과 펜 재생!
+  // ==========================================================================
+  initAudioSyncControls() {
+    this.isAudioRecording = false;
+    this.audioRecordStartMs = 0;
+    this.audioMediaRecorder = null;
+    this.audioMediaStream = null;
+    this.audioRecordedChunks = [];
+    this.audioTimeline = [];
+    this.audioInitialState = null;
+    this.audioFinalState = null;
+    this.audioSyncData = null;
+    this.isAudioPlaying = false;
+    this._isAudioReplayActive = false;
+    this._isAudioSyncPlayerVisible = false;
+    this.audioReplayViewMode = 'video'; // 'video' | 'note'
+    this.audioPlayCurrentMs = 0;
+    this.audioPlaybackRate = 1.0;
+    this.audioPlayerEl = null;
+    this._audioReplayRafId = null;
+    this._audioRecordTimerId = null;
+    this._lastAudioCursorRecordMs = -100;
+    this._lastAudioStateRecordMs = -100;
+    this._lastRecordedStateHash = '';
+    this._enteredAudioFromViewerSlideIdx = null;
+
+    const btnFab = document.getElementById('btnAudioRecordToggle');
+    const btnStopRec = document.getElementById('btnAudioStopRecord');
+    const btnPlayPause = document.getElementById('btnAudioPlayPause');
+    const scrubber = document.getElementById('audioSyncScrubber');
+    const btnMode = document.getElementById('btnAudioReplayViewMode');
+    const btnSpeed = document.getElementById('btnAudioSyncSpeed');
+    const btnReRecord = document.getElementById('btnAudioReRecord');
+    const btnDelete = document.getElementById('btnAudioSyncDelete');
+    const btnBackViewer = document.getElementById('btnAudioBackToViewer');
+    const btnCloseBar = document.getElementById('btnAudioSyncCloseBar');
+
+    if (btnFab) {
+      btnFab.onclick = (e) => {
+        e.stopPropagation();
+        if (this.isAudioRecording) {
+          this.stopAudioRecording();
+        } else if (this.audioSyncData && this.audioSyncData.durationMs > 0) {
+          this._isAudioSyncPlayerVisible = !this._isAudioSyncPlayerVisible;
+          if (!this._isAudioSyncPlayerVisible) {
+            this.stopAudioPlayback(true);
+          } else {
+            this.setAudioReplayViewMode('note', false);
+          }
+          this.syncAudioRecordUI();
+        } else {
+          this.startAudioRecording();
+        }
+      };
+    }
+
+    if (btnStopRec) {
+      btnStopRec.onclick = (e) => {
+        e.stopPropagation();
+        this.stopAudioRecording();
+      };
+    }
+
+    if (btnPlayPause) {
+      btnPlayPause.onclick = (e) => {
+        e.stopPropagation();
+        if (this.isAudioPlaying) {
+          this.pauseAudioPlayback();
+        } else {
+          this.playAudioSync();
+        }
+      };
+    }
+
+    if (scrubber) {
+      scrubber.addEventListener('input', (e) => {
+        e.stopPropagation();
+        const targetMs = Number(e.target.value) || 0;
+        this.seekAudioSync(targetMs, false);
+      });
+    }
+
+    if (btnMode) {
+      btnMode.onclick = (e) => {
+        e.stopPropagation();
+        const nextMode = this.audioReplayViewMode === 'video' ? 'note' : 'video';
+        this.setAudioReplayViewMode(nextMode, true);
+      };
+    }
+
+    if (btnSpeed) {
+      const speeds = [1.0, 1.25, 1.5, 2.0, 0.8];
+      btnSpeed.onclick = (e) => {
+        e.stopPropagation();
+        const idx = speeds.indexOf(this.audioPlaybackRate);
+        this.audioPlaybackRate = speeds[(idx + 1) % speeds.length];
+        btnSpeed.textContent = `${this.audioPlaybackRate}x`;
+        if (this.audioPlayerEl) {
+          this.audioPlayerEl.playbackRate = this.audioPlaybackRate;
+        }
+      };
+    }
+
+    if (btnReRecord) {
+      btnReRecord.onclick = (e) => {
+        e.stopPropagation();
+        this.stopAudioPlayback(true);
+        this.startAudioRecording();
+      };
+    }
+
+    if (btnDelete) {
+      btnDelete.onclick = (e) => {
+        e.stopPropagation();
+        this.stopAudioPlayback(true);
+        this.audioSyncData = null;
+        this._isAudioSyncPlayerVisible = false;
+        this.syncAudioRecordUI();
+        this.render();
+      };
+    }
+
+    if (btnBackViewer) {
+      btnBackViewer.onclick = (e) => {
+        e.stopPropagation();
+        const slideIdx = this._enteredAudioFromViewerSlideIdx;
+        this._enteredAudioFromViewerSlideIdx = null;
+        this.stopAudioPlayback(true);
+        this._isAudioSyncPlayerVisible = false;
+        this.syncAudioRecordUI();
+        if (this._viewerPkg) {
+          const overlay = document.getElementById('smartNoteViewerOverlay');
+          if (overlay) overlay.style.display = 'flex';
+          this.switchSmartViewerSlide(typeof slideIdx === 'number' ? slideIdx : (this._viewerSlideIdx || 0));
+        }
+      };
+    }
+
+    if (btnCloseBar) {
+      btnCloseBar.onclick = (e) => {
+        e.stopPropagation();
+        this.stopAudioPlayback(true);
+        this._isAudioSyncPlayerVisible = false;
+        this.syncAudioRecordUI();
+      };
+    }
+
+    // 스마트 노트 뷰어(#smartNoteViewerStage)에서 필기 수식 직접 클릭 시 해당 시점 재생 연동
+    const viewerStage = document.getElementById('smartNoteViewerStage');
+    if (viewerStage && !viewerStage._audioClickBound) {
+      viewerStage._audioClickBound = true;
+      let downPt = null;
+      viewerStage.addEventListener('pointerdown', (e) => {
+        if (e.target && e.target.closest && e.target.closest('.viewer-graph-hotspot')) return;
+        downPt = { x: e.clientX, y: e.clientY, t: performance.now() };
+      });
+      viewerStage.addEventListener('pointerup', (e) => {
+        if (!downPt) return;
+        const dist = Math.hypot(e.clientX - downPt.x, e.clientY - downPt.y);
+        const dt = performance.now() - downPt.t;
+        downPt = null;
+        if (dist > 10 || dt > 500) return;
+        if (e.target && e.target.closest && e.target.closest('.viewer-graph-hotspot')) return;
+
+        const slide = this._viewerPkg && this._viewerPkg.playlistSlides
+          ? this._viewerPkg.playlistSlides[this._viewerSlideIdx || 0]
+          : null;
+        if (!slide || !slide.audioSyncData || !slide.audioSyncData.durationMs) return;
+
+        const imgEl = document.getElementById('smartNoteViewerImg');
+        if (!imgEl) return;
+        const rect = imgEl.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        const nx = (e.clientX - rect.left) / rect.width;
+        const ny = (e.clientY - rect.top) / rect.height;
+        if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
+
+        // 해당 슬라이드를 복원하여 클릭 위치의 필기 스트로크 탐색
+        this.deserializeFullSlideState(slide);
+        const sb = slide.viewerSmartBounds || this.getSmartExportBounds(this._viewerPkg.exportFilter || null);
+        const screenX = sb.x + nx * sb.w;
+        const screenY = sb.y + ny * sb.h;
+        const hitSt = this.hitTestAudioStrokeAtScreenPos(screenX, screenY, 36);
+        if (hitSt && typeof hitSt.tStart === 'number') {
+          this.enterAudioLectureFromViewer(this._viewerSlideIdx || 0, 'note', Math.max(0, hitSt.tStart - 40));
+        }
+      });
+    }
+  }
+
+  getAudioRecordElapsedMs() {
+    if (!this.isAudioRecording || !this.audioRecordStartMs) return 0;
+    return Math.max(0, Math.round(performance.now() - this.audioRecordStartMs));
+  }
+
+  formatAudioTimeMmSs(ms) {
+    const totalSec = Math.max(0, Math.floor((ms || 0) / 1000));
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+  shouldInterceptStrokeClickForAudio() {
+    if (this.isAudioRecording) return false;
+    if (!this.audioSyncData || !this.audioSyncData.durationMs) return false;
+    if (this._isAudioSyncPlayerVisible && this.audioReplayViewMode === 'note') return true;
+    return false;
+  }
+
+  _createSilentWavDataUrl(durationMs = 1000) {
+    const sampleRate = 8000;
+    const numSamples = Math.max(800, Math.min(sampleRate * 300, Math.round((durationMs / 1000) * sampleRate)));
+    const buffer = new ArrayBuffer(44 + numSamples);
+    const view = new DataView(buffer);
+    const writeStr = (offset, str) => {
+      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+    };
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + numSamples, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, 1, true); // Mono
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate, true);
+    view.setUint16(32, 1, true);
+    view.setUint16(34, 8, true); // 8-bit unsigned
+    writeStr(36, 'data');
+    view.setUint32(40, numSamples, true);
+    for (let i = 0; i < numSamples; i++) {
+      view.setUint8(44 + i, 128);
+    }
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const chunk = 8192;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return 'data:audio/wav;base64,' + btoa(binary);
+  }
+
+  _captureAudioWorkspaceKeyframe() {
+    const pWidget = document.getElementById('problemCardWidget');
+    const gWidget = document.getElementById('graphCardWidget');
+    return {
+      isGraphCovered: Boolean(this.isGraphCovered),
+      isBoardMode: Boolean(this.isBoardMode),
+      boardSplitRatio: this.boardSplitRatio || 0.4,
+      graphs: JSON.parse(JSON.stringify(this.graphs || [])),
+      activeGraphIdx: this.activeGraphIdx,
+      panX: this.panX || 0,
+      panY: this.panY || 0,
+      zoomLevel: this.zoomLevel || 1.0,
+      xSpan: this.xSpan || 8.5,
+      ySpan: this.ySpan || 6.0,
+      boardPanX: this.boardPanX || 0,
+      boardPanY: this.boardPanY || 0,
+      boardZoom: this.boardZoom || 1.0,
+      boardZoomOffsetX: this.boardZoomOffsetX || 0,
+      boardZoomOffsetY: this.boardZoomOffsetY || 0,
+      showAxes: Boolean(this.showAxes),
+      showGuides: Boolean(this.showGuides),
+      usePiecewise: Boolean(this.usePiecewise),
+      piecewiseBoundaries: JSON.parse(JSON.stringify(this.piecewiseBoundaries || [])),
+      piecewiseFuncMap: JSON.parse(JSON.stringify(this.piecewiseFuncMap || [])),
+      piecewiseInclusions: JSON.parse(JSON.stringify(this.piecewiseInclusions || [])),
+      dropLines: JSON.parse(JSON.stringify(this.dropLines || [])),
+      textLabels: JSON.parse(JSON.stringify(this.textLabels || [])),
+      probCardVisible: Boolean(pWidget && pWidget.style.display !== 'none' && this.problemCardData),
+      probCardMin: Boolean(this.isProblemCardMinimized),
+      probCardBaseX: this.problemCardBaseX,
+      probCardBaseY: this.problemCardBaseY,
+      graphCardVisible: Boolean(gWidget && gWidget.style.display !== 'none' && this._hasPrimaryGraphCard && this.graphCardData),
+      graphCardMin: Boolean(this.isGraphCardMinimized),
+      graphCardBaseX: this.graphCardBaseX,
+      graphCardBaseY: this.graphCardBaseY,
+      extraGraphsCount: (this.extraGraphCards || []).length
+    };
+  }
+
+  _applyAudioWorkspaceKeyframe(kf) {
+    if (!kf) return;
+    this._isApplyingAudioTimelineState = true;
+    try {
+      const modeChanged = (Boolean(this.isGraphCovered) !== Boolean(kf.isGraphCovered));
+      this.isGraphCovered = Boolean(kf.isGraphCovered);
+      this.isBoardMode = Boolean(kf.isBoardMode);
+      if (typeof kf.boardSplitRatio === 'number') this.boardSplitRatio = kf.boardSplitRatio;
+      this.graphs = JSON.parse(JSON.stringify(kf.graphs || []));
+      this.activeGraphIdx = typeof kf.activeGraphIdx === 'number' ? kf.activeGraphIdx : (this.graphs.length > 0 ? 0 : -1);
+      this.panX = kf.panX || 0;
+      this.panY = kf.panY || 0;
+      this.zoomLevel = kf.zoomLevel || 1.0;
+      this.targetZoom = this.zoomLevel;
+      this.xSpan = kf.xSpan || 8.5;
+      this.ySpan = kf.ySpan || 6.0;
+      this.boardPanX = kf.boardPanX || 0;
+      this.boardPanY = kf.boardPanY || 0;
+      this.boardZoom = kf.boardZoom || 1.0;
+      this.boardZoomOffsetX = kf.boardZoomOffsetX || 0;
+      this.boardZoomOffsetY = kf.boardZoomOffsetY || 0;
+      this.showAxes = Boolean(kf.showAxes);
+      this.showGuides = Boolean(kf.showGuides);
+      this.usePiecewise = Boolean(kf.usePiecewise);
+      this.piecewiseBoundaries = JSON.parse(JSON.stringify(kf.piecewiseBoundaries || []));
+      this.piecewiseFuncMap = JSON.parse(JSON.stringify(kf.piecewiseFuncMap || []));
+      this.piecewiseInclusions = JSON.parse(JSON.stringify(kf.piecewiseInclusions || []));
+      this.dropLines = JSON.parse(JSON.stringify(kf.dropLines || []));
+      this.textLabels = JSON.parse(JSON.stringify(kf.textLabels || []));
+
+      const pWidget = document.getElementById('problemCardWidget');
+      if (pWidget && this.problemCardData) {
+        pWidget.style.display = kf.probCardVisible ? 'flex' : 'none';
+        pWidget.classList.toggle('minimized', Boolean(kf.probCardMin));
+        this.isProblemCardMinimized = Boolean(kf.probCardMin);
+        if (typeof kf.probCardBaseX === 'number') {
+          this.problemCardBaseX = kf.probCardBaseX;
+          pWidget.style.left = `${Math.round(kf.probCardBaseX)}px`;
+        }
+        if (typeof kf.probCardBaseY === 'number') {
+          this.problemCardBaseY = kf.probCardBaseY;
+          pWidget.style.top = `${Math.round(kf.probCardBaseY)}px`;
+        }
+      }
+
+      const gWidget = document.getElementById('graphCardWidget');
+      if (gWidget && this._hasPrimaryGraphCard && this.graphCardData) {
+        gWidget.style.display = kf.graphCardVisible ? 'flex' : 'none';
+        gWidget.classList.toggle('minimized', Boolean(kf.graphCardMin));
+        this.isGraphCardMinimized = Boolean(kf.graphCardMin);
+        if (typeof kf.graphCardBaseX === 'number') {
+          this.graphCardBaseX = kf.graphCardBaseX;
+          gWidget.style.left = `${Math.round(kf.graphCardBaseX)}px`;
+        }
+        if (typeof kf.graphCardBaseY === 'number') {
+          this.graphCardBaseY = kf.graphCardBaseY;
+          gWidget.style.top = `${Math.round(kf.graphCardBaseY)}px`;
+        }
+      }
+
+      if (this.extraGraphCards && this.extraGraphCards.length > 0) {
+        const visibleCount = typeof kf.extraGraphsCount === 'number' ? kf.extraGraphsCount : this.extraGraphCards.length;
+        this.extraGraphCards.forEach((c, idx) => {
+          if (c && c.el) {
+            c.el.style.display = (!this.isGraphCovered || idx >= visibleCount) ? 'none' : 'flex';
+          }
+        });
+      }
+
+      this.updateProblemCardPosition();
+      if (modeChanged) {
+        this.syncWorkspaceModeUI();
+        this.syncGraphSnapBarUI();
+      }
+      this.updateIntersections();
+    } finally {
+      this._isApplyingAudioTimelineState = false;
+    }
+  }
+
+  _recordAudioWorkspaceStateIfNeeded(force = false) {
+    if (!this.isAudioRecording || this._isApplyingAudioTimelineState) return;
+    const t = this.getAudioRecordElapsedMs();
+    if (!force && (t - this._lastAudioStateRecordMs < 45)) return;
+
+    const kf = this._captureAudioWorkspaceKeyframe();
+    const hash = JSON.stringify([
+      kf.isGraphCovered,
+      kf.isBoardMode,
+      kf.graphs,
+      kf.activeGraphIdx,
+      Math.round(kf.panX),
+      Math.round(kf.panY),
+      kf.zoomLevel,
+      Math.round(kf.boardPanX),
+      Math.round(kf.boardPanY),
+      kf.boardZoom,
+      kf.usePiecewise,
+      kf.piecewiseBoundaries,
+      kf.dropLines.length,
+      kf.textLabels,
+      kf.probCardVisible,
+      kf.probCardMin,
+      kf.probCardBaseX,
+      kf.probCardBaseY,
+      kf.graphCardVisible,
+      kf.graphCardMin,
+      kf.graphCardBaseX,
+      kf.graphCardBaseY,
+      kf.extraGraphsCount
+    ]);
+    if (!force && hash === this._lastRecordedStateHash) return;
+    this._lastRecordedStateHash = hash;
+    this._lastAudioStateRecordMs = t;
+    this.audioTimeline.push({
+      t,
+      type: 'state',
+      state: kf
+    });
+  }
+
+  recordAudioCursorPoint(screenX, screenY, color = null, isDrawing = false) {
+    if (!this.isAudioRecording) return;
+    const t = this.getAudioRecordElapsedMs();
+    if (!isDrawing && (t - this._lastAudioCursorRecordMs < 38)) return;
+    if (isDrawing && (t - this._lastAudioCursorRecordMs < 24)) return;
+    this._lastAudioCursorRecordMs = t;
+    this.audioTimeline.push({
+      t,
+      type: 'cursor',
+      x: Math.round(screenX * 10) / 10,
+      y: Math.round(screenY * 10) / 10,
+      color: color || this.currentInkColor || '#00d2d3',
+      isDrawing: Boolean(isDrawing)
+    });
+  }
+
+  async startAudioRecording() {
+    if (this.isAudioRecording) return;
+    this.stopAudioPlayback(true);
+
+    // 녹음 시작 전 이미 그려져 있던 스트로크들은 배경 스트로크(preExisting: true)로 마킹하여 영상 모드에서도 처음부터 보이게 유지
+    const markPreExisting = (arr) => {
+      if (!Array.isArray(arr)) return;
+      arr.forEach(st => {
+        if (st && st.tStart === undefined) {
+          st.preExisting = true;
+        }
+      });
+    };
+    markPreExisting(this.inkStrokes);
+    markPreExisting(this.problemInkStrokes);
+    markPreExisting(this.graphInkStrokes);
+
+    this.audioRecordedChunks = [];
+    this.audioTimeline = [];
+    this.audioMediaStream = null;
+    this.audioMediaRecorder = null;
+    this._audioMimeType = 'audio/webm';
+
+    if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function' && window.MediaRecorder) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+        this.audioMediaStream = stream;
+        const candidates = [
+          'audio/webm;codecs=opus',
+          'audio/webm',
+          'audio/mp4',
+          'audio/ogg;codecs=opus'
+        ];
+        let chosenMime = '';
+        for (const m of candidates) {
+          if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(m)) {
+            chosenMime = m;
+            break;
+          }
+        }
+        this._audioMimeType = chosenMime || 'audio/webm';
+        const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 };
+        const recorder = new MediaRecorder(stream, recOpts);
+        recorder.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size > 0) {
+            this.audioRecordedChunks.push(ev.data);
+          }
+        };
+        recorder.start(250);
+        this.audioMediaRecorder = recorder;
+      } catch (micErr) {
+        // 마이크가 없거나 권한이 거부된 환경(또는 헤드리스 테스트)에서는 타이머 동기화 모드로 끊김 없이 진행!
+        this.audioMediaStream = null;
+        this.audioMediaRecorder = null;
+      }
+    }
+
+    this.isAudioRecording = true;
+    this.audioRecordStartMs = performance.now();
+    this._lastAudioCursorRecordMs = -100;
+    this._lastAudioStateRecordMs = -100;
+    this._lastRecordedStateHash = '';
+    this.audioInitialState = this._captureAudioWorkspaceKeyframe();
+    this._recordAudioWorkspaceStateIfNeeded(true);
+
+    if (!this.isInkMode) {
+      this.toggleInkMode(true);
+    }
+    if (this.activeInkTool === 'select' || this.activeInkTool === 'eraser') {
+      this.setActiveInkTool('pen');
+    }
+
+    const lblTimer = document.getElementById('lblAudioRecordTimer');
+    if (lblTimer) lblTimer.textContent = '00:00';
+    if (this._audioRecordTimerId) clearInterval(this._audioRecordTimerId);
+    this._audioRecordTimerId = setInterval(() => {
+      if (!this.isAudioRecording) return;
+      const elapsed = this.getAudioRecordElapsedMs();
+      if (lblTimer) lblTimer.textContent = this.formatAudioTimeMmSs(elapsed);
+      this._recordAudioWorkspaceStateIfNeeded(false);
+    }, 200);
+
+    this.syncAudioRecordUI();
+  }
+
+  async stopAudioRecording() {
+    if (!this.isAudioRecording) return null;
+    const durationMs = Math.max(300, this.getAudioRecordElapsedMs());
+    this._recordAudioWorkspaceStateIfNeeded(true);
+    this.audioFinalState = this._captureAudioWorkspaceKeyframe();
+    this.isAudioRecording = false;
+
+    if (this._audioRecordTimerId) {
+      clearInterval(this._audioRecordTimerId);
+      this._audioRecordTimerId = null;
+    }
+
+    let audioDataUrl = '';
+    if (this.audioMediaRecorder && this.audioMediaRecorder.state !== 'inactive') {
+      await new Promise((resolve) => {
+        this.audioMediaRecorder.onstop = () => resolve();
+        try {
+          this.audioMediaRecorder.stop();
+        } catch (e) {
+          resolve();
+        }
+      });
+    }
+    if (this.audioMediaStream) {
+      try {
+        this.audioMediaStream.getTracks().forEach(tr => tr.stop());
+      } catch (e) { }
+      this.audioMediaStream = null;
+    }
+
+    if (this.audioRecordedChunks && this.audioRecordedChunks.length > 0) {
+      const blob = new Blob(this.audioRecordedChunks, { type: this._audioMimeType || 'audio/webm' });
+      audioDataUrl = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result || '');
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    if (!audioDataUrl) {
+      audioDataUrl = this._createSilentWavDataUrl(durationMs);
+    }
+
+    this.audioSyncData = {
+      version: '1.0',
+      createdAt: Date.now(),
+      durationMs,
+      mimeType: this._audioMimeType || 'audio/wav',
+      audioDataUrl,
+      initialState: this.audioInitialState,
+      finalState: this.audioFinalState,
+      timeline: this.audioTimeline
+    };
+
+    this.audioPlayCurrentMs = durationMs;
+    this._isAudioSyncPlayerVisible = true;
+    this.audioReplayViewMode = 'video';
+    this.syncAudioRecordUI();
+    return this.audioSyncData;
+  }
+
+  syncAudioRecordUI() {
+    const btnFab = document.getElementById('btnAudioRecordToggle');
+    const bar = document.getElementById('audioSyncFloatingBar');
+    const recGroup = document.getElementById('audioSyncRecordingGroup');
+    const playGroup = document.getElementById('audioSyncPlayerGroup');
+    const iconPlay = document.getElementById('iconAudioPlayPause');
+    const lblPlayTime = document.getElementById('lblAudioPlayTime');
+    const scrubber = document.getElementById('audioSyncScrubber');
+    const btnMode = document.getElementById('btnAudioReplayViewMode');
+    const lblMode = document.getElementById('lblAudioReplayViewMode');
+    const btnBackViewer = document.getElementById('btnAudioBackToViewer');
+
+    const hasAudio = Boolean(this.audioSyncData && this.audioSyncData.durationMs > 0);
+    if (btnFab) {
+      btnFab.classList.toggle('is-recording', Boolean(this.isAudioRecording));
+      btnFab.classList.toggle('has-audio', hasAudio && !this.isAudioRecording);
+    }
+
+    if (!bar) return;
+    if (this.isAudioRecording) {
+      bar.style.display = 'flex';
+      if (recGroup) recGroup.style.display = 'flex';
+      if (playGroup) playGroup.style.display = 'none';
+      return;
+    }
+
+    if (hasAudio && this._isAudioSyncPlayerVisible) {
+      bar.style.display = 'flex';
+      if (recGroup) recGroup.style.display = 'none';
+      if (playGroup) playGroup.style.display = 'flex';
+      const dur = this.audioSyncData.durationMs || 1000;
+      const cur = Math.max(0, Math.min(dur, this.audioPlayCurrentMs || 0));
+      if (iconPlay) iconPlay.textContent = this.isAudioPlaying ? '⏸' : '▶';
+      if (lblPlayTime) {
+        lblPlayTime.textContent = `${this.formatAudioTimeMmSs(cur)} / ${this.formatAudioTimeMmSs(dur)}`;
+      }
+      if (scrubber) {
+        scrubber.max = String(dur);
+        scrubber.value = String(Math.round(cur));
+      }
+      if (btnMode && lblMode) {
+        const isVideo = (this.audioReplayViewMode === 'video');
+        btnMode.classList.toggle('active-video', isVideo);
+        btnMode.classList.toggle('active-note', !isVideo);
+        lblMode.textContent = isVideo ? '🎬 영상 모드' : '📝 노트 클릭';
+      }
+      if (btnBackViewer) {
+        btnBackViewer.style.display = (this._enteredAudioFromViewerSlideIdx !== null) ? 'inline-flex' : 'none';
+      }
+    } else {
+      bar.style.display = 'none';
+    }
+  }
+
+  setAudioReplayViewMode(mode, triggerRender = true) {
+    this.audioReplayViewMode = (mode === 'note') ? 'note' : 'video';
+    if (this.audioSyncData) {
+      if (this.audioReplayViewMode === 'note') {
+        // 노트 클릭 모드에서는 완성된 최종 화면(finalState)을 펼쳐두어 모든 필기를 한눈에 보고 클릭할 수 있게 함
+        if (this.audioSyncData.finalState) {
+          this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
+        }
+        if (!this.isAudioPlaying) {
+          this._isAudioReplayActive = false;
+          document.body.classList.remove('audio-replay-active');
+        }
+      } else {
+        this._isAudioReplayActive = true;
+        document.body.classList.add('audio-replay-active');
+        this._applyAudioTimelineStateAt(this.audioPlayCurrentMs || 0);
+      }
+    }
+    this.syncAudioRecordUI();
+    if (triggerRender) {
+      this.renderProblemCardCanvas();
+      this.renderGraphCardCanvas();
+      this.render();
+    }
+  }
+
+  _applyAudioTimelineStateAt(playMs) {
+    if (!this.audioSyncData) return;
+    if (this.audioReplayViewMode === 'note') {
+      if (this.audioSyncData.finalState) {
+        this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
+      }
+      return;
+    }
+    let chosenState = this.audioSyncData.initialState || null;
+    const timeline = this.audioSyncData.timeline || [];
+    for (let i = 0; i < timeline.length; i++) {
+      const ev = timeline[i];
+      if (ev && ev.type === 'state') {
+        if (ev.t <= playMs) {
+          chosenState = ev.state;
+        } else {
+          break;
+        }
+      }
+    }
+    if (chosenState) {
+      this._applyAudioWorkspaceKeyframe(chosenState);
+    }
+  }
+
+  _getInterpolatedCursorAt(playMs) {
+    if (!this.audioSyncData || !Array.isArray(this.audioSyncData.timeline)) return null;
+    const timeline = this.audioSyncData.timeline;
+    let prev = null;
+    let next = null;
+    for (let i = 0; i < timeline.length; i++) {
+      const ev = timeline[i];
+      if (!ev || ev.type !== 'cursor') continue;
+      if (ev.t <= playMs) {
+        prev = ev;
+      } else {
+        next = ev;
+        break;
+      }
+    }
+    if (!prev && !next) return null;
+    if (prev && next && (next.t - prev.t) <= 650) {
+      const alpha = Math.max(0, Math.min(1, (playMs - prev.t) / Math.max(1, next.t - prev.t)));
+      return {
+        x: prev.x + (next.x - prev.x) * alpha,
+        y: prev.y + (next.y - prev.y) * alpha,
+        color: prev.color || '#00d2d3',
+        isDrawing: Boolean(prev.isDrawing)
+      };
+    }
+    if (prev && Math.abs(playMs - prev.t) <= 450) {
+      return prev;
+    }
+    return null;
+  }
+
+  positionReplayVirtualStylus(screenX, screenY, color = '#00d2d3', isDrawing = true) {
+    if (!this.virtualStylusEl) return;
+    if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return;
+    if (this.stylusPenSvg) this.stylusPenSvg.style.display = 'block';
+    if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = 'none';
+    if (this.stylusColorBand && color) {
+      this.stylusColorBand.setAttribute('fill', color);
+    }
+    this.virtualStylusEl.style.display = 'block';
+    this.virtualStylusEl.classList.toggle('drawing', Boolean(isDrawing));
+    const scale = isDrawing ? 0.94 : 1.0;
+    this.virtualStylusEl.style.transform = `translate3d(${Math.round(screenX * 10) / 10}px, ${Math.round(screenY * 10) / 10}px, 0) scale(${scale})`;
+  }
+
+  // 🌟 [핵심: 선이 한꺼번에 툭 튀어나오지 않고 펜 포인터를 따라 1점씩 부드럽게 그어지는 서브프레임 보간 슬라이서] 🌟
+  getPartialStrokeForReplay(stroke, playMs, viewMode = this.audioReplayViewMode) {
+    if (!stroke || !stroke.points || stroke.points.length === 0) return null;
+    if (stroke.preExisting || stroke.tStart === undefined || stroke.tStart === null) {
+      return {
+        stroke,
+        isCurrentlyWriting: false,
+        isActiveHighlight: false,
+        tipPoint: null
+      };
+    }
+
+    const tStart = stroke.tStart;
+    const tEnd = (typeof stroke.tEnd === 'number' && stroke.tEnd >= tStart) ? stroke.tEnd : (tStart + 180);
+    const pts = stroke.points;
+    const N = pts.length;
+
+    // 노트 클릭 모드('note'): 모든 완성된 필기를 항상 보여주되, 현재 재생 시각에 해당하는 필기는 하이라이트 + 펜 포인터 추적!
+    if (viewMode === 'note') {
+      const isWritingNow = (playMs >= tStart && playMs <= tEnd + 160);
+      let tipPt = null;
+      if (isWritingNow) {
+        if (N === 1) {
+          tipPt = pts[0];
+        } else {
+          const spanTotal = Math.max(1, tEnd - tStart);
+          for (let i = 0; i < N - 1; i++) {
+            const tA = (typeof pts[i].t === 'number') ? pts[i].t : (tStart + spanTotal * (i / (N - 1)));
+            const tB = (typeof pts[i + 1].t === 'number') ? pts[i + 1].t : (tStart + spanTotal * ((i + 1) / (N - 1)));
+            if (playMs >= tA && playMs <= tB) {
+              const alpha = Math.max(0, Math.min(1, (playMs - tA) / Math.max(1, tB - tA)));
+              tipPt = (pts[i].nx !== undefined)
+                ? {
+                    nx: pts[i].nx + (pts[i + 1].nx - pts[i].nx) * alpha,
+                    ny: pts[i].ny + (pts[i + 1].ny - pts[i].ny) * alpha,
+                    p: (pts[i].p || 0.5)
+                  }
+                : {
+                    x: pts[i].x + (pts[i + 1].x - pts[i].x) * alpha,
+                    y: pts[i].y + (pts[i + 1].y - pts[i].y) * alpha,
+                    p: (pts[i].p || 0.5)
+                  };
+              break;
+            }
+          }
+          if (!tipPt) tipPt = pts[N - 1];
+        }
+      }
+      return {
+        stroke,
+        isCurrentlyWriting: isWritingNow,
+        isActiveHighlight: (playMs >= tStart - 50 && playMs <= tEnd + 450),
+        tipPoint: tipPt
+      };
+    }
+
+    // 영상 모드('video'): 아직 시작 시각(tStart)이 되지 않은 미래의 필기는 100% 감춤!
+    if (playMs < tStart) {
+      return null;
+    }
+
+    // 이미 쓰기가 끝난 과거의 필기(playMs >= tEnd)는 도형 스냅(shape) 포함 100% 온전하게 표시!
+    const shapeSnapMs = (typeof stroke.shapeSnapAt === 'number') ? stroke.shapeSnapAt : tEnd;
+    if (playMs >= tEnd && playMs >= shapeSnapMs) {
+      return {
+        stroke,
+        isCurrentlyWriting: false,
+        isActiveHighlight: false,
+        tipPoint: null
+      };
+    }
+
+    // 현재 선생님이 한 획 한 획 쓰고 있는 중인 스트로크 (tStart <= playMs < tEnd):
+    // 점 배열을 playMs 시점까지만 슬라이싱하고, 인접한 두 점 사이를 선형 보간(Sub-frame Linear Interpolation)하여
+    // 직선이든 곡선이든 숫자든 펜 끝을 따라 60~144fps로 매끄럽게 뻗어나가도록 생성!
+    if (N === 1) {
+      return {
+        stroke: { ...stroke, shape: null, isShape: false },
+        isCurrentlyWriting: true,
+        isActiveHighlight: true,
+        tipPoint: pts[0]
+      };
+    }
+
+    const spanTotal = Math.max(1, tEnd - tStart);
+    const getPtTime = (idx) => {
+      const pt = pts[idx];
+      if (pt && typeof pt.t === 'number') return pt.t;
+      return tStart + spanTotal * (idx / (N - 1));
+    };
+
+    const slicedPts = [pts[0]];
+    let interpTip = pts[0];
+
+    for (let i = 0; i < N - 1; i++) {
+      const pA = pts[i];
+      const pB = pts[i + 1];
+      const tA = getPtTime(i);
+      const tB = Math.max(tA, getPtTime(i + 1));
+
+      if (playMs >= tB) {
+        slicedPts.push(pB);
+        interpTip = pB;
+      } else if (playMs >= tA) {
+        const segSpan = Math.max(1, tB - tA);
+        const alpha = Math.max(0, Math.min(1, (playMs - tA) / segSpan));
+        if (pA.nx !== undefined) {
+          interpTip = {
+            nx: pA.nx + (pB.nx - pA.nx) * alpha,
+            ny: pA.ny + (pB.ny - pA.ny) * alpha,
+            p: (pA.p !== undefined ? pA.p : 0.5) + ((pB.p !== undefined ? pB.p : 0.5) - (pA.p !== undefined ? pA.p : 0.5)) * alpha,
+            t: playMs
+          };
+        } else {
+          interpTip = {
+            x: pA.x + (pB.x - pA.x) * alpha,
+            y: pA.y + (pB.y - pA.y) * alpha,
+            p: (pA.p !== undefined ? pA.p : 0.5) + ((pB.p !== undefined ? pB.p : 0.5) - (pA.p !== undefined ? pA.p : 0.5)) * alpha,
+            t: playMs
+          };
+        }
+        slicedPts.push(interpTip);
+        break;
+      } else {
+        break;
+      }
+    }
+
+    // Draw & Hold 도형인 경우 shapeSnapMs에 도달하기 전까지는 손으로 그리는 궤적을 보여주고, 도달 순간 도형으로 스냅!
+    const useSnappedShape = Boolean(stroke.shape && playMs >= shapeSnapMs);
+    return {
+      stroke: {
+        ...stroke,
+        points: slicedPts,
+        shape: useSnappedShape ? stroke.shape : null,
+        isShape: useSnappedShape
+      },
+      isCurrentlyWriting: true,
+      isActiveHighlight: true,
+      tipPoint: interpTip
+    };
+  }
+
+  _drawAudioReplayInkStrokes(ctx, filterTarget = null) {
+    if (!this.inkStrokes || this.inkStrokes.length === 0) return;
+    const playMs = this.audioPlayCurrentMs || 0;
+    const viewMode = this.audioReplayViewMode || 'video';
+
+    const candidates = filterTarget
+      ? this.inkStrokes.filter(s => {
+          if (!s) return false;
+          const t = s.target || 'board';
+          if (t !== filterTarget) return false;
+          if (t === 'graph' && Boolean(s.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
+          return true;
+        })
+      : this.inkStrokes.filter(Boolean);
+
+    const prepared = [];
+    for (let i = 0; i < candidates.length; i++) {
+      const rep = this.getPartialStrokeForReplay(candidates[i], playMs, viewMode);
+      if (!rep || !rep.stroke) continue;
+      prepared.push(rep);
+      if (rep.isCurrentlyWriting && rep.tipPoint) {
+        const isBoardInk = (rep.stroke.target || 'board') === 'board';
+        const tipScreen = isBoardInk
+          ? this.boardToScreen(rep.tipPoint.x, rep.tipPoint.y)
+          : this.mathToScreen(rep.tipPoint.x, rep.tipPoint.y);
+        this._activeReplayTipScreen = {
+          x: tipScreen.x,
+          y: tipScreen.y,
+          color: rep.stroke.color || '#00d2d3',
+          isHighlighter: Boolean(rep.stroke.isHighlighter)
+        };
+      }
+    }
+
+    // 1차 패스: 형광펜
+    prepared.filter(r => r.stroke.isHighlighter).forEach(r => {
+      this.renderSingleStroke(ctx, r.stroke, null, false);
+    });
+
+    // 2차 패스: 일반 펜 (노트 클릭 모드에서 현재 설명 중인 스트로크는 은은한 후광 강조 표시)
+    prepared.filter(r => !r.stroke.isHighlighter).forEach(r => {
+      if (viewMode === 'note' && r.isActiveHighlight) {
+        const glowStroke = {
+          ...r.stroke,
+          size: (r.stroke.size || 4.0) * 2.4,
+          isHighlighter: true,
+          color: '#00d2d3'
+        };
+        this.renderSingleStroke(ctx, glowStroke, '#00d2d3', false);
+      }
+      this.renderSingleStroke(ctx, r.stroke, null, false);
+    });
+
+    // 3차 패스: 다크 칠판 위 흰색 문제 카드 영역 오토 컨트라스트
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    const isLight = curTheme.isLight || this.isMonochromeMode;
+    if ((!filterTarget || filterTarget === 'board') && this.hasActiveProblemCard() && !isLight && !this.isMonochromeMode && this.problemCardRect) {
+      const r = this.problemCardRect;
+      const whiteReps = prepared.filter(item => {
+        const s = item.stroke;
+        if (!s || (s.target || 'board') !== 'board') return false;
+        const c = (s.color || '').toLowerCase();
+        return (c === '#ffffff' || c === '#fff');
+      });
+      if (whiteReps.length > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(r.x, r.y, r.w, r.h);
+        ctx.clip();
+        whiteReps.forEach(item => this.renderSingleStroke(ctx, item.stroke, '#0f172a', false));
+        ctx.restore();
+      }
+    }
+  }
+
+  playAudioSync(fromMs = null, forceMode = null) {
+    if (!this.audioSyncData || !this.audioSyncData.durationMs) return;
+    if (forceMode) {
+      this.audioReplayViewMode = forceMode;
+    }
+    const dur = this.audioSyncData.durationMs;
+    if (typeof fromMs === 'number') {
+      this.audioPlayCurrentMs = Math.max(0, Math.min(dur, fromMs));
+    } else if (this.audioPlayCurrentMs >= dur - 50) {
+      this.audioPlayCurrentMs = 0;
+    }
+
+    this._isAudioSyncPlayerVisible = true;
+    this._isAudioReplayActive = true;
+    this.isAudioPlaying = true;
+    document.body.classList.add('audio-replay-active');
+
+    if (!this.audioPlayerEl) {
+      this.audioPlayerEl = new Audio();
+    }
+    if (this.audioSyncData.audioDataUrl && this.audioPlayerEl.src !== this.audioSyncData.audioDataUrl) {
+      this.audioPlayerEl.src = this.audioSyncData.audioDataUrl;
+    }
+    this.audioPlayerEl.playbackRate = this.audioPlaybackRate || 1.0;
+    try {
+      this.audioPlayerEl.currentTime = (this.audioPlayCurrentMs || 0) / 1000;
+      const playPromise = this.audioPlayerEl.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {});
+      }
+    } catch (e) { }
+
+    this._audioPlayWallStartMs = performance.now();
+    this._audioPlayBaseOffsetMs = this.audioPlayCurrentMs || 0;
+
+    if (this._audioReplayRafId) {
+      cancelAnimationFrame(this._audioReplayRafId);
+      this._audioReplayRafId = null;
+    }
+
+    const stepReplay = () => {
+      if (!this.isAudioPlaying || !this.audioSyncData) return;
+      const wallElapsed = (performance.now() - this._audioPlayWallStartMs) * (this.audioPlaybackRate || 1.0);
+      let nextMs = this._audioPlayBaseOffsetMs + wallElapsed;
+      if (
+        this.audioPlayerEl &&
+        !this.audioPlayerEl.paused &&
+        Number.isFinite(this.audioPlayerEl.currentTime) &&
+        this.audioPlayerEl.currentTime > 0
+      ) {
+        const audioMs = this.audioPlayerEl.currentTime * 1000;
+        if (Math.abs(audioMs - nextMs) < 350) {
+          nextMs = audioMs;
+        }
+      }
+
+      const maxDur = this.audioSyncData.durationMs || 1000;
+      if (nextMs >= maxDur) {
+        this.audioPlayCurrentMs = maxDur;
+        this._renderAudioReplayAtCurrentTime();
+        this.pauseAudioPlayback(true);
+        return;
+      }
+
+      this.audioPlayCurrentMs = nextMs;
+      this._renderAudioReplayAtCurrentTime();
+      this.syncAudioRecordUI();
+      this._audioReplayRafId = requestAnimationFrame(stepReplay);
+    };
+
+    this._renderAudioReplayAtCurrentTime();
+    this.syncAudioRecordUI();
+    this._audioReplayRafId = requestAnimationFrame(stepReplay);
+  }
+
+  _renderAudioReplayAtCurrentTime() {
+    const playMs = this.audioPlayCurrentMs || 0;
+    this._activeReplayTipScreen = null;
+    this._applyAudioTimelineStateAt(playMs);
+    this.renderProblemCardCanvas();
+    this.renderGraphCardCanvas();
+    this.render();
+
+    if (this._activeReplayTipScreen) {
+      this.positionReplayVirtualStylus(
+        this._activeReplayTipScreen.x,
+        this._activeReplayTipScreen.y,
+        this._activeReplayTipScreen.color,
+        true
+      );
+    } else {
+      const hoverCursor = this._getInterpolatedCursorAt(playMs);
+      if (hoverCursor) {
+        this.positionReplayVirtualStylus(hoverCursor.x, hoverCursor.y, hoverCursor.color, hoverCursor.isDrawing);
+      } else if (this.virtualStylusEl && this.isAudioPlaying) {
+        this.virtualStylusEl.style.display = 'none';
+      }
+    }
+  }
+
+  pauseAudioPlayback(isEnded = false) {
+    this.isAudioPlaying = false;
+    if (this._audioReplayRafId) {
+      cancelAnimationFrame(this._audioReplayRafId);
+      this._audioReplayRafId = null;
+    }
+    if (this.audioPlayerEl) {
+      try { this.audioPlayerEl.pause(); } catch (e) { }
+    }
+    if (isEnded && this.audioSyncData && this.audioSyncData.finalState) {
+      this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
+      this.renderProblemCardCanvas();
+      this.renderGraphCardCanvas();
+      this.render();
+    }
+    this.syncAudioRecordUI();
+  }
+
+  stopAudioPlayback(restoreFinal = true) {
+    this.pauseAudioPlayback(false);
+    this._isAudioReplayActive = false;
+    document.body.classList.remove('audio-replay-active');
+    if (restoreFinal && this.audioSyncData && this.audioSyncData.finalState) {
+      this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
+    }
+    this._inkBakeDirty = true;
+    this.renderProblemCardCanvas();
+    this.renderGraphCardCanvas();
+    this.render();
+    this.syncAudioRecordUI();
+  }
+
+  seekAudioSync(targetMs, autoPlay = false) {
+    if (!this.audioSyncData) return;
+    const dur = this.audioSyncData.durationMs || 1000;
+    this.audioPlayCurrentMs = Math.max(0, Math.min(dur, Number(targetMs) || 0));
+    this._audioPlayWallStartMs = performance.now();
+    this._audioPlayBaseOffsetMs = this.audioPlayCurrentMs;
+    if (this.audioPlayerEl) {
+      try {
+        this.audioPlayerEl.currentTime = this.audioPlayCurrentMs / 1000;
+      } catch (e) { }
+    }
+    this._isAudioReplayActive = true;
+    document.body.classList.add('audio-replay-active');
+    this._renderAudioReplayAtCurrentTime();
+    this.syncAudioRecordUI();
+    if (autoPlay && !this.isAudioPlaying) {
+      this.playAudioSync(this.audioPlayCurrentMs);
+    }
+  }
+
+  seekAndPlayAudioAt(targetMs, clickedStroke = null) {
+    if (!this.audioSyncData) return;
+    this.playAudioSync(targetMs);
+  }
+
+  hitTestCardAudioStroke(strokes, nx, ny, w, h, radiusPx = 22) {
+    if (!Array.isArray(strokes) || strokes.length === 0) return null;
+    const tx = nx * w;
+    const ty = ny * h;
+    let bestStroke = null;
+    let bestDist = radiusPx;
+
+    for (let i = strokes.length - 1; i >= 0; i--) {
+      const st = strokes[i];
+      if (!st || typeof st.tStart !== 'number' || !st.points || st.points.length === 0) continue;
+      for (let j = 0; j < st.points.length; j++) {
+        const px = st.points[j].nx * w;
+        const py = st.points[j].ny * h;
+        const d0 = Math.hypot(px - tx, py - ty);
+        if (d0 < bestDist) {
+          bestDist = d0;
+          bestStroke = st;
+        }
+        if (j < st.points.length - 1) {
+          const nx2 = st.points[j + 1].nx * w;
+          const ny2 = st.points[j + 1].ny * h;
+          const segD = this.distToSegment({ x: tx, y: ty }, { x: px, y: py }, { x: nx2, y: ny2 });
+          if (segD < bestDist) {
+            bestDist = segD;
+            bestStroke = st;
+          }
+        }
+      }
+    }
+    return bestStroke;
+  }
+
+  hitTestAudioStrokeAtScreenPos(screenX, screenY, radiusPx = 24) {
+    // 1. 문제 카드 내부 필기 검사
+    const pCanvas = document.getElementById('problemCardCanvas');
+    const pWidget = document.getElementById('problemCardWidget');
+    if (pCanvas && pWidget && pWidget.style.display !== 'none' && !pWidget.classList.contains('minimized') && this.problemInkStrokes && this.problemInkStrokes.length > 0) {
+      const r = pCanvas.getBoundingClientRect();
+      if (screenX >= r.left && screenX <= r.right && screenY >= r.top && screenY <= r.bottom && r.width > 0 && r.height > 0) {
+        const hitP = this.hitTestCardAudioStroke(
+          this.problemInkStrokes,
+          (screenX - r.left) / r.width,
+          (screenY - r.top) / r.height,
+          r.width,
+          r.height,
+          radiusPx
+        );
+        if (hitP) return hitP;
+      }
+    }
+
+    // 2. 그래프 보관 카드(#1) 내부 필기 검사
+    const gCanvas = document.getElementById('graphCardCanvas');
+    const gWidget = document.getElementById('graphCardWidget');
+    if (gCanvas && gWidget && gWidget.style.display !== 'none' && !gWidget.classList.contains('minimized') && this.graphInkStrokes && this.graphInkStrokes.length > 0) {
+      const r = gCanvas.getBoundingClientRect();
+      if (screenX >= r.left && screenX <= r.right && screenY >= r.top && screenY <= r.bottom && r.width > 0 && r.height > 0) {
+        const hitG = this.hitTestCardAudioStroke(
+          this.graphInkStrokes,
+          (screenX - r.left) / r.width,
+          (screenY - r.top) / r.height,
+          r.width,
+          r.height,
+          radiusPx
+        );
+        if (hitG) return hitG;
+      }
+    }
+
+    // 3. 메인 칠판 및 그래프 필기(this.inkStrokes) 검사
+    if (!this.inkStrokes || this.inkStrokes.length === 0) return null;
+    let bestStroke = null;
+    let bestDist = radiusPx;
+
+    for (let i = this.inkStrokes.length - 1; i >= 0; i--) {
+      const st = this.inkStrokes[i];
+      if (!st || typeof st.tStart !== 'number') continue;
+      const isBoard = (st.target || 'board') === 'board';
+
+      if (st.shape) {
+        const shapePts = this.getShapeSampleScreenPoints(st);
+        for (let k = 0; k < shapePts.length; k++) {
+          const d = Math.hypot(shapePts[k].x - screenX, shapePts[k].y - screenY);
+          if (d < bestDist) {
+            bestDist = d;
+            bestStroke = st;
+          }
+        }
+      }
+
+      if (st.points && st.points.length > 0) {
+        for (let j = 0; j < st.points.length; j++) {
+          const s1 = isBoard ? this.boardToScreen(st.points[j].x, st.points[j].y) : this.mathToScreen(st.points[j].x, st.points[j].y);
+          const d0 = Math.hypot(s1.x - screenX, s1.y - screenY);
+          if (d0 < bestDist) {
+            bestDist = d0;
+            bestStroke = st;
+          }
+          if (j < st.points.length - 1) {
+            const s2 = isBoard ? this.boardToScreen(st.points[j + 1].x, st.points[j + 1].y) : this.mathToScreen(st.points[j + 1].x, st.points[j + 1].y);
+            const segD = this.distToSegment({ x: screenX, y: screenY }, s1, s2);
+            if (segD < bestDist) {
+              bestDist = segD;
+              bestStroke = st;
+            }
+          }
+        }
+      }
+    }
+    return bestStroke;
+  }
+
+  enterAudioLectureFromViewer(slideIdx = 0, mode = 'video', startMs = 0) {
+    if (!this._viewerPkg || !this._viewerPkg.playlistSlides || !this._viewerPkg.playlistSlides[slideIdx]) return;
+    const slide = this._viewerPkg.playlistSlides[slideIdx];
+    const overlay = document.getElementById('smartNoteViewerOverlay');
+    if (overlay) overlay.style.display = 'none';
+
+    this._enteredAudioFromViewerSlideIdx = slideIdx;
+    this.deserializeFullSlideState(slide);
+    this._isAudioSyncPlayerVisible = true;
+    this.setAudioReplayViewMode(mode, true);
+
+    if (mode === 'video') {
+      this.playAudioSync(typeof startMs === 'number' ? startMs : 0, 'video');
+    } else if (typeof startMs === 'number') {
+      this.playAudioSync(startMs, 'note');
+    } else {
+      this.syncAudioRecordUI();
+    }
   }
 
   showToast(message) {
