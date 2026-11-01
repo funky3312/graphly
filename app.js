@@ -3966,18 +3966,23 @@ class GraphApp {
 
     const bbox = this.lassoBoundingBox;
     const pad = 10;
-    const cx = Math.max(125, Math.min((this.screenWidth || 1280) - 125, (bbox.minX + bbox.maxX) / 2));
+    bar.style.display = 'flex';
+    const screenW = this.screenWidth || window.innerWidth || 1280;
+    const barW = Math.max(264, bar.offsetWidth || 276);
+    const minLeft = 64;
+    const maxLeft = Math.max(minLeft, screenW - barW - 64);
+    const idealLeft = ((bbox.minX + bbox.maxX) / 2) - (barW / 2);
+    const clampedLeft = Math.max(minLeft, Math.min(maxLeft, idealLeft));
     const topEdge = bbox.minY - pad;
     const bottomEdge = bbox.maxY + pad;
 
-    bar.style.display = 'flex';
-    bar.style.left = `${Math.round(cx)}px`;
+    bar.style.left = `${Math.round(clampedLeft)}px`;
     if (topEdge >= 64) {
       bar.style.top = `${Math.round(topEdge - 10)}px`;
-      bar.style.transform = 'translate(-50%, -100%)';
+      bar.style.transform = 'translate(0, -100%)';
     } else {
       bar.style.top = `${Math.round(bottomEdge + 10)}px`;
-      bar.style.transform = 'translate(-50%, 0)';
+      bar.style.transform = 'translate(0, 0)';
     }
   }
 
