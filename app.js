@@ -2899,46 +2899,6 @@ class GraphApp {
    * - 이 조건에 부합하는 단일 터치는 손바닥으로 버리지 않고 즉시 'pen'으로 승격하여 필기 씹힘을 0%로 박멸합니다.
    */
   isPinpointStylusTouch(e) {
-    if (!e || e.pointerType !== 'touch') return false;
-    if (e._isPromotedStylusPen) return true;
-    if (this._promotedStylusPointerIds && e.pointerId !== undefined && this._promotedStylusPointerIds.has(e.pointerId)) {
-      return true;
-    }
-    // 이미 다른 포인터로 필기 획을 그리는 도중에 새로 들어오는 터치는 100% 손날/손가락임
-    if (this.isDrawingInk && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined && e.pointerId !== this._activeDrawingPointerId) {
-      return false;
-    }
-    const w = typeof e.width === 'number' ? e.width : 0;
-    const h = typeof e.height === 'number' ? e.height : 0;
-    if (w >= 48 || h >= 48) return false;
-
-    const nowT = Date.now();
-    // 1) 직전 펜필기 위치(_lastPenTipPos) 근접 구출:
-    // 손날을 대고 짭플펜슬로 글씨를 쓸 때 약 20획당 1번꼴로 iPadOS가 펜촉을 pointerType: 'touch'로 오분류함!
-    // 직전 펜 위치로부터 155px 이내(필기 진행 영역)이고 손날 방향(우하단 먼 곳)이 아니면 즉시 펜촉으로 승격!
-    if (this._lastPenTipPos && (nowT - this._lastPenTipPos.time <= 4500)) {
-      const dx = e.clientX - this._lastPenTipPos.x;
-      const dy = e.clientY - this._lastPenTipPos.y;
-      const dist = Math.hypot(dx, dy);
-      const isDownRightPalmZone = (dy > 65 && dx > 25 && dist > 75);
-      if (dist <= 155 && !isDownRightPalmZone) {
-        return true;
-      }
-    }
-
-    // 2) 손날이 먼저 화면 아래쪽에 닿아 있는 상태(_lastPalmTouchPos)에서 그 위쪽(dy < -45px)에 찍히는 터치는 펜촉으로 승격!
-    if (this._lastPalmTouchPos && (nowT - this._lastPalmTouchPos.time <= 4000)) {
-      const dyFromPalm = e.clientY - this._lastPalmTouchPos.y;
-      const distFromPalm = Math.hypot(e.clientX - this._lastPalmTouchPos.x, dyFromPalm);
-      if (dyFromPalm < -45 && distFromPalm >= 65 && distFromPalm <= 420) {
-        return true;
-      }
-    }
-
-    // 3) 초미세 펜촉 면적(1.0~11.5px)이거나 하드웨어 stylus 터치가 활성화된 경우
-    if (this._isStylusTouchActive) return true;
-    if (w > 0.5 && h > 0.5 && w <= 11.5 && h <= 11.5) return true;
-
     return false;
   }
 
@@ -24975,41 +24935,10 @@ class GraphApp {
       return false;
     };
 
-    // 🌟 [WebKit TouchEvent(touchType === 'stylus') ➔ PointerEvent 직통 합성 브리지 생성기]
-    const createSynthesizedStylusEvent = (touchItem, rawTouchEvt, evtType) => {
-      const tid = (touchItem && typeof touchItem.identifier === 'number') ? (10000 + (Math.abs(touchItem.identifier) % 1000)) : 10001;
-      const forceVal = (touchItem && typeof touchItem.force === 'number' && touchItem.force > 0) ? touchItem.force : 0.5;
-      return {
-        type: evtType,
-        pointerId: tid,
-        pointerType: 'pen',
-        _isSynthesizedStylusPen: true,
-        clientX: touchItem ? touchItem.clientX : 0,
-        clientY: touchItem ? touchItem.clientY : 0,
-        pressure: evtType === 'pointerup' ? 0 : forceVal,
-        buttons: evtType === 'pointerup' ? 0 : 1,
-        button: 0,
-        width: (touchItem && touchItem.radiusX) ? touchItem.radiusX * 2 : 4,
-        height: (touchItem && touchItem.radiusY) ? touchItem.radiusY * 2 : 4,
-        target: (rawTouchEvt && rawTouchEvt.target) ? rawTouchEvt.target : this.canvas,
-        shiftKey: Boolean(rawTouchEvt && rawTouchEvt.shiftKey),
-        ctrlKey: Boolean(rawTouchEvt && rawTouchEvt.ctrlKey),
-        metaKey: Boolean(rawTouchEvt && rawTouchEvt.metaKey),
-        altKey: Boolean(rawTouchEvt && rawTouchEvt.altKey),
-        cancelable: false,
-        preventDefault: () => {
-          if (rawTouchEvt && rawTouchEvt.cancelable !== false && rawTouchEvt.preventDefault) {
-            rawTouchEvt.preventDefault();
-          }
-        },
-        stopPropagation: () => {}
-      };
-    };
-
-    // 🔬 [아이패드 + 실크펜슬v4 손날 동시 접촉 씹힘 100% 해결 & 실시간 검증 카운터 바 (?v=20261103_18)]
+    // 🔬 [순수 e.preventDefault() 단일 해결책 검증 카운터 바 (?v=20261103_19)]
     let diagPenCount = 0;
     let diagTouchCount = 0;
-    let diagCancelOrRescueCount = 0;
+    let diagCancelCount = 0;
     let diagHudEl = document.getElementById('simplePenTouchCounterHud');
     if (!diagHudEl && typeof document !== 'undefined' && document.body) {
       diagHudEl = document.createElement('div');
@@ -25018,7 +24947,7 @@ class GraphApp {
       diagHudEl.innerHTML = `
         <span id="cntBoxPen" style="padding:3px 8px; border-radius:6px; background:#065f46; color:#a7f3d0; pointer-events:none;">✏️ 펜(pen): 0</span>
         <span id="cntBoxTouch" style="padding:3px 8px; border-radius:6px; background:#78350f; color:#fde68a; pointer-events:none;">👆 손날(touch): 0</span>
-        <span id="cntBoxCancel" style="padding:3px 8px; border-radius:6px; background:#7f1d1d; color:#fecaca; pointer-events:none;">🚨 펜구출: 0</span>
+        <span id="cntBoxCancel" style="padding:3px 8px; border-radius:6px; background:#7f1d1d; color:#fecaca; pointer-events:none;">🚨 펜취소: 0</span>
         <button id="btnResetDiagCnt" type="button" style="padding:3px 8px; border-radius:6px; background:#334155; color:#f8fafc; border:1px solid #64748b; font-size:12px; font-weight:700; cursor:pointer;">0리셋</button>
       `;
       document.body.appendChild(diagHudEl);
@@ -25028,13 +24957,13 @@ class GraphApp {
           ev.stopPropagation();
           diagPenCount = 0;
           diagTouchCount = 0;
-          diagCancelOrRescueCount = 0;
+          diagCancelCount = 0;
           const b1 = document.getElementById('cntBoxPen');
           const b2 = document.getElementById('cntBoxTouch');
           const b3 = document.getElementById('cntBoxCancel');
           if (b1) b1.textContent = '✏️ 펜(pen): 0';
           if (b2) b2.textContent = '👆 손날(touch): 0';
-          if (b3) b3.textContent = '🚨 펜구출: 0';
+          if (b3) b3.textContent = '🚨 펜취소: 0';
         });
       }
     }
@@ -25053,62 +24982,27 @@ class GraphApp {
     };
 
     if (window.PointerEvent) {
-      if (!this._promotedStylusPointerIds) this._promotedStylusPointerIds = new Set();
-
-      // 🛡️ [포인터별(pointerId) UI 출처 및 터치 궤적 정밀 추적기]:
-      const getTargetShortName = (el) => {
-        if (!el) return 'null';
-        if (el === this.canvas) return 'canvas';
-        if (el.id) return '#' + el.id;
-        if (el.className && typeof el.className === 'string') return '.' + el.className.trim().split(/\s+/)[0];
-        return el.tagName || 'unknown';
-      };
-
       window.addEventListener('pointerdown', (e) => {
         if (this.isPdfModalOpen) return;
+        // 🌟 [유일한 핵심 해결책 (?v=20261103_19)]:
+        // 캔버스에 손날(touch)이든 펜(pen)이든 닿는 즉시 e.preventDefault()를 실행해 Safari 기본 제스처 개입을 차단!
         if (e.target === this.canvas && e.cancelable !== false) {
           e.preventDefault();
         }
-        const nowT = Date.now();
         if (e.pointerType === 'touch') {
-          const distFromPen = this._lastPenTipPos
-            ? Math.round(Math.hypot(e.clientX - this._lastPenTipPos.x, e.clientY - this._lastPenTipPos.y))
-            : 999;
-          const w = Math.round(e.width || 0);
-          const h = Math.round(e.height || 0);
-
-          // 🌟 [핵심 해결 (?v=20261103_17)]:
-          // 손날을 대고 짭플펜슬로 필기할 때 약 20획당 1번꼴로 iPadOS가 펜촉을 pointerType === 'touch'로 내려보냄!
-          // isPinpointStylusTouch(e)가 직전 펜 위치 근접성 및 손날 상단 위치를 판별하여 즉시 펜(pen)으로 승격 구출합니다!
-          if (e.target === this.canvas && isWritingToolActive() && this.isPinpointStylusTouch(e)) {
-            if (e.pointerId !== undefined) {
-              this._promotedStylusPointerIds.add(e.pointerId);
-            }
-            e._isPromotedStylusPen = true;
-            this._markStylusPenDetected();
-            this._lastPenActiveTime = nowT;
-            this._lastPenDownTime = nowT;
-            this._lastPenTipPos = { x: e.clientX, y: e.clientY, time: nowT };
-            diagCancelOrRescueCount++;
-            flashCounterBox('cntBoxCancel', `🚨 펜구출: ${diagCancelOrRescueCount} (터치→펜! 거리${distFromPen}px ${w}x${h})`, '#dc2626');
-          } else {
-            if (e.target === this.canvas) {
-              this._lastPalmTouchPos = { x: e.clientX, y: e.clientY, time: nowT };
-              diagTouchCount++;
-              flashCounterBox('cntBoxTouch', `👆 손날(touch): ${diagTouchCount} (거리${distFromPen}px ${w}x${h})`, '#d97706');
-            }
-            return;
+          if (e.target === this.canvas) {
+            diagTouchCount++;
+            flashCounterBox('cntBoxTouch', `👆 손날(touch): ${diagTouchCount}`, '#d97706');
           }
+          return;
         }
         if (e.pointerType === 'pen') {
           this._markStylusPenDetected();
-          this._lastPenTipPos = { x: e.clientX, y: e.clientY, time: nowT };
           if (e.target === this.canvas) {
             diagPenCount++;
             flashCounterBox('cntBoxPen', `✏️ 펜(pen): ${diagPenCount} (시작)`, '#10b981');
           }
         }
-        const isEffectivePenDown = (e.pointerType === 'pen' || Boolean(e._isPromotedStylusPen));
         if (!this._uiPointerIds) this._uiPointerIds = new Set();
         const isNotCanvas = (e.target !== this.canvas);
         const isUI = isClickableUI(e.target);
@@ -25124,17 +25018,18 @@ class GraphApp {
           if (e.target !== this.canvas) {
             if (e.cancelable !== false) e.preventDefault();
             e.stopPropagation();
+            const nowT = Date.now();
             lastPointerDownTime = nowT;
             this.isPointerDownOnCanvas = true;
             this._pointerDownStart = { time: nowT, x: e.clientX, y: e.clientY };
             this._activeDrawingPointerId = e.pointerId;
-            this._activeDrawingPointerType = isEffectivePenDown ? 'pen' : (e.pointerType || 'mouse');
+            this._activeDrawingPointerType = e.pointerType || 'mouse';
             handleDown(e);
             return;
           }
         }
 
-        const shouldBlockAsUI = isEffectivePenDown
+        const shouldBlockAsUI = (e.pointerType === 'pen')
           ? (isUI || isModal || isOnCardOrStickerSurface)
           : (isNotCanvas || isUI || isModal);
         if (shouldBlockAsUI && !(this.isSpacePressed || e.button === 1)) {
@@ -25148,11 +25043,7 @@ class GraphApp {
         if (e.cancelable !== false) {
           e.preventDefault();
         }
-        const isPromotedPen = Boolean(
-          e._isPromotedStylusPen ||
-          (this._promotedStylusPointerIds && e.pointerId !== undefined && this._promotedStylusPointerIds.has(e.pointerId))
-        );
-        if (e.pointerType === 'touch' && !isPromotedPen) return;
+        if (e.pointerType === 'touch') return;
         if (isClickableUI(e.target) || isAnyModalOrOverlayBlockingCanvas()) {
           return;
         }
@@ -25161,25 +25052,17 @@ class GraphApp {
         }
         const nowT = Date.now();
         lastPointerDownTime = nowT;
-        const isEffectivePen = (e.pointerType === 'pen' || isPromotedPen);
 
-        if (isEffectivePen || e.pointerType === 'mouse' || !e.pointerType) {
+        if (e.pointerType === 'pen' || e.pointerType === 'mouse' || !e.pointerType) {
           if (e.cancelable !== false) {
             e.preventDefault();
           }
-          if (isEffectivePen) {
+          if (e.pointerType === 'pen') {
             this._markStylusPenDetected();
             this._lastPenActiveTime = nowT;
             this._lastPenDownTime = nowT;
-            this._lastPenTipPos = { x: e.clientX, y: e.clientY, time: nowT };
             this._touchCameraSnapshot = null;
             this._deferredSingleTouchPanEvent = null;
-            // 이미 touchstart(stylus)가 1ms 먼저 획을 시작한 경우 중복 획 생성 없이 pointerId만 인계!
-            if (this.isDrawingInk && this._activeDrawingPointerId >= 10000) {
-              this._activeDrawingPointerId = e.pointerId;
-              this._activeDrawingPointerType = 'pen';
-              return;
-            }
           }
           if (this.activePointers) {
             this.activePointers.clear();
@@ -25195,7 +25078,7 @@ class GraphApp {
           this.isPointerDownOnCanvas = true;
           this._pointerDownStart = { time: nowT, x: e.clientX, y: e.clientY };
           this._activeDrawingPointerId = e.pointerId;
-          this._activeDrawingPointerType = isEffectivePen ? 'pen' : (e.pointerType || 'mouse');
+          this._activeDrawingPointerType = e.pointerType || 'mouse';
           handleDown(e);
           return;
         }
@@ -25206,29 +25089,16 @@ class GraphApp {
         if (e.target === this.canvas && e.cancelable !== false) {
           e.preventDefault();
         }
-        const isPromotedPen = Boolean(
-          e._isPromotedStylusPen ||
-          (this._promotedStylusPointerIds && e.pointerId !== undefined && this._promotedStylusPointerIds.has(e.pointerId))
-        );
-        if (e.pointerType === 'touch' && !isPromotedPen) {
-          if (e.target === this.canvas) {
-            this._lastPalmTouchPos = { x: e.clientX, y: e.clientY, time: Date.now() };
-          }
-          return;
-        }
-        if (isPromotedPen) {
-          e._isPromotedStylusPen = true;
-        }
+        if (e.pointerType === 'touch') return;
         this._isPointerInsideWindow = true;
         this._lastPointerEvent = e;
-        const isEffectivePen = (e.pointerType === 'pen' || isPromotedPen);
 
         if (this.isDraggingPillRemote || isAnyModalOrOverlayBlockingCanvas()) {
           if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
           return;
         }
         if (!this.isPanning && !this.isBoardPanning && this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId) && !this.isDrawingSticker && !this._tappingBoardSticker) {
-          if (isEffectivePen && e.target === this.canvas && !isClickableUI(e.target)) {
+          if (e.pointerType === 'pen' && e.target === this.canvas && !isClickableUI(e.target)) {
             this._uiPointerIds.delete(e.pointerId);
           } else {
             if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
@@ -25266,41 +25136,11 @@ class GraphApp {
         const nowT = Date.now();
         lastPointerMoveTime = nowT;
 
-        if (isEffectivePen) {
+        if (e.pointerType === 'pen') {
           this._markStylusPenDetected();
           this._lastPenActiveTime = nowT;
-          this._lastPenTipPos = { x: e.clientX, y: e.clientY, time: nowT };
           this._touchPanDeadzoneLocked = false;
           this._deferredSingleTouchPanEvent = null;
-          const isPenPressing = this.isStylusPenContactingScreen(e);
-          if (
-            isPenPressing &&
-            !this.isSpacePressed &&
-            !this.isShiftPressed &&
-            !this.isDrawingInk &&
-            !this.isStylusDrawing &&
-            !this.isLassoSelecting &&
-            !this.isDrawingSticker &&
-            !this._tappingBoardSticker &&
-            !this.isDraggingLassoSelection &&
-            !this.isResizingLassoSelection &&
-            isWritingToolActive() &&
-            e.target === this.canvas
-          ) {
-            this._touchCameraSnapshot = null;
-            if (this.activePointers) this.activePointers.clear();
-            this._pinchState = null;
-            this._pinchWasActiveInGesture = false;
-            this.isPanning = false;
-            this.isBoardPanning = false;
-            this.isPointerDownOnCanvas = true;
-            this._pointerDownStart = { time: nowT, x: e.clientX, y: e.clientY };
-            this._activeDrawingPointerId = e.pointerId;
-            this._activeDrawingPointerType = 'pen';
-            diagCancelOrRescueCount++;
-            flashCounterBox('cntBoxCancel', `🚨 펜구출: ${diagCancelOrRescueCount} (move구출)`, '#dc2626');
-            handleDown(e);
-          }
         }
 
         if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || this.isDrawingSticker) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
@@ -25314,39 +25154,17 @@ class GraphApp {
 
       const finishPointer = (e) => {
         if (this.isPdfModalOpen) return;
-        const isPromotedPen = Boolean(
-          e._isPromotedStylusPen ||
-          (this._promotedStylusPointerIds && e.pointerId !== undefined && this._promotedStylusPointerIds.has(e.pointerId))
-        );
-        if (this._promotedStylusPointerIds && e.pointerId !== undefined) {
-          this._promotedStylusPointerIds.delete(e.pointerId);
-        }
-        if (e.pointerType === 'touch' && !isPromotedPen) return;
-        if (isPromotedPen) {
-          e._isPromotedStylusPen = true;
-        }
+        if (e.pointerType === 'touch') return;
         if (this._uiPointerIds && e.pointerId !== undefined) {
           this._uiPointerIds.delete(e.pointerId);
         }
         const nowT = Date.now();
-        const isEffectivePen = (e.pointerType === 'pen' || isPromotedPen);
-        if (isEffectivePen) {
+        if (e.pointerType === 'pen') {
           this._lastPenActiveTime = nowT;
-          this._lastPenTipPos = { x: e.clientX, y: e.clientY, time: nowT };
           const ptsCount = (this.currentInkStroke && this.currentInkStroke.points) ? this.currentInkStroke.points.length : 0;
           if (e.type === 'pointercancel') {
-            diagCancelOrRescueCount++;
-            // 🌟 [핵심 방어]: Safari가 손날 간섭 때문에 필기 도중(예: 점12) 가짜 pointercancel을 때렸더라도,
-            // 실제 실크펜슬(stylusTouch)이 아직 액정에 닿아 있다면 절대 획을 끊지 않고 TouchEvent(stylus)로 바통을 넘겨 끝까지 이어 그립니다!
-            if (this.isDrawingInk && this._isStylusTouchActive) {
-              this._activeDrawingPointerId = this._activeStylusTouchSynthId || 10001;
-              this._activeDrawingPointerType = 'pen';
-              flashCounterBox('cntBoxCancel', `🚨 펜구출: ${diagCancelOrRescueCount} (취소방어:점${ptsCount}유지)`, '#dc2626');
-              return;
-            }
-            flashCounterBox('cntBoxCancel', `🚨 펜구출: ${diagCancelOrRescueCount} (pen취소:점${ptsCount})`, '#dc2626');
-          } else if (isPromotedPen) {
-            flashCounterBox('cntBoxCancel', `🚨 펜구출: ${diagCancelOrRescueCount} (터치→펜완료:점${ptsCount})`, '#10b981');
+            diagCancelCount++;
+            flashCounterBox('cntBoxCancel', `🚨 펜취소: ${diagCancelCount} (점${ptsCount})`, '#dc2626');
           } else {
             flashCounterBox('cntBoxPen', `✏️ 펜(pen): ${diagPenCount} (점${ptsCount}개)`, '#059669');
           }
@@ -25407,84 +25225,23 @@ class GraphApp {
       }
     });
 
-    // 🛡️ [Safari WebKit 멀티터치 버그 우회 & 하드웨어 Stylus Touch 직통 브리지 (?v=20261103_18)]:
-    // 손날(direct touch)이 닿는 순간 Safari의 PointerEvent 계층이 실크펜슬(stylus)의 pointerdown을 삼키거나 pointercancel을 때릴 때,
-    // 하드웨어 레벨의 TouchEvent(touchType === 'stylus')에서 직접 획을 시작/유지하여 굿노트와 동일한 0% 씹힘을 보장합니다!
+    // 🌟 [단 하나의 진짜 해결책 (?v=20261103_19)]:
+    // 모든 부가 구출 코드를 다 걷어내고, 캔버스 touchstart/touchmove/touchend에서 무조건 e.preventDefault()만 실행!
     this.canvas.addEventListener('touchstart', (e) => {
       if (e.target === this.canvas && e.cancelable !== false) {
         e.preventDefault();
       }
-      const touchList = e.touches ? Array.from(e.touches) : [];
-      const stylusTouch = touchList.find(t => t.touchType === 'stylus');
-      if (stylusTouch) {
-        const nowT = Date.now();
-        this._isStylusTouchActive = true;
-        this._markStylusPenDetected();
-        this._lastPenActiveTime = nowT;
-        this._lastPenDownTime = nowT;
-        this._lastPenTipPos = { x: stylusTouch.clientX, y: stylusTouch.clientY, time: nowT };
-        const synthDown = createSynthesizedStylusEvent(stylusTouch, e, 'pointerdown');
-        this._activeStylusTouchSynthId = synthDown.pointerId;
-        if (e.target === this.canvas && !this.isDrawingInk && isWritingToolActive()) {
-          this.isPointerDownOnCanvas = true;
-          this._pointerDownStart = { time: nowT, x: synthDown.clientX, y: synthDown.clientY };
-          this._activeDrawingPointerId = synthDown.pointerId;
-          this._activeDrawingPointerType = 'pen';
-          diagCancelOrRescueCount++;
-          flashCounterBox('cntBoxCancel', `🚨 펜구출: ${diagCancelOrRescueCount} (stylus직통구출!)`, '#dc2626');
-          handleDown(synthDown);
-        }
-      }
     }, { passive: false });
 
-    const onCanvasTouchEndOrCancel = (e) => {
-      if (e.target === this.canvas && e.cancelable !== false && e.type === 'touchend') {
+    this.canvas.addEventListener('touchend', (e) => {
+      if (e.target === this.canvas && e.cancelable !== false) {
         e.preventDefault();
       }
-      const touchList = e.touches ? Array.from(e.touches) : [];
-      const stillHasStylus = touchList.some(t => t.touchType === 'stylus');
-      if (!stillHasStylus && this._isStylusTouchActive) {
-        this._isStylusTouchActive = false;
-        const changedList = e.changedTouches ? Array.from(e.changedTouches) : [];
-        const endedStylus = changedList.find(t => t.touchType === 'stylus') || changedList[0];
-        if (this.isDrawingInk && this._activeDrawingPointerId >= 10000 && finishPointerRef) {
-          const synthUp = createSynthesizedStylusEvent(endedStylus, e, 'pointerup');
-          synthUp.pointerId = this._activeDrawingPointerId;
-          finishPointerRef(synthUp);
-        }
-        this._activeStylusTouchSynthId = null;
-      }
-    };
-    this.canvas.addEventListener('touchend', onCanvasTouchEndOrCancel, { passive: false });
-    this.canvas.addEventListener('touchcancel', onCanvasTouchEndOrCancel, { passive: true });
-
+    }, { passive: false });
+    this.canvas.addEventListener('touchcancel', () => {}, { passive: true });
     this.canvas.addEventListener('touchmove', (e) => {
       if (e.cancelable !== false) {
         e.preventDefault();
-      }
-      const touchList = e.touches ? Array.from(e.touches) : [];
-      const stylusTouch = touchList.find(t => t.touchType === 'stylus');
-      if (stylusTouch) {
-        const nowT = Date.now();
-        this._isStylusTouchActive = true;
-        this._markStylusPenDetected();
-        this._lastPenActiveTime = nowT;
-        this._lastPenTipPos = { x: stylusTouch.clientX, y: stylusTouch.clientY, time: nowT };
-        const synthMove = createSynthesizedStylusEvent(stylusTouch, e, 'pointermove');
-        this._activeStylusTouchSynthId = synthMove.pointerId;
-        if (!this.isDrawingInk && isWritingToolActive()) {
-          this.isPointerDownOnCanvas = true;
-          this._pointerDownStart = { time: nowT, x: synthMove.clientX, y: synthMove.clientY };
-          this._activeDrawingPointerId = synthMove.pointerId;
-          this._activeDrawingPointerType = 'pen';
-          diagCancelOrRescueCount++;
-          flashCounterBox('cntBoxCancel', `🚨 펜구출: ${diagCancelOrRescueCount} (t-move직통구출!)`, '#dc2626');
-          handleDown(synthMove);
-          handleMove(synthMove);
-        } else if (this.isDrawingInk && this._activeDrawingPointerId >= 10000) {
-          synthMove.pointerId = this._activeDrawingPointerId;
-          handleMove(synthMove);
-        }
       }
     }, { passive: false });
 
