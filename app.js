@@ -17001,6 +17001,59 @@ class GraphApp {
     if (btnOpenProSettings) {
       btnOpenProSettings.onclick = () => this.openProPricingModal();
     }
+    const btnOpenGuideSettings = document.getElementById('btnOpenGuideNoticeFromSettings');
+    const btnBugReportSettings = document.getElementById('btnBugReportFromSettings');
+    const modalGuide = document.getElementById('modalGuideNotice');
+    const btnCloseGuide = document.getElementById('btnCloseGuideNoticeModal');
+    const btnCopySupportEmail = document.getElementById('btnCopySupportEmail');
+    const tabBtnHowTo = document.getElementById('tabBtnGuideHowTo');
+    const tabBtnShortcuts = document.getElementById('tabBtnGuideShortcuts');
+    const tabBtnNotices = document.getElementById('tabBtnGuideNotices');
+    const panelHowTo = document.getElementById('guidePanelHowTo');
+    const panelShortcuts = document.getElementById('guidePanelShortcuts');
+    const panelNotices = document.getElementById('guidePanelNotices');
+
+    const switchGuideTab = (tabKey) => {
+      if (tabBtnHowTo) tabBtnHowTo.classList.toggle('active', tabKey === 'howto');
+      if (tabBtnShortcuts) tabBtnShortcuts.classList.toggle('active', tabKey === 'shortcuts');
+      if (tabBtnNotices) tabBtnNotices.classList.toggle('active', tabKey === 'notices');
+      if (panelHowTo) panelHowTo.style.display = (tabKey === 'howto') ? 'block' : 'none';
+      if (panelShortcuts) panelShortcuts.style.display = (tabKey === 'shortcuts') ? 'block' : 'none';
+      if (panelNotices) panelNotices.style.display = (tabKey === 'notices') ? 'block' : 'none';
+    };
+    this.openGuideNoticeModal = (defaultTab = 'howto') => {
+      if (!modalGuide) return;
+      switchGuideTab(defaultTab);
+      modalGuide.classList.add('show');
+    };
+    if (btnOpenGuideSettings) {
+      btnOpenGuideSettings.onclick = () => this.openGuideNoticeModal('howto');
+    }
+    if (tabBtnHowTo) tabBtnHowTo.onclick = () => switchGuideTab('howto');
+    if (tabBtnShortcuts) tabBtnShortcuts.onclick = () => switchGuideTab('shortcuts');
+    if (tabBtnNotices) tabBtnNotices.onclick = () => switchGuideTab('notices');
+    if (btnCloseGuide && modalGuide) {
+      btnCloseGuide.onclick = () => modalGuide.classList.remove('show');
+      modalGuide.onclick = (ev) => {
+        if (ev.target === modalGuide) modalGuide.classList.remove('show');
+      };
+    }
+    const copySupportEmailWithToast = () => {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText('help@cubiolab.com').catch(() => {});
+        }
+      } catch (err) { }
+      this.showToast('📋 help@cubiolab.com 이메일 주소가 복사되었습니다!');
+    };
+    if (btnCopySupportEmail) {
+      btnCopySupportEmail.onclick = () => copySupportEmailWithToast();
+    }
+    if (btnBugReportSettings) {
+      btnBugReportSettings.addEventListener('click', () => {
+        copySupportEmailWithToast();
+      });
+    }
     if (btnClosePro && modalPro) {
       btnClosePro.onclick = () => modalPro.classList.remove('show');
       modalPro.onclick = (ev) => {
