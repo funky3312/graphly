@@ -3563,9 +3563,7 @@ body.theme-light .ink-size-btn.active .ink-size-circle {
   overscroll-behavior-y: none !important;
 }
 
-.pdf-viewport.crop-mode,
-.pdf-viewport.crop-mode .pdf-page-wrapper,
-.pdf-viewport.crop-mode .pdf-page-canvas {
+.pdf-viewport.crop-mode {
   cursor: crosshair !important;
   user-select: none !important;
   -webkit-user-select: none !important;
