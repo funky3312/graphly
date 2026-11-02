@@ -3302,20 +3302,33 @@ body.theme-light .ink-size-btn.active .ink-size-circle {
   transform: translateY(-1px);
 }
 
-/* PDF 풀스크린 모달 백드롭 */
+/* PDF 풀스크린 모달 백드롭 (블러 제거 & 100% 불투명 단색 배경으로 뒷창 GPU 합성 부하 0% 차단) */
 .pdf-modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(8, 12, 20, 0.88);
-  backdrop-filter: blur(12px);
+  background: #090d16;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: fadeInModal 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   overscroll-behavior: none !important;
   overscroll-behavior-x: none !important;
   overscroll-behavior-y: none !important;
+}
+
+/* PDF 뷰어가 열려 있는 동안 뒷창 4K 칠판·필기 캔버스·위젯·툴바의 GPU 페인팅/합성을 100% 일시정지 */
+body.pdf-modal-open .main-workspace,
+body.pdf-modal-open #quickPillRemote,
+body.pdf-modal-open #inkFloatingToolbar,
+body.pdf-modal-open #rightActionToolbar,
+body.pdf-modal-open #lessonPlaylistNavBar,
+body.pdf-modal-open #graphSnapFloatingBar,
+body.pdf-modal-open #curveContextBar,
+body.pdf-modal-open #lassoActionFloatingBar {
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 /* PDF 모달 컨테이너 - 광활한 전체화면급 뷰포트 */
@@ -3325,8 +3338,8 @@ body.theme-light .ink-size-btn.active .ink-size-circle {
   max-width: none;
   background: #0f172a;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 14px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75), 0 0 40px rgba(0, 210, 211, 0.10);
+  border-radius: 10px;
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   overflow: hidden;

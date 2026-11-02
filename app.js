@@ -514,6 +514,7 @@ class GraphApp {
 
     // 🌟 [크롬 전체화면 상단 (X) 출현 원천 차단 1단계: 버튼/카드 클릭 시 DOM Focus 탈취 및 Focus Loss 원천 봉쇄]
     window.addEventListener('mousedown', (e) => {
+      if (e.target && e.target.closest && e.target.closest('#pdfViewport')) return;
       if (isEditableInput(e.target)) return;
       e.preventDefault();
       if (document.activeElement && document.activeElement !== document.body && !isTextInputEl(document.activeElement)) {
@@ -5988,7 +5989,11 @@ class GraphApp {
       this.savedPdfScrollLeft = 0;
     }
     if (!(options && options.skipIdbSave)) {
-      this._saveLastPdfToIndexedDB(clonedBytes, fileName);
+      if (this._deferredIdbSaveTimer) clearTimeout(this._deferredIdbSaveTimer);
+      this._deferredIdbSaveTimer = setTimeout(() => {
+        this._deferredIdbSaveTimer = null;
+        this._saveLastPdfToIndexedDB(clonedBytes, fileName);
+      }, 1500);
     }
 
     this.showToast('⏳ PDF 문서를 불러오는 중입니다...');
@@ -6070,13 +6075,30 @@ class GraphApp {
         this.isAudioRecordPaused = true;
         this.audioRecordPauseStartMs = performance.now();
         if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'recording') {
-          try { this.audioMediaRecorder.pause(); } catch (e) {}
+          try { this.audioMediaRecorder.pause(); } catch (e) { }
         }
         this.syncAudioRecordUI();
       }
       modal.style.display = 'flex';
+      document.body.classList.add('pdf-modal-open');
       this.isPdfModalOpen = true;
       this._lastPdfModalOpenAt = performance.now();
+
+      // 🛑 [백그라운드 메인 칠판/그래프 루프 100% 일시정지 (Freeze)]:
+      // PDF 뷰어가 열려 있는 동안에는 뒤쪽 칠판의 requestAnimationFrame 루프를 즉시 정지시켜 CPU/GPU 자원을 100% 뷰어에 집중!
+      if (this.pulseAnimId) {
+        cancelAnimationFrame(this.pulseAnimId);
+        this.pulseAnimId = null;
+      }
+      if (this.intersectionAnimId) {
+        cancelAnimationFrame(this.intersectionAnimId);
+        this.intersectionAnimId = null;
+      }
+      if (this._mainLaserRafId) {
+        cancelAnimationFrame(this._mainLaserRafId);
+        this._mainLaserRafId = null;
+      }
+
       this.togglePdfCropMode(Boolean(autoCropMode));
       if (this.pdfDoc && !isInitialLoad) {
         const container = document.getElementById('pdfPagesContainer');
@@ -6093,28 +6115,13 @@ class GraphApp {
             viewport.scrollTop = targetTop;
             viewport.scrollLeft = targetLeft;
           });
-          this._processPdfRenderQueue();
+          this.renderVisiblePdfWindow(this.pdfCurrentPage || 1, false);
         }
       }
     }
   }
 
   closePdfModal() {
-    if (this._pdfQueueTimer) {
-      clearTimeout(this._pdfQueueTimer);
-      this._pdfQueueTimer = null;
-    }
-    if (this._pdfScrollIdleTimer) {
-      clearTimeout(this._pdfScrollIdleTimer);
-      this._pdfScrollIdleTimer = null;
-    }
-    if (this._pdfFastPreviewTimer) {
-      clearTimeout(this._pdfFastPreviewTimer);
-      this._pdfFastPreviewTimer = null;
-    }
-    this._isPdfActivelyScrolling = false;
-    this._cancelCurrentPdfRenderJob(false);
-
     const viewport = document.getElementById('pdfViewport');
     if (viewport && this.isPdfModalOpen) {
       this.savedPdfScrollTop = viewport.scrollTop;
@@ -6125,8 +6132,17 @@ class GraphApp {
     if (modal) {
       modal.style.display = 'none';
       this.isPdfModalOpen = false;
+      document.body.classList.remove('pdf-modal-open');
       this.togglePdfCropMode(false);
     }
+    // PDF 뷰어 닫힘 즉시 메인 칠판 루프 및 화면 복원
+    if (this.useIntersectionDetector) {
+      this.startIntersectionLoop();
+    }
+    if (this.selectedHandleIdx !== null) {
+      this.startPulseLoop();
+    }
+    this.requestRender();
     // 만약 PDF 창을 열었다가 자동 일시정지된 상태(_autoPausedByPdfModal)에서 돌아온 경우 즉시 녹화 재개!
     if (this.isAudioRecording && this._autoPausedByPdfModal) {
       this._autoPausedByPdfModal = false;
@@ -6136,7 +6152,7 @@ class GraphApp {
         this.isAudioRecordPaused = false;
         this.audioRecordPauseStartMs = 0;
         if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'paused') {
-          try { this.audioMediaRecorder.resume(); } catch (e) {}
+          try { this.audioMediaRecorder.resume(); } catch (e) { }
         }
       }
       if (this.getAudioRecordElapsedMs() < 600) {
@@ -6612,64 +6628,53 @@ class GraphApp {
   // 3) 스크롤 최우선 양보:
   //    - 스크롤이 발생하는 즉시 백그라운드 페이지 렌더 작업을 취소(_cancelCurrentPdfRenderJob)하여 메인 스레드를 100% 스크롤에 양보하고,
   //    - 마우스 휠 스무스 스크롤 애니메이션(약 180ms)이 완전히 멈춘 뒤(220ms)에만 조용히 다음 페이지를 준비합니다!
-  _cancelCurrentPdfRenderJob(onlyIfBackground = false, currentCenterPage = 1) {
-    const job = this._currentPdfRenderJob;
-    if (!job) return;
-    if (onlyIfBackground && job.tier === 1 && Math.abs(job.pageNum - currentCenterPage) <= 1) {
-      return;
+  // ==========================================================================
+  // [📑 순정 표준 PDF 뷰어 엔진: 단일 IntersectionObserver + 기본 <canvas> 단판 렌더링]
+  // ==========================================================================
+  _setupPdfPageObserver() {
+    if (this._pdfPageObserver) {
+      this._pdfPageObserver.disconnect();
+      this._pdfPageObserver = null;
     }
-    job.cancelled = true;
-    if (job.task && typeof job.task.cancel === 'function') {
-      try { job.task.cancel(); } catch (e) { }
-    }
-    if (job.canvas) {
-      job.canvas._pdfRenderTask = null;
-    }
-    this._currentPdfRenderJob = null;
-  }
+    const viewport = document.getElementById('pdfViewport');
+    if (!viewport || typeof IntersectionObserver === 'undefined') return;
 
-  _processPdfRenderQueue() {
-    if (this._pdfQueueTimer) {
-      clearTimeout(this._pdfQueueTimer);
-      this._pdfQueueTimer = null;
-    }
-    if (!this.pdfDoc || !this.isPdfModalOpen) return;
-    if (this.isPdfCropping) return;
-    if (this._currentPdfRenderJob) return;
-    if (!this._pdfRenderQueue || this._pdfRenderQueue.length === 0) return;
+    this._pdfPageObserver = new IntersectionObserver((entries) => {
+      if (!this.pdfDoc || !this.isPdfModalOpen) return;
+      for (const entry of entries) {
+        const wrapper = entry.target;
+        const pageNum = parseInt(wrapper.dataset.page, 10);
+        if (!pageNum) continue;
+        const canvas = document.getElementById(`pdfPageCanvas_${pageNum}`);
+        if (!canvas) continue;
 
-    const targetZoom = this.pdfZoom || 1.75;
-    while (this._pdfRenderQueue.length > 0) {
-      const item = this._pdfRenderQueue[0];
-      const pageNum = typeof item === 'object' ? item.pageNum : item;
-      const tier = (typeof item === 'object' && item.tier) ? item.tier : 2;
-
-      // 스크롤 도중에는 무거운 2단계(Retina) 렌더링을 보류하고 스크롤이 멈춘 뒤에만 수행!
-      if (this._isPdfActivelyScrolling && tier >= 2) {
-        return;
+        if (entry.isIntersecting) {
+          this.renderPdfPageToCanvas(pageNum, canvas, wrapper);
+        } else {
+          // 화면 밖으로 벗어난 페이지: 진행 중인 렌더링 즉시 취소 (renderTask.cancel)
+          if (canvas._pdfRenderTask && typeof canvas._pdfRenderTask.cancel === 'function') {
+            try { canvas._pdfRenderTask.cancel(); } catch (e) { }
+            canvas._pdfRenderTask = null;
+            canvas._isRenderingPdfPage = false;
+          }
+          // 멀리 벗어난 페이지(> 6장)는 캔버스를 비워 메모리 관리
+          if (Math.abs(pageNum - (this.pdfCurrentPage || 1)) > 6 && this.pdfPageRenderStates[pageNum]) {
+            canvas.width = 1;
+            canvas.height = 1;
+            canvas._renderedZoom = null;
+            delete this.pdfPageRenderStates[pageNum];
+          }
+        }
       }
+    }, {
+      root: viewport,
+      rootMargin: '100% 0px 100% 0px',
+      threshold: 0.01
+    });
 
-      this._pdfRenderQueue.shift();
-      const canvas = document.getElementById(`pdfPageCanvas_${pageNum}`);
-      const wrapper = document.getElementById(`pdfPageWrapper_${pageNum}`);
-      if (!canvas || !wrapper) continue;
-      if (
-        canvas._renderedZoom === targetZoom &&
-        this.pdfPageRenderStates[pageNum] &&
-        (canvas._renderedTier || 0) >= tier
-      ) {
-        continue;
-      }
-
-      this.renderPdfPageToCanvas(pageNum, canvas, wrapper, () => {
-        if (!this.isPdfModalOpen) return;
-        this._pdfQueueTimer = setTimeout(() => {
-          this._pdfQueueTimer = null;
-          this._processPdfRenderQueue();
-        }, 12);
-      }, tier);
-      return;
-    }
+    document.querySelectorAll('.pdf-page-wrapper').forEach((w) => {
+      this._pdfPageObserver.observe(w);
+    });
   }
 
   renderAllPdfPages(resetContainer = false) {
@@ -6683,8 +6688,10 @@ class GraphApp {
     this._cachedPdfPageCssH = defH;
 
     if (resetContainer || container.children.length !== this.pdfTotalPages) {
-      this._cancelCurrentPdfRenderJob(false);
-      this._pdfRenderQueue = [];
+      if (this._pdfPageObserver) {
+        this._pdfPageObserver.disconnect();
+        this._pdfPageObserver = null;
+      }
       container.innerHTML = '';
       this.pdfPageRenderStates = {};
 
@@ -6714,108 +6721,56 @@ class GraphApp {
         frag.appendChild(wrapper);
       }
       container.appendChild(frag);
+      this._setupPdfPageObserver();
       this.renderVisiblePdfWindow(currentPageToKeep, true);
       this.updatePdfPageNavUI(currentPageToKeep, true);
     } else {
+      this._setupPdfPageObserver();
       this.renderVisiblePdfWindow(currentPageToKeep, true);
       this.updatePdfPageNavUI(currentPageToKeep, true);
     }
   }
 
-  renderVisiblePdfWindow(centerPage = 1, forceReRender = false, previewOnly = false) {
+  renderVisiblePdfWindow(centerPage = 1, forceReRender = false) {
     if (!this.pdfDoc) return;
     const total = this.pdfTotalPages || 1;
     centerPage = Math.max(1, Math.min(total, centerPage || 1));
 
-    if (forceReRender) {
-      this._cancelCurrentPdfRenderJob(false);
-    }
-
-    // 🌟 [2단계 이중 해상도 렌더링 (Two-Pass Resolution) + 14페이지 LRU 캐시]:
-    // 1) Pass-1 (0.9x 초경량 즉시 프리뷰): 아직 안 그려진 화면 주변 페이지(±2장)를 0.015초 만에 먼저 찍어 빈 화면 0% 보장
-    // 2) Pass-2 (1.5~2.0x Retina 칼화질 교체): 스크롤이 멈춘 뒤 현재 눈앞의 페이지(±1장)만 오프스크린 더블 버퍼로 조용히 고화질 교체
-    // 3) 14페이지 캐시 유지(Math.abs > 14): 한 번 본 페이지는 위아래로 다시 올릴 때 재렌더링(0ms) 없이 즉시 표시!
-    const maxRadius = 2;
-    const queue = [];
-
-    // 1단계: 미렌더링 페이지 초고속 프리뷰(tier 1) 우선 배치
-    for (let d = 0; d <= maxRadius; d++) {
-      const candidates = d === 0 ? [centerPage] : [centerPage + d, centerPage - d];
-      for (const p of candidates) {
-        if (p < 1 || p > total) continue;
-        const canvas = document.getElementById(`pdfPageCanvas_${p}`);
-        if (!canvas) continue;
-        if (!forceReRender && canvas._renderedZoom === this.pdfZoom && this.pdfPageRenderStates[p] && (canvas._renderedTier || 0) >= 1) {
-          continue;
-        }
-        queue.push({ pageNum: p, tier: 1 });
+    const candidates = [centerPage, centerPage + 1, centerPage - 1];
+    for (const p of candidates) {
+      if (p < 1 || p > total) continue;
+      const canvas = document.getElementById(`pdfPageCanvas_${p}`);
+      const wrapper = document.getElementById(`pdfPageWrapper_${p}`);
+      if (!canvas || !wrapper) continue;
+      if (forceReRender) {
+        canvas._renderedZoom = null;
       }
+      this.renderPdfPageToCanvas(p, canvas, wrapper);
     }
-
-    // 2단계: 스크롤 정지 상태일 때 현재 보이는 페이지(±1장) Retina 고화질(tier 2) 업그레이드
-    if (!previewOnly) {
-      for (let d = 0; d <= 1; d++) {
-        const candidates = d === 0 ? [centerPage] : [centerPage + d, centerPage - d];
-        for (const p of candidates) {
-          if (p < 1 || p > total) continue;
-          const canvas = document.getElementById(`pdfPageCanvas_${p}`);
-          if (!canvas) continue;
-          if (!forceReRender && canvas._renderedZoom === this.pdfZoom && this.pdfPageRenderStates[p] && (canvas._renderedTier || 0) >= 2) {
-            continue;
-          }
-          queue.push({ pageNum: p, tier: 2 });
-        }
-      }
-    }
-
-    this._pdfRenderQueue = queue;
-
-    // 최근 본 14페이지(앞뒤 14장)는 메모리에 그대로 유지하여 위아래 왕복 스크롤 시 재렌더링 0% 보장!
-    for (let p = 1; p <= total; p++) {
-      if (Math.abs(p - centerPage) > 14 && this.pdfPageRenderStates[p]) {
-        const canvas = document.getElementById(`pdfPageCanvas_${p}`);
-        if (canvas && canvas.width > 10) {
-          canvas.width = 1;
-          canvas.height = 1;
-          canvas._renderedZoom = null;
-          canvas._renderedTier = 0;
-          delete this.pdfPageRenderStates[p];
-        }
-      }
-    }
-
-    this._processPdfRenderQueue();
   }
 
-  renderPdfPageToCanvas(pageNum, canvas, wrapper, onComplete = null, tier = 2) {
+  renderPdfPageToCanvas(pageNum, canvas, wrapper, onComplete = null) {
     if (!this.pdfDoc || !canvas) {
       if (onComplete) onComplete();
       return;
     }
     const targetZoom = this.pdfZoom || 1.75;
-    if (
-      canvas._renderedZoom === targetZoom &&
-      this.pdfPageRenderStates[pageNum] &&
-      (canvas._renderedTier || 0) >= tier
-    ) {
+    if (canvas._renderedZoom === targetZoom && (this.pdfPageRenderStates[pageNum] || canvas._isRenderingPdfPage)) {
       if (onComplete) onComplete();
       return;
     }
 
-    this._cancelCurrentPdfRenderJob(false);
-    const job = {
-      pageNum,
-      canvas,
-      targetZoom,
-      tier,
-      cancelled: false,
-      task: null
-    };
-    this._currentPdfRenderJob = job;
+    if (canvas._pdfRenderTask && typeof canvas._pdfRenderTask.cancel === 'function') {
+      try { canvas._pdfRenderTask.cancel(); } catch (e) { }
+      canvas._pdfRenderTask = null;
+    }
+    canvas._isRenderingPdfPage = true;
+    const renderToken = (canvas._renderToken || 0) + 1;
+    canvas._renderToken = renderToken;
 
     this.pdfDoc.getPage(pageNum).then(page => {
-      if (job.cancelled || this._currentPdfRenderJob !== job || !this.pdfDoc) {
-        if (this._currentPdfRenderJob === job) this._currentPdfRenderJob = null;
+      if (!this.pdfDoc || canvas._renderToken !== renderToken) {
+        canvas._isRenderingPdfPage = false;
         return;
       }
 
@@ -6824,65 +6779,51 @@ class GraphApp {
       const cssH = Math.round(baseVp.height * targetZoom);
       this._cachedPdfPageCssH = cssH;
 
-      // 🌟 [2단계 이중 해상도 (Two-Pass Resolution)]:
-      // - Tier 1 (즉시 프리뷰): dpr = 0.95 경량 배율로 0.015초 만에 즉시 그려 스크롤 렉과 빈 화면을 원천 제거!
-      // - Tier 2 (정지 후 고화질): dpr = 1.5 ~ 2.0 표준 Retina 배율로 또렷한 수식·명조체 가독성 100% 완성!
-      const hiDpr = Math.min(2.0, Math.max(1.5, window.devicePixelRatio || 1.5));
-      const dpr = tier === 1 ? 0.95 : hiDpr;
+      // 표준 Retina 해상도 (Math.min(window.devicePixelRatio, 2)) 단 한 번에 깔끔하게 렌더링!
+      const dpr = Math.min(2.0, Math.max(1.5, window.devicePixelRatio || 1.5));
       const renderScale = targetZoom * dpr;
       const viewport = page.getViewport({ scale: renderScale });
 
-      const targetW = Math.round(viewport.width);
-      const targetH = Math.round(viewport.height);
-
-      // 오프스크린 캔버스에 먼저 렌더링한 뒤 완성본만 화면 캔버스에 단 1회 Blit하여 렌더링 중 화면 떨림 원천 제거!
-      if (!this._pdfOffscreenRenderCanvas) {
-        this._pdfOffscreenRenderCanvas = document.createElement('canvas');
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+      if (wrapper) {
+        wrapper.style.width = `${cssW}px`;
+        wrapper.style.height = `${cssH}px`;
+        wrapper._basePdfW = baseVp.width;
+        wrapper._basePdfH = baseVp.height;
       }
-      const offCanvas = this._pdfOffscreenRenderCanvas;
-      offCanvas.width = targetW;
-      offCanvas.height = targetH;
-      const offCtx = offCanvas.getContext('2d', { alpha: false }) || offCanvas.getContext('2d');
-      offCtx.fillStyle = '#ffffff';
-      offCtx.fillRect(0, 0, targetW, targetH);
 
-      const renderTask = page.render({ canvasContext: offCtx, viewport });
-      job.task = renderTask;
+      canvas.width = Math.round(viewport.width);
+      canvas.height = Math.round(viewport.height);
+      const ctx = canvas.getContext('2d', { alpha: false }) || canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const renderTask = page.render({ canvasContext: ctx, viewport });
       canvas._pdfRenderTask = renderTask;
 
       renderTask.promise.then(() => {
-        canvas._pdfRenderTask = null;
-        if (this._currentPdfRenderJob === job) this._currentPdfRenderJob = null;
-        if (job.cancelled) return;
-
-        if (canvas.style.width !== `${cssW}px`) canvas.style.width = `${cssW}px`;
-        if (canvas.style.height !== `${cssH}px`) canvas.style.height = `${cssH}px`;
-        if (wrapper) {
-          if (Math.abs((parseFloat(wrapper.style.width) || 0) - cssW) > 1) wrapper.style.width = `${cssW}px`;
-          if (Math.abs((parseFloat(wrapper.style.height) || 0) - cssH) > 1) wrapper.style.height = `${cssH}px`;
-          wrapper._basePdfW = baseVp.width;
-          wrapper._basePdfH = baseVp.height;
+        if (canvas._renderToken === renderToken) {
+          canvas._pdfRenderTask = null;
+          canvas._isRenderingPdfPage = false;
+          canvas._renderedZoom = targetZoom;
+          canvas._renderedScale = renderScale;
+          this.pdfPageRenderStates[pageNum] = true;
         }
-
-        if (canvas.width !== targetW) canvas.width = targetW;
-        if (canvas.height !== targetH) canvas.height = targetH;
-        const ctx = canvas.getContext('2d', { alpha: false }) || canvas.getContext('2d');
-        ctx.drawImage(offCanvas, 0, 0);
-
-        canvas._renderedZoom = targetZoom;
-        canvas._renderedScale = renderScale;
-        canvas._renderedTier = tier;
-        this.pdfPageRenderStates[pageNum] = true;
         if (onComplete) onComplete();
       }).catch(err => {
-        canvas._pdfRenderTask = null;
-        if (this._currentPdfRenderJob === job) this._currentPdfRenderJob = null;
+        if (canvas._renderToken === renderToken) {
+          canvas._pdfRenderTask = null;
+          canvas._isRenderingPdfPage = false;
+        }
         if (err && err.name !== 'RenderingCancelledException') {
           console.error(`p.${pageNum} 렌더링 에러:`, err);
         }
       });
     }).catch(() => {
-      if (this._currentPdfRenderJob === job) this._currentPdfRenderJob = null;
+      if (canvas._renderToken === renderToken) {
+        canvas._isRenderingPdfPage = false;
+      }
     });
   }
 
@@ -6915,30 +6856,6 @@ class GraphApp {
     if (currentVisiblePage !== this.pdfCurrentPage) {
       this.updatePdfPageNavUI(currentVisiblePage, true);
     }
-
-    // 스크롤이 발생하는 즉시 무거운 2단계(Retina) 및 화면 밖 렌더링을 즉시 취소(renderTask.cancel)하여 100% 스크롤 프레임 보장!
-    this._isPdfActivelyScrolling = true;
-    if (this._pdfQueueTimer) {
-      clearTimeout(this._pdfQueueTimer);
-      this._pdfQueueTimer = null;
-    }
-    this._cancelCurrentPdfRenderJob(true, currentVisiblePage);
-
-    // 1단계: 스크롤 도중 새로 진입한 페이지가 빈 화면이면 55ms 만에 초경량 프리뷰(Tier 1)로 즉시 표시!
-    if (this._pdfFastPreviewTimer) clearTimeout(this._pdfFastPreviewTimer);
-    this._pdfFastPreviewTimer = setTimeout(() => {
-      this._pdfFastPreviewTimer = null;
-      if (!this.isPdfModalOpen) return;
-      this.renderVisiblePdfWindow(this.pdfCurrentPage || 1, false, true);
-    }, 55);
-
-    if (this._pdfScrollIdleTimer) clearTimeout(this._pdfScrollIdleTimer);
-    // 2단계: 스크롤이 완전히 멈춘 뒤 150ms 후에 현재 페이지를 Retina 칼화질(Tier 2)로 조용히 덮어씌움!
-    this._pdfScrollIdleTimer = setTimeout(() => {
-      this._pdfScrollIdleTimer = null;
-      this._isPdfActivelyScrolling = false;
-      this.renderVisiblePdfWindow(this.pdfCurrentPage || 1, false, false);
-    }, 150);
   }
 
   updatePdfPageNavUI(pageNum, fromScroll = false) {
@@ -7462,8 +7379,8 @@ class GraphApp {
           const targetCardWidth = Math.round(Math.max(480, Math.min(window.innerWidth * 0.65, w * 1.15)));
           this.setProblemCard(dataUrl, pageNum, cropCanvas, targetCardWidth);
 
-          // 만약 아직 렌더링되지 않았거나 1단계 저해상도 프리뷰(Tier 1) 상태인 페이지를 급히 캡처했을 때만 백그라운드 고화질 보강 수행
-          if (!isAlreadyRendered || (canvas._renderedTier || 0) < 2) {
+          // 만약 아직 렌더링되지 않은 빈 페이지를 급히 캡처했을 때만 백그라운드 벡터 렌더링 수행
+          if (!isAlreadyRendered) {
             this._upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop);
           }
 
@@ -12169,11 +12086,11 @@ class GraphApp {
       if (!this.inkStrokes || this.inkStrokes.length === 0) return;
       const strokesToDraw = filterTarget
         ? this.inkStrokes.filter(s => {
-            const t = s.target || 'board';
-            if (t !== filterTarget) return false;
-            if (t === 'graph' && Boolean(s.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
-            return true;
-          })
+          const t = s.target || 'board';
+          if (t !== filterTarget) return false;
+          if (t === 'graph' && Boolean(s.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
+          return true;
+        })
         : this.inkStrokes;
       strokesToDraw.filter(s => s && s.isHighlighter).forEach(stroke => this.renderSingleStroke(ctx, stroke, null, false));
       strokesToDraw.filter(s => s && !s.isHighlighter).forEach(stroke => this.renderSingleStroke(ctx, stroke, null, false));
@@ -13112,7 +13029,7 @@ class GraphApp {
         this.allowOneFingerPanInInk = Boolean(e.target.checked);
         try {
           localStorage.setItem('graphly_one_finger_pan_v1', this.allowOneFingerPanInInk ? 'true' : 'false');
-        } catch (_) {}
+        } catch (_) { }
         this.showToast(
           this.allowOneFingerPanInInk
             ? '✋ 필기 중 한 손가락 화면 이동이 켜졌습니다.'
@@ -15368,13 +15285,13 @@ class GraphApp {
 
       // 유니코드/한글 수학 기호 정규화
       s = s.replace(/[−–—]/g, '-')
-           .replace(/[×·]/g, '*')
-           .replace(/÷/g, '/')
-           .replace(/²/g, '^2')
-           .replace(/³/g, '^3')
-           .replace(/⁴/g, '^4')
-           .replace(/루트|√/g, 'sqrt')
-           .replace(/파이|π/g, 'pi');
+        .replace(/[×·]/g, '*')
+        .replace(/÷/g, '/')
+        .replace(/²/g, '^2')
+        .replace(/³/g, '^3')
+        .replace(/⁴/g, '^4')
+        .replace(/루트|√/g, 'sqrt')
+        .replace(/파이|π/g, 'pi');
 
       // 중첩 절댓값 |...| -> abs(...) 반복 변환
       let guard = 0;
@@ -19381,7 +19298,7 @@ class GraphApp {
       if (!img || !img.src) return Promise.resolve();
       if (img.complete && img.naturalWidth > 0) return Promise.resolve();
       if (typeof img.decode === 'function') {
-        return img.decode().catch(() => {});
+        return img.decode().catch(() => { });
       }
       return new Promise(res => {
         img.onload = () => res();
@@ -19438,8 +19355,8 @@ class GraphApp {
     const rawSlides = (effScope === 'all')
       ? this._getActiveSlidesForExport('공유된 수업 노트')
       : (this._isCapturingExportSnapshots && this._exportSnapshotLoopBackupCurrent
-          ? [JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent))]
-          : [this.serializeFullSlideState('공유된 수업 노트')]);
+        ? [JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent))]
+        : [this.serializeFullSlideState('공유된 수업 노트')]);
     const filteredSlides = rawSlides.map(s => this._applyExportFilterToSlideData(s, effFilter));
 
     const isOuterLoop = !this._isCapturingExportSnapshots;
@@ -19513,17 +19430,17 @@ class GraphApp {
         if (doc.createdAt && nowMs > exp) {
           if (doc._isChunked && doc._chunkCount && doc._chunkDocPrefix) {
             for (let c = 0; c < doc._chunkCount; c++) {
-              this._firestoreRestDeleteDoc('shared_workspaces', `${doc._chunkDocPrefix}${c}`).catch(() => {});
+              this._firestoreRestDeleteDoc('shared_workspaces', `${doc._chunkDocPrefix}${c}`).catch(() => { });
             }
           }
-          this._firestoreRestDeleteDoc('shared_workspaces', doc.id).catch(() => {});
+          this._firestoreRestDeleteDoc('shared_workspaces', doc.id).catch(() => { });
         }
       }
     } catch (e) { }
   }
 
   async createCloudSharePackage(scope = null, filterOpts = null) {
-    this._purgeExpiredSharedWorkspaces().catch(() => {});
+    this._purgeExpiredSharedWorkspaces().catch(() => { });
     const pkg = await this.buildExportSharePackageObject(scope || this.exportScope || 'current', filterOpts || this.exportFilter);
     const shortId = pkg.id;
 
@@ -19557,7 +19474,7 @@ class GraphApp {
       const exp = pkg.expiresAt || ((pkg.createdAt || 0) + TWO_WEEKS_MS);
       if (pkg.createdAt && Date.now() > exp) {
         try { localStorage.removeItem('graphly_cloud_share_' + shortId); } catch (e) { }
-        this._firestoreRestDeleteDoc('shared_workspaces', shortId).catch(() => {});
+        this._firestoreRestDeleteDoc('shared_workspaces', shortId).catch(() => { });
         this.showToast('⏰ 유효기간(7일)이 만료된 공유 링크입니다.');
         return;
       }
@@ -21159,9 +21076,9 @@ class GraphApp {
         const badgePad = isTouch ? 6 : 2;
         const hitRegionChip = this.pwRegionBadges
           ? this.pwRegionBadges.find(r =>
-              pos.x >= r.chipX - badgePad && pos.x <= r.chipX + r.chipW + badgePad &&
-              pos.y >= r.chipY - badgePad && pos.y <= r.chipY + r.chipH + badgePad
-            )
+            pos.x >= r.chipX - badgePad && pos.x <= r.chipX + r.chipW + badgePad &&
+            pos.y >= r.chipY - badgePad && pos.y <= r.chipY + r.chipH + badgePad
+          )
           : null;
         if (hitRegionChip) {
           this.openRegionFuncMenu(hitRegionChip.regionIdx, hitRegionChip.chipX, hitRegionChip.chipY + hitRegionChip.chipH + 4);
@@ -21242,20 +21159,20 @@ class GraphApp {
         if (this.pwPeriodBracketBadge) {
           const p = this.pwPeriodBracketBadge;
           if (pos.x >= p.pillX - badgePad && pos.x <= p.pillX + p.pillW + badgePad &&
-              pos.y >= p.pillY - badgePad && pos.y <= p.pillY + p.pillH + badgePad) {
+            pos.y >= p.pillY - badgePad && pos.y <= p.pillY + p.pillH + badgePad) {
             if (this.isPiecewisePeriodic) {
               if (p.minusRect && pos.x >= p.minusRect.x - 4 && pos.x <= p.minusRect.x + p.minusRect.w + 4 &&
-                  pos.y >= p.minusRect.y - 4 && pos.y <= p.minusRect.y + p.minusRect.h + 4) {
+                pos.y >= p.minusRect.y - 4 && pos.y <= p.minusRect.y + p.minusRect.h + 4) {
                 this.setPeriodicStep((this.periodicStepY || 0) - 1);
                 return;
               }
               if (p.plusRect && pos.x >= p.plusRect.x - 4 && pos.x <= p.plusRect.x + p.plusRect.w + 4 &&
-                  pos.y >= p.plusRect.y - 4 && pos.y <= p.plusRect.y + p.plusRect.h + 4) {
+                pos.y >= p.plusRect.y - 4 && pos.y <= p.plusRect.y + p.plusRect.h + 4) {
                 this.setPeriodicStep((this.periodicStepY || 0) + 1);
                 return;
               }
               if (p.valRect && pos.x >= p.valRect.x - 4 && pos.x <= p.valRect.x + p.valRect.w + 4 &&
-                  pos.y >= p.valRect.y - 4 && pos.y <= p.valRect.y + p.valRect.h + 4) {
+                pos.y >= p.valRect.y - 4 && pos.y <= p.valRect.y + p.valRect.h + 4) {
                 this.setPeriodicStep(0);
                 return;
               }
@@ -23671,6 +23588,7 @@ class GraphApp {
       };
 
       window.addEventListener('pointerdown', (e) => {
+        if (this.isPdfModalOpen) return;
         if (e.pointerType === 'pen') {
           this._markStylusPenDetected();
         }
@@ -23870,6 +23788,7 @@ class GraphApp {
       }, { passive: false });
 
       window.addEventListener('pointermove', (e) => {
+        if (this.isPdfModalOpen) return;
         this._isPointerInsideWindow = true;
         this._lastPointerEvent = e;
 
@@ -24028,6 +23947,7 @@ class GraphApp {
       }, { capture: true, passive: false });
 
       const finishPointer = (e) => {
+        if (this.isPdfModalOpen) return;
         if (this._uiPointerIds && e.pointerId !== undefined) {
           this._uiPointerIds.delete(e.pointerId);
         }
@@ -24133,7 +24053,7 @@ class GraphApp {
 
     // 마우스 이벤트 호환성 레이어 (PointerEvent 미지원 환경 및 MouseEvent 시뮬레이션 지원)
     this.canvas.addEventListener('mousedown', (e) => {
-      if ( !isClickableUI(e.target) ) {
+      if (!isClickableUI(e.target)) {
         e.preventDefault();
       }
       if (window.PointerEvent && e.isTrusted) return;
@@ -24878,6 +24798,7 @@ class GraphApp {
 
   // --- [초고속 무결점 렌더링 파이프라인 (5개 겹쳐도 0.1ms 미만)] ---
   render(targetCtx = this.ctx, width = this.screenWidth, height = this.screenHeight, isExport = false) {
+    if (this.isPdfModalOpen && !isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) return;
     if (this.isAudioRecording && !isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) {
       this._recordAudioWorkspaceStateIfNeeded();
     }
@@ -26398,7 +26319,7 @@ class GraphApp {
 
     // 4. 아래첨자 치환 (_0 -> ₀ 등)
     s = s.replace(/_0/g, '₀').replace(/_1/g, '₁').replace(/_2/g, '₂').replace(/_3/g, '₃')
-         .replace(/_k/g, 'ₖ').replace(/_n/g, 'ₙ').replace(/_t/g, 'ₜ').replace(/_x/g, 'ₓ');
+      .replace(/_k/g, 'ₖ').replace(/_n/g, 'ₙ').replace(/_t/g, 'ₜ').replace(/_x/g, 'ₓ');
 
     return s;
   }
@@ -26520,7 +26441,7 @@ class GraphApp {
         if (!isNaN(y0) && isFinite(y0) && Math.abs(y0) < 50) {
           addCand(0, y0, 'y절편', g.color, g.id, null, `${g.id}_y0`);
         }
-      } catch (err) {}
+      } catch (err) { }
 
       // 3. x절편 (실근 f(x) = 0)
       try {
@@ -26531,7 +26452,7 @@ class GraphApp {
             addCand(r.x, 0, 'x절편', g.color, g.id, null, `${g.id}_root_${rIdx}`);
           });
         }
-      } catch (err) {}
+      } catch (err) { }
     });
 
     // 4. 다중 그래프 간의 실시간 교점 (두 부모의 layerIds 모두 보존)
@@ -26553,7 +26474,7 @@ class GraphApp {
                 );
               });
             }
-          } catch (err) {}
+          } catch (err) { }
         }
       }
     }
@@ -26688,7 +26609,7 @@ class GraphApp {
             dist: localBest.d
           };
         }
-      } catch (err) {}
+      } catch (err) { }
     });
 
     // 2단계: 극점·꼭짓점·절편·교점 등 특이점 자석 스냅!
@@ -26883,7 +26804,7 @@ class GraphApp {
     for (const lb of this.renderedDropLineLabels) {
       const b = lb.box;
       if (screenPos.x >= b.x && screenPos.x <= b.x + b.w &&
-          screenPos.y >= b.y && screenPos.y <= b.y + b.h) {
+        screenPos.y >= b.y && screenPos.y <= b.y + b.h) {
         return lb;
       }
     }
@@ -27378,7 +27299,7 @@ class GraphApp {
       // 2. 텍스트 바운딩 박스 히트테스트
       const b = entry.box;
       if (screenPos.x >= b.x && screenPos.x <= b.x + b.w &&
-          screenPos.y >= b.y && screenPos.y <= b.y + b.h) {
+        screenPos.y >= b.y && screenPos.y <= b.y + b.h) {
         return { id: entry.id, item: entry.item, box: entry.box, screenPos: entry.screenPos, isClose: false };
       }
     }
@@ -29475,12 +29396,12 @@ class GraphApp {
 
     const cardEls = (typeof document !== 'undefined' && selectors.length > 0)
       ? Array.from(document.querySelectorAll(selectors.join(', '))).filter(el => {
-          if (!el || el.style.display === 'none') return false;
-          const cs = window.getComputedStyle(el);
-          if (cs.display === 'none' || cs.visibility === 'hidden') return false;
-          const r = el.getBoundingClientRect();
-          return r.width > 0 && r.height > 0;
-        })
+        if (!el || el.style.display === 'none') return false;
+        const cs = window.getComputedStyle(el);
+        if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      })
       : [];
 
     const hasPdfBoard = Boolean(incProb && this.pdfPageBoardData);
@@ -30388,7 +30309,7 @@ class GraphApp {
       this.isAudioRecordPaused = true;
       this.audioRecordPauseStartMs = performance.now();
       if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'recording') {
-        try { this.audioMediaRecorder.pause(); } catch (e) {}
+        try { this.audioMediaRecorder.pause(); } catch (e) { }
       }
       this.showToast('⏸ 녹음이 일시정지되었습니다. [▶ 이어녹음]을 누르면 끊김 없이 이어집니다.');
     } else {
@@ -30397,7 +30318,7 @@ class GraphApp {
       this.isAudioRecordPaused = false;
       this.audioRecordPauseStartMs = 0;
       if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'paused') {
-        try { this.audioMediaRecorder.resume(); } catch (e) {}
+        try { this.audioMediaRecorder.resume(); } catch (e) { }
       }
       this._recordAudioWorkspaceStateIfNeeded(true);
       this.showToast('▶ 녹음을 이어서 진행합니다!');
@@ -31122,7 +31043,7 @@ class GraphApp {
       this.audioSyncData.audioDataUrl = this._createSilentWavDataUrl(durationMs);
     }
     if (this._pendingSlideAudioFinalizers && this._pendingSlideAudioFinalizers.length > 0) {
-      await Promise.all(this._pendingSlideAudioFinalizers).catch(() => {});
+      await Promise.all(this._pendingSlideAudioFinalizers).catch(() => { });
       this._pendingSlideAudioFinalizers = [];
     }
     if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex]) {
@@ -31637,15 +31558,15 @@ class GraphApp {
               const alpha = Math.max(0, Math.min(1, (playMs - tA) / Math.max(1, tB - tA)));
               tipPt = (pts[i].nx !== undefined)
                 ? {
-                    nx: pts[i].nx + (pts[i + 1].nx - pts[i].nx) * alpha,
-                    ny: pts[i].ny + (pts[i + 1].ny - pts[i].ny) * alpha,
-                    p: (pts[i].p || 0.5)
-                  }
+                  nx: pts[i].nx + (pts[i + 1].nx - pts[i].nx) * alpha,
+                  ny: pts[i].ny + (pts[i + 1].ny - pts[i].ny) * alpha,
+                  p: (pts[i].p || 0.5)
+                }
                 : {
-                    x: pts[i].x + (pts[i + 1].x - pts[i].x) * alpha,
-                    y: pts[i].y + (pts[i + 1].y - pts[i].y) * alpha,
-                    p: (pts[i].p || 0.5)
-                  };
+                  x: pts[i].x + (pts[i + 1].x - pts[i].x) * alpha,
+                  y: pts[i].y + (pts[i + 1].y - pts[i].y) * alpha,
+                  p: (pts[i].p || 0.5)
+                };
               break;
             }
           }
@@ -31759,12 +31680,12 @@ class GraphApp {
 
     const candidates = filterTarget
       ? baseStrokes.filter(s => {
-          if (!s) return false;
-          const t = s.target || 'board';
-          if (t !== filterTarget) return false;
-          if (t === 'graph' && Boolean(s.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
-          return true;
-        })
+        if (!s) return false;
+        const t = s.target || 'board';
+        if (t !== filterTarget) return false;
+        if (t === 'graph' && Boolean(s.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
+        return true;
+      })
       : baseStrokes.filter(Boolean);
 
     const prepared = [];
@@ -31855,7 +31776,7 @@ class GraphApp {
       this.audioPlayerEl.currentTime = (this.audioPlayCurrentMs || 0) / 1000;
       const playPromise = this.audioPlayerEl.play();
       if (playPromise && typeof playPromise.catch === 'function') {
-        playPromise.catch(() => {});
+        playPromise.catch(() => { });
       }
     } catch (e) { }
 
