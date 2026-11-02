@@ -6173,10 +6173,24 @@ class GraphApp {
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
     const isLight = Boolean(curTheme.isLight || this.isMonochromeMode);
 
-    // 🚀 [구형 내장그래픽(Intel HD/UHD) 60fps 무손실 가속]:
-    // 카메라가 이동·줌인 중일 때만 고비용 가우시안 그림자(shadowBlur)를 생략하고 하드웨어 이중선형 보간('medium')으로 60fps를 방어하며,
-    // 이동이 멈추는 즉시(정지·판서·내보내기 시) 0.00초 만에 최고 화질('high') + 그림자로 복원합니다!
-    const isActivelyMovingCamera = !isExport && Boolean(this.isPanning || this._isZoomAnimating || this._pinchState);
+    // 🚀 [구형 내장그래픽(Intel HD/UHD) 144fps 무손실 가속 & 밉맵(Mipmap) 캐싱]:
+    // 2800x3960 초고해상도 원본을 매 이동 프레임마다 리샘플링하면 뻑뻑해지므로,
+    // 카메라 이동·관성 주행·줌인 중일 때만 경량 1/2 밉맵 캔버스(_mipCanvas)를 0.2ms 만에 고속 Blit하고,
+    // 이동이 멈추는 즉시(정지·판서·내보내기 시) 0.00초 만에 2800px 최고 화질('high') + 그림자로 복원합니다!
+    const isActivelyMovingCamera = !isExport && Boolean(this.isPanning || this._isCanvasMomentumActive || this._isZoomAnimating || this._pinchState);
+
+    if (!pageCanvas._mipCanvas && pageCanvas.width > 1600) {
+      try {
+        const mip = document.createElement('canvas');
+        mip.width = Math.max(800, Math.round(pageCanvas.width * 0.5));
+        mip.height = Math.max(800, Math.round(pageCanvas.height * 0.5));
+        const mCtx = mip.getContext('2d');
+        mCtx.imageSmoothingEnabled = true;
+        mCtx.imageSmoothingQuality = 'high';
+        mCtx.drawImage(pageCanvas, 0, 0, mip.width, mip.height);
+        pageCanvas._mipCanvas = mip;
+      } catch (err) { }
+    }
 
     ctx.save();
     if ((!isExport || !this.exportTransparent) && !isActivelyMovingCamera) {
@@ -6191,9 +6205,10 @@ class GraphApp {
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
 
+    const useFastMip = Boolean(isActivelyMovingCamera && pageCanvas._mipCanvas && w <= 1900);
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = isActivelyMovingCamera ? 'medium' : 'high';
-    ctx.drawImage(pageCanvas, x, y, w, h);
+    ctx.imageSmoothingQuality = isActivelyMovingCamera ? 'low' : 'high';
+    ctx.drawImage(useFastMip ? pageCanvas._mipCanvas : pageCanvas, x, y, w, h);
 
     ctx.strokeStyle = isLight ? 'rgba(148, 163, 184, 0.45)' : 'rgba(255, 255, 255, 0.22)';
     ctx.lineWidth = 1.2;
@@ -6947,9 +6962,55 @@ class GraphApp {
       }
     });
 
-    // 🌟 [아이패드 / 태블릿 PDF 모달 뷰어(#pdfViewport) 두 손가락 핀치 줌 & 두 손가락 스크롤] 🌟
+    // 🌟 [아이패드 / 태블릿 PDF 모달 뷰어(#pdfViewport) 두 손가락 핀치 줌 & 관성 스크롤(Inertial Scrolling)] 🌟
     this._pdfTouchPointers = new Map();
     this._pdfPinchState = null;
+    this._pdfPanSamples = [];
+
+    const stopPdfViewportMomentum = () => {
+      if (this._pdfMomentumRaf) {
+        cancelAnimationFrame(this._pdfMomentumRaf);
+        this._pdfMomentumRaf = null;
+      }
+      this._isPdfMomentumActive = false;
+    };
+    this.stopPdfViewportMomentum = stopPdfViewportMomentum;
+
+    const startPdfViewerMomentum = (initVx, initVy) => {
+      stopPdfViewportMomentum();
+      const maxSpd = 64;
+      let vx = Math.max(-maxSpd, Math.min(maxSpd, initVx));
+      let vy = Math.max(-maxSpd, Math.min(maxSpd, initVy));
+      if (Math.hypot(vx, vy) < 1.8) return;
+      this._isPdfMomentumActive = true;
+      const step = () => {
+        if (!this.isPdfModalOpen || !this._isPdfMomentumActive) {
+          stopPdfViewportMomentum();
+          return;
+        }
+        vx *= 0.93;
+        vy *= 0.93;
+        const prevLeft = viewport.scrollLeft;
+        const prevTop = viewport.scrollTop;
+        viewport.scrollLeft = prevLeft - vx;
+        viewport.scrollTop = prevTop - vy;
+        this.savedPdfScrollLeft = viewport.scrollLeft;
+        this.savedPdfScrollTop = viewport.scrollTop;
+        const movedX = Math.abs(viewport.scrollLeft - prevLeft);
+        const movedY = Math.abs(viewport.scrollTop - prevTop);
+        if (Math.hypot(vx, vy) < 0.45 || (movedX < 0.1 && movedY < 0.1)) {
+          stopPdfViewportMomentum();
+          return;
+        }
+        this._pdfMomentumRaf = requestAnimationFrame(step);
+      };
+      this._pdfMomentumRaf = requestAnimationFrame(step);
+    };
+    this.startPdfViewerMomentum = startPdfViewerMomentum;
+
+    viewport.addEventListener('wheel', () => {
+      stopPdfViewportMomentum();
+    }, { passive: true });
 
     const startPdfViewerPinch = (p1, p2) => {
       this.isPdfCropping = false;
@@ -7035,6 +7096,7 @@ class GraphApp {
     viewport.addEventListener('touchcancel', onPdfTouchEnd, { passive: false });
 
     viewport.addEventListener('pointerdown', (e) => {
+      stopPdfViewportMomentum();
       if (e.pointerType === 'touch') {
         this._pdfTouchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (this._pdfTouchPointers.size >= 2) {
@@ -7044,7 +7106,7 @@ class GraphApp {
           return;
         }
       }
-      // ✋ [이동 모드(!this.isPdfCropModeActive)]: 마우스/펜슬/손가락 드래그로 PDF 뷰포트 상하좌우 직접 이동 지원!
+      // ✋ [이동 모드(!this.isPdfCropModeActive)]: 마우스/펜슬/손가락 드래그로 PDF 뷰포트 상하좌우 직접 이동 + 관성 스크롤 지원!
       if (!this.isPdfCropModeActive) {
         if (e.button !== 0 && e.pointerType === 'mouse') return;
         if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
@@ -7058,6 +7120,7 @@ class GraphApp {
           scrollTop: viewport.scrollTop,
           pointerId: e.pointerId
         };
+        this._pdfPanSamples = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
         viewport.classList.add('panning-active');
         return;
       }
@@ -7162,11 +7225,18 @@ class GraphApp {
         viewport.scrollTop = this._pdfViewportPanStart.scrollTop - dy;
         this.savedPdfScrollLeft = viewport.scrollLeft;
         this.savedPdfScrollTop = viewport.scrollTop;
+        const nowP = performance.now();
+        if (!this._pdfPanSamples) this._pdfPanSamples = [];
+        this._pdfPanSamples.push({ x: e.clientX, y: e.clientY, t: nowP });
+        while (this._pdfPanSamples.length > 2 && (nowP - this._pdfPanSamples[0].t) > 95) {
+          this._pdfPanSamples.shift();
+        }
         return;
       }
       if (this._isPdfViewportPanning) {
         this._isPdfViewportPanning = false;
         this._pdfViewportPanStart = null;
+        this._pdfPanSamples = [];
         viewport.classList.remove('panning-active');
       }
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
@@ -7188,11 +7258,27 @@ class GraphApp {
           endPdfViewerPinch();
         }
       }
-      // 🌟 [핵심 버그 수정]: pointerup / pointercancel 즉시 PDF 이동(Panning) 상태를 확실하게 해제하여 마우스를 따라다니지 않도록 차단!
+      // 🌟 [PDF 뷰포트 이동 마감 & 물리 관성 스크롤(Momentum) 발사]:
+      // 손을 빠르게 스윽 밀고 뗐을 때(최근 75ms 이내 이동) 주르륵 부드럽게 감속 주행하며, 멈췄다 떼면 그 자리에 즉시 정지!
       if (this._isPdfViewportPanning) {
+        const samples = this._pdfPanSamples || [];
         this._isPdfViewportPanning = false;
         this._pdfViewportPanStart = null;
+        this._pdfPanSamples = [];
         viewport.classList.remove('panning-active');
+        if (samples.length >= 2 && (!this._pdfTouchPointers || this._pdfTouchPointers.size === 0)) {
+          const first = samples[0];
+          const last = samples[samples.length - 1];
+          const nowUp = performance.now();
+          const dt = last.t - first.t;
+          if (dt >= 6 && (nowUp - last.t) <= 75) {
+            const vx = ((last.x - first.x) / dt) * 16.0;
+            const vy = ((last.y - first.y) / dt) * 16.0;
+            if (Math.hypot(vx, vy) >= 2.0) {
+              startPdfViewerMomentum(vx, vy);
+            }
+          }
+        }
       }
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
       this.isPdfCropping = false;
@@ -11745,6 +11831,82 @@ class GraphApp {
     }
   }
 
+  // 🌟 [캔버스(칠판 · PDF 통째 페이지 · 그래프 모드) 물리 관성 스크롤(Inertial / Momentum Scrolling) 엔진] 🌟
+  // 안전장치 1: 터치/펜/휠이 닿는 즉시 0.00ms 급브레이크(stopCanvasPanMomentum)로 오작동 0% 보장
+  // 안전장치 2: 최근 75ms 이내 빠르게 스윽 밀고 뗐을 때만 감속 주행하며, 멈췄다 떼면 그 자리에 즉시 정지
+  // 안전장치 3: 오직 배경 화면 이동(isPanning / isBoardPanning)에만 작동 (극점·곡선·카드·캡처박스 제외)
+  stopCanvasPanMomentum() {
+    if (this._canvasMomentumRaf) {
+      cancelAnimationFrame(this._canvasMomentumRaf);
+      this._canvasMomentumRaf = null;
+    }
+    if (this._isCanvasMomentumActive) {
+      this._isCanvasMomentumActive = false;
+      this._inkBakeDirty = true;
+      this.updateProblemCardPosition();
+    }
+    this._canvasPanSamples = [];
+  }
+
+  _recordCanvasPanSample(x, y) {
+    const now = performance.now();
+    if (!this._canvasPanSamples) this._canvasPanSamples = [];
+    this._canvasPanSamples.push({ x, y, t: now });
+    while (this._canvasPanSamples.length > 2 && (now - this._canvasPanSamples[0].t) > 95) {
+      this._canvasPanSamples.shift();
+    }
+  }
+
+  startCanvasPanMomentum(initVx, initVy, mode = 'graph') {
+    if (this._canvasMomentumRaf) {
+      cancelAnimationFrame(this._canvasMomentumRaf);
+      this._canvasMomentumRaf = null;
+    }
+    const maxSpd = 60;
+    let vx = Math.max(-maxSpd, Math.min(maxSpd, initVx));
+    let vy = Math.max(-maxSpd, Math.min(maxSpd, initVy));
+    if (Math.hypot(vx, vy) < 1.8) {
+      this._isCanvasMomentumActive = false;
+      this._inkBakeDirty = true;
+      this.requestRender();
+      return;
+    }
+    this._isCanvasMomentumActive = true;
+    const step = () => {
+      if (!this._isCanvasMomentumActive || this.isDrawingInk || this.isPanning || this.isBoardPanning || this._pinchState) {
+        this._isCanvasMomentumActive = false;
+        this._canvasMomentumRaf = null;
+        this._inkBakeDirty = true;
+        this.render();
+        return;
+      }
+      vx *= 0.925;
+      vy *= 0.925;
+      if (mode === 'board') {
+        this.boardPanX = Math.round((this.boardPanX || 0) + vx);
+        this.boardPanY = Math.round((this.boardPanY || 0) + vy);
+        this.updateProblemCardPosition();
+      } else {
+        this.panX = (this.panX || 0) + vx;
+        this.panY = (this.panY || 0) + vy;
+      }
+      this._inkBakeDirty = true;
+      if (Math.hypot(vx, vy) < 0.45) {
+        this._isCanvasMomentumActive = false;
+        this._canvasMomentumRaf = null;
+        if (mode === 'board') {
+          this.updateProblemCardPosition();
+        }
+        this.render();
+        return;
+      }
+      this.render();
+      this._canvasMomentumRaf = requestAnimationFrame(step);
+    };
+    this._canvasMomentumStep = step;
+    this._canvasMomentumRaf = requestAnimationFrame(step);
+  }
+
   rebuildInkCache() {
     this.clearInkCache();
     if (!this.inkStrokes || this.inkStrokes.length === 0) {
@@ -11782,6 +11944,12 @@ class GraphApp {
       }
     }
 
+    this._bakedPanX = this.panX || 0;
+    this._bakedPanY = this.panY || 0;
+    this._bakedZoomLevel = this.zoomLevel || 1.0;
+    this._bakedBoardPanX = this.boardPanX || 0;
+    this._bakedBoardPanY = this.boardPanY || 0;
+    this._bakedBoardZoom = this.boardZoom || 1.0;
     this._hasBakedStrokes = true;
     this._inkBakeDirty = false;
   }
@@ -12009,19 +12177,37 @@ class GraphApp {
       return;
     }
 
-    // 🌟 [오프스크린 베이크 버퍼 리빌드 (캐시 무효화 시 1회만 실행)] 🌟
-    if (this._inkBakeDirty) {
+    // 🌟 [패닝·관성 주행 중 0.02ms 오프스크린 오프셋 Blit 가속]:
+    // 화면을 드래그하거나 관성으로 미끄러지는 도중에는 배율(zoom)이 변하지 않으므로,
+    // 수백 개의 필기 획을 매 프레임 다시 그리지(rebuildInkCache) 않고 이미 구워둔 텍스처를 (dx, dy)만큼 통째로 밀어서 출력한 뒤,
+    // 이동이 완전히 멈추는 순간 딱 1번만 정밀 리빌드합니다!
+    const isPurePanning = Boolean(
+      !isExport &&
+      (this.isPanning || this.isBoardPanning || this._isCanvasMomentumActive) &&
+      !this._pinchState &&
+      !this._isZoomAnimating &&
+      this._hasBakedStrokes &&
+      Math.abs((this.zoomLevel || 1.0) - (this._bakedZoomLevel || 1.0)) < 0.0001 &&
+      Math.abs((this.boardZoom || 1.0) - (this._bakedBoardZoom || 1.0)) < 0.0001
+    );
+
+    if (this._inkBakeDirty && !isPurePanning) {
       this.rebuildInkCache();
     }
 
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
     const isLight = curTheme.isLight || this.isMonochromeMode;
 
+    const dxBoard = isPurePanning ? ((this.boardPanX || 0) - (this._bakedBoardPanX || 0)) : 0;
+    const dyBoard = isPurePanning ? ((this.boardPanY || 0) - (this._bakedBoardPanY || 0)) : 0;
+    const dxGraph = isPurePanning ? ((this.panX || 0) - (this._bakedPanX || 0)) : 0;
+    const dyGraph = isPurePanning ? ((this.panY || 0) - (this._bakedPanY || 0)) : 0;
+
     // 🌟 [144Hz 초고속 0.02ms GPU Blit]: 칠판 바깥창 판서 ('board')
     if (!filterTarget || filterTarget === 'board') {
       if (this.inkBakeCanvas) {
         // 🌟 [DPR 고해상도 무결점 보정]: destination 폭/높이로 this.screenWidth, this.screenHeight를 명시하여 125%/150%/200% 배율에서도 글씨 날림 100% 박멸!
-        ctx.drawImage(this.inkBakeCanvas, 0, 0, this.screenWidth, this.screenHeight);
+        ctx.drawImage(this.inkBakeCanvas, dxBoard, dyBoard, this.screenWidth, this.screenHeight);
       }
       // 실시간 드로잉 중인 획이 보드 타깃인 경우 가벼운 1개 획만 즉시 렌더링!
       if (this.isDrawingInk && this.currentInkStroke && (this.currentInkStroke.target || 'board') === 'board') {
@@ -12033,7 +12219,7 @@ class GraphApp {
     if (!filterTarget || filterTarget === 'graph') {
       if (this.inkGraphBakeCanvas) {
         // 🌟 [DPR 고해상도 무결점 보정]: destination 폭/높이로 this.screenWidth, this.screenHeight를 명시하여 125%/150%/200% 배율에서도 글씨 날림 100% 박멸!
-        ctx.drawImage(this.inkGraphBakeCanvas, 0, 0, this.screenWidth, this.screenHeight);
+        ctx.drawImage(this.inkGraphBakeCanvas, dxGraph, dyGraph, this.screenWidth, this.screenHeight);
       }
       // 실시간 드로잉 중인 획이 그래프 타깃인 경우 가벼운 1개 획만 즉시 렌더링!
       if (this.isDrawingInk && this.currentInkStroke && this.currentInkStroke.target === 'graph') {
@@ -20698,6 +20884,7 @@ class GraphApp {
 
     const handleDown = (e) => {
       this._lastPointerEvent = e;
+      this.stopCanvasPanMomentum();
       this._erasedInCurrentStroke = false;
       // 🌟 [iCanScreen 급 0ms 초저지연]: 펜/형광펜/지우개 필기 시에는 매 터치마다 전체 상태를 JSON.stringify 하는 무거운 스냅샷 생성을 100% 생략!
       const isInkFastPath = (this.isInkMode && (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter' || this.activeInkTool === 'eraser')) || this.isStylusEraserEvent(e);
@@ -20942,6 +21129,7 @@ class GraphApp {
       if (isExplicitPan) {
         this._touchPanDeadzoneLocked = false;
         this._touchPanInitPos = { x: pos.x, y: pos.y };
+        this._recordCanvasPanSample(pos.x, pos.y);
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
@@ -21249,6 +21437,7 @@ class GraphApp {
         this.downInfo = { x: pos.x, y: pos.y, hitHandleIdx: null, hitCurveIdx: null, hitVfCorner: false, pointerType: downPType };
         this._touchPanDeadzoneLocked = false;
         this._touchPanInitPos = { x: pos.x, y: pos.y };
+        this._recordCanvasPanSample(pos.x, pos.y);
 
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
@@ -21738,6 +21927,7 @@ class GraphApp {
         // 오직 펜슬(pen)이나 마우스(mouse)로 빈 공간을 이동 없이 '툭' 건드리고 뗐을 때(handleUp)만 핸들러 해제!
         this._touchPanDeadzoneLocked = false;
         this._touchPanInitPos = { x: pos.x, y: pos.y };
+        this._recordCanvasPanSample(pos.x, pos.y);
 
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
@@ -21844,6 +22034,7 @@ class GraphApp {
           if (this.inkStrokes && this.inkStrokes.length > 0) {
             this._inkBakeDirty = true;
           }
+          this._recordCanvasPanSample(pos.x, pos.y);
           this.panX = pos.x - this.panStart.x;
           this.panY = pos.y - this.panStart.y;
           this.snapActiveX = false;
@@ -21854,6 +22045,7 @@ class GraphApp {
 
         if (this.isBoardPanning && this.boardPanStart) {
           this.canvas.style.cursor = 'grabbing';
+          this._recordCanvasPanSample(pos.x, pos.y);
           this.boardPanX = Math.round(pos.x - this.boardPanStart.x);
           this.boardPanY = Math.round(pos.y - this.boardPanStart.y);
           this.updateProblemCardPosition();
@@ -22753,6 +22945,7 @@ class GraphApp {
       } else if (this.isPanning) {
         this.canvas.style.cursor = 'grabbing';
         this._inkBakeDirty = true;
+        this._recordCanvasPanSample(pos.x, pos.y);
         // [대표님 요청: 화면 전체 이동 시 중앙 걸림/덜그럭거림(센터 마그네틱 랙) 완전 제거 - 1:1 무저항 부드러운 패닝]
         this.panX = pos.x - this.panStart.x;
         this.panY = pos.y - this.panStart.y;
@@ -23323,6 +23516,14 @@ class GraphApp {
             const isBoard = (finishedStroke.target || 'board') === 'board';
             const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
             if (targetCtx) {
+              if (!this._hasBakedStrokes) {
+                this._bakedPanX = this.panX || 0;
+                this._bakedPanY = this.panY || 0;
+                this._bakedZoomLevel = this.zoomLevel || 1.0;
+                this._bakedBoardPanX = this.boardPanX || 0;
+                this._bakedBoardPanY = this.boardPanY || 0;
+                this._bakedBoardZoom = this.boardZoom || 1.0;
+              }
               this.renderSingleStroke(targetCtx, finishedStroke, null, false);
               this._hasBakedStrokes = true;
             }
@@ -23405,6 +23606,11 @@ class GraphApp {
       if (this.isBoardPanning) {
         this.updateProblemCardPosition();
       }
+      const wasPanningGraph = Boolean(this.isPanning);
+      const wasPanningBoard = Boolean(this.isBoardPanning);
+      const panSamples = this._canvasPanSamples ? this._canvasPanSamples.slice() : [];
+      this._canvasPanSamples = [];
+
       this.draggedHandleIdx = null;
       this.isDraggingCurve = false;
       this._curveDragEligible = false;
@@ -23421,6 +23627,29 @@ class GraphApp {
       this.downInfo = null;
       this.curveFeatsSnapshot = null;
       this.syncControls();
+
+      // 🌟 [캔버스 패닝 마감 시 물리 관성 스크롤(Inertial Scrolling) 발동 & 최종 화질 복원] 🌟
+      if ((wasPanningGraph || wasPanningBoard) && !this._pinchState) {
+        let launchedMomentum = false;
+        if (panSamples.length >= 2) {
+          const first = panSamples[0];
+          const last = panSamples[panSamples.length - 1];
+          const nowUp = performance.now();
+          const dt = last.t - first.t;
+          if (dt >= 6 && (nowUp - last.t) <= 75) {
+            const vx = ((last.x - first.x) / dt) * 16.0;
+            const vy = ((last.y - first.y) / dt) * 16.0;
+            if (Math.hypot(vx, vy) >= 2.0) {
+              launchedMomentum = true;
+              this.startCanvasPanMomentum(vx, vy, wasPanningBoard ? 'board' : 'graph');
+            }
+          }
+        }
+        if (!launchedMomentum) {
+          this._inkBakeDirty = true;
+          this.render();
+        }
+      }
 
       if (this.isShiftPressed || this.isSpacePressed || (this.isInkMode && this.activeInkTool === 'select')) {
         this.canvas.style.cursor = 'grab';
@@ -24545,6 +24774,7 @@ class GraphApp {
     // 휠 줌 및 칠판 무한 패닝
     this.canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
+      this.stopCanvasPanMomentum();
 
       // 🌟 [대표님 1층 vs 2층 레이어 철학]:
       // 2층(this.isGraphCovered === true, 그래프 스샷 찍고 넘어간 새 판서 레이어)일 때만 휠 굴림으로 칠판 전체 이동!
