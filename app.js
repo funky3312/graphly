@@ -10378,6 +10378,11 @@ class GraphApp {
       isPiecewiseLocked: Boolean(this.isPiecewiseLocked),
       showInverseGuide: this.showInverseGuide,
       showGridNumbers: Boolean(this.showGridNumbers),
+      isNAxisMode: Boolean(this.isNAxisMode),
+      nAxisOuterIdx: this.nAxisOuterIdx,
+      nAxisInnerIdx: this.nAxisInnerIdx,
+      nAxisX0: this.nAxisX0,
+      nAxisZoom: this.nAxisZoom,
       dropLines: this.dropLines || [],
       textLabels: this.textLabels || [],
       graphInkStrokes: (this.inkStrokes || []).filter(s => s && (s.target || 'board') === 'graph' && !s.onPdfBoard)
@@ -10436,6 +10441,22 @@ class GraphApp {
         this.showGridNumbers = Boolean(data.showGridNumbers);
         const chkGN = document.getElementById('chkGridNumbers');
         if (chkGN) chkGN.checked = this.showGridNumbers;
+      }
+      if (data.nAxisOuterIdx !== undefined) this.nAxisOuterIdx = data.nAxisOuterIdx;
+      if (data.nAxisInnerIdx !== undefined) this.nAxisInnerIdx = data.nAxisInnerIdx;
+      if (data.nAxisX0 !== undefined) this.nAxisX0 = data.nAxisX0;
+      if (data.nAxisZoom !== undefined) this.nAxisZoom = data.nAxisZoom;
+      if (data.isNAxisMode !== undefined) {
+        this.isNAxisMode = Boolean(data.isNAxisMode);
+        const btnHeader = document.getElementById('btnNAxisMode');
+        const btnQuick = document.getElementById('btnQuickNAxisMode');
+        const bar = document.getElementById('nAxisModeBar');
+        if (btnHeader) btnHeader.classList.toggle('active', this.isNAxisMode);
+        if (btnQuick) btnQuick.classList.toggle('active', this.isNAxisMode);
+        if (bar) bar.style.display = this.isNAxisMode ? 'flex' : 'none';
+        if (this.isNAxisMode) this.syncNAxisBarUI();
+      } else if (this.isNAxisMode) {
+        this.toggleNAxisMode(false);
       }
       if (Array.isArray(data.dropLines)) {
         this.dropLines = JSON.parse(JSON.stringify(data.dropLines));
@@ -11080,7 +11101,7 @@ class GraphApp {
     this.setGraphCard(dataUrl, cropCanvas, rw, { x: rx, y: ry, w: rw, h: rh });
   }
 
-  setGraphCard(dataUrl, sourceCanvas = null, initialWidth = null, sourceRect = null) {
+  setGraphCard(dataUrl, sourceCanvas = null, initialWidth = null, sourceRect = null, customSnapshot = null) {
     if (!this.extraGraphCards) {
       this.extraGraphCards = [];
     }
@@ -11094,7 +11115,7 @@ class GraphApp {
 
     const widget = document.getElementById('graphCardWidget');
 
-    const currentGraphSnapshot = this.getPureGraphSnapshot();
+    const currentGraphSnapshot = customSnapshot || this.getPureGraphSnapshot();
 
     // 🌟 핵심: 먼저 판서 모드 상태(문제 카드 펼침 등)를 복원한 뒤 그래프 카드 위치를 계산해야 문제 카드와 절대 겹치지 않음!
     this._graphSessionArchived = true;
@@ -11471,6 +11492,26 @@ class GraphApp {
   }
 
   restoreLiveGraphFromCard(silent = false, targetSnapshot = null, caseIdx = null, keepMinimizedCards = false) {
+    const effSnapshot = targetSnapshot || (caseIdx === 1 ? (this.primaryGraphCardSnapshot || (this.graphCardData && this.graphCardData.graphSnapshot)) : null);
+    if (effSnapshot) {
+      try {
+        const parsedSnap = typeof effSnapshot === 'string' ? JSON.parse(effSnapshot) : effSnapshot;
+        if (parsedSnap && parsedSnap.isNAxisStudioCard && parsedSnap.nAxisStudioState) {
+          if (typeof this.openNAxisStudioModal === 'function') {
+            this.openNAxisStudioModal(parsedSnap.nAxisStudioState);
+          }
+          if (!silent) {
+            const prefix = caseIdx ? `#${caseIdx} 보관 당시의` : '실시간';
+            this.showToast(`🔄 ${prefix} 합성함수 스튜디오를 복구했습니다!`);
+          }
+          return;
+        }
+      } catch (_) { }
+    }
+    if (this.isNAxisStudioOpen && typeof this.closeNAxisStudioModal === 'function') {
+      this.closeNAxisStudioModal();
+    }
+
     if (this.pdfPageBoardData) {
       this._suspendedPdfBoardState = {
         pdfPageBoardData: this.pdfPageBoardData,
@@ -16467,23 +16508,108 @@ class GraphApp {
       autoPlayAnimId = requestAnimationFrame(loopAutoPlay);
     }
 
-    const openModal = () => {
+    const getNAxisStudioState = () => ({
+      exprG: inputG ? inputG.value : '2.5 * cos(x)',
+      exprF: inputF ? inputF.value : 't^3 - 3*t',
+      currentX: typeof currentX === 'number' ? currentX : 0.5,
+      xMin: typeof xMin === 'number' ? xMin : -3.2,
+      xMax: typeof xMax === 'number' ? xMax : 3.2,
+      tMin: typeof tMin === 'number' ? tMin : -3.8,
+      tMax: typeof tMax === 'number' ? tMax : 3.8,
+      yMin: typeof yMin === 'number' ? yMin : -4.5,
+      yMax: typeof yMax === 'number' ? yMax : 4.5,
+      playSpeed: typeof playSpeed === 'number' ? playSpeed : 1.0,
+      activeSnapLabel: activeSnapLabel || null
+    });
+
+    const applyNAxisStudioState = (st) => {
+      if (!st || typeof st !== 'object') return false;
+      if (inputG && typeof st.exprG === 'string') inputG.value = st.exprG;
+      if (inputF && typeof st.exprF === 'string') inputF.value = st.exprF;
+      if (typeof st.xMin === 'number' && typeof st.xMax === 'number' && st.xMax > st.xMin) {
+        xMin = st.xMin;
+        xMax = st.xMax;
+      }
+      if (sliderX) {
+        sliderX.min = xMin;
+        sliderX.max = xMax;
+      }
+      if (inputG) compiledG = compileMathExpr(inputG.value, 'x');
+      if (inputF) compiledF = compileMathExpr(inputF.value, 't');
+      if (typeof st.tMin === 'number' && typeof st.tMax === 'number' && st.tMax > st.tMin &&
+          typeof st.yMin === 'number' && typeof st.yMax === 'number' && st.yMax > st.yMin) {
+        tMin = st.tMin;
+        tMax = st.tMax;
+        yMin = st.yMin;
+        yMax = st.yMax;
+        computeCriticalSnapPoints();
+      } else {
+        autoFitRange();
+      }
+      if (typeof st.currentX === 'number' && isFinite(st.currentX)) {
+        currentX = Math.max(xMin, Math.min(xMax, st.currentX));
+      }
+      if (sliderX) {
+        sliderX.value = currentX;
+      }
+      if (typeof st.playSpeed === 'number' && isFinite(st.playSpeed)) {
+        playSpeed = st.playSpeed;
+        modal.querySelectorAll('.n-axis-speed-btn').forEach(b => {
+          b.classList.toggle('active', Math.abs(parseFloat(b.dataset.speed) - playSpeed) < 1e-3);
+        });
+      }
+      activeSnapLabel = st.activeSnapLabel !== undefined ? st.activeSnapLabel : null;
+      return true;
+    };
+
+    const openModal = (studioState = null) => {
+      isAutoPlaying = false;
+      if (autoPlayAnimId) cancelAnimationFrame(autoPlayAnimId);
+      if (btnAutoPlay) btnAutoPlay.textContent = '▶ 자동 순항';
+      this.isNAxisStudioOpen = true;
       modal.style.display = 'flex';
       modal.classList.add('show');
-      autoFitRange();
+      const isValidStateObj = Boolean(
+        studioState &&
+        typeof studioState === 'object' &&
+        !(typeof Event !== 'undefined' && studioState instanceof Event) &&
+        (typeof studioState.exprG === 'string' || typeof studioState.exprF === 'string' || typeof studioState.currentX === 'number')
+      );
+      if (isValidStateObj) {
+        const tc = document.getElementById('tabContentNAxisCustom');
+        const tp = document.getElementById('tabContentNAxisPresets');
+        const bc = document.getElementById('tabBtnNAxisCustom');
+        const bp = document.getElementById('tabBtnNAxisPresets');
+        if (tc) tc.style.display = 'flex';
+        if (tp) tp.style.display = 'none';
+        if (bc) bc.classList.add('active');
+        if (bp) bp.classList.remove('active');
+        applyNAxisStudioState(studioState);
+      } else {
+        autoFitRange();
+      }
       renderStudio();
     };
 
     const closeModal = () => {
       isAutoPlaying = false;
+      this.isNAxisStudioOpen = false;
       if (autoPlayAnimId) cancelAnimationFrame(autoPlayAnimId);
       if (btnAutoPlay) btnAutoPlay.textContent = '▶ 자동 순항';
       modal.classList.remove('show');
-      setTimeout(() => { modal.style.display = 'none'; }, 200);
+      setTimeout(() => {
+        if (!modal.classList.contains('show')) {
+          modal.style.display = 'none';
+        }
+      }, 200);
     };
 
-    if (btnRail) btnRail.onclick = openModal;
-    if (btnQuick) btnQuick.onclick = openModal;
+    this.openNAxisStudioModal = openModal;
+    this.closeNAxisStudioModal = closeModal;
+    this.getNAxisStudioState = getNAxisStudioState;
+
+    if (btnRail) btnRail.onclick = () => openModal();
+    if (btnQuick) btnQuick.onclick = () => openModal();
     if (btnClose) btnClose.onclick = closeModal;
 
     // 🌟 [아이디어 C: N축 4분할 화면을 원클릭으로 메인 칠판 보관 카드(#1, #2...)로 즉시 전송!] 🌟
@@ -16493,8 +16619,20 @@ class GraphApp {
         renderStudio(true);
         const dataUrl = canvas.toDataURL('image/png');
         renderStudio(false);
+        let studioSnapshotStr = null;
+        try {
+          const baseSnap = JSON.parse(this.getPureGraphSnapshot());
+          baseSnap.isNAxisStudioCard = true;
+          baseSnap.nAxisStudioState = getNAxisStudioState();
+          studioSnapshotStr = JSON.stringify(baseSnap);
+        } catch (_) {
+          studioSnapshotStr = JSON.stringify({
+            isNAxisStudioCard: true,
+            nAxisStudioState: getNAxisStudioState()
+          });
+        }
         closeModal();
-        this.setGraphCard(dataUrl, canvas, 520, { x: 480, y: 80, w: 520, h: 310 });
+        this.setGraphCard(dataUrl, canvas, 520, { x: 480, y: 80, w: 520, h: 310 }, studioSnapshotStr);
         this.showToast('📋 N축 합성함수 다이어그램을 캔버스 카드로 보관했습니다!');
       };
     }
@@ -20801,6 +20939,15 @@ class GraphApp {
 
   enterViewerGraphTouchMode(hotspot, slideIdx = 0) {
     if (!hotspot || !hotspot.graphSnapshot) return;
+    try {
+      const parsed = typeof hotspot.graphSnapshot === 'string' ? JSON.parse(hotspot.graphSnapshot) : hotspot.graphSnapshot;
+      if (parsed && parsed.isNAxisStudioCard && parsed.nAxisStudioState) {
+        if (typeof this.openNAxisStudioModal === 'function') {
+          this.openNAxisStudioModal(parsed.nAxisStudioState);
+        }
+        return;
+      }
+    } catch (_) { }
     this._activeViewerHotspot = hotspot;
     this._viewerSlideIdx = slideIdx;
 

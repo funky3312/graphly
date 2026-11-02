@@ -4496,7 +4496,7 @@ button > i,
   background: rgba(8, 12, 18, 0.82);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  z-index: 250;
+  z-index: 9800;
   align-items: center;
   justify-content: center;
   padding: 16px;
