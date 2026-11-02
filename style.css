@@ -3628,14 +3628,16 @@ body.theme-light .ink-size-btn.active .ink-size-circle {
   -webkit-user-drag: none !important;
 }
 
-/* 크롭 박스 (네온 민트 점선) */
+/* 크롭 박스 (네온 민트 점선 — 독립 최상단 GPU 오버레이) */
 .pdf-crop-box {
-  position: absolute;
-  will-change: left, top, width, height;
+  position: fixed;
+  left: 0;
+  top: 0;
+  will-change: transform, width, height;
   border: 2px dashed #00d2d3;
   background: rgba(0, 210, 211, 0.22);
   pointer-events: none !important;
-  z-index: 100;
+  z-index: 99999;
   box-sizing: border-box;
   user-select: none !important;
 }

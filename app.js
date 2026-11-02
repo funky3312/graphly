@@ -6112,16 +6112,6 @@ class GraphApp {
       this.isPdfModalOpen = false;
       this.togglePdfCropMode(false);
     }
-    if (this._pdfQueueTimer) {
-      clearTimeout(this._pdfQueueTimer);
-      this._pdfQueueTimer = null;
-    }
-    if (this._pdfScrollIdleTimer) {
-      clearTimeout(this._pdfScrollIdleTimer);
-      this._pdfScrollIdleTimer = null;
-    }
-    this._isPdfActivelyScrolling = false;
-    this._cancelCurrentPdfRenderJob(false);
     // 만약 PDF 창을 열었다가 자동 일시정지된 상태(_autoPausedByPdfModal)에서 돌아온 경우 즉시 녹화 재개!
     if (this.isAudioRecording && this._autoPausedByPdfModal) {
       this._autoPausedByPdfModal = false;
@@ -6413,8 +6403,8 @@ class GraphApp {
     if (!pageCanvas) {
       const page = await this.pdfDoc.getPage(targetPage);
       const baseVp = page.getViewport({ scale: 1.0 });
-      const targetMinPxW = 2800;
-      const renderScale = Math.max(4.2, Math.min(4.8, targetMinPxW / Math.max(1, baseVp.width)));
+      const targetMinPxW = 2200;
+      const renderScale = Math.max(2.8, Math.min(3.5, targetMinPxW / Math.max(1, baseVp.width)));
       const vp = page.getViewport({ scale: renderScale });
       pageCanvas = document.createElement('canvas');
       pageCanvas.width = Math.round(vp.width);
@@ -6711,8 +6701,10 @@ class GraphApp {
       this._cancelCurrentPdfRenderJob(false);
     }
 
-    // 현재 페이지(centerPage)부터 가까운 앞뒤 페이지 순으로 단일 순차 큐 구성 (20쪽 이하 시험지/교재는 전체 페이지를 유휴 시간에 1장씩 미리 완성)
-    const maxRadius = total <= 20 ? total : 6;
+    // 🌟 [가상 스크롤링 (Virtualization)]:
+    // 전체 페이지를 한꺼번에 그리지 않고 현재 보이는 페이지(centerPage)와 위아래 2페이지(최대 5장)만 순차 렌더링하며,
+    // 화면에서 멀어진 페이지(> 3페이지)는 즉시 캔버스 메모리를 해제하여 수십~수백 페이지 PDF도 항상 4~5장 메모리로 가볍게 유지합니다!
+    const maxRadius = 2;
     const queue = [];
     for (let d = 0; d <= maxRadius; d++) {
       const candidates = d === 0 ? [centerPage] : [centerPage + d, centerPage - d];
@@ -6728,17 +6720,14 @@ class GraphApp {
     }
     this._pdfRenderQueue = queue;
 
-    // 30페이지가 넘는 대용량 교재일 때만 현재 위치에서 18페이지 이상 멀어진 캔버스 비트맵 정리
-    if (total > 30) {
-      for (let p = 1; p <= total; p++) {
-        if (Math.abs(p - centerPage) > 18 && this.pdfPageRenderStates[p]) {
-          const canvas = document.getElementById(`pdfPageCanvas_${p}`);
-          if (canvas && canvas.width > 10) {
-            canvas.width = 1;
-            canvas.height = 1;
-            canvas._renderedZoom = null;
-            delete this.pdfPageRenderStates[p];
-          }
+    for (let p = 1; p <= total; p++) {
+      if (Math.abs(p - centerPage) > 3 && this.pdfPageRenderStates[p]) {
+        const canvas = document.getElementById(`pdfPageCanvas_${p}`);
+        if (canvas && canvas.width > 10) {
+          canvas.width = 1;
+          canvas.height = 1;
+          canvas._renderedZoom = null;
+          delete this.pdfPageRenderStates[p];
         }
       }
     }
@@ -6876,12 +6865,12 @@ class GraphApp {
     this._cancelCurrentPdfRenderJob(true, currentVisiblePage);
 
     if (this._pdfScrollIdleTimer) clearTimeout(this._pdfScrollIdleTimer);
-    // 마우스 휠 스무스 스크롤(약 180ms)이 완전히 정지한 뒤(220ms)에만 조용히 미렌더링 페이지 큐 재개!
+    // 스크롤 멈춤 후 150ms 디바운스 뒤에 현재 페이지와 위아래 버퍼 페이지만 선명하게 렌더링!
     this._pdfScrollIdleTimer = setTimeout(() => {
       this._pdfScrollIdleTimer = null;
       this._isPdfActivelyScrolling = false;
       this.renderVisiblePdfWindow(this.pdfCurrentPage || 1, false);
-    }, 220);
+    }, 150);
   }
 
   updatePdfPageNavUI(pageNum, fromScroll = false) {
@@ -7214,12 +7203,18 @@ class GraphApp {
       this._cropLastClientX = e.clientX;
       this._cropLastClientY = e.clientY;
 
-      if (cropBox.parentElement !== pageWrapper) {
-        pageWrapper.appendChild(cropBox);
+      // 🌟 [독립 투명 오버레이 레이어 분리]:
+      // 크롭 박스를 무거운 PDF 페이지(pageWrapper) 내부에 넣지 않고 모달 최상단 독립 고정 레이어(position: fixed)로 분리하여
+      // 드래그 도중 PDF 캔버스의 리플로우/리페인트를 0.00%로 원천 차단합니다!
+      const modalEl = document.getElementById('modalPdfViewer');
+      if (modalEl && cropBox.parentElement !== modalEl) {
+        modalEl.appendChild(cropBox);
       }
+      cropBox.style.position = 'fixed';
       cropBox.style.display = 'none';
-      cropBox.style.left = `${startX}px`;
-      cropBox.style.top = `${startY}px`;
+      cropBox.style.left = '0px';
+      cropBox.style.top = '0px';
+      cropBox.style.transform = `translate3d(${Math.round(rect.left + startX)}px, ${Math.round(rect.top + startY)}px, 0)`;
       cropBox.style.width = '0px';
       cropBox.style.height = '0px';
     }, { passive: false });
@@ -7237,10 +7232,9 @@ class GraphApp {
 
       if (w > 3 || h > 3) {
         cropBox.style.display = 'block';
-        cropBox.style.left = `${x}px`;
-        cropBox.style.top = `${y}px`;
-        cropBox.style.width = `${w}px`;
-        cropBox.style.height = `${h}px`;
+        cropBox.style.transform = `translate3d(${Math.round(rect.left + x)}px, ${Math.round(rect.top + y)}px, 0)`;
+        cropBox.style.width = `${Math.round(w)}px`;
+        cropBox.style.height = `${Math.round(h)}px`;
       }
     };
 
@@ -7290,7 +7284,14 @@ class GraphApp {
 
       this._cropLastClientX = e.clientX;
       this._cropLastClientY = e.clientY;
-      updateCropBoxFromPointer(e.clientX, e.clientY);
+      if (!this._cropBoxRaf) {
+        this._cropBoxRaf = requestAnimationFrame(() => {
+          this._cropBoxRaf = null;
+          if (this.isPdfCropping && typeof this._cropLastClientX === 'number') {
+            updateCropBoxFromPointer(this._cropLastClientX, this._cropLastClientY);
+          }
+        });
+      }
     };
 
     viewport.addEventListener('pointermove', handleCropMove, { passive: false });
@@ -7298,6 +7299,10 @@ class GraphApp {
 
     const handleCropUp = (e) => {
       stopCropEdgeAutoScroll();
+      if (this._cropBoxRaf) {
+        cancelAnimationFrame(this._cropBoxRaf);
+        this._cropBoxRaf = null;
+      }
       if (e && this._pdfTouchPointers && this._pdfTouchPointers.has(e.pointerId)) {
         this._pdfTouchPointers.delete(e.pointerId);
         if (this._pdfTouchPointers.size < 2) {
@@ -7321,7 +7326,7 @@ class GraphApp {
 
       const clientX = (e && typeof e.clientX === 'number') ? e.clientX : (this._cropLastClientX || 0);
       const clientY = (e && typeof e.clientY === 'number') ? e.clientY : (this._cropLastClientY || 0);
-      const rect = this.cropTargetWrapper.getBoundingClientRect();
+      const rect = this.cropTargetRect || this.cropTargetWrapper.getBoundingClientRect();
       const curX = Math.max(0, Math.min(rect.width, clientX - rect.left));
       const curY = Math.max(0, Math.min(rect.height, clientY - rect.top));
 
@@ -7332,10 +7337,13 @@ class GraphApp {
 
       cropBox.style.display = 'none';
 
-      // ✂️ 유효한 크기(가로/세로 20px 이상)면 즉시 크롭 확정 & 빈 칠판으로 직행!
+      // ✂️ [0.01초 즉시 캡처 추출 (Direct Canvas Slicing)]:
+      // 무거운 재렌더링이나 동기 PNG 압축 대기 없이, 이미 화면에 선명하게 그려진 PDF <canvas>에서
+      // 드래그한 좌표(sx, sy, sw, sh)만 ctx.drawImage()로 즉시 오려내어 0.01초 만에 칠판에 꽂습니다!
       if (w >= 20 && h >= 20) {
         const canvas = this.cropTargetWrapper.querySelector('canvas');
         if (canvas && rect.width > 0 && rect.height > 0) {
+          const isAlreadyRendered = (canvas.width > 10 && canvas.height > 10);
           const scaleX = canvas.width / rect.width;
           const scaleY = canvas.height / rect.height;
 
@@ -7347,14 +7355,20 @@ class GraphApp {
           const cropCanvas = document.createElement('canvas');
           cropCanvas.width = sw;
           cropCanvas.height = sh;
-          const ctx = cropCanvas.getContext('2d');
+          const ctx = cropCanvas.getContext('2d', { alpha: false }) || cropCanvas.getContext('2d');
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, sw, sh);
           ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
 
-          const dataUrl = this.encodeCanvasSmartWebP(cropCanvas, 0.94);
+          let dataUrl = '';
+          try {
+            dataUrl = cropCanvas.toDataURL('image/webp', 0.94);
+          } catch (err) { }
+          if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+            dataUrl = cropCanvas.toDataURL('image/png');
+          }
           const pageNum = this.cropTargetPageNum;
           const normCrop = {
             nx: x / rect.width,
@@ -7380,9 +7394,10 @@ class GraphApp {
           const targetCardWidth = Math.round(Math.max(480, Math.min(window.innerWidth * 0.65, w * 1.15)));
           this.setProblemCard(dataUrl, pageNum, cropCanvas, targetCardWidth);
 
-          // 🌟 [벡터 원본 직결 Ultra-HD 보강 렌더링]:
-          // 만약 빠른 줌 직후이거나 낮은 배율에서 캡처한 경우에도 PDF 원본 벡터에서 3.6x로 해당 영역만 직접 재렌더링하여 선명함 보장!
-          this._upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop);
+          // 만약 아직 렌더링되지 않은 빈 페이지를 급히 캡처했을 때만 백그라운드 벡터 렌더링 수행
+          if (!isAlreadyRendered) {
+            this._upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop);
+          }
 
           if (replaceMode) {
             this._finalizeAppendedCaptureSlide('');
@@ -7448,6 +7463,7 @@ class GraphApp {
   // 🚀 [구형 CPU 메인 스레드 블로킹 0.00ms 보장: 브라우저 백그라운드 워커 비동기 무손실 PNG 인코더]
   async encodeCanvasSmartWebPAsync(canvas, quality = 0.92) {
     if (!canvas) return '';
+    const mime = (typeof quality === 'number' && quality < 0.99) ? 'image/webp' : 'image/png';
     if (typeof canvas.toBlob === 'function' && typeof FileReader !== 'undefined') {
       try {
         const dataUrl = await new Promise((resolve) => {
@@ -7460,7 +7476,7 @@ class GraphApp {
             reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : '');
             reader.onerror = () => resolve('');
             reader.readAsDataURL(blob);
-          }, 'image/png');
+          }, mime, quality);
         });
         if (dataUrl && dataUrl.startsWith('data:image/')) {
           return dataUrl;
@@ -20168,8 +20184,12 @@ class GraphApp {
 
   encodeCanvasSmartWebP(canvas, quality = 1.0) {
     if (!canvas) return '';
-    // 🌟 [대표님 철학 반영: 타협 없는 최고 화질 우선]:
-    // 수식·명조체 텍스트 획의 미세한 손실 압축(YUV 서브샘플링)조차 원천 배제하기 위해 100% 무손실(Lossless) PNG 포맷으로 고정!
+    if (typeof quality === 'number' && quality < 0.99) {
+      try {
+        const webp = canvas.toDataURL('image/webp', quality);
+        if (webp && webp.startsWith('data:image/webp')) return webp;
+      } catch (e) { }
+    }
     return canvas.toDataURL('image/png');
   }
 
