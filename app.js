@@ -19941,7 +19941,11 @@ class GraphApp {
   }
 
   deletePlaylistSlideAt(delIdx) {
-    if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) return;
+    if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
+      this.resetNewCanvas();
+      this.showToast('🗑️ 현재 슬라이드를 깨끗하게 비웠습니다.');
+      return;
+    }
     if (delIdx < 0 || delIdx >= this.lessonPlaylistSlides.length) return;
 
     this.saveCurrentSlideIntoPlaylist();
@@ -20080,22 +20084,16 @@ class GraphApp {
     const lblMini = document.getElementById('lblTopSlideMiniTab');
     if (!miniTab) return;
 
-    if (!this.isGraphCovered) {
-      miniTab.style.display = 'none';
-      return;
-    }
-
-    const hasPlaylistBar = Boolean(this.isLessonPlaylistActive && this.lessonPlaylistSlides && this.lessonPlaylistSlides.length >= 1);
-
-    if (!this.isTopSlideBarHidden || !hasPlaylistBar) {
+    if (!this.isGraphCovered || !this.isTopSlideBarHidden) {
       miniTab.style.display = 'none';
       return;
     }
 
     miniTab.style.display = 'inline-flex';
     if (lblMini) {
-      const cur = (this.lessonPlaylistIndex || 0) + 1;
-      const total = this.lessonPlaylistSlides.length;
+      const hasPlaylist = Boolean(this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length >= 1);
+      const cur = hasPlaylist ? ((this.lessonPlaylistIndex || 0) + 1) : 1;
+      const total = hasPlaylist ? this.lessonPlaylistSlides.length : 1;
       lblMini.textContent = `📑 ${cur} / ${total} ▾`;
     }
   }
@@ -20109,7 +20107,7 @@ class GraphApp {
       this._syncTopSlideMiniTabUI();
       return;
     }
-    if ((!this.isGraphCovered && !allowInStudentAudio) || !this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) {
+    if (!this.isGraphCovered && !allowInStudentAudio) {
       navBar.style.display = 'none';
       this._syncTopSlideMiniTabUI();
       return;
@@ -20127,8 +20125,11 @@ class GraphApp {
       }, { capture: true });
     }
 
-    const total = this.lessonPlaylistSlides.length;
-    const cur = this.lessonPlaylistIndex + 1;
+    const hasPlaylist = Boolean(this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0);
+    const effectiveSlides = hasPlaylist ? this.lessonPlaylistSlides : [null];
+    const total = effectiveSlides.length;
+    const curIdx = hasPlaylist ? (this.lessonPlaylistIndex || 0) : 0;
+    const cur = curIdx + 1;
     const arrowChar = this._isSlideGridOpen ? '▴' : '▾';
     const lbl = document.getElementById('lblPlaylistSlideInfo');
     if (lbl) {
@@ -20147,8 +20148,8 @@ class GraphApp {
     const chipsEl = document.getElementById('playlistSlideChips');
     if (chipsEl) {
       chipsEl.innerHTML = '';
-      this.lessonPlaylistSlides.forEach((s, idx) => {
-        const isActive = (idx === this.lessonPlaylistIndex);
+      effectiveSlides.forEach((s, idx) => {
+        const isActive = (idx === curIdx);
         const chip = document.createElement('div');
         chip.className = 'slide-chip-item' + (isActive ? ' active' : '');
         const shortLabel = String(idx + 1);
@@ -20162,7 +20163,7 @@ class GraphApp {
         chip.onclick = (e) => {
           e.stopPropagation();
           this._isSlideGridOpen = false;
-          if (idx !== this.lessonPlaylistIndex) {
+          if (hasPlaylist && idx !== this.lessonPlaylistIndex) {
             this.jumpToPlaylistSlide(idx);
           } else {
             this.syncLessonPlaylistNavBarUI();
@@ -20178,8 +20179,8 @@ class GraphApp {
     const btnOpenPdf = document.getElementById('btnPlaylistOpenPdf');
     const lblOpenPdf = document.getElementById('lblPlaylistOpenPdf');
     const btnAddSlide = document.getElementById('btnPlaylistAddSlide');
-    if (btnPrev) btnPrev.disabled = (this.lessonPlaylistIndex <= 0);
-    if (btnNext) btnNext.disabled = (this.lessonPlaylistIndex >= total - 1);
+    if (btnPrev) btnPrev.disabled = (curIdx <= 0);
+    if (btnNext) btnNext.disabled = (curIdx >= total - 1);
 
     const hasOpenPdf = Boolean(this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0));
     const isPageMode = (this.lessonTeachingMode === 'page');
@@ -20193,19 +20194,14 @@ class GraphApp {
         const curPage = (this.pdfPageBoardData && this.pdfPageBoardData.pageNum) ? this.pdfPageBoardData.pageNum : (this.pdfCurrentPage || 1);
         const totalPages = (this.pdfPageBoardData && this.pdfPageBoardData.totalPages) ? this.pdfPageBoardData.totalPages : (this.pdfTotalPages || (this.pdfDoc ? this.pdfDoc.numPages : 1));
         const nextP = Math.min(totalPages, curPage + 1);
-        const lblNextPdf = document.getElementById('lblPlaylistNextPdfPage');
-        if (lblNextPdf) {
-          lblNextPdf.textContent = `다음 페이지 (p.${nextP})`;
-        } else {
-          btnNextPdfPage.textContent = `+ 다음 페이지 (p.${nextP})`;
-        }
+        btnNextPdfPage.textContent = `+ 다음 페이지 (p.${nextP})`;
         btnNextPdfPage.title = `새 슬라이드를 생성하고 다음 PDF 페이지(p.${nextP})를 즉시 엽니다`;
       } else {
         btnNextPdfPage.style.display = 'none';
       }
     }
     if (btnOpenPdf) {
-      const showOpenPdfBtn = isPageMode ? hasOpenPdf : true;
+      const showOpenPdfBtn = isPageMode ? hasOpenPdf : Boolean(hasPlaylist || hasOpenPdf || this.problemCardData || this.lessonTeachingMode === 'crop');
       btnOpenPdf.style.display = showOpenPdfBtn ? 'inline-flex' : 'none';
       if (lblOpenPdf) {
         lblOpenPdf.textContent = isPageMode ? '페이지 목록' : '다음 캡처';
