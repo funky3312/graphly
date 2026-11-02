@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_03">
+  <link rel="stylesheet" href="style.css?v=20261103_04">
 </head>
 
 <body class="theme-light">
@@ -958,20 +958,16 @@
           <button type="button" id="btnAudioHideRecBar" class="audio-sync-btn audio-btn-close" title="상단 녹화 바 숨기기 (우측 마이크 버튼으로 종료 가능)">✕</button>
         </div>
 
-        <!-- 상태 2: 재생 및 노트 클릭 모드 (Playback & Interactive Note) -->
+        <!-- 상태 2: 영상 플레이어 바 (Video Playbar) -->
         <div id="audioSyncPlayerGroup" class="audio-sync-group" style="display: none;">
           <button type="button" id="btnAudioPlayPause" class="audio-sync-btn audio-btn-play" title="재생 / 일시정지">
             <span id="iconAudioPlayPause">▶</span>
           </button>
           <span id="lblAudioPlayTime" class="audio-sync-time">00:00 / 00:00</span>
-          <input type="range" id="audioSyncScrubber" class="audio-sync-scrubber" min="0" max="1000" step="10" value="0">
-          <button type="button" id="btnAudioReplayViewMode" class="audio-sync-btn audio-btn-mode active-video" title="영상처럼 차근차근 써지며 재생할지, 완성된 노트를 보며 원하는 필기를 클릭해 들을지 전환합니다">
-            <span id="lblAudioReplayViewMode">🎬 영상 모드</span>
-          </button>
+          <input type="range" id="audioSyncScrubber" class="audio-sync-scrubber" min="0" max="1000" step="10" value="0" title="원하는 구간의 플레이바를 클릭·드래그하여 바로 이동합니다">
           <button type="button" id="btnAudioSyncSpeed" class="audio-sync-btn audio-btn-speed" title="재생 배속 변경">1.0x</button>
           <button type="button" id="btnAudioReRecord" class="audio-sync-btn audio-btn-rerecord" title="새로 녹음">🎙️ 재녹음</button>
           <button type="button" id="btnAudioSyncDelete" class="audio-sync-btn audio-btn-del" title="녹음 삭제">🗑️</button>
-          <button type="button" id="btnAudioBackToViewer" class="audio-sync-btn audio-btn-viewer-back" style="display: none;" title="노트 뷰어로 돌아가기">↩ 뷰어</button>
           <button type="button" id="btnAudioSyncCloseBar" class="audio-sync-btn audio-btn-close" title="플레이어 접기">✕</button>
         </div>
       </div>
@@ -1404,9 +1400,10 @@
           <div class="export-filter-row export-stage-preset-row">
             <span class="export-step-label">단계별 저장</span>
             <div class="export-stage-preset-group">
-              <button type="button" id="btnExportPresetStage1" class="export-stage-preset-chip" data-stage="1" title="학생들이 직접 풀 수 있도록 필기와 음성을 제외하고 [문제 + 그래프]만 저장/공유합니다">1차: 문제+그래프</button>
-              <button type="button" id="btnExportPresetStage2" class="export-stage-preset-chip" data-stage="2" title="음성을 제외하고 [문제 + 그래프 + 필기] 해설 노트만 저장/공유합니다">2차: +필기 해설</button>
-              <button type="button" id="btnExportPresetStage3" class="export-stage-preset-chip active" data-stage="3" title="[문제 + 그래프 + 필기 + 음성] 전체 강의를 저장/공유합니다">3차: +음성 강의</button>
+              <button type="button" id="btnExportPresetStage0" class="export-stage-preset-chip" data-stage="0" title="학생들이 패드에서 처음부터 직접 풀 수 있도록 [문제]만 저장/공유합니다">① 문제</button>
+              <button type="button" id="btnExportPresetStage1" class="export-stage-preset-chip" data-stage="1" title="학생들이 패드에서 그래프를 움직이며 풀 수 있도록 [문제 + 그래프]만 저장/공유합니다">② 문제+그래프</button>
+              <button type="button" id="btnExportPresetStage2" class="export-stage-preset-chip" data-stage="2" title="음성을 제외하고 [문제 + 그래프 + 풀이] 해설 노트를 저장/공유합니다">③ 문제+그래프+풀이</button>
+              <button type="button" id="btnExportPresetStage3" class="export-stage-preset-chip active" data-stage="3" title="[문제 + 그래프 + 풀이 + 음성] 전체 강의를 편집 없는 순수 통 영상 플레이어로 공유합니다">④ +음성 (통 영상)</button>
             </div>
           </div>
           <div class="export-filter-hint" id="lblExportFilterSummary" style="display: none;"></div>
@@ -1491,12 +1488,6 @@
       </div>
 
       <div class="smart-viewer-right">
-        <button type="button" id="btnViewerPlayAudioLecture" class="viewer-top-btn viewer-top-btn-audio" style="display: none;" title="처음부터 펜 포인터와 함께 영상처럼 생생하게 재생합니다">
-          <span>🎬 강의 전체 재생</span>
-        </button>
-        <button type="button" id="btnViewerNoteClickAudio" class="viewer-top-btn viewer-top-btn-note-audio" style="display: none;" title="완성된 필기노트에서 원하는 수식을 클릭해 해당 부분 설명만 바로 듣습니다">
-          <span>📝 필기 클릭해 듣기</span>
-        </button>
         <div class="viewer-zoom-group">
           <button type="button" id="btnViewerZoomOut" class="viewer-zoom-btn">−</button>
           <button type="button" id="btnViewerZoomFit" class="viewer-zoom-label"><span id="lblViewerZoom">맞춤</span></button>
@@ -2089,8 +2080,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_03"></script>
-  <script src="app.js?v=20261103_03"></script>
+  <script src="engine.js?v=20261103_04"></script>
+  <script src="app.js?v=20261103_04"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

@@ -8832,14 +8832,6 @@ class GraphApp {
           return;
         }
 
-        if (this.shouldInterceptStrokeClickForAudio()) {
-          const hitCardSt = this.hitTestCardAudioStroke(this.problemInkStrokes, pos.nx, pos.ny, pos.w, pos.h);
-          if (hitCardSt) {
-            isDrawingOnProblem = false;
-            this.seekAndPlayAudioAt(Math.max(0, hitCardSt.tStart - 40), hitCardSt);
-            return;
-          }
-        }
         const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
         const initCardPenStyle = (this.activeInkTool === 'highlighter') ? 'ballpen' : (this.inkPenStyle || 'ballpen');
         const hasHwP = (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01);
@@ -11566,14 +11558,6 @@ class GraphApp {
           return;
         }
 
-        if (this.shouldInterceptStrokeClickForAudio()) {
-          const hitCardSt = this.hitTestCardAudioStroke(this.graphInkStrokes, pos.nx, pos.ny, pos.w, pos.h);
-          if (hitCardSt) {
-            isDrawingOnGraphCard = false;
-            this.seekAndPlayAudioAt(Math.max(0, hitCardSt.tStart - 40), hitCardSt);
-            return;
-          }
-        }
         const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
         const initGraphCardPenStyle = (this.activeInkTool === 'highlighter') ? 'ballpen' : (this.inkPenStyle || 'ballpen');
         const hasHwP = (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01);
@@ -16496,6 +16480,7 @@ class GraphApp {
     const lblGraph = document.getElementById('lblExportLayerGraph');
     const lblInk = document.getElementById('lblExportLayerInk');
     const lblAudio = document.getElementById('lblExportLayerAudio');
+    const btnStage0 = document.getElementById('btnExportPresetStage0');
     const btnStage1 = document.getElementById('btnExportPresetStage1');
     const btnStage2 = document.getElementById('btnExportPresetStage2');
     const btnStage3 = document.getElementById('btnExportPresetStage3');
@@ -16538,9 +16523,11 @@ class GraphApp {
       if (lblInk) lblInk.classList.toggle('active', incI);
       if (lblAudio) lblAudio.classList.toggle('active', incA);
 
+      const isStage0 = (incP && !incG && !incI && !incA);
       const isStage1 = (incP && incG && !incI && !incA);
       const isStage2 = (incP && incG && incI && !incA);
       const isStage3 = (incP && incG && incI && incA);
+      if (btnStage0) btnStage0.classList.toggle('active', isStage0);
       if (btnStage1) btnStage1.classList.toggle('active', isStage1);
       if (btnStage2) btnStage2.classList.toggle('active', isStage2);
       if (btnStage3) btnStage3.classList.toggle('active', isStage3);
@@ -16632,7 +16619,12 @@ class GraphApp {
     if (chkAudio) chkAudio.onchange = () => onLayerToggle('includeAudio', chkAudio);
 
     const applyStagePreset = (stageNum) => {
-      if (stageNum === 1) {
+      if (stageNum === 0) {
+        this.exportFilter.includeProblem = true;
+        this.exportFilter.includeGraph = false;
+        this.exportFilter.includeInk = false;
+        this.exportFilter.includeAudio = false;
+      } else if (stageNum === 1) {
         this.exportFilter.includeProblem = true;
         this.exportFilter.includeGraph = true;
         this.exportFilter.includeInk = false;
@@ -16650,6 +16642,7 @@ class GraphApp {
       }
       updateShareLinksAndQR();
     };
+    if (btnStage0) btnStage0.onclick = () => applyStagePreset(0);
     if (btnStage1) btnStage1.onclick = () => applyStagePreset(1);
     if (btnStage2) btnStage2.onclick = () => applyStagePreset(2);
     if (btnStage3) btnStage3.onclick = () => applyStagePreset(3);
@@ -16806,9 +16799,10 @@ class GraphApp {
       const g = f.includeGraph !== false;
       const i = f.includeInk !== false;
       const a = f.includeAudio !== false;
-      if (p && g && !i && !a) return '[1차·문제+그래프]';
-      if (p && g && i && !a) return '[2차·해설노트]';
-      if (p && g && i && a) return '[3차·음성강의]';
+      if (p && !g && !i && !a) return '[1단계·문제]';
+      if (p && g && !i && !a) return '[2단계·문제+그래프]';
+      if (p && g && i && !a) return '[3단계·문제+그래프+풀이]';
+      if (p && g && i && a) return '[4단계·통영상강의]';
       const names = [];
       if (p) names.push('문제');
       if (g) names.push('그래프');
@@ -18475,7 +18469,12 @@ class GraphApp {
         const hasLoadedAudio = Boolean(this.audioSyncData && this.audioSyncData.durationMs > 0);
         this._isAudioSyncPlayerVisible = hasLoadedAudio;
         if (hasLoadedAudio) {
-          this.audioPlayCurrentMs = this.audioSyncData.durationMs;
+          this.audioPlayCurrentMs = this.isStudentAudioVideoOnlyMode ? 0 : this.audioSyncData.durationMs;
+          if (this.isStudentAudioVideoOnlyMode) {
+            this._isAudioReplayActive = true;
+            document.body.classList.add('audio-replay-active');
+            this._applyAudioTimelineStateAt(0);
+          }
         }
       }
       this.syncAudioRecordUI();
@@ -18913,13 +18912,16 @@ class GraphApp {
     const modalCloud = document.getElementById('modalCloudHub');
     if (modalCloud) modalCloud.classList.remove('show');
 
-    const hasAudio = Boolean(this.audioSyncData && this.audioSyncData.durationMs > 0);
-    if (hasAudio && autoPlayIfAudio) {
-      this._isAudioSyncPlayerVisible = true;
-      this.setAudioReplayViewMode('video', true);
-      this.seekAudioSync(0, false);
-      this.playAudioSync(0);
+    if (this._packageHasRecordedAudio({ playlistSlides: slides })) {
+      this.enterStudentAudioVideoOnlyMode({
+        ...pack,
+        playlistSlides: slides,
+        isPlaylist: slides.length > 1 || Boolean(pack.isPlaylist),
+        currentIndex: 0
+      }, Boolean(autoPlayIfAudio));
+      return pack;
     }
+    this.exitStudentAudioVideoOnlyMode();
 
     this.showToast(slides.length > 1
       ? `📂 [${title}] (${slides.length}문항 통째 수업) 파일을 열었습니다! 1번부터 넘기며 수업하세요.`
@@ -20280,8 +20282,61 @@ class GraphApp {
     }
   }
 
+  _packageHasRecordedAudio(pkg) {
+    if (!pkg) return false;
+    const slides = Array.isArray(pkg.playlistSlides) && pkg.playlistSlides.length > 0
+      ? pkg.playlistSlides
+      : (pkg.slideData ? [pkg.slideData] : (pkg.historyJson ? [pkg] : []));
+    return slides.some(s => Boolean(s && s.audioSyncData && s.audioSyncData.durationMs > 0));
+  }
+
+  async enterStudentAudioVideoOnlyMode(pkg, autoPlay = false) {
+    if (!pkg) return;
+    const slides = Array.isArray(pkg.playlistSlides) && pkg.playlistSlides.length > 0
+      ? pkg.playlistSlides
+      : (pkg.slideData ? [pkg.slideData] : (pkg.historyJson ? [pkg] : []));
+    if (!slides.length) return;
+
+    this.isStudentAudioVideoOnlyMode = true;
+    document.body.classList.add('student-audio-video-only');
+    document.body.classList.remove('viewer-graph-touch-mode');
+    document.body.classList.remove('ink-mode-active');
+    this.isInkMode = false;
+
+    const overlay = document.getElementById('smartNoteViewerOverlay');
+    if (overlay) overlay.style.display = 'none';
+    const touchBar = document.getElementById('viewerGraphTouchBar');
+    if (touchBar) touchBar.style.display = 'none';
+    const resetBar = document.getElementById('sharedResetBar');
+    if (resetBar) resetBar.style.display = 'none';
+
+    const normalizedPkg = {
+      ...pkg,
+      playlistSlides: slides,
+      isPlaylist: slides.length > 1 || Boolean(pkg.isPlaylist),
+      currentIndex: Math.max(0, Math.min(slides.length - 1, pkg.currentIndex || 0))
+    };
+    this._viewerPkg = normalizedPkg;
+    this.applyCloudSharePackage(normalizedPkg);
+    await this._waitForSlideImagesReady();
+
+    this._isAudioSyncPlayerVisible = true;
+    this.setAudioReplayViewMode('video', false);
+    this.seekAudioSync(0, Boolean(autoPlay));
+  }
+
+  exitStudentAudioVideoOnlyMode() {
+    this.isStudentAudioVideoOnlyMode = false;
+    document.body.classList.remove('student-audio-video-only');
+  }
+
   async openSmartNoteViewer(pkg) {
     if (!pkg || !Array.isArray(pkg.playlistSlides) || !pkg.playlistSlides.length) return;
+    if (this._packageHasRecordedAudio(pkg)) {
+      await this.enterStudentAudioVideoOnlyMode(pkg, false);
+      return;
+    }
+    this.exitStudentAudioVideoOnlyMode();
     this._viewerPkg = pkg;
     document.body.classList.remove('viewer-graph-touch-mode');
     const touchBar = document.getElementById('viewerGraphTouchBar');
@@ -20404,34 +20459,11 @@ class GraphApp {
       });
     }
 
-    const hasAudio = Boolean(slide.audioSyncData && slide.audioSyncData.durationMs > 0);
-    const btnPlayAudio = document.getElementById('btnViewerPlayAudioLecture');
-    const btnNoteAudio = document.getElementById('btnViewerNoteClickAudio');
-    if (btnPlayAudio) {
-      btnPlayAudio.style.display = hasAudio ? 'inline-flex' : 'none';
-      btnPlayAudio.onclick = (e) => {
-        e.stopPropagation();
-        this.enterAudioLectureFromViewer(idx, 'video', 0);
-      };
-    }
-    if (btnNoteAudio) {
-      btnNoteAudio.style.display = hasAudio ? 'inline-flex' : 'none';
-      btnNoteAudio.onclick = (e) => {
-        e.stopPropagation();
-        this.enterAudioLectureFromViewer(idx, 'note', null);
-      };
-    }
-
     if (hintEl) {
-      if (hasAudio) {
-        hintEl.textContent = '🎧 상단 [🎬 강의 전체 재생]을 누르거나, 이해가 안 되는 필기 수식을 직접 터치하면 음성과 함께 필기가 재생됩니다';
-        hintEl.style.display = '';
-      } else {
-        hintEl.textContent = hotspots.length > 0
-          ? '그래프 영역을 터치하면 직접 조작할 수 있습니다'
-          : '';
-        hintEl.style.display = hotspots.length > 0 ? '' : 'none';
-      }
+      hintEl.textContent = hotspots.length > 0
+        ? '그래프 영역을 터치하면 직접 조작할 수 있습니다'
+        : '';
+      hintEl.style.display = hotspots.length > 0 ? '' : 'none';
     }
 
     this.fitSmartViewerStageToScreen();
@@ -21453,6 +21485,7 @@ class GraphApp {
     };
 
     const handleDown = (e) => {
+      if (this.isStudentAudioVideoOnlyMode) return;
       this._lastPointerEvent = e;
       this._erasedInCurrentStroke = false;
       const isForceSpaceOrWheelPan = Boolean(this.isSpacePressed || (e && e.button === 1));
@@ -21537,16 +21570,6 @@ class GraphApp {
         const eY = e.touches ? e.touches[0].clientY : e.clientY;
         if (!inputRect || eX < inputRect.left || eX > inputRect.right || eY < inputRect.top || eY > inputRect.bottom) {
           this.commitEditingTextLabel();
-        }
-      }
-      // 🌟 [🎧 노트 클릭 모드: 원하는 필기 수식을 톡 클릭하면 즉시 해당 타임스탬프 음성과 펜 포인터 재생!] 🌟
-      if (this.shouldInterceptStrokeClickForAudio()) {
-        const hitAudioSt = this.hitTestAudioStrokeAtScreenPos(pos.x, pos.y);
-        if (hitAudioSt) {
-          if (e.preventDefault) e.preventDefault();
-          if (e.stopPropagation) e.stopPropagation();
-          this.seekAndPlayAudioAt(Math.max(0, hitAudioSt.tStart - 40), hitAudioSt);
-          return;
         }
       }
 
@@ -30697,7 +30720,7 @@ class GraphApp {
     this.isAudioPlaying = false;
     this._isAudioReplayActive = false;
     this._isAudioSyncPlayerVisible = false;
-    this.audioReplayViewMode = 'video'; // 'video' | 'note'
+    this.audioReplayViewMode = 'video';
     this.audioPlayCurrentMs = 0;
     this.audioPlaybackRate = 1.0;
     this.audioPlayerEl = null;
@@ -30714,11 +30737,9 @@ class GraphApp {
     const btnStopRec = document.getElementById('btnAudioStopRecord');
     const btnPlayPause = document.getElementById('btnAudioPlayPause');
     const scrubber = document.getElementById('audioSyncScrubber');
-    const btnMode = document.getElementById('btnAudioReplayViewMode');
     const btnSpeed = document.getElementById('btnAudioSyncSpeed');
     const btnReRecord = document.getElementById('btnAudioReRecord');
     const btnDelete = document.getElementById('btnAudioSyncDelete');
-    const btnBackViewer = document.getElementById('btnAudioBackToViewer');
     const btnCloseBar = document.getElementById('btnAudioSyncCloseBar');
 
     if (btnFab) {
@@ -30731,7 +30752,7 @@ class GraphApp {
           if (!this._isAudioSyncPlayerVisible) {
             this.stopAudioPlayback(true);
           } else {
-            this.setAudioReplayViewMode('note', false);
+            this.setAudioReplayViewMode('video', true);
           }
           this.syncAudioRecordUI();
         } else {
@@ -30780,14 +30801,6 @@ class GraphApp {
       });
     }
 
-    if (btnMode) {
-      btnMode.onclick = (e) => {
-        e.stopPropagation();
-        const nextMode = this.audioReplayViewMode === 'video' ? 'note' : 'video';
-        this.setAudioReplayViewMode(nextMode, true);
-      };
-    }
-
     if (btnSpeed) {
       const speeds = [1.0, 1.25, 1.5, 2.0, 0.8];
       btnSpeed.onclick = (e) => {
@@ -30820,25 +30833,10 @@ class GraphApp {
       };
     }
 
-    if (btnBackViewer) {
-      btnBackViewer.onclick = (e) => {
-        e.stopPropagation();
-        const slideIdx = this._enteredAudioFromViewerSlideIdx;
-        this._enteredAudioFromViewerSlideIdx = null;
-        this.stopAudioPlayback(true);
-        this._isAudioSyncPlayerVisible = false;
-        this.syncAudioRecordUI();
-        if (this._viewerPkg) {
-          const overlay = document.getElementById('smartNoteViewerOverlay');
-          if (overlay) overlay.style.display = 'flex';
-          this.switchSmartViewerSlide(typeof slideIdx === 'number' ? slideIdx : (this._viewerSlideIdx || 0));
-        }
-      };
-    }
-
     if (btnCloseBar) {
       btnCloseBar.onclick = (e) => {
         e.stopPropagation();
+        if (this.isStudentAudioVideoOnlyMode) return;
         this.stopAudioPlayback(true);
         this._isAudioSyncPlayerVisible = false;
         this.syncAudioRecordUI();
@@ -30853,48 +30851,6 @@ class GraphApp {
         this.syncAudioRecordUI();
         this.showToast('🕵️ 상단 녹화 바를 숨겼습니다. 우측 [🎙️] 버튼을 누르면 녹음이 완료됩니다.');
       };
-    }
-
-    // 스마트 노트 뷰어(#smartNoteViewerStage)에서 필기 수식 직접 클릭 시 해당 시점 재생 연동
-    const viewerStage = document.getElementById('smartNoteViewerStage');
-    if (viewerStage && !viewerStage._audioClickBound) {
-      viewerStage._audioClickBound = true;
-      let downPt = null;
-      viewerStage.addEventListener('pointerdown', (e) => {
-        if (e.target && e.target.closest && e.target.closest('.viewer-graph-hotspot')) return;
-        downPt = { x: e.clientX, y: e.clientY, t: performance.now() };
-      });
-      viewerStage.addEventListener('pointerup', (e) => {
-        if (!downPt) return;
-        const dist = Math.hypot(e.clientX - downPt.x, e.clientY - downPt.y);
-        const dt = performance.now() - downPt.t;
-        downPt = null;
-        if (dist > 10 || dt > 500) return;
-        if (e.target && e.target.closest && e.target.closest('.viewer-graph-hotspot')) return;
-
-        const slide = this._viewerPkg && this._viewerPkg.playlistSlides
-          ? this._viewerPkg.playlistSlides[this._viewerSlideIdx || 0]
-          : null;
-        if (!slide || !slide.audioSyncData || !slide.audioSyncData.durationMs) return;
-
-        const imgEl = document.getElementById('smartNoteViewerImg');
-        if (!imgEl) return;
-        const rect = imgEl.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) return;
-        const nx = (e.clientX - rect.left) / rect.width;
-        const ny = (e.clientY - rect.top) / rect.height;
-        if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
-
-        // 해당 슬라이드를 복원하여 클릭 위치의 필기 스트로크 탐색
-        this.deserializeFullSlideState(slide);
-        const sb = slide.viewerSmartBounds || this.getSmartExportBounds(this._viewerPkg.exportFilter || null);
-        const screenX = sb.x + nx * sb.w;
-        const screenY = sb.y + ny * sb.h;
-        const hitSt = this.hitTestAudioStrokeAtScreenPos(screenX, screenY, 36);
-        if (hitSt && typeof hitSt.tStart === 'number') {
-          this.enterAudioLectureFromViewer(this._viewerSlideIdx || 0, 'note', Math.max(0, hitSt.tStart - 40));
-        }
-      });
     }
 
     // 🌟 [전역 호버링 & 카드 위 포인팅 60fps 추적]:
@@ -31319,9 +31275,6 @@ class GraphApp {
   }
 
   shouldInterceptStrokeClickForAudio() {
-    if (this.isAudioRecording) return false;
-    if (!this.audioSyncData || !this.audioSyncData.durationMs) return false;
-    if (this._isAudioSyncPlayerVisible && this.audioReplayViewMode === 'note') return true;
     return false;
   }
 
@@ -31983,9 +31936,6 @@ class GraphApp {
     const iconPlay = document.getElementById('iconAudioPlayPause');
     const lblPlayTime = document.getElementById('lblAudioPlayTime');
     const scrubber = document.getElementById('audioSyncScrubber');
-    const btnMode = document.getElementById('btnAudioReplayViewMode');
-    const lblMode = document.getElementById('lblAudioReplayViewMode');
-    const btnBackViewer = document.getElementById('btnAudioBackToViewer');
 
     const hasAudio = Boolean(this.audioSyncData && this.audioSyncData.durationMs > 0);
     if (btnFab) {
@@ -32026,7 +31976,7 @@ class GraphApp {
       return;
     }
 
-    if (hasAudio && this._isAudioSyncPlayerVisible) {
+    if (hasAudio && (this._isAudioSyncPlayerVisible || this.isStudentAudioVideoOnlyMode)) {
       bar.style.display = 'flex';
       if (recGroup) recGroup.style.display = 'none';
       if (playGroup) playGroup.style.display = 'flex';
@@ -32040,37 +31990,17 @@ class GraphApp {
         scrubber.max = String(dur);
         scrubber.value = String(Math.round(cur));
       }
-      if (btnMode && lblMode) {
-        const isVideo = (this.audioReplayViewMode === 'video');
-        btnMode.classList.toggle('active-video', isVideo);
-        btnMode.classList.toggle('active-note', !isVideo);
-        lblMode.textContent = isVideo ? '🎬 영상 모드' : '📝 노트 클릭';
-      }
-      if (btnBackViewer) {
-        btnBackViewer.style.display = (this._enteredAudioFromViewerSlideIdx !== null) ? 'inline-flex' : 'none';
-      }
     } else {
       bar.style.display = 'none';
     }
   }
 
   setAudioReplayViewMode(mode, triggerRender = true) {
-    this.audioReplayViewMode = (mode === 'note') ? 'note' : 'video';
+    this.audioReplayViewMode = 'video';
     if (this.audioSyncData) {
-      if (this.audioReplayViewMode === 'note') {
-        // 노트 클릭 모드에서는 완성된 최종 화면(finalState)을 펼쳐두어 모든 필기를 한눈에 보고 클릭할 수 있게 함
-        if (this.audioSyncData.finalState) {
-          this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
-        }
-        if (!this.isAudioPlaying) {
-          this._isAudioReplayActive = false;
-          document.body.classList.remove('audio-replay-active');
-        }
-      } else {
-        this._isAudioReplayActive = true;
-        document.body.classList.add('audio-replay-active');
-        this._applyAudioTimelineStateAt(this.audioPlayCurrentMs || 0);
-      }
+      this._isAudioReplayActive = true;
+      document.body.classList.add('audio-replay-active');
+      this._applyAudioTimelineStateAt(this.audioPlayCurrentMs || 0);
     }
     this.syncAudioRecordUI();
     if (triggerRender) {
@@ -32167,12 +32097,6 @@ class GraphApp {
   _applyAudioTimelineStateAt(playMs) {
     if (!this.audioSyncData) return;
     this._expandAudioSyncData(this.audioSyncData);
-    if (this.audioReplayViewMode === 'note') {
-      if (this.audioSyncData.finalState) {
-        this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
-      }
-      return;
-    }
     let prevEv = this.audioSyncData.initialState ? { t: 0, state: this.audioSyncData.initialState } : null;
     let nextEv = null;
     const timeline = this.audioSyncData.timeline || [];
@@ -32463,45 +32387,6 @@ class GraphApp {
     const pts = stroke.points;
     const N = pts.length;
 
-    // 노트 클릭 모드('note'): 모든 완성된 필기를 항상 보여주되, 현재 재생 시각에 해당하는 필기는 하이라이트 + 펜 포인터 추적!
-    if (viewMode === 'note') {
-      const isWritingNow = (playMs >= tStart && playMs <= tEnd + 160);
-      let tipPt = null;
-      if (isWritingNow) {
-        if (N === 1) {
-          tipPt = pts[0];
-        } else {
-          const spanTotal = Math.max(1, tEnd - tStart);
-          for (let i = 0; i < N - 1; i++) {
-            const tA = (typeof pts[i].t === 'number') ? pts[i].t : (tStart + spanTotal * (i / (N - 1)));
-            const tB = (typeof pts[i + 1].t === 'number') ? pts[i + 1].t : (tStart + spanTotal * ((i + 1) / (N - 1)));
-            if (playMs >= tA && playMs <= tB) {
-              const alpha = Math.max(0, Math.min(1, (playMs - tA) / Math.max(1, tB - tA)));
-              tipPt = (pts[i].nx !== undefined)
-                ? {
-                  nx: pts[i].nx + (pts[i + 1].nx - pts[i].nx) * alpha,
-                  ny: pts[i].ny + (pts[i + 1].ny - pts[i].ny) * alpha,
-                  p: (pts[i].p || 0.5)
-                }
-                : {
-                  x: pts[i].x + (pts[i + 1].x - pts[i].x) * alpha,
-                  y: pts[i].y + (pts[i + 1].y - pts[i].y) * alpha,
-                  p: (pts[i].p || 0.5)
-                };
-              break;
-            }
-          }
-          if (!tipPt) tipPt = pts[N - 1];
-        }
-      }
-      return {
-        stroke,
-        isCurrentlyWriting: isWritingNow,
-        isActiveHighlight: (playMs >= tStart - 50 && playMs <= tEnd + 450),
-        tipPoint: tipPt
-      };
-    }
-
     // 영상 모드('video'): 아직 시작 시각(tStart)이 되지 않은 미래의 필기는 100% 감춤!
     if (playMs < tStart) {
       return null;
@@ -32633,17 +32518,8 @@ class GraphApp {
       this.renderSingleStroke(ctx, r.stroke, null, false);
     });
 
-    // 2차 패스: 일반 펜 (노트 클릭 모드에서 현재 설명 중인 스트로크는 은은한 후광 강조 표시)
+    // 2차 패스: 일반 펜
     prepared.filter(r => !r.stroke.isHighlighter).forEach(r => {
-      if (viewMode === 'note' && r.isActiveHighlight) {
-        const glowStroke = {
-          ...r.stroke,
-          size: (r.stroke.size || 4.0) * 2.4,
-          isHighlighter: true,
-          color: '#00d2d3'
-        };
-        this.renderSingleStroke(ctx, glowStroke, '#00d2d3', false);
-      }
       this.renderSingleStroke(ctx, r.stroke, null, false);
     });
 
@@ -32951,168 +32827,12 @@ class GraphApp {
     }
   }
 
-  seekAndPlayAudioAt(targetMs, clickedStroke = null) {
-    if (!this.audioSyncData) return;
-    this.playAudioSync(targetMs);
-  }
-
-  hitTestCardAudioStroke(strokes, nx, ny, w, h, radiusPx = 22) {
-    if (!Array.isArray(strokes) || strokes.length === 0) return null;
-    const tx = nx * w;
-    const ty = ny * h;
-    let bestStroke = null;
-    let bestDist = radiusPx;
-
-    for (let i = strokes.length - 1; i >= 0; i--) {
-      const st = strokes[i];
-      if (!st || typeof st.tStart !== 'number' || !st.points || st.points.length === 0) continue;
-      for (let j = 0; j < st.points.length; j++) {
-        const px = st.points[j].nx * w;
-        const py = st.points[j].ny * h;
-        const d0 = Math.hypot(px - tx, py - ty);
-        if (d0 < bestDist) {
-          bestDist = d0;
-          bestStroke = st;
-        }
-        if (j < st.points.length - 1) {
-          const nx2 = st.points[j + 1].nx * w;
-          const ny2 = st.points[j + 1].ny * h;
-          const segD = this.distToSegment({ x: tx, y: ty }, { x: px, y: py }, { x: nx2, y: ny2 });
-          if (segD < bestDist) {
-            bestDist = segD;
-            bestStroke = st;
-          }
-        }
-      }
-    }
-    return bestStroke;
-  }
-
-  hitTestAudioStrokeAtScreenPos(screenX, screenY, radiusPx = 24) {
-    // 1. 문제 카드 내부 필기 검사
-    const pCanvas = document.getElementById('problemCardCanvas');
-    const pWidget = document.getElementById('problemCardWidget');
-    if (pCanvas && pWidget && pWidget.style.display !== 'none' && !pWidget.classList.contains('minimized') && this.problemInkStrokes && this.problemInkStrokes.length > 0) {
-      const r = pCanvas.getBoundingClientRect();
-      if (screenX >= r.left && screenX <= r.right && screenY >= r.top && screenY <= r.bottom && r.width > 0 && r.height > 0) {
-        const hitP = this.hitTestCardAudioStroke(
-          this.problemInkStrokes,
-          (screenX - r.left) / r.width,
-          (screenY - r.top) / r.height,
-          r.width,
-          r.height,
-          radiusPx
-        );
-        if (hitP) return hitP;
-      }
-    }
-
-    // 2. 그래프 보관 카드(#1) 내부 필기 검사
-    const gCanvas = document.getElementById('graphCardCanvas');
-    const gWidget = document.getElementById('graphCardWidget');
-    if (gCanvas && gWidget && gWidget.style.display !== 'none' && !gWidget.classList.contains('minimized') && this.graphInkStrokes && this.graphInkStrokes.length > 0) {
-      const r = gCanvas.getBoundingClientRect();
-      if (screenX >= r.left && screenX <= r.right && screenY >= r.top && screenY <= r.bottom && r.width > 0 && r.height > 0) {
-        const hitG = this.hitTestCardAudioStroke(
-          this.graphInkStrokes,
-          (screenX - r.left) / r.width,
-          (screenY - r.top) / r.height,
-          r.width,
-          r.height,
-          radiusPx
-        );
-        if (hitG) return hitG;
-      }
-    }
-
-    // 2.5 추가 문제 카드 및 추가 그래프 카드(#2, #3...) 내부 필기 검사
-    const extraCardLists = [
-      ...(this.extraProblemCards || []),
-      ...(this.extraGraphCards || [])
-    ];
-    for (let cIdx = extraCardLists.length - 1; cIdx >= 0; cIdx--) {
-      const cardItem = extraCardLists[cIdx];
-      const cardEl = cardItem && cardItem.el;
-      if (!cardEl || cardEl.style.display === 'none' || cardEl.classList.contains('minimized')) continue;
-      const cStrokes = cardEl._cardInkStrokes;
-      const bodyEl = cardEl.querySelector('.problem-card-body');
-      if (!Array.isArray(cStrokes) || cStrokes.length === 0 || !bodyEl) continue;
-      const r = bodyEl.getBoundingClientRect();
-      if (screenX >= r.left && screenX <= r.right && screenY >= r.top && screenY <= r.bottom && r.width > 0 && r.height > 0) {
-        const hitExtra = this.hitTestCardAudioStroke(
-          cStrokes,
-          (screenX - r.left) / r.width,
-          (screenY - r.top) / r.height,
-          r.width,
-          r.height,
-          radiusPx
-        );
-        if (hitExtra) return hitExtra;
-      }
-    }
-
-    // 3. 메인 칠판 및 그래프 필기(this.inkStrokes) 검사
-    if (!this.inkStrokes || this.inkStrokes.length === 0) return null;
-    let bestStroke = null;
-    let bestDist = radiusPx;
-
-    for (let i = this.inkStrokes.length - 1; i >= 0; i--) {
-      const st = this.inkStrokes[i];
-      if (!st || typeof st.tStart !== 'number') continue;
-      const isBoard = (st.target || 'board') === 'board';
-      if (!isBoard && Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
-
-      if (st.shape) {
-        const shapePts = this.getShapeSampleScreenPoints(st);
-        for (let k = 0; k < shapePts.length; k++) {
-          const d = Math.hypot(shapePts[k].x - screenX, shapePts[k].y - screenY);
-          if (d < bestDist) {
-            bestDist = d;
-            bestStroke = st;
-          }
-        }
-      }
-
-      if (st.points && st.points.length > 0) {
-        for (let j = 0; j < st.points.length; j++) {
-          const s1 = isBoard ? this.boardToScreen(st.points[j].x, st.points[j].y) : this.mathToScreen(st.points[j].x, st.points[j].y);
-          const d0 = Math.hypot(s1.x - screenX, s1.y - screenY);
-          if (d0 < bestDist) {
-            bestDist = d0;
-            bestStroke = st;
-          }
-          if (j < st.points.length - 1) {
-            const s2 = isBoard ? this.boardToScreen(st.points[j + 1].x, st.points[j + 1].y) : this.mathToScreen(st.points[j + 1].x, st.points[j + 1].y);
-            const segD = this.distToSegment({ x: screenX, y: screenY }, s1, s2);
-            if (segD < bestDist) {
-              bestDist = segD;
-              bestStroke = st;
-            }
-          }
-        }
-      }
-    }
-    return bestStroke;
-  }
-
   enterAudioLectureFromViewer(slideIdx = 0, mode = 'video', startMs = 0) {
     if (!this._viewerPkg || !this._viewerPkg.playlistSlides || !this._viewerPkg.playlistSlides[slideIdx]) return;
-    const slide = this._viewerPkg.playlistSlides[slideIdx];
-    const overlay = document.getElementById('smartNoteViewerOverlay');
-    if (overlay) overlay.style.display = 'none';
-
-    this._enteredAudioFromViewerSlideIdx = slideIdx;
-    this.deserializeFullSlideState(slide);
-    this._isAudioSyncPlayerVisible = true;
-    this.setAudioReplayViewMode(mode, true);
-
-    if (mode === 'video') {
-      this.playAudioSync(typeof startMs === 'number' ? startMs : 0, 'video');
-    } else if (typeof startMs === 'number') {
-      this.playAudioSync(startMs, 'note');
-    } else {
-      this.syncAudioRecordUI();
-    }
+    this.enterStudentAudioVideoOnlyMode({
+      ...this._viewerPkg,
+      currentIndex: slideIdx
+    }, true);
   }
 
   showToast(message) {

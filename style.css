@@ -9354,10 +9354,68 @@ body.theme-light .audio-rec-hint {
 }
 
 .audio-sync-scrubber {
-  width: 150px;
-  height: 5px;
+  width: clamp(160px, 34vw, 320px);
+  height: 6px;
   accent-color: #00d2d3;
   cursor: pointer;
+}
+
+/* ==========================================================================
+   🎬 [4단계: 문제+그래프+풀이+음성 전용 학생용 순수 통 영상 플레이어 모드]
+   편집/필기/툴바를 100% 숨기고 하단 와이드 플레이바(시크바)만으로 영상처럼 시청!
+   ========================================================================== */
+body.student-audio-video-only #sidebarRail,
+body.student-audio-video-only #inkFloatingToolbar,
+body.student-audio-video-only #rightActionToolbar,
+body.student-audio-video-only #quickPillRemote,
+body.student-audio-video-only #sharedResetBar,
+body.student-audio-video-only #graphSnapFloatingBar,
+body.student-audio-video-only #pdfToGraphCropFloatingBar,
+body.student-audio-video-only #btnCancelPdfCropToGraph,
+body.student-audio-video-only #pdfBoardNavBar,
+body.student-audio-video-only #curveContextBar,
+body.student-audio-video-only #lassoActionFloatingBar,
+body.student-audio-video-only #pwRegionPopover,
+body.student-audio-video-only #smartNoteViewerOverlay,
+body.student-audio-video-only #viewerGraphTouchBar,
+body.student-audio-video-only .problem-card-actions,
+body.student-audio-video-only .problem-card-resize-handle,
+body.student-audio-video-only .card-sticker-del-btn,
+body.student-audio-video-only #btnAudioReRecord,
+body.student-audio-video-only #btnAudioSyncDelete,
+body.student-audio-video-only #btnAudioSyncCloseBar,
+body.student-audio-video-only #btnPlaylistAddSlide,
+body.student-audio-video-only #btnPlaylistNextPdfPage,
+body.student-audio-video-only #btnPlaylistOpenPdf,
+body.student-audio-video-only #btnPlaylistDeleteCurrent,
+body.student-audio-video-only #btnPlaylistHideBar,
+body.student-audio-video-only #btnPlaylistClose,
+body.student-audio-video-only #btnPlaylistClearAll,
+body.student-audio-video-only #lessonPlaylistNavBar .pdf-board-nav-divider,
+body.student-audio-video-only .slide-chip-del-x {
+  display: none !important;
+}
+
+body.student-audio-video-only #graphCanvas,
+body.student-audio-video-only #problemCardWidget,
+body.student-audio-video-only #graphCardWidget,
+body.student-audio-video-only .extra-problem-card-widget,
+body.student-audio-video-only .extra-graph-card-widget,
+body.student-audio-video-only #workspaceStickerOverlay {
+  pointer-events: none !important;
+}
+
+body.student-audio-video-only #audioSyncFloatingBar {
+  top: auto !important;
+  bottom: 22px !important;
+  padding: 8px 16px !important;
+  max-width: calc(100vw - 24px) !important;
+  z-index: 2680 !important;
+}
+
+body.student-audio-video-only .audio-sync-scrubber {
+  width: clamp(180px, 52vw, 460px) !important;
+  height: 7px !important;
 }
 
 .audio-sync-btn {
