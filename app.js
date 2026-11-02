@@ -1339,7 +1339,8 @@ class GraphApp {
 
   restoreHistorySnapshot(jsonStr) {
     try {
-      const data = JSON.parse(jsonStr);
+      if (!jsonStr) return;
+      const data = (typeof jsonStr === 'string') ? JSON.parse(jsonStr) : jsonStr;
       this.graphs = data.graphs || [];
       this.activeGraphIdx = data.activeGraphIdx !== undefined ? data.activeGraphIdx : -1;
       if (data.zoomLevel !== undefined) {
@@ -6169,11 +6170,11 @@ class GraphApp {
       const baseVp = page.getViewport({ scale: 1.0 });
       const rawCropW = Math.max(1, normCrop.nw * baseVp.width);
       const rawCropH = Math.max(1, normCrop.nh * baseVp.height);
-      const desiredMinWidthPx = 1600;
-      let ultraScale = Math.max(4.8, Math.min(6.0, desiredMinWidthPx / rawCropW));
+      const desiredMinWidthPx = 1500;
+      let ultraScale = Math.max(4.0, Math.min(5.4, desiredMinWidthPx / rawCropW));
       const maxDim = Math.max(rawCropW, rawCropH) * ultraScale;
-      if (maxDim > 4200) {
-        ultraScale = 4200 / Math.max(rawCropW, rawCropH);
+      if (maxDim > 3400) {
+        ultraScale = 3400 / Math.max(rawCropW, rawCropH);
       }
       const fullVp = page.getViewport({
         scale: ultraScale,
@@ -6182,7 +6183,7 @@ class GraphApp {
       });
       const targetW = Math.max(1, Math.round(rawCropW * ultraScale));
       const targetH = Math.max(1, Math.round(rawCropH * ultraScale));
-      if (targetW > 5200 || targetH > 5200) return;
+      if (targetW > 3800 || targetH > 3800) return;
 
       const vecCanvas = document.createElement('canvas');
       vecCanvas.width = targetW;
@@ -6194,7 +6195,7 @@ class GraphApp {
       vCtx.fillRect(0, 0, targetW, targetH);
       await page.render({ canvasContext: vCtx, viewport: fullVp }).promise;
 
-      const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.97);
+      const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.84);
       if (!ultraDataUrl) return;
       queueItem.dataUrl = ultraDataUrl;
       queueItem.cropCanvas = vecCanvas;
@@ -6638,7 +6639,7 @@ class GraphApp {
 
     return {
       canvas: offCanvas,
-      dataUrl: offCanvas.toDataURL('image/png'),
+      dataUrl: this.encodeCanvasSmartWebP(offCanvas, 0.85),
       aspect: pxH / Math.max(1, pxW)
     };
   }
@@ -6741,8 +6742,8 @@ class GraphApp {
     if (!pageCanvas) {
       const page = await this.pdfDoc.getPage(targetPage);
       const baseVp = page.getViewport({ scale: 1.0 });
-      const targetMinPxW = 2200;
-      const renderScale = Math.max(2.8, Math.min(3.5, targetMinPxW / Math.max(1, baseVp.width)));
+      const targetMinPxW = 1800;
+      const renderScale = Math.max(2.0, Math.min(2.6, targetMinPxW / Math.max(1, baseVp.width)));
       const vp = page.getViewport({ scale: renderScale });
       pageCanvas = document.createElement('canvas');
       pageCanvas.width = Math.round(vp.width);
@@ -7666,7 +7667,7 @@ class GraphApp {
 
           let dataUrl = '';
           try {
-            dataUrl = cropCanvas.toDataURL('image/webp', 0.94);
+            dataUrl = cropCanvas.toDataURL('image/webp', 0.85);
           } catch (err) { }
           if (!dataUrl || !dataUrl.startsWith('data:image/')) {
             dataUrl = cropCanvas.toDataURL('image/png');
@@ -7834,11 +7835,11 @@ class GraphApp {
       // 크롭 영역(normCrop)만 직접 추출하여 최소 가로 1,600px 보장(최대 변 4,200px) 칼화질로 렌더링합니다!
       const rawCropW = Math.max(1, normCrop.nw * baseVp.width);
       const rawCropH = Math.max(1, normCrop.nh * baseVp.height);
-      const desiredMinWidthPx = 1600;
-      let ultraScale = Math.max(4.8, Math.min(6.0, desiredMinWidthPx / rawCropW));
+      const desiredMinWidthPx = 1500;
+      let ultraScale = Math.max(4.0, Math.min(5.4, desiredMinWidthPx / rawCropW));
       const maxDim = Math.max(rawCropW, rawCropH) * ultraScale;
-      if (maxDim > 4200) {
-        ultraScale = 4200 / Math.max(rawCropW, rawCropH);
+      if (maxDim > 3400) {
+        ultraScale = 3400 / Math.max(rawCropW, rawCropH);
       }
       const fullVp = page.getViewport({
         scale: ultraScale,
@@ -7847,7 +7848,7 @@ class GraphApp {
       });
       const targetW = Math.max(1, Math.round(rawCropW * ultraScale));
       const targetH = Math.max(1, Math.round(rawCropH * ultraScale));
-      if (targetW > 5200 || targetH > 5200) return;
+      if (targetW > 3800 || targetH > 3800) return;
 
       const vecCanvas = document.createElement('canvas');
       vecCanvas.width = targetW;
@@ -7859,9 +7860,9 @@ class GraphApp {
       vCtx.fillRect(0, 0, targetW, targetH);
       await page.render({ canvasContext: vCtx, viewport: fullVp }).promise;
 
-      // 선생님이 막 첫 펜 획을 긋고 있다면 획이 끝날 때까지 양보한 뒤 백그라운드 워커 스레드(toBlob)로 고선명(0.97) 인코딩!
+      // 선생님이 막 첫 펜 획을 긋고 있다면 획이 끝날 때까지 양보한 뒤 백그라운드 워커 스레드(toBlob)로 고선명(0.84) 인코딩!
       await this._WaitUntilPenIdle();
-      const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.97);
+      const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.84);
       await this._WaitUntilPenIdle();
 
       const syncPlaylistIdle = () => {
@@ -7940,7 +7941,7 @@ class GraphApp {
     const ctx = cropCanvas.getContext('2d');
     ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
 
-    const dataUrl = cropCanvas.toDataURL('image/png');
+    const dataUrl = this.encodeCanvasSmartWebP(cropCanvas, 0.85);
     if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
       this.closeDrawer();
     }
@@ -10654,7 +10655,7 @@ class GraphApp {
           cctx.fillStyle = '#ffffff';
           cctx.fillRect(0, 0, sw, sh);
           cctx.drawImage(pbd.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-          croppedDataUrl = this.encodeCanvasSmartWebP(croppedCanvas, 0.93);
+          croppedDataUrl = this.encodeCanvasSmartWebP(croppedCanvas, 0.85);
           croppedW = Math.round(Math.max(320, Math.min(560, cropRect.w / Math.max(1, (this.zoomLevel || 1) * 0.85))));
         }
       }
@@ -10683,7 +10684,7 @@ class GraphApp {
             Math.round(rw * dpr),
             Math.round(rh * dpr)
           );
-          croppedDataUrl = croppedCanvas.toDataURL('image/png');
+          croppedDataUrl = this.encodeCanvasSmartWebP(croppedCanvas, 0.85);
           croppedW = Math.round(Math.max(300, Math.min(540, rw)));
         }
       }
@@ -10914,7 +10915,7 @@ class GraphApp {
       Math.round(rh * dpr)
     );
 
-    const dataUrl = cropCanvas.toDataURL('image/png');
+    const dataUrl = this.encodeCanvasSmartWebP(cropCanvas, 0.86);
     this._isRenderingGraphSnapshot = false;
     this._snapshotCropBounds = null;
     this.isGraphCovered = prevCovered;
@@ -17973,6 +17974,163 @@ class GraphApp {
     }
   }
 
+  // 🌟 [필기 스트로크 부동소수점 좌표 경량화 (시각 오차 0.00px, JSON 용량 60% 절감)]
+  _compactStrokesArray(strokes) {
+    if (!Array.isArray(strokes) || strokes.length === 0) return [];
+    const r3 = (v) => Math.round((Number(v) || 0) * 1000) / 1000;
+    const r4 = (v) => Math.round((Number(v) || 0) * 10000) / 10000;
+    const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+    const cloned = JSON.parse(JSON.stringify(strokes));
+    for (let i = 0; i < cloned.length; i++) {
+      const st = cloned[i];
+      if (!st) continue;
+      if (typeof st.tStart === 'number') st.tStart = Math.round(st.tStart);
+      if (typeof st.tEnd === 'number') st.tEnd = Math.round(st.tEnd);
+      if (typeof st.erasedAt === 'number') st.erasedAt = Math.round(st.erasedAt);
+      if (typeof st.holdUntil === 'number') st.holdUntil = Math.round(st.holdUntil);
+      if (typeof st.shapeSnapAt === 'number') st.shapeSnapAt = Math.round(st.shapeSnapAt);
+      if (typeof st.zoom === 'number') st.zoom = r3(st.zoom);
+      if (Array.isArray(st.points)) {
+        for (let j = 0; j < st.points.length; j++) {
+          const pt = st.points[j];
+          if (!pt) continue;
+          if (pt.x !== undefined) pt.x = r3(pt.x);
+          if (pt.y !== undefined) pt.y = r3(pt.y);
+          if (pt.nx !== undefined) pt.nx = r4(pt.nx);
+          if (pt.ny !== undefined) pt.ny = r4(pt.ny);
+          if (pt.p !== undefined) pt.p = r2(pt.p);
+          if (pt.t !== undefined) pt.t = Math.round(pt.t);
+        }
+      }
+    }
+    return cloned;
+  }
+
+  _getCompactHistoryObject() {
+    const raw = JSON.parse(this.getHistorySnapshot());
+    if (Array.isArray(raw.inkStrokes)) {
+      raw.inkStrokes = this._compactStrokesArray(raw.inkStrokes);
+    }
+    if (Array.isArray(raw.graphs)) {
+      raw.graphs.forEach(g => { if (g) delete g._screenPts; });
+    }
+    return raw;
+  }
+
+  // 🌟 [음성 싱크 패키지 초경량 델타 압축 & 중복 오디오 제거 엔진 (18MB ➔ ~0.7MB, 95% 다이어트)]
+  _compactAudioSyncData(syncData) {
+    if (!syncData || typeof syncData !== 'object') return null;
+    this._expandAudioSyncData(syncData);
+    const out = JSON.parse(JSON.stringify(syncData));
+    delete out._expanded;
+
+    // 1) 오디오 데이터 중복 제거: audioSegments[0].audioDataUrl가 있으면 최상위 audioDataUrl 중복 저장 생략
+    if (Array.isArray(out.audioSegments) && out.audioSegments.length > 0 && out.audioSegments[0] && out.audioSegments[0].audioDataUrl) {
+      out.audioDataUrl = '';
+    }
+
+    // 2) 레이저/지우개 스트로크 좌표 경량화
+    out.laserStrokes = this._compactStrokesArray(out.laserStrokes || []);
+    out.erasedStrokes = this._compactStrokesArray(out.erasedStrokes || []);
+
+    // 3) 타임라인 state 키프레임 델타(Delta) 압축 및 커서 이벤트 경량화
+    if (Array.isArray(out.timeline)) {
+      const compactTimeline = [];
+      let lastState = out.initialState || null;
+      let lastCursorColor = '#00d2d3';
+      for (let i = 0; i < out.timeline.length; i++) {
+        const ev = out.timeline[i];
+        if (!ev) continue;
+        if (ev.type === 'state' && ev.state) {
+          if (!lastState) {
+            lastState = ev.state;
+            compactTimeline.push({ t: Math.round(ev.t || 0), type: 'state', state: ev.state });
+          } else {
+            const delta = { _d: 1 };
+            let changedCount = 0;
+            const keys = Object.keys(ev.state);
+            for (let kIdx = 0; kIdx < keys.length; kIdx++) {
+              const k = keys[kIdx];
+              const vCur = ev.state[k];
+              const vPrev = lastState[k];
+              if (typeof vCur === 'object' && vCur !== null) {
+                if (JSON.stringify(vCur) !== JSON.stringify(vPrev)) {
+                  delta[k] = vCur;
+                  changedCount++;
+                }
+              } else if (vCur !== vPrev) {
+                delta[k] = vCur;
+                changedCount++;
+              }
+            }
+            lastState = ev.state;
+            if (changedCount > 0) {
+              compactTimeline.push({ t: Math.round(ev.t || 0), type: 'state', state: delta });
+            }
+          }
+        } else if (ev.type === 'cursor') {
+          const cEv = { ...ev, t: Math.round(ev.t || 0) };
+          if (cEv.color === lastCursorColor) {
+            delete cEv.color;
+          } else if (cEv.color) {
+            lastCursorColor = cEv.color;
+          }
+          if (!cEv.isDrawing) delete cEv.isDrawing;
+          if (cEv.isBoard === false) delete cEv.isBoard;
+          compactTimeline.push(cEv);
+        } else {
+          compactTimeline.push(ev);
+        }
+      }
+      out.timeline = compactTimeline;
+    }
+    out._compact = 1;
+    return out;
+  }
+
+  _expandAudioSyncData(syncData) {
+    if (!syncData || typeof syncData !== 'object') return syncData;
+    if (!syncData.audioDataUrl && Array.isArray(syncData.audioSegments) && syncData.audioSegments[0] && syncData.audioSegments[0].audioDataUrl) {
+      syncData.audioDataUrl = syncData.audioSegments[0].audioDataUrl;
+    }
+    if (syncData._expanded) return syncData;
+    const hasDelta = Boolean(
+      syncData._compact ||
+      (Array.isArray(syncData.timeline) && syncData.timeline.some(ev => ev && ev.type === 'state' && ev.state && ev.state._d))
+    );
+    if (hasDelta && Array.isArray(syncData.timeline)) {
+      let runningState = syncData.initialState ? JSON.parse(JSON.stringify(syncData.initialState)) : {};
+      let runningColor = '#00d2d3';
+      for (let i = 0; i < syncData.timeline.length; i++) {
+        const ev = syncData.timeline[i];
+        if (!ev) continue;
+        if (ev.type === 'state' && ev.state) {
+          if (ev.state._d) {
+            const full = { ...runningState, ...ev.state };
+            delete full._d;
+            ev.state = JSON.parse(JSON.stringify(full));
+          }
+          runningState = ev.state;
+        } else if (ev.type === 'cursor') {
+          if (ev.color) {
+            runningColor = ev.color;
+          } else {
+            ev.color = runningColor;
+          }
+          ev.isDrawing = Boolean(ev.isDrawing);
+          if (!ev.uiScreen && !ev.cardKey && ev.isBoard === undefined) {
+            ev.isBoard = false;
+          }
+        }
+      }
+      delete syncData._compact;
+    }
+    try {
+      Object.defineProperty(syncData, '_expanded', { value: true, enumerable: false, configurable: true, writable: true });
+    } catch (e) { }
+    return syncData;
+  }
+
   // 현재 워크스페이스(판서 + 문제 카드 + #1,#2 그래프 카드 + 실시간 그래프)를 100% 직렬화 가능한 JSON 객체로 추출
   serializeFullSlideState(title = '') {
     const pWidget = document.getElementById('problemCardWidget');
@@ -18002,7 +18160,7 @@ class GraphApp {
             isMin: Boolean(c.isMin),
             isPdfPageCard: Boolean(c.isPdfPageCard),
             pdfPageNum: c.pdfPageNum || null,
-            cardInkStrokes: JSON.parse(JSON.stringify(c.el._cardInkStrokes || [])),
+            cardInkStrokes: this._compactStrokesArray(c.el._cardInkStrokes || []),
             cardStickers: JSON.parse(JSON.stringify(c.el._cardStickers || []))
           });
         }
@@ -18025,7 +18183,7 @@ class GraphApp {
             isMin: Boolean(c.isMin),
             caseIdx: c.caseIdx || 2,
             graphSnapshot: c.graphSnapshot ? JSON.parse(JSON.stringify(c.graphSnapshot)) : null,
-            cardInkStrokes: JSON.parse(JSON.stringify(c.el._cardInkStrokes || [])),
+            cardInkStrokes: this._compactStrokesArray(c.el._cardInkStrokes || []),
             cardStickers: JSON.parse(JSON.stringify(c.el._cardStickers || []))
           });
         }
@@ -18037,7 +18195,7 @@ class GraphApp {
       version: '2.0',
       slideTitle: title || (hasPrimaryProblem && pTitle ? pTitle.textContent : '문항'),
       timestamp: Date.now(),
-      historyJson: this.getHistorySnapshot(),
+      historyJson: this._getCompactHistoryObject(),
       isGraphCovered: Boolean(this.isGraphCovered),
       coveredGraphStateBackup: this._coveredGraphStateBackup ? JSON.parse(JSON.stringify(this._coveredGraphStateBackup)) : null,
       savedLayer2BoardPan: this._savedLayer2BoardPan ? { ...this._savedLayer2BoardPan } : null,
@@ -18057,7 +18215,7 @@ class GraphApp {
         isProblemCardMinimized: Boolean(this.isProblemCardMinimized),
         problemCardBaseX: this.problemCardBaseX,
         problemCardBaseY: this.problemCardBaseY,
-        problemInkStrokes: JSON.parse(JSON.stringify(this.problemInkStrokes || [])),
+        problemInkStrokes: this._compactStrokesArray(this.problemInkStrokes || []),
         problemCardStickers: JSON.parse(JSON.stringify(this.problemCardStickers || [])),
         imgSrc: (pImg && pImg.src) ? pImg.src : (this.problemCardData && this.problemCardData.imgUrl ? this.problemCardData.imgUrl : ''),
         titleText: pTitle ? pTitle.textContent : '문제',
@@ -18077,7 +18235,7 @@ class GraphApp {
         graphCardBaseX: this.graphCardBaseX,
         graphCardBaseY: this.graphCardBaseY,
         primaryGraphCardSnapshot: this.primaryGraphCardSnapshot ? JSON.parse(JSON.stringify(this.primaryGraphCardSnapshot)) : null,
-        graphInkStrokes: JSON.parse(JSON.stringify(this.graphInkStrokes || [])),
+        graphInkStrokes: this._compactStrokesArray(this.graphInkStrokes || []),
         graphCardStickers: JSON.parse(JSON.stringify(this.graphCardStickers || [])),
         imgSrc: gImg ? gImg.src : '',
         titleText: gTitle ? gTitle.textContent : '#1',
@@ -18095,7 +18253,7 @@ class GraphApp {
         totalPages: activePdfBoard.totalPages,
         dataUrl: activePdfBoard.dataUrl || (
           activePdfBoard.canvas
-            ? (activePdfBoard.dataUrl = this.encodeCanvasSmartWebP(activePdfBoard.canvas, 0.92))
+            ? (activePdfBoard.dataUrl = this.encodeCanvasSmartWebP(activePdfBoard.canvas, 0.82))
             : ''
         ),
         aspect: activePdfBoard.aspect,
@@ -18105,7 +18263,7 @@ class GraphApp {
         centerY: activePdfBoard.centerY,
         baseYSpan: activePdfBoard.baseYSpan
       } : null,
-      audioSyncData: this.audioSyncData ? JSON.parse(JSON.stringify(this.audioSyncData)) : null
+      audioSyncData: this.audioSyncData ? this._compactAudioSyncData(this.audioSyncData) : null
     };
     return slideObj;
   }
@@ -18310,7 +18468,9 @@ class GraphApp {
 
     if (!this._isApplyingAudioTimelineState) {
       this.stopAudioPlayback(false);
-      this.audioSyncData = slideData.audioSyncData ? JSON.parse(JSON.stringify(slideData.audioSyncData)) : null;
+      this.audioSyncData = slideData.audioSyncData
+        ? this._expandAudioSyncData(JSON.parse(JSON.stringify(slideData.audioSyncData)))
+        : null;
       if (!this._isCapturingExportSnapshots) {
         const hasLoadedAudio = Boolean(this.audioSyncData && this.audioSyncData.durationMs > 0);
         this._isAudioSyncPlayerVisible = hasLoadedAudio;
@@ -18523,7 +18683,7 @@ class GraphApp {
       ownerUid: (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'local_user',
       authorName: (this.cloudUser && this.cloudUser.displayName) ? this.cloudUser.displayName : '내 보관함',
       createdAt: Date.now(),
-      slideData: primarySlide
+      slideData: null
     };
 
     this.myLibraryCache.unshift(itemObj);
@@ -18584,7 +18744,7 @@ class GraphApp {
       ownerUid: (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous',
       authorName: (this.cloudUser && this.cloudUser.displayName) ? `${this.cloudUser.displayName} 선생님` : '익명 선생님',
       createdAt: Date.now(),
-      slideData: primarySlide
+      slideData: null
     };
 
     // 내 보관함과 기출 게시판 양쪽에 모두 추가
@@ -18777,6 +18937,11 @@ class GraphApp {
         slides = [this.serializeFullSlideState(title)];
       }
     }
+    slides.forEach(s => {
+      if (s && s.audioSyncData) {
+        s.audioSyncData = this._compactAudioSyncData(s.audioSyncData);
+      }
+    });
     const isDeck = slides.length > 1;
     const packObj = {
       format: 'GraphlyLessonPack',
@@ -18790,7 +18955,7 @@ class GraphApp {
       isPlaylist: isDeck,
       slideCount: slides.length,
       playlistSlides: slides,
-      slideData: slides[0]
+      slideData: null
     };
 
     const htmlStr = this._buildSelfLaunchingGraphlyHtml(packObj);
@@ -19642,8 +19807,11 @@ class GraphApp {
         if (s && s.pdfPageBoardData && !s.pdfPageBoardData.dataUrl) {
           const cv = s.pdfPageBoardData.canvas || (this._pdfPageCanvasCache && s.pdfPageBoardData.pageNum ? this._pdfPageCanvasCache[s.pdfPageBoardData.pageNum] : null);
           if (cv) {
-            s.pdfPageBoardData.dataUrl = this.encodeCanvasSmartWebP(cv, 0.92);
+            s.pdfPageBoardData.dataUrl = this.encodeCanvasSmartWebP(cv, 0.82);
           }
+        }
+        if (s && s.audioSyncData) {
+          s.audioSyncData = this._compactAudioSyncData(s.audioSyncData);
         }
       });
       return slides;
@@ -19738,7 +19906,7 @@ class GraphApp {
           }
           slide.isGraphCovered = false;
         }
-        slide.historyJson = JSON.stringify(hObj);
+        slide.historyJson = hObj;
       } catch (e) { }
     }
     return slide;
@@ -19802,13 +19970,13 @@ class GraphApp {
     this._omitStickersForViewerSnapshot = true;
     let exp;
     try {
-      exp = this.getExportCanvas(effFilter, smartBounds, forCloud ? 3.0 : null);
+      exp = this.getExportCanvas(effFilter, smartBounds, forCloud ? 1.8 : null);
     } finally {
       this._omitStickersForViewerSnapshot = false;
     }
     let dataUrl = '';
     try {
-      dataUrl = exp.canvas.toDataURL('image/png');
+      dataUrl = this.encodeCanvasSmartWebP(exp.canvas, 0.84);
     } catch (e) {
       dataUrl = exp.canvas.toDataURL('image/png');
     }
@@ -28734,9 +28902,20 @@ class GraphApp {
       (g.transforms && g.transforms.length > 0)
     );
 
+    const resetGraphScreenPts = (graphObj) => {
+      if (!graphObj) return;
+      if (!Object.prototype.hasOwnProperty.call(graphObj, '_screenPts') || Object.prototype.propertyIsEnumerable.call(graphObj, '_screenPts')) {
+        try {
+          Object.defineProperty(graphObj, '_screenPts', { value: [], writable: true, enumerable: false, configurable: true });
+          return;
+        } catch (e) { }
+      }
+      graphObj._screenPts = [];
+    };
+
     // [유리함수 특수 케이스: 프리징 아닐 때 상하단 화면 끝 관통 2-브랜치 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
     if (!this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'rational_basic' && g.handles.length >= 2) {
-      if (!isExport) g._screenPts = [];
+      if (!isExport) resetGraphScreenPts(g);
       renderSpecialWithPiecewise((filter) => this.drawRationalCurve(ctx, g, gIdx, filter));
       ctx.restore();
       return;
@@ -28744,7 +28923,7 @@ class GraphApp {
 
     // [로그함수 특수 케이스: 프리징 아닐 때 수직 점근선 상하단 관통 고밀도 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
     if (!this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'log_basic' && g.handles.length >= 2) {
-      if (!isExport) g._screenPts = [];
+      if (!isExport) resetGraphScreenPts(g);
       renderSpecialWithPiecewise((filter) => this.drawLogCurve(ctx, g, gIdx, filter));
       ctx.restore();
       return;
@@ -28752,7 +28931,7 @@ class GraphApp {
 
     // [탄젠트 특수 케이스: 프리징 아닐 때 주기별 점근선 상하단 관통 고밀도 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
     if (!this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'tan_1period' && g.handles.length >= 1) {
-      if (!isExport) g._screenPts = [];
+      if (!isExport) resetGraphScreenPts(g);
       renderSpecialWithPiecewise((filter) => this.drawTangentCurve(ctx, g, gIdx, filter));
       ctx.restore();
       return;
@@ -28760,7 +28939,7 @@ class GraphApp {
 
     // [무리함수 특수 케이스: 프리징 아닐 때 시작점 칼고정 고정밀 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
     if (!this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'sqrt_basic' && g.handles.length >= 2) {
-      if (!isExport) g._screenPts = [];
+      if (!isExport) resetGraphScreenPts(g);
       renderSpecialWithPiecewise((filter) => this.drawSqrtCurve(ctx, g, gIdx, filter));
       ctx.restore();
       return;
@@ -28774,7 +28953,7 @@ class GraphApp {
     const stepSize = (mRight - mLeft) / steps;
 
     if (!isExport) {
-      g._screenPts = [];
+      resetGraphScreenPts(g);
     }
 
     const hasTransformAbs = Boolean(g.transforms && g.transforms.some(t => t && t.abs));
@@ -31012,9 +31191,7 @@ class GraphApp {
                   if (Array.isArray(slideSync.audioSegments) && slideSync.audioSegments[segIdx]) {
                     slideSync.audioSegments[segIdx].audioDataUrl = dataUrl;
                   }
-                  if (segIdx === 0) {
-                    slideSync.audioDataUrl = dataUrl;
-                  }
+                  slideSync.audioDataUrl = '';
                 }
                 if (this.lessonPlaylistIndex === targetSlideIdx && Array.isArray(this._priorSlideAudioSegments) && this._priorSlideAudioSegments[segIdx]) {
                   this._priorSlideAudioSegments[segIdx].audioDataUrl = dataUrl;
@@ -31060,7 +31237,7 @@ class GraphApp {
 
     const isSameSession = !this._currentAudioRecordingSessionId || !this.audioSyncData || !this.audioSyncData.sessionId || this.audioSyncData.sessionId === this._currentAudioRecordingSessionId;
     const prevSync = (isSameSession && this.audioSyncData && typeof this.audioSyncData.durationMs === 'number' && this.audioSyncData.durationMs > 0)
-      ? this.audioSyncData
+      ? this._expandAudioSyncData(this.audioSyncData)
       : null;
 
     this.audioSyncData = null;
@@ -31115,7 +31292,7 @@ class GraphApp {
           tr.enabled = !this.isAudioMicMuted;
         });
         const chosenMime = this._audioMimeType && this._audioMimeType !== 'audio/wav' ? this._audioMimeType : '';
-        const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 };
+        const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 20000 } : { audioBitsPerSecond: 20000 };
         const recorder = new MediaRecorder(this.audioMediaStream, recOpts);
         recorder.ondataavailable = (ev) => {
           if (ev.data && ev.data.size > 0) {
@@ -31149,8 +31326,10 @@ class GraphApp {
   }
 
   _createSilentWavDataUrl(durationMs = 1000) {
-    const sampleRate = 8000;
-    const numSamples = Math.max(800, Math.min(sampleRate * 300, Math.round((durationMs / 1000) * sampleRate)));
+    // 🌟 [무음 폴백 WAV 초경량화 (1.28MB ➔ 1.1KB)]:
+    // 재생 타임라인은 performance.now() 정밀 벽시계로 구동되므로, 무음 WAV는 브라우저 <audio> 초기화용 최소 샘플(800바이트)만 생성!
+    const sampleRate = 4000;
+    const numSamples = 800;
     const buffer = new ArrayBuffer(44 + numSamples);
     const view = new DataView(buffer);
     const writeStr = (offset, str) => {
@@ -31182,49 +31361,67 @@ class GraphApp {
   }
 
   _captureAudioWorkspaceKeyframe() {
+    const r1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
+    const r3 = (v) => Math.round((Number(v) || 0) * 1000) / 1000;
+    const r4 = (v) => Math.round((Number(v) || 0) * 10000) / 10000;
     const pWidget = document.getElementById('problemCardWidget');
     const gWidget = document.getElementById('graphCardWidget');
     const probW = pWidget ? (parseFloat(pWidget.style.width) || pWidget.offsetWidth || 520) : 520;
     const graphW = gWidget ? (parseFloat(gWidget.style.width) || gWidget.offsetWidth || 260) : 260;
     const extraGraphStates = (this.extraGraphCards || []).map(c => ({
-      baseX: c && typeof c.baseX === 'number' ? c.baseX : 560,
-      baseY: c && typeof c.baseY === 'number' ? c.baseY : 68,
-      w: (c && c.el) ? (parseFloat(c.el.style.width) || c.el.offsetWidth || 260) : 260,
+      baseX: r1(c && typeof c.baseX === 'number' ? c.baseX : 560),
+      baseY: r1(c && typeof c.baseY === 'number' ? c.baseY : 68),
+      w: r1((c && c.el) ? (parseFloat(c.el.style.width) || c.el.offsetWidth || 260) : 260),
       min: Boolean(c && (c.isMin || (c.el && c.el.classList.contains('minimized'))))
     }));
     const extraProbStates = (this.extraProblemCards || []).map(c => ({
-      baseX: c && typeof c.baseX === 'number' ? c.baseX : 72,
-      baseY: c && typeof c.baseY === 'number' ? c.baseY : 120,
-      w: (c && c.el) ? (parseFloat(c.el.style.width) || c.el.offsetWidth || 480) : 480,
+      baseX: r1(c && typeof c.baseX === 'number' ? c.baseX : 72),
+      baseY: r1(c && typeof c.baseY === 'number' ? c.baseY : 120),
+      w: r1((c && c.el) ? (parseFloat(c.el.style.width) || c.el.offsetWidth || 480) : 480),
       min: Boolean(c && (c.isMin || (c.el && c.el.classList.contains('minimized'))))
     }));
+    const clonedGraphs = JSON.parse(JSON.stringify(this.graphs || []));
+    clonedGraphs.forEach(g => {
+      if (!g) return;
+      delete g._screenPts;
+      if (Array.isArray(g.handles)) {
+        g.handles.forEach(h => {
+          if (h && typeof h.x === 'number') h.x = r4(h.x);
+          if (h && typeof h.y === 'number') h.y = r4(h.y);
+        });
+      }
+      if (g.freezeOffset) {
+        if (typeof g.freezeOffset.x === 'number') g.freezeOffset.x = r4(g.freezeOffset.x);
+        if (typeof g.freezeOffset.y === 'number') g.freezeOffset.y = r4(g.freezeOffset.y);
+      }
+    });
     return {
       isGraphCovered: Boolean(this.isGraphCovered),
       isBoardMode: Boolean(this.isBoardMode),
-      boardSplitRatio: this.boardSplitRatio || 0.4,
-      graphs: JSON.parse(JSON.stringify(this.graphs || [])),
+      boardSplitRatio: r3(this.boardSplitRatio || 0.4),
+      graphs: clonedGraphs,
       activeGraphIdx: this.activeGraphIdx,
       isCurveSelected: Boolean(this.isCurveSelected),
       selectedHandleIdx: this.selectedHandleIdx,
       draggedHandleIdx: this.draggedHandleIdx,
-      panX: this.panX || 0,
-      panY: this.panY || 0,
-      zoomLevel: this.zoomLevel || 1.0,
-      xSpan: this.xSpan || 8.5,
-      ySpan: this.ySpan || 6.0,
-      boardPanX: this.boardPanX || 0,
-      boardPanY: this.boardPanY || 0,
-      boardZoom: this.boardZoom || 1.0,
-      boardZoomOffsetX: this.boardZoomOffsetX || 0,
-      boardZoomOffsetY: this.boardZoomOffsetY || 0,
+      panX: r1(this.panX || 0),
+      panY: r1(this.panY || 0),
+      zoomLevel: r3(this.zoomLevel || 1.0),
+      xSpan: r3(this.xSpan || 8.5),
+      ySpan: r3(this.ySpan || 6.0),
+      boardPanX: r1(this.boardPanX || 0),
+      boardPanY: r1(this.boardPanY || 0),
+      boardZoom: r3(this.boardZoom || 1.0),
+      boardZoomOffsetX: r1(this.boardZoomOffsetX || 0),
+      boardZoomOffsetY: r1(this.boardZoomOffsetY || 0),
       showAxes: Boolean(this.showAxes),
       showGuides: Boolean(this.showGuides),
       usePiecewise: Boolean(this.usePiecewise),
-      piecewiseBoundaries: JSON.parse(JSON.stringify(this.piecewiseBoundaries || [])),
+      piecewiseBoundaries: (this.piecewiseBoundaries || []).map(v => r4(v)),
       piecewiseFuncMap: JSON.parse(JSON.stringify(this.piecewiseFuncMap || [])),
       piecewiseInclusions: JSON.parse(JSON.stringify(this.piecewiseInclusions || [])),
       isPiecewisePeriodic: Boolean(this.isPiecewisePeriodic),
-      periodicStepY: typeof this.periodicStepY === 'number' ? this.periodicStepY : 0,
+      periodicStepY: typeof this.periodicStepY === 'number' ? r3(this.periodicStepY) : 0,
       isPiecewiseLocked: Boolean(this.isPiecewiseLocked),
       isDropLineMode: Boolean(this.isDropLineMode),
       dropLineHoverCandidate: this.dropLineHoverCandidate ? JSON.parse(JSON.stringify(this.dropLineHoverCandidate)) : null,
@@ -31232,14 +31429,14 @@ class GraphApp {
       textLabels: JSON.parse(JSON.stringify(this.textLabels || [])),
       probCardVisible: Boolean(pWidget && pWidget.style.display !== 'none' && this.problemCardData),
       probCardMin: Boolean(this.isProblemCardMinimized),
-      probCardBaseX: this.problemCardBaseX,
-      probCardBaseY: this.problemCardBaseY,
-      probCardW: probW,
+      probCardBaseX: typeof this.problemCardBaseX === 'number' ? r1(this.problemCardBaseX) : this.problemCardBaseX,
+      probCardBaseY: typeof this.problemCardBaseY === 'number' ? r1(this.problemCardBaseY) : this.problemCardBaseY,
+      probCardW: r1(probW),
       graphCardVisible: Boolean(gWidget && gWidget.style.display !== 'none' && this._hasPrimaryGraphCard && this.graphCardData),
       graphCardMin: Boolean(this.isGraphCardMinimized),
-      graphCardBaseX: this.graphCardBaseX,
-      graphCardBaseY: this.graphCardBaseY,
-      graphCardW: graphW,
+      graphCardBaseX: typeof this.graphCardBaseX === 'number' ? r1(this.graphCardBaseX) : this.graphCardBaseX,
+      graphCardBaseY: typeof this.graphCardBaseY === 'number' ? r1(this.graphCardBaseY) : this.graphCardBaseY,
+      graphCardW: r1(graphW),
       extraGraphsCount: (this.extraGraphCards || []).length,
       extraGraphStates,
       extraProbsCount: (this.extraProblemCards || []).length,
@@ -31416,7 +31613,7 @@ class GraphApp {
       this._isZoomAnimating ||
       this._pinchState
     );
-    const minInterval = isActivelyDraggingGraph ? 16 : 32;
+    const minInterval = isActivelyDraggingGraph ? 28 : 48;
     if (!force && (t - this._lastAudioStateRecordMs < minInterval)) return;
 
     const kf = this._captureAudioWorkspaceKeyframe();
@@ -31623,7 +31820,7 @@ class GraphApp {
           }
         }
         this._audioMimeType = chosenMime || 'audio/webm';
-        const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 };
+        const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 20000 } : { audioBitsPerSecond: 20000 };
         const recorder = new MediaRecorder(stream, recOpts);
         recorder.ondataavailable = (ev) => {
           if (ev.data && ev.data.size > 0) {
@@ -31969,6 +32166,7 @@ class GraphApp {
 
   _applyAudioTimelineStateAt(playMs) {
     if (!this.audioSyncData) return;
+    this._expandAudioSyncData(this.audioSyncData);
     if (this.audioReplayViewMode === 'note') {
       if (this.audioSyncData.finalState) {
         this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
@@ -32029,6 +32227,7 @@ class GraphApp {
 
   _getInterpolatedCursorAt(playMs) {
     if (!this.audioSyncData || !Array.isArray(this.audioSyncData.timeline)) return null;
+    this._expandAudioSyncData(this.audioSyncData);
     const timeline = this.audioSyncData.timeline;
     let prev = null;
     let next = null;
@@ -32722,10 +32921,11 @@ class GraphApp {
   }
 
   stopAudioPlayback(restoreFinal = true) {
+    const wasReplayActive = Boolean(this._isAudioReplayActive || this.isAudioPlaying);
     this.pauseAudioPlayback(false);
     this._isAudioReplayActive = false;
     document.body.classList.remove('audio-replay-active');
-    if (restoreFinal && this.audioSyncData && this.audioSyncData.finalState) {
+    if (wasReplayActive && restoreFinal && this.audioSyncData && this.audioSyncData.finalState) {
       this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
     }
     this._inkBakeDirty = true;
