@@ -24980,13 +24980,55 @@ class GraphApp {
         return el.tagName || 'unknown';
       };
 
+      // 🔬 [아이패드 + 짭플펜슬 씹힘 원인 100% 확정용 3색 실시간 카운터 바 (?v=20261103_15)]
+      let diagPenCount = 0;
+      let diagTouchCount = 0;
+      let diagCancelOrRescueCount = 0;
+      let diagHudEl = document.getElementById('simplePenTouchCounterHud');
+      if (!diagHudEl && typeof document !== 'undefined' && document.body) {
+        diagHudEl = document.createElement('div');
+        diagHudEl.id = 'simplePenTouchCounterHud';
+        diagHudEl.style.cssText = 'position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:999999; display:flex; gap:8px; background:rgba(15,23,42,0.95); color:#fff; padding:6px 12px; border-radius:10px; font-family:monospace,sans-serif; font-size:13px; font-weight:700; pointer-events:none; box-shadow:0 6px 20px rgba(0,0,0,0.4); border:1.5px solid #38bdf8;';
+        diagHudEl.innerHTML = `
+          <span id="cntBoxPen" style="padding:3px 8px; border-radius:6px; background:#065f46; color:#a7f3d0;">✏️ 펜(pen): 0</span>
+          <span id="cntBoxTouch" style="padding:3px 8px; border-radius:6px; background:#78350f; color:#fde68a;">👆 터치(touch): 0</span>
+          <span id="cntBoxCancel" style="padding:3px 8px; border-radius:6px; background:#7f1d1d; color:#fecaca;">🚨 취소/구출: 0</span>
+        `;
+        document.body.appendChild(diagHudEl);
+      }
+      const flashCounterBox = (id, text, flashBg) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = text;
+        const origBg = id === 'cntBoxPen' ? '#065f46' : (id === 'cntBoxTouch' ? '#78350f' : '#7f1d1d');
+        el.style.background = flashBg;
+        el.style.transform = 'scale(1.08)';
+        clearTimeout(el._flashTimer);
+        el._flashTimer = setTimeout(() => {
+          el.style.background = origBg;
+          el.style.transform = 'scale(1)';
+        }, 180);
+      };
+
       window.addEventListener('pointerdown', (e) => {
         if (this.isPdfModalOpen) return;
-        // 🧪 [대표님 지시 · 순수 펜 전용 A/B 원인 격리 테스트 (?v=20261103_14)]:
-        // 손날/손가락 터치(pointerType === 'touch') 인식을 100% 원천 차단!
-        if (e.pointerType === 'touch') return;
+        // 🧪 [대표님 지시 · 순수 펜 전용 A/B 원인 격리 테스트 (?v=20261103_15)]:
+        // 손날/손가락 터치(pointerType === 'touch') 인식을 100% 원천 차단하되, 터치 신호가 들어왔는지 카운터만 기록!
+        if (e.pointerType === 'touch') {
+          if (e.target === this.canvas) {
+            diagTouchCount++;
+            const w = Math.round(e.width || 0);
+            const h = Math.round(e.height || 0);
+            flashCounterBox('cntBoxTouch', `👆 터치(touch): ${diagTouchCount} (${w}x${h})`, '#d97706');
+          }
+          return;
+        }
         if (e.pointerType === 'pen') {
           this._markStylusPenDetected();
+          if (e.target === this.canvas) {
+            diagPenCount++;
+            flashCounterBox('cntBoxPen', `✏️ 펜(pen): ${diagPenCount} (시작)`, '#10b981');
+          }
         }
         if (!this._uiPointerIds) this._uiPointerIds = new Set();
         const isNotCanvas = (e.target !== this.canvas);
@@ -25150,6 +25192,8 @@ class GraphApp {
             this._pointerDownStart = { time: nowT, x: e.clientX, y: e.clientY };
             this._activeDrawingPointerId = e.pointerId;
             this._activeDrawingPointerType = 'pen';
+            diagCancelOrRescueCount++;
+            flashCounterBox('cntBoxCancel', `🚨 취소/구출: ${diagCancelOrRescueCount} (move구출)`, '#dc2626');
             handleDown(e);
           }
         }
@@ -25174,6 +25218,13 @@ class GraphApp {
         const nowT = Date.now();
         if (e.pointerType === 'pen') {
           this._lastPenActiveTime = nowT;
+          const ptsCount = (this.currentInkStroke && this.currentInkStroke.points) ? this.currentInkStroke.points.length : 0;
+          if (e.type === 'pointercancel') {
+            diagCancelOrRescueCount++;
+            flashCounterBox('cntBoxCancel', `🚨 취소/구출: ${diagCancelOrRescueCount} (pen취소:점${ptsCount})`, '#dc2626');
+          } else {
+            flashCounterBox('cntBoxPen', `✏️ 펜(pen): ${diagPenCount} (점${ptsCount}개)`, '#059669');
+          }
         }
 
         if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || this.isDrawingSticker) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
