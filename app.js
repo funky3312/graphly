@@ -2898,6 +2898,120 @@ class GraphApp {
    *   하드웨어 touchstart에서 touchType === 'stylus'(_isStylusTouchActive) 신호가 동시에 감지됩니다.
    * - 이 조건에 부합하는 단일 터치는 손바닥으로 버리지 않고 즉시 'pen'으로 승격하여 필기 씹힘을 0%로 박멸합니다.
    */
+  _shouldIgnoreCanvasTouchPointer(e) {
+    if (!e || this.isPdfModalOpen || this.isStudentAudioVideoOnlyMode) return true;
+    const nowT = Date.now();
+    const isPenDrawingNow = Boolean(
+      (this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || this.isDrawingSticker) &&
+      this._activeDrawingPointerType === 'pen'
+    );
+    const isWithinPenGuard = Boolean(
+      isPenDrawingNow ||
+      this._isStylusTouchActive ||
+      (this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 420))
+    );
+    const isWritingTool = Boolean(
+      this.isInkMode &&
+      this.activeInkTool !== 'select' &&
+      !this.isDropLineMode &&
+      !this.isTextToolMode &&
+      !this.isGraphSnapMode &&
+      !this.isPdfToGraphCropMode
+    );
+
+    if (e.type === 'pointerdown') {
+      if (isWithinPenGuard) {
+        return true;
+      }
+      if (this.activePointers) {
+        for (const [k, v] of this.activePointers.entries()) {
+          if (nowT - (v.time || 0) > 1200) this.activePointers.delete(k);
+        }
+        this.activePointers.set(e.pointerId, {
+          id: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          type: 'touch',
+          time: nowT
+        });
+        if (this.activePointers.size >= 3) {
+          this._pinchState = null;
+          this._pinchWasActiveInGesture = false;
+          this.isPanning = false;
+          this.isBoardPanning = false;
+          return true;
+        }
+        if (this.activePointers.size === 2) {
+          this.isPanning = false;
+          this.isBoardPanning = false;
+          const pts = Array.from(this.activePointers.values());
+          this._pinchWasActiveInGesture = true;
+          this._startCanvasTwoFingerPinch(pts[0], pts[1]);
+          this.requestRender();
+          return true;
+        }
+        this._pinchWasActiveInGesture = false;
+        this._pinchState = null;
+        this._activePanPointerId = e.pointerId;
+      }
+      if (this.isStylusPalmRejectionActive() && isWritingTool) {
+        return true;
+      }
+      return false;
+    }
+
+    if (e.type === 'pointermove') {
+      if (isWithinPenGuard) {
+        if (this.activePointers) this.activePointers.clear();
+        this._pinchState = null;
+        this._pinchWasActiveInGesture = false;
+        return true;
+      }
+      if (this.activePointers && this.activePointers.has(e.pointerId)) {
+        const prevEntry = this.activePointers.get(e.pointerId);
+        this.activePointers.set(e.pointerId, {
+          id: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          type: 'touch',
+          time: prevEntry ? prevEntry.time : nowT
+        });
+        if (this.activePointers.size === 2 && this._pinchState) {
+          this.isPanning = false;
+          this.isBoardPanning = false;
+          const pts = Array.from(this.activePointers.values());
+          this._moveCanvasTwoFingerPinch(pts[0], pts[1]);
+          return true;
+        }
+      }
+      if (this._pinchWasActiveInGesture || (this.activePointers && this.activePointers.size >= 2)) {
+        return true;
+      }
+      if (this.isStylusPalmRejectionActive() && isWritingTool) {
+        return true;
+      }
+      return false;
+    }
+
+    if (e.type === 'pointerup' || e.type === 'pointercancel') {
+      if (this.activePointers && e.pointerId !== undefined) {
+        this.activePointers.delete(e.pointerId);
+      }
+      if (!this.activePointers || this.activePointers.size < 2) {
+        this._pinchState = null;
+      }
+      if (!this.activePointers || this.activePointers.size === 0) {
+        this._pinchWasActiveInGesture = false;
+      }
+      if (isPenDrawingNow || (this.isStylusPalmRejectionActive() && isWritingTool)) {
+        return true;
+      }
+      return false;
+    }
+
+    return true;
+  }
+
   isPinpointStylusTouch(e) {
     return false;
   }
@@ -7594,7 +7708,7 @@ class GraphApp {
       // ✋ [이동 모드(!this.isPdfCropModeActive)]:
       // 인위적 JS 관성 루프 없이 100% 직관적인 1:1 이동 지원 (손가락 터치는 브라우저 순정 하드웨어 스크롤)
       if (!this.isPdfCropModeActive) {
-        if (e.pointerType === 'touch') return;
+        if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) return;
         if (e.button !== 0 && e.pointerType === 'mouse') return;
         if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
           e.preventDefault();
@@ -24936,11 +25050,11 @@ class GraphApp {
     };
 
     // 🔬 [순수 e.preventDefault() 단일 해결책 검증 카운터 바 (?v=20261103_19)]
-    let diagPenCount = 0;
+    let diagPenCount = 0; // clean
     let diagTouchCount = 0;
     let diagCancelCount = 0;
     let diagHudEl = document.getElementById('simplePenTouchCounterHud');
-    if (!diagHudEl && typeof document !== 'undefined' && document.body) {
+    if (false && !diagHudEl && typeof document !== 'undefined' && document.body) {
       diagHudEl = document.createElement('div');
       diagHudEl.id = 'simplePenTouchCounterHud';
       diagHudEl.style.cssText = 'position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:999999; display:flex; align-items:center; gap:8px; background:rgba(15,23,42,0.95); color:#fff; padding:6px 12px; border-radius:10px; font-family:monospace,sans-serif; font-size:13px; font-weight:700; pointer-events:auto; box-shadow:0 6px 20px rgba(0,0,0,0.4); border:1.5px solid #38bdf8;';
@@ -24993,6 +25107,10 @@ class GraphApp {
           if (e.target === this.canvas) {
             diagTouchCount++;
             flashCounterBox('cntBoxTouch', `👆 손날(touch): ${diagTouchCount}`, '#d97706');
+            if (this._uiPointerIds && e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
+          } else if (e.pointerId !== undefined) {
+            if (!this._uiPointerIds) this._uiPointerIds = new Set();
+            this._uiPointerIds.add(e.pointerId);
           }
           return;
         }
@@ -25043,7 +25161,7 @@ class GraphApp {
         if (e.cancelable !== false) {
           e.preventDefault();
         }
-        if (e.pointerType === 'touch') return;
+        if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) return;
         if (isClickableUI(e.target) || isAnyModalOrOverlayBlockingCanvas()) {
           return;
         }
@@ -25053,6 +25171,16 @@ class GraphApp {
         const nowT = Date.now();
         lastPointerDownTime = nowT;
 
+        if (e.pointerType === 'touch') {
+          this.isPointerDownOnCanvas = true;
+          this._pointerDownStart = { time: nowT, x: e.clientX, y: e.clientY };
+          if (!this.isStylusPalmRejectionActive()) {
+            this._activeDrawingPointerId = e.pointerId;
+            this._activeDrawingPointerType = 'touch';
+          }
+          handleDown(e);
+          return;
+        }
         if (e.pointerType === 'pen' || e.pointerType === 'mouse' || !e.pointerType) {
           if (e.cancelable !== false) {
             e.preventDefault();
@@ -25089,7 +25217,7 @@ class GraphApp {
         if (e.target === this.canvas && e.cancelable !== false) {
           e.preventDefault();
         }
-        if (e.pointerType === 'touch') return;
+        if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) return;
         this._isPointerInsideWindow = true;
         this._lastPointerEvent = e;
 
@@ -25154,7 +25282,7 @@ class GraphApp {
 
       const finishPointer = (e) => {
         if (this.isPdfModalOpen) return;
-        if (e.pointerType === 'touch') return;
+        if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) return;
         if (this._uiPointerIds && e.pointerId !== undefined) {
           this._uiPointerIds.delete(e.pointerId);
         }
@@ -31308,7 +31436,7 @@ class GraphApp {
 
       window.addEventListener('pointermove', (e) => {
         if (!this.isStudentAudioVideoOnlyMode || !this.shouldInterceptStrokeClickForAudio()) return;
-        if (e.pointerType === 'touch') return;
+        if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) return;
         const tEl = e.target;
         if (tEl && tEl.closest && tEl.closest('#audioSyncFloatingBar, #lessonPlaylistNavBar, #topSlideBarMiniTab')) {
           document.body.style.cursor = '';
