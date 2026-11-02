@@ -6112,6 +6112,16 @@ class GraphApp {
       this.isPdfModalOpen = false;
       this.togglePdfCropMode(false);
     }
+    if (this._pdfQueueTimer) {
+      clearTimeout(this._pdfQueueTimer);
+      this._pdfQueueTimer = null;
+    }
+    if (this._pdfScrollIdleTimer) {
+      clearTimeout(this._pdfScrollIdleTimer);
+      this._pdfScrollIdleTimer = null;
+    }
+    this._isPdfActivelyScrolling = false;
+    this._cancelCurrentPdfRenderJob(false);
     // 만약 PDF 창을 열었다가 자동 일시정지된 상태(_autoPausedByPdfModal)에서 돌아온 경우 즉시 녹화 재개!
     if (this.isAudioRecording && this._autoPausedByPdfModal) {
       this._autoPausedByPdfModal = false;
@@ -6403,8 +6413,8 @@ class GraphApp {
     if (!pageCanvas) {
       const page = await this.pdfDoc.getPage(targetPage);
       const baseVp = page.getViewport({ scale: 1.0 });
-      const targetMinPxW = 2200;
-      const renderScale = Math.max(2.8, Math.min(3.5, targetMinPxW / Math.max(1, baseVp.width)));
+      const targetMinPxW = 2800;
+      const renderScale = Math.max(4.2, Math.min(4.8, targetMinPxW / Math.max(1, baseVp.width)));
       const vp = page.getViewport({ scale: renderScale });
       pageCanvas = document.createElement('canvas');
       pageCanvas.width = Math.round(vp.width);
@@ -7438,7 +7448,6 @@ class GraphApp {
   // 🚀 [구형 CPU 메인 스레드 블로킹 0.00ms 보장: 브라우저 백그라운드 워커 비동기 무손실 PNG 인코더]
   async encodeCanvasSmartWebPAsync(canvas, quality = 0.92) {
     if (!canvas) return '';
-    const mime = (typeof quality === 'number' && quality < 0.99) ? 'image/webp' : 'image/png';
     if (typeof canvas.toBlob === 'function' && typeof FileReader !== 'undefined') {
       try {
         const dataUrl = await new Promise((resolve) => {
@@ -7451,7 +7460,7 @@ class GraphApp {
             reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : '');
             reader.onerror = () => resolve('');
             reader.readAsDataURL(blob);
-          }, mime, quality);
+          }, 'image/png');
         });
         if (dataUrl && dataUrl.startsWith('data:image/')) {
           return dataUrl;
@@ -20159,12 +20168,8 @@ class GraphApp {
 
   encodeCanvasSmartWebP(canvas, quality = 1.0) {
     if (!canvas) return '';
-    if (typeof quality === 'number' && quality < 0.99) {
-      try {
-        const webp = canvas.toDataURL('image/webp', quality);
-        if (webp && webp.startsWith('data:image/webp')) return webp;
-      } catch (e) { }
-    }
+    // 🌟 [대표님 철학 반영: 타협 없는 최고 화질 우선]:
+    // 수식·명조체 텍스트 획의 미세한 손실 압축(YUV 서브샘플링)조차 원천 배제하기 위해 100% 무손실(Lossless) PNG 포맷으로 고정!
     return canvas.toDataURL('image/png');
   }
 
