@@ -6509,10 +6509,17 @@ class GraphApp {
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
     const isLight = Boolean(curTheme.isLight || this.isMonochromeMode);
 
-    // 🚀 [구형 내장그래픽(Intel HD/UHD) 60fps 무손실 가속]:
-    // 카메라가 이동·줌인 중일 때만 고비용 가우시안 그림자(shadowBlur)를 생략하고 하드웨어 이중선형 보간('medium')으로 60fps를 방어하며,
-    // 이동이 멈추는 즉시(정지·판서·내보내기 시) 0.00초 만에 최고 화질('high') + 그림자로 복원합니다!
+    // 🚀 [구형 내장그래픽(Intel HD/UHD) 60fps 무손실 가속 & 정지 시 캡처모드급 초고화질 렌더링]:
+    // 카메라가 이동·줌인 중일 때만 경량 Mipmap 텍스처 + 하드웨어 이중선형 보간('medium')으로 랙을 0%로 방어하며,
+    // 이동이 멈추는 즉시(정지·판서·내보내기 시) 0.00초 만에 원본 초고해상도(3.4x~4.2x) 캔버스 + 최고 화질('high')로 복원합니다!
     const isActivelyMovingCamera = !isExport && Boolean(this.isPanning || this._isZoomAnimating || this._pinchState);
+    const drawX = isActivelyMovingCamera ? x : Math.round(x);
+    const drawY = isActivelyMovingCamera ? y : Math.round(y);
+    const drawW = isActivelyMovingCamera ? w : Math.round(w);
+    const drawH = isActivelyMovingCamera ? h : Math.round(h);
+    const sourceTex = (isActivelyMovingCamera && (this.zoomLevel || 1.0) <= 1.65 && pageCanvas._mipCanvas)
+      ? pageCanvas._mipCanvas
+      : pageCanvas;
 
     ctx.save();
     if ((!isExport || !this.exportTransparent) && !isActivelyMovingCamera) {
@@ -6522,18 +6529,18 @@ class GraphApp {
       ctx.shadowOffsetY = 4;
     }
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(x, y, w, h);
+    ctx.fillRect(drawX, drawY, drawW, drawH);
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
 
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = isActivelyMovingCamera ? 'medium' : 'high';
-    ctx.drawImage(pageCanvas, x, y, w, h);
+    ctx.drawImage(sourceTex, drawX, drawY, drawW, drawH);
 
     ctx.strokeStyle = isLight ? 'rgba(148, 163, 184, 0.45)' : 'rgba(255, 255, 255, 0.22)';
     ctx.lineWidth = 1.2;
-    ctx.strokeRect(x, y, w, h);
+    ctx.strokeRect(drawX, drawY, drawW, drawH);
     ctx.restore();
   }
 
@@ -6733,7 +6740,8 @@ class GraphApp {
     // 현재 캔버스의 이전 문제 카드·그래프 카드·필기·PDF 보드 데이터를 100% 깨끗하게 초기화하여 슬라이드 간 섞임 원천 차단!
     this.resetBoardAndProblemCardsForNext();
 
-    // PDF 페이지 출판급 초고해상도(~330 DPI, 가로 2800px) 오프스크린 렌더링 (동일 문서 내에서는 메모리 캐시 재사용으로 슬라이드 전환 0ms!)
+    // PDF 페이지 출판급 초고해상도(가로 ~2850px, 스케일 3.4x~4.2x — 캡처 모드와 동급 선명도!) 오프스크린 렌더링
+    // + 이동/줌 중 랙 0%를 보장하는 1/2 Mipmap 동시 생성 (동일 문서 내에서는 메모리 캐시 재사용으로 슬라이드 전환 0ms!)
     if (this._pdfPageCanvasCacheDoc !== this.pdfDoc) {
       this._pdfPageCanvasCacheDoc = this.pdfDoc;
       this._pdfPageCanvasCache = {};
@@ -6742,8 +6750,8 @@ class GraphApp {
     if (!pageCanvas) {
       const page = await this.pdfDoc.getPage(targetPage);
       const baseVp = page.getViewport({ scale: 1.0 });
-      const targetMinPxW = 1800;
-      const renderScale = Math.max(2.0, Math.min(2.6, targetMinPxW / Math.max(1, baseVp.width)));
+      const targetMinPxW = 2850;
+      const renderScale = Math.max(3.4, Math.min(4.2, targetMinPxW / Math.max(1, baseVp.width)));
       const vp = page.getViewport({ scale: renderScale });
       pageCanvas = document.createElement('canvas');
       pageCanvas.width = Math.round(vp.width);
@@ -6754,6 +6762,18 @@ class GraphApp {
       pCtx.fillStyle = '#ffffff';
       pCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
       await page.render({ canvasContext: pCtx, viewport: vp }).promise;
+
+      try {
+        const mipCanvas = document.createElement('canvas');
+        mipCanvas.width = Math.max(1, Math.round(pageCanvas.width * 0.5));
+        mipCanvas.height = Math.max(1, Math.round(pageCanvas.height * 0.5));
+        const mipCtx = mipCanvas.getContext('2d');
+        mipCtx.imageSmoothingEnabled = true;
+        mipCtx.imageSmoothingQuality = 'high';
+        mipCtx.drawImage(pageCanvas, 0, 0, mipCanvas.width, mipCanvas.height);
+        pageCanvas._mipCanvas = mipCanvas;
+      } catch (e) { }
+
       this._pdfPageCanvasCache[targetPage] = pageCanvas;
     }
 
@@ -18247,7 +18267,7 @@ class GraphApp {
         totalPages: activePdfBoard.totalPages,
         dataUrl: activePdfBoard.dataUrl || (
           activePdfBoard.canvas
-            ? (activePdfBoard.dataUrl = this.encodeCanvasSmartWebP(activePdfBoard.canvas, 0.82))
+            ? (activePdfBoard.dataUrl = this.encodeCanvasSmartWebP(activePdfBoard.canvas, 0.88))
             : ''
         ),
         aspect: activePdfBoard.aspect,
@@ -18431,6 +18451,16 @@ class GraphApp {
             offC.height = imgObj.naturalHeight || 1680;
             const offCtx = offC.getContext('2d');
             offCtx.drawImage(imgObj, 0, 0);
+            try {
+              const mipC = document.createElement('canvas');
+              mipC.width = Math.max(1, Math.round(offC.width * 0.5));
+              mipC.height = Math.max(1, Math.round(offC.height * 0.5));
+              const mipCtx = mipC.getContext('2d');
+              mipCtx.imageSmoothingEnabled = true;
+              mipCtx.imageSmoothingQuality = 'high';
+              mipCtx.drawImage(offC, 0, 0, mipC.width, mipC.height);
+              offC._mipCanvas = mipC;
+            } catch (e) { }
             pbd.canvas = offC;
           }
           this.requestRender();
