@@ -24980,21 +24980,40 @@ class GraphApp {
         return el.tagName || 'unknown';
       };
 
-      // 🔬 [아이패드 + 짭플펜슬 씹힘 원인 100% 확정용 3색 실시간 카운터 바 (?v=20261103_15)]
+      // 🔬 [아이패드 + 짭플펜슬 씹힘 원인 100% 확정용 3색 실시간 카운터 바 (?v=20261103_16)]
       let diagPenCount = 0;
       let diagTouchCount = 0;
+      let diagTouchMoveCount = 0;
       let diagCancelOrRescueCount = 0;
+      let lastTouchDownPos = null;
       let diagHudEl = document.getElementById('simplePenTouchCounterHud');
       if (!diagHudEl && typeof document !== 'undefined' && document.body) {
         diagHudEl = document.createElement('div');
         diagHudEl.id = 'simplePenTouchCounterHud';
-        diagHudEl.style.cssText = 'position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:999999; display:flex; gap:8px; background:rgba(15,23,42,0.95); color:#fff; padding:6px 12px; border-radius:10px; font-family:monospace,sans-serif; font-size:13px; font-weight:700; pointer-events:none; box-shadow:0 6px 20px rgba(0,0,0,0.4); border:1.5px solid #38bdf8;';
+        diagHudEl.style.cssText = 'position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:999999; display:flex; align-items:center; gap:8px; background:rgba(15,23,42,0.95); color:#fff; padding:6px 12px; border-radius:10px; font-family:monospace,sans-serif; font-size:13px; font-weight:700; pointer-events:auto; box-shadow:0 6px 20px rgba(0,0,0,0.4); border:1.5px solid #38bdf8;';
         diagHudEl.innerHTML = `
-          <span id="cntBoxPen" style="padding:3px 8px; border-radius:6px; background:#065f46; color:#a7f3d0;">✏️ 펜(pen): 0</span>
-          <span id="cntBoxTouch" style="padding:3px 8px; border-radius:6px; background:#78350f; color:#fde68a;">👆 터치(touch): 0</span>
-          <span id="cntBoxCancel" style="padding:3px 8px; border-radius:6px; background:#7f1d1d; color:#fecaca;">🚨 취소/구출: 0</span>
+          <span id="cntBoxPen" style="padding:3px 8px; border-radius:6px; background:#065f46; color:#a7f3d0; pointer-events:none;">✏️ 펜(pen): 0</span>
+          <span id="cntBoxTouch" style="padding:3px 8px; border-radius:6px; background:#78350f; color:#fde68a; pointer-events:none;">👆 터치(touch): 0</span>
+          <span id="cntBoxCancel" style="padding:3px 8px; border-radius:6px; background:#7f1d1d; color:#fecaca; pointer-events:none;">🚨 취소/구출: 0</span>
+          <button id="btnResetDiagCnt" type="button" style="padding:3px 8px; border-radius:6px; background:#334155; color:#f8fafc; border:1px solid #64748b; font-size:12px; font-weight:700; cursor:pointer;">0리셋</button>
         `;
         document.body.appendChild(diagHudEl);
+        const resetBtn = document.getElementById('btnResetDiagCnt');
+        if (resetBtn) {
+          resetBtn.addEventListener('pointerdown', (ev) => {
+            ev.stopPropagation();
+            diagPenCount = 0;
+            diagTouchCount = 0;
+            diagTouchMoveCount = 0;
+            diagCancelOrRescueCount = 0;
+            const b1 = document.getElementById('cntBoxPen');
+            const b2 = document.getElementById('cntBoxTouch');
+            const b3 = document.getElementById('cntBoxCancel');
+            if (b1) b1.textContent = '✏️ 펜(pen): 0';
+            if (b2) b2.textContent = '👆 터치(touch): 0';
+            if (b3) b3.textContent = '🚨 취소/구출: 0';
+          });
+        }
       }
       const flashCounterBox = (id, text, flashBg) => {
         const el = document.getElementById(id);
@@ -25012,11 +25031,19 @@ class GraphApp {
 
       window.addEventListener('pointerdown', (e) => {
         if (this.isPdfModalOpen) return;
-        // 🧪 [대표님 지시 · 순수 펜 전용 A/B 원인 격리 테스트 (?v=20261103_15)]:
-        // 손날/손가락 터치(pointerType === 'touch') 인식을 100% 원천 차단하되, 터치 신호가 들어왔는지 카운터만 기록!
+        // 🧪 [핵심 검증 (?v=20261103_16)]:
+        // 손날(touch)이 캔버스에 닿았을 때 e.preventDefault()를 호출하지 않으면,
+        // iPadOS Safari의 네이티브 멀티터치 제스처 인식기(UIGestureRecognizer)가 깨어나
+        // 뒤이어 들어오는 펜(pen)을 pointercancel(pen취소:점12) 시키거나 다음 획 자체를 삼켜버립니다!
+        // 따라서 캔버스 위 모든 pointerdown(touch 포함)에 즉시 e.preventDefault()를 걸어 OS 제스처 개입을 100% 원천 봉쇄합니다!
+        if (e.target === this.canvas && e.cancelable !== false) {
+          e.preventDefault();
+        }
         if (e.pointerType === 'touch') {
           if (e.target === this.canvas) {
             diagTouchCount++;
+            diagTouchMoveCount = 0;
+            lastTouchDownPos = { x: e.clientX, y: e.clientY };
             const w = Math.round(e.width || 0);
             const h = Math.round(e.height || 0);
             flashCounterBox('cntBoxTouch', `👆 터치(touch): ${diagTouchCount} (${w}x${h})`, '#d97706');
@@ -25067,8 +25094,10 @@ class GraphApp {
       }, { capture: true });
 
       this.canvas.addEventListener('pointerdown', (e) => {
-        // 🧪 [대표님 지시 · 순수 펜 전용 A/B 원인 격리 테스트 (?v=20261103_14)]:
-        // 캔버스에서 모든 touch(손가락/손날/핀치/패닝) 인식을 100% 완전 차단! 오직 pen 및 mouse만 허용!
+        if (e.cancelable !== false) {
+          e.preventDefault();
+        }
+        // 캔버스에서 모든 touch(손가락/손날/핀치/패닝) 동작은 차단하되 preventDefault는 위에서 반드시 수행!
         if (e.pointerType === 'touch') return;
         if (isClickableUI(e.target) || isAnyModalOrOverlayBlockingCanvas()) {
           return;
@@ -25112,9 +25141,21 @@ class GraphApp {
 
       window.addEventListener('pointermove', (e) => {
         if (this.isPdfModalOpen) return;
-        // 🧪 [대표님 지시 · 순수 펜 전용 A/B 원인 격리 테스트 (?v=20261103_14)]:
-        // 모든 touch 이동(패닝/핀치) 인식을 100% 완전 차단!
-        if (e.pointerType === 'touch') return;
+        if (e.target === this.canvas && e.cancelable !== false) {
+          e.preventDefault();
+        }
+        // 모든 touch 이동(패닝/핀치) 인식을 100% 완전 차단하되, 드래그 신호가 들어오는지는 카운터에 즉시 표시!
+        if (e.pointerType === 'touch') {
+          if (e.target === this.canvas && lastTouchDownPos) {
+            const dist = Math.hypot(e.clientX - lastTouchDownPos.x, e.clientY - lastTouchDownPos.y);
+            if (dist >= 6) {
+              diagTouchMoveCount++;
+              lastTouchDownPos = { x: e.clientX, y: e.clientY };
+              flashCounterBox('cntBoxTouch', `👆 터치(touch): ${diagTouchCount} (이동:${diagTouchMoveCount})`, '#b45309');
+            }
+          }
+          return;
+        }
         this._isPointerInsideWindow = true;
         this._lastPointerEvent = e;
         const isEffectivePen = (e.pointerType === 'pen');
@@ -25282,23 +25323,25 @@ class GraphApp {
       }
     });
 
-    // 🧪 [대표님 지시 · 순수 펜 전용 A/B 원인 격리 테스트 (?v=20261103_14)]:
-    // TouchEvent(touchstart/touchmove/touchend/touchcancel)에서도 손가락/손날 터치를 100% 무시하고,
-    // 오직 iOS Safari의 기본 스크롤/Scribble 개입만 막기 위해 stylusTouch preventDefault만 수행합니다.
+    // 🧪 [핵심 검증 (?v=20261103_16)]:
+    // 손날(direct touch)이 캔버스에 먼저 닿아 있을 때 touchstart/touchmove/touchend에서 e.preventDefault()를 안 해주면,
+    // iPadOS Safari의 네이티브 제스처 인식기(UIGestureRecognizer)가 손날+펜을 멀티터치 제스처로 가로채어
+    // 그리는 중인 펜에 pointercancel(pen취소:점12)을 때리거나 다음 획의 진입 자체를 삼켜버립니다!
+    // 따라서 캔버스 위 모든 touchstart/touchmove/touchend에 무조건 e.preventDefault()를 호출하여 Safari 네이티브 제스처 가로채기를 100% 차단합니다!
     this.canvas.addEventListener('touchstart', (e) => {
-      const touchList = e.touches ? Array.from(e.touches) : [];
-      const stylusTouch = touchList.find(t => t.touchType === 'stylus');
-      if (stylusTouch && e.target === this.canvas && e.cancelable !== false) {
+      if (e.target === this.canvas && e.cancelable !== false) {
         e.preventDefault();
       }
     }, { passive: false });
 
-    this.canvas.addEventListener('touchend', () => {}, { passive: true });
+    this.canvas.addEventListener('touchend', (e) => {
+      if (e.target === this.canvas && e.cancelable !== false) {
+        e.preventDefault();
+      }
+    }, { passive: false });
     this.canvas.addEventListener('touchcancel', () => {}, { passive: true });
     this.canvas.addEventListener('touchmove', (e) => {
-      const touchList = e.touches ? Array.from(e.touches) : [];
-      const stylusTouch = touchList.find(t => t.touchType === 'stylus');
-      if (stylusTouch && e.cancelable !== false) {
+      if (e.cancelable !== false) {
         e.preventDefault();
       }
     }, { passive: false });
