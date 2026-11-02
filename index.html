@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261102_39">
+  <link rel="stylesheet" href="style.css?v=20261102_40">
 </head>
 
 <body class="theme-light">
@@ -1575,12 +1575,16 @@
     <button id="btnPlaylistNext" class="pdf-board-nav-btn slim-nav-arrow" title="다음 슬라이드">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </button>
-    <button id="btnPlaylistAddSlide" class="pdf-board-close-btn slim-icon-btn slim-add-slide-btn" title="새 캔버스 추가">
+    <button id="btnPlaylistAddSlide" class="pdf-board-close-btn slim-icon-btn slim-add-slide-btn" title="빈 슬라이드 생성 (새 백지 캔버스 추가)">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <button id="btnPlaylistNextPdfPage" class="pdf-board-close-btn slim-pdf-capture-btn slim-next-pdf-page-btn" style="display: none;" title="새 슬라이드를 생성하면서 PDF 다음 페이지를 즉시 엽니다">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <span>다음 페이지</span>
     </button>
     <button id="btnPlaylistOpenPdf" class="pdf-board-close-btn slim-pdf-capture-btn" style="display: none;" title="PDF 캡처 창 열기 (페이지 추가 또는 문제 캡처 시 자동 다음 슬라이드)">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <span>PDF</span>
+      <span id="lblPlaylistOpenPdf">PDF</span>
     </button>
     <div class="pdf-board-nav-divider"></div>
     <button id="btnPlaylistDeleteCurrent" class="pdf-board-close-btn slim-icon-btn slim-danger-btn" title="현재 슬라이드 삭제">
@@ -1645,23 +1649,32 @@
         </div>
         <!-- 1. 내 기기 및 열려있는 PDF에서 불러오기 -->
         <div class="cloud-import-source-box">
-          <!-- 열려있는 PDF가 있을 때만 최상단에 자동 표시 (새 캔버스 추가 후 원래 PDF로 돌아가거나 현재 화면에 추가 캡처할 때!) -->
+          <!-- 열려있는 PDF가 있을 때만 최상단에 자동 표시 -->
           <button type="button" id="btnResumeOpenPdfFromHub" class="btn-import-source btn-resume-open-pdf" style="display: none;">
             <span class="import-source-left">
               <span class="import-source-icon">📖</span>
-              <span class="import-source-main">열려있는 PDF 이어서 캡처</span>
+              <span id="lblResumePdfActionText" class="import-source-main">열려있는 PDF 이어서 캡처</span>
               <span id="lblResumePdfFileName" class="resume-pdf-filename"></span>
             </span>
-            <span class="import-source-badge badge-blue">현재 캔버스에 추가</span>
+            <span id="badgeResumePdfMode" class="import-source-badge badge-blue">캡처 모드</span>
           </button>
 
-          <!-- 언제 눌러도 100% 무조건 탐색기(폴더)를 여는 버튼 -->
-          <button type="button" id="btnOpenLocalFileFromHub" class="btn-import-source btn-open-local-explorer">
+          <!-- 수업 모드 1: 캡처 모드 (문제별 발췌 / 여러 문제 묶음 캡처) -->
+          <button type="button" id="btnOpenLocalFileFromHub" class="btn-import-source btn-open-local-explorer btn-open-crop-mode">
             <span class="import-source-left">
-              <span class="import-source-icon">📁</span>
-              <span class="import-source-main">내 기기에서 새 파일 열기</span>
+              <span class="import-source-icon">✂️</span>
+              <span class="import-source-main">캡처 모드 — 원하는 문제만 캡처하여 수업</span>
             </span>
-            <span class="import-source-badge">PDF · 이미지 · .graphly</span>
+            <span class="import-source-badge badge-blue">문제 캡처 · 여러 문제 캡처</span>
+          </button>
+
+          <!-- 수업 모드 2: 페이지 모드 (PDF 한 페이지씩 통째 판서) -->
+          <button type="button" id="btnOpenFilePageMode" class="btn-import-source btn-open-local-explorer btn-open-page-mode">
+            <span class="import-source-left">
+              <span class="import-source-icon">📄</span>
+              <span class="import-source-main">페이지 모드 — PDF를 한 페이지씩 넘기며 판서</span>
+            </span>
+            <span class="import-source-badge">통째 페이지 · + 다음 페이지</span>
           </button>
         </div>
 
@@ -1881,6 +1894,12 @@
             <span class="crop-btn-text">영역 캡처</span>
           </button>
 
+          <!-- 📚 여러 문제 연속 캡처 ➔ 📥 캔버스에 삽입 (N) 버튼 (한 슬라이드에 여러 문제를 접힌 카드로 차곡차곡 삽입) -->
+          <button id="btnPdfMultiCropMode" class="pdf-multi-crop-btn" title="한 슬라이드에 여러 문제를 연달아 캡처하여 접힌 카드로 차곡차곡 쌓습니다">
+            <span id="iconPdfMultiCropMode" class="multi-crop-btn-icon">📚</span>
+            <span id="lblPdfMultiCropMode" class="multi-crop-btn-text">여러 문제 캡처</span>
+          </button>
+
           <!-- 📄 이 페이지 열기 버튼 (개념 설명용: 해당 PDF 페이지 전체를 칠판 캔버스로 바로 삽입!) -->
           <button id="btnPdfOpenFullPage" class="pdf-open-page-btn">
             <span class="open-page-btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg></span>
@@ -1936,8 +1955,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261102_39"></script>
-  <script src="app.js?v=20261102_39"></script>
+  <script src="engine.js?v=20261102_40"></script>
+  <script src="app.js?v=20261102_40"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
