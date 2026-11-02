@@ -2911,7 +2911,7 @@ class GraphApp {
   updateStylusPenPosition(x, y, e = null) {
     if (!this.virtualStylusEl) return;
 
-    if (!this.showVirtualStylus || !this.isInkMode || this.isDropLineMode || this.isTextToolMode) {
+    if (!this.showVirtualStylus || !this.isInkMode || this.isDropLineMode || this.isTextToolMode || this.isSpacePressed || this.isPanning || this.isBoardPanning) {
       if (this.virtualStylusEl.style.display !== 'none') {
         this.virtualStylusEl.style.display = 'none';
       }
@@ -3251,14 +3251,14 @@ class GraphApp {
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       return;
     }
-    if (!this.isInkMode) {
-      this.canvas.style.cursor = 'default';
+    if (this.isSpacePressed || this.isPanning || this.isBoardPanning) {
+      this.canvas.classList.add((this.isPanning || this.isBoardPanning) ? 'ink-cursor-grabbing' : 'ink-cursor-grab');
+      this.canvas.style.cursor = (this.isPanning || this.isBoardPanning) ? 'grabbing' : 'grab';
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       return;
     }
-
-    if (this.isSpacePressed) {
-      this.canvas.style.cursor = 'grab';
+    if (!this.isInkMode) {
+      this.canvas.style.cursor = 'default';
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       return;
     }
@@ -7419,11 +7419,11 @@ class GraphApp {
           return;
         }
       }
-      // ✋ [이동 모드(!this.isPdfCropModeActive)]:
+      // ✋ [이동 모드(!this.isPdfCropModeActive) 또는 스페이스+드래그 / 휠클릭 드래그]:
       // 인위적 JS 관성 루프 없이 100% 직관적인 1:1 이동 지원 (손가락 터치는 브라우저 순정 하드웨어 스크롤)
-      if (!this.isPdfCropModeActive) {
+      if (!this.isPdfCropModeActive || this.isSpacePressed || e.button === 1) {
         if (e.pointerType === 'touch') return;
-        if (e.button !== 0 && e.pointerType === 'mouse') return;
+        if (e.button !== 0 && e.button !== 1 && e.pointerType === 'mouse') return;
         if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
           e.preventDefault();
         }
@@ -7436,6 +7436,7 @@ class GraphApp {
           pointerId: e.pointerId
         };
         viewport.classList.add('panning-active');
+        document.body.classList.add('space-pan-dragging');
         return;
       }
       if (e.button !== 0) return;
@@ -7543,6 +7544,7 @@ class GraphApp {
           this._isPdfViewportPanning = false;
           this._pdfViewportPanStart = null;
           viewport.classList.remove('panning-active');
+          document.body.classList.remove('space-pan-dragging');
           return;
         }
         const dx = e.clientX - this._pdfViewportPanStart.clientX;
@@ -7557,6 +7559,7 @@ class GraphApp {
         this._isPdfViewportPanning = false;
         this._pdfViewportPanStart = null;
         viewport.classList.remove('panning-active');
+        document.body.classList.remove('space-pan-dragging');
       }
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
       e.preventDefault();
@@ -7592,6 +7595,7 @@ class GraphApp {
         this._isPdfViewportPanning = false;
         this._pdfViewportPanStart = null;
         viewport.classList.remove('panning-active');
+        document.body.classList.remove('space-pan-dragging');
       }
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
       this.isPdfCropping = false;
@@ -21150,6 +21154,8 @@ class GraphApp {
       if (mShare && mShare.classList.contains('show')) return true;
       const mSmart = document.getElementById('modalSmartInput');
       if (mSmart && mSmart.classList.contains('show')) return true;
+      const mGuide = document.getElementById('modalGuideNotice');
+      if (mGuide && mGuide.classList.contains('show')) return true;
       const viewer = document.getElementById('smartNoteViewerOverlay');
       if (viewer && viewer.style.display !== 'none' && !document.body.classList.contains('viewer-graph-touch-mode')) return true;
       return false;
@@ -21205,13 +21211,32 @@ class GraphApp {
     const handleDown = (e) => {
       this._lastPointerEvent = e;
       this._erasedInCurrentStroke = false;
-      // 🌟 [iCanScreen 급 0ms 초저지연]: 펜/형광펜/지우개 필기 시에는 매 터치마다 전체 상태를 JSON.stringify 하는 무거운 스냅샷 생성을 100% 생략!
-      const isInkFastPath = (this.isInkMode && (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter' || this.activeInkTool === 'eraser')) || this.isStylusEraserEvent(e);
+      const isForceSpaceOrWheelPan = Boolean(this.isSpacePressed || (e && e.button === 1));
+      // 🌟 [iCanScreen 급 0ms 초저지연]: 펜/형광펜/지우개 필기 및 스페이스+드래그 팬 이동 시에는 매 터치마다 전체 상태를 JSON.stringify 하는 무거운 스냅샷 생성을 100% 생략!
+      const isInkFastPath = isForceSpaceOrWheelPan || (this.isInkMode && (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter' || this.activeInkTool === 'eraser')) || this.isStylusEraserEvent(e);
       this._preDragState = isInkFastPath ? null : this.getHistorySnapshot();
       if (!this.canvasRect) {
         this.updateCanvasRect();
       }
       const pos = getPos(e);
+      if (isForceSpaceOrWheelPan) {
+        this._touchPanDeadzoneLocked = false;
+        this._touchPanInitPos = { x: pos.x, y: pos.y };
+        if (this.isGraphCovered && !this.pdfPageBoardData) {
+          this.isBoardPanning = true;
+          this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
+        } else {
+          this.isPanning = true;
+          this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
+        }
+        document.body.classList.add('space-pan-dragging');
+        this.canvas.style.cursor = 'grabbing';
+        if (this.virtualStylusEl && !this.isAudioPlaying) {
+          this.virtualStylusEl.style.display = 'none';
+        }
+        this.render();
+        return;
+      }
       const isTouch = Boolean((e.touches && e.touches.length > 0) || e.pointerType === 'touch' || e.pointerType === 'pen');
       // 🛡️ [아이패드 손날(touch) vs 펜슬/마우스(pen/mouse) 완벽 분리]:
       // 수선(📍), 텍스트(🔤), 영역캡처(📸) 등 정밀 도구 모드에서는 손날(e.pointerType === 'touch')이 닿아도
@@ -23917,6 +23942,7 @@ class GraphApp {
       this.isPanning = false;
       this.isBoardPanning = false;
       this.boardPanStart = null;
+      document.body.classList.remove('space-pan-dragging');
       this.isDraggingVf = false;
       this.isResizingVf = false;
       this.isResizingStage = false;
@@ -23929,6 +23955,7 @@ class GraphApp {
       this.syncControls();
 
       if (this.isShiftPressed || this.isSpacePressed || (this.isInkMode && this.activeInkTool === 'select')) {
+        this.updateInkCursor();
         this.canvas.style.cursor = 'grab';
       } else if (this.isInkMode) {
         this.updateInkCursor();
@@ -23996,6 +24023,30 @@ class GraphApp {
         const w = Math.round(e.width || 0);
         const h = Math.round(e.height || 0);
 
+        // 🌟 [Space + 드래그 / 마우스 휠클릭 드래그 최우선 가로채기]:
+        // 문제 카드(#problemCardWidget, .extra-problem-card-widget), 그래프 카드(#graphCardWidget, .extra-graph-card-widget),
+        // 또는 스티커 오버레이(#workspaceStickerOverlay) 위에서 Space+드래그를 시작해도 카드 개별 드래그/카드 필기가 아닌 칠판 전체 이동(Pan)으로 100% 직행!
+        const isOnCardOrStickerSurface = Boolean(
+          e.target &&
+          e.target.closest &&
+          e.target.closest('#problemCardWidget, #graphCardWidget, .extra-problem-card-widget, .extra-graph-card-widget, #workspaceStickerOverlay, .workspace-sticker-item')
+        );
+        if ((this.isSpacePressed || e.button === 1) && !isModal && (e.target === this.canvas || isOnCardOrStickerSurface)) {
+          if (e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
+          if (e.target !== this.canvas) {
+            if (e.cancelable !== false) e.preventDefault();
+            e.stopPropagation();
+            const nowT = Date.now();
+            lastPointerDownTime = nowT;
+            this.isPointerDownOnCanvas = true;
+            this._pointerDownStart = { time: nowT, x: e.clientX, y: e.clientY };
+            this._activeDrawingPointerId = e.pointerId;
+            this._activeDrawingPointerType = e.pointerType || 'mouse';
+            handleDown(e);
+            return;
+          }
+        }
+
         if (e.pointerId !== undefined) {
           this._diagTouchTrackMap.set(e.pointerId, {
             id: e.pointerId,
@@ -24014,7 +24065,7 @@ class GraphApp {
           });
         }
 
-        if (isNotCanvas || isUI || isModal) {
+        if ((isNotCanvas || isUI || isModal) && !(this.isSpacePressed || e.button === 1)) {
           if (e.pointerId !== undefined) this._uiPointerIds.add(e.pointerId);
           if (e.pointerType === 'pen') {
             this._logInkDiag('warn', `⚠️ [펜이 UI에 닿음] id=${e.pointerId}, target=${tName}`);
@@ -24211,15 +24262,27 @@ class GraphApp {
           return;
         }
         // 해당 포인터 자체가 UI 버튼/모달 위에서 시작된 경우에만 무시 (손바닥이 카드에 닿아도 펜의 pointerId는 정상 필기!)
-        if (this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId) && !this.isDrawingSticker && !this._tappingBoardSticker) {
+        if (!this.isPanning && !this.isBoardPanning && this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId) && !this.isDrawingSticker && !this._tappingBoardSticker) {
           if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
           if (e.pointerType === 'pen') {
             this._logInkDiag('error', `🚨 [pointermove 차단] 펜 포인터(id=${e.pointerId})가 UI 영역에서 시작된 것으로 기록됨`);
           }
           return;
         }
-        // 🌟 아직 필기/드로잉 중이 아닐 때 메뉴/슬라이드바/툴바/비필기 카드 위로 마우스가 올라가면 가상 펜을 즉시 숨기고 해당 UI 고유 커서(손가락/손바닥)를 노출!
-        if (!this.isDrawingInk && !this.isStylusDrawing && !this.isLassoSelecting && !this.isDrawingSticker && !this._tappingBoardSticker) {
+        // 🌟 아직 필기/드로잉/패닝 중이 아닐 때 메뉴/슬라이드바/툴바/비필기 카드 위로 마우스가 올라가면 가상 펜을 즉시 숨기고 해당 UI 고유 커서(손가락/손바닥)를 노출!
+        if (
+          !this.isDrawingInk &&
+          !this.isStylusDrawing &&
+          !this.isLassoSelecting &&
+          !this.isDrawingSticker &&
+          !this._tappingBoardSticker &&
+          !this.isPanning &&
+          !this.isBoardPanning &&
+          !this.isDraggingCurve &&
+          this.draggedHandleIdx === null &&
+          !this.isDraggingLassoSelection &&
+          !this.isResizingLassoSelection
+        ) {
           const overMenuOrBlockedCard = this.isPointerOverMenu(e);
           if (overMenuOrBlockedCard) {
             if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
@@ -24245,7 +24308,7 @@ class GraphApp {
           this._lastPenActiveTime = nowT;
           this._touchPanDeadzoneLocked = false;
           const isPenPressing = (typeof e.pressure === 'number' && e.pressure > 0.005) || (typeof e.buttons === 'number' && e.buttons > 0);
-          if (!this.isDrawingInk && !this.isStylusDrawing && !this.isLassoSelecting && !this.isDrawingSticker && !this._tappingBoardSticker && isWritingToolActive()) {
+          if (!this.isPanning && !this.isBoardPanning && !this.isSpacePressed && !this.isShiftPressed && !this.isDrawingInk && !this.isStylusDrawing && !this.isLassoSelecting && !this.isDrawingSticker && !this._tappingBoardSticker && isWritingToolActive()) {
             if (!isPenPressing) {
               this._logInkDiag('error', `🚨 [원인 발견: 획 시작 씹힘] pointerdown 없이 pointermove(pen)가 왔으나 pressure=${e.pressure}, buttons=${e.buttons} 이라 무시됨! (짭플펜슬 필압=0 현상)`);
             } else if (e.target !== this.canvas) {
@@ -24255,6 +24318,10 @@ class GraphApp {
           }
           if (
             isPenPressing &&
+            !this.isPanning &&
+            !this.isBoardPanning &&
+            !this.isSpacePressed &&
+            !this.isShiftPressed &&
             !this.isDrawingInk &&
             !this.isStylusDrawing &&
             !this.isLassoSelecting &&
@@ -24707,16 +24774,18 @@ class GraphApp {
       }
 
       // 0.39. 스페이스바 누름 감지 (필기 모드 중 팬 이동 지원 & 포커스된 버튼/슬라이더 자동 클릭·크기 축소 원천 차단)
-      if (e.code === 'Space' && !isInput) {
+      if ((e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') && !isInput) {
         e.preventDefault();
         if (activeEl && activeEl !== document.body && typeof activeEl.blur === 'function') {
           try { activeEl.blur(); } catch (err) { }
         }
         if (!this.isSpacePressed) {
           this.isSpacePressed = true;
-          if (this.isInkMode) {
-            this.canvas.style.cursor = 'grab';
+          document.body.classList.add('space-pan-ready');
+          if (this.virtualStylusEl && !this.isAudioPlaying) {
+            this.virtualStylusEl.style.display = 'none';
           }
+          this.updateInkCursor();
         }
         return;
       }
@@ -24746,6 +24815,12 @@ class GraphApp {
 
       // 0.405. ESC 키: 올가미 선택 해제 또는 PDF 크롭모드/모달 닫기
       if (e.key === 'Escape' && !isInput) {
+        const mGuide = document.getElementById('modalGuideNotice');
+        if (mGuide && mGuide.classList.contains('show')) {
+          e.preventDefault();
+          mGuide.classList.remove('show');
+          return;
+        }
         if (this.isPdfCropModeActive) {
           e.preventDefault();
           this.togglePdfCropMode(false);
@@ -25002,7 +25077,7 @@ class GraphApp {
     });
 
     window.addEventListener('keyup', (e) => {
-      if (e.code === 'Space') {
+      if (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') {
         const activeEl = document.activeElement;
         const isTextInput = activeEl && (
           (activeEl.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button', 'color', 'file'].includes((activeEl.type || '').toLowerCase())) ||
@@ -25017,13 +25092,13 @@ class GraphApp {
           }
         }
         this.isSpacePressed = false;
+        document.body.classList.remove('space-pan-ready');
         if (!this.isPointerDownOnCanvas) {
           this.isPanning = false;
           this.isBoardPanning = false;
+          document.body.classList.remove('space-pan-dragging');
         }
-        if (this.isInkMode) {
-          this.updateInkCursor();
-        }
+        this.updateInkCursor();
       }
       if (e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
         this.isShiftPressed = false;
@@ -25046,9 +25121,8 @@ class GraphApp {
     window.addEventListener('blur', () => {
       this.isSpacePressed = false;
       this.isShiftPressed = false;
-      if (this.isInkMode) {
-        this.updateInkCursor();
-      }
+      document.body.classList.remove('space-pan-ready', 'space-pan-dragging');
+      this.updateInkCursor();
     });
 
     // 휠 줌 및 칠판 무한 패닝

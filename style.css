@@ -3217,6 +3217,14 @@ canvas.ink-cursor-grab {
 canvas.ink-cursor-grabbing {
   cursor: grabbing !important;
 }
+body.space-pan-ready,
+body.space-pan-ready * {
+  cursor: grab !important;
+}
+body.space-pan-dragging,
+body.space-pan-dragging * {
+  cursor: grabbing !important;
+}
 
 /* 🌟 [필기 모드 상시 가상 연필 & 지우개 인디케이터] 🌟 */
 .virtual-stylus-pen {
