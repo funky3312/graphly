@@ -6739,30 +6739,25 @@ class GraphApp {
       this.savedPdfScrollLeft = viewport.scrollLeft;
     }
 
-    // 🚀 [크롬·엣지 PDF 뷰어 표준: 스크롤 중 강제 Reflow(getBoundingClientRect) 0% & rAF 스로틀링]
-    if (this._pdfScrollRaf) return;
-    this._pdfScrollRaf = requestAnimationFrame(() => {
-      this._pdfScrollRaf = null;
-      if (!viewport || !this.pdfDoc) return;
-      const targetScrollY = viewport.scrollTop + viewport.clientHeight / 3;
-      const wrappers = viewport.querySelectorAll('.pdf-page-wrapper');
-      let currentVisiblePage = this.pdfCurrentPage || 1;
-      for (let i = 0; i < wrappers.length; i++) {
-        const w = wrappers[i];
-        const top = w.offsetTop;
-        const bottom = top + w.offsetHeight;
-        if (top <= targetScrollY && bottom >= targetScrollY) {
-          currentVisiblePage = parseInt(w.dataset.page, 10) || currentVisiblePage;
-          break;
-        }
-      }
-      if (currentVisiblePage !== this.pdfCurrentPage) {
-        this.updatePdfPageNavUI(currentVisiblePage, true);
+    const viewportRect = viewport.getBoundingClientRect();
+    const centerY = viewportRect.top + viewportRect.height / 3;
+
+    const wrappers = document.querySelectorAll('.pdf-page-wrapper');
+    let currentVisiblePage = this.pdfCurrentPage;
+
+    wrappers.forEach(w => {
+      const rect = w.getBoundingClientRect();
+      if (rect.top <= centerY && rect.bottom >= centerY) {
+        currentVisiblePage = parseInt(w.dataset.page, 10);
       }
     });
+
+    if (currentVisiblePage !== this.pdfCurrentPage) {
+      this.updatePdfPageNavUI(currentVisiblePage);
+    }
   }
 
-  updatePdfPageNavUI(pageNum, fromScroll = false) {
+  updatePdfPageNavUI(pageNum) {
     const prevPage = this.pdfCurrentPage;
     this.pdfCurrentPage = pageNum;
     const input = document.getElementById('inputPdfCurrentPage');
@@ -6774,16 +6769,7 @@ class GraphApp {
     if (btnNext) btnNext.disabled = (pageNum >= this.pdfTotalPages);
 
     if (this.pdfTotalPages > 8 && prevPage !== pageNum) {
-      if (fromScroll) {
-        // 스크롤하는 도중에는 무거운 PDF 페이지 렌더링을 지연시켜 턱턱 걸리는 프레임 드랍을 원천 차단!
-        if (this._pdfScrollIdleTimer) clearTimeout(this._pdfScrollIdleTimer);
-        this._pdfScrollIdleTimer = setTimeout(() => {
-          this._pdfScrollIdleTimer = null;
-          this.renderVisiblePdfWindow(this.pdfCurrentPage || pageNum, false);
-        }, 140);
-      } else {
-        this.renderVisiblePdfWindow(pageNum, false);
-      }
+      this.renderVisiblePdfWindow(pageNum, false);
     }
   }
 
@@ -6961,7 +6947,7 @@ class GraphApp {
       }
     });
 
-    // 🌟 [크롬·엣지·PDF.js 표준 셋팅: 순정 브라우저 스크롤 + 1:1 Direct Grab-to-Pan (이중 관성 충돌 0%)] 🌟
+    // 🌟 [아이패드 / 태블릿 PDF 모달 뷰어(#pdfViewport) 두 손가락 핀치 줌 & 두 손가락 스크롤] 🌟
     this._pdfTouchPointers = new Map();
     this._pdfPinchState = null;
 
@@ -7058,14 +7044,12 @@ class GraphApp {
           return;
         }
       }
-      // ✋ [이동 모드(!this.isPdfCropModeActive)]:
-      // 손가락(touch)은 크롬·엣지·iOS 순정 하드웨어 스크롤(touch-action: pan-x pan-y)에 100% 맡겨 이중 충돌을 원천 차단하고,
-      // 마우스(mouse)/펜(pen)은 크롬·엣지 PDF 뷰어 표준 1:1 직결 이동(Direct Grab-to-Pan)으로 작동합니다!
+      // ✋ [이동 모드(!this.isPdfCropModeActive)]: 마우스/펜슬/손가락 드래그로 PDF 뷰포트 상하좌우 직접 이동 지원!
       if (!this.isPdfCropModeActive) {
-        // 손가락(touch)과 펜(pen)은 e.preventDefault()로 가로채지 않고 100% 크롬·엣지 순정 브라우저 스크롤 엔진에 맡김!
-        if (e.pointerType === 'touch' || e.pointerType === 'pen') return;
-        if (e.button !== 0) return;
-        e.preventDefault();
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
+        if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
+          e.preventDefault();
+        }
         this._isPdfViewportPanning = true;
         this._pdfViewportPanStart = {
           clientX: e.clientX,
@@ -7113,15 +7097,12 @@ class GraphApp {
 
       this.isPdfCropping = true;
       this.cropTargetWrapper = pageWrapper;
-      this.cropTargetRect = rect;
       this.cropTargetPageNum = parseInt(pageWrapper.dataset.page, 10);
       this.pdfCropStart = { x: startX, y: startY };
       this._cropLastClientX = e.clientX;
       this._cropLastClientY = e.clientY;
 
-      if (cropBox.parentElement !== pageWrapper) {
-        pageWrapper.appendChild(cropBox);
-      }
+      pageWrapper.appendChild(cropBox);
       cropBox.style.display = 'none';
       cropBox.style.left = `${startX}px`;
       cropBox.style.top = `${startY}px`;
@@ -7131,7 +7112,7 @@ class GraphApp {
 
     const updateCropBoxFromPointer = (clientX, clientY) => {
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
-      const rect = this.cropTargetRect || this.cropTargetWrapper.getBoundingClientRect();
+      const rect = this.cropTargetWrapper.getBoundingClientRect();
       const curX = Math.max(0, Math.min(rect.width, clientX - rect.left));
       const curY = Math.max(0, Math.min(rect.height, clientY - rect.top));
 
@@ -7196,7 +7177,7 @@ class GraphApp {
       updateCropBoxFromPointer(e.clientX, e.clientY);
     };
 
-    // 🌟 [중복 실행 버그 제거]: viewport와 window 양쪽에 걸려 매 프레임 2번씩 실행되던 리스너를 window 단일 리스너로 일원화!
+    viewport.addEventListener('pointermove', handleCropMove, { passive: false });
     window.addEventListener('pointermove', handleCropMove, { passive: false });
 
     const handleCropUp = (e) => {
@@ -7207,7 +7188,7 @@ class GraphApp {
           endPdfViewerPinch();
         }
       }
-      // 🌟 [크롬·엣지 PDF 뷰어 표준 1:1 정지]: 마우스/펜을 떼면 원하는 문제 위치에 미끄러짐 없이 즉시 정지!
+      // 🌟 [핵심 버그 수정]: pointerup / pointercancel 즉시 PDF 이동(Panning) 상태를 확실하게 해제하여 마우스를 따라다니지 않도록 차단!
       if (this._isPdfViewportPanning) {
         this._isPdfViewportPanning = false;
         this._pdfViewportPanStart = null;
