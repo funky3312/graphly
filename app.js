@@ -17287,8 +17287,9 @@ class GraphApp {
     const lblResumeAction = document.getElementById('lblResumePdfActionText');
     const badgeResumeMode = document.getElementById('badgeResumePdfMode');
     const hasOpenPdf = Boolean(this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0));
+    const showResumeBar = Boolean(hasOpenPdf && !this.isLessonPlaylistActive && !this.hasAnyWorkspaceContent());
     if (btnResumePdf) {
-      btnResumePdf.style.display = hasOpenPdf ? 'flex' : 'none';
+      btnResumePdf.style.display = showResumeBar ? 'flex' : 'none';
     }
     if (lblResumeName && hasOpenPdf) {
       const fName = this.pdfFileName || '교재.pdf';
@@ -17314,11 +17315,14 @@ class GraphApp {
   syncCloudAuthUI() {
     const lblBtn = document.getElementById('lblCloudAuthBtnText');
     const boxEmailLogin = document.getElementById('cloudEmailLoginBox');
+    const btnEmailToggle = document.getElementById('btnCloudEmailLoginToggle');
     if (this.cloudUser) {
       if (lblBtn) lblBtn.textContent = `${this.cloudUser.displayName} · 로그아웃`;
       if (boxEmailLogin) boxEmailLogin.style.display = 'none';
+      if (btnEmailToggle) btnEmailToggle.style.display = 'none';
     } else {
       if (lblBtn) lblBtn.textContent = '구글 로그인';
+      if (btnEmailToggle) btnEmailToggle.style.display = 'inline-flex';
     }
     if (typeof this.onCustomGraphUserChanged === 'function') {
       this.onCustomGraphUserChanged();
