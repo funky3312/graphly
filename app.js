@@ -6320,8 +6320,9 @@ class GraphApp {
     }
     this.setLessonTeachingMode('page');
     let basePage = 0;
-    if (this.pdfPageBoardData && typeof this.pdfPageBoardData.pageNum === 'number') {
-      basePage = this.pdfPageBoardData.pageNum;
+    const activePdfBoard = this.pdfPageBoardData || (this._suspendedPdfBoardState && this._suspendedPdfBoardState.pdfPageBoardData) || null;
+    if (activePdfBoard && typeof activePdfBoard.pageNum === 'number') {
+      basePage = activePdfBoard.pageNum;
     } else if (Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
       for (let i = Math.min(this.lessonPlaylistIndex, this.lessonPlaylistSlides.length - 1); i >= 0; i--) {
         const s = this.lessonPlaylistSlides[i];
@@ -6452,7 +6453,12 @@ class GraphApp {
           try { this.audioMediaRecorder.resume(); } catch (e) { }
         }
       }
-      if (this.getAudioRecordElapsedMs() < 600) {
+      const hasRecordedStrokes = Boolean(
+        (this.inkStrokes && this.inkStrokes.some(s => s && typeof s.tStart === 'number')) ||
+        (this.problemInkStrokes && this.problemInkStrokes.some(s => s && typeof s.tStart === 'number')) ||
+        (this.graphInkStrokes && this.graphInkStrokes.some(s => s && typeof s.tStart === 'number'))
+      );
+      if (this.getAudioRecordElapsedMs() < 1200 || (!hasRecordedStrokes && (this._resumedSlideBaseOffsetMs || 0) === 0)) {
         this.audioInitialState = this._captureAudioWorkspaceKeyframe();
       }
       this._recordAudioWorkspaceStateIfNeeded(true);
@@ -6716,6 +6722,9 @@ class GraphApp {
     const hasExistingContent = !Boolean(options && options.skipArchiveCurrent) && this.hasAnyWorkspaceContent();
     const replaceMode = Boolean(this._isReplacingViaNextCrop || hasExistingContent);
     this._isReplacingViaNextCrop = false;
+    if (this.isAudioRecording) {
+      this._isAudioWaitingForNextSlideSetup = true;
+    }
     if (replaceMode) {
       this._archiveCurrentBeforeNextCapture();
     }
@@ -6792,7 +6801,6 @@ class GraphApp {
     this._inkBakeDirty = true;
 
     this.updatePdfPageNavUI(targetPage);
-    this.closePdfModal();
     if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
       this.closeDrawer();
     }
@@ -6804,17 +6812,25 @@ class GraphApp {
 
     if (replaceMode) {
       this._finalizeAppendedCaptureSlide('');
-    } else if (this.isLessonPlaylistActive) {
-      this.saveCurrentSlideIntoPlaylist();
-      this.syncLessonPlaylistNavBarUI();
     } else {
-      // PDF 한 페이지를 처음 불러왔을 때도 즉시 상단 슬라이드바(📑 1/1 + [PDF] 버튼)를 활성화하여 다음 페이지 추가가 원클릭으로 가능하도록!
-      const firstSlide = this.serializeFullSlideState('1');
-      this.lessonPlaylistSlides = [firstSlide];
-      this.lessonPlaylistIndex = 0;
-      this.isLessonPlaylistActive = true;
-      this.syncLessonPlaylistNavBarUI();
+      this._isAudioWaitingForNextSlideSetup = false;
+      if (this.isAudioRecording) {
+        this.audioInitialState = this._captureAudioWorkspaceKeyframe();
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
+      if (this.isLessonPlaylistActive) {
+        this.saveCurrentSlideIntoPlaylist();
+        this.syncLessonPlaylistNavBarUI();
+      } else {
+        // PDF 한 페이지를 처음 불러왔을 때도 즉시 상단 슬라이드바(📑 1/1 + [PDF] 버튼)를 활성화하여 다음 페이지 추가가 원클릭으로 가능하도록!
+        const firstSlide = this.serializeFullSlideState('1');
+        this.lessonPlaylistSlides = [firstSlide];
+        this.lessonPlaylistIndex = 0;
+        this.isLessonPlaylistActive = true;
+        this.syncLessonPlaylistNavBarUI();
+      }
     }
+    this.closePdfModal();
 
     this.syncControls();
     this.renderLayerList();
@@ -8238,6 +8254,7 @@ class GraphApp {
     this.isGraphCovered = true;
     this._coveredGraphStateBackup = null;
     this._suspendedPdfBoardState = null;
+    this._retainedPdfAudioProbCard = false;
     this.pdfPageBoardData = null;
     this._lastPdfPageScreenRect = null;
     this.ySpan = 6.0;
@@ -10693,6 +10710,9 @@ class GraphApp {
       // 🌟 [대표님 피드백 반영]: 선택하자마자 즉시 그래프 추가 서랍(panelPresets)을 열어 동선을 절반으로 단축!
       this.openDrawer('panelPresets');
     }
+    if (this.isAudioRecording) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
   }
 
   _restoreBoardModeStateAfterGraph() {
@@ -10706,9 +10726,16 @@ class GraphApp {
     if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
 
     // 1. PDF 전체화면에서 임시로 크롭해 왔던 문제 카드가 있으면 판서 모드 복귀 시 자동 정리
+    // (단, 음성 녹화 중이거나 녹화 데이터가 있을 때는 그래프 모드 구간 리플레이 시 문제 카드가 그대로 보이도록 데이터는 유지하고 숨김 처리!)
     if (this._isTempPdfProblemCard) {
       this._isTempPdfProblemCard = false;
-      this.closeProblemCard();
+      if (this.isAudioRecording || (this.audioSyncData && this.audioSyncData.durationMs > 0)) {
+        this._retainedPdfAudioProbCard = true;
+        const pWidget = document.getElementById('problemCardWidget');
+        if (pWidget) pWidget.style.display = 'none';
+      } else {
+        this.closeProblemCard();
+      }
     }
 
     // 2. 일시 정지해 두었던 PDF 전체화면 보드 상태가 있으면 100% 원상 복원!
@@ -10762,6 +10789,9 @@ class GraphApp {
     }
     this.setActiveInkTool('pen');
     this.render();
+    if (this.isAudioRecording) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
   }
 
   // 🌟 [새 스샷 촬영 없이 방금 판서하던 칠판(판서 모드) 화면으로 즉시 복귀] 🌟
@@ -17949,7 +17979,7 @@ class GraphApp {
     const pImg = document.getElementById('problemCardImg');
     const pTitle = document.getElementById('problemCardTitle');
     const pToggle = document.getElementById('iconCardToggle');
-    const hasPrimaryProblem = Boolean(pWidget && pWidget.style.display !== 'none' && this.problemCardData);
+    const hasPrimaryProblem = Boolean(pWidget && this.problemCardData && (pWidget.style.display !== 'none' || this._retainedPdfAudioProbCard));
 
     const gWidget = document.getElementById('graphCardWidget');
     const gImg = document.getElementById('graphCardImg');
@@ -17960,7 +17990,7 @@ class GraphApp {
     const extraProblems = [];
     if (this.extraProblemCards && this.extraProblemCards.length > 0) {
       this.extraProblemCards.forEach(c => {
-        if (c && c.el && document.body.contains(c.el) && c.el.style.display !== 'none') {
+        if (c && c.el && document.body.contains(c.el)) {
           const imgEl = c.el.querySelector('.problem-card-img');
           const titleEl = c.el.querySelector('.card-title-text');
           extraProblems.push({
@@ -17982,7 +18012,7 @@ class GraphApp {
     const extraGraphs = [];
     if (this.extraGraphCards && this.extraGraphCards.length > 0) {
       this.extraGraphCards.forEach(c => {
-        if (c && c.el && document.body.contains(c.el) && c.el.style.display !== 'none') {
+        if (c && c.el && document.body.contains(c.el)) {
           const imgEl = c.el.querySelector('.problem-card-img');
           const titleEl = c.el.querySelector('.card-title-text');
           extraGraphs.push({
@@ -18002,6 +18032,7 @@ class GraphApp {
       });
     }
 
+    const activePdfBoard = this.pdfPageBoardData || (this._suspendedPdfBoardState && this._suspendedPdfBoardState.pdfPageBoardData) || null;
     const slideObj = {
       version: '2.0',
       slideTitle: title || (hasPrimaryProblem && pTitle ? pTitle.textContent : '문항'),
@@ -18010,6 +18041,14 @@ class GraphApp {
       isGraphCovered: Boolean(this.isGraphCovered),
       coveredGraphStateBackup: this._coveredGraphStateBackup ? JSON.parse(JSON.stringify(this._coveredGraphStateBackup)) : null,
       savedLayer2BoardPan: this._savedLayer2BoardPan ? { ...this._savedLayer2BoardPan } : null,
+      suspendedPdfBoardState: this._suspendedPdfBoardState ? {
+        panX: this._suspendedPdfBoardState.panX,
+        panY: this._suspendedPdfBoardState.panY,
+        zoomLevel: this._suspendedPdfBoardState.zoomLevel,
+        xSpan: this._suspendedPdfBoardState.xSpan,
+        ySpan: this._suspendedPdfBoardState.ySpan
+      } : null,
+      retainedPdfAudioProbCard: Boolean(this._retainedPdfAudioProbCard),
       graphSessionArchived: Boolean(this._graphSessionArchived),
       graphCaseCounter: this._graphCaseCounter || 0,
       primaryProblemCard: hasPrimaryProblem ? {
@@ -18051,20 +18090,20 @@ class GraphApp {
         display: gWidget.style.display
       } : null,
       extraGraphs,
-      pdfPageBoardData: this.pdfPageBoardData ? {
-        pageNum: this.pdfPageBoardData.pageNum,
-        totalPages: this.pdfPageBoardData.totalPages,
-        dataUrl: this.pdfPageBoardData.dataUrl || (
-          (this.pdfPageBoardData.canvas && !(this._pdfPageCanvasCache && this._pdfPageCanvasCacheDoc === this.pdfDoc && this._pdfPageCanvasCache[this.pdfPageBoardData.pageNum]))
-            ? (this.pdfPageBoardData.dataUrl = this.encodeCanvasSmartWebP(this.pdfPageBoardData.canvas, 1.0))
+      pdfPageBoardData: activePdfBoard ? {
+        pageNum: activePdfBoard.pageNum,
+        totalPages: activePdfBoard.totalPages,
+        dataUrl: activePdfBoard.dataUrl || (
+          activePdfBoard.canvas
+            ? (activePdfBoard.dataUrl = this.encodeCanvasSmartWebP(activePdfBoard.canvas, 0.92))
             : ''
         ),
-        aspect: this.pdfPageBoardData.aspect,
-        mathW: this.pdfPageBoardData.mathW,
-        mathH: this.pdfPageBoardData.mathH,
-        centerX: this.pdfPageBoardData.centerX,
-        centerY: this.pdfPageBoardData.centerY,
-        baseYSpan: this.pdfPageBoardData.baseYSpan
+        aspect: activePdfBoard.aspect,
+        mathW: activePdfBoard.mathW,
+        mathH: activePdfBoard.mathH,
+        centerX: activePdfBoard.centerX,
+        centerY: activePdfBoard.centerY,
+        baseYSpan: activePdfBoard.baseYSpan
       } : null,
       audioSyncData: this.audioSyncData ? JSON.parse(JSON.stringify(this.audioSyncData)) : null
     };
@@ -18218,6 +18257,7 @@ class GraphApp {
     this.isGraphCovered = slideData.isGraphCovered !== undefined ? Boolean(slideData.isGraphCovered) : true;
     this._coveredGraphStateBackup = slideData.coveredGraphStateBackup ? JSON.parse(JSON.stringify(slideData.coveredGraphStateBackup)) : null;
     this._savedLayer2BoardPan = slideData.savedLayer2BoardPan ? { ...slideData.savedLayer2BoardPan } : null;
+    this._retainedPdfAudioProbCard = Boolean(slideData.retainedPdfAudioProbCard);
     this._graphSessionArchived = Boolean(slideData.graphSessionArchived);
 
     if (slideData.pdfPageBoardData) {
@@ -18246,9 +18286,25 @@ class GraphApp {
         imgObj.src = pbd.dataUrl;
         pbd.img = imgObj;
       }
-      this.pdfPageBoardData = pbd;
+      if (this.isGraphCovered) {
+        this.pdfPageBoardData = pbd;
+        this._suspendedPdfBoardState = null;
+      } else {
+        this.pdfPageBoardData = null;
+        this._suspendedPdfBoardState = {
+          ...(slideData.suspendedPdfBoardState || {
+            panX: 0,
+            panY: 0,
+            zoomLevel: 1.0,
+            xSpan: 11.5,
+            ySpan: pbd.baseYSpan || 8.4
+          }),
+          pdfPageBoardData: pbd
+        };
+      }
     } else {
       this.pdfPageBoardData = null;
+      this._suspendedPdfBoardState = null;
       this._lastPdfPageScreenRect = null;
     }
 
@@ -19112,7 +19168,9 @@ class GraphApp {
 
     const wasRecording = Boolean(this.isAudioRecording);
     if (wasRecording) {
-      this._finalizeCurrentSlideAudioSegmentBeforeSwitch();
+      this._finalizeCurrentSlideAudioSegmentBeforeSwitch(nextIdx);
+    } else if (this._isAudioReplayActive || this.isAudioPlaying) {
+      this.stopAudioPlayback(true);
     }
 
     // 1. 현재 슬라이드에서 판서한 필기/그래프 카드 변동을 현재 슬라이드에 자동 백업!
@@ -19197,8 +19255,14 @@ class GraphApp {
   }
 
   _archiveCurrentBeforeNextCapture() {
+    const nextAppendedIdx = (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0)
+      ? 1
+      : this.lessonPlaylistSlides.length;
     if (this.isAudioRecording) {
-      this._finalizeCurrentSlideAudioSegmentBeforeSwitch();
+      this._isAudioWaitingForNextSlideSetup = true;
+      this._finalizeCurrentSlideAudioSegmentBeforeSwitch(nextAppendedIdx, 0);
+    } else if (this._isAudioReplayActive || this.isAudioPlaying) {
+      this.stopAudioPlayback(true);
     }
     if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
       const firstSlide = this.serializeFullSlideState('1');
@@ -19238,8 +19302,14 @@ class GraphApp {
   handleNewCanvasButtonClick() {
     this._openSlideChipDelKey = null;
     const wasRecording = Boolean(this.isAudioRecording);
+    const nextAppendedIdx = (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0)
+      ? 1
+      : this.lessonPlaylistSlides.length;
     if (wasRecording) {
-      this._finalizeCurrentSlideAudioSegmentBeforeSwitch();
+      this._isAudioWaitingForNextSlideSetup = true;
+      this._finalizeCurrentSlideAudioSegmentBeforeSwitch(nextAppendedIdx, 0);
+    } else if (this._isAudioReplayActive || this.isAudioPlaying) {
+      this.stopAudioPlayback(true);
     }
     if (!this.isGraphCovered) {
       this.enterBoardMode();
@@ -19263,6 +19333,7 @@ class GraphApp {
     const blankSlide = this.serializeFullSlideState(String(nextNum));
     this.lessonPlaylistSlides.push(blankSlide);
     this.lessonPlaylistIndex = this.lessonPlaylistSlides.length - 1;
+    this._isAudioWaitingForNextSlideSetup = false;
     if (wasRecording) {
       this._beginNextSlideAudioSegmentAfterSwitch();
     }
@@ -19276,7 +19347,9 @@ class GraphApp {
     if (targetIdx === this.lessonPlaylistIndex) return;
     const wasRecording = Boolean(this.isAudioRecording);
     if (wasRecording) {
-      this._finalizeCurrentSlideAudioSegmentBeforeSwitch();
+      this._finalizeCurrentSlideAudioSegmentBeforeSwitch(targetIdx);
+    } else if (this._isAudioReplayActive || this.isAudioPlaying) {
+      this.stopAudioPlayback(true);
     }
     this.saveCurrentSlideIntoPlaylist();
     this.lessonPlaylistIndex = targetIdx;
@@ -30847,29 +30920,58 @@ class GraphApp {
     return this.isAudioMicMuted;
   }
 
-  // 🌟 [원테이크 통째 강의 녹음 + 슬라이드별 자동 챕터 분할 엔진]:
-  // 선생님이 녹음 버튼을 한 번 켜고 1번 ➔ 2번 ➔ ... ➔ 10번 슬라이드를 넘기며 통째로 강의를 찍을 때,
-  // 슬라이드를 넘기는 순간 이전 슬라이드의 음성·필기·그래프 타임라인을 해당 슬라이드에 자동 분할 저장하고
-  // 다음 슬라이드 녹음을 0.00초 딜레이로 즉시 이어갑니다!
-  // 덕분에 ① 전체 슬라이드 재생 시 1~10번이 한 영상처럼 자동 연속 재생되고, ② 8번 슬라이드 1장만 골라 보낼 때도 8번 설명 음성만 정확히 분리되어 전송됩니다!
-  _finalizeCurrentSlideAudioSegmentBeforeSwitch() {
+  // 🌟 [원테이크 통째 강의 녹음 + 슬라이드별 자동 챕터 분할 & 왕복(3번➔2번➔3번) 이어녹음 엔진]:
+  // 선생님이 녹음 버튼을 한 번 켜고 1번 ➔ 2번 ➔ ... ➔ 10번 슬라이드를 넘기거나,
+  // 3번에서 2번으로 돌아갔다가 다시 3번으로 넘어오며 통째로 강의를 찍을 때,
+  // 슬라이드를 넘기는 순간 이전 슬라이드의 음성·필기·그래프 타임라인 세그먼트를 누적 보존하고
+  // 다음(또는 재방문한) 슬라이드 녹음을 0.00초 딜레이로 즉시 이어갑니다!
+  _finalizeCurrentSlideAudioSegmentBeforeSwitch(nextSlideIdx = null, explicitNextStartMs = null) {
     if (!this.isAudioRecording) return;
-    const durationMs = Math.max(300, this.getAudioRecordElapsedMs());
+    const segStartMs = Math.max(0, Number(this._resumedSlideBaseOffsetMs) || 0);
+    const durationMs = Math.max(segStartMs + 200, this.getAudioRecordElapsedMs());
+    const segDurMs = Math.max(100, durationMs - segStartMs);
     this._recordAudioWorkspaceStateIfNeeded(true);
     const finalState = this._captureAudioWorkspaceKeyframe();
-    const initialState = this.audioInitialState;
+    const initialState = this.audioInitialState || finalState;
     const timeline = this.audioTimeline ? [...this.audioTimeline] : [];
     const laserStrokes = this.audioLaserStrokes ? [...this.audioLaserStrokes] : [];
     const erasedStrokes = this.audioErasedStrokes ? [...this.audioErasedStrokes] : [];
     const mimeType = this._audioMimeType || 'audio/wav';
-    const fallbackSilentUrl = this._createSilentWavDataUrl(durationMs);
+    const fallbackSegSilentUrl = this._createSilentWavDataUrl(segDurMs);
+
+    let resolvedNextStartMs = explicitNextStartMs;
+    if (resolvedNextStartMs === null && typeof nextSlideIdx === 'number' && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[nextSlideIdx]) {
+      const targetSync = this.lessonPlaylistSlides[nextSlideIdx].audioSyncData;
+      const isSameSession = !this._currentAudioRecordingSessionId || !targetSync || !targetSync.sessionId || targetSync.sessionId === this._currentAudioRecordingSessionId;
+      resolvedNextStartMs = (isSameSession && targetSync && typeof targetSync.durationMs === 'number' && targetSync.durationMs > 0)
+        ? targetSync.durationMs
+        : 0;
+    }
+
+    const priorSegs = Array.isArray(this._priorSlideAudioSegments)
+      ? JSON.parse(JSON.stringify(this._priorSlideAudioSegments))
+      : [];
+    const newSeg = {
+      startMs: segStartMs,
+      endMs: durationMs,
+      durationMs: segDurMs,
+      audioDataUrl: fallbackSegSilentUrl,
+      mimeType,
+      nextSlideIdx: typeof nextSlideIdx === 'number' ? nextSlideIdx : null,
+      nextSlideStartMs: typeof resolvedNextStartMs === 'number' ? resolvedNextStartMs : 0
+    };
+    const audioSegments = [...priorSegs, newSeg];
+    const segIdx = audioSegments.length - 1;
+    const primaryAudioUrl = (audioSegments[0] && audioSegments[0].audioDataUrl) || fallbackSegSilentUrl;
 
     const segAudioSyncData = {
-      version: '1.0',
+      version: '1.1',
+      sessionId: this._currentAudioRecordingSessionId || null,
       createdAt: Date.now(),
       durationMs,
       mimeType,
-      audioDataUrl: fallbackSilentUrl,
+      audioDataUrl: primaryAudioUrl,
+      audioSegments,
       initialState,
       finalState,
       timeline,
@@ -30899,9 +31001,23 @@ class GraphApp {
                 reader.readAsDataURL(blob);
               });
               if (dataUrl) {
-                segAudioSyncData.audioDataUrl = dataUrl;
+                if (segAudioSyncData.audioSegments && segAudioSyncData.audioSegments[segIdx]) {
+                  segAudioSyncData.audioSegments[segIdx].audioDataUrl = dataUrl;
+                }
+                if (segIdx === 0) {
+                  segAudioSyncData.audioDataUrl = dataUrl;
+                }
                 if (this.lessonPlaylistSlides && this.lessonPlaylistSlides[targetSlideIdx] && this.lessonPlaylistSlides[targetSlideIdx].audioSyncData) {
-                  this.lessonPlaylistSlides[targetSlideIdx].audioSyncData.audioDataUrl = dataUrl;
+                  const slideSync = this.lessonPlaylistSlides[targetSlideIdx].audioSyncData;
+                  if (Array.isArray(slideSync.audioSegments) && slideSync.audioSegments[segIdx]) {
+                    slideSync.audioSegments[segIdx].audioDataUrl = dataUrl;
+                  }
+                  if (segIdx === 0) {
+                    slideSync.audioDataUrl = dataUrl;
+                  }
+                }
+                if (this.lessonPlaylistIndex === targetSlideIdx && Array.isArray(this._priorSlideAudioSegments) && this._priorSlideAudioSegments[segIdx]) {
+                  this._priorSlideAudioSegments[segIdx].audioDataUrl = dataUrl;
                 }
               }
             }
@@ -30931,20 +31047,67 @@ class GraphApp {
     markPreExisting(this.inkStrokes);
     markPreExisting(this.problemInkStrokes);
     markPreExisting(this.graphInkStrokes);
+    if (this.extraProblemCards) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el && Array.isArray(c.el._cardInkStrokes)) markPreExisting(c.el._cardInkStrokes);
+      });
+    }
+    if (this.extraGraphCards) {
+      this.extraGraphCards.forEach(c => {
+        if (c && c.el && Array.isArray(c.el._cardInkStrokes)) markPreExisting(c.el._cardInkStrokes);
+      });
+    }
+
+    const isSameSession = !this._currentAudioRecordingSessionId || !this.audioSyncData || !this.audioSyncData.sessionId || this.audioSyncData.sessionId === this._currentAudioRecordingSessionId;
+    const prevSync = (isSameSession && this.audioSyncData && typeof this.audioSyncData.durationMs === 'number' && this.audioSyncData.durationMs > 0)
+      ? this.audioSyncData
+      : null;
 
     this.audioSyncData = null;
     this.audioRecordedChunks = [];
-    this.audioTimeline = [];
-    this.audioLaserStrokes = [];
-    this.audioErasedStrokes = [];
-    this.audioRecordStartMs = performance.now();
-    this.audioRecordPauseStartMs = this.isAudioRecordPaused ? performance.now() : 0;
-    this.audioRecordTotalPausedMs = 0;
-    this._lastAudioCursorRecordMs = -100;
-    this._lastAudioStateRecordMs = -100;
-    this._lastRecordedStateHash = '';
-    this.audioInitialState = this._captureAudioWorkspaceKeyframe();
-    this._recordAudioWorkspaceStateIfNeeded(true);
+
+    if (prevSync) {
+      const baseOffsetMs = Math.max(0, Number(prevSync.durationMs) || 0);
+      this._resumedSlideBaseOffsetMs = baseOffsetMs;
+      this._priorSlideAudioSegments = (Array.isArray(prevSync.audioSegments) && prevSync.audioSegments.length > 0)
+        ? JSON.parse(JSON.stringify(prevSync.audioSegments))
+        : (prevSync.audioDataUrl ? [{
+          startMs: 0,
+          endMs: baseOffsetMs,
+          durationMs: baseOffsetMs,
+          audioDataUrl: prevSync.audioDataUrl,
+          mimeType: prevSync.mimeType || 'audio/wav',
+          nextSlideIdx: null,
+          nextSlideStartMs: 0
+        }] : []);
+      this.audioInitialState = prevSync.initialState
+        ? JSON.parse(JSON.stringify(prevSync.initialState))
+        : this._captureAudioWorkspaceKeyframe();
+      this.audioTimeline = Array.isArray(prevSync.timeline) ? [...prevSync.timeline] : [];
+      this.audioLaserStrokes = Array.isArray(prevSync.laserStrokes) ? [...prevSync.laserStrokes] : [];
+      this.audioErasedStrokes = Array.isArray(prevSync.erasedStrokes) ? [...prevSync.erasedStrokes] : [];
+      this.audioRecordStartMs = performance.now() - baseOffsetMs;
+      this.audioRecordPauseStartMs = this.isAudioRecordPaused ? performance.now() : 0;
+      this.audioRecordTotalPausedMs = 0;
+      this._lastAudioCursorRecordMs = baseOffsetMs - 100;
+      this._lastAudioStateRecordMs = baseOffsetMs - 100;
+      this._lastRecordedStateHash = '';
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    } else {
+      this._resumedSlideBaseOffsetMs = 0;
+      this._priorSlideAudioSegments = [];
+      this.audioTimeline = [];
+      this.audioLaserStrokes = [];
+      this.audioErasedStrokes = [];
+      this.audioRecordStartMs = performance.now();
+      this.audioRecordPauseStartMs = this.isAudioRecordPaused ? performance.now() : 0;
+      this.audioRecordTotalPausedMs = 0;
+      this._lastAudioCursorRecordMs = -100;
+      this._lastAudioStateRecordMs = -100;
+      this._lastRecordedStateHash = '';
+      this.audioInitialState = this._captureAudioWorkspaceKeyframe();
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
 
     if (this.audioMediaStream && window.MediaRecorder) {
       try {
@@ -31094,6 +31257,20 @@ class GraphApp {
       const modeChanged = (Boolean(this.isGraphCovered) !== Boolean(kf.isGraphCovered));
       this.isGraphCovered = Boolean(kf.isGraphCovered);
       this.isBoardMode = Boolean(kf.isBoardMode);
+      // 🌟 [페이지 모드 ↔ 실시간 그래프 모드 전환 리플레이 완벽 동기화]:
+      // 그래프 모드(!isGraphCovered) 구간에서는 PDF 보드 데이터를 일시 보관(_suspendedPdfBoardState)하여 좌표평면과 그래프 필기만 깔끔하게 표시하고,
+      // 판서 모드(isGraphCovered) 복귀 구간에서는 PDF 보드 데이터를 즉시 복원하여 PDF 페이지와 페이지 위 판서를 정확히 렌더링!
+      if (!this.isGraphCovered && this.pdfPageBoardData) {
+        this._suspendedPdfBoardState = {
+          ...(this._suspendedPdfBoardState || {}),
+          pdfPageBoardData: this.pdfPageBoardData
+        };
+        this.pdfPageBoardData = null;
+        this._inkBakeDirty = true;
+      } else if (this.isGraphCovered && !this.pdfPageBoardData && this._suspendedPdfBoardState && this._suspendedPdfBoardState.pdfPageBoardData) {
+        this.pdfPageBoardData = this._suspendedPdfBoardState.pdfPageBoardData;
+        this._inkBakeDirty = true;
+      }
       if (typeof kf.boardSplitRatio === 'number') this.boardSplitRatio = kf.boardSplitRatio;
       this.graphs = JSON.parse(JSON.stringify(kf.graphs || []));
       this.activeGraphIdx = typeof kf.activeGraphIdx === 'number' ? kf.activeGraphIdx : (this.graphs.length > 0 ? 0 : -1);
@@ -31230,7 +31407,15 @@ class GraphApp {
   _recordAudioWorkspaceStateIfNeeded(force = false) {
     if (!this.isAudioRecording || this.isAudioRecordPaused || this.isPdfModalOpen || this._isAudioWaitingForNextSlideSetup || this._isApplyingAudioTimelineState) return;
     const t = this.getAudioRecordElapsedMs();
-    const isActivelyDraggingGraph = (this.draggedHandleIdx !== null || this.isDraggingCurve || this.activePwDragIdx !== null || this.isPanning || this.isBoardPanning);
+    const isActivelyDraggingGraph = Boolean(
+      this.draggedHandleIdx !== null ||
+      this.isDraggingCurve ||
+      this.activePwDragIdx !== null ||
+      this.isPanning ||
+      this.isBoardPanning ||
+      this._isZoomAnimating ||
+      this._pinchState
+    );
     const minInterval = isActivelyDraggingGraph ? 16 : 32;
     if (!force && (t - this._lastAudioStateRecordMs < minInterval)) return;
 
@@ -31243,6 +31428,10 @@ class GraphApp {
       Math.round(kf.panX),
       Math.round(kf.panY),
       kf.zoomLevel,
+      kf.xSpan,
+      kf.ySpan,
+      kf.showAxes,
+      kf.showGuides,
       Math.round(kf.boardPanX),
       Math.round(kf.boardPanY),
       kf.boardZoom,
@@ -31268,7 +31457,10 @@ class GraphApp {
       Math.round(kf.graphCardW || 0),
       kf.extraGraphsCount,
       kf.extraGraphStates,
-      kf.extraProbStates
+      kf.extraProbStates,
+      kf.boardStickers,
+      kf.problemCardStickers,
+      kf.graphCardStickers
     ]);
     if (!force && hash === this._lastRecordedStateHash) return;
     this._lastRecordedStateHash = hash;
@@ -31448,11 +31640,14 @@ class GraphApp {
     }
 
     this.isAudioRecording = true;
+    this._currentAudioRecordingSessionId = Date.now();
     this.isAudioRecordPaused = false;
     this._isRecBarStealthHidden = false;
     this._isAudioWaitingForNextSlideSetup = false;
     this._alreadyArchivedBeforePdfModal = false;
     this._autoPausedByPdfModal = false;
+    this._resumedSlideBaseOffsetMs = 0;
+    this._priorSlideAudioSegments = [];
     this.audioRecordStartMs = performance.now();
     this.audioRecordPauseStartMs = 0;
     this.audioRecordTotalPausedMs = 0;
@@ -31488,7 +31683,9 @@ class GraphApp {
 
   async stopAudioRecording() {
     if (!this.isAudioRecording) return null;
-    const durationMs = Math.max(300, this.getAudioRecordElapsedMs());
+    const segStartMs = Math.max(0, Number(this._resumedSlideBaseOffsetMs) || 0);
+    const durationMs = Math.max(segStartMs + 300, this.getAudioRecordElapsedMs());
+    const segDurMs = Math.max(100, durationMs - segStartMs);
     this._recordAudioWorkspaceStateIfNeeded(true);
     this.audioFinalState = this._captureAudioWorkspaceKeyframe();
     this.isAudioRecording = false;
@@ -31529,30 +31726,48 @@ class GraphApp {
       });
     }
 
-    if (!audioDataUrl) {
-      audioDataUrl = this._createSilentWavDataUrl(durationMs);
+    if (this._pendingSlideAudioFinalizers && this._pendingSlideAudioFinalizers.length > 0) {
+      await Promise.all(this._pendingSlideAudioFinalizers).catch(() => { });
+      this._pendingSlideAudioFinalizers = [];
     }
 
+    if (!audioDataUrl || this.isAudioMicMuted) {
+      audioDataUrl = this._createSilentWavDataUrl(segDurMs);
+    }
+
+    const currentMime = this._audioMimeType || 'audio/wav';
+    const priorSegs = Array.isArray(this._priorSlideAudioSegments)
+      ? JSON.parse(JSON.stringify(this._priorSlideAudioSegments))
+      : [];
+    const newSeg = {
+      startMs: segStartMs,
+      endMs: durationMs,
+      durationMs: segDurMs,
+      audioDataUrl,
+      mimeType: currentMime,
+      nextSlideIdx: null,
+      nextSlideStartMs: 0
+    };
+    const audioSegments = [...priorSegs, newSeg];
+    const primaryAudioUrl = (audioSegments[0] && audioSegments[0].audioDataUrl) || audioDataUrl;
+
     this.audioSyncData = {
-      version: '1.0',
+      version: '1.1',
+      sessionId: this._currentAudioRecordingSessionId || null,
       createdAt: Date.now(),
       durationMs,
-      mimeType: this._audioMimeType || 'audio/wav',
-      audioDataUrl,
-      initialState: this.audioInitialState,
+      mimeType: currentMime,
+      audioDataUrl: primaryAudioUrl,
+      audioSegments,
+      initialState: this.audioInitialState || this.audioFinalState,
       finalState: this.audioFinalState,
       timeline: this.audioTimeline,
       laserStrokes: this.audioLaserStrokes || [],
       erasedStrokes: this.audioErasedStrokes || []
     };
 
-    if (this.isAudioMicMuted) {
-      this.audioSyncData.audioDataUrl = this._createSilentWavDataUrl(durationMs);
-    }
-    if (this._pendingSlideAudioFinalizers && this._pendingSlideAudioFinalizers.length > 0) {
-      await Promise.all(this._pendingSlideAudioFinalizers).catch(() => { });
-      this._pendingSlideAudioFinalizers = [];
-    }
+    this._resumedSlideBaseOffsetMs = 0;
+    this._priorSlideAudioSegments = [];
     if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex]) {
       this.saveCurrentSlideIntoPlaylist();
     }
@@ -32255,6 +32470,60 @@ class GraphApp {
     }
   }
 
+  _getActiveAudioSegmentAt(playMs) {
+    if (!this.audioSyncData) return null;
+    const segs = (Array.isArray(this.audioSyncData.audioSegments) && this.audioSyncData.audioSegments.length > 0)
+      ? this.audioSyncData.audioSegments
+      : null;
+    if (!segs) {
+      return this.audioSyncData.audioDataUrl ? {
+        idx: 0,
+        startMs: 0,
+        endMs: this.audioSyncData.durationMs || 1000,
+        durationMs: this.audioSyncData.durationMs || 1000,
+        audioDataUrl: this.audioSyncData.audioDataUrl,
+        nextSlideIdx: null,
+        nextSlideStartMs: 0
+      } : null;
+    }
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      if (!s) continue;
+      if (playMs < s.endMs || i === segs.length - 1) {
+        return { ...s, idx: i };
+      }
+    }
+    return null;
+  }
+
+  _syncAudioPlayerToPlayMs(playMs, shouldPlay = false) {
+    if (!this.audioSyncData) return null;
+    if (!this.audioPlayerEl) {
+      this.audioPlayerEl = new Audio();
+    }
+    const seg = this._getActiveAudioSegmentAt(playMs);
+    if (!seg || !seg.audioDataUrl) return seg;
+    const segChanged = (this._activeAudioSegmentIdx !== seg.idx || this.audioPlayerEl.src !== seg.audioDataUrl);
+    if (segChanged) {
+      this._activeAudioSegmentIdx = seg.idx;
+      this.audioPlayerEl.src = seg.audioDataUrl;
+    }
+    this.audioPlayerEl.playbackRate = this.audioPlaybackRate || 1.0;
+    const localSec = Math.max(0, (playMs - (seg.startMs || 0)) / 1000);
+    try {
+      if (segChanged || Math.abs((this.audioPlayerEl.currentTime || 0) - localSec) > 0.08) {
+        this.audioPlayerEl.currentTime = localSec;
+      }
+      if (shouldPlay) {
+        const playPromise = this.audioPlayerEl.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(() => { });
+        }
+      }
+    } catch (e) { }
+    return seg;
+  }
+
   playAudioSync(fromMs = null, forceMode = null) {
     if (!this.audioSyncData || !this.audioSyncData.durationMs) return;
     if (forceMode) {
@@ -32272,20 +32541,8 @@ class GraphApp {
     this.isAudioPlaying = true;
     document.body.classList.add('audio-replay-active');
 
-    if (!this.audioPlayerEl) {
-      this.audioPlayerEl = new Audio();
-    }
-    if (this.audioSyncData.audioDataUrl && this.audioPlayerEl.src !== this.audioSyncData.audioDataUrl) {
-      this.audioPlayerEl.src = this.audioSyncData.audioDataUrl;
-    }
-    this.audioPlayerEl.playbackRate = this.audioPlaybackRate || 1.0;
-    try {
-      this.audioPlayerEl.currentTime = (this.audioPlayCurrentMs || 0) / 1000;
-      const playPromise = this.audioPlayerEl.play();
-      if (playPromise && typeof playPromise.catch === 'function') {
-        playPromise.catch(() => { });
-      }
-    } catch (e) { }
+    this._activeAudioSegmentIdx = -1;
+    this._syncAudioPlayerToPlayMs(this.audioPlayCurrentMs || 0, true);
 
     this._audioPlayWallStartMs = performance.now();
     this._audioPlayBaseOffsetMs = this.audioPlayCurrentMs || 0;
@@ -32299,15 +32556,58 @@ class GraphApp {
       if (!this.isAudioPlaying || !this.audioSyncData) return;
       const wallElapsed = (performance.now() - this._audioPlayWallStartMs) * (this.audioPlaybackRate || 1.0);
       let nextMs = this._audioPlayBaseOffsetMs + wallElapsed;
+
+      const segs = (Array.isArray(this.audioSyncData.audioSegments) && this.audioSyncData.audioSegments.length > 0)
+        ? this.audioSyncData.audioSegments
+        : null;
+      const curSegIdx = (typeof this._activeAudioSegmentIdx === 'number' && this._activeAudioSegmentIdx >= 0)
+        ? this._activeAudioSegmentIdx
+        : 0;
+      const curSeg = segs && segs[curSegIdx] ? segs[curSegIdx] : null;
+
       if (
         this.audioPlayerEl &&
         !this.audioPlayerEl.paused &&
         Number.isFinite(this.audioPlayerEl.currentTime) &&
         this.audioPlayerEl.currentTime > 0
       ) {
-        const audioMs = this.audioPlayerEl.currentTime * 1000;
+        const segBaseMs = curSeg ? (curSeg.startMs || 0) : 0;
+        const audioMs = segBaseMs + this.audioPlayerEl.currentTime * 1000;
         if (Math.abs(audioMs - nextMs) < 350) {
           nextMs = audioMs;
+        }
+      }
+
+      // 🌟 [슬라이드 간 왕복(3번 ➔ 2번 ➔ 3번) 세그먼트 경계 자동 전환]:
+      // 현재 세그먼트(curSeg)가 끝나는 시각(curSeg.endMs)에 도달했을 때,
+      // 녹음 당시 다른 슬라이드(nextSlideIdx)로 넘어갔던 기록이 있으면 그 슬라이드의 이어진 시점(nextSlideStartMs)으로 즉시 점프!
+      if (curSeg && nextMs >= curSeg.endMs) {
+        if (
+          this.isLessonPlaylistActive &&
+          typeof curSeg.nextSlideIdx === 'number' &&
+          curSeg.nextSlideIdx !== this.lessonPlaylistIndex &&
+          Array.isArray(this.lessonPlaylistSlides) &&
+          this.lessonPlaylistSlides[curSeg.nextSlideIdx] &&
+          this.lessonPlaylistSlides[curSeg.nextSlideIdx].audioSyncData &&
+          this.lessonPlaylistSlides[curSeg.nextSlideIdx].audioSyncData.durationMs > 0
+        ) {
+          this.audioPlayCurrentMs = curSeg.endMs;
+          this._renderAudioReplayAtCurrentTime();
+          const keepViewMode = this.audioReplayViewMode || 'video';
+          const targetSlideIdx = curSeg.nextSlideIdx;
+          const targetStartMs = typeof curSeg.nextSlideStartMs === 'number' ? curSeg.nextSlideStartMs : 0;
+          this.pauseAudioPlayback(false);
+          this.jumpToPlaylistSlide(targetSlideIdx);
+          if (this._enteredAudioFromViewerSlideIdx !== null) {
+            this._enteredAudioFromViewerSlideIdx = this.lessonPlaylistIndex;
+          }
+          this.playAudioSync(targetStartMs, keepViewMode);
+          return;
+        }
+        if (segs && curSegIdx + 1 < segs.length) {
+          this._syncAudioPlayerToPlayMs(nextMs, true);
+          this._audioPlayWallStartMs = performance.now();
+          this._audioPlayBaseOffsetMs = nextMs;
         }
       }
 
@@ -32316,21 +32616,30 @@ class GraphApp {
         this.audioPlayCurrentMs = maxDur;
         this._renderAudioReplayAtCurrentTime();
         // 🌟 다중 슬라이드 연속 강의인 경우: 현재 슬라이드 재생이 끝나면 다음 슬라이드로 자동 이동하여 끊김 없이 이어서 재생!
+        const fallbackNextIdx = (curSeg && typeof curSeg.nextSlideIdx === 'number')
+          ? curSeg.nextSlideIdx
+          : (this.lessonPlaylistIndex + 1);
+        const fallbackNextStartMs = (curSeg && typeof curSeg.nextSlideIdx === 'number' && typeof curSeg.nextSlideStartMs === 'number')
+          ? curSeg.nextSlideStartMs
+          : 0;
         if (
           this.isLessonPlaylistActive &&
           Array.isArray(this.lessonPlaylistSlides) &&
-          this.lessonPlaylistIndex + 1 < this.lessonPlaylistSlides.length &&
-          this.lessonPlaylistSlides[this.lessonPlaylistIndex + 1] &&
-          this.lessonPlaylistSlides[this.lessonPlaylistIndex + 1].audioSyncData &&
-          this.lessonPlaylistSlides[this.lessonPlaylistIndex + 1].audioSyncData.durationMs > 0
+          fallbackNextIdx >= 0 &&
+          fallbackNextIdx < this.lessonPlaylistSlides.length &&
+          fallbackNextIdx !== this.lessonPlaylistIndex &&
+          this.lessonPlaylistSlides[fallbackNextIdx] &&
+          this.lessonPlaylistSlides[fallbackNextIdx].audioSyncData &&
+          this.lessonPlaylistSlides[fallbackNextIdx].audioSyncData.durationMs > 0 &&
+          (curSeg ? typeof curSeg.nextSlideIdx === 'number' : (fallbackNextIdx === this.lessonPlaylistIndex + 1))
         ) {
           const keepViewMode = this.audioReplayViewMode || 'video';
           this.pauseAudioPlayback(true);
-          this.stepLessonPlaylist(1);
+          this.jumpToPlaylistSlide(fallbackNextIdx);
           if (this._enteredAudioFromViewerSlideIdx !== null) {
             this._enteredAudioFromViewerSlideIdx = this.lessonPlaylistIndex;
           }
-          this.playAudioSync(0, keepViewMode);
+          this.playAudioSync(fallbackNextStartMs, keepViewMode);
           return;
         }
         this.pauseAudioPlayback(true);
@@ -32432,11 +32741,7 @@ class GraphApp {
     this.audioPlayCurrentMs = Math.max(0, Math.min(dur, Number(targetMs) || 0));
     this._audioPlayWallStartMs = performance.now();
     this._audioPlayBaseOffsetMs = this.audioPlayCurrentMs;
-    if (this.audioPlayerEl) {
-      try {
-        this.audioPlayerEl.currentTime = this.audioPlayCurrentMs / 1000;
-      } catch (e) { }
-    }
+    this._syncAudioPlayerToPlayMs(this.audioPlayCurrentMs, Boolean(this.isAudioPlaying));
     this._isAudioReplayActive = true;
     document.body.classList.add('audio-replay-active');
     this._renderAudioReplayAtCurrentTime();
@@ -32520,6 +32825,32 @@ class GraphApp {
       }
     }
 
+    // 2.5 추가 문제 카드 및 추가 그래프 카드(#2, #3...) 내부 필기 검사
+    const extraCardLists = [
+      ...(this.extraProblemCards || []),
+      ...(this.extraGraphCards || [])
+    ];
+    for (let cIdx = extraCardLists.length - 1; cIdx >= 0; cIdx--) {
+      const cardItem = extraCardLists[cIdx];
+      const cardEl = cardItem && cardItem.el;
+      if (!cardEl || cardEl.style.display === 'none' || cardEl.classList.contains('minimized')) continue;
+      const cStrokes = cardEl._cardInkStrokes;
+      const bodyEl = cardEl.querySelector('.problem-card-body');
+      if (!Array.isArray(cStrokes) || cStrokes.length === 0 || !bodyEl) continue;
+      const r = bodyEl.getBoundingClientRect();
+      if (screenX >= r.left && screenX <= r.right && screenY >= r.top && screenY <= r.bottom && r.width > 0 && r.height > 0) {
+        const hitExtra = this.hitTestCardAudioStroke(
+          cStrokes,
+          (screenX - r.left) / r.width,
+          (screenY - r.top) / r.height,
+          r.width,
+          r.height,
+          radiusPx
+        );
+        if (hitExtra) return hitExtra;
+      }
+    }
+
     // 3. 메인 칠판 및 그래프 필기(this.inkStrokes) 검사
     if (!this.inkStrokes || this.inkStrokes.length === 0) return null;
     let bestStroke = null;
@@ -32529,6 +32860,7 @@ class GraphApp {
       const st = this.inkStrokes[i];
       if (!st || typeof st.tStart !== 'number') continue;
       const isBoard = (st.target || 'board') === 'board';
+      if (!isBoard && Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
 
       if (st.shape) {
         const shapePts = this.getShapeSampleScreenPoints(st);
