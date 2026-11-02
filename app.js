@@ -6093,6 +6093,7 @@ class GraphApp {
             viewport.scrollTop = targetTop;
             viewport.scrollLeft = targetLeft;
           });
+          this._processPdfRenderQueue();
         }
       }
     }
@@ -6402,8 +6403,8 @@ class GraphApp {
     if (!pageCanvas) {
       const page = await this.pdfDoc.getPage(targetPage);
       const baseVp = page.getViewport({ scale: 1.0 });
-      const targetMinPxW = 1680;
-      const renderScale = Math.max(2.2, Math.min(2.7, targetMinPxW / Math.max(1, baseVp.width)));
+      const targetMinPxW = 2200;
+      const renderScale = Math.max(2.8, Math.min(3.5, targetMinPxW / Math.max(1, baseVp.width)));
       const vp = page.getViewport({ scale: renderScale });
       pageCanvas = document.createElement('canvas');
       pageCanvas.width = Math.round(vp.width);
@@ -6587,93 +6588,58 @@ class GraphApp {
     this.render();
   }
 
-  // 🌟 [구형 PC 초경량 PDF 가상화 엔진]:
-  // 500쪽짜리 통짜 PDF도 스크롤 위치용 빈 종이 틀(cssW x cssH)만 먼저 잡아두고,
-  // 실제 고해상도 캔버스 픽셀은 현재 보고 있는 페이지 앞뒤(±2페이지, 최대 5장)만 그리며 멀어진 페이지는 메모리를 즉시 반납!
-  // 🌟 [웹 표준 초경량 PDF 뷰어 엔진: IntersectionObserver + Keep-Alive 비트맵 캐시 + Scroll-Idle 프리렌더링] 🌟
-  // 1) 뷰어 해상도를 가벼운 1.3x~1.8x 표준으로 낮추어 페이지당 메모리를 1/10(~5MB)로 경량화!
-  // 2) 한 번 그린 페이지는 스크롤해도 절대 지우지 않고 유지(Keep-Alive)하여 위아래 왕복 스크롤 시 재렌더링 연산 0%!
-  // 3) 스크롤 도중(_isPdfActivelyScrolling)에는 무거운 page.render()와 getBoundingClientRect()를 전면 차단하고,
-  //    유휴 시간에만 뒷페이지들을 미리 그려두어 웹툰처럼 주르륵 뒷페이지까지 미끄러지듯 이동합니다!
-  _setupPdfIntersectionObserver() {
-    if (this._pdfIntersectionObserver) {
-      try { this._pdfIntersectionObserver.disconnect(); } catch (e) { }
-      this._pdfIntersectionObserver = null;
+  // 🌟 [무결점 더블 버퍼링(Double-Buffered) 단일 순차 PDF 렌더링 큐 & 순정 스크롤 보호 엔진] 🌟
+  // 1) 화질: 모니터 물리 픽셀 밀도에 맞춘 선명한 Retina/HiDPI 표준 배율(dpr = 1.5 ~ 2.0) 복원!
+  // 2) 떨림 원천 제거:
+  //    - 화면에 보이는 DOM <canvas>에 직접 page.render()를 그리지 않고 오프스크린 버퍼(_pdfOffscreenRenderCanvas)에 완성한 뒤
+  //      단 1프레임(ctx.drawImage)에 복사하여 렌더링 도중 캔버스 리사이즈/흰 화면 깜빡임/스크롤 떨림을 0.00%로 차단!
+  //    - 동시에 여러 페이지의 page.render()가 겹쳐 실행되지 않도록 1장씩 순차 큐(_pdfRenderQueue)로만 처리!
+  // 3) 스크롤 최우선 양보:
+  //    - 스크롤이 발생하는 즉시 백그라운드 페이지 렌더 작업을 취소(_cancelCurrentPdfRenderJob)하여 메인 스레드를 100% 스크롤에 양보하고,
+  //    - 마우스 휠 스무스 스크롤 애니메이션(약 180ms)이 완전히 멈춘 뒤(220ms)에만 조용히 다음 페이지를 준비합니다!
+  _cancelCurrentPdfRenderJob(onlyIfBackground = false, currentCenterPage = 1) {
+    const job = this._currentPdfRenderJob;
+    if (!job) return;
+    if (onlyIfBackground && Math.abs(job.pageNum - currentCenterPage) <= 1) {
+      return;
     }
-    const viewport = document.getElementById('pdfViewport');
-    if (!viewport || typeof IntersectionObserver === 'undefined') return;
-
-    this._pdfIntersectionObserver = new IntersectionObserver((entries) => {
-      if (!this.pdfDoc) return;
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
-        if (!entry.isIntersecting) continue;
-        const wrapper = entry.target;
-        const p = parseInt(wrapper.dataset.page, 10);
-        if (!p) continue;
-        const canvas = document.getElementById(`pdfPageCanvas_${p}`);
-        if (!canvas) continue;
-        if (canvas._renderedZoom === this.pdfZoom && this.pdfPageRenderStates[p]) continue;
-
-        if (this._isPdfActivelyScrolling) {
-          // 스크롤이 빠르게 움직이는 도중에는 메인 스레드를 멈추지 않도록 대기열에만 넣고 스크롤 멈춤 직후 렌더링!
-          if (!this._pdfPendingIdlePages) this._pdfPendingIdlePages = new Set();
-          this._pdfPendingIdlePages.add(p);
-        } else {
-          this.renderPdfPageToCanvas(p, canvas, wrapper);
-        }
-      }
-    }, {
-      root: viewport,
-      rootMargin: '1800px 0px',
-      threshold: 0.01
-    });
-
-    const wrappers = viewport.querySelectorAll('.pdf-page-wrapper');
-    wrappers.forEach(w => this._pdfIntersectionObserver.observe(w));
+    job.cancelled = true;
+    if (job.task && typeof job.task.cancel === 'function') {
+      try { job.task.cancel(); } catch (e) { }
+    }
+    if (job.canvas) {
+      job.canvas._pdfRenderTask = null;
+    }
+    this._currentPdfRenderJob = null;
   }
 
-  _scheduleIdlePdfPreRender() {
-    if (this._pdfIdlePreRenderTimer) {
-      clearTimeout(this._pdfIdlePreRenderTimer);
-      this._pdfIdlePreRenderTimer = null;
+  _processPdfRenderQueue() {
+    if (this._pdfQueueTimer) {
+      clearTimeout(this._pdfQueueTimer);
+      this._pdfQueueTimer = null;
     }
     if (!this.pdfDoc || !this.isPdfModalOpen) return;
+    if (this._isPdfActivelyScrolling || this.isPdfCropping) return;
+    if (this._currentPdfRenderJob) return;
+    if (!this._pdfRenderQueue || this._pdfRenderQueue.length === 0) return;
 
-    const step = () => {
-      this._pdfIdlePreRenderTimer = null;
-      if (!this.pdfDoc || !this.isPdfModalOpen) return;
-      if (this._isPdfActivelyScrolling || this.isPdfCropping) {
-        this._pdfIdlePreRenderTimer = setTimeout(step, 120);
-        return;
-      }
+    const targetZoom = this.pdfZoom || 1.75;
+    while (this._pdfRenderQueue.length > 0) {
+      const pageNum = this._pdfRenderQueue.shift();
+      const canvas = document.getElementById(`pdfPageCanvas_${pageNum}`);
+      const wrapper = document.getElementById(`pdfPageWrapper_${pageNum}`);
+      if (!canvas || !wrapper) continue;
+      if (canvas._renderedZoom === targetZoom && this.pdfPageRenderStates[pageNum]) continue;
 
-      const center = this.pdfCurrentPage || 1;
-      const total = this.pdfTotalPages || 1;
-      // 현재 페이지 기준 앞뒤로 최대 14페이지까지 유휴 시간에 1장씩 순차적으로 미리 그려둠 (웹툰처럼 주르륵 스크롤 보장!)
-      const maxRadius = Math.min(total, 14);
-      for (let d = 0; d <= maxRadius; d++) {
-        const candidates = d === 0 ? [center] : [center + d, center - d];
-        for (const p of candidates) {
-          if (p < 1 || p > total) continue;
-          const canvas = document.getElementById(`pdfPageCanvas_${p}`);
-          const wrapper = document.getElementById(`pdfPageWrapper_${p}`);
-          if (!canvas || !wrapper) continue;
-          if (canvas._pdfRenderTask) {
-            // 현재 렌더링 중인 페이지가 끝난 뒤 다음 유휴 페이지 진행
-            this._pdfIdlePreRenderTimer = setTimeout(step, 70);
-            return;
-          }
-          if (canvas._renderedZoom !== this.pdfZoom || !this.pdfPageRenderStates[p]) {
-            this.renderPdfPageToCanvas(p, canvas, wrapper);
-            this._pdfIdlePreRenderTimer = setTimeout(step, 55);
-            return;
-          }
-        }
-      }
-    };
-
-    this._pdfIdlePreRenderTimer = setTimeout(step, 90);
+      this.renderPdfPageToCanvas(pageNum, canvas, wrapper, () => {
+        if (!this.isPdfModalOpen || this._isPdfActivelyScrolling) return;
+        this._pdfQueueTimer = setTimeout(() => {
+          this._pdfQueueTimer = null;
+          this._processPdfRenderQueue();
+        }, 16);
+      });
+      return;
+    }
   }
 
   renderAllPdfPages(resetContainer = false) {
@@ -6687,6 +6653,8 @@ class GraphApp {
     this._cachedPdfPageCssH = defH;
 
     if (resetContainer || container.children.length !== this.pdfTotalPages) {
+      this._cancelCurrentPdfRenderJob(false);
+      this._pdfRenderQueue = [];
       container.innerHTML = '';
       this.pdfPageRenderStates = {};
 
@@ -6716,7 +6684,6 @@ class GraphApp {
         frag.appendChild(wrapper);
       }
       container.appendChild(frag);
-      this._setupPdfIntersectionObserver();
       this.renderVisiblePdfWindow(currentPageToKeep, true);
       this.updatePdfPageNavUI(currentPageToKeep, true);
     } else {
@@ -6728,103 +6695,140 @@ class GraphApp {
   renderVisiblePdfWindow(centerPage = 1, forceReRender = false) {
     if (!this.pdfDoc) return;
     const total = this.pdfTotalPages || 1;
-    // 즉시 필요한 현재 화면 앞뒤(centerPage - 1 ~ centerPage + 2) 우선 렌더링
-    const minP = Math.max(1, centerPage - 1);
-    const maxP = Math.min(total, centerPage + 2);
+    centerPage = Math.max(1, Math.min(total, centerPage || 1));
 
-    for (let p = minP; p <= maxP; p++) {
-      const wrapper = document.getElementById(`pdfPageWrapper_${p}`);
-      const canvas = document.getElementById(`pdfPageCanvas_${p}`);
-      if (!wrapper || !canvas) continue;
-      if (forceReRender || canvas._renderedZoom !== this.pdfZoom || !this.pdfPageRenderStates[p]) {
-        this.renderPdfPageToCanvas(p, canvas, wrapper);
-      }
+    if (forceReRender) {
+      this._cancelCurrentPdfRenderJob(false);
     }
 
-    // 🌟 [Keep-Alive 캐시]: 한 번 그린 페이지는 지우지 않고 그대로 유지!
-    // 단, 45페이지가 넘는 대용량 교재일 때만 현재 페이지에서 25페이지 이상 멀어진 페이지를 정리합니다.
-    if (total > 45) {
+    // 현재 페이지(centerPage)부터 가까운 앞뒤 페이지 순으로 단일 순차 큐 구성 (20쪽 이하 시험지/교재는 전체 페이지를 유휴 시간에 1장씩 미리 완성)
+    const maxRadius = total <= 20 ? total : 6;
+    const queue = [];
+    for (let d = 0; d <= maxRadius; d++) {
+      const candidates = d === 0 ? [centerPage] : [centerPage + d, centerPage - d];
+      for (const p of candidates) {
+        if (p < 1 || p > total) continue;
+        const canvas = document.getElementById(`pdfPageCanvas_${p}`);
+        if (!canvas) continue;
+        if (!forceReRender && canvas._renderedZoom === this.pdfZoom && this.pdfPageRenderStates[p]) {
+          continue;
+        }
+        queue.push(p);
+      }
+    }
+    this._pdfRenderQueue = queue;
+
+    // 30페이지가 넘는 대용량 교재일 때만 현재 위치에서 18페이지 이상 멀어진 캔버스 비트맵 정리
+    if (total > 30) {
       for (let p = 1; p <= total; p++) {
-        if (Math.abs(p - centerPage) > 25 && this.pdfPageRenderStates[p]) {
+        if (Math.abs(p - centerPage) > 18 && this.pdfPageRenderStates[p]) {
           const canvas = document.getElementById(`pdfPageCanvas_${p}`);
-          if (canvas) {
-            if (canvas._pdfRenderTask && typeof canvas._pdfRenderTask.cancel === 'function') {
-              try { canvas._pdfRenderTask.cancel(); } catch (e) { }
-              canvas._pdfRenderTask = null;
-            }
-            if (canvas.width > 10) {
-              canvas.width = 1;
-              canvas.height = 1;
-              canvas._renderedZoom = null;
-              delete this.pdfPageRenderStates[p];
-            }
+          if (canvas && canvas.width > 10) {
+            canvas.width = 1;
+            canvas.height = 1;
+            canvas._renderedZoom = null;
+            delete this.pdfPageRenderStates[p];
           }
         }
       }
     }
 
-    this._scheduleIdlePdfPreRender();
+    this._processPdfRenderQueue();
   }
 
-  renderPdfPageToCanvas(pageNum, canvas, wrapper) {
-    if (!this.pdfDoc || !canvas) return;
-    const targetZoom = this.pdfZoom || 1.5;
-    if (canvas._renderedZoom === targetZoom && this.pdfPageRenderStates[pageNum]) return;
-    if (canvas._pdfRenderTask && canvas._renderingZoom === targetZoom) return;
-
-    if (canvas._pdfRenderTask && typeof canvas._pdfRenderTask.cancel === 'function') {
-      try { canvas._pdfRenderTask.cancel(); } catch (e) { }
-      canvas._pdfRenderTask = null;
+  renderPdfPageToCanvas(pageNum, canvas, wrapper, onComplete = null) {
+    if (!this.pdfDoc || !canvas) {
+      if (onComplete) onComplete();
+      return;
+    }
+    const targetZoom = this.pdfZoom || 1.75;
+    if (canvas._renderedZoom === targetZoom && this.pdfPageRenderStates[pageNum]) {
+      if (onComplete) onComplete();
+      return;
     }
 
-    canvas._renderingZoom = targetZoom;
+    this._cancelCurrentPdfRenderJob(false);
+    const job = {
+      pageNum,
+      canvas,
+      targetZoom,
+      cancelled: false,
+      task: null
+    };
+    this._currentPdfRenderJob = job;
+
     this.pdfDoc.getPage(pageNum).then(page => {
+      if (job.cancelled || this._currentPdfRenderJob !== job || !this.pdfDoc) {
+        if (this._currentPdfRenderJob === job) this._currentPdfRenderJob = null;
+        return;
+      }
+
       const baseVp = page.getViewport({ scale: 1.0 });
       const cssW = Math.round(baseVp.width * targetZoom);
       const cssH = Math.round(baseVp.height * targetZoom);
       this._cachedPdfPageCssH = cssH;
 
-      // 🌟 [초경량 웹 표준 PDF 뷰어 해상도 (1.3x ~ 1.95x)]:
-      // 과도한 4K/5K 렌더링을 버리고 웹 표준 뷰어 배율로 다이어트하여 페이지당 렌더링 속도를 8배 높이고,
-      // 20~30페이지를 메모리에 통째로 캐싱(Keep-Alive)해도 구형 PC에서 깃털처럼 스크롤되도록 최적화!
-      const dpr = Math.min(1.3, Math.max(1.05, (window.devicePixelRatio || 1.25) * 0.72));
-      const renderScale = Math.max(1.3, Math.min(1.95, targetZoom * dpr));
+      // 🌟 [선명한 표준 Retina/HiDPI 화질 (1.5x ~ 2.0x) 복원]:
+      // 과도한 5K 오버샘플링은 제거하면서 모니터 물리 픽셀 밀도에 맞춘 또렷한 수식·명조체 가독성을 100% 보장합니다!
+      const dpr = Math.min(2.0, Math.max(1.5, window.devicePixelRatio || 1.5));
+      const renderScale = targetZoom * dpr;
       const viewport = page.getViewport({ scale: renderScale });
 
-      canvas.style.width = `${cssW}px`;
-      canvas.style.height = `${cssH}px`;
-      if (wrapper) {
-        wrapper.style.width = `${cssW}px`;
-        wrapper.style.height = `${cssH}px`;
-        wrapper._basePdfW = baseVp.width;
-        wrapper._basePdfH = baseVp.height;
+      const targetW = Math.round(viewport.width);
+      const targetH = Math.round(viewport.height);
+
+      // 오프스크린 캔버스에 먼저 렌더링한 뒤 완성본만 화면 캔버스에 단 1회 Blit하여 렌더링 중 화면 떨림 원천 제거!
+      if (!this._pdfOffscreenRenderCanvas) {
+        this._pdfOffscreenRenderCanvas = document.createElement('canvas');
       }
+      const offCanvas = this._pdfOffscreenRenderCanvas;
+      offCanvas.width = targetW;
+      offCanvas.height = targetH;
+      const offCtx = offCanvas.getContext('2d', { alpha: false }) || offCanvas.getContext('2d');
+      offCtx.fillStyle = '#ffffff';
+      offCtx.fillRect(0, 0, targetW, targetH);
 
-      canvas.width = Math.round(viewport.width);
-      canvas.height = Math.round(viewport.height);
-
-      const ctx = canvas.getContext('2d', { alpha: false }) || canvas.getContext('2d');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      const renderTask = page.render({ canvasContext: ctx, viewport });
+      const renderTask = page.render({ canvasContext: offCtx, viewport });
+      job.task = renderTask;
       canvas._pdfRenderTask = renderTask;
+
       renderTask.promise.then(() => {
         canvas._pdfRenderTask = null;
+        if (this._currentPdfRenderJob === job) this._currentPdfRenderJob = null;
+        if (job.cancelled) return;
+
+        if (canvas.style.width !== `${cssW}px`) canvas.style.width = `${cssW}px`;
+        if (canvas.style.height !== `${cssH}px`) canvas.style.height = `${cssH}px`;
+        if (wrapper) {
+          if (Math.abs((parseFloat(wrapper.style.width) || 0) - cssW) > 1) wrapper.style.width = `${cssW}px`;
+          if (Math.abs((parseFloat(wrapper.style.height) || 0) - cssH) > 1) wrapper.style.height = `${cssH}px`;
+          wrapper._basePdfW = baseVp.width;
+          wrapper._basePdfH = baseVp.height;
+        }
+
+        if (canvas.width !== targetW) canvas.width = targetW;
+        if (canvas.height !== targetH) canvas.height = targetH;
+        const ctx = canvas.getContext('2d', { alpha: false }) || canvas.getContext('2d');
+        ctx.drawImage(offCanvas, 0, 0);
+
         canvas._renderedZoom = targetZoom;
         canvas._renderedScale = renderScale;
         this.pdfPageRenderStates[pageNum] = true;
+        if (onComplete) onComplete();
       }).catch(err => {
         canvas._pdfRenderTask = null;
+        if (this._currentPdfRenderJob === job) this._currentPdfRenderJob = null;
         if (err && err.name !== 'RenderingCancelledException') {
           console.error(`p.${pageNum} 렌더링 에러:`, err);
         }
       });
+    }).catch(() => {
+      if (this._currentPdfRenderJob === job) this._currentPdfRenderJob = null;
     });
   }
 
   scrollToPdfPage(pageNum) {
     if (!this.pdfDoc) return;
-    this.stopPdfViewportMomentum();
     pageNum = Math.max(1, Math.min(pageNum, this.pdfTotalPages));
     const target = document.getElementById(`pdfPageWrapper_${pageNum}`);
     const viewport = document.getElementById('pdfViewport');
@@ -6844,28 +6848,6 @@ class GraphApp {
       this.savedPdfScrollLeft = viewport.scrollLeft;
     }
 
-    // 🚀 [Zero-Reflow 산술 페이지 계산 & Scroll-Idle 렌더링 게이트]:
-    // 스크롤 도중에는 getBoundingClientRect()나 querySelectorAll 루프를 단 1회도 호출하지 않고,
-    // 순수 산술 나눗셈(0.0001ms)으로 현재 페이지 번호만 표시하며, 스크롤이 멈춘 직후에만 미렌더링 페이지를 그립니다!
-    this._isPdfActivelyScrolling = true;
-    if (this._pdfScrollIdleTimer) clearTimeout(this._pdfScrollIdleTimer);
-    this._pdfScrollIdleTimer = setTimeout(() => {
-      this._pdfScrollIdleTimer = null;
-      this._isPdfActivelyScrolling = false;
-      if (this._pdfPendingIdlePages && this._pdfPendingIdlePages.size > 0) {
-        const pending = Array.from(this._pdfPendingIdlePages);
-        this._pdfPendingIdlePages.clear();
-        for (const p of pending) {
-          const c = document.getElementById(`pdfPageCanvas_${p}`);
-          const w = document.getElementById(`pdfPageWrapper_${p}`);
-          if (c && w && (c._renderedZoom !== this.pdfZoom || !this.pdfPageRenderStates[p])) {
-            this.renderPdfPageToCanvas(p, c, w);
-          }
-        }
-      }
-      this.renderVisiblePdfWindow(this.pdfCurrentPage || 1, false);
-    }, 85);
-
     const pageH = this._cachedPdfPageCssH || Math.round(((this.pdfDefaultPageSize && this.pdfDefaultPageSize.height) || 842) * (this.pdfZoom || 1.75));
     const stride = Math.max(100, pageH + 28);
     const approxPage = Math.floor((viewport.scrollTop + viewport.clientHeight * 0.35 - 24) / stride) + 1;
@@ -6874,6 +6856,22 @@ class GraphApp {
     if (currentVisiblePage !== this.pdfCurrentPage) {
       this.updatePdfPageNavUI(currentVisiblePage, true);
     }
+
+    // 스크롤이 발생하는 즉시 백그라운드 페이지 렌더링을 중단하여 100% 순정 스크롤 프레임 보장!
+    this._isPdfActivelyScrolling = true;
+    if (this._pdfQueueTimer) {
+      clearTimeout(this._pdfQueueTimer);
+      this._pdfQueueTimer = null;
+    }
+    this._cancelCurrentPdfRenderJob(true, currentVisiblePage);
+
+    if (this._pdfScrollIdleTimer) clearTimeout(this._pdfScrollIdleTimer);
+    // 마우스 휠 스무스 스크롤(약 180ms)이 완전히 정지한 뒤(220ms)에만 조용히 미렌더링 페이지 큐 재개!
+    this._pdfScrollIdleTimer = setTimeout(() => {
+      this._pdfScrollIdleTimer = null;
+      this._isPdfActivelyScrolling = false;
+      this.renderVisiblePdfWindow(this.pdfCurrentPage || 1, false);
+    }, 220);
   }
 
   updatePdfPageNavUI(pageNum, fromScroll = false) {
@@ -7033,17 +7031,6 @@ class GraphApp {
     const cropBox = document.getElementById('pdfCropBox');
     if (!viewport || !cropBox) return;
 
-    // 0. 브라우저 뒤로가기 제스처 차단 + 수평 스크롤(터치패드 2손가락 좌우 / Shift+휠) 완벽 지원
-    window.addEventListener('wheel', (e) => {
-      if (this.isPdfModalOpen && Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        e.preventDefault();
-        if (viewport && !e.ctrlKey && !e.metaKey) {
-          viewport.scrollLeft += e.deltaX;
-          this.savedPdfScrollLeft = viewport.scrollLeft;
-        }
-      }
-    }, { passive: false });
-
     window.addEventListener('dragstart', (e) => {
       if (this.isPdfCropModeActive || this.isPdfCropping) {
         e.preventDefault();
@@ -7156,9 +7143,8 @@ class GraphApp {
           return;
         }
       }
-      this.stopPdfViewportMomentum();
       // ✋ [이동 모드(!this.isPdfCropModeActive)]:
-      // 손가락(touch)은 순정 터치 관성 스크롤에 맡기고, 마우스(mouse)/펜(pen)은 잡고 끌기 + 놓을 때 가벼운 플링(Fling) 관성 스크롤 지원!
+      // 인위적 JS 관성 루프 없이 100% 직관적인 1:1 이동 지원 (손가락 터치는 브라우저 순정 하드웨어 스크롤)
       if (!this.isPdfCropModeActive) {
         if (e.pointerType === 'touch') return;
         if (e.button !== 0 && e.pointerType === 'mouse') return;
@@ -7166,14 +7152,12 @@ class GraphApp {
           e.preventDefault();
         }
         this._isPdfViewportPanning = true;
-        const now = performance.now();
         this._pdfViewportPanStart = {
           clientX: e.clientX,
           clientY: e.clientY,
           scrollLeft: viewport.scrollLeft,
           scrollTop: viewport.scrollTop,
-          pointerId: e.pointerId,
-          samples: [{ x: e.clientX, y: e.clientY, t: now }]
+          pointerId: e.pointerId
         };
         viewport.classList.add('panning-active');
         return;
@@ -7284,14 +7268,6 @@ class GraphApp {
         viewport.scrollTop = this._pdfViewportPanStart.scrollTop - dy;
         this.savedPdfScrollLeft = viewport.scrollLeft;
         this.savedPdfScrollTop = viewport.scrollTop;
-        const now = performance.now();
-        const samples = this._pdfViewportPanStart.samples;
-        if (samples) {
-          samples.push({ x: e.clientX, y: e.clientY, t: now });
-          while (samples.length > 6 && now - samples[0].t > 80) {
-            samples.shift();
-          }
-        }
         return;
       }
       if (this._isPdfViewportPanning) {
@@ -7318,25 +7294,10 @@ class GraphApp {
           endPdfViewerPinch();
         }
       }
-      // 🌟 [펜/마우스 플링(Fling) 주르륵 스크롤]: 빠르게 밀고 뗐을 때 뒷페이지까지 가볍게 미끄러지듯 이동!
       if (this._isPdfViewportPanning) {
-        const panStart = this._pdfViewportPanStart;
         this._isPdfViewportPanning = false;
         this._pdfViewportPanStart = null;
         viewport.classList.remove('panning-active');
-        if (panStart && panStart.samples && panStart.samples.length >= 2) {
-          const now = performance.now();
-          const last = panStart.samples[panStart.samples.length - 1];
-          const first = panStart.samples[0];
-          const dt = Math.max(8, last.t - first.t);
-          if (now - last.t < 65) {
-            const vx = -((last.x - first.x) / dt) * 16.6;
-            const vy = -((last.y - first.y) / dt) * 16.6;
-            if (Math.hypot(vx, vy) > 3.5) {
-              this.startPdfViewportMomentum(vx, vy);
-            }
-          }
-        }
       }
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
       this.isPdfCropping = false;
@@ -7383,7 +7344,7 @@ class GraphApp {
           ctx.fillRect(0, 0, sw, sh);
           ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
 
-          const dataUrl = this.encodeCanvasSmartWebP(cropCanvas, 0.93);
+          const dataUrl = this.encodeCanvasSmartWebP(cropCanvas, 0.94);
           const pageNum = this.cropTargetPageNum;
           const normCrop = {
             nx: x / rect.width,
@@ -7410,7 +7371,7 @@ class GraphApp {
           this.setProblemCard(dataUrl, pageNum, cropCanvas, targetCardWidth);
 
           // 🌟 [벡터 원본 직결 Ultra-HD 보강 렌더링]:
-          // 만약 빠른 줌 직후이거나 낮은 배율에서 캡처한 경우에도 PDF 원본 벡터에서 4.4x(~320 DPI)로 해당 영역만 직접 재렌더링하여 무손실 교체!
+          // 만약 빠른 줌 직후이거나 낮은 배율에서 캡처한 경우에도 PDF 원본 벡터에서 3.6x로 해당 영역만 직접 재렌더링하여 선명함 보장!
           this._upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop);
 
           if (replaceMode) {
@@ -7438,19 +7399,13 @@ class GraphApp {
     window.addEventListener('pointercancel', handleCropUp);
     window.addEventListener('blur', handleCropUp);
 
-    // PDF 뷰어 내에서 Ctrl + 마우스 휠로 시원시원하게 즉시 줌인/줌아웃 지원 (+ 드래그 중 휠 스크롤 시 크롭 박스 실시간 확장!)
+    // PDF 뷰어 내에서 Ctrl + 마우스 휠로 시원시원하게 즉시 줌인/줌아웃 지원 (+ 일반 휠은 브라우저 C++ 순정 스크롤 100% 직결!)
     viewport.addEventListener('wheel', (e) => {
-      this.stopPdfViewportMomentum();
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const delta = e.deltaY < 0 ? 0.18 : -0.18;
         this.setPdfZoom((this.pdfZoom || 1.5) + delta);
         return;
-      }
-      if (e.shiftKey && e.deltaY !== 0 && e.deltaX === 0) {
-        e.preventDefault();
-        viewport.scrollLeft += e.deltaY;
-        this.savedPdfScrollLeft = viewport.scrollLeft;
       }
       if (this.isPdfCropping && typeof this._cropLastClientX === 'number') {
         requestAnimationFrame(() => {
@@ -7514,55 +7469,15 @@ class GraphApp {
     }
   }
 
-  stopPdfViewportMomentum() {
-    if (this._pdfMomentumRaf) {
-      cancelAnimationFrame(this._pdfMomentumRaf);
-      this._pdfMomentumRaf = null;
-    }
-  }
-
-  startPdfViewportMomentum(vx, vy) {
-    this.stopPdfViewportMomentum();
-    const viewport = document.getElementById('pdfViewport');
-    if (!viewport) return;
-    let curVx = Math.max(-75, Math.min(75, vx * 1.15));
-    let curVy = Math.max(-75, Math.min(75, vy * 1.15));
-
-    const step = () => {
-      if (!this.isPdfModalOpen || this.isPdfCropping || this._isPdfViewportPanning) {
-        this._pdfMomentumRaf = null;
-        return;
-      }
-      curVx *= 0.92;
-      curVy *= 0.92;
-      if (Math.abs(curVx) < 0.4 && Math.abs(curVy) < 0.4) {
-        this._pdfMomentumRaf = null;
-        return;
-      }
-      const prevTop = viewport.scrollTop;
-      const prevLeft = viewport.scrollLeft;
-      viewport.scrollTop += Math.round(curVy);
-      viewport.scrollLeft += Math.round(curVx);
-      this.savedPdfScrollTop = viewport.scrollTop;
-      this.savedPdfScrollLeft = viewport.scrollLeft;
-      if (viewport.scrollTop === prevTop && viewport.scrollLeft === prevLeft) {
-        this._pdfMomentumRaf = null;
-        return;
-      }
-      this._pdfMomentumRaf = requestAnimationFrame(step);
-    };
-    this._pdfMomentumRaf = requestAnimationFrame(step);
-  }
-
   async _upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop) {
     try {
       if (!this.pdfDoc || !normCrop || normCrop.nw <= 0 || normCrop.nh <= 0) return;
       await this._WaitUntilPenIdle();
       const page = await this.pdfDoc.getPage(pageNum);
       const baseVp = page.getViewport({ scale: 1.0 });
-      // 🌟 [대표님 피드백 반영: 과도한 5.0x 초고화질 대신 쾌적하고 선명한 2.5x 타협]:
-      // 캔버스에서 충분히 확대해도 선명하면서 픽셀 연산량과 용량은 1/4로 줄어들어 구형 PC에서도 즉각 처리됩니다!
-      const ultraScale = 2.5;
+      // 🌟 [선명한 3.6x(~260 DPI) 벡터 캡처 보강]:
+      // 칠판에서 문제 카드를 확대해도 선명한 화질을 유지하면서 5.0x 대비 메모리·연산량을 절반으로 절감합니다!
+      const ultraScale = 3.6;
       const fullVp = page.getViewport({
         scale: ultraScale,
         offsetX: -normCrop.nx * baseVp.width * ultraScale,
