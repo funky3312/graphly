@@ -6638,9 +6638,8 @@ class GraphApp {
   renderVisiblePdfWindow(centerPage = 1, forceReRender = false) {
     if (!this.pdfDoc) return;
     const total = this.pdfTotalPages || 1;
-    const isSmallDoc = (total <= 8);
-    const minP = isSmallDoc ? 1 : Math.max(1, centerPage - 2);
-    const maxP = isSmallDoc ? total : Math.min(total, centerPage + 2);
+    const minP = Math.max(1, centerPage - 1);
+    const maxP = Math.min(total, centerPage + 1);
 
     for (let p = 1; p <= total; p++) {
       const wrapper = document.getElementById(`pdfPageWrapper_${p}`);
@@ -6651,7 +6650,7 @@ class GraphApp {
         if (forceReRender || canvas._renderedZoom !== this.pdfZoom || !this.pdfPageRenderStates[p]) {
           this.renderPdfPageToCanvas(p, canvas, wrapper);
         }
-      } else if (!isSmallDoc && Math.abs(p - centerPage) > 4) {
+      } else if (Math.abs(p - centerPage) > 2) {
         // 화면에서 멀어진 페이지는 진행 중인 렌더를 취소하고 GPU 비트맵 메모리를 즉시 반납 (스크롤 크기는 그대로 유지!)
         if (canvas._pdfRenderTask && typeof canvas._pdfRenderTask.cancel === 'function') {
           try { canvas._pdfRenderTask.cancel(); } catch (e) { }
@@ -6680,10 +6679,11 @@ class GraphApp {
       const cssW = Math.round(baseVp.width * targetZoom);
       const cssH = Math.round(baseVp.height * targetZoom);
 
-      // 🌟 [Ultra-HD PDF 뷰어 & 문제 캡처 해상도]:
-      // 낮은 배율(100%~150%)에서 문제를 한눈에 보고 캡처하더라도 인쇄급(최소 3.6x ~ 최대 5.2x, ~300+ DPI) 벡터 화질이 추출되도록 백킹 캔버스 해상도 대폭 상향!
-      const dpr = Math.min(3.5, Math.max(2.6, (window.devicePixelRatio || 2.5) * 1.4));
-      const renderScale = Math.max(4.0, Math.min(5.6, targetZoom * dpr));
+      // 🌟 [구형 PC · 내장그래픽 쾌적성 100% 보장 & 캡처본 Ultra-HD 분리 아키텍처]:
+      // 뷰어 스크롤 창(#pdfViewport)에서는 무거운 5K(4.0~5.6x) 대신 가벼운 표준 DPR(1.5~2.0x)로 렌더링하여 메모리와 GPU 부하를 1/5로 낮추고,
+      // 실제 문제를 네모로 캡처할 때만 _upgradeCroppedProblemCardToVectorUltraHD가 해당 문제 영역만 5.0x 벡터 초고화질로 추출합니다!
+      const dpr = Math.min(2.0, Math.max(1.5, window.devicePixelRatio || 1.5));
+      const renderScale = targetZoom * dpr;
       const viewport = page.getViewport({ scale: renderScale });
 
       canvas.style.width = `${cssW}px`;
@@ -7097,12 +7097,15 @@ class GraphApp {
 
       this.isPdfCropping = true;
       this.cropTargetWrapper = pageWrapper;
+      this.cropTargetRect = rect;
       this.cropTargetPageNum = parseInt(pageWrapper.dataset.page, 10);
       this.pdfCropStart = { x: startX, y: startY };
       this._cropLastClientX = e.clientX;
       this._cropLastClientY = e.clientY;
 
-      pageWrapper.appendChild(cropBox);
+      if (cropBox.parentElement !== pageWrapper) {
+        pageWrapper.appendChild(cropBox);
+      }
       cropBox.style.display = 'none';
       cropBox.style.left = `${startX}px`;
       cropBox.style.top = `${startY}px`;
@@ -7112,7 +7115,7 @@ class GraphApp {
 
     const updateCropBoxFromPointer = (clientX, clientY) => {
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
-      const rect = this.cropTargetWrapper.getBoundingClientRect();
+      const rect = this.cropTargetRect || this.cropTargetWrapper.getBoundingClientRect();
       const curX = Math.max(0, Math.min(rect.width, clientX - rect.left));
       const curY = Math.max(0, Math.min(rect.height, clientY - rect.top));
 
@@ -7139,6 +7142,8 @@ class GraphApp {
     };
 
     const handleCropMove = (e) => {
+      if (e._pdfCropMoveHandled) return;
+      e._pdfCropMoveHandled = true;
       if (e.pointerType === 'touch' && this._pdfTouchPointers && this._pdfTouchPointers.has(e.pointerId)) {
         this._pdfTouchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (this._pdfTouchPointers.size >= 2) {
