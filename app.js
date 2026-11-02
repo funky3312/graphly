@@ -3139,11 +3139,18 @@ class GraphApp {
     if (slider) slider.value = size;
     const lbl = document.getElementById('lblTextLabelSize');
     if (lbl) lbl.textContent = `${size} pt`;
+    const curUnitScale = typeof this.getCurrentMathUnitScale === 'function' ? this.getCurrentMathUnitScale() : 90;
     if (this.selectedTextLabelId) {
       const sel = this.textLabels.find(t => t.id === this.selectedTextLabelId);
-      if (sel) sel.fontSize = size;
+      if (sel) {
+        sel.fontSize = size;
+        sel.baseUnitScale = curUnitScale;
+      }
     } else {
-      this.textLabels.forEach(t => { t.fontSize = size; });
+      this.textLabels.forEach(t => {
+        t.fontSize = size;
+        t.baseUnitScale = curUnitScale;
+      });
     }
     this.render();
   }
@@ -7419,11 +7426,11 @@ class GraphApp {
           return;
         }
       }
-      // ✋ [이동 모드(!this.isPdfCropModeActive) 또는 스페이스+드래그 / 휠클릭 드래그]:
+      // ✋ [이동 모드(!this.isPdfCropModeActive)]:
       // 인위적 JS 관성 루프 없이 100% 직관적인 1:1 이동 지원 (손가락 터치는 브라우저 순정 하드웨어 스크롤)
-      if (!this.isPdfCropModeActive || this.isSpacePressed || e.button === 1) {
+      if (!this.isPdfCropModeActive) {
         if (e.pointerType === 'touch') return;
-        if (e.button !== 0 && e.button !== 1 && e.pointerType === 'mouse') return;
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
         if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
           e.preventDefault();
         }
@@ -7436,7 +7443,6 @@ class GraphApp {
           pointerId: e.pointerId
         };
         viewport.classList.add('panning-active');
-        document.body.classList.add('space-pan-dragging');
         return;
       }
       if (e.button !== 0) return;
@@ -7544,7 +7550,6 @@ class GraphApp {
           this._isPdfViewportPanning = false;
           this._pdfViewportPanStart = null;
           viewport.classList.remove('panning-active');
-          document.body.classList.remove('space-pan-dragging');
           return;
         }
         const dx = e.clientX - this._pdfViewportPanStart.clientX;
@@ -7559,7 +7564,6 @@ class GraphApp {
         this._isPdfViewportPanning = false;
         this._pdfViewportPanStart = null;
         viewport.classList.remove('panning-active');
-        document.body.classList.remove('space-pan-dragging');
       }
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
       e.preventDefault();
@@ -7595,7 +7599,6 @@ class GraphApp {
         this._isPdfViewportPanning = false;
         this._pdfViewportPanStart = null;
         viewport.classList.remove('panning-active');
-        document.body.classList.remove('space-pan-dragging');
       }
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
       this.isPdfCropping = false;
@@ -22512,6 +22515,7 @@ class GraphApp {
           }
 
           if (this.selectedTextLabels && rs.textsSnap) {
+            const curUnitScale = typeof this.getCurrentMathUnitScale === 'function' ? this.getCurrentMathUnitScale() : 90;
             this.selectedTextLabels.forEach((t, idx) => {
               const snapT = rs.textsSnap[idx];
               if (!snapT) return;
@@ -22519,7 +22523,8 @@ class GraphApp {
               const nm = this.screenToMath(sp.x, sp.y);
               t.mathX = nm.x;
               t.mathY = nm.y;
-              t.fontSize = Math.round(Math.max(10, Math.min(64, (snapT.fontSize || 20) * scale)));
+              t.fontSize = Math.round(Math.max(6, Math.min(96, (snapT.fontSize || 20) * scale)));
+              t.baseUnitScale = snapT.baseUnitScale || curUnitScale;
             });
           }
 
@@ -26452,8 +26457,11 @@ class GraphApp {
       if (this.dropLineFontFamily === 'pretendard') fontFam = "'Pretendard', -apple-system, sans-serif";
       else if (this.dropLineFontFamily === 'batang') fontFam = "'KoPubWorld Batang', 'Batang', serif";
 
-      const fSize = this.axisLabelFontSize || 17;
-      const originFSize = Math.round(fSize * 0.95);
+      const zRatio = Math.max(0.45, Math.min(2.2, this.zoomLevel || 1.0));
+      const fSize = Math.max(8, Math.round((this.axisLabelFontSize || 17) * zRatio * 10) / 10);
+      const originFSize = Math.max(7.5, Math.round(fSize * 0.95 * 10) / 10);
+      const axisPad = Math.max(3, Math.round(6 * zRatio));
+      const haloLw = Math.max(2, Math.min(4.5, 3.5 * zRatio));
       const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.isLight ? '#ffffff' : (curTheme.bg || '#1e1e2e'));
 
       // 1. X축 이름표 (예: x, t, k)
@@ -26462,12 +26470,12 @@ class GraphApp {
         ctx.font = `italic 600 ${fSize}px ${fontFam}`;
         ctx.fillStyle = axisColor;
         ctx.strokeStyle = haloColor;
-        ctx.lineWidth = 3.5;
+        ctx.lineWidth = haloLw;
         ctx.lineJoin = 'round';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'top';
-        const labelXPos = xEnd - arrowSize - 6;
-        const labelYPos = Math.min(yBottom - fSize - 4, Math.max(yTop + 4, orig.y + 6));
+        const labelXPos = xEnd - arrowSize - axisPad;
+        const labelYPos = Math.min(yBottom - fSize - 4, Math.max(yTop + 4, orig.y + axisPad));
         ctx.strokeText(this.axisLabelX, labelXPos, labelYPos);
         ctx.fillText(this.axisLabelX, labelXPos, labelYPos);
         ctx.restore();
@@ -26479,12 +26487,12 @@ class GraphApp {
         ctx.font = `italic 600 ${fSize}px ${fontFam}`;
         ctx.fillStyle = axisColor;
         ctx.strokeStyle = haloColor;
-        ctx.lineWidth = 3.5;
+        ctx.lineWidth = haloLw;
         ctx.lineJoin = 'round';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'top';
-        const labelXPos = Math.max(xStart + fSize, orig.x - 6);
-        const labelYPos = yTop + arrowSize + 4;
+        const labelXPos = Math.max(xStart + fSize, orig.x - axisPad);
+        const labelYPos = yTop + arrowSize + Math.max(2, Math.round(4 * zRatio));
         ctx.strokeText(this.axisLabelY, labelXPos, labelYPos);
         ctx.fillText(this.axisLabelY, labelXPos, labelYPos);
         ctx.restore();
@@ -26496,12 +26504,12 @@ class GraphApp {
         ctx.font = `italic 600 ${originFSize}px ${fontFam}`;
         ctx.fillStyle = axisColor;
         ctx.strokeStyle = haloColor;
-        ctx.lineWidth = 3.5;
+        ctx.lineWidth = haloLw;
         ctx.lineJoin = 'round';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
-        ctx.strokeText('O', orig.x + 6, orig.y + 6);
-        ctx.fillText('O', orig.x + 6, orig.y + 6);
+        ctx.strokeText('O', orig.x + axisPad, orig.y + axisPad);
+        ctx.fillText('O', orig.x + axisPad, orig.y + axisPad);
         ctx.restore();
       }
     }
@@ -27345,7 +27353,10 @@ class GraphApp {
     } else if (this.dropLineFontFamily === 'batang') {
       fontFam = "'KoPubWorld Batang', 'Batang', serif";
     }
-    const fontSize = this.dropLineFontSize || 15;
+    const zDropRatio = Math.max(0.45, Math.min(2.2, this.zoomLevel || 1.0));
+    const fontSize = Math.max(7.5, Math.round((this.dropLineFontSize || 15) * zDropRatio * 10) / 10);
+    const dropPad = Math.max(3, Math.round(7 * zDropRatio));
+    const dropHaloLw = Math.max(2, Math.min(4.5, 3.5 * zDropRatio));
 
     ctx.save();
 
@@ -27383,11 +27394,11 @@ class GraphApp {
           ctx.textAlign = 'center';
           ctx.textBaseline = 'top';
 
-          const labelYPos = Fx.y + 7;
+          const labelYPos = Fx.y + dropPad;
           const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.isLight ? '#ffffff' : (curTheme.bg || '#1e1e2e'));
           ctx.save();
           ctx.strokeStyle = haloColor;
-          ctx.lineWidth = 3.5;
+          ctx.lineWidth = dropHaloLw;
           ctx.lineJoin = 'round';
           ctx.strokeText(item.labelX, Fx.x, labelYPos);
           ctx.restore();
@@ -27475,11 +27486,11 @@ class GraphApp {
           ctx.textAlign = 'right';
           ctx.textBaseline = 'middle';
 
-          const labelXPos = Fy.x - 7;
+          const labelXPos = Fy.x - dropPad;
           const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.isLight ? '#ffffff' : (curTheme.bg || '#1e1e2e'));
           ctx.save();
           ctx.strokeStyle = haloColor;
-          ctx.lineWidth = 3.5;
+          ctx.lineWidth = dropHaloLw;
           ctx.lineJoin = 'round';
           ctx.strokeText(item.labelY, labelXPos, Fy.y);
           ctx.restore();
@@ -27649,6 +27660,23 @@ class GraphApp {
     this.showToast(this.isTextToolMode ? '🔤 텍스트 도구 켜짐 (캔버스 클릭하여 이름표 추가)' : '🔤 텍스트 도구 꺼짐');
   }
 
+  getCurrentMathUnitScale() {
+    const h = this.screenHeight || window.innerHeight || 900;
+    const effSpanY = Math.max(0.05, (this.ySpan || 5) / Math.max(0.05, this.zoomLevel || 1.0));
+    return (h / 2) / effSpanY;
+  }
+
+  getEffectiveTextLabelFontSize(item) {
+    const baseSize = (item && item.fontSize) ? item.fontSize : (this.textLabelFontSize || 16);
+    if (!item) return baseSize;
+    const curUnitScale = this.getCurrentMathUnitScale();
+    if (!item.baseUnitScale || item.baseUnitScale <= 0) {
+      item.baseUnitScale = curUnitScale;
+    }
+    const ratio = curUnitScale / item.baseUnitScale;
+    return Math.max(4, Math.min(180, parseFloat((baseSize * ratio).toFixed(2))));
+  }
+
   addTextLabel(mathX, mathY, defaultText = '', autoEdit = null) {
     this.pushHistoryState();
     const newId = 'txt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
@@ -27659,6 +27687,7 @@ class GraphApp {
       mathY,
       text: cleanText,
       fontSize: this.textLabelFontSize || 16,
+      baseUnitScale: this.getCurrentMathUnitScale(),
       color: null
     };
     this.textLabels.push(item);
@@ -27702,7 +27731,7 @@ class GraphApp {
     if (!this.canvasTextInputEl) return;
     const input = this.canvasTextInputEl;
     const item = this.textLabels.find(t => t.id === id);
-    const fSize = (item ? item.fontSize : this.textLabelFontSize) || 20;
+    const fSize = item ? this.getEffectiveTextLabelFontSize(item) : (this.textLabelFontSize || 20);
     input.value = item ? item.text : '';
     input.style.fontSize = `${fSize}px`;
     input.style.left = `${screenPos.x}px`;
@@ -27782,6 +27811,7 @@ class GraphApp {
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
     const isLight = curTheme.isLight || this.isMonochromeMode;
     const defaultTextColor = this.isMonochromeMode ? '#000000' : (isLight ? '#0f172a' : '#f8fafc');
+    const haloColor = this.isMonochromeMode ? '#ffffff' : (isLight ? '#ffffff' : (curTheme.bg || '#1e1e2e'));
 
     let fontFam = "'STIX Two Text', 'Times New Roman', 'Cambria Math', serif";
     if (this.dropLineFontFamily === 'pretendard') fontFam = "'Pretendard', -apple-system, sans-serif";
@@ -27793,7 +27823,9 @@ class GraphApp {
       if (!item.text && item.id !== this.activeEditingTextId) return;
 
       const s = this.mathToScreen(item.mathX, item.mathY);
-      const fSize = item.fontSize || this.textLabelFontSize || 16;
+      const baseSize = item.fontSize || this.textLabelFontSize || 16;
+      const fSize = this.getEffectiveTextLabelFontSize(item);
+      const scaleRatio = fSize / Math.max(1, baseSize);
 
       // 현재 인라인 편집 중인 텍스트는 캔버스 렌더링 생략 (DOM 인풋이 표시)
       if (item.id === this.activeEditingTextId) return;
@@ -27804,12 +27836,18 @@ class GraphApp {
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
 
-      // 텍스트 출력
+      // 외곽 헤일로(Halo) 후 텍스트 출력으로 시인성 극대화
+      ctx.save();
+      ctx.strokeStyle = haloColor;
+      ctx.lineWidth = Math.max(2, Math.min(4.5, 3.2 * scaleRatio));
+      ctx.lineJoin = 'round';
+      ctx.strokeText(item.text, s.x, s.y);
+      ctx.restore();
       ctx.fillText(item.text, s.x, s.y);
 
       const metrics = ctx.measureText(item.text);
-      const textW = Math.max(20, metrics.width);
-      const pad = 10;
+      const textW = Math.max(14 * scaleRatio, metrics.width);
+      const pad = Math.max(4, Math.round(10 * Math.min(1.2, scaleRatio)));
       const box = {
         x: s.x - pad,
         y: s.y - fSize / 2 - pad,
