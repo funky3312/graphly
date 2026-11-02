@@ -966,6 +966,7 @@
           <span id="lblAudioPlayTime" class="audio-sync-time">00:00 / 00:00</span>
           <input type="range" id="audioSyncScrubber" class="audio-sync-scrubber" min="0" max="1000" step="10" value="0" title="원하는 구간의 플레이바를 클릭·드래그하여 바로 이동합니다">
           <button type="button" id="btnAudioSyncSpeed" class="audio-sync-btn audio-btn-speed" title="재생 배속 변경">1.0x</button>
+          <button type="button" id="btnAudioShowFinalNote" class="audio-sync-btn audio-btn-final-note" style="display: none;" title="영상을 멈추고 완성된 전체 필기 화면을 선명하게 봅니다 (원하는 필기 부분을 터치하면 그 지점부터 바로 재생됩니다)">📋 전체필기</button>
           <button type="button" id="btnAudioReRecord" class="audio-sync-btn audio-btn-rerecord" title="새로 녹음">🎙️ 재녹음</button>
           <button type="button" id="btnAudioSyncDelete" class="audio-sync-btn audio-btn-del" title="녹음 삭제">🗑️</button>
           <button type="button" id="btnAudioSyncCloseBar" class="audio-sync-btn audio-btn-close" title="플레이어 접기">✕</button>
@@ -2080,8 +2081,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_06"></script>
-  <script src="app.js?v=20261103_06"></script>
+  <script src="engine.js?v=20261103_07"></script>
+  <script src="app.js?v=20261103_07"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

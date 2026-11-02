@@ -7953,10 +7953,10 @@ body.theme-light .slide-chip-item.active {
   transform: translateX(-50%) scale(1.12);
 }
 
-/* 🌟 그래프 모드(모달 스튜디오) 진입 시 상단 슬라이드 바 & 미니 탭 100% 자동 숨김 */
-body.workspace-graph-mode #lessonPlaylistNavBar,
+/* 🌟 그래프 모드(모달 스튜디오) 진입 시 상단 슬라이드 바 & 미니 탭 100% 자동 숨김 (단, 학생용 다중 슬라이드 영상 플레이어에서는 슬라이드 이동 허용) */
+body.workspace-graph-mode:not(.student-audio-video-only) #lessonPlaylistNavBar,
 body.workspace-graph-mode #pdfBoardNavBar,
-body.workspace-graph-mode #topSlideBarMiniTab {
+body.workspace-graph-mode:not(.student-audio-video-only) #topSlideBarMiniTab {
   display: none !important;
 }
 
@@ -9462,10 +9462,17 @@ body.theme-light .audio-sync-btn {
   font-weight: 800;
 }
 
-.audio-btn-mode.active-video {
+.audio-btn-mode.active-video,
+.audio-btn-final-note {
   background: rgba(0, 210, 211, 0.18);
   border-color: #00d2d3;
   color: #00d2d3;
+}
+
+body.theme-light .audio-btn-final-note {
+  background: rgba(14, 165, 233, 0.14);
+  border-color: #0284c7;
+  color: #0369a1;
 }
 
 .audio-btn-mode.active-note {

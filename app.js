@@ -8251,12 +8251,13 @@ class GraphApp {
       ctx.fillStyle = strokeColor;
 
       const baseSize = (stroke.size || 3.5) * sizeScale;
+      const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
       if (stroke.isHighlighter) {
-        ctx.globalAlpha = 0.36;
+        ctx.globalAlpha = 0.36 * ghostMul;
         const hlW = stroke.highlighterSize ? (stroke.highlighterSize * sizeScale) : Math.max(10, baseSize * 2.8);
         ctx.lineWidth = Math.max(4, hlW);
       } else {
-        ctx.globalAlpha = 1.0;
+        ctx.globalAlpha = 1.0 * ghostMul;
         ctx.lineWidth = baseSize;
         // 🌟 [저사양 PC 0ms 저지연 최적화]: GPU 가우시안 블러 병목(shadowBlur) 완전 제거
         ctx.shadowBlur = 0;
@@ -9728,7 +9729,8 @@ class GraphApp {
           cCtx.strokeStyle = col;
           cCtx.fillStyle = col;
           const baseSize = (st.size || 3.5) * sizeScale;
-          cCtx.globalAlpha = st.isHighlighter ? 0.36 : 1.0;
+          const ghostMul = (typeof st._ghostAlpha === 'number') ? st._ghostAlpha : 1.0;
+          cCtx.globalAlpha = (st.isHighlighter ? 0.36 : 1.0) * ghostMul;
           const extraHlW = st.highlighterSize ? (st.highlighterSize * sizeScale) : Math.max(10, baseSize * 2.8);
           cCtx.lineWidth = st.isHighlighter ? Math.max(4, extraHlW) : Math.max(1.5, baseSize);
           const pts = st.points.map(pt => ({
@@ -11640,12 +11642,13 @@ class GraphApp {
       ctx.fillStyle = strokeColor;
 
       const baseSize = (stroke.size || 3.5) * sizeScale;
+      const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
       if (stroke.isHighlighter) {
-        ctx.globalAlpha = 0.36;
+        ctx.globalAlpha = 0.36 * ghostMul;
         const gHlW = stroke.highlighterSize ? (stroke.highlighterSize * sizeScale) : Math.max(10, baseSize * 2.8);
         ctx.lineWidth = Math.max(4, gHlW);
       } else {
-        ctx.globalAlpha = 1.0;
+        ctx.globalAlpha = 1.0 * ghostMul;
         ctx.lineWidth = Math.max(1.5, baseSize);
       }
 
@@ -12505,15 +12508,16 @@ class GraphApp {
       ? (bz / (stroke.boardZoom || 1.0))
       : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
 
+    const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
     if (stroke.isHighlighter) {
-      targetCtx.globalAlpha = isLight ? 0.36 : 0.34;
+      targetCtx.globalAlpha = (isLight ? 0.36 : 0.34) * ghostMul;
       if (isLight && !this.isMonochromeMode) {
         targetCtx.globalCompositeOperation = 'multiply';
       }
       const hlBase = stroke.highlighterSize ? stroke.highlighterSize : Math.max(10, (stroke.size || 4.2) * 2.6);
       targetCtx.lineWidth = Math.max(4, hlBase * zoomRatio);
     } else {
-      targetCtx.globalAlpha = 1.0;
+      targetCtx.globalAlpha = 1.0 * ghostMul;
     }
 
     // 🌟 Draw & Hold 기하 도형 & 수학 곡선 렌더링 (직선, 정원, 타원, 직사각형, 삼각형, 이차함수 포물선, 삼차/삼각 개형) 🌟
@@ -18740,11 +18744,11 @@ class GraphApp {
         const hasLoadedAudio = Boolean(this.audioSyncData && this.audioSyncData.durationMs > 0);
         this._isAudioSyncPlayerVisible = hasLoadedAudio;
         if (hasLoadedAudio) {
-          this.audioPlayCurrentMs = this.isStudentAudioVideoOnlyMode ? 0 : this.audioSyncData.durationMs;
-          if (this.isStudentAudioVideoOnlyMode) {
-            this._isAudioReplayActive = true;
-            document.body.classList.add('audio-replay-active');
-            this._applyAudioTimelineStateAt(0);
+          this.audioPlayCurrentMs = 0;
+          this._isAudioReplayActive = false;
+          document.body.classList.remove('audio-replay-active');
+          if (this.audioSyncData.finalState) {
+            this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
           }
         }
       }
@@ -19592,7 +19596,7 @@ class GraphApp {
   }
 
   saveCurrentSlideIntoPlaylist() {
-    if (this._isCapturingExportSnapshots) return;
+    if (this._isCapturingExportSnapshots || this.isStudentAudioVideoOnlyMode) return;
     if (!this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) return;
     const curSlide = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
     const title = curSlide ? curSlide.slideTitle : `문항 ${this.lessonPlaylistIndex + 1}`;
@@ -19961,7 +19965,13 @@ class GraphApp {
   syncLessonPlaylistNavBarUI() {
     const navBar = document.getElementById('lessonPlaylistNavBar');
     if (!navBar) return;
-    if (!this.isGraphCovered || !this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) {
+    const allowInStudentAudio = Boolean(this.isStudentAudioVideoOnlyMode && this.lessonPlaylistSlides && this.lessonPlaylistSlides.length > 1);
+    if (this.isStudentAudioVideoOnlyMode && (!this.lessonPlaylistSlides || this.lessonPlaylistSlides.length <= 1)) {
+      navBar.style.display = 'none';
+      this._syncTopSlideMiniTabUI();
+      return;
+    }
+    if ((!this.isGraphCovered && !allowInStudentAudio) || !this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) {
       navBar.style.display = 'none';
       this._syncTopSlideMiniTabUI();
       return;
@@ -20211,7 +20221,8 @@ class GraphApp {
       imgs.push(this.pdfPageBoardData.img);
     }
     await Promise.all(imgs.map(img => {
-      if (!img || !img.src) return Promise.resolve();
+      const attrSrc = img && typeof img.getAttribute === 'function' ? img.getAttribute('src') : '';
+      if (!img || !attrSrc || !img.src) return Promise.resolve();
       if (img.complete && img.naturalWidth > 0) return Promise.resolve();
       if (typeof img.decode === 'function') {
         return img.decode().catch(() => { });
@@ -20592,8 +20603,17 @@ class GraphApp {
     await this._waitForSlideImagesReady();
 
     this._isAudioSyncPlayerVisible = true;
-    this.setAudioReplayViewMode('video', false);
-    this.seekAudioSync(0, Boolean(autoPlay));
+    this.audioReplayViewMode = 'video';
+    if (autoPlay) {
+      this.playAudioSync(0, 'video');
+    } else {
+      this.stopAudioPlayback(true);
+      if (this.audioSyncData && this.audioSyncData.finalState) {
+        this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
+        this.render();
+      }
+    }
+    this.syncLessonPlaylistNavBarUI();
   }
 
   exitStudentAudioVideoOnlyMode() {
@@ -31012,6 +31032,7 @@ class GraphApp {
     const btnPlayPause = document.getElementById('btnAudioPlayPause');
     const scrubber = document.getElementById('audioSyncScrubber');
     const btnSpeed = document.getElementById('btnAudioSyncSpeed');
+    const btnShowFinalNote = document.getElementById('btnAudioShowFinalNote');
     const btnReRecord = document.getElementById('btnAudioReRecord');
     const btnDelete = document.getElementById('btnAudioSyncDelete');
     const btnCloseBar = document.getElementById('btnAudioSyncCloseBar');
@@ -31088,6 +31109,13 @@ class GraphApp {
       };
     }
 
+    if (btnShowFinalNote) {
+      btnShowFinalNote.onclick = (e) => {
+        e.stopPropagation();
+        this.stopAudioPlayback(true);
+      };
+    }
+
     if (btnReRecord) {
       btnReRecord.onclick = (e) => {
         e.stopPropagation();
@@ -31125,6 +31153,66 @@ class GraphApp {
         this.syncAudioRecordUI();
         this.showToast('🕵️ 상단 녹화 바를 숨겼습니다. 우측 [🎙️] 버튼을 누르면 녹음이 완료됩니다.');
       };
+    }
+
+    // 🌟 [필기 획 원터치 점프 & 즉시 영상 재생 엔진]:
+    // 재생 전(완성 필기 화면)이든 영상 재생/일시정지 중이든, 화면의 아무 필기 수식을 톡 터치(클릭)하면
+    // 즉시 해당 필기가 쓰이던 시점(tStart)으로 플레이바가 점프하며 음성과 필기 애니메이션이 재생됩니다!
+    if (!this._globalAudioStrokeTapBound) {
+      this._globalAudioStrokeTapBound = true;
+      let tapDown = null;
+      window.addEventListener('pointerdown', (e) => {
+        if (!this.shouldInterceptStrokeClickForAudio()) {
+          tapDown = null;
+          return;
+        }
+        if (e.button && e.button !== 0) return;
+        const tEl = e.target;
+        if (tEl && tEl.closest && tEl.closest(
+          '#audioSyncFloatingBar, #lessonPlaylistNavBar, #topSlideBarMiniTab, .smart-modal-backdrop, .n-axis-studio-backdrop, #sidebarRail, #railDock, #railDrawer, #rightActionToolbar, #inkFloatingToolbar, #quickPillRemote, #graphSnapFloatingBar, #pdfToGraphCropFloatingBar, #btnCancelPdfCropToGraph, #curveContextBar, #lassoActionFloatingBar, .problem-card-actions, .problem-card-resize-handle, .card-fold-triangle-btn'
+        )) {
+          tapDown = null;
+          return;
+        }
+        tapDown = {
+          x: e.clientX,
+          y: e.clientY,
+          t: performance.now(),
+          pointerId: e.pointerId,
+          pointerType: e.pointerType || 'mouse'
+        };
+      }, { capture: true });
+
+      window.addEventListener('pointerup', (e) => {
+        if (!tapDown || tapDown.pointerId !== e.pointerId) return;
+        const downInfo = tapDown;
+        tapDown = null;
+        if (!this.shouldInterceptStrokeClickForAudio()) return;
+        const dist = Math.hypot(e.clientX - downInfo.x, e.clientY - downInfo.y);
+        const elapsed = performance.now() - downInfo.t;
+        if (dist > 16 || elapsed > 700) return;
+
+        const radius = downInfo.pointerType === 'touch' ? 36 : 28;
+        const hit = this.findAudioStrokeAtScreenPoint(e.clientX, e.clientY, radius);
+        if (hit && typeof hit.tStart === 'number') {
+          e.preventDefault();
+          e.stopPropagation();
+          this.positionReplayVirtualStylus(e.clientX, e.clientY, '#00d2d3', true, 'pointer');
+          this.seekAndPlayAudioAtMs(hit.tStart);
+        }
+      }, { capture: true });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!this.isStudentAudioVideoOnlyMode || !this.shouldInterceptStrokeClickForAudio()) return;
+        if (e.pointerType === 'touch') return;
+        const tEl = e.target;
+        if (tEl && tEl.closest && tEl.closest('#audioSyncFloatingBar, #lessonPlaylistNavBar, #topSlideBarMiniTab')) {
+          document.body.style.cursor = '';
+          return;
+        }
+        const hit = this.findAudioStrokeAtScreenPoint(e.clientX, e.clientY, 24);
+        document.body.style.cursor = hit ? 'pointer' : 'default';
+      }, { passive: true });
     }
 
     // 🌟 [전역 호버링 & 카드 위 포인팅 60fps 추적]:
@@ -31549,7 +31637,128 @@ class GraphApp {
   }
 
   shouldInterceptStrokeClickForAudio() {
+    if (this.isAudioRecording || this.isPdfModalOpen) return false;
+    if (!this.audioSyncData || !(this.audioSyncData.durationMs > 0)) return false;
+    if (this.isStudentAudioVideoOnlyMode) return true;
+    if (this._isAudioReplayActive) return true;
+    if (this._isAudioSyncPlayerVisible && (!this.isInkMode || this.activeInkTool === 'select')) return true;
     return false;
+  }
+
+  findAudioStrokeAtScreenPoint(clientX, clientY, maxRadiusPx = 28) {
+    if (!this.audioSyncData || !(this.audioSyncData.durationMs > 0)) return null;
+    let bestDist = maxRadiusPx;
+    let bestHit = null;
+    const ptTap = { x: clientX, y: clientY };
+
+    // 1) 화면에 펼쳐진 카드(문제 카드, 그래프 보관 카드 #1/#2...) 내부 필기 획 검사
+    const cardEntries = [
+      { el: document.getElementById('problemCardWidget'), strokes: this.problemInkStrokes, isGraphCard: false },
+      ...((this.extraProblemCards || []).map(c => ({ el: c && c.el, strokes: c && c.el && c.el._cardInkStrokes, isGraphCard: false }))),
+      { el: document.getElementById('graphCardWidget'), strokes: this.graphInkStrokes, isGraphCard: true },
+      ...((this.extraGraphCards || []).map(c => ({ el: c && c.el, strokes: c && c.el && c.el._cardInkStrokes, isGraphCard: true })))
+    ].filter(item => item.el && item.el.style.display !== 'none' && !item.el.classList.contains('minimized'));
+
+    let tappedGraphCardEl = null;
+    for (let cIdx = 0; cIdx < cardEntries.length; cIdx++) {
+      const { el, strokes, isGraphCard } = cardEntries[cIdx];
+      const cCanvas = el.querySelector('.problem-card-canvas') || el.querySelector('.problem-card-body');
+      if (!cCanvas) continue;
+      const rect = cCanvas.getBoundingClientRect();
+      if (rect.width <= 4 || rect.height <= 4) continue;
+      if (
+        clientX < rect.left - maxRadiusPx ||
+        clientX > rect.right + maxRadiusPx ||
+        clientY < rect.top - maxRadiusPx ||
+        clientY > rect.bottom + maxRadiusPx
+      ) {
+        continue;
+      }
+      if (
+        isGraphCard &&
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+      ) {
+        tappedGraphCardEl = el;
+      }
+      if (!Array.isArray(strokes) || strokes.length === 0) continue;
+      for (let sIdx = 0; sIdx < strokes.length; sIdx++) {
+        const st = strokes[sIdx];
+        if (!st || typeof st.tStart !== 'number' || !Array.isArray(st.points) || st.points.length === 0) continue;
+        const pts = st.points;
+        for (let i = 0; i < pts.length; i++) {
+          const pA = { x: rect.left + pts[i].nx * rect.width, y: rect.top + pts[i].ny * rect.height };
+          let d = Math.hypot(clientX - pA.x, clientY - pA.y);
+          if (i < pts.length - 1) {
+            const pB = { x: rect.left + pts[i + 1].nx * rect.width, y: rect.top + pts[i + 1].ny * rect.height };
+            d = Math.min(d, this.distToSegment(ptTap, pA, pB));
+          }
+          if (d <= bestDist) {
+            bestDist = d;
+            bestHit = { stroke: st, tStart: st.tStart, tEnd: st.tEnd || st.tStart, dist: d, source: 'card' };
+          }
+        }
+      }
+    }
+
+    // 2) 메인 칠판 / PDF 통째 페이지 / 순수 그래프 캔버스 필기 획 검사
+    const baseStrokes = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
+    const wantTarget = (this.isGraphCovered && !this.pdfPageBoardData) ? 'board' : 'graph';
+    for (let sIdx = 0; sIdx < baseStrokes.length; sIdx++) {
+      const st = baseStrokes[sIdx];
+      if (!st || typeof st.tStart !== 'number') continue;
+      const t = st.target || 'board';
+      if (t !== wantTarget) continue;
+      if (t === 'graph' && Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+      const isBoard = (t === 'board');
+      const toScr = (pt) => isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
+
+      if (Array.isArray(st.points) && st.points.length > 0) {
+        const pts = st.points;
+        for (let i = 0; i < pts.length; i++) {
+          const sA = toScr(pts[i]);
+          let d = Math.hypot(clientX - sA.x, clientY - sA.y);
+          if (i < pts.length - 1) {
+            const sB = toScr(pts[i + 1]);
+            d = Math.min(d, this.distToSegment(ptTap, sA, sB));
+          }
+          if (d <= bestDist) {
+            bestDist = d;
+            bestHit = { stroke: st, tStart: st.tStart, tEnd: st.tEnd || st.tStart, dist: d, source: 'canvas' };
+          }
+        }
+      }
+      if (st.shape && typeof this.getShapeSampleScreenPoints === 'function') {
+        const shapePts = this.getShapeSampleScreenPoints(st);
+        for (let k = 0; k < shapePts.length; k++) {
+          const d = Math.hypot(clientX - shapePts[k].x, clientY - shapePts[k].y);
+          if (d <= bestDist) {
+            bestDist = d;
+            bestHit = { stroke: st, tStart: st.tStart, tEnd: st.tEnd || st.tStart, dist: d, source: 'shape' };
+          }
+        }
+      }
+    }
+
+    // 3) 그래프 보관 카드(#1, #2...) 본체를 터치했는데 카드 위 필기 획은 없다면, 해당 그래프를 작도하던 시점으로 점프!
+    if (!bestHit && tappedGraphCardEl && Array.isArray(this.audioSyncData.timeline)) {
+      this._expandAudioSyncData(this.audioSyncData);
+      const graphEv = this.audioSyncData.timeline.find(ev => ev && ev.type === 'state' && ev.state && !ev.state.isGraphCovered);
+      if (graphEv && typeof graphEv.t === 'number') {
+        bestHit = { stroke: null, tStart: graphEv.t, tEnd: graphEv.t, dist: 0, source: 'graph_card' };
+      }
+    }
+
+    return bestHit;
+  }
+
+  seekAndPlayAudioAtMs(targetMs) {
+    if (!this.audioSyncData || !(this.audioSyncData.durationMs > 0)) return;
+    const dur = this.audioSyncData.durationMs;
+    const clamped = Math.max(0, Math.min(dur - 50, Number(targetMs) || 0));
+    this.playAudioSync(clamped, 'video');
   }
 
   _createSilentWavDataUrl(durationMs = 1000) {
@@ -32284,6 +32493,10 @@ class GraphApp {
         scrubber.max = String(dur);
         scrubber.value = String(Math.round(cur));
       }
+      const btnShowFinalNote = document.getElementById('btnAudioShowFinalNote');
+      if (btnShowFinalNote) {
+        btnShowFinalNote.style.display = this._isAudioReplayActive ? 'inline-flex' : 'none';
+      }
     } else {
       bar.style.display = 'none';
     }
@@ -32681,9 +32894,23 @@ class GraphApp {
     const pts = stroke.points;
     const N = pts.length;
 
-    // 영상 모드('video'): 아직 시작 시각(tStart)이 되지 않은 미래의 필기는 100% 감춤!
+    // 영상 재생 중 미래 필기(playMs < tStart):
+    // 레이저 포인터(holdUntil)나 지워진 임시 필기(erasedAt)는 숨기고,
+    // 최종 완성본 필기 획들은 노타빌리티 방식의 연한 밑그림(재생 중 22%, 일시정지 시 45%)으로 표시하여
+    // 학생이 전체 풀이를 보면서 원하는 수식 줄을 톡 터치해 즉시 점프할 수 있게 합니다!
     if (playMs < tStart) {
-      return null;
+      if (stroke.holdUntil !== undefined || stroke.erasedAt !== undefined) {
+        return null;
+      }
+      const ghostAlpha = this.isAudioPlaying ? 0.22 : 0.45;
+      return {
+        stroke: { ...stroke, _ghostAlpha: ghostAlpha },
+        isCurrentlyWriting: false,
+        isActiveHighlight: false,
+        isFutureGhost: true,
+        ghostAlpha,
+        tipPoint: null
+      };
     }
 
     // 이미 쓰기가 끝난 과거의 필기(playMs >= tEnd)는 도형 스냅(shape) 포함 100% 온전하게 표시!
@@ -33082,10 +33309,25 @@ class GraphApp {
       try { this.audioPlayerEl.pause(); } catch (e) { }
     }
     if (isEnded && this.audioSyncData && this.audioSyncData.finalState) {
+      this._isAudioReplayActive = false;
+      document.body.classList.remove('audio-replay-active');
+      if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
       this.renderProblemCardCanvas();
       this.renderGraphCardCanvas();
+      if (this.extraProblemCards) {
+        this.extraProblemCards.forEach(c => {
+          if (c && c.el && typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+        });
+      }
+      if (this.extraGraphCards) {
+        this.extraGraphCards.forEach(c => {
+          if (c && c.el && typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+        });
+      }
       this.render();
+    } else if (this._isAudioReplayActive) {
+      this._renderAudioReplayAtCurrentTime();
     }
     this.syncAudioRecordUI();
   }
@@ -33095,12 +33337,28 @@ class GraphApp {
     this.pauseAudioPlayback(false);
     this._isAudioReplayActive = false;
     document.body.classList.remove('audio-replay-active');
+    if (restoreFinal) {
+      this.audioPlayCurrentMs = 0;
+    }
+    if (this.virtualStylusEl) {
+      this.virtualStylusEl.style.display = 'none';
+    }
     if (wasReplayActive && restoreFinal && this.audioSyncData && this.audioSyncData.finalState) {
       this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
     }
     this._inkBakeDirty = true;
     this.renderProblemCardCanvas();
     this.renderGraphCardCanvas();
+    if (this.extraProblemCards) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el && typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+      });
+    }
+    if (this.extraGraphCards) {
+      this.extraGraphCards.forEach(c => {
+        if (c && c.el && typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+      });
+    }
     this.render();
     this.syncAudioRecordUI();
   }
