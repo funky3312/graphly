@@ -8039,16 +8039,18 @@ class GraphApp {
 
     const x = widgetRect.left - canvasRect.left;
     const y = widgetRect.top - canvasRect.top;
+    const screenW = (widgetRect && widgetRect.width > 0) ? widgetRect.width : w;
+    const screenH = (widgetRect && widgetRect.height > 0) ? widgetRect.height : h;
 
     this.problemCardRect = {
       x,
       y,
-      w,
-      h,
+      w: screenW,
+      h: screenH,
       imgX: x + 10,
       imgY: y + 10,
-      imgW,
-      imgH
+      imgW: screenW,
+      imgH: screenH
     };
     return this.problemCardRect;
   }
@@ -8096,16 +8098,15 @@ class GraphApp {
     return anchor;
   }
 
-  // 🌟 [문제 창 + 그래프 창 + 칠판/PDF 페이지 위치 동기화] 🌟
-  // - 캡처 판서 모드(isGraphCovered && !pdfPageBoardData): 칠판 이동(boardPanX, boardPanY)과 100% 한 몸으로 이동
+  // 🌟 [문제 창 + 그래프 창 + 칠판/PDF 페이지 위치 및 줌 100% 동기화] 🌟
+  // - 캡처 판서 모드(isGraphCovered && !pdfPageBoardData): 칠판 좌표계(boardToScreen)와 줌(boardZoom)에 맞춰 필기와 100% 한 몸으로 이동·확대/축소!
   // - 페이지 모드(isGraphCovered && pdfPageBoardData): PDF 페이지 수학 좌표(_pdfAnchor)에 핀을 박듯 고정되어 PDF 이동(panX, panY) 및 줌(zoomLevel)과 100% 한 몸으로 이동·스케일링!
   updateProblemCardPosition(transformOnly = false) {
     const isPdfBoard = Boolean(this.isGraphCovered && this.pdfPageBoardData);
     const curUS = (isPdfBoard && typeof this.getCurrentMathUnitScale === 'function')
       ? this.getCurrentMathUnitScale()
       : 60;
-    const bPx = this.isGraphCovered ? (this.boardPanX || 0) : 0;
-    const bPy = this.isGraphCovered ? (this.boardPanY || 0) : 0;
+    const bz = Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0));
 
     const applyCardTransform = (el, baseX, baseY, savedAnchorOwner) => {
       if (!el || el.style.display === 'none') return;
@@ -8129,9 +8130,19 @@ class GraphApp {
         } else {
           el.style.transform = `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
         }
+      } else if (this.isGraphCovered) {
+        const s = this.boardToScreen(baseX, baseY);
+        const tx = s.x - baseX;
+        const ty = s.y - baseY;
+        el.style.transformOrigin = '0 0';
+        if (Math.abs(bz - 1.0) > 0.002) {
+          el.style.transform = `translate3d(${tx.toFixed(1)}px, ${ty.toFixed(1)}px, 0) scale(${bz.toFixed(4)})`;
+        } else {
+          el.style.transform = `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
+        }
       } else {
         el.style.transformOrigin = '';
-        el.style.transform = `translate3d(${bPx}px, ${bPy}px, 0)`;
+        el.style.transform = 'translate3d(0px, 0px, 0)';
       }
     };
 
@@ -8554,10 +8565,7 @@ class GraphApp {
       if (chev) chev.textContent = '▸';
     }
     this.extraProblemCards.push(cardItem);
-
-    const bPx = (this.boardPanX || 0);
-    const bPy = (this.boardPanY || 0);
-    el.style.transform = `translate3d(${bPx}px, ${bPy}px, 0)`;
+    this.updateProblemCardPosition(true);
 
     el._savedExpandedWidth = `${Math.round(cardW)}px`;
     const toggleExtraMin = () => {
@@ -8641,16 +8649,20 @@ class GraphApp {
         if (Math.hypot(dx, dy) <= 5) return;
         dragMoved = true;
       }
-      const nextX = Math.round(initX + dx);
-      const nextY = Math.round(initY + dy);
       if (this.isGraphCovered && this.pdfPageBoardData) {
+        const nextX = Math.round(initX + dx);
+        const nextY = Math.round(initY + dy);
         this._pinCardToPdfBoardAtScreenPos(el, nextX, nextY, true);
         this.updateProblemCardPosition(true);
       } else {
-        cardItem.baseX = nextX;
-        cardItem.baseY = nextY;
+        const dScale = (this.isGraphCovered && !this.pdfPageBoardData)
+          ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0))
+          : 1.0;
+        cardItem.baseX = Math.round(initX + (dx / dScale));
+        cardItem.baseY = Math.round(initY + (dy / dScale));
         el.style.left = `${cardItem.baseX}px`;
         el.style.top = `${cardItem.baseY}px`;
+        this.updateProblemCardPosition(true);
       }
     });
     const stopDrag = () => {
@@ -8690,7 +8702,7 @@ class GraphApp {
           : 0;
         const scaleRatio = (curUS > 0 && el._pdfAnchor && el._pdfAnchor.unitScale > 0)
           ? Math.max(0.2, Math.min(4.0, curUS / el._pdfAnchor.unitScale))
-          : 1.0;
+          : ((this.isGraphCovered && !this.pdfPageBoardData) ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0)) : 1.0);
         const nextW = Math.max(240, Math.min(window.innerWidth * 0.85, rStartW + ((e.clientX - rStartX) / scaleRatio)));
         el.style.width = `${nextW}px`;
       });
@@ -9135,14 +9147,17 @@ class GraphApp {
           if (Math.hypot(dx, dy) <= 5) return;
           dragMoved = true;
         }
-        const nextX = Math.round(initialBaseX + dx);
-        const nextY = Math.round(initialBaseY + dy);
         if (this.isGraphCovered && this.pdfPageBoardData) {
+          const nextX = Math.round(initialBaseX + dx);
+          const nextY = Math.round(initialBaseY + dy);
           this._pinCardToPdfBoardAtScreenPos(widget, nextX, nextY, true);
           this.updateProblemCardPosition();
         } else {
-          this.problemCardBaseX = nextX;
-          this.problemCardBaseY = nextY;
+          const dScale = (this.isGraphCovered && !this.pdfPageBoardData)
+            ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0))
+            : 1.0;
+          this.problemCardBaseX = Math.round(initialBaseX + (dx / dScale));
+          this.problemCardBaseY = Math.round(initialBaseY + (dy / dScale));
           widget.style.left = `${this.problemCardBaseX}px`;
           widget.style.top = `${this.problemCardBaseY}px`;
           this.updateProblemCardPosition();
@@ -9193,7 +9208,7 @@ class GraphApp {
           : 0;
         const scaleRatio = (curUS > 0 && widget._pdfAnchor && widget._pdfAnchor.unitScale > 0)
           ? Math.max(0.2, Math.min(4.0, curUS / widget._pdfAnchor.unitScale))
-          : 1.0;
+          : ((this.isGraphCovered && !this.pdfPageBoardData) ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0)) : 1.0);
         const dw = (e.clientX - startX) / scaleRatio;
         const newW = Math.max(280, Math.min(window.innerWidth * 0.85, startW + dw));
         widget.style.width = `${newW}px`;
@@ -9231,7 +9246,7 @@ class GraphApp {
     // 5. 카드 확대 / 축소 버튼 (문제 위 밑줄도 비율에 맞춰 자동으로 함께 스케일링!)
     if (btnZoomIn) {
       btnZoomIn.onclick = () => {
-        const curW = widget.getBoundingClientRect().width;
+        const curW = parseFloat(widget.style.width) || widget.offsetWidth || widget.getBoundingClientRect().width;
         const newW = Math.min(window.innerWidth * 0.85, curW + 60);
         widget.style.width = `${newW}px`;
         this.syncProblemCardRectFromWidget();
@@ -9239,7 +9254,7 @@ class GraphApp {
     }
     if (btnZoomOut) {
       btnZoomOut.onclick = () => {
-        const curW = widget.getBoundingClientRect().width;
+        const curW = parseFloat(widget.style.width) || widget.offsetWidth || widget.getBoundingClientRect().width;
         const newW = Math.max(280, curW - 60);
         widget.style.width = `${newW}px`;
         this.syncProblemCardRectFromWidget();
@@ -9369,12 +9384,14 @@ class GraphApp {
         eg.baseY = ry;
       }
     }
+    this.updateProblemCardPosition(true);
   }
 
   relayoutLeftDockedCards(animate = true) {
     const dockX = 72;
     let curY = 18;
     const gapY = 8;
+    const isPdfBoard = Boolean(this.isGraphCovered && this.pdfPageBoardData);
 
     const pWidget = document.getElementById('problemCardWidget');
     const isPVisible = Boolean(pWidget && this.problemCardData && pWidget.style.display !== 'none');
@@ -9385,7 +9402,7 @@ class GraphApp {
       const py = (typeof this.problemCardBaseY === 'number') ? this.problemCardBaseY : (parseFloat(pWidget.style.top) || 18);
       if (Math.abs(px - dockX) <= 32 && py <= 48) {
         const pRect = pWidget.getBoundingClientRect();
-        const pH = Math.max(32, Math.round(pRect.height || pWidget.offsetHeight || 34));
+        const pH = Math.max(32, Math.round((isPdfBoard ? pRect.height : pWidget.offsetHeight) || pRect.height || 34));
         curY = Math.round(py + pH + gapY);
       }
     }
@@ -9402,7 +9419,7 @@ class GraphApp {
     allCandidates.forEach((el) => {
       this._setCardBasePosition(el, dockX, curY, animate);
       const rect = el.getBoundingClientRect();
-      const h = Math.max(32, Math.round(rect.height || el.offsetHeight || 34));
+      const h = Math.max(32, Math.round((isPdfBoard ? rect.height : el.offsetHeight) || rect.height || 34));
       curY += h + gapY;
     });
   }
@@ -11168,7 +11185,8 @@ class GraphApp {
           primaryBody.style.height = `${Math.round(cardW * aspect)}px`;
         }
 
-        this.syncProblemCardRectFromWidget(); if (true) {
+        this.syncProblemCardRectFromWidget();
+        if (this.pdfPageBoardData) {
           if (this.hasActiveProblemCard() && this.problemCardRect) {
             const pRight = this.problemCardRect.x + this.problemCardRect.w;
             if (pRight + cardW + 36 <= window.innerWidth) {
@@ -11184,6 +11202,33 @@ class GraphApp {
           } else {
             this.graphCardBaseX = 560;
             this.graphCardBaseY = 68;
+          }
+        } else {
+          if (this.hasActiveProblemCard()) {
+            const pWidget = document.getElementById('problemCardWidget');
+            const pBody = document.getElementById('problemCardBody');
+            const pBx = (typeof this.problemCardBaseX === 'number') ? this.problemCardBaseX : 72;
+            const pBy = (typeof this.problemCardBaseY === 'number') ? this.problemCardBaseY : 18;
+            const pBw = (pWidget && parseFloat(pWidget.style.width)) || 520;
+            const pBh = (pBody && parseFloat(pBody.style.height)) || Math.round(pBw * (this.problemCardAspect || 0.72));
+            const pRight = pBx + pBw;
+            if (pRight + cardW + 36 <= window.innerWidth) {
+              this.graphCardBaseX = Math.round(pRight + 20);
+              this.graphCardBaseY = Math.round(pBy);
+            } else {
+              this.graphCardBaseX = Math.round(pBx);
+              this.graphCardBaseY = Math.round(pBy + pBh + 44);
+            }
+          } else if (sourceRect) {
+            const sx = Math.max(72, Math.min(window.innerWidth - cardW - 24, Math.round(sourceRect.x)));
+            const sy = Math.max(60, Math.min(window.innerHeight - 200, Math.round(sourceRect.y)));
+            const bPos = this.screenToBoard(sx, sy);
+            this.graphCardBaseX = Math.round(bPos.x);
+            this.graphCardBaseY = Math.round(bPos.y);
+          } else {
+            const bPos = this.screenToBoard(560, 68);
+            this.graphCardBaseX = Math.round(bPos.x);
+            this.graphCardBaseY = Math.round(bPos.y);
           }
         }
         widget.style.left = `${this.graphCardBaseX}px`;
@@ -11315,12 +11360,8 @@ class GraphApp {
 
     if (this.pdfPageBoardData) {
       this._pinCardToPdfBoardAtScreenPos(el, cardItem.baseX, cardItem.baseY, false);
-      this.updateProblemCardPosition(true);
-    } else {
-      const bPx = (this.boardPanX || 0);
-      const bPy = (this.boardPanY || 0);
-      el.style.transform = `translate3d(${bPx}px, ${bPy}px, 0)`;
     }
+    this.updateProblemCardPosition(true);
 
     const syncExtraSize = (newW) => {
       el.style.width = `${newW}px`;
@@ -11409,16 +11450,20 @@ class GraphApp {
         if (Math.hypot(dx, dy) <= 5) return;
         dragMoved = true;
       }
-      const nextX = Math.round(initX + dx);
-      const nextY = Math.round(initY + dy);
       if (this.isGraphCovered && this.pdfPageBoardData) {
+        const nextX = Math.round(initX + dx);
+        const nextY = Math.round(initY + dy);
         this._pinCardToPdfBoardAtScreenPos(el, nextX, nextY, true);
         this.updateProblemCardPosition(true);
       } else {
-        cardItem.baseX = nextX;
-        cardItem.baseY = nextY;
+        const dScale = (this.isGraphCovered && !this.pdfPageBoardData)
+          ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0))
+          : 1.0;
+        cardItem.baseX = Math.round(initX + (dx / dScale));
+        cardItem.baseY = Math.round(initY + (dy / dScale));
         el.style.left = `${cardItem.baseX}px`;
         el.style.top = `${cardItem.baseY}px`;
+        this.updateProblemCardPosition(true);
       }
     });
     const stopDrag = () => {
@@ -11458,7 +11503,7 @@ class GraphApp {
           : 0;
         const scaleRatio = (curUS > 0 && el._pdfAnchor && el._pdfAnchor.unitScale > 0)
           ? Math.max(0.2, Math.min(4.0, curUS / el._pdfAnchor.unitScale))
-          : 1.0;
+          : ((this.isGraphCovered && !this.pdfPageBoardData) ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0)) : 1.0);
         const nextW = Math.max(200, Math.min(window.innerWidth * 0.85, rStartW + ((e.clientX - rStartX) / scaleRatio)));
         syncExtraSize(nextW);
       });
@@ -11632,7 +11677,9 @@ class GraphApp {
     }
 
     const widgetRect = widget.getBoundingClientRect();
-    this.graphCardRect = { x: widgetRect.left, y: widgetRect.top, w, h };
+    const screenW = (widgetRect && widgetRect.width > 0) ? widgetRect.width : w;
+    const screenH = (widgetRect && widgetRect.height > 0) ? widgetRect.height : h;
+    this.graphCardRect = { x: widgetRect.left, y: widgetRect.top, w: screenW, h: screenH };
     return this.graphCardRect;
   }
 
@@ -12007,16 +12054,20 @@ class GraphApp {
           if (Math.hypot(dx, dy) <= 5) return;
           dragMoved = true;
         }
-        const nextX = Math.round(initialBaseX + dx);
-        const nextY = Math.round(initialBaseY + dy);
         if (this.isGraphCovered && this.pdfPageBoardData) {
+          const nextX = Math.round(initialBaseX + dx);
+          const nextY = Math.round(initialBaseY + dy);
           this._pinCardToPdfBoardAtScreenPos(widget, nextX, nextY, true);
           this.updateProblemCardPosition(true);
         } else {
-          this.graphCardBaseX = nextX;
-          this.graphCardBaseY = nextY;
+          const dScale = (this.isGraphCovered && !this.pdfPageBoardData)
+            ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0))
+            : 1.0;
+          this.graphCardBaseX = Math.round(initialBaseX + (dx / dScale));
+          this.graphCardBaseY = Math.round(initialBaseY + (dy / dScale));
           widget.style.left = `${this.graphCardBaseX}px`;
           widget.style.top = `${this.graphCardBaseY}px`;
+          this.updateProblemCardPosition(true);
         }
         this.syncGraphCardRectFromWidget();
       });
@@ -12063,7 +12114,7 @@ class GraphApp {
           : 0;
         const scaleRatio = (curUS > 0 && widget._pdfAnchor && widget._pdfAnchor.unitScale > 0)
           ? Math.max(0.2, Math.min(4.0, curUS / widget._pdfAnchor.unitScale))
-          : 1.0;
+          : ((this.isGraphCovered && !this.pdfPageBoardData) ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0)) : 1.0);
         const dw = (e.clientX - startX) / scaleRatio;
         const newW = Math.max(220, Math.min(window.innerWidth * 0.85, startW + dw));
         widget.style.width = `${newW}px`;
@@ -26737,6 +26788,7 @@ class GraphApp {
     this.boardZoomOffsetY = py - (this.boardPanY || 0) - by * clamped;
     this._inkBakeDirty = true;
     this._hasSceneFreeze = false;
+    this.updateProblemCardPosition(true);
     return clamped;
   }
 
