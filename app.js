@@ -7213,7 +7213,7 @@ class GraphApp {
     const prevZoom = this.pdfZoom || 1.5;
     const nextZoom = Math.max(0.5, Math.min(zoom, 4.0));
     const isFastPreview = Boolean(options && options.fastPreview);
-    if (!isFastPreview && Math.abs(nextZoom - prevZoom) < 0.01) return;
+    if (!isFastPreview && Math.abs(nextZoom - prevZoom) < 0.002) return;
 
     const viewport = document.getElementById('pdfViewport');
     const ratio = nextZoom / prevZoom;
@@ -7238,8 +7238,8 @@ class GraphApp {
         }
       }
       if (w._basePdfW && w._basePdfH) {
-        const nw = Math.round(w._basePdfW * nextZoom);
-        const nh = Math.round(w._basePdfH * nextZoom);
+        const nw = (w._basePdfW * nextZoom).toFixed(2);
+        const nh = (w._basePdfH * nextZoom).toFixed(2);
         w.style.width = `${nw}px`;
         w.style.height = `${nh}px`;
         if (c) {
@@ -7250,8 +7250,8 @@ class GraphApp {
         const curW = parseFloat(w.style.width) || w.offsetWidth;
         const curH = parseFloat(w.style.height) || w.offsetHeight;
         if (curW > 0 && curH > 0) {
-          const nw = Math.round(curW * ratio);
-          const nh = Math.round(curH * ratio);
+          const nw = (curW * ratio).toFixed(2);
+          const nh = (curH * ratio).toFixed(2);
           w.style.width = `${nw}px`;
           w.style.height = `${nh}px`;
           if (c) {
@@ -7263,9 +7263,20 @@ class GraphApp {
     });
 
     if (viewport) {
-      if (options && typeof options.anchorContentY === 'number' && typeof options.anchorRatio === 'number') {
-        const newScrollTop = Math.max(0, Math.round(options.anchorContentY * options.anchorRatio - options.currentMidY));
-        const newScrollLeft = Math.max(0, Math.round(options.anchorContentX * options.anchorRatio - options.currentMidX));
+      if (options && options.anchorPageEl && typeof options.anchorRelX === 'number' && typeof options.anchorRelY === 'number') {
+        // 🎯 페이지 래퍼의 실제 화면 좌표(margin: 0 auto 중앙 정렬 여백 및 페이지 간 gap: 28px 자동 반영)를 기준으로 0.0px 오차 보정!
+        const newRect = options.anchorPageEl.getBoundingClientRect();
+        const ptClientX = newRect.left + options.anchorRelX * newRect.width;
+        const ptClientY = newRect.top + options.anchorRelY * newRect.height;
+        const newScrollLeft = Math.max(0, viewport.scrollLeft + (ptClientX - options.currentMidClientX));
+        const newScrollTop = Math.max(0, viewport.scrollTop + (ptClientY - options.currentMidClientY));
+        viewport.scrollTop = newScrollTop;
+        viewport.scrollLeft = newScrollLeft;
+        this.savedPdfScrollTop = newScrollTop;
+        this.savedPdfScrollLeft = newScrollLeft;
+      } else if (options && typeof options.anchorContentY === 'number' && typeof options.anchorRatio === 'number') {
+        const newScrollTop = Math.max(0, options.anchorContentY * options.anchorRatio - options.currentMidY);
+        const newScrollLeft = Math.max(0, options.anchorContentX * options.anchorRatio - options.currentMidX);
         viewport.scrollTop = newScrollTop;
         viewport.scrollLeft = newScrollLeft;
         this.savedPdfScrollTop = newScrollTop;
@@ -7288,11 +7299,17 @@ class GraphApp {
     }
 
     this._cachedPdfPageCssH = Math.round(((this.pdfDefaultPageSize && this.pdfDefaultPageSize.height) || 842) * nextZoom);
-    if (this._pdfPinchRenderTimer) clearTimeout(this._pdfPinchRenderTimer);
-    this._pdfPinchRenderTimer = setTimeout(() => {
+    if (this._pdfPinchRenderTimer) {
+      clearTimeout(this._pdfPinchRenderTimer);
       this._pdfPinchRenderTimer = null;
-      this.renderAllPdfPages(false);
-    }, isFastPreview ? 150 : 110);
+    }
+    // 핀치 도중(isFastPreview: true)에는 무거운 PDF 전체 재렌더링 타이머를 돌리지 않고 손가락을 뗄 때(endPdfViewerPinch) 단 1회만 고화질 베이크!
+    if (!isFastPreview) {
+      this._pdfPinchRenderTimer = setTimeout(() => {
+        this._pdfPinchRenderTimer = null;
+        this.renderAllPdfPages(false);
+      }, 110);
+    }
   }
 
   fitPdfWidth() {
@@ -7374,20 +7391,53 @@ class GraphApp {
 
     const startPdfViewerPinch = (p1, p2) => {
       this.isPdfCropping = false;
+      this._isPdfViewportPanning = false;
+      this._pdfViewportPanStart = null;
+      viewport.classList.remove('panning-active');
       if (cropBox) cropBox.style.display = 'none';
       if (this.activeCropPointerId !== null && this.activeCropPointerId !== undefined) {
         try { viewport.releasePointerCapture(this.activeCropPointerId); } catch (err) { }
         this.activeCropPointerId = null;
       }
       const vRect = viewport.getBoundingClientRect();
-      const midX = (p1.x + p2.x) / 2 - vRect.left;
-      const midY = (p1.y + p2.y) / 2 - vRect.top;
-      const dist = Math.max(20, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+      const midClientX = (p1.x + p2.x) / 2;
+      const midClientY = (p1.y + p2.y) / 2;
+      const midX = midClientX - vRect.left;
+      const midY = midClientY - vRect.top;
+      const dist = Math.max(24, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+
+      // 🎯 현재 두 손가락 중심점(midClientX, midClientY) 아래의 PDF 페이지 래퍼(.pdf-page-wrapper)를 직접 찾아 정규화 좌표(0~1) 고정!
+      // 페이지가 화면보다 좁아 margin: 0 auto로 중앙 정렬된 여백이나 페이지 사이 gap(28px) 때문에 좌표가 잘못 읽혀 휙휙 튀는 현상을 원천 제거합니다.
+      let anchorPageEl = null;
+      let bestDistY = Infinity;
+      const wrappers = document.querySelectorAll('.pdf-page-wrapper');
+      wrappers.forEach(w => {
+        const r = w.getBoundingClientRect();
+        const dy = (midClientY < r.top) ? (r.top - midClientY) : (midClientY > r.bottom ? (midClientY - r.bottom) : 0);
+        if (dy < bestDistY) {
+          bestDistY = dy;
+          anchorPageEl = w;
+        }
+      });
+      let anchorRelX = 0.5;
+      let anchorRelY = 0.5;
+      if (anchorPageEl) {
+        const pRect = anchorPageEl.getBoundingClientRect();
+        if (pRect.width > 0) anchorRelX = (midClientX - pRect.left) / pRect.width;
+        if (pRect.height > 0) anchorRelY = (midClientY - pRect.top) / pRect.height;
+      }
+
       this._pdfPinchState = {
         startDist: dist,
+        smoothDist: dist,
         startZoom: this.pdfZoom || 1.5,
         startMidX: midX,
         startMidY: midY,
+        smoothMidClientX: midClientX,
+        smoothMidClientY: midClientY,
+        anchorPageEl,
+        anchorRelX,
+        anchorRelY,
         contentX: viewport.scrollLeft + midX,
         contentY: viewport.scrollTop + midY
       };
@@ -7395,17 +7445,44 @@ class GraphApp {
 
     const movePdfViewerPinch = (p1, p2) => {
       if (!this._pdfPinchState) startPdfViewerPinch(p1, p2);
+      const st = this._pdfPinchState;
       const vRect = viewport.getBoundingClientRect();
-      const midX = (p1.x + p2.x) / 2 - vRect.left;
-      const midY = (p1.y + p2.y) / 2 - vRect.top;
-      const dist = Math.max(20, Math.hypot(p2.x - p1.x, p2.y - p1.y));
-      const scaleRatio = dist / this._pdfPinchState.startDist;
-      const nextZoom = Math.max(0.6, Math.min(3.2, Math.round(this._pdfPinchState.startZoom * scaleRatio * 100) / 100));
-      const actualRatio = nextZoom / this._pdfPinchState.startZoom;
+      const rawMidClientX = (p1.x + p2.x) / 2;
+      const rawMidClientY = (p1.y + p2.y) / 2;
+      const rawDist = Math.max(24, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+
+      // 🛡️ 아이패드 정전식 터치 미세 떨림 흡수(EMA 로우패스 필터 + 정지 상태 미세 노이즈 억제)
+      const jitterMid = Math.hypot(rawMidClientX - st.smoothMidClientX, rawMidClientY - st.smoothMidClientY);
+      const jitterDist = Math.abs(rawDist - st.smoothDist);
+      const alphaMid = (jitterMid < 0.8) ? 0.22 : 0.52;
+      const alphaDist = (jitterDist < 1.0) ? 0.20 : 0.48;
+      st.smoothMidClientX = st.smoothMidClientX + (rawMidClientX - st.smoothMidClientX) * alphaMid;
+      st.smoothMidClientY = st.smoothMidClientY + (rawMidClientY - st.smoothMidClientY) * alphaMid;
+      st.smoothDist = st.smoothDist + (rawDist - st.smoothDist) * alphaDist;
+
+      // 🛡️ 8px 연속 데드존 차감 + 0.78 감도 완충(Damping) + 1%(0.01) 계단식 반올림 제거(서브픽셀 연속 줌)
+      const distDelta = st.smoothDist - st.startDist;
+      const deadzonePx = 8;
+      const effDelta = Math.abs(distDelta) <= deadzonePx
+        ? 0
+        : (distDelta - Math.sign(distDelta) * deadzonePx);
+      const effDist = Math.max(24, st.startDist + effDelta);
+      const rawRatio = effDist / st.startDist;
+      const dampedRatio = Math.pow(rawRatio, 0.78);
+      const nextZoom = Math.max(0.6, Math.min(3.2, st.startZoom * dampedRatio));
+      const actualRatio = nextZoom / st.startZoom;
+      const midX = st.smoothMidClientX - vRect.left;
+      const midY = st.smoothMidClientY - vRect.top;
+
       this.setPdfZoom(nextZoom, {
         fastPreview: true,
-        anchorContentX: this._pdfPinchState.contentX,
-        anchorContentY: this._pdfPinchState.contentY,
+        anchorPageEl: st.anchorPageEl,
+        anchorRelX: st.anchorRelX,
+        anchorRelY: st.anchorRelY,
+        currentMidClientX: st.smoothMidClientX,
+        currentMidClientY: st.smoothMidClientY,
+        anchorContentX: st.contentX,
+        anchorContentY: st.contentY,
         anchorRatio: actualRatio,
         currentMidX: midX,
         currentMidY: midY
@@ -7423,24 +7500,28 @@ class GraphApp {
       }
     };
 
-    // iOS / iPadOS Safari & Android TouchEvents 직결 지원 (passive: true로 브라우저 C++ 컴포지터 터치 스크롤 0ms 직결!)
+    // iOS / iPadOS Safari & Android TouchEvents 직결 지원:
+    // 1손가락 터치는 e.preventDefault()를 호출하지 않아 브라우저 C++ 순정 스크롤이 작동하고,
+    // 2손가락 이상 핀치 시에만 e.preventDefault()로 네이티브 스크롤과 JS 스크롤의 충돌을 원천 차단합니다!
     viewport.addEventListener('touchstart', (e) => {
       if (e.touches && e.touches.length >= 2) {
+        if (e.cancelable) e.preventDefault();
         startPdfViewerPinch(
           { x: e.touches[0].clientX, y: e.touches[0].clientY },
           { x: e.touches[1].clientX, y: e.touches[1].clientY }
         );
       }
-    }, { passive: true });
+    }, { passive: false });
 
     viewport.addEventListener('touchmove', (e) => {
       if (e.touches && e.touches.length >= 2) {
+        if (e.cancelable) e.preventDefault();
         movePdfViewerPinch(
           { x: e.touches[0].clientX, y: e.touches[0].clientY },
           { x: e.touches[1].clientX, y: e.touches[1].clientY }
         );
       }
-    }, { passive: true });
+    }, { passive: false });
 
     const onPdfTouchEnd = (e) => {
       if (!e.touches || e.touches.length < 2) {
@@ -7458,8 +7539,14 @@ class GraphApp {
         this._pdfTouchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (this._pdfTouchPointers.size >= 2) {
           e.preventDefault();
-          const pts = Array.from(this._pdfTouchPointers.values());
-          startPdfViewerPinch(pts[0], pts[1]);
+          // TouchEvent가 지원되는 환경에서는 touchstart/touchmove에서 단일 경로로 처리하여 이중 호출 충돌 방지!
+          if (!('ontouchstart' in window)) {
+            const pts = Array.from(this._pdfTouchPointers.values());
+            startPdfViewerPinch(pts[0], pts[1]);
+          } else {
+            this.isPdfCropping = false;
+            if (cropBox) cropBox.style.display = 'none';
+          }
           return;
         }
       }
@@ -7576,8 +7663,10 @@ class GraphApp {
         this._pdfTouchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (this._pdfTouchPointers.size >= 2) {
           e.preventDefault();
-          const pts = Array.from(this._pdfTouchPointers.values());
-          movePdfViewerPinch(pts[0], pts[1]);
+          if (!('ontouchstart' in window)) {
+            const pts = Array.from(this._pdfTouchPointers.values());
+            movePdfViewerPinch(pts[0], pts[1]);
+          }
           return;
         }
       }
@@ -25337,15 +25426,18 @@ class GraphApp {
         return;
       }
       if (e.touches && e.touches.length === 2 && !this._pinchState) {
-        const t0 = e.touches[0];
-        const t1 = e.touches[1];
         this._pinchWasActiveInGesture = true;
         this.isPanning = false;
         this.isBoardPanning = false;
-        this._startCanvasTwoFingerPinch(
-          { id: 't0', x: t0.clientX, y: t0.clientY },
-          { id: 't1', x: t1.clientX, y: t1.clientY }
-        );
+        // PointerEvent 지원 브라우저에서는 pointerdown(activePointers)이 단일 경로로 핀치를 시작하도록 하여 ID('t0' vs pointerId) 충돌 방지!
+        if (!window.PointerEvent) {
+          const t0 = e.touches[0];
+          const t1 = e.touches[1];
+          this._startCanvasTwoFingerPinch(
+            { id: 't0', x: t0.clientX, y: t0.clientY },
+            { id: 't1', x: t1.clientX, y: t1.clientY }
+          );
+        }
       }
     }, { passive: false });
     this.canvas.addEventListener('touchend', (e) => {
@@ -25369,10 +25461,9 @@ class GraphApp {
     this.canvas.addEventListener('touchmove', (e) => {
       const hasStylus = e.touches && Array.from(e.touches).some(t => t.touchType === 'stylus');
       if (this._diagPureInkMode || hasStylus || isPenBusyForTouch()) return;
-      if (e.touches && e.touches.length === 2 && this._pinchState) {
+      if (e.touches && e.touches.length >= 2) {
         if (e.cancelable) e.preventDefault();
-        // PointerEvent 경로에서 이미 2포인터 핀치를 처리 중이면 중복 호출 방지, 누락된 경우에만 백업 구동!
-        if (!this.activePointers || this.activePointers.size < 2 || (this._pinchState.id1 === 't0')) {
+        if (!window.PointerEvent && this._pinchState) {
           const t0 = e.touches[0];
           const t1 = e.touches[1];
           this._moveCanvasTwoFingerPinch(
@@ -27013,27 +27104,35 @@ class GraphApp {
     this.isPanning = false;
     this.isBoardPanning = false;
 
-    const midX = (p1.x + p2.x) / 2;
-    const midY = (p1.y + p2.y) / 2;
-    const dist = Math.max(20, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+    const cRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
+    const x1 = p1.x - cRect.left;
+    const y1 = p1.y - cRect.top;
+    const x2 = p2.x - cRect.left;
+    const y2 = p2.y - cRect.top;
+    const midX = (x1 + x2) / 2;
+    const midY = (y1 + y2) / 2;
+    const dist = Math.max(24, Math.hypot(x2 - x1, y2 - y1));
     this._pinchState = {
       id1: p1.id,
       id2: p2.id,
       unlocked: true,
-      initX1: p1.x,
-      initY1: p1.y,
-      initX2: p2.x,
-      initY2: p2.y,
+      initX1: x1,
+      initY1: y1,
+      initX2: x2,
+      initY2: y2,
       initMidX: midX,
       initMidY: midY,
       initDist: dist,
       startDist: dist,
+      smoothDist: dist,
       startZoom: this.zoomLevel || 1.0,
       startBoardZoom: this.boardZoom || 1.0,
       startBoardZoomOffsetX: this.boardZoomOffsetX || 0,
       startBoardZoomOffsetY: this.boardZoomOffsetY || 0,
       startMidX: midX,
       startMidY: midY,
+      smoothMidX: midX,
+      smoothMidY: midY,
       startPanX: this.panX || 0,
       startPanY: this.panY || 0,
       startBoardPanX: this.boardPanX || 0,
@@ -27046,65 +27145,99 @@ class GraphApp {
     if (!this._pinchState || this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) {
       return;
     }
-    const midX = (p1.x + p2.x) / 2;
-    const midY = (p1.y + p2.y) / 2;
-    const dist = Math.max(20, Math.hypot(p2.x - p1.x, p2.y - p1.y));
-
-    // 도중에 포인터 ID 쌍이 바뀌었으면 화면 점프 없이 기준점만 재설정!
+    // 포인터 배열 순서가 바뀌었더라도 ID 쌍이 같으면 정렬하고, 포인터 ID 자체가 바뀐 경우에만 기준점을 부드럽게 재설정!
+    let ptA = p1;
+    let ptB = p2;
     if (
-      (p1.id !== undefined && this._pinchState.id1 !== undefined && p1.id !== this._pinchState.id1) ||
-      (p2.id !== undefined && this._pinchState.id2 !== undefined && p2.id !== this._pinchState.id2)
+      p1.id !== undefined && p2.id !== undefined &&
+      this._pinchState.id1 !== undefined && this._pinchState.id2 !== undefined
     ) {
-      this._startCanvasTwoFingerPinch(p1, p2);
-      return;
+      if (p1.id === this._pinchState.id2 && p2.id === this._pinchState.id1) {
+        ptA = p2;
+        ptB = p1;
+      } else if (p1.id !== this._pinchState.id1 || p2.id !== this._pinchState.id2) {
+        this._startCanvasTwoFingerPinch(p1, p2);
+        return;
+      }
     }
 
-    const dx = midX - this._pinchState.startMidX;
-    const dy = midY - this._pinchState.startMidY;
+    const cRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
+    const x1 = ptA.x - cRect.left;
+    const y1 = ptA.y - cRect.top;
+    const x2 = ptB.x - cRect.left;
+    const y2 = ptB.y - cRect.top;
+    const rawMidX = (x1 + x2) / 2;
+    const rawMidY = (y1 + y2) / 2;
+    const rawDist = Math.max(24, Math.hypot(x2 - x1, y2 - y1));
+
+    const st = this._pinchState;
+    if (typeof st.smoothMidX !== 'number') st.smoothMidX = rawMidX;
+    if (typeof st.smoothMidY !== 'number') st.smoothMidY = rawMidY;
+    if (typeof st.smoothDist !== 'number') st.smoothDist = rawDist;
+
+    // 🛡️ 아이패드 정전식 터치 미세 노이즈 흡수 (EMA 로우패스 필터 + 정지 상태 미세 떨림 억제)
+    const jitterMid = Math.hypot(rawMidX - st.smoothMidX, rawMidY - st.smoothMidY);
+    const jitterDist = Math.abs(rawDist - st.smoothDist);
+    const alphaMid = (jitterMid < 0.7) ? 0.20 : 0.50;
+    const alphaDist = (jitterDist < 0.9) ? 0.18 : 0.48;
+    st.smoothMidX = st.smoothMidX + (rawMidX - st.smoothMidX) * alphaMid;
+    st.smoothMidY = st.smoothMidY + (rawMidY - st.smoothMidY) * alphaMid;
+    st.smoothDist = st.smoothDist + (rawDist - st.smoothDist) * alphaDist;
+
+    const midX = st.smoothMidX;
+    const midY = st.smoothMidY;
+    const dx = midX - st.startMidX;
+    const dy = midY - st.startMidY;
+
+    // 🛡️ 6px 연속 데드존 차감 + 0.78 감도 완충(Damping) + 1%(0.01) 계단식 반올림 제거(서브픽셀 연속 줌으로 진동 0.0px 보장!)
+    const distDelta = st.smoothDist - st.startDist;
+    const deadzonePx = 6;
+    const effDelta = Math.abs(distDelta) <= deadzonePx
+      ? 0
+      : (distDelta - Math.sign(distDelta) * deadzonePx);
+    const effDist = Math.max(24, st.startDist + effDelta);
+    const rawRatio = effDist / st.startDist;
+    const dampedRatio = Math.pow(rawRatio, 0.78);
 
     if (this.isGraphCovered && !this.pdfPageBoardData) {
-      // 2층 일반 판서 칠판: 두 손가락 이동(패닝) + 두 손가락 핀치(판서 글씨 확대/축소)
-      this.boardPanX = Math.round(this._pinchState.startBoardPanX + dx);
-      this.boardPanY = Math.round(this._pinchState.startBoardPanY + dy);
-      this.updateProblemCardPosition();
+      // 2층 일반 판서 칠판: 두 손가락 이동(패닝) + 두 손가락 핀치(칠판·카드·필기 일체형 확대/축소)
+      this.boardPanX = st.startBoardPanX + dx;
+      this.boardPanY = st.startBoardPanY + dy;
 
-      const scaleRatio = dist / this._pinchState.startDist;
-      if (Math.abs(scaleRatio - 1) > 0.015) {
-        const oldBZ = this._pinchState.startBoardZoom || 1.0;
-        const nextBZ = Math.max(0.25, Math.min(3.5, Math.round(oldBZ * scaleRatio * 100) / 100));
-        const startBx = (this._pinchState.startMidX - this._pinchState.startBoardPanX - (this._pinchState.startBoardZoomOffsetX || 0)) / oldBZ;
-        const startBy = (this._pinchState.startMidY - this._pinchState.startBoardPanY - (this._pinchState.startBoardZoomOffsetY || 0)) / oldBZ;
-        this.boardZoom = nextBZ;
-        this.boardZoomOffsetX = midX - this.boardPanX - startBx * nextBZ;
-        this.boardZoomOffsetY = midY - this.boardPanY - startBy * nextBZ;
-      }
+      const oldBZ = st.startBoardZoom || 1.0;
+      const nextBZ = Math.max(0.25, Math.min(3.5, oldBZ * dampedRatio));
+      const startBx = (st.startMidX - st.startBoardPanX - (st.startBoardZoomOffsetX || 0)) / oldBZ;
+      const startBy = (st.startMidY - st.startBoardPanY - (st.startBoardZoomOffsetY || 0)) / oldBZ;
+      this.boardZoom = nextBZ;
+      this.boardZoomOffsetX = midX - this.boardPanX - startBx * nextBZ;
+      this.boardZoomOffsetY = midY - this.boardPanY - startBy * nextBZ;
+
+      this.updateProblemCardPosition();
       this._inkBakeDirty = true;
     } else {
-      // 1층 실시간 그래프 및 PDF 1페이지 보드: 두 손가락 이동(Pan) + 두 손가락 핀치 중심점 기준 줌(Pinch-to-Zoom) 동시 작동!
-      const scaleRatio = dist / this._pinchState.startDist;
-      const oldZoom = this._pinchState.startZoom || 1.0;
-      let nextZoom = oldZoom;
-      if (Math.abs(scaleRatio - 1) > 0.015) {
-        nextZoom = Math.max(0.15, Math.min(3.5, Math.round(oldZoom * scaleRatio * 100) / 100));
-        this.zoomLevel = nextZoom;
-        this.targetZoom = nextZoom;
-        this._isZoomAnimating = false;
-        const slZoom = document.getElementById('sliderZoom');
-        const lblZoom = document.getElementById('lblZoom');
-        const lblInkZoom = document.getElementById('lblInkZoom');
-        const lblLeftZoom = document.getElementById('lblLeftZoom');
-        if (slZoom) slZoom.value = nextZoom;
-        if (lblZoom) lblZoom.textContent = `${Math.round(nextZoom * 100)}%`;
-        if (lblInkZoom) lblInkZoom.textContent = `${Math.round(nextZoom * 100)}%`;
-        if (lblLeftZoom) lblLeftZoom.textContent = `${Math.round(nextZoom * 100)}%`;
-      }
+      // 1층 실시간 그래프 및 PDF 1페이지 보드: 두 손가락 이동(Pan) + 두 손가락 핀치 중심점 기준 서브픽셀 줌(Pinch-to-Zoom)
+      const oldZoom = st.startZoom || 1.0;
+      const nextZoom = Math.max(0.15, Math.min(3.5, oldZoom * dampedRatio));
+      this.zoomLevel = nextZoom;
+      this.targetZoom = nextZoom;
+      this._isZoomAnimating = false;
+      const slZoom = document.getElementById('sliderZoom');
+      const lblZoom = document.getElementById('lblZoom');
+      const lblInkZoom = document.getElementById('lblInkZoom');
+      const lblLeftZoom = document.getElementById('lblLeftZoom');
+      if (slZoom) slZoom.value = nextZoom;
+      if (lblZoom) lblZoom.textContent = `${Math.round(nextZoom * 100)}%`;
+      if (lblInkZoom) lblInkZoom.textContent = `${Math.round(nextZoom * 100)}%`;
+      if (lblLeftZoom) lblLeftZoom.textContent = `${Math.round(nextZoom * 100)}%`;
+
       const ratio = nextZoom / oldZoom;
-      const cx = (this.screenWidth || window.innerWidth) / 2 + this._pinchState.startPanX;
-      const cy = (this.screenHeight || window.innerHeight) / 2 + this._pinchState.startPanY;
-      const zoomDeltaX = (this._pinchState.startMidX - cx) * (1 - ratio);
-      const zoomDeltaY = (this._pinchState.startMidY - cy) * (1 - ratio);
-      this.panX = Math.round(this._pinchState.startPanX + dx + zoomDeltaX);
-      this.panY = Math.round(this._pinchState.startPanY + dy + zoomDeltaY);
+      const cx = (this.screenWidth || window.innerWidth) / 2 + st.startPanX;
+      const cy = (this.screenHeight || window.innerHeight) / 2 + st.startPanY;
+      const zoomDeltaX = (st.startMidX - cx) * (1 - ratio);
+      const zoomDeltaY = (st.startMidY - cy) * (1 - ratio);
+      this.panX = st.startPanX + dx + zoomDeltaX;
+      this.panY = st.startPanY + dy + zoomDeltaY;
+      this.updateProblemCardPosition();
       this._inkBakeDirty = true;
     }
     this.requestRender();
