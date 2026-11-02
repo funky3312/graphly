@@ -20193,7 +20193,12 @@ class GraphApp {
         const curPage = (this.pdfPageBoardData && this.pdfPageBoardData.pageNum) ? this.pdfPageBoardData.pageNum : (this.pdfCurrentPage || 1);
         const totalPages = (this.pdfPageBoardData && this.pdfPageBoardData.totalPages) ? this.pdfPageBoardData.totalPages : (this.pdfTotalPages || (this.pdfDoc ? this.pdfDoc.numPages : 1));
         const nextP = Math.min(totalPages, curPage + 1);
-        btnNextPdfPage.textContent = `+ 다음 페이지 (p.${nextP})`;
+        const lblNextPdf = document.getElementById('lblPlaylistNextPdfPage');
+        if (lblNextPdf) {
+          lblNextPdf.textContent = `다음 페이지 (p.${nextP})`;
+        } else {
+          btnNextPdfPage.textContent = `+ 다음 페이지 (p.${nextP})`;
+        }
         btnNextPdfPage.title = `새 슬라이드를 생성하고 다음 PDF 페이지(p.${nextP})를 즉시 엽니다`;
       } else {
         btnNextPdfPage.style.display = 'none';
