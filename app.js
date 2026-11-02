@@ -7378,11 +7378,7 @@ class GraphApp {
           // 문제 카드 고정 (일반 진입/새 캔버스 진입 시 현재 슬라이드에 추가/배치, [다음 캡처]로 진입 시 새 슬라이드 캔버스에 고정!)
           const targetCardWidth = Math.round(Math.max(480, Math.min(window.innerWidth * 0.65, w * 1.15)));
           this.setProblemCard(dataUrl, pageNum, cropCanvas, targetCardWidth);
-
-          // 만약 아직 렌더링되지 않은 빈 페이지를 급히 캡처했을 때만 백그라운드 벡터 렌더링 수행
-          if (!isAlreadyRendered) {
-            this._upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop);
-          }
+          const placedTarget = this._lastPlacedProblemCardTarget || null;
 
           if (replaceMode) {
             this._finalizeAppendedCaptureSlide('');
@@ -7392,6 +7388,12 @@ class GraphApp {
           }
           this.closePdfModal();
           this.togglePdfCropMode(false);
+
+          // ✂️ [뷰어 반응속도 100% 보존 + 축소 캡처 시 초고해상도(4.8x~6.0x) 벡터 자동 보강]:
+          // PDF 뷰어에서는 가벼운 해상도로 쾌적한 스크롤 반응속도를 그대로 유지하고,
+          // 캡처 창이 닫힌 직후 원본 PDF 벡터 페이지(baseVp)에서 크롭 영역(normCrop)만 직접 고배율로 추출하여
+          // 축소 상태에서 긴 모의고사 문제를 캡처하더라도 칼같이 선명한 고해상도 이미지로 교체합니다!
+          this._upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop, placedTarget);
 
           // 6. 필기 펜 모드 자동 켜기
           if (!this.isInkMode) {
@@ -7473,45 +7475,83 @@ class GraphApp {
     }
   }
 
-  async _upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop) {
+  async _upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop, targetRef = null) {
     try {
       if (!this.pdfDoc || !normCrop || normCrop.nw <= 0 || normCrop.nh <= 0) return;
       await this._WaitUntilPenIdle();
       const page = await this.pdfDoc.getPage(pageNum);
       const baseVp = page.getViewport({ scale: 1.0 });
-      // 🌟 [선명한 3.6x(~260 DPI) 벡터 캡처 보강]:
-      // 칠판에서 문제 카드를 확대해도 선명한 화질을 유지하면서 5.0x 대비 메모리·연산량을 절반으로 절감합니다!
-      const ultraScale = 3.6;
+      // 🌟 [뷰어 축소 배율(pdfZoom)과 무관한 4.8x~6.0x 초고해상도 벡터 캡처 보강]:
+      // 2단 모의고사의 긴 문제를 한 화면에 담기 위해 PDF 뷰어를 축소(예: 60%~100%)한 상태에서 캡처하더라도,
+      // 뷰어 반응속도는 100% 그대로 유지하고 칠판에 삽입되는 이미지만 원본 PDF 벡터 페이지(baseVp)에서
+      // 크롭 영역(normCrop)만 직접 추출하여 최소 가로 1,600px 보장(최대 변 4,200px) 칼화질로 렌더링합니다!
+      const rawCropW = Math.max(1, normCrop.nw * baseVp.width);
+      const rawCropH = Math.max(1, normCrop.nh * baseVp.height);
+      const desiredMinWidthPx = 1600;
+      let ultraScale = Math.max(4.8, Math.min(6.0, desiredMinWidthPx / rawCropW));
+      const maxDim = Math.max(rawCropW, rawCropH) * ultraScale;
+      if (maxDim > 4200) {
+        ultraScale = 4200 / Math.max(rawCropW, rawCropH);
+      }
       const fullVp = page.getViewport({
         scale: ultraScale,
         offsetX: -normCrop.nx * baseVp.width * ultraScale,
         offsetY: -normCrop.ny * baseVp.height * ultraScale
       });
-      const targetW = Math.max(1, Math.round(normCrop.nw * baseVp.width * ultraScale));
-      const targetH = Math.max(1, Math.round(normCrop.nh * baseVp.height * ultraScale));
+      const targetW = Math.max(1, Math.round(rawCropW * ultraScale));
+      const targetH = Math.max(1, Math.round(rawCropH * ultraScale));
       if (targetW > 5200 || targetH > 5200) return;
 
       const vecCanvas = document.createElement('canvas');
       vecCanvas.width = targetW;
       vecCanvas.height = targetH;
-      const vCtx = vecCanvas.getContext('2d');
+      const vCtx = vecCanvas.getContext('2d', { alpha: false }) || vecCanvas.getContext('2d');
       vCtx.imageSmoothingEnabled = true;
       vCtx.imageSmoothingQuality = 'high';
       vCtx.fillStyle = '#ffffff';
       vCtx.fillRect(0, 0, targetW, targetH);
       await page.render({ canvasContext: vCtx, viewport: fullVp }).promise;
 
-      // 선생님이 막 첫 펜 획을 긋고 있다면 획이 끝날 때까지 양보한 뒤 백그라운드 워커 스레드(toBlob)로 무손실 PNG 인코딩!
+      // 선생님이 막 첫 펜 획을 긋고 있다면 획이 끝날 때까지 양보한 뒤 백그라운드 워커 스레드(toBlob)로 고선명(0.97) 인코딩!
       await this._WaitUntilPenIdle();
-      const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.93);
+      const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.97);
       await this._WaitUntilPenIdle();
 
-      if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+      const syncPlaylistIdle = () => {
+        if (this.isDrawingInk || this.isStylusDrawing) {
+          setTimeout(syncPlaylistIdle, 120);
+          return;
+        }
+        if (this.isLessonPlaylistActive) {
+          this.saveCurrentSlideIntoPlaylist();
+        }
+      };
+      const schedulePlaylistSync = () => {
+        if (!this.isLessonPlaylistActive) return;
+        if (typeof window.requestIdleCallback === 'function') {
+          window.requestIdleCallback(syncPlaylistIdle, { timeout: 600 });
+        } else {
+          setTimeout(syncPlaylistIdle, 120);
+        }
+      };
+
+      if (targetRef && targetRef.type === 'extra' && targetRef.cardItem) {
+        const extraCard = targetRef.cardItem;
+        if (extraCard && extraCard.el) {
+          const imgEl = extraCard.el.querySelector('.problem-card-img');
+          if (imgEl) imgEl.src = ultraDataUrl;
+          extraCard.sourceCanvas = vecCanvas;
+          schedulePlaylistSync();
+          if (!this.isDrawingInk) this.requestRender();
+          return;
+        }
+      } else if (!targetRef && this.extraProblemCards && this.extraProblemCards.length > 0) {
         const lastExtra = this.extraProblemCards[this.extraProblemCards.length - 1];
-        if (lastExtra && lastExtra.el) {
+        if (lastExtra && lastExtra.el && !lastExtra.isPdfPageCard) {
           const imgEl = lastExtra.el.querySelector('.problem-card-img');
           if (imgEl) imgEl.src = ultraDataUrl;
           lastExtra.sourceCanvas = vecCanvas;
+          schedulePlaylistSync();
           if (!this.isDrawingInk) this.requestRender();
           return;
         }
@@ -7521,26 +7561,11 @@ class GraphApp {
         this.problemCardImage = vecCanvas;
         const pImg = document.getElementById('problemCardImg');
         if (pImg) pImg.src = ultraDataUrl;
-        if (this.isLessonPlaylistActive) {
-          const syncPlaylistIdle = () => {
-            if (this.isDrawingInk || this.isStylusDrawing) {
-              setTimeout(syncPlaylistIdle, 120);
-              return;
-            }
-            if (this.isLessonPlaylistActive) {
-              this.saveCurrentSlideIntoPlaylist();
-            }
-          };
-          if (typeof window.requestIdleCallback === 'function') {
-            window.requestIdleCallback(syncPlaylistIdle, { timeout: 600 });
-          } else {
-            setTimeout(syncPlaylistIdle, 120);
-          }
-        }
+        schedulePlaylistSync();
         if (!this.isDrawingInk) this.requestRender();
       }
     } catch (err) {
-      // 벡터 보강 실패 시 기존 고해상도 크롭 이미지 유지
+      // 벡터 보강 실패 시 기존 크롭 이미지 유지
     }
   }
 
@@ -8075,7 +8100,7 @@ class GraphApp {
     this.attachCardDoubleTapDocking(el);
 
     const startMin = Boolean(options && options.startMinimized);
-    const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum };
+    const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum, sourceCanvas: sourceCanvas || null };
     if (startMin) {
       el.classList.add('minimized');
       const chev = el.querySelector('.card-fold-chevron');
@@ -8255,6 +8280,7 @@ class GraphApp {
 
     const totalProblems = 1 + this.extraProblemCards.length;
     this.showToast(`📋 ${totalProblems}번째 문제 카드가 추가되었습니다!`);
+    return cardItem;
   }
 
   setProblemCard(dataUrl, pageNum = 1, sourceCanvas = null, initialWidth = null, options = null) {
@@ -8269,8 +8295,9 @@ class GraphApp {
 
     // 🌟 [대표님 기획]: 이미 문제 카드가 칠판에 활성화되어 있다면, 기존 문제를 덮어쓰지 않고 추가 문제 카드로 소환!
     if (isPrimaryActive && !keepGraphMode) {
-      this.spawnExtraProblemCard(dataUrl, pageNum, initialWidth, sourceCanvas);
-      return;
+      const spawned = this.spawnExtraProblemCard(dataUrl, pageNum, initialWidth, sourceCanvas);
+      this._lastPlacedProblemCardTarget = { type: 'extra', cardItem: spawned, pageNum };
+      return spawned;
     }
 
     this._isTempPdfProblemCard = Boolean(options && options.isTempPdfCard);
@@ -8278,6 +8305,7 @@ class GraphApp {
       imgUrl: dataUrl,
       pageNum: pageNum
     };
+    this._lastPlacedProblemCardTarget = { type: 'primary', problemCardData: this.problemCardData, pageNum };
     this.isProblemCardMinimized = false;
     this.problemInkStrokes = [];
 
@@ -10290,6 +10318,7 @@ class GraphApp {
     let croppedDataUrl = null;
     let croppedCanvas = null;
     let croppedW = 420;
+    let normCropForUpgrade = null;
     const pdfPageNum = (this.pdfPageBoardData && this.pdfPageBoardData.pageNum) || 1;
 
     if (cropRect && cropRect.w >= 25 && cropRect.h >= 25 && this.canvas) {
@@ -10316,6 +10345,7 @@ class GraphApp {
         const sh = Math.round((ny2 - ny1) * pbd.canvas.height);
 
         if (sw >= 24 && sh >= 24) {
+          normCropForUpgrade = { nx: nx1, ny: ny1, nw: nx2 - nx1, nh: ny2 - ny1 };
           croppedCanvas = document.createElement('canvas');
           croppedCanvas.width = sw;
           croppedCanvas.height = sh;
@@ -10370,6 +10400,9 @@ class GraphApp {
         keepGraphMode: true,
         isTempPdfCard: true
       });
+      if (normCropForUpgrade) {
+        this._upgradeCroppedProblemCardToVectorUltraHD(pdfPageNum, normCropForUpgrade, this._lastPlacedProblemCardTarget);
+      }
     }
 
     if (pendingType) {
