@@ -23235,27 +23235,14 @@ class GraphApp {
           const rawEnd = this._lastRawInkScreenPos;
           const curPenStyle = this.currentInkStroke.penStyle || 'ballpen';
           const tailDist = Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y);
-          let endX = this.currentInkStroke.isHighlighter ? rawEnd.x : (lastSmoothed.x * 0.20 + rawEnd.x * 0.80);
-          let endY = this.currentInkStroke.isHighlighter ? rawEnd.y : (lastSmoothed.y * 0.20 + rawEnd.y * 0.80);
-          let hasTailPoint = (tailDist >= 0.8);
-          if (!hasTailPoint && !this.currentInkStroke.isHighlighter && (curPenStyle === 'brush' || curPenStyle === 'fountain') && this._liveBezierScreenPts.length >= 2) {
-            const prevPt = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 2];
-            const vx = lastSmoothed.x - prevPt.x;
-            const vy = lastSmoothed.y - prevPt.y;
-            const vLen = Math.hypot(vx, vy);
-            if (vLen >= 1.2) {
-              const flickExt = Math.min(curPenStyle === 'brush' ? 6.5 : 4.0, Math.max(1.8, vLen * (curPenStyle === 'brush' ? 0.45 : 0.30)));
-              endX = lastSmoothed.x + (vx / vLen) * flickExt;
-              endY = lastSmoothed.y + (vy / vLen) * flickExt;
-              hasTailPoint = true;
-            }
-          }
-          if (hasTailPoint) {
+          if (tailDist >= 0.5) {
+            const endX = this.currentInkStroke.isHighlighter ? rawEnd.x : (lastSmoothed.x * 0.25 + rawEnd.x * 0.75);
+            const endY = this.currentInkStroke.isHighlighter ? rawEnd.y : (lastSmoothed.y * 0.25 + rawEnd.y * 0.75);
             let p = this._lastPressure || 0.5;
             if (curPenStyle === 'fountain') {
-              p = Math.max(0.08, p * 0.30);
+              p = Math.max(0.10, p * 0.55);
             } else if (curPenStyle === 'brush') {
-              p = Math.max(0.04, p * 0.14);
+              p = Math.max(0.06, p * 0.45);
             }
             this._liveBezierScreenPts.push({ x: endX, y: endY, p: p });
             const recTUp = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
@@ -23269,8 +23256,11 @@ class GraphApp {
               const bPt = this.screenToBoard(endX, endY);
               this.currentInkStroke.points.push({ x: bPt.x, y: bPt.y, p: p, t: recTUp });
             }
+            // 🌟 [핵심 버그 수정]: 꼬리 점(pC)을 추가했을 때는 먼저 직전 중점(mid1)에서 새 중점(mid2)까지의
+            // 2차 베지어 구간(isFinalTail = false)을 반드시 이어준 뒤, 아래 마감 단계에서 mid2 -> pC(isFinalTail = true)를 그려야
+            // 중간 구간(mid1~mid2)이 비면서 느낌표(!)처럼 끝점이 분리되는 현상이 100% 사라집니다!
             if (!this.currentInkStroke.isHighlighter) {
-              this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, true);
+              this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
             }
           }
         }
