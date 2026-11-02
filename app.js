@@ -6754,25 +6754,30 @@ class GraphApp {
       this.savedPdfScrollLeft = viewport.scrollLeft;
     }
 
-    const viewportRect = viewport.getBoundingClientRect();
-    const centerY = viewportRect.top + viewportRect.height / 3;
-
-    const wrappers = document.querySelectorAll('.pdf-page-wrapper');
-    let currentVisiblePage = this.pdfCurrentPage;
-
-    wrappers.forEach(w => {
-      const rect = w.getBoundingClientRect();
-      if (rect.top <= centerY && rect.bottom >= centerY) {
-        currentVisiblePage = parseInt(w.dataset.page, 10);
+    // 🚀 [크롬·엣지 PDF 뷰어 표준: 스크롤 중 강제 Reflow(getBoundingClientRect) 0% & rAF 스로틀링]
+    if (this._pdfScrollRaf) return;
+    this._pdfScrollRaf = requestAnimationFrame(() => {
+      this._pdfScrollRaf = null;
+      if (!viewport || !this.pdfDoc) return;
+      const targetScrollY = viewport.scrollTop + viewport.clientHeight / 3;
+      const wrappers = viewport.querySelectorAll('.pdf-page-wrapper');
+      let currentVisiblePage = this.pdfCurrentPage || 1;
+      for (let i = 0; i < wrappers.length; i++) {
+        const w = wrappers[i];
+        const top = w.offsetTop;
+        const bottom = top + w.offsetHeight;
+        if (top <= targetScrollY && bottom >= targetScrollY) {
+          currentVisiblePage = parseInt(w.dataset.page, 10) || currentVisiblePage;
+          break;
+        }
+      }
+      if (currentVisiblePage !== this.pdfCurrentPage) {
+        this.updatePdfPageNavUI(currentVisiblePage, true);
       }
     });
-
-    if (currentVisiblePage !== this.pdfCurrentPage) {
-      this.updatePdfPageNavUI(currentVisiblePage);
-    }
   }
 
-  updatePdfPageNavUI(pageNum) {
+  updatePdfPageNavUI(pageNum, fromScroll = false) {
     const prevPage = this.pdfCurrentPage;
     this.pdfCurrentPage = pageNum;
     const input = document.getElementById('inputPdfCurrentPage');
@@ -6784,7 +6789,16 @@ class GraphApp {
     if (btnNext) btnNext.disabled = (pageNum >= this.pdfTotalPages);
 
     if (this.pdfTotalPages > 8 && prevPage !== pageNum) {
-      this.renderVisiblePdfWindow(pageNum, false);
+      if (fromScroll) {
+        // 스크롤하는 도중에는 무거운 PDF 페이지 렌더링을 지연시켜 턱턱 걸리는 프레임 드랍을 원천 차단!
+        if (this._pdfScrollIdleTimer) clearTimeout(this._pdfScrollIdleTimer);
+        this._pdfScrollIdleTimer = setTimeout(() => {
+          this._pdfScrollIdleTimer = null;
+          this.renderVisiblePdfWindow(this.pdfCurrentPage || pageNum, false);
+        }, 140);
+      } else {
+        this.renderVisiblePdfWindow(pageNum, false);
+      }
     }
   }
 
@@ -6962,55 +6976,9 @@ class GraphApp {
       }
     });
 
-    // 🌟 [아이패드 / 태블릿 PDF 모달 뷰어(#pdfViewport) 두 손가락 핀치 줌 & 관성 스크롤(Inertial Scrolling)] 🌟
+    // 🌟 [크롬·엣지·PDF.js 표준 셋팅: 순정 브라우저 스크롤 + 1:1 Direct Grab-to-Pan (이중 관성 충돌 0%)] 🌟
     this._pdfTouchPointers = new Map();
     this._pdfPinchState = null;
-    this._pdfPanSamples = [];
-
-    const stopPdfViewportMomentum = () => {
-      if (this._pdfMomentumRaf) {
-        cancelAnimationFrame(this._pdfMomentumRaf);
-        this._pdfMomentumRaf = null;
-      }
-      this._isPdfMomentumActive = false;
-    };
-    this.stopPdfViewportMomentum = stopPdfViewportMomentum;
-
-    const startPdfViewerMomentum = (initVx, initVy) => {
-      stopPdfViewportMomentum();
-      const maxSpd = 64;
-      let vx = Math.max(-maxSpd, Math.min(maxSpd, initVx));
-      let vy = Math.max(-maxSpd, Math.min(maxSpd, initVy));
-      if (Math.hypot(vx, vy) < 1.8) return;
-      this._isPdfMomentumActive = true;
-      const step = () => {
-        if (!this.isPdfModalOpen || !this._isPdfMomentumActive) {
-          stopPdfViewportMomentum();
-          return;
-        }
-        vx *= 0.93;
-        vy *= 0.93;
-        const prevLeft = viewport.scrollLeft;
-        const prevTop = viewport.scrollTop;
-        viewport.scrollLeft = prevLeft - vx;
-        viewport.scrollTop = prevTop - vy;
-        this.savedPdfScrollLeft = viewport.scrollLeft;
-        this.savedPdfScrollTop = viewport.scrollTop;
-        const movedX = Math.abs(viewport.scrollLeft - prevLeft);
-        const movedY = Math.abs(viewport.scrollTop - prevTop);
-        if (Math.hypot(vx, vy) < 0.45 || (movedX < 0.1 && movedY < 0.1)) {
-          stopPdfViewportMomentum();
-          return;
-        }
-        this._pdfMomentumRaf = requestAnimationFrame(step);
-      };
-      this._pdfMomentumRaf = requestAnimationFrame(step);
-    };
-    this.startPdfViewerMomentum = startPdfViewerMomentum;
-
-    viewport.addEventListener('wheel', () => {
-      stopPdfViewportMomentum();
-    }, { passive: true });
 
     const startPdfViewerPinch = (p1, p2) => {
       this.isPdfCropping = false;
@@ -7096,7 +7064,6 @@ class GraphApp {
     viewport.addEventListener('touchcancel', onPdfTouchEnd, { passive: false });
 
     viewport.addEventListener('pointerdown', (e) => {
-      stopPdfViewportMomentum();
       if (e.pointerType === 'touch') {
         this._pdfTouchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (this._pdfTouchPointers.size >= 2) {
@@ -7106,8 +7073,11 @@ class GraphApp {
           return;
         }
       }
-      // ✋ [이동 모드(!this.isPdfCropModeActive)]: 마우스/펜슬/손가락 드래그로 PDF 뷰포트 상하좌우 직접 이동 + 관성 스크롤 지원!
+      // ✋ [이동 모드(!this.isPdfCropModeActive)]:
+      // 손가락(touch)은 크롬·엣지·iOS 순정 하드웨어 스크롤(touch-action: pan-x pan-y)에 100% 맡겨 이중 충돌을 원천 차단하고,
+      // 마우스(mouse)/펜(pen)은 크롬·엣지 PDF 뷰어 표준 1:1 직결 이동(Direct Grab-to-Pan)으로 작동합니다!
       if (!this.isPdfCropModeActive) {
+        if (e.pointerType === 'touch') return;
         if (e.button !== 0 && e.pointerType === 'mouse') return;
         if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
           e.preventDefault();
@@ -7120,7 +7090,6 @@ class GraphApp {
           scrollTop: viewport.scrollTop,
           pointerId: e.pointerId
         };
-        this._pdfPanSamples = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
         viewport.classList.add('panning-active');
         return;
       }
@@ -7225,18 +7194,11 @@ class GraphApp {
         viewport.scrollTop = this._pdfViewportPanStart.scrollTop - dy;
         this.savedPdfScrollLeft = viewport.scrollLeft;
         this.savedPdfScrollTop = viewport.scrollTop;
-        const nowP = performance.now();
-        if (!this._pdfPanSamples) this._pdfPanSamples = [];
-        this._pdfPanSamples.push({ x: e.clientX, y: e.clientY, t: nowP });
-        while (this._pdfPanSamples.length > 2 && (nowP - this._pdfPanSamples[0].t) > 95) {
-          this._pdfPanSamples.shift();
-        }
         return;
       }
       if (this._isPdfViewportPanning) {
         this._isPdfViewportPanning = false;
         this._pdfViewportPanStart = null;
-        this._pdfPanSamples = [];
         viewport.classList.remove('panning-active');
       }
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
@@ -7247,7 +7209,7 @@ class GraphApp {
       updateCropBoxFromPointer(e.clientX, e.clientY);
     };
 
-    viewport.addEventListener('pointermove', handleCropMove, { passive: false });
+    // 🌟 [중복 실행 버그 제거]: viewport와 window 양쪽에 걸려 매 프레임 2번씩 실행되던 리스너를 window 단일 리스너로 일원화!
     window.addEventListener('pointermove', handleCropMove, { passive: false });
 
     const handleCropUp = (e) => {
@@ -7258,27 +7220,11 @@ class GraphApp {
           endPdfViewerPinch();
         }
       }
-      // 🌟 [PDF 뷰포트 이동 마감 & 물리 관성 스크롤(Momentum) 발사]:
-      // 손을 빠르게 스윽 밀고 뗐을 때(최근 75ms 이내 이동) 주르륵 부드럽게 감속 주행하며, 멈췄다 떼면 그 자리에 즉시 정지!
+      // 🌟 [크롬·엣지 PDF 뷰어 표준 1:1 정지]: 마우스/펜을 떼면 원하는 문제 위치에 미끄러짐 없이 즉시 정지!
       if (this._isPdfViewportPanning) {
-        const samples = this._pdfPanSamples || [];
         this._isPdfViewportPanning = false;
         this._pdfViewportPanStart = null;
-        this._pdfPanSamples = [];
         viewport.classList.remove('panning-active');
-        if (samples.length >= 2 && (!this._pdfTouchPointers || this._pdfTouchPointers.size === 0)) {
-          const first = samples[0];
-          const last = samples[samples.length - 1];
-          const nowUp = performance.now();
-          const dt = last.t - first.t;
-          if (dt >= 6 && (nowUp - last.t) <= 75) {
-            const vx = ((last.x - first.x) / dt) * 16.0;
-            const vy = ((last.y - first.y) / dt) * 16.0;
-            if (Math.hypot(vx, vy) >= 2.0) {
-              startPdfViewerMomentum(vx, vy);
-            }
-          }
-        }
       }
       if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
       this.isPdfCropping = false;
@@ -11862,9 +11808,11 @@ class GraphApp {
       cancelAnimationFrame(this._canvasMomentumRaf);
       this._canvasMomentumRaf = null;
     }
-    const maxSpd = 60;
-    let vx = Math.max(-maxSpd, Math.min(maxSpd, initVx));
-    let vy = Math.max(-maxSpd, Math.min(maxSpd, initVy));
+    // 🌟 [표준 캔버스 감속 셋팅 (마찰계수 0.85, 약 0.15초 내 쫀득하고 절도 있게 정지)]:
+    // 빙판처럼 길게 미끄러지지 않고, 스윽 밀었을 때 손목 부담만 덜어주며 원하는 위치 근처에 착 감기듯 멈춥니다!
+    const maxSpd = 42;
+    let vx = Math.max(-maxSpd, Math.min(maxSpd, initVx * 0.82));
+    let vy = Math.max(-maxSpd, Math.min(maxSpd, initVy * 0.82));
     if (Math.hypot(vx, vy) < 1.8) {
       this._isCanvasMomentumActive = false;
       this._inkBakeDirty = true;
@@ -11880,8 +11828,8 @@ class GraphApp {
         this.render();
         return;
       }
-      vx *= 0.925;
-      vy *= 0.925;
+      vx *= 0.85;
+      vy *= 0.85;
       if (mode === 'board') {
         this.boardPanX = Math.round((this.boardPanX || 0) + vx);
         this.boardPanY = Math.round((this.boardPanY || 0) + vy);
@@ -11891,7 +11839,7 @@ class GraphApp {
         this.panY = (this.panY || 0) + vy;
       }
       this._inkBakeDirty = true;
-      if (Math.hypot(vx, vy) < 0.45) {
+      if (Math.hypot(vx, vy) < 0.65) {
         this._isCanvasMomentumActive = false;
         this._canvasMomentumRaf = null;
         if (mode === 'board') {
