@@ -6694,11 +6694,11 @@ class GraphApp {
       : pageCanvas;
 
     ctx.save();
-    if ((!isExport || !this.exportTransparent) && !isActivelyMovingCamera) {
-      ctx.shadowColor = isLight ? 'rgba(15, 23, 42, 0.10)' : 'rgba(0, 0, 0, 0.45)';
-      ctx.shadowBlur = isLight ? 18 : 24;
+    if (!isExport && !isActivelyMovingCamera) {
+      ctx.shadowColor = isLight ? 'rgba(15, 23, 42, 0.14)' : 'rgba(0, 0, 0, 0.50)';
+      ctx.shadowBlur = isLight ? 20 : 26;
       ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 4;
+      ctx.shadowOffsetY = 5;
     }
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(drawX, drawY, drawW, drawH);
@@ -6710,9 +6710,11 @@ class GraphApp {
     ctx.imageSmoothingQuality = isActivelyMovingCamera ? 'medium' : 'high';
     ctx.drawImage(sourceTex, drawX, drawY, drawW, drawH);
 
-    ctx.strokeStyle = isLight ? 'rgba(148, 163, 184, 0.45)' : 'rgba(255, 255, 255, 0.22)';
-    ctx.lineWidth = 1.2;
-    ctx.strokeRect(drawX, drawY, drawW, drawH);
+    if (!isExport) {
+      ctx.strokeStyle = isLight ? 'rgba(148, 163, 184, 0.55)' : 'rgba(255, 255, 255, 0.24)';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(drawX, drawY, drawW, drawH);
+    }
     ctx.restore();
   }
 
@@ -6722,42 +6724,11 @@ class GraphApp {
     const cx = this.pdfPageBoardData.centerX || 0;
     const cy = this.pdfPageBoardData.centerY || 0;
 
-    // 1. 페이지 영역[cx-mathW/2 ~ cx+mathW/2, cy-mathH/2 ~ cy+mathH/2]을 기본 바운딩으로 잡고, 페이지 주변 필기나 그래프가 있으면 확장
-    let minMX = cx - mathW / 2;
-    let maxMX = cx + mathW / 2;
-    let minMY = cy - mathH / 2;
-    let maxMY = cy + mathH / 2;
-
-    const expandMath = (mx, my, padM = 0.2) => {
-      if (!Number.isFinite(mx) || !Number.isFinite(my)) return;
-      if (mx - padM < minMX) minMX = mx - padM;
-      if (mx + padM > maxMX) maxMX = mx + padM;
-      if (my - padM < minMY) minMY = my - padM;
-      if (my + padM > maxMY) maxMY = my + padM;
-    };
-
-    (this.inkStrokes || []).forEach(s => {
-      if (!s || (s.target || 'board') !== 'graph') return;
-      if (s.points && s.points.length > 0) {
-        s.points.forEach(pt => expandMath(pt.x, pt.y, 0.25));
-      }
-      if (s.shape) {
-        const sh = s.shape;
-        if (sh.start && sh.end) {
-          expandMath(sh.start.x, sh.start.y, 0.25);
-          expandMath(sh.end.x, sh.end.y, 0.25);
-        } else if (sh.center) {
-          const r = sh.radius || Math.max(sh.rx || 0, sh.ry || 0) || 0.5;
-          expandMath(sh.center.x - r, sh.center.y - r, 0.25);
-          expandMath(sh.center.x + r, sh.center.y + r, 0.25);
-        } else if (sh.min && sh.max) {
-          expandMath(sh.min.x, sh.min.y, 0.25);
-          expandMath(sh.max.x, sh.max.y, 0.25);
-        } else if (sh.pts && sh.pts.length > 0) {
-          sh.pts.forEach(pt => expandMath(pt.x, pt.y, 0.25));
-        }
-      }
-    });
+    // 1. 통모드(페이지 모드)는 캔버스 영역을 원본 PDF 페이지 크기(mathW × mathH)로 1:1 고정
+    const minMX = cx - mathW / 2;
+    const maxMX = cx + mathW / 2;
+    const minMY = cy - mathH / 2;
+    const maxMY = cy + mathH / 2;
 
     const spanW = Math.max(1.0, maxMX - minMX);
     const spanH = Math.max(1.0, maxMY - minMY);
@@ -8325,8 +8296,26 @@ class GraphApp {
   // 🌟 [페이지 모드(pdfPageBoardData) 전용: 카드 위젯을 PDF 페이지 수학 좌표(_pdfAnchor)에 핀처럼 고정!] 🌟
   _pinCardToPdfBoardAtScreenPos(el, screenX, screenY, keepExistingScale = false) {
     if (!el || !this.pdfPageBoardData) return null;
-    const sx = Math.round(screenX);
-    const sy = Math.round(screenY);
+    let sx = Math.round(screenX);
+    let sy = Math.round(screenY);
+    if (this.pdfPageBoardData.mathW && this.pdfPageBoardData.mathH) {
+      const cx = this.pdfPageBoardData.centerX || 0;
+      const cy = this.pdfPageBoardData.centerY || 0;
+      const tl = this.mathToScreen(cx - this.pdfPageBoardData.mathW / 2, cy + this.pdfPageBoardData.mathH / 2);
+      const br = this.mathToScreen(cx + this.pdfPageBoardData.mathW / 2, cy - this.pdfPageBoardData.mathH / 2);
+      const pageLeft = Math.min(tl.x, br.x);
+      const pageRight = Math.max(tl.x, br.x);
+      const pageTop = Math.min(tl.y, br.y);
+      const pageBottom = Math.max(tl.y, br.y);
+      const cardW = el.offsetWidth || parseFloat(el.style.width) || 180;
+      const cardH = el.offsetHeight || 120;
+      const minX = pageLeft + 4;
+      const maxX = Math.max(minX, pageRight - cardW - 4);
+      const minY = pageTop + 4;
+      const maxY = Math.max(minY, pageBottom - Math.min(cardH, Math.max(40, pageBottom - pageTop - 8)) - 4);
+      sx = Math.round(Math.max(minX, Math.min(maxX, sx)));
+      sy = Math.round(Math.max(minY, Math.min(maxY, sy)));
+    }
     const m = this.screenToMath(sx, sy);
     const curUS = (typeof this.getCurrentMathUnitScale === 'function') ? this.getCurrentMathUnitScale() : 60;
     const prevUS = (keepExistingScale && el._pdfAnchor && el._pdfAnchor.unitScale > 0)
@@ -12863,6 +12852,12 @@ class GraphApp {
 
     const drawPathOnCtx = (color) => {
       ctx.save();
+      if (this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2) {
+        const pr = this._lastPdfPageScreenRect;
+        ctx.beginPath();
+        ctx.rect(pr.x, pr.y, pr.w, pr.h);
+        ctx.clip();
+      }
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
       ctx.lineWidth = lineW;
@@ -24519,6 +24514,13 @@ class GraphApp {
         }
 
         const isHighlighterStroke = (this.activeInkTool === 'highlighter');
+        // 📄 [대표님 기획: PDF 통모드(페이지 모드) 바깥 베젤 영역 필기 시작 차단]
+        if (this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect) {
+          const pr = this._lastPdfPageScreenRect;
+          if (pos.x < pr.x || pos.x > pr.x + pr.width || pos.y < pr.y || pos.y > pr.y + pr.height) {
+            return;
+          }
+        }
         if (neededCleanRenderBeforeFreeze) {
           this.isDrawingInk = false;
           this._hasSceneFreeze = false;
@@ -27602,16 +27604,22 @@ class GraphApp {
       ctx.drawImage(this.sceneFreezeCanvas, 0, 0, width, height);
 
       const isBoardSplit = this.isBoardMode && (this.currentInkStroke.target === 'graph');
-      if (isBoardSplit) {
+      const isPdfClip = Boolean(this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2);
+      if (isBoardSplit || isPdfClip) {
         ctx.save();
         ctx.beginPath();
-        ctx.rect(0, 0, Math.round(width * this.boardSplitRatio), height);
+        if (isPdfClip) {
+          const pr = this._lastPdfPageScreenRect;
+          ctx.rect(pr.x, pr.y, pr.w, pr.h);
+        } else {
+          ctx.rect(0, 0, Math.round(width * this.boardSplitRatio), height);
+        }
         ctx.clip();
       }
 
       this.renderSingleStroke(ctx, this.currentInkStroke, null, true);
 
-      if (isBoardSplit) {
+      if (isBoardSplit || isPdfClip) {
         ctx.restore();
       }
 
@@ -27652,9 +27660,11 @@ class GraphApp {
       }
     } else {
       // 🌟 [대표님 긴급 해결: 화면 깜빡임 100% 원천 박멸 (Zero-Flicker Architecture)] 🌟
-      // clearRect()는 캔버스 픽셀을 0.001초 동안 투명(검정) 상태로 만들기 때문에 백버퍼 스왑 시 화면 깜빡임의 핵심 원인이 됨!
-      // clearRect를 완전히 배제하고 불투명 칠판 배경색(fillRect)으로 즉시 덮어씌워 144Hz 무결점 렌더링 완성!
-      const bg = this.isMonochromeMode ? '#ffffff' : curTheme.bg;
+      // PDF 통모드(페이지 모드)일 때는 종이 바깥 영역을 책상 베젤 색상으로 구분하여 PDF 용지 경계를 선명하게 표시!
+      const isPdfPageDesk = Boolean(this.isGraphCovered && this.pdfPageBoardData && !this._isRenderingGraphSnapshot);
+      const bg = isPdfPageDesk
+        ? ((curTheme.isLight || this.isMonochromeMode) ? '#e2e8f0' : '#0b0f19')
+        : (this.isMonochromeMode ? '#ffffff' : curTheme.bg);
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, width, height);
     }
@@ -27672,8 +27682,22 @@ class GraphApp {
       : { includeProblem: true, includeGraph: true, includeInk: true };
 
     // 0.6. [📄 PDF 페이지 통째 칠판 레이어 (0.5층): 개념서/교재 페이지 위 자유 확대·축소·판서 및 실시간 그래프/스샷 카드 완벽 호환!]
-    if (this.pdfPageBoardData && !this._isRenderingGraphSnapshot && expFilter.includeProblem !== false) {
-      this.drawPdfPageBoardLayer(ctx, isExport);
+    if (this.pdfPageBoardData && !this._isRenderingGraphSnapshot) {
+      if (expFilter.includeProblem !== false) {
+        this.drawPdfPageBoardLayer(ctx, isExport);
+      } else {
+        const { mathW, mathH } = this.pdfPageBoardData;
+        const cx = this.pdfPageBoardData.centerX || 0;
+        const cy = this.pdfPageBoardData.centerY || 0;
+        const tl = this.mathToScreen(cx - mathW / 2, cy + mathH / 2);
+        const br = this.mathToScreen(cx + mathW / 2, cy - mathH / 2);
+        this._lastPdfPageScreenRect = {
+          x: Math.min(tl.x, br.x),
+          y: Math.min(tl.y, br.y),
+          w: Math.abs(br.x - tl.x),
+          h: Math.abs(br.y - tl.y)
+        };
+      }
     }
 
     // [🔀 정통 N축 합성함수 해석 모드: 듀얼 상하 뷰포트 & 수직 레이저 트레이서 전용 렌더링]
@@ -27694,35 +27718,52 @@ class GraphApp {
     }
 
     // 🌟 [2-Layer 아키텍처 & 정사각형 좌표평면 (Square Coordinate Plane)] 🌟
-    // 별도의 미니 윈도우(3번 창)나 불투명 배경 박스 없이,
-    // 원점/중심 기준 단정한 정사각형 영역 안에서만 격자, x·y축, 점근선, 곡선을 깔끔하게 재단(Clipping)합니다!
-    // 덕분에 그래프를 옆으로 밀어도 오른쪽 판서 공간으로 x축이나 직선이 삐져나오지 않으며,
-    // 필기(Ink)는 클리핑 밖(전체화면)에서 단일 레이어(1층)로 렌더링되어 어디서든 잘리지 않고 자유롭게 판서됩니다!
     if (!isExport) {
       this.syncGraphSnapBarUI();
     }
 
-    // 🌟 [대표님 유레카 기획: 칠판 덮개(isGraphCovered) 활성 시 밑의 실시간 그래프 작업실을 100% 덮고 백지 칠판만 표출!] 🌟
-    // 단, PDF 페이지 통째 칠판 모드(this.pdfPageBoardData)일 때는 실시간 그래프/축만 덮고 PDF 페이지와 페이지 위 개념 필기('graph')는 그대로 노출!
+    // 🌟 [칠판 덮개(isGraphCovered) 활성 시 밑의 실시간 그래프 작업실을 100% 덮고 백지 칠판/PDF 페이지만 표출!] 🌟
+    // PDF 통모드(this.pdfPageBoardData)에서는 필기와 카드가 반드시 PDF 용지 영역(_lastPdfPageScreenRect) 내부로 클리핑됩니다!
     if (this.isGraphCovered && !this._isRenderingGraphSnapshot) {
+      const pdfClipRect = (this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2)
+        ? this._lastPdfPageScreenRect
+        : null;
       if (isExport && !this.useViewfinder) {
+        if (pdfClipRect) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(pdfClipRect.x, pdfClipRect.y, pdfClipRect.w, pdfClipRect.h);
+          ctx.clip();
+        }
         this.drawFloatingCardsForExport(ctx, expFilter);
         if (expFilter.includeInk !== false) {
-          if (this.pdfPageBoardData && expFilter.includeProblem !== false) {
+          if (this.pdfPageBoardData) {
             this.drawInkStrokes(ctx, true, 'graph');
           }
           this.drawInkStrokes(ctx, true, 'board');
           this.drawBoardStickers(ctx, true);
         }
+        if (pdfClipRect) {
+          ctx.restore();
+        }
         return;
       }
       if (!isExport) {
         this.syncCurveContextBar();
+        if (pdfClipRect) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(pdfClipRect.x, pdfClipRect.y, pdfClipRect.w, pdfClipRect.h);
+          ctx.clip();
+        }
         if (this.pdfPageBoardData) {
           this.drawInkStrokes(ctx, false, 'graph');
         }
         this.drawInkStrokes(ctx, false, 'board');
         this.drawBoardStickers(ctx, false);
+        if (pdfClipRect) {
+          ctx.restore();
+        }
         this.drawMainLaserStrokes(ctx);
         this.drawLassoOverlay(ctx);
         return;
@@ -32291,6 +32332,21 @@ class GraphApp {
 
   // --- [📐 선택된 요소(문제·그래프·필기) 영역만 자동 감지하는 직사각형 바운딩 박스 계산 엔진] ---
   getSmartExportBounds(filterOpts = null) {
+    // 🌟 [대표님 핵심 기획: PDF 통모드(페이지 모드)는 뷰어·내보내기 시 100% 원본 PDF 페이지 사이즈로 1:1 고정!] 🌟
+    // 통모드에서 뷰어로 보거나 PNG/PDF로 저장할 때 페이지 바깥 여백이 붙거나 페이지마다 비율이 달라지지 않도록,
+    // 무조건 원본 PDF 페이지 사각형(mathW × mathH) 그대로 스캔하여 정품 PDF와 100% 동일한 규격을 보장합니다!
+    if (this.isGraphCovered && this.pdfPageBoardData && this.pdfPageBoardData.mathW && this.pdfPageBoardData.mathH) {
+      const cx = this.pdfPageBoardData.centerX || 0;
+      const cy = this.pdfPageBoardData.centerY || 0;
+      const pTL = this.mathToScreen(cx - this.pdfPageBoardData.mathW / 2, cy + this.pdfPageBoardData.mathH / 2);
+      const pBR = this.mathToScreen(cx + this.pdfPageBoardData.mathW / 2, cy - this.pdfPageBoardData.mathH / 2);
+      const pageX = Math.round(Math.min(pTL.x, pBR.x));
+      const pageY = Math.round(Math.min(pTL.y, pBR.y));
+      const pageW = Math.max(10, Math.round(Math.abs(pBR.x - pTL.x)));
+      const pageH = Math.max(10, Math.round(Math.abs(pBR.y - pTL.y)));
+      return { x: pageX, y: pageY, width: pageW, height: pageH, w: pageW, h: pageH };
+    }
+
     const effFilter = filterOpts || this._activeExportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
     const incProb = effFilter.includeProblem !== false;
     const incGraph = effFilter.includeGraph !== false;
