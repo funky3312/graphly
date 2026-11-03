@@ -6419,29 +6419,12 @@ body.theme-light .canvas-text-input {
 }
 
 #sliderInkSize {
-  height: 26px !important;
+  height: 5px !important;
   margin: 0 !important;
   padding: 0 !important;
-  background: transparent !important;
   cursor: pointer !important;
   touch-action: none !important;
   pointer-events: auto !important;
-}
-
-#sliderInkSize::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.18);
-}
-
-body.theme-light #sliderInkSize::-webkit-slider-runnable-track {
-  background: #cbd5e1;
-}
-
-#sliderInkSize::-webkit-slider-thumb {
-  margin-top: -5px;
-  width: 16px;
-  height: 16px;
 }
 
 /* ==========================================================================
