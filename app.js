@@ -3636,16 +3636,23 @@ class GraphApp {
 
   deleteBoardSticker(stk) {
     if (!stk || !Array.isArray(this.boardStickers)) return false;
-    const idx = this.boardStickers.indexOf(stk);
+    const idx = this.boardStickers.findIndex(s => s === stk || (s && stk && s.id && s.id === stk.id));
     if (idx === -1) return false;
-    this.boardStickers.splice(idx, 1);
-    this.undoStack.push({ type: 'sticker_delete', sticker: stk });
+    const removed = this.boardStickers.splice(idx, 1)[0];
+    this.undoStack.push({ type: 'sticker_delete', sticker: removed });
     if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
     this.redoStack = [];
     this.updateUndoRedoUI();
     if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
     this.render();
     return true;
+  }
+
+  removeBoardStickerById(stickerId) {
+    if (!stickerId || !Array.isArray(this.boardStickers)) return false;
+    const stk = this.boardStickers.find(s => s && s.id === stickerId);
+    if (!stk) return false;
+    return this.deleteBoardSticker(stk);
   }
 
   syncWorkspaceStickerOverlay() {
@@ -3656,82 +3663,112 @@ class GraphApp {
       overlay.innerHTML = '';
       return;
     }
-    overlay.innerHTML = '';
     const hasStickers = Array.isArray(this.boardStickers) && this.boardStickers.length > 0;
     const hasDraft = Boolean(this.isDrawingSticker && this.stickerDraftStart && this.stickerDraftCurrent);
-    if (!hasStickers && !hasDraft) return;
+    if (!hasStickers && !hasDraft) {
+      overlay.innerHTML = '';
+      return;
+    }
+
+    const existingMap = new Map();
+    Array.from(overlay.querySelectorAll('.workspace-sticker-item')).forEach(el => {
+      if (el.dataset && el.dataset.stickerId) {
+        existingMap.set(el.dataset.stickerId, el);
+      } else {
+        el.remove();
+      }
+    });
+    const activeIds = new Set();
 
     if (hasStickers) {
       for (let i = 0; i < this.boardStickers.length; i++) {
         const stk = this.boardStickers[i];
+        if (!stk) continue;
+        if (!stk.id) {
+          stk.id = 'stk_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 6);
+        }
         const rect = this.getBoardStickerScreenRect(stk);
         if (!rect || rect.w < 4 || rect.h < 4) continue;
+        activeIds.add(stk.id);
 
-        const itemEl = document.createElement('div');
-        itemEl.className = 'card-sticker-item workspace-sticker-item' + (stk.revealed ? ' revealed' : '');
-        itemEl.dataset.stickerId = stk.id;
+        let itemEl = existingMap.get(stk.id);
+        let badgeEl = itemEl ? itemEl.querySelector('.card-sticker-badge') : null;
+        if (!itemEl) {
+          itemEl = document.createElement('div');
+          itemEl.className = 'card-sticker-item workspace-sticker-item' + (stk.revealed ? ' revealed' : '');
+          itemEl.dataset.stickerId = stk.id;
+
+          badgeEl = document.createElement('span');
+          badgeEl.className = 'card-sticker-badge';
+          itemEl.appendChild(badgeEl);
+
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'card-sticker-del-btn';
+          delBtn.title = '스티커 삭제';
+          delBtn.textContent = '✕';
+          const handleDelSticker = (ev) => {
+            if (ev && ev.button && ev.button !== 0) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            this.removeBoardStickerById(stk.id);
+          };
+          delBtn.addEventListener('pointerdown', handleDelSticker);
+          delBtn.addEventListener('click', handleDelSticker);
+          itemEl.appendChild(delBtn);
+
+          let downPt = null;
+          itemEl.addEventListener('pointerdown', (ev) => {
+            if (ev.target && ev.target.closest && ev.target.closest('.card-sticker-del-btn')) return;
+            if (this.isInkMode && this.activeInkTool === 'sticker') return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (this.isInkMode && this.activeInkTool === 'eraser') {
+              this.removeBoardStickerById(stk.id);
+              return;
+            }
+            downPt = { x: ev.clientX, y: ev.clientY };
+          });
+          itemEl.addEventListener('pointerenter', (ev) => {
+            if (this.isInkMode && this.activeInkTool === 'eraser' && ev.buttons > 0) {
+              this.removeBoardStickerById(stk.id);
+            }
+          });
+          itemEl.addEventListener('pointerup', (ev) => {
+            if (ev.target && ev.target.closest && ev.target.closest('.card-sticker-del-btn')) return;
+            if (this.isInkMode && this.activeInkTool === 'sticker') return;
+            if (!downPt) return;
+            const dist = Math.hypot(ev.clientX - downPt.x, ev.clientY - downPt.y);
+            downPt = null;
+            if (dist <= 14) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              const curStk = (this.boardStickers || []).find(s => s && s.id === stk.id) || stk;
+              curStk.revealed = !curStk.revealed;
+              if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+              this.render();
+            }
+          });
+
+          overlay.appendChild(itemEl);
+        }
+
+        itemEl.classList.toggle('revealed', Boolean(stk.revealed));
         itemEl.style.left = `${rect.x.toFixed(1)}px`;
         itemEl.style.top = `${rect.y.toFixed(1)}px`;
         itemEl.style.width = `${rect.w.toFixed(1)}px`;
         itemEl.style.height = `${rect.h.toFixed(1)}px`;
-
-        const badgeEl = document.createElement('span');
-        badgeEl.className = 'card-sticker-badge';
-        badgeEl.textContent = stk.revealed ? '🔓' : ((rect.w >= 64 && rect.h >= 24) ? '🔒 터치' : '🔒');
-        itemEl.appendChild(badgeEl);
-
-        const delBtn = document.createElement('button');
-        delBtn.type = 'button';
-        delBtn.className = 'card-sticker-del-btn';
-        delBtn.title = '스티커 삭제';
-        delBtn.textContent = '✕';
-        delBtn.addEventListener('pointerdown', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-        });
-        delBtn.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          this.removeBoardStickerById(stk.id);
-        });
-        itemEl.appendChild(delBtn);
-
-        let downPt = null;
-        itemEl.addEventListener('pointerdown', (ev) => {
-          if (ev.target && ev.target.closest && ev.target.closest('.card-sticker-del-btn')) return;
-          if (this.isInkMode && this.activeInkTool === 'sticker') return;
-          ev.preventDefault();
-          ev.stopPropagation();
-          if (this.isInkMode && this.activeInkTool === 'eraser') {
-            this.removeBoardStickerById(stk.id);
-            return;
-          }
-          downPt = { x: ev.clientX, y: ev.clientY };
-        });
-        itemEl.addEventListener('pointerenter', (ev) => {
-          if (this.isInkMode && this.activeInkTool === 'eraser' && ev.buttons > 0) {
-            this.removeBoardStickerById(stk.id);
-          }
-        });
-        itemEl.addEventListener('pointerup', (ev) => {
-          if (ev.target && ev.target.closest && ev.target.closest('.card-sticker-del-btn')) return;
-          if (this.isInkMode && this.activeInkTool === 'sticker') return;
-          if (!downPt) return;
-          const dist = Math.hypot(ev.clientX - downPt.x, ev.clientY - downPt.y);
-          downPt = null;
-          if (dist <= 14) {
-            ev.preventDefault();
-            ev.stopPropagation();
-            stk.revealed = !stk.revealed;
-            if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
-            this.render();
-          }
-        });
-
-        overlay.appendChild(itemEl);
+        if (badgeEl) {
+          badgeEl.textContent = stk.revealed ? '🔓' : ((rect.w >= 64 && rect.h >= 24) ? '🔒 터치' : '🔒');
+        }
       }
     }
 
+    existingMap.forEach((el, id) => {
+      if (!activeIds.has(id)) el.remove();
+    });
+
+    let draftEl = overlay.querySelector('.workspace-sticker-draft');
     if (hasDraft) {
       const s = this.stickerDraftStart;
       const c = this.stickerDraftCurrent;
@@ -3740,14 +3777,20 @@ class GraphApp {
       const dw = Math.abs(c.x - s.x);
       const dh = Math.abs(c.y - s.y);
       if (dw >= 2 && dh >= 2) {
-        const draftEl = document.createElement('div');
-        draftEl.className = 'workspace-sticker-draft';
+        if (!draftEl) {
+          draftEl = document.createElement('div');
+          draftEl.className = 'workspace-sticker-draft';
+          overlay.appendChild(draftEl);
+        }
         draftEl.style.left = `${dx.toFixed(1)}px`;
         draftEl.style.top = `${dy.toFixed(1)}px`;
         draftEl.style.width = `${dw.toFixed(1)}px`;
         draftEl.style.height = `${dh.toFixed(1)}px`;
-        overlay.appendChild(draftEl);
+      } else if (draftEl) {
+        draftEl.remove();
       }
+    } else if (draftEl) {
+      draftEl.remove();
     }
   }
 
@@ -10510,22 +10553,19 @@ class GraphApp {
         delBtn.className = 'card-sticker-del-btn';
         delBtn.title = '스티커 삭제';
         delBtn.textContent = '✕';
-        delBtn.addEventListener('pointerdown', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-        });
-        delBtn.addEventListener('click', (ev) => {
+        const handleDelCardSticker = (ev) => {
+          if (ev && ev.button && ev.button !== 0) return;
           ev.preventDefault();
           ev.stopPropagation();
           const curArr = this.getCardStickersArray(cardWidgetEl);
-          const idx = curArr.indexOf(stk);
+          const idx = curArr.findIndex(s => s === stk || (s && stk && s.id && s.id === stk.id));
           if (idx !== -1) {
-            curArr.splice(idx, 1);
+            const removed = curArr.splice(idx, 1)[0];
             this.undoStack.push({
               type: 'card_sticker_delete',
               cardEl: cardWidgetEl,
               stickersArr: curArr,
-              sticker: stk,
+              sticker: removed,
               renderFn: renderCardStickers
             });
             if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
@@ -10534,7 +10574,9 @@ class GraphApp {
             if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
             renderCardStickers();
           }
-        });
+        };
+        delBtn.addEventListener('pointerdown', handleDelCardSticker);
+        delBtn.addEventListener('click', handleDelCardSticker);
         itemEl.appendChild(delBtn);
 
         let downPt = null;

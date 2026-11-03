@@ -10628,8 +10628,16 @@ body.ink-sticker-tool-active .workspace-sticker-overlay .workspace-sticker-item 
   z-index: 2;
 }
 
-.card-sticker-item:hover .card-sticker-del-btn {
+.card-sticker-item:hover .card-sticker-del-btn,
+body.ink-sticker-tool-active .card-sticker-del-btn,
+.card-sticker-del-btn:hover {
   opacity: 1;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .card-sticker-del-btn {
+    opacity: 0.85;
+  }
 }
 
 .card-sticker-del-btn:hover {
