@@ -20556,11 +20556,6 @@ class GraphApp {
       currentIndex: 0
     };
     this._initialSharedCloudPkg = JSON.parse(JSON.stringify(normalizedPkg));
-
-    if (this._packageHasRecordedAudio(normalizedPkg)) {
-      this.enterStudentAudioVideoOnlyMode(normalizedPkg, Boolean(autoPlayIfAudio));
-      return pack;
-    }
     this.exitStudentAudioVideoOnlyMode();
     this.openSmartNoteViewer(normalizedPkg);
     return pack;
@@ -20585,8 +20580,7 @@ class GraphApp {
       }
     }
     const effFilter = this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
-    const hasAudio = this._packageHasRecordedAudio({ playlistSlides: slides });
-    if (!hasAudio && !this._isCapturingExportSnapshots) {
+    if (!this._isCapturingExportSnapshots) {
       this._isCapturingExportSnapshots = true;
       const backupCurrent = this.serializeFullSlideState('backup');
       try {
@@ -21052,6 +21046,14 @@ class GraphApp {
       this._applyAudioTimelineStateAt(0);
       this._renderAudioReplayAtCurrentTime();
       this.syncAudioRecordUI();
+    } else if (this.isStudentAudioVideoOnlyMode) {
+      this.stopAudioPlayback(true);
+      this.exitStudentAudioVideoOnlyMode();
+      if (this._viewerPkg) {
+        this._viewerPkg.currentIndex = this.lessonPlaylistIndex;
+        this.openSmartNoteViewer(this._viewerPkg, true);
+      }
+      return;
     } else if (typeof this._syncReplayFixedStageLayout === 'function') {
       this._syncReplayFixedStageLayout();
     }
@@ -21249,6 +21251,14 @@ class GraphApp {
       this._applyAudioTimelineStateAt(0);
       this._renderAudioReplayAtCurrentTime();
       this.syncAudioRecordUI();
+    } else if (this.isStudentAudioVideoOnlyMode) {
+      this.stopAudioPlayback(true);
+      this.exitStudentAudioVideoOnlyMode();
+      if (this._viewerPkg) {
+        this._viewerPkg.currentIndex = this.lessonPlaylistIndex;
+        this.openSmartNoteViewer(this._viewerPkg, true);
+      }
+      return;
     } else if (typeof this._syncReplayFixedStageLayout === 'function') {
       this._syncReplayFixedStageLayout();
     }
@@ -22013,6 +22023,7 @@ class GraphApp {
     const btnZoomOut = document.getElementById('btnViewerZoomOut');
     const btnZoomFit = document.getElementById('btnViewerZoomFit');
     const btnDownload = document.getElementById('btnViewerDownloadPng');
+    const btnWatchVideo = document.getElementById('btnViewerWatchVideo');
     const btnEdit = document.getElementById('btnViewerEnterEdit');
     const btnFullscreen = document.getElementById('btnViewerFullscreen');
 
@@ -22074,6 +22085,12 @@ class GraphApp {
         link.download = `Graphly_판서노트_${this._viewerSlideIdx + 1}_${Date.now()}.png`;
         link.href = img.src;
         link.click();
+      };
+    }
+    if (btnWatchVideo) {
+      btnWatchVideo.onclick = (e) => {
+        e.stopPropagation();
+        this.enterAudioLectureFromViewer(this._viewerSlideIdx);
       };
     }
     if (btnEdit) {
@@ -22478,7 +22495,7 @@ class GraphApp {
       id: 'preview_' + Date.now().toString(36),
       createdAt: Date.now(),
       exportScope: previewSlides.length > 1 ? 'all' : 'current',
-      exportFilter: { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: false },
+      exportFilter: { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true },
       isPlaylist: Boolean(this.isLessonPlaylistActive) || previewSlides.length > 1,
       playlistSlides: previewSlides,
       currentIndex: activeIdx
@@ -22489,10 +22506,6 @@ class GraphApp {
 
   async openSmartNoteViewer(pkg, forceNoteViewer = false) {
     if (!pkg || !Array.isArray(pkg.playlistSlides) || !pkg.playlistSlides.length) return;
-    if (!forceNoteViewer && this._packageHasRecordedAudio(pkg)) {
-      await this.enterStudentAudioVideoOnlyMode(pkg, false);
-      return;
-    }
     this.exitStudentAudioVideoOnlyMode();
     this._viewerPkg = pkg;
     document.body.classList.remove('viewer-graph-touch-mode');
@@ -22514,6 +22527,12 @@ class GraphApp {
     this._viewerSlideIdx = idx;
     const slide = this._viewerPkg.playlistSlides[idx];
     const total = this._viewerPkg.playlistSlides.length;
+
+    const btnWatchVideo = document.getElementById('btnViewerWatchVideo');
+    const hasSlideAudio = Boolean(slide && slide.audioSyncData && slide.audioSyncData.durationMs > 0);
+    if (btnWatchVideo) {
+      btnWatchVideo.style.display = hasSlideAudio ? 'inline-flex' : 'none';
+    }
 
     const navGroup = document.getElementById('viewerSlideNavGroup');
     const lblCounter = document.getElementById('lblViewerSlideCounter');
@@ -33049,6 +33068,24 @@ class GraphApp {
       };
     }
 
+    const btnBackToViewer = document.getElementById('btnAudioBackToViewer');
+    if (btnBackToViewer) {
+      btnBackToViewer.onclick = async (e) => {
+        e.stopPropagation();
+        this.stopAudioPlayback(true);
+        const curIdx = (this.isLessonPlaylistActive && typeof this.lessonPlaylistIndex === 'number')
+          ? this.lessonPlaylistIndex
+          : (this._viewerSlideIdx || 0);
+        this.exitStudentAudioVideoOnlyMode();
+        if (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides) && this._viewerPkg.playlistSlides.length > 0) {
+          this._viewerPkg.currentIndex = Math.max(0, Math.min(this._viewerPkg.playlistSlides.length - 1, curIdx));
+          await this.openSmartNoteViewer(this._viewerPkg, true);
+        } else {
+          await this.openCurrentWorkspaceInSmartViewer();
+        }
+      };
+    }
+
     if (btnCloseBar) {
       btnCloseBar.onclick = (e) => {
         e.stopPropagation();
@@ -35000,6 +35037,10 @@ class GraphApp {
       const btnShowFinalNote = document.getElementById('btnAudioShowFinalNote');
       if (btnShowFinalNote) {
         btnShowFinalNote.style.display = 'none';
+      }
+      const btnBackToViewer = document.getElementById('btnAudioBackToViewer');
+      if (btnBackToViewer) {
+        btnBackToViewer.style.display = this.isStudentAudioVideoOnlyMode ? 'inline-flex' : 'none';
       }
     } else {
       bar.style.display = 'none';

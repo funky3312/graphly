@@ -9904,6 +9904,9 @@ body.student-audio-video-only #btnPlaylistDeleteCurrent,
 body.student-audio-video-only #btnPlaylistHideBar,
 body.student-audio-video-only #btnPlaylistClose,
 body.student-audio-video-only #btnPlaylistClearAll,
+body.student-audio-video-only #btnPlaylistToggleSelectMode,
+body.student-audio-video-only #btnPlaylistConfirmSelectedDelete,
+body.student-audio-video-only .slide-chip-add-blank,
 body.student-audio-video-only #lessonPlaylistNavBar .pdf-board-nav-divider,
 body.student-audio-video-only .slide-chip-del-x {
   display: none !important;
