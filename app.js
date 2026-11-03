@@ -22298,7 +22298,13 @@ class GraphApp {
     this._isSlideSelectDeleteMode = false;
     this._selectedSlideDeleteIndices = new Set();
 
-    const hasOpenPdf = Boolean(this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0));
+    const hasOpenPdf = Boolean(
+      this.pdfDoc ||
+      (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0) ||
+      this.lessonTeachingMode === 'crop' ||
+      this.lessonTeachingMode === 'page' ||
+      this.pdfPageBoardData
+    );
     if (hasOpenPdf) {
       this._isAddSlideMenuOpen = !this._isAddSlideMenuOpen;
       this.syncLessonPlaylistNavBarUI();
@@ -22514,18 +22520,42 @@ class GraphApp {
     if (btnNextPdfPage) btnNextPdfPage.style.display = 'none';
     if (btnOpenPdf) btnOpenPdf.style.display = 'none';
 
-    const hasOpenPdf = Boolean(this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0));
+    const hasOpenPdf = Boolean(
+      this.pdfDoc ||
+      (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0) ||
+      this.lessonTeachingMode === 'crop' ||
+      this.lessonTeachingMode === 'page' ||
+      this.pdfPageBoardData
+    );
+    const isPdfPageMode = Boolean(
+      this.pdfPageBoardData ||
+      (this.lessonTeachingMode === 'page' && !this.hasActiveProblemCard())
+    );
     if (!hasOpenPdf) {
       this._isAddSlideMenuOpen = false;
     }
     if (addMenuPop) {
       addMenuPop.style.display = (this._isAddSlideMenuOpen && hasOpenPdf) ? 'flex' : 'none';
     }
+    const btnMenuNextPdfPage = document.getElementById('btnAddSlideMenuNextPdfPage');
+    const iconMenuPickPdf = document.getElementById('iconAddSlideMenuPickPdf');
+    const lblMenuPickPdf = document.getElementById('lblAddSlideMenuPickPdf');
+    if (btnMenuNextPdfPage) {
+      btnMenuNextPdfPage.style.display = isPdfPageMode ? 'flex' : 'none';
+    }
     if (lblMenuNextPdfPage) {
       lblMenuNextPdfPage.textContent = '다음 페이지';
     }
+    if (iconMenuPickPdf) {
+      iconMenuPickPdf.textContent = isPdfPageMode ? '🔍' : '✂️';
+    }
+    if (lblMenuPickPdf) {
+      lblMenuPickPdf.textContent = isPdfPageMode ? '페이지 선택' : '다음 캡처';
+    }
     if (btnAddSlide) {
-      btnAddSlide.title = hasOpenPdf ? '슬라이드 추가 메뉴 (다음 페이지 / 페이지 선택 / 빈 캔버스)' : '새 빈 캔버스 추가';
+      btnAddSlide.title = hasOpenPdf
+        ? (isPdfPageMode ? '슬라이드 추가 메뉴 (다음 페이지 / 페이지 선택 / 빈 캔버스)' : '슬라이드 추가 메뉴 (다음 캡처 / 빈 캔버스)')
+        : '새 빈 캔버스 추가';
     }
 
     navBar.style.display = 'flex';

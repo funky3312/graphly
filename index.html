@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_54">
+  <link rel="stylesheet" href="style.css?v=20261103_55">
 </head>
 
 <body class="theme-light">
@@ -2517,14 +2517,14 @@
       </div>
       <div id="playlistSlideChips" class="slide-chips-strip slide-chips-grid"></div>
     </div>
-    <!-- [+] 클릭 시 PDF 열림 상태에서 뜨는 초소형 3줄 슬라이드 추가 메뉴 -->
+    <!-- [+] 클릭 시 PDF 열림 상태에서 뜨는 슬라이드 추가 메뉴 (통PDF: 3줄 / 캡처모드: 2줄) -->
     <div id="playlistAddSlideMenu" class="slide-add-menu-popover" style="display: none;">
       <button type="button" id="btnAddSlideMenuNextPdfPage" class="slide-add-menu-item">
         <span class="slide-add-menu-icon">📄</span>
         <span id="lblAddSlideMenuNextPdfPage">다음 페이지</span>
       </button>
       <button type="button" id="btnAddSlideMenuPickPdf" class="slide-add-menu-item">
-        <span class="slide-add-menu-icon">🔍</span>
+        <span id="iconAddSlideMenuPickPdf" class="slide-add-menu-icon">🔍</span>
         <span id="lblAddSlideMenuPickPdf">페이지 선택</span>
       </button>
       <button type="button" id="btnAddSlideMenuBlankCanvas" class="slide-add-menu-item">
@@ -3027,8 +3027,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_54"></script>
-  <script src="app.js?v=20261103_54"></script>
+  <script src="engine.js?v=20261103_55"></script>
+  <script src="app.js?v=20261103_55"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
