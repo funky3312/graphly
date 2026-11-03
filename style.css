@@ -9630,21 +9630,12 @@ body.theme-light .audio-rec-hint {
 }
 
 /* ==========================================================================
-   🎬 [4단계: 문제+그래프+풀이+음성 전용 학생용 순수 통 영상 플레이어 모드]
-   편집/필기/툴바를 100% 숨기고 하단 와이드 플레이바(시크바)만으로 영상처럼 시청!
+   🎬 [4단계: 문제+그래프+풀이+음성 전용 통 영상 플레이어 모드 (상시 노출 · 렉 0%)]
+   재생 중에도 메뉴바/서랍/필기바를 투명도 트랜지션 없이 상시 노출(정적 GPU 레이어 고정)하여
+   합성 부하(렉)를 0%로 만들고, 실제 화면 녹화 동영상과 100% 동일한 화면을 재현합니다!
    ========================================================================== */
-body.student-audio-video-only #sidebarRail,
-body.student-audio-video-only #inkFloatingToolbar,
-body.student-audio-video-only #rightActionToolbar,
-body.student-audio-video-only #quickPillRemote,
 body.student-audio-video-only #sharedResetBar,
-body.student-audio-video-only #graphSnapFloatingBar,
-body.student-audio-video-only #pdfToGraphCropFloatingBar,
-body.student-audio-video-only #btnCancelPdfCropToGraph,
 body.student-audio-video-only #pdfBoardNavBar,
-body.student-audio-video-only #curveContextBar,
-body.student-audio-video-only #lassoActionFloatingBar,
-body.student-audio-video-only #pwRegionPopover,
 body.student-audio-video-only #smartNoteViewerOverlay,
 body.student-audio-video-only #viewerGraphTouchBar,
 body.student-audio-video-only .problem-card-actions,
@@ -9653,6 +9644,8 @@ body.student-audio-video-only .card-sticker-del-btn,
 body.student-audio-video-only #btnAudioReRecord,
 body.student-audio-video-only #btnAudioSyncDelete,
 body.student-audio-video-only #btnAudioSyncCloseBar,
+body.student-audio-video-only #btnAudioShowFinalNote,
+body.audio-replay-active #btnAudioShowFinalNote,
 body.student-audio-video-only #btnPlaylistAddSlide,
 body.student-audio-video-only #btnPlaylistNextPdfPage,
 body.student-audio-video-only #btnPlaylistOpenPdf,
@@ -9663,6 +9656,53 @@ body.student-audio-video-only #btnPlaylistClearAll,
 body.student-audio-video-only #lessonPlaylistNavBar .pdf-board-nav-divider,
 body.student-audio-video-only .slide-chip-del-x {
   display: none !important;
+}
+
+/* 상시 노출 메뉴바/서랍: 투명도 애니메이션 없이 그대로 띄워두고 시청자 오클릭만 방지 */
+body.student-audio-video-only #railDrawer,
+body.audio-replay-active #railDrawer {
+  transition: none !important;
+}
+body.student-audio-video-only #sidebarRail,
+body.student-audio-video-only #railDrawer,
+body.student-audio-video-only #inkFloatingToolbar,
+body.student-audio-video-only #rightActionToolbar,
+body.student-audio-video-only #quickPillRemote,
+body.student-audio-video-only #graphSnapFloatingBar,
+body.student-audio-video-only #pdfToGraphCropFloatingBar,
+body.student-audio-video-only #curveContextBar,
+body.student-audio-video-only #lassoActionFloatingBar,
+body.student-audio-video-only #pwRegionPopover,
+body.audio-replay-active #sidebarRail,
+body.audio-replay-active #railDrawer,
+body.audio-replay-active #inkFloatingToolbar,
+body.audio-replay-active #rightActionToolbar,
+body.audio-replay-active #quickPillRemote,
+body.audio-replay-active #graphSnapFloatingBar,
+body.audio-replay-active #pdfToGraphCropFloatingBar,
+body.audio-replay-active #curveContextBar,
+body.audio-replay-active #lassoActionFloatingBar,
+body.audio-replay-active #pwRegionPopover {
+  pointer-events: none !important;
+}
+
+/* 리플레이 중 포인터가 가리키는 버튼 호버 하이라이트 & 클릭 피드백 */
+.replay-ui-btn-hover {
+  outline: 2px solid #00d2d3 !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 14px rgba(0, 210, 211, 0.55) !important;
+  transform: translateY(-1px) scale(1.05) !important;
+  transition: transform 0.12s ease, box-shadow 0.12s ease !important;
+  z-index: 5 !important;
+}
+
+.replay-ui-btn-active {
+  outline: 2.5px solid #38bdf8 !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.85) !important;
+  transform: scale(0.94) !important;
+  transition: transform 0.08s ease, box-shadow 0.08s ease !important;
+  z-index: 6 !important;
 }
 
 body.student-audio-video-only #graphCanvas,
@@ -9781,9 +9821,10 @@ body.theme-light .audio-btn-viewer-back {
   font-weight: 700 !important;
 }
 
-/* 가상 펜 포인터 리플레이 시 카드 위에서도 항상 최상단에 표시 */
+/* 가상 펜 포인터 리플레이 시 카드/메뉴/서랍 위에서도 항상 최상단에 표시 */
 body.audio-replay-active #virtualStylusPen {
-  z-index: 2650 !important;
+  position: fixed !important;
+  z-index: 2147483640 !important;
   pointer-events: none !important;
 }
 

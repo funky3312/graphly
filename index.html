@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_20">
+  <link rel="stylesheet" href="style.css?v=20261103_26">
 </head>
 
 <body class="theme-light">
@@ -611,23 +611,55 @@
                     </label>
                   </label>
                 </div>
-                <div class="settings-footer-actions"
-                  style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(148,163,184,0.2); display: flex; flex-direction: column; gap: 7px;">
+                <!-- 섹션: 👤 계정 & 클라우드 로그인/로그아웃 (공용 PC 즉시 전환 지원) -->
+                <div id="settingsAccountSection"
+                  style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(148,163,184,0.2);">
+                  <div class="section-title" style="margin-bottom: 6px;">
+                    <span>👤 내 계정 &amp; 클라우드</span>
+                  </div>
+                  <div id="lblSettingsAccountStatus"
+                    style="font-size: 11.5px; font-weight: 700; padding: 7px 10px; border-radius: 8px; background: rgba(100,116,139,0.1); color: #475569; margin-bottom: 8px; line-height: 1.45; word-break: break-all;">
+                    🔒 비로그인 상태 (공용 PC 보호 중)
+                  </div>
+                  <div id="settingsAccountLoggedOutActions" style="display: flex; gap: 6px;">
+                    <button type="button" id="btnSettingsGoogleLogin" class="btn-primary"
+                      style="flex: 1; padding: 8px 6px; border-radius: 8px; font-size: 11.5px; font-weight: 700; cursor: pointer;">
+                      🔵 Google 로그인
+                    </button>
+                    <button type="button" id="btnSettingsEmailLogin" class="btn-secondary"
+                      style="flex: 1; padding: 8px 6px; border-radius: 8px; font-size: 11.5px; font-weight: 700; cursor: pointer;">
+                      📧 이메일 로그인·가입
+                    </button>
+                  </div>
+                  <div id="settingsAccountLoggedInActions" style="display: none; gap: 6px;">
+                    <button type="button" id="btnSettingsOpenVault" class="btn-secondary"
+                      style="flex: 1; padding: 8px 6px; border-radius: 8px; font-size: 11.5px; font-weight: 700; cursor: pointer;">
+                      ☁️ 내 보관함 열기
+                    </button>
+                    <button type="button" id="btnSettingsLogout" class="btn-secondary"
+                      style="flex: 1; padding: 8px 6px; border-radius: 8px; font-size: 11.5px; font-weight: 800; color: #ef4444; border-color: rgba(239,68,68,0.35); cursor: pointer;">
+                      🚪 로그아웃
+                    </button>
+                  </div>
+                </div>
+
+                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(148,163,184,0.2);">
                   <button type="button" id="btnOpenProPricingFromSettings" class="btn-primary"
                     style="width:100%; padding:10px 12px; border-radius:9px; font-size:12.5px; font-weight:700; background:linear-gradient(135deg,#2563eb,#4f46e5); color:#fff; border:none; cursor:pointer;">
                     👑 Pro 이용권 구매 · 사업자 정보 안내
                   </button>
-                  <button type="button" id="btnOpenGuideNoticeFromSettings" class="settings-support-btn">
-                    <span class="settings-support-left">💡 사용법 · 단축키 · 공지 안내</span>
-                    <span class="settings-support-arrow">›</span>
+                  <div style="display:flex; gap:6px; margin-top:8px;">
+                    <button type="button" id="btnOpenGuideNoticeFromSettings" class="btn-secondary"
+                      style="flex:1; padding:8px 6px; border-radius:8px; font-size:11.5px; font-weight:700; cursor:pointer;">
+                      📖 사용법 &amp; 공지사항
+                    </button>
+                    <a id="btnBugReportFromSettings" href="mailto:help@cubiolab.com?subject=%5BGraphly%20%EB%B2%84%EA%B7%B8%EC%A0%9C%EB%B3%B4%2F%EB%AC%B8%EC%9D%98%5D" class="btn-secondary"
+                      style="flex:1; padding:8px 6px; border-radius:8px; font-size:11.5px; font-weight:700; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">
+                      🛠️ 오류·건의 문의
+                    </a>
+                  </div>
+                  <button type="button" style="display:none;"
                   </button>
-                  <a id="btnBugReportFromSettings"
-                    href="mailto:help@cubiolab.com?subject=%5BGraphly%20%EB%B2%84%EA%B7%B8%EC%A0%9C%EB%B3%B4%2F%EB%AC%B8%EC%9D%98%5D"
-                    class="settings-support-btn settings-bug-link"
-                    title="클릭 시 메일 앱 연결 및 이메일 주소(help@cubiolab.com) 자동 복사">
-                    <span class="settings-support-left">🐞 버그 제보 · 문의 (help@cubiolab.com)</span>
-                    <span class="settings-support-badge">메일</span>
-                  </a>
                 </div>
               </div>
 
@@ -1416,14 +1448,17 @@
             title="상단 녹화 바 숨기기 (우측 마이크 버튼으로 종료 가능)">✕</button>
         </div>
 
-        <!-- 상태 2: 영상 플레이어 바 (Video Playbar) -->
+        <!-- 상태 2: 재생 및 노트 클릭 모드 (Playback & Interactive Note) -->
         <div id="audioSyncPlayerGroup" class="audio-sync-group" style="display: none;">
           <button type="button" id="btnAudioPlayPause" class="audio-sync-btn audio-btn-play" title="재생 / 일시정지">
             <span id="iconAudioPlayPause">▶</span>
           </button>
           <span id="lblAudioPlayTime" class="audio-sync-time">00:00 / 00:00</span>
-          <input type="range" id="audioSyncScrubber" class="audio-sync-scrubber" min="0" max="1000" step="10" value="0"
-            title="원하는 구간의 플레이바를 클릭·드래그하여 바로 이동합니다">
+          <input type="range" id="audioSyncScrubber" class="audio-sync-scrubber" min="0" max="1000" step="10" value="0">
+          <button type="button" id="btnAudioReplayViewMode_legacy" style="display:none !important;" class="audio-sync-btn audio-btn-mode active-video"
+            title="영상처럼 차근차근 써지며 재생할지, 완성된 노트를 보며 원하는 필기를 클릭해 들을지 전환합니다">
+            <span id="lblAudioReplayViewMode">🎬 영상 모드</span>
+          </button>
           <button type="button" id="btnAudioSyncSpeed" class="audio-sync-btn audio-btn-speed"
             title="재생 배속 변경">1.0x</button>
           <button type="button" id="btnAudioShowFinalNote" class="audio-sync-btn audio-btn-final-note"
@@ -1432,6 +1467,8 @@
           <button type="button" id="btnAudioReRecord" class="audio-sync-btn audio-btn-rerecord" title="새로 녹음">🎙️
             재녹음</button>
           <button type="button" id="btnAudioSyncDelete" class="audio-sync-btn audio-btn-del" title="녹음 삭제">🗑️</button>
+          <button type="button" id="btnAudioBackToViewer" class="audio-sync-btn audio-btn-viewer-back"
+            style="display: none;" title="노트 뷰어로 돌아가기">↩ 뷰어</button>
           <button type="button" id="btnAudioSyncCloseBar" class="audio-sync-btn audio-btn-close"
             title="플레이어 접기">✕</button>
         </div>
@@ -2079,11 +2116,11 @@
               <button type="button" id="btnExportPresetStage0" class="export-stage-preset-chip" data-stage="0"
                 title="학생들이 패드에서 처음부터 직접 풀 수 있도록 [문제]만 저장/공유합니다">① 문제</button>
               <button type="button" id="btnExportPresetStage1" class="export-stage-preset-chip" data-stage="1"
-                title="학생들이 패드에서 그래프를 움직이며 풀 수 있도록 [문제 + 그래프]만 저장/공유합니다">② 문제+그래프</button>
+                title="학생들이 직접 풀 수 있도록 필기와 음성을 제외하고 [문제 + 그래프]만 저장/공유합니다">1차: 문제+그래프</button>
               <button type="button" id="btnExportPresetStage2" class="export-stage-preset-chip" data-stage="2"
-                title="음성을 제외하고 [문제 + 그래프 + 풀이] 해설 노트를 저장/공유합니다">③ 문제+그래프+풀이</button>
+                title="음성을 제외하고 [문제 + 그래프 + 필기] 해설 노트만 저장/공유합니다">2차: +필기 해설</button>
               <button type="button" id="btnExportPresetStage3" class="export-stage-preset-chip active" data-stage="3"
-                title="[문제 + 그래프 + 풀이 + 음성] 전체 강의를 편집 없는 순수 통 영상 플레이어로 공유합니다">④ +음성 (통 영상)</button>
+                title="[문제 + 그래프 + 필기 + 음성] 전체 강의를 저장/공유합니다">3차: +음성 강의</button>
             </div>
           </div>
           <div class="export-filter-hint" id="lblExportFilterSummary" style="display: none;"></div>
@@ -2187,6 +2224,14 @@
       </div>
 
       <div class="smart-viewer-right">
+        <button type="button" id="btnViewerPlayAudioLecture_legacy" class="viewer-top-btn viewer-top-btn-audio"
+          style="display: none;" title="처음부터 펜 포인터와 함께 영상처럼 생생하게 재생합니다">
+          <span>🎬 강의 전체 재생</span>
+        </button>
+        <button type="button" id="btnViewerNoteClickAudio_legacy" class="viewer-top-btn viewer-top-btn-note-audio"
+          style="display: none;" title="완성된 필기노트에서 원하는 수식을 클릭해 해당 부분 설명만 바로 듣습니다">
+          <span>📝 필기 클릭해 듣기</span>
+        </button>
         <div class="viewer-zoom-group">
           <button type="button" id="btnViewerZoomOut" class="viewer-zoom-btn">−</button>
           <button type="button" id="btnViewerZoomFit" class="viewer-zoom-label"><span
@@ -2315,8 +2360,7 @@
         <polyline points="9 18 15 12 9 6" />
       </svg>
     </button>
-    <button id="btnPlaylistAddSlide" class="pdf-board-close-btn slim-icon-btn slim-add-slide-btn"
-      title="빈 슬라이드 생성 (새 백지 캔버스 추가)">
+    <button id="btnPlaylistAddSlide" class="pdf-board-close-btn slim-icon-btn slim-add-slide-btn" title="새 캔버스 추가">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
         stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="5" x2="12" y2="19" />
@@ -2393,13 +2437,14 @@
           <span class="modal-title-text">불러오기</span>
         </div>
         <div class="cloud-auth-area" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-          <span id="lblCloudUserStatus" class="cloud-user-status" style="display: none;"></span>
+          <span id="lblCloudUserStatus" class="cloud-user-status"
+            style="display: none; font-size:12px; font-weight:700; padding:4px 9px; border-radius:6px; background:rgba(37,99,235,0.1); color:#2563eb;"></span>
           <button type="button" id="btnOpenProPricingFromHub" class="btn-cloud-auth"
             style="background:linear-gradient(135deg,#2563eb,#4f46e5);color:#fff;border:none;font-weight:700;">
             <span>👑 이용권 결제</span>
           </button>
-          <button type="button" id="btnCloudEmailLoginToggle" class="btn-cloud-auth" title="일반 이메일 ID/PW 로그인">
-            <span>🔑 ID/PW 로그인</span>
+          <button type="button" id="btnCloudEmailLoginToggle" class="btn-cloud-auth" title="이메일 로그인 및 본인인증 회원가입">
+            <span>📧 이메일 로그인·가입</span>
           </button>
           <button type="button" id="btnCloudGoogleLogin" class="btn-cloud-auth">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"
@@ -2418,26 +2463,79 @@
       </div>
 
       <div class="smart-modal-body cloud-hub-body">
-        <!-- 🔑 일반 ID/PW 로그인 입력창 -->
+        <!-- 📧 이메일 로그인 & 본인인증 회원가입 통합 입력창 (Google 이메일과 동일 계정 자동 연동) -->
         <div id="cloudEmailLoginBox"
-          style="display: none; background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 10px; padding: 12px; margin-bottom: 10px;">
-          <div style="font-size: 12px; font-weight: 700; color: #3b82f6; margin-bottom: 8px;">
-            <span>🔑 이메일 ID / 비밀번호 로그인</span>
+          style="display: none; background: rgba(37, 99, 235, 0.07); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 10px; padding: 12px; margin-bottom: 10px;">
+          <div
+            style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 6px;">
+              <button type="button" id="tabBtnCloudIdLogin" class="btn-primary"
+                style="padding: 5px 12px; font-size: 12px; font-weight: 700; border-radius: 6px;">📧 이메일 로그인</button>
+              <button type="button" id="tabBtnCloudIdSignup" class="btn-secondary"
+                style="padding: 5px 12px; font-size: 12px; font-weight: 700; border-radius: 6px;">✨ 이메일 회원가입
+                (본인인증)</button>
+            </div>
+            <span style="font-size: 11px; color: #2563eb; font-weight: 600;">✅ 이메일 인증 완료 시 동일 주소의 Google 로그인과 하나의 계정으로
+              통합 연동됩니다.</span>
           </div>
           <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-            <input type="email" id="inputCloudEmailId" placeholder="이메일 아이디"
-              style="flex:1; min-width:150px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
-            <input type="password" id="inputCloudEmailPw" placeholder="비밀번호"
+            <input type="email" id="inputCloudEmailId" placeholder="이메일 주소 (예: teacher@gmail.com)" autocomplete="email"
+              style="flex:1; min-width:170px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
+            <input type="password" id="inputCloudEmailPw" placeholder="비밀번호 (6자 이상)" autocomplete="current-password"
               style="flex:1; min-width:120px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
             <button type="button" id="btnSubmitCloudEmailLogin" class="btn-primary"
               style="padding:7px 14px; font-size:12.5px; font-weight:700; border-radius:7px;">로그인</button>
           </div>
+          <div id="cloudSignupExtraFields" style="display: none; gap: 6px; flex-wrap: wrap; margin-top: 6px;">
+            <input type="password" id="inputCloudEmailPwConfirm" placeholder="비밀번호 확인" autocomplete="new-password"
+              style="flex:1; min-width:140px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
+            <input type="text" id="inputCloudSignupName" placeholder="선생님 성함 / 닉네임 (예: 김수학)"
+              style="flex:1; min-width:140px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
+          </div>
+          <div id="cloudLoginHelperRow" style="display: flex; justify-content: flex-end; margin-top: 6px;">
+            <button type="button" id="btnResetEmailPassword"
+              style="background: none; border: none; color: #475569; font-size: 11.5px; font-weight: 600; text-decoration: underline; cursor: pointer; padding: 2px 4px;">
+              🔑 비밀번호를 잊으셨나요? (또는 Google 계정에 비밀번호 추가)
+            </button>
+          </div>
+          <!-- 📩 이메일 본인인증 대기 안내 및 확인 배너 -->
+          <div id="cloudEmailVerifyBanner"
+            style="display: none; margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.4); color: #065f46; font-size: 12px; line-height: 1.5;">
+            <div id="lblEmailVerifyPendingMsg" style="font-weight: 700; margin-bottom: 6px;">
+              📩 입력하신 이메일로 본인 인증 링크를 발송했습니다! 메일함에서 인증 링크를 클릭한 뒤 아래 버튼을 눌러주세요.
+            </div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <button type="button" id="btnVerifyEmailCheckNow" class="btn-primary"
+                style="padding: 6px 12px; font-size: 12px; font-weight: 800; border-radius: 6px; background: #059669; border: none; color: #fff; cursor: pointer;">
+                ✅ 이메일 인증 완료 확인 및 로그인
+              </button>
+              <button type="button" id="btnResendVerificationEmail" class="btn-secondary"
+                style="padding: 6px 10px; font-size: 11.5px; font-weight: 700; border-radius: 6px; cursor: pointer;">
+                🔄 인증메일 재발송
+              </button>
+            </div>
+          </div>
         </div>
-        <!-- 1. 내 기기에서 파일 불러오기 (단일 진입점) -->
+        <!-- 1. 내 기기 및 열려있는 PDF에서 불러오기 -->
         <div class="cloud-import-source-box">
-          <button type="button" id="btnOpenLocalFileFromHub" class="btn-import-single-hero">
-            <span class="import-hero-icon">📂</span>
-            <span class="import-hero-text">내 기기에서 파일 열기 <span class="import-hero-sub">(PDF · 이미지)</span></span>
+          <!-- 열려있는 PDF가 있을 때만 최상단에 자동 표시 (새 캔버스 추가 후 원래 PDF로 돌아가거나 현재 화면에 추가 캡처할 때!) -->
+          <button type="button" id="btnResumeOpenPdfFromHub" class="btn-import-source btn-resume-open-pdf"
+            style="display: none;">
+            <span class="import-source-left">
+              <span class="import-source-icon">📖</span>
+              <span class="import-source-main">열려있는 PDF 이어서 캡처</span>
+              <span id="lblResumePdfFileName" class="resume-pdf-filename"></span>
+            </span>
+            <span class="import-source-badge badge-blue">현재 캔버스에 추가</span>
+          </button>
+
+          <!-- 언제 눌러도 100% 무조건 탐색기(폴더)를 여는 버튼 -->
+          <button type="button" id="btnOpenLocalFileFromHub" class="btn-import-source btn-open-local-explorer">
+            <span class="import-source-left">
+              <span class="import-source-icon">📁</span>
+              <span class="import-source-main">내 기기에서 새 파일 열기</span>
+            </span>
+            <span class="import-source-badge">PDF · 이미지 · .graphly</span>
           </button>
         </div>
 
@@ -2473,13 +2571,13 @@
     </div>
   </div>
 
-  <!-- [👑 Graphly Pro 이용권 결제 & 사업자 정보 모달 (비회원/회원 토스페이먼츠 카드결제 즉시 연동)] -->
+  <!-- [👑 Graphly Pro 이용권 결제 & 사업자 정보 모달 (구글 로그인 / 일반 ID 회원 계정 귀속 결제)] -->
   <div id="modalProPricing" class="smart-modal-backdrop">
     <div class="smart-modal-card" style="max-width: 560px; width: 94%;">
       <div class="smart-modal-header">
         <div class="smart-modal-title">
           <span class="modal-icon">👑</span>
-          <span class="modal-title-text">Graphly 이용권 구매 (비회원/회원 카드결제)</span>
+          <span class="modal-title-text">Graphly Pro 이용권 구매</span>
         </div>
         <button type="button" id="btnCloseProPricingModal" class="btn-modal-close"><svg width="15" height="15"
             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -2510,12 +2608,19 @@
           </div>
         </div>
 
-        <!-- 비회원/회원 주문자 정보 -->
+        <!-- 결제 귀속 계정 확인 및 주문자 정보 -->
         <div
           style="background:rgba(148,163,184,0.08); border:1px solid rgba(148,163,184,0.25); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
-          <div style="font-size:12px; font-weight:700;">구매자 정보 (로그인 없이 비회원 카드결제 가능)</div>
+          <div id="proModalAccountStatusBox"
+            style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:8px 10px; border-radius:8px; background:rgba(37,99,235,0.08); border:1px solid rgba(37,99,235,0.25);">
+            <span id="lblProModalAccountStatus" style="font-size:12px; font-weight:700; color:#1e40af;">🔒 결제 전 로그인 필요
+              (구글 계정과 일반 ID 계정은 별도로 분리됩니다)</span>
+            <button type="button" id="btnProModalGoLogin" class="btn-primary"
+              style="padding:5px 10px; font-size:11.5px; font-weight:700; border-radius:6px;">🔑 로그인 / 회원가입</button>
+          </div>
+          <div style="font-size:12px; font-weight:700;">구매자 정보 (결제 영수증 수신 및 이용권 귀속 확인)</div>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <input type="text" id="inputProBuyerName" placeholder="구매자 성명 (미입력 시 비회원)"
+            <input type="text" id="inputProBuyerName" placeholder="구매자 성명"
               style="flex:1; min-width:130px; padding:8px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.4); font-size:12.5px;">
             <input type="email" id="inputProBuyerEmail" placeholder="이메일 주소 (영수증 수신용)"
               style="flex:1.4; min-width:170px; padding:8px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.4); font-size:12.5px;">
@@ -2560,6 +2665,16 @@
               <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
               <path d="m15 5 4 4" />
             </svg></span>
+        </button>
+        <button id="btnProblemCardReCrop_legacy" class="card-btn" style="display: none !important;">
+          <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+              stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;">
+              <circle cx="6" cy="6" r="3" />
+              <circle cx="6" cy="18" r="3" />
+              <line x1="20" y1="4" x2="8.12" y2="15.88" />
+              <line x1="14.47" y1="14.48" x2="20" y2="20" />
+              <line x1="8.12" y1="8.12" x2="12" y2="12" />
+            </svg>다음 캡처</span>
         </button>
         <button id="btnProblemCardClearInk" class="card-btn" title="필기 지우기">
           <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
@@ -2738,13 +2853,13 @@
             <span class="crop-btn-text">영역 캡처</span>
           </button>
 
+          <!-- 📄 이 페이지 열기 버튼 (개념 설명용: 해당 PDF 페이지 전체를 칠판 캔버스로 바로 삽입!) -->
           <!-- 📚 여러 문제 연속 캡처 ➔ 📥 캔버스에 삽입 (N) 버튼 (한 슬라이드에 여러 문제를 접힌 카드로 차곡차곡 삽입) -->
           <button id="btnPdfMultiCropMode" class="pdf-multi-crop-btn" title="한 슬라이드에 여러 문제를 연달아 캡처하여 접힌 카드로 차곡차곡 쌓습니다">
             <span id="iconPdfMultiCropMode" class="multi-crop-btn-icon">📚</span>
             <span id="lblPdfMultiCropMode" class="multi-crop-btn-text">여러 문제 캡처</span>
           </button>
 
-          <!-- 📄 이 페이지 열기 버튼 (개념 설명용: 해당 PDF 페이지 전체를 칠판 캔버스로 바로 삽입!) -->
           <button id="btnPdfOpenFullPage" class="pdf-open-page-btn">
             <span class="open-page-btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2798,6 +2913,7 @@
     </div>
   </div>
 
+  <!-- 토스트 팝업 메시지 -->
   <!-- [💡 단방향 공식 안내 게시판 모달: 작동법 · 단축키 · 꿀팁 · 공지사항] -->
   <div id="modalGuideNotice" class="smart-modal-backdrop">
     <div class="smart-modal-card guide-notice-modal-card">
@@ -2978,7 +3094,6 @@
     </div>
   </div>
 
-  <!-- 토스트 팝업 메시지 -->
   <div id="toastMsg" class="toast-msg"></div>
 
   <!-- 스크립트 로드 -->
@@ -2990,8 +3105,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_20"></script>
-  <script src="app.js?v=20261103_20"></script>
+  <script src="engine.js?v=20261103_26"></script>
+  <script src="app.js?v=20261103_26"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
