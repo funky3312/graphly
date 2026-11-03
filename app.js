@@ -13380,8 +13380,14 @@ class GraphApp {
     // 🌟 [144Hz 초고속 0.02ms GPU Blit]: 칠판 바깥창 판서 ('board')
     if (!filterTarget || filterTarget === 'board') {
       if (this.inkBakeCanvas) {
-        // 🌟 [DPR 고해상도 무결점 보정]: destination 폭/높이로 this.screenWidth, this.screenHeight를 명시하여 125%/150%/200% 배율에서도 글씨 날림 100% 박멸!
-        ctx.drawImage(this.inkBakeCanvas, 0, 0, this.screenWidth, this.screenHeight);
+        if (ctx === this.ctx) {
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.drawImage(this.inkBakeCanvas, 0, 0);
+          ctx.restore();
+        } else {
+          ctx.drawImage(this.inkBakeCanvas, 0, 0, this.screenWidth, this.screenHeight);
+        }
       }
       // 실시간 드로잉 중인 획이 보드 타깃인 경우 가벼운 1개 획만 즉시 렌더링!
       if (this.isDrawingInk && this.currentInkStroke && (this.currentInkStroke.target || 'board') === 'board') {
@@ -13392,8 +13398,14 @@ class GraphApp {
     // 🌟 [144Hz 초고속 0.02ms GPU Blit]: 그래프 내부 판서 ('graph')
     if (!filterTarget || filterTarget === 'graph') {
       if (this.inkGraphBakeCanvas) {
-        // 🌟 [DPR 고해상도 무결점 보정]: destination 폭/높이로 this.screenWidth, this.screenHeight를 명시하여 125%/150%/200% 배율에서도 글씨 날림 100% 박멸!
-        ctx.drawImage(this.inkGraphBakeCanvas, 0, 0, this.screenWidth, this.screenHeight);
+        if (ctx === this.ctx) {
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.drawImage(this.inkGraphBakeCanvas, 0, 0);
+          ctx.restore();
+        } else {
+          ctx.drawImage(this.inkGraphBakeCanvas, 0, 0, this.screenWidth, this.screenHeight);
+        }
       }
       // 실시간 드로잉 중인 획이 그래프 타깃인 경우 가벼운 1개 획만 즉시 렌더링!
       if (this.isDrawingInk && this.currentInkStroke && this.currentInkStroke.target === 'graph') {
@@ -23860,8 +23872,8 @@ class GraphApp {
       targetCssH = stageSz.h;
     } else {
       const rect = this.canvas.parentElement.getBoundingClientRect();
-      targetCssW = rect.width || window.innerWidth || 1280;
-      targetCssH = rect.height || window.innerHeight || 720;
+      targetCssW = Math.round(rect.width || window.innerWidth || 1280);
+      targetCssH = Math.round(rect.height || window.innerHeight || 720);
     }
     const dpr = this.getCanvasDpr();
     this.canvas.width = Math.round(targetCssW * dpr);
@@ -28379,7 +28391,10 @@ class GraphApp {
       !this._isRenderingGraphSnapshot &&
       targetCtx === this.ctx
     ) {
-      ctx.drawImage(this.sceneFreezeCanvas, 0, 0, width, height);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(this.sceneFreezeCanvas, 0, 0);
+      ctx.restore();
 
       const isBoardSplit = this.isBoardMode && (this.currentInkStroke.target === 'graph');
       const isPdfClip = Boolean(this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2);
@@ -36961,13 +36976,17 @@ class GraphApp {
       }
     };
 
-    // 🌟 [리플레이 오프스크린 베이크 캐시]: 이미 쓰기가 완료된 과거의 수백 개 획은 오프스크린 캔버스에 1회만 굽고 0.01ms 만에 복사(Blit)!
+    // 🌟 [리플레이 오프스크린 베이크 캐시]: 메인 캔버스와 100% 동일한 초고해상도 DPR(getCanvasDpr = 2.0~2.5x) 및 타깃별 독립 버퍼로 쓰기 완료 후에도 화질 저하 0%!
     if (ctx === this.ctx && completedReps.length > 0) {
+      const targetSlot = filterTarget || 'all';
       const pRectKey = this.problemCardRect
         ? `${Math.round(this.problemCardRect.x)},${Math.round(this.problemCardRect.y)},${Math.round(this.problemCardRect.w)},${Math.round(this.problemCardRect.h)}`
         : 'none';
+      const dpr = this.getCanvasDpr();
+      const bw = (this.canvas && this.canvas.width > 0) ? this.canvas.width : Math.max(1, Math.round(this.screenWidth * dpr));
+      const bh = (this.canvas && this.canvas.height > 0) ? this.canvas.height : Math.max(1, Math.round(this.screenHeight * dpr));
       const bakeKey = [
-        filterTarget || 'all',
+        targetSlot,
         completedReps.length,
         activeErased.length,
         Boolean(this.pdfPageBoardData),
@@ -36977,36 +36996,45 @@ class GraphApp {
         Math.round((this.boardPanX || 0) * 10),
         Math.round((this.boardPanY || 0) * 10),
         Math.round((this.boardZoom || 1) * 1000),
-        this.screenWidth,
-        this.screenHeight,
+        bw,
+        bh,
         this.currentThemeKey,
         Boolean(this.isMonochromeMode),
         pRectKey
       ].join('|');
 
-      const dpr = window.devicePixelRatio || 1;
-      const bw = Math.max(1, Math.round(this.screenWidth * dpr));
-      const bh = Math.max(1, Math.round(this.screenHeight * dpr));
-      if (!this._replayInkBakeCanvas) {
-        this._replayInkBakeCanvas = document.createElement('canvas');
+      if (!this._replayInkBakeMap) {
+        this._replayInkBakeMap = {};
       }
-      if (this._replayInkBakeCanvas.width !== bw || this._replayInkBakeCanvas.height !== bh) {
-        this._replayInkBakeCanvas.width = bw;
-        this._replayInkBakeCanvas.height = bh;
-        this._replayInkBakeKey = '';
+      if (!this._replayInkBakeMap[targetSlot]) {
+        this._replayInkBakeMap[targetSlot] = {
+          canvas: document.createElement('canvas'),
+          key: ''
+        };
       }
-      if (this._replayInkBakeKey !== bakeKey) {
-        const bCtx = this._replayInkBakeCanvas.getContext('2d');
+      const bakeEntry = this._replayInkBakeMap[targetSlot];
+      const bakeCanvas = bakeEntry.canvas;
+
+      if (bakeCanvas.width !== bw || bakeCanvas.height !== bh) {
+        bakeCanvas.width = bw;
+        bakeCanvas.height = bh;
+        bakeEntry.key = '';
+      }
+      if (bakeEntry.key !== bakeKey) {
+        const bCtx = bakeCanvas.getContext('2d');
         if (bCtx) {
           bCtx.save();
           bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
           bCtx.clearRect(0, 0, this.screenWidth, this.screenHeight);
           drawRepsBatch(bCtx, completedReps);
           bCtx.restore();
-          this._replayInkBakeKey = bakeKey;
+          bakeEntry.key = bakeKey;
         }
       }
-      ctx.drawImage(this._replayInkBakeCanvas, 0, 0, this.screenWidth, this.screenHeight);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(bakeCanvas, 0, 0);
+      ctx.restore();
     } else {
       drawRepsBatch(ctx, completedReps);
     }
