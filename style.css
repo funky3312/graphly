@@ -11782,8 +11782,10 @@ body.theme-light .single-line-slider-val {
 }
 
 .ink-floating-toolbar[data-dock-pos="right"] {
-  right: 14px;
+  right: 64px;
   left: auto;
+  top: calc(50% + 18px);
+  max-height: calc(100% - 68px);
 }
 
 /* 좌측 서랍이 열려 있을 때 왼쪽 도킹 필기 바와 겹치지 않도록 자동 페이드 처리 */
