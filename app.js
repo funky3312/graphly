@@ -8938,10 +8938,13 @@ class GraphApp {
 
     const readAsDataURL = (file) => new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onload = (evt) => resolve({
-        name: (file.name || '이미지 문제').replace(/\.[^/.]+$/, ''),
-        dataUrl: evt.target.result
-      });
+      reader.onload = (evt) => {
+        const rawBase = (file._customClipboardLabel || file.name || '이미지 문제').replace(/\.[^/.]+$/, '');
+        resolve({
+          name: (rawBase.toLowerCase() === 'image' ? '클립보드 캡처' : rawBase),
+          dataUrl: evt.target.result
+        });
+      };
       reader.onerror = () => resolve(null);
       reader.readAsDataURL(file);
     });
@@ -9392,37 +9395,46 @@ class GraphApp {
     if (this._clipboardInteractionsInited) return;
     this._clipboardInteractionsInited = true;
 
-    // 1. 클립보드 이미지 붙여넣기 (Ctrl + V)
-    window.addEventListener('paste', (e) => {
+    // 1. 클립보드 이미지 붙여넣기 (Ctrl + V: 빈 캔버스면 현재 캔버스에, 내용이 있으면 자동으로 새 캔버스에 분리 생성!)
+    window.addEventListener('paste', async (e) => {
       // 텍스트 인풋/텍스트에어리어에 포커스가 있을 때는 문자열 붙여넣기 우선
       const activeEl = document.activeElement;
       const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
       if (isInput) return;
 
-      const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
-      if (!items || items.length === 0) return;
+      const cbData = e.clipboardData || e.originalEvent?.clipboardData;
+      if (!cbData) return;
 
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        if (item.type && item.type.indexOf('image') !== -1) {
-          e.preventDefault();
-          const file = item.getAsFile();
-          if (!file) continue;
-
-          const reader = new FileReader();
-          reader.onload = (loadEvt) => {
-            const dataUrl = loadEvt.target.result;
-            if (!this.isInkMode) {
-              this.toggleInkMode(true);
+      const imageFiles = [];
+      if (cbData.files && cbData.files.length > 0) {
+        Array.from(cbData.files).forEach((f) => {
+          if (f && f.type && f.type.startsWith('image/')) {
+            if (!f.name || f.name.toLowerCase() === 'image.png') {
+              f._customClipboardLabel = '클립보드 캡처';
             }
-            this.setActiveInkTool('pen');
-            const targetW = Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
-            this.setProblemCard(dataUrl, '클립보드 캡처', null, targetW);
-            this.showToast('📋 캡처된 문제 이미지를 캔버스에 붙여넣었습니다!');
-          };
-          reader.readAsDataURL(file);
-          return;
+            imageFiles.push(f);
+          }
+        });
+      }
+      if (imageFiles.length === 0 && cbData.items && cbData.items.length > 0) {
+        for (let i = 0; i < cbData.items.length; i++) {
+          const item = cbData.items[i];
+          if (item.type && item.type.indexOf('image') !== -1) {
+            const file = item.getAsFile();
+            if (file) {
+              if (!file.name || file.name.toLowerCase() === 'image.png') {
+                file._customClipboardLabel = '클립보드 캡처';
+              }
+              imageFiles.push(file);
+            }
+          }
         }
+      }
+
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        this._isReplacingViaNextCrop = false;
+        await this.loadImagesOnePerSlide(imageFiles);
       }
     });
 
