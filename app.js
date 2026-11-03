@@ -32404,38 +32404,7 @@ class GraphApp {
           tEl.closest('#pwRegionPopover') ||
           tEl.closest('header')
         ));
-        let proximityBarEl = null;
-        if (
-          !directUiHit &&
-          !this.isDrawingInk &&
-          !this.isStylusDrawing &&
-          !this.isDrawingLaser &&
-          !this.isDraggingCurve &&
-          this.draggedHandleIdx === null &&
-          !this.isPanning &&
-          !this.isBoardPanning
-        ) {
-          const sidebarRailEl = document.getElementById('sidebarRail');
-          const drawerOpen = Boolean(!this.isDrawerCollapsed && (!sidebarRailEl || !sidebarRailEl.classList.contains('drawer-collapsed')));
-          const railDrawerEl = document.getElementById('railDrawer');
-          const railDockEl = document.getElementById('railDock');
-          const rightToolbarEl = document.getElementById('rightActionToolbar');
-          if (drawerOpen && railDrawerEl && e.clientX <= 382 && e.clientY >= 12 && e.clientY <= window.innerHeight - 12) {
-            proximityBarEl = (e.clientX < 60 && railDockEl) ? railDockEl : railDrawerEl;
-          } else if (railDockEl && e.clientX <= 60) {
-            const dr = railDockEl.getBoundingClientRect();
-            if (dr.height > 10 && e.clientY >= dr.top - 10 && e.clientY <= dr.bottom + 10) {
-              proximityBarEl = railDockEl;
-            }
-          } else if (rightToolbarEl && e.clientX >= window.innerWidth - 60) {
-            const rr = rightToolbarEl.getBoundingClientRect();
-            if (rr.height > 10 && e.clientY >= rr.top - 10 && e.clientY <= rr.bottom + 10) {
-              proximityBarEl = rightToolbarEl;
-            }
-          }
-        }
-        if (directUiHit || proximityBarEl) {
-          const effectiveTargetEl = proximityBarEl || tEl;
+        if (directUiHit) {
           const isDragHandle = Boolean(tEl && tEl.closest && tEl.closest('.ink-dock-drag-handle, .pill-drag-handle'));
           const isInteractiveBtn = Boolean(tEl && tEl.closest && tEl.closest(
             'button, a, label, input, select, summary, [role="button"], .func-btn, .preset-card, .rail-btn, .ink-tool-btn, .ink-color-dot, .quick-fab-btn, .slide-num-chip, .cat-tab-btn, .card-btn, .ctx-btn, .lasso-action-btn, .pw-popover-item, .custom-preset-chip, .export-preset-btn'
@@ -32444,7 +32413,7 @@ class GraphApp {
           const uiCursorKind = isDragHandle
             ? (isDownUI ? 'grabbing' : 'grab')
             : (isInteractiveBtn ? 'pointer' : 'arrow');
-          const uiMeta = this._extractAudioUiTargetMeta(effectiveTargetEl, e.clientX, e.clientY);
+          const uiMeta = this._extractAudioUiTargetMeta(tEl, e.clientX, e.clientY);
           this.recordAudioCursorPoint(
             e.clientX,
             e.clientY,
@@ -33799,8 +33768,6 @@ class GraphApp {
       if (br.width > 2 && br.height > 2) {
         meta.unx = Math.round(Math.max(0, Math.min(1, (clientX - br.left) / br.width)) * 10000) / 10000;
         meta.uny = Math.round(Math.max(0, Math.min(1, (clientY - br.top) / br.height)) * 10000) / 10000;
-        meta.ux = Math.round((clientX - br.left) * 10) / 10;
-        meta.uy = Math.round((clientY - br.top) * 10) / 10;
       }
     }
     const btnEl = targetEl.closest(
@@ -33926,8 +33893,6 @@ class GraphApp {
       if (extraMeta.uiBtnKey) entry.uiBtnKey = extraMeta.uiBtnKey;
       if (typeof extraMeta.unx === 'number') entry.unx = extraMeta.unx;
       if (typeof extraMeta.uny === 'number') entry.uny = extraMeta.uny;
-      if (typeof extraMeta.ux === 'number') entry.ux = extraMeta.ux;
-      if (typeof extraMeta.uy === 'number') entry.uy = extraMeta.uy;
       if (typeof extraMeta.bnx === 'number') entry.bnx = extraMeta.bnx;
       if (typeof extraMeta.bny === 'number') entry.bny = extraMeta.bny;
     } else if (extraMeta && extraMeta.cardKey) {
@@ -34446,50 +34411,22 @@ class GraphApp {
     }
   }
 
-  _isAudioDrawerOpenNearTime(targetMs, windowMs = 450) {
-    if (!this.audioSyncData || typeof targetMs !== 'number') return false;
-    const tMin = targetMs - windowMs;
-    const tMax = targetMs + windowMs;
-    let stateAtMin = this.audioSyncData.initialState || null;
-    const timeline = this.audioSyncData.timeline || [];
-    for (let i = 0; i < timeline.length; i++) {
-      const ev = timeline[i];
-      if (!ev || ev.type !== 'state' || !ev.state) continue;
-      if (ev.t <= tMin) {
-        stateAtMin = ev.state;
-      } else if (ev.t <= tMax) {
-        if (ev.state.drawerOpen) return true;
-      } else {
-        break;
-      }
-    }
-    return Boolean(stateAtMin && stateAtMin.drawerOpen);
-  }
-
-  _isTopLeftFixedMenuCursorEvent(ev) {
-    if (!ev) return false;
-    if (ev.uiBarId === 'railDrawer' || ev.uiBarId === 'railDock' || ev.uiBarId === 'sidebarRail') {
-      return true;
-    }
-    if (
-      !ev.isDrawing &&
-      ev.cursorKind !== 'grabbing' &&
-      !ev.cardKey &&
-      typeof ev.x === 'number' &&
-      typeof ev.y === 'number'
-    ) {
-      if (ev.x <= 64 && ev.y >= 10 && ev.y <= (window.innerHeight || 900) - 10) {
-        return true;
-      }
-      if (ev.x <= 385 && this._isAudioDrawerOpenNearTime(ev.t, 450)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  _projectCanvasCursorWithKeyframe(ev, kf) {
+  _projectCanvasCursorAtEventCamera(ev) {
     if (!ev) return null;
+    let kf = null;
+    if (this.audioSyncData && typeof ev.t === 'number') {
+      kf = this.audioSyncData.initialState || null;
+      const timeline = this.audioSyncData.timeline || [];
+      for (let i = 0; i < timeline.length; i++) {
+        const item = timeline[i];
+        if (!item || item.type !== 'state' || !item.state) continue;
+        if (item.t <= ev.t + 40) {
+          kf = item.state;
+        } else {
+          break;
+        }
+      }
+    }
     if (typeof ev.bx === 'number' && typeof ev.by === 'number') {
       const bz = (kf && typeof kf.boardZoom === 'number') ? kf.boardZoom : (this.boardZoom || 1.0);
       const bPanX = (kf && typeof kf.boardPanX === 'number') ? kf.boardPanX : (this.boardPanX || 0);
@@ -34523,65 +34460,14 @@ class GraphApp {
     return { x: ev.x, y: ev.y };
   }
 
-  _projectCanvasCursorAtEventCamera(ev) {
+  _resolveCursorEventScreenPos(ev) {
     if (!ev) return null;
-    if (!this.audioSyncData || typeof ev.t !== 'number') {
-      return this._projectCanvasCursorWithKeyframe(ev, null);
-    }
-    let prevKf = this.audioSyncData.initialState || null;
-    let nextKf = null;
-    let nextKfDt = Infinity;
-    const timeline = this.audioSyncData.timeline || [];
-    for (let i = 0; i < timeline.length; i++) {
-      const item = timeline[i];
-      if (!item || item.type !== 'state' || !item.state) continue;
-      if (item.t <= ev.t) {
-        prevKf = item.state;
-      } else {
-        nextKf = item.state;
-        nextKfDt = item.t - ev.t;
-        break;
+    if (ev.uiScreen) {
+      // 좌측 독(#railDock)과 서랍(#railDrawer)은 좌상단 고정 픽셀(left: 18px/66px, top: 18px) 위치이므로
+      // 원본 화면 좌표(ev.x, ev.y)를 그대로 사용하여 서랍 오픈/버튼-여백 간 점프를 원천 차단
+      if (ev.uiBarId === 'railDrawer' || ev.uiBarId === 'railDock' || ev.uiBarId === 'sidebarRail') {
+        return { x: ev.x, y: ev.y };
       }
-    }
-    // 클릭 직후 setTimeout(..., 0/35)으로 인해 state 키프레임이 커서 이벤트보다 수십 ms 뒤에 찍힌 경우,
-    // 원래 화면 좌표(ev.x, ev.y)와 더 일치하는 카메라 키프레임을 자동 선택하여 카메라 불일치 점프를 100% 방지!
-    if (prevKf && nextKf && nextKfDt <= 90 && typeof ev.x === 'number' && typeof ev.y === 'number') {
-      const pPrev = this._projectCanvasCursorWithKeyframe(ev, prevKf);
-      const pNext = this._projectCanvasCursorWithKeyframe(ev, nextKf);
-      if (pPrev && pNext) {
-        const dPrev = Math.hypot(pPrev.x - ev.x, pPrev.y - ev.y);
-        const dNext = Math.hypot(pNext.x - ev.x, pNext.y - ev.y);
-        if (dNext + 25 < dPrev) {
-          return pNext;
-        }
-      }
-    }
-    return this._projectCanvasCursorWithKeyframe(ev, prevKf);
-  }
-
-  _resolveUiEventScreenPosOnly(ev) {
-    if (!ev) return null;
-    // 🌟 [핵심 해결]: 좌측 아이콘 독(#railDock)과 슬라이드오버 서랍(#railDrawer)은 모든 모니터 해상도에서
-    // 좌상단 고정 픽셀(left: 18px/66px, top: 18px)에 위치하므로, 원본 화면 좌표(ev.x, ev.y)를 그대로 사용하면
-    // (1) 구버전 녹화본의 0.24초 서랍 슬라이드 애니메이션 중 잘못 찍힌 버튼(uiBtnKey)/비율(unx)로 인한 300px 점프,
-    // (2) 모니터 세로 해상도 차이에 따른 버튼-여백 간 세로 비율(uny * br.height) 100px 점프,
-    // (3) 카테고리 탭 전환 시 버튼 인덱스(idx:railDrawer:N) 어긋남 점프가 단 1px도 발생하지 않습니다!
-    if (this._isTopLeftFixedMenuCursorEvent(ev)) {
-      const pos = { x: ev.x, y: ev.y };
-      ev._lastResolvedPos = pos;
-      return pos;
-    }
-
-    const barEl = ev.uiBarId ? document.getElementById(ev.uiBarId) : null;
-    let restoredDisplay = null;
-    let restoredVisibility = null;
-    if (barEl && barEl.style && window.getComputedStyle(barEl).display === 'none') {
-      restoredDisplay = barEl.style.display;
-      restoredVisibility = barEl.style.visibility;
-      barEl.style.visibility = 'hidden';
-      barEl.style.display = 'flex';
-    }
-    try {
       if (ev.uiBtnKey) {
         const btnEl = this._findAudioUiButtonByKey(ev.uiBtnKey, ev.uiBarId);
         if (btnEl && typeof btnEl.getBoundingClientRect === 'function') {
@@ -34598,18 +34484,11 @@ class GraphApp {
           }
         }
       }
-      if (barEl && typeof barEl.getBoundingClientRect === 'function') {
-        const br = barEl.getBoundingClientRect();
-        if (br.width > 2 && br.height > 2 && br.left >= -2 && br.top >= -2 && br.right > 0 && br.bottom > 0) {
-          if (typeof ev.ux === 'number' && typeof ev.uy === 'number') {
-            const pos = {
-              x: br.left + Math.max(0, Math.min(br.width, ev.ux)),
-              y: br.top + Math.max(0, Math.min(br.height, ev.uy))
-            };
-            ev._lastResolvedPos = pos;
-            return pos;
-          }
-          if (typeof ev.unx === 'number' && typeof ev.uny === 'number') {
+      if (ev.uiBarId && typeof ev.unx === 'number' && typeof ev.uny === 'number') {
+        const barEl = document.getElementById(ev.uiBarId);
+        if (barEl && typeof barEl.getBoundingClientRect === 'function') {
+          const br = barEl.getBoundingClientRect();
+          if (br.width > 2 && br.height > 2 && br.left >= -2 && br.top >= -2 && br.right > 0 && br.bottom > 0) {
             const pos = {
               x: br.left + ev.unx * br.width,
               y: br.top + ev.uny * br.height
@@ -34619,22 +34498,10 @@ class GraphApp {
           }
         }
       }
-    } finally {
-      if (barEl && restoredDisplay !== null) {
-        barEl.style.display = restoredDisplay;
-        barEl.style.visibility = restoredVisibility;
+      if (ev._lastResolvedPos) {
+        return ev._lastResolvedPos;
       }
-    }
-    if (ev._lastResolvedPos) {
-      return ev._lastResolvedPos;
-    }
-    return { x: ev.x, y: ev.y };
-  }
-
-  _resolveCursorEventScreenPos(ev) {
-    if (!ev) return null;
-    if (ev.uiScreen || this._isTopLeftFixedMenuCursorEvent(ev)) {
-      return this._resolveUiEventScreenPosOnly(ev);
+      return { x: ev.x, y: ev.y };
     }
     if (ev.cardKey && typeof ev.nx === 'number' && typeof ev.ny === 'number') {
       const cardEl = this.getCardElementByAudioKey(ev.cardKey);
@@ -34651,86 +34518,7 @@ class GraphApp {
         }
       }
     }
-
-    const pCanvas = this._projectCanvasCursorAtEventCamera(ev);
-    // 🌟 [메뉴 ⟷ 캔버스 경계 크로스페이드 보정]:
-    // 필기 중(isDrawing)이거나 핸들/곡선 드래그 중(grabbing)이 아닐 때, 메뉴(UI 좌표계)와 캔버스(수학/칠판 좌표계) 사이를
-    // 오가는 450ms 구간에서 해상도/카메라 차이로 인해 경계면에서 포인터가 툭 튀는 현상을 매끄럽게 블렌딩!
-    if (
-      !ev.isDrawing &&
-      ev.cursorKind !== 'grabbing' &&
-      this.audioSyncData &&
-      Array.isArray(this.audioSyncData.timeline) &&
-      typeof ev.x === 'number' &&
-      typeof ev.y === 'number'
-    ) {
-      const timeline = this.audioSyncData.timeline;
-      let prevUiEv = null;
-      let nextUiEv = null;
-      let hasDrawingBefore = false;
-      let hasDrawingAfter = false;
-      for (let i = 0; i < timeline.length; i++) {
-        const item = timeline[i];
-        if (!item || item.type !== 'cursor' || item.hidden) continue;
-        if (item.t <= ev.t) {
-          if (item.isDrawing || item.cursorKind === 'grabbing') {
-            hasDrawingBefore = true;
-            prevUiEv = null;
-          } else if (item.uiScreen || this._isTopLeftFixedMenuCursorEvent(item)) {
-            prevUiEv = item;
-            hasDrawingBefore = false;
-          }
-        } else {
-          if (item.isDrawing || item.cursorKind === 'grabbing') {
-            hasDrawingAfter = true;
-            break;
-          }
-          if (item.uiScreen || this._isTopLeftFixedMenuCursorEvent(item)) {
-            nextUiEv = item;
-            break;
-          }
-        }
-      }
-
-      const dtPrev = (prevUiEv && !hasDrawingBefore) ? (ev.t - prevUiEv.t) : Infinity;
-      const dtNext = (nextUiEv && !hasDrawingAfter) ? (nextUiEv.t - ev.t) : Infinity;
-
-      // 1) 두 메뉴 이벤트 사이의 짧은 틈새(650ms 이하)를 지나는 경우: 100% UI 오프셋 보간으로 캔버스 낙하 차단
-      if (prevUiEv && nextUiEv && ( dtPrev + dtNext ) <= 650) {
-        const pUiPrev = this._resolveUiEventScreenPosOnly(prevUiEv);
-        const pUiNext = this._resolveUiEventScreenPosOnly(nextUiEv);
-        if (pUiPrev && pUiNext && typeof prevUiEv.x === 'number' && typeof nextUiEv.x === 'number') {
-          const u = (dtPrev + dtNext) > 0 ? (dtPrev / (dtPrev + dtNext)) : 0;
-          const dx = (pUiPrev.x - prevUiEv.x) * (1 - u) + (pUiNext.x - nextUiEv.x) * u;
-          const dy = (pUiPrev.y - prevUiEv.y) * (1 - u) + (pUiNext.y - nextUiEv.y) * u;
-          return {
-            x: ev.x + dx,
-            y: ev.y + dy
-          };
-        }
-      }
-
-      // 2) 메뉴에서 방금 나왔거나(450ms 이내) 메뉴로 들어가는 직전(450ms 이내) 호버 구간: 소프트 크로스페이드
-      const BLEND_MS = 450;
-      const nearestUiEv = (dtPrev <= dtNext) ? prevUiEv : nextUiEv;
-      const nearestDt = Math.min(dtPrev, dtNext);
-      if (nearestUiEv && nearestDt <= BLEND_MS && typeof nearestUiEv.x === 'number' && typeof nearestUiEv.y === 'number') {
-        const pUiNearest = this._resolveUiEventScreenPosOnly(nearestUiEv);
-        if (pUiNearest && pCanvas) {
-          const w = Math.pow(Math.max(0, 1 - nearestDt / BLEND_MS), 1.35);
-          const pUiShifted = {
-            x: ev.x + (pUiNearest.x - nearestUiEv.x),
-            y: ev.y + (pUiNearest.y - nearestUiEv.y)
-          };
-          return {
-            x: pCanvas.x + (pUiShifted.x - pCanvas.x) * w,
-            y: pCanvas.y + (pUiShifted.y - pCanvas.y) * w
-          };
-        }
-      }
-    }
-
-    return pCanvas;
+    return this._projectCanvasCursorAtEventCamera(ev);
   }
 
   _getInterpolatedCursorAt(playMs) {
