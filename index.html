@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_44">
+  <link rel="stylesheet" href="style.css?v=20261103_45">
 </head>
 
 <body class="theme-light">
@@ -463,28 +463,8 @@
               </div>
             </div>
 
-            <!-- 5. 패널: 환경 설정 (Settings) - 대표님 기획: 칠판 배경 속지, 마그네틱, 그리드, 점근선, 캡처 규격 통합 -->
+            <!-- 5. 패널: 환경 설정 (Settings) - 마그네틱, 그리드, 점근선, 캡처 규격 통합 -->
             <div class="drawer-panel" id="panelSettings" style="display: none;">
-              <!-- 섹션 0: 📋 칠판 배경 속지 (무지 / 모눈 / 가로줄 / 도트) -->
-              <div class="panel-section" style="border: none; padding: 0; margin-bottom: 14px;">
-                <div class="section-title">
-                  <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                      stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-                      style="vertical-align:-2px;margin-right:4px;">
-                      <rect x="3" y="3" width="18" height="18" rx="2" />
-                      <line x1="3" y1="9" x2="21" y2="9" />
-                      <line x1="9" y1="21" x2="9" y2="9" />
-                    </svg>배경 속지</span>
-                </div>
-                <div class="vf-aspect-chips board-paper-chips" id="boardPaperTypeGroup"
-                  style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px;">
-                  <button type="button" class="vf-chip board-paper-chip active" data-paper="blank">무지</button>
-                  <button type="button" class="vf-chip board-paper-chip" data-paper="grid">모눈</button>
-                  <button type="button" class="vf-chip board-paper-chip" data-paper="lined">가로줄</button>
-                  <button type="button" class="vf-chip board-paper-chip" data-paper="dot">도트</button>
-                </div>
-              </div>
-
               <!-- 섹션 1: 조작 & 가이드라인 설정 -->
               <div class="panel-section" style="border: none; padding: 0;">
                 <div class="section-title">
@@ -768,391 +748,251 @@
               </div>
             </div>
 
-            <!-- 6. 패널: 스타일 & 색상 -->
+            <!-- 6. 패널: 스타일 & 배경 (초슬림 2탭 플로팅 카드 + 1줄 ◀ ━━●━━ ▶ 스텝 슬라이더) -->
             <div class="drawer-panel" id="panelStyle" style="display: none;">
-              <!-- ✒️ [대표님 기획: 굿노트 스타일 3종 필기 펜 촉 선택 (볼펜 · 만년필 · 붓펜)] -->
-              <div class="panel-section" style="border: none; padding: 0; margin-bottom: 12px;">
-                <div class="section-title">
-                  <span>필기 펜 스타일</span>
-                </div>
-                <div class="ink-pen-style-grid" id="inkPenStyleGroup"
-                  style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 6px;">
-                  <button type="button" class="vf-chip ink-pen-style-chip active" data-pen-style="ballpen"
-                    title="필압에 관계없이 처음부터 끝까지 일정한 굵기">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                      stroke-linecap="round" stroke-linejoin="round" style="margin-right:3px;vertical-align:-2px;">
-                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                    </svg>볼펜
-                  </button>
-                  <button type="button" class="vf-chip ink-pen-style-chip" data-pen-style="fountain"
-                    title="부드러운 필압 반응과 날렵한 획 끝 삐침 (명필 보정)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                      stroke-linecap="round" stroke-linejoin="round" style="margin-right:3px;vertical-align:-2px;">
-                      <path d="m12 19 7-7 3 3-7 7-3-3z" />
-                      <path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
-                      <path d="m2 2 7.586 7.586" />
-                      <circle cx="11" cy="11" r="2" />
-                    </svg>만년필
-                  </button>
-                  <button type="button" class="vf-chip ink-pen-style-chip" data-pen-style="brush"
-                    title="필압에 따라 굵고 가는 대비가 뚜렷한 붓펜 스타일">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                      stroke-linecap="round" stroke-linejoin="round" style="margin-right:3px;vertical-align:-2px;">
-                      <path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08" />
-                      <path
-                        d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z" />
-                    </svg>붓펜
-                  </button>
+              <!-- 상단 2탭 전환 바: [ ✒️ 필기 · 배경 | 📈 그래프 ] -->
+              <div class="style-panel-tabs">
+                <button type="button" id="btnStyleTabInk" class="style-tab-btn active" data-style-tab="ink">✒️ 필기 · 배경</button>
+                <button type="button" id="btnStyleTabGraph" class="style-tab-btn" data-style-tab="graph">📈 그래프</button>
+              </div>
+
+              <!-- 탭 1: ✒️ 필기 · 배경 -->
+              <div id="styleTabContentInk" class="style-tab-pane active">
+                <!-- 🎨 배경 색상 (1줄 5칸 컬러칩) -->
+                <div class="panel-section" style="border: none; padding: 0;">
+                  <div class="section-title" style="margin-bottom: 6px;">
+                    <span>배경 색상</span>
+                  </div>
+                  <div class="theme-palette-grid drawer-theme-grid compact-theme-row">
+                    <button type="button" class="theme-chip active" data-theme="white_paper" title="화이트 배경">
+                      <span class="theme-color-preview" style="background: #ffffff; border: 1.5px solid #94a3b8;"></span>
+                      <span class="theme-name">화이트</span>
+                    </button>
+                    <button type="button" class="theme-chip" data-theme="chalkboard" title="칠판 배경">
+                      <span class="theme-color-preview" style="background: #003333; border: 1.5px solid #00d2d3;"></span>
+                      <span class="theme-name">칠판</span>
+                    </button>
+                    <button type="button" class="theme-chip" data-theme="dark_charcoal" title="차콜 배경">
+                      <span class="theme-color-preview" style="background: #1e272e; border: 1.5px solid #00d2d3;"></span>
+                      <span class="theme-name">차콜</span>
+                    </button>
+                    <button type="button" class="theme-chip" data-theme="deep_black" title="블랙 배경">
+                      <span class="theme-color-preview" style="background: #080808; border: 1.5px solid #64748b;"></span>
+                      <span class="theme-name">블랙</span>
+                    </button>
+                    <button type="button" class="theme-chip" data-theme="postit" title="포스트잇 배경">
+                      <span class="theme-color-preview" style="background: #fef7e0; border: 1.5px solid #f59e0b;"></span>
+                      <span class="theme-name">노트</span>
+                    </button>
+                  </div>
                 </div>
 
-                <!-- 📏 필기 글씨 크기 (펜 굵기) - 좌측 스타일 메뉴 통합 -->
-                <div class="slider-group" style="margin-top: 12px;">
-                  <div class="slider-header"
-                    style="display: flex; align-items: center; justify-content: space-between;">
-                    <span>글씨 크기 (펜 굵기)</span>
-                    <div class="ink-size-stepper" style="display: inline-flex; align-items: center; gap: 4px;">
-                      <button type="button" id="btnInkSizeDown" class="ink-size-stepper-btn" title="글씨 크기 줄이기 ([)">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                          <polyline points="15 18 9 12 15 6" />
-                        </svg>
-                      </button>
-                      <span id="lblCurrentInkSize" class="ink-size-val"
-                        style="min-width: 28px; text-align: center;">4.2</span>
+                <!-- 📋 배경 속지 (1줄 4칸: 무지 / 모눈 / 가로줄 / 도트) -->
+                <div class="panel-section" style="border: none; padding: 0;">
+                  <div class="section-title" style="margin-bottom: 6px;">
+                    <span>배경 속지</span>
+                  </div>
+                  <div class="vf-aspect-chips board-paper-chips" id="boardPaperTypeGroup"
+                    style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">
+                    <button type="button" class="vf-chip board-paper-chip active" data-paper="blank">무지</button>
+                    <button type="button" class="vf-chip board-paper-chip" data-paper="grid">모눈</button>
+                    <button type="button" class="vf-chip board-paper-chip" data-paper="lined">가로줄</button>
+                    <button type="button" class="vf-chip board-paper-chip" data-paper="dot">도트</button>
+                  </div>
+                </div>
+
+                <!-- ✒️ 필기 펜 & 1줄 스텝 슬라이더 3종 -->
+                <div class="panel-section" style="border: none; padding: 0;">
+                  <div class="section-title" style="margin-bottom: 6px;">
+                    <span>필기 펜 & 굵기</span>
+                  </div>
+                  <div class="ink-pen-style-grid" id="inkPenStyleGroup"
+                    style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 10px;">
+                    <button type="button" class="vf-chip ink-pen-style-chip active" data-pen-style="ballpen"
+                      title="필압에 관계없이 처음부터 끝까지 일정한 굵기">볼펜</button>
+                    <button type="button" class="vf-chip ink-pen-style-chip" data-pen-style="fountain"
+                      title="부드러운 필압 반응과 날렵한 획 끝 삐침 (명필 보정)">만년필</button>
+                    <button type="button" class="vf-chip ink-pen-style-chip" data-pen-style="brush"
+                      title="필압에 따라 굵고 가는 대비가 뚜렷한 붓펜 스타일">붓펜</button>
+                  </div>
+
+                  <div class="single-line-slider-list">
+                    <!-- 1. 펜 굵기 -->
+                    <div class="single-line-slider-row">
+                      <span class="single-line-slider-label">펜 굵기</span>
+                      <button type="button" id="btnInkSizeDown" class="single-line-step-btn" title="글씨 크기 줄이기 ([)">◀</button>
+                      <div class="ink-size-preview-row single-line-slider-track">
+                        <div class="ink-size-preview-box" style="display: none;">
+                          <span id="inkSizePreviewDot" class="preview-circle" style="width: 9px; height: 9px;"></span>
+                        </div>
+                        <input type="range" id="sliderInkSize" class="slider-bar" min="1.0" max="18.0" step="0.2"
+                          value="4.2">
+                      </div>
+                      <button type="button" id="btnInkSizeUp" class="single-line-step-btn" title="글씨 크기 키우기 (])">▶</button>
+                      <span id="lblCurrentInkSize" class="single-line-slider-val">4.2</span>
                       <span id="lblFlyoutSizeVal" style="display: none;">4.2 pt</span>
-                      <button type="button" id="btnInkSizeUp" class="ink-size-stepper-btn" title="글씨 크기 키우기 (])">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                          <polyline points="9 18 15 12 9 6" />
-                        </svg>
-                      </button>
                     </div>
-                  </div>
-                  <div class="ink-size-preview-row" style="margin-top: 4px;">
-                    <div class="ink-size-preview-box" style="display: none;">
-                      <span id="inkSizePreviewDot" class="preview-circle" style="width: 9px; height: 9px;"></span>
+                    <div class="ink-size-preset-grid" style="display: none;">
+                      <button type="button" class="ink-size-btn ink-size-chip" data-size="1.5">1.5</button>
+                      <button type="button" class="ink-size-btn ink-size-chip" data-size="2.2">2.2</button>
+                      <button type="button" class="ink-size-btn ink-size-chip" data-size="3.2">3.2</button>
+                      <button type="button" class="ink-size-btn ink-size-chip active" data-size="4.2">4.2</button>
+                      <button type="button" class="ink-size-btn ink-size-chip" data-size="6.0">6.0</button>
+                      <button type="button" class="ink-size-btn ink-size-chip" data-size="8.0">8.0</button>
+                      <button type="button" class="ink-size-btn ink-size-chip" data-size="12.0">12.0</button>
                     </div>
-                    <input type="range" id="sliderInkSize" class="slider-bar" min="1.0" max="18.0" step="0.2"
-                      value="4.2" style="width: 100%;">
-                  </div>
-                  <div class="ink-size-preset-grid" style="margin-top: 6px;">
-                    <button type="button" class="ink-size-btn ink-size-chip" data-size="1.5"><span
-                        class="ink-size-circle" style="display:none;"></span>1.5</button>
-                    <button type="button" class="ink-size-btn ink-size-chip" data-size="2.2"><span
-                        class="ink-size-circle" style="display:none;"></span>2.2</button>
-                    <button type="button" class="ink-size-btn ink-size-chip" data-size="3.2"><span
-                        class="ink-size-circle" style="display:none;"></span>3.2</button>
-                    <button type="button" class="ink-size-btn ink-size-chip active" data-size="4.2"><span
-                        class="ink-size-circle" style="display:none;"></span>4.2</button>
-                    <button type="button" class="ink-size-btn ink-size-chip" data-size="6.0"><span
-                        class="ink-size-circle" style="display:none;"></span>6.0</button>
-                    <button type="button" class="ink-size-btn ink-size-chip" data-size="8.0"><span
-                        class="ink-size-circle" style="display:none;"></span>8.0</button>
-                    <button type="button" class="ink-size-btn ink-size-chip" data-size="12.0"><span
-                        class="ink-size-circle" style="display:none;"></span>12.0</button>
-                  </div>
-                </div>
 
-                <!-- 🖍️ 형광펜 크기 조절 (글씨 크기 바로 아래 통합) -->
-                <div class="slider-group" style="margin-top: 10px;">
-                  <div class="slider-header"
-                    style="display: flex; align-items: center; justify-content: space-between;">
-                    <span>형광펜 크기</span>
-                    <div class="ink-size-stepper" style="display: inline-flex; align-items: center; gap: 4px;">
-                      <button type="button" id="btnHighlighterSizeDown" class="ink-size-stepper-btn" title="형광펜 크기 줄이기">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                          <polyline points="15 18 9 12 15 6" />
-                        </svg>
-                      </button>
-                      <span id="lblCurrentHighlighterSize" class="ink-size-val"
-                        style="min-width: 28px; text-align: center;">16</span>
-                      <button type="button" id="btnHighlighterSizeUp" class="ink-size-stepper-btn" title="형광펜 크기 키우기">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                          <polyline points="9 18 15 12 9 6" />
-                        </svg>
-                      </button>
+                    <!-- 2. 형광펜 -->
+                    <div class="single-line-slider-row">
+                      <span class="single-line-slider-label">형광펜</span>
+                      <button type="button" id="btnHighlighterSizeDown" class="single-line-step-btn" title="형광펜 크기 줄이기">◀</button>
+                      <div class="ink-size-preview-row single-line-slider-track">
+                        <input type="range" id="sliderHighlighterSize" class="slider-bar" min="6" max="44" step="2"
+                          value="16">
+                      </div>
+                      <button type="button" id="btnHighlighterSizeUp" class="single-line-step-btn" title="형광펜 크기 키우기">▶</button>
+                      <span id="lblCurrentHighlighterSize" class="single-line-slider-val">16</span>
                     </div>
-                  </div>
-                  <div class="ink-size-preview-row" style="margin-top: 4px;">
-                    <input type="range" id="sliderHighlighterSize" class="slider-bar" min="6" max="44" step="2"
-                      value="16" style="width: 100%;">
-                  </div>
-                </div>
 
-                <!-- 🧼 지우개 크기 조절 (형광펜 크기 바로 아래 통합) -->
-                <div class="slider-group" style="margin-top: 10px;">
-                  <div class="slider-header"
-                    style="display: flex; align-items: center; justify-content: space-between;">
-                    <span>지우개 크기</span>
-                    <div class="ink-size-stepper" style="display: inline-flex; align-items: center; gap: 4px;">
-                      <button type="button" id="btnEraserSizeDown" class="ink-size-stepper-btn" title="지우개 크기 줄이기">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                          <polyline points="15 18 9 12 15 6" />
-                        </svg>
-                      </button>
-                      <span id="lblCurrentEraserSize" class="ink-size-val"
-                        style="min-width: 28px; text-align: center;">14</span>
-                      <button type="button" id="btnEraserSizeUp" class="ink-size-stepper-btn" title="지우개 크기 키우기">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                          <polyline points="9 18 15 12 9 6" />
-                        </svg>
-                      </button>
+                    <!-- 3. 지우개 -->
+                    <div class="single-line-slider-row">
+                      <span class="single-line-slider-label">지우개</span>
+                      <button type="button" id="btnEraserSizeDown" class="single-line-step-btn" title="지우개 크기 줄이기">◀</button>
+                      <div class="ink-size-preview-row single-line-slider-track">
+                        <input type="range" id="sliderEraserSize" class="slider-bar" min="4" max="44" step="2"
+                          value="14">
+                      </div>
+                      <button type="button" id="btnEraserSizeUp" class="single-line-step-btn" title="지우개 크기 키우기">▶</button>
+                      <span id="lblCurrentEraserSize" class="single-line-slider-val">14</span>
                     </div>
-                  </div>
-                  <div class="ink-size-preview-row" style="margin-top: 4px;">
-                    <input type="range" id="sliderEraserSize" class="slider-bar" min="4" max="44" step="2" value="14"
-                      style="width: 100%;">
                   </div>
                 </div>
               </div>
 
-              <!-- 🌟 [대표님 기획]: 좌측 서랍 내 칠판 배경 테마 전격 장착 🌟 -->
-              <div class="panel-section" style="border: none; padding: 0; margin-bottom: 12px;">
-                <div class="section-title">
-                  <span>배경 테마</span>
-                </div>
-                <div class="theme-palette-grid drawer-theme-grid"
-                  style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 6px;">
-                  <button type="button" class="theme-chip active" data-theme="white_paper"
-                    style="padding: 7px 10px; display: flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer;">
-                    <span class="theme-color-preview"
-                      style="background: #ffffff; border: 1.5px solid #718093; width: 14px; height: 14px; border-radius: 50%; display: inline-block;"></span>
-                    <span class="theme-name" style="font-size: 12px; font-weight: 600;">화이트</span>
-                  </button>
-                  <button type="button" class="theme-chip" data-theme="chalkboard"
-                    style="padding: 7px 10px; display: flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer;">
-                    <span class="theme-color-preview"
-                      style="background: #003333; border: 1.5px solid #00d2d3; width: 14px; height: 14px; border-radius: 50%; display: inline-block;"></span>
-                    <span class="theme-name" style="font-size: 12px; font-weight: 600;">칠판</span>
-                  </button>
-                  <button type="button" class="theme-chip" data-theme="dark_charcoal"
-                    style="padding: 7px 10px; display: flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer;">
-                    <span class="theme-color-preview"
-                      style="background: #1e272e; border: 1.5px solid #00d2d3; width: 14px; height: 14px; border-radius: 50%; display: inline-block;"></span>
-                    <span class="theme-name" style="font-size: 12px; font-weight: 600;">차콜</span>
-                  </button>
-                  <button type="button" class="theme-chip" data-theme="deep_black"
-                    style="padding: 7px 10px; display: flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer;">
-                    <span class="theme-color-preview"
-                      style="background: #080808; border: 1.5px solid #576574; width: 14px; height: 14px; border-radius: 50%; display: inline-block;"></span>
-                    <span class="theme-name" style="font-size: 12px; font-weight: 600;">블랙</span>
-                  </button>
-                  <button type="button" class="theme-chip" data-theme="postit"
-                    style="padding: 7px 10px; display: flex; align-items: center; gap: 8px; border-radius: 8px; cursor: pointer; grid-column: span 2;">
-                    <span class="theme-color-preview"
-                      style="background: #fef7e0; border: 1.5px solid #feca57; width: 14px; height: 14px; border-radius: 50%; display: inline-block;"></span>
-                    <span class="theme-name" style="font-size: 12px; font-weight: 600;">포스트잇</span>
-                  </button>
-                </div>
-              </div>
-
-              <div class="panel-section" style="border: none; padding: 0;">
-                <div class="section-title">
-                  <span>곡선 & 배율</span>
-                </div>
-                <div class="slider-group">
-                  <div class="slider-header">
-                    <span>선 두께</span>
-                    <span id="lblLw">2.8 pt</span>
+              <!-- 탭 2: 📈 그래프 -->
+              <div id="styleTabContentGraph" class="style-tab-pane" style="display: none;">
+                <!-- 곡선 색상 & 선 두께 -->
+                <div class="panel-section" style="border: none; padding: 0;">
+                  <div class="section-title" style="margin-bottom: 6px;">
+                    <span>곡선 색상 & 두께</span>
                   </div>
-                  <input type="range" id="sliderLw" class="slider-bar" min="1.0" max="6.0" step="0.2" value="2.8">
-                </div>
-                <div class="slider-group">
-                  <div class="slider-header">
-                    <span>화면 배율</span>
+                  <div class="color-palette" style="margin-bottom: 8px;">
+                    <div class="color-dot active" data-color="#00d2d3" style="background:#00d2d3"></div>
+                    <div class="color-dot" data-color="#feca57" style="background:#feca57"></div>
+                    <div class="color-dot" data-color="#ff9f43" style="background:#ff9f43"></div>
+                    <div class="color-dot" data-color="#ff6b6b" style="background:#ff6b6b"></div>
+                    <div class="color-dot" data-color="#54a0ff" style="background:#54a0ff"></div>
+                    <div class="color-dot" data-color="#1dd1a1" style="background:#1dd1a1"></div>
+                    <div class="color-dot" data-color="#ffffff" style="background:#ffffff"></div>
+                    <div class="color-dot" data-color="#ff9ff3" style="background:#ff9ff3"></div>
+                    <div class="color-dot" data-color="#a29bfe" style="background:#a29bfe"></div>
+                    <div class="color-dot" data-color="#48dbfb" style="background:#48dbfb"></div>
+                    <div class="color-dot" data-color="#f368e0" style="background:#f368e0"></div>
+                    <div class="color-dot" data-color="#ee5253" style="background:#ee5253"></div>
+                  </div>
+                  <div class="single-line-slider-row">
+                    <span class="single-line-slider-label">선 두께</span>
+                    <button type="button" id="btnLwDown" class="single-line-step-btn" title="선 두께 줄이기">◀</button>
+                    <div class="single-line-slider-track">
+                      <input type="range" id="sliderLw" class="slider-bar" min="1.0" max="6.0" step="0.2" value="2.8">
+                    </div>
+                    <button type="button" id="btnLwUp" class="single-line-step-btn" title="선 두께 키우기">▶</button>
+                    <span id="lblLw" class="single-line-slider-val">2.8</span>
+                  </div>
+                  <div style="display: none;">
                     <span id="lblZoom">100%</span>
+                    <input type="range" id="sliderZoom" class="slider-bar" min="0.15" max="3.5" step="0.05" value="1.0">
                   </div>
-                  <input type="range" id="sliderZoom" class="slider-bar" min="0.15" max="3.5" step="0.05" value="1.0">
                 </div>
-              </div>
 
-              <div class="panel-section" style="border: none; padding: 0; margin-top: 10px;">
-                <div class="section-title">
-                  <span>곡선 색상</span>
-                </div>
-                <div class="color-palette">
-                  <div class="color-dot active" data-color="#00d2d3" style="background:#00d2d3"></div>
-                  <div class="color-dot" data-color="#feca57" style="background:#feca57"></div>
-                  <div class="color-dot" data-color="#ff9f43" style="background:#ff9f43"></div>
-                  <div class="color-dot" data-color="#ff6b6b" style="background:#ff6b6b"></div>
-                  <div class="color-dot" data-color="#54a0ff" style="background:#54a0ff"></div>
-                  <div class="color-dot" data-color="#1dd1a1" style="background:#1dd1a1"></div>
-                  <div class="color-dot" data-color="#ffffff" style="background:#ffffff"></div>
-                  <div class="color-dot" data-color="#ff9ff3" style="background:#ff9ff3"></div>
-                  <div class="color-dot" data-color="#a29bfe" style="background:#a29bfe"></div>
-                  <div class="color-dot" data-color="#48dbfb" style="background:#48dbfb"></div>
-                  <div class="color-dot" data-color="#f368e0" style="background:#f368e0"></div>
-                  <div class="color-dot" data-color="#ee5253" style="background:#ee5253"></div>
-                </div>
-              </div>
-
-              <div class="panel-section" style="border: none; padding: 0; margin-top: 10px;">
-                <div class="section-title">
-                  <span>보조 수선 & 라벨</span>
-                </div>
-                <div class="slider-group">
-                  <div class="slider-header">
-                    <span>수식 폰트</span>
+                <!-- 보조 수선 & 라벨 & 텍스트 -->
+                <div class="panel-section" style="border: none; padding: 0;">
+                  <div class="section-title" style="margin-bottom: 6px;">
+                    <span>수선 · 라벨 · 텍스트</span>
                   </div>
-                  <select id="selMathFont" class="theme-select"
-                    style="width: 100%; padding: 6px 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: var(--radius-sm); color: #fff; font-size: 12px; margin-top: 4px;">
-                    <option value="stix" selected>수식 기본 (STIX Two)</option>
-                    <option value="pretendard">고딕 (Pretendard)</option>
-                    <option value="batang">명조 (KoPub 바탕)</option>
-                  </select>
-                </div>
-
-                <div class="slider-group" style="margin-top: 8px;">
-                  <div class="slider-header">
-                    <span>수선 형태</span>
-                    <div class="vf-aspect-group" style="display: flex; gap: 4px;">
+                  <div class="style-compact-inline-row">
+                    <span class="single-line-slider-label">수식 폰트</span>
+                    <select id="selMathFont" class="theme-select style-compact-select">
+                      <option value="stix" selected>STIX Two (수식)</option>
+                      <option value="pretendard">Pretendard (고딕)</option>
+                      <option value="batang">KoPub 바탕 (명조)</option>
+                    </select>
+                  </div>
+                  <div class="style-compact-inline-row" style="margin-top: 6px;">
+                    <span class="single-line-slider-label">수선 형태</span>
+                    <div class="vf-aspect-group" style="display: flex; gap: 4px; flex: 1;">
                       <button id="btnDropLineDashed" class="vf-chip active"
-                        style="padding: 2px 8px; font-size: 11px;">점선</button>
+                        style="flex: 1; padding: 4px 6px; font-size: 11px;">점선</button>
                       <button id="btnDropLineSolid" class="vf-chip"
-                        style="padding: 2px 8px; font-size: 11px;">실선</button>
+                        style="flex: 1; padding: 4px 6px; font-size: 11px;">실선</button>
                     </div>
                   </div>
-                </div>
 
-                <div class="slider-group" style="margin-top: 8px;">
-                  <div class="slider-header"
-                    style="display: flex; justify-content: space-between; align-items: center;">
-                    <span>라벨 글자 크기</span>
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                      <button type="button" id="btnDropLineSizeDown" class="btn-step-arrow">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                          stroke-width="2.5">
-                          <polyline points="15 18 9 12 15 6" />
-                        </svg>
-                      </button>
-                      <span id="lblDropLineFontSize" style="min-width: 40px; text-align: center;">15 pt</span>
-                      <button type="button" id="btnDropLineSizeUp" class="btn-step-arrow">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                          stroke-width="2.5">
-                          <polyline points="9 18 15 12 9 6" />
-                        </svg>
-                      </button>
+                  <div class="single-line-slider-list" style="margin-top: 8px;">
+                    <div class="single-line-slider-row">
+                      <span class="single-line-slider-label">수선 라벨</span>
+                      <button type="button" id="btnDropLineSizeDown" class="single-line-step-btn" title="라벨 크기 줄이기">◀</button>
+                      <div class="single-line-slider-track">
+                        <input type="range" id="sliderDropLineFontSize" class="slider-bar" min="11" max="22" step="1"
+                          value="15">
+                      </div>
+                      <button type="button" id="btnDropLineSizeUp" class="single-line-step-btn" title="라벨 크기 키우기">▶</button>
+                      <span id="lblDropLineFontSize" class="single-line-slider-val">15</span>
+                    </div>
+
+                    <div class="single-line-slider-row">
+                      <span class="single-line-slider-label">자유 텍스트</span>
+                      <button type="button" id="btnTextLabelSizeDown" class="single-line-step-btn" title="텍스트 크기 줄이기">◀</button>
+                      <div class="single-line-slider-track">
+                        <input type="range" id="sliderTextLabelSize" class="slider-bar" min="12" max="52" step="1"
+                          value="20">
+                      </div>
+                      <button type="button" id="btnTextLabelSizeUp" class="single-line-step-btn" title="텍스트 크기 키우기">▶</button>
+                      <span id="lblTextLabelSize" class="single-line-slider-val">20</span>
                     </div>
                   </div>
-                  <input type="range" id="sliderDropLineFontSize" class="slider-bar" min="11" max="22" step="1"
-                    value="15">
-                </div>
 
-                <div style="margin-top: 8px; display: flex; gap: 6px;">
-                  <button id="btnClearDropLines" class="btn-sub-action"
-                    style="flex: 1; color: #ff7675; border-color: rgba(255, 118, 117, 0.4);"><svg width="13" height="13"
-                      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
-                      stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    </svg>수선 비우기</button>
-                </div>
-                <div class="style-help-box"
-                  style="font-size: 11px; color: #a4b0be; margin-top: 6px; line-height: 1.45; background: rgba(0,0,0,0.22); padding: 6px 8px; border-radius: var(--radius-sm);">
+                  <!-- 축 이름표 (x, y, O) 자동 표시 체크박스 -->
+                  <label class="drawer-checkbox-row"
+                    style="margin-top: 8px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                    <input type="checkbox" id="chkShowAxisLabels" style="cursor: pointer;">
+                    <span class="axis-auto-label-text" style="font-size: 11.5px; color: var(--text-main);">축 이름표 (x, y, O) 표시</span>
+                  </label>
 
-                </div>
-              </div>
-
-              <!-- 수식 텍스트 & 축 이름표 섹션 -->
-              <div class="panel-section" style="border: none; padding: 0; margin-top: 10px;">
-                <div class="section-title">
-                  <span>텍스트 & 축 이름표</span>
-                </div>
-
-                <!-- 기본 축 이름표 (x, y, O) 자동 표시 체크박스 (기본값: 체크 해제) -->
-                <label class="drawer-checkbox-row"
-                  style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                  <input type="checkbox" id="chkShowAxisLabels" style="cursor: pointer;">
-                  <span class="axis-auto-label-text" style="font-size: 12px; color: var(--text-main);">축 이름표 (x, y, O)
-                    표시</span>
-                </label>
-
-                <div id="axisLabelsSubPanel" style="display: none;">
-                  <div class="slider-group">
-                    <div class="slider-header">
-                      <span>축 이름</span>
-                    </div>
-                    <div style="display: flex; gap: 8px; margin-top: 4px;">
+                  <div id="axisLabelsSubPanel" style="display: none; margin-top: 6px;">
+                    <div style="display: flex; gap: 6px;">
                       <div class="axis-name-input-box"
-                        style="flex: 1; display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.25); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12);">
-                        <span style="font-size: 11px; color: #a4b0be;">가로:</span>
+                        style="flex: 1; display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.22); padding: 3px 6px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.12);">
+                        <span style="font-size: 11px; color: #94a3b8;">가로</span>
                         <input type="text" id="inputAxisNameX" value="x" maxlength="6"
                           style="width: 100%; background: transparent; border: none; color: #00d2d3; font-family: 'STIX Two Text', serif; font-style: italic; font-weight: 700; font-size: 13px; text-align: center; outline: none;">
                       </div>
                       <div class="axis-name-input-box"
-                        style="flex: 1; display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.25); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12);">
-                        <span style="font-size: 11px; color: #a4b0be;">세로:</span>
+                        style="flex: 1; display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.22); padding: 3px 6px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.12);">
+                        <span style="font-size: 11px; color: #94a3b8;">세로</span>
                         <input type="text" id="inputAxisNameY" value="y" maxlength="6"
                           style="width: 100%; background: transparent; border: none; color: #00d2d3; font-family: 'STIX Two Text', serif; font-style: italic; font-weight: 700; font-size: 13px; text-align: center; outline: none;">
                       </div>
                     </div>
-                  </div>
 
-                  <div class="slider-group" style="margin-top: 8px;">
-                    <div class="slider-header"
-                      style="display: flex; justify-content: space-between; align-items: center;">
-                      <span>축 이름표 크기</span>
-                      <div style="display: flex; align-items: center; gap: 4px;">
-                        <button type="button" id="btnAxisLabelSizeDown" class="btn-step-arrow">
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.5">
-                            <polyline points="15 18 9 12 15 6" />
-                          </svg>
-                        </button>
-                        <span id="lblAxisLabelSize" style="min-width: 40px; text-align: center;">22 pt</span>
-                        <button type="button" id="btnAxisLabelSizeUp" class="btn-step-arrow">
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.5">
-                            <polyline points="9 18 15 12 9 6" />
-                          </svg>
-                        </button>
+                    <div class="single-line-slider-row" style="margin-top: 6px;">
+                      <span class="single-line-slider-label">축 글자</span>
+                      <button type="button" id="btnAxisLabelSizeDown" class="single-line-step-btn" title="축 이름표 줄이기">◀</button>
+                      <div class="single-line-slider-track">
+                        <input type="range" id="sliderAxisLabelSize" class="slider-bar" min="12" max="48" step="1"
+                          value="22">
                       </div>
-                    </div>
-                    <input type="range" id="sliderAxisLabelSize" class="slider-bar" min="12" max="48" step="1"
-                      value="22">
-                  </div>
-                </div>
-
-                <div class="slider-group" style="margin-top: 8px;">
-                  <div class="slider-header"
-                    style="display: flex; justify-content: space-between; align-items: center;">
-                    <span>자유 텍스트 크기</span>
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                      <button type="button" id="btnTextLabelSizeDown" class="btn-step-arrow">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                          stroke-width="2.5">
-                          <polyline points="15 18 9 12 15 6" />
-                        </svg>
-                      </button>
-                      <span id="lblTextLabelSize" style="min-width: 40px; text-align: center;">20 pt</span>
-                      <button type="button" id="btnTextLabelSizeUp" class="btn-step-arrow">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                          stroke-width="2.5">
-                          <polyline points="9 18 15 12 9 6" />
-                        </svg>
-                      </button>
+                      <button type="button" id="btnAxisLabelSizeUp" class="single-line-step-btn" title="축 이름표 키우기">▶</button>
+                      <span id="lblAxisLabelSize" class="single-line-slider-val">22</span>
                     </div>
                   </div>
-                  <input type="range" id="sliderTextLabelSize" class="slider-bar" min="12" max="52" step="1" value="20">
-                </div>
 
-                <div style="margin-top: 8px; display: flex; gap: 6px;">
-                  <button id="btnClearTextLabels" class="btn-sub-action"
-                    style="flex: 1; color: #ff7675; border-color: rgba(255, 118, 117, 0.4);"><svg width="13" height="13"
-                      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
-                      stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    </svg>텍스트 비우기</button>
-                </div>
-
-                <div class="style-help-box"
-                  style="font-size: 11px; color: #a4b0be; margin-top: 6px; line-height: 1.45; background: rgba(0,0,0,0.22); padding: 6px 8px; border-radius: var(--radius-sm);">
-
+                  <div style="margin-top: 8px; display: flex; gap: 5px;">
+                    <button id="btnClearDropLines" class="btn-sub-action"
+                      style="flex: 1; padding: 5px 6px; font-size: 11px; color: #ff7675; border-color: rgba(255, 118, 117, 0.4);">수선 비우기</button>
+                    <button id="btnClearTextLabels" class="btn-sub-action"
+                      style="flex: 1; padding: 5px 6px; font-size: 11px; color: #ff7675; border-color: rgba(255, 118, 117, 0.4);">텍스트 비우기</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -3145,8 +2985,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_44"></script>
-  <script src="app.js?v=20261103_44"></script>
+  <script src="engine.js?v=20261103_45"></script>
+  <script src="app.js?v=20261103_45"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

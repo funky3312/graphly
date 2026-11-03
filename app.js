@@ -697,7 +697,7 @@ class GraphApp {
 
     if (sliderAxisFSize) {
       sliderAxisFSize.value = this.axisLabelFontSize || 22;
-      if (lblAxisFSize) lblAxisFSize.textContent = `${sliderAxisFSize.value} pt`;
+      if (lblAxisFSize) lblAxisFSize.textContent = `${sliderAxisFSize.value}`;
       sliderAxisFSize.oninput = (e) => {
         this.setAxisLabelFontSize(parseInt(e.target.value, 10));
       };
@@ -740,7 +740,7 @@ class GraphApp {
     const lblSize = document.getElementById('lblTextLabelSize');
     if (sliderSize) {
       sliderSize.value = this.textLabelFontSize || 20;
-      if (lblSize) lblSize.textContent = `${sliderSize.value} pt`;
+      if (lblSize) lblSize.textContent = `${sliderSize.value}`;
       sliderSize.oninput = (e) => {
         this.setTextLabelFontSize(parseInt(e.target.value, 10));
       };
@@ -842,7 +842,7 @@ class GraphApp {
     const lblFontSize = document.getElementById('lblDropLineFontSize');
     if (sliderFontSize) {
       sliderFontSize.value = this.dropLineFontSize || 15;
-      if (lblFontSize) lblFontSize.textContent = `${sliderFontSize.value} pt`;
+      if (lblFontSize) lblFontSize.textContent = `${sliderFontSize.value}`;
       sliderFontSize.oninput = (e) => {
         this.setDropLineFontSize(parseInt(e.target.value, 10));
       };
@@ -1434,14 +1434,14 @@ class GraphApp {
         const sl = document.getElementById('sliderAxisLabelSize');
         if (sl) sl.value = this.axisLabelFontSize;
         const lbl = document.getElementById('lblAxisLabelSize');
-        if (lbl) lbl.textContent = `${this.axisLabelFontSize} pt`;
+        if (lbl) lbl.textContent = `${this.axisLabelFontSize}`;
       }
       if (data.textLabelFontSize !== undefined) {
         this.textLabelFontSize = data.textLabelFontSize;
         const slText = document.getElementById('sliderTextLabelSize');
         if (slText) slText.value = this.textLabelFontSize;
         const lblText = document.getElementById('lblTextLabelSize');
-        if (lblText) lblText.textContent = `${this.textLabelFontSize} pt`;
+        if (lblText) lblText.textContent = `${this.textLabelFontSize}`;
       }
       if (data.inkStrokes) {
         this.inkStrokes = JSON.parse(JSON.stringify(data.inkStrokes));
@@ -2155,7 +2155,7 @@ class GraphApp {
     const sliderLw = document.getElementById('sliderLw');
     if (sliderLw) {
       sliderLw.value = g.lineWidth;
-      document.getElementById('lblLw').textContent = `${g.lineWidth.toFixed(1)} pt`;
+      document.getElementById('lblLw').textContent = `${g.lineWidth.toFixed(1)}`;
     }
 
     // 컬러 피커 팔레트 동기화
@@ -2477,6 +2477,7 @@ class GraphApp {
       let isDraggingInkSlider = false;
       const onSliderPointerDown = (e) => {
         if (e.button && e.button !== 0) return;
+        if (e.target && e.target.closest && e.target.closest('button')) return;
         const rect = sliderInkSize.getBoundingClientRect();
         if (rect && rect.width > 0 && e.clientX >= rect.left - 8 && e.clientX <= rect.right + 12) {
           e.preventDefault();
@@ -2550,6 +2551,7 @@ class GraphApp {
       let dragging = false;
       const onDown = (e) => {
         if (e.button && e.button !== 0) return;
+        if (e.target && e.target.closest && e.target.closest('button')) return;
         const rect = sliderEl.getBoundingClientRect();
         if (rect && rect.width > 0 && e.clientX >= rect.left - 8 && e.clientX <= rect.right + 12) {
           e.preventDefault();
@@ -3299,7 +3301,7 @@ class GraphApp {
     const slider = document.getElementById('sliderTextLabelSize');
     if (slider) slider.value = size;
     const lbl = document.getElementById('lblTextLabelSize');
-    if (lbl) lbl.textContent = `${size} pt`;
+    if (lbl) lbl.textContent = `${size}`;
     const curUnitScale = typeof this.getCurrentMathUnitScale === 'function' ? this.getCurrentMathUnitScale() : 90;
     if (this.selectedTextLabelId) {
       const sel = this.textLabels.find(t => t.id === this.selectedTextLabelId);
@@ -3321,7 +3323,7 @@ class GraphApp {
     const slider = document.getElementById('sliderDropLineFontSize');
     if (slider) slider.value = size;
     const lbl = document.getElementById('lblDropLineFontSize');
-    if (lbl) lbl.textContent = `${size} pt`;
+    if (lbl) lbl.textContent = `${size}`;
     this.render();
   }
 
@@ -3330,7 +3332,7 @@ class GraphApp {
     const slider = document.getElementById('sliderAxisLabelSize');
     if (slider) slider.value = size;
     const lbl = document.getElementById('lblAxisLabelSize');
-    if (lbl) lbl.textContent = `${size} pt`;
+    if (lbl) lbl.textContent = `${size}`;
     this.render();
   }
 
@@ -14282,16 +14284,22 @@ class GraphApp {
       };
     });
 
-    // 두께 슬라이더
+    // 두께 슬라이더 & ◀ ▶ 스테퍼
     const sliderLw = document.getElementById('sliderLw');
+    const applyLineWidthVal = (rawVal, pushHist = false) => {
+      const val = Math.max(1.0, Math.min(6.0, parseFloat(Number(rawVal).toFixed(1))));
+      if (sliderLw) sliderLw.value = val;
+      const lblLw = document.getElementById('lblLw');
+      if (lblLw) lblLw.textContent = `${val.toFixed(1)}`;
+      if (!this.activeGraph) return;
+      if (pushHist) this.pushHistoryState();
+      this.activeGraph.lineWidth = val;
+      this.render();
+    };
     if (sliderLw) {
       sliderLw.onpointerdown = () => { sliderLw._preSnap = this.getHistorySnapshot(); };
       sliderLw.oninput = (e) => {
-        const val = parseFloat(e.target.value);
-        document.getElementById('lblLw').textContent = `${val.toFixed(1)} pt`;
-        if (!this.activeGraph) return;
-        this.activeGraph.lineWidth = val;
-        this.render();
+        applyLineWidthVal(parseFloat(e.target.value), false);
       };
       sliderLw.onchange = () => {
         if (sliderLw._preSnap && sliderLw._preSnap !== this.getHistorySnapshot()) {
@@ -14301,6 +14309,53 @@ class GraphApp {
           this.updateUndoRedoUI();
         }
         sliderLw._preSnap = null;
+      };
+    }
+    const btnLwDown = document.getElementById('btnLwDown');
+    if (btnLwDown) {
+      btnLwDown.onclick = (e) => {
+        e.stopPropagation();
+        const cur = this.activeGraph ? (this.activeGraph.lineWidth || 2.8) : parseFloat(sliderLw ? sliderLw.value : 2.8);
+        applyLineWidthVal(cur - 0.2, true);
+      };
+    }
+    const btnLwUp = document.getElementById('btnLwUp');
+    if (btnLwUp) {
+      btnLwUp.onclick = (e) => {
+        e.stopPropagation();
+        const cur = this.activeGraph ? (this.activeGraph.lineWidth || 2.8) : parseFloat(sliderLw ? sliderLw.value : 2.8);
+        applyLineWidthVal(cur + 0.2, true);
+      };
+    }
+
+    // 스타일 & 배경 패널 2탭 전환 ([ ✒️ 필기 · 배경 | 📈 그래프 ])
+    const btnStyleTabInk = document.getElementById('btnStyleTabInk');
+    const btnStyleTabGraph = document.getElementById('btnStyleTabGraph');
+    const styleTabInk = document.getElementById('styleTabContentInk');
+    const styleTabGraph = document.getElementById('styleTabContentGraph');
+    this.switchStylePanelTab = (tabName) => {
+      const isGraph = (tabName === 'graph');
+      if (btnStyleTabInk) btnStyleTabInk.classList.toggle('active', !isGraph);
+      if (btnStyleTabGraph) btnStyleTabGraph.classList.toggle('active', isGraph);
+      if (styleTabInk) {
+        styleTabInk.style.display = isGraph ? 'none' : 'flex';
+        styleTabInk.classList.toggle('active', !isGraph);
+      }
+      if (styleTabGraph) {
+        styleTabGraph.style.display = isGraph ? 'flex' : 'none';
+        styleTabGraph.classList.toggle('active', isGraph);
+      }
+    };
+    if (btnStyleTabInk) {
+      btnStyleTabInk.onclick = (e) => {
+        e.stopPropagation();
+        this.switchStylePanelTab('ink');
+      };
+    }
+    if (btnStyleTabGraph) {
+      btnStyleTabGraph.onclick = (e) => {
+        e.stopPropagation();
+        this.switchStylePanelTab('graph');
       };
     }
 
@@ -14883,6 +14938,10 @@ class GraphApp {
       this.activeDrawerPanel = panelId || this.activeDrawerPanel || 'panelPresets';
       this.isDrawerCollapsed = false;
       rail.classList.remove('drawer-collapsed');
+      const railDrawerEl = document.getElementById('railDrawer');
+      if (railDrawerEl) {
+        railDrawerEl.dataset.activePanel = this.activeDrawerPanel;
+      }
       if (iconToggle) iconToggle.textContent = '◀';
       if (btnToggle) btnToggle.title = '\\';
 
@@ -24249,7 +24308,7 @@ class GraphApp {
             const slText = document.getElementById('sliderTextLabelSize');
             const lblText = document.getElementById('lblTextLabelSize');
             if (slText) slText.value = selItem.fontSize;
-            if (lblText) lblText.textContent = `${selItem.fontSize} pt`;
+            if (lblText) lblText.textContent = `${selItem.fontSize}`;
           }
 
           // 드래그 이동 시작
@@ -24970,7 +25029,7 @@ class GraphApp {
           const slText = document.getElementById('sliderTextLabelSize');
           const lblText = document.getElementById('lblTextLabelSize');
           if (slText) slText.value = selItem.fontSize;
-          if (lblText) lblText.textContent = `${selItem.fontSize} pt`;
+          if (lblText) lblText.textContent = `${selItem.fontSize}`;
         }
 
         // 드래그 이동 시작
