@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_58">
+  <link rel="stylesheet" href="style.css?v=20261103_59">
 </head>
 
 <body class="theme-light">
@@ -933,22 +933,32 @@
               <div id="styleTabContentGraph" class="style-tab-pane" style="display: none;">
                 <!-- 곡선 색상 & 선 두께 -->
                 <div class="panel-section" style="border: none; padding: 0;">
-                  <div class="section-title" style="margin-bottom: 6px;">
+                  <div class="section-title"
+                    style="margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
                     <span>곡선 색상 & 두께</span>
+                    <div class="graph-color-mode-group" id="graphColorModeGroup"
+                      style="display: inline-flex; gap: 4px;">
+                      <button type="button" class="vf-chip graph-color-mode-chip active" data-color-mode="auto"
+                        style="padding: 3px 8px; font-size: 11px;"
+                        title="그래프를 추가할 때마다 서로 구분되는 색상으로 자동 배정합니다 (밝은 바탕엔 흰색 제외, 어두운 바탕엔 검정 제외)">자동 배색</button>
+                      <button type="button" class="vf-chip graph-color-mode-chip" data-color-mode="fixed"
+                        style="padding: 3px 8px; font-size: 11px;"
+                        title="아래에서 선택한 한 가지 색상(예: 검정/흰색 등)으로 모든 그래프를 고정합니다">색상 고정</button>
+                    </div>
                   </div>
-                  <div class="color-palette" style="margin-bottom: 8px;">
-                    <div class="color-dot active" data-color="#00d2d3" style="background:#00d2d3"></div>
-                    <div class="color-dot" data-color="#feca57" style="background:#feca57"></div>
-                    <div class="color-dot" data-color="#ff9f43" style="background:#ff9f43"></div>
-                    <div class="color-dot" data-color="#ff6b6b" style="background:#ff6b6b"></div>
-                    <div class="color-dot" data-color="#54a0ff" style="background:#54a0ff"></div>
-                    <div class="color-dot" data-color="#1dd1a1" style="background:#1dd1a1"></div>
-                    <div class="color-dot" data-color="#ffffff" style="background:#ffffff"></div>
-                    <div class="color-dot" data-color="#ff9ff3" style="background:#ff9ff3"></div>
-                    <div class="color-dot" data-color="#a29bfe" style="background:#a29bfe"></div>
-                    <div class="color-dot" data-color="#48dbfb" style="background:#48dbfb"></div>
-                    <div class="color-dot" data-color="#f368e0" style="background:#f368e0"></div>
-                    <div class="color-dot" data-color="#ee5253" style="background:#ee5253"></div>
+                  <div class="color-palette" id="graphColorPalette" style="margin-bottom: 8px;">
+                    <div class="color-dot active" data-color="#1e293b" style="background:#1e293b" title="검정"></div>
+                    <div class="color-dot" data-color="#c74440" style="background:#c74440"></div>
+                    <div class="color-dot" data-color="#2d70b3" style="background:#2d70b3"></div>
+                    <div class="color-dot" data-color="#388c46" style="background:#388c46"></div>
+                    <div class="color-dot" data-color="#6042a6" style="background:#6042a6"></div>
+                    <div class="color-dot" data-color="#fa7e19" style="background:#fa7e19"></div>
+                    <div class="color-dot" data-color="#008080" style="background:#008080"></div>
+                    <div class="color-dot" data-color="#b83280" style="background:#b83280"></div>
+                    <div class="color-dot" data-color="#0284c7" style="background:#0284c7"></div>
+                    <div class="color-dot" data-color="#d97706" style="background:#d97706"></div>
+                    <div class="color-dot" data-color="#4f46e5" style="background:#4f46e5"></div>
+                    <div class="color-dot" data-color="#dc2626" style="background:#dc2626"></div>
                   </div>
                   <div class="single-line-slider-row">
                     <span class="single-line-slider-label">선 두께</span>
@@ -3079,8 +3089,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_58"></script>
-  <script src="app.js?v=20261103_58"></script>
+  <script src="engine.js?v=20261103_59"></script>
+  <script src="app.js?v=20261103_59"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
