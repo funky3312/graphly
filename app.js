@@ -17437,7 +17437,7 @@ class GraphApp {
         : '현재 슬라이드';
       if (lblModalSavePng) {
         lblModalSavePng.textContent = isMultiSlideAll
-          ? `통합 PDF 저장 (${totalCnt}장·1파일)`
+          ? `PDF 저장 (${totalCnt}장)`
           : 'PNG 저장';
       }
       if (lblSummary) {
@@ -17449,8 +17449,8 @@ class GraphApp {
       if (qrCanvas && window.MiniQRCode && urlStr) {
         try {
           window.MiniQRCode.drawToCanvas(urlStr, qrCanvas, {
-            size: 116,
-            padding: 6,
+            size: 240,
+            padding: 10,
             fgColor: '#0f172a',
             bgColor: '#ffffff'
           });
@@ -17458,27 +17458,54 @@ class GraphApp {
       }
     };
 
+    let cachedCloudShareUrl = '';
+    let cachedCloudShareSig = '';
     let shareLinkGenerationPromise = null;
-    const updateShareLinksAndQR = async () => {
+
+    const getShareFilterSig = () => {
+      const f = this.exportFilter || {};
+      return `${this.exportScope}|${Boolean(f.includeProblem)}|${Boolean(f.includeGraph)}|${Boolean(f.includeInk)}|${f.includeAudio !== false}`;
+    };
+
+    // ⚡ 체크박스·범위 변경 시에는 0.00초 만에 UI만 즉시 갱신 (무거운 스캔·클라우드 업로드·QR 렌더링 전혀 안 함!)
+    const syncFilterAndInvalidateCache = () => {
+      cachedCloudShareUrl = '';
+      cachedCloudShareSig = '';
+      shareLinkGenerationPromise = null;
       syncFilterUI();
       const baseUrl = window.location.href.split('#')[0];
       const codeNormal = window.GraphStateSerializer ? window.GraphStateSerializer.serialize(this, false) : '';
       const fallbackNormalUrl = `${baseUrl}#share=${codeNormal}`;
       if (inputShare) inputShare.value = fallbackNormalUrl;
       if (inputStudent) inputStudent.value = fallbackNormalUrl;
-      renderQr(fallbackNormalUrl);
+    };
+
+    // 🚀 실제로 [공유 링크 복사] 또는 [QR 생성·저장] 버튼을 눌렀을 때만 클라우드 공유 링크 생성!
+    const ensureCloudShareLinkOnDemand = async () => {
+      const curSig = getShareFilterSig();
+      if (cachedCloudShareUrl && cachedCloudShareSig === curSig) {
+        return cachedCloudShareUrl;
+      }
+      if (shareLinkGenerationPromise && cachedCloudShareSig === curSig) {
+        return await shareLinkGenerationPromise;
+      }
+      cachedCloudShareSig = curSig;
+      const baseUrl = window.location.href.split('#')[0];
+      const codeNormal = window.GraphStateSerializer ? window.GraphStateSerializer.serialize(this, false) : '';
+      const fallbackNormalUrl = `${baseUrl}#share=${codeNormal}`;
 
       const genTask = (async () => {
         try {
           const shortId = await this.createCloudSharePackage(this.exportScope, this.exportFilter);
           if (shortId) {
             const cloudUrl = `${baseUrl}#cloud=${shortId}`;
+            cachedCloudShareUrl = cloudUrl;
             if (inputShare) inputShare.value = cloudUrl;
             if (inputStudent) inputStudent.value = cloudUrl;
-            renderQr(cloudUrl);
             return cloudUrl;
           }
         } catch (err) { }
+        cachedCloudShareUrl = fallbackNormalUrl;
         return fallbackNormalUrl;
       })();
       shareLinkGenerationPromise = genTask;
@@ -17488,13 +17515,13 @@ class GraphApp {
     if (btnScopeCur) {
       btnScopeCur.onclick = () => {
         this.exportScope = 'current';
-        updateShareLinksAndQR();
+        syncFilterAndInvalidateCache();
       };
     }
     if (btnScopeAll) {
       btnScopeAll.onclick = () => {
         this.exportScope = 'all';
-        updateShareLinksAndQR();
+        syncFilterAndInvalidateCache();
       };
     }
 
@@ -17505,7 +17532,7 @@ class GraphApp {
         this.exportFilter[key] = true;
         chkEl.checked = true;
       }
-      updateShareLinksAndQR();
+      syncFilterAndInvalidateCache();
     };
     if (chkProblem) chkProblem.onchange = () => onLayerToggle('includeProblem', chkProblem);
     if (chkGraph) chkGraph.onchange = () => onLayerToggle('includeGraph', chkGraph);
@@ -17534,7 +17561,7 @@ class GraphApp {
         this.exportFilter.includeInk = true;
         this.exportFilter.includeAudio = true;
       }
-      updateShareLinksAndQR();
+      syncFilterAndInvalidateCache();
     };
     if (btnStage0) btnStage0.onclick = () => applyStagePreset(0);
     if (btnStage1) btnStage1.onclick = () => applyStagePreset(1);
@@ -17552,7 +17579,7 @@ class GraphApp {
       btnModalSavePng.onclick = async () => {
         const allSlides = this._getActiveSlidesForExport('수업 노트');
         const isMulti = (this.exportScope === 'all' && allSlides.length > 1);
-        const origLabel = isMulti ? `통합 PDF 저장 (${allSlides.length}장·1파일)` : 'PNG 저장';
+        const origLabel = isMulti ? `PDF 저장 (${allSlides.length}장)` : 'PNG 저장';
         await this.downloadExportImages(this.exportScope, this.exportFilter);
         flashButtonLabel(lblModalSavePng, '✅ 저장됨', origLabel);
       };
@@ -17574,15 +17601,22 @@ class GraphApp {
         const allSlides = this._getActiveSlidesForExport('수업 노트');
         this.exportScope = (allSlides && allSlides.length > 1) ? 'all' : 'current';
       }
+      // 내보내기 창을 열 때는 항상 4개 항목 전체 선택(통합 마스터본)을 기본값으로 초기화
+      this.exportFilter = {
+        includeProblem: true,
+        includeGraph: true,
+        includeInk: true,
+        includeAudio: true
+      };
       const hasLiveGraphs = this.graphs && this.graphs.length > 0;
       const hasBackupGraphs = this._coveredGraphStateBackup && this._coveredGraphStateBackup.graphs && this._coveredGraphStateBackup.graphs.length > 0;
       if (!hasLiveGraphs && hasBackupGraphs) {
         const origGraphs = this.graphs;
         this.graphs = this._coveredGraphStateBackup.graphs;
-        updateShareLinksAndQR();
+        syncFilterAndInvalidateCache();
         this.graphs = origGraphs;
       } else {
-        updateShareLinksAndQR();
+        syncFilterAndInvalidateCache();
       }
       if (modal) modal.classList.add('show');
     };
@@ -17619,33 +17653,33 @@ class GraphApp {
 
     if (btnCopyShare) {
       btnCopyShare.onclick = async () => {
-        if (shareLinkGenerationPromise) {
-          await shareLinkGenerationPromise;
-        }
-        if (inputShare) {
-          await copyTextToClipboard(inputShare.value);
-          flashButtonLabel(lblBtnCopyShare, '✅ 복사됨', '링크 복사');
-        }
+        if (lblBtnCopyShare) lblBtnCopyShare.textContent = '⏳ 링크 생성 중...';
+        const finalUrl = await ensureCloudShareLinkOnDemand();
+        await copyTextToClipboard(finalUrl);
+        flashButtonLabel(lblBtnCopyShare, '✅ 링크 복사됨', '공유 링크 복사');
       };
     }
 
     if (btnCopyStudent) {
       btnCopyStudent.onclick = async () => {
-        if (shareLinkGenerationPromise) {
-          await shareLinkGenerationPromise;
-        }
-        if (inputStudent) await copyTextToClipboard(inputStudent.value);
+        const finalUrl = await ensureCloudShareLinkOnDemand();
+        await copyTextToClipboard(finalUrl);
       };
     }
 
+    const lblBtnDownloadQr = document.getElementById('lblBtnDownloadQr');
     if (btnDownloadQr) {
-      btnDownloadQr.onclick = () => {
+      btnDownloadQr.onclick = async () => {
         if (!qrCanvas) return;
+        if (lblBtnDownloadQr) lblBtnDownloadQr.textContent = '⏳ QR 생성 중...';
+        const finalUrl = await ensureCloudShareLinkOnDemand();
+        renderQr(finalUrl);
         const dataUrl = qrCanvas.toDataURL('image/png');
         const link = document.createElement('a');
-        link.download = `GraphMaster_QR_${Date.now()}.png`;
+        link.download = `Graphly_QR_${Date.now()}.png`;
         link.href = dataUrl;
         link.click();
+        flashButtonLabel(lblBtnDownloadQr, '✅ QR 저장됨', 'QR 생성·저장');
       };
     }
 
@@ -17693,10 +17727,10 @@ class GraphApp {
       const g = f.includeGraph !== false;
       const i = f.includeInk !== false;
       const a = f.includeAudio !== false;
-      if (p && !g && !i && !a) return '[1단계·문제]';
-      if (p && g && !i && !a) return '[2단계·문제+그래프]';
-      if (p && g && i && !a) return '[3단계·문제+그래프+풀이]';
-      if (p && g && i && a) return '[4단계·통영상강의]';
+      if (p && !g && !i && !a) return '[문제]';
+      if (p && g && !i && !a) return '[문제+그래프]';
+      if (p && g && i && !a) return '[문제+그래프+필기]';
+      if (p && g && i && a) return '[통합본]';
       const names = [];
       if (p) names.push('문제');
       if (g) names.push('그래프');
@@ -17723,7 +17757,7 @@ class GraphApp {
         const saved = await this.saveCurrentToMyLibrary(title, tags, slides);
         if (!saved) return;
         if (inpDeckTitle) inpDeckTitle.value = '';
-        flashButtonLabel(btnShareToLib, '✅ 클라우드 저장됨', '☁️ 클라우드에 저장');
+        flashButtonLabel(btnShareToLib, '✅ 클라우드 저장됨', '☁️ 클라우드 저장');
       };
     }
 
@@ -17738,7 +17772,7 @@ class GraphApp {
         const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : `#수업노트 ${stageSuffix}`;
         this.exportGraphlyDeckFile(title, tags, slides);
         if (inpDeckTitle) inpDeckTitle.value = '';
-        flashButtonLabel(btnShareExportFile, '✅ 파일 저장됨', '💻 내 기기에 파일 저장 (.graphly)');
+        flashButtonLabel(btnShareExportFile, '✅ 파일 저장됨', '💻 파일 저장 (.graphly)');
       };
     }
   }

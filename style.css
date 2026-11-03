@@ -8270,25 +8270,25 @@ body.theme-light .top-slide-bar-mini-tab:hover {
    📤 통합 내보내기 & 공유 모달 (범위 × 문제/그래프/필기 필터 × 이미지·링크·파일)
    ============================================================================ */
 .unified-export-modal-card {
-  max-width: 590px !important;
-  width: 94vw !important;
+  max-width: 416px !important;
+  width: 92vw !important;
 }
 
 .unified-export-body {
   display: flex;
   flex-direction: column;
-  gap: 12px !important;
-  padding: 16px 20px !important;
+  gap: 10px !important;
+  padding: 14px 16px 16px !important;
 }
 
 .export-filter-box {
   background: rgba(15, 23, 42, 0.55);
   border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 12px;
-  padding: 11px 14px;
+  border-radius: 10px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 8px;
 }
 
 body.theme-light .export-filter-box {
@@ -8300,15 +8300,15 @@ body.theme-light .export-filter-box {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .export-step-label {
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
   color: #e2e8f0;
-  min-width: 96px;
+  min-width: 34px;
 }
 
 body.theme-light .export-step-label {
@@ -8319,18 +8319,18 @@ body.theme-light .export-step-label {
 .export-layer-group {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   flex-wrap: wrap;
 }
 
 .export-scope-chip {
-  height: 30px;
-  padding: 0 13px;
+  height: 28px;
+  padding: 0 11px;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.28);
   background: rgba(30, 41, 59, 0.65);
   color: #cbd5e1;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.14s ease;
@@ -8352,14 +8352,14 @@ body.theme-light .export-scope-chip {
 .export-layer-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 12px;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.28);
   background: rgba(30, 41, 59, 0.6);
   color: #94a3b8;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   cursor: pointer;
   user-select: none;
@@ -8404,65 +8404,45 @@ body.theme-light .export-filter-hint {
   border-top-color: #e2e8f0;
 }
 
-.export-img-btn-row {
+.export-img-btn-row,
+.export-action-2x2-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 7px;
 }
 
 .export-action-big-btn {
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  height: 38px;
-  font-size: 12.5px !important;
+  gap: 6px;
+  height: 34px;
+  font-size: 12px !important;
   font-weight: 700 !important;
-  border-radius: 10px !important;
+  border-radius: 8px !important;
+  padding: 0 10px !important;
 }
 
-.share-link-qr-split {
-  display: flex;
-  align-items: stretch;
-  gap: 12px;
+.export-btn-share-link {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+  border-color: #60a5fa !important;
+  color: #ffffff !important;
 }
 
-.share-link-col {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+.export-btn-share-link:hover {
+  filter: brightness(1.06);
 }
 
-.qr-mini-box {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 7px;
-  border-radius: 10px;
-  background: rgba(15, 23, 42, 0.45);
-  border: 1px solid rgba(148, 163, 184, 0.22);
+.share-deck-hub-group {
+  padding: 9px 11px !important;
 }
 
-body.theme-light .qr-mini-box {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-}
-
-.qr-mini-box canvas {
-  width: 96px;
-  height: 96px;
-  border-radius: 6px;
-  background: #ffffff;
-}
-
-.qr-mini-dl-btn {
-  font-size: 11px !important;
-  padding: 3px 8px !important;
-  width: 100%;
+.share-deck-btn {
+  height: 34px !important;
+  padding: 0 10px !important;
+  font-size: 12px !important;
+  border-radius: 8px !important;
+  min-width: 0 !important;
 }
 
 /* ============================================================================
