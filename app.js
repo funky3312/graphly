@@ -14414,6 +14414,15 @@ class GraphApp {
 
   // --- [우측 플로팅 퀵 툴바 & 칠판/바탕색 테마 바인딩] ---
   bindQuickToolbar() {
+    // 👁️ [뷰어 미리보기 원클릭 전환 버튼 바인딩]
+    const btnQuickOpenViewer = document.getElementById('btnQuickOpenViewer');
+    if (btnQuickOpenViewer) {
+      btnQuickOpenViewer.onclick = async (e) => {
+        e.stopPropagation();
+        await this.openCurrentWorkspaceInSmartViewer();
+      };
+    }
+
     // --- [우측 내보내기 & 공유 플라이아웃 패널 토글] ---
     const wrapExport = document.getElementById('wrapQuickExport');
     const btnExport = document.getElementById('btnExport');
@@ -20342,8 +20351,8 @@ class GraphApp {
     return commObj;
   }
 
-  // 보관함/게시판 항목을 칠판으로 즉시 불러오기 (N문항 통째 세트면 즉시 1/N 슬라이드 모드로 실행!)
-  async loadCloudItemToWorkspace(item, closeModal = true) {
+  // 보관함/게시판 항목을 불러올 때 먼저 표준 뷰어로 연결 (뷰어에서 [편집] 클릭 시 그래플리 작업 화면으로 전환!)
+  async loadCloudItemToWorkspace(item, closeModal = true, openInViewer = true) {
     if (!item) return;
     const resolved = await this._resolveChunkedItem(item);
     const slides = Array.isArray(resolved.playlistSlides) && resolved.playlistSlides.length > 0
@@ -20372,6 +20381,18 @@ class GraphApp {
     if (closeModal) {
       const modalCloud = document.getElementById('modalCloudHub');
       if (modalCloud) modalCloud.classList.remove('show');
+    }
+
+    if (openInViewer) {
+      const previewSlides = JSON.parse(JSON.stringify(slides));
+      const normalizedPkg = {
+        ...resolved,
+        playlistSlides: previewSlides,
+        isPlaylist: previewSlides.length > 1 || Boolean(resolved.isPlaylist),
+        currentIndex: 0
+      };
+      this._initialSharedCloudPkg = JSON.parse(JSON.stringify(normalizedPkg));
+      await this.openSmartNoteViewer(normalizedPkg);
     }
   }
 
@@ -20808,7 +20829,7 @@ class GraphApp {
       const btnShare = row.querySelector('.btn-cloud-share-item');
       if (btnShare) {
         btnShare.onclick = async () => {
-          await this.loadCloudItemToWorkspace(item, true);
+          await this.loadCloudItemToWorkspace(item, true, false);
           if (this._openShareModalWithCloudPackage) {
             this._openShareModalWithCloudPackage();
           }
@@ -20915,7 +20936,7 @@ class GraphApp {
   // ============================================================================
   // 🎯 [수업 슬라이드(PPT) 플레이리스트 모드: 1번 ➔ 2번 ➔ 3번 연속 수업 & 필기 자동 보존]
   // ============================================================================
-  startPlaylistFromSelectedLibraryItems() {
+  async startPlaylistFromSelectedLibraryItems() {
     const selectedSlides = this._collectSelectedLibrarySlides();
     if (!selectedSlides.length) {
       this.showToast('⚠️ 슬라이드로 시작할 문항을 1개 이상 체크해 주세요!');
@@ -20925,6 +20946,16 @@ class GraphApp {
 
     const modalCloud = document.getElementById('modalCloudHub');
     if (modalCloud) modalCloud.classList.remove('show');
+
+    const normalizedPkg = {
+      id: 'lib_sel_' + Date.now().toString(36),
+      createdAt: Date.now(),
+      playlistSlides: JSON.parse(JSON.stringify(selectedSlides)),
+      isPlaylist: selectedSlides.length > 1,
+      currentIndex: 0
+    };
+    this._initialSharedCloudPkg = JSON.parse(JSON.stringify(normalizedPkg));
+    await this.openSmartNoteViewer(normalizedPkg);
   }
 
   startLessonPlaylist(slidesArray, startIndex = 0) {
@@ -22261,9 +22292,49 @@ class GraphApp {
     if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
   }
 
-  async openSmartNoteViewer(pkg) {
+  async openCurrentWorkspaceInSmartViewer() {
+    if (this.isAudioRecording) {
+      await this.stopAudioRecording();
+    } else if (this._pendingSlideAudioFinalizers && this._pendingSlideAudioFinalizers.length > 0) {
+      await Promise.all(this._pendingSlideAudioFinalizers).catch(() => { });
+      this._pendingSlideAudioFinalizers = [];
+    }
+    if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
+      this.saveCurrentSlideIntoPlaylist();
+    }
+    const rawSlides = this._getActiveSlidesForExport('수업 노트');
+    if (!rawSlides || !rawSlides.length) return;
+
+    const previewSlides = JSON.parse(JSON.stringify(rawSlides)).map(s => {
+      if (s) {
+        delete s.viewerSnapshotDataUrl;
+        delete s.viewerGraphHotspots;
+        delete s.viewerStickerHotspots;
+        delete s.viewerSmartBounds;
+      }
+      return s;
+    });
+
+    const activeIdx = (this.isLessonPlaylistActive && typeof this.lessonPlaylistIndex === 'number')
+      ? Math.max(0, Math.min(previewSlides.length - 1, this.lessonPlaylistIndex))
+      : 0;
+
+    const pkg = {
+      id: 'preview_' + Date.now().toString(36),
+      createdAt: Date.now(),
+      exportScope: previewSlides.length > 1 ? 'all' : 'current',
+      exportFilter: { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: false },
+      isPlaylist: Boolean(this.isLessonPlaylistActive) || previewSlides.length > 1,
+      playlistSlides: previewSlides,
+      currentIndex: activeIdx
+    };
+
+    await this.openSmartNoteViewer(pkg, true);
+  }
+
+  async openSmartNoteViewer(pkg, forceNoteViewer = false) {
     if (!pkg || !Array.isArray(pkg.playlistSlides) || !pkg.playlistSlides.length) return;
-    if (this._packageHasRecordedAudio(pkg)) {
+    if (!forceNoteViewer && this._packageHasRecordedAudio(pkg)) {
       await this.enterStudentAudioVideoOnlyMode(pkg, false);
       return;
     }
@@ -22590,7 +22661,10 @@ class GraphApp {
 
   exitSmartNoteViewerToEditMode() {
     const overlay = document.getElementById('smartNoteViewerOverlay');
-    if (overlay) overlay.style.display = 'none';
+    if (overlay) {
+      overlay.style.display = 'none';
+      overlay.classList.remove('viewer-immersive-fullscreen');
+    }
     document.body.classList.remove('viewer-graph-touch-mode');
     document.body.classList.remove('student-mode');
     const touchBar = document.getElementById('viewerGraphTouchBar');
@@ -22603,7 +22677,7 @@ class GraphApp {
 
     const resetBar = document.getElementById('sharedResetBar');
     if (resetBar) {
-      resetBar.style.display = 'flex';
+      resetBar.style.display = 'none';
     }
     this.resizeCanvas();
     this.render();
