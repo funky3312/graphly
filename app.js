@@ -18177,6 +18177,8 @@ class GraphApp {
     const btnAddSlide = document.getElementById('btnPlaylistAddSlide');
     const btnNextPdfPage = document.getElementById('btnPlaylistNextPdfPage');
     const btnPlaylistOpenPdf = document.getElementById('btnPlaylistOpenPdf');
+    const btnToggleSelectMode = document.getElementById('btnPlaylistToggleSelectMode');
+    const btnConfirmSelectedDel = document.getElementById('btnPlaylistConfirmSelectedDelete');
     const btnClearAllSlides = document.getElementById('btnPlaylistClearAll');
     const btnHidePlaylistBar = document.getElementById('btnPlaylistHideBar');
     const btnClosePlaylist = document.getElementById('btnPlaylistClose');
@@ -18192,7 +18194,6 @@ class GraphApp {
     if (btnPlaylistOpenPdf) {
       btnPlaylistOpenPdf.onclick = (e) => {
         if (e && e.stopPropagation) e.stopPropagation();
-        // 현재 슬라이드에 이미 내용이 있으면(+)를 누르지 않았더라도 자동으로 다음 슬라이드에 열리도록 true 전달!
         const autoNextSlide = this.hasAnyWorkspaceContent();
         this.resumeOrOpenCurrentPdf(autoNextSlide, { startInPanMode: true });
       };
@@ -18213,16 +18214,32 @@ class GraphApp {
         this.deletePlaylistSlideAt(this.lessonPlaylistIndex);
       };
     }
-    if (btnAddSlide) btnAddSlide.onclick = () => this.handleNewCanvasButtonClick();
+    if (btnAddSlide) {
+      btnAddSlide.onclick = (e) => this.handleSmartAddSlideFromTopBar(e);
+    }
+    if (btnToggleSelectMode) {
+      btnToggleSelectMode.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        this.toggleSlideSelectDeleteMode();
+      };
+    }
+    if (btnConfirmSelectedDel) {
+      btnConfirmSelectedDel.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        this.deleteSelectedPlaylistSlides();
+      };
+    }
     if (btnClearAllSlides) {
       btnClearAllSlides.onclick = (e) => {
         if (e && e.stopPropagation) e.stopPropagation();
         this._isSlideGridOpen = false;
+        this._isSlideSelectDeleteMode = false;
+        this._selectedSlideDeleteIndices = new Set();
         this.clearAllSlidesAndReset();
       };
     }
     if (btnHidePlaylistBar) {
-      btnHidePlaylistBar.onclick = () => this.toggleTopSlideBarHidden(true);
+      btnHidePlaylistBar.onclick = () => this.toggleTopSlideBarHidden(false);
     }
     if (btnMiniTab) {
       btnMiniTab.onclick = () => this.toggleTopSlideBarHidden(false);
@@ -21329,47 +21346,113 @@ class GraphApp {
   }
 
   clearAllSlidesAndReset() {
+    this._isSlideSelectDeleteMode = false;
+    this._selectedSlideDeleteIndices = new Set();
     this.resetNewCanvas();
     this.showToast('🗑️ 모든 슬라이드를 비우고 깨끗한 초기 캔버스로 돌아왔습니다!');
   }
 
+  handleSmartAddSlideFromTopBar(e) {
+    if (e && e.stopPropagation) e.stopPropagation();
+    this._isSlideGridOpen = false;
+    this._isSlideSelectDeleteMode = false;
+    this._selectedSlideDeleteIndices = new Set();
+
+    const hasOpenPdf = Boolean(this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0));
+    const isPageMode = (this.lessonTeachingMode === 'page');
+    const isCropContext = Boolean(hasOpenPdf || this.problemCardData || this.lessonTeachingMode === 'crop');
+
+    if (hasOpenPdf && isPageMode) {
+      this.appendNextPdfPageSlide();
+      return;
+    }
+    if (isCropContext) {
+      const autoNextSlide = this.hasAnyWorkspaceContent();
+      this.resumeOrOpenCurrentPdf(autoNextSlide, { startInPanMode: true });
+      return;
+    }
+    this.handleNewCanvasButtonClick();
+  }
+
   toggleSlideGridPopover(forceOpen) {
     this._isSlideGridOpen = typeof forceOpen === 'boolean' ? forceOpen : !this._isSlideGridOpen;
+    this._isSlideSelectDeleteMode = false;
+    this._selectedSlideDeleteIndices = new Set();
     this.syncPdfBoardNavBarUI();
     this.syncLessonPlaylistNavBarUI();
   }
 
-  toggleTopSlideBarHidden(hide) {
-    this.isTopSlideBarHidden = typeof hide === 'boolean' ? hide : !this.isTopSlideBarHidden;
-    if (this.isTopSlideBarHidden) {
-      this._isSlideGridOpen = false;
+  toggleSlideSelectDeleteMode(forceMode) {
+    this._isSlideSelectDeleteMode = typeof forceMode === 'boolean' ? forceMode : !this._isSlideSelectDeleteMode;
+    this._selectedSlideDeleteIndices = new Set();
+    this.syncLessonPlaylistNavBarUI();
+  }
+
+  deleteSelectedPlaylistSlides() {
+    const selectedSet = this._selectedSlideDeleteIndices instanceof Set ? this._selectedSlideDeleteIndices : new Set();
+    if (selectedSet.size === 0) {
+      this.showToast('⚠️ 삭제할 캔버스 번호를 먼저 선택해 주세요.');
+      return;
     }
+
+    if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
+      this._isSlideGridOpen = false;
+      this._isSlideSelectDeleteMode = false;
+      this._selectedSlideDeleteIndices = new Set();
+      this.resetNewCanvas();
+      this.showToast('🗑️ 선택한 캔버스를 비우고 초기화했습니다.');
+      return;
+    }
+
+    this.saveCurrentSlideIntoPlaylist();
+    const totalBefore = this.lessonPlaylistSlides.length;
+    const validSelected = Array.from(selectedSet)
+      .filter(idx => typeof idx === 'number' && idx >= 0 && idx < totalBefore)
+      .sort((a, b) => a - b);
+
+    if (validSelected.length === 0) return;
+
+    if (validSelected.length >= totalBefore) {
+      this._isSlideGridOpen = false;
+      this._isSlideSelectDeleteMode = false;
+      this._selectedSlideDeleteIndices = new Set();
+      this.clearAllSlidesAndReset();
+      return;
+    }
+
+    const oldIdx = this.lessonPlaylistIndex || 0;
+    let deletedBeforeOld = 0;
+    validSelected.forEach(idx => {
+      if (idx < oldIdx) deletedBeforeOld++;
+    });
+
+    this.lessonPlaylistSlides = this.lessonPlaylistSlides.filter((_, idx) => !selectedSet.has(idx));
+    const newIdx = Math.min(this.lessonPlaylistSlides.length - 1, Math.max(0, oldIdx - deletedBeforeOld));
+    this.lessonPlaylistIndex = newIdx;
+    this.isLessonPlaylistActive = true;
+    this._isSlideSelectDeleteMode = false;
+    this._selectedSlideDeleteIndices = new Set();
+
+    this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
+    this.syncLessonPlaylistNavBarUI();
+    this.showToast(`🗑️ 선택한 ${validSelected.length}개의 캔버스를 삭제했습니다.`);
+  }
+
+  toggleTopSlideBarHidden(hide) {
+    this.isTopSlideBarHidden = false;
     this.syncPdfBoardNavBarUI();
     this.syncLessonPlaylistNavBarUI();
   }
 
   _syncTopSlideMiniTabUI() {
     const miniTab = document.getElementById('topSlideBarMiniTab');
-    const lblMini = document.getElementById('lblTopSlideMiniTab');
-    if (!miniTab) return;
-
-    if (!this.isGraphCovered || !this.isTopSlideBarHidden) {
-      miniTab.style.display = 'none';
-      return;
-    }
-
-    miniTab.style.display = 'inline-flex';
-    if (lblMini) {
-      const hasPlaylist = Boolean(this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length >= 1);
-      const cur = hasPlaylist ? ((this.lessonPlaylistIndex || 0) + 1) : 1;
-      const total = hasPlaylist ? this.lessonPlaylistSlides.length : 1;
-      lblMini.textContent = `📑 ${cur} / ${total} ▾`;
-    }
+    if (miniTab) miniTab.style.display = 'none';
   }
 
   syncLessonPlaylistNavBarUI() {
     const navBar = document.getElementById('lessonPlaylistNavBar');
     if (!navBar) return;
+    this.isTopSlideBarHidden = false;
     const allowInStudentAudio = Boolean(this.isStudentAudioVideoOnlyMode && this.lessonPlaylistSlides && this.lessonPlaylistSlides.length > 1);
     if (this.isStudentAudioVideoOnlyMode && (!this.lessonPlaylistSlides || this.lessonPlaylistSlides.length <= 1)) {
       navBar.style.display = 'none';
@@ -21389,6 +21472,8 @@ class GraphApp {
         const t = ev.target;
         if (t && t.closest && (t.closest('.slide-grid-popover') || t.closest('#btnPlaylistSlideInfo') || t.closest('#btnPdfBoardPageInfo'))) return;
         this._isSlideGridOpen = false;
+        this._isSlideSelectDeleteMode = false;
+        this._selectedSlideDeleteIndices = new Set();
         this._openSlideChipDelKey = null;
         this.syncLessonPlaylistNavBarUI();
       }, { capture: true });
@@ -21402,16 +21487,41 @@ class GraphApp {
     const arrowChar = this._isSlideGridOpen ? '▴' : '▾';
     const lbl = document.getElementById('lblPlaylistSlideInfo');
     if (lbl) {
-      lbl.textContent = `📑 ${cur} / ${total} ${arrowChar}`;
+      lbl.textContent = `${cur} / ${total} ${arrowChar}`;
     }
 
     const gridPop = document.getElementById('playlistGridPopover');
     if (gridPop) {
-      gridPop.style.display = (!this.isTopSlideBarHidden && this._isSlideGridOpen) ? 'flex' : 'none';
+      gridPop.style.display = this._isSlideGridOpen ? 'flex' : 'none';
     }
-    const btnDelCur = document.getElementById('btnPlaylistDeleteCurrent');
-    if (btnDelCur) {
-      btnDelCur.disabled = false;
+
+    const isSelectMode = Boolean(this._isSlideSelectDeleteMode);
+    if (!(this._selectedSlideDeleteIndices instanceof Set)) {
+      this._selectedSlideDeleteIndices = new Set();
+    }
+    const selectedSet = this._selectedSlideDeleteIndices;
+    const selCount = selectedSet.size;
+    const lblGridTitle = document.getElementById('lblSlideGridPopoverTitle');
+    const btnToggleSelect = document.getElementById('btnPlaylistToggleSelectMode');
+    const btnClearAll = document.getElementById('btnPlaylistClearAll');
+    const btnConfirmDel = document.getElementById('btnPlaylistConfirmSelectedDelete');
+
+    if (lblGridTitle) {
+      lblGridTitle.textContent = isSelectMode
+        ? (selCount > 0 ? `${selCount}개 선택됨` : '삭제할 번호 선택')
+        : '캔버스 목록';
+    }
+    if (btnToggleSelect) {
+      btnToggleSelect.textContent = isSelectMode ? '취소' : '선택';
+      btnToggleSelect.classList.toggle('is-select-mode', isSelectMode);
+    }
+    if (btnClearAll) {
+      btnClearAll.style.display = isSelectMode ? 'none' : 'inline-flex';
+    }
+    if (btnConfirmDel) {
+      btnConfirmDel.style.display = isSelectMode ? 'inline-flex' : 'none';
+      btnConfirmDel.disabled = (selCount === 0);
+      btnConfirmDel.textContent = selCount > 0 ? `삭제 (${selCount})` : '삭제';
     }
 
     const chipsEl = document.getElementById('playlistSlideChips');
@@ -21419,10 +21529,14 @@ class GraphApp {
       chipsEl.innerHTML = '';
       effectiveSlides.forEach((s, idx) => {
         const isActive = (idx === curIdx);
+        const isSelectedForDel = isSelectMode && selectedSet.has(idx);
         const chip = document.createElement('div');
-        chip.className = 'slide-chip-item' + (isActive ? ' active' : '');
+        chip.className = 'slide-chip-item'
+          + (isSelectedForDel ? ' selected-for-delete' : (isActive ? ' active' : ''));
         const shortLabel = String(idx + 1);
-        chip.title = `${idx + 1}번 슬라이드로 이동`;
+        chip.title = isSelectMode
+          ? (isSelectedForDel ? `${idx + 1}번 삭제 선택 해제` : `${idx + 1}번 삭제 선택`)
+          : `${idx + 1}번 캔버스로 이동`;
 
         const span = document.createElement('span');
         span.className = 'slide-chip-label';
@@ -21431,6 +21545,15 @@ class GraphApp {
 
         chip.onclick = (e) => {
           e.stopPropagation();
+          if (this._isSlideSelectDeleteMode) {
+            if (selectedSet.has(idx)) {
+              selectedSet.delete(idx);
+            } else {
+              selectedSet.add(idx);
+            }
+            this.syncLessonPlaylistNavBarUI();
+            return;
+          }
           this._isSlideGridOpen = false;
           if (hasPlaylist && idx !== this.lessonPlaylistIndex) {
             this.jumpToPlaylistSlide(idx);
@@ -21440,51 +21563,53 @@ class GraphApp {
         };
         chipsEl.appendChild(chip);
       });
+
+      // 바둑판 맨 마지막 칸: [+ 빈 캔버스 추가] 점선 타일 (선택 삭제 모드에서는 오클릭 방지를 위해 숨김)
+      if (!isSelectMode) {
+        const addChip = document.createElement('div');
+        addChip.className = 'slide-chip-item slide-chip-add-blank';
+        addChip.title = '빈 캔버스 추가';
+        const plusSpan = document.createElement('span');
+        plusSpan.className = 'slide-chip-label';
+        plusSpan.textContent = '+';
+        addChip.appendChild(plusSpan);
+        addChip.onclick = (e) => {
+          e.stopPropagation();
+          this._isSlideGridOpen = false;
+          this.handleNewCanvasButtonClick();
+        };
+        chipsEl.appendChild(addChip);
+      }
     }
 
     const btnPrev = document.getElementById('btnPlaylistPrev');
     const btnNext = document.getElementById('btnPlaylistNext');
     const btnNextPdfPage = document.getElementById('btnPlaylistNextPdfPage');
     const btnOpenPdf = document.getElementById('btnPlaylistOpenPdf');
-    const lblOpenPdf = document.getElementById('lblPlaylistOpenPdf');
     const btnAddSlide = document.getElementById('btnPlaylistAddSlide');
     if (btnPrev) btnPrev.disabled = (curIdx <= 0);
     if (btnNext) btnNext.disabled = (curIdx >= total - 1);
+    if (btnNextPdfPage) btnNextPdfPage.style.display = 'none';
+    if (btnOpenPdf) btnOpenPdf.style.display = 'none';
 
     const hasOpenPdf = Boolean(this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0));
     const isPageMode = (this.lessonTeachingMode === 'page');
+    const isCropContext = Boolean(hasOpenPdf || this.problemCardData || this.lessonTeachingMode === 'crop');
 
     if (btnAddSlide) {
-      btnAddSlide.title = isPageMode ? '빈 슬라이드(백지 칠판) 추가' : '새 빈 캔버스(슬라이드) 추가';
-    }
-    if (btnNextPdfPage) {
       if (hasOpenPdf && isPageMode) {
-        btnNextPdfPage.style.display = 'inline-flex';
         const curPage = (this.pdfPageBoardData && this.pdfPageBoardData.pageNum) ? this.pdfPageBoardData.pageNum : (this.pdfCurrentPage || 1);
         const totalPages = (this.pdfPageBoardData && this.pdfPageBoardData.totalPages) ? this.pdfPageBoardData.totalPages : (this.pdfTotalPages || (this.pdfDoc ? this.pdfDoc.numPages : 1));
         const nextP = Math.min(totalPages, curPage + 1);
-        btnNextPdfPage.textContent = `+ 다음 페이지 (p.${nextP})`;
-        btnNextPdfPage.title = `새 슬라이드를 생성하고 다음 PDF 페이지(p.${nextP})를 즉시 엽니다`;
+        btnAddSlide.title = `다음 PDF 페이지(p.${nextP}) 슬라이드 추가`;
+      } else if (isCropContext) {
+        btnAddSlide.title = '다음 문제 캡처 (새 슬라이드에 추가)';
       } else {
-        btnNextPdfPage.style.display = 'none';
+        btnAddSlide.title = '새 빈 캔버스 추가';
       }
-    }
-    if (btnOpenPdf) {
-      const showOpenPdfBtn = isPageMode ? hasOpenPdf : Boolean(hasPlaylist || hasOpenPdf || this.problemCardData || this.lessonTeachingMode === 'crop');
-      btnOpenPdf.style.display = showOpenPdfBtn ? 'inline-flex' : 'none';
-      if (lblOpenPdf) {
-        lblOpenPdf.textContent = isPageMode ? '페이지 목록' : '다음 캡처';
-      }
-      btnOpenPdf.title = isPageMode
-        ? 'PDF 페이지 목록을 열어 원하는 페이지로 이동'
-        : '다음 문제를 캡처하거나 새 파일(PDF·이미지)을 열어 새 슬라이드에 추가';
     }
 
-    if (this.isTopSlideBarHidden) {
-      navBar.style.display = 'none';
-    } else {
-      navBar.style.display = 'flex';
-    }
+    navBar.style.display = 'flex';
     this._syncTopSlideMiniTabUI();
   }
 

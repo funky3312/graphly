@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_37">
+  <link rel="stylesheet" href="style.css?v=20261103_38">
 </head>
 
 <body class="theme-light">
@@ -2526,7 +2526,7 @@
     </div>
   </div>
 
-  <!-- [🎯 수업 슬라이드(캔버스 묶음) 우측 상단 고정폭 캡슐 & 5열 바둑판 팝오버] -->
+  <!-- [🎯 수업 슬라이드(캔버스 묶음) 우측 상단 초슬림 4버튼 캡슐 ([ ◀ ] [ 1 / 4 ▾ ] [ ▶ ] [ + ]) & 5열 바둑판 팝오버] -->
   <div id="lessonPlaylistNavBar" class="pdf-board-nav-bar lesson-playlist-nav-bar slim-slide-nav-bar"
     style="display: none;">
     <button id="btnPlaylistPrev" class="pdf-board-nav-btn slim-nav-arrow" title="이전 슬라이드">
@@ -2537,7 +2537,7 @@
     </button>
     <button id="btnPlaylistSlideInfo" class="pdf-board-page-pill lesson-playlist-pill slide-counter-pill"
       title="클릭하여 전체 캔버스 바둑판 열기">
-      <span id="lblPlaylistSlideInfo">📑 1 / 1 ▾</span>
+      <span id="lblPlaylistSlideInfo">1 / 1 ▾</span>
     </button>
     <button id="btnPlaylistNext" class="pdf-board-nav-btn slim-nav-arrow" title="다음 슬라이드">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -2545,67 +2545,52 @@
         <polyline points="9 18 15 12 9 6" />
       </svg>
     </button>
-    <button id="btnPlaylistAddSlide" class="pdf-board-close-btn slim-icon-btn slim-add-slide-btn" title="새 캔버스 추가">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+    <button id="btnPlaylistAddSlide" class="pdf-board-close-btn slim-icon-btn slim-add-slide-btn" title="다음 문제 캡처 / 새 슬라이드 추가">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
         stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="5" x2="12" y2="19" />
         <line x1="5" y1="12" x2="19" y2="12" />
       </svg>
     </button>
     <button id="btnPlaylistNextPdfPage" class="pdf-board-close-btn slim-pdf-capture-btn slim-next-pdf-page-btn"
-      style="display: none;" title="새 슬라이드를 생성하면서 PDF 다음 페이지를 즉시 엽니다">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"
-        stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="5" x2="12" y2="19" />
-        <line x1="5" y1="12" x2="19" y2="12" />
-      </svg>
+      style="display: none !important;" title="새 슬라이드를 생성하면서 PDF 다음 페이지를 즉시 엽니다">
       <span id="lblPlaylistNextPdfPage">다음 페이지</span>
     </button>
-    <button id="btnPlaylistOpenPdf" class="pdf-board-close-btn slim-pdf-capture-btn" style="display: none;"
-      title="PDF 캡처 창 열기 (페이지 추가 또는 문제 캡처 시 자동 다음 슬라이드)">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-        stroke-linecap="round" stroke-linejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-      </svg>
+    <button id="btnPlaylistOpenPdf" class="pdf-board-close-btn slim-pdf-capture-btn" style="display: none !important;"
+      title="PDF 캡처 창 열기">
       <span id="lblPlaylistOpenPdf">PDF</span>
     </button>
-    <div class="pdf-board-nav-divider"></div>
-    <button id="btnPlaylistDeleteCurrent" class="pdf-board-close-btn slim-icon-btn slim-danger-btn" title="현재 슬라이드 삭제">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-        stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="3 6 5 6 21 6" />
-        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-      </svg>
+    <div class="pdf-board-nav-divider" style="display: none !important;"></div>
+    <button id="btnPlaylistDeleteCurrent" class="pdf-board-close-btn slim-icon-btn slim-danger-btn"
+      style="display: none !important;" title="현재 슬라이드 삭제">
     </button>
-    <button id="btnPlaylistHideBar" class="pdf-board-close-btn slim-icon-btn" title="슬라이드 바 접기">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-        stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="9 18 15 12 9 6" />
-      </svg>
+    <button id="btnPlaylistHideBar" class="pdf-board-close-btn slim-icon-btn" style="display: none !important;"
+      title="슬라이드 바 접기">
     </button>
-    <button id="btnPlaylistClose" class="pdf-board-close-btn" style="display: none;" title="수업 슬라이드 모드 종료">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-        stroke-linecap="round" stroke-linejoin="round">
-        <line x1="18" y1="6" x2="6" y2="18" />
-        <line x1="6" y1="6" x2="18" y2="18" />
-      </svg>
+    <button id="btnPlaylistClose" class="pdf-board-close-btn" style="display: none !important;" title="수업 슬라이드 모드 종료">
     </button>
-    <!-- 5열 바둑판 그리드 팝오버 (100개 캔버스도 한눈에 스크롤 & 클릭 즉시 이동) -->
+    <!-- 5열 바둑판 그리드 팝오버 (100개 캔버스도 한눈에 스크롤 + [+] 빈 캔버스 추가 + [선택/전체 삭제]) -->
     <div id="playlistGridPopover" class="slide-grid-popover" style="display: none;">
       <div class="slide-grid-popover-header">
-        <span class="slide-grid-popover-title">캔버스 목록</span>
-        <button type="button" id="btnPlaylistClearAll" class="slide-grid-del-current-btn" title="전체 슬라이드 비우기">🗑️ 전체
-          비우기</button>
+        <span id="lblSlideGridPopoverTitle" class="slide-grid-popover-title">캔버스 목록</span>
+        <div class="slide-grid-popover-actions">
+          <button type="button" id="btnPlaylistToggleSelectMode" class="slide-grid-select-btn"
+            title="삭제할 캔버스 다중 선택">선택</button>
+          <button type="button" id="btnPlaylistClearAll" class="slide-grid-del-current-btn" title="전체 캔버스 삭제">전체
+            삭제</button>
+          <button type="button" id="btnPlaylistConfirmSelectedDelete"
+            class="slide-grid-del-current-btn slide-grid-confirm-del-btn" style="display: none;"
+            title="선택한 캔버스 삭제">삭제 (0)</button>
+        </div>
       </div>
       <div id="playlistSlideChips" class="slide-chips-strip slide-chips-grid"></div>
     </div>
   </div>
 
-  <!-- 🙈 상단 슬라이드 바 접기 상태일 때 우측 상단(✕ 옆)에 깔끔하게 떠 있는 알약 버튼 -->
-  <button type="button" id="topSlideBarMiniTab" class="top-slide-bar-mini-tab" style="display: none;"
+  <!-- 🙈 상단 슬라이드 바 접기 상태 미니 탭 (4버튼 고정 캡슐화로 비활성화) -->
+  <button type="button" id="topSlideBarMiniTab" class="top-slide-bar-mini-tab" style="display: none !important;"
     title="슬라이드 바 펼치기">
-    <span id="lblTopSlideMiniTab">📑 1/2 ▾</span>
+    <span id="lblTopSlideMiniTab">1 / 2 ▾</span>
   </button>
 
   <!-- [📥 통합 불러오기 모달 (1. 열려있는 PDF 이어서 캡처 / 2. 내 기기에서 새 파일 열기 / 3. 클라우드 보관함 열기)] -->
@@ -3148,8 +3133,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_37"></script>
-  <script src="app.js?v=20261103_37"></script>
+  <script src="engine.js?v=20261103_38"></script>
+  <script src="app.js?v=20261103_38"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
