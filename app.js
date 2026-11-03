@@ -6514,7 +6514,7 @@ class GraphApp {
     const isLocked = (this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page');
     btnCloudHub.classList.toggle('rail-btn-locked-disabled', isLocked);
     btnCloudHub.title = isLocked
-      ? '수업 모드 확정됨 (우측 상단 슬라이드바에서 추가하거나 [전체 비우기] 후 새로 불러오세요)'
+      ? '수업 모드 확정됨 (우측 상단 캔버스바에서 추가하거나 [전체 비우기] 후 새로 불러오세요)'
       : '파일 및 보관함 불러오기';
   }
 
@@ -6728,7 +6728,7 @@ class GraphApp {
     this.setActiveInkTool('pen');
     this.syncProblemCardRectFromWidget();
     this.render();
-    this.showToast(`📚 ${items.length}개의 문제가 새 슬라이드에 접힌 카드로 차곡차곡 쌓였습니다! 번호를 눌러 펼쳐보세요.`);
+    this.showToast(`📚 ${items.length}개의 문제가 새 캔버스에 접힌 카드로 차곡차곡 쌓였습니다! 번호를 눌러 펼쳐보세요.`);
   }
 
   async appendNextPdfPageSlide() {
@@ -6777,7 +6777,7 @@ class GraphApp {
     }
     this._isReplacingViaNextCrop = true;
     await this.openPdfPageOnBoard(nextPage);
-    this.showToast(`📄 새 슬라이드에 다음 페이지(p.${nextPage})를 열었습니다!`);
+    this.showToast(`📄 새 캔버스에 다음 페이지(p.${nextPage})를 열었습니다!`);
   }
 
   openPdfModal(isInitialLoad = false, autoCropMode = false) {
@@ -7104,7 +7104,7 @@ class GraphApp {
     } else {
       this.syncPdfBoardNavBarUI();
     }
-    this.showToast(`🗑️ p.${pageNum} 슬라이드를 삭제했습니다.`);
+    this.showToast(`🗑️ p.${pageNum} 캔버스를 삭제했습니다.`);
   }
 
   async openPdfPageOnBoard(pageNum, options = {}) {
@@ -9003,10 +9003,10 @@ class GraphApp {
 
     if (loadedItems.length === 1) {
       this.showToast(hasExisting
-        ? `⏭️ 새 슬라이드에 이미지 문제 [${loadedItems[0].name}]을(를) 열었습니다!`
+        ? `⏭️ 새 캔버스에 이미지 문제 [${loadedItems[0].name}]을(를) 열었습니다!`
         : `📁 이미지 문제 [${loadedItems[0].name}]을(를) 칠판에 등록했습니다!`);
     } else {
-      this.showToast(`📚 ${loadedItems.length}개의 이미지 문제를 슬라이드당 1문제씩(펼친 상태) 등록했습니다! 우상단 [<] [>] 버튼으로 넘기며 수업하세요.`);
+      this.showToast(`📚 ${loadedItems.length}개의 이미지 문제를 캔버스당 1문제씩(펼친 상태) 등록했습니다! 우상단 [<] [>] 버튼으로 넘기며 수업하세요.`);
     }
   }
 
@@ -17835,8 +17835,8 @@ class GraphApp {
       if (incA) parts.push('음성');
       const isMultiSlideAll = (this.exportScope === 'all' && totalCnt > 1);
       const scopeText = isMultiSlideAll
-        ? `전체 슬라이드(${totalCnt}장)`
-        : '현재 슬라이드';
+        ? `전체 캔버스(${totalCnt}장)`
+        : '현재 캔버스';
       if (lblModalSavePng) {
         lblModalSavePng.textContent = isMultiSlideAll
           ? `PDF 저장 (${totalCnt}장)`
@@ -18155,7 +18155,7 @@ class GraphApp {
         const slides = getShareModalFilteredSlides();
         const stageSuffix = getExportStageSuffixLabel();
         const defaultTitle = slides.length > 1
-          ? `수업 슬라이드 ${slides.length}문항 ${stageSuffix} (${new Date().toLocaleDateString('ko-KR')})`
+          ? `수업 캔버스 ${slides.length}문항 ${stageSuffix} (${new Date().toLocaleDateString('ko-KR')})`
           : `수업 노트 ${stageSuffix} (${new Date().toLocaleDateString('ko-KR')})`;
         const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
         const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : (slides.length > 1 ? `#풀세트 ${stageSuffix}` : `#수학그래프 ${stageSuffix}`);
@@ -18777,7 +18777,7 @@ class GraphApp {
   openCloudHubModal() {
     if (this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page') {
       const modeName = this.lessonTeachingMode === 'page' ? '페이지 모드' : '캡처 모드';
-      this.showToast(`🔒 현재 [${modeName}] 수업 중입니다. 우측 상단 슬라이드바에서 추가하거나 [전체 비우기] 후 새로 불러오세요.`);
+      this.showToast(`🔒 현재 [${modeName}] 수업 중입니다. 우측 상단 캔버스바에서 추가하거나 [전체 비우기] 후 새로 불러오세요.`);
       return;
     }
     const modalCloud = document.getElementById('modalCloudHub');
@@ -20877,7 +20877,7 @@ class GraphApp {
   }
 
   _buildSlideSummaryBadge(slideData) {
-    if (!slideData) return '빈 슬라이드';
+    if (!slideData) return '빈 캔버스';
     const parts = [];
     let gCount = 0;
     try {
@@ -21086,7 +21086,7 @@ class GraphApp {
 
     const isDeck = Boolean(slides && slides.length > 1);
     const defaultTitle = isDeck
-      ? `수업 슬라이드 ${slides.length}문항 풀세트 (${new Date().toLocaleDateString('ko-KR')})`
+      ? `수업 캔버스 ${slides.length}문항 풀세트 (${new Date().toLocaleDateString('ko-KR')})`
       : `수업 세팅 (${new Date().toLocaleDateString('ko-KR')})`;
 
     const rawTitle = customTitle || ((inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : defaultTitle);
@@ -21230,7 +21230,7 @@ class GraphApp {
       : (resolved.slideData ? [resolved.slideData] : []);
 
     if (!slides.length) {
-      this.showToast('⚠️ 불러올 슬라이드 데이터가 없습니다.');
+      this.showToast('⚠️ 불러올 캔버스 데이터가 없습니다.');
       return;
     }
 
@@ -21821,7 +21821,7 @@ class GraphApp {
       const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('ko-KR') : '';
       const slideCnt = item.slideCount || (Array.isArray(item.playlistSlides) ? item.playlistSlides.length : 1);
       const deckBadgeHtml = (slideCnt > 1 || item.isPlaylist)
-        ? `<span class="cloud-deck-badge">${slideCnt}슬라이드</span>`
+        ? `<span class="cloud-deck-badge">${slideCnt}캔버스</span>`
         : '';
 
       row.innerHTML = `
@@ -21873,7 +21873,7 @@ class GraphApp {
   async startPlaylistFromSelectedLibraryItems() {
     const selectedSlides = this._collectSelectedLibrarySlides();
     if (!selectedSlides.length) {
-      this.showToast('⚠️ 슬라이드로 시작할 문항을 1개 이상 체크해 주세요!');
+      this.showToast('⚠️ 캔버스로 시작할 문항을 1개 이상 체크해 주세요!');
       return;
     }
     this.startLessonPlaylist(selectedSlides, 0);
@@ -21902,7 +21902,7 @@ class GraphApp {
 
     this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
     this.syncLessonPlaylistNavBarUI();
-    this.showToast(`🎯 수업 슬라이드 시작! (${this.lessonPlaylistIndex + 1} / ${this.lessonPlaylistSlides.length} : ${this.lessonPlaylistSlides[this.lessonPlaylistIndex].slideTitle || '문항'})`);
+    this.showToast(`🎯 수업 캔버스 시작! (${this.lessonPlaylistIndex + 1} / ${this.lessonPlaylistSlides.length} : ${this.lessonPlaylistSlides[this.lessonPlaylistIndex].slideTitle || '문항'})`);
   }
 
   saveCurrentSlideIntoPlaylist() {
@@ -21966,7 +21966,7 @@ class GraphApp {
     this.saveCurrentSlideIntoPlaylist();
     this.isLessonPlaylistActive = false;
     this.syncLessonPlaylistNavBarUI();
-    this.showToast('슬라이드 모드를 종료했습니다.');
+    this.showToast('캔버스 모드를 종료했습니다.');
   }
 
   hasAnyWorkspaceContent() {
@@ -22169,7 +22169,7 @@ class GraphApp {
   deletePlaylistSlideAt(delIdx) {
     if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
       this.resetNewCanvas();
-      this.showToast('🗑️ 현재 슬라이드를 깨끗하게 비웠습니다.');
+      this.showToast('🗑️ 현재 캔버스를 깨끗하게 비웠습니다.');
       return;
     }
     if (delIdx < 0 || delIdx >= this.lessonPlaylistSlides.length) return;
@@ -22183,12 +22183,12 @@ class GraphApp {
     }
 
     if (this.lessonPlaylistSlides.length === 1) {
-      // 1장만 남아도 상단 슬라이드바(1/1 + [+ 다음 페이지] / [다음 캡처])를 그대로 유지하여 즉시 다음 슬라이드 추가가 가능하도록 보장!
+      // 1장만 남아도 상단 캔버스바(1/1 + [+ 다음 페이지] / [다음 캡처])를 그대로 유지하여 즉시 다음 캔버스 추가가 가능하도록 보장!
       this.lessonPlaylistIndex = 0;
       this.isLessonPlaylistActive = true;
       this.deserializeFullSlideState(this.lessonPlaylistSlides[0]);
       this.syncLessonPlaylistNavBarUI();
-      this.showToast(`🗑️ [${delIdx + 1}번] 슬라이드를 삭제했습니다.`);
+      this.showToast(`🗑️ [${delIdx + 1}번] 캔버스를 삭제했습니다.`);
       return;
     }
 
@@ -22200,7 +22200,7 @@ class GraphApp {
 
     this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
     this.syncLessonPlaylistNavBarUI();
-    this.showToast(`🗑️ [${delIdx + 1}번] 슬라이드를 삭제했습니다.`);
+    this.showToast(`🗑️ [${delIdx + 1}번] 캔버스를 삭제했습니다.`);
   }
 
   clearCurrentCanvasOnly() {
@@ -22289,7 +22289,7 @@ class GraphApp {
     this._isSlideSelectDeleteMode = false;
     this._selectedSlideDeleteIndices = new Set();
     this.resetNewCanvas();
-    this.showToast('🗑️ 모든 슬라이드를 비우고 깨끗한 초기 캔버스로 돌아왔습니다!');
+    this.showToast('🗑️ 모든 캔버스를 비우고 깨끗한 초기 상태로 돌아왔습니다!');
   }
 
   handleSmartAddSlideFromTopBar(e) {
@@ -22554,7 +22554,7 @@ class GraphApp {
     }
     if (btnAddSlide) {
       btnAddSlide.title = hasOpenPdf
-        ? (isPdfPageMode ? '슬라이드 추가 메뉴 (다음 페이지 / 페이지 선택 / 빈 캔버스)' : '슬라이드 추가 메뉴 (다음 캡처 / 빈 캔버스)')
+        ? (isPdfPageMode ? '캔버스 추가 메뉴 (다음 페이지 / 페이지 선택 / 빈 캔버스)' : '캔버스 추가 메뉴 (다음 캡처 / 빈 캔버스)')
         : '새 빈 캔버스 추가';
     }
 
@@ -33830,11 +33830,11 @@ class GraphApp {
     if (!pdfBlob) return false;
     const url = URL.createObjectURL(pdfBlob);
     const link = document.createElement('a');
-    link.download = `Graphly_슬라이드노트_${canvasItems.length}장_${Date.now()}.pdf`;
+    link.download = `Graphly_캔버스노트_${canvasItems.length}장_${Date.now()}.pdf`;
     link.href = url;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
-    this.showToast(`📄 전체 슬라이드(${canvasItems.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
+    this.showToast(`📄 전체 캔버스(${canvasItems.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
     return true;
   }
 
@@ -33860,11 +33860,11 @@ class GraphApp {
         if (pdfBlob) {
           const url = URL.createObjectURL(pdfBlob);
           const link = document.createElement('a');
-          link.download = `Graphly_슬라이드노트_${allSlides.length}장_${Date.now()}.pdf`;
+          link.download = `Graphly_캔버스노트_${allSlides.length}장_${Date.now()}.pdf`;
           link.href = url;
           link.click();
           setTimeout(() => URL.revokeObjectURL(url), 2000);
-          this.showToast(`📄 전체 슬라이드(${allSlides.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
+          this.showToast(`📄 전체 캔버스(${allSlides.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
           return pdfBlob;
         }
       }

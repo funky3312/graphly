@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_55">
+  <link rel="stylesheet" href="style.css?v=20261103_56">
 </head>
 
 <body class="theme-light">
@@ -2116,8 +2116,8 @@
             <span class="export-step-label">범위</span>
             <div class="export-scope-group">
               <button type="button" id="btnExportScopeCurrent" class="export-scope-chip active" data-scope="current">현재
-                슬라이드</button>
-              <button type="button" id="btnExportScopeAll" class="export-scope-chip" data-scope="all">전체 슬라이드 <span
+                캔버스</button>
+              <button type="button" id="btnExportScopeAll" class="export-scope-chip" data-scope="all">전체 캔버스 <span
                   id="lblExportTotalSlidesCount">(1장)</span></button>
             </div>
           </div>
@@ -2381,14 +2381,14 @@
       <span>목록</span>
     </button>
     <div class="pdf-board-nav-divider"></div>
-    <button id="btnPdfBoardDeleteCurrent" class="pdf-board-close-btn slim-icon-btn slim-danger-btn" title="현재 슬라이드 삭제">
+    <button id="btnPdfBoardDeleteCurrent" class="pdf-board-close-btn slim-icon-btn slim-danger-btn" title="현재 캔버스 삭제">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
         stroke-linecap="round" stroke-linejoin="round">
         <polyline points="3 6 5 6 21 6" />
         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
       </svg>
     </button>
-    <button id="btnPdfBoardHideBar" class="pdf-board-close-btn slim-icon-btn" title="슬라이드 바 접기">
+    <button id="btnPdfBoardHideBar" class="pdf-board-close-btn slim-icon-btn" title="캔버스 바 접기">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
         stroke-linecap="round" stroke-linejoin="round">
         <polyline points="9 18 15 12 9 6" />
@@ -2405,7 +2405,7 @@
     <div id="pdfBoardGridPopover" class="slide-grid-popover" style="display: none;">
       <div class="slide-grid-popover-header">
         <span class="slide-grid-popover-title">열어본 PDF 페이지</span>
-        <button type="button" id="btnPdfBoardClearAll" class="slide-grid-del-current-btn" title="전체 슬라이드 비우기">🗑️ 전체
+        <button type="button" id="btnPdfBoardClearAll" class="slide-grid-del-current-btn" title="전체 캔버스 비우기">🗑️ 전체
           비우기</button>
       </div>
       <div id="pdfBoardSlideChips" class="slide-chips-strip slide-chips-grid"></div>
@@ -2458,10 +2458,10 @@
     </div>
   </div>
 
-  <!-- [🎯 수업 슬라이드(캔버스 묶음) 우측 상단 초슬림 4버튼 캡슐 ([ ◀ ] [ 1 / 4 ▾ ] [ ▶ ] [ + ]) & 5열 바둑판 팝오버] -->
+  <!-- [🎯 수업 캔버스 묶음 우측 상단 초슬림 4버튼 캡슐 ([ ◀ ] [ 1 / 4 ▾ ] [ ▶ ] [ + ]) & 5열 바둑판 팝오버] -->
   <div id="lessonPlaylistNavBar" class="pdf-board-nav-bar lesson-playlist-nav-bar slim-slide-nav-bar"
     style="display: none;">
-    <button id="btnPlaylistPrev" class="pdf-board-nav-btn slim-nav-arrow" title="이전 슬라이드">
+    <button id="btnPlaylistPrev" class="pdf-board-nav-btn slim-nav-arrow" title="이전 캔버스">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
         stroke-linecap="round" stroke-linejoin="round">
         <polyline points="15 18 9 12 15 6" />
@@ -2471,13 +2471,13 @@
       title="클릭하여 전체 캔버스 바둑판 열기">
       <span id="lblPlaylistSlideInfo">1 / 1 ▾</span>
     </button>
-    <button id="btnPlaylistNext" class="pdf-board-nav-btn slim-nav-arrow" title="다음 슬라이드">
+    <button id="btnPlaylistNext" class="pdf-board-nav-btn slim-nav-arrow" title="다음 캔버스">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
         stroke-linecap="round" stroke-linejoin="round">
         <polyline points="9 18 15 12 9 6" />
       </svg>
     </button>
-    <button id="btnPlaylistAddSlide" class="pdf-board-close-btn slim-icon-btn slim-add-slide-btn" title="다음 문제 캡처 / 새 슬라이드 추가">
+    <button id="btnPlaylistAddSlide" class="pdf-board-close-btn slim-icon-btn slim-add-slide-btn" title="다음 문제 캡처 / 새 캔버스 추가">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
         stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="5" x2="12" y2="19" />
@@ -2485,7 +2485,7 @@
       </svg>
     </button>
     <button id="btnPlaylistNextPdfPage" class="pdf-board-close-btn slim-pdf-capture-btn slim-next-pdf-page-btn"
-      style="display: none !important;" title="새 슬라이드를 생성하면서 PDF 다음 페이지를 즉시 엽니다">
+      style="display: none !important;" title="새 캔버스를 생성하면서 PDF 다음 페이지를 즉시 엽니다">
       <span id="lblPlaylistNextPdfPage">다음 페이지</span>
     </button>
     <button id="btnPlaylistOpenPdf" class="pdf-board-close-btn slim-pdf-capture-btn" style="display: none !important;"
@@ -2494,12 +2494,12 @@
     </button>
     <div class="pdf-board-nav-divider" style="display: none !important;"></div>
     <button id="btnPlaylistDeleteCurrent" class="pdf-board-close-btn slim-icon-btn slim-danger-btn"
-      style="display: none !important;" title="현재 슬라이드 삭제">
+      style="display: none !important;" title="현재 캔버스 삭제">
     </button>
     <button id="btnPlaylistHideBar" class="pdf-board-close-btn slim-icon-btn" style="display: none !important;"
-      title="슬라이드 바 접기">
+      title="캔버스 바 접기">
     </button>
-    <button id="btnPlaylistClose" class="pdf-board-close-btn" style="display: none !important;" title="수업 슬라이드 모드 종료">
+    <button id="btnPlaylistClose" class="pdf-board-close-btn" style="display: none !important;" title="수업 캔버스 모드 종료">
     </button>
     <!-- 5열 바둑판 그리드 팝오버 (100개 캔버스도 한눈에 스크롤 + [+] 빈 캔버스 추가 + [선택/전체 삭제]) -->
     <div id="playlistGridPopover" class="slide-grid-popover" style="display: none;">
@@ -2517,7 +2517,7 @@
       </div>
       <div id="playlistSlideChips" class="slide-chips-strip slide-chips-grid"></div>
     </div>
-    <!-- [+] 클릭 시 PDF 열림 상태에서 뜨는 슬라이드 추가 메뉴 (통PDF: 3줄 / 캡처모드: 2줄) -->
+    <!-- [+] 클릭 시 PDF 열림 상태에서 뜨는 캔버스 추가 메뉴 (통PDF: 3줄 / 캡처모드: 2줄) -->
     <div id="playlistAddSlideMenu" class="slide-add-menu-popover" style="display: none;">
       <button type="button" id="btnAddSlideMenuNextPdfPage" class="slide-add-menu-item">
         <span class="slide-add-menu-icon">📄</span>
@@ -2534,9 +2534,9 @@
     </div>
   </div>
 
-  <!-- 🙈 상단 슬라이드 바 접기 상태 미니 탭 (4버튼 고정 캡슐화로 비활성화) -->
+  <!-- 🙈 상단 캔버스 바 접기 상태 미니 탭 (4버튼 고정 캡슐화로 비활성화) -->
   <button type="button" id="topSlideBarMiniTab" class="top-slide-bar-mini-tab" style="display: none !important;"
-    title="슬라이드 바 펼치기">
+    title="캔버스 바 펼치기">
     <span id="lblTopSlideMiniTab">1 / 2 ▾</span>
   </button>
 
@@ -2776,8 +2776,8 @@
           </button>
 
           <!-- 📄 이 페이지 열기 버튼 (개념 설명용: 해당 PDF 페이지 전체를 칠판 캔버스로 바로 삽입!) -->
-          <!-- 📚 여러 문제 연속 캡처 ➔ 📥 캔버스에 삽입 (N) 버튼 (한 슬라이드에 여러 문제를 접힌 카드로 차곡차곡 삽입) -->
-          <button id="btnPdfMultiCropMode" class="pdf-multi-crop-btn" title="한 슬라이드에 여러 문제를 연달아 캡처하여 접힌 카드로 차곡차곡 쌓습니다">
+          <!-- 📚 여러 문제 연속 캡처 ➔ 📥 캔버스에 삽입 (N) 버튼 (한 캔버스에 여러 문제를 접힌 카드로 차곡차곡 삽입) -->
+          <button id="btnPdfMultiCropMode" class="pdf-multi-crop-btn" title="한 캔버스에 여러 문제를 연달아 캡처하여 접힌 카드로 차곡차곡 쌓습니다">
             <span id="iconPdfMultiCropMode" class="multi-crop-btn-icon">📚</span>
             <span id="lblPdfMultiCropMode" class="multi-crop-btn-text">여러 문제 캡처</span>
           </button>
@@ -2869,16 +2869,16 @@
             <ul class="guide-bullet-list">
               <li><strong>파일 열기 / 드래그 앤 드롭:</strong> 좌상단 <strong>[📁 불러오기]</strong>에서 파일을 열거나, 캔버스 화면 위로 PDF·이미지 파일을 직접
                 끌어다 놓으세요.</li>
-              <li><strong>✂️ 캡처 모드 (문제 단위 발췌 수업):</strong> PDF 뷰어에서 문제를 드래그해 캡처하면 캡처 모드로 확정됩니다. 이후 우상단 슬라이드바의
-                <strong>[다음 캡처]</strong>로 새 슬라이드에 문제를 계속 추가할 수 있습니다.
+              <li><strong>✂️ 캡처 모드 (문제 단위 발췌 수업):</strong> PDF 뷰어에서 문제를 드래그해 캡처하면 캡처 모드로 확정됩니다. 이후 우상단 캔버스바의
+                <strong>[+ ➔ 다음 캡처]</strong>로 새 캔버스에 문제를 계속 추가할 수 있습니다.
               </li>
-              <li><strong>📚 한 슬라이드에 여러 문제 넣기:</strong> PDF 뷰어에서 <strong>[📚 여러 문제 캡처]</strong>를 누르고 문제를 캡처하면 이동 모드로 자동
-                전환됩니다. 다음 문제로 이동해 <strong>[✂️ 영역 캡처]</strong>를 반복한 뒤 <strong>[📥 캔버스에 삽입 (N)]</strong>을 누르면 한 슬라이드에 접힌
+              <li><strong>📚 한 캔버스에 여러 문제 넣기:</strong> PDF 뷰어에서 <strong>[📚 여러 문제 캡처]</strong>를 누르고 문제를 캡처하면 이동 모드로 자동
+                전환됩니다. 다음 문제로 이동해 <strong>[✂️ 영역 캡처]</strong>를 반복한 뒤 <strong>[📥 캔버스에 삽입 (N)]</strong>을 누르면 한 캔버스에 접힌
                 카드(▸)로 차곡차곡 쌓입니다.</li>
-              <li><strong>🖼️ 이미지(PNG/JPG) 다중 드래그:</strong> 이미지 여러 장을 한꺼번에 끌어다 놓으면 <strong>슬라이드당 1문제씩 펼쳐진
+              <li><strong>🖼️ 이미지(PNG/JPG) 다중 드래그:</strong> 이미지 여러 장을 한꺼번에 끌어다 놓으면 <strong>캔버스당 1문제씩 펼쳐진
                   상태(▾)</strong>로 자동 생성되어 즉시 <code>&lt;</code> <code>&gt;</code> 버튼으로 넘기며 수업할 수 있습니다.</li>
               <li><strong>📄 페이지 모드 (교재 순차 판서 수업):</strong> PDF 뷰어에서 <strong>[📄 이 페이지 열기]</strong>를 누르면 페이지 모드로 확정됩니다.
-                우상단 슬라이드바의 <strong>[+ 다음 페이지]</strong> 버튼 하나로 뷰어를 열지 않고 즉시 다음 페이지 슬라이드를 추가할 수 있습니다.</li>
+                우상단 캔버스바의 <strong>[+ ➔ 다음 페이지]</strong> 버튼으로 뷰어를 열지 않고 즉시 다음 페이지 캔버스를 추가할 수 있습니다.</li>
             </ul>
           </div>
 
@@ -3027,8 +3027,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_55"></script>
-  <script src="app.js?v=20261103_55"></script>
+  <script src="engine.js?v=20261103_56"></script>
+  <script src="app.js?v=20261103_56"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
