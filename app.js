@@ -22352,7 +22352,7 @@ class GraphApp {
     const hotspots = Array.isArray(slide.viewerGraphHotspots) ? slide.viewerGraphHotspots : [];
     if (hotspotsEl) {
       hotspotsEl.innerHTML = '';
-      hotspots.forEach((hs, hIdx) => {
+      hotspots.forEach((hs) => {
         if (!hs || !hs.graphSnapshot) return;
         const box = document.createElement('div');
         box.className = 'viewer-graph-hotspot';
@@ -22361,11 +22361,6 @@ class GraphApp {
         box.style.width = `${(hs.nw * 100).toFixed(2)}%`;
         box.style.height = `${(hs.nh * 100).toFixed(2)}%`;
         box.title = '';
-
-        const badge = document.createElement('span');
-        badge.className = 'viewer-hotspot-badge';
-        badge.textContent = `📈 ${hs.label || '#' + (hIdx + 1)}`;
-        box.appendChild(badge);
 
         box.onclick = (e) => {
           e.stopPropagation();
@@ -22516,7 +22511,7 @@ class GraphApp {
     const touchBar = document.getElementById('viewerGraphTouchBar');
     const lblTitle = document.getElementById('lblViewerGraphTouchTitle');
     if (lblTitle) {
-      lblTitle.textContent = `${hotspot.label || '#1'} 그래프`;
+      lblTitle.textContent = '그래프';
     }
     this._renderViewerGraphCurveChips();
     if (touchBar) touchBar.style.display = 'flex';
@@ -31757,7 +31752,7 @@ class GraphApp {
       const offX = (this._exportCropOffset && this._exportCropOffset.x) || 0;
       const offY = (this._exportCropOffset && this._exportCropOffset.y) || 0;
 
-      if (headerEl) {
+      if (isMin && headerEl) {
         const hRect = headerEl.getBoundingClientRect();
         if (hRect.width > 0 && hRect.height > 0) {
           const hx = hRect.left - canvasRect.left - offX;
@@ -31779,7 +31774,7 @@ class GraphApp {
           ctx.font = '700 12px "Pretendard", -apple-system, sans-serif';
           ctx.textBaseline = 'middle';
           ctx.textAlign = 'left';
-          ctx.fillText((isMin ? '▸ ' : '▾ ') + titleText, hx + 10, hy + hh / 2);
+          ctx.fillText('▸ ' + titleText, hx + 10, hy + hh / 2);
           ctx.restore();
         }
       }
@@ -31861,25 +31856,22 @@ class GraphApp {
 
     const hotspots = [];
 
-    // 1. 판서 모드에 떠 있는 기본 그래프 보관 카드 (#1)
+    // 1. 판서 모드에 떠 있는 기본 그래프 보관 카드
     const gWidget = document.getElementById('graphCardWidget');
     if (gWidget && gWidget.style.display !== 'none' && !gWidget.classList.contains('minimized')) {
       const bodyEl = gWidget.querySelector('.problem-card-body');
-      const headerEl = gWidget.querySelector('.problem-card-header');
-      const titleEl = document.getElementById('graphCardTitle');
       const snap = this.primaryGraphCardSnapshot || (this.graphCardData && this.graphCardData.graphSnapshot) || (this._coveredGraphStateBackup ? JSON.stringify(this._coveredGraphStateBackup) : null);
       if (bodyEl && snap) {
         const bRect = bodyEl.getBoundingClientRect();
-        const hRect = headerEl ? headerEl.getBoundingClientRect() : bRect;
         if (bRect.width > 0 && bRect.height > 0) {
           const left = bRect.left - canvasRect.left;
-          const top = Math.min(bRect.top, hRect.width > 0 ? hRect.top : bRect.top) - canvasRect.top;
+          const top = bRect.top - canvasRect.top;
           const right = bRect.right - canvasRect.left;
           const bottom = bRect.bottom - canvasRect.top;
           hotspots.push({
             id: 'graph_card_1',
             caseIdx: 1,
-            label: (titleEl && titleEl.textContent.trim()) ? titleEl.textContent.trim() : '#1',
+            label: '',
             nx: Math.max(0, Math.min(0.95, (left - cropX) / cropW)),
             ny: Math.max(0, Math.min(0.95, (top - cropY) / cropH)),
             nw: Math.max(0.05, Math.min(1.0, (right - left) / cropW)),
@@ -31890,26 +31882,23 @@ class GraphApp {
       }
     }
 
-    // 2. 판서 모드에 떠 있는 추가 그래프 보관 카드 (#2, #3...)
+    // 2. 판서 모드에 떠 있는 추가 그래프 보관 카드
     if (Array.isArray(this.extraGraphCards) && this.extraGraphCards.length > 0) {
       this.extraGraphCards.forEach((c, idx) => {
         if (!c || !c.el || c.el.style.display === 'none' || c.isMin || c.el.classList.contains('minimized')) return;
         const bodyEl = c.el.querySelector('.problem-card-body');
-        const headerEl = c.el.querySelector('.problem-card-header');
-        const titleEl = c.el.querySelector('.card-title-text');
         const snap = c.graphSnapshot;
         if (bodyEl && snap) {
           const bRect = bodyEl.getBoundingClientRect();
-          const hRect = headerEl ? headerEl.getBoundingClientRect() : bRect;
           if (bRect.width > 0 && bRect.height > 0) {
             const left = bRect.left - canvasRect.left;
-            const top = Math.min(bRect.top, hRect.width > 0 ? hRect.top : bRect.top) - canvasRect.top;
+            const top = bRect.top - canvasRect.top;
             const right = bRect.right - canvasRect.left;
             const bottom = bRect.bottom - canvasRect.top;
             hotspots.push({
               id: `graph_card_${c.caseIdx || idx + 2}`,
               caseIdx: c.caseIdx || idx + 2,
-              label: (titleEl && titleEl.textContent.trim()) ? titleEl.textContent.trim() : `#${c.caseIdx || idx + 2}`,
+              label: '',
               nx: Math.max(0, Math.min(0.95, (left - cropX) / cropW)),
               ny: Math.max(0, Math.min(0.95, (top - cropY) / cropH)),
               nw: Math.max(0.05, Math.min(1.0, (right - left) / cropW)),
@@ -32124,7 +32113,7 @@ class GraphApp {
       const isMin = el.classList.contains('minimized');
       const headerEl = el.querySelector('.problem-card-header');
       const bodyEl = el.querySelector('.problem-card-body');
-      if (headerEl) {
+      if (isMin && headerEl) {
         const hr = headerEl.getBoundingClientRect();
         if (hr.width > 0 && hr.height > 0) {
           expand(hr.left - canvasRect.left, hr.top - canvasRect.top, 4);
