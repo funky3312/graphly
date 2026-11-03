@@ -22719,6 +22719,8 @@ class GraphApp {
     const stage = document.getElementById('smartNoteViewerStage');
     const btnPrev = document.getElementById('btnViewerPrevSlide');
     const btnNext = document.getElementById('btnViewerNextSlide');
+    const btnEdgePrev = document.getElementById('btnViewerEdgePrev');
+    const btnEdgeNext = document.getElementById('btnViewerEdgeNext');
     const btnCounter = document.getElementById('btnViewerSlideCounter');
     const gridPopover = document.getElementById('viewerSlideGridPopover');
     const btnZoomIn = document.getElementById('btnViewerZoomIn');
@@ -22732,20 +22734,23 @@ class GraphApp {
     const btnTouchReset = document.getElementById('btnViewerGraphReset');
     const btnTouchBack = document.getElementById('btnViewerGraphBackToViewer');
 
-    if (btnPrev) {
-      btnPrev.onclick = () => {
-        if (this._viewerPkg && this._viewerSlideIdx > 0) {
-          this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev');
-        }
-      };
-    }
-    if (btnNext) {
-      btnNext.onclick = () => {
-        if (this._viewerPkg && this._viewerSlideIdx < this._viewerPkg.playlistSlides.length - 1) {
-          this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next');
-        }
-      };
-    }
+    const goPrevSlide = (e) => {
+      if (e) e.stopPropagation();
+      if (this._viewerPkg && this._viewerSlideIdx > 0) {
+        this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev');
+      }
+    };
+    const goNextSlide = (e) => {
+      if (e) e.stopPropagation();
+      if (this._viewerPkg && this._viewerSlideIdx < this._viewerPkg.playlistSlides.length - 1) {
+        this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next');
+      }
+    };
+
+    if (btnPrev) btnPrev.onclick = goPrevSlide;
+    if (btnNext) btnNext.onclick = goNextSlide;
+    if (btnEdgePrev) btnEdgePrev.onclick = goPrevSlide;
+    if (btnEdgeNext) btnEdgeNext.onclick = goNextSlide;
     if (btnCounter && gridPopover) {
       btnCounter.onclick = (e) => {
         e.stopPropagation();
@@ -22870,6 +22875,7 @@ class GraphApp {
       let dragStartX = 0, dragStartY = 0;
       let panStartX = 0, panStartY = 0;
       let pointerDownTime = 0;
+      let lastMoveX = 0, lastMoveTime = 0, velocityX = 0;
       let wasMultiTouch = false;
       let pinchStartDist = 0;
       let pinchStartZoom = 1.0;
@@ -22881,12 +22887,23 @@ class GraphApp {
 
       viewport.addEventListener('wheel', (e) => {
         e.preventDefault();
-        const factor = e.deltaY < 0 ? 1.07 : (1 / 1.07);
-        this.setSmartViewerZoom(this._viewerZoom * factor, e.clientX, e.clientY);
+        if (stage) stage.classList.remove('swipe-animating');
+        // 1) Ctrl/Cmd + 휠(또는 트랙패드 핀치) 또는 기본 100% 배율에서는 포컬 포인트 줌
+        if (e.ctrlKey || e.metaKey || (this._viewerZoom || 1.0) <= 1.02) {
+          const step = (e.ctrlKey || e.metaKey) ? 1.08 : 1.09;
+          const factor = e.deltaY < 0 ? step : (1 / step);
+          this.setSmartViewerZoom((this._viewerZoom || 1.0) * factor, e.clientX, e.clientY);
+        } else {
+          // 2) 확대 상태(>100%)에서 일반 휠 스크롤 시: 실제 PDF 리더처럼 상하좌우 부드러운 문서 스크롤!
+          this._viewerPanX = (this._viewerPanX || 0) - (e.deltaX || 0);
+          this._viewerPanY = (this._viewerPanY || 0) - (e.deltaY || 0);
+          this._clampSmartViewerPan();
+          this._applySmartViewerTransform();
+        }
       }, { passive: false });
 
       viewport.addEventListener('pointerdown', (e) => {
-        if (e.target.closest('.viewer-graph-hotspot, .viewer-sticker-hotspot')) return;
+        if (e.target.closest('.viewer-graph-hotspot, .viewer-sticker-hotspot, .viewer-edge-nav-btn')) return;
         if (e.button !== 0 && e.pointerType === 'mouse') return;
         if (stage) stage.classList.remove('swipe-animating');
 
@@ -22896,6 +22913,9 @@ class GraphApp {
           pointerDownTime = performance.now();
           dragStartX = e.clientX;
           dragStartY = e.clientY;
+          lastMoveX = e.clientX;
+          lastMoveTime = pointerDownTime;
+          velocityX = 0;
           panStartX = this._viewerPanX || 0;
           panStartY = this._viewerPanY || 0;
         } else if (activePointers.size === 2) {
@@ -22932,26 +22952,34 @@ class GraphApp {
           this._viewerZoom = nextZoom;
           this._viewerPanX = (midX - cx) - ((pinchStartMidX - cx - pinchStartPanX) * scaleRatio);
           this._viewerPanY = (midY - cy) - ((pinchStartMidY - cy - pinchStartPanY) * scaleRatio);
+          this._clampSmartViewerPan();
           this._applySmartViewerTransform();
           return;
         }
 
         if (activePointers.size === 1 && !wasMultiTouch) {
+          const now = performance.now();
+          const dt = Math.max(1, now - lastMoveTime);
+          velocityX = (e.clientX - lastMoveX) / dt;
+          lastMoveX = e.clientX;
+          lastMoveTime = now;
+
           const dx = e.clientX - dragStartX;
           const dy = e.clientY - dragStartY;
           if ((this._viewerZoom || 1.0) <= 1.02) {
-            // 기본 배율(100%): 좌우로 쓱쓱 밀어 페이지 넘기기(Swipe) 프리뷰
-            if (Math.abs(dx) > 5) {
+            // 기본 배율(100%): 1:1 쫀득한 좌우 스와이프 페이지 넘김 프리뷰
+            if (Math.abs(dx) > 3) {
               const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
               const atEdge = (dx > 0 && this._viewerSlideIdx <= 0) || (dx < 0 && this._viewerSlideIdx >= total - 1);
-              this._viewerPanX = dx * (atEdge ? 0.22 : 0.72);
+              this._viewerPanX = dx * (atEdge ? 0.22 : 0.94);
               this._viewerPanY = 0;
               this._applySmartViewerTransform();
             }
           } else {
-            // 확대 상태(>100%): 자유 패닝 이동
+            // 확대 상태(>100%): 경계 이탈 없는 부드러운 2D 패닝
             this._viewerPanX = panStartX + dx;
             this._viewerPanY = panStartY + dy;
+            this._clampSmartViewerPan();
             this._applySmartViewerTransform();
           }
         }
@@ -22972,24 +23000,28 @@ class GraphApp {
           wasMultiTouch = false;
           if ((this._viewerZoom || 1.0) < 1.0) {
             this.fitSmartViewerStageToScreen(true);
+          } else {
+            this._clampSmartViewerPan();
+            this._applySmartViewerTransform();
           }
           return;
         }
 
         // 1) 툭 터치(Single Tap) vs 더블탭(Double Tap) 판별
-        if (moveDist < 9 && elapsed < 420) {
+        if (moveDist < 8 && elapsed < 380) {
           const now = performance.now();
           if (now - lastTapTime < 280 && Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) < 36) {
-            // 더블탭: 100% ⇄ 150% 즉시 확대/축소 토글
+            // 더블탭: 터치한 지점 중심으로 100% ⇄ 160% 즉시 확대/축소 토글
             if (singleTapTimer) {
               clearTimeout(singleTapTimer);
               singleTapTimer = null;
             }
             lastTapTime = 0;
+            if (stage) stage.classList.add('swipe-animating');
             if ((this._viewerZoom || 1.0) > 1.08) {
-              this.fitSmartViewerStageToScreen();
+              this.fitSmartViewerStageToScreen(true);
             } else {
-              this.setSmartViewerZoom(1.5, e.clientX, e.clientY);
+              this.setSmartViewerZoom(1.6, e.clientX, e.clientY);
             }
             return;
           }
@@ -22999,20 +23031,23 @@ class GraphApp {
           if (singleTapTimer) clearTimeout(singleTapTimer);
           singleTapTimer = setTimeout(() => {
             singleTapTimer = null;
-            // 🌟 [대표님 핵심 기획]: 첫 화면을 툭 터치하면 전체화면 몰입 모드 토글!
-            this.toggleSmartViewerImmersiveMode();
+            // 문서 크기는 1px도 흔들지 않고 상단 바만 부드럽게 숨김/표시 토글
+            this.toggleSmartViewerImmersiveMode(null, false);
           }, 210);
           return;
         }
 
-        // 2) 기본 배율(100%)에서 좌우 스와이프(Swipe) 시 이전/다음 페이지 넘김!
+        // 2) 기본 배율(100%)에서 좌우 스와이프(또는 빠른 플릭) 시 이전/다음 페이지 넘김!
         if ((this._viewerZoom || 1.0) <= 1.02) {
           const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
-          if (totalDx <= -44 && Math.abs(totalDx) > Math.abs(totalDy) * 1.05 && this._viewerSlideIdx < total - 1) {
+          const isHorizSwipe = Math.abs(totalDx) > Math.abs(totalDy) * 0.95;
+          const isFastFlickNext = (totalDx <= -20 && velocityX <= -0.26);
+          const isFastFlickPrev = (totalDx >= 20 && velocityX >= 0.26);
+          if (isHorizSwipe && (totalDx <= -38 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
             this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next');
             return;
           }
-          if (totalDx >= 44 && Math.abs(totalDx) > Math.abs(totalDy) * 1.05 && this._viewerSlideIdx > 0) {
+          if (isHorizSwipe && (totalDx >= 38 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
             this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev');
             return;
           }
@@ -23028,7 +23063,7 @@ class GraphApp {
     }
   }
 
-  toggleSmartViewerImmersiveMode(forceState = null) {
+  toggleSmartViewerImmersiveMode(forceState = null, requestNativeFs = false) {
     const overlay = document.getElementById('smartNoteViewerOverlay');
     if (!overlay) return;
     const nextImmersive = typeof forceState === 'boolean'
@@ -23036,8 +23071,8 @@ class GraphApp {
       : !overlay.classList.contains('viewer-immersive-fullscreen');
     overlay.classList.toggle('viewer-immersive-fullscreen', nextImmersive);
 
-    // 첫 화면을 툭 터치해 전체화면 몰입 모드로 들어갈 때 브라우저 네이티브 전체화면도 함께 요청 (지원 기기)
-    if (nextImmersive && !document.fullscreenElement && !document.webkitFullscreenElement) {
+    // 우상단 [⛶ 전체화면] 버튼을 명시적으로 눌렀을 때만 브라우저 네이티브 전체화면 요청 (일반 탭 시 화면 깜빡임/리사이즈 0%)
+    if (requestNativeFs && nextImmersive && !document.fullscreenElement && !document.webkitFullscreenElement) {
       const docEl = document.documentElement;
       const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen;
       if (typeof req === 'function') {
@@ -23053,10 +23088,6 @@ class GraphApp {
     const isFs = Boolean(nextImmersive || document.fullscreenElement || document.webkitFullscreenElement);
     if (icEnter) icEnter.style.display = isFs ? 'none' : '';
     if (icExit) icExit.style.display = isFs ? '' : 'none';
-
-    if ((this._viewerZoom || 1.0) <= 1.02) {
-      this.fitSmartViewerStageToScreen(true);
-    }
   }
 
   toggleSmartViewerFullscreen(fromButton = false) {
@@ -23081,7 +23112,7 @@ class GraphApp {
       return;
     }
 
-    this.toggleSmartViewerImmersiveMode(true);
+    this.toggleSmartViewerImmersiveMode(true, Boolean(fromButton));
   }
 
   _flashViewerFloatingPageToast(idx, total) {
@@ -23242,6 +23273,8 @@ class GraphApp {
     const chipsBox = document.getElementById('viewerSlideChips');
     const btnPrev = document.getElementById('btnViewerPrevSlide');
     const btnNext = document.getElementById('btnViewerNextSlide');
+    const btnEdgePrev = document.getElementById('btnViewerEdgePrev');
+    const btnEdgeNext = document.getElementById('btnViewerEdgeNext');
 
     if (navGroup) {
       navGroup.style.display = 'inline-flex';
@@ -23254,6 +23287,14 @@ class GraphApp {
     }
     if (btnPrev) btnPrev.disabled = (idx <= 0);
     if (btnNext) btnNext.disabled = (idx >= total - 1);
+    if (btnEdgePrev) {
+      btnEdgePrev.style.display = total > 1 ? 'inline-flex' : 'none';
+      btnEdgePrev.disabled = (idx <= 0);
+    }
+    if (btnEdgeNext) {
+      btnEdgeNext.style.display = total > 1 ? 'inline-flex' : 'none';
+      btnEdgeNext.disabled = (idx >= total - 1);
+    }
     if (chipsBox) {
       chipsBox.innerHTML = '';
       for (let i = 0; i < total; i++) {
@@ -23348,22 +23389,21 @@ class GraphApp {
   }
 
   fitSmartViewerStageToScreen(preserveZoomResetOnly = false, swipeDir = null) {
-    const overlay = document.getElementById('smartNoteViewerOverlay');
     const viewport = document.getElementById('smartNoteViewerViewport');
     const stage = document.getElementById('smartNoteViewerStage');
     const imgEl = document.getElementById('smartNoteViewerImg');
     if (!viewport || !imgEl) return;
 
-    const isImmersive = Boolean(overlay && overlay.classList.contains('viewer-immersive-fullscreen'));
-    const padX = isImmersive ? 0 : 12;
-    const padY = isImmersive ? 0 : 56;
+    // 상단 바 숨김/표시 토글 시 문서 크기가 들썩이지 않도록 여백 기준을 고정
+    const padX = 20;
+    const padY = 56;
     const vw = Math.max(200, viewport.clientWidth - padX);
     const vh = Math.max(180, viewport.clientHeight - padY);
     const iw = Math.max(1, imgEl.naturalWidth || 1000);
     const ih = Math.max(1, imgEl.naturalHeight || 700);
 
     const fitScale = Math.min(vw / iw, vh / ih);
-    // 짝수 픽셀로 정렬하여 Flex 중앙 배치 시 0.5px 서브픽셀 블러 원천 차단
+    // 짝수 픽셀로 정렬하여 중앙 배치 시 0.5px 서브픽셀 블러 원천 차단
     const displayW = Math.max(2, Math.round((iw * fitScale) / 2) * 2);
     const displayH = Math.max(2, Math.round((ih * fitScale) / 2) * 2);
 
@@ -23385,6 +23425,26 @@ class GraphApp {
       this._viewerPanX = 0;
       this._applySmartViewerTransform();
     }
+  }
+
+  _clampSmartViewerPan() {
+    const viewport = document.getElementById('smartNoteViewerViewport');
+    if (!viewport) return;
+    const zoom = this._viewerZoom || 1.0;
+    if (zoom <= 1.01) {
+      this._viewerPanX = 0;
+      this._viewerPanY = 0;
+      return;
+    }
+    const vw = Math.max(200, viewport.clientWidth);
+    const vh = Math.max(180, viewport.clientHeight);
+    const zoomedW = (this._viewerBaseW || 1000) * zoom;
+    const zoomedH = (this._viewerBaseH || 700) * zoom;
+
+    const maxPanX = Math.max(0, (zoomedW - vw) / 2 + 48);
+    const maxPanY = Math.max(0, (zoomedH - vh) / 2 + 48);
+    this._viewerPanX = Math.max(-maxPanX, Math.min(maxPanX, this._viewerPanX || 0));
+    this._viewerPanY = Math.max(-maxPanY, Math.min(maxPanY, this._viewerPanY || 0));
   }
 
   setSmartViewerZoom(nextZoom, focalClientX = null, focalClientY = null) {
@@ -23410,6 +23470,7 @@ class GraphApp {
     }
 
     this._viewerZoom = clampedZoom;
+    this._clampSmartViewerPan();
     this._applySmartViewerTransform();
   }
 
@@ -23430,7 +23491,7 @@ class GraphApp {
     if (stage) {
       const px = Math.round(this._viewerPanX || 0);
       const py = Math.round(this._viewerPanY || 0);
-      stage.style.transform = (px === 0 && py === 0) ? 'none' : `translate(${px}px, ${py}px)`;
+      stage.style.transform = `translate3d(calc(-50% + ${px}px), calc(-50% + ${py}px), 0)`;
     }
     if (lblZoom) {
       lblZoom.textContent = `${Math.round(zoom * 100)}%`;
