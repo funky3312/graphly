@@ -20475,7 +20475,6 @@ class GraphApp {
       this.showToast('⚠️ 올바른 Graphly 수업 파일이 아닙니다.');
       return null;
     }
-    const title = pack.title || fallbackTitle;
     const hasPageSlides = slides.some(s => Boolean(s && s.pdfPageBoardData));
     this.setLessonTeachingMode(hasPageSlides ? 'page' : 'crop');
     if (slides.length > 1 || pack.isPlaylist) {
@@ -20490,20 +20489,20 @@ class GraphApp {
     const modalCloud = document.getElementById('modalCloudHub');
     if (modalCloud) modalCloud.classList.remove('show');
 
-    if (this._packageHasRecordedAudio({ playlistSlides: slides })) {
-      this.enterStudentAudioVideoOnlyMode({
-        ...pack,
-        playlistSlides: slides,
-        isPlaylist: slides.length > 1 || Boolean(pack.isPlaylist),
-        currentIndex: 0
-      }, Boolean(autoPlayIfAudio));
+    const normalizedPkg = {
+      ...pack,
+      playlistSlides: slides,
+      isPlaylist: slides.length > 1 || Boolean(pack.isPlaylist),
+      currentIndex: 0
+    };
+    this._initialSharedCloudPkg = JSON.parse(JSON.stringify(normalizedPkg));
+
+    if (this._packageHasRecordedAudio(normalizedPkg)) {
+      this.enterStudentAudioVideoOnlyMode(normalizedPkg, Boolean(autoPlayIfAudio));
       return pack;
     }
     this.exitStudentAudioVideoOnlyMode();
-
-    this.showToast(slides.length > 1
-      ? `📂 [${title}] (${slides.length}문항 통째 수업) 파일을 열었습니다! 1번부터 넘기며 수업하세요.`
-      : `📂 [${title}] 수업 파일을 성공적으로 불러왔습니다!`);
+    this.openSmartNoteViewer(normalizedPkg);
     return pack;
   }
 
@@ -20523,6 +20522,32 @@ class GraphApp {
         slides = JSON.parse(JSON.stringify(this.lessonPlaylistSlides));
       } else {
         slides = [this.serializeFullSlideState(title)];
+      }
+    }
+    const effFilter = this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
+    const hasAudio = this._packageHasRecordedAudio({ playlistSlides: slides });
+    if (!hasAudio && !this._isCapturingExportSnapshots) {
+      this._isCapturingExportSnapshots = true;
+      const backupCurrent = this.serializeFullSlideState('backup');
+      try {
+        for (let i = 0; i < slides.length; i++) {
+          if (slides[i] && !slides[i].viewerSnapshotDataUrl) {
+            this.deserializeFullSlideState(slides[i]);
+            await this._waitForSlideImagesReady();
+            const snap = this.captureCurrentSlideViewerSnapshot(effFilter, true);
+            slides[i].viewerSnapshotDataUrl = snap.dataUrl;
+            slides[i].viewerSnapshotWidth = snap.width;
+            slides[i].viewerSnapshotHeight = snap.height;
+            slides[i].viewerGraphHotspots = snap.hotspots;
+            slides[i].viewerStickerHotspots = snap.stickerHotspots;
+            slides[i].viewerSmartBounds = snap.smartBounds;
+          }
+        }
+      } finally {
+        this._isCapturingExportSnapshots = false;
+        if (backupCurrent) {
+          this.deserializeFullSlideState(backupCurrent);
+        }
       }
     }
     slides.forEach(s => {
@@ -21785,7 +21810,7 @@ class GraphApp {
   }
 
   // ============================================================================
-  // 🖼️ [스마트 판서 이미지 뷰어 & 이미지 속 그래프(#1, #2) 원터치 조작 엔진]
+  // 🖼️ [Graphly 표준 뷰어: 툭 터치 전체화면 · 좌우 스와이프 페이지 넘김 · 확대/축소 · 그래프 원터치 조작]
   // ============================================================================
   _initSmartNoteViewerEvents() {
     if (this._smartViewerEventsBound) return;
@@ -21802,11 +21827,14 @@ class GraphApp {
     const stage = document.getElementById('smartNoteViewerStage');
     const btnPrev = document.getElementById('btnViewerPrevSlide');
     const btnNext = document.getElementById('btnViewerNextSlide');
+    const btnCounter = document.getElementById('btnViewerSlideCounter');
+    const gridPopover = document.getElementById('viewerSlideGridPopover');
     const btnZoomIn = document.getElementById('btnViewerZoomIn');
     const btnZoomOut = document.getElementById('btnViewerZoomOut');
     const btnZoomFit = document.getElementById('btnViewerZoomFit');
     const btnDownload = document.getElementById('btnViewerDownloadPng');
     const btnEdit = document.getElementById('btnViewerEnterEdit');
+    const btnFullscreen = document.getElementById('btnViewerFullscreen');
 
     const btnTouchReset = document.getElementById('btnViewerGraphReset');
     const btnTouchBack = document.getElementById('btnViewerGraphBackToViewer');
@@ -21814,16 +21842,30 @@ class GraphApp {
     if (btnPrev) {
       btnPrev.onclick = () => {
         if (this._viewerPkg && this._viewerSlideIdx > 0) {
-          this.switchSmartViewerSlide(this._viewerSlideIdx - 1);
+          this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev');
         }
       };
     }
     if (btnNext) {
       btnNext.onclick = () => {
         if (this._viewerPkg && this._viewerSlideIdx < this._viewerPkg.playlistSlides.length - 1) {
-          this.switchSmartViewerSlide(this._viewerSlideIdx + 1);
+          this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next');
         }
       };
+    }
+    if (btnCounter && gridPopover) {
+      btnCounter.onclick = (e) => {
+        e.stopPropagation();
+        const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
+        if (total <= 1) return;
+        const isOpen = gridPopover.style.display !== 'none';
+        gridPopover.style.display = isOpen ? 'none' : 'block';
+      };
+      window.addEventListener('pointerdown', (ev) => {
+        if (gridPopover.style.display === 'none') return;
+        if (ev.target && ev.target.closest && (ev.target.closest('#viewerSlideGridPopover') || ev.target.closest('#btnViewerSlideCounter'))) return;
+        gridPopover.style.display = 'none';
+      }, { capture: true });
     }
     if (btnZoomIn) {
       btnZoomIn.onclick = () => this.setSmartViewerZoom(this._viewerZoom * 1.25);
@@ -21853,6 +21895,54 @@ class GraphApp {
         this.exitSmartNoteViewerToEditMode();
       };
     }
+    if (btnFullscreen) {
+      btnFullscreen.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleSmartViewerFullscreen(true);
+      };
+    }
+
+    const syncFullscreenIcons = () => {
+      const isFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement || (overlay && overlay.classList.contains('viewer-immersive-fullscreen')));
+      const icEnter = document.getElementById('iconViewerFullscreenEnter');
+      const icExit = document.getElementById('iconViewerFullscreenExit');
+      if (icEnter) icEnter.style.display = isFs ? 'none' : '';
+      if (icExit) icExit.style.display = isFs ? '' : 'none';
+      if (overlay && overlay.style.display !== 'none' && (this._viewerZoom || 1.0) <= 1.02) {
+        this.fitSmartViewerStageToScreen(true);
+      }
+    };
+    document.addEventListener('fullscreenchange', syncFullscreenIcons);
+    document.addEventListener('webkitfullscreenchange', syncFullscreenIcons);
+    window.addEventListener('resize', () => {
+      if (overlay && overlay.style.display !== 'none' && (this._viewerZoom || 1.0) <= 1.02) {
+        this.fitSmartViewerStageToScreen(true);
+      }
+    });
+
+    // 키보드 좌우 방향키 페이지 넘김 & 단축키 지원
+    window.addEventListener('keydown', (e) => {
+      if (!overlay || overlay.style.display === 'none') return;
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        if (this._viewerPkg && this._viewerSlideIdx > 0) {
+          e.preventDefault();
+          this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev');
+        }
+      } else if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+        if (this._viewerPkg && this._viewerSlideIdx < this._viewerPkg.playlistSlides.length - 1) {
+          e.preventDefault();
+          this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next');
+        }
+      } else if (e.key === 'Escape') {
+        if (overlay.classList.contains('viewer-immersive-fullscreen')) {
+          overlay.classList.remove('viewer-immersive-fullscreen');
+          syncFullscreenIcons();
+        }
+      } else if (e.key === '0') {
+        this.fitSmartViewerStageToScreen();
+      }
+    });
 
     if (btnTouchReset) {
       btnTouchReset.onclick = () => {
@@ -21871,62 +21961,240 @@ class GraphApp {
     }
 
     if (viewport) {
-      let isDraggingStage = false;
+      const activePointers = new Map();
       let dragStartX = 0, dragStartY = 0;
       let panStartX = 0, panStartY = 0;
+      let pointerDownTime = 0;
+      let wasMultiTouch = false;
       let pinchStartDist = 0;
       let pinchStartZoom = 1.0;
+      let pinchStartPanX = 0, pinchStartPanY = 0;
+      let pinchStartMidX = 0, pinchStartMidY = 0;
+      let lastTapTime = 0;
+      let lastTapX = 0, lastTapY = 0;
+      let singleTapTimer = null;
 
       viewport.addEventListener('wheel', (e) => {
         e.preventDefault();
-        const factor = e.deltaY < 0 ? 1.12 : (1 / 1.12);
-        this.setSmartViewerZoom(this._viewerZoom * factor);
+        const factor = e.deltaY < 0 ? 1.14 : (1 / 1.14);
+        this.setSmartViewerZoom(this._viewerZoom * factor, e.clientX, e.clientY);
       }, { passive: false });
 
       viewport.addEventListener('pointerdown', (e) => {
         if (e.target.closest('.viewer-graph-hotspot, .viewer-sticker-hotspot')) return;
         if (e.button !== 0 && e.pointerType === 'mouse') return;
-        isDraggingStage = true;
-        dragStartX = e.clientX;
-        dragStartY = e.clientY;
-        panStartX = this._viewerPanX || 0;
-        panStartY = this._viewerPanY || 0;
+        if (stage) stage.classList.remove('swipe-animating');
+
+        activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (activePointers.size === 1) {
+          wasMultiTouch = false;
+          pointerDownTime = performance.now();
+          dragStartX = e.clientX;
+          dragStartY = e.clientY;
+          panStartX = this._viewerPanX || 0;
+          panStartY = this._viewerPanY || 0;
+        } else if (activePointers.size === 2) {
+          wasMultiTouch = true;
+          if (singleTapTimer) {
+            clearTimeout(singleTapTimer);
+            singleTapTimer = null;
+          }
+          const pts = Array.from(activePointers.values());
+          pinchStartDist = Math.max(10, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
+          pinchStartMidX = (pts[0].x + pts[1].x) / 2;
+          pinchStartMidY = (pts[0].y + pts[1].y) / 2;
+          pinchStartZoom = this._viewerZoom || 1.0;
+          pinchStartPanX = this._viewerPanX || 0;
+          pinchStartPanY = this._viewerPanY || 0;
+        }
       });
 
       window.addEventListener('pointermove', (e) => {
-        if (!isDraggingStage) return;
-        this._viewerPanX = panStartX + (e.clientX - dragStartX);
-        this._viewerPanY = panStartY + (e.clientY - dragStartY);
-        this._applySmartViewerTransform();
+        if (!activePointers.has(e.pointerId)) return;
+        activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+        if (activePointers.size === 2) {
+          const pts = Array.from(activePointers.values());
+          const dist = Math.max(10, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
+          const midX = (pts[0].x + pts[1].x) / 2;
+          const midY = (pts[0].y + pts[1].y) / 2;
+          const nextZoom = Math.max(0.5, Math.min(4.5, pinchStartZoom * (dist / pinchStartDist)));
+          const rect = viewport.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          const scaleRatio = nextZoom / Math.max(0.1, pinchStartZoom);
+
+          this._viewerZoom = nextZoom;
+          this._viewerPanX = (midX - cx) - ((pinchStartMidX - cx - pinchStartPanX) * scaleRatio);
+          this._viewerPanY = (midY - cy) - ((pinchStartMidY - cy - pinchStartPanY) * scaleRatio);
+          this._applySmartViewerTransform();
+          return;
+        }
+
+        if (activePointers.size === 1 && !wasMultiTouch) {
+          const dx = e.clientX - dragStartX;
+          const dy = e.clientY - dragStartY;
+          if ((this._viewerZoom || 1.0) <= 1.02) {
+            // 기본 배율(100%): 좌우로 쓱쓱 밀어 페이지 넘기기(Swipe) 프리뷰
+            if (Math.abs(dx) > 5) {
+              const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
+              const atEdge = (dx > 0 && this._viewerSlideIdx <= 0) || (dx < 0 && this._viewerSlideIdx >= total - 1);
+              this._viewerPanX = dx * (atEdge ? 0.22 : 0.72);
+              this._viewerPanY = 0;
+              this._applySmartViewerTransform();
+            }
+          } else {
+            // 확대 상태(>100%): 자유 패닝 이동
+            this._viewerPanX = panStartX + dx;
+            this._viewerPanY = panStartY + dy;
+            this._applySmartViewerTransform();
+          }
+        }
       });
 
-      window.addEventListener('pointerup', () => {
-        isDraggingStage = false;
-      });
+      const handlePointerFinish = (e) => {
+        if (!activePointers.has(e.pointerId)) return;
+        activePointers.delete(e.pointerId);
 
-      viewport.addEventListener('touchstart', (e) => {
-        if (e.touches && e.touches.length === 2) {
-          isDraggingStage = false;
-          pinchStartDist = Math.hypot(
-            e.touches[0].clientX - e.touches[1].clientX,
-            e.touches[0].clientY - e.touches[1].clientY
-          );
-          pinchStartZoom = this._viewerZoom || 1.0;
-        }
-      }, { passive: true });
+        if (activePointers.size > 0) return;
 
-      viewport.addEventListener('touchmove', (e) => {
-        if (e.touches && e.touches.length === 2 && pinchStartDist > 10) {
-          e.preventDefault();
-          const dist = Math.hypot(
-            e.touches[0].clientX - e.touches[1].clientX,
-            e.touches[0].clientY - e.touches[1].clientY
-          );
-          const ratio = dist / pinchStartDist;
-          this.setSmartViewerZoom(pinchStartZoom * ratio);
+        const totalDx = e.clientX - dragStartX;
+        const totalDy = e.clientY - dragStartY;
+        const moveDist = Math.hypot(totalDx, totalDy);
+        const elapsed = performance.now() - pointerDownTime;
+
+        if (wasMultiTouch) {
+          wasMultiTouch = false;
+          if ((this._viewerZoom || 1.0) < 1.0) {
+            this.fitSmartViewerStageToScreen(true);
+          }
+          return;
         }
-      }, { passive: false });
+
+        // 1) 툭 터치(Single Tap) vs 더블탭(Double Tap) 판별
+        if (moveDist < 9 && elapsed < 420) {
+          const now = performance.now();
+          if (now - lastTapTime < 280 && Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) < 36) {
+            // 더블탭: 100% ⇄ 200% 즉시 확대/축소 토글
+            if (singleTapTimer) {
+              clearTimeout(singleTapTimer);
+              singleTapTimer = null;
+            }
+            lastTapTime = 0;
+            if ((this._viewerZoom || 1.0) > 1.08) {
+              this.fitSmartViewerStageToScreen();
+            } else {
+              this.setSmartViewerZoom(2.0, e.clientX, e.clientY);
+            }
+            return;
+          }
+          lastTapTime = now;
+          lastTapX = e.clientX;
+          lastTapY = e.clientY;
+          if (singleTapTimer) clearTimeout(singleTapTimer);
+          singleTapTimer = setTimeout(() => {
+            singleTapTimer = null;
+            // 🌟 [대표님 핵심 기획]: 첫 화면을 툭 터치하면 전체화면 몰입 모드 토글!
+            this.toggleSmartViewerImmersiveMode();
+          }, 210);
+          return;
+        }
+
+        // 2) 기본 배율(100%)에서 좌우 스와이프(Swipe) 시 이전/다음 페이지 넘김!
+        if ((this._viewerZoom || 1.0) <= 1.02) {
+          const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
+          if (totalDx <= -44 && Math.abs(totalDx) > Math.abs(totalDy) * 1.05 && this._viewerSlideIdx < total - 1) {
+            this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next');
+            return;
+          }
+          if (totalDx >= 44 && Math.abs(totalDx) > Math.abs(totalDy) * 1.05 && this._viewerSlideIdx > 0) {
+            this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev');
+            return;
+          }
+          if (stage) stage.classList.add('swipe-animating');
+          this._viewerPanX = 0;
+          this._viewerPanY = 0;
+          this._applySmartViewerTransform();
+        }
+      };
+
+      window.addEventListener('pointerup', handlePointerFinish);
+      window.addEventListener('pointercancel', handlePointerFinish);
     }
+  }
+
+  toggleSmartViewerImmersiveMode(forceState = null) {
+    const overlay = document.getElementById('smartNoteViewerOverlay');
+    if (!overlay) return;
+    const nextImmersive = typeof forceState === 'boolean'
+      ? forceState
+      : !overlay.classList.contains('viewer-immersive-fullscreen');
+    overlay.classList.toggle('viewer-immersive-fullscreen', nextImmersive);
+
+    // 첫 화면을 툭 터치해 전체화면 몰입 모드로 들어갈 때 브라우저 네이티브 전체화면도 함께 요청 (지원 기기)
+    if (nextImmersive && !document.fullscreenElement && !document.webkitFullscreenElement) {
+      const docEl = document.documentElement;
+      const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen;
+      if (typeof req === 'function') {
+        try {
+          const p = req.call(docEl);
+          if (p && typeof p.catch === 'function') p.catch(() => { });
+        } catch (_) { }
+      }
+    }
+
+    const icEnter = document.getElementById('iconViewerFullscreenEnter');
+    const icExit = document.getElementById('iconViewerFullscreenExit');
+    const isFs = Boolean(nextImmersive || document.fullscreenElement || document.webkitFullscreenElement);
+    if (icEnter) icEnter.style.display = isFs ? 'none' : '';
+    if (icExit) icExit.style.display = isFs ? '' : 'none';
+
+    if ((this._viewerZoom || 1.0) <= 1.02) {
+      this.fitSmartViewerStageToScreen(true);
+    }
+  }
+
+  toggleSmartViewerFullscreen(fromButton = false) {
+    const overlay = document.getElementById('smartNoteViewerOverlay');
+    const isNativeFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+    const isImmersive = Boolean(overlay && overlay.classList.contains('viewer-immersive-fullscreen'));
+
+    if (isNativeFs) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (typeof exit === 'function') {
+        try {
+          const p = exit.call(document);
+          if (p && typeof p.catch === 'function') p.catch(() => { });
+        } catch (_) { }
+      }
+      if (overlay) overlay.classList.remove('viewer-immersive-fullscreen');
+      return;
+    }
+
+    if (fromButton && isImmersive) {
+      overlay.classList.remove('viewer-immersive-fullscreen');
+      return;
+    }
+
+    this.toggleSmartViewerImmersiveMode(true);
+  }
+
+  _flashViewerFloatingPageToast(idx, total) {
+    const toast = document.getElementById('viewerFloatingPageToast');
+    if (!toast || total <= 1) {
+      if (toast) toast.style.display = 'none';
+      return;
+    }
+    toast.textContent = `${idx + 1} / ${total}`;
+    toast.style.display = 'block';
+    toast.style.opacity = '1';
+    if (this._viewerPageToastTimer) clearTimeout(this._viewerPageToastTimer);
+    this._viewerPageToastTimer = setTimeout(() => {
+      toast.style.opacity = '0';
+      setTimeout(() => {
+        if (toast.style.opacity === '0') toast.style.display = 'none';
+      }, 200);
+    }, 1100);
   }
 
   _packageHasRecordedAudio(pkg) {
@@ -22006,32 +22274,36 @@ class GraphApp {
     if (touchBar) touchBar.style.display = 'none';
 
     const overlay = document.getElementById('smartNoteViewerOverlay');
-    if (overlay) overlay.style.display = 'flex';
+    if (overlay) {
+      overlay.style.display = 'flex';
+      overlay.classList.remove('viewer-immersive-fullscreen');
+    }
 
     const startIdx = Math.max(0, Math.min(pkg.playlistSlides.length - 1, pkg.currentIndex || 0));
     await this.switchSmartViewerSlide(startIdx);
   }
 
-  async switchSmartViewerSlide(idx) {
+  async switchSmartViewerSlide(idx, swipeDir = null) {
     if (!this._viewerPkg || !this._viewerPkg.playlistSlides[idx]) return;
     this._viewerSlideIdx = idx;
     const slide = this._viewerPkg.playlistSlides[idx];
     const total = this._viewerPkg.playlistSlides.length;
 
     const navGroup = document.getElementById('viewerSlideNavGroup');
+    const lblCounter = document.getElementById('lblViewerSlideCounter');
+    const gridPopover = document.getElementById('viewerSlideGridPopover');
     const chipsBox = document.getElementById('viewerSlideChips');
     const btnPrev = document.getElementById('btnViewerPrevSlide');
     const btnNext = document.getElementById('btnViewerNextSlide');
 
     if (navGroup) {
-      navGroup.style.display = total > 1 ? 'inline-flex' : 'none';
+      navGroup.style.display = 'inline-flex';
     }
-    const btnViewerDl = document.getElementById('btnViewerDownloadPng');
-    if (btnViewerDl) {
-      const spanDl = btnViewerDl.querySelector('span');
-      if (spanDl) {
-        spanDl.textContent = total > 1 ? `통합 PDF 저장 (${total}장)` : '이미지 저장';
-      }
+    if (lblCounter) {
+      lblCounter.textContent = `${idx + 1} / ${total}`;
+    }
+    if (gridPopover) {
+      gridPopover.style.display = 'none';
     }
     if (btnPrev) btnPrev.disabled = (idx <= 0);
     if (btnNext) btnNext.disabled = (idx >= total - 1);
@@ -22043,7 +22315,11 @@ class GraphApp {
         chip.className = 'viewer-slide-chip' + (i === idx ? ' active' : '');
         const sTitle = this._viewerPkg.playlistSlides[i].slideTitle || '';
         chip.textContent = /^p\.\d+$/i.test(sTitle.trim()) ? sTitle.trim() : String(i + 1);
-        chip.onclick = () => this.switchSmartViewerSlide(i);
+        chip.onclick = (e) => {
+          e.stopPropagation();
+          if (gridPopover) gridPopover.style.display = 'none';
+          this.switchSmartViewerSlide(i);
+        };
         chipsBox.appendChild(chip);
       }
     }
@@ -22063,7 +22339,6 @@ class GraphApp {
 
     const imgEl = document.getElementById('smartNoteViewerImg');
     const hotspotsEl = document.getElementById('smartNoteViewerHotspots');
-    const hintEl = document.getElementById('smartNoteViewerHint');
 
     if (imgEl) {
       await new Promise((res) => {
@@ -22122,27 +22397,29 @@ class GraphApp {
       });
     }
 
-    if (hintEl) {
-      hintEl.textContent = hotspots.length > 0
-        ? '그래프 영역을 터치하면 직접 조작할 수 있습니다'
-        : '';
-      hintEl.style.display = hotspots.length > 0 ? '' : 'none';
+    this.fitSmartViewerStageToScreen(false, swipeDir);
+    const overlay = document.getElementById('smartNoteViewerOverlay');
+    if (overlay && overlay.classList.contains('viewer-immersive-fullscreen') && total > 1) {
+      this._flashViewerFloatingPageToast(idx, total);
     }
-
-    this.fitSmartViewerStageToScreen();
   }
 
-  fitSmartViewerStageToScreen() {
+  fitSmartViewerStageToScreen(preserveZoomResetOnly = false, swipeDir = null) {
+    const overlay = document.getElementById('smartNoteViewerOverlay');
     const viewport = document.getElementById('smartNoteViewerViewport');
+    const stage = document.getElementById('smartNoteViewerStage');
     const imgEl = document.getElementById('smartNoteViewerImg');
     if (!viewport || !imgEl) return;
 
-    const vw = Math.max(240, viewport.clientWidth - 28);
-    const vh = Math.max(200, viewport.clientHeight - 48);
+    const isImmersive = Boolean(overlay && overlay.classList.contains('viewer-immersive-fullscreen'));
+    const padX = isImmersive ? 0 : 12;
+    const padY = isImmersive ? 0 : 56;
+    const vw = Math.max(200, viewport.clientWidth - padX);
+    const vh = Math.max(180, viewport.clientHeight - padY);
     const iw = Math.max(1, imgEl.naturalWidth || 1000);
     const ih = Math.max(1, imgEl.naturalHeight || 700);
 
-    const fitScale = Math.min(vw / iw, vh / ih, 1.0);
+    const fitScale = Math.min(vw / iw, vh / ih);
     const displayW = Math.round(iw * fitScale);
     const displayH = Math.round(ih * fitScale);
 
@@ -22150,13 +22427,46 @@ class GraphApp {
     imgEl.style.height = `${displayH}px`;
 
     this._viewerZoom = 1.0;
-    this._viewerPanX = 0;
     this._viewerPanY = 0;
-    this._applySmartViewerTransform();
+
+    if (stage && (swipeDir === 'next' || swipeDir === 'prev')) {
+      stage.classList.remove('swipe-animating');
+      this._viewerPanX = swipeDir === 'next' ? 56 : -56;
+      this._applySmartViewerTransform();
+      void stage.offsetWidth;
+      stage.classList.add('swipe-animating');
+      this._viewerPanX = 0;
+      this._applySmartViewerTransform();
+    } else {
+      if (stage && preserveZoomResetOnly) stage.classList.add('swipe-animating');
+      this._viewerPanX = 0;
+      this._applySmartViewerTransform();
+    }
   }
 
-  setSmartViewerZoom(nextZoom) {
-    this._viewerZoom = Math.max(0.5, Math.min(4.0, nextZoom));
+  setSmartViewerZoom(nextZoom, focalClientX = null, focalClientY = null) {
+    const viewport = document.getElementById('smartNoteViewerViewport');
+    const prevZoom = this._viewerZoom || 1.0;
+    const clampedZoom = Math.max(0.5, Math.min(4.5, nextZoom));
+
+    if (Math.abs(clampedZoom - 1.0) < 0.03) {
+      this._viewerZoom = 1.0;
+      this._viewerPanX = 0;
+      this._viewerPanY = 0;
+      this._applySmartViewerTransform();
+      return;
+    }
+
+    if (viewport && Number.isFinite(focalClientX) && Number.isFinite(focalClientY)) {
+      const rect = viewport.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const ratio = clampedZoom / Math.max(0.1, prevZoom);
+      this._viewerPanX = (focalClientX - cx) - ((focalClientX - cx - (this._viewerPanX || 0)) * ratio);
+      this._viewerPanY = (focalClientY - cy) - ((focalClientY - cy - (this._viewerPanY || 0)) * ratio);
+    }
+
+    this._viewerZoom = clampedZoom;
     this._applySmartViewerTransform();
   }
 
