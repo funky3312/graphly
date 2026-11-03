@@ -5529,6 +5529,9 @@ class GraphApp {
         const nextT = Math.max(8, Math.min((window.innerHeight || 1080) - 56, initialTop + dy));
         remote.style.left = `${Math.round(nextL)}px`;
         remote.style.top = `${Math.round(nextT)}px`;
+        if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          this._recordAudioWorkspaceStateIfNeeded(false);
+        }
       }, { capture: true, passive: false });
 
       const endPillDrag = (e) => {
@@ -5541,6 +5544,9 @@ class GraphApp {
         }
         dragPointerId = null;
         saveRemoteSettings();
+        if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+        }
       };
       window.addEventListener('pointerup', endPillDrag, { capture: true });
       window.addEventListener('pointercancel', endPillDrag, { capture: true });
@@ -23012,6 +23018,11 @@ class GraphApp {
     window.addEventListener('resize', () => {
       this.updateCanvasRect();
       this.resizeCanvas();
+      if (this._lastAppliedAudioStateObj && (this.isAudioPlaying || this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive)) {
+        const lastKf = this._lastAppliedAudioStateObj;
+        this._lastAppliedAudioStateObj = null;
+        this._applyAudioWorkspaceKeyframe(lastKf);
+      }
       this.render();
     });
     window.addEventListener('scroll', () => {
@@ -32929,6 +32940,32 @@ class GraphApp {
     const cardStickerDraft = this._activeCardStickerDraft ? { ...this._activeCardStickerDraft } : null;
     const pillRemoteEl = document.getElementById('quickPillRemote');
     const pillRemoteOpen = Boolean(this.isQuickPillRemoteOpen || (pillRemoteEl && pillRemoteEl.style.display !== 'none'));
+    const pillRect = (pillRemoteEl && pillRemoteOpen && typeof pillRemoteEl.getBoundingClientRect === 'function')
+      ? pillRemoteEl.getBoundingClientRect()
+      : null;
+    if (pillRect && pillRect.width > 20 && pillRect.height > 20) {
+      this._lastKnownPillRemoteSize = { w: pillRect.width, h: pillRect.height };
+    }
+    const pillVw = window.innerWidth || this.screenWidth || 1440;
+    const pillVh = window.innerHeight || this.screenHeight || 900;
+    const pillRemW = (pillRect && pillRect.width > 20)
+      ? pillRect.width
+      : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.w) || 112);
+    const pillRemH = (pillRect && pillRect.height > 20)
+      ? pillRect.height
+      : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.h) || 260);
+    const pillRawL = pillRemoteEl
+      ? (parseFloat(pillRemoteEl.style.left) || (pillRect && pillRect.left > 0 ? pillRect.left : 605))
+      : 605;
+    const pillRawT = pillRemoteEl
+      ? (parseFloat(pillRemoteEl.style.top) || (pillRect && pillRect.top > 0 ? pillRect.top : 76))
+      : 76;
+    const pillAvailW = Math.max(100, pillVw - 68 - pillRemW);
+    const pillAvailH = Math.max(100, pillVh - pillRemH);
+    const pillRemoteNormX = r3(Math.max(0, Math.min(1, (pillRawL - 64) / pillAvailW)));
+    const pillRemoteNormY = r3(Math.max(0, Math.min(1, pillRawT / pillAvailH)));
+    const pillRemoteRightGap = Math.round(Math.max(8, pillVw - (pillRawL + pillRemW)));
+    const pillRemoteModules = this.pillModules ? { ...this.pillModules } : null;
     return {
       isGraphCovered: Boolean(this.isGraphCovered),
       isBoardMode: Boolean(this.isBoardMode),
@@ -32940,8 +32977,12 @@ class GraphApp {
       activeInkTool: this.activeInkTool || 'pen',
       currentInkColor: this.currentInkColor || '#00d2d3',
       pillRemoteOpen,
-      pillRemoteLeft: pillRemoteEl ? Math.round(parseFloat(pillRemoteEl.style.left) || 605) : 605,
-      pillRemoteTop: pillRemoteEl ? Math.round(parseFloat(pillRemoteEl.style.top) || 76) : 76,
+      pillRemoteLeft: Math.round(pillRawL),
+      pillRemoteTop: Math.round(pillRawT),
+      pillRemoteNormX,
+      pillRemoteNormY,
+      pillRemoteRightGap,
+      pillRemoteModules,
       isGraphSnapMode: Boolean(this.isGraphSnapMode),
       isPdfToGraphCropMode: Boolean(this.isPdfToGraphCropMode),
       isPdfCropChoiceMenuOpen,
@@ -33180,19 +33221,50 @@ class GraphApp {
         const btnQuick = document.getElementById('btnQuickInk');
         if (btnQuick) btnQuick.classList.toggle('active', this.isInkMode);
       }
+      if (kf.pillRemoteModules && this.pillModules) {
+        this.pillModules = { ...this.pillModules, ...kf.pillRemoteModules };
+      }
+      if (typeof this.syncQuickPillRemoteUI === 'function') {
+        this.syncQuickPillRemoteUI();
+      }
       if (kf.pillRemoteOpen !== undefined) {
         this.isQuickPillRemoteOpen = Boolean(kf.pillRemoteOpen);
         const pillRemoteEl = document.getElementById('quickPillRemote');
         if (pillRemoteEl) {
           pillRemoteEl.style.display = this.isQuickPillRemoteOpen ? 'flex' : 'none';
-          if (typeof kf.pillRemoteLeft === 'number') pillRemoteEl.style.left = `${Math.round(kf.pillRemoteLeft)}px`;
-          if (typeof kf.pillRemoteTop === 'number') pillRemoteEl.style.top = `${Math.round(kf.pillRemoteTop)}px`;
+          const vw = window.innerWidth || this.screenWidth || 1440;
+          const vh = window.innerHeight || this.screenHeight || 900;
+          const pRect = this.isQuickPillRemoteOpen ? pillRemoteEl.getBoundingClientRect() : null;
+          const remW = (pRect && pRect.width > 20)
+            ? pRect.width
+            : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.w) || 112);
+          const remH = (pRect && pRect.height > 20)
+            ? pRect.height
+            : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.h) || 260);
+          let targetL = typeof kf.pillRemoteLeft === 'number' ? kf.pillRemoteLeft : 605;
+          let targetT = typeof kf.pillRemoteTop === 'number' ? kf.pillRemoteTop : 76;
+
+          if (typeof kf.pillRemoteNormX === 'number') {
+            if (kf.pillRemoteNormX >= 0.72 && typeof kf.pillRemoteRightGap === 'number') {
+              targetL = vw - remW - kf.pillRemoteRightGap;
+            } else if (kf.pillRemoteNormX <= 0.18 && typeof kf.pillRemoteLeft === 'number') {
+              targetL = kf.pillRemoteLeft;
+            } else {
+              const availW = Math.max(100, vw - 68 - remW);
+              targetL = 64 + kf.pillRemoteNormX * availW;
+            }
+          }
+          if (typeof kf.pillRemoteNormY === 'number') {
+            const availH = Math.max(100, vh - remH);
+            targetT = kf.pillRemoteNormY * availH;
+          }
+          targetL = Math.max(64, Math.min(vw - remW - 8, targetL));
+          targetT = Math.max(12, Math.min(vh - remH - 12, targetT));
+          pillRemoteEl.style.left = `${Math.round(targetL)}px`;
+          pillRemoteEl.style.top = `${Math.round(targetT)}px`;
         }
         const btnRailRemote = document.getElementById('btnRailQuickRemote');
         if (btnRailRemote) btnRailRemote.classList.toggle('active', this.isQuickPillRemoteOpen);
-      }
-      if (typeof this.syncQuickPillRemoteUI === 'function') {
-        this.syncQuickPillRemoteUI();
       }
       if (kf.activeInkTool) {
         this.activeInkTool = kf.activeInkTool;
@@ -33428,6 +33500,10 @@ class GraphApp {
       kf.pillRemoteOpen,
       kf.pillRemoteLeft,
       kf.pillRemoteTop,
+      kf.pillRemoteNormX,
+      kf.pillRemoteNormY,
+      kf.pillRemoteRightGap,
+      kf.pillRemoteModules,
       kf.isGraphSnapMode,
       kf.isPdfToGraphCropMode,
       kf.isPdfCropChoiceMenuOpen,
@@ -34045,6 +34121,17 @@ class GraphApp {
     merged.graphCardBaseX = lerp(kfA.graphCardBaseX, kfB.graphCardBaseX);
     merged.graphCardBaseY = lerp(kfA.graphCardBaseY, kfB.graphCardBaseY);
     merged.graphCardW = lerp(kfA.graphCardW || 260, kfB.graphCardW || 260);
+    merged.pillRemoteLeft = lerp(kfA.pillRemoteLeft || 605, kfB.pillRemoteLeft || 605);
+    merged.pillRemoteTop = lerp(kfA.pillRemoteTop || 76, kfB.pillRemoteTop || 76);
+    if (typeof kfA.pillRemoteNormX === 'number' && typeof kfB.pillRemoteNormX === 'number') {
+      merged.pillRemoteNormX = lerp(kfA.pillRemoteNormX, kfB.pillRemoteNormX);
+    }
+    if (typeof kfA.pillRemoteNormY === 'number' && typeof kfB.pillRemoteNormY === 'number') {
+      merged.pillRemoteNormY = lerp(kfA.pillRemoteNormY, kfB.pillRemoteNormY);
+    }
+    if (typeof kfA.pillRemoteRightGap === 'number' && typeof kfB.pillRemoteRightGap === 'number') {
+      merged.pillRemoteRightGap = lerp(kfA.pillRemoteRightGap, kfB.pillRemoteRightGap);
+    }
     merged.periodicStepY = lerp(kfA.periodicStepY || 0, kfB.periodicStepY || 0);
     if (Array.isArray(kfA.extraGraphStates) && Array.isArray(kfB.extraGraphStates) && kfA.extraGraphStates.length === kfB.extraGraphStates.length) {
       merged.extraGraphStates = kfA.extraGraphStates.map((stA, idx) => {
