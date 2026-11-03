@@ -1696,15 +1696,19 @@ class GraphApp {
     // (1) 문제를 가리지 않도록 우측 빈 공간의 정사각형 컴팩트 스테이지 중앙으로 원점 자동 이동
     // (2) 칠판 판서 여백을 위해 적당한 아담한 크기(zoomLevel = 0.68) 및 좌표축 자동 ON
     // (3) 그래프 극점을 바로 잡고 움직일 수 있도록 '조작(select)' 모드로 자동 전환 & 좌측 서랍 자동 접기!
-    if (this.hasActiveProblemCard()) {
+    if (this.hasActiveProblemCard() && !this.pdfPageBoardData) {
       if (this.graphs.length === 1) {
         this.syncProblemCardRectFromWidget();
         const cardRight = (this.problemCardRect && !this.isProblemCardMinimized)
           ? (this.problemCardRect.x + this.problemCardRect.w)
           : 520;
-        const availCenterX = Math.round((cardRight + this.screenWidth) / 2);
+        // 좌상단 문제 카드와 겹치지 않으면서도 우측으로 너무 밀리지 않는 황금 밸런스 위치(화면 폭의 약 58.5% 지점)
+        const balancedOffsetX = Math.min(
+          Math.round(this.screenWidth * 0.11),
+          Math.round(cardRight * 0.22)
+        );
         if (this.panX === 0 && this.panY === 0) {
-          this.panX = Math.round(availCenterX - this.screenWidth / 2);
+          this.panX = Math.max(0, balancedOffsetX);
           this.panY = 0;
         }
         if (!this.showAxes) {
