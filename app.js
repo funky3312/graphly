@@ -1061,9 +1061,10 @@ class GraphApp {
       });
     }
     this.extraProblemCards = [...targetExtraProblems];
+    const extraProbParent = (this.canvas && this.canvas.parentElement) || document.body;
     this.extraProblemCards.forEach(c => {
-      if (c && c.el && !document.body.contains(c.el)) {
-        document.body.appendChild(c.el);
+      if (c && c.el && !extraProbParent.contains(c.el)) {
+        extraProbParent.appendChild(c.el);
       }
     });
 
@@ -1113,9 +1114,10 @@ class GraphApp {
       });
     }
     this.extraGraphCards = [...targetExtraGraphs];
+    const extraGraphParent = (this.canvas && this.canvas.parentElement) || document.body;
     this.extraGraphCards.forEach(c => {
-      if (c && c.el && !document.body.contains(c.el)) {
-        document.body.appendChild(c.el);
+      if (c && c.el && !extraGraphParent.contains(c.el)) {
+        extraGraphParent.appendChild(c.el);
       }
     });
 
@@ -8266,9 +8268,12 @@ class GraphApp {
     if (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 240) {
       widget._savedExpandedWidth = `${Math.round(rawStyleW)}px`;
     }
+    const measuredWidgetRect = typeof this._getStageElementRect === 'function'
+      ? this._getStageElementRect(widget)
+      : widget.getBoundingClientRect();
     const w = (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 240)
       ? rawStyleW
-      : (parseFloat(widget._savedExpandedWidth) || (Number.isFinite(rawStyleW) && rawStyleW >= 240 ? rawStyleW : 0) || (!isMin ? widget.getBoundingClientRect().width : 520) || 520);
+      : (parseFloat(widget._savedExpandedWidth) || (Number.isFinite(rawStyleW) && rawStyleW >= 240 ? rawStyleW : 0) || (!isMin && measuredWidgetRect ? measuredWidgetRect.width : 520) || 520);
     const aspect = this.problemCardAspect || 0.72;
     const imgW = w;
     const imgH = Math.round(imgW * aspect);
@@ -8293,8 +8298,11 @@ class GraphApp {
     }
 
     if (!this.canvas) return null;
-    const canvasRect = this.canvas.getBoundingClientRect();
-    const widgetRect = widget.getBoundingClientRect();
+    const isFixedStage = typeof this._isFixedReplayStageActive === 'function' && this._isFixedReplayStageActive();
+    const canvasRect = isFixedStage ? { left: 0, top: 0 } : this.canvas.getBoundingClientRect();
+    const widgetRect = typeof this._getStageElementRect === 'function'
+      ? this._getStageElementRect(widget)
+      : widget.getBoundingClientRect();
 
     const x = widgetRect.left - canvasRect.left;
     const y = widgetRect.top - canvasRect.top;
@@ -8488,7 +8496,9 @@ class GraphApp {
     const sizeScale = Math.max(0.6, w / 520);
 
     const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
-    const pRect = isAudioReplay ? pCanvas.getBoundingClientRect() : null;
+    const pRect = isAudioReplay
+      ? (typeof this._getStageElementRect === 'function' ? this._getStageElementRect(pCanvas) : pCanvas.getBoundingClientRect())
+      : null;
 
     this.problemInkStrokes.forEach(rawStroke => {
       let stroke = rawStroke;
@@ -8827,7 +8837,8 @@ class GraphApp {
         <div class="problem-card-resize-handle"></div>
       </div>
     `;
-    document.body.appendChild(el);
+    const stageParent = (this.canvas && this.canvas.parentElement) || document.body;
+    stageParent.appendChild(el);
     this.attachCardLaserSystem(el);
     this.attachCardDoubleTapDocking(el);
 
@@ -9870,7 +9881,9 @@ class GraphApp {
         const fallbackH = Math.max(1, Math.round((laserCanvas.height || 360 * dpr) / dpr));
         return { w: fallbackW, h: fallbackH, dpr };
       }
-      const rect = bodyEl.getBoundingClientRect();
+      const rect = typeof this._getStageElementRect === 'function'
+        ? this._getStageElementRect(bodyEl)
+        : bodyEl.getBoundingClientRect();
       if (rect.width < 10 || rect.height < 10) {
         const fallbackW = Math.max(1, Math.round((laserCanvas.width || 520 * dpr) / dpr));
         const fallbackH = Math.max(1, Math.round((laserCanvas.height || 360 * dpr) / dpr));
@@ -10015,7 +10028,9 @@ class GraphApp {
       const renderExtraCardInk = () => {
         const dpr = window.devicePixelRatio || 2;
         if (!cardWidgetEl.classList.contains('minimized')) {
-          const rect = bodyEl.getBoundingClientRect();
+          const rect = typeof this._getStageElementRect === 'function'
+            ? this._getStageElementRect(bodyEl)
+            : bodyEl.getBoundingClientRect();
           if (rect.width >= 10 && rect.height >= 10) {
             const tw = Math.round(rect.width * dpr);
             const th = Math.round(rect.height * dpr);
@@ -10042,7 +10057,9 @@ class GraphApp {
         const sizeScale = Math.max(0.6, w / 480);
         const isProbExtra = cardWidgetEl.classList.contains('extra-problem-card-widget');
         const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
-        const cRect = isAudioReplay ? extraInkCanvas.getBoundingClientRect() : null;
+        const cRect = isAudioReplay
+          ? (typeof this._getStageElementRect === 'function' ? this._getStageElementRect(extraInkCanvas) : extraInkCanvas.getBoundingClientRect())
+          : null;
 
         strokes.forEach(rawSt => {
           let st = rawSt;
@@ -11713,7 +11730,8 @@ class GraphApp {
         <div class="problem-card-resize-handle"></div>
       </div>
     `;
-    document.body.appendChild(el);
+    const stageGraphParent = (this.canvas && this.canvas.parentElement) || document.body;
+    stageGraphParent.appendChild(el);
     this.attachCardLaserSystem(el);
     this.attachCardDoubleTapDocking(el);
 
@@ -12060,7 +12078,9 @@ class GraphApp {
       widget._syncCardLaserSize();
     }
 
-    const widgetRect = widget.getBoundingClientRect();
+    const widgetRect = typeof this._getStageElementRect === 'function'
+      ? this._getStageElementRect(widget)
+      : widget.getBoundingClientRect();
     const screenW = (widgetRect && widgetRect.width > 0) ? widgetRect.width : w;
     const screenH = (widgetRect && widgetRect.height > 0) ? widgetRect.height : h;
     this.graphCardRect = { x: widgetRect.left, y: widgetRect.top, w: screenW, h: screenH };
@@ -12089,7 +12109,9 @@ class GraphApp {
     const sizeScale = Math.max(0.6, w / 420);
 
     const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
-    const gRect = isAudioReplay ? gCanvas.getBoundingClientRect() : null;
+    const gRect = isAudioReplay
+      ? (typeof this._getStageElementRect === 'function' ? this._getStageElementRect(gCanvas) : gCanvas.getBoundingClientRect())
+      : null;
 
     this.graphInkStrokes.forEach(rawStroke => {
       let stroke = rawStroke;
@@ -20922,6 +20944,18 @@ class GraphApp {
       this._beginNextSlideAudioSegmentAfterSwitch();
     } else if (wasPlayingAudio && this.audioSyncData && this.audioSyncData.durationMs > 0) {
       this.playAudioSync(0, 'video');
+    } else if (this.isStudentAudioVideoOnlyMode && this.audioSyncData && this.audioSyncData.durationMs > 0) {
+      this.audioPlayCurrentMs = 0;
+      this._lastAppliedAudioStateObj = null;
+      this._replayInkBakeKey = '';
+      this._isAudioReplayActive = true;
+      document.body.classList.add('audio-replay-active');
+      if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
+      this._applyAudioTimelineStateAt(0);
+      this._renderAudioReplayAtCurrentTime();
+      this.syncAudioRecordUI();
+    } else if (typeof this._syncReplayFixedStageLayout === 'function') {
+      this._syncReplayFixedStageLayout();
     }
     this.syncLessonPlaylistNavBarUI();
     this.showToast(`🎯 [${this.lessonPlaylistIndex + 1} / ${this.lessonPlaylistSlides.length}] ${targetSlide.slideTitle || '문항'}`);
@@ -21107,6 +21141,18 @@ class GraphApp {
       this._beginNextSlideAudioSegmentAfterSwitch();
     } else if (wasPlayingAudio && this.audioSyncData && this.audioSyncData.durationMs > 0) {
       this.playAudioSync(0, 'video');
+    } else if (this.isStudentAudioVideoOnlyMode && this.audioSyncData && this.audioSyncData.durationMs > 0) {
+      this.audioPlayCurrentMs = 0;
+      this._lastAppliedAudioStateObj = null;
+      this._replayInkBakeKey = '';
+      this._isAudioReplayActive = true;
+      document.body.classList.add('audio-replay-active');
+      if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
+      this._applyAudioTimelineStateAt(0);
+      this._renderAudioReplayAtCurrentTime();
+      this.syncAudioRecordUI();
+    } else if (typeof this._syncReplayFixedStageLayout === 'function') {
+      this._syncReplayFixedStageLayout();
     }
     this.syncLessonPlaylistNavBarUI();
   }
@@ -21918,6 +21964,9 @@ class GraphApp {
 
     this._isAudioSyncPlayerVisible = true;
     this.audioReplayViewMode = 'video';
+    this._replayViewerZoom = 1.0;
+    this._replayViewerPanX = 0;
+    this._replayViewerPanY = 0;
     if (autoPlay) {
       this.playAudioSync(0, 'video');
     } else {
@@ -21927,6 +21976,7 @@ class GraphApp {
       this._replayInkBakeKey = '';
       this._isAudioReplayActive = true;
       document.body.classList.add('audio-replay-active');
+      if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
       this._applyAudioTimelineStateAt(0);
       this._renderAudioReplayAtCurrentTime();
       this.syncAudioRecordUI();
@@ -21937,6 +21987,7 @@ class GraphApp {
   exitStudentAudioVideoOnlyMode() {
     this.isStudentAudioVideoOnlyMode = false;
     document.body.classList.remove('student-audio-video-only');
+    if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
   }
 
   async openSmartNoteViewer(pkg) {
@@ -22472,17 +22523,27 @@ class GraphApp {
   resizeCanvas() {
     const prevW = this.screenWidth;
     const prevH = this.screenHeight;
-    const rect = this.canvas.parentElement.getBoundingClientRect();
+    let targetCssW = 0;
+    let targetCssH = 0;
+    if (typeof this._isFixedReplayStageActive === 'function' && this._isFixedReplayStageActive()) {
+      const stageSz = this._getActiveAudioReplayStageSize();
+      targetCssW = stageSz.w;
+      targetCssH = stageSz.h;
+    } else {
+      const rect = this.canvas.parentElement.getBoundingClientRect();
+      targetCssW = rect.width || window.innerWidth || 1280;
+      targetCssH = rect.height || window.innerHeight || 720;
+    }
     const dpr = this.getCanvasDpr();
-    this.canvas.width = Math.round(rect.width * dpr);
-    this.canvas.height = Math.round(rect.height * dpr);
-    this.canvas.style.width = `${rect.width}px`;
-    this.canvas.style.height = `${rect.height}px`;
+    this.canvas.width = Math.round(targetCssW * dpr);
+    this.canvas.height = Math.round(targetCssH * dpr);
+    this.canvas.style.width = `${targetCssW}px`;
+    this.canvas.style.height = `${targetCssH}px`;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.ctx.imageSmoothingEnabled = true;
     this.ctx.imageSmoothingQuality = 'high';
-    this.screenWidth = rect.width;
-    this.screenHeight = rect.height;
+    this.screenWidth = targetCssW;
+    this.screenHeight = targetCssH;
     this.updateCanvasRect();
 
     // 🌟 [오프스크린 잉크 베이크 버퍼 크기 및 dpr 스케일 동기화]
@@ -23074,6 +23135,12 @@ class GraphApp {
     });
 
     window.addEventListener('resize', () => {
+      if (typeof this._syncReplayFixedStageLayout === 'function' && this._isFixedReplayStageActive()) {
+        this._syncReplayFixedStageLayout();
+        this.updateCanvasRect();
+        this.render();
+        return;
+      }
       this.updateCanvasRect();
       this.resizeCanvas();
       if (this._lastAppliedAudioStateObj && (this.isAudioPlaying || this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive)) {
@@ -32202,6 +32269,7 @@ class GraphApp {
     const btnPlayPause = document.getElementById('btnAudioPlayPause');
     const scrubber = document.getElementById('audioSyncScrubber');
     const btnSpeed = document.getElementById('btnAudioSyncSpeed');
+    const btnZoomReset = document.getElementById('btnAudioReplayZoomReset');
     const btnShowFinalNote = document.getElementById('btnAudioShowFinalNote');
     const btnReRecord = document.getElementById('btnAudioReRecord');
     const btnDelete = document.getElementById('btnAudioSyncDelete');
@@ -32285,6 +32353,15 @@ class GraphApp {
         }
       };
     }
+
+    if (btnZoomReset) {
+      btnZoomReset.onclick = (e) => {
+        e.stopPropagation();
+        this.resetReplayViewerZoom();
+      };
+    }
+
+    this._initReplayStageZoomPanInteractions();
 
     if (btnShowFinalNote) {
       btnShowFinalNote.onclick = (e) => {
@@ -32615,10 +32692,26 @@ class GraphApp {
     const segIdx = audioSegments.length - 1;
     const primaryAudioUrl = (audioSegments[0] && audioSegments[0].audioDataUrl) || fallbackSegSilentUrl;
 
+    const recordedStageW = Math.round(
+      (initialState && initialState.stageW) ||
+      (finalState && finalState.stageW) ||
+      this.screenWidth ||
+      window.innerWidth ||
+      1440
+    );
+    const recordedStageH = Math.round(
+      (initialState && initialState.stageH) ||
+      (finalState && finalState.stageH) ||
+      this.screenHeight ||
+      window.innerHeight ||
+      900
+    );
     const segAudioSyncData = {
-      version: '1.1',
+      version: '1.2',
       sessionId: this._currentAudioRecordingSessionId || null,
       createdAt: Date.now(),
+      stageW: recordedStageW,
+      stageH: recordedStageH,
       durationMs,
       mimeType,
       audioDataUrl: primaryAudioUrl,
@@ -33080,7 +33173,11 @@ class GraphApp {
     const pillRemoteNormY = r3(Math.max(0, Math.min(1, pillRawT / pillAvailH)));
     const pillRemoteRightGap = Math.round(Math.max(8, pillVw - (pillRawL + pillRemW)));
     const pillRemoteModules = this.pillModules ? { ...this.pillModules } : null;
+    const stageW = Math.round(this.screenWidth || window.innerWidth || 1440);
+    const stageH = Math.round(this.screenHeight || window.innerHeight || 900);
     return {
+      stageW,
+      stageH,
       isGraphCovered: Boolean(this.isGraphCovered),
       isBoardMode: Boolean(this.isBoardMode),
       boardSplitRatio: r3(this.boardSplitRatio || 0.4),
@@ -33346,9 +33443,16 @@ class GraphApp {
         const pillRemoteEl = document.getElementById('quickPillRemote');
         if (pillRemoteEl) {
           pillRemoteEl.style.display = this.isQuickPillRemoteOpen ? 'flex' : 'none';
-          const vw = window.innerWidth || this.screenWidth || 1440;
-          const vh = window.innerHeight || this.screenHeight || 900;
-          const pRect = this.isQuickPillRemoteOpen ? pillRemoteEl.getBoundingClientRect() : null;
+          const isFixedStage = typeof this._isFixedReplayStageActive === 'function' && this._isFixedReplayStageActive();
+          const vw = isFixedStage
+            ? (this.screenWidth || 1440)
+            : (window.innerWidth || this.screenWidth || 1440);
+          const vh = isFixedStage
+            ? (this.screenHeight || 900)
+            : (window.innerHeight || this.screenHeight || 900);
+          const pRect = this.isQuickPillRemoteOpen
+            ? (typeof this._getStageElementRect === 'function' ? this._getStageElementRect(pillRemoteEl) : pillRemoteEl.getBoundingClientRect())
+            : null;
           const remW = (pRect && pRect.width > 20)
             ? pRect.width
             : ((this._lastKnownPillRemoteSize && this._lastKnownPillRemoteSize.w) || 112);
@@ -33358,19 +33462,21 @@ class GraphApp {
           let targetL = typeof kf.pillRemoteLeft === 'number' ? kf.pillRemoteLeft : 605;
           let targetT = typeof kf.pillRemoteTop === 'number' ? kf.pillRemoteTop : 76;
 
-          if (typeof kf.pillRemoteNormX === 'number') {
-            if (kf.pillRemoteNormX >= 0.72 && typeof kf.pillRemoteRightGap === 'number') {
-              targetL = vw - remW - kf.pillRemoteRightGap;
-            } else if (kf.pillRemoteNormX <= 0.18 && typeof kf.pillRemoteLeft === 'number') {
-              targetL = kf.pillRemoteLeft;
-            } else {
-              const availW = Math.max(100, vw - 68 - remW);
-              targetL = 64 + kf.pillRemoteNormX * availW;
+          if (!isFixedStage) {
+            if (typeof kf.pillRemoteNormX === 'number') {
+              if (kf.pillRemoteNormX >= 0.72 && typeof kf.pillRemoteRightGap === 'number') {
+                targetL = vw - remW - kf.pillRemoteRightGap;
+              } else if (kf.pillRemoteNormX <= 0.18 && typeof kf.pillRemoteLeft === 'number') {
+                targetL = kf.pillRemoteLeft;
+              } else {
+                const availW = Math.max(100, vw - 68 - remW);
+                targetL = 64 + kf.pillRemoteNormX * availW;
+              }
             }
-          }
-          if (typeof kf.pillRemoteNormY === 'number') {
-            const availH = Math.max(100, vh - remH);
-            targetT = kf.pillRemoteNormY * availH;
+            if (typeof kf.pillRemoteNormY === 'number') {
+              const availH = Math.max(100, vh - remH);
+              targetT = kf.pillRemoteNormY * availH;
+            }
           }
           targetL = Math.max(64, Math.min(vw - remW - 8, targetL));
           targetT = Math.max(12, Math.min(vh - remH - 12, targetT));
@@ -33486,8 +33592,8 @@ class GraphApp {
             sx2 = p2.x;
             sy2 = p2.y;
           } else {
-            const vw = Math.max(1, window.innerWidth || 1280);
-            const vh = Math.max(1, window.innerHeight || 720);
+            const vw = Math.max(1, this.screenWidth || window.innerWidth || 1280);
+            const vh = Math.max(1, this.screenHeight || window.innerHeight || 720);
             sx1 = (sr.nx1 || 0) * vw;
             sy1 = (sr.ny1 || 0) * vh;
             sx2 = (sr.nx2 || 0) * vw;
@@ -33547,8 +33653,9 @@ class GraphApp {
         if (!canvasStickerDraftEl) {
           canvasStickerDraftEl = document.createElement('div');
           canvasStickerDraftEl.id = 'replayCanvasStickerDraftBox';
-          canvasStickerDraftEl.style.cssText = 'position:fixed;border:2px dashed #f59e0b;background:rgba(254,243,199,0.45);border-radius:6px;pointer-events:none;z-index:8400;';
-          document.body.appendChild(canvasStickerDraftEl);
+          canvasStickerDraftEl.style.cssText = 'position:absolute;border:2px dashed #f59e0b;background:rgba(254,243,199,0.45);border-radius:6px;pointer-events:none;z-index:8400;';
+          const stageDraftParent = (this.canvas && this.canvas.parentElement) || document.body;
+          stageDraftParent.appendChild(canvasStickerDraftEl);
         }
         canvasStickerDraftEl.style.display = 'block';
         canvasStickerDraftEl.style.left = `${Math.round(Math.min(p1.x, p2.x))}px`;
@@ -34112,10 +34219,27 @@ class GraphApp {
     const audioSegments = [...priorSegs, newSeg];
     const primaryAudioUrl = (audioSegments[0] && audioSegments[0].audioDataUrl) || audioDataUrl;
 
+    const recordedStageW = Math.round(
+      (this.audioInitialState && this.audioInitialState.stageW) ||
+      (this.audioFinalState && this.audioFinalState.stageW) ||
+      this.screenWidth ||
+      window.innerWidth ||
+      1440
+    );
+    const recordedStageH = Math.round(
+      (this.audioInitialState && this.audioInitialState.stageH) ||
+      (this.audioFinalState && this.audioFinalState.stageH) ||
+      this.screenHeight ||
+      window.innerHeight ||
+      900
+    );
+
     this.audioSyncData = {
-      version: '1.1',
+      version: '1.2',
       sessionId: this._currentAudioRecordingSessionId || null,
       createdAt: Date.now(),
+      stageW: recordedStageW,
+      stageH: recordedStageH,
       durationMs,
       mimeType: currentMime,
       audioDataUrl: primaryAudioUrl,
@@ -34222,6 +34346,7 @@ class GraphApp {
     if (this.audioSyncData) {
       this._isAudioReplayActive = true;
       document.body.classList.add('audio-replay-active');
+      this._syncReplayFixedStageLayout();
       this._lastAppliedAudioStateObj = null;
       this._applyAudioTimelineStateAt(this.audioPlayCurrentMs || 0);
     }
@@ -34231,6 +34356,368 @@ class GraphApp {
       this.renderGraphCardCanvas();
       this.render();
     }
+  }
+
+  // =========================================================================
+  // 🎬 [유튜브형 고정 프레임 영상 스테이지 (Fixed-Aspect Recorded Video Stage)]
+  //   - 촬영 당시의 화면(stageW × stageH) 전체를 고정 비율 프레임으로 설정하고,
+  //     모바일·태블릿·PC·와이드 모니터 어디서든 비율 왜곡 0%로 균일 스케일링(Contain)
+  //   - 두 손가락 핀치 줌 / 마우스 휠 확대·축소(100%~450%) + 드래그 패닝 + 더블탭 줌 완벽 지원
+  // =========================================================================
+  _isFixedReplayStageActive() {
+    return Boolean(
+      (this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode) &&
+      !this.isAudioRecording &&
+      this.audioSyncData &&
+      this.audioSyncData.durationMs > 0
+    );
+  }
+
+  _getActiveAudioReplayStageSize(syncData = this.audioSyncData) {
+    const initKf = (syncData && syncData.initialState) || null;
+    const finalKf = (syncData && syncData.finalState) || null;
+    const rawW = (syncData && syncData.stageW) || (initKf && initKf.stageW) || (finalKf && finalKf.stageW);
+    const rawH = (syncData && syncData.stageH) || (initKf && initKf.stageH) || (finalKf && finalKf.stageH);
+    if (typeof rawW === 'number' && rawW >= 320 && typeof rawH === 'number' && rawH >= 240) {
+      return { w: Math.round(rawW), h: Math.round(rawH) };
+    }
+    // 구버전 녹화본(stageW/stageH 미기록)을 위한 스마트 촬영 해상도 역추론 폴백
+    let estW = 0;
+    let estH = 0;
+    const checkKf = (kf) => {
+      if (!kf) return;
+      if (typeof kf.pillRemoteLeft === 'number' && typeof kf.pillRemoteRightGap === 'number' && kf.pillRemoteLeft > 200) {
+        estW = Math.max(estW, kf.pillRemoteLeft + 112 + kf.pillRemoteRightGap);
+      }
+      if (typeof kf.probCardBaseX === 'number' && typeof kf.probCardW === 'number') {
+        estW = Math.max(estW, kf.probCardBaseX + kf.probCardW + 40);
+      }
+      if (typeof kf.graphCardBaseX === 'number' && typeof kf.graphCardW === 'number') {
+        estW = Math.max(estW, kf.graphCardBaseX + kf.graphCardW + 40);
+      }
+    };
+    checkKf(initKf);
+    checkKf(finalKf);
+    if (syncData && Array.isArray(syncData.timeline)) {
+      for (let i = 0; i < syncData.timeline.length; i++) {
+        const ev = syncData.timeline[i];
+        if (!ev) continue;
+        if (ev.type === 'cursor') {
+          if (typeof ev.x === 'number') estW = Math.max(estW, ev.x + 36);
+          if (typeof ev.y === 'number') estH = Math.max(estH, ev.y + 36);
+        } else if (ev.type === 'state' && ev.state) {
+          checkKf(ev.state);
+        }
+      }
+    }
+    const finalW = Math.max(1280, Math.min(2560, Math.round(estW || 1440)));
+    const finalH = Math.max(720, Math.min(1600, Math.round(estH > 540 ? estH : (finalW * 9 / 16))));
+    return { w: finalW, h: finalH };
+  }
+
+  _getStageElementRect(el) {
+    if (!el || typeof el.getBoundingClientRect !== 'function') return null;
+    const r = el.getBoundingClientRect();
+    if (!this.canvas || !this._isFixedReplayStageActive()) return r;
+    const cRect = this.canvas.getBoundingClientRect();
+    const sw = this.screenWidth || 1440;
+    const sh = this.screenHeight || 900;
+    const scaleX = (cRect.width > 10 && sw > 10) ? (cRect.width / sw) : (this._replayStageTotalScale || 1);
+    const scaleY = (cRect.height > 10 && sh > 10) ? (cRect.height / sh) : scaleX;
+    if (!Number.isFinite(scaleX) || scaleX <= 0.01) return r;
+    const left = (r.left - cRect.left) / scaleX;
+    const top = (r.top - cRect.top) / scaleY;
+    const width = r.width / scaleX;
+    const height = r.height / scaleY;
+    return {
+      left,
+      top,
+      right: left + width,
+      bottom: top + height,
+      width,
+      height,
+      x: left,
+      y: top
+    };
+  }
+
+  _syncReplayFixedStageLayout() {
+    const active = this._isFixedReplayStageActive();
+    const wsEl = document.querySelector('.main-workspace');
+    const btnZoom = document.getElementById('btnAudioReplayZoomReset');
+    if (!active) {
+      const wasActive = document.body.classList.contains('replay-fixed-stage');
+      if (wasActive) {
+        document.body.classList.remove('replay-fixed-stage');
+        document.body.style.removeProperty('--replay-stage-w');
+        document.body.style.removeProperty('--replay-stage-h');
+        if (wsEl) {
+          wsEl.style.transform = '';
+          wsEl.style.width = '';
+          wsEl.style.height = '';
+        }
+        this._replayViewerZoom = 1.0;
+        this._replayViewerPanX = 0;
+        this._replayViewerPanY = 0;
+        this._replayStageTotalScale = 1.0;
+        if (btnZoom) {
+          btnZoom.textContent = '100%';
+          btnZoom.classList.remove('is-zoomed');
+        }
+        this.resizeCanvas();
+        if (typeof this.syncProblemCardRectFromWidget === 'function') this.syncProblemCardRectFromWidget();
+        if (typeof this.syncGraphCardRectFromWidget === 'function') this.syncGraphCardRectFromWidget();
+      }
+      return;
+    }
+
+    document.body.classList.add('replay-fixed-stage');
+    const { w: stageW, h: stageH } = this._getActiveAudioReplayStageSize();
+    document.body.style.setProperty('--replay-stage-w', `${stageW}px`);
+    document.body.style.setProperty('--replay-stage-h', `${stageH}px`);
+    if (wsEl) {
+      wsEl.style.width = `${stageW}px`;
+      wsEl.style.height = `${stageH}px`;
+    }
+
+    if (Math.round(this.screenWidth || 0) !== stageW || Math.round(this.screenHeight || 0) !== stageH) {
+      this.resizeCanvas();
+    }
+
+    const vw = Math.max(240, window.innerWidth || 1280);
+    const vh = Math.max(200, window.innerHeight || 720);
+    const fitScale = Math.min(vw / stageW, vh / stageH);
+    const userZoom = Math.max(1.0, Math.min(4.5, Number(this._replayViewerZoom) || 1.0));
+    this._replayViewerZoom = userZoom;
+    const totalScale = fitScale * userZoom;
+    this._replayStageFitScale = fitScale;
+    this._replayStageTotalScale = totalScale;
+
+    const scaledW = stageW * totalScale;
+    const scaledH = stageH * totalScale;
+    const baseX = (vw - scaledW) * 0.5;
+    const baseY = (vh - scaledH) * 0.5;
+
+    if (userZoom <= 1.005) {
+      this._replayViewerPanX = 0;
+      this._replayViewerPanY = 0;
+    } else {
+      const maxPanX = Math.max(60, Math.abs(scaledW - vw) * 0.5 + Math.min(vw, scaledW) * 0.35);
+      const maxPanY = Math.max(60, Math.abs(scaledH - vh) * 0.5 + Math.min(vh, scaledH) * 0.35);
+      this._replayViewerPanX = Math.max(-maxPanX, Math.min(maxPanX, Number(this._replayViewerPanX) || 0));
+      this._replayViewerPanY = Math.max(-maxPanY, Math.min(maxPanY, Number(this._replayViewerPanY) || 0));
+    }
+
+    const tx = baseX + (this._replayViewerPanX || 0);
+    const ty = baseY + (this._replayViewerPanY || 0);
+    this._replayStageTranslateX = tx;
+    this._replayStageTranslateY = ty;
+
+    if (wsEl) {
+      wsEl.style.transform = `translate3d(${Math.round(tx * 10) / 10}px, ${Math.round(ty * 10) / 10}px, 0) scale(${totalScale.toFixed(5)})`;
+    }
+    if (btnZoom) {
+      const pct = Math.round(userZoom * 100);
+      btnZoom.textContent = `${pct}%`;
+      btnZoom.classList.toggle('is-zoomed', userZoom > 1.02);
+    }
+  }
+
+  resetReplayViewerZoom() {
+    this._replayViewerZoom = 1.0;
+    this._replayViewerPanX = 0;
+    this._replayViewerPanY = 0;
+    this._syncReplayFixedStageLayout();
+  }
+
+  zoomReplayStageAtPoint(nextZoom, focalClientX = null, focalClientY = null) {
+    if (!this._isFixedReplayStageActive()) return;
+    const prevZoom = Math.max(1.0, Math.min(4.5, Number(this._replayViewerZoom) || 1.0));
+    const clampedZoom = Math.max(1.0, Math.min(4.5, Number(nextZoom) || 1.0));
+    const vw = Math.max(240, window.innerWidth || 1280);
+    const vh = Math.max(200, window.innerHeight || 720);
+    const fx = (typeof focalClientX === 'number') ? focalClientX : (vw * 0.5);
+    const fy = (typeof focalClientY === 'number') ? focalClientY : (vh * 0.5);
+
+    if (clampedZoom <= 1.005) {
+      this._replayViewerZoom = 1.0;
+      this._replayViewerPanX = 0;
+      this._replayViewerPanY = 0;
+      this._syncReplayFixedStageLayout();
+      return;
+    }
+
+    const ratio = clampedZoom / prevZoom;
+    const curPanX = Number(this._replayViewerPanX) || 0;
+    const curPanY = Number(this._replayViewerPanY) || 0;
+    // 기준점(fx, fy)이 확대/축소 전후에도 화면상의 동일한 위치에 머물도록 팬 오프셋 역산
+    this._replayViewerPanX = (fx - vw * 0.5) * (1 - ratio) + curPanX * ratio;
+    this._replayViewerPanY = (fy - vh * 0.5) * (1 - ratio) + curPanY * ratio;
+    this._replayViewerZoom = clampedZoom;
+    this._syncReplayFixedStageLayout();
+  }
+
+  _initReplayStageZoomPanInteractions() {
+    if (this._replayStageZoomPanBound) return;
+    this._replayStageZoomPanBound = true;
+    this._replayViewerZoom = 1.0;
+    this._replayViewerPanX = 0;
+    this._replayViewerPanY = 0;
+
+    const isOuterReplayControl = (target) => {
+      if (!target || typeof target.closest !== 'function') return false;
+      return Boolean(
+        target.closest('#audioSyncFloatingBar') ||
+        target.closest('#lessonPlaylistNavBar') ||
+        target.closest('#topSlideBarMiniTab') ||
+        target.closest('.slide-grid-popover') ||
+        target.closest('.smart-modal-backdrop')
+      );
+    };
+
+    // 1. PC 마우스 휠 확대/축소 (커서 위치 기준 줌)
+    window.addEventListener('wheel', (e) => {
+      if (!this._isFixedReplayStageActive()) return;
+      if (isOuterReplayControl(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const factor = e.deltaY < 0 ? 1.14 : (1 / 1.14);
+      this.zoomReplayStageAtPoint((this._replayViewerZoom || 1.0) * factor, e.clientX, e.clientY);
+    }, { passive: false, capture: true });
+
+    // 2. 모바일/태블릿 두 손가락 핀치 줌 & 패닝 + 확대 시 한 손가락 드래그 이동 + 더블탭 줌 토글
+    let isPanningStage = false;
+    let panStartX = 0;
+    let panStartY = 0;
+    let panBaseX = 0;
+    let panBaseY = 0;
+    let isPinchingStage = false;
+    let pinchStartDist = 0;
+    let pinchStartZoom = 1.0;
+    let pinchPrevMidX = 0;
+    let pinchPrevMidY = 0;
+    let lastTapMs = 0;
+    let lastTapX = 0;
+    let lastTapY = 0;
+
+    window.addEventListener('touchstart', (e) => {
+      if (!this._isFixedReplayStageActive()) return;
+      if (isOuterReplayControl(e.target)) return;
+      e.stopPropagation();
+      if (e.touches && e.touches.length === 2) {
+        isPanningStage = false;
+        isPinchingStage = true;
+        pinchStartDist = Math.max(10, Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        ));
+        pinchStartZoom = this._replayViewerZoom || 1.0;
+        pinchPrevMidX = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
+        pinchPrevMidY = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+      } else if (e.touches && e.touches.length === 1) {
+        const t0 = e.touches[0];
+        const now = performance.now();
+        if (now - lastTapMs < 280 && Math.hypot(t0.clientX - lastTapX, t0.clientY - lastTapY) < 36) {
+          e.preventDefault();
+          const targetZ = (this._replayViewerZoom || 1.0) > 1.15 ? 1.0 : 2.0;
+          this.zoomReplayStageAtPoint(targetZ, t0.clientX, t0.clientY);
+          lastTapMs = 0;
+          return;
+        }
+        lastTapMs = now;
+        lastTapX = t0.clientX;
+        lastTapY = t0.clientY;
+        if ((this._replayViewerZoom || 1.0) > 1.01) {
+          isPanningStage = true;
+          panStartX = t0.clientX;
+          panStartY = t0.clientY;
+          panBaseX = this._replayViewerPanX || 0;
+          panBaseY = this._replayViewerPanY || 0;
+        }
+      }
+    }, { passive: false, capture: true });
+
+    window.addEventListener('touchmove', (e) => {
+      if (!this._isFixedReplayStageActive()) return;
+      if (isOuterReplayControl(e.target)) return;
+      e.stopPropagation();
+      if (isPinchingStage && e.touches && e.touches.length === 2) {
+        e.preventDefault();
+        const dist = Math.max(10, Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        ));
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+        this._replayViewerPanX = (this._replayViewerPanX || 0) + (midX - pinchPrevMidX);
+        this._replayViewerPanY = (this._replayViewerPanY || 0) + (midY - pinchPrevMidY);
+        pinchPrevMidX = midX;
+        pinchPrevMidY = midY;
+        this.zoomReplayStageAtPoint(pinchStartZoom * (dist / pinchStartDist), midX, midY);
+      } else if (isPanningStage && e.touches && e.touches.length === 1) {
+        e.preventDefault();
+        const t0 = e.touches[0];
+        this._replayViewerPanX = panBaseX + (t0.clientX - panStartX);
+        this._replayViewerPanY = panBaseY + (t0.clientY - panStartY);
+        this._syncReplayFixedStageLayout();
+      }
+    }, { passive: false, capture: true });
+
+    window.addEventListener('touchend', (e) => {
+      if (!this._isFixedReplayStageActive()) return;
+      if (isOuterReplayControl(e.target)) return;
+      e.stopPropagation();
+      if (!e.touches || e.touches.length < 2) {
+        isPinchingStage = false;
+      }
+      if (!e.touches || e.touches.length === 0) {
+        isPanningStage = false;
+      }
+    }, { passive: true, capture: true });
+
+    // 3. PC 마우스 드래그 패닝 (확대 상태일 때) & 더블클릭 줌 토글
+    let isMousePanningStage = false;
+    window.addEventListener('pointerdown', (e) => {
+      if (!this._isFixedReplayStageActive()) return;
+      if (isOuterReplayControl(e.target)) return;
+      if (e.pointerType === 'touch') {
+        e.stopPropagation();
+        return;
+      }
+      // 학생 영상 전용 모드이거나 재생/일시정지 중에는 스테이지 내부 클릭이 그래프/칠판을 변형시키지 않도록 보호
+      e.stopPropagation();
+      if (e.button === 0 && (this._replayViewerZoom || 1.0) > 1.01) {
+        isMousePanningStage = true;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+        panBaseX = this._replayViewerPanX || 0;
+        panBaseY = this._replayViewerPanY || 0;
+      }
+    }, { capture: true });
+
+    window.addEventListener('pointermove', (e) => {
+      if (!this._isFixedReplayStageActive()) return;
+      if (isOuterReplayControl(e.target)) return;
+      if (isMousePanningStage) {
+        e.stopPropagation();
+        this._replayViewerPanX = panBaseX + (e.clientX - panStartX);
+        this._replayViewerPanY = panBaseY + (e.clientY - panStartY);
+        this._syncReplayFixedStageLayout();
+      }
+    }, { capture: true });
+
+    window.addEventListener('pointerup', () => {
+      isMousePanningStage = false;
+    }, { capture: true });
+
+    window.addEventListener('dblclick', (e) => {
+      if (!this._isFixedReplayStageActive()) return;
+      if (isOuterReplayControl(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const targetZ = (this._replayViewerZoom || 1.0) > 1.15 ? 1.0 : 2.0;
+      this.zoomReplayStageAtPoint(targetZ, e.clientX, e.clientY);
+    }, { capture: true });
   }
 
   _interpolateAudioWorkspaceKeyframes(kfA, kfB, alpha) {
@@ -34463,6 +34950,11 @@ class GraphApp {
   _resolveCursorEventScreenPos(ev) {
     if (!ev) return null;
     if (ev.uiScreen) {
+      // 고정 비율 스테이지(stageW × stageH)가 촬영 당시 해상도와 1:1로 일치하는 경우
+      // 원본 화면 좌표(ev.x, ev.y)가 모든 UI 바와 버튼 위에서 1px 오차 없이 정확히 일치!
+      if (this._isFixedReplayStageActive() && this.audioSyncData && this.audioSyncData.stageW && this.audioSyncData.stageH) {
+        return { x: ev.x, y: ev.y };
+      }
       // 좌측 독(#railDock)과 서랍(#railDrawer)은 좌상단 고정 픽셀(left: 18px/66px, top: 18px) 위치이므로
       // 원본 화면 좌표(ev.x, ev.y)를 그대로 사용하여 서랍 오픈/버튼-여백 간 점프를 원천 차단
       if (ev.uiBarId === 'railDrawer' || ev.uiBarId === 'railDock' || ev.uiBarId === 'sidebarRail') {
@@ -34471,8 +34963,8 @@ class GraphApp {
       if (ev.uiBtnKey) {
         const btnEl = this._findAudioUiButtonByKey(ev.uiBtnKey, ev.uiBarId);
         if (btnEl && typeof btnEl.getBoundingClientRect === 'function') {
-          const r = btnEl.getBoundingClientRect();
-          if (r.width > 2 && r.height > 2 && r.left >= -2 && r.top >= -2 && r.right > 0 && r.bottom > 0) {
+          const r = this._getStageElementRect(btnEl);
+          if (r && r.width > 2 && r.height > 2 && r.left >= -2 && r.top >= -2 && r.right > 0 && r.bottom > 0) {
             const bnx = typeof ev.bnx === 'number' ? ev.bnx : 0.5;
             const bny = typeof ev.bny === 'number' ? ev.bny : 0.5;
             const pos = {
@@ -34487,8 +34979,8 @@ class GraphApp {
       if (ev.uiBarId && typeof ev.unx === 'number' && typeof ev.uny === 'number') {
         const barEl = document.getElementById(ev.uiBarId);
         if (barEl && typeof barEl.getBoundingClientRect === 'function') {
-          const br = barEl.getBoundingClientRect();
-          if (br.width > 2 && br.height > 2 && br.left >= -2 && br.top >= -2 && br.right > 0 && br.bottom > 0) {
+          const br = this._getStageElementRect(barEl);
+          if (br && br.width > 2 && br.height > 2 && br.left >= -2 && br.top >= -2 && br.right > 0 && br.bottom > 0) {
             const pos = {
               x: br.left + ev.unx * br.width,
               y: br.top + ev.uny * br.height
@@ -34508,8 +35000,8 @@ class GraphApp {
       if (cardEl && cardEl.style.display !== 'none' && !cardEl.classList.contains('minimized')) {
         const bodyEl = cardEl.querySelector('.problem-card-body');
         if (bodyEl) {
-          const r = bodyEl.getBoundingClientRect();
-          if (r.width > 0 && r.height > 0) {
+          const r = this._getStageElementRect(bodyEl);
+          if (r && r.width > 0 && r.height > 0) {
             return {
               x: r.left + ev.nx * r.width,
               y: r.top + ev.ny * r.height
@@ -34641,8 +35133,8 @@ class GraphApp {
         const pts = rep.stroke.points;
 
         if (rep.isCurrentlyWriting && rep.tipPoint) {
-          const r = bodyEl.getBoundingClientRect();
-          if (r.width > 0 && r.height > 0) {
+          const r = this._getStageElementRect(bodyEl);
+          if (r && r.width > 0 && r.height > 0) {
             this._activeReplayTipScreen = {
               x: r.left + rep.tipPoint.nx * r.width,
               y: r.top + rep.tipPoint.ny * r.height,
@@ -35076,6 +35568,7 @@ class GraphApp {
     this._isAudioReplayActive = true;
     this.isAudioPlaying = true;
     document.body.classList.add('audio-replay-active');
+    this._syncReplayFixedStageLayout();
 
     this._activeAudioSegmentIdx = -1;
     this._syncAudioPlayerToPlayMs(this.audioPlayCurrentMs || 0, true);
@@ -35236,8 +35729,9 @@ class GraphApp {
       ? this._findAudioUiButtonByKey(hoverCursor.uiBtnKey, hoverCursor.uiBarId)
       : null;
     if (nextBtnEl && hoverCursor && typeof hoverCursor.x === 'number' && typeof hoverCursor.y === 'number') {
-      const r = nextBtnEl.getBoundingClientRect();
+      const r = this._getStageElementRect(nextBtnEl);
       if (
+        !r ||
         r.width <= 0 ||
         r.height <= 0 ||
         hoverCursor.x < r.left - 24 ||
@@ -35318,8 +35812,11 @@ class GraphApp {
       try { this.audioPlayerEl.pause(); } catch (e) { }
     }
     if (isEnded && this.audioSyncData && this.audioSyncData.finalState) {
-      this._isAudioReplayActive = false;
-      document.body.classList.remove('audio-replay-active');
+      if (!this.isStudentAudioVideoOnlyMode) {
+        this._isAudioReplayActive = false;
+        document.body.classList.remove('audio-replay-active');
+      }
+      this._syncReplayFixedStageLayout();
       this._clearAudioReplaySmartUiState();
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
@@ -35337,6 +35834,7 @@ class GraphApp {
       }
       this.render();
     } else if (this._isAudioReplayActive) {
+      this._syncReplayFixedStageLayout();
       this._renderAudioReplayAtCurrentTime();
     }
     this.syncAudioRecordUI();
@@ -35347,6 +35845,7 @@ class GraphApp {
     this.pauseAudioPlayback(false);
     this._isAudioReplayActive = false;
     document.body.classList.remove('audio-replay-active');
+    this._syncReplayFixedStageLayout();
     this._clearAudioReplaySmartUiState();
     if (restoreFinal) {
       this.audioPlayCurrentMs = 0;
@@ -35383,6 +35882,7 @@ class GraphApp {
     this._syncAudioPlayerToPlayMs(this.audioPlayCurrentMs, Boolean(this.isAudioPlaying));
     this._isAudioReplayActive = true;
     document.body.classList.add('audio-replay-active');
+    this._syncReplayFixedStageLayout();
     this._renderAudioReplayAtCurrentTime();
     this.syncAudioRecordUI();
     if (autoPlay && !this.isAudioPlaying) {

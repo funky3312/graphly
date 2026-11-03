@@ -10790,3 +10790,104 @@ body:not(.theme-light) .guide-bug-email {
   font-size: 12px !important;
   border-radius: 8px !important;
 }
+
+/* =========================================================================
+   🎬 [유튜브형 고정 프레임 영상 스테이지 (Fixed-Aspect Recorded Video Stage)]
+   - 촬영 당시의 화면(stageW × stageH) 전체를 하나의 고정 프레임으로 묶어
+     모바일·태블릿·PC·와이드 모니터 어디서든 비율 왜곡 0%로 균일 스케일링(Contain)
+   - 와이드 모니터에서는 좌우 필러박스, 모바일 가로/세로에서는 상하 레터박스 자동 형성
+   - 상단 슬라이드 네비게이션 바(#lessonPlaylistNavBar)와 하단 재생 컨트롤러(#audioSyncFloatingBar)는
+     스테이지 바깥(뷰포트 1.0x)에 또렷하게 고정되어 언제나 쾌적하게 조작 가능
+   ========================================================================= */
+html:has(body.replay-fixed-stage),
+body.replay-fixed-stage {
+  background-color: #0b0f19 !important;
+  overflow: hidden !important;
+  touch-action: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+body.replay-fixed-stage .main-workspace {
+  position: fixed !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: var(--replay-stage-w, 1440px) !important;
+  height: var(--replay-stage-h, 900px) !important;
+  max-width: none !important;
+  max-height: none !important;
+  transform-origin: 0 0 !important;
+  overflow: hidden !important;
+  background-color: var(--bg-canvas, #ffffff) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 24px 64px rgba(0, 0, 0, 0.65) !important;
+  z-index: 100 !important;
+  will-change: transform;
+}
+
+body.replay-fixed-stage:not(.theme-light) .main-workspace {
+  background-color: #0f172a !important;
+}
+
+body.replay-fixed-stage .canvas-quick-toolbar {
+  max-height: calc(100% - 28px) !important;
+}
+
+body.replay-fixed-stage #audioSyncFloatingBar,
+body.audio-replay-active #audioSyncFloatingBar,
+body.student-audio-video-only #audioSyncFloatingBar {
+  position: fixed !important;
+  top: auto !important;
+  bottom: 18px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  padding: 7px 14px !important;
+  max-width: calc(100vw - 16px) !important;
+  z-index: 9500 !important;
+}
+
+body.replay-fixed-stage #lessonPlaylistNavBar,
+body.replay-fixed-stage #topSlideBarMiniTab {
+  z-index: 9500 !important;
+}
+
+.audio-btn-zoom {
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+}
+
+.audio-btn-zoom.is-zoomed {
+  background: rgba(14, 165, 233, 0.22) !important;
+  border-color: #38bdf8 !important;
+  color: #0284c7 !important;
+  font-weight: 800 !important;
+}
+
+body:not(.theme-light) .audio-btn-zoom.is-zoomed {
+  color: #38bdf8 !important;
+}
+
+@media (max-width: 640px) {
+  body.replay-fixed-stage #audioSyncFloatingBar,
+  body.audio-replay-active #audioSyncFloatingBar,
+  body.student-audio-video-only #audioSyncFloatingBar {
+    bottom: 12px !important;
+    padding: 6px 10px !important;
+    gap: 6px !important;
+  }
+
+  body.replay-fixed-stage .audio-sync-scrubber,
+  body.audio-replay-active .audio-sync-scrubber,
+  body.student-audio-video-only .audio-sync-scrubber {
+    width: clamp(110px, 38vw, 260px) !important;
+  }
+
+  body.replay-fixed-stage .audio-sync-time {
+    font-size: 11px !important;
+    min-width: 70px !important;
+  }
+
+  body.replay-fixed-stage .audio-sync-btn {
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+  }
+}
