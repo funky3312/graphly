@@ -19939,7 +19939,7 @@ class GraphApp {
         : null;
       if (!this._isCapturingExportSnapshots) {
         const hasLoadedAudio = Boolean(this.audioSyncData && this.audioSyncData.durationMs > 0);
-        this._isAudioSyncPlayerVisible = hasLoadedAudio;
+        this._isAudioSyncPlayerVisible = Boolean(this.isStudentAudioVideoOnlyMode && hasLoadedAudio);
         if (hasLoadedAudio) {
           this.audioPlayCurrentMs = 0;
           this._lastAppliedAudioStateObj = null;
@@ -32135,6 +32135,7 @@ class GraphApp {
     this._lastAudioStateRecordMs = -100;
     this._lastRecordedStateHash = '';
     this._enteredAudioFromViewerSlideIdx = null;
+    this._isAudioRecMenuOpen = false;
 
     const btnFab = document.getElementById('btnAudioRecordToggle');
     const btnMicMute = document.getElementById('btnAudioMicMuteToggle');
@@ -32152,19 +32153,24 @@ class GraphApp {
       btnFab.onclick = (e) => {
         e.stopPropagation();
         if (this.isAudioRecording) {
-          this.stopAudioRecording();
-        } else if (this.audioSyncData && this.audioSyncData.durationMs > 0) {
-          this._isAudioSyncPlayerVisible = !this._isAudioSyncPlayerVisible;
-          if (!this._isAudioSyncPlayerVisible) {
-            this.stopAudioPlayback(true);
-          } else {
-            this.setAudioReplayViewMode('video', true);
-          }
+          this._isAudioRecMenuOpen = !this._isAudioRecMenuOpen;
           this.syncAudioRecordUI();
         } else {
+          this._isAudioRecMenuOpen = false;
           this.startAudioRecording();
         }
       };
+    }
+
+    if (!this._audioRecOutsideClickBound) {
+      this._audioRecOutsideClickBound = true;
+      window.addEventListener('pointerdown', (e) => {
+        if (!this._isAudioRecMenuOpen) return;
+        const t = e.target;
+        if (t && typeof t.closest === 'function' && t.closest('#wrapAudioRecordToggle')) return;
+        this._isAudioRecMenuOpen = false;
+        this.syncAudioRecordUI();
+      }, { passive: true });
     }
 
     if (btnMicMute) {
@@ -32177,6 +32183,7 @@ class GraphApp {
     if (btnPauseRec) {
       btnPauseRec.onclick = (e) => {
         e.stopPropagation();
+        this._isAudioRecMenuOpen = false;
         this.togglePauseAudioRecording();
       };
     }
@@ -32184,6 +32191,7 @@ class GraphApp {
     if (btnStopRec) {
       btnStopRec.onclick = (e) => {
         e.stopPropagation();
+        this._isAudioRecMenuOpen = false;
         this.stopAudioRecording();
       };
     }
@@ -32289,12 +32297,15 @@ class GraphApp {
           return;
         }
         const tEl = e.target;
-        // PDF 모달이나 녹화 컨트롤바 자체 위에서는 포인터 숨김
+        // PDF 모달이나 녹화 컨트롤 버튼 자체 위에서는 포인터 숨김
         if (tEl && tEl.closest && (
           tEl.closest('.pdf-modal-backdrop') ||
           tEl.closest('#modalPdfViewer') ||
           tEl.closest('.audio-sync-floating-bar') ||
-          tEl.closest('#audioSyncFloatingBar')
+          tEl.closest('#audioSyncFloatingBar') ||
+          tEl.closest('#wrapAudioRecordToggle') ||
+          tEl.closest('#btnAudioRecordToggle') ||
+          tEl.closest('#panelAudioRecordActions')
         )) {
           if (this._lastRecordedCursorKind !== 'hidden' && Array.isArray(this.audioTimeline)) {
             this._lastRecordedCursorKind = 'hidden';
@@ -33873,7 +33884,8 @@ class GraphApp {
     this.isAudioRecording = true;
     this._currentAudioRecordingSessionId = Date.now();
     this.isAudioRecordPaused = false;
-    this._isRecBarStealthHidden = false;
+    this._isAudioRecMenuOpen = false;
+    this._isRecBarStealthHidden = true;
     this._isAudioWaitingForNextSlideSetup = false;
     this._alreadyArchivedBeforePdfModal = false;
     this._autoPausedByPdfModal = false;
@@ -33910,6 +33922,7 @@ class GraphApp {
     }, 200);
 
     this.syncAudioRecordUI();
+    this.showToast('🎙️ 녹음이 시작되었습니다. (다시 누르면 일시정지 / 종료)');
   }
 
   async stopAudioRecording() {
@@ -33921,6 +33934,7 @@ class GraphApp {
     this.audioFinalState = this._captureAudioWorkspaceKeyframe();
     this.isAudioRecording = false;
     this.isAudioRecordPaused = false;
+    this._isAudioRecMenuOpen = false;
     this.audioRecordPauseStartMs = 0;
     this.audioRecordTotalPausedMs = 0;
 
@@ -34003,14 +34017,16 @@ class GraphApp {
       this.saveCurrentSlideIntoPlaylist();
     }
     this.audioPlayCurrentMs = durationMs;
-    this._isAudioSyncPlayerVisible = true;
+    this._isAudioSyncPlayerVisible = false;
     this.audioReplayViewMode = 'video';
     this.syncAudioRecordUI();
+    this.showToast('⏹ 녹음이 완료되었습니다.');
     return this.audioSyncData;
   }
 
   syncAudioRecordUI() {
     const btnFab = document.getElementById('btnAudioRecordToggle');
+    const sideMenu = document.getElementById('panelAudioRecordActions');
     const bar = document.getElementById('audioSyncFloatingBar');
     const recGroup = document.getElementById('audioSyncRecordingGroup');
     const playGroup = document.getElementById('audioSyncPlayerGroup');
@@ -34019,15 +34035,21 @@ class GraphApp {
     const scrubber = document.getElementById('audioSyncScrubber');
 
     const hasAudio = Boolean(this.audioSyncData && this.audioSyncData.durationMs > 0);
+    const isPaused = Boolean(this.isAudioRecordPaused);
     if (btnFab) {
       btnFab.classList.toggle('is-recording', Boolean(this.isAudioRecording));
+      btnFab.classList.toggle('is-paused', Boolean(this.isAudioRecording && isPaused));
       btnFab.classList.toggle('has-audio', hasAudio && !this.isAudioRecording);
+    }
+    if (sideMenu) {
+      sideMenu.style.display = (this.isAudioRecording && this._isAudioRecMenuOpen) ? 'flex' : 'none';
     }
 
     if (!bar) return;
     if (this.isAudioRecording) {
-      bar.style.display = this._isRecBarStealthHidden ? 'none' : 'flex';
-      if (recGroup) recGroup.style.display = 'flex';
+      // 대표님 지침: 수업 중 거추장스러운 상단 녹음 바는 완전히 숨기고 우측 마이크 버튼 옆 2개 메뉴로 일원화!
+      bar.style.display = 'none';
+      if (recGroup) recGroup.style.display = 'none';
       if (playGroup) playGroup.style.display = 'none';
       const badgeEl = document.getElementById('badgeAudioRecState');
       const badgeTxt = document.getElementById('lblAudioRecBadgeText');
@@ -34035,7 +34057,6 @@ class GraphApp {
       const btnPauseRec = document.getElementById('btnAudioPauseRecord');
       const iconPauseRec = document.getElementById('iconAudioPauseRecord');
       const lblPauseRec = document.getElementById('lblAudioPauseRecord');
-      const isPaused = Boolean(this.isAudioRecordPaused);
       if (badgeEl) badgeEl.classList.toggle('is-paused', isPaused);
       if (badgeTxt) badgeTxt.textContent = isPaused ? 'PAUSED' : 'REC';
       if (hintEl) {

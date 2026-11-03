@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_27">
+  <link rel="stylesheet" href="style.css?v=20261103_28">
 </head>
 
 <body class="theme-light">
@@ -1422,8 +1422,8 @@
 
       <!-- [🎙️ 실시간 음성·필기·펜포인터·그래프 동기화 녹음 & 리플레이 컨트롤 바] -->
       <div id="audioSyncFloatingBar" class="audio-sync-floating-bar" style="display: none;">
-        <!-- 상태 1: 녹음 중 (초슬림 스텔스 마이크로 알약 바) -->
-        <div id="audioSyncRecordingGroup" class="audio-sync-group audio-rec-stealth-group" style="display: none;">
+        <!-- 상태 1: 녹음 중 (대표님 지침: 상단 녹음 바 제거 — 우측 녹음 버튼 옆 2개 메뉴로 일원화) -->
+        <div id="audioSyncRecordingGroup" class="audio-sync-group audio-rec-stealth-group" style="display: none !important;">
           <span id="badgeAudioRecState" class="audio-rec-badge"><span class="audio-rec-dot"></span><span
               id="lblAudioRecBadgeText">REC</span></span>
           <span id="lblAudioRecordTimer" class="audio-sync-time">00:00</span>
@@ -1434,18 +1434,8 @@
             <span id="lblAudioMicMute" style="display: none;">마이크 ON</span>
           </button>
           <span id="lblAudioRecHint" class="audio-rec-hint" style="display: none;"></span>
-          <button type="button" id="btnAudioPauseRecord" class="audio-sync-btn audio-btn-pause-rec" title="일시정지 / 이어녹음">
-            <span id="iconAudioPauseRecord">⏸</span>
-            <span id="lblAudioPauseRecord" style="display: none;">일시정지</span>
-          </button>
-          <button type="button" id="btnAudioStopRecord" class="audio-sync-btn audio-btn-stop" title="녹음 완료">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="5" y="5" width="14" height="14" rx="2" />
-            </svg>
-            <span>완료</span>
-          </button>
           <button type="button" id="btnAudioHideRecBar" class="audio-sync-btn audio-btn-close"
-            title="상단 녹화 바 숨기기 (우측 마이크 버튼으로 종료 가능)">✕</button>
+            title="상단 녹화 바 숨기기">✕</button>
         </div>
 
         <!-- 상태 2: 재생 및 노트 클릭 모드 (Playback & Interactive Note) -->
@@ -1564,15 +1554,29 @@
         <div class="quick-sep"></div>
 
         <!-- 5. 판서 & 수학 킬러 도구 -->
-        <button id="btnAudioRecordToggle" class="quick-fab-btn" title="음성 녹음 및 강의 재생">
-          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-              <line x1="12" y1="19" x2="12" y2="22" />
-              <line x1="8" y1="22" x2="16" y2="22" />
-            </svg></span>
-        </button>
+        <div class="quick-btn-wrapper" id="wrapAudioRecordToggle">
+          <button id="btnAudioRecordToggle" class="quick-fab-btn" title="음성 녹음 시작 (녹음 중 클릭 시 일시정지 / 종료)">
+            <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" y1="19" x2="12" y2="22" />
+                <line x1="8" y1="22" x2="16" y2="22" />
+              </svg></span>
+          </button>
+          <div class="audio-rec-side-menu" id="panelAudioRecordActions" style="display: none;">
+            <button type="button" id="btnAudioPauseRecord" class="audio-rec-side-btn audio-btn-pause-rec" title="일시정지 / 이어녹음">
+              <span id="iconAudioPauseRecord">⏸</span>
+              <span id="lblAudioPauseRecord">일시정지</span>
+            </button>
+            <button type="button" id="btnAudioStopRecord" class="audio-rec-side-btn audio-btn-stop" title="녹음 종료">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="4" y="4" width="16" height="16" rx="2.5" />
+              </svg>
+              <span>종료</span>
+            </button>
+          </div>
+        </div>
         <button id="btnInkMode" class="quick-fab-btn" title="필기">
           <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
@@ -3105,8 +3109,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_27"></script>
-  <script src="app.js?v=20261103_27"></script>
+  <script src="engine.js?v=20261103_28"></script>
+  <script src="app.js?v=20261103_28"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
