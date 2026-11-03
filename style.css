@@ -11704,4 +11704,101 @@ body.theme-light .single-line-slider-val {
   margin-top: 0 !important;
 }
 
+/* ==========================================================================
+   ✍️ [?v=20261103_46]: 필기 플로팅 툴바 3방향 도킹 (왼쪽 세로 / 아래 가로 / 오른쪽 세로)
+   ========================================================================== */
+.ink-floating-toolbar[data-dock-pos="bottom"] {
+  bottom: 24px;
+  left: 50%;
+  right: auto;
+  top: auto;
+  transform: translateX(-50%);
+  flex-direction: row;
+}
+
+.ink-floating-toolbar[data-dock-pos="left"],
+.ink-floating-toolbar[data-dock-pos="right"] {
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+  flex-direction: column;
+  padding: 8px 6px;
+  gap: 5px;
+  width: 48px;
+  max-height: calc(100% - 28px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  animation: none;
+}
+
+.ink-floating-toolbar[data-dock-pos="left"]::-webkit-scrollbar,
+.ink-floating-toolbar[data-dock-pos="right"]::-webkit-scrollbar {
+  display: none;
+}
+
+.ink-floating-toolbar[data-dock-pos="left"] {
+  left: 64px;
+  right: auto;
+}
+
+.ink-floating-toolbar[data-dock-pos="right"] {
+  right: 14px;
+  left: auto;
+}
+
+/* 좌측 서랍이 열려 있을 때 왼쪽 도킹 필기 바와 겹치지 않도록 자동 페이드 처리 */
+.sidebar-rail:not(.drawer-collapsed) ~ .canvas-container .ink-floating-toolbar[data-dock-pos="left"] {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.ink-floating-toolbar[data-dock-pos="left"] .ink-dock-drag-handle,
+.ink-floating-toolbar[data-dock-pos="right"] .ink-dock-drag-handle {
+  transform: rotate(90deg);
+  padding: 0;
+  margin: -2px 0;
+}
+
+.ink-floating-toolbar[data-dock-pos="left"] .ink-tool-group,
+.ink-floating-toolbar[data-dock-pos="right"] .ink-tool-group {
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ink-floating-toolbar[data-dock-pos="left"] .ink-tool-btn,
+.ink-floating-toolbar[data-dock-pos="right"] .ink-tool-btn {
+  width: 32px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.ink-floating-toolbar[data-dock-pos="left"] .ink-divider,
+.ink-floating-toolbar[data-dock-pos="right"] .ink-divider {
+  width: 24px;
+  height: 1px;
+  margin: 1px 0;
+}
+
+.ink-floating-toolbar[data-dock-pos="left"] .ink-color-group,
+.ink-floating-toolbar[data-dock-pos="right"] .ink-color-group {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  justify-items: center;
+}
+
+.ink-floating-toolbar[data-dock-pos="left"] .ink-color-dot,
+.ink-floating-toolbar[data-dock-pos="right"] .ink-color-dot {
+  width: 15px;
+  height: 15px;
+}
+
+.ink-floating-toolbar[data-dock-pos="left"] .ink-zoom-group,
+.ink-floating-toolbar[data-dock-pos="right"] .ink-zoom-group {
+  flex-direction: column;
+  gap: 3px;
+}
+
+
 

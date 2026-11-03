@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_45">
+  <link rel="stylesheet" href="style.css?v=20261103_46">
 </head>
 
 <body class="theme-light">
@@ -465,6 +465,19 @@
 
             <!-- 5. 패널: 환경 설정 (Settings) - 마그네틱, 그리드, 점근선, 캡처 규격 통합 -->
             <div class="drawer-panel" id="panelSettings" style="display: none;">
+              <!-- 섹션 0: ✍️ 필기 바 위치 (왼쪽 세로 / 아래 가로 / 오른쪽 세로) -->
+              <div class="panel-section" style="border: none; padding: 0; margin-bottom: 10px;">
+                <div class="section-title" style="margin-bottom: 6px;">
+                  <span>필기 바 위치</span>
+                </div>
+                <div class="vf-aspect-chips ink-dock-pos-chips" id="inkDockPositionGroup"
+                  style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;">
+                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="left" title="화면 왼쪽에 세로로 고정">◧ 왼쪽</button>
+                  <button type="button" class="vf-chip ink-dock-pos-chip active" data-dock-pos="bottom" title="화면 아래쪽에 가로로 고정">⬓ 아래</button>
+                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="right" title="화면 오른쪽에 세로로 고정">◨ 오른쪽</button>
+                </div>
+              </div>
+
               <!-- 섹션 1: 조작 & 가이드라인 설정 -->
               <div class="panel-section" style="border: none; padding: 0;">
                 <div class="section-title">
@@ -1544,8 +1557,8 @@
         <button id="btnNAxisMode" style="display: none;"></button>
       </div>
       <!-- ✍️ 실시간 무한 칠판 필기 플로팅 툴바 (Ink Floating Dock) -->
-      <div id="inkFloatingToolbar" class="ink-floating-toolbar" style="display: none;">
-        <div class="ink-dock-drag-handle" id="inkDockDragHandle">⋮⋮</div>
+      <div id="inkFloatingToolbar" class="ink-floating-toolbar" data-dock-pos="bottom" style="display: none;">
+        <div class="ink-dock-drag-handle" id="inkDockDragHandle" title="드래그하여 왼쪽·아래·오른쪽 이동 (클릭 시 위치 순환)">⋮⋮</div>
         <div class="ink-tool-group">
           <button id="btnInkSelect" class="ink-tool-btn" title="선택 / 이동">
             <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -2985,8 +2998,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_45"></script>
-  <script src="app.js?v=20261103_45"></script>
+  <script src="engine.js?v=20261103_46"></script>
+  <script src="app.js?v=20261103_46"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

@@ -3372,6 +3372,9 @@ class GraphApp {
       const btnSize = parseFloat(btn.dataset.size);
       btn.classList.toggle('active', Math.abs(btnSize - clamped) < 0.2);
     });
+    if (typeof this.scheduleSaveUserPreferences === 'function') {
+      this.scheduleSaveUserPreferences();
+    }
   }
 
   setHighlighterSize(size) {
@@ -3388,6 +3391,9 @@ class GraphApp {
     if (hlGlow) {
       hlGlow.setAttribute('r', String(Math.max(4, Math.min(15, +(clamped * 0.42).toFixed(1)))));
     }
+    if (typeof this.scheduleSaveUserPreferences === 'function') {
+      this.scheduleSaveUserPreferences();
+    }
   }
 
   setEraserSize(size) {
@@ -3403,6 +3409,9 @@ class GraphApp {
     const erRing = document.getElementById('stylusEraserRing') || (this.stylusEraserSvg ? this.stylusEraserSvg.querySelector('circle') : null);
     if (erRing) {
       erRing.setAttribute('r', String(Math.max(2.5, Math.min(22, +(clamped * 0.45).toFixed(1)))));
+    }
+    if (typeof this.scheduleSaveUserPreferences === 'function') {
+      this.scheduleSaveUserPreferences();
     }
   }
 
@@ -5210,42 +5219,147 @@ class GraphApp {
     this.syncLassoActionBarUI();
   }
 
+  setInkDockPosition(pos, showMsg = true, savePref = true) {
+    const validPos = ['left', 'bottom', 'right'].includes(pos) ? pos : 'bottom';
+    this.inkDockPosition = validPos;
+    try {
+      localStorage.setItem('graphly_ink_dock_pos_v1', validPos);
+    } catch (_) { }
+
+    const dock = document.getElementById('inkFloatingToolbar');
+    if (dock) {
+      dock.dataset.dockPos = validPos;
+      dock.style.left = '';
+      dock.style.right = '';
+      dock.style.top = '';
+      dock.style.bottom = '';
+      dock.style.transform = '';
+    }
+
+    document.querySelectorAll('.ink-dock-pos-chip').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.dockPos === validPos);
+    });
+
+    if (savePref && typeof this.scheduleSaveUserPreferences === 'function') {
+      this.scheduleSaveUserPreferences();
+    }
+
+    if (showMsg) {
+      const labels = {
+        left: '✍️ 필기 바: 왼쪽 세로 도킹',
+        bottom: '✍️ 필기 바: 아래쪽 가로 도킹',
+        right: '✍️ 필기 바: 오른쪽 세로 도킹'
+      };
+      this.showToast(labels[validPos] || '✍️ 필기 바 위치 변경');
+    }
+  }
+
   initInkDockDraggable() {
     const dock = document.getElementById('inkFloatingToolbar');
     const handle = document.getElementById('inkDockDragHandle');
+
+    // 저장된 필기 바 위치 복원 (기본값: bottom)
+    let savedPos = 'bottom';
+    try {
+      const raw = localStorage.getItem('graphly_ink_dock_pos_v1');
+      if (raw && ['left', 'bottom', 'right'].includes(raw)) {
+        savedPos = raw;
+      }
+    } catch (_) { }
+    this.setInkDockPosition(savedPos, false, false);
+
+    // [⚙️ 설정] 패널 내 필기 바 위치 버튼 바인딩
+    document.querySelectorAll('.ink-dock-pos-chip').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const targetPos = btn.dataset.dockPos;
+        if (targetPos) {
+          this.setInkDockPosition(targetPos, true, true);
+        }
+      };
+    });
+
     if (!dock || !handle) return;
 
     let isDraggingDock = false;
+    let hasMoved = false;
     let startX = 0, startY = 0;
     let initialLeft = 0, initialTop = 0;
+    let activePointerId = null;
 
-    handle.addEventListener('mousedown', (e) => {
+    const getNearestDockPos = (clientX, clientY) => {
+      const W = Math.max(320, window.innerWidth || 1440);
+      const H = Math.max(240, window.innerHeight || 900);
+      const distLeft = clientX / W;
+      const distRight = (W - clientX) / W;
+      const distBottom = (H - clientY) / H;
+      if (distLeft < 0.28 && distLeft <= distRight && distLeft <= distBottom + 0.06) {
+        return 'left';
+      }
+      if (distRight < 0.28 && distRight < distLeft && distRight <= distBottom + 0.06) {
+        return 'right';
+      }
+      if (distBottom <= distLeft && distBottom <= distRight) {
+        return 'bottom';
+      }
+      return distLeft < distRight ? 'left' : 'right';
+    };
+
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button && e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       isDraggingDock = true;
+      hasMoved = false;
+      activePointerId = e.pointerId;
       startX = e.clientX;
       startY = e.clientY;
       const rect = dock.getBoundingClientRect();
-      const parentRect = dock.parentElement.getBoundingClientRect();
+      const parentRect = dock.parentElement ? dock.parentElement.getBoundingClientRect() : { left: 0, top: 0 };
       initialLeft = rect.left - parentRect.left;
       initialTop = rect.top - parentRect.top;
+      if (handle.setPointerCapture && e.pointerId !== undefined) {
+        try { handle.setPointerCapture(e.pointerId); } catch (_) { }
+      }
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      if (!isDraggingDock) return;
+      if (activePointerId !== null && e.pointerId !== undefined && e.pointerId !== activePointerId) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!hasMoved && Math.hypot(dx, dy) < 6) return;
+      hasMoved = true;
       dock.style.transform = 'none';
-      dock.style.left = `${initialLeft}px`;
-      dock.style.top = `${initialTop}px`;
+      dock.style.left = `${initialLeft + dx}px`;
+      dock.style.top = `${initialTop + dy}px`;
+      dock.style.right = 'auto';
       dock.style.bottom = 'auto';
     });
 
-    window.addEventListener('mousemove', (e) => {
+    const finishDockDrag = (e) => {
       if (!isDraggingDock) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      dock.style.left = `${initialLeft + dx}px`;
-      dock.style.top = `${initialTop + dy}px`;
-    });
-
-    window.addEventListener('mouseup', () => {
+      if (activePointerId !== null && e && e.pointerId !== undefined && e.pointerId !== activePointerId) return;
       isDraggingDock = false;
-    });
+      if (handle.releasePointerCapture && activePointerId !== null) {
+        try { handle.releasePointerCapture(activePointerId); } catch (_) { }
+      }
+      activePointerId = null;
+
+      if (!hasMoved) {
+        // 톡 클릭 시: 아래 ➔ 오른쪽 ➔ 왼쪽 순환
+        const order = ['bottom', 'right', 'left'];
+        const curIdx = order.indexOf(this.inkDockPosition || 'bottom');
+        const nextPos = order[(curIdx + 1) % order.length];
+        this.setInkDockPosition(nextPos, true, true);
+      } else {
+        const snapPos = getNearestDockPos(e ? e.clientX : startX, e ? e.clientY : startY);
+        this.setInkDockPosition(snapPos, true, true);
+      }
+    };
+
+    window.addEventListener('pointerup', finishDockDrag);
+    window.addEventListener('pointercancel', finishDockDrag);
   }
 
   // ==========================================================================
@@ -12691,6 +12805,9 @@ class GraphApp {
     document.querySelectorAll('.ink-pen-style-chip').forEach(chip => {
       chip.classList.toggle('active', chip.dataset.penStyle === styleKey);
     });
+    if (typeof this.scheduleSaveUserPreferences === 'function') {
+      this.scheduleSaveUserPreferences();
+    }
     if (showMsg) {
       const labels = {
         ballpen: '🖊️ 볼펜 스타일 (일정한 굵기)',
@@ -14137,6 +14254,7 @@ class GraphApp {
       chkAsym.checked = this.showAsymptotes;
       chkAsym.onchange = (e) => {
         this.showAsymptotes = e.target.checked;
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
         this.render();
       };
     }
@@ -14149,6 +14267,7 @@ class GraphApp {
         this.showGuides = e.target.checked;
         const btnGrid = document.getElementById('btnQuickGrid');
         if (btnGrid) btnGrid.classList.toggle('active', this.showGuides);
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
         this.render();
       };
     }
@@ -14159,6 +14278,7 @@ class GraphApp {
       chkGridNumbers.checked = Boolean(this.showGridNumbers);
       chkGridNumbers.onchange = (e) => {
         this.showGridNumbers = Boolean(e.target.checked);
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
         this.render();
       };
     }
@@ -14173,6 +14293,7 @@ class GraphApp {
         try {
           localStorage.setItem('graphly_one_finger_pan_v1', this.allowOneFingerPanInInk ? 'true' : 'false');
         } catch (_) { }
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
         this.showToast(
           this.allowOneFingerPanInInk
             ? '✋ 필기 중 한 손가락 화면 이동이 켜졌습니다.'
@@ -14187,6 +14308,7 @@ class GraphApp {
       chkStylus.checked = Boolean(this.showVirtualStylus);
       chkStylus.onchange = (e) => {
         this.toggleVirtualStylus(Boolean(e.target.checked));
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
       };
     }
 
@@ -14196,6 +14318,7 @@ class GraphApp {
       chkSnap.checked = this.useMagneticSnap;
       chkSnap.onchange = (e) => {
         this.toggleMagneticSnap(e.target.checked);
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
       };
     }
 
@@ -14226,9 +14349,9 @@ class GraphApp {
     }
 
     // 캡처영역 종횡비 프리셋 칩 (4:3, 1:1, 16:9, 3:4)
-    document.querySelectorAll('.vf-chip').forEach(btn => {
+    document.querySelectorAll('.vf-chip[data-ar]').forEach(btn => {
       btn.onclick = (e) => {
-        document.querySelectorAll('.vf-chip').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.vf-chip[data-ar]').forEach(b => b.classList.remove('active'));
         e.target.classList.add('active');
         const arStr = e.target.dataset.ar;
         this.vfAspectName = arStr;
@@ -16163,7 +16286,7 @@ class GraphApp {
     }
   }
 
-  setCanvasTheme(themeKey) {
+  setCanvasTheme(themeKey, showMsg = true) {
     if (!this.canvasThemes[themeKey]) return;
     if (this.isMonochromeMode) {
       this.isMonochromeMode = false;
@@ -16195,7 +16318,12 @@ class GraphApp {
 
     this._inkBakeDirty = true;
     this.requestRender();
-    this.showToast(`🎨 캔버스 테마: ${theme.name} 적용 완료!`);
+    if (typeof this.scheduleSaveUserPreferences === 'function') {
+      this.scheduleSaveUserPreferences();
+    }
+    if (showMsg) {
+      this.showToast(`🎨 캔버스 테마: ${theme.name} 적용 완료!`);
+    }
   }
 
   initBoardPaperControls() {
@@ -16209,7 +16337,7 @@ class GraphApp {
     });
   }
 
-  setBoardPaperType(paperType) {
+  setBoardPaperType(paperType, showMsg = true) {
     if (!['blank', 'grid', 'lined', 'dot'].includes(paperType)) return;
     this.boardPaperType = paperType;
     try {
@@ -16222,8 +16350,13 @@ class GraphApp {
 
     this._hasSceneFreeze = false;
     this.render();
-    const names = { blank: '무지', grid: '모눈 노트', lined: '가로줄 노트', dot: '도트 노트' };
-    this.showToast(`📋 캔버스 배경 속지: ${names[paperType] || paperType} 적용!`);
+    if (typeof this.scheduleSaveUserPreferences === 'function') {
+      this.scheduleSaveUserPreferences();
+    }
+    if (showMsg) {
+      const names = { blank: '무지', grid: '모눈 노트', lined: '가로줄 노트', dot: '도트 노트' };
+      this.showToast(`📋 캔버스 배경 속지: ${names[paperType] || paperType} 적용!`);
+    }
   }
 
   drawBoardPaperBackground(ctx, width, height, curTheme) {
@@ -18788,6 +18921,187 @@ class GraphApp {
     }
     if (typeof this.onCustomGraphUserChanged === 'function') {
       this.onCustomGraphUserChanged();
+    }
+    if (typeof this.onUserPreferencesAuthChanged === 'function') {
+      this.onUserPreferencesAuthChanged();
+    }
+  }
+
+  // ============================================================================
+  // 👤 [로그인 계정별 개인 칠판 프로필(환경설정 · 필기바 위치 · 펜/배경 · 단축키) 클라우드 동기화 엔진]
+  // - 공용 전자칠판에서 로그인하는 즉시 내 세팅으로 전환되고, 로그아웃 시 공용 기본값으로 복귀!
+  // ============================================================================
+  _getUserPrefsStorageKey(uid = null) {
+    const targetUid = uid || ((this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest');
+    return `graphly_user_prefs_v1_${targetUid}`;
+  }
+
+  _collectCurrentUserPreferences() {
+    return {
+      updatedAt: Date.now(),
+      inkDockPosition: this.inkDockPosition || 'bottom',
+      inkPenStyle: this.inkPenStyle || 'ballpen',
+      inkSize: typeof this.currentInkSize === 'number' ? this.currentInkSize : 4.2,
+      highlighterSize: typeof this.currentHighlighterSize === 'number' ? this.currentHighlighterSize : 16,
+      eraserSize: typeof this.currentEraserSize === 'number' ? this.currentEraserSize : 14,
+      themeKey: this.currentThemeKey || 'white_paper',
+      boardPaperType: this.boardPaperType || 'blank',
+      allowOneFingerPanInInk: Boolean(this.allowOneFingerPanInInk),
+      showVirtualStylus: Boolean(this.showVirtualStylus),
+      useMagneticSnap: Boolean(this.useMagneticSnap),
+      showGuides: Boolean(this.showGuides),
+      showGridNumbers: Boolean(this.showGridNumbers),
+      showAsymptotes: Boolean(this.showAsymptotes),
+      customShortcuts: this.customShortcuts || {}
+    };
+  }
+
+  _applyUserPreferences(prefs, silent = true) {
+    if (!prefs || typeof prefs !== 'object') return;
+    this._isApplyingUserPrefs = true;
+    try {
+      if (prefs.inkDockPosition && ['left', 'bottom', 'right'].includes(prefs.inkDockPosition)) {
+        this.setInkDockPosition(prefs.inkDockPosition, !silent, false);
+      }
+      if (prefs.inkPenStyle && ['ballpen', 'fountain', 'brush'].includes(prefs.inkPenStyle)) {
+        this.setInkPenStyle(prefs.inkPenStyle, !silent);
+      }
+      if (typeof prefs.inkSize === 'number' && !isNaN(prefs.inkSize)) {
+        this.setInkSize(prefs.inkSize);
+      }
+      if (typeof prefs.highlighterSize === 'number' && !isNaN(prefs.highlighterSize)) {
+        this.setHighlighterSize(prefs.highlighterSize);
+      }
+      if (typeof prefs.eraserSize === 'number' && !isNaN(prefs.eraserSize)) {
+        this.setEraserSize(prefs.eraserSize);
+      }
+      if (prefs.themeKey && this.canvasThemes && this.canvasThemes[prefs.themeKey]) {
+        this.setCanvasTheme(prefs.themeKey, !silent);
+      }
+      if (prefs.boardPaperType && ['blank', 'grid', 'lined', 'dot'].includes(prefs.boardPaperType)) {
+        this.setBoardPaperType(prefs.boardPaperType, !silent);
+      }
+      if (typeof prefs.allowOneFingerPanInInk === 'boolean') {
+        this.allowOneFingerPanInInk = prefs.allowOneFingerPanInInk;
+        const chk = document.getElementById('chkOneFingerPanInInk');
+        if (chk) chk.checked = prefs.allowOneFingerPanInInk;
+        try {
+          localStorage.setItem('graphly_one_finger_pan_v1', prefs.allowOneFingerPanInInk ? 'true' : 'false');
+        } catch (_) { }
+      }
+      if (typeof prefs.showVirtualStylus === 'boolean') {
+        this.showVirtualStylus = prefs.showVirtualStylus;
+        const chk = document.getElementById('chkShowVirtualStylus');
+        if (chk) chk.checked = prefs.showVirtualStylus;
+        this.updateInkCursor();
+      }
+      if (typeof prefs.useMagneticSnap === 'boolean') {
+        this.useMagneticSnap = prefs.useMagneticSnap;
+        const chk = document.getElementById('chkMagneticSnap');
+        if (chk) chk.checked = prefs.useMagneticSnap;
+      }
+      if (typeof prefs.showGuides === 'boolean') {
+        this.showGuides = prefs.showGuides;
+        const chk = document.getElementById('chkGuides');
+        if (chk) chk.checked = prefs.showGuides;
+      }
+      if (typeof prefs.showGridNumbers === 'boolean') {
+        this.showGridNumbers = prefs.showGridNumbers;
+        const chk = document.getElementById('chkGridNumbers');
+        if (chk) chk.checked = prefs.showGridNumbers;
+      }
+      if (typeof prefs.showAsymptotes === 'boolean') {
+        this.showAsymptotes = prefs.showAsymptotes;
+        const chk = document.getElementById('chkAsymptotes');
+        if (chk) chk.checked = prefs.showAsymptotes;
+      }
+      if (prefs.customShortcuts && typeof prefs.customShortcuts === 'object') {
+        this.customShortcuts = { ...prefs.customShortcuts };
+      }
+      this.requestRender();
+    } finally {
+      this._isApplyingUserPrefs = false;
+    }
+  }
+
+  scheduleSaveUserPreferences() {
+    if (this._isApplyingUserPrefs) return;
+    const prefs = this._collectCurrentUserPreferences();
+    try {
+      localStorage.setItem(this._getUserPrefsStorageKey(), JSON.stringify(prefs));
+    } catch (_) { }
+
+    if (this._saveUserPrefsTimer) {
+      clearTimeout(this._saveUserPrefsTimer);
+    }
+    this._saveUserPrefsTimer = setTimeout(() => {
+      if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestWriteSingleDoc === 'function') {
+        const docId = `pref_user_${this.cloudUser.uid}`;
+        this._firestoreRestWriteSingleDoc('user_preferences', docId, JSON.stringify(this._collectCurrentUserPreferences())).catch(() => { });
+      }
+    }, 450);
+  }
+
+  async onUserPreferencesAuthChanged() {
+    const curUid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest';
+    const prevUid = this._lastSyncedPrefsUid || null;
+    if (prevUid === curUid) return;
+    this._lastSyncedPrefsUid = curUid;
+
+    if (curUid === 'guest') {
+      // 로그인 상태에서 로그아웃한 경우: 공용 칠판 보호를 위해 표준 기본값으로 깔끔하게 초기화!
+      if (prevUid && prevUid !== 'guest') {
+        const defaultPrefs = {
+          inkDockPosition: 'bottom',
+          inkPenStyle: 'ballpen',
+          inkSize: 4.2,
+          highlighterSize: 16,
+          eraserSize: 14,
+          themeKey: 'white_paper',
+          boardPaperType: 'blank',
+          allowOneFingerPanInInk: true,
+          showVirtualStylus: true,
+          useMagneticSnap: true,
+          showGuides: true,
+          showGridNumbers: false,
+          showAsymptotes: false,
+          customShortcuts: {}
+        };
+        this._applyUserPreferences(defaultPrefs, true);
+        try {
+          localStorage.setItem(this._getUserPrefsStorageKey('guest'), JSON.stringify(defaultPrefs));
+        } catch (_) { }
+      }
+      return;
+    }
+
+    // 1. 로컬에 캐시된 해당 계정 프로필이 있으면 0.00초 만에 즉시 먼저 적용
+    let localPrefs = null;
+    try {
+      const raw = localStorage.getItem(this._getUserPrefsStorageKey(curUid));
+      if (raw) {
+        localPrefs = JSON.parse(raw);
+        if (localPrefs && typeof localPrefs === 'object') {
+          this._applyUserPreferences(localPrefs, true);
+        }
+      }
+    } catch (_) { }
+
+    // 2. 클라우드(Firestore)에 저장된 계정 프로필 조회 및 동기화
+    if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestReadDoc === 'function') {
+      try {
+        const docId = `pref_user_${curUid}`;
+        const remotePrefs = await this._firestoreRestReadDoc('user_preferences', docId);
+        if (remotePrefs && typeof remotePrefs === 'object' && (remotePrefs.inkDockPosition || remotePrefs.themeKey)) {
+          this._applyUserPreferences(remotePrefs, true);
+          try {
+            localStorage.setItem(this._getUserPrefsStorageKey(curUid), JSON.stringify(remotePrefs));
+          } catch (_) { }
+        } else if (!localPrefs) {
+          // 첫 로그인 계정이면 현재 세팅을 클라우드 초기 프로필로 등록
+          this.scheduleSaveUserPreferences();
+        }
+      } catch (_) { }
     }
   }
 
