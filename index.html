@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_51">
+  <link rel="stylesheet" href="style.css?v=20261103_52">
 </head>
 
 <body class="theme-light">
@@ -814,22 +814,40 @@
                   </div>
                 </div>
 
-                <!-- ✒️ 필기 펜 & 1줄 스텝 슬라이더 3종 -->
+                <!-- ✒️ 필기 펜 4종 & 1줄 스텝 슬라이더 4종 -->
                 <div class="panel-section" style="border: none; padding: 0;">
                   <div class="section-title" style="margin-bottom: 6px;">
                     <span>필기 펜 & 굵기</span>
                   </div>
                   <div class="ink-pen-style-grid" id="inkPenStyleGroup"
-                    style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 10px;">
+                    style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 10px;">
                     <button type="button" class="vf-chip ink-pen-style-chip active" data-pen-style="ballpen"
+                      style="padding-left: 2px; padding-right: 2px; font-size: 11.5px;"
                       title="필압에 관계없이 처음부터 끝까지 일정한 굵기">볼펜</button>
+                    <button type="button" class="vf-chip ink-pen-style-chip" data-pen-style="flat"
+                      style="padding-left: 2px; padding-right: 2px; font-size: 11.5px;"
+                      title="가로획은 얇고 세로획은 도톰하게 써지는 납작 닙 글씨체">납작펜</button>
                     <button type="button" class="vf-chip ink-pen-style-chip" data-pen-style="fountain"
+                      style="padding-left: 2px; padding-right: 2px; font-size: 11.5px;"
                       title="부드러운 필압 반응과 날렵한 획 끝 삐침 (명필 보정)">만년필</button>
                     <button type="button" class="vf-chip ink-pen-style-chip" data-pen-style="brush"
+                      style="padding-left: 2px; padding-right: 2px; font-size: 11.5px;"
                       title="필압에 따라 굵고 가는 대비가 뚜렷한 붓펜 스타일">붓펜</button>
                   </div>
 
                   <div class="single-line-slider-list">
+                    <!-- 0. 블러 (아이캔스크린 스타일 모퉁이 삐뚤림 보정 & 외곽 소프트 블러) -->
+                    <div class="single-line-slider-row" title="아이캔스크린 스타일의 부드러운 외곽 블러 및 펜 모퉁이 삐뚤림 보정 강도 (0.0 ~ 5.0)">
+                      <span class="single-line-slider-label">블러</span>
+                      <button type="button" id="btnInkBlurDown" class="single-line-step-btn" title="블러 줄이기 (-0.5)">◀</button>
+                      <div class="ink-size-preview-row single-line-slider-track">
+                        <input type="range" id="sliderInkBlur" class="slider-bar" min="0" max="5.0" step="0.5"
+                          value="0">
+                      </div>
+                      <button type="button" id="btnInkBlurUp" class="single-line-step-btn" title="블러 높이기 (+0.5)">▶</button>
+                      <span id="lblCurrentInkBlur" class="single-line-slider-val">0.0</span>
+                    </div>
+
                     <!-- 1. 펜 굵기 -->
                     <div class="single-line-slider-row">
                       <span class="single-line-slider-label">펜 굵기</span>
@@ -3009,8 +3027,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_51"></script>
-  <script src="app.js?v=20261103_51"></script>
+  <script src="engine.js?v=20261103_52"></script>
+  <script src="app.js?v=20261103_52"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

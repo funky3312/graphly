@@ -194,11 +194,16 @@ class GraphApp {
     this.currentInkSize = 4.2;           // 기본 4.2px
     this.currentHighlighterSize = 16;    // 기본 16px (형광펜 크기)
     this.currentEraserSize = 14;         // 기본 14px (지우개 크기)
-    this.inkPenStyle = 'ballpen';        // 필기 펜 스타일 ('ballpen' | 'fountain' | 'brush')
+    this.inkPenStyle = 'ballpen';        // 필기 펜 스타일 ('ballpen' | 'flat' | 'fountain' | 'brush')
+    this.inkSoftBlur = 0.0;              // 아이캔스크린 스타일 모퉁이 보정 & 소프트 외곽 블러 강도 (0.0 ~ 5.0)
     try {
       const savedPenStyle = localStorage.getItem('graphly_ink_pen_style_v1');
-      if (savedPenStyle && ['ballpen', 'fountain', 'brush'].includes(savedPenStyle)) {
+      if (savedPenStyle && ['ballpen', 'flat', 'fountain', 'brush'].includes(savedPenStyle)) {
         this.inkPenStyle = savedPenStyle;
+      }
+      const savedSoftBlur = parseFloat(localStorage.getItem('graphly_ink_soft_blur_v1'));
+      if (!isNaN(savedSoftBlur) && savedSoftBlur >= 0 && savedSoftBlur <= 5.0) {
+        this.inkSoftBlur = parseFloat(savedSoftBlur.toFixed(1));
       }
     } catch (err) { }
     this.inkStrokes = [];                // 저장된 모든 필기 획 배열 [{id, tool, color, size, isHighlighter, points: [{x, y, p}]}]
@@ -2527,7 +2532,7 @@ class GraphApp {
       window.addEventListener('pointercancel', onSliderPointerUp);
     }
 
-    // 🖍️ 형광펜 크기 & 🧼 지우개 크기 슬라이더/스테퍼 연동 (스타일 메뉴 통합)
+    // 🖍️ 블러 · 형광펜 크기 · 🧼 지우개 크기 슬라이더/스테퍼 연동 (스타일 메뉴 통합)
     const bindSmoothStyleSlider = (sliderEl, applyFn) => {
       if (!sliderEl) return;
       sliderEl.oninput = (e) => {
@@ -2543,12 +2548,15 @@ class GraphApp {
         const pad = 7;
         const effWidth = Math.max(1, rect.width - pad * 2);
         const ratio = Math.max(0, Math.min(1, (clientX - (rect.left + pad)) / effWidth));
-        const min = parseFloat(sliderEl.min) || 4;
-        const max = parseFloat(sliderEl.max) || 44;
-        const step = parseFloat(sliderEl.step) || 2;
+        const parsedMin = parseFloat(sliderEl.min);
+        const min = Number.isFinite(parsedMin) ? parsedMin : 4;
+        const parsedMax = parseFloat(sliderEl.max);
+        const max = Number.isFinite(parsedMax) ? parsedMax : 44;
+        const parsedStep = parseFloat(sliderEl.step);
+        const step = (Number.isFinite(parsedStep) && parsedStep > 0) ? parsedStep : 2;
         const raw = min + ratio * (max - min);
         const stepped = Math.round(raw / step) * step;
-        const finalVal = Math.max(min, Math.min(max, Math.round(stepped)));
+        const finalVal = Math.max(min, Math.min(max, parseFloat(stepped.toFixed(2))));
         sliderEl.value = finalVal;
         applyFn(finalVal);
       };
@@ -2585,6 +2593,33 @@ class GraphApp {
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onUp);
     };
+
+    try {
+      const savedSoftBlur = parseFloat(localStorage.getItem('graphly_ink_soft_blur_v1'));
+      if (!isNaN(savedSoftBlur) && savedSoftBlur >= 0 && savedSoftBlur <= 5.0) {
+        this.setInkSoftBlur(savedSoftBlur, false);
+      } else {
+        this.setInkSoftBlur(this.inkSoftBlur || 0, false);
+      }
+    } catch (err) { }
+
+    const btnBlurDown = document.getElementById('btnInkBlurDown');
+    if (btnBlurDown) {
+      btnBlurDown.onclick = (e) => {
+        e.stopPropagation();
+        const cur = typeof this.inkSoftBlur === 'number' ? this.inkSoftBlur : 0;
+        this.setInkSoftBlur(Math.max(0, parseFloat((cur - 0.5).toFixed(1))));
+      };
+    }
+    const btnBlurUp = document.getElementById('btnInkBlurUp');
+    if (btnBlurUp) {
+      btnBlurUp.onclick = (e) => {
+        e.stopPropagation();
+        const cur = typeof this.inkSoftBlur === 'number' ? this.inkSoftBlur : 0;
+        this.setInkSoftBlur(Math.min(5.0, parseFloat((cur + 0.5).toFixed(1))));
+      };
+    }
+    bindSmoothStyleSlider(document.getElementById('sliderInkBlur'), (val) => this.setInkSoftBlur(val));
 
     try {
       const savedHlSize = parseFloat(localStorage.getItem('graphly_highlighter_size_v1'));
@@ -3338,6 +3373,57 @@ class GraphApp {
     const lbl = document.getElementById('lblAxisLabelSize');
     if (lbl) lbl.textContent = `${size}`;
     this.render();
+  }
+
+  setInkSoftBlur(val, triggerRender = true) {
+    const num = Number(val);
+    const clamped = Math.max(0.0, Math.min(5.0, parseFloat((Number.isFinite(num) ? num : 0).toFixed(1))));
+    this.inkSoftBlur = clamped;
+    try {
+      localStorage.setItem('graphly_ink_soft_blur_v1', String(clamped));
+    } catch (err) { }
+
+    const lbl = document.getElementById('lblCurrentInkBlur');
+    if (lbl) lbl.textContent = clamped.toFixed(1);
+
+    const slider = document.getElementById('sliderInkBlur');
+    if (slider) slider.value = clamped;
+
+    if (triggerRender) {
+      if (Array.isArray(this.inkStrokes)) {
+        this.inkStrokes.forEach(st => {
+          if (st && !st.isHighlighter) st.softBlur = clamped;
+        });
+      }
+      if (Array.isArray(this.problemInkStrokes)) {
+        this.problemInkStrokes.forEach(st => {
+          if (st && !st.isHighlighter) st.softBlur = clamped;
+        });
+      }
+      if (Array.isArray(this.graphInkStrokes)) {
+        this.graphInkStrokes.forEach(st => {
+          if (st && !st.isHighlighter) st.softBlur = clamped;
+        });
+      }
+      document.querySelectorAll('.extra-problem-card-widget, .extra-graph-card-widget').forEach(el => {
+        if (Array.isArray(el._cardInkStrokes)) {
+          el._cardInkStrokes.forEach(st => {
+            if (st && !st.isHighlighter) st.softBlur = clamped;
+          });
+          if (typeof el._renderCardInkCanvas === 'function') {
+            el._renderCardInkCanvas();
+          }
+        }
+      });
+      this._inkBakeDirty = true;
+      if (typeof this.renderProblemCardCanvas === 'function') this.renderProblemCardCanvas();
+      if (typeof this.renderGraphCardCanvas === 'function') this.renderGraphCardCanvas();
+      this.requestRender();
+    }
+
+    if (typeof this.scheduleSaveUserPreferences === 'function') {
+      this.scheduleSaveUserPreferences();
+    }
   }
 
   setInkSize(size) {
@@ -8716,7 +8802,7 @@ class GraphApp {
       }
 
       const penStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
-      this.drawPenStyledPointArray(ctx, pts, stroke.isHighlighter ? ctx.lineWidth : baseSize, penStyle);
+      this.drawPenStyledPointArray(ctx, pts, stroke.isHighlighter ? ctx.lineWidth : baseSize, penStyle, stroke.softBlur, Boolean(stroke.isHighlighter));
 
       ctx.restore();
     });
@@ -9448,6 +9534,7 @@ class GraphApp {
           highlighterSize: (this.activeInkTool === 'highlighter') ? (this.currentHighlighterSize || 16) : undefined,
           isHighlighter: (this.activeInkTool === 'highlighter'),
           penStyle: initCardPenStyle,
+          softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
           _hasHwP: hasHwP,
           tStart: recT,
           tEnd: recT,
@@ -10235,7 +10322,7 @@ class GraphApp {
             p: pt.p !== undefined ? pt.p : 0.5
           }));
           const penStyle = st.isHighlighter ? 'ballpen' : (st.penStyle || 'ballpen');
-          this.drawPenStyledPointArray(cCtx, pts, st.isHighlighter ? cCtx.lineWidth : baseSize, penStyle);
+          this.drawPenStyledPointArray(cCtx, pts, st.isHighlighter ? cCtx.lineWidth : baseSize, penStyle, st.softBlur, Boolean(st.isHighlighter));
           cCtx.restore();
         });
         cCtx.restore();
@@ -10289,6 +10376,7 @@ class GraphApp {
           highlighterSize: (this.activeInkTool === 'highlighter') ? (this.currentHighlighterSize || 16) : undefined,
           isHighlighter: (this.activeInkTool === 'highlighter'),
           penStyle: initExtraPenStyle,
+          softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
           _hasHwP: hasHwP,
           tStart: recT,
           tEnd: recT,
@@ -12191,9 +12279,12 @@ class GraphApp {
     const measuredWidgetRect = typeof this._getStageElementRect === 'function'
       ? this._getStageElementRect(widget)
       : widget.getBoundingClientRect();
-    const w = (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 140)
+    const baseW = (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 140)
       ? rawStyleW
       : (parseFloat(widget._savedExpandedWidth) || (Number.isFinite(rawStyleW) && rawStyleW >= 140 ? rawStyleW : 0) || (!isMin && measuredWidgetRect ? measuredWidgetRect.width : 400) || 400);
+    const w = (!isMin && measuredWidgetRect && measuredWidgetRect.width > baseW)
+      ? measuredWidgetRect.width
+      : baseW;
     const aspect = this.graphCardAspect || 0.85;
     const imgW = w;
     const imgH = Math.round(imgW * aspect);
@@ -12291,7 +12382,7 @@ class GraphApp {
         p: pt.p !== undefined ? pt.p : 0.5
       }));
       const penStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
-      this.drawPenStyledPointArray(ctx, pts, stroke.isHighlighter ? ctx.lineWidth : baseSize, penStyle);
+      this.drawPenStyledPointArray(ctx, pts, stroke.isHighlighter ? ctx.lineWidth : baseSize, penStyle, stroke.softBlur, Boolean(stroke.isHighlighter));
       ctx.restore();
     });
 
@@ -12428,6 +12519,7 @@ class GraphApp {
           highlighterSize: (this.activeInkTool === 'highlighter') ? (this.currentHighlighterSize || 16) : undefined,
           isHighlighter: (this.activeInkTool === 'highlighter'),
           penStyle: initGraphCardPenStyle,
+          softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
           _hasHwP: hasHwP,
           tStart: recT,
           tEnd: recT,
@@ -12791,9 +12883,9 @@ class GraphApp {
     this._hasSceneFreeze = true;
   }
 
-  // ✒️ [굿노트 3종 필기 펜 스타일 전환 및 가변 필압·속도 굵기 연산 엔진]
+  // ✒️ [4종 필기 펜 스타일(볼펜 · 납작펜 · 만년필 · 붓펜) 전환 및 아이캔스크린 소프트 블러/모퉁이 보정 엔진]
   setInkPenStyle(styleKey, showMsg = true) {
-    if (!['ballpen', 'fountain', 'brush'].includes(styleKey)) return;
+    if (!['ballpen', 'flat', 'fountain', 'brush'].includes(styleKey)) return;
     this.inkPenStyle = styleKey;
     try {
       localStorage.setItem('graphly_ink_pen_style_v1', styleKey);
@@ -12807,6 +12899,7 @@ class GraphApp {
     if (showMsg) {
       const labels = {
         ballpen: '🖊️ 볼펜 스타일 (일정한 굵기)',
+        flat: '📏 납작펜 스타일 (가로획은 얇고 세로획은 도톰한 납작 닙)',
         fountain: '✒️ 만년필 스타일 (부드러운 필압 · 날렵한 삐침)',
         brush: '🖌️ 붓펜 스타일 (강한 필압 대비 · 붓 터치)'
       };
@@ -12815,14 +12908,14 @@ class GraphApp {
   }
 
   computePenStyleWidth(baseSize, p, penStyle = 'ballpen') {
-    if (!penStyle || penStyle === 'ballpen') {
+    if (!penStyle || penStyle === 'ballpen' || penStyle === 'flat') {
       return Math.max(0.8, baseSize * 0.98);
     }
     const clampedP = Math.max(0.03, Math.min(1.0, (typeof p === 'number' && !isNaN(p)) ? p : 0.5));
     // 🌟 [굿노트·노타빌리티 급 글씨 크기(baseSize) 연동 다이나믹 레인지 증폭]:
     // 글씨 크기를 크게 올릴수록(4.2 -> 12+) 끝단 삐침(minFactor)은 더 날렵하게 유지하면서
     // 힘주어 누르는 몸통(maxFactor)은 훨씬 더 넓게 벌어져, 별도의 세부 슬라이더 없이도
-    // [볼펜 ➔ 만년필 ➔ 붓펜] 전환 및 글씨 크기 확대 시 극적인 필감 차이를 체감할 수 있습니다!
+    // [볼펜 ➔ 납작펜 ➔ 만년필 ➔ 붓펜] 전환 및 글씨 크기 확대 시 극적인 필감 차이를 체감할 수 있습니다!
     const sizeRatio = Math.max(0, Math.min(1.0, (baseSize - 3.5) / 8.5));
     if (penStyle === 'fountain') {
       // ✒️ 만년필: 단정한 닙 탄성 — 날렵한 삐침(0.24x~0.28x) ~ 힘준 획(1.52x~1.72x, 약 6~7배 다이나믹 레인지)
@@ -12839,6 +12932,47 @@ class GraphApp {
       return Math.max(0.32, baseSize * factor);
     }
     return Math.max(0.8, baseSize * 0.98);
+  }
+
+  // 🌟 [아이캔스크린(ICanScreen) 스타일 펜 모퉁이 삐뚤림 라운딩 보정 필터]
+  // 블러(softBlur: 0.0 ~ 5.0) 강도에 비례하여 날카롭게 꺾이거나 미세하게 떨린 모퉁이 정점들을
+  // 이웃 중점 방향으로 부드럽게 쿠셔닝(Laplacian Corner Relaxation)하여 유려한 곡선으로 다듬습니다!
+  smoothStrokePointsForBlur(pts, blurLevel = 0) {
+    if (!pts || pts.length < 3 || !(blurLevel > 0)) return pts;
+    const clampedBlur = Math.min(5.0, Math.max(0, blurLevel));
+    const passes = clampedBlur >= 2.2 ? 2 : 1;
+    const baseAlpha = Math.min(0.46, clampedBlur * 0.105);
+    let cur = pts;
+    for (let pass = 0; pass < passes; pass++) {
+      const next = new Array(cur.length);
+      next[0] = cur[0];
+      next[cur.length - 1] = cur[cur.length - 1];
+      for (let i = 1; i < cur.length - 1; i++) {
+        const prev = cur[i - 1];
+        const p = cur[i];
+        const nxt = cur[i + 1];
+        const vx1 = p.x - prev.x, vy1 = p.y - prev.y;
+        const vx2 = nxt.x - p.x, vy2 = nxt.y - p.y;
+        const len1 = Math.hypot(vx1, vy1), len2 = Math.hypot(vx2, vy2);
+        let alpha = baseAlpha;
+        if (len1 > 0.4 && len2 > 0.4) {
+          const cosAng = (vx1 * vx2 + vy1 * vy2) / (len1 * len2);
+          // 모퉁이가 급격히 꺾이는 구간(cosAng < 0.75)일수록 삐뚤림을 더 매끄럽게 둥글려줌
+          if (cosAng < 0.75) {
+            alpha = Math.min(0.56, baseAlpha * (1.0 + (0.75 - cosAng) * 0.45));
+          }
+        }
+        const midX = (prev.x + nxt.x) * 0.5;
+        const midY = (prev.y + nxt.y) * 0.5;
+        next[i] = {
+          ...p,
+          x: p.x * (1 - alpha) + midX * alpha,
+          y: p.y * (1 - alpha) + midY * alpha
+        };
+      }
+      cur = next;
+    }
+    return cur;
   }
 
   drawVariableWidthQuadSegment(ctx, x0, y0, cx, cy, x1, y1, w0, w1) {
@@ -12902,7 +13036,7 @@ class GraphApp {
   // 🌟 [굿노트 6 · 노타빌리티 급 하이브리드 필압·속도·코너 감응 연산기]
   // 하드웨어 필압(애플펜슬/S펜/와콤)의 S-커브 감도 증폭 + 마우스/전자칠판의 속도·꺾임(Corner Dwell) 역산 융합!
   computeDynamicStrokePressure(rawPressure, hasRealPressure, moveStepDist, penStyle = 'ballpen', prevPressure = 0.5, ptCount = 1, cornerBoost = 0) {
-    if (!penStyle || penStyle === 'ballpen') return 0.5;
+    if (!penStyle || penStyle === 'ballpen' || penStyle === 'flat') return 0.5;
     const isBrush = (penStyle === 'brush');
     const normSpd = Math.min(1.0, Math.max(0, (moveStepDist - (isBrush ? 2.0 : 2.5)) / (isBrush ? 33 : 40)));
     const velP = isBrush
@@ -12929,65 +13063,122 @@ class GraphApp {
     return Math.max(0.04, Math.min(1.0, smoothPrev * (1 - alpha) + targetP * alpha));
   }
 
-  drawPenStyledPointArray(ctx, pts, baseSize, penStyle = 'ballpen') {
-    if (!ctx || !pts || pts.length === 0) return;
+  drawPenStyledPointArray(ctx, rawPts, baseSize, penStyle = 'ballpen', softBlur = null, isHighlighter = false) {
+    if (!ctx || !rawPts || rawPts.length === 0) return;
+    const blurVal = isHighlighter
+      ? 0
+      : Math.max(0, Math.min(5.0, (typeof softBlur === 'number' && !isNaN(softBlur)) ? softBlur : (this.inkSoftBlur || 0)));
+    const pts = (blurVal > 0 && rawPts.length >= 3) ? this.smoothStrokePointsForBlur(rawPts, blurVal) : rawPts;
+    const effBaseSize = (blurVal > 0) ? baseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : baseSize;
+    const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
+    const strokeCol = ctx.strokeStyle || '#1e293b';
+
+    ctx.save();
+    if (blurVal > 0 && (penStyle === 'ballpen' || penStyle === 'flat' || pts.length <= 2)) {
+      ctx.shadowColor = strokeCol;
+      ctx.shadowBlur = blurVal * dpr * 0.88;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+    } else {
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+    }
+
+    // 📏 [납작펜('flat') 모드]: 타원형 납작 닙 스케일 변환(가로 1.38x · 세로 0.68x) + 좌표 역보정으로 1:1 위치 일치!
+    const isFlatNib = (!isHighlighter && penStyle === 'flat');
+    const nibX = isFlatNib ? 1.38 : 1.0;
+    const nibY = isFlatNib ? 0.68 : 1.0;
+    if (isFlatNib) {
+      ctx.scale(nibX, nibY);
+    }
+
     if (pts.length === 1) {
-      const w0 = this.computePenStyleWidth(baseSize, pts[0].p, penStyle);
+      const w0 = this.computePenStyleWidth(effBaseSize, pts[0].p, penStyle);
       ctx.beginPath();
-      ctx.arc(pts[0].x, pts[0].y, w0 / 2, 0, Math.PI * 2);
+      ctx.arc(pts[0].x / nibX, pts[0].y / nibY, w0 / 2, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
       return;
     }
     if (pts.length === 2) {
-      if (penStyle === 'ballpen') {
-        ctx.lineWidth = Math.max(1.2, baseSize);
+      if (penStyle === 'ballpen' || penStyle === 'flat') {
+        ctx.lineWidth = Math.max(1.2, effBaseSize);
         ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        ctx.lineTo(pts[1].x, pts[1].y);
+        ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
+        ctx.lineTo(pts[1].x / nibX, pts[1].y / nibY);
         ctx.stroke();
       } else {
-        const w0 = this.computePenStyleWidth(baseSize, pts[0].p, penStyle);
-        const w1 = this.computePenStyleWidth(baseSize, pts[1].p, penStyle);
+        const w0 = this.computePenStyleWidth(effBaseSize, pts[0].p, penStyle);
+        const w1 = this.computePenStyleWidth(effBaseSize, pts[1].p, penStyle);
         this.drawVariableWidthLineSegment(ctx, pts[0].x, pts[0].y, pts[1].x, pts[1].y, w0, w1);
       }
+      ctx.restore();
       return;
     }
-    if (penStyle === 'ballpen') {
-      ctx.lineWidth = Math.max(1.2, baseSize);
+    if (penStyle === 'ballpen' || penStyle === 'flat') {
+      ctx.lineWidth = Math.max(1.2, effBaseSize);
       ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
+      ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
       const firstMidX = (pts[0].x + pts[1].x) * 0.5;
       const firstMidY = (pts[0].y + pts[1].y) * 0.5;
-      ctx.lineTo(firstMidX, firstMidY);
+      ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
       for (let i = 1; i < pts.length - 1; i++) {
         const midX = (pts[i].x + pts[i + 1].x) * 0.5;
         const midY = (pts[i].y + pts[i + 1].y) * 0.5;
-        ctx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
+        ctx.quadraticCurveTo(pts[i].x / nibX, pts[i].y / nibY, midX / nibX, midY / nibY);
       }
       const last = pts[pts.length - 1];
-      ctx.lineTo(last.x, last.y);
+      ctx.lineTo(last.x / nibX, last.y / nibY);
       ctx.stroke();
+      ctx.restore();
       return;
     }
+
+    // 만년필 / 붓펜에서 블러가 켜진 경우: 세그먼트 이음매 그림자 중첩이 생기지 않도록 단일 연속 백본에 소프트 헤일로를 먼저 깔아줌
+    if (blurVal > 0) {
+      ctx.save();
+      ctx.shadowColor = strokeCol;
+      ctx.shadowBlur = blurVal * dpr * 0.95;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.lineWidth = Math.max(1.0, effBaseSize * 0.72);
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      const fmX = (pts[0].x + pts[1].x) * 0.5;
+      const fmY = (pts[0].y + pts[1].y) * 0.5;
+      ctx.lineTo(fmX, fmY);
+      for (let i = 1; i < pts.length - 1; i++) {
+        const mX = (pts[i].x + pts[i + 1].x) * 0.5;
+        const mY = (pts[i].y + pts[i + 1].y) * 0.5;
+        ctx.quadraticCurveTo(pts[i].x, pts[i].y, mX, mY);
+      }
+      const lst = pts[pts.length - 1];
+      ctx.lineTo(lst.x, lst.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     const firstMidX = (pts[0].x + pts[1].x) * 0.5;
     const firstMidY = (pts[0].y + pts[1].y) * 0.5;
-    const w0 = this.computePenStyleWidth(baseSize, pts[0].p, penStyle);
-    let prevMidW = this.computePenStyleWidth(baseSize, (pts[0].p + pts[1].p) * 0.5, penStyle);
+    const w0 = this.computePenStyleWidth(effBaseSize, pts[0].p, penStyle);
+    let prevMidW = this.computePenStyleWidth(effBaseSize, (pts[0].p + pts[1].p) * 0.5, penStyle);
     this.drawVariableWidthLineSegment(ctx, pts[0].x, pts[0].y, firstMidX, firstMidY, w0, prevMidW);
     let prevMidX = firstMidX;
     let prevMidY = firstMidY;
     for (let i = 1; i < pts.length - 1; i++) {
       const midX = (pts[i].x + pts[i + 1].x) * 0.5;
       const midY = (pts[i].y + pts[i + 1].y) * 0.5;
-      const nextMidW = this.computePenStyleWidth(baseSize, (pts[i].p + pts[i + 1].p) * 0.5, penStyle);
+      const nextMidW = this.computePenStyleWidth(effBaseSize, (pts[i].p + pts[i + 1].p) * 0.5, penStyle);
       this.drawVariableWidthQuadSegment(ctx, prevMidX, prevMidY, pts[i].x, pts[i].y, midX, midY, prevMidW, nextMidW);
       prevMidX = midX;
       prevMidY = midY;
       prevMidW = nextMidW;
     }
     const last = pts[pts.length - 1];
-    const wLast = this.computePenStyleWidth(baseSize, last.p, penStyle);
+    const wLast = this.computePenStyleWidth(effBaseSize, last.p, penStyle);
     this.drawVariableWidthLineSegment(ctx, prevMidX, prevMidY, last.x, last.y, prevMidW, wLast);
+    ctx.restore();
   }
 
   // 🌟 [서브프레임 0.00ms 즉각 잉크 타격]: requestAnimationFrame 대기조차 없이 pointermove 즉시 캔버스에 증분 캡슐을 박아넣어 펜 끝 지연 0ms 달성!
@@ -12998,14 +13189,20 @@ class GraphApp {
     const zoomRatio = isBoardInk
       ? ((this.boardZoom || 1.0) / (stroke.boardZoom || 1.0))
       : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
-    const baseSize = (stroke.size || 4.2) * zoomRatio;
+    const rawBaseSize = (stroke.size || 4.2) * zoomRatio;
     const penStyle = stroke.penStyle || 'ballpen';
+    const blurVal = Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
+    const baseSize = (blurVal > 0) ? rawBaseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : rawBaseSize;
+    const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
 
     const L = screenPts.length;
     const lastPt = screenPts[L - 1];
     const lineW = this.computePenStyleWidth(baseSize, lastPt.p, penStyle);
 
     const strokeColor = this.isMonochromeMode ? '#000000' : (stroke.color || '#1e293b');
+    const isFlatNib = (penStyle === 'flat');
+    const nibX = isFlatNib ? 1.38 : 1.0;
+    const nibY = isFlatNib ? 0.68 : 1.0;
 
     const drawPathOnCtx = (color) => {
       ctx.save();
@@ -13020,21 +13217,31 @@ class GraphApp {
       ctx.lineWidth = lineW;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.shadowBlur = 0;
+      if (blurVal > 0) {
+        ctx.shadowColor = color;
+        ctx.shadowBlur = blurVal * dpr * 0.65;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      } else {
+        ctx.shadowBlur = 0;
+      }
+      if (isFlatNib) {
+        ctx.scale(nibX, nibY);
+      }
 
       if (L === 1) {
         ctx.beginPath();
-        ctx.arc(lastPt.x, lastPt.y, lineW / 2, 0, Math.PI * 2);
+        ctx.arc(lastPt.x / nibX, lastPt.y / nibY, lineW / 2, 0, Math.PI * 2);
         ctx.fill();
       } else if (L === 2) {
         const p0 = screenPts[0];
         const p1 = screenPts[1];
         const mx = isFinalTail ? p1.x : (p0.x + p1.x) * 0.5;
         const my = isFinalTail ? p1.y : (p0.y + p1.y) * 0.5;
-        if (penStyle === 'ballpen') {
+        if (penStyle === 'ballpen' || penStyle === 'flat') {
           ctx.beginPath();
-          ctx.moveTo(p0.x, p0.y);
-          ctx.lineTo(mx, my);
+          ctx.moveTo(p0.x / nibX, p0.y / nibY);
+          ctx.lineTo(mx / nibX, my / nibY);
           ctx.stroke();
         } else {
           const w0 = this.computePenStyleWidth(baseSize, p0.p, penStyle);
@@ -13049,14 +13256,14 @@ class GraphApp {
         const mid1Y = (pA.y + pB.y) * 0.5;
         const mid2X = (pB.x + pC.x) * 0.5;
         const mid2Y = (pB.y + pC.y) * 0.5;
-        if (penStyle === 'ballpen') {
+        if (penStyle === 'ballpen' || penStyle === 'flat') {
           ctx.beginPath();
           if (isFinalTail) {
-            ctx.moveTo(mid2X, mid2Y);
-            ctx.lineTo(pC.x, pC.y);
+            ctx.moveTo(mid2X / nibX, mid2Y / nibY);
+            ctx.lineTo(pC.x / nibX, pC.y / nibY);
           } else {
-            ctx.moveTo(mid1X, mid1Y);
-            ctx.quadraticCurveTo(pB.x, pB.y, mid2X, mid2Y);
+            ctx.moveTo(mid1X / nibX, mid1Y / nibY);
+            ctx.quadraticCurveTo(pB.x / nibX, pB.y / nibY, mid2X / nibX, mid2Y / nibY);
           }
           ctx.stroke();
         } else {
@@ -13280,56 +13487,14 @@ class GraphApp {
     targetCtx.shadowOffsetX = 0;
     targetCtx.shadowOffsetY = 0;
 
-    if (pts.length === 1) {
-      targetCtx.beginPath();
-      targetCtx.arc(pts[0].x, pts[0].y, targetCtx.lineWidth / 2, 0, Math.PI * 2);
-      targetCtx.fill();
-    } else if (pts.length === 2) {
-      if (penStyle === 'ballpen') {
-        targetCtx.beginPath();
-        targetCtx.moveTo(pts[0].x, pts[0].y);
-        targetCtx.lineTo(pts[1].x, pts[1].y);
-        targetCtx.stroke();
-      } else {
-        const w0 = this.computePenStyleWidth(baseSize, pts[0].p, penStyle);
-        const w1 = this.computePenStyleWidth(baseSize, pts[1].p, penStyle);
-        this.drawVariableWidthLineSegment(targetCtx, pts[0].x, pts[0].y, pts[1].x, pts[1].y, w0, w1);
-      }
-    } else if (penStyle === 'ballpen') {
-      targetCtx.beginPath();
-      targetCtx.moveTo(pts[0].x, pts[0].y);
-      const firstMidX = (pts[0].x + pts[1].x) * 0.5;
-      const firstMidY = (pts[0].y + pts[1].y) * 0.5;
-      targetCtx.lineTo(firstMidX, firstMidY);
-      for (let i = 1; i < pts.length - 1; i++) {
-        const midX = (pts[i].x + pts[i + 1].x) * 0.5;
-        const midY = (pts[i].y + pts[i + 1].y) * 0.5;
-        targetCtx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
-      }
-      const last = pts[pts.length - 1];
-      targetCtx.lineTo(last.x, last.y);
-      targetCtx.stroke();
-    } else {
-      const firstMidX = (pts[0].x + pts[1].x) * 0.5;
-      const firstMidY = (pts[0].y + pts[1].y) * 0.5;
-      const w0 = this.computePenStyleWidth(baseSize, pts[0].p, penStyle);
-      let prevMidW = this.computePenStyleWidth(baseSize, (pts[0].p + pts[1].p) * 0.5, penStyle);
-      this.drawVariableWidthLineSegment(targetCtx, pts[0].x, pts[0].y, firstMidX, firstMidY, w0, prevMidW);
-      let prevMidX = firstMidX;
-      let prevMidY = firstMidY;
-      for (let i = 1; i < pts.length - 1; i++) {
-        const midX = (pts[i].x + pts[i + 1].x) * 0.5;
-        const midY = (pts[i].y + pts[i + 1].y) * 0.5;
-        const nextMidW = this.computePenStyleWidth(baseSize, (pts[i].p + pts[i + 1].p) * 0.5, penStyle);
-        this.drawVariableWidthQuadSegment(targetCtx, prevMidX, prevMidY, pts[i].x, pts[i].y, midX, midY, prevMidW, nextMidW);
-        prevMidX = midX;
-        prevMidY = midY;
-        prevMidW = nextMidW;
-      }
-      const last = pts[pts.length - 1];
-      const wEnd = this.computePenStyleWidth(baseSize, last.p, penStyle);
-      this.drawVariableWidthLineSegment(targetCtx, prevMidX, prevMidY, last.x, last.y, prevMidW, wEnd);
-    }
+    this.drawPenStyledPointArray(
+      targetCtx,
+      pts,
+      stroke.isHighlighter ? targetCtx.lineWidth : baseSize,
+      penStyle,
+      stroke.softBlur,
+      Boolean(stroke.isHighlighter)
+    );
 
     targetCtx.restore();
   }
@@ -18949,6 +19114,7 @@ class GraphApp {
       updatedAt: Date.now(),
       inkDockPosition: this.inkDockPosition || 'bottom',
       inkPenStyle: this.inkPenStyle || 'ballpen',
+      inkSoftBlur: typeof this.inkSoftBlur === 'number' ? this.inkSoftBlur : 0.0,
       inkSize: typeof this.currentInkSize === 'number' ? this.currentInkSize : 4.2,
       highlighterSize: typeof this.currentHighlighterSize === 'number' ? this.currentHighlighterSize : 16,
       eraserSize: typeof this.currentEraserSize === 'number' ? this.currentEraserSize : 14,
@@ -18971,8 +19137,11 @@ class GraphApp {
       if (prefs.inkDockPosition && ['left', 'bottom', 'right'].includes(prefs.inkDockPosition)) {
         this.setInkDockPosition(prefs.inkDockPosition, !silent, false);
       }
-      if (prefs.inkPenStyle && ['ballpen', 'fountain', 'brush'].includes(prefs.inkPenStyle)) {
+      if (prefs.inkPenStyle && ['ballpen', 'flat', 'fountain', 'brush'].includes(prefs.inkPenStyle)) {
         this.setInkPenStyle(prefs.inkPenStyle, !silent);
+      }
+      if (typeof prefs.inkSoftBlur === 'number' && !isNaN(prefs.inkSoftBlur)) {
+        this.setInkSoftBlur(prefs.inkSoftBlur, false);
       }
       if (typeof prefs.inkSize === 'number' && !isNaN(prefs.inkSize)) {
         this.setInkSize(prefs.inkSize);
@@ -19062,6 +19231,7 @@ class GraphApp {
         const defaultPrefs = {
           inkDockPosition: 'bottom',
           inkPenStyle: 'ballpen',
+          inkSoftBlur: 0.0,
           inkSize: 4.2,
           highlighterSize: 16,
           eraserSize: 14,
@@ -25356,6 +25526,7 @@ class GraphApp {
           id: 'ink_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
           tool: this.activeInkTool,
           penStyle: isHighlighterStroke ? 'ballpen' : (this.inkPenStyle || 'ballpen'),
+          softBlur: isHighlighterStroke ? 0 : (this.inkSoftBlur || 0),
           target: strokeTarget,
           onPdfBoard: Boolean(this.pdfPageBoardData && isGraphTarget),
           color: this.currentInkColor,
@@ -26121,18 +26292,19 @@ class GraphApp {
             // 느린 세필 필기(step < 14px)에서는 미세 손떨림을 잡아주고, 빠른 획이나 형광펜에서는 펜촉을 지연 없이 1:1로 바짝 따라갑니다!
             if (!this.currentInkStroke.isHighlighter) {
               const stepD = lastRaw ? Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y) : 0;
-              const smoothScale = stepD > 12 ? Math.max(0, 1 - (stepD - 12) / 28) : 1.0;
+              const blurBoost = Math.min(1.0, (this.inkSoftBlur || 0) / 5.0);
+              const smoothScale = stepD > (12 + blurBoost * 8) ? Math.max(0, 1 - (stepD - (12 + blurBoost * 8)) / 28) : 1.0;
               if (liveLen >= 2 && smoothScale > 0.01) {
                 const pPrev1 = this._liveBezierScreenPts[liveLen - 1];
                 const pPrev2 = this._liveBezierScreenPts[liveLen - 2];
-                const w2 = 0.12 * smoothScale;
-                const w1 = 0.33 * smoothScale;
+                const w2 = (0.12 + blurBoost * 0.06) * smoothScale;
+                const w1 = (0.33 + blurBoost * 0.12) * smoothScale;
                 const w0 = 1.0 - w1 - w2;
                 sx = pPrev2.x * w2 + pPrev1.x * w1 + pPos.x * w0;
                 sy = pPrev2.y * w2 + pPrev1.y * w1 + pPos.y * w0;
               } else if (liveLen === 1 && smoothScale > 0.01) {
                 const pPrev1 = this._liveBezierScreenPts[0];
-                const w1 = 0.30 * smoothScale;
+                const w1 = (0.30 + blurBoost * 0.14) * smoothScale;
                 const w0 = 1.0 - w1;
                 sx = pPrev1.x * w1 + pPos.x * w0;
                 sy = pPrev1.y * w1 + pPos.y * w0;

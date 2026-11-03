@@ -3811,6 +3811,11 @@ body.pdf-modal-open #lassoActionFloatingBar {
   pointer-events: none !important;
 }
 
+.graph-card-widget,
+.extra-graph-card-widget {
+  min-width: 170px !important;
+}
+
 /* 🌟 [대표님 지시: 두꺼운 선/음영 싹 걷어내고 깔끔하고 미니멀한 단일 카드 디자인] 🌟 */
 .problem-card-body {
   position: relative;
