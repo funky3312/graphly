@@ -34277,11 +34277,21 @@ class GraphApp {
     const merged = JSON.parse(JSON.stringify(kfA));
     const lerp = (a, b) => (typeof a === 'number' && typeof b === 'number') ? (a + (b - a) * alpha) : a;
 
-    merged.panX = lerp(kfA.panX, kfB.panX);
-    merged.panY = lerp(kfA.panY, kfB.panY);
-    merged.zoomLevel = lerp(kfA.zoomLevel, kfB.zoomLevel);
-    merged.xSpan = lerp(kfA.xSpan || 8.5, kfB.xSpan || 8.5);
-    merged.ySpan = lerp(kfA.ySpan || 6.0, kfB.ySpan || 6.0);
+    // 서랍 열림/닫힘, 그래프 추가/삭제, 삼각함수 화각 전환 등 메뉴 클릭에 의한 불연속 카메라 리셋 시에는
+    // 클릭 전 구간에서 카메라(panX, zoomLevel, xSpan)가 미리 미끄러져 포인터 투영 좌표가 튀는 현상을 원천 차단!
+    const isDiscreteMenuCameraJump = (
+      Boolean(kfA.drawerOpen) !== Boolean(kfB.drawerOpen) ||
+      ((kfA.graphs && kfA.graphs.length) || 0) !== ((kfB.graphs && kfB.graphs.length) || 0) ||
+      (kfA.xSpan || 8.5) !== (kfB.xSpan || 8.5) ||
+      (kfA.ySpan || 6.0) !== (kfB.ySpan || 6.0)
+    );
+    if (!isDiscreteMenuCameraJump) {
+      merged.panX = lerp(kfA.panX, kfB.panX);
+      merged.panY = lerp(kfA.panY, kfB.panY);
+      merged.zoomLevel = lerp(kfA.zoomLevel, kfB.zoomLevel);
+      merged.xSpan = lerp(kfA.xSpan || 8.5, kfB.xSpan || 8.5);
+      merged.ySpan = lerp(kfA.ySpan || 6.0, kfB.ySpan || 6.0);
+    }
     merged.boardPanX = lerp(kfA.boardPanX, kfB.boardPanX);
     merged.boardPanY = lerp(kfA.boardPanY, kfB.boardPanY);
     merged.boardZoom = lerp(kfA.boardZoom, kfB.boardZoom);
@@ -34436,9 +34446,142 @@ class GraphApp {
     }
   }
 
-  _resolveCursorEventScreenPos(ev) {
+  _isAudioDrawerOpenNearTime(targetMs, windowMs = 450) {
+    if (!this.audioSyncData || typeof targetMs !== 'number') return false;
+    const tMin = targetMs - windowMs;
+    const tMax = targetMs + windowMs;
+    let stateAtMin = this.audioSyncData.initialState || null;
+    const timeline = this.audioSyncData.timeline || [];
+    for (let i = 0; i < timeline.length; i++) {
+      const ev = timeline[i];
+      if (!ev || ev.type !== 'state' || !ev.state) continue;
+      if (ev.t <= tMin) {
+        stateAtMin = ev.state;
+      } else if (ev.t <= tMax) {
+        if (ev.state.drawerOpen) return true;
+      } else {
+        break;
+      }
+    }
+    return Boolean(stateAtMin && stateAtMin.drawerOpen);
+  }
+
+  _isTopLeftFixedMenuCursorEvent(ev) {
+    if (!ev) return false;
+    if (ev.uiBarId === 'railDrawer' || ev.uiBarId === 'railDock' || ev.uiBarId === 'sidebarRail') {
+      return true;
+    }
+    if (
+      !ev.isDrawing &&
+      ev.cursorKind !== 'grabbing' &&
+      !ev.cardKey &&
+      typeof ev.x === 'number' &&
+      typeof ev.y === 'number'
+    ) {
+      if (ev.x <= 64 && ev.y >= 10 && ev.y <= (window.innerHeight || 900) - 10) {
+        return true;
+      }
+      if (ev.x <= 385 && this._isAudioDrawerOpenNearTime(ev.t, 450)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  _projectCanvasCursorWithKeyframe(ev, kf) {
     if (!ev) return null;
-    if (ev.uiScreen) {
+    if (typeof ev.bx === 'number' && typeof ev.by === 'number') {
+      const bz = (kf && typeof kf.boardZoom === 'number') ? kf.boardZoom : (this.boardZoom || 1.0);
+      const bPanX = (kf && typeof kf.boardPanX === 'number') ? kf.boardPanX : (this.boardPanX || 0);
+      const bPanY = (kf && typeof kf.boardPanY === 'number') ? kf.boardPanY : (this.boardPanY || 0);
+      const bOffX = (kf && typeof kf.boardZoomOffsetX === 'number') ? kf.boardZoomOffsetX : (this.boardZoomOffsetX || 0);
+      const bOffY = (kf && typeof kf.boardZoomOffsetY === 'number') ? kf.boardZoomOffsetY : (this.boardZoomOffsetY || 0);
+      return {
+        x: ev.bx * bz + bOffX + bPanX,
+        y: ev.by * bz + bOffY + bPanY
+      };
+    }
+    if (typeof ev.mx === 'number' && typeof ev.my === 'number') {
+      const panX = (kf && typeof kf.panX === 'number') ? kf.panX : (this.panX || 0);
+      const panY = (kf && typeof kf.panY === 'number') ? kf.panY : (this.panY || 0);
+      const zoomLevel = (kf && typeof kf.zoomLevel === 'number' && kf.zoomLevel > 0) ? kf.zoomLevel : (this.zoomLevel || 1.0);
+      const xSpan = (kf && typeof kf.xSpan === 'number' && kf.xSpan > 0) ? kf.xSpan : (this.xSpan || 8.5);
+      const ySpan = (kf && typeof kf.ySpan === 'number' && kf.ySpan > 0) ? kf.ySpan : (this.ySpan || 6.0);
+      const sw = this.screenWidth || window.innerWidth || 1280;
+      const sh = this.screenHeight || window.innerHeight || 720;
+      const cx = sw / 2 + panX;
+      const cy = sh / 2 + panY;
+      const effSpanY = ySpan / zoomLevel;
+      const unitScale = (sh / 2) / effSpanY;
+      const scaleX = this.lockAspect ? unitScale : ((sw / 2) / (xSpan / zoomLevel));
+      const scaleY = unitScale;
+      return {
+        x: cx + ev.mx * scaleX,
+        y: cy - ev.my * scaleY
+      };
+    }
+    return { x: ev.x, y: ev.y };
+  }
+
+  _projectCanvasCursorAtEventCamera(ev) {
+    if (!ev) return null;
+    if (!this.audioSyncData || typeof ev.t !== 'number') {
+      return this._projectCanvasCursorWithKeyframe(ev, null);
+    }
+    let prevKf = this.audioSyncData.initialState || null;
+    let nextKf = null;
+    let nextKfDt = Infinity;
+    const timeline = this.audioSyncData.timeline || [];
+    for (let i = 0; i < timeline.length; i++) {
+      const item = timeline[i];
+      if (!item || item.type !== 'state' || !item.state) continue;
+      if (item.t <= ev.t) {
+        prevKf = item.state;
+      } else {
+        nextKf = item.state;
+        nextKfDt = item.t - ev.t;
+        break;
+      }
+    }
+    // 클릭 직후 setTimeout(..., 0/35)으로 인해 state 키프레임이 커서 이벤트보다 수십 ms 뒤에 찍힌 경우,
+    // 원래 화면 좌표(ev.x, ev.y)와 더 일치하는 카메라 키프레임을 자동 선택하여 카메라 불일치 점프를 100% 방지!
+    if (prevKf && nextKf && nextKfDt <= 90 && typeof ev.x === 'number' && typeof ev.y === 'number') {
+      const pPrev = this._projectCanvasCursorWithKeyframe(ev, prevKf);
+      const pNext = this._projectCanvasCursorWithKeyframe(ev, nextKf);
+      if (pPrev && pNext) {
+        const dPrev = Math.hypot(pPrev.x - ev.x, pPrev.y - ev.y);
+        const dNext = Math.hypot(pNext.x - ev.x, pNext.y - ev.y);
+        if (dNext + 25 < dPrev) {
+          return pNext;
+        }
+      }
+    }
+    return this._projectCanvasCursorWithKeyframe(ev, prevKf);
+  }
+
+  _resolveUiEventScreenPosOnly(ev) {
+    if (!ev) return null;
+    // 🌟 [핵심 해결]: 좌측 아이콘 독(#railDock)과 슬라이드오버 서랍(#railDrawer)은 모든 모니터 해상도에서
+    // 좌상단 고정 픽셀(left: 18px/66px, top: 18px)에 위치하므로, 원본 화면 좌표(ev.x, ev.y)를 그대로 사용하면
+    // (1) 구버전 녹화본의 0.24초 서랍 슬라이드 애니메이션 중 잘못 찍힌 버튼(uiBtnKey)/비율(unx)로 인한 300px 점프,
+    // (2) 모니터 세로 해상도 차이에 따른 버튼-여백 간 세로 비율(uny * br.height) 100px 점프,
+    // (3) 카테고리 탭 전환 시 버튼 인덱스(idx:railDrawer:N) 어긋남 점프가 단 1px도 발생하지 않습니다!
+    if (this._isTopLeftFixedMenuCursorEvent(ev)) {
+      const pos = { x: ev.x, y: ev.y };
+      ev._lastResolvedPos = pos;
+      return pos;
+    }
+
+    const barEl = ev.uiBarId ? document.getElementById(ev.uiBarId) : null;
+    let restoredDisplay = null;
+    let restoredVisibility = null;
+    if (barEl && barEl.style && window.getComputedStyle(barEl).display === 'none') {
+      restoredDisplay = barEl.style.display;
+      restoredVisibility = barEl.style.visibility;
+      barEl.style.visibility = 'hidden';
+      barEl.style.display = 'flex';
+    }
+    try {
       if (ev.uiBtnKey) {
         const btnEl = this._findAudioUiButtonByKey(ev.uiBtnKey, ev.uiBarId);
         if (btnEl && typeof btnEl.getBoundingClientRect === 'function') {
@@ -34455,34 +34598,43 @@ class GraphApp {
           }
         }
       }
-      if (ev.uiBarId) {
-        const barEl = document.getElementById(ev.uiBarId);
-        if (barEl && typeof barEl.getBoundingClientRect === 'function') {
-          const br = barEl.getBoundingClientRect();
-          if (br.width > 2 && br.height > 2 && br.left >= -2 && br.top >= -2 && br.right > 0 && br.bottom > 0) {
-            if (typeof ev.ux === 'number' && typeof ev.uy === 'number') {
-              const pos = {
-                x: br.left + Math.max(0, Math.min(br.width, ev.ux)),
-                y: br.top + Math.max(0, Math.min(br.height, ev.uy))
-              };
-              ev._lastResolvedPos = pos;
-              return pos;
-            }
-            if (typeof ev.unx === 'number' && typeof ev.uny === 'number') {
-              const pos = {
-                x: br.left + ev.unx * br.width,
-                y: br.top + ev.uny * br.height
-              };
-              ev._lastResolvedPos = pos;
-              return pos;
-            }
+      if (barEl && typeof barEl.getBoundingClientRect === 'function') {
+        const br = barEl.getBoundingClientRect();
+        if (br.width > 2 && br.height > 2 && br.left >= -2 && br.top >= -2 && br.right > 0 && br.bottom > 0) {
+          if (typeof ev.ux === 'number' && typeof ev.uy === 'number') {
+            const pos = {
+              x: br.left + Math.max(0, Math.min(br.width, ev.ux)),
+              y: br.top + Math.max(0, Math.min(br.height, ev.uy))
+            };
+            ev._lastResolvedPos = pos;
+            return pos;
+          }
+          if (typeof ev.unx === 'number' && typeof ev.uny === 'number') {
+            const pos = {
+              x: br.left + ev.unx * br.width,
+              y: br.top + ev.uny * br.height
+            };
+            ev._lastResolvedPos = pos;
+            return pos;
           }
         }
       }
-      if (ev._lastResolvedPos) {
-        return ev._lastResolvedPos;
+    } finally {
+      if (barEl && restoredDisplay !== null) {
+        barEl.style.display = restoredDisplay;
+        barEl.style.visibility = restoredVisibility;
       }
-      return { x: ev.x, y: ev.y };
+    }
+    if (ev._lastResolvedPos) {
+      return ev._lastResolvedPos;
+    }
+    return { x: ev.x, y: ev.y };
+  }
+
+  _resolveCursorEventScreenPos(ev) {
+    if (!ev) return null;
+    if (ev.uiScreen || this._isTopLeftFixedMenuCursorEvent(ev)) {
+      return this._resolveUiEventScreenPosOnly(ev);
     }
     if (ev.cardKey && typeof ev.nx === 'number' && typeof ev.ny === 'number') {
       const cardEl = this.getCardElementByAudioKey(ev.cardKey);
@@ -34499,13 +34651,86 @@ class GraphApp {
         }
       }
     }
-    if (typeof ev.bx === 'number' && typeof ev.by === 'number' && this.isGraphCovered && !this.pdfPageBoardData) {
-      return this.boardToScreen(ev.bx, ev.by);
+
+    const pCanvas = this._projectCanvasCursorAtEventCamera(ev);
+    // 🌟 [메뉴 ⟷ 캔버스 경계 크로스페이드 보정]:
+    // 필기 중(isDrawing)이거나 핸들/곡선 드래그 중(grabbing)이 아닐 때, 메뉴(UI 좌표계)와 캔버스(수학/칠판 좌표계) 사이를
+    // 오가는 450ms 구간에서 해상도/카메라 차이로 인해 경계면에서 포인터가 툭 튀는 현상을 매끄럽게 블렌딩!
+    if (
+      !ev.isDrawing &&
+      ev.cursorKind !== 'grabbing' &&
+      this.audioSyncData &&
+      Array.isArray(this.audioSyncData.timeline) &&
+      typeof ev.x === 'number' &&
+      typeof ev.y === 'number'
+    ) {
+      const timeline = this.audioSyncData.timeline;
+      let prevUiEv = null;
+      let nextUiEv = null;
+      let hasDrawingBefore = false;
+      let hasDrawingAfter = false;
+      for (let i = 0; i < timeline.length; i++) {
+        const item = timeline[i];
+        if (!item || item.type !== 'cursor' || item.hidden) continue;
+        if (item.t <= ev.t) {
+          if (item.isDrawing || item.cursorKind === 'grabbing') {
+            hasDrawingBefore = true;
+            prevUiEv = null;
+          } else if (item.uiScreen || this._isTopLeftFixedMenuCursorEvent(item)) {
+            prevUiEv = item;
+            hasDrawingBefore = false;
+          }
+        } else {
+          if (item.isDrawing || item.cursorKind === 'grabbing') {
+            hasDrawingAfter = true;
+            break;
+          }
+          if (item.uiScreen || this._isTopLeftFixedMenuCursorEvent(item)) {
+            nextUiEv = item;
+            break;
+          }
+        }
+      }
+
+      const dtPrev = (prevUiEv && !hasDrawingBefore) ? (ev.t - prevUiEv.t) : Infinity;
+      const dtNext = (nextUiEv && !hasDrawingAfter) ? (nextUiEv.t - ev.t) : Infinity;
+
+      // 1) 두 메뉴 이벤트 사이의 짧은 틈새(650ms 이하)를 지나는 경우: 100% UI 오프셋 보간으로 캔버스 낙하 차단
+      if (prevUiEv && nextUiEv && ( dtPrev + dtNext ) <= 650) {
+        const pUiPrev = this._resolveUiEventScreenPosOnly(prevUiEv);
+        const pUiNext = this._resolveUiEventScreenPosOnly(nextUiEv);
+        if (pUiPrev && pUiNext && typeof prevUiEv.x === 'number' && typeof nextUiEv.x === 'number') {
+          const u = (dtPrev + dtNext) > 0 ? (dtPrev / (dtPrev + dtNext)) : 0;
+          const dx = (pUiPrev.x - prevUiEv.x) * (1 - u) + (pUiNext.x - nextUiEv.x) * u;
+          const dy = (pUiPrev.y - prevUiEv.y) * (1 - u) + (pUiNext.y - nextUiEv.y) * u;
+          return {
+            x: ev.x + dx,
+            y: ev.y + dy
+          };
+        }
+      }
+
+      // 2) 메뉴에서 방금 나왔거나(450ms 이내) 메뉴로 들어가는 직전(450ms 이내) 호버 구간: 소프트 크로스페이드
+      const BLEND_MS = 450;
+      const nearestUiEv = (dtPrev <= dtNext) ? prevUiEv : nextUiEv;
+      const nearestDt = Math.min(dtPrev, dtNext);
+      if (nearestUiEv && nearestDt <= BLEND_MS && typeof nearestUiEv.x === 'number' && typeof nearestUiEv.y === 'number') {
+        const pUiNearest = this._resolveUiEventScreenPosOnly(nearestUiEv);
+        if (pUiNearest && pCanvas) {
+          const w = Math.pow(Math.max(0, 1 - nearestDt / BLEND_MS), 1.35);
+          const pUiShifted = {
+            x: ev.x + (pUiNearest.x - nearestUiEv.x),
+            y: ev.y + (pUiNearest.y - nearestUiEv.y)
+          };
+          return {
+            x: pCanvas.x + (pUiShifted.x - pCanvas.x) * w,
+            y: pCanvas.y + (pUiShifted.y - pCanvas.y) * w
+          };
+        }
+      }
     }
-    if (typeof ev.mx === 'number' && typeof ev.my === 'number' && (!this.isGraphCovered || this.pdfPageBoardData)) {
-      return this.mathToScreen(ev.mx, ev.my);
-    }
-    return { x: ev.x, y: ev.y };
+
+    return pCanvas;
   }
 
   _getInterpolatedCursorAt(playMs) {
@@ -35219,9 +35444,22 @@ class GraphApp {
     // 🌟 [상시 노출 UI + 초경량 버튼 하이라이트]:
     // 메뉴바들의 투명도(opacity) 애니메이션을 완전히 제거하여 GPU 레이어 리컴포지팅 부하를 0으로 만들고,
     // 현재 포인터가 가리키는 버튼 단 1개에만 호버/클릭 하이라이트(.replay-ui-btn-hover / .replay-ui-btn-active)를 즉시 표시합니다!
-    const nextBtnEl = (hoverCursor && hoverCursor.uiBtnKey)
+    let nextBtnEl = (hoverCursor && hoverCursor.uiBtnKey)
       ? this._findAudioUiButtonByKey(hoverCursor.uiBtnKey, hoverCursor.uiBarId)
       : null;
+    if (nextBtnEl && hoverCursor && typeof hoverCursor.x === 'number' && typeof hoverCursor.y === 'number') {
+      const r = nextBtnEl.getBoundingClientRect();
+      if (
+        r.width <= 0 ||
+        r.height <= 0 ||
+        hoverCursor.x < r.left - 24 ||
+        hoverCursor.x > r.right + 24 ||
+        hoverCursor.y < r.top - 24 ||
+        hoverCursor.y > r.bottom + 24
+      ) {
+        nextBtnEl = null;
+      }
+    }
     if (this._lastReplayHoveredBtnEl && this._lastReplayHoveredBtnEl !== nextBtnEl) {
       this._lastReplayHoveredBtnEl.classList.remove('replay-ui-btn-hover', 'replay-ui-btn-active');
       this._lastReplayHoveredBtnEl = null;
