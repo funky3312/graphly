@@ -1699,14 +1699,14 @@ class GraphApp {
     if (this.hasActiveProblemCard() && !this.pdfPageBoardData) {
       if (this.graphs.length === 1) {
         this.syncProblemCardRectFromWidget();
+        const sw = this.screenWidth || window.innerWidth || 1440;
         const cardRight = (this.problemCardRect && !this.isProblemCardMinimized)
           ? (this.problemCardRect.x + this.problemCardRect.w)
-          : 520;
-        // 좌상단 문제 카드와 겹치지 않으면서도 우측으로 너무 밀리지 않는 황금 밸런스 위치(화면 폭의 약 58.5% 지점)
-        const balancedOffsetX = Math.min(
-          Math.round(this.screenWidth * 0.11),
-          Math.round(cardRight * 0.22)
-        );
+          : Math.round(sw * 0.38);
+        // 화면 해상도(아이패드·FHD·QHD·4K 전자칠판)에 상관없이 항상 동일한 시각적 비율(화면 가로폭의 58.5% 지점 = 정중앙 +8.5%)에 배치
+        const baseRatioOffsetX = Math.round(sw * 0.085);
+        const extraCardPushX = Math.max(0, Math.round((cardRight - sw * 0.40) * 0.35));
+        const balancedOffsetX = Math.min(Math.round(sw * 0.14), baseRatioOffsetX + extraCardPushX);
         if (this.panX === 0 && this.panY === 0) {
           this.panX = Math.max(0, balancedOffsetX);
           this.panY = 0;
