@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_57">
+  <link rel="stylesheet" href="style.css?v=20261103_58">
 </head>
 
 <body class="theme-light">
@@ -90,8 +90,12 @@
 
         <!-- ➕ 그래프 추가 & 조작 도구 -->
         <button class="rail-btn rail-add-btn" data-panel="panelPresets" id="btnRailPresets" title="그래프 추가">
-          <span class="rail-icon"
-            style="font-size: 24px; font-weight: 700; line-height: 1; color: var(--accent-cyan, #00d2d3);">+</span>
+          <span class="rail-icon" style="color: var(--accent-cyan, #00d2d3);"><svg width="18" height="18"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+              stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg></span>
         </button>
         <button class="rail-btn" data-panel="panelTransform" id="btnRailTransform" style="display: none;">
           <span class="rail-icon">↕️</span>
@@ -472,9 +476,12 @@
                 </div>
                 <div class="vf-aspect-chips ink-dock-pos-chips" id="inkDockPositionGroup"
                   style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;">
-                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="left" title="화면 왼쪽에 세로로 고정">◧ 왼쪽</button>
-                  <button type="button" class="vf-chip ink-dock-pos-chip active" data-dock-pos="bottom" title="화면 아래쪽에 가로로 고정">⬓ 아래</button>
-                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="right" title="화면 오른쪽에 세로로 고정">◨ 오른쪽</button>
+                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="left" title="화면 왼쪽에 세로로 고정">◧
+                    왼쪽</button>
+                  <button type="button" class="vf-chip ink-dock-pos-chip active" data-dock-pos="bottom"
+                    title="화면 아래쪽에 가로로 고정">⬓ 아래</button>
+                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="right" title="화면 오른쪽에 세로로 고정">◨
+                    오른쪽</button>
                 </div>
               </div>
 
@@ -642,20 +649,27 @@
                       style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; flex-wrap: wrap;">
                       <div style="display: flex; gap: 4px; width: 100%;">
                         <button type="button" id="tabBtnCloudIdLogin" class="btn-primary"
-                          style="flex: 1; padding: 6px 8px; font-size: 11.5px; font-weight: 700; border-radius: 6px;">📧 이메일 로그인</button>
+                          style="flex: 1; padding: 6px 8px; font-size: 11.5px; font-weight: 700; border-radius: 6px;">📧
+                          이메일 로그인</button>
                         <button type="button" id="tabBtnCloudIdSignup" class="btn-secondary"
-                          style="flex: 1; padding: 6px 8px; font-size: 11.5px; font-weight: 700; border-radius: 6px;">✨ 이메일 회원가입</button>
+                          style="flex: 1; padding: 6px 8px; font-size: 11.5px; font-weight: 700; border-radius: 6px;">✨
+                          이메일 회원가입</button>
                       </div>
-                      <span style="font-size: 10.5px; color: #2563eb; font-weight: 600; line-height: 1.35;">✅ 이메일 인증 완료 시 동일 주소의 Google 로그인과 하나의 계정으로 통합 연동됩니다.</span>
+                      <span style="font-size: 10.5px; color: #2563eb; font-weight: 600; line-height: 1.35;">✅ 이메일 인증 완료
+                        시 동일 주소의 Google 로그인과 하나의 계정으로 통합 연동됩니다.</span>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 6px;">
-                      <input type="email" id="inputCloudEmailId" placeholder="이메일 주소 (예: teacher@gmail.com)" autocomplete="email"
+                      <input type="email" id="inputCloudEmailId" placeholder="이메일 주소 (예: teacher@gmail.com)"
+                        autocomplete="email"
                         style="width:100%; box-sizing:border-box; padding:7px 9px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12px;">
-                      <input type="password" id="inputCloudEmailPw" placeholder="비밀번호 (6자 이상)" autocomplete="current-password"
+                      <input type="password" id="inputCloudEmailPw" placeholder="비밀번호 (6자 이상)"
+                        autocomplete="current-password"
                         style="width:100%; box-sizing:border-box; padding:7px 9px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12px;">
                     </div>
-                    <div id="cloudSignupExtraFields" style="display: none; flex-direction: column; gap: 6px; margin-top: 6px;">
-                      <input type="password" id="inputCloudEmailPwConfirm" placeholder="비밀번호 확인" autocomplete="new-password"
+                    <div id="cloudSignupExtraFields"
+                      style="display: none; flex-direction: column; gap: 6px; margin-top: 6px;">
+                      <input type="password" id="inputCloudEmailPwConfirm" placeholder="비밀번호 확인"
+                        autocomplete="new-password"
                         style="width:100%; box-sizing:border-box; padding:7px 9px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12px;">
                       <input type="text" id="inputCloudSignupName" placeholder="선생님 성함 / 닉네임 (예: 김수학)"
                         style="width:100%; box-sizing:border-box; padding:7px 9px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12px;">
@@ -698,13 +712,14 @@
                       style="flex:1; padding:8px 6px; border-radius:8px; font-size:11.5px; font-weight:700; cursor:pointer;">
                       📖 사용법 &amp; 공지사항
                     </button>
-                    <a id="btnBugReportFromSettings" href="mailto:help@cubiolab.com?subject=%5BGraphly%20%EB%B2%84%EA%B7%B8%EC%A0%9C%EB%B3%B4%2F%EB%AC%B8%EC%9D%98%5D" class="btn-secondary"
+                    <a id="btnBugReportFromSettings"
+                      href="mailto:help@cubiolab.com?subject=%5BGraphly%20%EB%B2%84%EA%B7%B8%EC%A0%9C%EB%B3%B4%2F%EB%AC%B8%EC%9D%98%5D"
+                      class="btn-secondary"
                       style="flex:1; padding:8px 6px; border-radius:8px; font-size:11.5px; font-weight:700; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">
                       🛠️ 오류·건의 문의
                     </a>
                   </div>
-                  <button type="button" style="display:none;"
-                  </button>
+                  <button type="button" style="display:none;" </button>
                 </div>
               </div>
 
@@ -765,7 +780,8 @@
             <div class="drawer-panel" id="panelStyle" style="display: none;">
               <!-- 상단 2탭 전환 바: [ ✒️ 필기 · 배경 | 📈 그래프 ] -->
               <div class="style-panel-tabs">
-                <button type="button" id="btnStyleTabInk" class="style-tab-btn active" data-style-tab="ink">✒️ 필기 · 배경</button>
+                <button type="button" id="btnStyleTabInk" class="style-tab-btn active" data-style-tab="ink">✒️ 필기 ·
+                  배경</button>
                 <button type="button" id="btnStyleTabGraph" class="style-tab-btn" data-style-tab="graph">📈 그래프</button>
               </div>
 
@@ -778,23 +794,28 @@
                   </div>
                   <div class="theme-palette-grid drawer-theme-grid compact-theme-row">
                     <button type="button" class="theme-chip active" data-theme="white_paper" title="화이트 배경">
-                      <span class="theme-color-preview" style="background: #ffffff; border: 1.5px solid #94a3b8;"></span>
+                      <span class="theme-color-preview"
+                        style="background: #ffffff; border: 1.5px solid #94a3b8;"></span>
                       <span class="theme-name">화이트</span>
                     </button>
                     <button type="button" class="theme-chip" data-theme="chalkboard" title="칠판 배경">
-                      <span class="theme-color-preview" style="background: #003333; border: 1.5px solid #00d2d3;"></span>
+                      <span class="theme-color-preview"
+                        style="background: #003333; border: 1.5px solid #00d2d3;"></span>
                       <span class="theme-name">칠판</span>
                     </button>
                     <button type="button" class="theme-chip" data-theme="dark_charcoal" title="차콜 배경">
-                      <span class="theme-color-preview" style="background: #1e272e; border: 1.5px solid #00d2d3;"></span>
+                      <span class="theme-color-preview"
+                        style="background: #1e272e; border: 1.5px solid #00d2d3;"></span>
                       <span class="theme-name">차콜</span>
                     </button>
                     <button type="button" class="theme-chip" data-theme="deep_black" title="블랙 배경">
-                      <span class="theme-color-preview" style="background: #080808; border: 1.5px solid #64748b;"></span>
+                      <span class="theme-color-preview"
+                        style="background: #080808; border: 1.5px solid #64748b;"></span>
                       <span class="theme-name">블랙</span>
                     </button>
                     <button type="button" class="theme-chip" data-theme="postit" title="포스트잇 배경">
-                      <span class="theme-color-preview" style="background: #fef7e0; border: 1.5px solid #f59e0b;"></span>
+                      <span class="theme-color-preview"
+                        style="background: #fef7e0; border: 1.5px solid #f59e0b;"></span>
                       <span class="theme-name">노트</span>
                     </button>
                   </div>
@@ -839,19 +860,22 @@
                     <!-- 0. 블러 (아이캔스크린 스타일 모퉁이 삐뚤림 보정 & 외곽 소프트 블러) -->
                     <div class="single-line-slider-row" title="아이캔스크린 스타일의 부드러운 외곽 블러 및 펜 모퉁이 삐뚤림 보정 강도 (0.0 ~ 5.0)">
                       <span class="single-line-slider-label">블러</span>
-                      <button type="button" id="btnInkBlurDown" class="single-line-step-btn" title="블러 줄이기 (-0.5)">◀</button>
+                      <button type="button" id="btnInkBlurDown" class="single-line-step-btn"
+                        title="블러 줄이기 (-0.5)">◀</button>
                       <div class="ink-size-preview-row single-line-slider-track">
                         <input type="range" id="sliderInkBlur" class="slider-bar" min="0" max="5.0" step="0.5"
                           value="0">
                       </div>
-                      <button type="button" id="btnInkBlurUp" class="single-line-step-btn" title="블러 높이기 (+0.5)">▶</button>
+                      <button type="button" id="btnInkBlurUp" class="single-line-step-btn"
+                        title="블러 높이기 (+0.5)">▶</button>
                       <span id="lblCurrentInkBlur" class="single-line-slider-val">0.0</span>
                     </div>
 
                     <!-- 1. 펜 굵기 -->
                     <div class="single-line-slider-row">
                       <span class="single-line-slider-label">펜 굵기</span>
-                      <button type="button" id="btnInkSizeDown" class="single-line-step-btn" title="글씨 크기 줄이기 ([)">◀</button>
+                      <button type="button" id="btnInkSizeDown" class="single-line-step-btn"
+                        title="글씨 크기 줄이기 ([)">◀</button>
                       <div class="ink-size-preview-row single-line-slider-track">
                         <div class="ink-size-preview-box" style="display: none;">
                           <span id="inkSizePreviewDot" class="preview-circle" style="width: 9px; height: 9px;"></span>
@@ -859,7 +883,8 @@
                         <input type="range" id="sliderInkSize" class="slider-bar" min="1.0" max="18.0" step="0.2"
                           value="4.2">
                       </div>
-                      <button type="button" id="btnInkSizeUp" class="single-line-step-btn" title="글씨 크기 키우기 (])">▶</button>
+                      <button type="button" id="btnInkSizeUp" class="single-line-step-btn"
+                        title="글씨 크기 키우기 (])">▶</button>
                       <span id="lblCurrentInkSize" class="single-line-slider-val">4.2</span>
                       <span id="lblFlyoutSizeVal" style="display: none;">4.2 pt</span>
                     </div>
@@ -876,24 +901,28 @@
                     <!-- 2. 형광펜 -->
                     <div class="single-line-slider-row">
                       <span class="single-line-slider-label">형광펜</span>
-                      <button type="button" id="btnHighlighterSizeDown" class="single-line-step-btn" title="형광펜 크기 줄이기">◀</button>
+                      <button type="button" id="btnHighlighterSizeDown" class="single-line-step-btn"
+                        title="형광펜 크기 줄이기">◀</button>
                       <div class="ink-size-preview-row single-line-slider-track">
                         <input type="range" id="sliderHighlighterSize" class="slider-bar" min="6" max="44" step="2"
                           value="16">
                       </div>
-                      <button type="button" id="btnHighlighterSizeUp" class="single-line-step-btn" title="형광펜 크기 키우기">▶</button>
+                      <button type="button" id="btnHighlighterSizeUp" class="single-line-step-btn"
+                        title="형광펜 크기 키우기">▶</button>
                       <span id="lblCurrentHighlighterSize" class="single-line-slider-val">16</span>
                     </div>
 
                     <!-- 3. 지우개 -->
                     <div class="single-line-slider-row">
                       <span class="single-line-slider-label">지우개</span>
-                      <button type="button" id="btnEraserSizeDown" class="single-line-step-btn" title="지우개 크기 줄이기">◀</button>
+                      <button type="button" id="btnEraserSizeDown" class="single-line-step-btn"
+                        title="지우개 크기 줄이기">◀</button>
                       <div class="ink-size-preview-row single-line-slider-track">
                         <input type="range" id="sliderEraserSize" class="slider-bar" min="4" max="44" step="2"
                           value="14">
                       </div>
-                      <button type="button" id="btnEraserSizeUp" class="single-line-step-btn" title="지우개 크기 키우기">▶</button>
+                      <button type="button" id="btnEraserSizeUp" class="single-line-step-btn"
+                        title="지우개 크기 키우기">▶</button>
                       <span id="lblCurrentEraserSize" class="single-line-slider-val">14</span>
                     </div>
                   </div>
@@ -962,23 +991,27 @@
                   <div class="single-line-slider-list" style="margin-top: 8px;">
                     <div class="single-line-slider-row">
                       <span class="single-line-slider-label">수선 라벨</span>
-                      <button type="button" id="btnDropLineSizeDown" class="single-line-step-btn" title="라벨 크기 줄이기">◀</button>
+                      <button type="button" id="btnDropLineSizeDown" class="single-line-step-btn"
+                        title="라벨 크기 줄이기">◀</button>
                       <div class="single-line-slider-track">
                         <input type="range" id="sliderDropLineFontSize" class="slider-bar" min="11" max="22" step="1"
                           value="15">
                       </div>
-                      <button type="button" id="btnDropLineSizeUp" class="single-line-step-btn" title="라벨 크기 키우기">▶</button>
+                      <button type="button" id="btnDropLineSizeUp" class="single-line-step-btn"
+                        title="라벨 크기 키우기">▶</button>
                       <span id="lblDropLineFontSize" class="single-line-slider-val">15</span>
                     </div>
 
                     <div class="single-line-slider-row">
                       <span class="single-line-slider-label">자유 텍스트</span>
-                      <button type="button" id="btnTextLabelSizeDown" class="single-line-step-btn" title="텍스트 크기 줄이기">◀</button>
+                      <button type="button" id="btnTextLabelSizeDown" class="single-line-step-btn"
+                        title="텍스트 크기 줄이기">◀</button>
                       <div class="single-line-slider-track">
                         <input type="range" id="sliderTextLabelSize" class="slider-bar" min="12" max="52" step="1"
                           value="20">
                       </div>
-                      <button type="button" id="btnTextLabelSizeUp" class="single-line-step-btn" title="텍스트 크기 키우기">▶</button>
+                      <button type="button" id="btnTextLabelSizeUp" class="single-line-step-btn"
+                        title="텍스트 크기 키우기">▶</button>
                       <span id="lblTextLabelSize" class="single-line-slider-val">20</span>
                     </div>
                   </div>
@@ -987,7 +1020,8 @@
                   <label class="drawer-checkbox-row"
                     style="margin-top: 8px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
                     <input type="checkbox" id="chkShowAxisLabels" style="cursor: pointer;">
-                    <span class="axis-auto-label-text" style="font-size: 11.5px; color: var(--text-main);">축 이름표 (x, y, O) 표시</span>
+                    <span class="axis-auto-label-text" style="font-size: 11.5px; color: var(--text-main);">축 이름표 (x, y,
+                      O) 표시</span>
                   </label>
 
                   <div id="axisLabelsSubPanel" style="display: none; margin-top: 6px;">
@@ -1008,21 +1042,25 @@
 
                     <div class="single-line-slider-row" style="margin-top: 6px;">
                       <span class="single-line-slider-label">축 글자</span>
-                      <button type="button" id="btnAxisLabelSizeDown" class="single-line-step-btn" title="축 이름표 줄이기">◀</button>
+                      <button type="button" id="btnAxisLabelSizeDown" class="single-line-step-btn"
+                        title="축 이름표 줄이기">◀</button>
                       <div class="single-line-slider-track">
                         <input type="range" id="sliderAxisLabelSize" class="slider-bar" min="12" max="48" step="1"
                           value="22">
                       </div>
-                      <button type="button" id="btnAxisLabelSizeUp" class="single-line-step-btn" title="축 이름표 키우기">▶</button>
+                      <button type="button" id="btnAxisLabelSizeUp" class="single-line-step-btn"
+                        title="축 이름표 키우기">▶</button>
                       <span id="lblAxisLabelSize" class="single-line-slider-val">22</span>
                     </div>
                   </div>
 
                   <div style="margin-top: 8px; display: flex; gap: 5px;">
                     <button id="btnClearDropLines" class="btn-sub-action"
-                      style="flex: 1; padding: 5px 6px; font-size: 11px; color: #ff7675; border-color: rgba(255, 118, 117, 0.4);">수선 비우기</button>
+                      style="flex: 1; padding: 5px 6px; font-size: 11px; color: #ff7675; border-color: rgba(255, 118, 117, 0.4);">수선
+                      비우기</button>
                     <button id="btnClearTextLabels" class="btn-sub-action"
-                      style="flex: 1; padding: 5px 6px; font-size: 11px; color: #ff7675; border-color: rgba(255, 118, 117, 0.4);">텍스트 비우기</button>
+                      style="flex: 1; padding: 5px 6px; font-size: 11px; color: #ff7675; border-color: rgba(255, 118, 117, 0.4);">텍스트
+                      비우기</button>
                   </div>
                 </div>
               </div>
@@ -1453,7 +1491,8 @@
               </svg></span>
           </button>
           <div class="audio-rec-side-menu" id="panelAudioRecordActions" style="display: none;">
-            <button type="button" id="btnAudioPauseRecord" class="audio-rec-side-btn audio-btn-pause-rec" title="일시정지 / 이어녹음">
+            <button type="button" id="btnAudioPauseRecord" class="audio-rec-side-btn audio-btn-pause-rec"
+              title="일시정지 / 이어녹음">
               <span id="iconAudioPauseRecord">⏸</span>
               <span id="lblAudioPauseRecord">일시정지</span>
             </button>
@@ -1884,8 +1923,9 @@
                 </svg></span>
             </button>
             <button id="btnProblemCardReCrop_legacy" class="card-btn" style="display: none !important;">
-              <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-                  stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;">
+              <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+                  style="vertical-align:-2px;margin-right:3px;">
                   <circle cx="6" cy="6" r="3" />
                   <circle cx="6" cy="18" r="3" />
                   <line x1="20" y1="4" x2="8.12" y2="15.88" />
@@ -2147,10 +2187,14 @@
           <div class="export-filter-row export-stage-preset-row" style="display: none !important;">
             <span class="export-step-label">단계별 저장</span>
             <div class="export-stage-preset-group">
-              <button type="button" id="btnExportPresetStage0" class="export-stage-preset-chip" data-stage="0">① 문제</button>
-              <button type="button" id="btnExportPresetStage1" class="export-stage-preset-chip" data-stage="1">1차: 문제+그래프</button>
-              <button type="button" id="btnExportPresetStage2" class="export-stage-preset-chip" data-stage="2">2차: +필기 해설</button>
-              <button type="button" id="btnExportPresetStage3" class="export-stage-preset-chip active" data-stage="3">3차: +음성 강의</button>
+              <button type="button" id="btnExportPresetStage0" class="export-stage-preset-chip" data-stage="0">①
+                문제</button>
+              <button type="button" id="btnExportPresetStage1" class="export-stage-preset-chip" data-stage="1">1차:
+                문제+그래프</button>
+              <button type="button" id="btnExportPresetStage2" class="export-stage-preset-chip" data-stage="2">2차: +필기
+                해설</button>
+              <button type="button" id="btnExportPresetStage3" class="export-stage-preset-chip active"
+                data-stage="3">3차: +음성 강의</button>
             </div>
           </div>
           <div class="export-filter-hint" id="lblExportFilterSummary" style="display: none;"></div>
@@ -2159,7 +2203,8 @@
         <!-- STEP 2: 이미지 & 공유 (2x2 슬림 버튼 그리드 · 클릭 시에만 생성하여 체크박스 랙 0%) -->
         <div class="share-field-group">
           <label class="share-field-label">
-            <span>이미지 &amp; 공유 <small style="font-weight:500;color:#94a3b8;font-size:11px;margin-left:4px;">(공유 링크·QR 7일간 유효)</small></span>
+            <span>이미지 &amp; 공유 <small style="font-weight:500;color:#94a3b8;font-size:11px;margin-left:4px;">(공유 링크·QR
+                7일간 유효)</small></span>
           </label>
           <div class="export-action-2x2-grid">
             <button type="button" id="btnExportModalCopyImg" class="btn-primary export-action-big-btn">
@@ -2225,7 +2270,8 @@
           </div>
           <div class="share-deck-btn-row">
             <button type="button" id="btnShareModalToLibrary" class="btn-primary share-deck-btn">☁️ 클라우드 저장</button>
-            <button type="button" id="btnShareModalExportFile" class="btn-secondary share-deck-btn">💻 파일 저장 (.graphly)</button>
+            <button type="button" id="btnShareModalExportFile" class="btn-secondary share-deck-btn">💻 파일 저장
+              (.graphly)</button>
           </div>
         </div>
       </div>
@@ -2289,7 +2335,8 @@
           </svg>
           <span>영상보기</span>
         </button>
-        <button type="button" id="btnViewerEnterEdit" class="viewer-top-btn viewer-top-btn-edit" title="그래플리 편집 화면으로 전환">
+        <button type="button" id="btnViewerEnterEdit" class="viewer-top-btn viewer-top-btn-edit"
+          title="그래플리 편집 화면으로 전환">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 20h9" />
@@ -2324,13 +2371,17 @@
         <div id="smartNoteViewerHotspots" class="smart-viewer-hotspots"></div>
       </div>
       <!-- 다중 페이지 좌·우 사이드 빠른 넘김 화살표 (마우스 오버 시 은은하게 노출) -->
-      <button type="button" id="btnViewerEdgePrev" class="viewer-edge-nav-btn viewer-edge-prev" title="이전 페이지 (←)" style="display: none;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <button type="button" id="btnViewerEdgePrev" class="viewer-edge-nav-btn viewer-edge-prev" title="이전 페이지 (←)"
+        style="display: none;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round">
           <polyline points="15 18 9 12 15 6" />
         </svg>
       </button>
-      <button type="button" id="btnViewerEdgeNext" class="viewer-edge-nav-btn viewer-edge-next" title="다음 페이지 (→)" style="display: none;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <button type="button" id="btnViewerEdgeNext" class="viewer-edge-nav-btn viewer-edge-next" title="다음 페이지 (→)"
+        style="display: none;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round">
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </button>
@@ -2415,12 +2466,12 @@
   <!-- [🎙️ 실시간 음성·필기·펜포인터·그래프 동기화 리플레이 컨트롤 바 (뷰포트 1.0x 외부 고정)] -->
   <div id="audioSyncFloatingBar" class="audio-sync-floating-bar" style="display: none;">
     <!-- 상태 1: 녹음 중 (대표님 지침: 상단 녹음 바 제거 — 우측 녹음 버튼 옆 2개 메뉴로 일원화) -->
-    <div id="audioSyncRecordingGroup" class="audio-sync-group audio-rec-stealth-group" style="display: none !important;">
+    <div id="audioSyncRecordingGroup" class="audio-sync-group audio-rec-stealth-group"
+      style="display: none !important;">
       <span id="badgeAudioRecState" class="audio-rec-badge"><span class="audio-rec-dot"></span><span
           id="lblAudioRecBadgeText">REC</span></span>
       <span id="lblAudioRecordTimer" class="audio-sync-time">00:00</span>
-      <button type="button" id="btnAudioMicMuteToggle" class="audio-sync-btn audio-btn-mic-toggle"
-        title="마이크 켜기 / 끄기">
+      <button type="button" id="btnAudioMicMuteToggle" class="audio-sync-btn audio-btn-mic-toggle" title="마이크 켜기 / 끄기">
         <span id="dotAudioMicLevel" class="audio-mic-level-dot"></span>
         <span id="iconAudioMicMute">🎤</span>
         <span id="lblAudioMicMute" style="display: none;">마이크 ON</span>
@@ -2437,12 +2488,11 @@
       </button>
       <span id="lblAudioPlayTime" class="audio-sync-time">00:00 / 00:00</span>
       <input type="range" id="audioSyncScrubber" class="audio-sync-scrubber" min="0" max="1000" step="10" value="0">
-      <button type="button" id="btnAudioReplayViewMode_legacy" style="display:none !important;" class="audio-sync-btn audio-btn-mode active-video"
-        title="영상처럼 차근차근 써지며 재생할지, 완성된 노트를 보며 원하는 필기를 클릭해 들을지 전환합니다">
+      <button type="button" id="btnAudioReplayViewMode_legacy" style="display:none !important;"
+        class="audio-sync-btn audio-btn-mode active-video" title="영상처럼 차근차근 써지며 재생할지, 완성된 노트를 보며 원하는 필기를 클릭해 들을지 전환합니다">
         <span id="lblAudioReplayViewMode">🎬 영상 모드</span>
       </button>
-      <button type="button" id="btnAudioSyncSpeed" class="audio-sync-btn audio-btn-speed"
-        title="재생 배속 변경">1.0x</button>
+      <button type="button" id="btnAudioSyncSpeed" class="audio-sync-btn audio-btn-speed" title="재생 배속 변경">1.0x</button>
       <button type="button" id="btnAudioReplayZoomReset" class="audio-sync-btn audio-btn-zoom"
         title="화면 확대/축소 초기화 (두 손가락 핀치 또는 마우스 휠로 원하는 부분 확대·이동 가능)">100%</button>
       <button type="button" id="btnAudioShowFinalNote" class="audio-sync-btn audio-btn-final-note"
@@ -2453,8 +2503,7 @@
       <button type="button" id="btnAudioSyncDelete" class="audio-sync-btn audio-btn-del" title="녹음 삭제">🗑️</button>
       <button type="button" id="btnAudioBackToViewer" class="audio-sync-btn audio-btn-viewer-back"
         style="display: none;" title="뷰어로 돌아가기">뷰어</button>
-      <button type="button" id="btnAudioSyncCloseBar" class="audio-sync-btn audio-btn-close"
-        title="플레이어 접기">✕</button>
+      <button type="button" id="btnAudioSyncCloseBar" class="audio-sync-btn audio-btn-close" title="플레이어 접기">✕</button>
     </div>
   </div>
 
@@ -2477,7 +2526,8 @@
         <polyline points="9 18 15 12 9 6" />
       </svg>
     </button>
-    <button id="btnPlaylistAddSlide" class="pdf-board-close-btn slim-icon-btn slim-add-slide-btn" title="다음 문제 캡처 / 새 캔버스 추가">
+    <button id="btnPlaylistAddSlide" class="pdf-board-close-btn slim-icon-btn slim-add-slide-btn"
+      title="다음 문제 캡처 / 새 캔버스 추가">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
         stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="5" x2="12" y2="19" />
@@ -2511,8 +2561,8 @@
           <button type="button" id="btnPlaylistClearAll" class="slide-grid-del-current-btn" title="전체 캔버스 삭제">전체
             삭제</button>
           <button type="button" id="btnPlaylistConfirmSelectedDelete"
-            class="slide-grid-del-current-btn slide-grid-confirm-del-btn" style="display: none;"
-            title="선택한 캔버스 삭제">삭제 (0)</button>
+            class="slide-grid-del-current-btn slide-grid-confirm-del-btn" style="display: none;" title="선택한 캔버스 삭제">삭제
+            (0)</button>
         </div>
       </div>
       <div id="playlistSlideChips" class="slide-chips-strip slide-chips-grid"></div>
@@ -2559,7 +2609,8 @@
             <span id="lblCloudUserStatus" class="cloud-user-status"></span>
             <button type="button" id="btnOpenProPricingFromHub" class="btn-cloud-auth"></button>
             <button type="button" id="btnCloudEmailLoginToggle" class="btn-cloud-auth"></button>
-            <button type="button" id="btnCloudGoogleLogin" class="btn-cloud-auth"><span id="lblCloudAuthBtnText"></span></button>
+            <button type="button" id="btnCloudGoogleLogin" class="btn-cloud-auth"><span
+                id="lblCloudAuthBtnText"></span></button>
           </div>
           <button id="btnCloseCloudHub" class="btn-modal-close"><svg width="15" height="15" viewBox="0 0 24 24"
               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2611,7 +2662,8 @@
         <!-- 2. 클라우드 보관함 (폴더별 정리 + 실시간 검색 + 원클릭 열기) -->
         <div id="panelCloudMyLibrary" class="cloud-tab-panel">
           <div class="cloud-library-header-row">
-            <span class="cloud-library-title">☁️ 클라우드 보관함 <span class="cloud-count-sub">(<span id="badgeMyLibraryCount">0</span>)</span></span>
+            <span class="cloud-library-title">☁️ 클라우드 보관함 <span class="cloud-count-sub">(<span
+                  id="badgeMyLibraryCount">0</span>)</span></span>
             <div id="cloudLibrarySearchWrap" class="cloud-library-search-wrap">
               <input type="text" id="inputCloudLibrarySearch" class="cloud-library-search-input"
                 placeholder="🔍 제목 검색..." autocomplete="off">
@@ -3027,8 +3079,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_57"></script>
-  <script src="app.js?v=20261103_57"></script>
+  <script src="engine.js?v=20261103_58"></script>
+  <script src="app.js?v=20261103_58"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
