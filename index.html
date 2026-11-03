@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_59">
+  <link rel="stylesheet" href="style.css?v=20261103_60">
 </head>
 
 <body class="theme-light">
@@ -1085,37 +1085,20 @@
       <canvas id="graphCanvas"></canvas>
       <div id="workspaceStickerOverlay" class="workspace-sticker-overlay"></div>
 
-      <!-- 🌟 [대표님 기획: 상단 중앙 초슬림 캡슐바 (Curve Context Bar)] 🌟 -->
+      <!-- 🌟 [대표님 기획: 상단 중앙 초슬림 캡슐바 (Curve Context Bar) — [대칭 ▾] · [절댓값 ▾] 2버튼 확장형 구조] 🌟 -->
       <div id="curveContextBar" class="curve-context-bar" style="display: none;">
         <div id="ctxBarBadge" class="ctx-badge">
           <span id="ctxBarDot" class="ctx-color-dot" style="background: #00d2d3;"></span>
           <span id="ctxBarName" class="ctx-name">f1</span>
         </div>
         <div class="ctx-sep"></div>
-        <button id="ctxBtnInvertV" class="ctx-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-            stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 3px;">
-            <path d="m7 15 5 5 5-5" />
-            <path d="m7 9 5-5 5-5" />
-            <path d="M12 4v16" />
-          </svg>x축
+        <button type="button" id="ctxBtnSymmetryMenu" class="ctx-btn ctx-btn-menu-trigger">
+          <span>대칭</span>
+          <span class="ctx-caret">▾</span>
         </button>
-        <button id="ctxBtnInvertH" class="ctx-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-            stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 3px;">
-            <path d="m15 7 5 5-5 5" />
-            <path d="m9 7-5 5 5 5" />
-            <path d="M4 12h16" />
-          </svg>y축
-        </button>
-        <button id="ctxBtnInverse" class="ctx-btn ctx-btn-inverse">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-            stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 3px;">
-            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-            <path d="M21 3v5h-5" />
-            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-            <path d="M8 16H3v5" />
-          </svg>y=x
+        <button type="button" id="ctxBtnAbsMenu" class="ctx-btn ctx-btn-menu-trigger">
+          <span>절댓값</span>
+          <span class="ctx-caret">▾</span>
         </button>
         <button id="ctxBtnToggleLink" class="ctx-btn ctx-btn-link" style="display: none;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
@@ -1126,12 +1109,6 @@
             <line x1="14.47" y1="14.48" x2="20" y2="20" />
             <line x1="8.12" y1="8.12" x2="12" y2="12" />
           </svg>연동끊기
-        </button>
-        <button id="ctxBtnToggleAbs" class="ctx-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-            stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 3px;">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-          </svg>|f(x)|
         </button>
         <div class="ctx-sep"></div>
         <button id="ctxBtnDuplicate" class="ctx-btn ctx-btn-dup">
@@ -1165,6 +1142,19 @@
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
         </button>
+
+        <!-- [대칭 ▾] 하위 팝오버 (x축 대칭 · y축 대칭 · 원점 대칭 · y=x 역함수) -->
+        <div id="ctxSymmetryPopover" class="ctx-sub-popover" style="display: none;">
+          <button type="button" id="ctxBtnInvertV" class="ctx-btn ctx-sub-btn">x축 대칭</button>
+          <button type="button" id="ctxBtnInvertH" class="ctx-btn ctx-sub-btn">y축 대칭</button>
+          <button type="button" id="ctxBtnInvertOrigin" class="ctx-btn ctx-sub-btn">원점 대칭</button>
+          <button type="button" id="ctxBtnInverse" class="ctx-btn ctx-btn-inverse ctx-sub-btn">y=x 역함수</button>
+        </div>
+
+        <!-- [절댓값 ▾] 하위 팝오버 (|f(x)| 전체 절댓값 + 향후 f(|x|), |y|=f(x) 확장 슬롯) -->
+        <div id="ctxAbsPopover" class="ctx-sub-popover" style="display: none;">
+          <button type="button" id="ctxBtnToggleAbs" class="ctx-btn ctx-sub-btn">|f(x)| 전체 절댓값</button>
+        </div>
       </div>
 
       <!-- 🌟 [필기 모드 상시 가상 연필 & 지우개 인디케이터 (글씨 가림 없는 우하단 45° 클래식 연필)] 🌟 -->
@@ -3089,8 +3079,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_59"></script>
-  <script src="app.js?v=20261103_59"></script>
+  <script src="engine.js?v=20261103_60"></script>
+  <script src="app.js?v=20261103_60"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
