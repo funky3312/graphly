@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_43">
+  <link rel="stylesheet" href="style.css?v=20261103_44">
 </head>
 
 <body class="theme-light">
@@ -640,6 +640,58 @@
                       style="flex: 1; padding: 8px 6px; border-radius: 8px; font-size: 11.5px; font-weight: 800; color: #ef4444; border-color: rgba(239,68,68,0.35); cursor: pointer;">
                       🚪 로그아웃
                     </button>
+                  </div>
+
+                  <!-- 📧 이메일 로그인 & 본인인증 회원가입 통합 입력창 (설정창 내부로 일원화) -->
+                  <div id="cloudEmailLoginBox"
+                    style="display: none; background: rgba(37, 99, 235, 0.07); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 10px; padding: 10px; margin-top: 8px;">
+                    <div
+                      style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; flex-wrap: wrap;">
+                      <div style="display: flex; gap: 4px; width: 100%;">
+                        <button type="button" id="tabBtnCloudIdLogin" class="btn-primary"
+                          style="flex: 1; padding: 6px 8px; font-size: 11.5px; font-weight: 700; border-radius: 6px;">📧 이메일 로그인</button>
+                        <button type="button" id="tabBtnCloudIdSignup" class="btn-secondary"
+                          style="flex: 1; padding: 6px 8px; font-size: 11.5px; font-weight: 700; border-radius: 6px;">✨ 이메일 회원가입</button>
+                      </div>
+                      <span style="font-size: 10.5px; color: #2563eb; font-weight: 600; line-height: 1.35;">✅ 이메일 인증 완료 시 동일 주소의 Google 로그인과 하나의 계정으로 통합 연동됩니다.</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                      <input type="email" id="inputCloudEmailId" placeholder="이메일 주소 (예: teacher@gmail.com)" autocomplete="email"
+                        style="width:100%; box-sizing:border-box; padding:7px 9px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12px;">
+                      <input type="password" id="inputCloudEmailPw" placeholder="비밀번호 (6자 이상)" autocomplete="current-password"
+                        style="width:100%; box-sizing:border-box; padding:7px 9px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12px;">
+                    </div>
+                    <div id="cloudSignupExtraFields" style="display: none; flex-direction: column; gap: 6px; margin-top: 6px;">
+                      <input type="password" id="inputCloudEmailPwConfirm" placeholder="비밀번호 확인" autocomplete="new-password"
+                        style="width:100%; box-sizing:border-box; padding:7px 9px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12px;">
+                      <input type="text" id="inputCloudSignupName" placeholder="선생님 성함 / 닉네임 (예: 김수학)"
+                        style="width:100%; box-sizing:border-box; padding:7px 9px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12px;">
+                    </div>
+                    <button type="button" id="btnSubmitCloudEmailLogin" class="btn-primary"
+                      style="width:100%; margin-top: 6px; padding:8px 12px; font-size:12px; font-weight:700; border-radius:7px; cursor:pointer;">로그인</button>
+                    <div id="cloudLoginHelperRow" style="display: flex; justify-content: flex-end; margin-top: 5px;">
+                      <button type="button" id="btnResetEmailPassword"
+                        style="background: none; border: none; color: #475569; font-size: 11px; font-weight: 600; text-decoration: underline; cursor: pointer; padding: 2px 4px;">
+                        🔑 비밀번호 재설정 / 추가
+                      </button>
+                    </div>
+                    <!-- 📩 이메일 본인인증 대기 안내 및 확인 배너 -->
+                    <div id="cloudEmailVerifyBanner"
+                      style="display: none; margin-top: 8px; padding: 9px 10px; border-radius: 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.4); color: #065f46; font-size: 11.5px; line-height: 1.45;">
+                      <div id="lblEmailVerifyPendingMsg" style="font-weight: 700; margin-bottom: 6px;">
+                        📩 입력하신 이메일로 본인 인증 링크를 발송했습니다! 메일함에서 인증 링크를 클릭한 뒤 아래 버튼을 눌러주세요.
+                      </div>
+                      <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                        <button type="button" id="btnVerifyEmailCheckNow" class="btn-primary"
+                          style="flex: 1; padding: 6px 8px; font-size: 11.5px; font-weight: 800; border-radius: 6px; background: #059669; border: none; color: #fff; cursor: pointer;">
+                          ✅ 인증 완료 확인
+                        </button>
+                        <button type="button" id="btnResendVerificationEmail" class="btn-secondary"
+                          style="padding: 6px 8px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer;">
+                          🔄 재발송
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -2291,8 +2343,11 @@
           <label class="share-field-label">
             <span>파일 &amp; 클라우드 저장</span>
           </label>
-          <div class="share-input-row" style="margin-bottom: 6px;">
-            <input type="text" id="inputShareModalDeckTitle" class="share-link-input"
+          <div class="share-input-row" style="margin-bottom: 6px; display: flex; gap: 6px;">
+            <select id="selectExportCloudFolder" class="export-cloud-folder-select" title="클라우드 저장 폴더 선택">
+              <option value="">📁 기본 보관함</option>
+            </select>
+            <input type="text" id="inputShareModalDeckTitle" class="share-link-input" style="flex: 1; min-width: 0;"
               placeholder="저장할 제목 입력 (비워두면 자동 제목)">
             <input type="text" id="inputShareModalDeckTags" class="share-link-input" style="display: none;"
               placeholder="#태그">
@@ -2603,7 +2658,7 @@
     <span id="lblTopSlideMiniTab">1 / 2 ▾</span>
   </button>
 
-  <!-- [📥 통합 불러오기 모달 (1. 열려있는 PDF 이어서 캡처 / 2. 내 기기에서 새 파일 열기 / 3. 클라우드 보관함 열기)] -->
+  <!-- [📥 통합 불러오기 모달 (1. 파일 열기 / 2. 클라우드 보관함 폴더·검색)] -->
   <div id="modalCloudHub" class="smart-modal-backdrop">
     <div class="smart-modal-card cloud-hub-modal-card">
       <div class="smart-modal-header cloud-hub-header">
@@ -2616,24 +2671,14 @@
             </svg></span>
           <span class="modal-title-text">불러오기</span>
         </div>
-        <div class="cloud-auth-area" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-          <span id="lblCloudUserStatus" class="cloud-user-status"
-            style="display: none; font-size:12px; font-weight:700; padding:4px 9px; border-radius:6px; background:rgba(37,99,235,0.1); color:#2563eb;"></span>
-          <button type="button" id="btnOpenProPricingFromHub" class="btn-cloud-auth"
-            style="background:linear-gradient(135deg,#2563eb,#4f46e5);color:#fff;border:none;font-weight:700;">
-            <span>👑 이용권 결제</span>
-          </button>
-          <button type="button" id="btnCloudEmailLoginToggle" class="btn-cloud-auth" title="이메일 로그인 및 본인인증 회원가입">
-            <span>📧 이메일 로그인·가입</span>
-          </button>
-          <button type="button" id="btnCloudGoogleLogin" class="btn-cloud-auth">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"
-              style="vertical-align:-2px;margin-right:4px;">
-              <path
-                d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 15.25 5 12c0-3.25 3.36-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81Z" />
-            </svg>
-            <span id="lblCloudAuthBtnText">구글 로그인</span>
-          </button>
+        <div class="cloud-auth-area" style="display:flex; align-items:center; gap:6px;">
+          <!-- 호환용 숨김 요소 (로그인 및 이용권 결제는 좌측 [⚙️ 설정]으로 일원화) -->
+          <div style="display: none !important;">
+            <span id="lblCloudUserStatus" class="cloud-user-status"></span>
+            <button type="button" id="btnOpenProPricingFromHub" class="btn-cloud-auth"></button>
+            <button type="button" id="btnCloudEmailLoginToggle" class="btn-cloud-auth"></button>
+            <button type="button" id="btnCloudGoogleLogin" class="btn-cloud-auth"><span id="lblCloudAuthBtnText"></span></button>
+          </div>
           <button id="btnCloseCloudHub" class="btn-modal-close"><svg width="15" height="15" viewBox="0 0 24 24"
               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -2643,62 +2688,9 @@
       </div>
 
       <div class="smart-modal-body cloud-hub-body">
-        <!-- 📧 이메일 로그인 & 본인인증 회원가입 통합 입력창 (Google 이메일과 동일 계정 자동 연동) -->
-        <div id="cloudEmailLoginBox"
-          style="display: none; background: rgba(37, 99, 235, 0.07); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 10px; padding: 12px; margin-bottom: 10px;">
-          <div
-            style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
-            <div style="display: flex; gap: 6px;">
-              <button type="button" id="tabBtnCloudIdLogin" class="btn-primary"
-                style="padding: 5px 12px; font-size: 12px; font-weight: 700; border-radius: 6px;">📧 이메일 로그인</button>
-              <button type="button" id="tabBtnCloudIdSignup" class="btn-secondary"
-                style="padding: 5px 12px; font-size: 12px; font-weight: 700; border-radius: 6px;">✨ 이메일 회원가입
-                (본인인증)</button>
-            </div>
-            <span style="font-size: 11px; color: #2563eb; font-weight: 600;">✅ 이메일 인증 완료 시 동일 주소의 Google 로그인과 하나의 계정으로
-              통합 연동됩니다.</span>
-          </div>
-          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-            <input type="email" id="inputCloudEmailId" placeholder="이메일 주소 (예: teacher@gmail.com)" autocomplete="email"
-              style="flex:1; min-width:170px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
-            <input type="password" id="inputCloudEmailPw" placeholder="비밀번호 (6자 이상)" autocomplete="current-password"
-              style="flex:1; min-width:120px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
-            <button type="button" id="btnSubmitCloudEmailLogin" class="btn-primary"
-              style="padding:7px 14px; font-size:12.5px; font-weight:700; border-radius:7px;">로그인</button>
-          </div>
-          <div id="cloudSignupExtraFields" style="display: none; gap: 6px; flex-wrap: wrap; margin-top: 6px;">
-            <input type="password" id="inputCloudEmailPwConfirm" placeholder="비밀번호 확인" autocomplete="new-password"
-              style="flex:1; min-width:140px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
-            <input type="text" id="inputCloudSignupName" placeholder="선생님 성함 / 닉네임 (예: 김수학)"
-              style="flex:1; min-width:140px; padding:7px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12.5px;">
-          </div>
-          <div id="cloudLoginHelperRow" style="display: flex; justify-content: flex-end; margin-top: 6px;">
-            <button type="button" id="btnResetEmailPassword"
-              style="background: none; border: none; color: #475569; font-size: 11.5px; font-weight: 600; text-decoration: underline; cursor: pointer; padding: 2px 4px;">
-              🔑 비밀번호를 잊으셨나요? (또는 Google 계정에 비밀번호 추가)
-            </button>
-          </div>
-          <!-- 📩 이메일 본인인증 대기 안내 및 확인 배너 -->
-          <div id="cloudEmailVerifyBanner"
-            style="display: none; margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.4); color: #065f46; font-size: 12px; line-height: 1.5;">
-            <div id="lblEmailVerifyPendingMsg" style="font-weight: 700; margin-bottom: 6px;">
-              📩 입력하신 이메일로 본인 인증 링크를 발송했습니다! 메일함에서 인증 링크를 클릭한 뒤 아래 버튼을 눌러주세요.
-            </div>
-            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-              <button type="button" id="btnVerifyEmailCheckNow" class="btn-primary"
-                style="padding: 6px 12px; font-size: 12px; font-weight: 800; border-radius: 6px; background: #059669; border: none; color: #fff; cursor: pointer;">
-                ✅ 이메일 인증 완료 확인 및 로그인
-              </button>
-              <button type="button" id="btnResendVerificationEmail" class="btn-secondary"
-                style="padding: 6px 10px; font-size: 11.5px; font-weight: 700; border-radius: 6px; cursor: pointer;">
-                🔄 인증메일 재발송
-              </button>
-            </div>
-          </div>
-        </div>
-        <!-- 1. 내 기기 및 열려있는 PDF에서 불러오기 -->
+        <!-- 1. 파일 열기 (가장 큼직하고 직관적인 메인 버튼) -->
         <div class="cloud-import-source-box">
-          <!-- 열려있는 PDF가 있을 때만 최상단에 자동 표시 (새 캔버스 추가 후 원래 PDF로 돌아가거나 현재 화면에 추가 캡처할 때!) -->
+          <!-- 열려있는 PDF가 있을 때만 상단에 자동 표시 -->
           <button type="button" id="btnResumeOpenPdfFromHub" class="btn-import-source btn-resume-open-pdf"
             style="display: none;">
             <span class="import-source-left">
@@ -2709,18 +2701,18 @@
             <span class="import-source-badge badge-blue">현재 캔버스에 추가</span>
           </button>
 
-          <!-- 언제 눌러도 100% 무조건 탐색기(폴더)를 여는 버튼 -->
+          <!-- 언제 눌러도 100% 무조건 탐색기(폴더)를 여는 메인 파일 열기 버튼 -->
           <button type="button" id="btnOpenLocalFileFromHub" class="btn-import-source btn-open-local-explorer">
             <span class="import-source-left">
               <span class="import-source-icon">📁</span>
-              <span class="import-source-main">내 기기에서 새 파일 열기</span>
+              <span class="import-source-main">파일 열기</span>
             </span>
             <span class="import-source-badge">PDF · 이미지 · .graphly</span>
           </button>
         </div>
 
         <!-- 호환용 숨김 요소 (저장 기능은 우상단 [내보내기]로 완전 일원화) -->
-        <div style="display: none;">
+        <div style="display: none !important;">
           <button type="button" id="btnImportGraphlyFile"></button>
           <input type="file" id="inputImportGraphlyFile" accept=".graphly,.json,.html">
           <div id="lblCloudSaveBoxTitle"></div>
@@ -2730,21 +2722,31 @@
           <button type="button" id="btnExportGraphlyFile"></button>
           <button type="button" id="tabBtnMyLibrary"></button>
           <button type="button" id="btnBundleSelectedToFile"></button>
+          <input type="checkbox" id="chkCloudSelectAll">
+          <button type="button" id="btnStartLessonPlaylist"><span id="lblSelectedPlaylistCount">0</span></button>
         </div>
 
-        <!-- 2. 클라우드 보관함에서 불러오기 -->
+        <!-- 2. 클라우드 보관함 (폴더별 정리 + 실시간 검색 + 원클릭 열기) -->
         <div id="panelCloudMyLibrary" class="cloud-tab-panel">
-          <div class="cloud-playlist-toolbar">
-            <label class="cloud-chk-all-label">
-              <input type="checkbox" id="chkCloudSelectAll">
-              <span>☁️ 클라우드 보관함 <span class="cloud-count-sub">(<span id="badgeMyLibraryCount">0</span>)</span></span>
-            </label>
-            <div class="cloud-playlist-actions">
-              <button type="button" id="btnStartLessonPlaylist" class="btn-start-playlist">
-                ▶ 선택 열기 (<span id="lblSelectedPlaylistCount">0</span>)
-              </button>
+          <div class="cloud-library-header-row">
+            <span class="cloud-library-title">☁️ 클라우드 보관함 <span class="cloud-count-sub">(<span id="badgeMyLibraryCount">0</span>)</span></span>
+            <div id="cloudLibrarySearchWrap" class="cloud-library-search-wrap">
+              <input type="text" id="inputCloudLibrarySearch" class="cloud-library-search-input"
+                placeholder="🔍 제목 검색..." autocomplete="off">
             </div>
           </div>
+
+          <!-- 📁 폴더 탭 바 (전체 / 사용자 폴더 / + 폴더 추가) -->
+          <div id="cloudFolderChipBar" class="cloud-folder-chip-bar"></div>
+
+          <!-- ➕ 새 폴더 인라인 생성 줄 (전체화면 모드에서도 깨지지 않는 자체 입력바) -->
+          <div id="cloudNewFolderInlineRow" class="cloud-new-folder-inline-row" style="display: none;">
+            <input type="text" id="inputNewCloudFolderName" class="cloud-new-folder-input"
+              placeholder="새 폴더 이름 (예: 고2 수2, 모의고사)" maxlength="24" autocomplete="off">
+            <button type="button" id="btnConfirmNewCloudFolder" class="btn-primary cloud-new-folder-btn">추가</button>
+            <button type="button" id="btnCancelNewCloudFolder" class="btn-secondary cloud-new-folder-btn">취소</button>
+          </div>
+
           <div id="myLibraryList" class="cloud-item-list"></div>
         </div>
       </div>
@@ -3143,8 +3145,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_43"></script>
-  <script src="app.js?v=20261103_43"></script>
+  <script src="engine.js?v=20261103_44"></script>
+  <script src="app.js?v=20261103_44"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
