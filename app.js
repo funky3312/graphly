@@ -10130,19 +10130,6 @@ class GraphApp {
         ctx.restore();
       });
 
-      // 2) 호버 시(필기 중이 아닐 때, 그리고 펜 포인터 표시가 켜져 있을 때만) 작고 깔끔한 빨간 펜촉 포인트 표시
-      const showHoverDot = Boolean(state.hoverPos && !state.isDrawing && this.showVirtualStylus);
-      if (showHoverDot) {
-        const hx = state.hoverPos.nx * w;
-        const hy = state.hoverPos.ny * h;
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(hx, hy, 3.2, 0, Math.PI * 2);
-        ctx.fillStyle = '#dc2626';
-        ctx.fill();
-        ctx.restore();
-      }
-
       ctx.restore();
 
       if ((state.strokes.length > 0 || state.isDrawing) && !state.rafId) {
@@ -10471,7 +10458,12 @@ class GraphApp {
       this.bringCardToFront(cardWidgetEl);
       e.preventDefault();
       e.stopPropagation();
-      if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+      if (this.showVirtualStylus && this.canvas) {
+        const cRect = this.canvasRect || this.updateCanvasRect();
+        if (cRect) {
+          this.updateStylusPenPosition(e.clientX - cRect.left, e.clientY - cRect.top, e);
+        }
+      }
       try { laserCanvas.setPointerCapture(e.pointerId); } catch (err) { }
 
       const pos = getNormPos(e);
