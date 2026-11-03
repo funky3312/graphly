@@ -18288,6 +18288,34 @@ class GraphApp {
     if (btnAddSlide) {
       btnAddSlide.onclick = (e) => this.handleSmartAddSlideFromTopBar(e);
     }
+    const btnMenuNextPdfPage = document.getElementById('btnAddSlideMenuNextPdfPage');
+    const btnMenuPickPdf = document.getElementById('btnAddSlideMenuPickPdf');
+    const btnMenuBlankCanvas = document.getElementById('btnAddSlideMenuBlankCanvas');
+    if (btnMenuNextPdfPage) {
+      btnMenuNextPdfPage.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        this._isAddSlideMenuOpen = false;
+        this.syncLessonPlaylistNavBarUI();
+        this.appendNextPdfPageSlide();
+      };
+    }
+    if (btnMenuPickPdf) {
+      btnMenuPickPdf.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        this._isAddSlideMenuOpen = false;
+        this.syncLessonPlaylistNavBarUI();
+        const autoNextSlide = this.hasAnyWorkspaceContent();
+        this.resumeOrOpenCurrentPdf(autoNextSlide, { startInPanMode: true });
+      };
+    }
+    if (btnMenuBlankCanvas) {
+      btnMenuBlankCanvas.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        this._isAddSlideMenuOpen = false;
+        this.syncLessonPlaylistNavBarUI();
+        this.handleNewCanvasButtonClick();
+      };
+    }
     if (btnToggleSelectMode) {
       btnToggleSelectMode.onclick = (e) => {
         if (e && e.stopPropagation) e.stopPropagation();
@@ -21440,22 +21468,18 @@ class GraphApp {
     this._selectedSlideDeleteIndices = new Set();
 
     const hasOpenPdf = Boolean(this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0));
-    const isPageMode = (this.lessonTeachingMode === 'page');
-    const isCropContext = Boolean(hasOpenPdf || this.problemCardData || this.lessonTeachingMode === 'crop');
+    if (hasOpenPdf) {
+      this._isAddSlideMenuOpen = !this._isAddSlideMenuOpen;
+      this.syncLessonPlaylistNavBarUI();
+      return;
+    }
 
-    if (hasOpenPdf && isPageMode) {
-      this.appendNextPdfPageSlide();
-      return;
-    }
-    if (isCropContext) {
-      const autoNextSlide = this.hasAnyWorkspaceContent();
-      this.resumeOrOpenCurrentPdf(autoNextSlide, { startInPanMode: true });
-      return;
-    }
+    this._isAddSlideMenuOpen = false;
     this.handleNewCanvasButtonClick();
   }
 
   toggleSlideGridPopover(forceOpen) {
+    this._isAddSlideMenuOpen = false;
     this._isSlideGridOpen = typeof forceOpen === 'boolean' ? forceOpen : !this._isSlideGridOpen;
     this._isSlideSelectDeleteMode = false;
     this._selectedSlideDeleteIndices = new Set();
@@ -21549,10 +21573,11 @@ class GraphApp {
     if (!this._boundCloseSlideDelOnOutside) {
       this._boundCloseSlideDelOnOutside = true;
       window.addEventListener('pointerdown', (ev) => {
-        if (!this._isSlideGridOpen && !this._openSlideChipDelKey) return;
+        if (!this._isSlideGridOpen && !this._isAddSlideMenuOpen && !this._openSlideChipDelKey) return;
         const t = ev.target;
-        if (t && t.closest && (t.closest('.slide-grid-popover') || t.closest('#btnPlaylistSlideInfo') || t.closest('#btnPdfBoardPageInfo'))) return;
+        if (t && t.closest && (t.closest('.slide-grid-popover') || t.closest('.slide-add-menu-popover') || t.closest('#btnPlaylistSlideInfo') || t.closest('#btnPlaylistAddSlide') || t.closest('#btnPdfBoardPageInfo'))) return;
         this._isSlideGridOpen = false;
+        this._isAddSlideMenuOpen = false;
         this._isSlideSelectDeleteMode = false;
         this._selectedSlideDeleteIndices = new Set();
         this._openSlideChipDelKey = null;
@@ -21644,23 +21669,6 @@ class GraphApp {
         };
         chipsEl.appendChild(chip);
       });
-
-      // 바둑판 맨 마지막 칸: [+ 빈 캔버스 추가] 점선 타일 (선택 삭제 모드에서는 오클릭 방지를 위해 숨김)
-      if (!isSelectMode) {
-        const addChip = document.createElement('div');
-        addChip.className = 'slide-chip-item slide-chip-add-blank';
-        addChip.title = '빈 캔버스 추가';
-        const plusSpan = document.createElement('span');
-        plusSpan.className = 'slide-chip-label';
-        plusSpan.textContent = '+';
-        addChip.appendChild(plusSpan);
-        addChip.onclick = (e) => {
-          e.stopPropagation();
-          this._isSlideGridOpen = false;
-          this.handleNewCanvasButtonClick();
-        };
-        chipsEl.appendChild(addChip);
-      }
     }
 
     const btnPrev = document.getElementById('btnPlaylistPrev');
@@ -21668,26 +21676,25 @@ class GraphApp {
     const btnNextPdfPage = document.getElementById('btnPlaylistNextPdfPage');
     const btnOpenPdf = document.getElementById('btnPlaylistOpenPdf');
     const btnAddSlide = document.getElementById('btnPlaylistAddSlide');
+    const addMenuPop = document.getElementById('playlistAddSlideMenu');
+    const lblMenuNextPdfPage = document.getElementById('lblAddSlideMenuNextPdfPage');
     if (btnPrev) btnPrev.disabled = (curIdx <= 0);
     if (btnNext) btnNext.disabled = (curIdx >= total - 1);
     if (btnNextPdfPage) btnNextPdfPage.style.display = 'none';
     if (btnOpenPdf) btnOpenPdf.style.display = 'none';
 
     const hasOpenPdf = Boolean(this.pdfDoc || (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0));
-    const isPageMode = (this.lessonTeachingMode === 'page');
-    const isCropContext = Boolean(hasOpenPdf || this.problemCardData || this.lessonTeachingMode === 'crop');
-
+    if (!hasOpenPdf) {
+      this._isAddSlideMenuOpen = false;
+    }
+    if (addMenuPop) {
+      addMenuPop.style.display = (this._isAddSlideMenuOpen && hasOpenPdf) ? 'flex' : 'none';
+    }
+    if (lblMenuNextPdfPage) {
+      lblMenuNextPdfPage.textContent = '다음 페이지';
+    }
     if (btnAddSlide) {
-      if (hasOpenPdf && isPageMode) {
-        const curPage = (this.pdfPageBoardData && this.pdfPageBoardData.pageNum) ? this.pdfPageBoardData.pageNum : (this.pdfCurrentPage || 1);
-        const totalPages = (this.pdfPageBoardData && this.pdfPageBoardData.totalPages) ? this.pdfPageBoardData.totalPages : (this.pdfTotalPages || (this.pdfDoc ? this.pdfDoc.numPages : 1));
-        const nextP = Math.min(totalPages, curPage + 1);
-        btnAddSlide.title = `다음 PDF 페이지(p.${nextP}) 슬라이드 추가`;
-      } else if (isCropContext) {
-        btnAddSlide.title = '다음 문제 캡처 (새 슬라이드에 추가)';
-      } else {
-        btnAddSlide.title = '새 빈 캔버스 추가';
-      }
+      btnAddSlide.title = hasOpenPdf ? '슬라이드 추가 메뉴 (다음 페이지 / 페이지 선택 / 빈 캔버스)' : '새 빈 캔버스 추가';
     }
 
     navBar.style.display = 'flex';

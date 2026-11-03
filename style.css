@@ -9288,6 +9288,70 @@ body.theme-light .slide-grid-popover {
   box-shadow: 0 14px 32px rgba(15, 23, 42, 0.16), 0 4px 10px rgba(15, 23, 42, 0.08);
 }
 
+.slide-add-menu-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 148px;
+  padding: 5px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42), 0 4px 10px rgba(0, 0, 0, 0.22);
+  z-index: 485;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+body.theme-light .slide-add-menu-popover {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(15, 23, 42, 0.14);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.15), 0 4px 10px rgba(15, 23, 42, 0.07);
+}
+
+.slide-add-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #f1f5f9;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.slide-add-menu-item:hover {
+  background: rgba(59, 130, 246, 0.24);
+  color: #ffffff;
+}
+
+body.theme-light .slide-add-menu-item {
+  color: #1e293b;
+}
+
+body.theme-light .slide-add-menu-item:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.slide-add-menu-icon {
+  font-size: 13px;
+  line-height: 1;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
 .slide-grid-popover-header {
   display: flex;
   align-items: center;
@@ -9898,6 +9962,7 @@ body.student-audio-video-only #btnAudioSyncCloseBar,
 body.student-audio-video-only #btnAudioShowFinalNote,
 body.audio-replay-active #btnAudioShowFinalNote,
 body.student-audio-video-only #btnPlaylistAddSlide,
+body.student-audio-video-only #playlistAddSlideMenu,
 body.student-audio-video-only #btnPlaylistNextPdfPage,
 body.student-audio-video-only #btnPlaylistOpenPdf,
 body.student-audio-video-only #btnPlaylistDeleteCurrent,
