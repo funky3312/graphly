@@ -5577,7 +5577,7 @@ body.graph-snap-crosshair #graphCanvas {
 }
 
 .graph-snap-drag-box {
-  position: fixed;
+  position: absolute;
   z-index: 210;
   border: 2.2px dashed #2563eb;
   background: rgba(37, 99, 235, 0.08);
@@ -9707,7 +9707,6 @@ body.student-audio-video-only #sharedResetBar,
 body.student-audio-video-only #pdfBoardNavBar,
 body.student-audio-video-only #smartNoteViewerOverlay,
 body.student-audio-video-only #viewerGraphTouchBar,
-body.student-audio-video-only .problem-card-actions,
 body.student-audio-video-only .problem-card-resize-handle,
 body.student-audio-video-only .card-sticker-del-btn,
 body.student-audio-video-only #btnAudioReRecord,
@@ -10830,6 +10829,17 @@ body.replay-fixed-stage:not(.theme-light) .main-workspace {
 
 body.replay-fixed-stage .canvas-quick-toolbar {
   max-height: calc(100% - 28px) !important;
+}
+
+body.replay-fixed-stage .problem-card-widget {
+  max-width: none !important;
+}
+
+body.replay-fixed-stage #graphSnapFloatingBar,
+body.replay-fixed-stage #pdfToGraphCropFloatingBar,
+body.replay-fixed-stage #btnCancelPdfCropToGraph,
+body.replay-fixed-stage #graphSnapDragBox {
+  position: absolute !important;
 }
 
 body.replay-fixed-stage #audioSyncFloatingBar,

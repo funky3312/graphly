@@ -8265,15 +8265,15 @@ class GraphApp {
 
     const isMin = Boolean(this.isProblemCardMinimized || widget.classList.contains('minimized'));
     const rawStyleW = parseFloat(widget.style.width);
-    if (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 240) {
+    if (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 180) {
       widget._savedExpandedWidth = `${Math.round(rawStyleW)}px`;
     }
     const measuredWidgetRect = typeof this._getStageElementRect === 'function'
       ? this._getStageElementRect(widget)
       : widget.getBoundingClientRect();
-    const w = (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 240)
+    const w = (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 180)
       ? rawStyleW
-      : (parseFloat(widget._savedExpandedWidth) || (Number.isFinite(rawStyleW) && rawStyleW >= 240 ? rawStyleW : 0) || (!isMin && measuredWidgetRect ? measuredWidgetRect.width : 520) || 520);
+      : (parseFloat(widget._savedExpandedWidth) || (Number.isFinite(rawStyleW) && rawStyleW >= 180 ? rawStyleW : 0) || (!isMin && measuredWidgetRect ? measuredWidgetRect.width : 520) || 520);
     const aspect = this.problemCardAspect || 0.72;
     const imgW = w;
     const imgH = Math.round(imgW * aspect);
@@ -12049,12 +12049,15 @@ class GraphApp {
 
     const isMin = Boolean(this.isGraphCardMinimized || widget.classList.contains('minimized'));
     const rawStyleW = parseFloat(widget.style.width);
-    if (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 200) {
+    if (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 140) {
       widget._savedExpandedWidth = `${Math.round(rawStyleW)}px`;
     }
-    const w = (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 200)
+    const measuredWidgetRect = typeof this._getStageElementRect === 'function'
+      ? this._getStageElementRect(widget)
+      : widget.getBoundingClientRect();
+    const w = (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 140)
       ? rawStyleW
-      : (parseFloat(widget._savedExpandedWidth) || (Number.isFinite(rawStyleW) && rawStyleW >= 200 ? rawStyleW : 0) || (!isMin ? widget.getBoundingClientRect().width : 400) || 400);
+      : (parseFloat(widget._savedExpandedWidth) || (Number.isFinite(rawStyleW) && rawStyleW >= 140 ? rawStyleW : 0) || (!isMin && measuredWidgetRect ? measuredWidgetRect.width : 400) || 400);
     const aspect = this.graphCardAspect || 0.85;
     const imgW = w;
     const imgH = Math.round(imgW * aspect);
@@ -23266,15 +23269,17 @@ class GraphApp {
       // 🌟 [✂️ PDF 전체화면 판서 모드 ➔ 문제 영역 스샷 후 그래프 모드 진입 드래그 시작] 🌟
       if (this.isPdfToGraphCropMode && !isFingerOrPalmTouch) {
         if (e.preventDefault) e.preventDefault();
-        if (e.stopPropagation) e.stopPropagation();
         this.isPdfToGraphCropDragging = true;
         const startMath = this.screenToMath(pos.x, pos.y);
         this.pdfToGraphCropStart = { x: pos.x, y: pos.y, clientX: e.clientX, clientY: e.clientY, mathX: startMath.x, mathY: startMath.y };
-        const vw = Math.max(1, window.innerWidth || 1);
-        const vh = Math.max(1, window.innerHeight || 1);
-        const nx1 = +(e.clientX / vw).toFixed(4);
-        const ny1 = +(e.clientY / vh).toFixed(4);
+        const vw = Math.max(1, this.screenWidth || window.innerWidth || 1);
+        const vh = Math.max(1, this.screenHeight || window.innerHeight || 1);
+        const nx1 = +(pos.x / vw).toFixed(4);
+        const ny1 = +(pos.y / vh).toFixed(4);
+        const x1 = Math.round(pos.x * 10) / 10;
+        const y1 = Math.round(pos.y * 10) / 10;
         this._activeSnapDragRect = {
+          x1, y1, x2: x1, y2: y1,
           nx1, ny1, nx2: nx1, ny2: ny1,
           mx1: +startMath.x.toFixed(4), my1: +startMath.y.toFixed(4),
           mx2: +startMath.x.toFixed(4), my2: +startMath.y.toFixed(4),
@@ -23283,8 +23288,8 @@ class GraphApp {
         const dragBox = document.getElementById('graphSnapDragBox');
         if (dragBox) {
           dragBox.style.display = 'block';
-          dragBox.style.left = `${e.clientX}px`;
-          dragBox.style.top = `${e.clientY}px`;
+          dragBox.style.left = `${pos.x}px`;
+          dragBox.style.top = `${pos.y}px`;
           dragBox.style.width = '0px';
           dragBox.style.height = '0px';
         }
@@ -23296,15 +23301,17 @@ class GraphApp {
       // 🌟 [📸 실시간 그래프 영역 스샷 드래그 시작] 🌟
       if (this.isGraphSnapMode && !isFingerOrPalmTouch) {
         if (e.preventDefault) e.preventDefault();
-        if (e.stopPropagation) e.stopPropagation();
         this.isGraphSnapDragging = true;
         const startMath = this.screenToMath(pos.x, pos.y);
         this.graphSnapStart = { x: pos.x, y: pos.y, clientX: e.clientX, clientY: e.clientY, mathX: startMath.x, mathY: startMath.y };
-        const vw = Math.max(1, window.innerWidth || 1);
-        const vh = Math.max(1, window.innerHeight || 1);
-        const nx1 = +(e.clientX / vw).toFixed(4);
-        const ny1 = +(e.clientY / vh).toFixed(4);
+        const vw = Math.max(1, this.screenWidth || window.innerWidth || 1);
+        const vh = Math.max(1, this.screenHeight || window.innerHeight || 1);
+        const nx1 = +(pos.x / vw).toFixed(4);
+        const ny1 = +(pos.y / vh).toFixed(4);
+        const x1 = Math.round(pos.x * 10) / 10;
+        const y1 = Math.round(pos.y * 10) / 10;
         this._activeSnapDragRect = {
+          x1, y1, x2: x1, y2: y1,
           nx1, ny1, nx2: nx1, ny2: ny1,
           mx1: +startMath.x.toFixed(4), my1: +startMath.y.toFixed(4),
           mx2: +startMath.x.toFixed(4), my2: +startMath.y.toFixed(4),
@@ -23313,8 +23320,8 @@ class GraphApp {
         const dragBox = document.getElementById('graphSnapDragBox');
         if (dragBox) {
           dragBox.style.display = 'block';
-          dragBox.style.left = `${e.clientX}px`;
-          dragBox.style.top = `${e.clientY}px`;
+          dragBox.style.left = `${pos.x}px`;
+          dragBox.style.top = `${pos.y}px`;
           dragBox.style.width = '0px';
           dragBox.style.height = '0px';
         }
@@ -24290,23 +24297,27 @@ class GraphApp {
         if (this.isPdfToGraphCropDragging && this.pdfToGraphCropStart) {
           const dragBox = document.getElementById('graphSnapDragBox');
           if (dragBox) {
-            const x = Math.min(this.pdfToGraphCropStart.clientX, e.clientX);
-            const y = Math.min(this.pdfToGraphCropStart.clientY, e.clientY);
-            const w = Math.abs(e.clientX - this.pdfToGraphCropStart.clientX);
-            const h = Math.abs(e.clientY - this.pdfToGraphCropStart.clientY);
+            const x = Math.min(this.pdfToGraphCropStart.x, pos.x);
+            const y = Math.min(this.pdfToGraphCropStart.y, pos.y);
+            const w = Math.abs(pos.x - this.pdfToGraphCropStart.x);
+            const h = Math.abs(pos.y - this.pdfToGraphCropStart.y);
             dragBox.style.left = `${x}px`;
             dragBox.style.top = `${y}px`;
             dragBox.style.width = `${w}px`;
             dragBox.style.height = `${h}px`;
           }
-          const vw = Math.max(1, window.innerWidth || 1);
-          const vh = Math.max(1, window.innerHeight || 1);
+          const vw = Math.max(1, this.screenWidth || window.innerWidth || 1);
+          const vh = Math.max(1, this.screenHeight || window.innerHeight || 1);
           const curMath = this.screenToMath(pos.x, pos.y);
           this._activeSnapDragRect = {
-            nx1: +(this.pdfToGraphCropStart.clientX / vw).toFixed(4),
-            ny1: +(this.pdfToGraphCropStart.clientY / vh).toFixed(4),
-            nx2: +(e.clientX / vw).toFixed(4),
-            ny2: +(e.clientY / vh).toFixed(4),
+            x1: Math.round(this.pdfToGraphCropStart.x * 10) / 10,
+            y1: Math.round(this.pdfToGraphCropStart.y * 10) / 10,
+            x2: Math.round(pos.x * 10) / 10,
+            y2: Math.round(pos.y * 10) / 10,
+            nx1: +(this.pdfToGraphCropStart.x / vw).toFixed(4),
+            ny1: +(this.pdfToGraphCropStart.y / vh).toFixed(4),
+            nx2: +(pos.x / vw).toFixed(4),
+            ny2: +(pos.y / vh).toFixed(4),
             mx1: +(typeof this.pdfToGraphCropStart.mathX === 'number' ? this.pdfToGraphCropStart.mathX : curMath.x).toFixed(4),
             my1: +(typeof this.pdfToGraphCropStart.mathY === 'number' ? this.pdfToGraphCropStart.mathY : curMath.y).toFixed(4),
             mx2: +curMath.x.toFixed(4),
@@ -24326,23 +24337,27 @@ class GraphApp {
         if (this.isGraphSnapDragging && this.graphSnapStart) {
           const dragBox = document.getElementById('graphSnapDragBox');
           if (dragBox) {
-            const x = Math.min(this.graphSnapStart.clientX, e.clientX);
-            const y = Math.min(this.graphSnapStart.clientY, e.clientY);
-            const w = Math.abs(e.clientX - this.graphSnapStart.clientX);
-            const h = Math.abs(e.clientY - this.graphSnapStart.clientY);
+            const x = Math.min(this.graphSnapStart.x, pos.x);
+            const y = Math.min(this.graphSnapStart.y, pos.y);
+            const w = Math.abs(pos.x - this.graphSnapStart.x);
+            const h = Math.abs(pos.y - this.graphSnapStart.y);
             dragBox.style.left = `${x}px`;
             dragBox.style.top = `${y}px`;
             dragBox.style.width = `${w}px`;
             dragBox.style.height = `${h}px`;
           }
-          const vw = Math.max(1, window.innerWidth || 1);
-          const vh = Math.max(1, window.innerHeight || 1);
+          const vw = Math.max(1, this.screenWidth || window.innerWidth || 1);
+          const vh = Math.max(1, this.screenHeight || window.innerHeight || 1);
           const curMath = this.screenToMath(pos.x, pos.y);
           this._activeSnapDragRect = {
-            nx1: +(this.graphSnapStart.clientX / vw).toFixed(4),
-            ny1: +(this.graphSnapStart.clientY / vh).toFixed(4),
-            nx2: +(e.clientX / vw).toFixed(4),
-            ny2: +(e.clientY / vh).toFixed(4),
+            x1: Math.round(this.graphSnapStart.x * 10) / 10,
+            y1: Math.round(this.graphSnapStart.y * 10) / 10,
+            x2: Math.round(pos.x * 10) / 10,
+            y2: Math.round(pos.y * 10) / 10,
+            nx1: +(this.graphSnapStart.x / vw).toFixed(4),
+            ny1: +(this.graphSnapStart.y / vh).toFixed(4),
+            nx2: +(pos.x / vw).toFixed(4),
+            ny2: +(pos.y / vh).toFixed(4),
             mx1: +(typeof this.graphSnapStart.mathX === 'number' ? this.graphSnapStart.mathX : curMath.x).toFixed(4),
             my1: +(typeof this.graphSnapStart.mathY === 'number' ? this.graphSnapStart.mathY : curMath.y).toFixed(4),
             mx2: +curMath.x.toFixed(4),
@@ -33582,9 +33597,14 @@ class GraphApp {
       const dragBox = document.getElementById('graphSnapDragBox');
       if (dragBox) {
         const sr = kf.snapDragRect;
-        if (sr && (typeof sr.nx1 === 'number' || typeof sr.mx1 === 'number')) {
+        if (sr && (typeof sr.x1 === 'number' || typeof sr.nx1 === 'number' || typeof sr.mx1 === 'number')) {
           let sx1, sy1, sx2, sy2;
-          if (typeof sr.mx1 === 'number' && typeof sr.my1 === 'number' && typeof sr.mx2 === 'number' && typeof sr.my2 === 'number' && (!this.isGraphCovered || this.pdfPageBoardData)) {
+          if (typeof sr.x1 === 'number' && typeof sr.y1 === 'number' && typeof sr.x2 === 'number' && typeof sr.y2 === 'number') {
+            sx1 = sr.x1;
+            sy1 = sr.y1;
+            sx2 = sr.x2;
+            sy2 = sr.y2;
+          } else if (typeof sr.mx1 === 'number' && typeof sr.my1 === 'number' && typeof sr.mx2 === 'number' && typeof sr.my2 === 'number' && (!this.isGraphCovered || this.pdfPageBoardData)) {
             const p1 = this.mathToScreen(sr.mx1, sr.my1);
             const p2 = this.mathToScreen(sr.mx2, sr.my2);
             sx1 = p1.x;
@@ -33799,7 +33819,7 @@ class GraphApp {
   _detectCurrentAudioCursorKind(isDrawing = false, extraMeta = null) {
     if (extraMeta && extraMeta.cursorKind) return extraMeta.cursorKind;
     if (extraMeta && extraMeta.isLaser) return 'laser';
-    if (this.isDropLineMode) return 'crosshair';
+    if (this.isDropLineMode || this.isGraphSnapMode || this.isPdfToGraphCropMode) return 'crosshair';
     if (this.isTextToolMode) return 'arrow';
 
     const isDraggingNow = Boolean(
@@ -34381,7 +34401,76 @@ class GraphApp {
     if (typeof rawW === 'number' && rawW >= 320 && typeof rawH === 'number' && rawH >= 240) {
       return { w: Math.round(rawW), h: Math.round(rawH) };
     }
-    // 구버전 녹화본(stageW/stageH 미기록)을 위한 스마트 촬영 해상도 역추론 폴백
+    if (syncData && syncData._solvedStageSize) {
+      return syncData._solvedStageSize;
+    }
+
+    // 1. 구버전 녹화본(stageW/stageH 미기록)을 위한 수학 좌표(mx, my) ⇄ 화면 좌표(x, y) 연립방정식 정밀 역산
+    const candidateSyncList = [syncData];
+    if (Array.isArray(this.lessonSlides)) {
+      this.lessonSlides.forEach(sl => {
+        if (sl && sl.audioSyncData && sl.audioSyncData !== syncData) {
+          candidateSyncList.push(sl.audioSyncData);
+        }
+      });
+    }
+    const shSamples = [];
+    const swSamples = [];
+    for (let sIdx = 0; sIdx < candidateSyncList.length; sIdx++) {
+      const sd = candidateSyncList[sIdx];
+      if (!sd) continue;
+      this._expandAudioSyncData(sd);
+      if (!Array.isArray(sd.timeline)) continue;
+      let curKf = sd.initialState || null;
+      for (let i = 0; i < sd.timeline.length; i++) {
+        const ev = sd.timeline[i];
+        if (!ev) continue;
+        if (ev.type === 'state' && ev.state) {
+          curKf = ev.state;
+        } else if (
+          ev.type === 'cursor' &&
+          !ev.uiScreen &&
+          !ev.cardKey &&
+          !ev.isBoard &&
+          typeof ev.x === 'number' &&
+          typeof ev.y === 'number' &&
+          typeof ev.mx === 'number' &&
+          typeof ev.my === 'number' &&
+          curKf
+        ) {
+          const panX = typeof curKf.panX === 'number' ? curKf.panX : 0;
+          const panY = typeof curKf.panY === 'number' ? curKf.panY : 0;
+          const zoomLevel = (typeof curKf.zoomLevel === 'number' && curKf.zoomLevel > 0) ? curKf.zoomLevel : 1.0;
+          const ySpan = (typeof curKf.ySpan === 'number' && curKf.ySpan > 0) ? curKf.ySpan : 6.0;
+          const effSpanY = ySpan / zoomLevel;
+          const denomY = 1 - (ev.my / effSpanY);
+          if (Math.abs(denomY) >= 0.35 && Math.abs(ev.y - panY) >= 50) {
+            const shCand = (2 * (ev.y - panY)) / denomY;
+            if (shCand >= 360 && shCand <= 2400) {
+              const unitScale = (shCand / 2) / effSpanY;
+              const swCand = 2 * (ev.x - panX - ev.mx * unitScale);
+              if (swCand >= 480 && swCand <= 4000) {
+                shSamples.push(shCand);
+                swSamples.push(swCand);
+              }
+            }
+          }
+        }
+      }
+      if (shSamples.length >= 8 && swSamples.length >= 8) break;
+    }
+
+    if (shSamples.length > 0 && swSamples.length > 0) {
+      shSamples.sort((a, b) => a - b);
+      swSamples.sort((a, b) => a - b);
+      const medH = Math.round(shSamples[Math.floor(shSamples.length / 2)]);
+      const medW = Math.round(swSamples[Math.floor(swSamples.length / 2)]);
+      const solved = { w: medW, h: medH };
+      if (syncData) syncData._solvedStageSize = solved;
+      return solved;
+    }
+
+    // 2. 순수 칠판 모드만 있는 구버전 녹화본을 위한 UI/포인터 바운딩 폴백
     let estW = 0;
     let estH = 0;
     const checkKf = (kf) => {
@@ -34412,7 +34501,9 @@ class GraphApp {
     }
     const finalW = Math.max(1280, Math.min(2560, Math.round(estW || 1440)));
     const finalH = Math.max(720, Math.min(1600, Math.round(estH > 540 ? estH : (finalW * 9 / 16))));
-    return { w: finalW, h: finalH };
+    const fallback = { w: finalW, h: finalH };
+    if (syncData) syncData._solvedStageSize = fallback;
+    return fallback;
   }
 
   _getStageElementRect(el) {
@@ -34792,6 +34883,10 @@ class GraphApp {
     if (kfA.snapDragRect && kfB.snapDragRect) {
       merged.snapDragRect = {
         ...kfA.snapDragRect,
+        x1: lerp(kfA.snapDragRect.x1, kfB.snapDragRect.x1),
+        y1: lerp(kfA.snapDragRect.y1, kfB.snapDragRect.y1),
+        x2: lerp(kfA.snapDragRect.x2, kfB.snapDragRect.x2),
+        y2: lerp(kfA.snapDragRect.y2, kfB.snapDragRect.y2),
         nx1: lerp(kfA.snapDragRect.nx1, kfB.snapDragRect.nx1),
         ny1: lerp(kfA.snapDragRect.ny1, kfB.snapDragRect.ny1),
         nx2: lerp(kfA.snapDragRect.nx2, kfB.snapDragRect.nx2),

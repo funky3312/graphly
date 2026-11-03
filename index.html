@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_32">
+  <link rel="stylesheet" href="style.css?v=20261103_33">
 </head>
 
 <body class="theme-light">
@@ -1930,6 +1930,148 @@
         </div>
       </div>
 
+      <!-- [📌 크롭된 문제 고정 카드 위젯 (Problem Card Widget - 상단 제자리 블라인드 헤더 & 더블클릭 접기)] -->
+      <div id="problemCardWidget" class="problem-card-widget" style="display: none;">
+        <div id="problemCardHeader" class="problem-card-header">
+          <div class="problem-card-title-group">
+            <div class="problem-card-drag-handle" id="problemCardDragHandle">
+              <span id="problemCardTitle" class="card-title-text">문제 (p.1)</span>
+            </div>
+            <button id="btnProblemCardToggleMinimize" type="button"
+              class="card-btn card-title-fold-btn card-fold-triangle-btn">
+              <span id="iconCardToggle" class="card-fold-chevron">▾</span>
+            </button>
+          </div>
+          <div class="problem-card-actions">
+            <button id="btnProblemCardLaser" type="button" class="card-btn btn-card-laser"
+              title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
+              <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                  <path d="m15 5 4 4" />
+                </svg></span>
+            </button>
+            <button id="btnProblemCardReCrop_legacy" class="card-btn" style="display: none !important;">
+              <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                  stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;">
+                  <circle cx="6" cy="6" r="3" />
+                  <circle cx="6" cy="18" r="3" />
+                  <line x1="20" y1="4" x2="8.12" y2="15.88" />
+                  <line x1="14.47" y1="14.48" x2="20" y2="20" />
+                  <line x1="8.12" y1="8.12" x2="12" y2="12" />
+                </svg>다음 캡처</span>
+            </button>
+            <button id="btnProblemCardClearInk" class="card-btn" title="필기 지우기">
+              <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg></span>
+            </button>
+            <button id="btnProblemCardClose" class="card-btn btn-card-close" title="닫기">
+              <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg></span>
+            </button>
+          </div>
+        </div>
+        <div id="problemCardBody" class="problem-card-body">
+          <img id="problemCardImg" class="problem-card-img" alt="크롭된 문제" draggable="false" />
+          <canvas id="problemCardCanvas" class="problem-card-canvas"></canvas>
+          <div id="problemCardResizeHandle" class="problem-card-resize-handle"></div>
+        </div>
+      </div>
+
+      <!-- [📸 캡처된 그래프 스샷 고정 카드 위젯 (Graph Snapshot Card - 상단 제자리 블라인드 헤더 & 더블클릭 접기)] -->
+      <div id="graphCardWidget" class="problem-card-widget graph-card-widget" style="display: none;">
+        <div id="graphCardHeader" class="problem-card-header">
+          <div class="problem-card-title-group">
+            <div class="problem-card-drag-handle" id="graphCardDragHandle">
+              <span id="graphCardTitle" class="card-title-text">#1</span>
+            </div>
+            <button id="btnGraphCardToggleMinimize" type="button"
+              class="card-btn card-title-fold-btn card-fold-triangle-btn">
+              <span id="iconGraphCardToggle" class="card-fold-chevron">▾</span>
+            </button>
+          </div>
+          <div class="problem-card-actions">
+            <button id="btnGraphCardLaser" type="button" class="card-btn btn-card-laser"
+              title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
+              <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                  <path d="m15 5 4 4" />
+                </svg></span>
+            </button>
+            <button id="btnGraphCardRestore" class="card-btn card-btn-restore">
+              <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                  <path d="M3 3v5h5" />
+                </svg>그래프 수정</span>
+            </button>
+            <button id="btnGraphCardClearInk" class="card-btn" title="필기 지우기">
+              <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg></span>
+            </button>
+            <button id="btnGraphCardClose" class="card-btn btn-card-close" title="삭제">
+              <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg></span>
+            </button>
+          </div>
+        </div>
+        <div id="graphCardBody" class="problem-card-body">
+          <img id="graphCardImg" class="problem-card-img" alt="캡처된 그래프 스샷" draggable="false" />
+          <canvas id="graphCardCanvas" class="problem-card-canvas"></canvas>
+          <div id="graphCardResizeHandle" class="problem-card-resize-handle"></div>
+        </div>
+      </div>
+
+      <!-- [📦 우측 상단 X 버튼 바로 옆: 실시간 그래프 보관 트리거 버튼 & 드래그 오버레이] -->
+      <div id="graphSnapFloatingBar" class="graph-snap-floating-bar" style="display: none;">
+        <button id="btnReturnToCoveredBoard" class="btn-return-covered-board" style="display: none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 14 4 9 9 4" />
+            <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+          </svg>
+          <span>필기 복귀</span>
+        </button>
+        <button id="btnTriggerGraphSnap" class="btn-trigger-graph-snap">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+            <path d="M18 22V8a2 2 0 0 0-2-2H2" />
+          </svg>
+          <span id="lblTriggerGraphSnap">카드 추가</span>
+        </button>
+      </div>
+
+      <!-- [✂️ PDF 전체화면 판서 모드 ➔ 좌측 [+] 버튼 바로 옆 위아래 균형 2지선다 팝업] -->
+      <div id="pdfToGraphCropFloatingBar" class="graph-snap-floating-bar pdf-to-graph-crop-bar" style="display: none;">
+        <button id="btnStartPdfCropToGraph" class="btn-trigger-graph-snap pdf-crop-choice-btn">
+          <span>✂️ 캡처 후 이동</span>
+        </button>
+        <button id="btnSkipPdfCropToGraph" class="btn-trigger-graph-snap pdf-skip-choice-btn">
+          <span>▶ 바로 이동</span>
+        </button>
+      </div>
+      <!-- [✂️ 캡처 후 이동 클릭 시: 좌측 메뉴는 사라지고 상단에 작게 뜨는 캡처 상태/취소 버튼] -->
+      <button type="button" id="btnCancelPdfCropToGraph" class="pdf-crop-active-pill" style="display: none;"
+        title="클릭하여 캡처 취소">
+        <span>✂️ 문제 영역 드래그</span>
+        <span class="pdf-crop-active-cancel-x">✕</span>
+      </button>
+      <div id="graphSnapDragBox" class="graph-snap-drag-box" style="display: none;"></div>
+
     </main>
   </div>
 
@@ -2651,148 +2793,6 @@
     </div>
   </div>
 
-  <!-- [📌 크롭된 문제 고정 카드 위젯 (Problem Card Widget - 상단 제자리 블라인드 헤더 & 더블클릭 접기)] -->
-  <div id="problemCardWidget" class="problem-card-widget" style="display: none;">
-    <div id="problemCardHeader" class="problem-card-header">
-      <div class="problem-card-title-group">
-        <div class="problem-card-drag-handle" id="problemCardDragHandle">
-          <span id="problemCardTitle" class="card-title-text">문제 (p.1)</span>
-        </div>
-        <button id="btnProblemCardToggleMinimize" type="button"
-          class="card-btn card-title-fold-btn card-fold-triangle-btn">
-          <span id="iconCardToggle" class="card-fold-chevron">▾</span>
-        </button>
-      </div>
-      <div class="problem-card-actions">
-        <button id="btnProblemCardLaser" type="button" class="card-btn btn-card-laser"
-          title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
-          <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-              <path d="m15 5 4 4" />
-            </svg></span>
-        </button>
-        <button id="btnProblemCardReCrop_legacy" class="card-btn" style="display: none !important;">
-          <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-              stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;">
-              <circle cx="6" cy="6" r="3" />
-              <circle cx="6" cy="18" r="3" />
-              <line x1="20" y1="4" x2="8.12" y2="15.88" />
-              <line x1="14.47" y1="14.48" x2="20" y2="20" />
-              <line x1="8.12" y1="8.12" x2="12" y2="12" />
-            </svg>다음 캡처</span>
-        </button>
-        <button id="btnProblemCardClearInk" class="card-btn" title="필기 지우기">
-          <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg></span>
-        </button>
-        <button id="btnProblemCardClose" class="card-btn btn-card-close" title="닫기">
-          <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg></span>
-        </button>
-      </div>
-    </div>
-    <div id="problemCardBody" class="problem-card-body">
-      <img id="problemCardImg" class="problem-card-img" alt="크롭된 문제" draggable="false" />
-      <canvas id="problemCardCanvas" class="problem-card-canvas"></canvas>
-      <div id="problemCardResizeHandle" class="problem-card-resize-handle"></div>
-    </div>
-  </div>
-
-  <!-- [📸 캡처된 그래프 스샷 고정 카드 위젯 (Graph Snapshot Card - 상단 제자리 블라인드 헤더 & 더블클릭 접기)] -->
-  <div id="graphCardWidget" class="problem-card-widget graph-card-widget" style="display: none;">
-    <div id="graphCardHeader" class="problem-card-header">
-      <div class="problem-card-title-group">
-        <div class="problem-card-drag-handle" id="graphCardDragHandle">
-          <span id="graphCardTitle" class="card-title-text">#1</span>
-        </div>
-        <button id="btnGraphCardToggleMinimize" type="button"
-          class="card-btn card-title-fold-btn card-fold-triangle-btn">
-          <span id="iconGraphCardToggle" class="card-fold-chevron">▾</span>
-        </button>
-      </div>
-      <div class="problem-card-actions">
-        <button id="btnGraphCardLaser" type="button" class="card-btn btn-card-laser"
-          title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
-          <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-              <path d="m15 5 4 4" />
-            </svg></span>
-        </button>
-        <button id="btnGraphCardRestore" class="card-btn card-btn-restore">
-          <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;">
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-              <path d="M3 3v5h5" />
-            </svg>그래프 수정</span>
-        </button>
-        <button id="btnGraphCardClearInk" class="card-btn" title="필기 지우기">
-          <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg></span>
-        </button>
-        <button id="btnGraphCardClose" class="card-btn btn-card-close" title="삭제">
-          <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg></span>
-        </button>
-      </div>
-    </div>
-    <div id="graphCardBody" class="problem-card-body">
-      <img id="graphCardImg" class="problem-card-img" alt="캡처된 그래프 스샷" draggable="false" />
-      <canvas id="graphCardCanvas" class="problem-card-canvas"></canvas>
-      <div id="graphCardResizeHandle" class="problem-card-resize-handle"></div>
-    </div>
-  </div>
-
-  <!-- [📦 우측 상단 X 버튼 바로 옆: 실시간 그래프 보관 트리거 버튼 & 드래그 오버레이] -->
-  <div id="graphSnapFloatingBar" class="graph-snap-floating-bar" style="display: none;">
-    <button id="btnReturnToCoveredBoard" class="btn-return-covered-board" style="display: none;">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-        stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="9 14 4 9 9 4" />
-        <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
-      </svg>
-      <span>필기 복귀</span>
-    </button>
-    <button id="btnTriggerGraphSnap" class="btn-trigger-graph-snap">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-        stroke-linecap="round" stroke-linejoin="round">
-        <path d="M6 2v14a2 2 0 0 0 2 2h14" />
-        <path d="M18 22V8a2 2 0 0 0-2-2H2" />
-      </svg>
-      <span id="lblTriggerGraphSnap">카드 추가</span>
-    </button>
-  </div>
-
-  <!-- [✂️ PDF 전체화면 판서 모드 ➔ 좌측 [+] 버튼 바로 옆 위아래 균형 2지선다 팝업] -->
-  <div id="pdfToGraphCropFloatingBar" class="graph-snap-floating-bar pdf-to-graph-crop-bar" style="display: none;">
-    <button id="btnStartPdfCropToGraph" class="btn-trigger-graph-snap pdf-crop-choice-btn">
-      <span>✂️ 캡처 후 이동</span>
-    </button>
-    <button id="btnSkipPdfCropToGraph" class="btn-trigger-graph-snap pdf-skip-choice-btn">
-      <span>▶ 바로 이동</span>
-    </button>
-  </div>
-  <!-- [✂️ 캡처 후 이동 클릭 시: 좌측 메뉴는 사라지고 상단에 작게 뜨는 캡처 상태/취소 버튼] -->
-  <button type="button" id="btnCancelPdfCropToGraph" class="pdf-crop-active-pill" style="display: none;"
-    title="클릭하여 캡처 취소">
-    <span>✂️ 문제 영역 드래그</span>
-    <span class="pdf-crop-active-cancel-x">✕</span>
-  </button>
-  <div id="graphSnapDragBox" class="graph-snap-drag-box" style="display: none;"></div>
-
   <!-- [📑 닥줌형 PDF 교재 뷰어 & 2단 문제 박스 캡처 모달] -->
   <div id="modalPdfViewer" class="pdf-modal-backdrop" style="display: none;">
     <div class="pdf-modal-container">
@@ -3111,8 +3111,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_32"></script>
-  <script src="app.js?v=20261103_32"></script>
+  <script src="engine.js?v=20261103_33"></script>
+  <script src="app.js?v=20261103_33"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
