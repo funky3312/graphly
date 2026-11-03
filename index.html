@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_61">
+  <link rel="stylesheet" href="style.css?v=20261103_62">
 </head>
 
 <body class="theme-light">
@@ -1487,22 +1487,21 @@
 
         <!-- 5. 판서 & 수학 킬러 도구 -->
         <div class="quick-btn-wrapper" id="wrapAudioRecordToggle">
-          <button id="btnAudioRecordToggle" class="quick-fab-btn" title="음성 녹음 시작 (녹음 중 클릭 시 일시정지 / 종료)">
+          <button id="btnAudioRecordToggle" class="quick-fab-btn" title="영상 녹화 시작 (녹화 중 클릭 시 일시정지 / 종료)">
             <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" y1="19" x2="12" y2="22" />
-                <line x1="8" y1="22" x2="16" y2="22" />
+                stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="6" width="14" height="12" rx="2.2" ry="2.2" />
+                <path d="m22 8-6 4 6 4V8Z" />
+                <circle cx="9" cy="12" r="2" fill="currentColor" stroke="none" />
               </svg></span>
           </button>
           <div class="audio-rec-side-menu" id="panelAudioRecordActions" style="display: none;">
             <button type="button" id="btnAudioPauseRecord" class="audio-rec-side-btn audio-btn-pause-rec"
-              title="일시정지 / 이어녹음">
+              title="일시정지 / 이어녹화">
               <span id="iconAudioPauseRecord">⏸</span>
               <span id="lblAudioPauseRecord">일시정지</span>
             </button>
-            <button type="button" id="btnAudioStopRecord" class="audio-rec-side-btn audio-btn-stop" title="녹음 종료">
+            <button type="button" id="btnAudioStopRecord" class="audio-rec-side-btn audio-btn-stop" title="녹화 종료">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="4" y="4" width="16" height="16" rx="2.5" />
               </svg>
@@ -3085,8 +3084,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_61"></script>
-  <script src="app.js?v=20261103_61"></script>
+  <script src="engine.js?v=20261103_62"></script>
+  <script src="app.js?v=20261103_62"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

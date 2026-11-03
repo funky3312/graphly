@@ -1520,8 +1520,7 @@ body.fullscreen-mode .btn-exit-fullscreen {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 170;
-  contain: layout style;
+  z-index: 485;
 }
 
 .quick-btn-wrapper {
@@ -7292,7 +7291,7 @@ body.theme-light .card-fold-triangle-btn:hover {
 }
 
 .canvas-quick-toolbar {
-  z-index: 400 !important;
+  z-index: 485 !important;
 }
 
 .sidebar-rail {
@@ -9859,7 +9858,7 @@ body.theme-light .pdf-crop-active-pill .pdf-crop-active-cancel-x {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   white-space: nowrap;
-  z-index: 260 !important;
+  z-index: 495 !important;
   user-select: none;
   animation: flyoutSlideIn 0.14s cubic-bezier(0.16, 1, 0.3, 1);
 }

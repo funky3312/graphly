@@ -34378,7 +34378,7 @@ class GraphApp {
       if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'recording') {
         try { this.audioMediaRecorder.pause(); } catch (e) { }
       }
-      this.showToast('⏸ 녹음이 일시정지되었습니다. [▶ 이어녹음]을 누르면 끊김 없이 이어집니다.');
+      this.showToast('⏸ 녹화가 일시정지되었습니다. [▶ 이어녹화]를 누르면 끊김 없이 이어집니다.');
     } else {
       const pausedDelta = Math.max(0, performance.now() - (this.audioRecordPauseStartMs || performance.now()));
       this.audioRecordTotalPausedMs = (this.audioRecordTotalPausedMs || 0) + pausedDelta;
@@ -34388,7 +34388,7 @@ class GraphApp {
         try { this.audioMediaRecorder.resume(); } catch (e) { }
       }
       this._recordAudioWorkspaceStateIfNeeded(true);
-      this.showToast('▶ 녹음을 이어서 진행합니다!');
+      this.showToast('▶ 녹화를 이어서 진행합니다!');
     }
     this.syncAudioRecordUI();
     return this.isAudioRecordPaused;
@@ -35900,7 +35900,7 @@ class GraphApp {
     }, 200);
 
     this.syncAudioRecordUI();
-    this.showToast('🎙️ 녹음이 시작되었습니다. (다시 누르면 일시정지 / 종료)');
+    this.showToast('🎬 영상 녹화가 시작되었습니다. (다시 누르면 일시정지 / 종료)');
   }
 
   async stopAudioRecording() {
@@ -36024,7 +36024,7 @@ class GraphApp {
     this._isAudioSyncPlayerVisible = false;
     this.audioReplayViewMode = 'video';
     this.syncAudioRecordUI();
-    this.showToast('⏹ 녹음이 완료되었습니다.');
+    this.showToast('⏹ 영상 녹화가 완료되었습니다.');
     return this.audioSyncData;
   }
 
@@ -36065,12 +36065,12 @@ class GraphApp {
       if (badgeTxt) badgeTxt.textContent = isPaused ? 'PAUSED' : 'REC';
       if (hintEl) {
         hintEl.textContent = isPaused
-          ? '녹음 일시정지됨 (이어녹음 시 끊김 없이 연결)'
+          ? '녹화 일시정지됨 (이어녹화 시 끊김 없이 연결)'
           : '음성·필기·펜포인터·그래프 실시간 동기화 중';
       }
       if (btnPauseRec) btnPauseRec.classList.toggle('is-paused', isPaused);
       if (iconPauseRec) iconPauseRec.textContent = isPaused ? '▶' : '⏸';
-      if (lblPauseRec) lblPauseRec.textContent = isPaused ? '이어녹음' : '일시정지';
+      if (lblPauseRec) lblPauseRec.textContent = isPaused ? '이어녹화' : '일시정지';
 
       const btnMic = document.getElementById('btnAudioMicMuteToggle');
       const iconMic = document.getElementById('iconAudioMicMute');
