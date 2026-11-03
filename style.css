@@ -2366,9 +2366,10 @@ body.header-collapsed .curve-context-bar {
   color: #ffffff;
 }
 
-.curve-context-bar .ctx-caret {
-  font-size: 10px;
-  opacity: 0.72;
+.curve-context-bar .ctx-caret,
+.curve-context-bar .ctx-caret-svg {
+  flex-shrink: 0;
+  opacity: 0.85;
   margin-left: 1px;
 }
 
