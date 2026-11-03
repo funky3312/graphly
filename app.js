@@ -34394,8 +34394,146 @@ class GraphApp {
     return this.isAudioRecordPaused;
   }
 
+  // 🎙️✨ [대표님 기획: 표준 인강 스튜디오급 실시간 음성 자동 보정 파이프라인 (Web Audio API)]
+  // 노트북·태블릿 내장 마이크로 대충 녹화해도 '펜 타격 저음 컷 + 방울림 억제 + 자음 선명도 부스트 + 볼륨 균일화 컴프레서'가 0ms 지연으로 자동 적용!
+  async _acquireProcessedAudioStream() {
+    this._cleanupProcessedAudioStream();
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+      return null;
+    }
+    const rawStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1,
+        sampleRate: 48000
+      }
+    });
+    this.audioRawStream = rawStream;
+    try {
+      rawStream.getAudioTracks().forEach(tr => {
+        tr.enabled = !this.isAudioMicMuted;
+      });
+    } catch (e) { }
+
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx({ latencyHint: 'interactive' });
+        if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+          await ctx.resume().catch(() => { });
+        }
+        const source = ctx.createMediaStreamSource(rawStream);
+
+        // 1. Low-Cut (High-Pass @ 90Hz): 에어컨·팬 소음 및 태블릿 유리에 펜촉 부딪히는 둔탁한 '툭툭' 저음 제거
+        const hpFilter = ctx.createBiquadFilter();
+        hpFilter.type = 'highpass';
+        hpFilter.frequency.value = 90;
+        hpFilter.Q.value = 0.707;
+
+        // 2. Anti-Boxiness & Warmth: 내장 마이크 특유의 먹먹한 방울림(260Hz) 억제 및 목소리 중심 톤(155Hz) 보강
+        const mudFilter = ctx.createBiquadFilter();
+        mudFilter.type = 'peaking';
+        mudFilter.frequency.value = 260;
+        mudFilter.Q.value = 1.1;
+        mudFilter.gain.value = -2.0;
+
+        const warmthFilter = ctx.createBiquadFilter();
+        warmthFilter.type = 'peaking';
+        warmthFilter.frequency.value = 155;
+        warmthFilter.Q.value = 0.9;
+        warmthFilter.gain.value = 1.4;
+
+        // 3. Vocal Presence EQ (3.3kHz +2.8dB): 한국어 자음·발음 명료도를 핀마이크 수준으로 또렷하게 부스트
+        const presenceFilter = ctx.createBiquadFilter();
+        presenceFilter.type = 'peaking';
+        presenceFilter.frequency.value = 3300;
+        presenceFilter.Q.value = 1.0;
+        presenceFilter.gain.value = 2.8;
+
+        // 4. De-Harshness Low-Pass (11.5kHz): 귀 피로한 고주파 화이트노이즈 및 치찰음('ㅅ/ㅊ') 정돈
+        const lpFilter = ctx.createBiquadFilter();
+        lpFilter.type = 'lowpass';
+        lpFilter.frequency.value = 11500;
+        lpFilter.Q.value = 0.707;
+
+        // 5. Broadcast Soft-Knee Compressor: 판서하며 고개를 돌려 작아진 목소리는 키우고 큰 소리는 부드럽게 평준화
+        const compressor = ctx.createDynamicsCompressor();
+        compressor.threshold.value = -23;
+        compressor.knee.value = 16;
+        compressor.ratio.value = 3.2;
+        compressor.attack.value = 0.004;
+        compressor.release.value = 0.22;
+
+        // 6. Make-up Gain & Brickwall Limiter: 전체 음량을 풍성하게 올리면서 클리핑(찢어짐) 100% 차단
+        const makeupGain = ctx.createGain();
+        makeupGain.gain.value = 1.22;
+
+        const limiter = ctx.createDynamicsCompressor();
+        limiter.threshold.value = -1.2;
+        limiter.knee.value = 0;
+        limiter.ratio.value = 20.0;
+        limiter.attack.value = 0.001;
+        limiter.release.value = 0.08;
+
+        const dest = ctx.createMediaStreamDestination();
+        source.connect(hpFilter);
+        hpFilter.connect(mudFilter);
+        mudFilter.connect(warmthFilter);
+        warmthFilter.connect(presenceFilter);
+        presenceFilter.connect(lpFilter);
+        lpFilter.connect(compressor);
+        compressor.connect(makeupGain);
+        makeupGain.connect(limiter);
+        limiter.connect(dest);
+
+        if (dest.stream && dest.stream.getAudioTracks().length > 0) {
+          this._audioVoiceContext = ctx;
+          dest.stream.getAudioTracks().forEach(tr => {
+            tr.enabled = !this.isAudioMicMuted;
+          });
+          return dest.stream;
+        }
+        try { ctx.close(); } catch (e) { }
+      }
+    } catch (e) { }
+
+    return rawStream;
+  }
+
+  _cleanupProcessedAudioStream() {
+    if (this.audioMediaStream) {
+      try {
+        this.audioMediaStream.getTracks().forEach(tr => tr.stop());
+      } catch (e) { }
+      this.audioMediaStream = null;
+    }
+    if (this.audioRawStream) {
+      try {
+        this.audioRawStream.getTracks().forEach(tr => tr.stop());
+      } catch (e) { }
+      this.audioRawStream = null;
+    }
+    if (this._audioVoiceContext) {
+      try {
+        if (this._audioVoiceContext.state !== 'closed') {
+          this._audioVoiceContext.close().catch(() => { });
+        }
+      } catch (e) { }
+      this._audioVoiceContext = null;
+    }
+  }
+
   toggleAudioMicMute(forceMuted = null) {
     this.isAudioMicMuted = (typeof forceMuted === 'boolean') ? forceMuted : !this.isAudioMicMuted;
+    if (this.audioRawStream) {
+      try {
+        this.audioRawStream.getAudioTracks().forEach(tr => {
+          tr.enabled = !this.isAudioMicMuted;
+        });
+      } catch (e) { }
+    }
     if (this.audioMediaStream) {
       try {
         this.audioMediaStream.getAudioTracks().forEach(tr => {
@@ -34644,20 +34782,14 @@ class GraphApp {
             this.audioMediaStream.getAudioTracks().some(tr => tr.readyState === 'live')
           );
           if (!hasLiveTrack && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
-            this.audioMediaStream = await navigator.mediaDevices.getUserMedia({
-              audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-              }
-            });
+            this.audioMediaStream = await this._acquireProcessedAudioStream();
           }
           if (!this.isAudioRecording || this._audioSegmentToken !== segToken || !this.audioMediaStream) return;
           this.audioMediaStream.getAudioTracks().forEach(tr => {
             tr.enabled = !this.isAudioMicMuted;
           });
           const chosenMime = this._audioMimeType && this._audioMimeType !== 'audio/wav' ? this._audioMimeType : '';
-          const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 20000 } : { audioBitsPerSecond: 20000 };
+          const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 36000 } : { audioBitsPerSecond: 36000 };
           const recorder = new MediaRecorder(this.audioMediaStream, recOpts);
           recorder._localChunks = localChunks;
           recorder.ondataavailable = (ev) => {
@@ -35813,19 +35945,9 @@ class GraphApp {
 
     if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function' && window.MediaRecorder) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
-        });
+        const stream = await this._acquireProcessedAudioStream();
+        if (!stream) throw new Error('no_audio_stream');
         this.audioMediaStream = stream;
-        try {
-          stream.getAudioTracks().forEach(tr => {
-            tr.enabled = !this.isAudioMicMuted;
-          });
-        } catch (e) { }
         const candidates = [
           'audio/webm;codecs=opus',
           'audio/webm',
@@ -35840,7 +35962,7 @@ class GraphApp {
           }
         }
         this._audioMimeType = chosenMime || 'audio/webm';
-        const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 20000 } : { audioBitsPerSecond: 20000 };
+        const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 36000 } : { audioBitsPerSecond: 36000 };
         const recorder = new MediaRecorder(stream, recOpts);
         const localChunks = [];
         recorder._localChunks = localChunks;
@@ -35854,7 +35976,7 @@ class GraphApp {
         this.audioMediaRecorder = recorder;
       } catch (micErr) {
         // 마이크가 없거나 권한이 거부된 환경(또는 헤드리스 테스트)에서는 타이머 동기화 모드로 끊김 없이 진행!
-        this.audioMediaStream = null;
+        this._cleanupProcessedAudioStream();
         this.audioMediaRecorder = null;
       }
     }
@@ -35940,12 +36062,7 @@ class GraphApp {
         }
       });
     }
-    if (this.audioMediaStream) {
-      try {
-        this.audioMediaStream.getTracks().forEach(tr => tr.stop());
-      } catch (e) { }
-      this.audioMediaStream = null;
-    }
+    this._cleanupProcessedAudioStream();
     this.audioMediaRecorder = null;
 
     if (recChunks && recChunks.length > 0) {
