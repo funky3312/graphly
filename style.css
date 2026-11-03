@@ -8758,12 +8758,12 @@ body.theme-light .viewer-top-btn {
 .smart-viewer-stage {
   position: relative;
   display: inline-block;
+  flex-shrink: 0;
   transform-origin: center center;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
   border-radius: 6px;
   overflow: hidden;
   background: #1e293b;
-  will-change: transform;
 }
 
 .smart-viewer-stage.swipe-animating {

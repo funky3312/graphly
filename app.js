@@ -6367,7 +6367,7 @@ class GraphApp {
       vCtx.fillRect(0, 0, targetW, targetH);
       await page.render({ canvasContext: vCtx, viewport: fullVp }).promise;
 
-      const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.84);
+      const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.95);
       if (!ultraDataUrl) return;
       queueItem.dataUrl = ultraDataUrl;
       queueItem.cropCanvas = vecCanvas;
@@ -8143,7 +8143,7 @@ class GraphApp {
 
       // 선생님이 막 첫 펜 획을 긋고 있다면 획이 끝날 때까지 양보한 뒤 백그라운드 워커 스레드(toBlob)로 고선명(0.84) 인코딩!
       await this._WaitUntilPenIdle();
-      const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.84);
+      const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.95);
       await this._WaitUntilPenIdle();
 
       const syncPlaylistIdle = () => {
@@ -8222,7 +8222,7 @@ class GraphApp {
     const ctx = cropCanvas.getContext('2d');
     ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
 
-    const dataUrl = this.encodeCanvasSmartWebP(cropCanvas, 0.85);
+    const dataUrl = this.encodeCanvasSmartWebP(cropCanvas, 0.95);
     if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
       this.closeDrawer();
     }
@@ -8284,7 +8284,7 @@ class GraphApp {
     }
 
     if (pCanvas && !isMin) {
-      const dpr = window.devicePixelRatio || 2;
+      const dpr = this.getCanvasDpr();
       const targetW = Math.round(w * dpr);
       const targetH = Math.round(h * dpr);
       if (pCanvas.width !== targetW || pCanvas.height !== targetH) {
@@ -8476,7 +8476,7 @@ class GraphApp {
     const pCanvas = document.getElementById('problemCardCanvas');
     if (!pCanvas) return;
     const ctx = pCanvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 2;
+    const dpr = this.getCanvasDpr();
     const w = pCanvas.width / dpr;
     const h = pCanvas.height / dpr;
 
@@ -10026,7 +10026,7 @@ class GraphApp {
       cardWidgetEl._cardInkStrokes = [];
 
       const renderExtraCardInk = () => {
-        const dpr = window.devicePixelRatio || 2;
+        const dpr = this.getCanvasDpr();
         if (!cardWidgetEl.classList.contains('minimized')) {
           const rect = typeof this._getStageElementRect === 'function'
             ? this._getStageElementRect(bodyEl)
@@ -11225,7 +11225,7 @@ class GraphApp {
           cctx.fillStyle = '#ffffff';
           cctx.fillRect(0, 0, sw, sh);
           cctx.drawImage(pbd.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-          croppedDataUrl = this.encodeCanvasSmartWebP(croppedCanvas, 0.85);
+          croppedDataUrl = this.encodeCanvasSmartWebP(croppedCanvas, 0.95);
           croppedW = Math.round(Math.max(320, Math.min(560, cropRect.w / Math.max(1, (this.zoomLevel || 1) * 0.85))));
         }
       }
@@ -11254,7 +11254,7 @@ class GraphApp {
             Math.round(rw * dpr),
             Math.round(rh * dpr)
           );
-          croppedDataUrl = this.encodeCanvasSmartWebP(croppedCanvas, 0.85);
+          croppedDataUrl = this.encodeCanvasSmartWebP(croppedCanvas, 0.95);
           croppedW = Math.round(Math.max(300, Math.min(540, rw)));
         }
       }
@@ -11470,26 +11470,19 @@ class GraphApp {
     };
     const prevCovered = this.isGraphCovered;
     this.isGraphCovered = false;
-    this.render();
 
-    const dpr = this.getCanvasDpr();
+    const snapScale = 3.5;
     const cropCanvas = document.createElement('canvas');
-    cropCanvas.width = Math.round(rw * dpr);
-    cropCanvas.height = Math.round(rh * dpr);
+    cropCanvas.width = Math.max(1, Math.round(rw * snapScale));
+    cropCanvas.height = Math.max(1, Math.round(rh * snapScale));
     const cctx = cropCanvas.getContext('2d');
-    cctx.drawImage(
-      this.canvas,
-      Math.round(rx * dpr),
-      Math.round(ry * dpr),
-      Math.round(rw * dpr),
-      Math.round(rh * dpr),
-      0,
-      0,
-      Math.round(rw * dpr),
-      Math.round(rh * dpr)
-    );
+    cctx.save();
+    cctx.scale(snapScale, snapScale);
+    cctx.translate(-rx, -ry);
+    this.render(cctx, this.screenWidth, this.screenHeight, false);
+    cctx.restore();
 
-    const dataUrl = this.encodeCanvasSmartWebP(cropCanvas, 0.86);
+    const dataUrl = cropCanvas.toDataURL('image/png');
     this._isRenderingGraphSnapshot = false;
     this._snapshotCropBounds = null;
     this.isGraphCovered = prevCovered;
@@ -12068,7 +12061,7 @@ class GraphApp {
     }
 
     if (gCanvas && !isMin) {
-      const dpr = window.devicePixelRatio || 2;
+      const dpr = this.getCanvasDpr();
       const targetW = Math.round(w * dpr);
       const targetH = Math.round(h * dpr);
       if (gCanvas.width !== targetW || gCanvas.height !== targetH) {
@@ -12094,7 +12087,7 @@ class GraphApp {
     const gCanvas = document.getElementById('graphCardCanvas');
     if (!gCanvas) return;
     const ctx = gCanvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 2;
+    const dpr = this.getCanvasDpr();
     const w = gCanvas.width / dpr;
     const h = gCanvas.height / dpr;
 
@@ -21669,13 +21662,15 @@ class GraphApp {
     this._omitStickersForViewerSnapshot = true;
     let exp;
     try {
-      exp = this.getExportCanvas(effFilter, smartBounds, forCloud ? 1.8 : null);
+      exp = this.getExportCanvas(effFilter, smartBounds, forCloud ? 2.8 : 3.2);
     } finally {
       this._omitStickersForViewerSnapshot = false;
     }
     let dataUrl = '';
     try {
-      dataUrl = this.encodeCanvasSmartWebP(exp.canvas, 0.84);
+      dataUrl = forCloud
+        ? this.encodeCanvasSmartWebP(exp.canvas, 0.95)
+        : exp.canvas.toDataURL('image/png');
     } catch (e) {
       dataUrl = exp.canvas.toDataURL('image/png');
     }
@@ -21899,10 +21894,16 @@ class GraphApp {
       }, { capture: true });
     }
     if (btnZoomIn) {
-      btnZoomIn.onclick = () => this.setSmartViewerZoom(this._viewerZoom * 1.25);
+      btnZoomIn.onclick = () => {
+        const nextZ = Math.round(((this._viewerZoom || 1.0) + 0.10) * 100) / 100;
+        this.setSmartViewerZoom(nextZ);
+      };
     }
     if (btnZoomOut) {
-      btnZoomOut.onclick = () => this.setSmartViewerZoom(this._viewerZoom / 1.25);
+      btnZoomOut.onclick = () => {
+        const nextZ = Math.round(((this._viewerZoom || 1.0) - 0.10) * 100) / 100;
+        this.setSmartViewerZoom(nextZ);
+      };
     }
     if (btnZoomFit) {
       btnZoomFit.onclick = () => this.fitSmartViewerStageToScreen();
@@ -22007,7 +22008,7 @@ class GraphApp {
 
       viewport.addEventListener('wheel', (e) => {
         e.preventDefault();
-        const factor = e.deltaY < 0 ? 1.14 : (1 / 1.14);
+        const factor = e.deltaY < 0 ? 1.07 : (1 / 1.07);
         this.setSmartViewerZoom(this._viewerZoom * factor, e.clientX, e.clientY);
       }, { passive: false });
 
@@ -22106,7 +22107,7 @@ class GraphApp {
         if (moveDist < 9 && elapsed < 420) {
           const now = performance.now();
           if (now - lastTapTime < 280 && Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) < 36) {
-            // 더블탭: 100% ⇄ 200% 즉시 확대/축소 토글
+            // 더블탭: 100% ⇄ 150% 즉시 확대/축소 토글
             if (singleTapTimer) {
               clearTimeout(singleTapTimer);
               singleTapTimer = null;
@@ -22115,7 +22116,7 @@ class GraphApp {
             if ((this._viewerZoom || 1.0) > 1.08) {
               this.fitSmartViewerStageToScreen();
             } else {
-              this.setSmartViewerZoom(2.0, e.clientX, e.clientY);
+              this.setSmartViewerZoom(1.5, e.clientX, e.clientY);
             }
             return;
           }
@@ -22395,8 +22396,8 @@ class GraphApp {
       }
     }
 
-    // 슬라이드 스캔 이미지가 없으면 실시간 생성
-    if (!slide.viewerSnapshotDataUrl) {
+    // 슬라이드 스캔 이미지가 없거나 초고화질(3.2x PNG) 렌더링이 아직 안 된 경우 실시간 생성
+    if (!slide.viewerSnapshotDataUrl || (!slide._viewerHiResRendered && slide.historyJson)) {
       this.deserializeFullSlideState(slide);
       await this._waitForSlideImagesReady();
       const snap = this.captureCurrentSlideViewerSnapshot(this._viewerPkg.exportFilter || null, false);
@@ -22406,6 +22407,7 @@ class GraphApp {
       slide.viewerGraphHotspots = snap.hotspots;
       slide.viewerStickerHotspots = snap.stickerHotspots;
       slide.viewerSmartBounds = snap.smartBounds;
+      slide._viewerHiResRendered = true;
     }
 
     const imgEl = document.getElementById('smartNoteViewerImg');
@@ -22486,12 +22488,12 @@ class GraphApp {
     const ih = Math.max(1, imgEl.naturalHeight || 700);
 
     const fitScale = Math.min(vw / iw, vh / ih);
-    const displayW = Math.round(iw * fitScale);
-    const displayH = Math.round(ih * fitScale);
+    // 짝수 픽셀로 정렬하여 Flex 중앙 배치 시 0.5px 서브픽셀 블러 원천 차단
+    const displayW = Math.max(2, Math.round((iw * fitScale) / 2) * 2);
+    const displayH = Math.max(2, Math.round((ih * fitScale) / 2) * 2);
 
-    imgEl.style.width = `${displayW}px`;
-    imgEl.style.height = `${displayH}px`;
-
+    this._viewerBaseW = displayW;
+    this._viewerBaseH = displayH;
     this._viewerZoom = 1.0;
     this._viewerPanY = 0;
 
@@ -22515,7 +22517,7 @@ class GraphApp {
     const prevZoom = this._viewerZoom || 1.0;
     const clampedZoom = Math.max(0.5, Math.min(4.5, nextZoom));
 
-    if (Math.abs(clampedZoom - 1.0) < 0.03) {
+    if (Math.abs(clampedZoom - 1.0) < 0.02) {
       this._viewerZoom = 1.0;
       this._viewerPanX = 0;
       this._viewerPanY = 0;
@@ -22538,12 +22540,25 @@ class GraphApp {
 
   _applySmartViewerTransform() {
     const stage = document.getElementById('smartNoteViewerStage');
+    const imgEl = document.getElementById('smartNoteViewerImg');
     const lblZoom = document.getElementById('lblViewerZoom');
+    const zoom = this._viewerZoom || 1.0;
+    const baseW = this._viewerBaseW || 1000;
+    const baseH = this._viewerBaseH || 700;
+    const zoomedW = Math.max(2, Math.round((baseW * zoom) / 2) * 2);
+    const zoomedH = Math.max(2, Math.round((baseH * zoom) / 2) * 2);
+
+    if (imgEl) {
+      imgEl.style.width = `${zoomedW}px`;
+      imgEl.style.height = `${zoomedH}px`;
+    }
     if (stage) {
-      stage.style.transform = `translate3d(${Math.round(this._viewerPanX || 0)}px, ${Math.round(this._viewerPanY || 0)}px, 0) scale(${(this._viewerZoom || 1.0).toFixed(3)})`;
+      const px = Math.round(this._viewerPanX || 0);
+      const py = Math.round(this._viewerPanY || 0);
+      stage.style.transform = (px === 0 && py === 0) ? 'none' : `translate(${px}px, ${py}px)`;
     }
     if (lblZoom) {
-      lblZoom.textContent = `${Math.round((this._viewerZoom || 1.0) * 100)}%`;
+      lblZoom.textContent = `${Math.round(zoom * 100)}%`;
     }
   }
 
@@ -31876,9 +31891,51 @@ class GraphApp {
           ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(imgEl, bx, by, bw, bh);
           if (incInk) {
-            const cardInkCanvas = bodyEl.querySelector('.problem-card-canvas');
-            if (cardInkCanvas && cardInkCanvas.width > 0 && cardInkCanvas.height > 0) {
-              ctx.drawImage(cardInkCanvas, bx, by, bw, bh);
+            const cardStrokes = (el.id === 'problemCardWidget')
+              ? (this.problemInkStrokes || [])
+              : (el.id === 'graphCardWidget'
+                ? (this.graphInkStrokes || [])
+                : (el._cardInkStrokes || []));
+            if (Array.isArray(cardStrokes) && cardStrokes.length > 0) {
+              const refW = (el.id === 'problemCardWidget') ? 520 : (el.id === 'graphCardWidget' ? 420 : 480);
+              const sizeScale = Math.max(0.6, bw / refW);
+              const isProbCard = (el.id === 'problemCardWidget' || el.classList.contains('extra-problem-card-widget'));
+              cardStrokes.forEach(st => {
+                if (!st || !st.points || st.points.length === 0) return;
+                ctx.save();
+                let col = st.color || '#1e293b';
+                if (isProbCard && !st.isHighlighter && (col.toLowerCase() === '#ffffff' || col.toLowerCase() === '#fff')) {
+                  col = '#0f172a';
+                }
+                if (this.isMonochromeMode) col = '#000000';
+                ctx.strokeStyle = col;
+                ctx.fillStyle = col;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                const baseSize = (st.size || 3.5) * sizeScale;
+                const ghostMul = (typeof st._ghostAlpha === 'number') ? st._ghostAlpha : 1.0;
+                ctx.globalAlpha = (st.isHighlighter ? 0.36 : 1.0) * ghostMul;
+                const hlW = st.highlighterSize ? (st.highlighterSize * sizeScale) : Math.max(10, baseSize * 2.8);
+                ctx.lineWidth = st.isHighlighter ? Math.max(4, hlW) : Math.max(1.5, baseSize);
+                const rawPts = st.points.map(pt => ({
+                  x: bx + pt.nx * bw,
+                  y: by + pt.ny * bh,
+                  p: pt.p !== undefined ? pt.p : 0.5
+                }));
+                const pts = [rawPts[0]];
+                for (let i = 1; i < rawPts.length; i++) {
+                  const prev = pts[pts.length - 1];
+                  const curr = rawPts[i];
+                  pts.push({
+                    x: prev.x * 0.28 + curr.x * 0.72,
+                    y: prev.y * 0.28 + curr.y * 0.72,
+                    p: prev.p * 0.28 + curr.p * 0.72
+                  });
+                }
+                const penStyle = st.isHighlighter ? 'ballpen' : (st.penStyle || 'ballpen');
+                this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : baseSize, penStyle);
+                ctx.restore();
+              });
             }
           }
           if (!this._omitStickersForViewerSnapshot) {
