@@ -2711,36 +2711,9 @@ class GraphApp {
     }
     this._isPointerInsideWindow = true;
 
-    // 🌟 [대표님 킬러 UX]: 화면 밖으로 마우스가 나가면 가상 펜 즉시 숨김 + 녹화 중에도 포인터 숨김(hidden: true) 기록!
-    if (!this._windowPointerLeaveBound) {
-      this._windowPointerLeaveBound = true;
-      const handleWindowPointerLeave = () => {
-        this._isPointerInsideWindow = false;
-        if (this.virtualStylusEl && !this.isAudioPlaying) {
-          this.virtualStylusEl.style.display = 'none';
-        }
-        if (this.isAudioRecording && !this.isAudioRecordPaused && Array.isArray(this.audioTimeline) && this._lastRecordedCursorKind !== 'hidden') {
-          this._lastRecordedCursorKind = 'hidden';
-          this.audioTimeline.push({
-            t: this.getAudioRecordElapsedMs(),
-            type: 'cursor',
-            hidden: true
-          });
-        }
-      };
-      document.addEventListener('mouseleave', handleWindowPointerLeave);
-      document.addEventListener('pointerleave', handleWindowPointerLeave);
-      if (document.documentElement) {
-        document.documentElement.addEventListener('mouseleave', handleWindowPointerLeave);
-        document.documentElement.addEventListener('pointerleave', handleWindowPointerLeave);
-      }
-      window.addEventListener('blur', handleWindowPointerLeave);
-      window.addEventListener('mouseout', (ev) => {
-        if (!ev.relatedTarget && !ev.toElement) {
-          handleWindowPointerLeave();
-        }
-      });
-    }
+    // 🌟 [대표님 피드백 반영]: 액정타블렛에서 설명 중 펜이 액정에서 멀어져도(pointerleave)
+    // 이동 손바닥·십자 커서와 동일하게 가상 펜(펜·형광펜·지우개·레이저)이 깜빡이며 사라지지 않고 마지막 칠판 위치에 그대로 유지되도록 고정!
+    this._windowPointerLeaveBound = true;
 
     // 🌟 [대표님 킬러 UX]: 메뉴/툴바/슬라이드바/카드 위로 마우스가 올라갔을 때 가상 펜 즉시 숨김 -> 해당 요소 고유 커서(손가락/손바닥) 노출!
     const menuContainerSelectors = [
