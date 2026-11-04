@@ -24116,6 +24116,10 @@ class GraphApp {
     if (overlay) overlay.style.display = 'none';
 
     document.body.classList.add('viewer-graph-touch-mode');
+    if (this.pdfPageBoardData) {
+      this._viewerTouchSavedPdfBoardData = this.pdfPageBoardData;
+      this.pdfPageBoardData = null;
+    }
     this.isGraphCovered = false;
     this.isInkMode = false;
     document.body.classList.remove('ink-mode-active');
@@ -24204,6 +24208,10 @@ class GraphApp {
 
   exitViewerGraphTouchModeToViewer() {
     document.body.classList.remove('viewer-graph-touch-mode');
+    if (this._viewerTouchSavedPdfBoardData && !this.pdfPageBoardData) {
+      this.pdfPageBoardData = this._viewerTouchSavedPdfBoardData;
+    }
+    this._viewerTouchSavedPdfBoardData = null;
     const touchBar = document.getElementById('viewerGraphTouchBar');
     if (touchBar) touchBar.style.display = 'none';
 
@@ -29069,8 +29077,10 @@ class GraphApp {
       ? this._activeExportFilter
       : { includeProblem: true, includeGraph: true, includeInk: true };
 
+    const isViewerGraphTouch = Boolean(typeof document !== 'undefined' && document.body && document.body.classList.contains('viewer-graph-touch-mode'));
+
     // 0.6. [📄 PDF 페이지 통째 칠판 레이어 (0.5층): 개념서/교재 페이지 위 자유 확대·축소·판서 및 실시간 그래프/스샷 카드 완벽 호환!]
-    if (this.pdfPageBoardData && !this._isRenderingGraphSnapshot) {
+    if (this.pdfPageBoardData && !this._isRenderingGraphSnapshot && !isViewerGraphTouch) {
       if (expFilter.includeProblem !== false) {
         this.drawPdfPageBoardLayer(ctx, isExport);
       } else {
@@ -29235,8 +29245,8 @@ class GraphApp {
       this.drawTextLabels(ctx, isExport);
     }
 
-    // 🌟 [실시간 그래프 작업실 전용 필기 렌더링 (PDF 페이지 위에서 그래프 스샷 캡처 순간에는 배경 개념 필기 생략)] 🌟
-    if (!(this._isRenderingGraphSnapshot && this.pdfPageBoardData) && (!isExport || expFilter.includeInk !== false)) {
+    // 🌟 [실시간 그래프 작업실 전용 필기 렌더링 (PDF 페이지 위에서 그래프 스샷 캡처 순간 및 뷰어 그래프 단독 조작 모드에는 배경 필기 생략)] 🌟
+    if (!(this._isRenderingGraphSnapshot && this.pdfPageBoardData) && !isViewerGraphTouch && (!isExport || expFilter.includeInk !== false)) {
       this.drawInkStrokes(ctx, isExport, 'graph');
       this.drawBoardStickers(ctx, isExport);
     }
