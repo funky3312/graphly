@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261103_66">
+  <link rel="stylesheet" href="style.css?v=20261103_67">
 </head>
 
 <body class="theme-light">
@@ -1163,80 +1163,69 @@
         </div>
       </div>
 
-      <!-- 🌟 [필기 모드 상시 가상 연필 & 지우개 인디케이터 (글씨 가림 없는 우하단 45° 클래식 연필)] 🌟 -->
+      <!-- 🌟 [필기 모드 상시 가상 연필·형광펜·지우개 인디케이터 (모노크롬 벡터 라인 아트 / 팁 원점 0,0)] 🌟 -->
       <div id="virtualStylusPen" class="virtual-stylus-pen" style="display: none;">
-        <!-- ✏️ 알록달록 클래식 연필 SVG (팁 원점: 0,0 / 본체: 우하단 45°로 뻗어 필기 가림 0%) -->
-        <svg id="stylusPenSvg" class="stylus-svg" width="32" height="32" viewBox="0 0 32 32" fill="none"
+        <!-- ✏️ 펜 모드 SVG (모노크롬 벡터 펜: 팁 원점 0,0 / 바디 2줄 패싯 + 사이드 클립 + 다크 라운드 캡) -->
+        <svg id="stylusPenSvg" class="stylus-svg" width="28" height="28" viewBox="0 0 28 28" fill="none"
           style="display: block; overflow: visible;">
-          <!-- 연필 본체 3면 (알록달록 옐로우/오렌지 입체 패싯) -->
-          <polygon points="4.9,1.1 16.9,13.1 15.0,15.0 3.0,3.0" fill="#f6b93b" />
-          <polygon points="3.0,3.0 15.0,15.0 17.0,17.0 5.0,5.0" fill="#fa983a" />
-          <polygon points="5.0,5.0 17.0,17.0 18.9,15.1 6.9,3.1" fill="#e58e26" />
-
-          <!-- 현재 선택된 잉크 색상 표시 악센트 밴드 -->
-          <polygon id="stylusColorBand" points="4.0,2.0 6.0,4.0 4.0,6.0 2.0,4.0" fill="#00d2d3"
-            stroke="rgba(0,0,0,0.25)" stroke-width="0.3" />
-
-          <!-- 깎인 나무 부분 (부드러운 우드 베이지) -->
-          <polygon points="0,0 4.9,1.1 3.0,3.0" fill="#f8c291" />
-          <polygon points="0,0 3.0,3.0 5.0,5.0" fill="#fad390" />
-          <polygon points="0,0 5.0,5.0 6.9,3.1" fill="#f8c291" />
-
-          <!-- 연필심 (꼭짓점 정확히 0,0 칼끝 스냅) -->
-          <polygon points="0,0 1.8,0.4 1.1,1.1" fill="#2d3436" />
-          <polygon points="0,0 1.1,1.1 0.4,1.8" fill="#1e272e" />
-
-          <!-- 금속 페룰 밴드 (실버) -->
-          <polygon points="16.9,13.1 19.0,15.2 17.1,17.1 15.0,15.0" fill="#d2dae2" stroke="#808e9b"
-            stroke-width="0.3" />
-          <polygon points="15.0,15.0 17.1,17.1 19.1,19.1 17.0,17.0" fill="#bdc3c7" />
-          <polygon points="17.0,17.0 19.1,19.1 21.0,17.2 18.9,15.1" fill="#95a5a6" />
-
-          <!-- 핑크 고무 지우개 팁 -->
-          <path
-            d="M 19.0 15.2 L 21.5 17.7 C 23.0 19.2 23.0 21.2 21.5 22.7 C 20.0 24.2 18.0 24.2 16.5 22.7 L 17.1 17.1 Z"
-            fill="#ff7675" stroke="#e17055" stroke-width="0.3" />
-
-          <!-- 전체 외곽선 (다크 칠판 / 화이트보드 모두 선명한 0.6px 아웃라인) -->
-          <path
-            d="M 0 0 L 4.9 1.1 L 16.9 13.1 L 19.0 15.2 L 21.5 17.7 C 23.0 19.2 23.0 21.2 21.5 22.7 C 20.0 24.2 18.0 24.2 16.5 22.7 L 17.1 17.1 L 17.0 17.0 L 6.9 3.1 Z"
-            fill="none" stroke="#2d3436" stroke-width="0.6" stroke-linejoin="round" />
+          <!-- 사이드 펜 클립 (우상단 모노크롬 벡터 라인) -->
+          <path d="M 9.0 4.4 L 10.3 3.1 A 1.2 1.2 0 0 1 12.0 3.1 L 16.8 7.9 A 1.2 1.2 0 0 1 16.8 9.6 L 15.5 10.9"
+            fill="#ffffff" stroke="#0f172a" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+          <!-- 펜 본체 + 원뿔 촉 베이스 (화이트 바디 & 선명한 다크 벡터 외곽선) -->
+          <path d="M 0.4 0.4 L 7.2 2.6 L 16.2 11.6 L 11.6 16.2 L 2.6 7.2 Z"
+            fill="#ffffff" stroke="#0f172a" stroke-width="1.45" stroke-linejoin="round" />
+          <!-- 펜촉 흑연 팁 (0,0 칼끝 스냅 & 곡선 경계) -->
+          <path d="M 0.4 0.4 L 3.5 1.4 A 2.5 2.5 0 0 1 1.4 3.5 Z" fill="#0f172a" />
+          <!-- 원뿔 촉 - 본체 경계선 -->
+          <line x1="7.2" y1="2.6" x2="2.6" y2="7.2" stroke="#0f172a" stroke-width="1.4" stroke-linecap="round" />
+          <!-- 본체 내부 2줄 벡터 패싯 라인 -->
+          <line x1="5.7" y1="4.1" x2="14.7" y2="13.1" stroke="#0f172a" stroke-width="1.3" stroke-linecap="round" />
+          <line x1="4.1" y1="5.7" x2="13.1" y2="14.7" stroke="#0f172a" stroke-width="1.3" stroke-linecap="round" />
+          <!-- 하단 다크 라운드 캡 (지우개 엔드) -->
+          <path d="M 17.3 12.9 L 19.2 14.8 C 20.8 16.4 20.8 18.9 19.2 20.5 C 17.6 22.1 15.1 22.1 13.5 20.5 L 11.6 18.6 Z"
+            fill="#0f172a" stroke="#0f172a" stroke-width="1.35" stroke-linejoin="round" />
+          <!-- 페룰 링 밴드 (화이트 라운드 캡슐 링) -->
+          <path d="M 16.7 11.1 L 18.1 12.5 A 0.95 0.95 0 0 1 18.1 13.8 L 13.8 18.1 A 0.95 0.95 0 0 1 12.5 18.1 L 11.1 16.7 A 0.95 0.95 0 0 1 11.1 15.4 L 15.4 11.1 A 0.95 0.95 0 0 1 16.7 11.1 Z"
+            fill="#ffffff" stroke="#0f172a" stroke-width="1.4" stroke-linejoin="round" />
         </svg>
 
-        <!-- 🧼 지우개 모드 SVG (지우는 앞코 원점: 0,0 정확히 일치 / 정밀 슬림 입체 지우개) -->
-        <svg id="stylusEraserSvg" class="stylus-svg" width="20" height="20" viewBox="0 0 32 32" fill="none"
+        <!-- 🧼 지우개 모드 SVG (모노크롬 벡터 블록 지우개 / 앞코 원점 0,0) -->
+        <svg id="stylusEraserSvg" class="stylus-svg" width="24" height="24" viewBox="0 0 28 28" fill="none"
           style="display: none; overflow: visible;">
-          <!-- 실제 지워지는 원점(0,0) 정밀 가이드 링 -->
-          <circle id="stylusEraserRing" cx="0" cy="0" r="4.5" fill="rgba(244, 63, 94, 0.16)"
-            stroke="rgba(244, 63, 94, 0.82)" stroke-width="1.4" />
-          <!-- 하얀 고무 지우개 앞코 (정확히 0,0 포인터 끝에서 지워짐) -->
-          <path d="M 0.5 0.5 C 2.0 -0.6 4.8 0.2 7.8 2.4 L 2.4 7.8 C 0.2 4.8 -0.6 2.0 0.5 0.5 Z" fill="#ffffff" />
-          <polygon points="7.8,2.4 9.6,4.2 4.2,9.6 2.4,7.8" fill="#f1f5f9" />
-          <!-- 지우개 슬리브 케이스 (산뜻한 스카이/로열 블루 2톤 입체) -->
-          <polygon points="9.6,4.2 18.4,13.0 15.6,15.8 6.8,7.0" fill="#38bdf8" />
-          <polygon points="6.8,7.0 15.6,15.8 13.0,18.4 4.2,9.6" fill="#0284c7" />
-          <!-- 슬리브 중앙 화이트 포인트 라인 -->
-          <line x1="8.8" y1="8.2" x2="14.6" y2="14.0" stroke="#ffffff" stroke-width="1.3" stroke-linecap="round" />
-          <!-- 지우개 뒷부분 고무 캡 -->
-          <path
-            d="M 18.4 13.0 L 20.2 14.8 C 21.3 15.9 21.1 17.6 19.8 18.9 L 18.9 19.8 C 17.6 21.1 15.9 21.3 14.8 20.2 L 13.0 18.4 Z"
-            fill="#e2e8f0" />
-          <!-- 선명한 외곽선 (다크/화이트 칠판 모두 시인성 100%) -->
-          <path
-            d="M 0.5 0.5 C 2.0 -0.6 4.8 0.2 7.8 2.4 L 20.2 14.8 C 21.3 15.9 21.1 17.6 19.8 18.9 L 18.9 19.8 C 17.6 21.1 15.9 21.3 14.8 20.2 L 2.4 7.8 C 0.2 4.8 -0.6 2.0 0.5 0.5 Z"
-            fill="none" stroke="#1e293b" stroke-width="0.85" stroke-linejoin="round" />
-          <line x1="9.6" y1="4.2" x2="4.2" y2="9.6" stroke="#475569" stroke-width="0.65" />
-          <line x1="18.4" y1="13.0" x2="13.0" y2="18.4" stroke="#475569" stroke-width="0.65" />
+          <!-- 실제 지워지는 원점(0,0) 차분한 무채색 가이드 링 -->
+          <circle id="stylusEraserRing" cx="0" cy="0" r="4.5" fill="rgba(148, 163, 184, 0.16)"
+            stroke="rgba(51, 65, 85, 0.72)" stroke-width="1.25" />
+          <!-- 지우개 하단 다크 슬리브 홀더 -->
+          <path d="M 11.2 4.6 L 19.0 12.4 C 20.5 13.9 20.5 16.3 19.0 17.8 L 17.8 19.0 C 16.3 20.5 13.9 20.5 12.4 19.0 L 4.6 11.2 Z"
+            fill="#0f172a" stroke="#0f172a" stroke-width="1.4" stroke-linejoin="round" />
+          <!-- 지우개 전면 화이트 고무 블록 (0,0 포인터 끝 스냅) -->
+          <path d="M 1.0 1.0 C 2.3 -0.2 4.6 0.2 6.8 2.4 L 13.2 8.8 L 8.8 13.2 L 2.4 6.8 C 0.2 4.6 -0.2 2.3 1.0 1.0 Z"
+            fill="#ffffff" stroke="#0f172a" stroke-width="1.45" stroke-linejoin="round" />
+          <!-- 슬리브 화이트 밴드 & 내부 벡터 디테일 라인 -->
+          <polygon points="10.4,6.0 13.2,8.8 8.8,13.2 6.0,10.4" fill="#ffffff" stroke="#0f172a" stroke-width="1.35"
+            stroke-linejoin="round" />
+          <line x1="4.8" y1="3.4" x2="8.8" y2="7.4" stroke="#0f172a" stroke-width="1.25" stroke-linecap="round" />
         </svg>
 
-        <!-- 🖍️ 형광펜 모드 SVG (반투명 사선 치즐 팁 + 형광 바디) -->
-        <svg id="stylusHighlighterSvg" class="stylus-svg" width="30" height="30" viewBox="0 0 32 32" fill="none"
+        <!-- 🖍️ 형광펜 모드 SVG (모노크롬 벡터 사선 치즐 마커 / 팁 원점 0,0) -->
+        <svg id="stylusHighlighterSvg" class="stylus-svg" width="28" height="28" viewBox="0 0 28 28" fill="none"
           style="display: none; overflow: visible;">
-          <circle id="stylusHighlighterGlow" cx="0" cy="0" r="6.5" fill="rgba(250, 204, 21, 0.32)" />
-          <polygon id="stylusHighlighterTip" points="-1.5,1.5 2.5,-2.5 6.2,1.2 2.2,5.2" fill="#facc15" opacity="0.88" />
-          <polygon points="2.5,-2.5 6.2,1.2 19.5,14.5 14.5,19.5 2.2,5.2" fill="#fde047" stroke="#1e293b"
-            stroke-width="0.8" stroke-linejoin="round" />
-          <polygon id="stylusHighlighterBand" points="5.2,0.2 8.2,3.2 4.8,6.6 1.8,3.6" fill="#eab308" />
+          <circle id="stylusHighlighterGlow" cx="0" cy="0" r="5.5" fill="rgba(148, 163, 184, 0.20)" />
+          <!-- 사선 치즐 팁 (원점 0,0 스냅, 다크 모노크롬) -->
+          <polygon id="stylusHighlighterTip" points="0.2,0.2 4.2,-0.2 5.2,2.4 2.4,5.2 -0.2,2.6" fill="#0f172a"
+            stroke="#0f172a" stroke-width="1.25" stroke-linejoin="round" />
+          <!-- 마커 목(Neck) 단차 블록 -->
+          <polygon points="4.8,1.4 7.6,2.2 2.2,7.6 1.4,4.8" fill="#ffffff" stroke="#0f172a" stroke-width="1.35"
+            stroke-linejoin="round" />
+          <!-- 마커 본체 (화이트 바디 + 내부 2줄 벡터 라인) -->
+          <polygon points="8.2,1.6 17.6,11.0 11.0,17.6 1.6,8.2" fill="#ffffff" stroke="#0f172a" stroke-width="1.45"
+            stroke-linejoin="round" />
+          <line x1="7.2" y1="5.0" x2="14.2" y2="12.0" stroke="#0f172a" stroke-width="1.3" stroke-linecap="round" />
+          <line x1="5.0" y1="7.2" x2="12.0" y2="14.2" stroke="#0f172a" stroke-width="1.3" stroke-linecap="round" />
+          <!-- 마커 하단 다크 엔드 캡 -->
+          <path id="stylusHighlighterBand"
+            d="M 17.6 11.0 L 19.5 12.9 C 20.7 14.1 20.7 16.0 19.5 17.2 L 17.2 19.5 C 16.0 20.7 14.1 20.7 12.9 19.5 L 11.0 17.6 Z"
+            fill="#0f172a" stroke="#0f172a" stroke-width="1.35" stroke-linejoin="round" />
         </svg>
 
         <!-- 🔴 레이저 포인터 모드 SVG (원점 0,0 펜촉 위치 100% 일치 / 네온 레드 코어 + 이중 발광 헤일로) -->
@@ -3084,8 +3073,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261103_66"></script>
-  <script src="app.js?v=20261103_66"></script>
+  <script src="engine.js?v=20261103_67"></script>
+  <script src="app.js?v=20261103_67"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

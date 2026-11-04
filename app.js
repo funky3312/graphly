@@ -3157,13 +3157,6 @@ class GraphApp {
     if (this.stylusPenSvg) this.stylusPenSvg.style.display = isPenNow ? 'block' : 'none';
     if (this.stylusHighlighterSvg) {
       this.stylusHighlighterSvg.style.display = isHighlighterNow ? 'block' : 'none';
-      if (isHighlighterNow) {
-        const hlTip = document.getElementById('stylusHighlighterTip');
-        const hlBand = document.getElementById('stylusHighlighterBand');
-        const col = this.currentInkColor || '#facc15';
-        if (hlTip) hlTip.setAttribute('fill', col);
-        if (hlBand) hlBand.setAttribute('fill', col);
-      }
     }
     if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = isEraserNow ? 'block' : 'none';
     if (this.stylusLaserSvg) this.stylusLaserSvg.style.display = isLaserNow ? 'block' : 'none';
@@ -10105,7 +10098,30 @@ class GraphApp {
 
     const bodyEl = cardWidgetEl.querySelector('.problem-card-body');
     const laserBtn = cardWidgetEl.querySelector('.btn-card-laser');
+    const headerEl = cardWidgetEl.querySelector('.problem-card-header');
     if (!bodyEl || !laserBtn) return;
+
+    // 🌟 [대표님 기획: 평소에는 상단바를 숨겨 '딱 그래프/문제만' 노출 + 터치/호버/카드필기ON 시에만 상단바 표시] 🌟
+    const activateCardHeaderPeek = () => {
+      document.querySelectorAll('.problem-card-widget.card-header-peek').forEach((other) => {
+        if (other !== cardWidgetEl) other.classList.remove('card-header-peek');
+      });
+      cardWidgetEl.classList.add('card-header-peek');
+    };
+    bodyEl.addEventListener('pointerdown', activateCardHeaderPeek, { passive: true });
+    if (headerEl) {
+      headerEl.addEventListener('pointerdown', activateCardHeaderPeek, { passive: true });
+    }
+    if (!this._cardHeaderPeekGlobalDismissBound) {
+      this._cardHeaderPeekGlobalDismissBound = true;
+      document.addEventListener('pointerdown', (ev) => {
+        const t = ev.target;
+        if (t && t.closest && t.closest('.problem-card-widget')) return;
+        document.querySelectorAll('.problem-card-widget.card-header-peek').forEach((el) => {
+          el.classList.remove('card-header-peek');
+        });
+      }, { passive: true });
+    }
 
     let laserCanvas = bodyEl.querySelector('.card-laser-canvas');
     if (!laserCanvas) {
@@ -37183,16 +37199,6 @@ class GraphApp {
     // 폴백: 만약 해당 SVG가 없으면 기본 펜 표시
     if (!svgs[kind] && svgs.pen) {
       svgs.pen.style.display = 'block';
-    }
-
-    if (this.stylusColorBand && color) {
-      this.stylusColorBand.setAttribute('fill', color);
-    }
-    const hlTip = document.getElementById('stylusHighlighterTip');
-    const hlBand = document.getElementById('stylusHighlighterBand');
-    if (kind === 'highlighter' && color) {
-      if (hlTip) hlTip.setAttribute('fill', color);
-      if (hlBand) hlBand.setAttribute('fill', color);
     }
 
     // 마우스 클릭 / 그래프 핸들 잡기 시작 순간 ScreenStudio 스타일 클릭 파동(Click Ripple) 발동!
