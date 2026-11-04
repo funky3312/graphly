@@ -23303,7 +23303,7 @@ class GraphApp {
           const dist = Math.max(10, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
           const midX = (pts[0].x + pts[1].x) / 2;
           const midY = (pts[0].y + pts[1].y) / 2;
-          const nextZoom = Math.max(0.5, Math.min(4.5, pinchStartZoom * (dist / pinchStartDist)));
+          const nextZoom = Math.max(1.0, Math.min(2.5, pinchStartZoom * (dist / pinchStartDist)));
           const rect = viewport.getBoundingClientRect();
           const cx = rect.left + rect.width / 2;
           const cy = rect.top + rect.height / 2;
@@ -23874,7 +23874,7 @@ class GraphApp {
   setSmartViewerZoom(nextZoom, focalClientX = null, focalClientY = null) {
     const viewport = document.getElementById('smartNoteViewerViewport');
     const prevZoom = this._viewerZoom || 1.0;
-    const clampedZoom = Math.max(0.5, Math.min(4.5, nextZoom));
+    const clampedZoom = Math.max(1.0, Math.min(2.5, nextZoom));
 
     if (Math.abs(clampedZoom - 1.0) < 0.02) {
       this._viewerZoom = 1.0;
@@ -33823,7 +33823,7 @@ class GraphApp {
       return null;
     }
 
-    const PAD = 36;
+    const PAD = hasPdfBoard ? 14 : 36;
     const baseW = Math.max(800, Math.round(this.screenWidth || window.innerWidth || 1280));
     const baseH = Math.max(500, Math.round(this.screenHeight || window.innerHeight || 720));
 
@@ -33831,6 +33831,16 @@ class GraphApp {
     const contentTop = Math.floor(minY - PAD);
     const contentRight = Math.ceil(maxX + PAD);
     const contentBottom = Math.ceil(maxY + PAD);
+
+    // 🌟 [통PDF 모드(hasPdfBoard)]: A4 세로 PDF 페이지(및 페이지 밖 필기/카드) 영역에 딱 맞춰 크롭하여
+    //    모바일 세로 화면에서도 좌우 불필요한 모니터 여백 없이 100% 꽉 차게 보이도록 처리!
+    if (hasPdfBoard) {
+      const cropX = Math.floor(contentLeft);
+      const cropY = Math.floor(contentTop);
+      const cropW = Math.min(8000, Math.max(200, Math.ceil(contentRight - contentLeft)));
+      const cropH = Math.min(8000, Math.max(200, Math.ceil(contentBottom - contentTop)));
+      return { x: cropX, y: cropY, width: cropW, height: cropH, w: cropW, h: cropH };
+    }
 
     // 🌟 [대표님 핵심 기획: 기본 캡처 최소 영역 = 모니터 화면 1개 크기 보장 + 화면 밖 필기 시 자동 확장]
     // 1) 좁은 영역에 조그만 원 하나만 그리더라도 그것만 잘려서 과도하게 확대되지 않도록,
