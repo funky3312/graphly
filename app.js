@@ -23474,7 +23474,7 @@ class GraphApp {
           const dist = Math.max(10, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
           const midX = (pts[0].x + pts[1].x) / 2;
           const midY = (pts[0].y + pts[1].y) / 2;
-          const nextZoom = Math.max(1.0, Math.min(2.5, pinchStartZoom * (dist / pinchStartDist)));
+          const nextZoom = Math.max(1.0, Math.min(3.0, pinchStartZoom * (dist / pinchStartDist)));
           const rect = viewport.getBoundingClientRect();
           const cx = rect.left + rect.width / 2;
           const cy = rect.top + rect.height / 2;
@@ -24050,7 +24050,7 @@ class GraphApp {
   setSmartViewerZoom(nextZoom, focalClientX = null, focalClientY = null) {
     const viewport = document.getElementById('smartNoteViewerViewport');
     const prevZoom = this._viewerZoom || 1.0;
-    const clampedZoom = Math.max(1.0, Math.min(2.5, nextZoom));
+    const clampedZoom = Math.max(1.0, Math.min(3.0, nextZoom));
 
     if (Math.abs(clampedZoom - 1.0) < 0.02) {
       this._viewerZoom = 1.0;
