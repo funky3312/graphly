@@ -1739,7 +1739,9 @@ class GraphApp {
     if (this.isInkMode && this.activeInkTool !== 'select') {
       this.setActiveInkTool('select');
     }
-    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+    // 🌟 [대표님 기획 반영]: 그래프 추가창(panelPresets)에서 함수를 선택하는 동안에는 창이 닫히지 않고 유지!
+    // (✕ 버튼, ESC 키, 또는 창 바깥 영역을 터치할 때만 자동으로 닫힘)
+    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed && this.activeDrawerPanel !== 'panelPresets') {
       this.closeDrawer();
     }
 
@@ -2228,47 +2230,133 @@ class GraphApp {
     this.syncCurveContextBar();
   }
 
+  _clearPendingGraphShortcutDigit() {
+    this._pendingGraphShortcutCatDigit = null;
+    if (this._pendingGraphShortcutTimer) {
+      clearTimeout(this._pendingGraphShortcutTimer);
+      this._pendingGraphShortcutTimer = null;
+    }
+    document.querySelectorAll('.func-cat-section.shortcut-armed').forEach(el => {
+      el.classList.remove('shortcut-armed');
+    });
+  }
+
   renderFuncList() {
     const grid = document.getElementById('funcGrid');
     if (!grid) return;
     grid.innerHTML = '';
 
-    const currentCat = (this._currentCat === '⭐ 내 그래프')
-      ? '⭐ 내 그래프'
-      : ((this._isApplyingAudioTimelineState && this._currentCat)
-        ? this._currentCat
-        : (this.activeGraph ? this.activeGraph.category : (this._currentCat || '📐 다항함수')));
-    if (currentCat === '⭐ 내 그래프') {
-      this.renderCustomGraphPresetList(grid);
-      return;
-    }
     const currentType = this.activeGraph ? this.activeGraph.type : null;
+    const shortDisplayNames = {
+      '3rd_basic_cubic': '삼차 (y=x³)',
+      '4th_basic_bowl': '사차 (y=x⁴)'
+    };
 
-    const currentCatFuncs = Object.entries(this.meta).filter(
-      ([key, data]) => data.category === currentCat
-    );
+    const sections = [
+      {
+        num: 1,
+        title: '다항함수',
+        cols: 3,
+        keys: [
+          '1st_linear',
+          '2nd_quadratic',
+          '3rd_normal',
+          '3rd_basic_cubic',
+          '4th_symmetric',
+          '4th_asymmetric',
+          '4th_inflection',
+          '4th_basic_bowl'
+        ]
+      },
+      {
+        num: 2,
+        title: '유리·무리함수',
+        cols: 2,
+        keys: ['rational_basic', 'sqrt_basic']
+      },
+      {
+        num: 3,
+        title: '지수·로그함수',
+        cols: 2,
+        keys: ['exp_basic', 'log_basic']
+      },
+      {
+        num: 4,
+        title: '삼각함수',
+        cols: 3,
+        keys: ['sin_1period', 'cos_1period', 'tan_1period']
+      },
+      {
+        num: 5,
+        title: '평면도형',
+        cols: 3,
+        keys: ['geom_circle', 'geom_triangle', 'geom_quad']
+      },
+      {
+        num: 6,
+        title: '특수함수',
+        cols: 2,
+        keys: ['killer_frac_odd', 'killer_exp_linear', 'killer_exp_quad', 'killer_log_frac']
+      }
+    ];
 
-    currentCatFuncs.forEach(([key, data]) => {
-      const btn = document.createElement('button');
-      btn.className = `func-btn ${key === currentType ? 'active' : ''}`;
-      btn.dataset.preset = key;
-      btn.innerHTML = `
-        <span class="func-icon-wrap">${data.svg || ''}</span>
-        <span class="func-name-text">${data.name}</span>
+    sections.forEach((sec) => {
+      const secEl = document.createElement('div');
+      secEl.className = 'func-cat-section';
+      secEl.dataset.catNum = String(sec.num);
+      if (String(this._pendingGraphShortcutCatDigit || '') === String(sec.num)) {
+        secEl.classList.add('shortcut-armed');
+      }
+
+      const headerEl = document.createElement('div');
+      headerEl.className = 'func-cat-header';
+      headerEl.innerHTML = `
+        <span class="func-cat-title"><span class="func-cat-num">${sec.num}</span><span>${sec.title}</span></span>
       `;
-      btn.onclick = () => {
-        if (this.graphs.length >= 12) {
-          this.showToast('⚠️ 그래프는 최대 12개까지 동시에 추가할 수 있습니다.');
-          return;
-        }
-        this.addGraph(key);
-        // 🌟 [대표님 기획: 원클릭 추가 후 서랍 자동 닫힘 (Auto-Close)]
-        if (typeof this.closeDrawer === 'function') {
-          this.closeDrawer();
-        }
-      };
-      grid.appendChild(btn);
+      secEl.appendChild(headerEl);
+
+      const secGrid = document.createElement('div');
+      secGrid.className = `func-cat-grid cols-${sec.cols}`;
+
+      sec.keys.forEach((key, idx) => {
+        const data = this.meta[key];
+        if (!data) return;
+        const codeStr = `${sec.num}${idx + 1}`;
+        const labelText = shortDisplayNames[key] || data.name;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `func-btn ${key === currentType ? 'active' : ''}`;
+        btn.dataset.preset = key;
+        btn.dataset.funcCode = codeStr;
+        btn.innerHTML = `
+          <span class="func-num-badge">${codeStr}</span>
+          <span class="func-icon-wrap">${data.svg || ''}</span>
+          <span class="func-name-text">${labelText}</span>
+        `;
+        btn.onclick = () => {
+          if (this.graphs.length >= 12) {
+            this.showToast('⚠️ 그래프는 최대 12개까지 동시에 추가할 수 있습니다.');
+            return;
+          }
+          this._clearPendingGraphShortcutDigit();
+          this.addGraph(key);
+        };
+        secGrid.appendChild(btn);
+      });
+
+      secEl.appendChild(secGrid);
+      grid.appendChild(secEl);
     });
+
+    // 7. 프리셋 섹션 (나만의 그래프 보관함)
+    const presetSec = document.createElement('div');
+    presetSec.className = 'func-cat-section';
+    presetSec.dataset.catNum = '7';
+    if (String(this._pendingGraphShortcutCatDigit || '') === '7') {
+      presetSec.classList.add('shortcut-armed');
+    }
+    this.renderCustomGraphPresetList(presetSec);
+    grid.appendChild(presetSec);
   }
 
   changeFuncType(type) {
@@ -15401,6 +15489,7 @@ class GraphApp {
     };
 
     this.closeDrawer = () => {
+      this._clearPendingGraphShortcutDigit();
       this.isDrawerCollapsed = true;
       rail.classList.add('drawer-collapsed');
       if (iconToggle) iconToggle.textContent = '▶';
@@ -15460,13 +15549,93 @@ class GraphApp {
       btnToggle.onclick = () => this.toggleDrawer();
     }
 
-    // 단축키: \ (백슬래시) 또는 Ctrl+B 로 서랍 열기/닫기 원터치 토글
+    // [대표님 핵심 UX 기획]: 서랍(추가창/설정창 등) 영역 외의 곳(칠판 캔버스 등)을 터치/클릭하면 자동 닫기
+    window.addEventListener('pointerdown', (e) => {
+      if (this.isDrawerCollapsed) return;
+      const target = e.target;
+      if (!target || typeof target.closest !== 'function') return;
+      // 서랍 내부 또는 좌측 레일 버튼 클릭 시에는 유지
+      if (target.closest('#railDrawer') || target.closest('#sidebarRail')) return;
+      // 스마트 수식 입력 모달, 요금제 모달 등 팝업 모달 내부 클릭 시에는 서랍 유지
+      if (
+        target.closest('#modalSmartInput') ||
+        target.closest('#proPricingModal') ||
+        target.closest('.smart-modal-backdrop') ||
+        target.closest('.modal-overlay')
+      ) {
+        return;
+      }
+      this.closeDrawer();
+    }, true);
+
+    // 단축키: \ (백슬래시), Ctrl+B, ESC 닫기, G (그래프 추가창 토글) 및 2자리 숫자(11~79) 즉시 소환
     window.addEventListener('keydown', (e) => {
-      const tag = e.target.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+      const tag = e.target && e.target.tagName ? e.target.tagName : '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
+
+      if (e.key === 'Escape' && !this.isDrawerCollapsed) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this.closeDrawer();
+        return;
+      }
+
       if (e.key === '\\' || (e.ctrlKey && (e.key === 'b' || e.key === 'B'))) {
         e.preventDefault();
         this.toggleDrawer();
+        return;
+      }
+
+      // [G 단축키]: 그래프 추가창(panelPresets) 즉시 열기/닫기
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'g' || e.key === 'G')) {
+        if (this.isPdfModalOpen || (this.smartViewerState && this.smartViewerState.isOpen)) return;
+        e.preventDefault();
+        if (this.isGraphCovered) {
+          if (this.pdfPageBoardData) {
+            if (this._isPdfCropChoiceMenuOpen || this.isPdfToGraphCropMode) {
+              this.cancelPdfBoardToGraphCrop();
+            } else {
+              this.openPdfToGraphChoiceMenu(null);
+            }
+            return;
+          }
+          this.enterGraphModeFromBoard();
+          this.openDrawer('panelPresets');
+          return;
+        }
+        if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+          this.closeDrawer();
+        } else {
+          this.openDrawer('panelPresets');
+        }
+        return;
+      }
+
+      // [2자리 숫자 단축키 (11~79)]: 그래프 추가창이 열려 있을 때 연속 숫자 키로 즉시 그래프 소환
+      if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (/^[1-9]$/.test(e.key)) {
+          e.preventDefault();
+          const digit = e.key;
+          if (!this._pendingGraphShortcutCatDigit) {
+            if (digit >= '1' && digit <= '7') {
+              this._clearPendingGraphShortcutDigit();
+              this._pendingGraphShortcutCatDigit = digit;
+              const secEl = document.querySelector(`.func-cat-section[data-cat-num="${digit}"]`);
+              if (secEl) secEl.classList.add('shortcut-armed');
+              this._pendingGraphShortcutTimer = setTimeout(() => {
+                this._clearPendingGraphShortcutDigit();
+              }, 2200);
+            }
+          } else {
+            const code = `${this._pendingGraphShortcutCatDigit}${digit}`;
+            this._clearPendingGraphShortcutDigit();
+            const targetBtn = document.querySelector(`#funcGrid [data-func-code="${code}"]`);
+            if (targetBtn) {
+              targetBtn.click();
+            }
+          }
+          return;
+        }
       }
     });
 
@@ -16892,7 +17061,7 @@ class GraphApp {
       }
       this.addGraphFromParsed(currentParsed);
       closeModal();
-      if (typeof this.closeDrawer === 'function') {
+      if (typeof this.closeDrawer === 'function' && this.activeDrawerPanel !== 'panelPresets') {
         this.closeDrawer();
       }
     };
@@ -19675,9 +19844,7 @@ class GraphApp {
         }
       } catch (e) { }
     }
-    if (this._currentCat === '⭐ 내 그래프') {
-      this.renderFuncList();
-    }
+    this.renderFuncList();
   }
 
   _buildSmartCustomGraphName() {
@@ -19943,7 +20110,7 @@ class GraphApp {
     if (this.isInkMode && this.activeInkTool !== 'select') {
       this.setActiveInkTool('select');
     }
-    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed && this.activeDrawerPanel !== 'panelPresets') {
       this.closeDrawer();
     }
 
@@ -19985,7 +20152,15 @@ class GraphApp {
 
     const quota = this.getCustomGraphQuotaStatus();
 
-    // 1번 고정 카드: [➕ 현재 그래프 등록] + 구독/비구독 잔여 한도 배지
+    const headerEl = document.createElement('div');
+    headerEl.className = 'func-cat-header';
+    headerEl.innerHTML = `
+      <span class="func-cat-title"><span class="func-cat-num">7</span><span>프리셋</span></span>
+      <span class="custom-graph-quota-badge">${quota.badgeText}</span>
+    `;
+    grid.appendChild(headerEl);
+
+    // 1번 고정 카드: [➕ 현재 그래프 등록]
     const regWrap = document.createElement('div');
     regWrap.className = 'custom-graph-register-wrap';
 
@@ -19995,7 +20170,7 @@ class GraphApp {
     btnAdd.className = 'custom-graph-add-btn';
     btnAdd.innerHTML = `
       <span>➕ 현재 그래프 등록</span>
-      <span class="custom-graph-quota-badge">${quota.badgeText}</span>
+      <span style="font-size:10px; opacity:0.8; font-weight:600;">세트 통째 저장</span>
     `;
     btnAdd.onclick = (e) => {
       e.stopPropagation();
@@ -20005,28 +20180,25 @@ class GraphApp {
     grid.appendChild(regWrap);
 
     if (!Array.isArray(this.customGraphPresets) || this.customGraphPresets.length === 0) {
-      const emptyBox = document.createElement('div');
-      emptyBox.className = 'custom-graph-empty';
-      emptyBox.innerHTML = `
-        <div style="font-weight:700; margin-bottom:4px;">⭐ 등록된 나만의 그래프가 없습니다</div>
-        <div>구간 분할 · 계단형 주기 · 다중 함수 세트를 만든 뒤<br>위의 <b>[➕ 현재 그래프 등록]</b>을 누르면 언제든 1초 만에 꺼내 쓸 수 있습니다!</div>
-      `;
-      grid.appendChild(emptyBox);
       return;
     }
 
-    this.customGraphPresets.forEach((item) => {
+    this.customGraphPresets.forEach((item, idx) => {
       if (!item) return;
+      const codeStr = idx < 9 ? `7${idx + 1}` : '';
       const card = document.createElement('div');
       card.className = 'custom-graph-card';
       card.setAttribute('data-custom-graph-id', item.id);
+      if (codeStr) {
+        card.dataset.funcCode = codeStr;
+      }
 
       const isRenaming = (this._renamingCustomGraphId === item.id);
       if (isRenaming) {
         card.innerHTML = `
           <div style="display:flex; align-items:center; gap:6px; width:100%;">
             <input type="text" class="custom-graph-rename-input" value="${(item.name || '').replace(/"/g, '&quot;')}"
-              style="flex:1; min-width:0; padding:5px 8px; border-radius:6px; border:1px solid #f59e0b; background:rgba(0,0,0,0.25); color:inherit; font-size:12px; font-weight:600;" />
+              style="flex:1; min-width:0; padding:4px 7px; border-radius:6px; border:1px solid #f59e0b; background:rgba(0,0,0,0.25); color:inherit; font-size:11.5px; font-weight:600;" />
             <button type="button" class="custom-graph-act-btn save" title="저장" style="width:auto; padding:0 8px; background:#f59e0b; color:#fff; font-weight:700;">확인</button>
           </div>
         `;
@@ -20057,6 +20229,7 @@ class GraphApp {
 
       card.innerHTML = `
         <div class="custom-graph-card-left">
+          ${codeStr ? `<span class="func-num-badge">${codeStr}</span>` : ''}
           <div class="custom-graph-thumb-box">${item.svgThumb || '📈'}</div>
           <div class="custom-graph-info">
             <div class="custom-graph-title">${item.name || '나만의 그래프'}</div>
@@ -20070,6 +20243,7 @@ class GraphApp {
       `;
 
       card.onclick = () => {
+        this._clearPendingGraphShortcutDigit();
         this.loadCustomGraphPreset(item.id);
       };
 
@@ -28848,8 +29022,13 @@ class GraphApp {
         }
       }
 
-      // 0.405. ESC 키: 올가미 선택 해제 또는 PDF 크롭모드/모달 닫기
+      // 0.405. ESC 키: 서랍(추가창) 닫기, 올가미 선택 해제 또는 PDF 크롭모드/모달 닫기
       if (e.key === 'Escape' && !isInput) {
+        if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
+          e.preventDefault();
+          this.closeDrawer();
+          return;
+        }
         const mGuide = document.getElementById('modalGuideNotice');
         if (mGuide && mGuide.classList.contains('show')) {
           e.preventDefault();

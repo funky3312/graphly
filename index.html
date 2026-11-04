@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_13">
+  <link rel="stylesheet" href="style.css?v=20261105_14">
 </head>
 
 <body class="theme-light">
@@ -224,24 +224,24 @@
 
           <!-- [하단 서랍 탭 패널 컨테이너] -->
           <div class="drawer-subpanels-container" id="drawerSubpanelsContainer">
-            <!-- 1. 패널: 개형 라이브러리 (기본 열림, 원클릭 자동 추가) -->
+            <!-- 1. 패널: 개형 라이브러리 (한눈에 보는 교육과정 순서 올인원 보드 & 연속 소환) -->
             <div class="drawer-panel active" id="panelPresets">
               <div class="panel-section" style="border: none; padding: 0;">
                 <div class="section-title"
-                  style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                  <span>개형 선택</span>
+                  style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                  <span>개형 선택 <span style="font-size:10px; font-weight:500; opacity:0.65; text-transform:none;">(클릭 또는 번호 입력)</span></span>
                   <div style="display: flex; gap: 4px;">
-                    <button id="btnSmartInput" class="btn-smart-input" style="padding: 3px 8px; font-size: 11px;">𝑓(𝑥)
+                    <button id="btnSmartInput" class="btn-smart-input" style="padding: 2px 7px; font-size: 10.5px;">𝑓(𝑥)
                       수식</button>
-                    <button id="btnClearAllGraphs" class="btn-clear-all" style="padding: 3px 8px; font-size: 11px;"><svg
-                        width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                    <button id="btnClearAllGraphs" class="btn-clear-all" style="padding: 2px 7px; font-size: 10.5px;"><svg
+                        width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
                         stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px;">
                         <polyline points="3 6 5 6 21 6" />
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                      </svg>그래프 비우기</button>
+                      </svg>비우기</button>
                   </div>
                 </div>
-                <div class="category-tabs">
+                <div class="category-tabs" style="display: none;">
                   <button class="cat-tab-btn active" data-cat="📐 다항함수">다항</button>
                   <button class="cat-tab-btn" data-cat="📈 지수·로그">지수·로그</button>
                   <button class="cat-tab-btn" data-cat="🔀 유리·무리">유리·무리</button>
@@ -251,8 +251,8 @@
                   <button class="cat-tab-btn cat-tab-my-graphs" id="btnCatTabMyGraphs" data-cat="⭐ 내 그래프"
                     title="자주 쓰는 내 그래프 보관함">⭐내그래프</button>
                 </div>
-                <div id="funcGrid" class="func-list-grid">
-                  <!-- JS로 동적 생성 -->
+                <div id="funcGrid" class="func-list-grid func-allinone-container">
+                  <!-- JS로 1~7번 전체 카테고리 한눈에 동적 생성 -->
                 </div>
               </div>
 
@@ -3093,8 +3093,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261105_13"></script>
-  <script src="app.js?v=20261105_13"></script>
+  <script src="engine.js?v=20261105_14"></script>
+  <script src="app.js?v=20261105_14"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
