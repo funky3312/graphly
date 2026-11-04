@@ -23818,11 +23818,13 @@ class GraphApp {
     const overlay = document.getElementById('smartNoteViewerOverlay');
     const fsGate = document.getElementById('viewerFullscreenGate');
     const isAlreadyNativeFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+    const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+    const isMobileOrTabletOS = /Android|iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
     if (overlay) {
       overlay.style.display = 'flex';
-      if (isAlreadyNativeFs || !fsGate) {
+      if (!isMobileOrTabletOS || isAlreadyNativeFs || !fsGate) {
         overlay.classList.remove('viewer-entry-gate-active');
-        overlay.classList.add('viewer-immersive-fullscreen');
+        overlay.classList.toggle('viewer-immersive-fullscreen', isAlreadyNativeFs);
         if (fsGate) fsGate.style.display = 'none';
       } else {
         overlay.classList.add('viewer-entry-gate-active');
