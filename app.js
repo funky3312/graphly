@@ -18775,6 +18775,12 @@ class GraphApp {
     const inpLibSearch = document.getElementById('inputCloudLibrarySearch');
     const btnNavUp = document.getElementById('btnCloudNavUp');
     const btnAddRootFolder = document.getElementById('btnCloudAddRootFolder');
+    const btnActionOpen = document.getElementById('btnCloudActionOpen');
+    const btnFooterOpen = document.getElementById('btnCloudFooterOpen');
+    const btnActionMove = document.getElementById('btnCloudActionMove');
+    const moveMenuEl = document.getElementById('cloudMoveDropdownMenu');
+    const btnActionDelete = document.getElementById('btnCloudActionDelete');
+    const chkExplorerAll = document.getElementById('chkCloudExplorerAll');
     const rowNewFolder = document.getElementById('cloudNewFolderInlineRow');
     const inpNewFolder = document.getElementById('inputNewCloudFolderName');
     const btnConfirmFolder = document.getElementById('btnConfirmNewCloudFolder');
@@ -18783,6 +18789,7 @@ class GraphApp {
     const btnScopeCur = document.getElementById('btnCloudSaveScopeCurrent');
     const inpCloudSaveTitle = document.getElementById('inputCloudSaveTitle');
 
+    this._selectedCloudExplorerKeys = new Set();
     this._cloudExplorerSaveScope = 'all';
     const setCloudExplorerScope = (scope) => {
       this._cloudExplorerSaveScope = (scope === 'current') ? 'current' : 'all';
@@ -18809,6 +18816,40 @@ class GraphApp {
       };
     }
 
+    if (btnActionOpen) {
+      btnActionOpen.onclick = () => this.handleCloudExplorerOpenSelected();
+    }
+    if (btnFooterOpen) {
+      btnFooterOpen.onclick = () => this.handleCloudExplorerOpenSelected();
+    }
+    if (btnActionMove) {
+      btnActionMove.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleCloudExplorerMoveMenu();
+      };
+    }
+    if (btnActionDelete) {
+      btnActionDelete.onclick = () => this.handleCloudExplorerDeleteSelected();
+    }
+    if (chkExplorerAll) {
+      chkExplorerAll.onchange = () => {
+        const visibleKeys = Array.isArray(this._currentVisibleCloudKeys) ? this._currentVisibleCloudKeys : [];
+        if (chkExplorerAll.checked) {
+          visibleKeys.forEach(k => this._selectedCloudExplorerKeys.add(k));
+        } else {
+          visibleKeys.forEach(k => this._selectedCloudExplorerKeys.delete(k));
+        }
+        this.renderMyLibraryList();
+      };
+    }
+    window.addEventListener('pointerdown', (e) => {
+      if (moveMenuEl && moveMenuEl.style.display !== 'none') {
+        if (!moveMenuEl.contains(e.target) && (!btnActionMove || !btnActionMove.contains(e.target))) {
+          moveMenuEl.style.display = 'none';
+        }
+      }
+    });
+
     if (btnNavUp) {
       btnNavUp.onclick = () => {
         const cur = String(this._activeCloudFolder || '').trim();
@@ -18819,7 +18860,7 @@ class GraphApp {
         } else {
           this._activeCloudFolder = '';
         }
-        this._selectedCloudExplorerKey = null;
+        this._selectedCloudExplorerKeys.clear();
         this.syncExportCloudFolderSelect();
         this.renderMyLibraryList();
       };
@@ -19309,7 +19350,7 @@ class GraphApp {
     if (this._activeCloudFolder === '__ALL_RECENT__' || this._activeCloudFolder === '__UNCATEGORIZED__') {
       this._activeCloudFolder = cleanParent || '';
     }
-    this._selectedCloudExplorerKey = `folder:${fullPath}`;
+    this._selectedCloudExplorerKeys = new Set([`folder:${fullPath}`]);
     this.syncExportCloudFolderSelect();
     this.renderMyLibraryList();
     this.showToast(`📁 [${cleanSeg}] 폴더가 생성되었습니다. (더블클릭하여 열기)`);
@@ -19356,7 +19397,7 @@ class GraphApp {
       });
       this._saveMyLibraryCacheForCurrentUser();
     }
-    this._selectedCloudExplorerKey = `folder:${newPath}`;
+    this._selectedCloudExplorerKeys = new Set([`folder:${newPath}`]);
     this.syncExportCloudFolderSelect();
     this.renderMyLibraryList();
     this.showToast(`✏️ 폴더 이름이 [${cleanSeg}](으)로 변경되었습니다.`);
@@ -19483,6 +19524,275 @@ class GraphApp {
     this.showToast(clean ? `📁 [${clean.replace(/\//g, ' › ')}] 폴더로 이동했습니다.` : '☁️ [내 클라우드] 홈으로 이동했습니다.');
     if (item.id) {
       try { await this._firestoreRestWrite('user_library', item.id, item); } catch (e) { }
+    }
+  }
+
+  _syncCloudExplorerSelectionButtons() {
+    if (!this._selectedCloudExplorerKeys) this._selectedCloudExplorerKeys = new Set();
+    const cnt = this._selectedCloudExplorerKeys.size;
+    const btnOpen = document.getElementById('btnCloudActionOpen');
+    const lblFooterOpen = document.getElementById('lblCloudFooterOpenText');
+    const btnMove = document.getElementById('btnCloudActionMove');
+    const btnDelete = document.getElementById('btnCloudActionDelete');
+    const chkAll = document.getElementById('chkCloudExplorerAll');
+
+    if (btnOpen) {
+      btnOpen.innerHTML = cnt > 1 ? `<span>📂 열기 (${cnt})</span>` : `<span>📂 열기</span>`;
+    }
+    if (lblFooterOpen) {
+      lblFooterOpen.textContent = cnt > 1 ? `📂 선택 열기 (${cnt})` : `📂 열기`;
+    }
+    if (btnMove) {
+      btnMove.innerHTML = cnt > 0 ? `<span>📦 이동 (${cnt}) ▾</span>` : `<span>📦 이동 ▾</span>`;
+    }
+    if (btnDelete) {
+      btnDelete.innerHTML = cnt > 0 ? `<span>🗑️ 삭제 (${cnt})</span>` : `<span>🗑️ 삭제</span>`;
+    }
+    if (chkAll) {
+      const vis = Array.isArray(this._currentVisibleCloudKeys) ? this._currentVisibleCloudKeys : [];
+      if (vis.length === 0) {
+        chkAll.checked = false;
+        chkAll.indeterminate = false;
+      } else {
+        const checkedVisCnt = vis.filter(k => this._selectedCloudExplorerKeys.has(k)).length;
+        chkAll.checked = (checkedVisCnt === vis.length);
+        chkAll.indeterminate = (checkedVisCnt > 0 && checkedVisCnt < vis.length);
+      }
+    }
+  }
+
+  async handleCloudExplorerOpenSelected() {
+    if (!this._selectedCloudExplorerKeys || this._selectedCloudExplorerKeys.size === 0) {
+      this.showToast('📂 먼저 열려는 파일이나 폴더의 체크박스(☑)를 선택하거나 더블클릭해 주세요.');
+      return;
+    }
+    const keys = Array.from(this._selectedCloudExplorerKeys);
+    const folderPaths = keys.filter(k => k.startsWith('folder:')).map(k => k.slice(7));
+    const fileIds = keys.filter(k => k.startsWith('file:')).map(k => k.slice(5));
+    const selectedFiles = fileIds
+      .map(id => (this.myLibraryCache || []).find(it => it && it.id === id))
+      .filter(Boolean);
+
+    if (selectedFiles.length === 0 && folderPaths.length > 0) {
+      const targetFolder = folderPaths[0];
+      this._activeCloudFolder = targetFolder;
+      this._selectedCloudExplorerKeys.clear();
+      if (!this._collapsedCloudFolders) this._collapsedCloudFolders = new Set();
+      this._collapsedCloudFolders.delete(targetFolder);
+      this.syncExportCloudFolderSelect();
+      this.renderMyLibraryList();
+      return;
+    }
+
+    if (selectedFiles.length === 1) {
+      await this.loadCloudItemToWorkspace(selectedFiles[0], true);
+      return;
+    }
+
+    if (selectedFiles.length >= 2) {
+      const combinedSlides = [];
+      for (const it of selectedFiles) {
+        const resolved = await this._resolveChunkedItem(it);
+        if (Array.isArray(resolved.playlistSlides) && resolved.playlistSlides.length > 0) {
+          resolved.playlistSlides.forEach((sl, sIdx) => {
+            const cloneSlide = JSON.parse(JSON.stringify(sl));
+            if (!cloneSlide.slideTitle) {
+              cloneSlide.slideTitle = resolved.playlistSlides.length > 1
+                ? `${resolved.title || '문항'} (${sIdx + 1})`
+                : (resolved.title || `문항 ${combinedSlides.length + 1}`);
+            }
+            combinedSlides.push(cloneSlide);
+          });
+        } else if (resolved.slideData) {
+          const cloneSlide = JSON.parse(JSON.stringify(resolved.slideData));
+          cloneSlide.slideTitle = resolved.title || cloneSlide.slideTitle || `문항 ${combinedSlides.length + 1}`;
+          combinedSlides.push(cloneSlide);
+        }
+      }
+      if (!combinedSlides.length) {
+        this.showToast('⚠️ 불러올 캔버스 데이터가 없습니다.');
+        return;
+      }
+      this.startLessonPlaylist(combinedSlides, 0);
+      const modalCloud = document.getElementById('modalCloudHub');
+      if (modalCloud) modalCloud.classList.remove('show');
+      const normalizedPkg = {
+        id: 'lib_sel_' + Date.now().toString(36),
+        title: `${selectedFiles[0].title || '수업'} 외 ${selectedFiles.length - 1}건`,
+        createdAt: Date.now(),
+        playlistSlides: JSON.parse(JSON.stringify(combinedSlides)),
+        isPlaylist: combinedSlides.length > 1,
+        currentIndex: 0
+      };
+      this._initialSharedCloudPkg = JSON.parse(JSON.stringify(normalizedPkg));
+      await this.openSmartNoteViewer(normalizedPkg);
+    }
+  }
+
+  toggleCloudExplorerMoveMenu() {
+    const menuEl = document.getElementById('cloudMoveDropdownMenu');
+    if (!menuEl) return;
+    if (menuEl.style.display !== 'none') {
+      menuEl.style.display = 'none';
+      return;
+    }
+    if (!this._selectedCloudExplorerKeys || this._selectedCloudExplorerKeys.size === 0) {
+      this.showToast('📦 이동할 파일이나 폴더의 체크박스(☑)를 먼저 선택해 주세요.');
+      return;
+    }
+    const folders = this.getCloudFoldersList();
+    menuEl.innerHTML = `<div class="win-move-menu-header">이동할 폴더 선택 (${this._selectedCloudExplorerKeys.size}개)</div>`;
+
+    const addOption = (labelHtml, targetPath) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'win-move-menu-item';
+      btn.innerHTML = labelHtml;
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        menuEl.style.display = 'none';
+        this.moveSelectedCloudItemsToFolder(targetPath);
+      };
+      menuEl.appendChild(btn);
+    };
+
+    addOption('☁️ 내 클라우드 (최상위 홈)', '');
+    folders.forEach(fPath => {
+      const depth = fPath.split('/').length - 1;
+      const seg = fPath.split('/').pop();
+      const indent = '&nbsp;&nbsp;&nbsp;'.repeat(depth) + (depth > 0 ? '└ ' : '');
+      addOption(`${indent}📁 ${seg}`, fPath);
+    });
+    menuEl.style.display = 'flex';
+  }
+
+  async moveSelectedCloudItemsToFolder(targetFolder) {
+    if (!this._selectedCloudExplorerKeys || this._selectedCloudExplorerKeys.size === 0) return;
+    const cleanTarget = String(targetFolder || '').trim();
+    const keys = Array.from(this._selectedCloudExplorerKeys);
+    const folderPaths = keys.filter(k => k.startsWith('folder:')).map(k => k.slice(7));
+    const fileIds = keys.filter(k => k.startsWith('file:')).map(k => k.slice(5));
+
+    let movedCnt = 0;
+    const updatedItems = [];
+
+    // 1. 선택된 폴더들 이동
+    let folderList = this.getCloudFoldersList();
+    for (const srcPath of folderPaths) {
+      if (!srcPath || cleanTarget === srcPath || cleanTarget.startsWith(srcPath + '/')) continue;
+      const baseName = srcPath.split('/').pop();
+      const newPath = cleanTarget ? `${cleanTarget}/${baseName}` : baseName;
+      if (newPath === srcPath) continue;
+      folderList = folderList.map(f => {
+        if (f === srcPath) return newPath;
+        if (f.startsWith(srcPath + '/')) return newPath + f.slice(srcPath.length);
+        return f;
+      });
+      if (!folderList.includes(newPath)) folderList.push(newPath);
+      if (Array.isArray(this.myLibraryCache)) {
+        this.myLibraryCache.forEach(it => {
+          if (!it) return;
+          const curF = String(it.folder || '').trim();
+          if (curF === srcPath) {
+            it.folder = newPath;
+            if (!updatedItems.includes(it)) updatedItems.push(it);
+          } else if (curF.startsWith(srcPath + '/')) {
+            it.folder = newPath + curF.slice(srcPath.length);
+            if (!updatedItems.includes(it)) updatedItems.push(it);
+          }
+        });
+      }
+      movedCnt++;
+    }
+
+    // 2. 선택된 파일들 이동
+    if (Array.isArray(this.myLibraryCache)) {
+      fileIds.forEach(id => {
+        const it = this.myLibraryCache.find(x => x && x.id === id);
+        if (it && String(it.folder || '').trim() !== cleanTarget) {
+          it.folder = cleanTarget;
+          if (!updatedItems.includes(it)) updatedItems.push(it);
+          movedCnt++;
+        }
+      });
+    }
+
+    if (cleanTarget && !folderList.includes(cleanTarget)) {
+      folderList.push(cleanTarget);
+    }
+    this._saveCloudFoldersList(folderList);
+    this._saveMyLibraryCacheForCurrentUser();
+    this._selectedCloudExplorerKeys.clear();
+    this.syncExportCloudFolderSelect();
+    this.renderMyLibraryList();
+
+    const destLabel = cleanTarget ? `[📁 ${cleanTarget.replace(/\//g, ' › ')}]` : '[☁️ 내 클라우드]';
+    if (movedCnt > 0) {
+      this.showToast(`📦 선택한 ${movedCnt}개 항목을 ${destLabel}(으)로 이동했습니다.`);
+    }
+    for (const it of updatedItems) {
+      if (it && it.id) {
+        try { await this._firestoreRestWrite('user_library', it.id, it); } catch (e) { }
+      }
+    }
+  }
+
+  async handleCloudExplorerDeleteSelected() {
+    if (!this._selectedCloudExplorerKeys || this._selectedCloudExplorerKeys.size === 0) {
+      this.showToast('🗑️ 삭제할 파일이나 폴더의 체크박스(☑)를 먼저 선택해 주세요.');
+      return;
+    }
+    const keys = Array.from(this._selectedCloudExplorerKeys);
+    const folderPaths = keys.filter(k => k.startsWith('folder:')).map(k => k.slice(7));
+    const fileIds = new Set(keys.filter(k => k.startsWith('file:')).map(k => k.slice(5)));
+
+    let folderList = this.getCloudFoldersList();
+    const updatedItems = [];
+    const deletedDocIds = [];
+
+    // 1. 선택된 폴더 삭제 (내부 파일은 상위 폴더로 보존)
+    folderPaths.forEach(clean => {
+      const isSub = clean.includes('/');
+      const parentFolder = isSub ? clean.split('/').slice(0, -1).join('/') : '';
+      folderList = folderList.filter(f => f !== clean && !f.startsWith(clean + '/'));
+      if (Array.isArray(this.myLibraryCache)) {
+        this.myLibraryCache.forEach(it => {
+          if (!it || fileIds.has(it.id)) return;
+          const curF = String(it.folder || '').trim();
+          if (curF === clean || curF.startsWith(clean + '/')) {
+            it.folder = parentFolder || '';
+            if (!updatedItems.includes(it)) updatedItems.push(it);
+          }
+        });
+      }
+    });
+    this._saveCloudFoldersList(folderList);
+
+    // 2. 선택된 파일 삭제
+    if (Array.isArray(this.myLibraryCache) && fileIds.size > 0) {
+      this.myLibraryCache = this.myLibraryCache.filter(it => {
+        if (it && fileIds.has(it.id)) {
+          deletedDocIds.push(it.id);
+          return false;
+        }
+        return true;
+      });
+    }
+
+    const totalDel = folderPaths.length + deletedDocIds.length;
+    this._selectedCloudExplorerKeys.clear();
+    this._saveMyLibraryCacheForCurrentUser();
+    this.syncExportCloudFolderSelect();
+    this.renderMyLibraryList();
+    this.showToast(`🗑️ 선택한 ${totalDel}개 항목을 삭제했습니다.`);
+
+    for (const docId of deletedDocIds) {
+      try { await this._firestoreRestDeleteDoc('user_library', docId); } catch (e) { }
+    }
+    for (const it of updatedItems) {
+      if (it && it.id) {
+        try { await this._firestoreRestWrite('user_library', it.id, it); } catch (e) { }
+      }
     }
   }
 
@@ -21922,7 +22232,7 @@ class GraphApp {
 
       this.myLibraryCache.unshift(itemObj);
       this._saveMyLibraryCacheForCurrentUser();
-      this._selectedCloudExplorerKey = `file:${itemId}`;
+      this._selectedCloudExplorerKeys = new Set([`file:${itemId}`]);
 
       this.syncExportCloudFolderSelect();
       this.renderMyLibraryList();
@@ -22490,7 +22800,11 @@ class GraphApp {
       btnNavUp.disabled = (!activeFolder);
     }
 
-    // 드래그 앤 드롭 공통 타깃 바인딩 헬퍼 (파일 또는 폴더를 드롭하면 targetPath 폴더로 즉시 이동)
+    if (!this._selectedCloudExplorerKeys) {
+      this._selectedCloudExplorerKeys = new Set();
+    }
+
+    // 드래그 앤 드롭 공통 타깃 바인딩 헬퍼 (파일·폴더 또는 다중 선택 항목을 드롭하면 targetPath 폴더로 즉시 이동)
     const bindDropTarget = (el, targetPath) => {
       if (!el) return;
       el.dataset.dropFolder = targetPath;
@@ -22517,7 +22831,9 @@ class GraphApp {
         const payload = this._draggingCloudPayload;
         this._draggingCloudPayload = null;
         if (!payload) return;
-        if (payload.type === 'file' && payload.item) {
+        if (payload.type === 'multi') {
+          this.moveSelectedCloudItemsToFolder(targetPath);
+        } else if (payload.type === 'file' && payload.item) {
           this.moveCloudItemToFolder(payload.item, targetPath);
         } else if (payload.type === 'folder' && payload.folderPath) {
           this.moveCloudFolder(payload.folderPath, targetPath);
@@ -22530,23 +22846,28 @@ class GraphApp {
       if (!el) return;
       el.addEventListener('pointerdown', (e) => {
         if (e.pointerType === 'mouse') return; // 마우스는 네이티브 HTML5 Drag & Drop 사용
-        if (e.target && (e.target.closest('button') || e.target.closest('input') || e.target.closest('.cloud-tree-chevron'))) return;
+        if (e.target && (e.target.closest('button') || e.target.closest('input') || e.target.closest('label') || e.target.closest('.cloud-tree-chevron'))) return;
         const startX = e.clientX;
         const startY = e.clientY;
         let isDragging = false;
         let ghostEl = null;
         let lastHoverTarget = null;
+        let activePayload = payload;
 
         const onMove = (ev) => {
           const dx = ev.clientX - startX;
           const dy = ev.clientY - startY;
           if (!isDragging && Math.hypot(dx, dy) > 10) {
             isDragging = true;
-            this._draggingCloudPayload = payload;
+            const rowKey = payload.rowKey || '';
+            if (rowKey && this._selectedCloudExplorerKeys.has(rowKey) && this._selectedCloudExplorerKeys.size > 1) {
+              activePayload = { type: 'multi' };
+            }
+            this._draggingCloudPayload = activePayload;
             el.classList.add('dragging-source');
             ghostEl = document.createElement('div');
             ghostEl.style.cssText = 'position:fixed;z-index:999999;pointer-events:none;padding:5px 10px;border-radius:7px;background:#2563eb;color:#fff;font-size:11.5px;font-weight:800;box-shadow:0 6px 18px rgba(37,99,235,0.35);white-space:nowrap;';
-            ghostEl.textContent = dragLabel;
+            ghostEl.textContent = (activePayload.type === 'multi') ? `📦 ${this._selectedCloudExplorerKeys.size}개 항목 이동` : dragLabel;
             document.body.appendChild(ghostEl);
           }
           if (!isDragging) return;
@@ -22562,7 +22883,7 @@ class GraphApp {
           }
           if (dropNode && dropNode !== el) {
             const tPath = dropNode.dataset.dropFolder || '';
-            const blocked = (payload.type === 'folder' && (payload.folderPath === tPath || tPath.startsWith(payload.folderPath + '/')));
+            const blocked = (activePayload.type === 'folder' && (activePayload.folderPath === tPath || tPath.startsWith(activePayload.folderPath + '/')));
             if (!blocked) {
               dropNode.classList.add('drop-target-hover');
               lastHoverTarget = dropNode;
@@ -22584,10 +22905,12 @@ class GraphApp {
             const targetPath = lastHoverTarget.dataset.dropFolder || '';
             lastHoverTarget.classList.remove('drop-target-hover');
             this._draggingCloudPayload = null;
-            if (payload.type === 'file' && payload.item) {
-              this.moveCloudItemToFolder(payload.item, targetPath);
-            } else if (payload.type === 'folder' && payload.folderPath) {
-              this.moveCloudFolder(payload.folderPath, targetPath);
+            if (activePayload.type === 'multi') {
+              this.moveSelectedCloudItemsToFolder(targetPath);
+            } else if (activePayload.type === 'file' && activePayload.item) {
+              this.moveCloudItemToFolder(activePayload.item, targetPath);
+            } else if (activePayload.type === 'folder' && activePayload.folderPath) {
+              this.moveCloudFolder(activePayload.folderPath, targetPath);
             }
           } else {
             this._draggingCloudPayload = null;
@@ -22838,11 +23161,53 @@ class GraphApp {
       ? allFolderPaths.filter(f => f.toLowerCase().includes(q))
       : (isAllRecentMode ? [] : getDirectChildFolders(activeFolder));
 
+    // (2) 현재 폴더의 수업 파일 목록 필터링
+    const filteredItems = this.myLibraryCache.filter(item => {
+      const itemFolder = String(item.folder || '').trim();
+      if (q) {
+        const hay = `${item.title || ''} ${item.tags || ''} ${item.folder || ''} ${item.summary || ''}`.toLowerCase();
+        return hay.includes(q);
+      }
+      if (isAllRecentMode) return true;
+      return itemFolder === activeFolder;
+    });
+
+    this._currentVisibleCloudKeys = [
+      ...visibleFolders.map(fPath => `folder:${fPath}`),
+      ...filteredItems.map(it => `file:${it.id}`)
+    ];
+
+    const handleRowSelectionClick = (rowKey, e) => {
+      const visKeys = this._currentVisibleCloudKeys || [];
+      if (e.shiftKey && this._lastClickedCloudExplorerKey && visKeys.includes(this._lastClickedCloudExplorerKey)) {
+        const idxA = visKeys.indexOf(this._lastClickedCloudExplorerKey);
+        const idxB = visKeys.indexOf(rowKey);
+        if (idxA !== -1 && idxB !== -1) {
+          const [start, end] = idxA < idxB ? [idxA, idxB] : [idxB, idxA];
+          for (let i = start; i <= end; i++) {
+            this._selectedCloudExplorerKeys.add(visKeys[i]);
+          }
+        }
+      } else if (e.ctrlKey || e.metaKey) {
+        if (this._selectedCloudExplorerKeys.has(rowKey)) {
+          this._selectedCloudExplorerKeys.delete(rowKey);
+        } else {
+          this._selectedCloudExplorerKeys.add(rowKey);
+        }
+      } else {
+        this._selectedCloudExplorerKeys.clear();
+        this._selectedCloudExplorerKeys.add(rowKey);
+      }
+      this._lastClickedCloudExplorerKey = rowKey;
+      this.renderMyLibraryList();
+    };
+
     visibleFolders.forEach(fPath => {
       const segName = fPath.split('/').pop();
       const rowKey = `folder:${fPath}`;
+      const isSelected = this._selectedCloudExplorerKeys.has(rowKey);
       const row = document.createElement('div');
-      row.className = 'win-explorer-row is-folder-row' + (this._selectedCloudExplorerKey === rowKey ? ' selected' : '');
+      row.className = 'win-explorer-row is-folder-row' + (isSelected ? ' selected' : '');
 
       if (this._renamingCloudFolderPath === fPath) {
         row.innerHTML = `
@@ -22898,6 +23263,9 @@ class GraphApp {
 
       row.draggable = true;
       row.innerHTML = `
+        <label class="win-row-chk-wrap" title="체크하여 다중 선택">
+          <input type="checkbox" class="win-explorer-checkbox" ${isSelected ? 'checked' : ''}>
+        </label>
         <div class="win-row-name-col" title="더블클릭하여 [${segName}] 폴더 열기">
           <span class="win-row-icon">📁</span>
           <span class="win-row-title">${segName}</span>
@@ -22905,49 +23273,51 @@ class GraphApp {
         <span class="win-row-date-col">폴더</span>
         <span class="win-row-size-col">${sizeDesc}</span>
         <div class="win-row-act-col">
-          <button type="button" class="win-row-open-pill" title="폴더 열기">열기</button>
           <button type="button" class="btn-cloud-edit-item" title="폴더 이름 바꾸기">✏️</button>
-          <button type="button" class="btn-cloud-del-item" title="폴더 삭제 (파일은 유지됨)">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-          </button>
         </div>
       `;
 
       const enterFolder = () => {
         this._activeCloudFolder = fPath;
-        this._selectedCloudExplorerKey = null;
+        this._selectedCloudExplorerKeys.clear();
         if (!this._collapsedCloudFolders) this._collapsedCloudFolders = new Set();
         this._collapsedCloudFolders.delete(fPath);
         this.syncExportCloudFolderSelect();
         this.renderMyLibraryList();
       };
 
+      const chkEl = row.querySelector('.win-explorer-checkbox');
+      const chkLabel = row.querySelector('.win-row-chk-wrap');
+      if (chkLabel) {
+        chkLabel.onclick = (e) => e.stopPropagation();
+      }
+      if (chkEl) {
+        chkEl.onchange = (e) => {
+          e.stopPropagation();
+          if (chkEl.checked) {
+            this._selectedCloudExplorerKeys.add(rowKey);
+          } else {
+            this._selectedCloudExplorerKeys.delete(rowKey);
+          }
+          this._lastClickedCloudExplorerKey = rowKey;
+          row.classList.toggle('selected', chkEl.checked);
+          this._syncCloudExplorerSelectionButtons();
+        };
+      }
+
       row.onclick = (e) => {
-        if (e.target && (e.target.closest('.win-row-open-pill') || e.target.closest('.btn-cloud-edit-item') || e.target.closest('.btn-cloud-del-item'))) {
+        if (e.target && (e.target.closest('.win-row-chk-wrap') || e.target.closest('.btn-cloud-edit-item'))) {
           return;
         }
-        if (this._selectedCloudExplorerKey === rowKey && e.detail === 1 && window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
-          enterFolder();
-          return;
-        }
-        this._selectedCloudExplorerKey = rowKey;
-        listEl.querySelectorAll('.win-explorer-row.selected').forEach(el => el.classList.remove('selected'));
-        row.classList.add('selected');
+        handleRowSelectionClick(rowKey, e);
       };
 
       row.ondblclick = (e) => {
-        if (e.target && (e.target.closest('.btn-cloud-edit-item') || e.target.closest('.btn-cloud-del-item'))) return;
+        if (e.target && (e.target.closest('.win-row-chk-wrap') || e.target.closest('.btn-cloud-edit-item'))) return;
         e.preventDefault();
         enterFolder();
       };
 
-      const btnOpen = row.querySelector('.win-row-open-pill');
-      if (btnOpen) {
-        btnOpen.onclick = (e) => {
-          e.stopPropagation();
-          enterFolder();
-        };
-      }
       const btnEditF = row.querySelector('.btn-cloud-edit-item');
       if (btnEditF) {
         btnEditF.onclick = (e) => {
@@ -22956,16 +23326,13 @@ class GraphApp {
           this.renderMyLibraryList();
         };
       }
-      const btnDelF = row.querySelector('.btn-cloud-del-item');
-      if (btnDelF) {
-        btnDelF.onclick = (e) => {
-          e.stopPropagation();
-          this.deleteCloudFolder(fPath);
-        };
-      }
 
       row.ondragstart = (e) => {
-        this._draggingCloudPayload = { type: 'folder', folderPath: fPath };
+        if (this._selectedCloudExplorerKeys.has(rowKey) && this._selectedCloudExplorerKeys.size > 1) {
+          this._draggingCloudPayload = { type: 'multi' };
+        } else {
+          this._draggingCloudPayload = { type: 'folder', folderPath: fPath };
+        }
         row.classList.add('dragging-source');
         if (e.dataTransfer) {
           e.dataTransfer.effectAllowed = 'move';
@@ -22977,20 +23344,9 @@ class GraphApp {
         this._draggingCloudPayload = null;
       };
 
-      bindPenTouchDrag(row, { type: 'folder', folderPath: fPath }, `📁 ${segName}`);
+      bindPenTouchDrag(row, { type: 'folder', folderPath: fPath, rowKey }, `📁 ${segName}`);
       bindDropTarget(row, fPath);
       listEl.appendChild(row);
-    });
-
-    // (2) 현재 폴더의 수업 파일 목록 필터링
-    const filteredItems = this.myLibraryCache.filter(item => {
-      const itemFolder = String(item.folder || '').trim();
-      if (q) {
-        const hay = `${item.title || ''} ${item.tags || ''} ${item.folder || ''} ${item.summary || ''}`.toLowerCase();
-        return hay.includes(q);
-      }
-      if (isAllRecentMode) return true;
-      return itemFolder === activeFolder;
     });
 
     if (visibleFolders.length === 0 && filteredItems.length === 0) {
@@ -23000,14 +23356,16 @@ class GraphApp {
         ? `이 폴더가 비어 있습니다.<br><span style="font-size:11.5px; color:#64748b;">상단 <strong>[📁+ 새 폴더]</strong>로 폴더를 만들거나, 하단 <strong>[☁️ 여기에 저장]</strong>으로 현재 칠판을 저장해 보세요!</span>`
         : `이 폴더가 비어 있습니다.<br><span style="font-size:11.5px; color:#64748b;">상단 <strong>[📁+ 새 폴더]</strong>로 하위 폴더를 만들거나, 하단 <strong>[☁️ 여기에 저장]</strong>으로 현재 칠판을 이 폴더에 저장할 수 있습니다.</span>`;
       listEl.appendChild(emptyDiv);
+      this._syncCloudExplorerSelectionButtons();
       this.updateSelectedPlaylistCount();
       return;
     }
 
     filteredItems.forEach((item) => {
       const rowKey = `file:${item.id}`;
+      const isSelected = this._selectedCloudExplorerKeys.has(rowKey);
       const row = document.createElement('div');
-      row.className = 'win-explorer-row is-file-row' + (this._selectedCloudExplorerKey === rowKey ? ' selected' : '');
+      row.className = 'win-explorer-row is-file-row' + (isSelected ? ' selected' : '');
       const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('ko-KR') : '-';
       const slideCnt = item.slideCount || (Array.isArray(item.playlistSlides) ? item.playlistSlides.length : 1);
       const curFolder = String(item.folder || '').trim();
@@ -23062,7 +23420,10 @@ class GraphApp {
 
       row.draggable = true;
       row.innerHTML = `
-        <div class="win-row-name-col" title="더블클릭하여 칠판에 열기 (드래그하여 폴더 이동)">
+        <label class="win-row-chk-wrap" title="체크하여 다중 선택">
+          <input type="checkbox" class="win-explorer-checkbox" ${isSelected ? 'checked' : ''}>
+        </label>
+        <div class="win-row-name-col" title="더블클릭하여 칠판에 열기 (또는 체크 후 상단 열기/이동/삭제)">
           <span class="win-row-icon">📊</span>
           ${folderBadgeHtml}
           <span class="win-row-title">${item.title || '제목 없음'}</span>
@@ -23070,42 +23431,43 @@ class GraphApp {
         <span class="win-row-date-col">${dateStr}</span>
         <span class="win-row-size-col">${slideCnt}장</span>
         <div class="win-row-act-col">
-          <button type="button" class="win-row-open-pill" title="칠판으로 불러오기">열기</button>
           <button type="button" class="btn-cloud-edit-item" title="파일 이름 바꾸기">✏️</button>
-          <button type="button" class="btn-cloud-del-item" title="파일 삭제">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-          </button>
         </div>
       `;
 
+      const chkEl = row.querySelector('.win-explorer-checkbox');
+      const chkLabel = row.querySelector('.win-row-chk-wrap');
+      if (chkLabel) {
+        chkLabel.onclick = (e) => e.stopPropagation();
+      }
+      if (chkEl) {
+        chkEl.onchange = (e) => {
+          e.stopPropagation();
+          if (chkEl.checked) {
+            this._selectedCloudExplorerKeys.add(rowKey);
+          } else {
+            this._selectedCloudExplorerKeys.delete(rowKey);
+          }
+          this._lastClickedCloudExplorerKey = rowKey;
+          row.classList.toggle('selected', chkEl.checked);
+          this._syncCloudExplorerSelectionButtons();
+        };
+      }
+
       row.onclick = (e) => {
-        if (e.target && (e.target.closest('.win-row-open-pill') || e.target.closest('.btn-cloud-del-item') || e.target.closest('.btn-cloud-edit-item'))) {
+        if (e.target && (e.target.closest('.win-row-chk-wrap') || e.target.closest('.btn-cloud-edit-item'))) {
           return;
         }
-        if (this._selectedCloudExplorerKey === rowKey && e.detail === 1 && window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
-          this.loadCloudItemToWorkspace(item, true);
-          return;
-        }
-        this._selectedCloudExplorerKey = rowKey;
-        listEl.querySelectorAll('.win-explorer-row.selected').forEach(el => el.classList.remove('selected'));
-        row.classList.add('selected');
+        handleRowSelectionClick(rowKey, e);
       };
 
       row.ondblclick = (e) => {
-        if (e.target && (e.target.closest('.btn-cloud-del-item') || e.target.closest('.btn-cloud-edit-item'))) {
+        if (e.target && (e.target.closest('.win-row-chk-wrap') || e.target.closest('.btn-cloud-edit-item'))) {
           return;
         }
         e.preventDefault();
         this.loadCloudItemToWorkspace(item, true);
       };
-
-      const btnOpen = row.querySelector('.win-row-open-pill');
-      if (btnOpen) {
-        btnOpen.onclick = (e) => {
-          e.stopPropagation();
-          this.loadCloudItemToWorkspace(item, true);
-        };
-      }
 
       const btnEdit = row.querySelector('.btn-cloud-edit-item');
       if (btnEdit) {
@@ -23116,24 +23478,12 @@ class GraphApp {
         };
       }
 
-      const btnDel = row.querySelector('.btn-cloud-del-item');
-      if (btnDel) {
-        btnDel.onclick = async (e) => {
-          e.stopPropagation();
-          const realIdx = this.myLibraryCache.indexOf(item);
-          if (realIdx !== -1) {
-            this.myLibraryCache.splice(realIdx, 1);
-          }
-          this._saveMyLibraryCacheForCurrentUser();
-          this.renderMyLibraryList();
-          if (item && item.id) {
-            try { await this._firestoreRestDeleteDoc('user_library', item.id); } catch (err) { }
-          }
-        };
-      }
-
       row.ondragstart = (e) => {
-        this._draggingCloudPayload = { type: 'file', item };
+        if (this._selectedCloudExplorerKeys.has(rowKey) && this._selectedCloudExplorerKeys.size > 1) {
+          this._draggingCloudPayload = { type: 'multi' };
+        } else {
+          this._draggingCloudPayload = { type: 'file', item };
+        }
         row.classList.add('dragging-source');
         if (e.dataTransfer) {
           e.dataTransfer.effectAllowed = 'move';
@@ -23144,11 +23494,12 @@ class GraphApp {
         row.classList.remove('dragging-source');
         this._draggingCloudPayload = null;
       };
-      bindPenTouchDrag(row, { type: 'file', item }, `📊 ${item.title || '파일'}`);
+      bindPenTouchDrag(row, { type: 'file', item, rowKey }, `📊 ${item.title || '파일'}`);
 
       listEl.appendChild(row);
     });
 
+    this._syncCloudExplorerSelectionButtons();
     this.updateSelectedPlaylistCount();
   }
 

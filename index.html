@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_18">
+  <link rel="stylesheet" href="style.css?v=20261105_19">
 </head>
 
 <body class="theme-light">
@@ -2647,7 +2647,7 @@
         </div>
       </div>
 
-      <!-- 🧭 윈도우 탐색기 상단 주소 표시줄 (상위 폴더 이동 + 경로 Breadcrumb + 새 폴더 + 검색) -->
+      <!-- 🧭 윈도우 탐색기 상단 툴바 (위로 + 경로 주소창 + 새 폴더 + [열기 / 이동 / 삭제] + 검색) -->
       <div id="cloudExplorerAddressToolbar" class="win-explorer-toolbar">
         <button type="button" id="btnCloudNavUp" class="win-explorer-up-btn" title="상위 폴더로 이동">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -2656,9 +2656,23 @@
           </svg>
         </button>
         <div id="cloudExplorerBreadcrumbBar" class="win-explorer-address-bar"></div>
-        <button type="button" id="btnCloudAddRootFolder" class="win-explorer-new-folder-btn" title="현재 폴더 안에 새 폴더 만들기">
+        <button type="button" id="btnCloudAddRootFolder" class="win-explorer-cmd-btn" title="현재 폴더 안에 새 폴더 만들기">
           <span>📁+ 새 폴더</span>
         </button>
+        <div class="win-explorer-action-group">
+          <button type="button" id="btnCloudActionOpen" class="win-explorer-cmd-btn primary-cmd" title="체크한 파일 불러오기 (여러 개 선택 시 슬라이드로 합쳐서 열기)">
+            <span>📂 열기</span>
+          </button>
+          <div class="win-explorer-move-wrap">
+            <button type="button" id="btnCloudActionMove" class="win-explorer-cmd-btn" title="체크한 항목을 다른 폴더로 이동">
+              <span>📦 이동 ▾</span>
+            </button>
+            <div id="cloudMoveDropdownMenu" class="win-explorer-move-menu" style="display: none;"></div>
+          </div>
+          <button type="button" id="btnCloudActionDelete" class="win-explorer-cmd-btn danger-cmd" title="체크한 항목 일괄 삭제">
+            <span>🗑️ 삭제</span>
+          </button>
+        </div>
         <div id="cloudLibrarySearchWrap" class="cloud-library-search-wrap">
           <input type="text" id="inputCloudLibrarySearch" class="cloud-library-search-input"
             placeholder="🔍 검색..." autocomplete="off">
@@ -2675,10 +2689,13 @@
           <!-- 우측 패널: 현재 폴더 내부 (하위폴더 + 수업 파일 목록) -->
           <section class="cloud-explorer-main">
             <div class="win-explorer-col-header">
-              <span class="col-name">이름 <small>(더블클릭: 열기 · 드래그: 폴더 이동)</small></span>
+              <label class="col-chk-wrap" title="현재 폴더 항목 전체 선택/해제">
+                <input type="checkbox" id="chkCloudExplorerAll" class="win-explorer-checkbox">
+              </label>
+              <span class="col-name">이름 <small>(체크 후 상단 버튼 또는 더블클릭·드래그)</small></span>
               <span class="col-date">수정한 날짜</span>
               <span class="col-size">분량</span>
-              <span class="col-act">관리</span>
+              <span class="col-act">이름변경</span>
             </div>
 
             <!-- ➕ 새 폴더 인라인 입력 행 (현재 열려 있는 폴더 안에 생성) -->
@@ -2696,7 +2713,7 @@
           </section>
         </div>
 
-        <!-- 💾 하단 고정 바: 윈도우 '다른 이름으로 저장' 표준 하단 바 -->
+        <!-- 💾 하단 고정 바: [현재 칠판 저장] & [선택 파일 열기] -->
         <div id="cloudExplorerSaveBar" class="win-explorer-save-footer">
           <div class="win-save-footer-left">
             <span class="win-save-label">파일 이름:</span>
@@ -2711,6 +2728,9 @@
             <button type="button" id="btnSaveToMyLibrary" class="btn-primary win-save-submit-btn">
               <span>☁️ 여기에 저장</span>
               <small id="lblCloudExplorerSaveFolder">(내 클라우드)</small>
+            </button>
+            <button type="button" id="btnCloudFooterOpen" class="btn-secondary win-footer-open-btn" title="선택한 파일 불러오기">
+              <span id="lblCloudFooterOpenText">📂 열기</span>
             </button>
           </div>
         </div>
@@ -3110,8 +3130,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261105_18"></script>
-  <script src="app.js?v=20261105_18"></script>
+  <script src="engine.js?v=20261105_19"></script>
+  <script src="app.js?v=20261105_19"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
