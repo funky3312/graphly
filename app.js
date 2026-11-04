@@ -6005,8 +6005,8 @@ class GraphApp {
           return;
         }
 
-        // 2.5) .graphly.html / .graphly / .json / .html 파일 불러오기 (카톡/iOS 중복 번호 (1).html 포함)
-        const graphlyFile = rawFiles.find(f => f.name && /\.(graphly|json|html|htm)$/i.test(f.name));
+        // 2.5) .graphly.html / .graphly / .json 파일 불러오기
+        const graphlyFile = rawFiles.find(f => f.name && (/\.(graphly|json)$/i.test(f.name) || /\.graphly\.html$/i.test(f.name)));
         if (graphlyFile) {
           this.importGraphlyDeckFile(graphlyFile);
           return;
@@ -35482,6 +35482,8 @@ class GraphApp {
       activeDrawerPanel: this.activeDrawerPanel || '',
       activePresetCat,
       inkMode: Boolean(this.isInkMode),
+      inkBarHidden: Boolean(this.isBottomInkBarHidden),
+      inkDockPos: this.inkDockPosition || 'bottom',
       activeInkTool: this.activeInkTool || 'pen',
       currentInkColor: this.currentInkColor || '#00d2d3',
       pillRemoteOpen,
@@ -35717,15 +35719,35 @@ class GraphApp {
       }
 
       // 🌟 [상시 노출 UI & 서랍/도구/리모컨/팝오버/컨텍스트바 상태 100% 완벽 동기화]
+      if (kf.inkDockPos && ['left', 'bottom', 'right'].includes(kf.inkDockPos)) {
+        const inkToolbarEl = document.getElementById('inkFloatingToolbar');
+        if (inkToolbarEl && inkToolbarEl.dataset.dockPos !== kf.inkDockPos) {
+          inkToolbarEl.dataset.dockPos = kf.inkDockPos;
+        }
+      }
       if (kf.inkMode !== undefined) {
         this.isInkMode = Boolean(kf.inkMode);
+        let effInkBarHidden = Boolean(this.isBottomInkBarHidden);
+        if (kf.inkBarHidden !== undefined) {
+          effInkBarHidden = Boolean(kf.inkBarHidden);
+          this.isBottomInkBarHidden = effInkBarHidden;
+        } else if (this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode) {
+          const hasInkBarInteraction = Boolean(
+            this.audioSyncData &&
+            Array.isArray(this.audioSyncData.timeline) &&
+            this.audioSyncData.timeline.some(ev => ev && ev.uiBarId === 'inkFloatingToolbar')
+          );
+          if (!hasInkBarInteraction || kf.pillRemoteOpen) {
+            effInkBarHidden = true;
+          }
+        }
         document.body.classList.toggle('ink-mode-active', this.isInkMode);
         const inkToolbarEl = document.getElementById('inkFloatingToolbar');
         if (inkToolbarEl) {
-          inkToolbarEl.style.display = (this.isInkMode && !this.isBottomInkBarHidden) ? 'flex' : 'none';
+          inkToolbarEl.style.display = (this.isInkMode && !effInkBarHidden) ? 'flex' : 'none';
         }
         const btnHeader = document.getElementById('btnInkMode');
-        if (btnHeader) btnHeader.classList.toggle('active', Boolean(this.isInkMode && !this.isBottomInkBarHidden));
+        if (btnHeader) btnHeader.classList.toggle('active', Boolean(this.isInkMode && !effInkBarHidden));
         const btnQuick = document.getElementById('btnQuickInk');
         if (btnQuick) btnQuick.classList.toggle('active', this.isInkMode);
       }
@@ -35988,7 +36010,7 @@ class GraphApp {
     const t = this.getAudioRecordElapsedMs();
     const sidebarRailEl = document.getElementById('sidebarRail');
     const curDrawerOpen = Boolean(!this.isDrawerCollapsed && (!sidebarRailEl || !sidebarRailEl.classList.contains('drawer-collapsed')));
-    const uiDiscreteSig = `${Boolean(this.isGraphCovered)}|${curDrawerOpen}|${this.activeDrawerPanel || ''}|${this._currentCat || ''}|${Boolean(this.isInkMode)}|${this.activeInkTool || ''}|${Boolean(this.isQuickPillRemoteOpen)}|${Boolean(this.isGraphSnapMode)}|${Boolean(this.isPdfToGraphCropMode)}|${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isCurveSelected)}|${this._openPwRegionIdx ?? ''}`;
+    const uiDiscreteSig = `${Boolean(this.isGraphCovered)}|${curDrawerOpen}|${this.activeDrawerPanel || ''}|${this._currentCat || ''}|${Boolean(this.isInkMode)}|${Boolean(this.isBottomInkBarHidden)}|${this.inkDockPosition || 'bottom'}|${this.activeInkTool || ''}|${Boolean(this.isQuickPillRemoteOpen)}|${Boolean(this.isGraphSnapMode)}|${Boolean(this.isPdfToGraphCropMode)}|${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isCurveSelected)}|${this._openPwRegionIdx ?? ''}`;
     const uiDiscreteChanged = (uiDiscreteSig !== this._lastRecordedUiDiscreteSig);
 
     const isActivelyDraggingGraph = Boolean(
@@ -36018,6 +36040,8 @@ class GraphApp {
       kf.activeDrawerPanel,
       kf.activePresetCat,
       kf.inkMode,
+      kf.inkBarHidden,
+      kf.inkDockPos,
       kf.activeInkTool,
       kf.currentInkColor,
       kf.pillRemoteOpen,
