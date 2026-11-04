@@ -6068,6 +6068,11 @@ class GraphApp {
 
     if (btnImport) {
       btnImport.onclick = () => {
+        if (this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page') {
+          const modeName = this.lessonTeachingMode === 'page' ? '페이지 모드' : '캡처 모드';
+          this.showToast(`🔒 현재 [${modeName}] 수업 중입니다. 우측 상단 캔버스바에서 추가하거나 [전체 비우기] 후 새로 불러오세요.`);
+          return;
+        }
         this._isReplacingViaNextCrop = false;
         triggerFileOpen();
       };
@@ -6633,13 +6638,19 @@ class GraphApp {
   }
 
   syncCloudHubRailLockUI() {
+    const btnImport = document.getElementById('btnPdfImport');
     const btnCloudHub = document.getElementById('btnCloudHub');
-    if (!btnCloudHub) return;
     const isLocked = (this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page');
-    btnCloudHub.classList.toggle('rail-btn-locked-disabled', isLocked);
-    btnCloudHub.title = isLocked
-      ? '수업 모드 확정됨 (우측 상단 캔버스바에서 추가하거나 [전체 비우기] 후 새로 불러오세요)'
-      : '파일 및 보관함 불러오기';
+    if (btnImport) {
+      btnImport.classList.toggle('rail-btn-locked-disabled', isLocked);
+      btnImport.title = isLocked
+        ? '수업 모드 확정됨 (우측 상단 캔버스바에서 추가하거나 [전체 비우기] 후 새로 불러오세요)'
+        : '파일 열기 (PDF · 이미지 · .graphly)';
+    }
+    if (btnCloudHub) {
+      btnCloudHub.classList.remove('rail-btn-locked-disabled');
+      btnCloudHub.title = '클라우드 보관함 (저장 & 불러오기)';
+    }
   }
 
   syncPdfModalModeUI() {
@@ -18760,12 +18771,48 @@ class GraphApp {
       btnSettingsLogout.onclick = () => this.handleCloudLogout();
     }
 
-    // 🔍 클라우드 보관함 실시간 검색 & 폴더 추가 컨트롤 바인딩
+    // 🔍 클라우드 보관함 실시간 검색 & 폴더/하위폴더 추가 & 저장 범위 컨트롤 바인딩
     const inpLibSearch = document.getElementById('inputCloudLibrarySearch');
+    const btnAddRootFolder = document.getElementById('btnCloudAddRootFolder');
     const rowNewFolder = document.getElementById('cloudNewFolderInlineRow');
     const inpNewFolder = document.getElementById('inputNewCloudFolderName');
     const btnConfirmFolder = document.getElementById('btnConfirmNewCloudFolder');
     const btnCancelFolder = document.getElementById('btnCancelNewCloudFolder');
+    const btnScopeAll = document.getElementById('btnCloudSaveScopeAll');
+    const btnScopeCur = document.getElementById('btnCloudSaveScopeCurrent');
+    const inpCloudSaveTitle = document.getElementById('inputCloudSaveTitle');
+
+    this._cloudExplorerSaveScope = 'all';
+    const setCloudExplorerScope = (scope) => {
+      this._cloudExplorerSaveScope = (scope === 'current') ? 'current' : 'all';
+      if (btnScopeAll) btnScopeAll.classList.toggle('active', this._cloudExplorerSaveScope === 'all');
+      if (btnScopeCur) btnScopeCur.classList.toggle('active', this._cloudExplorerSaveScope === 'current');
+    };
+    this._syncCloudExplorerScopeUI = () => {
+      const totalCnt = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
+        ? this.lessonPlaylistSlides.length
+        : 1;
+      if (btnScopeAll) {
+        btnScopeAll.textContent = `전체 캔버스 (${totalCnt}장)`;
+      }
+      setCloudExplorerScope(this._cloudExplorerSaveScope || 'all');
+    };
+    if (btnScopeAll) btnScopeAll.onclick = () => setCloudExplorerScope('all');
+    if (btnScopeCur) btnScopeCur.onclick = () => setCloudExplorerScope('current');
+    if (inpCloudSaveTitle) {
+      inpCloudSaveTitle.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.saveCurrentToMyLibrary();
+        }
+      };
+    }
+
+    if (btnAddRootFolder) {
+      btnAddRootFolder.onclick = () => {
+        this.openNewCloudFolderInput('');
+      };
+    }
 
     if (inpLibSearch) {
       inpLibSearch.oninput = (e) => {
@@ -18781,8 +18828,9 @@ class GraphApp {
         inpNewFolder.focus();
         return;
       }
-      this.addCloudFolder(folderName);
+      this.addCloudFolder(folderName, this._newFolderParentPath || '');
       inpNewFolder.value = '';
+      this._newFolderParentPath = '';
       if (rowNewFolder) rowNewFolder.style.display = 'none';
     };
     if (btnConfirmFolder) {
@@ -18791,6 +18839,7 @@ class GraphApp {
     if (btnCancelFolder) {
       btnCancelFolder.onclick = () => {
         if (inpNewFolder) inpNewFolder.value = '';
+        this._newFolderParentPath = '';
         if (rowNewFolder) rowNewFolder.style.display = 'none';
       };
     }
@@ -18802,6 +18851,7 @@ class GraphApp {
         } else if (e.key === 'Escape') {
           e.preventDefault();
           inpNewFolder.value = '';
+          this._newFolderParentPath = '';
           if (rowNewFolder) rowNewFolder.style.display = 'none';
         }
       };
@@ -19125,11 +19175,6 @@ class GraphApp {
   }
 
   openCloudHubModal() {
-    if (this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page') {
-      const modeName = this.lessonTeachingMode === 'page' ? '페이지 모드' : '캡처 모드';
-      this.showToast(`🔒 현재 [${modeName}] 수업 중입니다. 우측 상단 캔버스바에서 추가하거나 [전체 비우기] 후 새로 불러오세요.`);
-      return;
-    }
     const modalCloud = document.getElementById('modalCloudHub');
     if (!modalCloud) return;
     if (this.isLessonPlaylistActive) {
@@ -19139,10 +19184,39 @@ class GraphApp {
     if (chkAll) chkAll.checked = false;
     const rowNewFolder = document.getElementById('cloudNewFolderInlineRow');
     if (rowNewFolder) rowNewFolder.style.display = 'none';
+    if (typeof this._syncCloudExplorerScopeUI === 'function') {
+      this._syncCloudExplorerScopeUI();
+    }
     modalCloud.classList.add('show');
     this.syncCloudAuthUI();
     this.renderMyLibraryList();
     this.fetchMyLibraryFromCloud();
+  }
+
+  openNewCloudFolderInput(parentPath = '') {
+    if (!this.cloudUser || !this.cloudUser.uid) {
+      this.promptCloudLoginForLibrary('🔒 폴더 관리는 로그인 후 이용할 수 있습니다.');
+      return;
+    }
+    const rowNewFolder = document.getElementById('cloudNewFolderInlineRow');
+    const lblTarget = document.getElementById('lblNewCloudFolderTarget');
+    const inpNewFolder = document.getElementById('inputNewCloudFolderName');
+    if (!rowNewFolder) return;
+
+    this._newFolderParentPath = String(parentPath || '').trim();
+    if (lblTarget) {
+      lblTarget.textContent = this._newFolderParentPath
+        ? `📁 [${this._newFolderParentPath}] 아래 하위 폴더`
+        : '📂 새 상위 폴더 만들기';
+    }
+    if (inpNewFolder) {
+      inpNewFolder.placeholder = this._newFolderParentPath ? '하위 폴더 이름 입력' : '새 폴더 이름 (예: 고2 수2)';
+      inpNewFolder.value = '';
+    }
+    rowNewFolder.style.display = 'flex';
+    if (inpNewFolder) {
+      setTimeout(() => inpNewFolder.focus(), 30);
+    }
   }
 
   _getCloudFoldersStorageKey() {
@@ -19153,24 +19227,30 @@ class GraphApp {
   getCloudFoldersList() {
     if (!this.cloudUser || !this.cloudUser.uid) return [];
     const folderSet = new Set();
+    const addWithParent = (rawPath) => {
+      const clean = String(rawPath || '').trim().replace(/^\/+|\/+$/g, '');
+      if (!clean) return;
+      const parts = clean.split('/').map(s => s.trim()).filter(Boolean);
+      if (parts.length === 0) return;
+      folderSet.add(parts[0]);
+      if (parts.length >= 2) {
+        folderSet.add(`${parts[0]}/${parts.slice(1).join(' ')}`);
+      }
+    };
     try {
       const key = this._getCloudFoldersStorageKey();
       const saved = key ? localStorage.getItem(key) : null;
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          parsed.forEach(f => {
-            const clean = String(f || '').trim();
-            if (clean) folderSet.add(clean);
-          });
+          parsed.forEach(f => addWithParent(f));
         }
       }
     } catch (e) { }
     if (Array.isArray(this.myLibraryCache)) {
       this.myLibraryCache.forEach(it => {
         if (it && this._isOwnedByCurrentCloudUser(it)) {
-          const f = String(it.folder || '').trim();
-          if (f) folderSet.add(f);
+          addWithParent(it.folder);
         }
       });
     }
@@ -19188,37 +19268,51 @@ class GraphApp {
     } catch (e) { }
   }
 
-  addCloudFolder(folderName) {
+  addCloudFolder(folderName, parentPath = '') {
     if (!this.cloudUser || !this.cloudUser.uid) {
       this.promptCloudLoginForLibrary('🔒 폴더 관리는 로그인 후 이용할 수 있습니다.');
       return;
     }
-    const clean = String(folderName || '').trim().slice(0, 24);
-    if (!clean) return;
+    const cleanSeg = String(folderName || '').replace(/\//g, ' ').trim().slice(0, 24);
+    if (!cleanSeg) return;
+    const cleanParent = String(parentPath || '').split('/')[0].trim();
+    const fullPath = cleanParent ? `${cleanParent}/${cleanSeg}` : cleanSeg;
+
     const list = this.getCloudFoldersList();
-    if (!list.includes(clean)) {
-      list.push(clean);
-      this._saveCloudFoldersList(list);
+    if (cleanParent && !list.includes(cleanParent)) {
+      list.push(cleanParent);
     }
-    this._activeCloudFolder = clean;
+    if (!list.includes(fullPath)) {
+      list.push(fullPath);
+    }
+    this._saveCloudFoldersList(list);
+    if (!this._collapsedCloudFolders) this._collapsedCloudFolders = new Set();
+    if (cleanParent) {
+      this._collapsedCloudFolders.delete(cleanParent);
+    }
+    this._activeCloudFolder = fullPath;
     this.syncExportCloudFolderSelect();
     this.renderMyLibraryList();
-    this.showToast(`📁 [${clean}] 폴더가 준비되었습니다.`);
+    this.showToast(`📁 [${fullPath.replace('/', ' ▸ ')}] 폴더가 준비되었습니다.`);
   }
 
   async deleteCloudFolder(folderName) {
     const clean = String(folderName || '').trim();
     if (!clean) return;
-    const list = this.getCloudFoldersList().filter(f => f !== clean);
+    const isSub = clean.includes('/');
+    const parentFolder = isSub ? clean.split('/')[0].trim() : '';
+    const list = this.getCloudFoldersList().filter(f => f !== clean && !f.startsWith(clean + '/'));
     this._saveCloudFoldersList(list);
-    if (this._activeCloudFolder === clean) {
-      this._activeCloudFolder = '';
+    if (this._activeCloudFolder === clean || String(this._activeCloudFolder || '').startsWith(clean + '/')) {
+      this._activeCloudFolder = parentFolder || '';
     }
     const updatedItems = [];
     if (Array.isArray(this.myLibraryCache)) {
       this.myLibraryCache.forEach(it => {
-        if (it && String(it.folder || '').trim() === clean) {
-          it.folder = '';
+        if (!it) return;
+        const curF = String(it.folder || '').trim();
+        if (curF === clean || curF.startsWith(clean + '/')) {
+          it.folder = parentFolder || '';
           updatedItems.push(it);
         }
       });
@@ -19226,11 +19320,28 @@ class GraphApp {
     }
     this.syncExportCloudFolderSelect();
     this.renderMyLibraryList();
-    this.showToast(`📁 [${clean}] 폴더를 삭제했습니다. (안의 파일은 [전체]에 그대로 유지됩니다)`);
+    this.showToast(`📁 [${clean.replace('/', ' ▸ ')}] 폴더를 삭제했습니다. (안의 파일은 유지됩니다)`);
     for (const it of updatedItems) {
       if (it && it.id) {
         try { await this._firestoreRestWrite('user_library', it.id, it); } catch (e) { }
       }
+    }
+  }
+
+  async renameCloudLibraryItem(item, newTitle) {
+    if (!item) return;
+    const cleanTitle = String(newTitle || '').trim();
+    this._renamingCloudItemId = null;
+    if (!cleanTitle || cleanTitle === item.title) {
+      this.renderMyLibraryList();
+      return;
+    }
+    item.title = cleanTitle;
+    this._saveMyLibraryCacheForCurrentUser();
+    this.renderMyLibraryList();
+    this.showToast(`✏️ 제목이 [${cleanTitle}](으)로 변경되었습니다.`);
+    if (item.id) {
+      try { await this._firestoreRestWrite('user_library', item.id, item); } catch (e) { }
     }
   }
 
@@ -21587,82 +21698,126 @@ class GraphApp {
       this.promptCloudLoginForLibrary('🔒 클라우드 보관함에 업로드하려면 먼저 로그인(구글 또는 일반 ID)해 주세요.');
       return null;
     }
-    if (this.isAudioRecording) {
-      await this.stopAudioRecording();
-    } else if (this._pendingSlideAudioFinalizers && this._pendingSlideAudioFinalizers.length > 0) {
-      await Promise.all(this._pendingSlideAudioFinalizers).catch(() => { });
-      this._pendingSlideAudioFinalizers = [];
+    const btnSave = document.getElementById('btnSaveToMyLibrary');
+    const prevBtnText = btnSave ? btnSave.textContent : '☁️ 여기에 저장';
+    if (btnSave) {
+      btnSave.disabled = true;
+      btnSave.textContent = '⏳ 저장 중...';
     }
-    const inpTitle = document.getElementById('inputCloudSaveTitle');
-    const inpTags = document.getElementById('inputCloudSaveTags');
+    try {
+      if (this.isAudioRecording) {
+        await this.stopAudioRecording();
+      } else if (this._pendingSlideAudioFinalizers && this._pendingSlideAudioFinalizers.length > 0) {
+        await Promise.all(this._pendingSlideAudioFinalizers).catch(() => { });
+        this._pendingSlideAudioFinalizers = [];
+      }
+      const inpTitle = document.getElementById('inputCloudSaveTitle');
+      const inpTags = document.getElementById('inputCloudSaveTags');
 
-    const autoSlides = (!customSlidesArray) ? this._getActiveSlidesForExport() : null;
-    const slides = Array.isArray(customSlidesArray) && customSlidesArray.length > 0
-      ? JSON.parse(JSON.stringify(customSlidesArray))
-      : (autoSlides && autoSlides.length > 1 ? autoSlides : null);
+      const useCurrentOnly = (!customSlidesArray && this._cloudExplorerSaveScope === 'current');
+      const autoSlides = (!customSlidesArray)
+        ? (useCurrentOnly ? [this.serializeFullSlideState('현재 캔버스')] : this._getActiveSlidesForExport())
+        : null;
+      let slides = Array.isArray(customSlidesArray) && customSlidesArray.length > 0
+        ? JSON.parse(JSON.stringify(customSlidesArray))
+        : (autoSlides && autoSlides.length > 0 ? JSON.parse(JSON.stringify(autoSlides)) : [this.serializeFullSlideState('수업 세팅')]);
 
-    const isDeck = Boolean(slides && slides.length > 1);
-    const defaultTitle = isDeck
-      ? `수업 캔버스 ${slides.length}문항 풀세트 (${new Date().toLocaleDateString('ko-KR')})`
-      : `수업 세팅 (${new Date().toLocaleDateString('ko-KR')})`;
+      const isDeck = Boolean(slides && slides.length > 1);
+      const defaultTitle = isDeck
+        ? `수업 캔버스 ${slides.length}문항 풀세트 (${new Date().toLocaleDateString('ko-KR')})`
+        : `수업 세팅 (${new Date().toLocaleDateString('ko-KR')})`;
 
-    const rawTitle = customTitle || ((inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : defaultTitle);
-    const rawTags = customTags || ((inpTags && inpTags.value.trim()) ? inpTags.value.trim() : (isDeck ? '#통째수업 #풀세트' : '#수학그래프'));
-    const folderName = customFolder !== null
-      ? String(customFolder || '').trim()
-      : String(this._activeCloudFolder || '').trim();
+      const rawTitle = customTitle || ((inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : defaultTitle);
+      const rawTags = customTags || ((inpTags && inpTags.value.trim()) ? inpTags.value.trim() : (isDeck ? '#통째수업 #풀세트' : '#수학그래프'));
+      const rawActiveFolder = (this._activeCloudFolder === '__UNCATEGORIZED__') ? '' : String(this._activeCloudFolder || '').trim();
+      const folderName = customFolder !== null
+        ? String(customFolder || '').trim()
+        : rawActiveFolder;
 
-    if (Array.isArray(slides)) {
-      slides.forEach(s => {
-        if (s && s.audioSyncData) s.audioSyncData = this._compactAudioSyncData(s.audioSyncData);
-      });
-    }
-    const primarySlide = isDeck ? slides[0] : (slides ? slides[0] : this.serializeFullSlideState(rawTitle));
-    const summaryText = isDeck
-      ? `📚 ${slides.length}문항 통째 수업 · ${this._buildSlideSummaryBadge(primarySlide)}`
-      : this._buildSlideSummaryBadge(primarySlide);
+      // 뷰어 0.00초 즉시 오픈을 위해 스캔 이미지(viewerSnapshotDataUrl)가 없는 슬라이드는 사전 베이킹
+      const effFilter = { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
+      if (!this._isCapturingExportSnapshots) {
+        this._isCapturingExportSnapshots = true;
+        const backupCurrent = this.serializeFullSlideState('backup');
+        try {
+          for (let i = 0; i < slides.length; i++) {
+            if (slides[i] && !slides[i].viewerSnapshotDataUrl) {
+              this.deserializeFullSlideState(slides[i]);
+              await this._waitForSlideImagesReady();
+              const snap = this.captureCurrentSlideViewerSnapshot(effFilter, true);
+              slides[i].viewerSnapshotDataUrl = snap.dataUrl;
+              slides[i].viewerSnapshotWidth = snap.width;
+              slides[i].viewerSnapshotHeight = snap.height;
+              slides[i].viewerGraphHotspots = snap.hotspots;
+              slides[i].viewerStickerHotspots = snap.stickerHotspots;
+              slides[i].viewerSmartBounds = snap.smartBounds;
+            }
+          }
+        } finally {
+          this._isCapturingExportSnapshots = false;
+          if (backupCurrent) {
+            this.deserializeFullSlideState(backupCurrent);
+          }
+        }
+      }
 
-    const itemId = 'lib_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-    const itemObj = {
-      id: itemId,
-      title: rawTitle,
-      tags: rawTags,
-      folder: folderName,
-      summary: summaryText,
-      isPlaylist: isDeck,
-      slideCount: isDeck ? slides.length : 1,
-      playlistSlides: isDeck ? slides : [primarySlide],
-      ownerUid: this.cloudUser.uid,
-      ownerEmail: this.cloudUser.email || '',
-      authProvider: this.cloudUser.authProvider || 'email',
-      authorName: this.cloudUser.displayName || '내 보관함',
-      createdAt: Date.now(),
-      slideData: null
-    };
+      if (Array.isArray(slides)) {
+        slides.forEach(s => {
+          if (s && s.audioSyncData) s.audioSyncData = this._compactAudioSyncData(s.audioSyncData);
+        });
+      }
+      const primarySlide = slides[0];
+      const summaryText = isDeck
+        ? `📚 ${slides.length}문항 통째 수업 · ${this._buildSlideSummaryBadge(primarySlide)}`
+        : this._buildSlideSummaryBadge(primarySlide);
 
-    if (folderName) {
-      const folders = this.getCloudFoldersList();
-      if (!folders.includes(folderName)) {
-        folders.push(folderName);
+      const itemId = 'lib_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      const itemObj = {
+        id: itemId,
+        title: rawTitle,
+        tags: rawTags,
+        folder: folderName,
+        summary: summaryText,
+        isPlaylist: isDeck,
+        slideCount: slides.length,
+        playlistSlides: slides,
+        ownerUid: this.cloudUser.uid,
+        ownerEmail: this.cloudUser.email || '',
+        authProvider: this.cloudUser.authProvider || 'email',
+        authorName: this.cloudUser.displayName || '내 보관함',
+        createdAt: Date.now(),
+        slideData: null
+      };
+
+      if (folderName) {
+        const folders = this.getCloudFoldersList();
+        const rootSeg = folderName.split('/')[0].trim();
+        if (rootSeg && !folders.includes(rootSeg)) folders.push(rootSeg);
+        if (!folders.includes(folderName)) folders.push(folderName);
         this._saveCloudFoldersList(folders);
       }
+
+      this.myLibraryCache.unshift(itemObj);
+      this._saveMyLibraryCacheForCurrentUser();
+
+      this.syncExportCloudFolderSelect();
+      this.renderMyLibraryList();
+      if (!customTitle && inpTitle) inpTitle.value = '';
+      const folderPrefix = folderName ? `[📁 ${folderName.replace('/', ' ▸ ')}] ` : '';
+      this.showToast(isDeck
+        ? `📚 ${folderPrefix}[${rawTitle}] (${slides.length}문항 세트) 클라우드 저장 완료!`
+        : `☁️ ${folderPrefix}[${rawTitle}] 클라우드 보관함에 저장되었습니다!`);
+
+      try {
+        await this._firestoreRestWrite('user_library', itemId, itemObj);
+      } catch (e) { }
+      return itemObj;
+    } finally {
+      if (btnSave) {
+        btnSave.disabled = false;
+        btnSave.textContent = prevBtnText;
+      }
     }
-
-    this.myLibraryCache.unshift(itemObj);
-    this._saveMyLibraryCacheForCurrentUser();
-
-    this.syncExportCloudFolderSelect();
-    this.renderMyLibraryList();
-    if (!customTitle && inpTitle) inpTitle.value = '';
-    const folderPrefix = folderName ? `[📁 ${folderName}] ` : '';
-    this.showToast(isDeck
-      ? `📚 ${folderPrefix}[${rawTitle}] (${slides.length}문항 세트) 클라우드 저장 완료!`
-      : `☁️ ${folderPrefix}[${rawTitle}] 클라우드 보관함에 저장되었습니다!`);
-
-    try {
-      await this._firestoreRestWrite('user_library', itemId, itemObj);
-    } catch (e) { }
-    return itemObj;
   }
 
   // 2. 전국 기출/변형 그래프 공유 게시판에 등록 (단일 문항 또는 30문항 모의고사 통째 수업 풀세트 모두 지원!)
@@ -22141,17 +22296,23 @@ class GraphApp {
     const searchWrap = document.getElementById('cloudLibrarySearchWrap');
     const chipBar = document.getElementById('cloudFolderChipBar');
     const newFolderRow = document.getElementById('cloudNewFolderInlineRow');
+    const sidebarEl = document.getElementById('cloudExplorerSidebar');
+    const saveBarEl = document.getElementById('cloudExplorerSaveBar');
+    const lblSaveFolder = document.getElementById('lblCloudExplorerSaveFolder');
+    const lblCurrentPath = document.getElementById('lblCloudExplorerCurrentPath');
 
     if (!this.cloudUser || !this.cloudUser.uid) {
       if (badgeEl) badgeEl.textContent = '0';
       if (searchWrap) searchWrap.style.display = 'none';
-      if (chipBar) chipBar.style.display = 'none';
+      if (sidebarEl) sidebarEl.style.display = 'none';
+      if (saveBarEl) saveBarEl.style.display = 'none';
       if (newFolderRow) newFolderRow.style.display = 'none';
+      if (lblCurrentPath) lblCurrentPath.textContent = '🔒 로그인 필요';
       if (listEl) {
         listEl.innerHTML = `
-          <div class="cloud-empty-msg" style="padding:18px 12px; line-height:1.6;">
+          <div class="cloud-empty-msg" style="padding:36px 16px; line-height:1.7;">
             🔒 <strong>클라우드 보관함은 로그인 후 이용할 수 있습니다.</strong><br>
-            <span style="font-size:12px; color:#64748b;">로그인하시면 단원별 폴더 정리와 제목 검색으로 내 수업 자료를 어디서든 바로 꺼내 쓸 수 있습니다.</span><br>
+            <span style="font-size:12px; color:#64748b;">로그인하시면 윈도우 탐색기처럼 단원별 폴더·하위폴더 정리와 제목 검색으로 내 수업 자료를 어디서든 저장하고 바로 꺼내 쓸 수 있습니다.</span><br>
             <button type="button" id="btnCloudEmptyGoLogin" class="btn-cloud-go-settings-login">⚙️ 설정에서 로그인하기</button>
           </div>
         `;
@@ -22167,77 +22328,205 @@ class GraphApp {
     }
 
     if (searchWrap) searchWrap.style.display = 'flex';
+    if (sidebarEl) sidebarEl.style.display = 'flex';
+    if (saveBarEl) saveBarEl.style.display = 'flex';
     if (chipBar) chipBar.style.display = 'flex';
+    if (typeof this._syncCloudExplorerScopeUI === 'function') {
+      this._syncCloudExplorerScopeUI();
+    }
 
     this.myLibraryCache = (this.myLibraryCache || []).filter(it => this._isOwnedByCurrentCloudUser(it));
     const totalCount = this.myLibraryCache.length;
     if (badgeEl) badgeEl.textContent = String(totalCount);
 
-    // 1. 폴더 칩 바 렌더링 (전체 / 사용자 폴더 / + 폴더)
-    const folders = this.getCloudFoldersList();
-    if (this._activeCloudFolder && !folders.includes(this._activeCloudFolder)) {
+    // 1. 폴더/하위폴더 트리 구조 파싱
+    const allFolderPaths = this.getCloudFoldersList();
+    if (this._activeCloudFolder && this._activeCloudFolder !== '__UNCATEGORIZED__' && !allFolderPaths.includes(this._activeCloudFolder)) {
       this._activeCloudFolder = '';
     }
     const activeFolder = this._activeCloudFolder || '';
 
+    const displayFolderLabel = (!activeFolder || activeFolder === '__UNCATEGORIZED__')
+      ? '📌 기본 보관함 (전체)'
+      : `📁 ${activeFolder.replace('/', ' ▸ ')}`;
+    if (lblSaveFolder) lblSaveFolder.textContent = displayFolderLabel;
+    if (lblCurrentPath) {
+      lblCurrentPath.textContent = activeFolder === '__UNCATEGORIZED__'
+        ? '📄 미분류 파일'
+        : (!activeFolder ? '📌 전체 보관함' : `📂 ${activeFolder.replace('/', ' ▸ ')}`);
+    }
+
+    // 상위 폴더 및 하위 폴더 그룹화
+    const rootFolders = [];
+    const subFoldersByRoot = new Map();
+    allFolderPaths.forEach(p => {
+      if (!p.includes('/')) {
+        if (!rootFolders.includes(p)) rootFolders.push(p);
+        if (!subFoldersByRoot.has(p)) subFoldersByRoot.set(p, []);
+      } else {
+        const [rootName, ...rest] = p.split('/');
+        const subName = rest.join(' ').trim();
+        if (!rootFolders.includes(rootName)) rootFolders.push(rootName);
+        if (!subFoldersByRoot.has(rootName)) subFoldersByRoot.set(rootName, []);
+        if (subName) subFoldersByRoot.get(rootName).push({ fullPath: p, subName });
+      }
+    });
+
+    if (!this._collapsedCloudFolders) {
+      this._collapsedCloudFolders = new Set();
+    }
+
     if (chipBar) {
       chipBar.innerHTML = '';
-      const makeChip = (label, folderKey, countNum, isClosable = false) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'cloud-folder-chip' + (activeFolder === folderKey ? ' active' : '');
-        const textSpan = document.createElement('span');
-        textSpan.textContent = `${label} (${countNum})`;
-        btn.appendChild(textSpan);
-        if (isClosable) {
-          const delSpan = document.createElement('span');
-          delSpan.className = 'cloud-folder-chip-del';
-          delSpan.title = '폴더 삭제 (파일은 유지됨)';
-          delSpan.textContent = '✕';
-          delSpan.onclick = (e) => {
+
+      // (A) 전체 보관함 노드
+      const allNode = document.createElement('div');
+      allNode.className = 'cloud-tree-node' + (activeFolder === '' ? ' active' : '');
+      allNode.innerHTML = `
+        <div class="cloud-tree-node-left">
+          <span>📌</span>
+          <span class="cloud-tree-name">전체 파일</span>
+        </div>
+        <span class="cloud-tree-count">${totalCount}</span>
+      `;
+      allNode.onclick = () => {
+        this._activeCloudFolder = '';
+        this.syncExportCloudFolderSelect();
+        this.renderMyLibraryList();
+      };
+      chipBar.appendChild(allNode);
+
+      // (B) 미분류 파일 노드 (폴더가 지정되지 않은 파일이 있고 폴더가 1개 이상일 때 표시)
+      const uncatCount = this.myLibraryCache.filter(it => !String(it.folder || '').trim()).length;
+      if (rootFolders.length > 0 && uncatCount > 0) {
+        const uncatNode = document.createElement('div');
+        uncatNode.className = 'cloud-tree-node' + (activeFolder === '__UNCATEGORIZED__' ? ' active' : '');
+        uncatNode.innerHTML = `
+          <div class="cloud-tree-node-left">
+            <span>📄</span>
+            <span class="cloud-tree-name">미분류 파일</span>
+          </div>
+          <span class="cloud-tree-count">${uncatCount}</span>
+        `;
+        uncatNode.onclick = () => {
+          this._activeCloudFolder = '__UNCATEGORIZED__';
+          this.renderMyLibraryList();
+        };
+        chipBar.appendChild(uncatNode);
+      }
+
+      // (C) 상위 폴더 + 하위 폴더 세로 트리 렌더링
+      rootFolders.forEach(rootName => {
+        const subs = subFoldersByRoot.get(rootName) || [];
+        const hasSubs = subs.length > 0;
+        const isCollapsed = this._collapsedCloudFolders.has(rootName);
+        const rootTotalCnt = this.myLibraryCache.filter(it => {
+          const f = String(it.folder || '').trim();
+          return f === rootName || f.startsWith(rootName + '/');
+        }).length;
+
+        const rootNode = document.createElement('div');
+        rootNode.className = 'cloud-tree-node' + (activeFolder === rootName ? ' active' : '');
+        rootNode.innerHTML = `
+          <div class="cloud-tree-node-left">
+            <span class="cloud-tree-chevron" title="${hasSubs ? '하위 폴더 접기/펼치기' : ''}">${hasSubs ? (isCollapsed ? '▸' : '▾') : '📁'}</span>
+            <span class="cloud-tree-name" title="${rootName}">${hasSubs ? '📁 ' : ''}${rootName}</span>
+          </div>
+          <div class="cloud-tree-node-actions">
+            <span class="cloud-tree-count" style="margin-right:2px;">${rootTotalCnt}</span>
+            <button type="button" class="cloud-tree-mini-btn add-sub" title="[${rootName}] 안에 하위 폴더 추가">+</button>
+            <button type="button" class="cloud-tree-mini-btn del" title="폴더 삭제 (파일은 유지됨)">✕</button>
+          </div>
+        `;
+
+        const chevronEl = rootNode.querySelector('.cloud-tree-chevron');
+        if (chevronEl && hasSubs) {
+          chevronEl.onclick = (e) => {
             e.stopPropagation();
-            this.deleteCloudFolder(folderKey);
+            if (this._collapsedCloudFolders.has(rootName)) {
+              this._collapsedCloudFolders.delete(rootName);
+            } else {
+              this._collapsedCloudFolders.add(rootName);
+            }
+            this.renderMyLibraryList();
           };
-          btn.appendChild(delSpan);
         }
-        btn.onclick = () => {
-          this._activeCloudFolder = folderKey;
+
+        const btnAddSub = rootNode.querySelector('.cloud-tree-mini-btn.add-sub');
+        if (btnAddSub) {
+          btnAddSub.onclick = (e) => {
+            e.stopPropagation();
+            this.openNewCloudFolderInput(rootName);
+          };
+        }
+
+        const btnDelRoot = rootNode.querySelector('.cloud-tree-mini-btn.del');
+        if (btnDelRoot) {
+          btnDelRoot.onclick = (e) => {
+            e.stopPropagation();
+            this.deleteCloudFolder(rootName);
+          };
+        }
+
+        rootNode.onclick = () => {
+          this._activeCloudFolder = rootName;
+          if (hasSubs && this._collapsedCloudFolders.has(rootName)) {
+            this._collapsedCloudFolders.delete(rootName);
+          }
           this.syncExportCloudFolderSelect();
           this.renderMyLibraryList();
         };
-        return btn;
-      };
 
-      chipBar.appendChild(makeChip('전체', '', totalCount, false));
-      folders.forEach(fName => {
-        const cnt = this.myLibraryCache.filter(it => String(it.folder || '').trim() === fName).length;
-        chipBar.appendChild(makeChip(`📁 ${fName}`, fName, cnt, true));
-      });
+        chipBar.appendChild(rootNode);
 
-      const addBtn = document.createElement('button');
-      addBtn.type = 'button';
-      addBtn.className = 'cloud-folder-chip cloud-folder-chip-add';
-      addBtn.textContent = '+ 폴더';
-      addBtn.title = '새 폴더 만들기';
-      addBtn.onclick = () => {
-        if (!newFolderRow) return;
-        const willOpen = newFolderRow.style.display === 'none';
-        newFolderRow.style.display = willOpen ? 'flex' : 'none';
-        if (willOpen) {
-          const inp = document.getElementById('inputNewCloudFolderName');
-          if (inp) setTimeout(() => inp.focus(), 40);
+        // 하위 폴더 렌더링
+        if (hasSubs && !isCollapsed) {
+          subs.forEach(({ fullPath, subName }) => {
+            const subCnt = this.myLibraryCache.filter(it => String(it.folder || '').trim() === fullPath).length;
+            const subNode = document.createElement('div');
+            subNode.className = 'cloud-tree-node is-subfolder' + (activeFolder === fullPath ? ' active' : '');
+            subNode.innerHTML = `
+              <div class="cloud-tree-node-left">
+                <span style="color:#94a3b8; font-size:10px;">└</span>
+                <span class="cloud-tree-name" title="${fullPath}">📁 ${subName}</span>
+              </div>
+              <div class="cloud-tree-node-actions">
+                <span class="cloud-tree-count" style="margin-right:2px;">${subCnt}</span>
+                <button type="button" class="cloud-tree-mini-btn del" title="하위 폴더 삭제">✕</button>
+              </div>
+            `;
+            const btnDelSub = subNode.querySelector('.cloud-tree-mini-btn.del');
+            if (btnDelSub) {
+              btnDelSub.onclick = (e) => {
+                e.stopPropagation();
+                this.deleteCloudFolder(fullPath);
+              };
+            }
+            subNode.onclick = () => {
+              this._activeCloudFolder = fullPath;
+              this.syncExportCloudFolderSelect();
+              this.renderMyLibraryList();
+            };
+            chipBar.appendChild(subNode);
+          });
         }
-      };
-      chipBar.appendChild(addBtn);
+      });
     }
 
     if (!listEl) return;
 
-    // 2. 폴더 및 실시간 검색어 필터링
+    // 2. 폴더 및 실시간 검색어 필터링 (상위 폴더 클릭 시 해당 상위 폴더 및 하위 폴더 파일 모두 표시)
     const q = String(this._cloudLibrarySearchQuery || '').trim().toLowerCase();
     const filteredItems = this.myLibraryCache.filter(item => {
-      if (activeFolder && String(item.folder || '').trim() !== activeFolder) {
-        return false;
+      const itemFolder = String(item.folder || '').trim();
+      if (activeFolder === '__UNCATEGORIZED__') {
+        if (itemFolder !== '') return false;
+      } else if (activeFolder) {
+        if (!activeFolder.includes('/')) {
+          if (itemFolder !== activeFolder && !itemFolder.startsWith(activeFolder + '/')) return false;
+        } else {
+          if (itemFolder !== activeFolder) return false;
+        }
       }
       if (q) {
         const hay = `${item.title || ''} ${item.tags || ''} ${item.folder || ''} ${item.summary || ''}`.toLowerCase();
@@ -22248,9 +22537,9 @@ class GraphApp {
 
     if (filteredItems.length === 0) {
       if (totalCount === 0) {
-        listEl.innerHTML = `<div class="cloud-empty-msg">저장된 클라우드 항목이 없습니다.<br><span style="font-size:11.5px; color:#64748b;">우상단 <strong>[내보내기] ➔ [☁️ 클라우드 저장]</strong>으로 수업 자료를 보관해 보세요.</span></div>`;
+        listEl.innerHTML = `<div class="cloud-empty-msg">저장된 클라우드 파일이 없습니다.<br><span style="font-size:11.5px; color:#64748b;">위의 <strong>[☁️ 여기에 저장]</strong> 버튼을 눌러 현재 작업 중인 칠판을 바로 보관해 보세요!</span></div>`;
       } else {
-        listEl.innerHTML = `<div class="cloud-empty-msg">조건에 맞는 수업 자료가 없습니다.</div>`;
+        listEl.innerHTML = `<div class="cloud-empty-msg">이 폴더에 저장된 수업 파일이 없습니다.<br><span style="font-size:11.5px; color:#64748b;">위에서 <strong>[☁️ 여기에 저장]</strong>을 누르면 현재 폴더에 바로 저장됩니다.</span></div>`;
       }
       this.updateSelectedPlaylistCount();
       return;
@@ -22264,21 +22553,73 @@ class GraphApp {
       const slideCnt = item.slideCount || (Array.isArray(item.playlistSlides) ? item.playlistSlides.length : 1);
       const deckBadgeHtml = `<span class="cloud-deck-badge">${slideCnt}장</span>`;
       const curFolder = String(item.folder || '').trim();
-      const folderOptionsHtml = `<option value="">기본 보관함</option>` +
-        folders.map(f => {
+      const folderBadgeHtml = (!activeFolder && curFolder)
+        ? `<span class="cloud-item-folder-badge">📁 ${curFolder.replace('/', ' ▸ ')}</span>`
+        : ((activeFolder && !activeFolder.includes('/') && curFolder.startsWith(activeFolder + '/'))
+          ? `<span class="cloud-item-folder-badge">📁 ${curFolder.split('/').slice(1).join(' ')}</span>`
+          : '');
+
+      if (this._renamingCloudItemId === item.id) {
+        row.innerHTML = `
+          <div style="display:flex; align-items:center; gap:6px; width:100%;">
+            <input type="text" class="cloud-item-rename-input" value="${String(item.title || '').replace(/"/g, '&quot;')}"
+              style="flex:1; min-width:0; padding:5px 8px; border-radius:6px; border:1.5px solid #2563eb; font-size:12px; font-weight:700;" />
+            <button type="button" class="btn-primary cloud-item-rename-save" style="padding:5px 10px; font-size:11.5px; border-radius:6px;">확인</button>
+            <button type="button" class="btn-secondary cloud-item-rename-cancel" style="padding:5px 8px; font-size:11.5px; border-radius:6px;">취소</button>
+          </div>
+        `;
+        const inpRen = row.querySelector('.cloud-item-rename-input');
+        const btnSaveRen = row.querySelector('.cloud-item-rename-save');
+        const btnCancelRen = row.querySelector('.cloud-item-rename-cancel');
+        if (inpRen) {
+          inpRen.onclick = (e) => e.stopPropagation();
+          inpRen.onkeydown = (e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              this.renameCloudLibraryItem(item, inpRen.value);
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              this._renamingCloudItemId = null;
+              this.renderMyLibraryList();
+            }
+          };
+          setTimeout(() => { inpRen.focus(); inpRen.select(); }, 20);
+        }
+        if (btnSaveRen) {
+          btnSaveRen.onclick = (e) => {
+            e.stopPropagation();
+            this.renameCloudLibraryItem(item, inpRen ? inpRen.value : item.title);
+          };
+        }
+        if (btnCancelRen) {
+          btnCancelRen.onclick = (e) => {
+            e.stopPropagation();
+            this._renamingCloudItemId = null;
+            this.renderMyLibraryList();
+          };
+        }
+        listEl.appendChild(row);
+        return;
+      }
+
+      const folderOptionsHtml = `<option value="">📌 기본 보관함</option>` +
+        allFolderPaths.map(f => {
           const esc = f.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          const label = f.includes('/') ? `  └ 📁 ${f.replace('/', ' ▸ ')}` : `📁 ${f}`;
           const selAttr = (curFolder === f) ? ' selected' : '';
-          return `<option value="${esc}"${selAttr}>📁 ${esc}</option>`;
+          return `<option value="${esc}"${selAttr}>${label}</option>`;
         }).join('');
 
       row.innerHTML = `
         <div class="cloud-item-left" style="flex:1; min-width:0;">
           <div class="cloud-item-info" style="min-width:0;">
-            <div class="cloud-item-title" title="클릭하여 열기">${deckBadgeHtml}<span>${item.title || '제목 없음'}</span></div>
+            <div class="cloud-item-title" title="클릭하여 열기">${deckBadgeHtml}${folderBadgeHtml}<span>${item.title || '제목 없음'}</span></div>
             <span class="cloud-item-date">${dateStr}</span>
           </div>
         </div>
-        <div class="cloud-item-actions" style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
+        <div class="cloud-item-actions" style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+          <button type="button" class="btn-cloud-edit-item" title="제목 변경">✏️</button>
           <select class="cloud-item-folder-select" title="폴더 이동">${folderOptionsHtml}</select>
           <button type="button" class="btn-cloud-del-item" title="삭제">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -22287,11 +22628,20 @@ class GraphApp {
       `;
 
       row.onclick = (e) => {
-        if (e.target && (e.target.closest('.cloud-item-folder-select') || e.target.closest('.btn-cloud-del-item'))) {
+        if (e.target && (e.target.closest('.cloud-item-folder-select') || e.target.closest('.btn-cloud-del-item') || e.target.closest('.btn-cloud-edit-item'))) {
           return;
         }
         this.loadCloudItemToWorkspace(item, true);
       };
+
+      const btnEdit = row.querySelector('.btn-cloud-edit-item');
+      if (btnEdit) {
+        btnEdit.onclick = (e) => {
+          e.stopPropagation();
+          this._renamingCloudItemId = item.id;
+          this.renderMyLibraryList();
+        };
+      }
 
       const folderSelect = row.querySelector('.cloud-item-folder-select');
       if (folderSelect) {
