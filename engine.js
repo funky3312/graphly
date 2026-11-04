@@ -2457,61 +2457,79 @@ class GraphStateSerializer {
 }
 
 // =====================================================================
-// [📱 순수 JS 초경량 QR 코드 생성기 (MiniQRCode)]
+// [📱 순수 JS 초경량 QR 코드 생성기 (MiniQRCode — ISO/IEC 18004 정식 규격)]
 // - 외부 CDN 및 인터넷 통신 0% (오프라인 / file:// 완전 지원)
-// - 스마트폰 기본 카메라 원터치 스캔 최적화
+// - Format Info(BCH 15,5) + Alignment Pattern + 4-Module Quiet Zone 완벽 준수
 // =====================================================================
 class MiniQRCode {
   static drawToCanvas(text, canvas, options = {}) {
     if (!canvas || !text) return false;
-    const size = options.size || canvas.width || 180;
-    const padding = options.padding != null ? options.padding : 12;
-    const fgColor = options.fgColor || '#1e272e';
+    const reqSize = options.size || canvas.width || 240;
+    const fgColor = options.fgColor || '#0f172a';
     const bgColor = options.bgColor || '#ffffff';
 
-    let typeNum = 1;
-    const capacities = [17, 32, 53, 78, 106, 134, 154, 192, 230, 271];
+    const utf8Bytes = MiniQRCode.toUtf8ByteString(String(text));
+
+    // Version 1 ~ 14 (Error Correction Level L 기준 바이트 용량)
+    const capacities = [17, 32, 53, 78, 106, 134, 154, 192, 230, 271, 321, 367, 425, 458, 520, 586, 644, 718, 792, 858, 929, 1003, 1091, 1171, 1273];
+    let typeNum = capacities.length;
     for (let i = 0; i < capacities.length; i++) {
-      if (text.length <= capacities[i]) {
+      const extraLenBytes = (i + 1) < 10 ? 0 : 1;
+      if (utf8Bytes.length + extraLenBytes <= capacities[i]) {
         typeNum = i + 1;
         break;
       }
     }
-    if (text.length > capacities[capacities.length - 1]) typeNum = 10;
 
     const qr = new MiniQRCode.Model(typeNum);
-    qr.addData(text);
+    qr.addData(utf8Bytes);
     qr.make();
 
     const count = qr.getModuleCount();
+    const quietZoneModules = 4; // ISO/IEC 18004 표준 4모듈 여백
+    const totalModules = count + quietZoneModules * 2;
+    const minCellPx = Math.max(6, Math.ceil(reqSize / totalModules));
+    const actualSize = totalModules * minCellPx;
+
     const ctx = canvas.getContext('2d');
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = actualSize;
+    canvas.height = actualSize;
+    ctx.imageSmoothingEnabled = false;
 
     ctx.fillStyle = bgColor;
-    ctx.fillRect(0, 0, size, size);
+    ctx.fillRect(0, 0, actualSize, actualSize);
 
-    const drawSize = size - padding * 2;
-    const cellSize = drawSize / count;
-
+    const offsetPx = quietZoneModules * minCellPx;
     ctx.fillStyle = fgColor;
     for (let r = 0; r < count; r++) {
       for (let c = 0; c < count; c++) {
         if (qr.isDark(r, c)) {
           ctx.fillRect(
-            Math.round(padding + c * cellSize),
-            Math.round(padding + r * cellSize),
-            Math.ceil(cellSize),
-            Math.ceil(cellSize)
+            offsetPx + c * minCellPx,
+            offsetPx + r * minCellPx,
+            minCellPx,
+            minCellPx
           );
         }
       }
     }
     return true;
   }
+
+  static toUtf8ByteString(str) {
+    try {
+      if (typeof TextEncoder !== 'undefined') {
+        const bytes = new TextEncoder().encode(str);
+        let out = '';
+        for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
+        return out;
+      }
+    } catch (e) { }
+    return unescape(encodeURIComponent(str));
+  }
 }
 
-// QR Code 내부 수학/블록 서브시스템
+// QR Code 내부 수학/블록 서브시스템 (ISO/IEC 18004 완전체)
 (function() {
   function QR8bitByte(data) {
     this.mode = 4;
@@ -2521,6 +2539,129 @@ class MiniQRCode {
     getLength: function() { return this.data.length; },
     write: function(buf) {
       for (var i = 0; i < this.data.length; i++) buf.put(this.data.charCodeAt(i), 8);
+    }
+  };
+
+  var QRUtil = {
+    PATTERN_POSITION_TABLE: [
+      [],
+      [6, 18],
+      [6, 22],
+      [6, 26],
+      [6, 30],
+      [6, 34],
+      [6, 22, 38],
+      [6, 24, 42],
+      [6, 26, 46],
+      [6, 28, 50],
+      [6, 30, 54],
+      [6, 32, 58],
+      [6, 34, 62],
+      [6, 26, 46, 66],
+      [6, 26, 48, 70],
+      [6, 26, 50, 74],
+      [6, 30, 54, 78],
+      [6, 30, 56, 82],
+      [6, 30, 58, 86],
+      [6, 34, 62, 90],
+      [6, 28, 50, 72, 94],
+      [6, 26, 50, 74, 98],
+      [6, 30, 54, 78, 102],
+      [6, 28, 54, 80, 106],
+      [6, 32, 58, 84, 110]
+    ],
+    G15: (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | (1 << 0),
+    G18: (1 << 12) | (1 << 11) | (1 << 10) | (1 << 9) | (1 << 8) | (1 << 5) | (1 << 2) | (1 << 0),
+    G15_MASK: (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1),
+    getBCHDigit: function(data) {
+      var digit = 0;
+      while (data != 0) {
+        digit++;
+        data >>>= 1;
+      }
+      return digit;
+    },
+    getBCHTypeInfo: function(data) {
+      var d = data << 10;
+      while (QRUtil.getBCHDigit(d) - QRUtil.getBCHDigit(QRUtil.G15) >= 0) {
+        d ^= (QRUtil.G15 << (QRUtil.getBCHDigit(d) - QRUtil.getBCHDigit(QRUtil.G15)));
+      }
+      return ((data << 10) | d) ^ QRUtil.G15_MASK;
+    },
+    getBCHTypeNumber: function(data) {
+      var d = data << 12;
+      while (QRUtil.getBCHDigit(d) - QRUtil.getBCHDigit(QRUtil.G18) >= 0) {
+        d ^= (QRUtil.G18 << (QRUtil.getBCHDigit(d) - QRUtil.getBCHDigit(QRUtil.G18)));
+      }
+      return (data << 12) | d;
+    },
+    getPatternPosition: function(typeNumber) {
+      return QRUtil.PATTERN_POSITION_TABLE[typeNumber - 1] || [];
+    },
+    getMask: function(maskPattern, i, j) {
+      switch (maskPattern) {
+        case 0: return (i + j) % 2 == 0;
+        case 1: return i % 2 == 0;
+        case 2: return j % 3 == 0;
+        case 3: return (i + j) % 3 == 0;
+        case 4: return (Math.floor(i / 2) + Math.floor(j / 3)) % 2 == 0;
+        case 5: return (i * j) % 2 + (i * j) % 3 == 0;
+        case 6: return ((i * j) % 2 + (i * j) % 3) % 2 == 0;
+        case 7: return ((i * j) % 3 + (i + j) % 2) % 2 == 0;
+        default: return (i + j) % 2 == 0;
+      }
+    },
+    getLostPoint: function(qrCode) {
+      var moduleCount = qrCode.getModuleCount();
+      var lostPoint = 0;
+      for (var row = 0; row < moduleCount; row++) {
+        for (var col = 0; col < moduleCount; col++) {
+          var sameCount = 0;
+          var dark = qrCode.isDark(row, col);
+          for (var r = -1; r <= 1; r++) {
+            if (row + r < 0 || moduleCount <= row + r) continue;
+            for (var c = -1; c <= 1; c++) {
+              if (col + c < 0 || moduleCount <= col + c) continue;
+              if (r == 0 && c == 0) continue;
+              if (dark == qrCode.isDark(row + r, col + c)) sameCount++;
+            }
+          }
+          if (sameCount > 5) lostPoint += (3 + sameCount - 5);
+        }
+      }
+      for (var row = 0; row < moduleCount - 1; row++) {
+        for (var col = 0; col < moduleCount - 1; col++) {
+          var count = 0;
+          if (qrCode.isDark(row, col)) count++;
+          if (qrCode.isDark(row + 1, col)) count++;
+          if (qrCode.isDark(row, col + 1)) count++;
+          if (qrCode.isDark(row + 1, col + 1)) count++;
+          if (count == 0 || count == 4) lostPoint += 3;
+        }
+      }
+      for (var row = 0; row < moduleCount; row++) {
+        for (var col = 0; col < moduleCount - 6; col++) {
+          if (qrCode.isDark(row, col) && !qrCode.isDark(row, col + 1) && qrCode.isDark(row, col + 2) && qrCode.isDark(row, col + 3) && qrCode.isDark(row, col + 4) && !qrCode.isDark(row, col + 5) && qrCode.isDark(row, col + 6)) {
+            lostPoint += 40;
+          }
+        }
+      }
+      for (var col = 0; col < moduleCount; col++) {
+        for (var row = 0; row < moduleCount - 6; row++) {
+          if (qrCode.isDark(row, col) && !qrCode.isDark(row + 1, col) && qrCode.isDark(row + 2, col) && qrCode.isDark(row + 3, col) && qrCode.isDark(row + 4, col) && !qrCode.isDark(row + 5, col) && qrCode.isDark(row + 6, col)) {
+            lostPoint += 40;
+          }
+        }
+      }
+      var darkCount = 0;
+      for (var col = 0; col < moduleCount; col++) {
+        for (var row = 0; row < moduleCount; row++) {
+          if (qrCode.isDark(row, col)) darkCount++;
+        }
+      }
+      var ratio = Math.abs(100 * darkCount / moduleCount / moduleCount - 50) / 5;
+      lostPoint += ratio * 10;
+      return lostPoint;
     }
   };
 
@@ -2567,14 +2708,45 @@ class MiniQRCode {
   for (var i = 0; i < 255; i++) QRMath.LOG_TABLE[QRMath.EXP_TABLE[i]] = i;
 
   var QRRSBlock = {
+    // Version 1 ~ 14 Error Correction Level L (ISO/IEC 18004)
     RS_BLOCK_TABLE: [
-      [1, 26, 19], [1, 44, 34], [1, 70, 55], [1, 100, 80], [1, 134, 108],
-      [2, 86, 68], [2, 98, 78], [2, 121, 97], [2, 146, 116], [2, 86, 68]
+      [1, 26, 19],
+      [1, 44, 34],
+      [1, 70, 55],
+      [1, 100, 80],
+      [1, 134, 108],
+      [2, 86, 68],
+      [2, 98, 78],
+      [2, 121, 97],
+      [2, 146, 116],
+      [2, 86, 68, 2, 87, 69],
+      [4, 101, 81],
+      [2, 116, 92, 2, 117, 93],
+      [4, 133, 107],
+      [3, 145, 115, 1, 146, 116],
+      [5, 109, 87, 1, 110, 88],
+      [5, 122, 98, 1, 123, 99],
+      [1, 135, 107, 5, 136, 108],
+      [5, 150, 120, 1, 151, 121],
+      [3, 141, 113, 4, 142, 114],
+      [3, 135, 107, 5, 136, 108],
+      [4, 144, 116, 4, 145, 117],
+      [2, 139, 111, 7, 140, 112],
+      [4, 151, 121, 5, 152, 122],
+      [6, 147, 117, 4, 148, 118],
+      [8, 132, 106, 4, 133, 107]
     ],
     getRSBlocks: function(typeNumber) {
-      var rsBlock = QRRSBlock.RS_BLOCK_TABLE[typeNumber - 1];
+      var rsBlock = QRRSBlock.RS_BLOCK_TABLE[typeNumber - 1] || QRRSBlock.RS_BLOCK_TABLE[0];
       var list = [];
-      for (var i = 0; i < rsBlock[0]; i++) list.push({ totalCount: rsBlock[1], dataCount: rsBlock[2] });
+      for (var i = 0; i < rsBlock.length / 3; i++) {
+        var count = rsBlock[i * 3 + 0];
+        var totalCount = rsBlock[i * 3 + 1];
+        var dataCount = rsBlock[i * 3 + 2];
+        for (var j = 0; j < count; j++) {
+          list.push({ totalCount: totalCount, dataCount: dataCount });
+        }
+      }
       return list;
     }
   };
@@ -2598,25 +2770,57 @@ class MiniQRCode {
 
   function QRCodeModel(typeNumber) {
     this.typeNumber = typeNumber;
+    this.errorCorrectLevel = 1; // Level L (format indicator 01)
     this.modules = null;
     this.moduleCount = 0;
+    this.dataCache = null;
     this.dataList = [];
   }
   QRCodeModel.prototype = {
-    addData: function(data) { this.dataList.push(new QR8bitByte(data)); },
-    isDark: function(row, col) { return this.modules[row][col]; },
+    addData: function(data) {
+      this.dataList.push(new QR8bitByte(data));
+      this.dataCache = null;
+    },
+    isDark: function(row, col) { return Boolean(this.modules[row][col]); },
     getModuleCount: function() { return this.moduleCount; },
     make: function() {
+      this.makeImpl(false, this.getBestMaskPattern());
+    },
+    makeImpl: function(test, maskPattern) {
       this.moduleCount = this.typeNumber * 4 + 17;
       this.modules = new Array(this.moduleCount);
       for (var row = 0; row < this.moduleCount; row++) {
         this.modules[row] = new Array(this.moduleCount);
+        for (var col = 0; col < this.moduleCount; col++) {
+          this.modules[row][col] = null;
+        }
       }
       this.setupPositionProbePattern(0, 0);
       this.setupPositionProbePattern(this.moduleCount - 7, 0);
       this.setupPositionProbePattern(0, this.moduleCount - 7);
+      this.setupPositionAdjustPattern();
       this.setupTimingPattern();
-      this.mapData(this.createData());
+      this.setupTypeInfo(test, maskPattern);
+      if (this.typeNumber >= 7) {
+        this.setupTypeNumber(test);
+      }
+      if (this.dataCache == null) {
+        this.dataCache = this.createData();
+      }
+      this.mapData(this.dataCache, maskPattern);
+    },
+    getBestMaskPattern: function() {
+      var minLostPoint = 0;
+      var pattern = 0;
+      for (var i = 0; i < 8; i++) {
+        this.makeImpl(true, i);
+        var lostPoint = QRUtil.getLostPoint(this);
+        if (i == 0 || minLostPoint > lostPoint) {
+          minLostPoint = lostPoint;
+          pattern = i;
+        }
+      }
+      return pattern;
     },
     setupPositionProbePattern: function(row, col) {
       for (var r = -1; r <= 7; r++) {
@@ -2631,6 +2835,25 @@ class MiniQRCode {
         }
       }
     },
+    setupPositionAdjustPattern: function() {
+      var pos = QRUtil.getPatternPosition(this.typeNumber);
+      for (var i = 0; i < pos.length; i++) {
+        for (var j = 0; j < pos.length; j++) {
+          var row = pos[i];
+          var col = pos[j];
+          if (this.modules[row][col] != null) continue;
+          for (var r = -2; r <= 2; r++) {
+            for (var c = -2; c <= 2; c++) {
+              if (r == -2 || r == 2 || c == -2 || c == 2 || (r == 0 && c == 0)) {
+                this.modules[row + r][col + c] = true;
+              } else {
+                this.modules[row + r][col + c] = false;
+              }
+            }
+          }
+        }
+      }
+    },
     setupTimingPattern: function() {
       for (var r = 8; r < this.moduleCount - 8; r++) {
         if (this.modules[r][6] != null) continue;
@@ -2641,13 +2864,47 @@ class MiniQRCode {
         this.modules[6][c] = (c % 2 == 0);
       }
     },
+    setupTypeNumber: function(test) {
+      var bits = QRUtil.getBCHTypeNumber(this.typeNumber);
+      for (var i = 0; i < 18; i++) {
+        var mod = (!test && ((bits >> i) & 1) == 1);
+        this.modules[Math.floor(i / 3)][i % 3 + this.moduleCount - 8 - 3] = mod;
+        this.modules[i % 3 + this.moduleCount - 8 - 3][Math.floor(i / 3)] = mod;
+      }
+    },
+    setupTypeInfo: function(test, maskPattern) {
+      var data = (this.errorCorrectLevel << 3) | maskPattern;
+      var bits = QRUtil.getBCHTypeInfo(data);
+      for (var i = 0; i < 15; i++) {
+        var mod = (!test && ((bits >> i) & 1) == 1);
+        if (i < 6) {
+          this.modules[i][8] = mod;
+        } else if (i < 8) {
+          this.modules[i + 1][8] = mod;
+        } else {
+          this.modules[this.moduleCount - 15 + i][8] = mod;
+        }
+      }
+      for (var i = 0; i < 15; i++) {
+        var mod = (!test && ((bits >> i) & 1) == 1);
+        if (i < 8) {
+          this.modules[8][this.moduleCount - i - 1] = mod;
+        } else if (i < 9) {
+          this.modules[8][15 - i - 1 + 1] = mod;
+        } else {
+          this.modules[8][15 - i - 1] = mod;
+        }
+      }
+      this.modules[this.moduleCount - 8][8] = (!test);
+    },
     createData: function() {
       var rsBlocks = QRRSBlock.getRSBlocks(this.typeNumber);
       var buffer = new QRBitBuffer();
+      var lengthBits = this.typeNumber < 10 ? 8 : 16;
       for (var i = 0; i < this.dataList.length; i++) {
         var data = this.dataList[i];
         buffer.put(data.mode, 4);
-        buffer.put(data.getLength(), 8);
+        buffer.put(data.getLength(), lengthBits);
         data.write(buffer);
       }
       var totalDataCount = 0;
@@ -2695,7 +2952,7 @@ class MiniQRCode {
       }
       return data;
     },
-    mapData: function(data) {
+    mapData: function(data, maskPattern) {
       var inc = -1;
       var row = this.moduleCount - 1;
       var bitIndex = 7;
@@ -2707,7 +2964,7 @@ class MiniQRCode {
             if (this.modules[row][col - c] == null) {
               var dark = false;
               if (byteIndex < data.length) dark = (((data[byteIndex] >>> bitIndex) & 1) == 1);
-              var mask = ((row + (col - c)) % 2 == 0);
+              var mask = QRUtil.getMask(maskPattern, row, col - c);
               this.modules[row][col - c] = mask ? !dark : dark;
               bitIndex--;
               if (bitIndex == -1) { byteIndex++; bitIndex = 7; }
