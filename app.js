@@ -8487,9 +8487,7 @@ class GraphApp {
     const w = (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 180)
       ? rawStyleW
       : (parseFloat(widget._savedExpandedWidth) || (Number.isFinite(rawStyleW) && rawStyleW >= 180 ? rawStyleW : 0) || (!isMin && measuredWidgetRect ? measuredWidgetRect.width : 520) || 520);
-    const effW = (!isMin && measuredWidgetRect && measuredWidgetRect.width >= 140)
-      ? Math.min(w, measuredWidgetRect.width)
-      : w;
+    const effW = w;
     const aspect = this.problemCardAspect || 0.72;
     const imgW = effW;
     const imgH = Math.round(imgW * aspect);
@@ -8627,9 +8625,11 @@ class GraphApp {
           : 1.0;
         el.style.transformOrigin = '0 0';
         if (Math.abs(scaleRatio - 1.0) > 0.002) {
-          el.style.transform = `translate3d(${tx.toFixed(1)}px, ${ty.toFixed(1)}px, 0) scale(${scaleRatio.toFixed(4)})`;
+          el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px) scale(${scaleRatio.toFixed(4)})`;
+        } else if (Math.round(tx) !== 0 || Math.round(ty) !== 0) {
+          el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px)`;
         } else {
-          el.style.transform = `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
+          el.style.transform = '';
         }
       } else if (this.isGraphCovered) {
         const s = this.boardToScreen(baseX, baseY);
@@ -8637,13 +8637,15 @@ class GraphApp {
         const ty = s.y - baseY;
         el.style.transformOrigin = '0 0';
         if (Math.abs(bz - 1.0) > 0.002) {
-          el.style.transform = `translate3d(${tx.toFixed(1)}px, ${ty.toFixed(1)}px, 0) scale(${bz.toFixed(4)})`;
+          el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px) scale(${bz.toFixed(4)})`;
+        } else if (Math.round(tx) !== 0 || Math.round(ty) !== 0) {
+          el.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px)`;
         } else {
-          el.style.transform = `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
+          el.style.transform = '';
         }
       } else {
         el.style.transformOrigin = '';
-        el.style.transform = 'translate3d(0px, 0px, 0)';
+        el.style.transform = '';
       }
     };
 
@@ -12313,12 +12315,8 @@ class GraphApp {
     const baseW = (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 140)
       ? rawStyleW
       : (parseFloat(widget._savedExpandedWidth) || (Number.isFinite(rawStyleW) && rawStyleW >= 140 ? rawStyleW : 0) || (!isMin && measuredWidgetRect ? measuredWidgetRect.width : 400) || 400);
-    const w = (!isMin && measuredWidgetRect && measuredWidgetRect.width > baseW)
-      ? measuredWidgetRect.width
-      : baseW;
-    const effW = (!isMin && measuredWidgetRect && measuredWidgetRect.width >= 120)
-      ? Math.min(w, measuredWidgetRect.width)
-      : w;
+    const w = baseW;
+    const effW = w;
     const aspect = this.graphCardAspect || 0.85;
     const imgW = effW;
     const imgH = Math.round(imgW * aspect);
@@ -20753,13 +20751,25 @@ class GraphApp {
       if (typeof pWidget._renderCardStickers === 'function') pWidget._renderCardStickers();
       if (pc.imgSrc) {
         const imgObj = new Image();
+        imgObj.onload = () => {
+          if (imgObj.naturalWidth > 0 && imgObj.naturalHeight > 0) {
+            this.problemCardAspect = imgObj.naturalHeight / imgObj.naturalWidth;
+            this.syncProblemCardRectFromWidget();
+          }
+        };
         imgObj.src = pc.imgSrc;
         this.problemCardImage = imgObj;
       }
-      if (pImg) pImg.src = pc.imgSrc || '';
+      if (pImg) {
+        if (pImg.src === pc.imgSrc && pc.imgSrc) {
+          pImg.removeAttribute('src');
+        }
+        pImg.src = pc.imgSrc || '';
+      }
       if (pTitle) pTitle.textContent = pc.titleText || '문제';
       if (pToggle) pToggle.textContent = pc.toggleText || (pc.minimized ? '▸' : '▾');
       pWidget.classList.toggle('minimized', Boolean(pc.minimized));
+      pWidget.style.transform = '';
       pWidget.style.left = pc.left || '72px';
       pWidget.style.top = pc.top || '18px';
       pWidget.style.width = pc.width || '520px';
@@ -20946,6 +20956,7 @@ class GraphApp {
           if (this.isStudentAudioVideoOnlyMode) {
             this._isAudioReplayActive = true;
             document.body.classList.add('audio-replay-active');
+            if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
             this._applyAudioTimelineStateAt(0);
           } else {
             this._isAudioReplayActive = false;
@@ -23303,7 +23314,7 @@ class GraphApp {
           const dist = Math.max(10, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
           const midX = (pts[0].x + pts[1].x) / 2;
           const midY = (pts[0].y + pts[1].y) / 2;
-          const nextZoom = Math.max(0.5, Math.min(4.5, pinchStartZoom * (dist / pinchStartDist)));
+          const nextZoom = Math.max(1.0, Math.min(2.5, pinchStartZoom * (dist / pinchStartDist)));
           const rect = viewport.getBoundingClientRect();
           const cx = rect.left + rect.width / 2;
           const cy = rect.top + rect.height / 2;
@@ -23555,17 +23566,20 @@ class GraphApp {
     this._replayViewerZoom = 1.0;
     this._replayViewerPanX = 0;
     this._replayViewerPanY = 0;
+    this._lastAppliedAudioStateObj = null;
+    this._replayInkBakeKey = '';
+    this._isAudioReplayActive = true;
+    document.body.classList.add('audio-replay-active');
+    if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
+    this._applyAudioTimelineStateAt(0);
+    this.updateProblemCardPosition();
+    this.syncProblemCardRectFromWidget();
+    this.syncGraphCardRectFromWidget();
     if (autoPlay) {
       this.playAudioSync(0, 'video');
     } else {
       this.pauseAudioPlayback(false);
       this.audioPlayCurrentMs = 0;
-      this._lastAppliedAudioStateObj = null;
-      this._replayInkBakeKey = '';
-      this._isAudioReplayActive = true;
-      document.body.classList.add('audio-replay-active');
-      if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
-      this._applyAudioTimelineStateAt(0);
       this._renderAudioReplayAtCurrentTime();
       this.syncAudioRecordUI();
     }
@@ -23874,7 +23888,7 @@ class GraphApp {
   setSmartViewerZoom(nextZoom, focalClientX = null, focalClientY = null) {
     const viewport = document.getElementById('smartNoteViewerViewport');
     const prevZoom = this._viewerZoom || 1.0;
-    const clampedZoom = Math.max(0.5, Math.min(4.5, nextZoom));
+    const clampedZoom = Math.max(1.0, Math.min(2.5, nextZoom));
 
     if (Math.abs(clampedZoom - 1.0) < 0.02) {
       this._viewerZoom = 1.0;
@@ -33823,7 +33837,7 @@ class GraphApp {
       return null;
     }
 
-    const PAD = 36;
+    const PAD = hasPdfBoard ? 14 : 36;
     const baseW = Math.max(800, Math.round(this.screenWidth || window.innerWidth || 1280));
     const baseH = Math.max(500, Math.round(this.screenHeight || window.innerHeight || 720));
 
@@ -33831,6 +33845,16 @@ class GraphApp {
     const contentTop = Math.floor(minY - PAD);
     const contentRight = Math.ceil(maxX + PAD);
     const contentBottom = Math.ceil(maxY + PAD);
+
+    // 🌟 [통PDF 모드(hasPdfBoard)]: A4 세로 PDF 페이지(및 페이지 밖 필기/카드) 영역에 딱 맞춰 크롭하여
+    //    모바일 세로 화면에서도 좌우 불필요한 모니터 여백 없이 100% 꽉 차게 보이도록 처리!
+    if (hasPdfBoard) {
+      const cropX = Math.floor(contentLeft);
+      const cropY = Math.floor(contentTop);
+      const cropW = Math.min(8000, Math.max(200, Math.ceil(contentRight - contentLeft)));
+      const cropH = Math.min(8000, Math.max(200, Math.ceil(contentBottom - contentTop)));
+      return { x: cropX, y: cropY, width: cropW, height: cropH, w: cropW, h: cropH };
+    }
 
     // 🌟 [대표님 핵심 기획: 기본 캡처 최소 영역 = 모니터 화면 1개 크기 보장 + 화면 밖 필기 시 자동 확장]
     // 1) 좁은 영역에 조그만 원 하나만 그리더라도 그것만 잘려서 과도하게 확대되지 않도록,
@@ -36647,6 +36671,7 @@ class GraphApp {
       return;
     }
 
+    const wasFixedStage = document.body.classList.contains('replay-fixed-stage');
     document.body.classList.add('replay-fixed-stage');
     const { w: stageW, h: stageH } = this._getActiveAudioReplayStageSize();
     document.body.style.setProperty('--replay-stage-w', `${stageW}px`);
@@ -36656,7 +36681,8 @@ class GraphApp {
       wsEl.style.height = `${stageH}px`;
     }
 
-    if (Math.round(this.screenWidth || 0) !== stageW || Math.round(this.screenHeight || 0) !== stageH) {
+    const stageResized = (Math.round(this.screenWidth || 0) !== stageW || Math.round(this.screenHeight || 0) !== stageH);
+    if (stageResized) {
       this.resizeCanvas();
     }
 
@@ -36690,7 +36716,12 @@ class GraphApp {
     this._replayStageTranslateY = ty;
 
     if (wsEl) {
-      wsEl.style.transform = `translate3d(${Math.round(tx * 10) / 10}px, ${Math.round(ty * 10) / 10}px, 0) scale(${totalScale.toFixed(5)})`;
+      wsEl.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px) scale(${totalScale.toFixed(5)})`;
+    }
+    if (!wasFixedStage || stageResized) {
+      if (typeof this.updateProblemCardPosition === 'function') this.updateProblemCardPosition();
+      if (typeof this.syncProblemCardRectFromWidget === 'function') this.syncProblemCardRectFromWidget();
+      if (typeof this.syncGraphCardRectFromWidget === 'function') this.syncGraphCardRectFromWidget();
     }
     if (btnZoom) {
       const pct = Math.round(userZoom * 100);
@@ -37757,6 +37788,7 @@ class GraphApp {
     this._isAudioSyncPlayerVisible = true;
     this._isAudioReplayActive = true;
     this.isAudioPlaying = true;
+    this._lastAppliedAudioStateObj = null;
     document.body.classList.add('audio-replay-active');
     this._syncReplayFixedStageLayout();
 
