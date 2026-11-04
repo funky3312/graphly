@@ -8913,6 +8913,61 @@ body.theme-light .viewer-top-btn {
   display: none !important;
 }
 
+/* 🌟 [초기 진입 전체화면 게이트 (#viewerFullscreenGate)]:
+   - 뒷배경 노트 이미지를 살짝 흐리게(blur 4.5px) 보여주어 자연스럽게 중앙 버튼 클릭 유도
+   - 클릭 즉시 filter가 해제되어 렉 0%, 네이티브 전체화면 + 몰입 모드(상단바 숨김)로 꽉 차게 시작 */
+.smart-note-viewer-overlay.viewer-entry-gate-active .smart-viewer-stage {
+  filter: blur(4.5px) brightness(0.78);
+  pointer-events: none !important;
+}
+
+.smart-note-viewer-overlay.viewer-entry-gate-active .smart-viewer-header,
+.smart-note-viewer-overlay.viewer-entry-gate-active .viewer-edge-nav-btn {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.viewer-fullscreen-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 15, 25, 0.26);
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.viewer-fullscreen-gate-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 54px;
+  padding: 0 28px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(96, 165, 250, 0.75);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.96), rgba(29, 78, 216, 0.96));
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.55), 0 0 0 4px rgba(37, 99, 235, 0.24);
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.15s ease;
+}
+
+.viewer-fullscreen-gate-btn:hover {
+  transform: scale(1.04);
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.65), 0 0 0 6px rgba(59, 130, 246, 0.32);
+}
+
+.viewer-fullscreen-gate-btn:active {
+  transform: scale(0.97);
+}
+
 /* 📱 [모바일/스마트폰 전용 뷰어 최적화]:
    - 모바일에서는 핀치 줌·더블탭 줌을 사용하므로 상단 배율(- 100% +) 및 [편집] 버튼 숨김
    - 양옆 가장자리 화살표(.viewer-edge-nav-btn)가 엄지 스와이프를 가로채지 않도록 숨김

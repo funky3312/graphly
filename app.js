@@ -23114,6 +23114,35 @@ class GraphApp {
       };
     }
 
+    const fsGate = document.getElementById('viewerFullscreenGate');
+    const btnFsGateStart = document.getElementById('btnViewerFullscreenGateStart');
+    const handleEnterFromFsGate = (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      if (overlay) overlay.classList.remove('viewer-entry-gate-active');
+      if (fsGate) fsGate.style.display = 'none';
+      this._mobileViewerFsAttempted = true;
+      this.toggleSmartViewerImmersiveMode(true, true);
+      this.fitSmartViewerStageToScreen(true);
+      setTimeout(() => {
+        if (overlay && overlay.style.display !== 'none' && (this._viewerZoom || 1.0) <= 1.02) {
+          this.fitSmartViewerStageToScreen(true);
+        }
+      }, 160);
+      const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
+      if (total > 1) {
+        this._flashViewerFloatingPageToast(this._viewerSlideIdx || 0, total);
+      }
+    };
+    if (btnFsGateStart) {
+      btnFsGateStart.onclick = handleEnterFromFsGate;
+    }
+    if (fsGate) {
+      fsGate.onclick = handleEnterFromFsGate;
+    }
+
     const syncFullscreenIcons = () => {
       const isFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement || (overlay && overlay.classList.contains('viewer-immersive-fullscreen')));
       const icEnter = document.getElementById('iconViewerFullscreenEnter');
@@ -23613,9 +23642,19 @@ class GraphApp {
     if (touchBar) touchBar.style.display = 'none';
 
     const overlay = document.getElementById('smartNoteViewerOverlay');
+    const fsGate = document.getElementById('viewerFullscreenGate');
+    const isAlreadyNativeFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
     if (overlay) {
       overlay.style.display = 'flex';
-      overlay.classList.remove('viewer-immersive-fullscreen');
+      if (isAlreadyNativeFs) {
+        overlay.classList.remove('viewer-entry-gate-active');
+        overlay.classList.add('viewer-immersive-fullscreen');
+        if (fsGate) fsGate.style.display = 'none';
+      } else {
+        overlay.classList.add('viewer-entry-gate-active');
+        overlay.classList.remove('viewer-immersive-fullscreen');
+        if (fsGate) fsGate.style.display = 'flex';
+      }
     }
 
     const startIdx = Math.max(0, Math.min(pkg.playlistSlides.length - 1, pkg.currentIndex || 0));
