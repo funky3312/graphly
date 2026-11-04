@@ -191,12 +191,23 @@ class GraphApp {
     this.isInkMode = false;              // 실시간 필기 모드 활성 여부
     this.activeInkTool = 'pen';          // 'select' | 'pen' | 'highlighter' | 'eraser' | 'lasso'
     this.currentInkColor = '#1e293b'; // 화이트 페이퍼 기본 차콜 블랙    // 기본 화이트 잉크
+    this.savedPenColor = '#1e293b';      // 🖊️ 펜 전용 기억 색상 (기본: 차콜 블랙)
+    this.savedHighlighterColor = '#1e293b'; // 🖍️ 형광펜 전용 기억 색상 (기본: #1e293b ➔ 노란 형광펜 발색)
     this.currentInkSize = 4.2;           // 기본 4.2px
     this.currentHighlighterSize = 16;    // 기본 16px (형광펜 크기)
     this.currentEraserSize = 14;         // 기본 14px (지우개 크기)
     this.inkPenStyle = 'ballpen';        // 필기 펜 스타일 ('ballpen' | 'flat' | 'fountain' | 'brush')
     this.inkSoftBlur = 0.0;              // 아이캔스크린 스타일 모퉁이 보정 & 소프트 외곽 블러 강도 (0.0 ~ 5.0)
     try {
+      const savedPenCol = localStorage.getItem('graphly_pen_color_v1');
+      if (savedPenCol && /^#[0-9a-fA-F]{3,8}$/.test(savedPenCol)) {
+        this.savedPenColor = savedPenCol;
+        this.currentInkColor = savedPenCol;
+      }
+      const savedHlCol = localStorage.getItem('graphly_highlighter_color_v1');
+      if (savedHlCol && /^#[0-9a-fA-F]{3,8}$/.test(savedHlCol)) {
+        this.savedHighlighterColor = savedHlCol;
+      }
       const savedPenStyle = localStorage.getItem('graphly_ink_pen_style_v1');
       if (savedPenStyle && ['ballpen', 'flat', 'fountain', 'brush'].includes(savedPenStyle)) {
         this.inkPenStyle = savedPenStyle;
@@ -2393,6 +2404,7 @@ class GraphApp {
         this.setInkColor(color);
       };
     });
+    this._applyCurrentToolColorUI(this.currentInkColor || '#1e293b');
 
     // 굵기 선택
     document.querySelectorAll('.ink-size-btn').forEach(btn => {
@@ -3225,8 +3237,57 @@ class GraphApp {
     if (btnInkAxes) btnInkAxes.classList.toggle('active', !!this.showAxes);
   }
 
+  resolveHighlighterStrokeColor(rawColor, isLight = true) {
+    const rawLower = (rawColor || '').toLowerCase();
+    if (rawLower === '#1e293b' || rawLower === '#000000' || rawLower === '#0f172a' || rawLower === '#2d3436' || rawLower === '#ffffff' || rawLower === '#fff') {
+      return isLight ? '#facc15' : '#fde047';
+    } else if (rawLower === '#2563eb') {
+      return '#38bdf8';
+    } else if (rawLower === '#dc2626') {
+      return '#fb7185';
+    } else if (rawLower === '#16a34a') {
+      return '#4ade80';
+    } else if (rawLower === '#7c3aed') {
+      return '#c084fc';
+    }
+    return rawColor || '#facc15';
+  }
+
+  _applyCurrentToolColorUI(color) {
+    if (!color) return;
+    this.currentInkColor = color;
+    const isHl = (this.activeInkTool === 'highlighter');
+    document.querySelectorAll('.ink-color-dot, .pill-color-dot').forEach(dot => {
+      const dsCol = (dot.dataset.color || '').toLowerCase();
+      dot.classList.toggle('active', dsCol === (color || '').toLowerCase());
+      // 형광펜 모드에서는 1번 기본 도트(#1e293b)의 시각적 색상을 노란색(#facc15)으로 표시하여 직관성 극대화
+      if (dsCol === '#1e293b') {
+        dot.style.background = isHl ? '#facc15' : '#1e293b';
+      } else if (dot.dataset.color) {
+        dot.style.background = dot.dataset.color;
+      }
+    });
+    const displayCol = isHl ? this.resolveHighlighterStrokeColor(color, true) : color;
+    if (this.stylusColorBand) {
+      this.stylusColorBand.setAttribute('fill', displayCol);
+    }
+    const previewDot = document.getElementById('inkSizePreviewDot');
+    if (previewDot) previewDot.style.background = displayCol;
+    const tbDot = document.getElementById('inkSizeToolbarDot');
+    if (tbDot) tbDot.style.background = displayCol;
+  }
+
   setActiveInkTool(tool) {
     this.activeInkTool = tool;
+
+    // 🌟 [대표님 피드백 반영]: 펜(pen)과 형광펜(highlighter) 전환 시 각자 기억된 전용 색상으로 자동 스왑!
+    if (tool === 'highlighter') {
+      this._applyCurrentToolColorUI(this.savedHighlighterColor || '#1e293b');
+    } else if (tool === 'pen') {
+      this._applyCurrentToolColorUI(this.savedPenColor || '#1e293b');
+    } else {
+      this._applyCurrentToolColorUI(this.savedPenColor || this.currentInkColor || '#1e293b');
+    }
 
     const btnSelect = document.getElementById('btnInkSelect');
     const btnPen = document.getElementById('btnInkPen');
@@ -3282,18 +3343,21 @@ class GraphApp {
   }
 
   setInkColor(color) {
-    this.currentInkColor = color;
-    document.querySelectorAll('.ink-color-dot, .pill-color-dot').forEach(dot => {
-      dot.classList.toggle('active', (dot.dataset.color || '').toLowerCase() === (color || '').toLowerCase());
-    });
-    // 가상 연필 팁 악센트 컬러 밴드 즉각 동기화 (번쩍임 없이 단정하게)
-    if (this.stylusColorBand) {
-      this.stylusColorBand.setAttribute('fill', color);
+    if (this.activeInkTool === 'highlighter') {
+      this.savedHighlighterColor = color;
+      try {
+        localStorage.setItem('graphly_highlighter_color_v1', color);
+      } catch (err) { }
+    } else {
+      this.savedPenColor = color;
+      try {
+        localStorage.setItem('graphly_pen_color_v1', color);
+      } catch (err) { }
     }
-    const previewDot = document.getElementById('inkSizePreviewDot');
-    if (previewDot) previewDot.style.background = color;
-    const tbDot = document.getElementById('inkSizeToolbarDot');
-    if (tbDot) tbDot.style.background = color;
+    this._applyCurrentToolColorUI(color);
+    if (typeof this.scheduleSaveUserPreferences === 'function') {
+      this.scheduleSaveUserPreferences();
+    }
     // 색상을 바꾸면 지우개, 올가미, 레이저, 선택 모드였을 때 자동으로 펜으로 전환
     if (this.activeInkTool === 'eraser' || this.activeInkTool === 'select' || this.activeInkTool === 'lasso' || this.activeInkTool === 'laser' || this.activeInkTool === 'sticker') {
       this.setActiveInkTool('pen');
@@ -8729,11 +8793,12 @@ class GraphApp {
       ctx.save();
 
       let strokeColor = stroke.color || '#1e293b';
-      if (!stroke.isHighlighter && (strokeColor.toLowerCase() === '#ffffff' || strokeColor.toLowerCase() === '#fff')) {
-        strokeColor = '#0f172a';
-      }
       if (this.isMonochromeMode) {
-        strokeColor = '#000000';
+        strokeColor = stroke.isHighlighter ? '#cbd5e1' : '#000000';
+      } else if (stroke.isHighlighter) {
+        strokeColor = this.resolveHighlighterStrokeColor(strokeColor, true);
+      } else if (strokeColor.toLowerCase() === '#ffffff' || strokeColor.toLowerCase() === '#fff') {
+        strokeColor = '#0f172a';
       }
 
       ctx.strokeStyle = strokeColor;
@@ -10311,10 +10376,13 @@ class GraphApp {
           if (!st.points || st.points.length === 0) return;
           cCtx.save();
           let col = st.color || '#1e293b';
-          if (isProbExtra && !st.isHighlighter && (col.toLowerCase() === '#ffffff' || col.toLowerCase() === '#fff')) {
+          if (this.isMonochromeMode) {
+            col = st.isHighlighter ? '#cbd5e1' : '#000000';
+          } else if (st.isHighlighter) {
+            col = this.resolveHighlighterStrokeColor(col, true);
+          } else if (isProbExtra && (col.toLowerCase() === '#ffffff' || col.toLowerCase() === '#fff')) {
             col = '#0f172a';
           }
-          if (this.isMonochromeMode) col = '#000000';
           cCtx.strokeStyle = col;
           cCtx.fillStyle = col;
           const baseSize = (st.size || 3.5) * sizeScale;
@@ -12366,7 +12434,11 @@ class GraphApp {
       if (!stroke.points || stroke.points.length === 0) return;
       ctx.save();
       let strokeColor = stroke.color || '#1e293b';
-      if (this.isMonochromeMode) strokeColor = '#000000';
+      if (this.isMonochromeMode) {
+        strokeColor = stroke.isHighlighter ? '#cbd5e1' : '#000000';
+      } else if (stroke.isHighlighter) {
+        strokeColor = this.resolveHighlighterStrokeColor(strokeColor, true);
+      }
       ctx.strokeStyle = strokeColor;
       ctx.fillStyle = strokeColor;
 
@@ -19191,6 +19263,8 @@ class GraphApp {
       updatedAt: Date.now(),
       inkDockPosition: this.inkDockPosition || 'bottom',
       inkPenStyle: this.inkPenStyle || 'ballpen',
+      savedPenColor: this.savedPenColor || '#1e293b',
+      savedHighlighterColor: this.savedHighlighterColor || '#1e293b',
       inkSoftBlur: typeof this.inkSoftBlur === 'number' ? this.inkSoftBlur : 0.0,
       inkSize: typeof this.currentInkSize === 'number' ? this.currentInkSize : 4.2,
       highlighterSize: typeof this.currentHighlighterSize === 'number' ? this.currentHighlighterSize : 16,
@@ -19217,6 +19291,15 @@ class GraphApp {
       if (prefs.inkPenStyle && ['ballpen', 'flat', 'fountain', 'brush'].includes(prefs.inkPenStyle)) {
         this.setInkPenStyle(prefs.inkPenStyle, !silent);
       }
+      if (prefs.savedPenColor && /^#[0-9a-fA-F]{3,8}$/.test(prefs.savedPenColor)) {
+        this.savedPenColor = prefs.savedPenColor;
+        try { localStorage.setItem('graphly_pen_color_v1', prefs.savedPenColor); } catch (_) { }
+      }
+      if (prefs.savedHighlighterColor && /^#[0-9a-fA-F]{3,8}$/.test(prefs.savedHighlighterColor)) {
+        this.savedHighlighterColor = prefs.savedHighlighterColor;
+        try { localStorage.setItem('graphly_highlighter_color_v1', prefs.savedHighlighterColor); } catch (_) { }
+      }
+      this._applyCurrentToolColorUI(this.activeInkTool === 'highlighter' ? (this.savedHighlighterColor || '#1e293b') : (this.savedPenColor || '#1e293b'));
       if (typeof prefs.inkSoftBlur === 'number' && !isNaN(prefs.inkSoftBlur)) {
         this.setInkSoftBlur(prefs.inkSoftBlur, false);
       }
@@ -33836,10 +33919,13 @@ class GraphApp {
                 if (!st || !st.points || st.points.length === 0) return;
                 ctx.save();
                 let col = st.color || '#1e293b';
-                if (isProbCard && !st.isHighlighter && (col.toLowerCase() === '#ffffff' || col.toLowerCase() === '#fff')) {
+                if (this.isMonochromeMode) {
+                  col = st.isHighlighter ? '#cbd5e1' : '#000000';
+                } else if (st.isHighlighter) {
+                  col = this.resolveHighlighterStrokeColor(col, true);
+                } else if (isProbCard && (col.toLowerCase() === '#ffffff' || col.toLowerCase() === '#fff')) {
                   col = '#0f172a';
                 }
-                if (this.isMonochromeMode) col = '#000000';
                 ctx.strokeStyle = col;
                 ctx.fillStyle = col;
                 ctx.lineCap = 'round';
