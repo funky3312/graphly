@@ -23820,14 +23820,14 @@ class GraphApp {
     const isAlreadyNativeFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
     if (overlay) {
       overlay.style.display = 'flex';
-      if (isAlreadyNativeFs) {
+      if (isAlreadyNativeFs || !fsGate) {
         overlay.classList.remove('viewer-entry-gate-active');
         overlay.classList.add('viewer-immersive-fullscreen');
         if (fsGate) fsGate.style.display = 'none';
       } else {
         overlay.classList.add('viewer-entry-gate-active');
         overlay.classList.remove('viewer-immersive-fullscreen');
-        if (fsGate) fsGate.style.display = 'flex';
+        fsGate.style.display = 'flex';
       }
     }
 
