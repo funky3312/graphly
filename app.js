@@ -8487,8 +8487,11 @@ class GraphApp {
     const w = (!isMin && Number.isFinite(rawStyleW) && rawStyleW >= 180)
       ? rawStyleW
       : (parseFloat(widget._savedExpandedWidth) || (Number.isFinite(rawStyleW) && rawStyleW >= 180 ? rawStyleW : 0) || (!isMin && measuredWidgetRect ? measuredWidgetRect.width : 520) || 520);
+    const effW = (!isMin && measuredWidgetRect && measuredWidgetRect.width >= 140)
+      ? Math.min(w, measuredWidgetRect.width)
+      : w;
     const aspect = this.problemCardAspect || 0.72;
-    const imgW = w;
+    const imgW = effW;
     const imgH = Math.round(imgW * aspect);
     const h = imgH;
 
@@ -8498,7 +8501,7 @@ class GraphApp {
 
     if (pCanvas && !isMin) {
       const dpr = this.getCanvasDpr();
-      const targetW = Math.round(w * dpr);
+      const targetW = Math.round(effW * dpr);
       const targetH = Math.round(h * dpr);
       if (pCanvas.width !== targetW || pCanvas.height !== targetH) {
         pCanvas.width = targetW;
@@ -12313,8 +12316,11 @@ class GraphApp {
     const w = (!isMin && measuredWidgetRect && measuredWidgetRect.width > baseW)
       ? measuredWidgetRect.width
       : baseW;
+    const effW = (!isMin && measuredWidgetRect && measuredWidgetRect.width >= 120)
+      ? Math.min(w, measuredWidgetRect.width)
+      : w;
     const aspect = this.graphCardAspect || 0.85;
-    const imgW = w;
+    const imgW = effW;
     const imgH = Math.round(imgW * aspect);
     const h = imgH;
 
@@ -12324,7 +12330,7 @@ class GraphApp {
 
     if (gCanvas && !isMin) {
       const dpr = this.getCanvasDpr();
-      const targetW = Math.round(w * dpr);
+      const targetW = Math.round(effW * dpr);
       const targetH = Math.round(h * dpr);
       if (gCanvas.width !== targetW || gCanvas.height !== targetH) {
         gCanvas.width = targetW;
@@ -22819,16 +22825,18 @@ class GraphApp {
     const hotspots = this.extractGraphHotspotsForBounds(smartBounds, effFilter);
     const stickerHotspots = this.extractStickerHotspotsForBounds(smartBounds, effFilter);
     this._omitStickersForViewerSnapshot = true;
+    const isMobileDevice = (typeof window !== 'undefined') && (window.innerWidth <= 768 || window.innerHeight <= 500);
+    const targetScale = isMobileDevice ? 1.8 : (forCloud ? 2.8 : 3.2);
     let exp;
     try {
-      exp = this.getExportCanvas(effFilter, smartBounds, forCloud ? 2.8 : 3.2);
+      exp = this.getExportCanvas(effFilter, smartBounds, targetScale);
     } finally {
       this._omitStickersForViewerSnapshot = false;
     }
     let dataUrl = '';
     try {
-      dataUrl = forCloud
-        ? this.encodeCanvasSmartWebP(exp.canvas, 0.95)
+      dataUrl = (forCloud || isMobileDevice)
+        ? this.encodeCanvasSmartWebP(exp.canvas, 0.94)
         : exp.canvas.toDataURL('image/png');
     } catch (e) {
       dataUrl = exp.canvas.toDataURL('image/png');
@@ -22878,6 +22886,7 @@ class GraphApp {
         filteredSlides[i].viewerGraphHotspots = snap.hotspots;
         filteredSlides[i].viewerStickerHotspots = snap.stickerHotspots;
         filteredSlides[i].viewerSmartBounds = snap.smartBounds;
+        filteredSlides[i]._viewerHiResRendered = true;
       }
     } finally {
       if (isOuterLoop) {
@@ -23075,7 +23084,7 @@ class GraphApp {
     }
     if (btnDownload) {
       btnDownload.onclick = async () => {
-        if (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides) && this._viewerPkg.playlistSlides.length > 1) {
+        if (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides) && this._viewerPkg.playlistSlides.length >= 1) {
           await this.downloadViewerSlidesAsSinglePdf(this._viewerPkg);
           return;
         }
@@ -23118,9 +23127,21 @@ class GraphApp {
     document.addEventListener('fullscreenchange', syncFullscreenIcons);
     document.addEventListener('webkitfullscreenchange', syncFullscreenIcons);
     window.addEventListener('resize', () => {
-      if (overlay && overlay.style.display !== 'none' && (this._viewerZoom || 1.0) <= 1.02) {
-        this.fitSmartViewerStageToScreen(true);
+      if (overlay && overlay.style.display !== 'none') {
+        if ((this._viewerZoom || 1.0) <= 1.02) {
+          this.fitSmartViewerStageToScreen(true);
+        } else {
+          this._clampSmartViewerPan();
+          this._applySmartViewerTransform();
+        }
       }
+    });
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => {
+        if (overlay && overlay.style.display !== 'none') {
+          this.fitSmartViewerStageToScreen(true);
+        }
+      }, 120);
     });
 
     // 키보드 좌우 방향키 페이지 넘김 & 단축키 지원
@@ -23167,6 +23188,7 @@ class GraphApp {
       const activePointers = new Map();
       let dragStartX = 0, dragStartY = 0;
       let panStartX = 0, panStartY = 0;
+      let startAtLeftEdge = false, startAtRightEdge = false;
       let pointerDownTime = 0;
       let lastMoveX = 0, lastMoveTime = 0, velocityX = 0;
       let wasMultiTouch = false;
@@ -23188,9 +23210,25 @@ class GraphApp {
       }, { passive: false });
 
       viewport.addEventListener('pointerdown', (e) => {
-        if (e.target.closest('.viewer-graph-hotspot, .viewer-sticker-hotspot, .viewer-edge-nav-btn')) return;
+        // 좌우 가장자리 화살표 버튼 클릭만 예외 처리하고, 그래프/스티커 핫스팟 위에서도 스와이프·핀치 줌 100% 허용!
+        if (e.target.closest('.viewer-edge-nav-btn')) return;
         if (e.button !== 0 && e.pointerType === 'mouse') return;
         if (stage) stage.classList.remove('swipe-animating');
+
+        // 모바일 첫 터치 시 브라우저 주소창을 가리는 네이티브 전체화면 자동 진입 시도 (안드로이드 크롬 등 지원 기기)
+        if (e.pointerType === 'touch' && !this._mobileViewerFsAttempted && (window.innerWidth <= 768 || window.innerHeight <= 500)) {
+          this._mobileViewerFsAttempted = true;
+          if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+            const docEl = document.documentElement;
+            const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen;
+            if (typeof req === 'function') {
+              try {
+                const p = req.call(docEl);
+                if (p && typeof p.catch === 'function') p.catch(() => { });
+              } catch (_) { }
+            }
+          }
+        }
 
         activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (activePointers.size === 1) {
@@ -23203,8 +23241,15 @@ class GraphApp {
           velocityX = 0;
           panStartX = this._viewerPanX || 0;
           panStartY = this._viewerPanY || 0;
+          const zoom = this._viewerZoom || 1.0;
+          const vw = Math.max(200, viewport.clientWidth);
+          const zoomedW = (this._viewerBaseW || 1000) * zoom;
+          const maxPanX = Math.max(0, (zoomedW - vw) / 2);
+          startAtLeftEdge = (panStartX >= maxPanX - 6);
+          startAtRightEdge = (panStartX <= -maxPanX + 6);
         } else if (activePointers.size === 2) {
           wasMultiTouch = true;
+          this._viewerSuppressHotspotClickUntil = performance.now() + 350;
           if (singleTapTimer) {
             clearTimeout(singleTapTimer);
             singleTapTimer = null;
@@ -23224,6 +23269,7 @@ class GraphApp {
         activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
         if (activePointers.size === 2) {
+          this._viewerSuppressHotspotClickUntil = performance.now() + 350;
           const pts = Array.from(activePointers.values());
           const dist = Math.max(10, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
           const midX = (pts[0].x + pts[1].x) / 2;
@@ -23251,6 +23297,9 @@ class GraphApp {
 
           const dx = e.clientX - dragStartX;
           const dy = e.clientY - dragStartY;
+          if (Math.hypot(dx, dy) >= 8) {
+            this._viewerSuppressHotspotClickUntil = now + 280;
+          }
           if ((this._viewerZoom || 1.0) <= 1.02) {
             // 기본 배율(100%): 1:1 쫀득한 좌우 스와이프 페이지 넘김 프리뷰
             if (Math.abs(dx) > 3) {
@@ -23294,9 +23343,13 @@ class GraphApp {
 
         // 1) 툭 터치(Single Tap) vs 더블탭(Double Tap) 판별
         if (moveDist < 8 && elapsed < 380) {
+          // 그래프/스티커 핫스팟 위를 툭 탭한 경우는 핫스팟 고유 클릭 동작에 위임
+          if (e.target && e.target.closest && e.target.closest('.viewer-graph-hotspot, .viewer-sticker-hotspot')) {
+            return;
+          }
           const now = performance.now();
           if (now - lastTapTime < 280 && Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) < 36) {
-            // 더블탭: 터치한 지점 중심으로 100% ⇄ 160% 즉시 확대/축소 토글
+            // 더블탭: 터치한 지점 중심으로 100% ⇄ 180% 즉시 확대/축소 토글
             if (singleTapTimer) {
               clearTimeout(singleTapTimer);
               singleTapTimer = null;
@@ -23306,7 +23359,7 @@ class GraphApp {
             if ((this._viewerZoom || 1.0) > 1.08) {
               this.fitSmartViewerStageToScreen(true);
             } else {
-              this.setSmartViewerZoom(1.6, e.clientX, e.clientY);
+              this.setSmartViewerZoom(1.8, e.clientX, e.clientY);
             }
             return;
           }
@@ -23322,17 +23375,18 @@ class GraphApp {
           return;
         }
 
-        // 2) 기본 배율(100%)에서 좌우 스와이프(또는 빠른 플릭) 시 이전/다음 페이지 넘김!
+        const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
+        const isHorizSwipe = Math.abs(totalDx) > Math.abs(totalDy) * 0.92;
+        const isFastFlickNext = (totalDx <= -18 && velocityX <= -0.22);
+        const isFastFlickPrev = (totalDx >= 18 && velocityX >= 0.22);
+
+        // 2) 기본 배율(100%)에서 좌우 스와이프(또는 빠른 플릭) 시 이전/다음 페이지 즉시 넘김!
         if ((this._viewerZoom || 1.0) <= 1.02) {
-          const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
-          const isHorizSwipe = Math.abs(totalDx) > Math.abs(totalDy) * 0.95;
-          const isFastFlickNext = (totalDx <= -20 && velocityX <= -0.26);
-          const isFastFlickPrev = (totalDx >= 20 && velocityX >= 0.26);
-          if (isHorizSwipe && (totalDx <= -38 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
+          if (isHorizSwipe && (totalDx <= -30 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
             this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next');
             return;
           }
-          if (isHorizSwipe && (totalDx >= 38 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
+          if (isHorizSwipe && (totalDx >= 30 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
             this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev');
             return;
           }
@@ -23340,6 +23394,19 @@ class GraphApp {
           this._viewerPanX = 0;
           this._viewerPanY = 0;
           this._applySmartViewerTransform();
+          return;
+        }
+
+        // 3) 확대 상태(>100%)에서도 좌/우 끝단에 닿은 채로 한 번 더 밀면(Edge Swipe) 다음/이전 페이지로 전환!
+        if (isHorizSwipe) {
+          if (startAtRightEdge && (totalDx <= -44 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
+            this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next');
+            return;
+          }
+          if (startAtLeftEdge && (totalDx >= 44 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
+            this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev');
+            return;
+          }
         }
       };
 
@@ -23522,10 +23589,25 @@ class GraphApp {
     await this.openSmartNoteViewer(pkg, true);
   }
 
+  _preloadSmartViewerSlides(pkg) {
+    if (!pkg || !Array.isArray(pkg.playlistSlides)) return;
+    if (!this._viewerPreloadedImages) this._viewerPreloadedImages = new Map();
+    pkg.playlistSlides.forEach((sl) => {
+      if (sl && sl.viewerSnapshotDataUrl && !this._viewerPreloadedImages.has(sl.viewerSnapshotDataUrl)) {
+        const im = new Image();
+        im.decoding = 'async';
+        im.src = sl.viewerSnapshotDataUrl;
+        this._viewerPreloadedImages.set(sl.viewerSnapshotDataUrl, im);
+      }
+    });
+  }
+
   async openSmartNoteViewer(pkg, forceNoteViewer = false) {
     if (!pkg || !Array.isArray(pkg.playlistSlides) || !pkg.playlistSlides.length) return;
     this.exitStudentAudioVideoOnlyMode();
     this._viewerPkg = pkg;
+    this._mobileViewerFsAttempted = false;
+    this._preloadSmartViewerSlides(pkg);
     document.body.classList.remove('viewer-graph-touch-mode');
     const touchBar = document.getElementById('viewerGraphTouchBar');
     if (touchBar) touchBar.style.display = 'none';
@@ -23597,8 +23679,8 @@ class GraphApp {
       }
     }
 
-    // 슬라이드 스캔 이미지가 없거나 초고화질(3.2x PNG) 렌더링이 아직 안 된 경우 실시간 생성
-    if (!slide.viewerSnapshotDataUrl || (!slide._viewerHiResRendered && slide.historyJson)) {
+    // 슬라이드 스캔 이미지가 아직 없는 경우에만 생성 (공유 링크에 이미 PC 원본 스캔본이 있으면 재렌더링 없이 0.00초 즉시 표시!)
+    if (!slide.viewerSnapshotDataUrl) {
       this.deserializeFullSlideState(slide);
       await this._waitForSlideImagesReady();
       const snap = this.captureCurrentSlideViewerSnapshot(this._viewerPkg.exportFilter || null, false);
@@ -23614,13 +23696,24 @@ class GraphApp {
     const imgEl = document.getElementById('smartNoteViewerImg');
     const hotspotsEl = document.getElementById('smartNoteViewerHotspots');
 
-    if (imgEl) {
-      await new Promise((res) => {
-        imgEl.onload = () => res();
-        imgEl.onerror = () => res();
-        imgEl.src = slide.viewerSnapshotDataUrl;
-        if (imgEl.complete && imgEl.naturalWidth > 0) res();
-      });
+    if (imgEl && slide.viewerSnapshotDataUrl) {
+      if (imgEl.src !== slide.viewerSnapshotDataUrl) {
+        await new Promise((res) => {
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            imgEl.onload = null;
+            imgEl.onerror = null;
+            res();
+          };
+          imgEl.onload = finish;
+          imgEl.onerror = finish;
+          imgEl.src = slide.viewerSnapshotDataUrl;
+          if (imgEl.complete && imgEl.naturalWidth > 0) finish();
+          setTimeout(finish, 180);
+        });
+      }
     }
 
     const hotspots = Array.isArray(slide.viewerGraphHotspots) ? slide.viewerGraphHotspots : [];
@@ -23638,6 +23731,9 @@ class GraphApp {
 
         box.onclick = (e) => {
           e.stopPropagation();
+          if (this._viewerSuppressHotspotClickUntil && performance.now() < this._viewerSuppressHotspotClickUntil) {
+            return;
+          }
           this.enterViewerGraphTouchMode(hs, idx);
         };
         hotspotsEl.appendChild(box);
@@ -23658,6 +23754,9 @@ class GraphApp {
         sBox.appendChild(b);
         sBox.onclick = (e) => {
           e.stopPropagation();
+          if (this._viewerSuppressHotspotClickUntil && performance.now() < this._viewerSuppressHotspotClickUntil) {
+            return;
+          }
           sh.revealed = !sh.revealed;
           sBox.classList.toggle('revealed', sh.revealed);
           b.textContent = sh.revealed ? '🔓' : '🔒 터치';
@@ -23679,11 +23778,12 @@ class GraphApp {
     const imgEl = document.getElementById('smartNoteViewerImg');
     if (!viewport || !imgEl) return;
 
-    // 상단 바 숨김/표시 토글 시 문서 크기가 들썩이지 않도록 여백 기준을 고정
-    const padX = 20;
-    const padY = 56;
-    const vw = Math.max(200, viewport.clientWidth - padX);
-    const vh = Math.max(180, viewport.clientHeight - padY);
+    // 모바일(가로·세로)에서는 여백(0px) 없이 화면 100% 꽉 차게 피팅!
+    const isMobileViewport = (typeof window !== 'undefined') && (window.innerWidth <= 768 || window.innerHeight <= 500);
+    const padX = isMobileViewport ? 0 : 20;
+    const padY = isMobileViewport ? 0 : 56;
+    const vw = Math.max(180, viewport.clientWidth - padX);
+    const vh = Math.max(160, viewport.clientHeight - padY);
     const iw = Math.max(1, imgEl.naturalWidth || 1000);
     const ih = Math.max(1, imgEl.naturalHeight || 700);
 
@@ -23721,13 +23821,13 @@ class GraphApp {
       this._viewerPanY = 0;
       return;
     }
-    const vw = Math.max(200, viewport.clientWidth);
-    const vh = Math.max(180, viewport.clientHeight);
+    const vw = Math.max(180, viewport.clientWidth);
+    const vh = Math.max(160, viewport.clientHeight);
     const zoomedW = (this._viewerBaseW || 1000) * zoom;
     const zoomedH = (this._viewerBaseH || 700) * zoom;
 
-    const maxPanX = Math.max(0, (zoomedW - vw) / 2 + 48);
-    const maxPanY = Math.max(0, (zoomedH - vh) / 2 + 48);
+    const maxPanX = Math.max(0, (zoomedW - vw) / 2);
+    const maxPanY = Math.max(0, (zoomedH - vh) / 2);
     this._viewerPanX = Math.max(-maxPanX, Math.min(maxPanX, this._viewerPanX || 0));
     this._viewerPanY = Math.max(-maxPanY, Math.min(maxPanY, this._viewerPanY || 0));
   }
@@ -33233,7 +33333,10 @@ class GraphApp {
           const bx = bRect.left - canvasRect.left - offX;
           const by = bRect.top - canvasRect.top - offY;
           const bw = bRect.width;
-          const bh = bRect.height;
+          const natAspect = (imgEl.naturalHeight > 0 && imgEl.naturalWidth > 0)
+            ? (imgEl.naturalHeight / imgEl.naturalWidth)
+            : (bRect.height / bRect.width);
+          const bh = Math.max(1, Math.round(bw * natAspect));
 
           ctx.save();
           ctx.fillStyle = '#ffffff';

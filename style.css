@@ -3836,7 +3836,7 @@ body.pdf-modal-open #lassoActionFloatingBar {
   left: 72px;
   width: 520px;
   min-width: 280px;
-  max-width: 82vw;
+  max-width: none;
   z-index: 150;
   background: transparent !important;
   display: flex;
@@ -8507,12 +8507,16 @@ body.theme-light .export-filter-hint {
 .smart-note-viewer-overlay {
   position: fixed;
   inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
   z-index: 9500;
   background: #0b0f19;
   display: flex;
   flex-direction: column;
   user-select: none;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body.theme-light .smart-note-viewer-overlay {
@@ -8907,6 +8911,37 @@ body.theme-light .viewer-top-btn {
 
 .smart-viewer-bottom-hint {
   display: none !important;
+}
+
+/* 📱 [모바일/스마트폰 전용 뷰어 최적화]:
+   - 모바일에서는 핀치 줌·더블탭 줌을 사용하므로 상단 배율(- 100% +) 및 [편집] 버튼 숨김
+   - 양옆 가장자리 화살표(.viewer-edge-nav-btn)가 엄지 스와이프를 가로채지 않도록 숨김
+   - 노트가 여백 없이 화면 100%에 꽉 차도록 설정 */
+@media (max-width: 768px), (max-height: 500px) {
+  .smart-viewer-header {
+    min-height: 42px;
+    padding: 4px 10px;
+  }
+
+  .smart-viewer-header .viewer-zoom-group,
+  .smart-viewer-header #btnViewerEnterEdit {
+    display: none !important;
+  }
+
+  .smart-note-viewer-overlay .viewer-edge-nav-btn {
+    display: none !important;
+  }
+
+  .smart-note-viewer-overlay .smart-viewer-stage {
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .viewer-top-btn {
+    height: 28px;
+    padding: 0 9px;
+    font-size: 11.5px;
+  }
 }
 
 /* ============================================================================
