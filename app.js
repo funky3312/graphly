@@ -10105,7 +10105,30 @@ class GraphApp {
 
     const bodyEl = cardWidgetEl.querySelector('.problem-card-body');
     const laserBtn = cardWidgetEl.querySelector('.btn-card-laser');
+    const headerEl = cardWidgetEl.querySelector('.problem-card-header');
     if (!bodyEl || !laserBtn) return;
+
+    // 🌟 [대표님 기획: 평소에는 상단바를 숨겨 '딱 그래프/문제만' 노출 + 터치/호버/카드필기ON 시에만 상단바 표시] 🌟
+    const activateCardHeaderPeek = () => {
+      document.querySelectorAll('.problem-card-widget.card-header-peek').forEach((other) => {
+        if (other !== cardWidgetEl) other.classList.remove('card-header-peek');
+      });
+      cardWidgetEl.classList.add('card-header-peek');
+    };
+    bodyEl.addEventListener('pointerdown', activateCardHeaderPeek, { passive: true });
+    if (headerEl) {
+      headerEl.addEventListener('pointerdown', activateCardHeaderPeek, { passive: true });
+    }
+    if (!this._cardHeaderPeekGlobalDismissBound) {
+      this._cardHeaderPeekGlobalDismissBound = true;
+      document.addEventListener('pointerdown', (ev) => {
+        const t = ev.target;
+        if (t && t.closest && t.closest('.problem-card-widget')) return;
+        document.querySelectorAll('.problem-card-widget.card-header-peek').forEach((el) => {
+          el.classList.remove('card-header-peek');
+        });
+      }, { passive: true });
+    }
 
     let laserCanvas = bodyEl.querySelector('.card-laser-canvas');
     if (!laserCanvas) {
@@ -11953,8 +11976,8 @@ class GraphApp {
           <button type="button" class="card-btn btn-card-laser" title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
             <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></span>
           </button>
-          <button class="card-btn card-btn-restore btn-extra-restore">
-            <span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>그래프 수정</span>
+          <button class="card-btn card-btn-restore btn-extra-restore" title="그래프 수정">
+            <span style="display:inline-flex;align-items:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></span>
           </button>
           <button class="card-btn btn-card-close btn-extra-close" title="삭제">
             <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>

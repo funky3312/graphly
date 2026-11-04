@@ -4244,18 +4244,28 @@ body.theme-light .card-drag-icon {
   color: #2563eb !important;
 }
 
-/* 4. 카드 컨트롤 액션 버튼군 */
+/* 4. 카드 컨트롤 액션 버튼군 (차분한 무채색 슬레이트 톤) */
+.btn-card-close {
+  width: 26px !important;
+  height: 25px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 6px !important;
+}
+
 body.theme-light .card-btn {
-  background: #f1f5f9 !important;
-  border: 1px solid rgba(0, 0, 0, 0.12) !important;
-  color: #1e293b !important;
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  color: #475569 !important;
   font-weight: 600 !important;
 }
 
 body.theme-light .card-btn:hover {
   background: #e2e8f0 !important;
-  border-color: #2563eb !important;
-  color: #2563eb !important;
+  border-color: rgba(15, 23, 42, 0.24) !important;
+  color: #0f172a !important;
 }
 
 /* 다시 자르기 버튼 (로열 블루 하이라이트) */
@@ -5632,17 +5642,27 @@ body.graph-snap-crosshair #graphCanvas {
 }
 
 .card-btn-restore {
-  background: rgba(37, 99, 235, 0.12) !important;
-  color: #60a5fa !important;
-  border: 1px solid rgba(96, 165, 250, 0.35) !important;
-  font-weight: 700 !important;
-  padding: 0 9px !important;
+  width: 26px !important;
+  height: 25px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #cbd5e1 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
 }
 
 body.theme-light .card-btn-restore {
-  background: rgba(37, 99, 235, 0.10) !important;
-  color: #2563eb !important;
-  border: 1px solid rgba(37, 99, 235, 0.30) !important;
+  background: #f8fafc !important;
+  color: #475569 !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+}
+
+body.theme-light .card-btn-restore:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.24) !important;
 }
 
 
@@ -7200,7 +7220,7 @@ body:not(.theme-light) .cloud-item-title {
 .problem-card-title-group {
   display: inline-flex !important;
   align-items: center !important;
-  gap: 6px !important;
+  gap: 5px !important;
   min-width: 0;
   pointer-events: auto !important;
 }
@@ -7208,13 +7228,13 @@ body:not(.theme-light) .cloud-item-title {
 .problem-card-title-group .problem-card-drag-handle {
   display: inline-flex !important;
   align-items: center !important;
-  height: 26px !important;
-  padding: 0 10px !important;
+  height: 25px !important;
+  padding: 0 8px !important;
   border-radius: 6px !important;
   background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
-  color: #f8fafc !important;
-  font-size: 12.5px !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #e2e8f0 !important;
+  font-size: 12px !important;
   font-weight: 700 !important;
   cursor: grab !important;
   user-select: none !important;
@@ -7222,37 +7242,36 @@ body:not(.theme-light) .cloud-item-title {
 
 body.theme-light .problem-card-title-group .problem-card-drag-handle {
   background: #f8fafc !important;
-  border: 1px solid rgba(15, 23, 42, 0.14) !important;
-  color: #0f172a !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  color: #334155 !important;
 }
 
 .problem-card-widget.is-dragging-card .problem-card-title-group .problem-card-drag-handle {
   cursor: grabbing !important;
 }
 
-/* 큰 삼각형 모양 원버튼 접기/펼치기 아이콘 버튼 */
+/* 차분한 무채색(흑백/슬레이트) 접기/펼치기 아이콘 버튼 */
 .card-fold-triangle-btn {
-  width: 30px !important;
-  height: 26px !important;
-  min-width: 30px !important;
+  width: 26px !important;
+  height: 25px !important;
+  min-width: 26px !important;
   padding: 0 !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  border-radius: 7px !important;
-  background: rgba(0, 210, 211, 0.16) !important;
-  border: 1.5px solid rgba(0, 210, 211, 0.55) !important;
-  color: #00d2d3 !important;
+  border-radius: 6px !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  color: #cbd5e1 !important;
   cursor: pointer !important;
   flex-shrink: 0 !important;
   transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease !important;
 }
 
 .card-fold-triangle-btn:hover {
-  background: rgba(0, 210, 211, 0.28) !important;
-  border-color: #00d2d3 !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
   color: #ffffff !important;
-  transform: scale(1.06);
 }
 
 .card-fold-triangle-btn:active {
@@ -7260,24 +7279,54 @@ body.theme-light .problem-card-title-group .problem-card-drag-handle {
 }
 
 .card-fold-triangle-btn .card-fold-chevron {
-  font-size: 18px !important;
+  font-size: 14px !important;
   line-height: 1 !important;
-  font-weight: 900 !important;
+  font-weight: 800 !important;
+  color: inherit !important;
   display: inline-block !important;
-  transform: scale(1.3) translateY(-0.5px);
+  transform: translateY(-0.5px);
   pointer-events: none !important;
 }
 
 body.theme-light .card-fold-triangle-btn {
-  background: #eff6ff !important;
-  border: 1.5px solid rgba(37, 99, 235, 0.45) !important;
-  color: #2563eb !important;
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  color: #475569 !important;
 }
 
 body.theme-light .card-fold-triangle-btn:hover {
-  background: #dbeafe !important;
-  border-color: #1d4ed8 !important;
-  color: #1e40af !important;
+  background: #e2e8f0 !important;
+  border-color: rgba(15, 23, 42, 0.24) !important;
+  color: #0f172a !important;
+}
+
+/* 🌟 [대표님 기획: 평소에는 상단바를 숨겨 '딱 그래프/문제만' 노출 + 마우스/펜 호버, 터치, 카드필기(✒️) 활성 시에만 표시] 🌟 */
+.problem-card-header {
+  position: relative;
+  transition: opacity 0.16s ease !important;
+}
+
+.problem-card-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 8px;
+}
+
+.problem-card-widget:not(.minimized) .problem-card-header {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.problem-card-widget:hover .problem-card-header,
+.problem-card-widget.card-header-peek .problem-card-header,
+.problem-card-widget.card-ink-active .problem-card-header,
+.problem-card-widget.is-dragging-card .problem-card-header,
+.problem-card-widget.minimized .problem-card-header {
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
 
 /* 하단 필기 바(#inkFloatingToolbar) 및 주요 툴바가 문제/그래프 카드(z-index: 150~190)에 절대 덮이지 않도록 최상위 우선순위 보장 */
@@ -7311,45 +7360,51 @@ header {
   z-index: 445 !important;
 }
 
-/* ✒️ [카드 전용 상단 필기 잠금/허용 토글 버튼([✒️]) & 전역 레이저 연동 캔버스] */
+/* ✒️ [카드 전용 상단 필기 잠금/허용 토글 버튼([✒️]) — 차분한 무채색(흑백/슬레이트) 톤] */
 .btn-card-laser {
-  width: 28px !important;
-  height: 26px !important;
+  width: 26px !important;
+  height: 25px !important;
   padding: 0 !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  border-radius: 7px !important;
-  color: #38bdf8 !important;
-  border: 1px solid rgba(56, 189, 248, 0.32) !important;
-  background: rgba(56, 189, 248, 0.10) !important;
+  border-radius: 6px !important;
+  color: #cbd5e1 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
   transition: all 0.16s cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
 
 .btn-card-laser:hover {
-  background: rgba(56, 189, 248, 0.22) !important;
-  border-color: rgba(56, 189, 248, 0.65) !important;
-  color: #0ea5e9 !important;
-  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
 }
 
 .btn-card-laser.active {
-  background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%) !important;
-  border-color: #7dd3fc !important;
-  color: #ffffff !important;
-  box-shadow: 0 0 12px rgba(37, 99, 235, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+  background: #e2e8f0 !important;
+  border-color: #ffffff !important;
+  color: #0f172a !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25) !important;
 }
 
 body.theme-light .btn-card-laser {
-  color: #0284c7 !important;
-  background: rgba(2, 132, 199, 0.08) !important;
-  border-color: rgba(2, 132, 199, 0.28) !important;
+  color: #475569 !important;
+  background: #f8fafc !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+}
+
+body.theme-light .btn-card-laser:hover {
+  background: #e2e8f0 !important;
+  border-color: rgba(15, 23, 42, 0.24) !important;
+  color: #0f172a !important;
 }
 
 body.theme-light .btn-card-laser.active {
   color: #ffffff !important;
-  background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%) !important;
-  border-color: #1d4ed8 !important;
+  background: #334155 !important;
+  border-color: #1e293b !important;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18) !important;
 }
 
 .card-laser-icon {
