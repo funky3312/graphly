@@ -23584,15 +23584,15 @@ class GraphApp {
 
         // 2) 기본 배율(100%)에서 좌우 스와이프(또는 빠른 플릭) 시 이전/다음 페이지 즉시 넘김!
         if ((this._viewerZoom || 1.0) <= 1.02) {
-          if (isHorizSwipe && (totalDx <= -30 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
-            this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next');
+          if (isHorizSwipe && (totalDx <= -26 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
+            this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next', velocityX);
             return;
           }
-          if (isHorizSwipe && (totalDx >= 30 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
-            this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev');
+          if (isHorizSwipe && (totalDx >= 26 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
+            this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev', velocityX);
             return;
           }
-          this._setSmartViewerCarouselAnimating(true);
+          this._setSmartViewerCarouselAnimating(true, 320);
           this._viewerPanX = 0;
           this._viewerPanY = 0;
           this._applySmartViewerTransform();
@@ -23602,11 +23602,11 @@ class GraphApp {
         // 3) 확대 상태(>100%)에서도 좌/우 끝단에 닿은 채로 한 번 더 밀면(Edge Swipe) 다음/이전 페이지로 전환!
         if (isHorizSwipe) {
           if (startAtRightEdge && (totalDx <= -44 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
-            this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next');
+            this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next', velocityX);
             return;
           }
           if (startAtLeftEdge && (totalDx >= 44 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
-            this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev');
+            this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev', velocityX);
             return;
           }
         }
@@ -23807,11 +23807,18 @@ class GraphApp {
     });
   }
 
-  _setSmartViewerCarouselAnimating(enabled) {
+  _setSmartViewerCarouselAnimating(enabled, durationMs = 400) {
     const ids = ['smartNoteViewerStage', 'smartNoteViewerPrevStage', 'smartNoteViewerNextStage'];
+    const durStr = `${Math.max(180, Math.round(durationMs || 400))}ms`;
     ids.forEach((id) => {
       const el = document.getElementById(id);
-      if (el) el.classList.toggle('swipe-animating', Boolean(enabled));
+      if (!el) return;
+      if (enabled) {
+        el.style.setProperty('--viewer-swipe-dur', durStr);
+        el.classList.add('swipe-animating');
+      } else {
+        el.classList.remove('swipe-animating');
+      }
     });
   }
 
@@ -23842,11 +23849,17 @@ class GraphApp {
     return { displayW, displayH };
   }
 
-  _getSmartViewerSlideStride(viewport = null) {
+  _getSmartViewerSlideStride(viewport = null, neighborWOverride = null) {
     const vp = viewport || document.getElementById('smartNoteViewerViewport');
     const vw = Math.max(280, (vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth);
-    const gap = ((typeof window !== 'undefined') && window.innerWidth <= 768) ? 16 : 28;
-    return vw + gap;
+    const currW = Math.max(200, this._viewerBaseW || vw);
+    const neighborW = Math.max(200, neighborWOverride || currW);
+    const pageGap = ((typeof window !== 'undefined') && window.innerWidth <= 768) ? 14 : 22;
+    // 정지 상태(px=0)에서는 옆 페이지가 뷰포트 가장자리 바로 4px 밖에 숨어 대기하고,
+    // 손가락을 5px만 밀어도 즉시 화면 끝에서부터 부드럽게 고개를 내밀도록 최소 간격으로 밀착 배치!
+    const minByPages = Math.round((currW + neighborW) / 2) + pageGap;
+    const minByViewportEdge = Math.round((vw + neighborW) / 2) + 4;
+    return Math.max(minByPages, minByViewportEdge);
   }
 
   async _ensureSlideViewerSnapshot(slide) {
@@ -23893,6 +23906,7 @@ class GraphApp {
               neighborSlide.viewerSnapshotHeight || imgEl.naturalHeight || this._viewerBaseH || 700,
               viewport
             );
+            stageEl.dataset.fitW = String(fit.displayW);
             imgEl.style.width = `${fit.displayW}px`;
             imgEl.style.height = `${fit.displayH}px`;
           };
@@ -23903,10 +23917,12 @@ class GraphApp {
           neighborSlide.viewerSnapshotHeight || imgEl.naturalHeight || this._viewerBaseH || 700,
           viewport
         );
+        stageEl.dataset.fitW = String(fit.displayW);
         imgEl.style.width = `${fit.displayW}px`;
         imgEl.style.height = `${fit.displayH}px`;
       } else {
         stageEl.dataset.ready = '0';
+        stageEl.dataset.fitW = '';
         stageEl.style.display = 'none';
       }
     };
@@ -23996,6 +24012,64 @@ class GraphApp {
     });
   }
 
+  _syncSmartViewerHeaderControls(idx, total, slide) {
+    const btnWatchVideo = document.getElementById('btnViewerWatchVideo');
+    const hasSlideAudio = Boolean(slide && slide.audioSyncData && slide.audioSyncData.durationMs > 0);
+    if (btnWatchVideo) {
+      btnWatchVideo.style.display = hasSlideAudio ? 'inline-flex' : 'none';
+    }
+
+    const navGroup = document.getElementById('viewerSlideNavGroup');
+    const lblCounter = document.getElementById('lblViewerSlideCounter');
+    const gridPopover = document.getElementById('viewerSlideGridPopover');
+    const chipsBox = document.getElementById('viewerSlideChips');
+    const btnPrev = document.getElementById('btnViewerPrevSlide');
+    const btnNext = document.getElementById('btnViewerNextSlide');
+    const btnEdgePrev = document.getElementById('btnViewerEdgePrev');
+    const btnEdgeNext = document.getElementById('btnViewerEdgeNext');
+
+    if (navGroup) navGroup.style.display = 'inline-flex';
+    if (lblCounter) lblCounter.textContent = `${idx + 1} / ${total}`;
+    if (gridPopover) gridPopover.style.display = 'none';
+    if (btnPrev) btnPrev.disabled = (idx <= 0);
+    if (btnNext) btnNext.disabled = (idx >= total - 1);
+    if (btnEdgePrev) {
+      btnEdgePrev.style.display = total > 1 ? 'inline-flex' : 'none';
+      btnEdgePrev.disabled = (idx <= 0);
+    }
+    if (btnEdgeNext) {
+      btnEdgeNext.style.display = total > 1 ? 'inline-flex' : 'none';
+      btnEdgeNext.disabled = (idx >= total - 1);
+    }
+    if (chipsBox && this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) {
+      if (chipsBox.children.length === total) {
+        for (let i = 0; i < total; i++) {
+          chipsBox.children[i].classList.toggle('active', i === idx);
+        }
+      } else {
+        chipsBox.innerHTML = '';
+        for (let i = 0; i < total; i++) {
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'viewer-slide-chip' + (i === idx ? ' active' : '');
+          const sTitle = this._viewerPkg.playlistSlides[i].slideTitle || '';
+          chip.textContent = /^p\.\d+$/i.test(sTitle.trim()) ? sTitle.trim() : String(i + 1);
+          chip.onclick = (e) => {
+            e.stopPropagation();
+            if (gridPopover) gridPopover.style.display = 'none';
+            this.switchSmartViewerSlide(i);
+          };
+          chipsBox.appendChild(chip);
+        }
+      }
+    }
+
+    const overlay = document.getElementById('smartNoteViewerOverlay');
+    if (overlay && overlay.classList.contains('viewer-immersive-fullscreen') && total > 1) {
+      this._flashViewerFloatingPageToast(idx, total);
+    }
+  }
+
   async openSmartNoteViewer(pkg, forceNoteViewer = false) {
     if (!pkg || !Array.isArray(pkg.playlistSlides) || !pkg.playlistSlides.length) return;
     this._commitPendingViewerCarouselImmediately();
@@ -24029,7 +24103,7 @@ class GraphApp {
     await this.switchSmartViewerSlide(startIdx);
   }
 
-  async switchSmartViewerSlide(idx, swipeDir = null) {
+  async switchSmartViewerSlide(idx, swipeDir = null, releaseVelocityX = 0) {
     this._commitPendingViewerCarouselImmediately();
     if (!this._viewerPkg || !this._viewerPkg.playlistSlides[idx]) return;
     const prevIdx = typeof this._viewerSlideIdx === 'number' ? this._viewerSlideIdx : idx;
@@ -24037,71 +24111,18 @@ class GraphApp {
     const slide = this._viewerPkg.playlistSlides[idx];
     const total = this._viewerPkg.playlistSlides.length;
 
-    const btnWatchVideo = document.getElementById('btnViewerWatchVideo');
-    const hasSlideAudio = Boolean(slide && slide.audioSyncData && slide.audioSyncData.durationMs > 0);
-    if (btnWatchVideo) {
-      btnWatchVideo.style.display = hasSlideAudio ? 'inline-flex' : 'none';
+    // 슬라이드 스캔 이미지가 아직 없는 경우에만 비동기 생성 (이미 준비되어 있으면 0프레임 동기 즉시 출발!)
+    if (!slide.viewerSnapshotDataUrl) {
+      await this._ensureSlideViewerSnapshot(slide);
     }
-
-    const navGroup = document.getElementById('viewerSlideNavGroup');
-    const lblCounter = document.getElementById('lblViewerSlideCounter');
-    const gridPopover = document.getElementById('viewerSlideGridPopover');
-    const chipsBox = document.getElementById('viewerSlideChips');
-    const btnPrev = document.getElementById('btnViewerPrevSlide');
-    const btnNext = document.getElementById('btnViewerNextSlide');
-    const btnEdgePrev = document.getElementById('btnViewerEdgePrev');
-    const btnEdgeNext = document.getElementById('btnViewerEdgeNext');
-
-    if (navGroup) {
-      navGroup.style.display = 'inline-flex';
-    }
-    if (lblCounter) {
-      lblCounter.textContent = `${idx + 1} / ${total}`;
-    }
-    if (gridPopover) {
-      gridPopover.style.display = 'none';
-    }
-    if (btnPrev) btnPrev.disabled = (idx <= 0);
-    if (btnNext) btnNext.disabled = (idx >= total - 1);
-    if (btnEdgePrev) {
-      btnEdgePrev.style.display = total > 1 ? 'inline-flex' : 'none';
-      btnEdgePrev.disabled = (idx <= 0);
-    }
-    if (btnEdgeNext) {
-      btnEdgeNext.style.display = total > 1 ? 'inline-flex' : 'none';
-      btnEdgeNext.disabled = (idx >= total - 1);
-    }
-    if (chipsBox) {
-      chipsBox.innerHTML = '';
-      for (let i = 0; i < total; i++) {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'viewer-slide-chip' + (i === idx ? ' active' : '');
-        const sTitle = this._viewerPkg.playlistSlides[i].slideTitle || '';
-        chip.textContent = /^p\.\d+$/i.test(sTitle.trim()) ? sTitle.trim() : String(i + 1);
-        chip.onclick = (e) => {
-          e.stopPropagation();
-          if (gridPopover) gridPopover.style.display = 'none';
-          this.switchSmartViewerSlide(i);
-        };
-        chipsBox.appendChild(chip);
-      }
-    }
-
-    const overlay = document.getElementById('smartNoteViewerOverlay');
-    if (overlay && overlay.classList.contains('viewer-immersive-fullscreen') && total > 1) {
-      this._flashViewerFloatingPageToast(idx, total);
-    }
-
-    // 슬라이드 스캔 이미지가 아직 없는 경우에만 생성 (공유 링크에 이미 PC 원본 스캔본이 있으면 재렌더링 없이 0.00초 즉시 표시!)
-    await this._ensureSlideViewerSnapshot(slide);
 
     const viewport = document.getElementById('smartNoteViewerViewport');
     const stage = document.getElementById('smartNoteViewerStage');
     const imgEl = document.getElementById('smartNoteViewerImg');
 
     // 🌟 [순정 PDF 뷰어급 3-패널 실시간 캐러셀 슬라이드 전환]:
-    // 100% 배율에서 옆 페이지로 넘길 때 현재 페이지가 화면 밖으로 끝까지 밀려나고 옆 페이지가 동시에 스르르 중앙으로 들어옴
+    // 100% 배율에서 옆 페이지로 넘길 때 pointerup과 동일한 프레임에서 0ms 딜레이로 즉시 출발하며,
+    // 남은 이동 거리와 손가락 속도에 맞춘 320~430ms iOS 감속 곡선(cubic-bezier(0.16, 1, 0.3, 1))으로 사뿐히 안착!
     const canCarouselGlide = Boolean(
       (swipeDir === 'next' || swipeDir === 'prev') &&
       (this._viewerZoom || 1.0) <= 1.02 &&
@@ -24125,6 +24146,7 @@ class GraphApp {
 
       if (nStage && nImg) {
         nStage.dataset.ready = '1';
+        nStage.dataset.fitW = String(targetFit.displayW);
         if (nImg.src !== slide.viewerSnapshotDataUrl) {
           nImg.src = slide.viewerSnapshotDataUrl;
         }
@@ -24141,11 +24163,17 @@ class GraphApp {
         void stage.offsetWidth;
       }
 
-      const stride = this._getSmartViewerSlideStride(viewport);
-      this._setSmartViewerCarouselAnimating(true);
+      const stride = this._getSmartViewerSlideStride(viewport, targetFit.displayW);
+      const alreadyMoved = Math.min(stride, Math.abs(this._viewerPanX || 0));
+      const remainRatio = Math.max(0.22, 1 - (alreadyMoved / Math.max(1, stride)));
+      const absVel = Math.min(2.4, Math.abs(releaseVelocityX || 0));
+      const durationMs = Math.max(300, Math.min(430, Math.round((290 + 145 * remainRatio) - Math.min(65, absVel * 38))));
+
+      this._setSmartViewerCarouselAnimating(true, durationMs);
       this._viewerPanX = swipeDir === 'next' ? -stride : stride;
       this._viewerPanY = 0;
       this._applySmartViewerTransform();
+      this._syncSmartViewerHeaderControls(idx, total, slide);
 
       const commitCarousel = () => {
         this._setSmartViewerCarouselAnimating(false);
@@ -24174,9 +24202,11 @@ class GraphApp {
           this._viewerPendingCarouselCommit = null;
           commitCarousel();
         }
-      }, 255);
+      }, durationMs + 10);
       return;
     }
+
+    this._syncSmartViewerHeaderControls(idx, total, slide);
 
     if (imgEl && slide.viewerSnapshotDataUrl) {
       if (imgEl.src !== slide.viewerSnapshotDataUrl) {
@@ -24228,12 +24258,12 @@ class GraphApp {
       this._viewerPanX = swipeDir === 'next' ? 56 : -56;
       this._applySmartViewerTransform();
       void stage.offsetWidth;
-      this._setSmartViewerCarouselAnimating(true);
+      this._setSmartViewerCarouselAnimating(true, 360);
       this._viewerPanX = 0;
       this._applySmartViewerTransform();
     } else {
       if (preserveZoomResetOnly) {
-        this._setSmartViewerCarouselAnimating(true);
+        this._setSmartViewerCarouselAnimating(true, 320);
       } else {
         this._setSmartViewerCarouselAnimating(false);
       }
@@ -24314,19 +24344,22 @@ class GraphApp {
     }
 
     const showNeighbors = (zoom <= 1.02);
-    const stride = showNeighbors ? this._getSmartViewerSlideStride(viewport) : 0;
     if (prevStage) {
       if (showNeighbors && prevStage.dataset.ready === '1') {
+        const prevW = Number(prevStage.dataset.fitW) || baseW;
+        const prevStride = this._getSmartViewerSlideStride(viewport, prevW);
         prevStage.style.display = 'inline-block';
-        prevStage.style.transform = `translate3d(calc(-50% + ${px - stride}px), calc(-50% + ${py}px), 0)`;
+        prevStage.style.transform = `translate3d(calc(-50% + ${px - prevStride}px), calc(-50% + ${py}px), 0)`;
       } else {
         prevStage.style.display = 'none';
       }
     }
     if (nextStage) {
       if (showNeighbors && nextStage.dataset.ready === '1') {
+        const nextW = Number(nextStage.dataset.fitW) || baseW;
+        const nextStride = this._getSmartViewerSlideStride(viewport, nextW);
         nextStage.style.display = 'inline-block';
-        nextStage.style.transform = `translate3d(calc(-50% + ${px + stride}px), calc(-50% + ${py}px), 0)`;
+        nextStage.style.transform = `translate3d(calc(-50% + ${px + nextStride}px), calc(-50% + ${py}px), 0)`;
       } else {
         nextStage.style.display = 'none';
       }

@@ -8812,7 +8812,7 @@ body.theme-light .viewer-top-btn {
 }
 
 .smart-viewer-stage.swipe-animating {
-  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), width 0.18s ease, height 0.18s ease;
+  transition: transform var(--viewer-swipe-dur, 400ms) cubic-bezier(0.16, 1, 0.3, 1), width 0.18s ease, height 0.18s ease;
 }
 
 .smart-note-viewer-overlay.viewer-immersive-fullscreen .smart-viewer-stage {
