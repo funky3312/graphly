@@ -23181,18 +23181,10 @@ class GraphApp {
       viewport.addEventListener('wheel', (e) => {
         e.preventDefault();
         if (stage) stage.classList.remove('swipe-animating');
-        // 1) Ctrl/Cmd + 휠(또는 트랙패드 핀치) 또는 기본 100% 배율에서는 포컬 포인트 줌
-        if (e.ctrlKey || e.metaKey || (this._viewerZoom || 1.0) <= 1.02) {
-          const step = (e.ctrlKey || e.metaKey) ? 1.08 : 1.09;
-          const factor = e.deltaY < 0 ? step : (1 / step);
-          this.setSmartViewerZoom((this._viewerZoom || 1.0) * factor, e.clientX, e.clientY);
-        } else {
-          // 2) 확대 상태(>100%)에서 일반 휠 스크롤 시: 실제 PDF 리더처럼 상하좌우 부드러운 문서 스크롤!
-          this._viewerPanX = (this._viewerPanX || 0) - (e.deltaX || 0);
-          this._viewerPanY = (this._viewerPanY || 0) - (e.deltaY || 0);
-          this._clampSmartViewerPan();
-          this._applySmartViewerTransform();
-        }
+        // PC 마우스 휠 및 트랙패드 핀치: 첫 화면(100%)부터 확대 상태까지 언제나 커서 위치 기준 즉시 확대/축소!
+        const step = (e.ctrlKey || e.metaKey) ? 1.08 : 1.11;
+        const factor = e.deltaY < 0 ? step : (1 / step);
+        this.setSmartViewerZoom((this._viewerZoom || 1.0) * factor, e.clientX, e.clientY);
       }, { passive: false });
 
       viewport.addEventListener('pointerdown', (e) => {
@@ -23812,6 +23804,7 @@ class GraphApp {
     this.isGraphCovered = false;
     this.isInkMode = false;
     document.body.classList.remove('ink-mode-active');
+    this.updateInkCursor();
 
     this.applyPureGraphSnapshot(hotspot.graphSnapshot);
     this.showAxes = true;
@@ -36749,6 +36742,13 @@ class GraphApp {
 
     window.addEventListener('pointerup', () => {
       isMousePanningStage = false;
+    }, { capture: true });
+
+    window.addEventListener('click', (e) => {
+      if (!this._isFixedReplayStageActive() && !this.isStudentAudioVideoOnlyMode && !this._isAudioReplayActive) return;
+      if (isOuterReplayControl(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
     }, { capture: true });
 
     window.addEventListener('dblclick', (e) => {

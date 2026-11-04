@@ -10085,31 +10085,69 @@ body.student-audio-video-only .slide-chip-del-x {
   display: none !important;
 }
 
-/* 상시 노출 메뉴바/서랍: 투명도 애니메이션 없이 그대로 띄워두고 시청자 오클릭만 방지 */
+/* 상시 노출 메뉴바/서랍: 투명도 애니메이션 없이 그대로 띄워두고 시청자 오클릭만 자식 버튼(*)까지 100% 원천 차단 */
 body.student-audio-video-only #railDrawer,
 body.audio-replay-active #railDrawer {
   transition: none !important;
 }
 body.student-audio-video-only #sidebarRail,
+body.student-audio-video-only #sidebarRail *,
 body.student-audio-video-only #railDrawer,
+body.student-audio-video-only #railDrawer *,
 body.student-audio-video-only #inkFloatingToolbar,
+body.student-audio-video-only #inkFloatingToolbar *,
 body.student-audio-video-only #rightActionToolbar,
+body.student-audio-video-only #rightActionToolbar *,
 body.student-audio-video-only #quickPillRemote,
+body.student-audio-video-only #quickPillRemote *,
 body.student-audio-video-only #graphSnapFloatingBar,
+body.student-audio-video-only #graphSnapFloatingBar *,
 body.student-audio-video-only #pdfToGraphCropFloatingBar,
+body.student-audio-video-only #pdfToGraphCropFloatingBar *,
 body.student-audio-video-only #curveContextBar,
+body.student-audio-video-only #curveContextBar *,
+body.student-audio-video-only #ctxSymmetryPopover,
+body.student-audio-video-only #ctxSymmetryPopover *,
+body.student-audio-video-only #ctxAbsPopover,
+body.student-audio-video-only #ctxAbsPopover *,
 body.student-audio-video-only #lassoActionFloatingBar,
+body.student-audio-video-only #lassoActionFloatingBar *,
 body.student-audio-video-only #pwRegionPopover,
+body.student-audio-video-only #pwRegionPopover *,
 body.audio-replay-active #sidebarRail,
+body.audio-replay-active #sidebarRail *,
 body.audio-replay-active #railDrawer,
+body.audio-replay-active #railDrawer *,
 body.audio-replay-active #inkFloatingToolbar,
+body.audio-replay-active #inkFloatingToolbar *,
 body.audio-replay-active #rightActionToolbar,
+body.audio-replay-active #rightActionToolbar *,
 body.audio-replay-active #quickPillRemote,
+body.audio-replay-active #quickPillRemote *,
 body.audio-replay-active #graphSnapFloatingBar,
+body.audio-replay-active #graphSnapFloatingBar *,
 body.audio-replay-active #pdfToGraphCropFloatingBar,
+body.audio-replay-active #pdfToGraphCropFloatingBar *,
 body.audio-replay-active #curveContextBar,
+body.audio-replay-active #curveContextBar *,
+body.audio-replay-active #ctxSymmetryPopover,
+body.audio-replay-active #ctxSymmetryPopover *,
+body.audio-replay-active #ctxAbsPopover,
+body.audio-replay-active #ctxAbsPopover *,
 body.audio-replay-active #lassoActionFloatingBar,
-body.audio-replay-active #pwRegionPopover {
+body.audio-replay-active #lassoActionFloatingBar *,
+body.audio-replay-active #pwRegionPopover,
+body.audio-replay-active #pwRegionPopover *,
+body.audio-replay-active #problemCardWidget,
+body.audio-replay-active #problemCardWidget *,
+body.audio-replay-active #graphCardWidget,
+body.audio-replay-active #graphCardWidget *,
+body.audio-replay-active .extra-problem-card-widget,
+body.audio-replay-active .extra-problem-card-widget *,
+body.audio-replay-active .extra-graph-card-widget,
+body.audio-replay-active .extra-graph-card-widget *,
+body.audio-replay-active #workspaceStickerOverlay,
+body.audio-replay-active #workspaceStickerOverlay * {
   pointer-events: none !important;
 }
 
@@ -10134,10 +10172,15 @@ body.audio-replay-active #pwRegionPopover {
 
 body.student-audio-video-only #graphCanvas,
 body.student-audio-video-only #problemCardWidget,
+body.student-audio-video-only #problemCardWidget *,
 body.student-audio-video-only #graphCardWidget,
+body.student-audio-video-only #graphCardWidget *,
 body.student-audio-video-only .extra-problem-card-widget,
+body.student-audio-video-only .extra-problem-card-widget *,
 body.student-audio-video-only .extra-graph-card-widget,
-body.student-audio-video-only #workspaceStickerOverlay {
+body.student-audio-video-only .extra-graph-card-widget *,
+body.student-audio-video-only #workspaceStickerOverlay,
+body.student-audio-video-only #workspaceStickerOverlay * {
   pointer-events: none !important;
 }
 
