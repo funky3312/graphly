@@ -34495,7 +34495,21 @@ class GraphApp {
         e.stopPropagation();
         const targetMs = Number(e.target.value) || 0;
         this.seekAudioSync(targetMs, false);
+        this.showAudioPlayerBarTemporarily(2800);
       });
+      const onScrubStart = () => {
+        this._isScrubbingAudioBar = true;
+        this.showAudioPlayerBarTemporarily(2800);
+      };
+      const onScrubEnd = () => {
+        this._isScrubbingAudioBar = false;
+        this.showAudioPlayerBarTemporarily(2800);
+      };
+      scrubber.addEventListener('pointerdown', onScrubStart, { passive: true });
+      scrubber.addEventListener('touchstart', onScrubStart, { passive: true });
+      window.addEventListener('pointerup', onScrubEnd, { passive: true });
+      window.addEventListener('touchend', onScrubEnd, { passive: true });
+      window.addEventListener('touchcancel', onScrubEnd, { passive: true });
     }
 
     if (btnSpeed) {
@@ -34508,6 +34522,7 @@ class GraphApp {
         if (this.audioPlayerEl) {
           this.audioPlayerEl.playbackRate = this.audioPlaybackRate;
         }
+        this.showAudioPlayerBarTemporarily(2800);
       };
     }
 
@@ -34515,10 +34530,92 @@ class GraphApp {
       btnZoomReset.onclick = (e) => {
         e.stopPropagation();
         this.resetReplayViewerZoom();
+        this.showAudioPlayerBarTemporarily(2800);
       };
     }
 
     this._initReplayStageZoomPanInteractions();
+
+    // 🌟 [영상 재생 중 하단 플레이바 자동 숨김 & 화면 터치/마우스 이동 시 즉시 깨우기 + 백그라운드 전환 시 음성 즉시 일시정지]
+    if (!this._audioPlayerAutoHideAndLifecycleBound) {
+      this._audioPlayerAutoHideAndLifecycleBound = true;
+      const floatingBarEl = document.getElementById('audioSyncFloatingBar');
+      if (floatingBarEl) {
+        floatingBarEl.addEventListener('pointerenter', (e) => {
+          if (e.pointerType === 'mouse') {
+            this._isHoveringAudioBar = true;
+            this.showAudioPlayerBarTemporarily(2800);
+          }
+        }, { passive: true });
+        floatingBarEl.addEventListener('pointerleave', (e) => {
+          if (e.pointerType === 'mouse') {
+            this._isHoveringAudioBar = false;
+            if (this.isAudioPlaying) this.showAudioPlayerBarTemporarily(2800);
+          }
+        }, { passive: true });
+      }
+
+      const wakeUpPlayerBar = (fromTouchOrClick = false) => {
+        if (!this.isAudioPlaying && !this._isAudioReplayActive && !this.isStudentAudioVideoOnlyMode) return;
+        const barEl = document.getElementById('audioSyncFloatingBar');
+        const wasHidden = Boolean(barEl && barEl.classList.contains('player-bar-auto-hidden'));
+        this.showAudioPlayerBarTemporarily(2800);
+        if (wasHidden && fromTouchOrClick && barEl) {
+          // 숨겨져 있던 바가 올라오는 첫 터치 순간에 바 내부 버튼이 오작동 클릭되는 현상 방지
+          barEl.style.pointerEvents = 'none';
+          if (this._audioBarWakePointerTimer) clearTimeout(this._audioBarWakePointerTimer);
+          this._audioBarWakePointerTimer = setTimeout(() => {
+            this._audioBarWakePointerTimer = null;
+            if (barEl) barEl.style.pointerEvents = '';
+          }, 220);
+        }
+      };
+
+      window.addEventListener('touchstart', () => {
+        wakeUpPlayerBar(true);
+      }, { capture: true, passive: true });
+
+      window.addEventListener('pointerdown', () => {
+        wakeUpPlayerBar(true);
+      }, { capture: true, passive: true });
+
+      let lastWakeMoveX = 0;
+      let lastWakeMoveY = 0;
+      window.addEventListener('pointermove', (e) => {
+        if (e.pointerType === 'touch') return;
+        if (Math.hypot((e.clientX || 0) - lastWakeMoveX, (e.clientY || 0) - lastWakeMoveY) < 4) return;
+        lastWakeMoveX = e.clientX || 0;
+        lastWakeMoveY = e.clientY || 0;
+        wakeUpPlayerBar(false);
+      }, { capture: true, passive: true });
+
+      const pauseAudioOnAppBackground = () => {
+        if (this.isAudioPlaying) {
+          this.pauseAudioPlayback(false);
+        } else if (this.audioPlayerEl && !this.audioPlayerEl.paused) {
+          try { this.audioPlayerEl.pause(); } catch (e) { }
+        }
+      };
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden || document.visibilityState === 'hidden') {
+          pauseAudioOnAppBackground();
+        }
+      });
+
+      window.addEventListener('pagehide', () => {
+        pauseAudioOnAppBackground();
+      });
+
+      window.addEventListener('blur', () => {
+        const ua = navigator.userAgent || '';
+        const isMobileOrTabletOS = /Android|iPhone|iPad|iPod|Mobile|Silk/i.test(ua) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        if (isMobileOrTabletOS) {
+          pauseAudioOnAppBackground();
+        }
+      });
+    }
 
     if (btnShowFinalNote) {
       btnShowFinalNote.onclick = (e) => {
@@ -36661,7 +36758,11 @@ class GraphApp {
       if (btnBackToViewer) {
         btnBackToViewer.style.display = this.isStudentAudioVideoOnlyMode ? 'inline-flex' : 'none';
       }
+      if (!this.isAudioPlaying) {
+        bar.classList.remove('player-bar-auto-hidden');
+      }
     } else {
+      bar.classList.remove('player-bar-auto-hidden');
       bar.style.display = 'none';
     }
   }
@@ -37969,6 +38070,42 @@ class GraphApp {
     return seg;
   }
 
+  _clearAudioPlayerBarAutoHide() {
+    if (this._audioBarAutoHideTimer) {
+      clearTimeout(this._audioBarAutoHideTimer);
+      this._audioBarAutoHideTimer = null;
+    }
+    const bar = document.getElementById('audioSyncFloatingBar');
+    if (bar) {
+      bar.classList.remove('player-bar-auto-hidden');
+      bar.style.pointerEvents = '';
+    }
+  }
+
+  showAudioPlayerBarTemporarily(delayMs = 2800) {
+    const bar = document.getElementById('audioSyncFloatingBar');
+    if (bar) {
+      bar.classList.remove('player-bar-auto-hidden');
+    }
+    if (this._audioBarAutoHideTimer) {
+      clearTimeout(this._audioBarAutoHideTimer);
+      this._audioBarAutoHideTimer = null;
+    }
+    if (!this.isAudioPlaying || this.isAudioRecording) return;
+    this._audioBarAutoHideTimer = setTimeout(() => {
+      this._audioBarAutoHideTimer = null;
+      if (!this.isAudioPlaying || this.isAudioRecording) return;
+      if (this._isScrubbingAudioBar || this._isHoveringAudioBar) {
+        this.showAudioPlayerBarTemporarily(delayMs);
+        return;
+      }
+      const b = document.getElementById('audioSyncFloatingBar');
+      if (b && b.style.display !== 'none') {
+        b.classList.add('player-bar-auto-hidden');
+      }
+    }, delayMs);
+  }
+
   playAudioSync(fromMs = null, forceMode = null) {
     if (!this.audioSyncData || !this.audioSyncData.durationMs) return;
     if (forceMode) {
@@ -37987,6 +38124,7 @@ class GraphApp {
     this._lastAppliedAudioStateObj = null;
     document.body.classList.add('audio-replay-active');
     this._syncReplayFixedStageLayout();
+    this.showAudioPlayerBarTemporarily(2800);
 
     this._activeAudioSegmentIdx = -1;
     this._syncAudioPlayerToPlayMs(this.audioPlayCurrentMs || 0, true);
@@ -38222,6 +38360,7 @@ class GraphApp {
 
   pauseAudioPlayback(isEnded = false) {
     this.isAudioPlaying = false;
+    this._clearAudioPlayerBarAutoHide();
     if (this._audioReplayRafId) {
       cancelAnimationFrame(this._audioReplayRafId);
       this._audioReplayRafId = null;
@@ -38260,6 +38399,7 @@ class GraphApp {
 
   stopAudioPlayback(restoreFinal = true) {
     const wasReplayActive = Boolean(this._isAudioReplayActive || this.isAudioPlaying);
+    this._clearAudioPlayerBarAutoHide();
     this.pauseAudioPlayback(false);
     this._isAudioReplayActive = false;
     document.body.classList.remove('audio-replay-active');
@@ -38303,6 +38443,7 @@ class GraphApp {
     this._syncReplayFixedStageLayout();
     this._renderAudioReplayAtCurrentTime();
     this.syncAudioRecordUI();
+    this.showAudioPlayerBarTemporarily(2800);
     if (autoPlay && !this.isAudioPlaying) {
       this.playAudioSync(this.audioPlayCurrentMs);
     }

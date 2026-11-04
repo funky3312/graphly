@@ -11353,6 +11353,17 @@ body.student-audio-video-only #audioSyncFloatingBar {
   padding: 7px 14px !important;
   max-width: calc(100vw - 16px) !important;
   z-index: 9500 !important;
+  opacity: 1;
+  transition: opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1), transform 0.26s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+#audioSyncFloatingBar.player-bar-auto-hidden,
+body.replay-fixed-stage #audioSyncFloatingBar.player-bar-auto-hidden,
+body.audio-replay-active #audioSyncFloatingBar.player-bar-auto-hidden,
+body.student-audio-video-only #audioSyncFloatingBar.player-bar-auto-hidden {
+  opacity: 0 !important;
+  transform: translate(-50%, 20px) !important;
+  pointer-events: none !important;
 }
 
 body.replay-fixed-stage #lessonPlaylistNavBar,
