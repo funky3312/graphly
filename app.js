@@ -19816,7 +19816,7 @@ class GraphApp {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          this.customGraphPresets = parsed;
+          this.customGraphPresets = parsed.slice().sort((a, b) => ((a && a.createdAt) || 0) - ((b && b.createdAt) || 0));
           return;
         }
       }
@@ -19826,7 +19826,7 @@ class GraphApp {
         if (guestRaw) {
           const guestParsed = JSON.parse(guestRaw);
           if (Array.isArray(guestParsed) && guestParsed.length > 0) {
-            this.customGraphPresets = guestParsed;
+            this.customGraphPresets = guestParsed.slice().sort((a, b) => ((a && a.createdAt) || 0) - ((b && b.createdAt) || 0));
             localStorage.setItem(key, JSON.stringify(this.customGraphPresets));
             return;
           }
@@ -19869,7 +19869,7 @@ class GraphApp {
           [...remoteList, ...(this.customGraphPresets || [])].forEach(item => {
             if (item && item.id) map.set(item.id, item);
           });
-          this.customGraphPresets = Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          this.customGraphPresets = Array.from(map.values()).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
           try {
             localStorage.setItem(this._getCustomGraphsStorageKey(), JSON.stringify(this.customGraphPresets));
           } catch (e) { }
@@ -20112,12 +20112,19 @@ class GraphApp {
     if (!Array.isArray(this.customGraphPresets)) {
       this.customGraphPresets = [];
     }
-    this.customGraphPresets.unshift(newItem);
+    this.customGraphPresets.push(newItem);
     this._saveCustomGraphsToStorage();
 
     this._currentCat = '⭐ 내 그래프';
     this.renderFuncList();
-    this.showToast(`⭐ [${newItem.name}] 그래프가 내 그래프 보관함에 등록되었습니다!`);
+    setTimeout(() => {
+      const scrollEl = document.querySelector('#funcGrid .custom-graph-scroll-list');
+      if (scrollEl) {
+        scrollEl.scrollTop = scrollEl.scrollHeight;
+      }
+    }, 10);
+    const assignedCode = 70 + this.customGraphPresets.length;
+    this.showToast(`⭐ [${assignedCode}] ${newItem.name} 프리셋이 등록되었습니다!`);
     return newItem;
   }
 
