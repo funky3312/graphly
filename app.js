@@ -13096,15 +13096,16 @@ class GraphApp {
     const blurVal = isHighlighter
       ? 0
       : Math.max(0, Math.min(5.0, (typeof softBlur === 'number' && !isNaN(softBlur)) ? softBlur : (this.inkSoftBlur || 0)));
-    const pts = (blurVal > 0 && rawPts.length >= 3) ? this.smoothStrokePointsForBlur(rawPts, blurVal) : rawPts;
+    const pts = rawPts;
+    const blurAlpha = (blurVal > 0) ? Math.min(0.48, blurVal * 0.095) : 0;
     const effBaseSize = (blurVal > 0) ? baseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : baseSize;
     const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
     const strokeCol = ctx.strokeStyle || '#1e293b';
 
     ctx.save();
-    if (blurVal > 0 && (penStyle === 'ballpen' || penStyle === 'flat' || pts.length <= 2)) {
+    if (blurVal > 0) {
       ctx.shadowColor = strokeCol;
-      ctx.shadowBlur = blurVal * dpr * 0.88;
+      ctx.shadowBlur = blurVal * dpr * 0.65;
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = 0;
     } else {
@@ -13121,6 +13122,41 @@ class GraphApp {
       ctx.scale(nibX, nibY);
     }
 
+    // 형광펜(isHighlighter)은 반투명 중첩 자국이 생기지 않도록 단일 연속 패스로 렌더링
+    if (isHighlighter) {
+      if (pts.length === 1) {
+        const w0 = Math.max(4, effBaseSize);
+        ctx.beginPath();
+        ctx.arc(pts[0].x, pts[0].y, w0 / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
+      ctx.lineWidth = Math.max(4, effBaseSize);
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      if (pts.length === 2) {
+        ctx.lineTo(pts[1].x, pts[1].y);
+      } else {
+        const firstMidX = (pts[0].x + pts[1].x) * 0.5;
+        const firstMidY = (pts[0].y + pts[1].y) * 0.5;
+        ctx.lineTo(firstMidX, firstMidY);
+        for (let i = 1; i < pts.length - 1; i++) {
+          const midX = (pts[i].x + pts[i + 1].x) * 0.5;
+          const midY = (pts[i].y + pts[i + 1].y) * 0.5;
+          ctx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
+        }
+        const last = pts[pts.length - 1];
+        ctx.lineTo(last.x, last.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    // 🌟 [실시간 드로잉(drawLiveBezierStep)과 캐시 베이킹(drawPenStyledPointArray) 100.000% 픽셀 단위 일치]:
+    // 도형 자동완성 등으로 인해 render()가 호출될 때 이전에 쓴 글씨가 얇아지거나 변하지 않도록,
+    // 볼펜·납작펜·만년필·붓펜 모두 실시간 드로잉과 100% 동일한 세그먼트 단위 스트로크로 렌더링합니다!
     if (pts.length === 1) {
       const w0 = this.computePenStyleWidth(effBaseSize, pts[0].p, penStyle);
       ctx.beginPath();
@@ -13130,66 +13166,82 @@ class GraphApp {
       return;
     }
     if (pts.length === 2) {
+      const p0 = pts[0];
+      const p1 = pts[1];
+      const mx = (p0.x + p1.x) * 0.5;
+      const my = (p0.y + p1.y) * 0.5;
       if (penStyle === 'ballpen' || penStyle === 'flat') {
-        ctx.lineWidth = Math.max(1.2, effBaseSize);
+        const lineW = this.computePenStyleWidth(effBaseSize, p0.p, penStyle);
+        ctx.lineWidth = lineW;
         ctx.beginPath();
-        ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
-        ctx.lineTo(pts[1].x / nibX, pts[1].y / nibY);
+        ctx.arc(p0.x / nibX, p0.y / nibY, lineW / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(p0.x / nibX, p0.y / nibY);
+        ctx.lineTo(mx / nibX, my / nibY);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(p0.x / nibX, p0.y / nibY);
+        ctx.lineTo(p1.x / nibX, p1.y / nibY);
         ctx.stroke();
       } else {
-        const w0 = this.computePenStyleWidth(effBaseSize, pts[0].p, penStyle);
-        const w1 = this.computePenStyleWidth(effBaseSize, pts[1].p, penStyle);
-        this.drawVariableWidthLineSegment(ctx, pts[0].x, pts[0].y, pts[1].x, pts[1].y, w0, w1);
+        const w0 = this.computePenStyleWidth(effBaseSize, p0.p, penStyle);
+        const wMid = this.computePenStyleWidth(effBaseSize, (p0.p + p1.p) * 0.5, penStyle);
+        const w1 = this.computePenStyleWidth(effBaseSize, p1.p, penStyle);
+        ctx.beginPath();
+        ctx.arc(p0.x, p0.y, w0 / 2, 0, Math.PI * 2);
+        ctx.fill();
+        this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, mx, my, w0, wMid);
+        this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, p1.x, p1.y, w0, w1);
       }
       ctx.restore();
       return;
     }
     if (penStyle === 'ballpen' || penStyle === 'flat') {
-      ctx.lineWidth = Math.max(1.2, effBaseSize);
+      const lineW = this.computePenStyleWidth(effBaseSize, pts[pts.length - 1].p, penStyle);
+      ctx.lineWidth = lineW;
+      // 1) 시작점 캡슐 도트 (L === 1과 동일)
       ctx.beginPath();
-      ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
+      ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
+      ctx.fill();
+      // 2) 첫 구간 p0 -> firstMid (L === 2와 동일)
       const firstMidX = (pts[0].x + pts[1].x) * 0.5;
       const firstMidY = (pts[0].y + pts[1].y) * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
       ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
+      ctx.stroke();
+      // 3) 중간 베지어 세그먼트 mid1 -> ctrl -> mid2 (L >= 3 실시간 세그먼트와 100% 동일)
+      let prevMidX = firstMidX;
+      let prevMidY = firstMidY;
       for (let i = 1; i < pts.length - 1; i++) {
         const midX = (pts[i].x + pts[i + 1].x) * 0.5;
         const midY = (pts[i].y + pts[i + 1].y) * 0.5;
-        ctx.quadraticCurveTo(pts[i].x / nibX, pts[i].y / nibY, midX / nibX, midY / nibY);
+        const ctrlX = blurAlpha > 0 ? (pts[i].x * (1 - blurAlpha) + ((prevMidX + midX) * 0.5) * blurAlpha) : pts[i].x;
+        const ctrlY = blurAlpha > 0 ? (pts[i].y * (1 - blurAlpha) + ((prevMidY + midY) * 0.5) * blurAlpha) : pts[i].y;
+        ctx.beginPath();
+        ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
+        ctx.quadraticCurveTo(ctrlX / nibX, ctrlY / nibY, midX / nibX, midY / nibY);
+        ctx.stroke();
+        prevMidX = midX;
+        prevMidY = midY;
       }
+      // 4) 끝단 마감 꼬리 prevMid -> last (isFinalTail === true와 100% 동일)
       const last = pts[pts.length - 1];
+      ctx.beginPath();
+      ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
       ctx.lineTo(last.x / nibX, last.y / nibY);
       ctx.stroke();
       ctx.restore();
       return;
     }
 
-    // 만년필 / 붓펜에서 블러가 켜진 경우: 세그먼트 이음매 그림자 중첩이 생기지 않도록 단일 연속 백본에 소프트 헤일로를 먼저 깔아줌
-    if (blurVal > 0) {
-      ctx.save();
-      ctx.shadowColor = strokeCol;
-      ctx.shadowBlur = blurVal * dpr * 0.95;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 0;
-      ctx.lineWidth = Math.max(1.0, effBaseSize * 0.72);
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      const fmX = (pts[0].x + pts[1].x) * 0.5;
-      const fmY = (pts[0].y + pts[1].y) * 0.5;
-      ctx.lineTo(fmX, fmY);
-      for (let i = 1; i < pts.length - 1; i++) {
-        const mX = (pts[i].x + pts[i + 1].x) * 0.5;
-        const mY = (pts[i].y + pts[i + 1].y) * 0.5;
-        ctx.quadraticCurveTo(pts[i].x, pts[i].y, mX, mY);
-      }
-      const lst = pts[pts.length - 1];
-      ctx.lineTo(lst.x, lst.y);
-      ctx.stroke();
-      ctx.restore();
-    }
-
     const firstMidX = (pts[0].x + pts[1].x) * 0.5;
     const firstMidY = (pts[0].y + pts[1].y) * 0.5;
     const w0 = this.computePenStyleWidth(effBaseSize, pts[0].p, penStyle);
+    ctx.beginPath();
+    ctx.arc(pts[0].x, pts[0].y, w0 / 2, 0, Math.PI * 2);
+    ctx.fill();
     let prevMidW = this.computePenStyleWidth(effBaseSize, (pts[0].p + pts[1].p) * 0.5, penStyle);
     this.drawVariableWidthLineSegment(ctx, pts[0].x, pts[0].y, firstMidX, firstMidY, w0, prevMidW);
     let prevMidX = firstMidX;
@@ -13197,8 +13249,10 @@ class GraphApp {
     for (let i = 1; i < pts.length - 1; i++) {
       const midX = (pts[i].x + pts[i + 1].x) * 0.5;
       const midY = (pts[i].y + pts[i + 1].y) * 0.5;
+      const ctrlX = blurAlpha > 0 ? (pts[i].x * (1 - blurAlpha) + ((prevMidX + midX) * 0.5) * blurAlpha) : pts[i].x;
+      const ctrlY = blurAlpha > 0 ? (pts[i].y * (1 - blurAlpha) + ((prevMidY + midY) * 0.5) * blurAlpha) : pts[i].y;
       const nextMidW = this.computePenStyleWidth(effBaseSize, (pts[i].p + pts[i + 1].p) * 0.5, penStyle);
-      this.drawVariableWidthQuadSegment(ctx, prevMidX, prevMidY, pts[i].x, pts[i].y, midX, midY, prevMidW, nextMidW);
+      this.drawVariableWidthQuadSegment(ctx, prevMidX, prevMidY, ctrlX, ctrlY, midX, midY, prevMidW, nextMidW);
       prevMidX = midX;
       prevMidY = midY;
       prevMidW = nextMidW;
@@ -13220,6 +13274,7 @@ class GraphApp {
     const rawBaseSize = (stroke.size || 4.2) * zoomRatio;
     const penStyle = stroke.penStyle || 'ballpen';
     const blurVal = Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
+    const blurAlpha = (blurVal > 0) ? Math.min(0.48, blurVal * 0.095) : 0;
     const baseSize = (blurVal > 0) ? rawBaseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : rawBaseSize;
     const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
 
@@ -13284,6 +13339,8 @@ class GraphApp {
         const mid1Y = (pA.y + pB.y) * 0.5;
         const mid2X = (pB.x + pC.x) * 0.5;
         const mid2Y = (pB.y + pC.y) * 0.5;
+        const ctrlX = blurAlpha > 0 ? (pB.x * (1 - blurAlpha) + ((mid1X + mid2X) * 0.5) * blurAlpha) : pB.x;
+        const ctrlY = blurAlpha > 0 ? (pB.y * (1 - blurAlpha) + ((mid1Y + mid2Y) * 0.5) * blurAlpha) : pB.y;
         if (penStyle === 'ballpen' || penStyle === 'flat') {
           ctx.beginPath();
           if (isFinalTail) {
@@ -13291,7 +13348,7 @@ class GraphApp {
             ctx.lineTo(pC.x / nibX, pC.y / nibY);
           } else {
             ctx.moveTo(mid1X / nibX, mid1Y / nibY);
-            ctx.quadraticCurveTo(pB.x / nibX, pB.y / nibY, mid2X / nibX, mid2Y / nibY);
+            ctx.quadraticCurveTo(ctrlX / nibX, ctrlY / nibY, mid2X / nibX, mid2Y / nibY);
           }
           ctx.stroke();
         } else {
@@ -13301,7 +13358,7 @@ class GraphApp {
             const wEnd = this.computePenStyleWidth(baseSize, pC.p, penStyle);
             this.drawVariableWidthLineSegment(ctx, mid2X, mid2Y, pC.x, pC.y, wMid2, wEnd);
           } else {
-            this.drawVariableWidthQuadSegment(ctx, mid1X, mid1Y, pB.x, pB.y, mid2X, mid2Y, wMid1, wMid2);
+            this.drawVariableWidthQuadSegment(ctx, mid1X, mid1Y, ctrlX, ctrlY, mid2X, mid2Y, wMid1, wMid2);
           }
         }
       }
