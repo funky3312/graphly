@@ -6005,8 +6005,8 @@ class GraphApp {
           return;
         }
 
-        // 2.5) .graphly.html / .graphly / .json 파일 불러오기
-        const graphlyFile = rawFiles.find(f => f.name && (/\.(graphly|json)$/i.test(f.name) || /\.graphly\.html$/i.test(f.name)));
+        // 2.5) .graphly.html / .graphly / .json / .html 파일 불러오기 (카톡/iOS 중복 번호 (1).html 포함)
+        const graphlyFile = rawFiles.find(f => f.name && /\.(graphly|json|html|htm)$/i.test(f.name));
         if (graphlyFile) {
           this.importGraphlyDeckFile(graphlyFile);
           return;
