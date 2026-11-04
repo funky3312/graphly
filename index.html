@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_19">
+  <link rel="stylesheet" href="style.css?v=20261105_20">
 </head>
 
 <body class="theme-light">
@@ -2647,7 +2647,7 @@
         </div>
       </div>
 
-      <!-- 🧭 윈도우 탐색기 상단 툴바 (위로 + 경로 주소창 + 새 폴더 + [열기 / 이동 / 삭제] + 검색) -->
+      <!-- 🧭 탐색기 상단 툴바 (위로 + 경로 주소창 + 새 폴더 + 검색) -->
       <div id="cloudExplorerAddressToolbar" class="win-explorer-toolbar">
         <button type="button" id="btnCloudNavUp" class="win-explorer-up-btn" title="상위 폴더로 이동">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -2659,20 +2659,6 @@
         <button type="button" id="btnCloudAddRootFolder" class="win-explorer-cmd-btn" title="현재 폴더 안에 새 폴더 만들기">
           <span>📁+ 새 폴더</span>
         </button>
-        <div class="win-explorer-action-group">
-          <button type="button" id="btnCloudActionOpen" class="win-explorer-cmd-btn primary-cmd" title="체크한 파일 불러오기 (여러 개 선택 시 슬라이드로 합쳐서 열기)">
-            <span>📂 열기</span>
-          </button>
-          <div class="win-explorer-move-wrap">
-            <button type="button" id="btnCloudActionMove" class="win-explorer-cmd-btn" title="체크한 항목을 다른 폴더로 이동">
-              <span>📦 이동 ▾</span>
-            </button>
-            <div id="cloudMoveDropdownMenu" class="win-explorer-move-menu" style="display: none;"></div>
-          </div>
-          <button type="button" id="btnCloudActionDelete" class="win-explorer-cmd-btn danger-cmd" title="체크한 항목 일괄 삭제">
-            <span>🗑️ 삭제</span>
-          </button>
-        </div>
         <div id="cloudLibrarySearchWrap" class="cloud-library-search-wrap">
           <input type="text" id="inputCloudLibrarySearch" class="cloud-library-search-input"
             placeholder="🔍 검색..." autocomplete="off">
@@ -2681,23 +2667,13 @@
 
       <div class="smart-modal-body cloud-hub-body cloud-explorer-body">
         <div id="panelCloudMyLibrary" class="cloud-explorer-layout">
-          <!-- 좌측 패널: 윈도우 탐색기 폴더 트리 -->
+          <!-- 좌측 패널: 폴더 트리 -->
           <aside class="cloud-explorer-sidebar" id="cloudExplorerSidebar">
             <div id="cloudFolderChipBar" class="cloud-folder-tree-list"></div>
           </aside>
 
-          <!-- 우측 패널: 현재 폴더 내부 (하위폴더 + 수업 파일 목록) -->
+          <!-- 우측 패널: 현재 폴더 내부 (하위폴더 + 수업 파일 목록, 복잡한 표 머리글 제거!) -->
           <section class="cloud-explorer-main">
-            <div class="win-explorer-col-header">
-              <label class="col-chk-wrap" title="현재 폴더 항목 전체 선택/해제">
-                <input type="checkbox" id="chkCloudExplorerAll" class="win-explorer-checkbox">
-              </label>
-              <span class="col-name">이름 <small>(체크 후 상단 버튼 또는 더블클릭·드래그)</small></span>
-              <span class="col-date">수정한 날짜</span>
-              <span class="col-size">분량</span>
-              <span class="col-act">이름변경</span>
-            </div>
-
             <!-- ➕ 새 폴더 인라인 입력 행 (현재 열려 있는 폴더 안에 생성) -->
             <div id="cloudNewFolderInlineRow" class="win-inline-new-folder-row" style="display: none;">
               <span class="win-folder-icon">📁</span>
@@ -2713,25 +2689,51 @@
           </section>
         </div>
 
-        <!-- 💾 하단 고정 바: [현재 칠판 저장] & [선택 파일 열기] -->
+        <!-- 💾 하단 스마트 전환 바: 평소엔 [여기에 저장], 체크박스 선택 시에만 [열기 · 이동 · 삭제] 등장 -->
         <div id="cloudExplorerSaveBar" class="win-explorer-save-footer">
-          <div class="win-save-footer-left">
-            <span class="win-save-label">파일 이름:</span>
-            <input type="text" id="inputCloudSaveTitle" class="win-save-title-input"
-              placeholder="현재 칠판 저장 제목 입력 (비워두면 날짜·문항수로 자동 저장)" autocomplete="off">
-          </div>
-          <div class="win-save-footer-right">
-            <div class="cloud-save-scope-group" title="저장할 캔버스 범위">
-              <button type="button" id="btnCloudSaveScopeAll" class="cloud-scope-pill active" data-scope="all">전체 캔버스</button>
-              <button type="button" id="btnCloudSaveScopeCurrent" class="cloud-scope-pill" data-scope="current">현재만</button>
+          <!-- ① 기본 상태 (선택 0개): 현재 칠판 저장 바 -->
+          <div id="cloudFooterSaveRow" class="win-footer-mode-row">
+            <div class="win-save-footer-left">
+              <span class="win-save-label">파일 이름:</span>
+              <input type="text" id="inputCloudSaveTitle" class="win-save-title-input"
+                placeholder="현재 칠판 저장 제목 입력 (비워두면 날짜·문항수로 자동 저장)" autocomplete="off">
             </div>
-            <button type="button" id="btnSaveToMyLibrary" class="btn-primary win-save-submit-btn">
-              <span>☁️ 여기에 저장</span>
-              <small id="lblCloudExplorerSaveFolder">(내 클라우드)</small>
-            </button>
-            <button type="button" id="btnCloudFooterOpen" class="btn-secondary win-footer-open-btn" title="선택한 파일 불러오기">
-              <span id="lblCloudFooterOpenText">📂 열기</span>
-            </button>
+            <div class="win-save-footer-right">
+              <div class="cloud-save-scope-group" title="저장할 캔버스 범위">
+                <button type="button" id="btnCloudSaveScopeAll" class="cloud-scope-pill active" data-scope="all">전체 캔버스</button>
+                <button type="button" id="btnCloudSaveScopeCurrent" class="cloud-scope-pill" data-scope="current">현재만</button>
+              </div>
+              <button type="button" id="btnSaveToMyLibrary" class="btn-primary win-save-submit-btn">
+                <span>☁️ 여기에 저장</span>
+                <small id="lblCloudExplorerSaveFolder">(내 클라우드)</small>
+              </button>
+            </div>
+          </div>
+
+          <!-- ② 선택 상태 (체크박스 1개 이상 선택 시 자동 전환): [전체선택 · N개 선택됨] + [열기 · 이동 · 삭제] -->
+          <div id="cloudFooterActionRow" class="win-footer-mode-row selection-mode-row" style="display: none;">
+            <div class="win-selection-footer-left">
+              <label class="win-selection-all-label" title="현재 폴더 전체 선택/해제">
+                <input type="checkbox" id="chkCloudExplorerAll" class="win-explorer-checkbox">
+                <span>전체 선택</span>
+              </label>
+              <span id="lblCloudSelectionCountBadge" class="win-selection-count-badge">1개 선택됨</span>
+              <button type="button" id="btnCloudClearSelection" class="win-selection-clear-btn">선택 해제</button>
+            </div>
+            <div class="win-selection-footer-right">
+              <button type="button" id="btnCloudActionOpen" class="btn-primary win-save-submit-btn" title="선택한 파일 불러오기 (여러 개 선택 시 연속 캔버스로 합쳐서 열기)">
+                <span id="lblCloudFooterOpenText">📂 열기</span>
+              </button>
+              <div class="win-explorer-move-wrap">
+                <button type="button" id="btnCloudActionMove" class="win-explorer-cmd-btn" title="선택한 항목을 다른 폴더로 이동">
+                  <span>📦 이동 ▾</span>
+                </button>
+                <div id="cloudMoveDropdownMenu" class="win-explorer-move-menu" style="display: none;"></div>
+              </div>
+              <button type="button" id="btnCloudActionDelete" class="win-explorer-cmd-btn danger-cmd" title="선택한 항목 삭제">
+                <span>🗑️ 삭제</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -3130,8 +3132,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261105_19"></script>
-  <script src="app.js?v=20261105_19"></script>
+  <script src="engine.js?v=20261105_20"></script>
+  <script src="app.js?v=20261105_20"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

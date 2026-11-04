@@ -11844,17 +11844,17 @@ body:not(.theme-light) .win-explorer-cmd-btn.primary-cmd {
 
 .win-explorer-move-menu {
   position: absolute;
-  top: calc(100% + 5px);
-  left: 0;
-  min-width: 195px;
-  max-width: 250px;
-  max-height: 240px;
+  bottom: calc(100% + 8px);
+  right: 0;
+  min-width: 205px;
+  max-width: 260px;
+  max-height: 250px;
   overflow-y: auto;
   background: #ffffff;
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  border-radius: 9px;
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
-  padding: 5px;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 10px;
+  box-shadow: 0 -8px 28px rgba(15, 23, 42, 0.18);
+  padding: 6px;
   z-index: 2500;
   display: flex;
   flex-direction: column;
@@ -12233,22 +12233,22 @@ body:not(.theme-light) .win-new-folder-input {
   overflow-y: auto !important;
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 4px 6px;
+  gap: 2px;
+  padding: 8px 10px;
 }
 
-/* 윈도우 탐색기 행 공통 스타일 (폴더 행 & 파일 행) */
+/* 행 공통 스타일 (폴더 행 & 파일 행 — 군더더기 없는 심플 리스트) */
 .win-explorer-row {
   display: flex;
   align-items: center;
-  padding: 6px 8px;
-  border-radius: 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
   border: 1px solid transparent;
   background: transparent;
   cursor: pointer;
   user-select: none;
   transition: background 0.1s ease, border-color 0.1s ease;
-  min-height: 34px;
+  min-height: 36px;
   box-sizing: border-box;
 }
 
@@ -12257,7 +12257,7 @@ body:not(.theme-light) .win-new-folder-input {
 }
 
 .win-explorer-row.selected {
-  background: rgba(37, 99, 235, 0.12);
+  background: rgba(37, 99, 235, 0.11);
   border-color: rgba(37, 99, 235, 0.32);
 }
 
@@ -12286,18 +12286,36 @@ body:not(.theme-light) .win-explorer-row.selected {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding-right: 8px;
+  gap: 8px;
+  padding-right: 10px;
 }
 
 .win-row-icon {
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1;
   flex-shrink: 0;
 }
 
+.win-row-slide-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+  font-size: 10.5px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+body:not(.theme-light) .win-row-slide-badge {
+  background: rgba(59, 130, 246, 0.22);
+  color: #93c5fd;
+}
+
 .win-row-title {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   color: #0f172a;
   white-space: nowrap;
@@ -12313,32 +12331,25 @@ body:not(.theme-light) .win-row-title {
   color: #f1f5f9;
 }
 
+.win-row-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .win-row-date-col {
-  width: 92px;
   font-size: 11.5px;
-  color: #64748b;
-  flex-shrink: 0;
-}
-
-.win-row-size-col {
-  width: 58px;
-  text-align: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #475569;
-  flex-shrink: 0;
-}
-
-body:not(.theme-light) .win-row-size-col {
   color: #94a3b8;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .win-row-act-col {
-  width: 56px;
+  width: 24px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 3px;
   flex-shrink: 0;
 }
 
@@ -12450,22 +12461,93 @@ body:not(.theme-light) .cloud-item-folder-badge {
   color: #ef4444;
 }
 
-/* 💾 하단 고정 바: 윈도우 '다른 이름으로 저장' 표준 바 */
+/* 💾 하단 스마트 전환 바: 기본은 [여기에 저장], 체크 시에만 [열기 · 이동 · 삭제] */
 .win-explorer-save-footer {
+  display: flex;
+  align-items: center;
+  padding: 9px 14px;
+  background: rgba(248, 250, 252, 0.96);
+  border-top: 1px solid rgba(148, 163, 184, 0.28);
+  flex-shrink: 0;
+  min-height: 52px;
+  box-sizing: border-box;
+}
+
+body:not(.theme-light) .win-explorer-save-footer {
+  background: rgba(15, 23, 42, 0.85);
+  border-top-color: rgba(148, 163, 184, 0.2);
+}
+
+.win-footer-mode-row {
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 9px 14px;
-  background: rgba(248, 250, 252, 0.95);
-  border-top: 1px solid rgba(148, 163, 184, 0.28);
-  flex-shrink: 0;
-  flex-wrap: wrap;
 }
 
-body:not(.theme-light) .win-explorer-save-footer {
-  background: rgba(15, 23, 42, 0.82);
-  border-top-color: rgba(148, 163, 184, 0.2);
+.win-selection-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.win-selection-all-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #334155;
+  cursor: pointer;
+  user-select: none;
+}
+
+body:not(.theme-light) .win-selection-all-label {
+  color: #e2e8f0;
+}
+
+.win-selection-count-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+body:not(.theme-light) .win-selection-count-badge {
+  background: rgba(59, 130, 246, 0.24);
+  color: #93c5fd;
+}
+
+.win-selection-clear-btn {
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 4px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.win-selection-clear-btn:hover {
+  background: rgba(148, 163, 184, 0.16);
+  color: #0f172a;
+}
+
+body:not(.theme-light) .win-selection-clear-btn:hover {
+  color: #f8fafc;
+}
+
+.win-selection-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
 }
 
 .win-save-footer-left {

@@ -18822,6 +18822,24 @@ class GraphApp {
     if (btnFooterOpen) {
       btnFooterOpen.onclick = () => this.handleCloudExplorerOpenSelected();
     }
+    const btnClearSelection = document.getElementById('btnCloudClearSelection');
+    if (btnClearSelection) {
+      btnClearSelection.onclick = () => {
+        if (this._selectedCloudExplorerKeys) this._selectedCloudExplorerKeys.clear();
+        this._syncCloudExplorerSelectionDOM();
+      };
+    }
+    const listAreaEl = document.getElementById('myLibraryList');
+    if (listAreaEl) {
+      listAreaEl.addEventListener('click', (e) => {
+        if (e.target === listAreaEl) {
+          if (this._selectedCloudExplorerKeys && this._selectedCloudExplorerKeys.size > 0) {
+            this._selectedCloudExplorerKeys.clear();
+            this._syncCloudExplorerSelectionDOM();
+          }
+        }
+      });
+    }
     if (btnActionMove) {
       btnActionMove.onclick = (e) => {
         e.stopPropagation();
@@ -18839,7 +18857,7 @@ class GraphApp {
         } else {
           visibleKeys.forEach(k => this._selectedCloudExplorerKeys.delete(k));
         }
-        this.renderMyLibraryList();
+        this._syncCloudExplorerSelectionDOM();
       };
     }
     window.addEventListener('pointerdown', (e) => {
@@ -19240,6 +19258,9 @@ class GraphApp {
     if (this.isLessonPlaylistActive) {
       this.saveCurrentSlideIntoPlaylist();
     }
+    if (this._selectedCloudExplorerKeys) {
+      this._selectedCloudExplorerKeys.clear();
+    }
     const chkAll = document.getElementById('chkCloudSelectAll');
     if (chkAll) chkAll.checked = false;
     const rowNewFolder = document.getElementById('cloudNewFolderInlineRow');
@@ -19350,10 +19371,10 @@ class GraphApp {
     if (this._activeCloudFolder === '__ALL_RECENT__' || this._activeCloudFolder === '__UNCATEGORIZED__') {
       this._activeCloudFolder = cleanParent || '';
     }
-    this._selectedCloudExplorerKeys = new Set([`folder:${fullPath}`]);
+    this._selectedCloudExplorerKeys = new Set();
     this.syncExportCloudFolderSelect();
     this.renderMyLibraryList();
-    this.showToast(`📁 [${cleanSeg}] 폴더가 생성되었습니다. (더블클릭하여 열기)`);
+    this.showToast(`📁 [${cleanSeg}] 폴더가 생성되었습니다.`);
   }
 
   async renameCloudFolder(oldPath, newSegmentName) {
@@ -19397,7 +19418,7 @@ class GraphApp {
       });
       this._saveMyLibraryCacheForCurrentUser();
     }
-    this._selectedCloudExplorerKeys = new Set([`folder:${newPath}`]);
+    this._selectedCloudExplorerKeys = new Set();
     this.syncExportCloudFolderSelect();
     this.renderMyLibraryList();
     this.showToast(`✏️ 폴더 이름이 [${cleanSeg}](으)로 변경되었습니다.`);
@@ -19527,26 +19548,55 @@ class GraphApp {
     }
   }
 
+  _syncCloudExplorerSelectionDOM() {
+    const listEl = document.getElementById('myLibraryList');
+    if (listEl) {
+      const rows = listEl.querySelectorAll('.win-explorer-row');
+      rows.forEach(r => {
+        const rk = r.dataset ? r.dataset.rowKey : '';
+        if (!rk) return;
+        const isSel = Boolean(this._selectedCloudExplorerKeys && this._selectedCloudExplorerKeys.has(rk));
+        r.classList.toggle('selected', isSel);
+        const chk = r.querySelector('.win-explorer-checkbox');
+        if (chk) chk.checked = isSel;
+      });
+    }
+    this._syncCloudExplorerSelectionButtons();
+  }
+
   _syncCloudExplorerSelectionButtons() {
     if (!this._selectedCloudExplorerKeys) this._selectedCloudExplorerKeys = new Set();
     const cnt = this._selectedCloudExplorerKeys.size;
-    const btnOpen = document.getElementById('btnCloudActionOpen');
+    const saveRow = document.getElementById('cloudFooterSaveRow');
+    const actionRow = document.getElementById('cloudFooterActionRow');
+    const lblSelCount = document.getElementById('lblCloudSelectionCountBadge');
     const lblFooterOpen = document.getElementById('lblCloudFooterOpenText');
     const btnMove = document.getElementById('btnCloudActionMove');
     const btnDelete = document.getElementById('btnCloudActionDelete');
     const chkAll = document.getElementById('chkCloudExplorerAll');
+    const moveMenuEl = document.getElementById('cloudMoveDropdownMenu');
 
-    if (btnOpen) {
-      btnOpen.innerHTML = cnt > 1 ? `<span>📂 열기 (${cnt})</span>` : `<span>📂 열기</span>`;
+    // 체크박스 선택 여부에 따라 하단 바를 [여기에 저장] <-> [열기 · 이동 · 삭제]로 즉시 전환
+    if (cnt > 0) {
+      if (saveRow) saveRow.style.display = 'none';
+      if (actionRow) actionRow.style.display = 'flex';
+    } else {
+      if (saveRow) saveRow.style.display = 'flex';
+      if (actionRow) actionRow.style.display = 'none';
+      if (moveMenuEl) moveMenuEl.style.display = 'none';
+    }
+
+    if (lblSelCount) {
+      lblSelCount.textContent = `${cnt}개 선택됨`;
     }
     if (lblFooterOpen) {
-      lblFooterOpen.textContent = cnt > 1 ? `📂 선택 열기 (${cnt})` : `📂 열기`;
+      lblFooterOpen.textContent = cnt > 1 ? `📂 열기 (${cnt})` : `📂 열기`;
     }
     if (btnMove) {
-      btnMove.innerHTML = cnt > 0 ? `<span>📦 이동 (${cnt}) ▾</span>` : `<span>📦 이동 ▾</span>`;
+      btnMove.innerHTML = `<span>📦 이동 ▾</span>`;
     }
     if (btnDelete) {
-      btnDelete.innerHTML = cnt > 0 ? `<span>🗑️ 삭제 (${cnt})</span>` : `<span>🗑️ 삭제</span>`;
+      btnDelete.innerHTML = `<span>🗑️ 삭제</span>`;
     }
     if (chkAll) {
       const vis = Array.isArray(this._currentVisibleCloudKeys) ? this._currentVisibleCloudKeys : [];
@@ -22232,7 +22282,7 @@ class GraphApp {
 
       this.myLibraryCache.unshift(itemObj);
       this._saveMyLibraryCacheForCurrentUser();
-      this._selectedCloudExplorerKeys = new Set([`file:${itemId}`]);
+      this._selectedCloudExplorerKeys = new Set();
 
       this.syncExportCloudFolderSelect();
       this.renderMyLibraryList();
@@ -23188,18 +23238,15 @@ class GraphApp {
             this._selectedCloudExplorerKeys.add(visKeys[i]);
           }
         }
-      } else if (e.ctrlKey || e.metaKey) {
+      } else {
         if (this._selectedCloudExplorerKeys.has(rowKey)) {
           this._selectedCloudExplorerKeys.delete(rowKey);
         } else {
           this._selectedCloudExplorerKeys.add(rowKey);
         }
-      } else {
-        this._selectedCloudExplorerKeys.clear();
-        this._selectedCloudExplorerKeys.add(rowKey);
       }
       this._lastClickedCloudExplorerKey = rowKey;
-      this.renderMyLibraryList();
+      this._syncCloudExplorerSelectionDOM();
     };
 
     visibleFolders.forEach(fPath => {
@@ -23208,6 +23255,7 @@ class GraphApp {
       const isSelected = this._selectedCloudExplorerKeys.has(rowKey);
       const row = document.createElement('div');
       row.className = 'win-explorer-row is-folder-row' + (isSelected ? ' selected' : '');
+      row.dataset.rowKey = rowKey;
 
       if (this._renamingCloudFolderPath === fPath) {
         row.innerHTML = `
@@ -23259,21 +23307,22 @@ class GraphApp {
         const f = String(it.folder || '').trim();
         return f === fPath || f.startsWith(fPath + '/');
       }).length;
-      const sizeDesc = (subFolderCnt + directFileCnt) > 0 ? `${subFolderCnt + directFileCnt}개 항목` : '비어 있음';
+      const sizeDesc = (subFolderCnt + directFileCnt) > 0 ? `${subFolderCnt + directFileCnt}개` : '비어 있음';
 
       row.draggable = true;
       row.innerHTML = `
-        <label class="win-row-chk-wrap" title="체크하여 다중 선택">
+        <label class="win-row-chk-wrap" title="체크하여 이동/삭제 선택">
           <input type="checkbox" class="win-explorer-checkbox" ${isSelected ? 'checked' : ''}>
         </label>
-        <div class="win-row-name-col" title="더블클릭하여 [${segName}] 폴더 열기">
+        <div class="win-row-name-col" title="클릭하여 [${segName}] 폴더 열기">
           <span class="win-row-icon">📁</span>
           <span class="win-row-title">${segName}</span>
         </div>
-        <span class="win-row-date-col">폴더</span>
-        <span class="win-row-size-col">${sizeDesc}</span>
-        <div class="win-row-act-col">
-          <button type="button" class="btn-cloud-edit-item" title="폴더 이름 바꾸기">✏️</button>
+        <div class="win-row-meta-right">
+          <span class="win-row-date-col">${sizeDesc}</span>
+          <div class="win-row-act-col">
+            <button type="button" class="btn-cloud-edit-item" title="폴더 이름 바꾸기">✏️</button>
+          </div>
         </div>
       `;
 
@@ -23300,8 +23349,7 @@ class GraphApp {
             this._selectedCloudExplorerKeys.delete(rowKey);
           }
           this._lastClickedCloudExplorerKey = rowKey;
-          row.classList.toggle('selected', chkEl.checked);
-          this._syncCloudExplorerSelectionButtons();
+          this._syncCloudExplorerSelectionDOM();
         };
       }
 
@@ -23309,7 +23357,7 @@ class GraphApp {
         if (e.target && (e.target.closest('.win-row-chk-wrap') || e.target.closest('.btn-cloud-edit-item'))) {
           return;
         }
-        handleRowSelectionClick(rowKey, e);
+        enterFolder();
       };
 
       row.ondblclick = (e) => {
@@ -23366,6 +23414,7 @@ class GraphApp {
       const isSelected = this._selectedCloudExplorerKeys.has(rowKey);
       const row = document.createElement('div');
       row.className = 'win-explorer-row is-file-row' + (isSelected ? ' selected' : '');
+      row.dataset.rowKey = rowKey;
       const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('ko-KR') : '-';
       const slideCnt = item.slideCount || (Array.isArray(item.playlistSlides) ? item.playlistSlides.length : 1);
       const curFolder = String(item.folder || '').trim();
@@ -23420,18 +23469,20 @@ class GraphApp {
 
       row.draggable = true;
       row.innerHTML = `
-        <label class="win-row-chk-wrap" title="체크하여 다중 선택">
+        <label class="win-row-chk-wrap" title="체크하여 선택">
           <input type="checkbox" class="win-explorer-checkbox" ${isSelected ? 'checked' : ''}>
         </label>
-        <div class="win-row-name-col" title="더블클릭하여 칠판에 열기 (또는 체크 후 상단 열기/이동/삭제)">
+        <div class="win-row-name-col" title="더블클릭하여 즉시 열기 · 클릭하여 선택">
           <span class="win-row-icon">📊</span>
+          <span class="win-row-slide-badge">${slideCnt}장</span>
           ${folderBadgeHtml}
           <span class="win-row-title">${item.title || '제목 없음'}</span>
         </div>
-        <span class="win-row-date-col">${dateStr}</span>
-        <span class="win-row-size-col">${slideCnt}장</span>
-        <div class="win-row-act-col">
-          <button type="button" class="btn-cloud-edit-item" title="파일 이름 바꾸기">✏️</button>
+        <div class="win-row-meta-right">
+          <span class="win-row-date-col">${dateStr}</span>
+          <div class="win-row-act-col">
+            <button type="button" class="btn-cloud-edit-item" title="파일 이름 바꾸기">✏️</button>
+          </div>
         </div>
       `;
 
@@ -23449,8 +23500,7 @@ class GraphApp {
             this._selectedCloudExplorerKeys.delete(rowKey);
           }
           this._lastClickedCloudExplorerKey = rowKey;
-          row.classList.toggle('selected', chkEl.checked);
-          this._syncCloudExplorerSelectionButtons();
+          this._syncCloudExplorerSelectionDOM();
         };
       }
 
