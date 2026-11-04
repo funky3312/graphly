@@ -2231,13 +2231,26 @@ class GraphApp {
   }
 
   _clearPendingGraphShortcutDigit() {
-    this._pendingGraphShortcutCatDigit = null;
+    this._pendingGraphShortcutCatDigit = '';
     if (this._pendingGraphShortcutTimer) {
       clearTimeout(this._pendingGraphShortcutTimer);
       this._pendingGraphShortcutTimer = null;
     }
-    document.querySelectorAll('.func-cat-section.shortcut-armed').forEach(el => {
+    document.querySelectorAll('#funcGrid .shortcut-armed').forEach(el => {
       el.classList.remove('shortcut-armed');
+    });
+  }
+
+  _highlightPendingGraphShortcutPrefix(prefix) {
+    document.querySelectorAll('#funcGrid .shortcut-armed').forEach(el => {
+      el.classList.remove('shortcut-armed');
+    });
+    if (!prefix) return;
+    document.querySelectorAll('#funcGrid [data-func-code]').forEach(el => {
+      const code = el.dataset.funcCode || '';
+      if (code.startsWith(prefix)) {
+        el.classList.add('shortcut-armed');
+      }
     });
   }
 
@@ -2252,84 +2265,76 @@ class GraphApp {
       '4th_basic_bowl': '사차 (y=x⁴)'
     };
 
-    const sections = [
+    // 대분류 제목 없이 구분선/간격만으로 위에서부터 순서대로 직관 배치
+    const blocks = [
       {
-        num: 1,
-        title: '다항함수',
         cols: 3,
-        keys: [
-          '1st_linear',
-          '2nd_quadratic',
-          '3rd_normal',
-          '3rd_basic_cubic',
-          '4th_symmetric',
-          '4th_asymmetric',
-          '4th_inflection',
-          '4th_basic_bowl'
+        items: [
+          { key: '1st_linear', code: '11' },
+          { key: '2nd_quadratic', code: '12' },
+          { key: '3rd_normal', code: '13' },
+          { key: '3rd_basic_cubic', code: '14' },
+          { key: '4th_symmetric', code: '15' },
+          { key: '4th_asymmetric', code: '16' },
+          { key: '4th_inflection', code: '17' },
+          { key: '4th_basic_bowl', code: '18' }
         ]
       },
       {
-        num: 2,
-        title: '유리·무리함수',
         cols: 2,
-        keys: ['rational_basic', 'sqrt_basic']
+        items: [
+          { key: 'rational_basic', code: '21' },
+          { key: 'sqrt_basic', code: '22' },
+          { key: 'exp_basic', code: '31' },
+          { key: 'log_basic', code: '32' }
+        ]
       },
       {
-        num: 3,
-        title: '지수·로그함수',
-        cols: 2,
-        keys: ['exp_basic', 'log_basic']
-      },
-      {
-        num: 4,
-        title: '삼각함수',
         cols: 3,
-        keys: ['sin_1period', 'cos_1period', 'tan_1period']
+        items: [
+          { key: 'sin_1period', code: '41' },
+          { key: 'cos_1period', code: '42' },
+          { key: 'tan_1period', code: '43' },
+          { key: 'geom_circle', code: '51' },
+          { key: 'geom_triangle', code: '52' },
+          { key: 'geom_quad', code: '53' }
+        ]
       },
       {
-        num: 5,
-        title: '평면도형',
-        cols: 3,
-        keys: ['geom_circle', 'geom_triangle', 'geom_quad']
-      },
-      {
-        num: 6,
-        title: '특수함수',
         cols: 2,
-        keys: ['killer_frac_odd', 'killer_exp_linear', 'killer_exp_quad', 'killer_log_frac']
+        items: [
+          { key: 'killer_frac_odd', code: '61' },
+          { key: 'killer_exp_linear', code: '62' },
+          { key: 'killer_exp_quad', code: '63' },
+          { key: 'killer_log_frac', code: '64' }
+        ]
       }
     ];
 
-    sections.forEach((sec) => {
-      const secEl = document.createElement('div');
-      secEl.className = 'func-cat-section';
-      secEl.dataset.catNum = String(sec.num);
-      if (String(this._pendingGraphShortcutCatDigit || '') === String(sec.num)) {
-        secEl.classList.add('shortcut-armed');
+    const topBlocksWrap = document.createElement('div');
+    topBlocksWrap.className = 'func-top-blocks-wrap';
+
+    blocks.forEach((blk, blkIdx) => {
+      if (blkIdx > 0) {
+        const divLine = document.createElement('div');
+        divLine.className = 'func-block-divider';
+        topBlocksWrap.appendChild(divLine);
       }
 
-      const headerEl = document.createElement('div');
-      headerEl.className = 'func-cat-header';
-      headerEl.innerHTML = `
-        <span class="func-cat-title"><span class="func-cat-num">${sec.num}</span><span>${sec.title}</span></span>
-      `;
-      secEl.appendChild(headerEl);
-
       const secGrid = document.createElement('div');
-      secGrid.className = `func-cat-grid cols-${sec.cols}`;
+      secGrid.className = `func-cat-grid cols-${blk.cols}`;
 
-      sec.keys.forEach((key, idx) => {
+      blk.items.forEach(({ key, code }) => {
         const data = this.meta[key];
         if (!data) return;
-        const codeStr = `${sec.num}${idx + 1}`;
         const labelText = shortDisplayNames[key] || data.name;
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = `func-btn ${key === currentType ? 'active' : ''}`;
         btn.dataset.preset = key;
-        btn.dataset.funcCode = codeStr;
+        btn.dataset.funcCode = code;
         btn.innerHTML = `
-          <span class="func-num-badge">${codeStr}</span>
+          <span class="func-num-badge">${code}</span>
           <span class="func-icon-wrap">${data.svg || ''}</span>
           <span class="func-name-text">${labelText}</span>
         `;
@@ -2344,19 +2349,20 @@ class GraphApp {
         secGrid.appendChild(btn);
       });
 
-      secEl.appendChild(secGrid);
-      grid.appendChild(secEl);
+      topBlocksWrap.appendChild(secGrid);
     });
 
-    // 7. 프리셋 섹션 (나만의 그래프 보관함)
+    grid.appendChild(topBlocksWrap);
+
+    // 하단 프리셋 섹션 (나만의 그래프 보관함 — 독립 스크롤 및 71번부터 연속 넘버링)
     const presetSec = document.createElement('div');
-    presetSec.className = 'func-cat-section';
-    presetSec.dataset.catNum = '7';
-    if (String(this._pendingGraphShortcutCatDigit || '') === '7') {
-      presetSec.classList.add('shortcut-armed');
-    }
+    presetSec.className = 'func-preset-section';
     this.renderCustomGraphPresetList(presetSec);
     grid.appendChild(presetSec);
+
+    if (this._pendingGraphShortcutCatDigit) {
+      this._highlightPendingGraphShortcutPrefix(this._pendingGraphShortcutCatDigit);
+    }
   }
 
   changeFuncType(type) {
@@ -15611,26 +15617,52 @@ class GraphApp {
         return;
       }
 
-      // [2자리 숫자 단축키 (11~79)]: 그래프 추가창이 열려 있을 때 연속 숫자 키로 즉시 그래프 소환
+      // [숫자 단축키 (11~64 기본 함수 및 71~109 프리셋)]: 그래프 추가창이 열려 있을 때 연속 숫자 키로 즉시 소환
       if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        if (/^[1-9]$/.test(e.key)) {
+        if (/^[0-9]$/.test(e.key)) {
           e.preventDefault();
           const digit = e.key;
-          if (!this._pendingGraphShortcutCatDigit) {
-            if (digit >= '1' && digit <= '7') {
+          const curPrefix = String(this._pendingGraphShortcutCatDigit || '');
+
+          if (!curPrefix) {
+            // 첫 자리는 1~9만 허용
+            if (digit >= '1' && digit <= '9') {
               this._clearPendingGraphShortcutDigit();
               this._pendingGraphShortcutCatDigit = digit;
-              const secEl = document.querySelector(`.func-cat-section[data-cat-num="${digit}"]`);
-              if (secEl) secEl.classList.add('shortcut-armed');
+              this._highlightPendingGraphShortcutPrefix(digit);
               this._pendingGraphShortcutTimer = setTimeout(() => {
                 this._clearPendingGraphShortcutDigit();
               }, 2200);
             }
-          } else {
-            const code = `${this._pendingGraphShortcutCatDigit}${digit}`;
+          } else if (curPrefix.length === 1) {
+            const twoDigit = `${curPrefix}${digit}`;
+            // '10'은 기본 함수에 없으므로 100~109번 프리셋의 앞 두 자리로 대기!
+            if (twoDigit === '10') {
+              if (this._pendingGraphShortcutTimer) clearTimeout(this._pendingGraphShortcutTimer);
+              this._pendingGraphShortcutCatDigit = '10';
+              this._highlightPendingGraphShortcutPrefix('10');
+              this._pendingGraphShortcutTimer = setTimeout(() => {
+                this._clearPendingGraphShortcutDigit();
+              }, 2200);
+              return;
+            }
             this._clearPendingGraphShortcutDigit();
-            const targetBtn = document.querySelector(`#funcGrid [data-func-code="${code}"]`);
+            const targetBtn = document.querySelector(`#funcGrid [data-func-code="${twoDigit}"]`);
             if (targetBtn) {
+              if (typeof targetBtn.scrollIntoView === 'function') {
+                targetBtn.scrollIntoView({ block: 'nearest' });
+              }
+              targetBtn.click();
+            }
+          } else if (curPrefix.length === 2) {
+            // 100~109번 3자리 프리셋 즉시 소환
+            const threeDigit = `${curPrefix}${digit}`;
+            this._clearPendingGraphShortcutDigit();
+            const targetBtn = document.querySelector(`#funcGrid [data-func-code="${threeDigit}"]`);
+            if (targetBtn) {
+              if (typeof targetBtn.scrollIntoView === 'function') {
+                targetBtn.scrollIntoView({ block: 'nearest' });
+              }
               targetBtn.click();
             }
           }
@@ -20153,9 +20185,9 @@ class GraphApp {
     const quota = this.getCustomGraphQuotaStatus();
 
     const headerEl = document.createElement('div');
-    headerEl.className = 'func-cat-header';
+    headerEl.className = 'func-cat-header func-preset-header';
     headerEl.innerHTML = `
-      <span class="func-cat-title"><span class="func-cat-num">7</span><span>프리셋</span></span>
+      <span class="func-cat-title"><span>프리셋</span></span>
       <span class="custom-graph-quota-badge">${quota.badgeText}</span>
     `;
     grid.appendChild(headerEl);
@@ -20179,17 +20211,22 @@ class GraphApp {
     regWrap.appendChild(btnAdd);
     grid.appendChild(regWrap);
 
+    const scrollList = document.createElement('div');
+    scrollList.className = 'custom-graph-scroll-list';
+    grid.appendChild(scrollList);
+
     if (!Array.isArray(this.customGraphPresets) || this.customGraphPresets.length === 0) {
       return;
     }
 
     this.customGraphPresets.forEach((item, idx) => {
       if (!item) return;
-      const codeStr = idx < 9 ? `7${idx + 1}` : '';
+      const presetNum = 71 + idx;
+      const codeStr = String(presetNum);
       const card = document.createElement('div');
       card.className = 'custom-graph-card';
       card.setAttribute('data-custom-graph-id', item.id);
-      if (codeStr) {
+      if (presetNum <= 109) {
         card.dataset.funcCode = codeStr;
       }
 
@@ -20223,13 +20260,13 @@ class GraphApp {
             this.renameCustomGraphPreset(item.id, inp ? inp.value : item.name);
           };
         }
-        grid.appendChild(card);
+        scrollList.appendChild(card);
         return;
       }
 
       card.innerHTML = `
         <div class="custom-graph-card-left">
-          ${codeStr ? `<span class="func-num-badge">${codeStr}</span>` : ''}
+          <span class="func-num-badge">${codeStr}</span>
           <div class="custom-graph-thumb-box">${item.svgThumb || '📈'}</div>
           <div class="custom-graph-info">
             <div class="custom-graph-title">${item.name || '나만의 그래프'}</div>
@@ -20264,7 +20301,7 @@ class GraphApp {
         };
       }
 
-      grid.appendChild(card);
+      scrollList.appendChild(card);
     });
   }
 

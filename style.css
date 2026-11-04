@@ -478,7 +478,27 @@ body.theme-light .rail-zoom-action-btn:active {
 }
 
 .rail-drawer[data-active-panel="panelPresets"] .drawer-subpanels-container {
-  padding: 7px 10px;
+  padding: 8px 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#panelPresets.active {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  gap: 6px;
+}
+
+#panelPresets > .panel-section:first-child {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* 서랍 접힘 상태 (슬라이드 이동 트랜지션을 제거하여 녹화/재생 중 서랍 열림 순간 좌표 튐 현상 0% 원천 차단) */
@@ -801,29 +821,89 @@ body.theme-light .rail-zoom-action-btn:active {
 }
 
 .func-list-grid.func-allinone-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.func-top-blocks-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.func-block-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 2px 1px;
+  flex-shrink: 0;
+}
+
+body.theme-light .func-block-divider {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.func-preset-section {
+  flex: 1;
+  min-height: 96px;
   display: flex;
   flex-direction: column;
   gap: 5px;
+  padding-top: 7px;
+  margin-top: 2px;
+  border-top: 1.5px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
 }
 
-.func-cat-section {
+body.theme-light .func-preset-section {
+  border-top-color: #cbd5e1;
+}
+
+.custom-graph-scroll-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 4px 5px;
-  border-radius: 7px;
-  border: 1px solid transparent;
-  transition: background 0.14s ease, border-color 0.14s ease;
+  gap: 4px;
+  padding-right: 2px;
 }
 
-.func-cat-section.shortcut-armed {
-  background: rgba(0, 210, 211, 0.08);
-  border-color: rgba(0, 210, 211, 0.45);
+.custom-graph-scroll-list::-webkit-scrollbar {
+  width: 4px;
 }
 
-body.theme-light .func-cat-section.shortcut-armed {
-  background: rgba(13, 148, 136, 0.07);
-  border-color: rgba(13, 148, 136, 0.45);
+.custom-graph-scroll-list::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 4px;
+}
+
+.func-btn.shortcut-armed,
+.custom-graph-card.shortcut-armed {
+  border-color: rgba(0, 210, 211, 0.7) !important;
+  background: rgba(0, 210, 211, 0.11) !important;
+}
+
+body.theme-light .func-btn.shortcut-armed,
+body.theme-light .custom-graph-card.shortcut-armed {
+  border-color: rgba(13, 148, 136, 0.65) !important;
+  background: rgba(13, 148, 136, 0.09) !important;
+}
+
+.func-btn.shortcut-armed .func-num-badge,
+.custom-graph-card.shortcut-armed .func-num-badge {
+  background: #00d2d3 !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .func-btn.shortcut-armed .func-num-badge,
+body.theme-light .custom-graph-card.shortcut-armed .func-num-badge {
+  background: #0d9488 !important;
+  color: #ffffff !important;
 }
 
 .func-cat-header {
