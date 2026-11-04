@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_07">
+  <link rel="stylesheet" href="style.css?v=20261105_08">
 </head>
 
 <body class="theme-light">
@@ -2358,9 +2358,17 @@
     </div>
 
     <div id="smartNoteViewerViewport" class="smart-viewer-viewport">
+      <div id="smartNoteViewerPrevStage" class="smart-viewer-stage smart-viewer-neighbor-stage" style="display: none;"
+        aria-hidden="true">
+        <img id="smartNoteViewerPrevImg" class="smart-viewer-img" alt="" draggable="false" />
+      </div>
       <div id="smartNoteViewerStage" class="smart-viewer-stage">
         <img id="smartNoteViewerImg" class="smart-viewer-img" alt="Graphly 페이지" draggable="false" />
         <div id="smartNoteViewerHotspots" class="smart-viewer-hotspots"></div>
+      </div>
+      <div id="smartNoteViewerNextStage" class="smart-viewer-stage smart-viewer-neighbor-stage" style="display: none;"
+        aria-hidden="true">
+        <img id="smartNoteViewerNextImg" class="smart-viewer-img" alt="" draggable="false" />
       </div>
       <!-- 다중 페이지 좌·우 사이드 빠른 넘김 화살표 (마우스 오버 시 은은하게 노출) -->
       <button type="button" id="btnViewerEdgePrev" class="viewer-edge-nav-btn viewer-edge-prev" title="이전 페이지 (←)"
@@ -3085,8 +3093,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261105_07"></script>
-  <script src="app.js?v=20261105_07"></script>
+  <script src="engine.js?v=20261105_08"></script>
+  <script src="app.js?v=20261105_08"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

@@ -8802,10 +8802,17 @@ body.theme-light .viewer-top-btn {
   border-radius: 6px;
   overflow: hidden;
   background: #1e293b;
+  z-index: 2;
+  will-change: transform;
+}
+
+.smart-viewer-neighbor-stage {
+  z-index: 1;
+  pointer-events: none;
 }
 
 .smart-viewer-stage.swipe-animating {
-  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), width 0.18s ease, height 0.18s ease;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), width 0.18s ease, height 0.18s ease;
 }
 
 .smart-note-viewer-overlay.viewer-immersive-fullscreen .smart-viewer-stage {
@@ -8972,7 +8979,8 @@ body.theme-light .viewer-top-btn {
    - 모바일에서는 핀치 줌·더블탭 줌을 사용하므로 상단 배율(- 100% +) 및 [편집] 버튼 숨김
    - 양옆 가장자리 화살표(.viewer-edge-nav-btn)가 엄지 스와이프를 가로채지 않도록 숨김
    - 노트가 여백 없이 화면 100%에 꽉 차도록 설정 */
-@media (max-width: 768px), (max-height: 500px) {
+@media (max-width: 768px),
+(max-height: 500px) {
   .smart-viewer-header {
     min-height: 42px;
     padding: 4px 10px;
@@ -10181,6 +10189,7 @@ body.student-audio-video-only #railDrawer,
 body.audio-replay-active #railDrawer {
   transition: none !important;
 }
+
 body.student-audio-video-only #sidebarRail,
 body.student-audio-video-only #sidebarRail *,
 body.student-audio-video-only #railDrawer,
@@ -10941,7 +10950,8 @@ body.ink-sticker-tool-active .card-sticker-del-btn,
   opacity: 1;
 }
 
-@media (hover: none), (pointer: coarse) {
+@media (hover: none),
+(pointer: coarse) {
   .card-sticker-del-btn {
     opacity: 0.85;
   }
@@ -11388,6 +11398,7 @@ body:not(.theme-light) .audio-btn-zoom.is-zoomed {
 }
 
 @media (max-width: 640px) {
+
   body.replay-fixed-stage #audioSyncFloatingBar,
   body.audio-replay-active #audioSyncFloatingBar,
   body.student-audio-video-only #audioSyncFloatingBar {
@@ -11997,7 +12008,7 @@ body.theme-light .single-line-slider-val {
 }
 
 /* 좌측 서랍이 열려 있을 때 왼쪽 도킹 필기 바와 겹치지 않도록 자동 페이드 처리 */
-.sidebar-rail:not(.drawer-collapsed) ~ .canvas-container .ink-floating-toolbar[data-dock-pos="left"] {
+.sidebar-rail:not(.drawer-collapsed)~.canvas-container .ink-floating-toolbar[data-dock-pos="left"] {
   opacity: 0 !important;
   pointer-events: none !important;
 }
@@ -12048,6 +12059,3 @@ body.theme-light .single-line-slider-val {
   flex-direction: column;
   gap: 3px;
 }
-
-
-
