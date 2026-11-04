@@ -11632,13 +11632,16 @@ body:not(.theme-light) .audio-btn-zoom.is-zoomed {
 }
 
 /* =========================================================================
-   ☁️📂 [윈도우 탐색기 2단 클라우드 보관함 (#modalCloudHub): 좌측 세로 폴더/하위폴더 트리 + 우측 저장 & 파일 목록]
+   ☁️🪟 [윈도우 파일 탐색기 100% 동일 클라우드 보관함 (#modalCloudHub)]
+   - 상단: 상위 폴더(⬆️) + 주소 표시줄(Breadcrumb) + 새 폴더 + 검색
+   - 중단: 좌측 폴더 트리 + 우측 폴더/파일 탐색기 (더블클릭 열기 & 드래그 앤 드롭 이동)
+   - 하단: 윈도우 '다른 이름으로 저장' 표준 바 (파일 이름 + 현재 폴더에 저장)
    ========================================================================= */
 .cloud-hub-modal-card.cloud-explorer-modal-card {
   width: 95% !important;
-  max-width: 780px !important;
-  height: min(560px, 84vh) !important;
-  max-height: 86vh !important;
+  max-width: 820px !important;
+  height: min(580px, 85vh) !important;
+  max-height: 88vh !important;
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
@@ -11653,6 +11656,189 @@ body:not(.theme-light) .audio-btn-zoom.is-zoomed {
   overflow: hidden !important;
 }
 
+.cloud-count-sub {
+  font-weight: 700;
+  color: #64748b;
+  font-size: 12.5px;
+}
+
+/* 🧭 상단 윈도우 탐색기 툴바 (위로 버튼 + 경로 주소창 + 새 폴더 + 검색) */
+.win-explorer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  background: rgba(248, 250, 252, 0.92);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  flex-shrink: 0;
+}
+
+body:not(.theme-light) .win-explorer-toolbar {
+  background: rgba(15, 23, 42, 0.65);
+  border-bottom-color: rgba(148, 163, 184, 0.18);
+}
+
+.win-explorer-up-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #ffffff;
+  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: all 0.12s ease;
+}
+
+.win-explorer-up-btn:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.win-explorer-up-btn:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+body:not(.theme-light) .win-explorer-up-btn {
+  background: rgba(30, 41, 59, 0.8);
+  border-color: rgba(148, 163, 184, 0.25);
+  color: #cbd5e1;
+}
+
+.win-explorer-address-bar {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.win-explorer-address-bar::-webkit-scrollbar {
+  height: 0;
+}
+
+body:not(.theme-light) .win-explorer-address-bar {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(148, 163, 184, 0.26);
+}
+
+.win-crumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.win-crumb-item:hover {
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+}
+
+.win-crumb-item.active {
+  color: #0f172a;
+  font-weight: 800;
+}
+
+body:not(.theme-light) .win-crumb-item {
+  color: #cbd5e1;
+}
+
+body:not(.theme-light) .win-crumb-item.active {
+  color: #f8fafc;
+}
+
+.win-crumb-sep {
+  color: #94a3b8;
+  font-size: 11px;
+  padding: 0 1px;
+  user-select: none;
+}
+
+.win-explorer-new-folder-btn {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.07);
+  color: #1d4ed8;
+  font-size: 11.5px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.12s ease;
+}
+
+.win-explorer-new-folder-btn:hover {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+body:not(.theme-light) .win-explorer-new-folder-btn {
+  background: rgba(59, 130, 246, 0.16);
+  border-color: rgba(96, 165, 250, 0.4);
+  color: #93c5fd;
+}
+
+.cloud-library-search-wrap {
+  width: 165px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.cloud-library-search-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+
+body:not(.theme-light) .cloud-library-search-input {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(148, 163, 184, 0.26);
+  color: #f8fafc;
+}
+
+.cloud-library-search-input:focus {
+  border-color: #2563eb;
+}
+
+/* 중단 2단 레이아웃 (좌측 폴더 트리 + 우측 폴더/파일 뷰) */
 #panelCloudMyLibrary.cloud-explorer-layout {
   flex: 1;
   min-height: 0;
@@ -11665,163 +11851,21 @@ body:not(.theme-light) .audio-btn-zoom.is-zoomed {
   overflow: hidden;
 }
 
-.cloud-count-sub {
-  font-weight: 700;
-  color: #64748b;
-  font-size: 12.5px;
-}
-
-.cloud-library-search-wrap {
-  width: 190px;
-  display: flex;
-  align-items: center;
-}
-
-.cloud-library-search-input {
-  width: 100%;
-  padding: 5px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  background: rgba(248, 250, 252, 0.9);
-  color: #0f172a;
-  font-size: 12px;
-  font-weight: 600;
-  outline: none;
-  box-sizing: border-box;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-body:not(.theme-light) .cloud-library-search-input {
-  background: rgba(15, 23, 42, 0.65);
-  border-color: rgba(148, 163, 184, 0.28);
-  color: #f8fafc;
-}
-
-.cloud-library-search-input:focus {
-  border-color: #2563eb;
-  background: #ffffff;
-}
-
-body:not(.theme-light) .cloud-library-search-input:focus {
-  border-color: #60a5fa;
-  background: rgba(15, 23, 42, 0.9);
-}
-
-/* 좌측 세로 폴더 트리 사이드바 */
+/* 좌측 폴더 트리 사이드바 */
 .cloud-explorer-sidebar {
-  width: 220px;
+  width: 205px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 8px;
-  border-right: 1px solid rgba(148, 163, 184, 0.25);
-  background: rgba(248, 250, 252, 0.7);
+  padding: 8px 6px;
+  border-right: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(248, 250, 252, 0.65);
   overflow: hidden;
 }
 
 body:not(.theme-light) .cloud-explorer-sidebar {
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(15, 23, 42, 0.42);
   border-right-color: rgba(148, 163, 184, 0.16);
-}
-
-.cloud-sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 4px 6px 4px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-  flex-shrink: 0;
-}
-
-.cloud-sidebar-title {
-  font-size: 12px;
-  font-weight: 800;
-  color: #475569;
-}
-
-body:not(.theme-light) .cloud-sidebar-title {
-  color: #cbd5e1;
-}
-
-.cloud-sidebar-add-btn {
-  padding: 3px 8px;
-  border-radius: 6px;
-  border: 1px dashed rgba(37, 99, 235, 0.45);
-  background: rgba(37, 99, 235, 0.06);
-  color: #2563eb;
-  font-size: 11px;
-  font-weight: 800;
-  cursor: pointer;
-  transition: all 0.13s ease;
-}
-
-.cloud-sidebar-add-btn:hover {
-  background: rgba(37, 99, 235, 0.14);
-  border-color: #2563eb;
-}
-
-body:not(.theme-light) .cloud-sidebar-add-btn {
-  color: #60a5fa;
-  border-color: rgba(96, 165, 250, 0.4);
-  background: rgba(59, 130, 246, 0.1);
-}
-
-.cloud-new-folder-inline-row {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 7px 8px;
-  border-radius: 8px;
-  background: rgba(37, 99, 235, 0.07);
-  border: 1px solid rgba(59, 130, 246, 0.32);
-  flex-shrink: 0;
-}
-
-.cloud-new-folder-target-lbl {
-  font-size: 10.5px;
-  font-weight: 800;
-  color: #2563eb;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-body:not(.theme-light) .cloud-new-folder-target-lbl {
-  color: #93c5fd;
-}
-
-.cloud-new-folder-input {
-  width: 100%;
-  padding: 5px 7px;
-  border-radius: 6px;
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  background: #ffffff;
-  color: #0f172a;
-  font-size: 11.5px;
-  font-weight: 600;
-  outline: none;
-  box-sizing: border-box;
-}
-
-body:not(.theme-light) .cloud-new-folder-input {
-  background: rgba(15, 23, 42, 0.9);
-  color: #f8fafc;
-  border-color: rgba(148, 163, 184, 0.35);
-}
-
-.cloud-new-folder-btn-row {
-  display: flex;
-  gap: 4px;
-}
-
-.cloud-new-folder-btn {
-  flex: 1;
-  padding: 4px 6px !important;
-  font-size: 11px !important;
-  font-weight: 700 !important;
-  border-radius: 5px !important;
-  cursor: pointer;
 }
 
 .cloud-folder-tree-list {
@@ -11830,7 +11874,7 @@ body:not(.theme-light) .cloud-new-folder-input {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   padding-right: 2px;
 }
 
@@ -11848,17 +11892,17 @@ body:not(.theme-light) .cloud-new-folder-input {
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  padding: 6px 8px;
-  border-radius: 7px;
+  padding: 5px 6px;
+  border-radius: 6px;
   border: 1px solid transparent;
   background: transparent;
   color: #334155;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   user-select: none;
-  transition: background 0.12s ease, color 0.12s ease;
-  min-height: 30px;
+  transition: background 0.1s ease, border-color 0.1s ease;
+  min-height: 28px;
   box-sizing: border-box;
 }
 
@@ -11872,47 +11916,47 @@ body:not(.theme-light) .cloud-tree-node {
 
 .cloud-tree-node.active {
   background: rgba(37, 99, 235, 0.12);
-  border-color: rgba(37, 99, 235, 0.32);
+  border-color: rgba(37, 99, 235, 0.28);
   color: #1d4ed8;
   font-weight: 800;
 }
 
 body:not(.theme-light) .cloud-tree-node.active {
   background: rgba(59, 130, 246, 0.22);
-  border-color: rgba(96, 165, 250, 0.45);
+  border-color: rgba(96, 165, 250, 0.4);
   color: #93c5fd;
-}
-
-.cloud-tree-node.is-subfolder {
-  padding-left: 22px;
-  font-size: 11.5px;
-  font-weight: 600;
-  min-height: 27px;
 }
 
 .cloud-tree-node-left {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
   flex: 1;
 }
 
+/* 고정 16px 화살표 슬롯: 하위폴더 유무와 무관하게 폴더 아이콘 세로줄 100% 일직선 정렬 */
 .cloud-tree-chevron {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   font-size: 9.5px;
   color: #64748b;
   flex-shrink: 0;
   border-radius: 3px;
 }
 
-.cloud-tree-chevron:hover {
-  background: rgba(148, 163, 184, 0.22);
+.cloud-tree-chevron.has-children:hover {
+  background: rgba(148, 163, 184, 0.24);
   color: #0f172a;
+}
+
+.cloud-tree-icon {
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .cloud-tree-name {
@@ -11924,111 +11968,414 @@ body:not(.theme-light) .cloud-tree-node.active {
 .cloud-tree-count {
   font-size: 10.5px;
   font-weight: 700;
-  color: #64748b;
+  color: #94a3b8;
   flex-shrink: 0;
 }
 
-.cloud-tree-node-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
+.cloud-tree-divider {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.22);
+  margin: 5px 4px;
   flex-shrink: 0;
-  opacity: 0.7;
 }
 
-.cloud-tree-node:hover .cloud-tree-node-actions,
-.cloud-tree-node.active .cloud-tree-node-actions {
-  opacity: 1;
-}
-
-.cloud-tree-mini-btn {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  border: none;
-  background: transparent;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-
-.cloud-tree-mini-btn:hover {
-  background: rgba(37, 99, 235, 0.14);
-  color: #2563eb;
-}
-
-.cloud-tree-mini-btn.del:hover {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
-}
-
-/* 우측 메인 파일 탐색 & 저장 영역 */
+/* 우측 메인 파일/폴더 탐색기 영역 */
 .cloud-explorer-main {
   flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 12px 14px;
-  gap: 10px;
+  background: #ffffff;
   overflow: hidden;
 }
 
-.cloud-explorer-save-bar {
+body:not(.theme-light) .cloud-explorer-main {
+  background: rgba(15, 23, 42, 0.3);
+}
+
+/* 윈도우 탐색기 상단 컬럼 헤더 (이름 | 수정한 날짜 | 분량 | 관리) */
+.win-explorer-col-header {
   display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 9px 11px;
-  border-radius: 10px;
-  background: rgba(37, 99, 235, 0.05);
-  border: 1px solid rgba(37, 99, 235, 0.22);
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(248, 250, 252, 0.8);
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  user-select: none;
   flex-shrink: 0;
 }
 
-body:not(.theme-light) .cloud-explorer-save-bar {
-  background: rgba(30, 41, 59, 0.65);
-  border-color: rgba(59, 130, 246, 0.28);
+body:not(.theme-light) .win-explorer-col-header {
+  background: rgba(30, 41, 59, 0.5);
+  border-bottom-color: rgba(148, 163, 184, 0.16);
+  color: #94a3b8;
 }
 
-.cloud-save-bar-top {
+.win-explorer-col-header .col-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.win-explorer-col-header .col-name small {
+  font-weight: 600;
+  color: #94a3b8;
+  margin-left: 4px;
+}
+
+.win-explorer-col-header .col-date {
+  width: 92px;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+.win-explorer-col-header .col-size {
+  width: 58px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.win-explorer-col-header .col-act {
+  width: 84px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ➕ 새 폴더 인라인 생성 행 */
+.win-inline-new-folder-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(37, 99, 235, 0.07);
+  border-bottom: 1px solid rgba(37, 99, 235, 0.25);
+  flex-shrink: 0;
 }
 
-.cloud-save-location-badge {
+.win-folder-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.win-new-folder-target-badge {
+  font-size: 11px;
+  font-weight: 800;
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.12);
+  padding: 2px 7px;
+  border-radius: 5px;
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+body:not(.theme-light) .win-new-folder-target-badge {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.22);
+}
+
+.win-new-folder-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1.5px solid #2563eb;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 700;
+  outline: none;
+}
+
+body:not(.theme-light) .win-new-folder-input {
+  background: rgba(15, 23, 42, 0.92);
+  color: #f8fafc;
+}
+
+.win-new-folder-btn {
+  padding: 4px 10px !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  cursor: pointer;
+}
+
+/* 우측 폴더 + 파일 리스트 컨테이너 */
+.cloud-item-list.cloud-explorer-file-list {
+  flex: 1 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 6px;
+}
+
+/* 윈도우 탐색기 행 공통 스타일 (폴더 행 & 파일 행) */
+.win-explorer-row {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s ease, border-color 0.1s ease;
+  min-height: 34px;
+  box-sizing: border-box;
+}
+
+.win-explorer-row:hover {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.win-explorer-row.selected {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.32);
+}
+
+body:not(.theme-light) .win-explorer-row:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+body:not(.theme-light) .win-explorer-row.selected {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: rgba(96, 165, 250, 0.42);
+}
+
+/* 드래그 앤 드롭 하이라이트 (폴더 위나 트리 노드, 주소창 위에 드래그했을 때) */
+.drop-target-hover {
+  background: rgba(37, 99, 235, 0.18) !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 1.5px rgba(37, 99, 235, 0.35);
+}
+
+.win-explorer-row.dragging-source {
+  opacity: 0.45;
+}
+
+.win-row-name-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-right: 8px;
+}
+
+.win-row-icon {
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.win-row-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.win-explorer-row.is-folder-row .win-row-title {
+  font-weight: 700;
+}
+
+body:not(.theme-light) .win-row-title {
+  color: #f1f5f9;
+}
+
+.win-row-date-col {
+  width: 92px;
   font-size: 11.5px;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.win-row-size-col {
+  width: 58px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
   color: #475569;
+  flex-shrink: 0;
+}
+
+body:not(.theme-light) .win-row-size-col {
+  color: #94a3b8;
+}
+
+.win-row-act-col {
+  width: 84px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.win-row-open-pill {
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+  font-size: 10.5px;
+  font-weight: 800;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+.win-explorer-row:hover .win-row-open-pill,
+.win-explorer-row.selected .win-row-open-pill {
+  opacity: 1;
+}
+
+.win-row-open-pill:hover {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+body:not(.theme-light) .win-row-open-pill {
+  color: #93c5fd;
+  border-color: rgba(96, 165, 250, 0.35);
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.cloud-item-folder-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.16);
+  color: #475569;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
 }
 
-body:not(.theme-light) .cloud-save-location-badge {
+body:not(.theme-light) .cloud-item-folder-badge {
+  background: rgba(148, 163, 184, 0.2);
   color: #cbd5e1;
 }
 
-.cloud-save-location-badge strong {
-  color: #1d4ed8;
-  font-weight: 800;
+.btn-cloud-edit-item,
+.btn-cloud-del-item {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  transition: all 0.12s ease;
 }
 
-body:not(.theme-light) .cloud-save-location-badge strong {
-  color: #93c5fd;
+.win-explorer-row:hover .btn-cloud-edit-item,
+.win-explorer-row:hover .btn-cloud-del-item,
+.win-explorer-row.selected .btn-cloud-edit-item,
+.win-explorer-row.selected .btn-cloud-del-item {
+  opacity: 1;
+}
+
+.btn-cloud-edit-item:hover {
+  background: rgba(37, 99, 235, 0.12);
+  color: #2563eb;
+}
+
+.btn-cloud-del-item:hover {
+  background: rgba(239, 68, 68, 0.14);
+  color: #ef4444;
+}
+
+/* 💾 하단 고정 바: 윈도우 '다른 이름으로 저장' 표준 바 */
+.win-explorer-save-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 14px;
+  background: rgba(248, 250, 252, 0.95);
+  border-top: 1px solid rgba(148, 163, 184, 0.28);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+body:not(.theme-light) .win-explorer-save-footer {
+  background: rgba(15, 23, 42, 0.82);
+  border-top-color: rgba(148, 163, 184, 0.2);
+}
+
+.win-save-footer-left {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.win-save-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #334155;
+  white-space: nowrap;
+}
+
+body:not(.theme-light) .win-save-label {
+  color: #cbd5e1;
+}
+
+.win-save-title-input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
+  box-sizing: border-box;
+}
+
+body:not(.theme-light) .win-save-title-input {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(148, 163, 184, 0.32);
+  color: #f8fafc;
+}
+
+.win-save-title-input:focus {
+  border-color: #2563eb;
+}
+
+.win-save-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
 }
 
 .cloud-save-scope-group {
   display: inline-flex;
-  gap: 4px;
-  background: rgba(148, 163, 184, 0.15);
+  gap: 2px;
+  background: rgba(148, 163, 184, 0.16);
   padding: 2px;
   border-radius: 7px;
 }
@@ -12039,7 +12386,7 @@ body:not(.theme-light) .cloud-save-location-badge strong {
   color: #64748b;
   font-size: 11px;
   font-weight: 700;
-  padding: 3px 8px;
+  padding: 4px 8px;
   border-radius: 5px;
   cursor: pointer;
   transition: all 0.12s ease;
@@ -12056,148 +12403,26 @@ body:not(.theme-light) .cloud-scope-pill.active {
   color: #ffffff;
 }
 
-.cloud-save-bar-bottom {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.cloud-save-title-input {
-  flex: 1;
-  min-width: 0;
-  padding: 7px 10px;
-  border-radius: 7px;
-  border: 1px solid rgba(148, 163, 184, 0.42);
-  background: #ffffff;
-  color: #0f172a;
-  font-size: 12px;
-  font-weight: 600;
-  outline: none;
-}
-
-body:not(.theme-light) .cloud-save-title-input {
-  background: rgba(15, 23, 42, 0.85);
-  border-color: rgba(148, 163, 184, 0.3);
-  color: #f8fafc;
-}
-
-.cloud-save-title-input:focus {
-  border-color: #2563eb;
-}
-
-.cloud-save-submit-btn {
-  padding: 7px 13px !important;
+.win-save-submit-btn {
+  height: 32px;
+  padding: 0 13px !important;
   font-size: 12px !important;
   font-weight: 800 !important;
   border-radius: 7px !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   white-space: nowrap;
   cursor: pointer;
-  flex-shrink: 0;
 }
 
-.cloud-explorer-list-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 2px;
-  flex-shrink: 0;
-}
-
-.cloud-current-path-title {
-  font-size: 12.5px;
-  font-weight: 800;
-  color: #0f172a;
-}
-
-body:not(.theme-light) .cloud-current-path-title {
-  color: #f8fafc;
-}
-
-.cloud-explorer-list-hint {
+.win-save-submit-btn small {
   font-size: 10.5px;
-  color: #64748b;
-  font-weight: 600;
-}
-
-.cloud-item-list.cloud-explorer-file-list {
-  flex: 1 !important;
-  min-height: 0 !important;
-  max-height: none !important;
-  overflow-y: auto !important;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-right: 2px;
-}
-
-.cloud-item-row {
-  cursor: pointer;
-  padding: 8px 10px !important;
-  border-radius: 9px !important;
-  transition: background 0.14s ease, border-color 0.14s ease !important;
-}
-
-.cloud-item-row:hover {
-  border-color: rgba(37, 99, 235, 0.4) !important;
-  background: rgba(37, 99, 235, 0.05) !important;
-}
-
-.cloud-item-folder-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: rgba(148, 163, 184, 0.16);
-  color: #475569;
-  font-size: 10px;
   font-weight: 700;
-  margin-right: 4px;
-  flex-shrink: 0;
-}
-
-body:not(.theme-light) .cloud-item-folder-badge {
-  background: rgba(148, 163, 184, 0.2);
-  color: #cbd5e1;
-}
-
-.cloud-item-folder-select {
-  padding: 3px 6px;
-  border-radius: 6px;
-  border: 1px solid rgba(148, 163, 184, 0.38);
-  background: rgba(248, 250, 252, 0.9);
-  color: #475569;
-  font-size: 11px;
-  font-weight: 700;
-  max-width: 112px;
-  cursor: pointer;
-  outline: none;
-}
-
-body:not(.theme-light) .cloud-item-folder-select {
-  background: rgba(15, 23, 42, 0.8);
-  border-color: rgba(148, 163, 184, 0.25);
-  color: #cbd5e1;
-}
-
-.btn-cloud-edit-item {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: #64748b;
-  font-size: 11.5px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  transition: all 0.12s ease;
-}
-
-.btn-cloud-edit-item:hover {
-  background: rgba(37, 99, 235, 0.12);
-  color: #2563eb;
+  opacity: 0.88;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .btn-cloud-go-settings-login {

@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_17">
+  <link rel="stylesheet" href="style.css?v=20261105_18">
 </head>
 
 <body class="theme-light">
@@ -2605,7 +2605,7 @@
     <span id="lblTopSlideMiniTab">1 / 2 ▾</span>
   </button>
 
-  <!-- [☁️ 클라우드 보관함 모달 (윈도우 탐색기 2단 구조: 좌측 세로 폴더/하위폴더 트리 + 우측 클라우드 저장 & 파일 불러오기)] -->
+  <!-- [☁️ 클라우드 보관함 모달 (윈도우 파일 탐색기 100% 동일 구조: 상단 경로 주소창 + 좌측 폴더 트리 + 우측 폴더/파일 더블클릭 & 드래그앤드롭 + 하단 현재 폴더에 저장 바)] -->
   <div id="modalCloudHub" class="smart-modal-backdrop">
     <div class="smart-modal-card cloud-hub-modal-card cloud-explorer-modal-card">
       <div class="smart-modal-header cloud-hub-header">
@@ -2618,10 +2618,6 @@
                 id="badgeMyLibraryCount">0</span>)</span></span>
         </div>
         <div class="cloud-auth-area" style="display:flex; align-items:center; gap:8px;">
-          <div id="cloudLibrarySearchWrap" class="cloud-library-search-wrap">
-            <input type="text" id="inputCloudLibrarySearch" class="cloud-library-search-input"
-              placeholder="🔍 제목 검색..." autocomplete="off">
-          </div>
           <!-- 호환용 숨김 요소 -->
           <div style="display: none !important;">
             <span id="lblCloudUserStatus" class="cloud-user-status"></span>
@@ -2641,6 +2637,7 @@
             <button type="button" id="btnBundleSelectedToFile"></button>
             <input type="checkbox" id="chkCloudSelectAll">
             <button type="button" id="btnStartLessonPlaylist"><span id="lblSelectedPlaylistCount">0</span></button>
+            <span id="lblCloudExplorerCurrentPath"></span>
           </div>
           <button id="btnCloseCloudHub" class="btn-modal-close"><svg width="15" height="15" viewBox="0 0 24 24"
               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2650,58 +2647,72 @@
         </div>
       </div>
 
+      <!-- 🧭 윈도우 탐색기 상단 주소 표시줄 (상위 폴더 이동 + 경로 Breadcrumb + 새 폴더 + 검색) -->
+      <div id="cloudExplorerAddressToolbar" class="win-explorer-toolbar">
+        <button type="button" id="btnCloudNavUp" class="win-explorer-up-btn" title="상위 폴더로 이동">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="m18 15-6-6-6 6" />
+          </svg>
+        </button>
+        <div id="cloudExplorerBreadcrumbBar" class="win-explorer-address-bar"></div>
+        <button type="button" id="btnCloudAddRootFolder" class="win-explorer-new-folder-btn" title="현재 폴더 안에 새 폴더 만들기">
+          <span>📁+ 새 폴더</span>
+        </button>
+        <div id="cloudLibrarySearchWrap" class="cloud-library-search-wrap">
+          <input type="text" id="inputCloudLibrarySearch" class="cloud-library-search-input"
+            placeholder="🔍 검색..." autocomplete="off">
+        </div>
+      </div>
+
       <div class="smart-modal-body cloud-hub-body cloud-explorer-body">
         <div id="panelCloudMyLibrary" class="cloud-explorer-layout">
-          <!-- 좌측 패널: 윈도우 탐색기 스타일 세로 폴더 & 하위폴더 트리 -->
+          <!-- 좌측 패널: 윈도우 탐색기 폴더 트리 -->
           <aside class="cloud-explorer-sidebar" id="cloudExplorerSidebar">
-            <div class="cloud-sidebar-header">
-              <span class="cloud-sidebar-title">📂 폴더</span>
-              <button type="button" id="btnCloudAddRootFolder" class="cloud-sidebar-add-btn" title="새 상위 폴더 만들기">+ 폴더</button>
-            </div>
-
-            <!-- ➕ 새 폴더 / 하위 폴더 인라인 생성 줄 -->
-            <div id="cloudNewFolderInlineRow" class="cloud-new-folder-inline-row" style="display: none;">
-              <div id="lblNewCloudFolderTarget" class="cloud-new-folder-target-lbl">새 상위 폴더</div>
-              <input type="text" id="inputNewCloudFolderName" class="cloud-new-folder-input"
-                placeholder="폴더 이름 입력" maxlength="24" autocomplete="off">
-              <div class="cloud-new-folder-btn-row">
-                <button type="button" id="btnConfirmNewCloudFolder" class="btn-primary cloud-new-folder-btn">추가</button>
-                <button type="button" id="btnCancelNewCloudFolder" class="btn-secondary cloud-new-folder-btn">취소</button>
-              </div>
-            </div>
-
-            <!-- 세로 폴더 트리 리스트 -->
             <div id="cloudFolderChipBar" class="cloud-folder-tree-list"></div>
           </aside>
 
-          <!-- 우측 패널: 현재 폴더에 저장 바 + 폴더 내 파일 목록 -->
+          <!-- 우측 패널: 현재 폴더 내부 (하위폴더 + 수업 파일 목록) -->
           <section class="cloud-explorer-main">
-            <!-- 상단: 현재 칠판/캔버스 클라우드 저장 바 -->
-            <div id="cloudExplorerSaveBar" class="cloud-explorer-save-bar">
-              <div class="cloud-save-bar-top">
-                <span class="cloud-save-location-badge">
-                  <span>💾 저장 위치:</span>
-                  <strong id="lblCloudExplorerSaveFolder">📌 기본 보관함</strong>
-                </span>
-                <div class="cloud-save-scope-group">
-                  <button type="button" id="btnCloudSaveScopeAll" class="cloud-scope-pill active" data-scope="all">전체 캔버스</button>
-                  <button type="button" id="btnCloudSaveScopeCurrent" class="cloud-scope-pill" data-scope="current">현재 캔버스만</button>
-                </div>
-              </div>
-              <div class="cloud-save-bar-bottom">
-                <input type="text" id="inputCloudSaveTitle" class="cloud-save-title-input"
-                  placeholder="저장할 제목 입력 (비워두면 날짜·문항수로 자동 저장)" autocomplete="off">
-                <button type="button" id="btnSaveToMyLibrary" class="btn-primary cloud-save-submit-btn">☁️ 여기에 저장</button>
-              </div>
+            <div class="win-explorer-col-header">
+              <span class="col-name">이름 <small>(더블클릭: 열기 · 드래그: 폴더 이동)</small></span>
+              <span class="col-date">수정한 날짜</span>
+              <span class="col-size">분량</span>
+              <span class="col-act">관리</span>
             </div>
 
-            <!-- 하단: 현재 폴더 파일 목록 헤더 & 리스트 -->
-            <div class="cloud-explorer-list-header">
-              <span id="lblCloudExplorerCurrentPath" class="cloud-current-path-title">📌 전체 보관함</span>
-              <span class="cloud-explorer-list-hint">파일 클릭 시 열기 · ✏️ 이름 변경 · 📁 폴더 이동</span>
+            <!-- ➕ 새 폴더 인라인 입력 행 (현재 열려 있는 폴더 안에 생성) -->
+            <div id="cloudNewFolderInlineRow" class="win-inline-new-folder-row" style="display: none;">
+              <span class="win-folder-icon">📁</span>
+              <span id="lblNewCloudFolderTarget" class="win-new-folder-target-badge">현재 폴더</span>
+              <input type="text" id="inputNewCloudFolderName" class="win-new-folder-input"
+                placeholder="새 폴더 이름 입력 후 Enter" maxlength="28" autocomplete="off">
+              <button type="button" id="btnConfirmNewCloudFolder" class="btn-primary win-new-folder-btn">생성</button>
+              <button type="button" id="btnCancelNewCloudFolder" class="btn-secondary win-new-folder-btn">취소</button>
             </div>
+
+            <!-- 폴더 & 파일 탐색 리스트 -->
             <div id="myLibraryList" class="cloud-item-list cloud-explorer-file-list"></div>
           </section>
+        </div>
+
+        <!-- 💾 하단 고정 바: 윈도우 '다른 이름으로 저장' 표준 하단 바 -->
+        <div id="cloudExplorerSaveBar" class="win-explorer-save-footer">
+          <div class="win-save-footer-left">
+            <span class="win-save-label">파일 이름:</span>
+            <input type="text" id="inputCloudSaveTitle" class="win-save-title-input"
+              placeholder="현재 칠판 저장 제목 입력 (비워두면 날짜·문항수로 자동 저장)" autocomplete="off">
+          </div>
+          <div class="win-save-footer-right">
+            <div class="cloud-save-scope-group" title="저장할 캔버스 범위">
+              <button type="button" id="btnCloudSaveScopeAll" class="cloud-scope-pill active" data-scope="all">전체 캔버스</button>
+              <button type="button" id="btnCloudSaveScopeCurrent" class="cloud-scope-pill" data-scope="current">현재만</button>
+            </div>
+            <button type="button" id="btnSaveToMyLibrary" class="btn-primary win-save-submit-btn">
+              <span>☁️ 여기에 저장</span>
+              <small id="lblCloudExplorerSaveFolder">(내 클라우드)</small>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -3099,8 +3110,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261105_17"></script>
-  <script src="app.js?v=20261105_17"></script>
+  <script src="engine.js?v=20261105_18"></script>
+  <script src="app.js?v=20261105_18"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
