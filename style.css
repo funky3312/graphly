@@ -12306,11 +12306,14 @@ body:not(.theme-light) .win-row-title {
   flex-shrink: 0;
 }
 
-.win-row-date-col {
-  font-size: 11.5px;
-  color: #94a3b8;
-  flex-shrink: 0;
-  white-space: nowrap;
+.win-row-date-col,
+.win-row-size-col,
+.win-row-open-pill,
+.btn-cloud-move-item,
+.btn-cloud-dl-item,
+.btn-cloud-del-item,
+.cloud-tree-count {
+  display: none !important;
 }
 
 .win-row-act-col {
