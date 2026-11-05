@@ -13985,6 +13985,32 @@ body:not(.theme-light) #modalShare .vf-chip.active {
   font-weight: 700 !important;
 }
 
+/* 배경 색상 프리뷰 원형 도트 고유 색상 선명하게 유지 */
+#panelStyle .theme-chip[data-theme="white_paper"] .theme-color-preview {
+  background: #ffffff !important;
+  border: 1.5px solid #94a3b8 !important;
+}
+
+#panelStyle .theme-chip[data-theme="chalkboard"] .theme-color-preview {
+  background: #047857 !important;
+  border: 1.5px solid #10b981 !important;
+}
+
+#panelStyle .theme-chip[data-theme="dark_charcoal"] .theme-color-preview {
+  background: #334155 !important;
+  border: 1.5px solid #64748b !important;
+}
+
+#panelStyle .theme-chip[data-theme="deep_black"] .theme-color-preview {
+  background: #09090b !important;
+  border: 1.5px solid #475569 !important;
+}
+
+#panelStyle .theme-chip[data-theme="postit"] .theme-color-preview {
+  background: #fef08a !important;
+  border: 1.5px solid #f59e0b !important;
+}
+
 body:not(.theme-light) #panelStyle .compact-theme-row .theme-chip {
   background: rgba(255, 255, 255, 0.04) !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
