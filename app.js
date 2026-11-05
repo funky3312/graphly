@@ -680,6 +680,53 @@ class GraphApp {
         }, 24);
       }
     }, true);
+
+    // 🌟 [PC 마우스 & 신형 아이패드 애플펜슬 공중 호버링 100% 지원 + 사파리 터치 직후 Sticky :hover 잔상 원천 제거]
+    const HOVER_ICON_SELECTOR = '.rail-btn, .quick-fab-btn, .rail-zoom-action-btn';
+    let currentHoveredIcon = null;
+    let suppressHoverUntil = 0;
+
+    const clearHoveredIcon = () => {
+      if (currentHoveredIcon) {
+        currentHoveredIcon.classList.remove('is-hovered');
+        currentHoveredIcon = null;
+      }
+    };
+
+    window.addEventListener('pointermove', (e) => {
+      // 손가락 터치이거나 버튼을 누르고 있는 드래그 상태(buttons !== 0), 또는 클릭 직후 쿨타임에는 호버 점등 차단
+      if (e.pointerType === 'touch' || (e.buttons && e.buttons !== 0) || performance.now() < suppressHoverUntil) {
+        clearHoveredIcon();
+        return;
+      }
+      const target = e.target;
+      const btn = (target && typeof target.closest === 'function')
+        ? target.closest(HOVER_ICON_SELECTOR)
+        : null;
+      if (btn === currentHoveredIcon) return;
+      clearHoveredIcon();
+      if (btn && !btn.disabled) {
+        currentHoveredIcon = btn;
+        btn.classList.add('is-hovered');
+      }
+    }, { capture: true, passive: true });
+
+    window.addEventListener('pointerdown', () => {
+      suppressHoverUntil = performance.now() + 280;
+      clearHoveredIcon();
+    }, { capture: true, passive: true });
+
+    window.addEventListener('pointerup', () => {
+      suppressHoverUntil = performance.now() + 280;
+      clearHoveredIcon();
+    }, { capture: true, passive: true });
+
+    window.addEventListener('pointercancel', clearHoveredIcon, { capture: true, passive: true });
+    window.addEventListener('touchstart', () => {
+      suppressHoverUntil = performance.now() + 350;
+      clearHoveredIcon();
+    }, { capture: true, passive: true });
+    window.addEventListener('blur', clearHoveredIcon);
   }
 
   // --- [🌟 초기 인트로 화면 제거: 접속/앱 실행 즉시 0.0초 만에 판서 모드로 직행 (우측 전체화면 버튼은 그대로 유지)] ---

@@ -319,7 +319,7 @@ body.header-collapsed .header-show-tab {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 }
 
-.rail-btn:hover {
+.rail-btn.is-hovered {
   background: rgba(35, 48, 64, 0.95);
   border-color: var(--accent-cyan);
   color: #ffffff;
@@ -1719,14 +1719,14 @@ body.fullscreen-mode .btn-exit-fullscreen {
   transition: transform 0.15s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.quick-fab-btn:hover {
+.quick-fab-btn.is-hovered {
   background: rgba(35, 48, 64, 0.95);
   border-color: var(--accent-cyan);
   transform: scale(1.08);
   box-shadow: 0 6px 20px rgba(0, 210, 211, 0.25);
 }
 
-#btnQuickNewCanvas:hover {
+#btnQuickNewCanvas.is-hovered {
   background: rgba(244, 63, 94, 0.22);
   border-color: #fb7185;
   color: #fb7185;
@@ -3139,7 +3139,7 @@ body.theme-light .canvas-quick-toolbar .quick-fab-btn {
   color: #0f172a;
 }
 
-body.theme-light .canvas-quick-toolbar .quick-fab-btn:hover {
+body.theme-light .canvas-quick-toolbar .quick-fab-btn.is-hovered {
   background: #ffffff;
   border-color: #00cec9;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
@@ -4703,7 +4703,7 @@ body.theme-light .problem-card-resize-handle {
   justify-content: flex-end;
 }
 
-.quick-fab-exit:hover {
+.quick-fab-exit.is-hovered {
   background: rgba(255, 71, 87, 0.35) !important;
   border-color: #ff4757 !important;
   color: #ffffff !important;
@@ -5194,7 +5194,7 @@ body.theme-light .rail-btn {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
 }
 
-body.theme-light .rail-btn:hover {
+body.theme-light .rail-btn.is-hovered {
   background: #ffffff;
   border-color: #00cec9;
   color: #00cec9;
@@ -5218,7 +5218,7 @@ body.theme-light .rail-zoom-action-btn {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
 }
 
-body.theme-light .rail-zoom-action-btn:hover {
+body.theme-light .rail-zoom-action-btn.is-hovered {
   background: #ffffff;
   border-color: #00cec9;
   color: #00cec9;
@@ -5234,7 +5234,7 @@ body.theme-light .canvas-quick-toolbar .quick-fab-btn {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
 }
 
-body.theme-light .canvas-quick-toolbar .quick-fab-btn:hover {
+body.theme-light .canvas-quick-toolbar .quick-fab-btn.is-hovered {
   background: #ffffff;
   border-color: #00cec9;
   color: #00cec9;
@@ -5242,7 +5242,7 @@ body.theme-light .canvas-quick-toolbar .quick-fab-btn:hover {
   transform: scale(1.08);
 }
 
-body.theme-light #btnQuickNewCanvas:hover {
+body.theme-light #btnQuickNewCanvas.is-hovered {
   background: #fff1f2;
   border-color: #e11d48;
   color: #e11d48;
@@ -5255,7 +5255,7 @@ body.theme-light .quick-fab-copy {
   color: #009688 !important;
 }
 
-body.theme-light .quick-fab-exit:hover {
+body.theme-light .quick-fab-exit.is-hovered {
   background: rgba(255, 71, 87, 0.22) !important;
   border-color: #e11d48 !important;
   color: #e11d48 !important;
