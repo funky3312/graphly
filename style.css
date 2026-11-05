@@ -7850,16 +7850,16 @@ body.theme-light .btn-cloud-export-item:hover {
   left: 605px;
   top: 76px;
   z-index: 465 !important;
-  width: 122px;
+  width: 88px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
-  padding: 7px 9px 9px 9px;
-  border-radius: 18px;
+  gap: 4px;
+  padding: 5px 5.5px 6.5px 5.5px;
+  border-radius: 13px;
   background: rgba(15, 23, 42, 0.93);
-  border: 1.5px solid rgba(148, 163, 184, 0.28);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.2);
+  border: 1.2px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.32), 0 2px 6px rgba(0, 0, 0, 0.18);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   user-select: none;
@@ -7870,14 +7870,14 @@ body.theme-light .btn-cloud-export-item:hover {
 body.theme-light .quick-pill-remote {
   background: rgba(255, 255, 255, 0.96);
   border-color: rgba(15, 23, 42, 0.14);
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.13), 0 2px 5px rgba(15, 23, 42, 0.08);
 }
 
 .pill-remote-top-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 4px;
+  gap: 3px;
   margin-bottom: -1px;
 }
 
@@ -7885,11 +7885,11 @@ body.theme-light .quick-pill-remote {
   flex: 1;
   cursor: grab;
   color: #94a3b8;
-  font-size: 13px;
+  font-size: 9.5px;
   font-weight: 800;
-  letter-spacing: 0.5px;
-  padding: 3px 4px;
-  border-radius: 7px;
+  letter-spacing: 0.4px;
+  padding: 2px 3px;
+  border-radius: 5px;
   line-height: 1;
   display: flex;
   align-items: center;
@@ -7915,18 +7915,18 @@ body.theme-light .pill-remote-drag-handle:hover {
   cursor: grabbing;
 }
 
-/* 0단: 전폭 초대형 메인 [✒️ 필기 ⇄ ↖ 이동] 원버튼 */
+/* 0단: 전폭 초대형 메인 [✒️ 필기 ⇄ ↖ 이동] 원버튼 (70% 컴팩트 스케일) */
 .pill-remote-swap-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 3.5px;
   width: 100%;
-  height: 44px;
-  padding: 0 8px;
-  border-radius: 12px;
-  border: 1.5px solid transparent;
-  font-size: 14px;
+  height: 31px;
+  padding: 0 5px;
+  border-radius: 8.5px;
+  border: 1.2px solid transparent;
+  font-size: 10.5px;
   font-weight: 800;
   cursor: pointer;
   transition: transform 0.1s ease, box-shadow 0.15s ease, background 0.15s ease;
@@ -7937,14 +7937,14 @@ body.theme-light .pill-remote-drag-handle:hover {
   background: linear-gradient(135deg, #2563eb, #0284c7);
   color: #ffffff;
   border-color: rgba(125, 211, 252, 0.45);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.32);
 }
 
 .pill-remote-swap-btn.mode-select {
   background: linear-gradient(135deg, #059669, #0d9488);
   color: #ffffff;
   border-color: rgba(110, 231, 183, 0.45);
-  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.35);
+  box-shadow: 0 3px 10px rgba(5, 150, 105, 0.32);
 }
 
 .pill-remote-swap-btn.mode-subtool {
@@ -7975,7 +7975,7 @@ body.theme-light .pill-remote-swap-btn.mode-subtool {
 }
 
 .pill-swap-badge {
-  font-size: 11.5px;
+  font-size: 8.5px;
   opacity: 0.85;
   font-weight: 700;
 }
@@ -7983,7 +7983,7 @@ body.theme-light .pill-remote-swap-btn.mode-subtool {
 .pill-remote-section {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
 }
 
@@ -8002,15 +8002,15 @@ body.theme-light .pill-remote-sep {
 .pill-remote-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
 }
 
 .pill-remote-btn {
   width: 100%;
-  height: 38px;
-  border-radius: 11px;
-  border: 1.5px solid rgba(148, 163, 184, 0.22);
+  height: 27px;
+  border-radius: 8px;
+  border: 1.2px solid rgba(148, 163, 184, 0.22);
   background: rgba(255, 255, 255, 0.06);
   color: #f1f5f9;
   display: flex;
@@ -8048,21 +8048,21 @@ body.theme-light .pill-remote-btn:hover {
   background: linear-gradient(135deg, #f43f5e, #e11d48) !important;
   border-color: #fda4af !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 12px rgba(244, 63, 94, 0.35);
+  box-shadow: 0 3px 9px rgba(244, 63, 94, 0.32);
 }
 
 #btnPillLasso.pill-remote-btn.active {
   background: linear-gradient(135deg, #8b5cf6, #6d28d9) !important;
   border-color: #c4b5fd !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.35);
+  box-shadow: 0 3px 9px rgba(139, 92, 246, 0.32);
 }
 
 #btnPillHighlighter.pill-remote-btn.active {
   background: linear-gradient(135deg, #eab308, #ca8a04) !important;
   border-color: #fef08a !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 12px rgba(234, 179, 8, 0.35);
+  box-shadow: 0 3px 9px rgba(234, 179, 8, 0.32);
 }
 
 /* 5색 컬러 도트 줄 */
@@ -8070,15 +8070,15 @@ body.theme-light .pill-remote-btn:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 3px;
-  padding: 2px 1px;
+  gap: 2px;
+  padding: 1px 0;
 }
 
 .pill-color-dot {
-  width: 17px;
-  height: 17px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  border: 2px solid transparent;
+  border: 1.5px solid transparent;
   cursor: pointer;
   padding: 0;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
@@ -8091,37 +8091,38 @@ body.theme-light .pill-remote-btn:hover {
 .pill-color-dot.active {
   transform: scale(1.18);
   border-color: #38bdf8;
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+  box-shadow: 0 0 0 1.5px rgba(56, 189, 248, 0.35);
 }
 
 body.theme-light .pill-color-dot.active {
   border-color: #0284c7;
-  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.28);
+  box-shadow: 0 0 0 1.5px rgba(2, 132, 199, 0.28);
 }
 
 /* 상단 고정 레고형 4모듈 스위치 바 ([도구] · [줌] · [색상] · [기타]) */
 .pill-module-bar {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 2.5px;
+  gap: 2px;
   width: 100%;
   margin-top: 0px;
 }
 
 .pill-mod-chip {
-  height: 22px;
-  border-radius: 6px;
+  height: 16px;
+  border-radius: 4.5px;
   border: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(255, 255, 255, 0.04);
   color: #94a3b8;
-  font-size: 9.5px;
-  letter-spacing: -0.3px;
+  font-size: 7.5px;
+  letter-spacing: -0.4px;
   font-weight: 700;
   cursor: pointer;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
   transition: all 0.12s ease;
 }
 
@@ -8154,9 +8155,9 @@ body.theme-light .pill-mod-chip.active {
 }
 
 .pill-remote-close-btn {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 4.5px;
   border: none;
   background: transparent;
   color: #94a3b8;

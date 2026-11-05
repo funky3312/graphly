@@ -6330,8 +6330,8 @@ class GraphApp {
 
     if (nextState) {
       const rect = remote.getBoundingClientRect();
-      const clampedL = Math.max(64, Math.min((window.innerWidth || 1440) - Math.max(120, rect.width), rect.left || 605));
-      const clampedT = Math.max(12, Math.min((window.innerHeight || 900) - Math.max(60, rect.height), rect.top || 76));
+      const clampedL = Math.max(64, Math.min((window.innerWidth || 1440) - Math.max(88, rect.width), rect.left || 605));
+      const clampedT = Math.max(12, Math.min((window.innerHeight || 900) - Math.max(48, rect.height), rect.top || 76));
       remote.style.left = `${Math.round(clampedL)}px`;
       remote.style.top = `${Math.round(clampedT)}px`;
       this.syncQuickPillRemoteUI();
@@ -6373,20 +6373,14 @@ class GraphApp {
     btnSwap.classList.toggle('mode-subtool', !isPen && !isSelect);
 
     if (lblSwap) {
-      if (isSelect) {
-        lblSwap.textContent = '이동';
-      } else if (isPen) {
-        lblSwap.textContent = '필기';
-      } else {
-        lblSwap.textContent = '필기로';
-      }
+      lblSwap.textContent = isSelect ? '이동' : '필기';
     }
 
     if (iconSwap) {
       if (isSelect) {
-        iconSwap.innerHTML = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>`;
+        iconSwap.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>`;
       } else {
-        iconSwap.innerHTML = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`;
+        iconSwap.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`;
       }
     }
 
