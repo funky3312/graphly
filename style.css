@@ -13630,3 +13630,101 @@ body:not(.theme-light) .shortcut-mini-icon-btn {
   background: linear-gradient(135deg, #2563eb, #4f46e5);
   box-shadow: 0 3px 12px rgba(37, 99, 235, 0.35);
 }
+
+/* ============================================================================
+   👁️ [화면 아이콘 모두 숨기기 모드 (UI All Hidden Mode) & 우측 상단 초슬림·초투명 손잡이 탭]
+   ============================================================================ */
+body.ui-all-hidden-mode #sidebarRail,
+body.ui-all-hidden-mode #rightActionToolbar,
+body.ui-all-hidden-mode #inkFloatingToolbar,
+body.ui-all-hidden-mode #lessonPlaylistNavBar,
+body.ui-all-hidden-mode #pdfBoardNavBar,
+body.ui-all-hidden-mode #topSlideBarMiniTab,
+body.ui-all-hidden-mode #graphSnapFloatingBar,
+body.ui-all-hidden-mode #pdfToGraphCropFloatingBar,
+body.ui-all-hidden-mode #curveContextBar,
+body.ui-all-hidden-mode #lassoActionFloatingBar,
+body.ui-all-hidden-mode #quickPillRemote,
+body.ui-all-hidden-mode #pwRegionPopover {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.ui-hidden-edge-pull-tab {
+  position: fixed;
+  top: 18px;
+  right: 0;
+  width: 9px;
+  height: 44px;
+  padding: 0;
+  border-radius: 6px 0 0 6px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-right: none;
+  background: rgba(148, 163, 184, 0.12);
+  color: rgba(100, 116, 139, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 620;
+  opacity: 0.18;
+  transition: width 0.16s ease, opacity 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+}
+
+/* 시각적으로는 9px로 거의 안 보일 만큼 얇지만, 터치/펜 클릭 판정 영역은 여유 있게 확보 */
+.ui-hidden-edge-pull-tab::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  bottom: -8px;
+  left: -12px;
+  right: 0;
+}
+
+body:not(.theme-light) .ui-hidden-edge-pull-tab {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(226, 232, 240, 0.65);
+}
+
+.ui-hidden-edge-pull-tab:hover,
+.ui-hidden-edge-pull-tab:active {
+  width: 22px;
+  opacity: 0.92;
+  background: rgba(37, 99, 235, 0.14);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #2563eb;
+}
+
+body:not(.theme-light) .ui-hidden-edge-pull-tab:hover,
+body:not(.theme-light) .ui-hidden-edge-pull-tab:active {
+  background: rgba(59, 130, 246, 0.28);
+  border-color: rgba(147, 197, 253, 0.65);
+  color: #93c5fd;
+}
+
+.ui-hidden-notice-pill {
+  position: fixed;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f8fafc;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.22);
+  z-index: 630;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.32s ease, transform 0.32s ease;
+}
+
+.ui-hidden-notice-pill.show {
+  opacity: 1;
+}
+

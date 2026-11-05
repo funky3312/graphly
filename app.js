@@ -41585,6 +41585,16 @@ class GraphApp {
           baseTitle: '전체화면'
         },
         {
+          id: 'sys_toggle_hide_ui',
+          category: 'system',
+          categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+          name: '아이콘 모두 숨기기 / 보이기',
+          desc: '화면의 모든 메뉴·툴바 아이콘을 숨기고 깔끔한 칠판만 표시',
+          defaultKey: 'H',
+          buttonIds: ['btnHideAllUI'],
+          baseTitle: '아이콘 모두 숨기기'
+        },
+        {
           id: 'sys_open_cloud_hub',
           category: 'system',
           categoryLabel: '⚡ 편집 · 녹화 · 시스템',
@@ -41597,6 +41607,52 @@ class GraphApp {
       ];
     }
     return this._shortcutDefinitions;
+  }
+
+  toggleAllUIHidden(forceVal = null) {
+    const nextVal = (typeof forceVal === 'boolean') ? forceVal : !this.isAllUIHidden;
+    this.isAllUIHidden = nextVal;
+
+    const restoreTab = document.getElementById('btnRestoreAllUITab');
+    const noticePill = document.getElementById('uiHiddenNoticePill');
+
+    if (this._uiHiddenNoticeTimer) {
+      clearTimeout(this._uiHiddenNoticeTimer);
+      this._uiHiddenNoticeTimer = null;
+    }
+
+    if (nextVal) {
+      if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
+        this.closeDrawer();
+      }
+      document.body.classList.add('ui-all-hidden-mode');
+      const eff = this._getEffectiveShortcutsMap(this.customShortcuts);
+      const assignedKey = String(eff.sys_toggle_hide_ui || '').trim();
+      const dispKey = assignedKey ? this.formatShortcutKeyForDisplay(assignedKey) : '';
+      if (restoreTab) {
+        restoreTab.style.display = 'flex';
+        restoreTab.title = dispKey ? `아이콘 다시 보이기 (${dispKey})` : '아이콘 다시 보이기';
+      }
+      if (noticePill) {
+        if (dispKey) {
+          noticePill.innerHTML = `👁️ 모든 아이콘을 숨겼습니다 · 단축키 <strong>[${dispKey}]</strong> 또는 <strong>우측 상단 얇은 손잡이 탭</strong>을 누르면 다시 나타납니다`;
+        } else {
+          noticePill.innerHTML = `👁️ 모든 아이콘을 숨겼습니다 · <strong>우측 상단 얇은 손잡이 탭</strong>을 누르면 다시 나타납니다`;
+        }
+        noticePill.classList.add('show');
+        this._uiHiddenNoticeTimer = setTimeout(() => {
+          noticePill.classList.remove('show');
+        }, 2300);
+      }
+    } else {
+      document.body.classList.remove('ui-all-hidden-mode');
+      if (restoreTab) {
+        restoreTab.style.display = 'none';
+      }
+      if (noticePill) {
+        noticePill.classList.remove('show');
+      }
+    }
   }
 
   initShortcutCustomization() {
@@ -41632,6 +41688,25 @@ class GraphApp {
     this._shortcutActiveCategory = 'all';
     this._shortcutSearchQuery = '';
     this._shortcutModalDirty = false;
+    this.isAllUIHidden = false;
+
+    const btnHideAllUI = document.getElementById('btnHideAllUI');
+    const btnRestoreAllUITab = document.getElementById('btnRestoreAllUITab');
+    if (btnHideAllUI) {
+      btnHideAllUI.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleAllUIHidden(true);
+      };
+    }
+    if (btnRestoreAllUITab) {
+      btnRestoreAllUITab.onpointerdown = (e) => {
+        e.stopPropagation();
+      };
+      btnRestoreAllUITab.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleAllUIHidden(false);
+      };
+    }
 
     const btnOpenSettings = document.getElementById('btnOpenShortcutSettings');
     const btnOpenFromGuide = document.getElementById('btnOpenShortcutSettingsFromGuide');
@@ -42409,6 +42484,9 @@ class GraphApp {
       }
       case 'graph_open_presets': {
         if (this.isPdfModalOpen || (this.smartViewerState && this.smartViewerState.isOpen)) return false;
+        if (this.isAllUIHidden) {
+          this.toggleAllUIHidden(false);
+        }
         if (this.isGraphCovered) {
           if (this.pdfPageBoardData) {
             if (this._isPdfCropChoiceMenuOpen || this.isPdfToGraphCropMode) {
@@ -42514,6 +42592,9 @@ class GraphApp {
         return false;
       }
       case 'drawer_toggle': {
+        if (this.isAllUIHidden) {
+          this.toggleAllUIHidden(false);
+        }
         this.toggleDrawer();
         return true;
       }
@@ -42575,6 +42656,10 @@ class GraphApp {
           return true;
         }
         return false;
+      }
+      case 'sys_toggle_hide_ui': {
+        this.toggleAllUIHidden();
+        return true;
       }
       case 'sys_open_cloud_hub': {
         const btn = document.getElementById('btnCloudHub');

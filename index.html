@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_31">
+  <link rel="stylesheet" href="style.css?v=20261105_32">
 </head>
 
 <body class="theme-light">
@@ -1409,6 +1409,17 @@
             </svg></span>
         </button>
 
+        <!-- 1-2. 화면 아이콘 모두 숨기기 (클린 칠판 모드) -->
+        <button id="btnHideAllUI" class="quick-fab-btn" title="아이콘 모두 숨기기 (H)">
+          <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+              <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+              <line x1="1" y1="1" x2="23" y2="23" />
+            </svg></span>
+        </button>
+
         <!-- 2. 뷰어 미리보기 (대표님 핵심 기획: 작업 화면 ⇄ 표준 뷰어 원클릭 전환 — 펼친 책 벡터 아이콘) -->
         <button id="btnQuickOpenViewer" class="quick-fab-btn" title="뷰어 (시험지 미리보기)">
           <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1621,6 +1632,17 @@
         <button id="btnBoardMode" style="display: none;"></button>
         <button id="btnNAxisMode" style="display: none;"></button>
       </div>
+
+      <!-- 👁️ 아이콘 모두 숨김 상태 전용: 우측 상단 초슬림·초투명 손잡이 복귀 탭 & 2초 안내 배너 -->
+      <button type="button" id="btnRestoreAllUITab" class="ui-hidden-edge-pull-tab" style="display: none;"
+        title="아이콘 모두 보이기 (H)">
+        <svg width="9" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
+      <div id="uiHiddenNoticePill" class="ui-hidden-notice-pill" style="display: none;"></div>
+
       <!-- ✍️ 실시간 무한 칠판 필기 플로팅 툴바 (Ink Floating Dock) -->
       <div id="inkFloatingToolbar" class="ink-floating-toolbar" data-dock-pos="bottom" style="display: none;">
         <div class="ink-dock-drag-handle" id="inkDockDragHandle" title="드래그하여 왼쪽·아래·오른쪽 이동 (클릭 시 위치 순환)">⋮⋮</div>
@@ -3221,7 +3243,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261105_20"></script>
-  <script src="app.js?v=20261105_31"></script>
+  <script src="app.js?v=20261105_32"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
