@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_52">
+  <link rel="stylesheet" href="style.css?v=20261105_53">
 </head>
 
 <body class="theme-light">
@@ -2745,16 +2745,16 @@
                 <button type="button" id="btnCloudSaveScopeCurrent" class="cloud-scope-pill"
                   data-scope="current">현재만</button>
               </div>
-              <button type="button" id="btnSaveToMyLibrary" class="btn-primary win-save-submit-btn">
+              <button type="button" id="btnSaveToMyLibrary" class="win-explorer-cmd-btn win-save-submit-btn">
                 <span>저장</span>
                 <small id="lblCloudExplorerSaveFolder" style="display: none !important;">(내 클라우드)</small>
               </button>
             </div>
           </div>
 
-          <!-- ② 선택 상태 (체크박스 1개 이상 선택 시 자동 전환): [전체선택 · N개 선택됨] + [열기 · 이동 · 삭제] -->
+          <!-- ② 선택 상태 (체크박스 1개 이상 선택 시 자동 전환): 우측 [열기 · 다운로드 · 이동 · 삭제] -->
           <div id="cloudFooterActionRow" class="win-footer-mode-row selection-mode-row" style="display: none;">
-            <div class="win-selection-footer-left">
+            <div class="win-selection-footer-left" style="display: none !important;">
               <label class="win-selection-all-label" title="현재 폴더 전체 선택/해제">
                 <input type="checkbox" id="chkCloudExplorerAll" class="win-explorer-checkbox">
                 <span>전체 선택</span>
@@ -2763,13 +2763,13 @@
               <button type="button" id="btnCloudClearSelection" class="win-selection-clear-btn">선택 해제</button>
             </div>
             <div class="win-selection-footer-right">
-              <button type="button" id="btnCloudActionOpen" class="btn-primary win-save-submit-btn"
+              <button type="button" id="btnCloudActionOpen" class="win-explorer-cmd-btn"
                 title="선택한 파일 불러오기 (여러 개 선택 시 연속 캔버스로 합쳐서 열기)">
                 <span id="lblCloudFooterOpenText">📂 열기</span>
               </button>
               <button type="button" id="btnCloudActionDownload" class="win-explorer-cmd-btn"
-                title="선택한 파일을 내 기기(PC/태블릿)에 .graphly 파일로 내려받기">
-                <span>💾 파일 저장</span>
+                title="선택한 파일을 내 기기(PC/태블릿)에 .graphly 파일로 다운로드">
+                <span>📥 다운로드</span>
               </button>
               <div class="win-explorer-move-wrap">
                 <button type="button" id="btnCloudActionMove" class="win-explorer-cmd-btn" title="선택한 항목을 다른 폴더로 이동">
@@ -3246,7 +3246,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261105_20"></script>
-  <script src="app.js?v=20261105_52"></script>
+  <script src="app.js?v=20261105_53"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

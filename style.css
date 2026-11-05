@@ -12492,9 +12492,16 @@ body:not(.theme-light) .win-explorer-save-footer {
 }
 
 .win-selection-footer-left {
+  display: none !important;
+}
+
+.win-selection-footer-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: flex-end;
+  margin-left: auto;
+  gap: 7px;
+  flex-shrink: 0;
 }
 
 .win-selection-all-label {

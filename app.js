@@ -20560,19 +20560,20 @@ class GraphApp {
 
     const fileCnt = Array.from(this._selectedCloudExplorerKeys).filter(k => k.startsWith('file:')).length;
     if (btnOpen) {
-      btnOpen.innerHTML = `<span id="lblCloudFooterOpenText">${cnt > 1 ? `📂 선택 열기 (${cnt})` : '📂 열기'}</span>`;
+      btnOpen.style.display = fileCnt > 0 ? 'inline-flex' : 'none';
+      btnOpen.innerHTML = `<span id="lblCloudFooterOpenText">📂 열기</span>`;
     } else if (lblFooterOpen) {
-      lblFooterOpen.textContent = cnt > 1 ? `📂 선택 열기 (${cnt})` : '📂 열기';
+      lblFooterOpen.textContent = '📂 열기';
     }
     if (btnDownload) {
       btnDownload.style.display = fileCnt > 0 ? 'inline-flex' : 'none';
-      btnDownload.innerHTML = fileCnt > 1 ? `<span>💾 파일 저장 (${fileCnt})</span>` : `<span>💾 파일 저장</span>`;
+      btnDownload.innerHTML = `<span>📥 다운로드</span>`;
     }
     if (btnMove) {
-      btnMove.innerHTML = cnt > 0 ? `<span>📦 이동 (${cnt}) ▾</span>` : `<span>📦 이동 ▾</span>`;
+      btnMove.innerHTML = `<span>📦 이동 ▾</span>`;
     }
     if (btnDelete) {
-      btnDelete.innerHTML = cnt > 0 ? `<span>🗑️ 삭제 (${cnt})</span>` : `<span>🗑️ 삭제</span>`;
+      btnDelete.innerHTML = `<span>🗑️ 삭제</span>`;
     }
     if (chkAll) {
       const vis = Array.isArray(this._currentVisibleCloudKeys) ? this._currentVisibleCloudKeys : [];
