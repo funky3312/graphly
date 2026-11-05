@@ -17860,10 +17860,6 @@ class GraphApp {
     if (btnClose) btnClose.onclick = closeModal;
     if (btnCancel) btnCancel.onclick = closeModal;
 
-    modal.onclick = (e) => {
-      if (e.target === modal) closeModal();
-    };
-
     input.oninput = updatePreview;
 
     if (btnClear) {
@@ -19184,11 +19180,6 @@ class GraphApp {
     if (btnOpen) btnOpen.onclick = () => openModal();
     if (btnClose) btnClose.onclick = closeModal;
     if (btnCloseFooter) btnCloseFooter.onclick = closeModal;
-    if (modal) {
-      modal.onclick = (e) => {
-        if (e.target === modal) closeModal();
-      };
-    }
 
     const copyTextToClipboard = async (text) => {
       try {
@@ -19501,11 +19492,6 @@ class GraphApp {
     if (btnCloseCloud) {
       btnCloseCloud.onclick = () => {
         if (modalCloud) modalCloud.classList.remove('show');
-      };
-    }
-    if (modalCloud) {
-      modalCloud.onclick = (e) => {
-        if (e.target === modalCloud) modalCloud.classList.remove('show');
       };
     }
 
@@ -19878,9 +19864,6 @@ class GraphApp {
     if (tabBtnNotices) tabBtnNotices.onclick = () => switchGuideTab('notices');
     if (btnCloseGuide && modalGuide) {
       btnCloseGuide.onclick = () => modalGuide.classList.remove('show');
-      modalGuide.onclick = (ev) => {
-        if (ev.target === modalGuide) modalGuide.classList.remove('show');
-      };
     }
     const copySupportEmailWithToast = () => {
       try {
@@ -19900,9 +19883,6 @@ class GraphApp {
     }
     if (btnClosePro && modalPro) {
       btnClosePro.onclick = () => modalPro.classList.remove('show');
-      modalPro.onclick = (ev) => {
-        if (ev.target === modalPro) modalPro.classList.remove('show');
-      };
     }
     if (btnPayNow) {
       btnPayNow.onclick = () => this.requestTossPaymentFromStudio();
@@ -20405,9 +20385,6 @@ class GraphApp {
       };
 
       window.addEventListener('keydown', onKeyDown, true);
-      backdrop.onclick = (e) => {
-        if (e.target === backdrop) cleanupAndResolve('cancel');
-      };
       backdrop.querySelectorAll('[data-dup-act]').forEach(btn => {
         btn.onclick = (e) => {
           e.stopPropagation();
@@ -42498,13 +42475,9 @@ class GraphApp {
     }
     if (modal) {
       modal.onclick = (e) => {
-        if (e.target === modal) {
-          if (this._recordingShortcutActionId) {
-            this._recordingShortcutActionId = null;
-            this.renderShortcutSettingsModalList();
-            return;
-          }
-          this.closeShortcutSettingsModal();
+        if (e.target === modal && this._recordingShortcutActionId) {
+          this._recordingShortcutActionId = null;
+          this.renderShortcutSettingsModalList();
         }
       };
     }
