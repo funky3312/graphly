@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_61">
+  <link rel="stylesheet" href="style.css?v=20261105_62">
 </head>
 
 <body class="theme-light">
@@ -232,10 +232,10 @@
                   style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                   <span>개형 선택</span>
                   <div style="display: flex; gap: 4px;">
-                    <button id="btnSmartInput" class="btn-smart-input"
-                      style="padding: 2px 8px; font-size: 11px;">수식 입력</button>
-                    <button id="btnClearAllGraphs" class="btn-clear-all"
-                      style="padding: 2px 8px; font-size: 11px;">비우기</button>
+                    <button type="button" id="btnSmartInput" class="settings-clean-btn"
+                      style="height: 24px; padding: 0 8px; font-size: 11px;">수식 입력</button>
+                    <button type="button" id="btnClearAllGraphs" class="settings-clean-btn"
+                      style="height: 24px; padding: 0 8px; font-size: 11px;">비우기</button>
                   </div>
                 </div>
                 <div class="category-tabs" style="display: none;">
@@ -370,55 +370,57 @@
 
             <!-- 4. 패널: 구간 분할 (Piecewise) -->
             <div class="drawer-panel" id="panelPiecewise" style="display: none;">
-              <div class="panel-section piecewise-section" style="border: none; padding: 0;">
+              <div class="panel-section piecewise-section settings-clean-section" style="border: none; padding: 0;">
                 <div class="section-title settings-clean-subtitle">
-                  <span>경계선 제어</span>
+                  <span>경계선</span>
                 </div>
                 <div class="pw-action-grid"
-                  style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 4px;">
-                  <button id="btnPwAddBoundary" class="settings-clean-btn">
+                  style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                  <button type="button" id="btnPwAddBoundary" class="settings-clean-btn">
                     + 선 추가
                   </button>
-                  <button id="btnPwSnap" class="settings-clean-btn">
+                  <button type="button" id="btnPwSnap" class="settings-clean-btn">
                     교점 스냅
                   </button>
                 </div>
 
                 <!-- 구간 반복(주기함수) 컨트롤 -->
                 <div class="settings-clean-divider-block">
-                  <label class="setting-toggle-item">
-                    <div class="setting-text-wrap">
-                      <span class="setting-name">주기 반복</span>
-                    </div>
-                    <label class="vf-toggle-wrap">
-                      <input type="checkbox" id="chkPwPeriodic">
-                      <span class="vf-toggle-slider"></span>
+                  <div class="section-title settings-clean-subtitle">
+                    <span>구간 반복</span>
+                  </div>
+                  <div class="settings-toggle-list">
+                    <label class="setting-toggle-item">
+                      <div class="setting-text-wrap">
+                        <span class="setting-name">주기 반복</span>
+                      </div>
+                      <label class="vf-toggle-wrap">
+                        <input type="checkbox" id="chkPwPeriodic">
+                        <span class="vf-toggle-slider"></span>
+                      </label>
                     </label>
-                  </label>
-                  <div id="pwPeriodicControls" class="settings-email-auth-box"
-                    style="display: none; margin-top: 6px; font-size: 11.5px;">
-                    <div
-                      style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                      <span style="color: #64748b; font-weight: 600;">주기 (T)</span>
-                      <span id="pwPeriodicPeriodLabel" style="font-weight: 700; color: #334155;">T = 2.0</span>
-                    </div>
-                    <div
-                      style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                      <span style="color: #64748b; font-weight: 600;">높이 차 (q)</span>
-                      <div style="display: flex; align-items: center; gap: 4px;">
-                        <button id="btnPwStepMinus" type="button" class="single-line-step-btn">−</button>
-                        <span id="pwPeriodicStepLabel"
-                          style="font-weight: 700; min-width: 36px; text-align: center; color: #334155;">+0</span>
-                        <button id="btnPwStepPlus" type="button" class="single-line-step-btn">+</button>
+                  </div>
+                  <div id="pwPeriodicControls" style="display: none; margin-top: 4px;">
+                    <div class="settings-toggle-list">
+                      <div class="setting-toggle-item" style="cursor: default;">
+                        <span class="setting-name">주기 (T)</span>
+                        <span id="pwPeriodicPeriodLabel" style="font-size: 11.5px; font-weight: 700; color: #334155;">T = 2.0</span>
+                      </div>
+                      <div class="single-line-slider-row">
+                        <span class="single-line-slider-label">높이 차</span>
+                        <button id="btnPwStepMinus" type="button" class="single-line-step-btn">◀</button>
+                        <div class="single-line-slider-track">
+                          <input type="range" id="sliderPwStep" class="slider-bar" min="-6" max="6" step="0.05" value="0">
+                        </div>
+                        <button id="btnPwStepPlus" type="button" class="single-line-step-btn">▶</button>
+                        <span id="pwPeriodicStepLabel" class="single-line-slider-val">+0</span>
                       </div>
                     </div>
-                    <input type="range" id="sliderPwStep" class="slider-bar" min="-6" max="6" step="0.05" value="0"
-                      style="width: 100%; cursor: pointer; margin: 4px 0 8px 0;">
-                    <div style="display: grid; grid-template-columns: 1.3fr 1fr; gap: 5px;">
-                      <button id="btnPwStepMatch" type="button" class="settings-clean-btn">
+                    <div style="display: flex; gap: 5px; margin-top: 5px;">
+                      <button id="btnPwStepMatch" type="button" class="settings-clean-btn" style="flex: 1;">
                         끝점 맞물림
                       </button>
-                      <button id="btnPwStepReset" type="button" class="settings-clean-btn">
+                      <button id="btnPwStepReset" type="button" class="settings-clean-btn" style="flex: 1;">
                         q = 0 초기화
                       </button>
                     </div>
@@ -2033,7 +2035,7 @@
     </div>
   </div>
 
-  <!-- [통합 내보내기 & 공유 모달] -->
+  <!-- [통합 내보내기 & 공유 모달 — 환경설정(#panelSettings)과 100% 동일한 컨셉] -->
   <div id="modalShare" class="smart-modal-backdrop">
     <div class="smart-modal-card share-modal-card unified-export-modal-card">
       <div class="smart-modal-header">
@@ -2048,39 +2050,41 @@
       </div>
 
       <div class="smart-modal-body share-modal-body unified-export-body">
-        <!-- STEP 1: 범위 및 포함 항목 선택 -->
-        <div class="export-filter-box">
-          <div class="export-filter-row">
-            <span class="export-step-label">범위</span>
-            <div class="export-scope-group">
-              <button type="button" id="btnExportScopeCurrent" class="export-scope-chip active" data-scope="current">현재 캔버스</button>
-              <button type="button" id="btnExportScopeAll" class="export-scope-chip" data-scope="all">전체 캔버스 <span
-                  id="lblExportTotalSlidesCount">(1)</span></button>
-            </div>
+        <!-- 섹션 1: 범위 (설정창 '필기 바 위치'와 100% 동일 구조) -->
+        <div class="panel-section settings-clean-section" style="border: none; padding: 0;">
+          <div class="section-title settings-clean-subtitle">
+            <span>범위</span>
           </div>
-
-          <div class="export-filter-row">
-            <span class="export-step-label">항목</span>
-            <div class="export-layer-group">
-              <label class="export-layer-chip active" id="lblExportLayerProblem">
-                <input type="checkbox" id="chkExportLayerProblem" checked>
-                <span>문제</span>
-              </label>
-              <label class="export-layer-chip active" id="lblExportLayerGraph">
-                <input type="checkbox" id="chkExportLayerGraph" checked>
-                <span>그래프</span>
-              </label>
-              <label class="export-layer-chip active" id="lblExportLayerInk">
-                <input type="checkbox" id="chkExportLayerInk" checked>
-                <span>필기</span>
-              </label>
-              <label class="export-layer-chip active" id="lblExportLayerAudio">
-                <input type="checkbox" id="chkExportLayerAudio" checked>
-                <span>음성</span>
-              </label>
-            </div>
+          <div class="vf-aspect-chips" style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+            <button type="button" id="btnExportScopeCurrent" class="vf-chip export-scope-chip active" data-scope="current">현재 캔버스</button>
+            <button type="button" id="btnExportScopeAll" class="vf-chip export-scope-chip" data-scope="all">전체 캔버스 <span
+                id="lblExportTotalSlidesCount">(1)</span></button>
           </div>
+        </div>
 
+        <!-- 섹션 2: 포함 항목 -->
+        <div class="settings-clean-divider-block">
+          <div class="section-title settings-clean-subtitle">
+            <span>포함 항목</span>
+          </div>
+          <div class="vf-aspect-chips" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;">
+            <label class="vf-chip export-layer-chip active" id="lblExportLayerProblem">
+              <input type="checkbox" id="chkExportLayerProblem" checked style="display: none;">
+              <span>문제</span>
+            </label>
+            <label class="vf-chip export-layer-chip active" id="lblExportLayerGraph">
+              <input type="checkbox" id="chkExportLayerGraph" checked style="display: none;">
+              <span>그래프</span>
+            </label>
+            <label class="vf-chip export-layer-chip active" id="lblExportLayerInk">
+              <input type="checkbox" id="chkExportLayerInk" checked style="display: none;">
+              <span>필기</span>
+            </label>
+            <label class="vf-chip export-layer-chip active" id="lblExportLayerAudio">
+              <input type="checkbox" id="chkExportLayerAudio" checked style="display: none;">
+              <span>음성</span>
+            </label>
+          </div>
           <div class="export-filter-row export-stage-preset-row" style="display: none !important;">
             <span class="export-step-label">단계별 저장</span>
             <div class="export-stage-preset-group">
@@ -2093,22 +2097,22 @@
           <div class="export-filter-hint" id="lblExportFilterSummary" style="display: none;"></div>
         </div>
 
-        <!-- STEP 2: 이미지 · 공유 -->
-        <div class="share-field-group">
-          <label class="share-field-label">
-            <span>이미지 · 공유 <small style="font-weight:500;color:#94a3b8;font-size:10.5px;margin-left:4px;">(링크·QR 7일 유효)</small></span>
-          </label>
-          <div class="export-action-2x2-grid">
-            <button type="button" id="btnExportModalCopyImg" class="export-action-big-btn">
+        <!-- 섹션 3: 이미지 · 공유 -->
+        <div class="settings-clean-divider-block">
+          <div class="section-title settings-clean-subtitle">
+            <span>이미지 · 공유</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+            <button type="button" id="btnExportModalCopyImg" class="settings-clean-btn">
               <span id="lblExportModalCopyImg">이미지 복사</span>
             </button>
-            <button type="button" id="btnExportModalSavePng" class="export-action-big-btn">
+            <button type="button" id="btnExportModalSavePng" class="settings-clean-btn">
               <span id="lblExportModalSavePng">PNG 저장</span>
             </button>
-            <button type="button" id="btnCopyShareLink" class="export-action-big-btn">
+            <button type="button" id="btnCopyShareLink" class="settings-clean-btn">
               <span id="lblBtnCopyShareLink">공유 링크 복사</span>
             </button>
-            <button type="button" id="btnDownloadQr" class="export-action-big-btn">
+            <button type="button" id="btnDownloadQr" class="settings-clean-btn">
               <span id="lblBtnDownloadQr">QR 저장</span>
             </button>
           </div>
@@ -2123,25 +2127,24 @@
           </div>
         </div>
 
-        <!-- STEP 3: 파일 · 클라우드 저장 (.graphly) -->
-        <div class="share-field-group share-deck-hub-group">
-          <label class="share-field-label">
-            <span>파일 · 클라우드 저장 <small
-                style="font-weight:500;color:#94a3b8;font-size:10.5px;margin-left:4px;">(.graphly)</small></span>
-          </label>
-          <div class="share-input-row" style="margin-bottom: 6px; display: flex; gap: 6px;">
+        <!-- 섹션 4: 파일 · 클라우드 저장 (.graphly) -->
+        <div class="settings-clean-divider-block">
+          <div class="section-title settings-clean-subtitle">
+            <span>파일 · 클라우드 저장</span>
+          </div>
+          <div style="display: flex; gap: 5px;">
             <select id="selectExportCloudFolder" class="export-cloud-folder-select" title="클라우드 저장 폴더 선택"
               style="display: none !important;">
               <option value="">📁 기본 보관함</option>
             </select>
-            <input type="text" id="inputShareModalDeckTitle" class="share-link-input" style="flex: 1; min-width: 0;"
+            <input type="text" id="inputShareModalDeckTitle" class="settings-clean-input" style="flex: 1; min-width: 0;"
               placeholder="파일명 입력 (비워두면 자동)">
-            <input type="text" id="inputShareModalDeckTags" class="share-link-input" style="display: none;"
+            <input type="text" id="inputShareModalDeckTags" class="settings-clean-input" style="display: none;"
               placeholder="#태그">
           </div>
-          <div class="share-deck-btn-row">
-            <button type="button" id="btnShareModalExportFile" class="share-deck-btn">내 기기에 저장</button>
-            <button type="button" id="btnShareModalToLibrary" class="share-deck-btn">클라우드에 저장</button>
+          <div style="display: flex; gap: 5px; margin-top: 5px;">
+            <button type="button" id="btnShareModalExportFile" class="settings-clean-btn" style="flex: 1;">내 기기에 저장</button>
+            <button type="button" id="btnShareModalToLibrary" class="settings-clean-btn" style="flex: 1;">클라우드에 저장</button>
           </div>
         </div>
       </div>
@@ -3089,7 +3092,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261105_20"></script>
-  <script src="app.js?v=20261105_61"></script>
+  <script src="app.js?v=20261105_62"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
