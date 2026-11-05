@@ -13958,11 +13958,11 @@ body:not(.theme-light) #panelSettings .setting-name {
   bottom: 2px !important;
 }
 
-#panelSettings .vf-toggle-wrap input:checked + .vf-toggle-slider {
+#panelSettings .vf-toggle-wrap input:checked+.vf-toggle-slider {
   background-color: #334155 !important;
 }
 
-#panelSettings .vf-toggle-wrap input:checked + .vf-toggle-slider::before {
+#panelSettings .vf-toggle-wrap input:checked+.vf-toggle-slider::before {
   transform: translateX(14px) !important;
 }
 
@@ -13970,7 +13970,7 @@ body:not(.theme-light) #panelSettings .vf-toggle-slider {
   background-color: rgba(255, 255, 255, 0.16) !important;
 }
 
-body:not(.theme-light) #panelSettings .vf-toggle-wrap input:checked + .vf-toggle-slider {
+body:not(.theme-light) #panelSettings .vf-toggle-wrap input:checked+.vf-toggle-slider {
   background-color: #64748b !important;
 }
 
@@ -14120,6 +14120,233 @@ body:not(.theme-light) #panelSettings .settings-account-plan-badge.is-pro {
   background: rgba(52, 211, 153, 0.15);
   border: 1px solid rgba(52, 211, 153, 0.3);
   color: #a7f3d0;
+}
+
+#panelSettings .settings-email-auth-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px;
+  margin-top: 6px;
+}
+
+body:not(.theme-light) #panelSettings .settings-email-auth-box {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#panelSettings .settings-clean-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 11.5px;
+}
+
+body:not(.theme-light) #panelSettings .settings-clean-input {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(15, 23, 42, 0.6);
+  color: #f8fafc;
+}
+
+/* ============================================================================
+   ⚙️ [환경설정(#panelSettings) 미니멀 모노톤 리디자인 — 간격 축소 & 차분한 통일 톤앤매너]
+   ============================================================================ */
+#panelSettings .settings-clean-subtitle {
+  margin-bottom: 4px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
+  color: #64748b !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-clean-subtitle {
+  color: #94a3b8 !important;
+}
+
+#panelSettings .ink-dock-pos-chip {
+  padding: 5px 6px !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+}
+
+#panelSettings .settings-toggle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px !important;
+  margin-top: 3px !important;
+}
+
+#panelSettings .setting-toggle-item {
+  padding: 5px 9px !important;
+  min-height: 29px !important;
+  border-radius: 7px !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+#panelSettings .setting-toggle-item:hover {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}
+
+body:not(.theme-light) #panelSettings .setting-toggle-item {
+  background: rgba(255, 255, 255, 0.035) !important;
+  border: 1px solid rgba(255, 255, 255, 0.075) !important;
+}
+
+body:not(.theme-light) #panelSettings .setting-toggle-item:hover {
+  background: rgba(255, 255, 255, 0.065) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+#panelSettings .setting-name {
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  color: #334155 !important;
+}
+
+body:not(.theme-light) #panelSettings .setting-name {
+  color: #e2e8f0 !important;
+}
+
+/* 스위치(토글)도 원색 파랑 대신 차분한 슬레이트 다크/그레이 톤으로 통일 */
+#panelSettings .vf-toggle-wrap {
+  width: 32px !important;
+  height: 18px !important;
+}
+
+#panelSettings .vf-toggle-slider {
+  background-color: #cbd5e1 !important;
+}
+
+#panelSettings .vf-toggle-slider::before {
+  height: 14px !important;
+  width: 14px !important;
+  left: 2px !important;
+  bottom: 2px !important;
+}
+
+#panelSettings .vf-toggle-wrap input:checked+.vf-toggle-slider {
+  background-color: #334155 !important;
+}
+
+#panelSettings .vf-toggle-wrap input:checked+.vf-toggle-slider::before {
+  transform: translateX(14px) !important;
+}
+
+body:not(.theme-light) #panelSettings .vf-toggle-slider {
+  background-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+body:not(.theme-light) #panelSettings .vf-toggle-wrap input:checked+.vf-toggle-slider {
+  background-color: #64748b !important;
+}
+
+#panelSettings .settings-clean-divider-block {
+  margin-top: 9px !important;
+  padding-top: 9px !important;
+  border-top: 1px solid rgba(148, 163, 184, 0.22) !important;
+}
+
+#panelSettings .settings-clean-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #334155 !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+#panelSettings .settings-clean-btn:hover {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+#panelSettings .settings-clean-btn.active,
+#panelSettings .settings-clean-btn-solid {
+  background: #334155 !important;
+  border-color: #334155 !important;
+  color: #ffffff !important;
+}
+
+#panelSettings .settings-clean-btn.active:hover,
+#panelSettings .settings-clean-btn-solid:hover {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-clean-btn {
+  color: #e2e8f0 !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-clean-btn:hover {
+  background: rgba(255, 255, 255, 0.09) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-clean-btn.active,
+body:not(.theme-light) #panelSettings .settings-clean-btn-solid {
+  background: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.24) !important;
+  color: #ffffff !important;
+}
+
+#panelSettings .settings-shortcut-open-btn {
+  width: 100%;
+  justify-content: space-between !important;
+}
+
+#panelSettings .settings-shortcut-badge {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: #64748b !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-shortcut-badge {
+  color: #94a3b8 !important;
+}
+
+#panelSettings .settings-account-id-box {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  margin-bottom: 5px;
+  line-height: 1.35;
+  word-break: break-all;
+}
+
+body:not(.theme-light) #panelSettings .settings-account-id-box {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  color: #e2e8f0;
 }
 
 #panelSettings .settings-email-auth-box {

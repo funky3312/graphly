@@ -19068,7 +19068,7 @@ class GraphApp {
     if (btnModalCopyImg) {
       btnModalCopyImg.onclick = async () => {
         await this.copyToClipboard(this.exportFilter);
-        flashButtonLabel(lblModalCopyImg, '✅ 복사됨', '이미지 복사');
+        flashButtonLabel(lblModalCopyImg, '복사 완료', '이미지 복사');
       };
     }
 
@@ -19078,7 +19078,7 @@ class GraphApp {
         const isMulti = (this.exportScope === 'all' && allSlides.length > 1);
         const origLabel = isMulti ? `PDF 저장 (${allSlides.length}장)` : 'PNG 저장';
         await this.downloadExportImages(this.exportScope, this.exportFilter);
-        flashButtonLabel(lblModalSavePng, '✅ 저장됨', origLabel);
+        flashButtonLabel(lblModalSavePng, '저장 완료', origLabel);
       };
     }
 
@@ -19153,10 +19153,10 @@ class GraphApp {
 
     if (btnCopyShare) {
       btnCopyShare.onclick = async () => {
-        if (lblBtnCopyShare) lblBtnCopyShare.textContent = '⏳ 링크 생성 중...';
+        if (lblBtnCopyShare) lblBtnCopyShare.textContent = '링크 생성 중...';
         const finalUrl = await ensureCloudShareLinkOnDemand();
         await copyTextToClipboard(finalUrl);
-        flashButtonLabel(lblBtnCopyShare, '✅ 링크 복사됨', '공유 링크 복사');
+        flashButtonLabel(lblBtnCopyShare, '링크 복사 완료', '공유 링크 복사');
       };
     }
 
@@ -19171,7 +19171,7 @@ class GraphApp {
     if (btnDownloadQr) {
       btnDownloadQr.onclick = async () => {
         if (!qrCanvas) return;
-        if (lblBtnDownloadQr) lblBtnDownloadQr.textContent = '⏳ QR 생성 중...';
+        if (lblBtnDownloadQr) lblBtnDownloadQr.textContent = 'QR 생성 중...';
         const finalUrl = await ensureCloudShareLinkOnDemand();
         renderQr(finalUrl);
         const dataUrl = qrCanvas.toDataURL('image/png');
@@ -19179,7 +19179,7 @@ class GraphApp {
         link.download = `Graphly_QR_${Date.now()}.png`;
         link.href = dataUrl;
         link.click();
-        flashButtonLabel(lblBtnDownloadQr, '✅ QR 저장됨', 'QR 생성·저장');
+        flashButtonLabel(lblBtnDownloadQr, 'QR 저장 완료', 'QR 저장');
       };
     }
 
@@ -19270,7 +19270,7 @@ class GraphApp {
         const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : `#수업노트 ${stageSuffix}`;
         this.exportGraphlyDeckFile(title, tags, slides);
         if (inpDeckTitle) inpDeckTitle.value = '';
-        flashButtonLabel(btnShareExportFile, '✅ 파일 저장됨', '💻 내 기기에 저장');
+        flashButtonLabel(btnShareExportFile, '파일 저장 완료', '내 기기에 저장');
       };
     }
   }

@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_60">
+  <link rel="stylesheet" href="style.css?v=20261105_61">
 </head>
 
 <body class="theme-light">
@@ -228,21 +228,14 @@
             <!-- 1. 패널: 개형 라이브러리 (한눈에 보는 교육과정 순서 올인원 보드 & 연속 소환) -->
             <div class="drawer-panel active" id="panelPresets">
               <div class="panel-section" style="border: none; padding: 0;">
-                <div class="section-title"
+                <div class="section-title settings-clean-subtitle"
                   style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                  <span>개형 선택 <span style="font-size:10px; font-weight:500; opacity:0.65; text-transform:none;">(클릭 또는
-                      번호 입력)</span></span>
+                  <span>개형 선택</span>
                   <div style="display: flex; gap: 4px;">
                     <button id="btnSmartInput" class="btn-smart-input"
-                      style="padding: 2px 7px; font-size: 10.5px;">𝑓(𝑥)
-                      수식</button>
+                      style="padding: 2px 8px; font-size: 11px;">수식 입력</button>
                     <button id="btnClearAllGraphs" class="btn-clear-all"
-                      style="padding: 2px 7px; font-size: 10.5px;"><svg width="12" height="12" viewBox="0 0 24 24"
-                        fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
-                        stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px;">
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                      </svg>비우기</button>
+                      style="padding: 2px 8px; font-size: 11px;">비우기</button>
                   </div>
                 </div>
                 <div class="category-tabs" style="display: none;">
@@ -375,88 +368,59 @@
               </div>
             </div>
 
-            <!-- 4. 패널: 구간 분할 (Piecewise) - 대표님 기획: 2대 핵심 버튼 (+ 선추가, <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>교점스냅) 및 원클릭 즉시 자동 닫힘 -->
+            <!-- 4. 패널: 구간 분할 (Piecewise) -->
             <div class="drawer-panel" id="panelPiecewise" style="display: none;">
               <div class="panel-section piecewise-section" style="border: none; padding: 0;">
-                <div class="section-title">
-                  <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                      stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-                      style="vertical-align:-2px;margin-right:4px;">
-                      <circle cx="6" cy="6" r="3" />
-                      <circle cx="6" cy="18" r="3" />
-                      <line x1="20" y1="4" x2="8.12" y2="15.88" />
-                      <line x1="14.47" y1="14.48" x2="20" y2="20" />
-                      <line x1="8.12" y1="8.12" x2="12" y2="12" />
-                    </svg>구간 분할</span>
+                <div class="section-title settings-clean-subtitle">
+                  <span>경계선 제어</span>
                 </div>
                 <div class="pw-action-grid"
-                  style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;">
-                  <button id="btnPwAddBoundary" class="transform-btn"
-                    style="background: rgba(162, 155, 254, 0.22); border-color: rgba(162, 155, 254, 0.6); color: #a29bfe; font-weight: 700; padding: 12px 8px; font-size: 13px;">
-                    + 선추가
+                  style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 4px;">
+                  <button id="btnPwAddBoundary" class="settings-clean-btn">
+                    + 선 추가
                   </button>
-                  <button id="btnPwSnap" class="transform-btn"
-                    style="background: rgba(0, 210, 211, 0.18); border-color: rgba(0, 210, 211, 0.5); color: #00d2d3; font-weight: 700; padding: 12px 8px; font-size: 13px;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                      stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-                      style="vertical-align:-2px;margin-right:4px;">
-                      <circle cx="12" cy="12" r="10" />
-                      <circle cx="12" cy="12" r="6" />
-                      <circle cx="12" cy="12" r="2" />
-                    </svg>교점스냅
+                  <button id="btnPwSnap" class="settings-clean-btn">
+                    교점 스냅
                   </button>
                 </div>
 
-                <!-- 🔁 대표님 핵심 기획: 구간 반복(주기함수) 컨트롤 카드 -->
-                <div class="pw-periodic-card"
-                  style="margin-top: 12px; padding: 12px; border-radius: 10px; background: rgba(0, 210, 211, 0.08); border: 1px solid rgba(0, 210, 211, 0.28);">
-                  <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span
-                      style="font-size: 13px; font-weight: 700; color: #00a8a8; display: flex; align-items: center; gap: 6px;">
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="23 4 23 10 17 10" />
-                        <polyline points="1 20 1 14 7 14" />
-                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                      </svg>
-                      주기 반복
-                    </span>
-                    <input type="checkbox" id="chkPwPeriodic" class="styled-checkbox"
-                      style="cursor: pointer; width: 18px; height: 18px;">
-                  </div>
-                  <div id="pwPeriodicControls"
-                    style="display: none; margin-top: 10px; font-size: 12px; color: var(--text-main);">
+                <!-- 구간 반복(주기함수) 컨트롤 -->
+                <div class="settings-clean-divider-block">
+                  <label class="setting-toggle-item">
+                    <div class="setting-text-wrap">
+                      <span class="setting-name">주기 반복</span>
+                    </div>
+                    <label class="vf-toggle-wrap">
+                      <input type="checkbox" id="chkPwPeriodic">
+                      <span class="vf-toggle-slider"></span>
+                    </label>
+                  </label>
+                  <div id="pwPeriodicControls" class="settings-email-auth-box"
+                    style="display: none; margin-top: 6px; font-size: 11.5px;">
                     <div
-                      style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                      <span style="color: var(--text-muted); font-weight: 600;">주기 (T)</span>
-                      <span id="pwPeriodicPeriodLabel" style="font-weight: 700; color: #00a8a8;">T = 2.0</span>
+                      style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                      <span style="color: #64748b; font-weight: 600;">주기 (T)</span>
+                      <span id="pwPeriodicPeriodLabel" style="font-weight: 700; color: #334155;">T = 2.0</span>
                     </div>
                     <div
                       style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                      <span style="color: var(--text-muted); font-weight: 600;">높이 차 (q)</span>
-                      <div style="display: flex; align-items: center; gap: 5px;">
-                        <button id="btnPwStepMinus" class="transform-btn"
-                          style="padding: 2px 8px; font-size: 13px; font-weight: 800; min-width: 26px; border-radius: 5px; background: rgba(148, 163, 184, 0.2); border: 1px solid rgba(148, 163, 184, 0.45); color: var(--text-main); cursor: pointer;">−</button>
+                      <span style="color: #64748b; font-weight: 600;">높이 차 (q)</span>
+                      <div style="display: flex; align-items: center; gap: 4px;">
+                        <button id="btnPwStepMinus" type="button" class="single-line-step-btn">−</button>
                         <span id="pwPeriodicStepLabel"
-                          style="font-weight: 800; min-width: 40px; text-align: center; color: #d97706;">+0</span>
-                        <button id="btnPwStepPlus" class="transform-btn"
-                          style="padding: 2px 8px; font-size: 13px; font-weight: 800; min-width: 26px; border-radius: 5px; background: rgba(148, 163, 184, 0.2); border: 1px solid rgba(148, 163, 184, 0.45); color: var(--text-main); cursor: pointer;">+</button>
+                          style="font-weight: 700; min-width: 36px; text-align: center; color: #334155;">+0</span>
+                        <button id="btnPwStepPlus" type="button" class="single-line-step-btn">+</button>
                       </div>
                     </div>
-                    <input type="range" id="sliderPwStep" min="-6" max="6" step="0.05" value="0"
-                      style="width: 100%; accent-color: #00b8b8; cursor: pointer; margin: 4px 0 8px 0;">
-                    <div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 6px; margin-bottom: 6px;">
-                      <button id="btnPwStepMatch" class="transform-btn"
-                        style="padding: 7px 6px; font-size: 11.5px; font-weight: 700; background: rgba(245, 158, 11, 0.18); border: 1px solid rgba(245, 158, 11, 0.55); color: #d97706;">
-                        🔗 끝점 맞물림
+                    <input type="range" id="sliderPwStep" class="slider-bar" min="-6" max="6" step="0.05" value="0"
+                      style="width: 100%; cursor: pointer; margin: 4px 0 8px 0;">
+                    <div style="display: grid; grid-template-columns: 1.3fr 1fr; gap: 5px;">
+                      <button id="btnPwStepMatch" type="button" class="settings-clean-btn">
+                        끝점 맞물림
                       </button>
-                      <button id="btnPwStepReset" class="transform-btn"
-                        style="padding: 7px 6px; font-size: 11.5px; font-weight: 700; background: rgba(148, 163, 184, 0.2); border: 1px solid rgba(148, 163, 184, 0.45); color: var(--text-main);">
-                        ↺ q = 0
+                      <button id="btnPwStepReset" type="button" class="settings-clean-btn">
+                        q = 0 초기화
                       </button>
-                    </div>
-                    <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.35;">
-
                     </div>
                   </div>
                 </div>
@@ -722,58 +686,57 @@
               </div>
             </div>
 
-            <!-- 6. 패널: 스타일 & 배경 (초슬림 2탭 플로팅 카드 + 1줄 ◀ ━━●━━ ▶ 스텝 슬라이더) -->
+            <!-- 6. 패널: 스타일 & 배경 -->
             <div class="drawer-panel" id="panelStyle" style="display: none;">
-              <!-- 상단 2탭 전환 바: [ ✒️ 필기 · 배경 | 📈 그래프 ] -->
+              <!-- 상단 2탭 전환 바: [ 필기 · 배경 | 그래프 ] -->
               <div class="style-panel-tabs">
-                <button type="button" id="btnStyleTabInk" class="style-tab-btn active" data-style-tab="ink">✒️ 필기 ·
-                  배경</button>
-                <button type="button" id="btnStyleTabGraph" class="style-tab-btn" data-style-tab="graph">📈 그래프</button>
+                <button type="button" id="btnStyleTabInk" class="style-tab-btn active" data-style-tab="ink">필기 · 배경</button>
+                <button type="button" id="btnStyleTabGraph" class="style-tab-btn" data-style-tab="graph">그래프</button>
               </div>
 
-              <!-- 탭 1: ✒️ 필기 · 배경 -->
+              <!-- 탭 1: 필기 · 배경 -->
               <div id="styleTabContentInk" class="style-tab-pane active">
-                <!-- 🎨 배경 색상 (1줄 5칸 컬러칩) -->
+                <!-- 배경 색상 (1줄 5칸 컬러칩) -->
                 <div class="panel-section" style="border: none; padding: 0;">
-                  <div class="section-title" style="margin-bottom: 6px;">
+                  <div class="section-title settings-clean-subtitle">
                     <span>배경 색상</span>
                   </div>
                   <div class="theme-palette-grid drawer-theme-grid compact-theme-row">
                     <button type="button" class="theme-chip active" data-theme="white_paper" title="화이트 배경">
                       <span class="theme-color-preview"
-                        style="background: #ffffff; border: 1.5px solid #94a3b8;"></span>
+                        style="background: #ffffff; border: 1px solid #cbd5e1;"></span>
                       <span class="theme-name">화이트</span>
                     </button>
                     <button type="button" class="theme-chip" data-theme="chalkboard" title="칠판 배경">
                       <span class="theme-color-preview"
-                        style="background: #003333; border: 1.5px solid #00d2d3;"></span>
+                        style="background: #003333; border: 1px solid rgba(148, 163, 184, 0.45);"></span>
                       <span class="theme-name">칠판</span>
                     </button>
                     <button type="button" class="theme-chip" data-theme="dark_charcoal" title="차콜 배경">
                       <span class="theme-color-preview"
-                        style="background: #1e272e; border: 1.5px solid #00d2d3;"></span>
+                        style="background: #1e272e; border: 1px solid rgba(148, 163, 184, 0.45);"></span>
                       <span class="theme-name">차콜</span>
                     </button>
                     <button type="button" class="theme-chip" data-theme="deep_black" title="블랙 배경">
                       <span class="theme-color-preview"
-                        style="background: #080808; border: 1.5px solid #64748b;"></span>
+                        style="background: #080808; border: 1px solid rgba(148, 163, 184, 0.45);"></span>
                       <span class="theme-name">블랙</span>
                     </button>
-                    <button type="button" class="theme-chip" data-theme="postit" title="포스트잇 배경">
+                    <button type="button" class="theme-chip" data-theme="postit" title="노트 배경">
                       <span class="theme-color-preview"
-                        style="background: #fef7e0; border: 1.5px solid #f59e0b;"></span>
+                        style="background: #fef7e0; border: 1px solid #cbd5e1;"></span>
                       <span class="theme-name">노트</span>
                     </button>
                   </div>
                 </div>
 
-                <!-- 📋 배경 속지 (1줄 4칸: 무지 / 모눈 / 가로줄 / 도트) -->
-                <div class="panel-section" style="border: none; padding: 0;">
-                  <div class="section-title" style="margin-bottom: 6px;">
+                <!-- 배경 속지 (1줄 4칸: 무지 / 모눈 / 가로줄 / 도트) -->
+                <div class="panel-section settings-clean-divider-block" style="border: none; padding: 0;">
+                  <div class="section-title settings-clean-subtitle">
                     <span>배경 속지</span>
                   </div>
                   <div class="vf-aspect-chips board-paper-chips" id="boardPaperTypeGroup"
-                    style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">
+                    style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;">
                     <button type="button" class="vf-chip board-paper-chip active" data-paper="blank">무지</button>
                     <button type="button" class="vf-chip board-paper-chip" data-paper="grid">모눈</button>
                     <button type="button" class="vf-chip board-paper-chip" data-paper="lined">가로줄</button>
@@ -781,13 +744,13 @@
                   </div>
                 </div>
 
-                <!-- ✒️ 필기 펜 4종 & 1줄 스텝 슬라이더 4종 -->
-                <div class="panel-section" style="border: none; padding: 0;">
-                  <div class="section-title" style="margin-bottom: 6px;">
-                    <span>필기 펜 & 굵기</span>
+                <!-- 펜 종류 & 굵기 -->
+                <div class="panel-section settings-clean-divider-block" style="border: none; padding: 0;">
+                  <div class="section-title settings-clean-subtitle">
+                    <span>펜 · 굵기</span>
                   </div>
                   <div class="ink-pen-style-grid" id="inkPenStyleGroup"
-                    style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 10px;">
+                    style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 8px;">
                     <button type="button" class="vf-chip ink-pen-style-chip active" data-pen-style="ballpen"
                       style="padding-left: 2px; padding-right: 2px; font-size: 11.5px;"
                       title="필압에 관계없이 처음부터 끝까지 일정한 굵기">볼펜</button>
@@ -803,8 +766,8 @@
                   </div>
 
                   <div class="single-line-slider-list">
-                    <!-- 0. 블러 (아이캔스크린 스타일 모퉁이 삐뚤림 보정 & 외곽 소프트 블러) -->
-                    <div class="single-line-slider-row" title="아이캔스크린 스타일의 부드러운 외곽 블러 및 펜 모퉁이 삐뚤림 보정 강도 (0.0 ~ 5.0)">
+                    <!-- 0. 블러 -->
+                    <div class="single-line-slider-row" title="부드러운 외곽 블러 및 펜 모퉁이 보정 강도 (0.0 ~ 5.0)">
                       <span class="single-line-slider-label">블러</span>
                       <button type="button" id="btnInkBlurDown" class="single-line-step-btn"
                         title="블러 줄이기 (-0.5)">◀</button>
@@ -875,21 +838,21 @@
                 </div>
               </div>
 
-              <!-- 탭 2: 📈 그래프 -->
+              <!-- 탭 2: 그래프 -->
               <div id="styleTabContentGraph" class="style-tab-pane" style="display: none;">
                 <!-- 곡선 색상 & 선 두께 -->
                 <div class="panel-section" style="border: none; padding: 0;">
-                  <div class="section-title"
-                    style="margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
-                    <span>곡선 색상 & 두께</span>
+                  <div class="section-title settings-clean-subtitle"
+                    style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>곡선 색상 · 두께</span>
                     <div class="graph-color-mode-group" id="graphColorModeGroup"
                       style="display: inline-flex; gap: 4px;">
                       <button type="button" class="vf-chip graph-color-mode-chip active" data-color-mode="auto"
                         style="padding: 3px 8px; font-size: 11px;"
-                        title="그래프를 추가할 때마다 서로 구분되는 색상으로 자동 배정합니다 (밝은 바탕엔 흰색 제외, 어두운 바탕엔 검정 제외)">자동 배색</button>
+                        title="그래프를 추가할 때마다 서로 구분되는 색상으로 자동 배정합니다">자동 배색</button>
                       <button type="button" class="vf-chip graph-color-mode-chip" data-color-mode="fixed"
                         style="padding: 3px 8px; font-size: 11px;"
-                        title="아래에서 선택한 한 가지 색상(예: 검정/흰색 등)으로 모든 그래프를 고정합니다">색상 고정</button>
+                        title="선택한 한 가지 색상으로 모든 그래프를 고정합니다">색상 고정</button>
                     </div>
                   </div>
                   <div class="color-palette" id="graphColorPalette" style="margin-bottom: 8px;">
@@ -922,19 +885,19 @@
                 </div>
 
                 <!-- 보조 수선 & 라벨 & 텍스트 -->
-                <div class="panel-section" style="border: none; padding: 0;">
-                  <div class="section-title" style="margin-bottom: 6px;">
+                <div class="panel-section settings-clean-divider-block" style="border: none; padding: 0;">
+                  <div class="section-title settings-clean-subtitle">
                     <span>수선 · 라벨 · 텍스트</span>
                   </div>
                   <div class="style-compact-inline-row">
                     <span class="single-line-slider-label">수식 폰트</span>
-                    <select id="selMathFont" class="theme-select style-compact-select">
+                    <select id="selMathFont" class="theme-select style-compact-select settings-clean-input">
                       <option value="stix" selected>STIX Two (수식)</option>
                       <option value="pretendard">Pretendard (고딕)</option>
                       <option value="batang">KoPub 바탕 (명조)</option>
                     </select>
                   </div>
-                  <div class="style-compact-inline-row" style="margin-top: 6px;">
+                  <div class="style-compact-inline-row" style="margin-top: 5px;">
                     <span class="single-line-slider-label">수선 형태</span>
                     <div class="vf-aspect-group" style="display: flex; gap: 4px; flex: 1;">
                       <button id="btnDropLineDashed" class="vf-chip active"
@@ -944,7 +907,7 @@
                     </div>
                   </div>
 
-                  <div class="single-line-slider-list" style="margin-top: 8px;">
+                  <div class="single-line-slider-list" style="margin-top: 6px;">
                     <div class="single-line-slider-row">
                       <span class="single-line-slider-label">텍스트</span>
                       <button type="button" id="btnTextLabelSizeDown" class="single-line-step-btn"
@@ -959,27 +922,26 @@
                     </div>
                   </div>
 
-                  <!-- 축 이름표 (x, y, O) 자동 표시 체크박스 -->
-                  <label class="drawer-checkbox-row"
-                    style="margin-top: 8px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                    <input type="checkbox" id="chkShowAxisLabels" style="cursor: pointer;">
-                    <span class="axis-auto-label-text" style="font-size: 11.5px; color: var(--text-main);">축 이름표 (x, y,
-                      O) 표시</span>
+                  <!-- 축 이름표 (x, y, O) 표시 스위치 -->
+                  <label class="setting-toggle-item" style="margin-top: 6px;">
+                    <div class="setting-text-wrap">
+                      <span class="setting-name">축 이름표 (x, y, O)</span>
+                    </div>
+                    <label class="vf-toggle-wrap">
+                      <input type="checkbox" id="chkShowAxisLabels">
+                      <span class="vf-toggle-slider"></span>
+                    </label>
                   </label>
 
                   <div id="axisLabelsSubPanel" style="display: none; margin-top: 6px;">
-                    <div style="display: flex; gap: 6px;">
-                      <div class="axis-name-input-box"
-                        style="flex: 1; display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.22); padding: 3px 6px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.12);">
-                        <span style="font-size: 11px; color: #94a3b8;">가로</span>
-                        <input type="text" id="inputAxisNameX" value="x" maxlength="6"
-                          style="width: 100%; background: transparent; border: none; color: #00d2d3; font-family: 'STIX Two Text', serif; font-style: italic; font-weight: 700; font-size: 13px; text-align: center; outline: none;">
+                    <div style="display: flex; gap: 5px;">
+                      <div class="axis-name-input-box">
+                        <span>가로</span>
+                        <input type="text" id="inputAxisNameX" value="x" maxlength="6">
                       </div>
-                      <div class="axis-name-input-box"
-                        style="flex: 1; display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.22); padding: 3px 6px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.12);">
-                        <span style="font-size: 11px; color: #94a3b8;">세로</span>
-                        <input type="text" id="inputAxisNameY" value="y" maxlength="6"
-                          style="width: 100%; background: transparent; border: none; color: #00d2d3; font-family: 'STIX Two Text', serif; font-style: italic; font-weight: 700; font-size: 13px; text-align: center; outline: none;">
+                      <div class="axis-name-input-box">
+                        <span>세로</span>
+                        <input type="text" id="inputAxisNameY" value="y" maxlength="6">
                       </div>
                     </div>
 
@@ -997,13 +959,11 @@
                     </div>
                   </div>
 
-                  <div style="margin-top: 8px; display: flex; gap: 5px;">
-                    <button id="btnClearDropLines" class="btn-sub-action"
-                      style="flex: 1; padding: 5px 6px; font-size: 11px; color: #ff7675; border-color: rgba(255, 118, 117, 0.4);">수선
-                      비우기</button>
-                    <button id="btnClearTextLabels" class="btn-sub-action"
-                      style="flex: 1; padding: 5px 6px; font-size: 11px; color: #ff7675; border-color: rgba(255, 118, 117, 0.4);">텍스트
-                      비우기</button>
+                  <div style="margin-top: 6px; display: flex; gap: 5px;">
+                    <button id="btnClearDropLines" type="button" class="settings-clean-btn"
+                      style="flex: 1;">수선 비우기</button>
+                    <button id="btnClearTextLabels" type="button" class="settings-clean-btn"
+                      style="flex: 1;">텍스트 비우기</button>
                   </div>
                 </div>
               </div>
@@ -2073,20 +2033,14 @@
     </div>
   </div>
 
-  <!-- [📤 통합 내보내기 & 공유 모달 (범위 선택 × 문제·그래프·필기 레이어 필터 × 이미지·링크·파일)] -->
+  <!-- [통합 내보내기 & 공유 모달] -->
   <div id="modalShare" class="smart-modal-backdrop">
     <div class="smart-modal-card share-modal-card unified-export-modal-card">
       <div class="smart-modal-header">
         <div class="smart-modal-title">
-          <span class="modal-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg></span>
           <span class="modal-title-text">내보내기</span>
         </div>
-        <button id="btnCloseShareModal" class="btn-modal-close"><svg width="15" height="15" viewBox="0 0 24 24"
+        <button id="btnCloseShareModal" class="btn-modal-close"><svg width="14" height="14" viewBox="0 0 24 24"
             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
@@ -2094,15 +2048,14 @@
       </div>
 
       <div class="smart-modal-body share-modal-body unified-export-body">
-        <!-- STEP 1 & 2: 범위 및 포함 요소 선택 (1줄/2줄 콤팩트 필터 바) -->
+        <!-- STEP 1: 범위 및 포함 항목 선택 -->
         <div class="export-filter-box">
           <div class="export-filter-row">
             <span class="export-step-label">범위</span>
             <div class="export-scope-group">
-              <button type="button" id="btnExportScopeCurrent" class="export-scope-chip active" data-scope="current">현재
-                캔버스</button>
+              <button type="button" id="btnExportScopeCurrent" class="export-scope-chip active" data-scope="current">현재 캔버스</button>
               <button type="button" id="btnExportScopeAll" class="export-scope-chip" data-scope="all">전체 캔버스 <span
-                  id="lblExportTotalSlidesCount">(1장)</span></button>
+                  id="lblExportTotalSlidesCount">(1)</span></button>
             </div>
           </div>
 
@@ -2131,60 +2084,32 @@
           <div class="export-filter-row export-stage-preset-row" style="display: none !important;">
             <span class="export-step-label">단계별 저장</span>
             <div class="export-stage-preset-group">
-              <button type="button" id="btnExportPresetStage0" class="export-stage-preset-chip" data-stage="0">①
-                문제</button>
-              <button type="button" id="btnExportPresetStage1" class="export-stage-preset-chip" data-stage="1">1차:
-                문제+그래프</button>
-              <button type="button" id="btnExportPresetStage2" class="export-stage-preset-chip" data-stage="2">2차: +필기
-                해설</button>
-              <button type="button" id="btnExportPresetStage3" class="export-stage-preset-chip active"
-                data-stage="3">3차: +음성 강의</button>
+              <button type="button" id="btnExportPresetStage0" class="export-stage-preset-chip" data-stage="0">① 문제</button>
+              <button type="button" id="btnExportPresetStage1" class="export-stage-preset-chip" data-stage="1">1차: 문제+그래프</button>
+              <button type="button" id="btnExportPresetStage2" class="export-stage-preset-chip" data-stage="2">2차: +필기 해설</button>
+              <button type="button" id="btnExportPresetStage3" class="export-stage-preset-chip active" data-stage="3">3차: +음성 강의</button>
             </div>
           </div>
           <div class="export-filter-hint" id="lblExportFilterSummary" style="display: none;"></div>
         </div>
 
-        <!-- STEP 2: 이미지 & 공유 (2x2 슬림 버튼 그리드 · 클릭 시에만 생성하여 체크박스 랙 0%) -->
+        <!-- STEP 2: 이미지 · 공유 -->
         <div class="share-field-group">
           <label class="share-field-label">
-            <span>이미지 &amp; 공유 <small style="font-weight:500;color:#94a3b8;font-size:11px;margin-left:4px;">(공유 링크·QR
-                7일간 유효)</small></span>
+            <span>이미지 · 공유 <small style="font-weight:500;color:#94a3b8;font-size:10.5px;margin-left:4px;">(링크·QR 7일 유효)</small></span>
           </label>
           <div class="export-action-2x2-grid">
-            <button type="button" id="btnExportModalCopyImg" class="btn-primary export-action-big-btn">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
+            <button type="button" id="btnExportModalCopyImg" class="export-action-big-btn">
               <span id="lblExportModalCopyImg">이미지 복사</span>
             </button>
-            <button type="button" id="btnExportModalSavePng" class="btn-secondary export-action-big-btn">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
+            <button type="button" id="btnExportModalSavePng" class="export-action-big-btn">
               <span id="lblExportModalSavePng">PNG 저장</span>
             </button>
-            <button type="button" id="btnCopyShareLink" class="btn-primary export-action-big-btn export-btn-share-link">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-              </svg>
+            <button type="button" id="btnCopyShareLink" class="export-action-big-btn">
               <span id="lblBtnCopyShareLink">공유 링크 복사</span>
             </button>
-            <button type="button" id="btnDownloadQr" class="btn-secondary export-action-big-btn">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="7" height="7" />
-                <rect x="14" y="3" width="7" height="7" />
-                <rect x="14" y="14" width="7" height="7" />
-                <rect x="3" y="14" width="7" height="7" />
-              </svg>
-              <span id="lblBtnDownloadQr">QR 생성·저장</span>
+            <button type="button" id="btnDownloadQr" class="export-action-big-btn">
+              <span id="lblBtnDownloadQr">QR 저장</span>
             </button>
           </div>
           <!-- 오프스크린 QR 생성 캔버스 및 호환용 숨김 필드 -->
@@ -2198,11 +2123,11 @@
           </div>
         </div>
 
-        <!-- STEP 3: 내 기기 및 클라우드 저장 (.graphly) -->
+        <!-- STEP 3: 파일 · 클라우드 저장 (.graphly) -->
         <div class="share-field-group share-deck-hub-group">
           <label class="share-field-label">
-            <span>파일 및 클라우드 저장 <small
-                style="font-weight:500;color:#94a3b8;font-size:11px;margin-left:4px;">(.graphly)</small></span>
+            <span>파일 · 클라우드 저장 <small
+                style="font-weight:500;color:#94a3b8;font-size:10.5px;margin-left:4px;">(.graphly)</small></span>
           </label>
           <div class="share-input-row" style="margin-bottom: 6px; display: flex; gap: 6px;">
             <select id="selectExportCloudFolder" class="export-cloud-folder-select" title="클라우드 저장 폴더 선택"
@@ -2210,13 +2135,13 @@
               <option value="">📁 기본 보관함</option>
             </select>
             <input type="text" id="inputShareModalDeckTitle" class="share-link-input" style="flex: 1; min-width: 0;"
-              placeholder="저장할 파일명 입력 (비워두면 자동 제목)">
+              placeholder="파일명 입력 (비워두면 자동)">
             <input type="text" id="inputShareModalDeckTags" class="share-link-input" style="display: none;"
               placeholder="#태그">
           </div>
           <div class="share-deck-btn-row">
-            <button type="button" id="btnShareModalExportFile" class="btn-primary share-deck-btn">💻 내 기기에 저장</button>
-            <button type="button" id="btnShareModalToLibrary" class="btn-secondary share-deck-btn">☁️ 클라우드에 저장</button>
+            <button type="button" id="btnShareModalExportFile" class="share-deck-btn">내 기기에 저장</button>
+            <button type="button" id="btnShareModalToLibrary" class="share-deck-btn">클라우드에 저장</button>
           </div>
         </div>
       </div>
@@ -3164,7 +3089,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261105_20"></script>
-  <script src="app.js?v=20261105_60"></script>
+  <script src="app.js?v=20261105_61"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
