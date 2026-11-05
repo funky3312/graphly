@@ -11981,44 +11981,68 @@ body:not(.theme-light) .cloud-tree-node.active {
   flex: 1;
 }
 
-/* 🌲 하위 폴더 계층 수직 가이드 선 (│ 및 ├ 분기 표시, 단계당 10px 슬림 들여쓰기) */
+/* 🌲 윈도우 탐색기식 점선(dotted) 트리 가이드 (⋮ · ├ · └, 단계당 7px 초슬림 들여쓰기) */
+.cloud-tree-indent-group {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 5px;
+  margin-right: 0px;
+  flex-shrink: 0;
+}
+
 .cloud-tree-indent-guide {
   display: inline-block;
-  width: 8px;
-  height: 18px;
-  margin-left: 2px;
-  border-left: 1px solid rgba(148, 163, 184, 0.45);
+  width: 7px;
+  height: 21px;
+  margin-top: -2px;
+  margin-bottom: -2px;
   flex-shrink: 0;
   position: relative;
   box-sizing: border-box;
 }
 
-.cloud-tree-indent-guide.is-last-guide::after {
+.cloud-tree-indent-guide.has-vline::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-left: 1px dotted #94a3b8;
+}
+
+.cloud-tree-indent-guide.is-branch::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-left: 1px dotted #94a3b8;
+}
+
+.cloud-tree-indent-guide.is-branch.is-last-branch::before {
+  bottom: 50%;
+}
+
+.cloud-tree-indent-guide.is-branch::after {
   content: '';
   position: absolute;
   left: 0;
   top: 50%;
-  width: 5px;
-  height: 1px;
-  background: rgba(148, 163, 184, 0.45);
+  width: 6px;
+  border-top: 1px dotted #94a3b8;
 }
 
-/* 고정 화살표 슬롯: 하위폴더 유무와 무관하게 폴더 아이콘 정렬 */
+body:not(.theme-light) .cloud-tree-indent-guide.has-vline::before,
+body:not(.theme-light) .cloud-tree-indent-guide.is-branch::before {
+  border-left-color: rgba(148, 163, 184, 0.55);
+}
+
+body:not(.theme-light) .cloud-tree-indent-guide.is-branch::after {
+  border-top-color: rgba(148, 163, 184, 0.55);
+}
+
 .cloud-tree-chevron {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 12px;
-  height: 12px;
-  font-size: 9px;
-  color: #64748b;
-  flex-shrink: 0;
-  border-radius: 3px;
-}
-
-.cloud-tree-chevron.has-children:hover {
-  background: rgba(148, 163, 184, 0.24);
-  color: #0f172a;
+  display: none !important;
 }
 
 .cloud-tree-icon {

@@ -24343,12 +24343,11 @@ class GraphApp {
     if (chipBar) {
       chipBar.innerHTML = '';
 
-      // (A) 루트: ☁️ 내 클라우드
+      // (A) 루트: ☁️ 내 클라우드 (삼각형 없이 아이콘+이름만 깔끔하게 표시)
       const homeNode = document.createElement('div');
       homeNode.className = 'cloud-tree-node' + (activeFolder === '' ? ' active' : '');
       homeNode.innerHTML = `
         <div class="cloud-tree-node-left">
-          <span class="cloud-tree-chevron">▾</span>
           <span class="cloud-tree-icon">☁️</span>
           <span class="cloud-tree-name">내 클라우드</span>
         </div>
@@ -24362,10 +24361,11 @@ class GraphApp {
       bindExternalFileDropTarget(homeNode, '');
       chipBar.appendChild(homeNode);
 
-      // (B) 재귀 폴더 트리 노드 렌더링 (수직 트리 가이드선 │ + 슬림 들여쓰기 + 가로 스크롤 무손실 표시)
-      const renderFolderTreeLevel = (parentPath, depth) => {
+      // (B) 재귀 폴더 트리 노드 렌더링 (윈도우 탐색기식 점선 ├·└ + 초슬림 들여쓰기 + 삼각형 제거)
+      const renderFolderTreeLevel = (parentPath, ancestorContinuationFlags = []) => {
         const children = getDirectChildFolders(parentPath);
-        children.forEach(fPath => {
+        children.forEach((fPath, idx) => {
+          const isLastSibling = (idx === children.length - 1);
           const segName = fPath.split('/').pop();
           const subChildren = getDirectChildFolders(fPath);
           const hasSubs = subChildren.length > 0;
@@ -24373,67 +24373,53 @@ class GraphApp {
           const isAct = (activeFolder === fPath);
           const isOpenBranch = isAct || activeFolder.startsWith(fPath + '/');
 
-          let indentGuidesHtml = '';
-          for (let d = 1; d <= depth; d++) {
-            indentGuidesHtml += `<span class="cloud-tree-indent-guide${d === depth ? ' is-last-guide' : ''}"></span>`;
+          let indentGuidesHtml = '<span class="cloud-tree-indent-group">';
+          for (let d = 0; d < ancestorContinuationFlags.length; d++) {
+            const keepVerticalLine = ancestorContinuationFlags[d];
+            indentGuidesHtml += `<span class="cloud-tree-indent-guide${keepVerticalLine ? ' has-vline' : ' is-blank'}"></span>`;
           }
+          indentGuidesHtml += `<span class="cloud-tree-indent-guide is-branch${isLastSibling ? ' is-last-branch' : ''}"></span>`;
+          indentGuidesHtml += '</span>';
 
           const node = document.createElement('div');
           node.className = 'cloud-tree-node' + (isAct ? ' active' : '');
           node.innerHTML = `
             <div class="cloud-tree-node-left">
               ${indentGuidesHtml}
-              <span class="cloud-tree-chevron ${hasSubs ? 'has-children' : ''}">${hasSubs ? (isCollapsed ? '▸' : '▾') : ''}</span>
               <span class="cloud-tree-icon">${isOpenBranch ? '📂' : '📁'}</span>
               <span class="cloud-tree-name" title="${fPath.replace(/\//g, ' › ')}">${segName}</span>
             </div>
           `;
 
-          const chev = node.querySelector('.cloud-tree-chevron');
-          if (chev && hasSubs) {
-            chev.onclick = (e) => {
-              e.stopPropagation();
+          node.onclick = () => {
+            if (this._activeCloudFolder === fPath && hasSubs) {
+              // 이미 선택된 폴더를 다시 누르면 하위 폴더 열기/접기 토글
               if (this._collapsedCloudFolders.has(fPath)) {
                 this._collapsedCloudFolders.delete(fPath);
               } else {
                 this._collapsedCloudFolders.add(fPath);
               }
-              this.renderMyLibraryList();
-            };
-          }
-
-          node.onclick = () => {
-            this._activeCloudFolder = fPath;
-            this._selectedCloudExplorerKeys.clear();
-            if (hasSubs && this._collapsedCloudFolders.has(fPath)) {
-              this._collapsedCloudFolders.delete(fPath);
+            } else {
+              this._activeCloudFolder = fPath;
+              if (hasSubs && this._collapsedCloudFolders.has(fPath)) {
+                this._collapsedCloudFolders.delete(fPath);
+              }
             }
+            this._selectedCloudExplorerKeys.clear();
             this.syncExportCloudFolderSelect();
             this.renderMyLibraryList();
-          };
-
-          node.ondblclick = (e) => {
-            e.stopPropagation();
-            if (hasSubs) {
-              if (this._collapsedCloudFolders.has(fPath)) {
-                this._collapsedCloudFolders.delete(fPath);
-              } else {
-                this._collapsedCloudFolders.add(fPath);
-              }
-              this.renderMyLibraryList();
-            }
           };
 
           bindExternalFileDropTarget(node, fPath);
           chipBar.appendChild(node);
 
           if (hasSubs && !isCollapsed) {
-            renderFolderTreeLevel(fPath, depth + 1);
+            renderFolderTreeLevel(fPath, [...ancestorContinuationFlags, !isLastSibling]);
           }
         });
       };
 
-      renderFolderTreeLevel('', 1);
+      renderFolderTreeLevel('', []);
 
       // (C) 하단 구분선 + 전체 파일 모아보기
       const divider = document.createElement('div');
@@ -24444,7 +24430,6 @@ class GraphApp {
       allRecentNode.className = 'cloud-tree-node' + (isAllRecentMode ? ' active' : '');
       allRecentNode.innerHTML = `
         <div class="cloud-tree-node-left">
-          <span class="cloud-tree-chevron"></span>
           <span class="cloud-tree-icon">🕒</span>
           <span class="cloud-tree-name">전체 파일 보기</span>
         </div>
