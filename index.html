@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_64">
+  <link rel="stylesheet" href="style.css?v=20261105_65">
 </head>
 
 <body class="theme-light">
@@ -75,6 +75,14 @@
           <span class="rail-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
               <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+            </svg></span>
+        </button>
+        <!-- ↺ 3. 캔버스 초기화 (클릭 시 [현재 캔버스 비우기 / 전체 캔버스 초기화] 미니 팝오버 오픈) -->
+        <button class="rail-btn" id="btnRailResetBoard" title="캔버스 초기화">
+          <span class="rail-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
             </svg></span>
         </button>
         <!-- ➕ 캔버스 추가 (현재 작업 자동 보존 후 다음 슬라이드 캔버스 열기) -->
@@ -198,6 +206,16 @@
               <line x1="8" y1="11" x2="14" y2="11"></line>
             </svg>
           </button>
+        </div>
+      </div>
+      <!-- ↺ 캔버스 초기화 미니 선택 팝오버 -->
+      <div id="railResetBoardPopover" class="rail-reset-board-popover" style="display: none;">
+        <div class="section-title settings-clean-subtitle" style="margin-bottom: 5px !important; padding: 0 2px;">
+          <span>캔버스 초기화</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <button type="button" id="btnResetPopoverCurrent" class="settings-clean-btn">현재 캔버스 비우기</button>
+          <button type="button" id="btnResetPopoverAll" class="settings-clean-btn">전체 캔버스 초기화</button>
         </div>
       </div>
       <!-- 슬라이드오버 플로팅 서랍 (Drawer) -->
@@ -3096,7 +3114,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261105_20"></script>
-  <script src="app.js?v=20261105_64"></script>
+  <script src="app.js?v=20261105_65"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

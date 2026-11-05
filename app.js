@@ -2004,6 +2004,7 @@ class GraphApp {
       hasExtraProblems ||
       hasGraphCards ||
       Boolean(this.pdfPageBoardData) ||
+      Boolean(this.isLessonPlaylistActive && this.lessonPlaylistSlides && this.lessonPlaylistSlides.length > 0) ||
       this.panX !== 0 ||
       this.panY !== 0 ||
       this.boardPanX !== 0 ||
@@ -15963,6 +15964,56 @@ class GraphApp {
       };
     }
 
+    // ↺ 좌측 레일 캔버스 초기화 버튼 & 미니 선택 팝오버 ([현재 캔버스 비우기 / 전체 캔버스 초기화])
+    const btnRailResetBoard = document.getElementById('btnRailResetBoard');
+    const railResetPopover = document.getElementById('railResetBoardPopover');
+    const btnResetPopoverCurrent = document.getElementById('btnResetPopoverCurrent');
+    const btnResetPopoverAll = document.getElementById('btnResetPopoverAll');
+    this.closeRailResetPopover = () => {
+      if (railResetPopover) railResetPopover.style.display = 'none';
+      if (btnRailResetBoard) btnRailResetBoard.classList.remove('active');
+    };
+    if (btnRailResetBoard && railResetPopover) {
+      btnRailResetBoard.onclick = (e) => {
+        e.stopPropagation();
+        const isOpen = railResetPopover.style.display !== 'none';
+        if (isOpen) {
+          this.closeRailResetPopover();
+          return;
+        }
+        const railEl = document.getElementById('sidebarRail');
+        if (railEl) {
+          const railRect = railEl.getBoundingClientRect();
+          const btnRect = btnRailResetBoard.getBoundingClientRect();
+          const topOffset = Math.max(8, Math.round(btnRect.top - railRect.top - 4));
+          railResetPopover.style.top = `${topOffset}px`;
+        }
+        railResetPopover.style.display = 'block';
+        btnRailResetBoard.classList.add('active');
+      };
+      railResetPopover.addEventListener('pointerdown', (e) => e.stopPropagation());
+      railResetPopover.addEventListener('click', (e) => e.stopPropagation());
+      document.addEventListener('pointerdown', (e) => {
+        if (!railResetPopover || railResetPopover.style.display === 'none') return;
+        if (railResetPopover.contains(e.target) || btnRailResetBoard.contains(e.target)) return;
+        this.closeRailResetPopover();
+      });
+    }
+    if (btnResetPopoverCurrent) {
+      btnResetPopoverCurrent.onclick = (e) => {
+        e.stopPropagation();
+        this.closeRailResetPopover();
+        this.clearCurrentCanvasOnly();
+      };
+    }
+    if (btnResetPopoverAll) {
+      btnResetPopoverAll.onclick = (e) => {
+        e.stopPropagation();
+        this.closeRailResetPopover();
+        this.clearAllSlidesAndReset();
+      };
+    }
+
     // 전체화면 토글
     const btnFullscreen = document.getElementById('btnQuickFullscreen');
     if (btnFullscreen) {
@@ -16248,6 +16299,9 @@ class GraphApp {
     this.isDrawerCollapsed = true;
 
     this.openDrawer = (panelId) => {
+      if (typeof this.closeRailResetPopover === 'function') {
+        this.closeRailResetPopover();
+      }
       this.activeDrawerPanel = panelId || this.activeDrawerPanel || 'panelPresets';
       this.isDrawerCollapsed = false;
       rail.classList.remove('drawer-collapsed');
