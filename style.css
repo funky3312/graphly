@@ -11832,32 +11832,94 @@ body:not(.theme-light) .cloud-library-search-input {
 /* 좌측 폴더 트리 사이드바 */
 .cloud-explorer-sidebar {
   width: 168px;
+  min-width: 115px;
+  max-width: 360px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  padding: 4px 5px;
-  border-right: 1px solid rgba(148, 163, 184, 0.24);
+  padding: 4px 4px;
   background: rgba(248, 250, 252, 0.65);
   overflow: hidden;
 }
 
 body:not(.theme-light) .cloud-explorer-sidebar {
   background: rgba(15, 23, 42, 0.42);
-  border-right-color: rgba(148, 163, 184, 0.16);
+}
+
+/* ↔️ 좌측 폴더 트리와 우측 파일 목록 사이 폭 조절선 (Splitter) */
+.cloud-explorer-splitter {
+  width: 9px;
+  margin: 0 -4px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  position: relative;
+  z-index: 12;
+  touch-action: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cloud-explorer-splitter::before {
+  content: '';
+  width: 1px;
+  height: 100%;
+  background: rgba(148, 163, 184, 0.28);
+  transition: background 0.12s ease, width 0.12s ease;
+}
+
+body:not(.theme-light) .cloud-explorer-splitter::before {
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.cloud-explorer-splitter::after {
+  content: '⋮';
+  position: absolute;
+  font-size: 11px;
+  line-height: 1;
+  color: #94a3b8;
+  background: rgba(248, 250, 252, 0.95);
+  padding: 3px 1px;
+  border-radius: 3px;
+  pointer-events: none;
+  opacity: 0.75;
+  transition: color 0.12s ease, opacity 0.12s ease;
+}
+
+body:not(.theme-light) .cloud-explorer-splitter::after {
+  background: rgba(15, 23, 42, 0.9);
+  color: #64748b;
+}
+
+.cloud-explorer-splitter:hover::before,
+.cloud-explorer-splitter.is-dragging::before {
+  width: 2px;
+  background: #2563eb;
+}
+
+.cloud-explorer-splitter:hover::after,
+.cloud-explorer-splitter.is-dragging::after {
+  color: #2563eb;
+  opacity: 1;
 }
 
 .cloud-folder-tree-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
   gap: 0px !important;
   padding-right: 2px;
+  padding-bottom: 2px;
 }
 
 .cloud-folder-tree-list::-webkit-scrollbar {
   width: 4px;
+  height: 4px;
 }
 
 .cloud-folder-tree-list::-webkit-scrollbar-thumb {
@@ -11868,9 +11930,12 @@ body:not(.theme-light) .cloud-explorer-sidebar {
 .cloud-tree-node {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 1.5px 5px !important;
+  justify-content: flex-start;
+  gap: 3px;
+  padding-top: 1.5px !important;
+  padding-bottom: 1.5px !important;
+  padding-left: 4px;
+  padding-right: 6px;
   border-radius: 5px;
   border: 1px solid transparent;
   background: transparent;
@@ -11882,6 +11947,8 @@ body:not(.theme-light) .cloud-explorer-sidebar {
   user-select: none;
   transition: background 0.1s ease, border-color 0.1s ease;
   min-height: 21px !important;
+  width: max-content;
+  min-width: 100%;
   box-sizing: border-box;
 }
 
@@ -11909,18 +11976,40 @@ body:not(.theme-light) .cloud-tree-node.active {
 .cloud-tree-node-left {
   display: flex;
   align-items: center;
-  gap: 4px;
-  min-width: 0;
+  gap: 3px;
+  min-width: max-content;
   flex: 1;
 }
 
-/* 고정 16px 화살표 슬롯: 하위폴더 유무와 무관하게 폴더 아이콘 세로줄 100% 일직선 정렬 */
+/* 🌲 하위 폴더 계층 수직 가이드 선 (│ 및 ├ 분기 표시, 단계당 10px 슬림 들여쓰기) */
+.cloud-tree-indent-guide {
+  display: inline-block;
+  width: 8px;
+  height: 18px;
+  margin-left: 2px;
+  border-left: 1px solid rgba(148, 163, 184, 0.45);
+  flex-shrink: 0;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.cloud-tree-indent-guide.is-last-guide::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 5px;
+  height: 1px;
+  background: rgba(148, 163, 184, 0.45);
+}
+
+/* 고정 화살표 슬롯: 하위폴더 유무와 무관하게 폴더 아이콘 정렬 */
 .cloud-tree-chevron {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
   font-size: 9px;
   color: #64748b;
   flex-shrink: 0;
@@ -11940,8 +12029,8 @@ body:not(.theme-light) .cloud-tree-node.active {
 
 .cloud-tree-name {
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .cloud-tree-count {
