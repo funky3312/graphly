@@ -9657,6 +9657,10 @@ body.theme-light .slide-grid-popover-title {
 }
 
 .slide-grid-select-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   height: 24px;
   padding: 0 9px;
   border-radius: 6px;
@@ -9665,6 +9669,7 @@ body.theme-light .slide-grid-popover-title {
   color: #e2e8f0;
   font-size: 11px;
   font-weight: 700;
+  line-height: 1;
   cursor: pointer;
   transition: all 0.14s ease;
   white-space: nowrap;
@@ -9695,6 +9700,10 @@ body.theme-light .slide-grid-select-btn:hover {
 }
 
 .slide-grid-del-current-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   height: 24px;
   padding: 0 8px;
   border-radius: 6px;
@@ -9703,6 +9712,7 @@ body.theme-light .slide-grid-select-btn:hover {
   color: #fca5a5;
   font-size: 11px;
   font-weight: 700;
+  line-height: 1;
   cursor: pointer;
   transition: all 0.14s ease;
   white-space: nowrap;
