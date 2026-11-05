@@ -13922,6 +13922,27 @@ body:not(.theme-light) #modalShare .settings-clean-subtitle {
   box-shadow: none !important;
 }
 
+#modalShare .export-layer-chip {
+  gap: 3px !important;
+  padding: 5px 4px !important;
+}
+
+#modalShare .export-layer-chip .export-layer-check-icon {
+  flex-shrink: 0;
+  color: #cbd5e1;
+  opacity: 0.55;
+  transition: color 0.14s ease, opacity 0.14s ease;
+}
+
+#modalShare .export-layer-chip.active .export-layer-check-icon {
+  color: #2563eb;
+  opacity: 1;
+}
+
+body:not(.theme-light) #modalShare .export-layer-chip.active .export-layer-check-icon {
+  color: #60a5fa;
+}
+
 body:not(.theme-light) #railDrawer .vf-chip,
 body:not(.theme-light) #railDrawer .style-tab-btn,
 body:not(.theme-light) #modalShare .vf-chip {
