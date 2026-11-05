@@ -31986,11 +31986,6 @@ class GraphApp {
             this.toggleGraphSnapMode(false);
             return;
           }
-          if (this.isInkMode) {
-            e.preventDefault();
-            this.toggleInkMode(false);
-            return;
-          }
           if (this.isDropLineMode) {
             e.preventDefault();
             this.toggleDropLineMode(false);
@@ -41961,34 +41956,34 @@ class GraphApp {
       this._shortcutDefinitions = [
         // 1. ✒️ 판서 · 펜 도구 (ink)
         {
-          id: 'ink_toggle_mode',
+          id: 'ink_tool_pen',
           category: 'ink',
           categoryLabel: '✒️ 판서 · 펜 도구',
-          name: '필기 모드 켜기 / 끄기',
-          desc: '그래프 조작 ↔ 칠판 펜 필기 모드 전환',
+          name: '펜 도구',
+          desc: '일반 필기 펜으로 즉시 전환',
           defaultKey: 'P',
-          buttonIds: ['btnInkMode'],
-          baseTitle: '필기 모드'
+          buttonIds: ['btnInkPen'],
+          baseTitle: '펜'
         },
         {
           id: 'ink_tool_select',
           category: 'ink',
           categoryLabel: '✒️ 판서 · 펜 도구',
-          name: '선택 / 이동 (↖ 조작) 도구',
+          name: '선택 / 이동 (✋ 조작) 도구',
           desc: '필기 중 그래프·카드·객체 이동 및 조작으로 전환',
           defaultKey: 'V',
           buttonIds: ['btnInkSelect'],
           baseTitle: '선택 / 이동'
         },
         {
-          id: 'ink_tool_pen',
+          id: 'ink_toggle_mode',
           category: 'ink',
           categoryLabel: '✒️ 판서 · 펜 도구',
-          name: '펜 도구',
-          desc: '일반 필기 펜으로 즉시 전환',
+          name: '필기바 보이기 / 숨기기',
+          desc: '상단 필기 도구 바 표시 또는 숨기기',
           defaultKey: '',
-          buttonIds: ['btnInkPen'],
-          baseTitle: '펜'
+          buttonIds: ['btnInkMode'],
+          baseTitle: '필기바 표시/숨김'
         },
         {
           id: 'ink_tool_highlighter',
@@ -42698,6 +42693,12 @@ class GraphApp {
         result[def.id] = String(def.defaultKey || '').trim();
       }
     });
+    // [구버전 단축키 프로필 자동 마이그레이션]: 기존에 ink_toggle_mode가 'P'로 저장되어 있고 ink_tool_pen이 비어 있던 계정은
+    // 'P'를 즉시 펜 도구(ink_tool_pen)로 자동 승계하여 V ➔ P 전환 시 중간 화살표 상태 없이 바로 펜으로 전환!
+    if (String(result.ink_toggle_mode || '').toUpperCase() === 'P' && !result.ink_tool_pen) {
+      result.ink_tool_pen = 'P';
+      result.ink_toggle_mode = '';
+    }
     return result;
   }
 
@@ -43114,7 +43115,7 @@ class GraphApp {
   executeShortcutAction(actionId, e) {
     switch (actionId) {
       case 'ink_toggle_mode': {
-        this.toggleInkMode();
+        this.toggleBottomInkBar();
         return true;
       }
       case 'ink_tool_select': {
