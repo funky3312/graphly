@@ -21384,8 +21384,21 @@ class GraphApp {
       }
       if (btnProGoLogin) btnProGoLogin.style.display = 'none';
       if (lblSettingsAcct) {
-        lblSettingsAcct.style.display = 'block';
-        lblSettingsAcct.textContent = emailStr || this.cloudUser.displayName || '';
+        lblSettingsAcct.style.display = 'flex';
+        const acctText = emailStr || this.cloudUser.displayName || '';
+        const isPro = this.isProSubscriber();
+        const planLabel = isPro ? 'Pro 플랜' : '무료 플랜';
+        const planClass = isPro ? 'is-pro' : 'is-free';
+        lblSettingsAcct.innerHTML = '';
+        const spanEmail = document.createElement('span');
+        spanEmail.className = 'settings-account-id-text';
+        spanEmail.textContent = acctText;
+        spanEmail.title = acctText;
+        const spanPlan = document.createElement('span');
+        spanPlan.className = `settings-account-plan-badge ${planClass}`;
+        spanPlan.textContent = planLabel;
+        lblSettingsAcct.appendChild(spanEmail);
+        lblSettingsAcct.appendChild(spanPlan);
       }
       if (settingsLoggedOutRow) settingsLoggedOutRow.style.display = 'none';
       if (settingsLoggedInRow) settingsLoggedInRow.style.display = 'flex';
@@ -21689,6 +21702,7 @@ class GraphApp {
         }
       } catch (e) { }
     }
+    this.syncCloudAuthUI();
     this.renderFuncList();
   }
 
