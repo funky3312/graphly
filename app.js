@@ -1866,8 +1866,10 @@ class GraphApp {
       this.showToast(`🗑️ ${removedName} 삭제 완료!`);
     }
     this.selectedHandleIdx = null;
+    this.isCurveSelected = false;
 
     this.syncControls();
+    this.syncCurveContextBar();
     this.renderLayerList();
     this.renderFuncList();
     this.updateIntersections();
@@ -2186,6 +2188,7 @@ class GraphApp {
         dot.classList.toggle('active', dot.dataset.color === fallbackDotColor);
       });
       this.syncShapePanel();
+      this.syncCurveContextBar();
       return;
     }
 
