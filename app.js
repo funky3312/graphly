@@ -21376,8 +21376,7 @@ class GraphApp {
     }
     const boxEmailLogin = document.getElementById('cloudEmailLoginBox');
     if (boxEmailLogin) {
-      boxEmailLogin.style.display = 'block';
-      this.switchCloudIdAuthTab(this._cloudIdAuthTab || 'login');
+      boxEmailLogin.style.display = 'none';
     }
     const acctSec = document.getElementById('settingsAccountSection');
     if (acctSec && acctSec.scrollIntoView) {
@@ -21441,7 +21440,7 @@ class GraphApp {
       if (lblBtn) lblBtn.textContent = '구글 로그인';
       if (btnEmailToggle) btnEmailToggle.style.display = 'inline-flex';
       if (lblProAcct) {
-        lblProAcct.textContent = '🔒 결제 전 로그인 필요 (이메일 인증 가입자와 동일 주소의 Google 계정은 하나로 자동 연동됩니다)';
+        lblProAcct.textContent = '🔒 결제 전 Google 로그인이 필요합니다.';
       }
       if (btnProGoLogin) btnProGoLogin.style.display = 'inline-flex';
       if (lblSettingsAcct) {
@@ -22654,7 +22653,7 @@ class GraphApp {
     if (!this.cloudUser || !this.cloudUser.uid) {
       const modalPro = document.getElementById('modalProPricing');
       if (modalPro) modalPro.classList.remove('show');
-      this.promptCloudLoginForLibrary('🔒 이용권 결제는 로그인한 계정에 귀속됩니다. 먼저 Google 또는 이메일로 로그인해 주세요!');
+      this.promptCloudLoginForLibrary('🔒 이용권 결제는 로그인한 계정에 귀속됩니다. 먼저 Google 로그인을 진행해 주세요!');
       return false;
     }
     if (typeof window.TossPayments !== 'function') {
