@@ -7850,16 +7850,16 @@ body.theme-light .btn-cloud-export-item:hover {
   left: 605px;
   top: 76px;
   z-index: 465 !important;
-  width: 88px;
+  width: 98px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
-  padding: 5px 5.5px 6.5px 5.5px;
-  border-radius: 13px;
+  gap: 5px;
+  padding: 6px 6.5px 7.5px 6.5px;
+  border-radius: 15px;
   background: rgba(15, 23, 42, 0.93);
-  border: 1.2px solid rgba(148, 163, 184, 0.28);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.32), 0 2px 6px rgba(0, 0, 0, 0.18);
+  border: 1.3px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.33), 0 2px 6px rgba(0, 0, 0, 0.18);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   user-select: none;
@@ -7885,11 +7885,11 @@ body.theme-light .quick-pill-remote {
   flex: 1;
   cursor: grab;
   color: #94a3b8;
-  font-size: 9.5px;
+  font-size: 10.5px;
   font-weight: 800;
   letter-spacing: 0.4px;
-  padding: 2px 3px;
-  border-radius: 5px;
+  padding: 2.5px 3.5px;
+  border-radius: 5.5px;
   line-height: 1;
   display: flex;
   align-items: center;
@@ -7915,18 +7915,18 @@ body.theme-light .pill-remote-drag-handle:hover {
   cursor: grabbing;
 }
 
-/* 0단: 전폭 초대형 메인 [✒️ 필기 ⇄ ↖ 이동] 원버튼 (70% 컴팩트 스케일) */
+/* 0단: 전폭 초대형 메인 [✒️ 필기 ⇄ ↖ 이동] 원버튼 (80% 컴팩트 스케일) */
 .pill-remote-swap-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 3.5px;
+  gap: 4px;
   width: 100%;
-  height: 31px;
-  padding: 0 5px;
-  border-radius: 8.5px;
-  border: 1.2px solid transparent;
-  font-size: 10.5px;
+  height: 35px;
+  padding: 0 6px;
+  border-radius: 10px;
+  border: 1.3px solid transparent;
+  font-size: 12px;
   font-weight: 800;
   cursor: pointer;
   transition: transform 0.1s ease, box-shadow 0.15s ease, background 0.15s ease;
@@ -7975,7 +7975,7 @@ body.theme-light .pill-remote-swap-btn.mode-subtool {
 }
 
 .pill-swap-badge {
-  font-size: 8.5px;
+  font-size: 9.5px;
   opacity: 0.85;
   font-weight: 700;
 }
@@ -7983,7 +7983,7 @@ body.theme-light .pill-remote-swap-btn.mode-subtool {
 .pill-remote-section {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 4.5px;
   width: 100%;
 }
 
@@ -7998,19 +7998,19 @@ body.theme-light .pill-remote-sep {
   background: rgba(15, 23, 42, 0.10);
 }
 
-/* 2열 그리드 (지우개 · 올가미 / 축소 · 확대 / 형광펜 · 비우기) */
+/* 2열 그리드 (지우개 · 올가미 / 형광펜 · 레이저 / 축소 · 확대 / 스티커 · 비우기) */
 .pill-remote-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px;
+  gap: 4.5px;
   width: 100%;
 }
 
 .pill-remote-btn {
   width: 100%;
-  height: 27px;
-  border-radius: 8px;
-  border: 1.2px solid rgba(148, 163, 184, 0.22);
+  height: 31px;
+  border-radius: 9px;
+  border: 1.3px solid rgba(148, 163, 184, 0.22);
   background: rgba(255, 255, 255, 0.06);
   color: #f1f5f9;
   display: flex;
@@ -8070,15 +8070,15 @@ body.theme-light .pill-remote-btn:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 2px;
-  padding: 1px 0;
+  gap: 2.5px;
+  padding: 1.5px 0;
 }
 
 .pill-color-dot {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  border: 1.5px solid transparent;
+  border: 1.6px solid transparent;
   cursor: pointer;
   padding: 0;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
@@ -8103,19 +8103,19 @@ body.theme-light .pill-color-dot.active {
 .pill-module-bar {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 2px;
+  gap: 2.2px;
   width: 100%;
   margin-top: 0px;
 }
 
 .pill-mod-chip {
-  height: 16px;
-  border-radius: 4.5px;
+  height: 18px;
+  border-radius: 5px;
   border: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(255, 255, 255, 0.04);
   color: #94a3b8;
-  font-size: 7.5px;
-  letter-spacing: -0.4px;
+  font-size: 8.5px;
+  letter-spacing: -0.35px;
   font-weight: 700;
   cursor: pointer;
   padding: 0;
@@ -8155,9 +8155,9 @@ body.theme-light .pill-mod-chip.active {
 }
 
 .pill-remote-close-btn {
-  width: 16px;
-  height: 16px;
-  border-radius: 4.5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
   border: none;
   background: transparent;
   color: #94a3b8;
