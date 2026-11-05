@@ -13773,15 +13773,16 @@ body:not(.theme-light) .shortcut-mini-icon-btn {
 
 /* ============================================================================
    👁️ [화면 아이콘 모두 숨기기 모드 (UI All Hidden Mode) & 우측 상단 초슬림·초투명 손잡이 탭]
+   - 판서 ↔ 그래프 모드 전환 시에도 전체 아이콘을 깨우지 않고 오직 필수 그래프 창(#panelPresets, #pdfToGraphCropFloatingBar)과
+     그래프 모드 우상단 [필기 복귀 · 카드 추가](#graphSnapFloatingBar)만 깔끔하게 노출
    ============================================================================ */
-body.ui-all-hidden-mode #sidebarRail,
+body.ui-all-hidden-mode #railDock,
+body.ui-all-hidden-mode #railDrawer:not([data-active-panel="panelPresets"]),
 body.ui-all-hidden-mode #rightActionToolbar,
 body.ui-all-hidden-mode #inkFloatingToolbar,
 body.ui-all-hidden-mode #lessonPlaylistNavBar,
 body.ui-all-hidden-mode #pdfBoardNavBar,
 body.ui-all-hidden-mode #topSlideBarMiniTab,
-body.ui-all-hidden-mode #graphSnapFloatingBar,
-body.ui-all-hidden-mode #pdfToGraphCropFloatingBar,
 body.ui-all-hidden-mode #curveContextBar,
 body.ui-all-hidden-mode #lassoActionFloatingBar,
 body.ui-all-hidden-mode #quickPillRemote,
@@ -13789,6 +13790,20 @@ body.ui-all-hidden-mode #pwRegionPopover {
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
+}
+
+body.ui-all-hidden-mode #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelPresets"] {
+  left: 18px !important;
+}
+
+body.ui-all-hidden-mode #pdfToGraphCropFloatingBar {
+  top: 18px !important;
+  left: 18px !important;
+}
+
+body.ui-all-hidden-mode #graphSnapFloatingBar {
+  top: 18px !important;
+  right: 20px !important;
 }
 
 .ui-hidden-edge-pull-tab {

@@ -20092,10 +20092,6 @@ class GraphApp {
   _saveCloudFoldersList(folders, syncToCloud = true) {
     if (!this.cloudUser || !this.cloudUser.uid) return;
     const unique = Array.from(new Set((folders || []).map(f => String(f || '').trim().replace(/^\/+|\/+$/g, '')).filter(Boolean)));
-    const now = Date.now();
-    if (syncToCloud) {
-      this._lastLocalFolderMutationAt = now;
-    }
     try {
       const key = this._getCloudFoldersStorageKey();
       if (key) {
@@ -20107,30 +20103,14 @@ class GraphApp {
       const payload = JSON.stringify({
         uid: this.cloudUser.uid,
         folders: unique,
-        updatedAt: now
+        updatedAt: Date.now()
       });
       this._firestoreRestWriteSingleDoc('user_preferences', docId, payload).catch(() => { });
     }
   }
 
-  _recordLocalCloudItemMutation(item) {
-    if (!item || !item.id) return;
-    const now = Date.now();
-    item.updatedAt = now;
-    if (!this._recentLocalItemMutations) {
-      this._recentLocalItemMutations = new Map();
-    }
-    this._recentLocalItemMutations.set(item.id, {
-      title: item.title,
-      folder: String(item.folder || '').trim(),
-      tags: item.tags || '',
-      updatedAt: now
-    });
-  }
-
   async _persistCloudItemMetadataChange(item) {
     if (!item || !item.id) return;
-    this._recordLocalCloudItemMutation(item);
     try {
       const localKey = 'graphly_full_doc_' + item.id;
       const localRaw = localStorage.getItem(localKey);
@@ -20141,56 +20121,35 @@ class GraphApp {
           parsed.title = item.title;
           parsed.folder = item.folder || '';
           parsed.tags = item.tags || '';
-          parsed.updatedAt = item.updatedAt || Date.now();
+          parsed.updatedAt = Date.now();
           localStorage.setItem(localKey, JSON.stringify(parsed));
         }
       }
     } catch (e) { }
     try {
-      if (item._isChunked) {
-        // 대용량 청크 분할 문서의 경우 슬라이드 청크(shared_workspaces)는 그대로 두고 가벼운 매니페스트(폴더·제목)만 0.1초 만에 즉시 갱신!
+      if (item._isChunked && !item.playlistSlides && !item.slideData) {
         const manifestObj = {
           ...item,
           slideData: null,
           playlistSlides: null,
-          updatedAt: item.updatedAt || Date.now()
+          updatedAt: Date.now()
         };
         await this._firestoreRestWriteSingleDoc('user_library', item.id, JSON.stringify(manifestObj));
       } else {
-        let writeTarget = item;
-        if ((!Array.isArray(item.playlistSlides) || item.playlistSlides.length === 0) && !item.slideData) {
-          const resolved = await this._resolveChunkedItem(item);
-          if (resolved && typeof resolved === 'object') {
-            writeTarget = {
-              ...resolved,
-              title: item.title,
-              folder: item.folder || '',
-              tags: item.tags || '',
-              updatedAt: item.updatedAt || Date.now()
-            };
-          }
-        }
-        await this._firestoreRestWrite('user_library', item.id, writeTarget);
+        item.updatedAt = Date.now();
+        await this._firestoreRestWrite('user_library', item.id, item);
       }
     } catch (e) { }
   }
 
   // 같은 폴더 안에 동일한 이름(대소문자/앞뒤공백 무시)의 파일이 이미 존재하는지 검사
-  // excludeIds: 단일 ID 문자열 또는 제외할 ID들의 Set/Array
-  _findDuplicateCloudItem(title, folderPath = '', excludeIds = null) {
+  _findDuplicateCloudItem(title, folderPath = '', excludeId = null) {
     const normTitle = String(title || '').trim().toLowerCase();
     const normFolder = String(folderPath || '').trim();
     if (!normTitle || !Array.isArray(this.myLibraryCache)) return null;
-    const isExcluded = (id) => {
-      if (!excludeIds || !id) return false;
-      if (typeof excludeIds === 'string') return id === excludeIds;
-      if (excludeIds instanceof Set) return excludeIds.has(id);
-      if (Array.isArray(excludeIds)) return excludeIds.includes(id);
-      return false;
-    };
     return this.myLibraryCache.find(it => {
       if (!it || !this._isOwnedByCurrentCloudUser(it)) return false;
-      if (isExcluded(it.id)) return false;
+      if (excludeId && it.id === excludeId) return false;
       const itFolder = String(it.folder || '').trim();
       const itTitle = String(it.title || '').trim().toLowerCase();
       return itFolder === normFolder && itTitle === normTitle;
@@ -20198,15 +20157,15 @@ class GraphApp {
   }
 
   // 같은 폴더 안에서 사용 가능한 다음 번호 이름 생성 — 예: "파일명 (2)", "파일명 (3)"
-  _getNextAvailableCloudTitle(baseTitle, folderPath = '', excludeIds = null) {
+  _getNextAvailableCloudTitle(baseTitle, folderPath = '', excludeId = null) {
     const cleanBase = String(baseTitle || '수업 노트').trim().replace(/\s*\(\d+\)$/, '').trim() || '수업 노트';
-    if (!this._findDuplicateCloudItem(cleanBase, folderPath, excludeIds)) {
+    if (!this._findDuplicateCloudItem(cleanBase, folderPath, excludeId)) {
       return cleanBase;
     }
     let n = 2;
     while (n < 1000) {
       const candidate = `${cleanBase} (${n})`;
-      if (!this._findDuplicateCloudItem(candidate, folderPath, excludeIds)) {
+      if (!this._findDuplicateCloudItem(candidate, folderPath, excludeId)) {
         return candidate;
       }
       n++;
@@ -20227,13 +20186,6 @@ class GraphApp {
 
   async _deleteCloudLibraryItemCompletely(item) {
     if (!item || !item.id) return;
-    if (!this._recentlyDeletedCloudItemIds) {
-      this._recentlyDeletedCloudItemIds = new Map();
-    }
-    this._recentlyDeletedCloudItemIds.set(item.id, Date.now());
-    if (this._recentLocalItemMutations) {
-      this._recentLocalItemMutations.delete(item.id);
-    }
     if (Array.isArray(this.myLibraryCache)) {
       this.myLibraryCache = this.myLibraryCache.filter(x => x && x.id !== item.id);
     }
@@ -20353,6 +20305,7 @@ class GraphApp {
     const list = this.getCloudFoldersList();
     const existingFolder = list.find(f => String(f || '').trim().toLowerCase() === fullPath.toLowerCase());
     if (existingFolder) {
+      this._selectedCloudExplorerKeys = new Set([`folder:${existingFolder}`]);
       this.renderMyLibraryList();
       this.showToast(`⚠️ 이미 [${cleanSeg}] 폴더가 존재합니다.`);
       return;
@@ -20363,16 +20316,14 @@ class GraphApp {
     if (cleanParent) {
       this._collapsedCloudFolders.delete(cleanParent);
     }
+    // 윈도우 탐색기처럼 현재 열려있는 폴더를 유지하면서 방금 만든 새 폴더를 선택 상태로 표시
     if (this._activeCloudFolder === '__ALL_RECENT__' || this._activeCloudFolder === '__UNCATEGORIZED__') {
       this._activeCloudFolder = cleanParent || '';
     }
-    // 새 폴더 생성 시 체크박스가 멋대로 자동 선택되지 않도록 비워둠
-    if (this._selectedCloudExplorerKeys) {
-      this._selectedCloudExplorerKeys.clear();
-    }
+    this._selectedCloudExplorerKeys = new Set([`folder:${fullPath}`]);
     this.syncExportCloudFolderSelect();
     this.renderMyLibraryList();
-    this.showToast(`📁 [${cleanSeg}] 폴더가 생성되었습니다.`);
+    this.showToast(`📁 [${cleanSeg}] 폴더가 생성되었습니다. (더블클릭하여 열기)`);
   }
 
   async renameCloudFolder(oldPath, newSegmentName) {
@@ -20414,23 +20365,23 @@ class GraphApp {
         const curF = String(it.folder || '').trim();
         if (curF === cleanOld) {
           it.folder = newPath;
-          this._recordLocalCloudItemMutation(it);
           updatedItems.push(it);
         } else if (curF.startsWith(cleanOld + '/')) {
           it.folder = newPath + curF.slice(cleanOld.length);
-          this._recordLocalCloudItemMutation(it);
           updatedItems.push(it);
         }
       });
       this._saveMyLibraryCacheForCurrentUser();
     }
-    if (this._selectedCloudExplorerKeys) {
-      this._selectedCloudExplorerKeys.clear();
-    }
+    this._selectedCloudExplorerKeys = new Set([`folder:${newPath}`]);
     this.syncExportCloudFolderSelect();
     this.renderMyLibraryList();
     this.showToast(`✏️ 폴더 이름이 [${cleanSeg}](으)로 변경되었습니다.`);
-    await Promise.all(updatedItems.map(it => this._persistCloudItemMetadataChange(it).catch(() => { })));
+    for (const it of updatedItems) {
+      if (it && it.id) {
+        try { await this._persistCloudItemMetadataChange(it); } catch (e) { }
+      }
+    }
   }
 
   async moveCloudFolder(sourcePath, targetParentPath) {
@@ -20445,28 +20396,13 @@ class GraphApp {
     const newPath = cleanTarget ? `${cleanTarget}/${baseName}` : baseName;
     if (newPath === cleanSrc) return;
 
-    const currentFolders = this.getCloudFoldersList();
-    const destLabel = cleanTarget ? `[📁 ${cleanTarget.replace(/\//g, ' › ')}]` : '[☁️ 내 클라우드]';
-    const alreadyExistsAtDest = currentFolders.some(f => f !== cleanSrc && f.toLowerCase() === newPath.toLowerCase());
-    if (alreadyExistsAtDest) {
-      if (!window.confirm(`${destLabel} 위치에 이미 [${baseName}] 폴더가 있습니다.\n두 폴더를 하나로 합치시겠습니까?`)) {
-        return;
-      }
-    }
-
-    const list = currentFolders.map(f => {
+    const list = this.getCloudFoldersList().map(f => {
       if (f === cleanSrc) return newPath;
       if (f.startsWith(cleanSrc + '/')) return newPath + f.slice(cleanSrc.length);
       return f;
     });
     if (!list.includes(newPath)) list.push(newPath);
     this._saveCloudFoldersList(list);
-
-    if (this._activeCloudFolder === cleanSrc) {
-      this._activeCloudFolder = newPath;
-    } else if (String(this._activeCloudFolder || '').startsWith(cleanSrc + '/')) {
-      this._activeCloudFolder = newPath + String(this._activeCloudFolder).slice(cleanSrc.length);
-    }
 
     if (!this._collapsedCloudFolders) this._collapsedCloudFolders = new Set();
     if (cleanTarget) this._collapsedCloudFolders.delete(cleanTarget);
@@ -20476,13 +20412,11 @@ class GraphApp {
       this.myLibraryCache.forEach(it => {
         if (!it) return;
         const curF = String(it.folder || '').trim();
-        if (curF === cleanSrc || curF.startsWith(cleanSrc + '/')) {
-          const destSubFolder = (curF === cleanSrc) ? newPath : (newPath + curF.slice(cleanSrc.length));
-          if (this._findDuplicateCloudItem(it.title, destSubFolder, it.id)) {
-            it.title = this._getNextAvailableCloudTitle(it.title, destSubFolder, it.id);
-          }
-          it.folder = destSubFolder;
-          this._recordLocalCloudItemMutation(it);
+        if (curF === cleanSrc) {
+          it.folder = newPath;
+          updatedItems.push(it);
+        } else if (curF.startsWith(cleanSrc + '/')) {
+          it.folder = newPath + curF.slice(cleanSrc.length);
           updatedItems.push(it);
         }
       });
@@ -20490,47 +20424,45 @@ class GraphApp {
     }
     this.syncExportCloudFolderSelect();
     this.renderMyLibraryList();
+    const destLabel = cleanTarget ? `[${cleanTarget.replace(/\//g, ' › ')}]` : '[내 클라우드]';
     this.showToast(`📁 [${baseName}] 폴더를 ${destLabel}(으)로 이동했습니다.`);
-    await Promise.all(updatedItems.map(it => this._persistCloudItemMetadataChange(it).catch(() => { })));
+    for (const it of updatedItems) {
+      if (it && it.id) {
+        try { await this._persistCloudItemMetadataChange(it); } catch (e) { }
+      }
+    }
   }
 
-  async deleteCloudFolder(folderName, skipConfirm = false) {
+  async deleteCloudFolder(folderName) {
     const clean = String(folderName || '').trim();
     if (!clean) return;
     const isSub = clean.includes('/');
     const parentFolder = isSub ? clean.split('/').slice(0, -1).join('/') : '';
-    const insideFiles = Array.isArray(this.myLibraryCache)
-      ? this.myLibraryCache.filter(it => {
-          if (!it) return false;
-          const curF = String(it.folder || '').trim();
-          return curF === clean || curF.startsWith(clean + '/');
-        })
-      : [];
-
-    if (!skipConfirm) {
-      const segName = clean.split('/').pop();
-      const msg = insideFiles.length > 0
-        ? `[${segName}] 폴더 안에 수업 파일 ${insideFiles.length}개가 들어 있습니다.\n폴더와 안의 모든 파일을 영구 삭제하시겠습니까?`
-        : `[${segName}] 폴더를 삭제하시겠습니까?`;
-      if (!window.confirm(msg)) return;
-    }
-
     const list = this.getCloudFoldersList().filter(f => f !== clean && !f.startsWith(clean + '/'));
     this._saveCloudFoldersList(list);
     if (this._activeCloudFolder === clean || String(this._activeCloudFolder || '').startsWith(clean + '/')) {
       this._activeCloudFolder = parentFolder || '';
     }
-    if (Array.isArray(this.myLibraryCache) && insideFiles.length > 0) {
-      const delIds = new Set(insideFiles.map(x => x.id));
-      this.myLibraryCache = this.myLibraryCache.filter(it => it && !delIds.has(it.id));
+    const updatedItems = [];
+    if (Array.isArray(this.myLibraryCache)) {
+      this.myLibraryCache.forEach(it => {
+        if (!it) return;
+        const curF = String(it.folder || '').trim();
+        if (curF === clean || curF.startsWith(clean + '/')) {
+          it.folder = parentFolder || '';
+          updatedItems.push(it);
+        }
+      });
       this._saveMyLibraryCacheForCurrentUser();
     }
     this.syncExportCloudFolderSelect();
     this.renderMyLibraryList();
-    this.showToast(insideFiles.length > 0
-      ? `🗑️ [${clean.split('/').pop()}] 폴더와 내부 파일 ${insideFiles.length}개를 모두 삭제했습니다.`
-      : `🗑️ [${clean.split('/').pop()}] 폴더를 삭제했습니다.`);
-    await Promise.all(insideFiles.map(it => this._deleteCloudLibraryItemCompletely(it).catch(() => { })));
+    this.showToast(`📁 [${clean.split('/').pop()}] 폴더를 삭제했습니다. (안의 파일은 유지됩니다)`);
+    for (const it of updatedItems) {
+      if (it && it.id) {
+        try { await this._persistCloudItemMetadataChange(it); } catch (e) { }
+      }
+    }
   }
 
   async renameCloudLibraryItem(item, newTitle) {
@@ -21020,89 +20952,59 @@ class GraphApp {
 
   async moveSelectedCloudItemsToFolder(targetFolder) {
     if (!this._selectedCloudExplorerKeys || this._selectedCloudExplorerKeys.size === 0) return;
-    const cleanTarget = String(targetFolder || '').trim().replace(/^\/+|\/+$/g, '');
+    const cleanTarget = String(targetFolder || '').trim();
     const keys = Array.from(this._selectedCloudExplorerKeys);
-    const rawFolderPaths = keys.filter(k => k.startsWith('folder:')).map(k => k.slice(7).trim()).filter(Boolean);
+    const folderPaths = keys.filter(k => k.startsWith('folder:')).map(k => k.slice(7));
     const fileIds = keys.filter(k => k.startsWith('file:')).map(k => k.slice(5));
 
-    // 상위 폴더와 그 안의 하위 폴더가 동시에 선택된 경우, 상위 폴더만 이동하면 하위 폴더도 함께 따라가므로 중복 제외
-    const folderPaths = rawFolderPaths.filter(p => !rawFolderPaths.some(other => other !== p && p.startsWith(other + '/')));
-
-    let movedFolderCnt = 0;
-    let movedFileCnt = 0;
+    let movedCnt = 0;
     const updatedItems = [];
-    const movedByFolderItemIds = new Set();
-    const destLabel = cleanTarget ? `[📁 ${cleanTarget.replace(/\//g, ' › ')}]` : '[☁️ 내 클라우드]';
 
-    // 1. 선택된 폴더들 통째 이동 (하위 폴더 및 내부 파일 전체 포함)
+    // 1. 선택된 폴더들 이동
     let folderList = this.getCloudFoldersList();
     for (const srcPath of folderPaths) {
       if (!srcPath || cleanTarget === srcPath || cleanTarget.startsWith(srcPath + '/')) continue;
       const baseName = srcPath.split('/').pop();
       const newPath = cleanTarget ? `${cleanTarget}/${baseName}` : baseName;
       if (newPath === srcPath) continue;
-
-      const alreadyExistsAtDest = folderList.some(f => f !== srcPath && f.toLowerCase() === newPath.toLowerCase());
-      if (alreadyExistsAtDest) {
-        if (!window.confirm(`${destLabel} 위치에 이미 [${baseName}] 폴더가 있습니다.\n두 폴더를 하나로 합치시겠습니까?`)) {
-          continue;
-        }
-      }
-
       folderList = folderList.map(f => {
         if (f === srcPath) return newPath;
         if (f.startsWith(srcPath + '/')) return newPath + f.slice(srcPath.length);
         return f;
       });
       if (!folderList.includes(newPath)) folderList.push(newPath);
-
-      if (this._activeCloudFolder === srcPath) {
-        this._activeCloudFolder = newPath;
-      } else if (String(this._activeCloudFolder || '').startsWith(srcPath + '/')) {
-        this._activeCloudFolder = newPath + String(this._activeCloudFolder).slice(srcPath.length);
-      }
-
       if (Array.isArray(this.myLibraryCache)) {
         this.myLibraryCache.forEach(it => {
           if (!it) return;
           const curF = String(it.folder || '').trim();
-          if (curF === srcPath || curF.startsWith(srcPath + '/')) {
-            const destSubFolder = (curF === srcPath) ? newPath : (newPath + curF.slice(srcPath.length));
-            if (alreadyExistsAtDest && this._findDuplicateCloudItem(it.title, destSubFolder, it.id)) {
-              it.title = this._getNextAvailableCloudTitle(it.title, destSubFolder, it.id);
-            }
-            it.folder = destSubFolder;
-            this._recordLocalCloudItemMutation(it);
-            movedByFolderItemIds.add(it.id);
+          if (curF === srcPath) {
+            it.folder = newPath;
+            if (!updatedItems.includes(it)) updatedItems.push(it);
+          } else if (curF.startsWith(srcPath + '/')) {
+            it.folder = newPath + curF.slice(srcPath.length);
             if (!updatedItems.includes(it)) updatedItems.push(it);
           }
         });
       }
-      movedFolderCnt++;
+      movedCnt++;
     }
 
-    // 2. 선택된 개별 파일들 이동 (이동 전부터 대상 폴더에 원래 존재하던 파일과의 충돌만 확인!)
+    // 2. 선택된 파일들 이동 (동일 폴더 내 중복 파일명 발견 시 덮어쓰기/번호붙이기/취소 확인)
     if (Array.isArray(this.myLibraryCache)) {
       const targetFiles = fileIds
-        .filter(id => !movedByFolderItemIds.has(id))
         .map(id => this.myLibraryCache.find(x => x && x.id === id))
         .filter(it => it && String(it.folder || '').trim() !== cleanTarget);
-
-      // 이번 이동 묶음에 포함된 파일 ID 전체 Set (대상 폴더에 '원래부터 있던 파일'인지 판별하기 위함)
-      const movingBatchIdSet = new Set(targetFiles.map(it => it.id));
-
       const conflictingIds = new Set(
         targetFiles
-          .filter(it => Boolean(this._findDuplicateCloudItem(it.title, cleanTarget, movingBatchIdSet)))
+          .filter(it => Boolean(this._findDuplicateCloudItem(it.title, cleanTarget, it.id)))
           .map(it => it.id)
       );
       let batchAction = null;
       let processedConflicts = 0;
 
       for (const it of targetFiles) {
-        // (A) 이동 전부터 대상 폴더(cleanTarget)에 이미 있던 파일과의 이름 충돌만 모달로 질문
-        const preExistingDup = this._findDuplicateCloudItem(it.title, cleanTarget, movingBatchIdSet);
-        if (preExistingDup) {
+        const dupItem = this._findDuplicateCloudItem(it.title, cleanTarget, it.id);
+        if (dupItem) {
           processedConflicts++;
           const remainingConflicts = Math.max(0, conflictingIds.size - processedConflicts);
           const nextTitle = this._getNextAvailableCloudTitle(it.title, cleanTarget, it.id);
@@ -21119,37 +21021,33 @@ class GraphApp {
           } else if (chosenAction === 'rename') {
             it.title = this._getNextAvailableCloudTitle(it.title, cleanTarget, it.id);
           } else if (chosenAction === 'overwrite') {
-            await this._deleteCloudLibraryItemCompletely(preExistingDup);
+            await this._deleteCloudLibraryItemCompletely(dupItem);
           }
-        } else if (this._findDuplicateCloudItem(it.title, cleanTarget, it.id)) {
-          // (B) 대상 폴더는 비어 있었으나 함께 선택한 파일들끼리 이름이 같았던 경우: 경고창 없이 자동으로 (2) 번호 부여하여 둘 다 보존
-          it.title = this._getNextAvailableCloudTitle(it.title, cleanTarget, it.id);
         }
-
         it.folder = cleanTarget;
-        this._recordLocalCloudItemMutation(it);
         if (!updatedItems.includes(it)) updatedItems.push(it);
-        movedFileCnt++;
+        movedCnt++;
       }
     }
 
     if (cleanTarget && !folderList.includes(cleanTarget)) {
       folderList.push(cleanTarget);
     }
-    if (!this._collapsedCloudFolders) this._collapsedCloudFolders = new Set();
-    if (cleanTarget) this._collapsedCloudFolders.delete(cleanTarget);
-
     this._saveCloudFoldersList(folderList);
     this._saveMyLibraryCacheForCurrentUser();
     this._selectedCloudExplorerKeys.clear();
     this.syncExportCloudFolderSelect();
     this.renderMyLibraryList();
 
-    const totalMoved = movedFolderCnt + movedFileCnt;
-    if (totalMoved > 0) {
-      this.showToast(`📦 선택한 항목을 ${destLabel}(으)로 이동했습니다.`);
+    const destLabel = cleanTarget ? `[📁 ${cleanTarget.replace(/\//g, ' › ')}]` : '[☁️ 내 클라우드]';
+    if (movedCnt > 0) {
+      this.showToast(`📦 선택한 ${movedCnt}개 항목을 ${destLabel}(으)로 이동했습니다.`);
     }
-    await Promise.all(updatedItems.map(it => this._persistCloudItemMetadataChange(it).catch(() => { })));
+    for (const it of updatedItems) {
+      if (it && it.id) {
+        try { await this._persistCloudItemMetadataChange(it); } catch (e) { }
+      }
+    }
   }
 
   async handleCloudExplorerDeleteSelected(skipConfirm = false) {
@@ -21158,89 +21056,65 @@ class GraphApp {
       return;
     }
     const keys = Array.from(this._selectedCloudExplorerKeys);
-    const rawFolderPaths = keys.filter(k => k.startsWith('folder:')).map(k => k.slice(7).trim()).filter(Boolean);
-    const folderPaths = rawFolderPaths.filter(p => !rawFolderPaths.some(other => other !== p && p.startsWith(other + '/')));
-    const explicitFileIds = new Set(keys.filter(k => k.startsWith('file:')).map(k => k.slice(5)));
+    const folderPaths = keys.filter(k => k.startsWith('folder:')).map(k => k.slice(7));
+    const fileIds = new Set(keys.filter(k => k.startsWith('file:')).map(k => k.slice(5)));
+    const totalTargetCount = folderPaths.length + fileIds.size;
 
-    // 선택한 폴더(및 하위 폴더) 안에 들어 있는 모든 파일 수집
-    const insideFolderFiles = Array.isArray(this.myLibraryCache)
-      ? this.myLibraryCache.filter(it => {
-          if (!it) return false;
-          const curF = String(it.folder || '').trim();
-          return folderPaths.some(clean => curF === clean || curF.startsWith(clean + '/'));
-        })
-      : [];
-
-    const allDeleteFileIdSet = new Set(explicitFileIds);
-    insideFolderFiles.forEach(it => {
-      if (it && it.id) allDeleteFileIdSet.add(it.id);
-    });
-
-    const itemsToDelete = Array.isArray(this.myLibraryCache)
-      ? this.myLibraryCache.filter(it => it && allDeleteFileIdSet.has(it.id))
-      : [];
-
-    if (!skipConfirm && (folderPaths.length > 0 || itemsToDelete.length > 0)) {
-      let confirmMsg = '';
-      if (folderPaths.length > 0 && explicitFileIds.size === 0) {
-        if (insideFolderFiles.length > 0) {
-          confirmMsg = folderPaths.length === 1
-            ? `[${folderPaths[0].split('/').pop()}] 폴더 안에 수업 파일 ${insideFolderFiles.length}개가 들어 있습니다.\n폴더와 안의 모든 파일을 영구 삭제하시겠습니까?`
-            : `선택한 폴더 ${folderPaths.length}개 안에 수업 파일 ${insideFolderFiles.length}개가 들어 있습니다.\n폴더와 안의 모든 파일을 영구 삭제하시겠습니까?`;
-        } else {
-          confirmMsg = folderPaths.length === 1
-            ? `[${folderPaths[0].split('/').pop()}] 폴더를 삭제하시겠습니까?`
-            : `선택한 폴더 ${folderPaths.length}개를 삭제하시겠습니까?`;
-        }
-      } else {
-        confirmMsg = folderPaths.length > 0
-          ? `선택한 폴더 ${folderPaths.length}개와 파일 ${itemsToDelete.length}개를 클라우드 보관함에서 영구 삭제하시겠습니까?`
-          : `선택한 파일 ${itemsToDelete.length}개를 클라우드 보관함에서 영구 삭제하시겠습니까?`;
-      }
+    if (!skipConfirm && totalTargetCount > 0) {
+      const confirmMsg = (folderPaths.length > 0 && fileIds.size === 0)
+        ? `선택한 폴더 ${folderPaths.length}개를 삭제하시겠습니까?\n(폴더 안의 수업 파일은 삭제되지 않고 상위 폴더로 안전하게 이동됩니다.)`
+        : `선택한 항목 ${totalTargetCount}개(파일 ${fileIds.size}개${folderPaths.length > 0 ? ` · 폴더 ${folderPaths.length}개` : ''})를 클라우드 보관함에서 영구 삭제하시겠습니까?`;
       if (!window.confirm(confirmMsg)) return;
     }
 
-    // 1. 선택된 폴더 및 그 하위 폴더 전부 삭제
     let folderList = this.getCloudFoldersList();
+    const updatedItems = [];
+    const itemsToDelete = [];
+
+    // 1. 선택된 폴더 삭제 (내부 파일은 상위 폴더로 보존)
     folderPaths.forEach(clean => {
       const isSub = clean.includes('/');
       const parentFolder = isSub ? clean.split('/').slice(0, -1).join('/') : '';
       folderList = folderList.filter(f => f !== clean && !f.startsWith(clean + '/'));
-      if (this._activeCloudFolder === clean || String(this._activeCloudFolder || '').startsWith(clean + '/')) {
-        this._activeCloudFolder = parentFolder || '';
+      if (Array.isArray(this.myLibraryCache)) {
+        this.myLibraryCache.forEach(it => {
+          if (!it || fileIds.has(it.id)) return;
+          const curF = String(it.folder || '').trim();
+          if (curF === clean || curF.startsWith(clean + '/')) {
+            it.folder = parentFolder || '';
+            if (!updatedItems.includes(it)) updatedItems.push(it);
+          }
+        });
       }
     });
     this._saveCloudFoldersList(folderList);
 
-    // 2. 선택된 파일 및 삭제된 폴더 내부의 파일 전부 영구 삭제
-    if (Array.isArray(this.myLibraryCache) && allDeleteFileIdSet.size > 0) {
-      if (!this._recentlyDeletedCloudItemIds) {
-        this._recentlyDeletedCloudItemIds = new Map();
-      }
-      const now = Date.now();
-      itemsToDelete.forEach(it => {
-        if (it && it.id) {
-          this._recentlyDeletedCloudItemIds.set(it.id, now);
-          if (this._recentLocalItemMutations) this._recentLocalItemMutations.delete(it.id);
+    // 2. 선택된 파일 삭제 (청크 문서 및 로컬 캐시까지 완전 삭제)
+    if (Array.isArray(this.myLibraryCache) && fileIds.size > 0) {
+      this.myLibraryCache = this.myLibraryCache.filter(it => {
+        if (it && fileIds.has(it.id)) {
+          itemsToDelete.push(it);
+          return false;
         }
+        return true;
       });
-      this.myLibraryCache = this.myLibraryCache.filter(it => it && !allDeleteFileIdSet.has(it.id));
     }
 
+    const totalDel = folderPaths.length + itemsToDelete.length;
     this._selectedCloudExplorerKeys.clear();
     this._saveMyLibraryCacheForCurrentUser();
     this.syncExportCloudFolderSelect();
     this.renderMyLibraryList();
+    this.showToast(`🗑️ 선택한 ${totalDel}개 항목을 삭제했습니다.`);
 
-    if (folderPaths.length > 0 && itemsToDelete.length > 0) {
-      this.showToast(`🗑️ 폴더 ${folderPaths.length}개와 파일 ${itemsToDelete.length}개를 영구 삭제했습니다.`);
-    } else if (folderPaths.length > 0) {
-      this.showToast(`🗑️ 폴더 ${folderPaths.length}개를 삭제했습니다.`);
-    } else {
-      this.showToast(`🗑️ 파일 ${itemsToDelete.length}개를 영구 삭제했습니다.`);
+    for (const delItem of itemsToDelete) {
+      try { await this._deleteCloudLibraryItemCompletely(delItem); } catch (e) { }
     }
-
-    await Promise.all(itemsToDelete.map(delItem => this._deleteCloudLibraryItemCompletely(delItem).catch(() => { })));
+    for (const it of updatedItems) {
+      if (it && it.id) {
+        try { await this._persistCloudItemMetadataChange(it); } catch (e) { }
+      }
+    }
   }
 
   syncExportCloudFolderSelect() {
@@ -24417,26 +24291,13 @@ class GraphApp {
         this._firestoreRestListCollection('user_library', 300).catch(() => null)
       ]);
 
-      const now = Date.now();
-      const deletedMap = this._recentlyDeletedCloudItemIds || new Map();
-      const mutationMap = this._recentLocalItemMutations || new Map();
-
-      // 1. 수업 파일 목록 및 파일별 폴더 위치(folder)·제목(title) 동기화 (방금 로컬에서 삭제/이동한 항목 보호)
+      // 1. 수업 파일 목록 및 파일별 폴더 위치(folder)·제목(title) 클라우드 최신본 우선 반영
       if (Array.isArray(remoteItems)) {
-        const filtered = remoteItems.filter(it => {
-          if (!this._isOwnedByCurrentCloudUser(it)) return false;
-          const delTs = deletedMap.get(it.id);
-          if (delTs && (now - delTs < 90000)) return false;
-          return true;
-        });
-
+        const filtered = remoteItems.filter(it => this._isOwnedByCurrentCloudUser(it));
         const prevMap = new Map();
         (this.myLibraryCache || []).forEach(it => {
           if (it && it.id && this._isOwnedByCurrentCloudUser(it)) {
-            const delTs = deletedMap.get(it.id);
-            if (!delTs || (now - delTs >= 90000)) {
-              prevMap.set(it.id, it);
-            }
+            prevMap.set(it.id, it);
           }
         });
 
@@ -24444,38 +24305,20 @@ class GraphApp {
         filtered.forEach(remoteIt => {
           if (!remoteIt || !remoteIt.id) return;
           const prev = prevMap.get(remoteIt.id);
-          let merged = remoteIt;
           if (prev && remoteIt._isChunked && !remoteIt.playlistSlides && !remoteIt.slideData) {
-            merged = {
+            mergedMap.set(remoteIt.id, {
               ...prev,
               ...remoteIt,
               playlistSlides: prev.playlistSlides || null,
               slideData: prev.slideData || null
-            };
+            });
+          } else {
+            mergedMap.set(remoteIt.id, remoteIt);
           }
-          // 방금 현재 기기에서 이동·이름변경한 항목이 아직 서버에 반영 중인 경우 로컬 최신 상태 유지
-          const localMut = mutationMap.get(remoteIt.id);
-          if (localMut && (now - localMut.updatedAt < 60000) && (remoteIt.updatedAt || 0) < localMut.updatedAt) {
-            merged = {
-              ...merged,
-              title: localMut.title,
-              folder: localMut.folder,
-              tags: localMut.tags,
-              updatedAt: localMut.updatedAt
-            };
-          } else if (prev && (prev.updatedAt || 0) > (remoteIt.updatedAt || 0)) {
-            merged = {
-              ...merged,
-              title: prev.title,
-              folder: prev.folder || '',
-              tags: prev.tags || '',
-              updatedAt: prev.updatedAt
-            };
-          }
-          mergedMap.set(remoteIt.id, merged);
         });
 
         // 방금 현재 기기에서 생성 중이어서 아직 서버 응답에 반영 안 된 최신 항목(15초 이내)만 임시 보호
+        const now = Date.now();
         prevMap.forEach((prevIt, id) => {
           if (!mergedMap.has(id) && prevIt.createdAt && (now - prevIt.createdAt < 15000)) {
             mergedMap.set(id, prevIt);
@@ -24486,13 +24329,9 @@ class GraphApp {
         this._saveMyLibraryCacheForCurrentUser();
       }
 
-      // 2. 폴더 트리 클라우드 동기화 (방금 로컬에서 폴더를 추가·이동·삭제한 직후에는 옛날 서버 목록으로 덮어쓰지 않음)
+      // 2. 폴더 트리 클라우드 동기화
       if (remoteFolderDoc && Array.isArray(remoteFolderDoc.folders)) {
-        const localFolderMutAt = this._lastLocalFolderMutationAt || 0;
-        const remoteFolderUpdatedAt = remoteFolderDoc.updatedAt || 0;
-        if (!(localFolderMutAt && (now - localFolderMutAt < 60000) && remoteFolderUpdatedAt < localFolderMutAt)) {
-          this._saveCloudFoldersList(remoteFolderDoc.folders, false);
-        }
+        this._saveCloudFoldersList(remoteFolderDoc.folders, false);
       }
 
       this.syncExportCloudFolderSelect();
@@ -42312,6 +42151,9 @@ class GraphApp {
       if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
         this.closeDrawer();
       }
+      if (this._isPdfCropChoiceMenuOpen && typeof this.cancelPdfBoardToGraphCrop === 'function') {
+        this.cancelPdfBoardToGraphCrop();
+      }
       document.body.classList.add('ui-all-hidden-mode');
       const eff = this._getEffectiveShortcutsMap(this.customShortcuts);
       const assignedKey = String(eff.sys_toggle_hide_ui || '').trim();
@@ -43166,9 +43008,8 @@ class GraphApp {
       }
       case 'graph_open_presets': {
         if (this.isPdfModalOpen || (this.smartViewerState && this.smartViewerState.isOpen)) return false;
-        if (this.isAllUIHidden) {
-          this.toggleAllUIHidden(false);
-        }
+        // [아이콘 모두 숨기기(H) 모드 보호]: 전체 아이콘을 깨우지 않고 오직 필수 그래프 창(#panelPresets / #pdfToGraphCropFloatingBar)과
+        // 그래프 모드 우상단 [필기 복귀 · 카드 추가](#graphSnapFloatingBar)만 깔끔하게 표시!
         if (this.isGraphCovered) {
           if (this.pdfPageBoardData) {
             if (this._isPdfCropChoiceMenuOpen || this.isPdfToGraphCropMode) {
@@ -43255,6 +43096,7 @@ class GraphApp {
         return false;
       }
       case 'pdf_open_or_crop': {
+        if (this.isAllUIHidden) return false;
         if (this.isPdfModalOpen) {
           this.togglePdfCropMode();
         } else if (this.pdfDoc) {
@@ -43266,6 +43108,7 @@ class GraphApp {
         return true;
       }
       case 'viewer_open_preview': {
+        if (this.isAllUIHidden) return false;
         const btn = document.getElementById('btnQuickOpenViewer');
         if (btn) {
           btn.click();
@@ -43275,7 +43118,11 @@ class GraphApp {
       }
       case 'drawer_toggle': {
         if (this.isAllUIHidden) {
-          this.toggleAllUIHidden(false);
+          if (!this.isDrawerCollapsed) {
+            this.closeDrawer();
+            return true;
+          }
+          return false;
         }
         this.toggleDrawer();
         return true;
@@ -43344,6 +43191,7 @@ class GraphApp {
         return true;
       }
       case 'sys_open_cloud_hub': {
+        if (this.isAllUIHidden) return false;
         const btn = document.getElementById('btnCloudHub');
         if (btn) {
           btn.click();
