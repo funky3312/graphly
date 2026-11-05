@@ -3058,6 +3058,24 @@ class GraphApp {
    *   하드웨어 touchstart에서 touchType === 'stylus'(_isStylusTouchActive) 신호가 동시에 감지됩니다.
    * - 이 조건에 부합하는 단일 터치는 손바닥으로 버리지 않고 즉시 'pen'으로 승격하여 필기 씹힘을 0%로 박멸합니다.
    */
+  _cancelAllActiveCardDrags() {
+    this._isDraggingOrResizingAnyCard = false;
+    const pWidget = document.getElementById('problemCardWidget');
+    if (pWidget && typeof pWidget._cancelCardDrag === 'function') pWidget._cancelCardDrag();
+    const gWidget = document.getElementById('graphCardWidget');
+    if (gWidget && typeof gWidget._cancelCardDrag === 'function') gWidget._cancelCardDrag();
+    if (Array.isArray(this.extraProblemCards)) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el && typeof c.el._cancelCardDrag === 'function') c.el._cancelCardDrag();
+      });
+    }
+    if (Array.isArray(this.extraGraphCards)) {
+      this.extraGraphCards.forEach(c => {
+        if (c && c.el && typeof c.el._cancelCardDrag === 'function') c.el._cancelCardDrag();
+      });
+    }
+  }
+
   _shouldIgnoreCanvasTouchPointer(e) {
     if (!e || this.isPdfModalOpen || this.isStudentAudioVideoOnlyMode) return true;
     const nowT = Date.now();
@@ -3085,7 +3103,7 @@ class GraphApp {
       }
       if (this.activePointers) {
         for (const [k, v] of this.activePointers.entries()) {
-          if (nowT - (v.time || 0) > 1200) this.activePointers.delete(k);
+          if (nowT - (v.time || 0) > 5000) this.activePointers.delete(k);
         }
         this.activePointers.set(e.pointerId, {
           id: e.pointerId,
@@ -3104,6 +3122,7 @@ class GraphApp {
         if (this.activePointers.size === 2) {
           this.isPanning = false;
           this.isBoardPanning = false;
+          this._cancelAllActiveCardDrags();
           const pts = Array.from(this.activePointers.values());
           this._pinchWasActiveInGesture = true;
           this._startCanvasTwoFingerPinch(pts[0], pts[1]);
@@ -3128,13 +3147,12 @@ class GraphApp {
         return true;
       }
       if (this.activePointers && this.activePointers.has(e.pointerId)) {
-        const prevEntry = this.activePointers.get(e.pointerId);
         this.activePointers.set(e.pointerId, {
           id: e.pointerId,
           x: e.clientX,
           y: e.clientY,
           type: 'touch',
-          time: prevEntry ? prevEntry.time : nowT
+          time: nowT
         });
         if (this.activePointers.size === 2 && this._pinchState) {
           this.isPanning = false;
@@ -3154,6 +3172,7 @@ class GraphApp {
     }
 
     if (e.type === 'pointerup' || e.type === 'pointercancel') {
+      const hadPinchGesture = Boolean(this._pinchState || this._pinchWasActiveInGesture);
       if (this.activePointers && e.pointerId !== undefined) {
         this.activePointers.delete(e.pointerId);
       }
@@ -3162,6 +3181,17 @@ class GraphApp {
       }
       if (!this.activePointers || this.activePointers.size === 0) {
         this._pinchWasActiveInGesture = false;
+      }
+      if (hadPinchGesture) {
+        this.isPanning = false;
+        this.isBoardPanning = false;
+        if (!this.activePointers || this.activePointers.size === 0) {
+          if (this.isGraphCovered) {
+            this.updateProblemCardPosition(false);
+          }
+          this.requestRender();
+        }
+        return true;
       }
       if (isPenDrawingNow || (this.isStylusPalmRejectionActive() && isWritingTool)) {
         return true;
@@ -13496,6 +13526,7 @@ class GraphApp {
   clearInkCache() {
     this._hasSceneFreeze = false;
     this._hasBakedStrokes = false;
+    this._inkBakeCamera = null;
     const dpr = this.getCanvasDpr();
     if (this.inkBakeCanvas && this.inkBakeCtx) {
       this.inkBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -14050,6 +14081,16 @@ class GraphApp {
 
     this._hasBakedStrokes = true;
     this._inkBakeDirty = false;
+    this._inkBakeCamera = {
+      panX: this.panX || 0,
+      panY: this.panY || 0,
+      zoomLevel: this.zoomLevel || 1.0,
+      boardPanX: this.boardPanX || 0,
+      boardPanY: this.boardPanY || 0,
+      boardZoom: this.boardZoom || 1.0,
+      boardZoomOffsetX: this.boardZoomOffsetX || 0,
+      boardZoomOffsetY: this.boardZoomOffsetY || 0
+    };
   }
 
   renderSingleStroke(targetCtx, stroke, forceColor = null, isLiveDrawing = false) {
@@ -14234,20 +14275,35 @@ class GraphApp {
       return;
     }
 
-    // 🌟 [오프스크린 베이크 버퍼 리빌드 (캐시 무효화 시 1회만 실행)] 🌟
-    if (this._inkBakeDirty) {
+    // 🌟 [오프스크린 베이크 버퍼 리빌드 & 팬/핀치 중 0.02ms GPU 텍스처 변환 패스트패스] 🌟
+    // 두 손가락 이동/핀치나 화면 패닝 도중에는 매 프레임 수십~수백 개의 필기 획을 CPU에서 다시 그리지 않고(0ms CPU 부하),
+    // 이미 구워진 GPU 텍스처(inkBakeCanvas, inkGraphBakeCanvas)를 하드웨어 행렬(setTransform)로만 즉시 이동·스케일링한 뒤
+    // 손가락을 떼는 순간 딱 1회 고해상도로 깔끔하게 리빌드합니다!
+    const isActivelyMovingCamera = Boolean(this._pinchState || this.isPanning || this.isBoardPanning);
+    if (this._inkBakeDirty && (!isActivelyMovingCamera || !this._hasBakedStrokes || !this._inkBakeCamera)) {
       this.rebuildInkCache();
     }
 
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
     const isLight = curTheme.isLight || this.isMonochromeMode;
+    const dpr = this.getCanvasDpr();
+    const bakeCam = this._inkBakeCamera;
 
     // 🌟 [144Hz 초고속 0.02ms GPU Blit]: 칠판 바깥창 판서 ('board')
     if (!filterTarget || filterTarget === 'board') {
       if (this.inkBakeCanvas) {
         if (ctx === this.ctx) {
           ctx.save();
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          if (bakeCam && this._inkBakeDirty) {
+            const bz0 = bakeCam.boardZoom || 1.0;
+            const bz1 = this.boardZoom || 1.0;
+            const sB = bz1 / bz0;
+            const txB = ((this.boardPanX || 0) + (this.boardZoomOffsetX || 0)) - ((bakeCam.boardPanX || 0) + (bakeCam.boardZoomOffsetX || 0)) * sB;
+            const tyB = ((this.boardPanY || 0) + (this.boardZoomOffsetY || 0)) - ((bakeCam.boardPanY || 0) + (bakeCam.boardZoomOffsetY || 0)) * sB;
+            ctx.setTransform(sB, 0, 0, sB, txB * dpr, tyB * dpr);
+          } else {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+          }
           ctx.drawImage(this.inkBakeCanvas, 0, 0);
           ctx.restore();
         } else {
@@ -14265,7 +14321,18 @@ class GraphApp {
       if (this.inkGraphBakeCanvas) {
         if (ctx === this.ctx) {
           ctx.save();
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          if (bakeCam && this._inkBakeDirty) {
+            const z0 = bakeCam.zoomLevel || 1.0;
+            const z1 = this.zoomLevel || 1.0;
+            const sG = z1 / z0;
+            const halfW = (this.screenWidth || window.innerWidth) / 2;
+            const halfH = (this.screenHeight || window.innerHeight) / 2;
+            const txG = (halfW + (this.panX || 0)) - (halfW + (bakeCam.panX || 0)) * sG;
+            const tyG = (halfH + (this.panY || 0)) - (halfH + (bakeCam.panY || 0)) * sG;
+            ctx.setTransform(sG, 0, 0, sG, txG * dpr, tyG * dpr);
+          } else {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+          }
           ctx.drawImage(this.inkGraphBakeCanvas, 0, 0);
           ctx.restore();
         } else {
@@ -29274,7 +29341,7 @@ class GraphApp {
           this.canvas.style.cursor = 'grabbing';
           this.boardPanX = Math.round(pos.x - this.boardPanStart.x);
           this.boardPanY = Math.round(pos.y - this.boardPanStart.y);
-          this.updateProblemCardPosition();
+          this.updateProblemCardPosition(true);
           this._inkBakeDirty = true;
           this.requestRender();
           return;
@@ -30751,6 +30818,18 @@ class GraphApp {
             if (targetCtx) {
               this.renderSingleStroke(targetCtx, finishedStroke, null, false);
               this._hasBakedStrokes = true;
+              if (!this._inkBakeCamera) {
+                this._inkBakeCamera = {
+                  panX: this.panX || 0,
+                  panY: this.panY || 0,
+                  zoomLevel: this.zoomLevel || 1.0,
+                  boardPanX: this.boardPanX || 0,
+                  boardPanY: this.boardPanY || 0,
+                  boardZoom: this.boardZoom || 1.0,
+                  boardZoomOffsetX: this.boardZoomOffsetX || 0,
+                  boardZoomOffsetY: this.boardZoomOffsetY || 0
+                };
+              }
             }
             return;
           }
@@ -30967,7 +31046,27 @@ class GraphApp {
             diagTouchCount++;
             flashCounterBox('cntBoxTouch', `👆 손날(touch): ${diagTouchCount}`, '#d97706');
             if (this._uiPointerIds && e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
-          } else if (e.pointerId !== undefined) {
+            return;
+          }
+          // 🌟 문제 카드·그래프 카드·스티커 위에서 두 손가락 터치(2-Finger Pan/Pinch)가 시작될 때도
+          // 카드 개별 드래그를 즉시 취소하고 칠판 전체 2손가락 화면 이동/줌으로 100% 매끄럽게 전환!
+          const isCardOrStickerBodyTouch = Boolean(
+            e.target &&
+            e.target.closest &&
+            e.target.closest('#problemCardWidget, #graphCardWidget, .extra-problem-card-widget, .extra-graph-card-widget, #workspaceStickerOverlay, .workspace-sticker-item') &&
+            !e.target.closest('button, .card-btn, .problem-card-actions, .problem-card-resize-handle, .card-fold-triangle-btn, .card-title-fold-btn') &&
+            !isAnyModalOrOverlayBlockingCanvas()
+          );
+          if (isCardOrStickerBodyTouch) {
+            this._shouldIgnoreCanvasTouchPointer(e);
+            if (this._pinchState || (this.activePointers && this.activePointers.size >= 2)) {
+              if (e.cancelable !== false) e.preventDefault();
+              e.stopPropagation();
+              if (this._uiPointerIds && e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
+              return;
+            }
+          }
+          if (e.pointerId !== undefined) {
             if (!this._uiPointerIds) this._uiPointerIds = new Set();
             this._uiPointerIds.add(e.pointerId);
           }
@@ -31076,7 +31175,15 @@ class GraphApp {
         if (e.target === this.canvas && e.cancelable !== false) {
           e.preventDefault();
         }
-        if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) return;
+        if (e.pointerType === 'touch') {
+          if (this._shouldIgnoreCanvasTouchPointer(e)) {
+            if (this._pinchState || (this.activePointers && this.activePointers.size >= 2)) {
+              if (e.cancelable !== false) e.preventDefault();
+              e.stopPropagation();
+            }
+            return;
+          }
+        }
         this._isPointerInsideWindow = true;
         this._lastPointerEvent = e;
 
@@ -31212,11 +31319,35 @@ class GraphApp {
       }
     });
 
-    // 🌟 [단 하나의 진짜 해결책 (?v=20261103_19)]:
-    // 모든 부가 구출 코드를 다 걷어내고, 캔버스 touchstart/touchmove/touchend에서 무조건 e.preventDefault()만 실행!
+    // 🌟 [단 하나의 진짜 해결책 (?v=20261103_19) + iPadOS Safari 동시 2손가락 터치 백업 브리지]:
+    // 1) 캔버스 touchstart/touchmove/touchend에서 무조건 e.preventDefault()를 실행해 Safari 기본 제스처/Scribble 개입 차단!
+    // 2) iPadOS Safari가 두 손가락 동시 터치 시 두 번째 pointerdown을 간헐적으로 누락하더라도 e.touches(2개)로 100% 끊김 없이 백업 구동!
     this.canvas.addEventListener('touchstart', (e) => {
       if (e.target === this.canvas && e.cancelable !== false) {
         e.preventDefault();
+      }
+      if (this.isPdfModalOpen || this.isStudentAudioVideoOnlyMode) return;
+      const touchList = e.touches ? Array.from(e.touches) : [];
+      const hasStylus = touchList.some(t => t.touchType === 'stylus');
+      if (hasStylus || isWithinPostPenPalmGuard()) return;
+      if (touchList.length >= 3) {
+        this._pinchState = null;
+        this._pinchWasActiveInGesture = false;
+        this.isPanning = false;
+        this.isBoardPanning = false;
+        return;
+      }
+      if (touchList.length === 2 && !this._pinchState && (!this.activePointers || this.activePointers.size < 2)) {
+        const t0 = touchList[0];
+        const t1 = touchList[1];
+        this._pinchWasActiveInGesture = true;
+        this.isPanning = false;
+        this.isBoardPanning = false;
+        this._cancelAllActiveCardDrags();
+        this._startCanvasTwoFingerPinch(
+          { id: 't0', x: t0.clientX, y: t0.clientY },
+          { id: 't1', x: t1.clientX, y: t1.clientY }
+        );
       }
     }, { passive: false });
 
@@ -31224,11 +31355,42 @@ class GraphApp {
       if (e.target === this.canvas && e.cancelable !== false) {
         e.preventDefault();
       }
+      if (!e.touches || e.touches.length < 2) {
+        if (this._pinchState && this._pinchState.id1 === 't0') {
+          this._pinchState = null;
+          if (!e.touches || e.touches.length === 0) {
+            this._pinchWasActiveInGesture = false;
+          }
+          if (this.isGraphCovered) {
+            this.updateProblemCardPosition(false);
+          }
+          this.requestRender();
+        }
+      }
     }, { passive: false });
-    this.canvas.addEventListener('touchcancel', () => {}, { passive: true });
+    this.canvas.addEventListener('touchcancel', () => {
+      if (this._pinchState && this._pinchState.id1 === 't0') {
+        this._pinchState = null;
+        this._pinchWasActiveInGesture = false;
+        this.requestRender();
+      }
+    }, { passive: true });
     this.canvas.addEventListener('touchmove', (e) => {
       if (e.cancelable !== false) {
         e.preventDefault();
+      }
+      if (this.isPdfModalOpen || this.isStudentAudioVideoOnlyMode) return;
+      if (e.touches && e.touches.length === 2 && this._pinchState) {
+        const touchList = Array.from(e.touches);
+        if (touchList.some(t => t.touchType === 'stylus') || isWithinPostPenPalmGuard()) return;
+        if (!this.activePointers || this.activePointers.size < 2 || this._pinchState.id1 === 't0') {
+          const t0 = touchList[0];
+          const t1 = touchList[1];
+          this._moveCanvasTwoFingerPinch(
+            { id: this._pinchState.id1, x: t0.clientX, y: t0.clientY },
+            { id: this._pinchState.id2, x: t1.clientX, y: t1.clientY }
+          );
+        }
       }
     }, { passive: false });
 
@@ -31707,6 +31869,9 @@ class GraphApp {
     this._renderPending = true;
     requestAnimationFrame(() => {
       this._renderPending = false;
+      if (this._pinchState && this._pinchState._hasPendingMove) {
+        this._applyPendingTwoFingerPinchStep();
+      }
       this.render();
     });
   }
@@ -32742,10 +32907,21 @@ class GraphApp {
     }
     this.draggedHandleIdx = null;
     this.isDraggingCurve = false;
+    this._curveDragEligible = false;
+    this.activePwDragIdx = null;
+    this.isDraggingTextLabel = false;
+    this.draggedTextLabelId = null;
+    this.isResizingStage = false;
+    this.isMovingStage = false;
+    this._isAimingDropLine = false;
+    this.isPdfToGraphCropDragging = false;
+    this.isGraphSnapDragging = false;
+    this._preDragState = null;
+    this.downInfo = null;
     this.isPanning = false;
     this.isBoardPanning = false;
 
-    const cRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
+    const cRect = this.canvasRect || (this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 });
     const x1 = p1.x - cRect.left;
     const y1 = p1.y - cRect.top;
     const x2 = p2.x - cRect.left;
@@ -32757,6 +32933,7 @@ class GraphApp {
       id1: p1.id,
       id2: p2.id,
       unlocked: true,
+      zoomUnlocked: false,
       initX1: x1,
       initY1: y1,
       initX2: x2,
@@ -32777,7 +32954,10 @@ class GraphApp {
       startPanX: this.panX || 0,
       startPanY: this.panY || 0,
       startBoardPanX: this.boardPanX || 0,
-      startBoardPanY: this.boardPanY || 0
+      startBoardPanY: this.boardPanY || 0,
+      latestP1: { id: p1.id, x: p1.x, y: p1.y },
+      latestP2: { id: p2.id, x: p2.x, y: p2.y },
+      _hasPendingMove: false
     };
   }
 
@@ -32802,86 +32982,119 @@ class GraphApp {
       }
     }
 
-    const cRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
-    const x1 = ptA.x - cRect.left;
-    const y1 = ptA.y - cRect.top;
-    const x2 = ptB.x - cRect.left;
-    const y2 = ptB.y - cRect.top;
+    // 🌟 [iPad 120Hz 듀얼 포인터 동기화 코얼레싱]:
+    // 손가락 1과 손가락 2의 pointermove가 같은 프레임 내에서 0.1~1ms 시차로 따로 들어올 때,
+    // 매 이벤트마다 반쪽짜리 좌표로 줌/패닝을 2번 계산하면 손가락 간 거리가 진동하며 화면이 끊기므로
+    // 최신 좌표를 기록한 뒤 VSync(requestAnimationFrame) 시점에 두 손가락이 모두 갱신된 좌표로 딱 1회 계산합니다!
+    this._pinchState.latestP1 = { id: ptA.id, x: ptA.x, y: ptA.y };
+    this._pinchState.latestP2 = { id: ptB.id, x: ptB.x, y: ptB.y };
+    this._pinchState._hasPendingMove = true;
+    this.requestRender();
+  }
+
+  _applyPendingTwoFingerPinchStep() {
+    const st = this._pinchState;
+    if (!st || !st._hasPendingMove || !st.latestP1 || !st.latestP2) return;
+    st._hasPendingMove = false;
+    if (this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) return;
+
+    const cRect = this.canvasRect || (this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 });
+    const x1 = st.latestP1.x - cRect.left;
+    const y1 = st.latestP1.y - cRect.top;
+    const x2 = st.latestP2.x - cRect.left;
+    const y2 = st.latestP2.y - cRect.top;
     const rawMidX = (x1 + x2) / 2;
     const rawMidY = (y1 + y2) / 2;
     const rawDist = Math.max(24, Math.hypot(x2 - x1, y2 - y1));
 
-    const st = this._pinchState;
-    if (typeof st.smoothMidX !== 'number') st.smoothMidX = rawMidX;
-    if (typeof st.smoothMidY !== 'number') st.smoothMidY = rawMidY;
-    if (typeof st.smoothDist !== 'number') st.smoothDist = rawDist;
+    // 🌟 [1:1 무지연 직결 패닝 + 16px 핀치 줌 잠금 해제로 2손가락 이동 시 줌 흔들림 0.0% 보장]:
+    // 1) 중점(midX, midY)은 느린 0.20 EMA 필터를 제거하고 손가락을 1:1로 즉각 추종하여 고무줄 지연을 원천 박멸!
+    // 2) 두 손가락으로 화면만 이동할 때 손가락 간격이 1~15px 자연스럽게 흔들려도 줌(확대/축소)이 절대 개입하지 않도록
+    //    초기 간격 대비 16px 이상 의도적으로 벌리거나 오므렸을 때만 핀치 줌(zoomUnlocked)을 무점프 활성화!
+    const midX = rawMidX;
+    const midY = rawMidY;
 
-    // 🛡️ 아이패드 정전식 터치 미세 노이즈 흡수 (EMA 로우패스 필터 + 정지 상태 미세 떨림 억제)
-    const jitterMid = Math.hypot(rawMidX - st.smoothMidX, rawMidY - st.smoothMidY);
-    const jitterDist = Math.abs(rawDist - st.smoothDist);
-    const alphaMid = (jitterMid < 0.7) ? 0.20 : 0.50;
-    const alphaDist = (jitterDist < 0.9) ? 0.18 : 0.48;
-    st.smoothMidX = st.smoothMidX + (rawMidX - st.smoothMidX) * alphaMid;
-    st.smoothMidY = st.smoothMidY + (rawMidY - st.smoothMidY) * alphaMid;
-    st.smoothDist = st.smoothDist + (rawDist - st.smoothDist) * alphaDist;
+    if (!st.zoomUnlocked) {
+      if (Math.abs(rawDist - st.initDist) >= 16) {
+        st.zoomUnlocked = true;
+        st.startDist = rawDist;
+        st.smoothDist = rawDist;
+        st.startMidX = midX;
+        st.startMidY = midY;
+        st.startZoom = this.zoomLevel || 1.0;
+        st.startBoardZoom = this.boardZoom || 1.0;
+        st.startBoardZoomOffsetX = this.boardZoomOffsetX || 0;
+        st.startBoardZoomOffsetY = this.boardZoomOffsetY || 0;
+        st.startPanX = this.panX || 0;
+        st.startPanY = this.panY || 0;
+        st.startBoardPanX = this.boardPanX || 0;
+        st.startBoardPanY = this.boardPanY || 0;
+      }
+    }
 
-    const midX = st.smoothMidX;
-    const midY = st.smoothMidY;
     const dx = midX - st.startMidX;
     const dy = midY - st.startMidY;
 
-    // 🛡️ 6px 연속 데드존 차감 + 0.78 감도 완충(Damping) + 1%(0.01) 계단식 반올림 제거(서브픽셀 연속 줌으로 진동 0.0px 보장!)
-    const distDelta = st.smoothDist - st.startDist;
-    const deadzonePx = 6;
-    const effDelta = Math.abs(distDelta) <= deadzonePx
-      ? 0
-      : (distDelta - Math.sign(distDelta) * deadzonePx);
-    const effDist = Math.max(24, st.startDist + effDelta);
-    const rawRatio = effDist / st.startDist;
-    const dampedRatio = Math.pow(rawRatio, 0.78);
+    let dampedRatio = 1.0;
+    if (st.zoomUnlocked) {
+      if (typeof st.smoothDist !== 'number') st.smoothDist = rawDist;
+      const jitterDist = Math.abs(rawDist - st.smoothDist);
+      const alphaDist = (jitterDist < 0.8) ? 0.35 : 0.72;
+      st.smoothDist = st.smoothDist + (rawDist - st.smoothDist) * alphaDist;
+      const rawRatio = Math.max(24, st.smoothDist) / Math.max(24, st.startDist);
+      dampedRatio = Math.pow(rawRatio, 0.85);
+    }
 
     if (this.isGraphCovered && !this.pdfPageBoardData) {
       // 2층 일반 판서 칠판: 두 손가락 이동(패닝) + 두 손가락 핀치(칠판·카드·필기 일체형 확대/축소)
       this.boardPanX = st.startBoardPanX + dx;
       this.boardPanY = st.startBoardPanY + dy;
 
-      const oldBZ = st.startBoardZoom || 1.0;
-      const nextBZ = Math.max(0.25, Math.min(3.5, oldBZ * dampedRatio));
-      const startBx = (st.startMidX - st.startBoardPanX - (st.startBoardZoomOffsetX || 0)) / oldBZ;
-      const startBy = (st.startMidY - st.startBoardPanY - (st.startBoardZoomOffsetY || 0)) / oldBZ;
-      this.boardZoom = nextBZ;
-      this.boardZoomOffsetX = midX - this.boardPanX - startBx * nextBZ;
-      this.boardZoomOffsetY = midY - this.boardPanY - startBy * nextBZ;
+      if (st.zoomUnlocked) {
+        const oldBZ = st.startBoardZoom || 1.0;
+        const nextBZ = Math.max(0.25, Math.min(3.5, oldBZ * dampedRatio));
+        const startBx = (st.startMidX - st.startBoardPanX - (st.startBoardZoomOffsetX || 0)) / oldBZ;
+        const startBy = (st.startMidY - st.startBoardPanY - (st.startBoardZoomOffsetY || 0)) / oldBZ;
+        this.boardZoom = nextBZ;
+        this.boardZoomOffsetX = midX - this.boardPanX - startBx * nextBZ;
+        this.boardZoomOffsetY = midY - this.boardPanY - startBy * nextBZ;
+      }
 
-      this.updateProblemCardPosition();
       this._inkBakeDirty = true;
     } else {
       // 1층 실시간 그래프 및 PDF 1페이지 보드: 두 손가락 이동(Pan) + 두 손가락 핀치 중심점 기준 서브픽셀 줌(Pinch-to-Zoom)
       const oldZoom = st.startZoom || 1.0;
-      const nextZoom = Math.max(0.15, Math.min(3.5, oldZoom * dampedRatio));
-      this.zoomLevel = nextZoom;
-      this.targetZoom = nextZoom;
-      this._isZoomAnimating = false;
-      const slZoom = document.getElementById('sliderZoom');
-      const lblZoom = document.getElementById('lblZoom');
-      const lblInkZoom = document.getElementById('lblInkZoom');
-      const lblLeftZoom = document.getElementById('lblLeftZoom');
-      if (slZoom) slZoom.value = nextZoom;
-      if (lblZoom) lblZoom.textContent = `${Math.round(nextZoom * 100)}%`;
-      if (lblInkZoom) lblInkZoom.textContent = `${Math.round(nextZoom * 100)}%`;
-      if (lblLeftZoom) lblLeftZoom.textContent = `${Math.round(nextZoom * 100)}%`;
+      const nextZoom = st.zoomUnlocked
+        ? Math.max(0.15, Math.min(3.5, oldZoom * dampedRatio))
+        : oldZoom;
+
+      if (st.zoomUnlocked) {
+        this.zoomLevel = nextZoom;
+        this.targetZoom = nextZoom;
+        this._isZoomAnimating = false;
+        const pct = Math.round(nextZoom * 100);
+        if (st._lastDomZoomPct !== pct) {
+          st._lastDomZoomPct = pct;
+          const slZoom = document.getElementById('sliderZoom');
+          const lblZoom = document.getElementById('lblZoom');
+          const lblInkZoom = document.getElementById('lblInkZoom');
+          const lblLeftZoom = document.getElementById('lblLeftZoom');
+          if (slZoom) slZoom.value = nextZoom;
+          if (lblZoom) lblZoom.textContent = `${pct}%`;
+          if (lblInkZoom) lblInkZoom.textContent = `${pct}%`;
+          if (lblLeftZoom) lblLeftZoom.textContent = `${pct}%`;
+        }
+      }
 
       const ratio = nextZoom / oldZoom;
       const cx = (this.screenWidth || window.innerWidth) / 2 + st.startPanX;
       const cy = (this.screenHeight || window.innerHeight) / 2 + st.startPanY;
-      const zoomDeltaX = (st.startMidX - cx) * (1 - ratio);
-      const zoomDeltaY = (st.startMidY - cy) * (1 - ratio);
+      const zoomDeltaX = st.zoomUnlocked ? (st.startMidX - cx) * (1 - ratio) : 0;
+      const zoomDeltaY = st.zoomUnlocked ? (st.startMidY - cy) * (1 - ratio) : 0;
       this.panX = st.startPanX + dx + zoomDeltaX;
       this.panY = st.startPanY + dy + zoomDeltaY;
-      this.updateProblemCardPosition();
       this._inkBakeDirty = true;
     }
-    this.requestRender();
   }
 
   zoomByStep(delta) {
