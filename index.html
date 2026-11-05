@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_67">
+  <link rel="stylesheet" href="style.css?v=20261105_68">
 </head>
 
 <body class="theme-light">
@@ -392,8 +392,7 @@
                 <div class="section-title settings-clean-subtitle">
                   <span>경계선</span>
                 </div>
-                <div class="pw-action-grid"
-                  style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <div class="pw-action-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
                   <button type="button" id="btnPwAddBoundary" class="settings-clean-btn">
                     + 선 추가
                   </button>
@@ -422,13 +421,15 @@
                     <div class="settings-toggle-list">
                       <div class="setting-toggle-item" style="cursor: default;">
                         <span class="setting-name">주기 (T)</span>
-                        <span id="pwPeriodicPeriodLabel" style="font-size: 11.5px; font-weight: 700; color: #334155;">T = 2.0</span>
+                        <span id="pwPeriodicPeriodLabel" style="font-size: 11.5px; font-weight: 700; color: #334155;">T
+                          = 2.0</span>
                       </div>
                       <div class="single-line-slider-row">
                         <span class="single-line-slider-label">높이 차</span>
                         <button id="btnPwStepMinus" type="button" class="single-line-step-btn">◀</button>
                         <div class="single-line-slider-track">
-                          <input type="range" id="sliderPwStep" class="slider-bar" min="-6" max="6" step="0.05" value="0">
+                          <input type="range" id="sliderPwStep" class="slider-bar" min="-6" max="6" step="0.05"
+                            value="0">
                         </div>
                         <button id="btnPwStepPlus" type="button" class="single-line-step-btn">▶</button>
                         <span id="pwPeriodicStepLabel" class="single-line-slider-val">+0</span>
@@ -464,10 +465,12 @@
                 </div>
                 <div class="vf-aspect-chips ink-dock-pos-chips" id="inkDockPositionGroup"
                   style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
-                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="left" title="화면 왼쪽에 세로로 고정">왼쪽</button>
+                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="left"
+                    title="화면 왼쪽에 세로로 고정">왼쪽</button>
                   <button type="button" class="vf-chip ink-dock-pos-chip active" data-dock-pos="bottom"
                     title="화면 아래쪽에 가로로 고정">아래</button>
-                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="right" title="화면 오른쪽에 세로로 고정">오른쪽</button>
+                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="right"
+                    title="화면 오른쪽에 세로로 고정">오른쪽</button>
                 </div>
               </div>
 
@@ -551,8 +554,8 @@
 
                 <!-- 섹션: 단축키 설정 -->
                 <div style="margin-top: 6px;">
-                  <button type="button" id="btnOpenShortcutSettings" class="settings-clean-btn settings-shortcut-open-btn"
-                    title="단축키를 직접 지정하고 계정에 저장합니다">
+                  <button type="button" id="btnOpenShortcutSettings"
+                    class="settings-clean-btn settings-shortcut-open-btn" title="단축키를 직접 지정하고 계정에 저장합니다">
                     <span class="settings-shortcut-open-left">
                       <span>단축키 설정</span>
                     </span>
@@ -594,8 +597,8 @@
                         style="flex: 1; padding: 5px 6px; font-size: 11px;">회원가입</button>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 5px;">
-                      <input type="email" id="inputCloudEmailId" placeholder="이메일 주소"
-                        autocomplete="email" class="settings-clean-input">
+                      <input type="email" id="inputCloudEmailId" placeholder="이메일 주소" autocomplete="email"
+                        class="settings-clean-input">
                       <input type="password" id="inputCloudEmailPw" placeholder="비밀번호 (6자 이상)"
                         autocomplete="current-password" class="settings-clean-input">
                     </div>
@@ -603,10 +606,10 @@
                       style="display: none; flex-direction: column; gap: 5px; margin-top: 5px;">
                       <input type="password" id="inputCloudEmailPwConfirm" placeholder="비밀번호 확인"
                         autocomplete="new-password" class="settings-clean-input">
-                      <input type="text" id="inputCloudSignupName" placeholder="이름 / 닉네임"
-                        class="settings-clean-input">
+                      <input type="text" id="inputCloudSignupName" placeholder="이름 / 닉네임" class="settings-clean-input">
                     </div>
-                    <button type="button" id="btnSubmitCloudEmailLogin" class="settings-clean-btn settings-clean-btn-solid"
+                    <button type="button" id="btnSubmitCloudEmailLogin"
+                      class="settings-clean-btn settings-clean-btn-solid"
                       style="width:100%; margin-top: 6px;">로그인</button>
                     <div id="cloudLoginHelperRow" style="display: flex; justify-content: flex-end; margin-top: 4px;">
                       <button type="button" id="btnResetEmailPassword"
@@ -621,7 +624,8 @@
                         이메일로 발송된 인증 링크를 클릭한 뒤 아래 버튼을 눌러주세요.
                       </div>
                       <div style="display: flex; gap: 4px;">
-                        <button type="button" id="btnVerifyEmailCheckNow" class="settings-clean-btn settings-clean-btn-solid"
+                        <button type="button" id="btnVerifyEmailCheckNow"
+                          class="settings-clean-btn settings-clean-btn-solid"
                           style="flex: 1; padding: 5px 6px; font-size: 11px;">
                           인증 완료 확인
                         </button>
@@ -636,17 +640,18 @@
 
                 <!-- 섹션: 이용권 구매 · 사용법 · 문의 -->
                 <div class="settings-clean-divider-block">
-                  <button type="button" id="btnOpenProPricingFromSettings" class="settings-clean-btn" style="width: 100%;">
+                  <button type="button" id="btnOpenProPricingFromSettings" class="settings-clean-btn"
+                    style="width: 100%;">
                     이용권 구매
                   </button>
                   <div style="display: flex; gap: 5px; margin-top: 5px;">
-                    <button type="button" id="btnOpenGuideNoticeFromSettings" class="settings-clean-btn" style="flex: 1;">
+                    <button type="button" id="btnOpenGuideNoticeFromSettings" class="settings-clean-btn"
+                      style="flex: 1;">
                       사용법
                     </button>
                     <a id="btnBugReportFromSettings"
                       href="mailto:help@cubiolab.com?subject=%5BGraphly%20%EB%B2%84%EA%B7%B8%EC%A0%9C%EB%B3%B4%2F%EB%AC%B8%EC%9D%98%5D"
-                      class="settings-clean-btn"
-                      style="flex: 1; text-decoration: none;">
+                      class="settings-clean-btn" style="flex: 1; text-decoration: none;">
                       문의
                     </a>
                   </div>
@@ -710,7 +715,8 @@
             <div class="drawer-panel" id="panelStyle" style="display: none;">
               <!-- 상단 2탭 전환 바: [ 필기 · 배경 | 그래프 ] -->
               <div class="style-panel-tabs">
-                <button type="button" id="btnStyleTabInk" class="style-tab-btn active" data-style-tab="ink">필기 · 배경</button>
+                <button type="button" id="btnStyleTabInk" class="style-tab-btn active" data-style-tab="ink">필기 ·
+                  배경</button>
                 <button type="button" id="btnStyleTabGraph" class="style-tab-btn" data-style-tab="graph">그래프</button>
               </div>
 
@@ -868,11 +874,10 @@
                     <div class="graph-color-mode-group" id="graphColorModeGroup"
                       style="display: inline-flex; gap: 4px;">
                       <button type="button" class="vf-chip graph-color-mode-chip active" data-color-mode="auto"
-                        style="padding: 3px 8px; font-size: 11px;"
-                        title="그래프를 추가할 때마다 서로 구분되는 색상으로 자동 배정합니다">자동 배색</button>
+                        style="padding: 3px 8px; font-size: 11px;" title="그래프를 추가할 때마다 서로 구분되는 색상으로 자동 배정합니다">자동
+                        배색</button>
                       <button type="button" class="vf-chip graph-color-mode-chip" data-color-mode="fixed"
-                        style="padding: 3px 8px; font-size: 11px;"
-                        title="선택한 한 가지 색상으로 모든 그래프를 고정합니다">색상 고정</button>
+                        style="padding: 3px 8px; font-size: 11px;" title="선택한 한 가지 색상으로 모든 그래프를 고정합니다">색상 고정</button>
                     </div>
                   </div>
                   <div class="color-palette" id="graphColorPalette" style="margin-bottom: 8px;">
@@ -980,10 +985,10 @@
                   </div>
 
                   <div style="margin-top: 6px; display: flex; gap: 5px;">
-                    <button id="btnClearDropLines" type="button" class="settings-clean-btn"
-                      style="flex: 1;">수선 비우기</button>
-                    <button id="btnClearTextLabels" type="button" class="settings-clean-btn"
-                      style="flex: 1;">텍스트 비우기</button>
+                    <button id="btnClearDropLines" type="button" class="settings-clean-btn" style="flex: 1;">수선
+                      비우기</button>
+                    <button id="btnClearTextLabels" type="button" class="settings-clean-btn" style="flex: 1;">텍스트
+                      비우기</button>
                   </div>
                 </div>
               </div>
@@ -2074,7 +2079,8 @@
             <span>범위</span>
           </div>
           <div class="vf-aspect-chips" style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
-            <button type="button" id="btnExportScopeCurrent" class="vf-chip export-scope-chip active" data-scope="current">현재 캔버스</button>
+            <button type="button" id="btnExportScopeCurrent" class="vf-chip export-scope-chip active"
+              data-scope="current">현재 캔버스</button>
             <button type="button" id="btnExportScopeAll" class="vf-chip export-scope-chip" data-scope="all">전체 캔버스 <span
                 id="lblExportTotalSlidesCount">(1)</span></button>
           </div>
@@ -2088,32 +2094,48 @@
           <div class="vf-aspect-chips" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;">
             <label class="vf-chip export-layer-chip active" id="lblExportLayerProblem">
               <input type="checkbox" id="chkExportLayerProblem" checked style="display: none;">
-              <svg class="export-layer-check-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <svg class="export-layer-check-icon" width="11" height="11" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
               <span>문제</span>
             </label>
             <label class="vf-chip export-layer-chip active" id="lblExportLayerGraph">
               <input type="checkbox" id="chkExportLayerGraph" checked style="display: none;">
-              <svg class="export-layer-check-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <svg class="export-layer-check-icon" width="11" height="11" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
               <span>그래프</span>
             </label>
             <label class="vf-chip export-layer-chip active" id="lblExportLayerInk">
               <input type="checkbox" id="chkExportLayerInk" checked style="display: none;">
-              <svg class="export-layer-check-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <svg class="export-layer-check-icon" width="11" height="11" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
               <span>필기</span>
             </label>
             <label class="vf-chip export-layer-chip active" id="lblExportLayerAudio">
               <input type="checkbox" id="chkExportLayerAudio" checked style="display: none;">
-              <svg class="export-layer-check-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <svg class="export-layer-check-icon" width="11" height="11" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
               <span>음성</span>
             </label>
           </div>
           <div class="export-filter-row export-stage-preset-row" style="display: none !important;">
             <span class="export-step-label">단계별 저장</span>
             <div class="export-stage-preset-group">
-              <button type="button" id="btnExportPresetStage0" class="export-stage-preset-chip" data-stage="0">① 문제</button>
-              <button type="button" id="btnExportPresetStage1" class="export-stage-preset-chip" data-stage="1">1차: 문제+그래프</button>
-              <button type="button" id="btnExportPresetStage2" class="export-stage-preset-chip" data-stage="2">2차: +필기 해설</button>
-              <button type="button" id="btnExportPresetStage3" class="export-stage-preset-chip active" data-stage="3">3차: +음성 강의</button>
+              <button type="button" id="btnExportPresetStage0" class="export-stage-preset-chip" data-stage="0">①
+                문제</button>
+              <button type="button" id="btnExportPresetStage1" class="export-stage-preset-chip" data-stage="1">1차:
+                문제+그래프</button>
+              <button type="button" id="btnExportPresetStage2" class="export-stage-preset-chip" data-stage="2">2차: +필기
+                해설</button>
+              <button type="button" id="btnExportPresetStage3" class="export-stage-preset-chip active"
+                data-stage="3">3차: +음성 강의</button>
             </div>
           </div>
           <div class="export-filter-hint" id="lblExportFilterSummary" style="display: none;"></div>
@@ -2165,8 +2187,10 @@
               placeholder="#태그">
           </div>
           <div style="display: flex; gap: 5px; margin-top: 5px;">
-            <button type="button" id="btnShareModalExportFile" class="settings-clean-btn" style="flex: 1;">내 기기에 저장</button>
-            <button type="button" id="btnShareModalToLibrary" class="settings-clean-btn" style="flex: 1;">클라우드에 저장</button>
+            <button type="button" id="btnShareModalExportFile" class="settings-clean-btn" style="flex: 1;">내 기기에
+              저장</button>
+            <button type="button" id="btnShareModalToLibrary" class="settings-clean-btn" style="flex: 1;">클라우드에
+              저장</button>
           </div>
         </div>
       </div>
@@ -3114,7 +3138,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261105_20"></script>
-  <script src="app.js?v=20261105_67"></script>
+  <script src="app.js?v=20261105_68"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

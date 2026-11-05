@@ -24509,7 +24509,6 @@ class GraphApp {
         listEl.innerHTML = `
           <div class="cloud-empty-msg" style="padding:36px 16px; line-height:1.7;">
             🔒 <strong>클라우드 보관함은 로그인 후 이용할 수 있습니다.</strong><br>
-            <span style="font-size:12px; color:#64748b;">로그인하시면 폴더별 정리와 체크박스 일괄 관리로 내 수업 자료를 어디서든 저장하고 바로 꺼내 쓸 수 있습니다.</span><br>
             <button type="button" id="btnCloudEmptyGoLogin" class="btn-cloud-go-settings-login">⚙️ 설정에서 로그인하기</button>
           </div>
         `;
@@ -25001,9 +25000,7 @@ class GraphApp {
     if (visibleFolders.length === 0 && filteredItems.length === 0) {
       const emptyDiv = document.createElement('div');
       emptyDiv.className = 'cloud-empty-msg';
-      emptyDiv.innerHTML = totalCount === 0
-        ? `이 폴더가 비어 있습니다.<br><span style="font-size:11.5px; color:#64748b;">상단 <strong>[📁+ 새 폴더]</strong> · <strong>[📤 업로드]</strong>를 누르거나 내 기기의 <code>.graphly</code> 파일을 여기로 끌어다 놓아 보세요!</span>`
-        : `이 폴더가 비어 있습니다.<br><span style="font-size:11.5px; color:#64748b;">상단 <strong>[📤 업로드]</strong>(또는 파일 드래그)로 내 기기 파일을 올리거나, 하단 <strong>[저장]</strong>으로 현재 칠판을 저장할 수 있습니다.</span>`;
+      emptyDiv.innerHTML = `이 폴더가 비어 있습니다.`;
       listEl.appendChild(emptyDiv);
       this._syncCloudExplorerSelectionButtons();
       this.updateSelectedPlaylistCount();
