@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_30">
+  <link rel="stylesheet" href="style.css?v=20261105_31">
 </head>
 
 <body class="theme-light">
@@ -613,6 +613,30 @@
                     </label>
                   </label>
                 </div>
+
+                <!-- 섹션: ⌨️ 단축키 커스터마이징 설정 버튼 -->
+                <div style="margin-top: 10px;">
+                  <button type="button" id="btnOpenShortcutSettings" class="btn-secondary settings-shortcut-open-btn"
+                    title="내 손에 맞는 단축키를 직접 지정하고 계정에 저장합니다">
+                    <span class="settings-shortcut-open-left">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="4" width="20" height="16" rx="2.5" />
+                        <path d="M6 8h.01" />
+                        <path d="M10 8h.01" />
+                        <path d="M14 8h.01" />
+                        <path d="M18 8h.01" />
+                        <path d="M8 12h.01" />
+                        <path d="M12 12h.01" />
+                        <path d="M16 12h.01" />
+                        <path d="M7 16h10" />
+                      </svg>
+                      <span>단축키 설정</span>
+                    </span>
+                    <span id="badgeShortcutCustomStatus" class="settings-shortcut-badge">맞춤 설정 ▸</span>
+                  </button>
+                </div>
+
                 <!-- 섹션: 👤 계정 & 클라우드 로그인/로그아웃 (공용 PC 즉시 전환 지원) -->
                 <div id="settingsAccountSection"
                   style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(148,163,184,0.2);">
@@ -3022,7 +3046,11 @@
 
         <!-- 탭 2: 단축키 안내 -->
         <div id="guidePanelShortcuts" class="guide-tab-panel" style="display: none;">
-          <div class="guide-shortcut-grid">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; padding: 10px 12px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(59, 130, 246, 0.28);">
+            <span style="font-size: 12.5px; font-weight: 700; color: #1e40af;">⌨️ 모든 기능의 단축키를 내 손에 맞게 직접 변경할 수 있습니다.</span>
+            <button type="button" id="btnOpenShortcutSettingsFromGuide" class="btn-primary" style="padding: 6px 12px; font-size: 12px; font-weight: 800; border-radius: 7px; cursor: pointer; white-space: nowrap;">⌨️ 단축키 설정 열기</button>
+          </div>
+          <div class="guide-shortcut-grid" id="guideShortcutDynamicGrid">
             <div class="guide-shortcut-item">
               <kbd class="guide-kbd">Ctrl + Z</kbd>
               <span class="guide-shortcut-desc">실행 취소 (Undo)</span>
@@ -3124,6 +3152,63 @@
     </div>
   </div>
 
+  <!-- [⌨️ 개인 로그인 계정 귀속 단축키 커스터마이징 모달] -->
+  <div id="modalShortcutSettings" class="smart-modal-backdrop">
+    <div class="smart-modal-card shortcut-settings-modal-card">
+      <div class="smart-modal-header shortcut-settings-header">
+        <div class="smart-modal-title">
+          <span class="modal-icon">⌨️</span>
+          <span class="modal-title-text">단축키 설정</span>
+          <span id="badgeShortcutAccountSync" class="shortcut-account-sync-badge">☁️ 계정 자동 연동</span>
+        </div>
+        <button type="button" id="btnCloseShortcutSettings" class="btn-modal-close" title="저장하지 않고 닫기">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- 상단 카테고리 탭 & 빠른 검색바 -->
+      <div class="shortcut-settings-toolbar">
+        <div class="shortcut-cat-tabs" id="shortcutCategoryTabs">
+          <button type="button" class="shortcut-cat-tab active" data-scat="all">전체</button>
+          <button type="button" class="shortcut-cat-tab" data-scat="ink">✒️ 판서·펜</button>
+          <button type="button" class="shortcut-cat-tab" data-scat="graph">📈 그래프·수학</button>
+          <button type="button" class="shortcut-cat-tab" data-scat="slide">📄 슬라이드·뷰어</button>
+          <button type="button" class="shortcut-cat-tab" data-scat="system">⚡ 편집·녹화·시스템</button>
+        </div>
+        <div class="shortcut-search-wrap">
+          <input type="text" id="inputShortcutSearch" class="shortcut-search-input" placeholder="🔍 기능 이름 또는 키 검색..."
+            autocomplete="off">
+        </div>
+      </div>
+
+      <!-- 상태 안내 배너 (중복 키 해제 알림 및 입력 대기 안내) -->
+      <div id="shortcutModalNoticeBanner" class="shortcut-notice-banner">
+        💡 기능 옆의 <strong>[단축키 버튼]</strong>을 클릭한 뒤 원하는 키를 누르세요. (중복 키 입력 시 기존 기능은 <strong>미지정</strong>으로 변경되며, 하단 <strong>[💾 저장하기]</strong>를 눌러야 반영됩니다)
+      </div>
+
+      <!-- 기능 및 단축키 리스트 -->
+      <div class="smart-modal-body shortcut-settings-body" id="shortcutSettingsList">
+        <!-- JS 동적 렌더링 -->
+      </div>
+
+      <!-- 하단 푸터 ([🔄 기본값으로 초기화] | [취소] [💾 저장하기]) -->
+      <div class="smart-modal-footer shortcut-settings-footer">
+        <button type="button" id="btnResetAllShortcuts" class="btn-secondary shortcut-reset-all-btn"
+          title="모든 단축키를 초기 기본값으로 되돌립니다">
+          🔄 기본값으로 초기화
+        </button>
+        <div class="shortcut-footer-right">
+          <button type="button" id="btnCancelShortcutSettings" class="btn-secondary shortcut-cancel-btn">취소</button>
+          <button type="button" id="btnSaveShortcutSettings" class="btn-primary shortcut-save-btn">💾 저장하기</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="toastMsg" class="toast-msg"></div>
 
   <!-- 스크립트 로드 -->
@@ -3136,7 +3221,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261105_20"></script>
-  <script src="app.js?v=20261105_30"></script>
+  <script src="app.js?v=20261105_31"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
@@ -3339,7 +3424,7 @@
         navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister())).catch(() => { });
         if ('caches' in window) caches.keys().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => { });
       });
-    }
+  }
   </script>
 </body>
 

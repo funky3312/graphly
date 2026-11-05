@@ -394,6 +394,7 @@ class GraphApp {
     this.initDOM();
     this.initShareModal();
     this.initCloudHubAndPlaylist();
+    this.initShortcutCustomization();
     this.initNAxisStudioModal();
     this.bindEvents();
     this.resizeCanvas();
@@ -16130,8 +16131,10 @@ class GraphApp {
       this.closeDrawer();
     }, true);
 
-    // 단축키: \ (백슬래시), Ctrl+B, ESC 닫기, G (그래프 추가창 토글) 및 2자리 숫자(11~79) 즉시 소환
+    // 단축키: ESC 서랍 닫기 및 그래프 추가창(panelPresets) 열림 시 2~3자리 숫자(11~109) 즉시 소환
+    // (G, \ 등 일반 기능 단축키는 개인 맞춤 단축키 엔진 handleCustomShortcutKeyDown에서 통합 처리)
     window.addEventListener('keydown', (e) => {
+      if (this.isShortcutSettingsModalOpen && this.isShortcutSettingsModalOpen()) return;
       const tag = e.target && e.target.tagName ? e.target.tagName : '';
       if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
 
@@ -16139,37 +16142,6 @@ class GraphApp {
         e.preventDefault();
         e.stopImmediatePropagation();
         this.closeDrawer();
-        return;
-      }
-
-      if (e.key === '\\' || (e.ctrlKey && (e.key === 'b' || e.key === 'B'))) {
-        e.preventDefault();
-        this.toggleDrawer();
-        return;
-      }
-
-      // [G 단축키]: 그래프 추가창(panelPresets) 즉시 열기/닫기
-      if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'g' || e.key === 'G')) {
-        if (this.isPdfModalOpen || (this.smartViewerState && this.smartViewerState.isOpen)) return;
-        e.preventDefault();
-        if (this.isGraphCovered) {
-          if (this.pdfPageBoardData) {
-            if (this._isPdfCropChoiceMenuOpen || this.isPdfToGraphCropMode) {
-              this.cancelPdfBoardToGraphCrop();
-            } else {
-              this.openPdfToGraphChoiceMenu(null);
-            }
-            return;
-          }
-          this.enterGraphModeFromBoard();
-          this.openDrawer('panelPresets');
-          return;
-        }
-        if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
-          this.closeDrawer();
-        } else {
-          this.openDrawer('panelPresets');
-        }
         return;
       }
 
@@ -21062,6 +21034,12 @@ class GraphApp {
       }
       if (prefs.customShortcuts && typeof prefs.customShortcuts === 'object') {
         this.customShortcuts = { ...prefs.customShortcuts };
+        try {
+          localStorage.setItem('graphly_custom_shortcuts_v1', JSON.stringify(this.customShortcuts));
+        } catch (_) { }
+        if (typeof this.syncShortcutTooltipsAndGuideUI === 'function') {
+          this.syncShortcutTooltipsAndGuideUI();
+        }
       }
       this.requestRender();
     } finally {
@@ -27977,6 +27955,8 @@ class GraphApp {
       if (mSmart && mSmart.classList.contains('show')) return true;
       const mGuide = document.getElementById('modalGuideNotice');
       if (mGuide && mGuide.classList.contains('show')) return true;
+      const mShortcut = document.getElementById('modalShortcutSettings');
+      if (mShortcut && mShortcut.classList.contains('show')) return true;
       const viewer = document.getElementById('smartNoteViewerOverlay');
       if (viewer && viewer.style.display !== 'none' && !document.body.classList.contains('viewer-graph-touch-mode')) return true;
       return false;
@@ -31252,8 +31232,12 @@ class GraphApp {
       }
     }, { passive: false });
 
-    // 키보드 단축키: Ctrl+Z (언두), Ctrl+Y (리두), 방향키 미세조정, H 판서모드
+    // 키보드 단축키: 개인 맞춤 단축키 엔진(handleCustomShortcutKeyDown), 스페이스/쉬프트 팬 이동, ESC 복귀, 방향키 미세조정
     window.addEventListener('keydown', (e) => {
+      if (this.isShortcutSettingsModalOpen && this.isShortcutSettingsModalOpen()) {
+        return;
+      }
+
       const activeEl = document.activeElement;
       const isInput = activeEl && (
         (activeEl.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button', 'color', 'file'].includes((activeEl.type || '').toLowerCase())) ||
@@ -31262,147 +31246,8 @@ class GraphApp {
         activeEl.isContentEditable
       );
 
-      // Ctrl+Z (실행 취소) & Ctrl+Y / Ctrl+Shift+Z (다시 실행)
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
-        if (!isInput) {
-          e.preventDefault();
-          if (e.shiftKey) this.redo();
-          else this.undo();
-          return;
-        }
-      }
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
-        if (!isInput) {
-          e.preventDefault();
-          this.redo();
-          return;
-        }
-      }
-
-      // [대표님 기획]: [ / ] 키로 글씨 굵기/크기 화살표 단계별 즉시 조절
-      if ((e.key === '[' || e.key === ']') && !isInput && this.isInkMode) {
-        e.preventDefault();
-        if (e.key === '[') {
-          const btn = document.getElementById('btnInkSizeDown');
-          if (btn) btn.click();
-        } else {
-          const btn = document.getElementById('btnInkSizeUp');
-          if (btn) btn.click();
-        }
-        return;
-      }
-
-      // 0. H 키로 클린 뷰 원터치 토글
-      if (e.key === 'h' || e.key === 'H') {
-        if (!isInput) {
-          e.preventDefault();
-          this.toggleCleanView();
-          return;
-        }
-      }
-
-      // 0.1. B 키로 판서 모드 (Board Mode) 원터치 토글
-      if (e.key === 'b' || e.key === 'B') {
-        if (!isInput) {
-          e.preventDefault();
-          this.toggleBoardMode();
-          return;
-        }
-      }
-
-      // 0.2. D 키로 교재 보조 수선 모드 (Drop Line Tool) 원터치 토글
-      if (e.key === 'd' || e.key === 'D') {
-        if (!isInput) {
-          e.preventDefault();
-          this.toggleDropLineMode();
-          return;
-        }
-      }
-
-      // 0.3. T 키로 수식 텍스트 라벨 도구 (Text Tool) 원터치 토글
-      if (e.key === 't' || e.key === 'T') {
-        if (!isInput) {
-          e.preventDefault();
-          this.toggleTextToolMode();
-          return;
-        }
-      }
-
-      // 0.35. 흑백 모드(M) 단축키 비활성화 (판서 프로그램 체제 전환)
-
-      // 0.36. P 키로 실시간 필기 모드 (Ink Mode) 원터치 토글
-      if (e.key === 'p' || e.key === 'P') {
-        if (!isInput) {
-          e.preventDefault();
-          this.toggleInkMode();
-          return;
-        }
-      }
-
-      // 0.37. E 키: 지우개 (Eraser) 원터치 토글 (타블렛 드라이버 단축키 완벽 대응)
-      if (e.key === 'e' || e.key === 'E') {
-        if (!isInput) {
-          e.preventDefault();
-          if (!this.isInkMode) this.toggleInkMode(true);
-          if (this.activeInkTool === 'eraser') {
-            this.setActiveInkTool('pen');
-            this.showToast('✏️ 펜 모드로 전환');
-          } else {
-            this.setActiveInkTool('eraser');
-            this.showToast('🧹 지우개 모드로 전환');
-          }
-          return;
-        }
-      }
-
-      // 0.38. V 키: 필기 모드 시 조작 (Select) 전환
-      if (e.key === 'v' || e.key === 'V') {
-        if (!isInput && this.isInkMode) {
-          e.preventDefault();
-          this.setActiveInkTool('select');
-          return;
-        }
-      }
-
-      // 0.385. L 키: 올가미 (Lasso) 툴 전환
-      if (e.key === 'l' || e.key === 'L') {
-        if (!isInput) {
-          e.preventDefault();
-          if (!this.isInkMode) this.toggleInkMode(true);
-          this.setActiveInkTool('lasso');
-          return;
-        }
-      }
-
-      // 0.387. C 키: PDF 모달 열려있으면 [✂️ 문제 크롭] 모드 토글, 닫혀있으면 PDF 모달 열기
-      if (e.key === 'c' || e.key === 'C') {
-        if (!isInput && !e.ctrlKey && !e.metaKey) {
-          e.preventDefault();
-          if (this.isPdfModalOpen) {
-            this.togglePdfCropMode();
-          } else {
-            if (this.pdfDoc) {
-              this.openPdfModal();
-            } else {
-              const fileInput = document.getElementById('pdfFileInput');
-              if (fileInput) fileInput.click();
-            }
-          }
-          return;
-        }
-      }
-
-      // 0.388. A 키: 좌표축(Axes) ON/OFF 원터치 토글 (순수 빈 칠판 ↔ 좌표평면)
-      if (e.key === 'a' || e.key === 'A') {
-        if (!isInput && !e.ctrlKey && !e.metaKey) {
-          e.preventDefault();
-          this.toggleAxes();
-          return;
-        }
-      }
-
-      // 0.39. 스페이스바 누름 감지 (필기 모드 중 팬 이동 지원 & 포커스된 버튼/슬라이더 자동 클릭·크기 축소 원천 차단)
-      if ((e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') && !isInput) {
+      // 스페이스바 누름 감지 (필기 모드 중 팬 이동 지원 & 포커스된 버튼/슬라이더 자동 클릭·크기 축소 원천 차단)
+      if ((e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') && !isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         if (activeEl && activeEl !== document.body && typeof activeEl.blur === 'function') {
           try { activeEl.blur(); } catch (err) { }
@@ -31418,7 +31263,7 @@ class GraphApp {
         return;
       }
 
-      // 0.395. Shift 키 누름 감지 (대표님 기획: 필기 모드 중 쉬프트 드래그로 쾌속 화면 이동 지원)
+      // Shift 키 누름 감지 (필기 모드 중 쉬프트 드래그로 쾌속 화면 이동 지원)
       if ((e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !isInput && !this.isShiftPressed) {
         this.isShiftPressed = true;
         if (this.isInkMode) {
@@ -31426,22 +31271,7 @@ class GraphApp {
         }
       }
 
-      // 0.4. Delete / Backspace 키로 올가미 선택 획 또는 수식 텍스트 라벨 삭제
-      if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput) {
-        if (this.isInkMode && this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
-          e.preventDefault();
-          this.deleteSelectedInkStrokes();
-          return;
-        }
-        if (this.selectedTextLabelId) {
-          e.preventDefault();
-          this.removeTextLabel(this.selectedTextLabelId);
-          this.selectedTextLabelId = null;
-          return;
-        }
-      }
-
-      // 0.405. ESC 키: 서랍(추가창) 닫기, 올가미 선택 해제 또는 PDF 크롭모드/모달 닫기
+      // ESC 키: 서랍(추가창) 닫기, 올가미 선택 해제 또는 PDF 크롭모드/모달 닫기
       if (e.key === 'Escape' && !isInput) {
         if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
           e.preventDefault();
@@ -31475,7 +31305,7 @@ class GraphApp {
         }
       }
 
-      // 0.407. PDF 모달 전용 단축키: PageUp/PageDown (페이지 이동)
+      // PDF 모달 열림 시 전용 단축키: PageUp/PageDown (페이지 이동)
       if (this.isPdfModalOpen && !isInput) {
         if (e.key === 'PageUp' || e.key === '[') {
           e.preventDefault();
@@ -31489,25 +31319,7 @@ class GraphApp {
         }
       }
 
-      // (N축 합성 모드는 안정적인 개발을 위해 잠시 보류 처리)
-      /*
-      if (e.key === 'n' || e.key === 'N') {
-        if (!isInput) {
-          e.preventDefault();
-          this.toggleNAxisMode();
-          return;
-        }
-      }
-      if (e.key === 's' || e.key === 'S') {
-        if (!isInput && this.isNAxisMode) {
-          e.preventDefault();
-          this.swapNAxisLayers();
-          return;
-        }
-      }
-      */
-
-      // 0.5. Escape 키로 필기 모드 / 수선 모드 / 텍스트 모드 / N축 모드 / 판서 모드 원터치 빠져나오기
+      // Escape 키로 필기 모드 / 수선 모드 / 텍스트 모드 / N축 모드 / 판서 모드 원터치 빠져나오기
       if (e.key === 'Escape') {
         if (!isInput) {
           if (this.isPdfToGraphCropMode) {
@@ -31564,16 +31376,17 @@ class GraphApp {
         }
       }
 
-      // 1. Delete / Backspace 키로 선택된 곡선/도형 레이어 원터치 삭제
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (!isInput && this.activeGraphIdx >= 0 && this.activeGraphIdx < this.graphs.length) {
-          e.preventDefault();
-          const targetIdx = this.activeGraphIdx;
-          this.selectedHandleIdx = null;
-          this.isCurveSelected = false;
-          this.removeGraph(targetIdx);
+      // ✂️ [구간 분할선 선택 중 키보드 좌우 화살표(←, →) 미세조정 우선]
+      if (this.usePiecewise && this.selectedPwBoundaryIdx !== null && this.piecewiseBoundaries) {
+        if (['ArrowLeft', 'ArrowRight', 'Escape'].includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          // 아래 구간 분할 미세조정 블록에서 처리
+        } else if (!isInput && typeof this.handleCustomShortcutKeyDown === 'function' && this.handleCustomShortcutKeyDown(e)) {
           return;
         }
+      } else if (this.activeGraph && (this.selectedHandleIdx !== null || this.isCurveSelected) && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Escape'].includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // 선택된 극점 핸들 또는 곡선 방향키 미세조정 우선
+      } else if (!isInput && typeof this.handleCustomShortcutKeyDown === 'function' && this.handleCustomShortcutKeyDown(e)) {
+        return;
       }
 
       // ✂️ [대표님 핵심 기획: 구간 분할선 키보드 좌우 화살표(←, →) 미세조정]
@@ -41396,6 +41209,1384 @@ class GraphApp {
       ...this._viewerPkg,
       currentIndex: slideIdx
     }, true);
+  }
+
+  // ============================================================================
+  // ⌨️ [개인 로그인 계정 귀속 단축키 커스터마이징 엔진 (Shortcut Customization Engine)]
+  // - 환경설정(⚙️) ➔ [⌨️ 단축키 설정] 모달 오픈
+  // - 기능별 버튼 클릭 후 키 입력 (한/영 상태 무관 물리 키코드 인식)
+  // - 중복 키 입력 시 기존 기능의 단축키를 자동으로 [미지정("")]으로 해제
+  // - 반드시 하단 [💾 저장하기] 버튼을 눌러야 최종 반영 및 로그인 계정(user_preferences) 동기화
+  // ============================================================================
+  getShortcutDefinitions() {
+    if (!this._shortcutDefinitions) {
+      this._shortcutDefinitions = [
+        // 1. ✒️ 판서 · 펜 도구 (ink)
+        {
+          id: 'ink_toggle_mode',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '필기 모드 켜기 / 끄기',
+          desc: '그래프 조작 ↔ 칠판 펜 필기 모드 전환',
+          defaultKey: 'P',
+          buttonIds: ['btnInkMode'],
+          baseTitle: '필기 모드'
+        },
+        {
+          id: 'ink_tool_select',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '선택 / 이동 (↖ 조작) 도구',
+          desc: '필기 중 그래프·카드·객체 이동 및 조작으로 전환',
+          defaultKey: 'V',
+          buttonIds: ['btnInkSelect'],
+          baseTitle: '선택 / 이동'
+        },
+        {
+          id: 'ink_tool_pen',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '펜 도구',
+          desc: '일반 필기 펜으로 즉시 전환',
+          defaultKey: '',
+          buttonIds: ['btnInkPen'],
+          baseTitle: '펜'
+        },
+        {
+          id: 'ink_tool_highlighter',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '형광펜 도구 (펜↔형광펜)',
+          desc: '반투명 형광펜 전환 (다시 누르면 펜으로 복귀)',
+          defaultKey: '',
+          buttonIds: ['btnInkHighlighter', 'btnPillHighlighter'],
+          baseTitle: '형광펜'
+        },
+        {
+          id: 'ink_tool_eraser',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '지우개 도구 (펜↔지우개)',
+          desc: '필기 지우개 전환 (다시 누르면 펜으로 복귀)',
+          defaultKey: 'E',
+          buttonIds: ['btnInkEraser', 'btnPillEraser'],
+          baseTitle: '지우개'
+        },
+        {
+          id: 'ink_tool_lasso',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '올가미 선택 도구',
+          desc: '필기 획을 묶어서 이동·복제·색상변경·삭제',
+          defaultKey: 'L',
+          buttonIds: ['btnInkLasso', 'btnPillLasso'],
+          baseTitle: '올가미'
+        },
+        {
+          id: 'ink_tool_laser',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '레이저 포인터',
+          desc: '사르륵 사라지는 판서용 레이저 포인터 전환',
+          defaultKey: '',
+          buttonIds: ['btnInkLaser', 'btnPillLaser'],
+          baseTitle: '레이저 포인터'
+        },
+        {
+          id: 'ink_tool_sticker',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '가림막 스티커 도구',
+          desc: '드래그하여 정답/풀이 가림막 스티커 생성',
+          defaultKey: '',
+          buttonIds: ['btnInkSticker', 'btnPillSticker'],
+          baseTitle: '스티커 (가림막)'
+        },
+        {
+          id: 'ink_size_down',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '펜 굵기 줄이기 (−)',
+          desc: '필기 펜 굵기를 한 단계 가늘게 조절',
+          defaultKey: '[',
+          buttonIds: ['btnInkSizeDown'],
+          baseTitle: '펜 굵기 줄이기'
+        },
+        {
+          id: 'ink_size_up',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '펜 굵기 키우기 (+)',
+          desc: '필기 펜 굵기를 한 단계 굵게 조절',
+          defaultKey: ']',
+          buttonIds: ['btnInkSizeUp'],
+          baseTitle: '펜 굵기 키우기'
+        },
+        {
+          id: 'ink_color_1',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '펜 색상 1번 (기본 검정/분필)',
+          desc: '첫 번째 펜 색상 즉시 선택',
+          defaultKey: ''
+        },
+        {
+          id: 'ink_color_2',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '펜 색상 2번 (파랑/노랑)',
+          desc: '두 번째 펜 색상 즉시 선택',
+          defaultKey: ''
+        },
+        {
+          id: 'ink_color_3',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '펜 색상 3번 (빨강/코랄)',
+          desc: '세 번째 펜 색상 즉시 선택',
+          defaultKey: ''
+        },
+        {
+          id: 'ink_color_4',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '펜 색상 4번 (초록/스카이)',
+          desc: '네 번째 펜 색상 즉시 선택',
+          defaultKey: ''
+        },
+        {
+          id: 'ink_color_5',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '펜 색상 5번 (보라/민트)',
+          desc: '다섯 번째 펜 색상 즉시 선택',
+          defaultKey: ''
+        },
+        {
+          id: 'ink_clear_all',
+          category: 'ink',
+          categoryLabel: '✒️ 판서 · 펜 도구',
+          name: '현재 칠판 필기 비우기',
+          desc: '현재 슬라이드의 펜 필기만 모두 지우기',
+          defaultKey: '',
+          buttonIds: ['btnInkClearAll', 'btnPillClearAll'],
+          baseTitle: '필기 비우기'
+        },
+
+        // 2. 📈 그래프 · 수학 도구 (graph)
+        {
+          id: 'graph_open_presets',
+          category: 'graph',
+          categoryLabel: '📈 그래프 · 수학 도구',
+          name: '그래프 추가창 열기 / 닫기',
+          desc: '개형 선택 창 토글 (열린 상태에서 숫자 11~64 연속 소환)',
+          defaultKey: 'G',
+          buttonIds: ['btnRailPresets'],
+          baseTitle: '그래프 추가'
+        },
+        {
+          id: 'graph_toggle_axes',
+          category: 'graph',
+          categoryLabel: '📈 그래프 · 수학 도구',
+          name: '좌표축 표시 켜기 / 끄기',
+          desc: '좌표평면(x·y축) ↔ 순수 빈 칠판 즉시 전환',
+          defaultKey: 'A',
+          buttonIds: ['btnInkToggleAxes'],
+          baseTitle: '좌표축'
+        },
+        {
+          id: 'graph_toggle_dropline',
+          category: 'graph',
+          categoryLabel: '📈 그래프 · 수학 도구',
+          name: '보조 수선 도구 켜기 / 끄기',
+          desc: '극점·교점에서 x축/y축으로 점선 수선 내리기',
+          defaultKey: 'D',
+          buttonIds: ['btnQuickDropLine'],
+          baseTitle: '보조 수선'
+        },
+        {
+          id: 'graph_toggle_text',
+          category: 'graph',
+          categoryLabel: '📈 그래프 · 수학 도구',
+          name: '텍스트 입력 도구 켜기 / 끄기',
+          desc: '칠판 원하는 위치에 수식·텍스트 라벨 추가',
+          defaultKey: 'T',
+          buttonIds: ['btnQuickText'],
+          baseTitle: '텍스트'
+        },
+        {
+          id: 'graph_toggle_intersections',
+          category: 'graph',
+          categoryLabel: '📈 그래프 · 수학 도구',
+          name: '교점 표시 켜기 / 끄기',
+          desc: '두 그래프 사이의 교점 마커 자동 탐색 표시',
+          defaultKey: '',
+          buttonIds: ['btnQuickIntersection'],
+          baseTitle: '교점 표시'
+        },
+        {
+          id: 'graph_add_piecewise',
+          category: 'graph',
+          categoryLabel: '📈 그래프 · 수학 도구',
+          name: '구간 분할선 추가',
+          desc: '구간별 함수(Piecewise) 세로 경계선 추가',
+          defaultKey: '',
+          buttonIds: ['btnRailPiecewise'],
+          baseTitle: '구간 분할'
+        },
+        {
+          id: 'graph_capture_card',
+          category: 'graph',
+          categoryLabel: '📈 그래프 · 수학 도구',
+          name: '그래프 카드 캡처 (카드 추가)',
+          desc: '현재 그래프 영역을 드래그 캡처하여 칠판 카드로 고정',
+          defaultKey: '',
+          buttonIds: ['btnTriggerGraphSnap'],
+          baseTitle: '카드 추가'
+        },
+        {
+          id: 'graph_open_smart_input',
+          category: 'graph',
+          categoryLabel: '📈 그래프 · 수학 도구',
+          name: '수식 직접 입력창 열기',
+          desc: 'f(x) 수식을 직접 입력하여 그래프 생성하는 창 열기',
+          defaultKey: '',
+          buttonIds: ['btnSmartInput'],
+          baseTitle: 'f(x) 수식 입력'
+        },
+
+        // 3. 📄 슬라이드 · 뷰어 이동 (slide)
+        {
+          id: 'slide_prev',
+          category: 'slide',
+          categoryLabel: '📄 슬라이드 · 뷰어 이동',
+          name: '이전 캔버스(슬라이드)로 이동',
+          desc: '수업 캔버스 또는 PDF 칠판 이전 페이지로 이동',
+          defaultKey: 'PageUp',
+          buttonIds: ['btnPlaylistPrev', 'btnPdfBoardPrev'],
+          baseTitle: '이전 캔버스'
+        },
+        {
+          id: 'slide_next',
+          category: 'slide',
+          categoryLabel: '📄 슬라이드 · 뷰어 이동',
+          name: '다음 캔버스(슬라이드)로 이동',
+          desc: '수업 캔버스 또는 PDF 칠판 다음 페이지로 이동',
+          defaultKey: 'PageDown',
+          buttonIds: ['btnPlaylistNext', 'btnPdfBoardNext'],
+          baseTitle: '다음 캔버스'
+        },
+        {
+          id: 'slide_add_blank',
+          category: 'slide',
+          categoryLabel: '📄 슬라이드 · 뷰어 이동',
+          name: '새 빈 캔버스 추가',
+          desc: '현재 칠판을 보존하고 다음 빈 슬라이드 즉시 생성',
+          defaultKey: '',
+          buttonIds: ['btnPlaylistAddSlide'],
+          baseTitle: '다음 문제 캡처 / 새 캔버스 추가'
+        },
+        {
+          id: 'pdf_open_or_crop',
+          category: 'slide',
+          categoryLabel: '📄 슬라이드 · 뷰어 이동',
+          name: 'PDF 시험지 열기 / 문제 캡처',
+          desc: 'PDF 시험지 창을 열거나 문제 영역 캡처 모드 전환',
+          defaultKey: 'C',
+          buttonIds: ['btnPdfImport'],
+          baseTitle: '파일 열기 (PDF · 이미지 · .graphly)'
+        },
+        {
+          id: 'viewer_open_preview',
+          category: 'slide',
+          categoryLabel: '📄 슬라이드 · 뷰어 이동',
+          name: '표준 뷰어 (시험지 미리보기) 열기',
+          desc: '학생용 뷰어 화면으로 전환하여 전체 슬라이드·영상 확인',
+          defaultKey: '',
+          buttonIds: ['btnQuickOpenViewer'],
+          baseTitle: '뷰어 (시험지 미리보기)'
+        },
+        {
+          id: 'drawer_toggle',
+          category: 'slide',
+          categoryLabel: '📄 슬라이드 · 뷰어 이동',
+          name: '좌측 사이드 메뉴 접기 / 펼치기',
+          desc: '좌측 개형/설정 서랍 패널 열기 또는 닫기',
+          defaultKey: '\\'
+        },
+
+        // 4. ⚡ 편집 · 녹화 · 시스템 (system)
+        {
+          id: 'sys_undo',
+          category: 'system',
+          categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+          name: '실행 취소 (Undo)',
+          desc: '직전 필기 또는 그래프 조작 되돌리기',
+          defaultKey: 'Ctrl+Z',
+          buttonIds: ['btnUndo'],
+          baseTitle: '실행 취소'
+        },
+        {
+          id: 'sys_redo',
+          category: 'system',
+          categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+          name: '다시 실행 (Redo)',
+          desc: '취소한 작업을 다시 복구하기',
+          defaultKey: 'Ctrl+Y',
+          buttonIds: ['btnRedo'],
+          baseTitle: '다시 실행'
+        },
+        {
+          id: 'sys_delete_selected',
+          category: 'system',
+          categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+          name: '선택 항목 삭제',
+          desc: '선택된 그래프 곡선, 올가미 필기, 텍스트 라벨 삭제',
+          defaultKey: 'Delete'
+        },
+        {
+          id: 'sys_copy_image',
+          category: 'system',
+          categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+          name: '현재 화면 클립보드 이미지 복사',
+          desc: '한글(HWP)·PPT에 바로 붙여넣을 수 있게 고화질 이미지 복사',
+          defaultKey: 'Ctrl+C',
+          buttonIds: ['btnCopy'],
+          baseTitle: '한글/PPT에 1초 컷 붙여넣기'
+        },
+        {
+          id: 'sys_record_toggle',
+          category: 'system',
+          categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+          name: '영상 녹화 시작 / 일시정지',
+          desc: '음성·필기·그래프 동기화 해설 녹화 시작 또는 일시정지/재개',
+          defaultKey: '',
+          buttonIds: ['btnAudioRecordToggle', 'btnAudioPauseRecord'],
+          baseTitle: '영상 녹화 시작 / 일시정지'
+        },
+        {
+          id: 'sys_record_stop',
+          category: 'system',
+          categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+          name: '영상 녹화 종료',
+          desc: '진행 중인 해설 녹화를 완료하고 저장',
+          defaultKey: '',
+          buttonIds: ['btnAudioStopRecord'],
+          baseTitle: '녹화 종료'
+        },
+        {
+          id: 'sys_fullscreen_toggle',
+          category: 'system',
+          categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+          name: '전체화면 켜기 / 끄기',
+          desc: '브라우저 여백 없는 몰입형 전체화면 전환',
+          defaultKey: '',
+          buttonIds: ['btnFullscreen'],
+          baseTitle: '전체화면'
+        },
+        {
+          id: 'sys_open_cloud_hub',
+          category: 'system',
+          categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+          name: '클라우드 보관함 열기',
+          desc: '내 클라우드 폴더 탐색기 및 저장/불러오기 창 열기',
+          defaultKey: '',
+          buttonIds: ['btnCloudHub'],
+          baseTitle: '클라우드 보관함 (저장 & 불러오기)'
+        }
+      ];
+    }
+    return this._shortcutDefinitions;
+  }
+
+  initShortcutCustomization() {
+    if (!this.customShortcuts || typeof this.customShortcuts !== 'object') {
+      this.customShortcuts = {};
+    }
+    try {
+      const uid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest';
+      const rawPrefs = localStorage.getItem(this._getUserPrefsStorageKey(uid));
+      let loaded = null;
+      if (rawPrefs) {
+        const parsedPrefs = JSON.parse(rawPrefs);
+        if (parsedPrefs && parsedPrefs.customShortcuts && typeof parsedPrefs.customShortcuts === 'object') {
+          loaded = parsedPrefs.customShortcuts;
+        }
+      }
+      if (!loaded) {
+        const rawLocal = localStorage.getItem('graphly_custom_shortcuts_v1');
+        if (rawLocal) {
+          const parsedLocal = JSON.parse(rawLocal);
+          if (parsedLocal && typeof parsedLocal === 'object') {
+            loaded = parsedLocal;
+          }
+        }
+      }
+      if (loaded) {
+        this.customShortcuts = { ...loaded };
+      }
+    } catch (_) { }
+
+    this._draftShortcuts = null;
+    this._recordingShortcutActionId = null;
+    this._shortcutActiveCategory = 'all';
+    this._shortcutSearchQuery = '';
+    this._shortcutModalDirty = false;
+
+    const btnOpenSettings = document.getElementById('btnOpenShortcutSettings');
+    const btnOpenFromGuide = document.getElementById('btnOpenShortcutSettingsFromGuide');
+    const modal = document.getElementById('modalShortcutSettings');
+    const btnClose = document.getElementById('btnCloseShortcutSettings');
+    const btnCancel = document.getElementById('btnCancelShortcutSettings');
+    const btnSave = document.getElementById('btnSaveShortcutSettings');
+    const btnResetAll = document.getElementById('btnResetAllShortcuts');
+    const catTabsWrap = document.getElementById('shortcutCategoryTabs');
+    const searchInput = document.getElementById('inputShortcutSearch');
+
+    if (btnOpenSettings) {
+      btnOpenSettings.onclick = (e) => {
+        e.stopPropagation();
+        this.openShortcutSettingsModal();
+      };
+    }
+    if (btnOpenFromGuide) {
+      btnOpenFromGuide.onclick = (e) => {
+        e.stopPropagation();
+        const mGuide = document.getElementById('modalGuideNotice');
+        if (mGuide) mGuide.classList.remove('show');
+        this.openShortcutSettingsModal();
+      };
+    }
+    if (btnClose) {
+      btnClose.onclick = () => this.closeShortcutSettingsModal();
+    }
+    if (btnCancel) {
+      btnCancel.onclick = () => this.closeShortcutSettingsModal();
+    }
+    if (modal) {
+      modal.onclick = (e) => {
+        if (e.target === modal) {
+          if (this._recordingShortcutActionId) {
+            this._recordingShortcutActionId = null;
+            this.renderShortcutSettingsModalList();
+            return;
+          }
+          this.closeShortcutSettingsModal();
+        }
+      };
+    }
+    if (btnSave) {
+      btnSave.onclick = () => this.saveShortcutSettingsFromModal();
+    }
+    if (btnResetAll) {
+      btnResetAll.onclick = () => this.resetAllDraftShortcutsToDefault();
+    }
+    if (catTabsWrap) {
+      catTabsWrap.querySelectorAll('.shortcut-cat-tab').forEach(tabBtn => {
+        tabBtn.onclick = () => {
+          this._shortcutActiveCategory = tabBtn.getAttribute('data-scat') || 'all';
+          catTabsWrap.querySelectorAll('.shortcut-cat-tab').forEach(b => {
+            b.classList.toggle('active', b === tabBtn);
+          });
+          this.renderShortcutSettingsModalList();
+        };
+      });
+    }
+    if (searchInput) {
+      searchInput.oninput = (e) => {
+        this._shortcutSearchQuery = String(e.target.value || '').trim();
+        this.renderShortcutSettingsModalList();
+      };
+      searchInput.onkeydown = (e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          if (searchInput.value) {
+            searchInput.value = '';
+            this._shortcutSearchQuery = '';
+            this.renderShortcutSettingsModalList();
+          } else {
+            searchInput.blur();
+          }
+        }
+      };
+    }
+
+    // 모달 열림 중 키 입력 캡처 리스너 (키 바인딩 녹음 및 ESC 닫기)
+    window.addEventListener('keydown', (e) => {
+      if (!this.isShortcutSettingsModalOpen()) return;
+
+      // 검색창 포커스 중이고 녹음 상태가 아니면 일반 타이핑 허용
+      const isSearchFocused = (document.activeElement === searchInput);
+      if (isSearchFocused && !this._recordingShortcutActionId) {
+        return;
+      }
+
+      if (this._recordingShortcutActionId) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+
+        if (e.key === 'Escape') {
+          const canceledDef = this.getShortcutDefinitions().find(d => d.id === this._recordingShortcutActionId);
+          this._recordingShortcutActionId = null;
+          this.setShortcutModalBanner(
+            `ℹ️ [${canceledDef ? canceledDef.name : '기능'}] 단축키 입력을 취소했습니다.`,
+            'normal'
+          );
+          this.renderShortcutSettingsModalList();
+          return;
+        }
+
+        const normKey = this.normalizeShortcutEventToKey(e);
+        if (!normKey) {
+          // Ctrl, Shift, Alt 단독 입력 시 조합키 대기
+          return;
+        }
+
+        if (normKey === 'F5' || normKey === 'Ctrl+R') {
+          this.setShortcutModalBanner(
+            `⚠️ [${this.formatShortcutKeyForDisplay(normKey)}] 키는 브라우저 새로고침 보호를 위해 사용할 수 없습니다.`,
+            'warning'
+          );
+          return;
+        }
+
+        this.assignDraftShortcutKey(this._recordingShortcutActionId, normKey);
+        return;
+      }
+
+      // 녹음 중이 아닐 때 ESC 누르면 모달 닫기 (저장 안 함)
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        this.closeShortcutSettingsModal();
+      }
+    }, true);
+
+    this.syncShortcutTooltipsAndGuideUI();
+  }
+
+  isShortcutSettingsModalOpen() {
+    const modal = document.getElementById('modalShortcutSettings');
+    return Boolean(modal && modal.classList.contains('show'));
+  }
+
+  normalizeShortcutEventToKey(e) {
+    if (!e) return '';
+    const rawKey = String(e.key || '');
+    const code = String(e.code || '');
+
+    // 수식키(Modifier) 단독 누름은 무시 (조합키 대기)
+    if (['Control', 'Shift', 'Alt', 'Meta', 'OS', 'CapsLock', 'NumLock', 'ScrollLock', 'Process', 'Dead'].includes(rawKey)) {
+      if (code.startsWith('Control') || code.startsWith('Shift') || code.startsWith('Alt') || code.startsWith('Meta')) {
+        return '';
+      }
+    }
+
+    let baseKey = '';
+    if (/^Key([A-Z])$/.test(code)) {
+      // 한/영 키 상태와 무관하게 물리 알파벳 키(KeyA~KeyZ)를 대문자 A~Z로 인식!
+      baseKey = code.slice(3).toUpperCase();
+    } else if (/^Digit([0-9])$/.test(code)) {
+      baseKey = code.slice(5);
+    } else if (/^Numpad([0-9])$/.test(code)) {
+      baseKey = code.slice(6);
+    } else if (/^F([1-9]|1[0-2])$/i.test(rawKey)) {
+      baseKey = rawKey.toUpperCase();
+    } else if (code === 'BracketLeft' || rawKey === '[') {
+      baseKey = '[';
+    } else if (code === 'BracketRight' || rawKey === ']') {
+      baseKey = ']';
+    } else if (code === 'Backslash' || rawKey === '\\') {
+      baseKey = '\\';
+    } else if (code === 'Slash' || rawKey === '/') {
+      baseKey = '/';
+    } else if (code === 'Period' || rawKey === '.') {
+      baseKey = '.';
+    } else if (code === 'Comma' || rawKey === ',') {
+      baseKey = ',';
+    } else if (code === 'Semicolon' || rawKey === ';') {
+      baseKey = ';';
+    } else if (code === 'Quote' || rawKey === "'") {
+      baseKey = "'";
+    } else if (code === 'Backquote' || rawKey === '`') {
+      baseKey = '`';
+    } else if (code === 'Minus' || code === 'NumpadSubtract' || rawKey === '-') {
+      baseKey = '-';
+    } else if (code === 'Equal' || code === 'NumpadAdd' || rawKey === '=' || rawKey === '+') {
+      baseKey = '=';
+    } else if (rawKey === 'PageUp' || code === 'PageUp') {
+      baseKey = 'PageUp';
+    } else if (rawKey === 'PageDown' || code === 'PageDown') {
+      baseKey = 'PageDown';
+    } else if (rawKey === 'Home' || code === 'Home') {
+      baseKey = 'Home';
+    } else if (rawKey === 'End' || code === 'End') {
+      baseKey = 'End';
+    } else if (rawKey === 'Insert' || code === 'Insert') {
+      baseKey = 'Insert';
+    } else if (rawKey === 'Delete' || code === 'Delete') {
+      baseKey = 'Delete';
+    } else if (rawKey === 'Backspace' || code === 'Backspace') {
+      baseKey = 'Backspace';
+    } else if (rawKey === 'Tab' || code === 'Tab') {
+      baseKey = 'Tab';
+    } else if (rawKey === 'Enter' || code === 'Enter' || code === 'NumpadEnter') {
+      baseKey = 'Enter';
+    } else if (rawKey === 'ArrowLeft' || code === 'ArrowLeft') {
+      baseKey = 'ArrowLeft';
+    } else if (rawKey === 'ArrowRight' || code === 'ArrowRight') {
+      baseKey = 'ArrowRight';
+    } else if (rawKey === 'ArrowUp' || code === 'ArrowUp') {
+      baseKey = 'ArrowUp';
+    } else if (rawKey === 'ArrowDown' || code === 'ArrowDown') {
+      baseKey = 'ArrowDown';
+    } else if (rawKey === ' ' || code === 'Space') {
+      baseKey = 'Space';
+    } else if (rawKey.length === 1 && /^[a-zA-Z0-9]$/.test(rawKey)) {
+      baseKey = rawKey.toUpperCase();
+    }
+
+    if (!baseKey) return '';
+
+    const parts = [];
+    if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    parts.push(baseKey);
+    return parts.join('+');
+  }
+
+  formatShortcutKeyForDisplay(keyStr) {
+    const clean = String(keyStr || '').trim();
+    if (!clean) return '미지정';
+    const labelMap = {
+      'ArrowLeft': '←',
+      'ArrowRight': '→',
+      'ArrowUp': '↑',
+      'ArrowDown': '↓',
+      'PageUp': 'PageUp',
+      'PageDown': 'PageDown',
+      'Delete': 'Delete',
+      'Backspace': 'Backspace',
+      'Space': 'Space',
+      'Enter': 'Enter',
+      'Tab': 'Tab'
+    };
+    return clean
+      .split('+')
+      .map(token => labelMap[token] || token)
+      .join(' + ');
+  }
+
+  _getEffectiveShortcutsMap(customOverride = null) {
+    const src = (customOverride && typeof customOverride === 'object')
+      ? customOverride
+      : (this.customShortcuts || {});
+    const result = {};
+    this.getShortcutDefinitions().forEach(def => {
+      if (Object.prototype.hasOwnProperty.call(src, def.id) && typeof src[def.id] === 'string') {
+        result[def.id] = src[def.id].trim();
+      } else {
+        result[def.id] = String(def.defaultKey || '').trim();
+      }
+    });
+    return result;
+  }
+
+  setShortcutModalBanner(htmlText, mode = 'normal') {
+    const banner = document.getElementById('shortcutModalNoticeBanner');
+    if (!banner) return;
+    banner.innerHTML = htmlText;
+    banner.classList.toggle('is-warning', mode === 'warning');
+    banner.classList.toggle('is-recording', mode === 'recording');
+  }
+
+  openShortcutSettingsModal() {
+    const modal = document.getElementById('modalShortcutSettings');
+    if (!modal) return;
+    if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
+      this.closeDrawer();
+    }
+    this._draftShortcuts = { ...this._getEffectiveShortcutsMap(this.customShortcuts) };
+    this._recordingShortcutActionId = null;
+    this._shortcutModalDirty = false;
+
+    const badgeSync = document.getElementById('badgeShortcutAccountSync');
+    if (badgeSync) {
+      if (this.cloudUser && this.cloudUser.uid) {
+        const emailOrName = this.cloudUser.displayName || this.cloudUser.email || '로그인 계정';
+        badgeSync.textContent = `☁️ ${emailOrName} 계정 연동`;
+        badgeSync.classList.remove('is-guest');
+      } else {
+        badgeSync.textContent = '💻 비로그인 (로그인 시 내 계정에 영구 귀속)';
+        badgeSync.classList.add('is-guest');
+      }
+    }
+
+    this.setShortcutModalBanner(
+      '💡 기능 옆의 <strong>[단축키 버튼]</strong>을 클릭한 뒤 원하는 키를 누르세요. (중복 키 입력 시 기존 기능은 <strong>미지정</strong>으로 변경되며, 하단 <strong>[💾 저장하기]</strong>를 눌러야 최종 반영됩니다)',
+      'normal'
+    );
+    this._syncShortcutSaveBtnState();
+    this.renderShortcutSettingsModalList();
+    modal.classList.add('show');
+  }
+
+  closeShortcutSettingsModal() {
+    const modal = document.getElementById('modalShortcutSettings');
+    if (modal) modal.classList.remove('show');
+    this._recordingShortcutActionId = null;
+    this._draftShortcuts = null;
+    this._shortcutModalDirty = false;
+  }
+
+  _syncShortcutSaveBtnState() {
+    const btnSave = document.getElementById('btnSaveShortcutSettings');
+    if (!btnSave) return;
+    btnSave.classList.toggle('has-unsaved-changes', Boolean(this._shortcutModalDirty));
+    btnSave.textContent = this._shortcutModalDirty ? '💾 저장하기 (변경됨)' : '💾 저장하기';
+  }
+
+  assignDraftShortcutKey(actionId, newKey) {
+    if (!this._draftShortcuts) return;
+    const defs = this.getShortcutDefinitions();
+    const targetDef = defs.find(d => d.id === actionId);
+    if (!targetDef) return;
+
+    const cleanKey = String(newKey || '').trim();
+    let unassignedDef = null;
+
+    if (cleanKey) {
+      // 중복 키 검사: 이미 다른 기능에 동일한 키가 지정되어 있으면 기존 기능을 '미지정("")'으로 해제!
+      defs.forEach(otherDef => {
+        if (otherDef.id === actionId) return;
+        const otherKey = String(this._draftShortcuts[otherDef.id] || '').trim();
+        if (otherKey && otherKey.toUpperCase() === cleanKey.toUpperCase()) {
+          this._draftShortcuts[otherDef.id] = '';
+          unassignedDef = otherDef;
+        }
+      });
+    }
+
+    this._draftShortcuts[actionId] = cleanKey;
+    this._recordingShortcutActionId = null;
+    this._shortcutModalDirty = true;
+    this._syncShortcutSaveBtnState();
+
+    const dispKey = this.formatShortcutKeyForDisplay(cleanKey);
+    if (unassignedDef) {
+      this.setShortcutModalBanner(
+        `⚠️ 기존 <strong>[${unassignedDef.name}]</strong>에 지정되어 있던 <strong>'${dispKey}'</strong> 단축키를 <strong>[미지정]</strong>으로 바꾸고, <strong>[${targetDef.name}]</strong>에 지정했습니다. (하단 <strong>[💾 저장하기]</strong>를 눌러야 최종 반영됩니다)`,
+        'warning'
+      );
+    } else if (cleanKey) {
+      this.setShortcutModalBanner(
+        `✅ <strong>[${targetDef.name}]</strong> 단축키가 <strong>[${dispKey}]</strong>(으)로 지정되었습니다. 하단 <strong>[💾 저장하기]</strong>를 누르면 최종 반영됩니다.`,
+        'normal'
+      );
+    } else {
+      this.setShortcutModalBanner(
+        `ℹ️ <strong>[${targetDef.name}]</strong> 단축키가 <strong>[미지정]</strong>으로 비워졌습니다. 하단 <strong>[💾 저장하기]</strong>를 누르면 최종 반영됩니다.`,
+        'normal'
+      );
+    }
+
+    this.renderShortcutSettingsModalList();
+  }
+
+  resetAllDraftShortcutsToDefault() {
+    if (!this._draftShortcuts) return;
+    this.getShortcutDefinitions().forEach(def => {
+      this._draftShortcuts[def.id] = String(def.defaultKey || '').trim();
+    });
+    this._recordingShortcutActionId = null;
+    this._shortcutModalDirty = true;
+    this._syncShortcutSaveBtnState();
+    this.setShortcutModalBanner(
+      '🔄 모든 단축키가 초기 기본값으로 되돌려졌습니다. 하단 <strong>[💾 저장하기]</strong>를 누르면 최종 반영됩니다.',
+      'normal'
+    );
+    this.renderShortcutSettingsModalList();
+  }
+
+  saveShortcutSettingsFromModal() {
+    if (!this._draftShortcuts) {
+      this.closeShortcutSettingsModal();
+      return;
+    }
+
+    const nextCustom = {};
+    this.getShortcutDefinitions().forEach(def => {
+      const draftVal = String(this._draftShortcuts[def.id] ?? def.defaultKey ?? '').trim();
+      const defVal = String(def.defaultKey || '').trim();
+      if (draftVal !== defVal) {
+        // 기본값에서 변경되었거나 기본값이 있었는데 미지정("")으로 비운 경우 모두 저장
+        nextCustom[def.id] = draftVal;
+      }
+    });
+
+    this.customShortcuts = nextCustom;
+    try {
+      localStorage.setItem('graphly_custom_shortcuts_v1', JSON.stringify(this.customShortcuts));
+    } catch (_) { }
+
+    // 로그인 계정 환경설정(localStorage + Firestore user_preferences)에 즉시 저장
+    if (typeof this.scheduleSaveUserPreferences === 'function') {
+      this.scheduleSaveUserPreferences();
+    }
+
+    this.syncShortcutTooltipsAndGuideUI();
+    this.closeShortcutSettingsModal();
+  }
+
+  renderShortcutSettingsModalList() {
+    const listEl = document.getElementById('shortcutSettingsList');
+    if (!listEl) return;
+
+    const draft = this._draftShortcuts || this._getEffectiveShortcutsMap(this.customShortcuts);
+    const activeCat = this._shortcutActiveCategory || 'all';
+    const query = String(this._shortcutSearchQuery || '').toLowerCase();
+
+    const defs = this.getShortcutDefinitions().filter(def => {
+      if (activeCat !== 'all' && def.category !== activeCat) return false;
+      if (query) {
+        const curKeyDisp = this.formatShortcutKeyForDisplay(draft[def.id] || '').toLowerCase();
+        const matchName = def.name.toLowerCase().includes(query);
+        const matchDesc = (def.desc || '').toLowerCase().includes(query);
+        const matchKey = curKeyDisp.includes(query) || String(draft[def.id] || '').toLowerCase().includes(query);
+        return matchName || matchDesc || matchKey;
+      }
+      return true;
+    });
+
+    listEl.innerHTML = '';
+
+    if (defs.length === 0) {
+      const emptyEl = document.createElement('div');
+      emptyEl.style.cssText = 'padding: 32px 16px; text-align: center; color: #64748b; font-size: 13px; font-weight: 600;';
+      emptyEl.textContent = '검색 조건에 맞는 단축키 기능이 없습니다.';
+      listEl.appendChild(emptyEl);
+      return;
+    }
+
+    const categoriesOrder = ['ink', 'graph', 'slide', 'system'];
+    categoriesOrder.forEach(catKey => {
+      const catItems = defs.filter(d => d.category === catKey);
+      if (catItems.length === 0) return;
+
+      const secEl = document.createElement('div');
+      secEl.className = 'shortcut-cat-section';
+
+      const headerEl = document.createElement('div');
+      headerEl.className = 'shortcut-cat-section-header';
+      headerEl.innerHTML = `<span>${catItems[0].categoryLabel}</span><span style="font-size:11px; opacity:0.75;">${catItems.length}개 기능</span>`;
+      secEl.appendChild(headerEl);
+
+      catItems.forEach(def => {
+        const curKey = String(draft[def.id] ?? '').trim();
+        const defKey = String(def.defaultKey || '').trim();
+        const isRecording = (this._recordingShortcutActionId === def.id);
+        const isUnassigned = !curKey;
+        const isCustomized = (curKey !== defKey);
+
+        const row = document.createElement('div');
+        row.className = 'shortcut-row' + (isRecording ? ' is-recording-row' : '');
+
+        const infoWrap = document.createElement('div');
+        infoWrap.className = 'shortcut-row-info';
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'shortcut-row-title';
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = def.name;
+        titleEl.appendChild(nameSpan);
+
+        if (isCustomized) {
+          const customBadge = document.createElement('span');
+          customBadge.className = 'shortcut-custom-dot';
+          customBadge.textContent = isUnassigned ? '해제됨' : '맞춤';
+          titleEl.appendChild(customBadge);
+        }
+
+        const descEl = document.createElement('div');
+        descEl.className = 'shortcut-row-desc';
+        const defaultDisp = defKey ? this.formatShortcutKeyForDisplay(defKey) : '미지정';
+        descEl.textContent = `${def.desc} · (기본값: ${defaultDisp})`;
+
+        infoWrap.appendChild(titleEl);
+        infoWrap.appendChild(descEl);
+
+        const ctrlWrap = document.createElement('div');
+        ctrlWrap.className = 'shortcut-row-controls';
+
+        const bindBtn = document.createElement('button');
+        bindBtn.type = 'button';
+        bindBtn.className = 'shortcut-bind-btn'
+          + (isRecording ? ' is-recording' : '')
+          + (!isRecording && isUnassigned ? ' is-unassigned' : '')
+          + (!isRecording && !isUnassigned && isCustomized ? ' is-customized' : '');
+        bindBtn.textContent = isRecording
+          ? '⌨️ 키를 누르세요... (ESC 취소)'
+          : this.formatShortcutKeyForDisplay(curKey);
+        bindBtn.title = isRecording
+          ? '원하는 단축키를 누르세요 (ESC: 취소)'
+          : '클릭한 뒤 지정할 키보드를 누르세요';
+        bindBtn.onclick = (e) => {
+          e.stopPropagation();
+          if (this._recordingShortcutActionId === def.id) {
+            this._recordingShortcutActionId = null;
+            this.setShortcutModalBanner(
+              '💡 기능 옆의 <strong>[단축키 버튼]</strong>을 클릭한 뒤 원하는 키를 누르세요.',
+              'normal'
+            );
+          } else {
+            this._recordingShortcutActionId = def.id;
+            this.setShortcutModalBanner(
+              `⌨️ <strong>[${def.name}]</strong>에 지정할 키를 눌러주세요... (<strong>ESC</strong>: 취소 / 중복 키 입력 시 기존 단축키는 <strong>미지정</strong>으로 해제됩니다)`,
+              'recording'
+            );
+          }
+          this.renderShortcutSettingsModalList();
+        };
+
+        const clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.className = 'shortcut-mini-icon-btn';
+        clearBtn.textContent = '✕';
+        clearBtn.title = '단축키 비우기 (미지정으로 변경)';
+        clearBtn.disabled = isUnassigned;
+        clearBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.assignDraftShortcutKey(def.id, '');
+        };
+
+        const resetOneBtn = document.createElement('button');
+        resetOneBtn.type = 'button';
+        resetOneBtn.className = 'shortcut-mini-icon-btn is-reset-btn';
+        resetOneBtn.textContent = '↺';
+        resetOneBtn.title = `이 기능을 기본값(${defaultDisp})으로 복원`;
+        resetOneBtn.disabled = !isCustomized;
+        resetOneBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.assignDraftShortcutKey(def.id, defKey);
+        };
+
+        ctrlWrap.appendChild(bindBtn);
+        ctrlWrap.appendChild(clearBtn);
+        ctrlWrap.appendChild(resetOneBtn);
+
+        row.appendChild(infoWrap);
+        row.appendChild(ctrlWrap);
+        secEl.appendChild(row);
+      });
+
+      listEl.appendChild(secEl);
+    });
+  }
+
+  syncShortcutTooltipsAndGuideUI() {
+    const eff = this._getEffectiveShortcutsMap(this.customShortcuts);
+    const defs = this.getShortcutDefinitions();
+
+    // 1. 환경설정 패널의 [단축키 설정] 배지 업데이트
+    const customCount = defs.filter(d => {
+      const cur = String(eff[d.id] ?? '').trim();
+      const def = String(d.defaultKey || '').trim();
+      return cur !== def;
+    }).length;
+    const badgeSettings = document.getElementById('badgeShortcutCustomStatus');
+    if (badgeSettings) {
+      badgeSettings.textContent = customCount > 0 ? `${customCount}개 맞춤 적용중 ▸` : '맞춤 설정 ▸';
+    }
+
+    // 2. 툴바/메뉴 버튼의 마우스오버 툴팁(title)에 현재 단축키 실시간 반영
+    defs.forEach(def => {
+      if (!Array.isArray(def.buttonIds) || !def.baseTitle) return;
+      const curKey = String(eff[def.id] || '').trim();
+      const keyLabel = curKey ? ` (${this.formatShortcutKeyForDisplay(curKey)})` : '';
+      def.buttonIds.forEach(btnId => {
+        const el = document.getElementById(btnId);
+        if (el) {
+          el.title = `${def.baseTitle}${keyLabel}`;
+        }
+      });
+    });
+
+    // 3. [사용법 & 공지사항 ➔ 단축키 안내] 탭의 단축키 목록도 실시간 동기화
+    const guideGrid = document.getElementById('guideShortcutDynamicGrid');
+    if (guideGrid) {
+      const assignedDefs = defs.filter(d => String(eff[d.id] || '').trim().length > 0);
+      guideGrid.innerHTML = '';
+      assignedDefs.forEach(def => {
+        const item = document.createElement('div');
+        item.className = 'guide-shortcut-item';
+        const kbd = document.createElement('kbd');
+        kbd.className = 'guide-kbd';
+        kbd.textContent = this.formatShortcutKeyForDisplay(eff[def.id]);
+        const desc = document.createElement('span');
+        desc.className = 'guide-shortcut-desc';
+        desc.textContent = `${def.name} — ${def.desc}`;
+        item.appendChild(kbd);
+        item.appendChild(desc);
+        guideGrid.appendChild(item);
+      });
+
+      // 고정 마우스/터치 제스처 안내 추가
+      const staticGuides = [
+        { k: 'Space + 드래그', d: '캔버스 화면 이동 (Pan) · 마우스 휠 클릭 드래그도 동일' },
+        { k: '마우스 휠 / 두 손가락 핀치', d: '화면 확대 · 축소 (Zoom)' },
+        { k: 'Ctrl + V', d: '클립보드 캡처 이미지를 문제 카드로 즉시 붙여넣기' },
+        { k: '선 긋고 0.4초 정지', d: '반듯한 직선 / 수평 밑줄로 자동 보정 (Draw & Hold)' }
+      ];
+      staticGuides.forEach(sg => {
+        const item = document.createElement('div');
+        item.className = 'guide-shortcut-item';
+        const kbd = document.createElement('kbd');
+        kbd.className = 'guide-kbd';
+        kbd.textContent = sg.k;
+        const desc = document.createElement('span');
+        desc.className = 'guide-shortcut-desc';
+        desc.textContent = sg.d;
+        item.appendChild(kbd);
+        item.appendChild(desc);
+        guideGrid.appendChild(item);
+      });
+    }
+  }
+
+  handleCustomShortcutKeyDown(e) {
+    if (!e || e.defaultPrevented) return false;
+    if (this.isShortcutSettingsModalOpen()) return false;
+
+    // 그래프 추가창(panelPresets)이 열려 있을 때 단독 숫자키(0~9)는 11~109 그래프 코드 연속 소환에 우선 양보!
+    if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (/^[0-9]$/.test(e.key) || /^Digit[0-9]$/.test(e.code) || /^Numpad[0-9]$/.test(e.code)) {
+        return false;
+      }
+    }
+
+    const pressedKey = this.normalizeShortcutEventToKey(e);
+    if (!pressedKey) return false;
+
+    const eff = this._getEffectiveShortcutsMap(this.customShortcuts);
+    const defs = this.getShortcutDefinitions();
+
+    // 1. 정확히 일치하는 사용자/기본 단축키 탐색
+    let matchedActionId = null;
+    for (let i = 0; i < defs.length; i++) {
+      const d = defs[i];
+      const assigned = String(eff[d.id] || '').trim();
+      if (assigned && assigned.toUpperCase() === pressedKey.toUpperCase()) {
+        matchedActionId = d.id;
+        break;
+      }
+    }
+
+    // 2. 보조 호환 단축키 지원 (다른 기능에 배정되지 않았고 해당 기능이 기본값 상태일 때만)
+    if (!matchedActionId) {
+      if (pressedKey.toUpperCase() === 'CTRL+SHIFT+Z' && String(eff.sys_redo || '').toUpperCase() === 'CTRL+Y') {
+        matchedActionId = 'sys_redo';
+      } else if (pressedKey.toUpperCase() === 'BACKSPACE' && String(eff.sys_delete_selected || '').toUpperCase() === 'DELETE') {
+        matchedActionId = 'sys_delete_selected';
+      } else if (pressedKey.toUpperCase() === 'CTRL+B' && String(eff.drawer_toggle || '') === '\\') {
+        matchedActionId = 'drawer_toggle';
+      }
+    }
+
+    if (!matchedActionId) return false;
+
+    const handled = this.executeShortcutAction(matchedActionId, e);
+    if (handled) {
+      e.preventDefault();
+      return true;
+    }
+    return false;
+  }
+
+  executeShortcutAction(actionId, e) {
+    switch (actionId) {
+      case 'ink_toggle_mode': {
+        this.toggleInkMode();
+        return true;
+      }
+      case 'ink_tool_select': {
+        if (!this.isInkMode) this.toggleInkMode(true);
+        this.setActiveInkTool('select');
+        return true;
+      }
+      case 'ink_tool_pen': {
+        if (!this.isInkMode) this.toggleInkMode(true);
+        this.setActiveInkTool('pen');
+        return true;
+      }
+      case 'ink_tool_highlighter': {
+        if (!this.isInkMode) this.toggleInkMode(true);
+        if (this.activeInkTool === 'highlighter') {
+          this.setActiveInkTool('pen');
+        } else {
+          this.setActiveInkTool('highlighter');
+        }
+        return true;
+      }
+      case 'ink_tool_eraser': {
+        if (!this.isInkMode) this.toggleInkMode(true);
+        if (this.activeInkTool === 'eraser') {
+          this.setActiveInkTool('pen');
+        } else {
+          this.setActiveInkTool('eraser');
+        }
+        return true;
+      }
+      case 'ink_tool_lasso': {
+        if (!this.isInkMode) this.toggleInkMode(true);
+        if (this.activeInkTool === 'lasso') {
+          this.setActiveInkTool('pen');
+        } else {
+          this.setActiveInkTool('lasso');
+        }
+        return true;
+      }
+      case 'ink_tool_laser': {
+        if (!this.isInkMode) this.toggleInkMode(true);
+        if (this.activeInkTool === 'laser') {
+          this.setActiveInkTool('pen');
+        } else {
+          this.setActiveInkTool('laser');
+        }
+        return true;
+      }
+      case 'ink_tool_sticker': {
+        if (!this.isInkMode) this.toggleInkMode(true);
+        if (this.activeInkTool === 'sticker') {
+          this.setActiveInkTool('pen');
+        } else {
+          this.setActiveInkTool('sticker');
+        }
+        return true;
+      }
+      case 'ink_size_down': {
+        const btn = document.getElementById('btnInkSizeDown');
+        if (btn) {
+          btn.click();
+          return true;
+        }
+        return false;
+      }
+      case 'ink_size_up': {
+        const btn = document.getElementById('btnInkSizeUp');
+        if (btn) {
+          btn.click();
+          return true;
+        }
+        return false;
+      }
+      case 'ink_color_1':
+      case 'ink_color_2':
+      case 'ink_color_3':
+      case 'ink_color_4':
+      case 'ink_color_5': {
+        const colorIdx = parseInt(actionId.replace('ink_color_', ''), 10) - 1;
+        if (!this.isInkMode) this.toggleInkMode(true);
+        if (this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter') {
+          this.setActiveInkTool('pen');
+        }
+        const dots = document.querySelectorAll('#inkFloatingToolbar .ink-color-dot');
+        if (dots && dots[colorIdx]) {
+          dots[colorIdx].click();
+          return true;
+        }
+        return false;
+      }
+      case 'ink_clear_all': {
+        const btn = document.getElementById('btnInkClearAll');
+        if (btn) {
+          btn.click();
+          return true;
+        }
+        return false;
+      }
+      case 'graph_open_presets': {
+        if (this.isPdfModalOpen || (this.smartViewerState && this.smartViewerState.isOpen)) return false;
+        if (this.isGraphCovered) {
+          if (this.pdfPageBoardData) {
+            if (this._isPdfCropChoiceMenuOpen || this.isPdfToGraphCropMode) {
+              this.cancelPdfBoardToGraphCrop();
+            } else {
+              this.openPdfToGraphChoiceMenu(null);
+            }
+            return true;
+          }
+          this.enterGraphModeFromBoard();
+          this.openDrawer('panelPresets');
+          return true;
+        }
+        if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+          this.closeDrawer();
+        } else {
+          this.openDrawer('panelPresets');
+        }
+        return true;
+      }
+      case 'graph_toggle_axes': {
+        this.toggleAxes();
+        return true;
+      }
+      case 'graph_toggle_dropline': {
+        this.toggleDropLineMode();
+        return true;
+      }
+      case 'graph_toggle_text': {
+        this.toggleTextToolMode();
+        return true;
+      }
+      case 'graph_toggle_intersections': {
+        const btn = document.getElementById('btnQuickIntersection');
+        if (btn) {
+          btn.click();
+          return true;
+        }
+        return false;
+      }
+      case 'graph_add_piecewise': {
+        this.addPiecewiseBoundary();
+        return true;
+      }
+      case 'graph_capture_card': {
+        this.toggleGraphSnapMode();
+        return true;
+      }
+      case 'graph_open_smart_input': {
+        const btn = document.getElementById('btnSmartInput');
+        if (btn) {
+          btn.click();
+          return true;
+        }
+        return false;
+      }
+      case 'slide_prev': {
+        if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1) {
+          this.stepLessonPlaylist(-1);
+          return true;
+        }
+        if (this.pdfPageBoardData && typeof this.stepPdfBoardPage === 'function') {
+          this.stepPdfBoardPage(-1);
+          return true;
+        }
+        return false;
+      }
+      case 'slide_next': {
+        if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1) {
+          this.stepLessonPlaylist(1);
+          return true;
+        }
+        if (this.pdfPageBoardData && typeof this.stepPdfBoardPage === 'function') {
+          this.stepPdfBoardPage(1);
+          return true;
+        }
+        return false;
+      }
+      case 'slide_add_blank': {
+        if (typeof this.handleNewCanvasButtonClick === 'function') {
+          this.handleNewCanvasButtonClick();
+          return true;
+        }
+        return false;
+      }
+      case 'pdf_open_or_crop': {
+        if (this.isPdfModalOpen) {
+          this.togglePdfCropMode();
+        } else if (this.pdfDoc) {
+          this.openPdfModal();
+        } else {
+          const fileInput = document.getElementById('pdfFileInput');
+          if (fileInput) fileInput.click();
+        }
+        return true;
+      }
+      case 'viewer_open_preview': {
+        const btn = document.getElementById('btnQuickOpenViewer');
+        if (btn) {
+          btn.click();
+          return true;
+        }
+        return false;
+      }
+      case 'drawer_toggle': {
+        this.toggleDrawer();
+        return true;
+      }
+      case 'sys_undo': {
+        this.undo();
+        return true;
+      }
+      case 'sys_redo': {
+        this.redo();
+        return true;
+      }
+      case 'sys_delete_selected': {
+        if (this.isInkMode && this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
+          this.deleteSelectedInkStrokes();
+          return true;
+        }
+        if (this.selectedTextLabelId) {
+          this.removeTextLabel(this.selectedTextLabelId);
+          this.selectedTextLabelId = null;
+          return true;
+        }
+        if (this.activeGraphIdx >= 0 && this.activeGraphIdx < this.graphs.length) {
+          const targetIdx = this.activeGraphIdx;
+          this.selectedHandleIdx = null;
+          this.isCurveSelected = false;
+          this.removeGraph(targetIdx);
+          return true;
+        }
+        return false;
+      }
+      case 'sys_copy_image': {
+        const sel = (typeof window.getSelection === 'function') ? String(window.getSelection()) : '';
+        if (sel && sel.trim().length > 0) return false;
+        this.copyToClipboard();
+        return true;
+      }
+      case 'sys_record_toggle': {
+        if (this.isAudioRecording) {
+          this._isAudioRecMenuOpen = false;
+          this.togglePauseAudioRecording();
+        } else {
+          this._isAudioRecMenuOpen = false;
+          this.startAudioRecording();
+        }
+        return true;
+      }
+      case 'sys_record_stop': {
+        if (this.isAudioRecording) {
+          this._isAudioRecMenuOpen = false;
+          this.stopAudioRecording();
+          return true;
+        }
+        return false;
+      }
+      case 'sys_fullscreen_toggle': {
+        const btn = document.getElementById('btnFullscreen');
+        if (btn) {
+          btn.click();
+          return true;
+        }
+        return false;
+      }
+      case 'sys_open_cloud_hub': {
+        const btn = document.getElementById('btnCloudHub');
+        if (btn) {
+          btn.click();
+          return true;
+        }
+        return false;
+      }
+      default:
+        return false;
+    }
   }
 
   showToast(message) {
