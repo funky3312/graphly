@@ -3658,32 +3658,42 @@ body.pdf-modal-open #lassoActionFloatingBar {
 /* PDF 상단 컨트롤 툴바 */
 .pdf-modal-header {
   height: 56px;
-  padding: 0 20px;
+  padding: 0 14px;
   background: #1e293b;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
-  gap: 16px;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pdf-modal-header::-webkit-scrollbar {
+  display: none;
 }
 
 .pdf-header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 200px;
+  gap: 8px;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .pdf-file-icon {
   font-size: 18px;
+  flex-shrink: 0;
 }
 
 .pdf-file-title {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   color: #f1f5f9;
-  max-width: 220px;
+  max-width: 180px;
+  min-width: 48px;
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3695,7 +3705,7 @@ body.pdf-modal-open #lassoActionFloatingBar {
   align-items: center;
   gap: 5px;
   height: 30px;
-  padding: 0 12px;
+  padding: 0 10px;
   font-size: 12px;
   font-weight: 600;
   color: #cbd5e1;
@@ -3705,6 +3715,8 @@ body.pdf-modal-open #lassoActionFloatingBar {
   cursor: pointer;
   transition: all 0.15s ease;
   user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .pdf-header-btn-subtle:hover {
@@ -3731,12 +3743,16 @@ body.pdf-modal-open #lassoActionFloatingBar {
 .pdf-header-center {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .pdf-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 32px;
-  padding: 0 12px;
+  padding: 0 10px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
@@ -3745,6 +3761,8 @@ body.pdf-modal-open #lassoActionFloatingBar {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .pdf-nav-btn:hover:not(:disabled) {
@@ -3802,6 +3820,9 @@ body.pdf-modal-open #lassoActionFloatingBar {
 }
 
 .pdf-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 30px;
   min-width: 30px;
   padding: 0 8px;
@@ -3811,6 +3832,8 @@ body.pdf-modal-open #lassoActionFloatingBar {
   color: #cbd5e1;
   font-size: 13px;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .pdf-tool-btn:hover {
@@ -3824,29 +3847,34 @@ body.pdf-modal-open #lassoActionFloatingBar {
   color: #94a3b8;
   min-width: 42px;
   text-align: center;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* 우측 닥줌 크롭 토글 버튼 */
 .pdf-header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .pdf-crop-toggle-btn {
   height: 34px;
-  padding: 0 14px;
+  padding: 0 12px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 8px;
   color: #f1f5f9;
   font-size: 13px;
   font-weight: 600;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .pdf-crop-toggle-btn:hover {
@@ -6689,19 +6717,21 @@ body.theme-light .canvas-text-input {
    ========================================================================== */
 .pdf-open-page-btn {
   height: 34px;
-  padding: 0 14px;
+  padding: 0 12px;
   background: linear-gradient(135deg, #6d28d9, #4f46e5);
   border: 1.5px solid #7c3aed;
   border-radius: 8px;
   color: #ffffff !important;
   font-size: 13px;
   font-weight: 700;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 2px 10px rgba(79, 70, 229, 0.28);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .pdf-open-page-btn:hover {
@@ -6732,7 +6762,7 @@ body.theme-light .pdf-open-page-btn:hover {
 
 .pdf-multi-crop-btn {
   height: 34px;
-  padding: 0 13px;
+  padding: 0 12px;
   background: rgba(16, 185, 129, 0.12);
   border: 1.5px solid rgba(16, 185, 129, 0.45);
   border-radius: 8px;
@@ -6744,6 +6774,8 @@ body.theme-light .pdf-open-page-btn:hover {
   gap: 5px;
   cursor: pointer;
   transition: all 0.18s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 body:not(.theme-light) .pdf-multi-crop-btn {
