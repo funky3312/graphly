@@ -10264,7 +10264,16 @@ class GraphApp {
           currentStroke.points.length,
           0
         );
-        currentStroke.points.push({ nx: pos.nx, ny: pos.ny, p: moveP, t: recT });
+        this._appendNormalizedCardPointWithArcSubdivision(
+          currentStroke.points,
+          pos.nx,
+          pos.ny,
+          moveP,
+          recT,
+          pos.w,
+          pos.h,
+          Boolean(currentStroke.isHighlighter)
+        );
 
         this.renderProblemCardCanvas();
       });
@@ -11163,7 +11172,16 @@ class GraphApp {
           curExtraStroke.points.length,
           0
         );
-        curExtraStroke.points.push({ nx, ny, p: moveP, t: recT });
+        this._appendNormalizedCardPointWithArcSubdivision(
+          curExtraStroke.points,
+          nx,
+          ny,
+          moveP,
+          recT,
+          rw,
+          rh,
+          Boolean(curExtraStroke.isHighlighter)
+        );
         renderExtraCardInk();
       });
 
@@ -13330,7 +13348,16 @@ class GraphApp {
           currentStroke.points.length,
           0
         );
-        currentStroke.points.push({ nx: pos.nx, ny: pos.ny, p: moveP, t: recT });
+        this._appendNormalizedCardPointWithArcSubdivision(
+          currentStroke.points,
+          pos.nx,
+          pos.ny,
+          moveP,
+          recT,
+          pos.w,
+          pos.h,
+          Boolean(currentStroke.isHighlighter)
+        );
         this.renderGraphCardCanvas();
       });
 
@@ -13795,6 +13822,54 @@ class GraphApp {
       prevX = nx;
       prevY = ny;
     }
+  }
+
+  // 🌟 [문제/그래프 카드 필기 전용 원호 내분점 자동 보간기]
+  _appendNormalizedCardPointWithArcSubdivision(pointsArr, nx, ny, moveP, recT, w, h, isHighlighter = false) {
+    if (!Array.isArray(pointsArr)) return;
+    if (!isHighlighter && pointsArr.length >= 2 && w > 10 && h > 10) {
+      const pPrevA = pointsArr[pointsArr.length - 2];
+      const pPrevB = pointsArr[pointsArr.length - 1];
+      const ax = pPrevA.nx * w, ay = pPrevA.ny * h;
+      const bx = pPrevB.nx * w, by = pPrevB.ny * h;
+      const cx = nx * w, cy = ny * h;
+      const vx1 = bx - ax, vy1 = by - ay;
+      const vx2 = cx - bx, vy2 = cy - by;
+      const len1 = Math.hypot(vx1, vy1), len2 = Math.hypot(vx2, vy2);
+      if (len2 > 11.0 && len1 > 2.5) {
+        const u1x = vx1 / len1, u1y = vy1 / len1;
+        const u2x = vx2 / len2, u2y = vy2 / len2;
+        const cosTurn = Math.max(-1, Math.min(1, u1x * u2x + u1y * u2y));
+        if (cosTurn > -0.35 && cosTurn < 0.985) {
+          let normX = u1x - cosTurn * u2x;
+          let normY = u1y - cosTurn * u2y;
+          const nLen = Math.hypot(normX, normY);
+          if (nLen > 1e-4) {
+            normX /= nLen;
+            normY /= nLen;
+            const theta = Math.acos(cosTurn);
+            const ratioScale = Math.min(1.0, len1 / (len2 * 0.65));
+            const sagitta = 0.5 * len2 * Math.min(0.28, Math.tan(theta * 0.25)) * ratioScale;
+            const subCount = len2 > 24.0 ? 2 : 1;
+            const prevP = (typeof pPrevB.p === 'number') ? pPrevB.p : 0.5;
+            for (let s = 1; s <= subCount; s++) {
+              const t = s / (subCount + 1);
+              const arcOffset = 4 * t * (1 - t) * sagitta;
+              const subPxX = bx + vx2 * t + normX * arcOffset;
+              const subPxY = by + vy2 * t + normY * arcOffset;
+              const subP = prevP + (moveP - prevP) * t;
+              pointsArr.push({
+                nx: subPxX / w,
+                ny: subPxY / h,
+                p: subP,
+                t: recT
+              });
+            }
+          }
+        }
+      }
+    }
+    pointsArr.push({ nx, ny, p: moveP, t: recT });
   }
 
   // 🌟 [굿노트 6 · 노타빌리티 급 하이브리드 필압·속도·코너 감응 연산기]
@@ -29950,11 +30025,39 @@ class GraphApp {
             }
           }
 
-          // 🛡️ [iPadOS Safari getCoalescedEvents 역주행/중복 패킷 원천 차단]:
-          // iPadOS WebKit의 getCoalescedEvents()는 직전 프레임의 샘플이 중복/역순으로 섞여 나와
-          // 원을 그릴 때 이전 위치로 되돌아가 현(chord)을 따라 두 줄로 겹쳐 그리는 계단식 마디(Staircase Overlap)를 유발합니다!
-          // 따라서 단일 pointermove 이벤트([e])만 사용하고, 진행 방향 역주행(dot < 0) 패킷을 완벽히 걸러냅니다.
-          const events = [e];
+          // 🛡️ [240Hz 고밀도 펜 입력 복원 + iPadOS Safari 역주행/중복 패킷 단조 전진 필터(Monotonic Progress Filter)]:
+          // 현재 프레임의 시작점(frameStartRaw)과 끝점(finalPos) 사이에서 끝점까지의 거리가 단조 감소하며
+          // 정방향으로 전진하는 진짜 중간 곡선 샘플만 추출하여, iPadOS 계단 현상 없이 240Hz 곡선 밀도를 100% 복원합니다!
+          const events = [];
+          const frameStartRaw = this._lastRawInkScreenPos;
+          const finalPos = pos;
+          const rawCoalesced = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null;
+          if (rawCoalesced && rawCoalesced.length > 1 && frameStartRaw) {
+            const frameDist = Math.hypot(finalPos.x - frameStartRaw.x, finalPos.y - frameStartRaw.y);
+            if (frameDist >= 3.5) {
+              let anchor = frameStartRaw;
+              let remDist = frameDist;
+              for (let ci = 0; ci < rawCoalesced.length; ci++) {
+                const cev = rawCoalesced[ci];
+                if (!cev) continue;
+                const cPos = getPos(cev);
+                const stepFromAnchor = Math.hypot(cPos.x - anchor.x, cPos.y - anchor.y);
+                const distToFinal = Math.hypot(finalPos.x - cPos.x, finalPos.y - cPos.y);
+                if (distToFinal < 0.8) continue;
+                if (stepFromAnchor >= 1.2 && distToFinal <= remDist - 0.8) {
+                  const vxA = cPos.x - anchor.x, vyA = cPos.y - anchor.y;
+                  const vxF = finalPos.x - cPos.x, vyF = finalPos.y - cPos.y;
+                  const dotAF = vxA * vxF + vyA * vyF;
+                  if (dotAF > -0.15 * stepFromAnchor * distToFinal) {
+                    events.push(cev);
+                    anchor = cPos;
+                    remDist = distToFinal;
+                  }
+                }
+              }
+            }
+          }
+          events.push(e);
           let addedPoints = 0;
           for (let i = 0; i < events.length; i++) {
             const ev = events[i];
@@ -29971,12 +30074,28 @@ class GraphApp {
             let sx = pPos.x;
             let sy = pPos.y;
             const liveLen = this._liveBezierScreenPts ? this._liveBezierScreenPts.length : 0;
-            // 🌟 [속도 적응형 스트림라인 & 형광펜 1:1 밀착 추적]:
-            // 느린 세필 필기(step < 14px)에서는 미세 손떨림을 잡아주고, 빠른 획이나 형광펜에서는 펜촉을 지연 없이 1:1로 바짝 따라갑니다!
+            // 🌟 [속도·곡률 적응형 스트림라인 & 형광펜 1:1 밀착 추적]:
+            // 느린 세필 필기(step < 14px)에서는 미세 손떨림을 잡아주고, 빠른 곡선 회전 구간에서도 최소 스무딩(0.24)을 유지하여 정점 튐을 방지합니다!
             if (!this.currentInkStroke.isHighlighter) {
               const stepD = lastRaw ? Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y) : 0;
               const blurBoost = Math.min(1.0, (this.inkSoftBlur || 0) / 5.0);
-              const smoothScale = stepD > (12 + blurBoost * 8) ? Math.max(0, 1 - (stepD - (12 + blurBoost * 8)) / 28) : 1.0;
+              let minCurveSmooth = 0;
+              if (liveLen >= 2 && stepD > 10) {
+                const pPrev1 = this._liveBezierScreenPts[liveLen - 1];
+                const pPrev2 = this._liveBezierScreenPts[liveLen - 2];
+                const rvx1 = pPrev1.x - pPrev2.x, rvy1 = pPrev1.y - pPrev2.y;
+                const rvx2 = pPos.x - pPrev1.x, rvy2 = pPos.y - pPrev1.y;
+                const rLen1 = Math.hypot(rvx1, rvy1), rLen2 = Math.hypot(rvx2, rvy2);
+                if (rLen1 > 1.5 && rLen2 > 1.5) {
+                  const rCos = (rvx1 * rvx2 + rvy1 * rvy2) / (rLen1 * rLen2);
+                  if (rCos > 0.25 && rCos < 0.97) {
+                    minCurveSmooth = 0.24;
+                  }
+                }
+              }
+              const smoothScale = stepD > (12 + blurBoost * 8)
+                ? Math.max(minCurveSmooth, 1 - (stepD - (12 + blurBoost * 8)) / 28)
+                : 1.0;
               if (liveLen >= 2 && smoothScale > 0.01) {
                 const pPrev1 = this._liveBezierScreenPts[liveLen - 1];
                 const pPrev2 = this._liveBezierScreenPts[liveLen - 2];
@@ -30034,6 +30153,58 @@ class GraphApp {
               this.currentInkStroke.tEnd = recTMove;
               this.recordAudioCursorPoint(sx, sy, this.currentInkStroke.color, true);
             }
+
+            if (!this._liveBezierScreenPts) {
+              this._liveBezierScreenPts = [];
+            }
+
+            // 🌟 [성긴 곡선 구간 원호 내분점 자동 보간 (Circular Arc Subdivision)]:
+            // 빠르게 원을 그리거나 순간적인 브라우저 프레임 간격 벌어짐으로 인해 회전 구간에서 점 간격(len2 > 11px)이 넓어졌을 때,
+            // 현(chord)을 따라 다각형처럼 각지지 않도록 실제 원호(Sagitta: h = 0.5 * L * tan(θ/4)) 위의 중간 보간점을 자동 삽입합니다!
+            // 실시간 드로잉(_liveBezierScreenPts)과 완료 후 베이킹(currentInkStroke.points) 양쪽에 동일하게 삽입되어 펜을 뗄 때 모양 변화가 0%입니다.
+            if (!this.currentInkStroke.isHighlighter && this._liveBezierScreenPts.length >= 2) {
+              const pPrevA = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 2];
+              const pPrevB = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
+              const vx1 = pPrevB.x - pPrevA.x, vy1 = pPrevB.y - pPrevA.y;
+              const vx2 = sx - pPrevB.x, vy2 = sy - pPrevB.y;
+              const len1 = Math.hypot(vx1, vy1), len2 = Math.hypot(vx2, vy2);
+              if (len2 > 11.0 && len1 > 2.5) {
+                const u1x = vx1 / len1, u1y = vy1 / len1;
+                const u2x = vx2 / len2, u2y = vy2 / len2;
+                const cosTurn = Math.max(-1, Math.min(1, u1x * u2x + u1y * u2y));
+                if (cosTurn > -0.35 && cosTurn < 0.985) {
+                  let nx = u1x - cosTurn * u2x;
+                  let ny = u1y - cosTurn * u2y;
+                  const nLen = Math.hypot(nx, ny);
+                  if (nLen > 1e-4) {
+                    nx /= nLen;
+                    ny /= nLen;
+                    const theta = Math.acos(cosTurn);
+                    const ratioScale = Math.min(1.0, len1 / (len2 * 0.65));
+                    const sagitta = 0.5 * len2 * Math.min(0.28, Math.tan(theta * 0.25)) * ratioScale;
+                    const subCount = len2 > 24.0 ? 2 : 1;
+                    for (let s = 1; s <= subCount; s++) {
+                      const t = s / (subCount + 1);
+                      const arcOffset = 4 * t * (1 - t) * sagitta;
+                      const subX = pPrevB.x + vx2 * t + nx * arcOffset;
+                      const subY = pPrevB.y + vy2 * t + ny * arcOffset;
+                      const subP = pPrevB.p + (pressure - pPrevB.p) * t;
+                      if (this.currentInkStroke.target === 'graph') {
+                        const mSub = this.screenToMath(subX, subY);
+                        this.currentInkStroke.points.push({ x: mSub.x, y: mSub.y, p: subP, t: recTMove });
+                      } else {
+                        const bSub = this.screenToBoard(subX, subY);
+                        this.currentInkStroke.points.push({ x: bSub.x, y: bSub.y, p: subP, t: recTMove });
+                      }
+                      addedPoints++;
+                      this._liveBezierScreenPts.push({ x: subX, y: subY, p: subP });
+                      this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
+                    }
+                  }
+                }
+              }
+            }
+
             if (this.currentInkStroke.target === 'graph') {
               const m = this.screenToMath(sx, sy);
               this.currentInkStroke.points.push({ x: m.x, y: m.y, p: pressure, t: recTMove });
@@ -30043,9 +30214,6 @@ class GraphApp {
             }
             addedPoints++;
 
-            if (!this._liveBezierScreenPts) {
-              this._liveBezierScreenPts = [];
-            }
             this._liveBezierScreenPts.push({ x: sx, y: sy, p: pressure });
 
             if (!this.currentInkStroke.isHighlighter) {
