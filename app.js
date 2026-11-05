@@ -56,6 +56,14 @@ class GraphApp {
     ];
     // 기본 테마(white_paper)에 맞춰 초기 팔레트 설정
     this.colorPalette = [...this.lightColorPalette];
+    this.graphColorMode = 'auto';
+    this.fixedGraphColor = '#1e293b';
+    try {
+      const savedMode = localStorage.getItem('graphly_graph_color_mode_v1');
+      if (savedMode === 'fixed' || savedMode === 'auto') this.graphColorMode = savedMode;
+      const savedFixedColor = localStorage.getItem('graphly_fixed_graph_color_v1');
+      if (savedFixedColor) this.fixedGraphColor = savedFixedColor;
+    } catch (e) { }
 
     // 🌟 [테마별 필기 잉크 팔레트 (5색)] 🌟
     this.lightInkPalette = [
@@ -1659,7 +1667,9 @@ class GraphApp {
     // 추천 기본 함수 타입 순환 (또는 지정된 개형)
     const presetOrder = ['3rd_normal', '1st_linear', '2nd_quadratic', 'exp_basic', 'geom_quad'];
     const nextType = preferredType || presetOrder[this.graphs.length % presetOrder.length];
-    const nextColor = this.colorPalette[this.graphs.length % this.colorPalette.length];
+    const nextColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
+      ? this.fixedGraphColor
+      : this.colorPalette[this.graphs.length % this.colorPalette.length];
 
     const newGraph = {
       id: 'g_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
@@ -2143,13 +2153,20 @@ class GraphApp {
       tab.classList.toggle('active', tab.dataset.cat === curCat);
     });
 
+    document.querySelectorAll('.graph-color-mode-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.dataset.colorMode === (this.graphColorMode || 'auto'));
+    });
+
     if (!g) {
-      // 그래프가 없는 빈 상태일 때의 UI 처리
+      // 그래프가 없는 빈 상태일 때의 UI 처리 (선택해 둔 고정 색상 도트 활성 상태는 유지)
       const chkAbs = document.getElementById('chkAbs');
       if (chkAbs) chkAbs.checked = false;
       const btnFoldAgain = document.getElementById('btnFoldAgain');
       if (btnFoldAgain) btnFoldAgain.style.display = 'none';
-      document.querySelectorAll('.color-dot').forEach(dot => dot.classList.remove('active'));
+      const fallbackDotColor = this.fixedGraphColor || '#1e293b';
+      document.querySelectorAll('.color-dot').forEach(dot => {
+        dot.classList.toggle('active', dot.dataset.color === fallbackDotColor);
+      });
       this.syncShapePanel();
       return;
     }
@@ -2181,8 +2198,11 @@ class GraphApp {
     }
 
     // 컬러 피커 팔레트 동기화
+    const targetDotColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
+      ? this.fixedGraphColor
+      : g.color;
     document.querySelectorAll('.color-dot').forEach(dot => {
-      dot.classList.toggle('active', dot.dataset.color === g.color);
+      dot.classList.toggle('active', dot.dataset.color === targetDotColor);
     });
 
     // 사각형 모드 패널 동기화 (사각형 활성 시에만 표시)
@@ -14916,16 +14936,82 @@ class GraphApp {
       };
     }
 
-    // 컬러 피커 팔레트
+    // 컬러 피커 팔레트 & [자동 배색 / 색상 고정] 모드 전환
     document.querySelectorAll('.color-dot').forEach(dot => {
       dot.onclick = (e) => {
-        document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
-        e.target.classList.add('active');
+        const pickedColor = e.currentTarget.dataset.color;
+        if (!pickedColor) return;
+        this.fixedGraphColor = pickedColor;
+        try { localStorage.setItem('graphly_fixed_graph_color_v1', pickedColor); } catch (err) { }
+        document.querySelectorAll('.color-dot').forEach(d => {
+          d.classList.toggle('active', d.dataset.color === pickedColor);
+        });
+        if (this.graphColorMode === 'fixed') {
+          if (this.graphs.length > 0) {
+            this.pushHistoryState();
+            this.graphs.forEach(g => { if (g) g.color = pickedColor; });
+            this.renderLayerList();
+            this.render();
+          }
+          return;
+        }
         if (!this.activeGraph) return;
         this.pushHistoryState();
-        this.activeGraph.color = e.target.dataset.color;
+        this.activeGraph.color = pickedColor;
         this.renderLayerList();
         this.render();
+      };
+    });
+
+    document.querySelectorAll('.graph-color-mode-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.dataset.colorMode === (this.graphColorMode || 'auto'));
+      chip.onclick = (e) => {
+        e.stopPropagation();
+        const mode = e.currentTarget.dataset.colorMode === 'fixed' ? 'fixed' : 'auto';
+        this.graphColorMode = mode;
+        try { localStorage.setItem('graphly_graph_color_mode_v1', mode); } catch (err) { }
+        document.querySelectorAll('.graph-color-mode-chip').forEach(c => {
+          c.classList.toggle('active', c.dataset.colorMode === mode);
+        });
+
+        const activeDot = document.querySelector('#graphColorPalette .color-dot.active');
+        if (activeDot && activeDot.dataset.color) {
+          this.fixedGraphColor = activeDot.dataset.color;
+        } else if (this.activeGraph && this.activeGraph.color) {
+          this.fixedGraphColor = this.activeGraph.color;
+        } else if (!this.fixedGraphColor) {
+          this.fixedGraphColor = '#1e293b';
+        }
+        try { localStorage.setItem('graphly_fixed_graph_color_v1', this.fixedGraphColor); } catch (err) { }
+
+        if (mode === 'fixed') {
+          const targetColor = this.fixedGraphColor || '#1e293b';
+          document.querySelectorAll('.color-dot').forEach(d => {
+            d.classList.toggle('active', d.dataset.color === targetColor);
+          });
+          if (this.graphs.length > 0) {
+            this.pushHistoryState();
+            this.graphs.forEach(g => { if (g) g.color = targetColor; });
+            this.renderLayerList();
+            this.render();
+          }
+          this.showToast('📌 색상 고정: 선택한 색상으로 그래프 색상이 고정되었습니다.');
+        } else {
+          if (this.graphs.length > 0) {
+            this.pushHistoryState();
+            this.graphs.forEach((g, idx) => {
+              if (g) g.color = this.colorPalette[idx % this.colorPalette.length];
+            });
+            if (this.activeGraph) {
+              document.querySelectorAll('.color-dot').forEach(d => {
+                d.classList.toggle('active', d.dataset.color === this.activeGraph.color);
+              });
+            }
+            this.renderLayerList();
+            this.render();
+          }
+          this.showToast('🎨 자동 배색: 그래프마다 구분되는 색상이 자동 배정됩니다.');
+        }
       };
     });
 
@@ -20974,6 +21060,11 @@ class GraphApp {
 
     this.pushHistoryState();
     this.applyPureGraphSnapshot(item.snapshot);
+    if (this.graphColorMode === 'fixed' && this.fixedGraphColor && Array.isArray(this.graphs)) {
+      this.graphs.forEach(g => { if (g) g.color = this.fixedGraphColor; });
+      this.syncControls();
+      this.renderLayerList();
+    }
     this.updatePwDescBadge();
     this.updateIntersections();
 
@@ -26657,7 +26748,9 @@ class GraphApp {
       return;
     }
 
-    const nextColor = this.colorPalette[this.graphs.length % this.colorPalette.length];
+    const nextColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
+      ? this.fixedGraphColor
+      : this.colorPalette[this.graphs.length % this.colorPalette.length];
     const newGraph = {
       id: Date.now(),
       type: parsed.ftype,
@@ -34067,10 +34160,12 @@ class GraphApp {
       abs: t.abs || false
     }));
 
-    // 4) 색상: 원본 색상과 명확히 구별되는 조화로운 네온 컬러 배정
+    // 4) 색상: 색상 고정 모드면 고정 색상, 자동 배색이면 원본과 구별되는 컬러 배정
     const palette = ['#ff7675', '#00cec9', '#a29bfe', '#ffeaa7', '#74b9ff', '#fd79a8', '#55efc4'];
     const filteredColors = palette.filter(c => c.toLowerCase() !== (src.color || '').toLowerCase());
-    const nextColor = filteredColors[this.graphs.length % filteredColors.length];
+    const nextColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
+      ? this.fixedGraphColor
+      : filteredColors[this.graphs.length % filteredColors.length];
 
     // 5) 새 그래프 객체 생성 및 상호 대칭 연동 (Linked Inverse)
     if (!src.id) src.id = Date.now() - 1;
@@ -34440,10 +34535,12 @@ class GraphApp {
     this.pushHistoryState();
     const src = this.graphs[idx];
 
-    // 색상 팔레트 배정
+    // 색상 팔레트 배정 (색상 고정 모드면 고정 색상 유지)
     const palette = ['#ffeaa7', '#00cec9', '#ff7675', '#a29bfe', '#74b9ff', '#fd79a8', '#55efc4'];
     const filteredColors = palette.filter(c => c.toLowerCase() !== (src.color || '').toLowerCase());
-    const nextColor = filteredColors[this.graphs.length % filteredColors.length];
+    const nextColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
+      ? this.fixedGraphColor
+      : filteredColors[this.graphs.length % filteredColors.length];
 
     // 🌟 [대표님 기획: 복제 시 x축 평행이동 오프셋]: 원본과 겹치지 않게 x축 방향으로만 약간(+1.5) 평행이동 상태로 생성!
     // 일반 함수(및 연동 해제된 역함수: 로그·무리·유리 등)는 핸들 좌표를 직접 +1.5 이동시켜 곡선과 핸들·점근선이 100% 일치하게 생성!
