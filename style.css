@@ -327,12 +327,7 @@ body.header-collapsed .header-show-tab {
   box-shadow: 0 6px 20px rgba(0, 210, 211, 0.25);
 }
 
-.rail-btn.active {
-  background: rgba(0, 210, 211, 0.22);
-  border-color: var(--accent-cyan);
-  color: var(--accent-cyan);
-  box-shadow: 0 0 14px rgba(0, 210, 211, 0.4);
-}
+/* [대표님 지침]: 좌·우측 원형 아이콘은 마우스오버(:hover) 시에만 은은하게 변하고, 실행 중(.active) 상시 점등 효과는 제거 (유일 예외: 녹화 중 빨간색) */
 
 /* 🌟 [대표님 기획]: 좌측 레일 최상단 직관적 [+] 그래프 추가 버튼 스타일 */
 .rail-add-btn {
@@ -1751,32 +1746,11 @@ body.fullscreen-mode .btn-exit-fullscreen {
   box-shadow: 0 6px 20px rgba(0, 210, 211, 0.25);
 }
 
-.quick-fab-btn.active {
-  background: rgba(0, 210, 211, 0.22);
-  border-color: var(--accent-cyan);
-  color: var(--accent-cyan);
-  box-shadow: 0 0 14px rgba(0, 210, 211, 0.4);
-}
-
-#btnQuickIntersection.active {
-  background: rgba(254, 202, 87, 0.22);
-  border-color: #feca57;
-  color: #feca57;
-  box-shadow: 0 0 14px rgba(254, 202, 87, 0.45);
-}
-
 #btnQuickNewCanvas:hover {
   background: rgba(244, 63, 94, 0.22);
   border-color: #fb7185;
   color: #fb7185;
   box-shadow: 0 6px 20px rgba(244, 63, 94, 0.28);
-}
-
-#btnQuickPiecewise.active {
-  background: rgba(162, 155, 254, 0.25);
-  border-color: #a29bfe;
-  color: #a29bfe;
-  box-shadow: 0 0 16px rgba(162, 155, 254, 0.5);
 }
 
 .quick-fab-btn.snap-off {
@@ -1894,13 +1868,6 @@ body.fullscreen-mode .btn-exit-fullscreen {
 }
 
 /* --- [✂️ 구간별 합성 함수 (Piecewise) 스타일] --- */
-#btnQuickPiecewise.active {
-  background: rgba(162, 155, 254, 0.22);
-  border-color: #a29bfe;
-  color: #a29bfe;
-  box-shadow: 0 0 14px rgba(162, 155, 254, 0.45);
-}
-
 .piecewise-section {
   border-left: 3px solid #a29bfe;
 }
@@ -3056,13 +3023,6 @@ body.theme-light .curve-context-bar .ctx-sub-popover {
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6), 0 0 12px rgba(254, 202, 87, 0.5);
 }
 
-#btnQuickDropLine.active {
-  background: rgba(0, 210, 211, 0.22);
-  border-color: #00d2d3;
-  color: #00d2d3;
-  box-shadow: 0 0 14px rgba(0, 210, 211, 0.45);
-}
-
 /* ========================================================
    [캔버스 자유 수식 텍스트 라벨 (함수 이름표 & 축 이름표)]
    ======================================================== */
@@ -3095,22 +3055,6 @@ body.theme-light .curve-context-bar .ctx-sub-popover {
 .canvas-text-input:focus {
   border-color: #00d2d3;
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.7), 0 0 14px rgba(0, 210, 211, 0.55);
-}
-
-#btnQuickText.active {
-  background: rgba(162, 155, 254, 0.25);
-  border-color: #a29bfe;
-  color: #a29bfe;
-  box-shadow: 0 0 14px rgba(162, 155, 254, 0.5);
-}
-
-/* 📄 교재 흑백 모드 (Monochrome Mode) 버튼 활성화 스타일 */
-#btnMonochromeMode.active {
-  background: #0f172a !important;
-  border-color: #0f172a !important;
-  color: #ffffff !important;
-  box-shadow: 0 0 12px rgba(15, 23, 42, 0.35) !important;
-  font-weight: 700;
 }
 
 /* =====================================================================
@@ -3219,12 +3163,6 @@ body.theme-light .canvas-quick-toolbar .quick-fab-btn:hover {
   background: #ffffff;
   border-color: #00cec9;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
-}
-
-body.theme-light .canvas-quick-toolbar .quick-fab-btn.active {
-  background: #f0fdfa;
-  border-color: #00cec9;
-  color: #00cec9;
 }
 
 body.theme-light .board-mode-bar {
@@ -4785,13 +4723,6 @@ body.theme-light .problem-card-resize-handle {
   justify-content: flex-end;
 }
 
-.quick-fab-exit {
-  background: rgba(255, 71, 87, 0.15) !important;
-  border-color: rgba(255, 71, 87, 0.5) !important;
-  color: #ff4757 !important;
-  box-shadow: 0 4px 14px rgba(255, 71, 87, 0.25) !important;
-}
-
 .quick-fab-exit:hover {
   background: rgba(255, 71, 87, 0.35) !important;
   border-color: #ff4757 !important;
@@ -5291,13 +5222,6 @@ body.theme-light .rail-btn:hover {
   transform: scale(1.08);
 }
 
-body.theme-light .rail-btn.active {
-  background: #f0fdfa;
-  border-color: #00cec9;
-  color: #00cec9;
-  box-shadow: 0 0 14px rgba(0, 206, 201, 0.35);
-}
-
 body.theme-light .rail-add-btn {
   background: rgba(0, 206, 201, 0.12);
   border: 1px solid rgba(0, 206, 201, 0.45);
@@ -5351,20 +5275,6 @@ body.theme-light .canvas-quick-toolbar .quick-fab-btn:hover {
   transform: scale(1.08);
 }
 
-body.theme-light .canvas-quick-toolbar .quick-fab-btn.active {
-  background: #f0fdfa;
-  border-color: #00cec9;
-  color: #00cec9;
-  box-shadow: 0 0 14px rgba(0, 206, 201, 0.35);
-}
-
-body.theme-light #btnQuickIntersection.active {
-  background: rgba(124, 58, 237, 0.12);
-  border-color: #7c3aed;
-  color: #7c3aed;
-  box-shadow: 0 0 14px rgba(124, 58, 237, 0.28);
-}
-
 body.theme-light #btnQuickNewCanvas:hover {
   background: #fff1f2;
   border-color: #e11d48;
@@ -5376,13 +5286,6 @@ body.theme-light .quick-fab-copy {
   background: rgba(0, 206, 201, 0.12) !important;
   border-color: rgba(0, 206, 201, 0.5) !important;
   color: #009688 !important;
-}
-
-body.theme-light .quick-fab-exit {
-  background: rgba(255, 71, 87, 0.08) !important;
-  border-color: rgba(255, 71, 87, 0.35) !important;
-  color: #e11d48 !important;
-  box-shadow: 0 4px 14px rgba(225, 29, 72, 0.12) !important;
 }
 
 body.theme-light .quick-fab-exit:hover {
@@ -10195,12 +10098,6 @@ body.theme-light .pdf-crop-active-pill .pdf-crop-active-cancel-x {
   animation: none !important;
 }
 
-#btnAudioRecordToggle.has-audio:not(.is-recording) {
-  border-color: #00d2d3 !important;
-  color: #00d2d3 !important;
-  box-shadow: 0 0 0 2px rgba(0, 210, 211, 0.24) !important;
-}
-
 /* 녹음 중 우측 녹화 버튼 클릭 시 바로 옆(좌측)에 세로 2단(위: 일시정지 / 아래: 종료)으로 뜨는 컴팩트 메뉴 */
 .audio-rec-side-menu {
   position: absolute;
@@ -13560,8 +13457,15 @@ body:not(.theme-light) .shortcut-bind-btn.is-customized {
 }
 
 @keyframes shortcutRecPulse {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22); }
-  50% { box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.36); }
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22);
+  }
+
+  50% {
+    box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.36);
+  }
 }
 
 .shortcut-mini-icon-btn {
@@ -13723,5 +13627,3 @@ body:not(.theme-light) .ui-hidden-edge-pull-tab:active {
   border-color: rgba(147, 197, 253, 0.65);
   color: #93c5fd;
 }
-
-
