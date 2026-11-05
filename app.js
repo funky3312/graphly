@@ -21318,10 +21318,10 @@ class GraphApp {
     const btnSubmit = document.getElementById('btnSubmitCloudEmailLogin');
     const isSignup = (this._cloudIdAuthTab === 'signup');
     if (tabLogin) {
-      tabLogin.className = isSignup ? 'btn-secondary' : 'btn-primary';
+      tabLogin.className = isSignup ? 'settings-clean-btn' : 'settings-clean-btn active';
     }
     if (tabSignup) {
-      tabSignup.className = isSignup ? 'btn-primary' : 'btn-secondary';
+      tabSignup.className = isSignup ? 'settings-clean-btn active' : 'settings-clean-btn';
     }
     if (extraFields) {
       extraFields.style.display = isSignup ? 'flex' : 'none';
@@ -21330,7 +21330,7 @@ class GraphApp {
       helperRow.style.display = isSignup ? 'none' : 'flex';
     }
     if (btnSubmit) {
-      btnSubmit.textContent = isSignup ? '📩 인증메일 발송 및 가입' : '로그인';
+      btnSubmit.textContent = isSignup ? '인증메일 발송 및 가입' : '로그인';
     }
   }
 
@@ -21384,9 +21384,8 @@ class GraphApp {
       }
       if (btnProGoLogin) btnProGoLogin.style.display = 'none';
       if (lblSettingsAcct) {
-        lblSettingsAcct.style.background = 'rgba(37,99,235,0.1)';
-        lblSettingsAcct.style.color = '#1d4ed8';
-        lblSettingsAcct.textContent = `🟢 ${this.cloudUser.displayName} (${emailStr})${proTag ? proTag : ' · 무료 플랜'}`;
+        lblSettingsAcct.style.display = 'block';
+        lblSettingsAcct.textContent = emailStr || this.cloudUser.displayName || '';
       }
       if (settingsLoggedOutRow) settingsLoggedOutRow.style.display = 'none';
       if (settingsLoggedInRow) settingsLoggedInRow.style.display = 'flex';
@@ -21402,9 +21401,8 @@ class GraphApp {
       }
       if (btnProGoLogin) btnProGoLogin.style.display = 'inline-flex';
       if (lblSettingsAcct) {
-        lblSettingsAcct.style.background = 'rgba(100,116,139,0.1)';
-        lblSettingsAcct.style.color = '#475569';
-        lblSettingsAcct.textContent = '🔒 비로그인 상태 (공용 PC 보호 중)';
+        lblSettingsAcct.style.display = 'none';
+        lblSettingsAcct.textContent = '';
       }
       if (settingsLoggedOutRow) settingsLoggedOutRow.style.display = 'flex';
       if (settingsLoggedInRow) settingsLoggedInRow.style.display = 'none';
@@ -42965,7 +42963,7 @@ class GraphApp {
     }).length;
     const badgeSettings = document.getElementById('badgeShortcutCustomStatus');
     if (badgeSettings) {
-      badgeSettings.textContent = customCount > 0 ? `${customCount}개 맞춤 적용중 ▸` : '맞춤 설정 ▸';
+      badgeSettings.textContent = customCount > 0 ? `${customCount}개 ▸` : '▸';
     }
 
     // 2. 툴바/메뉴 버튼의 마우스오버 툴팁(title)에 현재 단축키 실시간 반영

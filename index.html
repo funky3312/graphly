@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_58">
+  <link rel="stylesheet" href="style.css?v=20261105_59">
 </head>
 
 <body class="theme-light">
@@ -471,42 +471,32 @@
               </div>
             </div>
 
-            <!-- 5. 패널: 환경 설정 (Settings) - 마그네틱, 그리드, 점근선, 캡처 규격 통합 -->
+            <!-- 5. 패널: 환경 설정 (Settings) -->
             <div class="drawer-panel" id="panelSettings" style="display: none;">
-              <!-- 섹션 0: ✍️ 필기 바 위치 (왼쪽 세로 / 아래 가로 / 오른쪽 세로) -->
-              <div class="panel-section" style="border: none; padding: 0; margin-bottom: 10px;">
-                <div class="section-title" style="margin-bottom: 6px;">
+              <!-- 섹션 0: 필기 바 위치 -->
+              <div class="panel-section settings-clean-section" style="border: none; padding: 0; margin-bottom: 8px;">
+                <div class="section-title settings-clean-subtitle">
                   <span>필기 바 위치</span>
                 </div>
                 <div class="vf-aspect-chips ink-dock-pos-chips" id="inkDockPositionGroup"
-                  style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;">
-                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="left" title="화면 왼쪽에 세로로 고정">◧
-                    왼쪽</button>
+                  style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
+                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="left" title="화면 왼쪽에 세로로 고정">왼쪽</button>
                   <button type="button" class="vf-chip ink-dock-pos-chip active" data-dock-pos="bottom"
-                    title="화면 아래쪽에 가로로 고정">⬓ 아래</button>
-                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="right" title="화면 오른쪽에 세로로 고정">◨
-                    오른쪽</button>
+                    title="화면 아래쪽에 가로로 고정">아래</button>
+                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="right" title="화면 오른쪽에 세로로 고정">오른쪽</button>
                 </div>
               </div>
 
-              <!-- 섹션 1: 조작 & 가이드라인 설정 -->
-              <div class="panel-section" style="border: none; padding: 0;">
-                <div class="section-title">
-                  <span>가이드라인</span>
+              <!-- 섹션 1: 화면 · 조작 설정 -->
+              <div class="panel-section settings-clean-section" style="border: none; padding: 0;">
+                <div class="section-title settings-clean-subtitle">
+                  <span>화면 · 조작</span>
                 </div>
                 <div class="settings-toggle-list">
                   <label class="setting-toggle-item"
-                    title="끄면 필기 중 한 손가락/손바닥 터치로 화면이 움직이지 않으며, 두 손가락으로만 화면 이동·확대가 작동합니다 (굿노트 방식)">
+                    title="끄면 필기 중 한 손가락/손바닥 터치로 화면이 움직이지 않으며, 두 손가락으로만 화면 이동·확대가 작동합니다">
                     <div class="setting-text-wrap">
-                      <span class="setting-name"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                          stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-                          style="vertical-align:-2px;margin-right:4px;">
-                          <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0" />
-                          <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2" />
-                          <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8" />
-                          <path
-                            d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
-                        </svg>필기 중 한 손가락 이동</span>
+                      <span class="setting-name">한 손가락 이동</span>
                     </div>
                     <label class="vf-toggle-wrap">
                       <input type="checkbox" id="chkOneFingerPanInInk" checked>
@@ -516,12 +506,7 @@
 
                   <label class="setting-toggle-item">
                     <div class="setting-text-wrap">
-                      <span class="setting-name"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                          stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-                          style="vertical-align:-2px;margin-right:4px;">
-                          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                          <path d="m15 5 4 4" />
-                        </svg>펜 포인터 표시</span>
+                      <span class="setting-name">펜 포인터 표시</span>
                     </div>
                     <label class="vf-toggle-wrap">
                       <input type="checkbox" id="chkShowVirtualStylus" checked>
@@ -531,14 +516,7 @@
 
                   <label class="setting-toggle-item">
                     <div class="setting-text-wrap">
-                      <span class="setting-name"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                          stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-                          style="vertical-align:-2px;margin-right:4px;">
-                          <path
-                            d="m6 15-4-4 6.75-6.77a7.79 7.79 0 0 1 11 11L13 22l-4-4 6.39-6.36a2.14 2.14 0 0 0-3-3L6 15Z" />
-                          <path d="m5 8 4 4" />
-                          <path d="m12 15 4 4" />
-                        </svg>자석 스냅</span>
+                      <span class="setting-name">자석 스냅</span>
                     </div>
                     <label class="vf-toggle-wrap">
                       <input type="checkbox" id="chkMagneticSnap" checked>
@@ -548,15 +526,7 @@
 
                   <label class="setting-toggle-item">
                     <div class="setting-text-wrap">
-                      <span class="setting-name"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                          stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-                          style="vertical-align:-2px;margin-right:4px;">
-                          <rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="2 2" />
-                          <line x1="3" y1="9" x2="21" y2="9" stroke-dasharray="2 2" />
-                          <line x1="3" y1="15" x2="21" y2="15" stroke-dasharray="2 2" />
-                          <line x1="9" y1="3" x2="9" y2="21" stroke-dasharray="2 2" />
-                          <line x1="15" y1="3" x2="15" y2="21" stroke-dasharray="2 2" />
-                        </svg>점선 그리드</span>
+                      <span class="setting-name">점선 그리드</span>
                     </div>
                     <label class="vf-toggle-wrap">
                       <input type="checkbox" id="chkGuides" checked>
@@ -566,16 +536,7 @@
 
                   <label class="setting-toggle-item">
                     <div class="setting-text-wrap">
-                      <span class="setting-name"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                          stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-                          style="vertical-align:-2px;margin-right:4px;">
-                          <line x1="4" y1="12" x2="20" y2="12" />
-                          <line x1="12" y1="4" x2="12" y2="20" />
-                          <line x1="8" y1="10" x2="8" y2="14" />
-                          <line x1="16" y1="10" x2="16" y2="14" />
-                          <line x1="10" y1="8" x2="14" y2="8" />
-                          <line x1="10" y1="16" x2="14" y2="16" />
-                        </svg>눈금 숫자 표시</span>
+                      <span class="setting-name">눈금 숫자</span>
                     </div>
                     <label class="vf-toggle-wrap">
                       <input type="checkbox" id="chkGridNumbers">
@@ -585,13 +546,7 @@
 
                   <label class="setting-toggle-item">
                     <div class="setting-text-wrap">
-                      <span class="setting-name"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                          stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-                          style="vertical-align:-2px;margin-right:4px;">
-                          <line x1="12" y1="2" x2="12" y2="22" stroke-dasharray="3 3" />
-                          <path d="M3 19c4-1 7-4 8-15" />
-                          <path d="M13 20c1-11 4-14 8-15" />
-                        </svg>점근선 표시</span>
+                      <span class="setting-name">점근선</span>
                     </div>
                     <label class="vf-toggle-wrap">
                       <input type="checkbox" id="chkAsymptotes">
@@ -601,13 +556,7 @@
 
                   <label class="setting-toggle-item" style="display: none;">
                     <div class="setting-text-wrap">
-                      <span class="setting-name"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                          stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-                          style="vertical-align:-2px;margin-right:4px;">
-                          <line x1="3" y1="21" x2="21" y2="3" stroke-dasharray="3 3" />
-                          <path d="M4 12c4 0 6-2 8-8" />
-                          <path d="M12 20c6-2 8-4 8-8" />
-                        </svg>y = x 기준선</span>
+                      <span class="setting-name">y = x 기준선</span>
                     </div>
                     <label class="vf-toggle-wrap">
                       <input type="checkbox" id="chkInverseGuide">
@@ -616,138 +565,107 @@
                   </label>
                 </div>
 
-                <!-- 섹션: ⌨️ 단축키 커스터마이징 설정 버튼 -->
-                <div style="margin-top: 10px;">
-                  <button type="button" id="btnOpenShortcutSettings" class="btn-secondary settings-shortcut-open-btn"
-                    title="내 손에 맞는 단축키를 직접 지정하고 계정에 저장합니다">
+                <!-- 섹션: 단축키 설정 -->
+                <div style="margin-top: 6px;">
+                  <button type="button" id="btnOpenShortcutSettings" class="settings-clean-btn settings-shortcut-open-btn"
+                    title="단축키를 직접 지정하고 계정에 저장합니다">
                     <span class="settings-shortcut-open-left">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="2" y="4" width="20" height="16" rx="2.5" />
-                        <path d="M6 8h.01" />
-                        <path d="M10 8h.01" />
-                        <path d="M14 8h.01" />
-                        <path d="M18 8h.01" />
-                        <path d="M8 12h.01" />
-                        <path d="M12 12h.01" />
-                        <path d="M16 12h.01" />
-                        <path d="M7 16h10" />
-                      </svg>
                       <span>단축키 설정</span>
                     </span>
-                    <span id="badgeShortcutCustomStatus" class="settings-shortcut-badge">맞춤 설정 ▸</span>
+                    <span id="badgeShortcutCustomStatus" class="settings-shortcut-badge">▸</span>
                   </button>
                 </div>
 
-                <!-- 섹션: 👤 계정 & 클라우드 로그인/로그아웃 (공용 PC 즉시 전환 지원) -->
-                <div id="settingsAccountSection"
-                  style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(148,163,184,0.2);">
-                  <div class="section-title" style="margin-bottom: 6px;">
-                    <span>👤 내 계정 &amp; 클라우드</span>
+                <!-- 섹션: 계정 -->
+                <div id="settingsAccountSection" class="settings-clean-divider-block">
+                  <div class="section-title settings-clean-subtitle">
+                    <span>계정</span>
                   </div>
-                  <div id="lblSettingsAccountStatus"
-                    style="font-size: 11.5px; font-weight: 700; padding: 7px 10px; border-radius: 8px; background: rgba(100,116,139,0.1); color: #475569; margin-bottom: 8px; line-height: 1.45; word-break: break-all;">
-                    🔒 비로그인 상태 (공용 PC 보호 중)
+                  <div id="lblSettingsAccountStatus" class="settings-account-id-box">
+                    비로그인
                   </div>
-                  <div id="settingsAccountLoggedOutActions" style="display: flex; gap: 6px;">
-                    <button type="button" id="btnSettingsGoogleLogin" class="btn-primary"
-                      style="flex: 1; padding: 8px 6px; border-radius: 8px; font-size: 11.5px; font-weight: 700; cursor: pointer;">
-                      🔵 Google 로그인
+                  <div id="settingsAccountLoggedOutActions" style="display: flex; gap: 5px;">
+                    <button type="button" id="btnSettingsGoogleLogin" class="settings-clean-btn" style="flex: 1;">
+                      Google 로그인
                     </button>
-                    <button type="button" id="btnSettingsEmailLogin" class="btn-secondary"
-                      style="flex: 1; padding: 8px 6px; border-radius: 8px; font-size: 11.5px; font-weight: 700; cursor: pointer;">
-                      📧 이메일 로그인·가입
+                    <button type="button" id="btnSettingsEmailLogin" class="settings-clean-btn" style="flex: 1;">
+                      이메일 로그인
                     </button>
                   </div>
-                  <div id="settingsAccountLoggedInActions" style="display: none; gap: 6px;">
-                    <button type="button" id="btnSettingsOpenVault" class="btn-secondary"
-                      style="flex: 1; padding: 8px 6px; border-radius: 8px; font-size: 11.5px; font-weight: 700; cursor: pointer;">
-                      ☁️ 내 보관함 열기
+                  <div id="settingsAccountLoggedInActions" style="display: none; gap: 5px;">
+                    <button type="button" id="btnSettingsOpenVault" style="display: none !important;">
+                      내 보관함 열기
                     </button>
-                    <button type="button" id="btnSettingsLogout" class="btn-secondary"
-                      style="flex: 1; padding: 8px 6px; border-radius: 8px; font-size: 11.5px; font-weight: 800; color: #ef4444; border-color: rgba(239,68,68,0.35); cursor: pointer;">
-                      🚪 로그아웃
+                    <button type="button" id="btnSettingsLogout" class="settings-clean-btn" style="width: 100%;">
+                      로그아웃
                     </button>
                   </div>
 
-                  <!-- 📧 이메일 로그인 & 본인인증 회원가입 통합 입력창 (설정창 내부로 일원화) -->
-                  <div id="cloudEmailLoginBox"
-                    style="display: none; background: rgba(37, 99, 235, 0.07); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 10px; padding: 10px; margin-top: 8px;">
-                    <div
-                      style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; flex-wrap: wrap;">
-                      <div style="display: flex; gap: 4px; width: 100%;">
-                        <button type="button" id="tabBtnCloudIdLogin" class="btn-primary"
-                          style="flex: 1; padding: 6px 8px; font-size: 11.5px; font-weight: 700; border-radius: 6px;">📧
-                          이메일 로그인</button>
-                        <button type="button" id="tabBtnCloudIdSignup" class="btn-secondary"
-                          style="flex: 1; padding: 6px 8px; font-size: 11.5px; font-weight: 700; border-radius: 6px;">✨
-                          이메일 회원가입</button>
-                      </div>
-                      <span style="font-size: 10.5px; color: #2563eb; font-weight: 600; line-height: 1.35;">✅ 이메일 인증 완료
-                        시 동일 주소의 Google 로그인과 하나의 계정으로 통합 연동됩니다.</span>
+                  <!-- 이메일 로그인 & 회원가입 통합 입력창 -->
+                  <div id="cloudEmailLoginBox" class="settings-email-auth-box" style="display: none;">
+                    <div style="display: flex; gap: 4px; width: 100%; margin-bottom: 6px;">
+                      <button type="button" id="tabBtnCloudIdLogin" class="settings-clean-btn active"
+                        style="flex: 1; padding: 5px 6px; font-size: 11px;">로그인</button>
+                      <button type="button" id="tabBtnCloudIdSignup" class="settings-clean-btn"
+                        style="flex: 1; padding: 5px 6px; font-size: 11px;">회원가입</button>
                     </div>
-                    <div style="display: flex; flex-direction: column; gap: 6px;">
-                      <input type="email" id="inputCloudEmailId" placeholder="이메일 주소 (예: teacher@gmail.com)"
-                        autocomplete="email"
-                        style="width:100%; box-sizing:border-box; padding:7px 9px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12px;">
+                    <div style="display: flex; flex-direction: column; gap: 5px;">
+                      <input type="email" id="inputCloudEmailId" placeholder="이메일 주소"
+                        autocomplete="email" class="settings-clean-input">
                       <input type="password" id="inputCloudEmailPw" placeholder="비밀번호 (6자 이상)"
-                        autocomplete="current-password"
-                        style="width:100%; box-sizing:border-box; padding:7px 9px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12px;">
+                        autocomplete="current-password" class="settings-clean-input">
                     </div>
                     <div id="cloudSignupExtraFields"
-                      style="display: none; flex-direction: column; gap: 6px; margin-top: 6px;">
+                      style="display: none; flex-direction: column; gap: 5px; margin-top: 5px;">
                       <input type="password" id="inputCloudEmailPwConfirm" placeholder="비밀번호 확인"
-                        autocomplete="new-password"
-                        style="width:100%; box-sizing:border-box; padding:7px 9px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12px;">
-                      <input type="text" id="inputCloudSignupName" placeholder="선생님 성함 / 닉네임 (예: 김수학)"
-                        style="width:100%; box-sizing:border-box; padding:7px 9px; border-radius:7px; border:1px solid rgba(148,163,184,0.45); font-size:12px;">
+                        autocomplete="new-password" class="settings-clean-input">
+                      <input type="text" id="inputCloudSignupName" placeholder="이름 / 닉네임"
+                        class="settings-clean-input">
                     </div>
-                    <button type="button" id="btnSubmitCloudEmailLogin" class="btn-primary"
-                      style="width:100%; margin-top: 6px; padding:8px 12px; font-size:12px; font-weight:700; border-radius:7px; cursor:pointer;">로그인</button>
-                    <div id="cloudLoginHelperRow" style="display: flex; justify-content: flex-end; margin-top: 5px;">
+                    <button type="button" id="btnSubmitCloudEmailLogin" class="settings-clean-btn settings-clean-btn-solid"
+                      style="width:100%; margin-top: 6px;">로그인</button>
+                    <div id="cloudLoginHelperRow" style="display: flex; justify-content: flex-end; margin-top: 4px;">
                       <button type="button" id="btnResetEmailPassword"
-                        style="background: none; border: none; color: #475569; font-size: 11px; font-weight: 600; text-decoration: underline; cursor: pointer; padding: 2px 4px;">
-                        🔑 비밀번호 재설정 / 추가
+                        style="background: none; border: none; color: #64748b; font-size: 10.5px; font-weight: 600; text-decoration: underline; cursor: pointer; padding: 2px 4px;">
+                        비밀번호 재설정
                       </button>
                     </div>
-                    <!-- 📩 이메일 본인인증 대기 안내 및 확인 배너 -->
+                    <!-- 이메일 본인인증 대기 안내 배너 -->
                     <div id="cloudEmailVerifyBanner"
-                      style="display: none; margin-top: 8px; padding: 9px 10px; border-radius: 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.4); color: #065f46; font-size: 11.5px; line-height: 1.45;">
-                      <div id="lblEmailVerifyPendingMsg" style="font-weight: 700; margin-bottom: 6px;">
-                        📩 입력하신 이메일로 본인 인증 링크를 발송했습니다! 메일함에서 인증 링크를 클릭한 뒤 아래 버튼을 눌러주세요.
+                      style="display: none; margin-top: 6px; padding: 8px; border-radius: 7px; background: rgba(15, 23, 42, 0.04); border: 1px solid rgba(148, 163, 184, 0.3); font-size: 11px; line-height: 1.4;">
+                      <div id="lblEmailVerifyPendingMsg" style="font-weight: 600; margin-bottom: 5px;">
+                        이메일로 발송된 인증 링크를 클릭한 뒤 아래 버튼을 눌러주세요.
                       </div>
-                      <div style="display: flex; gap: 5px; flex-wrap: wrap;">
-                        <button type="button" id="btnVerifyEmailCheckNow" class="btn-primary"
-                          style="flex: 1; padding: 6px 8px; font-size: 11.5px; font-weight: 800; border-radius: 6px; background: #059669; border: none; color: #fff; cursor: pointer;">
-                          ✅ 인증 완료 확인
+                      <div style="display: flex; gap: 4px;">
+                        <button type="button" id="btnVerifyEmailCheckNow" class="settings-clean-btn settings-clean-btn-solid"
+                          style="flex: 1; padding: 5px 6px; font-size: 11px;">
+                          인증 완료 확인
                         </button>
-                        <button type="button" id="btnResendVerificationEmail" class="btn-secondary"
-                          style="padding: 6px 8px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer;">
-                          🔄 재발송
+                        <button type="button" id="btnResendVerificationEmail" class="settings-clean-btn"
+                          style="padding: 5px 8px; font-size: 11px;">
+                          재발송
                         </button>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(148,163,184,0.2);">
-                  <button type="button" id="btnOpenProPricingFromSettings" class="btn-primary"
-                    style="width:100%; padding:10px 12px; border-radius:9px; font-size:12.5px; font-weight:700; background:linear-gradient(135deg,#2563eb,#4f46e5); color:#fff; border:none; cursor:pointer;">
-                    👑 Pro 이용권 구매 · 사업자 정보 안내
+                <!-- 섹션: 이용권 구매 · 사용법 · 문의 -->
+                <div class="settings-clean-divider-block">
+                  <button type="button" id="btnOpenProPricingFromSettings" class="settings-clean-btn" style="width: 100%;">
+                    이용권 구매
                   </button>
-                  <div style="display:flex; gap:6px; margin-top:8px;">
-                    <button type="button" id="btnOpenGuideNoticeFromSettings" class="btn-secondary"
-                      style="flex:1; padding:8px 6px; border-radius:8px; font-size:11.5px; font-weight:700; cursor:pointer;">
-                      📖 사용법 &amp; 공지사항
+                  <div style="display: flex; gap: 5px; margin-top: 5px;">
+                    <button type="button" id="btnOpenGuideNoticeFromSettings" class="settings-clean-btn" style="flex: 1;">
+                      사용법
                     </button>
                     <a id="btnBugReportFromSettings"
                       href="mailto:help@cubiolab.com?subject=%5BGraphly%20%EB%B2%84%EA%B7%B8%EC%A0%9C%EB%B3%B4%2F%EB%AC%B8%EC%9D%98%5D"
-                      class="btn-secondary"
-                      style="flex:1; padding:8px 6px; border-radius:8px; font-size:11.5px; font-weight:700; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">
-                      🛠️ 오류·건의 문의
+                      class="settings-clean-btn"
+                      style="flex: 1; text-decoration: none;">
+                      문의
                     </a>
                   </div>
-                  <button type="button" style="display:none;" </button>
                 </div>
               </div>
 
@@ -3246,7 +3164,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261105_20"></script>
-  <script src="app.js?v=20261105_58"></script>
+  <script src="app.js?v=20261105_59"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
