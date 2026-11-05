@@ -20726,29 +20726,227 @@ class GraphApp {
       this.showToast('📦 이동할 파일이나 폴더의 체크박스(☑)를 먼저 선택해 주세요.');
       return;
     }
-    const folders = this.getCloudFoldersList();
-    menuEl.innerHTML = `<div class="win-move-menu-header">이동할 폴더 선택 (${this._selectedCloudExplorerKeys.size}개)</div>`;
 
-    const addOption = (labelHtml, targetPath) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'win-move-menu-item';
-      btn.innerHTML = labelHtml;
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        menuEl.style.display = 'none';
-        this.moveSelectedCloudItemsToFolder(targetPath);
-      };
-      menuEl.appendChild(btn);
+    const keys = Array.from(this._selectedCloudExplorerKeys);
+    const selectedFolderPaths = keys.filter(k => k.startsWith('folder:')).map(k => k.slice(7));
+    const selectedFileIds = keys.filter(k => k.startsWith('file:')).map(k => k.slice(5));
+    const selectedFiles = selectedFileIds
+      .map(id => (this.myLibraryCache || []).find(it => it && it.id === id))
+      .filter(Boolean);
+
+    // 선택된 각 항목들의 현재 소속 폴더 파악
+    const currentParents = new Set();
+    selectedFolderPaths.forEach(src => {
+      const parent = src.includes('/') ? src.split('/').slice(0, -1).join('/') : '';
+      currentParents.add(parent);
+    });
+    selectedFiles.forEach(it => {
+      currentParents.add(String(it.folder || '').trim());
+    });
+    const isAllAlreadyInTarget = (targetPath) => (
+      currentParents.size === 1 && currentParents.has(String(targetPath || '').trim())
+    );
+
+    // 선택한 폴더 자기 자신 및 그 하위 폴더는 이동 불가능하므로 목록에서 완전 제외
+    const rawFolders = this.getCloudFoldersList();
+    const validFoldersAfterSelfExclude = rawFolders.filter(fPath => {
+      return !selectedFolderPaths.some(src => fPath === src || fPath.startsWith(src + '/'));
+    });
+
+    // 만약 어떤 폴더가 모든 선택 항목의 현재 위치(isAllAlreadyInTarget)이면서 하위 폴더도 전혀 없다면 목록에서 아예 제외
+    const validFolders = validFoldersAfterSelfExclude.filter(fPath => {
+      if (!isAllAlreadyInTarget(fPath)) return true;
+      const hasAnyValidDescendant = validFoldersAfterSelfExclude.some(other => other.startsWith(fPath + '/'));
+      return hasAnyValidDescendant;
+    });
+
+    if (!this._moveMenuCollapsedFolders) {
+      this._moveMenuCollapsedFolders = new Set();
+    }
+
+    const getDirectChildren = (parentPath, folderPool) => {
+      return folderPool.filter(p => {
+        if (!parentPath) return !p.includes('/');
+        return p.startsWith(parentPath + '/') && !p.slice(parentPath.length + 1).includes('/');
+      });
     };
 
-    addOption('☁️ 내 클라우드 (최상위 홈)', '');
-    folders.forEach(fPath => {
-      const depth = fPath.split('/').length - 1;
-      const seg = fPath.split('/').pop();
-      const indent = '&nbsp;&nbsp;&nbsp;'.repeat(depth) + (depth > 0 ? '└ ' : '');
-      addOption(`${indent}📁 ${seg}`, fPath);
-    });
+    const parentsWithSubs = validFolders.filter(fPath => getDirectChildren(fPath, validFolders).length > 0);
+    let searchQuery = '';
+
+    menuEl.innerHTML = `
+      <div class="win-move-menu-top">
+        <div class="win-move-menu-header-row">
+          <div class="win-move-menu-header">이동할 폴더 선택</div>
+          ${parentsWithSubs.length > 0 ? `<button type="button" class="win-move-menu-fold-all-btn" id="btnMoveMenuFoldAll">하위 접기</button>` : ''}
+        </div>
+        <input type="text" class="win-move-menu-search-input" id="inputMoveMenuFolderSearch" placeholder="🔍 이동할 폴더 검색..." autocomplete="off">
+      </div>
+      <div class="win-move-menu-list" id="moveMenuFolderTreeList"></div>
+    `;
+
+    const listContainer = menuEl.querySelector('#moveMenuFolderTreeList');
+    const searchInput = menuEl.querySelector('#inputMoveMenuFolderSearch');
+    const btnFoldAll = menuEl.querySelector('#btnMoveMenuFoldAll');
+
+    const syncFoldAllBtnText = () => {
+      if (!btnFoldAll) return;
+      const allCollapsed = parentsWithSubs.length > 0 && parentsWithSubs.every(p => this._moveMenuCollapsedFolders.has(p));
+      btnFoldAll.textContent = allCollapsed ? '모두 펼치기' : '하위 접기';
+    };
+
+    const renderTree = () => {
+      if (!listContainer) return;
+      listContainer.innerHTML = '';
+      syncFoldAllBtnText();
+
+      const q = String(searchQuery || '').trim().toLowerCase();
+      const filteredPool = q
+        ? validFolders.filter(fPath => {
+            const selfMatch = fPath.toLowerCase().includes(q);
+            const descMatch = validFolders.some(other => other.startsWith(fPath + '/') && other.toLowerCase().includes(q));
+            return selfMatch || descMatch;
+          })
+        : validFolders;
+
+      let renderedCount = 0;
+
+      // (1) 최상위 루트 (내 클라우드): 이미 모든 선택 항목이 루트에 있는 경우가 아닐 때만 표시
+      const showRootOption = !isAllAlreadyInTarget('') && (!q || '내 클라우드 최상위 홈'.includes(q));
+      if (showRootOption) {
+        const rootBtn = document.createElement('div');
+        rootBtn.className = 'win-move-menu-item';
+        rootBtn.innerHTML = `
+          <div class="win-move-item-left">
+            <span class="cloud-tree-icon">☁️</span>
+            <span class="cloud-tree-name">내 클라우드 (최상위 홈)</span>
+          </div>
+        `;
+        rootBtn.onclick = (e) => {
+          e.stopPropagation();
+          menuEl.style.display = 'none';
+          this.moveSelectedCloudItemsToFolder('');
+        };
+        listContainer.appendChild(rootBtn);
+        renderedCount++;
+      }
+
+      // (2) 윈도우 탐색기 점선(⋮ · ├ · └) + 7px 초슬림 들여쓰기 폴더 트리 렌더링
+      const renderLevel = (parentPath, ancestorContinuationFlags = []) => {
+        const children = getDirectChildren(parentPath, filteredPool);
+        children.forEach((fPath, idx) => {
+          const isLastSibling = (idx === children.length - 1);
+          const segName = fPath.split('/').pop();
+          const subChildren = getDirectChildren(fPath, filteredPool);
+          const hasSubs = subChildren.length > 0;
+          const isCollapsed = !q && this._moveMenuCollapsedFolders.has(fPath);
+          const isCurrentLoc = isAllAlreadyInTarget(fPath);
+
+          let indentGuidesHtml = '';
+          if (ancestorContinuationFlags.length > 0 || parentPath) {
+            indentGuidesHtml = '<span class="cloud-tree-indent-group">';
+            for (let d = 0; d < ancestorContinuationFlags.length; d++) {
+              const keepVerticalLine = ancestorContinuationFlags[d];
+              indentGuidesHtml += `<span class="cloud-tree-indent-guide${keepVerticalLine ? ' has-vline' : ' is-blank'}"></span>`;
+            }
+            indentGuidesHtml += `<span class="cloud-tree-indent-guide is-branch${isLastSibling ? ' is-last-branch' : ''}"></span>`;
+            indentGuidesHtml += '</span>';
+          }
+
+          const rowEl = document.createElement('div');
+          rowEl.className = 'win-move-menu-item' + (isCurrentLoc ? ' is-disabled-target' : '');
+          rowEl.innerHTML = `
+            <div class="win-move-item-left">
+              ${indentGuidesHtml}
+              <span class="cloud-tree-icon">${hasSubs && !isCollapsed ? '📂' : '📁'}</span>
+              <span class="cloud-tree-name" title="${fPath.replace(/\//g, ' › ')}">${segName}</span>
+            </div>
+            <div class="win-move-item-right">
+              ${isCurrentLoc ? `<span class="win-move-cur-badge">현재 폴더</span>` : ''}
+              ${hasSubs && !q ? `<button type="button" class="win-move-sub-toggle" title="하위 폴더 ${isCollapsed ? '펼치기' : '접기'}">${isCollapsed ? '▸' : '▾'}</button>` : ''}
+            </div>
+          `;
+
+          const toggleBtn = rowEl.querySelector('.win-move-sub-toggle');
+          if (toggleBtn) {
+            toggleBtn.onclick = (e) => {
+              e.stopPropagation();
+              if (this._moveMenuCollapsedFolders.has(fPath)) {
+                this._moveMenuCollapsedFolders.delete(fPath);
+              } else {
+                this._moveMenuCollapsedFolders.add(fPath);
+              }
+              renderTree();
+            };
+          }
+
+          rowEl.onclick = (e) => {
+            e.stopPropagation();
+            if (isCurrentLoc) {
+              if (hasSubs) {
+                if (this._moveMenuCollapsedFolders.has(fPath)) {
+                  this._moveMenuCollapsedFolders.delete(fPath);
+                } else {
+                  this._moveMenuCollapsedFolders.add(fPath);
+                }
+                renderTree();
+              }
+              return;
+            }
+            menuEl.style.display = 'none';
+            this.moveSelectedCloudItemsToFolder(fPath);
+          };
+
+          listContainer.appendChild(rowEl);
+          renderedCount++;
+
+          if (hasSubs && !isCollapsed) {
+            renderLevel(fPath, [...ancestorContinuationFlags, !isLastSibling]);
+          }
+        });
+      };
+
+      renderLevel('', []);
+
+      if (renderedCount === 0) {
+        listContainer.innerHTML = `<div class="win-move-menu-empty">${q ? '검색 결과가 없습니다.' : '이동할 수 있는 다른 폴더가 없습니다.'}</div>`;
+      }
+    };
+
+    if (btnFoldAll) {
+      btnFoldAll.onclick = (e) => {
+        e.stopPropagation();
+        const allCollapsed = parentsWithSubs.length > 0 && parentsWithSubs.every(p => this._moveMenuCollapsedFolders.has(p));
+        if (allCollapsed) {
+          parentsWithSubs.forEach(p => this._moveMenuCollapsedFolders.delete(p));
+        } else {
+          parentsWithSubs.forEach(p => this._moveMenuCollapsedFolders.add(p));
+        }
+        renderTree();
+      };
+    }
+
+    if (searchInput) {
+      searchInput.onclick = (e) => e.stopPropagation();
+      searchInput.oninput = () => {
+        searchQuery = searchInput.value || '';
+        renderTree();
+      };
+      searchInput.onkeydown = (e) => {
+        e.stopPropagation();
+        if (e.key === 'Escape') {
+          if (searchInput.value) {
+            searchInput.value = '';
+            searchQuery = '';
+            renderTree();
+          } else {
+            menuEl.style.display = 'none';
+          }
+        }
+      };
+    }
+
+    renderTree();
     menuEl.style.display = 'flex';
   }
 
