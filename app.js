@@ -24468,30 +24468,7 @@ class GraphApp {
 
     const q = String(this._cloudLibrarySearchQuery || '').trim().toLowerCase();
 
-    // 4. 우측 메인 탐색기 영역: (0) 상위 폴더 이동(..) 행 + (1) 하위 폴더 행 + (2) 파일 행
-    if (!q && !isAllRecentMode && activeFolder) {
-      const parentPath = activeFolder.includes('/') ? activeFolder.split('/').slice(0, -1).join('/') : '';
-      const parentLabel = parentPath ? parentPath.split('/').pop() : '내 클라우드';
-      const upRow = document.createElement('div');
-      upRow.className = 'win-explorer-row is-folder-row';
-      upRow.innerHTML = `
-        <div class="win-row-name-col">
-          <span class="win-row-icon">↩️</span>
-          <span class="win-row-title" style="color:#64748b;">.. (상위 폴더 [${parentLabel}]로 이동)</span>
-        </div>
-      `;
-      const goUp = () => {
-        this._activeCloudFolder = parentPath;
-        this._selectedCloudExplorerKeys.clear();
-        this.syncExportCloudFolderSelect();
-        this.renderMyLibraryList();
-      };
-      upRow.onclick = goUp;
-      upRow.ondblclick = goUp;
-      bindExternalFileDropTarget(upRow, parentPath);
-      listEl.appendChild(upRow);
-    }
-
+    // 4. 우측 메인 탐색기 영역: (1) 하위 폴더 행 + (2) 파일 행 (상위 폴더 이동 '..' 행 제거)
     // (1) 현재 폴더의 직계 하위 폴더 목록 (검색 중일 때는 검색어 일치 폴더)
     const visibleFolders = q
       ? allFolderPaths.filter(f => f.toLowerCase().includes(q))
