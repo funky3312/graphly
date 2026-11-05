@@ -11515,10 +11515,10 @@ body:not(.theme-light) .audio-btn-zoom.is-zoomed {
    - 하단: 윈도우 '다른 이름으로 저장' 표준 바 (파일 이름 + 현재 폴더에 저장)
    ========================================================================= */
 .cloud-hub-modal-card.cloud-explorer-modal-card {
-  width: 95% !important;
-  max-width: 820px !important;
-  height: min(580px, 85vh) !important;
-  max-height: 88vh !important;
+  width: 80vw !important;
+  max-width: 600px !important;
+  height: min(560px, 82vh) !important;
+  max-height: 85vh !important;
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
@@ -11785,7 +11785,7 @@ body:not(.theme-light) .win-move-menu-item:hover {
 }
 
 .cloud-library-search-wrap {
-  width: 145px;
+  width: 118px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -11831,7 +11831,7 @@ body:not(.theme-light) .cloud-library-search-input {
 
 /* 좌측 폴더 트리 사이드바 */
 .cloud-explorer-sidebar {
-  width: 205px;
+  width: 168px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -12489,11 +12489,7 @@ body:not(.theme-light) .win-save-title-input {
 }
 
 .cloud-save-scope-group {
-  display: inline-flex;
-  gap: 2px;
-  background: rgba(148, 163, 184, 0.16);
-  padding: 2px;
-  border-radius: 7px;
+  display: none !important;
 }
 
 .cloud-scope-pill {

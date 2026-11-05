@@ -23269,7 +23269,7 @@ class GraphApp {
       return null;
     }
     const btnSave = document.getElementById('btnSaveToMyLibrary');
-    const prevBtnHtml = btnSave ? btnSave.innerHTML : '<span>☁️ 여기에 저장</span>';
+    const prevBtnHtml = btnSave ? btnSave.innerHTML : '<span>저장</span>';
     if (btnSave) {
       btnSave.disabled = true;
       btnSave.innerHTML = '<span>⏳ 저장 중...</span>';
@@ -24435,9 +24435,6 @@ class GraphApp {
           <span class="win-row-icon">↩️</span>
           <span class="win-row-title" style="color:#64748b;">.. (상위 폴더 [${parentLabel}]로 이동)</span>
         </div>
-        <span class="win-row-date-col"></span>
-        <span class="win-row-size-col"></span>
-        <div class="win-row-act-col"></div>
       `;
       const goUp = () => {
         this._activeCloudFolder = parentPath;
@@ -24593,13 +24590,6 @@ class GraphApp {
         return;
       }
 
-      const subFolderCnt = getDirectChildFolders(fPath).length;
-      const directFileCnt = this.myLibraryCache.filter(it => {
-        const f = String(it.folder || '').trim();
-        return f === fPath || f.startsWith(fPath + '/');
-      }).length;
-      const sizeDesc = (subFolderCnt + directFileCnt) > 0 ? `${subFolderCnt + directFileCnt}개 항목` : '비어 있음';
-
       row.innerHTML = `
         <label class="win-row-chk-wrap" title="체크하여 폴더 선택">
           <input type="checkbox" class="win-explorer-checkbox" ${isSelected ? 'checked' : ''}>
@@ -24608,13 +24598,8 @@ class GraphApp {
           <span class="win-row-icon">📁</span>
           <span class="win-row-title">${segName}</span>
         </div>
-        <span class="win-row-date-col">폴더</span>
-        <span class="win-row-size-col">${sizeDesc}</span>
         <div class="win-row-act-col">
-          <button type="button" class="win-row-open-pill" title="이 폴더 열기">열기</button>
-          <button type="button" class="btn-cloud-move-item" title="다른 폴더로 이동">📦</button>
           <button type="button" class="btn-cloud-edit-item" title="폴더 이름 바꾸기">✏️</button>
-          <button type="button" class="btn-cloud-del-item" title="폴더 삭제 (내부 파일은 상위 폴더로 안전 보존)">🗑️</button>
         </div>
       `;
 
@@ -24662,31 +24647,12 @@ class GraphApp {
         enterFolder();
       };
 
-      const btnOpenF = row.querySelector('.win-row-open-pill');
-      if (btnOpenF) {
-        btnOpenF.onclick = (e) => {
-          e.stopPropagation();
-          enterFolder();
-        };
-      }
-      const btnMoveF = row.querySelector('.btn-cloud-move-item');
-      if (btnMoveF) {
-        btnMoveF.onclick = (e) => openMoveMenuForSingleRow(rowKey, e);
-      }
       const btnEditF = row.querySelector('.btn-cloud-edit-item');
       if (btnEditF) {
         btnEditF.onclick = (e) => {
           e.stopPropagation();
           this._renamingCloudFolderPath = fPath;
           this.renderMyLibraryList();
-        };
-      }
-      const btnDelF = row.querySelector('.btn-cloud-del-item');
-      if (btnDelF) {
-        btnDelF.onclick = (e) => {
-          e.stopPropagation();
-          if (!window.confirm(`[📁 ${segName}] 폴더를 삭제하시겠습니까?\n(폴더 안의 수업 파일은 삭제되지 않고 상위 폴더로 이동됩니다.)`)) return;
-          this.deleteCloudFolder(fPath);
         };
       }
 
@@ -24698,8 +24664,8 @@ class GraphApp {
       const emptyDiv = document.createElement('div');
       emptyDiv.className = 'cloud-empty-msg';
       emptyDiv.innerHTML = totalCount === 0
-        ? `이 폴더가 비어 있습니다.<br><span style="font-size:11.5px; color:#64748b;">상단 <strong>[📁+ 새 폴더]</strong> · <strong>[📤 파일 올리기]</strong>를 누르거나 내 기기의 <code>.graphly</code> 파일을 여기로 끌어다 놓아 보세요!</span>`
-        : `이 폴더가 비어 있습니다.<br><span style="font-size:11.5px; color:#64748b;">상단 <strong>[📤 파일 올리기]</strong>(또는 파일 드래그)로 내 기기 파일을 올리거나, 하단 <strong>[☁️ 여기에 저장]</strong>으로 현재 칠판을 저장할 수 있습니다.</span>`;
+        ? `이 폴더가 비어 있습니다.<br><span style="font-size:11.5px; color:#64748b;">상단 <strong>[📁+ 새 폴더]</strong> · <strong>[📤 업로드]</strong>를 누르거나 내 기기의 <code>.graphly</code> 파일을 여기로 끌어다 놓아 보세요!</span>`
+        : `이 폴더가 비어 있습니다.<br><span style="font-size:11.5px; color:#64748b;">상단 <strong>[📤 업로드]</strong>(또는 파일 드래그)로 내 기기 파일을 올리거나, 하단 <strong>[저장]</strong>으로 현재 칠판을 저장할 수 있습니다.</span>`;
       listEl.appendChild(emptyDiv);
       this._syncCloudExplorerSelectionButtons();
       this.updateSelectedPlaylistCount();
@@ -24712,8 +24678,6 @@ class GraphApp {
       const row = document.createElement('div');
       row.className = 'win-explorer-row is-file-row' + (isSelected ? ' selected' : '');
       row.dataset.rowKey = rowKey;
-      const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('ko-KR') : '-';
-      const slideCnt = item.slideCount || (Array.isArray(item.playlistSlides) ? item.playlistSlides.length : 1);
       const curFolder = String(item.folder || '').trim();
       const folderBadgeHtml = ((isAllRecentMode || q) && curFolder)
         ? `<span class="cloud-item-folder-badge" title="소속 폴더">📁 ${curFolder.replace(/\//g, ' › ')}</span>`
@@ -24765,22 +24729,16 @@ class GraphApp {
       }
 
       row.innerHTML = `
-        <label class="win-row-chk-wrap" title="체크하여 다중 선택">
+        <label class="win-row-chk-wrap" title="체크하여 선택">
           <input type="checkbox" class="win-explorer-checkbox" ${isSelected ? 'checked' : ''}>
         </label>
-        <div class="win-row-name-col" title="더블클릭하거나 우측 [열기]를 눌러 칠판에 열기">
+        <div class="win-row-name-col" title="클릭하여 선택 · 더블클릭하여 칠판에 열기">
           <span class="win-row-icon">📊</span>
           ${folderBadgeHtml}
           <span class="win-row-title">${item.title || '제목 없음'}</span>
         </div>
-        <span class="win-row-date-col">${dateStr}</span>
-        <span class="win-row-size-col">${slideCnt}장</span>
         <div class="win-row-act-col">
-          <button type="button" class="win-row-open-pill" title="칠판에 바로 열기">열기</button>
-          <button type="button" class="btn-cloud-dl-item" title="내 기기에 파일(.graphly)로 저장">💾</button>
-          <button type="button" class="btn-cloud-move-item" title="다른 폴더로 이동">📦</button>
           <button type="button" class="btn-cloud-edit-item" title="파일 이름 바꾸기">✏️</button>
-          <button type="button" class="btn-cloud-del-item" title="파일 삭제">🗑️</button>
         </div>
       `;
 
@@ -24817,42 +24775,12 @@ class GraphApp {
         this.loadCloudItemToWorkspace(item, true);
       };
 
-      const btnOpen = row.querySelector('.win-row-open-pill');
-      if (btnOpen) {
-        btnOpen.onclick = (e) => {
-          e.stopPropagation();
-          this.loadCloudItemToWorkspace(item, true);
-        };
-      }
-      const btnDl = row.querySelector('.btn-cloud-dl-item');
-      if (btnDl) {
-        btnDl.onclick = (e) => {
-          e.stopPropagation();
-          this.downloadCloudItemAsFile(item);
-        };
-      }
-      const btnMove = row.querySelector('.btn-cloud-move-item');
-      if (btnMove) {
-        btnMove.onclick = (e) => openMoveMenuForSingleRow(rowKey, e);
-      }
       const btnEdit = row.querySelector('.btn-cloud-edit-item');
       if (btnEdit) {
         btnEdit.onclick = (e) => {
           e.stopPropagation();
           this._renamingCloudItemId = item.id;
           this.renderMyLibraryList();
-        };
-      }
-      const btnDel = row.querySelector('.btn-cloud-del-item');
-      if (btnDel) {
-        btnDel.onclick = async (e) => {
-          e.stopPropagation();
-          if (!window.confirm(`[📊 ${item.title || '수업 파일'}] 항목을 클라우드 보관함에서 삭제하시겠습니까?`)) return;
-          if (this._selectedCloudExplorerKeys) this._selectedCloudExplorerKeys.delete(rowKey);
-          await this._deleteCloudLibraryItemCompletely(item);
-          this._saveMyLibraryCacheForCurrentUser();
-          this.renderMyLibraryList();
-          this.showToast('🗑️ 보관함에서 삭제되었습니다.');
         };
       }
 

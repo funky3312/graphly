@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_42">
+  <link rel="stylesheet" href="style.css?v=20261105_43">
 </head>
 
 <body class="theme-light">
@@ -2691,7 +2691,7 @@
         </button>
         <button type="button" id="btnCloudUploadLocalFiles" class="win-explorer-cmd-btn"
           title="내 기기(PC/패드)에 있는 .graphly 파일을 현재 폴더로 바로 올리기">
-          <span>📤 파일 올리기</span>
+          <span>📤 업로드</span>
         </button>
         <input type="file" id="inputCloudUploadLocalFiles" accept=".graphly,.html,.json" multiple
           style="display: none;">
@@ -2735,15 +2735,15 @@
                 placeholder="현재 칠판 저장 제목 입력 (비워두면 날짜·문항수로 자동 저장)" autocomplete="off">
             </div>
             <div class="win-save-footer-right">
-              <div class="cloud-save-scope-group" title="저장할 캔버스 범위">
+              <div class="cloud-save-scope-group" title="저장할 캔버스 범위" style="display: none !important;">
                 <button type="button" id="btnCloudSaveScopeAll" class="cloud-scope-pill active" data-scope="all">전체
                   캔버스</button>
                 <button type="button" id="btnCloudSaveScopeCurrent" class="cloud-scope-pill"
                   data-scope="current">현재만</button>
               </div>
               <button type="button" id="btnSaveToMyLibrary" class="btn-primary win-save-submit-btn">
-                <span>☁️ 여기에 저장</span>
-                <small id="lblCloudExplorerSaveFolder">(내 클라우드)</small>
+                <span>저장</span>
+                <small id="lblCloudExplorerSaveFolder" style="display: none !important;">(내 클라우드)</small>
               </button>
             </div>
           </div>
@@ -3242,7 +3242,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261105_20"></script>
-  <script src="app.js?v=20261105_42"></script>
+  <script src="app.js?v=20261105_43"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
