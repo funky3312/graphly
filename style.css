@@ -12977,3 +12977,141 @@ body.theme-light .single-line-slider-val {
   flex-direction: column;
   gap: 3px;
 }
+
+/* 🪟 윈도우 탐색기 표준 파일 이름 중복 해결 모달 (덮어쓰기 / 번호 붙이기 / 취소) */
+.cloud-dup-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100050;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.cloud-dup-modal-card {
+  width: 100%;
+  max-width: 410px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.28);
+  padding: 20px 20px 16px;
+  color: #0f172a;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cloud-dup-modal-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.cloud-dup-modal-desc {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  word-break: break-all;
+}
+
+.cloud-dup-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cloud-dup-choice-btn {
+  width: 100%;
+  text-align: left;
+  padding: 10px 13px;
+  border-radius: 11px;
+  border: 1.5px solid #cbd5e1;
+  background: #ffffff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: background 0.14s ease, border-color 0.14s ease, transform 0.1s ease;
+}
+
+.cloud-dup-choice-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.cloud-dup-choice-btn:active {
+  transform: scale(0.99);
+}
+
+.cloud-dup-choice-btn.is-overwrite {
+  background: #eff6ff;
+  border-color: #3b82f6;
+}
+
+.cloud-dup-choice-btn.is-overwrite:hover {
+  background: #dbeafe;
+  border-color: #2563eb;
+}
+
+.cloud-dup-choice-main {
+  font-size: 13px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.cloud-dup-choice-btn.is-overwrite .cloud-dup-choice-main {
+  color: #1d4ed8;
+}
+
+.cloud-dup-choice-sub {
+  font-size: 11.5px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.cloud-dup-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.cloud-dup-apply-all-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cloud-dup-cancel-btn {
+  margin-left: auto;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cloud-dup-cancel-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}

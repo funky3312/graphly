@@ -19396,6 +19396,156 @@ class GraphApp {
     } catch (e) { }
   }
 
+  // 같은 폴더 안에 동일한 이름(대소문자/앞뒤공백 무시)의 파일이 이미 존재하는지 검사
+  _findDuplicateCloudItem(title, folderPath = '', excludeId = null) {
+    const normTitle = String(title || '').trim().toLowerCase();
+    const normFolder = String(folderPath || '').trim();
+    if (!normTitle || !Array.isArray(this.myLibraryCache)) return null;
+    return this.myLibraryCache.find(it => {
+      if (!it || !this._isOwnedByCurrentCloudUser(it)) return false;
+      if (excludeId && it.id === excludeId) return false;
+      const itFolder = String(it.folder || '').trim();
+      const itTitle = String(it.title || '').trim().toLowerCase();
+      return itFolder === normFolder && itTitle === normTitle;
+    }) || null;
+  }
+
+  // 같은 폴더 안에서 사용 가능한 다음 번호 이름 생성 — 예: "파일명 (2)", "파일명 (3)"
+  _getNextAvailableCloudTitle(baseTitle, folderPath = '', excludeId = null) {
+    const cleanBase = String(baseTitle || '수업 노트').trim().replace(/\s*\(\d+\)$/, '').trim() || '수업 노트';
+    if (!this._findDuplicateCloudItem(cleanBase, folderPath, excludeId)) {
+      return cleanBase;
+    }
+    let n = 2;
+    while (n < 1000) {
+      const candidate = `${cleanBase} (${n})`;
+      if (!this._findDuplicateCloudItem(candidate, folderPath, excludeId)) {
+        return candidate;
+      }
+      n++;
+    }
+    return `${cleanBase} (${Date.now().toString().slice(-4)})`;
+  }
+
+  async _cleanupCloudItemChunks(item) {
+    if (!item || !item._isChunked || !item._chunkCount || !item._chunkDocPrefix) return;
+    try {
+      const tasks = [];
+      for (let i = 0; i < item._chunkCount; i++) {
+        tasks.push(this._firestoreRestDeleteDoc('shared_workspaces', `${item._chunkDocPrefix}${i}`).catch(() => { }));
+      }
+      await Promise.all(tasks);
+    } catch (e) { }
+  }
+
+  async _deleteCloudLibraryItemCompletely(item) {
+    if (!item || !item.id) return;
+    if (Array.isArray(this.myLibraryCache)) {
+      this.myLibraryCache = this.myLibraryCache.filter(x => x && x.id !== item.id);
+    }
+    try {
+      localStorage.removeItem('graphly_full_doc_' + item.id);
+    } catch (e) { }
+    await this._cleanupCloudItemChunks(item);
+    try {
+      await this._firestoreRestDeleteDoc('user_library', item.id);
+    } catch (e) { }
+  }
+
+  // 🪟 윈도우 탐색기 표준: 같은 폴더 내 동일 파일명 충돌 시 [🔄 덮어쓰기] / [➕ 파일명 (2)로 저장] / [취소] 선택 모달
+  promptCloudDuplicateResolution(title, folderPath = '', nextTitle = '', remainingCount = 0) {
+    return new Promise((resolve) => {
+      const existingModal = document.getElementById('modalCloudDupResolve');
+      if (existingModal && existingModal.parentNode) {
+        existingModal.parentNode.removeChild(existingModal);
+      }
+      const safeTitle = String(title || '파일')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      const computedNext = nextTitle || this._getNextAvailableCloudTitle(title, folderPath);
+      const safeNextTitle = String(computedNext)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      const folderLabel = folderPath
+        ? `📁 ${String(folderPath).replace(/\//g, ' › ')}`
+        : '☁️ 내 클라우드';
+      const safeFolderLabel = folderLabel
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      const backdrop = document.createElement('div');
+      backdrop.id = 'modalCloudDupResolve';
+      backdrop.className = 'cloud-dup-modal-backdrop';
+      backdrop.innerHTML = `
+        <div class="cloud-dup-modal-card" role="dialog" aria-modal="true">
+          <div class="cloud-dup-modal-title">
+            <span>⚠️ 같은 이름의 파일이 이미 있습니다</span>
+          </div>
+          <div class="cloud-dup-modal-desc">
+            <strong>[${safeFolderLabel}]</strong> 폴더에 이미 <strong>"${safeTitle}"</strong> 파일이 있습니다.<br>어떻게 처리할까요?
+          </div>
+          <div class="cloud-dup-modal-actions">
+            <button type="button" class="cloud-dup-choice-btn is-overwrite" data-dup-act="overwrite">
+              <span class="cloud-dup-choice-main">🔄 덮어쓰기 (기존 파일 교체)</span>
+              <span class="cloud-dup-choice-sub">기존 파일을 지우고 지금 파일로 업데이트합니다</span>
+            </button>
+            <button type="button" class="cloud-dup-choice-btn" data-dup-act="rename">
+              <span class="cloud-dup-choice-main">➕ 새 이름으로 저장 — "${safeNextTitle}"</span>
+              <span class="cloud-dup-choice-sub">이름 뒤에 번호를 붙여 두 파일을 모두 유지합니다</span>
+            </button>
+          </div>
+          <div class="cloud-dup-modal-footer">
+            ${remainingCount > 0 ? `
+              <label class="cloud-dup-apply-all-label">
+                <input type="checkbox" id="chkCloudDupApplyAll" checked>
+                <span>나머지 중복 항목(${remainingCount}개)에도 동일하게 적용</span>
+              </label>
+            ` : '<span></span>'}
+            <button type="button" class="cloud-dup-cancel-btn" data-dup-act="cancel">취소</button>
+          </div>
+        </div>
+      `;
+
+      const cleanupAndResolve = (action) => {
+        window.removeEventListener('keydown', onKeyDown, true);
+        const chkAll = backdrop.querySelector('#chkCloudDupApplyAll');
+        const applyToAll = Boolean(chkAll && chkAll.checked);
+        if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+        resolve({ action, applyToAll });
+      };
+
+      const onKeyDown = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          cleanupAndResolve('cancel');
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          cleanupAndResolve('overwrite');
+        }
+      };
+
+      window.addEventListener('keydown', onKeyDown, true);
+      backdrop.onclick = (e) => {
+        if (e.target === backdrop) cleanupAndResolve('cancel');
+      };
+      backdrop.querySelectorAll('[data-dup-act]').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          cleanupAndResolve(btn.getAttribute('data-dup-act') || 'cancel');
+        };
+      });
+
+      document.body.appendChild(backdrop);
+      const overwriteBtn = backdrop.querySelector('[data-dup-act="overwrite"]');
+      if (overwriteBtn) setTimeout(() => overwriteBtn.focus(), 20);
+    });
+  }
+
   addCloudFolder(folderName, parentPath = '') {
     if (!this.cloudUser || !this.cloudUser.uid) {
       this.promptCloudLoginForLibrary('🔒 폴더 관리는 로그인 후 이용할 수 있습니다.');
@@ -19407,9 +19557,14 @@ class GraphApp {
     const fullPath = cleanParent ? `${cleanParent}/${cleanSeg}` : cleanSeg;
 
     const list = this.getCloudFoldersList();
-    if (!list.includes(fullPath)) {
-      list.push(fullPath);
+    const existingFolder = list.find(f => String(f || '').trim().toLowerCase() === fullPath.toLowerCase());
+    if (existingFolder) {
+      this._selectedCloudExplorerKeys = new Set([`folder:${existingFolder}`]);
+      this.renderMyLibraryList();
+      this.showToast(`⚠️ 이미 [${cleanSeg}] 폴더가 존재합니다.`);
+      return;
     }
+    list.push(fullPath);
     this._saveCloudFoldersList(list);
     if (!this._collapsedCloudFolders) this._collapsedCloudFolders = new Set();
     if (cleanParent) {
@@ -19438,6 +19593,12 @@ class GraphApp {
     const newPath = parts.join('/');
     if (newPath === cleanOld) {
       this.renderMyLibraryList();
+      return;
+    }
+    const existingList = this.getCloudFoldersList();
+    if (existingList.some(f => f !== cleanOld && f.toLowerCase() === newPath.toLowerCase())) {
+      this.renderMyLibraryList();
+      this.showToast(`⚠️ 같은 위치에 이미 [${cleanSeg}] 폴더가 있습니다.`);
       return;
     }
     const updatedFolders = this.getCloudFoldersList().map(f => {
@@ -19566,10 +19727,27 @@ class GraphApp {
       this.renderMyLibraryList();
       return;
     }
-    item.title = cleanTitle;
+    const curFolder = String(item.folder || '').trim();
+    const dupItem = this._findDuplicateCloudItem(cleanTitle, curFolder, item.id);
+    let finalTitle = cleanTitle;
+    if (dupItem) {
+      const nextTitle = this._getNextAvailableCloudTitle(cleanTitle, curFolder, item.id);
+      const res = await this.promptCloudDuplicateResolution(cleanTitle, curFolder, nextTitle, 0);
+      if (!res || res.action === 'cancel') {
+        this.renderMyLibraryList();
+        return;
+      }
+      if (res.action === 'rename') {
+        finalTitle = nextTitle;
+      } else if (res.action === 'overwrite') {
+        await this._deleteCloudLibraryItemCompletely(dupItem);
+        finalTitle = cleanTitle;
+      }
+    }
+    item.title = finalTitle;
     this._saveMyLibraryCacheForCurrentUser();
     this.renderMyLibraryList();
-    this.showToast(`✏️ 제목이 [${cleanTitle}](으)로 변경되었습니다.`);
+    this.showToast(`✏️ 제목이 [${finalTitle}](으)로 변경되었습니다.`);
     if (item.id) {
       try { await this._persistCloudItemMetadataChange(item); } catch (e) { }
     }
@@ -19579,6 +19757,19 @@ class GraphApp {
     if (!item) return;
     const clean = String(targetFolder || '').trim();
     if (String(item.folder || '').trim() === clean) return;
+    const dupItem = this._findDuplicateCloudItem(item.title, clean, item.id);
+    if (dupItem) {
+      const nextTitle = this._getNextAvailableCloudTitle(item.title, clean, item.id);
+      const res = await this.promptCloudDuplicateResolution(item.title, clean, nextTitle, 0);
+      if (!res || res.action === 'cancel') {
+        return;
+      }
+      if (res.action === 'rename') {
+        item.title = nextTitle;
+      } else if (res.action === 'overwrite') {
+        await this._deleteCloudLibraryItemCompletely(dupItem);
+      }
+    }
     item.folder = clean;
     if (clean) {
       const list = this.getCloudFoldersList();
@@ -19774,16 +19965,45 @@ class GraphApp {
       movedCnt++;
     }
 
-    // 2. 선택된 파일들 이동
+    // 2. 선택된 파일들 이동 (동일 폴더 내 중복 파일명 발견 시 덮어쓰기/번호붙이기/취소 확인)
     if (Array.isArray(this.myLibraryCache)) {
-      fileIds.forEach(id => {
-        const it = this.myLibraryCache.find(x => x && x.id === id);
-        if (it && String(it.folder || '').trim() !== cleanTarget) {
-          it.folder = cleanTarget;
-          if (!updatedItems.includes(it)) updatedItems.push(it);
-          movedCnt++;
+      const targetFiles = fileIds
+        .map(id => this.myLibraryCache.find(x => x && x.id === id))
+        .filter(it => it && String(it.folder || '').trim() !== cleanTarget);
+      const conflictingIds = new Set(
+        targetFiles
+          .filter(it => Boolean(this._findDuplicateCloudItem(it.title, cleanTarget, it.id)))
+          .map(it => it.id)
+      );
+      let batchAction = null;
+      let processedConflicts = 0;
+
+      for (const it of targetFiles) {
+        const dupItem = this._findDuplicateCloudItem(it.title, cleanTarget, it.id);
+        if (dupItem) {
+          processedConflicts++;
+          const remainingConflicts = Math.max(0, conflictingIds.size - processedConflicts);
+          const nextTitle = this._getNextAvailableCloudTitle(it.title, cleanTarget, it.id);
+          let chosenAction = batchAction;
+          if (!chosenAction) {
+            const res = await this.promptCloudDuplicateResolution(it.title, cleanTarget, nextTitle, remainingConflicts);
+            chosenAction = (res && res.action) || 'cancel';
+            if (res && res.applyToAll && remainingConflicts > 0) {
+              batchAction = chosenAction;
+            }
+          }
+          if (chosenAction === 'cancel') {
+            continue;
+          } else if (chosenAction === 'rename') {
+            it.title = this._getNextAvailableCloudTitle(it.title, cleanTarget, it.id);
+          } else if (chosenAction === 'overwrite') {
+            await this._deleteCloudLibraryItemCompletely(dupItem);
+          }
         }
-      });
+        it.folder = cleanTarget;
+        if (!updatedItems.includes(it)) updatedItems.push(it);
+        movedCnt++;
+      }
     }
 
     if (cleanTarget && !folderList.includes(cleanTarget)) {
@@ -22238,6 +22458,23 @@ class GraphApp {
         ? String(customFolder || '').trim()
         : rawActiveFolder;
 
+      // 같은 폴더 안에 동일한 이름의 파일이 이미 있는지 먼저 확인 (덮어쓰기 / 새 이름으로 저장 / 취소)
+      let finalTitle = rawTitle;
+      let overwriteTargetItem = this._findDuplicateCloudItem(rawTitle, folderName);
+      if (overwriteTargetItem) {
+        const nextTitle = this._getNextAvailableCloudTitle(rawTitle, folderName);
+        const res = await this.promptCloudDuplicateResolution(rawTitle, folderName, nextTitle, 0);
+        if (!res || res.action === 'cancel') {
+          return null;
+        }
+        if (res.action === 'rename') {
+          finalTitle = nextTitle;
+          overwriteTargetItem = null;
+        } else if (res.action === 'overwrite') {
+          finalTitle = rawTitle;
+        }
+      }
+
       // 뷰어 0.00초 즉시 오픈을 위해 스캔 이미지(viewerSnapshotDataUrl)가 없는 슬라이드는 사전 베이킹
       const effFilter = { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
       if (!this._isCapturingExportSnapshots) {
@@ -22275,10 +22512,12 @@ class GraphApp {
         ? `📚 ${slides.length}문항 통째 수업 · ${this._buildSlideSummaryBadge(primarySlide)}`
         : this._buildSlideSummaryBadge(primarySlide);
 
-      const itemId = 'lib_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      const itemId = overwriteTargetItem
+        ? overwriteTargetItem.id
+        : ('lib_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7));
       const itemObj = {
         id: itemId,
-        title: rawTitle,
+        title: finalTitle,
         tags: rawTags,
         folder: folderName,
         summary: summaryText,
@@ -22301,6 +22540,10 @@ class GraphApp {
         this._saveCloudFoldersList(folders);
       }
 
+      if (overwriteTargetItem) {
+        await this._cleanupCloudItemChunks(overwriteTargetItem);
+        this.myLibraryCache = (this.myLibraryCache || []).filter(x => x && x.id !== itemId);
+      }
       this.myLibraryCache.unshift(itemObj);
       this._saveMyLibraryCacheForCurrentUser();
       this._selectedCloudExplorerKeys = new Set([`file:${itemId}`]);
@@ -22309,9 +22552,11 @@ class GraphApp {
       this.renderMyLibraryList();
       if (!customTitle && inpTitle) inpTitle.value = '';
       const folderPrefix = folderName ? `[📁 ${folderName.replace(/\//g, ' › ')}] ` : '';
-      this.showToast(isDeck
-        ? `📚 ${folderPrefix}[${rawTitle}] (${slides.length}문항 세트) 클라우드 저장 완료!`
-        : `☁️ ${folderPrefix}[${rawTitle}] 클라우드 보관함에 저장되었습니다!`);
+      this.showToast(overwriteTargetItem
+        ? `🔄 ${folderPrefix}[${finalTitle}] 파일을 최신 내용으로 덮어썼습니다!`
+        : (isDeck
+          ? `📚 ${folderPrefix}[${finalTitle}] (${slides.length}문항 세트) 클라우드 저장 완료!`
+          : `☁️ ${folderPrefix}[${finalTitle}] 클라우드 보관함에 저장되었습니다!`));
 
       try {
         await this._firestoreRestWrite('user_library', itemId, itemObj);
@@ -22701,7 +22946,7 @@ class GraphApp {
       : String(this._activeCloudFolder || '').trim();
     const destFolder = (rawDest === '__ALL_RECENT__' || rawDest === '__UNCATEGORIZED__') ? '' : rawDest;
 
-    const uploadedItems = [];
+    const parsedCandidates = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
@@ -22728,30 +22973,84 @@ class GraphApp {
           ? `📚 ${slides.length}문항 통째 수업 · ${this._buildSlideSummaryBadge(primarySlide)}`
           : this._buildSlideSummaryBadge(primarySlide));
 
-        const itemId = 'lib_' + (Date.now() + i) + '_' + Math.random().toString(36).slice(2, 7);
-        const itemObj = {
-          id: itemId,
-          title: rawTitle,
-          tags: rawTags,
-          folder: destFolder,
-          summary: summaryText,
-          isPlaylist: isDeck,
-          slideCount: slides.length,
-          playlistSlides: slides,
-          ownerUid: this.cloudUser.uid,
-          ownerEmail: this.cloudUser.email || '',
-          authProvider: this.cloudUser.authProvider || 'email',
-          authorName: this.cloudUser.displayName || '내 보관함',
-          createdAt: Date.now() + i,
-          slideData: null
-        };
-        this.myLibraryCache.unshift(itemObj);
-        uploadedItems.push(itemObj);
+        parsedCandidates.push({
+          rawTitle,
+          rawTags,
+          summaryText,
+          isDeck,
+          slides
+        });
       } catch (err) { }
     }
 
-    if (!uploadedItems.length) {
+    if (!parsedCandidates.length) {
       this.showToast('⚠️ 업로드할 수 있는 Graphly 수업 파일(.graphly)이 아닙니다.');
+      return [];
+    }
+
+    const uploadedItems = [];
+    let batchAction = null;
+    for (let i = 0; i < parsedCandidates.length; i++) {
+      const cand = parsedCandidates[i];
+      let finalTitle = cand.rawTitle;
+      let overwriteTarget = this._findDuplicateCloudItem(cand.rawTitle, destFolder);
+
+      if (overwriteTarget) {
+        let remainingConflicts = 0;
+        for (let j = i + 1; j < parsedCandidates.length; j++) {
+          if (this._findDuplicateCloudItem(parsedCandidates[j].rawTitle, destFolder) ||
+              parsedCandidates[j].rawTitle.trim().toLowerCase() === cand.rawTitle.trim().toLowerCase()) {
+            remainingConflicts++;
+          }
+        }
+        const nextTitle = this._getNextAvailableCloudTitle(cand.rawTitle, destFolder);
+        let chosenAction = batchAction;
+        if (!chosenAction) {
+          const res = await this.promptCloudDuplicateResolution(cand.rawTitle, destFolder, nextTitle, remainingConflicts);
+          chosenAction = (res && res.action) || 'cancel';
+          if (res && res.applyToAll && remainingConflicts > 0) {
+            batchAction = chosenAction;
+          }
+        }
+        if (chosenAction === 'cancel') {
+          continue;
+        } else if (chosenAction === 'rename') {
+          finalTitle = nextTitle;
+          overwriteTarget = null;
+        } else if (chosenAction === 'overwrite') {
+          finalTitle = cand.rawTitle;
+        }
+      }
+
+      const itemId = overwriteTarget
+        ? overwriteTarget.id
+        : ('lib_' + (Date.now() + i) + '_' + Math.random().toString(36).slice(2, 7));
+      const itemObj = {
+        id: itemId,
+        title: finalTitle,
+        tags: cand.rawTags,
+        folder: destFolder,
+        summary: cand.summaryText,
+        isPlaylist: cand.isDeck,
+        slideCount: cand.slides.length,
+        playlistSlides: cand.slides,
+        ownerUid: this.cloudUser.uid,
+        ownerEmail: this.cloudUser.email || '',
+        authProvider: this.cloudUser.authProvider || 'email',
+        authorName: this.cloudUser.displayName || '내 보관함',
+        createdAt: Date.now() + i,
+        slideData: null
+      };
+
+      if (overwriteTarget) {
+        await this._cleanupCloudItemChunks(overwriteTarget);
+        this.myLibraryCache = (this.myLibraryCache || []).filter(x => x && x.id !== itemId);
+      }
+      this.myLibraryCache.unshift(itemObj);
+      uploadedItems.push(itemObj);
+    }
+
+    if (!uploadedItems.length) {
       return [];
     }
 

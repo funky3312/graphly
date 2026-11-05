@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_22">
+  <link rel="stylesheet" href="style.css?v=20261105_23">
 </head>
 
 <body class="theme-light">
@@ -228,13 +228,16 @@
               <div class="panel-section" style="border: none; padding: 0;">
                 <div class="section-title"
                   style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                  <span>개형 선택 <span style="font-size:10px; font-weight:500; opacity:0.65; text-transform:none;">(클릭 또는 번호 입력)</span></span>
+                  <span>개형 선택 <span style="font-size:10px; font-weight:500; opacity:0.65; text-transform:none;">(클릭 또는
+                      번호 입력)</span></span>
                   <div style="display: flex; gap: 4px;">
-                    <button id="btnSmartInput" class="btn-smart-input" style="padding: 2px 7px; font-size: 10.5px;">𝑓(𝑥)
+                    <button id="btnSmartInput" class="btn-smart-input"
+                      style="padding: 2px 7px; font-size: 10.5px;">𝑓(𝑥)
                       수식</button>
-                    <button id="btnClearAllGraphs" class="btn-clear-all" style="padding: 2px 7px; font-size: 10.5px;"><svg
-                        width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-                        stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px;">
+                    <button id="btnClearAllGraphs" class="btn-clear-all"
+                      style="padding: 2px 7px; font-size: 10.5px;"><svg width="12" height="12" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+                        stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px;">
                         <polyline points="3 6 5 6 21 6" />
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                       </svg>비우기</button>
@@ -2659,13 +2662,15 @@
         <button type="button" id="btnCloudAddRootFolder" class="win-explorer-cmd-btn" title="현재 폴더 안에 새 폴더 만들기">
           <span>📁+ 새 폴더</span>
         </button>
-        <button type="button" id="btnCloudUploadLocalFiles" class="win-explorer-cmd-btn" title="내 기기(PC/패드)에 있는 .graphly 파일을 현재 폴더로 바로 올리기">
+        <button type="button" id="btnCloudUploadLocalFiles" class="win-explorer-cmd-btn"
+          title="내 기기(PC/패드)에 있는 .graphly 파일을 현재 폴더로 바로 올리기">
           <span>📤 파일 올리기</span>
         </button>
-        <input type="file" id="inputCloudUploadLocalFiles" accept=".graphly,.html,.json" multiple style="display: none;">
+        <input type="file" id="inputCloudUploadLocalFiles" accept=".graphly,.html,.json" multiple
+          style="display: none;">
         <div id="cloudLibrarySearchWrap" class="cloud-library-search-wrap">
-          <input type="text" id="inputCloudLibrarySearch" class="cloud-library-search-input"
-            placeholder="🔍 검색..." autocomplete="off">
+          <input type="text" id="inputCloudLibrarySearch" class="cloud-library-search-input" placeholder="🔍 검색..."
+            autocomplete="off">
         </div>
       </div>
 
@@ -2704,8 +2709,10 @@
             </div>
             <div class="win-save-footer-right">
               <div class="cloud-save-scope-group" title="저장할 캔버스 범위">
-                <button type="button" id="btnCloudSaveScopeAll" class="cloud-scope-pill active" data-scope="all">전체 캔버스</button>
-                <button type="button" id="btnCloudSaveScopeCurrent" class="cloud-scope-pill" data-scope="current">현재만</button>
+                <button type="button" id="btnCloudSaveScopeAll" class="cloud-scope-pill active" data-scope="all">전체
+                  캔버스</button>
+                <button type="button" id="btnCloudSaveScopeCurrent" class="cloud-scope-pill"
+                  data-scope="current">현재만</button>
               </div>
               <button type="button" id="btnSaveToMyLibrary" class="btn-primary win-save-submit-btn">
                 <span>☁️ 여기에 저장</span>
@@ -2725,7 +2732,8 @@
               <button type="button" id="btnCloudClearSelection" class="win-selection-clear-btn">선택 해제</button>
             </div>
             <div class="win-selection-footer-right">
-              <button type="button" id="btnCloudActionOpen" class="btn-primary win-save-submit-btn" title="선택한 파일 불러오기 (여러 개 선택 시 연속 캔버스로 합쳐서 열기)">
+              <button type="button" id="btnCloudActionOpen" class="btn-primary win-save-submit-btn"
+                title="선택한 파일 불러오기 (여러 개 선택 시 연속 캔버스로 합쳐서 열기)">
                 <span id="lblCloudFooterOpenText">📂 열기</span>
               </button>
               <div class="win-explorer-move-wrap">
@@ -3137,7 +3145,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261105_20"></script>
-  <script src="app.js?v=20261105_22"></script>
+  <script src="app.js?v=20261105_23"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
@@ -3340,7 +3348,7 @@
         navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister())).catch(() => { });
         if ('caches' in window) caches.keys().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => { });
       });
-    }
+  }
   </script>
 </body>
 
