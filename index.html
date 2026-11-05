@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_36">
+  <link rel="stylesheet" href="style.css?v=20261105_37">
 </head>
 
 <body class="theme-light">
@@ -2277,10 +2277,10 @@
           </div>
         </div>
 
-        <!-- STEP 3: 내 기기에 파일(.graphly) 저장 (클라우드 저장/불러오기는 좌측 ☁️ 클라우드 아이콘으로 통합) -->
+        <!-- STEP 3: 내 기기 및 클라우드 저장 (.graphly) -->
         <div class="share-field-group share-deck-hub-group">
           <label class="share-field-label">
-            <span>내 기기에 파일 저장 (.graphly)</span>
+            <span>파일 및 클라우드 저장 <small style="font-weight:500;color:#94a3b8;font-size:11px;margin-left:4px;">(.graphly)</small></span>
           </label>
           <div class="share-input-row" style="margin-bottom: 6px; display: flex; gap: 6px;">
             <select id="selectExportCloudFolder" class="export-cloud-folder-select" title="클라우드 저장 폴더 선택"
@@ -2293,10 +2293,8 @@
               placeholder="#태그">
           </div>
           <div class="share-deck-btn-row">
-            <button type="button" id="btnShareModalToLibrary" class="btn-primary share-deck-btn"
-              style="display: none !important;">☁️ 클라우드 저장</button>
-            <button type="button" id="btnShareModalExportFile" class="btn-primary share-deck-btn"
-              style="width: 100%;">💻 내 기기에 파일 저장 (.graphly)</button>
+            <button type="button" id="btnShareModalExportFile" class="btn-primary share-deck-btn">💻 내 기기에 저장</button>
+            <button type="button" id="btnShareModalToLibrary" class="btn-secondary share-deck-btn">☁️ 클라우드에 저장</button>
           </div>
         </div>
       </div>
@@ -3241,7 +3239,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261105_20"></script>
-  <script src="app.js?v=20261105_36"></script>
+  <script src="app.js?v=20261105_37"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

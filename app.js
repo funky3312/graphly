@@ -19125,25 +19125,21 @@ class GraphApp {
 
     if (btnShareToLib) {
       btnShareToLib.onclick = async () => {
-        if (!this.cloudUser) {
-          const modalShare = document.getElementById('modalShare');
-          if (modalShare) modalShare.classList.remove('show');
-          this.promptCloudLoginForLibrary('🔒 클라우드 보관함에 업로드하려면 먼저 로그인(구글 또는 일반 ID)해 주세요.');
-          return;
+        const modalShare = document.getElementById('modalShare');
+        if (modalShare) modalShare.classList.remove('show');
+        this._returnToShareModalAfterCloudSave = true;
+        this._pendingExportCloudFilter = {
+          includeProblem: !this.exportFilter || this.exportFilter.includeProblem !== false,
+          includeGraph: !this.exportFilter || this.exportFilter.includeGraph !== false,
+          includeInk: !this.exportFilter || this.exportFilter.includeInk !== false,
+          includeAudio: !this.exportFilter || this.exportFilter.includeAudio !== false
+        };
+        this._cloudExplorerSaveScope = (this.exportScope === 'current') ? 'current' : 'all';
+        const inpCloudTitle = document.getElementById('inputCloudSaveTitle');
+        if (inpCloudTitle && inpDeckTitle && inpDeckTitle.value.trim()) {
+          inpCloudTitle.value = inpDeckTitle.value.trim();
         }
-        const slides = getShareModalFilteredSlides();
-        const stageSuffix = getExportStageSuffixLabel();
-        const defaultTitle = slides.length > 1
-          ? `수업 캔버스 ${slides.length}문항 ${stageSuffix} (${new Date().toLocaleDateString('ko-KR')})`
-          : `수업 노트 ${stageSuffix} (${new Date().toLocaleDateString('ko-KR')})`;
-        const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
-        const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : (slides.length > 1 ? `#풀세트 ${stageSuffix}` : `#수학그래프 ${stageSuffix}`);
-        const selFolder = document.getElementById('selectExportCloudFolder');
-        const folderName = selFolder ? selFolder.value.trim() : '';
-        const saved = await this.saveCurrentToMyLibrary(title, tags, slides, folderName);
-        if (!saved) return;
-        if (inpDeckTitle) inpDeckTitle.value = '';
-        flashButtonLabel(btnShareToLib, '✅ 클라우드 저장됨', '☁️ 클라우드 저장');
+        this.openCloudHubModal({ fromExportModal: true });
       };
     }
 
@@ -19158,7 +19154,7 @@ class GraphApp {
         const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : `#수업노트 ${stageSuffix}`;
         this.exportGraphlyDeckFile(title, tags, slides);
         if (inpDeckTitle) inpDeckTitle.value = '';
-        flashButtonLabel(btnShareExportFile, '✅ 파일 저장됨', '💻 파일 저장 (.graphly)');
+        flashButtonLabel(btnShareExportFile, '✅ 파일 저장됨', '💻 내 기기에 저장');
       };
     }
   }
@@ -19904,9 +19900,13 @@ class GraphApp {
     this.initAccidentalRefreshProtection();
   }
 
-  openCloudHubModal() {
+  openCloudHubModal(options = null) {
     const modalCloud = document.getElementById('modalCloudHub');
     if (!modalCloud) return;
+    if (!(options && options.fromExportModal)) {
+      this._returnToShareModalAfterCloudSave = false;
+      this._pendingExportCloudFilter = null;
+    }
     if (this.isLessonPlaylistActive) {
       this.saveCurrentSlideIntoPlaylist();
     }
@@ -23244,8 +23244,13 @@ class GraphApp {
       const inpTags = document.getElementById('inputCloudSaveTags');
 
       const useCurrentOnly = (!customSlidesArray && this._cloudExplorerSaveScope === 'current');
+      const activePendingFilter = (!customSlidesArray && this._pendingExportCloudFilter)
+        ? { ...this._pendingExportCloudFilter }
+        : null;
       const autoSlides = (!customSlidesArray)
-        ? (useCurrentOnly ? [this.serializeFullSlideState('현재 캔버스')] : this._getActiveSlidesForExport())
+        ? (activePendingFilter
+          ? this._getFilteredSlidesForExport((inpTitle && inpTitle.value.trim()) || '수업 세팅', useCurrentOnly ? 'current' : 'all', activePendingFilter)
+          : (useCurrentOnly ? [this.serializeFullSlideState('현재 캔버스')] : this._getActiveSlidesForExport()))
         : null;
       let slides = Array.isArray(customSlidesArray) && customSlidesArray.length > 0
         ? JSON.parse(JSON.stringify(customSlidesArray))
@@ -23283,7 +23288,7 @@ class GraphApp {
       }
 
       // 뷰어 0.00초 즉시 오픈을 위해 스캔 이미지(viewerSnapshotDataUrl)가 없는 슬라이드는 사전 베이킹
-      const effFilter = { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
+      const effFilter = activePendingFilter || { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
       if (!this._isCapturingExportSnapshots) {
         this._isCapturingExportSnapshots = true;
         const backupCurrent = this.serializeFullSlideState('backup');
@@ -23370,6 +23375,25 @@ class GraphApp {
       try {
         await this._firestoreRestWrite('user_library', itemId, itemObj);
       } catch (e) { }
+
+      if (this._returnToShareModalAfterCloudSave) {
+        this._returnToShareModalAfterCloudSave = false;
+        this._pendingExportCloudFilter = null;
+        const modalCloud = document.getElementById('modalCloudHub');
+        if (modalCloud) modalCloud.classList.remove('show');
+        const modalShare = document.getElementById('modalShare');
+        if (modalShare) modalShare.classList.add('show');
+        const inpShareTitle = document.getElementById('inputShareModalDeckTitle');
+        if (inpShareTitle) inpShareTitle.value = '';
+        const btnShareToLib = document.getElementById('btnShareModalToLibrary');
+        if (btnShareToLib) {
+          btnShareToLib.textContent = '✅ 클라우드에 저장됨';
+          setTimeout(() => {
+            if (btnShareToLib) btnShareToLib.textContent = '☁️ 클라우드에 저장';
+          }, 1800);
+        }
+      }
+
       return itemObj;
     } finally {
       if (btnSave) {
@@ -23466,6 +23490,8 @@ class GraphApp {
   // 보관함/게시판 항목을 불러올 때 먼저 표준 뷰어로 연결 (뷰어에서 [편집] 클릭 시 그래플리 작업 화면으로 전환!)
   async loadCloudItemToWorkspace(item, closeModal = true, openInViewer = true) {
     if (!item) return;
+    this._returnToShareModalAfterCloudSave = false;
+    this._pendingExportCloudFilter = null;
     const resolved = await this._resolveChunkedItem(item);
     const slides = Array.isArray(resolved.playlistSlides) && resolved.playlistSlides.length > 0
       ? resolved.playlistSlides
