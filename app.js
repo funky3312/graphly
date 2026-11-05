@@ -7129,18 +7129,30 @@ class GraphApp {
       if (!ultraDataUrl) return;
       queueItem.dataUrl = ultraDataUrl;
       queueItem.cropCanvas = vecCanvas;
+      const ultraAspect = (vecCanvas.width > 0 && vecCanvas.height > 0) ? (vecCanvas.height / vecCanvas.width) : null;
 
       if (queueItem.placedTarget) {
         const ref = queueItem.placedTarget;
+        if (ref.slideRef) {
+          if (ref.type === 'primary' && ref.slideRef.primaryProblemCard) {
+            ref.slideRef.primaryProblemCard.imgSrc = ultraDataUrl;
+            if (ultraAspect) ref.slideRef.primaryProblemCard.problemCardAspect = ultraAspect;
+          } else if (ref.type === 'extra' && Array.isArray(ref.slideRef.extraProblems) && typeof ref.extraIndex === 'number' && ref.slideRef.extraProblems[ref.extraIndex]) {
+            ref.slideRef.extraProblems[ref.extraIndex].dataUrl = ultraDataUrl;
+          }
+          delete ref.slideRef.viewerSnapshotDataUrl;
+        }
         if (ref.type === 'extra' && ref.cardItem && ref.cardItem.el) {
           const imgEl = ref.cardItem.el.querySelector('.problem-card-img');
           if (imgEl) imgEl.src = ultraDataUrl;
           ref.cardItem.sourceCanvas = vecCanvas;
-        } else if (ref.type === 'primary' && this.problemCardData) {
+        } else if (ref.type === 'primary' && this.problemCardData && (!ref.problemCardData || this.problemCardData === ref.problemCardData)) {
           this.problemCardData.imgUrl = ultraDataUrl;
           this.problemCardImage = vecCanvas;
+          if (ultraAspect) this.problemCardAspect = ultraAspect;
           const pImg = document.getElementById('problemCardImg');
           if (pImg) pImg.src = ultraDataUrl;
+          this.syncProblemCardRectFromWidget();
         }
         if (this.isLessonPlaylistActive && !this.isDrawingInk) {
           this.saveCurrentSlideIntoPlaylist();
@@ -7208,7 +7220,7 @@ class GraphApp {
           explicitIndex: idx + 1,
           customTitle: titleText
         });
-        item.placedTarget = { type: 'extra', cardItem: spawned, pageNum: item.pageNum };
+        item.placedTarget = { type: 'extra', cardItem: spawned, pageNum: item.pageNum, extraIndex: idx - 1 };
       }
     });
 
@@ -7223,6 +7235,16 @@ class GraphApp {
       this.lessonPlaylistIndex = 0;
       this.isLessonPlaylistActive = true;
       this.syncLessonPlaylistNavBarUI();
+    }
+    const activeSlideRef = (Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex])
+      ? this.lessonPlaylistSlides[this.lessonPlaylistIndex]
+      : null;
+    if (activeSlideRef) {
+      items.forEach(item => {
+        if (item && item.placedTarget) {
+          item.placedTarget.slideRef = activeSlideRef;
+        }
+      });
     }
 
     this.isPdfMultiCropMode = false;
@@ -8744,6 +8766,12 @@ class GraphApp {
             this.isLessonPlaylistActive = true;
             this.syncLessonPlaylistNavBarUI();
           }
+          if (placedTarget && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex]) {
+            placedTarget.slideRef = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
+            if (placedTarget.type === 'extra' && Array.isArray(this.extraProblemCards)) {
+              placedTarget.extraIndex = Math.max(0, this.extraProblemCards.indexOf(placedTarget.cardItem));
+            }
+          }
           this.closePdfModal();
           this.togglePdfCropMode(false);
 
@@ -8836,7 +8864,6 @@ class GraphApp {
   async _upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop, targetRef = null) {
     try {
       if (!this.pdfDoc || !normCrop || normCrop.nw <= 0 || normCrop.nh <= 0) return;
-      await this._WaitUntilPenIdle();
       const page = await this.pdfDoc.getPage(pageNum);
       const baseVp = page.getViewport({ scale: 1.0 });
       // 🌟 [뷰어 축소 배율(pdfZoom)과 무관한 4.8x~6.0x 초고해상도 벡터 캡처 보강]:
@@ -8870,10 +8897,24 @@ class GraphApp {
       vCtx.fillRect(0, 0, targetW, targetH);
       await page.render({ canvasContext: vCtx, viewport: fullVp }).promise;
 
-      // 선생님이 막 첫 펜 획을 긋고 있다면 획이 끝날 때까지 양보한 뒤 백그라운드 워커 스레드(toBlob)로 고선명(0.84) 인코딩!
-      await this._WaitUntilPenIdle();
       const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.88);
-      await this._WaitUntilPenIdle();
+      if (!ultraDataUrl) return;
+      const ultraAspect = (vecCanvas.width > 0 && vecCanvas.height > 0) ? (vecCanvas.height / vecCanvas.width) : null;
+
+      // 🌟 [핵심 핀셋 수정: 1페이지 캡처 직후 곧바로 필기하거나 다음 캔버스로 넘어가도 슬라이드 데이터에 초고해상도 벡터 이미지 100% 직결 반영!]
+      if (targetRef && targetRef.slideRef) {
+        const sRef = targetRef.slideRef;
+        if (targetRef.type === 'primary' && sRef.primaryProblemCard) {
+          sRef.primaryProblemCard.imgSrc = ultraDataUrl;
+          if (ultraAspect) sRef.primaryProblemCard.problemCardAspect = ultraAspect;
+        } else if (targetRef.type === 'extra' && Array.isArray(sRef.extraProblems)) {
+          const eIdx = (typeof targetRef.extraIndex === 'number') ? targetRef.extraIndex : (sRef.extraProblems.length - 1);
+          if (sRef.extraProblems[eIdx]) {
+            sRef.extraProblems[eIdx].dataUrl = ultraDataUrl;
+          }
+        }
+        delete sRef.viewerSnapshotDataUrl;
+      }
 
       const syncPlaylistIdle = () => {
         if (this.isDrawingInk || this.isStylusDrawing) {
@@ -8881,15 +8922,18 @@ class GraphApp {
           return;
         }
         if (this.isLessonPlaylistActive) {
-          this.saveCurrentSlideIntoPlaylist();
+          const curSlide = Array.isArray(this.lessonPlaylistSlides) ? this.lessonPlaylistSlides[this.lessonPlaylistIndex] : null;
+          if (!targetRef || !targetRef.slideRef || curSlide === targetRef.slideRef) {
+            this.saveCurrentSlideIntoPlaylist();
+          }
         }
       };
       const schedulePlaylistSync = () => {
         if (!this.isLessonPlaylistActive) return;
         if (typeof window.requestIdleCallback === 'function') {
-          window.requestIdleCallback(syncPlaylistIdle, { timeout: 600 });
+          window.requestIdleCallback(syncPlaylistIdle, { timeout: 300 });
         } else {
-          setTimeout(syncPlaylistIdle, 120);
+          setTimeout(syncPlaylistIdle, 80);
         }
       };
 
@@ -8914,11 +8958,16 @@ class GraphApp {
           return;
         }
       }
-      if (this.problemCardData && this.problemCardData.pageNum === pageNum) {
+      const isMatchingPrimary = targetRef && targetRef.problemCardData
+        ? (this.problemCardData === targetRef.problemCardData)
+        : Boolean(this.problemCardData && this.problemCardData.pageNum === pageNum);
+      if (isMatchingPrimary && this.problemCardData) {
         this.problemCardData.imgUrl = ultraDataUrl;
         this.problemCardImage = vecCanvas;
+        if (ultraAspect) this.problemCardAspect = ultraAspect;
         const pImg = document.getElementById('problemCardImg');
         if (pImg) pImg.src = ultraDataUrl;
+        this.syncProblemCardRectFromWidget();
         schedulePlaylistSync();
         if (!this.isDrawingInk) this.requestRender();
       }
@@ -22676,10 +22725,12 @@ class GraphApp {
         this.problemCardImage = imgObj;
       }
       if (pImg) {
-        if (pImg.src === pc.imgSrc && pc.imgSrc) {
+        if (pImg.src !== (pc.imgSrc || '')) {
+          pImg.src = pc.imgSrc || '';
+        } else if (this._isFixedReplayStageActive && this._isFixedReplayStageActive() && pc.imgSrc) {
           pImg.removeAttribute('src');
+          pImg.src = pc.imgSrc;
         }
-        pImg.src = pc.imgSrc || '';
       }
       if (pTitle) pTitle.textContent = pc.titleText || '문제';
       if (pToggle) pToggle.textContent = pc.toggleText || (pc.minimized ? '▸' : '▾');
@@ -26415,9 +26466,8 @@ class GraphApp {
       currentIndex: Math.max(0, Math.min(slides.length - 1, pkg.currentIndex || 0))
     };
     this._viewerPkg = normalizedPkg;
-    this.applyCloudSharePackage(normalizedPkg);
-    await this._waitForSlideImagesReady();
 
+    // 🌟 [핵심 핀셋 수정: 1페이지(첫 슬라이드) 진입 시에도 2페이지와 100% 동일하게 고정 스테이지(replay-fixed-stage)를 먼저 켠 뒤 이미지를 로드·래스터화!]
     this._isAudioSyncPlayerVisible = true;
     this.audioReplayViewMode = 'video';
     this._replayViewerZoom = 1.0;
@@ -26427,11 +26477,27 @@ class GraphApp {
     this._replayInkBakeKey = '';
     this._isAudioReplayActive = true;
     document.body.classList.add('audio-replay-active');
+    const targetInitialSlide = slides[normalizedPkg.currentIndex] || slides[0];
+    if (targetInitialSlide && targetInitialSlide.audioSyncData) {
+      this.audioSyncData = this._expandAudioSyncData(JSON.parse(JSON.stringify(targetInitialSlide.audioSyncData)));
+    }
+    if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
+
+    this.applyCloudSharePackage(normalizedPkg);
+    await this._waitForSlideImagesReady();
+
+    this._isAudioSyncPlayerVisible = true;
+    this.audioReplayViewMode = 'video';
+    this._isAudioReplayActive = true;
+    document.body.classList.add('audio-replay-active');
     if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
     this._applyAudioTimelineStateAt(0);
     this.updateProblemCardPosition();
     this.syncProblemCardRectFromWidget();
     this.syncGraphCardRectFromWidget();
+    if (typeof this._refreshProblemCardImagesForReplayStage === 'function') {
+      this._refreshProblemCardImagesForReplayStage();
+    }
     if (autoPlay) {
       this.playAudioSync(0, 'video');
     } else {
@@ -36533,7 +36599,23 @@ class GraphApp {
           ctx.clip();
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(imgEl, bx, by, bw, bh);
+          const hiResSource = (
+            el.id === 'problemCardWidget' &&
+            this.problemCardImage &&
+            typeof HTMLCanvasElement !== 'undefined' &&
+            this.problemCardImage instanceof HTMLCanvasElement &&
+            this.problemCardImage.width > 0 &&
+            this.problemCardImage.height > 0
+          ) ? this.problemCardImage : (
+            el.classList.contains('extra-problem-card-widget') &&
+            Array.isArray(this.extraProblemCards)
+              ? (() => {
+                const found = this.extraProblemCards.find(c => c && c.el === el && c.sourceCanvas && c.sourceCanvas.width > 0);
+                return (found && found.sourceCanvas) ? found.sourceCanvas : imgEl;
+              })()
+              : imgEl
+          );
+          ctx.drawImage(hiResSource, bx, by, bw, bh);
           if (incInk) {
             const cardStrokes = (el.id === 'problemCardWidget')
               ? (this.problemInkStrokes || [])
@@ -39985,12 +40067,29 @@ class GraphApp {
       if (typeof this.updateProblemCardPosition === 'function') this.updateProblemCardPosition();
       if (typeof this.syncProblemCardRectFromWidget === 'function') this.syncProblemCardRectFromWidget();
       if (typeof this.syncGraphCardRectFromWidget === 'function') this.syncGraphCardRectFromWidget();
+      if (typeof this._refreshProblemCardImagesForReplayStage === 'function') {
+        this._refreshProblemCardImagesForReplayStage();
+      }
     }
     if (btnZoom) {
       const pct = Math.round(userZoom * 100);
       btnZoom.textContent = `${pct}%`;
       btnZoom.classList.toggle('is-zoomed', userZoom > 1.02);
     }
+  }
+
+  _refreshProblemCardImagesForReplayStage() {
+    const imgs = document.querySelectorAll('#problemCardImg, .extra-problem-card-widget .problem-card-img');
+    imgs.forEach((imgEl) => {
+      if (!imgEl) return;
+      const curSrc = imgEl.getAttribute('src') || imgEl.src || '';
+      if (!curSrc) return;
+      imgEl.style.transform = 'translateZ(0)';
+      requestAnimationFrame(() => {
+        if (!imgEl) return;
+        imgEl.style.transform = '';
+      });
+    });
   }
 
   resetReplayViewerZoom() {
