@@ -11835,7 +11835,7 @@ body:not(.theme-light) .cloud-library-search-input {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  padding: 8px 6px;
+  padding: 4px 5px;
   border-right: 1px solid rgba(148, 163, 184, 0.24);
   background: rgba(248, 250, 252, 0.65);
   overflow: hidden;
@@ -11852,7 +11852,7 @@ body:not(.theme-light) .cloud-explorer-sidebar {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0px !important;
   padding-right: 2px;
 }
 
@@ -11870,17 +11870,18 @@ body:not(.theme-light) .cloud-explorer-sidebar {
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  padding: 5px 6px;
-  border-radius: 6px;
+  padding: 1.5px 5px !important;
+  border-radius: 5px;
   border: 1px solid transparent;
   background: transparent;
   color: #334155;
-  font-size: 12px;
+  font-size: 11.5px;
+  line-height: 1.2;
   font-weight: 600;
   cursor: pointer;
   user-select: none;
   transition: background 0.1s ease, border-color 0.1s ease;
-  min-height: 28px;
+  min-height: 21px !important;
   box-sizing: border-box;
 }
 
@@ -11918,9 +11919,9 @@ body:not(.theme-light) .cloud-tree-node.active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
-  font-size: 9.5px;
+  width: 13px;
+  height: 13px;
+  font-size: 9px;
   color: #64748b;
   flex-shrink: 0;
   border-radius: 3px;
@@ -11932,7 +11933,7 @@ body:not(.theme-light) .cloud-tree-node.active {
 }
 
 .cloud-tree-icon {
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1;
   flex-shrink: 0;
 }
@@ -11944,7 +11945,7 @@ body:not(.theme-light) .cloud-tree-node.active {
 }
 
 .cloud-tree-count {
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
   color: #94a3b8;
   flex-shrink: 0;
@@ -11953,7 +11954,7 @@ body:not(.theme-light) .cloud-tree-node.active {
 .cloud-tree-divider {
   height: 1px;
   background: rgba(148, 163, 184, 0.22);
-  margin: 5px 4px;
+  margin: 3px 4px;
   flex-shrink: 0;
 }
 
@@ -11994,18 +11995,18 @@ body:not(.theme-light) .win-explorer-col-header {
 
 .col-chk-wrap,
 .win-row-chk-wrap {
-  width: 24px;
+  width: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  margin-right: 4px;
+  margin-right: 3px;
   cursor: pointer;
 }
 
 .win-explorer-checkbox {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   accent-color: #2563eb;
   cursor: pointer;
   margin: 0;
@@ -12110,22 +12111,22 @@ body:not(.theme-light) .win-new-folder-input {
   overflow-y: auto !important;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 8px 10px;
+  gap: 0px !important;
+  padding: 4px 8px !important;
 }
 
-/* 행 공통 스타일 (폴더 행 & 파일 행 — 군더더기 없는 심플 리스트) */
+/* 행 공통 스타일 (폴더 행 & 파일 행 — 고밀도 초슬림 리스트) */
 .win-explorer-row {
   display: flex;
   align-items: center;
-  padding: 7px 10px;
-  border-radius: 8px;
+  padding: 1.5px 8px !important;
+  border-radius: 5px;
   border: 1px solid transparent;
   background: transparent;
   cursor: pointer;
   user-select: none;
   transition: background 0.1s ease, border-color 0.1s ease;
-  min-height: 36px;
+  min-height: 23px !important;
   box-sizing: border-box;
 }
 
@@ -12163,12 +12164,12 @@ body:not(.theme-light) .win-explorer-row.selected {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-right: 10px;
+  gap: 6px;
+  padding-right: 6px;
 }
 
 .win-row-icon {
-  font-size: 16px;
+  font-size: 13.5px;
   line-height: 1;
   flex-shrink: 0;
 }
@@ -12192,7 +12193,8 @@ body:not(.theme-light) .win-row-slide-badge {
 }
 
 .win-row-title {
-  font-size: 13px;
+  font-size: 12.5px;
+  line-height: 1.2;
   font-weight: 600;
   color: #0f172a;
   white-space: nowrap;
@@ -12309,13 +12311,13 @@ body:not(.theme-light) .cloud-item-folder-badge {
 .btn-cloud-move-item,
 .btn-cloud-edit-item,
 .btn-cloud-del-item {
-  width: 24px;
-  height: 24px;
-  border-radius: 5px;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
   border: 1px solid transparent;
   background: transparent;
   color: #64748b;
-  font-size: 11.5px;
+  font-size: 11px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
