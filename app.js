@@ -6277,6 +6277,8 @@ class GraphApp {
 
     window.addEventListener('dragenter', (e) => {
       e.preventDefault();
+      const modalCloud = document.getElementById('modalCloudHub');
+      if (modalCloud && modalCloud.classList.contains('show')) return;
       dragCounter++;
       if (dropOverlay) dropOverlay.style.display = 'flex';
     });
@@ -18877,6 +18879,26 @@ class GraphApp {
       };
     }
 
+    const btnUploadLocalFiles = document.getElementById('btnCloudUploadLocalFiles');
+    const inpUploadLocalFiles = document.getElementById('inputCloudUploadLocalFiles');
+    if (btnUploadLocalFiles && inpUploadLocalFiles) {
+      btnUploadLocalFiles.onclick = () => {
+        if (!this.cloudUser || !this.cloudUser.uid) {
+          this.promptCloudLoginForLibrary('🔒 내 기기의 파일을 클라우드 보관함에 올리려면 먼저 로그인해 주세요.');
+          return;
+        }
+        inpUploadLocalFiles.value = '';
+        inpUploadLocalFiles.click();
+      };
+      inpUploadLocalFiles.onchange = async (e) => {
+        const files = e.target.files;
+        if (files && files.length > 0) {
+          await this.uploadLocalGraphlyFilesToCloud(files);
+        }
+        inpUploadLocalFiles.value = '';
+      };
+    }
+
     if (inpLibSearch) {
       inpLibSearch.oninput = (e) => {
         this._cloudLibrarySearchQuery = String(e.target.value || '').trim();
@@ -19107,10 +19129,12 @@ class GraphApp {
       };
     }
 
-    // 화면에 .graphly 파일을 드래그 앤 드롭해도 0.1초 만에 즉시 열리도록 지원!
+    // 화면에 .graphly 파일을 드래그 앤 드롭해도 0.1초 만에 즉시 열리도록 지원! (단, 클라우드 보관함 창이 열려 있을 때는 클라우드 폴더 업로드가 처리)
     if (!this._graphlyDropListenerAttached) {
       this._graphlyDropListenerAttached = true;
       window.addEventListener('drop', (e) => {
+        const modalCloud = document.getElementById('modalCloudHub');
+        if (modalCloud && modalCloud.classList.contains('show')) return;
         if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
         const f = e.dataTransfer.files[0];
         const lowerName = (f && f.name) ? f.name.toLowerCase() : '';
@@ -22663,6 +22687,101 @@ class GraphApp {
     }
   }
 
+  // 내 기기(PC/아이패드)에 있는 .graphly 파일을 현재 칠판을 덮어쓰지 않고 클라우드 보관함(지정 폴더)으로 직행 업로드
+  async uploadLocalGraphlyFilesToCloud(fileList, targetFolder = null) {
+    if (!this.cloudUser || !this.cloudUser.uid) {
+      this.promptCloudLoginForLibrary('🔒 내 기기의 파일을 클라우드 보관함에 올리려면 먼저 로그인해 주세요.');
+      return [];
+    }
+    const files = Array.from(fileList || []).filter(Boolean);
+    if (!files.length) return [];
+
+    const rawDest = (targetFolder !== null && targetFolder !== undefined)
+      ? String(targetFolder).trim()
+      : String(this._activeCloudFolder || '').trim();
+    const destFolder = (rawDest === '__ALL_RECENT__' || rawDest === '__UNCATEGORIZED__') ? '' : rawDest;
+
+    const uploadedItems = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        const text = await file.text();
+        const pack = await this._extractGraphlyPackFromText(text);
+        if (!pack) continue;
+        const slides = Array.isArray(pack.playlistSlides) && pack.playlistSlides.length > 0
+          ? pack.playlistSlides
+          : (pack.slideData ? [pack.slideData] : (pack.historyJson ? [pack] : []));
+        if (!slides.length) continue;
+
+        slides.forEach(s => {
+          if (s && s.audioSyncData) s.audioSyncData = this._compactAudioSyncData(s.audioSyncData);
+        });
+
+        const cleanFileName = file.name
+          ? file.name.replace(/\.(graphly\.html|graphly|json|html)$/i, '').trim()
+          : '';
+        const rawTitle = cleanFileName || (pack.title ? String(pack.title).trim() : 'Graphly 수업 노트');
+        const isDeck = slides.length > 1 || Boolean(pack.isPlaylist);
+        const rawTags = (pack.tags && String(pack.tags).trim()) || (isDeck ? '#통째수업' : '#수업노트');
+        const primarySlide = slides[0];
+        const summaryText = pack.summary || (isDeck
+          ? `📚 ${slides.length}문항 통째 수업 · ${this._buildSlideSummaryBadge(primarySlide)}`
+          : this._buildSlideSummaryBadge(primarySlide));
+
+        const itemId = 'lib_' + (Date.now() + i) + '_' + Math.random().toString(36).slice(2, 7);
+        const itemObj = {
+          id: itemId,
+          title: rawTitle,
+          tags: rawTags,
+          folder: destFolder,
+          summary: summaryText,
+          isPlaylist: isDeck,
+          slideCount: slides.length,
+          playlistSlides: slides,
+          ownerUid: this.cloudUser.uid,
+          ownerEmail: this.cloudUser.email || '',
+          authProvider: this.cloudUser.authProvider || 'email',
+          authorName: this.cloudUser.displayName || '내 보관함',
+          createdAt: Date.now() + i,
+          slideData: null
+        };
+        this.myLibraryCache.unshift(itemObj);
+        uploadedItems.push(itemObj);
+      } catch (err) { }
+    }
+
+    if (!uploadedItems.length) {
+      this.showToast('⚠️ 업로드할 수 있는 Graphly 수업 파일(.graphly)이 아닙니다.');
+      return [];
+    }
+
+    if (destFolder) {
+      const folders = this.getCloudFoldersList();
+      const parts = destFolder.split('/').map(s => s.trim()).filter(Boolean);
+      let cur = '';
+      parts.forEach(seg => {
+        cur = cur ? `${cur}/${seg}` : seg;
+        if (!folders.includes(cur)) folders.push(cur);
+      });
+      this._saveCloudFoldersList(folders);
+    }
+
+    this._saveMyLibraryCacheForCurrentUser();
+    this._selectedCloudExplorerKeys = new Set(uploadedItems.map(it => `file:${it.id}`));
+    this.syncExportCloudFolderSelect();
+    this.renderMyLibraryList();
+
+    const folderPrefix = destFolder ? `[📁 ${destFolder.replace(/\//g, ' › ')}] ` : '';
+    try {
+      await Promise.all(uploadedItems.map(it => this._firestoreRestWrite('user_library', it.id, it)));
+    } catch (e) { }
+
+    this.showToast(uploadedItems.length === 1
+      ? `📤 ${folderPrefix}[${uploadedItems[0].title}] 파일을 클라우드에 올렸습니다!`
+      : `📤 ${folderPrefix}총 ${uploadedItems.length}개 파일을 클라우드에 올렸습니다!`);
+    return uploadedItems;
+  }
+
   // 체크한 보관함 문항들을 하나의 N문항 풀세트로 묶어 슬라이드 배열 반환
   _collectSelectedLibrarySlides() {
     const checkedBoxes = Array.from(document.querySelectorAll('#myLibraryList .cloud-item-chk:checked'));
@@ -22772,37 +22891,9 @@ class GraphApp {
         this._saveMyLibraryCacheForCurrentUser();
       }
 
-      // 2. 폴더 트리 클라우드 동기화 (집 PC localStorage에 있던 기존 폴더도 유실 없이 클라우드로 자동 승계!)
-      const migKey = `graphly_cloud_folders_migrated_v1_${uid}`;
-      let isMigrated = false;
-      let rawLocalFolders = [];
-      try {
-        isMigrated = (localStorage.getItem(migKey) === 'true');
-        const folderStorageKey = this._getCloudFoldersStorageKey();
-        const savedRaw = folderStorageKey ? localStorage.getItem(folderStorageKey) : null;
-        if (savedRaw) {
-          const parsed = JSON.parse(savedRaw);
-          if (Array.isArray(parsed)) rawLocalFolders = parsed.filter(Boolean);
-        }
-      } catch (e) { }
-      const hasRemoteFoldersDoc = Boolean(remoteFolderDoc && Array.isArray(remoteFolderDoc.folders));
-
-      if (!isMigrated && rawLocalFolders.length > 0) {
-        const mergedFolders = Array.from(new Set([
-          ...(hasRemoteFoldersDoc ? remoteFolderDoc.folders : []),
-          ...rawLocalFolders
-        ]));
-        this._saveCloudFoldersList(mergedFolders, true);
-        try { localStorage.setItem(migKey, 'true'); } catch (e) { }
-      } else if (hasRemoteFoldersDoc) {
+      // 2. 폴더 트리 클라우드 동기화
+      if (remoteFolderDoc && Array.isArray(remoteFolderDoc.folders)) {
         this._saveCloudFoldersList(remoteFolderDoc.folders, false);
-        try { localStorage.setItem(migKey, 'true'); } catch (e) { }
-      } else {
-        const inferredFolders = this.getCloudFoldersList();
-        if (inferredFolders.length > 0) {
-          this._saveCloudFoldersList(inferredFolders, true);
-        }
-        try { localStorage.setItem(migKey, 'true'); } catch (e) { }
       }
 
       this.syncExportCloudFolderSelect();
@@ -22913,19 +23004,21 @@ class GraphApp {
       this._selectedCloudExplorerKeys = new Set();
     }
 
-    // 드래그 앤 드롭 공통 타깃 바인딩 헬퍼 (파일·폴더 또는 다중 선택 항목을 드롭하면 targetPath 폴더로 즉시 이동)
+    // 드래그 앤 드롭 공통 타깃 바인딩 헬퍼 (내부 파일·폴더 이동 및 내 PC에서 드래그한 .graphly 파일 직행 업로드 모두 지원)
     const bindDropTarget = (el, targetPath) => {
       if (!el) return;
       el.dataset.dropFolder = targetPath;
       el.ondragover = (e) => {
-        if (!this._draggingCloudPayload) return;
-        if (this._draggingCloudPayload.type === 'folder') {
+        const isExternalFiles = !this._draggingCloudPayload && e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+        if (!this._draggingCloudPayload && !isExternalFiles) return;
+        if (this._draggingCloudPayload && this._draggingCloudPayload.type === 'folder') {
           const src = this._draggingCloudPayload.folderPath;
           if (src === targetPath || targetPath.startsWith(src + '/')) return;
         }
         e.preventDefault();
         e.stopPropagation();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        if (e.dataTransfer) e.dataTransfer.dropEffect = isExternalFiles ? 'copy' : 'move';
+        if (listEl && listEl !== el) listEl.classList.remove('drop-target-hover');
         el.classList.add('drop-target-hover');
       };
       el.ondragleave = (e) => {
@@ -22939,6 +23032,10 @@ class GraphApp {
         el.classList.remove('drop-target-hover');
         const payload = this._draggingCloudPayload;
         this._draggingCloudPayload = null;
+        if (!payload && e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          this.uploadLocalGraphlyFilesToCloud(e.dataTransfer.files, targetPath);
+          return;
+        }
         if (!payload) return;
         if (payload.type === 'multi') {
           this.moveSelectedCloudItemsToFolder(targetPath);
@@ -23235,6 +23332,29 @@ class GraphApp {
     if (!listEl) return;
     listEl.innerHTML = '';
 
+    // 내 PC 탐색기에서 우측 파일 목록 빈 공간(또는 목록 위)으로 .graphly 파일을 드래그 앤 드롭하면 현재 열린 폴더에 즉시 업로드!
+    listEl.ondragover = (e) => {
+      if (this._draggingCloudPayload) return;
+      const isExternalFiles = e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+      if (!isExternalFiles) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      listEl.classList.add('drop-target-hover');
+    };
+    listEl.ondragleave = (e) => {
+      if (!listEl.contains(e.relatedTarget)) {
+        listEl.classList.remove('drop-target-hover');
+      }
+    };
+    listEl.ondrop = (e) => {
+      if (this._draggingCloudPayload) return;
+      if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+      e.preventDefault();
+      e.stopPropagation();
+      listEl.classList.remove('drop-target-hover');
+      this.uploadLocalGraphlyFilesToCloud(e.dataTransfer.files, saveTargetFolder);
+    };
+
     const q = String(this._cloudLibrarySearchQuery || '').trim().toLowerCase();
 
     // 4. 우측 메인 탐색기 영역: (0) 상위 폴더 이동(..) 행 + (1) 하위 폴더 행 + (2) 파일 행
@@ -23462,8 +23582,8 @@ class GraphApp {
       const emptyDiv = document.createElement('div');
       emptyDiv.className = 'cloud-empty-msg';
       emptyDiv.innerHTML = totalCount === 0
-        ? `이 폴더가 비어 있습니다.<br><span style="font-size:11.5px; color:#64748b;">상단 <strong>[📁+ 새 폴더]</strong>로 폴더를 만들거나, 하단 <strong>[☁️ 여기에 저장]</strong>으로 현재 칠판을 저장해 보세요!</span>`
-        : `이 폴더가 비어 있습니다.<br><span style="font-size:11.5px; color:#64748b;">상단 <strong>[📁+ 새 폴더]</strong>로 하위 폴더를 만들거나, 하단 <strong>[☁️ 여기에 저장]</strong>으로 현재 칠판을 이 폴더에 저장할 수 있습니다.</span>`;
+        ? `이 폴더가 비어 있습니다.<br><span style="font-size:11.5px; color:#64748b;">상단 <strong>[📁+ 새 폴더]</strong> · <strong>[📤 파일 올리기]</strong>를 누르거나 내 기기의 <code>.graphly</code> 파일을 여기로 끌어다 놓아 보세요!</span>`
+        : `이 폴더가 비어 있습니다.<br><span style="font-size:11.5px; color:#64748b;">상단 <strong>[📤 파일 올리기]</strong>(또는 파일 드래그)로 내 기기 파일을 올리거나, 하단 <strong>[☁️ 여기에 저장]</strong>으로 현재 칠판을 저장할 수 있습니다.</span>`;
       listEl.appendChild(emptyDiv);
       this._syncCloudExplorerSelectionButtons();
       this.updateSelectedPlaylistCount();

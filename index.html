@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_21">
+  <link rel="stylesheet" href="style.css?v=20261105_22">
 </head>
 
 <body class="theme-light">
@@ -2659,6 +2659,10 @@
         <button type="button" id="btnCloudAddRootFolder" class="win-explorer-cmd-btn" title="현재 폴더 안에 새 폴더 만들기">
           <span>📁+ 새 폴더</span>
         </button>
+        <button type="button" id="btnCloudUploadLocalFiles" class="win-explorer-cmd-btn" title="내 기기(PC/패드)에 있는 .graphly 파일을 현재 폴더로 바로 올리기">
+          <span>📤 파일 올리기</span>
+        </button>
+        <input type="file" id="inputCloudUploadLocalFiles" accept=".graphly,.html,.json" multiple style="display: none;">
         <div id="cloudLibrarySearchWrap" class="cloud-library-search-wrap">
           <input type="text" id="inputCloudLibrarySearch" class="cloud-library-search-input"
             placeholder="🔍 검색..." autocomplete="off">
@@ -3133,7 +3137,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261105_20"></script>
-  <script src="app.js?v=20261105_21"></script>
+  <script src="app.js?v=20261105_22"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
