@@ -58,11 +58,16 @@ class GraphApp {
     this.colorPalette = [...this.lightColorPalette];
     this.graphColorMode = 'auto';
     this.fixedGraphColor = '#1e293b';
+    this.defaultGraphLineWidth = 2.8;
     try {
       const savedMode = localStorage.getItem('graphly_graph_color_mode_v1');
       if (savedMode === 'fixed' || savedMode === 'auto') this.graphColorMode = savedMode;
       const savedFixedColor = localStorage.getItem('graphly_fixed_graph_color_v1');
       if (savedFixedColor) this.fixedGraphColor = savedFixedColor;
+      const savedDefaultLw = parseFloat(localStorage.getItem('graphly_default_graph_lw_v1'));
+      if (Number.isFinite(savedDefaultLw) && savedDefaultLw >= 1.0 && savedDefaultLw <= 6.0) {
+        this.defaultGraphLineWidth = parseFloat(savedDefaultLw.toFixed(1));
+      }
     } catch (e) { }
 
     // 🌟 [테마별 필기 잉크 팔레트 (5색)] 🌟
@@ -1677,7 +1682,7 @@ class GraphApp {
       category: this.meta[nextType].category,
       handles: JSON.parse(JSON.stringify(this.meta[nextType].handles)),
       color: nextColor,
-      lineWidth: 2.8,
+      lineWidth: this.defaultGraphLineWidth || 2.8,
       isAbsolute: false,
       shapeMode: 'free',
       originCenter: false,
@@ -2142,6 +2147,17 @@ class GraphApp {
     this.render();
   }
 
+  _syncLineWidthSliderUI() {
+    const sliderLw = document.getElementById('sliderLw');
+    const lblLw = document.getElementById('lblLw');
+    const isGraphSelected = Boolean(this.activeGraph && (this.isCurveSelected || this.selectedHandleIdx !== null));
+    const targetLw = isGraphSelected
+      ? (this.activeGraph.lineWidth || this.defaultGraphLineWidth || 2.8)
+      : (this.defaultGraphLineWidth || 2.8);
+    if (sliderLw) sliderLw.value = targetLw;
+    if (lblLw) lblLw.textContent = `${Number(targetLw).toFixed(1)}`;
+  }
+
   syncControls() {
     const g = this.activeGraph;
 
@@ -2156,6 +2172,8 @@ class GraphApp {
     document.querySelectorAll('.graph-color-mode-chip').forEach(chip => {
       chip.classList.toggle('active', chip.dataset.colorMode === (this.graphColorMode || 'auto'));
     });
+
+    this._syncLineWidthSliderUI();
 
     if (!g) {
       // 그래프가 없는 빈 상태일 때의 UI 처리 (선택해 둔 고정 색상 도트 활성 상태는 유지)
@@ -2188,13 +2206,6 @@ class GraphApp {
       } else {
         btnFoldAgain.style.display = 'none';
       }
-    }
-
-    // 선 두께 슬라이더 동기화
-    const sliderLw = document.getElementById('sliderLw');
-    if (sliderLw) {
-      sliderLw.value = g.lineWidth;
-      document.getElementById('lblLw').textContent = `${g.lineWidth.toFixed(1)}`;
     }
 
     // 컬러 피커 팔레트 동기화
@@ -15265,17 +15276,30 @@ class GraphApp {
       };
     });
 
-    // 두께 슬라이더 & ◀ ▶ 스테퍼
+    // 두께 슬라이더 & ◀ ▶ 스테퍼 (그래프 미선택 시 = 기본 생성 두께 설정 / 그래프 선택 시 = 해당 그래프만 변경 후 선택 해제 시 기본값 복원)
     const sliderLw = document.getElementById('sliderLw');
     const applyLineWidthVal = (rawVal, pushHist = false) => {
       const val = Math.max(1.0, Math.min(6.0, parseFloat(Number(rawVal).toFixed(1))));
       if (sliderLw) sliderLw.value = val;
       const lblLw = document.getElementById('lblLw');
       if (lblLw) lblLw.textContent = `${val.toFixed(1)}`;
-      if (!this.activeGraph) return;
-      if (pushHist) this.pushHistoryState();
-      this.activeGraph.lineWidth = val;
-      this.render();
+      const isGraphSelected = Boolean(this.activeGraph && (this.isCurveSelected || this.selectedHandleIdx !== null));
+      if (isGraphSelected) {
+        if (pushHist) this.pushHistoryState();
+        this.activeGraph.lineWidth = val;
+        this.activeGraph._customLineWidth = true;
+        this.render();
+      } else {
+        this.defaultGraphLineWidth = val;
+        try { localStorage.setItem('graphly_default_graph_lw_v1', String(val)); } catch (err) { }
+        if (this.graphs.length > 0) {
+          if (pushHist) this.pushHistoryState();
+          this.graphs.forEach(g => {
+            if (g && !g._customLineWidth) g.lineWidth = val;
+          });
+          this.render();
+        }
+      }
     };
     if (sliderLw) {
       sliderLw.onpointerdown = () => { sliderLw._preSnap = this.getHistorySnapshot(); };
@@ -15296,7 +15320,10 @@ class GraphApp {
     if (btnLwDown) {
       btnLwDown.onclick = (e) => {
         e.stopPropagation();
-        const cur = this.activeGraph ? (this.activeGraph.lineWidth || 2.8) : parseFloat(sliderLw ? sliderLw.value : 2.8);
+        const isGraphSelected = Boolean(this.activeGraph && (this.isCurveSelected || this.selectedHandleIdx !== null));
+        const cur = isGraphSelected
+          ? (this.activeGraph.lineWidth || this.defaultGraphLineWidth || 2.8)
+          : (this.defaultGraphLineWidth || parseFloat(sliderLw ? sliderLw.value : 2.8));
         applyLineWidthVal(cur - 0.2, true);
       };
     }
@@ -15304,7 +15331,10 @@ class GraphApp {
     if (btnLwUp) {
       btnLwUp.onclick = (e) => {
         e.stopPropagation();
-        const cur = this.activeGraph ? (this.activeGraph.lineWidth || 2.8) : parseFloat(sliderLw ? sliderLw.value : 2.8);
+        const isGraphSelected = Boolean(this.activeGraph && (this.isCurveSelected || this.selectedHandleIdx !== null));
+        const cur = isGraphSelected
+          ? (this.activeGraph.lineWidth || this.defaultGraphLineWidth || 2.8)
+          : (this.defaultGraphLineWidth || parseFloat(sliderLw ? sliderLw.value : 2.8));
         applyLineWidthVal(cur + 0.2, true);
       };
     }
@@ -27184,7 +27214,7 @@ class GraphApp {
       category: this.meta[parsed.ftype].category,
       handles: parsed.handles,
       color: nextColor,
-      lineWidth: 2.8,
+      lineWidth: this.defaultGraphLineWidth || 2.8,
       isAbsolute: false,
       isFrozen: false,
       freezeOffset: { x: 0, y: 0 },
@@ -34884,6 +34914,7 @@ class GraphApp {
   }
 
   syncCurveContextBar() {
+    this._syncLineWidthSliderUI();
     if (document.body.classList.contains('viewer-graph-touch-mode')) {
       if (typeof this._renderViewerGraphCurveChips === 'function') {
         this._renderViewerGraphCurveChips();
