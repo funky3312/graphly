@@ -41827,7 +41827,6 @@ class GraphApp {
     this.isAllUIHidden = nextVal;
 
     const restoreTab = document.getElementById('btnRestoreAllUITab');
-    const noticePill = document.getElementById('uiHiddenNoticePill');
 
     if (this._uiHiddenNoticeTimer) {
       clearTimeout(this._uiHiddenNoticeTimer);
@@ -41843,27 +41842,22 @@ class GraphApp {
       const assignedKey = String(eff.sys_toggle_hide_ui || '').trim();
       const dispKey = assignedKey ? this.formatShortcutKeyForDisplay(assignedKey) : '';
       if (restoreTab) {
+        restoreTab.classList.remove('peek-highlight');
         restoreTab.style.display = 'flex';
         restoreTab.title = dispKey ? `아이콘 다시 보이기 (${dispKey})` : '아이콘 다시 보이기';
-      }
-      if (noticePill) {
-        if (dispKey) {
-          noticePill.innerHTML = `👁️ 모든 아이콘을 숨겼습니다 · 단축키 <strong>[${dispKey}]</strong> 또는 <strong>우측 상단 얇은 손잡이 탭</strong>을 누르면 다시 나타납니다`;
-        } else {
-          noticePill.innerHTML = `👁️ 모든 아이콘을 숨겼습니다 · <strong>우측 상단 얇은 손잡이 탭</strong>을 누르면 다시 나타납니다`;
-        }
-        noticePill.classList.add('show');
+        // 아이콘이 사라진 직후 우상단 자리에서 손잡이 탭이 쏙 나왔다가 1.2초 뒤 스르륵 연해지며 우측으로 은폐
+        void restoreTab.offsetWidth;
+        restoreTab.classList.add('peek-highlight');
         this._uiHiddenNoticeTimer = setTimeout(() => {
-          noticePill.classList.remove('show');
-        }, 2300);
+          restoreTab.classList.remove('peek-highlight');
+          this._uiHiddenNoticeTimer = null;
+        }, 1200);
       }
     } else {
       document.body.classList.remove('ui-all-hidden-mode');
       if (restoreTab) {
+        restoreTab.classList.remove('peek-highlight');
         restoreTab.style.display = 'none';
-      }
-      if (noticePill) {
-        noticePill.classList.remove('show');
       }
     }
   }

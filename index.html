@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261105_34">
+  <link rel="stylesheet" href="style.css?v=20261105_35">
 </head>
 
 <body class="theme-light">
@@ -1627,15 +1627,14 @@
         <button id="btnNAxisMode" style="display: none;"></button>
       </div>
 
-      <!-- 👁️ 아이콘 모두 숨김 상태 전용: 우측 상단 초슬림·초투명 손잡이 복귀 탭 & 2초 안내 배너 -->
+      <!-- 👁️ 아이콘 모두 숨김 상태 전용: 우측 상단 초슬림·초투명 손잡이 복귀 탭 (숨기는 순간 1.2초간 나왔다가 연해지며 우측으로 은폐) -->
       <button type="button" id="btnRestoreAllUITab" class="ui-hidden-edge-pull-tab" style="display: none;"
         title="아이콘 모두 보이기 (H)">
-        <svg width="9" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+        <svg width="10" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
           stroke-linecap="round" stroke-linejoin="round">
           <polyline points="15 18 9 12 15 6" />
         </svg>
       </button>
-      <div id="uiHiddenNoticePill" class="ui-hidden-notice-pill" style="display: none;"></div>
 
       <!-- ✍️ 실시간 무한 칠판 필기 플로팅 툴바 (Ink Floating Dock) -->
       <div id="inkFloatingToolbar" class="ink-floating-toolbar" data-dock-pos="bottom" style="display: none;">
@@ -3062,9 +3061,13 @@
 
         <!-- 탭 2: 단축키 안내 -->
         <div id="guidePanelShortcuts" class="guide-tab-panel" style="display: none;">
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; padding: 10px 12px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(59, 130, 246, 0.28);">
-            <span style="font-size: 12.5px; font-weight: 700; color: #1e40af;">⌨️ 모든 기능의 단축키를 내 손에 맞게 직접 변경할 수 있습니다.</span>
-            <button type="button" id="btnOpenShortcutSettingsFromGuide" class="btn-primary" style="padding: 6px 12px; font-size: 12px; font-weight: 800; border-radius: 7px; cursor: pointer; white-space: nowrap;">⌨️ 단축키 설정 열기</button>
+          <div
+            style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; padding: 10px 12px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(59, 130, 246, 0.28);">
+            <span style="font-size: 12.5px; font-weight: 700; color: #1e40af;">⌨️ 모든 기능의 단축키를 내 손에 맞게 직접 변경할 수
+              있습니다.</span>
+            <button type="button" id="btnOpenShortcutSettingsFromGuide" class="btn-primary"
+              style="padding: 6px 12px; font-size: 12px; font-weight: 800; border-radius: 7px; cursor: pointer; white-space: nowrap;">⌨️
+              단축키 설정 열기</button>
           </div>
           <div class="guide-shortcut-grid" id="guideShortcutDynamicGrid">
             <div class="guide-shortcut-item">
@@ -3203,7 +3206,8 @@
 
       <!-- 상태 안내 배너 (중복 키 해제 알림 및 입력 대기 안내) -->
       <div id="shortcutModalNoticeBanner" class="shortcut-notice-banner">
-        💡 기능 옆의 <strong>[단축키 버튼]</strong>을 클릭한 뒤 원하는 키를 누르세요. (중복 키 입력 시 기존 기능은 <strong>미지정</strong>으로 변경되며, 하단 <strong>[💾 저장하기]</strong>를 눌러야 반영됩니다)
+        💡 기능 옆의 <strong>[단축키 버튼]</strong>을 클릭한 뒤 원하는 키를 누르세요. (중복 키 입력 시 기존 기능은 <strong>미지정</strong>으로 변경되며, 하단
+        <strong>[💾 저장하기]</strong>를 눌러야 반영됩니다)
       </div>
 
       <!-- 기능 및 단축키 리스트 -->
@@ -3237,7 +3241,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261105_20"></script>
-  <script src="app.js?v=20261105_34"></script>
+  <script src="app.js?v=20261105_35"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
@@ -3438,7 +3442,7 @@
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister())).catch(() => { });
-        if ('caches' in window) caches.keys().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => { });
+        if ('caches'n wcaches.keys().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => { });
       });
   }
   </script>

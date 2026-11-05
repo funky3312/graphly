@@ -13658,7 +13658,7 @@ body.ui-all-hidden-mode #pwRegionPopover {
   width: 9px;
   height: 44px;
   padding: 0;
-  border-radius: 6px 0 0 6px;
+  border-radius: 7px 0 0 7px;
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-right: none;
   background: rgba(148, 163, 184, 0.12);
@@ -13669,7 +13669,7 @@ body.ui-all-hidden-mode #pwRegionPopover {
   cursor: pointer;
   z-index: 620;
   opacity: 0.18;
-  transition: width 0.16s ease, opacity 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+  transition: width 0.42s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.45s ease, background 0.38s ease, border-color 0.38s ease, color 0.38s ease, box-shadow 0.38s ease;
 }
 
 /* 시각적으로는 9px로 거의 안 보일 만큼 얇지만, 터치/펜 클릭 판정 영역은 여유 있게 확보 */
@@ -13688,13 +13688,32 @@ body:not(.theme-light) .ui-hidden-edge-pull-tab {
   color: rgba(226, 232, 240, 0.65);
 }
 
+/* 숨기는 순간 1.2초 동안 손잡이가 선명하게 쏙 나왔다가 스르륵 연해지며 우측으로 은폐 */
+.ui-hidden-edge-pull-tab.peek-highlight {
+  width: 28px;
+  opacity: 0.96;
+  background: rgba(37, 99, 235, 0.18);
+  border-color: rgba(59, 130, 246, 0.72);
+  color: #2563eb;
+  box-shadow: -3px 4px 14px rgba(37, 99, 235, 0.24);
+  transition: width 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+body:not(.theme-light) .ui-hidden-edge-pull-tab.peek-highlight {
+  background: rgba(59, 130, 246, 0.34);
+  border-color: rgba(147, 197, 253, 0.85);
+  color: #bfdbfe;
+  box-shadow: -3px 4px 16px rgba(59, 130, 246, 0.35);
+}
+
 .ui-hidden-edge-pull-tab:hover,
 .ui-hidden-edge-pull-tab:active {
-  width: 22px;
-  opacity: 0.92;
-  background: rgba(37, 99, 235, 0.14);
-  border-color: rgba(59, 130, 246, 0.5);
+  width: 24px;
+  opacity: 0.94;
+  background: rgba(37, 99, 235, 0.15);
+  border-color: rgba(59, 130, 246, 0.55);
   color: #2563eb;
+  transition: width 0.16s ease, opacity 0.16s ease, background 0.16s ease, border-color 0.16s ease;
 }
 
 body:not(.theme-light) .ui-hidden-edge-pull-tab:hover,
@@ -13704,27 +13723,4 @@ body:not(.theme-light) .ui-hidden-edge-pull-tab:active {
   color: #93c5fd;
 }
 
-.ui-hidden-notice-pill {
-  position: fixed;
-  top: 22px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 9px 18px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.84);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #f8fafc;
-  font-size: 12.5px;
-  font-weight: 700;
-  white-space: nowrap;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.22);
-  z-index: 630;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.32s ease, transform 0.32s ease;
-}
-
-.ui-hidden-notice-pill.show {
-  opacity: 1;
-}
 
