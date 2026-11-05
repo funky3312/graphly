@@ -4346,13 +4346,19 @@ class GraphApp {
   recognizeInkShape(stroke) {
     if (!stroke || !stroke.points || stroke.points.length < 4) return null;
 
-    const isBoard = (stroke.target || 'board') === 'board';
-    const bz = this.boardZoom || 1.0;
-    const rawScreenPts = isBoard
-      ? stroke.points.map(pt => this.boardToScreen(pt.x, pt.y))
-      : stroke.points.map(pt => this.mathToScreen(pt.x, pt.y));
+    const isCardPixel = Boolean(stroke._isCardPixelSpace);
+    const isBoard = !isCardPixel && (stroke.target || 'board') === 'board';
+    const bz = isCardPixel ? 1.0 : (this.boardZoom || 1.0);
+    const rawScreenPts = isCardPixel
+      ? stroke.points.map(pt => ({ x: pt.x, y: pt.y }))
+      : (isBoard
+        ? stroke.points.map(pt => this.boardToScreen(pt.x, pt.y))
+        : stroke.points.map(pt => this.mathToScreen(pt.x, pt.y)));
 
     const toTargetCoord = (pt) => {
+      if (isCardPixel) {
+        return { x: pt.x, y: pt.y };
+      }
       if (isBoard) {
         return this.screenToBoard(pt.x, pt.y);
       }
@@ -4360,25 +4366,39 @@ class GraphApp {
       return { x: m.x, y: m.y };
     };
 
-    // 🌟 [아이패드 240Hz 애플펜슬 시작점·끝점 홀드 노이즈 제거]:
-    // 1) 시작점과 끝점 홀드 중 12px 반경 내에 뭉친 미세 떨림 점들을 양쪽 모두 정리
+    // 🌟 [시작점·끝점 정지 미세 노이즈만 제한적으로 제거 (작은 글씨 `3`, `ㄴ` 곡선/모서리 훼손 원천 방지!)]:
+    // 기존 10px/12px 무조건 삭제는 20~28px 크기의 숫자 `3`이나 `ㄴ`의 곡선·모서리를 통째로 잘라내어 직선으로 둔갑시켰음.
+    // 따라서 전체 바운딩 크기 대비 최대 7~8%(최대 3.0~3.5px) 이내에 제자리 뭉친 정지 떨림 점만 제거합니다.
+    let rawMinX = rawScreenPts[0].x, rawMaxX = rawScreenPts[0].x;
+    let rawMinY = rawScreenPts[0].y, rawMaxY = rawScreenPts[0].y;
+    for (let i = 1; i < rawScreenPts.length; i++) {
+      const rp = rawScreenPts[i];
+      if (rp.x < rawMinX) rawMinX = rp.x;
+      if (rp.x > rawMaxX) rawMaxX = rp.x;
+      if (rp.y < rawMinY) rawMinY = rp.y;
+      if (rp.y > rawMaxY) rawMaxY = rp.y;
+    }
+    const rawMaxDim = Math.max(1, rawMaxX - rawMinX, rawMaxY - rawMinY);
+    const startTrimRadius = Math.min(3.0, rawMaxDim * 0.07);
+    const endTrimRadius = Math.min(3.5, rawMaxDim * 0.08);
+
     const rawFirst = rawScreenPts[0];
     let trimStartIdx = 0;
-    while (trimStartIdx < rawScreenPts.length - 3 && Math.hypot(rawScreenPts[trimStartIdx + 1].x - rawFirst.x, rawScreenPts[trimStartIdx + 1].y - rawFirst.y) <= 10.0) {
+    while (trimStartIdx < rawScreenPts.length - 3 && Math.hypot(rawScreenPts[trimStartIdx + 1].x - rawFirst.x, rawScreenPts[trimStartIdx + 1].y - rawFirst.y) <= startTrimRadius) {
       trimStartIdx++;
     }
     const rawLast = rawScreenPts[rawScreenPts.length - 1];
     let trimEndIdx = rawScreenPts.length - 1;
-    while (trimEndIdx > trimStartIdx + 2 && Math.hypot(rawScreenPts[trimEndIdx - 1].x - rawLast.x, rawScreenPts[trimEndIdx - 1].y - rawLast.y) <= 12.0) {
+    while (trimEndIdx > trimStartIdx + 2 && Math.hypot(rawScreenPts[trimEndIdx - 1].x - rawLast.x, rawScreenPts[trimEndIdx - 1].y - rawLast.y) <= endTrimRadius) {
       trimEndIdx--;
     }
     const trimmedPts = [rawFirst, ...rawScreenPts.slice(trimStartIdx + 1, trimEndIdx), rawLast];
 
-    // 2) 공간 거리(3.0px) 기준으로 균일하게 리샘플링하여 240Hz 중복 점으로 인한 arcLen 부풀림 원천 차단
+    // 2) 공간 거리(2.5px) 기준으로 균일하게 리샘플링하여 240Hz 중복 점으로 인한 arcLen 부풀림 차단 및 세밀한 굴곡 보존
     const screenPts = [trimmedPts[0]];
     for (let i = 1; i < trimmedPts.length - 1; i++) {
       const prev = screenPts[screenPts.length - 1];
-      if (Math.hypot(trimmedPts[i].x - prev.x, trimmedPts[i].y - prev.y) >= 3.0) {
+      if (Math.hypot(trimmedPts[i].x - prev.x, trimmedPts[i].y - prev.y) >= 2.5) {
         screenPts.push(trimmedPts[i]);
       }
     }
@@ -4404,7 +4424,7 @@ class GraphApp {
       if (screenPts[i + 1].y > maxY) maxY = screenPts[i + 1].y;
     }
 
-    if (arcLen < 18) return null;
+    if (arcLen < 30) return null;
 
     const W = Math.max(1, maxX - minX);
     const H = Math.max(1, maxY - minY);
@@ -4420,11 +4440,11 @@ class GraphApp {
     }
 
     // --- [1. 직선 판별 (Straight Line & Axis Magnet Snap)] ---
-    // 🌟 직선은 직선도(straightness >= 0.78)와 동시에 최대 이탈 거리(maxLineDev <= 11.5% chordLen)를 만족해야 함!
-    // (이를 통해 손으로 그은 직선은 100% 인식하면서, 완만한 이차함수 포물선이 직선으로 둔갑하는 현상을 완벽 차단!)
-    const isStraightLine = (chordLen >= 18) &&
-      (maxLineDev <= Math.max(16, chordLen * 0.115)) &&
-      (straightness >= 0.78 || (straightness >= 0.70 && maxLineDev <= Math.max(12, chordLen * 0.08)));
+    // 🌟 작은 손글씨(`ㄴ`, `3` 등)가 직선으로 오판되지 않도록 최소 직선 거리(chordLen >= 30),
+    // 엄격한 직선도(straightness >= 0.89), 비례 이탈 허용치(maxLineDev <= max(4.5, chordLen * 0.075)) 적용!
+    const isStraightLine = (chordLen >= 30) &&
+      (maxLineDev <= Math.max(4.5, chordLen * 0.075)) &&
+      (straightness >= 0.89 || (straightness >= 0.85 && maxLineDev <= Math.max(3.5, chordLen * 0.055)));
 
     if (isStraightLine) {
       let endX = pEnd.x;
@@ -4468,7 +4488,7 @@ class GraphApp {
     // 진짜 닫힌 도형은 시작점과 끝점이 전체 궤적 길이의 16% 이내로 만나는 루프일 때만 해당!
     const isActuallyClosedLoop = (gap <= arcLen * 0.16) || (gap <= 24);
 
-    if (!isActuallyClosedLoop && W >= 20 && H >= 20 && horizSpan >= W * 0.28) {
+    if (!isActuallyClosedLoop && W >= 24 && H >= 24 && maxDim >= 34 && horizSpan >= W * 0.28) {
       // 필기 진행 방향을 좌->우로 정렬한 점열 생성
       const ptsLR = (pStart.x <= pEnd.x) ? screenPts : screenPts.slice().reverse();
       const pLeft = ptsLR[0];
@@ -4755,6 +4775,14 @@ class GraphApp {
 
       if (!isBetterRectThanCircle && ellipseStd < 0.21) {
         if (aspect >= 0.76 && roundness < 0.22) {
+          if (isCardPixel) {
+            return {
+              type: 'circle',
+              center: { x: cx, y: cy },
+              radius: avgR,
+              aspect: aspect
+            };
+          }
           if (isBoard) {
             return {
               type: 'circle',
@@ -4772,6 +4800,14 @@ class GraphApp {
             aspect: aspect
           };
         } else if (aspect >= 0.22) {
+          if (isCardPixel) {
+            return {
+              type: 'ellipse',
+              center: { x: cx, y: cy },
+              rx: rx,
+              ry: ry
+            };
+          }
           if (isBoard) {
             return {
               type: 'ellipse',
@@ -4793,6 +4829,14 @@ class GraphApp {
       }
 
       if (avgDistToBox < maxDim * 0.14) {
+        if (isCardPixel) {
+          return {
+            type: 'rect',
+            min: { x: minX, y: minY },
+            max: { x: maxX, y: maxY },
+            aspect: aspect
+          };
+        }
         if (isBoard) {
           return {
             type: 'rect',
@@ -4890,6 +4934,269 @@ class GraphApp {
       const mEnd = this.screenToMath(endX, endY);
       shape.end = { x: mEnd.x, y: mEnd.y };
     }
+  }
+
+  // 🌟 [문제 카드 & 그래프 보관 카드 통합 Draw & Hold 도형 자동 인식 엔진] 🌟
+  _buildNormalizedPointsFromCardShape(cardShape, tStart, tEnd) {
+    if (!cardShape) return [];
+    const ts = (typeof tStart === 'number') ? tStart : undefined;
+    const te = (typeof tEnd === 'number') ? tEnd : ts;
+    const makeTime = (u) => (ts !== undefined && te !== undefined) ? Math.round(ts + (te - ts) * u) : undefined;
+    const out = [];
+
+    if (cardShape.type === 'line' && cardShape.start && cardShape.end) {
+      const steps = 24;
+      for (let i = 0; i <= steps; i++) {
+        const u = i / steps;
+        out.push({
+          nx: cardShape.start.nx + (cardShape.end.nx - cardShape.start.nx) * u,
+          ny: cardShape.start.ny + (cardShape.end.ny - cardShape.start.ny) * u,
+          p: 0.55,
+          t: makeTime(u)
+        });
+      }
+      return out;
+    }
+    if ((cardShape.type === 'circle' || cardShape.type === 'ellipse') && cardShape.center) {
+      const steps = 48;
+      const rx = cardShape.rx || 0.05;
+      const ry = cardShape.ry || rx;
+      for (let i = 0; i <= steps; i++) {
+        const u = i / steps;
+        const ang = u * Math.PI * 2;
+        out.push({
+          nx: cardShape.center.nx + Math.cos(ang) * rx,
+          ny: cardShape.center.ny + Math.sin(ang) * ry,
+          p: 0.55,
+          t: makeTime(u)
+        });
+      }
+      return out;
+    }
+    if (cardShape.type === 'rect' && cardShape.min && cardShape.max) {
+      const corners = [
+        { nx: cardShape.min.nx, ny: cardShape.min.ny },
+        { nx: cardShape.max.nx, ny: cardShape.min.ny },
+        { nx: cardShape.max.nx, ny: cardShape.max.ny },
+        { nx: cardShape.min.nx, ny: cardShape.max.ny },
+        { nx: cardShape.min.nx, ny: cardShape.min.ny }
+      ];
+      const segSteps = 10;
+      const totalSteps = 4 * segSteps;
+      for (let s = 0; s < 4; s++) {
+        const cA = corners[s];
+        const cB = corners[s + 1];
+        for (let k = 0; k < segSteps; k++) {
+          const uSeg = k / segSteps;
+          const uAll = (s * segSteps + k) / totalSteps;
+          out.push({
+            nx: cA.nx + (cB.nx - cA.nx) * uSeg,
+            ny: cA.ny + (cB.ny - cA.ny) * uSeg,
+            p: 0.55,
+            t: makeTime(uAll)
+          });
+        }
+      }
+      out.push({ nx: corners[4].nx, ny: corners[4].ny, p: 0.55, t: makeTime(1) });
+      return out;
+    }
+    if (Array.isArray(cardShape.pts) && cardShape.pts.length >= 2) {
+      const vertices = cardShape.closed ? [...cardShape.pts, cardShape.pts[0]] : cardShape.pts;
+      if (cardShape.closed && vertices.length <= 5) {
+        const segCount = vertices.length - 1;
+        const segSteps = 12;
+        const total = segCount * segSteps;
+        for (let s = 0; s < segCount; s++) {
+          const pA = vertices[s];
+          const pB = vertices[s + 1];
+          for (let k = 0; k < segSteps; k++) {
+            const uSeg = k / segSteps;
+            const uAll = (s * segSteps + k) / total;
+            out.push({
+              nx: pA.nx + (pB.nx - pA.nx) * uSeg,
+              ny: pA.ny + (pB.ny - pA.ny) * uSeg,
+              p: 0.55,
+              t: makeTime(uAll)
+            });
+          }
+        }
+        const lastV = vertices[vertices.length - 1];
+        out.push({ nx: lastV.nx, ny: lastV.ny, p: 0.55, t: makeTime(1) });
+        return out;
+      }
+      const len = vertices.length;
+      for (let i = 0; i < len; i++) {
+        const u = len > 1 ? (i / (len - 1)) : 1;
+        out.push({
+          nx: vertices[i].nx,
+          ny: vertices[i].ny,
+          p: 0.55,
+          t: makeTime(u)
+        });
+      }
+      return out;
+    }
+    return out;
+  }
+
+  recognizeAndApplyCardStrokeShape(cardStroke, cardW, cardH) {
+    if (!cardStroke || !Array.isArray(cardStroke.points) || cardStroke.points.length < 4) return false;
+    const w = Math.max(1, cardW || 480);
+    const h = Math.max(1, cardH || 360);
+    const pixelStroke = {
+      _isCardPixelSpace: true,
+      isHighlighter: Boolean(cardStroke.isHighlighter),
+      points: cardStroke.points.map(pt => ({ x: pt.nx * w, y: pt.ny * h }))
+    };
+    const shape = this.recognizeInkShape(pixelStroke);
+    if (!shape) return false;
+
+    let cardShape = null;
+    if (shape.type === 'line' && shape.start && shape.end) {
+      cardShape = {
+        type: 'line',
+        start: { nx: shape.start.x / w, ny: shape.start.y / h },
+        end: { nx: shape.end.x / w, ny: shape.end.y / h },
+        snapped: shape.snapped || null
+      };
+    } else if (shape.type === 'circle' && shape.center) {
+      cardShape = {
+        type: 'circle',
+        center: { nx: shape.center.x / w, ny: shape.center.y / h },
+        rx: shape.radius / w,
+        ry: shape.radius / h
+      };
+    } else if (shape.type === 'ellipse' && shape.center) {
+      cardShape = {
+        type: 'ellipse',
+        center: { nx: shape.center.x / w, ny: shape.center.y / h },
+        rx: shape.rx / w,
+        ry: shape.ry / h
+      };
+    } else if (shape.type === 'rect' && shape.min && shape.max) {
+      cardShape = {
+        type: 'rect',
+        min: { nx: Math.min(shape.min.x, shape.max.x) / w, ny: Math.min(shape.min.y, shape.max.y) / h },
+        max: { nx: Math.max(shape.min.x, shape.max.x) / w, ny: Math.max(shape.min.y, shape.max.y) / h }
+      };
+    } else if (Array.isArray(shape.pts) && shape.pts.length >= 2) {
+      cardShape = {
+        type: shape.type,
+        closed: Boolean(shape.closed),
+        pts: shape.pts.map(p => ({ nx: p.x / w, ny: p.y / h }))
+      };
+    }
+    if (!cardShape) return false;
+
+    const recT = this.isAudioRecording
+      ? this.getAudioRecordElapsedMs()
+      : (cardStroke.tEnd !== undefined ? cardStroke.tEnd : cardStroke.tStart);
+    if (recT !== undefined) {
+      cardStroke.tEnd = recT;
+      cardStroke.shapeSnapAt = recT;
+    }
+    cardStroke._shapeHoldDetected = true;
+    cardStroke.isShape = true;
+    cardStroke.cardShape = cardShape;
+    cardStroke.points = this._buildNormalizedPointsFromCardShape(cardShape, cardStroke.tStart, recT);
+    return true;
+  }
+
+  updateHeldCardStrokeShape(cardStroke, nx, ny, cardW, cardH) {
+    if (!cardStroke || !cardStroke.cardShape || cardStroke.cardShape.type !== 'line') return false;
+    const w = Math.max(1, cardW || 480);
+    const h = Math.max(1, cardH || 360);
+    const sh = cardStroke.cardShape;
+    const sStartX = sh.start.nx * w;
+    const sStartY = sh.start.ny * h;
+    let endX = nx * w;
+    let endY = ny * h;
+
+    const dx = endX - sStartX;
+    const dy = endY - sStartY;
+    const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+    const absAngle = Math.abs(angleDeg);
+
+    const snapAngleThresh = 1.8;
+    const diagAngleThresh = 1.2;
+
+    if (absAngle < snapAngleThresh || absAngle > (180 - snapAngleThresh)) {
+      endY = sStartY;
+      sh.snapped = 'horizontal';
+    } else if (Math.abs(absAngle - 90) < snapAngleThresh) {
+      endX = sStartX;
+      sh.snapped = 'vertical';
+    } else if (Math.abs(absAngle - 45) < diagAngleThresh || Math.abs(absAngle - 135) < diagAngleThresh) {
+      const dist = Math.hypot(dx, dy);
+      const signX = dx >= 0 ? 1 : -1;
+      const signY = dy >= 0 ? 1 : -1;
+      endX = sStartX + signX * dist * Math.SQRT1_2;
+      endY = sStartY + signY * dist * Math.SQRT1_2;
+      sh.snapped = 'diagonal';
+    } else {
+      sh.snapped = null;
+    }
+
+    sh.end = {
+      nx: Math.max(0, Math.min(1, endX / w)),
+      ny: Math.max(0, Math.min(1, endY / h))
+    };
+    const recT = this.isAudioRecording
+      ? this.getAudioRecordElapsedMs()
+      : (cardStroke.tEnd !== undefined ? cardStroke.tEnd : cardStroke.tStart);
+    if (recT !== undefined) {
+      cardStroke.tEnd = recT;
+    }
+    cardStroke.points = this._buildNormalizedPointsFromCardShape(sh, cardStroke.tStart, recT);
+    return true;
+  }
+
+  drawCardRecognizedShape(ctx, stroke, ox, oy, w, h, baseSize) {
+    if (!ctx || !stroke || !stroke.isShape || !stroke.cardShape) return false;
+    const sh = stroke.cardShape;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (!stroke.isHighlighter) {
+      ctx.lineWidth = Math.max(1.4, baseSize * 0.96);
+    }
+    if (sh.type === 'line' && sh.start && sh.end) {
+      ctx.beginPath();
+      ctx.moveTo(ox + sh.start.nx * w, oy + sh.start.ny * h);
+      ctx.lineTo(ox + sh.end.nx * w, oy + sh.end.ny * h);
+      ctx.stroke();
+      return true;
+    }
+    if ((sh.type === 'circle' || sh.type === 'ellipse') && sh.center) {
+      const cx = ox + sh.center.nx * w;
+      const cy = oy + sh.center.ny * h;
+      const rx = Math.max(2, Math.abs((sh.rx || 0) * w));
+      const ry = Math.max(2, Math.abs((sh.ry || sh.rx || 0) * h));
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      return true;
+    }
+    if (sh.type === 'rect' && sh.min && sh.max) {
+      const x1 = ox + sh.min.nx * w;
+      const y1 = oy + sh.min.ny * h;
+      const x2 = ox + sh.max.nx * w;
+      const y2 = oy + sh.max.ny * h;
+      ctx.beginPath();
+      ctx.rect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
+      ctx.stroke();
+      return true;
+    }
+    if (Array.isArray(sh.pts) && sh.pts.length >= 2) {
+      ctx.beginPath();
+      ctx.moveTo(ox + sh.pts[0].nx * w, oy + sh.pts[0].ny * h);
+      for (let i = 1; i < sh.pts.length; i++) {
+        ctx.lineTo(ox + sh.pts[i].nx * w, oy + sh.pts[i].ny * h);
+      }
+      if (sh.closed) ctx.closePath();
+      ctx.stroke();
+      return true;
+    }
+    return false;
   }
 
   // 🌟 [굿노트/삼성노트 표준] 올가미(Lasso) 핵심 연산 및 점선 추종 렌더러 🌟
@@ -8946,22 +9253,29 @@ class GraphApp {
         ctx.shadowOffsetY = 0;
       }
 
+      if (stroke.isShape && stroke.cardShape && this.drawCardRecognizedShape(ctx, stroke, 0, 0, w, h, baseSize)) {
+        ctx.restore();
+        return;
+      }
+
       const rawPts = stroke.points.map(pt => ({
         x: pt.nx * w,
         y: pt.ny * h,
         p: pt.p !== undefined ? pt.p : 0.5
       }));
 
-      // 스트림라인 스무딩 (손떨림 보정)
-      const pts = [rawPts[0]];
-      for (let i = 1; i < rawPts.length; i++) {
-        const prev = pts[pts.length - 1];
-        const curr = rawPts[i];
-        pts.push({
-          x: prev.x * 0.28 + curr.x * 0.72,
-          y: prev.y * 0.28 + curr.y * 0.72,
-          p: prev.p * 0.28 + curr.p * 0.72
-        });
+      // 스트림라인 스무딩 (손떨림 보정 — 도형 스냅 획은 변형 없이 원본 유지)
+      const pts = stroke.isShape ? rawPts : [rawPts[0]];
+      if (!stroke.isShape) {
+        for (let i = 1; i < rawPts.length; i++) {
+          const prev = pts[pts.length - 1];
+          const curr = rawPts[i];
+          pts.push({
+            x: prev.x * 0.28 + curr.x * 0.72,
+            y: prev.y * 0.28 + curr.y * 0.72,
+            p: prev.p * 0.28 + curr.p * 0.72
+          });
+        }
       }
 
       const penStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
@@ -9699,6 +10013,21 @@ class GraphApp {
           return true;
         }
 
+        const restartProblemHoldTimer = (w, h) => {
+          if (holdTimer) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+          }
+          if (!isDrawingOnProblem || !currentStroke || currentStroke._shapeHoldDetected) return;
+          holdTimer = setTimeout(() => {
+            if (isDrawingOnProblem && currentStroke && !currentStroke._shapeHoldDetected) {
+              if (this.recognizeAndApplyCardStrokeShape(currentStroke, w, h)) {
+                this.renderProblemCardCanvas();
+              }
+            }
+          }, 340);
+        };
+
         const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
         const initCardPenStyle = (this.activeInkTool === 'highlighter') ? 'ballpen' : (this.inkPenStyle || 'ballpen');
         const hasHwP = (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01);
@@ -9711,11 +10040,15 @@ class GraphApp {
           penStyle: initCardPenStyle,
           softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
           _hasHwP: hasHwP,
+          _holdAnchorPx: { x: pos.nx * pos.w, y: pos.ny * pos.h },
+          _lastMovePx: { x: pos.nx * pos.w, y: pos.ny * pos.h },
+          _shapeHoldDetected: false,
           tStart: recT,
           tEnd: recT,
           points: [{ nx: pos.nx, ny: pos.ny, p: initP, t: recT }]
         };
         this.problemInkStrokes.push(currentStroke);
+        restartProblemHoldTimer(pos.w, pos.h);
         this.renderProblemCardCanvas();
         return true;
       };
@@ -9752,8 +10085,40 @@ class GraphApp {
           currentStroke.tEnd = recT;
           this.recordAudioCursorPoint(e.clientX, e.clientY, currentStroke.color, true);
         }
+
+        if (currentStroke._shapeHoldDetected && currentStroke.cardShape) {
+          if (this.updateHeldCardStrokeShape(currentStroke, pos.nx, pos.ny, pos.w, pos.h)) {
+            this.renderProblemCardCanvas();
+          }
+          return;
+        }
+
+        const curPxX = pos.nx * pos.w;
+        const curPxY = pos.ny * pos.h;
+        const prevMovePx = currentStroke._lastMovePx || { x: curPxX, y: curPxY };
+        const moveStepDist = Math.hypot(curPxX - prevMovePx.x, curPxY - prevMovePx.y);
+        currentStroke._lastMovePx = { x: curPxX, y: curPxY };
+
+        const holdAnchor = currentStroke._holdAnchorPx || { x: curPxX, y: curPxY };
+        const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
+        if (moveStepDist > 1.5 || dHold > 5) {
+          currentStroke._holdAnchorPx = { x: curPxX, y: curPxY };
+          if (holdTimer) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+          }
+          holdTimer = setTimeout(() => {
+            if (isDrawingOnProblem && currentStroke && !currentStroke._shapeHoldDetected) {
+              if (this.recognizeAndApplyCardStrokeShape(currentStroke, pos.w, pos.h)) {
+                this.renderProblemCardCanvas();
+              }
+            }
+          }, 340);
+        }
+
         const prevCardPt = currentStroke.points[currentStroke.points.length - 1];
         const stepDist = prevCardPt ? Math.hypot((pos.nx - prevCardPt.nx) * pos.w, (pos.ny - prevCardPt.ny) * pos.h) : 0;
+        if (stepDist < 0.4) return;
         if (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01) currentStroke._hasHwP = true;
         const moveP = this.computeDynamicStrokePressure(
           e.pressure || 0.5,
@@ -9765,30 +10130,6 @@ class GraphApp {
           0
         );
         currentStroke.points.push({ nx: pos.nx, ny: pos.ny, p: moveP, t: recT });
-
-        // Draw & Hold 수평 밑줄 자석 보정: 0.4초 멈추면 반듯한 수평선/직선으로 보정!
-        if (holdTimer) clearTimeout(holdTimer);
-        holdTimer = setTimeout(() => {
-          if (isDrawingOnProblem && currentStroke && currentStroke.points.length >= 4) {
-            const p0 = currentStroke.points[0];
-            const pLast = currentStroke.points[currentStroke.points.length - 1];
-            const dx = (pLast.nx - p0.nx) * pos.w;
-            const dy = (pLast.ny - p0.ny) * pos.h;
-            const dist = Math.hypot(dx, dy);
-            if (dist >= 20) {
-              let endNy = pLast.ny;
-              const angle = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);
-              if (angle < 2.5 || angle > 177.5) endNy = p0.ny; // 수평 밑줄 자석 (2.5도 정밀 스냅)!
-              const snapT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : pLast.t;
-              if (snapT !== undefined) currentStroke.tEnd = snapT;
-              currentStroke.points = [
-                { nx: p0.nx, ny: p0.ny, p: 0.6, t: p0.t },
-                { nx: pLast.nx, ny: endNy, p: 0.6, t: snapT }
-              ];
-              this.renderProblemCardCanvas();
-            }
-          }
-        }, 400);
 
         this.renderProblemCardCanvas();
       });
@@ -10517,6 +10858,10 @@ class GraphApp {
           cCtx.globalAlpha = (st.isHighlighter ? 0.36 : 1.0) * ghostMul;
           const extraHlW = st.highlighterSize ? (st.highlighterSize * sizeScale) : Math.max(10, baseSize * 2.8);
           cCtx.lineWidth = st.isHighlighter ? Math.max(4, extraHlW) : Math.max(1.5, baseSize);
+          if (st.isShape && st.cardShape && this.drawCardRecognizedShape(cCtx, st, 0, 0, w, h, baseSize)) {
+            cCtx.restore();
+            return;
+          }
           const pts = st.points.map(pt => ({
             x: pt.nx * w,
             y: pt.ny * h,
@@ -10533,6 +10878,39 @@ class GraphApp {
       let isDrawingExtraInk = false;
       let curExtraStroke = null;
       let extraHoldTimer = null;
+
+      const eraseExtraCardAtPoint = (sx, sy, rw, rh) => {
+        const extraEraseR = Math.max(6, (this.currentEraserSize || 14) * 1.25);
+        cardWidgetEl._cardInkStrokes = (cardWidgetEl._cardInkStrokes || []).filter(st => {
+          if (!st || !st.points || st.points.length === 0) return false;
+          for (let i = 0; i < st.points.length; i++) {
+            const px = st.points[i].nx * rw;
+            const py = st.points[i].ny * rh;
+            if (Math.hypot(px - sx, py - sy) <= extraEraseR) return false;
+            if (i < st.points.length - 1) {
+              const nx2 = st.points[i + 1].nx * rw;
+              const ny2 = st.points[i + 1].ny * rh;
+              if (this.distToSegment({ x: sx, y: sy }, { x: px, y: py }, { x: nx2, y: ny2 }) <= extraEraseR) return false;
+            }
+          }
+          return true;
+        });
+      };
+
+      const restartExtraHoldTimer = (rw, rh) => {
+        if (extraHoldTimer) {
+          clearTimeout(extraHoldTimer);
+          extraHoldTimer = null;
+        }
+        if (!isDrawingExtraInk || !curExtraStroke || curExtraStroke._shapeHoldDetected) return;
+        extraHoldTimer = setTimeout(() => {
+          if (isDrawingExtraInk && curExtraStroke && !curExtraStroke._shapeHoldDetected) {
+            if (this.recognizeAndApplyCardStrokeShape(curExtraStroke, rw, rh)) {
+              renderExtraCardInk();
+            }
+          }
+        }, 340);
+      };
 
       const startExtraCardStroke = (e) => {
         if (this.activeInkTool === 'sticker' || this.activeInkTool === 'laser') return false;
@@ -10558,12 +10936,7 @@ class GraphApp {
         );
         if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
           cardWidgetEl._extraStylusEraser = true;
-          const sx = nx * rw, sy = ny * rh;
-          const extraEraseR = Math.max(6, (this.currentEraserSize || 14) * 1.25);
-          cardWidgetEl._cardInkStrokes = (cardWidgetEl._cardInkStrokes || []).filter(st => {
-            if (!st.points) return false;
-            return !st.points.some(pt => Math.hypot(pt.nx * rw - sx, pt.ny * rh - sy) <= extraEraseR);
-          });
+          eraseExtraCardAtPoint(nx * rw, ny * rh, rw, rh);
           renderExtraCardInk();
           return true;
         }
@@ -10579,11 +10952,15 @@ class GraphApp {
           penStyle: initExtraPenStyle,
           softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
           _hasHwP: hasHwP,
+          _holdAnchorPx: { x: nx * rw, y: ny * rh },
+          _lastMovePx: { x: nx * rw, y: ny * rh },
+          _shapeHoldDetected: false,
           tStart: recT,
           tEnd: recT,
           points: [{ nx, ny, p: initP, t: recT }]
         };
         cardWidgetEl._cardInkStrokes.push(curExtraStroke);
+        restartExtraHoldTimer(rw, rh);
         renderExtraCardInk();
         return true;
       };
@@ -10607,12 +10984,7 @@ class GraphApp {
         const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rw));
         const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rh));
         if (this.activeInkTool === 'eraser' || cardWidgetEl._extraStylusEraser) {
-          const sx = nx * rw, sy = ny * rh;
-          const extraEraseR = Math.max(6, (this.currentEraserSize || 14) * 1.25);
-          cardWidgetEl._cardInkStrokes = (cardWidgetEl._cardInkStrokes || []).filter(st => {
-            if (!st.points) return false;
-            return !st.points.some(pt => Math.hypot(pt.nx * rw - sx, pt.ny * rh - sy) <= extraEraseR);
-          });
+          eraseExtraCardAtPoint(nx * rw, ny * rh, rw, rh);
           renderExtraCardInk();
           return;
         }
@@ -10622,8 +10994,30 @@ class GraphApp {
           curExtraStroke.tEnd = recT;
           this.recordAudioCursorPoint(e.clientX, e.clientY, curExtraStroke.color, true);
         }
+
+        if (curExtraStroke._shapeHoldDetected && curExtraStroke.cardShape) {
+          if (this.updateHeldCardStrokeShape(curExtraStroke, nx, ny, rw, rh)) {
+            renderExtraCardInk();
+          }
+          return;
+        }
+
+        const curPxX = nx * rw;
+        const curPxY = ny * rh;
+        const prevMovePx = curExtraStroke._lastMovePx || { x: curPxX, y: curPxY };
+        const moveStepDist = Math.hypot(curPxX - prevMovePx.x, curPxY - prevMovePx.y);
+        curExtraStroke._lastMovePx = { x: curPxX, y: curPxY };
+
+        const holdAnchor = curExtraStroke._holdAnchorPx || { x: curPxX, y: curPxY };
+        const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
+        if (moveStepDist > 1.5 || dHold > 5) {
+          curExtraStroke._holdAnchorPx = { x: curPxX, y: curPxY };
+          restartExtraHoldTimer(rw, rh);
+        }
+
         const prevExPt = curExtraStroke.points[curExtraStroke.points.length - 1];
         const stepDist = prevExPt ? Math.hypot((nx - prevExPt.nx) * rw, (ny - prevExPt.ny) * rh) : 0;
+        if (stepDist < 0.4) return;
         if (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01) curExtraStroke._hasHwP = true;
         const moveP = this.computeDynamicStrokePressure(
           e.pressure || 0.5,
@@ -10635,27 +11029,6 @@ class GraphApp {
           0
         );
         curExtraStroke.points.push({ nx, ny, p: moveP, t: recT });
-        if (extraHoldTimer) clearTimeout(extraHoldTimer);
-        extraHoldTimer = setTimeout(() => {
-          if (isDrawingExtraInk && curExtraStroke && curExtraStroke.points.length >= 4) {
-            const p0 = curExtraStroke.points[0];
-            const pLast = curExtraStroke.points[curExtraStroke.points.length - 1];
-            const dx = (pLast.nx - p0.nx) * rw;
-            const dy = (pLast.ny - p0.ny) * rh;
-            if (Math.hypot(dx, dy) >= 20) {
-              let endNy = pLast.ny;
-              const angle = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);
-              if (angle < 2.5 || angle > 177.5) endNy = p0.ny;
-              const snapT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : pLast.t;
-              if (snapT !== undefined) curExtraStroke.tEnd = snapT;
-              curExtraStroke.points = [
-                { nx: p0.nx, ny: p0.ny, p: 0.6, t: p0.t },
-                { nx: pLast.nx, ny: endNy, p: 0.6, t: snapT }
-              ];
-              renderExtraCardInk();
-            }
-          }
-        }, 400);
         renderExtraCardInk();
       });
 
@@ -12580,6 +12953,11 @@ class GraphApp {
         ctx.lineWidth = Math.max(1.5, baseSize);
       }
 
+      if (stroke.isShape && stroke.cardShape && this.drawCardRecognizedShape(ctx, stroke, 0, 0, w, h, baseSize)) {
+        ctx.restore();
+        return;
+      }
+
       const pts = stroke.points.map(pt => ({
         x: pt.nx * w,
         y: pt.ny * h,
@@ -12674,6 +13052,22 @@ class GraphApp {
     if (gCanvas) {
       let isDrawingOnGraphCard = false;
       let currentStroke = null;
+      let graphHoldTimer = null;
+
+      const restartGraphCardHoldTimer = (w, h) => {
+        if (graphHoldTimer) {
+          clearTimeout(graphHoldTimer);
+          graphHoldTimer = null;
+        }
+        if (!isDrawingOnGraphCard || !currentStroke || currentStroke._shapeHoldDetected) return;
+        graphHoldTimer = setTimeout(() => {
+          if (isDrawingOnGraphCard && currentStroke && !currentStroke._shapeHoldDetected) {
+            if (this.recognizeAndApplyCardStrokeShape(currentStroke, w, h)) {
+              this.renderGraphCardCanvas();
+            }
+          }
+        }, 340);
+      };
 
       const getNormPos = (e) => {
         const rect = gCanvas.getBoundingClientRect();
@@ -12725,11 +13119,15 @@ class GraphApp {
           penStyle: initGraphCardPenStyle,
           softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
           _hasHwP: hasHwP,
+          _holdAnchorPx: { x: pos.nx * pos.w, y: pos.ny * pos.h },
+          _lastMovePx: { x: pos.nx * pos.w, y: pos.ny * pos.h },
+          _shapeHoldDetected: false,
           tStart: recT,
           tEnd: recT,
           points: [{ nx: pos.nx, ny: pos.ny, p: initP, t: recT }]
         };
         this.graphInkStrokes.push(currentStroke);
+        restartGraphCardHoldTimer(pos.w, pos.h);
         this.renderGraphCardCanvas();
         return true;
       };
@@ -12763,8 +13161,30 @@ class GraphApp {
           currentStroke.tEnd = recT;
           this.recordAudioCursorPoint(e.clientX, e.clientY, currentStroke.color, true);
         }
+
+        if (currentStroke._shapeHoldDetected && currentStroke.cardShape) {
+          if (this.updateHeldCardStrokeShape(currentStroke, pos.nx, pos.ny, pos.w, pos.h)) {
+            this.renderGraphCardCanvas();
+          }
+          return;
+        }
+
+        const curPxX = pos.nx * pos.w;
+        const curPxY = pos.ny * pos.h;
+        const prevMovePx = currentStroke._lastMovePx || { x: curPxX, y: curPxY };
+        const moveStepDist = Math.hypot(curPxX - prevMovePx.x, curPxY - prevMovePx.y);
+        currentStroke._lastMovePx = { x: curPxX, y: curPxY };
+
+        const holdAnchor = currentStroke._holdAnchorPx || { x: curPxX, y: curPxY };
+        const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
+        if (moveStepDist > 1.5 || dHold > 5) {
+          currentStroke._holdAnchorPx = { x: curPxX, y: curPxY };
+          restartGraphCardHoldTimer(pos.w, pos.h);
+        }
+
         const prevGCt = currentStroke.points[currentStroke.points.length - 1];
         const stepDist = prevGCt ? Math.hypot((pos.nx - prevGCt.nx) * pos.w, (pos.ny - prevGCt.ny) * pos.h) : 0;
+        if (stepDist < 0.4) return;
         if (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01) currentStroke._hasHwP = true;
         const moveP = this.computeDynamicStrokePressure(
           e.pressure || 0.5,
@@ -12786,6 +13206,10 @@ class GraphApp {
         isDrawingOnGraphCard = false;
         this._graphCardStylusEraser = false;
         currentStroke = null;
+        if (graphHoldTimer) {
+          clearTimeout(graphHoldTimer);
+          graphHoldTimer = null;
+        }
         if (finishedCardStroke && finishedCardStroke.points && finishedCardStroke.points.length > 0) {
           if (this.isAudioRecording) {
             finishedCardStroke.tEnd = this.getAudioRecordElapsedMs();
@@ -21633,6 +22057,9 @@ class GraphApp {
     for (let i = 0; i < cloned.length; i++) {
       const st = cloned[i];
       if (!st) continue;
+      delete st._holdAnchorPx;
+      delete st._lastMovePx;
+      delete st._shapeHoldDetected;
       if (typeof st.tStart === 'number') st.tStart = Math.round(st.tStart);
       if (typeof st.tEnd === 'number') st.tEnd = Math.round(st.tEnd);
       if (typeof st.erasedAt === 'number') st.erasedAt = Math.round(st.erasedAt);
@@ -29030,14 +29457,14 @@ class GraphApp {
           }
 
           // 🌟 [홀드 감지 정밀 앵커링]:
-          // 빠르게 직선/이차함수를 긋고 멈췄을 때 이전 기준점이 뒤에 남지 않도록 프레임 간 이동량(stepDist > 3.5px)이 있을 때마다
-          // 현재 위치를 새로운 홀드 기준점으로 즉시 갱신하고, 멈춘 상태에서의 미세한 손떨림(stepDist <= 3.5px & dHold <= 14px)은 무시합니다!
+          // 작은 글씨(`3`, `ㄴ` 등)를 쓰는 도중에는 홀드 타이머가 확실히 리셋되도록 이동 임계값을 낮추고(stepDist > 1.5 || dHold > 5),
+          // 완전히 멈춘 상태에서의 미세한 손떨림(stepDist <= 1.5px & dHold <= 5px)만 무시합니다!
           const prevMovePos = this._lastMoveEventScreenPos || pos;
           const stepDist = Math.hypot(pos.x - prevMovePos.x, pos.y - prevMovePos.y);
           this._lastMoveEventScreenPos = { x: pos.x, y: pos.y };
           if (this._inkHoldLastScreenPos) {
             const dHold = Math.hypot(pos.x - this._inkHoldLastScreenPos.x, pos.y - this._inkHoldLastScreenPos.y);
-            if (stepDist > 3.5 || dHold > 14) {
+            if (stepDist > 1.5 || dHold > 5) {
               this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
               this._lastSignificantMoveTime = Date.now();
               this._startInkHoldTimer();
@@ -30091,12 +30518,9 @@ class GraphApp {
           return;
         }
 
-        // 🌟 펜을 떼기 직전에 220ms 이상 멈춰 있었다면(타이머 간발의 차 보정) 즉시 도형 자동 인식을 시도!
-        if (!this._inkHoldDetected && this.currentInkStroke && this._lastSignificantMoveTime && (Date.now() - this._lastSignificantMoveTime >= 220)) {
-          this._onInkHoldTriggered();
-        }
-
         // 일반 필기 마감 시 마지막 펜 끝 좌표를 매끄럽게 마무리 (짧은 획 L===1 포함 100% 마감!)
+        // (※ pointerup 시점의 220ms 강제 도형 인식 트리거는 작은 글씨 `3`, `ㄴ`을 떼는 순간 직선으로 둔갑시키므로 제거하고,
+        //    펜을 떼지 않고 정식으로 홀드 타이머(_inkHoldTimer)가 만료되었을 때만 도형 인식이 작동하도록 통일!)
         const upPos = getPos(e.touches ? (e.changedTouches ? e.changedTouches[0] : e.touches[0]) : e);
         if (upPos && Number.isFinite(upPos.x) && Number.isFinite(upPos.y)) {
           this._lastRawInkScreenPos = { x: upPos.x, y: upPos.y };
@@ -35962,20 +36386,26 @@ class GraphApp {
                 ctx.globalAlpha = (st.isHighlighter ? 0.36 : 1.0) * ghostMul;
                 const hlW = st.highlighterSize ? (st.highlighterSize * sizeScale) : Math.max(10, baseSize * 2.8);
                 ctx.lineWidth = st.isHighlighter ? Math.max(4, hlW) : Math.max(1.5, baseSize);
+                if (st.isShape && st.cardShape && this.drawCardRecognizedShape(ctx, st, bx, by, bw, bh, baseSize)) {
+                  ctx.restore();
+                  return;
+                }
                 const rawPts = st.points.map(pt => ({
                   x: bx + pt.nx * bw,
                   y: by + pt.ny * bh,
                   p: pt.p !== undefined ? pt.p : 0.5
                 }));
-                const pts = [rawPts[0]];
-                for (let i = 1; i < rawPts.length; i++) {
-                  const prev = pts[pts.length - 1];
-                  const curr = rawPts[i];
-                  pts.push({
-                    x: prev.x * 0.28 + curr.x * 0.72,
-                    y: prev.y * 0.28 + curr.y * 0.72,
-                    p: prev.p * 0.28 + curr.p * 0.72
-                  });
+                const pts = st.isShape ? rawPts : [rawPts[0]];
+                if (!st.isShape) {
+                  for (let i = 1; i < rawPts.length; i++) {
+                    const prev = pts[pts.length - 1];
+                    const curr = rawPts[i];
+                    pts.push({
+                      x: prev.x * 0.28 + curr.x * 0.72,
+                      y: prev.y * 0.28 + curr.y * 0.72,
+                      p: prev.p * 0.28 + curr.p * 0.72
+                    });
+                  }
                 }
                 const penStyle = st.isHighlighter ? 'ballpen' : (st.penStyle || 'ballpen');
                 this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : baseSize, penStyle);
@@ -40198,12 +40628,13 @@ class GraphApp {
     }
 
     // Draw & Hold 도형인 경우 shapeSnapMs에 도달하기 전까지는 손으로 그리는 궤적을 보여주고, 도달 순간 도형으로 스냅!
-    const useSnappedShape = Boolean(stroke.shape && playMs >= shapeSnapMs);
+    const useSnappedShape = Boolean((stroke.shape || stroke.cardShape) && playMs >= shapeSnapMs);
     return {
       stroke: {
         ...stroke,
         points: slicedPts,
         shape: useSnappedShape ? stroke.shape : null,
+        cardShape: useSnappedShape ? stroke.cardShape : null,
         isShape: useSnappedShape
       },
       isCurrentlyWriting: true,
