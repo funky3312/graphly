@@ -134,7 +134,7 @@ class GraphApp {
     this.axisLineWidth = 1.8; // 🌟 [대표님 피드백 반영]: 데스모스급 샤프하고 세련된 기본 축 두께 (기존 2.8px -> 1.8px)
     this.showArrows = true; // 수학적 표준 상시 고정
     this.showAsymptotes = true;
-    this.showGuides = true;
+    this.showGuides = false; // 기본값: 점선 그리드 없음 (개형 중심 시각화)
     this.showGridNumbers = false; // 그리드 눈금 숫자 표시 옵션 (기본 OFF, 설정에서 ON 가능)
     this.showInverseGuide = false; // y = x 항등직선 대칭 기준선 (역함수 모드)
     this.zoomLevel = 1.0;
@@ -1442,11 +1442,8 @@ class GraphApp {
         this.showAxes = Boolean(data.showAxes);
         this.updateAxesUI();
       }
-      if (data.showGuides !== undefined) {
-        this.showGuides = Boolean(data.showGuides);
-        const chkG = document.getElementById('chkGuides');
-        if (chkG) chkG.checked = this.showGuides;
-      }
+      const chkG = document.getElementById('chkGuides');
+      if (chkG) chkG.checked = Boolean(this.showGuides);
       if (data.showGridNumbers !== undefined) {
         this.showGridNumbers = Boolean(data.showGridNumbers);
         const chkGN = document.getElementById('chkGridNumbers');
@@ -1795,7 +1792,6 @@ class GraphApp {
         }
         if (!this.showAxes) {
           this.showAxes = true;
-          this.showGuides = true;
           this.updateAxesUI();
         }
       }
@@ -2147,12 +2143,11 @@ class GraphApp {
       this.exitNAxisMode();
     }
     this.showAxes = true;
-    this.showGuides = true;
     this.showInverseGuide = false;
     const chkInv = document.getElementById('chkInverseGuide');
     if (chkInv) chkInv.checked = false;
     const chkGuides = document.getElementById('chkGuides');
-    if (chkGuides) chkGuides.checked = true;
+    if (chkGuides) chkGuides.checked = Boolean(this.showGuides);
     this.panX = 0;
     this.panY = 0;
     this.boardPanX = 0;
@@ -8192,7 +8187,6 @@ class GraphApp {
     if (!this.hasBoardStateToReturn()) {
       this.isGraphCovered = false;
       this.showAxes = true;
-      this.showGuides = true;
       this.updateAxesUI();
     }
     this.syncWorkspaceModeUI();
@@ -12569,12 +12563,11 @@ class GraphApp {
 
     this.isGraphCovered = false;
     this.showAxes = true;
-    this.showGuides = true;
     this.updateAxesUI();
     const chkGuides = document.getElementById('chkGuides');
-    if (chkGuides) chkGuides.checked = true;
+    if (chkGuides) chkGuides.checked = Boolean(this.showGuides);
     const btnGrid = document.getElementById('btnQuickGrid');
-    if (btnGrid) btnGrid.classList.add('active');
+    if (btnGrid) btnGrid.classList.toggle('active', Boolean(this.showGuides));
 
     // 🌟 [대표님 피드백 반영: 그래프 모드 진입 시 아예 ↖ 이동/조작(select) 모드로 즉시 전환!]
     if (this.isInkMode && this.activeInkTool !== 'select') {
@@ -13643,10 +13636,9 @@ class GraphApp {
     this._inkBakeDirty = true;
     this.clearInkCache();
     this.showAxes = true;
-    this.showGuides = true;
     this.updateAxesUI();
     const chkGuides = document.getElementById('chkGuides');
-    if (chkGuides) chkGuides.checked = true;
+    if (chkGuides) chkGuides.checked = Boolean(this.showGuides);
 
     this._savedLayer2BoardPan = {
       x: this.boardPanX || 0,
@@ -14489,10 +14481,10 @@ class GraphApp {
       this.xSpan = typeof snapObj.xSpan === 'number' ? snapObj.xSpan : 6.2;
       this.ySpan = typeof snapObj.ySpan === 'number' ? snapObj.ySpan : 5.1;
       this.showAxes = true;
-      this.showGuides = true;
-      this.showAsymptotes = true;
+      this.showGuides = Boolean(backup.showGuides);
+      this.showAsymptotes = Boolean(backup.showAsymptotes);
       this.showInverseGuide = Boolean(snapObj.showInverseGuide);
-      this.showGridNumbers = Boolean(snapObj.showGridNumbers);
+      this.showGridNumbers = Boolean(backup.showGridNumbers);
       this.usePiecewise = Boolean(snapObj.usePiecewise);
       this.piecewiseBoundaries = snapObj.piecewiseBoundaries || [];
       this.piecewiseFuncMap = snapObj.piecewiseFuncMap || [];
@@ -15264,6 +15256,21 @@ class GraphApp {
     }
     if (anyChanged && this.isAudioRecording) {
       this._recordAudioWorkspaceStateIfNeeded(true);
+    }
+  }
+
+  _refreshAllOpenPipGraphCards() {
+    if (this.hasGraphCard && this.graphCardState && this.graphCardState.liveGraphSnapshot) {
+      this.renderPipGraphCard('primary');
+      this.bakePipGraphCardToImg('primary');
+    }
+    if (Array.isArray(this.extraGraphCards)) {
+      this.extraGraphCards.forEach(c => {
+        if (c && c.liveGraphSnapshot) {
+          this.renderPipGraphCard(c);
+          this.bakePipGraphCardToImg(c);
+        }
+      });
     }
   }
 
@@ -17872,6 +17879,7 @@ class GraphApp {
       chkAsym.onchange = (e) => {
         this.showAsymptotes = e.target.checked;
         if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
+        this._refreshAllOpenPipGraphCards();
         this.render();
       };
     }
@@ -17885,6 +17893,7 @@ class GraphApp {
         const btnGrid = document.getElementById('btnQuickGrid');
         if (btnGrid) btnGrid.classList.toggle('active', this.showGuides);
         if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
+        this._refreshAllOpenPipGraphCards();
         this.render();
       };
     }
@@ -17896,6 +17905,7 @@ class GraphApp {
       chkGridNumbers.onchange = (e) => {
         this.showGridNumbers = Boolean(e.target.checked);
         if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
+        this._refreshAllOpenPipGraphCards();
         this.render();
       };
     }
@@ -18439,6 +18449,8 @@ class GraphApp {
         const chk = document.getElementById('chkGuides');
         if (chk) chk.checked = this.showGuides;
         btnGrid.classList.toggle('active', this.showGuides);
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
+        this._refreshAllOpenPipGraphCards();
         this.render();
         this.showToast(this.showGuides ? '📐 점선 그리드 가이드 켜짐' : '📐 점선 그리드 가이드 꺼짐');
       };
@@ -23972,6 +23984,7 @@ class GraphApp {
       showVirtualStylus: Boolean(this.showVirtualStylus),
       useMagneticSnap: Boolean(this.useMagneticSnap),
       showGuides: Boolean(this.showGuides),
+      showGuidesV2: Boolean(this.showGuides),
       showGridNumbers: Boolean(this.showGridNumbers),
       showAsymptotes: Boolean(this.showAsymptotes),
       customShortcuts: this.customShortcuts || {}
@@ -24034,10 +24047,14 @@ class GraphApp {
         const chk = document.getElementById('chkMagneticSnap');
         if (chk) chk.checked = prefs.useMagneticSnap;
       }
-      if (typeof prefs.showGuides === 'boolean') {
-        this.showGuides = prefs.showGuides;
+      if (typeof prefs.showGuidesV2 === 'boolean') {
+        this.showGuides = prefs.showGuidesV2;
         const chk = document.getElementById('chkGuides');
-        if (chk) chk.checked = prefs.showGuides;
+        if (chk) chk.checked = prefs.showGuidesV2;
+      } else {
+        this.showGuides = false;
+        const chk = document.getElementById('chkGuides');
+        if (chk) chk.checked = false;
       }
       if (typeof prefs.showGridNumbers === 'boolean') {
         this.showGridNumbers = prefs.showGridNumbers;
@@ -24103,7 +24120,8 @@ class GraphApp {
           allowOneFingerPanInInk: true,
           showVirtualStylus: true,
           useMagneticSnap: true,
-          showGuides: true,
+          showGuides: false,
+          showGuidesV2: false,
           showGridNumbers: false,
           showAsymptotes: false,
           customShortcuts: {}
@@ -30164,7 +30182,7 @@ class GraphApp {
 
     this.applyPureGraphSnapshot(hotspot.graphSnapshot);
     this.showAxes = true;
-    this.showGuides = true;
+    this.showGuides = false;
     this.activeGraphIdx = (this.graphs && this.graphs.length > 0) ? 0 : -1;
     this.isCurveSelected = (this.activeGraphIdx >= 0);
     this.selectedHandleIdx = null;
