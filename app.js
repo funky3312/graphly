@@ -3565,6 +3565,9 @@ class GraphApp {
       this.isResizingLassoSelection = false;
       this.lassoResizeStart = null;
       this.lassoPoints = [];
+      if (typeof this.clearCardLassoSelection === 'function') {
+        this.clearCardLassoSelection();
+      }
       this.syncLassoActionBarUI();
     }
 
@@ -5601,9 +5604,214 @@ class GraphApp {
     }
   }
 
+  clearCardLassoSelection(skipRender = false) {
+    const prev = this._activeCardLasso;
+    this._activeCardLasso = null;
+    if (prev && !skipRender && typeof prev.renderFn === 'function') {
+      prev.renderFn();
+    }
+    this.syncLassoActionBarUI();
+  }
+
+  computeCardStrokesNormBBox(strokes) {
+    if (!Array.isArray(strokes) || strokes.length === 0) return null;
+    let minNx = Infinity, maxNx = -Infinity, minNy = Infinity, maxNy = -Infinity;
+    const addPt = (nx, ny) => {
+      if (typeof nx !== 'number' || typeof ny !== 'number' || isNaN(nx) || isNaN(ny)) return;
+      if (nx < minNx) minNx = nx;
+      if (nx > maxNx) maxNx = nx;
+      if (ny < minNy) minNy = ny;
+      if (ny > maxNy) maxNy = ny;
+    };
+    strokes.forEach(st => {
+      if (!st) return;
+      if (st.isShape && st.cardShape) {
+        const sh = st.cardShape;
+        if (sh.start && sh.end) {
+          addPt(sh.start.nx, sh.start.ny);
+          addPt(sh.end.nx, sh.end.ny);
+        } else if (sh.center) {
+          const rx = Math.abs(sh.rx || 0);
+          const ry = Math.abs(sh.ry || sh.rx || 0);
+          addPt(sh.center.nx - rx, sh.center.ny - ry);
+          addPt(sh.center.nx + rx, sh.center.ny + ry);
+        } else if (sh.min && sh.max) {
+          addPt(sh.min.nx, sh.min.ny);
+          addPt(sh.max.nx, sh.max.ny);
+        } else if (Array.isArray(sh.pts)) {
+          sh.pts.forEach(p => p && addPt(p.nx, p.ny));
+        }
+      }
+      if (Array.isArray(st.points)) {
+        st.points.forEach(pt => pt && addPt(pt.nx, pt.ny));
+      }
+    });
+    if (!isFinite(minNx) || !isFinite(minNy)) return null;
+    return { minNx, maxNx, minNy, maxNy };
+  }
+
+  translateCardStrokeNorm(st, dnx, dny) {
+    if (!st) return;
+    if (Array.isArray(st.points)) {
+      st.points.forEach(pt => {
+        if (!pt) return;
+        pt.nx = (pt.nx || 0) + dnx;
+        pt.ny = (pt.ny || 0) + dny;
+        delete pt.mx;
+        delete pt.my;
+      });
+    }
+    if (st.isShape && st.cardShape) {
+      const sh = st.cardShape;
+      if (sh.start) { sh.start.nx += dnx; sh.start.ny += dny; delete sh.start.mx; delete sh.start.my; }
+      if (sh.end) { sh.end.nx += dnx; sh.end.ny += dny; delete sh.end.mx; delete sh.end.my; }
+      if (sh.center) { sh.center.nx += dnx; sh.center.ny += dny; delete sh.center.mx; delete sh.center.my; }
+      if (sh.min) { sh.min.nx += dnx; sh.min.ny += dny; delete sh.min.mx; delete sh.min.my; }
+      if (sh.max) { sh.max.nx += dnx; sh.max.ny += dny; delete sh.max.mx; delete sh.max.my; }
+      if (Array.isArray(sh.pts)) {
+        sh.pts.forEach(p => {
+          if (!p) return;
+          p.nx += dnx;
+          p.ny += dny;
+          delete p.mx;
+          delete p.my;
+        });
+      }
+      if (typeof sh.x1 === 'number') {
+        sh.x1 += dnx; sh.y1 += dny;
+        sh.x2 += dnx; sh.y2 += dny;
+        delete sh.mx1; delete sh.my1; delete sh.mx2; delete sh.my2;
+      }
+    }
+  }
+
+  drawCardLassoOverlay(ctx, w, h, cardWidgetEl) {
+    const cl = this._activeCardLasso;
+    if (!cl || cl.widgetEl !== cardWidgetEl || this.activeInkTool !== 'lasso') return;
+
+    if (cl.isSelecting && Array.isArray(cl.lassoPts) && cl.lassoPts.length > 1) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(cl.lassoPts[0].nx * w, cl.lassoPts[0].ny * h);
+      for (let i = 1; i < cl.lassoPts.length; i++) {
+        ctx.lineTo(cl.lassoPts[i].nx * w, cl.lassoPts[i].ny * h);
+      }
+      ctx.strokeStyle = '#00d2d3';
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([6, 5]);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    const hasSel = Array.isArray(cl.selectedStrokes) && cl.selectedStrokes.length > 0;
+    if (hasSel && !cl.bboxNorm) {
+      cl.bboxNorm = this.computeCardStrokesNormBBox(cl.selectedStrokes);
+    }
+
+    if (hasSel && Array.isArray(cl.lassoPts) && cl.lassoPts.length >= 3) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(cl.lassoPts[0].nx * w, cl.lassoPts[0].ny * h);
+      for (let i = 1; i < cl.lassoPts.length; i++) {
+        ctx.lineTo(cl.lassoPts[i].nx * w, cl.lassoPts[i].ny * h);
+      }
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0, 210, 211, 0.045)';
+      ctx.fill();
+      ctx.strokeStyle = '#00d2d3';
+      ctx.lineWidth = 1.9;
+      ctx.setLineDash([7, 5]);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    if (hasSel && cl.bboxNorm) {
+      const pad = 8;
+      const x1 = cl.bboxNorm.minNx * w - pad;
+      const y1 = cl.bboxNorm.minNy * h - pad;
+      const x2 = cl.bboxNorm.maxNx * w + pad;
+      const y2 = cl.bboxNorm.maxNy * h + pad;
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(2, 132, 199, 0.55)';
+      ctx.lineWidth = 1.25;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+      ctx.setLineDash([]);
+      const corners = [
+        { x: x1, y: y1, r: 5.0 },
+        { x: x2, y: y1, r: 5.0 },
+        { x: x1, y: y2, r: 5.0 },
+        { x: x2, y: y2, r: 6.5, isMain: true }
+      ];
+      corners.forEach(c => {
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+        ctx.fillStyle = c.isMain ? '#0284c7' : '#ffffff';
+        ctx.fill();
+        ctx.lineWidth = 2.0;
+        ctx.strokeStyle = c.isMain ? '#ffffff' : '#0284c7';
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+
+    this.syncLassoActionBarUI();
+  }
+
   syncLassoActionBarUI() {
     const bar = document.getElementById('lassoActionFloatingBar');
     if (!bar) return;
+
+    const cl = this._activeCardLasso;
+    const hasCardSelection = Boolean(
+      cl &&
+      cl.widgetEl &&
+      cl.widgetEl.style.display !== 'none' &&
+      Array.isArray(cl.selectedStrokes) &&
+      cl.selectedStrokes.length > 0 &&
+      cl.bboxNorm
+    );
+
+    if (hasCardSelection && this.isInkMode && this.activeInkTool === 'lasso') {
+      if (cl.isSelecting || cl.isDragging || cl.isResizing) {
+        bar.style.display = 'none';
+        return;
+      }
+      const bodyEl = cl.widgetEl.querySelector('.problem-card-body') || cl.widgetEl;
+      const rect = bodyEl.getBoundingClientRect();
+      if (rect && rect.width > 0 && rect.height > 0) {
+        const minX = rect.left + cl.bboxNorm.minNx * rect.width;
+        const maxX = rect.left + cl.bboxNorm.maxNx * rect.width;
+        const minY = rect.top + cl.bboxNorm.minNy * rect.height;
+        const maxY = rect.top + cl.bboxNorm.maxNy * rect.height;
+        const pad = 10;
+        bar.style.display = 'flex';
+        const screenW = this.screenWidth || window.innerWidth || 1280;
+        const barW = Math.max(264, bar.offsetWidth || 276);
+        const minLeft = 64;
+        const maxLeft = Math.max(minLeft, screenW - barW - 64);
+        const idealLeft = ((minX + maxX) / 2) - (barW / 2);
+        const clampedLeft = Math.max(minLeft, Math.min(maxLeft, idealLeft));
+        const topEdge = minY - pad;
+        const bottomEdge = maxY + pad;
+
+        bar.style.left = `${Math.round(clampedLeft)}px`;
+        if (topEdge >= 64) {
+          bar.style.top = `${Math.round(topEdge - 10)}px`;
+          bar.style.transform = 'translate(0, -100%)';
+        } else {
+          bar.style.top = `${Math.round(bottomEdge + 10)}px`;
+          bar.style.transform = 'translate(0, 0)';
+        }
+        return;
+      }
+    }
 
     const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
       (this.selectedTextLabels && this.selectedTextLabels.length > 0);
@@ -5644,6 +5852,15 @@ class GraphApp {
   }
 
   changeSelectedLassoColor(color) {
+    const cl = this._activeCardLasso;
+    if (cl && Array.isArray(cl.selectedStrokes) && cl.selectedStrokes.length > 0) {
+      cl.selectedStrokes.forEach(s => {
+        if (s) s.color = color;
+      });
+      if (typeof cl.renderFn === 'function') cl.renderFn();
+      return;
+    }
+
     const hasStrokes = this.selectedInkStrokes && this.selectedInkStrokes.length > 0;
     const hasTexts = this.selectedTextLabels && this.selectedTextLabels.length > 0;
     if (!hasStrokes && !hasTexts) return;
@@ -5664,6 +5881,31 @@ class GraphApp {
   }
 
   duplicateSelectedLassoStrokes() {
+    const cl = this._activeCardLasso;
+    if (cl && Array.isArray(cl.selectedStrokes) && cl.selectedStrokes.length > 0 && typeof cl.getStrokes === 'function') {
+      const arr = cl.getStrokes();
+      const dnx = 0.045;
+      const dny = 0.045;
+      const newClones = [];
+      cl.selectedStrokes.forEach(orig => {
+        const clone = JSON.parse(JSON.stringify(orig));
+        this.translateCardStrokeNorm(clone, dnx, dny);
+        arr.push(clone);
+        newClones.push(clone);
+      });
+      if (cl.widgetEl && cl.widgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
+        this._ensurePipCardInkMathCoordsByWidget(cl.widgetEl, true);
+      }
+      cl.selectedStrokes = newClones;
+      if (Array.isArray(cl.lassoPts)) {
+        cl.lassoPts = cl.lassoPts.map(p => ({ nx: p.nx + dnx, ny: p.ny + dny }));
+      }
+      cl.bboxNorm = this.computeCardStrokesNormBBox(newClones);
+      if (typeof cl.renderFn === 'function') cl.renderFn();
+      this.syncLassoActionBarUI();
+      return;
+    }
+
     const hasStrokes = this.selectedInkStrokes && this.selectedInkStrokes.length > 0;
     const hasTexts = this.selectedTextLabels && this.selectedTextLabels.length > 0;
     if (!hasStrokes && !hasTexts) return;
@@ -5764,6 +6006,22 @@ class GraphApp {
   }
 
   deleteSelectedInkStrokes() {
+    const cl = this._activeCardLasso;
+    if (cl && Array.isArray(cl.selectedStrokes) && cl.selectedStrokes.length > 0 && typeof cl.getStrokes === 'function' && typeof cl.setStrokes === 'function') {
+      const set = new Set(cl.selectedStrokes);
+      const nextArr = cl.getStrokes().filter(s => !set.has(s));
+      cl.setStrokes(nextArr);
+      const renderFn = cl.renderFn;
+      this._activeCardLasso = null;
+      if (typeof renderFn === 'function') renderFn();
+      if (this.activeInkTool === 'lasso') {
+        this.setActiveInkTool('pen');
+        return;
+      }
+      this.syncLassoActionBarUI();
+      return;
+    }
+
     const hasStrokes = this.selectedInkStrokes && this.selectedInkStrokes.length > 0;
     const hasTexts = this.selectedTextLabels && this.selectedTextLabels.length > 0;
     if (!hasStrokes && !hasTexts) return;
@@ -9351,6 +9609,7 @@ class GraphApp {
     ctx.clearRect(0, 0, w, h);
 
     if (!this.problemInkStrokes || this.problemInkStrokes.length === 0) {
+      this.drawCardLassoOverlay(ctx, w, h, document.getElementById('problemCardWidget'));
       ctx.restore();
       return;
     }
@@ -9443,6 +9702,7 @@ class GraphApp {
       ctx.restore();
     });
 
+    this.drawCardLassoOverlay(ctx, w, h, document.getElementById('problemCardWidget'));
     ctx.restore();
   }
 
@@ -10146,7 +10406,7 @@ class GraphApp {
       }, { capture: true });
 
       const startProblemCardStroke = (e) => {
-        if (this.activeInkTool === 'sticker' || this.activeInkTool === 'laser') return false;
+        if (this.activeInkTool === 'sticker' || this.activeInkTool === 'laser' || this.activeInkTool === 'lasso') return false;
         const isPromotedStylus = this.isPinpointStylusTouch(e);
         if (e.pointerType === 'pen' || isPromotedStylus) this._markStylusPenDetected();
         if (e.pointerType === 'touch' && !isPromotedStylus && this.isStylusPalmRejectionActive()) return false;
@@ -10683,11 +10943,11 @@ class GraphApp {
 
   dockCardToLeftStack(cardEl) {
     if (!cardEl) return;
-    // 🛡️ 카드 위 필기 모드(.card-ink-active)나 전역 레이저/스티커 도구 활성 상태에서는 더블클릭 도킹 원천 차단 (필기 중 카드 도망 방지!)
+    // 🛡️ 카드 위 필기 모드(.card-ink-active)나 전역 레이저/스티커/올가미 도구 활성 상태에서는 더블클릭 도킹 원천 차단 (필기 중 카드 도망 방지!)
     if (
       cardEl.classList.contains('card-ink-active') ||
       cardEl.classList.contains('card-laser-active') ||
-      (this.isInkMode && (this.activeInkTool === 'laser' || this.activeInkTool === 'sticker'))
+      (this.isInkMode && (this.activeInkTool === 'laser' || this.activeInkTool === 'sticker' || this.activeInkTool === 'lasso'))
     ) {
       return;
     }
@@ -10716,11 +10976,15 @@ class GraphApp {
     const isCardWritingBlocked = () => Boolean(
       cardEl.classList.contains('card-ink-active') ||
       cardEl.classList.contains('card-laser-active') ||
-      (this.isInkMode && (this.activeInkTool === 'laser' || this.activeInkTool === 'sticker'))
+      (this.isInkMode && (this.activeInkTool === 'laser' || this.activeInkTool === 'sticker' || this.activeInkTool === 'lasso'))
     );
 
     const shouldIgnoreTarget = (target) => {
       if (!target || !target.closest) return false;
+      if (target.closest('.graph-card-live-canvas')) {
+        const snap = cardEl._pipSnapObj;
+        if (!snap || !snap.isPipLocked) return true;
+      }
       return Boolean(
         target.closest('button') ||
         target.closest('.card-btn') ||
@@ -10728,6 +10992,7 @@ class GraphApp {
         target.closest('.card-title-fold-btn') ||
         target.closest('.problem-card-actions') ||
         target.closest('.problem-card-resize-handle') ||
+        target.closest('.pip-card-mini-ctx-bar') ||
         target.closest('.card-sticker-item') ||
         target.closest('.card-stickers-layer') ||
         target.closest('.problem-card-canvas') ||
@@ -10982,6 +11247,7 @@ class GraphApp {
         cCtx.clearRect(0, 0, w, h);
         const strokes = cardWidgetEl._cardInkStrokes || [];
         if (strokes.length === 0) {
+          this.drawCardLassoOverlay(cCtx, w, h, cardWidgetEl);
           cCtx.restore();
           return;
         }
@@ -11039,6 +11305,7 @@ class GraphApp {
           this.drawPenStyledPointArray(cCtx, pts, st.isHighlighter ? cCtx.lineWidth : baseSize, penStyle, st.softBlur, Boolean(st.isHighlighter));
           cCtx.restore();
         });
+        this.drawCardLassoOverlay(cCtx, w, h, cardWidgetEl);
         cCtx.restore();
       };
       cardWidgetEl._renderCardInkCanvas = renderExtraCardInk;
@@ -11074,6 +11341,9 @@ class GraphApp {
         extraHoldTimer = setTimeout(() => {
           if (isDrawingExtraInk && curExtraStroke && !curExtraStroke._shapeHoldDetected) {
             if (this.recognizeAndApplyCardStrokeShape(curExtraStroke, rw, rh)) {
+              if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
+                this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true);
+              }
               renderExtraCardInk();
             }
           }
@@ -11081,7 +11351,7 @@ class GraphApp {
       };
 
       const startExtraCardStroke = (e) => {
-        if (this.activeInkTool === 'sticker' || this.activeInkTool === 'laser') return false;
+        if (this.activeInkTool === 'sticker' || this.activeInkTool === 'laser' || this.activeInkTool === 'lasso') return false;
         const isPromotedStylus = this.isPinpointStylusTouch(e);
         if (e.pointerType === 'pen' || isPromotedStylus) this._markStylusPenDetected();
         if (e.pointerType === 'touch' && !isPromotedStylus && this.isStylusPalmRejectionActive()) return false;
@@ -11165,6 +11435,9 @@ class GraphApp {
 
         if (curExtraStroke._shapeHoldDetected && curExtraStroke.cardShape) {
           if (this.updateHeldCardStrokeShape(curExtraStroke, nx, ny, rw, rh)) {
+            if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
+              this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true);
+            }
             renderExtraCardInk();
           }
           return;
@@ -11223,7 +11496,7 @@ class GraphApp {
         if (finishedSt && finishedSt.points && finishedSt.points.length > 0) {
           if (this.isAudioRecording) finishedSt.tEnd = this.getAudioRecordElapsedMs();
           if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
-            this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl);
+            this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true);
           }
           this.undoStack.push({
             type: 'card_stroke_add',
@@ -11728,6 +12001,349 @@ class GraphApp {
     bodyEl.addEventListener('pointercancel', finishCardStickerDrag, { capture: true });
     window.addEventListener('pointerup', finishCardStickerDrag, { capture: true });
     window.addEventListener('pointercancel', finishCardStickerDrag, { capture: true });
+
+    // 🌟 [대표님 피드백 완벽 반영: 카드 위 필기 올가미(Lasso) 선택 · 이동 · 모서리 크기조절 · 색상변경 · 복제 · 삭제 엔진] 🌟
+    const getCardInkStrokesForLasso = () => {
+      if (cardWidgetEl.id === 'problemCardWidget') {
+        if (!Array.isArray(this.problemInkStrokes)) this.problemInkStrokes = [];
+        return this.problemInkStrokes;
+      }
+      if (cardWidgetEl.id === 'graphCardWidget') {
+        if (!Array.isArray(this.graphInkStrokes)) this.graphInkStrokes = [];
+        return this.graphInkStrokes;
+      }
+      if (!Array.isArray(cardWidgetEl._cardInkStrokes)) cardWidgetEl._cardInkStrokes = [];
+      return cardWidgetEl._cardInkStrokes;
+    };
+
+    const setCardInkStrokesForLasso = (nextArr) => {
+      const arr = Array.isArray(nextArr) ? nextArr : [];
+      if (cardWidgetEl.id === 'problemCardWidget') {
+        this.problemInkStrokes = arr;
+      } else if (cardWidgetEl.id === 'graphCardWidget') {
+        this.graphInkStrokes = arr;
+      } else {
+        cardWidgetEl._cardInkStrokes = arr;
+      }
+    };
+
+    const renderCardInkForLasso = () => {
+      if (cardWidgetEl.id === 'problemCardWidget') {
+        this.renderProblemCardCanvas();
+      } else if (cardWidgetEl.id === 'graphCardWidget') {
+        this.renderGraphCardCanvas();
+      } else if (typeof cardWidgetEl._renderCardInkCanvas === 'function') {
+        cardWidgetEl._renderCardInkCanvas();
+      }
+    };
+
+    let cardLassoMode = null; // 'drawing' | 'moving' | 'resizing'
+    let cardLassoLastNorm = null;
+    let cardLassoResizeCorner = null;
+    let cardLassoResizeAnchor = null;
+    let cardLassoResizeInitBox = null;
+    let cardLassoResizeSnapshots = null;
+
+    const hitTestCardLassoHandle = (nx, ny, bbox, rw, rh) => {
+      if (!bbox) return null;
+      const padX = 8 / Math.max(1, rw);
+      const padY = 8 / Math.max(1, rh);
+      const x1 = bbox.minNx - padX;
+      const y1 = bbox.minNy - padY;
+      const x2 = bbox.maxNx + padX;
+      const y2 = bbox.maxNy + padY;
+      const hitR = 14;
+      const corners = [
+        { id: 'tl', x: x1, y: y1 },
+        { id: 'tr', x: x2, y: y1 },
+        { id: 'bl', x: x1, y: y2 },
+        { id: 'br', x: x2, y: y2 }
+      ];
+      for (const c of corners) {
+        if (Math.hypot((nx - c.x) * rw, (ny - c.y) * rh) <= hitR) {
+          return c.id;
+        }
+      }
+      return null;
+    };
+
+    const isNormPointInCardLasso = (nx, ny, cl, rw, rh) => {
+      if (!cl || !Array.isArray(cl.selectedStrokes) || cl.selectedStrokes.length === 0) return false;
+      if (Array.isArray(cl.lassoPts) && cl.lassoPts.length >= 3) {
+        if (this.isPointInPolygon({ x: nx, y: ny }, cl.lassoPts.map(p => ({ x: p.nx, y: p.ny })))) {
+          return true;
+        }
+      }
+      const bbox = cl.bboxNorm || this.computeCardStrokesNormBBox(cl.selectedStrokes);
+      if (!bbox) return false;
+      const padX = 10 / Math.max(1, rw);
+      const padY = 10 / Math.max(1, rh);
+      return nx >= (bbox.minNx - padX) && nx <= (bbox.maxNx + padX) &&
+             ny >= (bbox.minNy - padY) && ny <= (bbox.maxNy + padY);
+    };
+
+    bodyEl.addEventListener('pointerdown', (e) => {
+      if (!this.isInkMode || this.activeInkTool !== 'lasso') return;
+      const strokes = getCardInkStrokesForLasso();
+      if (!cardWidgetEl.classList.contains('card-ink-active') && strokes.length === 0) return;
+      if (e.target && e.target.closest && e.target.closest('button, .graph-card-pip-mini-bar, .problem-card-resize-handle')) return;
+      if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive() && !this.isPinpointStylusTouch(e)) return;
+      if (e.button && e.button !== 0) return;
+
+      this.bringCardToFront(cardWidgetEl);
+      if (e.cancelable !== false) e.preventDefault();
+      e.stopPropagation();
+      try { bodyEl.setPointerCapture(e.pointerId); } catch (_) { }
+
+      if ((this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
+          (this.selectedTextLabels && this.selectedTextLabels.length > 0)) {
+        this.selectedInkStrokes = [];
+        this.selectedTextLabels = [];
+        this.lassoPoints = [];
+        this.clearInkCache();
+        this.requestRender();
+      }
+      if (this._activeCardLasso && this._activeCardLasso.widgetEl !== cardWidgetEl) {
+        this.clearCardLassoSelection();
+      }
+
+      const rect = bodyEl.getBoundingClientRect();
+      const rw = Math.max(1, rect.width);
+      const rh = Math.max(1, rect.height);
+      const pos = getNormPos(e);
+
+      const curCl = (this._activeCardLasso && this._activeCardLasso.widgetEl === cardWidgetEl)
+        ? this._activeCardLasso
+        : null;
+
+      if (curCl && Array.isArray(curCl.selectedStrokes) && curCl.selectedStrokes.length > 0) {
+        const bbox = curCl.bboxNorm || this.computeCardStrokesNormBBox(curCl.selectedStrokes);
+        const corner = hitTestCardLassoHandle(pos.nx, pos.ny, bbox, rw, rh);
+        if (corner && bbox) {
+          cardLassoMode = 'resizing';
+          curCl.isResizing = true;
+          cardLassoResizeCorner = corner;
+          cardLassoResizeInitBox = { ...bbox };
+          cardLassoResizeAnchor = {
+            nx: (corner === 'tl' || corner === 'bl') ? bbox.maxNx : bbox.minNx,
+            ny: (corner === 'tl' || corner === 'tr') ? bbox.maxNy : bbox.minNy
+          };
+          cardLassoResizeSnapshots = curCl.selectedStrokes.map(st => ({
+            stroke: st,
+            points: (st.points || []).map(p => ({ ...p })),
+            size: st.size || 3.5,
+            cardShape: st.cardShape ? JSON.parse(JSON.stringify(st.cardShape)) : null
+          }));
+          return;
+        }
+        if (isNormPointInCardLasso(pos.nx, pos.ny, curCl, rw, rh)) {
+          cardLassoMode = 'moving';
+          curCl.isDragging = true;
+          cardLassoLastNorm = { nx: pos.nx, ny: pos.ny };
+          return;
+        }
+      }
+
+      cardLassoMode = 'drawing';
+      this._activeCardLasso = {
+        widgetEl: cardWidgetEl,
+        getStrokes: getCardInkStrokesForLasso,
+        setStrokes: setCardInkStrokesForLasso,
+        selectedStrokes: [],
+        lassoPts: [{ nx: pos.nx, ny: pos.ny }],
+        bboxNorm: null,
+        isSelecting: true,
+        isDragging: false,
+        isResizing: false,
+        renderFn: renderCardInkForLasso
+      };
+      this.syncLassoActionBarUI();
+      renderCardInkForLasso();
+    }, { capture: true });
+
+    bodyEl.addEventListener('pointermove', (e) => {
+      if (!cardLassoMode) return;
+      if (e.cancelable !== false) e.preventDefault();
+      e.stopPropagation();
+
+      const cl = (this._activeCardLasso && this._activeCardLasso.widgetEl === cardWidgetEl)
+        ? this._activeCardLasso
+        : null;
+      if (!cl) return;
+
+      const pos = getNormPos(e);
+      if (cardLassoMode === 'drawing') {
+        cl.lassoPts.push({ nx: pos.nx, ny: pos.ny });
+        renderCardInkForLasso();
+        return;
+      }
+
+      if (cardLassoMode === 'moving' && cardLassoLastNorm) {
+        const dnx = pos.nx - cardLassoLastNorm.nx;
+        const dny = pos.ny - cardLassoLastNorm.ny;
+        cardLassoLastNorm = { nx: pos.nx, ny: pos.ny };
+        cl.selectedStrokes.forEach(st => this.translateCardStrokeNorm(st, dnx, dny));
+        if (Array.isArray(cl.lassoPts)) {
+          cl.lassoPts.forEach(p => {
+            p.nx += dnx;
+            p.ny += dny;
+          });
+        }
+        cl.bboxNorm = this.computeCardStrokesNormBBox(cl.selectedStrokes);
+        if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
+          this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true);
+        }
+        renderCardInkForLasso();
+        this.syncLassoActionBarUI();
+        return;
+      }
+
+      if (cardLassoMode === 'resizing' && cardLassoResizeAnchor && cardLassoResizeInitBox && cardLassoResizeSnapshots) {
+        const initW = Math.max(0.02, cardLassoResizeInitBox.maxNx - cardLassoResizeInitBox.minNx);
+        const initH = Math.max(0.02, cardLassoResizeInitBox.maxNy - cardLassoResizeInitBox.minNy);
+        const rawScaleX = Math.abs(pos.nx - cardLassoResizeAnchor.nx) / initW;
+        const rawScaleY = Math.abs(pos.ny - cardLassoResizeAnchor.ny) / initH;
+        const scale = Math.max(0.25, Math.min(4.0, (rawScaleX + rawScaleY) * 0.5));
+        const ax = cardLassoResizeAnchor.nx;
+        const ay = cardLassoResizeAnchor.ny;
+
+        cardLassoResizeSnapshots.forEach(snapItem => {
+          const st = snapItem.stroke;
+          st.size = Math.max(1.2, Math.min(24, parseFloat((snapItem.size * scale).toFixed(2))));
+          if (Array.isArray(st.points) && Array.isArray(snapItem.points)) {
+            st.points.forEach((pt, idx) => {
+              const orig = snapItem.points[idx];
+              if (!orig) return;
+              pt.nx = ax + (orig.nx - ax) * scale;
+              pt.ny = ay + (orig.ny - ay) * scale;
+              delete pt.mx;
+              delete pt.my;
+            });
+          }
+          if (st.isShape && snapItem.cardShape) {
+            const origCs = snapItem.cardShape;
+            const cs = JSON.parse(JSON.stringify(origCs));
+            if (cs.start && origCs.start) {
+              cs.start.nx = ax + (origCs.start.nx - ax) * scale;
+              cs.start.ny = ay + (origCs.start.ny - ay) * scale;
+              delete cs.start.mx; delete cs.start.my;
+            }
+            if (cs.end && origCs.end) {
+              cs.end.nx = ax + (origCs.end.nx - ax) * scale;
+              cs.end.ny = ay + (origCs.end.ny - ay) * scale;
+              delete cs.end.mx; delete cs.end.my;
+            }
+            if (cs.center && origCs.center) {
+              cs.center.nx = ax + (origCs.center.nx - ax) * scale;
+              cs.center.ny = ay + (origCs.center.ny - ay) * scale;
+              cs.rx = (origCs.rx || 0.05) * scale;
+              cs.ry = (origCs.ry || cs.rx) * scale;
+              delete cs.center.mx; delete cs.center.my;
+              delete cs.mrx; delete cs.mry;
+            }
+            if (cs.min && origCs.min && cs.max && origCs.max) {
+              const nx1 = ax + (origCs.min.nx - ax) * scale;
+              const ny1 = ay + (origCs.min.ny - ay) * scale;
+              const nx2 = ax + (origCs.max.nx - ax) * scale;
+              const ny2 = ay + (origCs.max.ny - ay) * scale;
+              cs.min = { nx: Math.min(nx1, nx2), ny: Math.min(ny1, ny2) };
+              cs.max = { nx: Math.max(nx1, nx2), ny: Math.max(ny1, ny2) };
+            }
+            if (Array.isArray(cs.pts) && Array.isArray(origCs.pts)) {
+              cs.pts = origCs.pts.map(p => ({
+                nx: ax + (p.nx - ax) * scale,
+                ny: ay + (p.ny - ay) * scale
+              }));
+            }
+            st.cardShape = cs;
+          }
+        });
+        cl.bboxNorm = this.computeCardStrokesNormBBox(cl.selectedStrokes);
+        if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
+          this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true);
+        }
+        renderCardInkForLasso();
+        this.syncLassoActionBarUI();
+      }
+    }, { capture: true });
+
+    const finishCardLassoInteraction = (e) => {
+      if (!cardLassoMode) return;
+      const prevMode = cardLassoMode;
+      cardLassoMode = null;
+      cardLassoLastNorm = null;
+      cardLassoResizeCorner = null;
+      cardLassoResizeAnchor = null;
+      cardLassoResizeInitBox = null;
+      cardLassoResizeSnapshots = null;
+      try { if (e && e.pointerId !== undefined) bodyEl.releasePointerCapture(e.pointerId); } catch (_) { }
+
+      const cl = (this._activeCardLasso && this._activeCardLasso.widgetEl === cardWidgetEl)
+        ? this._activeCardLasso
+        : null;
+      if (!cl) return;
+
+      cl.isSelecting = false;
+      cl.isDragging = false;
+      cl.isResizing = false;
+
+      if (prevMode === 'drawing') {
+        const poly = (cl.lassoPts || []).map(p => ({ x: p.nx, y: p.ny }));
+        const strokes = getCardInkStrokesForLasso();
+        if (poly.length >= 3) {
+          let lMinX = Infinity, lMaxX = -Infinity, lMinY = Infinity, lMaxY = -Infinity;
+          for (const p of poly) {
+            if (p.x < lMinX) lMinX = p.x;
+            if (p.x > lMaxX) lMaxX = p.x;
+            if (p.y < lMinY) lMinY = p.y;
+            if (p.y > lMaxY) lMaxY = p.y;
+          }
+          cl.selectedStrokes = strokes.filter(st => {
+            if (!st || !Array.isArray(st.points) || st.points.length === 0) return false;
+            const sb = this.computeCardStrokesNormBBox([st]);
+            if (sb && (sb.maxNx < lMinX || sb.minNx > lMaxX || sb.maxNy < lMinY || sb.minNy > lMaxY)) {
+              return false;
+            }
+            for (let i = 0; i < st.points.length; i++) {
+              const pt = { x: st.points[i].nx, y: st.points[i].ny };
+              if (this.isPointInPolygon(pt, poly)) return true;
+              if (i < st.points.length - 1) {
+                const nextPt = { x: st.points[i + 1].nx, y: st.points[i + 1].ny };
+                const midPt = { x: (pt.x + nextPt.x) * 0.5, y: (pt.y + nextPt.y) * 0.5 };
+                if (this.isPointInPolygon(midPt, poly)) return true;
+                for (let j = 0; j < poly.length; j++) {
+                  const p1 = poly[j];
+                  const p2 = poly[(j + 1) % poly.length];
+                  if (this.segmentsIntersect(pt, nextPt, p1, p2)) return true;
+                }
+              }
+            }
+            return false;
+          });
+        } else {
+          cl.selectedStrokes = [];
+        }
+        if (cl.selectedStrokes.length === 0) {
+          cl.lassoPts = [];
+          cl.bboxNorm = null;
+        } else {
+          cl.bboxNorm = this.computeCardStrokesNormBBox(cl.selectedStrokes);
+        }
+      } else {
+        cl.bboxNorm = this.computeCardStrokesNormBBox(cl.selectedStrokes);
+      }
+
+      if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
+        this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true);
+      }
+      renderCardInkForLasso();
+      this.syncLassoActionBarUI();
+    };
+
+    bodyEl.addEventListener('pointerup', finishCardLassoInteraction, { capture: true });
+    bodyEl.addEventListener('pointercancel', finishCardLassoInteraction, { capture: true });
+    window.addEventListener('pointerup', finishCardLassoInteraction, { capture: true });
+    window.addEventListener('pointercancel', finishCardLassoInteraction, { capture: true });
   }
 
   // 🌟 [각 그래프 보관 카드(#1, #2, #3...) 전용 0.5KB 초경량 순수 그래프 상태 타임머신 스냅샷] 🌟
@@ -13212,6 +13828,7 @@ class GraphApp {
     ctx.clearRect(0, 0, w, h);
 
     if (!this.graphInkStrokes || this.graphInkStrokes.length === 0) {
+      this.drawCardLassoOverlay(ctx, w, h, document.getElementById('graphCardWidget'));
       ctx.restore();
       return;
     }
@@ -13277,6 +13894,7 @@ class GraphApp {
       ctx.restore();
     });
 
+    this.drawCardLassoOverlay(ctx, w, h, document.getElementById('graphCardWidget'));
     ctx.restore();
   }
 
@@ -13372,6 +13990,9 @@ class GraphApp {
         graphHoldTimer = setTimeout(() => {
           if (isDrawingOnGraphCard && currentStroke && !currentStroke._shapeHoldDetected) {
             if (this.recognizeAndApplyCardStrokeShape(currentStroke, w, h)) {
+              if (typeof this._ensurePipCardInkMathCoords === 'function') {
+                this._ensurePipCardInkMathCoords('primary', true);
+              }
               this.renderGraphCardCanvas();
             }
           }
@@ -13394,6 +14015,7 @@ class GraphApp {
       }, { capture: true });
 
       const startGraphCardStroke = (e) => {
+        if (this.activeInkTool === 'sticker' || this.activeInkTool === 'laser' || this.activeInkTool === 'lasso') return false;
         const isPromotedStylus = this.isPinpointStylusTouch(e);
         if (e.pointerType === 'pen' || isPromotedStylus) this._markStylusPenDetected();
         if (e.pointerType === 'touch' && !isPromotedStylus && this.isStylusPalmRejectionActive()) return false;
@@ -13473,6 +14095,9 @@ class GraphApp {
 
         if (currentStroke._shapeHoldDetected && currentStroke.cardShape) {
           if (this.updateHeldCardStrokeShape(currentStroke, pos.nx, pos.ny, pos.w, pos.h)) {
+            if (typeof this._ensurePipCardInkMathCoords === 'function') {
+              this._ensurePipCardInkMathCoords('primary', true);
+            }
             this.renderGraphCardCanvas();
           }
           return;
@@ -13533,7 +14158,7 @@ class GraphApp {
             finishedCardStroke.tEnd = this.getAudioRecordElapsedMs();
           }
           if (typeof this._ensurePipCardInkMathCoords === 'function') {
-            this._ensurePipCardInkMathCoords('primary');
+            this._ensurePipCardInkMathCoords('primary', true);
           }
           this.undoStack.push({
             type: 'card_stroke_add',
@@ -14011,6 +14636,10 @@ class GraphApp {
       return this.graphInkStrokes;
     }
     if (cardRef && typeof cardRef === 'object') {
+      if (cardRef.el) {
+        if (!Array.isArray(cardRef.el._cardInkStrokes)) cardRef.el._cardInkStrokes = [];
+        return cardRef.el._cardInkStrokes;
+      }
       if (!Array.isArray(cardRef.inkStrokes)) cardRef.inkStrokes = [];
       return cardRef.inkStrokes;
     }
@@ -14018,30 +14647,36 @@ class GraphApp {
   }
 
   _setPipCardInkStrokesArray(cardRef, arr) {
+    const nextArr = Array.isArray(arr) ? arr : [];
     if (cardRef === 'primary') {
-      this.graphInkStrokes = Array.isArray(arr) ? arr : [];
+      this.graphInkStrokes = nextArr;
       this.renderGraphCardCanvas();
     } else if (cardRef && typeof cardRef === 'object') {
-      cardRef.inkStrokes = Array.isArray(arr) ? arr : [];
-      if (typeof cardRef._renderExtraCardInk === 'function') {
+      cardRef.inkStrokes = nextArr;
+      if (cardRef.el) {
+        cardRef.el._cardInkStrokes = nextArr;
+        if (typeof cardRef.el._renderCardInkCanvas === 'function') {
+          cardRef.el._renderCardInkCanvas();
+        }
+      } else if (typeof cardRef._renderExtraCardInk === 'function') {
         cardRef._renderExtraCardInk();
       }
     }
   }
 
-  _ensurePipCardInkMathCoordsByWidget(widgetEl) {
+  _ensurePipCardInkMathCoordsByWidget(widgetEl, forceAll = false) {
     if (!widgetEl) return;
     if (widgetEl.id === 'graphCardWidget') {
-      this._ensurePipCardInkMathCoords('primary');
+      this._ensurePipCardInkMathCoords('primary', forceAll);
       return;
     }
     if (Array.isArray(this.extraGraphCards)) {
       const found = this.extraGraphCards.find(c => c && c.el === widgetEl);
-      if (found) this._ensurePipCardInkMathCoords(found);
+      if (found) this._ensurePipCardInkMathCoords(found, forceAll);
     }
   }
 
-  _ensurePipCardInkMathCoords(cardRef) {
+  _ensurePipCardInkMathCoords(cardRef, forceAll = false) {
     const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
     if (!widget) return;
     const snap = this._getMutablePipCardSnapshot(cardRef);
@@ -14058,7 +14693,7 @@ class GraphApp {
       strokes.forEach(st => {
         if (!st || !Array.isArray(st.points)) return;
         st.points.forEach(pt => {
-          if (pt && (typeof pt.mx !== 'number' || typeof pt.my !== 'number')) {
+          if (pt && (forceAll || typeof pt.mx !== 'number' || typeof pt.my !== 'number')) {
             const m = this.screenToMath((pt.nx || 0) * cardW, (pt.ny || 0) * cardH);
             pt.mx = m.x;
             pt.my = m.y;
@@ -14066,13 +14701,50 @@ class GraphApp {
         });
         if (st.isShape && st.cardShape) {
           const cs = st.cardShape;
-          if (typeof cs.x1 === 'number' && typeof cs.mx1 !== 'number') {
+          if (cs.start && typeof cs.start.nx === 'number' && (forceAll || typeof cs.start.mx !== 'number')) {
+            const m = this.screenToMath(cs.start.nx * cardW, cs.start.ny * cardH);
+            cs.start.mx = m.x;
+            cs.start.my = m.y;
+          }
+          if (cs.end && typeof cs.end.nx === 'number' && (forceAll || typeof cs.end.mx !== 'number')) {
+            const m = this.screenToMath(cs.end.nx * cardW, cs.end.ny * cardH);
+            cs.end.mx = m.x;
+            cs.end.my = m.y;
+          }
+          if (cs.center && typeof cs.center.nx === 'number' && (forceAll || typeof cs.center.mx !== 'number')) {
+            const mc = this.screenToMath(cs.center.nx * cardW, cs.center.ny * cardH);
+            const mr = this.screenToMath((cs.center.nx + (cs.rx || 0.05)) * cardW, (cs.center.ny + (cs.ry || cs.rx || 0.05)) * cardH);
+            cs.center.mx = mc.x;
+            cs.center.my = mc.y;
+            cs.mrx = Math.abs(mr.x - mc.x);
+            cs.mry = Math.abs(mr.y - mc.y);
+          }
+          if (cs.min && typeof cs.min.nx === 'number' && (forceAll || typeof cs.min.mx !== 'number')) {
+            const mMin = this.screenToMath(cs.min.nx * cardW, cs.min.ny * cardH);
+            cs.min.mx = mMin.x;
+            cs.min.my = mMin.y;
+          }
+          if (cs.max && typeof cs.max.nx === 'number' && (forceAll || typeof cs.max.mx !== 'number')) {
+            const mMax = this.screenToMath(cs.max.nx * cardW, cs.max.ny * cardH);
+            cs.max.mx = mMax.x;
+            cs.max.my = mMax.y;
+          }
+          if (Array.isArray(cs.pts)) {
+            cs.pts.forEach(vp => {
+              if (vp && typeof vp.nx === 'number' && (forceAll || typeof vp.mx !== 'number')) {
+                const mv = this.screenToMath(vp.nx * cardW, vp.ny * cardH);
+                vp.mx = mv.x;
+                vp.my = mv.y;
+              }
+            });
+          }
+          if (typeof cs.x1 === 'number' && (forceAll || typeof cs.mx1 !== 'number')) {
             const m1 = this.screenToMath(cs.x1 * cardW, cs.y1 * cardH);
             const m2 = this.screenToMath(cs.x2 * cardW, cs.y2 * cardH);
             cs.mx1 = m1.x; cs.my1 = m1.y;
             cs.mx2 = m2.x; cs.my2 = m2.y;
           }
-          if (typeof cs.cx === 'number' && typeof cs.mcx !== 'number') {
+          if (typeof cs.cx === 'number' && (forceAll || typeof cs.mcx !== 'number')) {
             const mc = this.screenToMath(cs.cx * cardW, cs.cy * cardH);
             const mr = this.screenToMath((cs.cx + (cs.rx || 0)) * cardW, (cs.cy + (cs.ry || 0)) * cardH);
             cs.mcx = mc.x; cs.mcy = mc.y;
@@ -14105,6 +14777,42 @@ class GraphApp {
         });
         if (st.isShape && st.cardShape) {
           const cs = st.cardShape;
+          if (cs.start && typeof cs.start.mx === 'number' && typeof cs.start.my === 'number') {
+            const s = this.mathToScreen(cs.start.mx, cs.start.my);
+            cs.start.nx = s.x / effW;
+            cs.start.ny = s.y / effH;
+          }
+          if (cs.end && typeof cs.end.mx === 'number' && typeof cs.end.my === 'number') {
+            const s = this.mathToScreen(cs.end.mx, cs.end.my);
+            cs.end.nx = s.x / effW;
+            cs.end.ny = s.y / effH;
+          }
+          if (cs.center && typeof cs.center.mx === 'number' && typeof cs.center.my === 'number') {
+            const sc = this.mathToScreen(cs.center.mx, cs.center.my);
+            const sr = this.mathToScreen(cs.center.mx + (cs.mrx || 0.2), cs.center.my - (cs.mry || cs.mrx || 0.2));
+            cs.center.nx = sc.x / effW;
+            cs.center.ny = sc.y / effH;
+            cs.rx = Math.abs(sr.x - sc.x) / effW;
+            cs.ry = Math.abs(sr.y - sc.y) / effH;
+          }
+          if (cs.min && typeof cs.min.mx === 'number' && typeof cs.min.my === 'number' &&
+              cs.max && typeof cs.max.mx === 'number' && typeof cs.max.my === 'number') {
+            const sMin = this.mathToScreen(cs.min.mx, cs.min.my);
+            const sMax = this.mathToScreen(cs.max.mx, cs.max.my);
+            cs.min.nx = Math.min(sMin.x, sMax.x) / effW;
+            cs.min.ny = Math.min(sMin.y, sMax.y) / effH;
+            cs.max.nx = Math.max(sMin.x, sMax.x) / effW;
+            cs.max.ny = Math.max(sMin.y, sMax.y) / effH;
+          }
+          if (Array.isArray(cs.pts)) {
+            cs.pts.forEach(vp => {
+              if (vp && typeof vp.mx === 'number' && typeof vp.my === 'number') {
+                const sv = this.mathToScreen(vp.mx, vp.my);
+                vp.nx = sv.x / effW;
+                vp.ny = sv.y / effH;
+              }
+            });
+          }
           if (typeof cs.mx1 === 'number' && typeof cs.my1 === 'number') {
             const s1 = this.mathToScreen(cs.mx1, cs.my1);
             const s2 = this.mathToScreen(cs.mx2, cs.my2);
@@ -14124,6 +14832,8 @@ class GraphApp {
 
     if (cardRef === 'primary') {
       this.renderGraphCardCanvas();
+    } else if (cardRef && cardRef.el && typeof cardRef.el._renderCardInkCanvas === 'function') {
+      cardRef.el._renderCardInkCanvas();
     } else if (cardRef && typeof cardRef._renderExtraCardInk === 'function') {
       cardRef._renderExtraCardInk();
     }
@@ -14171,9 +14881,10 @@ class GraphApp {
       };
 
       if (cs.isShape && cs.cardShape) {
+        fullStroke.isShape = true;
+        fullStroke._savedCardShape = JSON.parse(JSON.stringify(cs.cardShape));
         const sh = cs.cardShape;
         if ((sh.type === 'line' || sh.type === 'dashedLine' || sh.type === 'arrow') && typeof sh.mx1 === 'number') {
-          fullStroke.isShape = true;
           fullStroke.shapeType = sh.type;
           fullStroke.points = [
             { x: sh.mx1, y: sh.my1, p: 0.5 },
@@ -14232,16 +14943,17 @@ class GraphApp {
           points: pts
         };
 
-        if (gs.isShape && (gs.shapeType === 'line' || gs.shapeType === 'dashedLine' || gs.shapeType === 'arrow') && pts.length >= 2) {
+        if (gs.isShape && gs._savedCardShape) {
+          cStroke.isShape = true;
+          cStroke.cardShape = JSON.parse(JSON.stringify(gs._savedCardShape));
+        } else if (gs.isShape && (gs.shapeType === 'line' || gs.shapeType === 'dashedLine' || gs.shapeType === 'arrow') && pts.length >= 2) {
           const p0 = pts[0];
           const p1 = pts[pts.length - 1];
           cStroke.isShape = true;
           cStroke.cardShape = {
-            type: gs.shapeType,
-            x1: p0.nx, y1: p0.ny,
-            x2: p1.nx, y2: p1.ny,
-            mx1: p0.mx, my1: p0.my,
-            mx2: p1.mx, my2: p1.my
+            type: 'line',
+            start: { nx: p0.nx, ny: p0.ny, mx: p0.mx, my: p0.my },
+            end: { nx: p1.nx, ny: p1.ny, mx: p1.mx, my: p1.my }
           };
         }
 
@@ -14250,6 +14962,7 @@ class GraphApp {
     });
 
     this._setPipCardInkStrokesArray(cardRef, newCardStrokes);
+    this._reprojectPipCardInkFromMathCoords(cardRef, effW, effH);
     if (Array.isArray(this.inkStrokes)) {
       this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
     }
@@ -14387,7 +15100,9 @@ class GraphApp {
         this.syncGraphCardRectFromWidget();
       } else {
         cardRef.aspect = lockedAspect;
-        if (gCanvas) {
+        if (typeof widget._renderCardInkCanvas === 'function') {
+          widget._renderCardInkCanvas();
+        } else if (gCanvas) {
           const dpr = this.getCanvasDpr();
           gCanvas.width = Math.round(newW * dpr);
           gCanvas.height = Math.round(newH * dpr);
@@ -14425,7 +15140,9 @@ class GraphApp {
       if (isPrimary) {
         this.syncGraphCardRectFromWidget();
       } else {
-        if (gCanvas) {
+        if (typeof widget._renderCardInkCanvas === 'function') {
+          widget._renderCardInkCanvas();
+        } else if (gCanvas) {
           const dpr = this.getCanvasDpr();
           gCanvas.width = Math.round(newW * dpr);
           gCanvas.height = Math.round(newH * dpr);
@@ -14598,6 +15315,9 @@ class GraphApp {
   }
 
   deselectAllPipGraphCards(exceptWidget = null) {
+    if (this._activeCardLasso && this._activeCardLasso.widgetEl !== exceptWidget) {
+      this.clearCardLassoSelection();
+    }
     let anyChanged = false;
     const primaryWidget = document.getElementById('graphCardWidget');
     if (primaryWidget && primaryWidget !== exceptWidget && this._hasPrimaryGraphCard && this.graphCardData) {
@@ -14933,7 +15653,7 @@ class GraphApp {
       cardW,
       { x: centerX, y: centerY, w: cardW, h: cardH },
       JSON.stringify(snapObj),
-      { cardW, aspect, forceScreenPos: true, alreadyInBoardMode: true, silentToast: true }
+      { cardW, aspect, forceScreenPos: true, alreadyInBoardMode: Boolean(this.isGraphCovered), silentToast: true }
     );
 
     this.syncPipCardLockUI(createdRef);
@@ -15236,18 +15956,15 @@ class GraphApp {
         return;
       }
 
-      // 🔓 잠금 전 상태에서 빈 여백을 잡고 끌면 -> 전체화면 그래프 모드와 동일하게 좌표축(시야) 평행이동!
+      // 🔓 잠금 전 상태에서 빈 여백: 톡 두드리면(Tap) 곡선 선택 해제, 잡고 끌면(Drag) 좌표축(시야) 평행이동!
       e.preventDefault();
       e.stopPropagation();
       this.deselectAllPipGraphCards(widget);
       this._ensurePipCardInkMathCoords(cardRef);
-      snap.isCurveSelected = true;
-      snap.selectedHandleIdx = null;
       try { liveCanvas.setPointerCapture(e.pointerId); } catch (_) { }
       activeMode = 'panAxes';
       panInit = { x: snap.panX || 0, y: snap.panY || 0 };
       liveCanvas.style.cursor = 'grabbing';
-      this.requestPipGraphCardRender(cardRef);
     });
 
     liveCanvas.addEventListener('pointermove', (e) => {
@@ -15295,11 +16012,12 @@ class GraphApp {
 
       e.preventDefault();
       e.stopPropagation();
-      if (Math.hypot(e.clientX - downClient.x, e.clientY - downClient.y) > 2) {
+      if (Math.hypot(e.clientX - downClient.x, e.clientY - downClient.y) > 3) {
         movedDuringInteraction = true;
       }
 
       if (activeMode === 'panAxes') {
+        if (!movedDuringInteraction) return;
         snap.panX = panInit.x + (pos.x - downPos.x);
         snap.panY = panInit.y + (pos.y - downPos.y);
         this._reprojectPipCardInkFromMathCoords(cardRef, pos.cardW, pos.cardH);
@@ -15469,6 +16187,7 @@ class GraphApp {
 
     const finishPipInteraction = (e) => {
       if (!activeMode) return;
+      const prevMode = activeMode;
       activeMode = null;
       cachedDownGeom = null;
       curveFeatsSnapshot = null;
@@ -15478,6 +16197,11 @@ class GraphApp {
       }
       const snap = this._getMutablePipCardSnapshot(cardRef);
       if (snap) {
+        if (prevMode === 'panAxes' && !movedDuringInteraction) {
+          // 🌟 [대표님 피드백 반영]: 창모드 내부에서 그래프 밖(빈 여백)을 톡 두드리면(Tap) 곡선 선택 해제!
+          snap.isCurveSelected = false;
+          snap.selectedHandleIdx = null;
+        }
         snap.draggedHandleIdx = null;
         snap._isDraggingCurve = false;
         snap._activeSnapHint = null;
