@@ -19436,15 +19436,21 @@ class GraphApp {
           if (this._fbAuth) {
             this._fbAuth.onAuthStateChanged((user) => {
               if (user) {
-                const isGoogleProvider = Array.isArray(user.providerData) && user.providerData.some(p => p && p.providerId === 'google.com');
+                const savedProvider = (this.cloudUser && this.cloudUser.authProvider) || localStorage.getItem('graphly_last_auth_provider') || '';
+                const hasGoogle = Array.isArray(user.providerData) && user.providerData.some(p => p && p.providerId === 'google.com');
+                const hasPassword = Array.isArray(user.providerData) && user.providerData.some(p => p && p.providerId === 'password');
+                const isGoogleProvider = (savedProvider === 'email' && hasPassword)
+                  ? false
+                  : (savedProvider === 'google' && hasGoogle ? true : (hasGoogle && !hasPassword));
                 if (isGoogleProvider || user.emailVerified) {
+                  const authProvider = isGoogleProvider ? 'google' : 'email';
                   const normEmail = String(user.email || '').trim().toLowerCase();
-                  const canonicalUid = this._getCanonicalUidForEmail(normEmail, user.uid);
+                  const canonicalUid = this._getCanonicalUidForEmail(normEmail, user.uid, authProvider);
                   this.cloudUser = {
                     uid: canonicalUid,
                     rawUid: String(user.uid || canonicalUid),
-                    authProvider: isGoogleProvider ? 'google' : 'email',
-                    providerLabel: isGoogleProvider ? 'Google 계정' : '이메일 인증 계정',
+                    authProvider: authProvider,
+                    providerLabel: isGoogleProvider ? 'Google 로그인' : '아이디 로그인',
                     loginId: normEmail || user.uid,
                     displayName: user.displayName || (normEmail ? normEmail.split('@')[0] : '선생님'),
                     email: normEmail,
@@ -19455,6 +19461,7 @@ class GraphApp {
                   this.syncCloudAuthUI();
                   this.syncUserProSubscriptionFromCloud();
                   this.fetchMyLibraryFromCloud();
+                  this.verifyActiveDeviceSessionLock();
                 }
               } else if (this.cloudUser && this._fbSignOutInProgress) {
                 this.cloudUser = null;
@@ -19469,6 +19476,21 @@ class GraphApp {
       }
     };
     setTimeout(tryInitFirebase, 400);
+
+    if (!this._sessionLockVisibilityBound) {
+      this._sessionLockVisibilityBound = true;
+      const checkSessionOnFocus = () => {
+        if (!this.cloudUser || !this.cloudUser.uid) return;
+        const now = Date.now();
+        if (this._lastSessionLockCheckMs && now - this._lastSessionLockCheckMs < 15000) return;
+        this._lastSessionLockCheckMs = now;
+        this.verifyActiveDeviceSessionLock();
+      };
+      window.addEventListener('focus', checkSessionOnFocus, { passive: true });
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkSessionOnFocus();
+      }, { passive: true });
+    }
 
     // 모달 및 버튼 바인딩
     const btnCloudHub = document.getElementById('btnCloudHub');
@@ -19527,6 +19549,17 @@ class GraphApp {
     if (btnSubmitEmail) {
       btnSubmitEmail.onclick = () => this.handleCloudEmailPasswordLogin();
     }
+    ['inputCloudEmailId', 'inputCloudEmailPw', 'inputCloudEmailPwConfirm', 'inputCloudSignupName'].forEach(inpId => {
+      const inpEl = document.getElementById(inpId);
+      if (inpEl) {
+        inpEl.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            this.handleCloudEmailPasswordLogin();
+          }
+        });
+      }
+    });
     if (btnVerifyCheckNow) {
       btnVerifyCheckNow.onclick = () => this.verifyPendingEmailAndLogin();
     }
@@ -20132,7 +20165,9 @@ class GraphApp {
     modalCloud.classList.add('show');
     this.syncCloudAuthUI();
     this.renderMyLibraryList();
-    this.fetchMyLibraryFromCloud();
+    this.verifyActiveDeviceSessionLock().then((valid) => {
+      if (valid) this.fetchMyLibraryFromCloud();
+    });
   }
 
   openNewCloudFolderInput(parentPath = '') {
@@ -21312,13 +21347,58 @@ class GraphApp {
     } catch (e) { }
   }
 
-  _getCanonicalUidForEmail(email, fallbackRawUid = '') {
+  _getCanonicalUidForEmail(email, fallbackRawUid = '', authProvider = 'google') {
     const normEmail = String(email || '').trim().toLowerCase();
+    const isIdAuth = (
+      authProvider === 'email' ||
+      authProvider === 'id' ||
+      String(fallbackRawUid || '').startsWith('id_')
+    );
+    const prefix = isIdAuth ? 'id_' : 'acct_';
     if (normEmail && normEmail.includes('@')) {
-      return 'acct_' + normEmail.replace(/[^a-z0-9@._-]/g, '_');
+      return prefix + normEmail.replace(/[^a-z0-9@._-]/g, '_');
     }
     const raw = String(fallbackRawUid || normEmail || 'user').trim();
-    return raw.startsWith('acct_') ? raw : ('acct_' + raw.replace(/[^a-z0-9@._-]/g, '_'));
+    return raw.startsWith(prefix) ? raw : (prefix + raw.replace(/[^a-z0-9@._-]/g, '_'));
+  }
+
+  _registerNewDeviceSessionLock(uid) {
+    if (!uid) return '';
+    const sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    try {
+      localStorage.setItem('graphly_device_session_' + uid, sessionId);
+    } catch (e) { }
+    if (typeof window !== 'undefined' && window.location && /^https?:$/i.test(window.location.protocol) && typeof this._firestoreRestWriteSingleDoc === 'function') {
+      this._firestoreRestWriteSingleDoc('user_preferences', 'session_' + uid, JSON.stringify({
+        uid,
+        activeSessionId: sessionId,
+        updatedAt: Date.now()
+      })).catch(() => { });
+    }
+    return sessionId;
+  }
+
+  async verifyActiveDeviceSessionLock() {
+    if (!this.cloudUser || !this.cloudUser.uid) return true;
+    if (!this._canSyncCustomGraphsToFirestore() || typeof this._firestoreRestReadDoc !== 'function') return true;
+    const uid = this.cloudUser.uid;
+    let localSessionId = '';
+    try {
+      localSessionId = localStorage.getItem('graphly_device_session_' + uid) || '';
+    } catch (e) { }
+    if (!localSessionId) {
+      this._registerNewDeviceSessionLock(uid);
+      return true;
+    }
+    try {
+      const remote = await this._firestoreRestReadDoc('user_preferences', 'session_' + uid);
+      if (remote && remote.activeSessionId && remote.activeSessionId !== localSessionId) {
+        await this.handleCloudLogout(true);
+        this.showToast('🔒 다른 기기에서 로그인되어 현재 기기는 자동 로그아웃되었습니다.');
+        return false;
+      }
+    } catch (e) { }
+    return true;
   }
 
   _restoreActiveCloudUserSession() {
@@ -21328,7 +21408,7 @@ class GraphApp {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.uid && parsed.emailVerified !== false) {
           if (parsed.email && parsed.email.includes('@')) {
-            parsed.uid = this._getCanonicalUidForEmail(parsed.email, parsed.uid);
+            parsed.uid = this._getCanonicalUidForEmail(parsed.email, parsed.uid, parsed.authProvider || 'google');
           }
           this.cloudUser = parsed;
           this._loadMyLibraryCacheForCurrentUser();
@@ -21440,7 +21520,7 @@ class GraphApp {
       if (lblBtn) lblBtn.textContent = '구글 로그인';
       if (btnEmailToggle) btnEmailToggle.style.display = 'inline-flex';
       if (lblProAcct) {
-        lblProAcct.textContent = '🔒 결제 전 Google 로그인이 필요합니다.';
+        lblProAcct.textContent = '🔒 결제 전 로그인이 필요합니다.';
       }
       if (btnProGoLogin) btnProGoLogin.style.display = 'inline-flex';
       if (lblSettingsAcct) {
@@ -22368,7 +22448,7 @@ class GraphApp {
     const banner = document.getElementById('cloudEmailVerifyBanner');
     const lblMsg = document.getElementById('lblEmailVerifyPendingMsg');
     if (lblMsg) {
-      lblMsg.textContent = customMsg || `📩 [${normEmail}] 메일함으로 본인 인증 링크를 발송했습니다! 메일함에서 인증 링크를 클릭한 뒤 아래 [✅ 이메일 인증 완료 확인 및 로그인] 버튼을 눌러주세요.`;
+      lblMsg.textContent = customMsg || `📩 [${normEmail}] 메일함으로 인증 링크를 발송했습니다! 메일에서 인증 링크를 클릭한 뒤 아래 [인증 완료 확인]을 눌러주세요.`;
     }
     if (banner) banner.style.display = 'block';
   }
@@ -22385,15 +22465,15 @@ class GraphApp {
     const isSignup = (this._cloudIdAuthTab === 'signup');
 
     if (!normEmail || !pw) {
-      this.showToast('⚠️ 이메일 주소와 비밀번호를 입력해 주세요.');
+      this.showToast('⚠️ 아이디(이메일 형식)와 비밀번호를 입력해 주세요.');
       return false;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normEmail)) {
-      this.showToast('⚠️ 올바른 이메일 주소 형식(예: teacher@gmail.com)으로 입력해 주세요.');
+      this.showToast('⚠️ 아이디는 이메일 형식(예: teacher@naver.com)으로 입력해 주세요.');
       return false;
     }
 
-    const canonicalUid = this._getCanonicalUidForEmail(normEmail);
+    const canonicalUid = this._getCanonicalUidForEmail(normEmail, '', 'email');
     const docId = 'acc_' + canonicalUid;
     const pwHash = this._hashLocalAccountPassword(pw);
     const registry = this._getLocalAccountsRegistry();
@@ -22417,16 +22497,89 @@ class GraphApp {
         } catch (e) { }
       }
       if (existingAcc && existingAcc.passwordHash && existingAcc.emailVerified === true) {
-        this.showToast('⚠️ 이미 이메일 본인인증이 완료된 계정입니다. [📧 이메일 로그인] 탭에서 로그인해 주세요.');
+        this.showToast('⚠️ 이미 가입 및 인증이 완료된 아이디입니다. [로그인] 탭에서 로그인해 주세요.');
         return false;
       }
 
       const rawDisplayName = (inpName && inpName.value ? inpName.value.trim() : '');
       const displayName = rawDisplayName || (rawEmail.split('@')[0] || '선생님');
+
+      if (canUseRemote && this._fbAuth && typeof this._fbAuth.createUserWithEmailAndPassword === 'function') {
+        try {
+          const cred = await this._fbAuth.createUserWithEmailAndPassword(normEmail, pw);
+          if (cred && cred.user) {
+            if (rawDisplayName && typeof cred.user.updateProfile === 'function') {
+              await cred.user.updateProfile({ displayName }).catch(() => { });
+            }
+            if (typeof cred.user.sendEmailVerification === 'function') {
+              await cred.user.sendEmailVerification();
+            }
+          }
+        } catch (fbErr) {
+          const code = (fbErr && fbErr.code) ? fbErr.code : '';
+          if (code === 'auth/email-already-in-use') {
+            try {
+              const signCred = await this._fbAuth.signInWithEmailAndPassword(normEmail, pw);
+              if (signCred && signCred.user) {
+                await signCred.user.reload();
+                if (signCred.user.emailVerified) {
+                  const verifiedAcc = {
+                    uid: canonicalUid,
+                    authProvider: 'email',
+                    providerLabel: '아이디 로그인',
+                    loginId: normEmail,
+                    displayName: displayName,
+                    email: normEmail,
+                    passwordHash: pwHash,
+                    emailVerified: true,
+                    verifiedAt: Date.now(),
+                    createdAt: (existingAcc && existingAcc.createdAt) ? existingAcc.createdAt : Date.now()
+                  };
+                  registry[normEmail] = verifiedAcc;
+                  this._saveLocalAccountsRegistry(registry);
+                  if (typeof this._firestoreRestWriteSingleDoc === 'function') {
+                    this._firestoreRestWriteSingleDoc('user_accounts', docId, JSON.stringify(verifiedAcc)).catch(() => { });
+                  }
+                  try { localStorage.setItem('graphly_last_auth_provider', 'email'); } catch (e) { }
+                  this._applyLoggedInCloudUser({
+                    uid: canonicalUid,
+                    rawUid: String(signCred.user.uid || canonicalUid),
+                    authProvider: 'email',
+                    providerLabel: '아이디 로그인',
+                    loginId: normEmail,
+                    displayName: displayName,
+                    email: normEmail,
+                    emailVerified: true
+                  }, true);
+                  if (inpPw) inpPw.value = '';
+                  if (inpPwConfirm) inpPwConfirm.value = '';
+                  this.showToast(`✅ 이미 이메일 인증이 완료된 아이디입니다. 바로 로그인되었습니다!`);
+                  return true;
+                } else if (typeof signCred.user.sendEmailVerification === 'function') {
+                  await signCred.user.sendEmailVerification();
+                }
+              }
+            } catch (signErr) {
+              this.showToast('⚠️ 이미 등록된 이메일입니다. [로그인] 탭에서 로그인하거나 [비밀번호 재설정]을 이용해 주세요.');
+              return false;
+            }
+          } else if (code === 'auth/operation-not-allowed') {
+            this.showToast('⚠️ Firebase 콘솔 [Authentication ➔ 로그인 방법]에서 [이메일/비밀번호] 사용 설정을 켜주세요.');
+            return false;
+          } else if (code === 'auth/invalid-email') {
+            this.showToast('⚠️ 올바른 이메일 형식의 아이디를 입력해 주세요.');
+            return false;
+          } else {
+            this.showToast('⚠️ 회원가입 요청 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
+            return false;
+          }
+        }
+      }
+
       const pendingAccount = {
         uid: canonicalUid,
         authProvider: 'email',
-        providerLabel: '이메일 인증 계정',
+        providerLabel: '아이디 로그인',
         loginId: normEmail,
         displayName: displayName,
         email: normEmail,
@@ -22442,21 +22595,12 @@ class GraphApp {
         this._firestoreRestWriteSingleDoc('user_accounts', docId, JSON.stringify(pendingAccount)).catch(() => { });
       }
 
-      if (canUseRemote && this._fbAuth && typeof this._fbAuth.createUserWithEmailAndPassword === 'function') {
-        try {
-          const cred = await this._fbAuth.createUserWithEmailAndPassword(normEmail, pw);
-          if (cred && cred.user && typeof cred.user.sendEmailVerification === 'function') {
-            await cred.user.sendEmailVerification();
-          }
-        } catch (fbErr) { }
-      }
-
       this._showEmailVerificationBanner(normEmail);
-      this.showToast(`📩 [${normEmail}] 메일함으로 본인인증 링크를 발송했습니다! 인증 후 확인 버튼을 눌러주세요.`);
+      this.showToast(`📩 [${normEmail}] 메일함으로 인증 링크를 발송했습니다! 인증 후 [인증 완료 확인]을 눌러주세요.`);
       return 'verification_pending';
     }
 
-    // 이메일 로그인 모드 (이메일 본인인증 완료 여부 필수 검증)
+    // 아이디 로그인 모드 (Firebase Auth 검증 + 이메일 본인인증 완료 여부 100% 필수 검증)
     let account = registry[normEmail] || null;
     if (!account && canUseRemote && typeof this._firestoreRestReadDoc === 'function') {
       try {
@@ -22469,8 +22613,75 @@ class GraphApp {
       } catch (e) { }
     }
 
+    if (canUseRemote && this._fbAuth && typeof this._fbAuth.signInWithEmailAndPassword === 'function') {
+      try {
+        const cred = await this._fbAuth.signInWithEmailAndPassword(normEmail, pw);
+        if (cred && cred.user) {
+          await cred.user.reload();
+          if (!cred.user.emailVerified) {
+            this._showEmailVerificationBanner(
+              normEmail,
+              `⏳ [${normEmail}] 아이디는 아직 이메일 인증이 완료되지 않았습니다. 메일함에서 인증 링크를 클릭한 뒤 아래 [인증 완료 확인]을 눌러주세요.`
+            );
+            this.showToast('⏳ 이메일 인증을 완료해야 로그인할 수 있습니다.');
+            return false;
+          }
+          const dispName = (account && account.displayName) || cred.user.displayName || (normEmail.split('@')[0] || '선생님');
+          const syncedAcc = {
+            uid: canonicalUid,
+            authProvider: 'email',
+            providerLabel: '아이디 로그인',
+            loginId: normEmail,
+            displayName: dispName,
+            email: normEmail,
+            passwordHash: pwHash,
+            emailVerified: true,
+            verifiedAt: (account && account.verifiedAt) ? account.verifiedAt : Date.now(),
+            createdAt: (account && account.createdAt) ? account.createdAt : Date.now()
+          };
+          registry[normEmail] = syncedAcc;
+          this._saveLocalAccountsRegistry(registry);
+          if (typeof this._firestoreRestWriteSingleDoc === 'function') {
+            this._firestoreRestWriteSingleDoc('user_accounts', docId, JSON.stringify(syncedAcc)).catch(() => { });
+          }
+          try { localStorage.setItem('graphly_last_auth_provider', 'email'); } catch (e) { }
+          this._applyLoggedInCloudUser({
+            uid: canonicalUid,
+            rawUid: String(cred.user.uid || canonicalUid),
+            authProvider: 'email',
+            providerLabel: '아이디 로그인',
+            loginId: normEmail,
+            displayName: dispName,
+            email: normEmail,
+            emailVerified: true
+          }, true);
+          if (inpPw) inpPw.value = '';
+          this.showToast(`🎉 환영합니다, ${this.cloudUser.displayName}님! 로그인되었습니다.`);
+          return true;
+        }
+      } catch (fbErr) {
+        const code = (fbErr && fbErr.code) ? fbErr.code : '';
+        if (code === 'auth/user-not-found') {
+          this.showToast('⚠️ 등록되지 않은 아이디입니다. [회원가입] 탭에서 먼저 가입해 주세요.');
+          return false;
+        }
+        if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
+          this.showToast('⚠️ 아이디 또는 비밀번호가 일치하지 않습니다. (가입 전이라면 [회원가입] 탭을 이용해 주세요)');
+          return false;
+        }
+        if (code === 'auth/too-many-requests') {
+          this.showToast('⚠️ 로그인 시도가 너무 많습니다. 잠시 후 다시 시도하거나 [비밀번호 재설정]을 이용해 주세요.');
+          return false;
+        }
+        if (code === 'auth/operation-not-allowed') {
+          this.showToast('⚠️ Firebase 콘솔 [Authentication ➔ 로그인 방법]에서 [이메일/비밀번호]를 사용 설정해 주세요.');
+          return false;
+        }
+      }
+    }
+
     if (!account || !account.passwordHash) {
-      this.showToast('⚠️ 등록되지 않은 이메일입니다. [✨ 이메일 회원가입] 탭에서 먼저 본인인증 가입을 진행해 주세요.');
+      this.showToast('⚠️ 등록되지 않은 아이디입니다. [회원가입] 탭에서 먼저 가입해 주세요.');
       return false;
     }
     if (account.passwordHash !== pwHash) {
@@ -22480,21 +22691,22 @@ class GraphApp {
     if (account.emailVerified !== true) {
       this._showEmailVerificationBanner(
         normEmail,
-        `⏳ [${normEmail}] 계정은 아직 이메일 본인인증이 완료되지 않았습니다. 메일함에서 인증 링크를 클릭한 뒤 아래 [✅ 이메일 인증 완료 확인 및 로그인]을 눌러주세요.`
+        `⏳ [${normEmail}] 아이디는 아직 이메일 인증이 완료되지 않았습니다. 메일함에서 인증 링크를 클릭한 뒤 아래 [인증 완료 확인]을 눌러주세요.`
       );
-      this.showToast('⏳ 이메일 본인인증 완료 후 로그인할 수 있습니다.');
+      this.showToast('⏳ 이메일 인증 완료 후 로그인할 수 있습니다.');
       return false;
     }
 
+    try { localStorage.setItem('graphly_last_auth_provider', 'email'); } catch (e) { }
     this._applyLoggedInCloudUser({
       uid: canonicalUid,
       authProvider: 'email',
-      providerLabel: '이메일 인증 계정',
+      providerLabel: '아이디 로그인',
       loginId: normEmail,
       displayName: account.displayName || (normEmail.split('@')[0] || '선생님'),
       email: normEmail,
       emailVerified: true
-    });
+    }, true);
     if (inpPw) inpPw.value = '';
     this.showToast(`🎉 환영합니다, ${this.cloudUser.displayName}님! 로그인되었습니다.`);
     return true;
@@ -22502,12 +22714,13 @@ class GraphApp {
 
   async verifyPendingEmailAndLogin(explicitEmail = null) {
     const inpEmail = document.getElementById('inputCloudEmailId');
+    const inpPw = document.getElementById('inputCloudEmailPw');
     const normEmail = String(explicitEmail || this._pendingVerifyEmail || (inpEmail && inpEmail.value) || '').trim().toLowerCase();
     if (!normEmail || !normEmail.includes('@')) {
-      this.showToast('⚠️ 인증을 확인할 이메일 주소를 먼저 입력해 주세요.');
+      this.showToast('⚠️ 인증을 확인할 아이디(이메일 주소)를 먼저 입력해 주세요.');
       return false;
     }
-    const canonicalUid = this._getCanonicalUidForEmail(normEmail);
+    const canonicalUid = this._getCanonicalUidForEmail(normEmail, '', 'email');
     const docId = 'acc_' + canonicalUid;
     const registry = this._getLocalAccountsRegistry();
     const canUseRemote = Boolean(typeof window !== 'undefined' && window.location && /^https?:$/i.test(window.location.protocol));
@@ -22518,64 +22731,93 @@ class GraphApp {
         account = await this._firestoreRestReadDoc('user_accounts', docId);
       } catch (e) { }
     }
-    if (!account) {
-      this.showToast('⚠️ 가입 대기 중인 이메일 내역을 찾을 수 없습니다.');
-      return false;
-    }
 
-    if (canUseRemote && this._fbAuth && this._fbAuth.currentUser && String(this._fbAuth.currentUser.email || '').toLowerCase() === normEmail) {
+    if (canUseRemote && this._fbAuth) {
       try {
+        if (!this._fbAuth.currentUser || String(this._fbAuth.currentUser.email || '').toLowerCase() !== normEmail) {
+          const pwVal = (inpPw && inpPw.value ? inpPw.value : '').trim();
+          if (pwVal && typeof this._fbAuth.signInWithEmailAndPassword === 'function') {
+            await this._fbAuth.signInWithEmailAndPassword(normEmail, pwVal);
+          }
+        }
+        if (!this._fbAuth.currentUser || String(this._fbAuth.currentUser.email || '').toLowerCase() !== normEmail) {
+          this.showToast('⚠️ 비밀번호를 입력한 뒤 다시 [인증 완료 확인]을 눌러주세요.');
+          return false;
+        }
         await this._fbAuth.currentUser.reload();
         if (!this._fbAuth.currentUser.emailVerified) {
           this.showToast('⏳ 아직 메일함의 인증 링크가 클릭되지 않았습니다. 메일함(스팸함 포함)을 확인해 주세요.');
           return false;
         }
-      } catch (e) { }
+      } catch (e) {
+        this.showToast('⚠️ 이메일 인증 상태를 확인할 수 없습니다. 비밀번호를 확인 후 다시 시도해 주세요.');
+        return false;
+      }
+    } else if (!account) {
+      this.showToast('⚠️ 가입 대기 중인 아이디 내역을 찾을 수 없습니다.');
+      return false;
     }
 
-    account.emailVerified = true;
-    account.verifiedAt = Date.now();
-    account.uid = canonicalUid;
-    registry[normEmail] = account;
+    const updatedAccount = {
+      ...(account || {}),
+      uid: canonicalUid,
+      authProvider: 'email',
+      providerLabel: '아이디 로그인',
+      loginId: normEmail,
+      displayName: (account && account.displayName) || (normEmail.split('@')[0] || '선생님'),
+      email: normEmail,
+      emailVerified: true,
+      verifiedAt: Date.now()
+    };
+    registry[normEmail] = updatedAccount;
     this._saveLocalAccountsRegistry(registry);
     if (canUseRemote && typeof this._firestoreRestWriteSingleDoc === 'function') {
-      this._firestoreRestWriteSingleDoc('user_accounts', docId, JSON.stringify(account)).catch(() => { });
+      this._firestoreRestWriteSingleDoc('user_accounts', docId, JSON.stringify(updatedAccount)).catch(() => { });
     }
 
     const banner = document.getElementById('cloudEmailVerifyBanner');
     if (banner) banner.style.display = 'none';
-    const inpPw = document.getElementById('inputCloudEmailPw');
     const inpPwConfirm = document.getElementById('inputCloudEmailPwConfirm');
     if (inpPw) inpPw.value = '';
     if (inpPwConfirm) inpPwConfirm.value = '';
 
+    try { localStorage.setItem('graphly_last_auth_provider', 'email'); } catch (e) { }
     this._applyLoggedInCloudUser({
       uid: canonicalUid,
       authProvider: 'email',
-      providerLabel: '이메일 인증 계정',
+      providerLabel: '아이디 로그인',
       loginId: normEmail,
-      displayName: account.displayName || (normEmail.split('@')[0] || '선생님'),
+      displayName: updatedAccount.displayName,
       email: normEmail,
       emailVerified: true
-    });
-    this.showToast(`🎉 [${normEmail}] 이메일 본인인증 완료! Google 계정과 동일한 통합 계정으로 로그인되었습니다.`);
+    }, true);
+    this.showToast(`🎉 [${normEmail}] 이메일 인증 및 회원가입이 완료되어 바로 로그인되었습니다!`);
     return true;
   }
 
   async resendEmailVerificationLink() {
     const inpEmail = document.getElementById('inputCloudEmailId');
+    const inpPw = document.getElementById('inputCloudEmailPw');
     const normEmail = String(this._pendingVerifyEmail || (inpEmail && inpEmail.value) || '').trim().toLowerCase();
     if (!normEmail || !normEmail.includes('@')) {
-      this.showToast('⚠️ 인증메일을 재발송할 이메일 주소를 입력해 주세요.');
+      this.showToast('⚠️ 인증메일을 재발송할 아이디(이메일 주소)를 입력해 주세요.');
       return false;
     }
-    if (this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.sendEmailVerification === 'function') {
+    if (this._fbAuth) {
       try {
-        await this._fbAuth.currentUser.sendEmailVerification();
+        if (!this._fbAuth.currentUser || String(this._fbAuth.currentUser.email || '').toLowerCase() !== normEmail) {
+          const pwVal = (inpPw && inpPw.value ? inpPw.value : '').trim();
+          if (pwVal && typeof this._fbAuth.signInWithEmailAndPassword === 'function') {
+            await this._fbAuth.signInWithEmailAndPassword(normEmail, pwVal);
+          }
+        }
+        if (this._fbAuth.currentUser && typeof this._fbAuth.currentUser.sendEmailVerification === 'function') {
+          await this._fbAuth.currentUser.sendEmailVerification();
+        }
       } catch (e) { }
     }
     this._showEmailVerificationBanner(normEmail);
-    this.showToast(`📩 [${normEmail}] 주소로 본인인증 링크를 다시 발송했습니다.`);
+    this.showToast(`📩 [${normEmail}] 메일함으로 인증 링크를 다시 발송했습니다.`);
     return true;
   }
 
@@ -22583,7 +22825,7 @@ class GraphApp {
     const inpEmail = document.getElementById('inputCloudEmailId');
     const normEmail = String((inpEmail && inpEmail.value) || '').trim().toLowerCase();
     if (!normEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normEmail)) {
-      this.showToast('⚠️ 비밀번호 재설정 링크를 받을 이메일 주소를 먼저 입력창에 적어주세요.');
+      this.showToast('⚠️ 비밀번호 재설정 링크를 받을 아이디(이메일 주소)를 먼저 입력창에 적어주세요.');
       if (inpEmail) inpEmail.focus();
       return false;
     }
@@ -22592,24 +22834,28 @@ class GraphApp {
         await this._fbAuth.sendPasswordResetEmail(normEmail);
       } catch (e) { }
     }
-    this.showToast(`📩 [${normEmail}] 메일함으로 비밀번호 설정/재설정 링크를 발송했습니다.`);
+    this.showToast(`📩 [${normEmail}] 메일함으로 비밀번호 재설정 링크를 발송했습니다.`);
     return true;
   }
 
-  _applyLoggedInCloudUser(userInfo) {
+  _applyLoggedInCloudUser(userInfo, registerFreshSessionLock = false) {
     if (!userInfo || (!userInfo.uid && !userInfo.email)) return;
     const normEmail = String(userInfo.email || userInfo.loginId || '').trim().toLowerCase();
-    const canonicalUid = this._getCanonicalUidForEmail(normEmail, userInfo.uid);
+    const provider = userInfo.authProvider === 'google' ? 'google' : 'email';
+    const canonicalUid = this._getCanonicalUidForEmail(normEmail, userInfo.uid, provider);
     this.cloudUser = {
       uid: canonicalUid,
       rawUid: userInfo.rawUid || userInfo.uid || canonicalUid,
-      authProvider: userInfo.authProvider === 'google' ? 'google' : 'email',
-      providerLabel: userInfo.authProvider === 'google' ? 'Google 로그인' : '이메일 인증 계정',
+      authProvider: provider,
+      providerLabel: provider === 'google' ? 'Google 로그인' : '아이디 로그인',
       loginId: normEmail || userInfo.uid,
       displayName: userInfo.displayName || (normEmail ? normEmail.split('@')[0] : '선생님'),
       email: normEmail,
       emailVerified: true
     };
+    if (registerFreshSessionLock) {
+      this._registerNewDeviceSessionLock(canonicalUid);
+    }
     this._persistActiveCloudUserSession();
     this._loadMyLibraryCacheForCurrentUser();
     this.syncUserProSubscriptionFromCloud();
@@ -22618,7 +22864,7 @@ class GraphApp {
     this.fetchMyLibraryFromCloud();
   }
 
-  async handleCloudLogout() {
+  async handleCloudLogout(silentToast = false) {
     this._fbSignOutInProgress = true;
     if (this._fbAuth) {
       try {
@@ -22633,7 +22879,9 @@ class GraphApp {
     this.syncCloudAuthUI();
     this.renderMyLibraryList();
     this.renderFuncList();
-    this.showToast('👋 안전하게 로그아웃되었습니다. (공용 PC 보호 완료)');
+    if (!silentToast) {
+      this.showToast('👋 안전하게 로그아웃되었습니다. (공용 PC 보호 완료)');
+    }
   }
 
   openProPricingModal() {
@@ -22653,7 +22901,7 @@ class GraphApp {
     if (!this.cloudUser || !this.cloudUser.uid) {
       const modalPro = document.getElementById('modalProPricing');
       if (modalPro) modalPro.classList.remove('show');
-      this.promptCloudLoginForLibrary('🔒 이용권 결제는 로그인한 계정에 귀속됩니다. 먼저 Google 로그인을 진행해 주세요!');
+      this.promptCloudLoginForLibrary('🔒 이용권 결제는 로그인한 계정에 귀속됩니다. 먼저 로그인을 진행해 주세요!');
       return false;
     }
     if (typeof window.TossPayments !== 'function') {
@@ -22702,7 +22950,8 @@ class GraphApp {
       const result = await this._fbAuth.signInWithPopup(provider);
       if (result && result.user) {
         const normEmail = String(result.user.email || '').trim().toLowerCase();
-        const canonicalUid = this._getCanonicalUidForEmail(normEmail, result.user.uid);
+        const canonicalUid = this._getCanonicalUidForEmail(normEmail, result.user.uid, 'google');
+        try { localStorage.setItem('graphly_last_auth_provider', 'google'); } catch (e) { }
         this._applyLoggedInCloudUser({
           uid: canonicalUid,
           rawUid: String(result.user.uid || canonicalUid),
@@ -22712,7 +22961,7 @@ class GraphApp {
           displayName: result.user.displayName || (normEmail ? normEmail.split('@')[0] : '선생님'),
           email: normEmail,
           emailVerified: true
-        });
+        }, true);
         this.showToast(`🎉 환영합니다, ${this.cloudUser.displayName}님! 클라우드 보관함이 동기화되었습니다.`);
       }
     } catch (err) {
