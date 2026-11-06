@@ -18125,10 +18125,19 @@ class GraphApp {
         cursor = { row: rootRow, index: 0 };
       } else if (cmd.startsWith('char:')) {
         const ch = cmd.slice(5);
-        cursor.row.nodes.splice(cursor.index, 0, createCharNode(ch, cursor.row));
-        cursor.index++;
-        if (/^[a-zA-Z]$/.test(ch)) {
-          checkAutoKeywordTransform();
+        const prev = cursor.row.nodes[cursor.index - 1];
+        // 🌟 [초직관 자동 지수 변환]: x 또는 닫는 괄호 ) 바로 뒤에 숫자(2~9)를 누르면 화살표나 제곱 버튼 없이도 자동으로 x², x³ 위첨자로 올라가고 커서는 본문에 유지!
+        if (/^[2-9]$/.test(ch) && prev && ((prev.type === 'char' && prev.value === 'x') || prev.type === 'paren')) {
+          const supNode = createStructNode('sup', ['exp'], cursor.row);
+          supNode.slots.exp.nodes.push(createCharNode(ch, supNode.slots.exp));
+          cursor.row.nodes.splice(cursor.index, 0, supNode);
+          cursor.index++;
+        } else {
+          cursor.row.nodes.splice(cursor.index, 0, createCharNode(ch, cursor.row));
+          cursor.index++;
+          if (/^[a-zA-Z]$/.test(ch)) {
+            checkAutoKeywordTransform();
+          }
         }
       } else if (cmd === 'frac' || cmd === 'slash_frac') {
         // 앞에 항이 있으면 분자로 자동 흡수(Desmos 방식), 없으면 빈 분수의 분자 칸으로 진입
@@ -18429,10 +18438,600 @@ class GraphApp {
       }
     };
 
+    // =========================================================================
+    // ✍️ [고등교육과정 전용 펜 필기 수식 자동인식 엔진 (0~9, x, e, +, -, 분수, 루트, 괄호)]
+    // =========================================================================
+    const tabPen = document.getElementById('tabMathModePen');
+    const tabKeypad = document.getElementById('tabMathModeKeypad');
+    const secPen = document.getElementById('mathPenInputSection');
+    const secKeypad = document.getElementById('mathKeypadInputSection');
+    const hwCanvas = document.getElementById('mathHandwritingCanvas');
+    const hwWatermark = document.getElementById('mathHwWatermark');
+    const btnHwUndo = document.getElementById('btnHwUndoStroke');
+    const btnHwClear = document.getElementById('btnHwClearAll');
+
+    let hwStrokes = [];
+    let activeHwStroke = null;
+    let hwRecogTimer = null;
+
+    const resamplePoints = (pts, n = 24) => {
+      if (!pts || pts.length === 0) return [];
+      if (pts.length === 1) return Array.from({ length: n }, () => ({ x: pts[0].x, y: pts[0].y }));
+      let totalLen = 0;
+      for (let i = 1; i < pts.length; i++) {
+        totalLen += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      }
+      if (totalLen < 1e-3) return Array.from({ length: n }, () => ({ x: pts[0].x, y: pts[0].y }));
+      const step = totalLen / (n - 1);
+      const out = [{ x: pts[0].x, y: pts[0].y }];
+      let D = 0;
+      const work = pts.map((p) => ({ x: p.x, y: p.y }));
+      for (let i = 1; i < work.length; i++) {
+        const d = Math.hypot(work[i].x - work[i - 1].x, work[i].y - work[i - 1].y);
+        if (D + d >= step) {
+          const qx = work[i - 1].x + ((step - D) / d) * (work[i].x - work[i - 1].x);
+          const qy = work[i - 1].y + ((step - D) / d) * (work[i].y - work[i - 1].y);
+          const q = { x: qx, y: qy };
+          out.push(q);
+          work.splice(i, 0, q);
+          D = 0;
+        } else {
+          D += d;
+        }
+      }
+      while (out.length < n) out.push({ x: pts[pts.length - 1].x, y: pts[pts.length - 1].y });
+      return out.slice(0, n);
+    };
+
+    const buildStrokeMeta = (pts) => {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      let pathLen = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+        if (i > 0) pathLen += Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y);
+      }
+      const w = Math.max(1, maxX - minX);
+      const h = Math.max(1, maxY - minY);
+      const start = pts[0];
+      const end = pts[pts.length - 1];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const chordLen = Math.hypot(dx, dy);
+      const straightness = chordLen / Math.max(pathLen, 1);
+      const angleDeg = Math.atan2(Math.abs(dy), Math.abs(dx)) * (180 / Math.PI);
+      const resampled = resamplePoints(pts, 24);
+      const normPts = resampled.map((p) => ({
+        x: (p.x - minX) / w,
+        y: (p.y - minY) / h
+      }));
+      return {
+        pts, minX, maxX, minY, maxY, w, h,
+        cx: (minX + maxX) / 2,
+        cy: (minY + maxY) / 2,
+        diag: Math.hypot(w, h),
+        start, end, dx, dy, chordLen, pathLen, straightness, angleDeg, normPts
+      };
+    };
+
+    const classifySingleStroke = (s) => {
+      // 1. 점(.) 판별
+      if (s.pathLen < 12 && s.diag < 10) return '.';
+
+      // 2. 가로선 (-) 판별
+      if (s.w > 10 && (s.h / s.w) < 0.34 && s.straightness > 0.74) return '-';
+
+      // 3. 세로로 좁은 획 또는 곧은 세로/대각선: 1, (, ) 판별
+      if (s.h > 14 && ((s.w / s.h) < 0.42 || (s.straightness > 0.86 && s.angleDeg > 52))) {
+        if (s.straightness > 0.86 || s.w < 7) return '1';
+        const midPt = s.normPts[12];
+        const chordMidX = (s.normPts[0].x + s.normPts[23].x) / 2;
+        if (midPt.x - chordMidX < -0.22 && s.start.y < s.end.y) return '(';
+        if (midPt.x - chordMidX > 0.22 && s.start.y < s.end.y) return ')';
+        return '1';
+      }
+
+      const np = s.normPts;
+      const sx = np[0].x, sy = np[0].y;
+      const ex = np[23].x, ey = np[23].y;
+      const endStartDist = Math.hypot(ex - sx, ey - sy);
+      const tailDx = np[23].x - np[18].x;
+      const tailDy = np[23].y - np[18].y;
+
+      // 상단/하단 최대·최소 X 및 중심부 통과 여부 분석
+      let minCenterDist = Infinity;
+      let hasTopRightEarly = false;
+      let hasBotLeftMid = false;
+      let midBottomPeakIdx = -1;
+      for (let i = 0; i < np.length; i++) {
+        const dC = Math.hypot(np[i].x - 0.5, np[i].y - 0.5);
+        if (dC < minCenterDist) minCenterDist = dC;
+        if (i >= 2 && i <= 11 && np[i].x > 0.74 && np[i].y < 0.36) hasTopRightEarly = true;
+        if (i >= 11 && i <= 20 && np[i].x < 0.36 && np[i].y > 0.65) hasBotLeftMid = true;
+        if (i >= 7 && i <= 17 && np[i].y > 0.85) midBottomPeakIdx = i;
+      }
+
+      // 4. 숫자 0: 시작점과 끝점이 가깝고 가운데가 비어 있는 닫힌 타원
+      if (endStartDist < 0.36 && sy < 0.42 && minCenterDist > 0.21) {
+        return '0';
+      }
+
+      // 5. 숫자 8: 위에서 시작해 중간에 바닥을 찍고 다시 맨 위로 올라와 닫히는 형태
+      if (sy < 0.36 && ey < 0.40 && midBottomPeakIdx !== -1 && minCenterDist <= 0.24) {
+        return '8';
+      }
+
+      // 6. 자연상수 e: 가운데(0.3~0.75 높이)에서 시작해 오른쪽 위로 돌아 왼쪽 바닥을 거쳐 우측 하단으로 끝남
+      if (sy > 0.28 && sy < 0.76 && sx < 0.72 && (np[3].x > sx) && ex > 0.45 && ey > 0.52) {
+        let visitedTop = false, visitedLeft = false;
+        for (let i = 2; i < 16; i++) {
+          if (np[i].y < 0.22) visitedTop = true;
+          if (visitedTop && np[i].x < 0.22) visitedLeft = true;
+        }
+        if (visitedTop && visitedLeft) return 'e';
+      }
+
+      // 7. 숫자 7: 좌상단에서 시작해 상단 우측 모서리를 찍고 바로 아래로 내려감 (우하단 수평선 없음)
+      if (sx < 0.45 && sy < 0.38 && hasTopRightEarly && ey > 0.78 && ex < 0.74 && !hasBotLeftMid) {
+        let minMidX = 1.0;
+        for (let i = 10; i < 23; i++) if (np[i].x < minMidX) minMidX = np[i].x;
+        if (minMidX > 0.20) return '7';
+      }
+
+      // 8. 숫자 2: 상단에서 시작해 우상단 아치 -> 좌하단 대각선 -> 우하단 수평 이동으로 마무리
+      if (sy < 0.52 && hasBotLeftMid && ex > 0.62 && ey > 0.66 && tailDx > 0.12) {
+        return '2';
+      }
+
+      // 9. 숫자 6: 상단에서 시작해 왼쪽을 타고 바닥까지 내려온 뒤 하단 루프를 돌아 중간~하단에서 끝남
+      if (sy < 0.32 && ey > 0.38 && ey < 0.90) {
+        let topRightCount = 0;
+        let botRightCount = 0;
+        for (let i = 0; i < 8; i++) if (np[i].x > 0.78 && np[i].y < 0.28) topRightCount++;
+        for (let i = 12; i < 23; i++) if (np[i].x > 0.72 && np[i].y > 0.48) botRightCount++;
+        if (topRightCount === 0 && botRightCount >= 2 && np[8].x < 0.45) {
+          return '6';
+        }
+      }
+
+      // 10. 숫자 9: 상단에서 루프를 먼저 만들고 우측에서 바닥으로 곧게 내려와 끝남
+      if (sy < 0.52 && ey > 0.80 && tailDy > 0.12) {
+        let topLoopLeft = false, topLoopUp = false;
+        for (let i = 2; i < 14; i++) {
+          if (np[i].x < 0.25 && np[i].y < 0.62) topLoopLeft = true;
+          if (topLoopLeft && np[i].y < 0.28 && np[i].x > 0.45) topLoopUp = true;
+        }
+        if (topLoopLeft && topLoopUp) return '9';
+      }
+
+      // 11. 숫자 3 vs 5 (둘 다 하단 루프를 거쳐 좌하단 방향으로 끝남: ex < 0.62, tailDx < 0)
+      if (sy < 0.42 && ey > 0.62 && ex < 0.65 && tailDx < 0.05) {
+        // 상단 1/3 구간에서 왼쪽(x < 0.25)으로 먼저 내려가면 5, 오른쪽(x > 0.65)으로 먼저 휘면 3
+        let earlyLeft = false, earlyRight = false;
+        for (let i = 2; i <= 8; i++) {
+          if (np[i].x < 0.25 && np[i].y > sy + 0.12) earlyLeft = true;
+          if (np[i].x > 0.68) earlyRight = true;
+        }
+        if (earlyLeft && !earlyRight) return '5';
+        return '3';
+      }
+
+      // 12. 1획 숫자 4: 위에서 좌중간으로 내려갔다 오른쪽으로 꺾은 뒤 아래로 내려감
+      if (sy < 0.35 && ey > 0.75) {
+        let hitLeftMid = false, hitRightMid = false;
+        for (let i = 3; i < 18; i++) {
+          if (np[i].x < 0.25 && np[i].y > 0.35 && np[i].y < 0.85) hitLeftMid = true;
+          if (hitLeftMid && np[i].x > 0.72) hitRightMid = true;
+        }
+        if (hitLeftMid && hitRightMid) return '4';
+      }
+
+      // 13. 1획 x (교차 루프) 또는 기본값 판별
+      if (s.w > 12 && s.h > 12 && Math.abs(s.w - s.h) < Math.max(s.w, s.h) * 0.55) {
+        return 'x';
+      }
+      return '2';
+    };
+
+    const parseStrokesIntoRow = (strokeMetas, targetRow) => {
+      if (!strokeMetas || strokeMetas.length === 0) return;
+      const used = new Set();
+
+      // 1단계: 루트(√) 기호 탐색 (왼쪽 V자 꺾임 + 긴 천장 가로선 안쪽에 다른 획들이 포함됨)
+      const units = [];
+      for (let i = 0; i < strokeMetas.length; i++) {
+        if (used.has(i)) continue;
+        const s = strokeMetas[i];
+        if (s.w > 34 && s.h > 18 && s.normPts[0].x < 0.35 && s.normPts[23].x > 0.82 && s.normPts[23].y < 0.38) {
+          let hasBottomV = false;
+          for (let k = 2; k <= 12; k++) {
+            if (s.normPts[k].y > 0.75 && s.normPts[k].x < 0.48) hasBottomV = true;
+          }
+          if (hasBottomV) {
+            const inner = [];
+            for (let j = 0; j < strokeMetas.length; j++) {
+              if (i === j || used.has(j)) continue;
+              const o = strokeMetas[j];
+              if (o.cx > s.minX + s.w * 0.15 && o.cx < s.maxX + 15 && o.cy > s.minY - 4 && o.cy < s.maxY + 12) {
+                inner.push(j);
+              }
+            }
+            if (inner.length > 0) {
+              used.add(i);
+              inner.forEach((idx) => used.add(idx));
+              const sqNode = createStructNode('sqrt', ['body'], targetRow);
+              parseStrokesIntoRow(inner.map((idx) => strokeMetas[idx]), sqNode.slots.body);
+              units.push({
+                type: 'node',
+                node: sqNode,
+                minX: s.minX, maxX: s.maxX, minY: s.minY, maxY: s.maxY,
+                w: s.w, h: s.h, cx: s.cx, cy: s.cy
+              });
+            }
+          }
+        }
+      }
+
+      // 2단계: 분수 가로선(—) 탐색 (가로선 위·아래에 모두 획이 존재할 때 2D 분수로 묶음)
+      for (let i = 0; i < strokeMetas.length; i++) {
+        if (used.has(i)) continue;
+        const bar = strokeMetas[i];
+        if (bar.w > 22 && (bar.h / bar.w) < 0.32 && bar.straightness > 0.76) {
+          const aboveIdx = [];
+          const belowIdx = [];
+          let crossedVertically = false;
+          for (let j = 0; j < strokeMetas.length; j++) {
+            if (i === j || used.has(j)) continue;
+            const o = strokeMetas[j];
+            const horizOverlap = o.cx >= bar.minX - 14 && o.cx <= bar.maxX + 14;
+            if (!horizOverlap) continue;
+            if (o.minY < bar.cy - 5 && o.maxY > bar.cy + 5) {
+              crossedVertically = true;
+              break;
+            }
+            if (o.cy < bar.cy - 4) aboveIdx.push(j);
+            else if (o.cy > bar.cy + 4) belowIdx.push(j);
+          }
+          if (!crossedVertically && aboveIdx.length > 0 && belowIdx.length > 0) {
+            used.add(i);
+            aboveIdx.forEach((idx) => used.add(idx));
+            belowIdx.forEach((idx) => used.add(idx));
+            const fracNode = createStructNode('frac', ['num', 'den'], targetRow);
+            parseStrokesIntoRow(aboveIdx.map((idx) => strokeMetas[idx]), fracNode.slots.num);
+            parseStrokesIntoRow(belowIdx.map((idx) => strokeMetas[idx]), fracNode.slots.den);
+            const allF = [bar, ...aboveIdx.map((idx) => strokeMetas[idx]), ...belowIdx.map((idx) => strokeMetas[idx])];
+            const minX = Math.min(...allF.map((m) => m.minX));
+            const maxX = Math.max(...allF.map((m) => m.maxX));
+            const minY = Math.min(...allF.map((m) => m.minY));
+            const maxY = Math.max(...allF.map((m) => m.maxY));
+            units.push({
+              type: 'node',
+              node: fracNode,
+              minX, maxX, minY, maxY,
+              w: maxX - minX, h: maxY - minY,
+              cx: (minX + maxX) / 2, cy: bar.cy
+            });
+          }
+        }
+      }
+
+      // 3단계: 다중 획 글자 병합 (+, x, 4, 5, 7)
+      for (let i = 0; i < strokeMetas.length; i++) {
+        if (used.has(i)) continue;
+        const s1 = strokeMetas[i];
+        let mergedSymbol = null;
+        let partnerIdx = -1;
+
+        for (let j = i + 1; j < strokeMetas.length; j++) {
+          if (used.has(j)) continue;
+          const s2 = strokeMetas[j];
+          const overlapX = Math.min(s1.maxX, s2.maxX) - Math.max(s1.minX, s2.minX);
+          const overlapY = Math.min(s1.maxY, s2.maxY) - Math.max(s1.minY, s2.minY);
+          const minW = Math.min(s1.w, s2.w);
+          const minH = Math.min(s1.h, s2.h);
+
+          // 두 획이 겹치거나 아주 인접한 경우
+          if (overlapX > -8 && overlapY > -8) {
+            const isS1Horiz = s1.angleDeg < 26 && s1.straightness > 0.75;
+            const isS2Horiz = s2.angleDeg < 26 && s2.straightness > 0.75;
+            const isS1Vert = s1.angleDeg > 64 && s1.straightness > 0.75;
+            const isS2Vert = s2.angleDeg > 64 && s2.straightness > 0.75;
+
+            // (A) 2획 숫자 4: 첫 획이 L자로 꺾이고(직선성 낮음) 두 번째 획이 세로선으로 교차
+            if (!isS1Horiz && !isS1Vert && s1.straightness < 0.80 && isS2Vert && overlapX > 0 && overlapY > minH * 0.25) {
+              mergedSymbol = '4';
+              partnerIdx = j;
+              break;
+            }
+            // (B) 더하기 (+): 가로선과 세로선의 교차
+            if (((isS1Horiz && isS2Vert) || (isS1Vert && isS2Horiz)) && overlapX > -4 && overlapY > -4) {
+              mergedSymbol = '+';
+              partnerIdx = j;
+              break;
+            }
+            // (C) 2획 숫자 5: 상단 짧은 가로선 + 하단 루프 획
+            if (isS2Horiz && !isS1Horiz && Math.abs(s2.cy - s1.minY) < s1.h * 0.35 && overlapX > -6) {
+              mergedSymbol = '5';
+              partnerIdx = j;
+              break;
+            }
+            if (isS1Horiz && !isS2Horiz && Math.abs(s1.cy - s2.minY) < s2.h * 0.35 && overlapX > -6) {
+              mergedSymbol = '5';
+              partnerIdx = j;
+              break;
+            }
+            // (D) 변수 x: 두 대각선 또는 두 곡선 )( 이 강하게 겹침
+            if (!isS1Horiz && !isS2Horiz && overlapX > minW * 0.25 && overlapY > minH * 0.35) {
+              mergedSymbol = 'x';
+              partnerIdx = j;
+              break;
+            }
+          }
+        }
+
+        if (mergedSymbol && partnerIdx !== -1) {
+          const s2 = strokeMetas[partnerIdx];
+          used.add(i);
+          used.add(partnerIdx);
+          const minX = Math.min(s1.minX, s2.minX);
+          const maxX = Math.max(s1.maxX, s2.maxX);
+          const minY = Math.min(s1.minY, s2.minY);
+          const maxY = Math.max(s1.maxY, s2.maxY);
+          units.push({
+            type: 'char',
+            value: mergedSymbol,
+            minX, maxX, minY, maxY,
+            w: maxX - minX, h: maxY - minY,
+            cx: (minX + maxX) / 2, cy: (minY + maxY) / 2
+          });
+        } else {
+          used.add(i);
+          const ch = classifySingleStroke(s1);
+          units.push({
+            type: 'char',
+            value: ch,
+            minX: s1.minX, maxX: s1.maxX, minY: s1.minY, maxY: s1.maxY,
+            w: s1.w, h: s1.h, cx: s1.cx, cy: s1.cy
+          });
+        }
+      }
+
+      // 좌에서 우로 정렬
+      units.sort((a, b) => a.minX - b.minX);
+
+      // 4단계: 어깨 위 지수(위첨자) 및 x 뒤 숫자 자동 지수 조립
+      let idx = 0;
+      while (idx < units.length) {
+        const u = units[idx];
+        let createdNode = null;
+        if (u.type === 'node') {
+          u.node.parentRow = targetRow;
+          createdNode = u.node;
+        } else {
+          createdNode = createCharNode(u.value, targetRow);
+        }
+        targetRow.nodes.push(createdNode);
+
+        // 바로 오른쪽 요소들이 어깨 위(위첨자)에 있거나, x 바로 뒤의 숫자인지 확인
+        const canHaveExp = (u.type === 'char' && (u.value === 'x' || u.value === 'e' || u.value === ')' || /^[0-9]$/.test(u.value)));
+        if (canHaveExp && idx + 1 < units.length) {
+          const expUnits = [];
+          let look = idx + 1;
+          while (look < units.length) {
+            const nextU = units[look];
+            const isRaised = (u.h > 14) && (nextU.cy < u.minY + u.h * 0.45) && (nextU.maxY < u.maxY - u.h * 0.15);
+            const isDigitAfterX = (expUnits.length === 0) && (u.type === 'char' && u.value === 'x') && (nextU.type === 'char' && /^[2-9]$/.test(nextU.value));
+            if (isRaised || isDigitAfterX) {
+              expUnits.push(nextU);
+              look++;
+              if (isDigitAfterX && !isRaised) break;
+            } else {
+              break;
+            }
+          }
+          if (expUnits.length > 0) {
+            const supNode = createStructNode('sup', ['exp'], targetRow);
+            expUnits.forEach((eu) => {
+              if (eu.type === 'node') {
+                eu.node.parentRow = supNode.slots.exp;
+                supNode.slots.exp.nodes.push(eu.node);
+              } else {
+                supNode.slots.exp.nodes.push(createCharNode(eu.value, supNode.slots.exp));
+              }
+            });
+            targetRow.nodes.push(supNode);
+            idx = look;
+            continue;
+          }
+        }
+        idx++;
+      }
+    };
+
+    const redrawHwCanvas = () => {
+      if (!hwCanvas) return;
+      const ctx = hwCanvas.getContext('2d');
+      const W = hwCanvas.width;
+      const H = hwCanvas.height;
+      ctx.clearRect(0, 0, W, H);
+
+      // 은은한 수식 기준선 가이드
+      const isLight = document.body.classList.contains('theme-light');
+      ctx.save();
+      ctx.strokeStyle = isLight ? 'rgba(148, 163, 184, 0.25)' : 'rgba(148, 163, 184, 0.14)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, H * 0.62);
+      ctx.lineTo(W, H * 0.62);
+      ctx.stroke();
+      ctx.restore();
+
+      const allStrokes = activeHwStroke ? [...hwStrokes, activeHwStroke] : hwStrokes;
+      if (hwWatermark) {
+        hwWatermark.style.display = allStrokes.length === 0 ? 'flex' : 'none';
+      }
+
+      ctx.save();
+      ctx.strokeStyle = isLight ? '#1d4ed8' : '#38bdf8';
+      ctx.lineWidth = 3.2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (const st of allStrokes) {
+        if (!st || st.length === 0) continue;
+        ctx.beginPath();
+        ctx.moveTo(st[0].x, st[0].y);
+        for (let i = 1; i < st.length; i++) {
+          ctx.lineTo(st[i].x, st[i].y);
+        }
+        if (st.length === 1) {
+          ctx.lineTo(st[0].x + 0.5, st[0].y + 0.5);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+
+    let hwTargetRow = rootRow;
+    let hwBaseBefore = [];
+    let hwBaseAfter = [];
+
+    const commitHwSession = () => {
+      if (hwStrokes.length > 0) {
+        hwStrokes = [];
+        activeHwStroke = null;
+        redrawHwCanvas();
+      }
+      hwTargetRow = cursor.row;
+      hwBaseBefore = cursor.row.nodes.slice(0, cursor.index);
+      hwBaseAfter = cursor.row.nodes.slice(cursor.index);
+    };
+
+    const runHandwritingRecognition = () => {
+      if (!hwTargetRow) hwTargetRow = rootRow;
+      const tempRow = createRow(hwTargetRow.parent, hwTargetRow.slotName);
+      if (hwStrokes.length > 0) {
+        const metas = hwStrokes.map((pts) => buildStrokeMeta(pts));
+        parseStrokesIntoRow(metas, tempRow);
+      }
+      tempRow.nodes.forEach((n) => { n.parentRow = hwTargetRow; });
+      hwTargetRow.nodes = [...hwBaseBefore, ...tempRow.nodes, ...hwBaseAfter];
+      cursor = { row: hwTargetRow, index: hwBaseBefore.length + tempRow.nodes.length };
+      renderMathField();
+      updatePreview();
+    };
+
+    if (hwCanvas) {
+      const getCanvasPt = (e) => {
+        const rect = hwCanvas.getBoundingClientRect();
+        const scaleX = hwCanvas.width / Math.max(1, rect.width);
+        const scaleY = hwCanvas.height / Math.max(1, rect.height);
+        return {
+          x: (e.clientX - rect.left) * scaleX,
+          y: (e.clientY - rect.top) * scaleY
+        };
+      };
+
+      hwCanvas.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        if (hwRecogTimer) {
+          clearTimeout(hwRecogTimer);
+          hwRecogTimer = null;
+        }
+        if (hwStrokes.length === 0) {
+          hwTargetRow = cursor.row;
+          hwBaseBefore = cursor.row.nodes.slice(0, cursor.index);
+          hwBaseAfter = cursor.row.nodes.slice(cursor.index);
+        }
+        try { hwCanvas.setPointerCapture(e.pointerId); } catch (_) { }
+        activeHwStroke = [getCanvasPt(e)];
+        redrawHwCanvas();
+      });
+
+      hwCanvas.addEventListener('pointermove', (e) => {
+        if (!activeHwStroke) return;
+        e.preventDefault();
+        const pt = getCanvasPt(e);
+        const last = activeHwStroke[activeHwStroke.length - 1];
+        if (Math.hypot(pt.x - last.x, pt.y - last.y) >= 1.5) {
+          activeHwStroke.push(pt);
+          redrawHwCanvas();
+        }
+      });
+
+      const finishHwStroke = (e) => {
+        if (!activeHwStroke) return;
+        e.preventDefault();
+        if (activeHwStroke.length > 0) {
+          hwStrokes.push(activeHwStroke);
+        }
+        activeHwStroke = null;
+        redrawHwCanvas();
+        if (hwRecogTimer) clearTimeout(hwRecogTimer);
+        hwRecogTimer = setTimeout(() => {
+          runHandwritingRecognition();
+        }, 120);
+      };
+
+      hwCanvas.addEventListener('pointerup', finishHwStroke);
+      hwCanvas.addEventListener('pointercancel', finishHwStroke);
+    }
+
+    if (btnHwUndo) {
+      btnHwUndo.onclick = (e) => {
+        e.preventDefault();
+        if (hwStrokes.length > 0) {
+          hwStrokes.pop();
+          redrawHwCanvas();
+          runHandwritingRecognition();
+        } else {
+          executeMathCmd('backspace');
+        }
+      };
+    }
+
+    if (btnHwClear) {
+      btnHwClear.onclick = (e) => {
+        e.preventDefault();
+        hwStrokes = [];
+        activeHwStroke = null;
+        hwTargetRow = rootRow;
+        hwBaseBefore = [];
+        hwBaseAfter = [];
+        redrawHwCanvas();
+        executeMathCmd('clear');
+      };
+    }
+
+    const setMathInputMode = (mode) => {
+      const isPen = (mode === 'pen');
+      if (tabPen) tabPen.classList.toggle('active', isPen);
+      if (tabKeypad) tabKeypad.classList.toggle('active', !isPen);
+      if (secPen) secPen.style.display = isPen ? 'flex' : 'none';
+      if (secKeypad) secKeypad.style.display = isPen ? 'none' : 'flex';
+      if (isPen) {
+        redrawHwCanvas();
+      } else {
+        setTimeout(() => mathField.focus(), 20);
+      }
+    };
+
+    if (tabPen) tabPen.onclick = () => setMathInputMode('pen');
+    if (tabKeypad) tabKeypad.onclick = () => setMathInputMode('keypad');
+
     const openModal = () => {
       modal.classList.add('show');
       rootRow.nodes = [];
       cursor = { row: rootRow, index: 0 };
+      hwStrokes = [];
+      activeHwStroke = null;
+      hwTargetRow = rootRow;
+      hwBaseBefore = [];
+      hwBaseAfter = [];
+      redrawHwCanvas();
       renderMathField();
       updatePreview();
       setTimeout(() => {
@@ -18470,6 +19069,12 @@ class GraphApp {
       btnClear.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
+        hwStrokes = [];
+        activeHwStroke = null;
+        hwTargetRow = rootRow;
+        hwBaseBefore = [];
+        hwBaseAfter = [];
+        redrawHwCanvas();
         executeMathCmd('clear');
         mathField.focus();
       };
@@ -18482,6 +19087,7 @@ class GraphApp {
       };
       btn.onclick = (e) => {
         e.preventDefault();
+        commitHwSession();
         executeMathCmd(btn.getAttribute('data-math-cmd'));
         mathField.focus();
       };
