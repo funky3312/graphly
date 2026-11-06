@@ -5114,59 +5114,220 @@ body.ink-sticker-tool-active .graph-card-live-canvas {
 }
 
 .pip-card-mini-ctx-bar {
-  position: absolute;
-  top: 6px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 12;
+  display: none !important;
+}
+
+/* 🌟 [창모드(PiP) 카드 상단 헤더 3-캡슐 구조: [대칭 ▾] · [|f|] · [🗑] + 우측 [📍수선]] 🌟 */
+.btn-card-dropline {
+  width: 26px !important;
+  height: 25px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 6px !important;
+  color: #cbd5e1 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  transition: all 0.16s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+.btn-card-dropline:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+}
+
+.btn-card-dropline.active {
+  background: rgba(0, 210, 211, 0.24) !important;
+  border-color: #00d2d3 !important;
+  color: #00d2d3 !important;
+  box-shadow: 0 0 0 1px rgba(0, 210, 211, 0.28) !important;
+}
+
+body.theme-light .btn-card-dropline {
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  color: #475569 !important;
+}
+
+body.theme-light .btn-card-dropline:hover {
+  background: #e2e8f0 !important;
+  border-color: rgba(15, 23, 42, 0.24) !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .btn-card-dropline.active {
+  background: rgba(37, 99, 235, 0.14) !important;
+  border-color: #2563eb !important;
+  color: #1d4ed8 !important;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.22) !important;
+}
+
+.pip-header-curve-tools {
   display: none;
   align-items: center;
   gap: 3px;
-  padding: 3px 6px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.86);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
-  pointer-events: auto;
+  position: relative;
+}
+
+.pip-hdr-sym-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.pip-hdr-btn {
+  height: 23px !important;
+  padding: 0 7px !important;
+  border-radius: 5px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  color: #f1f5f9 !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  cursor: pointer !important;
+  transition: all 0.14s ease !important;
+}
+
+.pip-hdr-btn:hover,
+.pip-hdr-btn.open {
+  background: rgba(255, 255, 255, 0.18) !important;
+  border-color: rgba(255, 255, 255, 0.34) !important;
+  color: #ffffff !important;
+}
+
+.pip-hdr-btn[data-pip-act="abs"] {
+  font-family: 'KaTeX_Math', 'Times New Roman', serif !important;
+  font-style: italic !important;
+  font-size: 11.5px !important;
+  letter-spacing: 0.2px !important;
+  padding: 0 7px !important;
+}
+
+.pip-hdr-btn[data-pip-act="abs"].active {
+  background: rgba(0, 210, 211, 0.25) !important;
+  border-color: #00d2d3 !important;
+  color: #00d2d3 !important;
+}
+
+.pip-hdr-btn[data-pip-act="abs"].abs-folded {
+  border-color: rgba(0, 210, 211, 0.55) !important;
+  color: #67e8f9 !important;
+}
+
+.pip-hdr-btn.pip-hdr-del {
+  width: 24px !important;
+  padding: 0 !important;
+  color: #fca5a5 !important;
+}
+
+.pip-hdr-btn.pip-hdr-del:hover {
+  background: rgba(239, 68, 68, 0.25) !important;
+  border-color: rgba(239, 68, 68, 0.5) !important;
+  color: #fecaca !important;
+}
+
+.pip-hdr-caret {
+  font-size: 9px;
+  opacity: 0.78;
+  margin-left: 1px;
+}
+
+body.theme-light .pip-hdr-btn {
+  background: #f1f5f9 !important;
+  border: 1px solid rgba(15, 23, 42, 0.14) !important;
+  color: #334155 !important;
+}
+
+body.theme-light .pip-hdr-btn:hover,
+body.theme-light .pip-hdr-btn.open {
+  background: #e2e8f0 !important;
+  border-color: rgba(15, 23, 42, 0.28) !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .pip-hdr-btn[data-pip-act="abs"].active {
+  background: rgba(37, 99, 235, 0.15) !important;
+  border-color: #2563eb !important;
+  color: #1d4ed8 !important;
+}
+
+body.theme-light .pip-hdr-btn[data-pip-act="abs"].abs-folded {
+  border-color: rgba(37, 99, 235, 0.48) !important;
+  color: #2563eb !important;
+}
+
+body.theme-light .pip-hdr-btn.pip-hdr-del {
+  color: #dc2626 !important;
+}
+
+body.theme-light .pip-hdr-btn.pip-hdr-del:hover {
+  background: rgba(220, 38, 38, 0.12) !important;
+  border-color: #dc2626 !important;
+  color: #b91c1c !important;
+}
+
+.pip-hdr-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 5px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
   white-space: nowrap;
 }
 
-.graph-card-widget.pip-manipulating:not(.card-ink-active):not(.minimized) .pip-card-mini-ctx-bar {
-  display: inline-flex;
+.pip-hdr-popover.pop-down {
+  bottom: auto;
+  top: calc(100% + 6px);
 }
 
-.pip-ctx-btn {
+.pip-pop-btn {
   appearance: none;
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
-  color: #f8fafc;
+  color: #f1f5f9;
   font-size: 11px;
   font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 999px;
+  padding: 3px 7px;
+  border-radius: 5px;
   cursor: pointer;
-  line-height: 1.25;
-  transition: background 0.14s ease, color 0.14s ease;
+  line-height: 1.2;
+  transition: all 0.12s ease;
 }
 
-.pip-ctx-btn:hover {
-  background: rgba(255, 255, 255, 0.16);
-}
-
-.pip-ctx-btn.active {
-  background: #2563eb;
+.pip-pop-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
   color: #ffffff;
 }
 
-.pip-ctx-btn.pip-ctx-del {
-  color: #fca5a5;
+body.theme-light .pip-hdr-popover {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
 }
 
-.pip-ctx-btn.pip-ctx-del:hover {
-  background: rgba(239, 68, 68, 0.25);
-  color: #fecaca;
+body.theme-light .pip-pop-btn {
+  color: #334155;
 }
+
+body.theme-light .pip-pop-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
 
 
 
