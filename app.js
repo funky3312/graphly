@@ -1587,7 +1587,7 @@ class GraphApp {
     } else {
       this.graphs.forEach((g, idx) => {
         const item = document.createElement('div');
-        item.className = `layer-item ${idx === this.activeGraphIdx ? 'active' : ''}`;
+        item.className = `layer-item ${(this.isCurveSelected && idx === this.activeGraphIdx) ? 'active' : ''}`;
 
         const left = document.createElement('div');
         left.className = 'layer-left';
@@ -2360,7 +2360,6 @@ class GraphApp {
     if (!grid) return;
     grid.innerHTML = '';
 
-    const currentType = this.activeGraph ? this.activeGraph.type : null;
     const shortDisplayNames = {
       '3rd_basic_cubic': '삼차 (y=x³)',
       '4th_basic_bowl': '사차 (y=x⁴)'
@@ -2431,7 +2430,7 @@ class GraphApp {
         const labelText = shortDisplayNames[key] || data.name;
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = `func-btn ${key === currentType ? 'active' : ''}`;
+        btn.className = 'func-btn';
         btn.dataset.preset = key;
         btn.dataset.funcCode = code;
         btn.innerHTML = `
@@ -11464,6 +11463,9 @@ class GraphApp {
         }
         syncCanvasSize();
       }
+      if (this.isAudioRecording) {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
     };
     let handledInkToggleOnPointerUp = false;
     laserBtn.addEventListener('pointerup', (e) => {
@@ -12367,7 +12369,8 @@ class GraphApp {
         this._inkBakeDirty = true;
       }
       this.selectedHandleIdx = null;
-      this.isCurveSelected = this.graphs.length > 0;
+      this.draggedHandleIdx = null;
+      this.isCurveSelected = false;
       this.syncControls();
       this.renderLayerList();
       this.renderFuncList();
@@ -12434,6 +12437,10 @@ class GraphApp {
   }
 
   enterBoardMode() {
+    this.isCurveSelected = false;
+    this.selectedHandleIdx = null;
+    this.draggedHandleIdx = null;
+    this.selectedPwBoundaryIdx = null;
     if (!this.isGraphCovered) {
       this._coveredGraphStateBackup = this.getPureGraphSnapshot();
     }
@@ -12441,8 +12448,7 @@ class GraphApp {
     this.isGraphSnapMode = false;
     this.isPdfToGraphCropMode = false;
     this.isPdfToGraphCropDragging = false;
-    this.isCurveSelected = false;
-    this.selectedHandleIdx = null;
+    this.deselectAllPipGraphCards();
     document.body.classList.remove('graph-snap-crosshair');
     if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
 
@@ -12561,6 +12567,10 @@ class GraphApp {
       this._graphSessionArchived = false;
     }
 
+    this.isCurveSelected = false;
+    this.selectedHandleIdx = null;
+    this.draggedHandleIdx = null;
+    this.selectedPwBoundaryIdx = null;
     this.isGraphCovered = false;
     this.showAxes = true;
     this.updateAxesUI();
@@ -12575,6 +12585,7 @@ class GraphApp {
     }
 
     this.updateProblemCardPosition();
+    this.syncControls();
     this.syncWorkspaceModeUI();
     this.syncGraphSnapBarUI();
     this._inkBakeDirty = true;
@@ -12797,6 +12808,10 @@ class GraphApp {
   }
 
   _restoreBoardModeStateAfterGraph() {
+    this.isCurveSelected = false;
+    this.selectedHandleIdx = null;
+    this.draggedHandleIdx = null;
+    this.selectedPwBoundaryIdx = null;
     this._coveredGraphStateBackup = this.getPureGraphSnapshot();
     this.isGraphCovered = true;
     this.isGraphSnapMode = false;
@@ -12855,11 +12870,16 @@ class GraphApp {
       });
     }
 
+    this.deselectAllPipGraphCards();
+
     if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed && (this.activeDrawerPanel === 'panelPresets' || this.activeDrawerPanel === 'panelPiecewise')) {
       this.closeDrawer();
     }
     this.updateProblemCardPosition();
     this.syncGraphCardRectFromWidget();
+    this.syncControls();
+    this.renderLayerList();
+    this.renderFuncList();
     this.syncWorkspaceModeUI();
     this.syncGraphSnapBarUI();
     this._inkBakeDirty = true;
@@ -13184,6 +13204,9 @@ class GraphApp {
 
     this.updateProblemCardPosition();
     this.render();
+    if (this.isAudioRecording) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
     if (!(options && options.silentToast)) {
       const totalCards = (this._hasPrimaryGraphCard ? 1 : 0) + (this.extraGraphCards ? this.extraGraphCards.length : 0);
       this.showToast(totalCards > 1
@@ -13506,6 +13529,9 @@ class GraphApp {
       this.extraGraphCards = this.extraGraphCards.filter(c => c !== cardItem);
       if (this._pipTargetCard === cardItem) this._pipTargetCard = null;
       if (this._editingGraphCardTarget === cardItem) this._editingGraphCardTarget = null;
+      if (this.isAudioRecording) {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       if (!this._hasPrimaryGraphCard && this.extraGraphCards.length === 0 && !this.hasBoardStateToReturn()) {
         this.restoreLiveGraphFromCard(false);
       } else {
@@ -13587,6 +13613,14 @@ class GraphApp {
     }
 
     if (this.inkStrokes && this.inkStrokes.length > 0) {
+      if (this.isAudioRecording && Array.isArray(this.audioErasedStrokes)) {
+        const recT = this.getAudioRecordElapsedMs();
+        this.inkStrokes.forEach(s => {
+          if (s && (s.target || 'board') === 'graph' && !s.onPdfBoard) {
+            this.audioErasedStrokes.push({ ...JSON.parse(JSON.stringify(s)), erasedAt: recT });
+          }
+        });
+      }
       this.inkStrokes = this.inkStrokes.filter(s => s && ((s.target || 'board') === 'board' || s.onPdfBoard));
     }
     this.dropLines = [];
@@ -13633,6 +13667,10 @@ class GraphApp {
         }
       }
     }
+    this.isCurveSelected = false;
+    this.selectedHandleIdx = null;
+    this.draggedHandleIdx = null;
+    this.selectedPwBoundaryIdx = null;
     this._inkBakeDirty = true;
     this.clearInkCache();
     this.showAxes = true;
@@ -13653,9 +13691,15 @@ class GraphApp {
     if (this.isInkMode && this.activeInkTool !== 'select') {
       this.setActiveInkTool('select');
     }
+    this.syncControls();
+    this.renderLayerList();
+    this.renderFuncList();
     this.syncWorkspaceModeUI();
     this.syncGraphSnapBarUI();
     this.render();
+    if (this.isAudioRecording) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
     if (!silent) {
       const prefix = caseIdx ? `#${caseIdx}` : '선택한';
       this.showToast(`⛶ ${prefix} 카드를 그래프 모드로 크게 열었습니다! 편집 후 [필기 복귀]를 누르면 카드에 반영됩니다.`);
@@ -14281,6 +14325,9 @@ class GraphApp {
         if (this._pipTargetCard === 'primary') this._pipTargetCard = null;
         if (this._editingGraphCardTarget === 'primary') this._editingGraphCardTarget = null;
         widget.style.display = 'none';
+        if (this.isAudioRecording) {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+        }
         if ((!this.extraGraphCards || this.extraGraphCards.length === 0) && !this.hasBoardStateToReturn()) {
           this.restoreLiveGraphFromCard(false);
         } else {
@@ -14868,6 +14915,14 @@ class GraphApp {
     this._setPipCardInkStrokesArray(cardRef, newCardStrokes);
     this._reprojectPipCardInkFromMathCoords(cardRef, effW, effH);
     if (Array.isArray(this.inkStrokes)) {
+      if (this.isAudioRecording && Array.isArray(this.audioErasedStrokes)) {
+        const recT = this.getAudioRecordElapsedMs();
+        this.inkStrokes.forEach(s => {
+          if (s && s.target === 'graph') {
+            this.audioErasedStrokes.push({ ...JSON.parse(JSON.stringify(s)), erasedAt: recT });
+          }
+        });
+      }
       this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
     }
     if (typeof this.clearInkCache === 'function') this.clearInkCache();
@@ -14900,7 +14955,11 @@ class GraphApp {
       snap._activeSnapHint = null;
       widget.classList.remove('pip-manipulating');
     } else {
-      snap.isCurveSelected = true;
+      snap.isCurveSelected = false;
+      snap.selectedHandleIdx = null;
+      snap.draggedHandleIdx = null;
+      snap._activeSnapHint = null;
+      widget.classList.remove('pip-manipulating');
       if (widget.classList.contains('card-ink-active')) {
         widget.classList.remove('card-ink-active');
         const laserBtn = widget.querySelector('.btn-card-laser');
@@ -14912,6 +14971,9 @@ class GraphApp {
     this._savePipCardSnapshot(cardRef, snap);
     this.renderPipGraphCard(cardRef);
     this.bakePipGraphCardToImg(cardRef);
+    if (this.isAudioRecording) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
 
     if (showToast) {
       if (snap.isPipLocked) {
@@ -15260,13 +15322,13 @@ class GraphApp {
   }
 
   _refreshAllOpenPipGraphCards() {
-    if (this.hasGraphCard && this.graphCardState && this.graphCardState.liveGraphSnapshot) {
+    if (this._hasPrimaryGraphCard && this.graphCardData) {
       this.renderPipGraphCard('primary');
       this.bakePipGraphCardToImg('primary');
     }
     if (Array.isArray(this.extraGraphCards)) {
       this.extraGraphCards.forEach(c => {
-        if (c && c.liveGraphSnapshot) {
+        if (c && c.graphSnapshot) {
           this.renderPipGraphCard(c);
           this.bakePipGraphCardToImg(c);
         }
@@ -15299,8 +15361,9 @@ class GraphApp {
       updatedSnap.panX = -fullCenterMathX * cardUnitScale;
       updatedSnap.panY = fullCenterMathY * cardUnitScale;
       updatedSnap.isPipLocked = false;
-      updatedSnap.isCurveSelected = true;
+      updatedSnap.isCurveSelected = false;
       updatedSnap.selectedHandleIdx = null;
+      updatedSnap.draggedHandleIdx = null;
       updatedSnap.useIntersectionDetector = Boolean(this.useIntersectionDetector);
       updatedSnap._isPipCardSnapshot = true;
       updatedSnap._pipCardW = cardW;
@@ -15335,8 +15398,10 @@ class GraphApp {
     updatedSnap.panX = -fullCenterMathX * cardUnitScale;
     updatedSnap.panY = fullCenterMathY * cardUnitScale;
     updatedSnap.isPipLocked = Boolean(prevSnap && prevSnap.isPipLocked);
-    updatedSnap.isCurveSelected = !updatedSnap.isPipLocked;
+    updatedSnap.isCurveSelected = false;
     updatedSnap.selectedHandleIdx = null;
+    updatedSnap.draggedHandleIdx = null;
+    widget.classList.remove('pip-manipulating');
     updatedSnap.useIntersectionDetector = Boolean(this.useIntersectionDetector);
     updatedSnap._isPipCardSnapshot = true;
     updatedSnap._pipCardW = cardW;
@@ -15347,6 +15412,9 @@ class GraphApp {
     this.syncPipCardLockUI(target);
     this.renderPipGraphCard(target);
     this.bakePipGraphCardToImg(target);
+    if (this.isAudioRecording) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
   }
 
   addGraphToPipCardInBoardMode(preferredType = null) {
@@ -15407,6 +15475,9 @@ class GraphApp {
         this.bakePipGraphCardToImg(targetCard);
         if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
           this.closeDrawer();
+        }
+        if (this.isAudioRecording) {
+          this._recordAudioWorkspaceStateIfNeeded(true);
         }
         this.showToast(`✨ 카드에 f${snap.graphs.length}(x) (${this.meta[nextType].name}) 추가됨! 핸들을 드래그해 조절하세요.`);
         return;
@@ -15510,6 +15581,9 @@ class GraphApp {
           if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
             this.closeDrawer();
           }
+          if (this.isAudioRecording) {
+            this._recordAudioWorkspaceStateIfNeeded(true);
+          }
           this.showToast(`⭐ 카드에 [${item.name}] 프리셋이 추가되었습니다!`);
           return true;
         }
@@ -15580,6 +15654,9 @@ class GraphApp {
     if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
       this.closeDrawer();
     }
+    if (this.isAudioRecording) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
     if (toastMsg) {
       this.showToast(`✨ ${toastMsg}`);
     }
@@ -15615,6 +15692,9 @@ class GraphApp {
           btnAddFunc.classList.add('active');
           this.openDrawer('panelPresets');
           this.showToast('➕ 이 카드에 함께 그릴 함수를 선택하세요!');
+        }
+        if (this.isAudioRecording) {
+          this._recordAudioWorkspaceStateIfNeeded(true);
         }
       });
     }
@@ -15682,10 +15762,12 @@ class GraphApp {
             this.engine.reflectXAxis(g.handles, g.type);
             this.renderPipGraphCard(cardRef);
             this.bakePipGraphCardToImg(cardRef);
+            if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
           } else if (act === 'flipY') {
             this.engine.reflectYAxis(g.handles, g.type);
             this.renderPipGraphCard(cardRef);
             this.bakePipGraphCardToImg(cardRef);
+            if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
           } else if (act === 'abs') {
             g.isAbsolute = !g.isAbsolute;
             g.isAbsPristine = Boolean(g.isAbsolute);
@@ -15694,6 +15776,7 @@ class GraphApp {
             }
             this.renderPipGraphCard(cardRef);
             this.bakePipGraphCardToImg(cardRef);
+            if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
           } else if (act === 'deleteCurve') {
             if (snap.graphs.length > 1) {
               snap.graphs.splice(snap.activeGraphIdx, 1);
@@ -15702,6 +15785,7 @@ class GraphApp {
               snap.isCurveSelected = true;
               this.renderPipGraphCard(cardRef);
               this.bakePipGraphCardToImg(cardRef);
+              if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
               this.showToast('🗑️ 선택한 함수를 카드에서 삭제했습니다.');
             } else {
               const closeBtn = isPrimary ? document.getElementById('btnGraphCardClose') : widget.querySelector('.btn-extra-close');
@@ -15779,7 +15863,7 @@ class GraphApp {
 
       this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
         const handleHitDist = isTouch ? 30 : 22;
-        if (this.activeGraph && Array.isArray(this.activeGraph.handles)) {
+        if (snap.isCurveSelected && this.activeGraph && Array.isArray(this.activeGraph.handles)) {
           let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
           let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
           if (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
@@ -15790,7 +15874,6 @@ class GraphApp {
           }
           this.activeGraph.handles.forEach((h, idx) => {
             if (!h || h.hidden) return;
-            if (!snap.isCurveSelected && (h.type === 'center' || h.type === 'asymptote') && ["cos_1period", "rational_basic", "exp_basic", "log_basic"].includes(this.activeGraph.type)) return;
             let targetY = h.y;
             if (this.activeGraph.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
               targetY = Math.abs(h.y);
@@ -15820,12 +15903,14 @@ class GraphApp {
         e.stopPropagation();
         this.deselectAllPipGraphCards(widget);
         this._ensurePipCardInkMathCoords(cardRef);
-        snap.isCurveSelected = true;
         try { liveCanvas.setPointerCapture(e.pointerId); } catch (_) { }
         activeMode = 'panAxes';
+        this._isInteractingWithPipCard = true;
+        this._activePipInteractionCardEl = widget;
         panInit = { x: snap.panX || 0, y: snap.panY || 0 };
         liveCanvas.style.cursor = 'grabbing';
         this.requestPipGraphCardRender(cardRef);
+        if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
         return;
       }
 
@@ -15838,8 +15923,11 @@ class GraphApp {
         snap.selectedHandleIdx = hitHandleIdx;
         try { liveCanvas.setPointerCapture(e.pointerId); } catch (_) { }
         activeMode = 'handle';
+        this._isInteractingWithPipCard = true;
+        this._activePipInteractionCardEl = widget;
         liveCanvas.style.cursor = 'grabbing';
         this.requestPipGraphCardRender(cardRef);
+        if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
         return;
       }
 
@@ -15849,6 +15937,8 @@ class GraphApp {
         this.deselectAllPipGraphCards(widget);
         try { liveCanvas.setPointerCapture(e.pointerId); } catch (_) { }
         activeMode = 'curve';
+        this._isInteractingWithPipCard = true;
+        this._activePipInteractionCardEl = widget;
         snap.activeGraphIdx = hitCurveIdx;
         snap.isCurveSelected = true;
         snap.selectedHandleIdx = null;
@@ -15870,6 +15960,7 @@ class GraphApp {
         });
         liveCanvas.style.cursor = 'grabbing';
         this.requestPipGraphCardRender(cardRef);
+        if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
         return;
       }
 
@@ -15880,8 +15971,11 @@ class GraphApp {
       this._ensurePipCardInkMathCoords(cardRef);
       try { liveCanvas.setPointerCapture(e.pointerId); } catch (_) { }
       activeMode = 'panAxes';
+      this._isInteractingWithPipCard = true;
+      this._activePipInteractionCardEl = widget;
       panInit = { x: snap.panX || 0, y: snap.panY || 0 };
       liveCanvas.style.cursor = 'grabbing';
+      if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
     });
 
     liveCanvas.addEventListener('pointermove', (e) => {
@@ -15939,6 +16033,7 @@ class GraphApp {
         snap.panY = panInit.y + (pos.y - downPos.y);
         this._reprojectPipCardInkFromMathCoords(cardRef, pos.cardW, pos.cardH);
         this.requestPipGraphCardRender(cardRef);
+        if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(false);
         return;
       }
 
@@ -16000,6 +16095,7 @@ class GraphApp {
           }
         });
         this.requestPipGraphCardRender(cardRef);
+        if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(false);
         return;
       }
 
@@ -16099,6 +16195,7 @@ class GraphApp {
           }
         });
         this.requestPipGraphCardRender(cardRef);
+        if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(false);
       }
     });
 
@@ -16106,6 +16203,8 @@ class GraphApp {
       if (!activeMode) return;
       const prevMode = activeMode;
       activeMode = null;
+      this._isInteractingWithPipCard = false;
+      this._activePipInteractionCardEl = null;
       cachedDownGeom = null;
       curveFeatsSnapshot = null;
       if (widget._pipRenderRafId) {
@@ -16155,6 +16254,9 @@ class GraphApp {
       this._reprojectPipCardInkFromMathCoords(cardRef, cardW, cardH);
       this.renderPipGraphCard(cardRef);
       this.bakePipGraphCardToImg(cardRef);
+      if (this.isAudioRecording) {
+        this._recordAudioWorkspaceStateIfNeeded(false);
+      }
     }, { passive: false });
   }
 
@@ -25442,6 +25544,8 @@ class GraphApp {
           if (pt.y !== undefined) pt.y = isBoardCoord ? r1(pt.y) : r3(pt.y);
           if (pt.nx !== undefined) pt.nx = r4(pt.nx);
           if (pt.ny !== undefined) pt.ny = r4(pt.ny);
+          if (pt.mx !== undefined) pt.mx = r3(pt.mx);
+          if (pt.my !== undefined) pt.my = r3(pt.my);
           if (pt.p !== undefined) {
             const rp = r2(pt.p);
             if (Math.abs(rp - 0.5) < 0.005) {
@@ -34069,6 +34173,7 @@ class GraphApp {
           // 3. 오직 빈 화면을 클릭해야만 핸들러가 사라진다!
           this.isCurveSelected = true;
           this.selectedHandleIdx = null;
+          this.renderLayerList();
           this.render();
         } else {
           // 🌟 [대표님 핵심 기획]:
@@ -34086,6 +34191,7 @@ class GraphApp {
               cancelAnimationFrame(this.pulseAnimId);
               this.pulseAnimId = null;
             }
+            this.renderLayerList();
           }
           this.render();
         }
@@ -40941,13 +41047,15 @@ class GraphApp {
           }
           return;
         }
-        const cardEl = (tEl && tEl.closest)
-          ? tEl.closest('#problemCardWidget, #graphCardWidget, .extra-problem-card-widget, .extra-graph-card-widget')
-          : null;
+        const cardEl = (this._isInteractingWithPipCard && this._activePipInteractionCardEl)
+          ? this._activePipInteractionCardEl
+          : ((tEl && tEl.closest)
+            ? tEl.closest('#problemCardWidget, #graphCardWidget, .extra-problem-card-widget, .extra-graph-card-widget')
+            : null);
         if (cardEl) {
-          const isDownCard = forceClickDown || (typeof e.buttons === 'number' && e.buttons > 0);
+          const isDownCard = Boolean(forceClickDown || this._isInteractingWithPipCard || (typeof e.buttons === 'number' && e.buttons > 0));
           // 카드 상단 버튼([레이저], [그래프 수정], [접기], [✕]) 위에서는 손가락(pointer) 아이콘!
-          if (tEl.closest('button, .card-btn, .problem-card-actions button')) {
+          if (!this._isInteractingWithPipCard && tEl && tEl.closest && tEl.closest('button, .card-btn, .problem-card-actions button')) {
             const uiMeta = this._extractAudioUiTargetMeta(tEl, e.clientX, e.clientY);
             this.recordAudioCursorPoint(
               e.clientX,
@@ -40967,9 +41075,16 @@ class GraphApp {
             const bodyEl = cardEl.querySelector('.problem-card-body');
             if (bodyEl) {
               const rect = bodyEl.getBoundingClientRect();
-              if (rect.width > 0 && rect.height > 0 && e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
-                const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+              const inBodyRect = Boolean(
+                rect.width > 0 &&
+                rect.height > 0 &&
+                (this._isInteractingWithPipCard || (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom))
+              );
+              if (inBodyRect) {
+                const clampMin = this._isInteractingWithPipCard ? -0.25 : 0;
+                const clampMax = this._isInteractingWithPipCard ? 1.25 : 1;
+                const nx = Math.max(clampMin, Math.min(clampMax, (e.clientX - rect.left) / rect.width));
+                const ny = Math.max(clampMin, Math.min(clampMax, (e.clientY - rect.top) / rect.height));
                 const isLaser = Boolean((this.isInkMode && this.activeInkTool === 'laser') || cardEl.classList.contains('card-laser-active'));
                 const isCardInkOn = Boolean(
                   cardEl.classList.contains('card-ink-active') &&
@@ -41010,12 +41125,13 @@ class GraphApp {
           this.activePwDragIdx !== null ||
           this.isPanning ||
           this.isBoardPanning ||
+          this._isInteractingWithPipCard ||
           (typeof e.buttons === 'number' && e.buttons > 0)
         );
         this.recordAudioCursorPoint(e.clientX, e.clientY, this.currentInkColor || '#00d2d3', isDown);
       };
-      window.addEventListener('pointermove', (e) => handleAudioPointerSample(e, false), { passive: true });
-      window.addEventListener('pointerdown', (e) => handleAudioPointerSample(e, true), { passive: true });
+      window.addEventListener('pointermove', (e) => handleAudioPointerSample(e, false), { passive: true, capture: true });
+      window.addEventListener('pointerdown', (e) => handleAudioPointerSample(e, true), { passive: true, capture: true });
       const recordAfterUiInteraction = () => {
         if (!this.isAudioRecording || this.isAudioRecordPaused || this.isPdfModalOpen) return;
         if (this.isDrawingInk || this.isStylusDrawing || this.isDrawingLaser) return;
@@ -41026,8 +41142,8 @@ class GraphApp {
           if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
         }, 35);
       };
-      window.addEventListener('pointerup', recordAfterUiInteraction, { passive: true });
-      window.addEventListener('click', recordAfterUiInteraction, { passive: true });
+      window.addEventListener('pointerup', recordAfterUiInteraction, { passive: true, capture: true });
+      window.addEventListener('click', recordAfterUiInteraction, { passive: true, capture: true });
     }
   }
 
@@ -41648,6 +41764,67 @@ class GraphApp {
     return 'data:audio/wav;base64,' + btoa(binary);
   }
 
+  _extractCompactPipSnapForAudio(cardRef, fallbackW = 360, fallbackAspect = 0.82) {
+    const r1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
+    const r3 = (v) => Math.round((Number(v) || 0) * 1000) / 1000;
+    const r4 = (v) => Math.round((Number(v) || 0) * 10000) / 10000;
+    const raw = this._getPipCardSnapshot(cardRef);
+    if (!raw || typeof raw !== 'object') return null;
+    const clonedGraphs = JSON.parse(JSON.stringify(raw.graphs || []));
+    clonedGraphs.forEach(g => {
+      if (!g) return;
+      delete g._screenPts;
+      if (Array.isArray(g.handles)) {
+        g.handles.forEach(h => {
+          if (h && typeof h.x === 'number') h.x = r4(h.x);
+          if (h && typeof h.y === 'number') h.y = r4(h.y);
+        });
+      }
+      if (g.freezeOffset) {
+        if (typeof g.freezeOffset.x === 'number') g.freezeOffset.x = r4(g.freezeOffset.x);
+        if (typeof g.freezeOffset.y === 'number') g.freezeOffset.y = r4(g.freezeOffset.y);
+      }
+      if (Array.isArray(g.transforms)) {
+        g.transforms.forEach(tr => {
+          if (tr && tr.offset) {
+            if (typeof tr.offset.x === 'number') tr.offset.x = r4(tr.offset.x);
+            if (typeof tr.offset.y === 'number') tr.offset.y = r4(tr.offset.y);
+          }
+        });
+      }
+    });
+    const w = r1(raw._pipCardW || fallbackW || 360);
+    const aspect = r3(raw.aspect || fallbackAspect || 0.82);
+    const h = r1(raw._pipCardH || Math.max(120, Math.round(w * aspect)));
+    return {
+      graphs: clonedGraphs,
+      activeGraphIdx: typeof raw.activeGraphIdx === 'number' ? raw.activeGraphIdx : (clonedGraphs.length > 0 ? 0 : -1),
+      isCurveSelected: Boolean(raw.isCurveSelected),
+      selectedHandleIdx: raw.selectedHandleIdx ?? null,
+      draggedHandleIdx: raw.draggedHandleIdx ?? null,
+      panX: r1(raw.panX || 0),
+      panY: r1(raw.panY || 0),
+      zoomLevel: r3(raw.zoomLevel || 1.0),
+      xSpan: r3(raw.xSpan || 8.5),
+      ySpan: r3(raw.ySpan || 6.0),
+      showAxes: raw.showAxes !== false,
+      showGuides: Boolean(raw.showGuides),
+      usePiecewise: Boolean(raw.usePiecewise),
+      piecewiseBoundaries: (raw.piecewiseBoundaries || []).map(v => r4(v)),
+      piecewiseFuncMap: JSON.parse(JSON.stringify(raw.piecewiseFuncMap || [])),
+      piecewiseInclusions: JSON.parse(JSON.stringify(raw.piecewiseInclusions || [])),
+      isPiecewisePeriodic: Boolean(raw.isPiecewisePeriodic),
+      periodicStepY: typeof raw.periodicStepY === 'number' ? r3(raw.periodicStepY) : 0,
+      isPiecewiseLocked: Boolean(raw.isPiecewiseLocked),
+      dropLines: JSON.parse(JSON.stringify(raw.dropLines || [])),
+      textLabels: JSON.parse(JSON.stringify(raw.textLabels || [])),
+      isPipLocked: Boolean(raw.isPipLocked),
+      aspect,
+      _pipCardW: w,
+      _pipCardH: h
+    };
+  }
+
   _captureAudioWorkspaceKeyframe() {
     const r1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
     const r3 = (v) => Math.round((Number(v) || 0) * 1000) / 1000;
@@ -41656,13 +41833,20 @@ class GraphApp {
     const gWidget = document.getElementById('graphCardWidget');
     const probW = pWidget ? (parseFloat(pWidget.style.width) || pWidget.offsetWidth || 520) : 520;
     const graphW = gWidget ? (parseFloat(gWidget.style.width) || gWidget.offsetWidth || 260) : 260;
-    const extraGraphStates = (this.extraGraphCards || []).map(c => ({
-      baseX: r1(c && typeof c.baseX === 'number' ? c.baseX : 560),
-      baseY: r1(c && typeof c.baseY === 'number' ? c.baseY : 68),
-      pdfAnchor: (c && (c.el && c.el._pdfAnchor || c.pdfAnchor)) ? { ...(c.el && c.el._pdfAnchor || c.pdfAnchor) } : null,
-      w: r1((c && c.el) ? (parseFloat(c.el.style.width) || c.el.offsetWidth || 260) : 260),
-      min: Boolean(c && (c.isMin || (c.el && c.el.classList.contains('minimized'))))
-    }));
+    const extraGraphStates = (this.extraGraphCards || []).map(c => {
+      const cw = r1((c && c.el) ? (parseFloat(c.el.style.width) || c.el.offsetWidth || 260) : 260);
+      const cAspect = r3((c && typeof c.aspect === 'number') ? c.aspect : 0.82);
+      return {
+        baseX: r1(c && typeof c.baseX === 'number' ? c.baseX : 560),
+        baseY: r1(c && typeof c.baseY === 'number' ? c.baseY : 68),
+        pdfAnchor: (c && (c.el && c.el._pdfAnchor || c.pdfAnchor)) ? { ...(c.el && c.el._pdfAnchor || c.pdfAnchor) } : null,
+        w: cw,
+        aspect: cAspect,
+        min: Boolean(c && (c.isMin || (c.el && c.el.classList.contains('minimized')))),
+        inkActive: Boolean(c && c.el && c.el.classList.contains('card-ink-active')),
+        pipSnap: c ? this._extractCompactPipSnapForAudio(c, cw, cAspect) : null
+      };
+    });
     const extraProbStates = (this.extraProblemCards || []).map(c => ({
       baseX: r1(c && typeof c.baseX === 'number' ? c.baseX : 72),
       baseY: r1(c && typeof c.baseY === 'number' ? c.baseY : 120),
@@ -41740,6 +41924,10 @@ class GraphApp {
     const pillRemoteModules = this.pillModules ? { ...this.pillModules } : null;
     const stageW = Math.round(this.screenWidth || window.innerWidth || 1440);
     const stageH = Math.round(this.screenHeight || window.innerHeight || 900);
+    const graphCardAspectVal = r3(this.graphCardAspect || 0.82);
+    const graphCardPipSnap = (this._hasPrimaryGraphCard && this.graphCardData)
+      ? this._extractCompactPipSnapForAudio('primary', graphW, graphCardAspectVal)
+      : null;
     return {
       stageW,
       stageH,
@@ -41808,6 +41996,9 @@ class GraphApp {
       graphCardBaseY: typeof this.graphCardBaseY === 'number' ? r1(this.graphCardBaseY) : this.graphCardBaseY,
       graphCardPdfAnchor: (gWidget && gWidget._pdfAnchor || this.graphCardPdfAnchor) ? { ...(gWidget && gWidget._pdfAnchor || this.graphCardPdfAnchor) } : null,
       graphCardW: r1(graphW),
+      graphCardAspect: graphCardAspectVal,
+      graphCardInkActive: Boolean(gWidget && gWidget.classList.contains('card-ink-active')),
+      graphCardPipSnap,
       extraGraphsCount: (this.extraGraphCards || []).length,
       extraGraphStates,
       extraProbsCount: (this.extraProblemCards || []).length,
@@ -41908,25 +42099,89 @@ class GraphApp {
       }
 
       const gWidget = document.getElementById('graphCardWidget');
-      if (gWidget && this._hasPrimaryGraphCard && this.graphCardData) {
-        gWidget.style.display = (kf.graphCardVisible && this.isGraphCovered) ? 'flex' : 'none';
-        gWidget.classList.toggle('minimized', Boolean(kf.graphCardMin));
-        this.isGraphCardMinimized = Boolean(kf.graphCardMin);
-        if (kf.graphCardPdfAnchor) {
-          this.graphCardPdfAnchor = { ...kf.graphCardPdfAnchor };
-          gWidget._pdfAnchor = { ...kf.graphCardPdfAnchor };
+      if (gWidget) {
+        if (kf.graphCardVisible) {
+          this._hasPrimaryGraphCard = true;
+          if (!this.graphCardData) {
+            this.graphCardData = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+          }
         }
-        if (typeof kf.graphCardBaseX === 'number') {
-          this.graphCardBaseX = kf.graphCardBaseX;
-          gWidget.style.left = `${Math.round(kf.graphCardBaseX)}px`;
+        if (this._hasPrimaryGraphCard && this.graphCardData) {
+          gWidget.style.display = (kf.graphCardVisible && this.isGraphCovered) ? 'flex' : 'none';
+          gWidget.classList.toggle('minimized', Boolean(kf.graphCardMin));
+          this.isGraphCardMinimized = Boolean(kf.graphCardMin);
+          if (kf.graphCardInkActive !== undefined) {
+            const inkOn = Boolean(kf.graphCardInkActive);
+            gWidget.classList.toggle('card-ink-active', inkOn);
+            const btnInk = gWidget.querySelector('.btn-card-ink');
+            if (btnInk) btnInk.classList.toggle('active', inkOn);
+          }
+          if (kf.graphCardPdfAnchor) {
+            this.graphCardPdfAnchor = { ...kf.graphCardPdfAnchor };
+            gWidget._pdfAnchor = { ...kf.graphCardPdfAnchor };
+          }
+          if (typeof kf.graphCardBaseX === 'number') {
+            this.graphCardBaseX = kf.graphCardBaseX;
+            gWidget.style.left = `${Math.round(kf.graphCardBaseX)}px`;
+          }
+          if (typeof kf.graphCardBaseY === 'number') {
+            this.graphCardBaseY = kf.graphCardBaseY;
+            gWidget.style.top = `${Math.round(kf.graphCardBaseY)}px`;
+          }
+          if (typeof kf.graphCardAspect === 'number' && kf.graphCardAspect > 0.1) {
+            this.graphCardAspect = kf.graphCardAspect;
+          }
+          const targetCardW = (typeof kf.graphCardW === 'number' && kf.graphCardW >= 140)
+            ? Math.round(kf.graphCardW)
+            : (parseFloat(gWidget.style.width) || gWidget.offsetWidth || 360);
+          if (!kf.graphCardMin) {
+            gWidget.style.width = `${targetCardW}px`;
+          }
+          if (kf.graphCardPipSnap && typeof kf.graphCardPipSnap === 'object') {
+            const clonedPipSnap = JSON.parse(JSON.stringify(kf.graphCardPipSnap));
+            if (typeof clonedPipSnap.aspect === 'number' && clonedPipSnap.aspect > 0.1) {
+              this.graphCardAspect = clonedPipSnap.aspect;
+            }
+            const effAspect = this.graphCardAspect || 0.82;
+            const targetCardH = Math.max(120, Math.round(targetCardW * effAspect));
+            clonedPipSnap._pipCardW = targetCardW;
+            clonedPipSnap._pipCardH = targetCardH;
+            this._savePipCardSnapshot('primary', clonedPipSnap);
+            const bodyEl = document.getElementById('graphCardBody') || gWidget.querySelector('.problem-card-body');
+            if (bodyEl && !kf.graphCardMin) {
+              bodyEl.style.height = `${targetCardH}px`;
+            }
+            if (typeof this._reprojectPipCardInkFromMathCoords === 'function') {
+              this._reprojectPipCardInkFromMathCoords('primary', targetCardW, targetCardH);
+            }
+          }
+          if (typeof this.syncGraphCardRectFromWidget === 'function' && !kf.graphCardMin) {
+            this.syncGraphCardRectFromWidget();
+          }
+        } else {
+          gWidget.style.display = 'none';
         }
-        if (typeof kf.graphCardBaseY === 'number') {
-          this.graphCardBaseY = kf.graphCardBaseY;
-          gWidget.style.top = `${Math.round(kf.graphCardBaseY)}px`;
-        }
-        if (typeof kf.graphCardW === 'number' && kf.graphCardW >= 140 && !kf.graphCardMin) {
-          gWidget.style.width = `${Math.round(kf.graphCardW)}px`;
-          if (typeof this.syncGraphCardRectFromWidget === 'function') this.syncGraphCardRectFromWidget();
+      }
+
+      const targetExtraGraphCount = typeof kf.extraGraphsCount === 'number'
+        ? kf.extraGraphsCount
+        : (Array.isArray(kf.extraGraphStates) ? kf.extraGraphStates.length : 0);
+      if (targetExtraGraphCount > (this.extraGraphCards ? this.extraGraphCards.length : 0) && Array.isArray(kf.extraGraphStates)) {
+        if (!this.extraGraphCards) this.extraGraphCards = [];
+        for (let idx = this.extraGraphCards.length; idx < targetExtraGraphCount; idx++) {
+          const st = kf.extraGraphStates[idx];
+          if (!st || typeof this.spawnExtraGraphArchiveCard !== 'function') break;
+          this.spawnExtraGraphArchiveCard(
+            'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+            st.aspect || 0.82,
+            st.pipSnap ? JSON.parse(JSON.stringify(st.pipSnap)) : null,
+            [],
+            [],
+            typeof st.baseX === 'number' ? st.baseX : 560,
+            typeof st.baseY === 'number' ? st.baseY : 68,
+            typeof st.w === 'number' ? st.w : 360,
+            Boolean(st.min)
+          );
         }
       }
 
@@ -41949,8 +42204,41 @@ class GraphApp {
                 c.baseY = st.baseY;
                 c.el.style.top = `${Math.round(st.baseY)}px`;
               }
-              if (typeof st.w === 'number' && st.w >= 140 && !st.min) {
-                c.el.style.width = `${Math.round(st.w)}px`;
+              if (st.inkActive !== undefined) {
+                const inkOn = Boolean(st.inkActive);
+                c.el.classList.toggle('card-ink-active', inkOn);
+                const btnInk = c.el.querySelector('.btn-card-ink');
+                if (btnInk) btnInk.classList.toggle('active', inkOn);
+              }
+              if (typeof st.aspect === 'number' && st.aspect > 0.1) {
+                c.aspect = st.aspect;
+              }
+              const cw = (typeof st.w === 'number' && st.w >= 140)
+                ? Math.round(st.w)
+                : (parseFloat(c.el.style.width) || c.el.offsetWidth || 360);
+              if (!st.min) {
+                c.el.style.width = `${cw}px`;
+              }
+              if (st.pipSnap && typeof st.pipSnap === 'object') {
+                const clonedExtraSnap = JSON.parse(JSON.stringify(st.pipSnap));
+                if (typeof clonedExtraSnap.aspect === 'number' && clonedExtraSnap.aspect > 0.1) {
+                  c.aspect = clonedExtraSnap.aspect;
+                }
+                const effAspect = c.aspect || 0.82;
+                const ch = Math.max(120, Math.round(cw * effAspect));
+                clonedExtraSnap._pipCardW = cw;
+                clonedExtraSnap._pipCardH = ch;
+                this._savePipCardSnapshot(c, clonedExtraSnap);
+                const bodyEl = c.el.querySelector('.problem-card-body');
+                if (bodyEl && !st.min) {
+                  bodyEl.style.height = `${ch}px`;
+                }
+                if (typeof this._reprojectPipCardInkFromMathCoords === 'function') {
+                  this._reprojectPipCardInkFromMathCoords(c, cw, ch);
+                }
+              }
+              if (!st.min) {
+                if (typeof this.renderPipGraphCard === 'function') this.renderPipGraphCard(c);
                 if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
               }
               c.isMin = Boolean(st.min);
@@ -42292,6 +42580,7 @@ class GraphApp {
       this.isGraphSnapDragging ||
       this.isPdfToGraphCropDragging ||
       this._isDraggingOrResizingAnyCard ||
+      this._isInteractingWithPipCard ||
       this.isDrawingSticker ||
       Boolean(this._activeCardStickerDraft) ||
       this.isLassoSelecting
@@ -42328,6 +42617,9 @@ class GraphApp {
       kf.cardStickerDraft,
       kf.graphs,
       kf.activeGraphIdx,
+      kf.isCurveSelected,
+      kf.selectedHandleIdx,
+      kf.draggedHandleIdx,
       Math.round(kf.panX),
       Math.round(kf.panY),
       kf.zoomLevel,
@@ -42358,6 +42650,9 @@ class GraphApp {
       kf.graphCardBaseX,
       kf.graphCardBaseY,
       Math.round(kf.graphCardW || 0),
+      kf.graphCardAspect,
+      kf.graphCardInkActive,
+      kf.graphCardPipSnap,
       kf.extraGraphsCount,
       kf.extraGraphStates,
       kf.extraProbStates,
@@ -42380,6 +42675,14 @@ class GraphApp {
     if (cardEl.id === 'problemCardWidget') return 'problem_main';
     if (cardEl.id === 'graphCardWidget') return 'graph_main';
     if (cardEl.id) return cardEl.id;
+    if (Array.isArray(this.extraGraphCards)) {
+      const gIdx = this.extraGraphCards.findIndex(c => c && c.el === cardEl);
+      if (gIdx >= 0) return `graph_extra_${gIdx}`;
+    }
+    if (Array.isArray(this.extraProblemCards)) {
+      const pIdx = this.extraProblemCards.findIndex(c => c && c.el === cardEl);
+      if (pIdx >= 0) return `problem_extra_${pIdx}`;
+    }
     return null;
   }
 
@@ -42387,6 +42690,18 @@ class GraphApp {
     if (!cardKey) return null;
     if (cardKey === 'problem_main') return document.getElementById('problemCardWidget');
     if (cardKey === 'graph_main') return document.getElementById('graphCardWidget');
+    if (typeof cardKey === 'string' && cardKey.startsWith('graph_extra_')) {
+      const idx = parseInt(cardKey.slice('graph_extra_'.length), 10);
+      if (!isNaN(idx) && this.extraGraphCards && this.extraGraphCards[idx]) {
+        return this.extraGraphCards[idx].el || null;
+      }
+    }
+    if (typeof cardKey === 'string' && cardKey.startsWith('problem_extra_')) {
+      const idx = parseInt(cardKey.slice('problem_extra_'.length), 10);
+      if (!isNaN(idx) && this.extraProblemCards && this.extraProblemCards[idx]) {
+        return this.extraProblemCards[idx].el || null;
+      }
+    }
     return document.getElementById(cardKey);
   }
 
@@ -42403,6 +42718,7 @@ class GraphApp {
       this.activePwDragIdx !== null ||
       this.isPanning ||
       this.isBoardPanning ||
+      this._isInteractingWithPipCard ||
       this.isMovingStage ||
       this.isResizingStage
     );
@@ -43409,6 +43725,74 @@ class GraphApp {
     }, { capture: true });
   }
 
+  _interpolatePipSnapForAudio(snapA, snapB, alpha, lerp) {
+    if (!snapA || typeof snapA !== 'object') return snapA;
+    if (!snapB || typeof snapB !== 'object') return snapA;
+    const mergedSnap = JSON.parse(JSON.stringify(snapA));
+    const isDiscreteJump = (((snapA.graphs && snapA.graphs.length) || 0) !== ((snapB.graphs && snapB.graphs.length) || 0));
+    if (!isDiscreteJump) {
+      mergedSnap.panX = lerp(snapA.panX || 0, snapB.panX || 0);
+      mergedSnap.panY = lerp(snapA.panY || 0, snapB.panY || 0);
+      mergedSnap.zoomLevel = lerp(snapA.zoomLevel || 1.0, snapB.zoomLevel || 1.0);
+      mergedSnap.xSpan = lerp(snapA.xSpan || 8.5, snapB.xSpan || 8.5);
+      mergedSnap.ySpan = lerp(snapA.ySpan || 6.0, snapB.ySpan || 6.0);
+    }
+    if (typeof snapA.aspect === 'number' && typeof snapB.aspect === 'number') {
+      mergedSnap.aspect = lerp(snapA.aspect, snapB.aspect);
+    }
+    if (typeof snapA._pipCardW === 'number' && typeof snapB._pipCardW === 'number') {
+      mergedSnap._pipCardW = lerp(snapA._pipCardW, snapB._pipCardW);
+    }
+    if (typeof snapA._pipCardH === 'number' && typeof snapB._pipCardH === 'number') {
+      mergedSnap._pipCardH = lerp(snapA._pipCardH, snapB._pipCardH);
+    }
+    mergedSnap.periodicStepY = lerp(snapA.periodicStepY || 0, snapB.periodicStepY || 0);
+    if (
+      Array.isArray(snapA.piecewiseBoundaries) &&
+      Array.isArray(snapB.piecewiseBoundaries) &&
+      snapA.piecewiseBoundaries.length === snapB.piecewiseBoundaries.length
+    ) {
+      mergedSnap.piecewiseBoundaries = snapA.piecewiseBoundaries.map((v, i) => lerp(v, snapB.piecewiseBoundaries[i]));
+    }
+    if (
+      Array.isArray(snapA.graphs) &&
+      Array.isArray(snapB.graphs) &&
+      snapA.graphs.length === snapB.graphs.length
+    ) {
+      for (let gIdx = 0; gIdx < mergedSnap.graphs.length; gIdx++) {
+        const gA = snapA.graphs[gIdx];
+        const gB = snapB.graphs[gIdx];
+        const gM = mergedSnap.graphs[gIdx];
+        if (!gA || !gB || gA.type !== gB.type) continue;
+        if (gA.freezeOffset && gB.freezeOffset) {
+          gM.freezeOffset = {
+            x: lerp(gA.freezeOffset.x || 0, gB.freezeOffset.x || 0),
+            y: lerp(gA.freezeOffset.y || 0, gB.freezeOffset.y || 0)
+          };
+        }
+        if (Array.isArray(gA.transforms) && Array.isArray(gB.transforms) && gA.transforms.length === gB.transforms.length) {
+          for (let tIdx = 0; tIdx < gM.transforms.length; tIdx++) {
+            const tA = gA.transforms[tIdx];
+            const tB = gB.transforms[tIdx];
+            if (tA && tB && tA.offset && tB.offset) {
+              gM.transforms[tIdx].offset = {
+                x: lerp(tA.offset.x || 0, tB.offset.x || 0),
+                y: lerp(tA.offset.y || 0, tB.offset.y || 0)
+              };
+            }
+          }
+        }
+        if (Array.isArray(gA.handles) && Array.isArray(gB.handles) && gA.handles.length === gB.handles.length) {
+          for (let hIdx = 0; hIdx < gM.handles.length; hIdx++) {
+            gM.handles[hIdx].x = lerp(gA.handles[hIdx].x, gB.handles[hIdx].x);
+            gM.handles[hIdx].y = lerp(gA.handles[hIdx].y, gB.handles[hIdx].y);
+          }
+        }
+      }
+    }
+    return mergedSnap;
+  }
+
   _interpolateAudioWorkspaceKeyframes(kfA, kfB, alpha) {
     if (!kfA) return kfB;
     if (!kfB || alpha <= 0) return kfA;
@@ -43444,6 +43828,12 @@ class GraphApp {
     merged.graphCardBaseX = lerp(kfA.graphCardBaseX, kfB.graphCardBaseX);
     merged.graphCardBaseY = lerp(kfA.graphCardBaseY, kfB.graphCardBaseY);
     merged.graphCardW = lerp(kfA.graphCardW || 260, kfB.graphCardW || 260);
+    if (typeof kfA.graphCardAspect === 'number' && typeof kfB.graphCardAspect === 'number') {
+      merged.graphCardAspect = lerp(kfA.graphCardAspect, kfB.graphCardAspect);
+    }
+    if (kfA.graphCardPipSnap && kfB.graphCardPipSnap) {
+      merged.graphCardPipSnap = this._interpolatePipSnapForAudio(kfA.graphCardPipSnap, kfB.graphCardPipSnap, alpha, lerp);
+    }
     merged.pillRemoteLeft = lerp(kfA.pillRemoteLeft || 605, kfB.pillRemoteLeft || 605);
     merged.pillRemoteTop = lerp(kfA.pillRemoteTop || 76, kfB.pillRemoteTop || 76);
     if (typeof kfA.pillRemoteNormX === 'number' && typeof kfB.pillRemoteNormX === 'number') {
@@ -43463,7 +43853,9 @@ class GraphApp {
           ...stA,
           baseX: lerp(stA.baseX, stB.baseX),
           baseY: lerp(stA.baseY, stB.baseY),
-          w: lerp(stA.w || 260, stB.w || 260)
+          w: lerp(stA.w || 260, stB.w || 260),
+          aspect: (typeof stA.aspect === 'number' && typeof stB.aspect === 'number') ? lerp(stA.aspect, stB.aspect) : stA.aspect,
+          pipSnap: (stA.pipSnap && stB.pipSnap) ? this._interpolatePipSnapForAudio(stA.pipSnap, stB.pipSnap, alpha, lerp) : stA.pipSnap
         };
       });
     }
