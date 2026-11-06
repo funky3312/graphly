@@ -3971,22 +3971,20 @@ class GraphApp {
     return { x, y, w, h };
   }
 
-  findBoardStickerAtScreenPos(pos) {
+  findBoardStickerAtScreenPos(pos, radius = 0) {
     if (!pos || !Array.isArray(this.boardStickers) || this.boardStickers.length === 0) return null;
+    const r = (typeof radius === 'number' && radius > 0) ? radius : 0;
     for (let i = this.boardStickers.length - 1; i >= 0; i--) {
       const stk = this.boardStickers[i];
       const rect = this.getBoardStickerScreenRect(stk);
       if (!rect || rect.w < 4 || rect.h < 4) continue;
-      if (pos.x >= rect.x && pos.x <= rect.x + rect.w && pos.y >= rect.y && pos.y <= rect.y + rect.h) {
-        const isDeleteBtn = (
-          rect.w >= 34 &&
-          rect.h >= 22 &&
-          pos.x >= rect.x + rect.w - 22 &&
-          pos.x <= rect.x + rect.w &&
-          pos.y >= rect.y &&
-          pos.y <= rect.y + 22
-        );
-        return { sticker: stk, index: i, rect, isDeleteBtn };
+      if (
+        pos.x >= rect.x - r &&
+        pos.x <= rect.x + rect.w + r &&
+        pos.y >= rect.y - r &&
+        pos.y <= rect.y + rect.h + r
+      ) {
+        return { sticker: stk, index: i, rect, isDeleteBtn: false };
       }
     }
     return null;
@@ -4011,6 +4009,46 @@ class GraphApp {
     const stk = this.boardStickers.find(s => s && s.id === stickerId);
     if (!stk) return false;
     return this.deleteBoardSticker(stk);
+  }
+
+  eraseCardStickerAtNormalizedPoint(cardWidgetEl, nx, ny, w = 1, h = 1, radiusPx = null) {
+    if (!cardWidgetEl) return false;
+    const curArr = this.getCardStickersArray(cardWidgetEl);
+    if (!Array.isArray(curArr) || curArr.length === 0) return false;
+    const rPx = (typeof radiusPx === 'number' && !isNaN(radiusPx)) ? radiusPx : Math.max(6, (this.currentEraserSize || 14) * 1.25);
+    const rx = rPx / Math.max(1, w);
+    const ry = rPx / Math.max(1, h);
+    let erased = false;
+    for (let i = curArr.length - 1; i >= 0; i--) {
+      const stk = curArr[i];
+      if (!stk) continue;
+      if (
+        nx >= stk.nx - rx &&
+        nx <= stk.nx + stk.nw + rx &&
+        ny >= stk.ny - ry &&
+        ny <= stk.ny + stk.nh + ry
+      ) {
+        const removed = curArr.splice(i, 1)[0];
+        this.undoStack.push({
+          type: 'card_sticker_delete',
+          cardEl: cardWidgetEl,
+          stickersArr: curArr,
+          sticker: removed,
+          renderFn: () => {
+            if (typeof cardWidgetEl._renderCardStickers === 'function') cardWidgetEl._renderCardStickers();
+          }
+        });
+        if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+        this.redoStack = [];
+        this.updateUndoRedoUI();
+        erased = true;
+      }
+    }
+    if (erased) {
+      if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+      if (typeof cardWidgetEl._renderCardStickers === 'function') cardWidgetEl._renderCardStickers();
+    }
+    return erased;
   }
 
   syncWorkspaceStickerOverlay() {
@@ -4060,40 +4098,23 @@ class GraphApp {
           badgeEl.className = 'card-sticker-badge';
           itemEl.appendChild(badgeEl);
 
-          const delBtn = document.createElement('button');
-          delBtn.type = 'button';
-          delBtn.className = 'card-sticker-del-btn';
-          delBtn.title = '스티커 삭제';
-          delBtn.textContent = '✕';
-          const handleDelSticker = (ev) => {
-            if (ev && ev.button && ev.button !== 0) return;
-            ev.preventDefault();
-            ev.stopPropagation();
-            this.removeBoardStickerById(stk.id);
-          };
-          delBtn.addEventListener('pointerdown', handleDelSticker);
-          delBtn.addEventListener('click', handleDelSticker);
-          itemEl.appendChild(delBtn);
-
           let downPt = null;
           itemEl.addEventListener('pointerdown', (ev) => {
-            if (ev.target && ev.target.closest && ev.target.closest('.card-sticker-del-btn')) return;
             if (this.isInkMode && this.activeInkTool === 'sticker') return;
             ev.preventDefault();
             ev.stopPropagation();
-            if (this.isInkMode && this.activeInkTool === 'eraser') {
+            if ((this.isInkMode && this.activeInkTool === 'eraser') || (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev))) {
               this.removeBoardStickerById(stk.id);
               return;
             }
             downPt = { x: ev.clientX, y: ev.clientY };
           });
           itemEl.addEventListener('pointerenter', (ev) => {
-            if (this.isInkMode && this.activeInkTool === 'eraser' && ev.buttons > 0) {
+            if (((this.isInkMode && this.activeInkTool === 'eraser') || (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev))) && ev.buttons > 0) {
               this.removeBoardStickerById(stk.id);
             }
           });
           itemEl.addEventListener('pointerup', (ev) => {
-            if (ev.target && ev.target.closest && ev.target.closest('.card-sticker-del-btn')) return;
             if (this.isInkMode && this.activeInkTool === 'sticker') return;
             if (!downPt) return;
             const dist = Math.hypot(ev.clientX - downPt.x, ev.clientY - downPt.y);
@@ -4190,19 +4211,6 @@ class GraphApp {
             ctx.textBaseline = 'top';
             ctx.fillText('🔓', x + 5, y + 4);
           }
-          if (this._hoveredBoardStickerId === stk.id && w >= 34 && h >= 22) {
-            const bx = x + w - 11;
-            const by = y + 11;
-            ctx.beginPath();
-            ctx.arc(bx, by, 8.5, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.74)';
-            ctx.fill();
-            ctx.fillStyle = '#ffffff';
-            ctx.font = '700 10px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('✕', bx, by + 0.5);
-          }
           ctx.restore();
         } else {
           ctx.save();
@@ -4256,20 +4264,6 @@ class GraphApp {
             ctx.textBaseline = 'middle';
             ctx.fillText(labelText, x + w / 2, y + h / 2 + 0.5);
           }
-
-          if (!isExport && this._hoveredBoardStickerId === stk.id && w >= 34 && h >= 22) {
-            const bx = x + w - 11;
-            const by = y + 11;
-            ctx.beginPath();
-            ctx.arc(bx, by, 8.5, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.74)';
-            ctx.fill();
-            ctx.fillStyle = '#ffffff';
-            ctx.font = '700 10px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('✕', bx, by + 0.5);
-          }
           ctx.restore();
         }
       }
@@ -4300,7 +4294,7 @@ class GraphApp {
   eraseInkAtPoint(screenX, screenY, eraseRadius = null) {
     eraseRadius = (typeof eraseRadius === 'number' && !isNaN(eraseRadius)) ? eraseRadius : (this.currentEraserSize || 14);
     if (Array.isArray(this.boardStickers) && this.boardStickers.length > 0) {
-      const hitStk = this.findBoardStickerAtScreenPos({ x: screenX, y: screenY });
+      const hitStk = this.findBoardStickerAtScreenPos({ x: screenX, y: screenY }, eraseRadius);
       if (hitStk && hitStk.sticker) {
         this.deleteBoardSticker(hitStk.sticker);
       }
@@ -9876,6 +9870,10 @@ class GraphApp {
 
   eraseProblemInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null) {
     radiusPx = (typeof radiusPx === 'number' && !isNaN(radiusPx)) ? radiusPx : Math.max(6, (this.currentEraserSize || 14) * 1.25);
+    const pWidget = document.getElementById('problemCardWidget');
+    if (pWidget) {
+      this.eraseCardStickerAtNormalizedPoint(pWidget, nx, ny, w, h, radiusPx);
+    }
     if (!this.problemInkStrokes || this.problemInkStrokes.length === 0) return;
     const sx = nx * w;
     const sy = ny * h;
@@ -11366,6 +11364,14 @@ class GraphApp {
 
       const eraseExtraCardAtPoint = (sx, sy, rw, rh) => {
         const extraEraseR = Math.max(6, (this.currentEraserSize || 14) * 1.25);
+        this.eraseCardStickerAtNormalizedPoint(
+          cardWidgetEl,
+          sx / Math.max(1, rw),
+          sy / Math.max(1, rh),
+          rw,
+          rh,
+          extraEraseR
+        );
         cardWidgetEl._cardInkStrokes = (cardWidgetEl._cardInkStrokes || []).filter(st => {
           if (!st || !st.points || st.points.length === 0) return false;
           for (let i = 0; i < st.points.length; i++) {
@@ -11838,18 +11844,11 @@ class GraphApp {
 
         const badgeEl = document.createElement('span');
         badgeEl.className = 'card-sticker-badge';
-        badgeEl.textContent = stk.revealed ? '🔓' : '🔒 터치';
+        const closedBadgeLabel = (stk.nw >= 0.15 && stk.nh >= 0.07) ? '🔒 터치' : '🔒';
+        badgeEl.textContent = stk.revealed ? '🔓' : closedBadgeLabel;
         itemEl.appendChild(badgeEl);
 
-        const delBtn = document.createElement('button');
-        delBtn.type = 'button';
-        delBtn.className = 'card-sticker-del-btn';
-        delBtn.title = '스티커 삭제';
-        delBtn.textContent = '✕';
-        const handleDelCardSticker = (ev) => {
-          if (ev && ev.button && ev.button !== 0) return;
-          ev.preventDefault();
-          ev.stopPropagation();
+        const removeThisCardSticker = () => {
           const curArr = this.getCardStickersArray(cardWidgetEl);
           const idx = curArr.findIndex(s => s === stk || (s && stk && s.id && s.id === stk.id));
           if (idx !== -1) {
@@ -11868,44 +11867,29 @@ class GraphApp {
             renderCardStickers();
           }
         };
-        delBtn.addEventListener('pointerdown', handleDelCardSticker);
-        delBtn.addEventListener('click', handleDelCardSticker);
-        itemEl.appendChild(delBtn);
 
         let downPt = null;
         itemEl.addEventListener('pointerdown', (ev) => {
-          if (ev.target && ev.target.closest && ev.target.closest('.card-sticker-del-btn')) return;
           if (this.isInkMode && this.activeInkTool === 'sticker') {
             // 스티커 도구 활성 상태에서는 살짝 드래그하면 새 스티커 생성, 제자리 탭이면 토글하도록 부모(bodyEl)에 위임
             return;
           }
           ev.preventDefault();
           ev.stopPropagation();
-          if (this.isInkMode && this.activeInkTool === 'eraser') {
-            const curArr = this.getCardStickersArray(cardWidgetEl);
-            const idx = curArr.indexOf(stk);
-            if (idx !== -1) {
-              curArr.splice(idx, 1);
-              this.undoStack.push({
-                type: 'card_sticker_delete',
-                cardEl: cardWidgetEl,
-                stickersArr: curArr,
-                sticker: stk,
-                renderFn: renderCardStickers
-              });
-              if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
-              this.redoStack = [];
-              this.updateUndoRedoUI();
-              if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
-              renderCardStickers();
-            }
+          if ((this.isInkMode && this.activeInkTool === 'eraser') || (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev))) {
+            removeThisCardSticker();
             return;
           }
           downPt = { x: ev.clientX, y: ev.clientY };
         });
 
+        itemEl.addEventListener('pointerenter', (ev) => {
+          if (((this.isInkMode && this.activeInkTool === 'eraser') || (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev))) && ev.buttons > 0) {
+            removeThisCardSticker();
+          }
+        });
+
         itemEl.addEventListener('pointerup', (ev) => {
-          if (ev.target && ev.target.closest && ev.target.closest('.card-sticker-del-btn')) return;
           if (this.isInkMode && this.activeInkTool === 'sticker') return;
           if (!downPt) return;
           const dist = Math.hypot(ev.clientX - downPt.x, ev.clientY - downPt.y);
@@ -11915,7 +11899,7 @@ class GraphApp {
             ev.stopPropagation();
             stk.revealed = !stk.revealed;
             itemEl.classList.toggle('revealed', stk.revealed);
-            badgeEl.textContent = stk.revealed ? '🔓' : '🔒 터치';
+            badgeEl.textContent = stk.revealed ? '🔓' : closedBadgeLabel;
             if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
           }
         });
@@ -11935,7 +11919,6 @@ class GraphApp {
     bodyEl.addEventListener('pointerdown', (e) => {
       if (!(this.isInkMode && this.activeInkTool === 'sticker')) return;
       if (e.button && e.button !== 0) return;
-      if (e.target && e.target.closest && e.target.closest('.card-sticker-del-btn')) return;
       if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) return;
 
       const hitItemEl = (e.target && e.target.closest) ? e.target.closest('.card-sticker-item') : null;
@@ -13965,6 +13948,10 @@ class GraphApp {
 
   eraseGraphCardInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null) {
     radiusPx = (typeof radiusPx === 'number' && !isNaN(radiusPx)) ? radiusPx : Math.max(6, (this.currentEraserSize || 14) * 1.25);
+    const gWidget = document.getElementById('graphCardWidget');
+    if (gWidget) {
+      this.eraseCardStickerAtNormalizedPoint(gWidget, nx, ny, w, h, radiusPx);
+    }
     if (!this.graphInkStrokes || this.graphInkStrokes.length === 0) return;
     const tx = nx * w;
     const ty = ny * h;
@@ -32412,14 +32399,10 @@ class GraphApp {
         }
       }
 
-      // 🟨 [칠판 위 가림막 '스티커' 원터치 열림/닫힘 토글 & 삭제 & 연속 드래그 생성]
+      // 🟨 [칠판 위 가림막 '스티커' 원터치 열림/닫힘 토글 & 연속 드래그 생성]
       if (!isFingerOrPalmTouch && this.activeInkTool !== 'eraser' && !this.isStylusEraserEvent(e)) {
         const hitSticker = this.findBoardStickerAtScreenPos(pos);
         if (hitSticker && hitSticker.sticker) {
-          if (hitSticker.isDeleteBtn) {
-            this.deleteBoardSticker(hitSticker.sticker);
-            return;
-          }
           if (this.isInkMode && this.activeInkTool === 'sticker') {
             this._pendingStickerTap = hitSticker.sticker;
             this.isDrawingSticker = true;

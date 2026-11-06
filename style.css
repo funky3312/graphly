@@ -11930,10 +11930,6 @@ body.ink-sticker-tool-active .workspace-sticker-overlay .workspace-sticker-item 
   pointer-events: none !important;
 }
 
-body.ink-sticker-tool-active .workspace-sticker-overlay .workspace-sticker-item .card-sticker-del-btn {
-  pointer-events: auto !important;
-}
-
 .card-stickers-layer {
   position: absolute;
   inset: 0;
@@ -12019,43 +12015,8 @@ body.ink-sticker-tool-active .workspace-sticker-overlay .workspace-sticker-item 
 }
 
 .card-sticker-del-btn {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(15, 23, 42, 0.68);
-  color: #ffffff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer !important;
-  opacity: 0;
-  transition: opacity 0.14s ease, background 0.14s ease;
-  padding: 0;
-  z-index: 2;
-}
-
-.card-sticker-item:hover .card-sticker-del-btn,
-body.ink-sticker-tool-active .card-sticker-del-btn,
-.card-sticker-del-btn:hover {
-  opacity: 1;
-}
-
-@media (hover: none),
-(pointer: coarse) {
-  .card-sticker-del-btn {
-    opacity: 0.85;
-  }
-}
-
-.card-sticker-del-btn:hover {
-  background: #dc2626;
+  display: none !important;
+  pointer-events: none !important;
 }
 
 .card-sticker-draft,
