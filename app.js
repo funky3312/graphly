@@ -11222,6 +11222,9 @@ class GraphApp {
         }
         if (finishedSt && finishedSt.points && finishedSt.points.length > 0) {
           if (this.isAudioRecording) finishedSt.tEnd = this.getAudioRecordElapsedMs();
+          if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
+            this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl);
+          }
           this.undoStack.push({
             type: 'card_stroke_add',
             strokesArr: cardWidgetEl._cardInkStrokes,
@@ -11250,8 +11253,12 @@ class GraphApp {
       laserBtn.classList.toggle('active', nextInkActive);
 
       if (nextInkActive) {
-        if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this.deselectAllPipGraphCards === 'function') {
-          this.deselectAllPipGraphCards();
+        if (cardWidgetEl.classList.contains('graph-card-widget')) {
+          if (typeof this.setPipCardLockedByWidget === 'function') {
+            this.setPipCardLockedByWidget(cardWidgetEl, true, false);
+          } else if (typeof this.deselectAllPipGraphCards === 'function') {
+            this.deselectAllPipGraphCards();
+          }
         }
         // 접혀 있는 상태에서 [✒️] 버튼을 켜면 자동으로 카드를 펼쳐서 즉시 필기 가능하도록 처리!
         if (cardWidgetEl.classList.contains('minimized') && typeof cardWidgetEl._toggleCardMin === 'function') {
@@ -12347,11 +12354,12 @@ class GraphApp {
   returnToCoveredBoard() {
     if (!this.hasBoardStateToReturn()) return;
     const hadEditingCard = Boolean(this._editingGraphCardTarget);
-    if (hadEditingCard && typeof this._syncFullGraphBackToEditingPipCard === 'function') {
+    const hasLiveGraphsToSync = Boolean(!hadEditingCard && Array.isArray(this.graphs) && this.graphs.length > 0 && !this._graphSessionArchived);
+    if ((hadEditingCard || hasLiveGraphsToSync) && typeof this._syncFullGraphBackToEditingPipCard === 'function') {
       this._syncFullGraphBackToEditingPipCard();
     }
     this._restoreBoardModeStateAfterGraph();
-    this.showToast(hadEditingCard
+    this.showToast((hadEditingCard || hasLiveGraphsToSync)
       ? '✅ 그래프 모드 편집 내용이 카드에 반영되었습니다!'
       : '📋 필기 모드로 돌아왔습니다.');
   }
@@ -12369,7 +12377,6 @@ class GraphApp {
     const hasGraphs = Boolean(this.graphs && this.graphs.length > 0);
     const hasReturn = this.hasBoardStateToReturn();
     const shouldShow = Boolean((hasGraphs || hasReturn) && !this.isGraphCovered && !this.isNAxisMode && !this.isPdfToGraphCropMode);
-    const snapActive = Boolean(this.isGraphSnapMode);
     const bar = this._snapBarEl || (this._snapBarEl = document.getElementById('graphSnapFloatingBar'));
     if (!bar) return;
 
@@ -12383,17 +12390,10 @@ class GraphApp {
       btnReturn.style.display = (shouldShow && hasReturn) ? 'inline-flex' : 'none';
     }
 
+    // 스샷 크롭 방식 [카드 추가] 버튼은 창모드(PiP) 일원화로 숨김 처리
     const btn = this._snapBtnEl || (this._snapBtnEl = document.getElementById('btnTriggerGraphSnap'));
-    const lbl = this._snapLblEl || (this._snapLblEl = document.getElementById('lblTriggerGraphSnap'));
     if (btn) {
-      btn.style.display = (shouldShow && (hasGraphs || hasReturn)) ? 'inline-flex' : 'none';
-    }
-    if (btn && lbl && this._lastSnapModeActive !== snapActive) {
-      btn.classList.toggle('active', snapActive);
-      lbl.textContent = snapActive
-        ? '취소'
-        : '카드 추가';
-      this._lastSnapModeActive = snapActive;
+      btn.style.display = 'none';
     }
   }
 
@@ -12759,10 +12759,16 @@ class GraphApp {
           </button>
         </div>
         <div class="problem-card-actions">
+          <button type="button" class="card-btn btn-card-lock-edit btn-extra-lock unlocked-editing" title="조작 중 — 클릭하면 현재 시야·비율을 고정(잠금)합니다">
+            <span class="card-lock-icon" style="display:inline-flex;align-items:center;gap:3px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+              <span class="card-lock-label">잠금</span>
+            </span>
+          </button>
           <button type="button" class="card-btn btn-card-add-func btn-extra-add-func" title="이 카드에 함수 추가 (한 카드에 여러 함수 겹쳐 그리기)">
             <span style="display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;line-height:1;">+</span>
           </button>
-          <button type="button" class="card-btn btn-card-laser" title="카드 위 필기 켜기/끄기 (꺼짐: 핸들 조작·카드 이동 / 켜짐: 카드 위 밑줄·필기)">
+          <button type="button" class="card-btn btn-card-laser" title="카드 위 필기 켜기/끄기 (클릭 시 자동으로 그래프 잠금 후 필기)">
             <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></span>
           </button>
           <button class="card-btn card-btn-restore btn-extra-restore" title="그래프 모드로 크게 열기 (교점·수선·구간분할 등 정밀 편집)">
@@ -12801,6 +12807,7 @@ class GraphApp {
         bodyEl.style.height = `${h}px`;
       }
       this.renderPipGraphCard(cardItem);
+      if (typeof el._renderCardInkCanvas === 'function') el._renderCardInkCanvas();
     };
     this.renderPipGraphCard(cardItem);
 
@@ -12926,28 +12933,21 @@ class GraphApp {
     window.addEventListener('pointerup', stopDrag);
     window.addEventListener('pointercancel', stopDrag);
 
-    // 우하단 리사이즈
+    // 우하단 리사이즈 (잠금 전: 그래프 크기 고정 + 현재 센터 기준 시야 자유 확장 / 잠금 후: 비율 고정 전체 확대·축소)
     const rHandle = el.querySelector('.problem-card-resize-handle');
     if (rHandle) {
-      let isResizing = false, rStartX = 0, rStartW = cardW;
+      let isResizing = false;
+      let resizeStartState = null;
       rHandle.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         e.stopPropagation();
         isResizing = true;
-        rStartX = e.clientX;
-        rStartW = parseFloat(el.style.width) || el.offsetWidth || el.getBoundingClientRect().width;
+        resizeStartState = this.capturePipCardResizeStart(cardItem, e);
       });
       window.addEventListener('pointermove', (e) => {
-        if (!isResizing) return;
+        if (!isResizing || !resizeStartState) return;
         this._isDraggingOrResizingAnyCard = true;
-        const curUS = (this.isGraphCovered && this.pdfPageBoardData && typeof this.getCurrentMathUnitScale === 'function')
-          ? this.getCurrentMathUnitScale()
-          : 0;
-        const scaleRatio = (curUS > 0 && el._pdfAnchor && el._pdfAnchor.unitScale > 0)
-          ? Math.max(0.2, Math.min(4.0, curUS / el._pdfAnchor.unitScale))
-          : ((this.isGraphCovered && !this.pdfPageBoardData) ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0)) : 1.0);
-        const nextW = Math.max(200, Math.min(window.innerWidth * 0.85, rStartW + ((e.clientX - rStartX) / scaleRatio)));
-        syncExtraSize(nextW);
+        this.applyPipCardResizeStep(cardItem, e, resizeStartState);
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(false);
         }
@@ -12955,6 +12955,7 @@ class GraphApp {
       const stopResize = () => {
         if (isResizing) {
           isResizing = false;
+          resizeStartState = null;
           this._isDraggingOrResizingAnyCard = false;
           this.bakePipGraphCardToImg(cardItem);
           if (this.isAudioRecording) {
@@ -12994,9 +12995,15 @@ class GraphApp {
   }
 
   restoreLiveGraphFromCard(silent = false, targetSnapshot = null, caseIdx = null, keepMinimizedCards = false, sourceCardTarget = null) {
+    const activeTarget = sourceCardTarget || (caseIdx === 1 ? 'primary' : null);
+    if (activeTarget && typeof this._ensurePipCardInkMathCoords === 'function') {
+      this._ensurePipCardInkMathCoords(activeTarget);
+    }
     this.deselectAllPipGraphCards();
-    this._editingGraphCardTarget = sourceCardTarget || (caseIdx === 1 ? 'primary' : null);
-    const effSnapshot = targetSnapshot || (caseIdx === 1 ? (this.primaryGraphCardSnapshot || (this.graphCardData && this.graphCardData.graphSnapshot)) : null);
+    this._editingGraphCardTarget = activeTarget;
+    const effSnapshot = (activeTarget && typeof this._getMutablePipCardSnapshot === 'function' && this._getMutablePipCardSnapshot(activeTarget))
+      ? JSON.stringify(this._getMutablePipCardSnapshot(activeTarget))
+      : (targetSnapshot || (caseIdx === 1 ? (this.primaryGraphCardSnapshot || (this.graphCardData && this.graphCardData.graphSnapshot)) : null));
     let parsedSnapForFull = null;
     if (effSnapshot) {
       try {
@@ -13066,24 +13073,42 @@ class GraphApp {
 
     if (effSnapshot) {
       this.applyPureGraphSnapshot(effSnapshot);
-      // PiP 카드 로컬 스케일에서 전체화면 그래프 모드로 열 때는 광활한 전체화면 비율(8.5 : 6.0)에 맞춰 깔끔하게 정렬!
+      // PiP 카드 로컬 스케일에서 전체화면 그래프 모드로 열 때:
+      // 카드에서 보고 있던 중심 수학 좌표(centerMathX, centerMathY)와 카드 위 필기(ink)를 전체화면 그래프 모드에 100% 그대로 동기화!
       if (parsedSnapForFull && parsedSnapForFull._isPipCardSnapshot) {
         const isTrig = Array.isArray(this.graphs) && this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
+        const cardH = Math.max(80, parsedSnapForFull._pipCardH || 295);
+        const cardYSpan = parsedSnapForFull.ySpan || (isTrig ? 5.0 : 5.1);
+        const cardZoom = parsedSnapForFull.zoomLevel || 1.0;
+        const cardUnitScale = (cardH / 2) / (cardYSpan / cardZoom);
+        const centerMathX = -(parsedSnapForFull.panX || 0) / Math.max(1, cardUnitScale);
+        const centerMathY = (parsedSnapForFull.panY || 0) / Math.max(1, cardUnitScale);
+
         this.xSpan = isTrig ? 20.0 : 8.5;
         this.ySpan = isTrig ? 5.5 : 6.0;
+        this.zoomLevel = 1.0;
+        this.targetZoom = 1.0;
+
+        const sw = this.screenWidth || window.innerWidth || 1440;
+        const sh = this.screenHeight || window.innerHeight || 900;
+        const fullUnitScale = (sh / 2) / (this.ySpan / this.zoomLevel);
+
+        let problemPushX = 0;
         if (this.hasActiveProblemCard() && !this.pdfPageBoardData) {
           this.syncProblemCardRectFromWidget();
-          const sw = this.screenWidth || window.innerWidth || 1440;
           const cardRight = (this.problemCardRect && !this.isProblemCardMinimized)
             ? (this.problemCardRect.x + this.problemCardRect.w)
             : Math.round(sw * 0.38);
           const baseRatioOffsetX = Math.round(sw * 0.085);
           const extraCardPushX = Math.max(0, Math.round((cardRight - sw * 0.40) * 0.35));
-          this.panX = Math.min(Math.round(sw * 0.14), baseRatioOffsetX + extraCardPushX);
-          this.panY = 0;
-        } else {
-          this.panX = 0;
-          this.panY = 0;
+          problemPushX = Math.min(Math.round(sw * 0.14), baseRatioOffsetX + extraCardPushX);
+        }
+        this._lastFullGraphProblemPushX = problemPushX;
+        this.panX = Math.round(problemPushX - centerMathX * fullUnitScale);
+        this.panY = Math.round(centerMathY * fullUnitScale);
+
+        if (activeTarget && typeof this._syncPipCardInkToFullGraph === 'function') {
+          this._syncPipCardInkToFullGraph(activeTarget, cardUnitScale, fullUnitScale);
         }
       }
     }
@@ -13507,6 +13532,9 @@ class GraphApp {
           if (this.isAudioRecording) {
             finishedCardStroke.tEnd = this.getAudioRecordElapsedMs();
           }
+          if (typeof this._ensurePipCardInkMathCoords === 'function') {
+            this._ensurePipCardInkMathCoords('primary');
+          }
           this.undoStack.push({
             type: 'card_stroke_add',
             strokesArr: this.graphInkStrokes,
@@ -13675,29 +13703,19 @@ class GraphApp {
 
     if (resizeHandle) {
       let isResizing = false;
-      let startX = 0, startW = 0;
+      let resizeStartState = null;
 
       resizeHandle.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         e.stopPropagation();
         isResizing = true;
-        startX = e.clientX;
-        startW = parseFloat(widget.style.width) || widget.offsetWidth || widget.getBoundingClientRect().width;
+        resizeStartState = this.capturePipCardResizeStart('primary', e);
       });
 
       window.addEventListener('pointermove', (e) => {
-        if (!isResizing) return;
+        if (!isResizing || !resizeStartState) return;
         this._isDraggingOrResizingAnyCard = true;
-        const curUS = (this.isGraphCovered && this.pdfPageBoardData && typeof this.getCurrentMathUnitScale === 'function')
-          ? this.getCurrentMathUnitScale()
-          : 0;
-        const scaleRatio = (curUS > 0 && widget._pdfAnchor && widget._pdfAnchor.unitScale > 0)
-          ? Math.max(0.2, Math.min(4.0, curUS / widget._pdfAnchor.unitScale))
-          : ((this.isGraphCovered && !this.pdfPageBoardData) ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0)) : 1.0);
-        const dw = (e.clientX - startX) / scaleRatio;
-        const newW = Math.max(220, Math.min(window.innerWidth * 0.85, startW + dw));
-        widget.style.width = `${newW}px`;
-        this.syncGraphCardRectFromWidget();
+        this.applyPipCardResizeStep('primary', e, resizeStartState);
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(false);
         }
@@ -13706,6 +13724,7 @@ class GraphApp {
       const stopResize = () => {
         if (isResizing) {
           isResizing = false;
+          resizeStartState = null;
           this._isDraggingOrResizingAnyCard = false;
           this.syncGraphCardRectFromWidget();
           this.bakePipGraphCardToImg('primary');
@@ -13986,6 +14005,438 @@ class GraphApp {
     }
   }
 
+  _getPipCardInkStrokesArray(cardRef) {
+    if (cardRef === 'primary') {
+      if (!Array.isArray(this.graphInkStrokes)) this.graphInkStrokes = [];
+      return this.graphInkStrokes;
+    }
+    if (cardRef && typeof cardRef === 'object') {
+      if (!Array.isArray(cardRef.inkStrokes)) cardRef.inkStrokes = [];
+      return cardRef.inkStrokes;
+    }
+    return [];
+  }
+
+  _setPipCardInkStrokesArray(cardRef, arr) {
+    if (cardRef === 'primary') {
+      this.graphInkStrokes = Array.isArray(arr) ? arr : [];
+      this.renderGraphCardCanvas();
+    } else if (cardRef && typeof cardRef === 'object') {
+      cardRef.inkStrokes = Array.isArray(arr) ? arr : [];
+      if (typeof cardRef._renderExtraCardInk === 'function') {
+        cardRef._renderExtraCardInk();
+      }
+    }
+  }
+
+  _ensurePipCardInkMathCoordsByWidget(widgetEl) {
+    if (!widgetEl) return;
+    if (widgetEl.id === 'graphCardWidget') {
+      this._ensurePipCardInkMathCoords('primary');
+      return;
+    }
+    if (Array.isArray(this.extraGraphCards)) {
+      const found = this.extraGraphCards.find(c => c && c.el === widgetEl);
+      if (found) this._ensurePipCardInkMathCoords(found);
+    }
+  }
+
+  _ensurePipCardInkMathCoords(cardRef) {
+    const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    if (!widget) return;
+    const snap = this._getMutablePipCardSnapshot(cardRef);
+    if (!snap || snap.isNAxisStudioCard) return;
+    const strokes = this._getPipCardInkStrokesArray(cardRef);
+    if (!strokes || strokes.length === 0) return;
+
+    const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
+    const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
+    const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 360));
+    const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
+
+    this._withPipCardGraphState(snap, cardW, cardH, () => {
+      strokes.forEach(st => {
+        if (!st || !Array.isArray(st.points)) return;
+        st.points.forEach(pt => {
+          if (pt && (typeof pt.mx !== 'number' || typeof pt.my !== 'number')) {
+            const m = this.screenToMath((pt.nx || 0) * cardW, (pt.ny || 0) * cardH);
+            pt.mx = m.x;
+            pt.my = m.y;
+          }
+        });
+        if (st.isShape && st.cardShape) {
+          const cs = st.cardShape;
+          if (typeof cs.x1 === 'number' && typeof cs.mx1 !== 'number') {
+            const m1 = this.screenToMath(cs.x1 * cardW, cs.y1 * cardH);
+            const m2 = this.screenToMath(cs.x2 * cardW, cs.y2 * cardH);
+            cs.mx1 = m1.x; cs.my1 = m1.y;
+            cs.mx2 = m2.x; cs.my2 = m2.y;
+          }
+          if (typeof cs.cx === 'number' && typeof cs.mcx !== 'number') {
+            const mc = this.screenToMath(cs.cx * cardW, cs.cy * cardH);
+            const mr = this.screenToMath((cs.cx + (cs.rx || 0)) * cardW, (cs.cy + (cs.ry || 0)) * cardH);
+            cs.mcx = mc.x; cs.mcy = mc.y;
+            cs.mrx = Math.abs(mr.x - mc.x);
+            cs.mry = Math.abs(mr.y - mc.y);
+          }
+        }
+      });
+    });
+  }
+
+  _reprojectPipCardInkFromMathCoords(cardRef, cardW, cardH) {
+    const strokes = this._getPipCardInkStrokesArray(cardRef);
+    if (!strokes || strokes.length === 0) return;
+    const snap = this._getMutablePipCardSnapshot(cardRef);
+    if (!snap || snap.isNAxisStudioCard) return;
+
+    const effW = Math.max(80, Math.round(cardW || 360));
+    const effH = Math.max(80, Math.round(cardH || 295));
+
+    this._withPipCardGraphState(snap, effW, effH, () => {
+      strokes.forEach(st => {
+        if (!st || !Array.isArray(st.points)) return;
+        st.points.forEach(pt => {
+          if (pt && typeof pt.mx === 'number' && typeof pt.my === 'number') {
+            const s = this.mathToScreen(pt.mx, pt.my);
+            pt.nx = s.x / effW;
+            pt.ny = s.y / effH;
+          }
+        });
+        if (st.isShape && st.cardShape) {
+          const cs = st.cardShape;
+          if (typeof cs.mx1 === 'number' && typeof cs.my1 === 'number') {
+            const s1 = this.mathToScreen(cs.mx1, cs.my1);
+            const s2 = this.mathToScreen(cs.mx2, cs.my2);
+            cs.x1 = s1.x / effW; cs.y1 = s1.y / effH;
+            cs.x2 = s2.x / effW; cs.y2 = s2.y / effH;
+          }
+          if (typeof cs.mcx === 'number' && typeof cs.mcy === 'number') {
+            const sc = this.mathToScreen(cs.mcx, cs.mcy);
+            const sr = this.mathToScreen(cs.mcx + (cs.mrx || 0), cs.mcy - (cs.mry || 0));
+            cs.cx = sc.x / effW; cs.cy = sc.y / effH;
+            cs.rx = Math.abs(sr.x - sc.x) / effW;
+            cs.ry = Math.abs(sr.y - sc.y) / effH;
+          }
+        }
+      });
+    });
+
+    if (cardRef === 'primary') {
+      this.renderGraphCardCanvas();
+    } else if (cardRef && typeof cardRef._renderExtraCardInk === 'function') {
+      cardRef._renderExtraCardInk();
+    }
+  }
+
+  _syncPipCardInkToFullGraph(cardRef, cardUnitScale, fullUnitScale) {
+    if (!cardRef) return;
+    this._ensurePipCardInkMathCoords(cardRef);
+    const cardStrokes = this._getPipCardInkStrokesArray(cardRef);
+    const { widget } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    const cardW = widget ? Math.max(160, Math.round(parseFloat(widget.style.width) || 360)) : 360;
+    const cardSizeScale = Math.max(0.6, cardW / 420);
+    const unitRatio = (cardUnitScale > 0 && fullUnitScale > 0) ? (fullUnitScale / cardUnitScale) : 1.5;
+
+    if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
+    this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
+
+    if (!cardStrokes || cardStrokes.length === 0) return;
+
+    cardStrokes.forEach(cs => {
+      if (!cs || !Array.isArray(cs.points) || cs.points.length === 0) return;
+      const fullPts = cs.points.map(pt => ({
+        x: typeof pt.mx === 'number' ? pt.mx : 0,
+        y: typeof pt.my === 'number' ? pt.my : 0,
+        p: pt.p !== undefined ? pt.p : 0.5,
+        t: pt.t
+      }));
+      const scaledSize = Math.max(1.5, Math.min(28, parseFloat(((cs.size || 3.5) * cardSizeScale * unitRatio).toFixed(2))));
+      const scaledHlSize = cs.highlighterSize
+        ? Math.max(8, Math.min(64, parseFloat((cs.highlighterSize * cardSizeScale * unitRatio).toFixed(2))))
+        : undefined;
+
+      const fullStroke = {
+        target: 'graph',
+        _fromPipCardSync: true,
+        color: cs.color || '#1e293b',
+        size: scaledSize,
+        highlighterSize: scaledHlSize,
+        isHighlighter: Boolean(cs.isHighlighter),
+        penStyle: cs.penStyle || 'ballpen',
+        softBlur: cs.softBlur || 0,
+        tStart: cs.tStart,
+        tEnd: cs.tEnd,
+        points: fullPts
+      };
+
+      if (cs.isShape && cs.cardShape) {
+        const sh = cs.cardShape;
+        if ((sh.type === 'line' || sh.type === 'dashedLine' || sh.type === 'arrow') && typeof sh.mx1 === 'number') {
+          fullStroke.isShape = true;
+          fullStroke.shapeType = sh.type;
+          fullStroke.points = [
+            { x: sh.mx1, y: sh.my1, p: 0.5 },
+            { x: sh.mx2, y: sh.my2, p: 0.5 }
+          ];
+        }
+      }
+
+      this.inkStrokes.push(fullStroke);
+    });
+    if (typeof this.clearInkCache === 'function') this.clearInkCache();
+  }
+
+  _syncFullGraphInkBackToPipCard(cardRef, cardW, cardH, cardUnitScale, fullUnitScale) {
+    if (!cardRef) return;
+    const snap = this._getMutablePipCardSnapshot(cardRef);
+    if (!snap || snap.isNAxisStudioCard) return;
+
+    const effW = Math.max(160, Math.round(cardW || 360));
+    const effH = Math.max(120, Math.round(cardH || 295));
+    const cardSizeScale = Math.max(0.6, effW / 420);
+    const invRatio = (cardUnitScale > 0 && fullUnitScale > 0) ? (cardUnitScale / fullUnitScale) : (1 / 1.5);
+
+    const graphStrokes = Array.isArray(this.inkStrokes)
+      ? this.inkStrokes.filter(s => s && s.target === 'graph' && Array.isArray(s.points) && s.points.length > 0)
+      : [];
+
+    const newCardStrokes = [];
+    this._withPipCardGraphState(snap, effW, effH, () => {
+      graphStrokes.forEach(gs => {
+        const pts = gs.points.map(pt => {
+          const s = this.mathToScreen(pt.x, pt.y);
+          return {
+            nx: s.x / effW,
+            ny: s.y / effH,
+            mx: pt.x,
+            my: pt.y,
+            p: pt.p !== undefined ? pt.p : 0.5,
+            t: pt.t
+          };
+        });
+        const cardBaseSize = Math.max(1.5, Math.min(18, parseFloat((((gs.size || 3.5) * invRatio) / cardSizeScale).toFixed(2))));
+        const cardHlSize = gs.highlighterSize
+          ? Math.max(8, Math.min(48, parseFloat(((gs.highlighterSize * invRatio) / cardSizeScale).toFixed(2))))
+          : undefined;
+
+        const cStroke = {
+          color: gs.color || '#1e293b',
+          size: cardBaseSize,
+          highlighterSize: cardHlSize,
+          isHighlighter: Boolean(gs.isHighlighter),
+          penStyle: gs.penStyle || 'ballpen',
+          softBlur: gs.softBlur || 0,
+          tStart: gs.tStart,
+          tEnd: gs.tEnd,
+          points: pts
+        };
+
+        if (gs.isShape && (gs.shapeType === 'line' || gs.shapeType === 'dashedLine' || gs.shapeType === 'arrow') && pts.length >= 2) {
+          const p0 = pts[0];
+          const p1 = pts[pts.length - 1];
+          cStroke.isShape = true;
+          cStroke.cardShape = {
+            type: gs.shapeType,
+            x1: p0.nx, y1: p0.ny,
+            x2: p1.nx, y2: p1.ny,
+            mx1: p0.mx, my1: p0.my,
+            mx2: p1.mx, my2: p1.my
+          };
+        }
+
+        newCardStrokes.push(cStroke);
+      });
+    });
+
+    this._setPipCardInkStrokesArray(cardRef, newCardStrokes);
+    if (Array.isArray(this.inkStrokes)) {
+      this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
+    }
+    if (typeof this.clearInkCache === 'function') this.clearInkCache();
+  }
+
+  setPipCardLockedByWidget(widgetEl, locked, showToast = false) {
+    if (!widgetEl) return;
+    if (widgetEl.id === 'graphCardWidget') {
+      this.setPipCardLocked('primary', locked, showToast);
+      return;
+    }
+    if (Array.isArray(this.extraGraphCards)) {
+      const found = this.extraGraphCards.find(c => c && c.el === widgetEl);
+      if (found) this.setPipCardLocked(found, locked, showToast);
+    }
+  }
+
+  setPipCardLocked(cardRef, locked, showToast = false) {
+    const { widget } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    const snap = this._getMutablePipCardSnapshot(cardRef);
+    if (!widget || !snap) return;
+
+    this._ensurePipCardInkMathCoords(cardRef);
+    snap.isPipLocked = Boolean(locked);
+
+    if (snap.isPipLocked) {
+      snap.isCurveSelected = false;
+      snap.selectedHandleIdx = null;
+      snap.draggedHandleIdx = null;
+      snap._activeSnapHint = null;
+      widget.classList.remove('pip-manipulating');
+    } else {
+      snap.isCurveSelected = true;
+      if (widget.classList.contains('card-ink-active')) {
+        widget.classList.remove('card-ink-active');
+        const laserBtn = widget.querySelector('.btn-card-laser');
+        if (laserBtn) laserBtn.classList.remove('active');
+      }
+    }
+
+    this.syncPipCardLockUI(cardRef);
+    this._savePipCardSnapshot(cardRef, snap);
+    this.renderPipGraphCard(cardRef);
+    this.bakePipGraphCardToImg(cardRef);
+
+    if (showToast) {
+      if (snap.isPipLocked) {
+        this.showToast('🔒 카드 잠금 완료! 이제 카드 안을 잡고 이동하거나 모서리로 비율 고정 확대/축소할 수 있습니다.');
+      } else {
+        this.showToast('🔓 잠금 해제됨! 핸들 조작 · 여백 드래그로 축 이동 · 모서리로 시야 영역 확장이 가능합니다.');
+      }
+    }
+  }
+
+  syncPipCardLockUI(cardRef) {
+    const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    if (!widget) return;
+    const snap = this._getMutablePipCardSnapshot(cardRef);
+    const isLocked = Boolean(snap && snap.isPipLocked);
+    const btnLock = isPrimary
+      ? document.getElementById('btnGraphCardLock')
+      : widget.querySelector('.btn-extra-lock');
+
+    if (btnLock) {
+      if (isLocked) {
+        btnLock.classList.remove('unlocked-editing');
+        btnLock.classList.add('locked-confirmed');
+        btnLock.innerHTML = '<span class="lock-icon">🔒</span><span class="lock-txt">잠금됨</span>';
+        btnLock.title = '클릭하여 잠금 해제 (핸들 조작 · 축 이동 · 시야 영역 확장 모드로 전환)';
+      } else {
+        btnLock.classList.remove('locked-confirmed');
+        btnLock.classList.add('unlocked-editing');
+        btnLock.innerHTML = '<span class="lock-icon">🔓</span><span class="lock-txt">잠금</span>';
+        btnLock.title = '조작 완료 후 클릭하여 잠금 (비율 고정 확대/축소 & 여백 드래그로 카드 이동)';
+      }
+    }
+  }
+
+  capturePipCardResizeStart(cardRef, e) {
+    const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    if (!widget) return null;
+    this._ensurePipCardInkMathCoords(cardRef);
+    const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
+    const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
+    const startW = Math.max(160, parseFloat(widget.style.width) || widget.offsetWidth || 360);
+    const startH = Math.max(120, (bodyEl && parseFloat(bodyEl.style.height)) || Math.round(startW * aspect));
+    const snap = this._getMutablePipCardSnapshot(cardRef);
+    if (snap) {
+      snap._pipCardW = Math.round(startW);
+      snap._pipCardH = Math.round(startH);
+    }
+    return {
+      startX: e.clientX,
+      startY: e.clientY,
+      startW,
+      startH,
+      startAspect: startH / Math.max(1, startW),
+      isLocked: Boolean(snap && snap.isPipLocked),
+      startXSpan: snap ? (snap.xSpan || 6.2) : 6.2,
+      startYSpan: snap ? (snap.ySpan || 5.1) : 5.1,
+      startPanX: snap ? (snap.panX || 0) : 0,
+      startPanY: snap ? (snap.panY || 0) : 0
+    };
+  }
+
+  applyPipCardResizeStep(cardRef, e, startState) {
+    const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    if (!widget || !startState) return;
+    const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
+    const gCanvas = isPrimary ? document.getElementById('graphCardCanvas') : (bodyEl ? bodyEl.querySelector('.extra-graph-ink-canvas') : null);
+    const snap = this._getMutablePipCardSnapshot(cardRef);
+
+    const curUS = (this.isGraphCovered && this.pdfPageBoardData && typeof this.getCurrentMathUnitScale === 'function')
+      ? this.getCurrentMathUnitScale()
+      : 0;
+    const scaleRatio = (curUS > 0 && widget._pdfAnchor && widget._pdfAnchor.unitScale > 0)
+      ? Math.max(0.2, Math.min(4.0, curUS / widget._pdfAnchor.unitScale))
+      : ((this.isGraphCovered && !this.pdfPageBoardData) ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0)) : 1.0);
+
+    const dw = (e.clientX - startState.startX) / scaleRatio;
+    const dh = (e.clientY - startState.startY) / scaleRatio;
+    const isLocked = Boolean(snap && snap.isPipLocked);
+
+    if (isLocked) {
+      // 🔒 잠금 후: 가로세로 비율을 고정한 채로 그래프와 카드 전체를 비례 확대/축소
+      const lockedAspect = startState.startAspect || (isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82));
+      const newW = Math.round(Math.max(200, Math.min(window.innerWidth * 0.85, startState.startW + dw)));
+      const newH = Math.round(Math.max(140, newW * lockedAspect));
+
+      widget.style.width = `${newW}px`;
+      if (bodyEl) bodyEl.style.height = `${newH}px`;
+      if (isPrimary) {
+        this.graphCardAspect = lockedAspect;
+        this.syncGraphCardRectFromWidget();
+      } else {
+        cardRef.aspect = lockedAspect;
+        if (gCanvas) {
+          const dpr = this.getCanvasDpr();
+          gCanvas.width = Math.round(newW * dpr);
+          gCanvas.height = Math.round(newH * dpr);
+          if (typeof cardRef._renderExtraCardInk === 'function') cardRef._renderExtraCardInk();
+        }
+        if (typeof widget._syncCardLaserSize === 'function') widget._syncCardLaserSize();
+        this.requestPipGraphCardRender(cardRef);
+      }
+    } else {
+      // 🔓 잠금 전: 그래프 실제 크기(unitScale)는 100% 고정한 채로 현재 카드 센터 기준 화면 영역(시야)만 자유 확장/축소 (와이드 뷰 지원)
+      const newW = Math.round(Math.max(200, Math.min(window.innerWidth * 0.88, startState.startW + dw)));
+      const newH = Math.round(Math.max(140, Math.min(window.innerHeight * 0.82, startState.startH + dh)));
+      const newAspect = newH / Math.max(1, newW);
+
+      if (snap) {
+        snap.xSpan = startState.startXSpan * (newW / Math.max(1, startState.startW));
+        snap.ySpan = startState.startYSpan * (newH / Math.max(1, startState.startH));
+        snap.panX = startState.startPanX;
+        snap.panY = startState.startPanY;
+        snap._pipCardW = newW;
+        snap._pipCardH = newH;
+      }
+
+      widget.style.width = `${newW}px`;
+      if (bodyEl) bodyEl.style.height = `${newH}px`;
+
+      if (isPrimary) {
+        this.graphCardAspect = newAspect;
+      } else {
+        cardRef.aspect = newAspect;
+      }
+
+      this._reprojectPipCardInkFromMathCoords(cardRef, newW, newH);
+
+      if (isPrimary) {
+        this.syncGraphCardRectFromWidget();
+      } else {
+        if (gCanvas) {
+          const dpr = this.getCanvasDpr();
+          gCanvas.width = Math.round(newW * dpr);
+          gCanvas.height = Math.round(newH * dpr);
+          if (typeof cardRef._renderExtraCardInk === 'function') cardRef._renderExtraCardInk();
+        }
+        if (typeof widget._syncCardLaserSize === 'function') widget._syncCardLaserSize();
+        this.requestPipGraphCardRender(cardRef);
+      }
+    }
+  }
+
   requestPipGraphCardRender(cardRef) {
     const { widget } = this._getPipCardWidgetAndSnapRaw(cardRef);
     if (!widget) return;
@@ -14026,6 +14477,8 @@ class GraphApp {
       return;
     }
 
+    this.syncPipCardLockUI(cardRef);
+
     const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
     const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || bodyEl.clientWidth || 360));
     const cardH = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
@@ -14039,7 +14492,7 @@ class GraphApp {
     liveCanvas.style.display = 'block';
     if (imgEl) imgEl.style.opacity = '0';
 
-    const isManipulating = Boolean(snapObj.isCurveSelected && !widget.classList.contains('card-ink-active'));
+    const isManipulating = Boolean(!snapObj.isPipLocked && snapObj.isCurveSelected && !widget.classList.contains('card-ink-active'));
     widget.classList.toggle('pip-manipulating', isManipulating);
 
     if (ctxBar) {
@@ -14183,22 +14636,67 @@ class GraphApp {
   }
 
   _syncFullGraphBackToEditingPipCard() {
-    const target = this._editingGraphCardTarget;
+    let target = this._editingGraphCardTarget;
     this._editingGraphCardTarget = null;
-    if (!target) return;
+
+    const fullUnitScale = (this.screenHeight / 2) / Math.max(0.1, (this.ySpan || 5.1) / (this.zoomLevel || 1.0));
+    const pushOffsetX = (typeof this._lastFullGraphProblemPushX === 'number') ? this._lastFullGraphProblemPushX : 0;
+    const effFullPanX = (this.panX || 0) - pushOffsetX;
+    const fullCenterMathX = -effFullPanX / Math.max(1e-6, fullUnitScale);
+    const fullCenterMathY = (this.panY || 0) / Math.max(1e-6, fullUnitScale);
+
+    // 만약 연결된 대상 카드가 없는데 전체화면 그래프 모드에 그래프가 있다면 새 PiP 카드로 자동 생성
+    if (!target) {
+      if (!Array.isArray(this.graphs) || this.graphs.length === 0) return;
+      const isTrig = this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
+      const cardW = 360;
+      const aspect = 0.82;
+      const cardH = Math.round(cardW * aspect);
+      const updatedSnap = JSON.parse(this.getPureGraphSnapshot());
+      updatedSnap.xSpan = isTrig ? 14.0 : 6.2;
+      updatedSnap.ySpan = isTrig ? 5.0 : 5.1;
+      updatedSnap.zoomLevel = 1.0;
+      const cardUnitScale = (cardH / 2) / Math.max(0.1, updatedSnap.ySpan / updatedSnap.zoomLevel);
+      updatedSnap.panX = -fullCenterMathX * cardUnitScale;
+      updatedSnap.panY = fullCenterMathY * cardUnitScale;
+      updatedSnap.isPipLocked = false;
+      updatedSnap.isCurveSelected = true;
+      updatedSnap.selectedHandleIdx = null;
+      updatedSnap.useIntersectionDetector = Boolean(this.useIntersectionDetector);
+      updatedSnap._isPipCardSnapshot = true;
+      updatedSnap._pipCardW = cardW;
+      updatedSnap._pipCardH = cardH;
+
+      const createdRef = this._spawnCenteredPipCardFromSnapObj(updatedSnap, cardW, aspect, null);
+      if (createdRef) {
+        this._syncFullGraphInkBackToPipCard(createdRef, cardW, cardH, cardUnitScale, fullUnitScale);
+        this.renderPipGraphCard(createdRef);
+        this.bakePipGraphCardToImg(createdRef);
+      }
+      return;
+    }
+
     const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(target);
     if (!widget) return;
 
+    const prevSnap = this._getMutablePipCardSnapshot(target);
     const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (target.aspect || 0.82);
-    const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || 360));
-    const cardH = Math.max(120, Math.round(cardW * aspect));
+    const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
+    const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 360));
+    const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
     const isTrig = Array.isArray(this.graphs) && this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
+
     const updatedSnap = JSON.parse(this.getPureGraphSnapshot());
-    updatedSnap.xSpan = isTrig ? 14.0 : 6.2;
-    updatedSnap.ySpan = isTrig ? 5.0 : 5.1;
-    updatedSnap.panX = 0;
-    updatedSnap.panY = 0;
-    updatedSnap.isCurveSelected = false;
+    updatedSnap.xSpan = (prevSnap && typeof prevSnap.xSpan === 'number') ? prevSnap.xSpan : (isTrig ? 14.0 : 6.2);
+    updatedSnap.ySpan = (prevSnap && typeof prevSnap.ySpan === 'number') ? prevSnap.ySpan : (isTrig ? 5.0 : 5.1);
+    updatedSnap.zoomLevel = (prevSnap && typeof prevSnap.zoomLevel === 'number') ? prevSnap.zoomLevel : 1.0;
+
+    // 🌟 전체화면 그래프 모드에서 이동한 시야 중심점(1사분면 등)을 PiP 카드에 100% 보존!
+    const cardUnitScale = (cardH / 2) / Math.max(0.1, updatedSnap.ySpan / updatedSnap.zoomLevel);
+    updatedSnap.panX = -fullCenterMathX * cardUnitScale;
+    updatedSnap.panY = fullCenterMathY * cardUnitScale;
+    updatedSnap.isPipLocked = Boolean(prevSnap && prevSnap.isPipLocked);
+    updatedSnap.isCurveSelected = !updatedSnap.isPipLocked;
     updatedSnap.selectedHandleIdx = null;
     updatedSnap.useIntersectionDetector = Boolean(this.useIntersectionDetector);
     updatedSnap._isPipCardSnapshot = true;
@@ -14206,6 +14704,8 @@ class GraphApp {
     updatedSnap._pipCardH = cardH;
 
     this._savePipCardSnapshot(target, updatedSnap);
+    this._syncFullGraphInkBackToPipCard(target, cardW, cardH, cardUnitScale, fullUnitScale);
+    this.syncPipCardLockUI(target);
     this.renderPipGraphCard(target);
     this.bakePipGraphCardToImg(target);
   }
@@ -14253,6 +14753,7 @@ class GraphApp {
         snap.graphs.push(newGraph);
         snap.activeGraphIdx = snap.graphs.length - 1;
         snap.selectedHandleIdx = null;
+        snap.isPipLocked = false;
         snap.isCurveSelected = true;
 
         if (widget && widget.classList.contains('card-ink-active')) {
@@ -14262,6 +14763,7 @@ class GraphApp {
         }
         if (widget) this.bringCardToFront(widget);
 
+        this.syncPipCardLockUI(targetCard);
         this.renderPipGraphCard(targetCard);
         this.bakePipGraphCardToImg(targetCard);
         if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
@@ -14321,6 +14823,7 @@ class GraphApp {
       dropLines: [],
       textLabels: [],
       graphInkStrokes: [],
+      isPipLocked: false,
       isCurveSelected: true,
       selectedHandleIdx: null,
       _isPipCardSnapshot: true,
@@ -14328,7 +14831,7 @@ class GraphApp {
       _pipCardH: cardH
     };
 
-    this._spawnCenteredPipCardFromSnapObj(snapObj, cardW, aspect, `${this.meta[nextType].name} 카드 생성됨! 핸들로 조절 후 구석으로 끌어 놓으세요.`);
+    this._spawnCenteredPipCardFromSnapObj(snapObj, cardW, aspect, `${this.meta[nextType].name} 창 생성됨! 조작 후 상단 [🔓 잠금]을 누르면 확정됩니다.`);
   }
 
   loadCustomPresetToPipCardInBoardMode(item) {
@@ -14357,10 +14860,12 @@ class GraphApp {
             }
           });
           snap.activeGraphIdx = snap.graphs.length - 1;
+          snap.isPipLocked = false;
           snap.isCurveSelected = true;
           snap.selectedHandleIdx = null;
           const { widget } = this._getPipCardWidgetAndSnapRaw(targetCard);
           this.deselectAllPipGraphCards(widget);
+          this.syncPipCardLockUI(targetCard);
           this.renderPipGraphCard(targetCard);
           this.bakePipGraphCardToImg(targetCard);
           if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
@@ -14379,13 +14884,14 @@ class GraphApp {
       parsed.ySpan = isTrig ? 5.0 : 5.1;
       parsed.panX = 0;
       parsed.panY = 0;
+      parsed.isPipLocked = false;
       parsed.isCurveSelected = true;
       parsed.selectedHandleIdx = null;
       parsed._isPipCardSnapshot = true;
       parsed._pipCardW = cardW;
       parsed._pipCardH = cardH;
 
-      this._spawnCenteredPipCardFromSnapObj(parsed, cardW, aspect, `⭐ [${item.name}] 카드 생성됨! 핸들로 조절 후 구석으로 끌어 놓으세요.`);
+      this._spawnCenteredPipCardFromSnapObj(parsed, cardW, aspect, `⭐ [${item.name}] 창 생성됨! 조작 후 상단 [🔓 잠금]을 누르면 확정됩니다.`);
       return true;
     } catch (_) {
       return false;
@@ -14430,6 +14936,7 @@ class GraphApp {
       { cardW, aspect, forceScreenPos: true, alreadyInBoardMode: true, silentToast: true }
     );
 
+    this.syncPipCardLockUI(createdRef);
     this.renderPipGraphCard(createdRef);
     if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
       this.closeDrawer();
@@ -14448,7 +14955,7 @@ class GraphApp {
     const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
     if (!bodyEl) return;
 
-    // 1. 카드 상단 [+] 함수 추가 버튼 바인딩
+    // 1. 카드 상단 [+] 함수 추가 버튼 & [🔓 잠금 / 🔒 잠금됨] 토글 버튼 바인딩
     const btnAddFunc = isPrimary
       ? document.getElementById('btnGraphCardAddFunc')
       : widget.querySelector('.btn-extra-add-func');
@@ -14470,6 +14977,23 @@ class GraphApp {
           this.openDrawer('panelPresets');
           this.showToast('➕ 이 카드에 함께 그릴 함수를 선택하세요!');
         }
+      });
+    }
+
+    const btnLock = isPrimary
+      ? document.getElementById('btnGraphCardLock')
+      : widget.querySelector('.btn-extra-lock');
+    if (btnLock) {
+      btnLock.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+      });
+      btnLock.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.bringCardToFront(widget);
+        const snap = this._getMutablePipCardSnapshot(cardRef);
+        const nextLocked = !(snap && snap.isPipLocked);
+        this.setPipCardLocked(cardRef, nextLocked, true);
       });
     }
 
@@ -14495,6 +15019,8 @@ class GraphApp {
         <button type="button" class="pip-ctx-btn" data-pip-act="flipY" title="y축 대칭 (좌우 반전)">↔y축</button>
         <button type="button" class="pip-ctx-btn" data-pip-act="abs" title="절댓값 |f(x)| 꺾어올리기">|f(x)|</button>
         <button type="button" class="pip-ctx-btn pip-ctx-del" data-pip-act="deleteCurve" title="선택된 함수 삭제">🗑</button>
+        <span class="pip-ctx-divider"></span>
+        <button type="button" class="pip-ctx-btn pip-ctx-lock" data-pip-act="lockCard" title="조작 완료 후 잠금 (비율 고정 확대/축소 & 여백 드래그로 카드 이동)">🔒 잠금</button>
       `;
       bodyEl.appendChild(ctxBar);
 
@@ -14506,6 +15032,10 @@ class GraphApp {
           e.preventDefault();
           e.stopPropagation();
           const act = btn.dataset.pipAct;
+          if (act === 'lockCard') {
+            this.setPipCardLocked(cardRef, true, true);
+            return;
+          }
           const snap = this._getMutablePipCardSnapshot(cardRef);
           if (!snap || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return;
           const g = snap.graphs[snap.activeGraphIdx];
@@ -14545,8 +15075,10 @@ class GraphApp {
       });
     }
 
-    // 3. 라이브 캔버스 포인터 인터랙션 (핸들 변형 · 곡선 평행이동 · 빈 공간 드래그 시 카드 이동)
-    let activeMode = null; // 'handle' | 'curve' | 'panAxes' | 'emptyTapWatch'
+    // 3. 라이브 캔버스 포인터 인터랙션
+    // - 🔓 잠금 전 (!snap.isPipLocked): 핸들 드래그 = 개형 변형 | 곡선 드래그 = 평행이동 | 빈 여백 드래그 = 좌표축 이동 (1사분면 등 시야 이동)
+    // - 🔒 잠금 후 (snap.isPipLocked): 이벤트 버블링으로 카드 몸통 어디든 잡고 끌면 카드 전체 이동!
+    let activeMode = null; // 'handle' | 'curve' | 'panAxes'
     let downPos = { x: 0, y: 0 };
     let downClient = { x: 0, y: 0 };
     let cachedDownGeom = null;
@@ -14593,6 +15125,12 @@ class GraphApp {
       if (widget.classList.contains('card-ink-active') || widget.classList.contains('card-laser-active')) return;
       const snap = this._getMutablePipCardSnapshot(cardRef);
       if (!snap || snap.isNAxisStudioCard || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return;
+
+      // 🔒 잠금(확정) 상태에서는 카드 내부 어디를 잡고 끌어도 카드 전체가 칠판 위에서 이동하도록 widget으로 버블링 허용!
+      if (snap.isPipLocked) {
+        liveCanvas.style.cursor = 'grab';
+        return;
+      }
 
       this.bringCardToFront(widget);
       const pos = getLocalPos(e, false);
@@ -14643,10 +15181,14 @@ class GraphApp {
       if (isExplicitAxisPan) {
         e.preventDefault();
         e.stopPropagation();
+        this.deselectAllPipGraphCards(widget);
+        this._ensurePipCardInkMathCoords(cardRef);
+        snap.isCurveSelected = true;
         try { liveCanvas.setPointerCapture(e.pointerId); } catch (_) { }
         activeMode = 'panAxes';
         panInit = { x: snap.panX || 0, y: snap.panY || 0 };
         liveCanvas.style.cursor = 'grabbing';
+        this.requestPipGraphCardRender(cardRef);
         return;
       }
 
@@ -14694,8 +15236,18 @@ class GraphApp {
         return;
       }
 
-      // 빈 공간 터치: 드래그하면 카드 전체가 이동하고, 제자리 톡 클릭이면 핸들 선택 해제!
-      activeMode = 'emptyTapWatch';
+      // 🔓 잠금 전 상태에서 빈 여백을 잡고 끌면 -> 전체화면 그래프 모드와 동일하게 좌표축(시야) 평행이동!
+      e.preventDefault();
+      e.stopPropagation();
+      this.deselectAllPipGraphCards(widget);
+      this._ensurePipCardInkMathCoords(cardRef);
+      snap.isCurveSelected = true;
+      snap.selectedHandleIdx = null;
+      try { liveCanvas.setPointerCapture(e.pointerId); } catch (_) { }
+      activeMode = 'panAxes';
+      panInit = { x: snap.panX || 0, y: snap.panY || 0 };
+      liveCanvas.style.cursor = 'grabbing';
+      this.requestPipGraphCardRender(cardRef);
     });
 
     liveCanvas.addEventListener('pointermove', (e) => {
@@ -14703,13 +15255,15 @@ class GraphApp {
       const snap = this._getMutablePipCardSnapshot(cardRef);
       if (!snap || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return;
 
-      const pos = getLocalPos(e, Boolean(activeMode && activeMode !== 'emptyTapWatch'));
-      if (!activeMode || activeMode === 'emptyTapWatch') {
-        if (activeMode === 'emptyTapWatch' && Math.hypot(e.clientX - downClient.x, e.clientY - downClient.y) > 5) {
-          movedDuringInteraction = true;
-        }
+      if (snap.isPipLocked && !activeMode) {
+        liveCanvas.style.cursor = 'grab';
+        return;
+      }
+
+      const pos = getLocalPos(e, Boolean(activeMode));
+      if (!activeMode) {
         // 마우스 호버 시 핸들/곡선 위 커서 피드백 (30fps 스로틀)
-        if (!activeMode && e.pointerType === 'mouse') {
+        if (e.pointerType === 'mouse') {
           const now = performance.now();
           if (now - lastHoverCheckTs < 32) return;
           lastHoverCheckTs = now;
@@ -14734,7 +15288,7 @@ class GraphApp {
               hoverHit = true;
             }
           });
-          liveCanvas.style.cursor = hoverHit ? 'pointer' : 'grab';
+          liveCanvas.style.cursor = hoverHit ? 'pointer' : 'move';
         }
         return;
       }
@@ -14748,6 +15302,7 @@ class GraphApp {
       if (activeMode === 'panAxes') {
         snap.panX = panInit.x + (pos.x - downPos.x);
         snap.panY = panInit.y + (pos.y - downPos.y);
+        this._reprojectPipCardInkFromMathCoords(cardRef, pos.cardW, pos.cardH);
         this.requestPipGraphCardRender(cardRef);
         return;
       }
@@ -14914,7 +15469,6 @@ class GraphApp {
 
     const finishPipInteraction = (e) => {
       if (!activeMode) return;
-      const prevMode = activeMode;
       activeMode = null;
       cachedDownGeom = null;
       curveFeatsSnapshot = null;
@@ -14931,12 +15485,8 @@ class GraphApp {
         snap.axisSnapActiveY = false;
         snap.symmetrySnapActive = false;
         snap.snappedPoints = [];
-        if (prevMode === 'emptyTapWatch' && !movedDuringInteraction && snap.isCurveSelected) {
-          snap.isCurveSelected = false;
-          snap.selectedHandleIdx = null;
-        }
       }
-      liveCanvas.style.cursor = 'grab';
+      liveCanvas.style.cursor = (snap && snap.isPipLocked) ? 'grab' : 'move';
       try { if (e && e.pointerId !== undefined) liveCanvas.releasePointerCapture(e.pointerId); } catch (_) { }
       this.renderPipGraphCard(cardRef);
       this.bakePipGraphCardToImg(cardRef);
@@ -14948,15 +15498,20 @@ class GraphApp {
     liveCanvas.addEventListener('pointerup', finishPipInteraction);
     liveCanvas.addEventListener('pointercancel', finishPipInteraction);
 
-    // 4. 카드 위 마우스 휠: 조작 활성(pip-manipulating) 상태일 때 카드 내부 그래프 배율(zoomLevel) 줌인/줌아웃
+    // 4. 카드 위 마우스 휠: 잠금 전(!snap.isPipLocked) 상태일 때 카드 내부 그래프 배율(zoomLevel) 줌인/줌아웃
     liveCanvas.addEventListener('wheel', (e) => {
       if (widget.classList.contains('card-ink-active')) return;
       const snap = this._getMutablePipCardSnapshot(cardRef);
-      if (!snap || !snap.isCurveSelected) return;
+      if (!snap || snap.isPipLocked) return;
       e.preventDefault();
       e.stopPropagation();
+      this._ensurePipCardInkMathCoords(cardRef);
       const delta = e.deltaY < 0 ? 0.1 : -0.1;
       snap.zoomLevel = Math.max(0.35, Math.min(3.5, parseFloat(((snap.zoomLevel || 1.0) + delta).toFixed(2))));
+      const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
+      const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || bodyEl.clientWidth || 360));
+      const cardH = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
+      this._reprojectPipCardInkFromMathCoords(cardRef, cardW, cardH);
       this.renderPipGraphCard(cardRef);
       this.bakePipGraphCardToImg(cardRef);
     }, { passive: false });

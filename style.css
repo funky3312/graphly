@@ -5017,6 +5017,70 @@ body.theme-light .btn-card-add-func.active {
   color: #ffffff !important;
 }
 
+/* [🔓 / 🔒] 그래프 카드 잠금·확정 토글 버튼 */
+.btn-card-lock-edit {
+  height: 25px !important;
+  padding: 0 7px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 6px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  gap: 3px !important;
+  transition: all 0.14s ease !important;
+}
+
+.btn-card-lock-edit.unlocked-editing,
+body.theme-light .btn-card-lock-edit.unlocked-editing {
+  background: #2563eb !important;
+  border: 1px solid #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25) !important;
+}
+
+.btn-card-lock-edit.unlocked-editing:hover,
+body.theme-light .btn-card-lock-edit.unlocked-editing:hover {
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+.btn-card-lock-edit.locked-confirmed {
+  background: rgba(148, 163, 184, 0.16) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #e2e8f0 !important;
+}
+
+body.theme-light .btn-card-lock-edit.locked-confirmed {
+  background: #f1f5f9 !important;
+  border: 1px solid rgba(15, 23, 42, 0.16) !important;
+  color: #334155 !important;
+}
+
+.btn-card-lock-edit.locked-confirmed:hover,
+body.theme-light .btn-card-lock-edit.locked-confirmed:hover {
+  background: rgba(37, 99, 235, 0.12) !important;
+  border-color: rgba(37, 99, 235, 0.35) !important;
+  color: #2563eb !important;
+}
+
+.pip-ctx-divider {
+  width: 1px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  margin: 0 2px;
+}
+
+.pip-ctx-btn.pip-ctx-lock {
+  color: #93c5fd;
+}
+
+.pip-ctx-btn.pip-ctx-lock:hover {
+  background: rgba(37, 99, 235, 0.35);
+  color: #ffffff;
+}
+
 .graph-card-live-canvas {
   position: absolute;
   inset: 0;
