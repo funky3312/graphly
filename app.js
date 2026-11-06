@@ -9589,114 +9589,289 @@ class GraphApp {
   //   (1) 메인 칠판 휠 스크롤/줌에는 전혀 영향받지 않고,
   //   (2) 문제 창 크기를 키우거나 줄일 때는 문제 이미지와 정확히 같은 비율로 함께 스케일링!
   // ==========================================================================
-  renderProblemCardCanvas() {
-    const pCanvas = document.getElementById('problemCardCanvas');
-    if (!pCanvas) return;
-    const ctx = pCanvas.getContext('2d');
-    const dpr = this.getCanvasDpr();
-    const w = pCanvas.width / dpr;
-    const h = pCanvas.height / dpr;
+  // ==========================================================================
+  // 🖨️ [카드 필기 오프스크린 베이킹 엔진(_renderCardInkWithBakeCache)]
+  // - 창모드 그래프 카드·문제 카드에 글자를 수백 자 써도 필기 도중(pointermove)에는
+  //   이전 획들을 다시 그리지 않고 오프스크린 텍스처(_bakeCanvas)를 0.01ms 만에 Blit한 뒤
+  //   현재 그리는 획(activeStroke) 1개만 증분 렌더링합니다!
+  // ==========================================================================
+  _renderSingleCardInkStroke(ctx, stroke, w, h, sizeScale, options = {}) {
+    if (!stroke || !stroke.points || stroke.points.length === 0) return;
+    const isProbCard = Boolean(options.isProbCard);
+    const applyStreamline = Boolean(options.applyStreamline);
+    const minPenWidth = typeof options.minPenWidth === 'number' ? options.minPenWidth : 0.85;
+    const minHlWidth = typeof options.minHlWidth === 'number' ? options.minHlWidth : 3;
+    const defaultHlMin = typeof options.defaultHlMin === 'number' ? options.defaultHlMin : 8;
 
     ctx.save();
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
-    if (!this.problemInkStrokes || this.problemInkStrokes.length === 0) {
-      this.drawCardLassoOverlay(ctx, w, h, document.getElementById('problemCardWidget'));
+    let strokeColor = stroke.color || '#1e293b';
+    if (this.isMonochromeMode) {
+      strokeColor = stroke.isHighlighter ? '#cbd5e1' : '#000000';
+    } else if (stroke.isHighlighter) {
+      strokeColor = this.resolveHighlighterStrokeColor(strokeColor, true);
+    } else if (isProbCard && (strokeColor.toLowerCase() === '#ffffff' || strokeColor.toLowerCase() === '#fff')) {
+      strokeColor = '#0f172a';
+    }
+
+    ctx.strokeStyle = strokeColor;
+    ctx.fillStyle = strokeColor;
+
+    const baseSize = (stroke.size || 3.5) * sizeScale;
+    const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
+    if (stroke.isHighlighter) {
+      ctx.globalAlpha = 0.36 * ghostMul;
+      const hlW = stroke.highlighterSize ? (stroke.highlighterSize * sizeScale) : Math.max(defaultHlMin, baseSize * 2.8);
+      ctx.lineWidth = Math.max(minHlWidth, hlW);
+    } else {
+      ctx.globalAlpha = 1.0 * ghostMul;
+      ctx.lineWidth = Math.max(minPenWidth, baseSize);
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+    }
+
+    if (stroke.isShape && stroke.cardShape && this.drawCardRecognizedShape(ctx, stroke, 0, 0, w, h, baseSize)) {
       ctx.restore();
       return;
     }
 
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    // 문제 창 크기에 비례하여 선 굵기도 자연스럽게 스케일링 (기준 폭 520px)
-    const sizeScale = Math.max(0.6, w / 520);
-
-    const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
-    const pRect = isAudioReplay
-      ? (typeof this._getStageElementRect === 'function' ? this._getStageElementRect(pCanvas) : pCanvas.getBoundingClientRect())
-      : null;
-
-    this.problemInkStrokes.forEach(rawStroke => {
-      let stroke = rawStroke;
-      let repInfo = null;
-      if (isAudioReplay) {
-        repInfo = this.getPartialStrokeForReplay(rawStroke, this.audioPlayCurrentMs, this.audioReplayViewMode);
-        if (!repInfo || !repInfo.stroke) return;
-        stroke = repInfo.stroke;
-        if (repInfo.isCurrentlyWriting && repInfo.tipPoint && pRect && pRect.width > 0) {
-          this._activeReplayTipScreen = {
-            x: pRect.left + repInfo.tipPoint.nx * pRect.width,
-            y: pRect.top + repInfo.tipPoint.ny * pRect.height,
-            color: stroke.color || '#0f172a',
-            isHighlighter: Boolean(stroke.isHighlighter)
-          };
-        }
-      }
-      if (!stroke.points || stroke.points.length === 0) return;
-      ctx.save();
-
-      let strokeColor = stroke.color || '#1e293b';
-      if (this.isMonochromeMode) {
-        strokeColor = stroke.isHighlighter ? '#cbd5e1' : '#000000';
-      } else if (stroke.isHighlighter) {
-        strokeColor = this.resolveHighlighterStrokeColor(strokeColor, true);
-      } else if (strokeColor.toLowerCase() === '#ffffff' || strokeColor.toLowerCase() === '#fff') {
-        strokeColor = '#0f172a';
-      }
-
-      ctx.strokeStyle = strokeColor;
-      ctx.fillStyle = strokeColor;
-
-      const baseSize = (stroke.size || 3.5) * sizeScale;
-      const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
-      if (stroke.isHighlighter) {
-        ctx.globalAlpha = 0.36 * ghostMul;
-        const hlW = stroke.highlighterSize ? (stroke.highlighterSize * sizeScale) : Math.max(10, baseSize * 2.8);
-        ctx.lineWidth = Math.max(4, hlW);
-      } else {
-        ctx.globalAlpha = 1.0 * ghostMul;
-        ctx.lineWidth = baseSize;
-        // 🌟 [저사양 PC 0ms 저지연 최적화]: GPU 가우시안 블러 병목(shadowBlur) 완전 제거
-        ctx.shadowBlur = 0;
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 0;
-      }
-
-      if (stroke.isShape && stroke.cardShape && this.drawCardRecognizedShape(ctx, stroke, 0, 0, w, h, baseSize)) {
-        ctx.restore();
-        return;
-      }
-
-      const rawPts = stroke.points.map(pt => ({
+    const len = stroke.points.length;
+    const rawPts = new Array(len);
+    for (let i = 0; i < len; i++) {
+      const pt = stroke.points[i];
+      rawPts[i] = {
         x: pt.nx * w,
         y: pt.ny * h,
         p: pt.p !== undefined ? pt.p : 0.5
-      }));
+      };
+    }
 
-      // 스트림라인 스무딩 (손떨림 보정 — 도형 스냅 획은 변형 없이 원본 유지)
-      const pts = stroke.isShape ? rawPts : [rawPts[0]];
-      if (!stroke.isShape) {
-        for (let i = 1; i < rawPts.length; i++) {
-          const prev = pts[pts.length - 1];
-          const curr = rawPts[i];
-          pts.push({
-            x: prev.x * 0.28 + curr.x * 0.72,
-            y: prev.y * 0.28 + curr.y * 0.72,
-            p: prev.p * 0.28 + curr.p * 0.72
-          });
+    let pts = rawPts;
+    if (applyStreamline && !stroke.isShape && len > 1) {
+      pts = new Array(len);
+      pts[0] = rawPts[0];
+      for (let i = 1; i < len; i++) {
+        const prev = pts[i - 1];
+        const curr = rawPts[i];
+        pts[i] = {
+          x: prev.x * 0.28 + curr.x * 0.72,
+          y: prev.y * 0.28 + curr.y * 0.72,
+          p: prev.p * 0.28 + curr.p * 0.72
+        };
+      }
+    }
+
+    const penStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
+    this.drawPenStyledPointArray(ctx, pts, stroke.isHighlighter ? ctx.lineWidth : baseSize, penStyle, stroke.softBlur, Boolean(stroke.isHighlighter));
+    ctx.restore();
+  }
+
+  _renderCardInkWithBakeCache(canvas, strokes, w, h, dpr, sizeScale, widgetEl, options = {}) {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const strokeList = Array.isArray(strokes) ? strokes : [];
+    if (strokeList.length === 0) {
+      canvas._bakeValid = false;
+      canvas._bakeCount = 0;
+      canvas._bakeFirstStroke = null;
+      canvas._bakeLastStroke = null;
+      ctx.save();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      this.drawCardLassoOverlay(ctx, w, h, widgetEl);
+      ctx.restore();
+      return;
+    }
+
+    const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
+    const hasActiveLassoOnCard = Boolean(this._activeCardLasso && this._activeCardLasso.cardEl === widgetEl);
+
+    if (isAudioReplay || hasActiveLassoOnCard) {
+      canvas._bakeValid = false;
+      ctx.save();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      const cRect = isAudioReplay
+        ? (typeof this._getStageElementRect === 'function' ? this._getStageElementRect(canvas) : canvas.getBoundingClientRect())
+        : null;
+      for (let i = 0; i < strokeList.length; i++) {
+        let st = strokeList[i];
+        if (isAudioReplay) {
+          const repInfo = this.getPartialStrokeForReplay(st, this.audioPlayCurrentMs, this.audioReplayViewMode);
+          if (!repInfo || !repInfo.stroke) continue;
+          st = repInfo.stroke;
+          if (repInfo.isCurrentlyWriting && repInfo.tipPoint && cRect && cRect.width > 0) {
+            this._activeReplayTipScreen = {
+              x: cRect.left + repInfo.tipPoint.nx * cRect.width,
+              y: cRect.top + repInfo.tipPoint.ny * cRect.height,
+              color: st.color || '#0f172a',
+              isHighlighter: Boolean(st.isHighlighter)
+            };
+          }
         }
+        this._renderSingleCardInkStroke(ctx, st, w, h, sizeScale, options);
+      }
+      this.drawCardLassoOverlay(ctx, w, h, widgetEl);
+      ctx.restore();
+      return;
+    }
+
+    if (!canvas._bakeCanvas) {
+      canvas._bakeCanvas = document.createElement('canvas');
+    }
+    const bCanvas = canvas._bakeCanvas;
+    const bCtx = bCanvas.getContext('2d');
+    const geoSig = `${canvas.width}x${canvas.height}|${sizeScale.toFixed(4)}|${this.isMonochromeMode ? 1 : 0}`;
+
+    if (bCanvas.width !== canvas.width || bCanvas.height !== canvas.height) {
+      bCanvas.width = canvas.width;
+      bCanvas.height = canvas.height;
+      canvas._bakeValid = false;
+    }
+    if (canvas._bakeGeoSig !== geoSig) {
+      canvas._bakeGeoSig = geoSig;
+      canvas._bakeValid = false;
+    }
+
+    const activeStroke = options.activeStroke || null;
+    const commitStroke = Boolean(options.commitStroke);
+
+    if (activeStroke && !commitStroke) {
+      const completedCount = (strokeList[strokeList.length - 1] === activeStroke)
+        ? (strokeList.length - 1)
+        : Math.max(0, strokeList.indexOf(activeStroke));
+      const expectedFirst = completedCount > 0 ? strokeList[0] : null;
+      const expectedLast = completedCount > 0 ? strokeList[completedCount - 1] : null;
+
+      if (
+        canvas._bakeValid &&
+        canvas._bakeCount === completedCount &&
+        canvas._bakeFirstStroke === expectedFirst &&
+        canvas._bakeLastStroke === expectedLast
+      ) {
+        // 이미 직전 완료 획들까지 _bakeCanvas에 구워져 있으므로 재렌더링 0회!
+      } else if (
+        canvas._bakeValid &&
+        completedCount > 0 &&
+        canvas._bakeCount === completedCount - 1 &&
+        canvas._bakeFirstStroke === (completedCount - 1 > 0 ? strokeList[0] : null) &&
+        canvas._bakeLastStroke === (completedCount - 1 > 0 ? strokeList[completedCount - 2] : null)
+      ) {
+        bCtx.save();
+        bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this._renderSingleCardInkStroke(bCtx, strokeList[completedCount - 1], w, h, sizeScale, options);
+        bCtx.restore();
+        canvas._bakeCount = completedCount;
+        canvas._bakeFirstStroke = expectedFirst;
+        canvas._bakeLastStroke = expectedLast;
+      } else {
+        bCtx.save();
+        bCtx.setTransform(1, 0, 0, 1, 0, 0);
+        bCtx.clearRect(0, 0, bCanvas.width, bCanvas.height);
+        bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        for (let i = 0; i < completedCount; i++) {
+          this._renderSingleCardInkStroke(bCtx, strokeList[i], w, h, sizeScale, options);
+        }
+        bCtx.restore();
+        canvas._bakeValid = true;
+        canvas._bakeCount = completedCount;
+        canvas._bakeFirstStroke = expectedFirst;
+        canvas._bakeLastStroke = expectedLast;
       }
 
-      const penStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
-      this.drawPenStyledPointArray(ctx, pts, stroke.isHighlighter ? ctx.lineWidth : baseSize, penStyle, stroke.softBlur, Boolean(stroke.isHighlighter));
-
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (completedCount > 0) {
+        ctx.drawImage(bCanvas, 0, 0);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this._renderSingleCardInkStroke(ctx, activeStroke, w, h, sizeScale, options);
       ctx.restore();
-    });
+      return;
+    }
 
-    this.drawCardLassoOverlay(ctx, w, h, document.getElementById('problemCardWidget'));
+    if (activeStroke && commitStroke && strokeList[strokeList.length - 1] === activeStroke) {
+      const prevCount = strokeList.length - 1;
+      const expectedPrevFirst = prevCount > 0 ? strokeList[0] : null;
+      const expectedPrevLast = prevCount > 0 ? strokeList[prevCount - 1] : null;
+      if (
+        canvas._bakeValid &&
+        canvas._bakeCount === prevCount &&
+        canvas._bakeFirstStroke === expectedPrevFirst &&
+        canvas._bakeLastStroke === expectedPrevLast
+      ) {
+        bCtx.save();
+        bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this._renderSingleCardInkStroke(bCtx, activeStroke, w, h, sizeScale, options);
+        bCtx.restore();
+        canvas._bakeCount = strokeList.length;
+        canvas._bakeFirstStroke = strokeList[0];
+        canvas._bakeLastStroke = activeStroke;
+
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(bCanvas, 0, 0);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this.drawCardLassoOverlay(ctx, w, h, widgetEl);
+        ctx.restore();
+        return;
+      }
+    }
+
+    bCtx.save();
+    bCtx.setTransform(1, 0, 0, 1, 0, 0);
+    bCtx.clearRect(0, 0, bCanvas.width, bCanvas.height);
+    bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (let i = 0; i < strokeList.length; i++) {
+      this._renderSingleCardInkStroke(bCtx, strokeList[i], w, h, sizeScale, options);
+    }
+    bCtx.restore();
+    canvas._bakeValid = true;
+    canvas._bakeCount = strokeList.length;
+    canvas._bakeFirstStroke = strokeList[0] || null;
+    canvas._bakeLastStroke = strokeList[strokeList.length - 1] || null;
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bCanvas, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.drawCardLassoOverlay(ctx, w, h, widgetEl);
     ctx.restore();
+  }
+
+  renderProblemCardCanvas(activeStroke = null, commitStroke = false) {
+    const pCanvas = document.getElementById('problemCardCanvas');
+    if (!pCanvas) return;
+    const dpr = this.getCanvasDpr();
+    const w = pCanvas.width / dpr;
+    const h = pCanvas.height / dpr;
+    const sizeScale = Math.max(0.6, w / 520);
+    this._renderCardInkWithBakeCache(
+      pCanvas,
+      this.problemInkStrokes,
+      w,
+      h,
+      dpr,
+      sizeScale,
+      document.getElementById('problemCardWidget'),
+      {
+        activeStroke,
+        commitStroke,
+        isProbCard: true,
+        applyStreamline: true,
+        minPenWidth: 0,
+        minHlWidth: 4,
+        defaultHlMin: 10
+      }
+    );
   }
 
   eraseProblemInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null) {
@@ -10379,9 +10554,13 @@ class GraphApp {
       let isDrawingOnProblem = false;
       let currentStroke = null;
       let holdTimer = null;
+      let activeProblemDrawRect = null;
 
-      const getNormPos = (e) => {
-        const rect = pCanvas.getBoundingClientRect();
+      const getNormPos = (e, useCachedRect = false) => {
+        const rect = (useCachedRect && activeProblemDrawRect && activeProblemDrawRect.width > 0)
+          ? activeProblemDrawRect
+          : pCanvas.getBoundingClientRect();
+        activeProblemDrawRect = rect;
         const w = Math.max(1, rect.width);
         const h = Math.max(1, rect.height);
         const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / w));
@@ -10407,7 +10586,7 @@ class GraphApp {
 
         try { pCanvas.setPointerCapture(e.pointerId); } catch (err) { }
 
-        const pos = getNormPos(e);
+        const pos = getNormPos(e, false);
         isDrawingOnProblem = true;
 
         const isCardStylusEraser = (
@@ -10431,7 +10610,7 @@ class GraphApp {
           holdTimer = setTimeout(() => {
             if (isDrawingOnProblem && currentStroke && !currentStroke._shapeHoldDetected) {
               if (this.recognizeAndApplyCardStrokeShape(currentStroke, w, h)) {
-                this.renderProblemCardCanvas();
+                this.renderProblemCardCanvas(currentStroke);
               }
             }
           }, 340);
@@ -10458,7 +10637,7 @@ class GraphApp {
         };
         this.problemInkStrokes.push(currentStroke);
         restartProblemHoldTimer(pos.w, pos.h);
-        this.renderProblemCardCanvas();
+        this.renderProblemCardCanvas(currentStroke);
         return true;
       };
 
@@ -10476,7 +10655,7 @@ class GraphApp {
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
 
-        const pos = getNormPos(e);
+        const pos = getNormPos(e, true);
         const isCardStylusEraser = this._problemCardStylusEraser || (
           (typeof e.buttons === 'number' && (e.buttons & 32) !== 0) ||
           e.button === 5 ||
@@ -10497,7 +10676,7 @@ class GraphApp {
 
         if (currentStroke._shapeHoldDetected && currentStroke.cardShape) {
           if (this.updateHeldCardStrokeShape(currentStroke, pos.nx, pos.ny, pos.w, pos.h)) {
-            this.renderProblemCardCanvas();
+            this.renderProblemCardCanvas(currentStroke);
           }
           return;
         }
@@ -10519,7 +10698,7 @@ class GraphApp {
           holdTimer = setTimeout(() => {
             if (isDrawingOnProblem && currentStroke && !currentStroke._shapeHoldDetected) {
               if (this.recognizeAndApplyCardStrokeShape(currentStroke, pos.w, pos.h)) {
-                this.renderProblemCardCanvas();
+                this.renderProblemCardCanvas(currentStroke);
               }
             }
           }, 340);
@@ -10549,7 +10728,7 @@ class GraphApp {
           Boolean(currentStroke.isHighlighter)
         );
 
-        this.renderProblemCardCanvas();
+        this.renderProblemCardCanvas(currentStroke);
       });
 
       const endProblemDraw = (e) => {
@@ -10558,6 +10737,7 @@ class GraphApp {
         const finishedCardStroke = currentStroke;
         isDrawingOnProblem = false;
         this._problemCardStylusEraser = false;
+        activeProblemDrawRect = null;
         currentStroke = null;
         if (holdTimer) {
           clearTimeout(holdTimer);
@@ -10567,6 +10747,7 @@ class GraphApp {
           if (this.isAudioRecording) {
             finishedCardStroke.tEnd = this.getAudioRecordElapsedMs();
           }
+          this.renderProblemCardCanvas(finishedCardStroke, true);
           this.undoStack.push({
             type: 'card_stroke_add',
             strokesArr: this.problemInkStrokes,
@@ -11131,9 +11312,9 @@ class GraphApp {
       bodyEl.insertBefore(extraInkCanvas, laserCanvas);
       cardWidgetEl._cardInkStrokes = [];
 
-      const renderExtraCardInk = () => {
+      const renderExtraCardInk = (activeStroke = null, commitStroke = false) => {
         const dpr = this.getCanvasDpr();
-        if (!cardWidgetEl.classList.contains('minimized')) {
+        if (!cardWidgetEl.classList.contains('minimized') && (!activeStroke || !extraInkCanvas.width || !extraInkCanvas.height)) {
           const rect = typeof this._getStageElementRect === 'function'
             ? this._getStageElementRect(bodyEl)
             : bodyEl.getBoundingClientRect();
@@ -11148,19 +11329,6 @@ class GraphApp {
         }
         const w = Math.max(1, (extraInkCanvas.width || 520 * dpr) / dpr);
         const h = Math.max(1, (extraInkCanvas.height || 360 * dpr) / dpr);
-        const cCtx = extraInkCanvas.getContext('2d');
-        if (!cCtx) return;
-        cCtx.save();
-        cCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        cCtx.clearRect(0, 0, w, h);
-        const strokes = cardWidgetEl._cardInkStrokes || [];
-        if (strokes.length === 0) {
-          this.drawCardLassoOverlay(cCtx, w, h, cardWidgetEl);
-          cCtx.restore();
-          return;
-        }
-        cCtx.lineCap = 'round';
-        cCtx.lineJoin = 'round';
         const isProbExtra = cardWidgetEl.classList.contains('extra-problem-card-widget');
         const extraGraphRef = (!isProbExtra && Array.isArray(this.extraGraphCards))
           ? this.extraGraphCards.find(c => c && c.el === cardWidgetEl)
@@ -11170,64 +11338,31 @@ class GraphApp {
           : (typeof this.getPipCardFinePenScale === 'function'
             ? this.getPipCardFinePenScale(extraGraphRef, w, h)
             : 0.54);
-        const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
-        const cRect = isAudioReplay
-          ? (typeof this._getStageElementRect === 'function' ? this._getStageElementRect(extraInkCanvas) : extraInkCanvas.getBoundingClientRect())
-          : null;
-
-        strokes.forEach(rawSt => {
-          let st = rawSt;
-          if (isAudioReplay) {
-            const repInfo = this.getPartialStrokeForReplay(rawSt, this.audioPlayCurrentMs, this.audioReplayViewMode);
-            if (!repInfo || !repInfo.stroke) return;
-            st = repInfo.stroke;
-            if (repInfo.isCurrentlyWriting && repInfo.tipPoint && cRect && cRect.width > 0) {
-              this._activeReplayTipScreen = {
-                x: cRect.left + repInfo.tipPoint.nx * cRect.width,
-                y: cRect.top + repInfo.tipPoint.ny * cRect.height,
-                color: st.color || '#0f172a',
-                isHighlighter: Boolean(st.isHighlighter)
-              };
-            }
+        this._renderCardInkWithBakeCache(
+          extraInkCanvas,
+          cardWidgetEl._cardInkStrokes,
+          w,
+          h,
+          dpr,
+          sizeScale,
+          cardWidgetEl,
+          {
+            activeStroke,
+            commitStroke,
+            isProbCard: isProbExtra,
+            applyStreamline: false,
+            minPenWidth: isProbExtra ? 1.5 : 0.85,
+            minHlWidth: 3,
+            defaultHlMin: 8
           }
-          if (!st.points || st.points.length === 0) return;
-          cCtx.save();
-          let col = st.color || '#1e293b';
-          if (this.isMonochromeMode) {
-            col = st.isHighlighter ? '#cbd5e1' : '#000000';
-          } else if (st.isHighlighter) {
-            col = this.resolveHighlighterStrokeColor(col, true);
-          } else if (isProbExtra && (col.toLowerCase() === '#ffffff' || col.toLowerCase() === '#fff')) {
-            col = '#0f172a';
-          }
-          cCtx.strokeStyle = col;
-          cCtx.fillStyle = col;
-          const baseSize = (st.size || 3.5) * sizeScale;
-          const ghostMul = (typeof st._ghostAlpha === 'number') ? st._ghostAlpha : 1.0;
-          cCtx.globalAlpha = (st.isHighlighter ? 0.36 : 1.0) * ghostMul;
-          const extraHlW = st.highlighterSize ? (st.highlighterSize * sizeScale) : Math.max(8, baseSize * 2.8);
-          cCtx.lineWidth = st.isHighlighter ? Math.max(3, extraHlW) : Math.max(isProbExtra ? 1.5 : 0.85, baseSize);
-          if (st.isShape && st.cardShape && this.drawCardRecognizedShape(cCtx, st, 0, 0, w, h, baseSize)) {
-            cCtx.restore();
-            return;
-          }
-          const pts = st.points.map(pt => ({
-            x: pt.nx * w,
-            y: pt.ny * h,
-            p: pt.p !== undefined ? pt.p : 0.5
-          }));
-          const penStyle = st.isHighlighter ? 'ballpen' : (st.penStyle || 'ballpen');
-          this.drawPenStyledPointArray(cCtx, pts, st.isHighlighter ? cCtx.lineWidth : baseSize, penStyle, st.softBlur, Boolean(st.isHighlighter));
-          cCtx.restore();
-        });
-        this.drawCardLassoOverlay(cCtx, w, h, cardWidgetEl);
-        cCtx.restore();
+        );
       };
       cardWidgetEl._renderCardInkCanvas = renderExtraCardInk;
 
       let isDrawingExtraInk = false;
       let curExtraStroke = null;
       let extraHoldTimer = null;
+      let activeExtraDrawRect = null;
 
       const eraseExtraCardAtPoint = (sx, sy, rw, rh) => {
         const extraEraseR = Math.max(6, (this.currentEraserSize || 14) * 1.25);
@@ -11257,9 +11392,9 @@ class GraphApp {
           if (isDrawingExtraInk && curExtraStroke && !curExtraStroke._shapeHoldDetected) {
             if (this.recognizeAndApplyCardStrokeShape(curExtraStroke, rw, rh)) {
               if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
-                this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true);
+                this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true, curExtraStroke);
               }
-              renderExtraCardInk();
+              renderExtraCardInk(curExtraStroke);
             }
           }
         }, 340);
@@ -11276,6 +11411,7 @@ class GraphApp {
         e.stopPropagation();
         try { extraInkCanvas.setPointerCapture(e.pointerId); } catch (err) { }
         const rect = extraInkCanvas.getBoundingClientRect();
+        activeExtraDrawRect = rect;
         const rw = Math.max(1, rect.width);
         const rh = Math.max(1, rect.height);
         const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rw));
@@ -11314,7 +11450,7 @@ class GraphApp {
         };
         cardWidgetEl._cardInkStrokes.push(curExtraStroke);
         restartExtraHoldTimer(rw, rh);
-        renderExtraCardInk();
+        renderExtraCardInk(curExtraStroke);
         return true;
       };
 
@@ -11331,7 +11467,10 @@ class GraphApp {
         }
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
-        const rect = extraInkCanvas.getBoundingClientRect();
+        const rect = (activeExtraDrawRect && activeExtraDrawRect.width > 0)
+          ? activeExtraDrawRect
+          : extraInkCanvas.getBoundingClientRect();
+        activeExtraDrawRect = rect;
         const rw = Math.max(1, rect.width);
         const rh = Math.max(1, rect.height);
         const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rw));
@@ -11351,9 +11490,9 @@ class GraphApp {
         if (curExtraStroke._shapeHoldDetected && curExtraStroke.cardShape) {
           if (this.updateHeldCardStrokeShape(curExtraStroke, nx, ny, rw, rh)) {
             if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
-              this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true);
+              this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true, curExtraStroke);
             }
-            renderExtraCardInk();
+            renderExtraCardInk(curExtraStroke);
           }
           return;
         }
@@ -11394,7 +11533,7 @@ class GraphApp {
           rh,
           Boolean(curExtraStroke.isHighlighter)
         );
-        renderExtraCardInk();
+        renderExtraCardInk(curExtraStroke);
       });
 
       const endExtraCardInk = (e) => {
@@ -11403,6 +11542,7 @@ class GraphApp {
         const finishedSt = curExtraStroke;
         isDrawingExtraInk = false;
         cardWidgetEl._extraStylusEraser = false;
+        activeExtraDrawRect = null;
         curExtraStroke = null;
         if (extraHoldTimer) {
           clearTimeout(extraHoldTimer);
@@ -11411,13 +11551,14 @@ class GraphApp {
         if (finishedSt && finishedSt.points && finishedSt.points.length > 0) {
           if (this.isAudioRecording) finishedSt.tEnd = this.getAudioRecordElapsedMs();
           if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
-            this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true);
+            this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, false, finishedSt);
           }
+          renderExtraCardInk(finishedSt, true);
           this.undoStack.push({
             type: 'card_stroke_add',
             strokesArr: cardWidgetEl._cardInkStrokes,
             stroke: finishedSt,
-            renderFn: renderExtraCardInk
+            renderFn: () => renderExtraCardInk()
           });
           if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
           this.redoStack = [];
@@ -13795,87 +13936,31 @@ class GraphApp {
     return Math.max(0.36, Math.min(1.1, (w / 430) * 0.54));
   }
 
-  renderGraphCardCanvas() {
+  renderGraphCardCanvas(activeStroke = null, commitStroke = false) {
     const gCanvas = document.getElementById('graphCardCanvas');
     if (!gCanvas) return;
-    const ctx = gCanvas.getContext('2d');
     const dpr = this.getCanvasDpr();
     const w = gCanvas.width / dpr;
     const h = gCanvas.height / dpr;
-
-    ctx.save();
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-
-    if (!this.graphInkStrokes || this.graphInkStrokes.length === 0) {
-      this.drawCardLassoOverlay(ctx, w, h, document.getElementById('graphCardWidget'));
-      ctx.restore();
-      return;
-    }
-
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
     const sizeScale = this.getPipCardFinePenScale('primary', w, h);
-
-    const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
-    const gRect = isAudioReplay
-      ? (typeof this._getStageElementRect === 'function' ? this._getStageElementRect(gCanvas) : gCanvas.getBoundingClientRect())
-      : null;
-
-    this.graphInkStrokes.forEach(rawStroke => {
-      let stroke = rawStroke;
-      if (isAudioReplay) {
-        const repInfo = this.getPartialStrokeForReplay(rawStroke, this.audioPlayCurrentMs, this.audioReplayViewMode);
-        if (!repInfo || !repInfo.stroke) return;
-        stroke = repInfo.stroke;
-        if (repInfo.isCurrentlyWriting && repInfo.tipPoint && gRect && gRect.width > 0) {
-          this._activeReplayTipScreen = {
-            x: gRect.left + repInfo.tipPoint.nx * gRect.width,
-            y: gRect.top + repInfo.tipPoint.ny * gRect.height,
-            color: stroke.color || '#1e293b',
-            isHighlighter: Boolean(stroke.isHighlighter)
-          };
-        }
+    this._renderCardInkWithBakeCache(
+      gCanvas,
+      this.graphInkStrokes,
+      w,
+      h,
+      dpr,
+      sizeScale,
+      document.getElementById('graphCardWidget'),
+      {
+        activeStroke,
+        commitStroke,
+        isProbCard: false,
+        applyStreamline: false,
+        minPenWidth: 0.85,
+        minHlWidth: 3,
+        defaultHlMin: 8
       }
-      if (!stroke.points || stroke.points.length === 0) return;
-      ctx.save();
-      let strokeColor = stroke.color || '#1e293b';
-      if (this.isMonochromeMode) {
-        strokeColor = stroke.isHighlighter ? '#cbd5e1' : '#000000';
-      } else if (stroke.isHighlighter) {
-        strokeColor = this.resolveHighlighterStrokeColor(strokeColor, true);
-      }
-      ctx.strokeStyle = strokeColor;
-      ctx.fillStyle = strokeColor;
-
-      const baseSize = (stroke.size || 3.5) * sizeScale;
-      const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
-      if (stroke.isHighlighter) {
-        ctx.globalAlpha = 0.36 * ghostMul;
-        const gHlW = stroke.highlighterSize ? (stroke.highlighterSize * sizeScale) : Math.max(8, baseSize * 2.8);
-        ctx.lineWidth = Math.max(3, gHlW);
-      } else {
-        ctx.globalAlpha = 1.0 * ghostMul;
-        ctx.lineWidth = Math.max(0.85, baseSize);
-      }
-
-      if (stroke.isShape && stroke.cardShape && this.drawCardRecognizedShape(ctx, stroke, 0, 0, w, h, baseSize)) {
-        ctx.restore();
-        return;
-      }
-
-      const pts = stroke.points.map(pt => ({
-        x: pt.nx * w,
-        y: pt.ny * h,
-        p: pt.p !== undefined ? pt.p : 0.5
-      }));
-      const penStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
-      this.drawPenStyledPointArray(ctx, pts, stroke.isHighlighter ? ctx.lineWidth : baseSize, penStyle, stroke.softBlur, Boolean(stroke.isHighlighter));
-      ctx.restore();
-    });
-
-    this.drawCardLassoOverlay(ctx, w, h, document.getElementById('graphCardWidget'));
-    ctx.restore();
+    );
   }
 
   eraseGraphCardInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null) {
@@ -13960,6 +14045,7 @@ class GraphApp {
       let isDrawingOnGraphCard = false;
       let currentStroke = null;
       let graphHoldTimer = null;
+      let activeGraphDrawRect = null;
 
       const restartGraphCardHoldTimer = (w, h) => {
         if (graphHoldTimer) {
@@ -13971,16 +14057,19 @@ class GraphApp {
           if (isDrawingOnGraphCard && currentStroke && !currentStroke._shapeHoldDetected) {
             if (this.recognizeAndApplyCardStrokeShape(currentStroke, w, h)) {
               if (typeof this._ensurePipCardInkMathCoords === 'function') {
-                this._ensurePipCardInkMathCoords('primary', true);
+                this._ensurePipCardInkMathCoords('primary', true, currentStroke);
               }
-              this.renderGraphCardCanvas();
+              this.renderGraphCardCanvas(currentStroke);
             }
           }
         }, 340);
       };
 
-      const getNormPos = (e) => {
-        const rect = gCanvas.getBoundingClientRect();
+      const getNormPos = (e, useCachedRect = false) => {
+        const rect = (useCachedRect && activeGraphDrawRect && activeGraphDrawRect.width > 0)
+          ? activeGraphDrawRect
+          : gCanvas.getBoundingClientRect();
+        activeGraphDrawRect = rect;
         const w = Math.max(1, rect.width);
         const h = Math.max(1, rect.height);
         const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / w));
@@ -14004,7 +14093,7 @@ class GraphApp {
         e.stopPropagation();
         try { gCanvas.setPointerCapture(e.pointerId); } catch (err) { }
 
-        const pos = getNormPos(e);
+        const pos = getNormPos(e, false);
         isDrawingOnGraphCard = true;
 
         const isCardStylusEraser = (
@@ -14039,7 +14128,7 @@ class GraphApp {
         };
         this.graphInkStrokes.push(currentStroke);
         restartGraphCardHoldTimer(pos.w, pos.h);
-        this.renderGraphCardCanvas();
+        this.renderGraphCardCanvas(currentStroke);
         return true;
       };
 
@@ -14056,7 +14145,7 @@ class GraphApp {
         }
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
-        const pos = getNormPos(e);
+        const pos = getNormPos(e, true);
         const isCardStylusEraser = this._graphCardStylusEraser || (
           (typeof e.buttons === 'number' && (e.buttons & 32) !== 0) ||
           e.button === 5 ||
@@ -14076,9 +14165,9 @@ class GraphApp {
         if (currentStroke._shapeHoldDetected && currentStroke.cardShape) {
           if (this.updateHeldCardStrokeShape(currentStroke, pos.nx, pos.ny, pos.w, pos.h)) {
             if (typeof this._ensurePipCardInkMathCoords === 'function') {
-              this._ensurePipCardInkMathCoords('primary', true);
+              this._ensurePipCardInkMathCoords('primary', true, currentStroke);
             }
-            this.renderGraphCardCanvas();
+            this.renderGraphCardCanvas(currentStroke);
           }
           return;
         }
@@ -14119,7 +14208,7 @@ class GraphApp {
           pos.h,
           Boolean(currentStroke.isHighlighter)
         );
-        this.renderGraphCardCanvas();
+        this.renderGraphCardCanvas(currentStroke);
       });
 
       const endGraphCardDraw = (e) => {
@@ -14128,6 +14217,7 @@ class GraphApp {
         const finishedCardStroke = currentStroke;
         isDrawingOnGraphCard = false;
         this._graphCardStylusEraser = false;
+        activeGraphDrawRect = null;
         currentStroke = null;
         if (graphHoldTimer) {
           clearTimeout(graphHoldTimer);
@@ -14138,8 +14228,9 @@ class GraphApp {
             finishedCardStroke.tEnd = this.getAudioRecordElapsedMs();
           }
           if (typeof this._ensurePipCardInkMathCoords === 'function') {
-            this._ensurePipCardInkMathCoords('primary', true);
+            this._ensurePipCardInkMathCoords('primary', false, finishedCardStroke);
           }
+          this.renderGraphCardCanvas(finishedCardStroke, true);
           this.undoStack.push({
             type: 'card_stroke_add',
             strokesArr: this.graphInkStrokes,
@@ -14656,29 +14747,29 @@ class GraphApp {
     }
   }
 
-  _ensurePipCardInkMathCoordsByWidget(widgetEl, forceAll = false) {
+  _ensurePipCardInkMathCoordsByWidget(widgetEl, forceAll = false, targetStroke = null) {
     if (!widgetEl) return;
     if (widgetEl.id === 'graphCardWidget') {
-      this._ensurePipCardInkMathCoords('primary', forceAll);
+      this._ensurePipCardInkMathCoords('primary', forceAll, targetStroke);
       return;
     }
     if (Array.isArray(this.extraGraphCards)) {
       const found = this.extraGraphCards.find(c => c && c.el === widgetEl);
-      if (found) this._ensurePipCardInkMathCoords(found, forceAll);
+      if (found) this._ensurePipCardInkMathCoords(found, forceAll, targetStroke);
     }
   }
 
-  _ensurePipCardInkMathCoords(cardRef, forceAll = false) {
+  _ensurePipCardInkMathCoords(cardRef, forceAll = false, targetStroke = null) {
     const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
     if (!widget) return;
     const snap = this._getMutablePipCardSnapshot(cardRef);
     if (!snap || snap.isNAxisStudioCard) return;
-    const strokes = this._getPipCardInkStrokesArray(cardRef);
+    const strokes = targetStroke ? [targetStroke] : this._getPipCardInkStrokesArray(cardRef);
     if (!strokes || strokes.length === 0) return;
 
     const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
     const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
-    const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 360));
+    const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
     const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
 
     this._withPipCardGraphState(snap, cardW, cardH, () => {
@@ -14754,8 +14845,8 @@ class GraphApp {
     const snap = this._getMutablePipCardSnapshot(cardRef);
     if (!snap || snap.isNAxisStudioCard) return;
 
-    const effW = Math.max(80, Math.round(cardW || 360));
-    const effH = Math.max(80, Math.round(cardH || 295));
+    const effW = Math.max(80, Math.round(cardW || 430));
+    const effH = Math.max(80, Math.round(cardH || 353));
 
     this._withPipCardGraphState(snap, effW, effH, () => {
       strokes.forEach(st => {
@@ -17151,13 +17242,8 @@ class GraphApp {
       if (penStyle === 'ballpen' || penStyle === 'flat') {
         const lineW = this.computePenStyleWidth(effBaseSize, p0.p, penStyle);
         ctx.lineWidth = lineW;
-        ctx.beginPath();
-        ctx.arc(p0.x / nibX, p0.y / nibY, lineW / 2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(p0.x / nibX, p0.y / nibY);
-        ctx.lineTo(mx / nibX, my / nibY);
-        ctx.stroke();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         ctx.beginPath();
         ctx.moveTo(p0.x / nibX, p0.y / nibY);
         ctx.lineTo(p1.x / nibX, p1.y / nibY);
@@ -17178,18 +17264,13 @@ class GraphApp {
     if (penStyle === 'ballpen' || penStyle === 'flat') {
       const lineW = this.computePenStyleWidth(effBaseSize, pts[pts.length - 1].p, penStyle);
       ctx.lineWidth = lineW;
-      // 1) 시작점 캡슐 도트 (L === 1과 동일)
-      ctx.beginPath();
-      ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
-      ctx.fill();
-      // 2) 첫 구간 p0 -> firstMid (L === 2와 동일)
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
       const firstMidX = (pts[0].x + pts[1].x) * 0.5;
       const firstMidY = (pts[0].y + pts[1].y) * 0.5;
       ctx.beginPath();
       ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
       ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
-      ctx.stroke();
-      // 3) 중간 베지어 세그먼트 mid1 -> ctrl -> mid2 (L >= 3 실시간 세그먼트와 100% 동일)
       let prevMidX = firstMidX;
       let prevMidY = firstMidY;
       for (let i = 1; i < pts.length - 1; i++) {
@@ -17197,17 +17278,11 @@ class GraphApp {
         const midY = (pts[i].y + pts[i + 1].y) * 0.5;
         const ctrlX = blurAlpha > 0 ? (pts[i].x * (1 - blurAlpha) + ((prevMidX + midX) * 0.5) * blurAlpha) : pts[i].x;
         const ctrlY = blurAlpha > 0 ? (pts[i].y * (1 - blurAlpha) + ((prevMidY + midY) * 0.5) * blurAlpha) : pts[i].y;
-        ctx.beginPath();
-        ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
         ctx.quadraticCurveTo(ctrlX / nibX, ctrlY / nibY, midX / nibX, midY / nibY);
-        ctx.stroke();
         prevMidX = midX;
         prevMidY = midY;
       }
-      // 4) 끝단 마감 꼬리 prevMid -> last (isFinalTail === true와 100% 동일)
       const last = pts[pts.length - 1];
-      ctx.beginPath();
-      ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
       ctx.lineTo(last.x / nibX, last.y / nibY);
       ctx.stroke();
       ctx.restore();
