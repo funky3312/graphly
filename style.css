@@ -1509,6 +1509,408 @@ body.fullscreen-mode .btn-exit-fullscreen {
 }
 
 /* ========================================================
+   Desmos 스타일 2D 실시간 수식 입력기 & 키패드 스타일링
+   ======================================================== */
+.desmos-math-modal-card {
+  max-width: 530px;
+}
+
+.desmos-modal-body {
+  padding: 16px 18px;
+  gap: 10px;
+}
+
+.desmos-math-field-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 62px;
+  background: rgba(15, 22, 30, 0.9);
+  border: 2px solid rgba(56, 189, 248, 0.45);
+  border-radius: 10px;
+  padding: 8px 40px 8px 14px;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+  cursor: text;
+}
+
+.desmos-math-field-wrapper.focused {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2), inset 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.desmos-math-prefix {
+  font-family: 'STIX Two Math', 'Cambria Math', 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 21px;
+  font-weight: 600;
+  color: #94a3b8;
+  margin-right: 8px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.desmos-math-field {
+  flex: 1;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  outline: none;
+  font-family: 'STIX Two Math', 'Cambria Math', 'Times New Roman', serif;
+  font-size: 22px;
+  color: #f8fafc;
+  line-height: 1.2;
+  user-select: none;
+  overflow-x: auto;
+}
+
+.dm-row {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  position: relative;
+}
+
+.dm-char {
+  display: inline-block;
+  padding: 0 0.5px;
+}
+
+.dm-char-var {
+  font-style: italic;
+}
+
+.dm-char-op {
+  padding: 0 4px;
+  font-style: normal;
+}
+
+/* 2D 분수 (분자 / 가로줄 / 분모) */
+.dm-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  margin: 0 4px;
+  font-size: 0.86em;
+}
+
+.dm-frac-num {
+  padding: 1px 5px 2px 5px;
+  min-width: 18px;
+  justify-content: center;
+}
+
+.dm-frac-bar {
+  width: 100%;
+  height: 1.6px;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.dm-frac-den {
+  padding: 2px 5px 1px 5px;
+  min-width: 18px;
+  justify-content: center;
+}
+
+/* 2D 위첨자 (지수) & 아래첨자 (로그 밑) */
+.dm-sup {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.68em;
+  transform: translateY(-0.48em);
+  margin-left: 1px;
+  margin-right: 1px;
+}
+
+.dm-sub {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65em;
+  transform: translateY(0.38em);
+  margin-left: 1px;
+  margin-right: 1px;
+}
+
+/* 2D 제곱근 (루트 기호 + 천장 가로선) */
+.dm-sqrt {
+  display: inline-flex;
+  align-items: stretch;
+  vertical-align: middle;
+  margin: 0 2px;
+}
+
+.dm-sqrt-sign {
+  font-size: 1.12em;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  margin-right: -1px;
+  font-style: normal;
+}
+
+.dm-sqrt-body {
+  border-top: 1.6px solid currentColor;
+  padding: 2px 4px 0 3px;
+  min-width: 16px;
+}
+
+/* 2D 절댓값 · 괄호 · 초월함수 */
+.dm-abs {
+  display: inline-flex;
+  align-items: center;
+  border-left: 1.6px solid currentColor;
+  border-right: 1.6px solid currentColor;
+  padding: 0 4px;
+  margin: 0 3px;
+}
+
+.dm-paren-wrap,
+.dm-func {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 1px;
+}
+
+.dm-func-name {
+  font-family: 'Pretendard', -apple-system, sans-serif;
+  font-style: normal;
+  font-weight: 600;
+  font-size: 0.88em;
+  margin-right: 1px;
+}
+
+.dm-paren {
+  font-style: normal;
+  font-weight: 400;
+  opacity: 0.85;
+  padding: 0 1px;
+}
+
+/* 빈칸 슬롯 (□ 점선 박스) */
+.dm-empty-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 20px;
+  border: 1.5px dashed rgba(148, 163, 184, 0.55);
+  background: rgba(148, 163, 184, 0.08);
+  border-radius: 4px;
+  margin: 0 1px;
+}
+
+.dm-sup .dm-empty-slot,
+.dm-sub .dm-empty-slot {
+  min-width: 13px;
+  height: 16px;
+}
+
+.dm-empty-slot.active-slot {
+  border-color: #38bdf8;
+  border-style: solid;
+  background: rgba(56, 189, 248, 0.16);
+}
+
+/* 깜빡이는 수식 커서 */
+.dm-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.15em;
+  background: #38bdf8;
+  margin: 0 -1px;
+  vertical-align: middle;
+  border-radius: 1px;
+  animation: dmCaretBlink 1s steps(1) infinite;
+  pointer-events: none;
+}
+
+@keyframes dmCaretBlink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.dm-placeholder {
+  font-family: 'Pretendard', sans-serif;
+  font-style: normal;
+  font-size: 13.5px;
+  color: rgba(148, 163, 184, 0.6);
+  margin-left: 6px;
+  pointer-events: none;
+}
+
+.desmos-preview-card {
+  padding: 8px 12px;
+  gap: 2px;
+}
+
+/* 방향키 이동 & 지우기 컨트롤 바 */
+.desmos-nav-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr) 1.5fr;
+  gap: 6px;
+}
+
+.desmos-nav-btn {
+  height: 36px;
+  border-radius: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(30, 41, 59, 0.75);
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.desmos-nav-btn:hover {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: #38bdf8;
+  color: #fff;
+}
+
+.desmos-nav-btn:active {
+  transform: scale(0.97);
+}
+
+.desmos-backspace-btn {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.32);
+  color: #fca5a5;
+}
+
+.desmos-backspace-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #f87171;
+  color: #fff;
+}
+
+/* Desmos 2-Zone 분할 키패드 */
+.desmos-keypad-split {
+  display: grid;
+  grid-template-columns: 3fr 5fr;
+  gap: 10px;
+}
+
+.desmos-pad-funcs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.desmos-pad-num {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.desmos-keypad-split .key-btn {
+  height: 42px;
+  padding: 0 4px;
+  font-size: 14.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.desmos-keypad-split .key-btn i {
+  font-family: 'STIX Two Math', 'Cambria Math', 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 16px;
+}
+
+.desmos-keypad-split .key-btn.key-num {
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 15.5px;
+  font-weight: 700;
+}
+
+/* 버튼 내부 분수/빈칸 미니 아이콘 */
+.btn-frac-icon {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.btn-frac-icon .bf-box {
+  width: 11px;
+  height: 9px;
+  border: 1.4px dashed currentColor;
+  border-radius: 2px;
+}
+
+.btn-frac-icon .bf-bar {
+  width: 16px;
+  height: 1.5px;
+  background: currentColor;
+}
+
+.btn-slot-box {
+  display: inline-block;
+  width: 11px;
+  height: 12px;
+  border: 1.4px dashed currentColor;
+  border-top: 1.5px solid currentColor;
+  margin-left: 1px;
+  vertical-align: -1px;
+}
+
+.btn-sup-box {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1.3px dashed currentColor;
+  border-radius: 2px;
+  margin-left: 1px;
+  transform: translateY(-4px);
+}
+
+.btn-sub-box {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border: 1.3px dashed currentColor;
+  border-radius: 2px;
+  margin-left: 1px;
+  transform: translateY(3px);
+}
+
+/* 하단 큼직한 취소 / 그래프 추가 버튼 */
+.desmos-modal-footer {
+  padding: 14px 18px;
+  gap: 10px;
+}
+
+.desmos-footer-btn {
+  height: 46px;
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.desmos-cancel-btn {
+  flex: 1;
+}
+
+.desmos-apply-btn {
+  flex: 1.8;
+}
+
+/* ========================================================
    뷰파인더(Viewfinder) UI 스타일링
    ======================================================== */
 /* ==========================================================================
@@ -6446,6 +6848,74 @@ body.theme-light .smart-math-input {
 body.theme-light .smart-math-input:focus {
   border-color: #2563eb;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+body.theme-light .desmos-math-field-wrapper {
+  background: #ffffff;
+  border: 2px solid #cbd5e1;
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+body.theme-light .desmos-math-field-wrapper.focused {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14), inset 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+body.theme-light .desmos-math-prefix {
+  color: #64748b;
+}
+
+body.theme-light .desmos-math-field {
+  color: #0f172a;
+}
+
+body.theme-light .dm-caret {
+  background: #2563eb;
+}
+
+body.theme-light .dm-empty-slot {
+  border-color: #94a3b8;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+body.theme-light .dm-empty-slot.active-slot {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.12);
+}
+
+body.theme-light .desmos-nav-btn {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+body.theme-light .desmos-nav-btn:hover {
+  background: #e2e8f0;
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+body.theme-light .desmos-backspace-btn {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+body.theme-light .desmos-backspace-btn:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+  color: #b91c1c;
+}
+
+body.theme-light .desmos-keypad-split .key-btn.key-num {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+body.theme-light .desmos-keypad-split .key-btn.key-num:hover {
+  background: #f1f5f9;
 }
 
 body.theme-light .btn-clear-expr:hover {

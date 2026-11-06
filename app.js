@@ -17797,7 +17797,7 @@ class GraphApp {
     });
   }
 
-  // --- [스마트 수식 입력 모달 & 실시간 자연어 파싱 연동] ---
+  // --- [스마트 수식 입력 모달 — Desmos 스타일 2D 실시간 수식 편집기 & 방향키 네비게이션 엔진] ---
   initSmartInputModal() {
     const modal = document.getElementById('modalSmartInput');
     const btnOpen = document.getElementById('btnSmartInput');
@@ -17805,51 +17805,639 @@ class GraphApp {
     const btnCancel = document.getElementById('btnCancelSmart');
     const btnApply = document.getElementById('btnApplySmartExpr');
     const input = document.getElementById('inputSmartExpr');
+    const mathFieldWrapper = document.getElementById('desmosMathFieldWrapper');
+    const mathField = document.getElementById('desmosMathField');
     const btnClear = document.getElementById('btnClearExpr');
     const previewCard = document.getElementById('previewCard');
     const previewMath = document.getElementById('previewMath');
     const previewDetails = document.getElementById('previewDetails');
     const previewTitle = document.getElementById('previewTitle');
 
-    if (!modal || !btnOpen) return;
+    if (!modal || !btnOpen || !mathField) return;
 
     let currentParsed = null;
+    let nodeUid = 0;
+
+    const createRow = (parent = null, slotName = null) => ({
+      id: ++nodeUid,
+      parent,
+      slotName,
+      nodes: []
+    });
+
+    const createCharNode = (val, parentRow) => ({
+      id: ++nodeUid,
+      type: 'char',
+      value: val,
+      parentRow
+    });
+
+    const createStructNode = (type, slotNames, parentRow, extra = {}) => {
+      const node = {
+        id: ++nodeUid,
+        type,
+        parentRow,
+        slots: {},
+        ...extra
+      };
+      slotNames.forEach((s) => {
+        node.slots[s] = createRow(node, s);
+      });
+      return node;
+    };
+
+    const getOrderedSlots = (node) => {
+      if (!node || !node.slots) return [];
+      switch (node.type) {
+        case 'frac': return [node.slots.num, node.slots.den];
+        case 'sup': return [node.slots.exp];
+        case 'sqrt': return [node.slots.body];
+        case 'abs': return [node.slots.body];
+        case 'paren': return [node.slots.body];
+        case 'func': return [node.slots.arg];
+        case 'logbase': return [node.slots.base, node.slots.arg];
+        default: return [];
+      }
+    };
+
+    const rootRow = createRow(null, 'root');
+    let cursor = { row: rootRow, index: 0 };
+
+    const isBinaryOpChar = (node) =>
+      node && node.type === 'char' && (node.value === '+' || node.value === '-' || node.value === '·');
+
+    // --- 2D 수식 트리 -> 계산기 문자열 직렬화 ---
+    const serializeTree = () => {
+      let hasEmptySlot = false;
+      const serRow = (row) => {
+        if (!row || row.nodes.length === 0) {
+          if (row !== rootRow) hasEmptySlot = true;
+          return '';
+        }
+        let out = '';
+        for (let i = 0; i < row.nodes.length; i++) {
+          const nd = row.nodes[i];
+          if (nd.type === 'char') {
+            if (nd.value === '·') out += '*';
+            else if (nd.value === 'π') out += 'pi';
+            else out += nd.value;
+          } else if (nd.type === 'frac') {
+            const numS = serRow(nd.slots.num);
+            const denS = serRow(nd.slots.den);
+            const numWrap = /^[0-9.]+$|^[a-zA-Z]+$/.test(numS) ? numS : `(${numS})`;
+            const denWrap = /^[0-9.]+$|^x$/.test(denS) ? denS : `(${denS})`;
+            out += `${numWrap}/${denWrap}`;
+          } else if (nd.type === 'sup') {
+            const expS = serRow(nd.slots.exp);
+            const expWrap = /^(?:\d+(?:\.\d+)?|x)$/.test(expS) ? expS : `(${expS})`;
+            out += `^${expWrap}`;
+          } else if (nd.type === 'sqrt') {
+            out += `sqrt(${serRow(nd.slots.body)})`;
+          } else if (nd.type === 'abs') {
+            out += `abs(${serRow(nd.slots.body)})`;
+          } else if (nd.type === 'paren') {
+            out += `(${serRow(nd.slots.body)})`;
+          } else if (nd.type === 'func') {
+            out += `${nd.fnName}(${serRow(nd.slots.arg)})`;
+          } else if (nd.type === 'logbase') {
+            const bS = serRow(nd.slots.base);
+            const aS = serRow(nd.slots.arg);
+            out += `(ln(${aS})/ln(${bS}))`;
+          }
+        }
+        return out;
+      };
+      const expr = serRow(rootRow);
+      return { expr, hasEmptySlot, isEmpty: rootRow.nodes.length === 0 };
+    };
+
+    // --- 커서 네비게이션 (←, →, ↑, ↓) ---
+    const moveRight = () => {
+      if (cursor.index < cursor.row.nodes.length) {
+        const nextNode = cursor.row.nodes[cursor.index];
+        const slots = getOrderedSlots(nextNode);
+        if (slots.length > 0) {
+          cursor = { row: slots[0], index: 0 };
+        } else {
+          cursor.index++;
+        }
+      } else if (cursor.row.parent) {
+        const pNode = cursor.row.parent;
+        const pRow = pNode.parentRow;
+        const pIdx = pRow.nodes.indexOf(pNode);
+        const slots = getOrderedSlots(pNode);
+        const sIdx = slots.indexOf(cursor.row);
+        if (sIdx >= 0 && sIdx + 1 < slots.length) {
+          cursor = { row: slots[sIdx + 1], index: 0 };
+        } else {
+          cursor = { row: pRow, index: pIdx + 1 };
+        }
+      }
+    };
+
+    const moveLeft = () => {
+      if (cursor.index > 0) {
+        const prevNode = cursor.row.nodes[cursor.index - 1];
+        const slots = getOrderedSlots(prevNode);
+        if (slots.length > 0) {
+          const lastSlot = slots[slots.length - 1];
+          cursor = { row: lastSlot, index: lastSlot.nodes.length };
+        } else {
+          cursor.index--;
+        }
+      } else if (cursor.row.parent) {
+        const pNode = cursor.row.parent;
+        const pRow = pNode.parentRow;
+        const pIdx = pRow.nodes.indexOf(pNode);
+        const slots = getOrderedSlots(pNode);
+        const sIdx = slots.indexOf(cursor.row);
+        if (sIdx > 0) {
+          const prevSlot = slots[sIdx - 1];
+          cursor = { row: prevSlot, index: prevSlot.nodes.length };
+        } else {
+          cursor = { row: pRow, index: pIdx };
+        }
+      }
+    };
+
+    const moveUp = () => {
+      let r = cursor.row;
+      while (r && r.parent) {
+        const pNode = r.parent;
+        if (pNode.type === 'frac' && r === pNode.slots.den) {
+          cursor = { row: pNode.slots.num, index: Math.min(cursor.index, pNode.slots.num.nodes.length) };
+          return;
+        }
+        if (pNode.type === 'logbase' && r === pNode.slots.base) {
+          cursor = { row: pNode.slots.arg, index: 0 };
+          return;
+        }
+        r = pNode.parentRow;
+      }
+      // 현재 줄에서 인접한 분수나 지수로 진입
+      const adjAfter = cursor.row.nodes[cursor.index];
+      const adjBefore = cursor.row.nodes[cursor.index - 1];
+      if (adjAfter && adjAfter.type === 'frac') {
+        cursor = { row: adjAfter.slots.num, index: 0 };
+      } else if (adjBefore && adjBefore.type === 'frac') {
+        cursor = { row: adjBefore.slots.num, index: adjBefore.slots.num.nodes.length };
+      } else if (adjAfter && adjAfter.type === 'sup') {
+        cursor = { row: adjAfter.slots.exp, index: 0 };
+      } else if (adjBefore && adjBefore.type === 'sup') {
+        cursor = { row: adjBefore.slots.exp, index: adjBefore.slots.exp.nodes.length };
+      }
+    };
+
+    const moveDown = () => {
+      let r = cursor.row;
+      while (r && r.parent) {
+        const pNode = r.parent;
+        if (pNode.type === 'frac' && r === pNode.slots.num) {
+          cursor = { row: pNode.slots.den, index: Math.min(cursor.index, pNode.slots.den.nodes.length) };
+          return;
+        }
+        if (pNode.type === 'sup' && r === pNode.slots.exp) {
+          const pRow = pNode.parentRow;
+          const pIdx = pRow.nodes.indexOf(pNode);
+          cursor = { row: pRow, index: pIdx + 1 };
+          return;
+        }
+        r = pNode.parentRow;
+      }
+      // 현재 줄에서 인접한 분수의 분모나 로그 밑으로 진입
+      const adjAfter = cursor.row.nodes[cursor.index];
+      const adjBefore = cursor.row.nodes[cursor.index - 1];
+      if (adjAfter && adjAfter.type === 'frac') {
+        cursor = { row: adjAfter.slots.den, index: 0 };
+      } else if (adjBefore && adjBefore.type === 'frac') {
+        cursor = { row: adjBefore.slots.den, index: adjBefore.slots.den.nodes.length };
+      } else if (adjAfter && adjAfter.type === 'logbase') {
+        cursor = { row: adjAfter.slots.base, index: 0 };
+      }
+    };
+
+    // --- 백스페이스 지우기 ---
+    const deleteBackward = () => {
+      if (cursor.index > 0) {
+        const prevNode = cursor.row.nodes[cursor.index - 1];
+        const slots = getOrderedSlots(prevNode);
+        if (slots.length === 0) {
+          cursor.row.nodes.splice(cursor.index - 1, 1);
+          cursor.index--;
+        } else {
+          const allEmpty = slots.every((s) => s.nodes.length === 0);
+          if (allEmpty) {
+            cursor.row.nodes.splice(cursor.index - 1, 1);
+            cursor.index--;
+          } else {
+            const lastSlot = slots[slots.length - 1];
+            cursor = { row: lastSlot, index: lastSlot.nodes.length };
+          }
+        }
+      } else if (cursor.row.parent) {
+        const pNode = cursor.row.parent;
+        const pRow = pNode.parentRow;
+        const pIdx = pRow.nodes.indexOf(pNode);
+        if (pNode.type === 'frac') {
+          if (cursor.row === pNode.slots.den) {
+            const numNodes = pNode.slots.num.nodes.map((n) => ({ ...n, parentRow: pRow }));
+            const denNodes = pNode.slots.den.nodes.map((n) => ({ ...n, parentRow: pRow }));
+            pRow.nodes.splice(pIdx, 1, ...numNodes, ...denNodes);
+            cursor = { row: pRow, index: pIdx + numNodes.length };
+          } else if (pNode.slots.num.nodes.length === 0 && pNode.slots.den.nodes.length === 0) {
+            pRow.nodes.splice(pIdx, 1);
+            cursor = { row: pRow, index: pIdx };
+          } else {
+            cursor = { row: pRow, index: pIdx };
+          }
+        } else {
+          const slots = getOrderedSlots(pNode);
+          const sIdx = slots.indexOf(cursor.row);
+          if (sIdx > 0) {
+            const prevSlot = slots[sIdx - 1];
+            cursor = { row: prevSlot, index: prevSlot.nodes.length };
+          } else {
+            const innerNodes = cursor.row.nodes.map((n) => ({ ...n, parentRow: pRow }));
+            pRow.nodes.splice(pIdx, 1, ...innerNodes);
+            cursor = { row: pRow, index: pIdx };
+          }
+        }
+      }
+    };
+
+    // --- 키보드 영문 타이핑 시 자동 함수/기호 변환 (sin, cos, tan, ln, log, sqrt, pi) ---
+    const checkAutoKeywordTransform = () => {
+      const nodes = cursor.row.nodes;
+      let end = cursor.index;
+      let letters = '';
+      let start = end;
+      while (start > 0 && nodes[start - 1].type === 'char' && /^[a-zA-Z]$/.test(nodes[start - 1].value)) {
+        letters = nodes[start - 1].value.toLowerCase() + letters;
+        start--;
+      }
+      const matchKeyword = (kw) => letters.endsWith(kw) ? kw.length : 0;
+      if (matchKeyword('sqrt')) {
+        nodes.splice(end - 4, 4);
+        cursor.index -= 4;
+        const sq = createStructNode('sqrt', ['body'], cursor.row);
+        nodes.splice(cursor.index, 0, sq);
+        cursor = { row: sq.slots.body, index: 0 };
+      } else if (matchKeyword('sin') || matchKeyword('cos') || matchKeyword('tan')) {
+        const fn = letters.slice(-3);
+        nodes.splice(end - 3, 3);
+        cursor.index -= 3;
+        const fnNode = createStructNode('func', ['arg'], cursor.row, { fnName: fn });
+        nodes.splice(cursor.index, 0, fnNode);
+        cursor = { row: fnNode.slots.arg, index: 0 };
+      } else if (matchKeyword('log')) {
+        nodes.splice(end - 3, 3);
+        cursor.index -= 3;
+        const lgNode = createStructNode('logbase', ['base', 'arg'], cursor.row);
+        nodes.splice(cursor.index, 0, lgNode);
+        cursor = { row: lgNode.slots.base, index: 0 };
+      } else if (matchKeyword('ln')) {
+        nodes.splice(end - 2, 2);
+        cursor.index -= 2;
+        const fnNode = createStructNode('func', ['arg'], cursor.row, { fnName: 'ln' });
+        nodes.splice(cursor.index, 0, fnNode);
+        cursor = { row: fnNode.slots.arg, index: 0 };
+      } else if (matchKeyword('pi')) {
+        nodes.splice(end - 2, 2, createCharNode('π', cursor.row));
+        cursor.index -= 1;
+      }
+    };
+
+    // --- 수식 명령 실행기 (키패드 & 키보드 공통) ---
+    const executeMathCmd = (cmd) => {
+      if (!cmd) return;
+      if (cmd === 'left') {
+        moveLeft();
+      } else if (cmd === 'right') {
+        moveRight();
+      } else if (cmd === 'up') {
+        moveUp();
+      } else if (cmd === 'down') {
+        moveDown();
+      } else if (cmd === 'backspace') {
+        deleteBackward();
+      } else if (cmd === 'clear') {
+        rootRow.nodes = [];
+        cursor = { row: rootRow, index: 0 };
+      } else if (cmd.startsWith('char:')) {
+        const ch = cmd.slice(5);
+        cursor.row.nodes.splice(cursor.index, 0, createCharNode(ch, cursor.row));
+        cursor.index++;
+        if (/^[a-zA-Z]$/.test(ch)) {
+          checkAutoKeywordTransform();
+        }
+      } else if (cmd === 'frac' || cmd === 'slash_frac') {
+        // 앞에 항이 있으면 분자로 자동 흡수(Desmos 방식), 없으면 빈 분수의 분자 칸으로 진입
+        const nodes = cursor.row.nodes;
+        let scoopStart = cursor.index;
+        while (scoopStart > 0 && !isBinaryOpChar(nodes[scoopStart - 1])) {
+          scoopStart--;
+        }
+        const fracNode = createStructNode('frac', ['num', 'den'], cursor.row);
+        if (scoopStart < cursor.index) {
+          let scooped = nodes.splice(scoopStart, cursor.index - scoopStart);
+          if (scooped.length === 1 && scooped[0].type === 'paren') {
+            scooped = scooped[0].slots.body.nodes;
+          }
+          scooped.forEach((n) => { n.parentRow = fracNode.slots.num; });
+          fracNode.slots.num.nodes.push(...scooped);
+          nodes.splice(scoopStart, 0, fracNode);
+          cursor = { row: fracNode.slots.den, index: 0 };
+        } else {
+          nodes.splice(cursor.index, 0, fracNode);
+          cursor = { row: fracNode.slots.num, index: 0 };
+        }
+      } else if (cmd === 'pow2' || cmd === 'pow3') {
+        const degChar = cmd === 'pow2' ? '2' : '3';
+        const prev = cursor.row.nodes[cursor.index - 1];
+        if (!prev || isBinaryOpChar(prev)) {
+          cursor.row.nodes.splice(cursor.index, 0, createCharNode('x', cursor.row));
+          cursor.index++;
+        }
+        const supNode = createStructNode('sup', ['exp'], cursor.row);
+        supNode.slots.exp.nodes.push(createCharNode(degChar, supNode.slots.exp));
+        cursor.row.nodes.splice(cursor.index, 0, supNode);
+        cursor.index++;
+      } else if (cmd === 'sup' || cmd === 'sup_raw') {
+        const prev = cursor.row.nodes[cursor.index - 1];
+        if (cmd === 'sup' && (!prev || isBinaryOpChar(prev))) {
+          cursor.row.nodes.splice(cursor.index, 0, createCharNode('x', cursor.row));
+          cursor.index++;
+        }
+        if (prev && prev.type === 'sup') {
+          cursor = { row: prev.slots.exp, index: prev.slots.exp.nodes.length };
+        } else {
+          const supNode = createStructNode('sup', ['exp'], cursor.row);
+          cursor.row.nodes.splice(cursor.index, 0, supNode);
+          cursor = { row: supNode.slots.exp, index: 0 };
+        }
+      } else if (cmd === 'exp_e') {
+        cursor.row.nodes.splice(cursor.index, 0, createCharNode('e', cursor.row));
+        cursor.index++;
+        const supNode = createStructNode('sup', ['exp'], cursor.row);
+        cursor.row.nodes.splice(cursor.index, 0, supNode);
+        cursor = { row: supNode.slots.exp, index: 0 };
+      } else if (cmd === 'sqrt') {
+        const sqNode = createStructNode('sqrt', ['body'], cursor.row);
+        cursor.row.nodes.splice(cursor.index, 0, sqNode);
+        cursor = { row: sqNode.slots.body, index: 0 };
+      } else if (cmd === 'abs') {
+        if (cursor.row.parent && cursor.row.parent.type === 'abs' && cursor.index === cursor.row.nodes.length) {
+          const pNode = cursor.row.parent;
+          const pRow = pNode.parentRow;
+          cursor = { row: pRow, index: pRow.nodes.indexOf(pNode) + 1 };
+        } else {
+          const absNode = createStructNode('abs', ['body'], cursor.row);
+          cursor.row.nodes.splice(cursor.index, 0, absNode);
+          cursor = { row: absNode.slots.body, index: 0 };
+        }
+      } else if (cmd === 'paren') {
+        if (cursor.row.parent && cursor.row.parent.type === 'logbase' && cursor.row === cursor.row.parent.slots.base) {
+          if (cursor.row.nodes.length === 0) {
+            cursor.row.nodes.push(createCharNode('1', cursor.row), createCharNode('0', cursor.row));
+          }
+          cursor = { row: cursor.row.parent.slots.arg, index: 0 };
+        } else {
+          const pNode = createStructNode('paren', ['body'], cursor.row);
+          cursor.row.nodes.splice(cursor.index, 0, pNode);
+          cursor = { row: pNode.slots.body, index: 0 };
+        }
+      } else if (cmd === 'close_paren') {
+        if (cursor.row.parent) {
+          const pNode = cursor.row.parent;
+          const pRow = pNode.parentRow;
+          cursor = { row: pRow, index: pRow.nodes.indexOf(pNode) + 1 };
+        }
+      } else if (cmd.startsWith('func:')) {
+        const fnName = cmd.slice(5);
+        const fnNode = createStructNode('func', ['arg'], cursor.row, { fnName });
+        cursor.row.nodes.splice(cursor.index, 0, fnNode);
+        cursor = { row: fnNode.slots.arg, index: 0 };
+      } else if (cmd === 'logbase') {
+        const lgNode = createStructNode('logbase', ['base', 'arg'], cursor.row);
+        cursor.row.nodes.splice(cursor.index, 0, lgNode);
+        cursor = { row: lgNode.slots.base, index: 0 };
+      }
+      renderMathField();
+      updatePreview();
+    };
+
+    // --- 2D 수식 DOM 렌더링 ---
+    const createCaretEl = () => {
+      const c = document.createElement('span');
+      c.className = 'dm-caret';
+      return c;
+    };
+
+    const renderRowDOM = (row, extraClass = '') => {
+      const rowEl = document.createElement('span');
+      rowEl.className = 'dm-row' + (extraClass ? ' ' + extraClass : '');
+      const isCursorRow = (cursor.row === row);
+
+      if (row.nodes.length === 0) {
+        if (row === rootRow) {
+          if (isCursorRow) rowEl.appendChild(createCaretEl());
+          const ph = document.createElement('span');
+          ph.className = 'dm-placeholder';
+          ph.textContent = '수식을 입력하거나 아래 버튼을 클릭하세요';
+          rowEl.appendChild(ph);
+        } else {
+          const slotBox = document.createElement('span');
+          slotBox.className = 'dm-empty-slot' + (isCursorRow ? ' active-slot' : '');
+          if (isCursorRow) slotBox.appendChild(createCaretEl());
+          slotBox.onmousedown = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            cursor = { row, index: 0 };
+            mathField.focus();
+            renderMathField();
+          };
+          rowEl.appendChild(slotBox);
+        }
+        return rowEl;
+      }
+
+      for (let i = 0; i <= row.nodes.length; i++) {
+        if (isCursorRow && cursor.index === i) {
+          rowEl.appendChild(createCaretEl());
+        }
+        if (i < row.nodes.length) {
+          const nd = row.nodes[i];
+          const nodeEl = renderNodeDOM(nd, row, i);
+          rowEl.appendChild(nodeEl);
+        }
+      }
+
+      rowEl.onmousedown = (e) => {
+        if (e.target === rowEl) {
+          e.preventDefault();
+          e.stopPropagation();
+          cursor = { row, index: row.nodes.length };
+          mathField.focus();
+          renderMathField();
+        }
+      };
+      return rowEl;
+    };
+
+    const renderNodeDOM = (nd, parentRow, idxInRow) => {
+      if (nd.type === 'char') {
+        const sp = document.createElement('span');
+        const isVar = /^[a-zA-Zπ]$/.test(nd.value);
+        const isOp = (nd.value === '+' || nd.value === '-' || nd.value === '·');
+        sp.className = 'dm-char' + (isVar ? ' dm-char-var' : '') + (isOp ? ' dm-char-op' : '');
+        sp.textContent = nd.value === '-' ? '−' : nd.value;
+        sp.onmousedown = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const rect = sp.getBoundingClientRect();
+          const placeAfter = (e.clientX - rect.left) > rect.width / 2;
+          cursor = { row: parentRow, index: placeAfter ? idxInRow + 1 : idxInRow };
+          mathField.focus();
+          renderMathField();
+        };
+        return sp;
+      }
+
+      if (nd.type === 'frac') {
+        const wrap = document.createElement('span');
+        wrap.className = 'dm-frac';
+        const numEl = renderRowDOM(nd.slots.num, 'dm-frac-num');
+        const barEl = document.createElement('span');
+        barEl.className = 'dm-frac-bar';
+        const denEl = renderRowDOM(nd.slots.den, 'dm-frac-den');
+        wrap.append(numEl, barEl, denEl);
+        return wrap;
+      }
+
+      if (nd.type === 'sup') {
+        const wrap = document.createElement('span');
+        wrap.className = 'dm-sup';
+        wrap.appendChild(renderRowDOM(nd.slots.exp));
+        return wrap;
+      }
+
+      if (nd.type === 'sqrt') {
+        const wrap = document.createElement('span');
+        wrap.className = 'dm-sqrt';
+        const sign = document.createElement('span');
+        sign.className = 'dm-sqrt-sign';
+        sign.textContent = '√';
+        const bodyEl = renderRowDOM(nd.slots.body, 'dm-sqrt-body');
+        wrap.append(sign, bodyEl);
+        return wrap;
+      }
+
+      if (nd.type === 'abs') {
+        const wrap = document.createElement('span');
+        wrap.className = 'dm-abs';
+        wrap.appendChild(renderRowDOM(nd.slots.body));
+        return wrap;
+      }
+
+      if (nd.type === 'paren') {
+        const wrap = document.createElement('span');
+        wrap.className = 'dm-paren-wrap';
+        const lP = document.createElement('span');
+        lP.className = 'dm-paren';
+        lP.textContent = '(';
+        const rP = document.createElement('span');
+        rP.className = 'dm-paren';
+        rP.textContent = ')';
+        wrap.append(lP, renderRowDOM(nd.slots.body), rP);
+        return wrap;
+      }
+
+      if (nd.type === 'func') {
+        const wrap = document.createElement('span');
+        wrap.className = 'dm-func';
+        const fnLbl = document.createElement('span');
+        fnLbl.className = 'dm-func-name';
+        fnLbl.textContent = nd.fnName;
+        const lP = document.createElement('span');
+        lP.className = 'dm-paren';
+        lP.textContent = '(';
+        const rP = document.createElement('span');
+        rP.className = 'dm-paren';
+        rP.textContent = ')';
+        wrap.append(fnLbl, lP, renderRowDOM(nd.slots.arg), rP);
+        return wrap;
+      }
+
+      if (nd.type === 'logbase') {
+        const wrap = document.createElement('span');
+        wrap.className = 'dm-func';
+        const fnLbl = document.createElement('span');
+        fnLbl.className = 'dm-func-name';
+        fnLbl.textContent = 'log';
+        const subWrap = document.createElement('span');
+        subWrap.className = 'dm-sub';
+        subWrap.appendChild(renderRowDOM(nd.slots.base));
+        const lP = document.createElement('span');
+        lP.className = 'dm-paren';
+        lP.textContent = '(';
+        const rP = document.createElement('span');
+        rP.className = 'dm-paren';
+        rP.textContent = ')';
+        wrap.append(fnLbl, subWrap, lP, renderRowDOM(nd.slots.arg), rP);
+        return wrap;
+      }
+
+      return document.createElement('span');
+    };
+
+    const renderMathField = () => {
+      mathField.innerHTML = '';
+      mathField.appendChild(renderRowDOM(rootRow));
+    };
 
     const updatePreview = () => {
-      const val = input.value.trim();
-      if (!val) {
+      const { expr, hasEmptySlot, isEmpty } = serializeTree();
+      if (input) input.value = expr;
+
+      if (isEmpty) {
         previewCard.classList.remove('has-error');
-        previewTitle.textContent = '실시간 수식 해석 결과';
-        previewMath.textContent = '수식을 입력하면 실시간으로 해석됩니다.';
-        previewDetails.textContent = '예: x2 + 2x - 3, x*sin(x), e^(-x^2), 1/x, 루트x, ln(x)/x 등';
+        previewTitle.textContent = '실시간 수식 해석';
+        previewDetails.textContent = '분수, 거듭제곱, 루트, 삼각·지수·로그 함수를 클릭하거나 키보드로 입력하세요.';
         currentParsed = null;
         return;
       }
 
-      const res = SmartMathParser.parse(val);
+      if (hasEmptySlot) {
+        previewCard.classList.remove('has-error');
+        previewTitle.textContent = '✏️ 수식 입력 중';
+        previewDetails.textContent = '점선 빈칸(□)에 수식을 입력해 주세요. (방향키 ◀ ▲ ▼ ▶ 또는 마우스 클릭으로 이동)';
+        currentParsed = null;
+        return;
+      }
+
+      const res = SmartMathParser.parse(expr);
       if (res.success) {
         currentParsed = res;
         previewCard.classList.remove('has-error');
-        previewTitle.textContent = '💡 실시간 수식 해석 완료!';
-        previewMath.textContent = res.preview;
-        previewDetails.textContent = `${res.typeName} | ${res.details}`;
+        previewTitle.textContent = `✅ ${res.typeName}`;
+        previewDetails.textContent = res.details;
       } else {
         currentParsed = null;
         previewCard.classList.add('has-error');
         previewTitle.textContent = '⚠️ 수식 확인 필요';
-        previewMath.textContent = res.error;
-        previewDetails.textContent = '대충 입력 가능: x2+2x-3, x*sin(x), e^(-x^2), 1/x, 루트x, ln(x)/x 등';
+        previewDetails.textContent = res.error || '괄호나 연산자 뒤의 수식을 완성해 주세요.';
       }
     };
 
     const openModal = () => {
       modal.classList.add('show');
-      input.value = 'x2 + 2x - 3';
+      rootRow.nodes = [];
+      cursor = { row: rootRow, index: 0 };
+      renderMathField();
       updatePreview();
       setTimeout(() => {
-        input.focus();
-        input.select();
-      }, 50);
+        mathField.focus();
+      }, 40);
     };
 
     const closeModal = () => {
@@ -17860,45 +18448,50 @@ class GraphApp {
     if (btnClose) btnClose.onclick = closeModal;
     if (btnCancel) btnCancel.onclick = closeModal;
 
-    input.oninput = updatePreview;
-
-    if (btnClear) {
-      btnClear.onclick = () => {
-        input.value = '';
-        input.focus();
-        updatePreview();
+    if (mathFieldWrapper) {
+      mathFieldWrapper.onmousedown = (e) => {
+        if (e.target === mathFieldWrapper || e.target === mathField || e.target.classList.contains('desmos-math-prefix')) {
+          e.preventDefault();
+          cursor = { row: rootRow, index: rootRow.nodes.length };
+          mathField.focus();
+          renderMathField();
+        }
       };
     }
 
-    // 터치 키패드 삽입
-    document.querySelectorAll('.key-btn').forEach(btn => {
-      btn.onclick = () => {
-        const textToInsert = btn.dataset.insert;
-        if (!textToInsert) return;
-        const start = input.selectionStart || input.value.length;
-        const end = input.selectionEnd || input.value.length;
-        input.value = input.value.substring(0, start) + textToInsert + input.value.substring(end);
-        input.focus();
-        const nextPos = start + textToInsert.length;
-        input.setSelectionRange(nextPos, nextPos);
-        updatePreview();
-      };
-    });
+    mathField.onfocus = () => {
+      if (mathFieldWrapper) mathFieldWrapper.classList.add('focused');
+    };
+    mathField.onblur = () => {
+      if (mathFieldWrapper) mathFieldWrapper.classList.remove('focused');
+    };
 
-    // 퀵 칩 클릭
-    document.querySelectorAll('.chip-btn').forEach(chip => {
-      chip.onclick = () => {
-        input.value = chip.dataset.expr;
-        input.focus();
-        updatePreview();
+    if (btnClear) {
+      btnClear.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        executeMathCmd('clear');
+        mathField.focus();
+      };
+    }
+
+    // 키패드 & 방향키 버튼 이벤트 바인딩
+    modal.querySelectorAll('[data-math-cmd]').forEach((btn) => {
+      btn.onmousedown = (e) => {
+        e.preventDefault(); // 포커스 이탈 방지
+      };
+      btn.onclick = (e) => {
+        e.preventDefault();
+        executeMathCmd(btn.getAttribute('data-math-cmd'));
+        mathField.focus();
       };
     });
 
     // 적용 및 그래프 생성
     const applyExpr = () => {
       if (!currentParsed || !currentParsed.success) {
-        this.showToast('⚠️ 올바른 수식을 입력해 주세요.');
-        input.focus();
+        this.showToast('⚠️ 수식의 빈칸을 채우거나 올바른 수식을 입력해 주세요.');
+        mathField.focus();
         return;
       }
       this.addGraphFromParsed(currentParsed);
@@ -17909,13 +18502,59 @@ class GraphApp {
     };
 
     btnApply.onclick = applyExpr;
-    input.onkeydown = (e) => {
-      if (e.key === 'Enter') {
+
+    // 물리 키보드 타이핑 & 방향키 완벽 연동
+    mathField.onkeydown = (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key;
+      if (k === 'Enter') {
         e.preventDefault();
         applyExpr();
-      } else if (e.key === 'Escape') {
+      } else if (k === 'Escape') {
         e.preventDefault();
         closeModal();
+      } else if (k === 'ArrowLeft') {
+        e.preventDefault();
+        executeMathCmd('left');
+      } else if (k === 'ArrowRight' || k === 'Tab') {
+        e.preventDefault();
+        executeMathCmd('right');
+      } else if (k === 'ArrowUp') {
+        e.preventDefault();
+        executeMathCmd('up');
+      } else if (k === 'ArrowDown') {
+        e.preventDefault();
+        executeMathCmd('down');
+      } else if (k === 'Backspace') {
+        e.preventDefault();
+        executeMathCmd('backspace');
+      } else if (k === 'Delete') {
+        e.preventDefault();
+        executeMathCmd('clear');
+      } else if (k === '/') {
+        e.preventDefault();
+        executeMathCmd('slash_frac');
+      } else if (k === '^') {
+        e.preventDefault();
+        executeMathCmd('sup_raw');
+      } else if (k === '*') {
+        e.preventDefault();
+        executeMathCmd('char:·');
+      } else if (k === '+' || k === '-' || k === '.') {
+        e.preventDefault();
+        executeMathCmd(`char:${k}`);
+      } else if (k === '(') {
+        e.preventDefault();
+        executeMathCmd('paren');
+      } else if (k === ')') {
+        e.preventDefault();
+        executeMathCmd('close_paren');
+      } else if (k === '|') {
+        e.preventDefault();
+        executeMathCmd('abs');
+      } else if (/^[0-9a-zA-Z]$/.test(k)) {
+        e.preventDefault();
+        executeMathCmd(`char:${k}`);
       }
     };
   }
@@ -21878,13 +22517,28 @@ class GraphApp {
     this.getSubscriptionQuotaConfig();
     this.isProUser = false;
     try {
+      const isTestTossKey = true; // 통신판매업 신고 및 live_ck_ 전환 전까지 테스트 결제 무료 활성화 방지
       if (typeof window !== 'undefined' && window.location && window.location.search.includes('paymentStatus=success')) {
-        const pendingUid = localStorage.getItem('graphly_pending_payment_uid') || (this.cloudUser && this.cloudUser.uid);
-        if (pendingUid) {
-          localStorage.setItem(this._getProStorageKeyForUid(pendingUid), 'true');
-          localStorage.removeItem('graphly_pending_payment_uid');
+        localStorage.removeItem('graphly_pending_payment_uid');
+        if (!isTestTossKey) {
+          const pendingUid = localStorage.getItem('graphly_pending_payment_uid') || (this.cloudUser && this.cloudUser.uid);
+          if (pendingUid) {
+            localStorage.setItem(this._getProStorageKeyForUid(pendingUid), 'true');
+          } else {
+            localStorage.setItem('graphly_pro_active_v1', 'true');
+          }
         } else {
-          localStorage.setItem('graphly_pro_active_v1', 'true');
+          setTimeout(() => {
+            this.showToast('🛠️ 테스트 결제 확인이 완료되었습니다. (실제 금액은 청구되지 않으며, 정식 결제 오픈 후 이용권이 활성화됩니다.)');
+          }, 600);
+        }
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+        }
+      } else if (typeof window !== 'undefined' && window.location && window.location.search.includes('paymentStatus=fail')) {
+        localStorage.removeItem('graphly_pending_payment_uid');
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
         }
       }
       if (this.cloudUser && this.cloudUser.uid) {

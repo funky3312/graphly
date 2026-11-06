@@ -1743,10 +1743,21 @@ class SafeMathCompiler {
       [/사인/g, 'sin'],
       [/코사인/g, 'cos'],
       [/탄젠트/g, 'tan'],
-      [/파이/g, 'pi']
+      [/파이|π/g, 'pi'],
+      [/[−–—]/g, '-'],
+      [/[×·]/g, '*'],
+      [/÷/g, '/'],
+      [/√/g, 'sqrt']
     ];
     for (const [pattern, replacement] of krMap) {
       s = s.replace(pattern, replacement);
+    }
+
+    // 중첩 절댓값 |...| -> abs(...) 변환
+    let absGuard = 0;
+    while (/\|[^|]+\|/.test(s) && absGuard < 8) {
+      s = s.replace(/\|([^|]+)\|/g, 'abs($1)');
+      absGuard++;
     }
 
     // 지수 연산자 통일 (** -> ^)
