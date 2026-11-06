@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261106_06">
+  <link rel="stylesheet" href="style.css?v=20261106_07">
 </head>
 
 <body class="theme-light">
@@ -1888,19 +1888,25 @@
             </button>
           </div>
           <div class="problem-card-actions">
+            <button id="btnGraphCardAddFunc" type="button" class="card-btn btn-card-add-func"
+              title="이 카드에 함수 추가 (한 카드에 여러 함수 겹쳐 그리기)">
+              <span style="display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;line-height:1;">+</span>
+            </button>
             <button id="btnGraphCardLaser" type="button" class="card-btn btn-card-laser"
-              title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
+              title="카드 위 필기 켜기/끄기 (꺼짐: 핸들 조작·카드 이동 / 켜짐: 카드 위 밑줄·필기)">
               <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                   <path d="m15 5 4 4" />
                 </svg></span>
             </button>
-            <button id="btnGraphCardRestore" class="card-btn card-btn-restore" title="그래프 수정">
-              <span style="display:inline-flex;align-items:center;"><svg width="14" height="14" viewBox="0 0 24 24"
-                  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                  <path d="M3 3v5h5" />
+            <button id="btnGraphCardRestore" class="card-btn card-btn-restore" title="그래프 모드로 크게 열기 (교점·수선·구간분할 등 정밀 편집)">
+              <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="15 3 21 3 21 9" />
+                  <polyline points="9 21 3 21 3 15" />
+                  <line x1="21" y1="3" x2="14" y2="10" />
+                  <line x1="3" y1="21" x2="10" y2="14" />
                 </svg></span>
             </button>
             <button id="btnGraphCardClearInk" class="card-btn" title="필기 지우기">
@@ -2907,8 +2913,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261106_06"></script>
-  <script src="app.js?v=20261106_06"></script>
+  <script src="engine.js?v=20261106_07"></script>
+  <script src="app.js?v=20261106_07"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

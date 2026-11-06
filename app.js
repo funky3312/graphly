@@ -1707,7 +1707,10 @@ class GraphApp {
   }
 
   addGraph(preferredType = null) {
-    if (this.isGraphCovered || this._graphSessionArchived || this.pdfPageBoardData) {
+    if (this.isGraphCovered) {
+      return this.addGraphToPipCardInBoardMode(preferredType);
+    }
+    if (this._graphSessionArchived || this.pdfPageBoardData) {
       this.enterGraphModeFromBoard();
     }
     if (this.graphs.length >= 12) {
@@ -1926,6 +1929,26 @@ class GraphApp {
 
   // --- [🗑️ 1. 그래프만 지우기 (필기 & 떠 있는 문제 카드는 그대로 보존)] ---
   clearAllGraphs() {
+    if (this.isGraphCovered) {
+      const hasPipCards = Boolean(this._hasPrimaryGraphCard || (this.extraGraphCards && this.extraGraphCards.length > 0));
+      if (!hasPipCards) {
+        this.showToast('ℹ️ 현재 칠판에 떠 있는 그래프 카드가 없습니다.');
+        return;
+      }
+      const btnClosePrimary = document.getElementById('btnGraphCardClose');
+      if (this._hasPrimaryGraphCard && btnClosePrimary) {
+        btnClosePrimary.click();
+      }
+      if (Array.isArray(this.extraGraphCards)) {
+        this.extraGraphCards.forEach(c => { if (c && c.el) c.el.remove(); });
+        this.extraGraphCards = [];
+      }
+      this._pipTargetCard = null;
+      this.render();
+      this.showToast('🗑️ 칠판 위의 모든 그래프 카드를 비웠습니다.');
+      return;
+    }
+
     const hasGraphElements = (
       this.graphs.length > 0 ||
       this.usePiecewise ||
@@ -11227,6 +11250,9 @@ class GraphApp {
       laserBtn.classList.toggle('active', nextInkActive);
 
       if (nextInkActive) {
+        if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this.deselectAllPipGraphCards === 'function') {
+          this.deselectAllPipGraphCards();
+        }
         // 접혀 있는 상태에서 [✒️] 버튼을 켜면 자동으로 카드를 펼쳐서 즉시 필기 가능하도록 처리!
         if (cardWidgetEl.classList.contains('minimized') && typeof cardWidgetEl._toggleCardMin === 'function') {
           cardWidgetEl._toggleCardMin();
@@ -11827,20 +11853,13 @@ class GraphApp {
       document.body.classList.toggle('workspace-graph-mode', !isBoard);
     }
 
-    // 🌟 [대표님 기획]: 판서 모드에서는 [+] 버튼 대신 [📈 그래프 모드로 전환] 버튼으로 변신,
-    // 그래프 모드로 넘어오면 원래의 [+] (함수 추가) 버튼으로 작동!
+    // 🌟 [대표님 기획]: 판서 모드와 그래프 모드 모두 좌측 [+] 버튼은 직관적인 '그래프 추가' 버튼으로 작동!
+    // (판서 모드에서 누르면 모드를 전환하지 않고 바로 함수 선택창을 열어 PiP 그래프 카드를 소환)
     const btnPresets = document.getElementById('btnRailPresets');
     if (btnPresets) {
-      if (isBoard) {
-        btnPresets.classList.add('rail-graph-mode-switch');
-        btnPresets.classList.remove('active');
-        btnPresets.title = '그래프 모드';
-        btnPresets.innerHTML = `<span class="rail-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 16c2.5-6 4.5-6 7 0s4.5 6 7-6"/></svg></span>`;
-      } else {
-        btnPresets.classList.remove('rail-graph-mode-switch');
-        btnPresets.title = '그래프 추가';
-        btnPresets.innerHTML = `<span class="rail-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>`;
-      }
+      btnPresets.classList.remove('rail-graph-mode-switch');
+      btnPresets.title = isBoard ? '새 그래프 카드 추가' : '그래프 추가';
+      btnPresets.innerHTML = `<span class="rail-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>`;
     }
 
     const graphOnlyIds = [
@@ -12324,11 +12343,17 @@ class GraphApp {
     }
   }
 
-  // 🌟 [새 스샷 촬영 없이 방금 판서하던 칠판(판서 모드) 화면으로 즉시 복귀] 🌟
+  // 🌟 [새 스샷 촬영 없이 방금 판서하던 칠판(판서 모드) 화면으로 즉시 복귀 (카드에서 크게 열었던 경우 자동 반영)] 🌟
   returnToCoveredBoard() {
     if (!this.hasBoardStateToReturn()) return;
+    const hadEditingCard = Boolean(this._editingGraphCardTarget);
+    if (hadEditingCard && typeof this._syncFullGraphBackToEditingPipCard === 'function') {
+      this._syncFullGraphBackToEditingPipCard();
+    }
     this._restoreBoardModeStateAfterGraph();
-    this.showToast('📋 필기 모드로 돌아왔습니다.');
+    this.showToast(hadEditingCard
+      ? '✅ 그래프 모드 편집 내용이 카드에 반영되었습니다!'
+      : '📋 필기 모드로 돌아왔습니다.');
   }
 
   syncGraphSnapBarUI() {
@@ -12445,22 +12470,60 @@ class GraphApp {
     this._isRenderingGraphSnapshot = false;
     this._snapshotCropBounds = null;
     this.isGraphCovered = prevCovered;
+    this._editingGraphCardTarget = null;
+
+    // 크롭 영역의 수학적 중심과 범위를 카드 로컬 좌표계로 변환하여 카드 안에서도 즉시 라이브 조작 가능하도록 보존!
+    let customSnapObj = null;
+    try {
+      customSnapObj = JSON.parse(this.getPureGraphSnapshot());
+      const sw = Math.max(1, this.screenWidth || window.innerWidth || 1440);
+      const sh = Math.max(1, this.screenHeight || window.innerHeight || 900);
+      const cropCenterMath = this.screenToMath(rx + rw * 0.5, ry + rh * 0.5);
+      const aspect = rh / Math.max(1, rw);
+      const targetBodyH = 185;
+      const cardW = Math.round(Math.max(180, Math.min(340, targetBodyH / Math.max(0.35, aspect))));
+      const cardH = Math.round(cardW * aspect);
+      const cardXSpan = Math.max(1.5, (this.xSpan || 8.5) * (rw / sw));
+      const cardYSpan = Math.max(1.5, (this.ySpan || 6.0) * (rh / sh));
+      const zl = this.zoomLevel || 1.0;
+      const effXSpan = cardXSpan / zl;
+      const effYSpan = cardYSpan / zl;
+      customSnapObj.xSpan = cardXSpan;
+      customSnapObj.ySpan = cardYSpan;
+      customSnapObj.panX = -(cropCenterMath.x / (effXSpan * 2)) * cardW;
+      customSnapObj.panY = (cropCenterMath.y / (effYSpan * 2)) * cardH;
+      customSnapObj.isCurveSelected = false;
+      customSnapObj.selectedHandleIdx = null;
+      customSnapObj._isPipCardSnapshot = true;
+      customSnapObj._pipCardW = cardW;
+      customSnapObj._pipCardH = cardH;
+    } catch (_) { }
 
     // 2. 그래프 스샷 카드 세팅 & 칠판 덮개(isGraphCovered = true) 활성화!
-    this.setGraphCard(dataUrl, cropCanvas, rw, { x: rx, y: ry, w: rw, h: rh });
+    this.setGraphCard(
+      dataUrl,
+      cropCanvas,
+      rw,
+      { x: rx, y: ry, w: rw, h: rh },
+      customSnapObj ? JSON.stringify(customSnapObj) : null
+    );
   }
 
-  setGraphCard(dataUrl, sourceCanvas = null, initialWidth = null, sourceRect = null, customSnapshot = null) {
+  setGraphCard(dataUrl, sourceCanvas = null, initialWidth = null, sourceRect = null, customSnapshot = null, options = null) {
     if (!this.extraGraphCards) {
       this.extraGraphCards = [];
     }
 
-    const aspect = (sourceCanvas && sourceCanvas.width && sourceCanvas.height)
-      ? (sourceCanvas.height / sourceCanvas.width)
-      : 0.85;
+    const aspect = (options && typeof options.aspect === 'number')
+      ? options.aspect
+      : ((sourceCanvas && sourceCanvas.width && sourceCanvas.height)
+        ? (sourceCanvas.height / sourceCanvas.width)
+        : 0.85);
     // 🌟 [대표님 핵심 UX: 어떤 크기로 시원하게 캡처하든 판서 모드에서는 세로 높이(185px, 기존의 절반급)를 일관되게 맞춰 칼각 나열!] 🌟
     const targetBodyH = 185;
-    const cardW = Math.round(Math.max(180, Math.min(340, targetBodyH / Math.max(0.35, aspect))));
+    const cardW = (options && typeof options.cardW === 'number')
+      ? Math.round(options.cardW)
+      : Math.round(Math.max(180, Math.min(340, targetBodyH / Math.max(0.35, aspect))));
 
     const widget = document.getElementById('graphCardWidget');
 
@@ -12468,8 +12531,11 @@ class GraphApp {
 
     // 🌟 핵심: 먼저 판서 모드 상태(문제 카드 펼침 등)를 복원한 뒤 그래프 카드 위치를 계산해야 문제 카드와 절대 겹치지 않음!
     this._graphSessionArchived = true;
-    this._restoreBoardModeStateAfterGraph();
+    if (!(options && options.alreadyInBoardMode)) {
+      this._restoreBoardModeStateAfterGraph();
+    }
 
+    let createdTargetRef = 'primary';
     // 🌟 [대표님 대박 기획: 1번 상황 보관 -> 복구 -> 2번 상황 보관 -> 3번 상황 다중 케이스 비교 보관!] 🌟
     // 이미 1번 보관 카드(#graphCardWidget)가 존재하면, 1번 카드를 그대로 살려두면서 2번, 3번 보관 카드를 나란히 추가 소환!
     if (this._hasPrimaryGraphCard && this.graphCardData) {
@@ -12479,14 +12545,15 @@ class GraphApp {
       this.extraGraphCards.forEach(c => {
         if (c.el) c.el.style.display = 'flex';
       });
-      this.spawnExtraGraphArchiveCard(dataUrl, cardW, aspect, currentGraphSnapshot, sourceRect);
+      createdTargetRef = this.spawnExtraGraphArchiveCard(dataUrl, cardW, aspect, currentGraphSnapshot, sourceRect, options);
     } else {
       this._hasPrimaryGraphCard = true;
       this.primaryGraphCardSnapshot = currentGraphSnapshot;
-      this.graphCardData = { imgUrl: dataUrl, graphSnapshot: currentGraphSnapshot };
+      this.graphCardData = { imgUrl: dataUrl, dataUrl, graphSnapshot: currentGraphSnapshot };
       this.isGraphCardMinimized = false;
       this.graphCardImage = sourceCanvas;
       this.graphCardAspect = aspect;
+      widget._pipSnapObj = null;
 
       const imgObj = new Image();
       imgObj.onload = () => {
@@ -12518,7 +12585,18 @@ class GraphApp {
         }
 
         this.syncProblemCardRectFromWidget();
-        if (this.pdfPageBoardData) {
+        if (options && options.forceScreenPos && sourceRect) {
+          const sx = Math.max(68, Math.min(window.innerWidth - cardW - 20, Math.round(sourceRect.x)));
+          const sy = Math.max(54, Math.min(window.innerHeight - Math.round(cardW * aspect) - 36, Math.round(sourceRect.y)));
+          if (this.pdfPageBoardData) {
+            this.graphCardBaseX = sx;
+            this.graphCardBaseY = sy;
+          } else {
+            const bPos = this.screenToBoard(sx, sy);
+            this.graphCardBaseX = Math.round(bPos.x);
+            this.graphCardBaseY = Math.round(bPos.y);
+          }
+        } else if (this.pdfPageBoardData) {
           if (this.hasActiveProblemCard() && this.problemCardRect) {
             const pRight = this.problemCardRect.x + this.problemCardRect.w;
             if (pRight + cardW + 36 <= window.innerWidth) {
@@ -12576,17 +12654,21 @@ class GraphApp {
       const toggleBtn = document.getElementById('iconGraphCardToggle');
       if (toggleBtn) toggleBtn.textContent = '▾';
       this.bringCardToFront(widget);
+      this.renderPipGraphCard('primary');
     }
 
     this.updateProblemCardPosition();
     this.render();
-    const totalCards = (this._hasPrimaryGraphCard ? 1 : 0) + (this.extraGraphCards ? this.extraGraphCards.length : 0);
-    this.showToast(totalCards > 1
-      ? `📦 ${totalCards}번째 그래프 보관 카드가 추가되었습니다! 카드를 슥 끌어 배치하세요.`
-      : '📦 그래프가 보관되었습니다! 카드 위를 슥 끌어 자유롭게 이동하세요.');
+    if (!(options && options.silentToast)) {
+      const totalCards = (this._hasPrimaryGraphCard ? 1 : 0) + (this.extraGraphCards ? this.extraGraphCards.length : 0);
+      this.showToast(totalCards > 1
+        ? `📦 ${totalCards}번째 그래프 보관 카드가 추가되었습니다! 카드를 슥 끌어 배치하세요.`
+        : '📦 그래프가 보관되었습니다! 카드 위를 슥 끌어 자유롭게 이동하세요.');
+    }
+    return createdTargetRef;
   }
 
-  spawnExtraGraphArchiveCard(dataUrl, cardW, aspect, graphSnapshot = null, sourceRect = null) {
+  spawnExtraGraphArchiveCard(dataUrl, cardW, aspect, graphSnapshot = null, sourceRect = null, options = null) {
     if (!this.extraGraphCards) this.extraGraphCards = [];
     const caseIdx = this.extraGraphCards.length + 2;
 
@@ -12599,7 +12681,18 @@ class GraphApp {
 
     let baseX = 560;
     let baseY = 68;
-    if (this.pdfPageBoardData) {
+    if (options && options.forceScreenPos && sourceRect) {
+      const sx = Math.max(68, Math.min(window.innerWidth - cardW - 20, Math.round(sourceRect.x)));
+      const sy = Math.max(54, Math.min(window.innerHeight - Math.round(cardW * aspect) - 36, Math.round(sourceRect.y)));
+      if (this.pdfPageBoardData) {
+        baseX = sx;
+        baseY = sy;
+      } else {
+        const bPos = this.screenToBoard(sx, sy);
+        baseX = Math.round(bPos.x);
+        baseY = Math.round(bPos.y);
+      }
+    } else if (this.pdfPageBoardData) {
       const prevEl = (this.extraGraphCards.length > 0 && this.extraGraphCards[this.extraGraphCards.length - 1])
         ? this.extraGraphCards[this.extraGraphCards.length - 1].el
         : primaryWidget;
@@ -12666,11 +12759,14 @@ class GraphApp {
           </button>
         </div>
         <div class="problem-card-actions">
-          <button type="button" class="card-btn btn-card-laser" title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
+          <button type="button" class="card-btn btn-card-add-func btn-extra-add-func" title="이 카드에 함수 추가 (한 카드에 여러 함수 겹쳐 그리기)">
+            <span style="display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;line-height:1;">+</span>
+          </button>
+          <button type="button" class="card-btn btn-card-laser" title="카드 위 필기 켜기/끄기 (꺼짐: 핸들 조작·카드 이동 / 켜짐: 카드 위 밑줄·필기)">
             <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></span>
           </button>
-          <button class="card-btn card-btn-restore btn-extra-restore" title="그래프 수정">
-            <span style="display:inline-flex;align-items:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></span>
+          <button class="card-btn card-btn-restore btn-extra-restore" title="그래프 모드로 크게 열기 (교점·수선·구간분할 등 정밀 편집)">
+            <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></span>
           </button>
           <button class="card-btn btn-card-close btn-extra-close" title="삭제">
             <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
@@ -12689,6 +12785,7 @@ class GraphApp {
 
     const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), aspect, isMin: false, graphSnapshot: graphSnapshot || this.getPureGraphSnapshot(), caseIdx, pdfAnchor: null };
     this.extraGraphCards.push(cardItem);
+    this.attachPipGraphCardLiveSystem(el, cardItem);
     this.bringCardToFront(el);
 
     if (this.pdfPageBoardData) {
@@ -12703,7 +12800,9 @@ class GraphApp {
         const h = Math.round(newW * cardItem.aspect);
         bodyEl.style.height = `${h}px`;
       }
+      this.renderPipGraphCard(cardItem);
     };
+    this.renderPipGraphCard(cardItem);
 
     el._savedExpandedWidth = `${Math.round(cardW)}px`;
     const toggleExtraGraphMin = () => {
@@ -12857,6 +12956,7 @@ class GraphApp {
         if (isResizing) {
           isResizing = false;
           this._isDraggingOrResizingAnyCard = false;
+          this.bakePipGraphCardToImg(cardItem);
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
           }
@@ -12866,7 +12966,7 @@ class GraphApp {
       window.addEventListener('pointercancel', stopResize);
     }
 
-    el.querySelector('.btn-extra-restore').onclick = () => this.restoreLiveGraphFromCard(false, cardItem.graphSnapshot, cardItem.caseIdx);
+    el.querySelector('.btn-extra-restore').onclick = () => this.restoreLiveGraphFromCard(false, cardItem.graphSnapshot, cardItem.caseIdx, false, cardItem);
     const btnExtraGraphMin = el.querySelector('.btn-extra-min');
     if (btnExtraGraphMin) {
       btnExtraGraphMin.addEventListener('pointerup', (e) => {
@@ -12882,19 +12982,26 @@ class GraphApp {
     el.querySelector('.btn-extra-close').onclick = () => {
       el.remove();
       this.extraGraphCards = this.extraGraphCards.filter(c => c !== cardItem);
+      if (this._pipTargetCard === cardItem) this._pipTargetCard = null;
+      if (this._editingGraphCardTarget === cardItem) this._editingGraphCardTarget = null;
       if (!this._hasPrimaryGraphCard && this.extraGraphCards.length === 0 && !this.hasBoardStateToReturn()) {
         this.restoreLiveGraphFromCard(false);
       } else {
         this.render();
       }
     };
+    return cardItem;
   }
 
-  restoreLiveGraphFromCard(silent = false, targetSnapshot = null, caseIdx = null, keepMinimizedCards = false) {
+  restoreLiveGraphFromCard(silent = false, targetSnapshot = null, caseIdx = null, keepMinimizedCards = false, sourceCardTarget = null) {
+    this.deselectAllPipGraphCards();
+    this._editingGraphCardTarget = sourceCardTarget || (caseIdx === 1 ? 'primary' : null);
     const effSnapshot = targetSnapshot || (caseIdx === 1 ? (this.primaryGraphCardSnapshot || (this.graphCardData && this.graphCardData.graphSnapshot)) : null);
+    let parsedSnapForFull = null;
     if (effSnapshot) {
       try {
         const parsedSnap = typeof effSnapshot === 'string' ? JSON.parse(effSnapshot) : effSnapshot;
+        parsedSnapForFull = parsedSnap;
         if (parsedSnap && parsedSnap.isNAxisStudioCard && parsedSnap.nAxisStudioState) {
           if (typeof this.openNAxisStudioModal === 'function') {
             this.openNAxisStudioModal(parsedSnap.nAxisStudioState);
@@ -12957,8 +13064,28 @@ class GraphApp {
     this.dropLines = [];
     this.textLabels = [];
 
-    if (targetSnapshot) {
-      this.applyPureGraphSnapshot(targetSnapshot);
+    if (effSnapshot) {
+      this.applyPureGraphSnapshot(effSnapshot);
+      // PiP 카드 로컬 스케일에서 전체화면 그래프 모드로 열 때는 광활한 전체화면 비율(8.5 : 6.0)에 맞춰 깔끔하게 정렬!
+      if (parsedSnapForFull && parsedSnapForFull._isPipCardSnapshot) {
+        const isTrig = Array.isArray(this.graphs) && this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
+        this.xSpan = isTrig ? 20.0 : 8.5;
+        this.ySpan = isTrig ? 5.5 : 6.0;
+        if (this.hasActiveProblemCard() && !this.pdfPageBoardData) {
+          this.syncProblemCardRectFromWidget();
+          const sw = this.screenWidth || window.innerWidth || 1440;
+          const cardRight = (this.problemCardRect && !this.isProblemCardMinimized)
+            ? (this.problemCardRect.x + this.problemCardRect.w)
+            : Math.round(sw * 0.38);
+          const baseRatioOffsetX = Math.round(sw * 0.085);
+          const extraCardPushX = Math.max(0, Math.round((cardRight - sw * 0.40) * 0.35));
+          this.panX = Math.min(Math.round(sw * 0.14), baseRatioOffsetX + extraCardPushX);
+          this.panY = 0;
+        } else {
+          this.panX = 0;
+          this.panY = 0;
+        }
+      }
     }
     this._inkBakeDirty = true;
     this.clearInkCache();
@@ -12985,8 +13112,8 @@ class GraphApp {
     this.syncGraphSnapBarUI();
     this.render();
     if (!silent) {
-      const prefix = caseIdx ? `#${caseIdx} 보관 당시의` : '실시간';
-      this.showToast(`🔄 ${prefix} 그래프를 복구했습니다!`);
+      const prefix = caseIdx ? `#${caseIdx}` : '선택한';
+      this.showToast(`⛶ ${prefix} 카드를 그래프 모드로 크게 열었습니다! 편집 후 [필기 복귀]를 누르면 카드에 반영됩니다.`);
     }
   }
 
@@ -13030,6 +13157,9 @@ class GraphApp {
         gCanvas.height = targetH;
       }
       this.renderGraphCardCanvas();
+    }
+    if (!isMin) {
+      this.renderPipGraphCard('primary');
     }
     if (!isMin && typeof widget._syncCardLaserSize === 'function') {
       widget._syncCardLaserSize();
@@ -13578,6 +13708,7 @@ class GraphApp {
           isResizing = false;
           this._isDraggingOrResizingAnyCard = false;
           this.syncGraphCardRectFromWidget();
+          this.bakePipGraphCardToImg('primary');
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
           }
@@ -13588,7 +13719,7 @@ class GraphApp {
     }
 
     if (btnRestore) {
-      btnRestore.onclick = () => this.restoreLiveGraphFromCard(false, this.primaryGraphCardSnapshot, 1);
+      btnRestore.onclick = () => this.restoreLiveGraphFromCard(false, this.primaryGraphCardSnapshot, 1, false, 'primary');
     }
     if (btnClose) {
       btnClose.onclick = () => {
@@ -13597,6 +13728,10 @@ class GraphApp {
         this.graphCardData = null;
         this.graphCardPdfAnchor = null;
         widget._pdfAnchor = null;
+        widget._pipSnapObj = null;
+        widget.classList.remove('pip-manipulating');
+        if (this._pipTargetCard === 'primary') this._pipTargetCard = null;
+        if (this._editingGraphCardTarget === 'primary') this._editingGraphCardTarget = null;
         widget.style.display = 'none';
         if ((!this.extraGraphCards || this.extraGraphCards.length === 0) && !this.hasBoardStateToReturn()) {
           this.restoreLiveGraphFromCard(false);
@@ -13628,6 +13763,7 @@ class GraphApp {
         const newW = Math.min(window.innerWidth * 0.85, curW + 60);
         widget.style.width = `${newW}px`;
         this.syncGraphCardRectFromWidget();
+        this.bakePipGraphCardToImg('primary');
       };
     }
     if (btnZoomOut) {
@@ -13636,8 +13772,1064 @@ class GraphApp {
         const newW = Math.max(220, curW - 60);
         widget.style.width = `${newW}px`;
         this.syncGraphCardRectFromWidget();
+        this.bakePipGraphCardToImg('primary');
       };
     }
+    this.attachPipGraphCardLiveSystem(widget, 'primary');
+  }
+
+  // ==========================================================================
+  // [📈 PiP 라이브 인터랙티브 그래프 카드 엔진 (판서 모드 내 즉시 소환 · 핸들 조작 · 평행이동 · 함수 추가)]
+  // ==========================================================================
+  _getPipCardWidgetAndSnapRaw(cardRef) {
+    if (cardRef === 'primary') {
+      const widget = document.getElementById('graphCardWidget');
+      const rawSnap = this.primaryGraphCardSnapshot || (this.graphCardData && this.graphCardData.graphSnapshot);
+      return { widget, rawSnap, isPrimary: true };
+    }
+    if (cardRef && cardRef.el) {
+      return { widget: cardRef.el, rawSnap: cardRef.graphSnapshot, isPrimary: false };
+    }
+    return { widget: null, rawSnap: null, isPrimary: false };
+  }
+
+  _getMutablePipCardSnapshot(cardRef) {
+    const { widget, rawSnap, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    if (!widget || !rawSnap) return null;
+    if (widget._pipSnapObj && widget._pipSnapRawRef === rawSnap) {
+      return widget._pipSnapObj;
+    }
+    try {
+      const parsed = typeof rawSnap === 'string' ? JSON.parse(rawSnap) : JSON.parse(JSON.stringify(rawSnap));
+      if (!parsed || typeof parsed !== 'object') return null;
+      if (Array.isArray(parsed.graphs)) {
+        parsed.graphs.forEach(g => {
+          if (g && g.type === 'general_expr' && Array.isArray(g.handles)) {
+            g.handles.forEach(h => {
+              if (h && h.rawExpr && window.SafeMathCompiler) {
+                const comp = window.SafeMathCompiler.compile(h.rawExpr);
+                if (comp && comp.success) h.fn = comp.fn;
+              }
+            });
+          }
+        });
+      }
+      if (typeof parsed.activeGraphIdx !== 'number') {
+        parsed.activeGraphIdx = (Array.isArray(parsed.graphs) && parsed.graphs.length > 0) ? 0 : -1;
+      }
+      if (typeof parsed.zoomLevel !== 'number') parsed.zoomLevel = 1.0;
+      if (typeof parsed.panX !== 'number') parsed.panX = 0;
+      if (typeof parsed.panY !== 'number') parsed.panY = 0;
+      if (typeof parsed.xSpan !== 'number') parsed.xSpan = 6.2;
+      if (typeof parsed.ySpan !== 'number') parsed.ySpan = 5.1;
+      widget._pipSnapObj = parsed;
+      widget._pipSnapRawRef = rawSnap;
+      if (!isPrimary) cardRef._pipSnapObj = parsed;
+      return parsed;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  _savePipCardSnapshot(cardRef, snapObj) {
+    if (!snapObj) return;
+    const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    const jsonStr = JSON.stringify(snapObj);
+    if (isPrimary) {
+      this.primaryGraphCardSnapshot = jsonStr;
+      if (this.graphCardData) {
+        this.graphCardData.graphSnapshot = jsonStr;
+      }
+    } else if (cardRef) {
+      cardRef.graphSnapshot = jsonStr;
+    }
+    if (widget) {
+      widget._pipSnapObj = snapObj;
+      widget._pipSnapRawRef = jsonStr;
+    }
+  }
+
+  _withPipCardGraphState(snapObj, cardW, cardH, callback) {
+    if (!snapObj) return null;
+    const effW = Math.max(80, Math.round(cardW || 380));
+    const effH = Math.max(80, Math.round(cardH || 312));
+
+    if (!snapObj._isPipCardSnapshot) {
+      const oldSw = Math.max(1, this.screenWidth || window.innerWidth || 1440);
+      const oldSh = Math.max(1, this.screenHeight || window.innerHeight || 900);
+      snapObj.panX = (snapObj.panX || 0) * (effW / oldSw);
+      snapObj.panY = (snapObj.panY || 0) * (effH / oldSh);
+      snapObj._isPipCardSnapshot = true;
+      snapObj._pipCardW = effW;
+      snapObj._pipCardH = effH;
+    } else if (snapObj._pipCardW && snapObj._pipCardH && (Math.abs(snapObj._pipCardW - effW) > 0.5 || Math.abs(snapObj._pipCardH - effH) > 0.5)) {
+      snapObj.panX = (snapObj.panX || 0) * (effW / Math.max(1, snapObj._pipCardW));
+      snapObj.panY = (snapObj.panY || 0) * (effH / Math.max(1, snapObj._pipCardH));
+      snapObj._pipCardW = effW;
+      snapObj._pipCardH = effH;
+    } else {
+      snapObj._pipCardW = effW;
+      snapObj._pipCardH = effH;
+    }
+
+    const backup = {
+      screenWidth: this.screenWidth,
+      screenHeight: this.screenHeight,
+      graphs: this.graphs,
+      activeGraphIdx: this.activeGraphIdx,
+      isCurveSelected: this.isCurveSelected,
+      selectedHandleIdx: this.selectedHandleIdx,
+      draggedHandleIdx: this.draggedHandleIdx,
+      isDraggingCurve: this.isDraggingCurve,
+      zoomLevel: this.zoomLevel,
+      panX: this.panX,
+      panY: this.panY,
+      xSpan: this.xSpan,
+      ySpan: this.ySpan,
+      showAxes: this.showAxes,
+      showGuides: this.showGuides,
+      showAsymptotes: this.showAsymptotes,
+      showInverseGuide: this.showInverseGuide,
+      showGridNumbers: this.showGridNumbers,
+      usePiecewise: this.usePiecewise,
+      piecewiseBoundaries: this.piecewiseBoundaries,
+      piecewiseFuncMap: this.piecewiseFuncMap,
+      piecewiseInclusions: this.piecewiseInclusions,
+      isPiecewisePeriodic: this.isPiecewisePeriodic,
+      periodicStepY: this.periodicStepY,
+      isPiecewiseLocked: this.isPiecewiseLocked,
+      dropLines: this.dropLines,
+      textLabels: this.textLabels,
+      useIntersectionDetector: this.useIntersectionDetector,
+      intersections: this.intersections,
+      isGraphCovered: this.isGraphCovered,
+      pdfPageBoardData: this.pdfPageBoardData,
+      isNAxisMode: this.isNAxisMode,
+      _isRenderingGraphSnapshot: this._isRenderingGraphSnapshot,
+      _snapshotCropBounds: this._snapshotCropBounds,
+      _activeSnapHint: this._activeSnapHint
+    };
+
+    try {
+      this.screenWidth = effW;
+      this.screenHeight = effH;
+      this.graphs = snapObj.graphs || [];
+      this.activeGraphIdx = typeof snapObj.activeGraphIdx === 'number' ? snapObj.activeGraphIdx : (this.graphs.length > 0 ? 0 : -1);
+      this.isCurveSelected = Boolean(snapObj.isCurveSelected);
+      this.selectedHandleIdx = (typeof snapObj.selectedHandleIdx === 'number') ? snapObj.selectedHandleIdx : null;
+      this.draggedHandleIdx = (typeof snapObj.draggedHandleIdx === 'number') ? snapObj.draggedHandleIdx : null;
+      this.isDraggingCurve = Boolean(snapObj._isDraggingCurve);
+      this.zoomLevel = typeof snapObj.zoomLevel === 'number' ? snapObj.zoomLevel : 1.0;
+      this.panX = typeof snapObj.panX === 'number' ? snapObj.panX : 0;
+      this.panY = typeof snapObj.panY === 'number' ? snapObj.panY : 0;
+      this.xSpan = typeof snapObj.xSpan === 'number' ? snapObj.xSpan : 6.2;
+      this.ySpan = typeof snapObj.ySpan === 'number' ? snapObj.ySpan : 5.1;
+      this.showAxes = true;
+      this.showGuides = true;
+      this.showAsymptotes = true;
+      this.showInverseGuide = Boolean(snapObj.showInverseGuide);
+      this.showGridNumbers = Boolean(snapObj.showGridNumbers);
+      this.usePiecewise = Boolean(snapObj.usePiecewise);
+      this.piecewiseBoundaries = snapObj.piecewiseBoundaries || [];
+      this.piecewiseFuncMap = snapObj.piecewiseFuncMap || [];
+      this.piecewiseInclusions = snapObj.piecewiseInclusions || [];
+      this.isPiecewisePeriodic = Boolean(snapObj.isPiecewisePeriodic);
+      this.periodicStepY = snapObj.periodicStepY || 0;
+      this.isPiecewiseLocked = Boolean(snapObj.isPiecewiseLocked);
+      this.dropLines = snapObj.dropLines || [];
+      this.textLabels = snapObj.textLabels || [];
+      this.useIntersectionDetector = Boolean(snapObj.useIntersectionDetector || (Array.isArray(this.dropLines) && this.dropLines.length > 0));
+      this.isGraphCovered = false;
+      this.pdfPageBoardData = null;
+      this.isNAxisMode = false;
+      this._isRenderingGraphSnapshot = true;
+      this._snapshotCropBounds = {
+        minX: 0,
+        maxX: effW,
+        minY: 0,
+        maxY: effH,
+        x: 0,
+        y: 0,
+        w: effW,
+        h: effH
+      };
+      this._activeSnapHint = snapObj._activeSnapHint || null;
+
+      const res = callback();
+
+      snapObj.graphs = this.graphs;
+      snapObj.activeGraphIdx = this.activeGraphIdx;
+      snapObj.isCurveSelected = this.isCurveSelected;
+      snapObj.selectedHandleIdx = this.selectedHandleIdx;
+      snapObj.draggedHandleIdx = this.draggedHandleIdx;
+      snapObj.zoomLevel = this.zoomLevel;
+      snapObj.panX = this.panX;
+      snapObj.panY = this.panY;
+      snapObj.xSpan = this.xSpan;
+      snapObj.ySpan = this.ySpan;
+      snapObj.showInverseGuide = this.showInverseGuide;
+      return res;
+    } finally {
+      Object.assign(this, backup);
+    }
+  }
+
+  renderPipGraphCard(cardRef) {
+    const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    if (!widget || widget.style.display === 'none' || widget.classList.contains('minimized')) return;
+    const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
+    if (!bodyEl) return;
+    const liveCanvas = bodyEl.querySelector('.graph-card-live-canvas');
+    const imgEl = bodyEl.querySelector('.problem-card-img');
+    const ctxBar = bodyEl.querySelector('.pip-card-mini-ctx-bar');
+    if (!liveCanvas) return;
+
+    const snapObj = this._getMutablePipCardSnapshot(cardRef);
+    if (!snapObj || snapObj.isNAxisStudioCard || !Array.isArray(snapObj.graphs) || snapObj.graphs.length === 0) {
+      liveCanvas.style.display = 'none';
+      if (imgEl) imgEl.style.opacity = '1';
+      widget.classList.remove('pip-manipulating');
+      return;
+    }
+
+    const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
+    const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || bodyEl.clientWidth || 360));
+    const cardH = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
+    const dpr = this.getCanvasDpr();
+    const targetW = Math.round(cardW * dpr);
+    const targetH = Math.round(cardH * dpr);
+    if (liveCanvas.width !== targetW || liveCanvas.height !== targetH) {
+      liveCanvas.width = targetW;
+      liveCanvas.height = targetH;
+    }
+    liveCanvas.style.display = 'block';
+    if (imgEl) imgEl.style.opacity = '0';
+
+    const isManipulating = Boolean(snapObj.isCurveSelected && !widget.classList.contains('card-ink-active'));
+    widget.classList.toggle('pip-manipulating', isManipulating);
+
+    if (ctxBar) {
+      const activeG = snapObj.graphs[snapObj.activeGraphIdx];
+      const absBtn = ctxBar.querySelector('[data-pip-act="abs"]');
+      if (absBtn) {
+        absBtn.classList.toggle('active', Boolean(activeG && activeG.isAbsolute));
+      }
+    }
+
+    const ctx = liveCanvas.getContext('2d');
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cardW, cardH);
+
+    this._withPipCardGraphState(snapObj, cardW, cardH, () => {
+      const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
+      ctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
+      ctx.fillRect(0, 0, cardW, cardH);
+
+      if (this.showGuides) this.drawGuides(ctx, this._snapshotCropBounds);
+      if (this.showAsymptotes) this.drawAllAsymptotes(ctx);
+      if (this.showAxes) this.drawAxes(ctx, this._snapshotCropBounds);
+      if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(ctx, this._snapshotCropBounds);
+
+      this.drawAllCurves(ctx);
+
+      if (this.usePiecewise && this.graphs.length >= 1) {
+        this.drawPiecewiseBoundaries(ctx);
+      }
+      this.drawDropLines(ctx);
+      if (this.useIntersectionDetector && this.graphs.length >= 2) {
+        this.updateIntersections();
+        this.drawIntersections(ctx);
+      }
+      this.drawTextLabels(ctx);
+
+      if (isManipulating && this.activeGraph) {
+        this.drawHandles(ctx, this.activeGraph);
+      }
+    });
+
+    ctx.restore();
+  }
+
+  bakePipGraphCardToImg(cardRef) {
+    const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    if (!widget) return null;
+    const snapObj = this._getMutablePipCardSnapshot(cardRef);
+    if (!snapObj || snapObj.isNAxisStudioCard || !Array.isArray(snapObj.graphs) || snapObj.graphs.length === 0) return null;
+
+    const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
+    const imgEl = bodyEl ? bodyEl.querySelector('.problem-card-img') : null;
+    const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
+    const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 360));
+    const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
+
+    const snapScale = 3.0;
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = Math.max(1, Math.round(cardW * snapScale));
+    cropCanvas.height = Math.max(1, Math.round(cardH * snapScale));
+    const cctx = cropCanvas.getContext('2d');
+    cctx.save();
+    cctx.scale(snapScale, snapScale);
+
+    this._withPipCardGraphState(snapObj, cardW, cardH, () => {
+      const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
+      cctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
+      cctx.fillRect(0, 0, cardW, cardH);
+
+      if (this.showGuides) this.drawGuides(cctx, this._snapshotCropBounds);
+      if (this.showAsymptotes) this.drawAllAsymptotes(cctx);
+      if (this.showAxes) this.drawAxes(cctx, this._snapshotCropBounds);
+      if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(cctx, this._snapshotCropBounds);
+      this.drawAllCurves(cctx);
+      if (this.usePiecewise && this.graphs.length >= 1) {
+        this.drawPiecewiseBoundaries(cctx);
+      }
+      this.drawDropLines(cctx);
+      if (this.useIntersectionDetector && this.graphs.length >= 2) {
+        this.updateIntersections();
+        this.drawIntersections(cctx);
+      }
+      this.drawTextLabels(cctx);
+    });
+    cctx.restore();
+
+    const dataUrl = cropCanvas.toDataURL('image/png');
+    this._savePipCardSnapshot(cardRef, snapObj);
+    if (isPrimary) {
+      this.graphCardImage = cropCanvas;
+      if (this.graphCardData) {
+        this.graphCardData.imgUrl = dataUrl;
+        this.graphCardData.dataUrl = dataUrl;
+      }
+    } else if (cardRef) {
+      cardRef.dataUrl = dataUrl;
+    }
+    if (imgEl) {
+      imgEl.src = dataUrl;
+    }
+    return { cropCanvas, dataUrl };
+  }
+
+  deselectAllPipGraphCards(exceptWidget = null) {
+    let anyChanged = false;
+    const primaryWidget = document.getElementById('graphCardWidget');
+    if (primaryWidget && primaryWidget !== exceptWidget && this._hasPrimaryGraphCard && this.graphCardData) {
+      const snap = this._getMutablePipCardSnapshot('primary');
+      if (snap && (snap.isCurveSelected || primaryWidget.classList.contains('pip-manipulating'))) {
+        snap.isCurveSelected = false;
+        snap.selectedHandleIdx = null;
+        snap.draggedHandleIdx = null;
+        snap._activeSnapHint = null;
+        primaryWidget.classList.remove('pip-manipulating');
+        this.renderPipGraphCard('primary');
+        this.bakePipGraphCardToImg('primary');
+        anyChanged = true;
+      }
+    }
+    if (Array.isArray(this.extraGraphCards)) {
+      this.extraGraphCards.forEach(c => {
+        if (c && c.el && c.el !== exceptWidget) {
+          const snap = this._getMutablePipCardSnapshot(c);
+          if (snap && (snap.isCurveSelected || c.el.classList.contains('pip-manipulating'))) {
+            snap.isCurveSelected = false;
+            snap.selectedHandleIdx = null;
+            snap.draggedHandleIdx = null;
+            snap._activeSnapHint = null;
+            c.el.classList.remove('pip-manipulating');
+            this.renderPipGraphCard(c);
+            this.bakePipGraphCardToImg(c);
+            anyChanged = true;
+          }
+        }
+      });
+    }
+    if (anyChanged && this.isAudioRecording) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
+  }
+
+  _syncFullGraphBackToEditingPipCard() {
+    const target = this._editingGraphCardTarget;
+    this._editingGraphCardTarget = null;
+    if (!target) return;
+    const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(target);
+    if (!widget) return;
+
+    const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (target.aspect || 0.82);
+    const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || 360));
+    const cardH = Math.max(120, Math.round(cardW * aspect));
+    const isTrig = Array.isArray(this.graphs) && this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
+    const updatedSnap = JSON.parse(this.getPureGraphSnapshot());
+    updatedSnap.xSpan = isTrig ? 14.0 : 6.2;
+    updatedSnap.ySpan = isTrig ? 5.0 : 5.1;
+    updatedSnap.panX = 0;
+    updatedSnap.panY = 0;
+    updatedSnap.isCurveSelected = false;
+    updatedSnap.selectedHandleIdx = null;
+    updatedSnap.useIntersectionDetector = Boolean(this.useIntersectionDetector);
+    updatedSnap._isPipCardSnapshot = true;
+    updatedSnap._pipCardW = cardW;
+    updatedSnap._pipCardH = cardH;
+
+    this._savePipCardSnapshot(target, updatedSnap);
+    this.renderPipGraphCard(target);
+    this.bakePipGraphCardToImg(target);
+  }
+
+  addGraphToPipCardInBoardMode(preferredType = null) {
+    const presetOrder = ['3rd_normal', '1st_linear', '2nd_quadratic', 'exp_basic', 'geom_quad'];
+    const targetCard = (this._pipTargetCard && this._pipTargetCard !== 'new') ? this._pipTargetCard : null;
+    const isValidExistingTarget = Boolean(
+      (targetCard === 'primary' && this._hasPrimaryGraphCard && this.graphCardData) ||
+      (targetCard && targetCard !== 'primary' && Array.isArray(this.extraGraphCards) && this.extraGraphCards.includes(targetCard))
+    );
+
+    if (isValidExistingTarget) {
+      const snap = this._getMutablePipCardSnapshot(targetCard);
+      if (snap && Array.isArray(snap.graphs)) {
+        if (snap.graphs.length >= 12) {
+          this.showToast('⚠️ 한 카드에는 최대 12개까지 함수를 추가할 수 있습니다.');
+          return;
+        }
+        const nextType = preferredType || presetOrder[snap.graphs.length % presetOrder.length];
+        const nextColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
+          ? this.fixedGraphColor
+          : this.colorPalette[snap.graphs.length % this.colorPalette.length];
+
+        const newGraph = {
+          id: 'g_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+          type: nextType,
+          category: this.meta[nextType].category,
+          handles: JSON.parse(JSON.stringify(this.meta[nextType].handles)),
+          color: nextColor,
+          lineWidth: this.defaultGraphLineWidth || 2.8,
+          isAbsolute: false,
+          shapeMode: 'free',
+          originCenter: false,
+          isFrozen: false,
+          freezeOffset: { x: 0, y: 0 },
+          frozenInvertH: false,
+          frozenInvertV: false,
+          frozenAbsolute: false,
+          isIndependent: Boolean(snap.usePiecewise)
+        };
+
+        const { widget } = this._getPipCardWidgetAndSnapRaw(targetCard);
+        this.deselectAllPipGraphCards(widget);
+        snap.graphs.push(newGraph);
+        snap.activeGraphIdx = snap.graphs.length - 1;
+        snap.selectedHandleIdx = null;
+        snap.isCurveSelected = true;
+
+        if (widget && widget.classList.contains('card-ink-active')) {
+          widget.classList.remove('card-ink-active');
+          const laserBtn = widget.querySelector('.btn-card-laser');
+          if (laserBtn) laserBtn.classList.remove('active');
+        }
+        if (widget) this.bringCardToFront(widget);
+
+        this.renderPipGraphCard(targetCard);
+        this.bakePipGraphCardToImg(targetCard);
+        if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+          this.closeDrawer();
+        }
+        this.showToast(`✨ 카드에 f${snap.graphs.length}(x) (${this.meta[nextType].name}) 추가됨! 핸들을 드래그해 조절하세요.`);
+        return;
+      }
+    }
+
+    // 새 PiP 그래프 카드를 화면 중앙에 생성!
+    const nextType = preferredType || presetOrder[0];
+    const nextColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
+      ? this.fixedGraphColor
+      : this.colorPalette[0];
+
+    const newGraph = {
+      id: 'g_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      type: nextType,
+      category: this.meta[nextType].category,
+      handles: JSON.parse(JSON.stringify(this.meta[nextType].handles)),
+      color: nextColor,
+      lineWidth: this.defaultGraphLineWidth || 2.8,
+      isAbsolute: false,
+      shapeMode: 'free',
+      originCenter: false,
+      isFrozen: false,
+      freezeOffset: { x: 0, y: 0 },
+      frozenInvertH: false,
+      frozenInvertV: false,
+      frozenAbsolute: false,
+      isIndependent: false
+    };
+
+    const isTrig = ["sin_1period", "cos_1period", "tan_1period"].includes(nextType);
+    const cardW = 360;
+    const aspect = 0.82;
+    const cardH = Math.round(cardW * aspect);
+    const snapObj = {
+      graphs: [newGraph],
+      activeGraphIdx: 0,
+      zoomLevel: 1.0,
+      panX: 0,
+      panY: 0,
+      xSpan: isTrig ? 14.0 : 6.2,
+      ySpan: isTrig ? 5.0 : 5.1,
+      usePiecewise: false,
+      piecewiseBoundaries: [],
+      piecewiseFuncMap: [0],
+      piecewiseInclusions: [],
+      isPiecewisePeriodic: false,
+      periodicStepY: 0,
+      isPiecewiseLocked: false,
+      showInverseGuide: false,
+      showGridNumbers: false,
+      isNAxisMode: false,
+      dropLines: [],
+      textLabels: [],
+      graphInkStrokes: [],
+      isCurveSelected: true,
+      selectedHandleIdx: null,
+      _isPipCardSnapshot: true,
+      _pipCardW: cardW,
+      _pipCardH: cardH
+    };
+
+    this._spawnCenteredPipCardFromSnapObj(snapObj, cardW, aspect, `${this.meta[nextType].name} 카드 생성됨! 핸들로 조절 후 구석으로 끌어 놓으세요.`);
+  }
+
+  loadCustomPresetToPipCardInBoardMode(item) {
+    if (!item || !item.snapshot) return false;
+    try {
+      const parsed = typeof item.snapshot === 'string' ? JSON.parse(item.snapshot) : JSON.parse(JSON.stringify(item.snapshot));
+      if (!parsed || !Array.isArray(parsed.graphs) || parsed.graphs.length === 0) return false;
+
+      if (this.graphColorMode === 'fixed' && this.fixedGraphColor) {
+        parsed.graphs.forEach(g => { if (g) g.color = this.fixedGraphColor; });
+      }
+      const targetCard = (this._pipTargetCard && this._pipTargetCard !== 'new') ? this._pipTargetCard : null;
+      const isValidExistingTarget = Boolean(
+        (targetCard === 'primary' && this._hasPrimaryGraphCard && this.graphCardData) ||
+        (targetCard && targetCard !== 'primary' && Array.isArray(this.extraGraphCards) && this.extraGraphCards.includes(targetCard))
+      );
+
+      if (isValidExistingTarget) {
+        const snap = this._getMutablePipCardSnapshot(targetCard);
+        if (snap && Array.isArray(snap.graphs)) {
+          parsed.graphs.forEach(g => {
+            if (snap.graphs.length < 12) {
+              const cloned = JSON.parse(JSON.stringify(g));
+              cloned.id = 'g_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+              snap.graphs.push(cloned);
+            }
+          });
+          snap.activeGraphIdx = snap.graphs.length - 1;
+          snap.isCurveSelected = true;
+          snap.selectedHandleIdx = null;
+          const { widget } = this._getPipCardWidgetAndSnapRaw(targetCard);
+          this.deselectAllPipGraphCards(widget);
+          this.renderPipGraphCard(targetCard);
+          this.bakePipGraphCardToImg(targetCard);
+          if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+            this.closeDrawer();
+          }
+          this.showToast(`⭐ 카드에 [${item.name}] 프리셋이 추가되었습니다!`);
+          return true;
+        }
+      }
+
+      const cardW = 360;
+      const aspect = 0.82;
+      const cardH = Math.round(cardW * aspect);
+      const isTrig = parsed.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
+      parsed.xSpan = isTrig ? 14.0 : 6.2;
+      parsed.ySpan = isTrig ? 5.0 : 5.1;
+      parsed.panX = 0;
+      parsed.panY = 0;
+      parsed.isCurveSelected = true;
+      parsed.selectedHandleIdx = null;
+      parsed._isPipCardSnapshot = true;
+      parsed._pipCardW = cardW;
+      parsed._pipCardH = cardH;
+
+      this._spawnCenteredPipCardFromSnapObj(parsed, cardW, aspect, `⭐ [${item.name}] 카드 생성됨! 핸들로 조절 후 구석으로 끌어 놓으세요.`);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  _spawnCenteredPipCardFromSnapObj(snapObj, cardW, aspect, toastMsg) {
+    this.deselectAllPipGraphCards();
+    const cardH = Math.round(cardW * aspect);
+    const existingCount = (this._hasPrimaryGraphCard ? 1 : 0) + (Array.isArray(this.extraGraphCards) ? this.extraGraphCards.length : 0);
+    const cascade = (existingCount % 5) * 22;
+    const vw = window.innerWidth || 1440;
+    const vh = window.innerHeight || 900;
+    const centerX = Math.round((vw - cardW) * 0.5 + (this.hasActiveProblemCard() ? 70 : 0) + cascade);
+    const centerY = Math.round(Math.max(64, (vh - cardH) * 0.5 - 24 + cascade));
+
+    const snapScale = 2.5;
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = Math.round(cardW * snapScale);
+    tempCanvas.height = Math.round(cardH * snapScale);
+    const tctx = tempCanvas.getContext('2d');
+    tctx.save();
+    tctx.scale(snapScale, snapScale);
+    this._withPipCardGraphState(snapObj, cardW, cardH, () => {
+      const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
+      tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
+      tctx.fillRect(0, 0, cardW, cardH);
+      if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
+      if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
+      if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
+      this.drawAllCurves(tctx);
+    });
+    tctx.restore();
+    const dataUrl = tempCanvas.toDataURL('image/png');
+
+    const createdRef = this.setGraphCard(
+      dataUrl,
+      tempCanvas,
+      cardW,
+      { x: centerX, y: centerY, w: cardW, h: cardH },
+      JSON.stringify(snapObj),
+      { cardW, aspect, forceScreenPos: true, alreadyInBoardMode: true, silentToast: true }
+    );
+
+    this.renderPipGraphCard(createdRef);
+    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+      this.closeDrawer();
+    }
+    if (toastMsg) {
+      this.showToast(`✨ ${toastMsg}`);
+    }
+    return createdRef;
+  }
+
+  attachPipGraphCardLiveSystem(widget, cardRef) {
+    if (!widget || widget._pipLiveSystemAttached) return;
+    widget._pipLiveSystemAttached = true;
+
+    const isPrimary = (cardRef === 'primary');
+    const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
+    if (!bodyEl) return;
+
+    // 1. 카드 상단 [+] 함수 추가 버튼 바인딩
+    const btnAddFunc = isPrimary
+      ? document.getElementById('btnGraphCardAddFunc')
+      : widget.querySelector('.btn-extra-add-func');
+    if (btnAddFunc) {
+      btnAddFunc.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+      });
+      btnAddFunc.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.bringCardToFront(widget);
+        const isAlreadyTargetingThis = (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets' && this._pipTargetCard === cardRef);
+        document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+        if (isAlreadyTargetingThis) {
+          this.closeDrawer();
+        } else {
+          this._pipTargetCard = cardRef;
+          btnAddFunc.classList.add('active');
+          this.openDrawer('panelPresets');
+          this.showToast('➕ 이 카드에 함께 그릴 함수를 선택하세요!');
+        }
+      });
+    }
+
+    // 2. 라이브 그래프 캔버스 및 미니 컨텍스트 바 생성
+    let liveCanvas = bodyEl.querySelector('.graph-card-live-canvas');
+    if (!liveCanvas) {
+      liveCanvas = document.createElement('canvas');
+      liveCanvas.className = 'graph-card-live-canvas';
+      const imgEl = bodyEl.querySelector('.problem-card-img');
+      if (imgEl && imgEl.nextSibling) {
+        bodyEl.insertBefore(liveCanvas, imgEl.nextSibling);
+      } else {
+        bodyEl.appendChild(liveCanvas);
+      }
+    }
+
+    let ctxBar = bodyEl.querySelector('.pip-card-mini-ctx-bar');
+    if (!ctxBar) {
+      ctxBar = document.createElement('div');
+      ctxBar.className = 'pip-card-mini-ctx-bar';
+      ctxBar.innerHTML = `
+        <button type="button" class="pip-ctx-btn" data-pip-act="flipX" title="x축 대칭 (상하 반전)">↕x축</button>
+        <button type="button" class="pip-ctx-btn" data-pip-act="flipY" title="y축 대칭 (좌우 반전)">↔y축</button>
+        <button type="button" class="pip-ctx-btn" data-pip-act="abs" title="절댓값 |f(x)| 꺾어올리기">|f(x)|</button>
+        <button type="button" class="pip-ctx-btn pip-ctx-del" data-pip-act="deleteCurve" title="선택된 함수 삭제">🗑</button>
+      `;
+      bodyEl.appendChild(ctxBar);
+
+      ctxBar.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+      });
+      ctxBar.querySelectorAll('.pip-ctx-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const act = btn.dataset.pipAct;
+          const snap = this._getMutablePipCardSnapshot(cardRef);
+          if (!snap || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return;
+          const g = snap.graphs[snap.activeGraphIdx];
+          if (!g) return;
+
+          if (act === 'flipX') {
+            this.engine.reflectXAxis(g.handles, g.type);
+            this.renderPipGraphCard(cardRef);
+            this.bakePipGraphCardToImg(cardRef);
+          } else if (act === 'flipY') {
+            this.engine.reflectYAxis(g.handles, g.type);
+            this.renderPipGraphCard(cardRef);
+            this.bakePipGraphCardToImg(cardRef);
+          } else if (act === 'abs') {
+            g.isAbsolute = !g.isAbsolute;
+            g.isAbsPristine = Boolean(g.isAbsolute);
+            if (!g.isAbsolute) {
+              g.transforms = [];
+            }
+            this.renderPipGraphCard(cardRef);
+            this.bakePipGraphCardToImg(cardRef);
+          } else if (act === 'deleteCurve') {
+            if (snap.graphs.length > 1) {
+              snap.graphs.splice(snap.activeGraphIdx, 1);
+              snap.activeGraphIdx = Math.max(0, snap.graphs.length - 1);
+              snap.selectedHandleIdx = null;
+              snap.isCurveSelected = true;
+              this.renderPipGraphCard(cardRef);
+              this.bakePipGraphCardToImg(cardRef);
+              this.showToast('🗑️ 선택한 함수를 카드에서 삭제했습니다.');
+            } else {
+              const closeBtn = isPrimary ? document.getElementById('btnGraphCardClose') : widget.querySelector('.btn-extra-close');
+              if (closeBtn) closeBtn.click();
+            }
+          }
+        });
+      });
+    }
+
+    // 3. 라이브 캔버스 포인터 인터랙션 (핸들 변형 · 곡선 평행이동 · 빈 공간 드래그 시 카드 이동)
+    let activeMode = null; // 'handle' | 'curve' | 'panAxes' | 'emptyTapWatch'
+    let downPos = { x: 0, y: 0 };
+    let downClient = { x: 0, y: 0 };
+    let curveStartMath = { x: 0, y: 0 };
+    let curveInitHandles = null;
+    let curveInitFreezeOffset = null;
+    let panInit = { x: 0, y: 0 };
+    let movedDuringInteraction = false;
+
+    const getLocalPos = (e) => {
+      const rect = liveCanvas.getBoundingClientRect();
+      const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
+      const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || rect.width || 360));
+      const cardH = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
+      const scaleX = cardW / Math.max(1, rect.width);
+      const scaleY = cardH / Math.max(1, rect.height);
+      return {
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY,
+        cardW,
+        cardH
+      };
+    };
+
+    liveCanvas.addEventListener('pointerdown', (e) => {
+      if (widget.classList.contains('card-ink-active') || widget.classList.contains('card-laser-active')) return;
+      const snap = this._getMutablePipCardSnapshot(cardRef);
+      if (!snap || snap.isNAxisStudioCard || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return;
+
+      this.bringCardToFront(widget);
+      const pos = getLocalPos(e);
+      const isTouch = Boolean(e.pointerType === 'touch' || e.pointerType === 'pen');
+      const isExplicitAxisPan = Boolean(e.shiftKey || e.button === 1 || e.button === 2);
+
+      let hitHandleIdx = null;
+      let hitCurveIdx = null;
+
+      this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
+        const handleHitDist = isTouch ? 30 : 22;
+        if (this.activeGraph && Array.isArray(this.activeGraph.handles)) {
+          let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
+          let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
+          if (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
+            for (const t of this.activeGraph.transforms) {
+              if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
+              if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
+            }
+          }
+          this.activeGraph.handles.forEach((h, idx) => {
+            if (!h || h.hidden) return;
+            if (!snap.isCurveSelected && (h.type === 'center' || h.type === 'asymptote') && ["cos_1period", "rational_basic", "exp_basic", "log_basic"].includes(this.activeGraph.type)) return;
+            let targetY = h.y;
+            if (this.activeGraph.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
+              targetY = Math.abs(h.y);
+            }
+            let evalY = (h.type === 'center' || h.type === 'asymptote')
+              ? (targetY + oy)
+              : this.engine.evaluatePipeline(this.activeGraph, h.x + ox);
+            if (isNaN(evalY) || !isFinite(evalY)) evalY = targetY + oy;
+            const s = this.mathToScreen(h.x + ox, evalY);
+            if (Math.hypot(s.x - pos.x, s.y - pos.y) <= handleHitDist) {
+              hitHandleIdx = idx;
+            }
+          });
+        }
+
+        if (hitHandleIdx === null) {
+          hitCurveIdx = this.hitTestAllCurves({ x: pos.x, y: pos.y }, isTouch);
+        }
+      });
+
+      downPos = { x: pos.x, y: pos.y };
+      downClient = { x: e.clientX, y: e.clientY };
+      movedDuringInteraction = false;
+
+      if (isExplicitAxisPan) {
+        e.preventDefault();
+        e.stopPropagation();
+        try { liveCanvas.setPointerCapture(e.pointerId); } catch (_) { }
+        activeMode = 'panAxes';
+        panInit = { x: snap.panX || 0, y: snap.panY || 0 };
+        liveCanvas.style.cursor = 'grabbing';
+        return;
+      }
+
+      if (hitHandleIdx !== null) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.deselectAllPipGraphCards(widget);
+        if (!snap.isCurveSelected) {
+          snap.isCurveSelected = true;
+          snap.selectedHandleIdx = null;
+          snap.draggedHandleIdx = null;
+          this.renderPipGraphCard(cardRef);
+          return;
+        }
+        try { liveCanvas.setPointerCapture(e.pointerId); } catch (_) { }
+        activeMode = 'handle';
+        snap.draggedHandleIdx = hitHandleIdx;
+        snap.selectedHandleIdx = hitHandleIdx;
+        liveCanvas.style.cursor = 'grabbing';
+        this.renderPipGraphCard(cardRef);
+        return;
+      }
+
+      if (hitCurveIdx !== null) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.deselectAllPipGraphCards(widget);
+        try { liveCanvas.setPointerCapture(e.pointerId); } catch (_) { }
+        activeMode = 'curve';
+        snap.activeGraphIdx = hitCurveIdx;
+        snap.isCurveSelected = true;
+        snap.selectedHandleIdx = null;
+        snap.draggedHandleIdx = null;
+        this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
+          curveStartMath = this.screenToMath(pos.x, pos.y);
+          const g = this.activeGraph;
+          if (g) {
+            curveInitHandles = JSON.parse(JSON.stringify(g.handles || []));
+            curveInitFreezeOffset = {
+              x: (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0,
+              y: (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0
+            };
+          }
+        });
+        liveCanvas.style.cursor = 'grabbing';
+        this.renderPipGraphCard(cardRef);
+        return;
+      }
+
+      // 빈 공간 터치: 드래그하면 카드 전체가 이동하고, 제자리 톡 클릭이면 핸들 선택 해제!
+      activeMode = 'emptyTapWatch';
+    });
+
+    liveCanvas.addEventListener('pointermove', (e) => {
+      if (widget.classList.contains('card-ink-active') || widget.classList.contains('card-laser-active')) return;
+      const snap = this._getMutablePipCardSnapshot(cardRef);
+      if (!snap || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return;
+
+      const pos = getLocalPos(e);
+      if (!activeMode || activeMode === 'emptyTapWatch') {
+        if (activeMode === 'emptyTapWatch' && Math.hypot(e.clientX - downClient.x, e.clientY - downClient.y) > 5) {
+          movedDuringInteraction = true;
+        }
+        // 마우스 호버 시 핸들/곡선 위 커서 피드백
+        if (!activeMode && e.pointerType === 'mouse') {
+          let hoverHit = false;
+          this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
+            if (snap.isCurveSelected && this.activeGraph && Array.isArray(this.activeGraph.handles)) {
+              let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
+              let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
+              for (const h of this.activeGraph.handles) {
+                if (!h || h.hidden) continue;
+                let targetY = (this.activeGraph.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) ? Math.abs(h.y) : h.y;
+                let evalY = (h.type === 'center' || h.type === 'asymptote') ? (targetY + oy) : this.engine.evaluatePipeline(this.activeGraph, h.x + ox);
+                if (isNaN(evalY) || !isFinite(evalY)) evalY = targetY + oy;
+                const s = this.mathToScreen(h.x + ox, evalY);
+                if (Math.hypot(s.x - pos.x, s.y - pos.y) <= 18) {
+                  hoverHit = true;
+                  break;
+                }
+              }
+            }
+            if (!hoverHit && this.hitTestAllCurves({ x: pos.x, y: pos.y }, false) !== null) {
+              hoverHit = true;
+            }
+          });
+          liveCanvas.style.cursor = hoverHit ? 'pointer' : 'grab';
+        }
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+      if (Math.hypot(e.clientX - downClient.x, e.clientY - downClient.y) > 3) {
+        movedDuringInteraction = true;
+      }
+
+      if (activeMode === 'panAxes') {
+        snap.panX = panInit.x + (pos.x - downPos.x);
+        snap.panY = panInit.y + (pos.y - downPos.y);
+        this.renderPipGraphCard(cardRef);
+        return;
+      }
+
+      if (activeMode === 'handle') {
+        this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
+          const m = this.screenToMath(pos.x, pos.y);
+          let ox = (this.activeGraph && this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
+          let oy = (this.activeGraph && this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
+          if (this.activeGraph && this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
+            for (const t of this.activeGraph.transforms) {
+              if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
+              if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
+            }
+          }
+          let localMx = m.x - ox;
+          let localMy = m.y - oy;
+          const snapPixelRadius = 10;
+          const originScreen = this.mathToScreen(0, 0);
+          snap._activeSnapHint = null;
+          if (Math.abs(pos.y - originScreen.y) <= snapPixelRadius) {
+            localMy = -oy;
+            snap._activeSnapHint = { axis: 'x', sx: pos.x, sy: originScreen.y };
+          }
+          if (Math.abs(pos.x - originScreen.x) <= snapPixelRadius) {
+            localMx = -ox;
+            snap._activeSnapHint = {
+              axis: snap._activeSnapHint ? 'origin' : 'y',
+              sx: originScreen.x,
+              sy: snap._activeSnapHint ? originScreen.y : pos.y
+            };
+          }
+          this.dragActiveHandle({ x: localMx, y: localMy });
+        });
+        this.renderPipGraphCard(cardRef);
+        return;
+      }
+
+      if (activeMode === 'curve' && movedDuringInteraction) {
+        this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
+          const g = this.activeGraph;
+          if (!g || !curveInitHandles) return;
+          snap._isDraggingCurve = true;
+          const m = this.screenToMath(pos.x, pos.y);
+          let dx = m.x - curveStartMath.x;
+          let dy = m.y - curveStartMath.y;
+
+          const hasTransforms = Boolean(g.isAbsolute || g.isFrozen || g.frozenInvertH || g.frozenInvertV || g.frozenAbsolute || (g.transforms && g.transforms.length > 0));
+          if (hasTransforms) {
+            g.freezeOffset = {
+              x: parseFloat((curveInitFreezeOffset.x + dx).toFixed(3)),
+              y: parseFloat((curveInitFreezeOffset.y + dy).toFixed(3))
+            };
+          } else {
+            g.handles.forEach((h, i) => {
+              if (curveInitHandles[i]) {
+                h.x = parseFloat((curveInitHandles[i].x + dx).toFixed(3));
+                h.y = parseFloat((curveInitHandles[i].y + dy).toFixed(3));
+              }
+            });
+          }
+
+          // 평행이동 시 주요 특징점(극점/변곡점/꼭짓점) 축 자석 스냅
+          const snapPx = 9;
+          const originScreen = this.mathToScreen(0, 0);
+          const features = (typeof this.getGraphFeaturePoints === 'function') ? this.getGraphFeaturePoints(g) : [];
+          let bestSnapDx = 0, bestSnapDy = 0, minDistX = snapPx + 1, minDistY = snapPx + 1;
+          for (const fp of features) {
+            const fs = this.mathToScreen(fp.x, fp.y);
+            const distToYAxis = Math.abs(fs.x - originScreen.x);
+            const distToXAxis = Math.abs(fs.y - originScreen.y);
+            if (distToYAxis < minDistX) {
+              minDistX = distToYAxis;
+              bestSnapDx = -fp.x;
+            }
+            if (distToXAxis < minDistY) {
+              minDistY = distToXAxis;
+              bestSnapDy = -fp.y;
+            }
+          }
+          if (minDistX <= snapPx || minDistY <= snapPx) {
+            const adjDx = minDistX <= snapPx ? bestSnapDx : 0;
+            const adjDy = minDistY <= snapPx ? bestSnapDy : 0;
+            if (hasTransforms) {
+              g.freezeOffset.x = parseFloat((g.freezeOffset.x + adjDx).toFixed(3));
+              g.freezeOffset.y = parseFloat((g.freezeOffset.y + adjDy).toFixed(3));
+            } else {
+              g.handles.forEach(h => {
+                h.x = parseFloat((h.x + adjDx).toFixed(3));
+                h.y = parseFloat((h.y + adjDy).toFixed(3));
+              });
+            }
+          }
+        });
+        this.renderPipGraphCard(cardRef);
+      }
+    });
+
+    const finishPipInteraction = (e) => {
+      if (!activeMode) return;
+      const prevMode = activeMode;
+      activeMode = null;
+      const snap = this._getMutablePipCardSnapshot(cardRef);
+      if (snap) {
+        snap.draggedHandleIdx = null;
+        snap._isDraggingCurve = false;
+        snap._activeSnapHint = null;
+        if (prevMode === 'emptyTapWatch' && !movedDuringInteraction && snap.isCurveSelected) {
+          snap.isCurveSelected = false;
+          snap.selectedHandleIdx = null;
+        }
+      }
+      liveCanvas.style.cursor = 'grab';
+      try { if (e && e.pointerId !== undefined) liveCanvas.releasePointerCapture(e.pointerId); } catch (_) { }
+      this.renderPipGraphCard(cardRef);
+      this.bakePipGraphCardToImg(cardRef);
+      if (this.isAudioRecording) {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
+    };
+
+    liveCanvas.addEventListener('pointerup', finishPipInteraction);
+    liveCanvas.addEventListener('pointercancel', finishPipInteraction);
+
+    // 4. 카드 위 마우스 휠: 조작 활성(pip-manipulating) 상태일 때 카드 내부 그래프 배율(zoomLevel) 줌인/줌아웃
+    liveCanvas.addEventListener('wheel', (e) => {
+      if (widget.classList.contains('card-ink-active')) return;
+      const snap = this._getMutablePipCardSnapshot(cardRef);
+      if (!snap || !snap.isCurveSelected) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const delta = e.deltaY < 0 ? 0.1 : -0.1;
+      snap.zoomLevel = Math.max(0.35, Math.min(3.5, parseFloat(((snap.zoomLevel || 1.0) + delta).toFixed(2))));
+      this.renderPipGraphCard(cardRef);
+      this.bakePipGraphCardToImg(cardRef);
+    }, { passive: false });
   }
 
   // 🌟 [초고속 144Hz 2-레이어 오프스크린 잉크 베이킹 엔진 & 씬 프리즈 캐시 (iCanScreen 급 0ms 저지연)] 🌟
@@ -16348,6 +17540,10 @@ class GraphApp {
       document.querySelectorAll('.rail-btn[data-panel]').forEach(b => {
         b.classList.remove('active');
       });
+      document.querySelectorAll('.btn-card-add-func.active').forEach(b => {
+        b.classList.remove('active');
+      });
+      this._pipTargetCard = null;
 
       if (this.isAudioRecording) {
         this._recordAudioWorkspaceStateIfNeeded(true);
@@ -16370,16 +17566,14 @@ class GraphApp {
       btn.onclick = () => {
         const targetPanel = btn.dataset.panel;
         if (targetPanel === 'panelPresets' && this.isGraphCovered) {
-          if (this.pdfPageBoardData) {
-            if (this._isPdfCropChoiceMenuOpen || this.isPdfToGraphCropMode) {
-              this.cancelPdfBoardToGraphCrop();
-            } else {
-              this.openPdfToGraphChoiceMenu(null);
-            }
-            return;
+          const wasCardTarget = Boolean(this._pipTargetCard && this._pipTargetCard !== 'new');
+          document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+          if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets' && !wasCardTarget) {
+            this.closeDrawer();
+          } else {
+            this._pipTargetCard = 'new';
+            this.openDrawer('panelPresets');
           }
-          this.enterGraphModeFromBoard();
-          this.openDrawer('panelPresets');
           return;
         }
         if (!this.isDrawerCollapsed && this.activeDrawerPanel === targetPanel) {
@@ -16403,8 +17597,8 @@ class GraphApp {
       if (this.isDrawerCollapsed) return;
       const target = e.target;
       if (!target || typeof target.closest !== 'function') return;
-      // 서랍 내부 또는 좌측 레일 버튼 클릭 시에는 유지
-      if (target.closest('#railDrawer') || target.closest('#sidebarRail')) return;
+      // 서랍 내부, 좌측 레일 버튼, 또는 그래프 카드 상단 [+] 함수 추가 버튼 클릭 시에는 유지
+      if (target.closest('#railDrawer') || target.closest('#sidebarRail') || target.closest('.btn-card-add-func')) return;
       // 스마트 수식 입력 모달, 요금제 모달 등 팝업 모달 내부 클릭 시에는 서랍 유지
       if (
         target.closest('#modalSmartInput') ||
@@ -17637,6 +18831,21 @@ class GraphApp {
     // 🌟 [테마 연동 펜 & 곡선 컬러 동기화] 🌟
     this.colorPalette = theme.isLight ? [...this.lightColorPalette] : [...this.darkColorPalette];
     this.updateInkPaletteUI();
+
+    if (typeof this.renderPipGraphCard === 'function') {
+      if (this._hasPrimaryGraphCard && this.graphCardData) {
+        this.renderPipGraphCard('primary');
+        this.bakePipGraphCardToImg('primary');
+      }
+      if (Array.isArray(this.extraGraphCards)) {
+        this.extraGraphCards.forEach(c => {
+          if (c && c.el) {
+            this.renderPipGraphCard(c);
+            this.bakePipGraphCardToImg(c);
+          }
+        });
+      }
+    }
 
     this._inkBakeDirty = true;
     this.requestRender();
@@ -22123,7 +23332,10 @@ class GraphApp {
     const item = this.customGraphPresets.find(it => it && it.id === presetId);
     if (!item || !item.snapshot) return false;
 
-    if (this.isGraphCovered || this._graphSessionArchived || this.pdfPageBoardData) {
+    if (this.isGraphCovered) {
+      return this.loadCustomPresetToPipCardInBoardMode(item);
+    }
+    if (this._graphSessionArchived || this.pdfPageBoardData) {
       this.enterGraphModeFromBoard();
     }
     if (!this.showAxes) {
@@ -28628,6 +29840,9 @@ class GraphApp {
 
     const handleDown = (e) => {
       if (this.isStudentAudioVideoOnlyMode) return;
+      if (this.isGraphCovered && typeof this.deselectAllPipGraphCards === 'function') {
+        this.deselectAllPipGraphCards();
+      }
       this._lastPointerEvent = e;
       this._erasedInCurrentStroke = false;
       const isForceSpaceOrWheelPan = Boolean(this.isSpacePressed || (e && e.button === 1));
@@ -43346,19 +44561,14 @@ class GraphApp {
       }
       case 'graph_open_presets': {
         if (this.isPdfModalOpen || (this.smartViewerState && this.smartViewerState.isOpen)) return false;
-        // [아이콘 모두 숨기기(H) 모드 보호]: 전체 아이콘을 깨우지 않고 오직 필수 그래프 창(#panelPresets / #pdfToGraphCropFloatingBar)과
-        // 그래프 모드 우상단 [필기 복귀 · 카드 추가](#graphSnapFloatingBar)만 깔끔하게 표시!
         if (this.isGraphCovered) {
-          if (this.pdfPageBoardData) {
-            if (this._isPdfCropChoiceMenuOpen || this.isPdfToGraphCropMode) {
-              this.cancelPdfBoardToGraphCrop();
-            } else {
-              this.openPdfToGraphChoiceMenu(null);
-            }
-            return true;
+          document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+          if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+            this.closeDrawer();
+          } else {
+            this._pipTargetCard = 'new';
+            this.openDrawer('panelPresets');
           }
-          this.enterGraphModeFromBoard();
-          this.openDrawer('panelPresets');
           return true;
         }
         if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
