@@ -11161,8 +11161,15 @@ class GraphApp {
         }
         cCtx.lineCap = 'round';
         cCtx.lineJoin = 'round';
-        const sizeScale = Math.max(0.6, w / 480);
         const isProbExtra = cardWidgetEl.classList.contains('extra-problem-card-widget');
+        const extraGraphRef = (!isProbExtra && Array.isArray(this.extraGraphCards))
+          ? this.extraGraphCards.find(c => c && c.el === cardWidgetEl)
+          : null;
+        const sizeScale = isProbExtra
+          ? Math.max(0.6, w / 480)
+          : (typeof this.getPipCardFinePenScale === 'function'
+            ? this.getPipCardFinePenScale(extraGraphRef, w, h)
+            : 0.54);
         const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
         const cRect = isAudioReplay
           ? (typeof this._getStageElementRect === 'function' ? this._getStageElementRect(extraInkCanvas) : extraInkCanvas.getBoundingClientRect())
@@ -11198,8 +11205,8 @@ class GraphApp {
           const baseSize = (st.size || 3.5) * sizeScale;
           const ghostMul = (typeof st._ghostAlpha === 'number') ? st._ghostAlpha : 1.0;
           cCtx.globalAlpha = (st.isHighlighter ? 0.36 : 1.0) * ghostMul;
-          const extraHlW = st.highlighterSize ? (st.highlighterSize * sizeScale) : Math.max(10, baseSize * 2.8);
-          cCtx.lineWidth = st.isHighlighter ? Math.max(4, extraHlW) : Math.max(1.5, baseSize);
+          const extraHlW = st.highlighterSize ? (st.highlighterSize * sizeScale) : Math.max(8, baseSize * 2.8);
+          cCtx.lineWidth = st.isHighlighter ? Math.max(3, extraHlW) : Math.max(isProbExtra ? 1.5 : 0.85, baseSize);
           if (st.isShape && st.cardShape && this.drawCardRecognizedShape(cCtx, st, 0, 0, w, h, baseSize)) {
             cCtx.restore();
             return;
@@ -13633,7 +13640,7 @@ class GraphApp {
       // 카드에서 보고 있던 중심 수학 좌표(centerMathX, centerMathY)와 카드 위 필기(ink)를 전체화면 그래프 모드에 100% 그대로 동기화!
       if (parsedSnapForFull && parsedSnapForFull._isPipCardSnapshot) {
         const isTrig = Array.isArray(this.graphs) && this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
-        const cardH = Math.max(80, parsedSnapForFull._pipCardH || 295);
+        const cardH = Math.max(80, parsedSnapForFull._pipCardH || 353);
         const cardYSpan = parsedSnapForFull.ySpan || (isTrig ? 5.0 : 5.1);
         const cardZoom = parsedSnapForFull.zoomLevel || 1.0;
         const cardUnitScale = (cardH / 2) / (cardYSpan / cardZoom);
@@ -13769,6 +13776,25 @@ class GraphApp {
     return this.graphCardRect;
   }
 
+  getPipCardFinePenScale(cardRef, w, h) {
+    // 🖋️ [창모드 그래프 카드 세필(Fine Pen) 자동 스케일 엔진]:
+    // 창모드 기본 크기(430x353, ySpan=5.1 -> unitScale ≈ 34.6px/unit)는 전체화면 그래프 모드(unitScale ≈ 75px/unit)의 축소판이므로,
+    // 창모드 위에 글씨/수식을 쓸 때는 약 0.54배 세필로 샤프하게 그려지고,
+    // 전체화면([⛶]) 전환 시에는 1:1 비율 그대로 자연스러운 판서 굵기로 매칭되도록 수학 단위 스케일(unitScale)에 연동!
+    const snap = typeof this._getMutablePipCardSnapshot === 'function'
+      ? this._getMutablePipCardSnapshot(cardRef || 'primary')
+      : null;
+    if (snap && snap._isPipCardSnapshot) {
+      const isTrig = Array.isArray(snap.graphs) && snap.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
+      const ySpan = snap.ySpan || (isTrig ? 5.0 : 5.1);
+      const zoom = snap.zoomLevel || 1.0;
+      const effH = Math.max(80, h || snap._pipCardH || 353);
+      const unitScale = (effH / 2) / Math.max(0.1, ySpan / zoom);
+      return Math.max(0.32, Math.min(1.25, (unitScale / 34.6) * 0.54));
+    }
+    return Math.max(0.36, Math.min(1.1, (w / 430) * 0.54));
+  }
+
   renderGraphCardCanvas() {
     const gCanvas = document.getElementById('graphCardCanvas');
     if (!gCanvas) return;
@@ -13789,7 +13815,7 @@ class GraphApp {
 
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    const sizeScale = Math.max(0.6, w / 420);
+    const sizeScale = this.getPipCardFinePenScale('primary', w, h);
 
     const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
     const gRect = isAudioReplay
@@ -13826,11 +13852,11 @@ class GraphApp {
       const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
       if (stroke.isHighlighter) {
         ctx.globalAlpha = 0.36 * ghostMul;
-        const gHlW = stroke.highlighterSize ? (stroke.highlighterSize * sizeScale) : Math.max(10, baseSize * 2.8);
-        ctx.lineWidth = Math.max(4, gHlW);
+        const gHlW = stroke.highlighterSize ? (stroke.highlighterSize * sizeScale) : Math.max(8, baseSize * 2.8);
+        ctx.lineWidth = Math.max(3, gHlW);
       } else {
         ctx.globalAlpha = 1.0 * ghostMul;
-        ctx.lineWidth = Math.max(1.5, baseSize);
+        ctx.lineWidth = Math.max(0.85, baseSize);
       }
 
       if (stroke.isShape && stroke.cardShape && this.drawCardRecognizedShape(ctx, stroke, 0, 0, w, h, baseSize)) {
@@ -14809,16 +14835,14 @@ class GraphApp {
     if (!cardRef) return;
     this._ensurePipCardInkMathCoords(cardRef);
     const cardStrokes = this._getPipCardInkStrokesArray(cardRef);
-    const { widget } = this._getPipCardWidgetAndSnapRaw(cardRef);
-    const cardW = widget ? Math.max(160, Math.round(parseFloat(widget.style.width) || 360)) : 360;
-    const cardSizeScale = Math.max(0.6, cardW / 420);
-    const unitRatio = (cardUnitScale > 0 && fullUnitScale > 0) ? (fullUnitScale / cardUnitScale) : 1.5;
 
     if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
     this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
 
     if (!cardStrokes || cardStrokes.length === 0) return;
 
+    // 🖋️ 창모드에서는 이미 세필(0.54x)로 렌더링되므로, 전체화면 전환 시 기본 펜 굵기(cs.size)를 1:1 그대로 유지하면
+    // 확대된 수학 좌표 간격과 어우러져 글자가 뚱뚱해지지 않고 깔끔한 정사이즈로 표시됨!
     cardStrokes.forEach(cs => {
       if (!cs || !Array.isArray(cs.points) || cs.points.length === 0) return;
       const fullPts = cs.points.map(pt => ({
@@ -14827,9 +14851,9 @@ class GraphApp {
         p: pt.p !== undefined ? pt.p : 0.5,
         t: pt.t
       }));
-      const scaledSize = Math.max(1.5, Math.min(28, parseFloat(((cs.size || 3.5) * cardSizeScale * unitRatio).toFixed(2))));
+      const scaledSize = Math.max(1.2, Math.min(28, parseFloat((cs.size || 3.5).toFixed(2))));
       const scaledHlSize = cs.highlighterSize
-        ? Math.max(8, Math.min(64, parseFloat((cs.highlighterSize * cardSizeScale * unitRatio).toFixed(2))))
+        ? Math.max(6, Math.min(64, parseFloat((cs.highlighterSize).toFixed(2))))
         : undefined;
 
       const fullStroke = {
@@ -14869,10 +14893,8 @@ class GraphApp {
     const snap = this._getMutablePipCardSnapshot(cardRef);
     if (!snap || snap.isNAxisStudioCard) return;
 
-    const effW = Math.max(160, Math.round(cardW || 360));
-    const effH = Math.max(120, Math.round(cardH || 295));
-    const cardSizeScale = Math.max(0.6, effW / 420);
-    const invRatio = (cardUnitScale > 0 && fullUnitScale > 0) ? (cardUnitScale / fullUnitScale) : (1 / 1.5);
+    const effW = Math.max(160, Math.round(cardW || 430));
+    const effH = Math.max(120, Math.round(cardH || 353));
 
     const graphStrokes = Array.isArray(this.inkStrokes)
       ? this.inkStrokes.filter(s => s && s.target === 'graph' && Array.isArray(s.points) && s.points.length > 0)
@@ -14892,9 +14914,10 @@ class GraphApp {
             t: pt.t
           };
         });
-        const cardBaseSize = Math.max(1.5, Math.min(18, parseFloat((((gs.size || 3.5) * invRatio) / cardSizeScale).toFixed(2))));
+        // 창모드 복귀 시에도 원본 펜 사이즈(gs.size)를 1:1 보존 (창모드 렌더러가 세필 비율을 자동 곱해줌)
+        const cardBaseSize = Math.max(1.2, Math.min(28, parseFloat((gs.size || 3.5).toFixed(2))));
         const cardHlSize = gs.highlighterSize
-          ? Math.max(8, Math.min(48, parseFloat(((gs.highlighterSize * invRatio) / cardSizeScale).toFixed(2))))
+          ? Math.max(6, Math.min(64, parseFloat((gs.highlighterSize).toFixed(2))))
           : undefined;
 
         const cStroke = {
@@ -15214,7 +15237,7 @@ class GraphApp {
     this._ensurePipCardInkMathCoords(cardRef);
     const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
     const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
-    const startW = Math.max(160, parseFloat(widget.style.width) || widget.offsetWidth || 360);
+    const startW = Math.max(160, parseFloat(widget.style.width) || widget.offsetWidth || 430);
     const startH = Math.max(120, (bodyEl && parseFloat(bodyEl.style.height)) || Math.round(startW * aspect));
     const snap = this._getMutablePipCardSnapshot(cardRef);
     if (snap) {
@@ -15367,7 +15390,7 @@ class GraphApp {
     }
 
     const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
-    const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || bodyEl.clientWidth || 360));
+    const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || bodyEl.clientWidth || 430));
     const cardH = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
     const dpr = this.getCanvasDpr();
     const targetW = Math.round(cardW * dpr);
@@ -15422,7 +15445,7 @@ class GraphApp {
     const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
     const imgEl = bodyEl ? bodyEl.querySelector('.problem-card-img') : null;
     const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
-    const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 360));
+    const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
     const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
 
     const snapScale = 3.0;
@@ -15563,7 +15586,7 @@ class GraphApp {
     if (!target) {
       if (!Array.isArray(this.graphs) || this.graphs.length === 0) return;
       const isTrig = this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
-      const cardW = 360;
+      const cardW = 430;
       const aspect = 0.82;
       const cardH = Math.round(cardW * aspect);
       const updatedSnap = JSON.parse(this.getPureGraphSnapshot());
@@ -15597,7 +15620,7 @@ class GraphApp {
     const prevSnap = this._getMutablePipCardSnapshot(target);
     const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (target.aspect || 0.82);
     const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
-    const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 360));
+    const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
     const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
     const isTrig = Array.isArray(this.graphs) && this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
 
@@ -15725,7 +15748,7 @@ class GraphApp {
     };
 
     const isTrig = ["sin_1period", "cos_1period", "tan_1period"].includes(nextType);
-    const cardW = 360;
+    const cardW = 430;
     const aspect = 0.82;
     const cardH = Math.round(cardW * aspect);
     const snapObj = {
@@ -15806,7 +15829,7 @@ class GraphApp {
         }
       }
 
-      const cardW = 360;
+      const cardW = 430;
       const aspect = 0.82;
       const cardH = Math.round(cardW * aspect);
       const isTrig = parsed.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
@@ -16263,7 +16286,7 @@ class GraphApp {
             snap._pipDropLineHoverScissors = null;
             snap._pipDropLineHoverCand = null;
           } else {
-            initCand = this.findNearestDropLineTarget({ x: pos.x, y: pos.y }, isTouch ? 36 : 24);
+            initCand = this.findNearestDropLineTarget({ x: pos.x, y: pos.y }, isTouch ? 24 : 16);
           }
         });
         if (hitScissors) {
@@ -16296,7 +16319,7 @@ class GraphApp {
 
       if (!snap.isPipDropLineMode) {
         this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
-          const handleHitDist = isTouch ? 30 : 22;
+          const handleHitDist = isTouch ? 15 : 11;
           if (snap.isCurveSelected && this.activeGraph && Array.isArray(this.activeGraph.handles)) {
             let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
             let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
@@ -16418,7 +16441,7 @@ class GraphApp {
           this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
             overScissors = this.hitTestScissors({ x: pos.x, y: pos.y });
             if (!overScissors) {
-              cand = this.findNearestDropLineTarget({ x: pos.x, y: pos.y }, 24);
+              cand = this.findNearestDropLineTarget({ x: pos.x, y: pos.y }, 16);
             }
           });
           const prevSc = snap._pipDropLineHoverScissors;
@@ -16462,7 +16485,7 @@ class GraphApp {
                 let evalY = (h.type === 'center' || h.type === 'asymptote') ? (targetY + oy) : this.engine.evaluatePipeline(this.activeGraph, h.x + ox);
                 if (isNaN(evalY) || !isFinite(evalY)) evalY = targetY + oy;
                 const s = this.mathToScreen(h.x + ox, evalY);
-                if (Math.hypot(s.x - pos.x, s.y - pos.y) <= 18) {
+                if (Math.hypot(s.x - pos.x, s.y - pos.y) <= 11) {
                   hoverHit = true;
                   break;
                 }
@@ -16485,7 +16508,7 @@ class GraphApp {
 
       if (activeMode === 'dropLineAim') {
         this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
-          snap._pipDropLineHoverCand = this.findNearestDropLineTarget({ x: pos.x, y: pos.y }, 32);
+          snap._pipDropLineHoverCand = this.findNearestDropLineTarget({ x: pos.x, y: pos.y }, 22);
         });
         this.requestPipGraphCardRender(cardRef);
         if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(false);
@@ -16516,8 +16539,9 @@ class GraphApp {
             }
           }
 
-          const snapThresholdMathX = (8 / Math.max(1, pos.cardW)) * this.xSpan * 2;
-          const snapThresholdMathY = (8 / Math.max(1, pos.cardH)) * this.ySpan * 2;
+          // 🧲 창모드 세밀 조작: 자석 스냅 반경을 기존 8px에서 3.2px로 축소하여 미세 조정이 걸림 없이 매끄럽게 되도록 개선!
+          const snapThresholdMathX = (3.2 / Math.max(1, pos.cardW)) * this.xSpan * 2;
+          const snapThresholdMathY = (3.2 / Math.max(1, pos.cardH)) * this.ySpan * 2;
           this.axisSnapActiveX = false;
           this.axisSnapActiveY = false;
           this.symmetrySnapActive = false;
@@ -16534,7 +16558,7 @@ class GraphApp {
 
           if (["2nd_quadratic", "abs_v", "4th_w", "4th_u"].includes(g.type) && this.draggedHandleIdx === 1) {
             const h0x = g.handles[0].x + ox;
-            if (Math.abs(m.x - h0x) < snapThresholdMathX * 1.3) {
+            if (Math.abs(m.x - h0x) < snapThresholdMathX * 1.0) {
               if (g.type === "4th_w") {
                 const curDist = Math.abs(g.handles[1].x - g.handles[0].x);
                 m.x = h0x + Math.max(0.5, curDist);
@@ -16576,8 +16600,8 @@ class GraphApp {
           let deltaX = m.x - curveStartMath.x;
           let deltaY = m.y - curveStartMath.y;
 
-          const snapThresholdMathX = (8 / Math.max(1, pos.cardW)) * this.xSpan * 2;
-          const snapThresholdMathY = (8 / Math.max(1, pos.cardH)) * this.ySpan * 2;
+          const snapThresholdMathX = (3.2 / Math.max(1, pos.cardW)) * this.xSpan * 2;
+          const snapThresholdMathY = (3.2 / Math.max(1, pos.cardH)) * this.ySpan * 2;
           this.axisSnapActiveX = false;
           this.axisSnapActiveY = false;
           this.snappedPoints = [];
@@ -31563,7 +31587,9 @@ class GraphApp {
   // --- [다중 곡선 히트 테스트 (가장 가까운 곡선 인덱스 탐색)] ---
   hitTestAllCurves(pos, isTouch = false) {
     if (!this.graphs || this.graphs.length === 0) return null;
-    const hitTolerancePx = isTouch ? 24 : 14;
+    const isPip = Boolean(this._isRenderingGraphSnapshot);
+    const hitTolerancePx = isPip ? (isTouch ? 10 : 6.5) : (isTouch ? 24 : 14);
+    const selectedBonus = isPip ? 1.5 : 10;
     let bestIdx = null;
     let minDistance = Infinity;
 
@@ -31576,8 +31602,8 @@ class GraphApp {
       const g = this.graphs[gIdx];
       if (!g) return;
       const dist = this.getCurveDist(g, pos, gIdx);
-      // [대표님 핵심 규칙]: 이미 선택된 활성 곡선 조작 상태에서는 몸통 터치 판정을 +10px 넉넉하게 주어 손쉬운 평행이동 보장!
-      const tol = (gIdx === this.activeGraphIdx && this.isCurveSelected) ? (hitTolerancePx + 10) : hitTolerancePx;
+      // [대표님 핵심 규칙]: 전체화면에서는 선택된 곡선에 +10px 여유를 주되, 창모드(isPip)에서는 오클릭 방지를 위해 칼같이 좁힘!
+      const tol = (gIdx === this.activeGraphIdx && this.isCurveSelected) ? (hitTolerancePx + selectedBonus) : hitTolerancePx;
       if (dist <= tol && dist < minDistance) {
         minDistance = dist;
         bestIdx = gIdx;
@@ -36979,8 +37005,11 @@ class GraphApp {
     const orig = this.mathToScreen(0, 0);
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
     const axisColor = this.isMonochromeMode ? '#000000' : curTheme.axis;
-    // 🌟 [대표님 피드백 반영]: 데스모스 스타일의 샤프하고 세련된 축 두께 (기존 곡선 연동 2.8px -> 독립 1.8px)
-    const axisLw = (typeof this.axisLineWidth === 'number') ? this.axisLineWidth : 1.8;
+    const isPip = Boolean(this._isRenderingGraphSnapshot);
+    const pipScale = isPip ? 0.78 : 1.0;
+    // 🌟 [대표님 피드백 반영]: 데스모스 스타일의 샤프하고 세련된 축 두께 (창모드에서는 0.78배 축소)
+    const rawAxisLw = (typeof this.axisLineWidth === 'number') ? this.axisLineWidth : 1.8;
+    const axisLw = rawAxisLw * pipScale;
 
     // 컴팩트 바운딩 활성 시 축의 시작/끝 좌표를 컴팩트 영역으로 깔끔하게 재단!
     // 교재 제작 모드(bounds === null)일 때는 기존처럼 모니터 전체화면(0 ~ screenWidth/Height) 100% 유지!
@@ -36990,7 +37019,7 @@ class GraphApp {
     const yTop = bounds ? bounds.minY : 0;
 
     // [대표님 기획]: 수능·평가원 조판 표준 비율로 화살촉 크기를 슬림해진 축선에 맞추어 세련되게 계산
-    const arrowSize = Math.max(12, Math.round(axisLw * 3.4 + 5));
+    const arrowSize = Math.max(isPip ? 9 : 12, Math.round((rawAxisLw * 3.4 + 5) * pipScale));
     const arrowHalfWidth = arrowSize * 0.44;
 
     ctx.save();
@@ -37046,7 +37075,7 @@ class GraphApp {
       if (this.dropLineFontFamily === 'pretendard') fontFam = "'Pretendard', -apple-system, sans-serif";
       else if (this.dropLineFontFamily === 'batang') fontFam = "'KoPubWorld Batang', 'Batang', serif";
 
-      const zRatio = Math.max(0.45, Math.min(2.2, this.zoomLevel || 1.0));
+      const zRatio = Math.max(0.45, Math.min(2.2, this.zoomLevel || 1.0)) * pipScale;
       const fSize = Math.max(8, Math.round((this.axisLabelFontSize || 17) * zRatio * 10) / 10);
       const originFSize = Math.max(7.5, Math.round(fSize * 0.95 * 10) / 10);
       const axisPad = Math.max(3, Math.round(6 * zRatio));
@@ -37186,8 +37215,8 @@ class GraphApp {
     if (fullSpanX > 90) step = 5;
     else if (fullSpanX > 45) step = 2;
 
-    // 🌟 확대·축소(zoomLevel)에 비례하여 눈금 숫자 크기와 여백이 함께 커졌다 작아짐!
-    const z = this.zoomLevel || 1.0;
+    // 🌟 확대·축소(zoomLevel)에 비례하여 눈금 숫자 크기와 여백이 함께 커졌다 작아짐! (창모드에서는 0.82배 축소)
+    const z = (this.zoomLevel || 1.0) * (this._isRenderingGraphSnapshot ? 0.82 : 1.0);
     const fontPx = Math.max(6.5, Math.min(26, 11 * z));
     const tickHalf = Math.max(2, Math.min(6, 3 * z));
     const offsetPx = Math.max(3, Math.min(11, 5 * z));
@@ -37936,10 +37965,14 @@ class GraphApp {
     } else if (this.dropLineFontFamily === 'batang') {
       fontFam = "'KoPubWorld Batang', 'Batang', serif";
     }
-    const zDropRatio = Math.max(0.45, Math.min(2.2, this.zoomLevel || 1.0));
+    const isPip = Boolean(this._isRenderingGraphSnapshot);
+    const pipScale = isPip ? 0.78 : 1.0;
+    const zDropRatio = Math.max(0.45, Math.min(2.2, this.zoomLevel || 1.0)) * pipScale;
     const fontSize = Math.max(7.5, Math.round((this.dropLineFontSize || 15) * zDropRatio * 10) / 10);
     const dropPad = Math.max(3, Math.round(7 * zDropRatio));
     const dropHaloLw = Math.max(2, Math.min(4.5, 3.5 * zDropRatio));
+    const dlLw = isPip ? 1.1 : 1.35;
+    const dlDash = isPip ? [3, 3] : [4, 4];
 
     ctx.save();
 
@@ -37957,9 +37990,9 @@ class GraphApp {
       if (item.showX) {
         ctx.save();
         ctx.strokeStyle = lineColor;
-        ctx.lineWidth = 1.35;
+        ctx.lineWidth = dlLw;
         if (isDashed) {
-          ctx.setLineDash([4, 4]);
+          ctx.setLineDash(dlDash);
         } else {
           ctx.setLineDash([]);
         }
@@ -38022,7 +38055,7 @@ class GraphApp {
           const mx = (S.x + Fx.x) / 2;
           const my = (S.y + Fx.y) / 2;
           const isScissorsHover = this.dropLineHoverScissors && this.dropLineHoverScissors.id === item.id && this.dropLineHoverScissors.which === 'x';
-          const r = isScissorsHover ? 11 : 9;
+          const r = isPip ? (isScissorsHover ? 8.8 : 7.2) : (isScissorsHover ? 11 : 9);
 
           ctx.save();
           ctx.beginPath();
@@ -38034,7 +38067,7 @@ class GraphApp {
           ctx.stroke();
 
           // 가위 아이콘 (텍스트)
-          ctx.font = `${isScissorsHover ? '11px' : '9.5px'} sans-serif`;
+          ctx.font = `${isPip ? (isScissorsHover ? '9px' : '8px') : (isScissorsHover ? '11px' : '9.5px')} sans-serif`;
           ctx.fillStyle = isScissorsHover ? '#ffffff' : (isLight ? '#2d3436' : '#dfe6e9');
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
@@ -38049,9 +38082,9 @@ class GraphApp {
       if (item.showY) {
         ctx.save();
         ctx.strokeStyle = lineColor;
-        ctx.lineWidth = 1.35;
+        ctx.lineWidth = dlLw;
         if (isDashed) {
-          ctx.setLineDash([4, 4]);
+          ctx.setLineDash(dlDash);
         } else {
           ctx.setLineDash([]);
         }
@@ -38114,7 +38147,7 @@ class GraphApp {
           const nx = (S.x + Fy.x) / 2;
           const ny = (S.y + Fy.y) / 2;
           const isScissorsHover = this.dropLineHoverScissors && this.dropLineHoverScissors.id === item.id && this.dropLineHoverScissors.which === 'y';
-          const r = isScissorsHover ? 11 : 9;
+          const r = isPip ? (isScissorsHover ? 8.8 : 7.2) : (isScissorsHover ? 11 : 9);
 
           ctx.save();
           ctx.beginPath();
@@ -38126,7 +38159,7 @@ class GraphApp {
           ctx.stroke();
 
           // 가위 아이콘
-          ctx.font = `${isScissorsHover ? '11px' : '9.5px'} sans-serif`;
+          ctx.font = `${isPip ? (isScissorsHover ? '9px' : '8px') : (isScissorsHover ? '11px' : '9.5px')} sans-serif`;
           ctx.fillStyle = isScissorsHover ? '#ffffff' : (isLight ? '#2d3436' : '#dfe6e9');
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
@@ -38141,7 +38174,7 @@ class GraphApp {
       if (item.showX || item.showY) {
         ctx.save();
         ctx.beginPath();
-        ctx.arc(S.x, S.y, 2.5, 0, Math.PI * 2);
+        ctx.arc(S.x, S.y, isPip ? 2.0 : 2.5, 0, Math.PI * 2);
         ctx.fillStyle = lineColor;
         ctx.fill();
         ctx.restore();
@@ -38158,42 +38191,44 @@ class GraphApp {
       ctx.save();
       // 외부 원형 펄스 링
       ctx.beginPath();
-      ctx.arc(cs.x, cs.y, isFeature ? 9 : 8, 0, Math.PI * 2);
+      ctx.arc(cs.x, cs.y, isPip ? (isFeature ? 7 : 6) : (isFeature ? 9 : 8), 0, Math.PI * 2);
       ctx.strokeStyle = themeColor;
-      ctx.lineWidth = 1.8;
+      ctx.lineWidth = isPip ? 1.5 : 1.8;
       ctx.shadowColor = themeColor;
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = isPip ? 5 : 8;
       ctx.stroke();
 
       // 내부 중심점
       ctx.beginPath();
-      ctx.arc(cs.x, cs.y, 2.8, 0, Math.PI * 2);
+      ctx.arc(cs.x, cs.y, isPip ? 2.1 : 2.8, 0, Math.PI * 2);
       ctx.fillStyle = '#ffffff';
       ctx.fill();
 
       // 특이점인 경우 정밀 스나이퍼 십자선 가이드
       if (isFeature) {
+        const cOuter = isPip ? 10 : 13;
+        const cInner = isPip ? 4 : 5;
         ctx.beginPath();
-        ctx.moveTo(cs.x - 13, cs.y);
-        ctx.lineTo(cs.x - 5, cs.y);
-        ctx.moveTo(cs.x + 5, cs.y);
-        ctx.lineTo(cs.x + 13, cs.y);
-        ctx.moveTo(cs.x, cs.y - 13);
-        ctx.lineTo(cs.x, cs.y - 5);
-        ctx.moveTo(cs.x, cs.y + 5);
-        ctx.lineTo(cs.x, cs.y + 13);
+        ctx.moveTo(cs.x - cOuter, cs.y);
+        ctx.lineTo(cs.x - cInner, cs.y);
+        ctx.moveTo(cs.x + cInner, cs.y);
+        ctx.lineTo(cs.x + cOuter, cs.y);
+        ctx.moveTo(cs.x, cs.y - cOuter);
+        ctx.lineTo(cs.x, cs.y - cInner);
+        ctx.moveTo(cs.x, cs.y + cInner);
+        ctx.lineTo(cs.x, cs.y + cOuter);
         ctx.strokeStyle = themeColor;
-        ctx.lineWidth = 1.2;
+        ctx.lineWidth = isPip ? 1.0 : 1.2;
         ctx.stroke();
       }
 
       // 미니 정보 뱃지 (대표님 기획: 신속한 스케치를 위해 좌표 숫자는 제거하고 특이점/곡선점 명칭만 깔끔하게 노출)
       const badgeText = cand.name || (isFeature ? '특이점' : '곡선 점');
-      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
-      const bW = ctx.measureText(badgeText).width + 14;
-      const bH = 20;
-      const bX = cs.x + 12;
-      const bY = cs.y - 24;
+      ctx.font = isPip ? 'bold 9.5px system-ui, -apple-system, sans-serif' : 'bold 11px system-ui, -apple-system, sans-serif';
+      const bW = ctx.measureText(badgeText).width + (isPip ? 11 : 14);
+      const bH = isPip ? 17 : 20;
+      const bX = cs.x + (isPip ? 9 : 12);
+      const bY = cs.y - (isPip ? 20 : 24);
 
       const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
       const isLight = curTheme.isLight || this.isMonochromeMode;
@@ -39008,11 +39043,12 @@ class GraphApp {
   }
 
   drawSingleAsymptote(ctx, g) {
+    const isPip = Boolean(this._isRenderingGraphSnapshot);
     ctx.save();
     ctx.strokeStyle = this.isMonochromeMode ? '#000000' : g.color;
     ctx.globalAlpha = this.isMonochromeMode ? 0.75 : 0.55;
-    ctx.lineWidth = 1.2;
-    ctx.setLineDash([5, 5]);
+    ctx.lineWidth = isPip ? 1.0 : 1.2;
+    ctx.setLineDash(isPip ? [4, 4] : [5, 5]);
 
     let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
     let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
@@ -39141,7 +39177,9 @@ class GraphApp {
       curveColor = '#222f3e';
     }
     ctx.strokeStyle = curveColor;
-    ctx.lineWidth = (isActive && this.isCurveSelected && !isExport) ? g.lineWidth + 0.6 : g.lineWidth;
+    const isPip = Boolean(this._isRenderingGraphSnapshot);
+    const baseCurveLw = (g.lineWidth || 2.8) * (isPip ? 0.78 : 1.0);
+    ctx.lineWidth = (isActive && this.isCurveSelected && !isExport) ? baseCurveLw + (isPip ? 0.35 : 0.6) : baseCurveLw;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
@@ -39150,7 +39188,7 @@ class GraphApp {
     // 활성 곡선 선택 시 네온 글로우 발광 (드래그 중에는 저사양 PC 프레임 보존을 위해 블러 바이패스, 흑백 모드 시 블러 없음)
     if (!this.isMonochromeMode && isActive && this.isCurveSelected && !isExport && !isDragging) {
       ctx.shadowColor = curveColor;
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = isPip ? 6 : 10;
     } else {
       ctx.shadowBlur = 0;
     }
@@ -40015,16 +40053,17 @@ class GraphApp {
 
       const s = this.mathToScreen(h.x + ox, evalY);
       const isDragging = this.draggedHandleIdx === idx;
-      const radius = isDragging ? 8.5 : 6.5;
+      const isPip = Boolean(this._isRenderingGraphSnapshot);
+      const radius = isPip ? (isDragging ? 5.6 : 4.4) : (isDragging ? 8.5 : 6.5);
 
       // 선택된 점 깜빡임 펄스 링 (키보드 방향키 미세조정 상태)
       if (this.selectedHandleIdx === idx) {
         const pulse = (Math.sin(Date.now() / 150) + 1) / 2;
         ctx.beginPath();
-        ctx.arc(s.x, s.y, radius + 5 + pulse * 6, 0, Math.PI * 2);
+        ctx.arc(s.x, s.y, radius + (isPip ? 3.5 : 5) + pulse * (isPip ? 4 : 6), 0, Math.PI * 2);
         ctx.fillStyle = `rgba(254, 202, 87, ${0.2 + pulse * 0.4})`;
         ctx.strokeStyle = '#feca57';
-        ctx.lineWidth = 2.0;
+        ctx.lineWidth = isPip ? 1.5 : 2.0;
         ctx.fill();
         ctx.stroke();
       }
@@ -40061,9 +40100,9 @@ class GraphApp {
         // 🌟 [라이트 모드 3D 엠보싱 렌더링]:
         // (1) 부드러운 드롭 섀도우 (종이 위에 볼록 솟아오른 물리적 핀 효과)
         ctx.shadowColor = 'rgba(15, 23, 42, 0.24)';
-        ctx.shadowBlur = isDragging ? 8 : 4.5;
+        ctx.shadowBlur = isPip ? (isDragging ? 5 : 3) : (isDragging ? 8 : 4.5);
         ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = isDragging ? 3 : 1.5;
+        ctx.shadowOffsetY = isPip ? (isDragging ? 2 : 1) : (isDragging ? 3 : 1.5);
 
         // (2) 외부 베이스 원 채우기
         ctx.beginPath();
@@ -40076,28 +40115,28 @@ class GraphApp {
         ctx.beginPath();
         ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = isDragging ? 3.0 : 2.4;
+        ctx.lineWidth = isPip ? (isDragging ? 2.1 : 1.7) : (isDragging ? 3.0 : 2.4);
         ctx.stroke();
 
         // (4) 외곽 윤곽선 (흰 종이 위에서도 핸들의 경계가 칼같이 선명하도록 보정)
         ctx.beginPath();
-        ctx.arc(s.x, s.y, radius + 1.2, 0, Math.PI * 2);
+        ctx.arc(s.x, s.y, radius + (isPip ? 0.9 : 1.2), 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(30, 41, 59, 0.42)';
-        ctx.lineWidth = 1.0;
+        ctx.lineWidth = isPip ? 0.85 : 1.0;
         ctx.stroke();
 
         // (5) 호버 또는 드래그 시 반응형 외곽 후광 (Aura Ring)
         if (isDragging) {
           ctx.beginPath();
-          ctx.arc(s.x, s.y, radius + 6, 0, Math.PI * 2);
+          ctx.arc(s.x, s.y, radius + (isPip ? 4.2 : 6), 0, Math.PI * 2);
           ctx.strokeStyle = 'rgba(37, 99, 235, 0.55)';
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = isPip ? 1.2 : 1.5;
           ctx.stroke();
         }
       } else {
         // 🌟 [다크 모드 네온 렌더링]:
         ctx.beginPath();
-        ctx.arc(s.x, s.y, radius + (isDragging ? 6 : 4), 0, Math.PI * 2);
+        ctx.arc(s.x, s.y, radius + (isPip ? (isDragging ? 4.2 : 2.8) : (isDragging ? 6 : 4)), 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(0, 210, 211, 0.22)';
         ctx.fill();
 
@@ -40105,7 +40144,7 @@ class GraphApp {
         ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
         ctx.fillStyle = fillColor;
         ctx.strokeStyle = '#0f172a';
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = isPip ? 1.8 : 2.5;
         ctx.fill();
         ctx.stroke();
       }
@@ -40124,11 +40163,11 @@ class GraphApp {
                 ? (h.name || '대칭중심')
                 : (h.type === 'vertex' ? (h.name || '꼭짓점') : '점'))));
         const coordText = `${hName} (${(h.x + ox).toFixed(2)}, ${evalY.toFixed(2)})`;
-        const tipY = s.y - radius - 16;
+        const tipY = s.y - radius - (isPip ? 12 : 16);
         this.drawPillBadge(ctx, coordText, s.x, tipY, {
-          font: 'bold 11px system-ui, -apple-system, sans-serif',
-          height: 22,
-          padX: 9,
+          font: isPip ? 'bold 9.5px system-ui, -apple-system, sans-serif' : 'bold 11px system-ui, -apple-system, sans-serif',
+          height: isPip ? 18 : 22,
+          padX: isPip ? 6.5 : 9,
           bg: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 23, 42, 0.94)',
           border: isLight ? 'rgba(37, 99, 235, 0.55)' : 'rgba(0, 210, 211, 0.7)',
           color: isLight ? '#1e293b' : '#ffffff',
@@ -40345,9 +40384,19 @@ class GraphApp {
                 ? (this.graphInkStrokes || [])
                 : (el._cardInkStrokes || []));
             if (Array.isArray(cardStrokes) && cardStrokes.length > 0) {
-              const refW = (el.id === 'problemCardWidget') ? 520 : (el.id === 'graphCardWidget' ? 420 : 480);
-              const sizeScale = Math.max(0.6, bw / refW);
               const isProbCard = (el.id === 'problemCardWidget' || el.classList.contains('extra-problem-card-widget'));
+              let sizeScale;
+              if (isProbCard) {
+                const refW = (el.id === 'problemCardWidget') ? 520 : 480;
+                sizeScale = Math.max(0.6, bw / refW);
+              } else {
+                const exportCardRef = (el.id === 'graphCardWidget')
+                  ? 'primary'
+                  : (Array.isArray(this.extraGraphCards) ? this.extraGraphCards.find(c => c && c.el === el) : null);
+                sizeScale = typeof this.getPipCardFinePenScale === 'function'
+                  ? this.getPipCardFinePenScale(exportCardRef, bw, bh)
+                  : 0.54;
+              }
               cardStrokes.forEach(st => {
                 if (!st || !st.points || st.points.length === 0) return;
                 ctx.save();
@@ -40366,8 +40415,8 @@ class GraphApp {
                 const baseSize = (st.size || 3.5) * sizeScale;
                 const ghostMul = (typeof st._ghostAlpha === 'number') ? st._ghostAlpha : 1.0;
                 ctx.globalAlpha = (st.isHighlighter ? 0.36 : 1.0) * ghostMul;
-                const hlW = st.highlighterSize ? (st.highlighterSize * sizeScale) : Math.max(10, baseSize * 2.8);
-                ctx.lineWidth = st.isHighlighter ? Math.max(4, hlW) : Math.max(1.5, baseSize);
+                const hlW = st.highlighterSize ? (st.highlighterSize * sizeScale) : Math.max(8, baseSize * 2.8);
+                ctx.lineWidth = st.isHighlighter ? Math.max(3, hlW) : Math.max(isProbCard ? 1.5 : 0.85, baseSize);
                 if (st.isShape && st.cardShape && this.drawCardRecognizedShape(ctx, st, bx, by, bw, bh, baseSize)) {
                   ctx.restore();
                   return;
@@ -42270,7 +42319,7 @@ class GraphApp {
     return 'data:audio/wav;base64,' + btoa(binary);
   }
 
-  _extractCompactPipSnapForAudio(cardRef, fallbackW = 360, fallbackAspect = 0.82) {
+  _extractCompactPipSnapForAudio(cardRef, fallbackW = 430, fallbackAspect = 0.82) {
     try {
       const r1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
       const r3 = (v) => Math.round((Number(v) || 0) * 1000) / 1000;
@@ -42302,7 +42351,7 @@ class GraphApp {
           });
         }
       });
-      const w = r1(raw._pipCardW || fallbackW || 360);
+      const w = r1(raw._pipCardW || fallbackW || 430);
       const aspect = r3(raw.aspect || fallbackAspect || 0.82);
       const h = r1(raw._pipCardH || Math.max(120, Math.round(w * aspect)));
       return {
