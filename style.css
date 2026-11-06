@@ -4992,93 +4992,106 @@ body.theme-light .problem-card-resize-handle {
   align-items: center !important;
   justify-content: center !important;
   border-radius: 6px !important;
-  color: #2563eb !important;
-  border-color: rgba(37, 99, 235, 0.28) !important;
-  background: rgba(37, 99, 235, 0.08) !important;
+  color: #cbd5e1 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  transition: all 0.16s cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
 
 .btn-card-add-func:hover,
 .btn-card-add-func.active {
-  background: #2563eb !important;
-  border-color: #2563eb !important;
+  background: rgba(148, 163, 184, 0.35) !important;
+  border-color: rgba(203, 213, 225, 0.55) !important;
   color: #ffffff !important;
 }
 
 body.theme-light .btn-card-add-func {
-  background: rgba(37, 99, 235, 0.08) !important;
-  border: 1px solid rgba(37, 99, 235, 0.28) !important;
-  color: #2563eb !important;
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  color: #475569 !important;
 }
 
 body.theme-light .btn-card-add-func:hover,
 body.theme-light .btn-card-add-func.active {
-  background: #2563eb !important;
-  border-color: #2563eb !important;
-  color: #ffffff !important;
+  background: #e2e8f0 !important;
+  border-color: rgba(15, 23, 42, 0.24) !important;
+  color: #0f172a !important;
 }
 
-/* [🔓 / 🔒] 그래프 카드 잠금·확정 토글 버튼 */
+/* [🔓 / 🔒] 그래프 카드 잠금·확정 토글 버튼 (차분한 무채색 벡터 아이콘 스타일) */
 .btn-card-lock-edit {
+  width: 26px !important;
   height: 25px !important;
-  padding: 0 7px !important;
+  padding: 0 !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   border-radius: 6px !important;
-  font-size: 11px !important;
-  font-weight: 700 !important;
-  gap: 3px !important;
-  transition: all 0.14s ease !important;
+  color: #cbd5e1 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  transition: all 0.16s cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
 
-.btn-card-lock-edit.unlocked-editing,
-body.theme-light .btn-card-lock-edit.unlocked-editing {
-  background: #2563eb !important;
-  border: 1px solid #2563eb !important;
-  color: #ffffff !important;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25) !important;
+.btn-card-lock-edit.unlocked-editing {
+  color: #cbd5e1 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  box-shadow: none !important;
 }
 
-.btn-card-lock-edit.unlocked-editing:hover,
-body.theme-light .btn-card-lock-edit.unlocked-editing:hover {
-  background: #1d4ed8 !important;
-  border-color: #1d4ed8 !important;
+.btn-card-lock-edit.unlocked-editing:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
   color: #ffffff !important;
 }
 
 .btn-card-lock-edit.locked-confirmed {
-  background: rgba(148, 163, 184, 0.16) !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
-  color: #e2e8f0 !important;
+  background: rgba(148, 163, 184, 0.35) !important;
+  border: 1px solid rgba(203, 213, 225, 0.55) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+}
+
+.btn-card-lock-edit.locked-confirmed:hover {
+  background: rgba(148, 163, 184, 0.45) !important;
+  border-color: rgba(203, 213, 225, 0.7) !important;
+  color: #ffffff !important;
+}
+
+body.theme-light .btn-card-lock-edit,
+body.theme-light .btn-card-lock-edit.unlocked-editing {
+  color: #475569 !important;
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  box-shadow: none !important;
+}
+
+body.theme-light .btn-card-lock-edit.unlocked-editing:hover {
+  background: #e2e8f0 !important;
+  border-color: rgba(15, 23, 42, 0.24) !important;
+  color: #0f172a !important;
 }
 
 body.theme-light .btn-card-lock-edit.locked-confirmed {
-  background: #f1f5f9 !important;
-  border: 1px solid rgba(15, 23, 42, 0.16) !important;
   color: #334155 !important;
+  background: #cbd5e1 !important;
+  border: 1px solid #94a3b8 !important;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.1) !important;
 }
 
-.btn-card-lock-edit.locked-confirmed:hover,
 body.theme-light .btn-card-lock-edit.locked-confirmed:hover {
-  background: rgba(37, 99, 235, 0.12) !important;
-  border-color: rgba(37, 99, 235, 0.35) !important;
-  color: #2563eb !important;
+  background: #94a3b8 !important;
+  border-color: #64748b !important;
+  color: #0f172a !important;
 }
 
-.pip-ctx-divider {
-  width: 1px;
-  height: 12px;
-  background: rgba(255, 255, 255, 0.2);
-  margin: 0 2px;
-}
-
-.pip-ctx-btn.pip-ctx-lock {
-  color: #93c5fd;
-}
-
-.pip-ctx-btn.pip-ctx-lock:hover {
-  background: rgba(37, 99, 235, 0.35);
-  color: #ffffff;
+.card-fold-triangle-btn,
+.card-title-fold-btn,
+#btnProblemCardToggleMinimize,
+#btnGraphCardToggleMinimize,
+.btn-extra-min {
+  display: none !important;
 }
 
 .graph-card-live-canvas {
@@ -5098,11 +5111,6 @@ body.theme-light .btn-card-lock-edit.locked-confirmed:hover {
 body.ink-laser-tool-active .graph-card-live-canvas,
 body.ink-sticker-tool-active .graph-card-live-canvas {
   pointer-events: none !important;
-}
-
-.graph-card-widget.pip-manipulating .problem-card-body {
-  border: 1.5px solid #2563eb !important;
-  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.20) !important;
 }
 
 .pip-card-mini-ctx-bar {

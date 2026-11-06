@@ -9955,9 +9955,6 @@ class GraphApp {
           <div class="problem-card-drag-handle">
             <span class="card-title-text">${titleText}</span>
           </div>
-          <button type="button" class="card-btn card-title-fold-btn card-fold-triangle-btn btn-extra-min">
-            <span class="card-fold-chevron">▾</span>
-          </button>
         </div>
         <div class="problem-card-actions">
           <button type="button" class="card-btn btn-card-laser" title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
@@ -10942,94 +10939,13 @@ class GraphApp {
   }
 
   dockCardToLeftStack(cardEl) {
-    if (!cardEl) return;
-    // 🛡️ 카드 위 필기 모드(.card-ink-active)나 전역 레이저/스티커/올가미 도구 활성 상태에서는 더블클릭 도킹 원천 차단 (필기 중 카드 도망 방지!)
-    if (
-      cardEl.classList.contains('card-ink-active') ||
-      cardEl.classList.contains('card-laser-active') ||
-      (this.isInkMode && (this.activeInkTool === 'laser' || this.activeInkTool === 'sticker' || this.activeInkTool === 'lasso'))
-    ) {
-      return;
-    }
-    // 0. 진행 중인 드래그 상태를 즉시 강제 종료 (더블클릭 후 마우스를 따라다니는 현상 100% 원천 차단!)
-    if (typeof cardEl._cancelCardDrag === 'function') {
-      cardEl._cancelCardDrag();
-    }
-    // 1. 펼쳐져 있으면 즉시 확 접기(minimized)
-    if (!cardEl.classList.contains('minimized') && typeof cardEl._toggleCardMin === 'function') {
-      cardEl._lastToggleTime = 0;
-      cardEl._toggleCardMin();
-    }
-    // 2. 좌측 도킹 큐에 등록 (새로 더블클릭한 카드는 기존 정렬된 카드 바로 밑으로 줄맞춤!)
-    if (!this._leftDockOrderCounter) this._leftDockOrderCounter = 1;
-    if (!cardEl._isLeftDocked) {
-      cardEl._isLeftDocked = true;
-      cardEl._leftDockOrder = (++this._leftDockOrderCounter);
-    }
-    this.relayoutLeftDockedCards(true);
+    // 접기 기능 폐지에 따라 더블클릭 접기·좌측 도킹 비활성화
+    return;
   }
 
   attachCardDoubleTapDocking(cardEl) {
-    if (!cardEl || cardEl._doubleTapDockAttached) return;
-    cardEl._doubleTapDockAttached = true;
-
-    const isCardWritingBlocked = () => Boolean(
-      cardEl.classList.contains('card-ink-active') ||
-      cardEl.classList.contains('card-laser-active') ||
-      (this.isInkMode && (this.activeInkTool === 'laser' || this.activeInkTool === 'sticker' || this.activeInkTool === 'lasso'))
-    );
-
-    const shouldIgnoreTarget = (target) => {
-      if (!target || !target.closest) return false;
-      if (target.closest('.graph-card-live-canvas')) {
-        const snap = cardEl._pipSnapObj;
-        if (!snap || !snap.isPipLocked) return true;
-      }
-      return Boolean(
-        target.closest('button') ||
-        target.closest('.card-btn') ||
-        target.closest('.card-fold-triangle-btn') ||
-        target.closest('.card-title-fold-btn') ||
-        target.closest('.problem-card-actions') ||
-        target.closest('.problem-card-resize-handle') ||
-        target.closest('.pip-card-mini-ctx-bar') ||
-        target.closest('.card-sticker-item') ||
-        target.closest('.card-stickers-layer') ||
-        target.closest('.problem-card-canvas') ||
-        target.closest('.card-laser-canvas')
-      );
-    };
-
-    // 1) 포인터 기반 빠른 더블탭 (아이패드 펜슬·손가락·PC 마우스 공용)
-    cardEl.addEventListener('pointerup', (e) => {
-      if (e.button && e.button !== 0) return;
-      if (isCardWritingBlocked()) return;
-      if (shouldIgnoreTarget(e.target)) return;
-      if (cardEl._justDraggedTime && performance.now() - cardEl._justDraggedTime < 120) return;
-
-      const now = performance.now();
-      const dt = now - (cardEl._lastTapUpTime || 0);
-      const dist = Math.hypot(e.clientX - (cardEl._lastTapUpX || 0), e.clientY - (cardEl._lastTapUpY || 0));
-
-      if (dt > 15 && dt <= 340 && dist <= 28) {
-        cardEl._lastTapUpTime = 0;
-        // ⚠️ 주의: 여기서 e.stopPropagation()을 호출하면 window의 pointerup(stopDrag)이 못 받아서
-        // isDragging이 true로 남아 마우스를 따라다니게 됨! 따라서 절대 stopPropagation 하지 않고 _cancelCardDrag로 즉시 해제!
-        this.dockCardToLeftStack(cardEl);
-      } else {
-        cardEl._lastTapUpTime = now;
-        cardEl._lastTapUpX = e.clientX;
-        cardEl._lastTapUpY = e.clientY;
-      }
-    });
-
-    // 2) 표준 dblclick 이벤트 폴백 지원
-    cardEl.addEventListener('dblclick', (e) => {
-      if (isCardWritingBlocked()) return;
-      if (shouldIgnoreTarget(e.target)) return;
-      e.preventDefault();
-      this.dockCardToLeftStack(cardEl);
-    });
+    // 접기 기능 폐지에 따라 더블탭 접기 비활성화
+    return;
   }
 
   // 🔴 [카드 전용 상단 레이저 포인터 시스템 (문제 카드 & 그래프 카드 공용)]
@@ -13370,15 +13286,11 @@ class GraphApp {
           <div class="problem-card-drag-handle">
             <span class="card-title-text">#${caseIdx}</span>
           </div>
-          <button type="button" class="card-btn card-title-fold-btn card-fold-triangle-btn btn-extra-min">
-            <span class="card-fold-chevron">▾</span>
-          </button>
         </div>
         <div class="problem-card-actions">
           <button type="button" class="card-btn btn-card-lock-edit btn-extra-lock unlocked-editing" title="조작 중 — 클릭하면 현재 시야·비율을 고정(잠금)합니다">
-            <span class="card-lock-icon" style="display:inline-flex;align-items:center;gap:3px;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
-              <span class="card-lock-label">잠금</span>
+            <span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;">
+              <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg>
             </span>
           </button>
           <button type="button" class="card-btn btn-card-add-func btn-extra-add-func" title="이 카드에 함수 추가 (한 카드에 여러 함수 겹쳐 그리기)">
@@ -15031,13 +14943,13 @@ class GraphApp {
       if (isLocked) {
         btnLock.classList.remove('unlocked-editing');
         btnLock.classList.add('locked-confirmed');
-        btnLock.innerHTML = '<span class="lock-icon">🔒</span><span class="lock-txt">잠금됨</span>';
-        btnLock.title = '클릭하여 잠금 해제 (핸들 조작 · 축 이동 · 시야 영역 확장 모드로 전환)';
+        btnLock.innerHTML = '<span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg></span>';
+        btnLock.title = '잠금됨 — 클릭하여 잠금 해제 (핸들 조작 · 축 이동 · 시야 영역 확장)';
       } else {
         btnLock.classList.remove('locked-confirmed');
         btnLock.classList.add('unlocked-editing');
-        btnLock.innerHTML = '<span class="lock-icon">🔓</span><span class="lock-txt">잠금</span>';
-        btnLock.title = '조작 완료 후 클릭하여 잠금 (비율 고정 확대/축소 & 여백 드래그로 카드 이동)';
+        btnLock.innerHTML = '<span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg></span>';
+        btnLock.title = '조작 중 — 클릭하여 잠금 (비율 고정 확대/축소 & 여백 드래그로 카드 이동)';
       }
     }
   }
@@ -15739,8 +15651,6 @@ class GraphApp {
         <button type="button" class="pip-ctx-btn" data-pip-act="flipY" title="y축 대칭 (좌우 반전)">↔y축</button>
         <button type="button" class="pip-ctx-btn" data-pip-act="abs" title="절댓값 |f(x)| 꺾어올리기">|f(x)|</button>
         <button type="button" class="pip-ctx-btn pip-ctx-del" data-pip-act="deleteCurve" title="선택된 함수 삭제">🗑</button>
-        <span class="pip-ctx-divider"></span>
-        <button type="button" class="pip-ctx-btn pip-ctx-lock" data-pip-act="lockCard" title="조작 완료 후 잠금 (비율 고정 확대/축소 & 여백 드래그로 카드 이동)">🔒 잠금</button>
       `;
       bodyEl.appendChild(ctxBar);
 
