@@ -14432,10 +14432,10 @@ class GraphApp {
     const jsonStr = JSON.stringify(snapObj);
     if (isPrimary) {
       this.primaryGraphCardSnapshot = jsonStr;
-      if (this.graphCardData) {
+      if (this.graphCardData && typeof this.graphCardData === 'object') {
         this.graphCardData.graphSnapshot = jsonStr;
       }
-    } else if (cardRef) {
+    } else if (cardRef && typeof cardRef === 'object') {
       cardRef.graphSnapshot = jsonStr;
     }
     if (widget) {
@@ -41765,64 +41765,71 @@ class GraphApp {
   }
 
   _extractCompactPipSnapForAudio(cardRef, fallbackW = 360, fallbackAspect = 0.82) {
-    const r1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
-    const r3 = (v) => Math.round((Number(v) || 0) * 1000) / 1000;
-    const r4 = (v) => Math.round((Number(v) || 0) * 10000) / 10000;
-    const raw = this._getPipCardSnapshot(cardRef);
-    if (!raw || typeof raw !== 'object') return null;
-    const clonedGraphs = JSON.parse(JSON.stringify(raw.graphs || []));
-    clonedGraphs.forEach(g => {
-      if (!g) return;
-      delete g._screenPts;
-      if (Array.isArray(g.handles)) {
-        g.handles.forEach(h => {
-          if (h && typeof h.x === 'number') h.x = r4(h.x);
-          if (h && typeof h.y === 'number') h.y = r4(h.y);
-        });
-      }
-      if (g.freezeOffset) {
-        if (typeof g.freezeOffset.x === 'number') g.freezeOffset.x = r4(g.freezeOffset.x);
-        if (typeof g.freezeOffset.y === 'number') g.freezeOffset.y = r4(g.freezeOffset.y);
-      }
-      if (Array.isArray(g.transforms)) {
-        g.transforms.forEach(tr => {
-          if (tr && tr.offset) {
-            if (typeof tr.offset.x === 'number') tr.offset.x = r4(tr.offset.x);
-            if (typeof tr.offset.y === 'number') tr.offset.y = r4(tr.offset.y);
-          }
-        });
-      }
-    });
-    const w = r1(raw._pipCardW || fallbackW || 360);
-    const aspect = r3(raw.aspect || fallbackAspect || 0.82);
-    const h = r1(raw._pipCardH || Math.max(120, Math.round(w * aspect)));
-    return {
-      graphs: clonedGraphs,
-      activeGraphIdx: typeof raw.activeGraphIdx === 'number' ? raw.activeGraphIdx : (clonedGraphs.length > 0 ? 0 : -1),
-      isCurveSelected: Boolean(raw.isCurveSelected),
-      selectedHandleIdx: raw.selectedHandleIdx ?? null,
-      draggedHandleIdx: raw.draggedHandleIdx ?? null,
-      panX: r1(raw.panX || 0),
-      panY: r1(raw.panY || 0),
-      zoomLevel: r3(raw.zoomLevel || 1.0),
-      xSpan: r3(raw.xSpan || 8.5),
-      ySpan: r3(raw.ySpan || 6.0),
-      showAxes: raw.showAxes !== false,
-      showGuides: Boolean(raw.showGuides),
-      usePiecewise: Boolean(raw.usePiecewise),
-      piecewiseBoundaries: (raw.piecewiseBoundaries || []).map(v => r4(v)),
-      piecewiseFuncMap: JSON.parse(JSON.stringify(raw.piecewiseFuncMap || [])),
-      piecewiseInclusions: JSON.parse(JSON.stringify(raw.piecewiseInclusions || [])),
-      isPiecewisePeriodic: Boolean(raw.isPiecewisePeriodic),
-      periodicStepY: typeof raw.periodicStepY === 'number' ? r3(raw.periodicStepY) : 0,
-      isPiecewiseLocked: Boolean(raw.isPiecewiseLocked),
-      dropLines: JSON.parse(JSON.stringify(raw.dropLines || [])),
-      textLabels: JSON.parse(JSON.stringify(raw.textLabels || [])),
-      isPipLocked: Boolean(raw.isPipLocked),
-      aspect,
-      _pipCardW: w,
-      _pipCardH: h
-    };
+    try {
+      const r1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
+      const r3 = (v) => Math.round((Number(v) || 0) * 1000) / 1000;
+      const r4 = (v) => Math.round((Number(v) || 0) * 10000) / 10000;
+      const raw = typeof this._getMutablePipCardSnapshot === 'function'
+        ? this._getMutablePipCardSnapshot(cardRef)
+        : null;
+      if (!raw || typeof raw !== 'object') return null;
+      const clonedGraphs = JSON.parse(JSON.stringify(raw.graphs || []));
+      clonedGraphs.forEach(g => {
+        if (!g) return;
+        delete g._screenPts;
+        if (Array.isArray(g.handles)) {
+          g.handles.forEach(h => {
+            if (h && typeof h.x === 'number') h.x = r4(h.x);
+            if (h && typeof h.y === 'number') h.y = r4(h.y);
+          });
+        }
+        if (g.freezeOffset) {
+          if (typeof g.freezeOffset.x === 'number') g.freezeOffset.x = r4(g.freezeOffset.x);
+          if (typeof g.freezeOffset.y === 'number') g.freezeOffset.y = r4(g.freezeOffset.y);
+        }
+        if (Array.isArray(g.transforms)) {
+          g.transforms.forEach(tr => {
+            if (tr && tr.offset) {
+              if (typeof tr.offset.x === 'number') tr.offset.x = r4(tr.offset.x);
+              if (typeof tr.offset.y === 'number') tr.offset.y = r4(tr.offset.y);
+            }
+          });
+        }
+      });
+      const w = r1(raw._pipCardW || fallbackW || 360);
+      const aspect = r3(raw.aspect || fallbackAspect || 0.82);
+      const h = r1(raw._pipCardH || Math.max(120, Math.round(w * aspect)));
+      return {
+        graphs: clonedGraphs,
+        activeGraphIdx: typeof raw.activeGraphIdx === 'number' ? raw.activeGraphIdx : (clonedGraphs.length > 0 ? 0 : -1),
+        isCurveSelected: Boolean(raw.isCurveSelected),
+        selectedHandleIdx: raw.selectedHandleIdx ?? null,
+        draggedHandleIdx: raw.draggedHandleIdx ?? null,
+        panX: r1(raw.panX || 0),
+        panY: r1(raw.panY || 0),
+        zoomLevel: r3(raw.zoomLevel || 1.0),
+        xSpan: r3(raw.xSpan || 8.5),
+        ySpan: r3(raw.ySpan || 6.0),
+        showAxes: raw.showAxes !== false,
+        showGuides: Boolean(raw.showGuides),
+        usePiecewise: Boolean(raw.usePiecewise),
+        piecewiseBoundaries: (raw.piecewiseBoundaries || []).map(v => r4(v)),
+        piecewiseFuncMap: JSON.parse(JSON.stringify(raw.piecewiseFuncMap || [])),
+        piecewiseInclusions: JSON.parse(JSON.stringify(raw.piecewiseInclusions || [])),
+        isPiecewisePeriodic: Boolean(raw.isPiecewisePeriodic),
+        periodicStepY: typeof raw.periodicStepY === 'number' ? r3(raw.periodicStepY) : 0,
+        isPiecewiseLocked: Boolean(raw.isPiecewiseLocked),
+        dropLines: JSON.parse(JSON.stringify(raw.dropLines || [])),
+        textLabels: JSON.parse(JSON.stringify(raw.textLabels || [])),
+        isPipLocked: Boolean(raw.isPipLocked),
+        aspect,
+        _isPipCardSnapshot: true,
+        _pipCardW: w,
+        _pipCardH: h
+      };
+    } catch (_) {
+      return null;
+    }
   }
 
   _captureAudioWorkspaceKeyframe() {
@@ -42144,6 +42151,7 @@ class GraphApp {
             }
             const effAspect = this.graphCardAspect || 0.82;
             const targetCardH = Math.max(120, Math.round(targetCardW * effAspect));
+            clonedPipSnap._isPipCardSnapshot = true;
             clonedPipSnap._pipCardW = targetCardW;
             clonedPipSnap._pipCardH = targetCardH;
             this._savePipCardSnapshot('primary', clonedPipSnap);
@@ -42226,6 +42234,7 @@ class GraphApp {
                 }
                 const effAspect = c.aspect || 0.82;
                 const ch = Math.max(120, Math.round(cw * effAspect));
+                clonedExtraSnap._isPipCardSnapshot = true;
                 clonedExtraSnap._pipCardW = cw;
                 clonedExtraSnap._pipCardH = ch;
                 this._savePipCardSnapshot(c, clonedExtraSnap);
@@ -43048,8 +43057,10 @@ class GraphApp {
     const segStartMs = Math.max(0, Number(this._resumedSlideBaseOffsetMs) || 0);
     const durationMs = Math.max(segStartMs + 300, this.getAudioRecordElapsedMs());
     const segDurMs = Math.max(100, durationMs - segStartMs);
-    this._recordAudioWorkspaceStateIfNeeded(true);
-    this.audioFinalState = this._captureAudioWorkspaceKeyframe();
+    try {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+      this.audioFinalState = this._captureAudioWorkspaceKeyframe();
+    } catch (e) { }
     this.isAudioRecording = false;
     this.isAudioRecordPaused = false;
     this._isAudioRecMenuOpen = false;
