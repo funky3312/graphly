@@ -13905,6 +13905,10 @@ class GraphApp {
       isGraphCovered: this.isGraphCovered,
       pdfPageBoardData: this.pdfPageBoardData,
       isNAxisMode: this.isNAxisMode,
+      axisSnapActiveX: this.axisSnapActiveX,
+      axisSnapActiveY: this.axisSnapActiveY,
+      symmetrySnapActive: this.symmetrySnapActive,
+      snappedPoints: this.snappedPoints,
       _isRenderingGraphSnapshot: this._isRenderingGraphSnapshot,
       _snapshotCropBounds: this._snapshotCropBounds,
       _activeSnapHint: this._activeSnapHint
@@ -13919,6 +13923,10 @@ class GraphApp {
       this.selectedHandleIdx = (typeof snapObj.selectedHandleIdx === 'number') ? snapObj.selectedHandleIdx : null;
       this.draggedHandleIdx = (typeof snapObj.draggedHandleIdx === 'number') ? snapObj.draggedHandleIdx : null;
       this.isDraggingCurve = Boolean(snapObj._isDraggingCurve);
+      this.axisSnapActiveX = Boolean(snapObj.axisSnapActiveX);
+      this.axisSnapActiveY = Boolean(snapObj.axisSnapActiveY);
+      this.symmetrySnapActive = Boolean(snapObj.symmetrySnapActive);
+      this.snappedPoints = Array.isArray(snapObj.snappedPoints) ? snapObj.snappedPoints : [];
       this.zoomLevel = typeof snapObj.zoomLevel === 'number' ? snapObj.zoomLevel : 1.0;
       this.panX = typeof snapObj.panX === 'number' ? snapObj.panX : 0;
       this.panY = typeof snapObj.panY === 'number' ? snapObj.panY : 0;
@@ -13962,6 +13970,10 @@ class GraphApp {
       snapObj.isCurveSelected = this.isCurveSelected;
       snapObj.selectedHandleIdx = this.selectedHandleIdx;
       snapObj.draggedHandleIdx = this.draggedHandleIdx;
+      snapObj.axisSnapActiveX = this.axisSnapActiveX;
+      snapObj.axisSnapActiveY = this.axisSnapActiveY;
+      snapObj.symmetrySnapActive = this.symmetrySnapActive;
+      snapObj.snappedPoints = this.snappedPoints;
       snapObj.zoomLevel = this.zoomLevel;
       snapObj.panX = this.panX;
       snapObj.panY = this.panY;
@@ -13971,6 +13983,28 @@ class GraphApp {
       return res;
     } finally {
       Object.assign(this, backup);
+    }
+  }
+
+  requestPipGraphCardRender(cardRef) {
+    const { widget } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    if (!widget) return;
+    const now = performance.now();
+    if (!widget._lastPipRenderTs || (now - widget._lastPipRenderTs) >= 7) {
+      if (widget._pipRenderRafId) {
+        cancelAnimationFrame(widget._pipRenderRafId);
+        widget._pipRenderRafId = null;
+      }
+      widget._lastPipRenderTs = now;
+      this.renderPipGraphCard(cardRef);
+      return;
+    }
+    if (!widget._pipRenderRafId) {
+      widget._pipRenderRafId = requestAnimationFrame(() => {
+        widget._pipRenderRafId = null;
+        widget._lastPipRenderTs = performance.now();
+        this.renderPipGraphCard(cardRef);
+      });
     }
   }
 
@@ -14515,19 +14549,38 @@ class GraphApp {
     let activeMode = null; // 'handle' | 'curve' | 'panAxes' | 'emptyTapWatch'
     let downPos = { x: 0, y: 0 };
     let downClient = { x: 0, y: 0 };
+    let cachedDownGeom = null;
     let curveStartMath = { x: 0, y: 0 };
     let curveInitHandles = null;
     let curveInitFreezeOffset = null;
+    let curveFeatsSnapshot = null;
     let panInit = { x: 0, y: 0 };
     let movedDuringInteraction = false;
+    let lastHoverCheckTs = 0;
 
-    const getLocalPos = (e) => {
+    const getLocalPos = (e, useCached = false) => {
+      if (useCached && cachedDownGeom) {
+        return {
+          x: (e.clientX - cachedDownGeom.left) * cachedDownGeom.scaleX,
+          y: (e.clientY - cachedDownGeom.top) * cachedDownGeom.scaleY,
+          cardW: cachedDownGeom.cardW,
+          cardH: cachedDownGeom.cardH
+        };
+      }
       const rect = liveCanvas.getBoundingClientRect();
       const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
       const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || rect.width || 360));
       const cardH = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
       const scaleX = cardW / Math.max(1, rect.width);
       const scaleY = cardH / Math.max(1, rect.height);
+      cachedDownGeom = {
+        left: rect.left,
+        top: rect.top,
+        scaleX,
+        scaleY,
+        cardW,
+        cardH
+      };
       return {
         x: (e.clientX - rect.left) * scaleX,
         y: (e.clientY - rect.top) * scaleY,
@@ -14542,7 +14595,7 @@ class GraphApp {
       if (!snap || snap.isNAxisStudioCard || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return;
 
       this.bringCardToFront(widget);
-      const pos = getLocalPos(e);
+      const pos = getLocalPos(e, false);
       const isTouch = Boolean(e.pointerType === 'touch' || e.pointerType === 'pen');
       const isExplicitAxisPan = Boolean(e.shiftKey || e.button === 1 || e.button === 2);
 
@@ -14601,19 +14654,13 @@ class GraphApp {
         e.preventDefault();
         e.stopPropagation();
         this.deselectAllPipGraphCards(widget);
-        if (!snap.isCurveSelected) {
-          snap.isCurveSelected = true;
-          snap.selectedHandleIdx = null;
-          snap.draggedHandleIdx = null;
-          this.renderPipGraphCard(cardRef);
-          return;
-        }
-        try { liveCanvas.setPointerCapture(e.pointerId); } catch (_) { }
-        activeMode = 'handle';
+        snap.isCurveSelected = true;
         snap.draggedHandleIdx = hitHandleIdx;
         snap.selectedHandleIdx = hitHandleIdx;
+        try { liveCanvas.setPointerCapture(e.pointerId); } catch (_) { }
+        activeMode = 'handle';
         liveCanvas.style.cursor = 'grabbing';
-        this.renderPipGraphCard(cardRef);
+        this.requestPipGraphCardRender(cardRef);
         return;
       }
 
@@ -14627,19 +14674,23 @@ class GraphApp {
         snap.isCurveSelected = true;
         snap.selectedHandleIdx = null;
         snap.draggedHandleIdx = null;
+        snap._isDraggingCurve = true;
         this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
           curveStartMath = this.screenToMath(pos.x, pos.y);
           const g = this.activeGraph;
           if (g) {
-            curveInitHandles = JSON.parse(JSON.stringify(g.handles || []));
+            curveInitHandles = (g.handles || []).map(h => ({ ...h }));
             curveInitFreezeOffset = {
               x: (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0,
               y: (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0
             };
+            curveFeatsSnapshot = (typeof this.getGraphFeaturePoints === 'function')
+              ? this.getGraphFeaturePoints(g, curveInitHandles, curveInitFreezeOffset)
+              : { pts: [], asymX: [], asymY: [] };
           }
         });
         liveCanvas.style.cursor = 'grabbing';
-        this.renderPipGraphCard(cardRef);
+        this.requestPipGraphCardRender(cardRef);
         return;
       }
 
@@ -14652,13 +14703,16 @@ class GraphApp {
       const snap = this._getMutablePipCardSnapshot(cardRef);
       if (!snap || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return;
 
-      const pos = getLocalPos(e);
+      const pos = getLocalPos(e, Boolean(activeMode && activeMode !== 'emptyTapWatch'));
       if (!activeMode || activeMode === 'emptyTapWatch') {
         if (activeMode === 'emptyTapWatch' && Math.hypot(e.clientX - downClient.x, e.clientY - downClient.y) > 5) {
           movedDuringInteraction = true;
         }
-        // 마우스 호버 시 핸들/곡선 위 커서 피드백
+        // 마우스 호버 시 핸들/곡선 위 커서 피드백 (30fps 스로틀)
         if (!activeMode && e.pointerType === 'mouse') {
+          const now = performance.now();
+          if (now - lastHoverCheckTs < 32) return;
+          lastHoverCheckTs = now;
           let hoverHit = false;
           this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
             if (snap.isCurveSelected && this.activeGraph && Array.isArray(this.activeGraph.handles)) {
@@ -14687,108 +14741,174 @@ class GraphApp {
 
       e.preventDefault();
       e.stopPropagation();
-      if (Math.hypot(e.clientX - downClient.x, e.clientY - downClient.y) > 3) {
+      if (Math.hypot(e.clientX - downClient.x, e.clientY - downClient.y) > 2) {
         movedDuringInteraction = true;
       }
 
       if (activeMode === 'panAxes') {
         snap.panX = panInit.x + (pos.x - downPos.x);
         snap.panY = panInit.y + (pos.y - downPos.y);
-        this.renderPipGraphCard(cardRef);
+        this.requestPipGraphCardRender(cardRef);
         return;
       }
 
       if (activeMode === 'handle') {
         this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
+          const g = this.activeGraph;
+          if (!g || this.draggedHandleIdx === null) return;
           const m = this.screenToMath(pos.x, pos.y);
-          let ox = (this.activeGraph && this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
-          let oy = (this.activeGraph && this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
-          if (this.activeGraph && this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
-            for (const t of this.activeGraph.transforms) {
+          let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+          let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+          if (g.transforms && g.transforms.length > 0) {
+            for (const t of g.transforms) {
               if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
               if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
             }
           }
-          let localMx = m.x - ox;
-          let localMy = m.y - oy;
-          const snapPixelRadius = 10;
-          const originScreen = this.mathToScreen(0, 0);
-          snap._activeSnapHint = null;
-          if (Math.abs(pos.y - originScreen.y) <= snapPixelRadius) {
-            localMy = -oy;
-            snap._activeSnapHint = { axis: 'x', sx: pos.x, sy: originScreen.y };
+
+          const snapThresholdMathX = (8 / Math.max(1, pos.cardW)) * this.xSpan * 2;
+          const snapThresholdMathY = (8 / Math.max(1, pos.cardH)) * this.ySpan * 2;
+          this.axisSnapActiveX = false;
+          this.axisSnapActiveY = false;
+          this.symmetrySnapActive = false;
+          this.snappedPoints = [];
+
+          if (Math.abs(m.x) < snapThresholdMathX) {
+            m.x = 0;
+            this.axisSnapActiveX = true;
           }
-          if (Math.abs(pos.x - originScreen.x) <= snapPixelRadius) {
-            localMx = -ox;
-            snap._activeSnapHint = {
-              axis: snap._activeSnapHint ? 'origin' : 'y',
-              sx: originScreen.x,
-              sy: snap._activeSnapHint ? originScreen.y : pos.y
-            };
+          if (Math.abs(m.y) < snapThresholdMathY) {
+            m.y = 0;
+            this.axisSnapActiveY = true;
           }
-          this.dragActiveHandle({ x: localMx, y: localMy });
+
+          if (["2nd_quadratic", "abs_v", "4th_w", "4th_u"].includes(g.type) && this.draggedHandleIdx === 1) {
+            const h0x = g.handles[0].x + ox;
+            if (Math.abs(m.x - h0x) < snapThresholdMathX * 1.3) {
+              if (g.type === "4th_w") {
+                const curDist = Math.abs(g.handles[1].x - g.handles[0].x);
+                m.x = h0x + Math.max(0.5, curDist);
+              } else {
+                m.x = h0x + 1.0;
+              }
+              this.symmetrySnapActive = true;
+            }
+          }
+
+          // 전체화면 그래프 모드와 동일한 시그니처: dragActiveHandle(idx, x, y, altKey)
+          this.dragActiveHandle(this.draggedHandleIdx, m.x - ox, m.y - oy, e.altKey);
+
+          const h = g.handles[this.draggedHandleIdx];
+          if (h && (this.axisSnapActiveX || this.axisSnapActiveY)) {
+            const labelParts = [];
+            if (this.axisSnapActiveX) labelParts.push('x=0');
+            if (this.axisSnapActiveY) labelParts.push('y=0');
+            let dispY = (g.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) ? Math.abs(h.y) : h.y;
+            let evalY = (h.type === 'center' || h.type === 'asymptote') ? (dispY + oy) : this.engine.evaluatePipeline(g, h.x + ox);
+            if (isNaN(evalY) || !isFinite(evalY)) evalY = dispY + oy;
+            this.snappedPoints.push({ x: h.x + ox, y: evalY, label: labelParts.join(', ') });
+          }
         });
-        this.renderPipGraphCard(cardRef);
+        this.requestPipGraphCardRender(cardRef);
         return;
       }
 
-      if (activeMode === 'curve' && movedDuringInteraction) {
+      if (activeMode === 'curve') {
         this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
           const g = this.activeGraph;
           if (!g || !curveInitHandles) return;
           snap._isDraggingCurve = true;
           const m = this.screenToMath(pos.x, pos.y);
-          let dx = m.x - curveStartMath.x;
-          let dy = m.y - curveStartMath.y;
+          let deltaX = m.x - curveStartMath.x;
+          let deltaY = m.y - curveStartMath.y;
+
+          const snapThresholdMathX = (8 / Math.max(1, pos.cardW)) * this.xSpan * 2;
+          const snapThresholdMathY = (8 / Math.max(1, pos.cardH)) * this.ySpan * 2;
+          this.axisSnapActiveX = false;
+          this.axisSnapActiveY = false;
+          this.snappedPoints = [];
+
+          const feats = curveFeatsSnapshot || { pts: [], asymX: [], asymY: [] };
+          let bestDx = null, minDistX = snapThresholdMathX;
+          let bestDy = null, minDistY = snapThresholdMathY;
+
+          if (!e.altKey) {
+            if (Array.isArray(feats.pts)) {
+              for (const pt of feats.pts) {
+                const candX = pt.x + deltaX;
+                const candY = pt.y + deltaY;
+                if (Math.abs(candX) < minDistX) {
+                  minDistX = Math.abs(candX);
+                  bestDx = -pt.x;
+                }
+                if (Math.abs(candY) < minDistY) {
+                  minDistY = Math.abs(candY);
+                  bestDy = -pt.y;
+                }
+              }
+            }
+            if (Array.isArray(feats.asymX)) {
+              for (const ax of feats.asymX) {
+                const candX = ax + deltaX;
+                if (Math.abs(candX) < minDistX) {
+                  minDistX = Math.abs(candX);
+                  bestDx = -ax;
+                }
+              }
+            }
+            if (Array.isArray(feats.asymY)) {
+              for (const ay of feats.asymY) {
+                const candY = ay + deltaY;
+                if (Math.abs(candY) < minDistY) {
+                  minDistY = Math.abs(candY);
+                  bestDy = -ay;
+                }
+              }
+            }
+            if (bestDx !== null) {
+              deltaX = bestDx;
+              this.axisSnapActiveX = true;
+            }
+            if (bestDy !== null) {
+              deltaY = bestDy;
+              this.axisSnapActiveY = true;
+            }
+            if ((this.axisSnapActiveX || this.axisSnapActiveY) && Array.isArray(feats.pts)) {
+              for (const pt of feats.pts) {
+                const finalX = pt.x + deltaX;
+                const finalY = pt.y + deltaY;
+                const onYAxis = this.axisSnapActiveX && Math.abs(finalX) < 1e-4;
+                const onXAxis = this.axisSnapActiveY && Math.abs(finalY) < 1e-4;
+                if (onYAxis || onXAxis) {
+                  const labelParts = [];
+                  if (onYAxis) labelParts.push('x=0');
+                  if (onXAxis) labelParts.push('y=0');
+                  this.snappedPoints.push({
+                    x: onYAxis ? 0 : finalX,
+                    y: onXAxis ? 0 : finalY,
+                    label: labelParts.join(', ')
+                  });
+                }
+              }
+            }
+          }
 
           const hasTransforms = Boolean(g.isAbsolute || g.isFrozen || g.frozenInvertH || g.frozenInvertV || g.frozenAbsolute || (g.transforms && g.transforms.length > 0));
           if (hasTransforms) {
             g.freezeOffset = {
-              x: parseFloat((curveInitFreezeOffset.x + dx).toFixed(3)),
-              y: parseFloat((curveInitFreezeOffset.y + dy).toFixed(3))
+              x: curveInitFreezeOffset.x + deltaX,
+              y: curveInitFreezeOffset.y + deltaY
             };
           } else {
             g.handles.forEach((h, i) => {
               if (curveInitHandles[i]) {
-                h.x = parseFloat((curveInitHandles[i].x + dx).toFixed(3));
-                h.y = parseFloat((curveInitHandles[i].y + dy).toFixed(3));
+                h.x = curveInitHandles[i].x + deltaX;
+                h.y = curveInitHandles[i].y + deltaY;
               }
             });
           }
-
-          // 평행이동 시 주요 특징점(극점/변곡점/꼭짓점) 축 자석 스냅
-          const snapPx = 9;
-          const originScreen = this.mathToScreen(0, 0);
-          const features = (typeof this.getGraphFeaturePoints === 'function') ? this.getGraphFeaturePoints(g) : [];
-          let bestSnapDx = 0, bestSnapDy = 0, minDistX = snapPx + 1, minDistY = snapPx + 1;
-          for (const fp of features) {
-            const fs = this.mathToScreen(fp.x, fp.y);
-            const distToYAxis = Math.abs(fs.x - originScreen.x);
-            const distToXAxis = Math.abs(fs.y - originScreen.y);
-            if (distToYAxis < minDistX) {
-              minDistX = distToYAxis;
-              bestSnapDx = -fp.x;
-            }
-            if (distToXAxis < minDistY) {
-              minDistY = distToXAxis;
-              bestSnapDy = -fp.y;
-            }
-          }
-          if (minDistX <= snapPx || minDistY <= snapPx) {
-            const adjDx = minDistX <= snapPx ? bestSnapDx : 0;
-            const adjDy = minDistY <= snapPx ? bestSnapDy : 0;
-            if (hasTransforms) {
-              g.freezeOffset.x = parseFloat((g.freezeOffset.x + adjDx).toFixed(3));
-              g.freezeOffset.y = parseFloat((g.freezeOffset.y + adjDy).toFixed(3));
-            } else {
-              g.handles.forEach(h => {
-                h.x = parseFloat((h.x + adjDx).toFixed(3));
-                h.y = parseFloat((h.y + adjDy).toFixed(3));
-              });
-            }
-          }
         });
-        this.renderPipGraphCard(cardRef);
+        this.requestPipGraphCardRender(cardRef);
       }
     });
 
@@ -14796,11 +14916,21 @@ class GraphApp {
       if (!activeMode) return;
       const prevMode = activeMode;
       activeMode = null;
+      cachedDownGeom = null;
+      curveFeatsSnapshot = null;
+      if (widget._pipRenderRafId) {
+        cancelAnimationFrame(widget._pipRenderRafId);
+        widget._pipRenderRafId = null;
+      }
       const snap = this._getMutablePipCardSnapshot(cardRef);
       if (snap) {
         snap.draggedHandleIdx = null;
         snap._isDraggingCurve = false;
         snap._activeSnapHint = null;
+        snap.axisSnapActiveX = false;
+        snap.axisSnapActiveY = false;
+        snap.symmetrySnapActive = false;
+        snap.snappedPoints = [];
         if (prevMode === 'emptyTapWatch' && !movedDuringInteraction && snap.isCurveSelected) {
           snap.isCurveSelected = false;
           snap.selectedHandleIdx = null;
