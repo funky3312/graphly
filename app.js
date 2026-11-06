@@ -10643,7 +10643,7 @@ class GraphApp {
           const nextX = Math.round(initialBaseX + dx);
           const nextY = Math.round(initialBaseY + dy);
           this._pinCardToPdfBoardAtScreenPos(widget, nextX, nextY, true);
-          this.updateProblemCardPosition();
+          this.updateProblemCardPosition(true);
         } else {
           const dScale = (this.isGraphCovered && !this.pdfPageBoardData)
             ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0))
@@ -10652,7 +10652,7 @@ class GraphApp {
           this.problemCardBaseY = Math.round(initialBaseY + (dy / dScale));
           widget.style.left = `${this.problemCardBaseX}px`;
           widget.style.top = `${this.problemCardBaseY}px`;
-          this.updateProblemCardPosition();
+          this.updateProblemCardPosition(true);
         }
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(false);
@@ -10666,13 +10666,12 @@ class GraphApp {
           dragMoved = false;
           this._isDraggingOrResizingAnyCard = false;
           widget.classList.remove('is-dragging-card');
-          this.updateProblemCardPosition();
+          this.updateProblemCardPosition(true);
+          this.syncProblemCardRectFromWidget();
           if (wasMoved) {
             widget._justDraggedTime = performance.now();
             if (widget._isLeftDocked) {
               widget._isLeftDocked = false;
-              this.relayoutLeftDockedCards(true);
-            } else {
               this.relayoutLeftDockedCards(true);
             }
           }
@@ -10865,7 +10864,7 @@ class GraphApp {
       this._pinCardToPdfBoardAtScreenPos(el, rx, ry, true);
       this.updateProblemCardPosition(true);
       if (el.id === 'problemCardWidget') this.syncProblemCardRectFromWidget();
-      if (el.id === 'graphCardWidget') this.syncGraphCardRectFromWidget();
+      if (el.id === 'graphCardWidget') this.syncGraphCardRectFromWidget(true);
       return;
     }
     el.style.left = `${rx}px`;
@@ -10878,7 +10877,7 @@ class GraphApp {
     } else if (el.id === 'graphCardWidget') {
       this.graphCardBaseX = rx;
       this.graphCardBaseY = ry;
-      this.syncGraphCardRectFromWidget();
+      this.syncGraphCardRectFromWidget(true);
     } else {
       const ep = (this.extraProblemCards || []).find(c => c && c.el === el);
       if (ep) {
@@ -12448,6 +12447,7 @@ class GraphApp {
     this.isGraphSnapMode = false;
     this.isPdfToGraphCropMode = false;
     this.isPdfToGraphCropDragging = false;
+    this.stopIntersectionLoop();
     this.deselectAllPipGraphCards();
     document.body.classList.remove('graph-snap-crosshair');
     if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
@@ -12818,6 +12818,7 @@ class GraphApp {
     this.isGraphSnapDragging = false;
     this.isPdfToGraphCropMode = false;
     this.isPdfToGraphCropDragging = false;
+    this.stopIntersectionLoop();
     document.body.classList.remove('graph-snap-crosshair');
     if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
 
@@ -13454,7 +13455,7 @@ class GraphApp {
         this._recordAudioWorkspaceStateIfNeeded(false);
       }
     });
-    const stopDrag = () => {
+      const stopDrag = () => {
       if (isDragging) {
         const wasMoved = dragMoved;
         isDragging = false;
@@ -13466,8 +13467,8 @@ class GraphApp {
           el._justDraggedTime = performance.now();
           if (el._isLeftDocked) {
             el._isLeftDocked = false;
+            this.relayoutLeftDockedCards(true);
           }
-          this.relayoutLeftDockedCards(true);
         }
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(true);
@@ -13501,7 +13502,7 @@ class GraphApp {
           isResizing = false;
           resizeStartState = null;
           this._isDraggingOrResizingAnyCard = false;
-          this.bakePipGraphCardToImg(cardItem);
+          this.scheduleBakePipGraphCardToImg(cardItem);
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
           }
@@ -13706,7 +13707,7 @@ class GraphApp {
     }
   }
 
-  syncGraphCardRectFromWidget() {
+  syncGraphCardRectFromWidget(rectOnly = false) {
     const widget = document.getElementById('graphCardWidget');
     const body = document.getElementById('graphCardBody');
     const gCanvas = document.getElementById('graphCardCanvas');
@@ -13733,6 +13734,14 @@ class GraphApp {
     const imgH = Math.round(imgW * aspect);
     const h = imgH;
 
+    // 카드 위치 이동(Drag) 등 크기 변화가 없는 경우 캔버스 재렌더링을 생략하여 144Hz 무지연 이동 보장!
+    if (rectOnly) {
+      const screenW = (measuredWidgetRect && measuredWidgetRect.width > 0) ? measuredWidgetRect.width : w;
+      const screenH = (measuredWidgetRect && measuredWidgetRect.height > 0) ? measuredWidgetRect.height : h;
+      this.graphCardRect = { x: measuredWidgetRect.left, y: measuredWidgetRect.top, w: screenW, h: screenH };
+      return this.graphCardRect;
+    }
+
     if (body && !isMin) {
       body.style.height = `${h}px`;
     }
@@ -13754,12 +13763,9 @@ class GraphApp {
       widget._syncCardLaserSize();
     }
 
-    const widgetRect = typeof this._getStageElementRect === 'function'
-      ? this._getStageElementRect(widget)
-      : widget.getBoundingClientRect();
-    const screenW = (widgetRect && widgetRect.width > 0) ? widgetRect.width : w;
-    const screenH = (widgetRect && widgetRect.height > 0) ? widgetRect.height : h;
-    this.graphCardRect = { x: widgetRect.left, y: widgetRect.top, w: screenW, h: screenH };
+    const screenW = (measuredWidgetRect && measuredWidgetRect.width > 0) ? measuredWidgetRect.width : w;
+    const screenH = (measuredWidgetRect && measuredWidgetRect.height > 0) ? measuredWidgetRect.height : h;
+    this.graphCardRect = { x: measuredWidgetRect.left, y: measuredWidgetRect.top, w: screenW, h: screenH };
     return this.graphCardRect;
   }
 
@@ -14241,7 +14247,6 @@ class GraphApp {
           widget.style.top = `${this.graphCardBaseY}px`;
           this.updateProblemCardPosition(true);
         }
-        this.syncGraphCardRectFromWidget();
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(false);
         }
@@ -14255,13 +14260,11 @@ class GraphApp {
           this._isDraggingOrResizingAnyCard = false;
           widget.classList.remove('is-dragging-card');
           this.updateProblemCardPosition(true);
-          this.syncGraphCardRectFromWidget();
+          this.syncGraphCardRectFromWidget(true);
           if (wasMoved) {
             widget._justDraggedTime = performance.now();
             if (widget._isLeftDocked) {
               widget._isLeftDocked = false;
-              this.relayoutLeftDockedCards(true);
-            } else {
               this.relayoutLeftDockedCards(true);
             }
           }
@@ -14299,8 +14302,8 @@ class GraphApp {
           isResizing = false;
           resizeStartState = null;
           this._isDraggingOrResizingAnyCard = false;
-          this.syncGraphCardRectFromWidget();
-          this.bakePipGraphCardToImg('primary');
+          this.syncGraphCardRectFromWidget(true);
+          this.scheduleBakePipGraphCardToImg('primary');
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
           }
@@ -14358,7 +14361,7 @@ class GraphApp {
         const newW = Math.min(window.innerWidth * 0.85, curW + 60);
         widget.style.width = `${newW}px`;
         this.syncGraphCardRectFromWidget();
-        this.bakePipGraphCardToImg('primary');
+        this.scheduleBakePipGraphCardToImg('primary');
       };
     }
     if (btnZoomOut) {
@@ -14367,7 +14370,7 @@ class GraphApp {
         const newW = Math.max(220, curW - 60);
         widget.style.width = `${newW}px`;
         this.syncGraphCardRectFromWidget();
-        this.bakePipGraphCardToImg('primary');
+        this.scheduleBakePipGraphCardToImg('primary');
       };
     }
     this.attachPipGraphCardLiveSystem(widget, 'primary');
@@ -14417,6 +14420,7 @@ class GraphApp {
       if (typeof parsed.panY !== 'number') parsed.panY = 0;
       if (typeof parsed.xSpan !== 'number') parsed.xSpan = 6.2;
       if (typeof parsed.ySpan !== 'number') parsed.ySpan = 5.1;
+      parsed.useIntersectionDetector = false;
       widget._pipSnapObj = parsed;
       widget._pipSnapRawRef = rawSnap;
       if (!isPrimary) cardRef._pipSnapObj = parsed;
@@ -14549,7 +14553,8 @@ class GraphApp {
       this.dropLineHoverScissors = snapObj._pipDropLineHoverScissors || null;
       this.renderedScissors = Array.isArray(snapObj._pipRenderedScissors) ? snapObj._pipRenderedScissors : [];
       this.textLabels = snapObj.textLabels || [];
-      this.useIntersectionDetector = Boolean(snapObj.useIntersectionDetector);
+      // 대표님 지침: 교점표시(교점판독기)는 오직 전체화면 그래프 모드에서만 작동하도록 창모드에서는 100% 비활성화!
+      this.useIntersectionDetector = false;
       this.isGraphCovered = false;
       this.pdfPageBoardData = null;
       this.isNAxisMode = false;
@@ -15398,10 +15403,6 @@ class GraphApp {
         this.drawPiecewiseBoundaries(ctx);
       }
       this.drawDropLines(ctx);
-      if (this.useIntersectionDetector && this.graphs.length >= 2) {
-        this.updateIntersections();
-        this.drawIntersections(ctx);
-      }
       this.drawTextLabels(ctx);
 
       if (isManipulating && this.activeGraph) {
@@ -15446,10 +15447,6 @@ class GraphApp {
         this.drawPiecewiseBoundaries(cctx);
       }
       this.drawDropLines(cctx, true);
-      if (this.useIntersectionDetector && this.graphs.length >= 2) {
-        this.updateIntersections();
-        this.drawIntersections(cctx);
-      }
       this.drawTextLabels(cctx);
     });
     cctx.restore();
@@ -15580,7 +15577,7 @@ class GraphApp {
       updatedSnap.isCurveSelected = false;
       updatedSnap.selectedHandleIdx = null;
       updatedSnap.draggedHandleIdx = null;
-      updatedSnap.useIntersectionDetector = Boolean(this.useIntersectionDetector);
+      updatedSnap.useIntersectionDetector = false;
       updatedSnap._isPipCardSnapshot = true;
       updatedSnap._pipCardW = cardW;
       updatedSnap._pipCardH = cardH;
@@ -15589,7 +15586,7 @@ class GraphApp {
       if (createdRef) {
         this._syncFullGraphInkBackToPipCard(createdRef, cardW, cardH, cardUnitScale, fullUnitScale);
         this.renderPipGraphCard(createdRef);
-        this.bakePipGraphCardToImg(createdRef);
+        this.scheduleBakePipGraphCardToImg(createdRef);
       }
       return;
     }
@@ -15618,7 +15615,7 @@ class GraphApp {
     updatedSnap.selectedHandleIdx = null;
     updatedSnap.draggedHandleIdx = null;
     widget.classList.remove('pip-manipulating');
-    updatedSnap.useIntersectionDetector = Boolean(this.useIntersectionDetector);
+    updatedSnap.useIntersectionDetector = false;
     updatedSnap._isPipCardSnapshot = true;
     updatedSnap._pipCardW = cardW;
     updatedSnap._pipCardH = cardH;
@@ -15627,7 +15624,7 @@ class GraphApp {
     this._syncFullGraphInkBackToPipCard(target, cardW, cardH, cardUnitScale, fullUnitScale);
     this.syncPipCardLockUI(target);
     this.renderPipGraphCard(target);
-    this.bakePipGraphCardToImg(target);
+    this.scheduleBakePipGraphCardToImg(target);
     if (this.isAudioRecording) {
       this._recordAudioWorkspaceStateIfNeeded(true);
     }
@@ -16168,7 +16165,16 @@ class GraphApp {
 
     const getLocalPos = (e, useCached = false) => {
       const now = performance.now();
-      if (cachedDownGeom && (useCached || (now - cachedDownGeomTs < 120))) {
+      const curStyleLeft = widget.style.left || '';
+      const curStyleTop = widget.style.top || '';
+      const curStyleW = widget.style.width || '';
+      if (
+        cachedDownGeom &&
+        cachedDownGeom.styleLeft === curStyleLeft &&
+        cachedDownGeom.styleTop === curStyleTop &&
+        cachedDownGeom.styleW === curStyleW &&
+        (useCached || (now - cachedDownGeomTs < 120))
+      ) {
         return {
           x: (e.clientX - cachedDownGeom.left) * cachedDownGeom.scaleX,
           y: (e.clientY - cachedDownGeom.top) * cachedDownGeom.scaleY,
@@ -16188,7 +16194,10 @@ class GraphApp {
         scaleX,
         scaleY,
         cardW,
-        cardH
+        cardH,
+        styleLeft: curStyleLeft,
+        styleTop: curStyleTop,
+        styleW: curStyleW
       };
       cachedDownGeomTs = now;
       return {
@@ -16385,12 +16394,17 @@ class GraphApp {
     });
 
     liveCanvas.addEventListener('pointermove', (e) => {
+      if (this._isDraggingOrResizingAnyCard) return;
       if (widget.classList.contains('card-ink-active') || widget.classList.contains('card-laser-active')) return;
       const snap = this._getMutablePipCardSnapshot(cardRef);
       if (!snap || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return;
 
       if (snap.isPipLocked && !activeMode) {
         liveCanvas.style.cursor = 'grab';
+        return;
+      }
+
+      if (!activeMode && typeof e.buttons === 'number' && e.buttons !== 0) {
         return;
       }
 
@@ -19233,7 +19247,10 @@ class GraphApp {
   startIntersectionLoop() {
     if (this.intersectionAnimId) return;
     const animate = () => {
-      if (!this.useIntersectionDetector) return;
+      if (!this.useIntersectionDetector || (this.isGraphCovered && !this.isBoardMode)) {
+        this.intersectionAnimId = null;
+        return;
+      }
       this.intersectionAnimPhase = (Date.now() / 250) % (Math.PI * 2);
       this.render();
       this.intersectionAnimId = requestAnimationFrame(animate);
@@ -36100,7 +36117,7 @@ class GraphApp {
 
   // --- [⚡ 실시간 교점판독기: 교점 데이터 갱신 엔진] ---
   updateIntersections() {
-    if (!this.useIntersectionDetector) {
+    if (!this.useIntersectionDetector || (this.isGraphCovered && !this.isBoardMode)) {
       this.detectedIntersections = [];
       return;
     }
@@ -36108,6 +36125,38 @@ class GraphApp {
     const g1 = this.activeGraph;
     if (!g1 || !g1.handles || g1.handles.length === 0) {
       this.detectedIntersections = [];
+      return;
+    }
+
+    // 🚀 [0.00ms 시그니처 캐싱]: 펄스 애니메이션(60fps)이나 단순 마우스 이동 시 그래프·카메라가 변하지 않았다면
+    // 5000스텝 수치해석(findIntersections)을 재실행하지 않고 캐시를 즉시 반환!
+    const sigParts = [
+      Math.round(this.screenWidth || 0),
+      Math.round(this.screenHeight || 0),
+      Math.round((this.panX || 0) * 100),
+      Math.round((this.panY || 0) * 100),
+      Math.round((this.zoomLevel || 1) * 1000),
+      Math.round((this.xSpan || 8.5) * 1000),
+      Math.round((this.ySpan || 6.0) * 1000),
+      this.activeGraphIdx,
+      this.usePiecewise ? 1 : 0,
+      this.isPiecewisePeriodic ? 1 : 0,
+      this.periodicStepY || 0,
+      (this.piecewiseBoundaries || []).join(','),
+      (this.piecewiseFuncMap || []).join(',')
+    ];
+    for (let i = 0; i < this.graphs.length; i++) {
+      const g = this.graphs[i];
+      if (!g) continue;
+      const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+      const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+      const hSig = (g.handles || []).map(h => `${h.x.toFixed(4)}:${h.y.toFixed(4)}:${h.type}:${h.hidden ? 1 : 0}`).join(';');
+      const tSig = (g.transforms || []).map(t => `${t.type || ''}:${t.offset ? t.offset.x : 0}:${t.offset ? t.offset.y : 0}:${t.invertH ? 1 : 0}:${t.invertV ? 1 : 0}:${t.absolute ? 1 : 0}`).join(';');
+      sigParts.push(`${g.id}|${g.type}|${g.color}|${g.isAbsolute ? 1 : 0}|${g.isFrozen ? 1 : 0}|${g.frozenInvertH ? 1 : 0}|${g.frozenInvertV ? 1 : 0}|${g.frozenAbsolute ? 1 : 0}|${g.isIndependent ? 1 : 0}|${ox.toFixed(4)},${oy.toFixed(4)}|${hSig}|${tSig}`);
+    }
+    const cacheSig = sigParts.join('||');
+    if (this._intersectionCacheSig === cacheSig && Array.isArray(this._intersectionCacheList)) {
+      this.detectedIntersections = this._intersectionCacheList;
       return;
     }
 
@@ -36209,6 +36258,8 @@ class GraphApp {
       }
     });
 
+    this._intersectionCacheSig = cacheSig;
+    this._intersectionCacheList = deduped;
     this.detectedIntersections = deduped;
   }
 
