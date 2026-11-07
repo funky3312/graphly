@@ -16606,7 +16606,7 @@ class GraphApp {
         let hitScissors = null;
         let initCand = null;
         this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
-          hitScissors = this.hitTestScissors({ x: pos.x, y: pos.y });
+          hitScissors = this.hitTestScissors({ x: pos.x, y: pos.y }, isTouch);
           if (hitScissors) {
             const item = (this.dropLines || []).find(dl => dl.id === hitScissors.id);
             if (item) {
@@ -32473,7 +32473,7 @@ class GraphApp {
       }
       if (this.isDropLineMode && !isFingerOrPalmTouch) {
         // 1. 가위 ✂️ 클릭 -> 해당 수선 1초 컷 삭제
-        const hitScissors = this.hitTestScissors(pos);
+        const hitScissors = this.hitTestScissors(pos, isTouch);
         if (hitScissors) {
           this._isAimingDropLine = false;
           this.removeDropLine(hitScissors.id, hitScissors.which);
@@ -38496,15 +38496,48 @@ class GraphApp {
     this.showToast('🗑️ 보조 수선 전체 삭제 완료');
   }
 
-  hitTestScissors(screenPos) {
-    if (!this.renderedScissors || this.renderedScissors.length === 0) return null;
-    for (const s of this.renderedScissors) {
+  hitTestScissors(screenPos, isTouch = false) {
+    if (!screenPos) return null;
+    const isPip = Boolean(this._isRenderingGraphSnapshot);
+    let list = (Array.isArray(this.renderedScissors) && this.renderedScissors.length > 0)
+      ? this.renderedScissors
+      : null;
+
+    // 🌟 [아이패드 창모드 가위 터치 100% 보장]:
+    // bakePipGraphCardToImg 등 오프스크린 스냅샷 렌더링 직후나 초기 상태에서 renderedScissors 캐시가 비어 있더라도,
+    // 현재 dropLines에서 직접 가위 좌표((S + Fx)/2, (S + Fy)/2)를 즉시 산출하여 판정 누락을 원천 차단!
+    if (!list && this.isDropLineMode && Array.isArray(this.dropLines) && this.dropLines.length > 0) {
+      this.updateDropLinesTracking();
+      list = [];
+      const baseR = isPip ? 8.0 : 9.0;
+      for (const item of this.dropLines) {
+        if (!item || (!item.showX && !item.showY)) continue;
+        const S = this.mathToScreen(item.sourceX, item.sourceY);
+        if (item.showX) {
+          const Fx = this.mathToScreen(item.sourceX, 0);
+          list.push({ id: item.id, which: 'x', x: (S.x + Fx.x) / 2, y: (S.y + Fx.y) / 2, r: baseR });
+        }
+        if (item.showY) {
+          const Fy = this.mathToScreen(0, item.sourceY);
+          list.push({ id: item.id, which: 'y', x: (S.x + Fy.x) / 2, y: (S.y + Fy.y) / 2, r: baseR });
+        }
+      }
+      this.renderedScissors = list;
+    }
+    if (!list || list.length === 0) return null;
+
+    const hitPad = isTouch ? 11.0 : 4.5;
+    let best = null;
+    let bestDist = Infinity;
+    for (const s of list) {
       const d = Math.hypot(s.x - screenPos.x, s.y - screenPos.y);
-      if (d <= s.r + 3) {
-        return s;
+      const maxR = (typeof s.r === 'number' ? s.r : (isPip ? 8.0 : 9.0)) + hitPad;
+      if (d <= maxR && d < bestDist) {
+        bestDist = d;
+        best = s;
       }
     }
-    return null;
+    return best;
   }
 
   hitTestDropLineLabel(screenPos) {
@@ -38561,8 +38594,13 @@ class GraphApp {
   }
 
   drawDropLines(ctx, isExport = false) {
-    this.renderedScissors = [];
-    this.renderedDropLineLabels = [];
+    // 🌟 [핵심 버그 수정]: bakePipGraphCardToImg 등에서 isExport = true로 호출될 때
+    // 기존 화면에 렌더링된 가위 히트박스(this.renderedScissors)를 빈 배열([])로 덮어써서
+    // 아이패드(무호버 환경)에서 0.26초 뒤 가위 터치가 먹통이 되던 현상을 원천 차단!
+    if (!isExport) {
+      this.renderedScissors = [];
+      this.renderedDropLineLabels = [];
+    }
     if (!this.dropLines) this.dropLines = [];
 
     // [📍 그래프 변형/이동 시 수선 위치 실시간 동적 추적]
