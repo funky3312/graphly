@@ -11594,6 +11594,10 @@ class GraphApp {
           } else if (typeof this.deselectAllPipGraphCards === 'function') {
             this.deselectAllPipGraphCards();
           }
+          if (typeof this._getPipCardRefByWidget === 'function' && typeof this.wakeUpPipGraphCardStealth === 'function') {
+            const cRef = this._getPipCardRefByWidget(cardWidgetEl);
+            if (cRef) this.wakeUpPipGraphCardStealth(cRef, false);
+          }
         }
         // 접혀 있는 상태에서 [✒️] 버튼을 켜면 자동으로 카드를 펼쳐서 즉시 필기 가능하도록 처리!
         if (cardWidgetEl.classList.contains('minimized') && typeof cardWidgetEl._toggleCardMin === 'function') {
@@ -11615,6 +11619,11 @@ class GraphApp {
           cardWidgetEl._renderCardInkCanvas();
         }
         syncCanvasSize();
+      } else if (cardWidgetEl.classList.contains('graph-card-widget')) {
+        if (typeof this._getPipCardRefByWidget === 'function' && typeof this.schedulePipGraphCardStealth === 'function') {
+          const cRef = this._getPipCardRefByWidget(cardWidgetEl);
+          if (cRef) this.schedulePipGraphCardStealth(cRef, 5000);
+        }
       }
       if (this.isAudioRecording) {
         this._recordAudioWorkspaceStateIfNeeded(true);
@@ -13537,6 +13546,9 @@ class GraphApp {
       dragMoved = false;
       startX = e.clientX;
       startY = e.clientY;
+      if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
+        this.clearPipGraphCardStealthTimer(cardItem);
+      }
       if (this.isGraphCovered && this.pdfPageBoardData && el._pdfAnchor) {
         const s = this.mathToScreen(el._pdfAnchor.mx, el._pdfAnchor.my);
         initX = s.x;
@@ -13600,6 +13612,15 @@ class GraphApp {
             el._isLeftDocked = false;
             this.relayoutLeftDockedCards(true);
           }
+          if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
+            this.schedulePipGraphCardStealth(cardItem, 5000);
+          }
+        } else if (el.classList.contains('pip-locked-mode')) {
+          if (el.classList.contains('pip-stealth-locked')) {
+            this.wakeUpPipGraphCardStealth(cardItem, true);
+          } else {
+            this.schedulePipGraphCardStealth(cardItem, 5000);
+          }
         }
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(true);
@@ -13613,15 +13634,24 @@ class GraphApp {
     const rHandle = el.querySelector('.problem-card-resize-handle');
     if (rHandle) {
       let isResizing = false;
+      let resizeMoved = false;
       let resizeStartState = null;
       rHandle.addEventListener('pointerdown', (e) => {
+        this.bringCardToFront(el);
         e.preventDefault();
         e.stopPropagation();
         isResizing = true;
+        resizeMoved = false;
+        if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
+          this.clearPipGraphCardStealthTimer(cardItem);
+        }
         resizeStartState = this.capturePipCardResizeStart(cardItem, e);
       });
       window.addEventListener('pointermove', (e) => {
         if (!isResizing || !resizeStartState) return;
+        if (!resizeMoved && Math.hypot(e.clientX - resizeStartState.startX, e.clientY - resizeStartState.startY) > 3) {
+          resizeMoved = true;
+        }
         this._isDraggingOrResizingAnyCard = true;
         this.applyPipCardResizeStep(cardItem, e, resizeStartState);
         if (this.isAudioRecording) {
@@ -13630,10 +13660,19 @@ class GraphApp {
       });
       const stopResize = () => {
         if (isResizing) {
+          const wasResizeMoved = resizeMoved;
           isResizing = false;
+          resizeMoved = false;
           resizeStartState = null;
           this._isDraggingOrResizingAnyCard = false;
           this.scheduleBakePipGraphCardToImg(cardItem);
+          if (el.classList.contains('pip-locked-mode')) {
+            if (!wasResizeMoved && el.classList.contains('pip-stealth-locked')) {
+              this.wakeUpPipGraphCardStealth(cardItem, true);
+            } else if (!el.classList.contains('pip-stealth-locked')) {
+              this.schedulePipGraphCardStealth(cardItem, 5000);
+            }
+          }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
           }
@@ -13657,6 +13696,7 @@ class GraphApp {
       };
     }
     el.querySelector('.btn-extra-close').onclick = () => {
+      this.clearPipGraphCardStealthTimer(cardItem);
       el.remove();
       this.extraGraphCards = this.extraGraphCards.filter(c => c !== cardItem);
       if (this._pipTargetCard === cardItem) this._pipTargetCard = null;
@@ -14305,6 +14345,9 @@ class GraphApp {
         dragMoved = false;
         startX = e.clientX;
         startY = e.clientY;
+        if (widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
+          this.clearPipGraphCardStealthTimer('primary');
+        }
         if (this.isGraphCovered && this.pdfPageBoardData && widget._pdfAnchor) {
           const s = this.mathToScreen(widget._pdfAnchor.mx, widget._pdfAnchor.my);
           initialBaseX = s.x;
@@ -14371,6 +14414,15 @@ class GraphApp {
               widget._isLeftDocked = false;
               this.relayoutLeftDockedCards(true);
             }
+            if (widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
+              this.schedulePipGraphCardStealth('primary', 5000);
+            }
+          } else if (widget.classList.contains('pip-locked-mode')) {
+            if (widget.classList.contains('pip-stealth-locked')) {
+              this.wakeUpPipGraphCardStealth('primary', true);
+            } else {
+              this.schedulePipGraphCardStealth('primary', 5000);
+            }
           }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
@@ -14383,17 +14435,26 @@ class GraphApp {
 
     if (resizeHandle) {
       let isResizing = false;
+      let resizeMoved = false;
       let resizeStartState = null;
 
       resizeHandle.addEventListener('pointerdown', (e) => {
+        if (widget) this.bringCardToFront(widget);
         e.preventDefault();
         e.stopPropagation();
         isResizing = true;
+        resizeMoved = false;
+        if (widget && widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
+          this.clearPipGraphCardStealthTimer('primary');
+        }
         resizeStartState = this.capturePipCardResizeStart('primary', e);
       });
 
       window.addEventListener('pointermove', (e) => {
         if (!isResizing || !resizeStartState) return;
+        if (!resizeMoved && Math.hypot(e.clientX - resizeStartState.startX, e.clientY - resizeStartState.startY) > 3) {
+          resizeMoved = true;
+        }
         this._isDraggingOrResizingAnyCard = true;
         this.applyPipCardResizeStep('primary', e, resizeStartState);
         if (this.isAudioRecording) {
@@ -14403,11 +14464,20 @@ class GraphApp {
 
       const stopResize = () => {
         if (isResizing) {
+          const wasResizeMoved = resizeMoved;
           isResizing = false;
+          resizeMoved = false;
           resizeStartState = null;
           this._isDraggingOrResizingAnyCard = false;
           this.syncGraphCardRectFromWidget(true);
           this.scheduleBakePipGraphCardToImg('primary');
+          if (widget && widget.classList.contains('pip-locked-mode')) {
+            if (!wasResizeMoved && widget.classList.contains('pip-stealth-locked')) {
+              this.wakeUpPipGraphCardStealth('primary', true);
+            } else if (!widget.classList.contains('pip-stealth-locked')) {
+              this.schedulePipGraphCardStealth('primary', 5000);
+            }
+          }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
           }
@@ -14422,13 +14492,14 @@ class GraphApp {
     }
     if (btnClose) {
       btnClose.onclick = () => {
+        this.clearPipGraphCardStealthTimer('primary');
         this.graphInkStrokes = [];
         this._hasPrimaryGraphCard = false;
         this.graphCardData = null;
         this.graphCardPdfAnchor = null;
         widget._pdfAnchor = null;
         widget._pipSnapObj = null;
-        widget.classList.remove('pip-manipulating');
+        widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked');
         if (this._pipTargetCard === 'primary') this._pipTargetCard = null;
         if (this._editingGraphCardTarget === 'primary') this._editingGraphCardTarget = null;
         widget.style.display = 'none';
@@ -15044,6 +15115,72 @@ class GraphApp {
     if (typeof this.clearInkCache === 'function') this.clearInkCache();
   }
 
+  _getPipCardRefByWidget(widgetEl) {
+    if (!widgetEl) return null;
+    if (widgetEl.id === 'graphCardWidget') return 'primary';
+    if (Array.isArray(this.extraGraphCards)) {
+      return this.extraGraphCards.find(c => c && c.el === widgetEl) || null;
+    }
+    return null;
+  }
+
+  clearPipGraphCardStealthTimer(cardRef) {
+    const { widget } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    if (widget && widget._pipStealthTimer) {
+      clearTimeout(widget._pipStealthTimer);
+      widget._pipStealthTimer = null;
+    }
+  }
+
+  schedulePipGraphCardStealth(cardRef, delayMs = 5000) {
+    const { widget } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    if (!widget) return;
+    this.clearPipGraphCardStealthTimer(cardRef);
+    const snap = this._getMutablePipCardSnapshot(cardRef);
+    if (!snap || !snap.isPipLocked) {
+      widget.classList.remove('pip-stealth-locked', 'pip-locked-mode');
+      return;
+    }
+    widget.classList.add('pip-locked-mode');
+    if (widget.classList.contains('card-ink-active')) {
+      widget.classList.remove('pip-stealth-locked');
+      return;
+    }
+    if (delayMs <= 0) {
+      widget.classList.add('pip-stealth-locked');
+      return;
+    }
+    widget._pipStealthTimer = setTimeout(() => {
+      widget._pipStealthTimer = null;
+      const curSnap = this._getMutablePipCardSnapshot(cardRef);
+      if (
+        curSnap &&
+        curSnap.isPipLocked &&
+        !widget.classList.contains('card-ink-active') &&
+        !this._isDraggingOrResizingAnyCard
+      ) {
+        widget.classList.add('pip-stealth-locked');
+        if (this.isAudioRecording && !this._isApplyingAudioTimelineState) {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+        }
+      }
+    }, delayMs);
+  }
+
+  wakeUpPipGraphCardStealth(cardRef, restartTimer = true) {
+    const { widget } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    if (!widget) return;
+    this.clearPipGraphCardStealthTimer(cardRef);
+    const wasStealth = widget.classList.contains('pip-stealth-locked');
+    widget.classList.remove('pip-stealth-locked');
+    if (restartTimer) {
+      this.schedulePipGraphCardStealth(cardRef, 5000);
+    }
+    if (wasStealth && this.isAudioRecording && !this._isApplyingAudioTimelineState) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
+  }
+
   setPipCardLockedByWidget(widgetEl, locked, showToast = false) {
     if (!widgetEl) return;
     if (widgetEl.id === 'graphCardWidget') {
@@ -15074,13 +15211,16 @@ class GraphApp {
       snap.selectedHandleIdx = null;
       snap.draggedHandleIdx = null;
       snap._activeSnapHint = null;
-      widget.classList.remove('pip-manipulating');
+      widget.classList.remove('pip-manipulating', 'pip-stealth-locked');
+      widget.classList.add('pip-locked-mode');
+      this.schedulePipGraphCardStealth(cardRef, 5000);
     } else {
+      this.clearPipGraphCardStealthTimer(cardRef);
       snap.isCurveSelected = false;
       snap.selectedHandleIdx = null;
       snap.draggedHandleIdx = null;
       snap._activeSnapHint = null;
-      widget.classList.remove('pip-manipulating');
+      widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked');
       if (widget.classList.contains('card-ink-active')) {
         widget.classList.remove('card-ink-active');
         const laserBtn = widget.querySelector('.btn-card-laser');
@@ -15099,7 +15239,7 @@ class GraphApp {
 
     if (showToast) {
       if (snap.isPipLocked) {
-        this.showToast('🔒 카드 잠금 완료! 이제 카드 안을 잡고 이동하거나 모서리로 비율 고정 확대/축소할 수 있습니다.');
+        this.showToast('🔒 카드 잠금 완료! 5초 뒤 테두리와 상단 메뉴가 숨겨지며, 카드를 톡 터치하면 다시 나타납니다.');
       } else {
         this.showToast('🔓 잠금 해제됨! 핸들 조작 · 여백 드래그로 축 이동 · 모서리로 시야 영역 확장이 가능합니다.');
       }
@@ -15227,6 +15367,14 @@ class GraphApp {
     if (!widget) return;
     const snap = this._getMutablePipCardSnapshot(cardRef);
     const isLocked = Boolean(snap && snap.isPipLocked);
+    widget.classList.toggle('pip-locked-mode', isLocked);
+    if (!isLocked) {
+      if (widget._pipStealthTimer) {
+        clearTimeout(widget._pipStealthTimer);
+        widget._pipStealthTimer = null;
+      }
+      widget.classList.remove('pip-stealth-locked');
+    }
     const btnLock = isPrimary
       ? document.getElementById('btnGraphCardLock')
       : widget.querySelector('.btn-extra-lock');
@@ -26768,6 +26916,8 @@ class GraphApp {
       this.graphCardPdfAnchor = gc.pdfAnchor ? { ...gc.pdfAnchor } : null;
       gWidget._pdfAnchor = this.graphCardPdfAnchor ? { ...this.graphCardPdfAnchor } : null;
       this.primaryGraphCardSnapshot = gc.primaryGraphCardSnapshot ? JSON.parse(JSON.stringify(gc.primaryGraphCardSnapshot)) : null;
+      gWidget._pipSnapObj = null;
+      gWidget._pipSnapRawRef = null;
       this.graphInkStrokes = JSON.parse(JSON.stringify(gc.graphInkStrokes || []));
       this.graphCardStickers = JSON.parse(JSON.stringify(gc.graphCardStickers || []));
       if (typeof gWidget._renderCardStickers === 'function') gWidget._renderCardStickers();
@@ -26786,6 +26936,13 @@ class GraphApp {
       if (gc.zIndex) gWidget.style.zIndex = gc.zIndex;
       gWidget.style.display = gc.display || 'flex';
       this.syncGraphCardRectFromWidget();
+      const restoredPrimarySnap = this._getMutablePipCardSnapshot('primary');
+      if (restoredPrimarySnap && restoredPrimarySnap.isPipLocked) {
+        this.schedulePipGraphCardStealth('primary', 0);
+      } else {
+        this.clearPipGraphCardStealthTimer('primary');
+        gWidget.classList.remove('pip-locked-mode', 'pip-stealth-locked');
+      }
     } else {
       this._hasPrimaryGraphCard = false;
       this.graphCardData = null;
@@ -26793,7 +26950,11 @@ class GraphApp {
       this.graphCardPdfAnchor = null;
       this.graphInkStrokes = [];
       if (gWidget) {
+        this.clearPipGraphCardStealthTimer('primary');
         gWidget._pdfAnchor = null;
+        gWidget._pipSnapObj = null;
+        gWidget._pipSnapRawRef = null;
+        gWidget.classList.remove('pip-locked-mode', 'pip-stealth-locked');
         gWidget.style.display = 'none';
       }
     }
@@ -26819,6 +26980,10 @@ class GraphApp {
             created.el.classList.add('minimized');
             const chev = created.el.querySelector('.card-fold-chevron');
             if (chev) chev.textContent = '▸';
+          }
+          const restoredExtraSnap = this._getMutablePipCardSnapshot(created);
+          if (restoredExtraSnap && restoredExtraSnap.isPipLocked) {
+            this.schedulePipGraphCardStealth(created, 0);
           }
         }
       });
@@ -40589,46 +40754,63 @@ class GraphApp {
         }
       }
 
-      if (!isMin && bodyEl && imgEl && imgEl.complete && imgEl.naturalWidth > 0) {
+      const isGraphCard = Boolean(
+        el.id === 'graphCardWidget' ||
+        el.classList.contains('extra-graph-card-widget') ||
+        el.classList.contains('graph-card-widget')
+      );
+      const liveGraphCvs = (isGraphCard && bodyEl)
+        ? bodyEl.querySelector('.pip-graph-live-canvas')
+        : null;
+      const hasValidLiveGraphCvs = Boolean(liveGraphCvs && liveGraphCvs.width > 0 && liveGraphCvs.height > 0);
+      const hasValidImg = Boolean(imgEl && imgEl.complete && imgEl.naturalWidth > 0);
+
+      if (!isMin && bodyEl && (hasValidLiveGraphCvs || hasValidImg)) {
         const bRect = bodyEl.getBoundingClientRect();
         if (bRect.width > 0 && bRect.height > 0) {
           const bx = bRect.left - canvasRect.left - offX;
           const by = bRect.top - canvasRect.top - offY;
           const bw = bRect.width;
-          const natAspect = (imgEl.naturalHeight > 0 && imgEl.naturalWidth > 0)
-            ? (imgEl.naturalHeight / imgEl.naturalWidth)
-            : (bRect.height / bRect.width);
+          const natAspect = hasValidLiveGraphCvs
+            ? (bRect.height / bRect.width)
+            : ((imgEl.naturalHeight > 0 && imgEl.naturalWidth > 0)
+              ? (imgEl.naturalHeight / imgEl.naturalWidth)
+              : (bRect.height / bRect.width));
           const bh = Math.max(1, Math.round(bw * natAspect));
 
           ctx.save();
-          ctx.fillStyle = '#ffffff';
+          ctx.fillStyle = isGraphCard ? (isLight ? '#ffffff' : '#13151a') : '#ffffff';
           ctx.strokeStyle = isLight ? '#cbd5e1' : '#475569';
           ctx.lineWidth = 1.2;
           ctx.beginPath();
-          if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, 8);
+          if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, isGraphCard ? 0 : 8);
           else ctx.rect(bx, by, bw, bh);
-          ctx.fill();
+          if (!isGraphCard) {
+            ctx.fill();
+          }
 
           ctx.save();
           ctx.clip();
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
-          const hiResSource = (
-            el.id === 'problemCardWidget' &&
-            this.problemCardImage &&
-            typeof HTMLCanvasElement !== 'undefined' &&
-            this.problemCardImage instanceof HTMLCanvasElement &&
-            this.problemCardImage.width > 0 &&
-            this.problemCardImage.height > 0
-          ) ? this.problemCardImage : (
-            el.classList.contains('extra-problem-card-widget') &&
-            Array.isArray(this.extraProblemCards)
-              ? (() => {
-                const found = this.extraProblemCards.find(c => c && c.el === el && c.sourceCanvas && c.sourceCanvas.width > 0);
-                return (found && found.sourceCanvas) ? found.sourceCanvas : imgEl;
-              })()
-              : imgEl
-          );
+          const hiResSource = hasValidLiveGraphCvs
+            ? liveGraphCvs
+            : ((
+              el.id === 'problemCardWidget' &&
+              this.problemCardImage &&
+              typeof HTMLCanvasElement !== 'undefined' &&
+              this.problemCardImage instanceof HTMLCanvasElement &&
+              this.problemCardImage.width > 0 &&
+              this.problemCardImage.height > 0
+            ) ? this.problemCardImage : (
+              el.classList.contains('extra-problem-card-widget') &&
+              Array.isArray(this.extraProblemCards)
+                ? (() => {
+                  const found = this.extraProblemCards.find(c => c && c.el === el && c.sourceCanvas && c.sourceCanvas.width > 0);
+                  return (found && found.sourceCanvas) ? found.sourceCanvas : imgEl;
+                })()
+                : imgEl
+            ));
           ctx.drawImage(hiResSource, bx, by, bw, bh);
           if (incInk) {
             const cardStrokes = (el.id === 'problemCardWidget')
@@ -40726,7 +40908,9 @@ class GraphApp {
           }
           ctx.restore();
 
-          ctx.stroke();
+          if (!isGraphCard) {
+            ctx.stroke();
+          }
           ctx.restore();
         }
       }
@@ -42672,6 +42856,7 @@ class GraphApp {
         aspect: cAspect,
         min: Boolean(c && (c.isMin || (c.el && c.el.classList.contains('minimized')))),
         inkActive: Boolean(c && c.el && c.el.classList.contains('card-ink-active')),
+        stealth: Boolean(c && c.el && c.el.classList.contains('pip-stealth-locked')),
         pipSnap: c ? this._extractCompactPipSnapForAudio(c, cw, cAspect) : null
       };
     });
@@ -42826,6 +43011,7 @@ class GraphApp {
       graphCardW: r1(graphW),
       graphCardAspect: graphCardAspectVal,
       graphCardInkActive: Boolean(gWidget && gWidget.classList.contains('card-ink-active')),
+      graphCardStealth: Boolean(gWidget && gWidget.classList.contains('pip-stealth-locked')),
       graphCardPipSnap,
       extraGraphsCount: (this.extraGraphCards || []).length,
       extraGraphStates,
@@ -42987,6 +43173,10 @@ class GraphApp {
           if (typeof this.syncGraphCardRectFromWidget === 'function' && !kf.graphCardMin) {
             this.syncGraphCardRectFromWidget();
           }
+          if (kf.graphCardStealth !== undefined) {
+            this.clearPipGraphCardStealthTimer('primary');
+            gWidget.classList.toggle('pip-stealth-locked', Boolean(kf.graphCardStealth));
+          }
         } else {
           gWidget.style.display = 'none';
         }
@@ -43070,6 +43260,10 @@ class GraphApp {
               if (!st.min) {
                 if (typeof this.renderPipGraphCard === 'function') this.renderPipGraphCard(c);
                 if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+              }
+              if (st.stealth !== undefined) {
+                this.clearPipGraphCardStealthTimer(c);
+                c.el.classList.toggle('pip-stealth-locked', Boolean(st.stealth));
               }
               c.isMin = Boolean(st.min);
               c.el.classList.toggle('minimized', Boolean(st.min));

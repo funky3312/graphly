@@ -5117,6 +5117,47 @@ body.ink-sticker-tool-active .graph-card-live-canvas {
   display: none !important;
 }
 
+/* 🌟 [잠금 후 5초 무조작 시 백지에 직접 그려놓은 듯한 프레임리스 스텔스 모드 (.pip-stealth-locked)] 🌟 */
+.graph-card-widget .problem-card-header {
+  transition: opacity 0.34s cubic-bezier(0.22, 1, 0.36, 1), transform 0.34s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+.graph-card-widget .problem-card-body {
+  transition: border-color 0.34s ease, box-shadow 0.34s ease, background-color 0.34s ease !important;
+}
+
+.graph-card-widget.pip-locked-mode .problem-card-header {
+  z-index: 1 !important;
+}
+
+.graph-card-widget.pip-locked-mode .problem-card-body {
+  z-index: 2 !important;
+}
+
+.graph-card-widget.pip-stealth-locked .problem-card-header,
+body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-header {
+  opacity: 0 !important;
+  transform: translateY(14px) !important;
+  pointer-events: none !important;
+}
+
+.graph-card-widget.pip-stealth-locked .problem-card-body,
+body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-body {
+  border-color: transparent !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.graph-card-widget.pip-stealth-locked .problem-card-resize-handle,
+.graph-card-widget.pip-stealth-locked .problem-card-body:hover .problem-card-resize-handle,
+body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-resize-handle,
+body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-body:hover .problem-card-resize-handle {
+  opacity: 0 !important;
+  background: transparent !important;
+  pointer-events: auto !important;
+  cursor: nwse-resize !important;
+}
+
 /* 🌟 [창모드(PiP) 카드 상단 헤더 3-캡슐 구조: [대칭 ▾] · [|f|] · [🗑] + 우측 [📍수선]] 🌟 */
 .btn-card-dropline {
   width: 26px !important;
@@ -10001,8 +10042,8 @@ body.theme-light .viewer-top-btn {
 }
 
 .viewer-graph-hotspot:hover {
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.38);
-  background: rgba(37, 99, 235, 0.03);
+  box-shadow: none;
+  background: transparent;
 }
 
 .viewer-hotspot-badge {
