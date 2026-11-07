@@ -17139,21 +17139,62 @@ class GraphApp {
     }, { passive: false });
   }
 
-  // 🌟 [초고속 144Hz 2-레이어 오프스크린 잉크 베이킹 엔진 & 씬 프리즈 캐시 (iCanScreen 급 0ms 저지연)] 🌟
+  // 🌟 [초고속 144Hz 2-레이어 오프스크린 잉크 베이킹 엔진 & 상하좌우 오버스캔(Overscan) 버퍼 계산기] 🌟
+  _getInkBakeMetrics() {
+    const dpr = this.getCanvasDpr();
+    const sw = Math.max(1, this.screenWidth || (this.canvas ? Math.round(this.canvas.width / dpr) : 1280) || 1280);
+    const sh = Math.max(1, this.screenHeight || (this.canvas ? Math.round(this.canvas.height / dpr) : 720) || 720);
+    // 화면 상하좌우 바깥 영역(Overscan Margin)까지 넉넉히 베이크하여
+    // 두 손가락 패닝/핀치 중 화면 위·아래·좌·우에서 내려오거나 들어오는 글씨가 절대 잘리지 않도록 보장
+    // (단, iPadOS Safari의 단일 캔버스 픽셀 한도 16.7M 픽셀 및 변 길이를 초과하지 않도록 안전 캡 적용)
+    let padX = Math.min(520, Math.round(sw * 0.38));
+    let padY = Math.min(520, Math.round(sh * 0.48));
+    const maxSidePx = Math.max(Math.round(sw * dpr) + 160, Math.round(sh * dpr) + 160, 4000);
+    if (Math.round((sw + padX * 2) * dpr) > maxSidePx) {
+      padX = Math.max(80, Math.floor((maxSidePx / dpr - sw) / 2));
+    }
+    if (Math.round((sh + padY * 2) * dpr) > maxSidePx) {
+      padY = Math.max(80, Math.floor((maxSidePx / dpr - sh) / 2));
+    }
+    const maxTotalPixels = 12500000;
+    let totalW = Math.round((sw + padX * 2) * dpr);
+    let totalH = Math.round((sh + padY * 2) * dpr);
+    if (totalW * totalH > maxTotalPixels) {
+      const scale = Math.sqrt(maxTotalPixels / (totalW * totalH));
+      const targetCssW = Math.max(sw + 160, Math.floor((totalW * scale) / dpr));
+      const targetCssH = Math.max(sh + 160, Math.floor((totalH * scale) / dpr));
+      padX = Math.max(80, Math.floor((targetCssW - sw) / 2));
+      padY = Math.max(80, Math.floor((targetCssH - sh) / 2));
+      totalW = Math.round((sw + padX * 2) * dpr);
+      totalH = Math.round((sh + padY * 2) * dpr);
+    }
+    return { dpr, sw, sh, padX, padY, width: totalW, height: totalH };
+  }
+
   clearInkCache() {
     this._hasSceneFreeze = false;
     this._hasBakedStrokes = false;
     this._inkBakeCamera = null;
-    const dpr = this.getCanvasDpr();
+    const { dpr, padX, padY, width, height } = this._getInkBakeMetrics();
     if (this.inkBakeCanvas && this.inkBakeCtx) {
-      this.inkBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
-      this.inkBakeCtx.clearRect(0, 0, this.inkBakeCanvas.width, this.inkBakeCanvas.height);
-      this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (this.inkBakeCanvas.width !== width || this.inkBakeCanvas.height !== height) {
+        this.inkBakeCanvas.width = width;
+        this.inkBakeCanvas.height = height;
+      } else {
+        this.inkBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
+        this.inkBakeCtx.clearRect(0, 0, this.inkBakeCanvas.width, this.inkBakeCanvas.height);
+      }
+      this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
     }
     if (this.inkGraphBakeCanvas && this.inkGraphBakeCtx) {
-      this.inkGraphBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
-      this.inkGraphBakeCtx.clearRect(0, 0, this.inkGraphBakeCanvas.width, this.inkGraphBakeCanvas.height);
-      this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (this.inkGraphBakeCanvas.width !== width || this.inkGraphBakeCanvas.height !== height) {
+        this.inkGraphBakeCanvas.width = width;
+        this.inkGraphBakeCanvas.height = height;
+      } else {
+        this.inkGraphBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
+        this.inkGraphBakeCtx.clearRect(0, 0, this.inkGraphBakeCanvas.width, this.inkGraphBakeCanvas.height);
+      }
+      this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
     }
   }
 
@@ -17792,17 +17833,7 @@ class GraphApp {
       return;
     }
 
-    const dpr = this.getCanvasDpr();
-    if (this.inkBakeCanvas.width !== this.canvas.width || this.inkBakeCanvas.height !== this.canvas.height) {
-      this.inkBakeCanvas.width = this.canvas.width;
-      this.inkBakeCanvas.height = this.canvas.height;
-      this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
-    if (this.inkGraphBakeCanvas.width !== this.canvas.width || this.inkGraphBakeCanvas.height !== this.canvas.height) {
-      this.inkGraphBakeCanvas.width = this.canvas.width;
-      this.inkGraphBakeCanvas.height = this.canvas.height;
-      this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
+    const { padX, padY } = this._getInkBakeMetrics();
 
     // 🌟 [대표님 피드백: 형광펜 언더레이 2-Pass 베이킹 (검은 글씨 절대 가리지 않음!)] 🌟
     // Pass 1 (하단 레이어): 모든 형광펜(isHighlighter === true) 획을 먼저 바닥에 렌더링
@@ -17832,7 +17863,9 @@ class GraphApp {
       boardPanY: this.boardPanY || 0,
       boardZoom: this.boardZoom || 1.0,
       boardZoomOffsetX: this.boardZoomOffsetX || 0,
-      boardZoomOffsetY: this.boardZoomOffsetY || 0
+      boardZoomOffsetY: this.boardZoomOffsetY || 0,
+      padX,
+      padY
     };
   }
 
@@ -18018,19 +18051,56 @@ class GraphApp {
       return;
     }
 
-    // 🌟 [오프스크린 베이크 버퍼 리빌드 & 팬/핀치 중 0.02ms GPU 텍스처 변환 패스트패스] 🌟
-    // 두 손가락 이동/핀치나 화면 패닝 도중에는 매 프레임 수십~수백 개의 필기 획을 CPU에서 다시 그리지 않고(0ms CPU 부하),
-    // 이미 구워진 GPU 텍스처(inkBakeCanvas, inkGraphBakeCanvas)를 하드웨어 행렬(setTransform)로만 즉시 이동·스케일링한 뒤
-    // 손가락을 떼는 순간 딱 1회 고해상도로 깔끔하게 리빌드합니다!
+    // 🌟 [오프스크린 오버스캔(Overscan) 베이크 버퍼 리빌드 & 팬/핀치 중 0.02ms GPU 텍스처 변환 패스트패스] 🌟
+    // 두 손가락 이동/핀치나 화면 패닝 도중에는 상하좌우 오버스캔(padX, padY)이 포함된 GPU 텍스처를 하드웨어 행렬(setTransform)로만 즉시 이동·스케일링하며,
+    // 연속 드래그로 오버스캔 여백 끝단(24px 마진)에 도달하거나 줌 변화가 커질 때만 드래그 중에도 새 중심점으로 자동 리빌드하여 잘림을 0%로 원천 차단합니다!
     const isActivelyMovingCamera = Boolean(this._pinchState || this.isPanning || this.isBoardPanning);
-    if (this._inkBakeDirty && (!isActivelyMovingCamera || !this._hasBakedStrokes || !this._inkBakeCamera)) {
+    const { dpr, sw, sh, padX: curPadX, padY: curPadY } = this._getInkBakeMetrics();
+    let needRebakeNow = Boolean(this._inkBakeDirty && (!isActivelyMovingCamera || !this._hasBakedStrokes || !this._inkBakeCamera));
+    if (!needRebakeNow && this._inkBakeDirty && isActivelyMovingCamera && this._inkBakeCamera) {
+      const bc = this._inkBakeCamera;
+      const bPadX = (typeof bc.padX === 'number') ? bc.padX : curPadX;
+      const bPadY = (typeof bc.padY === 'number') ? bc.padY : curPadY;
+      if (!filterTarget || filterTarget === 'board') {
+        const bz0 = bc.boardZoom || 1.0;
+        const bz1 = this.boardZoom || 1.0;
+        const sB = bz1 / bz0;
+        const txB = ((this.boardPanX || 0) + (this.boardZoomOffsetX || 0)) - ((bc.boardPanX || 0) + (bc.boardZoomOffsetX || 0)) * sB;
+        const tyB = ((this.boardPanY || 0) + (this.boardZoomOffsetY || 0)) - ((bc.boardPanY || 0) + (bc.boardZoomOffsetY || 0)) * sB;
+        const leftEdgeB = -bPadX * sB + txB;
+        const rightEdgeB = (sw + bPadX) * sB + txB;
+        const topEdgeB = -bPadY * sB + tyB;
+        const bottomEdgeB = (sh + bPadY) * sB + tyB;
+        if (leftEdgeB > -24 || rightEdgeB < sw + 24 || topEdgeB > -24 || bottomEdgeB < sh + 24 || sB < 0.65 || sB > 1.55) {
+          needRebakeNow = true;
+        }
+      }
+      if (!needRebakeNow && (!filterTarget || filterTarget === 'graph')) {
+        const z0 = bc.zoomLevel || 1.0;
+        const z1 = this.zoomLevel || 1.0;
+        const sG = z1 / z0;
+        const halfW = sw / 2;
+        const halfH = sh / 2;
+        const txG = (halfW + (this.panX || 0)) - (halfW + (bc.panX || 0)) * sG;
+        const tyG = (halfH + (this.panY || 0)) - (halfH + (bc.panY || 0)) * sG;
+        const leftEdgeG = -bPadX * sG + txG;
+        const rightEdgeG = (sw + bPadX) * sG + txG;
+        const topEdgeG = -bPadY * sG + tyG;
+        const bottomEdgeG = (sh + bPadY) * sG + tyG;
+        if (leftEdgeG > -24 || rightEdgeG < sw + 24 || topEdgeG > -24 || bottomEdgeG < sh + 24 || sG < 0.65 || sG > 1.55) {
+          needRebakeNow = true;
+        }
+      }
+    }
+    if (needRebakeNow) {
       this.rebuildInkCache();
     }
 
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
     const isLight = curTheme.isLight || this.isMonochromeMode;
-    const dpr = this.getCanvasDpr();
     const bakeCam = this._inkBakeCamera;
+    const bPadX = (bakeCam && typeof bakeCam.padX === 'number') ? bakeCam.padX : curPadX;
+    const bPadY = (bakeCam && typeof bakeCam.padY === 'number') ? bakeCam.padY : curPadY;
 
     // 🌟 [144Hz 초고속 0.02ms GPU Blit]: 칠판 바깥창 판서 ('board')
     if (!filterTarget || filterTarget === 'board') {
@@ -18043,14 +18113,14 @@ class GraphApp {
             const sB = bz1 / bz0;
             const txB = ((this.boardPanX || 0) + (this.boardZoomOffsetX || 0)) - ((bakeCam.boardPanX || 0) + (bakeCam.boardZoomOffsetX || 0)) * sB;
             const tyB = ((this.boardPanY || 0) + (this.boardZoomOffsetY || 0)) - ((bakeCam.boardPanY || 0) + (bakeCam.boardZoomOffsetY || 0)) * sB;
-            ctx.setTransform(sB, 0, 0, sB, txB * dpr, tyB * dpr);
+            ctx.setTransform(sB, 0, 0, sB, (txB - bPadX * sB) * dpr, (tyB - bPadY * sB) * dpr);
           } else {
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.setTransform(1, 0, 0, 1, -bPadX * dpr, -bPadY * dpr);
           }
           ctx.drawImage(this.inkBakeCanvas, 0, 0);
           ctx.restore();
         } else {
-          ctx.drawImage(this.inkBakeCanvas, 0, 0, this.screenWidth, this.screenHeight);
+          ctx.drawImage(this.inkBakeCanvas, -bPadX, -bPadY, sw + bPadX * 2, sh + bPadY * 2);
         }
       }
       // 실시간 드로잉 중인 획이 보드 타깃인 경우 가벼운 1개 획만 즉시 렌더링!
@@ -18068,18 +18138,18 @@ class GraphApp {
             const z0 = bakeCam.zoomLevel || 1.0;
             const z1 = this.zoomLevel || 1.0;
             const sG = z1 / z0;
-            const halfW = (this.screenWidth || window.innerWidth) / 2;
-            const halfH = (this.screenHeight || window.innerHeight) / 2;
+            const halfW = sw / 2;
+            const halfH = sh / 2;
             const txG = (halfW + (this.panX || 0)) - (halfW + (bakeCam.panX || 0)) * sG;
             const tyG = (halfH + (this.panY || 0)) - (halfH + (bakeCam.panY || 0)) * sG;
-            ctx.setTransform(sG, 0, 0, sG, txG * dpr, tyG * dpr);
+            ctx.setTransform(sG, 0, 0, sG, (txG - bPadX * sG) * dpr, (tyG - bPadY * sG) * dpr);
           } else {
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.setTransform(1, 0, 0, 1, -bPadX * dpr, -bPadY * dpr);
           }
           ctx.drawImage(this.inkGraphBakeCanvas, 0, 0);
           ctx.restore();
         } else {
-          ctx.drawImage(this.inkGraphBakeCanvas, 0, 0, this.screenWidth, this.screenHeight);
+          ctx.drawImage(this.inkGraphBakeCanvas, -bPadX, -bPadY, sw + bPadX * 2, sh + bPadY * 2);
         }
       }
       // 실시간 드로잉 중인 획이 그래프 타깃인 경우 가벼운 1개 획만 즉시 렌더링!
@@ -31713,15 +31783,16 @@ class GraphApp {
     this.screenHeight = targetCssH;
     this.updateCanvasRect();
 
-    // 🌟 [오프스크린 잉크 베이크 버퍼 크기 및 dpr 스케일 동기화]
+    // 🌟 [오프스크린 잉크 베이크 버퍼 크기(Overscan 포함) 및 dpr 스케일 동기화]
     if (this.inkBakeCanvas && this.inkGraphBakeCanvas) {
-      this.inkBakeCanvas.width = this.canvas.width;
-      this.inkBakeCanvas.height = this.canvas.height;
-      this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const { padX, padY, width: bakeW, height: bakeH } = this._getInkBakeMetrics();
+      this.inkBakeCanvas.width = bakeW;
+      this.inkBakeCanvas.height = bakeH;
+      this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
 
-      this.inkGraphBakeCanvas.width = this.canvas.width;
-      this.inkGraphBakeCanvas.height = this.canvas.height;
-      this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.inkGraphBakeCanvas.width = bakeW;
+      this.inkGraphBakeCanvas.height = bakeH;
+      this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
 
       this._inkBakeDirty = true;
     }
@@ -35152,16 +35223,16 @@ class GraphApp {
             }
             this._liveBezierScreenPts = null;
 
-            const dpr = this.getCanvasDpr();
-            if (this.inkBakeCanvas && (this.inkBakeCanvas.width !== this.canvas.width || this.inkBakeCanvas.height !== this.canvas.height)) {
-              this.inkBakeCanvas.width = this.canvas.width;
-              this.inkBakeCanvas.height = this.canvas.height;
-              this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            const { dpr, padX, padY, width: bakeW, height: bakeH } = this._getInkBakeMetrics();
+            if (this.inkBakeCanvas && (this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH)) {
+              this.inkBakeCanvas.width = bakeW;
+              this.inkBakeCanvas.height = bakeH;
+              this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
             }
-            if (this.inkGraphBakeCanvas && (this.inkGraphBakeCanvas.width !== this.canvas.width || this.inkGraphBakeCanvas.height !== this.canvas.height)) {
-              this.inkGraphBakeCanvas.width = this.canvas.width;
-              this.inkGraphBakeCanvas.height = this.canvas.height;
-              this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            if (this.inkGraphBakeCanvas && (this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH)) {
+              this.inkGraphBakeCanvas.width = bakeW;
+              this.inkGraphBakeCanvas.height = bakeH;
+              this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
             }
             const isBoard = (finishedStroke.target || 'board') === 'board';
             const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
@@ -35177,7 +35248,9 @@ class GraphApp {
                   boardPanY: this.boardPanY || 0,
                   boardZoom: this.boardZoom || 1.0,
                   boardZoomOffsetX: this.boardZoomOffsetX || 0,
-                  boardZoomOffsetY: this.boardZoomOffsetY || 0
+                  boardZoomOffsetY: this.boardZoomOffsetY || 0,
+                  padX,
+                  padY
                 };
               }
             }
