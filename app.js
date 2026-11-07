@@ -9659,7 +9659,7 @@ class GraphApp {
     if (applyStreamline && !stroke.isShape && len > 1) {
       pts = new Array(len);
       pts[0] = rawPts[0];
-      for (let i = 1; i < len; i++) {
+      for (let i = 1; i < len - 1; i++) {
         const prev = pts[i - 1];
         const curr = rawPts[i];
         pts[i] = {
@@ -9668,6 +9668,7 @@ class GraphApp {
           p: prev.p * 0.28 + curr.p * 0.72
         };
       }
+      pts[len - 1] = rawPts[len - 1];
     }
 
     const penStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
@@ -10714,29 +10715,7 @@ class GraphApp {
           }, 340);
         }
 
-        const prevCardPt = currentStroke.points[currentStroke.points.length - 1];
-        const stepDist = prevCardPt ? Math.hypot((pos.nx - prevCardPt.nx) * pos.w, (pos.ny - prevCardPt.ny) * pos.h) : 0;
-        if (stepDist < 0.4) return;
-        if (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01) currentStroke._hasHwP = true;
-        const moveP = this.computeDynamicStrokePressure(
-          e.pressure || 0.5,
-          Boolean(currentStroke._hasHwP),
-          stepDist,
-          currentStroke.penStyle || 'ballpen',
-          prevCardPt ? prevCardPt.p : 0.5,
-          currentStroke.points.length,
-          0
-        );
-        this._appendNormalizedCardPointWithArcSubdivision(
-          currentStroke.points,
-          pos.nx,
-          pos.ny,
-          moveP,
-          recT,
-          pos.w,
-          pos.h,
-          Boolean(currentStroke.isHighlighter)
-        );
+        if (! this._appendCardStrokeSamplesFromMoveEvent(currentStroke, e, activeProblemDrawRect, pos.w, pos.h, recT)) return;
 
         this.renderProblemCardCanvas(currentStroke);
       });
@@ -11360,7 +11339,7 @@ class GraphApp {
             activeStroke,
             commitStroke,
             isProbCard: isProbExtra,
-            applyStreamline: false,
+            applyStreamline: true,
             minPenWidth: isProbExtra ? 1.5 : 0.85,
             minHlWidth: 3,
             defaultHlMin: 8
@@ -11528,29 +11507,7 @@ class GraphApp {
           restartExtraHoldTimer(rw, rh);
         }
 
-        const prevExPt = curExtraStroke.points[curExtraStroke.points.length - 1];
-        const stepDist = prevExPt ? Math.hypot((nx - prevExPt.nx) * rw, (ny - prevExPt.ny) * rh) : 0;
-        if (stepDist < 0.4) return;
-        if (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01) curExtraStroke._hasHwP = true;
-        const moveP = this.computeDynamicStrokePressure(
-          e.pressure || 0.5,
-          Boolean(curExtraStroke._hasHwP),
-          stepDist,
-          curExtraStroke.penStyle || 'ballpen',
-          prevExPt ? prevExPt.p : 0.5,
-          curExtraStroke.points.length,
-          0
-        );
-        this._appendNormalizedCardPointWithArcSubdivision(
-          curExtraStroke.points,
-          nx,
-          ny,
-          moveP,
-          recT,
-          rw,
-          rh,
-          Boolean(curExtraStroke.isHighlighter)
-        );
+        if (!this._appendCardStrokeSamplesFromMoveEvent(curExtraStroke, e, rect, rw, rh, recT)) return;
         renderExtraCardInk(curExtraStroke);
       });
 
@@ -13990,7 +13947,7 @@ class GraphApp {
         activeStroke,
         commitStroke,
         isProbCard: false,
-        applyStreamline: false,
+        applyStreamline: true,
         minPenWidth: 0.85,
         minHlWidth: 3,
         defaultHlMin: 8
@@ -14224,29 +14181,7 @@ class GraphApp {
           restartGraphCardHoldTimer(pos.w, pos.h);
         }
 
-        const prevGCt = currentStroke.points[currentStroke.points.length - 1];
-        const stepDist = prevGCt ? Math.hypot((pos.nx - prevGCt.nx) * pos.w, (pos.ny - prevGCt.ny) * pos.h) : 0;
-        if (stepDist < 0.4) return;
-        if (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01) currentStroke._hasHwP = true;
-        const moveP = this.computeDynamicStrokePressure(
-          e.pressure || 0.5,
-          Boolean(currentStroke._hasHwP),
-          stepDist,
-          currentStroke.penStyle || 'ballpen',
-          prevGCt ? prevGCt.p : 0.5,
-          currentStroke.points.length,
-          0
-        );
-        this._appendNormalizedCardPointWithArcSubdivision(
-          currentStroke.points,
-          pos.nx,
-          pos.ny,
-          moveP,
-          recT,
-          pos.w,
-          pos.h,
-          Boolean(currentStroke.isHighlighter)
-        );
+        if (!this._appendCardStrokeSamplesFromMoveEvent(currentStroke, e, activeGraphDrawRect, pos.w, pos.h, recT)) return;
         this.renderGraphCardCanvas(currentStroke);
       });
 
@@ -17389,6 +17324,100 @@ class GraphApp {
     }
   }
 
+  // 🌟 [문제/그래프 카드 240Hz 서브프레임 수집 + 계단 노이즈 필터 + 코너 필압 보정기 (펜 끝 딜레이 0ms)]
+  _appendCardStrokeSamplesFromMoveEvent(stroke, e, rect, w, h, recT) {
+    if (!stroke || !Array.isArray(stroke.points) || !e) return false;
+    const rLeft = rect ? rect.left : 0;
+    const rTop = rect ? rect.top : 0;
+    const rw = Math.max(1, w || (rect && rect.width) || 1);
+    const rh = Math.max(1, h || (rect && rect.height) || 1);
+    const finalNx = Math.max(0, Math.min(1, (e.clientX - rLeft) / rw));
+    const finalNy = Math.max(0, Math.min(1, (e.clientY - rTop) / rh));
+    const finalPxX = finalNx * rw;
+    const finalPxY = finalNy * rh;
+
+    const sampleEvents = [];
+    const lastPt0 = stroke.points[stroke.points.length - 1];
+    const rawCoalesced = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null;
+    if (rawCoalesced && rawCoalesced.length > 1 && lastPt0) {
+      let anchorX = lastPt0.nx * rw;
+      let anchorY = lastPt0.ny * rh;
+      let remDist = Math.hypot(finalPxX - anchorX, finalPxY - anchorY);
+      if (remDist >= 2.2) {
+        for (let ci = 0; ci < rawCoalesced.length; ci++) {
+          const cev = rawCoalesced[ci];
+          if (!cev) continue;
+          const cnx = Math.max(0, Math.min(1, (cev.clientX - rLeft) / rw));
+          const cny = Math.max(0, Math.min(1, (cev.clientY - rTop) / rh));
+          const cx = cnx * rw;
+          const cy = cny * rh;
+          const stepFromAnchor = Math.hypot(cx - anchorX, cy - anchorY);
+          const distToFinal = Math.hypot(finalPxX - cx, finalPxY - cy);
+          if (distToFinal < 0.6) continue;
+          if (stepFromAnchor >= 0.85 && distToFinal <= remDist - 0.5) {
+            const vxA = cx - anchorX, vyA = cy - anchorY;
+            const vxF = finalPxX - cx, vyF = finalPxY - cy;
+            if (vxA * vxF + vyA * vyF > -0.15 * stepFromAnchor * distToFinal) {
+              sampleEvents.push({ ev: cev, nx: cnx, ny: cny, px: cx, py: cy });
+              anchorX = cx;
+              anchorY = cy;
+              remDist = distToFinal;
+            }
+          }
+        }
+      }
+    }
+    sampleEvents.push({ ev: e, nx: finalNx, ny: finalNy, px: finalPxX, py: finalPxY });
+
+    const minDist = (e.pointerType === 'mouse') ? 1.15 : 0.85;
+    let addedAny = false;
+    for (let si = 0; si < sampleEvents.length; si++) {
+      const sItem = sampleEvents[si];
+      const prevPt = stroke.points[stroke.points.length - 1];
+      const stepDist = prevPt ? Math.hypot(sItem.px - prevPt.nx * rw, sItem.py - prevPt.ny * rh) : 0;
+      if (stepDist < minDist) continue;
+      const rawP = (sItem.ev && typeof sItem.ev.pressure === 'number') ? sItem.ev.pressure : 0.5;
+      if (rawP > 0 && Math.abs(rawP - 0.5) > 0.01) stroke._hasHwP = true;
+
+      let cornerBoost = 0;
+      if (stroke.points.length >= 2) {
+        const pA = stroke.points[stroke.points.length - 2];
+        const pB = prevPt;
+        const vx1 = (pB.nx - pA.nx) * rw, vy1 = (pB.ny - pA.ny) * rh;
+        const vx2 = sItem.px - pB.nx * rw, vy2 = sItem.py - pB.ny * rh;
+        const l1 = Math.hypot(vx1, vy1), l2 = Math.hypot(vx2, vy2);
+        if (l1 > 0.6 && l2 > 0.6) {
+          const cosAng = (vx1 * vx2 + vy1 * vy2) / (l1 * l2);
+          if (cosAng < 0.72) {
+            cornerBoost = Math.min(1.0, (0.72 - cosAng) / 1.1);
+          }
+        }
+      }
+
+      const moveP = this.computeDynamicStrokePressure(
+        rawP || 0.5,
+        Boolean(stroke._hasHwP),
+        stepDist,
+        stroke.penStyle || 'ballpen',
+        prevPt ? prevPt.p : 0.5,
+        stroke.points.length,
+        cornerBoost
+      );
+      this._appendNormalizedCardPointWithArcSubdivision(
+        stroke.points,
+        sItem.nx,
+        sItem.ny,
+        moveP,
+        recT,
+        rw,
+        rh,
+        Boolean(stroke.isHighlighter)
+      );
+      addedAny = true;
+    }
+    return addedAny;
+  }
+
   // 🌟 [문제/그래프 카드 필기 전용 원호 내분점 자동 보간기]
   _appendNormalizedCardPointWithArcSubdivision(pointsArr, nx, ny, moveP, recT, w, h, isHighlighter = false) {
     if (!Array.isArray(pointsArr)) return;
@@ -17401,7 +17430,7 @@ class GraphApp {
       const vx1 = bx - ax, vy1 = by - ay;
       const vx2 = cx - bx, vy2 = cy - by;
       const len1 = Math.hypot(vx1, vy1), len2 = Math.hypot(vx2, vy2);
-      if (len2 > 11.0 && len1 > 2.5) {
+      if (len2 > 5.0 && len1 > 1.5) {
         const u1x = vx1 / len1, u1y = vy1 / len1;
         const u2x = vx2 / len2, u2y = vy2 / len2;
         const cosTurn = Math.max(-1, Math.min(1, u1x * u2x + u1y * u2y));
@@ -17415,7 +17444,7 @@ class GraphApp {
             const theta = Math.acos(cosTurn);
             const ratioScale = Math.min(1.0, len1 / (len2 * 0.65));
             const sagitta = 0.5 * len2 * Math.min(0.28, Math.tan(theta * 0.25)) * ratioScale;
-            const subCount = len2 > 24.0 ? 2 : 1;
+            const subCount = len2 > 16.0 ? 2 : 1;
             const prevP = (typeof pPrevB.p === 'number') ? pPrevB.p : 0.5;
             for (let s = 1; s <= subCount; s++) {
               const t = s / (subCount + 1);
@@ -40961,8 +40990,8 @@ class GraphApp {
                   p: pt.p !== undefined ? pt.p : 0.5
                 }));
                 const pts = st.isShape ? rawPts : [rawPts[0]];
-                if (!st.isShape) {
-                  for (let i = 1; i < rawPts.length; i++) {
+                if (!st.isShape && rawPts.length > 1) {
+                  for (let i = 1; i < rawPts.length - 1; i++) {
                     const prev = pts[pts.length - 1];
                     const curr = rawPts[i];
                     pts.push({
@@ -40971,9 +41000,10 @@ class GraphApp {
                       p: prev.p * 0.28 + curr.p * 0.72
                     });
                   }
+                  pts.push(rawPts[rawPts.length - 1]);
                 }
                 const penStyle = st.isHighlighter ? 'ballpen' : (st.penStyle || 'ballpen');
-                this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : baseSize, penStyle);
+                this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : baseSize, penStyle, st.softBlur, Boolean(st.isHighlighter));
                 ctx.restore();
               });
             }
