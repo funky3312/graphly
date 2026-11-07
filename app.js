@@ -1032,6 +1032,18 @@ class GraphApp {
     const gTitle = document.getElementById('graphCardTitle');
     const gToggle = document.getElementById('iconGraphCardToggle');
     const hasPrimaryGraph = Boolean(gWidget && this._hasPrimaryGraphCard && this.graphCardData);
+    if (hasPrimaryGraph && typeof this._getMutablePipCardSnapshot === 'function') {
+      const livePrimarySnap = this._getMutablePipCardSnapshot('primary');
+      if (livePrimarySnap) {
+        const bodyEl = document.getElementById('graphCardBody');
+        const cw = Math.max(160, Math.round(parseFloat(gWidget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
+        const ch = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cw * (this.graphCardAspect || 0.82))));
+        livePrimarySnap._isPipCardSnapshot = true;
+        livePrimarySnap._pipCardW = cw;
+        livePrimarySnap._pipCardH = ch;
+        this._savePipCardSnapshot('primary', livePrimarySnap);
+      }
+    }
 
     return {
       historyJson: this.getHistorySnapshot(),
@@ -26675,6 +26687,18 @@ class GraphApp {
     const gTitle = document.getElementById('graphCardTitle');
     const gToggle = document.getElementById('iconGraphCardToggle');
     const hasPrimaryGraph = Boolean(gWidget && this._hasPrimaryGraphCard && this.graphCardData);
+    if (hasPrimaryGraph && typeof this._getMutablePipCardSnapshot === 'function') {
+      const livePrimarySnap = this._getMutablePipCardSnapshot('primary');
+      if (livePrimarySnap) {
+        const bodyEl = document.getElementById('graphCardBody');
+        const cw = Math.max(160, Math.round(parseFloat(gWidget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
+        const ch = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cw * (this.graphCardAspect || 0.82))));
+        livePrimarySnap._isPipCardSnapshot = true;
+        livePrimarySnap._pipCardW = cw;
+        livePrimarySnap._pipCardH = ch;
+        this._savePipCardSnapshot('primary', livePrimarySnap);
+      }
+    }
 
     const extraProblems = [];
     if (this.extraProblemCards && this.extraProblemCards.length > 0) {
@@ -26703,6 +26727,18 @@ class GraphApp {
     if (this.extraGraphCards && this.extraGraphCards.length > 0) {
       this.extraGraphCards.forEach(c => {
         if (c && c.el && document.body.contains(c.el)) {
+          if (typeof this._getMutablePipCardSnapshot === 'function') {
+            const liveExtraSnap = this._getMutablePipCardSnapshot(c);
+            if (liveExtraSnap) {
+              const bodyEl = c.el.querySelector('.problem-card-body');
+              const cw = Math.max(160, Math.round(parseFloat(c.el.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
+              const ch = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cw * (c.aspect || 0.82))));
+              liveExtraSnap._isPipCardSnapshot = true;
+              liveExtraSnap._pipCardW = cw;
+              liveExtraSnap._pipCardH = ch;
+              this._savePipCardSnapshot(c, liveExtraSnap);
+            }
+          }
           const imgEl = c.el.querySelector('.problem-card-img');
           const titleEl = c.el.querySelector('.card-title-text');
           extraGraphs.push({
@@ -30180,7 +30216,7 @@ class GraphApp {
       btnTouchReset.onclick = () => {
         if (this._activeViewerHotspot && this._activeViewerHotspot.graphSnapshot) {
           this.applyPureGraphSnapshot(this._activeViewerHotspot.graphSnapshot);
-          this.autoCenterGraphForTouchViewer();
+          this.autoCenterGraphForTouchViewer(this._activeViewerHotspot.graphSnapshot);
           this._renderViewerGraphCurveChips();
           this.render();
         }
@@ -31228,7 +31264,7 @@ class GraphApp {
     this.selectedHandleIdx = null;
 
     this.resizeCanvas();
-    this.autoCenterGraphForTouchViewer();
+    this.autoCenterGraphForTouchViewer(hotspot.graphSnapshot);
 
     const touchBar = document.getElementById('viewerGraphTouchBar');
     const lblTitle = document.getElementById('lblViewerGraphTouchTitle');
@@ -31264,8 +31300,71 @@ class GraphApp {
     });
   }
 
-  autoCenterGraphForTouchViewer() {
+  autoCenterGraphForTouchViewer(rawSnapshot = null) {
     if (!this.graphs || this.graphs.length === 0) return;
+
+    let parsedSnap = null;
+    const srcSnap = rawSnapshot || (this._activeViewerHotspot && this._activeViewerHotspot.graphSnapshot) || null;
+    if (srcSnap) {
+      try {
+        parsedSnap = typeof srcSnap === 'string' ? JSON.parse(srcSnap) : srcSnap;
+      } catch (_) {
+        parsedSnap = null;
+      }
+    }
+
+    const isPipHotspot = Boolean(
+      (parsedSnap && parsedSnap._isPipCardSnapshot) ||
+      (this._activeViewerHotspot && String(this._activeViewerHotspot.id || '').startsWith('graph_card_'))
+    );
+
+    // 1. 창모드(PiP 그래프 카드) 핫스팟: 원점이나 핸들 평균이 아니라, 창모드에서 보고 있던 센터 좌표(centerMathX, centerMathY)에 100% 초점 동기화!
+    if (parsedSnap && isPipHotspot) {
+      const isTrig = Array.isArray(this.graphs) && this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
+      const cardH = Math.max(80, parsedSnap._pipCardH || 353);
+      const cardYSpan = (typeof parsedSnap.ySpan === 'number' && parsedSnap.ySpan > 0) ? parsedSnap.ySpan : (isTrig ? 5.0 : 5.1);
+      const cardZoom = (typeof parsedSnap.zoomLevel === 'number' && parsedSnap.zoomLevel > 0) ? parsedSnap.zoomLevel : 1.0;
+      const cardUnitScale = (cardH / 2) / Math.max(0.1, cardYSpan / cardZoom);
+      const centerMathX = -(parsedSnap.panX || 0) / Math.max(1e-6, cardUnitScale);
+      const centerMathY = (parsedSnap.panY || 0) / Math.max(1e-6, cardUnitScale);
+
+      const baseCardYSpan = isTrig ? 5.0 : 5.1;
+      const baseFullYSpan = isTrig ? 5.5 : 6.0;
+      const spanScale = cardYSpan / baseCardYSpan;
+      this.xSpan = isTrig ? 20.0 : 8.5;
+      this.ySpan = Math.max(2.0, Math.min(18.0, (baseFullYSpan * spanScale) / Math.max(0.25, cardZoom)));
+      this.zoomLevel = 1.0;
+      this.targetZoom = 1.0;
+
+      const sw = Math.max(300, this.screenWidth || window.innerWidth || 1440);
+      const sh = Math.max(300, this.screenHeight || window.innerHeight || 900);
+      const fullUnitScale = (sh / 2) / (this.ySpan / this.zoomLevel);
+      this.panX = Math.round(-centerMathX * fullUnitScale);
+      this.panY = Math.round(centerMathY * fullUnitScale);
+      return;
+    }
+
+    // 2. 전체화면 그래프 모드 스냅샷(graph_live_1): 문제 카드 오프셋을 제거하고 보고 있던 시야 중심을 화면 정중앙에 배치
+    if (parsedSnap && typeof parsedSnap.panX === 'number' && typeof parsedSnap.ySpan === 'number') {
+      const sh = Math.max(300, this.screenHeight || window.innerHeight || 900);
+      const snapYSpan = parsedSnap.ySpan || 6.0;
+      const snapZoom = parsedSnap.zoomLevel || 1.0;
+      const snapUnitScale = (sh / 2) / Math.max(0.1, snapYSpan / snapZoom);
+      const pushOffsetX = (typeof this._lastFullGraphProblemPushX === 'number') ? this._lastFullGraphProblemPushX : 0;
+      const effPanX = (parsedSnap.panX || 0) - pushOffsetX;
+      const centerMathX = -effPanX / Math.max(1e-6, snapUnitScale);
+      const centerMathY = (parsedSnap.panY || 0) / Math.max(1e-6, snapUnitScale);
+
+      this.xSpan = parsedSnap.xSpan || 8.5;
+      this.ySpan = snapYSpan;
+      this.zoomLevel = snapZoom;
+      this.targetZoom = snapZoom;
+      const fullUnitScale = (sh / 2) / Math.max(0.1, this.ySpan / this.zoomLevel);
+      this.panX = Math.round(-centerMathX * fullUnitScale);
+      this.panY = Math.round(centerMathY * fullUnitScale);
+      return;
+    }
+
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     const expandPt = (x, y) => {
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -40934,6 +41033,19 @@ class GraphApp {
     const gWidget = document.getElementById('graphCardWidget');
     if (gWidget && gWidget.style.display !== 'none' && !gWidget.classList.contains('minimized')) {
       const bodyEl = gWidget.querySelector('.problem-card-body');
+      const livePrimarySnap = typeof this._getMutablePipCardSnapshot === 'function'
+        ? this._getMutablePipCardSnapshot('primary')
+        : null;
+      if (livePrimarySnap) {
+        if (bodyEl) {
+          const cw = Math.max(160, Math.round(parseFloat(gWidget.style.width) || bodyEl.clientWidth || 430));
+          const ch = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || bodyEl.clientHeight || (cw * (this.graphCardAspect || 0.82))));
+          livePrimarySnap._isPipCardSnapshot = true;
+          livePrimarySnap._pipCardW = cw;
+          livePrimarySnap._pipCardH = ch;
+        }
+        this._savePipCardSnapshot('primary', livePrimarySnap);
+      }
       const snap = this.primaryGraphCardSnapshot || (this.graphCardData && this.graphCardData.graphSnapshot) || (this._coveredGraphStateBackup ? JSON.stringify(this._coveredGraphStateBackup) : null);
       if (bodyEl && snap) {
         const bRect = bodyEl.getBoundingClientRect();
@@ -40961,6 +41073,19 @@ class GraphApp {
       this.extraGraphCards.forEach((c, idx) => {
         if (!c || !c.el || c.el.style.display === 'none' || c.isMin || c.el.classList.contains('minimized')) return;
         const bodyEl = c.el.querySelector('.problem-card-body');
+        const liveExtraSnap = typeof this._getMutablePipCardSnapshot === 'function'
+          ? this._getMutablePipCardSnapshot(c)
+          : null;
+        if (liveExtraSnap) {
+          if (bodyEl) {
+            const cw = Math.max(160, Math.round(parseFloat(c.el.style.width) || bodyEl.clientWidth || 430));
+            const ch = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || bodyEl.clientHeight || (cw * (c.aspect || 0.82))));
+            liveExtraSnap._isPipCardSnapshot = true;
+            liveExtraSnap._pipCardW = cw;
+            liveExtraSnap._pipCardH = ch;
+          }
+          this._savePipCardSnapshot(c, liveExtraSnap);
+        }
         const snap = c.graphSnapshot;
         if (bodyEl && snap) {
           const bRect = bodyEl.getBoundingClientRect();
