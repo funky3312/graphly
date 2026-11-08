@@ -7023,14 +7023,31 @@ class GraphApp {
     const btnOpenAnother = document.getElementById('btnPdfOpenAnother');
     const btnReturnToBoard = document.getElementById('btnReturnToBoard');
 
+    const restoreDefaultCursorForFilePicker = () => {
+      if (this._uiPointerIds) this._uiPointerIds.clear();
+      if (this.virtualStylusEl && !this.isAudioPlaying) {
+        this.virtualStylusEl.style.display = 'none';
+      }
+      if (this.canvas) {
+        this.canvas.classList.remove(
+          'ink-cursor-pen',
+          'ink-cursor-highlighter',
+          'ink-cursor-eraser'
+        );
+        this.canvas.style.cursor = 'default';
+      }
+    };
+    this._restoreDefaultCursorForFilePicker = restoreDefaultCursorForFilePicker;
+
     const triggerFileOpen = (preserveReplaceFlag = false) => {
       if (fileInput) {
         if (!preserveReplaceFlag) {
           this._isReplacingViaNextCrop = false;
         }
-        // 🌟 [대표님 기획]: 파일 선택창 열리며 전체화면 풀리는 현상 방어
+        // 🌟 [대표님 기획]: 파일 선택창 열리며 전체화면 풀리는 현상 방어 + Windows 파일 열기 창 cursor:none 상속 증발 원천 차단
         this.wasFullscreenBeforeFile = document.body.classList.contains('fullscreen-mode') || Boolean(document.fullscreenElement);
         this.isWaitingForFilePicker = true;
+        restoreDefaultCursorForFilePicker();
         fileInput.value = '';
         fileInput.click();
       }
@@ -7089,8 +7106,12 @@ class GraphApp {
     if (fileInput) {
       fileInput.onchange = async (e) => {
         this.isWaitingForFilePicker = false;
+        if (this._uiPointerIds) this._uiPointerIds.clear();
         const rawFiles = e.target.files ? Array.from(e.target.files) : [];
-        if (rawFiles.length === 0) return;
+        if (rawFiles.length === 0) {
+          this.updateInkCursor();
+          return;
+        }
         const modalCloud = document.getElementById('modalCloudHub');
         if (modalCloud) modalCloud.classList.remove('show');
 
@@ -7109,6 +7130,7 @@ class GraphApp {
         // 1) 이미지 파일(1개 또는 N개 선택) 불러오기 -> 슬라이드당 1문제씩 펼쳐진 상태(▾)로 즉시 배치!
         if (imageFiles.length >= 1) {
           await this.loadImagesOnePerSlide(imageFiles);
+          this.updateInkCursor();
           return;
         }
 
@@ -7116,6 +7138,7 @@ class GraphApp {
         const graphlyFile = rawFiles.find(f => f.name && /\.(graphly|json|html|htm)$/i.test(f.name));
         if (graphlyFile) {
           this.importGraphlyDeckFile(graphlyFile);
+          this.updateInkCursor();
           return;
         }
 
@@ -7131,15 +7154,18 @@ class GraphApp {
       };
     }
 
-    // 파일 선택창 취소 시에도 상태 보호
+    // 파일 선택창 취소 시에도 상태 보호 및 커서 복원
     window.addEventListener('focus', () => {
+      if (this._uiPointerIds) this._uiPointerIds.clear();
       if (this.isWaitingForFilePicker) {
         setTimeout(() => {
           this.isWaitingForFilePicker = false;
+          if (this._uiPointerIds) this._uiPointerIds.clear();
+          this.updateInkCursor();
           if (this.wasFullscreenBeforeFile && !document.fullscreenElement) {
             this.syncFullscreenButtonUI(true);
           }
-        }, 300);
+        }, 120);
       }
     });
 
@@ -7985,6 +8011,8 @@ class GraphApp {
       document.body.classList.remove('pdf-modal-open');
       this.togglePdfCropMode(false);
     }
+    if (this._uiPointerIds) this._uiPointerIds.clear();
+    this.updateInkCursor();
     // PDF 뷰어 닫힘 즉시 메인 칠판 루프 및 화면 복원
     if (this.useIntersectionDetector) {
       this.startIntersectionLoop();
@@ -24851,12 +24879,19 @@ class GraphApp {
     }
     if (btnImportFile && inpImportFile) {
       btnImportFile.onclick = () => {
+        this.isWaitingForFilePicker = true;
+        if (typeof this._restoreDefaultCursorForFilePicker === 'function') {
+          this._restoreDefaultCursorForFilePicker();
+        }
         inpImportFile.value = '';
         inpImportFile.click();
       };
       inpImportFile.onchange = (e) => {
+        this.isWaitingForFilePicker = false;
+        if (this._uiPointerIds) this._uiPointerIds.clear();
         const file = e.target.files && e.target.files[0];
         if (file) this.importGraphlyDeckFile(file);
+        this.updateInkCursor();
       };
     }
 
@@ -37122,13 +37157,19 @@ class GraphApp {
         }
         this._isPointerInsideWindow = true;
         this._lastPointerEvent = e;
+        if (this.isWaitingForFilePicker) {
+          this.isWaitingForFilePicker = false;
+          if (this._uiPointerIds) this._uiPointerIds.clear();
+          this.updateInkCursor();
+        }
 
         if (this.isDraggingPillRemote || isAnyModalOrOverlayBlockingCanvas()) {
           if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
           return;
         }
         if (!this.isPanning && !this.isBoardPanning && this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId) && !this.isDrawingSticker && !this._tappingBoardSticker) {
-          if (e.pointerType === 'pen' && e.target === this.canvas && !isClickableUI(e.target)) {
+          const isHoveringWithoutButton = (e.pointerType === 'mouse' || !e.pointerType) && !e.buttons;
+          if (isHoveringWithoutButton || ((e.pointerType === 'pen' || e.pointerType === 'mouse' || !e.pointerType) && e.target === this.canvas && !isClickableUI(e.target) && !e.buttons)) {
             this._uiPointerIds.delete(e.pointerId);
           } else {
             if (e.pointerType === 'pen') {
@@ -37194,11 +37235,11 @@ class GraphApp {
       }, { capture: true, passive: false });
 
       const finishPointer = (e) => {
-        if (this.isPdfModalOpen) return;
-        if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) return;
         if (this._uiPointerIds && e.pointerId !== undefined) {
           this._uiPointerIds.delete(e.pointerId);
         }
+        if (this.isPdfModalOpen) return;
+        if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) return;
         const nowT = Date.now();
         if (e.pointerType === 'pen') {
           this._lastPenActiveTime = nowT;
@@ -49429,6 +49470,8 @@ class GraphApp {
           this.togglePdfCropMode();
         } else if (this.pdfDoc) {
           this.openPdfModal();
+        } else if (this.triggerLocalFileExplorer) {
+          this.triggerLocalFileExplorer();
         } else {
           const fileInput = document.getElementById('pdfFileInput');
           if (fileInput) fileInput.click();
