@@ -37065,8 +37065,11 @@ class GraphApp {
     let lastPointerMoveTime = 0;
     let lastPointerUpTime = 0;
 
-    // 🔬 [자동 범인 박제 & 최근 5건 타임라인 HUD: 필기 중에는 칠판만 보고, 씹히는 순간 손을 멈추고 위를 보면 원인이 자동 기록되어 있음]
-    let isInkDebugHudEnabled = true;
+    // 🔬 [자동 범인 박제 & 최근 5건 타임라인 HUD: 아이패드 실기기 테스트 및 ?debug=ink 전용 활성화 (PC 화면에서는 자동 숨김)]
+    let isInkDebugHudEnabled = Boolean(
+      this.isIOSOrIPad() ||
+      (typeof window !== 'undefined' && window.location && window.location.search.includes('debug=ink'))
+    );
     let diagPenCount = 0;
     let diagStylusTouchCount = 0;
     let diagTouchCount = 0;
