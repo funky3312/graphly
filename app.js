@@ -9656,7 +9656,7 @@ class GraphApp {
     }
 
     let pts = rawPts;
-    if (applyStreamline && !stroke.isShape && len > 1) {
+    if (applyStreamline && !stroke.isShape && !stroke._inPlaceStreamlined && len > 1) {
       pts = new Array(len);
       pts[0] = rawPts[0];
       for (let i = 1; i < len - 1; i++) {
@@ -10566,6 +10566,7 @@ class GraphApp {
       let currentStroke = null;
       let holdTimer = null;
       let activeProblemDrawRect = null;
+      let activeProblemPointerId = null;
 
       const getNormPos = (e, useCachedRect = false) => {
         const rect = (useCachedRect && activeProblemDrawRect && activeProblemDrawRect.width > 0)
@@ -10588,7 +10589,16 @@ class GraphApp {
       const startProblemCardStroke = (e) => {
         if (this.activeInkTool === 'sticker' || this.activeInkTool === 'laser' || this.activeInkTool === 'lasso') return false;
         const isPromotedStylus = this.isPinpointStylusTouch(e);
-        if (e.pointerType === 'pen' || isPromotedStylus) this._markStylusPenDetected();
+        if (e.pointerType === 'pen' || isPromotedStylus) {
+          const nowT = Date.now();
+          this._markStylusPenDetected();
+          this._lastPenActiveTime = nowT;
+          this._lastPenDownTime = nowT;
+          if (this.activePointers) this.activePointers.clear();
+          this._pinchState = null;
+          this._pinchWasActiveInGesture = false;
+          if (typeof this._cancelAllActiveCardDrags === 'function') this._cancelAllActiveCardDrags();
+        }
         if (e.pointerType === 'touch' && !isPromotedStylus && this.isStylusPalmRejectionActive()) return false;
         if (widget) this.bringCardToFront(widget);
         if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') return false;
@@ -10599,6 +10609,7 @@ class GraphApp {
 
         const pos = getNormPos(e, false);
         isDrawingOnProblem = true;
+        activeProblemPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
 
         const isCardStylusEraser = (
           (typeof e.buttons === 'number' && (e.buttons & 32) !== 0) ||
@@ -10631,6 +10642,8 @@ class GraphApp {
         const initCardPenStyle = (this.activeInkTool === 'highlighter') ? 'ballpen' : (this.inkPenStyle || 'ballpen');
         const hasHwP = (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01);
         const initP = hasHwP ? e.pressure : (initCardPenStyle === 'brush' ? 0.22 : (initCardPenStyle === 'fountain' ? 0.34 : 0.5));
+        const startPxX = pos.nx * pos.w;
+        const startPxY = pos.ny * pos.h;
         currentStroke = {
           color: this.currentInkColor || '#0f172a',
           size: (this.activeInkTool === 'highlighter') ? parseFloat(((this.currentHighlighterSize || 16) / 2.8).toFixed(2)) : (this.currentInkSize || 3.5),
@@ -10639,8 +10652,11 @@ class GraphApp {
           penStyle: initCardPenStyle,
           softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
           _hasHwP: hasHwP,
-          _holdAnchorPx: { x: pos.nx * pos.w, y: pos.ny * pos.h },
-          _lastMovePx: { x: pos.nx * pos.w, y: pos.ny * pos.h },
+          _inPlaceStreamlined: true,
+          _lastRawPx: { x: startPxX, y: startPxY },
+          _prevRawPx: { x: startPxX, y: startPxY },
+          _holdAnchorPx: { x: startPxX, y: startPxY },
+          _lastMovePx: { x: startPxX, y: startPxY },
           _shapeHoldDetected: false,
           tStart: recT,
           tEnd: recT,
@@ -10662,6 +10678,13 @@ class GraphApp {
             startProblemCardStroke(e);
           }
           return;
+        }
+        if (activeProblemPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeProblemPointerId) {
+          return;
+        }
+        if (e.pointerType === 'pen') {
+          this._markStylusPenDetected();
+          this._lastPenActiveTime = Date.now();
         }
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
@@ -10715,16 +10738,24 @@ class GraphApp {
           }, 340);
         }
 
-        if (! this._appendCardStrokeSamplesFromMoveEvent(currentStroke, e, activeProblemDrawRect, pos.w, pos.h, recT)) return;
+        if (!this._appendCardStrokeSamplesFromMoveEvent(currentStroke, e, activeProblemDrawRect, pos.w, pos.h, recT)) return;
 
         this.renderProblemCardCanvas(currentStroke);
       });
 
       const endProblemDraw = (e) => {
         if (!isDrawingOnProblem) return;
+        if (activeProblemPointerId !== null && e && e.pointerId !== undefined && e.pointerId !== activeProblemPointerId) {
+          return;
+        }
+        if (e && e.pointerType === 'pen') {
+          this._lastPenActiveTime = Date.now();
+        }
         const wasOneShotEraser = (this.activeInkTool === 'eraser' && !this._problemCardStylusEraser);
         const finishedCardStroke = currentStroke;
+        const endRect = activeProblemDrawRect;
         isDrawingOnProblem = false;
+        activeProblemPointerId = null;
         this._problemCardStylusEraser = false;
         activeProblemDrawRect = null;
         currentStroke = null;
@@ -10733,9 +10764,13 @@ class GraphApp {
           holdTimer = null;
         }
         if (finishedCardStroke && finishedCardStroke.points && finishedCardStroke.points.length > 0) {
-          if (this.isAudioRecording) {
-            finishedCardStroke.tEnd = this.getAudioRecordElapsedMs();
+          const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+          if (recT !== undefined) {
+            finishedCardStroke.tEnd = recT;
           }
+          const rw = Math.max(1, (endRect && endRect.width) || (pCanvas.width / this.getCanvasDpr()) || 400);
+          const rh = Math.max(1, (endRect && endRect.height) || (pCanvas.height / this.getCanvasDpr()) || 300);
+          this._finishCardStrokeTail(finishedCardStroke, e, endRect, rw, rh, recT);
           this.renderProblemCardCanvas(finishedCardStroke, true);
           this.undoStack.push({
             type: 'card_stroke_add',
@@ -11352,6 +11387,7 @@ class GraphApp {
       let curExtraStroke = null;
       let extraHoldTimer = null;
       let activeExtraDrawRect = null;
+      let activeExtraPointerId = null;
 
       const eraseExtraCardAtPoint = (sx, sy, rw, rh) => {
         const extraEraseR = Math.max(6, (this.currentEraserSize || 14) * 1.25);
@@ -11400,7 +11436,16 @@ class GraphApp {
       const startExtraCardStroke = (e) => {
         if (this.activeInkTool === 'sticker' || this.activeInkTool === 'laser' || this.activeInkTool === 'lasso') return false;
         const isPromotedStylus = this.isPinpointStylusTouch(e);
-        if (e.pointerType === 'pen' || isPromotedStylus) this._markStylusPenDetected();
+        if (e.pointerType === 'pen' || isPromotedStylus) {
+          const nowT = Date.now();
+          this._markStylusPenDetected();
+          this._lastPenActiveTime = nowT;
+          this._lastPenDownTime = nowT;
+          if (this.activePointers) this.activePointers.clear();
+          this._pinchState = null;
+          this._pinchWasActiveInGesture = false;
+          if (typeof this._cancelAllActiveCardDrags === 'function') this._cancelAllActiveCardDrags();
+        }
         if (e.pointerType === 'touch' && !isPromotedStylus && this.isStylusPalmRejectionActive()) return false;
         this.bringCardToFront(cardWidgetEl);
         if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') return false;
@@ -11414,6 +11459,7 @@ class GraphApp {
         const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rw));
         const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rh));
         isDrawingExtraInk = true;
+        activeExtraPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
 
         const isCardStylusEraser = (
           (typeof e.buttons === 'number' && (e.buttons & 32) !== 0) ||
@@ -11430,6 +11476,8 @@ class GraphApp {
         const initExtraPenStyle = (this.activeInkTool === 'highlighter') ? 'ballpen' : (this.inkPenStyle || 'ballpen');
         const hasHwP = (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01);
         const initP = hasHwP ? e.pressure : (initExtraPenStyle === 'brush' ? 0.22 : (initExtraPenStyle === 'fountain' ? 0.34 : 0.5));
+        const startPxX = nx * rw;
+        const startPxY = ny * rh;
         curExtraStroke = {
           color: this.currentInkColor || '#0f172a',
           size: (this.activeInkTool === 'highlighter') ? parseFloat(((this.currentHighlighterSize || 16) / 2.8).toFixed(2)) : (this.currentInkSize || 3.5),
@@ -11438,8 +11486,11 @@ class GraphApp {
           penStyle: initExtraPenStyle,
           softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
           _hasHwP: hasHwP,
-          _holdAnchorPx: { x: nx * rw, y: ny * rh },
-          _lastMovePx: { x: nx * rw, y: ny * rh },
+          _inPlaceStreamlined: true,
+          _lastRawPx: { x: startPxX, y: startPxY },
+          _prevRawPx: { x: startPxX, y: startPxY },
+          _holdAnchorPx: { x: startPxX, y: startPxY },
+          _lastMovePx: { x: startPxX, y: startPxY },
           _shapeHoldDetected: false,
           tStart: recT,
           tEnd: recT,
@@ -11461,6 +11512,13 @@ class GraphApp {
             startExtraCardStroke(e);
           }
           return;
+        }
+        if (activeExtraPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeExtraPointerId) {
+          return;
+        }
+        if (e.pointerType === 'pen') {
+          this._markStylusPenDetected();
+          this._lastPenActiveTime = Date.now();
         }
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
@@ -11513,9 +11571,17 @@ class GraphApp {
 
       const endExtraCardInk = (e) => {
         if (!isDrawingExtraInk) return;
+        if (activeExtraPointerId !== null && e && e.pointerId !== undefined && e.pointerId !== activeExtraPointerId) {
+          return;
+        }
+        if (e && e.pointerType === 'pen') {
+          this._lastPenActiveTime = Date.now();
+        }
         const wasOneShotEraser = (this.activeInkTool === 'eraser' && !cardWidgetEl._extraStylusEraser);
         const finishedSt = curExtraStroke;
+        const endRect = activeExtraDrawRect;
         isDrawingExtraInk = false;
+        activeExtraPointerId = null;
         cardWidgetEl._extraStylusEraser = false;
         activeExtraDrawRect = null;
         curExtraStroke = null;
@@ -11524,9 +11590,13 @@ class GraphApp {
           extraHoldTimer = null;
         }
         if (finishedSt && finishedSt.points && finishedSt.points.length > 0) {
-          if (this.isAudioRecording) finishedSt.tEnd = this.getAudioRecordElapsedMs();
+          const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+          if (recT !== undefined) finishedSt.tEnd = recT;
+          const rw = Math.max(1, (endRect && endRect.width) || (extraInkCanvas.width / this.getCanvasDpr()) || 430);
+          const rh = Math.max(1, (endRect && endRect.height) || (extraInkCanvas.height / this.getCanvasDpr()) || 353);
+          this._finishCardStrokeTail(finishedSt, e, endRect, rw, rh, recT);
           if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
-            this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, false, finishedSt);
+            this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true, finishedSt);
           }
           renderExtraCardInk(finishedSt, true);
           this.undoStack.push({
@@ -14042,6 +14112,7 @@ class GraphApp {
       let currentStroke = null;
       let graphHoldTimer = null;
       let activeGraphDrawRect = null;
+      let activeGraphCardPointerId = null;
 
       const restartGraphCardHoldTimer = (w, h) => {
         if (graphHoldTimer) {
@@ -14082,7 +14153,16 @@ class GraphApp {
       const startGraphCardStroke = (e) => {
         if (this.activeInkTool === 'sticker' || this.activeInkTool === 'laser' || this.activeInkTool === 'lasso') return false;
         const isPromotedStylus = this.isPinpointStylusTouch(e);
-        if (e.pointerType === 'pen' || isPromotedStylus) this._markStylusPenDetected();
+        if (e.pointerType === 'pen' || isPromotedStylus) {
+          const nowT = Date.now();
+          this._markStylusPenDetected();
+          this._lastPenActiveTime = nowT;
+          this._lastPenDownTime = nowT;
+          if (this.activePointers) this.activePointers.clear();
+          this._pinchState = null;
+          this._pinchWasActiveInGesture = false;
+          if (typeof this._cancelAllActiveCardDrags === 'function') this._cancelAllActiveCardDrags();
+        }
         if (e.pointerType === 'touch' && !isPromotedStylus && this.isStylusPalmRejectionActive()) return false;
         if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') return false;
         if (e.cancelable !== false) e.preventDefault();
@@ -14091,6 +14171,7 @@ class GraphApp {
 
         const pos = getNormPos(e, false);
         isDrawingOnGraphCard = true;
+        activeGraphCardPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
 
         const isCardStylusEraser = (
           (typeof e.buttons === 'number' && (e.buttons & 32) !== 0) ||
@@ -14107,6 +14188,8 @@ class GraphApp {
         const initGraphCardPenStyle = (this.activeInkTool === 'highlighter') ? 'ballpen' : (this.inkPenStyle || 'ballpen');
         const hasHwP = (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01);
         const initP = hasHwP ? e.pressure : (initGraphCardPenStyle === 'brush' ? 0.22 : (initGraphCardPenStyle === 'fountain' ? 0.34 : 0.5));
+        const startPxX = pos.nx * pos.w;
+        const startPxY = pos.ny * pos.h;
         currentStroke = {
           color: this.currentInkColor || '#1e293b',
           size: (this.activeInkTool === 'highlighter') ? parseFloat(((this.currentHighlighterSize || 16) / 2.8).toFixed(2)) : (this.currentInkSize || 3.5),
@@ -14115,8 +14198,11 @@ class GraphApp {
           penStyle: initGraphCardPenStyle,
           softBlur: (this.activeInkTool === 'highlighter') ? 0 : (this.inkSoftBlur || 0),
           _hasHwP: hasHwP,
-          _holdAnchorPx: { x: pos.nx * pos.w, y: pos.ny * pos.h },
-          _lastMovePx: { x: pos.nx * pos.w, y: pos.ny * pos.h },
+          _inPlaceStreamlined: true,
+          _lastRawPx: { x: startPxX, y: startPxY },
+          _prevRawPx: { x: startPxX, y: startPxY },
+          _holdAnchorPx: { x: startPxX, y: startPxY },
+          _lastMovePx: { x: startPxX, y: startPxY },
           _shapeHoldDetected: false,
           tStart: recT,
           tEnd: recT,
@@ -14138,6 +14224,13 @@ class GraphApp {
             startGraphCardStroke(e);
           }
           return;
+        }
+        if (activeGraphCardPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeGraphCardPointerId) {
+          return;
+        }
+        if (e.pointerType === 'pen') {
+          this._markStylusPenDetected();
+          this._lastPenActiveTime = Date.now();
         }
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
@@ -14187,9 +14280,17 @@ class GraphApp {
 
       const endGraphCardDraw = (e) => {
         if (!isDrawingOnGraphCard) return;
+        if (activeGraphCardPointerId !== null && e && e.pointerId !== undefined && e.pointerId !== activeGraphCardPointerId) {
+          return;
+        }
+        if (e && e.pointerType === 'pen') {
+          this._lastPenActiveTime = Date.now();
+        }
         const wasOneShotEraser = (this.activeInkTool === 'eraser' && !this._graphCardStylusEraser);
         const finishedCardStroke = currentStroke;
+        const endRect = activeGraphDrawRect;
         isDrawingOnGraphCard = false;
+        activeGraphCardPointerId = null;
         this._graphCardStylusEraser = false;
         activeGraphDrawRect = null;
         currentStroke = null;
@@ -14198,11 +14299,15 @@ class GraphApp {
           graphHoldTimer = null;
         }
         if (finishedCardStroke && finishedCardStroke.points && finishedCardStroke.points.length > 0) {
-          if (this.isAudioRecording) {
-            finishedCardStroke.tEnd = this.getAudioRecordElapsedMs();
+          const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+          if (recT !== undefined) {
+            finishedCardStroke.tEnd = recT;
           }
+          const rw = Math.max(1, (endRect && endRect.width) || (gCanvas.width / this.getCanvasDpr()) || 430);
+          const rh = Math.max(1, (endRect && endRect.height) || (gCanvas.height / this.getCanvasDpr()) || 353);
+          this._finishCardStrokeTail(finishedCardStroke, e, endRect, rw, rh, recT);
           if (typeof this._ensurePipCardInkMathCoords === 'function') {
-            this._ensurePipCardInkMathCoords('primary', false, finishedCardStroke);
+            this._ensurePipCardInkMathCoords('primary', true, finishedCardStroke);
           }
           this.renderGraphCardCanvas(finishedCardStroke, true);
           this.undoStack.push({
@@ -14929,8 +15034,24 @@ class GraphApp {
 
   _syncPipCardInkToFullGraph(cardRef, cardUnitScale, fullUnitScale) {
     if (!cardRef) return;
-    this._ensurePipCardInkMathCoords(cardRef);
     const cardStrokes = this._getPipCardInkStrokesArray(cardRef);
+    if (Array.isArray(cardStrokes) && cardStrokes.length > 0) {
+      const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
+      const bodyEl = widget ? (isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body')) : null;
+      const aspect = isPrimary ? (this.graphCardAspect || 0.82) : ((cardRef && cardRef.aspect) || 0.82);
+      const cardW = Math.max(160, Math.round((widget && parseFloat(widget.style.width)) || (bodyEl && bodyEl.clientWidth) || 430));
+      const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
+      let anyPolished = false;
+      cardStrokes.forEach(cs => {
+        if (cs && !cs.isShape && !cs.isHighlighter && !cs._jitterPolished && Array.isArray(cs.points) && cs.points.length >= 3) {
+          this._polishCardStrokeMicroJitter(cs, cardW, cardH);
+          anyPolished = true;
+        }
+      });
+      this._ensurePipCardInkMathCoords(cardRef, anyPolished);
+    } else {
+      this._ensurePipCardInkMathCoords(cardRef);
+    }
 
     if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
     this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
@@ -15023,6 +15144,8 @@ class GraphApp {
           isHighlighter: Boolean(gs.isHighlighter),
           penStyle: gs.penStyle || 'ballpen',
           softBlur: gs.softBlur || 0,
+          _inPlaceStreamlined: true,
+          _jitterPolished: true,
           tStart: gs.tStart,
           tEnd: gs.tEnd,
           points: pts
@@ -17365,101 +17488,265 @@ class GraphApp {
     }
   }
 
-  // 🌟 [문제/그래프 카드 240Hz 서브프레임 수집 + 계단 노이즈 필터 + 코너 필압 보정기 (펜 끝 딜레이 0ms)]
+  // 🌟 [문제/그래프 카드 명필 스트림라인 수집기: WebKit Coalesced 중복/역순 오염 원천 차단 + 실시간 2차 인플레이스 스트림라인 보정]
+  // - iPadOS Safari(WebKit)에서 getCoalescedEvents()가 이전 프레임의 과거 샘플을 중복/역순으로 섞어 반환하여
+  //   글씨가 지그재그(Z자 스파이크)로 삐뚤어지던 현상을 원천 차단하기 위해 메인 칠판 표준(단일 확정 이벤트 + 실시간 2차 인플레이스 스트림라인)으로 통일!
+  // - 창모드에서 쓴 stroke.points 자체에 스무딩된 좌표를 직접 기록하여, 전체화면 그래프 모드([⛶])로 2.75배 확대 전환 시에도
+  //   삐뚤거림 없이 메인 칠판 필기와 100.000% 동일한 매끄러운 곡선이 유지됩니다!
   _appendCardStrokeSamplesFromMoveEvent(stroke, e, rect, w, h, recT) {
     if (!stroke || !Array.isArray(stroke.points) || !e) return false;
     const rLeft = rect ? rect.left : 0;
     const rTop = rect ? rect.top : 0;
     const rw = Math.max(1, w || (rect && rect.width) || 1);
     const rh = Math.max(1, h || (rect && rect.height) || 1);
-    const finalNx = Math.max(0, Math.min(1, (e.clientX - rLeft) / rw));
-    const finalNy = Math.max(0, Math.min(1, (e.clientY - rTop) / rh));
-    const finalPxX = finalNx * rw;
-    const finalPxY = finalNy * rh;
+    const rawNx = Math.max(0, Math.min(1, (e.clientX - rLeft) / rw));
+    const rawNy = Math.max(0, Math.min(1, (e.clientY - rTop) / rh));
+    const rawPxX = rawNx * rw;
+    const rawPxY = rawNy * rh;
 
-    const sampleEvents = [];
-    const lastPt0 = stroke.points[stroke.points.length - 1];
-    const rawCoalesced = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null;
-    if (rawCoalesced && rawCoalesced.length > 1 && lastPt0) {
-      let anchorX = lastPt0.nx * rw;
-      let anchorY = lastPt0.ny * rh;
-      let remDist = Math.hypot(finalPxX - anchorX, finalPxY - anchorY);
-      if (remDist >= 2.2) {
-        for (let ci = 0; ci < rawCoalesced.length; ci++) {
-          const cev = rawCoalesced[ci];
-          if (!cev) continue;
-          const cnx = Math.max(0, Math.min(1, (cev.clientX - rLeft) / rw));
-          const cny = Math.max(0, Math.min(1, (cev.clientY - rTop) / rh));
-          const cx = cnx * rw;
-          const cy = cny * rh;
-          const stepFromAnchor = Math.hypot(cx - anchorX, cy - anchorY);
-          const distToFinal = Math.hypot(finalPxX - cx, finalPxY - cy);
-          if (distToFinal < 0.6) continue;
-          if (stepFromAnchor >= 0.85 && distToFinal <= remDist - 0.5) {
-            const vxA = cx - anchorX, vyA = cy - anchorY;
-            const vxF = finalPxX - cx, vyF = finalPxY - cy;
-            if (vxA * vxF + vyA * vyF > -0.15 * stepFromAnchor * distToFinal) {
-              sampleEvents.push({ ev: cev, nx: cnx, ny: cny, px: cx, py: cy });
-              anchorX = cx;
-              anchorY = cy;
-              remDist = distToFinal;
-            }
-          }
-        }
-      }
+    const prevPt = stroke.points[stroke.points.length - 1];
+    const lastRaw = stroke._lastRawPx || (prevPt ? { x: prevPt.nx * rw, y: prevPt.ny * rh } : null);
+    const minDist = (e.pointerType === 'mouse') ? 1.15 : 1.05;
+    if (lastRaw) {
+      const rawStepDist = Math.hypot(rawPxX - lastRaw.x, rawPxY - lastRaw.y);
+      if (rawStepDist < minDist) return false;
     }
-    sampleEvents.push({ ev: e, nx: finalNx, ny: finalNy, px: finalPxX, py: finalPxY });
 
-    const minDist = (e.pointerType === 'mouse') ? 1.15 : 0.85;
-    let addedAny = false;
-    for (let si = 0; si < sampleEvents.length; si++) {
-      const sItem = sampleEvents[si];
-      const prevPt = stroke.points[stroke.points.length - 1];
-      const stepDist = prevPt ? Math.hypot(sItem.px - prevPt.nx * rw, sItem.py - prevPt.ny * rh) : 0;
-      if (stepDist < minDist) continue;
-      const rawP = (sItem.ev && typeof sItem.ev.pressure === 'number') ? sItem.ev.pressure : 0.5;
-      if (rawP > 0 && Math.abs(rawP - 0.5) > 0.01) stroke._hasHwP = true;
+    stroke._prevRawPx = lastRaw ? { x: lastRaw.x, y: lastRaw.y } : { x: rawPxX, y: rawPxY };
+    stroke._lastRawPx = { x: rawPxX, y: rawPxY };
+    stroke._inPlaceStreamlined = true;
+    stroke._jitterPolished = false;
 
-      let cornerBoost = 0;
-      if (stroke.points.length >= 2) {
-        const pA = stroke.points[stroke.points.length - 2];
-        const pB = prevPt;
-        const vx1 = (pB.nx - pA.nx) * rw, vy1 = (pB.ny - pA.ny) * rh;
-        const vx2 = sItem.px - pB.nx * rw, vy2 = sItem.py - pB.ny * rh;
+    let sx = rawPxX;
+    let sy = rawPxY;
+    const ptsLen = stroke.points.length;
+
+    if (!stroke.isHighlighter && ptsLen >= 1) {
+      const pPrev1 = stroke.points[ptsLen - 1];
+      const p1x = pPrev1.nx * rw;
+      const p1y = pPrev1.ny * rh;
+      const stepD = Math.hypot(rawPxX - p1x, rawPxY - p1y);
+      const blurBoost = Math.min(1.0, (stroke.softBlur || this.inkSoftBlur || 0) / 5.0);
+
+      let cosTurn = 1.0;
+      let minCurveSmooth = 0.24;
+      if (ptsLen >= 2) {
+        const pPrev2 = stroke.points[ptsLen - 2];
+        const p2x = pPrev2.nx * rw;
+        const p2y = pPrev2.ny * rh;
+        const vx1 = p1x - p2x, vy1 = p1y - p2y;
+        const vx2 = rawPxX - p1x, vy2 = rawPxY - p1y;
         const l1 = Math.hypot(vx1, vy1), l2 = Math.hypot(vx2, vy2);
-        if (l1 > 0.6 && l2 > 0.6) {
-          const cosAng = (vx1 * vx2 + vy1 * vy2) / (l1 * l2);
-          if (cosAng < 0.72) {
-            cornerBoost = Math.min(1.0, (0.72 - cosAng) / 1.1);
+        if (l1 > 0.4 && l2 > 0.4) {
+          cosTurn = (vx1 * vx2 + vy1 * vy2) / (l1 * l2);
+          if (cosTurn > 0.25 && cosTurn < 0.97) {
+            minCurveSmooth = 0.30;
           }
         }
       }
 
-      const moveP = this.computeDynamicStrokePressure(
-        rawP || 0.5,
-        Boolean(stroke._hasHwP),
-        stepDist,
-        stroke.penStyle || 'ballpen',
-        prevPt ? prevPt.p : 0.5,
-        stroke.points.length,
-        cornerBoost
-      );
-      this._appendNormalizedCardPointWithArcSubdivision(
-        stroke.points,
-        sItem.nx,
-        sItem.ny,
-        moveP,
-        recT,
-        rw,
-        rh,
-        Boolean(stroke.isHighlighter)
-      );
-      addedAny = true;
+      const fastThresh = 6.5 + blurBoost * 4.0;
+      let smoothScale = stepD > fastThresh
+        ? Math.max(minCurveSmooth, 1.0 - (stepD - fastThresh) / 16.0)
+        : 1.0;
+
+      // 의도적인 급격한 모서리 꺾임(+, 4, z, ㄱ, ㄴ 등)에서는 코너가 둥글게 깎이지 않도록 스무딩 비중 완화
+      if (cosTurn < 0.20 && stepD > 2.0) {
+        smoothScale *= 0.35;
+      } else if (cosTurn < 0.45 && stepD > 2.2) {
+        smoothScale *= 0.68;
+      }
+
+      if (ptsLen >= 2 && smoothScale > 0.01) {
+        const pPrev2 = stroke.points[ptsLen - 2];
+        const p2x = pPrev2.nx * rw;
+        const p2y = pPrev2.ny * rh;
+        const w2 = (0.15 + blurBoost * 0.05) * smoothScale;
+        const w1 = (0.35 + blurBoost * 0.10) * smoothScale;
+        const w0 = 1.0 - w1 - w2;
+        sx = p2x * w2 + p1x * w1 + rawPxX * w0;
+        sy = p2y * w2 + p1y * w1 + rawPxY * w0;
+      } else if (ptsLen === 1 && smoothScale > 0.01) {
+        const w1 = (0.32 + blurBoost * 0.12) * smoothScale;
+        const w0 = 1.0 - w1;
+        sx = p1x * w1 + rawPxX * w0;
+        sy = p1y * w1 + rawPxY * w0;
+      }
     }
-    return addedAny;
+
+    const stepDist = prevPt ? Math.hypot(sx - prevPt.nx * rw, sy - prevPt.ny * rh) : 0;
+    if (prevPt && stepDist < 0.35) return false;
+
+    const rawP = (typeof e.pressure === 'number') ? e.pressure : 0.5;
+    if (rawP > 0 && Math.abs(rawP - 0.5) > 0.01) stroke._hasHwP = true;
+
+    let cornerBoost = 0;
+    if (ptsLen >= 2) {
+      const pA = stroke.points[ptsLen - 2];
+      const pB = prevPt;
+      const vx1 = (pB.nx - pA.nx) * rw, vy1 = (pB.ny - pA.ny) * rh;
+      const vx2 = sx - pB.nx * rw, vy2 = sy - pB.ny * rh;
+      const l1 = Math.hypot(vx1, vy1), l2 = Math.hypot(vx2, vy2);
+      if (l1 > 0.6 && l2 > 0.6) {
+        const cosAng = (vx1 * vx2 + vy1 * vy2) / (l1 * l2);
+        if (cosAng < 0.72) {
+          cornerBoost = Math.min(1.0, (0.72 - cosAng) / 1.1);
+        }
+      }
+    }
+
+    const moveP = this.computeDynamicStrokePressure(
+      rawP || 0.5,
+      Boolean(stroke._hasHwP),
+      stepDist,
+      stroke.penStyle || 'ballpen',
+      prevPt ? prevPt.p : 0.5,
+      ptsLen,
+      cornerBoost
+    );
+
+    const smoothNx = Math.max(0, Math.min(1, sx / rw));
+    const smoothNy = Math.max(0, Math.min(1, sy / rh));
+
+    this._appendNormalizedCardPointWithArcSubdivision(
+      stroke.points,
+      smoothNx,
+      smoothNy,
+      moveP,
+      recT,
+      rw,
+      rh,
+      Boolean(stroke.isHighlighter)
+    );
+    return true;
   }
 
-  // 🌟 [문제/그래프 카드 필기 전용 원호 내분점 자동 보간기]
+  // 🌟 [문제/그래프 카드 펜 뗄 때(pointerup) 끝점 마감 + 코너 보존 마이크로 지그재그 정돈]
+  _finishCardStrokeTail(stroke, e, rect, w, h, recT) {
+    if (!stroke || !Array.isArray(stroke.points) || stroke.points.length === 0) return;
+    if (stroke.isShape || stroke._shapeHoldDetected) return;
+    const rw = Math.max(1, w || (rect && rect.width) || 430);
+    const rh = Math.max(1, h || (rect && rect.height) || 353);
+
+    let rawEnd = stroke._lastRawPx || null;
+    if (e && typeof e.clientX === 'number' && typeof e.clientY === 'number' && rect && rect.width > 0) {
+      const endNx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rw));
+      const endNy = Math.max(0, Math.min(1, (e.clientY - rect.top) / rh));
+      rawEnd = { x: endNx * rw, y: endNy * rh };
+    }
+
+    if (rawEnd && stroke.points.length >= 1) {
+      const lastPt = stroke.points[stroke.points.length - 1];
+      const lastX = lastPt.nx * rw;
+      const lastY = lastPt.ny * rh;
+      const tailDist = Math.hypot(rawEnd.x - lastX, rawEnd.y - lastY);
+      if (tailDist >= 0.4) {
+        const endX = stroke.isHighlighter ? rawEnd.x : (lastX * 0.24 + rawEnd.x * 0.76);
+        const endY = stroke.isHighlighter ? rawEnd.y : (lastY * 0.24 + rawEnd.y * 0.76);
+        let p = (typeof lastPt.p === 'number') ? lastPt.p : 0.5;
+        const curPenStyle = stroke.penStyle || 'ballpen';
+        if (curPenStyle === 'fountain') {
+          p = Math.max(0.10, p * 0.55);
+        } else if (curPenStyle === 'brush') {
+          p = Math.max(0.06, p * 0.45);
+        }
+        stroke.points.push({
+          nx: Math.max(0, Math.min(1, endX / rw)),
+          ny: Math.max(0, Math.min(1, endY / rh)),
+          p,
+          t: recT !== undefined ? recT : lastPt.t
+        });
+      }
+    }
+
+    if (!stroke.isHighlighter && stroke.points.length >= 3) {
+      this._polishCardStrokeMicroJitter(stroke, rw, rh);
+    } else {
+      stroke._jitterPolished = true;
+    }
+  }
+
+  // 🌟 [창모드 ➔ 전체화면 2.75배 확대 대응 코너 보존 마이크로 지터·지그재그 정돈 엔진]
+  _polishCardStrokeMicroJitter(stroke, w, h) {
+    if (!stroke || stroke.isHighlighter || stroke.isShape || !Array.isArray(stroke.points)) return;
+    const pts = stroke.points;
+    const len = pts.length;
+    if (len < 3) {
+      stroke._jitterPolished = true;
+      return;
+    }
+    const rw = Math.max(10, w || 430);
+    const rh = Math.max(10, h || 353);
+    let px = new Float64Array(len);
+    let py = new Float64Array(len);
+    for (let i = 0; i < len; i++) {
+      px[i] = (pts[i].nx || 0) * rw;
+      py[i] = (pts[i].ny || 0) * rh;
+    }
+
+    for (let pass = 0; pass < 2; pass++) {
+      const nextX = new Float64Array(px);
+      const nextY = new Float64Array(py);
+      for (let i = 1; i < len - 1; i++) {
+        const vx1 = px[i] - px[i - 1];
+        const vy1 = py[i] - py[i - 1];
+        const vx2 = px[i + 1] - px[i];
+        const vy2 = py[i + 1] - py[i];
+        const l1 = Math.hypot(vx1, vy1);
+        const l2 = Math.hypot(vx2, vy2);
+        if (l1 < 0.05 || l2 < 0.05) continue;
+
+        const cx = px[i + 1] - px[i - 1];
+        const cy = py[i + 1] - py[i - 1];
+        const lc = Math.hypot(cx, cy);
+        const crossCur = vx1 * vy2 - vy1 * vx2;
+        const dPerp = lc > 1e-4 ? (Math.abs(crossCur) / lc) : 0;
+        const cosAng = (vx1 * vx2 + vy1 * vy2) / (l1 * l2);
+
+        // 의도적인 글자 모서리/꺾임(+, 4, z, ㄱ, ㄴ 등)은 100% 원형 보존
+        if (cosAng < 0.30 && dPerp > 1.35) continue;
+        if (dPerp > 2.4) continue;
+
+        let isZigzag = false;
+        if (i >= 2) {
+          const pvx0 = px[i - 1] - px[i - 2];
+          const pvy0 = py[i - 1] - py[i - 2];
+          const crossPrev = pvx0 * vy1 - pvy0 * vx1;
+          if (crossPrev * crossCur < -1e-4) isZigzag = true;
+        }
+        if (!isZigzag && i <= len - 3) {
+          const nvx3 = px[i + 2] - px[i + 1];
+          const nvy3 = py[i + 2] - py[i + 1];
+          const crossNext = vx2 * nvy3 - vy2 * nvx3;
+          if (crossCur * crossNext < -1e-4) isZigzag = true;
+        }
+
+        let alpha = 0;
+        if (isZigzag) {
+          alpha = pass === 0 ? 0.48 : 0.38;
+        } else if (dPerp <= 1.25 && cosAng > 0.55) {
+          alpha = pass === 0 ? 0.30 : 0.22;
+        }
+
+        if (alpha > 0) {
+          const midX = (px[i - 1] + px[i + 1]) * 0.5;
+          const midY = (py[i - 1] + py[i + 1]) * 0.5;
+          nextX[i] = px[i] * (1 - alpha) + midX * alpha;
+          nextY[i] = py[i] * (1 - alpha) + midY * alpha;
+        }
+      }
+      px = nextX;
+      py = nextY;
+    }
+
+    for (let i = 1; i < len - 1; i++) {
+      pts[i].nx = Math.max(0, Math.min(1, px[i] / rw));
+      pts[i].ny = Math.max(0, Math.min(1, py[i] / rh));
+    }
+    stroke._jitterPolished = true;
+  }
+
+  // 🌟 [문제/그래프 카드 필기 전용 원호 내분점 자동 보간기 (고속 원호 전용, 작은 글씨 왜곡 방지)]
   _appendNormalizedCardPointWithArcSubdivision(pointsArr, nx, ny, moveP, recT, w, h, isHighlighter = false) {
     if (!Array.isArray(pointsArr)) return;
     if (!isHighlighter && pointsArr.length >= 2 && w > 10 && h > 10) {
@@ -17471,11 +17758,11 @@ class GraphApp {
       const vx1 = bx - ax, vy1 = by - ay;
       const vx2 = cx - bx, vy2 = cy - by;
       const len1 = Math.hypot(vx1, vy1), len2 = Math.hypot(vx2, vy2);
-      if (len2 > 5.0 && len1 > 1.5) {
+      if (len2 > 11.5 && len1 > 3.0) {
         const u1x = vx1 / len1, u1y = vy1 / len1;
         const u2x = vx2 / len2, u2y = vy2 / len2;
         const cosTurn = Math.max(-1, Math.min(1, u1x * u2x + u1y * u2y));
-        if (cosTurn > -0.35 && cosTurn < 0.985) {
+        if (cosTurn > 0.20 && cosTurn < 0.975) {
           let normX = u1x - cosTurn * u2x;
           let normY = u1y - cosTurn * u2y;
           const nLen = Math.hypot(normX, normY);
@@ -17485,7 +17772,7 @@ class GraphApp {
             const theta = Math.acos(cosTurn);
             const ratioScale = Math.min(1.0, len1 / (len2 * 0.65));
             const sagitta = 0.5 * len2 * Math.min(0.28, Math.tan(theta * 0.25)) * ratioScale;
-            const subCount = len2 > 16.0 ? 2 : 1;
+            const subCount = len2 > 22.0 ? 2 : 1;
             const prevP = (typeof pPrevB.p === 'number') ? pPrevB.p : 0.5;
             for (let s = 1; s <= subCount; s++) {
               const t = s / (subCount + 1);
@@ -35620,6 +35907,17 @@ class GraphApp {
           if (e.pointerType === 'pen' && e.target === this.canvas && !isClickableUI(e.target)) {
             this._uiPointerIds.delete(e.pointerId);
           } else {
+            if (e.pointerType === 'pen') {
+              this._markStylusPenDetected();
+              this._lastPenActiveTime = Date.now();
+              this._touchPanDeadzoneLocked = false;
+              this._deferredSingleTouchPanEvent = null;
+            }
+            if (e.target && e.target.closest && e.target.closest('.problem-card-body') && !this.isPointerOverMenu(e)) {
+              const cPos = getPos(e);
+              this.updateStylusPenPosition(cPos.x, cPos.y, e);
+              return;
+            }
             if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
             return;
           }
