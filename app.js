@@ -22710,6 +22710,12 @@ class GraphApp {
     } else {
       document.body.classList.remove('theme-light');
     }
+    if (document.documentElement) {
+      document.documentElement.style.setProperty('--app-root-bg', theme.bg);
+      document.documentElement.style.backgroundColor = theme.bg;
+    }
+    document.body.style.setProperty('--app-root-bg', theme.bg);
+    document.body.style.backgroundColor = theme.bg;
 
     // 🌟 [컨테이너 배경 동기화]: 캔버스와 부모 컨테이너 배경색을 완전히 일치시켜 경계 깜빡임 0%화
     if (this.canvas && this.canvas.parentElement) {
@@ -33350,7 +33356,36 @@ class GraphApp {
     return Math.min(2.5, Math.max(2.0, window.devicePixelRatio || 2.0));
   }
 
+  _syncIosTopStatusGuard() {
+    if (typeof window === 'undefined' || typeof document === 'undefined' || !document.body) return;
+    const isIOS = this.isIOSOrIPad();
+    if (!isIOS) {
+      document.body.classList.remove('ios-top-guard-active');
+      return;
+    }
+    const isStandalone = Boolean(
+      window.navigator.standalone === true ||
+      (window.matchMedia && (window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches))
+    );
+    const scrMin = Math.min(window.screen.width || 0, window.screen.height || 0);
+    const scrMax = Math.max(window.screen.width || 0, window.screen.height || 0);
+    const winH = window.innerHeight || 0;
+    const isFullTopViewport = (scrMin > 0 && Math.abs(winH - scrMin) < 48) || (scrMax > 0 && Math.abs(winH - scrMax) < 48);
+    const shouldGuard = isStandalone || isFullTopViewport;
+    document.body.classList.toggle('ios-top-guard-active', shouldGuard);
+    const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || null;
+    if (curTheme && curTheme.bg) {
+      if (document.documentElement) {
+        document.documentElement.style.setProperty('--app-root-bg', curTheme.bg);
+        document.documentElement.style.backgroundColor = curTheme.bg;
+      }
+      document.body.style.setProperty('--app-root-bg', curTheme.bg);
+      document.body.style.backgroundColor = curTheme.bg;
+    }
+  }
+
   resizeCanvas() {
+    this._syncIosTopStatusGuard();
     const prevW = this.screenWidth;
     const prevH = this.screenHeight;
     let targetCssW = 0;

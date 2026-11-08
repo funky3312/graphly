@@ -1,7 +1,9 @@
 /* Graph Master Web - Premium Studio Aesthetics */
 :root {
   --bg-dark: #12181f;
-  --panel-bg: rgba(26, 34, 44, 0.85);
+  --app-root-bg: #ffffff;
+  --ios-top-safe-guard: 0px;
+  --panel-bg: rgba(26, 34, 44, 0.96);
   --panel-border: rgba(255, 255, 255, 0.08);
   --accent-cyan: #00d2d3;
   --accent-gold: #feca57;
@@ -54,19 +56,75 @@ body.theme-light {
   color-scheme: light;
 }
 
-/* iOS/iPadOS 26(Liquid Glass) 홈 화면 웹앱(PWA) 상단 강제 그라데이션 바 원천 차단:
-   WebKit이 최상단(top: 0) fixed 요소와 body 배경색을 스캔해 상태바 그라데이션을 결정하므로
-   캔버스 배경색과 100% 동일한 솔리드 앵커를 최상단에 배치 */
+/* iOS/iPadOS 26(Liquid Glass) 상단 스크롤 엣지 블러(UIScrollEdgeEffect) 및 그라데이션 원천 차단 (A+B+C 통합):
+   1) 아이패드/iOS 환경(body.ios-top-guard-active)에서는 상단 시계 영역(--ios-top-safe-guard: 26px)을
+      불투명 단색 솔리드 가드(body::before, z-index: 99999)로 분리하고 .main-workspace를 그 아래에서 시작하여
+      필기를 위로 밀었을 때 시계 영역 뒤로 들어가며 뿌옇게 블러 처리되는 현상을 100% 차단 (PC/안드로이드는 0px로 영향 없음)
+   2) 상단 인접 고정 요소들의 backdrop-filter: blur를 제거하여 WebKit의 상단 블러 확장 버그를 차단 */
+@supports (-webkit-touch-callout: none) {
+  :root {
+    --ios-top-safe-guard: env(safe-area-inset-top, 0px);
+  }
+  @media (display-mode: standalone), (display-mode: fullscreen) {
+    :root {
+      --ios-top-safe-guard: max(env(safe-area-inset-top, 0px), 28px);
+    }
+  }
+}
+
+body.ios-top-guard-active {
+  --ios-top-safe-guard: max(env(safe-area-inset-top, 0px), 28px);
+  padding-top: var(--ios-top-safe-guard, 28px) !important;
+}
+
 body::before {
   content: "";
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: max(2px, env(safe-area-inset-top, 0px));
-  background-color: var(--app-root-bg, #12181f);
+  height: var(--ios-top-safe-guard, 0px);
+  background-color: var(--app-root-bg, #ffffff);
   pointer-events: none;
-  z-index: 1;
+  z-index: 99999;
+}
+
+body.ios-top-guard-active .main-workspace,
+body.ios-top-guard-active.fullscreen-mode .main-workspace,
+body.ios-top-guard-active.header-collapsed .main-workspace {
+  height: calc(100vh - var(--ios-top-safe-guard, 28px)) !important;
+  height: calc(100dvh - var(--ios-top-safe-guard, 28px)) !important;
+}
+
+body.ios-top-guard-active .pdf-board-nav-bar,
+body.ios-top-guard-active .lesson-playlist-nav-bar,
+body.ios-top-guard-active .top-slide-bar-mini-tab,
+body.ios-top-guard-active .pdf-crop-active-pill {
+  top: calc(14px + var(--ios-top-safe-guard, 28px)) !important;
+}
+
+body.ios-top-guard-active #smartNoteViewerHeader {
+  top: calc(14px + var(--ios-top-safe-guard, 28px)) !important;
+}
+
+body.ios-top-guard-active #viewerGraphTouchBar {
+  top: calc(14px + var(--ios-top-safe-guard, 28px)) !important;
+}
+
+/* Method C: 상단 가장자리 인접 바들의 backdrop-filter: blur 제거 (솔리드/고밀도 캡슐화) */
+header,
+.header-show-tab,
+.ink-floating-toolbar,
+.pdf-board-nav-bar,
+.lesson-playlist-nav-bar,
+.curve-context-bar,
+.board-mode-bar,
+.n-axis-mode-bar,
+#smartNoteViewerHeader .viewer-slide-nav-group,
+#smartNoteViewerHeader .smart-viewer-right,
+#viewerGraphTouchBar {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* 상단 네비게이션 헤더 (13인치 액정 타블렛 특화: 38px 초슬림 컴팩트 & 접기 지원) */
@@ -74,7 +132,6 @@ header {
   height: 38px;
   background: var(--panel-bg);
   border-bottom: 1px solid var(--panel-border);
-  backdrop-filter: blur(16px);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -7673,6 +7730,12 @@ body.theme-light .canvas-text-input {
   body.fullscreen-mode .main-workspace,
   body.header-collapsed .main-workspace {
     height: 100dvh !important;
+  }
+
+  body.ios-top-guard-active .main-workspace,
+  body.ios-top-guard-active.fullscreen-mode .main-workspace,
+  body.ios-top-guard-active.header-collapsed .main-workspace {
+    height: calc(100dvh - var(--ios-top-safe-guard, 28px)) !important;
   }
 }
 
