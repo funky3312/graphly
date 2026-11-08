@@ -15247,33 +15247,88 @@ class GraphApp {
     }
   }
 
-  _syncPipCardInkToFullGraph(cardRef, cardUnitScale, fullUnitScale) {
-    if (!cardRef) return;
-    const cardStrokes = this._getPipCardInkStrokesArray(cardRef);
-    if (Array.isArray(cardStrokes) && cardStrokes.length > 0) {
-      const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
-      const bodyEl = widget ? (isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body')) : null;
-      const aspect = isPrimary ? (this.graphCardAspect || 0.82) : ((cardRef && cardRef.aspect) || 0.82);
-      const cardW = Math.max(160, Math.round((widget && parseFloat(widget.style.width)) || (bodyEl && bodyEl.clientWidth) || 430));
-      const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
-      let anyPolished = false;
-      cardStrokes.forEach(cs => {
-        if (cs && !cs.isShape && !cs.isHighlighter && !cs._jitterPolished && Array.isArray(cs.points) && cs.points.length >= 3) {
-          this._polishCardStrokeMicroJitter(cs, cardW, cardH);
-          anyPolished = true;
+  _convertCardStrokeListToFullGraphInkStrokes(cardStrokes, snapObj = null, cardW = 430, cardH = 353) {
+    if (!Array.isArray(cardStrokes) || cardStrokes.length === 0) return [];
+    const effW = Math.max(160, Math.round(cardW || 430));
+    const effH = Math.max(120, Math.round(cardH || 353));
+
+    const ensureMathFn = () => {
+      cardStrokes.forEach(st => {
+        if (!st || !Array.isArray(st.points)) return;
+        let forcePolished = false;
+        if (!st.isShape && !st.isHighlighter && !st._jitterPolished && st.points.length >= 3) {
+          this._polishCardStrokeMicroJitter(st, effW, effH);
+          forcePolished = true;
+        }
+        st.points.forEach(pt => {
+          if (pt && (forcePolished || typeof pt.mx !== 'number' || typeof pt.my !== 'number')) {
+            const m = this.screenToMath((pt.nx || 0) * effW, (pt.ny || 0) * effH);
+            pt.mx = m.x;
+            pt.my = m.y;
+          }
+        });
+        if (st.isShape && st.cardShape) {
+          const cs = st.cardShape;
+          if (cs.start && typeof cs.start.nx === 'number' && typeof cs.start.mx !== 'number') {
+            const m = this.screenToMath(cs.start.nx * effW, cs.start.ny * effH);
+            cs.start.mx = m.x;
+            cs.start.my = m.y;
+          }
+          if (cs.end && typeof cs.end.nx === 'number' && typeof cs.end.mx !== 'number') {
+            const m = this.screenToMath(cs.end.nx * effW, cs.end.ny * effH);
+            cs.end.mx = m.x;
+            cs.end.my = m.y;
+          }
+          if (cs.center && typeof cs.center.nx === 'number' && typeof cs.center.mx !== 'number') {
+            const mc = this.screenToMath(cs.center.nx * effW, cs.center.ny * effH);
+            const mr = this.screenToMath((cs.center.nx + (cs.rx || 0.05)) * effW, (cs.center.ny + (cs.ry || cs.rx || 0.05)) * effH);
+            cs.center.mx = mc.x;
+            cs.center.my = mc.y;
+            cs.mrx = Math.abs(mr.x - mc.x);
+            cs.mry = Math.abs(mr.y - mc.y);
+          }
+          if (cs.min && typeof cs.min.nx === 'number' && typeof cs.min.mx !== 'number') {
+            const mMin = this.screenToMath(cs.min.nx * effW, cs.min.ny * effH);
+            cs.min.mx = mMin.x;
+            cs.min.my = mMin.y;
+          }
+          if (cs.max && typeof cs.max.nx === 'number' && typeof cs.max.mx !== 'number') {
+            const mMax = this.screenToMath(cs.max.nx * effW, cs.max.ny * effH);
+            cs.max.mx = mMax.x;
+            cs.max.my = mMax.y;
+          }
+          if (Array.isArray(cs.pts)) {
+            cs.pts.forEach(vp => {
+              if (vp && typeof vp.nx === 'number' && typeof vp.mx !== 'number') {
+                const mv = this.screenToMath(vp.nx * effW, vp.ny * effH);
+                vp.mx = mv.x;
+                vp.my = mv.y;
+              }
+            });
+          }
+          if (typeof cs.x1 === 'number' && typeof cs.mx1 !== 'number') {
+            const m1 = this.screenToMath(cs.x1 * effW, cs.y1 * effH);
+            const m2 = this.screenToMath(cs.x2 * effW, cs.y2 * effH);
+            cs.mx1 = m1.x; cs.my1 = m1.y;
+            cs.mx2 = m2.x; cs.my2 = m2.y;
+          }
+          if (typeof cs.cx === 'number' && typeof cs.mcx !== 'number') {
+            const mc = this.screenToMath(cs.cx * effW, cs.cy * effH);
+            const mr = this.screenToMath((cs.cx + (cs.rx || 0)) * effW, (cs.cy + (cs.ry || 0)) * effH);
+            cs.mcx = mc.x; cs.mcy = mc.y;
+            cs.mrx = Math.abs(mr.x - mc.x);
+            cs.mry = Math.abs(mr.y - mc.y);
+          }
         }
       });
-      this._ensurePipCardInkMathCoords(cardRef, anyPolished);
-    } else {
-      this._ensurePipCardInkMathCoords(cardRef);
+    };
+
+    if (snapObj && !snapObj.isNAxisStudioCard) {
+      this._withPipCardGraphState(snapObj, effW, effH, ensureMathFn);
     }
 
-    if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
-    this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
-
-    if (!cardStrokes || cardStrokes.length === 0) return;
-
-    // 🖋️ 창모드에서는 이미 세필(0.54x)로 렌더링되므로, 전체화면 전환 시 기본 펜 굵기(cs.size)를 1:1 그대로 유지하면
+    const outStrokes = [];
+    // 🖋️ 창모드에서는 이미 세필(0.54x)로 렌더링되므로, 전체화면 및 뷰어 확대 전환 시 기본 펜 굵기(cs.size)를 1:1 그대로 유지하면
     // 확대된 수학 좌표 간격과 어우러져 글자가 뚱뚱해지지 않고 깔끔한 정사이즈로 표시됨!
     cardStrokes.forEach(cs => {
       if (!cs || !Array.isArray(cs.points) || cs.points.length === 0) return;
@@ -15306,17 +15361,92 @@ class GraphApp {
         fullStroke.isShape = true;
         fullStroke._savedCardShape = JSON.parse(JSON.stringify(cs.cardShape));
         const sh = cs.cardShape;
-        if ((sh.type === 'line' || sh.type === 'dashedLine' || sh.type === 'arrow') && typeof sh.mx1 === 'number') {
+        if (sh.type === 'line' && sh.start && typeof sh.start.mx === 'number' && sh.end && typeof sh.end.mx === 'number') {
+          fullStroke.shape = {
+            type: 'line',
+            start: { x: sh.start.mx, y: sh.start.my },
+            end: { x: sh.end.mx, y: sh.end.my }
+          };
+        } else if ((sh.type === 'line' || sh.type === 'dashedLine' || sh.type === 'arrow') && typeof sh.mx1 === 'number') {
           fullStroke.shapeType = sh.type;
+          fullStroke.shape = {
+            type: 'line',
+            start: { x: sh.mx1, y: sh.my1 },
+            end: { x: sh.mx2, y: sh.my2 }
+          };
           fullStroke.points = [
             { x: sh.mx1, y: sh.my1, p: 0.5 },
             { x: sh.mx2, y: sh.my2, p: 0.5 }
           ];
+        } else if (sh.type === 'circle' && sh.center && typeof sh.center.mx === 'number') {
+          fullStroke.shape = {
+            type: 'circle',
+            center: { x: sh.center.mx, y: sh.center.my },
+            radius: sh.mrx || 0.5
+          };
+        } else if (sh.type === 'ellipse' && sh.center && typeof sh.center.mx === 'number') {
+          fullStroke.shape = {
+            type: 'ellipse',
+            center: { x: sh.center.mx, y: sh.center.my },
+            rx: sh.mrx || 0.5,
+            ry: sh.mry || sh.mrx || 0.5
+          };
+        } else if (sh.type === 'rect' && sh.min && typeof sh.min.mx === 'number' && sh.max && typeof sh.max.mx === 'number') {
+          fullStroke.shape = {
+            type: 'rect',
+            min: { x: sh.min.mx, y: sh.min.my },
+            max: { x: sh.max.mx, y: sh.max.my }
+          };
+        } else if (Array.isArray(sh.pts) && sh.pts.length >= 2 && typeof sh.pts[0].mx === 'number') {
+          fullStroke.shape = {
+            type: sh.type,
+            closed: Boolean(sh.closed),
+            pts: sh.pts.map(vp => ({ x: vp.mx, y: vp.my }))
+          };
         }
       }
 
-      this.inkStrokes.push(fullStroke);
+      outStrokes.push(fullStroke);
     });
+
+    return outStrokes;
+  }
+
+  _buildFullGraphInkStrokesFromPipCard(cardRef) {
+    if (!cardRef) return [];
+    const cardStrokes = this._getPipCardInkStrokesArray(cardRef);
+    const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    const bodyEl = widget ? (isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body')) : null;
+    const aspect = isPrimary ? (this.graphCardAspect || 0.82) : ((cardRef && cardRef.aspect) || 0.82);
+    const cardW = Math.max(160, Math.round((widget && parseFloat(widget.style.width)) || (bodyEl && bodyEl.clientWidth) || 430));
+    const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
+    if (Array.isArray(cardStrokes) && cardStrokes.length > 0) {
+      let anyPolished = false;
+      cardStrokes.forEach(cs => {
+        if (cs && !cs.isShape && !cs.isHighlighter && !cs._jitterPolished && Array.isArray(cs.points) && cs.points.length >= 3) {
+          this._polishCardStrokeMicroJitter(cs, cardW, cardH);
+          anyPolished = true;
+        }
+      });
+      this._ensurePipCardInkMathCoords(cardRef, anyPolished);
+    } else {
+      this._ensurePipCardInkMathCoords(cardRef);
+      return [];
+    }
+    const snap = this._getMutablePipCardSnapshot(cardRef);
+    return this._convertCardStrokeListToFullGraphInkStrokes(cardStrokes, snap, cardW, cardH);
+  }
+
+  _syncPipCardInkToFullGraph(cardRef, cardUnitScale, fullUnitScale) {
+    if (!cardRef) return;
+    const syncedStrokes = this._buildFullGraphInkStrokesFromPipCard(cardRef);
+
+    if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
+    this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
+
+    if (syncedStrokes.length > 0) {
+      this.inkStrokes.push(...syncedStrokes);
+    }
     if (typeof this.clearInkCache === 'function') this.clearInkCache();
   }
 
@@ -27346,6 +27476,9 @@ class GraphApp {
         livePrimarySnap._isPipCardSnapshot = true;
         livePrimarySnap._pipCardW = cw;
         livePrimarySnap._pipCardH = ch;
+        if (typeof this._buildFullGraphInkStrokesFromPipCard === 'function') {
+          livePrimarySnap.graphInkStrokes = this._compactStrokesArray(this._buildFullGraphInkStrokesFromPipCard('primary'));
+        }
         this._savePipCardSnapshot('primary', livePrimarySnap);
       }
     }
@@ -27386,6 +27519,9 @@ class GraphApp {
               liveExtraSnap._isPipCardSnapshot = true;
               liveExtraSnap._pipCardW = cw;
               liveExtraSnap._pipCardH = ch;
+              if (typeof this._buildFullGraphInkStrokesFromPipCard === 'function') {
+                liveExtraSnap.graphInkStrokes = this._compactStrokesArray(this._buildFullGraphInkStrokesFromPipCard(c));
+              }
               this._savePipCardSnapshot(c, liveExtraSnap);
             }
           }
@@ -30866,7 +31002,17 @@ class GraphApp {
       btnTouchReset.onclick = () => {
         if (this._activeViewerHotspot && this._activeViewerHotspot.graphSnapshot) {
           this.applyPureGraphSnapshot(this._activeViewerHotspot.graphSnapshot);
+          const hasLoadedGraphInk = Array.isArray(this.inkStrokes) && this.inkStrokes.some(s => s && s.target === 'graph');
+          if (!hasLoadedGraphInk && typeof this._resolveFallbackViewerHotspotGraphInk === 'function') {
+            const fallbackStrokes = this._resolveFallbackViewerHotspotGraphInk(this._activeViewerHotspot, this._viewerSlideIdx || 0);
+            if (Array.isArray(fallbackStrokes) && fallbackStrokes.length > 0) {
+              if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
+              this.inkStrokes.push(...fallbackStrokes);
+            }
+          }
           this.autoCenterGraphForTouchViewer(this._activeViewerHotspot.graphSnapshot);
+          this._inkBakeDirty = true;
+          if (typeof this.clearInkCache === 'function') this.clearInkCache();
           this._renderViewerGraphCurveChips();
           this.render();
         }
@@ -31879,6 +32025,64 @@ class GraphApp {
     }
   }
 
+  _resolveFallbackViewerHotspotGraphInk(hotspot, slideIdx = 0) {
+    if (!hotspot || !hotspot.graphSnapshot) return [];
+    let parsedSnap = null;
+    try {
+      parsedSnap = typeof hotspot.graphSnapshot === 'string' ? JSON.parse(hotspot.graphSnapshot) : hotspot.graphSnapshot;
+    } catch (_) {
+      parsedSnap = null;
+    }
+    const hsId = String(hotspot.id || '');
+    const hsCase = Number(hotspot.caseIdx) || 1;
+
+    // 1. 슬라이드 데이터(뷰어 플레이리스트 / 멀티 슬라이드) 내부의 카드 필기 확인
+    const slideList = (Array.isArray(this._viewerPlaylist) && this._viewerPlaylist.length > 0)
+      ? this._viewerPlaylist
+      : (Array.isArray(this.slides) ? this.slides : []);
+    const slideData = slideList[slideIdx] || null;
+    if (slideData) {
+      if ((hsId === 'graph_card_1' || hsCase === 1) && slideData.primaryGraphCard && Array.isArray(slideData.primaryGraphCard.graphInkStrokes) && slideData.primaryGraphCard.graphInkStrokes.length > 0) {
+        const cw = (parsedSnap && parsedSnap._pipCardW) || slideData.primaryGraphCard.cardW || 430;
+        const ch = (parsedSnap && parsedSnap._pipCardH) || Math.round(cw * (slideData.primaryGraphCard.aspect || 0.82));
+        return this._convertCardStrokeListToFullGraphInkStrokes(
+          JSON.parse(JSON.stringify(slideData.primaryGraphCard.graphInkStrokes)),
+          parsedSnap,
+          cw,
+          ch
+        );
+      }
+      if (Array.isArray(slideData.extraGraphs) && slideData.extraGraphs.length > 0) {
+        const eg = slideData.extraGraphs.find((item, idx) => (Number(item && item.caseIdx) || (idx + 2)) === hsCase);
+        if (eg && Array.isArray(eg.cardInkStrokes) && eg.cardInkStrokes.length > 0) {
+          const cw = (parsedSnap && parsedSnap._pipCardW) || eg.cardW || 430;
+          const ch = (parsedSnap && parsedSnap._pipCardH) || Math.round(cw * (eg.aspect || 0.82));
+          return this._convertCardStrokeListToFullGraphInkStrokes(
+            JSON.parse(JSON.stringify(eg.cardInkStrokes)),
+            parsedSnap,
+            cw,
+            ch
+          );
+        }
+      }
+    }
+
+    // 2. 현재 라이브 워크스페이스의 창모드 카드 필기 확인
+    if (hsId === 'graph_card_1' || hsCase === 1) {
+      const gWidget = document.getElementById('graphCardWidget');
+      if (gWidget && gWidget.style.display !== 'none' && Array.isArray(this.graphInkStrokes) && this.graphInkStrokes.length > 0) {
+        return this._buildFullGraphInkStrokesFromPipCard('primary');
+      }
+    } else if (Array.isArray(this.extraGraphCards) && this.extraGraphCards.length > 0) {
+      const foundCard = this.extraGraphCards.find((c, idx) => c && (Number(c.caseIdx) || (idx + 2)) === hsCase);
+      if (foundCard && foundCard.el && Array.isArray(foundCard.el._cardInkStrokes) && foundCard.el._cardInkStrokes.length > 0) {
+        return this._buildFullGraphInkStrokesFromPipCard(foundCard);
+      }
+    }
+
+    return [];
+  }
+
   enterViewerGraphTouchMode(hotspot, slideIdx = 0) {
     if (!hotspot || !hotspot.graphSnapshot) return;
     try {
@@ -31901,12 +32105,23 @@ class GraphApp {
       this._viewerTouchSavedPdfBoardData = this.pdfPageBoardData;
       this.pdfPageBoardData = null;
     }
+    this._viewerTouchSavedGraphInkStrokes = Array.isArray(this.inkStrokes)
+      ? JSON.parse(JSON.stringify(this.inkStrokes.filter(s => s && s.target === 'graph')))
+      : [];
     this.isGraphCovered = false;
     this.isInkMode = false;
     document.body.classList.remove('ink-mode-active');
     this.updateInkCursor();
 
     this.applyPureGraphSnapshot(hotspot.graphSnapshot);
+    const hasLoadedGraphInk = Array.isArray(this.inkStrokes) && this.inkStrokes.some(s => s && s.target === 'graph');
+    if (!hasLoadedGraphInk) {
+      const fallbackStrokes = this._resolveFallbackViewerHotspotGraphInk(hotspot, slideIdx);
+      if (Array.isArray(fallbackStrokes) && fallbackStrokes.length > 0) {
+        if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
+        this.inkStrokes.push(...fallbackStrokes);
+      }
+    }
     this.showAxes = true;
     this.showGuides = false;
     this.activeGraphIdx = (this.graphs && this.graphs.length > 0) ? 0 : -1;
@@ -31915,6 +32130,8 @@ class GraphApp {
 
     this.resizeCanvas();
     this.autoCenterGraphForTouchViewer(hotspot.graphSnapshot);
+    this._inkBakeDirty = true;
+    if (typeof this.clearInkCache === 'function') this.clearInkCache();
 
     const touchBar = document.getElementById('viewerGraphTouchBar');
     const lblTitle = document.getElementById('lblViewerGraphTouchTitle');
@@ -32056,6 +32273,14 @@ class GraphApp {
       this.pdfPageBoardData = this._viewerTouchSavedPdfBoardData;
     }
     this._viewerTouchSavedPdfBoardData = null;
+    if (Array.isArray(this._viewerTouchSavedGraphInkStrokes)) {
+      if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
+      this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
+      this.inkStrokes.push(...this._viewerTouchSavedGraphInkStrokes);
+      this._viewerTouchSavedGraphInkStrokes = null;
+      this._inkBakeDirty = true;
+      if (typeof this.clearInkCache === 'function') this.clearInkCache();
+    }
     const touchBar = document.getElementById('viewerGraphTouchBar');
     if (touchBar) touchBar.style.display = 'none';
 
@@ -37203,10 +37428,12 @@ class GraphApp {
       this.drawTextLabels(ctx, isExport);
     }
 
-    // 🌟 [실시간 그래프 작업실 전용 필기 렌더링 (PDF 페이지 위에서 그래프 스샷 캡처 순간 및 뷰어 그래프 단독 조작 모드에는 배경 필기 생략)] 🌟
-    if (!(this._isRenderingGraphSnapshot && this.pdfPageBoardData) && !isViewerGraphTouch && (!isExport || expFilter.includeInk !== false)) {
+    // 🌟 [실시간 그래프 작업실 및 뷰어 그래프 확대 조작 모드 전용 필기 렌더링 (PDF 페이지 위에서 그래프 스샷 캡처 순간에는 배경 필기 생략)] 🌟
+    if (!(this._isRenderingGraphSnapshot && this.pdfPageBoardData) && (!isExport || expFilter.includeInk !== false)) {
       this.drawInkStrokes(ctx, isExport, 'graph');
-      this.drawBoardStickers(ctx, isExport);
+      if (!isViewerGraphTouch) {
+        this.drawBoardStickers(ctx, isExport);
+      }
     }
 
     // 🌟 [내보내기/복사 시 화면에 떠 있는 문제 카드 & 그래프 카드 합성] 🌟
@@ -41791,6 +42018,11 @@ class GraphApp {
           livePrimarySnap._pipCardW = cw;
           livePrimarySnap._pipCardH = ch;
         }
+        if (typeof this._buildFullGraphInkStrokesFromPipCard === 'function') {
+          livePrimarySnap.graphInkStrokes = (effFilter.includeInk === false)
+            ? []
+            : this._compactStrokesArray(this._buildFullGraphInkStrokesFromPipCard('primary'));
+        }
         this._savePipCardSnapshot('primary', livePrimarySnap);
       }
       const snap = this.primaryGraphCardSnapshot || (this.graphCardData && this.graphCardData.graphSnapshot) || (this._coveredGraphStateBackup ? JSON.stringify(this._coveredGraphStateBackup) : null);
@@ -41830,6 +42062,11 @@ class GraphApp {
             liveExtraSnap._isPipCardSnapshot = true;
             liveExtraSnap._pipCardW = cw;
             liveExtraSnap._pipCardH = ch;
+          }
+          if (typeof this._buildFullGraphInkStrokesFromPipCard === 'function') {
+            liveExtraSnap.graphInkStrokes = (effFilter.includeInk === false)
+              ? []
+              : this._compactStrokesArray(this._buildFullGraphInkStrokesFromPipCard(c));
           }
           this._savePipCardSnapshot(c, liveExtraSnap);
         }
