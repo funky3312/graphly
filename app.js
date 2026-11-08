@@ -4028,6 +4028,10 @@ class GraphApp {
       } else {
         this.canvas.classList.add('ink-cursor-lasso');
       }
+    } else if (this.activeInkTool === 'select') {
+      if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+      this.canvas.classList.add('ink-cursor-grab');
+      this.canvas.style.cursor = 'grab';
     } else {
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       this.canvas.style.cursor = 'default';
@@ -15685,7 +15689,7 @@ class GraphApp {
     }
     const liveCv = widget.querySelector('.graph-card-live-canvas');
     if (liveCv) {
-      liveCv.style.cursor = isDlActive ? 'crosshair' : 'move';
+      liveCv.style.cursor = isLocked ? 'move' : (isDlActive ? 'crosshair' : 'default');
     }
 
     const showCurveTools = Boolean(
@@ -16839,7 +16843,7 @@ class GraphApp {
         bodyEl.appendChild(liveCanvas);
       }
     }
-    liveCanvas.style.cursor = 'move';
+    liveCanvas.style.cursor = 'default';
 
     // 3. 라이브 캔버스 포인터 인터랙션
     // - 🔓 잠금 전 (!snap.isPipLocked): 핸들 드래그 = 개형 변형 | 곡선 드래그 = 평행이동 | 빈 여백 드래그 = 좌표축 이동 | 📍수선 모드 = 점 콕콕 수선 생성
@@ -16855,19 +16859,26 @@ class GraphApp {
     let curveFeatsSnapshot = null;
     let panInit = { x: 0, y: 0 };
     let movedDuringInteraction = false;
-    let lastHoverCheckTs = 0;
 
     const getLocalPos = (e, useCached = false) => {
       const now = performance.now();
       const curStyleLeft = widget.style.left || '';
       const curStyleTop = widget.style.top || '';
       const curStyleW = widget.style.width || '';
+      const curStyleH = bodyEl.style.height || '';
+      const curBoardZ = this.boardZoom || 1;
+      const curBoardPX = this.boardPanX || 0;
+      const curBoardPY = this.boardPanY || 0;
       if (
         cachedDownGeom &&
         cachedDownGeom.styleLeft === curStyleLeft &&
         cachedDownGeom.styleTop === curStyleTop &&
         cachedDownGeom.styleW === curStyleW &&
-        (useCached || (now - cachedDownGeomTs < 120))
+        cachedDownGeom.styleH === curStyleH &&
+        cachedDownGeom.boardZ === curBoardZ &&
+        cachedDownGeom.boardPX === curBoardPX &&
+        cachedDownGeom.boardPY === curBoardPY &&
+        ((useCached && activeMode) || (now - cachedDownGeomTs < 16))
       ) {
         return {
           x: (e.clientX - cachedDownGeom.left) * cachedDownGeom.scaleX,
@@ -16878,7 +16889,7 @@ class GraphApp {
       }
       const rect = liveCanvas.getBoundingClientRect();
       const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
-      const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || rect.width || 360));
+      const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || rect.width || 430));
       const cardH = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
       const scaleX = cardW / Math.max(1, rect.width);
       const scaleY = cardH / Math.max(1, rect.height);
@@ -16891,7 +16902,11 @@ class GraphApp {
         cardH,
         styleLeft: curStyleLeft,
         styleTop: curStyleTop,
-        styleW: curStyleW
+        styleW: curStyleW,
+        styleH: curStyleH,
+        boardZ: curBoardZ,
+        boardPX: curBoardPX,
+        boardPY: curBoardPY
       };
       cachedDownGeomTs = now;
       return {
@@ -16900,6 +16915,52 @@ class GraphApp {
         cardW,
         cardH
       };
+    };
+
+    // 🎯 [창모드 영역별 즉각 포인터 판별기]:
+    // - 핸들 위: 'grab'(손바닥 ✋) / 드래그 중 'grabbing'
+    // - 선택된 그래프 곡선 위: 'move'(십자 화살표 ✥)
+    // - 비선택 그래프 곡선 위: 'pointer'(검지 손가락 👆)
+    // - 빈 여백 위: 'default'(기본 화살표 ↖) / 여백 드래그 중 'grabbing'
+    // - 잠금(🔒) 상태: 'move'(카드 이동 ✥)
+    const computePipHoverCursor = (pos, snap) => {
+      if (!snap || snap.isPipLocked) return 'move';
+      if (snap.isPipDropLineMode) {
+        return snap._pipDropLineHoverScissors ? 'pointer' : 'crosshair';
+      }
+      let resolvedCursor = 'default';
+      this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
+        if (snap.isCurveSelected && this.activeGraph && Array.isArray(this.activeGraph.handles)) {
+          let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
+          let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
+          if (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
+            for (const t of this.activeGraph.transforms) {
+              if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
+              if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
+            }
+          }
+          for (const h of this.activeGraph.handles) {
+            if (!h || h.hidden) continue;
+            const targetY = (this.activeGraph.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) ? Math.abs(h.y) : h.y;
+            let evalY = (h.type === 'center' || h.type === 'asymptote') ? (targetY + oy) : this.engine.evaluatePipeline(this.activeGraph, h.x + ox);
+            if (isNaN(evalY) || !isFinite(evalY)) evalY = targetY + oy;
+            const s = this.mathToScreen(h.x + ox, evalY);
+            if (Math.hypot(s.x - pos.x, s.y - pos.y) <= 13.5) {
+              resolvedCursor = 'grab';
+              return;
+            }
+          }
+        }
+        const hitCIdx = this.hitTestAllCurves({ x: pos.x, y: pos.y }, false);
+        if (hitCIdx !== null) {
+          const isHitActiveSelected = Boolean(
+            snap.isCurveSelected &&
+            (hitCIdx === snap.activeGraphIdx || (snap.usePiecewise && snap.isPiecewiseLocked))
+          );
+          resolvedCursor = isHitActiveSelected ? 'move' : 'pointer';
+        }
+      });
+      return resolvedCursor;
     };
 
     liveCanvas.addEventListener('pointerdown', (e) => {
@@ -16993,7 +17054,7 @@ class GraphApp {
 
       if (!snap.isPipDropLineMode) {
         this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
-          const handleHitDist = isTouch ? 15 : 11;
+          const handleHitDist = isTouch ? 16 : 13.5;
           if (snap.isCurveSelected && this.activeGraph && Array.isArray(this.activeGraph.handles)) {
             let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
             let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
@@ -17037,7 +17098,7 @@ class GraphApp {
         activeMode = 'handle';
         this._isInteractingWithPipCard = true;
         this._activePipInteractionCardEl = widget;
-        liveCanvas.style.cursor = 'pointer';
+        liveCanvas.style.cursor = 'grabbing';
         this.requestPipGraphCardRender(cardRef);
         if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
         return;
@@ -17086,7 +17147,7 @@ class GraphApp {
       this._isInteractingWithPipCard = true;
       this._activePipInteractionCardEl = widget;
       panInit = { x: snap.panX || 0, y: snap.panY || 0 };
-      liveCanvas.style.cursor = 'move';
+      liveCanvas.style.cursor = 'default';
       if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
     });
 
@@ -17097,7 +17158,7 @@ class GraphApp {
       if (!snap || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return;
 
       if (snap.isPipLocked && !activeMode) {
-        liveCanvas.style.cursor = 'move';
+        if (liveCanvas.style.cursor !== 'move') liveCanvas.style.cursor = 'move';
         return;
       }
 
@@ -17105,7 +17166,7 @@ class GraphApp {
         return;
       }
 
-      const pos = getLocalPos(e, true);
+      const pos = getLocalPos(e, Boolean(activeMode));
       if (!activeMode) {
         // 📍 [창모드 수선 그리기 120Hz/144Hz 무지연 호버 추적]:
         // 28ms 스로틀 없이 매 포인터 이동마다 즉시 타겟을 갱신하고 rAF로 배칭 렌더링하여 마우스/펜 끝을 칼같이 따라오도록 개선!
@@ -17126,7 +17187,7 @@ class GraphApp {
             (prevCand && cand && (Math.abs(prevCand.x - cand.x) > 1e-4 || Math.abs(prevCand.y - cand.y) > 1e-4 || prevCand.name !== cand.name));
           snap._pipDropLineHoverScissors = overScissors;
           snap._pipDropLineHoverCand = cand;
-          liveCanvas.style.cursor = overScissors ? 'pointer' : (cand ? 'crosshair' : 'move');
+          liveCanvas.style.cursor = overScissors ? 'pointer' : 'crosshair';
           if (scChanged || candChanged) {
             this.requestPipGraphCardRender(cardRef);
             if (this.isAudioRecording && candChanged) {
@@ -17136,40 +17197,12 @@ class GraphApp {
           return;
         }
 
-        // 일반 모드 호버 시 핸들 / 곡선 위 커서 피드백
-        if (e.pointerType === 'mouse') {
-          const now = performance.now();
-          if (now - lastHoverCheckTs < 24) return;
-          lastHoverCheckTs = now;
-
-          let hoverHit = false;
-          this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
-            if (snap.isCurveSelected && this.activeGraph && Array.isArray(this.activeGraph.handles)) {
-              let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
-              let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
-              if (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
-                for (const t of this.activeGraph.transforms) {
-                  if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
-                  if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
-                }
-              }
-              for (const h of this.activeGraph.handles) {
-                if (!h || h.hidden) continue;
-                let targetY = (this.activeGraph.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) ? Math.abs(h.y) : h.y;
-                let evalY = (h.type === 'center' || h.type === 'asymptote') ? (targetY + oy) : this.engine.evaluatePipeline(this.activeGraph, h.x + ox);
-                if (isNaN(evalY) || !isFinite(evalY)) evalY = targetY + oy;
-                const s = this.mathToScreen(h.x + ox, evalY);
-                if (Math.hypot(s.x - pos.x, s.y - pos.y) <= 11) {
-                  hoverHit = true;
-                  break;
-                }
-              }
-            }
-            if (!hoverHit && this.hitTestAllCurves({ x: pos.x, y: pos.y }, false) !== null) {
-              hoverHit = true;
-            }
-          });
-          liveCanvas.style.cursor = hoverHit ? 'pointer' : 'move';
+        // 🎯 일반 모드 호버 시 0ms 무지연 커서 전환 (핸들: grab ✋ / 선택 곡선: move ✥ / 비선택 곡선: pointer 👆 / 빈 여백: default ↖)
+        if (e.pointerType !== 'touch') {
+          const nextCur = computePipHoverCursor(pos, snap);
+          if (liveCanvas.style.cursor !== nextCur) {
+            liveCanvas.style.cursor = nextCur;
+          }
         }
         return;
       }
@@ -17191,6 +17224,7 @@ class GraphApp {
 
       if (activeMode === 'panAxes') {
         if (!movedDuringInteraction) return;
+        if (liveCanvas.style.cursor !== 'grabbing') liveCanvas.style.cursor = 'grabbing';
         snap.panX = panInit.x + (pos.x - downPos.x);
         snap.panY = panInit.y + (pos.y - downPos.y);
         this._reprojectPipCardInkFromMathCoords(cardRef, pos.cardW, pos.cardH);
@@ -17446,9 +17480,18 @@ class GraphApp {
         snap.symmetrySnapActive = false;
         snap.snappedPoints = [];
       }
-      liveCanvas.style.cursor = (snap && !snap.isPipLocked && snap.isPipDropLineMode) ? 'crosshair' : 'move';
       try { if (e && e.pointerId !== undefined) liveCanvas.releasePointerCapture(e.pointerId); } catch (_) { }
       this.renderPipGraphCard(cardRef);
+      if (snap) {
+        if (snap.isPipLocked) {
+          liveCanvas.style.cursor = 'move';
+        } else if (e && e.pointerType !== 'touch') {
+          const releasePos = getLocalPos(e, false);
+          liveCanvas.style.cursor = computePipHoverCursor(releasePos, snap);
+        } else {
+          liveCanvas.style.cursor = snap.isPipDropLineMode ? 'crosshair' : 'default';
+        }
+      }
       this.scheduleBakePipGraphCardToImg(cardRef);
       if (this.isAudioRecording) {
         this._recordAudioWorkspaceStateIfNeeded(true);
@@ -32679,8 +32722,8 @@ class GraphApp {
   hitTestAllCurves(pos, isTouch = false) {
     if (!this.graphs || this.graphs.length === 0) return null;
     const isPip = Boolean(this._isRenderingGraphSnapshot);
-    const hitTolerancePx = isPip ? (isTouch ? 10 : 6.5) : (isTouch ? 24 : 14);
-    const selectedBonus = isPip ? 1.5 : 10;
+    const hitTolerancePx = isPip ? (isTouch ? 13 : 9.5) : (isTouch ? 24 : 14);
+    const selectedBonus = isPip ? 3.0 : 10;
     let bestIdx = null;
     let minDistance = Infinity;
 
@@ -32771,7 +32814,11 @@ class GraphApp {
     }
 
     // 🌟 [Screen Polyline Distance 최적화: 가파른 삼차·사차함수 구간도 100% 칼스냅 판정] 🌟
-    if (g._screenPts && g._screenPts.length >= 2) {
+    if (
+      g._screenPts &&
+      g._screenPts.length >= 2 &&
+      (!g._screenPtsW || (g._screenPtsW === this.screenWidth && g._screenPtsH === this.screenHeight))
+    ) {
       let minDist = Infinity;
       const pts = g._screenPts;
       for (let i = 0; i < pts.length - 1; i++) {
@@ -32794,12 +32841,13 @@ class GraphApp {
       }
     }
 
-    const effSpanX = this.xSpan / this.zoomLevel;
-    const dxMath = (effSpanX / (this.screenWidth / 2)) * 3;
+    const effSpanX = this.xSpan / Math.max(0.01, this.zoomLevel);
+    const pxToMathX = (effSpanX * 2) / Math.max(1, this.screenWidth);
     let minDistPx = Infinity;
+    let prevSampleScreen = null;
 
-    [-dxMath, 0, dxMath].forEach(ox => {
-      const sampleX = m.x + ox;
+    [-12, -9, -6, -3, 0, 3, 6, 9, 12].forEach(offsetPx => {
+      const sampleX = m.x + offsetPx * pxToMathX;
       let evalX = sampleX;
       let yOffset = 0;
       if (this.usePiecewise && this.isPiecewisePeriodic && this.piecewiseBoundaries.length >= 2 && !g.isIndependent) {
@@ -32815,12 +32863,17 @@ class GraphApp {
           yOffset = k * (this.periodicStepY || 0);
         }
       }
-      let evalY = this.engine.evaluatePipeline(g, evalX) + yOffset;
+      const evalY = this.engine.evaluatePipeline(g, evalX) + yOffset;
 
       if (!isNaN(evalY) && isFinite(evalY) && Math.abs(evalY) < 150) {
         const s = this.mathToScreen(sampleX, evalY);
-        const dist = Math.hypot(pos.x - s.x, pos.y - s.y);
+        const dist = prevSampleScreen
+          ? this.distToSegment(pos, prevSampleScreen, s)
+          : Math.hypot(pos.x - s.x, pos.y - s.y);
         if (dist < minDistPx) minDistPx = dist;
+        prevSampleScreen = s;
+      } else {
+        prevSampleScreen = null;
       }
     });
 
@@ -33944,6 +33997,7 @@ class GraphApp {
         // 활성 그래프의 핸들 드래그 (형태 변형)
         this.draggedHandleIdx = hitHandleIdx;
         this.isCurveSelected = true; // [대표님 규칙]: 핸들 조작 중에도 그래프 조작 상태 완벽 유지!
+        this.canvas.style.cursor = 'grabbing';
       } else if (hitCurveIdx !== null) {
         // [다중 그래프 선택 & 평행이동 분리 (구간 잠금 시 즉시 전체 통째 평행이동)]
         const isPwGroupDrag = Boolean(this.usePiecewise && this.isPiecewiseLocked && this.graphs[hitCurveIdx] && !this.graphs[hitCurveIdx].isIndependent);
@@ -35245,7 +35299,8 @@ class GraphApp {
         }
 
         // 호버 커서 제어: 그래프 곡선 몸통 위 (필기 도구 사용 중에는 곡선 호버 비활성화)
-        const isOverCurve = (canManipulateHandles && this.graphs && this.graphs.length > 0) ? (this.hitTestAllCurves(pos, false) !== null) : false;
+        const hoveredCurveIdx = (canManipulateHandles && this.graphs && this.graphs.length > 0) ? this.hitTestAllCurves(pos, false) : null;
+        const isOverCurve = (hoveredCurveIdx !== null);
 
         // [🔤 캔버스 자유 수식 텍스트 라벨: 호버 감지]
         const hitText = (this.textLabels && this.textLabels.length > 0) ? this.hitTestTextLabel(pos) : null;
@@ -35326,7 +35381,11 @@ class GraphApp {
         } else if (isOverPwBoundary) {
           nextCursor = 'ew-resize'; // 좌우 드래그 분할선 ↔
         } else if (isOverCurve) {
-          nextCursor = this.isCurveSelected ? 'move' : 'pointer'; // 깨어있으면 바로 이동(move), 비활성화면 선택/깨우기(pointer)
+          const isHoveredCurveActiveSelected = Boolean(
+            this.isCurveSelected &&
+            (hoveredCurveIdx === this.activeGraphIdx || (this.usePiecewise && this.isPiecewiseLocked))
+          );
+          nextCursor = isHoveredCurveActiveSelected ? 'move' : 'pointer'; // 깨어있는 활성 곡선 위면 이동(move ✥), 비선택 곡선 위면 선택/깨우기(pointer 👆)
         } else if (this.useViewfinder) {
           const vfRect = this.getVfScreenRect();
           const corners = [
@@ -35840,6 +35899,9 @@ class GraphApp {
       if (this.isBoardPanning) {
         this.updateProblemCardPosition();
       }
+      const prevDownInfo = this.downInfo;
+      const wasDraggingHandle = (this.draggedHandleIdx !== null);
+      const wasDraggingCurve = Boolean(this.isDraggingCurve);
       this.draggedHandleIdx = null;
       this.isDraggingCurve = false;
       this._curveDragEligible = false;
@@ -35863,6 +35925,12 @@ class GraphApp {
         this.canvas.style.cursor = 'grab';
       } else if (this.isInkMode) {
         this.updateInkCursor();
+      } else if (this.isDropLineMode) {
+        this.canvas.style.cursor = 'crosshair';
+      } else if (wasDraggingHandle || (prevDownInfo && prevDownInfo.hitHandleIdx !== null && prevDownInfo.hitHandleIdx !== undefined)) {
+        this.canvas.style.cursor = 'grab';
+      } else if (wasDraggingCurve || (prevDownInfo && prevDownInfo.hitCurveIdx !== null && prevDownInfo.hitCurveIdx !== undefined && this.isCurveSelected)) {
+        this.canvas.style.cursor = 'move';
       } else {
         this.canvas.style.cursor = 'default';
       }
@@ -40509,10 +40577,17 @@ class GraphApp {
       if (!Object.prototype.hasOwnProperty.call(graphObj, '_screenPts') || Object.prototype.propertyIsEnumerable.call(graphObj, '_screenPts')) {
         try {
           Object.defineProperty(graphObj, '_screenPts', { value: [], writable: true, enumerable: false, configurable: true });
-          return;
         } catch (e) { }
+      } else {
+        graphObj._screenPts = [];
       }
-      graphObj._screenPts = [];
+      try {
+        Object.defineProperty(graphObj, '_screenPtsW', { value: this.screenWidth, writable: true, enumerable: false, configurable: true });
+        Object.defineProperty(graphObj, '_screenPtsH', { value: this.screenHeight, writable: true, enumerable: false, configurable: true });
+      } catch (e) {
+        graphObj._screenPtsW = this.screenWidth;
+        graphObj._screenPtsH = this.screenHeight;
+      }
     };
 
     // [유리함수 특수 케이스: 프리징 아닐 때 상하단 화면 끝 관통 2-브랜치 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]

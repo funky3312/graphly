@@ -5103,8 +5103,12 @@ body.theme-light .btn-card-lock-edit.locked-confirmed:hover {
   border-radius: 9px;
   touch-action: none;
   pointer-events: auto;
-  cursor: move;
+  cursor: default;
   display: block;
+}
+
+.graph-card-widget.pip-locked-mode .graph-card-live-canvas {
+  cursor: move;
 }
 
 .graph-card-widget.card-ink-active .graph-card-live-canvas,
@@ -6759,6 +6763,11 @@ body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active) .problem-card-wid
 .problem-card-header,
 .problem-card-drag-handle {
   cursor: move !important;
+}
+
+.graph-card-widget:not(.pip-locked-mode):not(.is-dragging-card) .problem-card-body,
+.graph-card-widget:not(.pip-locked-mode):not(.is-dragging-card) .problem-card-img {
+  cursor: default !important;
 }
 
 .problem-card-widget.is-dragging-card,
