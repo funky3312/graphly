@@ -67,14 +67,14 @@ body.theme-light {
   }
   @media (display-mode: standalone), (display-mode: fullscreen) {
     :root {
-      --ios-top-safe-guard: max(env(safe-area-inset-top, 0px), 28px);
+      --ios-top-safe-guard: max(env(safe-area-inset-top, 0px), 36px);
     }
   }
 }
 
 body.ios-top-guard-active {
-  --ios-top-safe-guard: max(env(safe-area-inset-top, 0px), 28px);
-  padding-top: var(--ios-top-safe-guard, 28px) !important;
+  --ios-top-safe-guard: max(env(safe-area-inset-top, 0px), 36px);
+  padding-top: var(--ios-top-safe-guard, 36px) !important;
 }
 
 body::before {
@@ -92,23 +92,35 @@ body::before {
 body.ios-top-guard-active .main-workspace,
 body.ios-top-guard-active.fullscreen-mode .main-workspace,
 body.ios-top-guard-active.header-collapsed .main-workspace {
-  height: calc(100vh - var(--ios-top-safe-guard, 28px)) !important;
-  height: calc(100dvh - var(--ios-top-safe-guard, 28px)) !important;
+  height: calc(100vh - var(--ios-top-safe-guard, 36px)) !important;
+  height: calc(100dvh - var(--ios-top-safe-guard, 36px)) !important;
 }
 
 body.ios-top-guard-active .pdf-board-nav-bar,
 body.ios-top-guard-active .lesson-playlist-nav-bar,
 body.ios-top-guard-active .top-slide-bar-mini-tab,
-body.ios-top-guard-active .pdf-crop-active-pill {
-  top: calc(14px + var(--ios-top-safe-guard, 28px)) !important;
+body.ios-top-guard-active .pdf-crop-active-pill,
+body.ios-top-guard-active:not(.audio-replay-active):not(.student-audio-video-only):not(.replay-fixed-stage) .audio-sync-floating-bar {
+  top: calc(14px + var(--ios-top-safe-guard, 36px)) !important;
+}
+
+body.ios-top-guard-active .graph-snap-floating-bar,
+body.ios-top-guard-active #graphSnapFloatingBar,
+body.ios-top-guard-active.ui-all-hidden-mode #graphSnapFloatingBar,
+body.ios-top-guard-active .ui-hidden-edge-pull-tab {
+  top: calc(18px + var(--ios-top-safe-guard, 36px)) !important;
+}
+
+body.ios-top-guard-active .pdf-to-graph-crop-bar {
+  top: calc(86px + var(--ios-top-safe-guard, 36px)) !important;
 }
 
 body.ios-top-guard-active #smartNoteViewerHeader {
-  top: calc(14px + var(--ios-top-safe-guard, 28px)) !important;
+  top: calc(14px + var(--ios-top-safe-guard, 36px)) !important;
 }
 
 body.ios-top-guard-active #viewerGraphTouchBar {
-  top: calc(14px + var(--ios-top-safe-guard, 28px)) !important;
+  top: calc(14px + var(--ios-top-safe-guard, 36px)) !important;
 }
 
 /* Method C: 상단 가장자리 인접 바들의 backdrop-filter: blur 제거 (솔리드/고밀도 캡슐화) */
@@ -7735,7 +7747,7 @@ body.theme-light .canvas-text-input {
   body.ios-top-guard-active .main-workspace,
   body.ios-top-guard-active.fullscreen-mode .main-workspace,
   body.ios-top-guard-active.header-collapsed .main-workspace {
-    height: calc(100dvh - var(--ios-top-safe-guard, 28px)) !important;
+    height: calc(100dvh - var(--ios-top-safe-guard, 36px)) !important;
   }
 }
 
