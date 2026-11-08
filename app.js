@@ -3504,10 +3504,6 @@ class GraphApp {
     if (this._isStylusTouchActive || e._isSynthesizedStylusPen || e._isPromotedStylusPen) {
       return true;
     }
-    // 아이패드 + 가변 필압이 없는 스타일러스(짭플펜슬)는 공중 호버가 존재하지 않으므로 pointermove(pen) 자체가 100% 화면 접촉 상태임
-    if (this.isIOSOrIPad() && !this._hasGenuineVariablePenPressure) {
-      return true;
-    }
     return false;
   }
 
@@ -11020,9 +11016,6 @@ class GraphApp {
 
       pCanvas.addEventListener('pointermove', (e) => {
         if (!isDrawingOnProblem) {
-          if ((e.pointerType === 'pen' || this.isPinpointStylusTouch(e)) && this.isStylusPenContactingScreen(e)) {
-            startProblemCardStroke(e);
-          }
           return;
         }
         if (activeProblemPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeProblemPointerId) {
@@ -11876,9 +11869,6 @@ class GraphApp {
 
       extraInkCanvas.addEventListener('pointermove', (e) => {
         if (!isDrawingExtraInk) {
-          if ((e.pointerType === 'pen' || this.isPinpointStylusTouch(e)) && this.isStylusPenContactingScreen(e)) {
-            startExtraCardStroke(e);
-          }
           return;
         }
         if (activeExtraPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeExtraPointerId) {
@@ -14716,9 +14706,6 @@ class GraphApp {
 
       gCanvas.addEventListener('pointermove', (e) => {
         if (!isDrawingOnGraphCard) {
-          if ((e.pointerType === 'pen' || this.isPinpointStylusTouch(e)) && this.isStylusPenContactingScreen(e)) {
-            startGraphCardStroke(e);
-          }
           return;
         }
         if (activeGraphCardPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeGraphCardPointerId) {
@@ -18617,7 +18604,7 @@ class GraphApp {
 
     const prevPt = stroke.points[stroke.points.length - 1];
     const lastRaw = stroke._lastRawPx || (prevPt ? { x: prevPt.nx * rw, y: prevPt.ny * rh } : null);
-    const minDist = (e.pointerType === 'mouse') ? 1.15 : 1.05;
+    const minDist = (e.pointerType === 'mouse') ? 1.15 : 0.45;
     if (lastRaw) {
       const rawStepDist = Math.hypot(rawPxX - lastRaw.x, rawPxY - lastRaw.y);
       if (rawStepDist < minDist) return false;
@@ -18686,7 +18673,7 @@ class GraphApp {
     }
 
     const stepDist = prevPt ? Math.hypot(sx - prevPt.nx * rw, sy - prevPt.ny * rh) : 0;
-    if (prevPt && stepDist < 0.35) return false;
+    if (prevPt && stepDist < 0.20) return false;
 
     const rawP = (typeof e.pressure === 'number') ? e.pressure : 0.5;
     if (rawP > 0 && Math.abs(rawP - 0.5) > 0.01) stroke._hasHwP = true;
@@ -18751,7 +18738,7 @@ class GraphApp {
       const lastX = lastPt.nx * rw;
       const lastY = lastPt.ny * rh;
       const tailDist = Math.hypot(rawEnd.x - lastX, rawEnd.y - lastY);
-      if (tailDist >= 0.4) {
+      if (tailDist >= 0.25) {
         const endX = stroke.isHighlighter ? rawEnd.x : (lastX * 0.18 + rawEnd.x * 0.82);
         const endY = stroke.isHighlighter ? rawEnd.y : (lastY * 0.18 + rawEnd.y * 0.82);
         let p = (typeof lastPt.p === 'number') ? lastPt.p : 0.5;
@@ -33372,6 +33359,7 @@ class GraphApp {
     const winH = window.innerHeight || 0;
     const isFullTopViewport = (scrMin > 0 && Math.abs(winH - scrMin) < 48) || (scrMax > 0 && Math.abs(winH - scrMax) < 48);
     const shouldGuard = isStandalone || isFullTopViewport;
+    const prevGuard = document.body.classList.contains('ios-top-guard-active');
     document.body.classList.toggle('ios-top-guard-active', shouldGuard);
     const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || null;
     if (curTheme && curTheme.bg) {
@@ -33381,6 +33369,9 @@ class GraphApp {
       }
       document.body.style.setProperty('--app-root-bg', curTheme.bg);
       document.body.style.backgroundColor = curTheme.bg;
+    }
+    if (prevGuard !== shouldGuard && this.canvas) {
+      this.updateCanvasRect();
     }
   }
 
@@ -35660,39 +35651,10 @@ class GraphApp {
             }
           }
 
-          // 🛡️ [240Hz 고밀도 펜 입력 복원 + iPadOS Safari 역주행/중복 패킷 단조 전진 필터(Monotonic Progress Filter)]:
-          // 현재 프레임의 시작점(frameStartRaw)과 끝점(finalPos) 사이에서 끝점까지의 거리가 단조 감소하며
-          // 정방향으로 전진하는 진짜 중간 곡선 샘플만 추출하여, iPadOS 계단 현상 없이 240Hz 곡선 밀도를 100% 복원합니다!
-          const events = [];
-          const frameStartRaw = this._lastRawInkScreenPos;
-          const finalPos = pos;
-          const rawCoalesced = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null;
-          if (rawCoalesced && rawCoalesced.length > 1 && frameStartRaw) {
-            const frameDist = Math.hypot(finalPos.x - frameStartRaw.x, finalPos.y - frameStartRaw.y);
-            if (frameDist >= 3.5) {
-              let anchor = frameStartRaw;
-              let remDist = frameDist;
-              for (let ci = 0; ci < rawCoalesced.length; ci++) {
-                const cev = rawCoalesced[ci];
-                if (!cev) continue;
-                const cPos = getPos(cev);
-                const stepFromAnchor = Math.hypot(cPos.x - anchor.x, cPos.y - anchor.y);
-                const distToFinal = Math.hypot(finalPos.x - cPos.x, finalPos.y - cPos.y);
-                if (distToFinal < 0.8) continue;
-                if (stepFromAnchor >= 1.2 && distToFinal <= remDist - 0.8) {
-                  const vxA = cPos.x - anchor.x, vyA = cPos.y - anchor.y;
-                  const vxF = finalPos.x - cPos.x, vyF = finalPos.y - cPos.y;
-                  const dotAF = vxA * vxF + vyA * vyF;
-                  if (dotAF > -0.15 * stepFromAnchor * distToFinal) {
-                    events.push(cev);
-                    anchor = cPos;
-                    remDist = distToFinal;
-                  }
-                }
-              }
-            }
-          }
-          events.push(e);
+          // 🌟 [창모드·메인 칠판 100% 통일: WebKit getCoalescedEvents() 오염 배제 및 단일 확정 이벤트 + 원호 자동 보간]:
+          // iPadOS Safari(WebKit)의 getCoalescedEvents()가 과거 샘플 중복/역순으로 획을 씹거나 튀게 만드는 현상을 원천 차단하기 위해
+          // 창모드 카드와 동일하게 단일 확정 이벤트(e)만 사용하고, 빠른 곡선 구간의 밀도는 아래 원호 내분점 자동 보간(Circular Arc Subdivision)으로 매끄럽게 채웁니다!
+          const events = [e];
           let addedPoints = 0;
           for (let i = 0; i < events.length; i++) {
             const ev = events[i];
@@ -35701,7 +35663,8 @@ class GraphApp {
             const lastRaw = this._lastRawInkScreenPos;
             if (lastRaw) {
               const rawDist = Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y);
-              if (rawDist < 0.5) continue;
+              const minRawDist = (e.pointerType === 'pen') ? 0.25 : 0.5;
+              if (rawDist < minRawDist) continue;
             }
             this._prevRawInkScreenPos = lastRaw ? { x: lastRaw.x, y: lastRaw.y } : { x: pPos.x, y: pPos.y };
             this._lastRawInkScreenPos = { x: pPos.x, y: pPos.y };
@@ -36832,7 +36795,7 @@ class GraphApp {
           const rawEnd = this._lastRawInkScreenPos;
           const curPenStyle = this.currentInkStroke.penStyle || 'ballpen';
           const tailDist = Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y);
-          if (tailDist >= 0.5) {
+          if (tailDist >= 0.2) {
             const endX = this.currentInkStroke.isHighlighter ? rawEnd.x : (lastSmoothed.x * 0.25 + rawEnd.x * 0.75);
             const endY = this.currentInkStroke.isHighlighter ? rawEnd.y : (lastSmoothed.y * 0.25 + rawEnd.y * 0.75);
             let p = this._lastPressure || 0.5;
@@ -36898,11 +36861,14 @@ class GraphApp {
             this._inkBakeDirty = true;
           }
 
-          // 🌟 [무렉(Zero-Stutter) 마감]: 일반 펜 획은 전체 화면 render()나 텍스처 복사 없이
-          // 끝단 꼬리만 0.005ms 만에 잇고 오프스크린 베이크 버퍼에 해당 획 1개만 추가합니다!
+          // 🌟 [무렉(Zero-Stutter) 마감 & 단획·점 100% 즉시 반영]: 일반 펜 획은 전체 화면 render()나 텍스처 복사 없이
+          // 끝단 꼬리 및 완성된 단일 획을 즉시 캔버스와 오프스크린 베이크 버퍼에 동기 반영합니다!
           if (!finishedStroke.isHighlighter && !finishedStroke.isShape && !this._inkBakeDirty) {
-            if (this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 2) {
+            if (this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
               this.drawLiveBezierStep(this._liveBezierScreenPts, finishedStroke, true);
+            }
+            if (!(finishedStroke.softBlur > 0) || (this._liveBezierScreenPts && this._liveBezierScreenPts.length <= 2)) {
+              this.renderSingleStroke(this.ctx, finishedStroke, null, false);
             }
             this._liveBezierScreenPts = null;
 
@@ -37379,50 +37345,6 @@ class GraphApp {
           this._lastPenActiveTime = nowT;
           this._touchPanDeadzoneLocked = false;
           this._deferredSingleTouchPanEvent = null;
-          // 🛡️ [iPadOS Safari/Chrome pointerdown(pen) 삼킴 즉시 구출 엔진]:
-          // 손날(touch)과 펜슬이 동시에 닿거나 빠른 연속 필기 시 WebKit이 pointerdown(pen)을 삼키고
-          // 곧바로 pointermove(pen)만 보내더라도 화면 접촉(pressure > 0 / buttons !== 0)이 확인되면 즉시 첫 획을 시작!
-          if (
-            !this.isSpacePressed &&
-            !this.isShiftPressed &&
-            !this.isDrawingInk &&
-            !this.isStylusDrawing &&
-            !this.isLassoSelecting &&
-            !this.isDrawingSticker &&
-            !this._tappingBoardSticker &&
-            !this.isDraggingLassoSelection &&
-            !this.isResizingLassoSelection &&
-            isWritingToolActive() &&
-            e.target === this.canvas &&
-            this.isStylusPenContactingScreen(e)
-          ) {
-            if (this.activePointers) this.activePointers.clear();
-            this._pinchState = null;
-            this._pinchWasActiveInGesture = false;
-            this._cancelAllActiveCardDrags();
-            if (this.isPanning || this.isBoardPanning) {
-              if (this._touchCameraSnapshot) {
-                this.boardPanX = this._touchCameraSnapshot.boardPanX;
-                this.boardPanY = this._touchCameraSnapshot.boardPanY;
-                this.boardZoom = this._touchCameraSnapshot.boardZoom;
-                this.panX = this._touchCameraSnapshot.panX;
-                this.panY = this._touchCameraSnapshot.panY;
-                this.zoom = this._touchCameraSnapshot.zoom;
-                this._touchCameraSnapshot = null;
-                if (this.isGraphCovered) this.updateProblemCardPosition(true);
-              }
-              this.isPanning = false;
-              this.isBoardPanning = false;
-              this._activePanPointerId = null;
-            }
-            this._lastPenDownTime = nowT;
-            lastPointerDownTime = nowT;
-            this.isPointerDownOnCanvas = true;
-            this._pointerDownStart = { time: nowT, x: e.clientX, y: e.clientY };
-            this._activeDrawingPointerId = e.pointerId;
-            this._activeDrawingPointerType = 'pen';
-            handleDown(e);
-          }
         }
 
         if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || this.isDrawingSticker) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
@@ -37507,49 +37429,12 @@ class GraphApp {
       }
     });
 
-    // 🌟 [단 하나의 진짜 해결책 (?v=20261103_19) + iPadOS Safari 동시 2손가락 터치 백업 브리지]:
-    // 1) 캔버스 touchstart/touchmove/touchend에서 무조건 e.preventDefault()를 실행해 Safari 기본 제스처/Scribble 개입 차단!
-    // 2) iPadOS Safari가 두 손가락 동시 터치 시 두 번째 pointerdown을 간헐적으로 누락하더라도 e.touches(2개)로 100% 끊김 없이 백업 구동!
+    // 🌟 [단 하나의 진짜 해결책 (?v=20261103_20 순수 원형 복원)]:
+    // 캔버스 touchstart/touchmove/touchend에서 상태 개입 없이 무조건 e.preventDefault()만 실행해
+    // iPadOS Safari 기본 제스처(UIGestureRecognizer)/Scribble 개입과 손날 다중접촉 핀치 오작동을 원천 차단!
     this.canvas.addEventListener('touchstart', (e) => {
       if (e.target === this.canvas && e.cancelable !== false) {
         e.preventDefault();
-      }
-      if (this.isPdfModalOpen || this.isStudentAudioVideoOnlyMode) return;
-      const touchList = e.touches ? Array.from(e.touches) : [];
-      const hasStylus = touchList.some(t => t.touchType === 'stylus');
-      if (hasStylus || isWithinPostPenPalmGuard()) {
-        this._pinchState = null;
-        this._pinchWasActiveInGesture = false;
-        if (this.activePointers) this.activePointers.clear();
-        return;
-      }
-      if (touchList.length <= 1 && this.activePointers && this.activePointers.size > 1) {
-        const lastEntry = Array.from(this.activePointers.entries()).pop();
-        this.activePointers.clear();
-        if (lastEntry && touchList.length === 1) {
-          this.activePointers.set(lastEntry[0], lastEntry[1]);
-        }
-        this._pinchState = null;
-        this._pinchWasActiveInGesture = false;
-      }
-      if (touchList.length >= 3) {
-        this._pinchState = null;
-        this._pinchWasActiveInGesture = false;
-        this.isPanning = false;
-        this.isBoardPanning = false;
-        return;
-      }
-      if (touchList.length === 2 && !this._pinchState && (!this.activePointers || this.activePointers.size < 2)) {
-        const t0 = touchList[0];
-        const t1 = touchList[1];
-        this._pinchWasActiveInGesture = true;
-        this.isPanning = false;
-        this.isBoardPanning = false;
-        this._cancelAllActiveCardDrags();
-        this._startCanvasTwoFingerPinch(
-          { id: 't0', x: t0.clientX, y: t0.clientY },
-          { id: 't1', x: t1.clientX, y: t1.clientY }
-        );
       }
     }, { passive: false });
 
@@ -37557,53 +37442,11 @@ class GraphApp {
       if (e.target === this.canvas && e.cancelable !== false) {
         e.preventDefault();
       }
-      if (!e.touches || e.touches.length === 0) {
-        if (this.activePointers) this.activePointers.clear();
-      }
-      if (!e.touches || e.touches.length < 2) {
-        if (this._pinchState && this._pinchState.id1 === 't0') {
-          this._pinchState = null;
-          if (!e.touches || e.touches.length === 0) {
-            this._pinchWasActiveInGesture = false;
-          }
-          if (this.isGraphCovered) {
-            this.updateProblemCardPosition(false);
-          }
-          this.requestRender();
-        }
-      }
     }, { passive: false });
-    this.canvas.addEventListener('touchcancel', () => {
-      if (this.activePointers) this.activePointers.clear();
-      if (this._pinchState && this._pinchState.id1 === 't0') {
-        this._pinchState = null;
-        this._pinchWasActiveInGesture = false;
-        this.requestRender();
-      }
-    }, { passive: true });
+    this.canvas.addEventListener('touchcancel', () => {}, { passive: true });
     this.canvas.addEventListener('touchmove', (e) => {
       if (e.cancelable !== false) {
         e.preventDefault();
-      }
-      if (this.isPdfModalOpen || this.isStudentAudioVideoOnlyMode) return;
-      if (isWithinPostPenPalmGuard()) {
-        if (this._pinchState) {
-          this._pinchState = null;
-          this._pinchWasActiveInGesture = false;
-        }
-        return;
-      }
-      if (e.touches && e.touches.length === 2 && this._pinchState) {
-        const touchList = Array.from(e.touches);
-        if (touchList.some(t => t.touchType === 'stylus')) return;
-        if (!this.activePointers || this.activePointers.size < 2 || this._pinchState.id1 === 't0') {
-          const t0 = touchList[0];
-          const t1 = touchList[1];
-          this._moveCanvasTwoFingerPinch(
-            { id: this._pinchState.id1, x: t0.clientX, y: t0.clientY },
-            { id: this._pinchState.id2, x: t1.clientX, y: t1.clientY }
-          );
-        }
       }
     }, { passive: false });
 
