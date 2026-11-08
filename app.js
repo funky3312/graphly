@@ -1292,7 +1292,7 @@ class GraphApp {
       this.renderPipGraphCard('primary');
       this.renderGraphCardCanvas();
       if (gWidget.classList.contains('pip-locked-mode')) {
-        this.schedulePipGraphCardStealth('primary', 3000);
+        this.schedulePipGraphCardStealth('primary', 5000);
       }
     } else {
       this.clearPipGraphCardStealthTimer('primary');
@@ -1356,7 +1356,7 @@ class GraphApp {
         if (typeof c.el._renderCardStickers === 'function') c.el._renderCardStickers();
         if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
         if (c.el.classList.contains('pip-locked-mode')) {
-          this.schedulePipGraphCardStealth(c, 3000);
+          this.schedulePipGraphCardStealth(c, 5000);
         }
       }
     });
@@ -3411,7 +3411,7 @@ class GraphApp {
         this._pinchState = null;
         this._activePanPointerId = e.pointerId;
       }
-      if (this.isStylusPalmRejectionActive() && isWritingTool) {
+      if (this.isStylusPalmRejectionActive() && isWritingTool && this.allowOneFingerPanInInk === false) {
         e._touchIgnoreChecked = true;
         return true;
       }
@@ -3445,7 +3445,7 @@ class GraphApp {
       if (this._pinchWasActiveInGesture || (this.activePointers && this.activePointers.size >= 2)) {
         return true;
       }
-      if (this.isStylusPalmRejectionActive() && isWritingTool) {
+      if (this.isStylusPalmRejectionActive() && isWritingTool && this.allowOneFingerPanInInk === false) {
         return true;
       }
       return false;
@@ -3473,7 +3473,7 @@ class GraphApp {
         }
         return true;
       }
-      if (isPenDrawingNow || (this.isStylusPalmRejectionActive() && isWritingTool)) {
+      if (isPenDrawingNow || (this.isStylusPalmRejectionActive() && isWritingTool && this.allowOneFingerPanInInk === false)) {
         return true;
       }
       return false;
@@ -12021,7 +12021,7 @@ class GraphApp {
       } else if (cardWidgetEl.classList.contains('graph-card-widget')) {
         if (typeof this._getPipCardRefByWidget === 'function' && typeof this.schedulePipGraphCardStealth === 'function') {
           const cRef = this._getPipCardRefByWidget(cardWidgetEl);
-          if (cRef) this.schedulePipGraphCardStealth(cRef, 3000);
+          if (cRef) this.schedulePipGraphCardStealth(cRef, 5000);
         }
       }
       if (this.isAudioRecording) {
@@ -14115,13 +14115,13 @@ class GraphApp {
             this.relayoutLeftDockedCards(true);
           }
           if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
-            this.schedulePipGraphCardStealth(cardItem, 3000);
+            this.schedulePipGraphCardStealth(cardItem, 5000);
           }
         } else if (el.classList.contains('pip-locked-mode')) {
           if (el.classList.contains('pip-stealth-locked')) {
             this.wakeUpPipGraphCardStealth(cardItem, true);
           } else {
-            this.schedulePipGraphCardStealth(cardItem, 3000);
+            this.schedulePipGraphCardStealth(cardItem, 5000);
           }
         }
         if (this.isAudioRecording) {
@@ -14172,7 +14172,7 @@ class GraphApp {
             if (!wasResizeMoved && el.classList.contains('pip-stealth-locked')) {
               this.wakeUpPipGraphCardStealth(cardItem, true);
             } else if (!el.classList.contains('pip-stealth-locked')) {
-              this.schedulePipGraphCardStealth(cardItem, 3000);
+              this.schedulePipGraphCardStealth(cardItem, 5000);
             }
           }
           if (this.isAudioRecording) {
@@ -14962,13 +14962,13 @@ class GraphApp {
               this.relayoutLeftDockedCards(true);
             }
             if (widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
-              this.schedulePipGraphCardStealth('primary', 3000);
+              this.schedulePipGraphCardStealth('primary', 5000);
             }
           } else if (widget.classList.contains('pip-locked-mode')) {
             if (widget.classList.contains('pip-stealth-locked')) {
               this.wakeUpPipGraphCardStealth('primary', true);
             } else {
-              this.schedulePipGraphCardStealth('primary', 3000);
+              this.schedulePipGraphCardStealth('primary', 5000);
             }
           }
           if (this.isAudioRecording) {
@@ -15022,7 +15022,7 @@ class GraphApp {
             if (!wasResizeMoved && widget.classList.contains('pip-stealth-locked')) {
               this.wakeUpPipGraphCardStealth('primary', true);
             } else if (!widget.classList.contains('pip-stealth-locked')) {
-              this.schedulePipGraphCardStealth('primary', 3000);
+              this.schedulePipGraphCardStealth('primary', 5000);
             }
           }
           if (this.isAudioRecording) {
@@ -15844,7 +15844,7 @@ class GraphApp {
     }
   }
 
-  schedulePipGraphCardStealth(cardRef, delayMs = 3000) {
+  schedulePipGraphCardStealth(cardRef, delayMs = 5000) {
     const { widget } = this._getPipCardWidgetAndSnapRaw(cardRef);
     if (!widget) return;
     this.clearPipGraphCardStealthTimer(cardRef);
@@ -15886,7 +15886,7 @@ class GraphApp {
     const wasStealth = widget.classList.contains('pip-stealth-locked');
     widget.classList.remove('pip-stealth-locked');
     if (restartTimer) {
-      this.schedulePipGraphCardStealth(cardRef, 3000);
+      this.schedulePipGraphCardStealth(cardRef, 5000);
     }
     if (wasStealth && this.isAudioRecording && !this._isApplyingAudioTimelineState) {
       this._recordAudioWorkspaceStateIfNeeded(true);
@@ -15925,7 +15925,7 @@ class GraphApp {
       snap._activeSnapHint = null;
       widget.classList.remove('pip-manipulating', 'pip-stealth-locked');
       widget.classList.add('pip-locked-mode');
-      this.schedulePipGraphCardStealth(cardRef, 3000);
+      this.schedulePipGraphCardStealth(cardRef, 5000);
     } else {
       this.clearPipGraphCardStealthTimer(cardRef);
       snap.isCurveSelected = false;
@@ -15951,7 +15951,7 @@ class GraphApp {
 
     if (showToast) {
       if (snap.isPipLocked) {
-        this.showToast('🔒 카드 잠금 완료! 3초 뒤 테두리와 상단 메뉴가 숨겨지며, 카드를 톡 터치하면 다시 나타납니다.');
+        this.showToast('🔒 카드 잠금 완료! 5초 뒤 테두리와 상단 메뉴가 숨겨지며, 카드를 톡 터치하면 다시 나타납니다.');
       } else {
         this.showToast('🔓 잠금 해제됨! 핸들 조작 · 여백 드래그로 축 이동 · 모서리로 시야 영역 확장이 가능합니다.');
       }
@@ -34357,8 +34357,19 @@ class GraphApp {
       }
 
       if (isExplicitPan) {
-        this._touchPanDeadzoneLocked = false;
+        this._touchPanDeadzoneLocked = Boolean(isFingerOrPalmTouch);
         this._touchPanInitPos = { x: pos.x, y: pos.y };
+        if (isFingerOrPalmTouch) {
+          this._lastTouchPanStartTime = Date.now();
+          this._touchCameraSnapshot = {
+            boardPanX: this.boardPanX || 0,
+            boardPanY: this.boardPanY || 0,
+            boardZoom: this.boardZoom || 1.0,
+            panX: this.panX || 0,
+            panY: this.panY || 0,
+            zoom: this.zoomLevel || 1.0
+          };
+        }
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
@@ -34367,7 +34378,9 @@ class GraphApp {
           this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
         }
         this.canvas.style.cursor = 'move';
-        this.render();
+        if (!isFingerOrPalmTouch) {
+          this.render();
+        }
         return;
       }
 
@@ -37239,6 +37252,15 @@ class GraphApp {
             this._markStylusPenDetected();
             this._lastPenActiveTime = nowT;
             this._lastPenDownTime = nowT;
+            if ((this.isPanning || this.isBoardPanning) && this._touchCameraSnapshot && (nowT - (this._lastTouchPanStartTime || 0) < 350)) {
+              this.boardPanX = this._touchCameraSnapshot.boardPanX;
+              this.boardPanY = this._touchCameraSnapshot.boardPanY;
+              this.boardZoom = this._touchCameraSnapshot.boardZoom;
+              this.panX = this._touchCameraSnapshot.panX;
+              this.panY = this._touchCameraSnapshot.panY;
+              this.zoomLevel = this._touchCameraSnapshot.zoom;
+              if (this.isGraphCovered) this.updateProblemCardPosition(true);
+            }
             this._touchCameraSnapshot = null;
             this._deferredSingleTouchPanEvent = null;
           }
@@ -37352,6 +37374,9 @@ class GraphApp {
             return;
           }
         }
+        if ((this.isPanning || this.isBoardPanning) && e.pointerType === 'touch' && this._activePanPointerId !== null && this._activePanPointerId !== undefined && e.pointerId !== this._activePanPointerId) {
+          return;
+        }
 
         handleMove(e);
       }, { capture: true, passive: false });
@@ -37379,10 +37404,14 @@ class GraphApp {
             return;
           }
         }
+        if ((this.isPanning || this.isBoardPanning) && e.pointerType === 'touch' && this._activePanPointerId !== null && this._activePanPointerId !== undefined && e.pointerId !== this._activePanPointerId) {
+          return;
+        }
 
         this.isPointerDownOnCanvas = false;
         this._activeDrawingPointerId = null;
         this._activeDrawingPointerType = null;
+        this._activePanPointerId = null;
 
         if (e.pointerId !== undefined && this.canvas && this.canvas.releasePointerCapture) {
           try {
