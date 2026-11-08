@@ -16303,12 +16303,54 @@ class GraphApp {
     return null;
   }
 
+  _deleteSelectedGraphInPipCard(target = null) {
+    const resolved = target || this._getSelectedPipGraphCardTarget();
+    if (!resolved) return false;
+    const { cardRef, widget, snap, isPrimary } = resolved;
+    if (!snap || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return false;
+
+    if (snap.graphs.length > 1) {
+      this._pushWorkspaceUndoSnapshot('↺ 삭제한 함수가 카드에 복원되었습니다', '↻ 함수 삭제 다시 실행됨');
+      const delIdx = (typeof snap.activeGraphIdx === 'number' && snap.activeGraphIdx >= 0 && snap.activeGraphIdx < snap.graphs.length)
+        ? snap.activeGraphIdx
+        : (snap.graphs.length - 1);
+      snap.graphs.splice(delIdx, 1);
+      snap.activeGraphIdx = Math.max(0, snap.graphs.length - 1);
+      snap.selectedHandleIdx = null;
+      snap.isCurveSelected = true;
+      if (widget) widget._lastPipLockUiSig = '';
+      this._savePipCardSnapshot(cardRef, snap);
+      this.syncPipCardLockUI(cardRef);
+      this.renderPipGraphCard(cardRef);
+      this.scheduleBakePipGraphCardToImg(cardRef);
+      if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+      this.showToast('🗑️ 선택한 함수를 삭제했습니다 (되돌리기 ↺로 복원 가능)');
+      return true;
+    } else {
+      const closeBtn = isPrimary ? document.getElementById('btnGraphCardClose') : (widget && widget.querySelector('.btn-extra-close'));
+      if (closeBtn) {
+        closeBtn.click();
+        return true;
+      }
+    }
+    return false;
+  }
+
   _handlePipCardKeyDown(e) {
     if (!e || e.ctrlKey || e.metaKey || e.altKey) return false;
-    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Escape', 'Tab'].includes(e.key)) return false;
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Escape', 'Tab', 'Delete', 'Backspace'].includes(e.key)) return false;
+
+    if ((e.key === 'Delete' || e.key === 'Backspace') && this._activeCardLasso && Array.isArray(this._activeCardLasso.selectedStrokes) && this._activeCardLasso.selectedStrokes.length > 0) {
+      return false;
+    }
 
     const target = this._getSelectedPipGraphCardTarget();
     if (!target) return false;
+
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      return this._deleteSelectedGraphInPipCard(target);
+    }
 
     const { cardRef, widget, snap, isPrimary } = target;
     const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
@@ -17308,21 +17350,7 @@ class GraphApp {
             if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
             if (msg) this.showToast(msg);
           } else if (act === 'deleteCurve') {
-            if (snap.graphs.length > 1) {
-              this._pushWorkspaceUndoSnapshot('↺ 삭제한 함수가 카드에 복원되었습니다', '↻ 함수 삭제 다시 실행됨');
-              snap.graphs.splice(snap.activeGraphIdx, 1);
-              snap.activeGraphIdx = Math.max(0, snap.graphs.length - 1);
-              snap.selectedHandleIdx = null;
-              snap.isCurveSelected = true;
-              widget._lastPipLockUiSig = '';
-              this.renderPipGraphCard(cardRef);
-              this.scheduleBakePipGraphCardToImg(cardRef);
-              if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
-              this.showToast('🗑️ 선택한 함수를 삭제했습니다 (되돌리기 ↺로 복원 가능)');
-            } else {
-              const closeBtn = isPrimary ? document.getElementById('btnGraphCardClose') : widget.querySelector('.btn-extra-close');
-              if (closeBtn) closeBtn.click();
-            }
+            this._deleteSelectedGraphInPipCard({ cardRef, widget, snap, isPrimary });
           }
         });
       });
@@ -48975,8 +49003,15 @@ class GraphApp {
         return true;
       }
       case 'sys_delete_selected': {
+        if (this._activeCardLasso && Array.isArray(this._activeCardLasso.selectedStrokes) && this._activeCardLasso.selectedStrokes.length > 0) {
+          this.deleteSelectedInkStrokes();
+          return true;
+        }
         if (this.isInkMode && this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
           this.deleteSelectedInkStrokes();
+          return true;
+        }
+        if (this.isGraphCovered && typeof this._deleteSelectedGraphInPipCard === 'function' && this._deleteSelectedGraphInPipCard()) {
           return true;
         }
         if (this.selectedTextLabelId) {
@@ -48984,7 +49019,7 @@ class GraphApp {
           this.selectedTextLabelId = null;
           return true;
         }
-        if (this.activeGraphIdx >= 0 && this.activeGraphIdx < this.graphs.length) {
+        if (!this.isGraphCovered && this.activeGraphIdx >= 0 && this.activeGraphIdx < this.graphs.length) {
           const targetIdx = this.activeGraphIdx;
           this.selectedHandleIdx = null;
           this.isCurveSelected = false;
