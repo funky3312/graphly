@@ -3386,12 +3386,6 @@ class GraphApp {
         e._touchIgnoreChecked = true;
         return true;
       }
-      // 광면적 손바닥(width/height >= 28px)은 2손가락 핀치 줌 후보(activePointers)에 등록되지 않도록 차단
-      const isWidePalmPatch = Boolean(this.isStylusPalmRejectionActive() && isWritingTool && ((e.width || 0) >= 28 || (e.height || 0) >= 28));
-      if (isWidePalmPatch) {
-        e._touchIgnoreChecked = true;
-        return true;
-      }
       if (this.activePointers) {
         for (const [k, v] of this.activePointers.entries()) {
           if (nowT - (v.time || 0) > 1200) this.activePointers.delete(k);
@@ -37071,13 +37065,8 @@ class GraphApp {
     let lastPointerMoveTime = 0;
     let lastPointerUpTime = 0;
 
-    // 🔬 [진단 HUD: ?debug=ink URL 파라미터가 있을 때만 표시하여 상시 측정 가능하도록 보존]
-    const isInkDebugHudEnabled = Boolean(
-      typeof window !== 'undefined' &&
-      window.location &&
-      typeof window.location.search === 'string' &&
-      window.location.search.includes('debug=ink')
-    );
+    // 🔬 [실시간 4종 입력 카운터 HUD: 아이패드 홈화면 웹앱(PWA)에서도 URL 입력 없이 즉시 원인을 측정할 수 있도록 상단 표시 (✕ 버튼으로 언제든 닫기 가능)]
+    let isInkDebugHudEnabled = true;
     let diagPenCount = 0;
     let diagStylusTouchCount = 0;
     let diagTouchCount = 0;
@@ -37093,6 +37082,7 @@ class GraphApp {
         <span id="cntBoxTouch" style="padding:3px 7px; border-radius:6px; background:#78350f; color:#fde68a; pointer-events:none;">👆 손날: 0</span>
         <span id="cntBoxCancel" style="padding:3px 7px; border-radius:6px; background:#7f1d1d; color:#fecaca; pointer-events:none;">🚨 취소: 0</span>
         <button id="btnResetDiagCnt" type="button" style="padding:3px 7px; border-radius:6px; background:#334155; color:#f8fafc; border:1px solid #64748b; font-size:12px; font-weight:700; cursor:pointer;">0리셋</button>
+        <button id="btnCloseDiagCnt" type="button" style="padding:3px 6px; border-radius:6px; background:#1e293b; color:#94a3b8; border:1px solid #475569; font-size:12px; font-weight:700; cursor:pointer;">✕</button>
       `;
       document.body.appendChild(diagHudEl);
       const resetBtn = document.getElementById('btnResetDiagCnt');
@@ -37112,6 +37102,15 @@ class GraphApp {
           if (bT) bT.textContent = '⚡ 펜T: 0';
           if (b2) b2.textContent = '👆 손날: 0';
           if (b3) b3.textContent = '🚨 취소: 0';
+        });
+      }
+      const closeBtn = document.getElementById('btnCloseDiagCnt');
+      if (closeBtn) {
+        closeBtn.addEventListener('pointerdown', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          isInkDebugHudEnabled = false;
+          if (diagHudEl) diagHudEl.style.display = 'none';
         });
       }
     }
@@ -38014,8 +38013,7 @@ class GraphApp {
     requestAnimationFrame(() => {
       this._renderPending = false;
       if (this._pinchState && this._pinchState._hasPendingMove) {
-        const applied = this._applyPendingTwoFingerPinchStep();
-        if (!applied) return;
+        this._applyPendingTwoFingerPinchStep();
       }
       this.render();
     });
@@ -38955,6 +38953,15 @@ class GraphApp {
 
     this._pinchState.latestP1 = { id: ptA.id, x: ptA.x, y: ptA.y };
     this._pinchState.latestP2 = { id: ptB.id, x: ptB.x, y: ptB.y };
+    if (!this._pinchState.panUnlocked && !this._pinchState.zoomUnlocked) {
+      const cRect = this.canvasRect || (this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 });
+      const midX = ((ptA.x - cRect.left) + (ptB.x - cRect.left)) * 0.5;
+      const midY = ((ptA.y - cRect.top) + (ptB.y - cRect.top)) * 0.5;
+      const dist = Math.max(24, Math.hypot(ptB.x - ptA.x, ptB.y - ptA.y));
+      if (Math.hypot(midX - this._pinchState.initMidX, midY - this._pinchState.initMidY) < 10 && Math.abs(dist - this._pinchState.initDist) < 16) {
+        return;
+      }
+    }
     this._pinchState._hasPendingMove = true;
     this.requestRender();
   }
