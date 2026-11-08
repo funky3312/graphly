@@ -1292,7 +1292,7 @@ class GraphApp {
       this.renderPipGraphCard('primary');
       this.renderGraphCardCanvas();
       if (gWidget.classList.contains('pip-locked-mode')) {
-        this.schedulePipGraphCardStealth('primary', 5000);
+        this.schedulePipGraphCardStealth('primary', 3000);
       }
     } else {
       this.clearPipGraphCardStealthTimer('primary');
@@ -1356,7 +1356,7 @@ class GraphApp {
         if (typeof c.el._renderCardStickers === 'function') c.el._renderCardStickers();
         if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
         if (c.el.classList.contains('pip-locked-mode')) {
-          this.schedulePipGraphCardStealth(c, 5000);
+          this.schedulePipGraphCardStealth(c, 3000);
         }
       }
     });
@@ -12021,7 +12021,7 @@ class GraphApp {
       } else if (cardWidgetEl.classList.contains('graph-card-widget')) {
         if (typeof this._getPipCardRefByWidget === 'function' && typeof this.schedulePipGraphCardStealth === 'function') {
           const cRef = this._getPipCardRefByWidget(cardWidgetEl);
-          if (cRef) this.schedulePipGraphCardStealth(cRef, 5000);
+          if (cRef) this.schedulePipGraphCardStealth(cRef, 3000);
         }
       }
       if (this.isAudioRecording) {
@@ -14115,13 +14115,13 @@ class GraphApp {
             this.relayoutLeftDockedCards(true);
           }
           if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
-            this.schedulePipGraphCardStealth(cardItem, 5000);
+            this.schedulePipGraphCardStealth(cardItem, 3000);
           }
         } else if (el.classList.contains('pip-locked-mode')) {
           if (el.classList.contains('pip-stealth-locked')) {
             this.wakeUpPipGraphCardStealth(cardItem, true);
           } else {
-            this.schedulePipGraphCardStealth(cardItem, 5000);
+            this.schedulePipGraphCardStealth(cardItem, 3000);
           }
         }
         if (this.isAudioRecording) {
@@ -14172,7 +14172,7 @@ class GraphApp {
             if (!wasResizeMoved && el.classList.contains('pip-stealth-locked')) {
               this.wakeUpPipGraphCardStealth(cardItem, true);
             } else if (!el.classList.contains('pip-stealth-locked')) {
-              this.schedulePipGraphCardStealth(cardItem, 5000);
+              this.schedulePipGraphCardStealth(cardItem, 3000);
             }
           }
           if (this.isAudioRecording) {
@@ -14962,13 +14962,13 @@ class GraphApp {
               this.relayoutLeftDockedCards(true);
             }
             if (widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
-              this.schedulePipGraphCardStealth('primary', 5000);
+              this.schedulePipGraphCardStealth('primary', 3000);
             }
           } else if (widget.classList.contains('pip-locked-mode')) {
             if (widget.classList.contains('pip-stealth-locked')) {
               this.wakeUpPipGraphCardStealth('primary', true);
             } else {
-              this.schedulePipGraphCardStealth('primary', 5000);
+              this.schedulePipGraphCardStealth('primary', 3000);
             }
           }
           if (this.isAudioRecording) {
@@ -15022,7 +15022,7 @@ class GraphApp {
             if (!wasResizeMoved && widget.classList.contains('pip-stealth-locked')) {
               this.wakeUpPipGraphCardStealth('primary', true);
             } else if (!widget.classList.contains('pip-stealth-locked')) {
-              this.schedulePipGraphCardStealth('primary', 5000);
+              this.schedulePipGraphCardStealth('primary', 3000);
             }
           }
           if (this.isAudioRecording) {
@@ -15844,7 +15844,7 @@ class GraphApp {
     }
   }
 
-  schedulePipGraphCardStealth(cardRef, delayMs = 5000) {
+  schedulePipGraphCardStealth(cardRef, delayMs = 3000) {
     const { widget } = this._getPipCardWidgetAndSnapRaw(cardRef);
     if (!widget) return;
     this.clearPipGraphCardStealthTimer(cardRef);
@@ -15886,7 +15886,7 @@ class GraphApp {
     const wasStealth = widget.classList.contains('pip-stealth-locked');
     widget.classList.remove('pip-stealth-locked');
     if (restartTimer) {
-      this.schedulePipGraphCardStealth(cardRef, 5000);
+      this.schedulePipGraphCardStealth(cardRef, 3000);
     }
     if (wasStealth && this.isAudioRecording && !this._isApplyingAudioTimelineState) {
       this._recordAudioWorkspaceStateIfNeeded(true);
@@ -15925,7 +15925,7 @@ class GraphApp {
       snap._activeSnapHint = null;
       widget.classList.remove('pip-manipulating', 'pip-stealth-locked');
       widget.classList.add('pip-locked-mode');
-      this.schedulePipGraphCardStealth(cardRef, 5000);
+      this.schedulePipGraphCardStealth(cardRef, 3000);
     } else {
       this.clearPipGraphCardStealthTimer(cardRef);
       snap.isCurveSelected = false;
@@ -15951,7 +15951,7 @@ class GraphApp {
 
     if (showToast) {
       if (snap.isPipLocked) {
-        this.showToast('🔒 카드 잠금 완료! 5초 뒤 테두리와 상단 메뉴가 숨겨지며, 카드를 톡 터치하면 다시 나타납니다.');
+        this.showToast('🔒 카드 잠금 완료! 3초 뒤 테두리와 상단 메뉴가 숨겨지며, 카드를 톡 터치하면 다시 나타납니다.');
       } else {
         this.showToast('🔓 잠금 해제됨! 핸들 조작 · 여백 드래그로 축 이동 · 모서리로 시야 영역 확장이 가능합니다.');
       }
