@@ -37074,6 +37074,8 @@ class GraphApp {
     let diagRecentEvents = [];
     let diagFrozenAnomalies = [];
     let lastPenPointerDownAt = 0;
+    const diagTouchTrackMap = new Map();
+    const diagPenDownOnCanvasIds = new Set();
     let diagHudEl = document.getElementById('simplePenTouchCounterHud');
     const renderDiagTrailAndBanner = () => {
       if (!isInkDebugHudEnabled) return;
@@ -37135,6 +37137,8 @@ class GraphApp {
           diagCancelCount = 0;
           diagRecentEvents = [];
           diagFrozenAnomalies = [];
+          diagTouchTrackMap.clear();
+          diagPenDownOnCanvasIds.clear();
           const b1 = document.getElementById('cntBoxPen');
           const bT = document.getElementById('cntBoxStylusT');
           const b2 = document.getElementById('cntBoxTouch');
@@ -37187,12 +37191,26 @@ class GraphApp {
               const h = Math.round(e.height || 0);
               diagTouchCount++;
               flashCounterBox('cntBoxTouch', `👆 손날: ${diagTouchCount} (${w}x${h})`, '#d97706');
-              const distFromPen = (this._lastPenTipPos && (nowT - this._lastPenTipPos.time < 3000))
+              const distFromDown = (this._lastPenDownPos && (nowT - this._lastPenDownPos.time < 5000))
+                ? Math.round(Math.hypot(e.clientX - this._lastPenDownPos.x, e.clientY - this._lastPenDownPos.y))
+                : 999;
+              const distFromTip = (this._lastPenTipPos && (nowT - this._lastPenTipPos.time < 5000))
                 ? Math.round(Math.hypot(e.clientX - this._lastPenTipPos.x, e.clientY - this._lastPenTipPos.y))
                 : 999;
-              pushDiagTrail(`👆터치(${w}x${h})`);
-              if ((w > 0 && w <= 26) || distFromPen <= 130) {
-                pushDiagAnomaly(`[펜→터치 의심] 크기${w}x${h} 펜거리${distFromPen}px`);
+              const distFromPen = Math.min(distFromDown, distFromTip);
+              const label = `👆터치(거리${distFromPen}px/이동0px)`;
+              pushDiagTrail(label);
+              if (e.pointerId !== undefined) {
+                diagTouchTrackMap.set(e.pointerId, {
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  maxMove: 0,
+                  distFromPen,
+                  w,
+                  h,
+                  lastLabel: label,
+                  anomalyLogged: false
+                });
               }
             }
             if (this._uiPointerIds && e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
@@ -37226,6 +37244,7 @@ class GraphApp {
           this._markStylusPenDetected();
           this._lastPenActiveTime = nowT;
           this._lastPenDownTime = nowT;
+          this._lastPenDownPos = { x: e.clientX, y: e.clientY, time: nowT };
           this._lastPenTipPos = { x: e.clientX, y: e.clientY, time: nowT };
           if (this.activePointers) this.activePointers.clear();
           this._pinchState = null;
@@ -37233,6 +37252,7 @@ class GraphApp {
           if (isInkDebugHudEnabled && e.target === this.canvas) {
             lastPenPointerDownAt = nowT;
             diagPenCount++;
+            if (e.pointerId !== undefined) diagPenDownOnCanvasIds.add(e.pointerId);
             flashCounterBox('cntBoxPen', `✏️ 펜P: ${diagPenCount} (시작)`, '#10b981');
           }
         }
@@ -37359,6 +37379,25 @@ class GraphApp {
           if (e.target === this.canvas) {
             this._lastPalmTouchPos = { x: e.clientX, y: e.clientY, time: Date.now() };
           }
+          if (isInkDebugHudEnabled && e.pointerId !== undefined && diagTouchTrackMap.has(e.pointerId)) {
+            const info = diagTouchTrackMap.get(e.pointerId);
+            const curMove = Math.round(Math.hypot(e.clientX - info.startX, e.clientY - info.startY));
+            if (curMove > info.maxMove) {
+              info.maxMove = curMove;
+              const nextLabel = `👆터치(거리${info.distFromPen}px/이동${info.maxMove}px)`;
+              const idx = diagRecentEvents.lastIndexOf(info.lastLabel);
+              info.lastLabel = nextLabel;
+              if (idx >= 0) {
+                diagRecentEvents[idx] = nextLabel;
+              }
+              if (!info.anomalyLogged && info.maxMove >= 20 && info.distFromPen <= 190) {
+                info.anomalyLogged = true;
+                pushDiagAnomaly(`[펜이 터치로 둔갑!] 펜거리${info.distFromPen}px / 이동${info.maxMove}px (${info.w}x${info.h})`);
+              } else {
+                renderDiagTrailAndBanner();
+              }
+            }
+          }
           if (this._shouldIgnoreCanvasTouchPointer(e)) {
             if (e.cancelable !== false) e.preventDefault();
             if (this._pinchState || (this.activePointers && this.activePointers.size >= 2)) {
@@ -37456,13 +37495,16 @@ class GraphApp {
         }
         if (this.isPdfModalOpen) return;
         if (e.pointerType === 'touch') {
+          if (e.pointerId !== undefined) diagTouchTrackMap.delete(e.pointerId);
           if (this._shouldIgnoreCanvasTouchPointer(e)) return;
         }
         const isEffectivePen = (e.pointerType === 'pen');
         const nowT = Date.now();
         if (isEffectivePen) {
           this._lastPenActiveTime = nowT;
-          if (isInkDebugHudEnabled) {
+          const wasCanvasPenDown = (e.pointerId !== undefined && diagPenDownOnCanvasIds.has(e.pointerId));
+          if (e.pointerId !== undefined) diagPenDownOnCanvasIds.delete(e.pointerId);
+          if (isInkDebugHudEnabled && wasCanvasPenDown) {
             const ptsCount = (this.currentInkStroke && this.currentInkStroke.points) ? this.currentInkStroke.points.length : 0;
             if (e.type === 'pointercancel') {
               diagCancelCount++;
