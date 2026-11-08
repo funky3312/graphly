@@ -37065,24 +37065,63 @@ class GraphApp {
     let lastPointerMoveTime = 0;
     let lastPointerUpTime = 0;
 
-    // 🔬 [실시간 4종 입력 카운터 HUD: 아이패드 홈화면 웹앱(PWA)에서도 URL 입력 없이 즉시 원인을 측정할 수 있도록 상단 표시 (✕ 버튼으로 언제든 닫기 가능)]
+    // 🔬 [자동 범인 박제 & 최근 5건 타임라인 HUD: 필기 중에는 칠판만 보고, 씹히는 순간 손을 멈추고 위를 보면 원인이 자동 기록되어 있음]
     let isInkDebugHudEnabled = true;
     let diagPenCount = 0;
     let diagStylusTouchCount = 0;
     let diagTouchCount = 0;
     let diagCancelCount = 0;
+    let diagRecentEvents = [];
+    let diagFrozenAnomalies = [];
+    let lastPenPointerDownAt = 0;
     let diagHudEl = document.getElementById('simplePenTouchCounterHud');
+    const renderDiagTrailAndBanner = () => {
+      if (!isInkDebugHudEnabled) return;
+      const trailEl = document.getElementById('diagRecentTrail');
+      if (trailEl) {
+        trailEl.textContent = diagRecentEvents.length > 0
+          ? `최근기록: ${diagRecentEvents.slice(-5).join(' ➔ ')}`
+          : '최근기록: (아직 입력 없음)';
+      }
+      const bannerEl = document.getElementById('diagAnomalyBanner');
+      if (bannerEl) {
+        if (diagFrozenAnomalies.length > 0) {
+          bannerEl.style.background = '#dc2626';
+          bannerEl.style.color = '#ffffff';
+          bannerEl.textContent = `🚨 범인포착(${diagFrozenAnomalies.length}건): ${diagFrozenAnomalies[diagFrozenAnomalies.length - 1]}`;
+        } else {
+          bannerEl.style.background = '#1e293b';
+          bannerEl.style.color = '#94a3b8';
+          bannerEl.textContent = '🟢 감시중: 칠판만 보고 쓰다가 씹히는 순간 멈추고 여기를 보세요';
+        }
+      }
+    };
+    const pushDiagTrail = (label) => {
+      if (!isInkDebugHudEnabled) return;
+      diagRecentEvents.push(label);
+      if (diagRecentEvents.length > 8) diagRecentEvents.shift();
+      renderDiagTrailAndBanner();
+    };
+    const pushDiagAnomaly = (msg) => {
+      if (!isInkDebugHudEnabled) return;
+      diagFrozenAnomalies.push(msg);
+      renderDiagTrailAndBanner();
+    };
     if (isInkDebugHudEnabled && !diagHudEl && typeof document !== 'undefined' && document.body) {
       diagHudEl = document.createElement('div');
       diagHudEl.id = 'simplePenTouchCounterHud';
-      diagHudEl.style.cssText = 'position:fixed; top:44px; left:50%; transform:translateX(-50%); z-index:999999; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px; background:rgba(15,23,42,0.96); color:#fff; padding:6px 10px; border-radius:10px; font-family:monospace,sans-serif; font-size:12px; font-weight:700; pointer-events:auto; box-shadow:0 6px 20px rgba(0,0,0,0.4); border:1.5px solid #38bdf8; max-width:96vw;';
+      diagHudEl.style.cssText = 'position:fixed; top:40px; left:50%; transform:translateX(-50%); z-index:999999; display:flex; flex-direction:column; align-items:center; gap:4px; background:rgba(15,23,42,0.96); color:#fff; padding:6px 10px; border-radius:10px; font-family:monospace,sans-serif; font-size:11.5px; font-weight:700; pointer-events:auto; box-shadow:0 6px 20px rgba(0,0,0,0.4); border:1.5px solid #38bdf8; max-width:96vw;';
       diagHudEl.innerHTML = `
-        <span id="cntBoxPen" style="padding:3px 7px; border-radius:6px; background:#065f46; color:#a7f3d0; pointer-events:none;">✏️ 펜P: 0</span>
-        <span id="cntBoxStylusT" style="padding:3px 7px; border-radius:6px; background:#1e3a8a; color:#bfdbfe; pointer-events:none;">⚡ 펜T: 0</span>
-        <span id="cntBoxTouch" style="padding:3px 7px; border-radius:6px; background:#78350f; color:#fde68a; pointer-events:none;">👆 손날: 0</span>
-        <span id="cntBoxCancel" style="padding:3px 7px; border-radius:6px; background:#7f1d1d; color:#fecaca; pointer-events:none;">🚨 취소: 0</span>
-        <button id="btnResetDiagCnt" type="button" style="padding:3px 7px; border-radius:6px; background:#334155; color:#f8fafc; border:1px solid #64748b; font-size:12px; font-weight:700; cursor:pointer;">0리셋</button>
-        <button id="btnCloseDiagCnt" type="button" style="padding:3px 6px; border-radius:6px; background:#1e293b; color:#94a3b8; border:1px solid #475569; font-size:12px; font-weight:700; cursor:pointer;">✕</button>
+        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:5px;">
+          <span id="cntBoxPen" style="padding:2px 6px; border-radius:5px; background:#065f46; color:#a7f3d0; pointer-events:none;">✏️ 펜P: 0</span>
+          <span id="cntBoxStylusT" style="padding:2px 6px; border-radius:5px; background:#1e3a8a; color:#bfdbfe; pointer-events:none;">⚡ 펜T: 0</span>
+          <span id="cntBoxTouch" style="padding:2px 6px; border-radius:5px; background:#78350f; color:#fde68a; pointer-events:none;">👆 손날: 0</span>
+          <span id="cntBoxCancel" style="padding:2px 6px; border-radius:5px; background:#7f1d1d; color:#fecaca; pointer-events:none;">🚨 취소: 0</span>
+          <button id="btnResetDiagCnt" type="button" style="padding:2px 7px; border-radius:5px; background:#334155; color:#f8fafc; border:1px solid #64748b; font-size:11.5px; font-weight:700; cursor:pointer;">0리셋</button>
+          <button id="btnCloseDiagCnt" type="button" style="padding:2px 6px; border-radius:5px; background:#1e293b; color:#94a3b8; border:1px solid #475569; font-size:11.5px; font-weight:700; cursor:pointer;">✕</button>
+        </div>
+        <div id="diagRecentTrail" style="padding:2px 8px; border-radius:5px; background:#0f172a; color:#e2e8f0; font-size:11px; pointer-events:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:92vw;">최근기록: (아직 입력 없음)</div>
+        <div id="diagAnomalyBanner" style="padding:3px 8px; border-radius:5px; background:#1e293b; color:#94a3b8; font-size:11.5px; pointer-events:none; text-align:center;">🟢 감시중: 칠판만 보고 쓰다가 씹히는 순간 멈추고 여기를 보세요</div>
       `;
       document.body.appendChild(diagHudEl);
       const resetBtn = document.getElementById('btnResetDiagCnt');
@@ -37094,6 +37133,8 @@ class GraphApp {
           diagStylusTouchCount = 0;
           diagTouchCount = 0;
           diagCancelCount = 0;
+          diagRecentEvents = [];
+          diagFrozenAnomalies = [];
           const b1 = document.getElementById('cntBoxPen');
           const bT = document.getElementById('cntBoxStylusT');
           const b2 = document.getElementById('cntBoxTouch');
@@ -37102,6 +37143,7 @@ class GraphApp {
           if (bT) bT.textContent = '⚡ 펜T: 0';
           if (b2) b2.textContent = '👆 손날: 0';
           if (b3) b3.textContent = '🚨 취소: 0';
+          renderDiagTrailAndBanner();
         });
       }
       const closeBtn = document.getElementById('btnCloseDiagCnt');
@@ -37145,6 +37187,13 @@ class GraphApp {
               const h = Math.round(e.height || 0);
               diagTouchCount++;
               flashCounterBox('cntBoxTouch', `👆 손날: ${diagTouchCount} (${w}x${h})`, '#d97706');
+              const distFromPen = (this._lastPenTipPos && (nowT - this._lastPenTipPos.time < 3000))
+                ? Math.round(Math.hypot(e.clientX - this._lastPenTipPos.x, e.clientY - this._lastPenTipPos.y))
+                : 999;
+              pushDiagTrail(`👆터치(${w}x${h})`);
+              if ((w > 0 && w <= 26) || distFromPen <= 130) {
+                pushDiagAnomaly(`[펜→터치 의심] 크기${w}x${h} 펜거리${distFromPen}px`);
+              }
             }
             if (this._uiPointerIds && e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
             return;
@@ -37182,6 +37231,7 @@ class GraphApp {
           this._pinchState = null;
           this._pinchWasActiveInGesture = false;
           if (isInkDebugHudEnabled && e.target === this.canvas) {
+            lastPenPointerDownAt = nowT;
             diagPenCount++;
             flashCounterBox('cntBoxPen', `✏️ 펜P: ${diagPenCount} (시작)`, '#10b981');
           }
@@ -37417,8 +37467,14 @@ class GraphApp {
             if (e.type === 'pointercancel') {
               diagCancelCount++;
               flashCounterBox('cntBoxCancel', `🚨 취소: ${diagCancelCount} (점${ptsCount})`, '#dc2626');
+              pushDiagTrail(`🚨취소#${diagCancelCount}(점${ptsCount})`);
+              pushDiagAnomaly(`[pointercancel] 그리는 중 강제 취소됨(점${ptsCount})`);
             } else {
               flashCounterBox('cntBoxPen', `✏️ 펜P: ${diagPenCount} (점${ptsCount}개)`, '#059669');
+              pushDiagTrail(`✏️#${diagPenCount}(점${ptsCount})`);
+              if (ptsCount === 0) {
+                pushDiagAnomaly(`[handleDown 미진입] 펜P#${diagPenCount} 점0개`);
+              }
             }
           }
         }
@@ -37489,8 +37545,15 @@ class GraphApp {
       if (isInkDebugHudEnabled && e.changedTouches) {
         const changedList = Array.from(e.changedTouches);
         if (changedList.some(t => t.touchType === 'stylus')) {
+          const stylusTs = Date.now();
           diagStylusTouchCount++;
           flashCounterBox('cntBoxStylusT', `⚡ 펜T: ${diagStylusTouchCount}`, '#2563eb');
+          setTimeout(() => {
+            if (Math.abs(lastPenPointerDownAt - stylusTs) > 80) {
+              pushDiagTrail(`⚡펜T단독#${diagStylusTouchCount}!`);
+              pushDiagAnomaly(`[Pointer삼킴] ⚡펜T(#${diagStylusTouchCount})는 왔는데 ✏️펜P가 삼켜짐!`);
+            }
+          }, 55);
         }
       }
     }, { passive: false });
