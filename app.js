@@ -32378,6 +32378,7 @@ class GraphApp {
     }
 
     const navGroup = document.getElementById('viewerSlideNavGroup');
+    const btnCounter = document.getElementById('btnViewerSlideCounter');
     const lblCounter = document.getElementById('lblViewerSlideCounter');
     const gridPopover = document.getElementById('viewerSlideGridPopover');
     const chipsBox = document.getElementById('viewerSlideChips');
@@ -32388,9 +32389,19 @@ class GraphApp {
 
     if (navGroup) navGroup.style.display = 'inline-flex';
     if (lblCounter) lblCounter.textContent = `${idx + 1} / ${total}`;
+    if (btnCounter) {
+      btnCounter.style.cursor = total > 1 ? 'pointer' : 'default';
+      btnCounter.title = total > 1 ? '페이지 목록 열기' : '현재 페이지';
+    }
     if (gridPopover) gridPopover.style.display = 'none';
-    if (btnPrev) btnPrev.disabled = (idx <= 0);
-    if (btnNext) btnNext.disabled = (idx >= total - 1);
+    if (btnPrev) {
+      btnPrev.style.display = total > 1 ? 'inline-flex' : 'none';
+      btnPrev.disabled = (idx <= 0);
+    }
+    if (btnNext) {
+      btnNext.style.display = total > 1 ? 'inline-flex' : 'none';
+      btnNext.disabled = (idx >= total - 1);
+    }
     if (btnEdgePrev) {
       btnEdgePrev.style.display = total > 1 ? 'inline-flex' : 'none';
       btnEdgePrev.disabled = (idx <= 0);
@@ -32850,9 +32861,15 @@ class GraphApp {
 
   _renderViewerGraphCurveChips() {
     const box = document.getElementById('viewerGraphCurveChips');
+    const touchBar = document.getElementById('viewerGraphTouchBar');
+    const leftGroup = touchBar ? touchBar.querySelector('.viewer-graph-touch-left') : null;
     if (!box) return;
     box.innerHTML = '';
-    if (!this.graphs || this.graphs.length <= 1) return;
+    const hasMulti = Boolean(this.graphs && this.graphs.length > 1);
+    if (leftGroup) {
+      leftGroup.style.display = hasMulti ? 'inline-flex' : 'none';
+    }
+    if (!hasMulti) return;
     this.graphs.forEach((g, idx) => {
       const btn = document.createElement('button');
       btn.type = 'button';
