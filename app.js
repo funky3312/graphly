@@ -33526,9 +33526,33 @@ class GraphApp {
         break;
 
       case 'sin_1period':
+        if (h.length >= 1) {
+          const x0 = h[0].x, y0 = h[0].y;
+          pts.push({ x: x0, y: g.isAbsolute ? Math.abs(y0) : y0, type: 'center', label: '대칭중심' });
+          if (h.length >= 2) {
+            const dx = h[1].x - x0;
+            const A = h[1].y - y0;
+            const yPeak = y0 + A;
+            const yValley = y0 - A;
+            pts.push({ x: x0 + dx, y: g.isAbsolute ? Math.abs(yPeak) : yPeak, type: 'max', label: '극대' });
+            pts.push({ x: x0 + 3 * dx, y: g.isAbsolute ? Math.abs(yValley) : yValley, type: 'min', label: '극소' });
+          }
+        }
+        break;
+
       case 'cos_1period':
         if (h.length >= 1) {
-          pts.push({ x: h[0].x, y: h[0].y, type: 'center', label: '중심' });
+          const x0 = h[0].x, y0 = h[0].y;
+          pts.push({ x: x0, y: g.isAbsolute ? Math.abs(y0) : y0, type: 'center', label: '대칭중심' });
+          if (h.length >= 2) {
+            const dx = h[1].x - x0;
+            const A = h[1].y - y0;
+            const yPeak = y0 + A;
+            const yValley = y0 - A;
+            pts.push({ x: x0, y: g.isAbsolute ? Math.abs(yPeak) : yPeak, type: 'max', label: '극대' });
+            pts.push({ x: x0 + dx * 0.5, y: g.isAbsolute ? Math.abs(yValley) : yValley, type: 'min', label: '극소' });
+            pts.push({ x: x0 + dx, y: g.isAbsolute ? Math.abs(yPeak) : yPeak, type: 'max', label: '극대' });
+          }
         }
         break;
 
@@ -39579,6 +39603,11 @@ class GraphApp {
   collectDropLineCandidates() {
     // 🚀 [0.00ms 초고속 캐싱]: 마우스 호버(pointermove) 때마다 5000스텝 수치해석(findIntersections)을 재실행하여
     // 포인터가 마우스를 뒤따라오며 렉이 걸리던 현상을 원천 차단!
+    const mLeft = this.screenToMath(0, 0).x;
+    const mRight = this.screenToMath(this.screenWidth || 1440, 0).x;
+    const scanMinX = Math.min(-22, Math.min(mLeft, mRight) - 4);
+    const scanMaxX = Math.max(22, Math.max(mLeft, mRight) + 4);
+
     const sigParts = [
       this.usePiecewise ? 1 : 0,
       this.isPiecewisePeriodic ? 1 : 0,
@@ -39588,7 +39617,9 @@ class GraphApp {
       this.currentThemeKey || '',
       this.isMonochromeMode ? 1 : 0,
       this.showXAxis !== false ? 1 : 0,
-      this.showYAxis !== false ? 1 : 0
+      this.showYAxis !== false ? 1 : 0,
+      Math.round(scanMinX),
+      Math.round(scanMaxX)
     ];
     if (this.graphs) {
       for (let i = 0; i < this.graphs.length; i++) {
@@ -39627,36 +39658,126 @@ class GraphApp {
     this.graphs.forEach((g, gIdx) => {
       if (!g || !g.handles) return;
       if (g.type === 'geom_circle' || g.type === 'geom_triangle' || g.type === 'geom_quad') return;
-      let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+      const baseOx = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+      let ox = baseOx;
       let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
-      if (g.transforms && g.transforms.length > 0) {
+      const hasTransforms = Boolean(g.transforms && g.transforms.length > 0);
+      if (hasTransforms) {
         for (const t of g.transforms) {
           if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
           if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
         }
       }
+      const mapInnerX = (innerX) => {
+        if (hasTransforms) return innerX + ox;
+        return g.frozenInvertH ? (baseOx - innerX) : (baseOx + innerX);
+      };
 
-      g.handles.forEach((h, hIdx) => {
-        if (h.hidden || h.type === 'point' || h.type === 'asymptote') return;
-        // 점근선 교점(곡선 밖 허공의 기준점)은 곡선 위 수선 타겟에서 제외하여 엉뚱한 허공으로 튀는 현상 방지!
-        if (h.type === 'center' && offCurveCenterTypes.has(g.type)) return;
+      // 🌊 [삼각함수(sin, cos, tan) 주기별 모든 극대(최대)·극소(최소)·대칭중심 자석 스냅 지원]
+      if ((g.type === 'sin_1period' || g.type === 'cos_1period') && g.handles.length >= 1) {
+        const h0 = g.handles[0];
+        const h1 = g.handles.length >= 2 ? g.handles[1] : null;
+        let dx = h1 ? (h1.x - h0.x) : (g.type === 'sin_1period' ? (Math.PI / 2) : (2.0 * Math.PI));
+        if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
+        const qStep = (g.type === 'sin_1period') ? dx : (dx / 4.0);
+        if (Math.abs(qStep) >= 0.05) {
+          const invMin = hasTransforms ? (scanMinX - ox) : (g.frozenInvertH ? (baseOx - scanMinX) : (scanMinX - baseOx));
+          const invMax = hasTransforms ? (scanMaxX - ox) : (g.frozenInvertH ? (baseOx - scanMaxX) : (scanMaxX - baseOx));
+          const kA = (invMin - h0.x) / qStep;
+          const kB = (invMax - h0.x) / qStep;
+          const kMin = Math.max(-80, Math.floor(Math.min(kA, kB)) - 1);
+          const kMax = Math.min(80, Math.ceil(Math.max(kA, kB)) + 1);
+          const eps = Math.max(0.01, Math.min(0.25, Math.abs(qStep) * 0.15));
 
-        const candX = h.x + ox;
-        const evalY = this.evaluateGraphAtForScreen(g, gIdx, candX);
-        if (isNaN(evalY) || !isFinite(evalY) || Math.abs(evalY) > 100) return;
+          // (1) 마루(극대)·골(극소)을 먼저 등록하여 최우선 스냅 보장
+          for (let pass = 0; pass < 2; pass++) {
+            for (let k = kMin; k <= kMax; k++) {
+              const isCrestOrTrough = (g.type === 'sin_1period')
+                ? (Math.abs(k % 2) === 1)
+                : (k % 2 === 0);
+              if (pass === 0 && !isCrestOrTrough) continue;
+              if (pass === 1 && isCrestOrTrough) continue;
 
-        let labelName = h.name || '특이점';
-        if (g.type === 'cos_1period' && h.type === 'center') {
-          labelName = '극대';
+              const candX = mapInnerX(h0.x + k * qStep);
+              if (candX < scanMinX || candX > scanMaxX) continue;
+              if (this.usePiecewise && !g.isIndependent && !this.isInsidePiece(gIdx, candX)) continue;
+
+              const evalY = this.evaluateGraphAtForScreen(g, gIdx, candX);
+              if (isNaN(evalY) || !isFinite(evalY) || Math.abs(evalY) > 100) continue;
+
+              const yL = this.evaluateGraphAtForScreen(g, gIdx, candX - eps);
+              const yR = this.evaluateGraphAtForScreen(g, gIdx, candX + eps);
+              let labelName = '특이점';
+              if (isCrestOrTrough) {
+                if (!isNaN(yL) && !isNaN(yR)) {
+                  const midNeighbor = (yL + yR) * 0.5;
+                  if (Math.abs(evalY - midNeighbor) < 1e-5) {
+                    labelName = '대칭중심';
+                  } else {
+                    labelName = (evalY >= midNeighbor) ? '극대' : '극소';
+                  }
+                } else {
+                  labelName = '극점';
+                }
+              } else {
+                // 중심선 교차점 (단, |f(x)| 절댓값 꺾임으로 인해 첨점 극소/극대가 된 경우 극소/극대로 표기)
+                if (!isNaN(yL) && !isNaN(yR)) {
+                  if (evalY < yL - 1e-4 && evalY < yR - 1e-4) {
+                    labelName = '극소';
+                  } else if (evalY > yL + 1e-4 && evalY > yR + 1e-4) {
+                    labelName = '극대';
+                  } else {
+                    labelName = '대칭중심';
+                  }
+                } else {
+                  labelName = '대칭중심';
+                }
+              }
+              addCand(candX, evalY, labelName, g.color, g.id, null, `${g.id}_trig_q_${k}`);
+            }
+          }
         }
-        addCand(candX, evalY, labelName, g.color, g.id, hIdx, `${g.id}_h_${hIdx}`);
-      });
+      } else if (g.type === 'tan_1period' && g.handles.length >= 1) {
+        const h0 = g.handles[0];
+        const h1 = g.handles.length >= 2 ? g.handles[1] : null;
+        let dx = h1 ? (h1.x - h0.x) : 0.785;
+        if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
+        const pStep = dx * 4.0;
+        if (Math.abs(pStep) >= 0.1) {
+          const invMin = hasTransforms ? (scanMinX - ox) : (g.frozenInvertH ? (baseOx - scanMinX) : (scanMinX - baseOx));
+          const invMax = hasTransforms ? (scanMaxX - ox) : (g.frozenInvertH ? (baseOx - scanMaxX) : (scanMaxX - baseOx));
+          const kA = (invMin - h0.x) / pStep;
+          const kB = (invMax - h0.x) / pStep;
+          const kMin = Math.max(-60, Math.floor(Math.min(kA, kB)) - 1);
+          const kMax = Math.min(60, Math.ceil(Math.max(kA, kB)) + 1);
+          for (let k = kMin; k <= kMax; k++) {
+            const candX = mapInnerX(h0.x + k * pStep);
+            if (candX < scanMinX || candX > scanMaxX) continue;
+            if (this.usePiecewise && !g.isIndependent && !this.isInsidePiece(gIdx, candX)) continue;
+            const evalY = this.evaluateGraphAtForScreen(g, gIdx, candX);
+            if (isNaN(evalY) || !isFinite(evalY) || Math.abs(evalY) > 100) continue;
+            addCand(candX, evalY, '대칭중심', g.color, g.id, null, `${g.id}_tan_p_${k}`);
+          }
+        }
+      } else {
+        g.handles.forEach((h, hIdx) => {
+          if (h.hidden || h.type === 'point' || h.type === 'asymptote') return;
+          // 점근선 교점(곡선 밖 허공의 기준점)은 곡선 위 수선 타겟에서 제외하여 엉뚱한 허공으로 튀는 현상 방지!
+          if (h.type === 'center' && offCurveCenterTypes.has(g.type)) return;
+
+          const candX = mapInnerX(h.x);
+          const evalY = this.evaluateGraphAtForScreen(g, gIdx, candX);
+          if (isNaN(evalY) || !isFinite(evalY) || Math.abs(evalY) > 100) return;
+
+          let labelName = h.name || '특이점';
+          addCand(candX, evalY, labelName, g.color, g.id, hIdx, `${g.id}_h_${hIdx}`);
+        });
+      }
 
       // 기함수 분수형(ax/(x²+b))의 대칭 극소점 보강
       if (g.type === 'killer_frac_odd' && g.handles.length >= 2) {
-        const x0 = g.handles[0].x + ox;
-        const p = (g.handles[1].x + ox) - x0;
-        const symX = x0 - p;
+        const symInnerX = 2.0 * g.handles[0].x - g.handles[1].x;
+        const symX = mapInnerX(symInnerX);
         const symY = this.evaluateGraphAtForScreen(g, gIdx, symX);
         if (!isNaN(symY) && isFinite(symY)) {
           addCand(symX, symY, '극소', g.color, g.id, null, `${g.id}_sym_min`);
@@ -39676,7 +39797,7 @@ class GraphApp {
       // 3. x절편 (실근 f(x) = 0, x축이 표시되어 있을 때만)
       if (this.showXAxis !== false) {
         try {
-          const roots = this.engine.findIntersections(g, null, { xmin: -15, xmax: 15 }, null);
+          const roots = this.engine.findIntersections(g, null, { xmin: scanMinX, xmax: scanMaxX }, null);
           if (roots && roots.length > 0) {
             roots.forEach((r, rIdx) => {
               if (this.usePiecewise && !g.isIndependent && !this.isInsidePiece(gIdx, r.x)) return;
@@ -39692,7 +39813,7 @@ class GraphApp {
       for (let i = 0; i < this.graphs.length; i++) {
         for (let j = i + 1; j < this.graphs.length; j++) {
           try {
-            const roots = this.engine.findIntersections(this.graphs[i], this.graphs[j], { xmin: -15, xmax: 15 }, null);
+            const roots = this.engine.findIntersections(this.graphs[i], this.graphs[j], { xmin: scanMinX, xmax: scanMaxX }, null);
             if (roots && roots.length > 0) {
               roots.forEach((r, rIdx) => {
                 if (this.usePiecewise) {
@@ -39894,6 +40015,8 @@ class GraphApp {
       return true;
     });
 
+    const offCurveCenterTypes = new Set(['exp_basic', 'log_basic', 'rational_basic', 'killer_log_frac', 'geom_circle']);
+
     this.dropLines.forEach(item => {
       if (!item.binding) return;
       const b = item.binding;
@@ -39902,14 +40025,20 @@ class GraphApp {
       const g = this.graphs.find(graph => graph.id === b.layerId);
       if (!g) return;
 
-      let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+      const baseOx = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+      let ox = baseOx;
       let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
-      if (g.transforms && g.transforms.length > 0) {
+      const hasTransforms = Boolean(g.transforms && g.transforms.length > 0);
+      if (hasTransforms) {
         for (const t of g.transforms) {
           if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
           if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
         }
       }
+      const mapInnerX = (innerX) => {
+        if (hasTransforms) return innerX + ox;
+        return g.frozenInvertH ? (baseOx - innerX) : (baseOx + innerX);
+      };
 
       // (A) 특정 핸들러(극점, 변곡점, 꼭짓점, 시작점 등)에 바인딩된 경우
       if (b.type === 'candidate' && b.handleIndex !== null && b.handleIndex !== undefined) {
@@ -39919,8 +40048,9 @@ class GraphApp {
           if (g.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
             targetY = Math.abs(h.y);
           }
-          let newX = h.x + ox;
-          let evalY = (h.type === 'center' || h.type === 'asymptote')
+          const newX = mapInnerX(h.x);
+          const isOffCurveCenter = (h.type === 'asymptote') || (h.type === 'center' && offCurveCenterTypes.has(g.type));
+          let evalY = isOffCurveCenter
             ? (targetY + oy)
             : this.engine.evaluatePipeline(g, newX);
           if (isNaN(evalY) || !isFinite(evalY)) {
@@ -39928,6 +40058,52 @@ class GraphApp {
           }
           item.sourceX = newX;
           item.sourceY = evalY;
+        }
+      }
+      // (A-2) 삼각함수(sin, cos, tan) 주기별 극대·극소·대칭중심 및 기함수 분수형 대칭 극소점에 바인딩된 경우
+      else if (b.type === 'candidate' && typeof b.candKey === 'string') {
+        const trigMatch = b.candKey.match(/_trig_q_(-?\d+)$/);
+        const tanMatch = b.candKey.match(/_tan_p_(-?\d+)$/);
+        if (trigMatch && (g.type === 'sin_1period' || g.type === 'cos_1period') && g.handles && g.handles.length >= 1) {
+          const k = parseInt(trigMatch[1], 10);
+          const h0 = g.handles[0];
+          const h1 = g.handles.length >= 2 ? g.handles[1] : null;
+          let dx = h1 ? (h1.x - h0.x) : (g.type === 'sin_1period' ? (Math.PI / 2) : (2.0 * Math.PI));
+          if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
+          const qStep = (g.type === 'sin_1period') ? dx : (dx / 4.0);
+          const newX = mapInnerX(h0.x + k * qStep);
+          const evalY = this.engine.evaluatePipeline(g, newX);
+          if (!isNaN(evalY) && isFinite(evalY)) {
+            item.sourceX = newX;
+            item.sourceY = evalY;
+          }
+        } else if (tanMatch && g.type === 'tan_1period' && g.handles && g.handles.length >= 1) {
+          const k = parseInt(tanMatch[1], 10);
+          const h0 = g.handles[0];
+          const h1 = g.handles.length >= 2 ? g.handles[1] : null;
+          let dx = h1 ? (h1.x - h0.x) : 0.785;
+          if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
+          const pStep = dx * 4.0;
+          const newX = mapInnerX(h0.x + k * pStep);
+          const evalY = this.engine.evaluatePipeline(g, newX);
+          if (!isNaN(evalY) && isFinite(evalY)) {
+            item.sourceX = newX;
+            item.sourceY = evalY;
+          }
+        } else if (b.candKey.endsWith('_sym_min') && g.type === 'killer_frac_odd' && g.handles && g.handles.length >= 2) {
+          const symInnerX = 2.0 * g.handles[0].x - g.handles[1].x;
+          const newX = mapInnerX(symInnerX);
+          const evalY = this.engine.evaluatePipeline(g, newX);
+          if (!isNaN(evalY) && isFinite(evalY)) {
+            item.sourceX = newX;
+            item.sourceY = evalY;
+          }
+        } else if (b.name === 'y절편') {
+          const y0 = this.engine.evaluatePipeline(g, 0);
+          if (!isNaN(y0) && isFinite(y0)) {
+            item.sourceX = 0;
+            item.sourceY = y0;
+          }
         }
       }
       // (B) 절편인 경우
