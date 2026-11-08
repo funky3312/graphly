@@ -26461,7 +26461,7 @@ class GraphApp {
 
   saveCurrentGraphToCustomPresets(customName = '') {
     if (this.isGraphCovered) {
-      this.showToast('💡 프리셋 등록은 [그래프 모드]에서만 가능합니다. 그래프 창 상단의 [⤢ 크게 열기]를 눌러 등록해 주세요!');
+      this.showToast('그래프 창 상단의 [⤢ 크게 열기]를 누른 후 등록해 주세요');
       return null;
     }
     if (!this.graphs || this.graphs.length === 0) {
