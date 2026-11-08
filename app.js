@@ -22659,7 +22659,21 @@ class GraphApp {
       document.body.classList.remove('theme-light');
     }
 
-    // 🌟 [컨테이너 배경 동기화]: 캔버스와 부모 컨테이너 배경색을 완전히 일치시켜 경계 깜빡임 0%화
+    // 🌟 [컨테이너 & 루트(html/body) 배경 동기화]:
+    // iOS/iPadOS 26(Liquid Glass) PWA가 <html>/<body> 배경색을 샘플링해 상단 그라데이션 바를 생성하므로
+    // 루트 배경색과 <meta name="theme-color">를 현재 캔버스 배경색(theme.bg)과 100% 일치시킴!
+    if (document.documentElement) {
+      document.documentElement.style.backgroundColor = theme.bg;
+      document.documentElement.style.setProperty('--app-root-bg', theme.bg);
+    }
+    if (document.body) {
+      document.body.style.backgroundColor = theme.bg;
+      document.body.style.setProperty('--app-root-bg', theme.bg);
+    }
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      metaTheme.setAttribute('content', theme.bg);
+    }
     if (this.canvas && this.canvas.parentElement) {
       this.canvas.parentElement.style.backgroundColor = theme.bg;
     }

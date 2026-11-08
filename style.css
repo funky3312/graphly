@@ -41,9 +41,32 @@ body {
   background-color: var(--bg-dark);
   color: var(--text-main);
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+html:has(body.theme-light),
+body.theme-light {
+  --app-root-bg: #ffffff;
+  background-color: #ffffff !important;
+  color-scheme: light;
+}
+
+/* iOS/iPadOS 26(Liquid Glass) 홈 화면 웹앱(PWA) 상단 강제 그라데이션 바 원천 차단:
+   WebKit이 최상단(top: 0) fixed 요소와 body 배경색을 스캔해 상태바 그라데이션을 결정하므로
+   캔버스 배경색과 100% 동일한 솔리드 앵커를 최상단에 배치 */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: max(2px, env(safe-area-inset-top, 0px));
+  background-color: var(--app-root-bg, #12181f);
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* 상단 네비게이션 헤더 (13인치 액정 타블렛 특화: 38px 초슬림 컴팩트 & 접기 지원) */
@@ -7229,11 +7252,13 @@ body.theme-light .n-axis-preset-tip {
    🌟 [테마 3단계 완성: 전체 서랍 패널 · 수식/공유 모달 · 인라인 입력창 화이트 테마 완벽 동기화] 🌟
    ========================================================================== */
 body.theme-light {
+  --bg-dark: #ffffff;
   --text-main: #0f172a;
   --text-muted: #475569;
   --panel-bg: rgba(255, 255, 255, 0.96);
   --panel-border: rgba(15, 23, 42, 0.12);
   --btn-hover: rgba(15, 23, 42, 0.05);
+  background-color: #ffffff;
 }
 
 /* 1. 개형 선택 & 구간 분할 & 사각형 패널 */
