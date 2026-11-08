@@ -4593,13 +4593,13 @@ body.pdf-modal-open #lassoActionFloatingBar {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  cursor: grab;
+  cursor: move;
   pointer-events: auto !important;
   z-index: 15;
 }
 
 .problem-card-header:active {
-  cursor: grabbing;
+  cursor: move;
 }
 
 .problem-card-drag-handle {
@@ -5103,6 +5103,7 @@ body.theme-light .btn-card-lock-edit.locked-confirmed:hover {
   border-radius: 9px;
   touch-action: none;
   pointer-events: auto;
+  cursor: move;
   display: block;
 }
 
@@ -6757,7 +6758,7 @@ body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active) .problem-card-wid
 .problem-card-img,
 .problem-card-header,
 .problem-card-drag-handle {
-  cursor: grab !important;
+  cursor: move !important;
 }
 
 .problem-card-widget.is-dragging-card,
@@ -6765,7 +6766,7 @@ body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active) .problem-card-wid
 .problem-card-widget.is-dragging-card .problem-card-img,
 .problem-card-widget.is-dragging-card .problem-card-header,
 .problem-card-widget.is-dragging-card .problem-card-drag-handle {
-  cursor: grabbing !important;
+  cursor: move !important;
 }
 
 
@@ -8369,7 +8370,7 @@ body:not(.theme-light) .cloud-item-title {
   color: #e2e8f0 !important;
   font-size: 12px !important;
   font-weight: 700 !important;
-  cursor: grab !important;
+  cursor: move !important;
   user-select: none !important;
 }
 
@@ -8380,7 +8381,7 @@ body.theme-light .problem-card-title-group .problem-card-drag-handle {
 }
 
 .problem-card-widget.is-dragging-card .problem-card-title-group .problem-card-drag-handle {
-  cursor: grabbing !important;
+  cursor: move !important;
 }
 
 /* 차분한 무채색(흑백/슬레이트) 접기/펼치기 아이콘 버튼 */

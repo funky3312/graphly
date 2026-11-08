@@ -10207,6 +10207,11 @@ class GraphApp {
     // 1. 제목 및 카드 몸통 드래그 이동 전용 (접기 버튼은 드래그에서 완벽 분리!)
     let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
     el.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
+        if (e.cancelable !== false) e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       this.bringCardToFront(el);
       if (e.target.closest('.problem-card-resize-handle')) return;
       if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
@@ -10801,6 +10806,11 @@ class GraphApp {
 
       widget._toggleCardMin = () => this.toggleProblemCardMinimize();
       widget.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
+          if (e.cancelable !== false) e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         this.bringCardToFront(widget);
         if (e.target.closest('.problem-card-resize-handle')) return;
         if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
@@ -13573,6 +13583,11 @@ class GraphApp {
     // 제목 및 몸통 드래그 이동 전용 (삼각형 접기 원버튼과 완벽 분리!)
     let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
     el.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
+        if (e.cancelable !== false) e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       this.bringCardToFront(el);
       if (e.target.closest('.problem-card-resize-handle')) return;
       if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
@@ -14385,6 +14400,11 @@ class GraphApp {
       let initialBaseX = 580, initialBaseY = 68;
 
       widget.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
+          if (e.cancelable !== false) e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         this.bringCardToFront(widget);
         if (e.target.closest('.problem-card-resize-handle')) return;
         if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
@@ -15467,9 +15487,13 @@ class GraphApp {
     }
 
     const btnDropLine = widget.querySelector('.btn-card-dropline');
+    const isDlActive = Boolean(snap && !snap.isPipLocked && snap.isPipDropLineMode && !widget.classList.contains('card-ink-active'));
     if (btnDropLine) {
-      const isDlActive = Boolean(snap && !snap.isPipLocked && snap.isPipDropLineMode && !widget.classList.contains('card-ink-active'));
       btnDropLine.classList.toggle('active', isDlActive);
+    }
+    const liveCv = widget.querySelector('.graph-card-live-canvas');
+    if (liveCv) {
+      liveCv.style.cursor = isDlActive ? 'crosshair' : 'move';
     }
 
     const showCurveTools = Boolean(
@@ -16622,6 +16646,7 @@ class GraphApp {
         bodyEl.appendChild(liveCanvas);
       }
     }
+    liveCanvas.style.cursor = 'move';
 
     // 3. 라이브 캔버스 포인터 인터랙션
     // - 🔓 잠금 전 (!snap.isPipLocked): 핸들 드래그 = 개형 변형 | 곡선 드래그 = 평행이동 | 빈 여백 드래그 = 좌표축 이동 | 📍수선 모드 = 점 콕콕 수선 생성
@@ -16692,7 +16717,7 @@ class GraphApp {
 
       // 🔒 잠금(확정) 상태에서는 카드 내부 어디를 잡고 끌어도 카드 전체가 칠판 위에서 이동하도록 widget으로 버블링 허용!
       if (snap.isPipLocked) {
-        liveCanvas.style.cursor = 'grab';
+        liveCanvas.style.cursor = 'move';
         return;
       }
 
@@ -16718,7 +16743,7 @@ class GraphApp {
         this._isInteractingWithPipCard = true;
         this._activePipInteractionCardEl = widget;
         panInit = { x: snap.panX || 0, y: snap.panY || 0 };
-        liveCanvas.style.cursor = 'grabbing';
+        liveCanvas.style.cursor = 'move';
         this.requestPipGraphCardRender(cardRef);
         if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
         return;
@@ -16819,7 +16844,7 @@ class GraphApp {
         activeMode = 'handle';
         this._isInteractingWithPipCard = true;
         this._activePipInteractionCardEl = widget;
-        liveCanvas.style.cursor = 'grabbing';
+        liveCanvas.style.cursor = 'pointer';
         this.requestPipGraphCardRender(cardRef);
         if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
         return;
@@ -16852,7 +16877,7 @@ class GraphApp {
               : { pts: [], asymX: [], asymY: [] };
           }
         });
-        liveCanvas.style.cursor = 'grabbing';
+        liveCanvas.style.cursor = 'move';
         this.requestPipGraphCardRender(cardRef);
         if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
         return;
@@ -16868,7 +16893,7 @@ class GraphApp {
       this._isInteractingWithPipCard = true;
       this._activePipInteractionCardEl = widget;
       panInit = { x: snap.panX || 0, y: snap.panY || 0 };
-      liveCanvas.style.cursor = 'grabbing';
+      liveCanvas.style.cursor = 'move';
       if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
     });
 
@@ -16879,7 +16904,7 @@ class GraphApp {
       if (!snap || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return;
 
       if (snap.isPipLocked && !activeMode) {
-        liveCanvas.style.cursor = 'grab';
+        liveCanvas.style.cursor = 'move';
         return;
       }
 
@@ -17228,7 +17253,7 @@ class GraphApp {
         snap.symmetrySnapActive = false;
         snap.snappedPoints = [];
       }
-      liveCanvas.style.cursor = (snap && snap.isPipLocked) ? 'grab' : ((snap && snap.isPipDropLineMode) ? 'crosshair' : 'move');
+      liveCanvas.style.cursor = (snap && !snap.isPipLocked && snap.isPipDropLineMode) ? 'crosshair' : 'move';
       try { if (e && e.pointerId !== undefined) liveCanvas.releasePointerCapture(e.pointerId); } catch (_) { }
       this.renderPipGraphCard(cardRef);
       this.scheduleBakePipGraphCardToImg(cardRef);
