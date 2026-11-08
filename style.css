@@ -6584,6 +6584,12 @@ body.theme-light .btn-step-arrow:hover {
   pointer-events: auto;
 }
 
+#graphSnapFloatingBar {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
 .btn-return-covered-board {
   height: 36px;
   display: inline-flex;
@@ -6676,7 +6682,8 @@ body.graph-snap-crosshair #graphCanvas {
   box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.18);
 }
 
-.card-btn-restore {
+.card-btn-restore,
+.card-btn-duplicate {
   width: 26px !important;
   height: 25px !important;
   padding: 0 !important;
@@ -6688,13 +6695,15 @@ body.graph-snap-crosshair #graphCanvas {
   border: 1px solid rgba(255, 255, 255, 0.14) !important;
 }
 
-body.theme-light .card-btn-restore {
+body.theme-light .card-btn-restore,
+body.theme-light .card-btn-duplicate {
   background: #f8fafc !important;
   color: #475569 !important;
   border: 1px solid rgba(15, 23, 42, 0.12) !important;
 }
 
-body.theme-light .card-btn-restore:hover {
+body.theme-light .card-btn-restore:hover,
+body.theme-light .card-btn-duplicate:hover {
   background: #e2e8f0 !important;
   color: #0f172a !important;
   border-color: rgba(15, 23, 42, 0.24) !important;

@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261108_10">
+  <link rel="stylesheet" href="style.css?v=20261108_11">
 </head>
 
 <body class="theme-light">
@@ -1904,6 +1904,14 @@
                   <path d="m15 5 4 4" />
                 </svg></span>
             </button>
+            <button id="btnGraphCardDuplicate" type="button" class="card-btn card-btn-duplicate"
+              title="이 그래프 창 복제 (현재 그래프·필기 그대로 새 창 생성)">
+              <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg></span>
+            </button>
             <button id="btnGraphCardRestore" class="card-btn card-btn-restore"
               title="그래프 모드로 크게 열기 (교점·수선·구간분할 등 정밀 편집)">
               <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
@@ -1946,6 +1954,17 @@
             <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
           </svg>
           <span>필기 복귀</span>
+        </button>
+        <button id="btnAddNewPipCardFromGraph" class="btn-return-covered-board btn-add-new-pip-card" style="display: none;"
+          title="현재 그래프를 새 창모드 카드로 추가 (원본 카드는 보존됩니다)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="8" y="8" width="13" height="13" rx="2" ry="2" />
+            <path d="M4 16H3a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1" />
+            <line x1="14.5" y1="11.5" x2="14.5" y2="17.5" />
+            <line x1="11.5" y1="14.5" x2="17.5" y2="14.5" />
+          </svg>
+          <span>새 카드로 추가</span>
         </button>
         <button id="btnTriggerGraphSnap" class="btn-trigger-graph-snap" style="display: none !important;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -2918,8 +2937,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261108_10"></script>
-  <script src="app.js?v=20261108_10"></script>
+  <script src="engine.js?v=20261108_11"></script>
+  <script src="app.js?v=20261108_11"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
