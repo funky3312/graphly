@@ -3825,6 +3825,22 @@ class GraphApp {
         cancelAnimationFrame(this.pulseAnimId);
         this.pulseAnimId = null;
       }
+      if (this.isDropLineMode) {
+        this.isDropLineMode = false;
+        this.dropLineHoverCandidate = null;
+        this._isAimingDropLine = false;
+        const btnDl = document.getElementById('btnQuickDropLine');
+        if (btnDl) btnDl.classList.remove('active');
+        const container = this.canvas && this.canvas.parentElement;
+        if (container) container.classList.remove('drop-line-active');
+      }
+      if (this.isTextToolMode) {
+        this.isTextToolMode = false;
+        const btnTxt = document.getElementById('btnQuickText');
+        if (btnTxt) btnTxt.classList.remove('active');
+        const container = this.canvas && this.canvas.parentElement;
+        if (container) container.classList.remove('text-tool-active');
+      }
     }
 
     if (!this.isInkMode && (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'lasso' || tool === 'laser' || tool === 'sticker' || tool === 'select')) {
@@ -12919,6 +12935,19 @@ class GraphApp {
         }
       }
     });
+    if (!isBoard) {
+      const btnInt = document.getElementById('btnQuickIntersection');
+      if (btnInt) btnInt.classList.toggle('active', Boolean(this.useIntersectionDetector));
+      if (this.useIntersectionDetector) {
+        this.startIntersectionLoop();
+      }
+      const btnDl = document.getElementById('btnQuickDropLine');
+      if (btnDl) {
+        btnDl.classList.toggle('active', Boolean(this.isDropLineMode && (this.showXAxis !== false || this.showYAxis !== false)));
+      }
+      const btnTxt = document.getElementById('btnQuickText');
+      if (btnTxt) btnTxt.classList.toggle('active', Boolean(this.isTextToolMode));
+    }
     const axesDivider = document.querySelector('#btnInkToggleAxes + .ink-toolbar-divider');
     if (axesDivider) {
       axesDivider.style.display = isBoard ? 'none' : '';
@@ -13327,6 +13356,22 @@ class GraphApp {
     this.isPdfToGraphCropMode = false;
     this.isPdfToGraphCropDragging = false;
     this.stopIntersectionLoop();
+    if (this.isDropLineMode) {
+      this.isDropLineMode = false;
+      this.dropLineHoverCandidate = null;
+      this._isAimingDropLine = false;
+      const btnDl = document.getElementById('btnQuickDropLine');
+      if (btnDl) btnDl.classList.remove('active');
+      const container = this.canvas && this.canvas.parentElement;
+      if (container) container.classList.remove('drop-line-active');
+    }
+    if (this.isTextToolMode) {
+      this.isTextToolMode = false;
+      const btnTxt = document.getElementById('btnQuickText');
+      if (btnTxt) btnTxt.classList.remove('active');
+      const container = this.canvas && this.canvas.parentElement;
+      if (container) container.classList.remove('text-tool-active');
+    }
     document.body.classList.remove('graph-snap-crosshair');
     if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
 
@@ -39562,11 +39607,23 @@ class GraphApp {
     if (!this.isDropLineMode) {
       this.dropLineHoverCandidate = null;
       this._isAimingDropLine = false;
+    } else {
+      if (this.isTextToolMode) {
+        this.isTextToolMode = false;
+        const btnTxt = document.getElementById('btnQuickText');
+        if (btnTxt) btnTxt.classList.remove('active');
+        const cEl = this.canvas && this.canvas.parentElement;
+        if (cEl) cEl.classList.remove('text-tool-active');
+      }
+      if (this.isInkMode && this.activeInkTool !== 'select') {
+        this.setActiveInkTool('select');
+      }
     }
     const btn = document.getElementById('btnQuickDropLine');
     if (btn) btn.classList.toggle('active', this.isDropLineMode);
     const container = this.canvas.parentElement;
     if (container) container.classList.toggle('drop-line-active', this.isDropLineMode);
+    this.updateInkCursor();
     this.render();
     this.showToast(this.isDropLineMode ? '📍 보조 수선 도구 켜짐 (극점·교점 클릭 시 수선 생성)' : '📍 보조 수선 도구 꺼짐');
   }

@@ -2268,6 +2268,15 @@ body.fullscreen-mode .btn-exit-fullscreen {
   box-shadow: 0 6px 20px rgba(0, 210, 211, 0.25);
 }
 
+#btnQuickIntersection.active,
+#btnQuickDropLine.active,
+#btnQuickText.active {
+  background: rgba(0, 210, 211, 0.22);
+  border-color: #00d2d3;
+  color: #00d2d3;
+  box-shadow: 0 0 14px rgba(0, 210, 211, 0.35);
+}
+
 #btnQuickNewCanvas.is-hovered {
   background: rgba(244, 63, 94, 0.22);
   border-color: #fb7185;
@@ -6175,6 +6184,15 @@ body.theme-light .canvas-quick-toolbar .quick-fab-btn.is-hovered {
   color: #00cec9;
   box-shadow: 0 6px 18px rgba(0, 206, 201, 0.22);
   transform: scale(1.08);
+}
+
+body.theme-light .canvas-quick-toolbar #btnQuickIntersection.active,
+body.theme-light .canvas-quick-toolbar #btnQuickDropLine.active,
+body.theme-light .canvas-quick-toolbar #btnQuickText.active {
+  background: #f0fdfa;
+  border-color: #00cec9;
+  color: #008b8b;
+  box-shadow: 0 0 12px rgba(0, 206, 201, 0.32);
 }
 
 body.theme-light #btnQuickNewCanvas.is-hovered {
