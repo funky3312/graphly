@@ -3764,7 +3764,7 @@ body.theme-light .btn-exit-board:hover {
 }
 
 .ink-dock-drag-handle {
-  cursor: grab;
+  cursor: move;
   color: #64748b;
   font-size: 14px;
   letter-spacing: -2px;
@@ -3967,21 +3967,21 @@ canvas.ink-cursor-lasso.is-hover-selection {
 }
 
 canvas.ink-cursor-grab {
-  cursor: grab !important;
+  cursor: move !important;
 }
 
 canvas.ink-cursor-grabbing {
-  cursor: grabbing !important;
+  cursor: move !important;
 }
 
 body.space-pan-ready,
 body.space-pan-ready * {
-  cursor: grab !important;
+  cursor: move !important;
 }
 
 body.space-pan-dragging,
 body.space-pan-dragging * {
-  cursor: grabbing !important;
+  cursor: move !important;
 }
 
 /* 🌟 [필기 모드 상시 가상 연필 & 지우개 인디케이터] 🌟 */
@@ -8792,7 +8792,7 @@ body.theme-light .quick-pill-remote {
 
 .pill-remote-drag-handle {
   flex: 1;
-  cursor: grab;
+  cursor: move;
   color: #94a3b8;
   font-size: 10.5px;
   font-weight: 800;
@@ -8821,7 +8821,7 @@ body.theme-light .pill-remote-drag-handle:hover {
 }
 
 .pill-remote-drag-handle:active {
-  cursor: grabbing;
+  cursor: move;
 }
 
 /* 0단: 전폭 초대형 메인 [✒️ 필기 ⇄ ↖ 이동] 원버튼 (80% 컴팩트 스케일) */
@@ -9928,11 +9928,11 @@ body.theme-light .viewer-top-btn {
   overflow: hidden;
   display: block;
   touch-action: none;
-  cursor: grab;
+  cursor: default;
 }
 
 .smart-viewer-viewport:active {
-  cursor: grabbing;
+  cursor: move;
 }
 
 .smart-viewer-stage {
@@ -10978,13 +10978,13 @@ body.theme-light .pdf-to-graph-crop-bar {
 .pdf-viewport:not(.crop-mode),
 .pdf-viewport:not(.crop-mode) .pdf-page-wrapper,
 .pdf-viewport:not(.crop-mode) .pdf-page-canvas {
-  cursor: grab;
+  cursor: move;
 }
 
 .pdf-viewport.panning-active,
 .pdf-viewport.panning-active .pdf-page-wrapper,
 .pdf-viewport.panning-active .pdf-page-canvas {
-  cursor: grabbing !important;
+  cursor: move !important;
 }
 
 /* ✂️ 좌측 [+] 바로 옆 위아래 2단 균형 배치 팝업 & 캡처 시 상단 미니 캡처 버튼 */

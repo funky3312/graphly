@@ -3966,7 +3966,7 @@ class GraphApp {
     }
     if (this.isSpacePressed || this.isPanning || this.isBoardPanning) {
       this.canvas.classList.add((this.isPanning || this.isBoardPanning) ? 'ink-cursor-grabbing' : 'ink-cursor-grab');
-      this.canvas.style.cursor = (this.isPanning || this.isBoardPanning) ? 'grabbing' : 'grab';
+      this.canvas.style.cursor = 'move';
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       return;
     }
@@ -4030,8 +4030,7 @@ class GraphApp {
       }
     } else if (this.activeInkTool === 'select') {
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
-      this.canvas.classList.add('ink-cursor-grab');
-      this.canvas.style.cursor = 'grab';
+      this.canvas.style.cursor = 'default';
     } else {
       if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       this.canvas.style.cursor = 'default';
@@ -13480,10 +13479,10 @@ class GraphApp {
 
       const imgObj = new Image();
       imgObj.onload = () => {
-        if (imgObj.naturalWidth && imgObj.naturalHeight) {
+        if (!(options && typeof options.aspect === 'number') && imgObj.naturalWidth && imgObj.naturalHeight) {
           this.graphCardAspect = imgObj.naturalHeight / imgObj.naturalWidth;
+          this.syncGraphCardRectFromWidget();
         }
-        this.syncGraphCardRectFromWidget();
         this.render();
       };
       imgObj.src = dataUrl;
@@ -15689,7 +15688,11 @@ class GraphApp {
     }
     const liveCv = widget.querySelector('.graph-card-live-canvas');
     if (liveCv) {
-      liveCv.style.cursor = isLocked ? 'move' : (isDlActive ? 'crosshair' : 'default');
+      const lockModeKey = `${isLocked}|${isDlActive}`;
+      if (liveCv._lastLockCursorMode !== lockModeKey) {
+        liveCv._lastLockCursorMode = lockModeKey;
+        liveCv.style.cursor = isLocked ? 'move' : (isDlActive ? 'crosshair' : 'default');
+      }
     }
 
     const showCurveTools = Boolean(
@@ -16946,7 +16949,7 @@ class GraphApp {
             if (isNaN(evalY) || !isFinite(evalY)) evalY = targetY + oy;
             const s = this.mathToScreen(h.x + ox, evalY);
             if (Math.hypot(s.x - pos.x, s.y - pos.y) <= 13.5) {
-              resolvedCursor = 'grab';
+              resolvedCursor = 'pointer';
               return;
             }
           }
@@ -17098,7 +17101,7 @@ class GraphApp {
         activeMode = 'handle';
         this._isInteractingWithPipCard = true;
         this._activePipInteractionCardEl = widget;
-        liveCanvas.style.cursor = 'grabbing';
+        liveCanvas.style.cursor = 'pointer';
         this.requestPipGraphCardRender(cardRef);
         if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
         return;
@@ -17197,7 +17200,7 @@ class GraphApp {
           return;
         }
 
-        // 🎯 일반 모드 호버 시 0ms 무지연 커서 전환 (핸들: grab ✋ / 선택 곡선: move ✥ / 비선택 곡선: pointer 👆 / 빈 여백: default ↖)
+        // 🎯 일반 모드 호버 시 0ms 무지연 커서 전환 (핸들: pointer 검은테두리 손바닥 👆 / 선택 곡선: move ✥ / 비선택 곡선: pointer 👆 / 빈 여백: default ↖)
         if (e.pointerType !== 'touch') {
           const nextCur = computePipHoverCursor(pos, snap);
           if (liveCanvas.style.cursor !== nextCur) {
@@ -17224,7 +17227,7 @@ class GraphApp {
 
       if (activeMode === 'panAxes') {
         if (!movedDuringInteraction) return;
-        if (liveCanvas.style.cursor !== 'grabbing') liveCanvas.style.cursor = 'grabbing';
+        if (liveCanvas.style.cursor !== 'move') liveCanvas.style.cursor = 'move';
         snap.panX = panInit.x + (pos.x - downPos.x);
         snap.panY = panInit.y + (pos.y - downPos.y);
         this._reprojectPipCardInkFromMathCoords(cardRef, pos.cardW, pos.cardH);
@@ -33000,7 +33003,7 @@ class GraphApp {
           this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
         }
         document.body.classList.add('space-pan-dragging');
-        this.canvas.style.cursor = 'grabbing';
+        this.canvas.style.cursor = 'move';
         if (this.virtualStylusEl && !this.isAudioPlaying) {
           this.virtualStylusEl.style.display = 'none';
         }
@@ -33271,7 +33274,7 @@ class GraphApp {
           this.isPanning = true;
           this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
         }
-        this.canvas.style.cursor = 'grabbing';
+        this.canvas.style.cursor = 'move';
         this.render();
         return;
       }
@@ -33448,7 +33451,7 @@ class GraphApp {
         }
         this.draggedHandleIdx = prioHandleIdx;
         this.selectedHandleIdx = prioHandleIdx;
-        this.canvas.style.cursor = 'grabbing';
+        this.canvas.style.cursor = 'pointer';
         this.render();
         return;
       }
@@ -33575,7 +33578,7 @@ class GraphApp {
           this.isPanning = true;
           this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
         }
-        this.canvas.style.cursor = 'grabbing';
+        this.canvas.style.cursor = 'move';
         this.render();
         return;
       }
@@ -33997,7 +34000,7 @@ class GraphApp {
         // 활성 그래프의 핸들 드래그 (형태 변형)
         this.draggedHandleIdx = hitHandleIdx;
         this.isCurveSelected = true; // [대표님 규칙]: 핸들 조작 중에도 그래프 조작 상태 완벽 유지!
-        this.canvas.style.cursor = 'grabbing';
+        this.canvas.style.cursor = 'pointer';
       } else if (hitCurveIdx !== null) {
         // [다중 그래프 선택 & 평행이동 분리 (구간 잠금 시 즉시 전체 통째 평행이동)]
         const isPwGroupDrag = Boolean(this.usePiecewise && this.isPiecewiseLocked && this.graphs[hitCurveIdx] && !this.graphs[hitCurveIdx].isIndependent);
@@ -34069,11 +34072,11 @@ class GraphApp {
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
-          this.canvas.style.cursor = 'grabbing';
+          this.canvas.style.cursor = 'move';
         } else {
           this.isPanning = true;
           this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
-          this.canvas.style.cursor = 'grabbing';
+          this.canvas.style.cursor = 'move';
         }
         this.render();
       }
@@ -34210,8 +34213,8 @@ class GraphApp {
           return;
         }
         if (this.isPanning && this.panStart) {
-          if (this.canvas.style.cursor !== 'grabbing') {
-            this.canvas.style.cursor = 'grabbing';
+          if (this.canvas.style.cursor !== 'move') {
+            this.canvas.style.cursor = 'move';
           }
           if (this.inkStrokes && this.inkStrokes.length > 0) {
             this._inkBakeDirty = true;
@@ -34225,7 +34228,7 @@ class GraphApp {
         }
 
         if (this.isBoardPanning && this.boardPanStart) {
-          this.canvas.style.cursor = 'grabbing';
+          this.canvas.style.cursor = 'move';
           this.boardPanX = Math.round(pos.x - this.boardPanStart.x);
           this.boardPanY = Math.round(pos.y - this.boardPanStart.y);
           this.updateProblemCardPosition(true);
@@ -34858,7 +34861,7 @@ class GraphApp {
         if (this.curveContextBar && !this.curveContextBar.classList.contains('dimmed')) {
           this.curveContextBar.classList.add('dimmed');
         }
-        this.canvas.style.cursor = 'grabbing';
+        this.canvas.style.cursor = 'pointer';
         // 활성 그래프 핸들 개별 드래그
         let m = this.screenToMath(pos.x, pos.y);
         this.axisSnapActiveX = false;
@@ -35222,7 +35225,7 @@ class GraphApp {
         if (lbl) lbl.textContent = `${this.vfScreenW} px`;
         this.requestRender();
       } else if (this.isPanning) {
-        this.canvas.style.cursor = 'grabbing';
+        this.canvas.style.cursor = 'move';
         this._inkBakeDirty = true;
         // [대표님 요청: 화면 전체 이동 시 중앙 걸림/덜그럭거림(센터 마그네틱 랙) 완전 제거 - 1:1 무저항 부드러운 패닝]
         this.panX = pos.x - this.panStart.x;
@@ -35377,7 +35380,7 @@ class GraphApp {
         } else if (isOverPwLock || isOverPwDel || isOverPwToggle || isOverPwChip || isOverPwPeriod) {
           nextCursor = 'pointer'; // 클릭 가능한 자물쇠(🔒), 삭제(✕), 포함 토글(●/○) 및 함수 배정 칩
         } else if (isOverHandle) {
-          nextCursor = 'grab'; // 극점/조절점 핸들러 손모양 ✋ (세로 분할선 몸통보다 최우선!)
+          nextCursor = 'pointer'; // 극점/조절점 핸들러 검은 테두리 손바닥 👆 (세로 분할선 몸통보다 최우선!)
         } else if (isOverPwBoundary) {
           nextCursor = 'ew-resize'; // 좌우 드래그 분할선 ↔
         } else if (isOverCurve) {
@@ -35408,8 +35411,10 @@ class GraphApp {
           } else {
             nextCursor = 'default';
           }
-        } else if (this.isSpacePressed || this.isShiftPressed || (e && e.shiftKey) || (this.isInkMode && this.activeInkTool === 'select')) {
-          nextCursor = 'grab';
+        } else if (this.isSpacePressed || this.isShiftPressed || (e && e.shiftKey)) {
+          nextCursor = 'move';
+        } else if (this.isInkMode && this.activeInkTool === 'select') {
+          nextCursor = 'default';
         } else if (this.isInkMode && !this.showVirtualStylus && (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter' || this.activeInkTool === 'eraser')) {
           nextCursor = 'crosshair';
         }
@@ -35920,15 +35925,18 @@ class GraphApp {
       this.curveFeatsSnapshot = null;
       this.syncControls();
 
-      if (this.isShiftPressed || this.isSpacePressed || (this.isInkMode && this.activeInkTool === 'select')) {
+      if (this.isShiftPressed || this.isSpacePressed) {
         this.updateInkCursor();
-        this.canvas.style.cursor = 'grab';
+        this.canvas.style.cursor = 'move';
+      } else if (this.isInkMode && this.activeInkTool === 'select') {
+        this.updateInkCursor();
+        this.canvas.style.cursor = 'default';
       } else if (this.isInkMode) {
         this.updateInkCursor();
       } else if (this.isDropLineMode) {
         this.canvas.style.cursor = 'crosshair';
       } else if (wasDraggingHandle || (prevDownInfo && prevDownInfo.hitHandleIdx !== null && prevDownInfo.hitHandleIdx !== undefined)) {
-        this.canvas.style.cursor = 'grab';
+        this.canvas.style.cursor = 'pointer';
       } else if (wasDraggingCurve || (prevDownInfo && prevDownInfo.hitCurveIdx !== null && prevDownInfo.hitCurveIdx !== undefined && this.isCurveSelected)) {
         this.canvas.style.cursor = 'move';
       } else {
@@ -36438,7 +36446,7 @@ class GraphApp {
       if ((e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !isInput && !this.isShiftPressed) {
         this.isShiftPressed = true;
         if (this.isInkMode) {
-          this.canvas.style.cursor = 'grab';
+          this.canvas.style.cursor = 'move';
         }
       }
 
