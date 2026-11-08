@@ -131,6 +131,8 @@ class GraphApp {
 
     // 공통 뷰포트 & 렌더링 옵션
     this.showAxes = true; // [대표님 기획]: 흰바탕에 가운데 수직선(축)과 그리드가 있는 상태에서 시작! (데스모스/지오지브라 스타일)
+    this.showXAxis = true; // x축 개별 표시 여부 (기본 ON, 설정에서 x축/y축 독립 제어)
+    this.showYAxis = true; // y축 개별 표시 여부 (기본 ON, 설정에서 x축/y축 독립 제어)
     this.axisLineWidth = 1.8; // 🌟 [대표님 피드백 반영]: 데스모스급 샤프하고 세련된 기본 축 두께 (기존 2.8px -> 1.8px)
     this.showArrows = true; // 수학적 표준 상시 고정
     this.showAsymptotes = true;
@@ -998,6 +1000,8 @@ class GraphApp {
       xSpan: this.xSpan,
       ySpan: this.ySpan,
       showAxes: Boolean(this.showAxes),
+      showXAxis: this.showXAxis !== false,
+      showYAxis: this.showYAxis !== false,
       showGuides: Boolean(this.showGuides),
       showGridNumbers: Boolean(this.showGridNumbers),
       usePiecewise: this.usePiecewise,
@@ -1628,6 +1632,15 @@ class GraphApp {
       if (data.showAxes !== undefined) {
         this.showAxes = Boolean(data.showAxes);
         this.updateAxesUI();
+      }
+      if (data.showXAxis !== undefined) {
+        this.showXAxis = Boolean(data.showXAxis);
+      }
+      if (data.showYAxis !== undefined) {
+        this.showYAxis = Boolean(data.showYAxis);
+      }
+      if (typeof this.syncAxisVisibilityUI === 'function') {
+        this.syncAxisVisibilityUI();
       }
       const chkG = document.getElementById('chkGuides');
       if (chkG) chkG.checked = Boolean(this.showGuides);
@@ -2513,6 +2526,9 @@ class GraphApp {
     if (chkAsym) chkAsym.checked = Boolean(this.showAsymptotes);
     const chkInv = document.getElementById('chkInverseGuide');
     if (chkInv) chkInv.checked = Boolean(this.showInverseGuide);
+    if (typeof this.syncAxisVisibilityUI === 'function') {
+      this.syncAxisVisibilityUI();
+    }
 
     // 🌟 [대표님 기획: 상단 중앙 초슬림 캡슐바 동기화]
     this.syncCurveContextBar();
@@ -3636,16 +3652,97 @@ class GraphApp {
   }
 
   toggleAxes(forceVal = null) {
-    const nextState = (forceVal !== null) ? forceVal : !this.showAxes;
-    this.showAxes = nextState;
+    if (forceVal !== null) {
+      this.showAxes = Boolean(forceVal);
+    } else {
+      const anyVisible = (this.showXAxis !== false || this.showYAxis !== false);
+      const nextState = !anyVisible;
+      this.showXAxis = nextState;
+      this.showYAxis = nextState;
+      this.showAxes = true;
+    }
     this.updateAxesUI();
+    if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
+    if (typeof this._refreshAllOpenPipGraphCards === 'function') this._refreshAllOpenPipGraphCards();
     this.render();
-    this.showToast(this.showAxes ? '📐 좌표축 표시 On (x·y축 및 눈금)' : '🪵 빈 칠판 모드 (좌표축 숨김)');
+    const showAny = Boolean(this.showAxes && (this.showXAxis !== false || this.showYAxis !== false));
+    this.showToast(showAny ? '📐 좌표축 표시 On (x·y축)' : '🪵 좌표축 숨김 (x·y축 Off)');
   }
 
   updateAxesUI() {
+    this.syncAxisVisibilityUI();
+  }
+
+  syncAxisVisibilityUI() {
+    const xOn = this.showXAxis !== false;
+    const yOn = this.showYAxis !== false;
+    const bothAxesOff = !xOn && !yOn;
+
+    const btnX = document.getElementById('btnToggleXAxis');
+    if (btnX) {
+      btnX.classList.toggle('active', xOn);
+      btnX.setAttribute('aria-pressed', xOn ? 'true' : 'false');
+    }
+    const btnY = document.getElementById('btnToggleYAxis');
+    if (btnY) {
+      btnY.classList.toggle('active', yOn);
+      btnY.setAttribute('aria-pressed', yOn ? 'true' : 'false');
+    }
+
     const btnInkAxes = document.getElementById('btnInkToggleAxes');
-    if (btnInkAxes) btnInkAxes.classList.toggle('active', !!this.showAxes);
+    if (btnInkAxes) {
+      btnInkAxes.classList.toggle('active', Boolean(this.showAxes && !bothAxesOff));
+    }
+
+    // 두 축이 모두 꺼진 경우: 보조 수선 모드를 자동 해제하고 수선 버튼을 자동으로 숨김
+    if (bothAxesOff) {
+      if (this.isDropLineMode) {
+        this.isDropLineMode = false;
+        this.dropLineHoverCandidate = null;
+        this._isAimingDropLine = false;
+        const container = this.canvas && this.canvas.parentElement;
+        if (container) container.classList.remove('drop-line-active');
+      }
+      if (this.pipGraphLiveSnap && this.pipGraphLiveSnap.isPipDropLineMode) {
+        this.pipGraphLiveSnap.isPipDropLineMode = false;
+        this.pipGraphLiveSnap._pipDropLineHoverCand = null;
+        this.pipGraphLiveSnap._pipDropLineHoverScissors = null;
+      }
+      if (Array.isArray(this.extraGraphCards)) {
+        this.extraGraphCards.forEach(c => {
+          const s = c && (c.pipLiveSnap || (c.el && c.el._pipLiveSnap));
+          if (s && s.isPipDropLineMode) {
+            s.isPipDropLineMode = false;
+            s._pipDropLineHoverCand = null;
+            s._pipDropLineHoverScissors = null;
+          }
+        });
+      }
+    }
+
+    const btnQuickDl = document.getElementById('btnQuickDropLine');
+    if (btnQuickDl) {
+      btnQuickDl.classList.toggle('active', Boolean(this.isDropLineMode && !bothAxesOff));
+      if (!this.isGraphCovered) {
+        btnQuickDl.style.display = bothAxesOff ? 'none' : '';
+      }
+    }
+
+    if (typeof this.syncPipCardLockUI === 'function') {
+      const gWidget = document.getElementById('graphCardWidget');
+      if (gWidget) {
+        gWidget._lastPipLockUiSig = '';
+        this.syncPipCardLockUI('primary');
+      }
+      if (Array.isArray(this.extraGraphCards)) {
+        this.extraGraphCards.forEach(c => {
+          if (c && c.el) {
+            c.el._lastPipLockUiSig = '';
+            this.syncPipCardLockUI(c);
+          }
+        });
+      }
+    }
   }
 
   resolveHighlighterStrokeColor(rawColor, isLight = true) {
@@ -12651,6 +12748,8 @@ class GraphApp {
       periodicStepY: this.periodicStepY,
       isPiecewiseLocked: Boolean(this.isPiecewiseLocked),
       showInverseGuide: this.showInverseGuide,
+      showXAxis: this.showXAxis !== false,
+      showYAxis: this.showYAxis !== false,
       showGridNumbers: Boolean(this.showGridNumbers),
       isNAxisMode: Boolean(this.isNAxisMode),
       nAxisOuterIdx: this.nAxisOuterIdx,
@@ -12784,7 +12883,11 @@ class GraphApp {
     graphOnlyIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) {
-        el.style.display = isBoard ? 'none' : '';
+        if (id === 'btnQuickDropLine' && !isBoard && this.showXAxis === false && this.showYAxis === false) {
+          el.style.display = 'none';
+        } else {
+          el.style.display = isBoard ? 'none' : '';
+        }
       }
     });
     const axesDivider = document.querySelector('#btnInkToggleAxes + .ink-toolbar-divider');
@@ -14997,6 +15100,8 @@ class GraphApp {
       xSpan: this.xSpan,
       ySpan: this.ySpan,
       showAxes: this.showAxes,
+      showXAxis: this.showXAxis,
+      showYAxis: this.showYAxis,
       showGuides: this.showGuides,
       showAsymptotes: this.showAsymptotes,
       showInverseGuide: this.showInverseGuide,
@@ -15047,6 +15152,8 @@ class GraphApp {
       this.xSpan = typeof snapObj.xSpan === 'number' ? snapObj.xSpan : 6.2;
       this.ySpan = typeof snapObj.ySpan === 'number' ? snapObj.ySpan : 5.1;
       this.showAxes = true;
+      this.showXAxis = backup.showXAxis !== false;
+      this.showYAxis = backup.showYAxis !== false;
       this.showGuides = Boolean(backup.showGuides);
       this.showAsymptotes = Boolean(backup.showAsymptotes);
       this.showInverseGuide = Boolean(snapObj.showInverseGuide);
@@ -15059,7 +15166,7 @@ class GraphApp {
       this.periodicStepY = snapObj.periodicStepY || 0;
       this.isPiecewiseLocked = Boolean(snapObj.isPiecewiseLocked);
       this.dropLines = snapObj.dropLines || [];
-      this.isDropLineMode = Boolean(snapObj.isPipDropLineMode && !snapObj.isPipLocked);
+      this.isDropLineMode = Boolean(snapObj.isPipDropLineMode && !snapObj.isPipLocked && (this.showXAxis || this.showYAxis));
       this.dropLineHoverCandidate = snapObj._pipDropLineHoverCand || null;
       this.dropLineHoverScissors = snapObj._pipDropLineHoverScissors || null;
       this.renderedScissors = Array.isArray(snapObj._pipRenderedScissors) ? snapObj._pipRenderedScissors : [];
@@ -15880,10 +15987,15 @@ class GraphApp {
       }
     }
 
+    const bothAxesOff = (this.showXAxis === false && this.showYAxis === false);
+    if (bothAxesOff && snap && snap.isPipDropLineMode) {
+      snap.isPipDropLineMode = false;
+    }
     const btnDropLine = widget.querySelector('.btn-card-dropline');
-    const isDlActive = Boolean(snap && !snap.isPipLocked && snap.isPipDropLineMode && !widget.classList.contains('card-ink-active'));
+    const isDlActive = Boolean(snap && !snap.isPipLocked && snap.isPipDropLineMode && !bothAxesOff && !widget.classList.contains('card-ink-active'));
     if (btnDropLine) {
       btnDropLine.classList.toggle('active', isDlActive);
+      btnDropLine.style.display = bothAxesOff ? 'none' : '';
     }
     const liveCv = widget.querySelector('.graph-card-live-canvas');
     if (liveCv) {
@@ -16101,7 +16213,7 @@ class GraphApp {
     }
 
     const activeG = Array.isArray(snapObj.graphs) ? snapObj.graphs[snapObj.activeGraphIdx] : null;
-    const uiSig = `${Boolean(snapObj.isPipLocked)}|${Boolean(snapObj.isCurveSelected)}|${Boolean(snapObj.isPipDropLineMode)}|${Boolean(snapObj.isPipSymPopoverOpen)}|${Boolean(widget.classList.contains('card-ink-active'))}|${activeG ? `${activeG.id}:${Boolean(activeG.isAbsolute)}:${Boolean(activeG.isAbsPristine)}` : ''}`;
+    const uiSig = `${Boolean(snapObj.isPipLocked)}|${Boolean(snapObj.isCurveSelected)}|${Boolean(snapObj.isPipDropLineMode)}|${Boolean(snapObj.isPipSymPopoverOpen)}|${Boolean(widget.classList.contains('card-ink-active'))}|${Boolean(this.showXAxis !== false)}|${Boolean(this.showYAxis !== false)}|${activeG ? `${activeG.id}:${Boolean(activeG.isAbsolute)}:${Boolean(activeG.isAbsPristine)}` : ''}`;
     if (widget._lastPipLockUiSig !== uiSig) {
       widget._lastPipLockUiSig = uiSig;
       this.syncPipCardLockUI(cardRef);
@@ -17560,7 +17672,7 @@ class GraphApp {
             if (item) {
               if (hitScissors.which === 'x') item.showX = false;
               if (hitScissors.which === 'y') item.showY = false;
-              if (!item.showX && !item.showY) {
+              if ((!item.showX || this.showXAxis === false) && (!item.showY || this.showYAxis === false)) {
                 this.dropLines = this.dropLines.filter(dl => dl.id !== hitScissors.id);
               }
             }
@@ -17801,11 +17913,11 @@ class GraphApp {
           this.symmetrySnapActive = false;
           this.snappedPoints = [];
 
-          if (Math.abs(m.x) < snapThresholdMathX) {
+          if (this.showYAxis !== false && Math.abs(m.x) < snapThresholdMathX) {
             m.x = 0;
             this.axisSnapActiveX = true;
           }
-          if (Math.abs(m.y) < snapThresholdMathY) {
+          if (this.showXAxis !== false && Math.abs(m.y) < snapThresholdMathY) {
             m.y = 0;
             this.axisSnapActiveY = true;
           }
@@ -17865,21 +17977,23 @@ class GraphApp {
           let bestDy = null, minDistY = snapThresholdMathY;
 
           if (!e.altKey) {
+            const canSnapYAxis = this.showYAxis !== false;
+            const canSnapXAxis = this.showXAxis !== false;
             if (Array.isArray(feats.pts)) {
               for (const pt of feats.pts) {
                 const candX = pt.x + deltaX;
                 const candY = pt.y + deltaY;
-                if (Math.abs(candX) < minDistX) {
+                if (canSnapYAxis && Math.abs(candX) < minDistX) {
                   minDistX = Math.abs(candX);
                   bestDx = -pt.x;
                 }
-                if (Math.abs(candY) < minDistY) {
+                if (canSnapXAxis && Math.abs(candY) < minDistY) {
                   minDistY = Math.abs(candY);
                   bestDy = -pt.y;
                 }
               }
             }
-            if (Array.isArray(feats.asymX)) {
+            if (canSnapYAxis && Array.isArray(feats.asymX)) {
               for (const ax of feats.asymX) {
                 const candX = ax + deltaX;
                 if (Math.abs(candX) < minDistX) {
@@ -17888,7 +18002,7 @@ class GraphApp {
                 }
               }
             }
-            if (Array.isArray(feats.asymY)) {
+            if (canSnapXAxis && Array.isArray(feats.asymY)) {
               for (const ay of feats.asymY) {
                 const candY = ay + deltaY;
                 if (Math.abs(candY) < minDistY) {
@@ -17977,21 +18091,24 @@ class GraphApp {
           const upPos = e ? getLocalPos(e, false) : downPos;
           const isTouch = Boolean(e && (e.pointerType === 'touch' || e.pointerType === 'pen'));
           this._withPipCardGraphState(snap, upPos.cardW, upPos.cardH, () => {
+            const allowX = this.showXAxis !== false;
+            const allowY = this.showYAxis !== false;
+            if (!allowX && !allowY) return;
             const target = snap._pipDropLineHoverCand || this.findNearestDropLineTarget({ x: upPos.x, y: upPos.y }, isTouch ? 36 : 24);
             if (target) {
               if (!Array.isArray(this.dropLines)) this.dropLines = [];
               const existing = this.dropLines.find(dl => Math.hypot(dl.sourceX - target.x, dl.sourceY - target.y) < 0.001);
               if (existing) {
-                existing.showX = true;
-                existing.showY = true;
-                this.showToast('📍 보조 수선 양방향 복원');
+                if (allowX) existing.showX = true;
+                if (allowY) existing.showY = true;
+                this.showToast('📍 보조 수선 복원 완료');
               } else {
                 this.dropLines.push({
                   id: 'dl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
                   sourceX: target.x,
                   sourceY: target.y,
-                  showX: true,
-                  showY: true,
+                  showX: allowX,
+                  showY: allowY,
                   labelX: '',
                   labelY: '',
                   style: this.dropLineStyle || 'dashed',
@@ -18006,7 +18123,10 @@ class GraphApp {
                     anchorX: target.x
                   }
                 });
-                this.showToast('📍 x·y축 보조 수선 생성 완료');
+                const toastMsg = (allowX && allowY)
+                  ? '📍 x·y축 보조 수선 생성 완료'
+                  : (allowX ? '📍 x축 보조 수선 생성 완료' : '📍 y축 보조 수선 생성 완료');
+                this.showToast(toastMsg);
               }
             }
           });
@@ -20106,6 +20226,33 @@ class GraphApp {
         this.render();
       };
     }
+
+    // 좌표축(x축 / y축) 개별 표시 토글
+    const btnToggleXAxis = document.getElementById('btnToggleXAxis');
+    if (btnToggleXAxis) {
+      btnToggleXAxis.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showXAxis = !(this.showXAxis !== false);
+        this.syncAxisVisibilityUI();
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
+        this._refreshAllOpenPipGraphCards();
+        this.render();
+      };
+    }
+    const btnToggleYAxis = document.getElementById('btnToggleYAxis');
+    if (btnToggleYAxis) {
+      btnToggleYAxis.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showYAxis = !(this.showYAxis !== false);
+        this.syncAxisVisibilityUI();
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
+        this._refreshAllOpenPipGraphCards();
+        this.render();
+      };
+    }
+    this.syncAxisVisibilityUI();
 
     // 그리드 점선 가이드 토글
     const chkGuides = document.getElementById('chkGuides');
@@ -26209,6 +26356,8 @@ class GraphApp {
       allowOneFingerPanInInk: Boolean(this.allowOneFingerPanInInk),
       showVirtualStylus: Boolean(this.showVirtualStylus),
       useMagneticSnap: Boolean(this.useMagneticSnap),
+      showXAxis: this.showXAxis !== false,
+      showYAxis: this.showYAxis !== false,
       showGuides: Boolean(this.showGuides),
       showGuidesV2: Boolean(this.showGuides),
       showGridNumbers: Boolean(this.showGridNumbers),
@@ -26272,6 +26421,11 @@ class GraphApp {
         this.useMagneticSnap = prefs.useMagneticSnap;
         const chk = document.getElementById('chkMagneticSnap');
         if (chk) chk.checked = prefs.useMagneticSnap;
+      }
+      this.showXAxis = (typeof prefs.showXAxis === 'boolean') ? prefs.showXAxis : true;
+      this.showYAxis = (typeof prefs.showYAxis === 'boolean') ? prefs.showYAxis : true;
+      if (typeof this.syncAxisVisibilityUI === 'function') {
+        this.syncAxisVisibilityUI();
       }
       if (typeof prefs.showGuidesV2 === 'boolean') {
         this.showGuides = prefs.showGuidesV2;
@@ -26346,6 +26500,8 @@ class GraphApp {
           allowOneFingerPanInInk: true,
           showVirtualStylus: true,
           useMagneticSnap: true,
+          showXAxis: true,
+          showYAxis: true,
           showGuides: false,
           showGuidesV2: false,
           showGridNumbers: false,
@@ -35559,33 +35715,35 @@ class GraphApp {
           const unitScale = (this.screenHeight / 2) / effSpanY;
           const snapDistMath = 11 / unitScale;
 
-          // X축 (y=0) 스냅
+          // X축 (y=0) 스냅 (x축이 표시되어 있을 때만 반응)
           let snappedY = false;
-          // 1) 기본: 드래그 중인 핸들 자체가 x축에 닿을 때 (극대점 자체 접함)
-          if (Math.abs(m.y) < snapDistMath) {
-            m.y = 0.0;
-            this.axisSnapActiveY = true;
-            this.snappedPoints.push({ x: m.x, y: 0.0, label: 'x축 밀착' });
-            snappedY = true;
-          }
-
-          // 2) [대표님 핵심 기획]: 사차함수 중앙 극대점(idx=1) 평행이동 시 극소점이 x축(y=0)에 닿을 때 찰칵 자석 스냅!
-          const g = this.activeGraph;
-          if (!snappedY && g && g.type === '4th_symmetric' && this.draggedHandleIdx === 1 && g.handles.length >= 3) {
-            const deltaY = g.handles[1].y - g.handles[0].y; // 극대-극소 높이차
-            if (Math.abs(m.y - deltaY) < snapDistMath) {
-              m.y = deltaY;
+          if (this.showXAxis !== false) {
+            // 1) 기본: 드래그 중인 핸들 자체가 x축에 닿을 때 (극대점 자체 접함)
+            if (Math.abs(m.y) < snapDistMath) {
+              m.y = 0.0;
               this.axisSnapActiveY = true;
-              let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
-              const dx = m.x - (g.handles[1].x + ox);
-              this.snappedPoints.push({ x: g.handles[0].x + ox + dx, y: 0.0, isContinuity: true, label: '극소 x축 접함' });
-              this.snappedPoints.push({ x: g.handles[2].x + ox + dx, y: 0.0, isContinuity: true, label: '극소 x축 접함' });
+              this.snappedPoints.push({ x: m.x, y: 0.0, label: 'x축 밀착' });
               snappedY = true;
+            }
+
+            // 2) [대표님 핵심 기획]: 사차함수 중앙 극대점(idx=1) 평행이동 시 극소점이 x축(y=0)에 닿을 때 찰칵 자석 스냅!
+            const g = this.activeGraph;
+            if (!snappedY && g && g.type === '4th_symmetric' && this.draggedHandleIdx === 1 && g.handles.length >= 3) {
+              const deltaY = g.handles[1].y - g.handles[0].y; // 극대-극소 높이차
+              if (Math.abs(m.y - deltaY) < snapDistMath) {
+                m.y = deltaY;
+                this.axisSnapActiveY = true;
+                let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+                const dx = m.x - (g.handles[1].x + ox);
+                this.snappedPoints.push({ x: g.handles[0].x + ox + dx, y: 0.0, isContinuity: true, label: '극소 x축 접함' });
+                this.snappedPoints.push({ x: g.handles[2].x + ox + dx, y: 0.0, isContinuity: true, label: '극소 x축 접함' });
+                snappedY = true;
+              }
             }
           }
 
-          // Y축 (x=0) 스냅
-          if (Math.abs(m.x) < snapDistMath) {
+          // Y축 (x=0) 스냅 (y축이 표시되어 있을 때만 반응)
+          if (this.showYAxis !== false && Math.abs(m.x) < snapDistMath) {
             m.x = 0.0;
             this.axisSnapActiveX = true;
             this.snappedPoints.push({ x: 0.0, y: m.y, label: 'y축 밀착' });
@@ -35648,23 +35806,25 @@ class GraphApp {
               transforms: this.activeGraph.transforms
             });
 
-            // 1. Y축 스냅 (x=0 축 스냅)
+            // 1. Y축 스냅 (x=0 축 스냅 — y축이 표시되어 있을 때만 반응)
             let bestCandidateX = null;
             let minDiffX = Infinity;
 
-            const allXCandidates = [
-              ...feats.pts.map(p => ({ x: p.x, label: p.label, origY: p.y })),
-              ...feats.asymX.map(ax => ({ x: ax, label: '점근선', origY: 0 }))
-            ];
+            if (this.showYAxis !== false) {
+              const allXCandidates = [
+                ...feats.pts.map(p => ({ x: p.x, label: p.label, origY: p.y })),
+                ...feats.asymX.map(ax => ({ x: ax, label: '점근선', origY: 0 }))
+              ];
 
-            allXCandidates.forEach(cand => {
-              const proposedX = cand.x + deltaX;
-              const diff = Math.abs(proposedX - 0); // x=0 과의 거리
-              if (diff < snapDistMath && diff < minDiffX) {
-                minDiffX = diff;
-                bestCandidateX = { ...cand, snapDeltaX: -cand.x };
-              }
-            });
+              allXCandidates.forEach(cand => {
+                const proposedX = cand.x + deltaX;
+                const diff = Math.abs(proposedX - 0); // x=0 과의 거리
+                if (diff < snapDistMath && diff < minDiffX) {
+                  minDiffX = diff;
+                  bestCandidateX = { ...cand, snapDeltaX: -cand.x };
+                }
+              });
+            }
 
             if (bestCandidateX) {
               deltaX = bestCandidateX.snapDeltaX;
@@ -35692,23 +35852,25 @@ class GraphApp {
               }
             }
 
-            // 2. X축 스냅 (y=0 축 스냅)
+            // 2. X축 스냅 (y=0 축 스냅 — x축이 표시되어 있을 때만 반응)
             let bestCandidateY = null;
             let minDiffY = Infinity;
 
-            const allYCandidates = [
-              ...feats.pts.map(p => ({ y: p.y, label: p.label, origX: p.x })),
-              ...feats.asymY.map(ay => ({ y: ay, label: '점근선', origX: 0 }))
-            ];
+            if (this.showXAxis !== false) {
+              const allYCandidates = [
+                ...feats.pts.map(p => ({ y: p.y, label: p.label, origX: p.x })),
+                ...feats.asymY.map(ay => ({ y: ay, label: '점근선', origX: 0 }))
+              ];
 
-            allYCandidates.forEach(cand => {
-              const proposedY = cand.y + deltaY;
-              const diff = Math.abs(proposedY - 0); // y=0 과의 거리
-              if (diff < snapDistMath && diff < minDiffY) {
-                minDiffY = diff;
-                bestCandidateY = { ...cand, snapDeltaY: -cand.y };
-              }
-            });
+              allYCandidates.forEach(cand => {
+                const proposedY = cand.y + deltaY;
+                const diff = Math.abs(proposedY - 0); // y=0 과의 거리
+                if (diff < snapDistMath && diff < minDiffY) {
+                  minDiffY = diff;
+                  bestCandidateY = { ...cand, snapDeltaY: -cand.y };
+                }
+              });
+            }
 
             if (bestCandidateY) {
               deltaY = bestCandidateY.snapDeltaY;
@@ -38063,6 +38225,7 @@ class GraphApp {
       Math.round((this.xSpan || 8.5) * 1000),
       Math.round((this.ySpan || 6.0) * 1000),
       this.activeGraphIdx,
+      this.showXAxis !== false ? 1 : 0,
       this.usePiecewise ? 1 : 0,
       this.isPiecewisePeriodic ? 1 : 0,
       this.periodicStepY || 0,
@@ -38154,8 +38317,8 @@ class GraphApp {
           });
         }
       }
-    } else {
-      // 단일 그래프일 때는 x축과의 교점(실근) 판독
+    } else if (this.showXAxis !== false) {
+      // 단일 그래프일 때는 x축과의 교점(실근) 판독 (x축이 표시되어 있을 때만)
       const roots = this.engine.findIntersections(g1, null, rangeX, screenRect);
       roots.forEach(r => {
         if (this.usePiecewise && this.graphs.length >= 2) {
@@ -38923,8 +39086,15 @@ class GraphApp {
     ctx.save();
     ctx.lineCap = 'round';
 
+    const showX = this.showXAxis !== false;
+    const showY = this.showYAxis !== false;
+    if (!showX && !showY) {
+      ctx.restore();
+      return;
+    }
+
     // X축 (y=0)
-    if (orig.y >= yTop && orig.y <= yBottom && xEnd > xStart + 20) {
+    if (showX && orig.y >= yTop && orig.y <= yBottom && xEnd > xStart + 20) {
       ctx.beginPath();
       ctx.moveTo(xStart, orig.y);
       ctx.lineTo(xEnd, orig.y);
@@ -38946,7 +39116,7 @@ class GraphApp {
     }
 
     // Y축 (x=0)
-    if (orig.x >= xStart && orig.x <= xEnd && yBottom > yTop + 20) {
+    if (showY && orig.x >= xStart && orig.x <= xEnd && yBottom > yTop + 20) {
       ctx.beginPath();
       ctx.moveTo(orig.x, yBottom);
       ctx.lineTo(orig.x, yTop);
@@ -38981,7 +39151,7 @@ class GraphApp {
       const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.isLight ? '#ffffff' : (curTheme.bg || '#1e1e2e'));
 
       // 1. X축 이름표 (예: x, t, k)
-      if (this.axisLabelX && orig.y >= yTop && orig.y <= yBottom) {
+      if (showX && this.axisLabelX && orig.y >= yTop && orig.y <= yBottom) {
         ctx.save();
         ctx.font = `italic 600 ${fSize}px ${fontFam}`;
         ctx.fillStyle = axisColor;
@@ -38998,7 +39168,7 @@ class GraphApp {
       }
 
       // 2. Y축 이름표 (예: y)
-      if (this.axisLabelY && orig.x >= xStart && orig.x <= xEnd) {
+      if (showY && this.axisLabelY && orig.x >= xStart && orig.x <= xEnd) {
         ctx.save();
         ctx.font = `italic 600 ${fSize}px ${fontFam}`;
         ctx.fillStyle = axisColor;
@@ -39014,8 +39184,8 @@ class GraphApp {
         ctx.restore();
       }
 
-      // 3. 원점 O
-      if (orig.x >= xStart + 15 && orig.x <= xEnd - 15 && orig.y >= yTop + 15 && orig.y <= yBottom - 15) {
+      // 3. 원점 O (두 축이 모두 표시되어 교차할 때만 표시)
+      if (showX && showY && orig.x >= xStart + 15 && orig.x <= xEnd - 15 && orig.y >= yTop + 15 && orig.y <= yBottom - 15) {
         ctx.save();
         ctx.font = `italic 600 ${originFSize}px ${fontFam}`;
         ctx.fillStyle = axisColor;
@@ -39060,7 +39230,7 @@ class GraphApp {
     ctx.lineDashOffset = -(orig.y % 7);
     ctx.beginPath();
     for (let xVal = startX; xVal <= endX; xVal += step) {
-      if (Math.abs(xVal) < 1e-4) continue; // 축은 별도로 그려짐
+      if (Math.abs(xVal) < 1e-4 && this.showYAxis !== false) continue; // y축이 그려질 때만 생략
       const s = this.mathToScreen(xVal, 0);
       ctx.moveTo(s.x, 0);
       ctx.lineTo(s.x, this.screenHeight);
@@ -39074,7 +39244,7 @@ class GraphApp {
     ctx.lineDashOffset = -(orig.x % 7);
     ctx.beginPath();
     for (let yVal = startY; yVal <= endY; yVal += step) {
-      if (Math.abs(yVal) < 1e-4) continue;
+      if (Math.abs(yVal) < 1e-4 && this.showXAxis !== false) continue; // x축이 그려질 때만 생략
       const s = this.mathToScreen(0, yVal);
       ctx.moveTo(0, s.y);
       ctx.lineTo(this.screenWidth, s.y);
@@ -39139,8 +39309,8 @@ class GraphApp {
     const startX = Math.floor(mLeft / step) * step;
     const endX = Math.ceil(mRight / step) * step;
 
-    // 1. X축 눈금 및 숫자 표시 (y = 0 축 아래쪽)
-    if (orig.y >= yTop && orig.y <= yBottom) {
+    // 1. X축 눈금 및 숫자 표시 (y = 0 축 아래쪽 — x축이 표시되어 있을 때만)
+    if (this.showXAxis !== false && orig.y >= yTop && orig.y <= yBottom) {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       for (let xVal = startX; xVal <= endX; xVal += step) {
@@ -39170,8 +39340,8 @@ class GraphApp {
     const startY = Math.floor(mBottom / step) * step;
     const endY = Math.ceil(mTop / step) * step;
 
-    // 2. Y축 눈금 및 숫자 표시 (x = 0 축 왼쪽)
-    if (orig.x >= xStart && orig.x <= xEnd) {
+    // 2. Y축 눈금 및 숫자 표시 (x = 0 축 왼쪽 — y축이 표시되어 있을 때만)
+    if (this.showYAxis !== false && orig.x >= xStart && orig.x <= xEnd) {
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
       for (let yVal = startY; yVal <= endY; yVal += step) {
@@ -39243,6 +39413,10 @@ class GraphApp {
   // ========================================================
 
   toggleDropLineMode(forceState) {
+    if (this.showXAxis === false && this.showYAxis === false && forceState !== false) {
+      this.showToast('💡 보조 수선을 사용하려면 설정에서 x축 또는 y축을 켜주세요.');
+      return;
+    }
     this.isDropLineMode = forceState !== undefined ? forceState : !this.isDropLineMode;
     if (!this.isDropLineMode) {
       this.dropLineHoverCandidate = null;
@@ -39353,7 +39527,9 @@ class GraphApp {
       (this.piecewiseBoundaries || []).join(','),
       (this.piecewiseFuncMap || []).join(','),
       this.currentThemeKey || '',
-      this.isMonochromeMode ? 1 : 0
+      this.isMonochromeMode ? 1 : 0,
+      this.showXAxis !== false ? 1 : 0,
+      this.showYAxis !== false ? 1 : 0
     ];
     if (this.graphs) {
       for (let i = 0; i < this.graphs.length; i++) {
@@ -39428,24 +39604,28 @@ class GraphApp {
         }
       }
 
-      // 2. y절편 f(0)
-      try {
-        const y0 = this.evaluateGraphAtForScreen(g, gIdx, 0);
-        if (!isNaN(y0) && isFinite(y0) && Math.abs(y0) < 50) {
-          addCand(0, y0, 'y절편', g.color, g.id, null, `${g.id}_y0`);
-        }
-      } catch (err) { }
+      // 2. y절편 f(0) (y축이 표시되어 있을 때만)
+      if (this.showYAxis !== false) {
+        try {
+          const y0 = this.evaluateGraphAtForScreen(g, gIdx, 0);
+          if (!isNaN(y0) && isFinite(y0) && Math.abs(y0) < 50) {
+            addCand(0, y0, 'y절편', g.color, g.id, null, `${g.id}_y0`);
+          }
+        } catch (err) { }
+      }
 
-      // 3. x절편 (실근 f(x) = 0)
-      try {
-        const roots = this.engine.findIntersections(g, null, { xmin: -15, xmax: 15 }, null);
-        if (roots && roots.length > 0) {
-          roots.forEach((r, rIdx) => {
-            if (this.usePiecewise && !g.isIndependent && !this.isInsidePiece(gIdx, r.x)) return;
-            addCand(r.x, 0, 'x절편', g.color, g.id, null, `${g.id}_root_${rIdx}`);
-          });
-        }
-      } catch (err) { }
+      // 3. x절편 (실근 f(x) = 0, x축이 표시되어 있을 때만)
+      if (this.showXAxis !== false) {
+        try {
+          const roots = this.engine.findIntersections(g, null, { xmin: -15, xmax: 15 }, null);
+          if (roots && roots.length > 0) {
+            roots.forEach((r, rIdx) => {
+              if (this.usePiecewise && !g.isIndependent && !this.isInsidePiece(gIdx, r.x)) return;
+              addCand(r.x, 0, 'x절편', g.color, g.id, null, `${g.id}_root_${rIdx}`);
+            });
+          }
+        } catch (err) { }
+      }
     });
 
     // 4. 다중 그래프 간의 실시간 교점 (두 부모의 layerIds 모두 보존)
@@ -39713,14 +39893,18 @@ class GraphApp {
   }
 
   addDropLineAtPoint(x, y, target = null) {
+    const allowX = this.showXAxis !== false;
+    const allowY = this.showYAxis !== false;
+    if (!allowX && !allowY) return null;
+
     const existing = this.dropLines.find(dl => Math.hypot(dl.sourceX - x, dl.sourceY - y) < 0.001);
     if (existing) {
-      if (!existing.showX || !existing.showY) {
+      if ((allowX && !existing.showX) || (allowY && !existing.showY)) {
         this.pushHistoryState();
-        existing.showX = true;
-        existing.showY = true;
+        if (allowX) existing.showX = true;
+        if (allowY) existing.showY = true;
         this.render();
-        this.showToast('📍 보조 수선 양방향 복원');
+        this.showToast('📍 보조 수선 복원 완료');
         return existing;
       }
       this.showToast('ℹ️ 이미 해당 위치에 보조 수선이 있습니다.');
@@ -39732,8 +39916,8 @@ class GraphApp {
       id: 'dl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
       sourceX: x,
       sourceY: y,
-      showX: true,
-      showY: true,
+      showX: allowX,
+      showY: allowY,
       labelX: '', // 대표님 기획: 수선 그리기 시 기본 좌표 라벨 숨김 (깔끔한 수선만 표시)
       labelY: '',
       style: this.dropLineStyle || 'dashed',
@@ -39750,7 +39934,10 @@ class GraphApp {
     };
     this.dropLines.push(item);
     this.render();
-    this.showToast('📍 x·y축 보조 수선 생성 완료');
+    const toastMsg = (allowX && allowY)
+      ? '📍 x·y축 보조 수선 생성 완료'
+      : (allowX ? '📍 x축 보조 수선 생성 완료' : '📍 y축 보조 수선 생성 완료');
+    this.showToast(toastMsg);
     return item;
   }
 
@@ -39760,7 +39947,7 @@ class GraphApp {
     this.pushHistoryState();
     if (which === 'x') item.showX = false;
     if (which === 'y') item.showY = false;
-    if (!item.showX && !item.showY) {
+    if ((!item.showX || this.showXAxis === false) && (!item.showY || this.showYAxis === false)) {
       this.dropLines = this.dropLines.filter(dl => dl.id !== id);
     }
     this.render();
@@ -39789,14 +39976,16 @@ class GraphApp {
       this.updateDropLinesTracking();
       list = [];
       const baseR = isPip ? 8.0 : 9.0;
+      const allowX = this.showXAxis !== false;
+      const allowY = this.showYAxis !== false;
       for (const item of this.dropLines) {
         if (!item || (!item.showX && !item.showY)) continue;
         const S = this.mathToScreen(item.sourceX, item.sourceY);
-        if (item.showX) {
+        if (item.showX && allowX) {
           const Fx = this.mathToScreen(item.sourceX, 0);
           list.push({ id: item.id, which: 'x', x: (S.x + Fx.x) / 2, y: (S.y + Fx.y) / 2, r: baseR });
         }
-        if (item.showY) {
+        if (item.showY && allowY) {
           const Fy = this.mathToScreen(0, item.sourceY);
           list.push({ id: item.id, which: 'y', x: (S.x + Fy.x) / 2, y: (S.y + Fy.y) / 2, r: baseR });
         }
@@ -39912,9 +40101,18 @@ class GraphApp {
 
     ctx.save();
 
+    const allowX = this.showXAxis !== false;
+    const allowY = this.showYAxis !== false;
+    if (!allowX && !allowY) {
+      ctx.restore();
+      return;
+    }
+
     // 1. 각 수선 및 라벨 그리기
     this.dropLines.forEach(item => {
-      if (!item.showX && !item.showY) return;
+      const effShowX = Boolean(item.showX && allowX);
+      const effShowY = Boolean(item.showY && allowY);
+      if (!effShowX && !effShowY) return;
 
       const S = this.mathToScreen(item.sourceX, item.sourceY);
       const Fx = this.mathToScreen(item.sourceX, 0);
@@ -39923,7 +40121,7 @@ class GraphApp {
       const isDashed = (item.style || this.dropLineStyle) !== 'solid';
 
       // (A) x축 수선: (x0, y0) -> (x0, 0)
-      if (item.showX) {
+      if (effShowX) {
         ctx.save();
         ctx.strokeStyle = lineColor;
         ctx.lineWidth = dlLw;
@@ -40015,7 +40213,7 @@ class GraphApp {
       }
 
       // (B) y축 수선: (x0, y0) -> (0, y0)
-      if (item.showY) {
+      if (effShowY) {
         ctx.save();
         ctx.strokeStyle = lineColor;
         ctx.lineWidth = dlLw;
@@ -40107,7 +40305,7 @@ class GraphApp {
       }
 
       // (C) 시작점 마커 (단정하고 깔끔한 포인트 점)
-      if (item.showX || item.showY) {
+      if (effShowX || effShowY) {
         ctx.save();
         ctx.beginPath();
         ctx.arc(S.x, S.y, isPip ? 2.0 : 2.5, 0, Math.PI * 2);
@@ -44547,6 +44745,8 @@ class GraphApp {
       boardZoomOffsetX: r1(this.boardZoomOffsetX || 0),
       boardZoomOffsetY: r1(this.boardZoomOffsetY || 0),
       showAxes: Boolean(this.showAxes),
+      showXAxis: this.showXAxis !== false,
+      showYAxis: this.showYAxis !== false,
       showGuides: Boolean(this.showGuides),
       usePiecewise: Boolean(this.usePiecewise),
       piecewiseBoundaries: (this.piecewiseBoundaries || []).map(v => r4(v)),
@@ -44625,6 +44825,8 @@ class GraphApp {
       this.boardZoomOffsetX = kf.boardZoomOffsetX || 0;
       this.boardZoomOffsetY = kf.boardZoomOffsetY || 0;
       this.showAxes = Boolean(kf.showAxes);
+      if (kf.showXAxis !== undefined) this.showXAxis = Boolean(kf.showXAxis);
+      if (kf.showYAxis !== undefined) this.showYAxis = Boolean(kf.showYAxis);
       this.showGuides = Boolean(kf.showGuides);
       this.usePiecewise = Boolean(kf.usePiecewise);
       this.piecewiseBoundaries = JSON.parse(JSON.stringify(kf.piecewiseBoundaries || []));
@@ -45212,6 +45414,8 @@ class GraphApp {
       kf.xSpan,
       kf.ySpan,
       kf.showAxes,
+      kf.showXAxis,
+      kf.showYAxis,
       kf.showGuides,
       Math.round(kf.boardPanX),
       Math.round(kf.boardPanY),

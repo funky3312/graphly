@@ -15532,3 +15532,63 @@ body:not(.theme-light) .rail-reset-board-popover {
 body.ui-all-hidden-mode #railResetBoardPopover {
   display: none !important;
 }
+
+/* 설정 패널 > 좌표축 표시 ([x축] [y축] 개별 토글 칩) */
+.setting-axis-vis-row {
+  cursor: default !important;
+}
+
+.axis-visibility-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.axis-vis-chip {
+  height: 21px;
+  min-width: 34px;
+  padding: 0 7px;
+  border-radius: 5px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.axis-vis-chip:hover {
+  border-color: #94a3b8;
+  color: #334155;
+}
+
+.axis-vis-chip.active {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.16);
+}
+
+body:not(.theme-light) .axis-vis-chip {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #94a3b8;
+}
+
+body:not(.theme-light) .axis-vis-chip:hover {
+  border-color: rgba(255, 255, 255, 0.26);
+  color: #e2e8f0;
+}
+
+body:not(.theme-light) .axis-vis-chip.active {
+  background: rgba(56, 189, 248, 0.22);
+  border-color: #38bdf8;
+  color: #e0f2fe;
+}
