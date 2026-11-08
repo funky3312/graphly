@@ -2120,6 +2120,7 @@ class GraphApp {
     this.renderLayerList();
     this.renderFuncList();
     this.updateIntersections();
+    this.syncGraphSnapBarUI();
     this.render();
   }
 
@@ -13400,8 +13401,25 @@ class GraphApp {
       return;
     }
 
-    const hadEditingCard = Boolean(this._editingGraphCardTarget);
-    const hasLiveGraphsToSync = Boolean(!hadEditingCard && Array.isArray(this.graphs) && this.graphs.length > 0 && !this._graphSessionArchived);
+    const editingTarget = this._editingGraphCardTarget;
+    const hadEditingCard = Boolean(editingTarget);
+    const hasLiveGraphs = Boolean(Array.isArray(this.graphs) && this.graphs.length > 0);
+    const hasLiveGraphsToSync = Boolean(!hadEditingCard && hasLiveGraphs && !this._graphSessionArchived);
+
+    // 🌟 [대표님 피드백 반영]: 창모드 카드를 전체화면으로 크게 열어 그래프를 모두 삭제한 뒤 복귀하면,
+    // 잔상 카드나 빈 좌표평면을 남기지 않고 해당 창모드 카드 자체를 자동으로 닫음 (+ ↺ 되돌리기로 복원 지원)
+    if (hadEditingCard && !hasLiveGraphs) {
+      this._editingGraphCardTarget = null;
+      if (Array.isArray(this.inkStrokes)) {
+        this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
+      }
+      if (typeof this.clearInkCache === 'function') this.clearInkCache();
+      this._restoreBoardModeStateAfterGraph();
+      this._closePipGraphCardByRef(editingTarget, false);
+      this.showToast('🗑️ 그래프가 삭제되어 해당 그래프 창을 닫았습니다 (되돌리기 ↺로 복원 가능)');
+      return;
+    }
+
     if ((hadEditingCard || hasLiveGraphsToSync) && typeof this._syncFullGraphBackToEditingPipCard === 'function') {
       this._syncFullGraphBackToEditingPipCard();
     }
@@ -16913,9 +16931,50 @@ class GraphApp {
     return createdRef;
   }
 
+  _closePipGraphCardByRef(cardRef, showCloseToast = true) {
+    if (!cardRef) return false;
+    const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
+    if (!widget) return false;
+
+    this._pushWorkspaceUndoSnapshot('↺ 닫은 그래프 창이 복원되었습니다', '↻ 그래프 창 닫기 다시 실행됨');
+    if (isPrimary) {
+      this.clearPipGraphCardStealthTimer('primary');
+      this.graphInkStrokes = [];
+      this._hasPrimaryGraphCard = false;
+      this.graphCardData = null;
+      this.graphCardPdfAnchor = null;
+      widget._pdfAnchor = null;
+      widget._pipSnapObj = null;
+      widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked', 'card-ink-active');
+      if (this._pipTargetCard === 'primary') this._pipTargetCard = null;
+      if (this._editingGraphCardTarget === 'primary') this._editingGraphCardTarget = null;
+      this.renderGraphCardCanvas();
+      widget.style.display = 'none';
+    } else {
+      this.clearPipGraphCardStealthTimer(cardRef);
+      widget.remove();
+      this.extraGraphCards = (this.extraGraphCards || []).filter(c => c !== cardRef);
+      if (this._pipTargetCard === cardRef) this._pipTargetCard = null;
+      if (this._editingGraphCardTarget === cardRef) this._editingGraphCardTarget = null;
+    }
+    if (this.isAudioRecording) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
+    this.render();
+    if (showCloseToast) {
+      this.showToast('🗑️ 그래프 창을 닫았습니다 (되돌리기 ↺로 복원 가능)');
+    }
+    return true;
+  }
+
   _syncFullGraphBackToEditingPipCard() {
     let target = this._editingGraphCardTarget;
     this._editingGraphCardTarget = null;
+
+    if (target && (!Array.isArray(this.graphs) || this.graphs.length === 0)) {
+      this._closePipGraphCardByRef(target, false);
+      return;
+    }
 
     const fullUnitScale = (this.screenHeight / 2) / Math.max(0.1, (this.ySpan || 5.1) / (this.zoomLevel || 1.0));
     const pushOffsetX = (typeof this._lastFullGraphProblemPushX === 'number') ? this._lastFullGraphProblemPushX : 0;
