@@ -26090,18 +26090,52 @@ class GraphApp {
     return this.isProUser;
   }
 
+  _normalizeAndCapCustomGraphPresets(list) {
+    if (!Array.isArray(list) || list.length === 0) return [];
+    const cfg = this.getSubscriptionQuotaConfig();
+    const isPro = this.isProSubscriber();
+    const maxLimit = isPro ? cfg.proMaxCustomGraphs : cfg.freeMaxCustomGraphs;
+
+    const byId = new Map();
+    const seenSig = new Set();
+    const sorted = list
+      .filter(it => it && it.id && it.snapshot)
+      .slice()
+      .sort((a, b) => ((a && a.createdAt) || 0) - ((b && b.createdAt) || 0));
+
+    sorted.forEach(item => {
+      if (byId.has(item.id)) return;
+      const sig = `${item.name || ''}|${item.badge || ''}|${item.svgThumb || ''}`;
+      if (seenSig.has(sig)) return;
+      seenSig.add(sig);
+      byId.set(item.id, item);
+    });
+
+    const uniqueList = Array.from(byId.values());
+    if (cfg.enforceCustomGraphLimit && !isPro && uniqueList.length > maxLimit) {
+      return uniqueList.slice(0, maxLimit);
+    }
+    return uniqueList;
+  }
+
   getCustomGraphQuotaStatus() {
     const cfg = this.getSubscriptionQuotaConfig();
     const isPro = this.isProSubscriber();
-    const currentCount = Array.isArray(this.customGraphPresets) ? this.customGraphPresets.length : 0;
     const maxLimit = isPro ? cfg.proMaxCustomGraphs : cfg.freeMaxCustomGraphs;
+    if (Array.isArray(this.customGraphPresets) && cfg.enforceCustomGraphLimit && !isPro && this.customGraphPresets.length > maxLimit) {
+      this.customGraphPresets = this._normalizeAndCapCustomGraphPresets(this.customGraphPresets);
+      try {
+        localStorage.setItem(this._getCustomGraphsStorageKey(), JSON.stringify(this.customGraphPresets));
+      } catch (e) { }
+    }
+    const currentCount = Array.isArray(this.customGraphPresets) ? this.customGraphPresets.length : 0;
     const isReached = Boolean(cfg.enforceCustomGraphLimit && !isPro && currentCount >= maxLimit);
     const badgeText = isPro
       ? `👑 Pro 무제한 (${currentCount}개)`
-      : `무료 ${currentCount} / ${maxLimit}`;
+      : `무료 ${ Math.min(currentCount, maxLimit) } / ${maxLimit}`;
     return {
       isPro,
-      currentCount,
+      currentCount: isPro ? currentCount : Math.min(currentCount, maxLimit),
       maxLimit,
       isReached,
       badgeText
@@ -26165,7 +26199,7 @@ class GraphApp {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          this.customGraphPresets = parsed.slice().sort((a, b) => ((a && a.createdAt) || 0) - ((b && b.createdAt) || 0));
+          this.customGraphPresets = this._normalizeAndCapCustomGraphPresets(parsed);
           return;
         }
       }
@@ -26175,7 +26209,7 @@ class GraphApp {
         if (guestRaw) {
           const guestParsed = JSON.parse(guestRaw);
           if (Array.isArray(guestParsed) && guestParsed.length > 0) {
-            this.customGraphPresets = guestParsed.slice().sort((a, b) => ((a && a.createdAt) || 0) - ((b && b.createdAt) || 0));
+            this.customGraphPresets = this._normalizeAndCapCustomGraphPresets(guestParsed);
             localStorage.setItem(key, JSON.stringify(this.customGraphPresets));
             return;
           }
@@ -26197,6 +26231,9 @@ class GraphApp {
   }
 
   _saveCustomGraphsToStorage() {
+    if (Array.isArray(this.customGraphPresets)) {
+      this.customGraphPresets = this._normalizeAndCapCustomGraphPresets(this.customGraphPresets);
+    }
     try {
       const key = this._getCustomGraphsStorageKey();
       localStorage.setItem(key, JSON.stringify(this.customGraphPresets || []));
@@ -26214,11 +26251,10 @@ class GraphApp {
         const docId = `cg_user_${this.cloudUser.uid}`;
         const remoteList = await this._firestoreRestReadDoc('user_custom_graphs', docId);
         if (Array.isArray(remoteList) && remoteList.length > 0) {
-          const map = new Map();
-          [...remoteList, ...(this.customGraphPresets || [])].forEach(item => {
-            if (item && item.id) map.set(item.id, item);
-          });
-          this.customGraphPresets = Array.from(map.values()).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+          this.customGraphPresets = this._normalizeAndCapCustomGraphPresets([
+            ...remoteList,
+            ...(this.customGraphPresets || [])
+          ]);
           try {
             localStorage.setItem(this._getCustomGraphsStorageKey(), JSON.stringify(this.customGraphPresets));
           } catch (e) { }
@@ -26424,6 +26460,10 @@ class GraphApp {
   }
 
   saveCurrentGraphToCustomPresets(customName = '') {
+    if (this.isGraphCovered) {
+      this.showToast('💡 창모드에서는 프리셋 등록이 불가합니다. 그래프 카드 우측 상단의 [⛶ 전체화면]에서 추가해 주세요!');
+      return null;
+    }
     if (!this.graphs || this.graphs.length === 0) {
       this.showToast('⚠️ 먼저 캔버스에 등록할 그래프를 그려주세요!');
       return null;
