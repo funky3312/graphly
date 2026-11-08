@@ -3347,6 +3347,9 @@ class GraphApp {
 
   _shouldIgnoreCanvasTouchPointer(e) {
     if (!e || this.isPdfModalOpen || this.isStudentAudioVideoOnlyMode) return true;
+    if (e.type === 'pointerdown' && e._touchIgnoreChecked !== undefined) {
+      return e._touchIgnoreChecked;
+    }
     const nowT = Date.now();
     const isPenDrawingNow = Boolean(
       (this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || this.isDrawingSticker) &&
@@ -3368,11 +3371,15 @@ class GraphApp {
 
     if (e.type === 'pointerdown') {
       if (isWithinPenGuard) {
+        if (this.activePointers) this.activePointers.clear();
+        this._pinchState = null;
+        this._pinchWasActiveInGesture = false;
+        e._touchIgnoreChecked = true;
         return true;
       }
       if (this.activePointers) {
         for (const [k, v] of this.activePointers.entries()) {
-          if (nowT - (v.time || 0) > 5000) this.activePointers.delete(k);
+          if (nowT - (v.time || 0) > 1200) this.activePointers.delete(k);
         }
         this.activePointers.set(e.pointerId, {
           id: e.pointerId,
@@ -3386,6 +3393,7 @@ class GraphApp {
           this._pinchWasActiveInGesture = false;
           this.isPanning = false;
           this.isBoardPanning = false;
+          e._touchIgnoreChecked = true;
           return true;
         }
         if (this.activePointers.size === 2) {
@@ -3396,6 +3404,7 @@ class GraphApp {
           this._pinchWasActiveInGesture = true;
           this._startCanvasTwoFingerPinch(pts[0], pts[1]);
           this.requestRender();
+          e._touchIgnoreChecked = true;
           return true;
         }
         this._pinchWasActiveInGesture = false;
@@ -3403,8 +3412,10 @@ class GraphApp {
         this._activePanPointerId = e.pointerId;
       }
       if (this.isStylusPalmRejectionActive() && isWritingTool) {
+        e._touchIgnoreChecked = true;
         return true;
       }
+      e._touchIgnoreChecked = false;
       return false;
     }
 
@@ -10929,13 +10940,18 @@ class GraphApp {
           this._pinchWasActiveInGesture = false;
           if (typeof this._cancelAllActiveCardDrags === 'function') this._cancelAllActiveCardDrags();
         }
-        if (e.pointerType === 'touch' && !isPromotedStylus && this.isStylusPalmRejectionActive()) return false;
+        if (e.pointerType === 'touch' && !isPromotedStylus && this.isStylusPalmRejectionActive()) {
+          if (e.cancelable !== false) e.preventDefault();
+          return false;
+        }
         if (widget) this.bringCardToFront(widget);
         if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') return false;
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
 
-        try { pCanvas.setPointerCapture(e.pointerId); } catch (err) { }
+        if (e.pointerType !== 'pen') {
+          try { pCanvas.setPointerCapture(e.pointerId); } catch (err) { }
+        }
 
         const pos = getNormPos(e, false);
         isDrawingOnProblem = true;
@@ -11120,6 +11136,8 @@ class GraphApp {
 
       pCanvas.addEventListener('pointerup', endProblemDraw);
       pCanvas.addEventListener('pointercancel', endProblemDraw);
+      window.addEventListener('pointerup', endProblemDraw, true);
+      window.addEventListener('pointercancel', endProblemDraw, true);
     }
 
     // 1. 문제 카드 제목 및 몸통 드래그 이동 전용 (삼각형 접기 원버튼과 완벽 분리!)
@@ -11491,6 +11509,9 @@ class GraphApp {
   attachCardLaserSystem(cardWidgetEl) {
     if (!cardWidgetEl || cardWidgetEl._cardLaserAttached) return;
     cardWidgetEl._cardLaserAttached = true;
+    if (typeof this._applyLongPressShield === 'function') {
+      this._applyLongPressShield(cardWidgetEl);
+    }
 
     const bodyEl = cardWidgetEl.querySelector('.problem-card-body');
     const laserBtn = cardWidgetEl.querySelector('.btn-card-laser');
@@ -11498,7 +11519,10 @@ class GraphApp {
     if (!bodyEl || !laserBtn) return;
 
     // 🌟 [대표님 기획: 평소에는 상단바를 숨겨 '딱 그래프/문제만' 노출 + 터치/호버/카드필기ON 시에만 상단바 표시] 🌟
-    const activateCardHeaderPeek = () => {
+    const activateCardHeaderPeek = (ev) => {
+      if (ev && ev.pointerType === 'touch' && this.isStylusPalmRejectionActive() && this.isInkMode && this.activeInkTool !== 'select') {
+        return;
+      }
       document.querySelectorAll('.problem-card-widget.card-header-peek').forEach((other) => {
         if (other !== cardWidgetEl) other.classList.remove('card-header-peek');
       });
@@ -11785,12 +11809,17 @@ class GraphApp {
           this._pinchWasActiveInGesture = false;
           if (typeof this._cancelAllActiveCardDrags === 'function') this._cancelAllActiveCardDrags();
         }
-        if (e.pointerType === 'touch' && !isPromotedStylus && this.isStylusPalmRejectionActive()) return false;
+        if (e.pointerType === 'touch' && !isPromotedStylus && this.isStylusPalmRejectionActive()) {
+          if (e.cancelable !== false) e.preventDefault();
+          return false;
+        }
         this.bringCardToFront(cardWidgetEl);
         if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') return false;
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
-        try { extraInkCanvas.setPointerCapture(e.pointerId); } catch (err) { }
+        if (e.pointerType !== 'pen') {
+          try { extraInkCanvas.setPointerCapture(e.pointerId); } catch (err) { }
+        }
         const rect = extraInkCanvas.getBoundingClientRect();
         activeExtraDrawRect = rect;
         const rw = Math.max(1, rect.width);
@@ -11953,6 +11982,8 @@ class GraphApp {
       };
       extraInkCanvas.addEventListener('pointerup', endExtraCardInk);
       extraInkCanvas.addEventListener('pointercancel', endExtraCardInk);
+      window.addEventListener('pointerup', endExtraCardInk, true);
+      window.addEventListener('pointercancel', endExtraCardInk, true);
     }
 
     // 🌟 [대표님 킬러 기획: 카드 상단 [✒️] 버튼 = '카드 몸통 드래그 이동 ⇄ 카드 위 밑줄·필기 고정' 토글!]
@@ -14623,11 +14654,16 @@ class GraphApp {
           this._pinchWasActiveInGesture = false;
           if (typeof this._cancelAllActiveCardDrags === 'function') this._cancelAllActiveCardDrags();
         }
-        if (e.pointerType === 'touch' && !isPromotedStylus && this.isStylusPalmRejectionActive()) return false;
+        if (e.pointerType === 'touch' && !isPromotedStylus && this.isStylusPalmRejectionActive()) {
+          if (e.cancelable !== false) e.preventDefault();
+          return false;
+        }
         if (e.button !== 0 && e.pointerType !== 'pen' && e.pointerType !== 'touch') return false;
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
-        try { gCanvas.setPointerCapture(e.pointerId); } catch (err) { }
+        if (e.pointerType !== 'pen') {
+          try { gCanvas.setPointerCapture(e.pointerId); } catch (err) { }
+        }
 
         const pos = getNormPos(e, false);
         isDrawingOnGraphCard = true;
@@ -14787,26 +14823,33 @@ class GraphApp {
       };
       gCanvas.addEventListener('pointerup', endGraphCardDraw);
       gCanvas.addEventListener('pointercancel', endGraphCardDraw);
+      window.addEventListener('pointerup', endGraphCardDraw, true);
+      window.addEventListener('pointercancel', endGraphCardDraw, true);
     }
 
     // 🌟 [상단 X 표시(전체화면 롱프레스 종료 배지) & 컨텍스트 메뉴 원천 차단 쉴드] 🌟
     const applyLongPressShield = (el) => {
-      if (!el) return;
+      if (!el || el._longPressShieldApplied) return;
+      el._longPressShieldApplied = true;
       el.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
         return false;
       }, { capture: true });
-      el.addEventListener('touchstart', (e) => {
-        if (e.target && e.target.closest('button, .card-btn, .card-fold-triangle-btn, .problem-card-actions, .ink-tool-btn, .ink-color-dot, .ink-size-stepper-btn, .ink-size-chip, input')) return;
-        e.preventDefault();
-      }, { passive: false });
+      const blockCardNativeTouch = (e) => {
+        if (e.target && e.target.closest('button, .card-btn, .card-fold-triangle-btn, .problem-card-actions, .pip-header-curve-tools, .ink-tool-btn, .ink-color-dot, .ink-size-stepper-btn, .ink-size-chip, input')) return;
+        if (e.cancelable !== false) e.preventDefault();
+      };
+      el.addEventListener('touchstart', blockCardNativeTouch, { passive: false });
+      el.addEventListener('touchmove', blockCardNativeTouch, { passive: false });
+      el.addEventListener('touchend', blockCardNativeTouch, { passive: false });
       el.addEventListener('dragstart', (e) => e.preventDefault());
       el.addEventListener('selectstart', (e) => e.preventDefault());
       ['MSHoldVisual', 'MSGestureHold'].forEach(evtName => {
         el.addEventListener(evtName, (e) => e.preventDefault(), { passive: false });
       });
     };
+    this._applyLongPressShield = applyLongPressShield;
     applyLongPressShield(widget);
     applyLongPressShield(document.getElementById('problemCardWidget'));
     applyLongPressShield(document.getElementById('inkFloatingToolbar'));
@@ -17755,6 +17798,15 @@ class GraphApp {
 
     liveCanvas.addEventListener('pointerdown', (e) => {
       if (widget.classList.contains('card-ink-active') || widget.classList.contains('card-laser-active')) return;
+      if (e.pointerType === 'pen') {
+        this._markStylusPenDetected();
+        this._lastPenActiveTime = Date.now();
+      }
+      if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
+        if (e.cancelable !== false) e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       this._closeAllPipHeaderPopovers();
       const snap = this._getMutablePipCardSnapshot(cardRef);
       if (!snap || snap.isNAxisStudioCard || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return;
@@ -22659,21 +22711,7 @@ class GraphApp {
       document.body.classList.remove('theme-light');
     }
 
-    // 🌟 [컨테이너 & 루트(html/body) 배경 동기화]:
-    // iOS/iPadOS 26(Liquid Glass) PWA가 <html>/<body> 배경색을 샘플링해 상단 그라데이션 바를 생성하므로
-    // 루트 배경색과 <meta name="theme-color">를 현재 캔버스 배경색(theme.bg)과 100% 일치시킴!
-    if (document.documentElement) {
-      document.documentElement.style.backgroundColor = theme.bg;
-      document.documentElement.style.setProperty('--app-root-bg', theme.bg);
-    }
-    if (document.body) {
-      document.body.style.backgroundColor = theme.bg;
-      document.body.style.setProperty('--app-root-bg', theme.bg);
-    }
-    const metaTheme = document.querySelector('meta[name="theme-color"]');
-    if (metaTheme) {
-      metaTheme.setAttribute('content', theme.bg);
-    }
+    // 🌟 [컨테이너 배경 동기화]: 캔버스와 부모 컨테이너 배경색을 완전히 일치시켜 경계 깜빡임 0%화
     if (this.canvas && this.canvas.parentElement) {
       this.canvas.parentElement.style.backgroundColor = theme.bg;
     }
@@ -37101,13 +37139,13 @@ class GraphApp {
             e.target &&
             e.target.closest &&
             e.target.closest('#problemCardWidget, #graphCardWidget, .extra-problem-card-widget, .extra-graph-card-widget, #workspaceStickerOverlay, .workspace-sticker-item') &&
-            !e.target.closest('button, .card-btn, .problem-card-actions, .problem-card-resize-handle, .card-fold-triangle-btn, .card-title-fold-btn') &&
+            !e.target.closest('button, .card-btn, .problem-card-actions, .pip-header-curve-tools, .problem-card-resize-handle, .card-fold-triangle-btn, .card-title-fold-btn') &&
             !isAnyModalOrOverlayBlockingCanvas()
           );
           if (isCardOrStickerBodyTouch) {
-            this._shouldIgnoreCanvasTouchPointer(e);
-            if (this._pinchState || (this.activePointers && this.activePointers.size >= 2)) {
-              if (e.cancelable !== false) e.preventDefault();
+            if (e.cancelable !== false) e.preventDefault();
+            const ignoredOnCard = this._shouldIgnoreCanvasTouchPointer(e);
+            if (ignoredOnCard || this._pinchState || (this.activePointers && this.activePointers.size >= 2)) {
               e.stopPropagation();
               if (this._uiPointerIds && e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
               return;
@@ -37121,6 +37159,12 @@ class GraphApp {
         }
         if (e.pointerType === 'pen') {
           this._markStylusPenDetected();
+          const nowPenDown = Date.now();
+          this._lastPenActiveTime = nowPenDown;
+          this._lastPenDownTime = nowPenDown;
+          if (this.activePointers) this.activePointers.clear();
+          this._pinchState = null;
+          this._pinchWasActiveInGesture = false;
           if (e.target === this.canvas) {
             diagPenCount++;
             flashCounterBox('cntBoxPen', `✏️ 펜(pen): ${diagPenCount} (시작)`, '#10b981');
@@ -37224,8 +37268,8 @@ class GraphApp {
         }
         if (e.pointerType === 'touch') {
           if (this._shouldIgnoreCanvasTouchPointer(e)) {
+            if (e.cancelable !== false) e.preventDefault();
             if (this._pinchState || (this.activePointers && this.activePointers.size >= 2)) {
-              if (e.cancelable !== false) e.preventDefault();
               e.stopPropagation();
             }
             return;
@@ -37245,7 +37289,8 @@ class GraphApp {
         }
         if (!this.isPanning && !this.isBoardPanning && this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId) && !this.isDrawingSticker && !this._tappingBoardSticker) {
           const isHoveringWithoutButton = (e.pointerType === 'mouse' || !e.pointerType) && !e.buttons;
-          if (isHoveringWithoutButton || ((e.pointerType === 'pen' || e.pointerType === 'mouse' || !e.pointerType) && e.target === this.canvas && !isClickableUI(e.target) && !e.buttons)) {
+          const isPenOnCanvas = (e.pointerType === 'pen' && e.target === this.canvas && !isClickableUI(e.target));
+          if (isHoveringWithoutButton || isPenOnCanvas) {
             this._uiPointerIds.delete(e.pointerId);
           } else {
             if (e.pointerType === 'pen') {
@@ -37299,6 +37344,50 @@ class GraphApp {
           this._lastPenActiveTime = nowT;
           this._touchPanDeadzoneLocked = false;
           this._deferredSingleTouchPanEvent = null;
+          // 🛡️ [iPadOS Safari/Chrome pointerdown(pen) 삼킴 즉시 구출 엔진]:
+          // 손날(touch)과 펜슬이 동시에 닿거나 빠른 연속 필기 시 WebKit이 pointerdown(pen)을 삼키고
+          // 곧바로 pointermove(pen)만 보내더라도 화면 접촉(pressure > 0 / buttons !== 0)이 확인되면 즉시 첫 획을 시작!
+          if (
+            !this.isSpacePressed &&
+            !this.isShiftPressed &&
+            !this.isDrawingInk &&
+            !this.isStylusDrawing &&
+            !this.isLassoSelecting &&
+            !this.isDrawingSticker &&
+            !this._tappingBoardSticker &&
+            !this.isDraggingLassoSelection &&
+            !this.isResizingLassoSelection &&
+            isWritingToolActive() &&
+            e.target === this.canvas &&
+            this.isStylusPenContactingScreen(e)
+          ) {
+            if (this.activePointers) this.activePointers.clear();
+            this._pinchState = null;
+            this._pinchWasActiveInGesture = false;
+            this._cancelAllActiveCardDrags();
+            if (this.isPanning || this.isBoardPanning) {
+              if (this._touchCameraSnapshot) {
+                this.boardPanX = this._touchCameraSnapshot.boardPanX;
+                this.boardPanY = this._touchCameraSnapshot.boardPanY;
+                this.boardZoom = this._touchCameraSnapshot.boardZoom;
+                this.panX = this._touchCameraSnapshot.panX;
+                this.panY = this._touchCameraSnapshot.panY;
+                this.zoom = this._touchCameraSnapshot.zoom;
+                this._touchCameraSnapshot = null;
+                if (this.isGraphCovered) this.updateProblemCardPosition(true);
+              }
+              this.isPanning = false;
+              this.isBoardPanning = false;
+              this._activePanPointerId = null;
+            }
+            this._lastPenDownTime = nowT;
+            lastPointerDownTime = nowT;
+            this.isPointerDownOnCanvas = true;
+            this._pointerDownStart = { time: nowT, x: e.clientX, y: e.clientY };
+            this._activeDrawingPointerId = e.pointerId;
+            this._activeDrawingPointerType = 'pen';
+            handleDown(e);
+          }
         }
 
         if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || this.isDrawingSticker) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
@@ -37393,7 +37482,21 @@ class GraphApp {
       if (this.isPdfModalOpen || this.isStudentAudioVideoOnlyMode) return;
       const touchList = e.touches ? Array.from(e.touches) : [];
       const hasStylus = touchList.some(t => t.touchType === 'stylus');
-      if (hasStylus || isWithinPostPenPalmGuard()) return;
+      if (hasStylus || isWithinPostPenPalmGuard()) {
+        this._pinchState = null;
+        this._pinchWasActiveInGesture = false;
+        if (this.activePointers) this.activePointers.clear();
+        return;
+      }
+      if (touchList.length <= 1 && this.activePointers && this.activePointers.size > 1) {
+        const lastEntry = Array.from(this.activePointers.entries()).pop();
+        this.activePointers.clear();
+        if (lastEntry && touchList.length === 1) {
+          this.activePointers.set(lastEntry[0], lastEntry[1]);
+        }
+        this._pinchState = null;
+        this._pinchWasActiveInGesture = false;
+      }
       if (touchList.length >= 3) {
         this._pinchState = null;
         this._pinchWasActiveInGesture = false;
@@ -37419,6 +37522,9 @@ class GraphApp {
       if (e.target === this.canvas && e.cancelable !== false) {
         e.preventDefault();
       }
+      if (!e.touches || e.touches.length === 0) {
+        if (this.activePointers) this.activePointers.clear();
+      }
       if (!e.touches || e.touches.length < 2) {
         if (this._pinchState && this._pinchState.id1 === 't0') {
           this._pinchState = null;
@@ -37433,6 +37539,7 @@ class GraphApp {
       }
     }, { passive: false });
     this.canvas.addEventListener('touchcancel', () => {
+      if (this.activePointers) this.activePointers.clear();
       if (this._pinchState && this._pinchState.id1 === 't0') {
         this._pinchState = null;
         this._pinchWasActiveInGesture = false;
@@ -37444,9 +37551,16 @@ class GraphApp {
         e.preventDefault();
       }
       if (this.isPdfModalOpen || this.isStudentAudioVideoOnlyMode) return;
+      if (isWithinPostPenPalmGuard()) {
+        if (this._pinchState) {
+          this._pinchState = null;
+          this._pinchWasActiveInGesture = false;
+        }
+        return;
+      }
       if (e.touches && e.touches.length === 2 && this._pinchState) {
         const touchList = Array.from(e.touches);
-        if (touchList.some(t => t.touchType === 'stylus') || isWithinPostPenPalmGuard()) return;
+        if (touchList.some(t => t.touchType === 'stylus')) return;
         if (!this.activePointers || this.activePointers.size < 2 || this._pinchState.id1 === 't0') {
           const t0 = touchList[0];
           const t1 = touchList[1];
