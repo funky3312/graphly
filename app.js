@@ -9841,9 +9841,9 @@ class GraphApp {
         const prev = pts[i - 1];
         const curr = rawPts[i];
         pts[i] = {
-          x: prev.x * 0.28 + curr.x * 0.72,
-          y: prev.y * 0.28 + curr.y * 0.72,
-          p: prev.p * 0.28 + curr.p * 0.72
+          x: prev.x * 0.22 + curr.x * 0.78,
+          y: prev.y * 0.22 + curr.y * 0.78,
+          p: prev.p * 0.22 + curr.p * 0.78
         };
       }
       pts[len - 1] = rawPts[len - 1];
@@ -17825,13 +17825,13 @@ class GraphApp {
         const pPrev2 = stroke.points[ptsLen - 2];
         const p2x = pPrev2.nx * rw;
         const p2y = pPrev2.ny * rh;
-        const w2 = (0.15 + blurBoost * 0.05) * smoothScale;
-        const w1 = (0.35 + blurBoost * 0.10) * smoothScale;
+        const w2 = (0.10 + blurBoost * 0.05) * smoothScale;
+        const w1 = (0.26 + blurBoost * 0.10) * smoothScale;
         const w0 = 1.0 - w1 - w2;
         sx = p2x * w2 + p1x * w1 + rawPxX * w0;
         sy = p2y * w2 + p1y * w1 + rawPxY * w0;
       } else if (ptsLen === 1 && smoothScale > 0.01) {
-        const w1 = (0.32 + blurBoost * 0.12) * smoothScale;
+        const w1 = (0.26 + blurBoost * 0.12) * smoothScale;
         const w0 = 1.0 - w1;
         sx = p1x * w1 + rawPxX * w0;
         sy = p1y * w1 + rawPxY * w0;
@@ -17905,8 +17905,8 @@ class GraphApp {
       const lastY = lastPt.ny * rh;
       const tailDist = Math.hypot(rawEnd.x - lastX, rawEnd.y - lastY);
       if (tailDist >= 0.4) {
-        const endX = stroke.isHighlighter ? rawEnd.x : (lastX * 0.24 + rawEnd.x * 0.76);
-        const endY = stroke.isHighlighter ? rawEnd.y : (lastY * 0.24 + rawEnd.y * 0.76);
+        const endX = stroke.isHighlighter ? rawEnd.x : (lastX * 0.18 + rawEnd.x * 0.82);
+        const endY = stroke.isHighlighter ? rawEnd.y : (lastY * 0.18 + rawEnd.y * 0.82);
         let p = (typeof lastPt.p === 'number') ? lastPt.p : 0.5;
         const curPenStyle = stroke.penStyle || 'ballpen';
         if (curPenStyle === 'fountain') {
@@ -17987,9 +17987,9 @@ class GraphApp {
 
         let alpha = 0;
         if (isZigzag) {
-          alpha = pass === 0 ? 0.48 : 0.38;
+          alpha = pass === 0 ? 0.45 : 0.35;
         } else if (dPerp <= 1.25 && cosAng > 0.55) {
-          alpha = pass === 0 ? 0.30 : 0.22;
+          alpha = pass === 0 ? 0.16 : 0.10;
         }
 
         if (alpha > 0) {
@@ -34613,34 +34613,41 @@ class GraphApp {
             if (!this.currentInkStroke.isHighlighter) {
               const stepD = lastRaw ? Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y) : 0;
               const blurBoost = Math.min(1.0, (this.inkSoftBlur || 0) / 5.0);
+              let rCos = 1.0;
               let minCurveSmooth = 0;
-              if (liveLen >= 2 && stepD > 10) {
+              if (liveLen >= 2) {
                 const pPrev1 = this._liveBezierScreenPts[liveLen - 1];
                 const pPrev2 = this._liveBezierScreenPts[liveLen - 2];
                 const rvx1 = pPrev1.x - pPrev2.x, rvy1 = pPrev1.y - pPrev2.y;
                 const rvx2 = pPos.x - pPrev1.x, rvy2 = pPos.y - pPrev1.y;
                 const rLen1 = Math.hypot(rvx1, rvy1), rLen2 = Math.hypot(rvx2, rvy2);
-                if (rLen1 > 1.5 && rLen2 > 1.5) {
-                  const rCos = (rvx1 * rvx2 + rvy1 * rvy2) / (rLen1 * rLen2);
-                  if (rCos > 0.25 && rCos < 0.97) {
+                if (rLen1 > 0.6 && rLen2 > 0.6) {
+                  rCos = (rvx1 * rvx2 + rvy1 * rvy2) / (rLen1 * rLen2);
+                  if (stepD > 10 && rCos > 0.25 && rCos < 0.97) {
                     minCurveSmooth = 0.24;
                   }
                 }
               }
-              const smoothScale = stepD > (12 + blurBoost * 8)
+              let smoothScale = stepD > (12 + blurBoost * 8)
                 ? Math.max(minCurveSmooth, 1 - (stepD - (12 + blurBoost * 8)) / 28)
                 : 1.0;
+              // 의도적인 급격한 모서리 꺾임(+, 4, z, ㄱ, ㄴ 등)에서는 코너가 둥글게 말리지 않도록 스무딩 감쇠 브레이크 적용
+              if (rCos < 0.20 && stepD > 1.8) {
+                smoothScale *= 0.35;
+              } else if (rCos < 0.45 && stepD > 2.0) {
+                smoothScale *= 0.68;
+              }
               if (liveLen >= 2 && smoothScale > 0.01) {
                 const pPrev1 = this._liveBezierScreenPts[liveLen - 1];
                 const pPrev2 = this._liveBezierScreenPts[liveLen - 2];
-                const w2 = (0.12 + blurBoost * 0.06) * smoothScale;
-                const w1 = (0.33 + blurBoost * 0.12) * smoothScale;
+                const w2 = (0.09 + blurBoost * 0.05) * smoothScale;
+                const w1 = (0.23 + blurBoost * 0.10) * smoothScale;
                 const w0 = 1.0 - w1 - w2;
                 sx = pPrev2.x * w2 + pPrev1.x * w1 + pPos.x * w0;
                 sy = pPrev2.y * w2 + pPrev1.y * w1 + pPos.y * w0;
               } else if (liveLen === 1 && smoothScale > 0.01) {
                 const pPrev1 = this._liveBezierScreenPts[0];
-                const w1 = (0.30 + blurBoost * 0.14) * smoothScale;
+                const w1 = (0.24 + blurBoost * 0.12) * smoothScale;
                 const w0 = 1.0 - w1;
                 sx = pPrev1.x * w1 + pPos.x * w0;
                 sy = pPrev1.y * w1 + pPos.y * w0;
