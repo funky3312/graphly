@@ -13756,9 +13756,7 @@ class GraphApp {
     const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), aspect, isMin: false, graphSnapshot: graphSnapshot || this.getPureGraphSnapshot(), caseIdx, pdfAnchor: null };
     this.extraGraphCards.push(cardItem);
     this.attachPipGraphCardLiveSystem(el, cardItem);
-    if (!keepInGraphMode) {
-      this.bringCardToFront(el);
-    }
+    this.bringCardToFront(el);
 
     if (options && options.directBasePos && options.directBasePos.pdfAnchor) {
       el._pdfAnchor = { ...options.directBasePos.pdfAnchor };
@@ -16691,9 +16689,10 @@ class GraphApp {
         : (this._hasPrimaryGraphCard ? 'primary' : null)
     );
 
-    // 원본 카드를 덮어쓰지 않도록 편집 타겟 연결 해제 후 세션 내 새 카드 생성 플래그 활성화
+    // 원본 카드를 덮어쓰지 않도록 편집 타겟 연결 해제
     this._editingGraphCardTarget = null;
-    this._hasSpawnedNewCardInSession = true;
+    this._hasSpawnedNewCardInSession = false;
+    this._lastSpawnedPipCardRef = null;
 
     let cardW = 430;
     let aspect = 0.82;
@@ -16757,6 +16756,9 @@ class GraphApp {
     tctx.restore();
     const dataUrl = tempCanvas.toDataURL('image/png');
 
+    // 즉시 판서(필기) 모드로 복귀한 뒤, 기존 카드 기준 우하단 45도(+38px, +38px) 위치에 최상단(Top z-index)으로 새 카드 배치
+    this._restoreBoardModeStateAfterGraph();
+
     const diagPos = this._computeDiagonalOffsetCardBasePos(refCard, cardW, cardH);
     const createdRef = this.setGraphCard(
       dataUrl,
@@ -16768,17 +16770,33 @@ class GraphApp {
         cardW,
         aspect,
         directBasePos: diagPos,
-        keepInGraphMode: true,
+        alreadyInBoardMode: true,
         silentToast: true
       }
     );
 
     if (createdRef) {
       this._savePipCardSnapshot(createdRef, updatedSnap);
-      this._syncFullGraphInkBackToPipCard(createdRef, cardW, cardH, cardUnitScale, fullUnitScale, true);
-      this._lastSpawnedPipCardRef = createdRef;
+      this._syncFullGraphInkBackToPipCard(createdRef, cardW, cardH, cardUnitScale, fullUnitScale, false);
+      const { widget: createdWidget, isPrimary: createdIsPrimary } = this._getPipCardWidgetAndSnapRaw(createdRef);
+      this.syncPipCardLockUI(createdRef);
+      this.renderPipGraphCard(createdRef);
+      if (createdIsPrimary) {
+        this.renderGraphCardCanvas();
+      } else if (createdWidget && typeof createdWidget._renderCardInkCanvas === 'function') {
+        createdWidget._renderCardInkCanvas();
+      }
+      this.scheduleBakePipGraphCardToImg(createdRef);
+      if (createdWidget) {
+        this.bringCardToFront(createdWidget);
+      }
+      this.updateProblemCardPosition(true);
+      this.render();
+      if (this.isAudioRecording) {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       const newCaseNum = (createdRef === 'primary') ? 1 : (createdRef.caseIdx || (this.extraGraphCards.length + 1));
-      this.showToast(`📌 #${newCaseNum} 새 카드로 추가됨! (계속 변형 후 추가하거나 [필기 복귀]를 누르세요)`);
+      this.showToast(`📌 #${newCaseNum} 새 그래프 창으로 추가되었습니다!`);
     }
     return createdRef;
   }
@@ -17100,6 +17118,10 @@ class GraphApp {
       { cardW, aspect, forceScreenPos: true, alreadyInBoardMode: Boolean(this.isGraphCovered), silentToast: true }
     );
 
+    const { widget: createdWidget } = this._getPipCardWidgetAndSnapRaw(createdRef);
+    if (createdWidget) {
+      this.bringCardToFront(createdWidget);
+    }
     this.syncPipCardLockUI(createdRef);
     this.renderPipGraphCard(createdRef);
     if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
