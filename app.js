@@ -1028,16 +1028,17 @@ class GraphApp {
     const hasPrimaryProblem = Boolean(pWidget && pWidget.style.display !== 'none' && this.problemCardData);
 
     const gWidget = document.getElementById('graphCardWidget');
+    const gBody = document.getElementById('graphCardBody');
     const gImg = document.getElementById('graphCardImg');
     const gTitle = document.getElementById('graphCardTitle');
     const gToggle = document.getElementById('iconGraphCardToggle');
     const hasPrimaryGraph = Boolean(gWidget && this._hasPrimaryGraphCard && this.graphCardData);
+    let livePrimarySnap = null;
     if (hasPrimaryGraph && typeof this._getMutablePipCardSnapshot === 'function') {
-      const livePrimarySnap = this._getMutablePipCardSnapshot('primary');
+      livePrimarySnap = this._getMutablePipCardSnapshot('primary');
       if (livePrimarySnap) {
-        const bodyEl = document.getElementById('graphCardBody');
-        const cw = Math.max(160, Math.round(parseFloat(gWidget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
-        const ch = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cw * (this.graphCardAspect || 0.82))));
+        const cw = Math.max(160, Math.round(parseFloat(gWidget.style.width) || (gBody && gBody.clientWidth) || 430));
+        const ch = Math.max(120, Math.round((gBody && parseFloat(gBody.style.height)) || (cw * (this.graphCardAspect || 0.82))));
         livePrimarySnap._isPipCardSnapshot = true;
         livePrimarySnap._pipCardW = cw;
         livePrimarySnap._pipCardH = ch;
@@ -1045,11 +1046,63 @@ class GraphApp {
       }
     }
 
+    const extraProblemCardStates = (this.extraProblemCards || []).map(c => ({
+      left: (c && c.el) ? c.el.style.left : '',
+      top: (c && c.el) ? c.el.style.top : '',
+      width: (c && c.el) ? c.el.style.width : '',
+      transform: (c && c.el) ? c.el.style.transform : '',
+      zIndex: (c && c.el) ? c.el.style.zIndex : '',
+      display: (c && c.el) ? (c.el.style.display || 'flex') : 'flex',
+      minimized: Boolean(c && c.el && c.el.classList.contains('minimized')),
+      cardInkActive: Boolean(c && c.el && c.el.classList.contains('card-ink-active')),
+      baseX: c ? c.baseX : 0,
+      baseY: c ? c.baseY : 0,
+      pdfAnchor: (c && c.el && c.el._pdfAnchor) ? { ...c.el._pdfAnchor } : null,
+      strokes: JSON.parse(JSON.stringify((c && c.el && c.el._cardInkStrokes) || [])),
+      stickers: JSON.parse(JSON.stringify((c && c.el && c.el._cardStickers) || []))
+    }));
+
+    const extraGraphCardStates = (this.extraGraphCards || []).map(c => {
+      let liveExtraSnap = null;
+      const bodyEl = (c && c.el) ? c.el.querySelector('.problem-card-body') : null;
+      if (c && typeof this._getMutablePipCardSnapshot === 'function') {
+        liveExtraSnap = this._getMutablePipCardSnapshot(c);
+        if (liveExtraSnap) {
+          const cw = Math.max(160, Math.round((c.el && parseFloat(c.el.style.width)) || (bodyEl && bodyEl.clientWidth) || 430));
+          const ch = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cw * (c.aspect || 0.82))));
+          liveExtraSnap._isPipCardSnapshot = true;
+          liveExtraSnap._pipCardW = cw;
+          liveExtraSnap._pipCardH = ch;
+          this._savePipCardSnapshot(c, liveExtraSnap);
+        }
+      }
+      return {
+        left: (c && c.el) ? c.el.style.left : '',
+        top: (c && c.el) ? c.el.style.top : '',
+        width: (c && c.el) ? c.el.style.width : '',
+        bodyHeight: bodyEl ? bodyEl.style.height : '',
+        transform: (c && c.el) ? c.el.style.transform : '',
+        zIndex: (c && c.el) ? c.el.style.zIndex : '',
+        display: (c && c.el) ? (c.el.style.display || 'flex') : 'flex',
+        minimized: Boolean(c && c.el && c.el.classList.contains('minimized')),
+        cardInkActive: Boolean(c && c.el && c.el.classList.contains('card-ink-active')),
+        baseX: c ? c.baseX : 0,
+        baseY: c ? c.baseY : 0,
+        aspect: c ? c.aspect : 0.82,
+        graphSnapshot: c ? c.graphSnapshot : null,
+        pipSnapClone: liveExtraSnap ? JSON.parse(JSON.stringify(liveExtraSnap)) : null,
+        pdfAnchor: (c && c.el && c.el._pdfAnchor) ? { ...c.el._pdfAnchor } : null,
+        strokes: JSON.parse(JSON.stringify((c && c.el && c.el._cardInkStrokes) || [])),
+        stickers: JSON.parse(JSON.stringify((c && c.el && c.el._cardStickers) || []))
+      };
+    });
+
     return {
       historyJson: this.getHistorySnapshot(),
       primaryProblemCard: hasPrimaryProblem ? {
         display: pWidget.style.display,
         minimized: pWidget.classList.contains('minimized'),
+        cardInkActive: pWidget.classList.contains('card-ink-active'),
         left: pWidget.style.left,
         top: pWidget.style.top,
         width: pWidget.style.width,
@@ -1064,16 +1117,20 @@ class GraphApp {
         isProblemCardMinimized: this.isProblemCardMinimized,
         problemCardBaseX: this.problemCardBaseX,
         problemCardBaseY: this.problemCardBaseY,
+        pdfAnchor: pWidget._pdfAnchor ? { ...pWidget._pdfAnchor } : null,
         problemInkStrokes: JSON.parse(JSON.stringify(this.problemInkStrokes || [])),
         problemCardStickers: JSON.parse(JSON.stringify(this.problemCardStickers || []))
       } : null,
       extraProblemCards: [...(this.extraProblemCards || [])],
+      extraProblemCardStates,
       primaryGraphCard: hasPrimaryGraph ? {
         display: gWidget.style.display,
         minimized: gWidget.classList.contains('minimized'),
+        cardInkActive: gWidget.classList.contains('card-ink-active'),
         left: gWidget.style.left,
         top: gWidget.style.top,
         width: gWidget.style.width,
+        bodyHeight: gBody ? gBody.style.height : '',
         transform: gWidget.style.transform,
         zIndex: gWidget.style.zIndex,
         imgSrc: gImg ? gImg.src : '',
@@ -1086,10 +1143,14 @@ class GraphApp {
         graphCardBaseX: this.graphCardBaseX,
         graphCardBaseY: this.graphCardBaseY,
         primaryGraphCardSnapshot: this.primaryGraphCardSnapshot,
+        pipSnapClone: livePrimarySnap ? JSON.parse(JSON.stringify(livePrimarySnap)) : null,
+        graphCardPdfAnchor: this.graphCardPdfAnchor ? { ...this.graphCardPdfAnchor } : null,
+        pdfAnchor: gWidget._pdfAnchor ? { ...gWidget._pdfAnchor } : null,
         graphInkStrokes: JSON.parse(JSON.stringify(this.graphInkStrokes || [])),
         graphCardStickers: JSON.parse(JSON.stringify(this.graphCardStickers || []))
       } : null,
       extraGraphCards: [...(this.extraGraphCards || [])],
+      extraGraphCardStates,
       graphCaseCounter: this._graphCaseCounter || 0,
       isGraphCovered: Boolean(this.isGraphCovered),
       coveredGraphStateBackup: this._coveredGraphStateBackup ? JSON.parse(JSON.stringify(this._coveredGraphStateBackup)) : null,
@@ -1123,6 +1184,7 @@ class GraphApp {
       this.isProblemCardMinimized = Boolean(pc.isProblemCardMinimized);
       this.problemCardBaseX = pc.problemCardBaseX;
       this.problemCardBaseY = pc.problemCardBaseY;
+      pWidget._pdfAnchor = pc.pdfAnchor ? { ...pc.pdfAnchor } : null;
       this.problemInkStrokes = JSON.parse(JSON.stringify(pc.problemInkStrokes || []));
       this.problemCardStickers = JSON.parse(JSON.stringify(pc.problemCardStickers || []));
       if (typeof pWidget._renderCardStickers === 'function') pWidget._renderCardStickers();
@@ -1130,6 +1192,9 @@ class GraphApp {
       if (pTitle) pTitle.textContent = pc.titleText || '문제';
       if (pToggle) pToggle.textContent = pc.toggleText || '▾';
       pWidget.classList.toggle('minimized', Boolean(pc.minimized));
+      pWidget.classList.toggle('card-ink-active', Boolean(pc.cardInkActive));
+      const pLaserBtn = pWidget.querySelector('.btn-card-laser');
+      if (pLaserBtn) pLaserBtn.classList.toggle('active', Boolean(pc.cardInkActive));
       pWidget.style.left = pc.left || '72px';
       pWidget.style.top = pc.top || '18px';
       pWidget.style.width = pc.width || '520px';
@@ -1144,6 +1209,7 @@ class GraphApp {
 
     // 2. 다중 추가 문제 카드 복원
     const targetExtraProblems = wsSnap.extraProblemCards || [];
+    const targetExtraProbStates = wsSnap.extraProblemCardStates || [];
     if (this.extraProblemCards && this.extraProblemCards.length > 0) {
       this.extraProblemCards.forEach(c => {
         if (c && c.el && !targetExtraProblems.includes(c)) c.el.remove();
@@ -1151,19 +1217,43 @@ class GraphApp {
     }
     this.extraProblemCards = [...targetExtraProblems];
     const extraProbParent = (this.canvas && this.canvas.parentElement) || document.body;
-    this.extraProblemCards.forEach(c => {
-      if (c && c.el && !extraProbParent.contains(c.el)) {
-        extraProbParent.appendChild(c.el);
+    this.extraProblemCards.forEach((c, idx) => {
+      if (c && c.el) {
+        if (!extraProbParent.contains(c.el)) {
+          extraProbParent.appendChild(c.el);
+        }
+        const st = targetExtraProbStates[idx];
+        if (st) {
+          c.baseX = st.baseX;
+          c.baseY = st.baseY;
+          c.el._pdfAnchor = st.pdfAnchor ? { ...st.pdfAnchor } : null;
+          c.el._cardInkStrokes = JSON.parse(JSON.stringify(st.strokes || []));
+          c.el._cardStickers = JSON.parse(JSON.stringify(st.stickers || []));
+          if (st.left) c.el.style.left = st.left;
+          if (st.top) c.el.style.top = st.top;
+          if (st.width) c.el.style.width = st.width;
+          c.el.style.transform = st.transform || '';
+          if (st.zIndex) c.el.style.zIndex = st.zIndex;
+          c.el.style.display = st.display || 'flex';
+          c.el.classList.toggle('minimized', Boolean(st.minimized));
+          c.el.classList.toggle('card-ink-active', Boolean(st.cardInkActive));
+          const lBtn = c.el.querySelector('.btn-card-laser');
+          if (lBtn) lBtn.classList.toggle('active', Boolean(st.cardInkActive));
+          if (typeof c.el._renderCardStickers === 'function') c.el._renderCardStickers();
+          if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+        }
       }
     });
 
     // 3. 그래프 보관 카드 복원
     const gWidget = document.getElementById('graphCardWidget');
+    const gBody = document.getElementById('graphCardBody');
     const gImg = document.getElementById('graphCardImg');
     const gTitle = document.getElementById('graphCardTitle');
     const gToggle = document.getElementById('iconGraphCardToggle');
     if (wsSnap.primaryGraphCard && gWidget) {
       const gc = wsSnap.primaryGraphCard;
+      this.clearPipGraphCardStealthTimer('primary');
       this._hasPrimaryGraphCard = true;
       this.graphCardData = gc.graphCardData ? { ...gc.graphCardData } : null;
       this.graphCardImage = gc.graphCardImage;
@@ -1172,6 +1262,9 @@ class GraphApp {
       this.graphCardBaseX = gc.graphCardBaseX;
       this.graphCardBaseY = gc.graphCardBaseY;
       this.primaryGraphCardSnapshot = gc.primaryGraphCardSnapshot;
+      this.graphCardPdfAnchor = gc.graphCardPdfAnchor ? { ...gc.graphCardPdfAnchor } : null;
+      gWidget._pdfAnchor = gc.pdfAnchor ? { ...gc.pdfAnchor } : null;
+      gWidget._pipSnapObj = gc.pipSnapClone ? JSON.parse(JSON.stringify(gc.pipSnapClone)) : null;
       this.graphInkStrokes = JSON.parse(JSON.stringify(gc.graphInkStrokes || []));
       this.graphCardStickers = JSON.parse(JSON.stringify(gc.graphCardStickers || []));
       if (typeof gWidget._renderCardStickers === 'function') gWidget._renderCardStickers();
@@ -1179,34 +1272,88 @@ class GraphApp {
       if (gTitle) gTitle.textContent = gc.titleText || '보관 그래프 #1';
       if (gToggle) gToggle.textContent = gc.toggleText || '▾';
       gWidget.classList.toggle('minimized', Boolean(gc.minimized));
+      gWidget.classList.toggle('card-ink-active', Boolean(gc.cardInkActive));
+      const gLaserBtn = gWidget.querySelector('.btn-card-laser');
+      if (gLaserBtn) gLaserBtn.classList.toggle('active', Boolean(gc.cardInkActive));
       gWidget.style.left = gc.left || '580px';
       gWidget.style.top = gc.top || '68px';
-      gWidget.style.width = gc.width || '400px';
+      gWidget.style.width = gc.width || '430px';
+      if (gBody && gc.bodyHeight) gBody.style.height = gc.bodyHeight;
       gWidget.style.transform = gc.transform || '';
       if (gc.zIndex) gWidget.style.zIndex = gc.zIndex;
       gWidget.style.display = gc.display || 'flex';
+      gWidget._lastPipLockUiSig = '';
       this.syncGraphCardRectFromWidget();
+      this.syncPipCardLockUI('primary');
+      this.renderPipGraphCard('primary');
       this.renderGraphCardCanvas();
+      if (gWidget.classList.contains('pip-locked-mode')) {
+        this.schedulePipGraphCardStealth('primary', 5000);
+      }
     } else {
+      this.clearPipGraphCardStealthTimer('primary');
       this._hasPrimaryGraphCard = false;
       this.graphCardData = null;
       this.graphCardRect = null;
+      this.graphCardPdfAnchor = null;
+      if (gWidget) {
+        gWidget._pdfAnchor = null;
+        gWidget._pipSnapObj = null;
+        gWidget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked', 'card-ink-active');
+        gWidget.style.display = 'none';
+      }
       this.graphInkStrokes = [];
       this.renderGraphCardCanvas();
-      if (gWidget) gWidget.style.display = 'none';
     }
 
     const targetExtraGraphs = wsSnap.extraGraphCards || [];
+    const targetExtraGraphStates = wsSnap.extraGraphCardStates || [];
     if (this.extraGraphCards && this.extraGraphCards.length > 0) {
       this.extraGraphCards.forEach(c => {
-        if (c && c.el && !targetExtraGraphs.includes(c)) c.el.remove();
+        if (c && c.el && !targetExtraGraphs.includes(c)) {
+          this.clearPipGraphCardStealthTimer(c);
+          c.el.remove();
+        }
       });
     }
     this.extraGraphCards = [...targetExtraGraphs];
     const extraGraphParent = (this.canvas && this.canvas.parentElement) || document.body;
-    this.extraGraphCards.forEach(c => {
-      if (c && c.el && !extraGraphParent.contains(c.el)) {
-        extraGraphParent.appendChild(c.el);
+    this.extraGraphCards.forEach((c, idx) => {
+      if (c && c.el) {
+        if (!extraGraphParent.contains(c.el)) {
+          extraGraphParent.appendChild(c.el);
+        }
+        const st = targetExtraGraphStates[idx];
+        if (st) {
+          c.baseX = st.baseX;
+          c.baseY = st.baseY;
+          c.aspect = st.aspect || c.aspect || 0.82;
+          if (st.graphSnapshot) c.graphSnapshot = st.graphSnapshot;
+          c._pipSnapObj = st.pipSnapClone ? JSON.parse(JSON.stringify(st.pipSnapClone)) : null;
+          c.el._pdfAnchor = st.pdfAnchor ? { ...st.pdfAnchor } : null;
+          c.el._cardInkStrokes = JSON.parse(JSON.stringify(st.strokes || []));
+          c.el._cardStickers = JSON.parse(JSON.stringify(st.stickers || []));
+          if (st.left) c.el.style.left = st.left;
+          if (st.top) c.el.style.top = st.top;
+          if (st.width) c.el.style.width = st.width;
+          const bodyEl = c.el.querySelector('.problem-card-body');
+          if (bodyEl && st.bodyHeight) bodyEl.style.height = st.bodyHeight;
+          c.el.style.transform = st.transform || '';
+          if (st.zIndex) c.el.style.zIndex = st.zIndex;
+          c.el.style.display = st.display || 'flex';
+          c.el.classList.toggle('minimized', Boolean(st.minimized));
+          c.el.classList.toggle('card-ink-active', Boolean(st.cardInkActive));
+          const lBtn = c.el.querySelector('.btn-card-laser');
+          if (lBtn) lBtn.classList.toggle('active', Boolean(st.cardInkActive));
+        }
+        c.el._lastPipLockUiSig = '';
+        this.syncPipCardLockUI(c);
+        this.renderPipGraphCard(c);
+        if (typeof c.el._renderCardStickers === 'function') c.el._renderCardStickers();
+        if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+        if (c.el.classList.contains('pip-locked-mode')) {
+          this.schedulePipGraphCardStealth(c, 5000);
+        }
       }
     });
 
@@ -1248,6 +1395,22 @@ class GraphApp {
     this.updateUndoRedoUI();
   }
 
+  _pushWorkspaceUndoSnapshot(toastUndo = '↺ 이전 작업이 복구되었습니다', toastRedo = '↻ 다시 실행됨') {
+    if (this.isHistoryProcessing) return;
+    const fullSnap = this._captureFullWorkspaceSnapshot();
+    this.undoStack.push({
+      type: 'workspace_snapshot',
+      snapshot: fullSnap,
+      toastUndo,
+      toastRedo
+    });
+    if (this.undoStack.length > this.maxHistory) {
+      this.undoStack.shift();
+    }
+    this.redoStack = [];
+    this.updateUndoRedoUI();
+  }
+
   undo() {
     if (this.undoStack.length === 0) {
       this.showToast('ℹ️ 실행 취소할 이전 작업이 없습니다.');
@@ -1256,15 +1419,21 @@ class GraphApp {
     this.isHistoryProcessing = true;
     const prevSnap = this.undoStack.pop();
 
-    // 🌟 [새 캔버스 전체 초기화 실행 취소: 문제 카드·보관 카드·그래프·필기 100% 원상 복구]
+    // 🌟 [새 캔버스 전체 초기화 / 그래프·문제 창 닫기 실행 취소: 문제 카드·보관 카드·그래프·필기 100% 원상 복구]
     if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'workspace_snapshot') {
       const currentFull = this._captureFullWorkspaceSnapshot();
-      this.redoStack.push({ type: 'workspace_snapshot', snapshot: currentFull });
+      this.redoStack.push({
+        type: 'workspace_snapshot',
+        snapshot: currentFull,
+        toastUndo: prevSnap.toastUndo,
+        toastRedo: prevSnap.toastRedo
+      });
       this._restoreFullWorkspaceSnapshot(prevSnap.snapshot);
       this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
-      this.showToast('↺ 새 캔버스 초기화 이전 상태로 모두 복구됨');
+      if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+      this.showToast(prevSnap.toastUndo || '↺ 새 캔버스 초기화 이전 상태로 모두 복구됨');
       return;
     }
 
@@ -1348,15 +1517,21 @@ class GraphApp {
     this.isHistoryProcessing = true;
     const nextSnap = this.redoStack.pop();
 
-    // 🌟 [새 캔버스 전체 초기화 다시 실행]
+    // 🌟 [새 캔버스 전체 초기화 / 그래프·문제 창 닫기 다시 실행]
     if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'workspace_snapshot') {
       const currentFull = this._captureFullWorkspaceSnapshot();
-      this.undoStack.push({ type: 'workspace_snapshot', snapshot: currentFull });
+      this.undoStack.push({
+        type: 'workspace_snapshot',
+        snapshot: currentFull,
+        toastUndo: nextSnap.toastUndo,
+        toastRedo: nextSnap.toastRedo
+      });
       this._restoreFullWorkspaceSnapshot(nextSnap.snapshot);
       this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
-      this.showToast('↻ 다시 실행됨');
+      if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+      this.showToast(nextSnap.toastRedo || '↻ 다시 실행됨');
       return;
     }
 
@@ -10362,11 +10537,16 @@ class GraphApp {
     const btnClose = el.querySelector('.btn-extra-close');
     if (btnClose) {
       btnClose.onclick = () => {
+        this._pushWorkspaceUndoSnapshot('↺ 닫은 문제 카드가 복원되었습니다', '↻ 문제 카드 닫기 다시 실행됨');
         el.remove();
         this.extraProblemCards = this.extraProblemCards.filter(c => c !== cardItem);
         if (isPdfPageCard) {
           this.relayoutPdfPageCards();
         }
+        if (this.isAudioRecording) {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+        }
+        this.showToast('🗑️ 문제 카드를 닫았습니다 (되돌리기 ↺로 복원 가능)');
       };
     }
 
@@ -10961,7 +11141,11 @@ class GraphApp {
 
     // 4. 문제 카드 닫기
     if (btnClose) {
-      btnClose.onclick = () => this.closeProblemCard();
+      btnClose.onclick = () => {
+        this._pushWorkspaceUndoSnapshot('↺ 닫은 문제 카드가 복원되었습니다', '↻ 문제 카드 닫기 다시 실행됨');
+        this.closeProblemCard();
+        this.showToast('🗑️ 문제 카드를 닫았습니다 (되돌리기 ↺로 복원 가능)');
+      };
     }
 
     // 5. 카드 확대 / 축소 버튼 (문제 위 밑줄도 비율에 맞춰 자동으로 함께 스케일링!)
@@ -13750,6 +13934,7 @@ class GraphApp {
       };
     }
     el.querySelector('.btn-extra-close').onclick = () => {
+      this._pushWorkspaceUndoSnapshot('↺ 닫은 그래프 창이 복원되었습니다', '↻ 그래프 창 닫기 다시 실행됨');
       this.clearPipGraphCardStealthTimer(cardItem);
       el.remove();
       this.extraGraphCards = this.extraGraphCards.filter(c => c !== cardItem);
@@ -13763,6 +13948,7 @@ class GraphApp {
       } else {
         this.render();
       }
+      this.showToast('🗑️ 그래프 창을 닫았습니다 (되돌리기 ↺로 복원 가능)');
     };
     return cardItem;
   }
@@ -14564,6 +14750,7 @@ class GraphApp {
     }
     if (btnClose) {
       btnClose.onclick = () => {
+        this._pushWorkspaceUndoSnapshot('↺ 닫은 그래프 창이 복원되었습니다', '↻ 그래프 창 닫기 다시 실행됨');
         this.clearPipGraphCardStealthTimer('primary');
         this.graphInkStrokes = [];
         this._hasPrimaryGraphCard = false;
@@ -14571,9 +14758,10 @@ class GraphApp {
         this.graphCardPdfAnchor = null;
         widget._pdfAnchor = null;
         widget._pipSnapObj = null;
-        widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked');
+        widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked', 'card-ink-active');
         if (this._pipTargetCard === 'primary') this._pipTargetCard = null;
         if (this._editingGraphCardTarget === 'primary') this._editingGraphCardTarget = null;
+        this.renderGraphCardCanvas();
         widget.style.display = 'none';
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(true);
@@ -14583,10 +14771,14 @@ class GraphApp {
         } else {
           this.render();
         }
+        this.showToast('🗑️ 그래프 창을 닫았습니다 (되돌리기 ↺로 복원 가능)');
       };
     }
     if (btnClearInk) {
       btnClearInk.onclick = () => {
+        if (Array.isArray(this.graphInkStrokes) && this.graphInkStrokes.length > 0) {
+          this._pushWorkspaceUndoSnapshot('↺ 그래프 창 필기가 복원되었습니다', '↻ 그래프 창 필기 지우기 다시 실행됨');
+        }
         this.graphInkStrokes = [];
         this.renderGraphCardCanvas();
       };
@@ -16617,6 +16809,7 @@ class GraphApp {
             if (msg) this.showToast(msg);
           } else if (act === 'deleteCurve') {
             if (snap.graphs.length > 1) {
+              this._pushWorkspaceUndoSnapshot('↺ 삭제한 함수가 카드에 복원되었습니다', '↻ 함수 삭제 다시 실행됨');
               snap.graphs.splice(snap.activeGraphIdx, 1);
               snap.activeGraphIdx = Math.max(0, snap.graphs.length - 1);
               snap.selectedHandleIdx = null;
@@ -16625,7 +16818,7 @@ class GraphApp {
               this.renderPipGraphCard(cardRef);
               this.scheduleBakePipGraphCardToImg(cardRef);
               if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
-              this.showToast('🗑️ 선택한 함수를 카드에서 삭제했습니다.');
+              this.showToast('🗑️ 선택한 함수를 삭제했습니다 (되돌리기 ↺로 복원 가능)');
             } else {
               const closeBtn = isPrimary ? document.getElementById('btnGraphCardClose') : widget.querySelector('.btn-extra-close');
               if (closeBtn) closeBtn.click();
