@@ -1044,18 +1044,24 @@
         }
 
         const restartProblemHoldTimer = (w, h) => {
-          if (holdTimer) {
-            clearTimeout(holdTimer);
-            holdTimer = null;
-          }
           if (!isDrawingOnProblem || !currentStroke || currentStroke._shapeHoldDetected) return;
-          holdTimer = setTimeout(() => {
-            if (isDrawingOnProblem && currentStroke && !currentStroke._shapeHoldDetected) {
-              if (this.recognizeAndApplyCardStrokeShape(currentStroke, w, h)) {
-                this.renderProblemCardCanvas(currentStroke);
-              }
+          currentStroke._lastHoldMoveTime = Date.now();
+          currentStroke._holdW = w;
+          currentStroke._holdH = h;
+          if (holdTimer) return;
+          const checkHold = () => {
+            holdTimer = null;
+            if (!isDrawingOnProblem || !currentStroke || currentStroke._shapeHoldDetected) return;
+            const elapsed = Date.now() - (currentStroke._lastHoldMoveTime || 0);
+            if (elapsed < 340) {
+              holdTimer = setTimeout(checkHold, Math.max(16, 340 - elapsed));
+              return;
             }
-          }, 340);
+            if (this.recognizeAndApplyCardStrokeShape(currentStroke, currentStroke._holdW || w, currentStroke._holdH || h)) {
+              this.renderProblemCardCanvas(currentStroke);
+            }
+          };
+          holdTimer = setTimeout(checkHold, 340);
         };
 
         const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
@@ -1142,17 +1148,7 @@
         const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
         if (moveStepDist > 1.5 || dHold > 5) {
           currentStroke._holdAnchorPx = { x: curPxX, y: curPxY };
-          if (holdTimer) {
-            clearTimeout(holdTimer);
-            holdTimer = null;
-          }
-          holdTimer = setTimeout(() => {
-            if (isDrawingOnProblem && currentStroke && !currentStroke._shapeHoldDetected) {
-              if (this.recognizeAndApplyCardStrokeShape(currentStroke, pos.w, pos.h)) {
-                this.renderProblemCardCanvas(currentStroke);
-              }
-            }
-          }, 340);
+          restartProblemHoldTimer(pos.w, pos.h);
         }
 
         if (!this._appendCardStrokeSamplesFromMoveEvent(currentStroke, e, activeProblemDrawRect, pos.w, pos.h, recT)) return;
@@ -1754,21 +1750,27 @@
       };
 
       const restartExtraHoldTimer = (rw, rh) => {
-        if (extraHoldTimer) {
-          clearTimeout(extraHoldTimer);
-          extraHoldTimer = null;
-        }
         if (!isDrawingExtraInk || !curExtraStroke || curExtraStroke._shapeHoldDetected) return;
-        extraHoldTimer = setTimeout(() => {
-          if (isDrawingExtraInk && curExtraStroke && !curExtraStroke._shapeHoldDetected) {
-            if (this.recognizeAndApplyCardStrokeShape(curExtraStroke, rw, rh)) {
-              if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
-                this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true, curExtraStroke);
-              }
-              renderExtraCardInk(curExtraStroke);
-            }
+        curExtraStroke._lastHoldMoveTime = Date.now();
+        curExtraStroke._holdW = rw;
+        curExtraStroke._holdH = rh;
+        if (extraHoldTimer) return;
+        const checkExtraHold = () => {
+          extraHoldTimer = null;
+          if (!isDrawingExtraInk || !curExtraStroke || curExtraStroke._shapeHoldDetected) return;
+          const elapsed = Date.now() - (curExtraStroke._lastHoldMoveTime || 0);
+          if (elapsed < 340) {
+            extraHoldTimer = setTimeout(checkExtraHold, Math.max(16, 340 - elapsed));
+            return;
           }
-        }, 340);
+          if (this.recognizeAndApplyCardStrokeShape(curExtraStroke, curExtraStroke._holdW || rw, curExtraStroke._holdH || rh)) {
+            if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
+              this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true, curExtraStroke);
+            }
+            renderExtraCardInk(curExtraStroke);
+          }
+        };
+        extraHoldTimer = setTimeout(checkExtraHold, 340);
       };
 
       const startExtraCardStroke = (e) => {
@@ -4514,21 +4516,27 @@
       let activeGraphCardPointerId = null;
 
       const restartGraphCardHoldTimer = (w, h) => {
-        if (graphHoldTimer) {
-          clearTimeout(graphHoldTimer);
-          graphHoldTimer = null;
-        }
         if (!isDrawingOnGraphCard || !currentStroke || currentStroke._shapeHoldDetected) return;
-        graphHoldTimer = setTimeout(() => {
-          if (isDrawingOnGraphCard && currentStroke && !currentStroke._shapeHoldDetected) {
-            if (this.recognizeAndApplyCardStrokeShape(currentStroke, w, h)) {
-              if (typeof this._ensurePipCardInkMathCoords === 'function') {
-                this._ensurePipCardInkMathCoords('primary', true, currentStroke);
-              }
-              this.renderGraphCardCanvas(currentStroke);
-            }
+        currentStroke._lastHoldMoveTime = Date.now();
+        currentStroke._holdW = w;
+        currentStroke._holdH = h;
+        if (graphHoldTimer) return;
+        const checkGraphHold = () => {
+          graphHoldTimer = null;
+          if (!isDrawingOnGraphCard || !currentStroke || currentStroke._shapeHoldDetected) return;
+          const elapsed = Date.now() - (currentStroke._lastHoldMoveTime || 0);
+          if (elapsed < 340) {
+            graphHoldTimer = setTimeout(checkGraphHold, Math.max(16, 340 - elapsed));
+            return;
           }
-        }, 340);
+          if (this.recognizeAndApplyCardStrokeShape(currentStroke, currentStroke._holdW || w, currentStroke._holdH || h)) {
+            if (typeof this._ensurePipCardInkMathCoords === 'function') {
+              this._ensurePipCardInkMathCoords('primary', true, currentStroke);
+            }
+            this.renderGraphCardCanvas(currentStroke);
+          }
+        };
+        graphHoldTimer = setTimeout(checkGraphHold, 340);
       };
 
       const getNormPos = (e, useCachedRect = false) => {
@@ -5969,6 +5977,128 @@
     return '📈 |f(x)| 절댓값 꺾어올리기 적용!';
   }
 
+  _cloneInverseGraphInPipSnap(snap) {
+    if (!snap || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return false;
+    const srcIdx = (typeof snap.activeGraphIdx === 'number' && snap.activeGraphIdx >= 0 && snap.activeGraphIdx < snap.graphs.length)
+      ? snap.activeGraphIdx
+      : (snap.graphs.length - 1);
+    const src = snap.graphs[srcIdx];
+    if (!src) {
+      this.showToast('ℹ️ 역함수를 생성할 원본 그래프를 먼저 선택하세요.');
+      return false;
+    }
+    if (snap.graphs.length >= 12) {
+      this.showToast('⚠️ 그래프는 최대 12개까지 동시에 추가할 수 있습니다.');
+      return false;
+    }
+
+    let targetType = null;
+    if (src.type === 'exp_basic') targetType = 'log_basic';
+    else if (src.type === 'log_basic') targetType = 'exp_basic';
+    else if (src.type === '2nd_quadratic') targetType = 'sqrt_basic';
+    else if (src.type === 'sqrt_basic') targetType = '2nd_quadratic';
+    else if (src.type === 'rational_basic') targetType = 'rational_basic';
+    else if (src.type === '1st_linear') targetType = '1st_linear';
+
+    if (!targetType) {
+      const srcName = (this.meta && this.meta[src.type] && this.meta[src.type].name) || '함수';
+      this.showToast(`ℹ️ 역함수 복제는 지수·로그, 이차·무리, 유리, 일차함수를 지원합니다. (${srcName})`);
+      return false;
+    }
+
+    this._pushWorkspaceUndoSnapshot('↺ 카드 y=x 역함수 생성이 취소되었습니다', '↻ 카드 y=x 역함수 다시 생성됨');
+
+    const newHandles = (src.handles || []).map((h, i) => {
+      let handleName = h.name;
+      let isHidden = h.hidden;
+      if (targetType === 'sqrt_basic' && i === 0) {
+        handleName = '시작점';
+        isHidden = false;
+      } else if (targetType === '2nd_quadratic' && i === 0) {
+        handleName = '꼭짓점';
+        isHidden = false;
+      }
+      return {
+        name: handleName,
+        x: parseFloat(h.y.toFixed(3)),
+        y: parseFloat(h.x.toFixed(3)),
+        type: h.type,
+        hidden: isHidden
+      };
+    });
+
+    const srcOx = (src.freezeOffset && typeof src.freezeOffset.x === 'number') ? src.freezeOffset.x : 0;
+    const srcOy = (src.freezeOffset && typeof src.freezeOffset.y === 'number') ? src.freezeOffset.y : 0;
+    const newFreezeOffset = { x: srcOy, y: srcOx };
+
+    const newTransforms = (src.transforms || []).map(t => ({
+      offset: {
+        x: (t.offset && typeof t.offset.y === 'number') ? t.offset.y : 0,
+        y: (t.offset && typeof t.offset.x === 'number') ? t.offset.x : 0
+      },
+      invertV: Boolean(t && t.invertH),
+      invertH: Boolean(t && t.invertV),
+      abs: Boolean(t && t.abs)
+    }));
+
+    const palette = ['#ff7675', '#00cec9', '#a29bfe', '#ffeaa7', '#74b9ff', '#fd79a8', '#55efc4'];
+    const filteredColors = palette.filter(c => c.toLowerCase() !== (src.color || '').toLowerCase());
+    const nextColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
+      ? this.fixedGraphColor
+      : filteredColors[snap.graphs.length % filteredColors.length];
+
+    if (!src.id) src.id = 'g_' + (Date.now() - 1) + '_' + Math.random().toString(36).substr(2, 4);
+    if (src.linkedInverseId) {
+      const oldPartner = snap.graphs.find(item => item && item.id === src.linkedInverseId);
+      if (oldPartner) oldPartner.linkedInverseId = null;
+    }
+    const newId = 'g_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+
+    const newGraph = {
+      id: newId,
+      type: targetType,
+      category: (this.meta && this.meta[targetType] && this.meta[targetType].category) || src.category,
+      handles: newHandles,
+      color: nextColor,
+      lineWidth: src.lineWidth || this.defaultGraphLineWidth || 2.8,
+      isAbsolute: Boolean(src.isAbsolute),
+      shapeMode: 'free',
+      originCenter: false,
+      isFrozen: Boolean(src.isFrozen),
+      freezeOffset: newFreezeOffset,
+      transforms: newTransforms,
+      frozenInvertH: Boolean(src.frozenInvertV),
+      frozenInvertV: Boolean(src.frozenInvertH),
+      frozenAbsolute: Boolean(src.frozenAbsolute),
+      isIndependent: Boolean(snap.usePiecewise),
+      linkedInverseId: src.id
+    };
+
+    src.linkedInverseId = newId;
+    snap.graphs.push(newGraph);
+    snap.activeGraphIdx = snap.graphs.length - 1;
+    snap.selectedHandleIdx = null;
+    snap.isCurveSelected = true;
+    snap.showInverseGuide = true;
+
+    const srcName = (this.meta && this.meta[src.type] && this.meta[src.type].name) || '함수';
+    const tgtName = (this.meta && this.meta[targetType] && this.meta[targetType].name) || '역함수';
+    this.showToast(`🔄 ${srcName}의 y=x 대칭 역함수 (${tgtName}) 생성 완료!`);
+    return true;
+  }
+
+  _toggleInverseLinkInPipSnap(snap) {
+    if (!snap || !Array.isArray(snap.graphs) || snap.graphs.length === 0) return false;
+    const g = snap.graphs[snap.activeGraphIdx];
+    if (!g || !g.linkedInverseId) return false;
+    this._pushWorkspaceUndoSnapshot('↺ 역함수 대칭 연동이 복원되었습니다', '↻ 역함수 연동 해제 다시 실행됨');
+    const partner = snap.graphs.find(other => other && other.id === g.linkedInverseId);
+    if (partner) partner.linkedInverseId = null;
+    g.linkedInverseId = null;
+    this.showToast('🔓 원함수와 역함수의 연동이 해제되었습니다. 이제 각자 독립적으로 조작할 수 있습니다.');
+    return true;
+  }
+
   syncPipCardLockUI(cardRef) {
     const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
     if (!widget) return;
@@ -6062,6 +6192,10 @@
           absBtn.classList.toggle('active', isPristine);
           absBtn.classList.toggle('abs-folded', isFoldedMoved);
         }
+        const hasInverseLink = Boolean(activeG && activeG.linkedInverseId);
+        hdrTools.querySelectorAll('[data-pip-act="unlinkInverse"]').forEach(uBtn => {
+          uBtn.style.display = hasInverseLink ? 'inline-flex' : 'none';
+        });
       }
     }
     if (dragHandleEl) {
@@ -6229,7 +6363,7 @@
     }
 
     const activeG = Array.isArray(snapObj.graphs) ? snapObj.graphs[snapObj.activeGraphIdx] : null;
-    const uiSig = `${Boolean(snapObj.isPipLocked)}|${Boolean(snapObj.isCurveSelected)}|${Boolean(snapObj.isPipDropLineMode)}|${Boolean(snapObj.isPipSymPopoverOpen)}|${Boolean(widget.classList.contains('card-ink-active'))}|${Boolean(this.showXAxis !== false)}|${Boolean(this.showYAxis !== false)}|${activeG ? `${activeG.id}:${Boolean(activeG.isAbsolute)}:${Boolean(activeG.isAbsPristine)}` : ''}`;
+    const uiSig = `${Boolean(snapObj.isPipLocked)}|${Boolean(snapObj.isCurveSelected)}|${Boolean(snapObj.isPipDropLineMode)}|${Boolean(snapObj.isPipSymPopoverOpen)}|${Boolean(widget.classList.contains('card-ink-active'))}|${Boolean(this.showXAxis !== false)}|${Boolean(this.showYAxis !== false)}|${activeG ? `${activeG.id}:${Boolean(activeG.isAbsolute)}:${Boolean(activeG.isAbsPristine)}:${Boolean(activeG.linkedInverseId)}` : ''}`;
     if (widget._lastPipLockUiSig !== uiSig) {
       widget._lastPipLockUiSig = uiSig;
       this.syncPipCardLockUI(cardRef);
@@ -6262,6 +6396,7 @@
       ctx.fillRect(0, 0, cardW, cardH);
 
       if (this.showGuides) this.drawGuides(ctx, this._snapshotCropBounds);
+      if (this.showInverseGuide) this.drawInverseGuide(ctx);
       if (this.showAsymptotes) this.drawAllAsymptotes(ctx);
       if (this.showAxes) this.drawAxes(ctx, this._snapshotCropBounds);
       if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(ctx, this._snapshotCropBounds);
@@ -6308,6 +6443,7 @@
       cctx.fillRect(0, 0, cardW, cardH);
 
       if (this.showGuides) this.drawGuides(cctx, this._snapshotCropBounds);
+      if (this.showInverseGuide) this.drawInverseGuide(cctx);
       if (this.showAsymptotes) this.drawAllAsymptotes(cctx);
       if (this.showAxes) this.drawAxes(cctx, this._snapshotCropBounds);
       if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(cctx, this._snapshotCropBounds);
@@ -6440,7 +6576,15 @@
       const delIdx = (typeof snap.activeGraphIdx === 'number' && snap.activeGraphIdx >= 0 && snap.activeGraphIdx < snap.graphs.length)
         ? snap.activeGraphIdx
         : (snap.graphs.length - 1);
+      const delG = snap.graphs[delIdx];
+      if (delG && delG.linkedInverseId) {
+        const partner = snap.graphs.find(item => item && item.id === delG.linkedInverseId);
+        if (partner) partner.linkedInverseId = null;
+      }
       snap.graphs.splice(delIdx, 1);
+      if (!snap.graphs.some(item => item && item.linkedInverseId)) {
+        snap.showInverseGuide = false;
+      }
       snap.activeGraphIdx = Math.max(0, snap.graphs.length - 1);
       snap.selectedHandleIdx = null;
       snap.isCurveSelected = true;
@@ -6577,11 +6721,24 @@
               if (g.isAbsolute && g.isAbsPristine) {
                 g.isAbsPristine = false;
               }
+              const partner = this.getLinkedPartner(g);
+              if (partner) {
+                if (!partner.freezeOffset) partner.freezeOffset = { x: 0, y: 0 };
+                partner.freezeOffset.x = Math.round((partner.freezeOffset.x + dy) * 100) / 100;
+                partner.freezeOffset.y = Math.round((partner.freezeOffset.y + dx) * 100) / 100;
+              }
             } else {
               g.handles.forEach(h => {
                 h.x = Math.round((h.x + dx) * 100) / 100;
                 h.y = Math.round((h.y + dy) * 100) / 100;
               });
+              const partner = this.getLinkedPartner(g);
+              if (partner && Array.isArray(partner.handles)) {
+                partner.handles.forEach(h => {
+                  h.x = Math.round((h.x + dy) * 100) / 100;
+                  h.y = Math.round((h.y + dx) * 100) / 100;
+                });
+              }
             }
           }
           handledArrow = true;
@@ -6754,6 +6911,7 @@
       tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
       tctx.fillRect(0, 0, cardW, cardH);
       if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
+      if (this.showInverseGuide) this.drawInverseGuide(tctx);
       if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
       if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
       this.drawAllCurves(tctx);
@@ -6877,6 +7035,7 @@
       tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
       tctx.fillRect(0, 0, cardW, cardH);
       if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
+      if (this.showInverseGuide) this.drawInverseGuide(tctx);
       if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
       if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
       this.drawAllCurves(tctx);
@@ -7270,6 +7429,7 @@
       tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
       tctx.fillRect(0, 0, cardW, cardH);
       if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
+      if (this.showInverseGuide) this.drawInverseGuide(tctx);
       if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
       if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
       this.drawAllCurves(tctx);
@@ -7438,15 +7598,19 @@
       hdrTools.style.display = 'none';
       hdrTools.innerHTML = `
         <div class="pip-hdr-sym-wrap">
-          <button type="button" class="card-btn pip-hdr-btn" data-pip-act="symMenu" title="대칭 이동 (x축 · y축 · 원점)">
+          <button type="button" class="card-btn pip-hdr-btn" data-pip-act="symMenu" title="대칭 이동 (x축 · y축 · 원점 · y=x 역함수)">
             <span>대칭</span><span class="pip-hdr-caret">▾</span>
           </button>
           <div class="pip-hdr-popover" style="display: none;">
             <button type="button" class="pip-pop-btn" data-pip-act="flipX" title="x축 대칭 (상하 반전)">↕ x축</button>
             <button type="button" class="pip-pop-btn" data-pip-act="flipY" title="y축 대칭 (좌우 반전)">↔ y축</button>
             <button type="button" class="pip-pop-btn" data-pip-act="flipOrigin" title="원점 대칭">⤡ 원점</button>
+            <span class="pip-pop-divider"></span>
+            <button type="button" class="pip-pop-btn pip-pop-btn-inverse" data-pip-act="flipYX" title="y=x 대칭 역함수 생성 & 실시간 연동">🔄 y=x</button>
+            <button type="button" class="pip-pop-btn pip-pop-btn-unlink" data-pip-act="unlinkInverse" style="display: none;" title="원함수와 역함수 대칭 연동 끊기">✂️ 연동끊기</button>
           </div>
         </div>
+        <button type="button" class="card-btn pip-hdr-btn pip-hdr-unlink" data-pip-act="unlinkInverse" style="display: none;" title="원함수와 역함수 대칭 연동 끊기">✂️ 연동끊기</button>
         <button type="button" class="card-btn pip-hdr-btn" data-pip-act="abs" title="절댓값 |f(x)| 꺾어올리기 (평행이동 후 다시 누르면 다단계 절댓값 ||f(x)|-k|)">|f|</button>
         <button type="button" class="card-btn pip-hdr-btn pip-hdr-del" data-pip-act="deleteCurve" title="선택된 함수 삭제">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -7532,6 +7696,24 @@
             this.scheduleBakePipGraphCardToImg(cardRef);
             if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
             if (msg) this.showToast(msg);
+          } else if (act === 'flipYX') {
+            if (this._cloneInverseGraphInPipSnap(snap)) {
+              widget._lastPipLockUiSig = '';
+              this._savePipCardSnapshot(cardRef, snap);
+              this.syncPipCardLockUI(cardRef);
+              this.renderPipGraphCard(cardRef);
+              this.scheduleBakePipGraphCardToImg(cardRef);
+              if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+            }
+          } else if (act === 'unlinkInverse') {
+            if (this._toggleInverseLinkInPipSnap(snap)) {
+              widget._lastPipLockUiSig = '';
+              this._savePipCardSnapshot(cardRef, snap);
+              this.syncPipCardLockUI(cardRef);
+              this.renderPipGraphCard(cardRef);
+              this.scheduleBakePipGraphCardToImg(cardRef);
+              if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+            }
           } else if (act === 'abs') {
             const msg = this._applyGraphToggleAbsolute(g);
             widget._lastPipLockUiSig = '';
@@ -7570,6 +7752,8 @@
     let curveStartMath = { x: 0, y: 0 };
     let curveInitHandles = null;
     let curveInitFreezeOffset = null;
+    let partnerInitHandles = null;
+    let partnerInitFreezeOffset = null;
     let curveFeatsSnapshot = null;
     let panInit = { x: 0, y: 0 };
     let movedDuringInteraction = false;
@@ -7852,6 +8036,17 @@
             curveFeatsSnapshot = (typeof this.getGraphFeaturePoints === 'function')
               ? this.getGraphFeaturePoints(g, curveInitHandles, curveInitFreezeOffset)
               : { pts: [], asymX: [], asymY: [] };
+            const partner = this.getLinkedPartner(g);
+            if (partner) {
+              partnerInitHandles = (partner.handles || []).map(h => ({ ...h }));
+              partnerInitFreezeOffset = {
+                x: (partner.freezeOffset && typeof partner.freezeOffset.x === 'number') ? partner.freezeOffset.x : 0,
+                y: (partner.freezeOffset && typeof partner.freezeOffset.y === 'number') ? partner.freezeOffset.y : 0
+              };
+            } else {
+              partnerInitHandles = null;
+              partnerInitFreezeOffset = null;
+            }
           }
         });
         liveCanvas.style.cursor = 'move';
@@ -8106,6 +8301,7 @@
 
           const isShiftDrag = Boolean(e.shiftKey);
           const hasTransforms = Boolean(g.isAbsolute || g.isFrozen || g.frozenInvertH || g.frozenInvertV || g.frozenAbsolute || (g.transforms && g.transforms.length > 0));
+          const partner = this.getLinkedPartner(g);
           if (isShiftDrag && g.isAbsolute) {
             g.handles.forEach((h, i) => {
               if (curveInitHandles[i]) {
@@ -8116,12 +8312,26 @@
             if (g.isAbsPristine && (Math.abs(deltaX) > 0.02 || Math.abs(deltaY) > 0.02)) {
               g.isAbsPristine = false;
             }
+            if (partner && partnerInitHandles && Array.isArray(partner.handles)) {
+              partner.handles.forEach((h, i) => {
+                if (partnerInitHandles[i]) {
+                  h.x = partnerInitHandles[i].x + deltaY;
+                  h.y = partnerInitHandles[i].y + deltaX;
+                }
+              });
+            }
           } else if (hasTransforms) {
             const newOx = Math.round((curveInitFreezeOffset.x + deltaX) * 100) / 100;
             const newOy = Math.round((curveInitFreezeOffset.y + deltaY) * 100) / 100;
             g.freezeOffset = { x: newOx, y: newOy };
             if (g.isAbsolute && g.isAbsPristine && (Math.abs(deltaX) > 0.02 || Math.abs(deltaY) > 0.02)) {
               g.isAbsPristine = false;
+            }
+            if (partner && partnerInitFreezeOffset) {
+              partner.freezeOffset = {
+                x: Math.round((partnerInitFreezeOffset.x + deltaY) * 100) / 100,
+                y: Math.round((partnerInitFreezeOffset.y + deltaX) * 100) / 100
+              };
             }
           } else {
             g.handles.forEach((h, i) => {
@@ -8130,6 +8340,14 @@
                 h.y = curveInitHandles[i].y + deltaY;
               }
             });
+            if (partner && partnerInitHandles && Array.isArray(partner.handles)) {
+              partner.handles.forEach((h, i) => {
+                if (partnerInitHandles[i]) {
+                  h.x = partnerInitHandles[i].x + deltaY;
+                  h.y = partnerInitHandles[i].y + deltaX;
+                }
+              });
+            }
           }
         });
         this.requestPipGraphCardRender(cardRef);

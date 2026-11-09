@@ -409,7 +409,14 @@
   isPointerOverMenu(e) {
     if (this._isPointerInsideWindow === false) return true;
     if (!e) return false;
+    if (e._overMenuChecked !== undefined) return e._overMenuResult;
+    const res = this._evalIsPointerOverMenu(e);
+    e._overMenuChecked = true;
+    e._overMenuResult = res;
+    return res;
+  }
 
+  _evalIsPointerOverMenu(e) {
     const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : null);
     const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : null);
     if (clientX === null || clientY === null) return false;
@@ -581,13 +588,13 @@
     this._inkProfileCache = {
       deviceType: 'pc',
       useCoalescedEvents: true,        // PC 액정타블렛 200~240Hz 하드웨어 중간 샘플 정식 수집 (빠른 원 다각형 각짐 방지)
-      minRawDistPen: 1.2,              // PC 액정타블렛 펜 최소 점 간격 (px)
-      minRawDistMouse: 1.4,            // 마우스/전자칠판 최소 점 간격 (px)
-      minCardDistPen: 0.9,             // 카드 내부 PC 액정타블렛 최소 점 간격 (px)
-      minCardDistMouse: 1.1,
+      minRawDistPen: 0.6,              // PC 액정타블렛 펜 최소 점 간격 (px) — 세밀한 획 지연 제거
+      minRawDistMouse: 1.0,            // 마우스/전자칠판 최소 점 간격 (px)
+      minCardDistPen: 0.5,             // 카드 내부 PC 액정타블렛 최소 점 간격 (px)
+      minCardDistMouse: 0.9,
       forwardGuardMaxDist: 3.0,        // 펜 정지 직전 미세 떨림의 역주행만 차단하는 반경(px)
       forwardGuardMinCos: -0.05,       // 진행 방향 역주행 패킷 폐기 임계값
-      streamlineWeight: 0.18,          // PC 액정타블렛 맞춤 1차 EMA 보정 강도
+      streamlineWeight: 0.12,          // PC 액정타블렛 맞춤 1차 EMA 보정 강도 (펜촉 밀착 추적성 극대화)
       streamlineDecayDist: 18.0        // 빠른 원/곡선에서 보정이 0으로 감쇠되는 거리 (px)
     };
     return this._inkProfileCache;
@@ -818,7 +825,9 @@
     }
 
     if (this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter' && this.activeInkTool !== 'eraser' && this.activeInkTool !== 'laser') {
-      this.virtualStylusEl.style.display = 'none';
+      if (this.virtualStylusEl.style.display !== 'none') {
+        this.virtualStylusEl.style.display = 'none';
+      }
       return;
     }
 
@@ -829,19 +838,27 @@
 
     // 🌟 [아이패드/태블릿 손가락 터치 시 가상 펜 아이콘 숨김]
     if (e && e.pointerType === 'touch') {
-      this.virtualStylusEl.style.display = 'none';
+      if (this.virtualStylusEl.style.display !== 'none') {
+        this.virtualStylusEl.style.display = 'none';
+      }
       return;
     }
 
     // 🌟 [대표님 킬러 UX]: 화면 밖이거나 메뉴/툴바/슬라이드바/비필기 카드 위로 올라갔을 때 가상 펜을 즉시 숨김!
-    if (this._isPointerInsideWindow === false || (e && this.isPointerOverMenu(e))) {
-      this.virtualStylusEl.style.display = 'none';
+    // (단, 현재 캔버스에 필기 획을 그리는 중에는 메뉴 히트테스트를 생략하여 240Hz 프레임 드랍 원천 차단)
+    const isActivelyDrawingOnBoard = Boolean(this.isDrawingInk || this.isStylusDrawing);
+    if (this._isPointerInsideWindow === false || (!isActivelyDrawingOnBoard && e && this.isPointerOverMenu(e))) {
+      if (this.virtualStylusEl.style.display !== 'none') {
+        this.virtualStylusEl.style.display = 'none';
+      }
       return;
     }
 
     if (x === undefined || y === undefined || isNaN(x) || isNaN(y)) return;
     if (x < 0 || y < 0 || x > (window.innerWidth || 1920) || y > (window.innerHeight || 1080)) {
-      this.virtualStylusEl.style.display = 'none';
+      if (this.virtualStylusEl.style.display !== 'none') {
+        this.virtualStylusEl.style.display = 'none';
+      }
       return;
     }
 
@@ -850,19 +867,29 @@
     const isLaserNow = !isEraserNow && (this.activeInkTool === 'laser');
     const isHighlighterNow = !isEraserNow && !isLaserNow && (this.activeInkTool === 'highlighter');
     const isPenNow = !isEraserNow && !isLaserNow && !isHighlighterNow;
+    const activeKind = isEraserNow ? 'eraser' : (isLaserNow ? 'laser' : (isHighlighterNow ? 'highlighter' : 'pen'));
 
-    if (this.stylusPenSvg) this.stylusPenSvg.style.display = isPenNow ? 'block' : 'none';
-    if (this.stylusHighlighterSvg) {
-      this.stylusHighlighterSvg.style.display = isHighlighterNow ? 'block' : 'none';
+    // 🚀 [DOM Style Mutation 최소화]: 아이콘 종류가 바뀌었거나 숨겨진 상태에서 다시 켜질 때만 10개 SVG의 display 속성을 갱신!
+    const needSvgSync = (
+      this._lastVirtualStylusKind !== activeKind ||
+      this.virtualStylusEl.style.display !== 'block' ||
+      (this.stylusArrowSvg && this.stylusArrowSvg.style.display !== 'none')
+    );
+    if (needSvgSync) {
+      this._lastVirtualStylusKind = activeKind;
+      if (this.stylusPenSvg) this.stylusPenSvg.style.display = isPenNow ? 'block' : 'none';
+      if (this.stylusHighlighterSvg) {
+        this.stylusHighlighterSvg.style.display = isHighlighterNow ? 'block' : 'none';
+      }
+      if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = isEraserNow ? 'block' : 'none';
+      if (this.stylusLaserSvg) this.stylusLaserSvg.style.display = isLaserNow ? 'block' : 'none';
+      if (this.stylusArrowSvg) this.stylusArrowSvg.style.display = 'none';
+      if (this.stylusPointerSvg) this.stylusPointerSvg.style.display = 'none';
+      if (this.stylusGrabSvg) this.stylusGrabSvg.style.display = 'none';
+      if (this.stylusGrabbingSvg) this.stylusGrabbingSvg.style.display = 'none';
+      if (this.stylusCrosshairSvg) this.stylusCrosshairSvg.style.display = 'none';
+      this.virtualStylusEl.style.display = 'block';
     }
-    if (this.stylusEraserSvg) this.stylusEraserSvg.style.display = isEraserNow ? 'block' : 'none';
-    if (this.stylusLaserSvg) this.stylusLaserSvg.style.display = isLaserNow ? 'block' : 'none';
-    if (this.stylusArrowSvg) this.stylusArrowSvg.style.display = 'none';
-    if (this.stylusPointerSvg) this.stylusPointerSvg.style.display = 'none';
-    if (this.stylusGrabSvg) this.stylusGrabSvg.style.display = 'none';
-    if (this.stylusGrabbingSvg) this.stylusGrabbingSvg.style.display = 'none';
-    if (this.stylusCrosshairSvg) this.stylusCrosshairSvg.style.display = 'none';
-    this.virtualStylusEl.style.display = 'block';
 
     // 캔버스 내부 범위로 클램핑하여 마지막 위치 보존
     const clampedX = Math.max(0, Math.min(this.screenWidth || 1920, x));
@@ -4534,7 +4561,7 @@
       const ev = events[i];
       const evTs = (typeof ev.timeStamp === 'number' && ev.timeStamp > 0) ? ev.timeStamp : 0;
       if (evTs > 0) {
-        if (events.length > 1 && typeof stroke._lastSampleTs === 'number' && evTs <= stroke._lastSampleTs) {
+        if (events.length > 1 && typeof stroke._lastSampleTs === 'number' && evTs < stroke._lastSampleTs) {
           continue;
         }
         stroke._lastSampleTs = evTs;
@@ -5063,16 +5090,20 @@
     if (this._pendingIncrementalBakeTimer) {
       clearTimeout(this._pendingIncrementalBakeTimer);
     }
+    const isIPad = this.isIOSOrIPad();
+    const idleGuardMs = isIPad ? 900 : 180;
+    const retryDelayMs = isIPad ? 600 : 180;
+    const initialDelayMs = isIPad ? 1000 : 220;
     const flushWhenIdle = () => {
       this._pendingIncrementalBakeTimer = null;
       const sincePen = this._lastPenActiveTime ? (Date.now() - this._lastPenActiveTime) : 99999;
-      if (this.isDrawingInk || this.isStylusDrawing || sincePen < 900) {
-        this._pendingIncrementalBakeTimer = setTimeout(flushWhenIdle, 600);
+      if (this.isDrawingInk || this.isStylusDrawing || sincePen < idleGuardMs) {
+        this._pendingIncrementalBakeTimer = setTimeout(flushWhenIdle, retryDelayMs);
         return;
       }
       this._flushPendingIncrementalBakes();
     };
-    this._pendingIncrementalBakeTimer = setTimeout(flushWhenIdle, 1000);
+    this._pendingIncrementalBakeTimer = setTimeout(flushWhenIdle, initialDelayMs);
   }
 
   _flushPendingIncrementalBakes() {

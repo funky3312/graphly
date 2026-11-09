@@ -2152,7 +2152,7 @@
             const ev = events[i];
             const evTs = (typeof ev.timeStamp === 'number' && ev.timeStamp > 0) ? ev.timeStamp : 0;
             if (evTs > 0) {
-              if (events.length > 1 && typeof this._lastInkSampleTs === 'number' && evTs <= this._lastInkSampleTs) {
+              if (events.length > 1 && typeof this._lastInkSampleTs === 'number' && evTs < this._lastInkSampleTs) {
                 continue;
               }
               this._lastInkSampleTs = evTs;
@@ -2300,7 +2300,7 @@
           const gRight = this.graphs[rightIdx] || this.graphs[1];
 
           const roots = (gLeft && gRight && gLeft !== gRight)
-            ? this.engine.findIntersections(gLeft, gRight, { xmin: -15, xmax: 15 }, null)
+            ? this.engine.findIntersections(gLeft, gRight, { xmin: -15, xmax: 15 }, null, true)
             : [];
 
           if (roots && roots.length > 0) {
@@ -2795,8 +2795,10 @@
         const hoveredCurveIdx = (canManipulateHandles && this.graphs && this.graphs.length > 0) ? this.hitTestAllCurves(pos, false) : null;
         const isOverCurve = (hoveredCurveIdx !== null);
 
-        // [🔤 캔버스 자유 수식 텍스트 라벨: 호버 감지]
-        const hitText = (this.textLabels && this.textLabels.length > 0) ? this.hitTestTextLabel(pos) : null;
+        // [🔤 캔버스 자유 수식 텍스트 라벨: 호버 감지 (필기 도구 활성 중에는 텍스트 측정 생략)]
+        const hitText = ((canManipulateHandles || this.isTextToolMode) && this.textLabels && this.textLabels.length > 0)
+          ? this.hitTestTextLabel(pos)
+          : null;
         const newTextId = hitText ? hitText.id : null;
         if (newTextId !== this.hoverTextLabelId) {
           this.hoverTextLabelId = newTextId;
@@ -3288,8 +3290,14 @@
         return;
       }
 
+      const wasDraggingPwBoundary = (this.activePwDragIdx !== null);
+      const wasDraggingHandle = (this.draggedHandleIdx !== null);
+      const wasDraggingCurve = Boolean(this.isDraggingCurve);
       this.activePwDragIdx = null;
       this.draggingPwBoundary = null;
+      this.draggedHandleIdx = null;
+      this.isDraggingCurve = false;
+      this._curveDragEligible = false;
       this.snapActiveX = false;
       this.snapActiveY = false;
       this.axisSnapActiveX = false;
@@ -3318,7 +3326,8 @@
           this.selectedHandleIdx = this.downInfo.hitHandleIdx;
           this.isCurveSelected = true;
           this.startPulseLoop();
-        } else if (this.downInfo.hitCurveIdx !== null || this.isDraggingCurve) {
+          this.render();
+        } else if (this.downInfo.hitCurveIdx !== null || wasDraggingCurve) {
           // 🌟 [대표님 절대 규칙 100% 구현]:
           // 1. 선을 먼저 클릭하면 핸들러가 나온다.
           // 2. 조작 상태니 몸통을 움직이면 이동해야 한다. 이동 후에도 핸들러는 계속 유지된다!
@@ -3347,17 +3356,14 @@
           }
           this.render();
         }
+      } else if (wasDraggingPwBoundary || wasDraggingHandle || wasDraggingCurve) {
+        this.render();
       }
 
       if (this.isBoardPanning) {
         this.updateProblemCardPosition();
       }
       const prevDownInfo = this.downInfo;
-      const wasDraggingHandle = (this.draggedHandleIdx !== null);
-      const wasDraggingCurve = Boolean(this.isDraggingCurve);
-      this.draggedHandleIdx = null;
-      this.isDraggingCurve = false;
-      this._curveDragEligible = false;
       this.isPanning = false;
       this.isBoardPanning = false;
       this.boardPanStart = null;
@@ -3598,6 +3604,26 @@
         this._isPointerInsideWindow = true;
         this._lastPointerEvent = e;
         if (this.isWaitingForFilePicker) {
+          return;
+        }
+
+        // 🚀 [그래프 핸들/곡선/분할선/올가미 실시간 드래그 중 0.001ms 직통 패스트패스 (PC & 아이패드 공용)]:
+        // 터치 팜리젝션/핀치 판정을 통과한 이후, 현재 그래프나 분할선을 잡고 드래그하는 중에는
+        // 매 프레임 6개 모달 DOM 조회(isAnyModalOrOverlayBlockingCanvas)와 UI 포인터 검사를 생략하고 즉시 handleMove로 직행!
+        if (
+          this.draggedHandleIdx !== null ||
+          this.isDraggingCurve ||
+          this.activePwDragIdx !== null ||
+          this.isDraggingLassoSelection ||
+          this.isResizingLassoSelection
+        ) {
+          const nowT = Date.now();
+          lastPointerMoveTime = nowT;
+          if (isEffectivePen) {
+            this._markStylusPenDetected();
+            this._lastPenActiveTime = nowT;
+          }
+          handleMove(e);
           return;
         }
 
@@ -4691,7 +4717,15 @@
 
     // 🚀 [0.00ms 시그니처 캐싱]: 펄스 애니메이션(60fps)이나 단순 마우스 이동 시 그래프·카메라가 변하지 않았다면
     // 5000스텝 수치해석(findIntersections)을 재실행하지 않고 캐시를 즉시 반환!
+    const isFastDrag = Boolean(
+      this.isDraggingCurve ||
+      this.draggedHandleIdx !== null ||
+      this.isPanning ||
+      this.activePwDragIdx !== null ||
+      this._pinchState
+    );
     const sigParts = [
+      isFastDrag ? 1 : 0,
       Math.round(this.screenWidth || 0),
       Math.round(this.screenHeight || 0),
       Math.round((this.panX || 0) * 100),
@@ -4756,7 +4790,7 @@
         if (processedPairs.has(pairKey)) return;
         processedPairs.add(pairKey);
 
-        const roots = this.engine.findIntersections(mainG, targetG, rangeX, screenRect);
+        const roots = this.engine.findIntersections(mainG, targetG, rangeX, screenRect, isFastDrag);
         roots.forEach(r => {
           if (isPwActive) {
             const isMainVisible = this.isInsidePiece(mainIdx, r.x);
@@ -4794,7 +4828,7 @@
       }
     } else if (this.showXAxis !== false) {
       // 단일 그래프일 때는 x축과의 교점(실근) 판독 (x축이 표시되어 있을 때만)
-      const roots = this.engine.findIntersections(g1, null, rangeX, screenRect);
+      const roots = this.engine.findIntersections(g1, null, rangeX, screenRect, isFastDrag);
       roots.forEach(r => {
         if (this.usePiecewise && this.graphs.length >= 2) {
           if (!this.isInsidePiece(this.activeGraphIdx, r.x)) {
