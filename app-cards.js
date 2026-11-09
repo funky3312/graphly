@@ -619,17 +619,18 @@
     // 1. 제목 및 카드 몸통 드래그 이동 전용 (접기 버튼은 드래그에서 완벽 분리!)
     let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
     el.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.problem-card-resize-handle')) return;
+      if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
+        this.bringCardToFront(el);
+        e.stopPropagation();
+        return;
+      }
       if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
         return;
       }
       this.bringCardToFront(el);
-      if (e.target.closest('.problem-card-resize-handle')) return;
-      if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-        e.stopPropagation();
-        return;
-      }
       e.preventDefault();
       e.stopPropagation();
       isDragging = true;
@@ -1219,17 +1220,18 @@
 
       widget._toggleCardMin = () => this.toggleProblemCardMinimize();
       widget.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.problem-card-resize-handle')) return;
+        if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
+          this.bringCardToFront(widget);
+          e.stopPropagation();
+          return;
+        }
         if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
           if (e.cancelable !== false) e.preventDefault();
           e.stopPropagation();
           return;
         }
         this.bringCardToFront(widget);
-        if (e.target.closest('.problem-card-resize-handle')) return;
-        if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-          e.stopPropagation();
-          return;
-        }
         e.preventDefault();
         e.stopPropagation();
         isDragging = true;
@@ -3950,17 +3952,18 @@
     // 제목 및 몸통 드래그 이동 전용 (삼각형 접기 원버튼과 완벽 분리!)
     let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
     el.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.problem-card-resize-handle')) return;
+      if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
+        this.bringCardToFront(el);
+        e.stopPropagation();
+        return;
+      }
       if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
         return;
       }
       this.bringCardToFront(el);
-      if (e.target.closest('.problem-card-resize-handle')) return;
-      if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-        e.stopPropagation();
-        return;
-      }
       e.preventDefault();
       e.stopPropagation();
       isDragging = true;
@@ -4786,17 +4789,18 @@
       let initialBaseX = 580, initialBaseY = 68;
 
       widget.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.problem-card-resize-handle')) return;
+        if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
+          this.bringCardToFront(widget);
+          e.stopPropagation();
+          return;
+        }
         if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
           if (e.cancelable !== false) e.preventDefault();
           e.stopPropagation();
           return;
         }
         this.bringCardToFront(widget);
-        if (e.target.closest('.problem-card-resize-handle')) return;
-        if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-          e.stopPropagation();
-          return;
-        }
         e.preventDefault();
         e.stopPropagation();
         isDragging = true;

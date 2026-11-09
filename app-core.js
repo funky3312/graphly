@@ -424,58 +424,10 @@ class GraphApp {
     this.syncGraphSnapBarUI();
   }
 
-  // --- [🎯 액정타블렛/스타일러스 펜 원터치 클릭 보정 엔진 (Stylus Fast-Tap & Magnetic Hit-Box)] ---
-  // 필기(획 그리기) 로직에는 단 1%도 관여하지 않으며, 오직 UI 버튼 클릭 시:
-  // 1) 펜촉이 닿았다 떨어지는 순간 미세하게 미끄러져(3~32px) 브라우저가 기본 click 이벤트를 취소하는 현상
-  // 2) 버튼의 :hover/:active 스케일 변화나 내부 아이콘(svg/span) 경계 이동으로 타겟이 갈라져 클릭이 씹히는 현상
-  // 3) 액정타블렛 유리 시차(Parallax)로 인해 툴바/카드 버튼 가장자리(7px 이내)를 짚었을 때 안 눌리는 현상
-  // 을 100% 보정하여 가볍게 톡 찍어도 한 번에 칼같이 클릭되도록 보장합니다.
+  // --- [🎯 UI 순정 클릭 보호 & 롱프레스/손날 오터치/호버 관리] ---
   initStylusFastTap() {
     if (this._stylusFastTapInitialized) return;
     this._stylusFastTapInitialized = true;
-
-    const CLICKABLE_UI_SELECTOR = [
-      'button',
-      '.rail-btn',
-      '.quick-fab-btn',
-      '.ink-tool-btn',
-      '.pill-remote-btn',
-      '.pill-remote-swap-btn',
-      '.pill-remote-close-btn',
-      '.pill-color-dot',
-      '.pill-mod-chip',
-      '.lasso-color-dot',
-      '.lasso-action-btn',
-      '.board-paper-chip',
-      '.ink-color-dot',
-      '.color-dot',
-      '.func-btn',
-      '.cat-tab-btn',
-      '.card-btn',
-      '.pw-popover-item',
-      '.export-menu-item',
-      '.theme-chip',
-      '.vf-chip',
-      '.dpi-btn',
-      '.quad-mode-btn',
-      '.transform-btn',
-      '.chip-btn',
-      '.key-btn',
-      '.ink-size-chip',
-      '.board-ratio-btn',
-      '.n-axis-tab-btn',
-      '.n-axis-preset-item',
-      '.n-axis-speed-btn',
-      '.n-axis-chip',
-      '.layer-item',
-      '.setting-toggle-item',
-      '.vf-toggle-wrap',
-      '.header-show-tab',
-      '.audio-sync-btn',
-      '.card-sticker-item',
-      '.card-sticker-del-btn',
-      '.viewer-sticker-hotspot'
-    ].join(', ');
 
     const TOOLBAR_CONTAINER_SELECTOR = [
       '.rail-dock',
@@ -490,29 +442,6 @@ class GraphApp {
       '.graph-snap-floating-bar',
       '.audio-sync-floating-bar'
     ].join(', ');
-
-    const findNearestButtonInToolbar = (container, clientX, clientY, maxPadPx = 7) => {
-      if (!container || !container.querySelectorAll) return null;
-      const candidates = container.querySelectorAll('button, .rail-btn, .quick-fab-btn, .ink-tool-btn, .ink-color-dot, .card-btn');
-      let bestBtn = null;
-      let bestDist = maxPadPx;
-      for (const btn of candidates) {
-        if (btn.disabled || btn.offsetParent === null) continue;
-        const r = btn.getBoundingClientRect();
-        if (r.width <= 0 || r.height <= 0) continue;
-        const dx = clientX < r.left ? (r.left - clientX) : (clientX > r.right ? (clientX - r.right) : 0);
-        const dy = clientY < r.top ? (r.top - clientY) : (clientY > r.bottom ? (clientY - r.bottom) : 0);
-        const d = Math.hypot(dx, dy);
-        if (d <= bestDist) {
-          bestDist = d;
-          bestBtn = btn;
-        }
-      }
-      return bestBtn;
-    };
-
-    let activeTap = null;
-    let lastSynthClick = null;
 
     const isEditableInput = (el) => {
       if (!el || typeof el.closest !== 'function') return false;
@@ -529,17 +458,7 @@ class GraphApp {
       return true;
     };
 
-    // 🌟 [크롬 전체화면 상단 (X) 출현 원천 차단 1단계: 버튼/카드 클릭 시 DOM Focus 탈취 및 Focus Loss 원천 봉쇄]
-    window.addEventListener('mousedown', (e) => {
-      if (e.target && e.target.closest && e.target.closest('#pdfViewport')) return;
-      if (isEditableInput(e.target)) return;
-      e.preventDefault();
-      if (document.activeElement && document.activeElement !== document.body && !isTextInputEl(document.activeElement)) {
-        try { document.activeElement.blur(); } catch (err) { }
-      }
-    }, { capture: true, passive: false });
-
-    // 🌟 [크롬 전체화면 상단 (X) 출현 원천 차단 2단계: 최상위 캡처 레벨 롱프레스/우클릭/드래그 제스처 봉쇄]
+    // 1) 비입력 영역 우클릭/롱프레스/드래그/텍스트선택 기본 제스처 차단
     const blockNativeLongPressGesture = (e) => {
       if (isEditableInput(e.target)) return;
       e.preventDefault();
@@ -549,161 +468,32 @@ class GraphApp {
       document.addEventListener(evtName, blockNativeLongPressGesture, { capture: true, passive: false });
     });
 
+    // 2) 아이패드 펜슬 필기 중 손날(touch)이 하단/우측 플로팅 툴바를 스칠 때의 오터치만 선택 차단 (순정 click/scroll 100% 보존)
     window.addEventListener('pointerdown', (e) => {
-      if (isEditableInput(e.target)) {
-        activeTap = null;
-        return;
-      }
-      // 🛡️ [아이패드 필기 중 손날(touch)의 우측/하단 툴바(되돌리기 등) 오터치 원천 차단]:
       if (
         e.pointerType === 'touch' &&
         e.target &&
         typeof e.target.closest === 'function' &&
-        !e.target.closest('#simplePenTouchCounterHud') &&
         (
           (this.isDrawingInk && this._activeDrawingPointerType === 'pen') ||
-          (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 550))
+          (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 500))
         )
       ) {
-        if (e.target.closest(TOOLBAR_CONTAINER_SELECTOR) || e.target.closest(CLICKABLE_UI_SELECTOR)) {
+        if (e.target.closest(TOOLBAR_CONTAINER_SELECTOR)) {
           if (e.cancelable !== false) e.preventDefault();
           e.stopPropagation();
         }
-        activeTap = null;
-        return;
       }
+    }, { capture: true, passive: false });
+
+    // 3) 버튼 클릭 후 포커스 잔류로 인해 스페이스바 패닝 시 직전 버튼이 눌리는 현상 방지
+    window.addEventListener('click', () => {
       if (document.activeElement && document.activeElement !== document.body && !isTextInputEl(document.activeElement)) {
         try { document.activeElement.blur(); } catch (err) { }
       }
-      if (e.button && e.button !== 0) {
-        e.preventDefault();
-        activeTap = null;
-        return;
-      }
-      if (!e.target || typeof e.target.closest !== 'function') {
-        activeTap = null;
-        return;
-      }
-      if (e.target.closest('#inkDockDragHandle, .problem-card-resize-handle')) {
-        e.preventDefault();
-        activeTap = null;
-        return;
-      }
+    }, { capture: true, passive: true });
 
-      const inToolbarContainer = e.target.closest(TOOLBAR_CONTAINER_SELECTOR);
-      let targetEl = e.target.closest(CLICKABLE_UI_SELECTOR);
-      if (!targetEl && inToolbarContainer) {
-        targetEl = findNearestButtonInToolbar(inToolbarContainer, e.clientX, e.clientY, 7);
-      }
-
-      const isScrollableOrAuthUI = Boolean(
-        e.target.closest('.drawer-content, .smart-modal-body, .cloud-explorer-main, .cloud-explorer-sidebar, #pdfViewport, #settingsAccountSection, #btnSettingsGoogleLogin, #btnCloudGoogleLogin')
-      );
-      // 툴바/카드 액션바 영역이거나 버튼 위라면 즉시 preventDefault로 크롬 FullscreenControlHost 제스처 감지 차단!
-      // (단, 서랍/모달 내부 스크롤 영역이나 OAuth 팝업 버튼은 기본 클릭·스크롤 활성화 보존)
-      if ((targetEl || inToolbarContainer || e.target.closest('.problem-card-widget, .graph-card-widget')) && !isScrollableOrAuthUI) {
-        e.preventDefault();
-      }
-
-      if (!targetEl || targetEl.disabled) {
-        activeTap = null;
-        return;
-      }
-
-      // 버튼 클릭 시 setPointerCapture로 인한 포인터 독점(카드/툴바 조작 불능) 원천 방지
-
-      activeTap = {
-        el: targetEl,
-        pointerId: e.pointerId,
-        pointerType: e.pointerType || 'mouse',
-        startX: e.clientX,
-        startY: e.clientY,
-        maxDist: 0,
-        startTime: performance.now(),
-        nativeClicked: false
-      };
-    }, { capture: true, passive: false });
-
-    window.addEventListener('pointermove', (e) => {
-      if (!activeTap) return;
-      if (e.pointerId !== undefined && activeTap.pointerId !== undefined && e.pointerId !== activeTap.pointerId) return;
-      const d = Math.hypot(e.clientX - activeTap.startX, e.clientY - activeTap.startY);
-      if (d > activeTap.maxDist) activeTap.maxDist = d;
-    }, true);
-
-    window.addEventListener('click', (e) => {
-      if (
-        e.isTrusted &&
-        lastSynthClick &&
-        !lastSynthClick.inProgress &&
-        (performance.now() - lastSynthClick.time < 420)
-      ) {
-        // 합성 클릭 직후 모달(#modalPdfViewer 등)이 열리며 커서 아래 DOM(예: #btnPdfOpenAnother)이 바뀌어도 지연 도착한 고스트 click을 100% 원천 차단!
-        // (※ e.isTrusted 조건을 통해 파일 열기 fileInput.click()이나 Firebase OAuth 내부 합성 클릭은 절대 차단하지 않음!)
-        e.stopImmediatePropagation();
-        e.preventDefault();
-        lastSynthClick = null;
-        return;
-      }
-      if (activeTap) {
-        const clickDist = Math.hypot((e.clientX || 0) - activeTap.startX, (e.clientY || 0) - activeTap.startY);
-        if (
-          e.target === activeTap.el ||
-          (activeTap.el.contains && activeTap.el.contains(e.target)) ||
-          clickDist <= 36
-        ) {
-          activeTap.nativeClicked = true;
-        }
-      }
-    }, true);
-
-    window.addEventListener('pointerup', (e) => {
-      if (!activeTap) return;
-      if (e.pointerId !== undefined && activeTap.pointerId !== undefined && e.pointerId !== activeTap.pointerId) return;
-
-      const tap = activeTap;
-      if (e.pointerId !== undefined && tap.el && tap.el.releasePointerCapture) {
-        try {
-          if (!tap.el.hasPointerCapture || tap.el.hasPointerCapture(e.pointerId)) {
-            tap.el.releasePointerCapture(e.pointerId);
-          }
-        } catch (err) { }
-      }
-      const endDist = Math.hypot(e.clientX - tap.startX, e.clientY - tap.startY);
-      const totalSlip = Math.max(endDist, tap.maxDist || 0);
-      const elapsed = performance.now() - tap.startTime;
-      const maxAllowedSlip = (tap.pointerType === 'pen' || tap.pointerType === 'touch') ? 32 : 20;
-
-      if (totalSlip <= maxAllowedSlip && elapsed <= 850 && !tap.el.disabled) {
-        const requiresSyncUserGesture = Boolean(
-          tap.el.matches &&
-          tap.el.matches('#btnSettingsGoogleLogin, #btnCloudGoogleLogin, #btnFullscreen, #btnRailPdf, #btnPdfOpenAnother, #btnCloudUploadLocalFiles, #btnImportGraphlyFile, #btnOpenLocalFileFromHub')
-        );
-        if (requiresSyncUserGesture && !tap.nativeClicked && document.body.contains(tap.el)) {
-          tap.nativeClicked = true;
-          lastSynthClick = { el: tap.el, time: performance.now(), inProgress: true };
-          try {
-            tap.el.click();
-          } finally {
-            if (lastSynthClick) lastSynthClick.inProgress = false;
-          }
-          return;
-        }
-        setTimeout(() => {
-          if (!tap.nativeClicked && !tap.el.disabled && document.body.contains(tap.el)) {
-            tap.nativeClicked = true;
-            lastSynthClick = { el: tap.el, time: performance.now(), inProgress: true };
-            try {
-              tap.el.click();
-            } finally {
-              if (lastSynthClick) lastSynthClick.inProgress = false;
-            }
-          }
-        }, 24);
-      }
-    }, true);
-
-    // 🌟 [PC 마우스 & 신형 아이패드 애플펜슬 공중 호버링 100% 지원 + 사파리 터치 직후 Sticky :hover 잔상 원천 제거]
+    // 4) PC 마우스 & 애플펜슬 공중 호버링 지원 + 터치 직후 Sticky :hover 잔상 제거
     const HOVER_ICON_SELECTOR = '.rail-btn, .quick-fab-btn, .rail-zoom-action-btn';
     let currentHoveredIcon = null;
     let suppressHoverUntil = 0;
@@ -716,7 +506,6 @@ class GraphApp {
     };
 
     window.addEventListener('pointermove', (e) => {
-      // 손가락 터치이거나 버튼을 누르고 있는 드래그 상태(buttons !== 0), 또는 클릭 직후 쿨타임에는 호버 점등 차단
       if (e.pointerType === 'touch' || (e.buttons && e.buttons !== 0) || performance.now() < suppressHoverUntil) {
         clearHoveredIcon();
         return;

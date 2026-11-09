@@ -592,13 +592,18 @@
       isPenDrawingNow ||
       (this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 650))
     );
-    const isWritingTool = Boolean(
-      this.isInkMode &&
-      this.activeInkTool !== 'select' &&
-      !this.isDropLineMode &&
-      !this.isTextToolMode &&
-      !this.isGraphSnapMode &&
-      !this.isPdfToGraphCropMode
+    // 🛡️ [아이패드/스타일러스 태블릿 표준 고정]:
+    // 판서 모드(칠판) 및 필기/정밀도구 활성 시 한 손가락/손날(touch 1점)은 100% 무시하고,
+    // 오직 두 손가락(touch 2점)으로만 화면 이동·확대/축소가 작동합니다!
+    const shouldBlockSingleTouch = Boolean(
+      this.isStylusPalmRejectionActive() && (
+        this.isGraphCovered ||
+        (this.isInkMode && this.activeInkTool !== 'select') ||
+        this.isDropLineMode ||
+        this.isTextToolMode ||
+        this.isGraphSnapMode ||
+        this.isPdfToGraphCropMode
+      )
     );
 
     if (e.type === 'pointerdown') {
@@ -642,7 +647,7 @@
         this._pinchState = null;
         this._activePanPointerId = e.pointerId;
       }
-      if (this.isStylusPalmRejectionActive() && isWritingTool && this.allowOneFingerPanInInk === false) {
+      if (shouldBlockSingleTouch) {
         e._touchIgnoreChecked = true;
         return true;
       }
@@ -676,7 +681,7 @@
       if (this._pinchWasActiveInGesture || (this.activePointers && this.activePointers.size >= 2)) {
         return true;
       }
-      if (this.isStylusPalmRejectionActive() && isWritingTool && this.allowOneFingerPanInInk === false) {
+      if (shouldBlockSingleTouch) {
         return true;
       }
       return false;
@@ -705,7 +710,7 @@
         }
         return true;
       }
-      if (isWithinPenGuard || isPenDrawingNow || (this.isStylusPalmRejectionActive() && isWritingTool && this.allowOneFingerPanInInk === false)) {
+      if (isWithinPenGuard || isPenDrawingNow || shouldBlockSingleTouch) {
         return true;
       }
       return false;
