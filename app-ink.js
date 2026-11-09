@@ -628,13 +628,23 @@
     );
     const isWithinPenGuard = Boolean(
       isPenDrawingNow ||
-      (this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 650))
+      (this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 1200))
     );
+    const palmRejectionActive = this.isStylusPalmRejectionActive();
+    // 🛡️ [아이패드 손날 대면적 접촉(width/height >= 44px) 원천 배제]:
+    // 진단 페이지(ink-diag) 실측 결과 손날 접촉은 w: 50~65px로 유입되므로,
+    // activePointers에 등록되어 가짜 2손가락 핀치/패닝을 유발하지 않도록 즉시 폐기합니다!
+    if (palmRejectionActive && e.pointerType === 'touch' && ((e.width || 0) >= 44 || (e.height || 0) >= 44)) {
+      if (e.type === 'pointerdown') {
+        e._touchIgnoreChecked = true;
+      }
+      return true;
+    }
     // 🛡️ [아이패드/스타일러스 태블릿 표준 고정]:
     // 판서 모드(칠판) 및 필기/정밀도구 활성 시 한 손가락/손날(touch 1점)은 100% 무시하고,
     // 오직 두 손가락(touch 2점)으로만 화면 이동·확대/축소가 작동합니다!
     const shouldBlockSingleTouch = Boolean(
-      this.isStylusPalmRejectionActive() && (
+      palmRejectionActive && (
         this.isGraphCovered ||
         (this.isInkMode && this.activeInkTool !== 'select') ||
         this.isDropLineMode ||
@@ -653,8 +663,9 @@
         return true;
       }
       if (this.activePointers) {
+        const staleLimitMs = this._pinchState ? 1200 : 350;
         for (const [k, v] of this.activePointers.entries()) {
-          if (nowT - (v.time || 0) > 1200) this.activePointers.delete(k);
+          if (nowT - (v.time || 0) > staleLimitMs) this.activePointers.delete(k);
         }
         this.activePointers.set(e.pointerId, {
           id: e.pointerId,
@@ -672,15 +683,19 @@
           return true;
         }
         if (this.activePointers.size === 2) {
-          this.isPanning = false;
-          this.isBoardPanning = false;
-          this._cancelAllActiveCardDrags();
           const pts = Array.from(this.activePointers.values());
-          this._pinchWasActiveInGesture = true;
-          this._pinchHadActiveMoveInGesture = false;
-          this._startCanvasTwoFingerPinch(pts[0], pts[1]);
-          e._touchIgnoreChecked = true;
-          return true;
+          if (Math.abs((pts[1].time || 0) - (pts[0].time || 0)) <= 350) {
+            this.isPanning = false;
+            this.isBoardPanning = false;
+            this._cancelAllActiveCardDrags();
+            this._pinchWasActiveInGesture = true;
+            this._pinchHadActiveMoveInGesture = false;
+            this._startCanvasTwoFingerPinch(pts[0], pts[1]);
+            e._touchIgnoreChecked = true;
+            return true;
+          }
+          // 두 터치의 시작 시각 차이가 350ms를 초과하면 먼저 닿아 있던 잔여 손날 터치를 제거
+          this.activePointers.delete(pts[0].id);
         }
         this._pinchWasActiveInGesture = false;
         this._pinchHadActiveMoveInGesture = false;
@@ -790,6 +805,24 @@
 
   updateStylusPenPosition(x, y, e = null) {
     if (!this.virtualStylusEl) return;
+
+    // 🌟 [아이패드(iPadOS) 물리 펜슬 필기 시 가상 펜 DOM 오버레이 & 메뉴 히트테스트 100% 생략]:
+    // 아이패드에서는 실제 펜촉이 화면 유리에 직접 닿으므로 펜촉 아래에서 매 프레임 DOM 스타일 11개와
+    // isPointerOverMenu()를 실행하는 가상 펜 요소를 즉시 숨기고(음성 리플레이 재생 중 제외) 0.000ms 만에 반환합니다!
+    if (this.isIOSOrIPad() && !this.isAudioPlaying) {
+      if (this.virtualStylusEl.style.display !== 'none') {
+        this.virtualStylusEl.style.display = 'none';
+      }
+      if (x !== undefined && y !== undefined && !isNaN(x) && !isNaN(y)) {
+        const clampedX = Math.max(0, Math.min(this.screenWidth || 1920, x));
+        const clampedY = Math.max(0, Math.min(this.screenHeight || 1080, y));
+        this.stylusPenPos = { x: clampedX, y: clampedY };
+        if (this.isAudioRecording && !this.isDrawingInk) {
+          this.recordAudioCursorPoint(clampedX, clampedY, this.currentInkColor, false);
+        }
+      }
+      return;
+    }
 
     if (!this.showVirtualStylus || !this.isInkMode || this.isDropLineMode || this.isTextToolMode || this.isSpacePressed || this.isPanning || this.isBoardPanning) {
       if (this.virtualStylusEl.style.display !== 'none') {
@@ -2538,9 +2571,18 @@
     }
     if (!this.isDrawingInk || !this.currentInkStroke) return;
 
-    this._inkHoldTimer = setTimeout(() => {
+    const checkHold = () => {
+      this._inkHoldTimer = null;
+      if (!this.isDrawingInk || !this.currentInkStroke || this._inkHoldDetected) return;
+      const idleMs = Date.now() - (this._lastSignificantMoveTime || 0);
+      if (idleMs < 330) {
+        this._inkHoldTimer = setTimeout(checkHold, Math.max(40, 340 - idleMs));
+        return;
+      }
       this._onInkHoldTriggered();
-    }, 340);
+    };
+
+    this._inkHoldTimer = setTimeout(checkHold, 340);
   }
 
   _onInkHoldTriggered() {
@@ -4321,6 +4363,11 @@
     this._hasSceneFreeze = false;
     this._hasBakedStrokes = false;
     this._inkBakeCamera = null;
+    this._pendingIncrementalBakeStrokes = [];
+    if (this._pendingIncrementalBakeTimer) {
+      clearTimeout(this._pendingIncrementalBakeTimer);
+      this._pendingIncrementalBakeTimer = null;
+    }
     const { dpr, padX, padY, width, height } = this._getInkBakeMetrics();
     if (this.inkBakeCanvas && this.inkBakeCtx) {
       if (this.inkBakeCanvas.width !== width || this.inkBakeCanvas.height !== height) {
@@ -5011,6 +5058,91 @@
     }, delayMs);
   }
 
+  // 🌟 [pointerup 0.01ms 무차단 반환을 위한 비동기 증분 베이킹 큐]:
+  // 빠른 연속 필기(`ㄴ` 받침, `=`, `+` 등) 시 pointerup 내부에서 오프스크린 캔버스 렌더링과
+  // DOM 버튼(updateUndoRedoUI) 갱신이 다음 획의 pointerdown 수집을 방해하지 않도록 유휴 시점(160ms)으로 지연 실행합니다!
+  _queueIncrementalStrokeBake(stroke) {
+    if (!stroke) return;
+    if (!Array.isArray(this._pendingIncrementalBakeStrokes)) {
+      this._pendingIncrementalBakeStrokes = [];
+    }
+    this._pendingIncrementalBakeStrokes.push(stroke);
+    this._needsDeferredUndoRedoUiSync = true;
+    if (this._pendingIncrementalBakeTimer) {
+      clearTimeout(this._pendingIncrementalBakeTimer);
+    }
+    const flushWhenIdle = () => {
+      this._pendingIncrementalBakeTimer = null;
+      if (this.isDrawingInk || this.isStylusDrawing) {
+        this._pendingIncrementalBakeTimer = setTimeout(flushWhenIdle, 140);
+        return;
+      }
+      this._flushPendingIncrementalBakes();
+    };
+    this._pendingIncrementalBakeTimer = setTimeout(flushWhenIdle, 160);
+  }
+
+  _flushPendingIncrementalBakes() {
+    if (this._pendingIncrementalBakeTimer) {
+      clearTimeout(this._pendingIncrementalBakeTimer);
+      this._pendingIncrementalBakeTimer = null;
+    }
+    if (this._needsDeferredUndoRedoUiSync) {
+      this._needsDeferredUndoRedoUiSync = false;
+      this.updateUndoRedoUI();
+    }
+    const queue = this._pendingIncrementalBakeStrokes;
+    if (!Array.isArray(queue) || queue.length === 0) return;
+    this._pendingIncrementalBakeStrokes = [];
+    if (this._inkBakeDirty) return;
+
+    const { dpr, padX, padY, width: bakeW, height: bakeH } = this._getInkBakeMetrics();
+    const needResizeBake = Boolean(
+      (this.inkBakeCanvas && (this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH)) ||
+      (this.inkGraphBakeCanvas && (this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH))
+    );
+    if (needResizeBake && this._hasBakedStrokes) {
+      this.rebuildInkCache();
+      return;
+    }
+    if (this.inkBakeCanvas && (this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH)) {
+      this.inkBakeCanvas.width = bakeW;
+      this.inkBakeCanvas.height = bakeH;
+      this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
+    }
+    if (this.inkGraphBakeCanvas && (this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH)) {
+      this.inkGraphBakeCanvas.width = bakeW;
+      this.inkGraphBakeCanvas.height = bakeH;
+      this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
+    }
+
+    const strokeSet = this.inkStrokes ? new Set(this.inkStrokes) : null;
+    for (let i = 0; i < queue.length; i++) {
+      const st = queue[i];
+      if (!st || (strokeSet && !strokeSet.has(st))) continue;
+      const isBoard = (st.target || 'board') === 'board';
+      const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
+      if (targetCtx) {
+        this.renderSingleStroke(targetCtx, st, null, false);
+        this._hasBakedStrokes = true;
+      }
+    }
+    if (this._hasBakedStrokes && !this._inkBakeCamera) {
+      this._inkBakeCamera = {
+        panX: this.panX || 0,
+        panY: this.panY || 0,
+        zoomLevel: this.zoomLevel || 1.0,
+        boardPanX: this.boardPanX || 0,
+        boardPanY: this.boardPanY || 0,
+        boardZoom: this.boardZoom || 1.0,
+        boardZoomOffsetX: this.boardZoomOffsetX || 0,
+        boardZoomOffsetY: this.boardZoomOffsetY || 0,
+        padX,
+        padY
+      };
+    }
+  }
+
   _getStrokeScreenBounds(stroke, isBoardInk) {
     if (!stroke || !stroke.points || stroke.points.length === 0) return null;
     const pts = stroke.points;
@@ -5300,6 +5432,8 @@
     const needRebakeNow = Boolean(this._inkBakeDirty && (!isActivelyMovingCamera || !this._hasBakedStrokes || !this._inkBakeCamera));
     if (needRebakeNow) {
       this.rebuildInkCache();
+    } else if (this._pendingIncrementalBakeStrokes && this._pendingIncrementalBakeStrokes.length > 0) {
+      this._flushPendingIncrementalBakes();
     }
 
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;

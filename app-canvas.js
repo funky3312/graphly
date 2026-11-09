@@ -523,7 +523,7 @@
   bindEvents() {
     // 🌟 [대표님 긴급 해결: 모달·리모컨·버튼·오버레이 위 조작 시 뒷창 캔버스 필기 간섭 100% 원천 차단 판별기] 🌟
     const isClickableUI = (target) => {
-      if (!target) return false;
+      if (!target || target === this.canvas) return false;
       return Boolean(
         target.tagName === 'BUTTON' ||
         target.tagName === 'INPUT' ||
@@ -536,21 +536,22 @@
     };
 
     this._uiPointerIds = new Set();
+    let _mCloud = null, _mShare = null, _mSmart = null, _mGuide = null, _mShortcut = null, _viewerEl = null;
     const isAnyModalOrOverlayBlockingCanvas = () => {
       if (this.isDraggingPillRemote) return true;
       if (this.isPdfModalOpen || this.isNAxisStudioOpen) return true;
-      const mCloud = document.getElementById('modalCloudHub');
-      if (mCloud && mCloud.classList.contains('show')) return true;
-      const mShare = document.getElementById('modalShare');
-      if (mShare && mShare.classList.contains('show')) return true;
-      const mSmart = document.getElementById('modalSmartInput');
-      if (mSmart && mSmart.classList.contains('show')) return true;
-      const mGuide = document.getElementById('modalGuideNotice');
-      if (mGuide && mGuide.classList.contains('show')) return true;
-      const mShortcut = document.getElementById('modalShortcutSettings');
-      if (mShortcut && mShortcut.classList.contains('show')) return true;
-      const viewer = document.getElementById('smartNoteViewerOverlay');
-      if (viewer && viewer.style.display !== 'none' && !document.body.classList.contains('viewer-graph-touch-mode')) return true;
+      if (!_mCloud) _mCloud = document.getElementById('modalCloudHub');
+      if (_mCloud && _mCloud.classList.contains('show')) return true;
+      if (!_mShare) _mShare = document.getElementById('modalShare');
+      if (_mShare && _mShare.classList.contains('show')) return true;
+      if (!_mSmart) _mSmart = document.getElementById('modalSmartInput');
+      if (_mSmart && _mSmart.classList.contains('show')) return true;
+      if (!_mGuide) _mGuide = document.getElementById('modalGuideNotice');
+      if (_mGuide && _mGuide.classList.contains('show')) return true;
+      if (!_mShortcut) _mShortcut = document.getElementById('modalShortcutSettings');
+      if (_mShortcut && _mShortcut.classList.contains('show')) return true;
+      if (!_viewerEl) _viewerEl = document.getElementById('smartNoteViewerOverlay');
+      if (_viewerEl && _viewerEl.style.display !== 'none' && !document.body.classList.contains('viewer-graph-touch-mode')) return true;
       return false;
     };
 
@@ -2123,7 +2124,9 @@
             if (stepDist > 1.5 || dHold > 5) {
               this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
               this._lastSignificantMoveTime = Date.now();
-              this._startInkHoldTimer();
+              if (!this._inkHoldTimer) {
+                this._startInkHoldTimer();
+              }
             }
           }
 
@@ -3252,12 +3255,11 @@
           return;
         }
 
-        // 🌟 [0ms 초고속 잉크 히스토리 푸시 & 즉각 증분 베이킹 (Incremental Bake)] 🌟
+        // 🌟 [0ms 초고속 잉크 히스토리 푸시 & 비동기 증분 베이킹 (Zero-Blocking PointerUp)] 🌟
         if (finishedStroke && finishedStroke.points && finishedStroke.points.length > 0) {
           this.undoStack.push({ type: 'stroke_add', stroke: finishedStroke });
           if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
           this.redoStack = [];
-          this.updateUndoRedoUI();
 
           // 형광펜(isHighlighter) 획은 완료 즉시 하단 레이어(Pass 1)로 내려가 검은 글씨 뒤로 깔리도록 캐시 리빌드!
           if (finishedStroke.isHighlighter || finishedStroke.isShape) {
@@ -3265,7 +3267,8 @@
           }
 
           // 🌟 [무렉(Zero-Stutter) 마감 & 단획·점 100% 즉시 반영]: 일반 펜 획은 pointerup 입력 핸들러 안에서
-          // 절대 전체 화면 render()나 rebuildInkCache()를 동기 실행하지 않고, 현재 획만 즉시 캔버스에 반영합니다!
+          // 절대 전체 화면 render(), rebuildInkCache(), 오프스크린 베이킹, DOM 버튼 갱신을 동기 실행하지 않고,
+          // 현재 획 끝점만 즉시 캔버스에 그린 뒤(0.01ms) 증분 베이킹 큐에 위임하여 연속 필기(`ㄴ` 받침 등) 씹힘을 원천 차단합니다!
           if (!finishedStroke.isHighlighter && !finishedStroke.isShape && !this._inkBakeDirty) {
             if (this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
               this.drawLiveBezierStep(this._liveBezierScreenPts, finishedStroke, true);
@@ -3273,40 +3276,10 @@
               this.renderSingleStroke(this.ctx, finishedStroke, null, false);
             }
             this._liveBezierScreenPts = null;
-
-            const { dpr, padX, padY, width: bakeW, height: bakeH } = this._getInkBakeMetrics();
-            if (this.inkBakeCanvas && (this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH)) {
-              this.inkBakeCanvas.width = bakeW;
-              this.inkBakeCanvas.height = bakeH;
-              this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
-            }
-            if (this.inkGraphBakeCanvas && (this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH)) {
-              this.inkGraphBakeCanvas.width = bakeW;
-              this.inkGraphBakeCanvas.height = bakeH;
-              this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
-            }
-            const isBoard = (finishedStroke.target || 'board') === 'board';
-            const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
-            if (targetCtx) {
-              this.renderSingleStroke(targetCtx, finishedStroke, null, false);
-              this._hasBakedStrokes = true;
-              if (!this._inkBakeCamera) {
-                this._inkBakeCamera = {
-                  panX: this.panX || 0,
-                  panY: this.panY || 0,
-                  zoomLevel: this.zoomLevel || 1.0,
-                  boardPanX: this.boardPanX || 0,
-                  boardPanY: this.boardPanY || 0,
-                  boardZoom: this.boardZoom || 1.0,
-                  boardZoomOffsetX: this.boardZoomOffsetX || 0,
-                  boardZoomOffsetY: this.boardZoomOffsetY || 0,
-                  padX,
-                  padY
-                };
-              }
-              return;
-            }
+            this._queueIncrementalStrokeBake(finishedStroke);
+            return;
           }
+          this.updateUndoRedoUI();
         }
 
         this._liveBezierScreenPts = null;
@@ -3479,6 +3452,10 @@
           if (this.activePointers) this.activePointers.clear();
           this._pinchState = null;
           this._pinchWasActiveInGesture = false;
+          if (e.target === this.canvas && !this.isSpacePressed && e.button !== 1 && !isAnyModalOrOverlayBlockingCanvas()) {
+            if (this._uiPointerIds && e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
+            return;
+          }
         }
         const isEffectivePenDown = (e.pointerType === 'pen');
         if (!this._uiPointerIds) this._uiPointerIds = new Set();
@@ -3488,6 +3465,7 @@
 
         const isOnCardOrStickerSurface = Boolean(
           e.target &&
+          e.target !== this.canvas &&
           e.target.closest &&
           e.target.closest('#problemCardWidget, #graphCardWidget, .extra-problem-card-widget, .extra-graph-card-widget, #workspaceStickerOverlay, .workspace-sticker-item')
         );
@@ -3514,7 +3492,7 @@
         } else {
           if (e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
         }
-      }, { capture: true });
+      }, { capture: true, passive: false });
 
       this.canvas.addEventListener('pointerdown', (e) => {
         if (this.isWaitingForFilePicker) {
@@ -3585,6 +3563,24 @@
         if (this.isPdfModalOpen) return;
         if (e.target === this.canvas && e.cancelable !== false) {
           e.preventDefault();
+        }
+        // 🌟 [활성 펜 필기 중 0.001ms 직통 패스트패스]:
+        // 현재 드로잉 중인 펜의 pointerId와 일치하는 이벤트는 메뉴/UI DOM 히트테스트를 100% 생략하고 즉시 handleMove로 직행합니다!
+        if (
+          (this.isDrawingInk || this.isStylusDrawing) &&
+          this._activeDrawingPointerId !== null &&
+          this._activeDrawingPointerId !== undefined &&
+          e.pointerId === this._activeDrawingPointerId
+        ) {
+          const nowT = Date.now();
+          lastPointerMoveTime = nowT;
+          this._isPointerInsideWindow = true;
+          this._lastPointerEvent = e;
+          if (e.pointerType === 'pen') {
+            this._lastPenActiveTime = nowT;
+          }
+          handleMove(e);
+          return;
         }
         if (e.pointerType === 'touch') {
           const isUiTouchMove = Boolean(this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId));
