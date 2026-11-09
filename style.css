@@ -99,8 +99,7 @@ body.ios-top-guard-active.header-collapsed .main-workspace {
 body.ios-top-guard-active .pdf-board-nav-bar,
 body.ios-top-guard-active .lesson-playlist-nav-bar,
 body.ios-top-guard-active .top-slide-bar-mini-tab,
-body.ios-top-guard-active .pdf-crop-active-pill,
-body.ios-top-guard-active:not(.audio-replay-active):not(.student-audio-video-only):not(.replay-fixed-stage) .audio-sync-floating-bar {
+body.ios-top-guard-active .pdf-crop-active-pill {
   top: calc(14px + var(--ios-top-safe-guard, 36px)) !important;
 }
 
@@ -11490,7 +11489,8 @@ body.audio-replay-active #panelStealthRecordActions {
 
 .audio-sync-floating-bar {
   position: fixed;
-  top: 14px;
+  top: auto;
+  bottom: 18px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2550;

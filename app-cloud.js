@@ -7577,8 +7577,10 @@
 
   exitStudentAudioVideoOnlyMode() {
     this.isStudentAudioVideoOnlyMode = false;
+    this._isAudioSyncPlayerVisible = false;
     document.body.classList.remove('student-audio-video-only');
     if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
+    if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
   }
 
   async openCurrentWorkspaceInSmartViewer() {
@@ -8283,6 +8285,8 @@
     const overlay = document.getElementById('smartNoteViewerOverlay');
     if (overlay) overlay.style.display = 'none';
 
+    this._isAudioSyncPlayerVisible = false;
+    if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
     document.body.classList.add('viewer-graph-touch-mode');
     if (this.pdfPageBoardData) {
       this._viewerTouchSavedPdfBoardData = this.pdfPageBoardData;
@@ -8485,6 +8489,8 @@
     }
     document.body.classList.remove('viewer-graph-touch-mode');
     document.body.classList.remove('student-mode');
+    this._isAudioSyncPlayerVisible = false;
+    if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
     const touchBar = document.getElementById('viewerGraphTouchBar');
     if (touchBar) touchBar.style.display = 'none';
 
