@@ -34220,15 +34220,6 @@ class GraphApp {
     }, { passive: true });
 
     const getPos = (e) => {
-      if (!this.isDrawingInk && !this.isPanning && !this.isBoardPanning && !this._pinchState && this.canvas) {
-        const rect = this.canvas.getBoundingClientRect();
-        if (rect && rect.width > 0 && rect.height > 0) {
-          this.canvasRect = rect;
-          if (Math.abs(rect.width - (this.width || 0)) > 2 || Math.abs(rect.height - (this.height || 0)) > 2) {
-            this.resizeCanvas();
-          }
-        }
-      }
       let rect = this.canvasRect;
       if (!rect || !rect.width || !rect.height) {
         rect = this.updateCanvasRect() || (this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 });
