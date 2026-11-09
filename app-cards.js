@@ -110,7 +110,7 @@
     }
 
     const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
-    const hasActiveLassoOnCard = Boolean(this._activeCardLasso && this._activeCardLasso.cardEl === widgetEl);
+    const hasActiveLassoOnCard = Boolean(this._activeCardLasso && this._activeCardLasso.widgetEl === widgetEl);
 
     if (isAudioReplay || hasActiveLassoOnCard) {
       canvas._bakeValid = false;
@@ -2630,6 +2630,7 @@
         this.selectedInkStrokes = [];
         this.selectedTextLabels = [];
         this.lassoPoints = [];
+        this._inkBakeDirty = true;
         this.clearInkCache();
         this.requestRender();
       }
@@ -5744,6 +5745,7 @@
     if (syncedStrokes.length > 0) {
       this.inkStrokes.push(...syncedStrokes);
     }
+    this._inkBakeDirty = true;
     if (typeof this.clearInkCache === 'function') this.clearInkCache();
   }
 
@@ -5824,6 +5826,7 @@
       }
       this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
     }
+    this._inkBakeDirty = true;
     if (typeof this.clearInkCache === 'function') this.clearInkCache();
   }
 

@@ -4378,6 +4378,7 @@
   clearInkCache() {
     this._hasSceneFreeze = false;
     this._hasBakedStrokes = false;
+    this._inkBakeDirty = true;
     this._inkBakeCamera = null;
     this._pendingIncrementalBakeStrokes = [];
     if (this._pendingIncrementalBakeTimer) {
