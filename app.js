@@ -442,58 +442,10 @@ class GraphApp {
     this.syncGraphSnapBarUI();
   }
 
-  // --- [🎯 액정타블렛/스타일러스 펜 원터치 클릭 보정 엔진 (Stylus Fast-Tap & Magnetic Hit-Box)] ---
-  // 필기(획 그리기) 로직에는 단 1%도 관여하지 않으며, 오직 UI 버튼 클릭 시:
-  // 1) 펜촉이 닿았다 떨어지는 순간 미세하게 미끄러져(3~32px) 브라우저가 기본 click 이벤트를 취소하는 현상
-  // 2) 버튼의 :hover/:active 스케일 변화나 내부 아이콘(svg/span) 경계 이동으로 타겟이 갈라져 클릭이 씹히는 현상
-  // 3) 액정타블렛 유리 시차(Parallax)로 인해 툴바/카드 버튼 가장자리(7px 이내)를 짚었을 때 안 눌리는 현상
-  // 을 100% 보정하여 가볍게 톡 찍어도 한 번에 칼같이 클릭되도록 보장합니다.
+  // --- [🎯 UI 순정 클릭 보호 & 롱프레스/손날 오터치/호버 관리] ---
   initStylusFastTap() {
     if (this._stylusFastTapInitialized) return;
     this._stylusFastTapInitialized = true;
-
-    const CLICKABLE_UI_SELECTOR = [
-      'button',
-      '.rail-btn',
-      '.quick-fab-btn',
-      '.ink-tool-btn',
-      '.pill-remote-btn',
-      '.pill-remote-swap-btn',
-      '.pill-remote-close-btn',
-      '.pill-color-dot',
-      '.pill-mod-chip',
-      '.lasso-color-dot',
-      '.lasso-action-btn',
-      '.board-paper-chip',
-      '.ink-color-dot',
-      '.color-dot',
-      '.func-btn',
-      '.cat-tab-btn',
-      '.card-btn',
-      '.pw-popover-item',
-      '.export-menu-item',
-      '.theme-chip',
-      '.vf-chip',
-      '.dpi-btn',
-      '.quad-mode-btn',
-      '.transform-btn',
-      '.chip-btn',
-      '.key-btn',
-      '.ink-size-chip',
-      '.board-ratio-btn',
-      '.n-axis-tab-btn',
-      '.n-axis-preset-item',
-      '.n-axis-speed-btn',
-      '.n-axis-chip',
-      '.layer-item',
-      '.setting-toggle-item',
-      '.vf-toggle-wrap',
-      '.header-show-tab',
-      '.audio-sync-btn',
-      '.card-sticker-item',
-      '.card-sticker-del-btn',
-      '.viewer-sticker-hotspot'
-    ].join(', ');
 
     const TOOLBAR_CONTAINER_SELECTOR = [
       '.rail-dock',
@@ -508,29 +460,6 @@ class GraphApp {
       '.graph-snap-floating-bar',
       '.audio-sync-floating-bar'
     ].join(', ');
-
-    const findNearestButtonInToolbar = (container, clientX, clientY, maxPadPx = 7) => {
-      if (!container || !container.querySelectorAll) return null;
-      const candidates = container.querySelectorAll('button, .rail-btn, .quick-fab-btn, .ink-tool-btn, .ink-color-dot, .card-btn');
-      let bestBtn = null;
-      let bestDist = maxPadPx;
-      for (const btn of candidates) {
-        if (btn.disabled || btn.offsetParent === null) continue;
-        const r = btn.getBoundingClientRect();
-        if (r.width <= 0 || r.height <= 0) continue;
-        const dx = clientX < r.left ? (r.left - clientX) : (clientX > r.right ? (clientX - r.right) : 0);
-        const dy = clientY < r.top ? (r.top - clientY) : (clientY > r.bottom ? (clientY - r.bottom) : 0);
-        const d = Math.hypot(dx, dy);
-        if (d <= bestDist) {
-          bestDist = d;
-          bestBtn = btn;
-        }
-      }
-      return bestBtn;
-    };
-
-    let activeTap = null;
-    let lastSynthClick = null;
 
     const isEditableInput = (el) => {
       if (!el || typeof el.closest !== 'function') return false;
@@ -547,17 +476,7 @@ class GraphApp {
       return true;
     };
 
-    // 🌟 [크롬 전체화면 상단 (X) 출현 원천 차단 1단계: 버튼/카드 클릭 시 DOM Focus 탈취 및 Focus Loss 원천 봉쇄]
-    window.addEventListener('mousedown', (e) => {
-      if (e.target && e.target.closest && e.target.closest('#pdfViewport')) return;
-      if (isEditableInput(e.target)) return;
-      e.preventDefault();
-      if (document.activeElement && document.activeElement !== document.body && !isTextInputEl(document.activeElement)) {
-        try { document.activeElement.blur(); } catch (err) { }
-      }
-    }, { capture: true, passive: false });
-
-    // 🌟 [크롬 전체화면 상단 (X) 출현 원천 차단 2단계: 최상위 캡처 레벨 롱프레스/우클릭/드래그 제스처 봉쇄]
+    // 1) 비입력 영역 우클릭/롱프레스/드래그/텍스트선택 기본 제스처 차단
     const blockNativeLongPressGesture = (e) => {
       if (isEditableInput(e.target)) return;
       e.preventDefault();
@@ -567,161 +486,32 @@ class GraphApp {
       document.addEventListener(evtName, blockNativeLongPressGesture, { capture: true, passive: false });
     });
 
+    // 2) 아이패드 펜슬 필기 중 손날(touch)이 하단/우측 플로팅 툴바를 스칠 때의 오터치만 선택 차단 (순정 click/scroll 100% 보존)
     window.addEventListener('pointerdown', (e) => {
-      if (isEditableInput(e.target)) {
-        activeTap = null;
-        return;
-      }
-      // 🛡️ [아이패드 필기 중 손날(touch)의 우측/하단 툴바(되돌리기 등) 오터치 원천 차단]:
       if (
         e.pointerType === 'touch' &&
         e.target &&
         typeof e.target.closest === 'function' &&
-        !e.target.closest('#simplePenTouchCounterHud') &&
         (
           (this.isDrawingInk && this._activeDrawingPointerType === 'pen') ||
-          (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 550))
+          (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 500))
         )
       ) {
-        if (e.target.closest(TOOLBAR_CONTAINER_SELECTOR) || e.target.closest(CLICKABLE_UI_SELECTOR)) {
+        if (e.target.closest(TOOLBAR_CONTAINER_SELECTOR)) {
           if (e.cancelable !== false) e.preventDefault();
           e.stopPropagation();
         }
-        activeTap = null;
-        return;
       }
+    }, { capture: true, passive: false });
+
+    // 3) 버튼 클릭 후 포커스 잔류로 인해 스페이스바 패닝 시 직전 버튼이 눌리는 현상 방지
+    window.addEventListener('click', () => {
       if (document.activeElement && document.activeElement !== document.body && !isTextInputEl(document.activeElement)) {
         try { document.activeElement.blur(); } catch (err) { }
       }
-      if (e.button && e.button !== 0) {
-        e.preventDefault();
-        activeTap = null;
-        return;
-      }
-      if (!e.target || typeof e.target.closest !== 'function') {
-        activeTap = null;
-        return;
-      }
-      if (e.target.closest('#inkDockDragHandle, .problem-card-resize-handle')) {
-        e.preventDefault();
-        activeTap = null;
-        return;
-      }
+    }, { capture: true, passive: true });
 
-      const inToolbarContainer = e.target.closest(TOOLBAR_CONTAINER_SELECTOR);
-      let targetEl = e.target.closest(CLICKABLE_UI_SELECTOR);
-      if (!targetEl && inToolbarContainer) {
-        targetEl = findNearestButtonInToolbar(inToolbarContainer, e.clientX, e.clientY, 7);
-      }
-
-      const isScrollableOrAuthUI = Boolean(
-        e.target.closest('.drawer-content, .smart-modal-body, .cloud-explorer-main, .cloud-explorer-sidebar, #pdfViewport, #settingsAccountSection, #btnSettingsGoogleLogin, #btnCloudGoogleLogin')
-      );
-      // 툴바/카드 액션바 영역이거나 버튼 위라면 즉시 preventDefault로 크롬 FullscreenControlHost 제스처 감지 차단!
-      // (단, 서랍/모달 내부 스크롤 영역이나 OAuth 팝업 버튼은 기본 클릭·스크롤 활성화 보존)
-      if ((targetEl || inToolbarContainer || e.target.closest('.problem-card-widget, .graph-card-widget')) && !isScrollableOrAuthUI) {
-        e.preventDefault();
-      }
-
-      if (!targetEl || targetEl.disabled) {
-        activeTap = null;
-        return;
-      }
-
-      // 버튼 클릭 시 setPointerCapture로 인한 포인터 독점(카드/툴바 조작 불능) 원천 방지
-
-      activeTap = {
-        el: targetEl,
-        pointerId: e.pointerId,
-        pointerType: e.pointerType || 'mouse',
-        startX: e.clientX,
-        startY: e.clientY,
-        maxDist: 0,
-        startTime: performance.now(),
-        nativeClicked: false
-      };
-    }, { capture: true, passive: false });
-
-    window.addEventListener('pointermove', (e) => {
-      if (!activeTap) return;
-      if (e.pointerId !== undefined && activeTap.pointerId !== undefined && e.pointerId !== activeTap.pointerId) return;
-      const d = Math.hypot(e.clientX - activeTap.startX, e.clientY - activeTap.startY);
-      if (d > activeTap.maxDist) activeTap.maxDist = d;
-    }, true);
-
-    window.addEventListener('click', (e) => {
-      if (
-        e.isTrusted &&
-        lastSynthClick &&
-        !lastSynthClick.inProgress &&
-        (performance.now() - lastSynthClick.time < 420)
-      ) {
-        // 합성 클릭 직후 모달(#modalPdfViewer 등)이 열리며 커서 아래 DOM(예: #btnPdfOpenAnother)이 바뀌어도 지연 도착한 고스트 click을 100% 원천 차단!
-        // (※ e.isTrusted 조건을 통해 파일 열기 fileInput.click()이나 Firebase OAuth 내부 합성 클릭은 절대 차단하지 않음!)
-        e.stopImmediatePropagation();
-        e.preventDefault();
-        lastSynthClick = null;
-        return;
-      }
-      if (activeTap) {
-        const clickDist = Math.hypot((e.clientX || 0) - activeTap.startX, (e.clientY || 0) - activeTap.startY);
-        if (
-          e.target === activeTap.el ||
-          (activeTap.el.contains && activeTap.el.contains(e.target)) ||
-          clickDist <= 36
-        ) {
-          activeTap.nativeClicked = true;
-        }
-      }
-    }, true);
-
-    window.addEventListener('pointerup', (e) => {
-      if (!activeTap) return;
-      if (e.pointerId !== undefined && activeTap.pointerId !== undefined && e.pointerId !== activeTap.pointerId) return;
-
-      const tap = activeTap;
-      if (e.pointerId !== undefined && tap.el && tap.el.releasePointerCapture) {
-        try {
-          if (!tap.el.hasPointerCapture || tap.el.hasPointerCapture(e.pointerId)) {
-            tap.el.releasePointerCapture(e.pointerId);
-          }
-        } catch (err) { }
-      }
-      const endDist = Math.hypot(e.clientX - tap.startX, e.clientY - tap.startY);
-      const totalSlip = Math.max(endDist, tap.maxDist || 0);
-      const elapsed = performance.now() - tap.startTime;
-      const maxAllowedSlip = (tap.pointerType === 'pen' || tap.pointerType === 'touch') ? 32 : 20;
-
-      if (totalSlip <= maxAllowedSlip && elapsed <= 850 && !tap.el.disabled) {
-        const requiresSyncUserGesture = Boolean(
-          tap.el.matches &&
-          tap.el.matches('#btnSettingsGoogleLogin, #btnCloudGoogleLogin, #btnFullscreen, #btnRailPdf, #btnPdfOpenAnother, #btnCloudUploadLocalFiles, #btnImportGraphlyFile, #btnOpenLocalFileFromHub')
-        );
-        if (requiresSyncUserGesture && !tap.nativeClicked && document.body.contains(tap.el)) {
-          tap.nativeClicked = true;
-          lastSynthClick = { el: tap.el, time: performance.now(), inProgress: true };
-          try {
-            tap.el.click();
-          } finally {
-            if (lastSynthClick) lastSynthClick.inProgress = false;
-          }
-          return;
-        }
-        setTimeout(() => {
-          if (!tap.nativeClicked && !tap.el.disabled && document.body.contains(tap.el)) {
-            tap.nativeClicked = true;
-            lastSynthClick = { el: tap.el, time: performance.now(), inProgress: true };
-            try {
-              tap.el.click();
-            } finally {
-              if (lastSynthClick) lastSynthClick.inProgress = false;
-            }
-          }
-        }, 24);
-      }
-    }, true);
-
-    // 🌟 [PC 마우스 & 신형 아이패드 애플펜슬 공중 호버링 100% 지원 + 사파리 터치 직후 Sticky :hover 잔상 원천 제거]
+    // 4) PC 마우스 & 애플펜슬 공중 호버링 지원 + 터치 직후 Sticky :hover 잔상 제거
     const HOVER_ICON_SELECTOR = '.rail-btn, .quick-fab-btn, .rail-zoom-action-btn';
     let currentHoveredIcon = null;
     let suppressHoverUntil = 0;
@@ -734,7 +524,6 @@ class GraphApp {
     };
 
     window.addEventListener('pointermove', (e) => {
-      // 손가락 터치이거나 버튼을 누르고 있는 드래그 상태(buttons !== 0), 또는 클릭 직후 쿨타임에는 호버 점등 차단
       if (e.pointerType === 'touch' || (e.buttons && e.buttons !== 0) || performance.now() < suppressHoverUntil) {
         clearHoveredIcon();
         return;
@@ -3389,13 +3178,18 @@ class GraphApp {
       isPenDrawingNow ||
       (this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 650))
     );
-    const isWritingTool = Boolean(
-      this.isInkMode &&
-      this.activeInkTool !== 'select' &&
-      !this.isDropLineMode &&
-      !this.isTextToolMode &&
-      !this.isGraphSnapMode &&
-      !this.isPdfToGraphCropMode
+    // 🛡️ [아이패드/스타일러스 태블릿 표준 고정]:
+    // 판서 모드(칠판) 및 필기/정밀도구 활성 시 한 손가락/손날(touch 1점)은 100% 무시하고,
+    // 오직 두 손가락(touch 2점)으로만 화면 이동·확대/축소가 작동합니다!
+    const shouldBlockSingleTouch = Boolean(
+      this.isStylusPalmRejectionActive() && (
+        this.isGraphCovered ||
+        (this.isInkMode && this.activeInkTool !== 'select') ||
+        this.isDropLineMode ||
+        this.isTextToolMode ||
+        this.isGraphSnapMode ||
+        this.isPdfToGraphCropMode
+      )
     );
 
     if (e.type === 'pointerdown') {
@@ -3439,7 +3233,7 @@ class GraphApp {
         this._pinchState = null;
         this._activePanPointerId = e.pointerId;
       }
-      if (this.isStylusPalmRejectionActive() && isWritingTool && this.allowOneFingerPanInInk === false) {
+      if (shouldBlockSingleTouch) {
         e._touchIgnoreChecked = true;
         return true;
       }
@@ -3473,7 +3267,7 @@ class GraphApp {
       if (this._pinchWasActiveInGesture || (this.activePointers && this.activePointers.size >= 2)) {
         return true;
       }
-      if (this.isStylusPalmRejectionActive() && isWritingTool && this.allowOneFingerPanInInk === false) {
+      if (shouldBlockSingleTouch) {
         return true;
       }
       return false;
@@ -3502,7 +3296,7 @@ class GraphApp {
         }
         return true;
       }
-      if (isWithinPenGuard || isPenDrawingNow || (this.isStylusPalmRejectionActive() && isWritingTool && this.allowOneFingerPanInInk === false)) {
+      if (isWithinPenGuard || isPenDrawingNow || shouldBlockSingleTouch) {
         return true;
       }
       return false;
@@ -10538,17 +10332,18 @@ class GraphApp {
     // 1. 제목 및 카드 몸통 드래그 이동 전용 (접기 버튼은 드래그에서 완벽 분리!)
     let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
     el.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.problem-card-resize-handle')) return;
+      if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
+        this.bringCardToFront(el);
+        e.stopPropagation();
+        return;
+      }
       if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
         return;
       }
       this.bringCardToFront(el);
-      if (e.target.closest('.problem-card-resize-handle')) return;
-      if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-        e.stopPropagation();
-        return;
-      }
       e.preventDefault();
       e.stopPropagation();
       isDragging = true;
@@ -11145,17 +10940,18 @@ class GraphApp {
 
       widget._toggleCardMin = () => this.toggleProblemCardMinimize();
       widget.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.problem-card-resize-handle')) return;
+        if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
+          this.bringCardToFront(widget);
+          e.stopPropagation();
+          return;
+        }
         if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
           if (e.cancelable !== false) e.preventDefault();
           e.stopPropagation();
           return;
         }
         this.bringCardToFront(widget);
-        if (e.target.closest('.problem-card-resize-handle')) return;
-        if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-          e.stopPropagation();
-          return;
-        }
         e.preventDefault();
         e.stopPropagation();
         isDragging = true;
@@ -14033,17 +13829,18 @@ class GraphApp {
     // 제목 및 몸통 드래그 이동 전용 (삼각형 접기 원버튼과 완벽 분리!)
     let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
     el.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.problem-card-resize-handle')) return;
+      if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
+        this.bringCardToFront(el);
+        e.stopPropagation();
+        return;
+      }
       if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
         return;
       }
       this.bringCardToFront(el);
-      if (e.target.closest('.problem-card-resize-handle')) return;
-      if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-        e.stopPropagation();
-        return;
-      }
       e.preventDefault();
       e.stopPropagation();
       isDragging = true;
@@ -14876,17 +14673,18 @@ class GraphApp {
       let initialBaseX = 580, initialBaseY = 68;
 
       widget.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.problem-card-resize-handle')) return;
+        if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
+          this.bringCardToFront(widget);
+          e.stopPropagation();
+          return;
+        }
         if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
           if (e.cancelable !== false) e.preventDefault();
           e.stopPropagation();
           return;
         }
         this.bringCardToFront(widget);
-        if (e.target.closest('.problem-card-resize-handle')) return;
-        if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-          e.stopPropagation();
-          return;
-        }
         e.preventDefault();
         e.stopPropagation();
         isDragging = true;
@@ -20472,25 +20270,6 @@ class GraphApp {
         if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
         this._refreshAllOpenPipGraphCards();
         this.render();
-      };
-    }
-
-    // 필기 중 한 손가락 화면 이동 토글 (굿노트 방식: OFF 시 한 손가락/손날 패닝 차단, 두 손가락 이동만 허용)
-    this.allowOneFingerPanInInk = localStorage.getItem('graphly_one_finger_pan_v1') !== 'false';
-    const chkOneFingerPanInInk = document.getElementById('chkOneFingerPanInInk');
-    if (chkOneFingerPanInInk) {
-      chkOneFingerPanInInk.checked = Boolean(this.allowOneFingerPanInInk);
-      chkOneFingerPanInInk.onchange = (e) => {
-        this.allowOneFingerPanInInk = Boolean(e.target.checked);
-        try {
-          localStorage.setItem('graphly_one_finger_pan_v1', this.allowOneFingerPanInInk ? 'true' : 'false');
-        } catch (_) { }
-        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
-        this.showToast(
-          this.allowOneFingerPanInInk
-            ? '✋ 필기 중 한 손가락 화면 이동이 켜졌습니다.'
-            : '🛡️ 필기 중 한 손가락 화면 이동이 꺼졌습니다 (두 손가락으로만 이동·확대).'
-        );
       };
     }
 
@@ -26634,7 +26413,6 @@ class GraphApp {
       eraserSize: typeof this.currentEraserSize === 'number' ? this.currentEraserSize : 14,
       themeKey: this.currentThemeKey || 'white_paper',
       boardPaperType: this.boardPaperType || 'blank',
-      allowOneFingerPanInInk: Boolean(this.allowOneFingerPanInInk),
       showVirtualStylus: Boolean(this.showVirtualStylus),
       useMagneticSnap: Boolean(this.useMagneticSnap),
       showXAxis: this.showXAxis !== false,
@@ -26683,14 +26461,6 @@ class GraphApp {
       }
       if (prefs.boardPaperType && ['blank', 'grid', 'lined', 'dot'].includes(prefs.boardPaperType)) {
         this.setBoardPaperType(prefs.boardPaperType, !silent);
-      }
-      if (typeof prefs.allowOneFingerPanInInk === 'boolean') {
-        this.allowOneFingerPanInInk = prefs.allowOneFingerPanInInk;
-        const chk = document.getElementById('chkOneFingerPanInInk');
-        if (chk) chk.checked = prefs.allowOneFingerPanInInk;
-        try {
-          localStorage.setItem('graphly_one_finger_pan_v1', prefs.allowOneFingerPanInInk ? 'true' : 'false');
-        } catch (_) { }
       }
       if (typeof prefs.showVirtualStylus === 'boolean') {
         this.showVirtualStylus = prefs.showVirtualStylus;
@@ -26778,7 +26548,6 @@ class GraphApp {
           eraserSize: 14,
           themeKey: 'white_paper',
           boardPaperType: 'blank',
-          allowOneFingerPanInInk: true,
           showVirtualStylus: true,
           useMagneticSnap: true,
           showXAxis: true,
@@ -34250,8 +34019,6 @@ class GraphApp {
       }
       const pos = getPos(e);
       if (isForceSpaceOrWheelPan) {
-        this._touchPanDeadzoneLocked = false;
-        this._touchPanInitPos = { x: pos.x, y: pos.y };
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
@@ -34492,17 +34259,13 @@ class GraphApp {
       const isPrecisionTool = Boolean(this.isDropLineMode || this.isTextToolMode || this.isGraphSnapMode || this.isPdfToGraphCropMode);
       const isPenLongPress = (e.pointerType === 'pen' && e.button === 2);
 
-      // 🌟 [아이패드/태블릿 왼손 손가락 이동·줌 & 오른손 펜슬 필기/정밀도구 완벽 분리]:
-      // 필기 도구 또는 보조수선·텍스트·캡처 도구가 켜져 있을 때 손가락/손날(e.pointerType === 'touch')이 닿으면
-      // 절대 도구가 오작동하거나 풀리지 않고 12px 손날 무진동 데드존을 거쳐 1손가락 화면 이동으로만 작동!
-      const isFingerTouchInWritingTool = Boolean((isWritingTool || isPrecisionTool) && isFingerOrPalmTouch);
-      // ✋ [굿노트 방식 옵션: '필기 중 한 손가락 이동' OFF 시 손가락 1개/손날 터치로 화면이 움직이는 현상 원천 차단 (두 손가락 핀치/이동만 작동)]
-      if (isFingerTouchInWritingTool && this.allowOneFingerPanInInk === false) {
+      // ✋ [아이패드/태블릿 손가락 1개/손날 터치 원천 차단 (두 손가락 핀치/이동만 작동)]
+      if ((isWritingTool || isPrecisionTool) && isFingerOrPalmTouch) {
         return;
       }
 
-      // 🌟 [대표님 킬러 기획: 스페이스바+드래그, 마우스 휠 클릭, 또는 태블릿 손가락 터치 시 펜 모드에서도 즉시 화면/칠판 밀기 발동!]
-      const isForceBoardPan = Boolean(this.isSpacePressed || e.button === 1 || isFingerTouchInWritingTool);
+      // 🌟 [스페이스바+드래그 또는 마우스 휠 클릭 시 펜 모드에서도 즉시 화면/칠판 밀기 발동!]
+      const isForceBoardPan = Boolean(this.isSpacePressed || e.button === 1);
 
       const isExplicitPan = !isPenLongPress && !isStylusEraser && (
         isForceBoardPan ||
@@ -34522,20 +34285,6 @@ class GraphApp {
       }
 
       if (isExplicitPan) {
-        this._touchPanDeadzoneLocked = Boolean(isFingerOrPalmTouch);
-        this._touchPanInitPos = { x: pos.x, y: pos.y };
-        if (isFingerOrPalmTouch) {
-          this._lastTouchPanStartTime = Date.now();
-          this._touchCameraSnapshot = {
-            boardPanX: this.boardPanX || 0,
-            boardPanY: this.boardPanY || 0,
-            boardZoom: this.boardZoom || 1.0,
-            panX: this.panX || 0,
-            panY: this.panY || 0,
-            zoom: this.zoomLevel || 1.0,
-            inkBakeDirty: Boolean(this._inkBakeDirty)
-          };
-        }
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
@@ -34544,9 +34293,7 @@ class GraphApp {
           this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
         }
         this.canvas.style.cursor = 'move';
-        if (!isFingerOrPalmTouch) {
-          this.render();
-        }
+        this.render();
         return;
       }
 
@@ -34839,8 +34586,6 @@ class GraphApp {
         // 오직 펜슬(pen)이나 마우스(mouse)로 빈 공간을 이동 없이 '툭' 건드리고 뗐을 때(handleUp)만 핸들러 해제!
         const downPType = (e && e.pointerType) ? e.pointerType : (e && e.touches ? 'touch' : 'mouse');
         this.downInfo = { x: pos.x, y: pos.y, hitHandleIdx: null, hitCurveIdx: null, hitVfCorner: false, pointerType: downPType };
-        this._touchPanDeadzoneLocked = false;
-        this._touchPanInitPos = { x: pos.x, y: pos.y };
 
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
@@ -35344,9 +35089,6 @@ class GraphApp {
         // 🌟 [대표님 핵심 기획]:
         // 누르는 순간(pointerdown)이나 손날/손가락(touch) 접촉, 화면 드래그 이동 중에는 핸들러를 절대 끄지 않음!
         // 오직 펜슬(pen)이나 마우스(mouse)로 빈 공간을 이동 없이 '툭' 건드리고 뗐을 때(handleUp)만 핸들러 해제!
-        this._touchPanDeadzoneLocked = false;
-        this._touchPanInitPos = { x: pos.x, y: pos.y };
-
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
@@ -35480,16 +35222,6 @@ class GraphApp {
       // 🌟 [초기 화면 / 캔버스 패닝 0.00ms 초고속 패스트패스]:
       // 단, 펜슬 필기 중(isDrawingInk)일 때는 절대 패닝이 필기를 가로채지 못하도록 최우선 보호!
       if (!this.isDrawingInk && !this._isTemporaryStylusEraser) {
-        if ((this.isPanning || this.isBoardPanning) && this._touchPanDeadzoneLocked && this._touchPanInitPos) {
-          const dPan = Math.hypot(pos.x - this._touchPanInitPos.x, pos.y - this._touchPanInitPos.y);
-          if (dPan < 12) {
-            return;
-          }
-          this._touchPanDeadzoneLocked = false;
-          this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
-          this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
-          return;
-        }
         if (this.isPanning && this.panStart) {
           if (this.canvas.style.cursor !== 'move') {
             this.canvas.style.cursor = 'move';
@@ -37228,118 +36960,6 @@ class GraphApp {
     let lastPointerMoveTime = 0;
     let lastPointerUpTime = 0;
 
-    // 🔬 [자동 범인 박제 & 최근 5건 타임라인 HUD: ?debug=ink 전용 활성화 (일반 사용 시 자동 숨김)]
-    let isInkDebugHudEnabled = Boolean(
-      typeof window !== 'undefined' && window.location && window.location.search.includes('debug=ink')
-    );
-    let diagPenCount = 0;
-    let diagStylusTouchCount = 0;
-    let diagTouchCount = 0;
-    let diagCancelCount = 0;
-    let diagRecentEvents = [];
-    let diagFrozenAnomalies = [];
-    let lastPenPointerDownAt = 0;
-    const diagTouchTrackMap = new Map();
-    const diagPenDownOnCanvasIds = new Set();
-    let diagHudEl = document.getElementById('simplePenTouchCounterHud');
-    const renderDiagTrailAndBanner = () => {
-      if (!isInkDebugHudEnabled) return;
-      const trailEl = document.getElementById('diagRecentTrail');
-      if (trailEl) {
-        trailEl.textContent = diagRecentEvents.length > 0
-          ? `최근기록: ${diagRecentEvents.slice(-5).join(' ➔ ')}`
-          : '최근기록: (아직 입력 없음)';
-      }
-      const bannerEl = document.getElementById('diagAnomalyBanner');
-      if (bannerEl) {
-        if (diagFrozenAnomalies.length > 0) {
-          bannerEl.style.background = '#dc2626';
-          bannerEl.style.color = '#ffffff';
-          bannerEl.textContent = `🚨 범인포착(${diagFrozenAnomalies.length}건): ${diagFrozenAnomalies[diagFrozenAnomalies.length - 1]}`;
-        } else {
-          bannerEl.style.background = '#1e293b';
-          bannerEl.style.color = '#94a3b8';
-          bannerEl.textContent = '🟢 감시중: 칠판만 보고 쓰다가 씹히는 순간 멈추고 여기를 보세요';
-        }
-      }
-    };
-    const pushDiagTrail = (label) => {
-      if (!isInkDebugHudEnabled) return;
-      diagRecentEvents.push(label);
-      if (diagRecentEvents.length > 8) diagRecentEvents.shift();
-      renderDiagTrailAndBanner();
-    };
-    const pushDiagAnomaly = (msg) => {
-      if (!isInkDebugHudEnabled) return;
-      diagFrozenAnomalies.push(msg);
-      renderDiagTrailAndBanner();
-    };
-    if (isInkDebugHudEnabled && !diagHudEl && typeof document !== 'undefined' && document.body) {
-      diagHudEl = document.createElement('div');
-      diagHudEl.id = 'simplePenTouchCounterHud';
-      diagHudEl.style.cssText = 'position:fixed; top:40px; left:50%; transform:translateX(-50%); z-index:999999; display:flex; flex-direction:column; align-items:center; gap:4px; background:rgba(15,23,42,0.96); color:#fff; padding:6px 10px; border-radius:10px; font-family:monospace,sans-serif; font-size:11.5px; font-weight:700; pointer-events:auto; box-shadow:0 6px 20px rgba(0,0,0,0.4); border:1.5px solid #38bdf8; max-width:96vw;';
-      diagHudEl.innerHTML = `
-        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:5px;">
-          <span id="cntBoxPen" style="padding:2px 6px; border-radius:5px; background:#065f46; color:#a7f3d0; pointer-events:none;">✏️ 펜P: 0</span>
-          <span id="cntBoxStylusT" style="padding:2px 6px; border-radius:5px; background:#1e3a8a; color:#bfdbfe; pointer-events:none;">⚡ 펜T: 0</span>
-          <span id="cntBoxTouch" style="padding:2px 6px; border-radius:5px; background:#78350f; color:#fde68a; pointer-events:none;">👆 손날: 0</span>
-          <span id="cntBoxCancel" style="padding:2px 6px; border-radius:5px; background:#7f1d1d; color:#fecaca; pointer-events:none;">🚨 취소: 0</span>
-          <button id="btnResetDiagCnt" type="button" style="padding:2px 7px; border-radius:5px; background:#334155; color:#f8fafc; border:1px solid #64748b; font-size:11.5px; font-weight:700; cursor:pointer;">0리셋</button>
-          <button id="btnCloseDiagCnt" type="button" style="padding:2px 6px; border-radius:5px; background:#1e293b; color:#94a3b8; border:1px solid #475569; font-size:11.5px; font-weight:700; cursor:pointer;">✕</button>
-        </div>
-        <div id="diagRecentTrail" style="padding:2px 8px; border-radius:5px; background:#0f172a; color:#e2e8f0; font-size:11px; pointer-events:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:92vw;">최근기록: (아직 입력 없음)</div>
-        <div id="diagAnomalyBanner" style="padding:3px 8px; border-radius:5px; background:#1e293b; color:#94a3b8; font-size:11.5px; pointer-events:none; text-align:center;">🟢 감시중: 칠판만 보고 쓰다가 씹히는 순간 멈추고 여기를 보세요</div>
-      `;
-      document.body.appendChild(diagHudEl);
-      const resetBtn = document.getElementById('btnResetDiagCnt');
-      if (resetBtn) {
-        resetBtn.addEventListener('pointerdown', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          diagPenCount = 0;
-          diagStylusTouchCount = 0;
-          diagTouchCount = 0;
-          diagCancelCount = 0;
-          diagRecentEvents = [];
-          diagFrozenAnomalies = [];
-          diagTouchTrackMap.clear();
-          diagPenDownOnCanvasIds.clear();
-          const b1 = document.getElementById('cntBoxPen');
-          const bT = document.getElementById('cntBoxStylusT');
-          const b2 = document.getElementById('cntBoxTouch');
-          const b3 = document.getElementById('cntBoxCancel');
-          if (b1) b1.textContent = '✏️ 펜P: 0';
-          if (bT) bT.textContent = '⚡ 펜T: 0';
-          if (b2) b2.textContent = '👆 손날: 0';
-          if (b3) b3.textContent = '🚨 취소: 0';
-          renderDiagTrailAndBanner();
-        });
-      }
-      const closeBtn = document.getElementById('btnCloseDiagCnt');
-      if (closeBtn) {
-        closeBtn.addEventListener('pointerdown', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          isInkDebugHudEnabled = false;
-          if (diagHudEl) diagHudEl.style.display = 'none';
-        });
-      }
-    }
-    const flashCounterBox = (id, text, flashBg) => {
-      if (!isInkDebugHudEnabled) return;
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.textContent = text;
-      const origBg = id === 'cntBoxPen' ? '#065f46' : (id === 'cntBoxStylusT' ? '#1e3a8a' : (id === 'cntBoxTouch' ? '#78350f' : '#7f1d1d'));
-      el.style.background = flashBg;
-      el.style.transform = 'scale(1.06)';
-      clearTimeout(el._flashTimer);
-      el._flashTimer = setTimeout(() => {
-        el.style.background = origBg;
-        el.style.transform = 'scale(1)';
-      }, 180);
-    };
-
     if (window.PointerEvent) {
       window.addEventListener('pointerdown', (e) => {
         if (this.isPdfModalOpen) return;
@@ -37350,34 +36970,6 @@ class GraphApp {
         const nowT = Date.now();
         if (e.pointerType === 'touch') {
           if (e.target === this.canvas) {
-            this._lastPalmTouchPos = { x: e.clientX, y: e.clientY, time: nowT };
-            if (isInkDebugHudEnabled) {
-              const w = Math.round(e.width || 0);
-              const h = Math.round(e.height || 0);
-              diagTouchCount++;
-              flashCounterBox('cntBoxTouch', `👆 손날: ${diagTouchCount} (${w}x${h})`, '#d97706');
-              const distFromDown = (this._lastPenDownPos && (nowT - this._lastPenDownPos.time < 5000))
-                ? Math.round(Math.hypot(e.clientX - this._lastPenDownPos.x, e.clientY - this._lastPenDownPos.y))
-                : 999;
-              const distFromTip = (this._lastPenTipPos && (nowT - this._lastPenTipPos.time < 5000))
-                ? Math.round(Math.hypot(e.clientX - this._lastPenTipPos.x, e.clientY - this._lastPenTipPos.y))
-                : 999;
-              const distFromPen = Math.min(distFromDown, distFromTip);
-              const label = `👆터치(거리${distFromPen}px/이동0px)`;
-              pushDiagTrail(label);
-              if (e.pointerId !== undefined) {
-                diagTouchTrackMap.set(e.pointerId, {
-                  startX: e.clientX,
-                  startY: e.clientY,
-                  maxMove: 0,
-                  distFromPen,
-                  w,
-                  h,
-                  lastLabel: label,
-                  anomalyLogged: false
-                });
-              }
-            }
             if (this._uiPointerIds && e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
             return;
           }
@@ -37408,18 +37000,9 @@ class GraphApp {
         if (e.pointerType === 'pen') {
           this._markStylusPenDetected();
           this._lastPenActiveTime = nowT;
-          this._lastPenDownTime = nowT;
-          this._lastPenDownPos = { x: e.clientX, y: e.clientY, time: nowT };
-          this._lastPenTipPos = { x: e.clientX, y: e.clientY, time: nowT };
           if (this.activePointers) this.activePointers.clear();
           this._pinchState = null;
           this._pinchWasActiveInGesture = false;
-          if (isInkDebugHudEnabled && e.target === this.canvas) {
-            lastPenPointerDownAt = nowT;
-            diagPenCount++;
-            if (e.pointerId !== undefined) diagPenDownOnCanvasIds.add(e.pointerId);
-            flashCounterBox('cntBoxPen', `✏️ 펜P: ${diagPenCount} (시작)`, '#10b981');
-          }
         }
         const isEffectivePenDown = (e.pointerType === 'pen');
         if (!this._uiPointerIds) this._uiPointerIds = new Set();
@@ -37491,35 +37074,11 @@ class GraphApp {
           if (isEffectivePen) {
             this._markStylusPenDetected();
             this._lastPenActiveTime = nowT;
-            this._lastPenDownTime = nowT;
-            this._lastPenTipPos = { x: e.clientX, y: e.clientY, time: nowT };
-            if ((this.isPanning || this.isBoardPanning) && this._touchCameraSnapshot && (nowT - (this._lastTouchPanStartTime || 0) < 350)) {
-              const snap = this._touchCameraSnapshot;
-              const hadMoved = (
-                this.boardPanX !== snap.boardPanX ||
-                this.boardPanY !== snap.boardPanY ||
-                this.panX !== snap.panX ||
-                this.panY !== snap.panY
-              );
-              this.boardPanX = snap.boardPanX;
-              this.boardPanY = snap.boardPanY;
-              this.boardZoom = snap.boardZoom;
-              this.panX = snap.panX;
-              this.panY = snap.panY;
-              this.zoomLevel = snap.zoom;
-              this._inkBakeDirty = Boolean(snap.inkBakeDirty);
-              if (hadMoved) {
-                if (this.isGraphCovered) this.updateProblemCardPosition(true);
-                this.requestRender();
-              }
-            }
-            this._touchCameraSnapshot = null;
           }
           if (this.activePointers) {
             this.activePointers.clear();
           }
           this._pinchWasActiveInGesture = false;
-          this._touchPanDeadzoneLocked = false;
           if (this.isPanning || this.isBoardPanning || this._pinchState) {
             this.isPanning = false;
             this.isBoardPanning = false;
@@ -37541,28 +37100,6 @@ class GraphApp {
           e.preventDefault();
         }
         if (e.pointerType === 'touch') {
-          if (e.target === this.canvas) {
-            this._lastPalmTouchPos = { x: e.clientX, y: e.clientY, time: Date.now() };
-          }
-          if (isInkDebugHudEnabled && e.pointerId !== undefined && diagTouchTrackMap.has(e.pointerId)) {
-            const info = diagTouchTrackMap.get(e.pointerId);
-            const curMove = Math.round(Math.hypot(e.clientX - info.startX, e.clientY - info.startY));
-            if (curMove > info.maxMove) {
-              info.maxMove = curMove;
-              const nextLabel = `👆터치(거리${info.distFromPen}px/이동${info.maxMove}px)`;
-              const idx = diagRecentEvents.lastIndexOf(info.lastLabel);
-              info.lastLabel = nextLabel;
-              if (idx >= 0) {
-                diagRecentEvents[idx] = nextLabel;
-              }
-              if (!info.anomalyLogged && info.maxMove >= 20 && info.distFromPen <= 190) {
-                info.anomalyLogged = true;
-                pushDiagAnomaly(`[펜이 터치로 둔갑!] 펜거리${info.distFromPen}px / 이동${info.maxMove}px (${info.w}x${info.h})`);
-              } else {
-                renderDiagTrailAndBanner();
-              }
-            }
-          }
           const isUiTouchMove = Boolean(this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId));
           const isCanvasOrPinchTouchMove = !isUiTouchMove || Boolean(this._pinchState) || Boolean(this.activePointers && this.activePointers.size >= 2);
           if (isCanvasOrPinchTouchMove && this._shouldIgnoreCanvasTouchPointer(e)) {
@@ -37595,7 +37132,6 @@ class GraphApp {
             if (isEffectivePen) {
               this._markStylusPenDetected();
               this._lastPenActiveTime = Date.now();
-              this._touchPanDeadzoneLocked = false;
             }
             if (e.target && e.target.closest && e.target.closest('.problem-card-body') && !this.isPointerOverMenu(e)) {
               const cPos = getPos(e);
@@ -37640,8 +37176,6 @@ class GraphApp {
         if (isEffectivePen) {
           this._markStylusPenDetected();
           this._lastPenActiveTime = nowT;
-          this._lastPenTipPos = { x: e.clientX, y: e.clientY, time: nowT };
-          this._touchPanDeadzoneLocked = false;
         }
 
         if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || this.isDrawingSticker) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
@@ -37663,7 +37197,6 @@ class GraphApp {
         }
         if (this.isPdfModalOpen) return;
         if (e.pointerType === 'touch') {
-          if (e.pointerId !== undefined) diagTouchTrackMap.delete(e.pointerId);
           if (wasUiPointer && !this._pinchState && !(this.activePointers && this.activePointers.has(e.pointerId))) {
             return;
           }
@@ -37691,23 +37224,6 @@ class GraphApp {
         const nowT = Date.now();
         if (isEffectivePen) {
           this._lastPenActiveTime = nowT;
-          const wasCanvasPenDown = (e.pointerId !== undefined && diagPenDownOnCanvasIds.has(e.pointerId));
-          if (e.pointerId !== undefined) diagPenDownOnCanvasIds.delete(e.pointerId);
-          if (isInkDebugHudEnabled && wasCanvasPenDown) {
-            const ptsCount = (this.currentInkStroke && this.currentInkStroke.points) ? this.currentInkStroke.points.length : 0;
-            if (e.type === 'pointercancel') {
-              diagCancelCount++;
-              flashCounterBox('cntBoxCancel', `🚨 취소: ${diagCancelCount} (점${ptsCount})`, '#dc2626');
-              pushDiagTrail(`🚨취소#${diagCancelCount}(점${ptsCount})`);
-              pushDiagAnomaly(`[pointercancel] 그리는 중 강제 취소됨(점${ptsCount})`);
-            } else {
-              flashCounterBox('cntBoxPen', `✏️ 펜P: ${diagPenCount} (점${ptsCount}개)`, '#059669');
-              pushDiagTrail(`✏️#${diagPenCount}(점${ptsCount})`);
-              if (ptsCount === 0) {
-                pushDiagAnomaly(`[handleDown 미진입] 펜P#${diagPenCount} 점0개`);
-              }
-            }
-          }
         }
 
         if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || this.isDrawingSticker) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
@@ -37772,20 +37288,6 @@ class GraphApp {
     this.canvas.addEventListener('touchstart', (e) => {
       if (e.target === this.canvas && e.cancelable !== false) {
         e.preventDefault();
-      }
-      if (isInkDebugHudEnabled && e.changedTouches) {
-        const changedList = Array.from(e.changedTouches);
-        if (changedList.some(t => t.touchType === 'stylus')) {
-          const stylusTs = Date.now();
-          diagStylusTouchCount++;
-          flashCounterBox('cntBoxStylusT', `⚡ 펜T: ${diagStylusTouchCount}`, '#2563eb');
-          setTimeout(() => {
-            if (Math.abs(lastPenPointerDownAt - stylusTs) > 80) {
-              pushDiagTrail(`⚡펜T단독#${diagStylusTouchCount}!`);
-              pushDiagAnomaly(`[Pointer삼킴] ⚡펜T(#${diagStylusTouchCount})는 왔는데 ✏️펜P가 삼켜짐!`);
-            }
-          }, 55);
-        }
       }
     }, { passive: false });
 
