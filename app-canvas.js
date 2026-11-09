@@ -1449,6 +1449,9 @@
             : [{ x: bPt0.x, y: bPt0.y, p: pressure, t: recT0 }]
         };
         this.inkStrokes.push(this.currentInkStroke);
+        if (this._diagOnStrokeStart) {
+          this._diagOnStrokeStart(e, this.currentInkStroke);
+        }
         this._startInkHoldTimer();
         if (isHighlighterStroke) {
           this.render();
@@ -2152,7 +2155,7 @@
             const ev = events[i];
             const evTs = (typeof ev.timeStamp === 'number' && ev.timeStamp > 0) ? ev.timeStamp : 0;
             if (evTs > 0) {
-              if (typeof this._lastInkSampleTs === 'number' && evTs <= this._lastInkSampleTs) {
+              if (events.length > 1 && typeof this._lastInkSampleTs === 'number' && evTs <= this._lastInkSampleTs) {
                 continue;
               }
               this._lastInkSampleTs = evTs;
@@ -2256,6 +2259,9 @@
             if (!this.currentInkStroke.isHighlighter) {
               this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
             }
+          }
+          if (this._diagOnStrokeMove) {
+            this._diagOnStrokeMove(e, addedPoints, Math.max(0, events.length - addedPoints));
           }
           // 일반 펜 필기 중에는 전체 화면 재렌더링(requestRender)을 호출하지 않아 2360x1640 캔버스 복사 부하가 0.0%입니다!
           if (addedPoints > 0 && this.currentInkStroke.isHighlighter) {
@@ -3199,9 +3205,10 @@
           const rawEnd = this._lastRawInkScreenPos;
           const curPenStyle = this.currentInkStroke.penStyle || 'ballpen';
           const tailDist = Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y);
-          if (tailDist >= 0.2) {
-            const endX = this.currentInkStroke.isHighlighter ? rawEnd.x : (lastSmoothed.x * 0.25 + rawEnd.x * 0.75);
-            const endY = this.currentInkStroke.isHighlighter ? rawEnd.y : (lastSmoothed.y * 0.25 + rawEnd.y * 0.75);
+          if (tailDist >= 0.15) {
+            const isShortStroke = (this._liveBezierScreenPts.length <= 2);
+            const endX = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.x : (lastSmoothed.x * 0.25 + rawEnd.x * 0.75);
+            const endY = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.y : (lastSmoothed.y * 0.25 + rawEnd.y * 0.75);
             let p = this._lastPressure || 0.5;
             if (curPenStyle === 'fountain') {
               p = Math.max(0.10, p * 0.55);
@@ -3256,6 +3263,9 @@
         }
 
         // 🌟 [0ms 초고속 잉크 히스토리 푸시 & 비동기 증분 베이킹 (Zero-Blocking PointerUp)] 🌟
+        if (this._diagOnStrokeEnd) {
+          this._diagOnStrokeEnd(e, finishedStroke);
+        }
         if (finishedStroke && finishedStroke.points && finishedStroke.points.length > 0) {
           this.undoStack.push({ type: 'stroke_add', stroke: finishedStroke });
           if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
@@ -3513,6 +3523,9 @@
           if (this._shouldIgnoreCanvasTouchPointer(e)) return;
         }
         if (isClickableUI(e.target) || isAnyModalOrOverlayBlockingCanvas()) {
+          if (e.pointerType === 'pen' && this._diagRecordSkipReason) {
+            this._diagRecordSkipReason('canvasDown:UI_or_Modal', e);
+          }
           return;
         }
         if (this._uiPointerIds && e.pointerId !== undefined) {
