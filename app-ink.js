@@ -343,7 +343,6 @@
     // 독 드래그 이동 및 액정타블렛 전용 알약 리모컨 초기화
     this.initInkDockDraggable();
     this.initQuickPillRemote();
-    this.initMainBoardInkDiagnostics();
 
     // 🌟 [액정타블렛 특화]: 가상 연필 & 지우개 인디케이터 초기화
     this.virtualStylusEl = document.getElementById('virtualStylusPen');
@@ -5088,7 +5087,6 @@
     const queue = this._pendingIncrementalBakeStrokes;
     if (!Array.isArray(queue) || queue.length === 0) return;
     this._pendingIncrementalBakeStrokes = [];
-    if (this._inkBakeDirty) return;
 
     const { dpr, padX, padY, width: bakeW, height: bakeH } = this._getInkBakeMetrics();
     const needResizeBake = Boolean(
@@ -5110,17 +5108,58 @@
       this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
     }
 
-    const strokeSet = this.inkStrokes ? new Set(this.inkStrokes) : null;
-    for (let i = 0; i < queue.length; i++) {
-      const st = queue[i];
-      if (!st || (strokeSet && !strokeSet.has(st))) continue;
-      const isBoard = (st.target || 'board') === 'board';
-      const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
-      if (targetCtx) {
-        this.renderSingleStroke(targetCtx, st, null, false);
-        this._hasBakedStrokes = true;
+    // 🌟 [필기 직후 2손가락 화면 이동 시 문단 증발 방지]:
+    // 이미 베이크된 오프스크린 버퍼(_inkBakeCamera)가 존재하는 상태에서 2손가락 패닝(_inkBakeDirty = true)이 시작되면,
+    // 대기열(queue)의 획들을 폐기하지 않고 _inkBakeCamera 기준 좌표계로 오프스크린 버퍼에 즉시 합류시켜
+    // 패닝 도중에도 방금 쓴 문단이 단 1프레임도 사라지지 않고 함께 이동하도록 보장합니다!
+    const cam = this._inkBakeCamera;
+    const savedCam = cam ? {
+      panX: this.panX,
+      panY: this.panY,
+      zoomLevel: this.zoomLevel,
+      boardPanX: this.boardPanX,
+      boardPanY: this.boardPanY,
+      boardZoom: this.boardZoom,
+      boardZoomOffsetX: this.boardZoomOffsetX,
+      boardZoomOffsetY: this.boardZoomOffsetY
+    } : null;
+
+    if (cam) {
+      this.panX = cam.panX;
+      this.panY = cam.panY;
+      this.zoomLevel = cam.zoomLevel;
+      this.boardPanX = cam.boardPanX;
+      this.boardPanY = cam.boardPanY;
+      this.boardZoom = cam.boardZoom;
+      this.boardZoomOffsetX = cam.boardZoomOffsetX;
+      this.boardZoomOffsetY = cam.boardZoomOffsetY;
+    }
+
+    try {
+      const strokeSet = this.inkStrokes ? new Set(this.inkStrokes) : null;
+      for (let i = 0; i < queue.length; i++) {
+        const st = queue[i];
+        if (!st || (strokeSet && !strokeSet.has(st))) continue;
+        const isBoard = (st.target || 'board') === 'board';
+        const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
+        if (targetCtx) {
+          this.renderSingleStroke(targetCtx, st, null, false);
+          this._hasBakedStrokes = true;
+        }
+      }
+    } finally {
+      if (savedCam) {
+        this.panX = savedCam.panX;
+        this.panY = savedCam.panY;
+        this.zoomLevel = savedCam.zoomLevel;
+        this.boardPanX = savedCam.boardPanX;
+        this.boardPanY = savedCam.boardPanY;
+        this.boardZoom = savedCam.boardZoom;
+        this.boardZoomOffsetX = savedCam.boardZoomOffsetX;
+        this.boardZoomOffsetY = savedCam.boardZoomOffsetY;
       }
     }
+
     if (this._hasBakedStrokes && !this._inkBakeCamera) {
       this._inkBakeCamera = {
         panX: this.panX || 0,
@@ -5518,466 +5557,6 @@
     }
 
     // drawLassoOverlay는 최상단 렌더링 파이프라인(render)에서 일괄 수행
-  }
-
-  /**
-   * 🔍 [메인 칠판(index.html) 내장 실시간 필기 씹힘 진단기 (Zero-Overhead Ring Buffer)]
-   * - 필기 중에는 순수 배열 push만 수행하여 성능 부하 0.000ms를 보장하며,
-   * - 본체 칠판에서 획이 씹힌 즉시 좌상단 [🚨 씹힘!]을 터치하면 직전 3.5초간의
-   *   1) window 원시 PointerEvent / TouchEvent 궤적 및 타깃 DOM 요소(#graphCanvas 등),
-   *   2) GraphApp 내부 handleDown / handleMove(통과 점 수 vs 스킵 점 수) / handleUp 처리 결과를
-   *   화면 위 모달로 즉시 대조하여 표시합니다.
-   */
-  initMainBoardInkDiagnostics() {
-    if (this._mainBoardInkDiagInitialized) return;
-    this._mainBoardInkDiagInitialized = true;
-
-    const MAX_BUF = 5000;
-    const SNAP_WINDOW_MS = 3500;
-    const ring = [];
-    const snapshots = [];
-    let activeSnapIdx = -1;
-    let activeStrokeDiag = null;
-
-    const r1 = (v) => (typeof v === 'number' && !isNaN(v)) ? Math.round(v * 10) / 10 : null;
-    const r2 = (v) => (typeof v === 'number' && !isNaN(v)) ? Math.round(v * 100) / 100 : null;
-
-    const describeTarget = (el) => {
-      if (!el) return 'null';
-      if (el === this.canvas) return '#graphCanvas';
-      if (el.id) return '#' + el.id;
-      const cls = (typeof el.className === 'string' && el.className.trim())
-        ? '.' + el.className.trim().split(/\s+/)[0]
-        : '';
-      return (el.tagName ? String(el.tagName).toLowerCase() : 'el') + cls;
-    };
-
-    const pushEntry = (item) => {
-      ring.push(item);
-      if (ring.length > MAX_BUF) {
-        ring.splice(0, ring.length - MAX_BUF);
-      }
-    };
-
-    // GraphApp 내부 훅 (handleDown / handleMove / handleUp / 스킵 사유)
-    this._diagOnStrokeStart = (e, stroke) => {
-      activeStrokeDiag = {
-        pid: e ? e.pointerId : null,
-        id: stroke ? stroke.id : '',
-        downPerfT: r1(performance.now()),
-        acceptedMoves: 0,
-        skippedMoves: 0,
-        finalPts: 1
-      };
-      pushEntry({
-        k: 'G',
-        act: 'down',
-        perfT: activeStrokeDiag.downPerfT,
-        pid: activeStrokeDiag.pid,
-        x: e ? r1(e.clientX) : 0,
-        y: e ? r1(e.clientY) : 0
-      });
-    };
-
-    this._diagOnStrokeMove = (e, addedPts, skippedPts) => {
-      if (activeStrokeDiag) {
-        activeStrokeDiag.acceptedMoves += (addedPts || 0);
-        activeStrokeDiag.skippedMoves += (skippedPts || 0);
-      }
-    };
-
-    this._diagOnStrokeEnd = (e, stroke) => {
-      const fPts = (stroke && stroke.points) ? stroke.points.length : 0;
-      if (activeStrokeDiag) {
-        activeStrokeDiag.finalPts = fPts;
-      }
-      pushEntry({
-        k: 'G',
-        act: 'up',
-        perfT: r1(performance.now()),
-        pid: e ? e.pointerId : (activeStrokeDiag ? activeStrokeDiag.pid : null),
-        accepted: activeStrokeDiag ? activeStrokeDiag.acceptedMoves : 0,
-        skipped: activeStrokeDiag ? activeStrokeDiag.skippedMoves : 0,
-        finalPts: fPts
-      });
-      activeStrokeDiag = null;
-    };
-
-    this._diagRecordSkipReason = (reason, e) => {
-      pushEntry({
-        k: 'G',
-        act: 'skip:' + reason,
-        perfT: r1(performance.now()),
-        pid: e ? e.pointerId : null,
-        pType: e ? e.pointerType : '',
-        target: e ? describeTarget(e.target) : ''
-      });
-    };
-
-    // 좌상단 초소형 진단 알약 바 & 모달 생성
-    const bar = document.createElement('div');
-    bar.id = 'mainBoardInkDiagBar';
-    bar.style.cssText = [
-      'position:fixed',
-      'left:68px',
-      'top:calc(10px + var(--ios-top-safe-guard, 0px))',
-      'z-index:9998',
-      'display:flex',
-      'align-items:center',
-      'gap:5px',
-      'background:rgba(15,23,42,0.88)',
-      'padding:4px 7px',
-      'border-radius:999px',
-      'border:1px solid rgba(248,113,113,0.55)',
-      'box-shadow:0 4px 14px rgba(0,0,0,0.22)',
-      'touch-action:manipulation',
-      'user-select:none'
-    ].join(';');
-
-    bar.innerHTML = [
-      '<button type="button" id="btnMainDiagDrop" style="height:28px;padding:0 11px;border-radius:999px;border:1px solid #f87171;background:#dc2626;color:#fff;font-size:12px;font-weight:800;cursor:pointer;">🚨 씹힘!</button>',
-      '<button type="button" id="btnMainDiagList" style="height:28px;padding:0 9px;border-radius:999px;border:1px solid #475569;background:#1e293b;color:#e2e8f0;font-size:11px;font-weight:700;cursor:pointer;">📋 (0)</button>',
-      '<button type="button" id="btnMainDiagHide" title="진단 버튼 숨기기" style="width:24px;height:24px;border-radius:999px;border:none;background:transparent;color:#94a3b8;font-size:12px;font-weight:800;cursor:pointer;">✕</button>'
-    ].join('');
-    document.body.appendChild(bar);
-
-    const modal = document.createElement('div');
-    modal.id = 'mainBoardInkDiagModal';
-    modal.style.cssText = [
-      'position:fixed',
-      'inset:0',
-      'z-index:99999',
-      'background:rgba(15,23,42,0.78)',
-      'display:none',
-      'align-items:center',
-      'justify-content:center',
-      'padding:14px',
-      'touch-action:auto'
-    ].join(';');
-
-    modal.innerHTML = [
-      '<div style="width:min(1060px,96vw);height:min(800px,90vh);background:#fff;color:#0f172a;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,0.45);">',
-      '  <div style="padding:10px 14px;background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;">',
-      '    <div style="font-size:14px;font-weight:800;">🔍 Graphly 본체 칠판 — 직전 3.5초 필기 씹힘 정밀 분석</div>',
-      '    <button type="button" id="btnMainDiagCloseModal" style="height:32px;padding:0 12px;border-radius:8px;border:1px solid #475569;background:#1e293b;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">✕ 닫기 (계속 필기)</button>',
-      '  </div>',
-      '  <div id="mainDiagTabs" style="display:flex;gap:6px;overflow-x:auto;padding:7px 14px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;"></div>',
-      '  <div style="flex:1;display:grid;grid-template-columns:1.25fr 1fr;gap:10px;padding:10px;overflow:hidden;min-height:0;">',
-      '    <div style="border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc;display:flex;flex-direction:column;overflow:hidden;">',
-      '      <div style="padding:6px 10px;background:#fff;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:700;color:#334155;display:flex;flex-wrap:wrap;gap:10px;">',
-      '        <span>▬ Pointer:pen(검정)</span><span style="color:#ef4444;">▬ Pointer:touch(빨강)</span><span style="color:#2563eb;">┈ Touch:stylus(파랑)</span><span style="color:#f97316;">┈ Touch:direct(주황)</span>',
-      '      </div>',
-      '      <div style="flex:1;position:relative;min-height:0;background:#fff;"><canvas id="mainDiagSnapCanvas" style="width:100%;height:100%;display:block;"></canvas></div>',
-      '    </div>',
-      '    <div style="display:flex;flex-direction:column;gap:8px;overflow-y:auto;padding-right:4px;touch-action:pan-y;-webkit-overflow-scrolling:touch;">',
-      '      <div id="mainDiagVerdict" style="padding:10px 12px;border-radius:10px;border:2px solid #cbd5e1;background:#f8fafc;font-size:12px;line-height:1.45;"></div>',
-      '      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;font-size:11.5px;">',
-      '        <table style="width:100%;border-collapse:collapse;">',
-      '          <thead><tr style="background:#f1f5f9;text-align:left;"><th style="padding:5px 6px;">ID / 타입</th><th style="padding:5px 6px;">타깃 / 크기</th><th style="padding:5px 6px;">이동(점)</th><th style="padding:5px 6px;">본체 반영 상태</th></tr></thead>',
-      '          <tbody id="mainDiagTableBody"></tbody>',
-      '        </table>',
-      '      </div>',
-      '    </div>',
-      '  </div>',
-      '</div>'
-    ].join('');
-    document.body.appendChild(modal);
-
-    const isDiagUi = (el) => Boolean(el && (bar.contains(el) || modal.contains(el)));
-
-    const onWinPointer = (e) => {
-      if (modal.style.display === 'flex' || isDiagUi(e.target)) return;
-      pushEntry({
-        k: 'P',
-        type: e.type,
-        t: r1(e.timeStamp),
-        perfT: r1(performance.now()),
-        pid: e.pointerId,
-        pType: e.pointerType || 'unknown',
-        x: r1(e.clientX),
-        y: r1(e.clientY),
-        w: r1(e.width),
-        p: r2(e.pressure),
-        target: describeTarget(e.target)
-      });
-    };
-
-    const onWinTouch = (e) => {
-      if (modal.style.display === 'flex' || isDiagUi(e.target)) return;
-      const list = [];
-      if (e.changedTouches) {
-        for (let i = 0; i < e.changedTouches.length; i++) {
-          const ct = e.changedTouches[i];
-          list.push({
-            id: ct.identifier,
-            tType: ct.touchType || 'unknown',
-            rx: r1(ct.radiusX),
-            x: r1(ct.clientX),
-            y: r1(ct.clientY)
-          });
-        }
-      }
-      pushEntry({
-        k: 'T',
-        type: e.type,
-        perfT: r1(performance.now()),
-        target: describeTarget(e.target),
-        list
-      });
-    };
-
-    ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'].forEach(evName => {
-      window.addEventListener(evName, onWinPointer, { capture: true, passive: true });
-    });
-    ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(evName => {
-      window.addEventListener(evName, onWinTouch, { capture: true, passive: true });
-    });
-
-    const analyzeWindow = (Slice) => {
-      const pTracks = [];
-      const pMap = {};
-      const tTracks = [];
-      const tMap = {};
-      const gMap = {};
-      const gSkips = [];
-
-      for (let i = 0; i < Slice.length; i++) {
-        const ev = Slice[i];
-        if (ev.k === 'G') {
-          if (ev.act === 'down' || ev.act === 'up') {
-            if (!gMap[ev.pid]) gMap[ev.pid] = { down: false, accepted: 0, skipped: 0, finalPts: 0 };
-            if (ev.act === 'down') gMap[ev.pid].down = true;
-            if (ev.act === 'up') {
-              gMap[ev.pid].accepted = ev.accepted;
-              gMap[ev.pid].skipped = ev.skipped;
-              gMap[ev.pid].finalPts = ev.finalPts;
-            }
-          } else {
-            gSkips.push(ev);
-          }
-          continue;
-        }
-        if (ev.k === 'P') {
-          let tr = pMap[ev.pid];
-          if (ev.type === 'pointerdown' || !tr) {
-            tr = {
-              seq: pTracks.length + 1,
-              id: ev.pid,
-              pType: ev.pType,
-              target: ev.target,
-              maxW: ev.w || 0,
-              pts: [],
-              len: 0,
-              canceled: false
-            };
-            pMap[ev.pid] = tr;
-            pTracks.push(tr);
-          }
-          if ((ev.w || 0) > tr.maxW) tr.maxW = ev.w || 0;
-          if (ev.type === 'pointercancel') tr.canceled = true;
-          if (typeof ev.x === 'number' && typeof ev.y === 'number') {
-            if (tr.pts.length > 0) {
-              const prev = tr.pts[tr.pts.length - 1];
-              tr.len += Math.hypot(ev.x - prev.x, ev.y - prev.y);
-            }
-            tr.pts.push({ x: ev.x, y: ev.y, t: ev.perfT });
-          }
-          if (ev.type === 'pointerup' || ev.type === 'pointercancel') {
-            delete pMap[ev.pid];
-          }
-        } else if (ev.k === 'T' && Array.isArray(ev.list)) {
-          for (let j = 0; j < ev.list.length; j++) {
-            const ct = ev.list[j];
-            let tr = tMap[ct.id];
-            if (ev.type === 'touchstart' || !tr) {
-              tr = {
-                seq: tTracks.length + 1,
-                id: ct.id,
-                tType: ct.tType,
-                target: ev.target,
-                maxRx: ct.rx || 0,
-                pts: [],
-                len: 0,
-                canceled: false
-              };
-              tMap[ct.id] = tr;
-              tTracks.push(tr);
-            }
-            if ((ct.rx || 0) > tr.maxRx) tr.maxRx = ct.rx || 0;
-            if (ev.type === 'touchcancel') tr.canceled = true;
-            if (typeof ct.x === 'number' && typeof ct.y === 'number') {
-              if (tr.pts.length > 0) {
-                const prev = tr.pts[tr.pts.length - 1];
-                tr.len += Math.hypot(ct.x - prev.x, ct.y - prev.y);
-              }
-              tr.pts.push({ x: ct.x, y: ct.y, t: ev.perfT });
-            }
-            if (ev.type === 'touchend' || ev.type === 'touchcancel') {
-              delete tMap[ct.id];
-            }
-          }
-        }
-      }
-
-      return { pTracks, tTracks, gMap, gSkips };
-    };
-
-    const renderModalSnapshot = (idx) => {
-      if (idx < 0 || idx >= snapshots.length) return;
-      activeSnapIdx = idx;
-      const snap = snapshots[idx];
-      const tabsEl = document.getElementById('mainDiagTabs');
-      const verdictEl = document.getElementById('mainDiagVerdict');
-      const tbodyEl = document.getElementById('mainDiagTableBody');
-      const sCanvas = document.getElementById('mainDiagSnapCanvas');
-      if (!tabsEl || !verdictEl || !tbodyEl || !sCanvas) return;
-
-      tabsEl.innerHTML = '';
-      snapshots.forEach((s, i) => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.textContent = '#' + s.id + ' (' + s.timeLabel + ')';
-        b.style.cssText = 'padding:5px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid ' +
-          (i === activeSnapIdx ? '#1d4ed8;background:#2563eb;color:#fff;' : '#cbd5e1;background:#fff;color:#334155;');
-        b.onclick = () => renderModalSnapshot(i);
-        tabsEl.appendChild(b);
-      });
-
-      const { pTracks, tTracks, gMap, gSkips } = snap.analysis;
-      const penTracks = pTracks.filter(t => t.pType === 'pen');
-      const droppedInApp = penTracks.filter(t => {
-        const g = gMap[t.id];
-        return !g || !g.down || (t.pts.length >= 3 && g.finalPts <= 1);
-      });
-      const stylusTouches = tTracks.filter(t => t.tType === 'stylus');
-
-      if (droppedInApp.length > 0) {
-        verdictEl.style.borderColor = '#dc2626';
-        verdictEl.style.background = '#fef2f2';
-        verdictEl.innerHTML = '<b>🚨 [본체 필터/타깃 차단 감지]</b> Safari에서 <code>Pointer: pen</code> 신호는 들어왔으나 본체에서 <b>' +
-          droppedInApp.map(d => 'P#' + d.seq + '(타깃:' + d.target + ')').join(', ') + '</b> 획이 그어지지 않았습니다!';
-      } else if (stylusTouches.length > penTracks.length) {
-        verdictEl.style.borderColor = '#2563eb';
-        verdictEl.style.background = '#eff6ff';
-        verdictEl.innerHTML = '<b>🔵 [판정 A: Touch(stylus)만 존재]</b> TouchEvent에는 stylus가' + stylusTouches.length + '회 있으나 PointerEvent(pen)는 ' + penTracks.length + '회입니다.';
-      } else {
-        verdictEl.style.borderColor = '#64748b';
-        verdictEl.style.background = '#f1f5f9';
-        verdictEl.innerHTML = '<b>⚪ [판정 C: 들어온 모든 펜 이벤트 100% 정상 렌더링됨]</b> 직전 3.5초 동안 Safari가 전달한 펜 획(' + penTracks.length + '회)은 누락 없이 모두 칠판에 그려졌습니다. (씹힌 획은 Safari/iPadOS에서 이벤트를 아예 보내지 않은 상태입니다.)' +
-          (gSkips.length > 0 ? '<br>스킵 로그: ' + gSkips.map(s => s.act + '(' + s.target + ')').join(', ') : '');
-      }
-
-      tbodyEl.innerHTML = '';
-      pTracks.forEach(tr => {
-        const g = gMap[tr.id];
-        const statusStr = (tr.pType === 'pen')
-          ? (g && g.down ? ('✅ 그린점:' + g.finalPts + ' (이동통과:' + g.accepted + '/스킵:' + g.skipped + ')') : '❌ 미반영(타깃:' + tr.target + ')')
-          : (tr.canceled ? '터치(cancel)' : '터치(무시/이동)');
-        const row = document.createElement('tr');
-        row.style.borderBottom = '1px solid #e2e8f0';
-        if (tr.pType === 'touch') row.style.color = '#b91c1c';
-        row.innerHTML = [
-          '<td style="padding:5px 6px;font-weight:700;">P#' + tr.seq + ' (' + tr.pType + ')</td>',
-          '<td style="padding:5px 6px;">' + tr.target + ' / w:' + Math.round(tr.maxW) + '</td>',
-          '<td style="padding:5px 6px;">' + Math.round(tr.len) + 'px (' + tr.pts.length + '점)</td>',
-          '<td style="padding:5px 6px;font-weight:700;">' + statusStr + '</td>'
-        ].join('');
-        tbodyEl.appendChild(row);
-      });
-
-      const rect = sCanvas.parentElement.getBoundingClientRect();
-      const dpr = Math.max(1, window.devicePixelRatio || 1);
-      const cw = Math.max(240, rect.width || 420);
-      const ch = Math.max(200, rect.height || 300);
-      sCanvas.width = Math.round(cw * dpr);
-      sCanvas.height = Math.round(ch * dpr);
-      const sCtx = sCanvas.getContext('2d');
-      sCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      sCtx.clearRect(0, 0, cw, ch);
-
-      const vw = Math.max(1, window.innerWidth || 1024);
-      const vh = Math.max(1, window.innerHeight || 768);
-      const pad = 16;
-      const scale = Math.min((cw - pad * 2) / vw, (ch - pad * 2) / vh);
-      const ox = (cw - vw * scale) * 0.5;
-      const oy = (ch - vh * scale) * 0.5;
-      const tx = (x) => ox + x * scale;
-      const ty = (y) => oy + y * scale;
-
-      sCtx.strokeStyle = '#cbd5e1';
-      sCtx.strokeRect(ox, oy, vw * scale, vh * scale);
-
-      pTracks.forEach(tr => {
-        if (!tr.pts.length) return;
-        const p0 = tr.pts[0];
-        if (tr.maxW >= 20) {
-          sCtx.save();
-          sCtx.fillStyle = 'rgba(239,68,68,0.16)';
-          sCtx.beginPath();
-          sCtx.arc(tx(p0.x), ty(p0.y), Math.max(6, (tr.maxW * 0.5) * scale), 0, Math.PI * 2);
-          sCtx.fill();
-          sCtx.restore();
-        }
-        sCtx.save();
-        sCtx.strokeStyle = tr.pType === 'pen' ? '#0f172a' : '#ef4444';
-        sCtx.lineWidth = tr.pType === 'pen' ? 2.2 : 1.6;
-        sCtx.beginPath();
-        sCtx.moveTo(tx(p0.x), ty(p0.y));
-        for (let i = 1; i < tr.pts.length; i++) sCtx.lineTo(tx(tr.pts[i].x), ty(tr.pts[i].y));
-        sCtx.stroke();
-        sCtx.fillStyle = tr.pType === 'pen' ? '#0f172a' : '#b91c1c';
-        sCtx.font = 'bold 10px sans-serif';
-        sCtx.fillText('P#' + tr.seq + '(' + Math.round(tr.len) + 'px)', tx(p0.x) + 4, ty(p0.y) - 4);
-        sCtx.restore();
-      });
-    };
-
-    const btnDrop = document.getElementById('btnMainDiagDrop');
-    const btnList = document.getElementById('btnMainDiagList');
-    const btnHide = document.getElementById('btnMainDiagHide');
-    const btnClose = document.getElementById('btnMainDiagCloseModal');
-
-    if (btnDrop) {
-      btnDrop.onclick = (e) => {
-        e.stopPropagation();
-        const nowPerf = performance.now();
-        const cutoff = nowPerf - SNAP_WINDOW_MS;
-        const slice = ring.filter(it => it.perfT >= cutoff);
-        const nowD = new Date();
-        const pad2 = (n) => (n < 10 ? '0' + n : '' + n);
-        snapshots.push({
-          id: snapshots.length + 1,
-          timeLabel: pad2(nowD.getHours()) + ':' + pad2(nowD.getMinutes()) + ':' + pad2(nowD.getSeconds()),
-          analysis: analyzeWindow(slice)
-        });
-        if (btnList) btnList.textContent = '📋 (' + snapshots.length + ')';
-        modal.style.display = 'flex';
-        renderModalSnapshot(snapshots.length - 1);
-      };
-    }
-    if (btnList) {
-      btnList.onclick = (e) => {
-        e.stopPropagation();
-        if (!snapshots.length) {
-          this.showToast('아직 저장된 스냅샷이 없습니다. 필기 씹힘 직후 [🚨 씹힘!]을 눌러주세요.');
-          return;
-        }
-        modal.style.display = 'flex';
-        renderModalSnapshot(activeSnapIdx >= 0 ? activeSnapIdx : snapshots.length - 1);
-      };
-    }
-    if (btnHide) {
-      btnHide.onclick = (e) => {
-        e.stopPropagation();
-        bar.style.display = 'none';
-      };
-    }
-    if (btnClose) {
-      btnClose.onclick = (e) => {
-        e.stopPropagation();
-        modal.style.display = 'none';
-      };
-    }
   }
   }.prototype);
   delete _desc.constructor;

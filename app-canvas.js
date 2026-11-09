@@ -1449,9 +1449,6 @@
             : [{ x: bPt0.x, y: bPt0.y, p: pressure, t: recT0 }]
         };
         this.inkStrokes.push(this.currentInkStroke);
-        if (this._diagOnStrokeStart) {
-          this._diagOnStrokeStart(e, this.currentInkStroke);
-        }
         this._startInkHoldTimer();
         if (isHighlighterStroke) {
           this.render();
@@ -2259,9 +2256,6 @@
             if (!this.currentInkStroke.isHighlighter) {
               this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
             }
-          }
-          if (this._diagOnStrokeMove) {
-            this._diagOnStrokeMove(e, addedPoints, Math.max(0, events.length - addedPoints));
           }
           // 일반 펜 필기 중에는 전체 화면 재렌더링(requestRender)을 호출하지 않아 2360x1640 캔버스 복사 부하가 0.0%입니다!
           if (addedPoints > 0 && this.currentInkStroke.isHighlighter) {
@@ -3263,9 +3257,6 @@
         }
 
         // 🌟 [0ms 초고속 잉크 히스토리 푸시 & 비동기 증분 베이킹 (Zero-Blocking PointerUp)] 🌟
-        if (this._diagOnStrokeEnd) {
-          this._diagOnStrokeEnd(e, finishedStroke);
-        }
         if (finishedStroke && finishedStroke.points && finishedStroke.points.length > 0) {
           this.undoStack.push({ type: 'stroke_add', stroke: finishedStroke });
           if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
@@ -3523,9 +3514,6 @@
           if (this._shouldIgnoreCanvasTouchPointer(e)) return;
         }
         if (isClickableUI(e.target) || isAnyModalOrOverlayBlockingCanvas()) {
-          if (e.pointerType === 'pen' && this._diagRecordSkipReason) {
-            this._diagRecordSkipReason('canvasDown:UI_or_Modal', e);
-          }
           return;
         }
         if (this._uiPointerIds && e.pointerId !== undefined) {
@@ -5163,6 +5151,9 @@
     if (!st || !st._hasPendingMove || !st.latestP1 || !st.latestP2) return false;
     st._hasPendingMove = false;
     if (this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) return false;
+    if (this._pendingIncrementalBakeStrokes && this._pendingIncrementalBakeStrokes.length > 0 && typeof this._flushPendingIncrementalBakes === 'function') {
+      this._flushPendingIncrementalBakes();
+    }
 
     const cRect = this.canvasRect || (this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 });
     const x1 = st.latestP1.x - cRect.left;
