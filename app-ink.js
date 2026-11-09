@@ -1324,6 +1324,11 @@
       'ink-cursor-grab',
       'ink-cursor-grabbing'
     );
+    if (this.isWaitingForFilePicker) {
+      this.canvas.style.cursor = 'default';
+      if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
+      return;
+    }
     if (this.isGraphSnapMode || this.isPdfToGraphCropMode) {
       this.canvas.classList.add('graph-snap-crosshair');
       this.canvas.style.cursor = 'crosshair';

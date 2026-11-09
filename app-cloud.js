@@ -640,20 +640,34 @@
       };
     }
     if (btnImportFile && inpImportFile) {
+      btnImportFile.addEventListener('pointerenter', () => {
+        if (typeof this._prewarmDefaultCursorOnButtonHover === 'function') this._prewarmDefaultCursorOnButtonHover();
+      });
+      btnImportFile.addEventListener('pointerdown', () => {
+        if (typeof this._prewarmDefaultCursorOnButtonHover === 'function') this._prewarmDefaultCursorOnButtonHover();
+      });
       btnImportFile.onclick = () => {
         this.isWaitingForFilePicker = true;
+        this._filePickerOpenedAt = performance.now();
         if (typeof this._restoreDefaultCursorForFilePicker === 'function') {
           this._restoreDefaultCursorForFilePicker();
         }
         inpImportFile.value = '';
         inpImportFile.click();
       };
+      inpImportFile.addEventListener('cancel', () => {
+        if (typeof this._finishWaitingForFilePicker === 'function') {
+          this._finishWaitingForFilePicker();
+        }
+      });
       inpImportFile.onchange = (e) => {
-        this.isWaitingForFilePicker = false;
-        if (this._uiPointerIds) this._uiPointerIds.clear();
+        if (typeof this._finishWaitingForFilePicker === 'function') {
+          this._finishWaitingForFilePicker();
+        } else {
+          this.isWaitingForFilePicker = false;
+        }
         const file = e.target.files && e.target.files[0];
         if (file) this.importGraphlyDeckFile(file);
-        this.updateInkCursor();
       };
     }
 

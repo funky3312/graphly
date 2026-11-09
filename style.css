@@ -4059,6 +4059,13 @@ canvas.ink-cursor-eraser {
   cursor: none !important;
 }
 
+/* 파일 열기 창(OS 탐색기) 오픈 시 cursor: none 상속으로 인한 마우스 포인터 증발 원천 차단 */
+body.file-picker-open,
+body.file-picker-open *,
+body.file-picker-open canvas {
+  cursor: default !important;
+}
+
 canvas.ink-cursor-lasso {
   cursor: crosshair !important;
 }

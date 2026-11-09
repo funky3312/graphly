@@ -3506,6 +3506,17 @@
       }, { capture: true });
 
       this.canvas.addEventListener('pointerdown', (e) => {
+        if (this.isWaitingForFilePicker) {
+          if (typeof this._finishWaitingForFilePicker === 'function') {
+            this._finishWaitingForFilePicker();
+          } else {
+            this.isWaitingForFilePicker = false;
+          }
+        }
+        if (this._needsInkCursorRefreshOnMove) {
+          this._needsInkCursorRefreshOnMove = false;
+          this.updateInkCursor();
+        }
         if (e.cancelable !== false) {
           e.preventDefault();
         }
@@ -3579,13 +3590,7 @@
         this._isPointerInsideWindow = true;
         this._lastPointerEvent = e;
         if (this.isWaitingForFilePicker) {
-          if ((performance.now() - (this._filePickerOpenedAt || 0) > 600) && document.hasFocus && document.hasFocus()) {
-            this.isWaitingForFilePicker = false;
-            if (this._uiPointerIds) this._uiPointerIds.clear();
-            this.updateInkCursor();
-          } else {
-            return;
-          }
+          return;
         }
 
         if (this.isDraggingPillRemote || isAnyModalOrOverlayBlockingCanvas()) {
@@ -3656,6 +3661,10 @@
           return;
         }
 
+        if (this._needsInkCursorRefreshOnMove) {
+          this._needsInkCursorRefreshOnMove = false;
+          this.updateInkCursor();
+        }
         handleMove(e);
       }, { capture: true, passive: false });
 

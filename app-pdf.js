@@ -19,11 +19,28 @@
     const btnOpenAnother = document.getElementById('btnPdfOpenAnother');
     const btnReturnToBoard = document.getElementById('btnReturnToBoard');
 
-    const restoreDefaultCursorForFilePicker = () => {
-      if (this._uiPointerIds) this._uiPointerIds.clear();
+    const prewarmDefaultCursorOnButtonHover = () => {
       if (this.virtualStylusEl && !this.isAudioPlaying) {
         this.virtualStylusEl.style.display = 'none';
       }
+      if (this.canvas) {
+        this.canvas.classList.remove(
+          'ink-cursor-pen',
+          'ink-cursor-highlighter',
+          'ink-cursor-eraser'
+        );
+        this.canvas.style.cursor = 'default';
+      }
+      this._needsInkCursorRefreshOnMove = true;
+    };
+    this._prewarmDefaultCursorOnButtonHover = prewarmDefaultCursorOnButtonHover;
+
+    const restoreDefaultCursorForFilePicker = () => {
+      if (this._uiPointerIds) this._uiPointerIds.clear();
+      if (document.body) {
+        document.body.classList.add('file-picker-open');
+      }
+      prewarmDefaultCursorOnButtonHover();
       // OS 파일 탐색기 창이 떠 있는 동안 뒤쪽 캔버스 애니메이션 루프 일시정지 (GPU/CPU 경합 방지)
       if (this.pulseAnimId) {
         cancelAnimationFrame(this.pulseAnimId);
@@ -37,6 +54,21 @@
         cancelAnimationFrame(this._mainLaserRafId);
         this._mainLaserRafId = null;
       }
+      if (document.body) {
+        void document.body.offsetHeight;
+      }
+    };
+    this._restoreDefaultCursorForFilePicker = restoreDefaultCursorForFilePicker;
+
+    const finishWaitingForFilePicker = () => {
+      this.isWaitingForFilePicker = false;
+      if (this._uiPointerIds) this._uiPointerIds.clear();
+      if (document.body) {
+        document.body.classList.remove('file-picker-open');
+      }
+      // 파일창 닫힌 직후 마우스를 움직이기 전까지는 OS 기본 화살표 커서를 유지하고,
+      // 캔버스 위로 마우스가 움직이는 즉시(pointermove) 가상 펜 커서로 자연스럽게 전환합니다.
+      this._needsInkCursorRefreshOnMove = true;
       if (this.canvas) {
         this.canvas.classList.remove(
           'ink-cursor-pen',
@@ -46,20 +78,7 @@
         this.canvas.style.cursor = 'default';
       }
     };
-    this._restoreDefaultCursorForFilePicker = restoreDefaultCursorForFilePicker;
-
-    const finishWaitingForFilePicker = () => {
-      if (!this.isWaitingForFilePicker) return;
-      this.isWaitingForFilePicker = false;
-      if (this._uiPointerIds) this._uiPointerIds.clear();
-      this.updateInkCursor();
-    };
-
-    window.addEventListener('focus', () => {
-      if (this.isWaitingForFilePicker && (performance.now() - (this._filePickerOpenedAt || 0) > 250)) {
-        setTimeout(finishWaitingForFilePicker, 80);
-      }
-    });
+    this._finishWaitingForFilePicker = finishWaitingForFilePicker;
 
     const triggerFileOpen = (preserveReplaceFlag = false) => {
       if (fileInput) {
@@ -78,6 +97,8 @@
     this.triggerLocalFileExplorer = triggerFileOpen;
 
     if (btnImport) {
+      btnImport.addEventListener('pointerenter', prewarmDefaultCursorOnButtonHover);
+      btnImport.addEventListener('pointerdown', prewarmDefaultCursorOnButtonHover);
       btnImport.onclick = () => {
         if (this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page') {
           const modeName = this.lessonTeachingMode === 'page' ? '페이지 모드' : '캡처 모드';
@@ -115,6 +136,8 @@
     }
 
     if (btnOpenAnother) {
+      btnOpenAnother.addEventListener('pointerenter', prewarmDefaultCursorOnButtonHover);
+      btnOpenAnother.addEventListener('pointerdown', prewarmDefaultCursorOnButtonHover);
       btnOpenAnother.onclick = (e) => {
         if (e && e.stopPropagation) e.stopPropagation();
         // [다음 캡처] 클릭으로 PDF 모달이 열리는 순간 같은 좌표에 위치한 [다른 파일 열기]가 고스트 클릭/더블탭으로 눌리는 현상 원천 차단!
@@ -131,11 +154,9 @@
         finishWaitingForFilePicker();
       });
       fileInput.onchange = async (e) => {
-        this.isWaitingForFilePicker = false;
-        if (this._uiPointerIds) this._uiPointerIds.clear();
+        finishWaitingForFilePicker();
         const rawFiles = e.target.files ? Array.from(e.target.files) : [];
         if (rawFiles.length === 0) {
-          this.updateInkCursor();
           return;
         }
         const modalCloud = document.getElementById('modalCloudHub');
@@ -156,7 +177,6 @@
         // 1) 이미지 파일(1개 또는 N개 선택) 불러오기 -> 슬라이드당 1문제씩 펼쳐진 상태(▾)로 즉시 배치!
         if (imageFiles.length >= 1) {
           await this.loadImagesOnePerSlide(imageFiles);
-          this.updateInkCursor();
           return;
         }
 
@@ -164,7 +184,6 @@
         const graphlyFile = rawFiles.find(f => f.name && /\.(graphly|json|html|htm)$/i.test(f.name));
         if (graphlyFile) {
           this.importGraphlyDeckFile(graphlyFile);
-          this.updateInkCursor();
           return;
         }
 
@@ -183,11 +202,9 @@
     // 파일 선택창 취소 시에도 상태 보호 및 커서 복원
     window.addEventListener('focus', () => {
       if (this._uiPointerIds) this._uiPointerIds.clear();
-      if (this.isWaitingForFilePicker) {
+      if (this.isWaitingForFilePicker && (performance.now() - (this._filePickerOpenedAt || 0) > 250)) {
         setTimeout(() => {
-          this.isWaitingForFilePicker = false;
-          if (this._uiPointerIds) this._uiPointerIds.clear();
-          this.updateInkCursor();
+          finishWaitingForFilePicker();
           if (this.wasFullscreenBeforeFile && !document.fullscreenElement) {
             this.syncFullscreenButtonUI(true);
           }
