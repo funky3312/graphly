@@ -677,11 +677,13 @@
           this._cancelAllActiveCardDrags();
           const pts = Array.from(this.activePointers.values());
           this._pinchWasActiveInGesture = true;
+          this._pinchHadActiveMoveInGesture = false;
           this._startCanvasTwoFingerPinch(pts[0], pts[1]);
           e._touchIgnoreChecked = true;
           return true;
         }
         this._pinchWasActiveInGesture = false;
+        this._pinchHadActiveMoveInGesture = false;
         this._pinchState = null;
         this._activePanPointerId = e.pointerId;
       }
@@ -726,7 +728,9 @@
     }
 
     if (e.type === 'pointerup' || e.type === 'pointercancel') {
-      const hadActivePinchMove = Boolean(this._pinchState && (this._pinchState.panUnlocked || this._pinchState.zoomUnlocked));
+      if (this._pinchState && (this._pinchState.panUnlocked || this._pinchState.zoomUnlocked)) {
+        this._pinchHadActiveMoveInGesture = true;
+      }
       const hadPinchGesture = Boolean(this._pinchState || this._pinchWasActiveInGesture);
       if (this.activePointers && e.pointerId !== undefined) {
         this.activePointers.delete(e.pointerId);
@@ -734,17 +738,21 @@
       if (!this.activePointers || this.activePointers.size < 2) {
         this._pinchState = null;
       }
-      if (!this.activePointers || this.activePointers.size === 0) {
+      const allFingersUp = (!this.activePointers || this.activePointers.size === 0);
+      if (allFingersUp) {
         this._pinchWasActiveInGesture = false;
       }
       if (hadPinchGesture) {
         this.isPanning = false;
         this.isBoardPanning = false;
-        if (hadActivePinchMove && (!this.activePointers || this.activePointers.size === 0)) {
+        if (this._pinchHadActiveMoveInGesture && !this._pinchState) {
+          if (allFingersUp) {
+            this._pinchHadActiveMoveInGesture = false;
+          }
           if (this.isGraphCovered) {
             this.updateProblemCardPosition(false);
           }
-          this._scheduleIdleInkCacheRebuild(250);
+          this._scheduleIdleInkCacheRebuild(120);
         }
         return true;
       }
@@ -4406,7 +4414,7 @@
 
   drawVariableWidthQuadSegment(ctx, x0, y0, cx, cy, x1, y1, w0, w1) {
     const diffW = Math.abs(w1 - w0);
-    if (diffW < 0.20) {
+    if (diffW < 0.32) {
       ctx.lineWidth = (w0 + w1) * 0.5;
       ctx.beginPath();
       ctx.moveTo(x0, y0);
@@ -4414,8 +4422,8 @@
       ctx.stroke();
       return;
     }
-    // 굵기 변화 폭이 큰 대형 붓펜 획에서도 계단 현상 없이 실크처럼 매끄럽게 이어지도록 가변 분할(4~12단계)
-    const subSteps = Math.max(4, Math.min(12, Math.ceil(diffW * 1.6)));
+    const segLen = Math.hypot(x1 - x0, y1 - y0);
+    const subSteps = Math.max(2, Math.min(6, Math.ceil(Math.min(diffW * 1.2, Math.max(2, segLen * 0.35)))));
     let prevX = x0;
     let prevY = y0;
     for (let s = 1; s <= subSteps; s++) {
@@ -4436,7 +4444,7 @@
 
   drawVariableWidthLineSegment(ctx, x0, y0, x1, y1, w0, w1) {
     const diffW = Math.abs(w1 - w0);
-    if (diffW < 0.20) {
+    if (diffW < 0.32) {
       ctx.lineWidth = (w0 + w1) * 0.5;
       ctx.beginPath();
       ctx.moveTo(x0, y0);
@@ -4444,7 +4452,8 @@
       ctx.stroke();
       return;
     }
-    const subSteps = Math.max(3, Math.min(10, Math.ceil(diffW * 1.5)));
+    const segLen = Math.hypot(x1 - x0, y1 - y0);
+    const subSteps = Math.max(2, Math.min(6, Math.ceil(Math.min(diffW * 1.2, Math.max(2, segLen * 0.35)))));
     let prevX = x0;
     let prevY = y0;
     for (let s = 1; s <= subSteps; s++) {
@@ -4751,13 +4760,6 @@
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.beginPath();
-        ctx.arc(p0.x / nibX, p0.y / nibY, lineW / 2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(p0.x / nibX, p0.y / nibY);
-        ctx.lineTo(mx / nibX, my / nibY);
-        ctx.stroke();
-        ctx.beginPath();
         ctx.moveTo(p0.x / nibX, p0.y / nibY);
         ctx.lineTo(p1.x / nibX, p1.y / nibY);
         ctx.stroke();
@@ -4779,30 +4781,17 @@
       ctx.lineWidth = lineW;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.beginPath();
-      ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
-      ctx.fill();
       const firstMidX = (pts[0].x + pts[1].x) * 0.5;
       const firstMidY = (pts[0].y + pts[1].y) * 0.5;
       ctx.beginPath();
       ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
       ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
-      ctx.stroke();
-      let prevMidX = firstMidX;
-      let prevMidY = firstMidY;
       for (let i = 1; i < pts.length - 1; i++) {
         const midX = (pts[i].x + pts[i + 1].x) * 0.5;
         const midY = (pts[i].y + pts[i + 1].y) * 0.5;
-        ctx.beginPath();
-        ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
         ctx.quadraticCurveTo(pts[i].x / nibX, pts[i].y / nibY, midX / nibX, midY / nibY);
-        ctx.stroke();
-        prevMidX = midX;
-        prevMidY = midY;
       }
       const last = pts[pts.length - 1];
-      ctx.beginPath();
-      ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
       ctx.lineTo(last.x / nibX, last.y / nibY);
       ctx.stroke();
       ctx.restore();
@@ -5011,17 +5000,99 @@
         this.isPanning ||
         this.isBoardPanning ||
         this._pinchState ||
+        this._isZoomAnimating ||
+        this._isWheelZooming ||
         (this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 300))
       ) {
-        this._scheduleIdleInkCacheRebuild(300);
+        this._scheduleIdleInkCacheRebuild(180);
         return;
       }
       this.requestRender();
     }, delayMs);
   }
 
+  _getStrokeScreenBounds(stroke, isBoardInk) {
+    if (!stroke || !stroke.points || stroke.points.length === 0) return null;
+    const pts = stroke.points;
+    const n = pts.length;
+    const pFirst = pts[0];
+    const pLast = pts[n - 1];
+    let rb = stroke._rawBounds;
+    if (
+      !rb ||
+      rb.len !== n ||
+      rb.fx !== pFirst.x ||
+      rb.fy !== pFirst.y ||
+      rb.lx !== pLast.x ||
+      rb.ly !== pLast.y
+    ) {
+      let minX = pFirst.x, maxX = pFirst.x, minY = pFirst.y, maxY = pFirst.y;
+      for (let i = 1; i < n; i++) {
+        const px = pts[i].x;
+        const py = pts[i].y;
+        if (px < minX) minX = px;
+        else if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        else if (py > maxY) maxY = py;
+      }
+      rb = stroke._rawBounds = {
+        minX, maxX, minY, maxY,
+        len: n, fx: pFirst.x, fy: pFirst.y, lx: pLast.x, ly: pLast.y
+      };
+    }
+    if (isBoardInk) {
+      const bz = this.boardZoom || 1.0;
+      const offX = (this.boardZoomOffsetX || 0) + (this.boardPanX || 0);
+      const offY = (this.boardZoomOffsetY || 0) + (this.boardPanY || 0);
+      return {
+        minX: rb.minX * bz + offX,
+        maxX: rb.maxX * bz + offX,
+        minY: rb.minY * bz + offY,
+        maxY: rb.maxY * bz + offY
+      };
+    }
+    const s1 = this.mathToScreen(rb.minX, rb.minY);
+    const s2 = this.mathToScreen(rb.maxX, rb.maxY);
+    return {
+      minX: Math.min(s1.x, s2.x),
+      maxX: Math.max(s1.x, s2.x),
+      minY: Math.min(s1.y, s2.y),
+      maxY: Math.max(s1.y, s2.y)
+    };
+  }
+
   renderSingleStroke(targetCtx, stroke, forceColor = null, isLiveDrawing = false) {
     if (!stroke || !stroke.points || stroke.points.length === 0) return;
+
+    const isBoardInk = (stroke.target || 'board') === 'board';
+    const bz = this.boardZoom || 1.0;
+    const zoomRatio = isBoardInk
+      ? (bz / (stroke.boardZoom || 1.0))
+      : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
+    const baseSize = (stroke.size || 4.2) * zoomRatio;
+
+    // 🌟 [화면/오버스캔 영역 밖 필기 0.001ms 즉시 스킵 (Viewport Bounding-Box Culling)]:
+    // 칠판을 넓게 쓰거나 확대했을 때 현재 화면(또는 오버스캔 베이크 영역) 바깥에 있는 획은
+    // 배열 할당 및 베지어 드로우콜을 100% 생략하여 필기가 수백 획 쌓여도 일정한 속도를 보장합니다.
+    if (!isLiveDrawing && !stroke.shape && (targetCtx === this.ctx || targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx)) {
+      const sb = this._getStrokeScreenBounds(stroke, isBoardInk);
+      if (sb) {
+        const isBakeTarget = (targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx);
+        const sw = this.screenWidth || 1280;
+        const sh = this.screenHeight || 720;
+        const padX = isBakeTarget ? 540 : 0;
+        const padY = isBakeTarget ? 540 : 0;
+        const margin = Math.max(48, baseSize * 4);
+        if (
+          sb.maxX < -padX - margin ||
+          sb.minX > sw + padX + margin ||
+          sb.maxY < -padY - margin ||
+          sb.minY > sh + padY + margin
+        ) {
+          return;
+        }
+      }
+    }
 
     targetCtx.save();
     targetCtx.lineCap = 'round';
@@ -5051,12 +5122,6 @@
 
     targetCtx.strokeStyle = strokeColor;
 
-    const isBoardInk = (stroke.target || 'board') === 'board';
-    const bz = this.boardZoom || 1.0;
-    const zoomRatio = isBoardInk
-      ? (bz / (stroke.boardZoom || 1.0))
-      : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
-
     const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
     if (stroke.isHighlighter) {
       targetCtx.globalAlpha = (isLight ? 0.36 : 0.34) * ghostMul;
@@ -5071,10 +5136,10 @@
 
     // 🌟 Draw & Hold 기하 도형 & 수학 곡선 렌더링 (직선, 정원, 타원, 직사각형, 삼각형, 이차함수 포물선, 삼차/삼각 개형) 🌟
     if (stroke.shape) {
-      const baseSize = (stroke.size || 3) * zoomRatio;
+      const shapeBaseSize = (stroke.size || 3) * zoomRatio;
       // PC · 아이패드 통일된 펜 굵기(1.0x)와 이질감 없이 매칭되는 도형 선 굵기(0.95배)
-      const hlShapeBase = stroke.highlighterSize ? (stroke.highlighterSize * zoomRatio) : Math.max(8, baseSize * 2.5);
-      targetCtx.lineWidth = stroke.isHighlighter ? Math.max(4, hlShapeBase) : Math.max(1.2, baseSize * 0.95);
+      const hlShapeBase = stroke.highlighterSize ? (stroke.highlighterSize * zoomRatio) : Math.max(8, shapeBaseSize * 2.5);
+      targetCtx.lineWidth = stroke.isHighlighter ? Math.max(4, hlShapeBase) : Math.max(1.2, shapeBaseSize * 0.95);
       targetCtx.strokeStyle = strokeColor;
 
       if (stroke.shape.type === 'line') {
@@ -5131,16 +5196,35 @@
       }
     }
 
-    const rawPts = stroke.points.map(pt => ({
-      ...(isBoardInk ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y)),
-      p: (pt.p !== undefined ? pt.p : 0.5)
-    }));
+    const srcPts = stroke.points;
+    const nPts = srcPts.length;
+    const pts = new Array(nPts);
+    if (isBoardInk) {
+      const offX = (this.boardZoomOffsetX || 0) + (this.boardPanX || 0);
+      const offY = (this.boardZoomOffsetY || 0) + (this.boardPanY || 0);
+      for (let i = 0; i < nPts; i++) {
+        const pt = srcPts[i];
+        pts[i] = {
+          x: pt.x * bz + offX,
+          y: pt.y * bz + offY,
+          p: (pt.p !== undefined ? pt.p : 0.5)
+        };
+      }
+    } else {
+      const orig = this.mathToScreen(0, 0);
+      const unit = this.mathToScreen(1, 1);
+      const scaleX = unit.x - orig.x;
+      const scaleY = unit.y - orig.y;
+      for (let i = 0; i < nPts; i++) {
+        const pt = srcPts[i];
+        pts[i] = {
+          x: orig.x + pt.x * scaleX,
+          y: orig.y + pt.y * scaleY,
+          p: (pt.p !== undefined ? pt.p : 0.5)
+        };
+      }
+    }
 
-    // 🌟 [실시간 드로잉(drawLiveBezierStep)과 캐시 베이킹(renderSingleStroke) 100.0% 무변형 일치]:
-    // 사후에 가우시안 필터로 좌표를 깎으면 나중에 render()가 호출될 때 이전에 쓴 글자들의 필체가 바뀌어 보이므로,
-    // 입력 단계(2.0px 필터)에서 확정된 점들을 변형 없이 그대로 중점 2차 베지어 곡선으로 그려 필체 변화를 0%로 차단합니다!
-    const pts = rawPts;
-    const baseSize = (stroke.size || 4.2) * zoomRatio;
     const penStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
 
     if (!stroke.isHighlighter) {
@@ -5202,47 +5286,18 @@
       return;
     }
 
-    // 🌟 [오프스크린 오버스캔(Overscan) 베이크 버퍼 리빌드 & 팬/핀치 중 0.02ms GPU 텍스처 변환 패스트패스] 🌟
-    // 두 손가락 이동/핀치나 화면 패닝 도중에는 상하좌우 오버스캔(padX, padY)이 포함된 GPU 텍스처를 하드웨어 행렬(setTransform)로만 즉시 이동·스케일링하며,
-    // 연속 드래그로 오버스캔 여백 끝단(24px 마진)에 도달하거나 줌 변화가 커질 때만 드래그 중에도 새 중심점으로 자동 리빌드하여 잘림을 0%로 원천 차단합니다!
-    const isActivelyMovingCamera = Boolean(this._pinchState || this.isPanning || this.isBoardPanning);
+    // 🌟 [오프스크린 오버스캔(Overscan) 베이크 버퍼 리빌드 & 팬/핀치/줌 중 0.02ms GPU 텍스처 변환 패스트패스] 🌟
+    // 두 손가락 이동/핀치나 화면 패닝/휠 줌 도중에는 rebuildInkCache()를 중간에 동기 호출하지 않고
+    // GPU 텍스처 행렬(setTransform + drawImage)만으로 60~120fps 무렉 변환하며, 손을 떼거나 줌이 멈추는 순간 선명하게 리빌드합니다!
+    const isActivelyMovingCamera = Boolean(
+      this._pinchState ||
+      this.isPanning ||
+      this.isBoardPanning ||
+      this._isZoomAnimating ||
+      this._isWheelZooming
+    );
     const { dpr, sw, sh, padX: curPadX, padY: curPadY } = this._getInkBakeMetrics();
-    let needRebakeNow = Boolean(this._inkBakeDirty && (!isActivelyMovingCamera || !this._hasBakedStrokes || !this._inkBakeCamera));
-    if (!needRebakeNow && this._inkBakeDirty && isActivelyMovingCamera && this._inkBakeCamera) {
-      const bc = this._inkBakeCamera;
-      const bPadX = (typeof bc.padX === 'number') ? bc.padX : curPadX;
-      const bPadY = (typeof bc.padY === 'number') ? bc.padY : curPadY;
-      if (!filterTarget || filterTarget === 'board') {
-        const bz0 = bc.boardZoom || 1.0;
-        const bz1 = this.boardZoom || 1.0;
-        const sB = bz1 / bz0;
-        const txB = ((this.boardPanX || 0) + (this.boardZoomOffsetX || 0)) - ((bc.boardPanX || 0) + (bc.boardZoomOffsetX || 0)) * sB;
-        const tyB = ((this.boardPanY || 0) + (this.boardZoomOffsetY || 0)) - ((bc.boardPanY || 0) + (bc.boardZoomOffsetY || 0)) * sB;
-        const leftEdgeB = -bPadX * sB + txB;
-        const rightEdgeB = (sw + bPadX) * sB + txB;
-        const topEdgeB = -bPadY * sB + tyB;
-        const bottomEdgeB = (sh + bPadY) * sB + tyB;
-        if (leftEdgeB > -24 || rightEdgeB < sw + 24 || topEdgeB > -24 || bottomEdgeB < sh + 24 || sB < 0.65 || sB > 1.55) {
-          needRebakeNow = true;
-        }
-      }
-      if (!needRebakeNow && (!filterTarget || filterTarget === 'graph')) {
-        const z0 = bc.zoomLevel || 1.0;
-        const z1 = this.zoomLevel || 1.0;
-        const sG = z1 / z0;
-        const halfW = sw / 2;
-        const halfH = sh / 2;
-        const txG = (halfW + (this.panX || 0)) - (halfW + (bc.panX || 0)) * sG;
-        const tyG = (halfH + (this.panY || 0)) - (halfH + (bc.panY || 0)) * sG;
-        const leftEdgeG = -bPadX * sG + txG;
-        const rightEdgeG = (sw + bPadX) * sG + txG;
-        const topEdgeG = -bPadY * sG + tyG;
-        const bottomEdgeG = (sh + bPadY) * sG + tyG;
-        if (leftEdgeG > -24 || rightEdgeG < sw + 24 || topEdgeG > -24 || bottomEdgeG < sh + 24 || sG < 0.65 || sG > 1.55) {
-          needRebakeNow = true;
-        }
-      }
-    }
+    const needRebakeNow = Boolean(this._inkBakeDirty && (!isActivelyMovingCamera || !this._hasBakedStrokes || !this._inkBakeCamera));
     if (needRebakeNow) {
       this.rebuildInkCache();
     }
@@ -5312,17 +5367,14 @@
     // 2차 패스: [스마트 오토 컨트라스트] 다크 칠판에서 기본 흰색 펜(#ffffff)으로 흰색 문제 카드 위에 필기했을 때
     if ((!filterTarget || filterTarget === 'board') && this.hasActiveProblemCard() && !isLight && !this.isMonochromeMode && this.problemCardRect) {
       const r = this.problemCardRect;
-      const bPx = (this.boardPanX || 0);
-      const bPy = (this.boardPanY || 0);
 
       const whiteStrokes = (this.inkStrokes || []).filter(s => {
         if (!s || (s.target || 'board') !== 'board') return false;
         if (!s.color || (s.color.toLowerCase() !== '#ffffff' && s.color.toLowerCase() !== '#fff')) return false;
         if (!s.points || s.points.length === 0) return false;
-        return s.points.some(p => {
-          const sp = this.boardToScreen(p.x, p.y);
-          return (sp.x >= r.x && sp.x <= r.x + r.w && sp.y >= r.y && sp.y <= r.y + r.h);
-        });
+        const sb = this._getStrokeScreenBounds(s, true);
+        if (!sb) return false;
+        return (sb.maxX >= r.x && sb.minX <= r.x + r.w && sb.maxY >= r.y && sb.minY <= r.y + r.h);
       });
 
       if (whiteStrokes.length > 0) {

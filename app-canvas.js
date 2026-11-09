@@ -4146,6 +4146,13 @@
         // 🌟 [대표님 피드백 반영]: 판서 모드에서 휠을 굴리면 문제/그래프 카드는 그대로 두고 판서(글씨·도형)만 마우스 커서 기준으로 확대/축소!
         const pos = getPos(e);
         const factor = e.deltaY < 0 ? 1.12 : (1 / 1.12);
+        this._isWheelZooming = true;
+        if (this._wheelZoomIdleTimer) clearTimeout(this._wheelZoomIdleTimer);
+        this._wheelZoomIdleTimer = setTimeout(() => {
+          this._wheelZoomIdleTimer = null;
+          this._isWheelZooming = false;
+          this.requestRender();
+        }, 160);
         this.setBoardZoom((this.boardZoom || 1.0) * factor, pos.x, pos.y);
         this.requestRender();
         return;
@@ -5195,6 +5202,7 @@
     if (!st.panUnlocked && !st.zoomUnlocked) {
       return false;
     }
+    this._pinchHadActiveMoveInGesture = true;
 
     const dx = midX - st.startMidX;
     const dy = midY - st.startMidY;
