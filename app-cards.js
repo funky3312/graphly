@@ -5461,13 +5461,8 @@
     const ensureMathFn = () => {
       cardStrokes.forEach(st => {
         if (!st || !Array.isArray(st.points)) return;
-        let forcePolished = false;
-        if (!st.isShape && !st.isHighlighter && !st._jitterPolished && st.points.length >= 3) {
-          this._polishCardStrokeMicroJitter(st, effW, effH);
-          forcePolished = true;
-        }
         st.points.forEach(pt => {
-          if (pt && (forcePolished || typeof pt.mx !== 'number' || typeof pt.my !== 'number')) {
+          if (pt && (typeof pt.mx !== 'number' || typeof pt.my !== 'number')) {
             const m = this.screenToMath((pt.nx || 0) * effW, (pt.ny || 0) * effH);
             pt.mx = m.x;
             pt.my = m.y;
@@ -5626,17 +5621,8 @@
     const aspect = isPrimary ? (this.graphCardAspect || 0.82) : ((cardRef && cardRef.aspect) || 0.82);
     const cardW = Math.max(160, Math.round((widget && parseFloat(widget.style.width)) || (bodyEl && bodyEl.clientWidth) || 430));
     const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
-    if (Array.isArray(cardStrokes) && cardStrokes.length > 0) {
-      let anyPolished = false;
-      cardStrokes.forEach(cs => {
-        if (cs && !cs.isShape && !cs.isHighlighter && !cs._jitterPolished && Array.isArray(cs.points) && cs.points.length >= 3) {
-          this._polishCardStrokeMicroJitter(cs, cardW, cardH);
-          anyPolished = true;
-        }
-      });
-      this._ensurePipCardInkMathCoords(cardRef, anyPolished);
-    } else {
-      this._ensurePipCardInkMathCoords(cardRef);
+    this._ensurePipCardInkMathCoords(cardRef);
+    if (!Array.isArray(cardStrokes) || cardStrokes.length === 0) {
       return [];
     }
     const snap = this._getMutablePipCardSnapshot(cardRef);

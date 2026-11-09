@@ -4419,140 +4419,91 @@
     }
   }
 
-  // 🌟 [문제/그래프 카드 명필 스트림라인 수집기: WebKit Coalesced 중복/역순 오염 원천 차단 + 실시간 2차 인플레이스 스트림라인 보정]
-  // - iPadOS Safari(WebKit)에서 getCoalescedEvents()가 이전 프레임의 과거 샘플을 중복/역순으로 섞어 반환하여
-  //   글씨가 지그재그(Z자 스파이크)로 삐뚤어지던 현상을 원천 차단하기 위해 메인 칠판 표준(단일 확정 이벤트 + 실시간 2차 인플레이스 스트림라인)으로 통일!
-  // - 창모드에서 쓴 stroke.points 자체에 스무딩된 좌표를 직접 기록하여, 전체화면 그래프 모드([⛶])로 2.75배 확대 전환 시에도
-  //   삐뚤거림 없이 메인 칠판 필기와 100.000% 동일한 매끄러운 곡선이 유지됩니다!
+  // 🌟 [문제/그래프 카드 표준 샘플 수집(getCoalescedEvents) + 경량 1차 스트림라인]:
   _appendCardStrokeSamplesFromMoveEvent(stroke, e, rect, w, h, recT) {
     if (!stroke || !Array.isArray(stroke.points) || !e) return false;
     const rLeft = rect ? rect.left : 0;
     const rTop = rect ? rect.top : 0;
     const rw = Math.max(1, w || (rect && rect.width) || 1);
     const rh = Math.max(1, h || (rect && rect.height) || 1);
-    const rawNx = Math.max(0, Math.min(1, (e.clientX - rLeft) / rw));
-    const rawNy = Math.max(0, Math.min(1, (e.clientY - rTop) / rh));
-    const rawPxX = rawNx * rw;
-    const rawPxY = rawNy * rh;
+    const minDist = (e.pointerType === 'pen') ? 0.65 : 1.0;
 
-    const prevPt = stroke.points[stroke.points.length - 1];
-    const lastRaw = stroke._lastRawPx || (prevPt ? { x: prevPt.nx * rw, y: prevPt.ny * rh } : null);
-    const minDist = (e.pointerType === 'mouse') ? 1.15 : 0.45;
-    if (lastRaw) {
-      const rawStepDist = Math.hypot(rawPxX - lastRaw.x, rawPxY - lastRaw.y);
-      if (rawStepDist < minDist) return false;
-    }
+    const coalesced = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null;
+    const events = (coalesced && coalesced.length > 0) ? coalesced : [e];
 
-    stroke._prevRawPx = lastRaw ? { x: lastRaw.x, y: lastRaw.y } : { x: rawPxX, y: rawPxY };
-    stroke._lastRawPx = { x: rawPxX, y: rawPxY };
-    stroke._inPlaceStreamlined = true;
-    stroke._jitterPolished = false;
+    const lastPtBeforeFrame = stroke.points[stroke.points.length - 1];
+    const startFrameX = lastPtBeforeFrame ? lastPtBeforeFrame.nx * rw : (e.clientX - rLeft);
+    const startFrameY = lastPtBeforeFrame ? lastPtBeforeFrame.ny * rh : (e.clientY - rTop);
+    const frameDx = (e.clientX - rLeft) - startFrameX;
+    const frameDy = (e.clientY - rTop) - startFrameY;
+    const frameDist = Math.hypot(frameDx, frameDy);
 
-    let sx = rawPxX;
-    let sy = rawPxY;
-    const ptsLen = stroke.points.length;
+    let added = false;
+    for (let i = 0; i < events.length; i++) {
+      const ev = events[i];
+      const rawNx = Math.max(0, Math.min(1, (ev.clientX - rLeft) / rw));
+      const rawNy = Math.max(0, Math.min(1, (ev.clientY - rTop) / rh));
+      const rawPxX = rawNx * rw;
+      const rawPxY = rawNy * rh;
 
-    if (!stroke.isHighlighter && ptsLen >= 1) {
-      const pPrev1 = stroke.points[ptsLen - 1];
-      const p1x = pPrev1.nx * rw;
-      const p1y = pPrev1.ny * rh;
-      const stepD = Math.hypot(rawPxX - p1x, rawPxY - p1y);
-      const blurBoost = Math.min(1.0, (stroke.softBlur || this.inkSoftBlur || 0) / 5.0);
+      const prevPt = stroke.points[stroke.points.length - 1];
+      if (events.length > 1 && i < events.length - 1 && frameDist > 1.5 && prevPt) {
+        const stepVx = rawPxX - prevPt.nx * rw;
+        const stepVy = rawPxY - prevPt.ny * rh;
+        if (stepVx * frameDx + stepVy * frameDy <= 0) continue;
+      }
 
-      let cosTurn = 1.0;
-      let minCurveSmooth = 0.24;
-      if (ptsLen >= 2) {
-        const pPrev2 = stroke.points[ptsLen - 2];
-        const p2x = pPrev2.nx * rw;
-        const p2y = pPrev2.ny * rh;
-        const vx1 = p1x - p2x, vy1 = p1y - p2y;
-        const vx2 = rawPxX - p1x, vy2 = rawPxY - p1y;
-        const l1 = Math.hypot(vx1, vy1), l2 = Math.hypot(vx2, vy2);
-        if (l1 > 0.4 && l2 > 0.4) {
-          cosTurn = (vx1 * vx2 + vy1 * vy2) / (l1 * l2);
-          if (cosTurn > 0.25 && cosTurn < 0.97) {
-            minCurveSmooth = 0.30;
-          }
+      const lastRaw = stroke._lastRawPx || (prevPt ? { x: prevPt.nx * rw, y: prevPt.ny * rh } : null);
+      if (lastRaw) {
+        const rawStepDist = Math.hypot(rawPxX - lastRaw.x, rawPxY - lastRaw.y);
+        if (rawStepDist < minDist) continue;
+      }
+
+      stroke._prevRawPx = lastRaw ? { x: lastRaw.x, y: lastRaw.y } : { x: rawPxX, y: rawPxY };
+      stroke._lastRawPx = { x: rawPxX, y: rawPxY };
+      stroke._inPlaceStreamlined = true;
+
+      let sx = rawPxX;
+      let sy = rawPxY;
+      if (!stroke.isHighlighter && prevPt) {
+        const p1x = prevPt.nx * rw;
+        const p1y = prevPt.ny * rh;
+        const stepD = Math.hypot(rawPxX - p1x, rawPxY - p1y);
+        const weight = 0.18 * Math.max(0, 1 - stepD / 18.0);
+        if (weight > 0.005) {
+          sx = rawPxX * (1 - weight) + p1x * weight;
+          sy = rawPxY * (1 - weight) + p1y * weight;
         }
       }
 
-      const fastThresh = 6.5 + blurBoost * 4.0;
-      let smoothScale = stepD > fastThresh
-        ? Math.max(minCurveSmooth, 1.0 - (stepD - fastThresh) / 16.0)
-        : 1.0;
+      const stepDist = prevPt ? Math.hypot(sx - prevPt.nx * rw, sy - prevPt.ny * rh) : 0;
+      if (prevPt && stepDist < 0.20) continue;
 
-      // 의도적인 급격한 모서리 꺾임(+, 4, z, ㄱ, ㄴ 등)에서는 코너가 둥글게 깎이지 않도록 스무딩 비중 완화
-      if (cosTurn < 0.20 && stepD > 2.0) {
-        smoothScale *= 0.35;
-      } else if (cosTurn < 0.45 && stepD > 2.2) {
-        smoothScale *= 0.68;
-      }
+      const rawP = (typeof ev.pressure === 'number') ? ev.pressure : 0.5;
+      if (rawP > 0 && Math.abs(rawP - 0.5) > 0.01) stroke._hasHwP = true;
 
-      if (ptsLen >= 2 && smoothScale > 0.01) {
-        const pPrev2 = stroke.points[ptsLen - 2];
-        const p2x = pPrev2.nx * rw;
-        const p2y = pPrev2.ny * rh;
-        const w2 = (0.10 + blurBoost * 0.05) * smoothScale;
-        const w1 = (0.26 + blurBoost * 0.10) * smoothScale;
-        const w0 = 1.0 - w1 - w2;
-        sx = p2x * w2 + p1x * w1 + rawPxX * w0;
-        sy = p2y * w2 + p1y * w1 + rawPxY * w0;
-      } else if (ptsLen === 1 && smoothScale > 0.01) {
-        const w1 = (0.26 + blurBoost * 0.12) * smoothScale;
-        const w0 = 1.0 - w1;
-        sx = p1x * w1 + rawPxX * w0;
-        sy = p1y * w1 + rawPxY * w0;
-      }
+      const moveP = this.computeDynamicStrokePressure(
+        rawP || 0.5,
+        Boolean(stroke._hasHwP),
+        stepDist,
+        stroke.penStyle || 'ballpen',
+        prevPt ? prevPt.p : 0.5,
+        stroke.points.length,
+        0
+      );
+
+      stroke.points.push({
+        nx: Math.max(0, Math.min(1, sx / rw)),
+        ny: Math.max(0, Math.min(1, sy / rh)),
+        p: moveP,
+        t: recT
+      });
+      added = true;
     }
-
-    const stepDist = prevPt ? Math.hypot(sx - prevPt.nx * rw, sy - prevPt.ny * rh) : 0;
-    if (prevPt && stepDist < 0.20) return false;
-
-    const rawP = (typeof e.pressure === 'number') ? e.pressure : 0.5;
-    if (rawP > 0 && Math.abs(rawP - 0.5) > 0.01) stroke._hasHwP = true;
-
-    let cornerBoost = 0;
-    if (ptsLen >= 2) {
-      const pA = stroke.points[ptsLen - 2];
-      const pB = prevPt;
-      const vx1 = (pB.nx - pA.nx) * rw, vy1 = (pB.ny - pA.ny) * rh;
-      const vx2 = sx - pB.nx * rw, vy2 = sy - pB.ny * rh;
-      const l1 = Math.hypot(vx1, vy1), l2 = Math.hypot(vx2, vy2);
-      if (l1 > 0.6 && l2 > 0.6) {
-        const cosAng = (vx1 * vx2 + vy1 * vy2) / (l1 * l2);
-        if (cosAng < 0.72) {
-          cornerBoost = Math.min(1.0, (0.72 - cosAng) / 1.1);
-        }
-      }
-    }
-
-    const moveP = this.computeDynamicStrokePressure(
-      rawP || 0.5,
-      Boolean(stroke._hasHwP),
-      stepDist,
-      stroke.penStyle || 'ballpen',
-      prevPt ? prevPt.p : 0.5,
-      ptsLen,
-      cornerBoost
-    );
-
-    const smoothNx = Math.max(0, Math.min(1, sx / rw));
-    const smoothNy = Math.max(0, Math.min(1, sy / rh));
-
-    this._appendNormalizedCardPointWithArcSubdivision(
-      stroke.points,
-      smoothNx,
-      smoothNy,
-      moveP,
-      recT,
-      rw,
-      rh,
-      Boolean(stroke.isHighlighter)
-    );
-    return true;
+    return added;
   }
 
-  // 🌟 [문제/그래프 카드 펜 뗄 때(pointerup) 끝점 마감 + 코너 보존 마이크로 지그재그 정돈]
+  // 🌟 [문제/그래프 카드 펜 뗄 때(pointerup) 끝점 마감]
   _finishCardStrokeTail(stroke, e, rect, w, h, recT) {
     if (!stroke || !Array.isArray(stroke.points) || stroke.points.length === 0) return;
     if (stroke.isShape || stroke._shapeHoldDetected) return;
@@ -4589,140 +4540,6 @@
         });
       }
     }
-
-    if (!stroke.isHighlighter && stroke.points.length >= 3) {
-      this._polishCardStrokeMicroJitter(stroke, rw, rh);
-    } else {
-      stroke._jitterPolished = true;
-    }
-  }
-
-  // 🌟 [창모드 ➔ 전체화면 2.75배 확대 대응 코너 보존 마이크로 지터·지그재그 정돈 엔진]
-  _polishCardStrokeMicroJitter(stroke, w, h) {
-    if (!stroke || stroke.isHighlighter || stroke.isShape || !Array.isArray(stroke.points)) return;
-    const pts = stroke.points;
-    const len = pts.length;
-    if (len < 3) {
-      stroke._jitterPolished = true;
-      return;
-    }
-    const rw = Math.max(10, w || 430);
-    const rh = Math.max(10, h || 353);
-    let px = new Float64Array(len);
-    let py = new Float64Array(len);
-    for (let i = 0; i < len; i++) {
-      px[i] = (pts[i].nx || 0) * rw;
-      py[i] = (pts[i].ny || 0) * rh;
-    }
-
-    for (let pass = 0; pass < 2; pass++) {
-      const nextX = new Float64Array(px);
-      const nextY = new Float64Array(py);
-      for (let i = 1; i < len - 1; i++) {
-        const vx1 = px[i] - px[i - 1];
-        const vy1 = py[i] - py[i - 1];
-        const vx2 = px[i + 1] - px[i];
-        const vy2 = py[i + 1] - py[i];
-        const l1 = Math.hypot(vx1, vy1);
-        const l2 = Math.hypot(vx2, vy2);
-        if (l1 < 0.05 || l2 < 0.05) continue;
-
-        const cx = px[i + 1] - px[i - 1];
-        const cy = py[i + 1] - py[i - 1];
-        const lc = Math.hypot(cx, cy);
-        const crossCur = vx1 * vy2 - vy1 * vx2;
-        const dPerp = lc > 1e-4 ? (Math.abs(crossCur) / lc) : 0;
-        const cosAng = (vx1 * vx2 + vy1 * vy2) / (l1 * l2);
-
-        // 의도적인 글자 모서리/꺾임(+, 4, z, ㄱ, ㄴ 등)은 100% 원형 보존
-        if (cosAng < 0.30 && dPerp > 1.35) continue;
-        if (dPerp > 2.4) continue;
-
-        let isZigzag = false;
-        if (i >= 2) {
-          const pvx0 = px[i - 1] - px[i - 2];
-          const pvy0 = py[i - 1] - py[i - 2];
-          const crossPrev = pvx0 * vy1 - pvy0 * vx1;
-          if (crossPrev * crossCur < -1e-4) isZigzag = true;
-        }
-        if (!isZigzag && i <= len - 3) {
-          const nvx3 = px[i + 2] - px[i + 1];
-          const nvy3 = py[i + 2] - py[i + 1];
-          const crossNext = vx2 * nvy3 - vy2 * nvx3;
-          if (crossCur * crossNext < -1e-4) isZigzag = true;
-        }
-
-        let alpha = 0;
-        if (isZigzag) {
-          alpha = pass === 0 ? 0.45 : 0.35;
-        } else if (dPerp <= 1.25 && cosAng > 0.55) {
-          alpha = pass === 0 ? 0.16 : 0.10;
-        }
-
-        if (alpha > 0) {
-          const midX = (px[i - 1] + px[i + 1]) * 0.5;
-          const midY = (py[i - 1] + py[i + 1]) * 0.5;
-          nextX[i] = px[i] * (1 - alpha) + midX * alpha;
-          nextY[i] = py[i] * (1 - alpha) + midY * alpha;
-        }
-      }
-      px = nextX;
-      py = nextY;
-    }
-
-    for (let i = 1; i < len - 1; i++) {
-      pts[i].nx = Math.max(0, Math.min(1, px[i] / rw));
-      pts[i].ny = Math.max(0, Math.min(1, py[i] / rh));
-    }
-    stroke._jitterPolished = true;
-  }
-
-  // 🌟 [문제/그래프 카드 필기 전용 원호 내분점 자동 보간기 (고속 원호 전용, 작은 글씨 왜곡 방지)]
-  _appendNormalizedCardPointWithArcSubdivision(pointsArr, nx, ny, moveP, recT, w, h, isHighlighter = false) {
-    if (!Array.isArray(pointsArr)) return;
-    if (!isHighlighter && pointsArr.length >= 2 && w > 10 && h > 10) {
-      const pPrevA = pointsArr[pointsArr.length - 2];
-      const pPrevB = pointsArr[pointsArr.length - 1];
-      const ax = pPrevA.nx * w, ay = pPrevA.ny * h;
-      const bx = pPrevB.nx * w, by = pPrevB.ny * h;
-      const cx = nx * w, cy = ny * h;
-      const vx1 = bx - ax, vy1 = by - ay;
-      const vx2 = cx - bx, vy2 = cy - by;
-      const len1 = Math.hypot(vx1, vy1), len2 = Math.hypot(vx2, vy2);
-      if (len2 > 11.5 && len1 > 3.0) {
-        const u1x = vx1 / len1, u1y = vy1 / len1;
-        const u2x = vx2 / len2, u2y = vy2 / len2;
-        const cosTurn = Math.max(-1, Math.min(1, u1x * u2x + u1y * u2y));
-        if (cosTurn > 0.20 && cosTurn < 0.975) {
-          let normX = u1x - cosTurn * u2x;
-          let normY = u1y - cosTurn * u2y;
-          const nLen = Math.hypot(normX, normY);
-          if (nLen > 1e-4) {
-            normX /= nLen;
-            normY /= nLen;
-            const theta = Math.acos(cosTurn);
-            const ratioScale = Math.min(1.0, len1 / (len2 * 0.65));
-            const sagitta = 0.5 * len2 * Math.min(0.28, Math.tan(theta * 0.25)) * ratioScale;
-            const subCount = len2 > 22.0 ? 2 : 1;
-            const prevP = (typeof pPrevB.p === 'number') ? pPrevB.p : 0.5;
-            for (let s = 1; s <= subCount; s++) {
-              const t = s / (subCount + 1);
-              const arcOffset = 4 * t * (1 - t) * sagitta;
-              const subPxX = bx + vx2 * t + normX * arcOffset;
-              const subPxY = by + vy2 * t + normY * arcOffset;
-              const subP = prevP + (moveP - prevP) * t;
-              pointsArr.push({
-                nx: subPxX / w,
-                ny: subPxY / h,
-                p: subP,
-                t: recT
-              });
-            }
-          }
-        }
-      }
-    }
-    pointsArr.push({ nx, ny, p: moveP, t: recT });
   }
 
   // 🌟 [굿노트 6 · 노타빌리티 급 하이브리드 필압·속도·코너 감응 연산기]
@@ -4761,7 +4578,6 @@
       ? 0
       : Math.max(0, Math.min(5.0, (typeof softBlur === 'number' && !isNaN(softBlur)) ? softBlur : (this.inkSoftBlur || 0)));
     const pts = rawPts;
-    const blurAlpha = (blurVal > 0) ? Math.min(0.48, blurVal * 0.095) : 0;
     const effBaseSize = (blurVal > 0) ? baseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : baseSize;
     const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
     const strokeCol = ctx.strokeStyle || '#1e293b';
@@ -4866,16 +4682,10 @@
       ctx.beginPath();
       ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
       ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
-      let prevMidX = firstMidX;
-      let prevMidY = firstMidY;
       for (let i = 1; i < pts.length - 1; i++) {
         const midX = (pts[i].x + pts[i + 1].x) * 0.5;
         const midY = (pts[i].y + pts[i + 1].y) * 0.5;
-        const ctrlX = blurAlpha > 0 ? (pts[i].x * (1 - blurAlpha) + ((prevMidX + midX) * 0.5) * blurAlpha) : pts[i].x;
-        const ctrlY = blurAlpha > 0 ? (pts[i].y * (1 - blurAlpha) + ((prevMidY + midY) * 0.5) * blurAlpha) : pts[i].y;
-        ctx.quadraticCurveTo(ctrlX / nibX, ctrlY / nibY, midX / nibX, midY / nibY);
-        prevMidX = midX;
-        prevMidY = midY;
+        ctx.quadraticCurveTo(pts[i].x / nibX, pts[i].y / nibY, midX / nibX, midY / nibY);
       }
       const last = pts[pts.length - 1];
       ctx.lineTo(last.x / nibX, last.y / nibY);
@@ -4897,10 +4707,8 @@
     for (let i = 1; i < pts.length - 1; i++) {
       const midX = (pts[i].x + pts[i + 1].x) * 0.5;
       const midY = (pts[i].y + pts[i + 1].y) * 0.5;
-      const ctrlX = blurAlpha > 0 ? (pts[i].x * (1 - blurAlpha) + ((prevMidX + midX) * 0.5) * blurAlpha) : pts[i].x;
-      const ctrlY = blurAlpha > 0 ? (pts[i].y * (1 - blurAlpha) + ((prevMidY + midY) * 0.5) * blurAlpha) : pts[i].y;
       const nextMidW = this.computePenStyleWidth(effBaseSize, (pts[i].p + pts[i + 1].p) * 0.5, penStyle);
-      this.drawVariableWidthQuadSegment(ctx, prevMidX, prevMidY, ctrlX, ctrlY, midX, midY, prevMidW, nextMidW);
+      this.drawVariableWidthQuadSegment(ctx, prevMidX, prevMidY, pts[i].x, pts[i].y, midX, midY, prevMidW, nextMidW);
       prevMidX = midX;
       prevMidY = midY;
       prevMidW = nextMidW;
@@ -4922,7 +4730,6 @@
     const rawBaseSize = (stroke.size || 4.2) * zoomRatio;
     const penStyle = stroke.penStyle || 'ballpen';
     const blurVal = Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
-    const blurAlpha = (blurVal > 0) ? Math.min(0.48, blurVal * 0.095) : 0;
     const baseSize = (blurVal > 0) ? rawBaseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : rawBaseSize;
     const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
 
@@ -4987,8 +4794,6 @@
         const mid1Y = (pA.y + pB.y) * 0.5;
         const mid2X = (pB.x + pC.x) * 0.5;
         const mid2Y = (pB.y + pC.y) * 0.5;
-        const ctrlX = blurAlpha > 0 ? (pB.x * (1 - blurAlpha) + ((mid1X + mid2X) * 0.5) * blurAlpha) : pB.x;
-        const ctrlY = blurAlpha > 0 ? (pB.y * (1 - blurAlpha) + ((mid1Y + mid2Y) * 0.5) * blurAlpha) : pB.y;
         if (penStyle === 'ballpen' || penStyle === 'flat') {
           ctx.beginPath();
           if (isFinalTail) {
@@ -4996,7 +4801,7 @@
             ctx.lineTo(pC.x / nibX, pC.y / nibY);
           } else {
             ctx.moveTo(mid1X / nibX, mid1Y / nibY);
-            ctx.quadraticCurveTo(ctrlX / nibX, ctrlY / nibY, mid2X / nibX, mid2Y / nibY);
+            ctx.quadraticCurveTo(pB.x / nibX, pB.y / nibY, mid2X / nibX, mid2Y / nibY);
           }
           ctx.stroke();
         } else {
@@ -5006,7 +4811,7 @@
             const wEnd = this.computePenStyleWidth(baseSize, pC.p, penStyle);
             this.drawVariableWidthLineSegment(ctx, mid2X, mid2Y, pC.x, pC.y, wMid2, wEnd);
           } else {
-            this.drawVariableWidthQuadSegment(ctx, mid1X, mid1Y, ctrlX, ctrlY, mid2X, mid2Y, wMid1, wMid2);
+            this.drawVariableWidthQuadSegment(ctx, mid1X, mid1Y, pB.x, pB.y, mid2X, mid2Y, wMid1, wMid2);
           }
         }
       }

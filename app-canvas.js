@@ -2133,19 +2133,33 @@
             }
           }
 
-          // 🌟 [창모드·메인 칠판 100% 통일: WebKit getCoalescedEvents() 오염 배제 및 단일 확정 이벤트 + 원호 자동 보간]:
-          // iPadOS Safari(WebKit)의 getCoalescedEvents()가 과거 샘플 중복/역순으로 획을 씹거나 튀게 만드는 현상을 원천 차단하기 위해
-          // 창모드 카드와 동일하게 단일 확정 이벤트(e)만 사용하고, 빠른 곡선 구간의 밀도는 아래 원호 내분점 자동 보간(Circular Arc Subdivision)으로 매끄럽게 채웁니다!
-          const events = [e];
+          // 🌟 [표준 하드웨어 샘플 수집(getCoalescedEvents) + 경량 1차 스트림라인]:
+          // 액정타블렛(200~240Hz) 및 고주사율 펜 입력의 중간 샘플을 유실 없이 수집하고,
+          // 과도한 3점 변칙 보정과 인공 원호 분할(Circular Arc Subdivision) 없이 표준 1차 스트림라인 + 중점 2차 베지어 곡선으로만 매끄럽게 연결합니다.
+          const coalesced = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null;
+          const events = (coalesced && coalesced.length > 0) ? coalesced : [e];
+          const minRawDist = (e.pointerType === 'pen') ? 0.8 : 1.2;
+          const prevInkPos = this._lastInkScreenPos || { x: pos.x, y: pos.y };
+          const frameDx = pos.x - prevInkPos.x;
+          const frameDy = pos.y - prevInkPos.y;
+          const frameDist = Math.hypot(frameDx, frameDy);
+
           let addedPoints = 0;
           for (let i = 0; i < events.length; i++) {
             const ev = events[i];
-            const pPos = getPos(ev);
+            const pPos = (ev === e && events.length === 1) ? pos : getPos(ev);
+
+            // 다중 coalesced 샘플일 때 이전 프레임 중복/역주행 점만 가볍게 스킵
+            if (events.length > 1 && i < events.length - 1 && frameDist > 1.5) {
+              const curSaving = this._lastInkScreenPos || prevInkPos;
+              const stepVx = pPos.x - curSaving.x;
+              const stepVy = pPos.y - curSaving.y;
+              if (stepVx * frameDx + stepVy * frameDy <= 0) continue;
+            }
 
             const lastRaw = this._lastRawInkScreenPos;
             if (lastRaw) {
               const rawDist = Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y);
-              const minRawDist = (e.pointerType === 'pen') ? 0.25 : 0.5;
               if (rawDist < minRawDist) continue;
             }
             this._prevRawInkScreenPos = lastRaw ? { x: lastRaw.x, y: lastRaw.y } : { x: pPos.x, y: pPos.y };
@@ -2154,49 +2168,16 @@
             let sx = pPos.x;
             let sy = pPos.y;
             const liveLen = this._liveBezierScreenPts ? this._liveBezierScreenPts.length : 0;
-            // 🌟 [속도·곡률 적응형 스트림라인 & 형광펜 1:1 밀착 추적]:
-            // 느린 세필 필기(step < 14px)에서는 미세 손떨림을 잡아주고, 빠른 곡선 회전 구간에서도 최소 스무딩(0.24)을 유지하여 정점 튐을 방지합니다!
-            if (!this.currentInkStroke.isHighlighter) {
-              const stepD = lastRaw ? Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y) : 0;
-              const blurBoost = Math.min(1.0, (this.inkSoftBlur || 0) / 5.0);
-              let rCos = 1.0;
-              let minCurveSmooth = 0;
-              if (liveLen >= 2) {
-                const pPrev1 = this._liveBezierScreenPts[liveLen - 1];
-                const pPrev2 = this._liveBezierScreenPts[liveLen - 2];
-                const rvx1 = pPrev1.x - pPrev2.x, rvy1 = pPrev1.y - pPrev2.y;
-                const rvx2 = pPos.x - pPrev1.x, rvy2 = pPos.y - pPrev1.y;
-                const rLen1 = Math.hypot(rvx1, rvy1), rLen2 = Math.hypot(rvx2, rvy2);
-                if (rLen1 > 0.6 && rLen2 > 0.6) {
-                  rCos = (rvx1 * rvx2 + rvy1 * rvy2) / (rLen1 * rLen2);
-                  if (stepD > 10 && rCos > 0.25 && rCos < 0.97) {
-                    minCurveSmooth = 0.24;
-                  }
-                }
-              }
-              let smoothScale = stepD > (12 + blurBoost * 8)
-                ? Math.max(minCurveSmooth, 1 - (stepD - (12 + blurBoost * 8)) / 28)
-                : 1.0;
-              // 의도적인 급격한 모서리 꺾임(+, 4, z, ㄱ, ㄴ 등)에서는 코너가 둥글게 말리지 않도록 스무딩 감쇠 브레이크 적용
-              if (rCos < 0.20 && stepD > 1.8) {
-                smoothScale *= 0.35;
-              } else if (rCos < 0.45 && stepD > 2.0) {
-                smoothScale *= 0.68;
-              }
-              if (liveLen >= 2 && smoothScale > 0.01) {
-                const pPrev1 = this._liveBezierScreenPts[liveLen - 1];
-                const pPrev2 = this._liveBezierScreenPts[liveLen - 2];
-                const w2 = (0.09 + blurBoost * 0.05) * smoothScale;
-                const w1 = (0.23 + blurBoost * 0.10) * smoothScale;
-                const w0 = 1.0 - w1 - w2;
-                sx = pPrev2.x * w2 + pPrev1.x * w1 + pPos.x * w0;
-                sy = pPrev2.y * w2 + pPrev1.y * w1 + pPos.y * w0;
-              } else if (liveLen === 1 && smoothScale > 0.01) {
-                const pPrev1 = this._liveBezierScreenPts[0];
-                const w1 = (0.24 + blurBoost * 0.12) * smoothScale;
-                const w0 = 1.0 - w1;
-                sx = pPrev1.x * w1 + pPos.x * w0;
-                sy = pPrev1.y * w1 + pPos.y * w0;
+
+            // 🌟 [필기 앱 표준 1차 EMA 스트림라인 (Base 0.18, 고속 원호 구간은 0으로 자연 감쇠)]:
+            // 느린 세필 필기에서는 미세 손떨림만 부드럽게 잡아주고, 원을 빠르게 그릴 때는 원본 240Hz 좌표를 1:1로 따라가 원이 안쪽으로 찌그러지거나 각지지 않습니다.
+            if (!this.currentInkStroke.isHighlighter && liveLen >= 1) {
+              const pPrev = this._liveBezierScreenPts[liveLen - 1];
+              const stepD = Math.hypot(pPos.x - pPrev.x, pPos.y - pPrev.y);
+              const weight = 0.18 * Math.max(0, 1 - stepD / 18.0);
+              if (weight > 0.005) {
+                sx = pPos.x * (1 - weight) + pPrev.x * weight;
+                sy = pPos.y * (1 - weight) + pPrev.y * weight;
               }
             }
             this._lastInkScreenPos = { x: sx, y: sy };
@@ -2210,20 +2191,6 @@
             }
             const moveStepDist = lastRaw ? Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y) : 0;
             const curPenStyle = (this.currentInkStroke && this.currentInkStroke.penStyle) || this.inkPenStyle || 'ballpen';
-            let cornerBoost = 0;
-            if (this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 2) {
-              const pPrevA = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 2];
-              const pPrevB = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
-              const vx1 = pPrevB.x - pPrevA.x, vy1 = pPrevB.y - pPrevA.y;
-              const vx2 = sx - pPrevB.x, vy2 = sy - pPrevB.y;
-              const len1 = Math.hypot(vx1, vy1), len2 = Math.hypot(vx2, vy2);
-              if (len1 > 0.8 && len2 > 0.8) {
-                const cosAng = (vx1 * vx2 + vy1 * vy2) / (len1 * len2);
-                if (cosAng < 0.72) {
-                  cornerBoost = Math.min(1.0, (0.72 - cosAng) / 1.1);
-                }
-              }
-            }
             const ptCount = this.currentInkStroke && this.currentInkStroke.points ? this.currentInkStroke.points.length : 1;
             const pressure = this.computeDynamicStrokePressure(
               rawPressure,
@@ -2232,7 +2199,7 @@
               curPenStyle,
               this._lastPressure,
               ptCount,
-              cornerBoost
+              0
             );
             this._lastPressure = pressure;
             const recTMove = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
@@ -2243,53 +2210,6 @@
 
             if (!this._liveBezierScreenPts) {
               this._liveBezierScreenPts = [];
-            }
-
-            // 🌟 [성긴 곡선 구간 원호 내분점 자동 보간 (Circular Arc Subdivision)]:
-            // 빠르게 원을 그리거나 순간적인 브라우저 프레임 간격 벌어짐으로 인해 회전 구간에서 점 간격(len2 > 11px)이 넓어졌을 때,
-            // 현(chord)을 따라 다각형처럼 각지지 않도록 실제 원호(Sagitta: h = 0.5 * L * tan(θ/4)) 위의 중간 보간점을 자동 삽입합니다!
-            // 실시간 드로잉(_liveBezierScreenPts)과 완료 후 베이킹(currentInkStroke.points) 양쪽에 동일하게 삽입되어 펜을 뗄 때 모양 변화가 0%입니다.
-            if (!this.currentInkStroke.isHighlighter && this._liveBezierScreenPts.length >= 2) {
-              const pPrevA = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 2];
-              const pPrevB = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
-              const vx1 = pPrevB.x - pPrevA.x, vy1 = pPrevB.y - pPrevA.y;
-              const vx2 = sx - pPrevB.x, vy2 = sy - pPrevB.y;
-              const len1 = Math.hypot(vx1, vy1), len2 = Math.hypot(vx2, vy2);
-              if (len2 > 11.0 && len1 > 2.5) {
-                const u1x = vx1 / len1, u1y = vy1 / len1;
-                const u2x = vx2 / len2, u2y = vy2 / len2;
-                const cosTurn = Math.max(-1, Math.min(1, u1x * u2x + u1y * u2y));
-                if (cosTurn > -0.35 && cosTurn < 0.985) {
-                  let nx = u1x - cosTurn * u2x;
-                  let ny = u1y - cosTurn * u2y;
-                  const nLen = Math.hypot(nx, ny);
-                  if (nLen > 1e-4) {
-                    nx /= nLen;
-                    ny /= nLen;
-                    const theta = Math.acos(cosTurn);
-                    const ratioScale = Math.min(1.0, len1 / (len2 * 0.65));
-                    const sagitta = 0.5 * len2 * Math.min(0.28, Math.tan(theta * 0.25)) * ratioScale;
-                    const subCount = len2 > 24.0 ? 2 : 1;
-                    for (let s = 1; s <= subCount; s++) {
-                      const t = s / (subCount + 1);
-                      const arcOffset = 4 * t * (1 - t) * sagitta;
-                      const subX = pPrevB.x + vx2 * t + nx * arcOffset;
-                      const subY = pPrevB.y + vy2 * t + ny * arcOffset;
-                      const subP = pPrevB.p + (pressure - pPrevB.p) * t;
-                      if (this.currentInkStroke.target === 'graph') {
-                        const mSub = this.screenToMath(subX, subY);
-                        this.currentInkStroke.points.push({ x: mSub.x, y: mSub.y, p: subP, t: recTMove });
-                      } else {
-                        const bSub = this.screenToBoard(subX, subY);
-                        this.currentInkStroke.points.push({ x: bSub.x, y: bSub.y, p: subP, t: recTMove });
-                      }
-                      addedPoints++;
-                      this._liveBezierScreenPts.push({ x: subX, y: subY, p: subP });
-                      this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
-                    }
-                  }
-                }
-              }
             }
 
             if (this.currentInkStroke.target === 'graph') {
