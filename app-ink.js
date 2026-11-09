@@ -3983,7 +3983,8 @@
           if (btnHeader) btnHeader.classList.toggle('active', !this.isBottomInkBarHidden);
         }
         if (typeof saved.left === 'number' && typeof saved.top === 'number') {
-          const clampedL = Math.max(64, Math.min((window.innerWidth || 1440) - 120, saved.left));
+          const pillW = remote.offsetWidth || 98;
+          const clampedL = Math.max(58, Math.min((window.innerWidth || 1440) - pillW - 58, saved.left));
           const clampedT = Math.max(12, Math.min((window.innerHeight || 900) - 80, saved.top));
           remote.style.left = `${clampedL}px`;
           remote.style.top = `${clampedT}px`;
@@ -4213,7 +4214,8 @@
         e.stopPropagation();
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
-        const nextL = Math.max(58, Math.min((window.innerWidth || 1920) - 80, initialLeft + dx));
+        const pillW = remote.offsetWidth || 98;
+        const nextL = Math.max(58, Math.min((window.innerWidth || 1920) - pillW - 58, initialLeft + dx));
         const nextT = Math.max(8, Math.min((window.innerHeight || 1080) - 56, initialTop + dy));
         remote.style.left = `${Math.round(nextL)}px`;
         remote.style.top = `${Math.round(nextT)}px`;
@@ -4268,7 +4270,8 @@
 
     if (nextState) {
       const rect = remote.getBoundingClientRect();
-      const clampedL = Math.max(64, Math.min((window.innerWidth || 1440) - Math.max(98, rect.width), rect.left || 605));
+      const pillW = Math.max(98, rect.width || remote.offsetWidth || 98);
+      const clampedL = Math.max(58, Math.min((window.innerWidth || 1440) - pillW - 58, rect.left || 605));
       const clampedT = Math.max(12, Math.min((window.innerHeight || 900) - Math.max(54, rect.height), rect.top || 76));
       remote.style.left = `${Math.round(clampedL)}px`;
       remote.style.top = `${Math.round(clampedT)}px`;
