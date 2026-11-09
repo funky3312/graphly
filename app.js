@@ -1114,7 +1114,10 @@
       baseY: r1(c && typeof c.baseY === 'number' ? c.baseY : 120),
       pdfAnchor: (c && (c.el && c.el._pdfAnchor || c.pdfAnchor)) ? { ...(c.el && c.el._pdfAnchor || c.pdfAnchor) } : null,
       w: r1((c && c.el) ? (parseFloat(c.el.style.width) || c.el.offsetWidth || 480) : 480),
-      min: Boolean(c && (c.isMin || (c.el && c.el.classList.contains('minimized'))))
+      min: Boolean(c && (c.isMin || (c.el && c.el.classList.contains('minimized')))),
+      inkActive: Boolean(c && c.el && c.el.classList.contains('card-ink-active')),
+      locked: Boolean(c && c.el && c.el.classList.contains('pip-locked-mode')),
+      stealth: Boolean(c && c.el && c.el.classList.contains('pip-stealth-locked'))
     }));
     const clonedGraphs = JSON.parse(JSON.stringify(this.graphs || []));
     clonedGraphs.forEach(g => {
@@ -1248,6 +1251,9 @@
       textLabels: JSON.parse(JSON.stringify(this.textLabels || [])),
       probCardVisible: Boolean(pWidget && pWidget.style.display !== 'none' && this.problemCardData),
       probCardMin: Boolean(this.isProblemCardMinimized),
+      probCardInkActive: Boolean(pWidget && pWidget.classList.contains('card-ink-active')),
+      probCardLocked: Boolean(pWidget && pWidget.classList.contains('pip-locked-mode')),
+      probCardStealth: Boolean(pWidget && pWidget.classList.contains('pip-stealth-locked')),
       probCardBaseX: typeof this.problemCardBaseX === 'number' ? r1(this.problemCardBaseX) : this.problemCardBaseX,
       probCardBaseY: typeof this.problemCardBaseY === 'number' ? r1(this.problemCardBaseY) : this.problemCardBaseY,
       probCardPdfAnchor: (pWidget && pWidget._pdfAnchor || this.problemCardPdfAnchor) ? { ...(pWidget && pWidget._pdfAnchor || this.problemCardPdfAnchor) } : null,
@@ -1343,6 +1349,20 @@
         pWidget.style.display = kf.probCardVisible ? 'flex' : 'none';
         pWidget.classList.toggle('minimized', Boolean(kf.probCardMin));
         this.isProblemCardMinimized = Boolean(kf.probCardMin);
+        if (kf.probCardInkActive !== undefined) {
+          const pInkOn = Boolean(kf.probCardInkActive);
+          pWidget.classList.toggle('card-ink-active', pInkOn);
+          const btnPInk = pWidget.querySelector('.btn-card-laser');
+          if (btnPInk) btnPInk.classList.toggle('active', pInkOn);
+        }
+        if (kf.probCardLocked !== undefined) {
+          pWidget.classList.toggle('pip-locked-mode', Boolean(kf.probCardLocked));
+          if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(pWidget);
+        }
+        if (kf.probCardStealth !== undefined) {
+          if (typeof this.clearProblemCardStealthTimer === 'function') this.clearProblemCardStealthTimer(pWidget);
+          pWidget.classList.toggle('pip-stealth-locked', Boolean(kf.probCardStealth));
+        }
         if (kf.probCardPdfAnchor) {
           this.problemCardPdfAnchor = { ...kf.probCardPdfAnchor };
           pWidget._pdfAnchor = { ...kf.probCardPdfAnchor };
@@ -1540,6 +1560,20 @@
             if (typeof st.w === 'number' && st.w >= 180 && !st.min) {
               c.el.style.width = `${Math.round(st.w)}px`;
               if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+            }
+            if (st.inkActive !== undefined) {
+              const eInkOn = Boolean(st.inkActive);
+              c.el.classList.toggle('card-ink-active', eInkOn);
+              const btnEInk = c.el.querySelector('.btn-card-laser');
+              if (btnEInk) btnEInk.classList.toggle('active', eInkOn);
+            }
+            if (st.locked !== undefined) {
+              c.el.classList.toggle('pip-locked-mode', Boolean(st.locked));
+              if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(c.el);
+            }
+            if (st.stealth !== undefined) {
+              if (typeof this.clearProblemCardStealthTimer === 'function') this.clearProblemCardStealthTimer(c.el);
+              c.el.classList.toggle('pip-stealth-locked', Boolean(st.stealth));
             }
             c.isMin = Boolean(st.min);
             c.el.classList.toggle('minimized', Boolean(st.min));

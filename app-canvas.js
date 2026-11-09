@@ -9062,7 +9062,7 @@
           }
           ctx.restore();
 
-          if (!isGraphCard) {
+          if (!isGraphCard && !el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
             ctx.stroke();
           }
           ctx.restore();

@@ -5229,23 +5229,29 @@ body.ink-sticker-tool-active .graph-card-live-canvas {
   display: none !important;
 }
 
-/* 🌟 [잠금 후 5초 무조작 시 백지에 직접 그려놓은 듯한 프레임리스 스텔스 모드 (.pip-stealth-locked)] 🌟 */
+/* 🌟 [잠금 후 3초 무조작 시 백지에 직접 그려놓은 듯한 프레임리스 스텔스 모드 (.pip-stealth-locked) — 그래프 카드 & 문제 카드 공통] 🌟 */
+.problem-card-widget .problem-card-header,
 .graph-card-widget .problem-card-header {
   transition: opacity 0.34s cubic-bezier(0.22, 1, 0.36, 1), transform 0.34s cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
 
+.problem-card-widget .problem-card-body,
 .graph-card-widget .problem-card-body {
   transition: border-color 0.34s ease, box-shadow 0.34s ease, background-color 0.34s ease !important;
 }
 
+.problem-card-widget.pip-locked-mode .problem-card-header,
 .graph-card-widget.pip-locked-mode .problem-card-header {
   z-index: 1 !important;
 }
 
+.problem-card-widget.pip-locked-mode .problem-card-body,
 .graph-card-widget.pip-locked-mode .problem-card-body {
   z-index: 2 !important;
 }
 
+.problem-card-widget.pip-stealth-locked .problem-card-header,
+body.theme-light .problem-card-widget.pip-stealth-locked .problem-card-header,
 .graph-card-widget.pip-stealth-locked .problem-card-header,
 body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-header {
   opacity: 0 !important;
@@ -5253,6 +5259,8 @@ body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-header {
   pointer-events: none !important;
 }
 
+.problem-card-widget.pip-stealth-locked .problem-card-body,
+body.theme-light .problem-card-widget.pip-stealth-locked .problem-card-body,
 .graph-card-widget.pip-stealth-locked .problem-card-body,
 body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-body {
   border-color: transparent !important;
@@ -5260,6 +5268,10 @@ body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-body {
   background: transparent !important;
 }
 
+.problem-card-widget.pip-stealth-locked .problem-card-resize-handle,
+.problem-card-widget.pip-stealth-locked .problem-card-body:hover .problem-card-resize-handle,
+body.theme-light .problem-card-widget.pip-stealth-locked .problem-card-resize-handle,
+body.theme-light .problem-card-widget.pip-stealth-locked .problem-card-body:hover .problem-card-resize-handle,
 .graph-card-widget.pip-stealth-locked .problem-card-resize-handle,
 .graph-card-widget.pip-stealth-locked .problem-card-body:hover .problem-card-resize-handle,
 body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-resize-handle,

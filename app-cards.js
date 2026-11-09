@@ -550,6 +550,11 @@
           </div>
         </div>
         <div class="problem-card-actions">
+          <button type="button" class="card-btn btn-card-lock-edit btn-problem-lock unlocked-editing" title="클릭하여 잠금 — 3초 뒤 테두리와 상단 메뉴가 숨겨지며 톡 치면 다시 나타납니다">
+            <span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;">
+              <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg>
+            </span>
+          </button>
           <button type="button" class="card-btn btn-card-laser" title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
             <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></span>
           </button>
@@ -637,6 +642,9 @@
       dragMoved = false;
       startX = e.clientX;
       startY = e.clientY;
+      if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
+        this.clearProblemCardStealthTimer(el);
+      }
       if (this.isGraphCovered && this.pdfPageBoardData && el._pdfAnchor) {
         const s = this.mathToScreen(el._pdfAnchor.mx, el._pdfAnchor.my);
         initX = s.x;
@@ -696,6 +704,15 @@
         this.updateProblemCardPosition(true);
         if (wasMoved) {
           el._justDraggedTime = performance.now();
+          if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
+            this.scheduleProblemCardStealth(el, 3000);
+          }
+        } else if (el.classList.contains('pip-locked-mode')) {
+          if (el.classList.contains('pip-stealth-locked')) {
+            this.wakeUpProblemCardStealth(el, true);
+          } else {
+            this.scheduleProblemCardStealth(el, 3000);
+          }
         }
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(true);
@@ -708,16 +725,25 @@
     // 2. 우하단 리사이즈 핸들 드래그
     const rHandle = el.querySelector('.problem-card-resize-handle');
     if (rHandle) {
-      let isResizing = false, rStartX = 0, rStartW = cardW;
+      let isResizing = false, resizeMoved = false, rStartX = 0, rStartY = 0, rStartW = cardW;
       rHandle.addEventListener('pointerdown', (e) => {
+        this.bringCardToFront(el);
         e.preventDefault();
         e.stopPropagation();
         isResizing = true;
+        resizeMoved = false;
         rStartX = e.clientX;
+        rStartY = e.clientY;
+        if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
+          this.clearProblemCardStealthTimer(el);
+        }
         rStartW = parseFloat(el.style.width) || el.offsetWidth || el.getBoundingClientRect().width;
       });
       window.addEventListener('pointermove', (e) => {
         if (!isResizing) return;
+        if (!resizeMoved && Math.hypot(e.clientX - rStartX, e.clientY - rStartY) > 3) {
+          resizeMoved = true;
+        }
         this._isDraggingOrResizingAnyCard = true;
         const curUS = (this.isGraphCovered && this.pdfPageBoardData && typeof this.getCurrentMathUnitScale === 'function')
           ? this.getCurrentMathUnitScale()
@@ -733,8 +759,17 @@
       });
       const stopResize = () => {
         if (isResizing) {
+          const wasResizeMoved = resizeMoved;
           isResizing = false;
+          resizeMoved = false;
           this._isDraggingOrResizingAnyCard = false;
+          if (el.classList.contains('pip-locked-mode')) {
+            if (!wasResizeMoved && el.classList.contains('pip-stealth-locked')) {
+              this.wakeUpProblemCardStealth(el, true);
+            } else if (!el.classList.contains('pip-stealth-locked')) {
+              this.scheduleProblemCardStealth(el, 3000);
+            }
+          }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
           }
@@ -772,6 +807,7 @@
     if (btnClose) {
       btnClose.onclick = () => {
         this._pushWorkspaceUndoSnapshot('↺ 닫은 문제 카드가 복원되었습니다', '↻ 문제 카드 닫기 다시 실행됨');
+        this.clearProblemCardStealthTimer(el);
         el.remove();
         this.extraProblemCards = this.extraProblemCards.filter(c => c !== cardItem);
         if (this.isAudioRecording) {
@@ -853,6 +889,7 @@
     const cardW = initialWidth || 520;
 
     if (widget) {
+      this.setProblemCardLockedByWidget(widget, false, false);
       widget.classList.remove('minimized', 'card-ink-active', 'card-laser-active');
       const pInkBtn = document.getElementById('btnProblemCardLaser');
       if (pInkBtn) pInkBtn.classList.remove('active');
@@ -1234,6 +1271,9 @@
         dragMoved = false;
         startX = e.clientX;
         startY = e.clientY;
+        if (widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
+          this.clearProblemCardStealthTimer(widget);
+        }
         if (this.isGraphCovered && this.pdfPageBoardData && widget._pdfAnchor) {
           const s = this.mathToScreen(widget._pdfAnchor.mx, widget._pdfAnchor.my);
           initialBaseX = s.x;
@@ -1296,6 +1336,15 @@
           this.syncProblemCardRectFromWidget();
           if (wasMoved) {
             widget._justDraggedTime = performance.now();
+            if (widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
+              this.scheduleProblemCardStealth(widget, 3000);
+            }
+          } else if (widget.classList.contains('pip-locked-mode')) {
+            if (widget.classList.contains('pip-stealth-locked')) {
+              this.wakeUpProblemCardStealth(widget, true);
+            } else {
+              this.scheduleProblemCardStealth(widget, 3000);
+            }
           }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
@@ -1309,20 +1358,31 @@
     // 2. 우하단 리사이즈 핸들 드래그 (문제 이미지와 문제 위 필기가 똑같은 비율로 함께 확대/축소!)
     if (resizeHandle) {
       let isResizing = false;
+      let resizeMoved = false;
       let startX = 0;
+      let startY = 0;
       let startW = 0;
 
       resizeHandle.addEventListener('pointerdown', (e) => {
+        if (widget) this.bringCardToFront(widget);
         e.preventDefault();
         e.stopPropagation();
         isResizing = true;
+        resizeMoved = false;
         startX = e.clientX;
+        startY = e.clientY;
+        if (widget && widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
+          this.clearProblemCardStealthTimer(widget);
+        }
         startW = parseFloat(widget.style.width) || widget.offsetWidth || widget.getBoundingClientRect().width;
         if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
       });
 
       window.addEventListener('pointermove', (e) => {
         if (!isResizing) return;
+        if (!resizeMoved && Math.hypot(e.clientX - startX, e.clientY - startY) > 3) {
+          resizeMoved = true;
+        }
         this._isDraggingOrResizingAnyCard = true;
         const curUS = (this.isGraphCovered && this.pdfPageBoardData && typeof this.getCurrentMathUnitScale === 'function')
           ? this.getCurrentMathUnitScale()
@@ -1341,9 +1401,18 @@
 
       const stopResize = () => {
         if (isResizing) {
+          const wasResizeMoved = resizeMoved;
           isResizing = false;
+          resizeMoved = false;
           this._isDraggingOrResizingAnyCard = false;
           this.syncProblemCardRectFromWidget();
+          if (widget && widget.classList.contains('pip-locked-mode')) {
+            if (!wasResizeMoved && widget.classList.contains('pip-stealth-locked')) {
+              this.wakeUpProblemCardStealth(widget, true);
+            } else if (!widget.classList.contains('pip-stealth-locked')) {
+              this.scheduleProblemCardStealth(widget, 3000);
+            }
+          }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
           }
@@ -1428,6 +1497,7 @@
   closeProblemCard() {
     const widget = document.getElementById('problemCardWidget');
     if (widget) {
+      this.setProblemCardLockedByWidget(widget, false, false);
       widget.style.display = 'none';
       widget.style.transform = '';
       widget._pdfAnchor = null;
@@ -1959,6 +2029,24 @@
       window.addEventListener('pointercancel', endExtraCardInk, true);
     }
 
+    // 🌟 [문제 카드 상단 [🔓/🔒] 잠금·스텔스 토글 버튼 바인딩 (그래프 카드와 100% 동일한 사용성)] 🌟
+    if (!cardWidgetEl.classList.contains('graph-card-widget')) {
+      const probLockBtn = cardWidgetEl.querySelector('.btn-problem-lock');
+      if (probLockBtn && !probLockBtn._probLockBound) {
+        probLockBtn._probLockBound = true;
+        probLockBtn.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+        });
+        probLockBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.bringCardToFront(cardWidgetEl);
+          const nextLocked = !cardWidgetEl.classList.contains('pip-locked-mode');
+          this.setProblemCardLockedByWidget(cardWidgetEl, nextLocked, true);
+        });
+      }
+    }
+
     // 🌟 [대표님 킬러 기획: 카드 상단 [✒️] 버튼 = '카드 몸통 드래그 이동 ⇄ 카드 위 밑줄·필기 고정' 토글!]
     const handleCardInkBtnToggle = (e) => {
       if (e) {
@@ -1979,6 +2067,13 @@
           if (typeof this._getPipCardRefByWidget === 'function' && typeof this.wakeUpPipGraphCardStealth === 'function') {
             const cRef = this._getPipCardRefByWidget(cardWidgetEl);
             if (cRef) this.wakeUpPipGraphCardStealth(cRef, false);
+          }
+        } else {
+          if (typeof this.setProblemCardLockedByWidget === 'function') {
+            this.setProblemCardLockedByWidget(cardWidgetEl, true, false);
+          }
+          if (typeof this.wakeUpProblemCardStealth === 'function') {
+            this.wakeUpProblemCardStealth(cardWidgetEl, false);
           }
         }
         // 접혀 있는 상태에서 [✒️] 버튼을 켜면 자동으로 카드를 펼쳐서 즉시 필기 가능하도록 처리!
@@ -2006,6 +2101,8 @@
           const cRef = this._getPipCardRefByWidget(cardWidgetEl);
           if (cRef) this.schedulePipGraphCardStealth(cRef, 3000);
         }
+      } else if (typeof this.scheduleProblemCardStealth === 'function') {
+        this.scheduleProblemCardStealth(cardWidgetEl, 3000);
       }
       if (this.isAudioRecording) {
         this._recordAudioWorkspaceStateIfNeeded(true);
@@ -5737,6 +5834,109 @@
       return this.extraGraphCards.find(c => c && c.el === widgetEl) || null;
     }
     return null;
+  }
+
+  clearProblemCardStealthTimer(widgetEl) {
+    if (widgetEl && widgetEl._probStealthTimer) {
+      clearTimeout(widgetEl._probStealthTimer);
+      widgetEl._probStealthTimer = null;
+    }
+  }
+
+  scheduleProblemCardStealth(widgetEl, delayMs = 3000) {
+    if (!widgetEl) return;
+    this.clearProblemCardStealthTimer(widgetEl);
+    if (!widgetEl.classList.contains('pip-locked-mode')) {
+      widgetEl.classList.remove('pip-stealth-locked');
+      return;
+    }
+    if (widgetEl.classList.contains('card-ink-active')) {
+      widgetEl.classList.remove('pip-stealth-locked');
+      return;
+    }
+    if (delayMs <= 0) {
+      widgetEl.classList.add('pip-stealth-locked');
+      return;
+    }
+    widgetEl._probStealthTimer = setTimeout(() => {
+      widgetEl._probStealthTimer = null;
+      if (
+        widgetEl.classList.contains('pip-locked-mode') &&
+        !widgetEl.classList.contains('card-ink-active') &&
+        !this._isDraggingOrResizingAnyCard
+      ) {
+        widgetEl.classList.add('pip-stealth-locked');
+        if (this.isAudioRecording && !this._isApplyingAudioTimelineState) {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+        }
+      }
+    }, delayMs);
+  }
+
+  wakeUpProblemCardStealth(widgetEl, restartTimer = true) {
+    if (!widgetEl) return;
+    this.clearProblemCardStealthTimer(widgetEl);
+    const wasStealth = widgetEl.classList.contains('pip-stealth-locked');
+    widgetEl.classList.remove('pip-stealth-locked');
+    if (restartTimer) {
+      this.scheduleProblemCardStealth(widgetEl, 3000);
+    }
+    if (wasStealth && this.isAudioRecording && !this._isApplyingAudioTimelineState) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
+  }
+
+  syncProblemCardLockUI(widgetEl) {
+    if (!widgetEl) return;
+    const isLocked = widgetEl.classList.contains('pip-locked-mode');
+    if (!isLocked) {
+      this.clearProblemCardStealthTimer(widgetEl);
+      widgetEl.classList.remove('pip-stealth-locked');
+    }
+    const btnLock = widgetEl.querySelector('.btn-problem-lock');
+    if (btnLock && btnLock._renderedLockedState !== isLocked) {
+      btnLock._renderedLockedState = isLocked;
+      if (isLocked) {
+        btnLock.classList.remove('unlocked-editing');
+        btnLock.classList.add('locked-confirmed');
+        btnLock.innerHTML = '<span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg></span>';
+        btnLock.title = '잠금됨 — 클릭하여 잠금 해제 (메뉴·테두리 상시 표시)';
+      } else {
+        btnLock.classList.remove('locked-confirmed');
+        btnLock.classList.add('unlocked-editing');
+        btnLock.innerHTML = '<span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg></span>';
+        btnLock.title = '클릭하여 잠금 — 3초 뒤 테두리와 상단 메뉴가 숨겨지며 톡 치면 다시 나타납니다';
+      }
+    }
+  }
+
+  setProblemCardLockedByWidget(widgetEl, locked, showToast = false) {
+    if (!widgetEl) return;
+    const isLocked = Boolean(locked);
+    if (isLocked) {
+      widgetEl.classList.remove('pip-stealth-locked');
+      widgetEl.classList.add('pip-locked-mode');
+      this.scheduleProblemCardStealth(widgetEl, 3000);
+    } else {
+      this.clearProblemCardStealthTimer(widgetEl);
+      widgetEl.classList.remove('pip-locked-mode', 'pip-stealth-locked');
+      if (widgetEl.classList.contains('card-ink-active')) {
+        widgetEl.classList.remove('card-ink-active');
+        const laserBtn = widgetEl.querySelector('.btn-card-laser');
+        if (laserBtn) laserBtn.classList.remove('active');
+      }
+    }
+    this.syncProblemCardLockUI(widgetEl);
+    if (this.isAudioRecording && !this._isApplyingAudioTimelineState) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
+    if (showToast) {
+      if (isLocked) {
+        this.showToast('🔒 카드 잠금 완료! 3초 뒤 테두리와 상단 메뉴가 숨겨지며, 카드를 톡 터치하면 다시 나타납니다.');
+      } else {
+        this.showToast('🔓 잠금 해제됨! 상단 메뉴와 테두리가 유지됩니다.');
+      }
+    }
   }
 
   clearPipGraphCardStealthTimer(cardRef) {

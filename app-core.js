@@ -866,6 +866,8 @@ class GraphApp {
       display: (c && c.el) ? (c.el.style.display || 'flex') : 'flex',
       minimized: Boolean(c && c.el && c.el.classList.contains('minimized')),
       cardInkActive: Boolean(c && c.el && c.el.classList.contains('card-ink-active')),
+      pipLocked: Boolean(c && c.el && c.el.classList.contains('pip-locked-mode')),
+      pipStealth: Boolean(c && c.el && c.el.classList.contains('pip-stealth-locked')),
       baseX: c ? c.baseX : 0,
       baseY: c ? c.baseY : 0,
       pdfAnchor: (c && c.el && c.el._pdfAnchor) ? { ...c.el._pdfAnchor } : null,
@@ -914,6 +916,8 @@ class GraphApp {
         display: pWidget.style.display,
         minimized: pWidget.classList.contains('minimized'),
         cardInkActive: pWidget.classList.contains('card-ink-active'),
+        pipLocked: pWidget.classList.contains('pip-locked-mode'),
+        pipStealth: pWidget.classList.contains('pip-stealth-locked'),
         left: pWidget.style.left,
         top: pWidget.style.top,
         width: pWidget.style.width,
@@ -1004,6 +1008,9 @@ class GraphApp {
       if (pToggle) pToggle.textContent = pc.toggleText || '▾';
       pWidget.classList.toggle('minimized', Boolean(pc.minimized));
       pWidget.classList.toggle('card-ink-active', Boolean(pc.cardInkActive));
+      pWidget.classList.toggle('pip-locked-mode', Boolean(pc.pipLocked));
+      pWidget.classList.toggle('pip-stealth-locked', Boolean(pc.pipStealth));
+      if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(pWidget);
       const pLaserBtn = pWidget.querySelector('.btn-card-laser');
       if (pLaserBtn) pLaserBtn.classList.toggle('active', Boolean(pc.cardInkActive));
       pWidget.style.left = pc.left || '72px';
@@ -1048,6 +1055,9 @@ class GraphApp {
           c.el.style.display = st.display || 'flex';
           c.el.classList.toggle('minimized', Boolean(st.minimized));
           c.el.classList.toggle('card-ink-active', Boolean(st.cardInkActive));
+          c.el.classList.toggle('pip-locked-mode', Boolean(st.pipLocked));
+          c.el.classList.toggle('pip-stealth-locked', Boolean(st.pipStealth));
+          if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(c.el);
           const lBtn = c.el.querySelector('.btn-card-laser');
           if (lBtn) lBtn.classList.toggle('active', Boolean(st.cardInkActive));
           if (typeof c.el._renderCardStickers === 'function') c.el._renderCardStickers();
@@ -1154,6 +1164,9 @@ class GraphApp {
           c.el.style.display = st.display || 'flex';
           c.el.classList.toggle('minimized', Boolean(st.minimized));
           c.el.classList.toggle('card-ink-active', Boolean(st.cardInkActive));
+          c.el.classList.toggle('pip-locked-mode', Boolean(st.pipLocked));
+          c.el.classList.toggle('pip-stealth-locked', Boolean(st.pipStealth));
+          if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(c.el);
           const lBtn = c.el.querySelector('.btn-card-laser');
           if (lBtn) lBtn.classList.toggle('active', Boolean(st.cardInkActive));
         }

@@ -3893,6 +3893,8 @@
             baseY: c.baseY,
             pdfAnchor: (c.el._pdfAnchor || c.pdfAnchor) ? { ...(c.el._pdfAnchor || c.pdfAnchor) } : null,
             isMin: Boolean(c.isMin),
+            pipLocked: Boolean(c.el.classList.contains('pip-locked-mode')),
+            pipStealth: Boolean(c.el.classList.contains('pip-stealth-locked')),
             isPdfPageCard: Boolean(c.isPdfPageCard),
             pdfPageNum: c.pdfPageNum || null,
             cardInkStrokes: this._compactStrokesArray(c.el._cardInkStrokes || []),
@@ -3973,6 +3975,8 @@
         titleText: pTitle ? pTitle.textContent : '문제',
         toggleText: pToggle ? pToggle.textContent : '▾',
         minimized: pWidget.classList.contains('minimized'),
+        pipLocked: pWidget.classList.contains('pip-locked-mode'),
+        pipStealth: pWidget.classList.contains('pip-stealth-locked'),
         left: pWidget.style.left,
         top: pWidget.style.top,
         width: pWidget.style.width,
@@ -4083,6 +4087,9 @@
       if (pTitle) pTitle.textContent = pc.titleText || '문제';
       if (pToggle) pToggle.textContent = pc.toggleText || (pc.minimized ? '▸' : '▾');
       pWidget.classList.toggle('minimized', Boolean(pc.minimized));
+      pWidget.classList.toggle('pip-locked-mode', Boolean(pc.pipLocked));
+      pWidget.classList.toggle('pip-stealth-locked', Boolean(pc.pipStealth));
+      if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(pWidget);
       pWidget.style.transform = '';
       pWidget.style.left = pc.left || '72px';
       pWidget.style.top = pc.top || '18px';
@@ -4112,6 +4119,9 @@
           createdProb.el._pdfAnchor = createdProb.pdfAnchor ? { ...createdProb.pdfAnchor } : null;
           createdProb.el._cardInkStrokes = JSON.parse(JSON.stringify(ep.cardInkStrokes || []));
           createdProb.el._cardStickers = JSON.parse(JSON.stringify(ep.cardStickers || []));
+          createdProb.el.classList.toggle('pip-locked-mode', Boolean(ep.pipLocked));
+          createdProb.el.classList.toggle('pip-stealth-locked', Boolean(ep.pipStealth));
+          if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(createdProb.el);
           if (typeof createdProb.el._renderCardInkCanvas === 'function') createdProb.el._renderCardInkCanvas();
           if (typeof createdProb.el._renderCardStickers === 'function') createdProb.el._renderCardStickers();
         }
