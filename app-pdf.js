@@ -24,6 +24,19 @@
       if (this.virtualStylusEl && !this.isAudioPlaying) {
         this.virtualStylusEl.style.display = 'none';
       }
+      // OS 파일 탐색기 창이 떠 있는 동안 뒤쪽 캔버스 애니메이션 루프 일시정지 (GPU/CPU 경합 방지)
+      if (this.pulseAnimId) {
+        cancelAnimationFrame(this.pulseAnimId);
+        this.pulseAnimId = null;
+      }
+      if (this.intersectionAnimId) {
+        cancelAnimationFrame(this.intersectionAnimId);
+        this.intersectionAnimId = null;
+      }
+      if (this._mainLaserRafId) {
+        cancelAnimationFrame(this._mainLaserRafId);
+        this._mainLaserRafId = null;
+      }
       if (this.canvas) {
         this.canvas.classList.remove(
           'ink-cursor-pen',
@@ -35,6 +48,19 @@
     };
     this._restoreDefaultCursorForFilePicker = restoreDefaultCursorForFilePicker;
 
+    const finishWaitingForFilePicker = () => {
+      if (!this.isWaitingForFilePicker) return;
+      this.isWaitingForFilePicker = false;
+      if (this._uiPointerIds) this._uiPointerIds.clear();
+      this.updateInkCursor();
+    };
+
+    window.addEventListener('focus', () => {
+      if (this.isWaitingForFilePicker && (performance.now() - (this._filePickerOpenedAt || 0) > 250)) {
+        setTimeout(finishWaitingForFilePicker, 80);
+      }
+    });
+
     const triggerFileOpen = (preserveReplaceFlag = false) => {
       if (fileInput) {
         if (!preserveReplaceFlag) {
@@ -43,6 +69,7 @@
         // 🌟 [대표님 기획]: 파일 선택창 열리며 전체화면 풀리는 현상 방어 + Windows 파일 열기 창 cursor:none 상속 증발 원천 차단
         this.wasFullscreenBeforeFile = document.body.classList.contains('fullscreen-mode') || Boolean(document.fullscreenElement);
         this.isWaitingForFilePicker = true;
+        this._filePickerOpenedAt = performance.now();
         restoreDefaultCursorForFilePicker();
         fileInput.value = '';
         fileInput.click();
@@ -100,6 +127,9 @@
     if (btnReturnToBoard) btnReturnToBoard.onclick = () => this.closePdfModal();
 
     if (fileInput) {
+      fileInput.addEventListener('cancel', () => {
+        finishWaitingForFilePicker();
+      });
       fileInput.onchange = async (e) => {
         this.isWaitingForFilePicker = false;
         if (this._uiPointerIds) this._uiPointerIds.clear();
@@ -122,7 +152,7 @@
           this.syncFullscreenButtonUI(true);
         }
 
-        const imageFiles = rawFiles.filter(f => f.type && f.type.startsWith('image/'));
+        const imageFiles = rawFiles.filter(f => (f.type && f.type.startsWith('image/')) || (f.name && /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name)));
         // 1) 이미지 파일(1개 또는 N개 선택) 불러오기 -> 슬라이드당 1문제씩 펼쳐진 상태(▾)로 즉시 배치!
         if (imageFiles.length >= 1) {
           await this.loadImagesOnePerSlide(imageFiles);

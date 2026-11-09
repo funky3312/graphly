@@ -3639,9 +3639,13 @@
         this._isPointerInsideWindow = true;
         this._lastPointerEvent = e;
         if (this.isWaitingForFilePicker) {
-          this.isWaitingForFilePicker = false;
-          if (this._uiPointerIds) this._uiPointerIds.clear();
-          this.updateInkCursor();
+          if ((performance.now() - (this._filePickerOpenedAt || 0) > 600) && document.hasFocus && document.hasFocus()) {
+            this.isWaitingForFilePicker = false;
+            if (this._uiPointerIds) this._uiPointerIds.clear();
+            this.updateInkCursor();
+          } else {
+            return;
+          }
         }
 
         if (this.isDraggingPillRemote || isAnyModalOrOverlayBlockingCanvas()) {
