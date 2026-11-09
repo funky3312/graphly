@@ -2136,6 +2136,11 @@ class GraphApp {
     this.lessonPlaylistIndex = 0;
     this.isTopSlideBarHidden = false;
     this.lessonTeachingMode = null;
+    this._lastShareModalDeckTitle = '';
+    const inpDeckReset = document.getElementById('inputShareModalDeckTitle');
+    if (inpDeckReset) inpDeckReset.value = '';
+    const inpCloudReset = document.getElementById('inputCloudSaveTitle');
+    if (inpCloudReset) inpCloudReset.value = '';
     this.syncCloudHubRailLockUI();
     this.syncPdfModalModeUI();
     this.syncPdfBoardNavBarUI();
@@ -6128,13 +6133,39 @@ class GraphApp {
 
     this._initSmartNoteViewerEvents();
 
-    const flashButtonLabel = (el, tempText, origText, ms = 1800) => {
-      if (!el) return;
-      el.textContent = tempText;
-      setTimeout(() => {
-        el.textContent = origText;
+    const triggerExportBtnSuccess = (btnEl, labelEl, tempText, origText, ms = 1850) => {
+      const targetBtn = btnEl || (labelEl && labelEl.closest ? labelEl.closest('button') : null);
+      const targetLbl = labelEl || targetBtn;
+      if (!targetLbl) return;
+      if (targetBtn) {
+        if (targetBtn._fxResetTimer) {
+          clearTimeout(targetBtn._fxResetTimer);
+          targetBtn._fxResetTimer = null;
+        }
+        targetBtn.classList.remove('export-btn-success-fx');
+        void targetBtn.offsetWidth;
+        targetBtn.classList.add('export-btn-success-fx');
+      }
+      const sparkleSvg = `<svg class="export-btn-fx-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2L14.6 9.4L22 12L14.6 14.6L12 22L9.4 14.6L2 12L9.4 9.4L12 2Z"/></svg>`;
+      targetLbl.innerHTML = `<span class="export-btn-fx-content">${sparkleSvg}<span>${tempText}</span></span>`;
+      const timerId = setTimeout(() => {
+        if (targetBtn) {
+          targetBtn.classList.remove('export-btn-success-fx');
+          targetBtn._fxResetTimer = null;
+        }
+        if (targetLbl === lblModalSavePng) {
+          const allSlidesNow = this._getActiveSlidesForExport('수업 노트');
+          const isMultiNow = (this.exportScope === 'all' && allSlidesNow.length > 1);
+          targetLbl.textContent = isMultiNow ? `PDF 저장 (${allSlidesNow.length}장)` : 'PNG 저장';
+        } else {
+          targetLbl.textContent = origText;
+        }
       }, ms);
+      if (targetBtn) {
+        targetBtn._fxResetTimer = timerId;
+      }
     };
+    this.triggerExportBtnSuccess = triggerExportBtnSuccess;
 
     const syncFilterUI = () => {
       const allSlides = this._getActiveSlidesForExport('수업 노트');
@@ -6311,7 +6342,7 @@ class GraphApp {
     if (btnModalCopyImg) {
       btnModalCopyImg.onclick = async () => {
         await this.copyToClipboard(this.exportFilter);
-        flashButtonLabel(lblModalCopyImg, '복사 완료', '이미지 복사');
+        triggerExportBtnSuccess(btnModalCopyImg, lblModalCopyImg, '복사 완료', '이미지 복사');
       };
     }
 
@@ -6321,7 +6352,7 @@ class GraphApp {
         const isMulti = (this.exportScope === 'all' && allSlides.length > 1);
         const origLabel = isMulti ? `PDF 저장 (${allSlides.length}장)` : 'PNG 저장';
         await this.downloadExportImages(this.exportScope, this.exportFilter);
-        flashButtonLabel(lblModalSavePng, '저장 완료', origLabel);
+        triggerExportBtnSuccess(btnModalSavePng, lblModalSavePng, '저장 완료', origLabel);
       };
     }
 
@@ -6394,7 +6425,7 @@ class GraphApp {
         if (lblBtnCopyShare) lblBtnCopyShare.textContent = '링크 생성 중...';
         const finalUrl = await ensureCloudShareLinkOnDemand();
         await copyTextToClipboard(finalUrl);
-        flashButtonLabel(lblBtnCopyShare, '링크 복사 완료', '공유 링크 복사');
+        triggerExportBtnSuccess(btnCopyShare, lblBtnCopyShare, '링크 복사 완료', '공유 링크 복사');
       };
     }
 
@@ -6417,7 +6448,7 @@ class GraphApp {
         link.download = `Graphly_QR_${Date.now()}.png`;
         link.href = dataUrl;
         link.click();
-        flashButtonLabel(lblBtnDownloadQr, 'QR 저장 완료', 'QR 저장');
+        triggerExportBtnSuccess(btnDownloadQr, lblBtnDownloadQr, 'QR 저장 완료', 'QR 저장');
       };
     }
 
@@ -6452,7 +6483,35 @@ class GraphApp {
     const inpDeckTitle = document.getElementById('inputShareModalDeckTitle');
     const inpDeckTags = document.getElementById('inputShareModalDeckTags');
     const btnShareToLib = document.getElementById('btnShareModalToLibrary');
+    const lblShareToLib = document.getElementById('lblShareModalToLibrary');
     const btnShareExportFile = document.getElementById('btnShareModalExportFile');
+    const lblShareExportFile = document.getElementById('lblShareModalExportFile');
+
+    // 브라우저 자동완성 드롭다운 차단 및 내보내기 ⇄ 클라우드 파일명 실시간 연동
+    [inpDeckTitle, inpDeckTags, document.getElementById('inputCloudSaveTitle')].forEach((inp) => {
+      if (!inp) return;
+      inp.setAttribute('autocomplete', 'off');
+      inp.setAttribute('autocorrect', 'off');
+      inp.setAttribute('autocapitalize', 'off');
+      inp.setAttribute('spellcheck', 'false');
+      inp.setAttribute('aria-autocomplete', 'none');
+      inp.addEventListener('focus', () => {
+        inp.setAttribute('name', 'graphly_nofill_' + Date.now());
+      });
+    });
+
+    if (inpDeckTitle) {
+      const syncDeckTitleToCloud = () => {
+        const val = inpDeckTitle.value.trim();
+        this._lastShareModalDeckTitle = val;
+        const inpCloud = document.getElementById('inputCloudSaveTitle');
+        if (inpCloud) {
+          inpCloud.value = val;
+        }
+      };
+      inpDeckTitle.addEventListener('input', syncDeckTitleToCloud);
+      inpDeckTitle.addEventListener('change', syncDeckTitleToCloud);
+    }
 
     const getShareModalFilteredSlides = () => {
       const fallbackTitle = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : '공유된 수업 세트';
@@ -6479,6 +6538,9 @@ class GraphApp {
 
     if (btnShareToLib) {
       btnShareToLib.onclick = async () => {
+        const carryTitle = (inpDeckTitle && inpDeckTitle.value.trim())
+          ? inpDeckTitle.value.trim()
+          : (this._lastShareModalDeckTitle || '');
         const modalShare = document.getElementById('modalShare');
         if (modalShare) modalShare.classList.remove('show');
         this._returnToShareModalAfterCloudSave = true;
@@ -6490,10 +6552,10 @@ class GraphApp {
         };
         this._cloudExplorerSaveScope = (this.exportScope === 'current') ? 'current' : 'all';
         const inpCloudTitle = document.getElementById('inputCloudSaveTitle');
-        if (inpCloudTitle && inpDeckTitle && inpDeckTitle.value.trim()) {
-          inpCloudTitle.value = inpDeckTitle.value.trim();
+        if (inpCloudTitle && carryTitle) {
+          inpCloudTitle.value = carryTitle;
         }
-        this.openCloudHubModal({ fromExportModal: true });
+        this.openCloudHubModal({ fromExportModal: true, prefillTitle: carryTitle });
       };
     }
 
@@ -6504,11 +6566,16 @@ class GraphApp {
         const defaultTitle = slides.length > 1
           ? `Graphly_${slides.length}문항_${stageSuffix}`
           : `${slides[0].slideTitle || 'Graphly_수업노트'}_${stageSuffix}`;
-        const title = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : defaultTitle;
+        const typedTitle = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : '';
+        if (typedTitle) {
+          this._lastShareModalDeckTitle = typedTitle;
+          const inpCloudTitle = document.getElementById('inputCloudSaveTitle');
+          if (inpCloudTitle) inpCloudTitle.value = typedTitle;
+        }
+        const title = typedTitle || defaultTitle;
         const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : `#수업노트 ${stageSuffix}`;
         this.exportGraphlyDeckFile(title, tags, slides);
-        if (inpDeckTitle) inpDeckTitle.value = '';
-        flashButtonLabel(btnShareExportFile, '파일 저장 완료', '내 기기에 저장');
+        triggerExportBtnSuccess(btnShareExportFile, lblShareExportFile, '파일 저장 완료', '내 기기에 저장');
       };
     }
   }

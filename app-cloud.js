@@ -818,9 +818,20 @@
     if (typeof this._syncCloudExplorerScopeUI === 'function') {
       this._syncCloudExplorerScopeUI();
     }
+    const inpCloudTitle = document.getElementById('inputCloudSaveTitle');
+    const inpShareTitle = document.getElementById('inputShareModalDeckTitle');
+    const prefillTitle = (options && typeof options.prefillTitle === 'string' && options.prefillTitle.trim())
+      ? options.prefillTitle.trim()
+      : ((inpShareTitle && inpShareTitle.value.trim()) ? inpShareTitle.value.trim() : '');
+    if (inpCloudTitle && prefillTitle) {
+      inpCloudTitle.value = prefillTitle;
+    }
     modalCloud.classList.add('show');
     this.syncCloudAuthUI();
     this.renderMyLibraryList();
+    if (inpCloudTitle && prefillTitle) {
+      inpCloudTitle.value = prefillTitle;
+    }
     this.verifyActiveDeviceSessionLock().then((valid) => {
       if (valid) this.fetchMyLibraryFromCloud();
     });
@@ -4737,14 +4748,10 @@
         if (modalCloud) modalCloud.classList.remove('show');
         const modalShare = document.getElementById('modalShare');
         if (modalShare) modalShare.classList.add('show');
-        const inpShareTitle = document.getElementById('inputShareModalDeckTitle');
-        if (inpShareTitle) inpShareTitle.value = '';
         const btnShareToLib = document.getElementById('btnShareModalToLibrary');
-        if (btnShareToLib) {
-          btnShareToLib.textContent = '✅ 클라우드에 저장됨';
-          setTimeout(() => {
-            if (btnShareToLib) btnShareToLib.textContent = '☁️ 클라우드에 저장';
-          }, 1800);
+        const lblShareToLib = document.getElementById('lblShareModalToLibrary');
+        if (typeof this.triggerExportBtnSuccess === 'function' && btnShareToLib) {
+          this.triggerExportBtnSuccess(btnShareToLib, lblShareToLib || btnShareToLib, '클라우드 저장 완료', '클라우드에 저장');
         }
       }
 

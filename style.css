@@ -15592,6 +15592,11 @@ body:not(.theme-light) #railDrawer .vf-toggle-wrap input:checked+.vf-toggle-slid
   border: 1px solid #e2e8f0 !important;
   cursor: pointer;
   transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+#railDrawer .settings-clean-btn:not(.export-btn-success-fx),
+#modalShare .settings-clean-btn:not(.export-btn-success-fx),
+#railResetBoardPopover .settings-clean-btn:not(.export-btn-success-fx) {
   transform: none !important;
   box-shadow: none !important;
 }
@@ -15920,4 +15925,98 @@ body:not(.theme-light) .axis-vis-chip.active {
   background: rgba(56, 189, 248, 0.22);
   border-color: #38bdf8;
   color: #e0f2fe;
+}
+
+/* ✨ 내보내기 모달(#modalShare) 액션 버튼 완료 시각 효과 (초록색 체크 대신 세련된 딥 슬레이트·로열블루 쉬머 + 스프링 팝 + 스파클 아이콘) */
+#modalShare .settings-clean-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+#modalShare .settings-clean-btn.export-btn-success-fx,
+#modalShare .settings-clean-btn.export-btn-success-fx:hover {
+  background: linear-gradient(135deg, #1e293b 0%, #2563eb 100%) !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+  animation: exportBtnSuccessPop 0.48s cubic-bezier(0.22, 1.35, 0.36, 1) forwards !important;
+}
+
+body:not(.theme-light) #modalShare .settings-clean-btn.export-btn-success-fx,
+body:not(.theme-light) #modalShare .settings-clean-btn.export-btn-success-fx:hover {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.48) 0%, rgba(99, 102, 241, 0.52) 100%) !important;
+  border-color: #60a5fa !important;
+  color: #ffffff !important;
+}
+
+#modalShare .settings-clean-btn.export-btn-success-fx::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -120%;
+  width: 75%;
+  height: 100%;
+  background: linear-gradient(
+    105deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.32) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: skewX(-20deg);
+  pointer-events: none;
+  animation: exportBtnShimmerSweep 0.58s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+#modalShare .export-btn-fx-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  line-height: 1;
+}
+
+#modalShare .export-btn-fx-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: #bae6fd;
+  animation: exportBtnIconSparkle 0.44s cubic-bezier(0.2, 1.4, 0.35, 1) forwards;
+}
+
+@keyframes exportBtnSuccessPop {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.52);
+  }
+  45% {
+    transform: scale(1.035);
+    box-shadow: 0 0 0 6px rgba(37, 99, 235, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 3px 10px rgba(37, 99, 235, 0.22);
+  }
+}
+
+@keyframes exportBtnShimmerSweep {
+  0% {
+    left: -110%;
+  }
+  100% {
+    left: 145%;
+  }
+}
+
+@keyframes exportBtnIconSparkle {
+  0% {
+    opacity: 0;
+    transform: scale(0.25) rotate(-55deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.18) rotate(8deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
 }
