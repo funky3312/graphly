@@ -7598,19 +7598,17 @@
       hdrTools.style.display = 'none';
       hdrTools.innerHTML = `
         <div class="pip-hdr-sym-wrap">
-          <button type="button" class="card-btn pip-hdr-btn" data-pip-act="symMenu" title="대칭 이동 (x축 · y축 · 원점 · y=x 역함수)">
+          <button type="button" class="card-btn pip-hdr-btn" data-pip-act="symMenu" title="대칭 이동 (x축 · y축 · 원점 · y=x)">
             <span>대칭</span><span class="pip-hdr-caret">▾</span>
           </button>
           <div class="pip-hdr-popover" style="display: none;">
             <button type="button" class="pip-pop-btn" data-pip-act="flipX" title="x축 대칭 (상하 반전)">↕ x축</button>
             <button type="button" class="pip-pop-btn" data-pip-act="flipY" title="y축 대칭 (좌우 반전)">↔ y축</button>
             <button type="button" class="pip-pop-btn" data-pip-act="flipOrigin" title="원점 대칭">⤡ 원점</button>
-            <span class="pip-pop-divider"></span>
-            <button type="button" class="pip-pop-btn pip-pop-btn-inverse" data-pip-act="flipYX" title="y=x 대칭 역함수 생성 & 실시간 연동">🔄 y=x</button>
-            <button type="button" class="pip-pop-btn pip-pop-btn-unlink" data-pip-act="unlinkInverse" style="display: none;" title="원함수와 역함수 대칭 연동 끊기">✂️ 연동끊기</button>
+            <button type="button" class="pip-pop-btn" data-pip-act="flipYX" title="y=x 대칭 (역함수 생성 & 연동)">⤢ y=x</button>
+            <button type="button" class="pip-pop-btn" data-pip-act="unlinkInverse" style="display: none;" title="원함수와 역함수 대칭 연동 끊기">✂ 연동끊기</button>
           </div>
         </div>
-        <button type="button" class="card-btn pip-hdr-btn pip-hdr-unlink" data-pip-act="unlinkInverse" style="display: none;" title="원함수와 역함수 대칭 연동 끊기">✂️ 연동끊기</button>
         <button type="button" class="card-btn pip-hdr-btn" data-pip-act="abs" title="절댓값 |f(x)| 꺾어올리기 (평행이동 후 다시 누르면 다단계 절댓값 ||f(x)|-k|)">|f|</button>
         <button type="button" class="card-btn pip-hdr-btn pip-hdr-del" data-pip-act="deleteCurve" title="선택된 함수 삭제">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

@@ -5466,48 +5466,10 @@ body.theme-light .pip-hdr-btn.pip-hdr-del:hover {
   color: #ffffff;
 }
 
-.pip-pop-divider {
-  width: 1px;
-  height: 14px;
-  background: rgba(255, 255, 255, 0.18);
-  margin: 0 2px;
-  flex-shrink: 0;
-}
-
-.pip-pop-btn.pip-pop-btn-inverse {
-  color: #c4b5fd;
-  background: rgba(162, 155, 254, 0.12);
-  border-color: rgba(162, 155, 254, 0.35);
-}
-
-.pip-pop-btn.pip-pop-btn-inverse:hover {
-  background: rgba(162, 155, 254, 0.28);
-  border-color: rgba(162, 155, 254, 0.65);
-  color: #ffffff;
-}
-
-.pip-pop-btn.pip-pop-btn-unlink,
-.pip-hdr-btn.pip-hdr-unlink {
-  color: #c4b5fd !important;
-  background: rgba(162, 155, 254, 0.16) !important;
-  border: 1px solid rgba(162, 155, 254, 0.5) !important;
-}
-
-.pip-pop-btn.pip-pop-btn-unlink:hover,
-.pip-hdr-btn.pip-hdr-unlink:hover {
-  background: rgba(162, 155, 254, 0.3) !important;
-  border-color: rgba(162, 155, 254, 0.78) !important;
-  color: #ffffff !important;
-}
-
 body.theme-light .pip-hdr-popover {
   background: rgba(255, 255, 255, 0.98);
   border: 1px solid rgba(15, 23, 42, 0.14);
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
-}
-
-body.theme-light .pip-pop-divider {
-  background: rgba(15, 23, 42, 0.14);
 }
 
 body.theme-light .pip-pop-btn {
@@ -5517,32 +5479,6 @@ body.theme-light .pip-pop-btn {
 body.theme-light .pip-pop-btn:hover {
   background: #e2e8f0;
   color: #0f172a;
-}
-
-body.theme-light .pip-pop-btn.pip-pop-btn-inverse {
-  color: #6d28d9;
-  background: rgba(109, 40, 217, 0.08);
-  border-color: rgba(109, 40, 217, 0.28);
-}
-
-body.theme-light .pip-pop-btn.pip-pop-btn-inverse:hover {
-  background: rgba(109, 40, 217, 0.16);
-  border-color: rgba(109, 40, 217, 0.5);
-  color: #4c1d95;
-}
-
-body.theme-light .pip-pop-btn.pip-pop-btn-unlink,
-body.theme-light .pip-hdr-btn.pip-hdr-unlink {
-  color: #6d28d9 !important;
-  background: rgba(109, 40, 217, 0.1) !important;
-  border: 1px solid rgba(109, 40, 217, 0.38) !important;
-}
-
-body.theme-light .pip-pop-btn.pip-pop-btn-unlink:hover,
-body.theme-light .pip-hdr-btn.pip-hdr-unlink:hover {
-  background: rgba(109, 40, 217, 0.2) !important;
-  border-color: #6d28d9 !important;
-  color: #4c1d95 !important;
 }
 
 
