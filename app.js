@@ -614,8 +614,12 @@ class GraphApp {
         targetEl = findNearestButtonInToolbar(inToolbarContainer, e.clientX, e.clientY, 7);
       }
 
+      const isScrollableOrAuthUI = Boolean(
+        e.target.closest('.drawer-content, .smart-modal-body, .cloud-explorer-main, .cloud-explorer-sidebar, #pdfViewport, #settingsAccountSection, #btnSettingsGoogleLogin, #btnCloudGoogleLogin')
+      );
       // 툴바/카드 액션바 영역이거나 버튼 위라면 즉시 preventDefault로 크롬 FullscreenControlHost 제스처 감지 차단!
-      if (targetEl || inToolbarContainer || e.target.closest('.problem-card-widget, .graph-card-widget')) {
+      // (단, 서랍/모달 내부 스크롤 영역이나 OAuth 팝업 버튼은 기본 클릭·스크롤 활성화 보존)
+      if ((targetEl || inToolbarContainer || e.target.closest('.problem-card-widget, .graph-card-widget')) && !isScrollableOrAuthUI) {
         e.preventDefault();
       }
 
@@ -647,11 +651,13 @@ class GraphApp {
 
     window.addEventListener('click', (e) => {
       if (
+        e.isTrusted &&
         lastSynthClick &&
         !lastSynthClick.inProgress &&
         (performance.now() - lastSynthClick.time < 420)
       ) {
         // 합성 클릭 직후 모달(#modalPdfViewer 등)이 열리며 커서 아래 DOM(예: #btnPdfOpenAnother)이 바뀌어도 지연 도착한 고스트 click을 100% 원천 차단!
+        // (※ e.isTrusted 조건을 통해 파일 열기 fileInput.click()이나 Firebase OAuth 내부 합성 클릭은 절대 차단하지 않음!)
         e.stopImmediatePropagation();
         e.preventDefault();
         lastSynthClick = null;
@@ -687,6 +693,20 @@ class GraphApp {
       const maxAllowedSlip = (tap.pointerType === 'pen' || tap.pointerType === 'touch') ? 32 : 20;
 
       if (totalSlip <= maxAllowedSlip && elapsed <= 850 && !tap.el.disabled) {
+        const requiresSyncUserGesture = Boolean(
+          tap.el.matches &&
+          tap.el.matches('#btnSettingsGoogleLogin, #btnCloudGoogleLogin, #btnFullscreen, #btnRailPdf, #btnPdfOpenAnother, #btnCloudUploadLocalFiles, #btnImportGraphlyFile, #btnOpenLocalFileFromHub')
+        );
+        if (requiresSyncUserGesture && !tap.nativeClicked && document.body.contains(tap.el)) {
+          tap.nativeClicked = true;
+          lastSynthClick = { el: tap.el, time: performance.now(), inProgress: true };
+          try {
+            tap.el.click();
+          } finally {
+            if (lastSynthClick) lastSynthClick.inProgress = false;
+          }
+          return;
+        }
         setTimeout(() => {
           if (!tap.nativeClicked && !tap.el.disabled && document.body.contains(tap.el)) {
             tap.nativeClicked = true;
@@ -1310,7 +1330,7 @@ class GraphApp {
       this.renderPipGraphCard('primary');
       this.renderGraphCardCanvas();
       if (gWidget.classList.contains('pip-locked-mode')) {
-        this.schedulePipGraphCardStealth('primary', 5000);
+        this.schedulePipGraphCardStealth('primary', 3000);
       }
     } else {
       this.clearPipGraphCardStealthTimer('primary');
@@ -1374,7 +1394,7 @@ class GraphApp {
         if (typeof c.el._renderCardStickers === 'function') c.el._renderCardStickers();
         if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
         if (c.el.classList.contains('pip-locked-mode')) {
-          this.schedulePipGraphCardStealth(c, 5000);
+          this.schedulePipGraphCardStealth(c, 3000);
         }
       }
     });
@@ -12003,7 +12023,7 @@ class GraphApp {
       } else if (cardWidgetEl.classList.contains('graph-card-widget')) {
         if (typeof this._getPipCardRefByWidget === 'function' && typeof this.schedulePipGraphCardStealth === 'function') {
           const cRef = this._getPipCardRefByWidget(cardWidgetEl);
-          if (cRef) this.schedulePipGraphCardStealth(cRef, 5000);
+          if (cRef) this.schedulePipGraphCardStealth(cRef, 3000);
         }
       }
       if (this.isAudioRecording) {
@@ -14097,13 +14117,13 @@ class GraphApp {
             this.relayoutLeftDockedCards(true);
           }
           if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
-            this.schedulePipGraphCardStealth(cardItem, 5000);
+            this.schedulePipGraphCardStealth(cardItem, 3000);
           }
         } else if (el.classList.contains('pip-locked-mode')) {
           if (el.classList.contains('pip-stealth-locked')) {
             this.wakeUpPipGraphCardStealth(cardItem, true);
           } else {
-            this.schedulePipGraphCardStealth(cardItem, 5000);
+            this.schedulePipGraphCardStealth(cardItem, 3000);
           }
         }
         if (this.isAudioRecording) {
@@ -14154,7 +14174,7 @@ class GraphApp {
             if (!wasResizeMoved && el.classList.contains('pip-stealth-locked')) {
               this.wakeUpPipGraphCardStealth(cardItem, true);
             } else if (!el.classList.contains('pip-stealth-locked')) {
-              this.schedulePipGraphCardStealth(cardItem, 5000);
+              this.schedulePipGraphCardStealth(cardItem, 3000);
             }
           }
           if (this.isAudioRecording) {
@@ -14943,13 +14963,13 @@ class GraphApp {
               this.relayoutLeftDockedCards(true);
             }
             if (widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
-              this.schedulePipGraphCardStealth('primary', 5000);
+              this.schedulePipGraphCardStealth('primary', 3000);
             }
           } else if (widget.classList.contains('pip-locked-mode')) {
             if (widget.classList.contains('pip-stealth-locked')) {
               this.wakeUpPipGraphCardStealth('primary', true);
             } else {
-              this.schedulePipGraphCardStealth('primary', 5000);
+              this.schedulePipGraphCardStealth('primary', 3000);
             }
           }
           if (this.isAudioRecording) {
@@ -15003,7 +15023,7 @@ class GraphApp {
             if (!wasResizeMoved && widget.classList.contains('pip-stealth-locked')) {
               this.wakeUpPipGraphCardStealth('primary', true);
             } else if (!widget.classList.contains('pip-stealth-locked')) {
-              this.schedulePipGraphCardStealth('primary', 5000);
+              this.schedulePipGraphCardStealth('primary', 3000);
             }
           }
           if (this.isAudioRecording) {
@@ -15825,7 +15845,7 @@ class GraphApp {
     }
   }
 
-  schedulePipGraphCardStealth(cardRef, delayMs = 5000) {
+  schedulePipGraphCardStealth(cardRef, delayMs = 3000) {
     const { widget } = this._getPipCardWidgetAndSnapRaw(cardRef);
     if (!widget) return;
     this.clearPipGraphCardStealthTimer(cardRef);
@@ -15867,7 +15887,7 @@ class GraphApp {
     const wasStealth = widget.classList.contains('pip-stealth-locked');
     widget.classList.remove('pip-stealth-locked');
     if (restartTimer) {
-      this.schedulePipGraphCardStealth(cardRef, 5000);
+      this.schedulePipGraphCardStealth(cardRef, 3000);
     }
     if (wasStealth && this.isAudioRecording && !this._isApplyingAudioTimelineState) {
       this._recordAudioWorkspaceStateIfNeeded(true);
@@ -15906,7 +15926,7 @@ class GraphApp {
       snap._activeSnapHint = null;
       widget.classList.remove('pip-manipulating', 'pip-stealth-locked');
       widget.classList.add('pip-locked-mode');
-      this.schedulePipGraphCardStealth(cardRef, 5000);
+      this.schedulePipGraphCardStealth(cardRef, 3000);
     } else {
       this.clearPipGraphCardStealthTimer(cardRef);
       snap.isCurveSelected = false;
@@ -15932,7 +15952,7 @@ class GraphApp {
 
     if (showToast) {
       if (snap.isPipLocked) {
-        this.showToast('🔒 카드 잠금 완료! 5초 뒤 테두리와 상단 메뉴가 숨겨지며, 카드를 톡 터치하면 다시 나타납니다.');
+        this.showToast('🔒 카드 잠금 완료! 3초 뒤 테두리와 상단 메뉴가 숨겨지며, 카드를 톡 터치하면 다시 나타납니다.');
       } else {
         this.showToast('🔓 잠금 해제됨! 핸들 조작 · 여백 드래그로 축 이동 · 모서리로 시야 영역 확장이 가능합니다.');
       }
@@ -24398,16 +24418,70 @@ class GraphApp {
       this.communityHubCache = [];
     }
 
-    // 비동기로 Firebase SDK 초기화 (판서/초기 로딩 블로킹 0%)
+    // 비동기로 Firebase SDK 초기화 및 OAuth 팝업 브리지 사전 예열 (판서/초기 로딩 블로킹 0%)
+    this._applyFirebaseAuthUser = (user, forceAuthProvider = '', showWelcome = false) => {
+      if (!user) return false;
+      const savedProvider = forceAuthProvider || (this.cloudUser && this.cloudUser.authProvider) || localStorage.getItem('graphly_last_auth_provider') || '';
+      const hasGoogle = Array.isArray(user.providerData) && user.providerData.some(p => p && p.providerId === 'google.com');
+      const hasPassword = Array.isArray(user.providerData) && user.providerData.some(p => p && p.providerId === 'password');
+      const isGoogleProvider = (savedProvider === 'email' && hasPassword)
+        ? false
+        : (savedProvider === 'google' && hasGoogle ? true : (hasGoogle && !hasPassword));
+      if (!isGoogleProvider && !user.emailVerified) return false;
+      const authProvider = isGoogleProvider ? 'google' : 'email';
+      const normEmail = String(user.email || '').trim().toLowerCase();
+      const canonicalUid = this._getCanonicalUidForEmail(normEmail, user.uid, authProvider);
+      if (isGoogleProvider) {
+        try { localStorage.setItem('graphly_last_auth_provider', 'google'); } catch (e) { }
+      }
+      this._applyLoggedInCloudUser({
+        uid: canonicalUid,
+        rawUid: String(user.uid || canonicalUid),
+        authProvider: authProvider,
+        providerLabel: isGoogleProvider ? 'Google 로그인' : '아이디 로그인',
+        loginId: normEmail || user.uid,
+        displayName: user.displayName || (normEmail ? normEmail.split('@')[0] : '선생님'),
+        email: normEmail,
+        emailVerified: true
+      }, Boolean(showWelcome));
+      return true;
+    };
+
+    this._prewarmFirebasePopupResolver = () => {
+      try {
+        if (
+          this._fbAuth &&
+          this._fbAuth._delegate &&
+          this._fbAuth._delegate._popupRedirectResolver &&
+          typeof this._fbAuth._delegate._popupRedirectResolver._initialize === 'function'
+        ) {
+          this._fbAuth._delegate._popupRedirectResolver._initialize(this._fbAuth._delegate).catch(() => { });
+        }
+      } catch (e) { }
+    };
+
     const tryInitFirebase = () => {
       if (window.firebase && window.firebase.apps) {
         try {
           if (!window.firebase.apps.length) {
             window.firebase.initializeApp(this._firebaseConfig);
           }
-          this._fbAuth = window.firebase.auth ? window.firebase.auth() : null;
-          this._fbDb = window.firebase.firestore ? window.firebase.firestore() : null;
-          if (this._fbAuth) {
+          if (!this._fbAuth && window.firebase.auth) {
+            this._fbAuth = window.firebase.auth();
+          }
+          if (!this._fbDb && window.firebase.firestore) {
+            this._fbDb = window.firebase.firestore();
+          }
+          if (this._fbAuth && !this._fbAuthStateListenerBound) {
+            this._fbAuthStateListenerBound = true;
+            this._prewarmFirebasePopupResolver();
+            if (typeof this._fbAuth.getRedirectResult === 'function') {
+              this._fbAuth.getRedirectResult().then((redirectRes) => {
+                if (redirectRes && redirectRes.user) {
+                  this._applyFirebaseAuthUser(redirectRes.user, 'google', true);
+                }
+              }).catch(() => { });
+            }
             this._fbAuth.onAuthStateChanged((user) => {
               if (user) {
                 const savedProvider = (this.cloudUser && this.cloudUser.authProvider) || localStorage.getItem('graphly_last_auth_provider') || '';
@@ -24446,10 +24520,18 @@ class GraphApp {
               }
             });
           }
+          return Boolean(this._fbAuth);
         } catch (err) { }
       }
+      return false;
     };
-    setTimeout(tryInitFirebase, 400);
+    this._ensureFirebaseInitialized = tryInitFirebase;
+    tryInitFirebase();
+    [150, 400, 1200, 3000].forEach(ms => {
+      setTimeout(() => {
+        if (!this._fbAuth) tryInitFirebase();
+      }, ms);
+    });
 
     if (!this._sessionLockVisibilityBound) {
       this._sessionLockVisibilityBound = true;
@@ -24543,7 +24625,18 @@ class GraphApp {
     if (btnResetEmailPw) {
       btnResetEmailPw.onclick = () => this.handleResetEmailPassword();
     }
+    if (btnProGoLogin) {
+      btnProGoLogin.onclick = () => {
+        const proModal = document.getElementById('modalProPricing');
+        if (proModal) proModal.classList.remove('show');
+        this.promptCloudLoginForLibrary('🔑 좌측 설정창의 [계정]에서 로그인해 주세요.');
+      };
+    }
     if (btnSettingsGoogleLogin) {
+      btnSettingsGoogleLogin.addEventListener('pointerenter', () => {
+        if (typeof this._ensureFirebaseInitialized === 'function') this._ensureFirebaseInitialized();
+        if (typeof this._prewarmFirebasePopupResolver === 'function') this._prewarmFirebasePopupResolver();
+      }, { passive: true });
       btnSettingsGoogleLogin.onclick = () => this.handleCloudGoogleAuth();
     }
     if (btnSettingsEmailLogin) {
@@ -27995,14 +28088,58 @@ class GraphApp {
       await this.handleCloudLogout();
       return;
     }
+    const lblSettingsAcct = document.getElementById('lblSettingsAccountStatus');
+    const showAccountInlineNotice = (msg, isError = false) => {
+      if (lblSettingsAcct && !this.cloudUser) {
+        lblSettingsAcct.style.display = 'flex';
+        lblSettingsAcct.style.color = isError ? '#dc2626' : '#475569';
+        lblSettingsAcct.style.fontSize = '11px';
+        lblSettingsAcct.style.fontWeight = '600';
+        lblSettingsAcct.textContent = msg;
+      }
+    };
+    if (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:') {
+      const fileMsg = '⚠️ 로컬 파일(file://)에서는 Google OAuth가 제한됩니다. graphly.net 또는 아이디 로그인을 이용해 주세요.';
+      showAccountInlineNotice(fileMsg, true);
+      this.showToast(fileMsg);
+      return;
+    }
+    if (typeof this._ensureFirebaseInitialized === 'function') {
+      this._ensureFirebaseInitialized();
+    }
     if (!window.firebase || !this._fbAuth) {
+      showAccountInlineNotice('⏳ 구글 로그인 모듈을 불러오는 중입니다. 1초 후 다시 눌러주세요.', false);
       this.showToast('⚠️ 구글 로그인 모듈을 불러오는 중입니다. 잠시 후 다시 눌러주세요.');
       return;
     }
+    const provider = new window.firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    showAccountInlineNotice('⏳ Google 로그인 창을 여는 중...', false);
+
+    // iOS/iPadOS 홈화면 웹앱(PWA, navigator.standalone === true) 환경에서 Firebase SDK가
+    // window.open 대신 분리된 <a target="_blank"> 합성 클릭 및 null 윈도우(new Rn(null))를 반환해
+    // 팝업 로그인이 먹통이 되는 현상을 방지하기 위해 팝업 호출 순간 standalone 플래그를 우회
+    let restoredStandaloneDesc = null;
+    const hadStandaloneTrue = Boolean(typeof window !== 'undefined' && window.navigator && window.navigator.standalone === true);
+    if (hadStandaloneTrue) {
+      try {
+        restoredStandaloneDesc = Object.getOwnPropertyDescriptor(window.navigator, 'standalone') ||
+          Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.navigator), 'standalone');
+        Object.defineProperty(window.navigator, 'standalone', {
+          get: () => false,
+          configurable: true
+        });
+      } catch (e) { }
+    }
+
     try {
-      const provider = new window.firebase.auth.GoogleAuthProvider();
       const result = await this._fbAuth.signInWithPopup(provider);
       if (result && result.user) {
+        if (lblSettingsAcct) {
+          lblSettingsAcct.style.color = '';
+          lblSettingsAcct.style.fontSize = '';
+          lblSettingsAcct.style.fontWeight = '';
+        }
         const normEmail = String(result.user.email || '').trim().toLowerCase();
         const canonicalUid = this._getCanonicalUidForEmail(normEmail, result.user.uid, 'google');
         try { localStorage.setItem('graphly_last_auth_provider', 'google'); } catch (e) { }
@@ -28019,7 +28156,37 @@ class GraphApp {
         this.showToast(`🎉 환영합니다, ${this.cloudUser.displayName}님! 클라우드 보관함이 동기화되었습니다.`);
       }
     } catch (err) {
+      const errCode = (err && err.code) ? String(err.code) : '';
+      if (
+        errCode === 'auth/popup-blocked' ||
+        errCode === 'auth/operation-not-supported-in-this-environment' ||
+        errCode === 'auth/web-storage-unsupported'
+      ) {
+        try {
+          showAccountInlineNotice('🔄 Google 로그인 페이지로 이동합니다...', false);
+          await this._fbAuth.signInWithRedirect(provider);
+          return;
+        } catch (redirErr) {
+          showAccountInlineNotice('⚠️ 브라우저 팝업 차단을 해제하거나 아이디 로그인을 이용해 주세요.', true);
+          return;
+        }
+      }
+      if (errCode === 'auth/unauthorized-domain') {
+        showAccountInlineNotice('⚠️ 현재 접속 도메인이 Firebase 승인 도메인에 등록되지 않았습니다.', true);
+        return;
+      }
+      this.syncCloudAuthUI();
       this.showToast('⚠️ 구글 로그인 창이 닫혔거나 취소되었습니다.');
+    } finally {
+      if (hadStandaloneTrue) {
+        try {
+          if (restoredStandaloneDesc) {
+            Object.defineProperty(window.navigator, 'standalone', restoredStandaloneDesc);
+          } else {
+            delete window.navigator.standalone;
+          }
+        } catch (e) { }
+      }
     }
   }
 
@@ -34053,6 +34220,15 @@ class GraphApp {
     }, { passive: true });
 
     const getPos = (e) => {
+      if (!this.isDrawingInk && !this.isPanning && !this.isBoardPanning && !this._pinchState && this.canvas) {
+        const rect = this.canvas.getBoundingClientRect();
+        if (rect && rect.width > 0 && rect.height > 0) {
+          this.canvasRect = rect;
+          if (Math.abs(rect.width - (this.width || 0)) > 2 || Math.abs(rect.height - (this.height || 0)) > 2) {
+            this.resizeCanvas();
+          }
+        }
+      }
       let rect = this.canvasRect;
       if (!rect || !rect.width || !rect.height) {
         rect = this.updateCanvasRect() || (this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 });
@@ -36882,7 +37058,7 @@ class GraphApp {
 
           // 🌟 [무렉(Zero-Stutter) 마감 & 단획·점 100% 즉시 반영]: 일반 펜 획은 pointerup 입력 핸들러 안에서
           // 절대 전체 화면 render()나 rebuildInkCache()를 동기 실행하지 않고, 현재 획만 즉시 캔버스에 반영합니다!
-          if (!finishedStroke.isHighlighter && !finishedStroke.isShape) {
+          if (!finishedStroke.isHighlighter && !finishedStroke.isShape && !this._inkBakeDirty) {
             if (this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
               this.drawLiveBezierStep(this._liveBezierScreenPts, finishedStroke, true);
             }
@@ -36891,42 +37067,38 @@ class GraphApp {
             }
             this._liveBezierScreenPts = null;
 
-            if (!this._inkBakeDirty) {
-              const { dpr, padX, padY, width: bakeW, height: bakeH } = this._getInkBakeMetrics();
-              if (this.inkBakeCanvas && (this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH)) {
-                this.inkBakeCanvas.width = bakeW;
-                this.inkBakeCanvas.height = bakeH;
-                this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
-              }
-              if (this.inkGraphBakeCanvas && (this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH)) {
-                this.inkGraphBakeCanvas.width = bakeW;
-                this.inkGraphBakeCanvas.height = bakeH;
-                this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
-              }
-              const isBoard = (finishedStroke.target || 'board') === 'board';
-              const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
-              if (targetCtx) {
-                this.renderSingleStroke(targetCtx, finishedStroke, null, false);
-                this._hasBakedStrokes = true;
-                if (!this._inkBakeCamera) {
-                  this._inkBakeCamera = {
-                    panX: this.panX || 0,
-                    panY: this.panY || 0,
-                    zoomLevel: this.zoomLevel || 1.0,
-                    boardPanX: this.boardPanX || 0,
-                    boardPanY: this.boardPanY || 0,
-                    boardZoom: this.boardZoom || 1.0,
-                    boardZoomOffsetX: this.boardZoomOffsetX || 0,
-                    boardZoomOffsetY: this.boardZoomOffsetY || 0,
-                    padX,
-                    padY
-                  };
-                }
-              }
-            } else {
-              this._scheduleIdleInkCacheRebuild(350);
+            const { dpr, padX, padY, width: bakeW, height: bakeH } = this._getInkBakeMetrics();
+            if (this.inkBakeCanvas && (this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH)) {
+              this.inkBakeCanvas.width = bakeW;
+              this.inkBakeCanvas.height = bakeH;
+              this.inkBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
             }
-            return;
+            if (this.inkGraphBakeCanvas && (this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH)) {
+              this.inkGraphBakeCanvas.width = bakeW;
+              this.inkGraphBakeCanvas.height = bakeH;
+              this.inkGraphBakeCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
+            }
+            const isBoard = (finishedStroke.target || 'board') === 'board';
+            const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
+            if (targetCtx) {
+              this.renderSingleStroke(targetCtx, finishedStroke, null, false);
+              this._hasBakedStrokes = true;
+              if (!this._inkBakeCamera) {
+                this._inkBakeCamera = {
+                  panX: this.panX || 0,
+                  panY: this.panY || 0,
+                  zoomLevel: this.zoomLevel || 1.0,
+                  boardPanX: this.boardPanX || 0,
+                  boardPanY: this.boardPanY || 0,
+                  boardZoom: this.boardZoom || 1.0,
+                  boardZoomOffsetX: this.boardZoomOffsetX || 0,
+                  boardZoomOffsetY: this.boardZoomOffsetY || 0,
+                  padX,
+                  padY
+                };
+              }
+              return;
+            }
           }
         }
 
@@ -37065,10 +37237,9 @@ class GraphApp {
     let lastPointerMoveTime = 0;
     let lastPointerUpTime = 0;
 
-    // 🔬 [자동 범인 박제 & 최근 5건 타임라인 HUD: 아이패드 실기기 테스트 및 ?debug=ink 전용 활성화 (PC 화면에서는 자동 숨김)]
+    // 🔬 [자동 범인 박제 & 최근 5건 타임라인 HUD: ?debug=ink 전용 활성화 (일반 사용 시 자동 숨김)]
     let isInkDebugHudEnabled = Boolean(
-      this.isIOSOrIPad() ||
-      (typeof window !== 'undefined' && window.location && window.location.search.includes('debug=ink'))
+      typeof window !== 'undefined' && window.location && window.location.search.includes('debug=ink')
     );
     let diagPenCount = 0;
     let diagStylusTouchCount = 0;
@@ -37401,7 +37572,9 @@ class GraphApp {
               }
             }
           }
-          if (this._shouldIgnoreCanvasTouchPointer(e)) {
+          const isUiTouchMove = Boolean(this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId));
+          const isCanvasOrPinchTouchMove = !isUiTouchMove || Boolean(this._pinchState) || Boolean(this.activePointers && this.activePointers.size >= 2);
+          if (isCanvasOrPinchTouchMove && this._shouldIgnoreCanvasTouchPointer(e)) {
             if (e.cancelable !== false) e.preventDefault();
             if (this._pinchState || (this.activePointers && this.activePointers.size >= 2)) {
               e.stopPropagation();
@@ -37493,13 +37666,35 @@ class GraphApp {
       }, { capture: true, passive: false });
 
       const finishPointer = (e) => {
+        const wasUiPointer = Boolean(this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId));
         if (this._uiPointerIds && e.pointerId !== undefined) {
           this._uiPointerIds.delete(e.pointerId);
         }
         if (this.isPdfModalOpen) return;
         if (e.pointerType === 'touch') {
           if (e.pointerId !== undefined) diagTouchTrackMap.delete(e.pointerId);
+          if (wasUiPointer && !this._pinchState && !(this.activePointers && this.activePointers.has(e.pointerId))) {
+            return;
+          }
           if (this._shouldIgnoreCanvasTouchPointer(e)) return;
+        }
+        if (
+          wasUiPointer &&
+          !this.isDrawingInk &&
+          !this.isStylusDrawing &&
+          !this.isDrawingSticker &&
+          !this._tappingBoardSticker &&
+          !this.isPanning &&
+          !this.isBoardPanning &&
+          !this.isDraggingCurve &&
+          this.draggedHandleIdx === null &&
+          !this.isDraggingLassoSelection &&
+          !this.isResizingLassoSelection &&
+          !this.isLassoSelecting &&
+          !this.isResizingStage &&
+          !this.isMovingStage
+        ) {
+          return;
         }
         const isEffectivePen = (e.pointerType === 'pen');
         const nowT = Date.now();
