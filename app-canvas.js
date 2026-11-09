@@ -1311,18 +1311,9 @@
         }
 
         const m = this.screenToMath(pos.x, pos.y);
-        let pressure = 0.5;
         const hasRealHardwarePressure = (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01);
         this._strokeHasRealPressure = hasRealHardwarePressure;
-        if (hasRealHardwarePressure) {
-          pressure = (this.inkPenStyle === 'brush')
-            ? Math.max(0.12, e.pressure * 0.65)
-            : ((this.inkPenStyle === 'fountain') ? Math.max(0.20, e.pressure * 0.78) : e.pressure);
-        } else if (this.inkPenStyle === 'fountain') {
-          pressure = 0.34;
-        } else if (this.inkPenStyle === 'brush') {
-          pressure = 0.22;
-        }
+        const pressure = this._mapInitialStrokePressure(e.pressure, this.inkPenStyle, hasRealHardwarePressure);
         this._lastPressure = pressure;
 
         if (this.activeInkTool === 'eraser') {
@@ -1420,6 +1411,9 @@
         this._prevRawInkScreenPos = null;
         this._lastRawInkScreenPos = { x: pos.x, y: pos.y };
         this._lastMoveEventScreenPos = { x: pos.x, y: pos.y };
+        const downTs = (typeof e.timeStamp === 'number' && e.timeStamp > 0) ? e.timeStamp : null;
+        this._lastInkSampleTs = downTs;
+        this._lastInkAcceptedTs = downTs;
         this._liveBezierScreenPts = [{ x: pos.x, y: pos.y, p: pressure }];
         this._inkHoldDetected = false;
         this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
@@ -2153,6 +2147,13 @@
           let addedPoints = 0;
           for (let i = 0; i < events.length; i++) {
             const ev = events[i];
+            const evTs = (typeof ev.timeStamp === 'number' && ev.timeStamp > 0) ? ev.timeStamp : 0;
+            if (evTs > 0) {
+              if (typeof this._lastInkSampleTs === 'number' && evTs <= this._lastInkSampleTs) {
+                continue;
+              }
+              this._lastInkSampleTs = evTs;
+            }
             const pPos = (ev === e && events.length === 1) ? pos : getPos(ev);
 
             // 다중 coalesced 샘플(PC)일 때 이전 프레임 중복/역주행 점 스킵
@@ -2213,6 +2214,10 @@
             const moveStepDist = lastRaw ? Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y) : 0;
             const curPenStyle = (this.currentInkStroke && this.currentInkStroke.penStyle) || this.inkPenStyle || 'ballpen';
             const ptCount = this.currentInkStroke && this.currentInkStroke.points ? this.currentInkStroke.points.length : 1;
+            const dtMs = (evTs > 0 && typeof this._lastInkAcceptedTs === 'number' && this._lastInkAcceptedTs > 0)
+              ? (evTs - this._lastInkAcceptedTs)
+              : null;
+            if (evTs > 0) this._lastInkAcceptedTs = evTs;
             const pressure = this.computeDynamicStrokePressure(
               rawPressure,
               this._strokeHasRealPressure,
@@ -2220,7 +2225,8 @@
               curPenStyle,
               this._lastPressure,
               ptCount,
-              0
+              0,
+              dtMs
             );
             this._lastPressure = pressure;
             const recTMove = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
@@ -3178,9 +3184,12 @@
         // 일반 필기 마감 시 마지막 펜 끝 좌표를 매끄럽게 마무리 (짧은 획 L===1 포함 100% 마감!)
         // (※ pointerup 시점의 220ms 강제 도형 인식 트리거는 작은 글씨 `3`, `ㄴ`을 떼는 순간 직선으로 둔갑시키므로 제거하고,
         //    펜을 떼지 않고 정식으로 홀드 타이머(_inkHoldTimer)가 만료되었을 때만 도형 인식이 작동하도록 통일!)
-        const upPos = getPos(e.touches ? (e.changedTouches ? e.changedTouches[0] : e.touches[0]) : e);
-        if (upPos && Number.isFinite(upPos.x) && Number.isFinite(upPos.y)) {
-          this._lastRawInkScreenPos = { x: upPos.x, y: upPos.y };
+        const isCancelOrZero = !e || e.type === 'pointercancel' || (e.clientX === 0 && e.clientY === 0);
+        if (!isCancelOrZero) {
+          const upPos = getPos(e.touches ? (e.changedTouches ? e.changedTouches[0] : e.touches[0]) : e);
+          if (upPos && Number.isFinite(upPos.x) && Number.isFinite(upPos.y)) {
+            this._lastRawInkScreenPos = { x: upPos.x, y: upPos.y };
+          }
         }
         if (!this._inkHoldDetected && this.currentInkStroke && !this.currentInkStroke.isShape && this._lastRawInkScreenPos && this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
           const lastSmoothed = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
@@ -3221,6 +3230,8 @@
         this._prevRawInkScreenPos = null;
         this._lastRawInkScreenPos = null;
         this._lastMoveEventScreenPos = null;
+        this._lastInkSampleTs = null;
+        this._lastInkAcceptedTs = null;
         this._inkHoldLastScreenPos = null;
         this._lastSignificantMoveTime = 0;
         this.isDrawingInk = false;

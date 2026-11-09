@@ -1061,7 +1061,7 @@
         const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
         const initCardPenStyle = (this.activeInkTool === 'highlighter') ? 'ballpen' : (this.inkPenStyle || 'ballpen');
         const hasHwP = (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01);
-        const initP = hasHwP ? e.pressure : (initCardPenStyle === 'brush' ? 0.22 : (initCardPenStyle === 'fountain' ? 0.34 : 0.5));
+        const initP = this._mapInitialStrokePressure(e.pressure, initCardPenStyle, hasHwP);
         const startPxX = pos.nx * pos.w;
         const startPxY = pos.ny * pos.h;
         currentStroke = {
@@ -1817,7 +1817,7 @@
         const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
         const initExtraPenStyle = (this.activeInkTool === 'highlighter') ? 'ballpen' : (this.inkPenStyle || 'ballpen');
         const hasHwP = (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01);
-        const initP = hasHwP ? e.pressure : (initExtraPenStyle === 'brush' ? 0.22 : (initExtraPenStyle === 'fountain' ? 0.34 : 0.5));
+        const initP = this._mapInitialStrokePressure(e.pressure, initExtraPenStyle, hasHwP);
         const startPxX = nx * rw;
         const startPxY = ny * rh;
         curExtraStroke = {
@@ -4590,7 +4590,7 @@
         const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
         const initGraphCardPenStyle = (this.activeInkTool === 'highlighter') ? 'ballpen' : (this.inkPenStyle || 'ballpen');
         const hasHwP = (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01);
-        const initP = hasHwP ? e.pressure : (initGraphCardPenStyle === 'brush' ? 0.22 : (initGraphCardPenStyle === 'fountain' ? 0.34 : 0.5));
+        const initP = this._mapInitialStrokePressure(e.pressure, initGraphCardPenStyle, hasHwP);
         const startPxX = pos.nx * pos.w;
         const startPxY = pos.ny * pos.h;
         currentStroke = {

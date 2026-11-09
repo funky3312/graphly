@@ -560,32 +560,37 @@
    * - PC와 아이패드의 샘플 수집 방식·보정치·감도를 완벽히 분리하여, 한쪽 기기 튜닝이 다른 기기에 절대 영향을 주지 않도록 관리합니다.
    */
   getDeviceInkProfile() {
+    if (this._inkProfileCache) return this._inkProfileCache;
     if (this.isIOSOrIPad()) {
-      return {
+      this._inkProfileCache = {
         deviceType: 'ipad',
-        useCoalescedEvents: false,     // iPadOS WebKit의 이전 프레임 중복/역순 패킷(원 2줄 갈라짐·직선 왕복 두꺼워짐) 원천 배제
+        useCoalescedEvents: (() => {
+          try { return localStorage.getItem('graphly_ipad_coalesced') === '1'; } catch (_) { return false; }
+        })(),
         minRawDistPen: 2.0,            // 아이패드 유리면 저속 이동 시 캡 중첩 두꺼워짐 방지 최소 점 간격 (px)
         minRawDistMouse: 2.0,
         minCardDistPen: 1.5,           // 카드 내부 아이패드 필기 최소 점 간격 (px)
         minCardDistMouse: 1.5,
-        forwardGuardMaxDist: 45.0,     // 역주행 점프 차단 적용 최대 거리 (px)
+        forwardGuardMaxDist: 4.0,      // 펜 정지 직전 미세 떨림의 역주행만 차단하는 반경(px)
         forwardGuardMinCos: -0.08,     // 진행 방향 대비 95° 이상 뒤로 튀는 패킷 즉시 폐기
         streamlineWeight: 0.22,        // 아이패드 강화유리 맞춤 1차 EMA 보정 강도
         streamlineDecayDist: 20.0      // 빠른 원/곡선에서 보정이 0으로 감쇠되는 거리 (px)
       };
+      return this._inkProfileCache;
     }
-    return {
+    this._inkProfileCache = {
       deviceType: 'pc',
       useCoalescedEvents: true,        // PC 액정타블렛 200~240Hz 하드웨어 중간 샘플 정식 수집 (빠른 원 다각형 각짐 방지)
       minRawDistPen: 1.2,              // PC 액정타블렛 펜 최소 점 간격 (px)
       minRawDistMouse: 1.4,            // 마우스/전자칠판 최소 점 간격 (px)
       minCardDistPen: 0.9,             // 카드 내부 PC 액정타블렛 최소 점 간격 (px)
       minCardDistMouse: 1.1,
-      forwardGuardMaxDist: 36.0,       // 코얼레싱 중복/역주행 점프 차단 거리 (px)
+      forwardGuardMaxDist: 3.0,        // 펜 정지 직전 미세 떨림의 역주행만 차단하는 반경(px)
       forwardGuardMinCos: -0.05,       // 진행 방향 역주행 패킷 폐기 임계값
       streamlineWeight: 0.18,          // PC 액정타블렛 맞춤 1차 EMA 보정 강도
       streamlineDecayDist: 18.0        // 빠른 원/곡선에서 보정이 0으로 감쇠되는 거리 (px)
     };
+    return this._inkProfileCache;
   }
 
   isStylusPalmRejectionActive() {
@@ -4485,6 +4490,14 @@
     let added = false;
     for (let i = 0; i < events.length; i++) {
       const ev = events[i];
+      const evTs = (typeof ev.timeStamp === 'number' && ev.timeStamp > 0) ? ev.timeStamp : 0;
+      if (evTs > 0) {
+        if (typeof stroke._lastSampleTs === 'number' && evTs <= stroke._lastSampleTs) {
+          continue;
+        }
+        stroke._lastSampleTs = evTs;
+      }
+
       const rawNx = Math.max(0, Math.min(1, (ev.clientX - rLeft) / rw));
       const rawNy = Math.max(0, Math.min(1, (ev.clientY - rTop) / rh));
       const rawPxX = rawNx * rw;
@@ -4537,6 +4550,11 @@
       const rawP = (typeof ev.pressure === 'number') ? ev.pressure : 0.5;
       if (rawP > 0 && Math.abs(rawP - 0.5) > 0.01) stroke._hasHwP = true;
 
+      const dtMs = (evTs > 0 && typeof stroke._lastAcceptedTs === 'number' && stroke._lastAcceptedTs > 0)
+        ? (evTs - stroke._lastAcceptedTs)
+        : null;
+      if (evTs > 0) stroke._lastAcceptedTs = evTs;
+
       const moveP = this.computeDynamicStrokePressure(
         rawP || 0.5,
         Boolean(stroke._hasHwP),
@@ -4544,7 +4562,8 @@
         stroke.penStyle || 'ballpen',
         prevPt ? prevPt.p : 0.5,
         stroke.points.length,
-        0
+        0,
+        dtMs
       );
 
       stroke.points.push({
@@ -4566,7 +4585,8 @@
     const rh = Math.max(1, h || (rect && rect.height) || 353);
 
     let rawEnd = stroke._lastRawPx || null;
-    if (e && typeof e.clientX === 'number' && typeof e.clientY === 'number' && rect && rect.width > 0) {
+    const isCancelOrZero = !e || e.type === 'pointercancel' || (e.clientX === 0 && e.clientY === 0);
+    if (!isCancelOrZero && typeof e.clientX === 'number' && typeof e.clientY === 'number' && rect && rect.width > 0) {
       const endNx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rw));
       const endNy = Math.max(0, Math.min(1, (e.clientY - rect.top) / rh));
       rawEnd = { x: endNx * rw, y: endNy * rh };
@@ -4597,12 +4617,31 @@
     }
   }
 
+  // 🌟 [메인 칠판 및 카드 3곳 공통 입필(첫 점) 필압 매핑 헬퍼]
+  _mapInitialStrokePressure(rawP, penStyle = 'ballpen', hasHwP = null) {
+    const isRealHw = (typeof hasHwP === 'boolean')
+      ? hasHwP
+      : (typeof rawP === 'number' && rawP > 0 && Math.abs(rawP - 0.5) > 0.01);
+    if (isRealHw) {
+      if (penStyle === 'brush') return Math.max(0.12, rawP * 0.65);
+      if (penStyle === 'fountain') return Math.max(0.20, rawP * 0.78);
+      return rawP;
+    }
+    if (penStyle === 'brush') return 0.22;
+    if (penStyle === 'fountain') return 0.34;
+    return 0.5;
+  }
+
   // 🌟 [굿노트 6 · 노타빌리티 급 하이브리드 필압·속도·코너 감응 연산기]
   // 하드웨어 필압(애플펜슬/S펜/와콤)의 S-커브 감도 증폭 + 마우스/전자칠판의 속도·꺾임(Corner Dwell) 역산 융합!
-  computeDynamicStrokePressure(rawPressure, hasRealPressure, moveStepDist, penStyle = 'ballpen', prevPressure = 0.5, ptCount = 1, cornerBoost = 0) {
+  computeDynamicStrokePressure(rawPressure, hasRealPressure, moveStepDist, penStyle = 'ballpen', prevPressure = 0.5, ptCount = 1, cornerBoost = 0, dtMs = null) {
     if (!penStyle || penStyle === 'ballpen' || penStyle === 'flat') return 0.5;
     const isBrush = (penStyle === 'brush');
-    const normSpd = Math.min(1.0, Math.max(0, (moveStepDist - (isBrush ? 2.0 : 2.5)) / (isBrush ? 38 : 45)));
+    const hasValidDt = (typeof dtMs === 'number' && Number.isFinite(dtMs) && dtMs > 0);
+    const dt = hasValidDt ? Math.min(50, Math.max(1, dtMs)) : null;
+    const normSpd = (dt !== null)
+      ? Math.min(1, Math.max(0, ((moveStepDist / dt) - (isBrush ? 0.48 : 0.60)) / (isBrush ? 9.1 : 10.8)))
+      : Math.min(1.0, Math.max(0, (moveStepDist - (isBrush ? 2.0 : 2.5)) / (isBrush ? 38 : 45)));
     const velP = isBrush
       ? Math.max(0.05, Math.min(0.98, 0.96 - Math.pow(normSpd, 0.76) * 0.91 + cornerBoost * 0.18))
       : Math.max(0.15, Math.min(0.92, 0.88 - Math.pow(normSpd, 0.84) * 0.72 + cornerBoost * 0.10));
@@ -4623,7 +4662,8 @@
     }
 
     const smoothPrev = (typeof prevPressure === 'number' && !isNaN(prevPressure)) ? prevPressure : targetP;
-    const alpha = isBrush ? 0.32 : 0.28;
+    const tau = isBrush ? 10.8 : 12.7;
+    const alpha = (dt !== null) ? (1 - Math.exp(-dt / tau)) : (isBrush ? 0.32 : 0.28);
     return Math.max(0.04, Math.min(1.0, smoothPrev * (1 - alpha) + targetP * alpha));
   }
 
