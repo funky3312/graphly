@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261109_11">
+  <link rel="stylesheet" href="style.css?v=20261109_12">
 </head>
 
 <body class="theme-light">
@@ -1199,88 +1199,6 @@
       <input type="text" id="canvasTextInput" class="canvas-text-input" style="display: none;" autocomplete="off"
         spellcheck="false" placeholder="텍스트 입력">
 
-      <!-- [🧑‍🏫 라이브 판서 모드 상단 플로팅 칩 바] -->
-      <div id="boardModeBar" class="board-mode-bar" style="display: none;">
-        <div class="board-bar-title">
-          <span class="board-pulse-dot"></span>
-          <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-              stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;">
-              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-              <path d="m15 5 4 4" />
-            </svg>라이브 판서 모드</span>
-        </div>
-        <div class="board-ratio-selector">
-          <button id="btnBoardRatio46" class="board-ratio-btn active">4 : 6</button>
-          <button id="btnBoardRatio55" class="board-ratio-btn">5 : 5</button>
-          <button id="btnBoardRatio37" class="board-ratio-btn">3 : 7</button>
-        </div>
-        <span class="board-bar-tip">그래프 클릭 시 핸들러 표시 · 중앙선 드래그 조절</span>
-        <button id="btnExitBoardMode" class="btn-exit-board" title="ESC"><svg width="13" height="13" viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-            style="vertical-align:-2px;margin-right:3px;">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>복귀</button>
-      </div>
-
-      <!-- [🔀 N축 합성함수 해석 모드 상단 플로팅 바] -->
-      <div id="nAxisModeBar" class="n-axis-mode-bar" style="display: none;">
-        <div class="n-axis-bar-title">
-          <span class="n-axis-pulse-dot"></span>
-          <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-              stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;">
-              <path d="M16 3h5v5" />
-              <path d="M4 20 21 3" />
-              <path d="M21 16v5h-5" />
-              <path d="M15 15l6 6" />
-              <path d="M4 4l5 5" />
-            </svg>N축 합성 모드</span>
-        </div>
-        <div class="n-axis-role-selector">
-          <div class="n-axis-role-chip outer" id="chipNAxisOuter">
-            <span class="role-badge">상단 겉함수 g(t)</span>
-            <span class="role-name" id="txtNAxisOuterName">사차함수</span>
-          </div>
-          <button id="btnNAxisSwap" class="btn-n-axis-swap" title="S">
-            <span class="swap-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M16 3h5v5" />
-                <path d="M4 20 21 3" />
-                <path d="M8 21H3v-5" />
-                <path d="M20 4 3 21" />
-              </svg></span>
-            <span class="swap-label">맞바꾸기</span>
-          </button>
-          <div class="n-axis-role-chip inner" id="chipNAxisInner">
-            <span class="role-badge">하단 속함수 f(x) (90° 회전)</span>
-            <span class="role-name" id="txtNAxisInnerName">삼각함수 sin</span>
-          </div>
-        </div>
-        <div class="n-axis-zoom-control">
-          <button id="btnNAxisZoomOut" class="btn-n-axis-zoom"><svg width="13" height="13" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              <line x1="8" y1="11" x2="14" y2="11" />
-            </svg></button>
-          <button id="btnNAxisZoomReset" class="btn-n-axis-zoom-val"><span id="lblNAxisZoom">100%</span></button>
-          <button id="btnNAxisZoomIn" class="btn-n-axis-zoom"><svg width="13" height="13" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              <line x1="11" y1="8" x2="11" y2="14" />
-              <line x1="8" y1="11" x2="14" y2="11" />
-            </svg></button>
-        </div>
-        <span class="n-axis-bar-tip">휠 스크롤로 화각 줌 · 좌하단 알약/방향키로 x₀ 이동</span>
-        <button id="btnExitNAxisMode" class="btn-exit-n-axis" title="ESC"><svg width="13" height="13"
-            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>복귀</button>
-      </div>
-
       <!-- [✂️ 구간별 함수 선택 플로팅 팝오버] -->
       <div id="pwRegionPopover" class="pw-region-popover"></div>
 
@@ -1520,8 +1438,6 @@
               <path d="M15 15l6 6" />
               <path d="M4 4l5 5" />
             </svg></span></button>
-        <button id="btnBoardMode" style="display: none;"></button>
-        <button id="btnNAxisMode" style="display: none;"></button>
       </div>
 
       <!-- 👁️ 아이콘 모두 숨김 상태 전용: 우측 상단 초슬림·초투명 손잡이 복귀 탭 (숨기는 순간 1.2초간 나왔다가 연해지며 우측으로 은폐) -->
@@ -2943,8 +2859,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261109_11"></script>
-  <script src="app.js?v=20261109_11"></script>
+  <script src="engine.js?v=20261109_12"></script>
+  <script src="app.js?v=20261109_12"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

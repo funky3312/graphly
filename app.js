@@ -113,22 +113,6 @@ class GraphApp {
     this.symmetrySnapActive = false;
     this.symmetrySnapY = 0;
 
-    // [🧑‍🏫 라이브 강의 & 판서 분할 모드 (Stage & Board Mode)]
-    this.isBoardMode = false;
-    this.boardSplitRatio = 0.42; // 기본 분할: 좌측 그래프 42% : 우측 판서 58%
-    this.boardAnimId = null;
-    this.preBoardPanX = 0;
-    this.isDraggingBoardDivider = false;
-
-    // [🔀 정통 N축 합성함수 해석 모드 (Top-Bottom N-Axis Mode)]
-    this.isNAxisMode = false;
-    this.nAxisOuterIdx = 0;   // 상단 겉함수 z = g(t) 레이어 인덱스
-    this.nAxisInnerIdx = 1;   // 하단 속함수 t = f(x) (90도 눕힘) 레이어 인덱스
-    this.nAxisX0 = 0.5;      // 하단 속함수 입력값 슬라이더 (키보드 ←, → 이동)
-    this.isDraggingNAxisX0 = false;
-    this.nAxisSplitY = 0.52;  // 상하 분할 비율 (52% : 48%)
-    this.nAxisZoom = 1.0;     // N축 모드 전용 화각 휠 줌 스케일 (0.2x ~ 4.0x)
-
     // 공통 뷰포트 & 렌더링 옵션
     this.showAxes = true; // [대표님 기획]: 흰바탕에 가운데 수직선(축)과 그리드가 있는 상태에서 시작! (데스모스/지오지브라 스타일)
     this.showXAxis = true; // x축 개별 표시 여부 (기본 ON, 설정에서 x축/y축 독립 제어)
@@ -417,8 +401,6 @@ class GraphApp {
     this.renderFuncList();
     this.bindControls();
     this.initHistoryControls();
-    this.initBoardModeControls();
-    this.initNAxisControls();
     this.initPiecewiseControls();
     this.initShapeControls();
     this.initCurveContextBar();
@@ -442,10 +424,58 @@ class GraphApp {
     this.syncGraphSnapBarUI();
   }
 
-  // --- [🎯 UI 순정 클릭 보호 & 롱프레스/손날 오터치/호버 관리] ---
+  // --- [🎯 액정타블렛/스타일러스 펜 원터치 클릭 보정 엔진 (Stylus Fast-Tap & Magnetic Hit-Box)] ---
+  // 필기(획 그리기) 로직에는 단 1%도 관여하지 않으며, 오직 UI 버튼 클릭 시:
+  // 1) 펜촉이 닿았다 떨어지는 순간 미세하게 미끄러져(3~32px) 브라우저가 기본 click 이벤트를 취소하는 현상
+  // 2) 버튼의 :hover/:active 스케일 변화나 내부 아이콘(svg/span) 경계 이동으로 타겟이 갈라져 클릭이 씹히는 현상
+  // 3) 액정타블렛 유리 시차(Parallax)로 인해 툴바/카드 버튼 가장자리(7px 이내)를 짚었을 때 안 눌리는 현상
+  // 을 100% 보정하여 가볍게 톡 찍어도 한 번에 칼같이 클릭되도록 보장합니다.
   initStylusFastTap() {
     if (this._stylusFastTapInitialized) return;
     this._stylusFastTapInitialized = true;
+
+    const CLICKABLE_UI_SELECTOR = [
+      'button',
+      '.rail-btn',
+      '.quick-fab-btn',
+      '.ink-tool-btn',
+      '.pill-remote-btn',
+      '.pill-remote-swap-btn',
+      '.pill-remote-close-btn',
+      '.pill-color-dot',
+      '.pill-mod-chip',
+      '.lasso-color-dot',
+      '.lasso-action-btn',
+      '.board-paper-chip',
+      '.ink-color-dot',
+      '.color-dot',
+      '.func-btn',
+      '.cat-tab-btn',
+      '.card-btn',
+      '.pw-popover-item',
+      '.export-menu-item',
+      '.theme-chip',
+      '.vf-chip',
+      '.dpi-btn',
+      '.quad-mode-btn',
+      '.transform-btn',
+      '.chip-btn',
+      '.key-btn',
+      '.ink-size-chip',
+      '.board-ratio-btn',
+      '.n-axis-tab-btn',
+      '.n-axis-preset-item',
+      '.n-axis-speed-btn',
+      '.n-axis-chip',
+      '.layer-item',
+      '.setting-toggle-item',
+      '.vf-toggle-wrap',
+      '.header-show-tab',
+      '.audio-sync-btn',
+      '.card-sticker-item',
+      '.card-sticker-del-btn',
+      '.viewer-sticker-hotspot'
+    ].join(', ');
 
     const TOOLBAR_CONTAINER_SELECTOR = [
       '.rail-dock',
@@ -460,6 +490,29 @@ class GraphApp {
       '.graph-snap-floating-bar',
       '.audio-sync-floating-bar'
     ].join(', ');
+
+    const findNearestButtonInToolbar = (container, clientX, clientY, maxPadPx = 7) => {
+      if (!container || !container.querySelectorAll) return null;
+      const candidates = container.querySelectorAll('button, .rail-btn, .quick-fab-btn, .ink-tool-btn, .ink-color-dot, .card-btn');
+      let bestBtn = null;
+      let bestDist = maxPadPx;
+      for (const btn of candidates) {
+        if (btn.disabled || btn.offsetParent === null) continue;
+        const r = btn.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) continue;
+        const dx = clientX < r.left ? (r.left - clientX) : (clientX > r.right ? (clientX - r.right) : 0);
+        const dy = clientY < r.top ? (r.top - clientY) : (clientY > r.bottom ? (clientY - r.bottom) : 0);
+        const d = Math.hypot(dx, dy);
+        if (d <= bestDist) {
+          bestDist = d;
+          bestBtn = btn;
+        }
+      }
+      return bestBtn;
+    };
+
+    let activeTap = null;
+    let lastSynthClick = null;
 
     const isEditableInput = (el) => {
       if (!el || typeof el.closest !== 'function') return false;
@@ -476,7 +529,17 @@ class GraphApp {
       return true;
     };
 
-    // 1) 비입력 영역 우클릭/롱프레스/드래그/텍스트선택 기본 제스처 차단
+    // 🌟 [크롬 전체화면 상단 (X) 출현 원천 차단 1단계: 버튼/카드 클릭 시 DOM Focus 탈취 및 Focus Loss 원천 봉쇄]
+    window.addEventListener('mousedown', (e) => {
+      if (e.target && e.target.closest && e.target.closest('#pdfViewport')) return;
+      if (isEditableInput(e.target)) return;
+      e.preventDefault();
+      if (document.activeElement && document.activeElement !== document.body && !isTextInputEl(document.activeElement)) {
+        try { document.activeElement.blur(); } catch (err) { }
+      }
+    }, { capture: true, passive: false });
+
+    // 🌟 [크롬 전체화면 상단 (X) 출현 원천 차단 2단계: 최상위 캡처 레벨 롱프레스/우클릭/드래그 제스처 봉쇄]
     const blockNativeLongPressGesture = (e) => {
       if (isEditableInput(e.target)) return;
       e.preventDefault();
@@ -486,32 +549,161 @@ class GraphApp {
       document.addEventListener(evtName, blockNativeLongPressGesture, { capture: true, passive: false });
     });
 
-    // 2) 아이패드 펜슬 필기 중 손날(touch)이 하단/우측 플로팅 툴바를 스칠 때의 오터치만 선택 차단 (순정 click/scroll 100% 보존)
     window.addEventListener('pointerdown', (e) => {
+      if (isEditableInput(e.target)) {
+        activeTap = null;
+        return;
+      }
+      // 🛡️ [아이패드 필기 중 손날(touch)의 우측/하단 툴바(되돌리기 등) 오터치 원천 차단]:
       if (
         e.pointerType === 'touch' &&
         e.target &&
         typeof e.target.closest === 'function' &&
+        !e.target.closest('#simplePenTouchCounterHud') &&
         (
           (this.isDrawingInk && this._activeDrawingPointerType === 'pen') ||
-          (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 500))
+          (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 550))
         )
       ) {
-        if (e.target.closest(TOOLBAR_CONTAINER_SELECTOR)) {
+        if (e.target.closest(TOOLBAR_CONTAINER_SELECTOR) || e.target.closest(CLICKABLE_UI_SELECTOR)) {
           if (e.cancelable !== false) e.preventDefault();
           e.stopPropagation();
         }
+        activeTap = null;
+        return;
       }
-    }, { capture: true, passive: false });
-
-    // 3) 버튼 클릭 후 포커스 잔류로 인해 스페이스바 패닝 시 직전 버튼이 눌리는 현상 방지
-    window.addEventListener('click', () => {
       if (document.activeElement && document.activeElement !== document.body && !isTextInputEl(document.activeElement)) {
         try { document.activeElement.blur(); } catch (err) { }
       }
-    }, { capture: true, passive: true });
+      if (e.button && e.button !== 0) {
+        e.preventDefault();
+        activeTap = null;
+        return;
+      }
+      if (!e.target || typeof e.target.closest !== 'function') {
+        activeTap = null;
+        return;
+      }
+      if (e.target.closest('#inkDockDragHandle, .problem-card-resize-handle')) {
+        e.preventDefault();
+        activeTap = null;
+        return;
+      }
 
-    // 4) PC 마우스 & 애플펜슬 공중 호버링 지원 + 터치 직후 Sticky :hover 잔상 제거
+      const inToolbarContainer = e.target.closest(TOOLBAR_CONTAINER_SELECTOR);
+      let targetEl = e.target.closest(CLICKABLE_UI_SELECTOR);
+      if (!targetEl && inToolbarContainer) {
+        targetEl = findNearestButtonInToolbar(inToolbarContainer, e.clientX, e.clientY, 7);
+      }
+
+      const isScrollableOrAuthUI = Boolean(
+        e.target.closest('.drawer-content, .smart-modal-body, .cloud-explorer-main, .cloud-explorer-sidebar, #pdfViewport, #settingsAccountSection, #btnSettingsGoogleLogin, #btnCloudGoogleLogin')
+      );
+      // 툴바/카드 액션바 영역이거나 버튼 위라면 즉시 preventDefault로 크롬 FullscreenControlHost 제스처 감지 차단!
+      // (단, 서랍/모달 내부 스크롤 영역이나 OAuth 팝업 버튼은 기본 클릭·스크롤 활성화 보존)
+      if ((targetEl || inToolbarContainer || e.target.closest('.problem-card-widget, .graph-card-widget')) && !isScrollableOrAuthUI) {
+        e.preventDefault();
+      }
+
+      if (!targetEl || targetEl.disabled) {
+        activeTap = null;
+        return;
+      }
+
+      // 버튼 클릭 시 setPointerCapture로 인한 포인터 독점(카드/툴바 조작 불능) 원천 방지
+
+      activeTap = {
+        el: targetEl,
+        pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
+        startX: e.clientX,
+        startY: e.clientY,
+        maxDist: 0,
+        startTime: performance.now(),
+        nativeClicked: false
+      };
+    }, { capture: true, passive: false });
+
+    window.addEventListener('pointermove', (e) => {
+      if (!activeTap) return;
+      if (e.pointerId !== undefined && activeTap.pointerId !== undefined && e.pointerId !== activeTap.pointerId) return;
+      const d = Math.hypot(e.clientX - activeTap.startX, e.clientY - activeTap.startY);
+      if (d > activeTap.maxDist) activeTap.maxDist = d;
+    }, true);
+
+    window.addEventListener('click', (e) => {
+      if (
+        e.isTrusted &&
+        lastSynthClick &&
+        !lastSynthClick.inProgress &&
+        (performance.now() - lastSynthClick.time < 420)
+      ) {
+        // 합성 클릭 직후 모달(#modalPdfViewer 등)이 열리며 커서 아래 DOM(예: #btnPdfOpenAnother)이 바뀌어도 지연 도착한 고스트 click을 100% 원천 차단!
+        // (※ e.isTrusted 조건을 통해 파일 열기 fileInput.click()이나 Firebase OAuth 내부 합성 클릭은 절대 차단하지 않음!)
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        lastSynthClick = null;
+        return;
+      }
+      if (activeTap) {
+        const clickDist = Math.hypot((e.clientX || 0) - activeTap.startX, (e.clientY || 0) - activeTap.startY);
+        if (
+          e.target === activeTap.el ||
+          (activeTap.el.contains && activeTap.el.contains(e.target)) ||
+          clickDist <= 36
+        ) {
+          activeTap.nativeClicked = true;
+        }
+      }
+    }, true);
+
+    window.addEventListener('pointerup', (e) => {
+      if (!activeTap) return;
+      if (e.pointerId !== undefined && activeTap.pointerId !== undefined && e.pointerId !== activeTap.pointerId) return;
+
+      const tap = activeTap;
+      if (e.pointerId !== undefined && tap.el && tap.el.releasePointerCapture) {
+        try {
+          if (!tap.el.hasPointerCapture || tap.el.hasPointerCapture(e.pointerId)) {
+            tap.el.releasePointerCapture(e.pointerId);
+          }
+        } catch (err) { }
+      }
+      const endDist = Math.hypot(e.clientX - tap.startX, e.clientY - tap.startY);
+      const totalSlip = Math.max(endDist, tap.maxDist || 0);
+      const elapsed = performance.now() - tap.startTime;
+      const maxAllowedSlip = (tap.pointerType === 'pen' || tap.pointerType === 'touch') ? 32 : 20;
+
+      if (totalSlip <= maxAllowedSlip && elapsed <= 850 && !tap.el.disabled) {
+        const requiresSyncUserGesture = Boolean(
+          tap.el.matches &&
+          tap.el.matches('#btnSettingsGoogleLogin, #btnCloudGoogleLogin, #btnFullscreen, #btnRailPdf, #btnPdfOpenAnother, #btnCloudUploadLocalFiles, #btnImportGraphlyFile, #btnOpenLocalFileFromHub')
+        );
+        if (requiresSyncUserGesture && !tap.nativeClicked && document.body.contains(tap.el)) {
+          tap.nativeClicked = true;
+          lastSynthClick = { el: tap.el, time: performance.now(), inProgress: true };
+          try {
+            tap.el.click();
+          } finally {
+            if (lastSynthClick) lastSynthClick.inProgress = false;
+          }
+          return;
+        }
+        setTimeout(() => {
+          if (!tap.nativeClicked && !tap.el.disabled && document.body.contains(tap.el)) {
+            tap.nativeClicked = true;
+            lastSynthClick = { el: tap.el, time: performance.now(), inProgress: true };
+            try {
+              tap.el.click();
+            } finally {
+              if (lastSynthClick) lastSynthClick.inProgress = false;
+            }
+          }
+        }, 24);
+      }
+    }, true);
+
+    // 🌟 [PC 마우스 & 신형 아이패드 애플펜슬 공중 호버링 100% 지원 + 사파리 터치 직후 Sticky :hover 잔상 원천 제거]
     const HOVER_ICON_SELECTOR = '.rail-btn, .quick-fab-btn, .rail-zoom-action-btn';
     let currentHoveredIcon = null;
     let suppressHoverUntil = 0;
@@ -524,6 +716,7 @@ class GraphApp {
     };
 
     window.addEventListener('pointermove', (e) => {
+      // 손가락 터치이거나 버튼을 누르고 있는 드래그 상태(buttons !== 0), 또는 클릭 직후 쿨타임에는 호버 점등 차단
       if (e.pointerType === 'touch' || (e.buttons && e.buttons !== 0) || performance.now() < suppressHoverUntil) {
         clearHoveredIcon();
         return;
@@ -2015,11 +2208,6 @@ class GraphApp {
     const pwControls = document.getElementById('pwControls');
     if (pwControls) pwControls.style.display = 'none';
 
-    // N축 모드 중이었다면 안전 복귀
-    if (this.isNAxisMode) {
-      this.exitNAxisMode();
-    }
-
     this.syncControls();
     this.renderLayerList();
     this.renderFuncList();
@@ -2167,9 +2355,6 @@ class GraphApp {
     this.syncPdfModalModeUI();
     this.syncPdfBoardNavBarUI();
     this.syncLessonPlaylistNavBarUI();
-    if (this.isNAxisMode) {
-      this.exitNAxisMode();
-    }
     this.showAxes = true;
     this.showInverseGuide = false;
     const chkInv = document.getElementById('chkInverseGuide');
@@ -2230,18 +2415,6 @@ class GraphApp {
     this.render();
     const stage = g.transforms.length + 1;
     this.showToast(`✨ ${stage}차 절댓값 재접기 완료!`);
-  }
-
-  // (하위 호환 유지) 형상 프리징 토글
-  toggleFreeze(targetIdx = null) {
-    const idx = (targetIdx !== null) ? targetIdx : this.activeGraphIdx;
-    const g = this.graphs[idx];
-    if (!g) return;
-    this.pushHistoryState();
-    g.isFrozen = !g.isFrozen;
-    this.syncControls();
-    this.renderLayerList();
-    this.render();
   }
 
   _syncLineWidthSliderUI() {
@@ -2494,44 +2667,6 @@ class GraphApp {
     if (this._pendingGraphShortcutCatDigit) {
       this._highlightPendingGraphShortcutPrefix(this._pendingGraphShortcutCatDigit);
     }
-  }
-
-  changeFuncType(type) {
-    if (!this.activeGraph) {
-      // 빈 화면일 때는 바로 새 그래프로 추가!
-      this.addGraph(type);
-      return;
-    }
-    this.pushHistoryState();
-    const g = this.activeGraph;
-    g.type = type;
-    g.category = this.meta[type].category;
-    g.handles = JSON.parse(JSON.stringify(this.meta[type].handles));
-    // 개형이 바뀌면 사각형 모드/원점 고정은 초기화
-    g.shapeMode = 'free';
-    g.originCenter = false;
-    this._currentCat = g.category;
-
-    // 삼각함수는 6~8주기가 한눈에 보이도록 대파노라마 화각 확장
-    if (["sin_1period", "cos_1period", "tan_1period"].includes(type)) {
-      this.xSpan = 20.0;
-      this.ySpan = 5.5;
-    } else {
-      this.xSpan = 8.5;
-      this.ySpan = 6.0;
-    }
-
-    if (!this.showAxes) {
-      this.showAxes = true;
-      this.updateAxesUI();
-    }
-
-    this.selectedHandleIdx = null;
-    this.isCurveSelected = true;
-    this.renderLayerList();
-    this.renderFuncList();
-    this.syncShapePanel();
-    this.render();
   }
 
   // --- [✨ 클린 뷰 (핸들 및 보조선 숨김, 단축키 H)] ---
@@ -3178,18 +3313,13 @@ class GraphApp {
       isPenDrawingNow ||
       (this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 650))
     );
-    // 🛡️ [아이패드/스타일러스 태블릿 표준 고정]:
-    // 판서 모드(칠판) 및 필기/정밀도구 활성 시 한 손가락/손날(touch 1점)은 100% 무시하고,
-    // 오직 두 손가락(touch 2점)으로만 화면 이동·확대/축소가 작동합니다!
-    const shouldBlockSingleTouch = Boolean(
-      this.isStylusPalmRejectionActive() && (
-        this.isGraphCovered ||
-        (this.isInkMode && this.activeInkTool !== 'select') ||
-        this.isDropLineMode ||
-        this.isTextToolMode ||
-        this.isGraphSnapMode ||
-        this.isPdfToGraphCropMode
-      )
+    const isWritingTool = Boolean(
+      this.isInkMode &&
+      this.activeInkTool !== 'select' &&
+      !this.isDropLineMode &&
+      !this.isTextToolMode &&
+      !this.isGraphSnapMode &&
+      !this.isPdfToGraphCropMode
     );
 
     if (e.type === 'pointerdown') {
@@ -3233,7 +3363,7 @@ class GraphApp {
         this._pinchState = null;
         this._activePanPointerId = e.pointerId;
       }
-      if (shouldBlockSingleTouch) {
+      if (this.isStylusPalmRejectionActive() && isWritingTool && this.allowOneFingerPanInInk === false) {
         e._touchIgnoreChecked = true;
         return true;
       }
@@ -3267,7 +3397,7 @@ class GraphApp {
       if (this._pinchWasActiveInGesture || (this.activePointers && this.activePointers.size >= 2)) {
         return true;
       }
-      if (shouldBlockSingleTouch) {
+      if (this.isStylusPalmRejectionActive() && isWritingTool && this.allowOneFingerPanInInk === false) {
         return true;
       }
       return false;
@@ -3296,7 +3426,7 @@ class GraphApp {
         }
         return true;
       }
-      if (isWithinPenGuard || isPenDrawingNow || shouldBlockSingleTouch) {
+      if (isWithinPenGuard || isPenDrawingNow || (this.isStylusPalmRejectionActive() && isWritingTool && this.allowOneFingerPanInInk === false)) {
         return true;
       }
       return false;
@@ -4062,7 +4192,7 @@ class GraphApp {
     if (!stk) return null;
     const stkTarget = stk.target || 'board';
     if (this.isGraphCovered && !this.pdfPageBoardData && stkTarget !== 'board') return null;
-    if ((!this.isGraphCovered || this.pdfPageBoardData) && !this.isBoardMode && stkTarget !== 'graph') return null;
+    if ((!this.isGraphCovered || this.pdfPageBoardData) && stkTarget !== 'graph') return null;
     if (stkTarget === 'graph' && Boolean(stk.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return null;
     if (this._isAudioReplayActive && this.audioSyncData && this.audioReplayViewMode === 'video') {
       if (typeof stk.tStart === 'number' && stk.tStart > (this.audioPlayCurrentMs || 0)) {
@@ -4416,7 +4546,7 @@ class GraphApp {
     const remaining = this.inkStrokes.filter(stroke => {
       const strokeTarget = stroke.target || 'board';
       if (this.isGraphCovered && !this.pdfPageBoardData && strokeTarget !== 'board') return true;
-      if ((!this.isGraphCovered || this.pdfPageBoardData) && !this.isBoardMode && strokeTarget !== 'graph') return true;
+      if ((!this.isGraphCovered || this.pdfPageBoardData) && strokeTarget !== 'graph') return true;
       if (strokeTarget === 'graph' && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return true;
 
 
@@ -7946,122 +8076,6 @@ class GraphApp {
     ctx.restore();
   }
 
-  bakeCurrentPdfPageSnapshot() {
-    if (!this.pdfPageBoardData || !this.pdfPageBoardData.canvas) return null;
-    const { canvas: pageCanvas, mathW, mathH } = this.pdfPageBoardData;
-    const cx = this.pdfPageBoardData.centerX || 0;
-    const cy = this.pdfPageBoardData.centerY || 0;
-
-    // 1. 통모드(페이지 모드)는 캔버스 영역을 원본 PDF 페이지 크기(mathW × mathH)로 1:1 고정
-    const minMX = cx - mathW / 2;
-    const maxMX = cx + mathW / 2;
-    const minMY = cy - mathH / 2;
-    const maxMY = cy + mathH / 2;
-
-    const spanW = Math.max(1.0, maxMX - minMX);
-    const spanH = Math.max(1.0, maxMY - minMY);
-    const centerMX = (minMX + maxMX) / 2;
-    const centerMY = (minMY + maxMY) / 2;
-
-    const basePxH = 2200;
-    const unitScale = basePxH / spanH;
-    const pxW = Math.max(320, Math.min(3600, Math.round(spanW * unitScale)));
-    const pxH = Math.max(320, Math.min(3600, Math.round(spanH * unitScale)));
-
-    const offCanvas = document.createElement('canvas');
-    offCanvas.width = pxW;
-    offCanvas.height = pxH;
-    const offCtx = offCanvas.getContext('2d');
-
-    const backup = {
-      sw: this.screenWidth,
-      sh: this.screenHeight,
-      panX: this.panX,
-      panY: this.panY,
-      zoomLevel: this.zoomLevel,
-      ySpan: this.ySpan,
-      lockAspect: this.lockAspect,
-      isGraphCovered: this.isGraphCovered
-    };
-
-    this.screenWidth = pxW;
-    this.screenHeight = pxH;
-    this.panX = -centerMX * unitScale;
-    this.panY = centerMY * unitScale;
-    this.zoomLevel = 1.0;
-    this.ySpan = (pxH / 2) / unitScale;
-    this.lockAspect = true;
-
-    // 배경 및 PDF 페이지 + 곡선 + 필기 합성
-    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
-    offCtx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
-    offCtx.fillRect(0, 0, pxW, pxH);
-    this.drawPdfPageBoardLayer(offCtx, true);
-    if (!backup.isGraphCovered) {
-      if (this.showAxes) this.drawAxes(offCtx, null);
-      if (this.graphs && this.graphs.length > 0) this.drawAllCurves(offCtx, true);
-      if (this.usePiecewise) this.drawPiecewiseBoundaries(offCtx, true);
-      if (this.dropLines && this.dropLines.length > 0) this.drawDropLines(offCtx, true);
-      if (this.textLabels && this.textLabels.length > 0) this.drawTextLabels(offCtx, true);
-    }
-    this.drawInkStrokes(offCtx, true, 'graph');
-
-    this.screenWidth = backup.sw;
-    this.screenHeight = backup.sh;
-    this.panX = backup.panX;
-    this.panY = backup.panY;
-    this.zoomLevel = backup.zoomLevel;
-    this.ySpan = backup.ySpan;
-    this.lockAspect = backup.lockAspect;
-    this.isGraphCovered = backup.isGraphCovered;
-
-    return {
-      canvas: offCanvas,
-      dataUrl: this.encodeCanvasSmartWebP(offCanvas, 0.85),
-      aspect: pxH / Math.max(1, pxW)
-    };
-  }
-
-  archiveCurrentPdfBoardPageToCard() {
-    if (!this.pdfPageBoardData) return;
-    const prevPageNum = this.pdfPageBoardData.pageNum;
-    if (!this.pdfSavedPageStates) this.pdfSavedPageStates = {};
-    if (!Array.isArray(this.pdfWorkedPages)) this.pdfWorkedPages = [];
-    if (!this.pdfWorkedPages.includes(prevPageNum)) {
-      this.pdfWorkedPages.push(prevPageNum);
-    }
-
-    // 🌟 [대표님 핵심 기획]:
-    // 1) 좌측에 접힌 미니 카드(▸ p.N)를 생성하지 않고 상단 슬라이드 칩으로 깔끔하게 관리!
-    // 2) 해당 페이지에서 작업한 그래프 보관 카드(#1, #2...), 실시간 그래프, 판서 필기를 페이지별 독립 슬라이드로 100% 귀속 저장!
-    const fullSlide = this.serializeFullSlideState(`p.${prevPageNum}`);
-    fullSlide.pdfPageNum = prevPageNum;
-
-    this.pdfSavedPageStates[prevPageNum] = {
-      pageNum: prevPageNum,
-      pdfPageBoardData: { ...this.pdfPageBoardData },
-      fullSlide,
-      panX: this.panX,
-      panY: this.panY,
-      zoomLevel: this.zoomLevel,
-      ySpan: this.ySpan,
-      inkStrokes: JSON.parse(JSON.stringify(this.inkStrokes || [])),
-      graphs: JSON.parse(JSON.stringify(this.graphs || [])),
-      activeGraphIdx: this.activeGraphIdx,
-      showAxes: this.showAxes,
-      usePiecewise: this.usePiecewise,
-      piecewiseBoundaries: [...(this.piecewiseBoundaries || [])],
-      piecewiseFuncMap: [...(this.piecewiseFuncMap || [])],
-      piecewiseInclusions: [...(this.piecewiseInclusions || [])],
-      dropLines: JSON.parse(JSON.stringify(this.dropLines || [])),
-      textLabels: JSON.parse(JSON.stringify(this.textLabels || []))
-    };
-  }
-
-  relayoutPdfPageCards() {
-    // 좌측 접힌 페이지 미니 카드 방식 폐지 (상단 슬라이드 바 칩으로 일원화)
-  }
-
   async deletePdfPageSlide(pageNum) {
     if (!Array.isArray(this.pdfWorkedPages)) return;
     const idx = this.pdfWorkedPages.indexOf(pageNum);
@@ -9300,14 +9314,6 @@ class GraphApp {
     return this.encodeCanvasSmartWebP(canvas, quality);
   }
 
-  async _WaitUntilPenIdle() {
-    let guard = 0;
-    while ((this.isDrawingInk || this.isStylusDrawing || this.isPanning) && guard < 60) {
-      guard++;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-  }
-
   async _upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop, targetRef = null) {
     try {
       if (!this.pdfDoc || !normCrop || normCrop.nw <= 0 || normCrop.nh <= 0) return;
@@ -9421,58 +9427,6 @@ class GraphApp {
     } catch (err) {
       // 벡터 보강 실패 시 기존 크롭 이미지 유지
     }
-  }
-
-  applyProblemCrop() {
-    if (!this.pdfCropBoxRect) {
-      this.showToast('⚠️ 크롭할 문제 영역을 마우스나 펜으로 드래그해 주세요.');
-      return;
-    }
-
-    const canvas = document.getElementById('pdfPageCanvas');
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const sx = this.pdfCropBoxRect.x * scaleX;
-    const sy = this.pdfCropBoxRect.y * scaleY;
-    const sw = this.pdfCropBoxRect.w * scaleX;
-    const sh = this.pdfCropBoxRect.h * scaleY;
-
-    const cropCanvas = document.createElement('canvas');
-    cropCanvas.width = sw;
-    cropCanvas.height = sh;
-    const ctx = cropCanvas.getContext('2d');
-    ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-
-    const dataUrl = this.encodeCanvasSmartWebP(cropCanvas, 0.88);
-    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
-      this.closeDrawer();
-    }
-    const wasReplaceCrop = Boolean(this._isReplacingViaNextCrop);
-    if (wasReplaceCrop) {
-      this._isReplacingViaNextCrop = false;
-      this._archiveCurrentBeforeNextCapture();
-      this.resetBoardAndProblemCardsForNext();
-    }
-    const targetCardWidth = Math.round(Math.max(480, Math.min(window.innerWidth * 0.65, this.pdfCropBoxRect.w * 1.15)));
-    this.setProblemCard(dataUrl, this.pdfCurrentPage, cropCanvas, targetCardWidth);
-    if (wasReplaceCrop) {
-      this._finalizeAppendedCaptureSlide('');
-    } else if (this.isLessonPlaylistActive) {
-      this.saveCurrentSlideIntoPlaylist();
-      this.syncLessonPlaylistNavBarUI();
-    }
-    this.closePdfModal();
-
-    // 칠판 및 필기 모드로 자동 전환!
-    if (!this.isInkMode) {
-      this.toggleInkMode(true);
-    }
-    this.render();
-    this.showToast(`✂️ p.${this.pdfCurrentPage} 문제가 캔버스 좌상단에 고정되었습니다! 펜(P)으로 풀이를 시작하세요.`);
   }
 
   hasActiveProblemCard() {
@@ -10278,7 +10232,6 @@ class GraphApp {
     const stageParent = (this.canvas && this.canvas.parentElement) || document.body;
     stageParent.appendChild(el);
     this.attachCardLaserSystem(el);
-    this.attachCardDoubleTapDocking(el);
 
     const startMin = Boolean(options && options.startMinimized);
     const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum, sourceCanvas: sourceCanvas || null };
@@ -10308,7 +10261,6 @@ class GraphApp {
       }
       const chev = el.querySelector('.card-fold-chevron');
       if (chev) chev.textContent = nextMin ? '▸' : '▾';
-      if (this.relayoutLeftDockedCards) this.relayoutLeftDockedCards(true);
     };
     el._toggleCardMin = toggleExtraMin;
 
@@ -10332,18 +10284,17 @@ class GraphApp {
     // 1. 제목 및 카드 몸통 드래그 이동 전용 (접기 버튼은 드래그에서 완벽 분리!)
     let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
     el.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.problem-card-resize-handle')) return;
-      if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-        this.bringCardToFront(el);
-        e.stopPropagation();
-        return;
-      }
       if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
         return;
       }
       this.bringCardToFront(el);
+      if (e.target.closest('.problem-card-resize-handle')) return;
+      if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
+        e.stopPropagation();
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       isDragging = true;
@@ -10409,10 +10360,6 @@ class GraphApp {
         this.updateProblemCardPosition(true);
         if (wasMoved) {
           el._justDraggedTime = performance.now();
-          if (el._isLeftDocked) {
-            el._isLeftDocked = false;
-          }
-          this.relayoutLeftDockedCards(true);
         }
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(true);
@@ -10491,9 +10438,6 @@ class GraphApp {
         this._pushWorkspaceUndoSnapshot('↺ 닫은 문제 카드가 복원되었습니다', '↻ 문제 카드 닫기 다시 실행됨');
         el.remove();
         this.extraProblemCards = this.extraProblemCards.filter(c => c !== cardItem);
-        if (isPdfPageCard) {
-          this.relayoutPdfPageCards();
-        }
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(true);
         }
@@ -10940,18 +10884,17 @@ class GraphApp {
 
       widget._toggleCardMin = () => this.toggleProblemCardMinimize();
       widget.addEventListener('pointerdown', (e) => {
-        if (e.target.closest('.problem-card-resize-handle')) return;
-        if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-          this.bringCardToFront(widget);
-          e.stopPropagation();
-          return;
-        }
         if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
           if (e.cancelable !== false) e.preventDefault();
           e.stopPropagation();
           return;
         }
         this.bringCardToFront(widget);
+        if (e.target.closest('.problem-card-resize-handle')) return;
+        if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
+          e.stopPropagation();
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         isDragging = true;
@@ -11020,10 +10963,6 @@ class GraphApp {
           this.syncProblemCardRectFromWidget();
           if (wasMoved) {
             widget._justDraggedTime = performance.now();
-            if (widget._isLeftDocked) {
-              widget._isLeftDocked = false;
-              this.relayoutLeftDockedCards(true);
-            }
           }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
@@ -11149,7 +11088,6 @@ class GraphApp {
     if (icon) icon.textContent = nextMin ? '▸' : '▾';
     this.updateProblemCardPosition();
     this.syncProblemCardRectFromWidget();
-    if (this.relayoutLeftDockedCards) this.relayoutLeftDockedCards(true);
     this.showToast(nextMin ? '📖 문제 카드를 접었습니다.' : '📑 문제 카드를 다시 펼쳤습니다.');
     this.render();
   }
@@ -11200,98 +11138,6 @@ class GraphApp {
     const topZ = 150 + allCards.length;
     targetEl.style.zIndex = String(topZ);
     this.highestProblemCardZIndex = topZ;
-  }
-
-  // 🌟 [대표님 킬러 기획: 카드 더블클릭("너 저리가!") ➔ 확 접은 상태로 좌측에 위아래 줄맞춰 차곡차곡 자동 정렬] 🌟
-  _setCardBasePosition(el, x, y, animate = true) {
-    if (!el) return;
-    const rx = Math.round(x);
-    const ry = Math.round(y);
-    if (animate) {
-      el.classList.add('dock-animating');
-      if (el._dockAnimTimer) clearTimeout(el._dockAnimTimer);
-      el._dockAnimTimer = setTimeout(() => {
-        el.classList.remove('dock-animating');
-      }, 240);
-    }
-    if (this.isGraphCovered && this.pdfPageBoardData) {
-      this._pinCardToPdfBoardAtScreenPos(el, rx, ry, true);
-      this.updateProblemCardPosition(true);
-      if (el.id === 'problemCardWidget') this.syncProblemCardRectFromWidget();
-      if (el.id === 'graphCardWidget') this.syncGraphCardRectFromWidget(true);
-      return;
-    }
-    el.style.left = `${rx}px`;
-    el.style.top = `${ry}px`;
-
-    if (el.id === 'problemCardWidget') {
-      this.problemCardBaseX = rx;
-      this.problemCardBaseY = ry;
-      this.syncProblemCardRectFromWidget();
-    } else if (el.id === 'graphCardWidget') {
-      this.graphCardBaseX = rx;
-      this.graphCardBaseY = ry;
-      this.syncGraphCardRectFromWidget(true);
-    } else {
-      const ep = (this.extraProblemCards || []).find(c => c && c.el === el);
-      if (ep) {
-        ep.baseX = rx;
-        ep.baseY = ry;
-      }
-      const eg = (this.extraGraphCards || []).find(c => c && c.el === el);
-      if (eg) {
-        eg.baseX = rx;
-        eg.baseY = ry;
-      }
-    }
-    this.updateProblemCardPosition(true);
-  }
-
-  relayoutLeftDockedCards(animate = true) {
-    const dockX = 72;
-    let curY = 18;
-    const gapY = 8;
-    const isPdfBoard = Boolean(this.isGraphCovered && this.pdfPageBoardData);
-
-    const pWidget = document.getElementById('problemCardWidget');
-    const isPVisible = Boolean(pWidget && this.problemCardData && pWidget.style.display !== 'none');
-
-    // 기본 문제 카드가 좌상단 홈 위치(left ~ 72px, top ~ 18px)에 있고 아직 별도 도킹 순번을 받지 않았다면 맨 위 기준점으로 유지
-    if (isPVisible && !pWidget._isLeftDocked) {
-      const px = (typeof this.problemCardBaseX === 'number') ? this.problemCardBaseX : (parseFloat(pWidget.style.left) || 72);
-      const py = (typeof this.problemCardBaseY === 'number') ? this.problemCardBaseY : (parseFloat(pWidget.style.top) || 18);
-      if (Math.abs(px - dockX) <= 32 && py <= 48) {
-        const pRect = pWidget.getBoundingClientRect();
-        const pH = Math.max(32, Math.round((isPdfBoard ? pRect.height : pWidget.offsetHeight) || pRect.height || 34));
-        curY = Math.round(py + pH + gapY);
-      }
-    }
-
-    const allCandidates = [
-      isPVisible ? pWidget : null,
-      ...((this.extraProblemCards || []).map(c => (c && c.el && c.el.style.display !== 'none') ? c.el : null)),
-      (this._hasPrimaryGraphCard && this.graphCardData) ? document.getElementById('graphCardWidget') : null,
-      ...((this.extraGraphCards || []).map(c => (c && c.el && c.el.style.display !== 'none') ? c.el : null))
-    ].filter(el => el && el._isLeftDocked);
-
-    allCandidates.sort((a, b) => (a._leftDockOrder || 0) - (b._leftDockOrder || 0));
-
-    allCandidates.forEach((el) => {
-      this._setCardBasePosition(el, dockX, curY, animate);
-      const rect = el.getBoundingClientRect();
-      const h = Math.max(32, Math.round((isPdfBoard ? rect.height : el.offsetHeight) || rect.height || 34));
-      curY += h + gapY;
-    });
-  }
-
-  dockCardToLeftStack(cardEl) {
-    // 접기 기능 폐지에 따라 더블클릭 접기·좌측 도킹 비활성화
-    return;
-  }
-
-  attachCardDoubleTapDocking(cardEl) {
-    // 접기 기능 폐지에 따라 더블탭 접기 비활성화
-    return;
   }
 
   // 🔴 [카드 전용 상단 레이저 포인터 시스템 (문제 카드 & 그래프 카드 공용)]
@@ -12615,11 +12461,6 @@ class GraphApp {
       showXAxis: this.showXAxis !== false,
       showYAxis: this.showYAxis !== false,
       showGridNumbers: Boolean(this.showGridNumbers),
-      isNAxisMode: Boolean(this.isNAxisMode),
-      nAxisOuterIdx: this.nAxisOuterIdx,
-      nAxisInnerIdx: this.nAxisInnerIdx,
-      nAxisX0: this.nAxisX0,
-      nAxisZoom: this.nAxisZoom,
       dropLines: this.dropLines || [],
       textLabels: this.textLabels || [],
       graphInkStrokes: (this.inkStrokes || []).filter(s => s && (s.target || 'board') === 'graph' && !s.onPdfBoard)
@@ -12678,22 +12519,6 @@ class GraphApp {
         this.showGridNumbers = Boolean(data.showGridNumbers);
         const chkGN = document.getElementById('chkGridNumbers');
         if (chkGN) chkGN.checked = this.showGridNumbers;
-      }
-      if (data.nAxisOuterIdx !== undefined) this.nAxisOuterIdx = data.nAxisOuterIdx;
-      if (data.nAxisInnerIdx !== undefined) this.nAxisInnerIdx = data.nAxisInnerIdx;
-      if (data.nAxisX0 !== undefined) this.nAxisX0 = data.nAxisX0;
-      if (data.nAxisZoom !== undefined) this.nAxisZoom = data.nAxisZoom;
-      if (data.isNAxisMode !== undefined) {
-        this.isNAxisMode = Boolean(data.isNAxisMode);
-        const btnHeader = document.getElementById('btnNAxisMode');
-        const btnQuick = document.getElementById('btnQuickNAxisMode');
-        const bar = document.getElementById('nAxisModeBar');
-        if (btnHeader) btnHeader.classList.toggle('active', this.isNAxisMode);
-        if (btnQuick) btnQuick.classList.toggle('active', this.isNAxisMode);
-        if (bar) bar.style.display = this.isNAxisMode ? 'flex' : 'none';
-        if (this.isNAxisMode) this.syncNAxisBarUI();
-      } else if (this.isNAxisMode) {
-        this.toggleNAxisMode(false);
       }
       if (Array.isArray(data.dropLines)) {
         this.dropLines = JSON.parse(JSON.stringify(data.dropLines));
@@ -12952,43 +12777,6 @@ class GraphApp {
     if (this.isAudioRecording) {
       this._recordAudioWorkspaceStateIfNeeded(true);
     }
-  }
-
-  openPdfToGraphChoiceMenu(pendingGraphType = null) {
-    if (!this.pdfPageBoardData) {
-      this.enterGraphModeFromBoard();
-      if (pendingGraphType) {
-        this.addGraph(pendingGraphType);
-      } else if (typeof this.openDrawer === 'function') {
-        this.openDrawer('panelPresets');
-      }
-      return;
-    }
-    this._isPdfCropChoiceMenuOpen = true;
-    this.isPdfToGraphCropMode = false;
-    this.isPdfToGraphCropDragging = false;
-    this._pendingPdfToGraphType = pendingGraphType || null;
-    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
-      this.closeDrawer();
-    }
-    if (!this._boundClosePdfChoiceOnOutside) {
-      this._boundClosePdfChoiceOnOutside = true;
-      window.addEventListener('pointerdown', (ev) => {
-        if (!this._isPdfCropChoiceMenuOpen) return;
-        const t = ev.target;
-        if (t && t.closest && (t.closest('#pdfToGraphCropFloatingBar') || t.closest('#btnRailPresets'))) return;
-        this._isPdfCropChoiceMenuOpen = false;
-        this.syncGraphSnapBarUI();
-        if (this.isAudioRecording) {
-          this._recordAudioWorkspaceStateIfNeeded(true);
-        }
-      }, { capture: true });
-    }
-    this.syncGraphSnapBarUI();
-    if (this.isAudioRecording) {
-      this._recordAudioWorkspaceStateIfNeeded(true);
-    }
-    this.render();
   }
 
   startPdfBoardToGraphCrop(pendingGraphType = null) {
@@ -13333,7 +13121,7 @@ class GraphApp {
 
     const hasGraphs = Boolean(this.graphs && this.graphs.length > 0);
     const hasReturn = this.hasBoardStateToReturn();
-    const shouldShow = Boolean((hasGraphs || hasReturn) && !this.isGraphCovered && !this.isNAxisMode && !this.isPdfToGraphCropMode);
+    const shouldShow = Boolean((hasGraphs || hasReturn) && !this.isGraphCovered && !this.isPdfToGraphCropMode);
     const bar = this._snapBarEl || (this._snapBarEl = document.getElementById('graphSnapFloatingBar'));
     if (!bar) return;
 
@@ -13764,7 +13552,6 @@ class GraphApp {
     const stageGraphParent = (this.canvas && this.canvas.parentElement) || document.body;
     stageGraphParent.appendChild(el);
     this.attachCardLaserSystem(el);
-    this.attachCardDoubleTapDocking(el);
 
     const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), aspect, isMin: false, graphSnapshot: graphSnapshot || this.getPureGraphSnapshot(), caseIdx, pdfAnchor: null };
     this.extraGraphCards.push(cardItem);
@@ -13810,7 +13597,6 @@ class GraphApp {
       }
       const chev = el.querySelector('.card-fold-chevron');
       if (chev) chev.textContent = nextMin ? '▸' : '▾';
-      if (this.relayoutLeftDockedCards) this.relayoutLeftDockedCards(true);
     };
     el._toggleCardMin = toggleExtraGraphMin;
 
@@ -13829,18 +13615,17 @@ class GraphApp {
     // 제목 및 몸통 드래그 이동 전용 (삼각형 접기 원버튼과 완벽 분리!)
     let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
     el.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.problem-card-resize-handle')) return;
-      if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-        this.bringCardToFront(el);
-        e.stopPropagation();
-        return;
-      }
       if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
         return;
       }
       this.bringCardToFront(el);
+      if (e.target.closest('.problem-card-resize-handle')) return;
+      if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
+        e.stopPropagation();
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       isDragging = true;
@@ -13909,10 +13694,6 @@ class GraphApp {
         this.updateProblemCardPosition(true);
         if (wasMoved) {
           el._justDraggedTime = performance.now();
-          if (el._isLeftDocked) {
-            el._isLeftDocked = false;
-            this.relayoutLeftDockedCards(true);
-          }
           if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
             this.schedulePipGraphCardStealth(cardItem, 3000);
           }
@@ -14640,8 +14421,6 @@ class GraphApp {
     applyLongPressShield(document.getElementById('inkFloatingToolbar'));
     this.attachCardLaserSystem(widget);
     this.attachCardLaserSystem(document.getElementById('problemCardWidget'));
-    this.attachCardDoubleTapDocking(widget);
-    this.attachCardDoubleTapDocking(document.getElementById('problemCardWidget'));
 
     const togglePrimaryGraphMin = () => {
       if (!widget) return;
@@ -14661,7 +14440,6 @@ class GraphApp {
       const icon = document.getElementById('iconGraphCardToggle');
       if (icon) icon.textContent = nextMin ? '▸' : '▾';
       this.syncGraphCardRectFromWidget();
-      if (this.relayoutLeftDockedCards) this.relayoutLeftDockedCards(true);
     };
     if (widget) widget._toggleCardMin = togglePrimaryGraphMin;
 
@@ -14673,18 +14451,17 @@ class GraphApp {
       let initialBaseX = 580, initialBaseY = 68;
 
       widget.addEventListener('pointerdown', (e) => {
-        if (e.target.closest('.problem-card-resize-handle')) return;
-        if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
-          this.bringCardToFront(widget);
-          e.stopPropagation();
-          return;
-        }
         if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
           if (e.cancelable !== false) e.preventDefault();
           e.stopPropagation();
           return;
         }
         this.bringCardToFront(widget);
+        if (e.target.closest('.problem-card-resize-handle')) return;
+        if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
+          e.stopPropagation();
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         isDragging = true;
@@ -14756,10 +14533,6 @@ class GraphApp {
           this.syncGraphCardRectFromWidget(true);
           if (wasMoved) {
             widget._justDraggedTime = performance.now();
-            if (widget._isLeftDocked) {
-              widget._isLeftDocked = false;
-              this.relayoutLeftDockedCards(true);
-            }
             if (widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
               this.schedulePipGraphCardStealth('primary', 3000);
             }
@@ -15043,7 +14816,6 @@ class GraphApp {
       intersections: this.intersections,
       isGraphCovered: this.isGraphCovered,
       pdfPageBoardData: this.pdfPageBoardData,
-      isNAxisMode: this.isNAxisMode,
       axisSnapActiveX: this.axisSnapActiveX,
       axisSnapActiveY: this.axisSnapActiveY,
       symmetrySnapActive: this.symmetrySnapActive,
@@ -15095,7 +14867,6 @@ class GraphApp {
       this.useIntersectionDetector = false;
       this.isGraphCovered = false;
       this.pdfPageBoardData = null;
-      this.isNAxisMode = false;
       this._isRenderingGraphSnapshot = true;
       this._snapshotCropBounds = {
         minX: 0,
@@ -17070,7 +16841,6 @@ class GraphApp {
       isPiecewiseLocked: false,
       showInverseGuide: false,
       showGridNumbers: false,
-      isNAxisMode: false,
       dropLines: [],
       textLabels: [],
       graphInkStrokes: [],
@@ -18286,47 +18056,6 @@ class GraphApp {
     return Math.max(0.8, baseSize * 0.98);
   }
 
-  // 🌟 [아이캔스크린(ICanScreen) 스타일 펜 모퉁이 삐뚤림 라운딩 보정 필터]
-  // 블러(softBlur: 0.0 ~ 5.0) 강도에 비례하여 날카롭게 꺾이거나 미세하게 떨린 모퉁이 정점들을
-  // 이웃 중점 방향으로 부드럽게 쿠셔닝(Laplacian Corner Relaxation)하여 유려한 곡선으로 다듬습니다!
-  smoothStrokePointsForBlur(pts, blurLevel = 0) {
-    if (!pts || pts.length < 3 || !(blurLevel > 0)) return pts;
-    const clampedBlur = Math.min(5.0, Math.max(0, blurLevel));
-    const passes = clampedBlur >= 2.2 ? 2 : 1;
-    const baseAlpha = Math.min(0.46, clampedBlur * 0.105);
-    let cur = pts;
-    for (let pass = 0; pass < passes; pass++) {
-      const next = new Array(cur.length);
-      next[0] = cur[0];
-      next[cur.length - 1] = cur[cur.length - 1];
-      for (let i = 1; i < cur.length - 1; i++) {
-        const prev = cur[i - 1];
-        const p = cur[i];
-        const nxt = cur[i + 1];
-        const vx1 = p.x - prev.x, vy1 = p.y - prev.y;
-        const vx2 = nxt.x - p.x, vy2 = nxt.y - p.y;
-        const len1 = Math.hypot(vx1, vy1), len2 = Math.hypot(vx2, vy2);
-        let alpha = baseAlpha;
-        if (len1 > 0.4 && len2 > 0.4) {
-          const cosAng = (vx1 * vx2 + vy1 * vy2) / (len1 * len2);
-          // 모퉁이가 급격히 꺾이는 구간(cosAng < 0.75)일수록 삐뚤림을 더 매끄럽게 둥글려줌
-          if (cosAng < 0.75) {
-            alpha = Math.min(0.56, baseAlpha * (1.0 + (0.75 - cosAng) * 0.45));
-          }
-        }
-        const midX = (prev.x + nxt.x) * 0.5;
-        const midY = (prev.y + nxt.y) * 0.5;
-        next[i] = {
-          ...p,
-          x: p.x * (1 - alpha) + midX * alpha,
-          y: p.y * (1 - alpha) + midY * alpha
-        };
-      }
-      cur = next;
-    }
-    return cur;
-  }
-
   drawVariableWidthQuadSegment(ctx, x0, y0, cx, cy, x1, y1, w0, w1) {
     const diffW = Math.abs(w1 - w0);
     if (diffW < 0.20) {
@@ -18979,17 +18708,7 @@ class GraphApp {
       ctx.restore();
     };
 
-    const isBoardSplit = this.isBoardMode && (stroke.target === 'graph');
-    if (isBoardSplit) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, 0, Math.round(this.screenWidth * this.boardSplitRatio), this.screenHeight);
-      ctx.clip();
-      drawPathOnCtx(strokeColor);
-      ctx.restore();
-    } else {
-      drawPathOnCtx(strokeColor);
-    }
+    drawPathOnCtx(strokeColor);
 
     // 다크 테마에서 흰색 문제 카드 영역 위 흰색 펜 자동 반전 처리
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
@@ -19396,696 +19115,6 @@ class GraphApp {
     // drawLassoOverlay는 최상단 렌더링 파이프라인(render)에서 일괄 수행
   }
 
-  // --- [🧑‍🏫 라이브 강의 & 판서 분할 모드 (Stage & Board Mode, 단축키 B)] ---
-  initBoardModeControls() {
-    const btnHeader = document.getElementById('btnBoardMode');
-    const btnQuick = document.getElementById('btnQuickBoardMode');
-    const btnExit = document.getElementById('btnExitBoardMode');
-    const btn46 = document.getElementById('btnBoardRatio46');
-    const btn55 = document.getElementById('btnBoardRatio55');
-    const btn37 = document.getElementById('btnBoardRatio37');
-
-    if (btnHeader) btnHeader.onclick = () => this.toggleBoardMode();
-    if (btnQuick) btnQuick.onclick = () => this.toggleBoardMode();
-    if (btnExit) btnExit.onclick = () => this.toggleBoardMode(false);
-
-    if (btn46) btn46.onclick = () => this.setBoardSplitRatio(0.42);
-    if (btn55) btn55.onclick = () => this.setBoardSplitRatio(0.50);
-    if (btn37) btn37.onclick = () => this.setBoardSplitRatio(0.33);
-  }
-
-  toggleBoardMode(forceVal = null) {
-    const nextState = (forceVal !== null) ? forceVal : !this.isBoardMode;
-    if (this.isBoardMode === nextState) return;
-
-    this.isBoardMode = nextState;
-
-    const btnHeader = document.getElementById('btnBoardMode');
-    const btnQuick = document.getElementById('btnQuickBoardMode');
-    const boardBar = document.getElementById('boardModeBar');
-
-    if (btnHeader) btnHeader.classList.toggle('active', this.isBoardMode);
-    if (btnQuick) btnQuick.classList.toggle('active', this.isBoardMode);
-    if (boardBar) boardBar.style.display = this.isBoardMode ? 'flex' : 'none';
-
-    if (this.isBoardMode) {
-      this.preBoardPanX = this.panX;
-      // 판서 모드 진입 시: 메뉴 서랍 닫기 ➔ 전체화면급 넓은 시야 확보
-      if (this.closeDrawer) this.closeDrawer();
-
-      // [즉시 전환]: 슬라이딩 무빙 애니메이션 취소 ➔ 화면 흔들림 없이 짠! 하고 즉시 좌측 스테이지로 배치
-      const targetPanX = (this.screenWidth * (this.boardSplitRatio - 1)) / 2;
-      this.animatePanX(targetPanX, 0);
-
-      // 스마트 핸들 제어: 기본 상태는 정갈한 클린 뷰 (곡선 클릭 시에만 핸들 활성화)
-      this.isCurveSelected = false;
-      this.selectedHandleIdx = null;
-      this.draggedHandleIdx = null;
-
-      this.updateBoardRatioUI();
-      this.showToast('🧑‍🏫 필기 모드 On: 우측 필기 공간 확보!');
-    } else {
-      // 일반 뷰 복귀: 슬라이딩 없이 즉시 원래 카메라 위치로 짠! 복귀
-      const targetPanX = (typeof this.preBoardPanX === 'number') ? this.preBoardPanX : 0;
-      this.animatePanX(targetPanX, 0);
-      this.showToast('일반 화면 복귀');
-    }
-  }
-
-  animatePanX(targetX, duration = 0) {
-    if (this.boardAnimId) {
-      cancelAnimationFrame(this.boardAnimId);
-      this.boardAnimId = null;
-    }
-    // [무빙 애니메이션 취소]: 슬라이딩 이동 없이 즉각적으로 panX를 설정하고 렌더링 ("짠하고 나오게")
-    this.panX = targetX;
-    this.render();
-  }
-
-  setBoardSplitRatio(ratio) {
-    this.boardSplitRatio = Math.max(0.25, Math.min(0.75, ratio));
-    this.updateBoardRatioUI();
-    if (this.isBoardMode) {
-      const targetPanX = (this.screenWidth * (this.boardSplitRatio - 1)) / 2;
-      this.animatePanX(targetPanX, 0);
-    }
-  }
-
-  updateBoardRatioUI() {
-    const btn46 = document.getElementById('btnBoardRatio46');
-    const btn55 = document.getElementById('btnBoardRatio55');
-    const btn37 = document.getElementById('btnBoardRatio37');
-    if (btn46) btn46.classList.toggle('active', Math.abs(this.boardSplitRatio - 0.42) < 0.04);
-    if (btn55) btn55.classList.toggle('active', Math.abs(this.boardSplitRatio - 0.50) < 0.04);
-    if (btn37) btn37.classList.toggle('active', Math.abs(this.boardSplitRatio - 0.33) < 0.04);
-  }
-
-  drawBoardModeStage(ctx, splitX, width, height, curTheme) {
-    ctx.save();
-
-    // 1. 우측 판서 칠판 영역 배경 재도포 (순수하고 티 없이 깨끗한 칠판 완성!)
-    ctx.fillStyle = curTheme.bg;
-    ctx.fillRect(splitX, 0, width - splitX, height);
-
-    // 2. 세로 분할 경계선 (네온 글래스모피즘 구분선)
-    ctx.beginPath();
-    ctx.moveTo(splitX, 0);
-    ctx.lineTo(splitX, height);
-    ctx.strokeStyle = curTheme.isLight ? 'rgba(0, 0, 0, 0.14)' : 'rgba(0, 210, 211, 0.35)';
-    ctx.lineWidth = 1.8;
-    ctx.stroke();
-
-    // 3. 세로 분할선 중앙 드래그 조절 알약 핸들
-    const pillH = 46;
-    const pillW = 12;
-    const pillX = splitX - pillW / 2;
-    const pillY = (height - pillH) / 2;
-
-    ctx.fillStyle = curTheme.isLight ? '#f1f5f9' : 'rgba(18, 26, 36, 0.95)';
-    ctx.strokeStyle = curTheme.isLight ? '#cbd5e1' : 'rgba(0, 210, 211, 0.6)';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.roundRect(pillX, pillY, pillW, pillH, 6);
-    ctx.fill();
-    ctx.stroke();
-
-    // 알약 내부 드래그 핀 3개 (⋮)
-    ctx.fillStyle = curTheme.isLight ? '#64748b' : '#00d2d3';
-    [-9, 0, 9].forEach(dy => {
-      ctx.beginPath();
-      ctx.arc(splitX, height / 2 + dy, 1.5, 0, Math.PI * 2);
-      ctx.fill();
-    });
-
-    // 4. 우측 판서 영역 상단 워터마크 안내 문구
-    const boardTitle = "📝 풀이 & 판서 영역 (Clean Board)";
-    ctx.font = '600 12px system-ui, -apple-system, sans-serif';
-    ctx.fillStyle = curTheme.isLight ? 'rgba(100, 116, 139, 0.45)' : 'rgba(164, 176, 190, 0.35)';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'top';
-    ctx.fillText(boardTitle, width - 24, 20);
-
-    ctx.restore();
-  }
-
-  // =====================================================================
-  // [🔀 정통 N축 합성함수 해석 모드 (Top-Bottom N-Axis Engine)]
-  // =====================================================================
-  initNAxisControls() {
-    const btnHeader = document.getElementById('btnNAxisMode');
-    const btnQuick = document.getElementById('btnQuickNAxisMode');
-    const btnExit = document.getElementById('btnExitNAxisMode');
-    const btnSwap = document.getElementById('btnNAxisSwap');
-
-    if (btnHeader) {
-      btnHeader.onclick = () => this.toggleNAxisMode();
-    }
-    if (btnQuick) {
-      btnQuick.onclick = () => this.toggleNAxisMode();
-    }
-    if (btnExit) {
-      btnExit.onclick = () => this.toggleNAxisMode(false);
-    }
-    if (btnSwap) {
-      btnSwap.onclick = () => this.swapNAxisLayers();
-    }
-
-    const btnZoomIn = document.getElementById('btnNAxisZoomIn');
-    const btnZoomOut = document.getElementById('btnNAxisZoomOut');
-    const btnZoomReset = document.getElementById('btnNAxisZoomReset');
-
-    if (btnZoomIn) {
-      btnZoomIn.onclick = () => {
-        this.nAxisZoom = Math.min(3.5, (this.nAxisZoom || 1.0) * 1.2);
-        this.syncNAxisBarUI();
-        this.render();
-      };
-    }
-    if (btnZoomOut) {
-      btnZoomOut.onclick = () => {
-        this.nAxisZoom = Math.max(0.25, (this.nAxisZoom || 1.0) / 1.2);
-        this.syncNAxisBarUI();
-        this.render();
-      };
-    }
-    if (btnZoomReset) {
-      btnZoomReset.onclick = () => {
-        this.nAxisZoom = 1.0;
-        this.syncNAxisBarUI();
-        this.render();
-      };
-    }
-  }
-
-  toggleNAxisMode(forceState = null) {
-    const nextState = forceState !== null ? forceState : !this.isNAxisMode;
-    if (this.isNAxisMode === nextState) return;
-
-    this.isNAxisMode = nextState;
-
-    // 판서 모드가 켜져 있다면 상호 배타적으로 해제
-    if (this.isNAxisMode && this.isBoardMode) {
-      this.toggleBoardMode(false);
-    }
-
-    const btnHeader = document.getElementById('btnNAxisMode');
-    const btnQuick = document.getElementById('btnQuickNAxisMode');
-    const bar = document.getElementById('nAxisModeBar');
-
-    if (btnHeader) btnHeader.classList.toggle('active', this.isNAxisMode);
-    if (btnQuick) btnQuick.classList.toggle('active', this.isNAxisMode);
-    if (bar) bar.style.display = this.isNAxisMode ? 'flex' : 'none';
-
-    if (this.isNAxisMode) {
-      // 1. 레이어가 2개 미만일 때: 수능 킬러 대표 예제 자동 로드! (사차 W형 + 삼각함수 sin)
-      if (this.graphs.length < 2) {
-        this.graphs = [];
-        this.addGraph('4th_symmetric'); // 겉함수 g(t)
-        this.addGraph('trig_sin');       // 속함수 f(x)
-        this.nAxisOuterIdx = 0;
-        this.nAxisInnerIdx = 1;
-        this.showToast('✨ 수능 킬러 대표 예제 [상단: 사차 W형 + 하단: 삼각함수]가 N축으로 자동 세팅되었습니다! 🔀');
-      } else {
-        this.nAxisOuterIdx = 0;
-        this.nAxisInnerIdx = 1;
-        this.showToast('🔀 정통 N축 합성 모드 가동!');
-      }
-
-      this.nAxisX0 = 0.5;
-      this.syncNAxisBarUI();
-    } else {
-      this.showToast('🔀 N축 합성 모드를 종료하고 일반 캔버스로 복귀합니다.');
-    }
-
-    this.render();
-  }
-
-  swapNAxisLayers() {
-    if (!this.isNAxisMode || this.graphs.length < 2) return;
-    const temp = this.nAxisOuterIdx;
-    this.nAxisOuterIdx = this.nAxisInnerIdx;
-    this.nAxisInnerIdx = temp;
-    this.syncNAxisBarUI();
-    this.showToast('🔄 겉함수 ⇄ 속함수 위아래 맞바꾸기 완료!');
-    this.render();
-  }
-
-  syncNAxisBarUI() {
-    const txtOuter = document.getElementById('txtNAxisOuterName');
-    const txtInner = document.getElementById('txtNAxisInnerName');
-    const lblZoom = document.getElementById('lblNAxisZoom');
-    const gOuter = this.graphs[this.nAxisOuterIdx] || this.graphs[0];
-    const gInner = this.graphs[this.nAxisInnerIdx] || this.graphs[1];
-    if (txtOuter && gOuter) txtOuter.textContent = this.meta[gOuter.type]?.name || '함수 1';
-    if (txtInner && gInner) txtInner.textContent = this.meta[gInner.type]?.name || '함수 2';
-    if (lblZoom) lblZoom.textContent = `${Math.round((this.nAxisZoom || 1.0) * 100)}%`;
-  }
-
-  // =====================================================================
-  // [📐 N축 3-분할 스튜디오 지오메트리 & 좌표 변환기]
-  // =====================================================================
-  getNAxisLayout(width, height) {
-    const pad = 16;
-    const gap = 14;
-    const topMargin = 50; // 상단 헤더 & 플로팅 바 여백
-    const leftW = Math.round((width - pad * 2 - gap) * 0.44);
-    const rightW = width - pad * 2 - gap - leftW;
-    const totalH = height - topMargin - pad;
-    const box1H = Math.round((totalH - gap) * 0.49);
-    const box2H = totalH - gap - box1H;
-
-    // 창 1: 좌상단 (겉함수 z = g(t))
-    const box1 = { x: pad, y: topMargin, w: leftW, h: box1H };
-    box1.cx = box1.x + box1.w / 2;
-    box1.cy = box1.y + box1.h / 2 + 10;
-
-    // 창 2: 좌하단 (속함수 t = f(x), 90° 눕힘!)
-    const box2 = { x: pad, y: topMargin + box1H + gap, w: leftW, h: box2H };
-    box2.cx = box2.x + box2.w / 2; // 좌상단과 완벽히 동일한 수직선(Vertical Alignment)!
-    box2.cy = box2.y + box2.h / 2 + 10;
-
-    // 창 3: 우측 대형 (최종 합성함수 y = g(f(x)))
-    const box3 = { x: pad + leftW + gap, y: topMargin, w: rightW, h: totalH };
-    box3.cx = box3.x + box3.w / 2;
-    box3.cy = box3.y + box3.h / 2 + 10;
-
-    // 휠 줌 스케일 (마우스 휠 스크롤로 0.25x ~ 3.5x 시원하게 확대/축소)
-    const zoom = Math.max(0.25, Math.min(3.5, this.nAxisZoom || 1.0));
-
-    // 기본 화각(Span)을 ±5.0으로 넉넉하게 확장하여 곡선 잘림 원천 차단!
-    const baseSpanT = 5.0;
-    const effSpanT = baseSpanT / zoom;
-    const unitScaleT = (box1.w * 0.40) / effSpanT;
-
-    // 좌상단 z축
-    const baseSpanZ = 5.0;
-    const effSpanZ = baseSpanZ / zoom;
-    const unitScaleZ1 = (box1.h * 0.40) / effSpanZ;
-
-    // 좌하단 x축 (세로 아래 방향 +x, 위 방향 -x)
-    const baseSpanX_Lower = 5.0;
-    const effSpanX_Lower = baseSpanX_Lower / zoom;
-    const unitScaleX_Lower = (box2.h * 0.40) / effSpanX_Lower;
-
-    // 우측 합성함수 좌표계 (x축, y축)
-    const baseSpanX3 = 5.0;
-    const baseSpanY3 = 5.0;
-    const effSpanX3 = baseSpanX3 / zoom;
-    const effSpanY3 = baseSpanY3 / zoom;
-    const unitScaleX3 = (box3.w * 0.42) / effSpanX3;
-    const unitScaleY3 = (box3.h * 0.42) / effSpanY3;
-
-    return {
-      pad, gap, topMargin,
-      box1, box2, box3,
-      zoom,
-      effSpanT, unitScaleT,
-      effSpanZ, unitScaleZ1,
-      effSpanX_Lower, unitScaleX_Lower,
-      effSpanX3, effSpanY3, unitScaleX3, unitScaleY3,
-      tCenterScreenX: box1.cx,
-      tToScreenX: (t) => box1.cx + t * unitScaleT,
-      screenXToT: (sx) => (sx - box1.cx) / unitScaleT,
-      zToScreenY_1: (z) => box1.cy - z * unitScaleZ1,
-      screenYToZ_1: (sy) => (box1.cy - sy) / unitScaleZ1,
-      xToScreenY_2: (xVal) => box2.cy + xVal * unitScaleX_Lower,
-      screenYToX_2: (sy) => (sy - box2.cy) / unitScaleX_Lower,
-      xToScreenX_3: (xVal) => box3.cx + xVal * unitScaleX3,
-      yToScreenY_3: (yVal) => box3.cy - yVal * unitScaleY3,
-      screenXToX_3: (sx) => (sx - box3.cx) / unitScaleX3,
-      screenYToY_3: (sy) => (box3.cy - sy) / unitScaleY3,
-      box1_cz: box1.cy,
-      box3_cx: box3.cx,
-      box3_cy: box3.cy
-    };
-  }
-
-  drawNAxisStage(ctx, width, height, curTheme) {
-    if (!this.isNAxisMode) return;
-    if (this.graphs.length < 2) return;
-
-    const gOuter = this.graphs[this.nAxisOuterIdx] || this.graphs[0];
-    const gInner = this.graphs[this.nAxisInnerIdx] || this.graphs[1];
-    if (!gOuter || !gInner) return;
-
-    ctx.save();
-
-    // 0. 전체 배경 도포
-    ctx.fillStyle = curTheme.bg;
-    ctx.fillRect(0, 0, width, height);
-
-    // 3-분할 스튜디오 지오메트리 획득
-    const layout = this.getNAxisLayout(width, height);
-    const {
-      box1, box2, box3,
-      tCenterScreenX, tToScreenX, screenXToT,
-      effSpanX_Lower, xToScreenY_2, zToScreenY_1,
-      box1_cz, box3_cx, box3_cy,
-      xToScreenX_3, yToScreenY_3, screenXToX_3
-    } = layout;
-
-    // 카드 배경 및 글래스모피즘 테두리 렌더링 헬퍼
-    const drawCardBg = (box, title, titleColor, desc) => {
-      ctx.save();
-      ctx.fillStyle = curTheme.isLight ? 'rgba(255, 255, 255, 0.78)' : 'rgba(15, 23, 42, 0.68)';
-      ctx.strokeStyle = curTheme.isLight ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.12)';
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.roundRect(box.x, box.y, box.w, box.h, 12);
-      ctx.fill();
-      ctx.stroke();
-
-      // 상단 카드 라벨 뱃지
-      ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
-      ctx.fillStyle = titleColor;
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      ctx.fillText(title, box.x + 14, box.y + 12);
-
-      if (desc) {
-        ctx.font = '10px system-ui, sans-serif';
-        ctx.fillStyle = curTheme.isLight ? '#64748b' : '#94a3b8';
-        ctx.fillText(desc, box.x + 14, box.y + 28);
-      }
-      ctx.restore();
-    };
-
-    // 직교좌표축 십자선(+) 및 은은한 눈금/그리드 렌더링 헬퍼
-    const drawAxesAndGrid = (box, cx, cy, unitScaleX, unitScaleY, labelX, labelY, effSpanX, effSpanY) => {
-      ctx.save();
-      const step = effSpanX > 6.0 ? 2.0 : 1.0;
-      ctx.strokeStyle = curTheme.isLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)';
-      ctx.lineWidth = 0.8;
-
-      // 세로 그리드 선
-      for (let v = step; v <= effSpanX + step; v += step) {
-        const sxPos = cx + v * unitScaleX;
-        if (sxPos < box.x + box.w - 6) {
-          ctx.beginPath();
-          ctx.moveTo(sxPos, box.y + 10);
-          ctx.lineTo(sxPos, box.y + box.h - 10);
-          ctx.stroke();
-        }
-        const sxNeg = cx - v * unitScaleX;
-        if (sxNeg > box.x + 6) {
-          ctx.beginPath();
-          ctx.moveTo(sxNeg, box.y + 10);
-          ctx.lineTo(sxNeg, box.y + box.h - 10);
-          ctx.stroke();
-        }
-      }
-
-      // 가로 그리드 선
-      for (let v = step; v <= effSpanY + step; v += step) {
-        const syPos = cy - v * unitScaleY;
-        if (syPos > box.y + 10) {
-          ctx.beginPath();
-          ctx.moveTo(box.x + 10, syPos);
-          ctx.lineTo(box.x + box.w - 10, syPos);
-          ctx.stroke();
-        }
-        const syNeg = cy + v * unitScaleY;
-        if (syNeg < box.y + box.h - 10) {
-          ctx.beginPath();
-          ctx.moveTo(box.x + 10, syNeg);
-          ctx.lineTo(box.x + box.w - 10, syNeg);
-          ctx.stroke();
-        }
-      }
-
-      // 메인 십자 직교좌표축 (+)
-      ctx.beginPath();
-      ctx.moveTo(box.x + 6, cy);
-      ctx.lineTo(box.x + box.w - 6, cy);
-      ctx.moveTo(cx, box.y + 24);
-      ctx.lineTo(cx, box.y + box.h - 6);
-      ctx.strokeStyle = curTheme.isLight ? 'rgba(0, 0, 0, 0.20)' : 'rgba(255, 255, 255, 0.20)';
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-
-      // 축 라벨 텍스트
-      ctx.font = '10px system-ui, sans-serif';
-      ctx.fillStyle = curTheme.isLight ? '#64748b' : '#a4b0be';
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText(labelX, box.x + box.w - 12, cy - 4);
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      ctx.fillText(labelY, cx + 5, box.y + 28);
-      ctx.restore();
-    };
-
-    drawCardBg(box1, `[좌상단] 겉함수 z = g(t)`, '#00d2d3', `${this.meta[gOuter.type]?.name || '함수 1'}`);
-    drawCardBg(box2, `[좌하단] 속함수 t = f(x) (90° 회전)`, '#feca57', `${this.meta[gInner.type]?.name || '함수 2'} (드래그하여 x₀ 조작)`);
-    drawCardBg(box3, `[우측 전면] ★ 최종 합성함수 y = g(f(x))`, '#a29bfe', '실시간 합성 궤적 및 결과점 R');
-
-    // --- [1. 좌상단 창: 겉함수 z = g(t)] ---
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(box1.x, box1.y, box1.w, box1.h, 12);
-    ctx.clip();
-
-    drawAxesAndGrid(box1, box1.cx, box1.cy, unitScaleT, unitScaleZ1, 't축 ➔', 'z축 ↑', layout.effSpanT, layout.effSpanZ);
-
-    // 겉함수 곡선 그리기 (박스 모서리까지 연속 선)
-    ctx.beginPath();
-    let hasStarted1 = false;
-    for (let sx = box1.x - 10; sx <= box1.x + box1.w + 10; sx += 2) {
-      const tVal = screenXToT(sx);
-      const zVal = this.engine.evaluatePipeline(gOuter, tVal);
-      if (isNaN(zVal) || !isFinite(zVal) || Math.abs(zVal) > 500) {
-        hasStarted1 = false;
-        continue;
-      }
-      const sy = zToScreenY_1(zVal);
-      if (!hasStarted1) {
-        ctx.moveTo(sx, sy);
-        hasStarted1 = true;
-      } else {
-        ctx.lineTo(sx, sy);
-      }
-    }
-    ctx.strokeStyle = gOuter.color || '#00d2d3';
-    ctx.lineWidth = 2.8;
-    ctx.stroke();
-    ctx.restore();
-
-    // --- [2. 좌하단 창: 속함수 t = f(x) (90° 눕힘)] ---
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(box2.x, box2.y, box2.w, box2.h, 12);
-    ctx.clip();
-
-    drawAxesAndGrid(box2, box2.cx, box2.cy, unitScaleT, unitScaleX_Lower, 't축 ➔', 'x축 ↓', layout.effSpanT, layout.effSpanX_Lower);
-
-    // 속함수 눕힌 곡선 그리기 (세로 화면 Y좌표를 훑어내려가며 100% 꽉 채움!)
-    ctx.beginPath();
-    let hasStarted2 = false;
-    for (let sy = box2.y - 10; sy <= box2.y + box2.h + 10; sy += 2) {
-      const xVal = layout.screenYToX_2(sy);
-      const tVal = this.engine.evaluatePipeline(gInner, xVal);
-      if (isNaN(tVal) || !isFinite(tVal) || Math.abs(tVal) > 500) {
-        hasStarted2 = false;
-        continue;
-      }
-      const sx = tToScreenX(tVal);
-      if (!hasStarted2) {
-        ctx.moveTo(sx, sy);
-        hasStarted2 = true;
-      } else {
-        ctx.lineTo(sx, sy);
-      }
-    }
-    ctx.strokeStyle = gInner.color || '#feca57';
-    ctx.lineWidth = 2.8;
-    ctx.stroke();
-    ctx.restore();
-
-    // --- [3. 우측 대형 창: 최종 합성함수 y = g(f(x))] ---
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(box3.x, box3.y, box3.w, box3.h, 12);
-    ctx.clip();
-
-    drawAxesAndGrid(box3, box3.cx, box3.cy, unitScaleX3, unitScaleY3, 'x축 ➔', 'y축 ↑', layout.effSpanX3, layout.effSpanY3);
-
-    // ★ 최종 합성함수 곡선 y = g(f(x)) 실시간 수치 연산 (천장까지 끊김 없이 연결!)
-    ctx.beginPath();
-    let hasStarted3 = false;
-    for (let sx = box3.x - 10; sx <= box3.x + box3.w + 10; sx += 2) {
-      const xVal = screenXToX_3(sx);
-      const tVal = this.engine.evaluatePipeline(gInner, xVal);
-      if (isNaN(tVal) || !isFinite(tVal) || Math.abs(tVal) > 500) {
-        hasStarted3 = false;
-        continue;
-      }
-      const yVal = this.engine.evaluatePipeline(gOuter, tVal);
-      if (isNaN(yVal) || !isFinite(yVal) || Math.abs(yVal) > 500) {
-        hasStarted3 = false;
-        continue;
-      }
-      const sy = yToScreenY_3(yVal);
-      if (!hasStarted3) {
-        ctx.moveTo(sx, sy);
-        hasStarted3 = true;
-      } else {
-        ctx.lineTo(sx, sy);
-      }
-    }
-    ctx.strokeStyle = '#a29bfe'; // 프리미엄 네온 바이올렛
-    ctx.lineWidth = 3.4;
-    ctx.shadowColor = '#a29bfe';
-    ctx.shadowBlur = 10;
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.restore();
-
-    // =================================================================
-    // [⚡ 핵심 킬러 연출: P ➔ Q ➔ R 실시간 3점 동시 레이저 트레이서!]
-    // =================================================================
-    const currentX0 = this.nAxisX0;
-    const currentT0 = this.engine.evaluatePipeline(gInner, currentX0);
-    const currentZ0 = this.engine.evaluatePipeline(gOuter, currentT0);
-
-    const laserScreenX = tToScreenX(currentT0);
-    const ptScreenY_P = xToScreenY_2(currentX0);
-    const ptScreenY_Q = zToScreenY_1(currentZ0);
-
-    const ptScreenX_R = xToScreenX_3(currentX0);
-    const ptScreenY_R = yToScreenY_3(currentZ0);
-
-    ctx.save();
-
-    // 1. 좌측 위아래 창을 꿰뚫는 반듯한 수직 레이저 점선 빔 (Box 2 P ➔ Box 1 Q)
-    ctx.beginPath();
-    ctx.setLineDash([5, 4]);
-    ctx.moveTo(laserScreenX, box2.y + box2.h - 10);
-    ctx.lineTo(laserScreenX, box1.y + 30);
-    ctx.strokeStyle = '#00d2d3'; // 네온 시안
-    ctx.lineWidth = 2.2;
-    ctx.shadowColor = '#00d2d3';
-    ctx.shadowBlur = 12;
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.shadowBlur = 0;
-
-    // 2. 우측 합성함수로 뻗어나가는 가이드 레이저 선 (P의 x0 & Q의 z0 ➔ R)
-    ctx.beginPath();
-    ctx.setLineDash([4, 4]);
-    ctx.moveTo(laserScreenX, ptScreenY_Q);
-    ctx.lineTo(ptScreenX_R, ptScreenY_R);
-    ctx.moveTo(laserScreenX, ptScreenY_P);
-    ctx.lineTo(ptScreenX_R, ptScreenY_R);
-    ctx.strokeStyle = 'rgba(162, 155, 254, 0.45)';
-    ctx.lineWidth = 1.4;
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // 3. 점 P (좌하단 속함수: f(x0) = t0)
-    ctx.beginPath();
-    ctx.arc(laserScreenX, ptScreenY_P, 7, 0, Math.PI * 2);
-    ctx.fillStyle = '#feca57';
-    ctx.shadowColor = '#feca57';
-    ctx.shadowBlur = 10;
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // 점 P 라벨 뱃지
-    const labelP = `P: f(${currentX0.toFixed(2)}) = ${currentT0.toFixed(2)}`;
-    ctx.font = 'bold 11px system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(18, 26, 36, 0.9)';
-    const textW_P = ctx.measureText(labelP).width;
-    ctx.fillRect(laserScreenX + 10, ptScreenY_P - 11, textW_P + 10, 22);
-    ctx.strokeStyle = '#feca57';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(laserScreenX + 10, ptScreenY_P - 11, textW_P + 10, 22);
-    ctx.fillStyle = '#feca57';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(labelP, laserScreenX + 15, ptScreenY_P);
-
-    // 4. 점 Q (좌상단 겉함수: g(t0) = z0)
-    ctx.beginPath();
-    ctx.arc(laserScreenX, ptScreenY_Q, 7, 0, Math.PI * 2);
-    ctx.fillStyle = '#00d2d3';
-    ctx.shadowColor = '#00d2d3';
-    ctx.shadowBlur = 10;
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // 점 Q 라벨 뱃지
-    const labelQ = `Q: g(${currentT0.toFixed(2)}) = ${currentZ0.toFixed(2)}`;
-    ctx.font = 'bold 11px system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(18, 26, 36, 0.9)';
-    const textW_Q = ctx.measureText(labelQ).width;
-    ctx.fillRect(laserScreenX + 10, ptScreenY_Q - 11, textW_Q + 10, 22);
-    ctx.strokeStyle = '#00d2d3';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(laserScreenX + 10, ptScreenY_Q - 11, textW_Q + 10, 22);
-    ctx.fillStyle = '#00d2d3';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(labelQ, laserScreenX + 15, ptScreenY_Q);
-
-    // 5. 점 R (우측 최종 합성함수 결과점: g(f(x0)) = z0)
-    ctx.beginPath();
-    ctx.arc(ptScreenX_R, ptScreenY_R, 9, 0, Math.PI * 2);
-    ctx.fillStyle = '#ff6b6b';
-    ctx.shadowColor = '#ff6b6b';
-    ctx.shadowBlur = 14;
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-
-    // 점 R 라벨 뱃지 (최종 정답!)
-    const labelR = `★ R (x₀=${currentX0.toFixed(2)}, y=${currentZ0.toFixed(2)})`;
-    ctx.font = 'bold 12px system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(18, 26, 36, 0.92)';
-    const textW_R = ctx.measureText(labelR).width;
-    ctx.fillRect(ptScreenX_R + 12, ptScreenY_R - 14, textW_R + 12, 26);
-    ctx.strokeStyle = '#ff6b6b';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(ptScreenX_R + 12, ptScreenY_R - 14, textW_R + 12, 26);
-    ctx.fillStyle = '#ff6b6b';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(labelR, ptScreenX_R + 18, ptScreenY_R);
-
-    // 6. 하단 x₀ 슬라이더 조작 알약 (좌하단 박스 세로 x축 위)
-    const pillY = ptScreenY_P;
-    ctx.beginPath();
-    ctx.moveTo(box2.x + 10, pillY);
-    ctx.lineTo(box2.x + box2.w - 10, pillY);
-    ctx.strokeStyle = this.isDraggingNAxisX0 ? 'rgba(254, 202, 87, 0.65)' : 'rgba(254, 202, 87, 0.3)';
-    ctx.setLineDash([3, 3]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    const sliderScreenX = tCenterScreenX;
-    ctx.fillStyle = '#feca57';
-    ctx.shadowColor = '#feca57';
-    ctx.shadowBlur = this.isDraggingNAxisX0 ? 18 : 10;
-    ctx.beginPath();
-    ctx.roundRect(sliderScreenX - 44, pillY - 12, 88, 24, 12);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    // 알약 내부 텍스트 & 상하 드래그 힌트 아이콘
-    ctx.fillStyle = '#1e272e';
-    ctx.font = 'bold 11px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`↕ x₀ : ${currentX0.toFixed(2)}`, sliderScreenX, pillY);
-
-    ctx.restore();
-    ctx.restore();
-  }
-
   bindControls() {
     // ✨ 클린 뷰 토글 버튼
     const btnClean = document.getElementById('btnCleanView');
@@ -20104,9 +19133,6 @@ class GraphApp {
     if (btnClearAll) {
       btnClearAll.onclick = () => this.clearAllGraphs();
     }
-
-    // 스마트 수식 입력 모달 초기화
-    this.initSmartInputModal();
 
     // 카테고리 탭
     document.querySelectorAll('.cat-tab-btn').forEach(tab => {
@@ -20967,7 +19993,7 @@ class GraphApp {
   startIntersectionLoop() {
     if (this.intersectionAnimId) return;
     const animate = () => {
-      if (!this.useIntersectionDetector || (this.isGraphCovered && !this.isBoardMode)) {
+      if (!this.useIntersectionDetector || this.isGraphCovered) {
         this.intersectionAnimId = null;
         return;
       }
@@ -22690,9 +21716,6 @@ class GraphApp {
     });
   }
 
-  // --- [수식 직접 입력 모달 제거: 개형 프리셋 & 핸들 드래그 중심 철학 일원화] ---
-  initSmartInputModal() {}
-
   // --- [🔗 공유 모달 & 학생용 모드 & QR 코드 생성 엔진] ---
   // --- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달 & 1:1 직결 레이저 엔진] ---
   initNAxisStudioModal() {
@@ -24190,13 +23213,6 @@ class GraphApp {
       setTimeout(() => this.fetchMyLibraryFromCloud(), 500);
     }
 
-    try {
-      const savedComm = localStorage.getItem('graphly_community_hub_v1');
-      if (savedComm) this.communityHubCache = JSON.parse(savedComm);
-    } catch (e) {
-      this.communityHubCache = [];
-    }
-
     // 비동기로 Firebase SDK 초기화 및 OAuth 팝업 브리지 사전 예열 (판서/초기 로딩 블로킹 0%)
     this._applyFirebaseAuthUser = (user, forceAuthProvider = '', showWelcome = false) => {
       if (!user) return false;
@@ -24333,15 +23349,8 @@ class GraphApp {
     const btnCloseCloud = document.getElementById('btnCloseCloudHub');
     const btnAuth = document.getElementById('btnCloudGoogleLogin');
     const btnSaveLib = document.getElementById('btnSaveToMyLibrary');
-    const btnPubComm = document.getElementById('btnPublishToCommunity');
-    const tabBtnLib = document.getElementById('tabBtnMyLibrary');
-    const tabBtnComm = document.getElementById('tabBtnCommunityHub');
-    const panelLib = document.getElementById('panelCloudMyLibrary');
-    const panelComm = document.getElementById('panelCloudCommunityHub');
     const chkAll = document.getElementById('chkCloudSelectAll');
     const btnStartPlaylist = document.getElementById('btnStartLessonPlaylist');
-    const inputSearch = document.getElementById('inputCommunitySearch');
-    const btnRefreshComm = document.getElementById('btnRefreshCommunity');
 
     if (btnCloudHub) {
       btnCloudHub.onclick = () => this.openCloudHubModal();
@@ -24769,27 +23778,6 @@ class GraphApp {
     if (btnSaveLib) {
       btnSaveLib.onclick = () => this.saveCurrentToMyLibrary();
     }
-    if (btnPubComm) {
-      btnPubComm.onclick = () => this.publishCurrentToCommunity();
-    }
-
-    if (tabBtnLib && tabBtnComm && panelLib && panelComm) {
-      tabBtnLib.onclick = () => {
-        tabBtnLib.classList.add('active');
-        tabBtnComm.classList.remove('active');
-        panelLib.style.display = 'block';
-        panelComm.style.display = 'none';
-        this.renderMyLibraryList();
-      };
-      tabBtnComm.onclick = () => {
-        tabBtnComm.classList.add('active');
-        tabBtnLib.classList.remove('active');
-        panelComm.style.display = 'block';
-        panelLib.style.display = 'none';
-        this.fetchCommunityHubFromCloud();
-        this.renderCommunityHubList();
-      };
-    }
 
     if (chkAll) {
       chkAll.onchange = () => {
@@ -24816,15 +23804,11 @@ class GraphApp {
       };
     }
 
-    const btnBundleComm = document.getElementById('btnBundleSelectedToCommunity');
     const btnBundleFile = document.getElementById('btnBundleSelectedToFile');
     const btnExportFile = document.getElementById('btnExportGraphlyFile');
     const btnImportFile = document.getElementById('btnImportGraphlyFile');
     const inpImportFile = document.getElementById('inputImportGraphlyFile');
 
-    if (btnBundleComm) {
-      btnBundleComm.onclick = () => this.bundleSelectedLibraryItemsToCommunity();
-    }
     if (btnBundleFile) {
       btnBundleFile.onclick = () => this.bundleSelectedLibraryItemsToFile();
     }
@@ -24876,13 +23860,6 @@ class GraphApp {
           this.importGraphlyDeckFile(f);
         }
       }, true);
-    }
-
-    if (inputSearch) {
-      inputSearch.oninput = () => this.renderCommunityHubList();
-    }
-    if (btnRefreshComm) {
-      btnRefreshComm.onclick = () => this.fetchCommunityHubFromCloud(true);
     }
 
     // 수업 슬라이드(캔버스 묶음) 상단 초슬림 바 바인딩
@@ -25378,87 +24355,6 @@ class GraphApp {
     }
   }
 
-  async moveCloudFolder(sourcePath, targetParentPath) {
-    const cleanSrc = String(sourcePath || '').trim();
-    const cleanTarget = String(targetParentPath || '').trim();
-    if (!cleanSrc) return;
-    if (cleanTarget === cleanSrc || cleanTarget.startsWith(cleanSrc + '/')) {
-      this.showToast('⚠️ 같은 폴더나 자신의 하위 폴더 안으로는 이동할 수 없습니다.');
-      return;
-    }
-    const baseName = cleanSrc.split('/').pop();
-    const newPath = cleanTarget ? `${cleanTarget}/${baseName}` : baseName;
-    if (newPath === cleanSrc) return;
-
-    const list = this.getCloudFoldersList().map(f => {
-      if (f === cleanSrc) return newPath;
-      if (f.startsWith(cleanSrc + '/')) return newPath + f.slice(cleanSrc.length);
-      return f;
-    });
-    if (!list.includes(newPath)) list.push(newPath);
-    this._saveCloudFoldersList(list);
-
-    if (!this._collapsedCloudFolders) this._collapsedCloudFolders = new Set();
-    if (cleanTarget) this._collapsedCloudFolders.delete(cleanTarget);
-
-    const updatedItems = [];
-    if (Array.isArray(this.myLibraryCache)) {
-      this.myLibraryCache.forEach(it => {
-        if (!it) return;
-        const curF = String(it.folder || '').trim();
-        if (curF === cleanSrc) {
-          it.folder = newPath;
-          updatedItems.push(it);
-        } else if (curF.startsWith(cleanSrc + '/')) {
-          it.folder = newPath + curF.slice(cleanSrc.length);
-          updatedItems.push(it);
-        }
-      });
-      this._saveMyLibraryCacheForCurrentUser();
-    }
-    this.syncExportCloudFolderSelect();
-    this.renderMyLibraryList();
-    const destLabel = cleanTarget ? `[${cleanTarget.replace(/\//g, ' › ')}]` : '[내 클라우드]';
-    this.showToast(`📁 [${baseName}] 폴더를 ${destLabel}(으)로 이동했습니다.`);
-    for (const it of updatedItems) {
-      if (it && it.id) {
-        try { await this._persistCloudItemMetadataChange(it); } catch (e) { }
-      }
-    }
-  }
-
-  async deleteCloudFolder(folderName) {
-    const clean = String(folderName || '').trim();
-    if (!clean) return;
-    const isSub = clean.includes('/');
-    const parentFolder = isSub ? clean.split('/').slice(0, -1).join('/') : '';
-    const list = this.getCloudFoldersList().filter(f => f !== clean && !f.startsWith(clean + '/'));
-    this._saveCloudFoldersList(list);
-    if (this._activeCloudFolder === clean || String(this._activeCloudFolder || '').startsWith(clean + '/')) {
-      this._activeCloudFolder = parentFolder || '';
-    }
-    const updatedItems = [];
-    if (Array.isArray(this.myLibraryCache)) {
-      this.myLibraryCache.forEach(it => {
-        if (!it) return;
-        const curF = String(it.folder || '').trim();
-        if (curF === clean || curF.startsWith(clean + '/')) {
-          it.folder = parentFolder || '';
-          updatedItems.push(it);
-        }
-      });
-      this._saveMyLibraryCacheForCurrentUser();
-    }
-    this.syncExportCloudFolderSelect();
-    this.renderMyLibraryList();
-    this.showToast(`📁 [${clean.split('/').pop()}] 폴더를 삭제했습니다. (안의 파일은 유지됩니다)`);
-    for (const it of updatedItems) {
-      if (it && it.id) {
-        try { await this._persistCloudItemMetadataChange(it); } catch (e) { }
-      }
-    }
-  }
-
   async renameCloudLibraryItem(item, newTitle) {
     if (!item) return;
     const cleanTitle = String(newTitle || '').trim();
@@ -25488,40 +24384,6 @@ class GraphApp {
     this._saveMyLibraryCacheForCurrentUser();
     this.renderMyLibraryList();
     this.showToast(`✏️ 제목이 [${finalTitle}](으)로 변경되었습니다.`);
-    if (item.id) {
-      try { await this._persistCloudItemMetadataChange(item); } catch (e) { }
-    }
-  }
-
-  async moveCloudItemToFolder(item, targetFolder) {
-    if (!item) return;
-    const clean = String(targetFolder || '').trim();
-    if (String(item.folder || '').trim() === clean) return;
-    const dupItem = this._findDuplicateCloudItem(item.title, clean, item.id);
-    if (dupItem) {
-      const nextTitle = this._getNextAvailableCloudTitle(item.title, clean, item.id);
-      const res = await this.promptCloudDuplicateResolution(item.title, clean, nextTitle, 0);
-      if (!res || res.action === 'cancel') {
-        return;
-      }
-      if (res.action === 'rename') {
-        item.title = nextTitle;
-      } else if (res.action === 'overwrite') {
-        await this._deleteCloudLibraryItemCompletely(dupItem);
-      }
-    }
-    item.folder = clean;
-    if (clean) {
-      const list = this.getCloudFoldersList();
-      if (!list.includes(clean)) {
-        list.push(clean);
-        this._saveCloudFoldersList(list);
-      }
-    }
-    this._saveMyLibraryCacheForCurrentUser();
-    this.syncExportCloudFolderSelect();
-    this.renderMyLibraryList();
-    this.showToast(clean ? `📁 [${clean.replace(/\//g, ' › ')}] 폴더로 이동했습니다.` : '☁️ [내 클라우드] 홈으로 이동했습니다.');
     if (item.id) {
       try { await this._persistCloudItemMetadataChange(item); } catch (e) { }
     }
@@ -26636,42 +25498,6 @@ class GraphApp {
       if (localStorage.getItem('graphly_pro_active_v1') === 'true') return true;
     } catch (e) { }
     return false;
-  }
-
-  setProSubscriptionStatus(isPro) {
-    const flag = Boolean(isPro);
-    this.isProUser = flag;
-    if (this.cloudUser && this.cloudUser.uid) {
-      this.cloudUser.isPro = flag;
-      this._persistActiveCloudUserSession();
-      try {
-        const userProKey = this._getProStorageKeyForUid(this.cloudUser.uid);
-        if (flag) {
-          localStorage.setItem(userProKey, 'true');
-        } else {
-          localStorage.removeItem(userProKey);
-        }
-      } catch (e) { }
-      if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestWriteSingleDoc === 'function') {
-        const subDocId = `sub_${this.cloudUser.uid}`;
-        this._firestoreRestWriteSingleDoc('user_subscriptions', subDocId, JSON.stringify({
-          uid: this.cloudUser.uid,
-          authProvider: this.cloudUser.authProvider || 'unknown',
-          isPro: flag,
-          updatedAt: Date.now()
-        })).catch(() => { });
-      }
-    } else {
-      try {
-        if (flag) {
-          localStorage.setItem('graphly_pro_active_v1', 'true');
-        } else {
-          localStorage.removeItem('graphly_pro_active_v1');
-        }
-      } catch (e) { }
-    }
-    this.syncCloudAuthUI();
-    this.renderFuncList();
   }
 
   async syncUserProSubscriptionFromCloud() {
@@ -29106,90 +27932,7 @@ class GraphApp {
     }
   }
 
-  // 2. 전국 기출/변형 그래프 공유 게시판에 등록 (단일 문항 또는 30문항 모의고사 통째 수업 풀세트 모두 지원!)
-  async publishCurrentToCommunity(customTitle = null, customTags = null, customSlidesArray = null) {
-    if (!this.cloudUser || !this.cloudUser.uid) {
-      this.promptCloudLoginForLibrary('🔒 클라우드 업로드 및 기출 게시판 등록은 로그인 후 이용할 수 있습니다.');
-      return null;
-    }
-    if (this.isAudioRecording) {
-      await this.stopAudioRecording();
-    } else if (this._pendingSlideAudioFinalizers && this._pendingSlideAudioFinalizers.length > 0) {
-      await Promise.all(this._pendingSlideAudioFinalizers).catch(() => { });
-      this._pendingSlideAudioFinalizers = [];
-    }
-    const inpTitle = document.getElementById('inputCloudSaveTitle');
-    const inpTags = document.getElementById('inputCloudSaveTags');
-
-    if (this.isLessonPlaylistActive && !customSlidesArray) {
-      this.saveCurrentSlideIntoPlaylist();
-    }
-
-    const slides = Array.isArray(customSlidesArray) && customSlidesArray.length > 0
-      ? JSON.parse(JSON.stringify(customSlidesArray))
-      : (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1
-        ? JSON.parse(JSON.stringify(this.lessonPlaylistSlides))
-        : null);
-
-    const isDeck = Boolean(slides && slides.length > 1);
-    const rawTitle = customTitle || ((inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : '');
-    if (!rawTitle) {
-      this.showToast('⚠️ 게시판에 공유할 제목(예: 2025 9월 모평 1~30번 풀세트)을 먼저 입력해 주세요!');
-      if (inpTitle) inpTitle.focus();
-      return null;
-    }
-    const rawTags = customTags || ((inpTags && inpTags.value.trim()) ? inpTags.value.trim() : (isDeck ? '#모의고사풀세트 #통째수업' : '#기출그래프'));
-
-    if (Array.isArray(slides)) {
-      slides.forEach(s => {
-        if (s && s.audioSyncData) s.audioSyncData = this._compactAudioSyncData(s.audioSyncData);
-      });
-    }
-    const primarySlide = isDeck ? slides[0] : (slides ? slides[0] : this.serializeFullSlideState(rawTitle));
-    const summaryText = isDeck
-      ? `📚 ${slides.length}문항 통째 수업 · ${this._buildSlideSummaryBadge(primarySlide)}`
-      : this._buildSlideSummaryBadge(primarySlide);
-
-    const itemId = 'comm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-    const commObj = {
-      id: itemId,
-      title: rawTitle,
-      tags: rawTags,
-      summary: summaryText,
-      isPlaylist: isDeck,
-      slideCount: isDeck ? slides.length : 1,
-      playlistSlides: isDeck ? slides : [primarySlide],
-      ownerUid: this.cloudUser.uid,
-      ownerEmail: this.cloudUser.email || '',
-      authProvider: this.cloudUser.authProvider || 'email',
-      authorName: this.cloudUser.displayName ? `${this.cloudUser.displayName} 선생님` : '선생님',
-      createdAt: Date.now(),
-      slideData: null
-    };
-
-    // 내 보관함과 기출 게시판 양쪽에 모두 추가
-    this.myLibraryCache.unshift(commObj);
-    this.communityHubCache.unshift(commObj);
-    this._saveMyLibraryCacheForCurrentUser();
-    try {
-      localStorage.setItem('graphly_community_hub_v1', JSON.stringify(this.communityHubCache));
-    } catch (e) { }
-
-    if (!customTitle && inpTitle) inpTitle.value = '';
-    this.renderMyLibraryList();
-    this.renderCommunityHubList();
-    this.showToast(isDeck
-      ? `🌐 [${rawTitle}] (${slides.length}문항 통째 수업 세트) 기출 공유 게시판 등록 완료!`
-      : `🌐 [${rawTitle}] 기출 공유 게시판 및 내 보관함에 등록 완료!`);
-
-    try {
-      await this._firestoreRestWrite('community_hub', itemId, commObj);
-      await this._firestoreRestWrite('user_library', itemId, commObj);
-    } catch (e) { }
-    return commObj;
-  }
-
-  // 보관함/게시판 항목을 불러올 때 먼저 표준 뷰어로 연결 (뷰어에서 [편집] 클릭 시 그래플리 작업 화면으로 전환!)
+  // 보관함 항목을 불러올 때 먼저 표준 뷰어로 연결 (뷰어에서 [편집] 클릭 시 그래플리 작업 화면으로 전환!)
   async loadCloudItemToWorkspace(item, closeModal = true, openInViewer = true) {
     if (!item) return;
     this._returnToShareModalAfterCloudSave = false;
@@ -29234,33 +27977,6 @@ class GraphApp {
       this._initialSharedCloudPkg = JSON.parse(JSON.stringify(normalizedPkg));
       await this.openSmartNoteViewer(normalizedPkg);
     }
-  }
-
-  // 게시판의 수업 세트/그래프를 내 보관함으로 원클릭 복사
-  async importCommunityItemToMyLibrary(item) {
-    if (!item) return null;
-    if (!this.cloudUser || !this.cloudUser.uid) {
-      this.promptCloudLoginForLibrary('🔒 내 클라우드 보관함에 담으려면 먼저 로그인(구글 또는 일반 ID)해 주세요.');
-      return null;
-    }
-    const resolved = await this._resolveChunkedItem(item);
-    const newId = 'lib_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-    const cloned = JSON.parse(JSON.stringify(resolved));
-    cloned.id = newId;
-    cloned.ownerUid = this.cloudUser.uid;
-    cloned.ownerEmail = this.cloudUser.email || '';
-    cloned.authProvider = this.cloudUser.authProvider || 'email';
-    cloned.createdAt = Date.now();
-
-    this.myLibraryCache.unshift(cloned);
-    this._saveMyLibraryCacheForCurrentUser();
-    this.renderMyLibraryList();
-    this.showToast(`📥 [${cloned.title}] 세트를 내 클라우드 보관함에 담았습니다!`);
-
-    try {
-      await this._firestoreRestWrite('user_library', newId, cloned);
-    } catch (e) { }
-    return cloned;
   }
 
   // ============================================================================
@@ -29650,22 +28366,6 @@ class GraphApp {
     return selectedSlides;
   }
 
-  async bundleSelectedLibraryItemsToCommunity() {
-    const selectedSlides = this._collectSelectedLibrarySlides();
-    if (!selectedSlides.length) {
-      this.showToast('⚠️ 게시판에 묶어서 공유할 문항을 1개 이상 체크해 주세요!');
-      return null;
-    }
-    const inpTitle = document.getElementById('inputCloudSaveTitle');
-    const inpTags = document.getElementById('inputCloudSaveTags');
-    const defaultTitle = selectedSlides.length > 1
-      ? `${selectedSlides[0].slideTitle || '모의고사'} 외 총 ${selectedSlides.length}문항 통째 수업 세트`
-      : (selectedSlides[0].slideTitle || '기출 그래프 수업');
-    const title = (inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : defaultTitle;
-    const tags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : (selectedSlides.length > 1 ? '#통째수업 #풀세트' : '#기출그래프');
-    return await this.publishCurrentToCommunity(title, tags, selectedSlides);
-  }
-
   bundleSelectedLibraryItemsToFile() {
     const selectedSlides = this._collectSelectedLibrarySlides();
     if (!selectedSlides.length) {
@@ -29743,29 +28443,6 @@ class GraphApp {
       this.renderMyLibraryList();
     } catch (e) { }
     return this.myLibraryCache;
-  }
-
-  async fetchCommunityHubFromCloud(showToastOnDone = false) {
-    try {
-      const remoteItems = await this._firestoreRestListCollection('community_hub', 80);
-      if (remoteItems && remoteItems.length > 0) {
-        const map = new Map();
-        [...this.communityHubCache, ...remoteItems].forEach(it => {
-          if (it && it.id) {
-            const prev = map.get(it.id);
-            if (!prev || (!it._isChunked) || (!prev.playlistSlides && !prev.slideData)) {
-              map.set(it.id, it);
-            }
-          }
-        });
-        this.communityHubCache = Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        try {
-          localStorage.setItem('graphly_community_hub_v1', JSON.stringify(this.communityHubCache));
-        } catch (e) { }
-        this.renderCommunityHubList();
-        if (showToastOnDone) this.showToast('🌐 최신 기출 게시판 목록을 불러왔습니다!');
-      }
-    } catch (e) { }
   }
 
   renderMyLibraryList() {
@@ -30417,79 +29094,6 @@ class GraphApp {
     const fileCnt = Array.from(this._selectedCloudExplorerKeys || []).filter(k => k.startsWith('file:')).length;
     const lbl = document.getElementById('lblSelectedPlaylistCount');
     if (lbl) lbl.textContent = String(fileCnt);
-  }
-
-  renderCommunityHubList() {
-    const listEl = document.getElementById('communityHubList');
-    const badgeEl = document.getElementById('badgeCommunityCount');
-    const inpSearch = document.getElementById('inputCommunitySearch');
-    const q = (inpSearch && inpSearch.value.trim().toLowerCase()) ? inpSearch.value.trim().toLowerCase() : '';
-
-    const filtered = (this.communityHubCache || []).filter(item => {
-      if (!q) return true;
-      const hay = `${item.title || ''} ${item.tags || ''} ${item.authorName || ''} ${item.summary || ''}`.toLowerCase();
-      return hay.includes(q);
-    });
-
-    if (badgeEl) badgeEl.textContent = String(this.communityHubCache.length);
-    if (!listEl) return;
-
-    if (filtered.length === 0) {
-      listEl.innerHTML = `<div class="cloud-empty-msg">검색된 기출/변형 수업 세트가 없습니다.<br>위에서 제목(예: <strong>2025 9월 모평 1~30번 풀세트</strong>)을 입력하고 <strong>[🌐 기출 게시판 등록]</strong>으로 첫 게시물을 올려보세요!</div>`;
-      return;
-    }
-
-    listEl.innerHTML = '';
-    filtered.forEach((item) => {
-      const row = document.createElement('div');
-      row.className = 'cloud-item-row';
-      const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('ko-KR') : '';
-      const slideCnt = item.slideCount || (Array.isArray(item.playlistSlides) ? item.playlistSlides.length : 1);
-      const deckBadgeHtml = (slideCnt > 1 || item.isPlaylist)
-        ? `<span class="cloud-deck-badge">${slideCnt}캔버스</span>`
-        : '';
-
-      row.innerHTML = `
-        <div class="cloud-item-left">
-          <div class="cloud-item-info">
-            <div class="cloud-item-title">${deckBadgeHtml}${item.title || '기출 그래프'}</div>
-            <div class="cloud-item-meta">
-              <span class="cloud-summary-pill">${item.summary || '그래프 세팅'}</span>
-              <span class="cloud-tag-pill">${item.tags || '#기출'}</span>
-              <span>👨‍🏫 ${item.authorName || '선생님'} · ${dateStr}</span>
-            </div>
-          </div>
-        </div>
-        <div class="cloud-item-actions">
-          <button type="button" class="btn-cloud-load">${slideCnt > 1 ? `▶ ${slideCnt}문항 통째 수업 시작` : '⚡ 내 칠판으로 가져오기'}</button>
-          <button type="button" class="btn-cloud-import-lib" title="내 클라우드 보관함으로 복사">📥 내 보관함 담기</button>
-          <button type="button" class="btn-cloud-export-item" title="내 드라이브(.graphly) 파일로 다운로드">💾 드라이브 저장</button>
-        </div>
-      `;
-
-      const btnLoad = row.querySelector('.btn-cloud-load');
-      if (btnLoad) {
-        btnLoad.onclick = () => this.loadCloudItemToWorkspace(item, true);
-      }
-
-      const btnImportLib = row.querySelector('.btn-cloud-import-lib');
-      if (btnImportLib) {
-        btnImportLib.onclick = () => this.importCommunityItemToMyLibrary(item);
-      }
-
-      const btnExport = row.querySelector('.btn-cloud-export-item');
-      if (btnExport) {
-        btnExport.onclick = async () => {
-          const resolved = await this._resolveChunkedItem(item);
-          const slides = Array.isArray(resolved.playlistSlides) && resolved.playlistSlides.length > 0
-            ? resolved.playlistSlides
-            : (resolved.slideData ? [resolved.slideData] : []);
-          this.exportGraphlyDeckFile(resolved.title || 'Graphly_기출세트', resolved.tags || '#기출', slides);
-        };
-      }
-
-      listEl.appendChild(row);
-    });
   }
 
   // ============================================================================
@@ -32060,14 +30664,6 @@ class GraphApp {
     }, 1100);
   }
 
-  _packageHasRecordedAudio(pkg) {
-    if (!pkg) return false;
-    const slides = Array.isArray(pkg.playlistSlides) && pkg.playlistSlides.length > 0
-      ? pkg.playlistSlides
-      : (pkg.slideData ? [pkg.slideData] : (pkg.historyJson ? [pkg] : []));
-    return slides.some(s => Boolean(s && s.audioSyncData && s.audioSyncData.durationMs > 0));
-  }
-
   async enterStudentAudioVideoOnlyMode(pkg, autoPlay = false) {
     if (!pkg) return;
     const slides = Array.isArray(pkg.playlistSlides) && pkg.playlistSlides.length > 0
@@ -33198,69 +31794,6 @@ class GraphApp {
     this.render();
   }
 
-  addGraphFromParsed(parsed) {
-    if (this.isGraphCovered || this._graphSessionArchived || this.pdfPageBoardData) {
-      this.enterGraphModeFromBoard();
-    }
-    if (!this.showAxes) {
-      this.showAxes = true;
-      this.updateAxesUI();
-    }
-
-    if (this.graphs.length >= 12) {
-      // 12개 꽉 찼으면 현재 활성 그래프를 이 수식으로 덮어씀
-      const g = this.activeGraph;
-      g.type = parsed.ftype;
-      g.category = this.meta[parsed.ftype].category;
-      g.handles = parsed.handles;
-      this.selectedHandleIdx = null;
-      this.isCurveSelected = true;
-      this.syncControls();
-      this.renderLayerList();
-      this.renderFuncList();
-      this.render();
-      this.showToast(`✨ ${parsed.typeName} (${parsed.preview})로 변경되었습니다! 핸들을 드래그해 보세요.`);
-      return;
-    }
-
-    const nextColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
-      ? this.fixedGraphColor
-      : this.colorPalette[this.graphs.length % this.colorPalette.length];
-    const newGraph = {
-      id: Date.now(),
-      type: parsed.ftype,
-      category: this.meta[parsed.ftype].category,
-      handles: parsed.handles,
-      color: nextColor,
-      lineWidth: this.defaultGraphLineWidth || 2.8,
-      isAbsolute: false,
-      isFrozen: false,
-      freezeOffset: { x: 0, y: 0 },
-      frozenInvertH: false,
-      frozenInvertV: false,
-      frozenAbsolute: false
-    };
-
-    this.graphs.push(newGraph);
-    this.activeGraphIdx = this.graphs.length - 1;
-    this.selectedHandleIdx = null;
-    this.isCurveSelected = true;
-
-    if (this.isInkMode && this.activeInkTool !== 'select') {
-      this.setActiveInkTool('select');
-    }
-    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
-      this.closeDrawer();
-    }
-
-    this.syncControls();
-    this.renderLayerList();
-    this.renderFuncList();
-    this.render();
-
-    this.showToast(`✨ ${parsed.typeName} (${parsed.preview}) 생성 완료! 핸들을 드래그해 보세요.`);
-  }
-
   updateCanvasRect() {
     if (this.canvas) {
       this.canvasRect = this.canvas.getBoundingClientRect();
@@ -33443,21 +31976,6 @@ class GraphApp {
       w: sw,
       h: sh
     };
-  }
-
-  getViewfinderBox() {
-    // 화면 중심의 수학 좌표를 뷰파인더 중심(cx, cy)으로 취급!
-    const centerMath = this.screenToMath(this.screenWidth / 2, this.screenHeight / 2);
-    const effSpanY = this.ySpan / this.zoomLevel;
-    const unitScale = (this.screenHeight / 2) / effSpanY;
-    const rect = this.getVfScreenRect();
-    const w = rect.w / unitScale;
-    const h = rect.h / unitScale;
-    const xmin = centerMath.x - w / 2;
-    const xmax = centerMath.x + w / 2;
-    const ymin = centerMath.y - h / 2;
-    const ymax = centerMath.y + h / 2;
-    return { xmin, xmax, ymin, ymax, w, h, cx: centerMath.x, cy: centerMath.y };
   }
 
   drawViewfinder(ctx) {
@@ -34019,6 +32537,8 @@ class GraphApp {
       }
       const pos = getPos(e);
       if (isForceSpaceOrWheelPan) {
+        this._touchPanDeadzoneLocked = false;
+        this._touchPanInitPos = { x: pos.x, y: pos.y };
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
@@ -34259,13 +32779,17 @@ class GraphApp {
       const isPrecisionTool = Boolean(this.isDropLineMode || this.isTextToolMode || this.isGraphSnapMode || this.isPdfToGraphCropMode);
       const isPenLongPress = (e.pointerType === 'pen' && e.button === 2);
 
-      // ✋ [아이패드/태블릿 손가락 1개/손날 터치 원천 차단 (두 손가락 핀치/이동만 작동)]
-      if ((isWritingTool || isPrecisionTool) && isFingerOrPalmTouch) {
+      // 🌟 [아이패드/태블릿 왼손 손가락 이동·줌 & 오른손 펜슬 필기/정밀도구 완벽 분리]:
+      // 필기 도구 또는 보조수선·텍스트·캡처 도구가 켜져 있을 때 손가락/손날(e.pointerType === 'touch')이 닿으면
+      // 절대 도구가 오작동하거나 풀리지 않고 12px 손날 무진동 데드존을 거쳐 1손가락 화면 이동으로만 작동!
+      const isFingerTouchInWritingTool = Boolean((isWritingTool || isPrecisionTool) && isFingerOrPalmTouch);
+      // ✋ [굿노트 방식 옵션: '필기 중 한 손가락 이동' OFF 시 손가락 1개/손날 터치로 화면이 움직이는 현상 원천 차단 (두 손가락 핀치/이동만 작동)]
+      if (isFingerTouchInWritingTool && this.allowOneFingerPanInInk === false) {
         return;
       }
 
-      // 🌟 [스페이스바+드래그 또는 마우스 휠 클릭 시 펜 모드에서도 즉시 화면/칠판 밀기 발동!]
-      const isForceBoardPan = Boolean(this.isSpacePressed || e.button === 1);
+      // 🌟 [대표님 킬러 기획: 스페이스바+드래그, 마우스 휠 클릭, 또는 태블릿 손가락 터치 시 펜 모드에서도 즉시 화면/칠판 밀기 발동!]
+      const isForceBoardPan = Boolean(this.isSpacePressed || e.button === 1 || isFingerTouchInWritingTool);
 
       const isExplicitPan = !isPenLongPress && !isStylusEraser && (
         isForceBoardPan ||
@@ -34285,6 +32809,20 @@ class GraphApp {
       }
 
       if (isExplicitPan) {
+        this._touchPanDeadzoneLocked = Boolean(isFingerOrPalmTouch);
+        this._touchPanInitPos = { x: pos.x, y: pos.y };
+        if (isFingerOrPalmTouch) {
+          this._lastTouchPanStartTime = Date.now();
+          this._touchCameraSnapshot = {
+            boardPanX: this.boardPanX || 0,
+            boardPanY: this.boardPanY || 0,
+            boardZoom: this.boardZoom || 1.0,
+            panX: this.panX || 0,
+            panY: this.panY || 0,
+            zoom: this.zoomLevel || 1.0,
+            inkBakeDirty: Boolean(this._inkBakeDirty)
+          };
+        }
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
@@ -34293,7 +32831,9 @@ class GraphApp {
           this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
         }
         this.canvas.style.cursor = 'move';
-        this.render();
+        if (!isFingerOrPalmTouch) {
+          this.render();
+        }
         return;
       }
 
@@ -34586,6 +33126,8 @@ class GraphApp {
         // 오직 펜슬(pen)이나 마우스(mouse)로 빈 공간을 이동 없이 '툭' 건드리고 뗐을 때(handleUp)만 핸들러 해제!
         const downPType = (e && e.pointerType) ? e.pointerType : (e && e.touches ? 'touch' : 'mouse');
         this.downInfo = { x: pos.x, y: pos.y, hitHandleIdx: null, hitCurveIdx: null, hitVfCorner: false, pointerType: downPType };
+        this._touchPanDeadzoneLocked = false;
+        this._touchPanInitPos = { x: pos.x, y: pos.y };
 
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
@@ -34822,14 +33364,8 @@ class GraphApp {
         this._lastSignificantMoveTime = Date.now();
 
         const useCoveredBoardLayer = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
-        let strokeTarget = useCoveredBoardLayer ? 'board' : 'graph';
-        let isGraphTarget = !useCoveredBoardLayer;
-        if (this.isBoardMode) {
-          const splitX = Math.round(this.screenWidth * this.boardSplitRatio);
-          const isLeft = (pos.x <= splitX);
-          strokeTarget = isLeft ? 'graph' : 'board';
-          isGraphTarget = isLeft;
-        }
+        const strokeTarget = useCoveredBoardLayer ? 'board' : 'graph';
+        const isGraphTarget = !useCoveredBoardLayer;
 
         const bPt0 = this.screenToBoard(pos.x, pos.y);
         const recT0 = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
@@ -34910,40 +33446,6 @@ class GraphApp {
         }
         this.render();
         return;
-      }
-
-
-      // [🧑‍🏫 라이브 판서 분할 모드: 구분선 드래그 감지 & 우측 판서 구역 터치 처리]
-      if (this.isBoardMode) {
-        const splitX = Math.round(this.screenWidth * this.boardSplitRatio);
-        // 구분선 근처(16px 마진) 터치 시 구분선 드래그 시작!
-        if (Math.abs(pos.x - splitX) <= 16) {
-          this.isDraggingBoardDivider = true;
-          this.canvas.style.cursor = 'col-resize';
-          return;
-        }
-        // 우측 판서 구역 터치 시: 그래프 선택 해제 & 클린 뷰 유지 (외부 판서 필기 공간 100% 보장)
-        if (pos.x > splitX) {
-          this.isCurveSelected = false;
-          this.selectedHandleIdx = null;
-          this.render();
-          return;
-        }
-      }
-
-      // [🔀 N축 3-분할 스튜디오 인터랙션: x₀ 슬라이더 알약 터치 & 드래그]
-      if (this.isNAxisMode) {
-        const layout = this.getNAxisLayout(this.screenWidth, this.screenHeight);
-        // 좌하단 박스 2 안을 클릭했거나 슬라이더 알약 근처를 클릭했을 때
-        if (pos.x >= layout.box2.x && pos.x <= layout.box2.x + layout.box2.w &&
-          pos.y >= layout.box2.y && pos.y <= layout.box2.y + layout.box2.h) {
-          this.isDraggingNAxisX0 = true;
-          const limitX = layout.effSpanX_Lower * 0.92;
-          const targetX0 = Math.max(-limitX, Math.min(limitX, layout.screenYToX_2(pos.y)));
-          this.nAxisX0 = Math.round(targetX0 * 100) / 100;
-          this.render();
-          return;
-        }
       }
 
       const m = this.screenToMath(pos.x, pos.y);
@@ -35089,6 +33591,9 @@ class GraphApp {
         // 🌟 [대표님 핵심 기획]:
         // 누르는 순간(pointerdown)이나 손날/손가락(touch) 접촉, 화면 드래그 이동 중에는 핸들러를 절대 끄지 않음!
         // 오직 펜슬(pen)이나 마우스(mouse)로 빈 공간을 이동 없이 '툭' 건드리고 뗐을 때(handleUp)만 핸들러 해제!
+        this._touchPanDeadzoneLocked = false;
+        this._touchPanInitPos = { x: pos.x, y: pos.y };
+
         if (this.isGraphCovered && !this.pdfPageBoardData) {
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
@@ -35222,6 +33727,16 @@ class GraphApp {
       // 🌟 [초기 화면 / 캔버스 패닝 0.00ms 초고속 패스트패스]:
       // 단, 펜슬 필기 중(isDrawingInk)일 때는 절대 패닝이 필기를 가로채지 못하도록 최우선 보호!
       if (!this.isDrawingInk && !this._isTemporaryStylusEraser) {
+        if ((this.isPanning || this.isBoardPanning) && this._touchPanDeadzoneLocked && this._touchPanInitPos) {
+          const dPan = Math.hypot(pos.x - this._touchPanInitPos.x, pos.y - this._touchPanInitPos.y);
+          if (dPan < 12) {
+            return;
+          }
+          this._touchPanDeadzoneLocked = false;
+          this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
+          this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
+          return;
+        }
         if (this.isPanning && this.panStart) {
           if (this.canvas.style.cursor !== 'move') {
             this.canvas.style.cursor = 'move';
@@ -35761,25 +34276,6 @@ class GraphApp {
           item.mathX = m.x + this.draggedTextOffset.dx;
           item.mathY = m.y + this.draggedTextOffset.dy;
         }
-        this.requestRender();
-        return;
-      }
-
-      // [🧑‍🏫 라이브 판서 분할 모드: 구분선 실시간 드래그]
-      if (this.isDraggingBoardDivider) {
-        this.canvas.style.cursor = 'col-resize';
-        const newRatio = pos.x / this.screenWidth;
-        this.setBoardSplitRatio(newRatio);
-        return;
-      }
-
-      // [🔀 N축 3-분할 스튜디오: x₀ 실시간 수직 드래그]
-      if (this.isNAxisMode && this.isDraggingNAxisX0) {
-        this.canvas.style.cursor = 'ns-resize';
-        const layout = this.getNAxisLayout(this.screenWidth, this.screenHeight);
-        const limitX = layout.effSpanX_Lower * 0.92;
-        const targetX0 = Math.max(-limitX, Math.min(limitX, layout.screenYToX_2(pos.y)));
-        this.nAxisX0 = Math.round(targetX0 * 100) / 100;
         this.requestRender();
         return;
       }
@@ -36394,18 +34890,6 @@ class GraphApp {
           ];
           const hitCorner = corners.find(c => Math.hypot(pos.x - c.x, pos.y - c.y) <= 22);
           nextCursor = hitCorner ? hitCorner.cursor : 'default';
-        } else if (this.isBoardMode && Math.abs(pos.x - Math.round(this.screenWidth * this.boardSplitRatio)) <= 16) {
-          nextCursor = 'col-resize';
-        } else if (this.isBoardMode && pos.x > Math.round(this.screenWidth * this.boardSplitRatio)) {
-          nextCursor = 'default';
-        } else if (this.isNAxisMode) {
-          const layout = this.getNAxisLayout(this.screenWidth, this.screenHeight);
-          if (pos.x >= layout.box2.x && pos.x <= layout.box2.x + layout.box2.w &&
-            pos.y >= layout.box2.y && pos.y <= layout.box2.y + layout.box2.h) {
-            nextCursor = 'ns-resize';
-          } else {
-            nextCursor = 'default';
-          }
         } else if (this.isSpacePressed || this.isShiftPressed || (e && e.shiftKey)) {
           nextCursor = 'move';
         } else if (this.isInkMode && this.activeInkTool === 'select') {
@@ -36830,14 +35314,6 @@ class GraphApp {
         return;
       }
 
-      if (this.isDraggingBoardDivider) {
-        this.isDraggingBoardDivider = false;
-        this.canvas.style.cursor = 'default';
-      }
-      if (this.isDraggingNAxisX0) {
-        this.isDraggingNAxisX0 = false;
-        this.canvas.style.cursor = 'default';
-      }
       this.activePwDragIdx = null;
       this.draggingPwBoundary = null;
       this.snapActiveX = false;
@@ -36960,6 +35436,118 @@ class GraphApp {
     let lastPointerMoveTime = 0;
     let lastPointerUpTime = 0;
 
+    // 🔬 [자동 범인 박제 & 최근 5건 타임라인 HUD: ?debug=ink 전용 활성화 (일반 사용 시 자동 숨김)]
+    let isInkDebugHudEnabled = Boolean(
+      typeof window !== 'undefined' && window.location && window.location.search.includes('debug=ink')
+    );
+    let diagPenCount = 0;
+    let diagStylusTouchCount = 0;
+    let diagTouchCount = 0;
+    let diagCancelCount = 0;
+    let diagRecentEvents = [];
+    let diagFrozenAnomalies = [];
+    let lastPenPointerDownAt = 0;
+    const diagTouchTrackMap = new Map();
+    const diagPenDownOnCanvasIds = new Set();
+    let diagHudEl = document.getElementById('simplePenTouchCounterHud');
+    const renderDiagTrailAndBanner = () => {
+      if (!isInkDebugHudEnabled) return;
+      const trailEl = document.getElementById('diagRecentTrail');
+      if (trailEl) {
+        trailEl.textContent = diagRecentEvents.length > 0
+          ? `최근기록: ${diagRecentEvents.slice(-5).join(' ➔ ')}`
+          : '최근기록: (아직 입력 없음)';
+      }
+      const bannerEl = document.getElementById('diagAnomalyBanner');
+      if (bannerEl) {
+        if (diagFrozenAnomalies.length > 0) {
+          bannerEl.style.background = '#dc2626';
+          bannerEl.style.color = '#ffffff';
+          bannerEl.textContent = `🚨 범인포착(${diagFrozenAnomalies.length}건): ${diagFrozenAnomalies[diagFrozenAnomalies.length - 1]}`;
+        } else {
+          bannerEl.style.background = '#1e293b';
+          bannerEl.style.color = '#94a3b8';
+          bannerEl.textContent = '🟢 감시중: 칠판만 보고 쓰다가 씹히는 순간 멈추고 여기를 보세요';
+        }
+      }
+    };
+    const pushDiagTrail = (label) => {
+      if (!isInkDebugHudEnabled) return;
+      diagRecentEvents.push(label);
+      if (diagRecentEvents.length > 8) diagRecentEvents.shift();
+      renderDiagTrailAndBanner();
+    };
+    const pushDiagAnomaly = (msg) => {
+      if (!isInkDebugHudEnabled) return;
+      diagFrozenAnomalies.push(msg);
+      renderDiagTrailAndBanner();
+    };
+    if (isInkDebugHudEnabled && !diagHudEl && typeof document !== 'undefined' && document.body) {
+      diagHudEl = document.createElement('div');
+      diagHudEl.id = 'simplePenTouchCounterHud';
+      diagHudEl.style.cssText = 'position:fixed; top:40px; left:50%; transform:translateX(-50%); z-index:999999; display:flex; flex-direction:column; align-items:center; gap:4px; background:rgba(15,23,42,0.96); color:#fff; padding:6px 10px; border-radius:10px; font-family:monospace,sans-serif; font-size:11.5px; font-weight:700; pointer-events:auto; box-shadow:0 6px 20px rgba(0,0,0,0.4); border:1.5px solid #38bdf8; max-width:96vw;';
+      diagHudEl.innerHTML = `
+        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:5px;">
+          <span id="cntBoxPen" style="padding:2px 6px; border-radius:5px; background:#065f46; color:#a7f3d0; pointer-events:none;">✏️ 펜P: 0</span>
+          <span id="cntBoxStylusT" style="padding:2px 6px; border-radius:5px; background:#1e3a8a; color:#bfdbfe; pointer-events:none;">⚡ 펜T: 0</span>
+          <span id="cntBoxTouch" style="padding:2px 6px; border-radius:5px; background:#78350f; color:#fde68a; pointer-events:none;">👆 손날: 0</span>
+          <span id="cntBoxCancel" style="padding:2px 6px; border-radius:5px; background:#7f1d1d; color:#fecaca; pointer-events:none;">🚨 취소: 0</span>
+          <button id="btnResetDiagCnt" type="button" style="padding:2px 7px; border-radius:5px; background:#334155; color:#f8fafc; border:1px solid #64748b; font-size:11.5px; font-weight:700; cursor:pointer;">0리셋</button>
+          <button id="btnCloseDiagCnt" type="button" style="padding:2px 6px; border-radius:5px; background:#1e293b; color:#94a3b8; border:1px solid #475569; font-size:11.5px; font-weight:700; cursor:pointer;">✕</button>
+        </div>
+        <div id="diagRecentTrail" style="padding:2px 8px; border-radius:5px; background:#0f172a; color:#e2e8f0; font-size:11px; pointer-events:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:92vw;">최근기록: (아직 입력 없음)</div>
+        <div id="diagAnomalyBanner" style="padding:3px 8px; border-radius:5px; background:#1e293b; color:#94a3b8; font-size:11.5px; pointer-events:none; text-align:center;">🟢 감시중: 칠판만 보고 쓰다가 씹히는 순간 멈추고 여기를 보세요</div>
+      `;
+      document.body.appendChild(diagHudEl);
+      const resetBtn = document.getElementById('btnResetDiagCnt');
+      if (resetBtn) {
+        resetBtn.addEventListener('pointerdown', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          diagPenCount = 0;
+          diagStylusTouchCount = 0;
+          diagTouchCount = 0;
+          diagCancelCount = 0;
+          diagRecentEvents = [];
+          diagFrozenAnomalies = [];
+          diagTouchTrackMap.clear();
+          diagPenDownOnCanvasIds.clear();
+          const b1 = document.getElementById('cntBoxPen');
+          const bT = document.getElementById('cntBoxStylusT');
+          const b2 = document.getElementById('cntBoxTouch');
+          const b3 = document.getElementById('cntBoxCancel');
+          if (b1) b1.textContent = '✏️ 펜P: 0';
+          if (bT) bT.textContent = '⚡ 펜T: 0';
+          if (b2) b2.textContent = '👆 손날: 0';
+          if (b3) b3.textContent = '🚨 취소: 0';
+          renderDiagTrailAndBanner();
+        });
+      }
+      const closeBtn = document.getElementById('btnCloseDiagCnt');
+      if (closeBtn) {
+        closeBtn.addEventListener('pointerdown', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          isInkDebugHudEnabled = false;
+          if (diagHudEl) diagHudEl.style.display = 'none';
+        });
+      }
+    }
+    const flashCounterBox = (id, text, flashBg) => {
+      if (!isInkDebugHudEnabled) return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = text;
+      const origBg = id === 'cntBoxPen' ? '#065f46' : (id === 'cntBoxStylusT' ? '#1e3a8a' : (id === 'cntBoxTouch' ? '#78350f' : '#7f1d1d'));
+      el.style.background = flashBg;
+      el.style.transform = 'scale(1.06)';
+      clearTimeout(el._flashTimer);
+      el._flashTimer = setTimeout(() => {
+        el.style.background = origBg;
+        el.style.transform = 'scale(1)';
+      }, 180);
+    };
+
     if (window.PointerEvent) {
       window.addEventListener('pointerdown', (e) => {
         if (this.isPdfModalOpen) return;
@@ -36970,6 +35558,34 @@ class GraphApp {
         const nowT = Date.now();
         if (e.pointerType === 'touch') {
           if (e.target === this.canvas) {
+            this._lastPalmTouchPos = { x: e.clientX, y: e.clientY, time: nowT };
+            if (isInkDebugHudEnabled) {
+              const w = Math.round(e.width || 0);
+              const h = Math.round(e.height || 0);
+              diagTouchCount++;
+              flashCounterBox('cntBoxTouch', `👆 손날: ${diagTouchCount} (${w}x${h})`, '#d97706');
+              const distFromDown = (this._lastPenDownPos && (nowT - this._lastPenDownPos.time < 5000))
+                ? Math.round(Math.hypot(e.clientX - this._lastPenDownPos.x, e.clientY - this._lastPenDownPos.y))
+                : 999;
+              const distFromTip = (this._lastPenTipPos && (nowT - this._lastPenTipPos.time < 5000))
+                ? Math.round(Math.hypot(e.clientX - this._lastPenTipPos.x, e.clientY - this._lastPenTipPos.y))
+                : 999;
+              const distFromPen = Math.min(distFromDown, distFromTip);
+              const label = `👆터치(거리${distFromPen}px/이동0px)`;
+              pushDiagTrail(label);
+              if (e.pointerId !== undefined) {
+                diagTouchTrackMap.set(e.pointerId, {
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  maxMove: 0,
+                  distFromPen,
+                  w,
+                  h,
+                  lastLabel: label,
+                  anomalyLogged: false
+                });
+              }
+            }
             if (this._uiPointerIds && e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
             return;
           }
@@ -37000,9 +35616,18 @@ class GraphApp {
         if (e.pointerType === 'pen') {
           this._markStylusPenDetected();
           this._lastPenActiveTime = nowT;
+          this._lastPenDownTime = nowT;
+          this._lastPenDownPos = { x: e.clientX, y: e.clientY, time: nowT };
+          this._lastPenTipPos = { x: e.clientX, y: e.clientY, time: nowT };
           if (this.activePointers) this.activePointers.clear();
           this._pinchState = null;
           this._pinchWasActiveInGesture = false;
+          if (isInkDebugHudEnabled && e.target === this.canvas) {
+            lastPenPointerDownAt = nowT;
+            diagPenCount++;
+            if (e.pointerId !== undefined) diagPenDownOnCanvasIds.add(e.pointerId);
+            flashCounterBox('cntBoxPen', `✏️ 펜P: ${diagPenCount} (시작)`, '#10b981');
+          }
         }
         const isEffectivePenDown = (e.pointerType === 'pen');
         if (!this._uiPointerIds) this._uiPointerIds = new Set();
@@ -37074,11 +35699,35 @@ class GraphApp {
           if (isEffectivePen) {
             this._markStylusPenDetected();
             this._lastPenActiveTime = nowT;
+            this._lastPenDownTime = nowT;
+            this._lastPenTipPos = { x: e.clientX, y: e.clientY, time: nowT };
+            if ((this.isPanning || this.isBoardPanning) && this._touchCameraSnapshot && (nowT - (this._lastTouchPanStartTime || 0) < 350)) {
+              const snap = this._touchCameraSnapshot;
+              const hadMoved = (
+                this.boardPanX !== snap.boardPanX ||
+                this.boardPanY !== snap.boardPanY ||
+                this.panX !== snap.panX ||
+                this.panY !== snap.panY
+              );
+              this.boardPanX = snap.boardPanX;
+              this.boardPanY = snap.boardPanY;
+              this.boardZoom = snap.boardZoom;
+              this.panX = snap.panX;
+              this.panY = snap.panY;
+              this.zoomLevel = snap.zoom;
+              this._inkBakeDirty = Boolean(snap.inkBakeDirty);
+              if (hadMoved) {
+                if (this.isGraphCovered) this.updateProblemCardPosition(true);
+                this.requestRender();
+              }
+            }
+            this._touchCameraSnapshot = null;
           }
           if (this.activePointers) {
             this.activePointers.clear();
           }
           this._pinchWasActiveInGesture = false;
+          this._touchPanDeadzoneLocked = false;
           if (this.isPanning || this.isBoardPanning || this._pinchState) {
             this.isPanning = false;
             this.isBoardPanning = false;
@@ -37100,6 +35749,28 @@ class GraphApp {
           e.preventDefault();
         }
         if (e.pointerType === 'touch') {
+          if (e.target === this.canvas) {
+            this._lastPalmTouchPos = { x: e.clientX, y: e.clientY, time: Date.now() };
+          }
+          if (isInkDebugHudEnabled && e.pointerId !== undefined && diagTouchTrackMap.has(e.pointerId)) {
+            const info = diagTouchTrackMap.get(e.pointerId);
+            const curMove = Math.round(Math.hypot(e.clientX - info.startX, e.clientY - info.startY));
+            if (curMove > info.maxMove) {
+              info.maxMove = curMove;
+              const nextLabel = `👆터치(거리${info.distFromPen}px/이동${info.maxMove}px)`;
+              const idx = diagRecentEvents.lastIndexOf(info.lastLabel);
+              info.lastLabel = nextLabel;
+              if (idx >= 0) {
+                diagRecentEvents[idx] = nextLabel;
+              }
+              if (!info.anomalyLogged && info.maxMove >= 20 && info.distFromPen <= 190) {
+                info.anomalyLogged = true;
+                pushDiagAnomaly(`[펜이 터치로 둔갑!] 펜거리${info.distFromPen}px / 이동${info.maxMove}px (${info.w}x${info.h})`);
+              } else {
+                renderDiagTrailAndBanner();
+              }
+            }
+          }
           const isUiTouchMove = Boolean(this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId));
           const isCanvasOrPinchTouchMove = !isUiTouchMove || Boolean(this._pinchState) || Boolean(this.activePointers && this.activePointers.size >= 2);
           if (isCanvasOrPinchTouchMove && this._shouldIgnoreCanvasTouchPointer(e)) {
@@ -37132,6 +35803,7 @@ class GraphApp {
             if (isEffectivePen) {
               this._markStylusPenDetected();
               this._lastPenActiveTime = Date.now();
+              this._touchPanDeadzoneLocked = false;
             }
             if (e.target && e.target.closest && e.target.closest('.problem-card-body') && !this.isPointerOverMenu(e)) {
               const cPos = getPos(e);
@@ -37176,6 +35848,8 @@ class GraphApp {
         if (isEffectivePen) {
           this._markStylusPenDetected();
           this._lastPenActiveTime = nowT;
+          this._lastPenTipPos = { x: e.clientX, y: e.clientY, time: nowT };
+          this._touchPanDeadzoneLocked = false;
         }
 
         if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || this.isDrawingSticker) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
@@ -37197,6 +35871,7 @@ class GraphApp {
         }
         if (this.isPdfModalOpen) return;
         if (e.pointerType === 'touch') {
+          if (e.pointerId !== undefined) diagTouchTrackMap.delete(e.pointerId);
           if (wasUiPointer && !this._pinchState && !(this.activePointers && this.activePointers.has(e.pointerId))) {
             return;
           }
@@ -37224,6 +35899,23 @@ class GraphApp {
         const nowT = Date.now();
         if (isEffectivePen) {
           this._lastPenActiveTime = nowT;
+          const wasCanvasPenDown = (e.pointerId !== undefined && diagPenDownOnCanvasIds.has(e.pointerId));
+          if (e.pointerId !== undefined) diagPenDownOnCanvasIds.delete(e.pointerId);
+          if (isInkDebugHudEnabled && wasCanvasPenDown) {
+            const ptsCount = (this.currentInkStroke && this.currentInkStroke.points) ? this.currentInkStroke.points.length : 0;
+            if (e.type === 'pointercancel') {
+              diagCancelCount++;
+              flashCounterBox('cntBoxCancel', `🚨 취소: ${diagCancelCount} (점${ptsCount})`, '#dc2626');
+              pushDiagTrail(`🚨취소#${diagCancelCount}(점${ptsCount})`);
+              pushDiagAnomaly(`[pointercancel] 그리는 중 강제 취소됨(점${ptsCount})`);
+            } else {
+              flashCounterBox('cntBoxPen', `✏️ 펜P: ${diagPenCount} (점${ptsCount}개)`, '#059669');
+              pushDiagTrail(`✏️#${diagPenCount}(점${ptsCount})`);
+              if (ptsCount === 0) {
+                pushDiagAnomaly(`[handleDown 미진입] 펜P#${diagPenCount} 점0개`);
+              }
+            }
+          }
         }
 
         if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || this.isDrawingSticker) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
@@ -37288,6 +35980,20 @@ class GraphApp {
     this.canvas.addEventListener('touchstart', (e) => {
       if (e.target === this.canvas && e.cancelable !== false) {
         e.preventDefault();
+      }
+      if (isInkDebugHudEnabled && e.changedTouches) {
+        const changedList = Array.from(e.changedTouches);
+        if (changedList.some(t => t.touchType === 'stylus')) {
+          const stylusTs = Date.now();
+          diagStylusTouchCount++;
+          flashCounterBox('cntBoxStylusT', `⚡ 펜T: ${diagStylusTouchCount}`, '#2563eb');
+          setTimeout(() => {
+            if (Math.abs(lastPenPointerDownAt - stylusTs) > 80) {
+              pushDiagTrail(`⚡펜T단독#${diagStylusTouchCount}!`);
+              pushDiagAnomaly(`[Pointer삼킴] ⚡펜T(#${diagStylusTouchCount})는 왔는데 ✏️펜P가 삼켜짐!`);
+            }
+          }, 55);
+        }
       }
     }, { passive: false });
 
@@ -37413,32 +36119,6 @@ class GraphApp {
             this.toggleTextToolMode(false);
             return;
           }
-          if (this.isNAxisMode) {
-            e.preventDefault();
-            this.toggleNAxisMode(false);
-            return;
-          }
-          if (this.isBoardMode && this.selectedHandleIdx === null && !this.isCurveSelected) {
-            e.preventDefault();
-            this.toggleBoardMode(false);
-            return;
-          }
-        }
-      }
-
-      // [🔀 N축 모드 시 키보드 방향키: x₀ 실시간 슬라이더 이동 & 수직 레이저 관통 시연]
-      if (this.isNAxisMode) {
-        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-          e.preventDefault();
-          const stepX = e.shiftKey ? 0.2 : 0.04;
-          const limitX = Math.round((this.getNAxisLayout(this.screenWidth, this.screenHeight).effSpanX_Lower * 0.95) * 100) / 100;
-          if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-            this.nAxisX0 = Math.max(-limitX, Math.min(limitX, Math.round((this.nAxisX0 - stepX) * 100) / 100));
-          } else {
-            this.nAxisX0 = Math.max(-limitX, Math.min(limitX, Math.round((this.nAxisX0 + stepX) * 100) / 100));
-          }
-          this.render();
-          return;
         }
       }
 
@@ -37690,15 +36370,6 @@ class GraphApp {
 
       if (this.isGraphCovered && !this.pdfPageBoardData) return;
 
-      // [🔀 N축 합성 모드 전용 휠 줌: 3개 창 화각 동시 확대/축소]
-      if (this.isNAxisMode) {
-        const zoomFactor = e.deltaY < 0 ? 1.09 : 0.91;
-        this.nAxisZoom = Math.max(0.2, Math.min(4.0, (this.nAxisZoom || 1.0) * zoomFactor));
-        this.syncNAxisBarUI();
-        this.render();
-        return;
-      }
-
       if (this.useViewfinder && e.shiftKey) {
         const delta = e.deltaY < 0 ? 30 : -30;
         this.vfScreenW = Math.max(220, Math.min(this.screenWidth - 40, this.vfScreenW + delta));
@@ -37842,23 +36513,18 @@ class GraphApp {
       ctx.drawImage(this.sceneFreezeCanvas, 0, 0);
       ctx.restore();
 
-      const isBoardSplit = this.isBoardMode && (this.currentInkStroke.target === 'graph');
       const isPdfClip = Boolean(this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2);
-      if (isBoardSplit || isPdfClip) {
+      if (isPdfClip) {
         ctx.save();
         ctx.beginPath();
-        if (isPdfClip) {
-          const pr = this._lastPdfPageScreenRect;
-          ctx.rect(pr.x, pr.y, pr.w, pr.h);
-        } else {
-          ctx.rect(0, 0, Math.round(width * this.boardSplitRatio), height);
-        }
+        const pr = this._lastPdfPageScreenRect;
+        ctx.rect(pr.x, pr.y, pr.w, pr.h);
         ctx.clip();
       }
 
       this.renderSingleStroke(ctx, this.currentInkStroke, null, true);
 
-      if (isBoardSplit || isPdfClip) {
+      if (isPdfClip) {
         ctx.restore();
       }
 
@@ -37939,23 +36605,6 @@ class GraphApp {
           h: Math.abs(br.y - tl.y)
         };
       }
-    }
-
-    // [🔀 정통 N축 합성함수 해석 모드: 듀얼 상하 뷰포트 & 수직 레이저 트레이서 전용 렌더링]
-    if (this.isNAxisMode && !isExport) {
-      this.drawNAxisStage(ctx, width, height, curTheme);
-      return;
-    }
-
-    // [🧑‍🏫 라이브 판서 분할 모드: 좌측 그래프 무대 뷰포트 클리핑]
-    const isBoard = this.isBoardMode && !isExport;
-    const splitX = isBoard ? Math.round(width * this.boardSplitRatio) : width;
-
-    if (isBoard) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, 0, splitX, height);
-      ctx.clip();
     }
 
     // 🌟 [2-Layer 아키텍처 & 정사각형 좌표평면 (Square Coordinate Plane)] 🌟
@@ -38126,12 +36775,6 @@ class GraphApp {
       // 🌟 [우측 하단 작은 사이즈 조절기(◢) & 위치 이동(✥) 컨트롤 배지] 🌟
       this.drawCompactStageControls(ctx);
     }
-
-    // [🧑‍🏫 라이브 판서 분할 모드: 우측 클린 판서 구역 & 시네마틱 네온 구분선 렌더링]
-    if (isBoard) {
-      ctx.restore();
-      this.drawBoardModeStage(ctx, splitX, width, height, curTheme);
-    }
   }
 
   _ensureMainLaserLoop() {
@@ -38248,7 +36891,7 @@ class GraphApp {
 
   // --- [⚡ 실시간 교점판독기: 교점 데이터 갱신 엔진] ---
   updateIntersections() {
-    if (!this.useIntersectionDetector || (this.isGraphCovered && !this.isBoardMode)) {
+    if (!this.useIntersectionDetector || this.isGraphCovered) {
       this.detectedIntersections = [];
       return;
     }
@@ -38545,48 +37188,6 @@ class GraphApp {
     // 강사가 캔버스 위의 반짝이는 교점 마커들을 직접 직관적으로 눈으로 판독하도록 함.
   }
 
-  drawIntersectionCounterBadge(ctx, total, onScreen, offScreen, tangent = 0, overlap = 0) {
-    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
-
-    let badgeText = '';
-    if (overlap > 0) {
-      badgeText = `⚡ 교점 무수히 많음 (선분 겹침)`;
-    } else if (total === 0) {
-      badgeText = `⚡ 교점판독기: 교점 없음`;
-    } else {
-      let detail = `교점 ${total}개`;
-      if (tangent > 0) detail += ` (접점 ${tangent}개 포함)`;
-      if (offScreen > 0) detail += ` [화면 밖 ${offScreen}개]`;
-      badgeText = `⚡ ${detail}`;
-    }
-
-    ctx.save();
-    ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
-    const textW = ctx.measureText(badgeText).width;
-    const badgeW = textW + 16;
-    const badgeH = 22;
-    // [대표님 특화]: 항상 화면 상단 중앙에 가지런히 배치
-    const badgeX = (this.screenWidth - badgeW) / 2;
-    const badgeY = 18;
-
-    ctx.fillStyle = curTheme.isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(18, 26, 36, 0.90)';
-    ctx.strokeStyle = total > 0 ? (curTheme.isLight ? 'rgba(124, 58, 237, 0.55)' : 'rgba(254, 202, 87, 0.65)') : 'rgba(100, 116, 139, 0.4)';
-    ctx.lineWidth = 1.1;
-    ctx.shadowColor = total > 0 ? (curTheme.isLight ? 'rgba(124, 58, 237, 0.18)' : 'rgba(254, 202, 87, 0.25)') : 'transparent';
-    ctx.shadowBlur = 6;
-
-    ctx.beginPath();
-    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 11);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = total > 0 ? (curTheme.isLight ? '#7c3aed' : '#feca57') : (curTheme.isLight ? '#64748b' : '#94a3b8');
-    ctx.textBaseline = 'middle';
-    ctx.fillText(badgeText, badgeX + 8, badgeY + badgeH / 2);
-
-    ctx.restore();
-  }
-
   // 🌟 [문제 카드 활성 시: 경계선 없는 자유 비율 칠판 일체형 컴팩트 스테이지 계산] 🌟
   // 대표님 기획: 정사각형에 국한되지 않고 가로길게 / 세로길게 자유 비율 지원!
   // 문제가 플로팅되어 있으므로 그래프를 문제 바로 밑이나 문제 뒤로 겹쳐서 배치하는 것도 100% 완전 자유 허용!
@@ -38613,10 +37214,6 @@ class GraphApp {
   }
 
   getCompactGraphStage() {
-    return this.getSquareGraphBounds();
-  }
-
-  getCompactGraphScreenBounds() {
     return this.getSquareGraphBounds();
   }
 
@@ -39294,16 +37891,6 @@ class GraphApp {
     this.updateInkCursor();
     this.render();
     this.showToast(this.isDropLineMode ? '📍 보조 수선 도구 켜짐 (극점·교점 클릭 시 수선 생성)' : '📍 보조 수선 도구 꺼짐');
-  }
-
-  formatCoordForLabel(val) {
-    if (isNaN(val) || !isFinite(val)) return '0';
-    if (Math.abs(val) < 1e-4) return '0';
-    // 부동소수점 오차 정리 (-0.0 방지, 최대 소수점 2자리)
-    const rounded = Math.round(val * 100) / 100;
-    if (Math.abs(rounded) < 1e-4) return '0';
-    let s = rounded.toString();
-    return s.replace('-', '−'); // 유니코드 정규 수학 마이너스(U+2212)
   }
 
   sanitizeMathLabel(text) {
@@ -44378,127 +42965,6 @@ class GraphApp {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   }
 
-  shouldInterceptStrokeClickForAudio() {
-    // 대표님 지침: 부하가 크고 불필요한 '필기 획 터치 시점 점프' 기능을 전면 제거하고 슬라이드별 순수 영상 재생 모드로 일원화
-    return false;
-  }
-
-  findAudioStrokeAtScreenPoint(clientX, clientY, maxRadiusPx = 28) {
-    if (!this.audioSyncData || !(this.audioSyncData.durationMs > 0)) return null;
-    let bestDist = maxRadiusPx;
-    let bestHit = null;
-    const ptTap = { x: clientX, y: clientY };
-
-    // 1) 화면에 펼쳐진 카드(문제 카드, 그래프 보관 카드 #1/#2...) 내부 필기 획 검사
-    const cardEntries = [
-      { el: document.getElementById('problemCardWidget'), strokes: this.problemInkStrokes, isGraphCard: false },
-      ...((this.extraProblemCards || []).map(c => ({ el: c && c.el, strokes: c && c.el && c.el._cardInkStrokes, isGraphCard: false }))),
-      { el: document.getElementById('graphCardWidget'), strokes: this.graphInkStrokes, isGraphCard: true },
-      ...((this.extraGraphCards || []).map(c => ({ el: c && c.el, strokes: c && c.el && c.el._cardInkStrokes, isGraphCard: true })))
-    ].filter(item => item.el && item.el.style.display !== 'none' && !item.el.classList.contains('minimized'));
-
-    let tappedGraphCardEl = null;
-    for (let cIdx = 0; cIdx < cardEntries.length; cIdx++) {
-      const { el, strokes, isGraphCard } = cardEntries[cIdx];
-      const cCanvas = el.querySelector('.problem-card-canvas') || el.querySelector('.problem-card-body');
-      if (!cCanvas) continue;
-      const rect = cCanvas.getBoundingClientRect();
-      if (rect.width <= 4 || rect.height <= 4) continue;
-      if (
-        clientX < rect.left - maxRadiusPx ||
-        clientX > rect.right + maxRadiusPx ||
-        clientY < rect.top - maxRadiusPx ||
-        clientY > rect.bottom + maxRadiusPx
-      ) {
-        continue;
-      }
-      if (
-        isGraphCard &&
-        clientX >= rect.left &&
-        clientX <= rect.right &&
-        clientY >= rect.top &&
-        clientY <= rect.bottom
-      ) {
-        tappedGraphCardEl = el;
-      }
-      if (!Array.isArray(strokes) || strokes.length === 0) continue;
-      for (let sIdx = 0; sIdx < strokes.length; sIdx++) {
-        const st = strokes[sIdx];
-        if (!st || typeof st.tStart !== 'number' || !Array.isArray(st.points) || st.points.length === 0) continue;
-        const pts = st.points;
-        for (let i = 0; i < pts.length; i++) {
-          const pA = { x: rect.left + pts[i].nx * rect.width, y: rect.top + pts[i].ny * rect.height };
-          let d = Math.hypot(clientX - pA.x, clientY - pA.y);
-          if (i < pts.length - 1) {
-            const pB = { x: rect.left + pts[i + 1].nx * rect.width, y: rect.top + pts[i + 1].ny * rect.height };
-            d = Math.min(d, this.distToSegment(ptTap, pA, pB));
-          }
-          if (d <= bestDist) {
-            bestDist = d;
-            bestHit = { stroke: st, tStart: st.tStart, tEnd: st.tEnd || st.tStart, dist: d, source: 'card' };
-          }
-        }
-      }
-    }
-
-    // 2) 메인 칠판 / PDF 통째 페이지 / 순수 그래프 캔버스 필기 획 검사
-    const baseStrokes = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
-    const wantTarget = (this.isGraphCovered && !this.pdfPageBoardData) ? 'board' : 'graph';
-    for (let sIdx = 0; sIdx < baseStrokes.length; sIdx++) {
-      const st = baseStrokes[sIdx];
-      if (!st || typeof st.tStart !== 'number') continue;
-      const t = st.target || 'board';
-      if (t !== wantTarget) continue;
-      if (t === 'graph' && Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
-      const isBoard = (t === 'board');
-      const toScr = (pt) => isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
-
-      if (Array.isArray(st.points) && st.points.length > 0) {
-        const pts = st.points;
-        for (let i = 0; i < pts.length; i++) {
-          const sA = toScr(pts[i]);
-          let d = Math.hypot(clientX - sA.x, clientY - sA.y);
-          if (i < pts.length - 1) {
-            const sB = toScr(pts[i + 1]);
-            d = Math.min(d, this.distToSegment(ptTap, sA, sB));
-          }
-          if (d <= bestDist) {
-            bestDist = d;
-            bestHit = { stroke: st, tStart: st.tStart, tEnd: st.tEnd || st.tStart, dist: d, source: 'canvas' };
-          }
-        }
-      }
-      if (st.shape && typeof this.getShapeSampleScreenPoints === 'function') {
-        const shapePts = this.getShapeSampleScreenPoints(st);
-        for (let k = 0; k < shapePts.length; k++) {
-          const d = Math.hypot(clientX - shapePts[k].x, clientY - shapePts[k].y);
-          if (d <= bestDist) {
-            bestDist = d;
-            bestHit = { stroke: st, tStart: st.tStart, tEnd: st.tEnd || st.tStart, dist: d, source: 'shape' };
-          }
-        }
-      }
-    }
-
-    // 3) 그래프 보관 카드(#1, #2...) 본체를 터치했는데 카드 위 필기 획은 없다면, 해당 그래프를 작도하던 시점으로 점프!
-    if (!bestHit && tappedGraphCardEl && Array.isArray(this.audioSyncData.timeline)) {
-      this._expandAudioSyncData(this.audioSyncData);
-      const graphEv = this.audioSyncData.timeline.find(ev => ev && ev.type === 'state' && ev.state && !ev.state.isGraphCovered);
-      if (graphEv && typeof graphEv.t === 'number') {
-        bestHit = { stroke: null, tStart: graphEv.t, tEnd: graphEv.t, dist: 0, source: 'graph_card' };
-      }
-    }
-
-    return bestHit;
-  }
-
-  seekAndPlayAudioAtMs(targetMs) {
-    if (!this.audioSyncData || !(this.audioSyncData.durationMs > 0)) return;
-    const dur = this.audioSyncData.durationMs;
-    const clamped = Math.max(0, Math.min(dur - 50, Number(targetMs) || 0));
-    this.playAudioSync(clamped, 'video');
-  }
-
   _createSilentWavDataUrl(durationMs = 1000) {
     // 🌟 [무음 폴백 WAV 초경량화 (1.28MB ➔ 1.1KB)]:
     // 재생 타임라인은 performance.now() 정밀 벽시계로 구동되므로, 무음 WAV는 브라우저 <audio> 초기화용 최소 샘플(800바이트)만 생성!
@@ -44723,8 +43189,6 @@ class GraphApp {
       stageW,
       stageH,
       isGraphCovered: Boolean(this.isGraphCovered),
-      isBoardMode: Boolean(this.isBoardMode),
-      boardSplitRatio: r3(this.boardSplitRatio || 0.4),
       drawerOpen,
       activeDrawerPanel: this.activeDrawerPanel || '',
       activePresetCat,
@@ -44810,7 +43274,6 @@ class GraphApp {
     try {
       const modeChanged = (Boolean(this.isGraphCovered) !== Boolean(kf.isGraphCovered));
       this.isGraphCovered = Boolean(kf.isGraphCovered);
-      this.isBoardMode = Boolean(kf.isBoardMode);
       // 🌟 [페이지 모드 ↔ 실시간 그래프 모드 전환 리플레이 완벽 동기화]:
       // 그래프 모드(!isGraphCovered) 구간에서는 PDF 보드 데이터를 일시 보관(_suspendedPdfBoardState)하여 좌표평면과 그래프 필기만 깔끔하게 표시하고,
       // 판서 모드(isGraphCovered) 복귀 구간에서는 PDF 보드 데이터를 즉시 복원하여 PDF 페이지와 페이지 위 판서를 정확히 렌더링!
@@ -44825,7 +43288,6 @@ class GraphApp {
         this.pdfPageBoardData = this._suspendedPdfBoardState.pdfPageBoardData;
         this._inkBakeDirty = true;
       }
-      if (typeof kf.boardSplitRatio === 'number') this.boardSplitRatio = kf.boardSplitRatio;
       this.graphs = JSON.parse(JSON.stringify(kf.graphs || []));
       this.activeGraphIdx = typeof kf.activeGraphIdx === 'number' ? kf.activeGraphIdx : (this.graphs.length > 0 ? 0 : -1);
       if (kf.isCurveSelected !== undefined) this.isCurveSelected = Boolean(kf.isCurveSelected);
@@ -45357,7 +43819,7 @@ class GraphApp {
       this.syncGraphSnapBarUI();
       this.isPointerDownOnCanvas = false;
       this.syncCurveContextBar();
-      if (!this.isGraphCovered || this.isBoardMode) {
+      if (!this.isGraphCovered) {
         this.updateIntersections();
       }
     } finally {
@@ -45398,7 +43860,6 @@ class GraphApp {
     const kf = this._captureAudioWorkspaceKeyframe();
     const hash = JSON.stringify([
       kf.isGraphCovered,
-      kf.isBoardMode,
       kf.drawerOpen,
       kf.activeDrawerPanel,
       kf.activePresetCat,
@@ -46057,23 +44518,6 @@ class GraphApp {
     } else {
       bar.classList.remove('player-bar-auto-hidden');
       bar.style.display = 'none';
-    }
-  }
-
-  setAudioReplayViewMode(mode, triggerRender = true) {
-    this.audioReplayViewMode = 'video';
-    if (this.audioSyncData) {
-      this._isAudioReplayActive = true;
-      document.body.classList.add('audio-replay-active');
-      this._syncReplayFixedStageLayout();
-      this._lastAppliedAudioStateObj = null;
-      this._applyAudioTimelineStateAt(this.audioPlayCurrentMs || 0);
-    }
-    this.syncAudioRecordUI();
-    if (triggerRender) {
-      this.renderProblemCardCanvas();
-      this.renderGraphCardCanvas();
-      this.render();
     }
   }
 
