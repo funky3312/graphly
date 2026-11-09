@@ -984,6 +984,27 @@
       let activeProblemDrawRect = null;
       let activeProblemPointerId = null;
 
+      const restartProblemHoldTimer = (w, h) => {
+        if (!isDrawingOnProblem || !currentStroke || currentStroke._shapeHoldDetected) return;
+        currentStroke._lastHoldMoveTime = Date.now();
+        currentStroke._holdW = w;
+        currentStroke._holdH = h;
+        if (holdTimer) return;
+        const checkHold = () => {
+          holdTimer = null;
+          if (!isDrawingOnProblem || !currentStroke || currentStroke._shapeHoldDetected) return;
+          const elapsed = Date.now() - (currentStroke._lastHoldMoveTime || 0);
+          if (elapsed < 340) {
+            holdTimer = setTimeout(checkHold, Math.max(16, 340 - elapsed));
+            return;
+          }
+          if (this.recognizeAndApplyCardStrokeShape(currentStroke, currentStroke._holdW || w, currentStroke._holdH || h)) {
+            this.renderProblemCardCanvas(currentStroke);
+          }
+        };
+        holdTimer = setTimeout(checkHold, 340);
+      };
+
       const getNormPos = (e, useCachedRect = false) => {
         const rect = (useCachedRect && activeProblemDrawRect && activeProblemDrawRect.width > 0)
           ? activeProblemDrawRect
@@ -1042,27 +1063,6 @@
           this.renderProblemCardCanvas();
           return true;
         }
-
-        const restartProblemHoldTimer = (w, h) => {
-          if (!isDrawingOnProblem || !currentStroke || currentStroke._shapeHoldDetected) return;
-          currentStroke._lastHoldMoveTime = Date.now();
-          currentStroke._holdW = w;
-          currentStroke._holdH = h;
-          if (holdTimer) return;
-          const checkHold = () => {
-            holdTimer = null;
-            if (!isDrawingOnProblem || !currentStroke || currentStroke._shapeHoldDetected) return;
-            const elapsed = Date.now() - (currentStroke._lastHoldMoveTime || 0);
-            if (elapsed < 340) {
-              holdTimer = setTimeout(checkHold, Math.max(16, 340 - elapsed));
-              return;
-            }
-            if (this.recognizeAndApplyCardStrokeShape(currentStroke, currentStroke._holdW || w, currentStroke._holdH || h)) {
-              this.renderProblemCardCanvas(currentStroke);
-            }
-          };
-          holdTimer = setTimeout(checkHold, 340);
-        };
 
         const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
         const initCardPenStyle = (this.activeInkTool === 'highlighter') ? 'ballpen' : (this.inkPenStyle || 'ballpen');
