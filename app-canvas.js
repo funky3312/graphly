@@ -2133,12 +2133,18 @@
             }
           }
 
-          // 🌟 [표준 하드웨어 샘플 수집(getCoalescedEvents) + 경량 1차 스트림라인]:
-          // 액정타블렛(200~240Hz) 및 고주사율 펜 입력의 중간 샘플을 유실 없이 수집하고,
-          // 과도한 3점 변칙 보정과 인공 원호 분할(Circular Arc Subdivision) 없이 표준 1차 스트림라인 + 중점 2차 베지어 곡선으로만 매끄럽게 연결합니다.
-          const coalesced = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null;
-          const events = (coalesced && coalesced.length > 0) ? coalesced : [e];
-          const minRawDist = (e.pointerType === 'pen') ? 0.8 : 1.2;
+          // 🌟 [PC(액정타블렛·전자칠판) vs 아이패드(iPadOS WebKit) 이원화 샘플 수집 + 1차 EMA 스트림라인]:
+          // - PC: 200~240Hz getCoalescedEvents() 중간 샘플 정식 수집으로 빠른 원 다각형 각짐 원천 해결
+          // - 아이패드: 오염된 WebKit getCoalescedEvents()를 배제하고 단일 확정 이벤트([e]) + 역주행 차단을 적용해 원 2줄 현상 및 직선 굵기 꿀렁임 해결
+          const inkProfile = this.getDeviceInkProfile();
+          let events = [e];
+          if (inkProfile.useCoalescedEvents && typeof e.getCoalescedEvents === 'function') {
+            const coalesced = e.getCoalescedEvents();
+            if (coalesced && coalesced.length > 0) {
+              events = coalesced;
+            }
+          }
+          const minRawDist = (e.pointerType === 'pen') ? inkProfile.minRawDistPen : inkProfile.minRawDistMouse;
           const prevInkPos = this._lastInkScreenPos || { x: pos.x, y: pos.y };
           const frameDx = pos.x - prevInkPos.x;
           const frameDy = pos.y - prevInkPos.y;
@@ -2149,7 +2155,7 @@
             const ev = events[i];
             const pPos = (ev === e && events.length === 1) ? pos : getPos(ev);
 
-            // 다중 coalesced 샘플일 때 이전 프레임 중복/역주행 점만 가볍게 스킵
+            // 다중 coalesced 샘플(PC)일 때 이전 프레임 중복/역주행 점 스킵
             if (events.length > 1 && i < events.length - 1 && frameDist > 1.5) {
               const curSaving = this._lastInkScreenPos || prevInkPos;
               const stepVx = pPos.x - curSaving.x;
@@ -2161,6 +2167,22 @@
             if (lastRaw) {
               const rawDist = Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y);
               if (rawDist < minRawDist) continue;
+
+              // 🛡️ [역주행 점프 컷오프 (Monotonic Forward Guard)]:
+              // 진행 방향 대비 뒤로 튀는 패킷(cosAngle < forwardGuardMinCos)을 폐기하여 원 2줄 겹침 및 직선 왕복 두꺼워짐 차단
+              if (this._prevRawInkScreenPos && rawDist < inkProfile.forwardGuardMaxDist) {
+                const vxPrev = lastRaw.x - this._prevRawInkScreenPos.x;
+                const vyPrev = lastRaw.y - this._prevRawInkScreenPos.y;
+                const vxNew = pPos.x - lastRaw.x;
+                const vyNew = pPos.y - lastRaw.y;
+                const lenPrev = Math.hypot(vxPrev, vyPrev);
+                if (lenPrev > 0.5) {
+                  const cosAngle = (vxPrev * vxNew + vyPrev * vyNew) / (lenPrev * rawDist);
+                  if (cosAngle < inkProfile.forwardGuardMinCos) {
+                    continue;
+                  }
+                }
+              }
             }
             this._prevRawInkScreenPos = lastRaw ? { x: lastRaw.x, y: lastRaw.y } : { x: pPos.x, y: pPos.y };
             this._lastRawInkScreenPos = { x: pPos.x, y: pPos.y };
@@ -2169,12 +2191,11 @@
             let sy = pPos.y;
             const liveLen = this._liveBezierScreenPts ? this._liveBezierScreenPts.length : 0;
 
-            // 🌟 [필기 앱 표준 1차 EMA 스트림라인 (Base 0.18, 고속 원호 구간은 0으로 자연 감쇠)]:
-            // 느린 세필 필기에서는 미세 손떨림만 부드럽게 잡아주고, 원을 빠르게 그릴 때는 원본 240Hz 좌표를 1:1로 따라가 원이 안쪽으로 찌그러지거나 각지지 않습니다.
+            // 🌟 [기기별 맞춤 1차 EMA 스트림라인 (PC: 0.18 / 아이패드: 0.22, 고속 구간 0으로 자연 감쇠)]:
             if (!this.currentInkStroke.isHighlighter && liveLen >= 1) {
               const pPrev = this._liveBezierScreenPts[liveLen - 1];
               const stepD = Math.hypot(pPos.x - pPrev.x, pPos.y - pPrev.y);
-              const weight = 0.18 * Math.max(0, 1 - stepD / 18.0);
+              const weight = inkProfile.streamlineWeight * Math.max(0, 1 - stepD / inkProfile.streamlineDecayDist);
               if (weight > 0.005) {
                 sx = pPos.x * (1 - weight) + pPrev.x * weight;
                 sy = pPos.y * (1 - weight) + pPrev.y * weight;
@@ -3237,8 +3258,7 @@
           if (!finishedStroke.isHighlighter && !finishedStroke.isShape && !this._inkBakeDirty) {
             if (this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
               this.drawLiveBezierStep(this._liveBezierScreenPts, finishedStroke, true);
-            }
-            if (!(finishedStroke.softBlur > 0) || (this._liveBezierScreenPts && this._liveBezierScreenPts.length <= 2)) {
+            } else {
               this.renderSingleStroke(this.ctx, finishedStroke, null, false);
             }
             this._liveBezierScreenPts = null;

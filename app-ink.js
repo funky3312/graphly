@@ -555,6 +555,39 @@
     return Boolean(this._isIOSOrIPadDevice);
   }
 
+  /**
+   * 🎛️ [PC(액정타블렛·전자칠판) vs 아이패드(iPadOS WebKit) 이원화 필기 프로파일]
+   * - PC와 아이패드의 샘플 수집 방식·보정치·감도를 완벽히 분리하여, 한쪽 기기 튜닝이 다른 기기에 절대 영향을 주지 않도록 관리합니다.
+   */
+  getDeviceInkProfile() {
+    if (this.isIOSOrIPad()) {
+      return {
+        deviceType: 'ipad',
+        useCoalescedEvents: false,     // iPadOS WebKit의 이전 프레임 중복/역순 패킷(원 2줄 갈라짐·직선 왕복 두꺼워짐) 원천 배제
+        minRawDistPen: 2.0,            // 아이패드 유리면 저속 이동 시 캡 중첩 두꺼워짐 방지 최소 점 간격 (px)
+        minRawDistMouse: 2.0,
+        minCardDistPen: 1.5,           // 카드 내부 아이패드 필기 최소 점 간격 (px)
+        minCardDistMouse: 1.5,
+        forwardGuardMaxDist: 45.0,     // 역주행 점프 차단 적용 최대 거리 (px)
+        forwardGuardMinCos: -0.08,     // 진행 방향 대비 95° 이상 뒤로 튀는 패킷 즉시 폐기
+        streamlineWeight: 0.22,        // 아이패드 강화유리 맞춤 1차 EMA 보정 강도
+        streamlineDecayDist: 20.0      // 빠른 원/곡선에서 보정이 0으로 감쇠되는 거리 (px)
+      };
+    }
+    return {
+      deviceType: 'pc',
+      useCoalescedEvents: true,        // PC 액정타블렛 200~240Hz 하드웨어 중간 샘플 정식 수집 (빠른 원 다각형 각짐 방지)
+      minRawDistPen: 1.2,              // PC 액정타블렛 펜 최소 점 간격 (px)
+      minRawDistMouse: 1.4,            // 마우스/전자칠판 최소 점 간격 (px)
+      minCardDistPen: 0.9,             // 카드 내부 PC 액정타블렛 최소 점 간격 (px)
+      minCardDistMouse: 1.1,
+      forwardGuardMaxDist: 36.0,       // 코얼레싱 중복/역주행 점프 차단 거리 (px)
+      forwardGuardMinCos: -0.05,       // 진행 방향 역주행 패킷 폐기 임계값
+      streamlineWeight: 0.18,          // PC 액정타블렛 맞춤 1차 EMA 보정 강도
+      streamlineDecayDist: 18.0        // 빠른 원/곡선에서 보정이 0으로 감쇠되는 거리 (px)
+    };
+  }
+
   isStylusPalmRejectionActive() {
     if (this._hasDetectedStylusPen) return true;
     return this.isIOSOrIPad();
@@ -4419,17 +4452,23 @@
     }
   }
 
-  // 🌟 [문제/그래프 카드 표준 샘플 수집(getCoalescedEvents) + 경량 1차 스트림라인]:
+  // 🌟 [문제/그래프 카드 PC vs 아이패드 이원화 샘플 수집 + 경량 1차 스트림라인]:
   _appendCardStrokeSamplesFromMoveEvent(stroke, e, rect, w, h, recT) {
     if (!stroke || !Array.isArray(stroke.points) || !e) return false;
     const rLeft = rect ? rect.left : 0;
     const rTop = rect ? rect.top : 0;
     const rw = Math.max(1, w || (rect && rect.width) || 1);
     const rh = Math.max(1, h || (rect && rect.height) || 1);
-    const minDist = (e.pointerType === 'pen') ? 0.65 : 1.0;
+    const inkProfile = this.getDeviceInkProfile();
+    const minDist = (e.pointerType === 'pen') ? inkProfile.minCardDistPen : inkProfile.minCardDistMouse;
 
-    const coalesced = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null;
-    const events = (coalesced && coalesced.length > 0) ? coalesced : [e];
+    let events = [e];
+    if (inkProfile.useCoalescedEvents && typeof e.getCoalescedEvents === 'function') {
+      const coalesced = e.getCoalescedEvents();
+      if (coalesced && coalesced.length > 0) {
+        events = coalesced;
+      }
+    }
 
     const lastPtBeforeFrame = stroke.points[stroke.points.length - 1];
     const startFrameX = lastPtBeforeFrame ? lastPtBeforeFrame.nx * rw : (e.clientX - rLeft);
@@ -4457,6 +4496,17 @@
       if (lastRaw) {
         const rawStepDist = Math.hypot(rawPxX - lastRaw.x, rawPxY - lastRaw.y);
         if (rawStepDist < minDist) continue;
+        if (stroke._prevRawPx && rawStepDist < inkProfile.forwardGuardMaxDist) {
+          const vxPrev = lastRaw.x - stroke._prevRawPx.x;
+          const vyPrev = lastRaw.y - stroke._prevRawPx.y;
+          const vxNew = rawPxX - lastRaw.x;
+          const vyNew = rawPxY - lastRaw.y;
+          const lenPrev = Math.hypot(vxPrev, vyPrev);
+          if (lenPrev > 0.5) {
+            const cosAngle = (vxPrev * vxNew + vyPrev * vyNew) / (lenPrev * rawStepDist);
+            if (cosAngle < inkProfile.forwardGuardMinCos) continue;
+          }
+        }
       }
 
       stroke._prevRawPx = lastRaw ? { x: lastRaw.x, y: lastRaw.y } : { x: rawPxX, y: rawPxY };
@@ -4469,7 +4519,7 @@
         const p1x = prevPt.nx * rw;
         const p1y = prevPt.ny * rh;
         const stepD = Math.hypot(rawPxX - p1x, rawPxY - p1y);
-        const weight = 0.18 * Math.max(0, 1 - stepD / 18.0);
+        const weight = inkProfile.streamlineWeight * Math.max(0, 1 - stepD / inkProfile.streamlineDecayDist);
         if (weight > 0.005) {
           sx = rawPxX * (1 - weight) + p1x * weight;
           sy = rawPxY * (1 - weight) + p1y * weight;
@@ -4547,7 +4597,7 @@
   computeDynamicStrokePressure(rawPressure, hasRealPressure, moveStepDist, penStyle = 'ballpen', prevPressure = 0.5, ptCount = 1, cornerBoost = 0) {
     if (!penStyle || penStyle === 'ballpen' || penStyle === 'flat') return 0.5;
     const isBrush = (penStyle === 'brush');
-    const normSpd = Math.min(1.0, Math.max(0, (moveStepDist - (isBrush ? 2.0 : 2.5)) / (isBrush ? 33 : 40)));
+    const normSpd = Math.min(1.0, Math.max(0, (moveStepDist - (isBrush ? 2.0 : 2.5)) / (isBrush ? 38 : 45)));
     const velP = isBrush
       ? Math.max(0.05, Math.min(0.98, 0.96 - Math.pow(normSpd, 0.76) * 0.91 + cornerBoost * 0.18))
       : Math.max(0.15, Math.min(0.92, 0.88 - Math.pow(normSpd, 0.84) * 0.72 + cornerBoost * 0.10));
@@ -4557,8 +4607,8 @@
       // 일반 필기 압력(0.12 ~ 0.72)만으로도 화면을 세게 누르지 않고 0.05 ~ 1.00 전 구간을 쓰도록 S-Curve 게인 증폭
       const boostedHw = Math.min(1.0, Math.max(0.04, Math.pow(Math.max(0, rawPressure - 0.03) / 0.73, isBrush ? 0.80 : 0.88)));
       targetP = isBrush
-        ? (boostedHw * 0.72 + velP * 0.28)
-        : (boostedHw * 0.78 + velP * 0.22);
+        ? (boostedHw * 0.85 + velP * 0.15)
+        : (boostedHw * 0.88 + velP * 0.12);
     }
 
     // 입필(Entry Ramp): 첫 1~2포인트에서 붓끝이 뭉툭하게 찍히지 않고 부드럽게 번지며 시작
@@ -4568,7 +4618,7 @@
     }
 
     const smoothPrev = (typeof prevPressure === 'number' && !isNaN(prevPressure)) ? prevPressure : targetP;
-    const alpha = isBrush ? 0.72 : 0.65;
+    const alpha = isBrush ? 0.32 : 0.28;
     return Math.max(0.04, Math.min(1.0, smoothPrev * (1 - alpha) + targetP * alpha));
   }
 
@@ -4656,6 +4706,13 @@
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.beginPath();
+        ctx.arc(p0.x / nibX, p0.y / nibY, lineW / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(p0.x / nibX, p0.y / nibY);
+        ctx.lineTo(mx / nibX, my / nibY);
+        ctx.stroke();
+        ctx.beginPath();
         ctx.moveTo(p0.x / nibX, p0.y / nibY);
         ctx.lineTo(p1.x / nibX, p1.y / nibY);
         ctx.stroke();
@@ -4677,17 +4734,30 @@
       ctx.lineWidth = lineW;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
+      ctx.fill();
       const firstMidX = (pts[0].x + pts[1].x) * 0.5;
       const firstMidY = (pts[0].y + pts[1].y) * 0.5;
       ctx.beginPath();
       ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
       ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
+      ctx.stroke();
+      let prevMidX = firstMidX;
+      let prevMidY = firstMidY;
       for (let i = 1; i < pts.length - 1; i++) {
         const midX = (pts[i].x + pts[i + 1].x) * 0.5;
         const midY = (pts[i].y + pts[i + 1].y) * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
         ctx.quadraticCurveTo(pts[i].x / nibX, pts[i].y / nibY, midX / nibX, midY / nibY);
+        ctx.stroke();
+        prevMidX = midX;
+        prevMidY = midY;
       }
       const last = pts[pts.length - 1];
+      ctx.beginPath();
+      ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
       ctx.lineTo(last.x / nibX, last.y / nibY);
       ctx.stroke();
       ctx.restore();
