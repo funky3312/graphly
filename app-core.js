@@ -359,8 +359,6 @@ class GraphApp {
     this.lessonPlaylistIndex = 0;
     this.isLessonPlaylistActive = false;
     this.lessonTeachingMode = null; // null (미정) | 'crop' (문제 캡처 모드) | 'page' (PDF 페이지 모드)
-    this.isPdfMultiCropMode = false;
-    this.pdfMultiCropQueue = [];
     this.boardStickers = [];
     this.problemCardStickers = [];
     this.graphCardStickers = [];
@@ -2138,8 +2136,6 @@ class GraphApp {
     this.lessonPlaylistIndex = 0;
     this.isTopSlideBarHidden = false;
     this.lessonTeachingMode = null;
-    this.isPdfMultiCropMode = false;
-    this.pdfMultiCropQueue = [];
     this.syncCloudHubRailLockUI();
     this.syncPdfModalModeUI();
     this.syncPdfBoardNavBarUI();

@@ -212,14 +212,11 @@
       }
     });
 
-    // 모달 닫기 (캡처 없이 닫을 때는 _isReplacingViaNextCrop 및 다중 캡처 큐 초기화)
+    // 모달 닫기 (캡처 없이 닫을 때는 _isReplacingViaNextCrop 초기화)
     const btnClose = document.getElementById('btnClosePdfModal');
     if (btnClose) {
       btnClose.onclick = () => {
         this._isReplacingViaNextCrop = false;
-        this.isPdfMultiCropMode = false;
-        this.pdfMultiCropQueue = [];
-        this.syncPdfMultiCropUI();
         this.closePdfModal();
       };
     }
@@ -230,13 +227,7 @@
       btnCropToggle.onclick = () => this.togglePdfCropMode();
     }
 
-    // 📚 여러 문제 연속 캡처 ➔ 📥 캔버스에 삽입 (N) 버튼
-    const btnMultiCrop = document.getElementById('btnPdfMultiCropMode');
-    if (btnMultiCrop) {
-      btnMultiCrop.onclick = () => this.handlePdfMultiCropBtnClick();
-    }
-
-    // 📄 이 페이지 열기 버튼 (개념 설명용: 해당 PDF 페이지 전체를 칠판 캔버스로 바로 삽입!)
+    // 📄 전체 페이지 캡처 버튼 (개념 설명 · 여러 문제 판서용: 해당 PDF 페이지 전체를 칠판 캔버스로 바로 삽입!)
     const btnOpenFullPage = document.getElementById('btnPdfOpenFullPage');
     if (btnOpenFullPage) {
       btnOpenFullPage.onclick = () => {
@@ -647,11 +638,11 @@
       this.syncPdfModalModeUI();
       this.syncLessonPlaylistNavBarUI();
       if (this.lessonTeachingMode === 'page') {
-        this.showToast(`📄 ${fileName} (총 ${pdf.numPages}페이지) 로드 완료! 시작할 페이지에서 [📄 이 페이지 열기]를 눌러주세요.`);
+        this.showToast(`📄 ${fileName} (총 ${pdf.numPages}페이지) 로드 완료! 시작할 페이지에서 [📄 전체 페이지 캡처]를 눌러주세요.`);
       } else if (this.lessonTeachingMode === 'crop') {
-        this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) 로드 완료! 화면을 이동한 뒤 [✂️ 영역 캡처] 또는 [📚 여러 문제 캡처]를 눌러주세요.`);
+        this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) 로드 완료! 화면을 이동한 뒤 [✂️ 영역 캡처]를 눌러주세요.`);
       } else {
-        this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) 로드 완료! 상단에서 [✂️ 영역 캡처] 또는 [📄 이 페이지 열기]를 선택해 수업을 시작하세요.`);
+        this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) 로드 완료! 상단에서 [✂️ 영역 캡처] 또는 [📄 전체 페이지 캡처]를 선택해 수업을 시작하세요.`);
       }
       return pdf;
     }).catch(err => {
@@ -668,8 +659,6 @@
       this.lessonTeachingMode = null;
     }
     if (this.lessonTeachingMode === 'page') {
-      this.isPdfMultiCropMode = false;
-      this.pdfMultiCropQueue = [];
       if (this.isPdfCropModeActive) {
         this.togglePdfCropMode(false);
       }
@@ -696,238 +685,17 @@
   }
 
   syncPdfModalModeUI() {
-    const mode = this.lessonTeachingMode; // null (미정: 3개 모두 표시) | 'crop' | 'page'
-    const showCropBtns = (mode !== 'page');
+    const mode = this.lessonTeachingMode; // null (미정: 2개 모두 표시) | 'crop' | 'page'
+    const showCropBtn = (mode !== 'page');
     const showPageBtn = (mode !== 'crop');
     const btnCropToggle = document.getElementById('btnPdfCropToggle');
-    const btnMultiCrop = document.getElementById('btnPdfMultiCropMode');
     const btnOpenFullPage = document.getElementById('btnPdfOpenFullPage');
     if (btnCropToggle) {
-      btnCropToggle.style.display = showCropBtns ? 'inline-flex' : 'none';
-    }
-    if (btnMultiCrop) {
-      btnMultiCrop.style.display = showCropBtns ? 'inline-flex' : 'none';
+      btnCropToggle.style.display = showCropBtn ? 'inline-flex' : 'none';
     }
     if (btnOpenFullPage) {
       btnOpenFullPage.style.display = showPageBtn ? 'inline-flex' : 'none';
     }
-    this.syncPdfMultiCropUI();
-  }
-
-  syncPdfMultiCropUI() {
-    const btn = document.getElementById('btnPdfMultiCropMode');
-    const iconEl = document.getElementById('iconPdfMultiCropMode');
-    const lblEl = document.getElementById('lblPdfMultiCropMode');
-    if (!btn) return;
-    const count = Array.isArray(this.pdfMultiCropQueue) ? this.pdfMultiCropQueue.length : 0;
-    if (!this.isPdfMultiCropMode) {
-      btn.classList.remove('active-waiting', 'ready-to-insert');
-      if (iconEl) iconEl.textContent = '📚';
-      if (lblEl) lblEl.textContent = '여러 문제 캡처';
-    } else if (count === 0) {
-      btn.classList.add('active-waiting');
-      btn.classList.remove('ready-to-insert');
-      if (iconEl) iconEl.textContent = '📥';
-      if (lblEl) lblEl.textContent = '캔버스에 삽입 (0)';
-    } else {
-      btn.classList.remove('active-waiting');
-      btn.classList.add('ready-to-insert');
-      if (iconEl) iconEl.textContent = '📥';
-      if (lblEl) lblEl.textContent = `캔버스에 삽입 (${count})`;
-    }
-  }
-
-  handlePdfMultiCropBtnClick() {
-    if (this.lessonTeachingMode === 'page') return;
-    const count = Array.isArray(this.pdfMultiCropQueue) ? this.pdfMultiCropQueue.length : 0;
-    if (!this.isPdfMultiCropMode) {
-      this.isPdfMultiCropMode = true;
-      this.pdfMultiCropQueue = [];
-      this.togglePdfCropMode(true);
-      this.syncPdfMultiCropUI();
-      this.showToast('📚 여러 문제 캡처! 첫 문제를 드래그하면 이동 모드로 풀립니다. 이동 후 [✂️ 영역 캡처]를 반복하고 완료되면 [📥 캔버스에 삽입]을 누르세요.');
-      return;
-    }
-    if (count === 0) {
-      this.isPdfMultiCropMode = false;
-      this.pdfMultiCropQueue = [];
-      this.togglePdfCropMode(false);
-      this.syncPdfMultiCropUI();
-      this.showToast('ℹ️ 여러 문제 캡처 모드를 취소했습니다.');
-      return;
-    }
-    this.commitPdfMultiCropQueueToBoard();
-  }
-
-  async _upgradeMultiCropQueueItemToVectorUltraHD(queueItem) {
-    try {
-      if (!queueItem || !this.pdfDoc || !queueItem.normCrop) return;
-      const { pageNum, normCrop } = queueItem;
-      if (normCrop.nw <= 0 || normCrop.nh <= 0) return;
-      const page = await this.pdfDoc.getPage(pageNum);
-      const baseVp = page.getViewport({ scale: 1.0 });
-      const rawCropW = Math.max(1, normCrop.nw * baseVp.width);
-      const rawCropH = Math.max(1, normCrop.nh * baseVp.height);
-      const desiredMinWidthPx = 1500;
-      let ultraScale = Math.max(4.0, Math.min(5.4, desiredMinWidthPx / rawCropW));
-      const maxDim = Math.max(rawCropW, rawCropH) * ultraScale;
-      if (maxDim > 3400) {
-        ultraScale = 3400 / Math.max(rawCropW, rawCropH);
-      }
-      const fullVp = page.getViewport({
-        scale: ultraScale,
-        offsetX: -normCrop.nx * baseVp.width * ultraScale,
-        offsetY: -normCrop.ny * baseVp.height * ultraScale
-      });
-      const targetW = Math.max(1, Math.round(rawCropW * ultraScale));
-      const targetH = Math.max(1, Math.round(rawCropH * ultraScale));
-      if (targetW > 3800 || targetH > 3800) return;
-
-      const vecCanvas = document.createElement('canvas');
-      vecCanvas.width = targetW;
-      vecCanvas.height = targetH;
-      const vCtx = vecCanvas.getContext('2d', { alpha: false }) || vecCanvas.getContext('2d');
-      vCtx.imageSmoothingEnabled = true;
-      vCtx.imageSmoothingQuality = 'high';
-      vCtx.fillStyle = '#ffffff';
-      vCtx.fillRect(0, 0, targetW, targetH);
-      await page.render({ canvasContext: vCtx, viewport: fullVp }).promise;
-
-      const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.88);
-      if (!ultraDataUrl) return;
-      queueItem.dataUrl = ultraDataUrl;
-      queueItem.cropCanvas = vecCanvas;
-      const ultraAspect = (vecCanvas.width > 0 && vecCanvas.height > 0) ? (vecCanvas.height / vecCanvas.width) : null;
-
-      if (queueItem.placedTarget) {
-        const ref = queueItem.placedTarget;
-        if (ref.slideRef) {
-          if (ref.type === 'primary' && ref.slideRef.primaryProblemCard) {
-            ref.slideRef.primaryProblemCard.imgSrc = ultraDataUrl;
-            if (ultraAspect) ref.slideRef.primaryProblemCard.problemCardAspect = ultraAspect;
-          } else if (ref.type === 'extra' && Array.isArray(ref.slideRef.extraProblems) && typeof ref.extraIndex === 'number' && ref.slideRef.extraProblems[ref.extraIndex]) {
-            ref.slideRef.extraProblems[ref.extraIndex].dataUrl = ultraDataUrl;
-          }
-          delete ref.slideRef.viewerSnapshotDataUrl;
-        }
-        if (ref.type === 'extra' && ref.cardItem && ref.cardItem.el) {
-          const imgEl = ref.cardItem.el.querySelector('.problem-card-img');
-          if (imgEl) imgEl.src = ultraDataUrl;
-          ref.cardItem.sourceCanvas = vecCanvas;
-        } else if (ref.type === 'primary' && this.problemCardData && (!ref.problemCardData || this.problemCardData === ref.problemCardData)) {
-          this.problemCardData.imgUrl = ultraDataUrl;
-          this.problemCardImage = vecCanvas;
-          if (ultraAspect) this.problemCardAspect = ultraAspect;
-          const pImg = document.getElementById('problemCardImg');
-          if (pImg) pImg.src = ultraDataUrl;
-          this.syncProblemCardRectFromWidget();
-        }
-        if (this.isLessonPlaylistActive && !this.isDrawingInk) {
-          this.saveCurrentSlideIntoPlaylist();
-        }
-        if (!this.isDrawingInk) this.requestRender();
-      }
-    } catch (err) { }
-  }
-
-  commitPdfMultiCropQueueToBoard() {
-    const items = Array.isArray(this.pdfMultiCropQueue) ? this.pdfMultiCropQueue.slice() : [];
-    if (items.length === 0) return;
-    this.setLessonTeachingMode('crop');
-
-    const replaceMode = Boolean(this._isReplacingViaNextCrop || this.hasAnyWorkspaceContent());
-    this._isReplacingViaNextCrop = false;
-    if (replaceMode) {
-      if (typeof this.canAddMoreSlidesWithQuota === 'function' && !this.canAddMoreSlidesWithQuota(1)) {
-        return;
-      }
-      this._archiveCurrentBeforeNextCapture();
-      this.resetBoardAndProblemCardsForNext();
-    } else {
-      this.closeProblemCard();
-      if (this.extraProblemCards && this.extraProblemCards.length > 0) {
-        this.extraProblemCards.forEach(c => { if (c && c.el) c.el.remove(); });
-        this.extraProblemCards = [];
-      }
-    }
-
-    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
-      this.closeDrawer();
-    }
-
-    const startX = 72;
-    const startY = 18;
-    const stepY = 44;
-
-    items.forEach((item, idx) => {
-      const posX = startX;
-      const posY = Math.min(window.innerHeight - 60, startY + idx * stepY);
-      const cardW = item.targetCardWidth || Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
-      const titleText = `문제 #${idx + 1} (p.${item.pageNum})`;
-      if (idx === 0) {
-        this.setProblemCard(item.dataUrl, item.pageNum, item.cropCanvas, cardW);
-        const widget = document.getElementById('problemCardWidget');
-        const icon = document.getElementById('iconCardToggle');
-        const titleEl = document.getElementById('problemCardTitle');
-        if (titleEl) titleEl.textContent = titleText;
-        this.isProblemCardMinimized = true;
-        if (widget) {
-          widget.classList.add('minimized');
-          this.problemCardBaseX = posX;
-          this.problemCardBaseY = posY;
-          widget.style.left = `${posX}px`;
-          widget.style.top = `${posY}px`;
-        }
-        if (icon) icon.textContent = '▸';
-        item.placedTarget = { type: 'primary', problemCardData: this.problemCardData, pageNum: item.pageNum };
-      } else {
-        const spawned = this.spawnExtraProblemCard(item.dataUrl, item.pageNum, cardW, item.cropCanvas, {
-          startMinimized: true,
-          customX: posX,
-          customY: posY,
-          explicitIndex: idx + 1,
-          customTitle: titleText
-        });
-        item.placedTarget = { type: 'extra', cardItem: spawned, pageNum: item.pageNum, extraIndex: idx - 1 };
-      }
-    });
-
-    if (replaceMode) {
-      this._finalizeAppendedCaptureSlide('');
-    } else if (this.isLessonPlaylistActive) {
-      this.saveCurrentSlideIntoPlaylist();
-      this.syncLessonPlaylistNavBarUI();
-    } else {
-      const firstSlide = this.serializeFullSlideState('1');
-      this.lessonPlaylistSlides = [firstSlide];
-      this.lessonPlaylistIndex = 0;
-      this.isLessonPlaylistActive = true;
-      this.syncLessonPlaylistNavBarUI();
-    }
-    const activeSlideRef = (Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex])
-      ? this.lessonPlaylistSlides[this.lessonPlaylistIndex]
-      : null;
-    if (activeSlideRef) {
-      items.forEach(item => {
-        if (item && item.placedTarget) {
-          item.placedTarget.slideRef = activeSlideRef;
-        }
-      });
-    }
-
-    this.isPdfMultiCropMode = false;
-    this.pdfMultiCropQueue = [];
-    this.syncPdfMultiCropUI();
-    this.closePdfModal();
-    this.togglePdfCropMode(false);
-
-    if (!this.isInkMode) {
-      this.toggleInkMode(true);
-    }
-    this.setActiveInkTool('pen');
-    this.syncProblemCardRectFromWidget();
-    this.render();
-    this.showToast(`📚 ${items.length}개의 문제가 새 캔버스에 접힌 카드로 차곡차곡 쌓였습니다! 번호를 눌러 펼쳐보세요.`);
   }
 
   async appendNextPdfPageSlide() {
@@ -998,8 +766,6 @@
       document.body.classList.add('pdf-modal-open');
       this.isPdfModalOpen = true;
       this._lastPdfModalOpenAt = performance.now();
-      this.isPdfMultiCropMode = false;
-      this.pdfMultiCropQueue = [];
       this.syncPdfModalModeUI();
 
       // 🛑 [백그라운드 메인 칠판/그래프 루프 100% 일시정지 (Freeze)]:
@@ -1202,7 +968,7 @@
     const targetPage = Math.max(1, Math.min(pageNum || this.pdfCurrentPage || 1, total));
 
     // 🌟 [대표님 핵심 기획: 슬라이드 완전 일원화 & 자동 다음 슬라이드 오픈]
-    // 슬라이드를 미리 추가(+)하지 않고도 [PDF]를 눌러 [📄 이 페이지 열기]를 클릭하면,
+    // 슬라이드를 미리 추가(+)하지 않고도 [PDF]를 눌러 [📄 전체 페이지 캡처]를 클릭하면,
     // 현재 슬라이드에 이미 내용이 있을 경우 자동으로 이전 슬라이드를 보관하고 깨끗한 다음 슬라이드에 삽입합니다!
     const hasExistingContent = !Boolean(options && options.skipArchiveCurrent) && this.hasAnyWorkspaceContent();
     const replaceMode = Boolean(this._isReplacingViaNextCrop || hasExistingContent);
@@ -2265,25 +2031,6 @@
             nh: h / rect.height
           };
           const targetCardWidth = Math.round(Math.max(480, Math.min(window.innerWidth * 0.65, w * 1.15)));
-
-          // 📚 [여러 문제 연속 캡처 모드]: 1문제 드래그 완료 시 대기열에 적재하고, 다음 문제 위치로 스크롤/이동할 수 있도록 [✂️ 영역 캡처] 자동 해제!
-          if (this.isPdfMultiCropMode && !this._isCroppingForGraphModeEntry) {
-            const queueItem = {
-              dataUrl,
-              pageNum,
-              cropCanvas,
-              normCrop,
-              targetCardWidth,
-              placedTarget: null
-            };
-            this.pdfMultiCropQueue.push(queueItem);
-            this._upgradeMultiCropQueueItemToVectorUltraHD(queueItem);
-            this.togglePdfCropMode(false);
-            this.syncPdfMultiCropUI();
-            const qCount = this.pdfMultiCropQueue.length;
-            this.showToast(`✂️ ${qCount}번째 캡처 완료! 다음 문제로 이동 후 [✂️ 영역 캡처]를 누르거나 [📥 캔버스에 삽입 (${qCount})]을 누르세요.`);
-            return;
-          }
 
           this.setLessonTeachingMode('crop');
           const replaceMode = Boolean(this._isReplacingViaNextCrop || this.hasAnyWorkspaceContent());

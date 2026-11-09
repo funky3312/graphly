@@ -7823,57 +7823,6 @@ body.theme-light .pdf-open-page-btn:hover {
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.38);
 }
 
-.pdf-multi-crop-btn {
-  height: 34px;
-  padding: 0 12px;
-  background: rgba(16, 185, 129, 0.12);
-  border: 1.5px solid rgba(16, 185, 129, 0.45);
-  border-radius: 8px;
-  color: #059669;
-  font-size: 12.5px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  cursor: pointer;
-  transition: all 0.18s ease;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-body:not(.theme-light) .pdf-multi-crop-btn {
-  background: rgba(16, 185, 129, 0.2);
-  border-color: rgba(52, 211, 153, 0.55);
-  color: #34d399;
-}
-
-.pdf-multi-crop-btn:hover {
-  background: rgba(16, 185, 129, 0.22);
-  transform: translateY(-1px);
-}
-
-.pdf-multi-crop-btn.active-waiting {
-  background: rgba(245, 158, 11, 0.16);
-  border-color: #f59e0b;
-  color: #b45309;
-}
-
-body:not(.theme-light) .pdf-multi-crop-btn.active-waiting {
-  color: #fbbf24;
-}
-
-.pdf-multi-crop-btn.ready-to-insert {
-  background: linear-gradient(135deg, #059669, #10b981) !important;
-  border-color: #047857 !important;
-  color: #ffffff !important;
-  box-shadow: 0 3px 12px rgba(16, 185, 129, 0.36);
-}
-
-.pdf-multi-crop-btn.ready-to-insert:hover {
-  background: linear-gradient(135deg, #047857, #059669) !important;
-  color: #ffffff !important;
-}
-
 .slim-pdf-capture-btn {
   width: auto !important;
   height: 26px !important;
