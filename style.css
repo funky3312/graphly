@@ -11326,21 +11326,93 @@ body.theme-light .pdf-crop-active-pill .pdf-crop-active-cancel-x {
 
 /* ==========================================================================
    🎙️ 실시간 음성·필기·펜포인터·그래프 동기화 녹음 & 리플레이 스튜디오
+   - 스텔스 녹화 UX: 일반 모드에서는 빨간 번쩍임 없이 버튼 내부 아이콘만 ■(녹화중) / ⏸(일시정지)로 조용히 전환
+   - 아이콘 모두 숨김 모드(ui-all-hidden-mode)에서는 우상단 은은한 레드닷(#wrapStealthRecordDot)으로 표시 및 제어
    ========================================================================== */
-#btnAudioRecordToggle.is-recording {
-  background: linear-gradient(135deg, #ef4444, #dc2626) !important;
-  border-color: #f87171 !important;
-  color: #ffffff !important;
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.35), 0 6px 16px rgba(239, 68, 68, 0.45) !important;
-  animation: audioFabPulse 1.4s infinite ease-in-out;
+#btnAudioRecordToggle .rec-icon-cam {
+  display: block;
 }
 
-#btnAudioRecordToggle.is-recording.is-paused {
-  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
-  border-color: #fbbf24 !important;
-  color: #ffffff !important;
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35), 0 6px 16px rgba(245, 158, 11, 0.4) !important;
-  animation: none !important;
+#btnAudioRecordToggle .rec-icon-square,
+#btnAudioRecordToggle .rec-icon-pause {
+  display: none;
+}
+
+#btnAudioRecordToggle.is-recording:not(.is-paused) .rec-icon-cam,
+#btnAudioRecordToggle.is-recording:not(.is-paused) .rec-icon-pause {
+  display: none !important;
+}
+
+#btnAudioRecordToggle.is-recording:not(.is-paused) .rec-icon-square {
+  display: block !important;
+}
+
+#btnAudioRecordToggle.is-recording.is-paused .rec-icon-cam,
+#btnAudioRecordToggle.is-recording.is-paused .rec-icon-square {
+  display: none !important;
+}
+
+#btnAudioRecordToggle.is-recording.is-paused .rec-icon-pause {
+  display: block !important;
+}
+
+/* 🔴 아이콘 모두 숨김 상태 전용: 우측 상단 초소형 스텔스 레드닷 & 제어 메뉴 */
+.stealth-rec-dot-wrap {
+  position: fixed;
+  top: 12px;
+  right: 10px;
+  z-index: 625;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+.stealth-rec-dot-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.stealth-rec-dot-btn:hover {
+  background: rgba(239, 68, 68, 0.10);
+  transform: scale(1.08);
+}
+
+.stealth-rec-dot-btn:active {
+  transform: scale(0.94);
+}
+
+.stealth-rec-dot-core {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.72);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.stealth-rec-dot-btn.is-paused .stealth-rec-dot-core {
+  background: rgba(245, 158, 11, 0.78);
+}
+
+.stealth-rec-side-menu {
+  top: 0 !important;
+  right: calc(100% + 6px) !important;
+  transform: none !important;
+}
+
+body.student-audio-video-only #wrapStealthRecordDot,
+body.audio-replay-active #wrapStealthRecordDot {
+  display: none !important;
 }
 
 /* 녹음 중 우측 녹화 버튼 클릭 시 바로 옆(좌측)에 세로 2단(위: 일시정지 / 아래: 종료)으로 뜨는 컴팩트 메뉴 */
@@ -11398,7 +11470,9 @@ body.theme-light .audio-rec-side-menu {
 }
 
 body.student-audio-video-only #panelAudioRecordActions,
-body.audio-replay-active #panelAudioRecordActions {
+body.audio-replay-active #panelAudioRecordActions,
+body.student-audio-video-only #panelStealthRecordActions,
+body.audio-replay-active #panelStealthRecordActions {
   display: none !important;
 }
 
@@ -15183,12 +15257,12 @@ body.ui-all-hidden-mode #pdfToGraphCropFloatingBar {
 
 body.ui-all-hidden-mode #graphSnapFloatingBar {
   top: 18px !important;
-  right: 20px !important;
+  right: 40px !important;
 }
 
 .ui-hidden-edge-pull-tab {
   position: fixed;
-  top: 18px;
+  top: 52px;
   right: 0;
   width: 9px;
   height: 44px;

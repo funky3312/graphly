@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261110_14">
+  <link rel="stylesheet" href="style.css?v=20261110_15">
 </head>
 
 <body class="theme-light">
@@ -1311,12 +1311,23 @@
         <!-- 5. 판서 & 수학 킬러 도구 -->
         <div class="quick-btn-wrapper" id="wrapAudioRecordToggle">
           <button id="btnAudioRecordToggle" class="quick-fab-btn" title="영상 녹화 시작 (녹화 중 클릭 시 일시정지 / 종료)">
-            <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            <span class="fab-icon">
+              <svg class="rec-icon-cam" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="2" y="6" width="14" height="12" rx="2.2" ry="2.2" />
                 <path d="m22 8-6 4 6 4V8Z" />
                 <circle cx="9" cy="12" r="2" fill="currentColor" stroke="none" />
-              </svg></span>
+              </svg>
+              <svg class="rec-icon-square" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"
+                style="display: none;">
+                <rect x="4" y="4" width="16" height="16" rx="3" ry="3" />
+              </svg>
+              <svg class="rec-icon-pause" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"
+                style="display: none;">
+                <rect x="6" y="4" width="4" height="16" rx="1.2" />
+                <rect x="14" y="4" width="4" height="16" rx="1.2" />
+              </svg>
+            </span>
           </button>
           <div class="audio-rec-side-menu" id="panelAudioRecordActions" style="display: none;">
             <button type="button" id="btnAudioPauseRecord" class="audio-rec-side-btn audio-btn-pause-rec"
@@ -1438,6 +1449,26 @@
               <path d="M15 15l6 6" />
               <path d="M4 4l5 5" />
             </svg></span></button>
+      </div>
+
+      <!-- 🔴 아이콘 모두 숨김 상태 + 녹화 진행 중 전용: 우측 상단 초소형 스텔스 레드닷 & 일시정지/종료 팝업 -->
+      <div id="wrapStealthRecordDot" class="stealth-rec-dot-wrap" style="display: none;">
+        <button type="button" id="btnStealthRecordDot" class="stealth-rec-dot-btn" title="녹화 중 (클릭 시 일시정지 / 종료)">
+          <span class="stealth-rec-dot-core"></span>
+        </button>
+        <div class="audio-rec-side-menu stealth-rec-side-menu" id="panelStealthRecordActions" style="display: none;">
+          <button type="button" id="btnStealthPauseRecord" class="audio-rec-side-btn audio-btn-pause-rec"
+            title="일시정지 / 이어녹화">
+            <span id="iconStealthPauseRecord">⏸</span>
+            <span id="lblStealthPauseRecord">일시정지</span>
+          </button>
+          <button type="button" id="btnStealthStopRecord" class="audio-rec-side-btn audio-btn-stop" title="녹화 종료">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="4" y="4" width="16" height="16" rx="2.5" />
+            </svg>
+            <span>종료</span>
+          </button>
+        </div>
       </div>
 
       <!-- 👁️ 아이콘 모두 숨김 상태 전용: 우측 상단 초슬림·초투명 손잡이 복귀 탭 (숨기는 순간 1.2초간 나왔다가 연해지며 우측으로 은폐) -->
@@ -2871,14 +2902,14 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261110_14"></script>
-  <script src="app-core.js?v=20261110_14"></script>
-  <script src="app-ink.js?v=20261110_14"></script>
-  <script src="app-pdf.js?v=20261110_14"></script>
-  <script src="app-cards.js?v=20261110_14"></script>
-  <script src="app-cloud.js?v=20261110_14"></script>
-  <script src="app-canvas.js?v=20261110_14"></script>
-  <script src="app.js?v=20261110_14"></script>
+  <script src="engine.js?v=20261110_15"></script>
+  <script src="app-core.js?v=20261110_15"></script>
+  <script src="app-ink.js?v=20261110_15"></script>
+  <script src="app-pdf.js?v=20261110_15"></script>
+  <script src="app-cards.js?v=20261110_15"></script>
+  <script src="app-cloud.js?v=20261110_15"></script>
+  <script src="app-canvas.js?v=20261110_15"></script>
+  <script src="app.js?v=20261110_15"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

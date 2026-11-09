@@ -46,9 +46,12 @@
     this._isAudioRecMenuOpen = false;
 
     const btnFab = document.getElementById('btnAudioRecordToggle');
+    const btnStealthDot = document.getElementById('btnStealthRecordDot');
     const btnMicMute = document.getElementById('btnAudioMicMuteToggle');
     const btnPauseRec = document.getElementById('btnAudioPauseRecord');
     const btnStopRec = document.getElementById('btnAudioStopRecord');
+    const btnStealthPauseRec = document.getElementById('btnStealthPauseRecord');
+    const btnStealthStopRec = document.getElementById('btnStealthStopRecord');
     const btnPlayPause = document.getElementById('btnAudioPlayPause');
     const scrubber = document.getElementById('audioSyncScrubber');
     const btnSpeed = document.getElementById('btnAudioSyncSpeed');
@@ -71,12 +74,25 @@
       };
     }
 
+    if (btnStealthDot) {
+      btnStealthDot.onclick = (e) => {
+        e.stopPropagation();
+        if (this.isAudioRecording) {
+          this._isAudioRecMenuOpen = !this._isAudioRecMenuOpen;
+          this.syncAudioRecordUI();
+        }
+      };
+    }
+
     if (!this._audioRecOutsideClickBound) {
       this._audioRecOutsideClickBound = true;
       window.addEventListener('pointerdown', (e) => {
         if (!this._isAudioRecMenuOpen) return;
         const t = e.target;
-        if (t && typeof t.closest === 'function' && t.closest('#wrapAudioRecordToggle')) return;
+        if (t && typeof t.closest === 'function' && (
+          t.closest('#wrapAudioRecordToggle') ||
+          t.closest('#wrapStealthRecordDot')
+        )) return;
         this._isAudioRecMenuOpen = false;
         this.syncAudioRecordUI();
       }, { passive: true });
@@ -99,6 +115,22 @@
 
     if (btnStopRec) {
       btnStopRec.onclick = (e) => {
+        e.stopPropagation();
+        this._isAudioRecMenuOpen = false;
+        this.stopAudioRecording();
+      };
+    }
+
+    if (btnStealthPauseRec) {
+      btnStealthPauseRec.onclick = (e) => {
+        e.stopPropagation();
+        this._isAudioRecMenuOpen = false;
+        this.togglePauseAudioRecording();
+      };
+    }
+
+    if (btnStealthStopRec) {
+      btnStealthStopRec.onclick = (e) => {
         e.stopPropagation();
         this._isAudioRecMenuOpen = false;
         this.stopAudioRecording();
@@ -338,7 +370,10 @@
           tEl.closest('#audioSyncFloatingBar') ||
           tEl.closest('#wrapAudioRecordToggle') ||
           tEl.closest('#btnAudioRecordToggle') ||
-          tEl.closest('#panelAudioRecordActions')
+          tEl.closest('#panelAudioRecordActions') ||
+          tEl.closest('#wrapStealthRecordDot') ||
+          tEl.closest('#btnStealthRecordDot') ||
+          tEl.closest('#panelStealthRecordActions')
         )) {
           if (this._lastRecordedCursorKind !== 'hidden' && Array.isArray(this.audioTimeline)) {
             this._lastRecordedCursorKind = 'hidden';
@@ -2478,6 +2513,9 @@
   syncAudioRecordUI() {
     const btnFab = document.getElementById('btnAudioRecordToggle');
     const sideMenu = document.getElementById('panelAudioRecordActions');
+    const wrapStealthDot = document.getElementById('wrapStealthRecordDot');
+    const btnStealthDot = document.getElementById('btnStealthRecordDot');
+    const stealthSideMenu = document.getElementById('panelStealthRecordActions');
     const bar = document.getElementById('audioSyncFloatingBar');
     const recGroup = document.getElementById('audioSyncRecordingGroup');
     const playGroup = document.getElementById('audioSyncPlayerGroup');
@@ -2487,13 +2525,26 @@
 
     const hasAudio = Boolean(this.audioSyncData && this.audioSyncData.durationMs > 0);
     const isPaused = Boolean(this.isAudioRecordPaused);
+    const isHiddenUI = Boolean(this.isAllUIHidden || document.body.classList.contains('ui-all-hidden-mode'));
     if (btnFab) {
       btnFab.classList.toggle('is-recording', Boolean(this.isAudioRecording));
       btnFab.classList.toggle('is-paused', Boolean(this.isAudioRecording && isPaused));
       btnFab.classList.toggle('has-audio', hasAudio && !this.isAudioRecording);
     }
     if (sideMenu) {
-      sideMenu.style.display = (this.isAudioRecording && this._isAudioRecMenuOpen) ? 'flex' : 'none';
+      sideMenu.style.display = (this.isAudioRecording && !isHiddenUI && this._isAudioRecMenuOpen) ? 'flex' : 'none';
+    }
+    if (wrapStealthDot) {
+      wrapStealthDot.style.display = (this.isAudioRecording && isHiddenUI) ? 'flex' : 'none';
+    }
+    if (btnStealthDot) {
+      btnStealthDot.classList.toggle('is-paused', Boolean(this.isAudioRecording && isPaused));
+      btnStealthDot.title = isPaused
+        ? '녹화 일시정지됨 (클릭 시 이어녹화 / 종료)'
+        : '녹화 중 (클릭 시 일시정지 / 종료)';
+    }
+    if (stealthSideMenu) {
+      stealthSideMenu.style.display = (this.isAudioRecording && isHiddenUI && this._isAudioRecMenuOpen) ? 'flex' : 'none';
     }
 
     if (!bar) return;
@@ -2508,6 +2559,9 @@
       const btnPauseRec = document.getElementById('btnAudioPauseRecord');
       const iconPauseRec = document.getElementById('iconAudioPauseRecord');
       const lblPauseRec = document.getElementById('lblAudioPauseRecord');
+      const btnStealthPauseRec = document.getElementById('btnStealthPauseRecord');
+      const iconStealthPauseRec = document.getElementById('iconStealthPauseRecord');
+      const lblStealthPauseRec = document.getElementById('lblStealthPauseRecord');
       if (badgeEl) badgeEl.classList.toggle('is-paused', isPaused);
       if (badgeTxt) badgeTxt.textContent = isPaused ? 'PAUSED' : 'REC';
       if (hintEl) {
@@ -2518,6 +2572,9 @@
       if (btnPauseRec) btnPauseRec.classList.toggle('is-paused', isPaused);
       if (iconPauseRec) iconPauseRec.textContent = isPaused ? '▶' : '⏸';
       if (lblPauseRec) lblPauseRec.textContent = isPaused ? '이어녹화' : '일시정지';
+      if (btnStealthPauseRec) btnStealthPauseRec.classList.toggle('is-paused', isPaused);
+      if (iconStealthPauseRec) iconStealthPauseRec.textContent = isPaused ? '▶' : '⏸';
+      if (lblStealthPauseRec) lblStealthPauseRec.textContent = isPaused ? '이어녹화' : '일시정지';
 
       const btnMic = document.getElementById('btnAudioMicMuteToggle');
       const iconMic = document.getElementById('iconAudioMicMute');
@@ -4773,6 +4830,10 @@
         restoreTab.classList.remove('peek-highlight');
         restoreTab.style.display = 'none';
       }
+    }
+    this._isAudioRecMenuOpen = false;
+    if (typeof this.syncAudioRecordUI === 'function') {
+      this.syncAudioRecordUI();
     }
   }
 
