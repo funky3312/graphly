@@ -4827,6 +4827,13 @@
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.beginPath();
+        ctx.arc(p0.x / nibX, p0.y / nibY, lineW / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(p0.x / nibX, p0.y / nibY);
+        ctx.lineTo(mx / nibX, my / nibY);
+        ctx.stroke();
+        ctx.beginPath();
         ctx.moveTo(p0.x / nibX, p0.y / nibY);
         ctx.lineTo(p1.x / nibX, p1.y / nibY);
         ctx.stroke();
@@ -4851,14 +4858,27 @@
       const firstMidX = (pts[0].x + pts[1].x) * 0.5;
       const firstMidY = (pts[0].y + pts[1].y) * 0.5;
       ctx.beginPath();
+      ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
       ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
       ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
+      ctx.stroke();
+      let prevMidX = firstMidX;
+      let prevMidY = firstMidY;
       for (let i = 1; i < pts.length - 1; i++) {
         const midX = (pts[i].x + pts[i + 1].x) * 0.5;
         const midY = (pts[i].y + pts[i + 1].y) * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
         ctx.quadraticCurveTo(pts[i].x / nibX, pts[i].y / nibY, midX / nibX, midY / nibY);
+        ctx.stroke();
+        prevMidX = midX;
+        prevMidY = midY;
       }
       const last = pts[pts.length - 1];
+      ctx.beginPath();
+      ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
       ctx.lineTo(last.x / nibX, last.y / nibY);
       ctx.stroke();
       ctx.restore();

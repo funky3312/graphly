@@ -3070,6 +3070,10 @@
     document.body.classList.remove('graph-snap-crosshair');
     if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
 
+    const pWidget = document.getElementById('problemCardWidget');
+    if (pWidget && this.problemCardData && !this._retainedPdfAudioProbCard) {
+      pWidget.style.display = 'flex';
+    }
     const gWidget = document.getElementById('graphCardWidget');
     if (gWidget && this._hasPrimaryGraphCard && this.graphCardData) {
       gWidget.style.display = 'flex';
@@ -3081,9 +3085,15 @@
     }
     if (this.extraProblemCards && this.extraProblemCards.length > 0) {
       this.extraProblemCards.forEach(c => {
-        if (c && c.el) c.el.style.display = 'flex';
+        if (c && c.el) {
+          c.el.style.display = 'flex';
+          if (typeof c.el._renderCardInkCanvas === 'function') {
+            c.el._renderCardInkCanvas();
+          }
+        }
       });
     }
+    this.updateProblemCardPosition();
 
     if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed && (this.activeDrawerPanel === 'panelPresets' || this.activeDrawerPanel === 'panelPiecewise')) {
       this.closeDrawer();
@@ -3133,7 +3143,7 @@
     this.boardPanX = 0;
     this.boardPanY = 0;
 
-    // 3. 보관된 그래프 카드(#1, #2...) 및 접혀 있는 추가 문제 카드는 그래프 모드 작업 중 숨김 (현재 펼쳐진 문제 카드만 좌상단에 참조용으로 유지!)
+    // 3. 보관된 그래프 카드(#1, #2...) 및 문제 카드는 전체화면 그래프 모드 작업 중 숨김 (판서 복귀 시 원상 복원!)
     const gWidget = document.getElementById('graphCardWidget');
     if (gWidget) gWidget.style.display = 'none';
     if (this.extraGraphCards && this.extraGraphCards.length > 0) {
@@ -3141,9 +3151,11 @@
         if (c && c.el) c.el.style.display = 'none';
       });
     }
+    const pWidget = document.getElementById('problemCardWidget');
+    if (pWidget) pWidget.style.display = 'none';
     if (this.extraProblemCards && this.extraProblemCards.length > 0) {
       this.extraProblemCards.forEach(c => {
-        if (c && c.el && c.isMin) {
+        if (c && c.el) {
           c.el.style.display = 'none';
         }
       });
@@ -3452,7 +3464,11 @@
       this._savedLayer2BoardPan = null;
     }
 
-    // 3. 보관된 모든 그래프 카드(#1, #2...) 및 추가 문제 카드 다시 표시
+    // 3. 보관된 모든 그래프 카드(#1, #2...) 및 문제 카드 다시 표시
+    const pWidget = document.getElementById('problemCardWidget');
+    if (pWidget && this.problemCardData && !this._retainedPdfAudioProbCard) {
+      pWidget.style.display = 'flex';
+    }
     const widget = document.getElementById('graphCardWidget');
     if (widget && this._hasPrimaryGraphCard && this.graphCardData) {
       widget.style.display = 'flex';
@@ -3471,7 +3487,12 @@
     }
     if (this.extraProblemCards && this.extraProblemCards.length > 0) {
       this.extraProblemCards.forEach(c => {
-        if (c && c.el) c.el.style.display = 'flex';
+        if (c && c.el) {
+          c.el.style.display = 'flex';
+          if (typeof c.el._renderCardInkCanvas === 'function') {
+            c.el._renderCardInkCanvas();
+          }
+        }
       });
     }
 
@@ -4294,6 +4315,10 @@
     this.isPdfToGraphCropMode = false;
     document.body.classList.remove('graph-snap-crosshair');
     if (this.canvas) this.canvas.classList.remove('graph-snap-crosshair');
+    const pWidget = document.getElementById('problemCardWidget');
+    if (pWidget) {
+      pWidget.style.display = 'none';
+    }
     const widget = document.getElementById('graphCardWidget');
     if (widget) {
       if (!(keepMinimizedCards && this.isGraphCardMinimized)) {
@@ -4309,7 +4334,7 @@
     }
     if (this.extraProblemCards && this.extraProblemCards.length > 0) {
       this.extraProblemCards.forEach(c => {
-        if (c && c.el && c.isMin) {
+        if (c && c.el) {
           c.el.style.display = 'none';
         }
       });
@@ -4351,18 +4376,8 @@
         const sh = this.screenHeight || window.innerHeight || 900;
         const fullUnitScale = (sh / 2) / (this.ySpan / this.zoomLevel);
 
-        let problemPushX = 0;
-        if (this.hasActiveProblemCard() && !this.pdfPageBoardData) {
-          this.syncProblemCardRectFromWidget();
-          const cardRight = (this.problemCardRect && !this.isProblemCardMinimized)
-            ? (this.problemCardRect.x + this.problemCardRect.w)
-            : Math.round(sw * 0.38);
-          const baseRatioOffsetX = Math.round(sw * 0.085);
-          const extraCardPushX = Math.max(0, Math.round((cardRight - sw * 0.40) * 0.35));
-          problemPushX = Math.min(Math.round(sw * 0.14), baseRatioOffsetX + extraCardPushX);
-        }
-        this._lastFullGraphProblemPushX = problemPushX;
-        this.panX = Math.round(problemPushX - centerMathX * fullUnitScale);
+        this._lastFullGraphProblemPushX = 0;
+        this.panX = Math.round(-centerMathX * fullUnitScale);
         this.panY = Math.round(centerMathY * fullUnitScale);
 
         if (activeTarget && typeof this._syncPipCardInkToFullGraph === 'function') {

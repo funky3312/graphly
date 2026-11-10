@@ -5,3 +5,10 @@ Run_*.bat
 Deploy_*.bat
 sample_math_exam.pdf
 backup_*
+.env
+.env.*
+.env*
+*.secret*
+node_modules/
+firebase-debug.log
+firebase-debug.*.log

@@ -22,6 +22,7 @@
     this.myLibraryCache = [];
     this._restoreActiveCloudUserSession();
     if (this.cloudUser && this.cloudUser.uid) {
+      this.syncUserProSubscriptionFromCloud();
       setTimeout(() => this.fetchMyLibraryFromCloud(), 500);
     }
 
@@ -507,9 +508,9 @@
     const cardPro1M = document.getElementById('cardPlanPro1M');
     const cardPro1Y = document.getElementById('cardPlanPro1Y');
     const btnPayNow = document.getElementById('btnProModalPayNow');
-    this._selectedProPlan = { name: 'Graphly Pro 1개월 이용권 (30일)', amount: 3900 };
-    const selectProPlan = (name, amount, is1M) => {
-      this._selectedProPlan = { name, amount };
+    this._selectedProPlan = { code: 'PRO_1M', name: 'Graphly Pro 1개월 이용권 (30일)', amount: 3900 };
+    const selectProPlan = (code, name, amount, is1M) => {
+      this._selectedProPlan = { code, name, amount };
       if (cardPro1M && cardPro1Y) {
         cardPro1M.style.border = is1M ? '2px solid #2563eb' : '1.5px solid rgba(148,163,184,0.35)';
         cardPro1M.style.background = is1M ? 'rgba(37,99,235,0.08)' : 'rgba(148,163,184,0.05)';
@@ -520,8 +521,8 @@
         btnPayNow.textContent = `💳 토스페이먼츠 카드 결제하기 (${amount.toLocaleString('ko-KR')}원)`;
       }
     };
-    if (cardPro1M) cardPro1M.onclick = () => selectProPlan('Graphly Pro 1개월 이용권 (30일)', 3900, true);
-    if (cardPro1Y) cardPro1Y.onclick = () => selectProPlan('Graphly Pro 1년 이용권 (365일)', 39000, false);
+    if (cardPro1M) cardPro1M.onclick = () => selectProPlan('PRO_1M', 'Graphly Pro 1개월 이용권 (30일)', 3900, true);
+    if (cardPro1Y) cardPro1Y.onclick = () => selectProPlan('PRO_1Y', 'Graphly Pro 1년 이용권 (365일)', 39000, false);
     if (btnOpenProHub) {
       btnOpenProHub.onclick = () => {
         if (modalCloud) modalCloud.classList.remove('show');
@@ -2325,50 +2326,47 @@
   isProSubscriber() {
     if (this.cloudUser && this.cloudUser.uid) {
       if (this.cloudUser.isPro === true) return true;
-      try {
-        if (localStorage.getItem(this._getProStorageKeyForUid(this.cloudUser.uid)) === 'true') {
-          return true;
-        }
-      } catch (e) { }
       return Boolean(this.isProUser);
     }
-    if (this.isProUser === true) return true;
-    try {
-      if (localStorage.getItem('graphly_pro_active_v1') === 'true') return true;
-    } catch (e) { }
     return false;
   }
 
   async syncUserProSubscriptionFromCloud() {
+    if (this._isConfirmingTossPayment) return this.isProUser;
     if (!this.cloudUser || !this.cloudUser.uid) {
       this.isProUser = false;
       return false;
     }
+    const userProKey = this._getProStorageKeyForUid(this.cloudUser.uid);
     let localPro = false;
     try {
-      localPro = (localStorage.getItem(this._getProStorageKeyForUid(this.cloudUser.uid)) === 'true');
+      localPro = (localStorage.getItem(userProKey) === 'true');
     } catch (e) { }
     this.cloudUser.isPro = localPro;
     this.isProUser = localPro;
     if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestReadDoc === 'function') {
       try {
         const subDocId = `sub_${this.cloudUser.uid}`;
-        const remoteSub = await this._firestoreRestReadDoc('user_subscriptions', subDocId);
-        if (remoteSub && typeof remoteSub.isPro === 'boolean') {
-          this.cloudUser.isPro = remoteSub.isPro;
-          this.isProUser = remoteSub.isPro;
-          try {
-            const userProKey = this._getProStorageKeyForUid(this.cloudUser.uid);
-            if (remoteSub.isPro) {
-              localStorage.setItem(userProKey, 'true');
-            } else {
-              localStorage.removeItem(userProKey);
-            }
-          } catch (e) { }
-          this._persistActiveCloudUserSession();
-          this.syncCloudAuthUI();
-          this.renderFuncList();
-        }
+        const remoteSub = await this._firestoreRestReadDoc('user_subscriptions', subDocId, true);
+        const nowMs = Date.now();
+        const isValidRemotePro = Boolean(
+          remoteSub &&
+          remoteSub.isPro === true &&
+          (!remoteSub.expiresAt || Number(remoteSub.expiresAt) > nowMs)
+        );
+        this.cloudUser.isPro = isValidRemotePro;
+        this.isProUser = isValidRemotePro;
+        try {
+          if (isValidRemotePro) {
+            localStorage.setItem(userProKey, 'true');
+          } else {
+            localStorage.removeItem(userProKey);
+          }
+          localStorage.removeItem('graphly_pro_active_v1');
+        } catch (e) { }
+        this._persistActiveCloudUserSession();
+        this.syncCloudAuthUI();
+        this.renderFuncList();
       } catch (e) { }
     }
     return this.isProUser;
@@ -2431,30 +2429,126 @@
   // - 단일 함수뿐만 아니라 다중 함수(f1, f2...) + 구간 분할(Piecewise) + 주기·계단형(T, q) +
   //   절댓값(|f(x)|) + 보조 수선까지 현재 그래프 상태를 0.5KB 초경량 스냅샷으로 통째 저장/복원!
   // ============================================================================
+  async confirmTossPaymentAndActivatePro({ paymentKey, orderId, amount, uid, planCode, planName, pendingIdToken }) {
+    this._isConfirmingTossPayment = true;
+    try {
+      const confirmEndpoint = this.TOSS_CONFIRM_BACKEND_URL || 'https://asia-northeast3-graphly-net.cloudfunctions.net/confirmTossPayment';
+      const numAmount = Number(amount) || 3900;
+      const resolvedPlanCode = planCode || (String(orderId || '').startsWith('GRAPHLY_PRO_1Y_') || numAmount === 39000 ? 'PRO_1Y' : 'PRO_1M');
+      let idToken = String(pendingIdToken || '').trim();
+      if (!idToken && this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
+        try {
+          idToken = await this._fbAuth.currentUser.getIdToken();
+        } catch (e) { }
+      }
+      if (!idToken && this._fbAuth) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        if (this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
+          try {
+            idToken = await this._fbAuth.currentUser.getIdToken();
+          } catch (e) { }
+        }
+      }
+
+      if (paymentKey && orderId && confirmEndpoint) {
+        const headers = {
+          'Content-Type': 'application/json'
+        };
+        if (idToken) {
+          headers['Authorization'] = `Bearer ${idToken}`;
+        }
+        const res = await fetch(confirmEndpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            paymentKey: String(paymentKey),
+            orderId: String(orderId),
+            amount: numAmount,
+            uid: uid || (this.cloudUser && this.cloudUser.uid) || '',
+            planCode: resolvedPlanCode,
+            planName: planName || 'Graphly Pro 이용권',
+            idToken: idToken
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && data.ok === true) {
+          const targetUid = uid || (this.cloudUser && this.cloudUser.uid) || '';
+          if (targetUid) {
+            localStorage.setItem(this._getProStorageKeyForUid(targetUid), 'true');
+          }
+          this.isProUser = true;
+          if (this.cloudUser) {
+            this.cloudUser.isPro = true;
+            this._persistActiveCloudUserSession();
+          }
+          this.syncCloudAuthUI();
+          this.renderFuncList();
+          if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
+          this.showToast('👑 Graphly Pro 이용권 결제가 최종 승인되었습니다! 모든 Pro 기능이 즉시 활성화됩니다.');
+          return true;
+        } else {
+          const errMsg = (data && data.message) ? data.message : '결제 최종 승인에 실패했습니다.';
+          this.showToast(`⚠️ 결제 승인 실패: ${errMsg}`);
+          return false;
+        }
+      } else {
+        this.showToast('⚠️ 결제 승인 백엔드 서버 연결이 필요합니다.');
+        return false;
+      }
+    } catch (err) {
+      this.showToast('⚠️ 결제 승인 통신 중 오류가 발생했습니다. 고객센터(help@cubiolab.com)로 문의해 주세요.');
+    } finally {
+      this._isConfirmingTossPayment = false;
+    }
+    return false;
+  }
+
   initCustomGraphPresets() {
     this.getSubscriptionQuotaConfig();
     this.isProUser = false;
     try {
-      const isTestTossKey = true; // 통신판매업 신고 및 live_ck_ 전환 전까지 테스트 결제 무료 활성화 방지
+      if (!this.cloudUser && typeof this._restoreActiveCloudUserSession === 'function') {
+        this._restoreActiveCloudUserSession();
+      }
+      const isTestTossKey = false; // 토스페이먼츠 라이브 키(live_ck_ / Secret Manager) 정식 적용 완료
       if (typeof window !== 'undefined' && window.location && window.location.search.includes('paymentStatus=success')) {
+        const pendingUid = localStorage.getItem('graphly_pending_payment_uid') || (this.cloudUser && this.cloudUser.uid);
+        const pendingPlanCode = localStorage.getItem('graphly_pending_payment_plan_code') || '';
+        const pendingPlanName = localStorage.getItem('graphly_pending_payment_plan') || 'Graphly Pro 이용권';
+        const pendingIdToken = localStorage.getItem('graphly_pending_payment_id_token') || '';
         localStorage.removeItem('graphly_pending_payment_uid');
+        localStorage.removeItem('graphly_pending_payment_plan_code');
+        localStorage.removeItem('graphly_pending_payment_plan');
+        localStorage.removeItem('graphly_pending_payment_id_token');
+        const params = new URLSearchParams(window.location.search);
+        const paidPaymentKey = params.get('paymentKey') || '';
+        const paidOrderId = params.get('orderId') || '';
+        const paidAmount = Number(params.get('amount')) || 3900;
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+        }
         if (!isTestTossKey) {
-          const pendingUid = localStorage.getItem('graphly_pending_payment_uid') || (this.cloudUser && this.cloudUser.uid);
-          if (pendingUid) {
-            localStorage.setItem(this._getProStorageKeyForUid(pendingUid), 'true');
-          } else {
-            localStorage.setItem('graphly_pro_active_v1', 'true');
-          }
+          setTimeout(() => {
+            this.confirmTossPaymentAndActivatePro({
+              paymentKey: paidPaymentKey,
+              orderId: paidOrderId,
+              amount: paidAmount,
+              uid: pendingUid,
+              planCode: pendingPlanCode,
+              planName: pendingPlanName,
+              pendingIdToken: pendingIdToken
+            });
+          }, 150);
         } else {
           setTimeout(() => {
             this.showToast('🛠️ 테스트 결제 확인이 완료되었습니다. (실제 금액은 청구되지 않으며, 정식 결제 오픈 후 이용권이 활성화됩니다.)');
           }, 600);
         }
-        if (window.history && window.history.replaceState) {
-          window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
-        }
       } else if (typeof window !== 'undefined' && window.location && window.location.search.includes('paymentStatus=fail')) {
         localStorage.removeItem('graphly_pending_payment_uid');
+        localStorage.removeItem('graphly_pending_payment_plan_code');
+        localStorage.removeItem('graphly_pending_payment_plan');
+        localStorage.removeItem('graphly_pending_payment_id_token');
         if (window.history && window.history.replaceState) {
           window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
         }
@@ -2463,7 +2557,7 @@
         this.isProUser = localStorage.getItem(this._getProStorageKeyForUid(this.cloudUser.uid)) === 'true';
         this.cloudUser.isPro = this.isProUser;
       } else {
-        this.isProUser = localStorage.getItem('graphly_pro_active_v1') === 'true';
+        this.isProUser = false;
       }
     } catch (e) { }
     this.customGraphPresets = [];
@@ -3478,7 +3572,7 @@
     modalPro.classList.add('show');
   }
 
-  requestTossPaymentFromStudio() {
+  async requestTossPaymentFromStudio() {
     if (!this.cloudUser || !this.cloudUser.uid) {
       const modalPro = document.getElementById('modalProPricing');
       if (modalPro) modalPro.classList.remove('show');
@@ -3489,23 +3583,44 @@
       this.showToast('⚠️ 토스페이먼츠 결제 모듈을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.');
       return false;
     }
-    const plan = this._selectedProPlan || { name: 'Graphly Pro 1개월 이용권 (30일)', amount: 3900 };
+    if (typeof this._ensureFirebaseInitialized === 'function') {
+      this._ensureFirebaseInitialized();
+    }
+    let idToken = '';
+    if (this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
+      try {
+        idToken = await this._fbAuth.currentUser.getIdToken(true);
+      } catch (e) { }
+    }
+    if (!idToken) {
+      const modalPro = document.getElementById('modalProPricing');
+      if (modalPro) modalPro.classList.remove('show');
+      this.promptCloudLoginForLibrary('🔒 안전한 결제 본인 인증을 위해 다시 한 번 로그인을 진행해 주세요!');
+      return false;
+    }
+    const plan = this._selectedProPlan || { code: 'PRO_1M', name: 'Graphly Pro 1개월 이용권 (30일)', amount: 3900 };
+    const planCode = plan.code === 'PRO_1Y' || Number(plan.amount) === 39000 ? 'PRO_1Y' : 'PRO_1M';
+    const planAmount = planCode === 'PRO_1Y' ? 39000 : 3900;
+    const planName = planCode === 'PRO_1Y' ? 'Graphly Pro 1년 이용권 (365일)' : 'Graphly Pro 1개월 이용권 (30일)';
     const inpName = document.getElementById('inputProBuyerName');
     const inpEmail = document.getElementById('inputProBuyerEmail');
     const customerName = (inpName && inpName.value ? inpName.value.trim() : '') || this.cloudUser.displayName || '회원구매자';
     const customerEmail = (inpEmail && inpEmail.value ? inpEmail.value.trim() : '') || this.cloudUser.email || 'help@cubiolab.com';
-    const tossClientKey = 'test_ck_DnyRpQWGrNaNRPo2mQylVKwv1M9E';
+    const tossClientKey = 'live_ck_Z1aOwX7K8mBMQNM924ba3yQxzvNP';
     const tossPayments = window.TossPayments(tossClientKey);
-    const cleanUid = String(this.cloudUser.uid).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 28);
-    const orderId = `GRAPHLY_${cleanUid}_${Date.now()}`;
+    const cleanUid = String(this.cloudUser.uid).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24);
+    const orderId = `GRAPHLY_${planCode}_${cleanUid}_${Date.now()}`;
     try {
       localStorage.setItem('graphly_pending_payment_uid', this.cloudUser.uid);
+      localStorage.setItem('graphly_pending_payment_plan_code', planCode);
+      localStorage.setItem('graphly_pending_payment_plan', planName);
+      localStorage.setItem('graphly_pending_payment_id_token', idToken);
     } catch (e) { }
     const baseUrl = window.location.origin + window.location.pathname;
     tossPayments.requestPayment('카드', {
-      amount: Number(plan.amount) || 3900,
+      amount: planAmount,
       orderId: orderId,
-      orderName: `${plan.name} [${this.cloudUser.email || this.cloudUser.uid}]`,
+      orderName: `${planName} [${this.cloudUser.email || this.cloudUser.uid}]`,
       customerName: customerName,
       customerEmail: customerEmail,
       successUrl: baseUrl + '?paymentStatus=success',
@@ -3858,7 +3973,7 @@
     const pImg = document.getElementById('problemCardImg');
     const pTitle = document.getElementById('problemCardTitle');
     const pToggle = document.getElementById('iconCardToggle');
-    const hasPrimaryProblem = Boolean(pWidget && this.problemCardData && (pWidget.style.display !== 'none' || this._retainedPdfAudioProbCard));
+    const hasPrimaryProblem = Boolean(pWidget && this.problemCardData);
 
     const gWidget = document.getElementById('graphCardWidget');
     const gImg = document.getElementById('graphCardImg');
@@ -4225,6 +4340,19 @@
     this._savedLayer2BoardPan = slideData.savedLayer2BoardPan ? { ...slideData.savedLayer2BoardPan } : null;
     this._retainedPdfAudioProbCard = Boolean(slideData.retainedPdfAudioProbCard);
     this._graphSessionArchived = Boolean(slideData.graphSessionArchived);
+
+    if (!this.isGraphCovered) {
+      if (pWidget) pWidget.style.display = 'none';
+      if (this.extraProblemCards) {
+        this.extraProblemCards.forEach(c => { if (c && c.el) c.el.style.display = 'none'; });
+      }
+      if (gWidget) gWidget.style.display = 'none';
+      if (this.extraGraphCards) {
+        this.extraGraphCards.forEach(c => { if (c && c.el) c.el.style.display = 'none'; });
+      }
+    } else if (pWidget && this.problemCardData) {
+      pWidget.style.display = this._retainedPdfAudioProbCard ? 'none' : 'flex';
+    }
 
     if (slideData.pdfPageBoardData) {
       const pbd = { ...slideData.pdfPageBoardData };
@@ -6045,7 +6173,7 @@
 
   hasAnyWorkspaceContent() {
     const pWidget = document.getElementById('problemCardWidget');
-    const hasPrimaryProblem = Boolean(pWidget && pWidget.style.display !== 'none' && this.problemCardData);
+    const hasPrimaryProblem = Boolean(pWidget && this.problemCardData && !this._retainedPdfAudioProbCard);
     const hasExtraProblems = Boolean(this.extraProblemCards && this.extraProblemCards.length > 0);
     const hasGraphCards = Boolean(
       (this._hasPrimaryGraphCard && this.graphCardData) ||

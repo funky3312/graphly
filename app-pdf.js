@@ -2487,6 +2487,7 @@
     const widget = document.getElementById('problemCardWidget');
     if (!widget) return;
     if (!this.problemCardData || widget.style.display === 'none') {
+      this.problemCardRect = null;
       if (!this.problemCardData) {
         widget.style.transform = '';
       }

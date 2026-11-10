@@ -1670,9 +1670,11 @@
       }
 
       if (this.extraProblemCards && this.extraProblemCards.length > 0 && Array.isArray(kf.extraProbStates)) {
+        const visibleProbCount = typeof kf.extraProbsCount === 'number' ? kf.extraProbsCount : this.extraProblemCards.length;
         this.extraProblemCards.forEach((c, idx) => {
           const st = kf.extraProbStates[idx];
           if (c && c.el && st) {
+            c.el.style.display = (!this.isGraphCovered || idx >= visibleProbCount) ? 'none' : 'flex';
             if (st.pdfAnchor) {
               c.pdfAnchor = { ...st.pdfAnchor };
               c.el._pdfAnchor = { ...st.pdfAnchor };

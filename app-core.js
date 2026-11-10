@@ -836,7 +836,7 @@ class GraphApp {
     const pImg = document.getElementById('problemCardImg');
     const pTitle = document.getElementById('problemCardTitle');
     const pToggle = document.getElementById('iconCardToggle');
-    const hasPrimaryProblem = Boolean(pWidget && pWidget.style.display !== 'none' && this.problemCardData);
+    const hasPrimaryProblem = Boolean(pWidget && this.problemCardData && !this._retainedPdfAudioProbCard);
 
     const gWidget = document.getElementById('graphCardWidget');
     const gBody = document.getElementById('graphCardBody');
@@ -1798,17 +1798,16 @@ class GraphApp {
     if (this.hasActiveProblemCard() && !this.pdfPageBoardData) {
       if (this.graphs.length === 1) {
         this.syncProblemCardRectFromWidget();
-        const sw = this.screenWidth || window.innerWidth || 1440;
-        const cardRight = (this.problemCardRect && !this.isProblemCardMinimized)
-          ? (this.problemCardRect.x + this.problemCardRect.w)
-          : Math.round(sw * 0.38);
-        // 화면 해상도(아이패드·FHD·QHD·4K 전자칠판)에 상관없이 항상 동일한 시각적 비율(화면 가로폭의 58.5% 지점 = 정중앙 +8.5%)에 배치
-        const baseRatioOffsetX = Math.round(sw * 0.085);
-        const extraCardPushX = Math.max(0, Math.round((cardRight - sw * 0.40) * 0.35));
-        const balancedOffsetX = Math.min(Math.round(sw * 0.14), baseRatioOffsetX + extraCardPushX);
-        if (this.panX === 0 && this.panY === 0) {
-          this.panX = Math.max(0, balancedOffsetX);
-          this.panY = 0;
+        if (this.problemCardRect && !this.isProblemCardMinimized) {
+          const sw = this.screenWidth || window.innerWidth || 1440;
+          const cardRight = this.problemCardRect.x + this.problemCardRect.w;
+          const baseRatioOffsetX = Math.round(sw * 0.085);
+          const extraCardPushX = Math.max(0, Math.round((cardRight - sw * 0.40) * 0.35));
+          const balancedOffsetX = Math.min(Math.round(sw * 0.14), baseRatioOffsetX + extraCardPushX);
+          if (this.panX === 0 && this.panY === 0) {
+            this.panX = Math.max(0, balancedOffsetX);
+            this.panY = 0;
+          }
         }
         if (!this.showAxes) {
           this.showAxes = true;
@@ -2021,7 +2020,7 @@ class GraphApp {
   // --- [🧹 3. 새 캔버스 (전체 초기화: 그래프 + 경계선 + 필기 + 떠 있는 문제/보관 카드 전부 초기화)] ---
   resetNewCanvas() {
     const pWidget = document.getElementById('problemCardWidget');
-    const hasPrimaryProblem = Boolean(pWidget && pWidget.style.display !== 'none' && this.problemCardData);
+    const hasPrimaryProblem = Boolean(pWidget && this.problemCardData && !this._retainedPdfAudioProbCard);
     const hasExtraProblems = Boolean(this.extraProblemCards && this.extraProblemCards.length > 0);
     const hasGraphCards = Boolean(
       (this._hasPrimaryGraphCard && this.graphCardData) ||
