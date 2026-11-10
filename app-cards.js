@@ -5457,26 +5457,28 @@
         // PiP 카드 로컬 스케일에서 전체화면 그래프 모드로 열 때:
         // 카드에서 보고 있던 중심 수학 좌표(centerMathX, centerMathY)와 카드 위 필기(ink)를 전체화면 그래프 모드에 100% 그대로 동기화!
         if (parsedSnapForFull && parsedSnapForFull._isPipCardSnapshot) {
+          this._syncCanvasMetricsIfStale();
           const isTrig = Array.isArray(this.graphs) && this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
           const cardH = Math.max(80, parsedSnapForFull._pipCardH || 353);
           const cardYSpan = parsedSnapForFull.ySpan || (isTrig ? 5.0 : 5.1);
-          const cardZoom = parsedSnapForFull.zoomLevel || 1.0;
-          const cardUnitScale = (cardH / 2) / (cardYSpan / cardZoom);
-          const centerMathX = -(parsedSnapForFull.panX || 0) / Math.max(1, cardUnitScale);
-          const centerMathY = (parsedSnapForFull.panY || 0) / Math.max(1, cardUnitScale);
+          const cardZoom = Math.max(0.15, Math.min(3.5, Number(parsedSnapForFull.zoomLevel) || 1.0));
+          const cardUnitScale = (cardH / 2) / Math.max(0.05, cardYSpan / cardZoom);
+          const centerMathX = -(parsedSnapForFull.panX || 0) / Math.max(1e-6, cardUnitScale);
+          const centerMathY = (parsedSnapForFull.panY || 0) / Math.max(1e-6, cardUnitScale);
 
           this.xSpan = isTrig ? 20.0 : 8.5;
           this.ySpan = isTrig ? 5.5 : 6.0;
-          this.zoomLevel = 1.0;
-          this.targetZoom = 1.0;
+          this.setZoomLevel(cardZoom);
+          this.zoomLevel = cardZoom;
+          this.targetZoom = cardZoom;
+          this._isZoomAnimating = false;
 
-          const sw = this.screenWidth || window.innerWidth || 1440;
-          const sh = this.screenHeight || window.innerHeight || 900;
-          const fullUnitScale = (sh / 2) / (this.ySpan / this.zoomLevel);
+          const sh = Math.max(120, this.screenHeight || window.innerHeight || 900);
+          const fullUnitScale = (sh / 2) / Math.max(0.05, this.ySpan / this.zoomLevel);
 
           this._lastFullGraphProblemPushX = 0;
-          this.panX = Math.round(-centerMathX * fullUnitScale);
-          this.panY = Math.round(centerMathY * fullUnitScale);
+          this.panX = -centerMathX * fullUnitScale;
+          this.panY = centerMathY * fullUnitScale;
 
           if (activeTarget && typeof this._syncPipCardInkToFullGraph === 'function') {
             this._syncPipCardInkToFullGraph(activeTarget, cardUnitScale, fullUnitScale);
@@ -6514,14 +6516,16 @@
       if (!snapObj._isPipCardSnapshot) {
         const oldSw = Math.max(1, this.screenWidth || window.innerWidth || 1440);
         const oldSh = Math.max(1, this.screenHeight || window.innerHeight || 900);
-        snapObj.panX = (snapObj.panX || 0) * (effW / oldSw);
-        snapObj.panY = (snapObj.panY || 0) * (effH / oldSh);
+        const scaleH = effH / oldSh;
+        snapObj.panX = (snapObj.panX || 0) * (this.lockAspect ? scaleH : (effW / oldSw));
+        snapObj.panY = (snapObj.panY || 0) * scaleH;
         snapObj._isPipCardSnapshot = true;
         snapObj._pipCardW = effW;
         snapObj._pipCardH = effH;
       } else if (snapObj._pipCardW && snapObj._pipCardH && (Math.abs(snapObj._pipCardW - effW) > 0.5 || Math.abs(snapObj._pipCardH - effH) > 0.5)) {
-        snapObj.panX = (snapObj.panX || 0) * (effW / Math.max(1, snapObj._pipCardW));
-        snapObj.panY = (snapObj.panY || 0) * (effH / Math.max(1, snapObj._pipCardH));
+        const scaleH = effH / Math.max(1, snapObj._pipCardH);
+        snapObj.panX = (snapObj.panX || 0) * (this.lockAspect ? scaleH : (effW / Math.max(1, snapObj._pipCardW)));
+        snapObj.panY = (snapObj.panY || 0) * scaleH;
         snapObj._pipCardW = effW;
         snapObj._pipCardH = effH;
       } else {
@@ -8735,6 +8739,131 @@
       return createdRef;
     }
 
+    _syncCanvasMetricsIfStale() {
+      if (!this.canvas || !this.canvas.parentElement || typeof this.canvas.parentElement.getBoundingClientRect !== 'function') return;
+      if (typeof this._isFixedReplayStageActive === 'function' && this._isFixedReplayStageActive()) return;
+      if (typeof this._syncIosTopStatusGuard === 'function') {
+        this._syncIosTopStatusGuard();
+      }
+      const rect = this.canvas.parentElement.getBoundingClientRect();
+      const cssW = Math.round(rect.width || 0);
+      const cssH = Math.round(rect.height || 0);
+      if (
+        cssW >= 120 &&
+        cssH >= 120 &&
+        (Math.abs(cssW - (this.screenWidth || 0)) > 1 || Math.abs(cssH - (this.screenHeight || 0)) > 1)
+      ) {
+        this.resizeCanvas();
+      }
+    }
+
+    _resolveFullscreenFocusMathCenter() {
+      this._syncCanvasMetricsIfStale();
+      const sw = Math.max(160, this.screenWidth || (typeof window !== 'undefined' ? window.innerWidth : 1440) || 1440);
+      const sh = Math.max(120, this.screenHeight || (typeof window !== 'undefined' ? window.innerHeight : 900) || 900);
+      const fullZoom = Math.max(0.15, Math.min(3.5, Number(this.zoomLevel) || 1.0));
+      const fullYSpan = Math.max(0.1, Number(this.ySpan) || 6.0);
+      const fullUnitScale = (sh / 2) / Math.max(0.05, fullYSpan / fullZoom);
+      const pushOffsetX = (typeof this._lastFullGraphProblemPushX === 'number') ? this._lastFullGraphProblemPushX : 0;
+      const effFullPanX = (this.panX || 0) - pushOffsetX;
+      const effFullPanY = this.panY || 0;
+
+      // 🌟 [아이패드 가시 영역 초점 동기화]:
+      // 좌측 서랍(#railDrawer) 또는 전체화면 좌측 참조 문제 카드(#problemCardWidget)가 열려 화면 왼쪽을 가린 상태에서
+      // 사용자가 우측 빈 가시 영역 중앙에 그래프를 맞추고 전환했을 때, 눈으로 보고 맞춘 가시 영역의 정중앙을 초점으로 채택!
+      // (단, 서랍만 열어둔 채 기본 원점 근처에 그대로 둔 그래프는 기존과 동일하게 물리적 센터 sw / 2를 유지해 0% 부작용 보장)
+      let leftOccludedPx = 0;
+      const cRect = (this.canvas && typeof this.canvas.getBoundingClientRect === 'function')
+        ? this.canvas.getBoundingClientRect()
+        : { left: 0, top: 0 };
+
+      if (!this.isDrawerCollapsed && typeof document !== 'undefined') {
+        const rdEl = document.getElementById('railDrawer');
+        if (rdEl && typeof rdEl.getBoundingClientRect === 'function') {
+          const rdRect = rdEl.getBoundingClientRect();
+          if (rdRect.width > 40) {
+            leftOccludedPx = Math.max(leftOccludedPx, Math.round(rdRect.right - (cRect.left || 0)));
+          }
+        }
+        if (leftOccludedPx <= 0) {
+          leftOccludedPx = (this.activeDrawerPanel === 'panelPresets') ? 410 : 318;
+        }
+      } else if (
+        this._preReturnDrawerClosedAt &&
+        (Date.now() - this._preReturnDrawerClosedAt < 800) &&
+        typeof this._preReturnDrawerOccludedRight === 'number'
+      ) {
+        leftOccludedPx = Math.max(leftOccludedPx, this._preReturnDrawerOccludedRight);
+      }
+      this._preReturnDrawerClosedAt = 0;
+      this._preReturnDrawerOccludedRight = 0;
+
+      if (typeof document !== 'undefined') {
+        const pWidget = document.getElementById('problemCardWidget');
+        if (
+          pWidget &&
+          pWidget.style.display !== 'none' &&
+          !pWidget.classList.contains('minimized') &&
+          !this.isProblemCardMinimized &&
+          typeof pWidget.getBoundingClientRect === 'function'
+        ) {
+          const pRect = pWidget.getBoundingClientRect();
+          const relLeft = pRect.left - (cRect.left || 0);
+          const relRight = pRect.right - (cRect.left || 0);
+          if (pRect.width > 120 && pRect.height > sh * 0.22 && relLeft < sw * 0.25 && relRight > 120) {
+            leftOccludedPx = Math.max(leftOccludedPx, Math.round(relRight));
+          }
+        }
+      }
+
+      leftOccludedPx = Math.max(0, Math.min(Math.round(sw * 0.62), leftOccludedPx));
+
+      let targetScreenCenterX = sw / 2;
+      if (leftOccludedPx > 80 && Array.isArray(this.graphs) && this.graphs.length > 0) {
+        const physCenterX = sw / 2;
+        const visCenterX = (leftOccludedPx + sw) / 2;
+
+        let minHx = Infinity;
+        let maxHx = -Infinity;
+        for (const g of this.graphs) {
+          if (!g || !Array.isArray(g.handles)) continue;
+          let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+          if (Array.isArray(g.transforms)) {
+            for (const t of g.transforms) {
+              if (t && t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
+            }
+          }
+          for (const h of g.handles) {
+            if (!h || typeof h.x !== 'number' || !Number.isFinite(h.x)) continue;
+            const sx = (sw / 2 + effFullPanX) + (h.x + ox) * fullUnitScale;
+            if (sx < minHx) minHx = sx;
+            if (sx > maxHx) maxHx = sx;
+          }
+        }
+
+        if (minHx <= maxHx && Number.isFinite(minHx) && Number.isFinite(maxHx)) {
+          const graphMidScreenX = (minHx + maxHx) * 0.5;
+          if (Math.abs(graphMidScreenX - visCenterX) + 12 < Math.abs(graphMidScreenX - physCenterX)) {
+            targetScreenCenterX = visCenterX;
+          }
+        } else if (effFullPanX > 36) {
+          targetScreenCenterX = visCenterX;
+        }
+      }
+
+      const fullCenterMathX = (targetScreenCenterX - (sw / 2 + effFullPanX)) / Math.max(1e-6, fullUnitScale);
+      const fullCenterMathY = effFullPanY / Math.max(1e-6, fullUnitScale);
+
+      return {
+        sw,
+        sh,
+        fullZoom,
+        fullUnitScale,
+        fullCenterMathX,
+        fullCenterMathY
+      };
+    }
+
     addNewPipCardFromFullscreenGraph() {
       if (!Array.isArray(this.graphs) || this.graphs.length === 0) {
         this.showToast('⚠️ 먼저 추가할 그래프를 그려주세요!');
@@ -8769,19 +8898,20 @@
       const cardH = Math.max(120, Math.round(cardW * aspect));
       const isTrig = this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
 
-      const fullUnitScale = (this.screenHeight / 2) / Math.max(0.1, (this.ySpan || 5.1) / (this.zoomLevel || 1.0));
-      const pushOffsetX = (typeof this._lastFullGraphProblemPushX === 'number') ? this._lastFullGraphProblemPushX : 0;
-      const effFullPanX = (this.panX || 0) - pushOffsetX;
-      const fullCenterMathX = -effFullPanX / Math.max(1e-6, fullUnitScale);
-      const fullCenterMathY = (this.panY || 0) / Math.max(1e-6, fullUnitScale);
+      const {
+        fullZoom,
+        fullUnitScale,
+        fullCenterMathX,
+        fullCenterMathY
+      } = this._resolveFullscreenFocusMathCenter();
 
       const updatedSnap = JSON.parse(this.getPureGraphSnapshot());
       this._rebindClonedSnapshotGraphAndDropLineIds(updatedSnap);
       updatedSnap.xSpan = (prevSnap && typeof prevSnap.xSpan === 'number') ? prevSnap.xSpan : (isTrig ? 14.0 : 6.2);
       updatedSnap.ySpan = (prevSnap && typeof prevSnap.ySpan === 'number') ? prevSnap.ySpan : (isTrig ? 5.0 : 5.1);
-      updatedSnap.zoomLevel = (prevSnap && typeof prevSnap.zoomLevel === 'number') ? prevSnap.zoomLevel : 1.0;
+      updatedSnap.zoomLevel = fullZoom;
 
-      const cardUnitScale = (cardH / 2) / Math.max(0.1, updatedSnap.ySpan / updatedSnap.zoomLevel);
+      const cardUnitScale = (cardH / 2) / Math.max(0.05, updatedSnap.ySpan / updatedSnap.zoomLevel);
       updatedSnap.panX = -fullCenterMathX * cardUnitScale;
       updatedSnap.panY = fullCenterMathY * cardUnitScale;
       updatedSnap.isPipLocked = false;
@@ -8927,11 +9057,12 @@
         return;
       }
 
-      const fullUnitScale = (this.screenHeight / 2) / Math.max(0.1, (this.ySpan || 5.1) / (this.zoomLevel || 1.0));
-      const pushOffsetX = (typeof this._lastFullGraphProblemPushX === 'number') ? this._lastFullGraphProblemPushX : 0;
-      const effFullPanX = (this.panX || 0) - pushOffsetX;
-      const fullCenterMathX = -effFullPanX / Math.max(1e-6, fullUnitScale);
-      const fullCenterMathY = (this.panY || 0) / Math.max(1e-6, fullUnitScale);
+      const {
+        fullZoom,
+        fullUnitScale,
+        fullCenterMathX,
+        fullCenterMathY
+      } = this._resolveFullscreenFocusMathCenter();
 
       // 만약 연결된 대상 카드가 없는데 전체화면 그래프 모드에 그래프가 있다면 새 PiP 카드로 자동 생성
       if (!target) {
@@ -8943,8 +9074,8 @@
         const updatedSnap = JSON.parse(this.getPureGraphSnapshot());
         updatedSnap.xSpan = isTrig ? 14.0 : 6.2;
         updatedSnap.ySpan = isTrig ? 5.0 : 5.1;
-        updatedSnap.zoomLevel = 1.0;
-        const cardUnitScale = (cardH / 2) / Math.max(0.1, updatedSnap.ySpan / updatedSnap.zoomLevel);
+        updatedSnap.zoomLevel = fullZoom;
+        const cardUnitScale = (cardH / 2) / Math.max(0.05, updatedSnap.ySpan / updatedSnap.zoomLevel);
         updatedSnap.panX = -fullCenterMathX * cardUnitScale;
         updatedSnap.panY = fullCenterMathY * cardUnitScale;
         updatedSnap.isPipLocked = false;
@@ -8978,10 +9109,10 @@
       const updatedSnap = JSON.parse(this.getPureGraphSnapshot());
       updatedSnap.xSpan = (prevSnap && typeof prevSnap.xSpan === 'number') ? prevSnap.xSpan : (isTrig ? 14.0 : 6.2);
       updatedSnap.ySpan = (prevSnap && typeof prevSnap.ySpan === 'number') ? prevSnap.ySpan : (isTrig ? 5.0 : 5.1);
-      updatedSnap.zoomLevel = (prevSnap && typeof prevSnap.zoomLevel === 'number') ? prevSnap.zoomLevel : 1.0;
+      updatedSnap.zoomLevel = fullZoom;
 
-      // 🌟 전체화면 그래프 모드에서 이동한 시야 중심점(1사분면 등)을 PiP 카드에 100% 보존!
-      const cardUnitScale = (cardH / 2) / Math.max(0.1, updatedSnap.ySpan / updatedSnap.zoomLevel);
+      // 🌟 전체화면 그래프 모드에서 이동한 시야 중심점(가시 영역 포함)과 두 손가락 줌 배율을 PiP 카드에 100% 보존!
+      const cardUnitScale = (cardH / 2) / Math.max(0.05, updatedSnap.ySpan / updatedSnap.zoomLevel);
       updatedSnap.panX = -fullCenterMathX * cardUnitScale;
       updatedSnap.panY = fullCenterMathY * cardUnitScale;
       updatedSnap.isPipLocked = Boolean(prevSnap && prevSnap.isPipLocked);

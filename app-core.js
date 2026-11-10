@@ -3975,6 +3975,22 @@ class GraphApp {
       ) {
         return;
       }
+      // 🌟 [아이패드 가시 영역 초점 동기화]: 서랍이 열린 채 [필기 복귀] / [새 카드로 추가]를 터치할 때
+      // pointerdown(캡처 단계)에서 서랍이 먼저 닫히기 직전의 차폐 폭을 기록해 click 전환 시 가시 영역 센터를 정확히 계산!
+      if (!this.isGraphCovered && (target.closest('#btnReturnToCoveredBoard') || target.closest('#btnAddNewPipCardFromGraph'))) {
+        const rdEl = document.getElementById('railDrawer');
+        const cRect = (this.canvas && typeof this.canvas.getBoundingClientRect === 'function')
+          ? this.canvas.getBoundingClientRect()
+          : { left: 0 };
+        if (rdEl && typeof rdEl.getBoundingClientRect === 'function') {
+          const rdRect = rdEl.getBoundingClientRect();
+          const occRight = Math.round(rdRect.right - (cRect.left || 0));
+          if (occRight > 80) {
+            this._preReturnDrawerOccludedRight = occRight;
+            this._preReturnDrawerClosedAt = Date.now();
+          }
+        }
+      }
       this.closeDrawer();
     }, true);
 

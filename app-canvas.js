@@ -574,7 +574,7 @@
       window.addEventListener(evtName, preventHoldVisual, { passive: false });
     });
 
-    window.addEventListener('resize', () => {
+    const scheduleViewportCanvasSync = () => {
       if (this._resizeRafPending) return;
       this._resizeRafPending = true;
       requestAnimationFrame(() => {
@@ -585,6 +585,26 @@
           this.render();
           return;
         }
+        if (typeof this._syncIosTopStatusGuard === 'function') {
+          this._syncIosTopStatusGuard();
+        }
+        if (this.canvas && this.canvas.parentElement && typeof this.canvas.parentElement.getBoundingClientRect === 'function') {
+          const cRect = this.canvas.parentElement.getBoundingClientRect();
+          const cw = Math.round(cRect.width || 0);
+          const ch = Math.round(cRect.height || 0);
+          const dpr = this.getCanvasDpr();
+          if (
+            cw >= 120 &&
+            ch >= 120 &&
+            cw === this.screenWidth &&
+            ch === this.screenHeight &&
+            this.canvas.width === Math.round(cw * dpr) &&
+            this.canvas.height === Math.round(ch * dpr)
+          ) {
+            this.updateCanvasRect();
+            return;
+          }
+        }
         this.updateCanvasRect();
         this.resizeCanvas();
         if (this._lastAppliedAudioStateObj && (this.isAudioPlaying || this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive)) {
@@ -594,7 +614,21 @@
         }
         this.render();
       });
-    });
+    };
+
+    window.addEventListener('resize', scheduleViewportCanvasSync);
+    if (typeof window !== 'undefined' && window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
+      window.visualViewport.addEventListener('resize', scheduleViewportCanvasSync);
+    }
+    if (typeof ResizeObserver === 'function' && this.canvas && this.canvas.parentElement) {
+      if (this._canvasContainerResizeObserver) {
+        try { this._canvasContainerResizeObserver.disconnect(); } catch (_) { }
+      }
+      this._canvasContainerResizeObserver = new ResizeObserver(() => {
+        scheduleViewportCanvasSync();
+      });
+      this._canvasContainerResizeObserver.observe(this.canvas.parentElement);
+    }
     window.addEventListener('scroll', () => {
       this.updateCanvasRect();
     }, { passive: true });

@@ -12503,6 +12503,120 @@ body.theme-light .custom-graph-empty {
   color: #64748b;
 }
 
+.custom-graph-search-box {
+  width: 100%;
+  height: 25px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.custom-graph-search-box:focus-within {
+  background: rgba(255, 255, 255, 0.075);
+  border-color: rgba(251, 191, 36, 0.55);
+}
+
+body.theme-light .custom-graph-search-box {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+body.theme-light .custom-graph-search-box:focus-within {
+  background: #ffffff;
+  border-color: #94a3b8;
+}
+
+.custom-graph-search-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+body.theme-light .custom-graph-search-icon {
+  color: #64748b;
+}
+
+.custom-graph-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 0;
+}
+
+.custom-graph-search-input::placeholder {
+  color: rgba(148, 163, 184, 0.72);
+  font-weight: 400;
+}
+
+body.theme-light .custom-graph-search-input {
+  color: #0f172a;
+}
+
+body.theme-light .custom-graph-search-input::placeholder {
+  color: #94a3b8;
+}
+
+.custom-graph-search-clear {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(148, 163, 184, 0.22);
+  color: #cbd5e1;
+  font-size: 9px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.custom-graph-search-clear:hover {
+  background: rgba(248, 113, 113, 0.28);
+  color: #fca5a5;
+}
+
+body.theme-light .custom-graph-search-clear {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+body.theme-light .custom-graph-search-clear:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.custom-graph-card.is-pro-locked {
+  opacity: 0.62;
+}
+
+.custom-graph-card.is-pro-locked:hover {
+  opacity: 0.86;
+}
+
+.custom-graph-lock-tag {
+  font-size: 10px;
+  margin-right: 3px;
+}
+
 
 /* ==========================================================================
    🟨 [가림막 포스트잇 '스티커' 도구 (#btnInkSticker · #btnPillSticker · 카드/뷰어 스티커)]

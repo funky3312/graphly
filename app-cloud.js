@@ -2547,8 +2547,7 @@
   _normalizeAndCapCustomGraphPresets(list) {
     if (!Array.isArray(list) || list.length === 0) return [];
     const cfg = this.getSubscriptionQuotaConfig();
-    const isPro = this.isProSubscriber();
-    const maxLimit = isPro ? cfg.proMaxCustomGraphs : cfg.freeMaxCustomGraphs;
+    const hardCap = Math.max(Number(cfg.proMaxCustomGraphs) || 100, Number(cfg.freeMaxCustomGraphs) || 3);
 
     const byId = new Map();
     const seenSig = new Set();
@@ -2566,8 +2565,8 @@
     });
 
     const uniqueList = Array.from(byId.values());
-    if (cfg.enforceCustomGraphLimit && !isPro && uniqueList.length > maxLimit) {
-      return uniqueList.slice(0, maxLimit);
+    if (cfg.enforceCustomGraphLimit && uniqueList.length > hardCap) {
+      return uniqueList.slice(0, hardCap);
     }
     return uniqueList;
   }
@@ -2575,22 +2574,32 @@
   getCustomGraphQuotaStatus() {
     const cfg = this.getSubscriptionQuotaConfig();
     const isPro = this.isProSubscriber();
-    const maxLimit = isPro ? cfg.proMaxCustomGraphs : cfg.freeMaxCustomGraphs;
-    if (Array.isArray(this.customGraphPresets) && cfg.enforceCustomGraphLimit && !isPro && this.customGraphPresets.length > maxLimit) {
+    const freeLimit = Number(cfg.freeMaxCustomGraphs) || 3;
+    const proLimit = Number(cfg.proMaxCustomGraphs) || 100;
+    const maxLimit = isPro ? proLimit : freeLimit;
+    const hardCap = Math.max(proLimit, freeLimit);
+    if (Array.isArray(this.customGraphPresets) && cfg.enforceCustomGraphLimit && this.customGraphPresets.length > hardCap) {
       this.customGraphPresets = this._normalizeAndCapCustomGraphPresets(this.customGraphPresets);
       try {
         localStorage.setItem(this._getCustomGraphsStorageKey(), JSON.stringify(this.customGraphPresets));
       } catch (e) { }
     }
-    const currentCount = Array.isArray(this.customGraphPresets) ? this.customGraphPresets.length : 0;
-    const isReached = Boolean(cfg.enforceCustomGraphLimit && !isPro && currentCount >= maxLimit);
-    const badgeText = isPro
-      ? `👑 Pro 무제한 (${currentCount}개)`
-      : `무료 ${ Math.min(currentCount, maxLimit) } / ${maxLimit}`;
+    const totalCount = Array.isArray(this.customGraphPresets) ? this.customGraphPresets.length : 0;
+    const isReached = Boolean(cfg.enforceCustomGraphLimit && totalCount >= maxLimit);
+    let badgeText = '';
+    if (isPro) {
+      badgeText = `👑 Pro ${totalCount} / ${maxLimit}`;
+    } else if (totalCount > maxLimit) {
+      badgeText = `무료 ${maxLimit} / ${maxLimit} (보관 ${totalCount})`;
+    } else {
+      badgeText = `무료 ${totalCount} / ${maxLimit}`;
+    }
     return {
       isPro,
-      currentCount: isPro ? currentCount : Math.min(currentCount, maxLimit),
+      currentCount: totalCount,
       maxLimit,
+      proLimit,
+      freeLimit,
       isReached,
       badgeText
     };
@@ -2645,7 +2654,7 @@
             ${formattedAmt ? `<div style="display:flex; justify-content:space-between; gap:8px;"><span style="opacity:0.75; font-weight:600;">결제 금액</span><strong style="color:#2563eb; font-weight:800;">${escapeText(formattedAmt)}</strong></div>` : ''}
             ${formattedExp ? `<div style="display:flex; justify-content:space-between; gap:8px;"><span style="opacity:0.75; font-weight:600;">이용 기간</span><strong style="font-weight:800;">${escapeText(formattedExp)}</strong></div>` : ''}
             <div style="border-top: 1px dashed rgba(148,163,184,0.35); margin-top: 4px; padding-top: 8px; font-size: 12px; color: #2563eb; font-weight: 700; text-align: center;">
-              👑 내 그래프 무제한 · 60분 연속 녹화 · 클라우드 즉시 활성화
+              👑 내 그래프 100개 · 60분 연속 녹화 · 클라우드 즉시 활성화
             </div>
           </div>
         ` : ''}
@@ -2835,6 +2844,7 @@
     } catch (e) { }
     this.customGraphPresets = [];
     this._renamingCustomGraphId = null;
+    this._customGraphSearchQuery = '';
     this._loadCustomGraphsFromStorage();
   }
 
@@ -3134,12 +3144,16 @@
       return null;
     }
 
-    // 👑 구독(Pro) vs 비구독(Free) 개수 제한 체크
+    // 👑 구독(Pro: 최대 100개) vs 비구독(Free: 최대 3개) 개수 제한 체크
     const quota = this.getCustomGraphQuotaStatus();
     if (quota.isReached) {
-      this.showToast(`👑 무료 버전은 [⭐ 내 그래프]를 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Pro 업그레이드 시 무제한 등록됩니다!`);
-      if (typeof this.openProPricingModal === 'function') {
-        this.openProPricingModal();
+      if (quota.isPro) {
+        this.showToast(`⚠️ [⭐ 내 그래프]는 최대 ${quota.maxLimit}개까지 저장할 수 있습니다. 안 쓰는 프리셋을 정리한 뒤 등록해 주세요!`);
+      } else {
+        this.showToast(`👑 무료 버전은 [⭐ 내 그래프]를 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Pro 업그레이드 시 최대 ${quota.proLimit}개까지 등록됩니다!`);
+        if (typeof this.openProPricingModal === 'function') {
+          this.openProPricingModal();
+        }
       }
       return null;
     }
@@ -3183,6 +3197,7 @@
       this.customGraphPresets = [];
     }
     this.customGraphPresets.push(newItem);
+    this._customGraphSearchQuery = '';
     this._saveCustomGraphsToStorage();
 
     this._currentCat = '⭐ 내 그래프';
@@ -3193,15 +3208,28 @@
         scrollEl.scrollTop = scrollEl.scrollHeight;
       }
     }, 10);
-    const assignedCode = 70 + this.customGraphPresets.length;
+    const savedIdx = this.customGraphPresets.findIndex(it => it && it.id === newItem.id);
+    const assignedCode = 71 + (savedIdx >= 0 ? savedIdx : Math.max(0, this.customGraphPresets.length - 1));
     this.showToast(`⭐ [${assignedCode}] ${newItem.name} 프리셋이 등록되었습니다!`);
     return newItem;
   }
 
   loadCustomGraphPreset(presetId) {
     if (!Array.isArray(this.customGraphPresets)) return false;
-    const item = this.customGraphPresets.find(it => it && it.id === presetId);
+    const idx = this.customGraphPresets.findIndex(it => it && it.id === presetId);
+    if (idx === -1) return false;
+    const item = this.customGraphPresets[idx];
     if (!item || !item.snapshot) return false;
+
+    const cfg = this.getSubscriptionQuotaConfig();
+    const freeLimit = Number(cfg.freeMaxCustomGraphs) || 3;
+    if (cfg.enforceCustomGraphLimit && !this.isProSubscriber() && idx >= freeLimit) {
+      this.showToast(`🔒 무료 버전은 기본 ${freeLimit}개까지 사용할 수 있습니다. Pro 활성화 시 보관된 ${this.customGraphPresets.length}개 프리셋이 즉시 잠금 해제됩니다!`);
+      if (typeof this.openProPricingModal === 'function') {
+        this.openProPricingModal();
+      }
+      return false;
+    }
 
     if (this.isGraphCovered) {
       return this.loadCustomPresetToPipCardInBoardMode(item);
@@ -3262,56 +3290,50 @@
     return true;
   }
 
-  renderCustomGraphPresetList(gridEl) {
-    const grid = gridEl || document.getElementById('funcGrid');
-    if (!grid) return;
-    grid.innerHTML = '';
+  _matchesCustomGraphSearchQuery(item, codeStr, rawQuery) {
+    const q = String(rawQuery || '').trim().toLowerCase();
+    if (!q) return true;
+    const haystack = `${codeStr || ''} ${item && item.name ? item.name : ''} ${item && item.badge ? item.badge : ''}`.toLowerCase();
+    const tokens = q.split(/\s+/).filter(Boolean);
+    for (let i = 0; i < tokens.length; i++) {
+      if (!haystack.includes(tokens[i])) return false;
+    }
+    return true;
+  }
 
-    const quota = this.getCustomGraphQuotaStatus();
-
-    const headerEl = document.createElement('div');
-    headerEl.className = 'func-cat-header func-preset-header';
-    headerEl.innerHTML = `
-      <span class="func-cat-title"><span>프리셋</span></span>
-      <span class="custom-graph-quota-badge">${quota.badgeText}</span>
-    `;
-    grid.appendChild(headerEl);
-
-    // 1번 고정 카드: [➕ 현재 그래프 등록]
-    const regWrap = document.createElement('div');
-    regWrap.className = 'custom-graph-register-wrap';
-
-    const btnAdd = document.createElement('button');
-    btnAdd.type = 'button';
-    btnAdd.id = 'btnRegisterCurrentGraph';
-    btnAdd.className = 'custom-graph-add-btn';
-    btnAdd.innerHTML = `
-      <span>➕ 현재 그래프 등록</span>
-      <span style="font-size:10px; opacity:0.8; font-weight:600;">세트 통째 저장</span>
-    `;
-    btnAdd.onclick = (e) => {
-      e.stopPropagation();
-      this.saveCurrentGraphToCustomPresets();
-    };
-    regWrap.appendChild(btnAdd);
-    grid.appendChild(regWrap);
-
-    const scrollList = document.createElement('div');
-    scrollList.className = 'custom-graph-scroll-list';
-    grid.appendChild(scrollList);
+  _populateCustomGraphScrollList(scrollList) {
+    if (!scrollList) return;
+    scrollList.innerHTML = '';
 
     if (!Array.isArray(this.customGraphPresets) || this.customGraphPresets.length === 0) {
       return;
     }
 
+    const cfg = this.getSubscriptionQuotaConfig();
+    const isPro = this.isProSubscriber();
+    const freeLimit = Number(cfg.freeMaxCustomGraphs) || 3;
+    const rawQuery = String(this._customGraphSearchQuery || '').trim();
+    const escapeHtml = (str) => String(str || '').replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+
+    let renderedCount = 0;
+
     this.customGraphPresets.forEach((item, idx) => {
       if (!item) return;
       const presetNum = 71 + idx;
       const codeStr = String(presetNum);
+      if (rawQuery && !this._matchesCustomGraphSearchQuery(item, codeStr, rawQuery)) {
+        return;
+      }
+      renderedCount++;
+
+      const isLockedForFree = Boolean(cfg.enforceCustomGraphLimit && !isPro && idx >= freeLimit);
       const card = document.createElement('div');
-      card.className = 'custom-graph-card';
+      card.className = isLockedForFree ? 'custom-graph-card is-pro-locked' : 'custom-graph-card';
       card.setAttribute('data-custom-graph-id', item.id);
-      if (presetNum <= 109) {
+      card.dataset.customPresetId = item.id;
+      if (!isLockedForFree && presetNum <= 109) {
         card.dataset.funcCode = codeStr;
       }
 
@@ -3319,7 +3341,7 @@
       if (isRenaming) {
         card.innerHTML = `
           <div style="display:flex; align-items:center; gap:6px; width:100%;">
-            <input type="text" class="custom-graph-rename-input" value="${(item.name || '').replace(/"/g, '&quot;')}"
+            <input type="text" class="custom-graph-rename-input" value="${escapeHtml(item.name || '')}"
               style="flex:1; min-width:0; padding:4px 7px; border-radius:6px; border:1px solid #f59e0b; background:rgba(0,0,0,0.25); color:inherit; font-size:11.5px; font-weight:600;" />
             <button type="button" class="custom-graph-act-btn save" title="저장" style="width:auto; padding:0 8px; background:#f59e0b; color:#fff; font-weight:700;">확인</button>
           </div>
@@ -3349,13 +3371,17 @@
         return;
       }
 
+      const safeTitle = escapeHtml(item.name || '나만의 그래프');
+      const safeBadge = escapeHtml(item.badge || '커스텀 그래프');
+      const lockBadgeHtml = isLockedForFree ? `<span class="custom-graph-lock-tag" title="Pro 전용 보관 프리셋">🔒</span>` : '';
+
       card.innerHTML = `
         <div class="custom-graph-card-left">
           <span class="func-num-badge">${codeStr}</span>
           <div class="custom-graph-thumb-box">${item.svgThumb || '📈'}</div>
           <div class="custom-graph-info">
-            <div class="custom-graph-title">${item.name || '나만의 그래프'}</div>
-            <div class="custom-graph-meta">${item.badge || '커스텀 그래프'}</div>
+            <div class="custom-graph-title">${lockBadgeHtml}${safeTitle}</div>
+            <div class="custom-graph-meta">${safeBadge}</div>
           </div>
         </div>
         <div class="custom-graph-actions">
@@ -3388,6 +3414,121 @@
 
       scrollList.appendChild(card);
     });
+
+    if (renderedCount === 0 && rawQuery) {
+      const emptyEl = document.createElement('div');
+      emptyEl.className = 'custom-graph-empty';
+      emptyEl.textContent = '일치하는 프리셋이 없습니다.';
+      scrollList.appendChild(emptyEl);
+    }
+
+    if (this._pendingGraphShortcutCatDigit && typeof this._highlightPendingGraphShortcutPrefix === 'function') {
+      this._highlightPendingGraphShortcutPrefix(this._pendingGraphShortcutCatDigit);
+    }
+  }
+
+  renderCustomGraphPresetList(gridEl) {
+    const grid = gridEl || document.getElementById('funcGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const quota = this.getCustomGraphQuotaStatus();
+
+    const headerEl = document.createElement('div');
+    headerEl.className = 'func-cat-header func-preset-header';
+    headerEl.innerHTML = `
+      <span class="func-cat-title"><span>프리셋</span></span>
+      <span class="custom-graph-quota-badge">${quota.badgeText}</span>
+    `;
+    grid.appendChild(headerEl);
+
+    // 1번 고정 영역: [➕ 현재 그래프 등록] + 초슬림 실시간 검색창
+    const regWrap = document.createElement('div');
+    regWrap.className = 'custom-graph-register-wrap';
+
+    const btnAdd = document.createElement('button');
+    btnAdd.type = 'button';
+    btnAdd.id = 'btnRegisterCurrentGraph';
+    btnAdd.className = 'custom-graph-add-btn';
+    btnAdd.innerHTML = `
+      <span>➕ 현재 그래프 등록</span>
+      <span style="font-size:10px; opacity:0.8; font-weight:600;">세트 통째 저장</span>
+    `;
+    btnAdd.onclick = (e) => {
+      e.stopPropagation();
+      this.saveCurrentGraphToCustomPresets();
+    };
+    regWrap.appendChild(btnAdd);
+
+    const searchBox = document.createElement('div');
+    searchBox.className = 'custom-graph-search-box';
+    searchBox.innerHTML = `
+      <span class="custom-graph-search-icon" aria-hidden="true">
+        <svg width="11.5" height="11.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7.5"></circle>
+          <line x1="20.5" y1="20.5" x2="16.4" y2="16.4"></line>
+        </svg>
+      </span>
+      <input type="text" id="inputCustomGraphSearch" class="custom-graph-search-input"
+        placeholder="프리셋 검색 (이름·번호)" autocomplete="off" spellcheck="false" />
+      <button type="button" id="btnClearCustomGraphSearch" class="custom-graph-search-clear" title="검색어 지우기" style="display: none;">✕</button>
+    `;
+    regWrap.appendChild(searchBox);
+    grid.appendChild(regWrap);
+
+    const scrollList = document.createElement('div');
+    scrollList.className = 'custom-graph-scroll-list';
+    grid.appendChild(scrollList);
+
+    const inpSearch = searchBox.querySelector('#inputCustomGraphSearch');
+    const btnClearSearch = searchBox.querySelector('#btnClearCustomGraphSearch');
+    const curQuery = String(this._customGraphSearchQuery || '');
+    if (inpSearch) {
+      inpSearch.value = curQuery;
+      if (btnClearSearch) {
+        btnClearSearch.style.display = curQuery.length > 0 ? 'inline-flex' : 'none';
+      }
+      inpSearch.onclick = (ev) => ev.stopPropagation();
+      inpSearch.onpointerdown = (ev) => ev.stopPropagation();
+      inpSearch.oninput = () => {
+        this._customGraphSearchQuery = inpSearch.value || '';
+        if (btnClearSearch) {
+          btnClearSearch.style.display = this._customGraphSearchQuery.length > 0 ? 'inline-flex' : 'none';
+        }
+        this._populateCustomGraphScrollList(scrollList);
+      };
+      inpSearch.onkeydown = (ev) => {
+        ev.stopPropagation();
+        if (ev.key === 'Escape') {
+          ev.preventDefault();
+          if (inpSearch.value) {
+            inpSearch.value = '';
+            this._customGraphSearchQuery = '';
+            if (btnClearSearch) btnClearSearch.style.display = 'none';
+            this._populateCustomGraphScrollList(scrollList);
+          } else {
+            try { inpSearch.blur(); } catch (err) { }
+          }
+        } else if (ev.key === 'Enter' && !ev.isComposing) {
+          ev.preventDefault();
+          try { inpSearch.blur(); } catch (err) { }
+        }
+      };
+    }
+    if (btnClearSearch) {
+      btnClearSearch.onclick = (ev) => {
+        ev.stopPropagation();
+        this._customGraphSearchQuery = '';
+        if (inpSearch) {
+          inpSearch.value = '';
+          try { inpSearch.focus(); } catch (err) { }
+        }
+        btnClearSearch.style.display = 'none';
+        this._populateCustomGraphScrollList(scrollList);
+      };
+    }
+
+    this._populateCustomGraphScrollList(scrollList);
   }
 
   _hashLocalAccountPassword(rawPw) {
