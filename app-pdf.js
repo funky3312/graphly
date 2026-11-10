@@ -836,6 +836,7 @@
       if (this.isAudioRecordPaused) {
         const pausedDelta = Math.max(0, performance.now() - (this.audioRecordPauseStartMs || performance.now()));
         this.audioRecordTotalPausedMs = (this.audioRecordTotalPausedMs || 0) + pausedDelta;
+        this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + pausedDelta;
         this.isAudioRecordPaused = false;
         this.audioRecordPauseStartMs = 0;
         if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'paused') {

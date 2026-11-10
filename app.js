@@ -553,6 +553,92 @@
     return Math.max(0, Math.round(now - this.audioRecordStartMs - pausedTotal));
   }
 
+  getAudioSessionElapsedMs() {
+    if (!this.isAudioRecording || !this.audioSessionStartMs) return 0;
+    const now = this.isAudioRecordPaused
+      ? (this.audioRecordPauseStartMs || performance.now())
+      : performance.now();
+    const pausedTotal = this.audioSessionTotalPausedMs || 0;
+    return Math.max(0, Math.round(now - this.audioSessionStartMs - pausedTotal));
+  }
+
+  getMaxAudioRecordDurationMs() {
+    const cfg = (typeof this.getSubscriptionQuotaConfig === 'function')
+      ? this.getSubscriptionQuotaConfig()
+      : null;
+    const isPro = (typeof this.isProSubscriber === 'function')
+      ? this.isProSubscriber()
+      : Boolean(this.isProUser);
+    if (isPro) {
+      return (cfg && cfg.proMaxRecordMs) ? cfg.proMaxRecordMs : (60 * 60 * 1000);
+    }
+    return (cfg && cfg.freeMaxRecordMs) ? cfg.freeMaxRecordMs : (10 * 60 * 1000);
+  }
+
+  _updateAudioRecordProgressRings(forceSync = false) {
+    const btnFab = document.getElementById('btnAudioRecordToggle');
+    const btnStealthDot = document.getElementById('btnStealthRecordDot');
+    const ringFab = document.getElementById('ringAudioRecordFab');
+    const ringStealth = document.getElementById('ringStealthRecordDot');
+    const cFab = 65.9734;     // 2 * Math.PI * 10.5
+    const cStealth = 49.0088; // 2 * Math.PI * 7.8
+
+    if (!this.isAudioRecording) {
+      if (ringFab) ringFab.setAttribute('stroke-dashoffset', '0');
+      if (ringStealth) ringStealth.setAttribute('stroke-dashoffset', '0');
+      if (btnFab) btnFab.classList.remove('is-ending-soon');
+      if (btnStealthDot) btnStealthDot.classList.remove('is-ending-soon');
+      this._lastRingOffsetFab = 0;
+      this._lastRingOffsetStealth = 0;
+      this._lastRingEndingSoon = false;
+      return;
+    }
+
+    const maxDurationMs = Math.max(1000, this.getMaxAudioRecordDurationMs());
+    const sessionElapsed = this.getAudioSessionElapsedMs();
+
+    // 제한 시간(무료 10분 / 구독 60분) 도달 시 데이터 보호를 위해 안전하게 자동 마감
+    if (sessionElapsed >= maxDurationMs && !this._isAutoStoppingByLimit) {
+      this._isAutoStoppingByLimit = true;
+      const isPro = (typeof this.isProSubscriber === 'function') ? this.isProSubscriber() : Boolean(this.isProUser);
+      this.stopAudioRecording({ silentToast: true }).then(() => {
+        this._isAutoStoppingByLimit = false;
+        this.showToast(
+          isPro
+            ? '⏹ 60분 연속 녹화가 안전하게 자동 완료되었습니다.'
+            : '⏹ 무료 플랜 10분 녹화가 자동 완료되었습니다. (Pro 구독 시 60분 연속 녹화)'
+        );
+      }).catch(() => {
+        this._isAutoStoppingByLimit = false;
+      });
+      return;
+    }
+
+    // 필기 획을 긋고 있는 도중에는 DOM 속성 갱신을 건너뛰어 필기 성능 영향 0% 보장
+    if (!forceSync && (this.isDrawingInk || this.isStylusDrawing)) return;
+
+    const elapsedRatio = Math.max(0, Math.min(1, sessionElapsed / maxDurationMs));
+    const remainRatio = 1 - elapsedRatio;
+    const isEndingSoon = remainRatio <= 0.10; // 남은 시간 10% 이하 (무료 1분 / 구독 6분)
+
+    const offFab = Math.round(elapsedRatio * cFab * 100) / 100;
+    const offStealth = Math.round(elapsedRatio * cStealth * 100) / 100;
+
+    if (forceSync || Math.abs(offFab - (this._lastRingOffsetFab || 0)) >= 0.04) {
+      this._lastRingOffsetFab = offFab;
+      if (ringFab) ringFab.setAttribute('stroke-dashoffset', String(offFab));
+    }
+    if (forceSync || Math.abs(offStealth - (this._lastRingOffsetStealth || 0)) >= 0.04) {
+      this._lastRingOffsetStealth = offStealth;
+      if (ringStealth) ringStealth.setAttribute('stroke-dashoffset', String(offStealth));
+    }
+    if (forceSync || isEndingSoon !== Boolean(this._lastRingEndingSoon)) {
+      this._lastRingEndingSoon = isEndingSoon;
+      if (btnFab) btnFab.classList.toggle('is-ending-soon', isEndingSoon);
+      if (btnStealthDot) btnStealthDot.classList.toggle('is-ending-soon', isEndingSoon);
+    }
+  }
+
   togglePauseAudioRecording(forcePause = null) {
     if (!this.isAudioRecording) return false;
     const nextPaused = (typeof forcePause === 'boolean') ? forcePause : !this.isAudioRecordPaused;
@@ -569,6 +655,7 @@
     } else {
       const pausedDelta = Math.max(0, performance.now() - (this.audioRecordPauseStartMs || performance.now()));
       this.audioRecordTotalPausedMs = (this.audioRecordTotalPausedMs || 0) + pausedDelta;
+      this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + pausedDelta;
       this.isAudioRecordPaused = false;
       this.audioRecordPauseStartMs = 0;
       if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'paused') {
@@ -933,6 +1020,9 @@
       this.audioTimeline = Array.isArray(prevSync.timeline) ? [...prevSync.timeline] : [];
       this.audioLaserStrokes = Array.isArray(prevSync.laserStrokes) ? [...prevSync.laserStrokes] : [];
       this.audioErasedStrokes = Array.isArray(prevSync.erasedStrokes) ? [...prevSync.erasedStrokes] : [];
+      if (this.isAudioRecordPaused && this.audioRecordPauseStartMs) {
+        this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + Math.max(0, performance.now() - this.audioRecordPauseStartMs);
+      }
       this.audioRecordStartMs = performance.now() - baseOffsetMs;
       this.audioRecordPauseStartMs = this.isAudioRecordPaused ? performance.now() : 0;
       this.audioRecordTotalPausedMs = 0;
@@ -941,6 +1031,9 @@
       this._lastRecordedStateHash = '';
       this._recordAudioWorkspaceStateIfNeeded(true);
     } else {
+      if (this.isAudioRecordPaused && this.audioRecordPauseStartMs) {
+        this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + Math.max(0, performance.now() - this.audioRecordPauseStartMs);
+      }
       this._resumedSlideBaseOffsetMs = 0;
       this._priorSlideAudioSegments = [];
       this.audioTimeline = [];
@@ -2354,9 +2447,13 @@
     this._autoPausedByPdfModal = false;
     this._resumedSlideBaseOffsetMs = 0;
     this._priorSlideAudioSegments = [];
-    this.audioRecordStartMs = performance.now();
+    const startPerfNow = performance.now();
+    this.audioRecordStartMs = startPerfNow;
+    this.audioSessionStartMs = startPerfNow;
     this.audioRecordPauseStartMs = 0;
     this.audioRecordTotalPausedMs = 0;
+    this.audioSessionTotalPausedMs = 0;
+    this._isAutoStoppingByLimit = false;
     this._lastAudioCursorRecordMs = -100;
     this._lastAudioStateRecordMs = -100;
     this._lastRecordedStateHash = '';
@@ -2376,11 +2473,13 @@
 
     const lblTimer = document.getElementById('lblAudioRecordTimer');
     if (lblTimer) lblTimer.textContent = '00:00';
+    this._updateAudioRecordProgressRings(true);
     if (this._audioRecordTimerId) clearInterval(this._audioRecordTimerId);
     this._audioRecordTimerId = setInterval(() => {
       if (!this.isAudioRecording) return;
       const elapsed = this.getAudioRecordElapsedMs();
       if (lblTimer) lblTimer.textContent = this.formatAudioTimeMmSs(elapsed);
+      this._updateAudioRecordProgressRings(false);
       this._recordAudioWorkspaceStateIfNeeded(false);
     }, 200);
 
@@ -2388,7 +2487,7 @@
     this.showToast('🎬 영상 녹화가 시작되었습니다. (다시 누르면 일시정지 / 종료)');
   }
 
-  async stopAudioRecording() {
+  async stopAudioRecording(options = {}) {
     if (!this.isAudioRecording) return null;
     if (this._pendingSlideRecorderStarter) {
       await this._pendingSlideRecorderStarter.catch(() => { });
@@ -2406,6 +2505,8 @@
     this._isAudioRecMenuOpen = false;
     this.audioRecordPauseStartMs = 0;
     this.audioRecordTotalPausedMs = 0;
+    this.audioSessionTotalPausedMs = 0;
+    this._updateAudioRecordProgressRings(true);
 
     if (this._audioRecordTimerId) {
       clearInterval(this._audioRecordTimerId);
@@ -2506,11 +2607,14 @@
     this._isAudioSyncPlayerVisible = false;
     this.audioReplayViewMode = 'video';
     this.syncAudioRecordUI();
-    this.showToast('⏹ 영상 녹화가 완료되었습니다.');
+    if (!options || !options.silentToast) {
+      this.showToast('⏹ 영상 녹화가 완료되었습니다.');
+    }
     return this.audioSyncData;
   }
 
   syncAudioRecordUI() {
+    this._updateAudioRecordProgressRings(true);
     const btnFab = document.getElementById('btnAudioRecordToggle');
     const sideMenu = document.getElementById('panelAudioRecordActions');
     const wrapStealthDot = document.getElementById('wrapStealthRecordDot');

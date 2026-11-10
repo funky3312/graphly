@@ -2309,7 +2309,9 @@
         freeMaxSlides: 3,              // 비구독(무료) 회원: 슬라이드 연속 생성 기준 (향후 연동용)
         proMaxSlides: 100,             // Pro 구독 회원: 슬라이드 최대 100장
         freeMaxQuickLibrary: 3,        // 비구독(무료) 회원: 빠른 보관함 최대 3개
-        proMaxQuickLibrary: 200        // Pro 구독 회원: 빠른 보관함 최대 200개
+        proMaxQuickLibrary: 200,       // Pro 구독 회원: 빠른 보관함 최대 200개
+        freeMaxRecordMs: 10 * 60 * 1000, // 비구독(무료) 회원: 1회 녹화 최대 10분 (600,000ms)
+        proMaxRecordMs: 60 * 60 * 1000   // Pro 구독 회원: 1회 녹화 최대 60분 (3,600,000ms)
       };
     }
     return this.SUBSCRIPTION_QUOTA_CONFIG;

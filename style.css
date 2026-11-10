@@ -65,7 +65,9 @@ body.theme-light {
   :root {
     --ios-top-safe-guard: env(safe-area-inset-top, 0px);
   }
-  @media (display-mode: standalone), (display-mode: fullscreen) {
+
+  @media (display-mode: standalone),
+  (display-mode: fullscreen) {
     :root {
       --ios-top-safe-guard: max(env(safe-area-inset-top, 0px), 36px);
     }
@@ -1820,8 +1822,16 @@ body.fullscreen-mode .btn-exit-fullscreen {
 }
 
 @keyframes dmCaretBlink {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
+
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .dm-placeholder {
@@ -11328,13 +11338,32 @@ body.theme-light .pdf-crop-active-pill .pdf-crop-active-cancel-x {
    - 스텔스 녹화 UX: 일반 모드에서는 빨간 번쩍임 없이 버튼 내부 아이콘만 ■(녹화중) / ⏸(일시정지)로 조용히 전환
    - 아이콘 모두 숨김 모드(ui-all-hidden-mode)에서는 우상단 은은한 레드닷(#wrapStealthRecordDot)으로 표시 및 제어
    ========================================================================== */
+#btnAudioRecordToggle .fab-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+}
+
 #btnAudioRecordToggle .rec-icon-cam {
   display: block;
 }
 
+#btnAudioRecordToggle .rec-progress-ring-svg,
 #btnAudioRecordToggle .rec-icon-square,
 #btnAudioRecordToggle .rec-icon-pause {
   display: none;
+}
+
+#btnAudioRecordToggle.is-recording .rec-progress-ring-svg {
+  display: block !important;
+  position: absolute;
+  inset: 0;
+  width: 26px;
+  height: 26px;
+  pointer-events: none;
 }
 
 #btnAudioRecordToggle.is-recording:not(.is-paused) .rec-icon-cam,
@@ -11344,6 +11373,8 @@ body.theme-light .pdf-crop-active-pill .pdf-crop-active-cancel-x {
 
 #btnAudioRecordToggle.is-recording:not(.is-paused) .rec-icon-square {
   display: block !important;
+  position: relative;
+  z-index: 1;
 }
 
 #btnAudioRecordToggle.is-recording.is-paused .rec-icon-cam,
@@ -11353,6 +11384,36 @@ body.theme-light .pdf-crop-active-pill .pdf-crop-active-cancel-x {
 
 #btnAudioRecordToggle.is-recording.is-paused .rec-icon-pause {
   display: block !important;
+  position: relative;
+  z-index: 1;
+}
+
+/* ⭕ 시계방향 감소 원형 게이지 링 (무료 10분 / 구독 60분 한 바퀴, 남은 시간 10% 이하 시 진하게 강조) */
+.rec-progress-ring-track {
+  stroke: rgba(148, 163, 184, 0.22);
+}
+
+.rec-progress-ring-bar {
+  stroke: rgba(239, 68, 68, 0.50);
+  stroke-linecap: round;
+  transform: rotate(-90deg) scale(1, -1);
+  transform-origin: 50% 50%;
+  transition: stroke 0.25s ease, stroke-width 0.25s ease;
+}
+
+#btnAudioRecordToggle.is-recording.is-paused .rec-progress-ring-bar,
+.stealth-rec-dot-btn.is-paused .rec-progress-ring-bar {
+  stroke: rgba(245, 158, 11, 0.68);
+}
+
+#btnAudioRecordToggle.is-recording.is-ending-soon:not(.is-paused) .rec-progress-ring-bar,
+.stealth-rec-dot-btn.is-ending-soon:not(.is-paused) .rec-progress-ring-bar {
+  stroke: #dc2626;
+  stroke-width: 2.15;
+}
+
+#btnAudioRecordToggle.is-recording.is-ending-soon:not(.is-paused) .rec-icon-square {
+  color: #dc2626;
 }
 
 /* 🔴 아이콘 모두 숨김 상태 전용: 우측 상단 초소형 스텔스 레드닷 & 제어 메뉴 */
@@ -11368,6 +11429,7 @@ body.theme-light .pdf-crop-active-pill .pdf-crop-active-cancel-x {
 }
 
 .stealth-rec-dot-btn {
+  position: relative;
   width: 24px;
   height: 24px;
   padding: 0;
@@ -11381,6 +11443,13 @@ body.theme-light .pdf-crop-active-pill .pdf-crop-active-cancel-x {
   transition: transform 0.15s ease, background 0.15s ease;
 }
 
+.stealth-rec-progress-ring-svg {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+
 .stealth-rec-dot-btn:hover {
   background: rgba(239, 68, 68, 0.10);
   transform: scale(1.08);
@@ -11391,12 +11460,19 @@ body.theme-light .pdf-crop-active-pill .pdf-crop-active-cancel-x {
 }
 
 .stealth-rec-dot-core {
-  width: 7px;
-  height: 7px;
+  position: relative;
+  z-index: 1;
+  width: 6.5px;
+  height: 6.5px;
   border-radius: 50%;
   background: rgba(239, 68, 68, 0.72);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
-  transition: background 0.2s ease, transform 0.2s ease;
+  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stealth-rec-dot-btn.is-ending-soon:not(.is-paused) .stealth-rec-dot-core {
+  background: #dc2626;
+  box-shadow: 0 0 0 1.5px rgba(220, 38, 38, 0.24);
 }
 
 .stealth-rec-dot-btn.is-paused .stealth-rec-dot-core {
@@ -16041,12 +16117,10 @@ body:not(.theme-light) #modalShare .settings-clean-btn.export-btn-success-fx:hov
   left: -120%;
   width: 75%;
   height: 100%;
-  background: linear-gradient(
-    105deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.32) 50%,
-    rgba(255, 255, 255, 0) 100%
-  );
+  background: linear-gradient(105deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.32) 50%,
+      rgba(255, 255, 255, 0) 100%);
   transform: skewX(-20deg);
   pointer-events: none;
   animation: exportBtnShimmerSweep 0.58s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -16073,10 +16147,12 @@ body:not(.theme-light) #modalShare .settings-clean-btn.export-btn-success-fx:hov
     transform: scale(0.95);
     box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.52);
   }
+
   45% {
     transform: scale(1.035);
     box-shadow: 0 0 0 6px rgba(37, 99, 235, 0);
   }
+
   100% {
     transform: scale(1);
     box-shadow: 0 3px 10px rgba(37, 99, 235, 0.22);
@@ -16087,6 +16163,7 @@ body:not(.theme-light) #modalShare .settings-clean-btn.export-btn-success-fx:hov
   0% {
     left: -110%;
   }
+
   100% {
     left: 145%;
   }
@@ -16097,10 +16174,12 @@ body:not(.theme-light) #modalShare .settings-clean-btn.export-btn-success-fx:hov
     opacity: 0;
     transform: scale(0.25) rotate(-55deg);
   }
+
   60% {
     opacity: 1;
     transform: scale(1.18) rotate(8deg);
   }
+
   100% {
     opacity: 1;
     transform: scale(1) rotate(0deg);
