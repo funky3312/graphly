@@ -575,20 +575,25 @@
     });
 
     window.addEventListener('resize', () => {
-      if (typeof this._syncReplayFixedStageLayout === 'function' && this._isFixedReplayStageActive()) {
-        this._syncReplayFixedStageLayout();
+      if (this._resizeRafPending) return;
+      this._resizeRafPending = true;
+      requestAnimationFrame(() => {
+        this._resizeRafPending = false;
+        if (typeof this._syncReplayFixedStageLayout === 'function' && this._isFixedReplayStageActive()) {
+          this._syncReplayFixedStageLayout();
+          this.updateCanvasRect();
+          this.render();
+          return;
+        }
         this.updateCanvasRect();
+        this.resizeCanvas();
+        if (this._lastAppliedAudioStateObj && (this.isAudioPlaying || this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive)) {
+          const lastKf = this._lastAppliedAudioStateObj;
+          this._lastAppliedAudioStateObj = null;
+          this._applyAudioWorkspaceKeyframe(lastKf);
+        }
         this.render();
-        return;
-      }
-      this.updateCanvasRect();
-      this.resizeCanvas();
-      if (this._lastAppliedAudioStateObj && (this.isAudioPlaying || this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive)) {
-        const lastKf = this._lastAppliedAudioStateObj;
-        this._lastAppliedAudioStateObj = null;
-        this._applyAudioWorkspaceKeyframe(lastKf);
-      }
-      this.render();
+      });
     });
     window.addEventListener('scroll', () => {
       this.updateCanvasRect();
@@ -611,11 +616,18 @@
       if (this.isStudentAudioVideoOnlyMode) return;
       this._lastPointerEvent = e;
       this._erasedInCurrentStroke = false;
+      this._currentEraseUndoEntry = null;
       const isForceSpaceOrWheelPan = Boolean(this.isSpacePressed || (e && e.button === 1));
-      // 🌟 [iCanScreen 급 0ms 초저지연]: 펜/형광펜/지우개 필기 및 스페이스+드래그 팬 이동 시에는 매 터치마다 전체 상태를 JSON.stringify 하는 무거운 스냅샷 생성을 100% 생략!
-      const isInkFastPath = isForceSpaceOrWheelPan || (this.isInkMode && (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter' || this.activeInkTool === 'eraser')) || this.isStylusEraserEvent(e);
-      if (this.isGraphCovered && typeof this.deselectAllPipGraphCards === 'function') {
-        if (!isInkFastPath || this._activeCardLasso || this._isInteractingWithPipCard) {
+      const isRawTouchEvent = Boolean(e && (e.pointerType === 'touch' || (e.touches && e.touches.length > 0 && !e.pointerType)));
+      const isWideCapacitiveFinger = Boolean(e && e.pointerType === 'touch' && ((e.width || 0) >= 32 || (e.height || 0) >= 32));
+      const isFingerOrPalmTouch = isRawTouchEvent && (this.isStylusPalmRejectionActive() || isWideCapacitiveFinger);
+      // 🌟 [iCanScreen 급 0ms 초저지연]: 펜/형광펜/지우개/레이저/스티커/올가미 필기 및 스페이스+드래그 팬 이동 시에는 매 터치마다 전체 상태를 JSON.stringify 하는 무거운 스냅샷 생성을 100% 생략!
+      const isInkFastPath = isForceSpaceOrWheelPan || (this.isInkMode && (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter' || this.activeInkTool === 'eraser' || this.activeInkTool === 'laser' || this.activeInkTool === 'sticker' || this.activeInkTool === 'lasso')) || this.isStylusEraserEvent(e);
+      if (this.isGraphCovered && !isFingerOrPalmTouch && typeof this.deselectAllPipGraphCards === 'function') {
+        const hasActivePipMode = (typeof this._hasAnyActivePipCardSelectionOrMode === 'function')
+          ? this._hasAnyActivePipCardSelectionOrMode()
+          : false;
+        if (!isInkFastPath || hasActivePipMode || this._activeCardLasso || this._isInteractingWithPipCard) {
           this.deselectAllPipGraphCards();
         }
       }
@@ -644,9 +656,6 @@
       // 🛡️ [아이패드 손날(touch) vs 펜슬/마우스(pen/mouse) 완벽 분리]:
       // 수선(📍), 텍스트(🔤), 영역캡처(📸) 등 정밀 도구 모드에서는 손날(e.pointerType === 'touch')이 닿아도
       // 절대 모드가 풀리거나 오작동하지 않고 오직 펜슬(pen)과 마우스(mouse)로만 작동합니다!
-      const isRawTouchEvent = Boolean(e && (e.pointerType === 'touch' || (e.touches && e.touches.length > 0 && !e.pointerType)));
-      const isWideCapacitiveFinger = Boolean(e && e.pointerType === 'touch' && ((e.width || 0) >= 32 || (e.height || 0) >= 32));
-      const isFingerOrPalmTouch = isRawTouchEvent && (this.isStylusPalmRejectionActive() || isWideCapacitiveFinger);
 
       // 🌟 [필기 모드 가상 스타일러스 펜]: 터치/클릭 즉시 펜 위치 동기화
       if (this.isInkMode && !isFingerOrPalmTouch) {
@@ -886,7 +895,6 @@
         if (this.virtualStylusEl) this.virtualStylusEl.classList.add('drawing');
         this.updateStylusPenPosition(pos.x, pos.y, e);
         this.eraseInkAtPoint(pos.x, pos.y);
-        this.render();
         return;
       }
 
@@ -2067,7 +2075,6 @@
         const isStylusEraser = this.isStylusEraserEvent(e) || this._isTemporaryStylusEraser;
         if (this.activeInkTool === 'eraser' || isStylusEraser) {
           this.eraseInkAtPoint(pos.x, pos.y);
-          this.requestRender();
           return;
         } else if (this.activeInkTool === 'laser' && this.currentMainLaserStroke) {
           const nowPerf = performance.now();
@@ -2143,12 +2150,11 @@
             }
           }
           const minRawDist = (e.pointerType === 'pen') ? inkProfile.minRawDistPen : inkProfile.minRawDistMouse;
-          const prevInkPos = this._lastInkScreenPos || { x: pos.x, y: pos.y };
-          const frameDx = pos.x - prevInkPos.x;
-          const frameDy = pos.y - prevInkPos.y;
-          const frameDist = Math.hypot(frameDx, frameDy);
+          const recTMove = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
 
           let addedPoints = 0;
+          let lastRecSx = pos.x;
+          let lastRecSy = pos.y;
           for (let i = 0; i < events.length; i++) {
             const ev = events[i];
             const evTs = (typeof ev.timeStamp === 'number' && ev.timeStamp > 0) ? ev.timeStamp : 0;
@@ -2159,14 +2165,6 @@
               this._lastInkSampleTs = evTs;
             }
             const pPos = (ev === e && events.length === 1) ? pos : getPos(ev);
-
-            // 다중 coalesced 샘플(PC)일 때 이전 프레임 중복/역주행 점 스킵
-            if (events.length > 1 && i < events.length - 1 && frameDist > 1.5) {
-              const curSaving = this._lastInkScreenPos || prevInkPos;
-              const stepVx = pPos.x - curSaving.x;
-              const stepVy = pPos.y - curSaving.y;
-              if (stepVx * frameDx + stepVy * frameDy <= 0) continue;
-            }
 
             const lastRaw = this._lastRawInkScreenPos;
             if (lastRaw) {
@@ -2233,11 +2231,8 @@
               dtMs
             );
             this._lastPressure = pressure;
-            const recTMove = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
-            if (recTMove !== undefined) {
-              this.currentInkStroke.tEnd = recTMove;
-              this.recordAudioCursorPoint(sx, sy, this.currentInkStroke.color, true);
-            }
+            lastRecSx = sx;
+            lastRecSy = sy;
 
             if (!this._liveBezierScreenPts) {
               this._liveBezierScreenPts = [];
@@ -2257,6 +2252,10 @@
             if (!this.currentInkStroke.isHighlighter) {
               this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
             }
+          }
+          if (addedPoints > 0 && recTMove !== undefined) {
+            this.currentInkStroke.tEnd = recTMove;
+            this.recordAudioCursorPoint(lastRecSx, lastRecSy, this.currentInkStroke.color, true);
           }
           // 일반 펜 필기 중에는 전체 화면 재렌더링(requestRender)을 호출하지 않아 2360x1640 캔버스 복사 부하가 0.0%입니다!
           if (addedPoints > 0 && this.currentInkStroke.isHighlighter) {
@@ -3246,6 +3245,7 @@
         this._hasSceneFreeze = false;
         const wasOneShotEraser = (this.activeInkTool === 'eraser' && !this._isTemporaryStylusEraser);
         this._erasedInCurrentStroke = false;
+        this._currentEraseUndoEntry = null;
         this._preDragState = null;
         const finishedStroke = this.currentInkStroke;
         if (finishedStroke && this.isAudioRecording) {
@@ -3923,6 +3923,17 @@
             this.toggleDropLineMode(false);
             return;
           }
+          if (this.isGraphCovered && typeof this._hasAnyActivePipCardSelectionOrMode === 'function' && this._hasAnyActivePipCardSelectionOrMode()) {
+            const hasPipDl = Boolean(
+              (this.pipGraphLiveSnap && this.pipGraphLiveSnap.isPipDropLineMode) ||
+              (Array.isArray(this.extraGraphCards) && this.extraGraphCards.some(c => c && c.liveSnap && c.liveSnap.isPipDropLineMode))
+            );
+            if (hasPipDl && typeof this.deselectAllPipGraphCards === 'function') {
+              e.preventDefault();
+              this.deselectAllPipGraphCards();
+              return;
+            }
+          }
           if (this.isTextToolMode) {
             e.preventDefault();
             this.toggleTextToolMode(false);
@@ -4305,9 +4316,6 @@
   // --- [초고속 무결점 렌더링 파이프라인 (5개 겹쳐도 0.1ms 미만)] ---
   render(targetCtx = this.ctx, width = this.screenWidth, height = this.screenHeight, isExport = false) {
     if (this.isPdfModalOpen && !isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) return;
-    if (this.isGraphCovered && !isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) {
-      this.updateProblemCardPosition(true);
-    }
     const ctx = targetCtx;
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
 
@@ -4365,6 +4373,10 @@
         }
       }
       return;
+    }
+
+    if (this.isGraphCovered && !isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) {
+      this.updateProblemCardPosition(true);
     }
 
     if (this.isAudioRecording && !isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) {
@@ -7201,12 +7213,13 @@
       abs: t.abs || false
     }));
 
-    // 4) 색상: 색상 고정 모드면 고정 색상, 자동 배색이면 원본과 구별되는 컬러 배정
-    const palette = ['#ff7675', '#00cec9', '#a29bfe', '#ffeaa7', '#74b9ff', '#fd79a8', '#55efc4'];
-    const filteredColors = palette.filter(c => c.toLowerCase() !== (src.color || '').toLowerCase());
+    // 4) 색상: 색상 고정 모드면 고정 색상, 자동 배색이면 지정된 순환 컬러 배정
+    const autoSeq = (Array.isArray(this.colorPalette) && this.colorPalette.length > 0)
+      ? this.colorPalette
+      : ['#c74440', '#2d70b3', '#388c46', '#6042a6'];
     const nextColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
       ? this.fixedGraphColor
-      : filteredColors[this.graphs.length % filteredColors.length];
+      : autoSeq[this.graphs.length % autoSeq.length];
 
     // 5) 새 그래프 객체 생성 및 상호 대칭 연동 (Linked Inverse)
     if (!src.id) src.id = Date.now() - 1;
@@ -7527,12 +7540,13 @@
     this.pushHistoryState();
     const src = this.graphs[idx];
 
-    // 색상 팔레트 배정 (색상 고정 모드면 고정 색상 유지)
-    const palette = ['#ffeaa7', '#00cec9', '#ff7675', '#a29bfe', '#74b9ff', '#fd79a8', '#55efc4'];
-    const filteredColors = palette.filter(c => c.toLowerCase() !== (src.color || '').toLowerCase());
+    // 색상 팔레트 배정 (색상 고정 모드면 고정 색상 유지, 자동 배색이면 지정된 순환 컬러 배정)
+    const autoSeq = (Array.isArray(this.colorPalette) && this.colorPalette.length > 0)
+      ? this.colorPalette
+      : ['#c74440', '#2d70b3', '#388c46', '#6042a6'];
     const nextColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
       ? this.fixedGraphColor
-      : filteredColors[this.graphs.length % filteredColors.length];
+      : autoSeq[this.graphs.length % autoSeq.length];
 
     // 🌟 [대표님 기획: 복제 시 x축 평행이동 오프셋]: 원본과 겹치지 않게 x축 방향으로만 약간(+1.5) 평행이동 상태로 생성!
     // 일반 함수(및 연동 해제된 역함수: 로그·무리·유리 등)는 핸들 좌표를 직접 +1.5 이동시켜 곡선과 핸들·점근선이 100% 일치하게 생성!

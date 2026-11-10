@@ -1220,7 +1220,16 @@ body.theme-light .func-btn.active .func-num-badge {
   border-radius: 50%;
   cursor: pointer;
   border: 2px solid transparent;
-  transition: transform 0.12s ease;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  line-height: 1;
+  user-select: none;
 }
 
 .color-dot:hover {
@@ -4700,8 +4709,9 @@ body.pdf-modal-open #lassoActionFloatingBar {
   margin-top: 0;
   margin-bottom: 5px;
   padding: 0 7px 0 6px;
-  background: rgba(15, 23, 42, 0.90);
-  backdrop-filter: blur(12px);
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
@@ -5030,8 +5040,9 @@ body.theme-light .problem-card-body {
 
 /* 2. 문제 창 하단 도킹 컨트롤러 바: 칠판용 다크 네이비 대신 깔끔한 화이트 글래스모피즘 */
 body.theme-light .problem-card-header {
-  background: rgba(255, 255, 255, 0.95) !important;
-  backdrop-filter: blur(12px) !important;
+  background: rgba(255, 255, 255, 0.97) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border: 1px solid rgba(0, 0, 0, 0.10) !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
 }
@@ -8869,11 +8880,11 @@ body.theme-light .btn-cloud-export-item:hover {
   gap: 5px;
   padding: 6px 6.5px 7.5px 6.5px;
   border-radius: 15px;
-  background: rgba(15, 23, 42, 0.93);
+  background: rgba(15, 23, 42, 0.95);
   border: 1.3px solid rgba(148, 163, 184, 0.28);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.33), 0 2px 6px rgba(0, 0, 0, 0.18);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;

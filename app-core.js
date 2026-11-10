@@ -54,8 +54,14 @@ class GraphApp {
       '#10ac84', // 11: 딥 민트
       '#ee5253'  // 12: 크림슨 레드
     ];
-    // 기본 테마(white_paper)에 맞춰 초기 팔레트 설정
-    this.colorPalette = [...this.lightColorPalette];
+    // 기본 자동 배색 순환 배열 (축이 검정이므로 1:빨강, 2:파랑, 3:초록, 4:보라 4색을 기본 순서로 설정)
+    this.defaultAutoColorSequence = [
+      '#c74440', // 1: 빨강
+      '#2d70b3', // 2: 파랑
+      '#388c46', // 3: 초록
+      '#6042a6'  // 4: 보라
+    ];
+    this.autoColorSequence = [...this.defaultAutoColorSequence];
     this.graphColorMode = 'auto';
     this.fixedGraphColor = '#1e293b';
     this.defaultGraphLineWidth = 2.8;
@@ -64,11 +70,20 @@ class GraphApp {
       if (savedMode === 'fixed' || savedMode === 'auto') this.graphColorMode = savedMode;
       const savedFixedColor = localStorage.getItem('graphly_fixed_graph_color_v1');
       if (savedFixedColor) this.fixedGraphColor = savedFixedColor;
+      const savedAutoSeqRaw = localStorage.getItem('graphly_auto_color_seq_v1');
+      if (savedAutoSeqRaw) {
+        const parsedSeq = JSON.parse(savedAutoSeqRaw);
+        if (Array.isArray(parsedSeq) && parsedSeq.length > 0) {
+          const validSeq = parsedSeq.filter(c => typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c));
+          if (validSeq.length > 0) this.autoColorSequence = validSeq;
+        }
+      }
       const savedDefaultLw = parseFloat(localStorage.getItem('graphly_default_graph_lw_v1'));
       if (Number.isFinite(savedDefaultLw) && savedDefaultLw >= 1.0 && savedDefaultLw <= 6.0) {
         this.defaultGraphLineWidth = parseFloat(savedDefaultLw.toFixed(1));
       }
     } catch (e) { }
+    this.colorPalette = [...this.autoColorSequence];
 
     // 🌟 [테마별 필기 잉크 팔레트 (5색)] 🌟
     this.lightInkPalette = [
@@ -1324,6 +1339,31 @@ class GraphApp {
       return;
     }
 
+    // 🌟 [0ms 초고속 지우개 획 삭제 실행 취소]
+    if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'strokes_erase') {
+      if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
+      if (Array.isArray(prevSnap.batches)) {
+        for (let b = prevSnap.batches.length - 1; b >= 0; b--) {
+          const batch = prevSnap.batches[b];
+          if (!Array.isArray(batch)) continue;
+          for (let i = 0; i < batch.length; i++) {
+            const item = batch[i];
+            if (!item || !item.stroke) continue;
+            const insertIdx = Math.max(0, Math.min(this.inkStrokes.length, item.index));
+            this.inkStrokes.splice(insertIdx, 0, item.stroke);
+          }
+        }
+      }
+      this.redoStack.push(prevSnap);
+      this._inkBakeDirty = true;
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+      this.render();
+      this.showToast('↺ 지운 필기 복구됨');
+      return;
+    }
+
     const currentSnap = this.getHistorySnapshot();
     this.redoStack.push(currentSnap);
     this.restoreHistorySnapshot(prevSnap);
@@ -1415,6 +1455,31 @@ class GraphApp {
       this.updateUndoRedoUI();
       this.render();
       this.showToast('↻ 획 다시 실행됨');
+      return;
+    }
+
+    // 🌟 [0ms 초고속 지우개 획 삭제 다시 실행]
+    if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'strokes_erase') {
+      if (Array.isArray(this.inkStrokes) && Array.isArray(nextSnap.batches)) {
+        const toRemove = new Set();
+        for (let b = 0; b < nextSnap.batches.length; b++) {
+          const batch = nextSnap.batches[b];
+          if (!Array.isArray(batch)) continue;
+          for (let i = 0; i < batch.length; i++) {
+            if (batch[i] && batch[i].stroke) toRemove.add(batch[i].stroke);
+          }
+        }
+        if (toRemove.size > 0) {
+          this.inkStrokes = this.inkStrokes.filter(st => !toRemove.has(st));
+        }
+      }
+      this.undoStack.push(nextSnap);
+      this._inkBakeDirty = true;
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
+      this.render();
+      this.showToast('↻ 지우기 다시 실행됨');
       return;
     }
 
@@ -2220,14 +2285,90 @@ class GraphApp {
   }
 
   _syncLineWidthSliderUI() {
-    const sliderLw = document.getElementById('sliderLw');
-    const lblLw = document.getElementById('lblLw');
     const isGraphSelected = Boolean(this.activeGraph && (this.isCurveSelected || this.selectedHandleIdx !== null));
     const targetLw = isGraphSelected
       ? (this.activeGraph.lineWidth || this.defaultGraphLineWidth || 2.8)
       : (this.defaultGraphLineWidth || 2.8);
+    if (this._lastSyncedLwVal === targetLw) return;
+    this._lastSyncedLwVal = targetLw;
+    const sliderLw = this._sliderLwEl || (this._sliderLwEl = document.getElementById('sliderLw'));
+    const lblLw = this._lblLwEl || (this._lblLwEl = document.getElementById('lblLw'));
     if (sliderLw) sliderLw.value = targetLw;
     if (lblLw) lblLw.textContent = `${Number(targetLw).toFixed(1)}`;
+  }
+
+  syncGraphColorPaletteUI() {
+    const mode = (this.graphColorMode === 'fixed') ? 'fixed' : 'auto';
+    document.querySelectorAll('.graph-color-mode-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.dataset.colorMode === mode);
+    });
+
+    const seq = (Array.isArray(this.autoColorSequence) && this.autoColorSequence.length > 0)
+      ? this.autoColorSequence
+      : (this.defaultAutoColorSequence || ['#c74440', '#2d70b3', '#388c46', '#6042a6']);
+    this.colorPalette = [...seq];
+
+    const fixedColor = (this.fixedGraphColor || '#1e293b').toLowerCase();
+    document.querySelectorAll('#graphColorPalette .color-dot').forEach(dot => {
+      const dotColor = (dot.dataset.color || '').toLowerCase();
+      if (mode === 'fixed') {
+        dot.textContent = '';
+        dot.classList.toggle('active', dotColor === fixedColor);
+      } else {
+        const seqIdx = seq.findIndex(c => (c || '').toLowerCase() === dotColor);
+        if (seqIdx !== -1) {
+          dot.classList.add('active');
+          dot.textContent = String(seqIdx + 1);
+        } else {
+          dot.classList.remove('active');
+          dot.textContent = '';
+        }
+      }
+    });
+  }
+
+  _applyCurrentColorRuleToActiveTarget() {
+    const isFixed = (this.graphColorMode === 'fixed');
+    const fixedColor = this.fixedGraphColor || '#1e293b';
+    const seq = (Array.isArray(this.colorPalette) && this.colorPalette.length > 0)
+      ? this.colorPalette
+      : ['#c74440', '#2d70b3', '#388c46', '#6042a6'];
+
+    if (!this.isGraphCovered) {
+      if (Array.isArray(this.graphs) && this.graphs.length > 0) {
+        this.pushHistoryState();
+        this.graphs.forEach((g, idx) => {
+          if (g) g.color = isFixed ? fixedColor : seq[idx % seq.length];
+        });
+        this.syncCurveContextBar();
+        this.renderLayerList();
+        this.render();
+      }
+      return;
+    }
+
+    const targetCard = (this._pipTargetCard && this._pipTargetCard !== 'new') ? this._pipTargetCard : null;
+    const isValidTarget = Boolean(
+      (targetCard === 'primary' && this._hasPrimaryGraphCard && this.graphCardData) ||
+      (targetCard && targetCard !== 'primary' && Array.isArray(this.extraGraphCards) && this.extraGraphCards.includes(targetCard))
+    );
+    if (isValidTarget && typeof this._getMutablePipCardSnapshot === 'function') {
+      const snap = this._getMutablePipCardSnapshot(targetCard);
+      if (snap && !snap.isPipLocked && Array.isArray(snap.graphs) && snap.graphs.length > 0) {
+        if (typeof this._pushWorkspaceUndoSnapshot === 'function') {
+          this._pushWorkspaceUndoSnapshot('↺ 그래프 색상이 이전 상태로 복원되었습니다', '↻ 그래프 색상 변경 다시 실행됨');
+        }
+        snap.graphs.forEach((g, idx) => {
+          if (g) g.color = isFixed ? fixedColor : seq[idx % seq.length];
+        });
+        if (typeof this.syncPipCardLockUI === 'function') this.syncPipCardLockUI(targetCard);
+        if (typeof this.renderPipGraphCard === 'function') this.renderPipGraphCard(targetCard);
+        if (typeof this.scheduleBakePipGraphCardToImg === 'function') this.scheduleBakePipGraphCardToImg(targetCard);
+        if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+        }
+      }
+    }
   }
 
   syncControls() {
@@ -2241,22 +2382,15 @@ class GraphApp {
       tab.classList.toggle('active', tab.dataset.cat === curCat);
     });
 
-    document.querySelectorAll('.graph-color-mode-chip').forEach(chip => {
-      chip.classList.toggle('active', chip.dataset.colorMode === (this.graphColorMode || 'auto'));
-    });
-
+    this.syncGraphColorPaletteUI();
     this._syncLineWidthSliderUI();
 
     if (!g) {
-      // 그래프가 없는 빈 상태일 때의 UI 처리 (선택해 둔 고정 색상 도트 활성 상태는 유지)
+      // 그래프가 없는 빈 상태일 때의 UI 처리
       const chkAbs = document.getElementById('chkAbs');
       if (chkAbs) chkAbs.checked = false;
       const btnFoldAgain = document.getElementById('btnFoldAgain');
       if (btnFoldAgain) btnFoldAgain.style.display = 'none';
-      const fallbackDotColor = this.fixedGraphColor || '#1e293b';
-      document.querySelectorAll('.color-dot').forEach(dot => {
-        dot.classList.toggle('active', dot.dataset.color === fallbackDotColor);
-      });
       this.syncShapePanel();
       this.syncCurveContextBar();
       return;
@@ -2280,14 +2414,6 @@ class GraphApp {
         btnFoldAgain.style.display = 'none';
       }
     }
-
-    // 컬러 피커 팔레트 동기화
-    const targetDotColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
-      ? this.fixedGraphColor
-      : g.color;
-    document.querySelectorAll('.color-dot').forEach(dot => {
-      dot.classList.toggle('active', dot.dataset.color === targetDotColor);
-    });
 
     // 사각형 모드 패널 동기화 (사각형 활성 시에만 표시)
     this.syncShapePanel();
@@ -2936,30 +3062,41 @@ class GraphApp {
       };
     }
 
-    // 컬러 피커 팔레트 & [자동 배색 / 색상 고정] 모드 전환
-    document.querySelectorAll('.color-dot').forEach(dot => {
+    // 컬러 피커 팔레트 & [자동 배색(1,2,3 순환) / 색상 고정] 모드 전환
+    document.querySelectorAll('#graphColorPalette .color-dot').forEach(dot => {
       dot.onclick = (e) => {
         const pickedColor = e.currentTarget.dataset.color;
         if (!pickedColor) return;
-        this.fixedGraphColor = pickedColor;
-        try { localStorage.setItem('graphly_fixed_graph_color_v1', pickedColor); } catch (err) { }
-        document.querySelectorAll('.color-dot').forEach(d => {
-          d.classList.toggle('active', d.dataset.color === pickedColor);
-        });
+
         if (this.graphColorMode === 'fixed') {
-          if (this.graphs.length > 0) {
-            this.pushHistoryState();
-            this.graphs.forEach(g => { if (g) g.color = pickedColor; });
-            this.renderLayerList();
-            this.render();
-          }
+          this.fixedGraphColor = pickedColor;
+          try { localStorage.setItem('graphly_fixed_graph_color_v1', pickedColor); } catch (err) { }
+          this.syncGraphColorPaletteUI();
+          this._applyCurrentColorRuleToActiveTarget();
+          if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
           return;
         }
-        if (!this.activeGraph) return;
-        this.pushHistoryState();
-        this.activeGraph.color = pickedColor;
-        this.renderLayerList();
-        this.render();
+
+        // 자동 배색 모드: 클릭한 색상의 번호(1, 2, 3...) 토글 및 순서 지정
+        if (!Array.isArray(this.autoColorSequence) || this.autoColorSequence.length === 0) {
+          this.autoColorSequence = [...(this.defaultAutoColorSequence || ['#c74440', '#2d70b3', '#388c46', '#6042a6'])];
+        }
+        const pickedLower = pickedColor.toLowerCase();
+        const existingIdx = this.autoColorSequence.findIndex(c => (c || '').toLowerCase() === pickedLower);
+        if (existingIdx !== -1) {
+          if (this.autoColorSequence.length <= 1) {
+            this.showToast('ℹ️ 자동 배색에는 최소 1개 이상의 색상이 필요합니다.');
+            return;
+          }
+          this.autoColorSequence.splice(existingIdx, 1);
+        } else {
+          this.autoColorSequence.push(pickedColor);
+        }
+        this.colorPalette = [...this.autoColorSequence];
+        try { localStorage.setItem('graphly_auto_color_seq_v1', JSON.stringify(this.autoColorSequence)); } catch (err) { }
+        this.syncGraphColorPaletteUI();
+        this._applyCurrentColorRuleToActiveTarget();
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
       };
     });
 
@@ -2970,50 +3107,21 @@ class GraphApp {
         const mode = e.currentTarget.dataset.colorMode === 'fixed' ? 'fixed' : 'auto';
         this.graphColorMode = mode;
         try { localStorage.setItem('graphly_graph_color_mode_v1', mode); } catch (err) { }
-        document.querySelectorAll('.graph-color-mode-chip').forEach(c => {
-          c.classList.toggle('active', c.dataset.colorMode === mode);
-        });
-
-        const activeDot = document.querySelector('#graphColorPalette .color-dot.active');
-        if (activeDot && activeDot.dataset.color) {
-          this.fixedGraphColor = activeDot.dataset.color;
-        } else if (this.activeGraph && this.activeGraph.color) {
-          this.fixedGraphColor = this.activeGraph.color;
-        } else if (!this.fixedGraphColor) {
+        if (!this.fixedGraphColor) {
           this.fixedGraphColor = '#1e293b';
+          try { localStorage.setItem('graphly_fixed_graph_color_v1', this.fixedGraphColor); } catch (err) { }
         }
-        try { localStorage.setItem('graphly_fixed_graph_color_v1', this.fixedGraphColor); } catch (err) { }
-
+        this.syncGraphColorPaletteUI();
+        this._applyCurrentColorRuleToActiveTarget();
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
         if (mode === 'fixed') {
-          const targetColor = this.fixedGraphColor || '#1e293b';
-          document.querySelectorAll('.color-dot').forEach(d => {
-            d.classList.toggle('active', d.dataset.color === targetColor);
-          });
-          if (this.graphs.length > 0) {
-            this.pushHistoryState();
-            this.graphs.forEach(g => { if (g) g.color = targetColor; });
-            this.renderLayerList();
-            this.render();
-          }
           this.showToast('📌 색상 고정: 선택한 색상으로 그래프 색상이 고정되었습니다.');
         } else {
-          if (this.graphs.length > 0) {
-            this.pushHistoryState();
-            this.graphs.forEach((g, idx) => {
-              if (g) g.color = this.colorPalette[idx % this.colorPalette.length];
-            });
-            if (this.activeGraph) {
-              document.querySelectorAll('.color-dot').forEach(d => {
-                d.classList.toggle('active', d.dataset.color === this.activeGraph.color);
-              });
-            }
-            this.renderLayerList();
-            this.render();
-          }
-          this.showToast('🎨 자동 배색: 그래프마다 구분되는 색상이 자동 배정됩니다.');
+          this.showToast('🎨 자동 배색: 번호(1·2·3…)가 표시된 색상 순서대로 반복 배정됩니다.');
         }
       };
     });
+    this.syncGraphColorPaletteUI();
 
     // 상단 복사 & 저장 버튼
     document.getElementById('btnCopy').onclick = () => this.copyToClipboard();
@@ -4957,7 +5065,9 @@ class GraphApp {
     }
 
     // 🌟 [테마 연동 펜 & 곡선 컬러 동기화] 🌟
-    this.colorPalette = theme.isLight ? [...this.lightColorPalette] : [...this.darkColorPalette];
+    this.colorPalette = (Array.isArray(this.autoColorSequence) && this.autoColorSequence.length > 0)
+      ? [...this.autoColorSequence]
+      : [...(this.defaultAutoColorSequence || ['#c74440', '#2d70b3', '#388c46', '#6042a6'])];
     this.updateInkPaletteUI();
 
     if (typeof this.renderPipGraphCard === 'function') {

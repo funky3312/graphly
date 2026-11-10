@@ -2121,6 +2121,11 @@
       showGuidesV2: Boolean(this.showGuides),
       showGridNumbers: Boolean(this.showGridNumbers),
       showAsymptotes: Boolean(this.showAsymptotes),
+      graphColorMode: this.graphColorMode || 'auto',
+      fixedGraphColor: this.fixedGraphColor || '#1e293b',
+      autoColorSequence: Array.isArray(this.autoColorSequence) && this.autoColorSequence.length > 0
+        ? [...this.autoColorSequence]
+        : ['#c74440', '#2d70b3', '#388c46', '#6042a6'],
       customShortcuts: this.customShortcuts || {}
     };
   }
@@ -2197,6 +2202,25 @@
         const chk = document.getElementById('chkAsymptotes');
         if (chk) chk.checked = prefs.showAsymptotes;
       }
+      if (prefs.graphColorMode === 'fixed' || prefs.graphColorMode === 'auto') {
+        this.graphColorMode = prefs.graphColorMode;
+        try { localStorage.setItem('graphly_graph_color_mode_v1', prefs.graphColorMode); } catch (_) { }
+      }
+      if (prefs.fixedGraphColor && /^#[0-9a-fA-F]{3,8}$/.test(prefs.fixedGraphColor)) {
+        this.fixedGraphColor = prefs.fixedGraphColor;
+        try { localStorage.setItem('graphly_fixed_graph_color_v1', prefs.fixedGraphColor); } catch (_) { }
+      }
+      if (Array.isArray(prefs.autoColorSequence) && prefs.autoColorSequence.length > 0) {
+        const validSeq = prefs.autoColorSequence.filter(c => typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c));
+        if (validSeq.length > 0) {
+          this.autoColorSequence = validSeq;
+          this.colorPalette = [...validSeq];
+          try { localStorage.setItem('graphly_auto_color_seq_v1', JSON.stringify(validSeq)); } catch (_) { }
+        }
+      }
+      if (typeof this.syncGraphColorPaletteUI === 'function') {
+        this.syncGraphColorPaletteUI();
+      }
       if (prefs.customShortcuts && typeof prefs.customShortcuts === 'object') {
         this.customShortcuts = { ...prefs.customShortcuts };
         try {
@@ -2256,6 +2280,9 @@
           showGuidesV2: false,
           showGridNumbers: false,
           showAsymptotes: false,
+          graphColorMode: 'auto',
+          fixedGraphColor: '#1e293b',
+          autoColorSequence: ['#c74440', '#2d70b3', '#388c46', '#6042a6'],
           customShortcuts: {}
         };
         this._applyUserPreferences(defaultPrefs, true);

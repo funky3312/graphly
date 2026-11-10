@@ -298,10 +298,11 @@
   eraseProblemInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null) {
     radiusPx = (typeof radiusPx === 'number' && !isNaN(radiusPx)) ? radiusPx : Math.max(6, (this.currentEraserSize || 14) * 1.25);
     const pWidget = document.getElementById('problemCardWidget');
+    let stickerErased = false;
     if (pWidget) {
-      this.eraseCardStickerAtNormalizedPoint(pWidget, nx, ny, w, h, radiusPx);
+      stickerErased = Boolean(this.eraseCardStickerAtNormalizedPoint(pWidget, nx, ny, w, h, radiusPx));
     }
-    if (!this.problemInkStrokes || this.problemInkStrokes.length === 0) return;
+    if (!this.problemInkStrokes || this.problemInkStrokes.length === 0) return stickerErased;
     const sx = nx * w;
     const sy = ny * h;
     const beforeLen = this.problemInkStrokes.length;
@@ -322,9 +323,11 @@
       return true;
     });
 
-    if (this.problemInkStrokes.length !== beforeLen) {
+    const inkErased = (this.problemInkStrokes.length !== beforeLen);
+    if (inkErased) {
       this.renderProblemCardCanvas();
     }
+    return Boolean(inkErased || stickerErased);
   }
 
   clearProblemCardInk() {
@@ -1087,6 +1090,7 @@
 
         const pos = getNormPos(e, false);
         isDrawingOnProblem = true;
+        this._isDrawingCardInk = true;
         activeProblemPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
 
         const isCardStylusEraser = (
@@ -1097,7 +1101,6 @@
         if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
           this._problemCardStylusEraser = true;
           this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h);
-          this.renderProblemCardCanvas();
           return true;
         }
 
@@ -1157,7 +1160,6 @@
         );
         if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
           this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h);
-          this.renderProblemCardCanvas();
           return;
         }
 
@@ -1205,6 +1207,7 @@
         const finishedCardStroke = currentStroke;
         const endRect = activeProblemDrawRect;
         isDrawingOnProblem = false;
+        this._isDrawingCardInk = false;
         activeProblemPointerId = null;
         this._problemCardStylusEraser = false;
         activeProblemDrawRect = null;
@@ -1811,15 +1814,18 @@
 
       const eraseExtraCardAtPoint = (sx, sy, rw, rh) => {
         const extraEraseR = Math.max(6, (this.currentEraserSize || 14) * 1.25);
-        this.eraseCardStickerAtNormalizedPoint(
+        const stickerErased = Boolean(this.eraseCardStickerAtNormalizedPoint(
           cardWidgetEl,
           sx / Math.max(1, rw),
           sy / Math.max(1, rh),
           rw,
           rh,
           extraEraseR
-        );
-        cardWidgetEl._cardInkStrokes = (cardWidgetEl._cardInkStrokes || []).filter(st => {
+        ));
+        const curStrokes = cardWidgetEl._cardInkStrokes || [];
+        if (curStrokes.length === 0) return stickerErased;
+        const beforeLen = curStrokes.length;
+        cardWidgetEl._cardInkStrokes = curStrokes.filter(st => {
           if (!st || !st.points || st.points.length === 0) return false;
           for (let i = 0; i < st.points.length; i++) {
             const px = st.points[i].nx * rw;
@@ -1833,6 +1839,11 @@
           }
           return true;
         });
+        const inkErased = (cardWidgetEl._cardInkStrokes.length !== beforeLen);
+        if (inkErased) {
+          renderExtraCardInk();
+        }
+        return Boolean(inkErased || stickerErased);
       };
 
       const restartExtraHoldTimer = (rw, rh) => {
@@ -1889,6 +1900,7 @@
         const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rw));
         const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rh));
         isDrawingExtraInk = true;
+        this._isDrawingCardInk = true;
         activeExtraPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
 
         const isCardStylusEraser = (
@@ -1899,7 +1911,6 @@
         if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
           cardWidgetEl._extraStylusEraser = true;
           eraseExtraCardAtPoint(nx * rw, ny * rh, rw, rh);
-          renderExtraCardInk();
           return true;
         }
         const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
@@ -1959,7 +1970,6 @@
         const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rh));
         if (this.activeInkTool === 'eraser' || cardWidgetEl._extraStylusEraser) {
           eraseExtraCardAtPoint(nx * rw, ny * rh, rw, rh);
-          renderExtraCardInk();
           return;
         }
         if (!curExtraStroke) return;
@@ -2008,6 +2018,7 @@
         const finishedSt = curExtraStroke;
         const endRect = activeExtraDrawRect;
         isDrawingExtraInk = false;
+        this._isDrawingCardInk = false;
         activeExtraPointerId = null;
         cardWidgetEl._extraStylusEraser = false;
         activeExtraDrawRect = null;
@@ -3593,6 +3604,13 @@
   }
 
   syncGraphSnapBarUI() {
+    const hasGraphs = Boolean(this.graphs && this.graphs.length > 0);
+    const hasReturn = this.hasBoardStateToReturn();
+    const shouldShow = Boolean((hasGraphs || hasReturn) && !this.isGraphCovered && !this.isPdfToGraphCropMode);
+    const snapSig = `${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isPdfToGraphCropMode)}|${shouldShow}|${hasReturn}|${hasGraphs}`;
+    if (this._lastSnapBarFullSig === snapSig) return;
+    this._lastSnapBarFullSig = snapSig;
+
     const pdfCropBar = this._pdfCropBarEl || (this._pdfCropBarEl = document.getElementById('pdfToGraphCropFloatingBar'));
     if (pdfCropBar) {
       pdfCropBar.style.display = this._isPdfCropChoiceMenuOpen ? 'flex' : 'none';
@@ -3602,9 +3620,6 @@
       pdfCropCancelPill.style.display = this.isPdfToGraphCropMode ? 'inline-flex' : 'none';
     }
 
-    const hasGraphs = Boolean(this.graphs && this.graphs.length > 0);
-    const hasReturn = this.hasBoardStateToReturn();
-    const shouldShow = Boolean((hasGraphs || hasReturn) && !this.isGraphCovered && !this.isPdfToGraphCropMode);
     const bar = this._snapBarEl || (this._snapBarEl = document.getElementById('graphSnapFloatingBar'));
     if (!bar) return;
 
@@ -4720,6 +4735,7 @@
 
         const pos = getNormPos(e, false);
         isDrawingOnGraphCard = true;
+        this._isDrawingCardInk = true;
         activeGraphCardPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
 
         const isCardStylusEraser = (
@@ -4836,6 +4852,7 @@
         const finishedCardStroke = currentStroke;
         const endRect = activeGraphDrawRect;
         isDrawingOnGraphCard = false;
+        this._isDrawingCardInk = false;
         activeGraphCardPointerId = null;
         this._graphCardStylusEraser = false;
         activeGraphDrawRect = null;
@@ -6286,11 +6303,12 @@
       abs: Boolean(t && t.abs)
     }));
 
-    const palette = ['#ff7675', '#00cec9', '#a29bfe', '#ffeaa7', '#74b9ff', '#fd79a8', '#55efc4'];
-    const filteredColors = palette.filter(c => c.toLowerCase() !== (src.color || '').toLowerCase());
+    const autoSeq = (Array.isArray(this.colorPalette) && this.colorPalette.length > 0)
+      ? this.colorPalette
+      : ['#c74440', '#2d70b3', '#388c46', '#6042a6'];
     const nextColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
       ? this.fixedGraphColor
-      : filteredColors[snap.graphs.length % filteredColors.length];
+      : autoSeq[snap.graphs.length % autoSeq.length];
 
     if (!src.id) src.id = 'g_' + (Date.now() - 1) + '_' + Math.random().toString(36).substr(2, 4);
     if (src.linkedInverseId) {
@@ -6738,16 +6756,37 @@
     }, delayMs);
   }
 
+  _hasAnyActivePipCardSelectionOrMode() {
+    if (this._hasPrimaryGraphCard && this.graphCardData) {
+      const snap = this.pipGraphLiveSnap;
+      if (snap && (snap.isPipDropLineMode || snap.isCurveSelected || snap.selectedHandleIdx !== null || snap.isPipSymPopoverOpen)) {
+        return true;
+      }
+    }
+    if (Array.isArray(this.extraGraphCards)) {
+      for (let i = 0; i < this.extraGraphCards.length; i++) {
+        const c = this.extraGraphCards[i];
+        const snap = c && c.liveSnap;
+        if (snap && (snap.isPipDropLineMode || snap.isCurveSelected || snap.selectedHandleIdx !== null || snap.isPipSymPopoverOpen)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   deselectAllPipGraphCards(exceptWidget = null) {
     if (this._activeCardLasso && this._activeCardLasso.widgetEl !== exceptWidget) {
       this.clearCardLassoSelection();
     }
     this._closeAllPipHeaderPopovers();
     let anyChanged = false;
+    let anyDropLineTurnedOff = false;
     const primaryWidget = document.getElementById('graphCardWidget');
     if (primaryWidget && primaryWidget !== exceptWidget && this._hasPrimaryGraphCard && this.graphCardData) {
       const snap = this._getMutablePipCardSnapshot('primary');
       if (snap && (snap.isCurveSelected || snap.selectedHandleIdx !== null || snap.isPipDropLineMode || snap.isPipSymPopoverOpen || primaryWidget.classList.contains('pip-manipulating'))) {
+        if (snap.isPipDropLineMode) anyDropLineTurnedOff = true;
         snap.isCurveSelected = false;
         snap.selectedHandleIdx = null;
         snap.draggedHandleIdx = null;
@@ -6757,8 +6796,11 @@
         snap._pipDropLineHoverScissors = null;
         snap._activeSnapHint = null;
         primaryWidget.classList.remove('pip-manipulating');
-        this.renderPipGraphCard('primary');
+        primaryWidget._lastPipLockUiSig = '';
         this._savePipCardSnapshot('primary', snap);
+        this.syncPipCardLockUI('primary');
+        this.renderPipGraphCard('primary');
+        this.scheduleBakePipGraphCardToImg('primary');
         anyChanged = true;
       }
     }
@@ -6767,6 +6809,7 @@
         if (c && c.el && c.el !== exceptWidget) {
           const snap = this._getMutablePipCardSnapshot(c);
           if (snap && (snap.isCurveSelected || snap.selectedHandleIdx !== null || snap.isPipDropLineMode || snap.isPipSymPopoverOpen || c.el.classList.contains('pip-manipulating'))) {
+            if (snap.isPipDropLineMode) anyDropLineTurnedOff = true;
             snap.isCurveSelected = false;
             snap.selectedHandleIdx = null;
             snap.draggedHandleIdx = null;
@@ -6776,12 +6819,18 @@
             snap._pipDropLineHoverScissors = null;
             snap._activeSnapHint = null;
             c.el.classList.remove('pip-manipulating');
-            this.renderPipGraphCard(c);
+            c.el._lastPipLockUiSig = '';
             this._savePipCardSnapshot(c, snap);
+            this.syncPipCardLockUI(c);
+            this.renderPipGraphCard(c);
+            this.scheduleBakePipGraphCardToImg(c);
             anyChanged = true;
           }
         }
       });
+    }
+    if (anyDropLineTurnedOff) {
+      this.showToast('📍 수선 그리기 꺼짐');
     }
     if (anyChanged && this.isAudioRecording) {
       this._recordAudioWorkspaceStateIfNeeded(true);
@@ -8707,17 +8756,20 @@
         cancelAnimationFrame(widget._pipRenderRafId);
         widget._pipRenderRafId = null;
       }
+      const isCancel = Boolean(e && e.type === 'pointercancel');
       const snap = this._getMutablePipCardSnapshot(cardRef);
       if (snap) {
         if (prevMode === 'dropLineAim') {
           const upPos = e ? getLocalPos(e, false) : downPos;
           const isTouch = Boolean(e && (e.pointerType === 'touch' || e.pointerType === 'pen'));
+          let hitTarget = false;
           this._withPipCardGraphState(snap, upPos.cardW, upPos.cardH, () => {
             const allowX = this.showXAxis !== false;
             const allowY = this.showYAxis !== false;
             if (!allowX && !allowY) return;
             const target = snap._pipDropLineHoverCand || this.findNearestDropLineTarget({ x: upPos.x, y: upPos.y }, isTouch ? 36 : 24);
             if (target) {
+              hitTarget = true;
               if (!Array.isArray(this.dropLines)) this.dropLines = [];
               const existing = this.dropLines.find(dl => Math.hypot(dl.sourceX - target.x, dl.sourceY - target.y) < 0.001);
               if (existing) {
@@ -8752,11 +8804,24 @@
               }
             }
           });
-          if (isTouch) {
+          if (!hitTarget && !isCancel && !movedDuringInteraction && Math.hypot(upPos.x - downPos.x, upPos.y - downPos.y) < 8) {
+            snap.isPipDropLineMode = false;
+            snap._pipDropLineHoverCand = null;
+            snap._pipDropLineHoverScissors = null;
+            widget._lastPipLockUiSig = '';
+            this.showToast('📍 수선 그리기 꺼짐');
+          } else if (isTouch) {
             snap._pipDropLineHoverCand = null;
           }
-        } else if (prevMode === 'panAxes' && !movedDuringInteraction) {
-          // 🌟 [대표님 피드백 반영]: 창모드 내부에서 그래프 밖(빈 여백)을 톡 두드리면(Tap) 곡선 선택 해제!
+        } else if (prevMode === 'panAxes' && !isCancel && !movedDuringInteraction) {
+          // 🌟 [대표님 피드백 반영]: 창모드 내부에서 그래프 밖(빈 여백)을 톡 두드리면(Tap) 수선 모드 및 곡선 선택 해제!
+          if (snap.isPipDropLineMode) {
+            snap.isPipDropLineMode = false;
+            snap._pipDropLineHoverCand = null;
+            snap._pipDropLineHoverScissors = null;
+            widget._lastPipLockUiSig = '';
+            this.showToast('📍 수선 그리기 꺼짐');
+          }
           snap.isCurveSelected = false;
           snap.selectedHandleIdx = null;
         }
@@ -8767,6 +8832,7 @@
         snap.axisSnapActiveY = false;
         snap.symmetrySnapActive = false;
         snap.snappedPoints = [];
+        this._savePipCardSnapshot(cardRef, snap);
       }
       try { if (e && e.pointerId !== undefined) liveCanvas.releasePointerCapture(e.pointerId); } catch (_) { }
       this.renderPipGraphCard(cardRef);
