@@ -3647,6 +3647,16 @@
           return;
         }
 
+        if (this._isInteractingWithPipCard || this._isDraggingOrResizingAnyCard) {
+          if (isEffectivePen) {
+            this._markStylusPenDetected();
+            this._lastPenActiveTime = Date.now();
+          }
+          if (this.virtualStylusEl && !this.isAudioPlaying && !this._isAudioReplayActive && !this.isStudentAudioVideoOnlyMode) {
+            this.virtualStylusEl.style.display = 'none';
+          }
+          return;
+        }
         if (this.isDraggingPillRemote || isAnyModalOrOverlayBlockingCanvas()) {
           if (this.virtualStylusEl && !this.isAudioPlaying && !this._isAudioReplayActive && !this.isStudentAudioVideoOnlyMode) {
             this.virtualStylusEl.style.display = 'none';
@@ -7983,7 +7993,9 @@
 
     // 🚀 [초고밀도 렌더링 & 절댓값 첨점(Cusp) 칼고정 엔진]:
     // 확대·축소 시 샘플 그리드가 이동하며 절댓값 꺾인 점(x축 접점)이나 극점이 들썩거리며 떨리는 현상을 0.000%로 원천 박멸!
-    const steps = isExport ? 1500 : (isDragging ? 600 : 840);
+    // (창모드 카드 내부 실시간 드래그 중에는 카드 폭 240~430px에 맞춘 320스텝 + 극점·첨점 100% 고정으로 iPad 120Hz 렉을 원천 차단하고, 손을 떼는 즉시 840스텝으로 복원)
+    const isPipDrag = Boolean(isDragging && this._isRenderingGraphSnapshot);
+    const steps = isExport ? 1500 : (isPipDrag ? 320 : (isDragging ? 600 : 840));
     const mLeft = this.screenToMath(0, 0).x;
     const mRight = this.screenToMath(this.screenWidth, 0).x;
     const stepSize = (mRight - mLeft) / steps;
@@ -8661,6 +8673,7 @@
       const s = this.mathToScreen(h.x + ox, evalY);
       const isDragging = this.draggedHandleIdx === idx;
       const isPip = Boolean(this._isRenderingGraphSnapshot);
+      const isActivelyDraggingInPip = Boolean(isPip && (this.isDraggingCurve || this.draggedHandleIdx !== null || this.isPanning));
       const radius = isPip ? (isDragging ? 5.6 : 4.4) : (isDragging ? 8.5 : 6.5);
 
       // 선택된 점 깜빡임 펄스 링 (키보드 방향키 미세조정 상태)
@@ -8705,11 +8718,13 @@
 
       if (isLight) {
         // 🌟 [라이트 모드 3D 엠보싱 렌더링]:
-        // (1) 부드러운 드롭 섀도우 (종이 위에 볼록 솟아오른 물리적 핀 효과)
-        ctx.shadowColor = 'rgba(15, 23, 42, 0.24)';
-        ctx.shadowBlur = isPip ? (isDragging ? 5 : 3) : (isDragging ? 8 : 4.5);
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = isPip ? (isDragging ? 2 : 1) : (isDragging ? 3 : 1.5);
+        // (1) 부드러운 드롭 섀도우 (종이 위에 볼록 솟아오른 물리적 핀 효과 — 창모드 드래그 중에는 iPad WebKit 가우시안 블러 부하 방지를 위해 생략 후 손을 떼면 즉시 복원)
+        if (!isActivelyDraggingInPip) {
+          ctx.shadowColor = 'rgba(15, 23, 42, 0.24)';
+          ctx.shadowBlur = isPip ? (isDragging ? 5 : 3) : (isDragging ? 8 : 4.5);
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = isPip ? (isDragging ? 2 : 1) : (isDragging ? 3 : 1.5);
+        }
 
         // (2) 외부 베이스 원 채우기
         ctx.beginPath();
@@ -8778,7 +8793,7 @@
           bg: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 23, 42, 0.94)',
           border: isLight ? 'rgba(37, 99, 235, 0.55)' : 'rgba(0, 210, 211, 0.7)',
           color: isLight ? '#1e293b' : '#ffffff',
-          shadow: true
+          shadow: !isActivelyDraggingInPip
         });
       }
     });
@@ -8989,13 +9004,22 @@
               this.problemCardImage &&
               typeof HTMLCanvasElement !== 'undefined' &&
               this.problemCardImage instanceof HTMLCanvasElement &&
-              this.problemCardImage.width > 0 &&
-              this.problemCardImage.height > 0
+              !this.problemCardImage._evicted &&
+              this.problemCardImage.width > 4 &&
+              this.problemCardImage.height > 4
+            ) ? this.problemCardImage : (
+              el.id === 'problemCardWidget' &&
+              this.problemCardImage &&
+              this.problemCardImage.complete &&
+              this.problemCardImage.naturalWidth > 4 &&
+              this.problemCardImage.naturalHeight > 4
             ) ? this.problemCardImage : (
               el.classList.contains('extra-problem-card-widget') &&
               Array.isArray(this.extraProblemCards)
                 ? (() => {
-                  const found = this.extraProblemCards.find(c => c && c.el === el && c.sourceCanvas && c.sourceCanvas.width > 0);
+                  const found = this.extraProblemCards.find(
+                    c => c && c.el === el && c.sourceCanvas && !c.sourceCanvas._evicted && c.sourceCanvas.width > 4 && c.sourceCanvas.height > 4
+                  );
                   return (found && found.sourceCanvas) ? found.sourceCanvas : imgEl;
                 })()
                 : imgEl
@@ -9781,17 +9805,27 @@
 
   async downloadViewerSlidesAsSinglePdf(pkg = this._viewerPkg) {
     if (!pkg || !Array.isArray(pkg.playlistSlides) || pkg.playlistSlides.length === 0) return false;
+    if (typeof this._restoreDeduplicatedSlideSnapshots === 'function') {
+      this._restoreDeduplicatedSlideSnapshots(pkg);
+    }
     const slides = pkg.playlistSlides;
     const canvasItems = [];
     for (let i = 0; i < slides.length; i++) {
       const sl = slides[i];
-      let dataUrl = sl.viewerSnapshotDataUrl;
-      if (!dataUrl) {
-        this.deserializeFullSlideState(sl);
-        await this._waitForSlideImagesReady();
-        const snap = this.captureCurrentSlideViewerSnapshot(pkg.exportFilter || null, false);
-        dataUrl = snap.dataUrl;
-        sl.viewerSnapshotDataUrl = dataUrl;
+      let dataUrl = (sl && sl.viewerSnapshotDataUrl === '__SAME_AS_PDF_BOARD__' && sl.pdfPageBoardData)
+        ? sl.pdfPageBoardData.dataUrl
+        : (sl ? sl.viewerSnapshotDataUrl : '');
+      if (!dataUrl && sl) {
+        if (typeof this._isPureUnannotatedPdfPageSlide === 'function' && this._isPureUnannotatedPdfPageSlide(sl, pkg.exportFilter || null)) {
+          dataUrl = sl.pdfPageBoardData.dataUrl;
+          sl.viewerSnapshotDataUrl = dataUrl;
+        } else {
+          this.deserializeFullSlideState(sl);
+          await this._waitForSlideImagesReady();
+          const snap = this.captureCurrentSlideViewerSnapshot(pkg.exportFilter || null, false);
+          dataUrl = snap.dataUrl;
+          sl.viewerSnapshotDataUrl = dataUrl;
+        }
       }
       if (dataUrl) {
         const c = await new Promise((resolve) => {
@@ -9811,6 +9845,11 @@
     }
     if (canvasItems.length === 0) return false;
     const pdfBlob = this.buildMultiPagePdfBlobFromCanvases(canvasItems);
+    canvasItems.forEach((item) => {
+      if (item && item.canvas) {
+        try { item.canvas.width = 1; item.canvas.height = 1; } catch (e) { }
+      }
+    });
     if (!pdfBlob) return false;
     const url = URL.createObjectURL(pdfBlob);
     const link = document.createElement('a');

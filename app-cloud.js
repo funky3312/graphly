@@ -2412,8 +2412,9 @@
         enforceCustomGraphLimit: true, // ⭐ 내 그래프 개수 제한 적용 스위치 (true: 무료 회원 제한 적용)
         freeMaxCustomGraphs: 3,        // 비구독(무료) 회원: ⭐ 내 그래프 최대 3개까지 등록 가능
         proMaxCustomGraphs: 100,       // Pro 구독 회원: ⭐ 내 그래프 최대 100개(사실상 무제한) 등록 가능
-        freeMaxSlides: 3,              // 비구독(무료) 회원: 슬라이드 연속 생성 기준 (향후 연동용)
-        proMaxSlides: 100,             // Pro 구독 회원: 슬라이드 최대 100장
+        freeMaxSlides: 50,             // 비구독(무료) 회원: 1개 수업 노트당 안전 슬라이드 최대 50장
+        proMaxSlides: 50,              // Pro 구독 회원: 1개 수업 노트당 안전 슬라이드 최대 50장
+        maxLessonSlides: 50,           // 🛡️ 1개 수업 노트당 최대 슬라이드 안전 상한선 (60분 녹음 제한과 동일한 기기/클라우드 보호 가드)
         freeMaxQuickLibrary: 3,        // 비구독(무료) 회원: 빠른 보관함 최대 3개
         proMaxQuickLibrary: 200,       // Pro 구독 회원: 빠른 보관함 최대 200개
         freeMaxRecordMs: 10 * 60 * 1000, // 비구독(무료) 회원: 1회 녹화 최대 10분 (600,000ms)
@@ -2421,6 +2422,32 @@
       };
     }
     return this.SUBSCRIPTION_QUOTA_CONFIG;
+  }
+
+  getMaxLessonSlidesLimit() {
+    const cfg = this.getSubscriptionQuotaConfig();
+    return (cfg && Number(cfg.maxLessonSlides) > 0) ? Number(cfg.maxLessonSlides) : 50;
+  }
+
+  canAddMoreSlidesWithQuota(addCount = 1) {
+    const maxSlides = this.getMaxLessonSlidesLimit();
+    const currentCount = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
+      ? this.lessonPlaylistSlides.length
+      : 1;
+    const needed = Math.max(1, Number(addCount) || 1);
+    if (currentCount + needed > maxSlides) {
+      const msg = `쾌적한 판서 반응속도와 아이패드·클라우드 안정성을 위해 한 수업 노트는 최대 ${maxSlides}장까지 담을 수 있습니다. (현재 ${currentCount}장) 다음 단원이나 문항은 새 노트로 나누어 진행해 주세요!`;
+      this.showToast(`⚠️ 한 수업 노트는 최대 ${maxSlides}장까지 추가할 수 있습니다.`);
+      if (typeof this.showTossPaymentResultModal === 'function') {
+        this.showTossPaymentResultModal({
+          status: 'warning',
+          title: `수업 노트 최대 슬라이드 한도 (${maxSlides}장)`,
+          message: msg
+        });
+      }
+      return false;
+    }
+    return true;
   }
 
   _getProStorageKeyForUid(uid) {
@@ -4456,11 +4483,13 @@
       pdfPageBoardData: activePdfBoard ? {
         pageNum: activePdfBoard.pageNum,
         totalPages: activePdfBoard.totalPages,
-        dataUrl: activePdfBoard.dataUrl || (
-          activePdfBoard.canvas
-            ? (activePdfBoard.dataUrl = this.encodeCanvasSmartWebP(activePdfBoard.canvas, 0.88))
-            : ''
-        ),
+        dataUrl: activePdfBoard.dataUrl ||
+          (activePdfBoard.canvas && activePdfBoard.canvas._cachedDataUrl) ||
+          (activePdfBoard.canvas && !activePdfBoard.canvas._evicted && activePdfBoard.canvas.width > 4
+            ? (activePdfBoard.dataUrl = (activePdfBoard.canvas._cachedDataUrl = this.encodeCanvasSmartWebP(activePdfBoard.canvas, 0.78)))
+            : ''),
+        pixelW: activePdfBoard.pixelW || (activePdfBoard.canvas && !activePdfBoard.canvas._evicted && activePdfBoard.canvas.width > 4 ? activePdfBoard.canvas.width : 0),
+        pixelH: activePdfBoard.pixelH || (activePdfBoard.canvas && !activePdfBoard.canvas._evicted && activePdfBoard.canvas.height > 4 ? activePdfBoard.canvas.height : 0),
         aspect: activePdfBoard.aspect,
         mathW: activePdfBoard.mathW,
         mathH: activePdfBoard.mathH,
@@ -4687,39 +4716,48 @@
 
     if (slideData.pdfPageBoardData) {
       const pbd = { ...slideData.pdfPageBoardData };
-      const validDirectCanvas = (pbd.canvas && typeof pbd.canvas.getContext === 'function') ? pbd.canvas : null;
-      const cachedCanvas = validDirectCanvas || ((this._pdfPageCanvasCache && this._pdfPageCanvasCacheDoc === this.pdfDoc && pbd.pageNum)
-        ? this._pdfPageCanvasCache[pbd.pageNum]
-        : null);
+      const isValidCv = (cv) => (typeof this._isValidPdfBoardCanvas === 'function')
+        ? this._isValidPdfBoardCanvas(cv)
+        : Boolean(cv && typeof cv.getContext === 'function' && !cv._evicted && cv.width > 4 && cv.height > 4);
+      const validDirectCanvas = isValidCv(pbd.canvas) ? pbd.canvas : null;
+      const cachedCanvas = validDirectCanvas || ((typeof this._getPdfPageCanvasFromCache === 'function')
+        ? this._getPdfPageCanvasFromCache(pbd.pageNum, pbd.dataUrl)
+        : ((this._pdfPageCanvasCache && this._pdfPageCanvasCacheDoc === this.pdfDoc && pbd.pageNum && isValidCv(this._pdfPageCanvasCache[pbd.pageNum]))
+          ? this._pdfPageCanvasCache[pbd.pageNum]
+          : null));
       pbd.canvas = cachedCanvas || null;
-      if (cachedCanvas) {
-        pbd.canvas = cachedCanvas;
-      }
-      if (pbd.dataUrl) {
-        const imgObj = new Image();
-        imgObj.onload = () => {
-          if (!pbd.canvas) {
-            const offC = document.createElement('canvas');
-            offC.width = imgObj.naturalWidth || 1200;
-            offC.height = imgObj.naturalHeight || 1680;
-            const offCtx = offC.getContext('2d');
-            offCtx.drawImage(imgObj, 0, 0);
-            try {
-              const mipC = document.createElement('canvas');
-              mipC.width = Math.max(1, Math.round(offC.width * 0.5));
-              mipC.height = Math.max(1, Math.round(offC.height * 0.5));
-              const mipCtx = mipC.getContext('2d');
-              mipCtx.imageSmoothingEnabled = true;
-              mipCtx.imageSmoothingQuality = 'high';
-              mipCtx.drawImage(offC, 0, 0, mipC.width, mipC.height);
-              offC._mipCanvas = mipC;
-            } catch (e) { }
-            pbd.canvas = offC;
-          }
-          this.requestRender();
-        };
-        imgObj.src = pbd.dataUrl;
-        pbd.img = imgObj;
+      if (!pbd.canvas && pbd.dataUrl) {
+        if (typeof this._ensurePdfBoardCanvasFromDataUrl === 'function') {
+          this._ensurePdfBoardCanvasFromDataUrl(pbd);
+        } else {
+          const imgObj = new Image();
+          imgObj.onload = () => {
+            if (!isValidCv(pbd.canvas)) {
+              const offC = document.createElement('canvas');
+              offC.width = imgObj.naturalWidth || pbd.pixelW || 1200;
+              offC.height = imgObj.naturalHeight || pbd.pixelH || 1680;
+              const offCtx = offC.getContext('2d');
+              if (offCtx) offCtx.drawImage(imgObj, 0, 0);
+              offC._cachedDataUrl = pbd.dataUrl;
+              try {
+                const mipC = document.createElement('canvas');
+                mipC.width = Math.max(1, Math.round(offC.width * 0.5));
+                mipC.height = Math.max(1, Math.round(offC.height * 0.5));
+                const mipCtx = mipC.getContext('2d');
+                if (mipCtx) {
+                  mipCtx.imageSmoothingEnabled = true;
+                  mipCtx.imageSmoothingQuality = 'high';
+                  mipCtx.drawImage(offC, 0, 0, mipC.width, mipC.height);
+                }
+                offC._mipCanvas = mipC;
+              } catch (e) { }
+              pbd.canvas = offC;
+            }
+            this.requestRender();
+          };
+          imgObj.src = pbd.dataUrl;
+          pbd.img = imgObj;
+        }
       }
       if (this.isGraphCovered) {
         this.pdfPageBoardData = pbd;
@@ -5012,9 +5050,147 @@
     }
   }
 
-  // Firestore REST API 헬퍼 (대용량 30문항 모의고사 풀세트도 1MB 제한 없이 자동 Gzip 무손실 압축 + 분할 업로드 지원!)
+  // 🚀 [무필기 PDF 통페이지 이중 저장 원천 제거 & 0.00초 즉시 스냅샷 바인딩 엔진]
+  _isPureUnannotatedPdfPageSlide(slide, filterOpts = null) {
+    if (!slide || !slide.pdfPageBoardData || typeof slide.pdfPageBoardData.dataUrl !== 'string' || !slide.pdfPageBoardData.dataUrl.startsWith('data:image/')) {
+      return false;
+    }
+    if (filterOpts && filterOpts.includeProblem === false) {
+      return false;
+    }
+    if (slide.isGraphCovered === false) {
+      return false;
+    }
+    if (slide.primaryProblemCard || (Array.isArray(slide.extraProblems) && slide.extraProblems.length > 0)) {
+      return false;
+    }
+    const incGraph = !filterOpts || filterOpts.includeGraph !== false;
+    if (incGraph && (slide.primaryGraphCard || (Array.isArray(slide.extraGraphs) && slide.extraGraphs.length > 0))) {
+      return false;
+    }
+    const incInk = !filterOpts || filterOpts.includeInk !== false;
+    if (slide.historyJson) {
+      try {
+        const hObj = typeof slide.historyJson === 'string' ? JSON.parse(slide.historyJson) : slide.historyJson;
+        if (hObj) {
+          if (incInk && Array.isArray(hObj.inkStrokes) && hObj.inkStrokes.length > 0) {
+            return false;
+          }
+          if (Array.isArray(hObj.boardStickers) && hObj.boardStickers.length > 0) {
+            return false;
+          }
+        }
+      } catch (e) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  _applyFastPdfBoardViewerSnapshot(slide) {
+    if (!slide || !slide.pdfPageBoardData || !slide.pdfPageBoardData.dataUrl) return false;
+    const pbd = slide.pdfPageBoardData;
+    const aspect = (typeof pbd.aspect === 'number' && pbd.aspect > 0) ? pbd.aspect : 1.414;
+    const snapW = Math.max(600, Math.round(pbd.pixelW || 1920));
+    const snapH = Math.max(600, Math.round(pbd.pixelH || (snapW * aspect)));
+    slide.viewerSnapshotDataUrl = pbd.dataUrl;
+    slide.viewerSnapshotWidth = snapW;
+    slide.viewerSnapshotHeight = snapH;
+    slide.viewerGraphHotspots = [];
+    slide.viewerStickerHotspots = [];
+    slide._viewerHiResRendered = true;
+    return true;
+  }
+
+  _stringifyWithDeduplicatedSnapshots(obj) {
+    if (!obj || typeof obj !== 'object') return JSON.stringify(obj);
+    const slides = Array.isArray(obj.playlistSlides) ? obj.playlistSlides : (obj.slideData ? [obj.slideData] : []);
+    const restoredPairs = [];
+    for (let i = 0; i < slides.length; i++) {
+      const s = slides[i];
+      if (s && s.pdfPageBoardData && s.pdfPageBoardData.dataUrl && s.viewerSnapshotDataUrl === s.pdfPageBoardData.dataUrl) {
+        restoredPairs.push({ slide: s, url: s.viewerSnapshotDataUrl });
+        s.viewerSnapshotDataUrl = '__SAME_AS_PDF_BOARD__';
+      }
+    }
+    try {
+      return JSON.stringify(obj);
+    } finally {
+      for (let i = 0; i < restoredPairs.length; i++) {
+        restoredPairs[i].slide.viewerSnapshotDataUrl = restoredPairs[i].url;
+      }
+    }
+  }
+
+  _restoreDeduplicatedSlideSnapshots(obj) {
+    if (!obj || typeof obj !== 'object') return obj;
+    const slides = Array.isArray(obj.playlistSlides)
+      ? obj.playlistSlides
+      : (obj.slideData ? [obj.slideData] : (obj.pdfPageBoardData ? [obj] : []));
+    const effFilter = obj.exportFilter || null;
+    for (let i = 0; i < slides.length; i++) {
+      const s = slides[i];
+      if (!s || !s.pdfPageBoardData || !s.pdfPageBoardData.dataUrl) continue;
+      if (s.viewerSnapshotDataUrl === '__SAME_AS_PDF_BOARD__' || (!s.viewerSnapshotDataUrl && this._isPureUnannotatedPdfPageSlide(s, effFilter))) {
+        this._applyFastPdfBoardViewerSnapshot(s);
+      }
+    }
+    return obj;
+  }
+
+  async _populateSlideViewerSnapshotsForExport(slides, effFilter, forceRebuildAnnotated = false) {
+    if (!Array.isArray(slides) || slides.length === 0) return slides;
+    const indicesNeedingRender = [];
+    for (let i = 0; i < slides.length; i++) {
+      const s = slides[i];
+      if (!s) continue;
+      if (this._isPureUnannotatedPdfPageSlide(s, effFilter)) {
+        this._applyFastPdfBoardViewerSnapshot(s);
+      } else if (forceRebuildAnnotated || !s.viewerSnapshotDataUrl || s.viewerSnapshotDataUrl === '__SAME_AS_PDF_BOARD__') {
+        indicesNeedingRender.push(i);
+      }
+    }
+    if (indicesNeedingRender.length === 0) {
+      return slides;
+    }
+
+    const isOuterLoop = !this._isCapturingExportSnapshots;
+    if (isOuterLoop) {
+      this._isCapturingExportSnapshots = true;
+      this._exportSnapshotLoopRawSlides = JSON.parse(JSON.stringify(slides));
+      this._exportSnapshotLoopBackupCurrent = this.serializeFullSlideState('backup');
+    }
+    try {
+      for (let k = 0; k < indicesNeedingRender.length; k++) {
+        const i = indicesNeedingRender[k];
+        this.deserializeFullSlideState(slides[i]);
+        await this._waitForSlideImagesReady();
+        const snap = this.captureCurrentSlideViewerSnapshot(effFilter, true);
+        slides[i].viewerSnapshotDataUrl = snap.dataUrl;
+        slides[i].viewerSnapshotWidth = snap.width;
+        slides[i].viewerSnapshotHeight = snap.height;
+        slides[i].viewerGraphHotspots = snap.hotspots;
+        slides[i].viewerStickerHotspots = snap.stickerHotspots;
+        slides[i].viewerSmartBounds = snap.smartBounds;
+        slides[i]._viewerHiResRendered = true;
+      }
+    } finally {
+      if (isOuterLoop) {
+        this._isCapturingExportSnapshots = false;
+        const backupToRestore = this._exportSnapshotLoopBackupCurrent;
+        this._exportSnapshotLoopRawSlides = null;
+        this._exportSnapshotLoopBackupCurrent = null;
+        if (backupToRestore) {
+          this.deserializeFullSlideState(backupToRestore);
+        }
+      }
+    }
+    return slides;
+  }
+
+  // Firestore REST API 헬퍼 (대용량 30~50문항 풀세트도 1MB 제한 없이 자동 Gzip 무손실 압축 + 6개 단위 안전 배치 분할 업로드 지원!)
   async _firestoreRestWrite(collectionName, docId, payloadObj, options = null) {
-    const fullStr = JSON.stringify(payloadObj);
+    const fullStr = this._stringifyWithDeduplicatedSnapshots(payloadObj);
     const netStr = await this._compressJsonStringGzipBase64(fullStr);
     const rawByteSize = fullStr.length;
     const byteSize = netStr.length;
@@ -5047,14 +5223,19 @@
     const baseUid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous';
     const chunkOwnerUid = isUserLibrary ? `chunk_${baseUid}` : `chunk_share_${baseUid}`;
 
-    await Promise.all(chunks.map((cStr, idx) => {
-      return this._firestoreRestWriteSingleDoc(
-        chunkCollection,
-        `${prefix}${idx}`,
-        JSON.stringify({ _isChunkPart: true, parentId: docId, partIndex: idx, data: cStr }),
-        { ownerUid: chunkOwnerUid, expireAtMs: isUserLibrary ? 0 : expireAtMs }
-      );
-    }));
+    const BATCH_SIZE = 6;
+    for (let b = 0; b < chunks.length; b += BATCH_SIZE) {
+      const batchSlice = chunks.slice(b, b + BATCH_SIZE);
+      await Promise.all(batchSlice.map((cStr, localIdx) => {
+        const idx = b + localIdx;
+        return this._firestoreRestWriteSingleDoc(
+          chunkCollection,
+          `${prefix}${idx}`,
+          JSON.stringify({ _isChunkPart: true, parentId: docId, partIndex: idx, data: cStr }),
+          { ownerUid: chunkOwnerUid, expireAtMs: isUserLibrary ? 0 : expireAtMs }
+        );
+      }));
+    }
 
     // 목록 조회용 경량 매니페스트 문서 생성 (보관함 목록 로딩 0.05초 보장 & 영구 보관함 청크 격리!)
     const manifestObj = {
@@ -5087,7 +5268,7 @@
             ? await this._decompressJsonStringGzipBase64(localFull)
             : JSON.stringify(localFull);
           const parsedLocal = typeof uncompLocal === 'string' ? JSON.parse(uncompLocal) : uncompLocal;
-          if (parsedLocal) return parsedLocal;
+          if (parsedLocal) return this._restoreDeduplicatedSlideSnapshots(parsedLocal);
         }
       } catch (e) { }
     }
@@ -5100,9 +5281,14 @@
     if (!res.ok) return null;
     const data = await res.json();
     if (data && data.fields && data.fields.jsonPayload && data.fields.jsonPayload.stringValue) {
-      const rawVal = await this._decompressJsonStringGzipBase64(data.fields.jsonPayload.stringValue);
+      const rawCompressed = data.fields.jsonPayload.stringValue;
+      const rawVal = await this._decompressJsonStringGzipBase64(rawCompressed);
       const parsed = JSON.parse(rawVal);
-      return await this._resolveChunkedItem(parsed);
+      if (parsed && !parsed._isChunked && !skipLocalCache && docId) {
+        await this._idbCacheSet('graphly_full_doc_' + docId, rawCompressed, parsed.expiresAt || 0).catch(() => { });
+      }
+      const resolved = await this._resolveChunkedItem(parsed);
+      return this._restoreDeduplicatedSlideSnapshots(resolved);
     }
     return null;
   }
@@ -5111,7 +5297,7 @@
   async _resolveChunkedItem(item) {
     if (!item) return item;
     if ((Array.isArray(item.playlistSlides) && item.playlistSlides.length > 0) || item.slideData) {
-      return item;
+      return this._restoreDeduplicatedSlideSnapshots(item);
     }
     if (item.id) {
       try {
@@ -5123,7 +5309,7 @@
             : JSON.stringify(localFull);
           const parsedLocal = typeof uncompLocal === 'string' ? JSON.parse(uncompLocal) : uncompLocal;
           if (parsedLocal && ((Array.isArray(parsedLocal.playlistSlides) && parsedLocal.playlistSlides.length > 0) || parsedLocal.slideData)) {
-            return { ...item, ...parsedLocal, title: item.title || parsedLocal.title, folder: item.folder !== undefined ? item.folder : parsedLocal.folder };
+            return this._restoreDeduplicatedSlideSnapshots({ ...item, ...parsedLocal, title: item.title || parsedLocal.title, folder: item.folder !== undefined ? item.folder : parsedLocal.folder });
           }
         }
       } catch (e) { }
@@ -5144,16 +5330,16 @@
                 if (item.id) {
                   await this._idbCacheSet('graphly_full_doc_' + item.id, d.fields.jsonPayload.stringValue, parsed.expiresAt || 0).catch(() => { });
                 }
-                return { ...item, ...parsed };
+                return this._restoreDeduplicatedSlideSnapshots({ ...item, ...parsed });
               }
             }
           }
         } catch (e) { }
       }
-      if (!item._isChunked || !item._chunkCount || !item._chunkDocPrefix) return item;
+      if (!item._isChunked || !item._chunkCount || !item._chunkDocPrefix) return this._restoreDeduplicatedSlideSnapshots(item);
     }
     if (typeof window !== 'undefined' && window.location && !/^https?:$/i.test(window.location.protocol)) {
-      return item;
+      return this._restoreDeduplicatedSlideSnapshots(item);
     }
     try {
       const preferredCol = item._chunkCollection || 'shared_workspaces';
@@ -5188,7 +5374,7 @@
         if (item.id) {
           await this._idbCacheSet('graphly_full_doc_' + item.id, joined, mergedFull.expiresAt || 0).catch(() => { });
         }
-        return mergedFull;
+        return this._restoreDeduplicatedSlideSnapshots(mergedFull);
       }
     } catch (e) { }
     return item;
@@ -5373,31 +5559,9 @@
       }
 
       // 뷰어 0.00초 즉시 오픈을 위해 스캔 이미지(viewerSnapshotDataUrl)가 없는 슬라이드는 사전 베이킹
+      // (무필기 PDF 통페이지는 캔버스 재렌더링 없이 원본 PDF 이미지를 0.00초에 공유 바인딩!)
       const effFilter = activePendingFilter || { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
-      if (!this._isCapturingExportSnapshots) {
-        this._isCapturingExportSnapshots = true;
-        const backupCurrent = this.serializeFullSlideState('backup');
-        try {
-          for (let i = 0; i < slides.length; i++) {
-            if (slides[i] && !slides[i].viewerSnapshotDataUrl) {
-              this.deserializeFullSlideState(slides[i]);
-              await this._waitForSlideImagesReady();
-              const snap = this.captureCurrentSlideViewerSnapshot(effFilter, true);
-              slides[i].viewerSnapshotDataUrl = snap.dataUrl;
-              slides[i].viewerSnapshotWidth = snap.width;
-              slides[i].viewerSnapshotHeight = snap.height;
-              slides[i].viewerGraphHotspots = snap.hotspots;
-              slides[i].viewerStickerHotspots = snap.stickerHotspots;
-              slides[i].viewerSmartBounds = snap.smartBounds;
-            }
-          }
-        } finally {
-          this._isCapturingExportSnapshots = false;
-          if (backupCurrent) {
-            this.deserializeFullSlideState(backupCurrent);
-          }
-        }
-      }
+      await this._populateSlideViewerSnapshotsForExport(slides, effFilter, false);
 
       if (Array.isArray(slides)) {
         slides.forEach(s => {
@@ -5540,7 +5704,7 @@
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
-    const rawJsonStr = JSON.stringify(packObj);
+    const rawJsonStr = this._stringifyWithDeduplicatedSnapshots(packObj);
     const compressedPayload = await this._compressJsonStringGzipBase64(rawJsonStr);
     const escapedPayload = compressedPayload.replace(/<\/script>/gi, '<\\/script>');
     const originUrl = (window.location && /^https?:/i.test(window.location.protocol))
@@ -5585,11 +5749,11 @@
     if (!text || typeof text !== 'string') return null;
     const trimmed = text.trim();
     if (trimmed.startsWith('{')) {
-      return JSON.parse(trimmed);
+      return this._restoreDeduplicatedSlideSnapshots(JSON.parse(trimmed));
     }
     if (trimmed.startsWith('GZ1:')) {
       const jsonStr = await this._decompressJsonStringGzipBase64(trimmed);
-      return JSON.parse(jsonStr);
+      return this._restoreDeduplicatedSlideSnapshots(JSON.parse(jsonStr));
     }
     const markerStart = trimmed.indexOf('<script id="graphly-package-json" type="application/json">');
     if (markerStart !== -1) {
@@ -5598,15 +5762,16 @@
       if (jsonEnd !== -1) {
         const rawPayload = trimmed.slice(jsonStart, jsonEnd).replace(/<\\\/script>/gi, '</script>').trim();
         const jsonStr = await this._decompressJsonStringGzipBase64(rawPayload);
-        return JSON.parse(jsonStr);
+        return this._restoreDeduplicatedSlideSnapshots(JSON.parse(jsonStr));
       }
     }
     const fallbackStr = await this._decompressJsonStringGzipBase64(trimmed);
-    return JSON.parse(fallbackStr);
+    return this._restoreDeduplicatedSlideSnapshots(JSON.parse(fallbackStr));
   }
 
   loadGraphlyPackObject(pack, fallbackTitle = '불러온 수업 세트', autoPlayIfAudio = false) {
     if (!pack) return null;
+    this._restoreDeduplicatedSlideSnapshots(pack);
     const slides = Array.isArray(pack.playlistSlides) && pack.playlistSlides.length > 0
       ? pack.playlistSlides
       : (pack.slideData ? [pack.slideData] : (pack.historyJson ? [pack] : []));
@@ -5659,30 +5824,7 @@
       }
     }
     const effFilter = this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
-    if (!this._isCapturingExportSnapshots) {
-      this._isCapturingExportSnapshots = true;
-      const backupCurrent = this.serializeFullSlideState('backup');
-      try {
-        for (let i = 0; i < slides.length; i++) {
-          if (slides[i] && !slides[i].viewerSnapshotDataUrl) {
-            this.deserializeFullSlideState(slides[i]);
-            await this._waitForSlideImagesReady();
-            const snap = this.captureCurrentSlideViewerSnapshot(effFilter, true);
-            slides[i].viewerSnapshotDataUrl = snap.dataUrl;
-            slides[i].viewerSnapshotWidth = snap.width;
-            slides[i].viewerSnapshotHeight = snap.height;
-            slides[i].viewerGraphHotspots = snap.hotspots;
-            slides[i].viewerStickerHotspots = snap.stickerHotspots;
-            slides[i].viewerSmartBounds = snap.smartBounds;
-          }
-        }
-      } finally {
-        this._isCapturingExportSnapshots = false;
-        if (backupCurrent) {
-          this.deserializeFullSlideState(backupCurrent);
-        }
-      }
-    }
+    await this._populateSlideViewerSnapshotsForExport(slides, effFilter, false);
     slides.forEach(s => {
       if (s && s.audioSyncData) {
         s.audioSyncData = this._compactAudioSyncData(s.audioSyncData);
@@ -6876,6 +7018,9 @@
 
   handleNewCanvasButtonClick() {
     this._openSlideChipDelKey = null;
+    if (typeof this.canAddMoreSlidesWithQuota === 'function' && !this.canAddMoreSlidesWithQuota(1)) {
+      return;
+    }
     const wasRecording = Boolean(this.isAudioRecording);
     if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
       this.lessonPlaylistIndex = 0;
@@ -7365,9 +7510,13 @@
       if (!Array.isArray(slides)) return slides;
       slides.forEach(s => {
         if (s && s.pdfPageBoardData && !s.pdfPageBoardData.dataUrl) {
-          const cv = s.pdfPageBoardData.canvas || (this._pdfPageCanvasCache && s.pdfPageBoardData.pageNum ? this._pdfPageCanvasCache[s.pdfPageBoardData.pageNum] : null);
+          const cv = (s.pdfPageBoardData.canvas && !s.pdfPageBoardData.canvas._evicted && s.pdfPageBoardData.canvas.width > 4)
+            ? s.pdfPageBoardData.canvas
+            : ((typeof this._getPdfPageCanvasFromCache === 'function')
+              ? this._getPdfPageCanvasFromCache(s.pdfPageBoardData.pageNum, '')
+              : null);
           if (cv) {
-            s.pdfPageBoardData.dataUrl = this.encodeCanvasSmartWebP(cv, 0.82);
+            s.pdfPageBoardData.dataUrl = cv._cachedDataUrl || (cv._cachedDataUrl = this.encodeCanvasSmartWebP(cv, 0.78));
           }
         }
         if (s && s.audioSyncData) {
@@ -7400,6 +7549,11 @@
     const incInk = filterOpts.includeInk !== false;
     const incAudio = filterOpts.includeAudio !== false;
 
+    if (!incProb || !incGraph || !incInk) {
+      delete slide.viewerSnapshotDataUrl;
+      delete slide._viewerHiResRendered;
+    }
+
     if (!incProb) {
       slide.primaryProblemCard = null;
       slide.extraProblems = [];
@@ -7410,10 +7564,31 @@
       }
       if (Array.isArray(slide.extraProblems)) {
         slide.extraProblems.forEach(ep => {
-          if (ep) ep.problemInkStrokes = [];
+          if (ep) {
+            ep.problemInkStrokes = [];
+            ep.cardInkStrokes = [];
+          }
         });
       }
     }
+
+    const stripGraphSnapshotInk = (snapVal) => {
+      if (!snapVal) return snapVal;
+      if (typeof snapVal === 'object') {
+        snapVal.graphInkStrokes = [];
+        return snapVal;
+      }
+      if (typeof snapVal === 'string') {
+        try {
+          const parsed = JSON.parse(snapVal);
+          if (parsed && typeof parsed === 'object') {
+            parsed.graphInkStrokes = [];
+            return JSON.stringify(parsed);
+          }
+        } catch (e) { }
+      }
+      return snapVal;
+    };
 
     if (!incGraph) {
       slide.primaryGraphCard = null;
@@ -7422,10 +7597,22 @@
     } else if (!incInk) {
       if (slide.primaryGraphCard) {
         slide.primaryGraphCard.graphInkStrokes = [];
+        if (slide.primaryGraphCard.primaryGraphCardSnapshot) {
+          slide.primaryGraphCard.primaryGraphCardSnapshot = stripGraphSnapshotInk(slide.primaryGraphCard.primaryGraphCardSnapshot);
+        }
+        if (slide.primaryGraphCard.graphCardData && slide.primaryGraphCard.graphCardData.graphSnapshot) {
+          slide.primaryGraphCard.graphCardData.graphSnapshot = stripGraphSnapshotInk(slide.primaryGraphCard.graphCardData.graphSnapshot);
+        }
       }
       if (Array.isArray(slide.extraGraphs)) {
         slide.extraGraphs.forEach(eg => {
-          if (eg) eg.graphInkStrokes = [];
+          if (eg) {
+            eg.graphInkStrokes = [];
+            eg.cardInkStrokes = [];
+            if (eg.graphSnapshot) {
+              eg.graphSnapshot = stripGraphSnapshotInk(eg.graphSnapshot);
+            }
+          }
         });
       }
     }
@@ -7491,6 +7678,11 @@
   }
 
   async _waitForSlideImagesReady() {
+    if (this.pdfPageBoardData && (!this.pdfPageBoardData.canvas || this.pdfPageBoardData.canvas._evicted || this.pdfPageBoardData.canvas.width <= 4) && this.pdfPageBoardData.dataUrl) {
+      if (typeof this._ensurePdfBoardCanvasFromDataUrl === 'function') {
+        await this._ensurePdfBoardCanvasFromDataUrl(this.pdfPageBoardData);
+      }
+    }
     const imgs = Array.from(document.querySelectorAll(
       '#problemCardImg, #graphCardImg, .extra-problem-card-widget .problem-card-img, .extra-graph-card-widget .problem-card-img'
     ));
@@ -7514,7 +7706,7 @@
     this.renderProblemCardCanvas();
     this.syncGraphCardRectFromWidget();
     this.renderGraphCardCanvas();
-    if (this.pdfPageBoardData && this.pdfPageBoardData.img && !this.pdfPageBoardData.canvas && this.pdfPageBoardData.img.naturalWidth > 0) {
+    if (this.pdfPageBoardData && this.pdfPageBoardData.img && (!this.pdfPageBoardData.canvas || this.pdfPageBoardData.canvas._evicted || this.pdfPageBoardData.canvas.width <= 4) && this.pdfPageBoardData.img.naturalWidth > 0) {
       const offC = document.createElement('canvas');
       offC.width = this.pdfPageBoardData.img.naturalWidth;
       offC.height = this.pdfPageBoardData.img.naturalHeight;
@@ -7530,7 +7722,7 @@
     const stickerHotspots = this.extractStickerHotspotsForBounds(smartBounds, effFilter);
     this._omitStickersForViewerSnapshot = true;
     const isMobileDevice = (typeof window !== 'undefined') && (window.innerWidth <= 768 || window.innerHeight <= 500);
-    const targetScale = isMobileDevice ? 1.8 : (forCloud ? 2.8 : 3.2);
+    const targetScale = isMobileDevice ? 1.8 : (forCloud ? 2.2 : 2.8);
     let exp;
     try {
       exp = this.getExportCanvas(effFilter, smartBounds, targetScale);
@@ -7539,8 +7731,9 @@
     }
     let dataUrl = '';
     try {
+      const allowJpeg = !this.exportTransparent;
       dataUrl = (forCloud || isMobileDevice)
-        ? this.encodeCanvasSmartWebP(exp.canvas, 0.88)
+        ? this.encodeCanvasSmartWebP(exp.canvas, 0.80, allowJpeg)
         : exp.canvas.toDataURL('image/png');
     } catch (e) {
       dataUrl = exp.canvas.toDataURL('image/png');
@@ -7573,36 +7766,7 @@
         : [this.serializeFullSlideState('공유된 수업 노트')]);
     const filteredSlides = rawSlides.map(s => this._applyExportFilterToSlideData(s, effFilter));
 
-    const isOuterLoop = !this._isCapturingExportSnapshots;
-    if (isOuterLoop) {
-      this._isCapturingExportSnapshots = true;
-      this._exportSnapshotLoopRawSlides = JSON.parse(JSON.stringify(rawSlides));
-      this._exportSnapshotLoopBackupCurrent = this.serializeFullSlideState('backup');
-    }
-    try {
-      for (let i = 0; i < filteredSlides.length; i++) {
-        this.deserializeFullSlideState(filteredSlides[i]);
-        await this._waitForSlideImagesReady();
-        const snap = this.captureCurrentSlideViewerSnapshot(effFilter, true);
-        filteredSlides[i].viewerSnapshotDataUrl = snap.dataUrl;
-        filteredSlides[i].viewerSnapshotWidth = snap.width;
-        filteredSlides[i].viewerSnapshotHeight = snap.height;
-        filteredSlides[i].viewerGraphHotspots = snap.hotspots;
-        filteredSlides[i].viewerStickerHotspots = snap.stickerHotspots;
-        filteredSlides[i].viewerSmartBounds = snap.smartBounds;
-        filteredSlides[i]._viewerHiResRendered = true;
-      }
-    } finally {
-      if (isOuterLoop) {
-        this._isCapturingExportSnapshots = false;
-        const backupToRestore = this._exportSnapshotLoopBackupCurrent;
-        this._exportSnapshotLoopRawSlides = null;
-        this._exportSnapshotLoopBackupCurrent = null;
-        if (backupToRestore) {
-          this.deserializeFullSlideState(backupToRestore);
-        }
-      }
-    }
+    await this._populateSlideViewerSnapshotsForExport(filteredSlides, effFilter, true);
 
     const nowMs = Date.now();
     const TWO_WEEKS_MS = 7 * 24 * 60 * 60 * 1000; // 🌟 [대표님 정책]: 공유 링크 & QR 자동 소멸 기한 7일(7일간 유효)
@@ -7709,7 +7873,7 @@
     this._lastShareContentSig = contentSig;
 
     const shortId = pkg.id;
-    const fullPkgJson = JSON.stringify(pkg);
+    const fullPkgJson = this._stringifyWithDeduplicatedSnapshots(pkg);
     const compressedFullPkg = await this._compressJsonStringGzipBase64(fullPkgJson);
 
     // 로컬 캐시는 용량 제한 없는 IndexedDB에 저장 (5MB 초과 음성 강의도 100% 캐싱!)
@@ -7749,14 +7913,19 @@
         }
         const audioPrefix = `${shortId}_audio_`;
         const baseUid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous';
-        await Promise.all(audioChunks.map((cStr, idx) =>
-          this._firestoreRestWriteSingleDoc(
-            'shared_workspaces',
-            `${audioPrefix}${idx}`,
-            JSON.stringify({ _isChunkPart: true, _isAudioChunk: true, parentId: shortId, partIndex: idx, data: cStr }),
-            { ownerUid: `chunk_audio_${baseUid}`, expireAtMs: pkg.expiresAt }
-          )
-        ));
+        const AUDIO_BATCH_SIZE = 6;
+        for (let b = 0; b < audioChunks.length; b += AUDIO_BATCH_SIZE) {
+          const batchSlice = audioChunks.slice(b, b + AUDIO_BATCH_SIZE);
+          await Promise.all(batchSlice.map((cStr, localIdx) => {
+            const idx = b + localIdx;
+            return this._firestoreRestWriteSingleDoc(
+              'shared_workspaces',
+              `${audioPrefix}${idx}`,
+              JSON.stringify({ _isChunkPart: true, _isAudioChunk: true, parentId: shortId, partIndex: idx, data: cStr }),
+              { ownerUid: `chunk_audio_${baseUid}`, expireAtMs: pkg.expiresAt }
+            );
+          }));
+        }
         cloudPkg._hasLazyAudio = true;
         cloudPkg._audioChunkCollection = 'shared_workspaces';
         cloudPkg._audioChunkPrefix = audioPrefix;
@@ -7914,13 +8083,14 @@
     if (!shortId) return;
     let pkg = null;
     try {
-      const idbRaw = await this._idbCacheGet('graphly_cloud_share_' + shortId);
+      const idbRaw = await this._idbCacheGet('graphly_cloud_share_' + shortId) || await this._idbCacheGet('graphly_full_doc_' + shortId);
       const localRaw = idbRaw || localStorage.getItem('graphly_cloud_share_' + shortId);
       if (localRaw) {
         const uncomp = typeof localRaw === 'string'
           ? await this._decompressJsonStringGzipBase64(localRaw)
           : JSON.stringify(localRaw);
         pkg = typeof uncomp === 'string' ? JSON.parse(uncomp) : uncomp;
+        if (pkg) this._restoreDeduplicatedSlideSnapshots(pkg);
       }
     } catch (e) { }
 
@@ -7928,7 +8098,8 @@
       try {
         pkg = await this._firestoreRestReadDoc('shared_workspaces', shortId);
         if (pkg) {
-          const compPkg = await this._compressJsonStringGzipBase64(JSON.stringify(pkg));
+          this._restoreDeduplicatedSlideSnapshots(pkg);
+          const compPkg = await this._compressJsonStringGzipBase64(this._stringifyWithDeduplicatedSnapshots(pkg));
           await this._idbCacheSet('graphly_cloud_share_' + shortId, compPkg, pkg.expiresAt || 0).catch(() => { });
         }
       } catch (e) { }
@@ -8675,17 +8846,24 @@
 
   async _ensureSlideViewerSnapshot(slide) {
     if (!slide) return;
-    if (!slide.viewerSnapshotDataUrl) {
-      this.deserializeFullSlideState(slide);
-      await this._waitForSlideImagesReady();
-      const snap = this.captureCurrentSlideViewerSnapshot((this._viewerPkg && this._viewerPkg.exportFilter) || null, false);
-      slide.viewerSnapshotDataUrl = snap.dataUrl;
-      slide.viewerSnapshotWidth = snap.width;
-      slide.viewerSnapshotHeight = snap.height;
-      slide.viewerGraphHotspots = snap.hotspots;
-      slide.viewerStickerHotspots = snap.stickerHotspots;
-      slide.viewerSmartBounds = snap.smartBounds;
-      slide._viewerHiResRendered = true;
+    if (slide.viewerSnapshotDataUrl === '__SAME_AS_PDF_BOARD__') {
+      this._applyFastPdfBoardViewerSnapshot(slide);
+    } else if (!slide.viewerSnapshotDataUrl) {
+      const effFilter = (this._viewerPkg && this._viewerPkg.exportFilter) || null;
+      if (this._isPureUnannotatedPdfPageSlide(slide, effFilter)) {
+        this._applyFastPdfBoardViewerSnapshot(slide);
+      } else {
+        this.deserializeFullSlideState(slide);
+        await this._waitForSlideImagesReady();
+        const snap = this.captureCurrentSlideViewerSnapshot(effFilter, false);
+        slide.viewerSnapshotDataUrl = snap.dataUrl;
+        slide.viewerSnapshotWidth = snap.width;
+        slide.viewerSnapshotHeight = snap.height;
+        slide.viewerGraphHotspots = snap.hotspots;
+        slide.viewerStickerHotspots = snap.stickerHotspots;
+        slide.viewerSmartBounds = snap.smartBounds;
+        slide._viewerHiResRendered = true;
+      }
     }
     if (slide.viewerSnapshotDataUrl) {
       if (!this._viewerPreloadedImages) this._viewerPreloadedImages = new Map();
@@ -8894,6 +9072,7 @@
 
   async openSmartNoteViewer(pkg, forceNoteViewer = false) {
     if (!pkg || !Array.isArray(pkg.playlistSlides) || !pkg.playlistSlides.length) return;
+    this._restoreDeduplicatedSlideSnapshots(pkg);
     this._commitPendingViewerCarouselImmediately();
     this.exitStudentAudioVideoOnlyMode();
     if (this.virtualStylusEl) {
@@ -9654,13 +9833,41 @@
     return this.canvasRect;
   }
 
-  encodeCanvasSmartWebP(canvas, quality = 1.0) {
+  _canEncodeCanvasWebP() {
+    if (typeof this._cachedCanEncodeWebP === 'boolean') {
+      return this._cachedCanEncodeWebP;
+    }
+    if (typeof document === 'undefined') {
+      return false;
+    }
+    try {
+      const probe = document.createElement('canvas');
+      probe.width = 1;
+      probe.height = 1;
+      const url = probe.toDataURL('image/webp', 0.8);
+      this._cachedCanEncodeWebP = Boolean(url && url.startsWith('data:image/webp'));
+    } catch (e) {
+      this._cachedCanEncodeWebP = false;
+    }
+    return this._cachedCanEncodeWebP;
+  }
+
+  encodeCanvasSmartWebP(canvas, quality = 1.0, allowJpegFallback = true) {
     if (!canvas) return '';
     if (typeof quality === 'number' && quality < 0.99) {
-      try {
-        const webp = canvas.toDataURL('image/webp', quality);
-        if (webp && webp.startsWith('data:image/webp')) return webp;
-      } catch (e) { }
+      if (this._canEncodeCanvasWebP()) {
+        try {
+          const webp = canvas.toDataURL('image/webp', quality);
+          if (webp && webp.startsWith('data:image/webp')) return webp;
+        } catch (e) { }
+      }
+      if (allowJpegFallback !== false) {
+        try {
+          const jpegQuality = Math.min(0.92, Math.max(0.82, quality + 0.06));
+          const jpeg = canvas.toDataURL('image/jpeg', jpegQuality);
+          if (jpeg && jpeg.startsWith('data:image/jpeg')) return jpeg;
+        } catch (e) { }
+      }
     }
     return canvas.toDataURL('image/png');
   }

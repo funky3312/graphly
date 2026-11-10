@@ -6927,6 +6927,10 @@ body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active) .problem-card-wid
   cursor: default !important;
 }
 
+.problem-card-widget.is-dragging-card {
+  will-change: transform;
+}
+
 .problem-card-widget.is-dragging-card,
 .problem-card-widget.is-dragging-card .problem-card-body,
 .problem-card-widget.is-dragging-card .problem-card-img,

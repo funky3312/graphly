@@ -1009,7 +1009,12 @@ class GraphApp {
     if (wsSnap.primaryProblemCard && pWidget) {
       const pc = wsSnap.primaryProblemCard;
       this.problemCardData = pc.problemCardData ? { ...pc.problemCardData } : null;
-      this.problemCardImage = pc.problemCardImage;
+      const isEvictedCanvasImg = Boolean(
+        pc.problemCardImage &&
+        typeof pc.problemCardImage.getContext === 'function' &&
+        (pc.problemCardImage._evicted || pc.problemCardImage.width <= 4 || pc.problemCardImage.height <= 4)
+      );
+      this.problemCardImage = isEvictedCanvasImg ? null : pc.problemCardImage;
       this.problemCardAspect = pc.problemCardAspect;
       this.isProblemCardMinimized = Boolean(pc.isProblemCardMinimized);
       this.problemCardBaseX = pc.problemCardBaseX;
@@ -1201,6 +1206,12 @@ class GraphApp {
     this._coveredGraphStateBackup = wsSnap.coveredGraphStateBackup ? JSON.parse(JSON.stringify(wsSnap.coveredGraphStateBackup)) : null;
     this._savedLayer2BoardPan = wsSnap.savedLayer2BoardPan ? { ...wsSnap.savedLayer2BoardPan } : null;
     this.pdfPageBoardData = wsSnap.pdfPageBoardData ? { ...wsSnap.pdfPageBoardData } : null;
+    if (this.pdfPageBoardData && typeof this._isValidPdfBoardCanvas === 'function' && !this._isValidPdfBoardCanvas(this.pdfPageBoardData.canvas)) {
+      this.pdfPageBoardData.canvas = null;
+      if (typeof this._ensurePdfBoardCanvasFromDataUrl === 'function') {
+        this._ensurePdfBoardCanvasFromDataUrl(this.pdfPageBoardData);
+      }
+    }
     this.pdfSavedPageStates = wsSnap.pdfSavedPageStates ? { ...wsSnap.pdfSavedPageStates } : {};
     this.pdfWorkedPages = Array.isArray(wsSnap.pdfWorkedPages) ? [...wsSnap.pdfWorkedPages] : [];
     this.isLessonPlaylistActive = Boolean(wsSnap.isLessonPlaylistActive);
