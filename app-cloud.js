@@ -19,6 +19,9 @@
     };
 
     this._cloudIdAuthTab = 'login';
+    this._isExplicitAuthFlowInProgress = false;
+    this._lastSessionLockRegisteredAt = 0;
+    this._pendingSessionLockWritePromise = null;
     this.myLibraryCache = [];
     this._restoreActiveCloudUserSession();
     if (this.cloudUser && this.cloudUser.uid) {
@@ -32,9 +35,11 @@
       const savedProvider = forceAuthProvider || (this.cloudUser && this.cloudUser.authProvider) || localStorage.getItem('graphly_last_auth_provider') || '';
       const hasGoogle = Array.isArray(user.providerData) && user.providerData.some(p => p && p.providerId === 'google.com');
       const hasPassword = Array.isArray(user.providerData) && user.providerData.some(p => p && p.providerId === 'password');
-      const isGoogleProvider = (savedProvider === 'email' && hasPassword)
-        ? false
-        : (savedProvider === 'google' && hasGoogle ? true : (hasGoogle && !hasPassword));
+      const isGoogleProvider = (forceAuthProvider === 'google')
+        ? true
+        : ((savedProvider === 'email' && hasPassword)
+          ? false
+          : (savedProvider === 'google' && hasGoogle ? true : (hasGoogle && !hasPassword)));
       if (!isGoogleProvider && !user.emailVerified) return false;
       const authProvider = isGoogleProvider ? 'google' : 'email';
       const normEmail = String(user.email || '').trim().toLowerCase();
@@ -91,6 +96,7 @@
               }).catch(() => { });
             }
             this._fbAuth.onAuthStateChanged((user) => {
+              if (this._isExplicitAuthFlowInProgress) return;
               if (user) {
                 const savedProvider = (this.cloudUser && this.cloudUser.authProvider) || localStorage.getItem('graphly_last_auth_provider') || '';
                 const hasGoogle = Array.isArray(user.providerData) && user.providerData.some(p => p && p.providerId === 'google.com');
@@ -102,22 +108,31 @@
                   const authProvider = isGoogleProvider ? 'google' : 'email';
                   const normEmail = String(user.email || '').trim().toLowerCase();
                   const canonicalUid = this._getCanonicalUidForEmail(normEmail, user.uid, authProvider);
+                  const alreadySameUser = Boolean(this.cloudUser && this.cloudUser.uid === canonicalUid);
                   this.cloudUser = {
                     uid: canonicalUid,
                     rawUid: String(user.uid || canonicalUid),
                     authProvider: authProvider,
                     providerLabel: isGoogleProvider ? 'Google 로그인' : '아이디 로그인',
                     loginId: normEmail || user.uid,
-                    displayName: user.displayName || (normEmail ? normEmail.split('@')[0] : '선생님'),
+                    displayName: user.displayName || (this.cloudUser && this.cloudUser.displayName) || (normEmail ? normEmail.split('@')[0] : '선생님'),
                     email: normEmail,
-                    emailVerified: true
+                    emailVerified: true,
+                    isPro: Boolean(this.cloudUser && this.cloudUser.isPro)
                   };
                   this._persistActiveCloudUserSession();
-                  this._loadMyLibraryCacheForCurrentUser();
-                  this.syncCloudAuthUI();
-                  this.syncUserProSubscriptionFromCloud();
-                  this.fetchMyLibraryFromCloud();
-                  this.verifyActiveDeviceSessionLock();
+                  if (!alreadySameUser) {
+                    this._loadMyLibraryCacheForCurrentUser();
+                    this.syncCloudAuthUI();
+                    this.syncUserProSubscriptionFromCloud();
+                    this.fetchMyLibraryFromCloud();
+                  } else {
+                    this.syncCloudAuthUI();
+                  }
+                  const sinceRegisterMs = Date.now() - (this._lastSessionLockRegisteredAt || 0);
+                  if (sinceRegisterMs > 10000) {
+                    this.verifyActiveDeviceSessionLock();
+                  }
                 }
               } else if (this.cloudUser && this._fbSignOutInProgress) {
                 this.cloudUser = null;
@@ -145,10 +160,14 @@
       this._sessionLockVisibilityBound = true;
       const checkSessionOnFocus = () => {
         if (!this.cloudUser || !this.cloudUser.uid) return;
+        if (this._isExplicitAuthFlowInProgress) return;
+        if (this.isDrawingInk || this._isDrawingCardInk) return;
         const now = Date.now();
+        if (this._lastSessionLockRegisteredAt && (now - this._lastSessionLockRegisteredAt < 10000)) return;
         if (this._lastSessionLockCheckMs && now - this._lastSessionLockCheckMs < 15000) return;
         this._lastSessionLockCheckMs = now;
         this.verifyActiveDeviceSessionLock();
+        this.syncUserProSubscriptionFromCloud();
       };
       window.addEventListener('focus', checkSessionOnFocus, { passive: true });
       document.addEventListener('visibilitychange', () => {
@@ -925,26 +944,30 @@
     if (!item || !item.id) return;
     try {
       const localKey = 'graphly_full_doc_' + item.id;
-      const localRaw = localStorage.getItem(localKey);
+      const localRaw = (typeof this._idbCacheGet === 'function' ? await this._idbCacheGet(localKey) : null) || localStorage.getItem(localKey);
       if (localRaw) {
-        const uncomp = await this._decompressJsonStringGzipBase64(localRaw);
-        const parsed = JSON.parse(uncomp);
+        const uncomp = typeof localRaw === 'string' ? await this._decompressJsonStringGzipBase64(localRaw) : JSON.stringify(localRaw);
+        const parsed = typeof uncomp === 'string' ? JSON.parse(uncomp) : uncomp;
         if (parsed && typeof parsed === 'object') {
           parsed.title = item.title;
           parsed.folder = item.folder || '';
           parsed.tags = item.tags || '';
           parsed.updatedAt = Date.now();
-          localStorage.setItem(localKey, JSON.stringify(parsed));
+          if (typeof this._idbCacheSet === 'function') {
+            const compUpdated = await this._compressJsonStringGzipBase64(JSON.stringify(parsed));
+            await this._idbCacheSet(localKey, compUpdated);
+          }
         }
       }
     } catch (e) { }
     try {
-      if (item._isChunked && !item.playlistSlides && !item.slideData) {
+      if (item._isChunked && item._chunkCount && item._chunkDocPrefix) {
+        item.updatedAt = Date.now();
         const manifestObj = {
           ...item,
           slideData: null,
           playlistSlides: null,
-          updatedAt: Date.now()
+          updatedAt: item.updatedAt
         };
         await this._firestoreRestWriteSingleDoc('user_library', item.id, JSON.stringify(manifestObj));
       } else {
@@ -986,11 +1009,24 @@
   }
 
   async _cleanupCloudItemChunks(item) {
-    if (!item || !item._isChunked || !item._chunkCount || !item._chunkDocPrefix) return;
+    if (!item) return;
+    const primaryCol = item._chunkCollection || 'shared_workspaces';
     try {
       const tasks = [];
-      for (let i = 0; i < item._chunkCount; i++) {
-        tasks.push(this._firestoreRestDeleteDoc('shared_workspaces', `${item._chunkDocPrefix}${i}`).catch(() => { }));
+      if (item._isChunked && item._chunkCount && item._chunkDocPrefix) {
+        for (let i = 0; i < item._chunkCount; i++) {
+          const cId = `${item._chunkDocPrefix}${i}`;
+          tasks.push(this._firestoreRestDeleteDoc(primaryCol, cId).catch(() => { }));
+          if (primaryCol !== 'shared_workspaces') {
+            tasks.push(this._firestoreRestDeleteDoc('shared_workspaces', cId).catch(() => { }));
+          }
+        }
+      }
+      if (item._hasLazyAudio && item._audioChunkCount && item._audioChunkPrefix) {
+        const audioCol = item._audioChunkCollection || primaryCol || 'shared_workspaces';
+        for (let i = 0; i < item._audioChunkCount; i++) {
+          tasks.push(this._firestoreRestDeleteDoc(audioCol, `${item._audioChunkPrefix}${i}`).catch(() => { }));
+        }
       }
       await Promise.all(tasks);
     } catch (e) { }
@@ -1004,6 +1040,9 @@
     try {
       localStorage.removeItem('graphly_full_doc_' + item.id);
     } catch (e) { }
+    if (typeof this._idbCacheDelete === 'function') {
+      await this._idbCacheDelete('graphly_full_doc_' + item.id).catch(() => { });
+    }
     await this._cleanupCloudItemChunks(item);
     try {
       await this._firestoreRestDeleteDoc('user_library', item.id);
@@ -1871,22 +1910,26 @@
     const key = this._getMyLibraryStorageKey();
     if (!key) return;
     const list = this.myLibraryCache || [];
+    const lightList = list.map(it => {
+      if (!it) return it;
+      if (it.id && ((Array.isArray(it.playlistSlides) && it.playlistSlides.length > 0) || it.slideData) && typeof this._idbCacheSet === 'function') {
+        try {
+          this._idbCacheSet('graphly_full_doc_' + it.id, JSON.stringify(it)).catch(() => { });
+        } catch (e) { }
+      }
+      return {
+        ...it,
+        playlistSlides: null,
+        slideData: null
+      };
+    });
     try {
-      localStorage.setItem(key, JSON.stringify(list));
+      localStorage.setItem(key, JSON.stringify(lightList));
     } catch (e) {
       this._evictOldLocalCloudFullDocs();
       try {
-        localStorage.setItem(key, JSON.stringify(list));
-      } catch (e2) {
-        try {
-          const lightList = list.map(it => it ? ({
-            ...it,
-            playlistSlides: null,
-            slideData: null
-          }) : it);
-          localStorage.setItem(key, JSON.stringify(lightList));
-        } catch (e3) { }
-      }
+        localStorage.setItem(key, JSON.stringify(lightList));
+      } catch (e2) { }
     }
   }
 
@@ -1917,35 +1960,70 @@
 
   _registerNewDeviceSessionLock(uid) {
     if (!uid) return '';
-    const sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    const nowMs = Date.now();
+    const sessionId = 'sess_' + nowMs + '_' + Math.random().toString(36).slice(2, 8);
+    this._lastSessionLockRegisteredAt = nowMs;
+    this._lastSessionLockCheckMs = nowMs;
+    this._activeRegisteredSessionId = sessionId;
     try {
       localStorage.setItem('graphly_device_session_' + uid, sessionId);
+      localStorage.setItem('graphly_device_session_ts_' + uid, String(nowMs));
     } catch (e) { }
     if (typeof window !== 'undefined' && window.location && /^https?:$/i.test(window.location.protocol) && typeof this._firestoreRestWriteSingleDoc === 'function') {
-      this._firestoreRestWriteSingleDoc('user_preferences', 'session_' + uid, JSON.stringify({
+      const writePromise = this._firestoreRestWriteSingleDoc('user_preferences', 'session_' + uid, JSON.stringify({
         uid,
         activeSessionId: sessionId,
-        updatedAt: Date.now()
-      })).catch(() => { });
+        updatedAt: nowMs
+      }), { ownerUid: uid }).catch(() => { }).finally(() => {
+        if (this._pendingSessionLockWritePromise === writePromise) {
+          this._pendingSessionLockWritePromise = null;
+        }
+      });
+      this._pendingSessionLockWritePromise = writePromise;
     }
     return sessionId;
   }
 
   async verifyActiveDeviceSessionLock() {
     if (!this.cloudUser || !this.cloudUser.uid) return true;
+    if (this._isExplicitAuthFlowInProgress) return true;
+    if (this._lastSessionLockRegisteredAt && (Date.now() - this._lastSessionLockRegisteredAt < 10000)) return true;
     if (!this._canSyncCustomGraphsToFirestore() || typeof this._firestoreRestReadDoc !== 'function') return true;
     const uid = this.cloudUser.uid;
+    if (this._pendingSessionLockWritePromise) {
+      try { await this._pendingSessionLockWritePromise; } catch (e) { }
+    }
     let localSessionId = '';
+    let localSessionTs = 0;
     try {
       localSessionId = localStorage.getItem('graphly_device_session_' + uid) || '';
+      localSessionTs = Number(localStorage.getItem('graphly_device_session_ts_' + uid) || 0) || 0;
     } catch (e) { }
     if (!localSessionId) {
       this._registerNewDeviceSessionLock(uid);
       return true;
     }
     try {
-      const remote = await this._firestoreRestReadDoc('user_preferences', 'session_' + uid);
-      if (remote && remote.activeSessionId && remote.activeSessionId !== localSessionId) {
+      const remote = await this._firestoreRestReadDoc('user_preferences', 'session_' + uid, true);
+      if (!this.cloudUser || this.cloudUser.uid !== uid || this._isExplicitAuthFlowInProgress) return true;
+      if (this._lastSessionLockRegisteredAt && (Date.now() - this._lastSessionLockRegisteredAt < 10000)) return true;
+      let latestLocalSessionId = localSessionId;
+      let latestLocalTs = localSessionTs;
+      try {
+        latestLocalSessionId = localStorage.getItem('graphly_device_session_' + uid) || localSessionId;
+        latestLocalTs = Number(localStorage.getItem('graphly_device_session_ts_' + uid) || 0) || localSessionTs;
+      } catch (e) { }
+      if (remote && remote.activeSessionId && remote.activeSessionId !== latestLocalSessionId) {
+        const remoteTs = Number(remote.updatedAt) || 0;
+        // 서버의 세션 타임스탬프가 현재 기기 로그인 시각보다 과거이거나 같다면 이전 세션 잔상이므로 로그아웃하지 않고 현재 세션으로 서버 갱신
+        if (latestLocalTs > 0 && remoteTs > 0 && remoteTs <= latestLocalTs) {
+          this._firestoreRestWriteSingleDoc('user_preferences', 'session_' + uid, JSON.stringify({
+            uid,
+            activeSessionId: latestLocalSessionId,
+            updatedAt: latestLocalTs
+          }), { ownerUid: uid }).catch(() => { });
+          return true;
+        }
         await this.handleCloudLogout(true);
         this.showToast('🔒 다른 기기에서 로그인되어 현재 기기는 자동 로그아웃되었습니다.');
         return false;
@@ -2309,7 +2387,7 @@
     if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestReadDoc === 'function') {
       try {
         const docId = `pref_user_${curUid}`;
-        const remotePrefs = await this._firestoreRestReadDoc('user_preferences', docId);
+        const remotePrefs = await this._firestoreRestReadDoc('user_preferences', docId, true);
         if (remotePrefs && typeof remotePrefs === 'object' && (remotePrefs.inkDockPosition || remotePrefs.themeKey)) {
           this._applyUserPreferences(remotePrefs, true);
           try {
@@ -2364,7 +2442,8 @@
       this.isProUser = false;
       return false;
     }
-    const userProKey = this._getProStorageKeyForUid(this.cloudUser.uid);
+    const targetUid = this.cloudUser.uid;
+    const userProKey = this._getProStorageKeyForUid(targetUid);
     let localPro = false;
     try {
       localPro = (localStorage.getItem(userProKey) === 'true');
@@ -2373,27 +2452,66 @@
     this.isProUser = localPro;
     if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestReadDoc === 'function') {
       try {
-        const subDocId = `sub_${this.cloudUser.uid}`;
+        const subDocId = `sub_${targetUid}`;
         const remoteSub = await this._firestoreRestReadDoc('user_subscriptions', subDocId, true);
         const nowMs = Date.now();
-        const isValidRemotePro = Boolean(
+        let isValidRemotePro = Boolean(
           remoteSub &&
           remoteSub.isPro === true &&
           (!remoteSub.expiresAt || Number(remoteSub.expiresAt) > nowMs)
         );
-        this.cloudUser.isPro = isValidRemotePro;
-        this.isProUser = isValidRemotePro;
-        try {
-          if (isValidRemotePro) {
-            localStorage.setItem(userProKey, 'true');
-          } else {
-            localStorage.removeItem(userProKey);
-          }
-          localStorage.removeItem('graphly_pro_active_v1');
-        } catch (e) { }
-        this._persistActiveCloudUserSession();
-        this.syncCloudAuthUI();
-        this.renderFuncList();
+
+        const applyProState = (nextIsPro) => {
+          if (!this.cloudUser || this.cloudUser.uid !== targetUid) return;
+          this.cloudUser.isPro = nextIsPro;
+          this.isProUser = nextIsPro;
+          try {
+            if (nextIsPro) {
+              localStorage.setItem(userProKey, 'true');
+            } else {
+              localStorage.removeItem(userProKey);
+            }
+            localStorage.removeItem('graphly_pro_active_v1');
+          } catch (e) { }
+          this._persistActiveCloudUserSession();
+          this.syncCloudAuthUI();
+          this.renderFuncList();
+          if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
+        };
+
+        applyProState(isValidRemotePro);
+
+        // 🔄 토스페이먼츠 상점관리자에서 직접 결제를 취소했는지 백그라운드 실시간 교차 검증 및 즉시 회수
+        if (isValidRemotePro && remoteSub && (remoteSub.paymentKey || remoteSub.orderId) && !this._isVerifyingTossSubStatus) {
+          this._isVerifyingTossSubStatus = true;
+          const verifyEndpoint = this.TOSS_VERIFY_BACKEND_URL || 'https://asia-northeast3-graphly-net.cloudfunctions.net/verifyTossSubscriptionStatus';
+          fetch(verifyEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              uid: targetUid,
+              orderId: String(remoteSub.orderId || ''),
+              paymentKey: String(remoteSub.paymentKey || '')
+            })
+          })
+            .then((r) => r.json().catch(() => null))
+            .then((verifyData) => {
+              if (verifyData && verifyData.ok && (verifyData.revoked === true || verifyData.isPro === false)) {
+                applyProState(false);
+                if (typeof this.showTossPaymentResultModal === 'function') {
+                  this.showTossPaymentResultModal({
+                    status: 'error',
+                    title: '결제 취소 확인 (Pro 이용권 회수)',
+                    message: '토스페이먼츠 결제 취소 내역이 확인되어 무료 플랜으로 전환되었습니다.'
+                  });
+                }
+              }
+            })
+            .catch(() => { })
+            .finally(() => {
+              this._isVerifyingTossSubStatus = false;
+            });
+        }
       } catch (e) { }
     }
     return this.isProUser;
@@ -2456,8 +2574,78 @@
   // - 단일 함수뿐만 아니라 다중 함수(f1, f2...) + 구간 분할(Piecewise) + 주기·계단형(T, q) +
   //   절댓값(|f(x)|) + 보조 수선까지 현재 그래프 상태를 0.5KB 초경량 스냅샷으로 통째 저장/복원!
   // ============================================================================
+  showTossPaymentResultModal({ status = 'success', title = '', message = '', planName = '', amount = 0, expiresAt = 0 } = {}) {
+    if (typeof document === 'undefined' || !document.body) return;
+    let backdrop = document.getElementById('modalTossPaymentResult');
+    if (!backdrop) {
+      backdrop = document.createElement('div');
+      backdrop.id = 'modalTossPaymentResult';
+      backdrop.className = 'smart-modal-backdrop';
+      backdrop.style.zIndex = '100020';
+      document.body.appendChild(backdrop);
+    }
+    const isLoading = status === 'loading';
+    const isSuccess = status === 'success';
+    const icon = isLoading ? '⏳' : (isSuccess ? '🎉' : '⚠️');
+    const resolvedTitle = title || (isLoading ? '결제 승인 확인 중...' : (isSuccess ? 'Graphly Pro 결제가 완료되었습니다!' : '결제 안내'));
+    const numAmt = Number(amount) || 0;
+    const formattedAmt = numAmt > 0 ? `${numAmt.toLocaleString('ko-KR')}원 (VAT 포함)` : '';
+    let formattedExp = '';
+    if (expiresAt && Number(expiresAt) > 0) {
+      try {
+        const d = new Date(Number(expiresAt));
+        if (!Number.isNaN(d.getTime())) {
+          formattedExp = `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}.까지`;
+        }
+      } catch (e) { }
+    }
+    const escapeText = (str) => String(str || '').replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+
+    backdrop.innerHTML = `
+      <div class="smart-modal-card" style="max-width: 440px; width: 92%; text-align: center; padding: 26px 22px 20px;">
+        <div style="font-size: 42px; line-height: 1; margin-bottom: 12px;">${icon}</div>
+        <div style="font-size: 18.5px; font-weight: 800; color: ${isSuccess ? '#2563eb' : 'inherit'}; margin-bottom: 8px;">
+          ${escapeText(resolvedTitle)}
+        </div>
+        <div style="font-size: 13.5px; opacity: 0.85; line-height: 1.55; margin-bottom: 16px;">
+          ${escapeText(message || (isSuccess ? '결제가 최종 승인되어 모든 Pro 기능이 즉시 활성화되었습니다.' : ''))}
+        </div>
+        ${isSuccess ? `
+          <div style="background: rgba(37,99,235,0.07); border: 1px solid rgba(37,99,235,0.22); border-radius: 12px; padding: 14px; text-align: left; font-size: 13px; display: flex; flex-direction: column; gap: 7px; margin-bottom: 18px;">
+            ${planName ? `<div style="display:flex; justify-content:space-between; gap:8px;"><span style="opacity:0.75; font-weight:600;">이용권</span><strong style="font-weight:800;">${escapeText(planName)}</strong></div>` : ''}
+            ${formattedAmt ? `<div style="display:flex; justify-content:space-between; gap:8px;"><span style="opacity:0.75; font-weight:600;">결제 금액</span><strong style="color:#2563eb; font-weight:800;">${escapeText(formattedAmt)}</strong></div>` : ''}
+            ${formattedExp ? `<div style="display:flex; justify-content:space-between; gap:8px;"><span style="opacity:0.75; font-weight:600;">이용 기간</span><strong style="font-weight:800;">${escapeText(formattedExp)}</strong></div>` : ''}
+            <div style="border-top: 1px dashed rgba(148,163,184,0.35); margin-top: 4px; padding-top: 8px; font-size: 12px; color: #2563eb; font-weight: 700; text-align: center;">
+              👑 내 그래프 무제한 · 60분 연속 녹화 · 클라우드 즉시 활성화
+            </div>
+          </div>
+        ` : ''}
+        ${!isLoading ? `
+          <button type="button" id="btnConfirmTossPaymentResultModal" class="btn-primary"
+            style="width: 100%; padding: 12.5px; border-radius: 10px; font-size: 14.5px; font-weight: 800; background: ${isSuccess ? 'linear-gradient(135deg,#2563eb,#4f46e5)' : '#334155'}; color: #fff; border: none; cursor: pointer;">
+            ${isSuccess ? '👑 확인 (바로 시작하기)' : '확인'}
+          </button>
+        ` : ''}
+      </div>
+    `;
+    backdrop.classList.add('show');
+    const btnClose = backdrop.querySelector('#btnConfirmTossPaymentResultModal');
+    if (btnClose) {
+      btnClose.onclick = () => {
+        backdrop.classList.remove('show');
+      };
+    }
+  }
+
   async confirmTossPaymentAndActivatePro({ paymentKey, orderId, amount, uid, planCode, planName, pendingIdToken }) {
     this._isConfirmingTossPayment = true;
+    this.showTossPaymentResultModal({
+      status: 'loading',
+      title: '결제 승인 확인 중...',
+      message: '토스페이먼츠 결제 내역을 최종 확인하고 있습니다. 잠시만 기다려 주세요.'
+    });
     try {
       const confirmEndpoint = this.TOSS_CONFIRM_BACKEND_URL || 'https://asia-northeast3-graphly-net.cloudfunctions.net/confirmTossPayment';
       const numAmount = Number(amount) || 3900;
@@ -2511,19 +2699,38 @@
           this.syncCloudAuthUI();
           this.renderFuncList();
           if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
-          this.showToast('👑 Graphly Pro 이용권 결제가 최종 승인되었습니다! 모든 Pro 기능이 즉시 활성화됩니다.');
+          this.showTossPaymentResultModal({
+            status: 'success',
+            title: 'Graphly Pro 결제가 완료되었습니다!',
+            message: '결제가 최종 승인되어 모든 Pro 기능이 즉시 활성화되었습니다.',
+            planName: (data && data.planName) || planName || 'Graphly Pro 이용권',
+            amount: (data && data.amount) || numAmount,
+            expiresAt: (data && data.expiresAt) || 0
+          });
           return true;
         } else {
           const errMsg = (data && data.message) ? data.message : '결제 최종 승인에 실패했습니다.';
-          this.showToast(`⚠️ 결제 승인 실패: ${errMsg}`);
+          this.showTossPaymentResultModal({
+            status: 'error',
+            title: '결제 승인 실패',
+            message: errMsg
+          });
           return false;
         }
       } else {
-        this.showToast('⚠️ 결제 승인 백엔드 서버 연결이 필요합니다.');
+        this.showTossPaymentResultModal({
+          status: 'error',
+          title: '결제 승인 연결 오류',
+          message: '결제 승인 백엔드 서버 연결이 필요합니다.'
+        });
         return false;
       }
     } catch (err) {
-      this.showToast('⚠️ 결제 승인 통신 중 오류가 발생했습니다. 고객센터(help@cubiolab.com)로 문의해 주세요.');
+      this.showTossPaymentResultModal({
+        status: 'error',
+        title: '결제 승인 통신 오류',
+        message: '결제 승인 통신 중 오류가 발생했습니다. 고객센터(help@cubiolab.com)로 문의해 주세요.'
+      });
     } finally {
       this._isConfirmingTossPayment = false;
     }
@@ -2576,8 +2783,20 @@
         localStorage.removeItem('graphly_pending_payment_plan_code');
         localStorage.removeItem('graphly_pending_payment_plan');
         localStorage.removeItem('graphly_pending_payment_id_token');
+        const params = new URLSearchParams(window.location.search);
+        const failCode = params.get('code') || '';
+        const failMsg = params.get('message') || '결제가 취소되었거나 완료되지 않았습니다.';
         if (window.history && window.history.replaceState) {
           window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+        }
+        if (failCode !== 'PAY_PROCESS_CANCELED' && failCode !== 'USER_CANCEL') {
+          setTimeout(() => {
+            this.showTossPaymentResultModal({
+              status: 'error',
+              title: '결제가 완료되지 않았습니다',
+              message: failMsg
+            });
+          }, 200);
         }
       }
       if (this.cloudUser && this.cloudUser.uid) {
@@ -2651,10 +2870,13 @@
 
   async onCustomGraphUserChanged() {
     this._loadCustomGraphsFromStorage();
-    if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestReadDoc === 'function') {
+    const curUid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest';
+    const shouldFetchRemote = (this._lastSyncedCustomGraphsUid !== curUid);
+    this._lastSyncedCustomGraphsUid = curUid;
+    if (shouldFetchRemote && this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestReadDoc === 'function') {
       try {
         const docId = `cg_user_${this.cloudUser.uid}`;
-        const remoteList = await this._firestoreRestReadDoc('user_custom_graphs', docId);
+        const remoteList = await this._firestoreRestReadDoc('user_custom_graphs', docId, true);
         if (Array.isArray(remoteList) && remoteList.length > 0) {
           this.customGraphPresets = this._normalizeAndCapCustomGraphPresets([
             ...remoteList,
@@ -3222,7 +3444,7 @@
       let existingAcc = registry[normEmail] || null;
       if (!existingAcc && canUseRemote && typeof this._firestoreRestReadDoc === 'function') {
         try {
-          existingAcc = await this._firestoreRestReadDoc('user_accounts', docId);
+          existingAcc = await this._firestoreRestReadDoc('user_accounts', docId, true);
         } catch (e) { }
       }
       if (existingAcc && existingAcc.passwordHash && existingAcc.emailVerified === true) {
@@ -3234,6 +3456,7 @@
       const displayName = rawDisplayName || (rawEmail.split('@')[0] || '선생님');
 
       if (canUseRemote && this._fbAuth && typeof this._fbAuth.createUserWithEmailAndPassword === 'function') {
+        this._isExplicitAuthFlowInProgress = true;
         try {
           const cred = await this._fbAuth.createUserWithEmailAndPassword(normEmail, pw);
           if (cred && cred.user) {
@@ -3302,6 +3525,8 @@
             this.showToast('⚠️ 회원가입 요청 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
             return false;
           }
+        } finally {
+          this._isExplicitAuthFlowInProgress = false;
         }
       }
 
@@ -3333,7 +3558,7 @@
     let account = registry[normEmail] || null;
     if (!account && canUseRemote && typeof this._firestoreRestReadDoc === 'function') {
       try {
-        const remoteAcc = await this._firestoreRestReadDoc('user_accounts', docId);
+        const remoteAcc = await this._firestoreRestReadDoc('user_accounts', docId, true);
         if (remoteAcc && remoteAcc.uid) {
           account = remoteAcc;
           registry[normEmail] = remoteAcc;
@@ -3343,6 +3568,7 @@
     }
 
     if (canUseRemote && this._fbAuth && typeof this._fbAuth.signInWithEmailAndPassword === 'function') {
+      this._isExplicitAuthFlowInProgress = true;
       try {
         const cred = await this._fbAuth.signInWithEmailAndPassword(normEmail, pw);
         if (cred && cred.user) {
@@ -3406,6 +3632,8 @@
           this.showToast('⚠️ Firebase 콘솔 [Authentication ➔ 로그인 방법]에서 [이메일/비밀번호]를 사용 설정해 주세요.');
           return false;
         }
+      } finally {
+        this._isExplicitAuthFlowInProgress = false;
       }
     }
 
@@ -3457,11 +3685,12 @@
     let account = registry[normEmail] || null;
     if (!account && canUseRemote && typeof this._firestoreRestReadDoc === 'function') {
       try {
-        account = await this._firestoreRestReadDoc('user_accounts', docId);
+        account = await this._firestoreRestReadDoc('user_accounts', docId, true);
       } catch (e) { }
     }
 
     if (canUseRemote && this._fbAuth) {
+      this._isExplicitAuthFlowInProgress = true;
       try {
         if (!this._fbAuth.currentUser || String(this._fbAuth.currentUser.email || '').toLowerCase() !== normEmail) {
           const pwVal = (inpPw && inpPw.value ? inpPw.value : '').trim();
@@ -3481,6 +3710,8 @@
       } catch (e) {
         this.showToast('⚠️ 이메일 인증 상태를 확인할 수 없습니다. 비밀번호를 확인 후 다시 시도해 주세요.');
         return false;
+      } finally {
+        this._isExplicitAuthFlowInProgress = false;
       }
     } else if (!account) {
       this.showToast('⚠️ 가입 대기 중인 아이디 내역을 찾을 수 없습니다.');
@@ -3594,6 +3825,7 @@
   }
 
   async handleCloudLogout(silentToast = false) {
+    const prevUid = (this.cloudUser && this.cloudUser.uid) ? String(this.cloudUser.uid) : '';
     this._fbSignOutInProgress = true;
     if (this._fbAuth) {
       try {
@@ -3601,6 +3833,12 @@
       } catch (e) { }
     }
     this._fbSignOutInProgress = false;
+    if (prevUid && !silentToast) {
+      try {
+        localStorage.removeItem('graphly_device_session_' + prevUid);
+        localStorage.removeItem('graphly_device_session_ts_' + prevUid);
+      } catch (e) { }
+    }
     this.cloudUser = null;
     this.myLibraryCache = [];
     this.isProUser = false;
@@ -3671,6 +3909,7 @@
       localStorage.setItem('graphly_pending_payment_id_token', idToken);
     } catch (e) { }
     const baseUrl = window.location.origin + window.location.pathname;
+    this._isNavigatingForTossPayment = true;
     tossPayments.requestPayment('카드', {
       amount: planAmount,
       orderId: orderId,
@@ -3680,8 +3919,13 @@
       successUrl: baseUrl + '?paymentStatus=success',
       failUrl: baseUrl + '?paymentStatus=fail'
     }).catch((err) => {
-      if (err && err.code === 'USER_CANCEL') return;
-      this.showToast('⚠️ ' + (err && err.message ? err.message : '결제 요청 중 오류가 발생했습니다.'));
+      this._isNavigatingForTossPayment = false;
+      if (err && (err.code === 'USER_CANCEL' || err.code === 'PAY_PROCESS_CANCELED')) return;
+      this.showTossPaymentResultModal({
+        status: 'error',
+        title: '결제 요청 안내',
+        message: (err && err.message) ? err.message : '결제 요청 중 오류가 발생했습니다.'
+      });
     });
     return true;
   }
@@ -3718,6 +3962,8 @@
     const provider = new window.firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
     showAccountInlineNotice('⏳ Google 로그인 창을 여는 중...', false);
+    this._isExplicitAuthFlowInProgress = true;
+    try { localStorage.setItem('graphly_last_auth_provider', 'google'); } catch (e) { }
 
     // iOS/iPadOS 홈화면 웹앱(PWA, navigator.standalone === true) 환경에서 Firebase SDK가
     // window.open 대신 분리된 <a target="_blank"> 합성 클릭 및 null 윈도우(new Rn(null))를 반환해
@@ -3737,28 +3983,54 @@
 
     try {
       const result = await this._fbAuth.signInWithPopup(provider);
-      if (result && result.user) {
+      const authUser = (result && result.user) ? result.user : (this._fbAuth && this._fbAuth.currentUser ? this._fbAuth.currentUser : null);
+      if (authUser) {
         if (lblSettingsAcct) {
           lblSettingsAcct.style.color = '';
           lblSettingsAcct.style.fontSize = '';
           lblSettingsAcct.style.fontWeight = '';
         }
-        const normEmail = String(result.user.email || '').trim().toLowerCase();
-        const canonicalUid = this._getCanonicalUidForEmail(normEmail, result.user.uid, 'google');
+        const normEmail = String(authUser.email || '').trim().toLowerCase();
+        const canonicalUid = this._getCanonicalUidForEmail(normEmail, authUser.uid, 'google');
         try { localStorage.setItem('graphly_last_auth_provider', 'google'); } catch (e) { }
         this._applyLoggedInCloudUser({
           uid: canonicalUid,
-          rawUid: String(result.user.uid || canonicalUid),
+          rawUid: String(authUser.uid || canonicalUid),
           authProvider: 'google',
           providerLabel: 'Google 로그인',
-          loginId: normEmail || result.user.uid,
-          displayName: result.user.displayName || (normEmail ? normEmail.split('@')[0] : '선생님'),
+          loginId: normEmail || authUser.uid,
+          displayName: authUser.displayName || (normEmail ? normEmail.split('@')[0] : '선생님'),
           email: normEmail,
           emailVerified: true
         }, true);
         this.showToast(`🎉 환영합니다, ${this.cloudUser.displayName}님! 클라우드 보관함이 동기화되었습니다.`);
       }
     } catch (err) {
+      // 팝업 창 닫힘 이벤트 타이밍 차이로 catch로 넘어왔더라도 이미 Firebase 세션에 Google 계정이 인증 완료된 경우 정상 로그인 처리
+      const fallbackUser = (this._fbAuth && this._fbAuth.currentUser) ? this._fbAuth.currentUser : null;
+      const fallbackHasGoogle = Boolean(fallbackUser && Array.isArray(fallbackUser.providerData) && fallbackUser.providerData.some(p => p && p.providerId === 'google.com'));
+      if (fallbackUser && fallbackHasGoogle) {
+        if (lblSettingsAcct) {
+          lblSettingsAcct.style.color = '';
+          lblSettingsAcct.style.fontSize = '';
+          lblSettingsAcct.style.fontWeight = '';
+        }
+        const normEmail = String(fallbackUser.email || '').trim().toLowerCase();
+        const canonicalUid = this._getCanonicalUidForEmail(normEmail, fallbackUser.uid, 'google');
+        try { localStorage.setItem('graphly_last_auth_provider', 'google'); } catch (e) { }
+        this._applyLoggedInCloudUser({
+          uid: canonicalUid,
+          rawUid: String(fallbackUser.uid || canonicalUid),
+          authProvider: 'google',
+          providerLabel: 'Google 로그인',
+          loginId: normEmail || fallbackUser.uid,
+          displayName: fallbackUser.displayName || (normEmail ? normEmail.split('@')[0] : '선생님'),
+          email: normEmail,
+          emailVerified: true
+        }, true);
+        return;
+      }
+
       const errCode = (err && err.code) ? String(err.code) : '';
       if (
         errCode === 'auth/popup-blocked' ||
@@ -3775,12 +4047,17 @@
         }
       }
       if (errCode === 'auth/unauthorized-domain') {
-        showAccountInlineNotice('⚠️ 현재 접속 도메인이 Firebase 승인 도메인에 등록되지 않았습니다.', true);
+        const curHost = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';
+        showAccountInlineNotice(`⚠️ 현재 접속 도메인(${curHost})이 Firebase 승인 도메인에 등록되지 않았습니다.`, true);
         return;
       }
       this.syncCloudAuthUI();
+      if (errCode && errCode !== 'auth/popup-closed-by-user' && errCode !== 'auth/cancelled-popup-request') {
+        showAccountInlineNotice(`⚠️ Google 로그인 오류 (${errCode}). 다시 시도하거나 아이디 로그인을 이용해 주세요.`, true);
+      }
       this.showToast('⚠️ 구글 로그인 창이 닫혔거나 취소되었습니다.');
     } finally {
+      this._isExplicitAuthFlowInProgress = false;
       if (hadStandaloneTrue) {
         try {
           if (restoredStandaloneDesc) {
@@ -4524,31 +4801,164 @@
     return parts.join(' · ');
   }
 
-  // Firestore 단일 문서 직접 쓰기 헬퍼
-  async _firestoreRestWriteSingleDoc(collectionName, docId, jsonStr) {
+  // ============================================================================
+  // 🗄️ [IndexedDB 대용량 문서·음성 강의 로컬 캐시 엔진 (localStorage 5MB 한계 돌파)]
+  // ============================================================================
+  _openCloudCacheDB() {
+    if (this._cloudCacheDbPromise) return this._cloudCacheDbPromise;
+    if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+    this._cloudCacheDbPromise = new Promise((resolve) => {
+      try {
+        const req = indexedDB.open('GraphlyCloudCacheDB', 1);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('kv')) {
+            db.createObjectStore('kv', { keyPath: 'key' });
+          }
+        };
+        req.onsuccess = (e) => resolve(e.target.result);
+        req.onerror = () => {
+          this._cloudCacheDbPromise = null;
+          resolve(null);
+        };
+      } catch (e) {
+        this._cloudCacheDbPromise = null;
+        resolve(null);
+      }
+    });
+    return this._cloudCacheDbPromise;
+  }
+
+  async _idbCacheGet(key) {
+    if (!key) return null;
+    try {
+      const db = await this._openCloudCacheDB();
+      if (!db) return null;
+      return await new Promise((resolve) => {
+        const tx = db.transaction('kv', 'readonly');
+        const req = tx.objectStore('kv').get(key);
+        req.onsuccess = () => resolve(req.result ? req.result.val : null);
+        req.onerror = () => resolve(null);
+      });
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async _idbCacheSet(key, val, expiresAt = 0) {
+    if (!key) return false;
+    try {
+      const db = await this._openCloudCacheDB();
+      if (!db) return false;
+      const now = Date.now();
+      return await new Promise((resolve) => {
+        const tx = db.transaction('kv', 'readwrite');
+        tx.objectStore('kv').put({
+          key,
+          val,
+          updatedAt: now,
+          expiresAt: Number(expiresAt) || 0
+        });
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      });
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async _idbCacheDelete(key) {
+    if (!key) return false;
+    try {
+      const db = await this._openCloudCacheDB();
+      if (!db) return false;
+      return await new Promise((resolve) => {
+        const tx = db.transaction('kv', 'readwrite');
+        tx.objectStore('kv').delete(key);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      });
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async _idbCachePurgeExpired(nowMs = Date.now(), maxEntries = 80) {
+    try {
+      const db = await this._openCloudCacheDB();
+      if (!db) return;
+      await new Promise((resolve) => {
+        const tx = db.transaction('kv', 'readwrite');
+        const store = tx.objectStore('kv');
+        const req = store.getAll();
+        req.onsuccess = () => {
+          const all = Array.isArray(req.result) ? req.result : [];
+          const valid = [];
+          for (let i = 0; i < all.length; i++) {
+            const entry = all[i];
+            if (!entry || !entry.key) continue;
+            if (entry.expiresAt && entry.expiresAt > 0 && nowMs > entry.expiresAt) {
+              try { store.delete(entry.key); } catch (_) { }
+            } else {
+              valid.push(entry);
+            }
+          }
+          if (valid.length > maxEntries) {
+            valid.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+            for (let i = maxEntries; i < valid.length; i++) {
+              try { store.delete(valid[i].key); } catch (_) { }
+            }
+          }
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+    } catch (e) { }
+  }
+
+  // 현재 로그인 계정의 클라우드 보관함 총 사용 용량(바이트) 계산 (요금제 용량 가드 연동용)
+  getUserCloudLibraryTotalBytes() {
+    if (!Array.isArray(this.myLibraryCache)) return 0;
+    let total = 0;
+    for (let i = 0; i < this.myLibraryCache.length; i++) {
+      const it = this.myLibraryCache[i];
+      if (!it || !this._isOwnedByCurrentCloudUser(it)) continue;
+      const sz = Number(it.byteSize) || Number(it.rawByteSize) || 0;
+      total += Math.max(0, sz);
+    }
+    return total;
+  }
+
+  // Firestore 단일 문서 직접 쓰기 헬퍼 (PATCH 1회 원자적 Upsert 우선 사용 — 409 충돌 에러 0% 및 쓰기 지연 50% 단축)
+  async _firestoreRestWriteSingleDoc(collectionName, docId, jsonStr, options = null) {
     if (typeof window !== 'undefined' && window.location && !/^https?:$/i.test(window.location.protocol)) {
       return docId;
     }
-    const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}?documentId=${encodeURIComponent(docId)}`;
-    const body = {
-      fields: {
-        jsonPayload: { stringValue: jsonStr },
-        createdAt: { integerValue: String(Date.now()) },
-        ownerUid: { stringValue: (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous' }
-      }
+    const effOwnerUid = (options && options.ownerUid)
+      ? String(options.ownerUid)
+      : ((this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous');
+    const fields = {
+      jsonPayload: { stringValue: jsonStr },
+      createdAt: { integerValue: String(Date.now()) },
+      ownerUid: { stringValue: effOwnerUid }
     };
-    const res = await fetch(url, {
-      method: 'POST',
+    if (options && options.expireAtMs && Number(options.expireAtMs) > 0) {
+      fields.expireAt = { timestampValue: new Date(Number(options.expireAtMs)).toISOString() };
+    }
+    const body = { fields };
+    const patchUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
+    const res = await fetch(patchUrl, {
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-    if (!res.ok && res.status === 409) {
-      const patchUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
-      await fetch(patchUrl, {
-        method: 'PATCH',
+    if (!res.ok) {
+      const postUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}?documentId=${encodeURIComponent(docId)}`;
+      await fetch(postUrl, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
-      });
+      }).catch(() => { });
     }
     return docId;
   }
@@ -4603,50 +5013,81 @@
   }
 
   // Firestore REST API 헬퍼 (대용량 30문항 모의고사 풀세트도 1MB 제한 없이 자동 Gzip 무손실 압축 + 분할 업로드 지원!)
-  async _firestoreRestWrite(collectionName, docId, payloadObj) {
+  async _firestoreRestWrite(collectionName, docId, payloadObj, options = null) {
     const fullStr = JSON.stringify(payloadObj);
-    try {
-      localStorage.setItem('graphly_full_doc_' + docId, fullStr);
-    } catch (e) {
-      this._evictOldLocalCloudFullDocs(docId);
-      try { localStorage.setItem('graphly_full_doc_' + docId, fullStr); } catch (e2) { }
-    }
-
     const netStr = await this._compressJsonStringGzipBase64(fullStr);
-    const CHUNK_LIMIT = 700000; // ~700KB 단위로 안전 분할
-    if (netStr.length <= CHUNK_LIMIT) {
-      return await this._firestoreRestWriteSingleDoc(collectionName, docId, netStr);
+    const rawByteSize = fullStr.length;
+    const byteSize = netStr.length;
+    if (payloadObj && typeof payloadObj === 'object') {
+      payloadObj.byteSize = byteSize;
+      payloadObj.rawByteSize = rawByteSize;
     }
 
-    // 대용량 풀세트(예: 30문항 스캔 이미지 포함)인 경우 Gzip 압축 스트림을 청크 분할 병렬 업로드
+    const skipLocalFullCache = Boolean(options && options.skipLocalFullCache);
+    const expireAtMs = (options && options.expireAtMs) || (payloadObj && payloadObj.expiresAt) || 0;
+    if (!skipLocalFullCache) {
+      await this._idbCacheSet('graphly_full_doc_' + docId, netStr, expireAtMs).catch(() => { });
+      try { localStorage.removeItem('graphly_full_doc_' + docId); } catch (e) { }
+    }
+
+    const CHUNK_LIMIT = 700000; // ~700KB 단위로 안전 분할
+    const isUserLibrary = (collectionName === 'user_library');
+
+    // user_library는 로그인/목록 조회 시 본문 다운로드 트래픽을 0으로 만들기 위해 항상 경량 매니페스트 + 전용 청크(user_library 내 chunk_UID)로 분리!
+    if (!isUserLibrary && netStr.length <= CHUNK_LIMIT) {
+      return await this._firestoreRestWriteSingleDoc(collectionName, docId, netStr, { expireAtMs });
+    }
+
     const chunks = [];
     for (let i = 0; i < netStr.length; i += CHUNK_LIMIT) {
       chunks.push(netStr.slice(i, i + CHUNK_LIMIT));
     }
     const prefix = `${docId}_part_`;
+    const chunkCollection = isUserLibrary ? 'user_library' : 'shared_workspaces';
+    const baseUid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous';
+    const chunkOwnerUid = isUserLibrary ? `chunk_${baseUid}` : `chunk_share_${baseUid}`;
+
     await Promise.all(chunks.map((cStr, idx) => {
-      return this._firestoreRestWriteSingleDoc('shared_workspaces', `${prefix}${idx}`, JSON.stringify({ partIndex: idx, data: cStr }));
+      return this._firestoreRestWriteSingleDoc(
+        chunkCollection,
+        `${prefix}${idx}`,
+        JSON.stringify({ _isChunkPart: true, parentId: docId, partIndex: idx, data: cStr }),
+        { ownerUid: chunkOwnerUid, expireAtMs: isUserLibrary ? 0 : expireAtMs }
+      );
     }));
 
-    // 목록 조회용 경량 매니페스트 문서 생성 (게시판 목록 로딩 0.1초 보장!)
+    // 목록 조회용 경량 매니페스트 문서 생성 (보관함 목록 로딩 0.05초 보장 & 영구 보관함 청크 격리!)
     const manifestObj = {
       ...payloadObj,
       slideData: null,
       playlistSlides: null,
+      byteSize,
+      rawByteSize,
       _isChunked: true,
+      _chunkCollection: chunkCollection,
       _chunkDocPrefix: prefix,
       _chunkCount: chunks.length
     };
-    return await this._firestoreRestWriteSingleDoc(collectionName, docId, JSON.stringify(manifestObj));
+    if (payloadObj && typeof payloadObj === 'object') {
+      payloadObj._isChunked = true;
+      payloadObj._chunkCollection = chunkCollection;
+      payloadObj._chunkDocPrefix = prefix;
+      payloadObj._chunkCount = chunks.length;
+    }
+    return await this._firestoreRestWriteSingleDoc(collectionName, docId, JSON.stringify(manifestObj), { expireAtMs });
   }
 
   async _firestoreRestReadDoc(collectionName, docId, skipLocalCache = false) {
     if (!skipLocalCache) {
       try {
-        const localFull = localStorage.getItem('graphly_full_doc_' + docId);
+        const idbVal = await this._idbCacheGet('graphly_full_doc_' + docId);
+        const localFull = idbVal || localStorage.getItem('graphly_full_doc_' + docId);
         if (localFull) {
-          const uncompLocal = await this._decompressJsonStringGzipBase64(localFull);
-          return JSON.parse(uncompLocal);
+          const uncompLocal = typeof localFull === 'string'
+            ? await this._decompressJsonStringGzipBase64(localFull)
+            : JSON.stringify(localFull);
+          const parsedLocal = typeof uncompLocal === 'string' ? JSON.parse(uncompLocal) : uncompLocal;
+          if (parsedLocal) return parsedLocal;
         }
       } catch (e) { }
     }
@@ -4674,12 +5115,15 @@
     }
     if (item.id) {
       try {
-        const localFull = localStorage.getItem('graphly_full_doc_' + item.id);
+        const idbVal = await this._idbCacheGet('graphly_full_doc_' + item.id);
+        const localFull = idbVal || localStorage.getItem('graphly_full_doc_' + item.id);
         if (localFull) {
-          const uncompLocal = await this._decompressJsonStringGzipBase64(localFull);
-          const parsedLocal = JSON.parse(uncompLocal);
-          if ((Array.isArray(parsedLocal.playlistSlides) && parsedLocal.playlistSlides.length > 0) || parsedLocal.slideData) {
-            return { ...item, ...parsedLocal };
+          const uncompLocal = typeof localFull === 'string'
+            ? await this._decompressJsonStringGzipBase64(localFull)
+            : JSON.stringify(localFull);
+          const parsedLocal = typeof uncompLocal === 'string' ? JSON.parse(uncompLocal) : uncompLocal;
+          if (parsedLocal && ((Array.isArray(parsedLocal.playlistSlides) && parsedLocal.playlistSlides.length > 0) || parsedLocal.slideData)) {
+            return { ...item, ...parsedLocal, title: item.title || parsedLocal.title, folder: item.folder !== undefined ? item.folder : parsedLocal.folder };
           }
         }
       } catch (e) { }
@@ -4697,6 +5141,9 @@
               if (parsed && parsed._isChunked && parsed._chunkCount && parsed._chunkDocPrefix) {
                 item = { ...item, ...parsed };
               } else if (parsed) {
+                if (item.id) {
+                  await this._idbCacheSet('graphly_full_doc_' + item.id, d.fields.jsonPayload.stringValue, parsed.expiresAt || 0).catch(() => { });
+                }
                 return { ...item, ...parsed };
               }
             }
@@ -4709,11 +5156,17 @@
       return item;
     }
     try {
+      const preferredCol = item._chunkCollection || 'shared_workspaces';
+      const fallbackCol = preferredCol === 'user_library' ? 'shared_workspaces' : 'user_library';
       const indices = Array.from({ length: item._chunkCount }, (_, i) => i);
       const parts = await Promise.all(indices.map(async (idx) => {
         const chunkDocId = `${item._chunkDocPrefix}${idx}`;
-        const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/shared_workspaces/${encodeURIComponent(chunkDocId)}`;
-        const r = await fetch(url);
+        const primaryUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${preferredCol}/${encodeURIComponent(chunkDocId)}`;
+        let r = await fetch(primaryUrl);
+        if (!r.ok && r.status === 404) {
+          const fallbackUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${fallbackCol}/${encodeURIComponent(chunkDocId)}`;
+          r = await fetch(fallbackUrl);
+        }
         if (!r.ok) return '';
         const d = await r.json();
         if (d && d.fields && d.fields.jsonPayload && d.fields.jsonPayload.stringValue) {
@@ -4726,13 +5179,86 @@
       if (joined) {
         const decompressedJoined = await this._decompressJsonStringGzipBase64(joined);
         const fullItem = JSON.parse(decompressedJoined);
+        const mergedFull = {
+          ...fullItem,
+          ...item,
+          playlistSlides: fullItem.playlistSlides || item.playlistSlides || null,
+          slideData: fullItem.slideData || item.slideData || null
+        };
         if (item.id) {
-          try { localStorage.setItem('graphly_full_doc_' + item.id, decompressedJoined); } catch (e) { }
+          await this._idbCacheSet('graphly_full_doc_' + item.id, joined, mergedFull.expiresAt || 0).catch(() => { });
         }
-        return fullItem;
+        return mergedFull;
       }
     } catch (e) { }
     return item;
+  }
+
+  // 🌟 [본인 소유 문서만 서버에서精准 필터링 조회 (Firestore 단일 필드 자동 인덱스 :runQuery 사용 — 남의 문서 다운로드 0%!)]
+  async _firestoreRestQueryByOwner(collectionName, ownerUids, maxResults = 500) {
+    if (typeof window !== 'undefined' && window.location && !/^https?:$/i.test(window.location.protocol)) {
+      return [];
+    }
+    const validUids = Array.from(new Set(
+      (Array.isArray(ownerUids) ? ownerUids : [ownerUids])
+        .map(u => String(u || '').trim())
+        .filter(u => u && u !== 'anonymous' && u !== 'local_user')
+    ));
+    if (!validUids.length) return [];
+
+    const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents:runQuery`;
+    const fieldFilter = validUids.length === 1
+      ? {
+          field: { fieldPath: 'ownerUid' },
+          op: 'EQUAL',
+          value: { stringValue: validUids[0] }
+        }
+      : {
+          field: { fieldPath: 'ownerUid' },
+          op: 'IN',
+          value: {
+            arrayValue: {
+              values: validUids.map(u => ({ stringValue: u }))
+            }
+          }
+        };
+
+    const queryBody = {
+      structuredQuery: {
+        from: [{ collectionId: collectionName }],
+        where: { fieldFilter },
+        limit: maxResults
+      }
+    };
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(queryBody)
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    if (!Array.isArray(rows)) return [];
+    const items = [];
+    for (let i = 0; i < rows.length; i++) {
+      const doc = rows[i] && rows[i].document;
+      if (!doc || !doc.fields || !doc.fields.jsonPayload || !doc.fields.jsonPayload.stringValue) continue;
+      try {
+        const rawCompressed = doc.fields.jsonPayload.stringValue;
+        const rawVal = await this._decompressJsonStringGzipBase64(rawCompressed);
+        const parsed = JSON.parse(rawVal);
+        if (!parsed || parsed._isChunkPart) continue;
+        if (!parsed.byteSize) {
+          parsed.byteSize = rawCompressed.length;
+        }
+        if (parsed.id && ((Array.isArray(parsed.playlistSlides) && parsed.playlistSlides.length > 0) || parsed.slideData)) {
+          this._idbCacheSet('graphly_full_doc_' + parsed.id, rawCompressed).catch(() => { });
+        }
+        items.push(parsed);
+      } catch (e) { }
+    }
+    items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return items;
   }
 
   async _firestoreRestListCollection(collectionName, pageSize = 50) {
@@ -5363,8 +5889,8 @@
     return uploadedItems;
   }
 
-  // 체크한 보관함 문항들을 하나의 N문항 풀세트로 묶어 슬라이드 배열 반환
-  _collectSelectedLibrarySlides() {
+  // 체크한 보관함 문항들을 하나의 N문항 풀세트로 묶어 슬라이드 배열 반환 (경량 매니페스트 항목도 자동 청크 복원)
+  async _collectSelectedLibrarySlides() {
     const selectedSlides = [];
     const selectedFileIds = Array.from(this._selectedCloudExplorerKeys || [])
       .filter(k => k.startsWith('file:'))
@@ -5374,8 +5900,9 @@
       : Array.from(document.querySelectorAll('#myLibraryList .cloud-item-chk:checked'))
           .map(box => this.myLibraryCache[parseInt(box.getAttribute('data-lib-idx'), 10)])
           .filter(Boolean);
-    items.forEach(item => {
-      if (!item) return;
+    for (const rawItem of items) {
+      if (!rawItem) continue;
+      const item = await this._resolveChunkedItem(rawItem);
       if (Array.isArray(item.playlistSlides) && item.playlistSlides.length > 0) {
         item.playlistSlides.forEach((sl, sIdx) => {
           const cloneSlide = JSON.parse(JSON.stringify(sl));
@@ -5389,12 +5916,12 @@
         cloneSlide.slideTitle = item.title || cloneSlide.slideTitle || `문항 ${selectedSlides.length + 1}`;
         selectedSlides.push(cloneSlide);
       }
-    });
+    }
     return selectedSlides;
   }
 
-  bundleSelectedLibraryItemsToFile() {
-    const selectedSlides = this._collectSelectedLibrarySlides();
+  async bundleSelectedLibraryItemsToFile() {
+    const selectedSlides = await this._collectSelectedLibrarySlides();
     if (!selectedSlides.length) {
       this.showToast('⚠️ 내 드라이브 파일로 저장할 문항을 1개 이상 체크해 주세요!');
       return null;
@@ -5406,7 +5933,7 @@
       : (selectedSlides[0].slideTitle || 'Graphly_수업노트');
     const title = (inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : defaultTitle;
     const tags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : '#통째수업';
-    return this.exportGraphlyDeckFile(title, tags, selectedSlides);
+    return await this.exportGraphlyDeckFile(title, tags, selectedSlides);
   }
 
   async fetchMyLibraryFromCloud() {
@@ -5417,10 +5944,19 @@
     }
     try {
       const uid = this.cloudUser.uid;
+      const rawUid = this.cloudUser.rawUid ? String(this.cloudUser.rawUid) : '';
+      const normEmail = String(this.cloudUser.email || '').trim().toLowerCase();
+      const emailVariants = (normEmail && normEmail.includes('@'))
+        ? [
+            this._getCanonicalUidForEmail(normEmail, '', 'google'),
+            this._getCanonicalUidForEmail(normEmail, '', 'email')
+          ]
+        : [];
+      const candidateUids = Array.from(new Set([uid, rawUid, ...emailVariants].filter(Boolean)));
       const folderDocId = `folders_${uid}`;
       const [remoteFolderDoc, remoteItems] = await Promise.all([
         this._firestoreRestReadDoc('user_preferences', folderDocId, true).catch(() => null),
-        this._firestoreRestListCollection('user_library', 300).catch(() => null)
+        this._firestoreRestQueryByOwner('user_library', candidateUids, 500).catch(() => null)
       ]);
 
       // 1. 수업 파일 목록 및 파일별 폴더 위치(folder)·제목(title) 클라우드 최신본 우선 반영
@@ -5441,6 +5977,8 @@
             mergedMap.set(remoteIt.id, {
               ...prev,
               ...remoteIt,
+              byteSize: remoteIt.byteSize || prev.byteSize || 0,
+              rawByteSize: remoteIt.rawByteSize || prev.rawByteSize || 0,
               playlistSlides: prev.playlistSlides || null,
               slideData: prev.slideData || null
             });
@@ -6127,7 +6665,7 @@
   // 🎯 [수업 슬라이드(PPT) 플레이리스트 모드: 1번 ➔ 2번 ➔ 3번 연속 수업 & 필기 자동 보존]
   // ============================================================================
   async startPlaylistFromSelectedLibraryItems() {
-    const selectedSlides = this._collectSelectedLibrarySlides();
+    const selectedSlides = await this._collectSelectedLibrarySlides();
     if (!selectedSlides.length) {
       this.showToast('⚠️ 캔버스로 시작할 문항을 1개 이상 체크해 주세요!');
       return;
@@ -6278,6 +6816,7 @@
 
     // 2차 방어: 브라우저 새로고침 버튼 클릭, 탭 닫기(Ctrl+W / ✕), 뒤로가기 시 브라우저 확인 팝업 표출!
     window.addEventListener('beforeunload', (e) => {
+      if (this._isNavigatingForTossPayment) return;
       if (!this.hasUnsavedWorkToProtect()) return;
       e.preventDefault();
       e.returnValue = '';
@@ -7080,6 +7619,37 @@
     };
   }
 
+  _computeShareNoteSessionKey(scope, slides) {
+    const effScope = scope || 'current';
+    const arr = Array.isArray(slides) ? slides : [];
+    const first = arr[0] || {};
+    const probSrc = (first.primaryProblemCard && first.primaryProblemCard.imgSrc) ? String(first.primaryProblemCard.imgSrc) : '';
+    const pdfSrc = (first.pdfPageBoardData && first.pdfPageBoardData.dataUrl) ? String(first.pdfPageBoardData.dataUrl) : '';
+    const probSig = probSrc ? `${probSrc.length}:${probSrc.slice(0, 48)}:${probSrc.slice(-48)}` : 'noprob';
+    const pdfSig = pdfSrc ? `${pdfSrc.length}:${pdfSrc.slice(0, 48)}:${pdfSrc.slice(-48)}` : 'nopdf';
+    return `${effScope}|cnt:${arr.length}|${probSig}|${pdfSig}`;
+  }
+
+  _computeShareContentSignature(scope, filterOpts, slides) {
+    const f = filterOpts || {};
+    const filterKey = `${scope || 'current'}|${Boolean(f.includeProblem)}|${Boolean(f.includeGraph)}|${Boolean(f.includeInk)}|${f.includeAudio !== false}`;
+    const arr = Array.isArray(slides) ? slides : [];
+    const slideSigs = arr.map((s, idx) => {
+      if (!s) return String(idx);
+      const hStr = typeof s.historyJson === 'string' ? s.historyJson : JSON.stringify(s.historyJson || {});
+      const pLen = (s.primaryProblemCard && s.primaryProblemCard.imgSrc) ? s.primaryProblemCard.imgSrc.length : 0;
+      const pInkLen = (s.primaryProblemCard && Array.isArray(s.primaryProblemCard.problemInkStrokes)) ? JSON.stringify(s.primaryProblemCard.problemInkStrokes).length : 0;
+      const gLen = (s.primaryGraphCard && s.primaryGraphCard.graphSnapshot) ? JSON.stringify(s.primaryGraphCard.graphSnapshot).length : 0;
+      const gInkLen = (s.primaryGraphCard && Array.isArray(s.primaryGraphCard.graphInkStrokes)) ? JSON.stringify(s.primaryGraphCard.graphInkStrokes).length : 0;
+      const exPLen = Array.isArray(s.extraProblems) ? s.extraProblems.length : 0;
+      const exGLen = Array.isArray(s.extraGraphs) ? s.extraGraphs.length : 0;
+      const audDur = (s.audioSyncData && s.audioSyncData.durationMs) ? s.audioSyncData.durationMs : 0;
+      const audCreated = (s.audioSyncData && s.audioSyncData.createdAt) ? s.audioSyncData.createdAt : 0;
+      return `${idx}:${hStr.length}:${hStr.slice(0, 64)}:${hStr.slice(-64)}:${pLen}:${pInkLen}:${gLen}:${gInkLen}:${exPLen}:${exGLen}:${audDur}:${audCreated}`;
+    });
+    return `${filterKey}||${slideSigs.join('||')}`;
+  }
+
   async _purgeExpiredSharedWorkspaces() {
     const nowMs = Date.now();
     const TWO_WEEKS_MS = 7 * 24 * 60 * 60 * 1000; // 🌟 [대표님 정책]: 공유 링크 & QR 자동 소멸 기한 7일(7일간 유효)
@@ -7087,61 +7657,280 @@
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i);
         if (k && (k.startsWith('graphly_cloud_share_') || k.startsWith('graphly_full_doc_s'))) {
-          const raw = localStorage.getItem(k);
-          if (raw) {
-            const obj = JSON.parse(raw);
-            const exp = obj.expiresAt || ((obj.createdAt || 0) + TWO_WEEKS_MS);
-            if (obj.createdAt && nowMs > exp) {
-              localStorage.removeItem(k);
+          try {
+            const raw = localStorage.getItem(k);
+            if (raw) {
+              const obj = JSON.parse(raw);
+              const exp = obj.expiresAt || ((obj.createdAt || 0) + TWO_WEEKS_MS);
+              if (obj.createdAt && nowMs > exp) {
+                localStorage.removeItem(k);
+              }
             }
+          } catch (_) {
+            localStorage.removeItem(k);
           }
         }
       }
     } catch (e) { }
-    try {
-      const remoteDocs = await this._firestoreRestListCollection('shared_workspaces', 40);
-      for (const doc of remoteDocs) {
-        if (!doc || !doc.id) continue;
-        const exp = doc.expiresAt || ((doc.createdAt || 0) + TWO_WEEKS_MS);
-        if (doc.createdAt && nowMs > exp) {
-          if (doc._isChunked && doc._chunkCount && doc._chunkDocPrefix) {
-            for (let c = 0; c < doc._chunkCount; c++) {
-              this._firestoreRestDeleteDoc('shared_workspaces', `${doc._chunkDocPrefix}${c}`).catch(() => { });
-            }
-          }
-          this._firestoreRestDeleteDoc('shared_workspaces', doc.id).catch(() => { });
-        }
-      }
-    } catch (e) { }
+    // IndexedDB 내 만료된 공유 캐시 및 오래된 캐시 자동 정리 (클라이언트가 남의 서버 문서 40개를 다운로드하던 코드는 완전 제거!)
+    if (typeof this._idbCachePurgeExpired === 'function') {
+      await this._idbCachePurgeExpired(nowMs, 80).catch(() => { });
+    }
   }
 
   async createCloudSharePackage(scope = null, filterOpts = null) {
     this._purgeExpiredSharedWorkspaces().catch(() => { });
-    const pkg = await this.buildExportSharePackageObject(scope || this.exportScope || 'current', filterOpts || this.exportFilter);
+    const effScope = scope || this.exportScope || 'current';
+    const effFilter = filterOpts || this.exportFilter;
+    const pkg = await this.buildExportSharePackageObject(effScope, effFilter);
+
+    const noteSessionKey = this._computeShareNoteSessionKey(effScope, pkg.playlistSlides);
+    const contentSig = this._computeShareContentSignature(effScope, effFilter, pkg.playlistSlides);
+
+    // 1) 내용이 1비트도 안 바뀐 상태에서 공유 모달을 다시 열어 버튼을 누른 경우: 서버 재업로드 없이 기존 링크 0.00초 즉시 반환!
+    if (
+      this._activeSessionShareShortId &&
+      this._lastShareNoteSessionKey === noteSessionKey &&
+      this._lastShareContentSig === contentSig
+    ) {
+      return this._activeSessionShareShortId;
+    }
+
+    // 2) 동일한 문제/수업 노트에서 필기·오타·음성을 수정하고 다시 공유를 누른 경우: 유령 문서를 새로 파지 않고 직전 임시 shortId에 덮어쓰기!
+    if (this._activeSessionShareShortId && this._lastShareNoteSessionKey === noteSessionKey) {
+      pkg.id = this._activeSessionShareShortId;
+      if (this._lastSessionShareManifestMeta) {
+        await this._cleanupCloudItemChunks(this._lastSessionShareManifestMeta).catch(() => { });
+      }
+    } else {
+      this._activeSessionShareShortId = pkg.id;
+      this._lastShareNoteSessionKey = noteSessionKey;
+    }
+    this._lastShareContentSig = contentSig;
+
     const shortId = pkg.id;
+    const fullPkgJson = JSON.stringify(pkg);
+    const compressedFullPkg = await this._compressJsonStringGzipBase64(fullPkgJson);
+
+    // 로컬 캐시는 용량 제한 없는 IndexedDB에 저장 (5MB 초과 음성 강의도 100% 캐싱!)
+    await this._idbCacheSet('graphly_cloud_share_' + shortId, compressedFullPkg, pkg.expiresAt).catch(() => { });
+    await this._idbCacheSet('graphly_full_doc_' + shortId, compressedFullPkg, pkg.expiresAt).catch(() => { });
+    try { localStorage.removeItem('graphly_cloud_share_' + shortId); } catch (e) { }
+
+    // 3) 🌟 [음성 데이터 Lazy Load 분리 업로드]:
+    // 학생이 링크를 열 때 첫 화면(200KB 스캔본)은 0.3초 만에 즉시 뜨고, [▶️ 영상 보기]를 눌렀을 때만 음성 청크를 다운로드하도록 분리!
+    const cloudPkg = JSON.parse(fullPkgJson);
+    const audioMap = {};
+    let hasAnyAudio = false;
+    if (Array.isArray(cloudPkg.playlistSlides)) {
+      cloudPkg.playlistSlides.forEach((sl, idx) => {
+        if (sl && sl.audioSyncData && sl.audioSyncData.durationMs > 0) {
+          hasAnyAudio = true;
+          audioMap[idx] = sl.audioSyncData;
+          sl.audioSyncData = {
+            durationMs: sl.audioSyncData.durationMs,
+            stageW: sl.audioSyncData.stageW || 1440,
+            stageH: sl.audioSyncData.stageH || 900,
+            createdAt: sl.audioSyncData.createdAt || Date.now(),
+            _isLazyAudioStub: true,
+            _lazySlideIdx: idx
+          };
+        }
+      });
+    }
+
+    if (hasAnyAudio) {
+      try {
+        const audioNetStr = await this._compressJsonStringGzipBase64(JSON.stringify(audioMap));
+        const CHUNK_LIMIT = 700000;
+        const audioChunks = [];
+        for (let i = 0; i < audioNetStr.length; i += CHUNK_LIMIT) {
+          audioChunks.push(audioNetStr.slice(i, i + CHUNK_LIMIT));
+        }
+        const audioPrefix = `${shortId}_audio_`;
+        const baseUid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous';
+        await Promise.all(audioChunks.map((cStr, idx) =>
+          this._firestoreRestWriteSingleDoc(
+            'shared_workspaces',
+            `${audioPrefix}${idx}`,
+            JSON.stringify({ _isChunkPart: true, _isAudioChunk: true, parentId: shortId, partIndex: idx, data: cStr }),
+            { ownerUid: `chunk_audio_${baseUid}`, expireAtMs: pkg.expiresAt }
+          )
+        ));
+        cloudPkg._hasLazyAudio = true;
+        cloudPkg._audioChunkCollection = 'shared_workspaces';
+        cloudPkg._audioChunkPrefix = audioPrefix;
+        cloudPkg._audioChunkCount = audioChunks.length;
+      } catch (e) {
+        // 만약 오디오 분리 업로드 중 네트워크 예외가 발생하면 원본(통합본)으로 안전 폴백
+        if (Array.isArray(cloudPkg.playlistSlides)) {
+          Object.keys(audioMap).forEach((k) => {
+            const idx = Number(k);
+            if (cloudPkg.playlistSlides[idx]) {
+              cloudPkg.playlistSlides[idx].audioSyncData = audioMap[k];
+            }
+          });
+        }
+      }
+    }
 
     try {
-      localStorage.setItem('graphly_cloud_share_' + shortId, JSON.stringify(pkg));
-    } catch (e) { }
-
-    try {
-      await this._firestoreRestWrite('shared_workspaces', shortId, pkg);
+      await this._firestoreRestWrite('shared_workspaces', shortId, cloudPkg, {
+        skipLocalFullCache: true,
+        expireAtMs: pkg.expiresAt
+      });
+      this._lastSessionShareManifestMeta = {
+        id: shortId,
+        _isChunked: Boolean(cloudPkg._isChunked),
+        _chunkCollection: cloudPkg._chunkCollection || 'shared_workspaces',
+        _chunkDocPrefix: cloudPkg._chunkDocPrefix || `${shortId}_part_`,
+        _chunkCount: cloudPkg._chunkCount || 0,
+        _hasLazyAudio: Boolean(cloudPkg._hasLazyAudio),
+        _audioChunkCollection: 'shared_workspaces',
+        _audioChunkPrefix: cloudPkg._audioChunkPrefix || `${shortId}_audio_`,
+        _audioChunkCount: cloudPkg._audioChunkCount || 0
+      };
     } catch (e) { }
 
     return shortId;
+  }
+
+  // 🌟 [공유 링크의 음성 강의 데이터를 학생이 실제로 '▶️ 영상 보기' 또는 '✏️ 편집하기'를 눌렀을 때만 온디맨드 로드!]
+  async _ensureCloudShareAudioLoaded(pkg) {
+    if (!pkg || !Array.isArray(pkg.playlistSlides)) return pkg;
+    const needsLazyLoad = Boolean(
+      (pkg._hasLazyAudio && pkg._audioChunkCount > 0 && pkg._audioChunkPrefix) ||
+      pkg.playlistSlides.some(s => s && s.audioSyncData && s.audioSyncData._isLazyAudioStub)
+    );
+    if (!needsLazyLoad) return pkg;
+
+    const audioPrefix = pkg._audioChunkPrefix || (pkg.id ? `${pkg.id}_audio_` : '');
+    const audioCount = Number(pkg._audioChunkCount) || 0;
+    const audioCol = pkg._audioChunkCollection || 'shared_workspaces';
+    if (!audioPrefix || audioCount <= 0) return pkg;
+
+    if (this._activeLazyAudioLoadPromise && this._activeLazyAudioLoadPkgId === pkg.id) {
+      await this._activeLazyAudioLoadPromise;
+      return pkg;
+    }
+
+    const loadTask = (async () => {
+      try {
+        // 1. 먼저 IndexedDB에 전체 오디오가 포함된 캐시가 있는지 확인
+        if (pkg.id) {
+          const cachedRaw = await this._idbCacheGet('graphly_cloud_share_' + pkg.id) || await this._idbCacheGet('graphly_full_doc_' + pkg.id);
+          if (cachedRaw) {
+            const uncomp = typeof cachedRaw === 'string'
+              ? await this._decompressJsonStringGzipBase64(cachedRaw)
+              : JSON.stringify(cachedRaw);
+            const parsedCached = typeof uncomp === 'string' ? JSON.parse(uncomp) : uncomp;
+            if (
+              parsedCached &&
+              Array.isArray(parsedCached.playlistSlides) &&
+              parsedCached.playlistSlides.some(s => s && s.audioSyncData && !s.audioSyncData._isLazyAudioStub && (s.audioSyncData.audioDataUrl || (Array.isArray(s.audioSyncData.audioSegments) && s.audioSyncData.audioSegments.length > 0)))
+            ) {
+              parsedCached.playlistSlides.forEach((cachedSlide, idx) => {
+                if (cachedSlide && cachedSlide.audioSyncData && !cachedSlide.audioSyncData._isLazyAudioStub && pkg.playlistSlides[idx]) {
+                  pkg.playlistSlides[idx].audioSyncData = cachedSlide.audioSyncData;
+                }
+              });
+              pkg._hasLazyAudio = false;
+              pkg._lazyAudioLoaded = true;
+              return pkg;
+            }
+          }
+        }
+
+        // 2. 서버에서 음성 청크만 병렬 다운로드 및 복원
+        const indices = Array.from({ length: audioCount }, (_, i) => i);
+        const parts = await Promise.all(indices.map(async (idx) => {
+          const chunkDocId = `${audioPrefix}${idx}`;
+          const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${audioCol}/${encodeURIComponent(chunkDocId)}`;
+          const r = await fetch(url);
+          if (!r.ok) return '';
+          const d = await r.json();
+          if (d && d.fields && d.fields.jsonPayload && d.fields.jsonPayload.stringValue) {
+            const pObj = JSON.parse(d.fields.jsonPayload.stringValue);
+            return pObj.data || '';
+          }
+          return '';
+        }));
+        const joined = parts.join('');
+        if (!joined) return pkg;
+
+        const decompressed = await this._decompressJsonStringGzipBase64(joined);
+        const audioMap = JSON.parse(decompressed);
+        if (audioMap && typeof audioMap === 'object') {
+          const applyAudioMapToSlides = (slidesArr) => {
+            if (!Array.isArray(slidesArr)) return;
+            Object.keys(audioMap).forEach((k) => {
+              const sIdx = Number(k);
+              if (slidesArr[sIdx] && audioMap[k]) {
+                slidesArr[sIdx].audioSyncData = JSON.parse(JSON.stringify(audioMap[k]));
+              }
+            });
+          };
+          applyAudioMapToSlides(pkg.playlistSlides);
+          if (this._viewerPkg && this._viewerPkg.id === pkg.id && this._viewerPkg !== pkg) {
+            applyAudioMapToSlides(this._viewerPkg.playlistSlides);
+            this._viewerPkg._hasLazyAudio = false;
+            this._viewerPkg._lazyAudioLoaded = true;
+          }
+          if (this._initialSharedCloudPkg && this._initialSharedCloudPkg.id === pkg.id && this._initialSharedCloudPkg !== pkg) {
+            applyAudioMapToSlides(this._initialSharedCloudPkg.playlistSlides);
+            this._initialSharedCloudPkg._hasLazyAudio = false;
+            this._initialSharedCloudPkg._lazyAudioLoaded = true;
+          }
+          if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides)) {
+            applyAudioMapToSlides(this.lessonPlaylistSlides);
+          }
+          pkg._hasLazyAudio = false;
+          pkg._lazyAudioLoaded = true;
+
+          // 3. 음성까지 완전체로 합쳐진 패키지를 IndexedDB에 캐싱 (새로고침이나 재방문 시 재다운로드 0바이트!)
+          if (pkg.id) {
+            const hydratedCompressed = await this._compressJsonStringGzipBase64(JSON.stringify(pkg));
+            await this._idbCacheSet('graphly_cloud_share_' + pkg.id, hydratedCompressed, pkg.expiresAt || 0).catch(() => { });
+            await this._idbCacheSet('graphly_full_doc_' + pkg.id, hydratedCompressed, pkg.expiresAt || 0).catch(() => { });
+          }
+        }
+      } catch (e) { }
+      return pkg;
+    })();
+
+    this._activeLazyAudioLoadPkgId = pkg.id || '';
+    this._activeLazyAudioLoadPromise = loadTask;
+    try {
+      return await loadTask;
+    } finally {
+      if (this._activeLazyAudioLoadPromise === loadTask) {
+        this._activeLazyAudioLoadPromise = null;
+        this._activeLazyAudioLoadPkgId = '';
+      }
+    }
   }
 
   async restoreFromCloudShareId(shortId, isStudent = false) {
     if (!shortId) return;
     let pkg = null;
     try {
-      const localRaw = localStorage.getItem('graphly_cloud_share_' + shortId);
-      if (localRaw) pkg = JSON.parse(localRaw);
+      const idbRaw = await this._idbCacheGet('graphly_cloud_share_' + shortId);
+      const localRaw = idbRaw || localStorage.getItem('graphly_cloud_share_' + shortId);
+      if (localRaw) {
+        const uncomp = typeof localRaw === 'string'
+          ? await this._decompressJsonStringGzipBase64(localRaw)
+          : JSON.stringify(localRaw);
+        pkg = typeof uncomp === 'string' ? JSON.parse(uncomp) : uncomp;
+      }
     } catch (e) { }
 
     if (!pkg) {
       try {
         pkg = await this._firestoreRestReadDoc('shared_workspaces', shortId);
+        if (pkg) {
+          const compPkg = await this._compressJsonStringGzipBase64(JSON.stringify(pkg));
+          await this._idbCacheSet('graphly_cloud_share_' + shortId, compPkg, pkg.expiresAt || 0).catch(() => { });
+        }
       } catch (e) { }
     }
 
@@ -7150,6 +7939,9 @@
       const exp = pkg.expiresAt || ((pkg.createdAt || 0) + TWO_WEEKS_MS);
       if (pkg.createdAt && Date.now() > exp) {
         try { localStorage.removeItem('graphly_cloud_share_' + shortId); } catch (e) { }
+        await this._idbCacheDelete('graphly_cloud_share_' + shortId).catch(() => { });
+        await this._idbCacheDelete('graphly_full_doc_' + shortId).catch(() => { });
+        await this._cleanupCloudItemChunks(pkg).catch(() => { });
         this._firestoreRestDeleteDoc('shared_workspaces', shortId).catch(() => { });
         this.showToast('⏰ 유효기간(7일)이 만료된 공유 링크입니다.');
         return;
@@ -7693,6 +8485,9 @@
 
   async enterStudentAudioVideoOnlyMode(pkg, autoPlay = false) {
     if (!pkg) return;
+    if (typeof this._ensureCloudShareAudioLoaded === 'function') {
+      await this._ensureCloudShareAudioLoaded(pkg);
+    }
     const slides = Array.isArray(pkg.playlistSlides) && pkg.playlistSlides.length > 0
       ? pkg.playlistSlides
       : (pkg.slideData ? [pkg.slideData] : (pkg.historyJson ? [pkg] : []));
@@ -8674,7 +9469,23 @@
     if (overlay) overlay.style.display = 'flex';
   }
 
-  exitSmartNoteViewerToEditMode() {
+  async exitSmartNoteViewerToEditMode() {
+    if (this._viewerPkg && typeof this._ensureCloudShareAudioLoaded === 'function') {
+      const btnEdit = document.getElementById('btnViewerEnterEdit');
+      const prevTxt = btnEdit ? btnEdit.innerHTML : '';
+      if (btnEdit && this._viewerPkg._hasLazyAudio) {
+        btnEdit.disabled = true;
+        btnEdit.innerHTML = '<span>⏳ 준비 중...</span>';
+      }
+      try {
+        await this._ensureCloudShareAudioLoaded(this._viewerPkg);
+      } finally {
+        if (btnEdit && prevTxt) {
+          btnEdit.disabled = false;
+          btnEdit.innerHTML = prevTxt;
+        }
+      }
+    }
     const overlay = document.getElementById('smartNoteViewerOverlay');
     if (overlay) {
       overlay.style.display = 'none';

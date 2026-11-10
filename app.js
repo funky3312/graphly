@@ -4552,9 +4552,25 @@
       }
     }
 
-    enterAudioLectureFromViewer(slideIdx = 0, mode = 'video', startMs = 0) {
+    async enterAudioLectureFromViewer(slideIdx = 0, mode = 'video', startMs = 0) {
       if (!this._viewerPkg || !this._viewerPkg.playlistSlides || !this._viewerPkg.playlistSlides[slideIdx]) return;
-      this.enterStudentAudioVideoOnlyMode({
+      const btnWatch = document.getElementById('btnViewerWatchVideo');
+      const prevHtml = btnWatch ? btnWatch.innerHTML : '';
+      if (typeof this._ensureCloudShareAudioLoaded === 'function' && (this._viewerPkg._hasLazyAudio || (this._viewerPkg.playlistSlides[slideIdx].audioSyncData && this._viewerPkg.playlistSlides[slideIdx].audioSyncData._isLazyAudioStub))) {
+        if (btnWatch) {
+          btnWatch.disabled = true;
+          btnWatch.innerHTML = '<span>⏳ 영상 불러오는 중...</span>';
+        }
+        try {
+          await this._ensureCloudShareAudioLoaded(this._viewerPkg);
+        } finally {
+          if (btnWatch && prevHtml) {
+            btnWatch.disabled = false;
+            btnWatch.innerHTML = prevHtml;
+          }
+        }
+      }
+      await this.enterStudentAudioVideoOnlyMode({
         ...this._viewerPkg,
         currentIndex: slideIdx
       }, true);

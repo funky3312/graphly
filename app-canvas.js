@@ -2143,7 +2143,9 @@
           // - 아이패드: 오염된 WebKit getCoalescedEvents()를 배제하고 단일 확정 이벤트([e]) + 역주행 차단을 적용해 원 2줄 현상 및 직선 굵기 꿀렁임 해결
           const inkProfile = this.getDeviceInkProfile();
           let events = [e];
-          if (inkProfile.useCoalescedEvents && typeof e.getCoalescedEvents === 'function') {
+          if (inkProfile.deviceType === 'pc' && typeof this._selectPcCoalescedEvents === 'function') {
+            events = this._selectPcCoalescedEvents(e, inkProfile);
+          } else if (inkProfile.useCoalescedEvents && typeof e.getCoalescedEvents === 'function') {
             const coalesced = e.getCoalescedEvents();
             if (coalesced && coalesced.length > 0) {
               events = coalesced;
@@ -2194,14 +2196,30 @@
             let sy = pPos.y;
             const liveLen = this._liveBezierScreenPts ? this._liveBezierScreenPts.length : 0;
 
-            // 🌟 [기기별 맞춤 1차 EMA 스트림라인 (PC: 0.18 / 아이패드: 0.22, 고속 구간 0으로 자연 감쇠)]:
+            // 🌟 [기기별 맞춤 스트림라인 (PC: 코너 보존형 추세 스트림라인 / 아이패드: 1차 EMA 그대로 보존)]:
             if (!this.currentInkStroke.isHighlighter && liveLen >= 1) {
               const pPrev = this._liveBezierScreenPts[liveLen - 1];
-              const stepD = Math.hypot(pPos.x - pPrev.x, pPos.y - pPrev.y);
-              const weight = inkProfile.streamlineWeight * Math.max(0, 1 - stepD / inkProfile.streamlineDecayDist);
-              if (weight > 0.005) {
-                sx = pPos.x * (1 - weight) + pPrev.x * weight;
-                sy = pPos.y * (1 - weight) + pPrev.y * weight;
+              if (inkProfile.deviceType === 'pc' && typeof this._computePcCornerAwareStreamline === 'function') {
+                const pPrev2 = (liveLen >= 2) ? this._liveBezierScreenPts[liveLen - 2] : null;
+                const smoothed = this._computePcCornerAwareStreamline(
+                  pPos.x,
+                  pPos.y,
+                  pPrev.x,
+                  pPrev.y,
+                  pPrev2 ? pPrev2.x : 0,
+                  pPrev2 ? pPrev2.y : 0,
+                  Boolean(pPrev2),
+                  inkProfile
+                );
+                sx = smoothed.x;
+                sy = smoothed.y;
+              } else {
+                const stepD = Math.hypot(pPos.x - pPrev.x, pPos.y - pPrev.y);
+                const weight = inkProfile.streamlineWeight * Math.max(0, 1 - stepD / inkProfile.streamlineDecayDist);
+                if (weight > 0.005) {
+                  sx = pPos.x * (1 - weight) + pPrev.x * weight;
+                  sy = pPos.y * (1 - weight) + pPrev.y * weight;
+                }
               }
             }
             this._lastInkScreenPos = { x: sx, y: sy };
@@ -3203,8 +3221,9 @@
           const tailDist = Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y);
           if (tailDist >= 0.15) {
             const isShortStroke = (this._liveBezierScreenPts.length <= 2);
-            const endX = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.x : (lastSmoothed.x * 0.25 + rawEnd.x * 0.75);
-            const endY = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.y : (lastSmoothed.y * 0.25 + rawEnd.y * 0.75);
+            const tailKeep = (this.getDeviceInkProfile().deviceType === 'pc' && tailDist < 4.5) ? 0.38 : 0.25;
+            const endX = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.x : (lastSmoothed.x * tailKeep + rawEnd.x * (1 - tailKeep));
+            const endY = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.y : (lastSmoothed.y * tailKeep + rawEnd.y * (1 - tailKeep));
             let p = this._lastPressure || 0.5;
             if (curPenStyle === 'fountain') {
               p = Math.max(0.10, p * 0.55);

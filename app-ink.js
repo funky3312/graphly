@@ -587,17 +587,118 @@
       }
       this._inkProfileCache = {
         deviceType: 'pc',
-        useCoalescedEvents: true,        // PC 액정타블렛 200~240Hz 하드웨어 중간 샘플 정식 수집 (빠른 원 다각형 각짐 방지)
-        minRawDistPen: 0.95,             // PC 액정타블렛 펜 최소 점 간격 (px) — 1px 미만 디지타이저 계단 노이즈 필터링 & 자연스러운 베지어 호 확보
-        minRawDistMouse: 1.0,            // 마우스/전자칠판 최소 점 간격 (px)
-        minCardDistPen: 0.8,             // 카드 내부 PC 액정타블렛 최소 점 간격 (px)
-        minCardDistMouse: 0.9,
-        forwardGuardMaxDist: 3.0,        // 펜 정지 직전 미세 떨림의 역주행만 차단하는 반경(px)
-        forwardGuardMinCos: 0.0,         // 진행 방향 직각/역주행 미세 튐 패킷 폐기 임계값
-        streamlineWeight: 0.20,          // PC 액정타블렛 맞춤 1차 EMA 보정 강도 (글자 왜곡 없이 확대 시 잔떨림만 정돈)
-        streamlineDecayDist: 16.0        // 빠른 원/곡선에서 보정이 0으로 감쇠되는 거리 (px)
+        useCoalescedEvents: true,        // PC 액정타블렛 고속 구간(>=8.5px) 240Hz 중간 샘플 수집 (빠른 원 다각형 각짐 방지)
+        coalescedMergeMaxSpan: 8.5,      // 일반 글씨 속도(<8.5px/frame)에서는 아이패드처럼 단일 확정 이벤트([e])만 사용해 240Hz 격자 계단 노이즈 원천 차단
+        minRawDistPen: 1.45,             // PC 액정타블렛 펜 최소 점 간격 (px) — ±1px 디지타이저 진동 필터링 & 매끄러운 2차 베지어 아치 스팬 확보
+        minRawDistMouse: 1.35,           // 마우스/전자칠판 최소 점 간격 (px)
+        minCardDistPen: 1.15,            // 카드 내부 PC 액정타블렛 최소 점 간격 (px)
+        minCardDistMouse: 1.15,
+        minSmoothedDist: 0.75,           // 칠판 스트림라인 보정 후 최소 제어점 간격 (px)
+        minCardSmoothedDist: 0.55,       // 카드 스트림라인 보정 후 최소 제어점 간격 (px)
+        forwardGuardMaxDist: 3.5,        // 펜 정지 직전 미세 떨림의 역주행만 차단하는 반경(px)
+        forwardGuardMinCos: 0.08,        // 진행 방향 직각/역주행 미세 튐 패킷 폐기 임계값
+        streamlineWeight: 0.36,          // PC 액정타블렛 맞춤 코너 보존형 스트림라인 강도 (아이패드 OS 하드웨어 보정에 대응하는 소프트웨어 안정화)
+        streamlineDecayDist: 26.0,       // 빠른 원/곡선에서 보정이 자연 감쇠되는 거리 (px)
+        trendStabilizeWeight: 0.16       // 직선·완만한 곡선(cos > 0.72)에서 좌우(법선) 미세 굴곡을 추세선으로 정렬하는 가중치
       };
       return this._inkProfileCache;
+    }
+
+    /**
+     * 🎯 [PC 액정타블렛 전용 스마트 코얼레스드 필터 & 코너 보존형 추세 스트림라인 헬퍼]
+     * - 아이패드(deviceType === 'ipad')에서는 호출되지 않으며, 오직 PC 환경에서만 작동합니다.
+     * 1) 일반 필기 속도(프레임당 이동 경로 < 8.5px)에서는 240Hz 서브 패킷의 격자 계단 노이즈를 막기 위해
+     *    아이패드와 동일하게 프레임 확정 이벤트([e])만 채택하고, 고속 큰 원/긴 획(>= 8.5px)에서만 서브 샘플을 전부 살립니다.
+     * 2) 꺾임 각도(cosTurn)를 분석해 글자의 모서리(ㄱ, ㄴ, ㄹ, ㅅ 등 cos < 0.35)는 날렵하게 보존하고,
+     *    완만한 직선·곡선 구간(cos > 0.72)에서는 좌우(법선) 떨림을 추세선으로 정렬해 확대 시에도 울퉁불퉁함이 없도록 보정합니다.
+     */
+    _selectPcCoalescedEvents(e, inkProfile) {
+      if (!inkProfile || !inkProfile.useCoalescedEvents || typeof e.getCoalescedEvents !== 'function') {
+        return [e];
+      }
+      const coalesced = e.getCoalescedEvents();
+      if (!coalesced || coalesced.length <= 1) {
+        return (coalesced && coalesced.length === 1) ? coalesced : [e];
+      }
+      if (inkProfile.deviceType !== 'pc') {
+        return coalesced;
+      }
+      const maxSpan = inkProfile.coalescedMergeMaxSpan || 8.5;
+      let subPathLen = 0;
+      for (let i = 1; i < coalesced.length; i++) {
+        const p0 = coalesced[i - 1];
+        const p1 = coalesced[i];
+        subPathLen += Math.hypot((p1.clientX || 0) - (p0.clientX || 0), (p1.clientY || 0) - (p0.clientY || 0));
+        if (subPathLen >= maxSpan) {
+          return coalesced;
+        }
+      }
+      // 🌟 일반 글씨 속도(< 8.5px/frame)에서는 프레임 내 240Hz 서브 패킷들의 선형 가중 평균(Ramp-Weighted Centroid)을 구해
+      // 액정타블렛 디지타이저 코일의 고주파 교번 진동(+-0.8px 격자 노이즈)을 지연 없이 프레임 내부에서 상쇄합니다!
+      let sumX = 0;
+      let sumY = 0;
+      let sumW = 0;
+      for (let i = 0; i < coalesced.length; i++) {
+        const cEv = coalesced[i];
+        const w = i + 1;
+        sumX += (typeof cEv.clientX === 'number' ? cEv.clientX : e.clientX) * w;
+        sumY += (typeof cEv.clientY === 'number' ? cEv.clientY : e.clientY) * w;
+        sumW += w;
+      }
+      const lastEv = coalesced[coalesced.length - 1] || e;
+      return [{
+        clientX: sumX / sumW,
+        clientY: sumY / sumW,
+        pointerType: e.pointerType,
+        pressure: (typeof lastEv.pressure === 'number') ? lastEv.pressure : e.pressure,
+        timeStamp: (typeof lastEv.timeStamp === 'number' && lastEv.timeStamp > 0) ? lastEv.timeStamp : e.timeStamp
+      }];
+    }
+
+    _computePcCornerAwareStreamline(rawX, rawY, p1x, p1y, p2x, p2y, hasP2, inkProfile) {
+      const stepD = Math.hypot(rawX - p1x, rawY - p1y);
+      if (stepD < 0.001) return { x: rawX, y: rawY, stepD: 0 };
+      const decayDist = inkProfile.streamlineDecayDist || 26.0;
+      let weight = (inkProfile.streamlineWeight || 0.36) * Math.max(0, 1 - stepD / decayDist);
+      let targetX = rawX;
+      let targetY = rawY;
+
+      if (hasP2) {
+        const vx1 = p1x - p2x;
+        const vy1 = p1y - p2y;
+        const len1 = Math.hypot(vx1, vy1);
+        if (len1 > 0.4) {
+          const vx2 = rawX - p1x;
+          const vy2 = rawY - p1y;
+          const cosTurn = (vx1 * vx2 + vy1 * vy2) / (len1 * stepD);
+          if (cosTurn < 0.35) {
+            // 꺾임 모서리(ㄱ, ㄴ, ㄹ, ㅅ, 수식 첨자 등): 모서리가 둥글게 뭉개지지 않도록 스트림라인 즉시 완화
+            const cornerScale = Math.max(0.22, (cosTurn + 0.25) / 0.60);
+            weight *= cornerScale;
+          } else if (stepD < 18.0) {
+            // 완만한 직선·곡선 구간: P2 -> Praw 현(Chord) 중심선 방향으로 투영해 오버슈트 없이 좌우(법선) 지그재그 굴곡을 70%+ 평탄화
+            const cx = rawX - p2x;
+            const cy = rawY - p2y;
+            const cLen = Math.hypot(cx, cy);
+            if (cLen > 0.8) {
+              const chordX = p1x + (cx / cLen) * stepD;
+              const chordY = p1y + (cy / cLen) * stepD;
+              const chordBlend = 0.32 * ((cosTurn - 0.35) / 0.65) * Math.max(0, 1 - stepD / 18.0);
+              targetX = rawX * (1 - chordBlend) + chordX * chordBlend;
+              targetY = rawY * (1 - chordBlend) + chordY * chordBlend;
+            }
+          }
+        }
+      }
+
+      if (weight > 0.005) {
+        return {
+          x: targetX * (1 - weight) + p1x * weight,
+          y: targetY * (1 - weight) + p1y * weight,
+          stepD
+        };
+      }
+      return { x: targetX, y: targetY, stepD };
     }
 
     isStylusPalmRejectionActive() {
@@ -4576,7 +4677,9 @@
       const minDist = (e.pointerType === 'pen') ? inkProfile.minCardDistPen : inkProfile.minCardDistMouse;
 
       let events = [e];
-      if (inkProfile.useCoalescedEvents && typeof e.getCoalescedEvents === 'function') {
+      if (inkProfile.deviceType === 'pc') {
+        events = this._selectPcCoalescedEvents(e, inkProfile);
+      } else if (inkProfile.useCoalescedEvents && typeof e.getCoalescedEvents === 'function') {
         const coalesced = e.getCoalescedEvents();
         if (coalesced && coalesced.length > 0) {
           events = coalesced;
@@ -4626,16 +4729,35 @@
         if (!stroke.isHighlighter && prevPt) {
           const p1x = prevPt.nx * rw;
           const p1y = prevPt.ny * rh;
-          const stepD = Math.hypot(rawPxX - p1x, rawPxY - p1y);
-          const weight = inkProfile.streamlineWeight * Math.max(0, 1 - stepD / inkProfile.streamlineDecayDist);
-          if (weight > 0.005) {
-            sx = rawPxX * (1 - weight) + p1x * weight;
-            sy = rawPxY * (1 - weight) + p1y * weight;
+          if (inkProfile.deviceType === 'pc') {
+            const prev2Pt = (stroke.points.length >= 2) ? stroke.points[stroke.points.length - 2] : null;
+            const smoothed = this._computePcCornerAwareStreamline(
+              rawPxX,
+              rawPxY,
+              p1x,
+              p1y,
+              prev2Pt ? prev2Pt.nx * rw : 0,
+              prev2Pt ? prev2Pt.ny * rh : 0,
+              Boolean(prev2Pt),
+              inkProfile
+            );
+            sx = smoothed.x;
+            sy = smoothed.y;
+          } else {
+            const stepD = Math.hypot(rawPxX - p1x, rawPxY - p1y);
+            const weight = inkProfile.streamlineWeight * Math.max(0, 1 - stepD / inkProfile.streamlineDecayDist);
+            if (weight > 0.005) {
+              sx = rawPxX * (1 - weight) + p1x * weight;
+              sy = rawPxY * (1 - weight) + p1y * weight;
+            }
           }
         }
 
         const stepDist = prevPt ? Math.hypot(sx - prevPt.nx * rw, sy - prevPt.ny * rh) : 0;
-        if (prevPt && stepDist < 0.20) continue;
+        const minSmoothed = (inkProfile.deviceType === 'pc' && stroke.points.length >= 2)
+          ? (inkProfile.minCardSmoothedDist || 0.55)
+          : 0.20;
+        if (prevPt && stepDist < minSmoothed) continue;
 
         const rawP = (typeof ev.pressure === 'number') ? ev.pressure : 0.5;
         if (rawP > 0 && Math.abs(rawP - 0.5) > 0.01) stroke._hasHwP = true;
@@ -4688,8 +4810,9 @@
         const lastY = lastPt.ny * rh;
         const tailDist = Math.hypot(rawEnd.x - lastX, rawEnd.y - lastY);
         if (tailDist >= 0.25) {
-          const endX = stroke.isHighlighter ? rawEnd.x : (lastX * 0.18 + rawEnd.x * 0.82);
-          const endY = stroke.isHighlighter ? rawEnd.y : (lastY * 0.18 + rawEnd.y * 0.82);
+          const tailKeep = (this.getDeviceInkProfile().deviceType === 'pc' && stroke.points.length > 2 && tailDist < 4.5) ? 0.34 : 0.18;
+          const endX = stroke.isHighlighter ? rawEnd.x : (lastX * tailKeep + rawEnd.x * (1 - tailKeep));
+          const endY = stroke.isHighlighter ? rawEnd.y : (lastY * tailKeep + rawEnd.y * (1 - tailKeep));
           let p = (typeof lastPt.p === 'number') ? lastPt.p : 0.5;
           const curPenStyle = stroke.penStyle || 'ballpen';
           if (curPenStyle === 'fountain') {
