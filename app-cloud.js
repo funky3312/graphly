@@ -161,7 +161,7 @@
       const checkSessionOnFocus = () => {
         if (!this.cloudUser || !this.cloudUser.uid) return;
         if (this._isExplicitAuthFlowInProgress) return;
-        if (this.isDrawingInk || this._isDrawingCardInk) return;
+        if ((typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) || this.isDrawingInk || this._isDrawingCardInk) return;
         const now = Date.now();
         if (this._lastSessionLockRegisteredAt && (now - this._lastSessionLockRegisteredAt < 10000)) return;
         if (this._lastSessionLockCheckMs && now - this._lastSessionLockCheckMs < 15000) return;
@@ -4379,6 +4379,9 @@
       });
     }
 
+    if (typeof this.flushPendingPipCardBakes === 'function') {
+      this.flushPendingPipCardBakes();
+    }
     const extraGraphs = [];
     if (this.extraGraphCards && this.extraGraphCards.length > 0) {
       this.extraGraphCards.forEach(c => {

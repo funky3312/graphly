@@ -1231,6 +1231,10 @@
             if (hitResize) {
               this.isResizingLassoSelection = true;
               this._preDragState = this.getHistorySnapshot();
+              if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
+                this._lassoExcludedBakeSet = new Set(this.selectedInkStrokes);
+                this._inkBakeDirty = true;
+              }
               const bbox = this.lassoBoundingBox;
               const pad = 10;
               const x1 = bbox.minX - pad, y1 = bbox.minY - pad;
@@ -1262,6 +1266,10 @@
               // 1. 점선 루프 내부 터치 -> 드래그 이동 시작!
               this.isDraggingLassoSelection = true;
               this._preDragState = this.getHistorySnapshot();
+              if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
+                this._lassoExcludedBakeSet = new Set(this.selectedInkStrokes);
+                this._inkBakeDirty = true;
+              }
               this.lassoDragStart = {
                 screenX: pos.x,
                 screenY: pos.y,
@@ -1272,6 +1280,10 @@
               return;
             } else {
               // 2. 🌟 [대표님 핵심 기획]: 올가미 바깥부분 터치 시 즉각 완전 해제 준비 (2손가락 핀치 시 복원용 백업 보관)!
+              if (this._lassoExcludedBakeSet) {
+                this._lassoExcludedBakeSet = null;
+                this._inkBakeDirty = true;
+              }
               this._lassoPrePinchBackup = {
                 strokes: this.selectedInkStrokes,
                 texts: this.selectedTextLabels,
@@ -1292,6 +1304,10 @@
           }
 
           // 선택이 없는 상태에서 터치 -> 새 올가미 점선 드로잉 시작!
+          if (this._lassoExcludedBakeSet) {
+            this._lassoExcludedBakeSet = null;
+            this._inkBakeDirty = true;
+          }
           this.selectedInkStrokes = [];
           this.selectedTextLabels = [];
           this.lassoBoundingBox = null;
@@ -1952,7 +1968,9 @@
           }
 
           this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
-          this._inkBakeDirty = true;
+          if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0 && !this._lassoExcludedBakeSet) {
+            this._inkBakeDirty = true;
+          }
           this.requestRender();
           return;
         }
@@ -2039,7 +2057,9 @@
           this.lassoDragStart.screenY = pos.y;
           this.lassoDragStart.m = mCurrent;
           this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
-          this._inkBakeDirty = true;
+          if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0 && !this._lassoExcludedBakeSet) {
+            this._inkBakeDirty = true;
+          }
           this.requestRender();
           return;
         }
@@ -2074,7 +2094,7 @@
       if (this.isDrawingInk || this._isTemporaryStylusEraser) {
         const isStylusEraser = this.isStylusEraserEvent(e) || this._isTemporaryStylusEraser;
         if (this.activeInkTool === 'eraser' || isStylusEraser) {
-          this.eraseInkAtPoint(pos.x, pos.y);
+          this.eraseInkAtPoint(pos.x, pos.y, null, true);
           return;
         } else if (this.activeInkTool === 'laser' && this.currentMainLaserStroke) {
           const nowPerf = performance.now();
@@ -3063,7 +3083,7 @@
       if (this.isStylusDrawing) {
         this.isStylusDrawing = false;
         if (this.virtualStylusEl) this.virtualStylusEl.classList.remove('drawing');
-        this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y);
+        this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, e);
       }
 
       if (this._isTemporaryStylusEraser) {
@@ -3079,6 +3099,10 @@
         if (this.isResizingLassoSelection) {
           this.isResizingLassoSelection = false;
           this.lassoResizeStart = null;
+          if (this._lassoExcludedBakeSet) {
+            this._lassoExcludedBakeSet = null;
+            this._inkBakeDirty = true;
+          }
           if (this._preDragState) {
             const afterSnap = this.getHistorySnapshot();
             if (this._preDragState !== afterSnap) {
@@ -3097,6 +3121,10 @@
         if (this.isDraggingLassoSelection) {
           this.isDraggingLassoSelection = false;
           this.lassoDragStart = null;
+          if (this._lassoExcludedBakeSet) {
+            this._lassoExcludedBakeSet = null;
+            this._inkBakeDirty = true;
+          }
           if (this._preDragState) {
             const afterSnap = this.getHistorySnapshot();
             if (this._preDragState !== afterSnap) {
@@ -3284,8 +3312,20 @@
           if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
           this.redoStack = [];
 
-          // 형광펜(isHighlighter) 획은 완료 즉시 하단 레이어(Pass 1)로 내려가 검은 글씨 뒤로 깔리도록 캐시 리빌드!
-          if (finishedStroke.isHighlighter || finishedStroke.isShape) {
+          // 형광펜(isHighlighter) 획이 기존 일반 펜 획과 겹치지 않으면 1획만 즉시 오프스크린 합성(0.05ms),
+          // 일반 펜 획과 1px이라도 근접하면 하단 레이어(Pass 1)로 내려가 검은 글씨 뒤로 깔리도록 2-Pass 캐시 리빌드!
+          if (
+            finishedStroke.isHighlighter &&
+            !finishedStroke.isShape &&
+            typeof this._canFastBakeCompletedHighlighter === 'function' &&
+            this._canFastBakeCompletedHighlighter(finishedStroke)
+          ) {
+            if (!Array.isArray(this._pendingIncrementalBakeStrokes)) {
+              this._pendingIncrementalBakeStrokes = [];
+            }
+            this._pendingIncrementalBakeStrokes.push(finishedStroke);
+            this._flushPendingIncrementalBakes();
+          } else if (finishedStroke.isHighlighter || finishedStroke.isShape) {
             this._inkBakeDirty = true;
           }
 
@@ -3383,9 +3423,13 @@
       if (this.isBoardPanning) {
         this.updateProblemCardPosition();
       }
+      const wasPanningAny = Boolean(this.isPanning || this.isBoardPanning);
       const prevDownInfo = this.downInfo;
       this.isPanning = false;
       this.isBoardPanning = false;
+      if (wasPanningAny && this._inkBakeDirty && typeof this._scheduleIdleInkCacheRebuild === 'function') {
+        this._scheduleIdleInkCacheRebuild(140);
+      }
       this.boardPanStart = null;
       document.body.classList.remove('space-pan-dragging');
       this.isDraggingVf = false;
@@ -4214,11 +4258,21 @@
         const factor = e.deltaY < 0 ? 1.12 : (1 / 1.12);
         this._isWheelZooming = true;
         if (this._wheelZoomIdleTimer) clearTimeout(this._wheelZoomIdleTimer);
-        this._wheelZoomIdleTimer = setTimeout(() => {
+        const finishWheelZoomWhenIdle = () => {
           this._wheelZoomIdleTimer = null;
+          if (
+            (typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) ||
+            this.isDrawingInk ||
+            this._isDrawingCardInk ||
+            this.isStylusDrawing
+          ) {
+            this._wheelZoomIdleTimer = setTimeout(finishWheelZoomWhenIdle, 160);
+            return;
+          }
           this._isWheelZooming = false;
           this.requestRender();
-        }, 160);
+        };
+        this._wheelZoomIdleTimer = setTimeout(finishWheelZoomWhenIdle, 160);
         this.setBoardZoom((this.boardZoom || 1.0) * factor, pos.x, pos.y);
         this.requestRender();
         return;

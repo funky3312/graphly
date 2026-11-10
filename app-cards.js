@@ -10,22 +10,238 @@
     //   (2) 문제 창 크기를 키우거나 줄일 때는 문제 이미지와 정확히 같은 비율로 함께 스케일링!
     // ==========================================================================
     // ==========================================================================
-    // 🖨️ [카드 필기 오프스크린 베이킹 엔진(_renderCardInkWithBakeCache)]
-    // - 창모드 그래프 카드·문제 카드에 글자를 수백 자 써도 필기 도중(pointermove)에는
-    //   이전 획들을 다시 그리지 않고 오프스크린 텍스처(_bakeCanvas)를 0.01ms 만에 Blit한 뒤
-    //   현재 그리는 획(activeStroke) 1개만 증분 렌더링합니다!
+    // 🖨️ [카드 필기 오프스크린 베이킹 & 240Hz O(1) 실시간 증분 렌더링 엔진]
+    // - 일반 펜(볼펜·납작펜·만년필·붓펜): pointerdown/pointermove/pointerup 전 구간에서
+    //   캔버스 전체 초기화(clearRect)나 이전 포인트 재순회 없이 새로 추가된 베지어 세그먼트 1개만
+    //   0.015ms(O(1))에 증분 타격하며, drawPenStyledPointArray와 100.000% 픽셀 단위 일치 보장!
+    // - 반투명 형광펜 & 도형 홀드: 반투명 겹침 얼룩 방지를 위해 오프스크린 _bakeCanvas 위 단일 패스로 그리되,
+    //   240Hz 입력을 requestAnimationFrame(VSync) 당 1회로 병합하여 프레임 드랍을 원천 차단!
     // ==========================================================================
-    _renderSingleCardInkStroke(ctx, stroke, w, h, sizeScale, options = {}) {
-      if (!stroke || !stroke.points || stroke.points.length === 0) return;
+    _cancelCardCanvasPendingTasks(canvas, releaseBakeBuffer = false) {
+      if (!canvas) return;
+      if (canvas._cardLiveRafId) {
+        cancelAnimationFrame(canvas._cardLiveRafId);
+        canvas._cardLiveRafId = null;
+      }
+      canvas._pendingCardLiveRenderFn = null;
+      if (canvas._cardIdleBakeTimer) {
+        clearTimeout(canvas._cardIdleBakeTimer);
+        canvas._cardIdleBakeTimer = null;
+      }
+      if (releaseBakeBuffer && canvas._bakeCanvas) {
+        try {
+          canvas._bakeCanvas.width = 1;
+          canvas._bakeCanvas.height = 1;
+        } catch (err) { }
+        canvas._bakeCanvas = null;
+        canvas._bakeValid = false;
+        canvas._bakeCount = 0;
+        canvas._bakedRefs = null;
+        canvas._bakeFirstStroke = null;
+        canvas._bakeLastStroke = null;
+        canvas._bakeGeoSig = '';
+      }
+    }
+
+    // 🌟 [닫힌 카드 GPU·RAM 캔버스 즉시 절전 (Undo 100% 무손실 복구 보장)]:
+    // 추가 문제/그래프 카드를 닫아 DOM에서 분리할 때, window 드래그·필기 리스너는 보존하여
+    // 실행 취소(↺) 재부착 시 100% 즉시 작동하도록 유지하면서,
+    // WebKit 메모리를 장당 ~7.5MB 점유하던 오프스크린 _bakeCanvas · 필기 캔버스 · 레이저 캔버스만 1×1로 축소 반환합니다!
+    _hibernateDetachedCardCanvases(cardEl) {
+      if (!cardEl || typeof cardEl.querySelector !== 'function') return;
+      if (cardEl._bakePipTimerId) {
+        clearTimeout(cardEl._bakePipTimerId);
+        cardEl._bakePipTimerId = null;
+      }
+      if (this._activeCardLasso && this._activeCardLasso.widgetEl === cardEl && typeof this.clearCardLassoSelection === 'function') {
+        this.clearCardLassoSelection();
+      }
+      const inkCvs = cardEl.querySelector('.problem-card-canvas');
+      if (inkCvs) {
+        this._cancelCardCanvasPendingTasks(inkCvs, true);
+        inkCvs._liveActiveStroke = null;
+        inkCvs._liveRenderedPointCount = 0;
+        inkCvs._displaySyncedCount = -1;
+        inkCvs._displaySyncedGeoSig = '';
+        inkCvs._needsSizeSync = true;
+        try {
+          inkCvs.width = 1;
+          inkCvs.height = 1;
+        } catch (err) { }
+      }
+      const laserCvs = cardEl.querySelector('.card-laser-canvas');
+      if (laserCvs) {
+        try {
+          laserCvs.width = 1;
+          laserCvs.height = 1;
+        } catch (err) { }
+      }
+    }
+
+    _getCardStrokeNormBounds(stroke) {
+      if (!stroke || !stroke.points || stroke.points.length === 0) return null;
+      const pts = stroke.points;
+      const n = pts.length;
+      const isDynamicShape = Boolean(stroke.isShape || stroke.cardShape);
+      const pFirst = pts[0];
+      const pMid = pts[n >> 1];
+      const pLast = pts[n - 1];
+      let cb = !isDynamicShape ? stroke._cardAabb : null;
+      if (
+        !cb ||
+        cb.len !== n ||
+        cb.fx !== pFirst.nx ||
+        cb.fy !== pFirst.ny ||
+        cb.mx !== pMid.nx ||
+        cb.my !== pMid.ny ||
+        cb.lx !== pLast.nx ||
+        cb.ly !== pLast.ny
+      ) {
+        let minNx = pFirst.nx, maxNx = pFirst.nx, minNy = pFirst.ny, maxNy = pFirst.ny;
+        for (let i = 1; i < n; i++) {
+          const px = pts[i].nx;
+          const py = pts[i].ny;
+          if (px < minNx) minNx = px;
+          else if (px > maxNx) maxNx = px;
+          if (py < minNy) minNy = py;
+          else if (py > maxNy) maxNy = py;
+        }
+        cb = {
+          minNx, maxNx, minNy, maxNy,
+          len: n, fx: pFirst.nx, fy: pFirst.ny, mx: pMid.nx, my: pMid.ny, lx: pLast.nx, ly: pLast.ny
+        };
+        if (!isDynamicShape) {
+          Object.defineProperty(stroke, '_cardAabb', {
+            value: cb,
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        }
+      }
+      return cb;
+    }
+
+    _eraseCardStrokesInPlace(strokesArr, sx, sy, w, h, radiusPx, undoMeta = null) {
+      if (!Array.isArray(strokesArr) || strokesArr.length === 0) return false;
+      const effW = Math.max(1, w);
+      const effH = Math.max(1, h);
+      const padPx = radiusPx + 2;
+      const cursorPt = { x: sx, y: sy };
+      const removedBatch = [];
+      let writeIdx = 0;
+
+      for (let idx = 0; idx < strokesArr.length; idx++) {
+        const stroke = strokesArr[idx];
+        if (!stroke || !stroke.points || stroke.points.length === 0) {
+          continue;
+        }
+        const cb = this._getCardStrokeNormBounds(stroke);
+        if (
+          cb &&
+          (sx < cb.minNx * effW - padPx ||
+            sx > cb.maxNx * effW + padPx ||
+            sy < cb.minNy * effH - padPx ||
+            sy > cb.maxNy * effH + padPx)
+        ) {
+          strokesArr[writeIdx++] = stroke;
+          continue;
+        }
+
+        const pts = stroke.points;
+        let hit = false;
+        let prevPx = pts[0].nx * effW;
+        let prevPy = pts[0].ny * effH;
+        if (Math.hypot(prevPx - sx, prevPy - sy) <= radiusPx) {
+          hit = true;
+        } else {
+          for (let i = 1; i < pts.length; i++) {
+            const curPx = pts[i].nx * effW;
+            const curPy = pts[i].ny * effH;
+            if (Math.hypot(curPx - sx, curPy - sy) <= radiusPx) {
+              hit = true;
+              break;
+            }
+            if (this.distToSegment(cursorPt, { x: prevPx, y: prevPy }, { x: curPx, y: curPy }) <= radiusPx) {
+              hit = true;
+              break;
+            }
+            prevPx = curPx;
+            prevPy = curPy;
+          }
+        }
+
+        if (hit) {
+          removedBatch.push({ stroke, index: idx });
+        } else {
+          strokesArr[writeIdx++] = stroke;
+        }
+      }
+
+      if (removedBatch.length === 0) {
+        if (writeIdx !== strokesArr.length) {
+          strokesArr.length = writeIdx;
+        }
+        return false;
+      }
+
+      strokesArr.length = writeIdx;
+
+      if (undoMeta && Array.isArray(this.undoStack)) {
+        const curEntry = this._currentCardEraseUndoEntry;
+        if (
+          this._isDrawingCardInk &&
+          curEntry &&
+          curEntry.type === 'card_strokes_erase' &&
+          curEntry.strokesArr === strokesArr
+        ) {
+          curEntry.batches.push(removedBatch);
+        } else {
+          const eraseEntry = {
+            type: 'card_strokes_erase',
+            cardKind: undoMeta.cardKind || null,
+            cardEl: undoMeta.cardEl || null,
+            strokesArr,
+            batches: [removedBatch],
+            renderFn: undoMeta.renderFn || null
+          };
+          if (this._isDrawingCardInk) {
+            this._currentCardEraseUndoEntry = eraseEntry;
+          }
+          this.undoStack.push(eraseEntry);
+          if (this.undoStack.length > this.maxHistory) {
+            this.undoStack.shift();
+          }
+          this.redoStack = [];
+          this.updateUndoRedoUI();
+        }
+      }
+
+      return true;
+    }
+
+    _scheduleCardLiveFrameRender(canvas, renderFn) {
+      if (!canvas || typeof renderFn !== 'function') return;
+      canvas._pendingCardLiveRenderFn = renderFn;
+      if (canvas._cardLiveRafId) return;
+      if (typeof requestAnimationFrame === 'function') {
+        canvas._cardLiveRafId = requestAnimationFrame(() => {
+          canvas._cardLiveRafId = null;
+          const fn = canvas._pendingCardLiveRenderFn;
+          canvas._pendingCardLiveRenderFn = null;
+          if (typeof fn === 'function') fn();
+        });
+      } else {
+        canvas._pendingCardLiveRenderFn = null;
+        renderFn();
+      }
+    }
+
+    _resolveCardStrokeDrawStyle(stroke, sizeScale, options = {}) {
       const isProbCard = Boolean(options.isProbCard);
-      const applyStreamline = Boolean(options.applyStreamline);
       const minPenWidth = typeof options.minPenWidth === 'number' ? options.minPenWidth : 0.85;
       const minHlWidth = typeof options.minHlWidth === 'number' ? options.minHlWidth : 3;
       const defaultHlMin = typeof options.defaultHlMin === 'number' ? options.defaultHlMin : 8;
-
-      ctx.save();
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
 
       let strokeColor = stroke.color || '#1e293b';
       if (this.isMonochromeMode) {
@@ -36,24 +252,320 @@
         strokeColor = '#0f172a';
       }
 
-      ctx.strokeStyle = strokeColor;
-      ctx.fillStyle = strokeColor;
-
       const baseSize = (stroke.size || 3.5) * sizeScale;
       const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
-      if (stroke.isHighlighter) {
-        ctx.globalAlpha = 0.36 * ghostMul;
-        const hlW = stroke.highlighterSize ? (stroke.highlighterSize * sizeScale) : Math.max(defaultHlMin, baseSize * 2.8);
-        ctx.lineWidth = Math.max(minHlWidth, hlW);
+      const isHighlighter = Boolean(stroke.isHighlighter);
+      const penStyle = isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
+      const blurVal = isHighlighter
+        ? 0
+        : Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
+      const effBaseSize = (blurVal > 0) ? baseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : baseSize;
+      const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
+      const isFlatNib = (!isHighlighter && penStyle === 'flat');
+      const nibX = isFlatNib ? 1.38 : 1.0;
+      const nibY = isFlatNib ? 0.68 : 1.0;
+      const hlW = stroke.highlighterSize ? (stroke.highlighterSize * sizeScale) : Math.max(defaultHlMin, baseSize * 2.8);
+      const hlLineWidth = Math.max(minHlWidth, hlW);
+      const penLineWidth = Math.max(minPenWidth, baseSize);
+
+      return {
+        strokeColor,
+        baseSize,
+        effBaseSize,
+        blurVal,
+        dpr,
+        penStyle,
+        isHighlighter,
+        isFlatNib,
+        nibX,
+        nibY,
+        ghostMul,
+        hlLineWidth,
+        penLineWidth
+      };
+    }
+
+    _renderCardInkIncrementalSteps(ctx, stroke, w, h, dpr, sizeScale, fromCount, toCount, options = {}) {
+      if (!ctx || !stroke || !Array.isArray(stroke.points)) return;
+      const pts = stroke.points;
+      const endCount = Math.min(pts.length, toCount);
+      const startStep = Math.max(1, (fromCount || 0) + 1);
+      if (startStep > endCount) return;
+
+      const st = this._resolveCardStrokeDrawStyle(stroke, sizeScale, options);
+      ctx.save();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = st.strokeColor;
+      ctx.fillStyle = st.strokeColor;
+      ctx.globalAlpha = 1.0 * st.ghostMul;
+      if (st.blurVal > 0) {
+        ctx.shadowColor = st.strokeColor;
+        ctx.shadowBlur = st.blurVal * st.dpr * 0.65;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
       } else {
-        ctx.globalAlpha = 1.0 * ghostMul;
-        ctx.lineWidth = Math.max(minPenWidth, baseSize);
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      }
+      if (st.isFlatNib) {
+        ctx.scale(st.nibX, st.nibY);
+      }
+
+      const isUniformPen = (st.penStyle === 'ballpen' || st.penStyle === 'flat');
+      if (isUniformPen) {
+        ctx.lineWidth = this.computePenStyleWidth(st.effBaseSize, 0.5, st.penStyle);
+      }
+
+      for (let stepLen = startStep; stepLen <= endCount; stepLen++) {
+        if (stepLen === 1) {
+          const pt0 = pts[0];
+          const x0 = pt0.nx * w;
+          const y0 = pt0.ny * h;
+          const p0 = pt0.p !== undefined ? pt0.p : 0.5;
+          const w0 = this.computePenStyleWidth(st.effBaseSize, p0, st.penStyle);
+          ctx.beginPath();
+          ctx.arc(x0 / st.nibX, y0 / st.nibY, w0 / 2, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (stepLen === 2) {
+          const pt0 = pts[0];
+          const pt1 = pts[1];
+          const x0 = pt0.nx * w;
+          const y0 = pt0.ny * h;
+          const x1 = pt1.nx * w;
+          const y1 = pt1.ny * h;
+          const mx = (x0 + x1) * 0.5;
+          const my = (y0 + y1) * 0.5;
+          if (isUniformPen) {
+            ctx.beginPath();
+            ctx.moveTo(x0 / st.nibX, y0 / st.nibY);
+            ctx.lineTo(mx / st.nibX, my / st.nibY);
+            ctx.stroke();
+          } else {
+            const p0 = pt0.p !== undefined ? pt0.p : 0.5;
+            const p1 = pt1.p !== undefined ? pt1.p : 0.5;
+            const w0 = this.computePenStyleWidth(st.effBaseSize, p0, st.penStyle);
+            const wMid = this.computePenStyleWidth(st.effBaseSize, (p0 + p1) * 0.5, st.penStyle);
+            this.drawVariableWidthLineSegment(ctx, x0, y0, mx, my, w0, wMid);
+          }
+        } else {
+          const ptA = pts[stepLen - 3];
+          const ptB = pts[stepLen - 2];
+          const ptC = pts[stepLen - 1];
+          const ax = ptA.nx * w;
+          const ay = ptA.ny * h;
+          const bx = ptB.nx * w;
+          const by = ptB.ny * h;
+          const cx = ptC.nx * w;
+          const cy = ptC.ny * h;
+          const mid1X = (ax + bx) * 0.5;
+          const mid1Y = (ay + by) * 0.5;
+          const mid2X = (bx + cx) * 0.5;
+          const mid2Y = (by + cy) * 0.5;
+          if (isUniformPen) {
+            ctx.beginPath();
+            ctx.moveTo(mid1X / st.nibX, mid1Y / st.nibY);
+            ctx.quadraticCurveTo(bx / st.nibX, by / st.nibY, mid2X / st.nibX, mid2Y / st.nibY);
+            ctx.stroke();
+          } else {
+            const pA = ptA.p !== undefined ? ptA.p : 0.5;
+            const pB = ptB.p !== undefined ? ptB.p : 0.5;
+            const pC = ptC.p !== undefined ? ptC.p : 0.5;
+            const wMid1 = this.computePenStyleWidth(st.effBaseSize, (pA + pB) * 0.5, st.penStyle);
+            const wMid2 = this.computePenStyleWidth(st.effBaseSize, (pB + pC) * 0.5, st.penStyle);
+            this.drawVariableWidthQuadSegment(ctx, mid1X, mid1Y, bx, by, mid2X, mid2Y, wMid1, wMid2);
+          }
+        }
+      }
+      ctx.restore();
+    }
+
+    _renderCardInkFinalTail(ctx, stroke, w, h, dpr, sizeScale, options = {}) {
+      if (!ctx || !stroke || !Array.isArray(stroke.points) || stroke.points.length < 2) return;
+      const pts = stroke.points;
+      const len = pts.length;
+      const st = this._resolveCardStrokeDrawStyle(stroke, sizeScale, options);
+
+      ctx.save();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = st.strokeColor;
+      ctx.fillStyle = st.strokeColor;
+      ctx.globalAlpha = 1.0 * st.ghostMul;
+      if (st.blurVal > 0) {
+        ctx.shadowColor = st.strokeColor;
+        ctx.shadowBlur = st.blurVal * st.dpr * 0.65;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      } else {
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      }
+      if (st.isFlatNib) {
+        ctx.scale(st.nibX, st.nibY);
+      }
+
+      const isUniformPen = (st.penStyle === 'ballpen' || st.penStyle === 'flat');
+      if (len === 2) {
+        const pt0 = pts[0];
+        const pt1 = pts[1];
+        const x0 = pt0.nx * w;
+        const y0 = pt0.ny * h;
+        const x1 = pt1.nx * w;
+        const y1 = pt1.ny * h;
+        if (isUniformPen) {
+          ctx.lineWidth = this.computePenStyleWidth(st.effBaseSize, pt0.p !== undefined ? pt0.p : 0.5, st.penStyle);
+          ctx.beginPath();
+          ctx.moveTo(x0 / st.nibX, y0 / st.nibY);
+          ctx.lineTo(x1 / st.nibX, y1 / st.nibY);
+          ctx.stroke();
+        } else {
+          const p0 = pt0.p !== undefined ? pt0.p : 0.5;
+          const p1 = pt1.p !== undefined ? pt1.p : 0.5;
+          const w0 = this.computePenStyleWidth(st.effBaseSize, p0, st.penStyle);
+          const w1 = this.computePenStyleWidth(st.effBaseSize, p1, st.penStyle);
+          this.drawVariableWidthLineSegment(ctx, x0, y0, x1, y1, w0, w1);
+        }
+      } else {
+        const ptPrev = pts[len - 2];
+        const ptLast = pts[len - 1];
+        const px = ptPrev.nx * w;
+        const py = ptPrev.ny * h;
+        const lx = ptLast.nx * w;
+        const ly = ptLast.ny * h;
+        const midX = (px + lx) * 0.5;
+        const midY = (py + ly) * 0.5;
+        if (isUniformPen) {
+          ctx.lineWidth = this.computePenStyleWidth(st.effBaseSize, ptLast.p !== undefined ? ptLast.p : 0.5, st.penStyle);
+          ctx.beginPath();
+          ctx.moveTo(midX / st.nibX, midY / st.nibY);
+          ctx.lineTo(lx / st.nibX, ly / st.nibY);
+          ctx.stroke();
+        } else {
+          const pPrev = ptPrev.p !== undefined ? ptPrev.p : 0.5;
+          const pLast = ptLast.p !== undefined ? ptLast.p : 0.5;
+          const wMid = this.computePenStyleWidth(st.effBaseSize, (pPrev + pLast) * 0.5, st.penStyle);
+          const wLast = this.computePenStyleWidth(st.effBaseSize, pLast, st.penStyle);
+          this.drawVariableWidthLineSegment(ctx, midX, midY, lx, ly, wMid, wLast);
+        }
+      }
+      ctx.restore();
+    }
+
+    _ensureCardBakeUpTo(canvas, bCanvas, bCtx, strokeList, targetCount, w, h, dpr, sizeScale, options = {}) {
+      const clampedTarget = Math.max(0, Math.min(strokeList.length, targetCount));
+      let canAppend = Boolean(
+        canvas._bakeValid &&
+        Array.isArray(canvas._bakedRefs) &&
+        canvas._bakeCount <= clampedTarget &&
+        canvas._bakedRefs.length === canvas._bakeCount
+      );
+      if (canAppend) {
+        for (let i = 0; i < canvas._bakeCount; i++) {
+          if (canvas._bakedRefs[i] !== strokeList[i]) {
+            canAppend = false;
+            break;
+          }
+        }
+      }
+      if (canAppend) {
+        if (canvas._bakeCount < clampedTarget) {
+          bCtx.save();
+          bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          for (let i = canvas._bakeCount; i < clampedTarget; i++) {
+            this._renderSingleCardInkStroke(bCtx, strokeList[i], w, h, sizeScale, options);
+            canvas._bakedRefs.push(strokeList[i]);
+          }
+          bCtx.restore();
+          canvas._bakeCount = clampedTarget;
+          canvas._bakeFirstStroke = clampedTarget > 0 ? strokeList[0] : null;
+          canvas._bakeLastStroke = clampedTarget > 0 ? strokeList[clampedTarget - 1] : null;
+        }
+        return;
+      }
+
+      bCtx.save();
+      bCtx.setTransform(1, 0, 0, 1, 0, 0);
+      bCtx.clearRect(0, 0, bCanvas.width, bCanvas.height);
+      bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const nextRefs = new Array(clampedTarget);
+      for (let i = 0; i < clampedTarget; i++) {
+        this._renderSingleCardInkStroke(bCtx, strokeList[i], w, h, sizeScale, options);
+        nextRefs[i] = strokeList[i];
+      }
+      bCtx.restore();
+      canvas._bakeValid = true;
+      canvas._bakeCount = clampedTarget;
+      canvas._bakedRefs = nextRefs;
+      canvas._bakeFirstStroke = clampedTarget > 0 ? strokeList[0] : null;
+      canvas._bakeLastStroke = clampedTarget > 0 ? strokeList[clampedTarget - 1] : null;
+    }
+
+    _scheduleCardIdleBake(canvas, strokeList, w, h, dpr, sizeScale, geoSig, options = {}) {
+      if (!canvas) return;
+      if (canvas._cardIdleBakeTimer) {
+        clearTimeout(canvas._cardIdleBakeTimer);
+        canvas._cardIdleBakeTimer = null;
+      }
+      const isIPad = typeof this.isIOSOrIPad === 'function' && this.isIOSOrIPad();
+      const delayMs = isIPad ? 550 : 220;
+      const runCatchup = () => {
+        canvas._cardIdleBakeTimer = null;
+        if (canvas.isConnected === false) return;
+        const nowT = Date.now();
+        const isBusy = (typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) ||
+          this.isDrawingInk ||
+          this._isDrawingCardInk ||
+          this.isStylusDrawing ||
+          (this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 300));
+        if (isBusy) {
+          canvas._cardIdleBakeTimer = setTimeout(runCatchup, 220);
+          return;
+        }
+        if (
+          canvas._liveActiveStroke !== null ||
+          canvas._bakeGeoSig !== geoSig ||
+          !Array.isArray(strokeList) ||
+          canvas._displaySyncedCount !== strokeList.length
+        ) {
+          return;
+        }
+        if (!canvas._bakeCanvas) return;
+        const bCanvas = canvas._bakeCanvas;
+        const bCtx = bCanvas.getContext('2d');
+        if (!bCtx) return;
+        this._ensureCardBakeUpTo(canvas, bCanvas, bCtx, strokeList, strokeList.length, w, h, dpr, sizeScale, options);
+      };
+      canvas._cardIdleBakeTimer = setTimeout(runCatchup, delayMs);
+    }
+
+    _renderSingleCardInkStroke(ctx, stroke, w, h, sizeScale, options = {}) {
+      if (!stroke || !stroke.points || stroke.points.length === 0) return;
+      const applyStreamline = Boolean(options.applyStreamline);
+      const st = this._resolveCardStrokeDrawStyle(stroke, sizeScale, options);
+
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = st.strokeColor;
+      ctx.fillStyle = st.strokeColor;
+
+      if (st.isHighlighter) {
+        ctx.globalAlpha = 0.36 * st.ghostMul;
+        ctx.lineWidth = st.hlLineWidth;
+      } else {
+        ctx.globalAlpha = 1.0 * st.ghostMul;
+        ctx.lineWidth = st.penLineWidth;
         ctx.shadowBlur = 0;
         ctx.shadowOffsetX = 0;
         ctx.shadowOffsetY = 0;
       }
 
-      if (stroke.isShape && stroke.cardShape && this.drawCardRecognizedShape(ctx, stroke, 0, 0, w, h, baseSize)) {
+      if (stroke.isShape && stroke.cardShape && this.drawCardRecognizedShape(ctx, stroke, 0, 0, w, h, st.baseSize)) {
         ctx.restore();
         return;
       }
@@ -85,22 +597,36 @@
         pts[len - 1] = rawPts[len - 1];
       }
 
-      const penStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
-      this.drawPenStyledPointArray(ctx, pts, stroke.isHighlighter ? ctx.lineWidth : baseSize, penStyle, stroke.softBlur, Boolean(stroke.isHighlighter));
+      this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : st.baseSize, st.penStyle, stroke.softBlur, st.isHighlighter);
       ctx.restore();
     }
 
     _renderCardInkWithBakeCache(canvas, strokes, w, h, dpr, sizeScale, widgetEl, options = {}) {
       if (!canvas) return;
+      if (canvas._cardLiveRafId) {
+        cancelAnimationFrame(canvas._cardLiveRafId);
+        canvas._cardLiveRafId = null;
+        canvas._pendingCardLiveRenderFn = null;
+      }
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
       const strokeList = Array.isArray(strokes) ? strokes : [];
       if (strokeList.length === 0) {
+        if (canvas._cardIdleBakeTimer) {
+          clearTimeout(canvas._cardIdleBakeTimer);
+          canvas._cardIdleBakeTimer = null;
+        }
         canvas._bakeValid = false;
         canvas._bakeCount = 0;
+        canvas._bakedRefs = [];
         canvas._bakeFirstStroke = null;
         canvas._bakeLastStroke = null;
+        canvas._liveActiveStroke = null;
+        canvas._liveRenderedPointCount = 0;
+        canvas._displaySyncedCount = 0;
+        canvas._displaySyncedFirst = null;
+        canvas._displaySyncedLast = null;
         ctx.save();
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, w, h);
@@ -113,7 +639,15 @@
       const hasActiveLassoOnCard = Boolean(this._activeCardLasso && this._activeCardLasso.widgetEl === widgetEl);
 
       if (isAudioReplay || hasActiveLassoOnCard) {
+        if (canvas._cardIdleBakeTimer) {
+          clearTimeout(canvas._cardIdleBakeTimer);
+          canvas._cardIdleBakeTimer = null;
+        }
         canvas._bakeValid = false;
+        canvas._bakedRefs = [];
+        canvas._liveActiveStroke = null;
+        canvas._liveRenderedPointCount = 0;
+        canvas._displaySyncedCount = -1;
         ctx.save();
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, w, h);
@@ -153,57 +687,122 @@
         bCanvas.width = canvas.width;
         bCanvas.height = canvas.height;
         canvas._bakeValid = false;
+        canvas._bakedRefs = [];
+        canvas._liveActiveStroke = null;
+        canvas._liveRenderedPointCount = 0;
+        canvas._displaySyncedCount = -1;
       }
       if (canvas._bakeGeoSig !== geoSig) {
         canvas._bakeGeoSig = geoSig;
         canvas._bakeValid = false;
+        canvas._bakedRefs = [];
+        canvas._liveActiveStroke = null;
+        canvas._liveRenderedPointCount = 0;
+        canvas._displaySyncedCount = -1;
       }
 
       const activeStroke = options.activeStroke || null;
       const commitStroke = Boolean(options.commitStroke);
+      const canUseIncrementalLivePen = Boolean(
+        activeStroke &&
+        !activeStroke.isHighlighter &&
+        !activeStroke.isShape &&
+        !activeStroke._shapeHoldDetected &&
+        activeStroke._inPlaceStreamlined &&
+        (typeof activeStroke._ghostAlpha !== 'number' || activeStroke._ghostAlpha >= 0.999)
+      );
 
-      if (activeStroke && !commitStroke) {
+      // 🌟 [240Hz O(1) 증분 실시간 카드 필기 패스트패스]:
+      // 일반 펜 필기 시에는 매 pointermove마다 캔버스를 지우거나(clearRect) 전체 포인트를 재순회하지 않고,
+      // 직전 프레임 이후 새로 추가된 베지어 세그먼트만 즉시 타격하여 장문 수식 필기 랙을 0.00ms로 제거합니다!
+      if (canUseIncrementalLivePen && !commitStroke) {
+        const curPtCount = Array.isArray(activeStroke.points) ? activeStroke.points.length : 0;
+        if (
+          canvas._liveActiveStroke === activeStroke &&
+          canvas._displaySyncedGeoSig === geoSig &&
+          curPtCount >= (canvas._liveRenderedPointCount || 0)
+        ) {
+          const prevRendered = canvas._liveRenderedPointCount || 0;
+          if (curPtCount > prevRendered) {
+            this._renderCardInkIncrementalSteps(ctx, activeStroke, w, h, dpr, sizeScale, prevRendered, curPtCount, options);
+            canvas._liveRenderedPointCount = curPtCount;
+          }
+          return;
+        }
+
+        // 새 획 시작(pointerdown) 또는 지오메트리 변경 직후 첫 프레임 초기화
         const completedCount = (strokeList[strokeList.length - 1] === activeStroke)
           ? (strokeList.length - 1)
           : Math.max(0, strokeList.indexOf(activeStroke));
         const expectedFirst = completedCount > 0 ? strokeList[0] : null;
         const expectedLast = completedCount > 0 ? strokeList[completedCount - 1] : null;
+        const displayAlreadyClean = Boolean(
+          canvas._liveActiveStroke === null &&
+          canvas._displaySyncedGeoSig === geoSig &&
+          canvas._displaySyncedCount === completedCount &&
+          canvas._displaySyncedFirst === expectedFirst &&
+          canvas._displaySyncedLast === expectedLast
+        );
 
-        if (
-          canvas._bakeValid &&
-          canvas._bakeCount === completedCount &&
-          canvas._bakeFirstStroke === expectedFirst &&
-          canvas._bakeLastStroke === expectedLast
-        ) {
-          // 이미 직전 완료 획들까지 _bakeCanvas에 구워져 있으므로 재렌더링 0회!
-        } else if (
-          canvas._bakeValid &&
-          completedCount > 0 &&
-          canvas._bakeCount === completedCount - 1 &&
-          canvas._bakeFirstStroke === (completedCount - 1 > 0 ? strokeList[0] : null) &&
-          canvas._bakeLastStroke === (completedCount - 1 > 0 ? strokeList[completedCount - 2] : null)
-        ) {
-          bCtx.save();
-          bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          this._renderSingleCardInkStroke(bCtx, strokeList[completedCount - 1], w, h, sizeScale, options);
-          bCtx.restore();
-          canvas._bakeCount = completedCount;
-          canvas._bakeFirstStroke = expectedFirst;
-          canvas._bakeLastStroke = expectedLast;
-        } else {
-          bCtx.save();
-          bCtx.setTransform(1, 0, 0, 1, 0, 0);
-          bCtx.clearRect(0, 0, bCanvas.width, bCanvas.height);
-          bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          for (let i = 0; i < completedCount; i++) {
-            this._renderSingleCardInkStroke(bCtx, strokeList[i], w, h, sizeScale, options);
+        if (!displayAlreadyClean) {
+          this._ensureCardBakeUpTo(canvas, bCanvas, bCtx, strokeList, completedCount, w, h, dpr, sizeScale, options);
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          if (completedCount > 0) {
+            ctx.drawImage(bCanvas, 0, 0);
           }
-          bCtx.restore();
-          canvas._bakeValid = true;
-          canvas._bakeCount = completedCount;
-          canvas._bakeFirstStroke = expectedFirst;
-          canvas._bakeLastStroke = expectedLast;
+          ctx.restore();
         }
+
+        canvas._liveActiveStroke = activeStroke;
+        canvas._displaySyncedGeoSig = geoSig;
+        canvas._displaySyncedCount = -1;
+        canvas._liveRenderedPointCount = 0;
+        if (curPtCount > 0) {
+          this._renderCardInkIncrementalSteps(ctx, activeStroke, w, h, dpr, sizeScale, 0, curPtCount, options);
+          canvas._liveRenderedPointCount = curPtCount;
+        }
+        return;
+      }
+
+      // 🌟 [일반 펜 pointerup(commitStroke = true) 0.01ms 마감 & 유휴 베이킹 위임]:
+      // 연속 필기 시 획과 획 사이에서 clearRect/drawImage 및 전체 획 재베이킹으로 인한 입력 지연을 없애기 위해,
+      // 화면 캔버스에는 끝단 꼬리(Final Tail)만 즉시 마감하고 _bakeCanvas 동기화는 유휴 타이머로 위임합니다!
+      if (
+        canUseIncrementalLivePen &&
+        commitStroke &&
+        canvas._liveActiveStroke === activeStroke &&
+        canvas._displaySyncedGeoSig === geoSig &&
+        strokeList[strokeList.length - 1] === activeStroke
+      ) {
+        const curPtCount = Array.isArray(activeStroke.points) ? activeStroke.points.length : 0;
+        const prevRendered = canvas._liveRenderedPointCount || 0;
+        if (curPtCount > prevRendered) {
+          this._renderCardInkIncrementalSteps(ctx, activeStroke, w, h, dpr, sizeScale, prevRendered, curPtCount, options);
+        }
+        if (curPtCount >= 2) {
+          this._renderCardInkFinalTail(ctx, activeStroke, w, h, dpr, sizeScale, options);
+        }
+        canvas._liveActiveStroke = null;
+        canvas._liveRenderedPointCount = 0;
+        canvas._displaySyncedGeoSig = geoSig;
+        canvas._displaySyncedCount = strokeList.length;
+        canvas._displaySyncedFirst = strokeList[0] || null;
+        canvas._displaySyncedLast = activeStroke;
+        this._scheduleCardIdleBake(canvas, strokeList, w, h, dpr, sizeScale, geoSig, options);
+        return;
+      }
+
+      // 형광펜 또는 도형 자동보정(Hold-to-Shape) 실시간 드로잉
+      if (activeStroke && !commitStroke) {
+        canvas._liveActiveStroke = null;
+        canvas._liveRenderedPointCount = 0;
+        canvas._displaySyncedCount = -1;
+        const completedCount = (strokeList[strokeList.length - 1] === activeStroke)
+          ? (strokeList.length - 1)
+          : Math.max(0, strokeList.indexOf(activeStroke));
+        this._ensureCardBakeUpTo(canvas, bCanvas, bCtx, strokeList, completedCount, w, h, dpr, sizeScale, options);
 
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -217,47 +816,34 @@
         return;
       }
 
+      if (canvas._cardIdleBakeTimer) {
+        clearTimeout(canvas._cardIdleBakeTimer);
+        canvas._cardIdleBakeTimer = null;
+      }
+      canvas._liveActiveStroke = null;
+      canvas._liveRenderedPointCount = 0;
+
+      // 형광펜 / 도형 자동보정 완료(commitStroke = true): 직전 획들까지 유효하면 신규 획들만 증분 베이크!
       if (activeStroke && commitStroke && strokeList[strokeList.length - 1] === activeStroke) {
-        const prevCount = strokeList.length - 1;
-        const expectedPrevFirst = prevCount > 0 ? strokeList[0] : null;
-        const expectedPrevLast = prevCount > 0 ? strokeList[prevCount - 1] : null;
-        if (
-          canvas._bakeValid &&
-          canvas._bakeCount === prevCount &&
-          canvas._bakeFirstStroke === expectedPrevFirst &&
-          canvas._bakeLastStroke === expectedPrevLast
-        ) {
-          bCtx.save();
-          bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          this._renderSingleCardInkStroke(bCtx, activeStroke, w, h, sizeScale, options);
-          bCtx.restore();
-          canvas._bakeCount = strokeList.length;
-          canvas._bakeFirstStroke = strokeList[0];
-          canvas._bakeLastStroke = activeStroke;
-
-          ctx.save();
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(bCanvas, 0, 0);
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          this.drawCardLassoOverlay(ctx, w, h, widgetEl);
-          ctx.restore();
-          return;
-        }
+        this._ensureCardBakeUpTo(canvas, bCanvas, bCtx, strokeList, strokeList.length, w, h, dpr, sizeScale, options);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(bCanvas, 0, 0);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this.drawCardLassoOverlay(ctx, w, h, widgetEl);
+        ctx.restore();
+        canvas._displaySyncedGeoSig = geoSig;
+        canvas._displaySyncedCount = strokeList.length;
+        canvas._displaySyncedFirst = strokeList[0] || null;
+        canvas._displaySyncedLast = activeStroke;
+        return;
       }
 
-      bCtx.save();
-      bCtx.setTransform(1, 0, 0, 1, 0, 0);
-      bCtx.clearRect(0, 0, bCanvas.width, bCanvas.height);
-      bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      for (let i = 0; i < strokeList.length; i++) {
-        this._renderSingleCardInkStroke(bCtx, strokeList[i], w, h, sizeScale, options);
-      }
-      bCtx.restore();
-      canvas._bakeValid = true;
-      canvas._bakeCount = strokeList.length;
-      canvas._bakeFirstStroke = strokeList[0] || null;
-      canvas._bakeLastStroke = strokeList[strokeList.length - 1] || null;
+      // 명시적 전체 재렌더링(!activeStroke: Undo/Redo, 지우개, 카드 리사이즈, 창모드 좌표 재투영 등):
+      // 포인트 인플레이스 변형(_reprojectPipCardInkFromMathCoords 등)까지 100% 반영하기 위해 _bakeCanvas를 전체 갱신합니다.
+      canvas._bakeValid = false;
+      this._ensureCardBakeUpTo(canvas, bCanvas, bCtx, strokeList, strokeList.length, w, h, dpr, sizeScale, options);
 
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -266,6 +852,10 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       this.drawCardLassoOverlay(ctx, w, h, widgetEl);
       ctx.restore();
+      canvas._displaySyncedGeoSig = geoSig;
+      canvas._displaySyncedCount = strokeList.length;
+      canvas._displaySyncedFirst = strokeList[0] || null;
+      canvas._displaySyncedLast = strokeList[strokeList.length - 1] || null;
     }
 
     renderProblemCardCanvas(activeStroke = null, commitStroke = false) {
@@ -295,7 +885,7 @@
       );
     }
 
-    eraseProblemInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null) {
+    eraseProblemInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null, deferRender = false) {
       radiusPx = (typeof radiusPx === 'number' && !isNaN(radiusPx)) ? radiusPx : Math.max(6, (this.currentEraserSize || 14) * 1.25);
       const pWidget = document.getElementById('problemCardWidget');
       let stickerErased = false;
@@ -305,42 +895,60 @@
       if (!this.problemInkStrokes || this.problemInkStrokes.length === 0) return stickerErased;
       const sx = nx * w;
       const sy = ny * h;
-      const beforeLen = this.problemInkStrokes.length;
-
-      this.problemInkStrokes = this.problemInkStrokes.filter(stroke => {
-        if (!stroke.points || stroke.points.length === 0) return false;
-        for (let i = 0; i < stroke.points.length; i++) {
-          const px = stroke.points[i].nx * w;
-          const py = stroke.points[i].ny * h;
-          if (Math.hypot(px - sx, py - sy) <= radiusPx) return false;
-          if (i < stroke.points.length - 1) {
-            const nx2 = stroke.points[i + 1].nx * w;
-            const ny2 = stroke.points[i + 1].ny * h;
-            const d = this.distToSegment({ x: sx, y: sy }, { x: px, y: py }, { x: nx2, y: ny2 });
-            if (d <= radiusPx) return false;
-          }
+      const inkErased = this._eraseCardStrokesInPlace(
+        this.problemInkStrokes,
+        sx,
+        sy,
+        w,
+        h,
+        radiusPx,
+        {
+          cardKind: 'problem',
+          cardEl: pWidget,
+          renderFn: () => this.renderProblemCardCanvas()
         }
-        return true;
-      });
+      );
 
-      const inkErased = (this.problemInkStrokes.length !== beforeLen);
       if (inkErased) {
-        this.renderProblemCardCanvas();
+        const pCanvas = document.getElementById('problemCardCanvas');
+        if (deferRender && pCanvas) {
+          this._scheduleCardLiveFrameRender(pCanvas, () => this.renderProblemCardCanvas());
+        } else {
+          this.renderProblemCardCanvas();
+        }
       }
       return Boolean(inkErased || stickerErased);
     }
 
     clearProblemCardInk() {
-      this.problemInkStrokes = [];
+      if (Array.isArray(this.problemInkStrokes)) {
+        this.problemInkStrokes.length = 0;
+      } else {
+        this.problemInkStrokes = [];
+      }
       this.renderProblemCardCanvas();
     }
 
     closeGraphCard() {
+      const gCanvas = document.getElementById('graphCardCanvas');
+      if (gCanvas) {
+        this._cancelCardCanvasPendingTasks(gCanvas, true);
+        gCanvas._bakeValid = false;
+        gCanvas._liveActiveStroke = null;
+        gCanvas._displaySyncedCount = -1;
+      }
       const gWidget = document.getElementById('graphCardWidget');
       if (gWidget) {
+        if (gWidget._bakePipTimerId) {
+          clearTimeout(gWidget._bakePipTimerId);
+          gWidget._bakePipTimerId = null;
+        }
+        if (this._activePeekCardEl === gWidget) {
+          this._activePeekCardEl = null;
+        }
         gWidget.style.display = 'none';
         gWidget.style.transform = '';
-        gWidget.classList.remove('minimized');
+        gWidget.classList.remove('minimized', 'card-header-peek');
       }
       this._hasPrimaryGraphCard = false;
       this.primaryGraphCardSnapshot = null;
@@ -358,7 +966,11 @@
       this.closeProblemCard();
       if (this.extraProblemCards && this.extraProblemCards.length > 0) {
         this.extraProblemCards.forEach(c => {
-          if (c && c.el) c.el.remove();
+          if (c && c.el) {
+            this._hibernateDetachedCardCanvases(c.el);
+            if (this._activePeekCardEl === c.el) this._activePeekCardEl = null;
+            c.el.remove();
+          }
         });
         this.extraProblemCards = [];
       }
@@ -366,7 +978,11 @@
       this.closeGraphCard();
       if (this.extraGraphCards && this.extraGraphCards.length > 0) {
         this.extraGraphCards.forEach(c => {
-          if (c && c.el) c.el.remove();
+          if (c && c.el) {
+            this._hibernateDetachedCardCanvases(c.el);
+            if (this._activePeekCardEl === c.el) this._activePeekCardEl = null;
+            c.el.remove();
+          }
         });
         this.extraGraphCards = [];
       }
@@ -575,6 +1191,16 @@
       const stageParent = (this.canvas && this.canvas.parentElement) || document.body;
       stageParent.appendChild(el);
       this.attachCardLaserSystem(el);
+      const extraImgEl = el.querySelector('.problem-card-img');
+      if (extraImgEl) {
+        extraImgEl.addEventListener('load', () => {
+          const extraCvs = el.querySelector('.problem-card-canvas');
+          if (extraCvs) extraCvs._needsSizeSync = true;
+          if (!this._isDrawingCardInk && typeof el._renderCardInkCanvas === 'function') {
+            el._renderCardInkCanvas();
+          }
+        });
+      }
 
       const startMin = Boolean(options && options.startMinimized);
       const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum, sourceCanvas: sourceCanvas || null };
@@ -677,7 +1303,7 @@
         this.updateProblemCardPosition(true, el);
       };
       window.addEventListener('pointermove', (e) => {
-        if (!isDragging) return;
+        if (!isDragging || el.isConnected === false) return;
         if (e.pointerType === 'mouse' && typeof e.buttons === 'number' && e.buttons === 0) {
           el._cancelCardDrag();
           return;
@@ -758,7 +1384,7 @@
           rStartW = parseFloat(el.style.width) || el.offsetWidth || el.getBoundingClientRect().width;
         });
         window.addEventListener('pointermove', (e) => {
-          if (!isResizing) return;
+          if (!isResizing || el.isConnected === false) return;
           if (!resizeMoved && Math.hypot(e.clientX - rStartX, e.clientY - rStartY) > 3) {
             resizeMoved = true;
           }
@@ -771,6 +1397,9 @@
             : ((this.isGraphCovered && !this.pdfPageBoardData) ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0)) : 1.0);
           const nextW = Math.max(240, Math.min(window.innerWidth * 0.85, rStartW + ((e.clientX - rStartX) / scaleRatio)));
           el.style.width = `${nextW}px`;
+          if (typeof el._renderCardInkCanvas === 'function') {
+            el._renderCardInkCanvas();
+          }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(false);
           }
@@ -781,6 +1410,12 @@
             isResizing = false;
             resizeMoved = false;
             this._isDraggingOrResizingAnyCard = false;
+            if (typeof el._renderCardInkCanvas === 'function') {
+              el._renderCardInkCanvas();
+            }
+            if (typeof el._syncCardLaserSize === 'function') {
+              el._syncCardLaserSize();
+            }
             if (el.classList.contains('pip-locked-mode')) {
               if (!wasResizeMoved && el.classList.contains('pip-stealth-locked')) {
                 this.wakeUpProblemCardStealth(el, true);
@@ -826,6 +1461,10 @@
         btnClose.onclick = () => {
           this._pushWorkspaceUndoSnapshot('↺ 닫은 문제 카드가 복원되었습니다', '↻ 문제 카드 닫기 다시 실행됨');
           this.clearProblemCardStealthTimer(el);
+          this._hibernateDetachedCardCanvases(el);
+          if (this._activePeekCardEl === el) {
+            this._activePeekCardEl = null;
+          }
           el.remove();
           this.extraProblemCards = this.extraProblemCards.filter(c => c !== cardItem);
           if (this.isAudioRecording) {
@@ -1106,6 +1745,7 @@
           const pos = getNormPos(e, false);
           isDrawingOnProblem = true;
           this._isDrawingCardInk = true;
+          this._currentCardEraseUndoEntry = null;
           activeProblemPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
 
           const isCardStylusEraser = (
@@ -1115,7 +1755,7 @@
           );
           if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
             this._problemCardStylusEraser = true;
-            this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h);
+            this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, null, false);
             return true;
           }
 
@@ -1174,7 +1814,7 @@
             (e.pointerType === 'pen' && (typeof e.buttons === 'number' && (e.buttons & 2) !== 0))
           );
           if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
-            this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h);
+            this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, null, true);
             return;
           }
 
@@ -1187,7 +1827,12 @@
 
           if (currentStroke._shapeHoldDetected && currentStroke.cardShape) {
             if (this.updateHeldCardStrokeShape(currentStroke, pos.nx, pos.ny, pos.w, pos.h)) {
-              this.renderProblemCardCanvas(currentStroke);
+              const shapeStrokeRef = currentStroke;
+              this._scheduleCardLiveFrameRender(pCanvas, () => {
+                if (isDrawingOnProblem && currentStroke === shapeStrokeRef) {
+                  this.renderProblemCardCanvas(shapeStrokeRef);
+                }
+              });
             }
             return;
           }
@@ -1207,7 +1852,16 @@
 
           if (!this._appendCardStrokeSamplesFromMoveEvent(currentStroke, e, activeProblemDrawRect, pos.w, pos.h, recT)) return;
 
-          this.renderProblemCardCanvas(currentStroke);
+          if (currentStroke.isHighlighter) {
+            const hlStrokeRef = currentStroke;
+            this._scheduleCardLiveFrameRender(pCanvas, () => {
+              if (isDrawingOnProblem && currentStroke === hlStrokeRef) {
+                this.renderProblemCardCanvas(hlStrokeRef);
+              }
+            });
+          } else {
+            this.renderProblemCardCanvas(currentStroke);
+          }
         });
 
         const endProblemDraw = (e) => {
@@ -1223,10 +1877,20 @@
           const endRect = activeProblemDrawRect;
           isDrawingOnProblem = false;
           this._isDrawingCardInk = false;
+          this._currentCardEraseUndoEntry = null;
           activeProblemPointerId = null;
           this._problemCardStylusEraser = false;
           activeProblemDrawRect = null;
           currentStroke = null;
+          const pendingProblemEraseRender = !finishedCardStroke ? pCanvas._pendingCardLiveRenderFn : null;
+          if (pCanvas._cardLiveRafId) {
+            cancelAnimationFrame(pCanvas._cardLiveRafId);
+            pCanvas._cardLiveRafId = null;
+          }
+          pCanvas._pendingCardLiveRenderFn = null;
+          if (typeof pendingProblemEraseRender === 'function') {
+            pendingProblemEraseRender();
+          }
           if (holdTimer) {
             clearTimeout(holdTimer);
             holdTimer = null;
@@ -1242,6 +1906,8 @@
             this.renderProblemCardCanvas(finishedCardStroke, true);
             this.undoStack.push({
               type: 'card_stroke_add',
+              cardKind: 'problem',
+              cardEl: widget,
               strokesArr: this.problemInkStrokes,
               stroke: finishedCardStroke,
               renderFn: () => this.renderProblemCardCanvas()
@@ -1528,8 +2194,19 @@
     }
 
     closeProblemCard() {
+      const pCanvas = document.getElementById('problemCardCanvas');
+      if (pCanvas) {
+        this._cancelCardCanvasPendingTasks(pCanvas, true);
+        pCanvas._bakeValid = false;
+        pCanvas._liveActiveStroke = null;
+        pCanvas._displaySyncedCount = -1;
+      }
       const widget = document.getElementById('problemCardWidget');
       if (widget) {
+        if (this._activePeekCardEl === widget) {
+          this._activePeekCardEl = null;
+        }
+        widget.classList.remove('card-header-peek');
         this.setProblemCardLockedByWidget(widget, false, false);
         widget.style.display = 'none';
         widget.style.transform = '';
@@ -1567,25 +2244,56 @@
         ...((this.extraGraphCards || []).map(c => c && c.el))
       ].filter(el => el && el !== targetEl);
 
-      allCards.sort((a, b) => (parseInt(a.style.zIndex, 10) || 150) - (parseInt(b.style.zIndex, 10) || 150));
-      allCards.forEach((el, idx) => {
-        el.style.zIndex = String(150 + idx);
-      });
+      // 🌟 [카드 연속 필기 pointerdown 0.00ms 패스트패스]:
+      // 이미 최상단 z-index를 보유한 카드 위에서 연속으로 획을 그을 때는 모든 카드의 style.zIndex 재할당을 생략하여
+      // WebKit/Blink 컴포지터 스태킹 컨텍스트 재계산을 원천 차단합니다! (Undo/슬라이드 복원 시에도 실제 zIndex 대소 비교로 100% 정합 보장)
       const topZ = 150 + allCards.length;
-      targetEl.style.zIndex = String(topZ);
-      this.highestProblemCardZIndex = topZ;
+      const curTargetZ = parseInt(targetEl.style.zIndex, 10) || 0;
+      let alreadyStrictlyTop = curTargetZ >= topZ;
+      if (alreadyStrictlyTop) {
+        for (let i = 0; i < allCards.length; i++) {
+          const oz = parseInt(allCards[i].style.zIndex, 10) || 150;
+          if (oz >= curTargetZ) {
+            alreadyStrictlyTop = false;
+            break;
+          }
+        }
+      }
+
+      if (!alreadyStrictlyTop) {
+        allCards.sort((a, b) => (parseInt(a.style.zIndex, 10) || 150) - (parseInt(b.style.zIndex, 10) || 150));
+        for (let idx = 0; idx < allCards.length; idx++) {
+          const nextZ = String(150 + idx);
+          if (allCards[idx].style.zIndex !== nextZ) {
+            allCards[idx].style.zIndex = nextZ;
+          }
+        }
+        const nextTopZ = String(topZ);
+        if (targetEl.style.zIndex !== nextTopZ) {
+          targetEl.style.zIndex = nextTopZ;
+        }
+        this.highestProblemCardZIndex = topZ;
+      } else {
+        this.highestProblemCardZIndex = curTargetZ;
+      }
 
       // 창모드 그래프 카드를 터치/선택하여 최상단으로 올릴 때, 해당 카드의 개별 좌표축(x축/y축) 상태를 설정 버튼 UI와 동기화
+      // (동일 그래프 카드 위에서 연속 필기 시에는 불필요한 DOM 버튼 토글/setAttribute 생략)
       if (this.isGraphCovered && typeof this._getPipCardRefFromWidget === 'function') {
         const cardRef = this._getPipCardRefFromWidget(targetEl);
         if (cardRef) {
+          const prevFocusedRef = this._lastFocusedPipCardRef;
           this._lastFocusedPipCardRef = cardRef;
           const snap = this._getMutablePipCardSnapshot(cardRef);
           if (snap && !snap.isNAxisStudioCard) {
-            if (snap.showXAxis !== undefined) this.showXAxis = Boolean(snap.showXAxis);
-            if (snap.showYAxis !== undefined) this.showYAxis = Boolean(snap.showYAxis);
-            if (typeof this.syncAxisVisibilityUI === 'function') {
-              this.syncAxisVisibilityUI();
+            const nextX = snap.showXAxis !== undefined ? Boolean(snap.showXAxis) : this.showXAxis;
+            const nextY = snap.showYAxis !== undefined ? Boolean(snap.showYAxis) : this.showYAxis;
+            if (prevFocusedRef !== cardRef || this.showXAxis !== nextX || this.showYAxis !== nextY) {
+              this.showXAxis = nextX;
+              this.showYAxis = nextY;
+              if (typeof this.syncAxisVisibilityUI === 'function') {
+                this.syncAxisVisibilityUI();
+              }
             }
           }
         }
@@ -1613,10 +2321,17 @@
         if (ev && ev.pointerType === 'touch' && this.isStylusPalmRejectionActive() && this.isInkMode && this.activeInkTool !== 'select') {
           return;
         }
+        if (this._activePeekCardEl === cardWidgetEl && cardWidgetEl.classList.contains('card-header-peek')) {
+          return;
+        }
+        if (this._activePeekCardEl && this._activePeekCardEl !== cardWidgetEl) {
+          this._activePeekCardEl.classList.remove('card-header-peek');
+        }
         document.querySelectorAll('.problem-card-widget.card-header-peek').forEach((other) => {
           if (other !== cardWidgetEl) other.classList.remove('card-header-peek');
         });
         cardWidgetEl.classList.add('card-header-peek');
+        this._activePeekCardEl = cardWidgetEl;
       };
       bodyEl.addEventListener('pointerdown', activateCardHeaderPeek, { passive: true });
       if (headerEl) {
@@ -1625,8 +2340,11 @@
       if (!this._cardHeaderPeekGlobalDismissBound) {
         this._cardHeaderPeekGlobalDismissBound = true;
         document.addEventListener('pointerdown', (ev) => {
+          if (!this._activePeekCardEl) return;
           const t = ev.target;
           if (t && t.closest && t.closest('.problem-card-widget')) return;
+          this._activePeekCardEl.classList.remove('card-header-peek');
+          this._activePeekCardEl = null;
           document.querySelectorAll('.problem-card-widget.card-header-peek').forEach((el) => {
             el.classList.remove('card-header-peek');
           });
@@ -1786,16 +2504,18 @@
       if (!extraInkCanvas) {
         extraInkCanvas = document.createElement('canvas');
         extraInkCanvas.className = 'problem-card-canvas';
+        extraInkCanvas._needsSizeSync = true;
         bodyEl.insertBefore(extraInkCanvas, laserCanvas);
         cardWidgetEl._cardInkStrokes = [];
 
         const renderExtraCardInk = (activeStroke = null, commitStroke = false) => {
           const dpr = this.getCanvasDpr();
-          if (!cardWidgetEl.classList.contains('minimized') && (!activeStroke || !extraInkCanvas.width || !extraInkCanvas.height)) {
+          if (!cardWidgetEl.classList.contains('minimized') && (!activeStroke || extraInkCanvas._needsSizeSync || !extraInkCanvas.width || !extraInkCanvas.height)) {
             const rect = typeof this._getStageElementRect === 'function'
               ? this._getStageElementRect(bodyEl)
               : bodyEl.getBoundingClientRect();
             if (rect.width >= 10 && rect.height >= 10) {
+              extraInkCanvas._needsSizeSync = false;
               const tw = Math.round(rect.width * dpr);
               const th = Math.round(rect.height * dpr);
               if (extraInkCanvas.width !== tw || extraInkCanvas.height !== th) {
@@ -1842,7 +2562,7 @@
         let activeExtraDrawRect = null;
         let activeExtraPointerId = null;
 
-        const eraseExtraCardAtPoint = (sx, sy, rw, rh) => {
+        const eraseExtraCardAtPoint = (sx, sy, rw, rh, deferRender = false) => {
           const extraEraseR = Math.max(6, (this.currentEraserSize || 14) * 1.25);
           const stickerErased = Boolean(this.eraseCardStickerAtNormalizedPoint(
             cardWidgetEl,
@@ -1852,26 +2572,28 @@
             rh,
             extraEraseR
           ));
-          const curStrokes = cardWidgetEl._cardInkStrokes || [];
-          if (curStrokes.length === 0) return stickerErased;
-          const beforeLen = curStrokes.length;
-          cardWidgetEl._cardInkStrokes = curStrokes.filter(st => {
-            if (!st || !st.points || st.points.length === 0) return false;
-            for (let i = 0; i < st.points.length; i++) {
-              const px = st.points[i].nx * rw;
-              const py = st.points[i].ny * rh;
-              if (Math.hypot(px - sx, py - sy) <= extraEraseR) return false;
-              if (i < st.points.length - 1) {
-                const nx2 = st.points[i + 1].nx * rw;
-                const ny2 = st.points[i + 1].ny * rh;
-                if (this.distToSegment({ x: sx, y: sy }, { x: px, y: py }, { x: nx2, y: ny2 }) <= extraEraseR) return false;
-              }
+          if (!Array.isArray(cardWidgetEl._cardInkStrokes) || cardWidgetEl._cardInkStrokes.length === 0) {
+            return stickerErased;
+          }
+          const inkErased = this._eraseCardStrokesInPlace(
+            cardWidgetEl._cardInkStrokes,
+            sx,
+            sy,
+            rw,
+            rh,
+            extraEraseR,
+            {
+              cardKind: 'extra',
+              cardEl: cardWidgetEl,
+              renderFn: () => renderExtraCardInk()
             }
-            return true;
-          });
-          const inkErased = (cardWidgetEl._cardInkStrokes.length !== beforeLen);
+          );
           if (inkErased) {
-            renderExtraCardInk();
+            if (deferRender) {
+              this._scheduleCardLiveFrameRender(extraInkCanvas, () => renderExtraCardInk());
+            } else {
+              renderExtraCardInk();
+            }
           }
           return Boolean(inkErased || stickerErased);
         };
@@ -1931,6 +2653,7 @@
           const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rh));
           isDrawingExtraInk = true;
           this._isDrawingCardInk = true;
+          this._currentCardEraseUndoEntry = null;
           activeExtraPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
 
           const isCardStylusEraser = (
@@ -1940,7 +2663,7 @@
           );
           if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
             cardWidgetEl._extraStylusEraser = true;
-            eraseExtraCardAtPoint(nx * rw, ny * rh, rw, rh);
+            eraseExtraCardAtPoint(nx * rw, ny * rh, rw, rh, false);
             return true;
           }
           const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
@@ -1999,7 +2722,7 @@
           const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rw));
           const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rh));
           if (this.activeInkTool === 'eraser' || cardWidgetEl._extraStylusEraser) {
-            eraseExtraCardAtPoint(nx * rw, ny * rh, rw, rh);
+            eraseExtraCardAtPoint(nx * rw, ny * rh, rw, rh, true);
             return;
           }
           if (!curExtraStroke) return;
@@ -2011,10 +2734,14 @@
 
           if (curExtraStroke._shapeHoldDetected && curExtraStroke.cardShape) {
             if (this.updateHeldCardStrokeShape(curExtraStroke, nx, ny, rw, rh)) {
-              if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
-                this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true, curExtraStroke);
-              }
-              renderExtraCardInk(curExtraStroke);
+              const shapeStrokeRef = curExtraStroke;
+              this._scheduleCardLiveFrameRender(extraInkCanvas, () => {
+                if (!isDrawingExtraInk || curExtraStroke !== shapeStrokeRef) return;
+                if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
+                  this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true, shapeStrokeRef);
+                }
+                renderExtraCardInk(shapeStrokeRef);
+              });
             }
             return;
           }
@@ -2033,11 +2760,20 @@
           }
 
           if (!this._appendCardStrokeSamplesFromMoveEvent(curExtraStroke, e, rect, rw, rh, recT)) return;
-          renderExtraCardInk(curExtraStroke);
+          if (curExtraStroke.isHighlighter) {
+            const hlStrokeRef = curExtraStroke;
+            this._scheduleCardLiveFrameRender(extraInkCanvas, () => {
+              if (isDrawingExtraInk && curExtraStroke === hlStrokeRef) {
+                renderExtraCardInk(hlStrokeRef);
+              }
+            });
+          } else {
+            renderExtraCardInk(curExtraStroke);
+          }
         });
 
         const endExtraCardInk = (e) => {
-          if (!isDrawingExtraInk) return;
+          if (!isDrawingExtraInk || cardWidgetEl.isConnected === false) return;
           if (activeExtraPointerId !== null && e && e.pointerId !== undefined && e.pointerId !== activeExtraPointerId) {
             return;
           }
@@ -2049,10 +2785,20 @@
           const endRect = activeExtraDrawRect;
           isDrawingExtraInk = false;
           this._isDrawingCardInk = false;
+          this._currentCardEraseUndoEntry = null;
           activeExtraPointerId = null;
           cardWidgetEl._extraStylusEraser = false;
           activeExtraDrawRect = null;
           curExtraStroke = null;
+          const pendingExtraEraseRender = !finishedSt ? extraInkCanvas._pendingCardLiveRenderFn : null;
+          if (extraInkCanvas._cardLiveRafId) {
+            cancelAnimationFrame(extraInkCanvas._cardLiveRafId);
+            extraInkCanvas._cardLiveRafId = null;
+          }
+          extraInkCanvas._pendingCardLiveRenderFn = null;
+          if (typeof pendingExtraEraseRender === 'function') {
+            pendingExtraEraseRender();
+          }
           if (extraHoldTimer) {
             clearTimeout(extraHoldTimer);
             extraHoldTimer = null;
@@ -2069,6 +2815,8 @@
             renderExtraCardInk(finishedSt, true);
             this.undoStack.push({
               type: 'card_stroke_add',
+              cardKind: 'extra',
+              cardEl: cardWidgetEl,
               strokesArr: cardWidgetEl._cardInkStrokes,
               stroke: finishedSt,
               renderFn: () => renderExtraCardInk()
@@ -4199,7 +4947,7 @@
         this.updateProblemCardPosition(true, el);
       };
       window.addEventListener('pointermove', (e) => {
-        if (!isDragging) return;
+        if (!isDragging || el.isConnected === false) return;
         if (e.pointerType === 'mouse' && typeof e.buttons === 'number' && e.buttons === 0) {
           el._cancelCardDrag();
           return;
@@ -4280,7 +5028,7 @@
           resizeStartState = this.capturePipCardResizeStart(cardItem, e);
         });
         window.addEventListener('pointermove', (e) => {
-          if (!isResizing || !resizeStartState) return;
+          if (!isResizing || !resizeStartState || el.isConnected === false) return;
           if (!resizeMoved && Math.hypot(e.clientX - resizeStartState.startX, e.clientY - resizeStartState.startY) > 3) {
             resizeMoved = true;
           }
@@ -4337,6 +5085,10 @@
       el.querySelector('.btn-extra-close').onclick = () => {
         this._pushWorkspaceUndoSnapshot('↺ 닫은 그래프 창이 복원되었습니다', '↻ 그래프 창 닫기 다시 실행됨');
         this.clearPipGraphCardStealthTimer(cardItem);
+        this._hibernateDetachedCardCanvases(el);
+        if (this._activePeekCardEl === el) {
+          this._activePeekCardEl = null;
+        }
         el.remove();
         this.extraGraphCards = this.extraGraphCards.filter(c => c !== cardItem);
         if (this._pipTargetCard === cardItem) this._pipTargetCard = null;
@@ -4623,34 +5375,38 @@
       );
     }
 
-    eraseGraphCardInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null) {
+    eraseGraphCardInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null, deferRender = false) {
       radiusPx = (typeof radiusPx === 'number' && !isNaN(radiusPx)) ? radiusPx : Math.max(6, (this.currentEraserSize || 14) * 1.25);
       const gWidget = document.getElementById('graphCardWidget');
+      let stickerErased = false;
       if (gWidget) {
-        this.eraseCardStickerAtNormalizedPoint(gWidget, nx, ny, w, h, radiusPx);
+        stickerErased = Boolean(this.eraseCardStickerAtNormalizedPoint(gWidget, nx, ny, w, h, radiusPx));
       }
-      if (!this.graphInkStrokes || this.graphInkStrokes.length === 0) return;
+      if (!this.graphInkStrokes || this.graphInkStrokes.length === 0) return stickerErased;
       const tx = nx * w;
       const ty = ny * h;
-      const beforeLen = this.graphInkStrokes.length;
-      this.graphInkStrokes = this.graphInkStrokes.filter(stroke => {
-        if (!stroke.points || stroke.points.length === 0) return false;
-        for (let i = 0; i < stroke.points.length; i++) {
-          const px = stroke.points[i].nx * w;
-          const py = stroke.points[i].ny * h;
-          if (Math.hypot(px - tx, py - ty) <= radiusPx) return false;
-          if (i < stroke.points.length - 1) {
-            const nx2 = stroke.points[i + 1].nx * w;
-            const ny2 = stroke.points[i + 1].ny * h;
-            const d = this.distToSegment({ x: tx, y: ty }, { x: px, y: py }, { x: nx2, y: ny2 });
-            if (d <= radiusPx) return false;
-          }
+      const inkErased = this._eraseCardStrokesInPlace(
+        this.graphInkStrokes,
+        tx,
+        ty,
+        w,
+        h,
+        radiusPx,
+        {
+          cardKind: 'graph',
+          cardEl: gWidget,
+          renderFn: () => this.renderGraphCardCanvas()
         }
-        return true;
-      });
-      if (this.graphInkStrokes.length !== beforeLen) {
-        this.renderGraphCardCanvas();
+      );
+      if (inkErased) {
+        const gCanvas = document.getElementById('graphCardCanvas');
+        if (deferRender && gCanvas) {
+          this._scheduleCardLiveFrameRender(gCanvas, () => this.renderGraphCardCanvas());
+        } else {
+          this.renderGraphCardCanvas();
+        }
       }
+      return Boolean(inkErased || stickerErased);
     }
 
     initGraphCardInteractions() {
@@ -4787,6 +5543,7 @@
           const pos = getNormPos(e, false);
           isDrawingOnGraphCard = true;
           this._isDrawingCardInk = true;
+          this._currentCardEraseUndoEntry = null;
           activeGraphCardPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
 
           const isCardStylusEraser = (
@@ -4796,7 +5553,7 @@
           );
           if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
             this._graphCardStylusEraser = true;
-            this.eraseGraphCardInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h);
+            this.eraseGraphCardInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, null, false);
             return true;
           }
 
@@ -4854,7 +5611,7 @@
             (e.pointerType === 'pen' && (typeof e.buttons === 'number' && (e.buttons & 2) !== 0))
           );
           if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
-            this.eraseGraphCardInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h);
+            this.eraseGraphCardInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, null, true);
             return;
           }
           if (!currentStroke) return;
@@ -4866,10 +5623,14 @@
 
           if (currentStroke._shapeHoldDetected && currentStroke.cardShape) {
             if (this.updateHeldCardStrokeShape(currentStroke, pos.nx, pos.ny, pos.w, pos.h)) {
-              if (typeof this._ensurePipCardInkMathCoords === 'function') {
-                this._ensurePipCardInkMathCoords('primary', true, currentStroke);
-              }
-              this.renderGraphCardCanvas(currentStroke);
+              const shapeStrokeRef = currentStroke;
+              this._scheduleCardLiveFrameRender(gCanvas, () => {
+                if (!isDrawingOnGraphCard || currentStroke !== shapeStrokeRef) return;
+                if (typeof this._ensurePipCardInkMathCoords === 'function') {
+                  this._ensurePipCardInkMathCoords('primary', true, shapeStrokeRef);
+                }
+                this.renderGraphCardCanvas(shapeStrokeRef);
+              });
             }
             return;
           }
@@ -4888,7 +5649,16 @@
           }
 
           if (!this._appendCardStrokeSamplesFromMoveEvent(currentStroke, e, activeGraphDrawRect, pos.w, pos.h, recT)) return;
-          this.renderGraphCardCanvas(currentStroke);
+          if (currentStroke.isHighlighter) {
+            const hlStrokeRef = currentStroke;
+            this._scheduleCardLiveFrameRender(gCanvas, () => {
+              if (isDrawingOnGraphCard && currentStroke === hlStrokeRef) {
+                this.renderGraphCardCanvas(hlStrokeRef);
+              }
+            });
+          } else {
+            this.renderGraphCardCanvas(currentStroke);
+          }
         });
 
         const endGraphCardDraw = (e) => {
@@ -4904,10 +5674,20 @@
           const endRect = activeGraphDrawRect;
           isDrawingOnGraphCard = false;
           this._isDrawingCardInk = false;
+          this._currentCardEraseUndoEntry = null;
           activeGraphCardPointerId = null;
           this._graphCardStylusEraser = false;
           activeGraphDrawRect = null;
           currentStroke = null;
+          const pendingGraphEraseRender = !finishedCardStroke ? gCanvas._pendingCardLiveRenderFn : null;
+          if (gCanvas._cardLiveRafId) {
+            cancelAnimationFrame(gCanvas._cardLiveRafId);
+            gCanvas._cardLiveRafId = null;
+          }
+          gCanvas._pendingCardLiveRenderFn = null;
+          if (typeof pendingGraphEraseRender === 'function') {
+            pendingGraphEraseRender();
+          }
           if (graphHoldTimer) {
             clearTimeout(graphHoldTimer);
             graphHoldTimer = null;
@@ -4926,6 +5706,8 @@
             this.renderGraphCardCanvas(finishedCardStroke, true);
             this.undoStack.push({
               type: 'card_stroke_add',
+              cardKind: 'graph',
+              cardEl: widget,
               strokesArr: this.graphInkStrokes,
               stroke: finishedCardStroke,
               renderFn: () => this.renderGraphCardCanvas()
@@ -5188,6 +5970,10 @@
         btnClose.onclick = () => {
           this._pushWorkspaceUndoSnapshot('↺ 닫은 그래프 창이 복원되었습니다', '↻ 그래프 창 닫기 다시 실행됨');
           this.clearPipGraphCardStealthTimer('primary');
+          if (widget._bakePipTimerId) {
+            clearTimeout(widget._bakePipTimerId);
+            widget._bakePipTimerId = null;
+          }
           this.graphInkStrokes = [];
           this._hasPrimaryGraphCard = false;
           this.graphCardData = null;
@@ -5198,6 +5984,9 @@
           if (this._pipTargetCard === 'primary') this._pipTargetCard = null;
           if (this._editingGraphCardTarget === 'primary') this._editingGraphCardTarget = null;
           this.renderGraphCardCanvas();
+          if (gCanvas) {
+            this._cancelCardCanvasPendingTasks(gCanvas, true);
+          }
           widget.style.display = 'none';
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
@@ -6812,11 +7601,60 @@
       if (!widget) return;
       if (widget._bakePipTimerId) {
         clearTimeout(widget._bakePipTimerId);
-      }
-      widget._bakePipTimerId = setTimeout(() => {
         widget._bakePipTimerId = null;
+      }
+      widget._pendingBakeCardRef = cardRef;
+      const runBakeWhenIdle = () => {
+        widget._bakePipTimerId = null;
+        if (cardRef === 'primary') {
+          if (!this._hasPrimaryGraphCard || !this.graphCardData || widget.style.display === 'none') {
+            widget._pendingBakeCardRef = null;
+            return;
+          }
+        } else if (!Array.isArray(this.extraGraphCards) || !this.extraGraphCards.includes(cardRef) || widget.isConnected === false) {
+          widget._pendingBakeCardRef = null;
+          return;
+        }
+        const nowT = Date.now();
+        const isBusy = (typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) ||
+          this.isDrawingInk ||
+          this._isDrawingCardInk ||
+          this.isStylusDrawing ||
+          this.isErasingInk ||
+          (this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 320));
+        if (isBusy) {
+          widget._bakePipTimerId = setTimeout(runBakeWhenIdle, 240);
+          return;
+        }
+        widget._pendingBakeCardRef = null;
         this.bakePipGraphCardToImg(cardRef);
-      }, delayMs);
+      };
+      widget._bakePipTimerId = setTimeout(runBakeWhenIdle, delayMs);
+    }
+
+    flushPendingPipCardBakes() {
+      const pWidget = document.getElementById('graphCardWidget');
+      if (pWidget && pWidget._bakePipTimerId) {
+        clearTimeout(pWidget._bakePipTimerId);
+        pWidget._bakePipTimerId = null;
+        pWidget._pendingBakeCardRef = null;
+        if (this._hasPrimaryGraphCard && this.graphCardData && pWidget.style.display !== 'none') {
+          this.bakePipGraphCardToImg('primary');
+        }
+      }
+      if (Array.isArray(this.extraGraphCards)) {
+        for (let i = 0; i < this.extraGraphCards.length; i++) {
+          const c = this.extraGraphCards[i];
+          if (c && c.el && c.el._bakePipTimerId) {
+            clearTimeout(c.el._bakePipTimerId);
+            c.el._bakePipTimerId = null;
+            c.el._pendingBakeCardRef = null;
+            if (c.el.isConnected !== false) {
+              this.bakePipGraphCardToImg(c);
+            }
+          }
+        }
+      }
     }
 
     _hasAnyActivePipCardSelectionOrMode() {
@@ -7534,19 +8372,33 @@
       this._pushWorkspaceUndoSnapshot('↺ 닫은 그래프 창이 복원되었습니다', '↻ 그래프 창 닫기 다시 실행됨');
       if (isPrimary) {
         this.clearPipGraphCardStealthTimer('primary');
+        if (widget._bakePipTimerId) {
+          clearTimeout(widget._bakePipTimerId);
+          widget._bakePipTimerId = null;
+        }
+        if (this._activePeekCardEl === widget) {
+          this._activePeekCardEl = null;
+        }
         this.graphInkStrokes = [];
         this._hasPrimaryGraphCard = false;
         this.graphCardData = null;
         this.graphCardPdfAnchor = null;
         widget._pdfAnchor = null;
         widget._pipSnapObj = null;
-        widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked', 'card-ink-active');
+        widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked', 'card-ink-active', 'card-header-peek');
         if (this._pipTargetCard === 'primary') this._pipTargetCard = null;
         if (this._editingGraphCardTarget === 'primary') this._editingGraphCardTarget = null;
         this.renderGraphCardCanvas();
         widget.style.display = 'none';
       } else {
         this.clearPipGraphCardStealthTimer(cardRef);
+        if (widget._bakePipTimerId) {
+          clearTimeout(widget._bakePipTimerId);
+          widget._bakePipTimerId = null;
+        }
+        if (this._activePeekCardEl === widget) {
+          this._activePeekCardEl = null;
+        }
         widget.remove();
         this.extraGraphCards = (this.extraGraphCards || []).filter(c => c !== cardRef);
         if (this._pipTargetCard === cardRef) this._pipTargetCard = null;

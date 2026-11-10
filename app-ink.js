@@ -1277,6 +1277,10 @@
         this.isResizingLassoSelection = false;
         this.lassoResizeStart = null;
         this.lassoPoints = [];
+        if (this._lassoExcludedBakeSet) {
+          this._lassoExcludedBakeSet = null;
+          this._inkBakeDirty = true;
+        }
         if (typeof this.clearCardLassoSelection === 'function') {
           this.clearCardLassoSelection();
         }
@@ -2017,7 +2021,7 @@
       }
     }
 
-    eraseInkAtPoint(screenX, screenY, eraseRadius = null) {
+    eraseInkAtPoint(screenX, screenY, eraseRadius = null, deferRender = false) {
       eraseRadius = (typeof eraseRadius === 'number' && !isNaN(eraseRadius)) ? eraseRadius : (this.currentEraserSize || 14);
       let stickerErased = false;
       if (Array.isArray(this.boardStickers) && this.boardStickers.length > 0) {
@@ -2031,6 +2035,8 @@
       if (!this.inkStrokes || this.inkStrokes.length === 0) return stickerErased;
 
       const isInsideStage = this.isInsideCompactStage({ x: screenX, y: screenY });
+      const cullPad = eraseRadius + 24;
+      const cursorPt = { x: screenX, y: screenY };
 
       let modified = false;
       const remaining = this.inkStrokes.filter(stroke => {
@@ -2058,7 +2064,7 @@
           }
 
           if (stroke.shape.type === 'line') {
-            if (this.distToSegment({ x: screenX, y: screenY }, s1, s2) <= eraseRadius) {
+            if (this.distToSegment(cursorPt, s1, s2) <= eraseRadius) {
               modified = true;
               return false;
             }
@@ -2087,23 +2093,23 @@
             const rw = Math.abs(rs2.x - rs1.x), rh = Math.abs(rs2.y - rs1.y);
             const p1 = { x: rx, y: ry }, p2 = { x: rx + rw, y: ry };
             const p3 = { x: rx + rw, y: ry + rh }, p4 = { x: rx, y: ry + rh };
-            if (this.distToSegment({ x: screenX, y: screenY }, p1, p2) <= eraseRadius ||
-              this.distToSegment({ x: screenX, y: screenY }, p2, p3) <= eraseRadius ||
-              this.distToSegment({ x: screenX, y: screenY }, p3, p4) <= eraseRadius ||
-              this.distToSegment({ x: screenX, y: screenY }, p4, p1) <= eraseRadius) {
+            if (this.distToSegment(cursorPt, p1, p2) <= eraseRadius ||
+              this.distToSegment(cursorPt, p2, p3) <= eraseRadius ||
+              this.distToSegment(cursorPt, p3, p4) <= eraseRadius ||
+              this.distToSegment(cursorPt, p4, p1) <= eraseRadius) {
               modified = true;
               return false;
             }
           } else if (stroke.shape.pts && stroke.shape.pts.length >= 2) {
             const sPts = stroke.shape.pts.map(pt => isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y));
             for (let i = 0; i < sPts.length - 1; i++) {
-              if (this.distToSegment({ x: screenX, y: screenY }, sPts[i], sPts[i + 1]) <= eraseRadius) {
+              if (this.distToSegment(cursorPt, sPts[i], sPts[i + 1]) <= eraseRadius) {
                 modified = true;
                 return false;
               }
             }
             if (stroke.shape.closed && sPts.length >= 3) {
-              if (this.distToSegment({ x: screenX, y: screenY }, sPts[sPts.length - 1], sPts[0]) <= eraseRadius) {
+              if (this.distToSegment(cursorPt, sPts[sPts.length - 1], sPts[0]) <= eraseRadius) {
                 modified = true;
                 return false;
               }
@@ -2113,30 +2119,39 @@
 
         if (!stroke.points || stroke.points.length === 0) return false;
 
-        const getScreenPt = (p) => {
-          if (isBoard) return this.boardToScreen(p.x, p.y);
-          return this.mathToScreen(p.x, p.y);
-        };
-
-        // 1. 점 근접 검사
-        for (let i = 0; i < stroke.points.length; i++) {
-          const s = getScreenPt(stroke.points[i]);
-          const dist = Math.hypot(s.x - screenX, s.y - screenY);
-          if (dist <= eraseRadius) {
-            modified = true;
-            return false;
+        // 🌟 [O(1) AABB 바운딩박스 프리컬링]: 지우개 반경 바깥에 있는 수백 개 필기 획은
+        // 포인트별 좌표 변환 및 선분 거리 계산을 0회로 즉시 건너뛰어 수업 후반부 지우개 랙을 원천 차단합니다!
+        if (!stroke.shape) {
+          const sb = this._getStrokeScreenBounds(stroke, isBoard);
+          if (
+            sb &&
+            (screenX < sb.minX - cullPad ||
+              screenX > sb.maxX + cullPad ||
+              screenY < sb.minY - cullPad ||
+              screenY > sb.maxY + cullPad)
+          ) {
+            return true;
           }
         }
 
-        // 2. 선분 최단거리 검사
-        for (let i = 0; i < stroke.points.length - 1; i++) {
-          const s1 = getScreenPt(stroke.points[i]);
-          const s2 = getScreenPt(stroke.points[i + 1]);
-          const dist = this.distToSegment({ x: screenX, y: screenY }, s1, s2);
-          if (dist <= eraseRadius) {
+        // 바운딩박스가 겹치는 소수의 후보 획에 대해서만 단일 패스 점·선분 정밀 판정 수행
+        const pts = stroke.points;
+        let prevS = isBoard ? this.boardToScreen(pts[0].x, pts[0].y) : this.mathToScreen(pts[0].x, pts[0].y);
+        if (Math.hypot(prevS.x - screenX, prevS.y - screenY) <= eraseRadius) {
+          modified = true;
+          return false;
+        }
+        for (let i = 1; i < pts.length; i++) {
+          const curS = isBoard ? this.boardToScreen(pts[i].x, pts[i].y) : this.mathToScreen(pts[i].x, pts[i].y);
+          if (Math.hypot(curS.x - screenX, curS.y - screenY) <= eraseRadius) {
             modified = true;
             return false;
           }
+          if (this.distToSegment(cursorPt, prevS, curS) <= eraseRadius) {
+            modified = true;
+            return false;
+          }
+          prevS = curS;
         }
 
         return true;
@@ -2187,7 +2202,11 @@
         this.inkStrokes = remaining;
         this._inkBakeDirty = true;
         this._hasSceneFreeze = false;
-        this.render();
+        if (deferRender && typeof this.requestRender === 'function') {
+          this.requestRender();
+        } else {
+          this.render();
+        }
       }
       return Boolean(modified || stickerErased);
     }
@@ -5184,6 +5203,7 @@
         for (let i = 0; i < this.inkStrokes.length; i++) {
           const stroke = this.inkStrokes[i];
           if (!stroke || stroke === this.currentInkStroke) continue;
+          if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(stroke)) continue;
           if (Boolean(stroke.isHighlighter) !== wantHighlighter) continue;
           const isBoard = (stroke.target || 'board') === 'board';
           if (!isBoard && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
@@ -5219,8 +5239,11 @@
         if (!this._inkBakeDirty) return;
         const nowT = Date.now();
         if (
+          (typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) ||
           this.isDrawingInk ||
+          this._isDrawingCardInk ||
           this.isStylusDrawing ||
+          this.isErasingInk ||
           this.isPanning ||
           this.isBoardPanning ||
           this._pinchState ||
@@ -5261,7 +5284,12 @@
       const flushWhenIdle = () => {
         this._pendingIncrementalBakeTimer = null;
         const sincePen = this._lastPenActiveTime ? (Date.now() - this._lastPenActiveTime) : 99999;
-        if (this.isDrawingInk || this.isStylusDrawing || sincePen < idleGuardMs) {
+        const isBusyNow = (typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) ||
+          this.isDrawingInk ||
+          this._isDrawingCardInk ||
+          this.isStylusDrawing ||
+          this.isErasingInk;
+        if (isBusyNow || sincePen < idleGuardMs) {
           this._pendingIncrementalBakeTimer = setTimeout(flushWhenIdle, retryDelayMs);
           return;
         }
@@ -5371,11 +5399,68 @@
       }
     }
 
+    // 🌟 [메인 칠판·PDF 형광펜 pointerup 0.05ms 단획 증분 합성 판별기]:
+    // 완료된 형광펜 획이 기존 일반 펜(!isHighlighter) 획과 화면상 전혀 겹치지 않는 경우(예: PDF 지문 형광펜 밑줄),
+    // 수백 개 기존 펜 획을 처음부터 재렌더링(rebuildInkCache)하지 않고 해당 형광펜 1획만 즉시 오프스크린 버퍼에 합성합니다.
+    // 단, 일반 펜 획과 바운딩박스가 1px이라도 근접하면 기존 2-Pass 언더레이(형광펜 바닥 깔기)를 100% 그대로 실행합니다!
+    _canFastBakeCompletedHighlighter(stroke) {
+      if (!stroke || !stroke.isHighlighter || stroke.isShape || stroke.shape) return false;
+      if (this._inkBakeDirty || !this._hasBakedStrokes || !this._inkBakeCamera) return false;
+      const cam = this._inkBakeCamera;
+      if (
+        cam.panX !== (this.panX || 0) ||
+        cam.panY !== (this.panY || 0) ||
+        cam.zoomLevel !== (this.zoomLevel || 1.0) ||
+        cam.boardPanX !== (this.boardPanX || 0) ||
+        cam.boardPanY !== (this.boardPanY || 0) ||
+        cam.boardZoom !== (this.boardZoom || 1.0) ||
+        cam.boardZoomOffsetX !== (this.boardZoomOffsetX || 0) ||
+        cam.boardZoomOffsetY !== (this.boardZoomOffsetY || 0)
+      ) {
+        return false;
+      }
+      const target = stroke.target || 'board';
+      const isBoard = (target === 'board');
+      const hb = this._getStrokeScreenBounds(stroke, isBoard);
+      if (!hb) return false;
+      const bz = this.boardZoom || 1.0;
+      const hlZoomRatio = isBoard
+        ? (bz / (stroke.boardZoom || 1.0))
+        : (stroke.zoom ? ((this.zoomLevel || 1.0) / stroke.zoom) : 1.0);
+      const hlBase = stroke.highlighterSize ? stroke.highlighterSize : Math.max(10, (stroke.size || 4.2) * 2.6);
+      const basePad = Math.max(32, hlBase * hlZoomRatio * 0.6 + 16);
+      const strokes = this.inkStrokes || [];
+      for (let i = 0; i < strokes.length; i++) {
+        const s = strokes[i];
+        if (!s || s === stroke || s.isHighlighter) continue;
+        const sTarget = s.target || 'board';
+        if (sTarget !== target) continue;
+        if (!isBoard && Boolean(s.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+        if (s.shape || s.isShape) return false;
+        const sb = this._getStrokeScreenBounds(s, isBoard);
+        if (!sb) return false;
+        const sZoomRatio = isBoard
+          ? (bz / (s.boardZoom || 1.0))
+          : (s.zoom ? ((this.zoomLevel || 1.0) / s.zoom) : 1.0);
+        const pad = basePad + Math.max(8, (s.size || 4.2) * sZoomRatio * 1.4);
+        if (
+          hb.maxX + pad >= sb.minX &&
+          hb.minX - pad <= sb.maxX &&
+          hb.maxY + pad >= sb.minY &&
+          hb.minY - pad <= sb.maxY
+        ) {
+          return false;
+        }
+      }
+      return true;
+    }
+
     _getStrokeScreenBounds(stroke, isBoardInk) {
       if (!stroke || !stroke.points || stroke.points.length === 0) return null;
       const pts = stroke.points;
       const n = pts.length;
       const pFirst = pts[0];
+      const pMid = pts[n >> 1];
       const pLast = pts[n - 1];
       let rb = stroke._rawBounds;
       if (
@@ -5383,6 +5468,8 @@
         rb.len !== n ||
         rb.fx !== pFirst.x ||
         rb.fy !== pFirst.y ||
+        rb.mx !== pMid.x ||
+        rb.my !== pMid.y ||
         rb.lx !== pLast.x ||
         rb.ly !== pLast.y
       ) {
@@ -5395,10 +5482,16 @@
           if (py < minY) minY = py;
           else if (py > maxY) maxY = py;
         }
-        rb = stroke._rawBounds = {
+        rb = {
           minX, maxX, minY, maxY,
-          len: n, fx: pFirst.x, fy: pFirst.y, lx: pLast.x, ly: pLast.y
+          len: n, fx: pFirst.x, fy: pFirst.y, mx: pMid.x, my: pMid.y, lx: pLast.x, ly: pLast.y
         };
+        Object.defineProperty(stroke, '_rawBounds', {
+          value: rb,
+          writable: true,
+          configurable: true,
+          enumerable: false
+        });
       }
       if (isBoardInk) {
         const bz = this.boardZoom || 1.0;
@@ -5646,6 +5739,12 @@
         return;
       }
 
+      // 올가미 드래그/리사이즈가 어떤 경로로든 종료된 경우 제외 집합을 자동 해제하여 누락 가능성을 0%로 차단
+      if (this._lassoExcludedBakeSet && !this.isDraggingLassoSelection && !this.isResizingLassoSelection) {
+        this._lassoExcludedBakeSet = null;
+        this._inkBakeDirty = true;
+      }
+
       // 🌟 [오프스크린 오버스캔(Overscan) 베이크 버퍼 리빌드 & 팬/핀치/줌 중 0.02ms GPU 텍스처 변환 패스트패스] 🌟
       // 두 손가락 이동/핀치나 화면 패닝/휠 줌 도중에는 rebuildInkCache()를 중간에 동기 호출하지 않고
       // GPU 텍스처 행렬(setTransform + drawImage)만으로 60~120fps 무렉 변환하며, 손을 떼거나 줌이 멈추는 순간 선명하게 리빌드합니다!
@@ -5669,6 +5768,12 @@
       const bakeCam = this._inkBakeCamera;
       const bPadX = (bakeCam && typeof bakeCam.padX === 'number') ? bakeCam.padX : curPadX;
       const bPadY = (bakeCam && typeof bakeCam.padY === 'number') ? bakeCam.padY : curPadY;
+      const hasLassoLiveOverlay = Boolean(
+        this._lassoExcludedBakeSet &&
+        this._lassoExcludedBakeSet.size > 0 &&
+        Array.isArray(this.selectedInkStrokes) &&
+        this.selectedInkStrokes.length > 0
+      );
 
       // 🌟 [144Hz 초고속 0.02ms GPU Blit]: 칠판 바깥창 판서 ('board')
       if (!filterTarget || filterTarget === 'board') {
@@ -5689,6 +5794,16 @@
             ctx.restore();
           } else {
             ctx.drawImage(this.inkBakeCanvas, -bPadX, -bPadY, sw + bPadX * 2, sh + bPadY * 2);
+          }
+        }
+        if (hasLassoLiveOverlay) {
+          for (let pass = 0; pass < 2; pass++) {
+            const wantHl = (pass === 0);
+            for (let i = 0; i < this.selectedInkStrokes.length; i++) {
+              const st = this.selectedInkStrokes[i];
+              if (!st || (st.target || 'board') !== 'board' || Boolean(st.isHighlighter) !== wantHl) continue;
+              this.renderSingleStroke(ctx, st, null, true);
+            }
           }
         }
         // 실시간 드로잉 중인 획이 보드 타깃인 경우 가벼운 1개 획만 즉시 렌더링!
@@ -5718,6 +5833,17 @@
             ctx.restore();
           } else {
             ctx.drawImage(this.inkGraphBakeCanvas, -bPadX, -bPadY, sw + bPadX * 2, sh + bPadY * 2);
+          }
+        }
+        if (hasLassoLiveOverlay) {
+          for (let pass = 0; pass < 2; pass++) {
+            const wantHl = (pass === 0);
+            for (let i = 0; i < this.selectedInkStrokes.length; i++) {
+              const st = this.selectedInkStrokes[i];
+              if (!st || st.target !== 'graph' || Boolean(st.isHighlighter) !== wantHl) continue;
+              if (Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+              this.renderSingleStroke(ctx, st, null, true);
+            }
           }
         }
         // 실시간 드로잉 중인 획이 그래프 타깃인 경우 가벼운 1개 획만 즉시 렌더링!

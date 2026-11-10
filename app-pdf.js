@@ -2439,9 +2439,17 @@
           delete sRef.viewerSnapshotDataUrl;
         }
 
+        const isBusyWritingNow = () => Boolean(
+          (typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) ||
+          this.isDrawingInk ||
+          this._isDrawingCardInk ||
+          this.isStylusDrawing ||
+          this.isErasingInk
+        );
+
         const syncPlaylistIdle = () => {
-          if (this.isDrawingInk || this.isStylusDrawing) {
-            setTimeout(syncPlaylistIdle, 120);
+          if (isBusyWritingNow()) {
+            setTimeout(syncPlaylistIdle, 160);
             return;
           }
           if (this.isLessonPlaylistActive) {
@@ -2460,43 +2468,57 @@
           }
         };
 
-        if (targetRef && targetRef.type === 'extra' && targetRef.cardItem) {
-          const extraCard = targetRef.cardItem;
-          if (extraCard && extraCard.el) {
-            const imgEl = extraCard.el.querySelector('.problem-card-img');
-            if (imgEl) imgEl.src = ultraDataUrl;
-            releaseTempCropCanvas(extraCard.sourceCanvas);
-            extraCard.sourceCanvas = null;
-            schedulePlaylistSync();
-            if (!this.isDrawingInk) this.requestRender();
+        // 🌟 [PDF 크롭 직후 문제 카드 필기 중 캔버스 리셋/리플로우 원천 차단]:
+        // 선생님이 영역 캡처 직후 곧바로 문제 카드나 칠판 위에 필기를 시작했다면,
+        // 획을 긋는 도중에는 DOM src 교체 및 syncProblemCardRectFromWidget() 호출을 유예하고 펜을 뗀 직후 무충격 적용합니다!
+        const applyUltraDomSwapWhenIdle = () => {
+          if (isBusyWritingNow()) {
+            setTimeout(applyUltraDomSwapWhenIdle, 120);
             return;
           }
-        } else if (!targetRef && this.extraProblemCards && this.extraProblemCards.length > 0) {
-          const lastExtra = this.extraProblemCards[this.extraProblemCards.length - 1];
-          if (lastExtra && lastExtra.el && !lastExtra.isPdfPageCard) {
-            const imgEl = lastExtra.el.querySelector('.problem-card-img');
-            if (imgEl) imgEl.src = ultraDataUrl;
-            releaseTempCropCanvas(lastExtra.sourceCanvas);
-            lastExtra.sourceCanvas = null;
-            schedulePlaylistSync();
-            if (!this.isDrawingInk) this.requestRender();
-            return;
+          if (targetRef && targetRef.type === 'extra' && targetRef.cardItem) {
+            const extraCard = targetRef.cardItem;
+            if (extraCard && extraCard.el) {
+              const imgEl = extraCard.el.querySelector('.problem-card-img');
+              if (imgEl) imgEl.src = ultraDataUrl;
+              releaseTempCropCanvas(extraCard.sourceCanvas);
+              extraCard.sourceCanvas = null;
+              if (extraCard.el.isConnected !== false) {
+                schedulePlaylistSync();
+                if (!isBusyWritingNow()) this.requestRender();
+              }
+              return;
+            }
+          } else if (!targetRef && this.extraProblemCards && this.extraProblemCards.length > 0) {
+            const lastExtra = this.extraProblemCards[this.extraProblemCards.length - 1];
+            if (lastExtra && lastExtra.el && !lastExtra.isPdfPageCard) {
+              const imgEl = lastExtra.el.querySelector('.problem-card-img');
+              if (imgEl) imgEl.src = ultraDataUrl;
+              releaseTempCropCanvas(lastExtra.sourceCanvas);
+              lastExtra.sourceCanvas = null;
+              if (lastExtra.el.isConnected !== false) {
+                schedulePlaylistSync();
+                if (!isBusyWritingNow()) this.requestRender();
+              }
+              return;
+            }
           }
-        }
-        const isMatchingPrimary = targetRef && targetRef.problemCardData
-          ? (this.problemCardData === targetRef.problemCardData)
-          : Boolean(this.problemCardData && this.problemCardData.pageNum === pageNum);
-        if (isMatchingPrimary && this.problemCardData) {
-          this.problemCardData.imgUrl = ultraDataUrl;
-          releaseTempCropCanvas(this.problemCardImage);
-          if (ultraAspect) this.problemCardAspect = ultraAspect;
-          const pImg = document.getElementById('problemCardImg');
-          if (pImg) pImg.src = ultraDataUrl;
-          this.problemCardImage = decodedUltraImg || pImg || null;
-          this.syncProblemCardRectFromWidget();
-          schedulePlaylistSync();
-          if (!this.isDrawingInk) this.requestRender();
-        }
+          const isMatchingPrimary = targetRef && targetRef.problemCardData
+            ? (this.problemCardData === targetRef.problemCardData)
+            : Boolean(this.problemCardData && this.problemCardData.pageNum === pageNum);
+          if (isMatchingPrimary && this.problemCardData) {
+            this.problemCardData.imgUrl = ultraDataUrl;
+            releaseTempCropCanvas(this.problemCardImage);
+            if (ultraAspect) this.problemCardAspect = ultraAspect;
+            const pImg = document.getElementById('problemCardImg');
+            if (pImg) pImg.src = ultraDataUrl;
+            this.problemCardImage = decodedUltraImg || pImg || null;
+            this.syncProblemCardRectFromWidget();
+            schedulePlaylistSync();
+            if (!isBusyWritingNow()) this.requestRender();
+          }
+        };
+        applyUltraDomSwapWhenIdle();
       } catch (err) {
         // 벡터 보강 실패 시 기존 크롭 이미지 유지
       }

@@ -489,6 +489,7 @@ class GraphApp {
         typeof e.target.closest === 'function' &&
         (
           (this.isDrawingInk && this._activeDrawingPointerType === 'pen') ||
+          (this._isDrawingCardInk && this._hasDetectedStylusPen) ||
           (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 500))
         )
       ) {
@@ -1050,7 +1051,12 @@ class GraphApp {
     const targetExtraProbStates = wsSnap.extraProblemCardStates || [];
     if (this.extraProblemCards && this.extraProblemCards.length > 0) {
       this.extraProblemCards.forEach(c => {
-        if (c && c.el && !targetExtraProblems.includes(c)) c.el.remove();
+        if (c && c.el && !targetExtraProblems.includes(c)) {
+          if (typeof this._hibernateDetachedCardCanvases === 'function') {
+            this._hibernateDetachedCardCanvases(c.el);
+          }
+          c.el.remove();
+        }
       });
     }
     this.extraProblemCards = [...targetExtraProblems];
@@ -1153,6 +1159,9 @@ class GraphApp {
       this.extraGraphCards.forEach(c => {
         if (c && c.el && !targetExtraGraphs.includes(c)) {
           this.clearPipGraphCardStealthTimer(c);
+          if (typeof this._hibernateDetachedCardCanvases === 'function') {
+            this._hibernateDetachedCardCanvases(c.el);
+          }
           c.el.remove();
         }
       });
@@ -1261,6 +1270,23 @@ class GraphApp {
     this.updateUndoRedoUI();
   }
 
+  _resolveCardUndoStrokesArray(entry) {
+    if (!entry) return null;
+    if (entry.cardKind === 'problem') {
+      if (!Array.isArray(this.problemInkStrokes)) this.problemInkStrokes = [];
+      return this.problemInkStrokes;
+    }
+    if (entry.cardKind === 'graph') {
+      if (!Array.isArray(this.graphInkStrokes)) this.graphInkStrokes = [];
+      return this.graphInkStrokes;
+    }
+    if (entry.cardKind === 'extra' && entry.cardEl) {
+      if (!Array.isArray(entry.cardEl._cardInkStrokes)) entry.cardEl._cardInkStrokes = [];
+      return entry.cardEl._cardInkStrokes;
+    }
+    return Array.isArray(entry.strokesArr) ? entry.strokesArr : null;
+  }
+
   undo() {
     if (this.undoStack.length === 0) {
       this.showToast('ℹ️ 실행 취소할 이전 작업이 없습니다.');
@@ -1323,15 +1349,57 @@ class GraphApp {
 
     // 🌟 [0ms 초고속 카드 위 필기 획 단위 실행 취소]
     if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'card_stroke_add') {
-      if (Array.isArray(prevSnap.strokesArr)) {
-        const idx = prevSnap.strokesArr.indexOf(prevSnap.stroke);
-        if (idx !== -1) prevSnap.strokesArr.splice(idx, 1);
+      const targetArr = this._resolveCardUndoStrokesArray(prevSnap);
+      if (Array.isArray(targetArr)) {
+        let idx = targetArr.indexOf(prevSnap.stroke);
+        if (idx === -1 && targetArr.length > 0 && prevSnap.stroke && prevSnap.stroke.points) {
+          for (let k = targetArr.length - 1; k >= 0; k--) {
+            const cand = targetArr[k];
+            if (
+              cand &&
+              cand.points &&
+              cand.points.length === prevSnap.stroke.points.length &&
+              cand.color === prevSnap.stroke.color &&
+              cand.points[0] &&
+              prevSnap.stroke.points[0] &&
+              cand.points[0].nx === prevSnap.stroke.points[0].nx &&
+              cand.points[0].ny === prevSnap.stroke.points[0].ny
+            ) {
+              idx = k;
+              break;
+            }
+          }
+        }
+        if (idx !== -1) targetArr.splice(idx, 1);
       }
       if (typeof prevSnap.renderFn === 'function') prevSnap.renderFn();
       this.redoStack.push(prevSnap);
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       this.showToast('↺ 카드 필기 실행 취소됨');
+      return;
+    }
+
+    // 🌟 [0ms 초고속 카드 지우개 획 삭제 실행 취소]
+    if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'card_strokes_erase') {
+      const targetArr = this._resolveCardUndoStrokesArray(prevSnap);
+      if (Array.isArray(targetArr) && Array.isArray(prevSnap.batches)) {
+        for (let b = prevSnap.batches.length - 1; b >= 0; b--) {
+          const batch = prevSnap.batches[b];
+          if (!Array.isArray(batch)) continue;
+          for (let i = 0; i < batch.length; i++) {
+            const item = batch[i];
+            if (!item || !item.stroke) continue;
+            const insertIdx = Math.max(0, Math.min(targetArr.length, item.index));
+            targetArr.splice(insertIdx, 0, item.stroke);
+          }
+        }
+      }
+      if (typeof prevSnap.renderFn === 'function') prevSnap.renderFn();
+      this.redoStack.push(prevSnap);
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      this.showToast('↺ 지운 카드 필기 복구됨');
       return;
     }
 
@@ -1446,14 +1514,46 @@ class GraphApp {
 
     // 🌟 [0ms 초고속 카드 위 필기 획 단위 다시 실행]
     if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'card_stroke_add') {
-      if (Array.isArray(nextSnap.strokesArr)) {
-        nextSnap.strokesArr.push(nextSnap.stroke);
+      const targetArr = this._resolveCardUndoStrokesArray(nextSnap);
+      if (Array.isArray(targetArr)) {
+        targetArr.push(nextSnap.stroke);
       }
       if (typeof nextSnap.renderFn === 'function') nextSnap.renderFn();
       this.undoStack.push(nextSnap);
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
       this.showToast('↻ 카드 필기 다시 실행됨');
+      return;
+    }
+
+    // 🌟 [0ms 초고속 카드 지우개 획 삭제 다시 실행]
+    if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'card_strokes_erase') {
+      const targetArr = this._resolveCardUndoStrokesArray(nextSnap);
+      if (Array.isArray(targetArr) && Array.isArray(nextSnap.batches)) {
+        const toRemove = new Set();
+        for (let b = 0; b < nextSnap.batches.length; b++) {
+          const batch = nextSnap.batches[b];
+          if (!Array.isArray(batch)) continue;
+          for (let i = 0; i < batch.length; i++) {
+            if (batch[i] && batch[i].stroke) toRemove.add(batch[i].stroke);
+          }
+        }
+        if (toRemove.size > 0) {
+          let writeIdx = 0;
+          for (let i = 0; i < targetArr.length; i++) {
+            const st = targetArr[i];
+            if (!toRemove.has(st)) {
+              targetArr[writeIdx++] = st;
+            }
+          }
+          targetArr.length = writeIdx;
+        }
+      }
+      if (typeof nextSnap.renderFn === 'function') nextSnap.renderFn();
+      this.undoStack.push(nextSnap);
+      this.isHistoryProcessing = false;
+      this.updateUndoRedoUI();
+      this.showToast('↻ 카드 필기 지우기 다시 실행됨');
       return;
     }
 
@@ -1637,13 +1737,19 @@ class GraphApp {
   }
 
   updateUndoRedoUI() {
+    const canUndo = this.undoStack.length > 0;
+    const canRedo = this.redoStack.length > 0;
+    const stateBits = (canUndo ? 2 : 0) | (canRedo ? 1 : 0);
+    if (this._lastUndoRedoUiBits === stateBits) {
+      return;
+    }
+    this._lastUndoRedoUiBits = stateBits;
+
     const btnUndo = document.getElementById('btnUndo');
     const btnRedo = document.getElementById('btnRedo');
     const btnQuickUndo = document.getElementById('btnQuickUndo');
     const btnQuickRedo = document.getElementById('btnQuickRedo');
 
-    const canUndo = this.undoStack.length > 0;
-    const canRedo = this.redoStack.length > 0;
     const undoTitle = '실행 취소';
     const redoTitle = '다시 실행';
 
@@ -3527,6 +3633,24 @@ class GraphApp {
     this.render();
   }
 
+  // 🌟 [필기·지우개·카드 조작 활성 상태 통합 가드]:
+  // 바탕화면 칠판, 문제 카드, 창모드 그래프 카드 중 어느 곳에서든 필기/지우개/드래그가 진행 중일 때
+  // 백그라운드 오프스크린 베이킹·리빌드·교점 루프 등이 프레임 예산을 침범하지 않도록 보호합니다.
+  isActivelyWritingOrInteracting() {
+    return Boolean(
+      this.isDrawingInk ||
+      this._isDrawingCardInk ||
+      this.isStylusDrawing ||
+      this.isDrawingLaser ||
+      this.isErasingInk ||
+      this.isLassoSelecting ||
+      this.isDraggingLassoSelection ||
+      this.isResizingLassoSelection ||
+      this._isInteractingWithPipCard ||
+      this._isDraggingOrResizingAnyCard
+    );
+  }
+
   startIntersectionLoop() {
     if (this.intersectionAnimId) return;
     const animate = () => {
@@ -3534,8 +3658,10 @@ class GraphApp {
         this.intersectionAnimId = null;
         return;
       }
-      this.intersectionAnimPhase = (Date.now() / 250) % (Math.PI * 2);
-      this.render();
+      if (!this.isActivelyWritingOrInteracting()) {
+        this.intersectionAnimPhase = (Date.now() / 250) % (Math.PI * 2);
+        this.render();
+      }
       this.intersectionAnimId = requestAnimationFrame(animate);
     };
     this.intersectionAnimId = requestAnimationFrame(animate);
