@@ -418,7 +418,7 @@
             tEl.closest('header')
           ));
           if (directUiHit) {
-            const isDragHandle = Boolean(tEl && tEl.closest && tEl.closest('.ink-dock-drag-handle, .pill-drag-handle'));
+            const isDragHandle = Boolean(tEl && tEl.closest && tEl.closest('.ink-dock-drag-handle, .pill-drag-handle, .pill-remote-drag-handle'));
             const isInteractiveBtn = Boolean(tEl && tEl.closest && tEl.closest(
               'button, a, label, input, select, summary, [role="button"], .func-btn, .preset-card, .rail-btn, .ink-tool-btn, .ink-color-dot, .quick-fab-btn, .slide-num-chip, .cat-tab-btn, .card-btn, .ctx-btn, .lasso-action-btn, .pw-popover-item, .custom-preset-chip, .export-preset-btn'
             ));
@@ -1321,7 +1321,7 @@
       const pillRemoteEl = document.getElementById('quickPillRemote');
       const pillRemoteOpen = Boolean(this.isQuickPillRemoteOpen || (pillRemoteEl && pillRemoteEl.style.display !== 'none'));
       const pillModSig = this.pillModules
-        ? `${Boolean(this.pillModules.Preset)}|${Boolean(this.pillModules.Transform)}|${Boolean(this.pillModules.Capture)}|${Boolean(this.pillModules.Style)}`
+        ? `${Boolean(this.pillModules.tools)}|${Boolean(this.pillModules.zoom)}|${Boolean(this.pillModules.color)}|${Boolean(this.pillModules.extra)}`
         : '';
       const needPillRect = Boolean(
         pillRemoteEl &&
@@ -1772,12 +1772,15 @@
             }
           }
           document.body.classList.toggle('ink-mode-active', this.isInkMode);
+          const effPillOpen = (kf.pillRemoteOpen !== undefined)
+            ? Boolean(kf.pillRemoteOpen)
+            : Boolean(this.isQuickPillRemoteOpen);
           const inkToolbarEl = document.getElementById('inkFloatingToolbar');
           if (inkToolbarEl) {
-            inkToolbarEl.style.display = (this.isInkMode && !effInkBarHidden) ? 'flex' : 'none';
+            inkToolbarEl.style.display = (this.isInkMode && !effInkBarHidden && !effPillOpen) ? 'flex' : 'none';
           }
           const btnHeader = document.getElementById('btnInkMode');
-          if (btnHeader) btnHeader.classList.toggle('active', Boolean(this.isInkMode && !effInkBarHidden));
+          if (btnHeader) btnHeader.classList.toggle('active', Boolean(this.isInkMode && (!effInkBarHidden || effPillOpen)));
           const btnQuick = document.getElementById('btnQuickInk');
           if (btnQuick) btnQuick.classList.toggle('active', this.isInkMode);
         }
@@ -1789,9 +1792,15 @@
         }
         if (kf.pillRemoteOpen !== undefined) {
           this.isQuickPillRemoteOpen = Boolean(kf.pillRemoteOpen);
+          if (this.isQuickPillRemoteOpen) {
+            this.preferredInkUiMode = 'pill';
+            this.isBottomInkBarHidden = true;
+          } else if (kf.inkBarHidden === false) {
+            this.preferredInkUiMode = 'bar';
+          }
           const pillRemoteEl = document.getElementById('quickPillRemote');
           if (pillRemoteEl) {
-            pillRemoteEl.style.display = this.isQuickPillRemoteOpen ? 'flex' : 'none';
+            pillRemoteEl.style.display = (this.isInkMode !== false && this.isQuickPillRemoteOpen) ? 'flex' : 'none';
             const isFixedStage = typeof this._isFixedReplayStageActive === 'function' && this._isFixedReplayStageActive();
             const vw = isFixedStage
               ? (this.screenWidth || 1440)

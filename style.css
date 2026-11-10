@@ -4064,6 +4064,18 @@ body.theme-light .ink-color-dot.active {
   background: #00d2d3;
 }
 
+.ink-pill-switch-btn:hover {
+  background: rgba(56, 189, 248, 0.18) !important;
+  border-color: rgba(56, 189, 248, 0.45) !important;
+  color: #38bdf8 !important;
+}
+
+body.theme-light .ink-pill-switch-btn:hover {
+  background: rgba(2, 132, 199, 0.11) !important;
+  border-color: rgba(2, 132, 199, 0.35) !important;
+  color: #0284c7 !important;
+}
+
 .ink-close-btn:hover {
   background: rgba(255, 107, 107, 0.2) !important;
   color: #ff6b6b !important;
@@ -9211,6 +9223,7 @@ body.theme-light .pill-mod-chip.active {
   color: #0284c7;
 }
 
+.pill-remote-expand-btn,
 .pill-remote-close-btn {
   width: 18px;
   height: 18px;
@@ -9223,7 +9236,23 @@ body.theme-light .pill-mod-chip.active {
   justify-content: center;
   cursor: pointer;
   padding: 0;
+  flex-shrink: 0;
   transition: all 0.15s ease;
+}
+
+body.theme-light .pill-remote-expand-btn,
+body.theme-light .pill-remote-close-btn {
+  color: #64748b;
+}
+
+.pill-remote-expand-btn:hover {
+  background: rgba(56, 189, 248, 0.18);
+  color: #38bdf8;
+}
+
+body.theme-light .pill-remote-expand-btn:hover {
+  background: rgba(2, 132, 199, 0.12);
+  color: #0284c7;
 }
 
 .pill-remote-close-btn:hover {

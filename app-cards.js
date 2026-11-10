@@ -6008,6 +6008,7 @@
       applyLongPressShield(widget);
       applyLongPressShield(document.getElementById('problemCardWidget'));
       applyLongPressShield(document.getElementById('inkFloatingToolbar'));
+      applyLongPressShield(document.getElementById('quickPillRemote'));
       this.attachCardLaserSystem(widget);
       this.attachCardLaserSystem(document.getElementById('problemCardWidget'));
 

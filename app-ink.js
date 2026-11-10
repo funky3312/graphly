@@ -8,10 +8,17 @@
       const btnHeader = document.getElementById('btnInkMode');
       const btnQuick = document.getElementById('btnQuickInk');
       const btnClose = document.getElementById('btnInkClose');
+      const btnToPill = document.getElementById('btnInkToPillRemote');
 
       if (btnHeader) btnHeader.onclick = () => this.toggleBottomInkBar();
       if (btnQuick) btnQuick.onclick = () => this.toggleBottomInkBar();
       if (btnClose) btnClose.onclick = () => this.toggleBottomInkBar(false);
+      if (btnToPill) {
+        btnToPill.onclick = (e) => {
+          e.stopPropagation();
+          this.switchToQuickPillRemote();
+        };
+      }
 
       // 테마 연동 잉크 팔레트 초기 셋팅
       this.updateInkPaletteUI();
@@ -1019,15 +1026,16 @@
 
       this.isInkMode = nextState;
 
-      const btnHeader = document.getElementById('btnInkMode');
-      if (btnHeader) btnHeader.classList.toggle('active', this.isInkMode);
-
-      const btnQuick = document.getElementById('btnQuickInk');
-      if (btnQuick) btnQuick.classList.toggle('active', this.isInkMode);
-
-      const dock = document.getElementById('inkFloatingToolbar');
-      if (dock) dock.style.display = (this.isInkMode && !this.isBottomInkBarHidden) ? 'flex' : 'none';
-      if (btnHeader) btnHeader.classList.toggle('active', Boolean(this.isInkMode && !this.isBottomInkBarHidden));
+      if (typeof this.syncInkUiVisibility === 'function') {
+        this.syncInkUiVisibility({ clampPillPosition: Boolean(this.isInkMode && this.isQuickPillRemoteOpen) });
+      } else {
+        const btnHeader = document.getElementById('btnInkMode');
+        const btnQuick = document.getElementById('btnQuickInk');
+        const dock = document.getElementById('inkFloatingToolbar');
+        if (btnQuick) btnQuick.classList.toggle('active', this.isInkMode);
+        if (dock) dock.style.display = (this.isInkMode && !this.isBottomInkBarHidden) ? 'flex' : 'none';
+        if (btnHeader) btnHeader.classList.toggle('active', Boolean(this.isInkMode && !this.isBottomInkBarHidden));
+      }
 
       if (this.isInkMode) {
         // 🌟 [대표님 기획]: 필기 모드로 진입하는 순간 그래프 조작 모드를 즉시 프리징(동결)!
@@ -4041,33 +4049,163 @@
     }
 
     // ==========================================================================
-    // [💊 액정타블렛 전용 초직관 알약 리모컨 (Quick Pill Remote)]
-    // - 좌측 레일 아이콘(#btnRailQuickRemote)으로 켜기/끄기 토글
-    // - 켜짐 여부 · 위치(left, top) · 가로/세로 방향을 localStorage에 자동 기억
-    // - 초대형 원버튼 [✒️ 필기 ⇄ ↖ 이동] 무한 반복 교대 + [🧼 지우개] + [🪢 올가미] + [－/＋ 연속 줌]
+    // [💊 액정타블렛 전용 초직관 알약 리모컨 & 기본 필기바 양방향 원클릭 통합 엔진]
+    // - 필기바 내 [#btnInkToPillRemote] ⇄ 미니 리모컨 상단 [#btnPillToFullBar] 양방향 1클릭 스왑
+    // - 우측 [✒️ 필기](#btnInkMode) 및 단축키가 직전에 쓰던 모드('bar' | 'pill')를 자동 기억하여 복원
+    // - 켜짐 여부 · 선호 모드 · 위치(left, top) · 모듈 폴딩을 localStorage에 자동 기억
     // ==========================================================================
-    toggleBottomInkBar(showVal = null) {
-      if (!this.isInkMode) {
-        this.toggleInkMode(true);
+    syncInkUiVisibility(opts = {}) {
+      if (this.isQuickPillRemoteOpen) {
+        this.isBottomInkBarHidden = true;
       }
-      const nextHidden = (showVal !== null) ? !Boolean(showVal) : !Boolean(this.isBottomInkBarHidden);
-      this.isBottomInkBarHidden = nextHidden;
+      const showPill = Boolean(this.isInkMode && this.isQuickPillRemoteOpen);
+      const showBar = Boolean(this.isInkMode && !this.isQuickPillRemoteOpen && !this.isBottomInkBarHidden);
+
+      if (!showBar) {
+        const inkSizeFlyout = document.getElementById('inkSizeFlyout');
+        const btnInkSizePicker = document.getElementById('btnInkSizePicker');
+        if (inkSizeFlyout && inkSizeFlyout.style.display !== 'none') {
+          inkSizeFlyout.style.display = 'none';
+        }
+        if (btnInkSizePicker) {
+          btnInkSizePicker.classList.remove('open');
+        }
+      }
 
       const dock = document.getElementById('inkFloatingToolbar');
       if (dock) {
-        dock.style.display = nextHidden ? 'none' : 'flex';
+        dock.style.display = showBar ? 'flex' : 'none';
       }
+
+      const remote = document.getElementById('quickPillRemote');
+      if (remote) {
+        remote.style.display = showPill ? 'flex' : 'none';
+        if (showPill) {
+          if (opts.clampPillPosition) {
+            const parsedL = parseFloat(remote.style.left);
+            const parsedT = parseFloat(remote.style.top);
+            const rect = remote.getBoundingClientRect();
+            const pillW = Math.max(98, (rect && rect.width) || remote.offsetWidth || 98);
+            const pillH = Math.max(54, (rect && rect.height) || remote.offsetHeight || 220);
+            const rawL = Number.isFinite(parsedL) ? parsedL : ((rect && rect.left > 0) ? rect.left : 605);
+            const rawT = Number.isFinite(parsedT) ? parsedT : ((rect && rect.top > 0) ? rect.top : 76);
+            const clampedL = Math.max(58, Math.min((window.innerWidth || 1440) - pillW - 58, rawL));
+            const clampedT = Math.max(12, Math.min((window.innerHeight || 900) - pillH - 12, rawT));
+            remote.style.left = `${Math.round(clampedL)}px`;
+            remote.style.top = `${Math.round(clampedT)}px`;
+          }
+          if (typeof this.syncQuickPillRemoteUI === 'function') {
+            this.syncQuickPillRemoteUI();
+          }
+        }
+      }
+
       const btnHeader = document.getElementById('btnInkMode');
       if (btnHeader) {
-        btnHeader.classList.toggle('active', !nextHidden);
+        btnHeader.classList.toggle('active', Boolean(showBar || showPill));
+      }
+      const btnQuick = document.getElementById('btnQuickInk');
+      if (btnQuick) {
+        btnQuick.classList.toggle('active', Boolean(this.isInkMode));
+      }
+      const btnRail = document.getElementById('btnRailQuickRemote');
+      if (btnRail) {
+        btnRail.classList.toggle('active', showPill);
+      }
+    }
+
+    switchToQuickPillRemote(opts = {}) {
+      this.preferredInkUiMode = 'pill';
+      this.isBottomInkBarHidden = true;
+      this.isQuickPillRemoteOpen = true;
+      if (!this.isInkMode) {
+        this.toggleInkMode(true);
+      } else {
+        this.syncInkUiVisibility({ clampPillPosition: true });
       }
       if (typeof this._saveQuickPillRemoteSettings === 'function') {
         this._saveQuickPillRemoteSettings();
       }
-      if (nextHidden) {
-        this.showToast('✍️ 하단 필기 바를 숨겼습니다.');
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
+      if (!opts.silentToast && typeof this.showToast === 'function') {
+        this.showToast('🎛️ 미니 리모컨 모드로 전환했습니다.');
+      }
+    }
+
+    switchToFullInkToolbar(opts = {}) {
+      this.preferredInkUiMode = 'bar';
+      this.isQuickPillRemoteOpen = false;
+      this.isBottomInkBarHidden = false;
+      if (!this.isInkMode) {
+        this.toggleInkMode(true);
       } else {
-        this.showToast('✍️ 하단 필기 바가 다시 표시되었습니다.');
+        this.syncInkUiVisibility();
+      }
+      if (typeof this._saveQuickPillRemoteSettings === 'function') {
+        this._saveQuickPillRemoteSettings();
+      }
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
+      if (!opts.silentToast && typeof this.showToast === 'function') {
+        this.showToast('✍️ 기본 필기바로 전환했습니다.');
+      }
+    }
+
+    toggleBottomInkBar(showVal = null) {
+      if (showVal === null) {
+        const anyInkUiVisible = Boolean(this.isInkMode && (this.isQuickPillRemoteOpen || !this.isBottomInkBarHidden));
+        if (anyInkUiVisible) {
+          const wasPill = Boolean(this.isQuickPillRemoteOpen);
+          this.preferredInkUiMode = wasPill ? 'pill' : 'bar';
+          this.isQuickPillRemoteOpen = false;
+          this.isBottomInkBarHidden = true;
+          this.syncInkUiVisibility();
+          if (typeof this._saveQuickPillRemoteSettings === 'function') {
+            this._saveQuickPillRemoteSettings();
+          }
+          if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+            this._recordAudioWorkspaceStateIfNeeded(true);
+          }
+          this.showToast(wasPill ? '🎛️ 미니 리모컨을 숨겼습니다.' : '✍️ 필기 바를 숨겼습니다.');
+          return;
+        }
+
+        const wantPill = (this.preferredInkUiMode === 'pill');
+        this.isQuickPillRemoteOpen = wantPill;
+        this.isBottomInkBarHidden = wantPill;
+        if (!this.isInkMode) {
+          this.toggleInkMode(true);
+        } else {
+          this.syncInkUiVisibility({ clampPillPosition: wantPill });
+        }
+        if (typeof this._saveQuickPillRemoteSettings === 'function') {
+          this._saveQuickPillRemoteSettings();
+        }
+        if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+        }
+        this.showToast(wantPill ? '🎛️ 미니 리모컨이 다시 표시되었습니다.' : '✍️ 필기 바가 다시 표시되었습니다.');
+        return;
+      }
+
+      if (Boolean(showVal)) {
+        this.switchToFullInkToolbar({ silentToast: true });
+        this.showToast('✍️ 필기 바가 다시 표시되었습니다.');
+      } else {
+        this.preferredInkUiMode = 'bar';
+        this.isQuickPillRemoteOpen = false;
+        this.isBottomInkBarHidden = true;
+        this.syncInkUiVisibility();
+        if (typeof this._saveQuickPillRemoteSettings === 'function') {
+          this._saveQuickPillRemoteSettings();
+        }
+        if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+        }
+        this.showToast('✍️ 필기 바를 숨겼습니다.');
       }
     }
 
@@ -4075,6 +4213,7 @@
       const remote = document.getElementById('quickPillRemote');
       const handle = document.getElementById('pillRemoteDragHandle');
       const btnRail = document.getElementById('btnRailQuickRemote');
+      const btnExpand = document.getElementById('btnPillToFullBar');
       const btnSwap = document.getElementById('btnPillSwapPenSelect');
       const btnEraser = document.getElementById('btnPillEraser');
       const btnLasso = document.getElementById('btnPillLasso');
@@ -4093,6 +4232,7 @@
       if (!remote) return;
 
       const STORAGE_KEY = 'graphly_pill_remote_v1';
+      this.preferredInkUiMode = 'bar';
       this.isQuickPillRemoteOpen = false;
       this.isBottomInkBarHidden = false;
       this.pillModules = {
@@ -4104,23 +4244,28 @@
 
       const saveRemoteSettings = () => {
         try {
-          const rect = remote.getBoundingClientRect();
+          const parsedL = parseFloat(remote.style.left);
+          const parsedT = parseFloat(remote.style.top);
+          const rect = (!Number.isFinite(parsedL) || !Number.isFinite(parsedT)) ? remote.getBoundingClientRect() : null;
+          const savedL = Number.isFinite(parsedL) ? parsedL : ((rect && rect.left > 0) ? rect.left : 605);
+          const savedT = Number.isFinite(parsedT) ? parsedT : ((rect && rect.top > 0) ? rect.top : 76);
           const payload = {
+            preferredUiMode: (this.preferredInkUiMode === 'pill') ? 'pill' : 'bar',
             isOpen: Boolean(this.isQuickPillRemoteOpen),
             hideBottomBar: Boolean(this.isBottomInkBarHidden),
             modTools: Boolean(this.pillModules.tools),
             modZoom: Boolean(this.pillModules.zoom),
             modColor: Boolean(this.pillModules.color),
             modExtra: Boolean(this.pillModules.extra),
-            left: Math.round(parseFloat(remote.style.left) || rect.left || 605),
-            top: Math.round(parseFloat(remote.style.top) || rect.top || 76)
+            left: Math.round(savedL),
+            top: Math.round(savedT)
           };
           localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
         } catch (err) { }
       };
       this._saveQuickPillRemoteSettings = saveRemoteSettings;
 
-      // 저장된 세팅 복원
+      // 저장된 세팅 복원 (구버전 동시 열림 세팅도 단일 배타 모드로 자동 마이그레이션)
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
@@ -4129,12 +4274,11 @@
           if (typeof saved.modZoom === 'boolean') this.pillModules.zoom = saved.modZoom;
           if (typeof saved.modColor === 'boolean') this.pillModules.color = saved.modColor;
           if (typeof saved.modExtra === 'boolean') this.pillModules.extra = saved.modExtra;
+          if (saved.preferredUiMode === 'pill' || saved.preferredUiMode === 'bar') {
+            this.preferredInkUiMode = saved.preferredUiMode;
+          }
           if (typeof saved.hideBottomBar === 'boolean') {
             this.isBottomInkBarHidden = saved.hideBottomBar;
-            const dock = document.getElementById('inkFloatingToolbar');
-            if (dock && this.isBottomInkBarHidden) dock.style.display = 'none';
-            const btnHeader = document.getElementById('btnInkMode');
-            if (btnHeader) btnHeader.classList.toggle('active', !this.isBottomInkBarHidden);
           }
           if (typeof saved.left === 'number' && typeof saved.top === 'number') {
             const pillW = remote.offsetWidth || 98;
@@ -4145,16 +4289,25 @@
           }
           if (saved.isOpen) {
             this.isQuickPillRemoteOpen = true;
-            remote.style.display = 'flex';
-            if (btnRail) btnRail.classList.add('active');
+            this.isBottomInkBarHidden = true;
+            this.preferredInkUiMode = 'pill';
           }
         }
       } catch (err) { }
+
+      this.syncInkUiVisibility({ clampPillPosition: Boolean(this.isQuickPillRemoteOpen) });
 
       if (btnRail) {
         btnRail.onclick = (e) => {
           e.stopPropagation();
           this.toggleQuickPillRemote();
+        };
+      }
+
+      if (btnExpand) {
+        btnExpand.onclick = (e) => {
+          e.stopPropagation();
+          this.switchToFullInkToolbar();
         };
       }
 
@@ -4414,29 +4567,27 @@
 
     toggleQuickPillRemote(forceVal = null) {
       const remote = document.getElementById('quickPillRemote');
-      const btnRail = document.getElementById('btnRailQuickRemote');
       if (!remote) return;
 
       const nextState = (forceVal !== null) ? Boolean(forceVal) : !this.isQuickPillRemoteOpen;
-      this.isQuickPillRemoteOpen = nextState;
-      remote.style.display = nextState ? 'flex' : 'none';
-      if (btnRail) btnRail.classList.toggle('active', nextState);
-
       if (nextState) {
-        const rect = remote.getBoundingClientRect();
-        const pillW = Math.max(98, rect.width || remote.offsetWidth || 98);
-        const clampedL = Math.max(58, Math.min((window.innerWidth || 1440) - pillW - 58, rect.left || 605));
-        const clampedT = Math.max(12, Math.min((window.innerHeight || 900) - Math.max(54, rect.height), rect.top || 76));
-        remote.style.left = `${Math.round(clampedL)}px`;
-        remote.style.top = `${Math.round(clampedT)}px`;
-        this.syncQuickPillRemoteUI();
+        this.switchToQuickPillRemote({ silentToast: Boolean(forceVal !== null) });
+        return;
       }
+
+      this.preferredInkUiMode = 'pill';
+      this.isQuickPillRemoteOpen = false;
+      this.isBottomInkBarHidden = true;
+      this.syncInkUiVisibility();
 
       if (typeof this._saveQuickPillRemoteSettings === 'function') {
         this._saveQuickPillRemoteSettings();
       }
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         this._recordAudioWorkspaceStateIfNeeded(true);
+      }
+      if (typeof this.showToast === 'function') {
+        this.showToast('🎛️ 미니 리모컨을 숨겼습니다.');
       }
     }
 

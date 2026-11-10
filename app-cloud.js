@@ -9467,6 +9467,9 @@
       : [];
     this.isGraphCovered = false;
     this.isInkMode = false;
+    if (typeof this.syncInkUiVisibility === 'function') {
+      this.syncInkUiVisibility();
+    }
     document.body.classList.remove('ink-mode-active');
     this.updateInkCursor();
 
