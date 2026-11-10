@@ -4776,9 +4776,10 @@ body.pdf-modal-open #lassoActionFloatingBar {
   color: #ef4444;
 }
 
-/* 최소화(접기) 상태 (레이저가 켜진 상태에서도 접기 시 무조건 몸통/레이저 캔버스 숨김 보장!) */
+/* 최소화(접기) 상태 (레이저가 켜진 상태에서도 접기 시 무조건 몸통/레이저 캔버스/리사이즈 핸들 숨김 보장!) */
 .problem-card-widget.minimized .problem-card-body,
-.problem-card-widget.minimized .card-laser-canvas {
+.problem-card-widget.minimized .card-laser-canvas,
+.problem-card-widget.minimized .problem-card-resize-handle {
   display: none !important;
   pointer-events: none !important;
 }
@@ -4794,23 +4795,38 @@ body.pdf-modal-open #lassoActionFloatingBar {
   border: 1.5px solid rgba(0, 210, 211, 0.45);
 }
 
-/* 우하단 리사이즈 핸들 (문제 본문 우하단 모서리) */
+/* 우하단 리사이즈 핸들: 시각적 모서리 표시(::after 15x15px)는 날렵하게 유지하면서
+   아이패드 펜/손가락 헛클릭·점찍힘을 0%로 차단하는 34x34px 투명 코너 자석 터치존 (안쪽 22px + 바깥 12px) */
 .problem-card-resize-handle {
   position: absolute;
-  right: 2px;
-  bottom: 2px;
-  width: 14px;
-  height: 14px;
+  right: -12px;
+  bottom: -12px;
+  width: 34px;
+  height: 34px;
   cursor: nwse-resize;
-  background: linear-gradient(135deg, transparent 50%, rgba(148, 163, 184, 0.35) 50%);
-  border-radius: 0 0 7px 0;
+  background: transparent !important;
   pointer-events: auto !important;
-  z-index: 20;
+  touch-action: none !important;
+  z-index: 25 !important;
   transition: opacity 0.15s ease;
 }
 
-.problem-card-body:hover .problem-card-resize-handle {
-  background: linear-gradient(135deg, transparent 50%, rgba(148, 163, 184, 0.65) 50%);
+.problem-card-resize-handle::after {
+  content: '';
+  position: absolute;
+  right: 15px;
+  bottom: 15px;
+  width: 15px;
+  height: 15px;
+  background: linear-gradient(135deg, transparent 50%, rgba(148, 163, 184, 0.42) 50%);
+  border-radius: 0 0 7px 0;
+  pointer-events: none;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.problem-card-body:hover ~ .problem-card-resize-handle::after,
+.problem-card-resize-handle:hover::after {
+  background: linear-gradient(135deg, transparent 50%, rgba(148, 163, 184, 0.72) 50%);
 }
 
 /* ==========================================================================
@@ -5105,9 +5121,18 @@ body.theme-light #btnProblemCardClose:hover {
   color: #dc2626 !important;
 }
 
-/* 5. 우하단 리사이즈 핸들 */
+/* 5. 우하단 리사이즈 핸들 (34x34px 투명 터치존 유지 + ::after 삼각 인디케이터만 라이트 테마 적용) */
 body.theme-light .problem-card-resize-handle {
-  background: linear-gradient(135deg, transparent 50%, rgba(37, 99, 235, 0.45) 50%) !important;
+  background: transparent !important;
+}
+
+body.theme-light .problem-card-resize-handle::after {
+  background: linear-gradient(135deg, transparent 50%, rgba(37, 99, 235, 0.48) 50%) !important;
+}
+
+body.theme-light .problem-card-body:hover ~ .problem-card-resize-handle::after,
+body.theme-light .problem-card-resize-handle:hover::after {
+  background: linear-gradient(135deg, transparent 50%, rgba(37, 99, 235, 0.72) 50%) !important;
 }
 
 /* 6. [📈 PiP 라이브 인터랙티브 그래프 카드 전용 스타일] */
@@ -5289,17 +5314,22 @@ body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-body {
 }
 
 .problem-card-widget.pip-stealth-locked .problem-card-resize-handle,
-.problem-card-widget.pip-stealth-locked .problem-card-body:hover .problem-card-resize-handle,
+.problem-card-widget.pip-stealth-locked .problem-card-body:hover ~ .problem-card-resize-handle,
 body.theme-light .problem-card-widget.pip-stealth-locked .problem-card-resize-handle,
-body.theme-light .problem-card-widget.pip-stealth-locked .problem-card-body:hover .problem-card-resize-handle,
+body.theme-light .problem-card-widget.pip-stealth-locked .problem-card-body:hover ~ .problem-card-resize-handle,
 .graph-card-widget.pip-stealth-locked .problem-card-resize-handle,
-.graph-card-widget.pip-stealth-locked .problem-card-body:hover .problem-card-resize-handle,
+.graph-card-widget.pip-stealth-locked .problem-card-body:hover ~ .problem-card-resize-handle,
 body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-resize-handle,
-body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-body:hover .problem-card-resize-handle {
+body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-body:hover ~ .problem-card-resize-handle {
   opacity: 0 !important;
   background: transparent !important;
   pointer-events: auto !important;
   cursor: nwse-resize !important;
+}
+
+.problem-card-widget.pip-stealth-locked .problem-card-resize-handle::after,
+.graph-card-widget.pip-stealth-locked .problem-card-resize-handle::after {
+  opacity: 0 !important;
 }
 
 /* 🌟 [창모드(PiP) 카드 상단 헤더 3-캡슐 구조: [대칭 ▾] · [|f|] · [🗑] + 우측 [📍수선]] 🌟 */
@@ -8671,7 +8701,7 @@ body.ink-laser-tool-active .problem-card-widget:not(.minimized) .problem-card-bo
 }
 
 .problem-card-widget .problem-card-resize-handle {
-  z-index: 15 !important;
+  z-index: 25 !important;
 }
 
 /* 🛡️ [가상 펜/지우개 커서가 카드(150~190)나 하단 필기 툴바(450) 뒤로 숨지 않도록 z-index 상향 & 클릭 간섭 0% 보장] */

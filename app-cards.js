@@ -1185,8 +1185,8 @@
       </div>
       <div class="problem-card-body">
         <img class="problem-card-img" src="${dataUrl}" alt="${titleText}" draggable="false" />
-        <div class="problem-card-resize-handle"></div>
       </div>
+      <div class="problem-card-resize-handle"></div>
     `;
       const stageParent = (this.canvas && this.canvas.parentElement) || document.body;
       stageParent.appendChild(el);
@@ -1366,66 +1366,153 @@
       window.addEventListener('pointerup', stopDrag);
       window.addEventListener('pointercancel', stopDrag);
 
-      // 2. 우하단 리사이즈 핸들 드래그
+      // 2. 우하단 리사이즈 핸들 드래그 (iPad 120Hz VSync 병합 & 팜리젝션 pointerId 격리)
       const rHandle = el.querySelector('.problem-card-resize-handle');
       if (rHandle) {
         let isResizing = false, resizeMoved = false, rStartX = 0, rStartY = 0, rStartW = cardW;
-        rHandle.addEventListener('pointerdown', (e) => {
-          this.bringCardToFront(el);
-          e.preventDefault();
-          e.stopPropagation();
-          isResizing = true;
-          resizeMoved = false;
-          rStartX = e.clientX;
-          rStartY = e.clientY;
-          if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
-            this.clearProblemCardStealthTimer(el);
-          }
-          rStartW = parseFloat(el.style.width) || el.offsetWidth || el.getBoundingClientRect().width;
-        });
-        window.addEventListener('pointermove', (e) => {
-          if (!isResizing || el.isConnected === false) return;
-          if (!resizeMoved && Math.hypot(e.clientX - rStartX, e.clientY - rStartY) > 3) {
-            resizeMoved = true;
-          }
-          this._isDraggingOrResizingAnyCard = true;
+        let lastAppliedW = Math.round(cardW);
+        let activeResizePointerId = null;
+        let activeResizePointerType = null;
+        let resizeRafId = null;
+        let pendingResizeEv = null;
+
+        const applyExtraProbResizeStep = (ev) => {
+          if (!isResizing || !ev || el.isConnected === false) return;
           const curUS = (this.isGraphCovered && this.pdfPageBoardData && typeof this.getCurrentMathUnitScale === 'function')
             ? this.getCurrentMathUnitScale()
             : 0;
           const scaleRatio = (curUS > 0 && el._pdfAnchor && el._pdfAnchor.unitScale > 0)
             ? Math.max(0.2, Math.min(4.0, curUS / el._pdfAnchor.unitScale))
             : ((this.isGraphCovered && !this.pdfPageBoardData) ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0)) : 1.0);
-          const nextW = Math.max(240, Math.min(window.innerWidth * 0.85, rStartW + ((e.clientX - rStartX) / scaleRatio)));
+          const nextW = Math.round(Math.max(240, Math.min(window.innerWidth * 0.85, rStartW + ((ev.clientX - rStartX) / scaleRatio))));
+          if (nextW === lastAppliedW) return;
+          lastAppliedW = nextW;
           el.style.width = `${nextW}px`;
-          if (typeof el._renderCardInkCanvas === 'function') {
+          if (nextW >= 200) el._savedExpandedWidth = `${nextW}px`;
+          const extraCvs = el.querySelector('.problem-card-canvas');
+          const hasInk = Boolean(el._cardInkStrokes && el._cardInkStrokes.length > 0);
+          if (hasInk && typeof el._renderCardInkCanvas === 'function') {
+            if (extraCvs) extraCvs._needsSizeSync = true;
             el._renderCardInkCanvas();
+          } else if (extraCvs) {
+            extraCvs._needsSizeSync = true;
+          }
+          if (el._cardLaserState && el._cardLaserState.strokes && el._cardLaserState.strokes.length > 0 && typeof el._syncCardLaserSize === 'function') {
+            el._syncCardLaserSize();
           }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(false);
           }
+        };
+
+        el._cancelCardResize = (reason) => {
+          if (!isResizing) return;
+          if (reason === 'pen_or_pinch' && activeResizePointerType === 'pen') return;
+          if (resizeRafId) {
+            cancelAnimationFrame(resizeRafId);
+            resizeRafId = null;
+          }
+          pendingResizeEv = null;
+          isResizing = false;
+          resizeMoved = false;
+          activeResizePointerId = null;
+          activeResizePointerType = null;
+          this._isDraggingOrResizingAnyCard = false;
+          el.style.width = `${Math.round(rStartW)}px`;
+          const extraCvs = el.querySelector('.problem-card-canvas');
+          if (extraCvs) extraCvs._needsSizeSync = true;
+          if (el._cardInkStrokes && el._cardInkStrokes.length > 0 && typeof el._renderCardInkCanvas === 'function') {
+            el._renderCardInkCanvas();
+          }
+          if (typeof el._syncCardLaserSize === 'function') el._syncCardLaserSize();
+        };
+
+        rHandle.addEventListener('pointerdown', (e) => {
+          if (e.pointerType === 'touch' && (
+            this.isDrawingInk ||
+            this._isDrawingCardInk ||
+            (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450))
+          )) {
+            if (e.cancelable !== false) e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          if (e.pointerType === 'pen') {
+            this._markStylusPenDetected();
+            this._lastPenActiveTime = Date.now();
+          }
+          this.bringCardToFront(el);
+          e.preventDefault();
+          e.stopPropagation();
+          try { rHandle.setPointerCapture(e.pointerId); } catch (_) { }
+          isResizing = true;
+          resizeMoved = false;
+          activeResizePointerId = (e.pointerId !== undefined) ? e.pointerId : null;
+          activeResizePointerType = e.pointerType || 'mouse';
+          rStartX = e.clientX;
+          rStartY = e.clientY;
+          if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
+            this.clearProblemCardStealthTimer(el);
+          }
+          rStartW = parseFloat(el.style.width) || el.offsetWidth || el.getBoundingClientRect().width;
+          lastAppliedW = Math.round(rStartW);
+          if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
         });
-        const stopResize = () => {
-          if (isResizing) {
-            const wasResizeMoved = resizeMoved;
-            isResizing = false;
-            resizeMoved = false;
-            this._isDraggingOrResizingAnyCard = false;
-            if (typeof el._renderCardInkCanvas === 'function') {
-              el._renderCardInkCanvas();
+        window.addEventListener('pointermove', (e) => {
+          if (!isResizing || el.isConnected === false) return;
+          if (activeResizePointerId !== null && e.pointerId !== undefined && e.pointerId !== activeResizePointerId) return;
+          if (e.pointerType === 'pen') {
+            this._lastPenActiveTime = Date.now();
+          }
+          if (!resizeMoved && Math.hypot(e.clientX - rStartX, e.clientY - rStartY) > 3) {
+            resizeMoved = true;
+          }
+          this._isDraggingOrResizingAnyCard = true;
+          pendingResizeEv = { clientX: e.clientX, clientY: e.clientY };
+          if (!resizeRafId) {
+            resizeRafId = requestAnimationFrame(() => {
+              resizeRafId = null;
+              const ev = pendingResizeEv;
+              pendingResizeEv = null;
+              if (ev) applyExtraProbResizeStep(ev);
+            });
+          }
+        });
+        const stopResize = (e) => {
+          if (!isResizing) return;
+          if (e && activeResizePointerId !== null && e.pointerId !== undefined && e.pointerId !== activeResizePointerId) return;
+          if (resizeRafId) {
+            cancelAnimationFrame(resizeRafId);
+            resizeRafId = null;
+          }
+          if (pendingResizeEv) {
+            const ev = pendingResizeEv;
+            pendingResizeEv = null;
+            applyExtraProbResizeStep(ev);
+          }
+          const wasResizeMoved = resizeMoved;
+          isResizing = false;
+          resizeMoved = false;
+          activeResizePointerId = null;
+          activeResizePointerType = null;
+          this._isDraggingOrResizingAnyCard = false;
+          const extraCvs = el.querySelector('.problem-card-canvas');
+          if (extraCvs) extraCvs._needsSizeSync = true;
+          if (typeof el._renderCardInkCanvas === 'function' && el._cardInkStrokes && el._cardInkStrokes.length > 0) {
+            el._renderCardInkCanvas();
+          }
+          if (typeof el._syncCardLaserSize === 'function') {
+            el._syncCardLaserSize();
+          }
+          if (el.classList.contains('pip-locked-mode')) {
+            if (!wasResizeMoved && el.classList.contains('pip-stealth-locked')) {
+              this.wakeUpProblemCardStealth(el, true);
+            } else if (!el.classList.contains('pip-stealth-locked')) {
+              this.scheduleProblemCardStealth(el, 3000);
             }
-            if (typeof el._syncCardLaserSize === 'function') {
-              el._syncCardLaserSize();
-            }
-            if (el.classList.contains('pip-locked-mode')) {
-              if (!wasResizeMoved && el.classList.contains('pip-stealth-locked')) {
-                this.wakeUpProblemCardStealth(el, true);
-              } else if (!el.classList.contains('pip-stealth-locked')) {
-                this.scheduleProblemCardStealth(el, 3000);
-              }
-            }
-            if (this.isAudioRecording) {
-              this._recordAudioWorkspaceStateIfNeeded(true);
-            }
+          }
+          if (this.isAudioRecording) {
+            this._recordAudioWorkspaceStateIfNeeded(true);
           }
         };
         window.addEventListener('pointerup', stopResize);
@@ -2054,67 +2141,164 @@
         window.addEventListener('pointercancel', stopDrag);
       }
 
-      // 2. 우하단 리사이즈 핸들 드래그 (문제 이미지와 문제 위 필기가 똑같은 비율로 함께 확대/축소!)
+      // 2. 우하단 리사이즈 핸들 드래그 (문제 이미지와 문제 위 필기가 똑같은 비율로 함께 확대/축소 — iPad 120Hz VSync 병합 & pointerId 격리!)
       if (resizeHandle) {
         let isResizing = false;
         let resizeMoved = false;
         let startX = 0;
         let startY = 0;
         let startW = 0;
+        let lastAppliedW = 0;
+        let activeResizePointerId = null;
+        let activeResizePointerType = null;
+        let resizeRafId = null;
+        let pendingResizeEv = null;
 
-        resizeHandle.addEventListener('pointerdown', (e) => {
-          if (widget) this.bringCardToFront(widget);
-          e.preventDefault();
-          e.stopPropagation();
-          isResizing = true;
-          resizeMoved = false;
-          startX = e.clientX;
-          startY = e.clientY;
-          if (widget && widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
-            this.clearProblemCardStealthTimer(widget);
-          }
-          startW = parseFloat(widget.style.width) || widget.offsetWidth || widget.getBoundingClientRect().width;
-          if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
-        });
-
-        window.addEventListener('pointermove', (e) => {
-          if (!isResizing) return;
-          if (!resizeMoved && Math.hypot(e.clientX - startX, e.clientY - startY) > 3) {
-            resizeMoved = true;
-          }
-          this._isDraggingOrResizingAnyCard = true;
+        const applyPrimaryProbResizeStep = (ev) => {
+          if (!isResizing || !ev || !widget) return;
           const curUS = (this.isGraphCovered && this.pdfPageBoardData && typeof this.getCurrentMathUnitScale === 'function')
             ? this.getCurrentMathUnitScale()
             : 0;
           const scaleRatio = (curUS > 0 && widget._pdfAnchor && widget._pdfAnchor.unitScale > 0)
             ? Math.max(0.2, Math.min(4.0, curUS / widget._pdfAnchor.unitScale))
             : ((this.isGraphCovered && !this.pdfPageBoardData) ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0)) : 1.0);
-          const dw = (e.clientX - startX) / scaleRatio;
-          const newW = Math.max(280, Math.min(window.innerWidth * 0.85, startW + dw));
+          const dw = (ev.clientX - startX) / scaleRatio;
+          const newW = Math.round(Math.max(280, Math.min(window.innerWidth * 0.85, startW + dw)));
+          if (newW === lastAppliedW) return;
+          lastAppliedW = newW;
+          const newH = Math.round(newW * (this.problemCardAspect || 0.72));
           widget.style.width = `${newW}px`;
-          this.syncProblemCardRectFromWidget();
+          if (newW >= 180) widget._savedExpandedWidth = `${newW}px`;
+          const bodyEl = document.getElementById('problemCardBody');
+          if (bodyEl && !widget.classList.contains('minimized')) {
+            bodyEl.style.height = `${newH}px`;
+          }
+          if (this.problemCardRect) {
+            this.problemCardRect.w = newW;
+            this.problemCardRect.h = newH;
+          }
+          const hasProbInk = Boolean(this.problemInkStrokes && this.problemInkStrokes.length > 0);
+          if (hasProbInk) {
+            const pCanvas = document.getElementById('problemCardCanvas');
+            if (pCanvas && !widget.classList.contains('minimized')) {
+              const dpr = this.getCanvasDpr();
+              const tw = Math.round(newW * dpr);
+              const th = Math.round(newH * dpr);
+              if (pCanvas.width !== tw || pCanvas.height !== th) {
+                pCanvas.width = tw;
+                pCanvas.height = th;
+              }
+              this.renderProblemCardCanvas();
+            }
+          }
+          if (widget._cardLaserState && widget._cardLaserState.strokes && widget._cardLaserState.strokes.length > 0 && typeof widget._syncCardLaserSize === 'function') {
+            widget._syncCardLaserSize();
+          }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(false);
           }
-        });
+        };
 
-        const stopResize = () => {
-          if (isResizing) {
-            const wasResizeMoved = resizeMoved;
+        if (widget) {
+          widget._cancelCardResize = (reason) => {
+            if (!isResizing) return;
+            if (reason === 'pen_or_pinch' && activeResizePointerType === 'pen') return;
+            if (resizeRafId) {
+              cancelAnimationFrame(resizeRafId);
+              resizeRafId = null;
+            }
+            pendingResizeEv = null;
             isResizing = false;
             resizeMoved = false;
+            activeResizePointerId = null;
+            activeResizePointerType = null;
             this._isDraggingOrResizingAnyCard = false;
+            widget.style.width = `${Math.round(startW)}px`;
             this.syncProblemCardRectFromWidget();
-            if (widget && widget.classList.contains('pip-locked-mode')) {
-              if (!wasResizeMoved && widget.classList.contains('pip-stealth-locked')) {
-                this.wakeUpProblemCardStealth(widget, true);
-              } else if (!widget.classList.contains('pip-stealth-locked')) {
-                this.scheduleProblemCardStealth(widget, 3000);
-              }
+          };
+        }
+
+        resizeHandle.addEventListener('pointerdown', (e) => {
+          if (e.pointerType === 'touch' && (
+            this.isDrawingInk ||
+            this._isDrawingCardInk ||
+            (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450))
+          )) {
+            if (e.cancelable !== false) e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          if (e.pointerType === 'pen') {
+            this._markStylusPenDetected();
+            this._lastPenActiveTime = Date.now();
+          }
+          if (widget) this.bringCardToFront(widget);
+          e.preventDefault();
+          e.stopPropagation();
+          try { resizeHandle.setPointerCapture(e.pointerId); } catch (_) { }
+          isResizing = true;
+          resizeMoved = false;
+          activeResizePointerId = (e.pointerId !== undefined) ? e.pointerId : null;
+          activeResizePointerType = e.pointerType || 'mouse';
+          startX = e.clientX;
+          startY = e.clientY;
+          if (widget && widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
+            this.clearProblemCardStealthTimer(widget);
+          }
+          startW = parseFloat(widget.style.width) || widget.offsetWidth || widget.getBoundingClientRect().width;
+          lastAppliedW = Math.round(startW);
+          if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+        });
+
+        window.addEventListener('pointermove', (e) => {
+          if (!isResizing) return;
+          if (activeResizePointerId !== null && e.pointerId !== undefined && e.pointerId !== activeResizePointerId) return;
+          if (e.pointerType === 'pen') {
+            this._lastPenActiveTime = Date.now();
+          }
+          if (!resizeMoved && Math.hypot(e.clientX - startX, e.clientY - startY) > 3) {
+            resizeMoved = true;
+          }
+          this._isDraggingOrResizingAnyCard = true;
+          pendingResizeEv = { clientX: e.clientX, clientY: e.clientY };
+          if (!resizeRafId) {
+            resizeRafId = requestAnimationFrame(() => {
+              resizeRafId = null;
+              const ev = pendingResizeEv;
+              pendingResizeEv = null;
+              if (ev) applyPrimaryProbResizeStep(ev);
+            });
+          }
+        });
+
+        const stopResize = (e) => {
+          if (!isResizing) return;
+          if (e && activeResizePointerId !== null && e.pointerId !== undefined && e.pointerId !== activeResizePointerId) return;
+          if (resizeRafId) {
+            cancelAnimationFrame(resizeRafId);
+            resizeRafId = null;
+          }
+          if (pendingResizeEv) {
+            const ev = pendingResizeEv;
+            pendingResizeEv = null;
+            applyPrimaryProbResizeStep(ev);
+          }
+          const wasResizeMoved = resizeMoved;
+          isResizing = false;
+          resizeMoved = false;
+          activeResizePointerId = null;
+          activeResizePointerType = null;
+          this._isDraggingOrResizingAnyCard = false;
+          this.syncProblemCardRectFromWidget();
+          if (widget && widget.classList.contains('pip-locked-mode')) {
+            if (!wasResizeMoved && widget.classList.contains('pip-stealth-locked')) {
+              this.wakeUpProblemCardStealth(widget, true);
+            } else if (!widget.classList.contains('pip-stealth-locked')) {
+              this.scheduleProblemCardStealth(widget, 3000);
             }
-            if (this.isAudioRecording) {
-              this._recordAudioWorkspaceStateIfNeeded(true);
-            }
+          }
+          if (this.isAudioRecording) {
+            this._recordAudioWorkspaceStateIfNeeded(true);
           }
         };
         window.addEventListener('pointerup', stopResize);
@@ -2337,6 +2521,10 @@
       if (headerEl) {
         headerEl.addEventListener('pointerdown', activateCardHeaderPeek, { passive: true });
       }
+      const resizeHandlePeekEl = cardWidgetEl.querySelector('.problem-card-resize-handle');
+      if (resizeHandlePeekEl) {
+        resizeHandlePeekEl.addEventListener('pointerdown', activateCardHeaderPeek, { passive: true });
+      }
       if (!this._cardHeaderPeekGlobalDismissBound) {
         this._cardHeaderPeekGlobalDismissBound = true;
         document.addEventListener('pointerdown', (ev) => {
@@ -2510,7 +2698,9 @@
 
         const renderExtraCardInk = (activeStroke = null, commitStroke = false) => {
           const dpr = this.getCanvasDpr();
-          if (!cardWidgetEl.classList.contains('minimized') && (!activeStroke || extraInkCanvas._needsSizeSync || !extraInkCanvas.width || !extraInkCanvas.height)) {
+          if (extraInkCanvas._skipLayoutMeasureOnce) {
+            extraInkCanvas._skipLayoutMeasureOnce = false;
+          } else if (!cardWidgetEl.classList.contains('minimized') && (!activeStroke || extraInkCanvas._needsSizeSync || !extraInkCanvas.width || !extraInkCanvas.height)) {
             const rect = typeof this._getStageElementRect === 'function'
               ? this._getStageElementRect(bodyEl)
               : bodyEl.getBoundingClientRect();
@@ -4828,8 +5018,8 @@
       </div>
       <div class="problem-card-body" style="height:${bodyH}px;">
         <img class="problem-card-img" src="${dataUrl}" alt="그래프 보관 ${caseIdx}" draggable="false" />
-        <div class="problem-card-resize-handle"></div>
       </div>
+      <div class="problem-card-resize-handle"></div>
     `;
       const stageGraphParent = (this.canvas && this.canvas.parentElement) || document.body;
       stageGraphParent.appendChild(el);
@@ -5010,18 +5200,57 @@
       window.addEventListener('pointerup', stopDrag);
       window.addEventListener('pointercancel', stopDrag);
 
-      // 우하단 리사이즈 (잠금 전: 그래프 크기 고정 + 현재 센터 기준 시야 자유 확장 / 잠금 후: 비율 고정 전체 확대·축소)
+      // 우하단 리사이즈 (잠금 전: 그래프 크기 고정 + 현재 센터 기준 시야 자유 확장 / 잠금 후: 비율 고정 전체 확대·축소 — iPad 120Hz VSync 병합 & pointerId 격리)
       const rHandle = el.querySelector('.problem-card-resize-handle');
       if (rHandle) {
         let isResizing = false;
         let resizeMoved = false;
         let resizeStartState = null;
+        let activeResizePointerId = null;
+        let activeResizePointerType = null;
+        let resizeRafId = null;
+        let pendingResizeEv = null;
+
+        el._cancelCardResize = (reason) => {
+          if (!isResizing) return;
+          if (reason === 'pen_or_pinch' && activeResizePointerType === 'pen') return;
+          if (resizeRafId) {
+            cancelAnimationFrame(resizeRafId);
+            resizeRafId = null;
+          }
+          pendingResizeEv = null;
+          const prevStart = resizeStartState;
+          isResizing = false;
+          resizeMoved = false;
+          resizeStartState = null;
+          activeResizePointerId = null;
+          activeResizePointerType = null;
+          this._isDraggingOrResizingAnyCard = false;
+          this.finalizePipCardResize(cardItem, prevStart, true);
+        };
+
         rHandle.addEventListener('pointerdown', (e) => {
+          if (e.pointerType === 'touch' && (
+            this.isDrawingInk ||
+            this._isDrawingCardInk ||
+            (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450))
+          )) {
+            if (e.cancelable !== false) e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          if (e.pointerType === 'pen') {
+            this._markStylusPenDetected();
+            this._lastPenActiveTime = Date.now();
+          }
           this.bringCardToFront(el);
           e.preventDefault();
           e.stopPropagation();
+          try { rHandle.setPointerCapture(e.pointerId); } catch (_) { }
           isResizing = true;
           resizeMoved = false;
+          activeResizePointerId = (e.pointerId !== undefined) ? e.pointerId : null;
+          activeResizePointerType = e.pointerType || 'mouse';
           if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
             this.clearPipGraphCardStealthTimer(cardItem);
           }
@@ -5029,33 +5258,59 @@
         });
         window.addEventListener('pointermove', (e) => {
           if (!isResizing || !resizeStartState || el.isConnected === false) return;
+          if (activeResizePointerId !== null && e.pointerId !== undefined && e.pointerId !== activeResizePointerId) return;
+          if (e.pointerType === 'pen') {
+            this._lastPenActiveTime = Date.now();
+          }
           if (!resizeMoved && Math.hypot(e.clientX - resizeStartState.startX, e.clientY - resizeStartState.startY) > 3) {
             resizeMoved = true;
           }
           this._isDraggingOrResizingAnyCard = true;
-          this.applyPipCardResizeStep(cardItem, e, resizeStartState);
-          if (this.isAudioRecording) {
-            this._recordAudioWorkspaceStateIfNeeded(false);
+          pendingResizeEv = { clientX: e.clientX, clientY: e.clientY };
+          if (!resizeRafId) {
+            resizeRafId = requestAnimationFrame(() => {
+              resizeRafId = null;
+              const ev = pendingResizeEv;
+              pendingResizeEv = null;
+              if (!isResizing || !resizeStartState || !ev || el.isConnected === false) return;
+              this.applyPipCardResizeStep(cardItem, ev, resizeStartState);
+              if (this.isAudioRecording) {
+                this._recordAudioWorkspaceStateIfNeeded(false);
+              }
+            });
           }
         });
-        const stopResize = () => {
-          if (isResizing) {
-            const wasResizeMoved = resizeMoved;
-            isResizing = false;
-            resizeMoved = false;
-            resizeStartState = null;
-            this._isDraggingOrResizingAnyCard = false;
-            this.scheduleBakePipGraphCardToImg(cardItem);
-            if (el.classList.contains('pip-locked-mode')) {
-              if (!wasResizeMoved && el.classList.contains('pip-stealth-locked')) {
-                this.wakeUpPipGraphCardStealth(cardItem, true);
-              } else if (!el.classList.contains('pip-stealth-locked')) {
-                this.schedulePipGraphCardStealth(cardItem, 3000);
-              }
+        const stopResize = (e) => {
+          if (!isResizing) return;
+          if (e && activeResizePointerId !== null && e.pointerId !== undefined && e.pointerId !== activeResizePointerId) return;
+          if (resizeRafId) {
+            cancelAnimationFrame(resizeRafId);
+            resizeRafId = null;
+          }
+          if (pendingResizeEv && resizeStartState) {
+            const ev = pendingResizeEv;
+            pendingResizeEv = null;
+            this.applyPipCardResizeStep(cardItem, ev, resizeStartState);
+          }
+          const wasResizeMoved = resizeMoved;
+          const finishedStart = resizeStartState;
+          isResizing = false;
+          resizeMoved = false;
+          resizeStartState = null;
+          activeResizePointerId = null;
+          activeResizePointerType = null;
+          this._isDraggingOrResizingAnyCard = false;
+          this.finalizePipCardResize(cardItem, finishedStart, false);
+          this.scheduleBakePipGraphCardToImg(cardItem);
+          if (el.classList.contains('pip-locked-mode')) {
+            if (!wasResizeMoved && el.classList.contains('pip-stealth-locked')) {
+              this.wakeUpPipGraphCardStealth(cardItem, true);
+            } else if (!el.classList.contains('pip-stealth-locked')) {
+              this.schedulePipGraphCardStealth(cardItem, 3000);
             }
-            if (this.isAudioRecording) {
-              this._recordAudioWorkspaceStateIfNeeded(true);
-            }
+          }
+          if (this.isAudioRecording) {
+            this._recordAudioWorkspaceStateIfNeeded(true);
           }
         };
         window.addEventListener('pointerup', stopResize);
@@ -5906,13 +6161,53 @@
         let isResizing = false;
         let resizeMoved = false;
         let resizeStartState = null;
+        let activeResizePointerId = null;
+        let activeResizePointerType = null;
+        let resizeRafId = null;
+        let pendingResizeEv = null;
+
+        if (widget) {
+          widget._cancelCardResize = (reason) => {
+            if (!isResizing) return;
+            if (reason === 'pen_or_pinch' && activeResizePointerType === 'pen') return;
+            if (resizeRafId) {
+              cancelAnimationFrame(resizeRafId);
+              resizeRafId = null;
+            }
+            pendingResizeEv = null;
+            const prevStart = resizeStartState;
+            isResizing = false;
+            resizeMoved = false;
+            resizeStartState = null;
+            activeResizePointerId = null;
+            activeResizePointerType = null;
+            this._isDraggingOrResizingAnyCard = false;
+            this.finalizePipCardResize('primary', prevStart, true);
+          };
+        }
 
         resizeHandle.addEventListener('pointerdown', (e) => {
+          if (e.pointerType === 'touch' && (
+            this.isDrawingInk ||
+            this._isDrawingCardInk ||
+            (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450))
+          )) {
+            if (e.cancelable !== false) e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          if (e.pointerType === 'pen') {
+            this._markStylusPenDetected();
+            this._lastPenActiveTime = Date.now();
+          }
           if (widget) this.bringCardToFront(widget);
           e.preventDefault();
           e.stopPropagation();
+          try { resizeHandle.setPointerCapture(e.pointerId); } catch (_) { }
           isResizing = true;
           resizeMoved = false;
+          activeResizePointerId = (e.pointerId !== undefined) ? e.pointerId : null;
+          activeResizePointerType = e.pointerType || 'mouse';
           if (widget && widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
             this.clearPipGraphCardStealthTimer('primary');
           }
@@ -5921,35 +6216,60 @@
 
         window.addEventListener('pointermove', (e) => {
           if (!isResizing || !resizeStartState) return;
+          if (activeResizePointerId !== null && e.pointerId !== undefined && e.pointerId !== activeResizePointerId) return;
+          if (e.pointerType === 'pen') {
+            this._lastPenActiveTime = Date.now();
+          }
           if (!resizeMoved && Math.hypot(e.clientX - resizeStartState.startX, e.clientY - resizeStartState.startY) > 3) {
             resizeMoved = true;
           }
           this._isDraggingOrResizingAnyCard = true;
-          this.applyPipCardResizeStep('primary', e, resizeStartState);
-          if (this.isAudioRecording) {
-            this._recordAudioWorkspaceStateIfNeeded(false);
+          pendingResizeEv = { clientX: e.clientX, clientY: e.clientY };
+          if (!resizeRafId) {
+            resizeRafId = requestAnimationFrame(() => {
+              resizeRafId = null;
+              const ev = pendingResizeEv;
+              pendingResizeEv = null;
+              if (!isResizing || !resizeStartState || !ev) return;
+              this.applyPipCardResizeStep('primary', ev, resizeStartState);
+              if (this.isAudioRecording) {
+                this._recordAudioWorkspaceStateIfNeeded(false);
+              }
+            });
           }
         });
 
-        const stopResize = () => {
-          if (isResizing) {
-            const wasResizeMoved = resizeMoved;
-            isResizing = false;
-            resizeMoved = false;
-            resizeStartState = null;
-            this._isDraggingOrResizingAnyCard = false;
-            this.syncGraphCardRectFromWidget(true);
-            this.scheduleBakePipGraphCardToImg('primary');
-            if (widget && widget.classList.contains('pip-locked-mode')) {
-              if (!wasResizeMoved && widget.classList.contains('pip-stealth-locked')) {
-                this.wakeUpPipGraphCardStealth('primary', true);
-              } else if (!widget.classList.contains('pip-stealth-locked')) {
-                this.schedulePipGraphCardStealth('primary', 3000);
-              }
+        const stopResize = (e) => {
+          if (!isResizing) return;
+          if (e && activeResizePointerId !== null && e.pointerId !== undefined && e.pointerId !== activeResizePointerId) return;
+          if (resizeRafId) {
+            cancelAnimationFrame(resizeRafId);
+            resizeRafId = null;
+          }
+          if (pendingResizeEv && resizeStartState) {
+            const ev = pendingResizeEv;
+            pendingResizeEv = null;
+            this.applyPipCardResizeStep('primary', ev, resizeStartState);
+          }
+          const wasResizeMoved = resizeMoved;
+          const finishedStart = resizeStartState;
+          isResizing = false;
+          resizeMoved = false;
+          resizeStartState = null;
+          activeResizePointerId = null;
+          activeResizePointerType = null;
+          this._isDraggingOrResizingAnyCard = false;
+          this.finalizePipCardResize('primary', finishedStart, false);
+          this.scheduleBakePipGraphCardToImg('primary');
+          if (widget && widget.classList.contains('pip-locked-mode')) {
+            if (!wasResizeMoved && widget.classList.contains('pip-stealth-locked')) {
+              this.wakeUpPipGraphCardStealth('primary', true);
+            } else if (!widget.classList.contains('pip-stealth-locked')) {
+              this.schedulePipGraphCardStealth('primary', 3000);
             }
-            if (this.isAudioRecording) {
-              this._recordAudioWorkspaceStateIfNeeded(true);
-            }
+          }
+          if (this.isAudioRecording) {
+            this._recordAudioWorkspaceStateIfNeeded(true);
           }
         };
         window.addEventListener('pointerup', stopResize);
@@ -6218,6 +6538,7 @@
         draggedHandleIdx: this.draggedHandleIdx,
         isDraggingCurve: this.isDraggingCurve,
         isPanning: this.isPanning,
+        _isResizingPipCard: this._isResizingPipCard,
         zoomLevel: this.zoomLevel,
         panX: this.panX,
         panY: this.panY,
@@ -6267,6 +6588,7 @@
         this.draggedHandleIdx = (typeof snapObj.draggedHandleIdx === 'number') ? snapObj.draggedHandleIdx : null;
         this.isDraggingCurve = Boolean(snapObj._isDraggingCurve);
         this.isPanning = Boolean(snapObj._isPanningAxes);
+        this._isResizingPipCard = Boolean(snapObj._isResizingPipCard);
         this.axisSnapActiveX = Boolean(snapObj.axisSnapActiveX);
         this.axisSnapActiveY = Boolean(snapObj.axisSnapActiveY);
         this.symmetrySnapActive = Boolean(snapObj.symmetrySnapActive);
@@ -7421,12 +7743,27 @@
       if (snap) {
         snap._pipCardW = Math.round(startW);
         snap._pipCardH = Math.round(startH);
+        try {
+          Object.defineProperty(snap, '_isResizingPipCard', {
+            value: true,
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) {
+          snap._isResizingPipCard = true;
+        }
+      }
+      if (this.virtualStylusEl) {
+        this.virtualStylusEl.style.display = 'none';
       }
       return {
         startX: e.clientX,
         startY: e.clientY,
         startW,
         startH,
+        lastAppliedW: Math.round(startW),
+        lastAppliedH: Math.round(startH),
         startAspect: startH / Math.max(1, startW),
         isLocked: Boolean(snap && snap.isPipLocked),
         startXSpan: snap ? (snap.xSpan || 6.2) : 6.2,
@@ -7440,7 +7777,6 @@
       const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
       if (!widget || !startState) return;
       const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
-      const gCanvas = isPrimary ? document.getElementById('graphCardCanvas') : (bodyEl ? bodyEl.querySelector('.extra-graph-ink-canvas') : null);
       const snap = this._getMutablePipCardSnapshot(cardRef);
 
       const curUS = (this.isGraphCovered && this.pdfPageBoardData && typeof this.getCurrentMathUnitScale === 'function')
@@ -7454,70 +7790,150 @@
       const dh = (e.clientY - startState.startY) / scaleRatio;
       const isLocked = Boolean(snap && snap.isPipLocked);
 
+      let newW;
+      let newH;
+      let nextAspect;
+
       if (isLocked) {
         // 🔒 잠금 후: 가로세로 비율을 고정한 채로 그래프와 카드 전체를 비례 확대/축소
         const lockedAspect = startState.startAspect || (isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82));
-        const newW = Math.round(Math.max(200, Math.min(window.innerWidth * 0.85, startState.startW + dw)));
-        const newH = Math.round(Math.max(140, newW * lockedAspect));
-
-        widget.style.width = `${newW}px`;
-        if (bodyEl) bodyEl.style.height = `${newH}px`;
-        if (isPrimary) {
-          this.graphCardAspect = lockedAspect;
-          this.syncGraphCardRectFromWidget();
-        } else {
-          cardRef.aspect = lockedAspect;
-          if (typeof widget._renderCardInkCanvas === 'function') {
-            widget._renderCardInkCanvas();
-          } else if (gCanvas) {
-            const dpr = this.getCanvasDpr();
-            gCanvas.width = Math.round(newW * dpr);
-            gCanvas.height = Math.round(newH * dpr);
-            if (typeof cardRef._renderExtraCardInk === 'function') cardRef._renderExtraCardInk();
-          }
-          if (typeof widget._syncCardLaserSize === 'function') widget._syncCardLaserSize();
-          this.requestPipGraphCardRender(cardRef);
-        }
+        newW = Math.round(Math.max(200, Math.min(window.innerWidth * 0.85, startState.startW + dw)));
+        newH = Math.round(Math.max(140, newW * lockedAspect));
+        nextAspect = lockedAspect;
       } else {
         // 🔓 잠금 전: 그래프 실제 크기(unitScale)는 100% 고정한 채로 현재 카드 센터 기준 화면 영역(시야)만 자유 확장/축소 (와이드 뷰 지원)
-        const newW = Math.round(Math.max(200, Math.min(window.innerWidth * 0.88, startState.startW + dw)));
-        const newH = Math.round(Math.max(140, Math.min(window.innerHeight * 0.82, startState.startH + dh)));
-        const newAspect = newH / Math.max(1, newW);
+        newW = Math.round(Math.max(200, Math.min(window.innerWidth * 0.88, startState.startW + dw)));
+        newH = Math.round(Math.max(140, Math.min(window.innerHeight * 0.82, startState.startH + dh)));
+        nextAspect = newH / Math.max(1, newW);
+      }
 
-        if (snap) {
-          snap.xSpan = startState.startXSpan * (newW / Math.max(1, startState.startW));
-          snap.ySpan = startState.startYSpan * (newH / Math.max(1, startState.startH));
+      if (startState.lastAppliedW === newW && startState.lastAppliedH === newH) {
+        return;
+      }
+      startState.lastAppliedW = newW;
+      startState.lastAppliedH = newH;
+
+      if (!isLocked && snap) {
+        snap.xSpan = startState.startXSpan * (newW / Math.max(1, startState.startW));
+        snap.ySpan = startState.startYSpan * (newH / Math.max(1, startState.startH));
+        snap.panX = startState.startPanX;
+        snap.panY = startState.startPanY;
+        snap._pipCardW = newW;
+        snap._pipCardH = newH;
+      }
+
+      widget.style.width = `${newW}px`;
+      if (bodyEl) bodyEl.style.height = `${newH}px`;
+
+      if (isPrimary) {
+        this.graphCardAspect = nextAspect;
+        if (newW >= 140) widget._savedExpandedWidth = `${newW}px`;
+        if (this.graphCardRect) {
+          this.graphCardRect.w = newW;
+          this.graphCardRect.h = newH;
+        }
+      } else {
+        cardRef.aspect = nextAspect;
+        if (newW >= 180) widget._savedExpandedWidth = `${newW}px`;
+      }
+
+      // 🌟 [iPad 120Hz 리사이즈 패스트패스]:
+      // 1) 카드 위에 필기 획이 0개일 때는 빈 필기/레이저 <canvas> 백킹스토어(IOSurface) 재할당과 getBoundingClientRect() 리플로우를 100% 생략!
+      // 2) 필기 획이 있는 경우에만 수학 좌표 재투영 및 레이아웃 무측정(_skipLayoutMeasureOnce) 인플레이스 재렌더링 수행!
+      const strokes = this._getPipCardInkStrokesArray(cardRef);
+      const hasCardInk = Boolean(strokes && strokes.length > 0);
+      const inkCanvas = isPrimary
+        ? document.getElementById('graphCardCanvas')
+        : (bodyEl ? bodyEl.querySelector('.problem-card-canvas') : null);
+
+      if (hasCardInk) {
+        const dpr = this.getCanvasDpr();
+        const tw = Math.round(newW * dpr);
+        const th = Math.round(newH * dpr);
+        if (inkCanvas && (inkCanvas.width !== tw || inkCanvas.height !== th)) {
+          inkCanvas.width = tw;
+          inkCanvas.height = th;
+        }
+        if (inkCanvas && !isPrimary) {
+          inkCanvas._needsSizeSync = false;
+          inkCanvas._skipLayoutMeasureOnce = true;
+        }
+        if (!isLocked) {
+          // _reprojectPipCardInkFromMathCoords 내부에서 renderGraphCardCanvas / _renderCardInkCanvas 1회 자동 호출!
+          this._reprojectPipCardInkFromMathCoords(cardRef, newW, newH);
+        } else if (isPrimary) {
+          this.renderGraphCardCanvas();
+        } else if (typeof widget._renderCardInkCanvas === 'function') {
+          widget._renderCardInkCanvas();
+        }
+      } else if (inkCanvas && !isPrimary) {
+        inkCanvas._needsSizeSync = true;
+      }
+
+      if (widget._cardLaserState && widget._cardLaserState.strokes && widget._cardLaserState.strokes.length > 0 && typeof widget._syncCardLaserSize === 'function') {
+        widget._syncCardLaserSize();
+      }
+
+      if (widget._pipRenderRafId) {
+        cancelAnimationFrame(widget._pipRenderRafId);
+        widget._pipRenderRafId = null;
+      }
+      widget._lastPipRenderTs = performance.now();
+      this.renderPipGraphCard(cardRef);
+    }
+
+    finalizePipCardResize(cardRef, startState = null, revertToStart = false) {
+      const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
+      if (!widget) return;
+      const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
+      const snap = this._getMutablePipCardSnapshot(cardRef);
+
+      if (snap) {
+        snap._isResizingPipCard = false;
+        delete snap._isResizingPipCard;
+      }
+
+      if (revertToStart && startState) {
+        const revW = Math.round(startState.startW || 430);
+        const revH = Math.round(startState.startH || 353);
+        const revAspect = startState.startAspect || (revH / Math.max(1, revW));
+        widget.style.width = `${revW}px`;
+        if (bodyEl) bodyEl.style.height = `${revH}px`;
+        if (isPrimary) {
+          this.graphCardAspect = revAspect;
+        } else {
+          cardRef.aspect = revAspect;
+        }
+        if (snap && !startState.isLocked) {
+          snap.xSpan = startState.startXSpan;
+          snap.ySpan = startState.startYSpan;
           snap.panX = startState.startPanX;
           snap.panY = startState.startPanY;
-          snap._pipCardW = newW;
-          snap._pipCardH = newH;
+          snap._pipCardW = revW;
+          snap._pipCardH = revH;
+          this._reprojectPipCardInkFromMathCoords(cardRef, revW, revH);
         }
+      }
 
-        widget.style.width = `${newW}px`;
-        if (bodyEl) bodyEl.style.height = `${newH}px`;
+      if (widget._pipRenderRafId) {
+        cancelAnimationFrame(widget._pipRenderRafId);
+        widget._pipRenderRafId = null;
+      }
 
-        if (isPrimary) {
-          this.graphCardAspect = newAspect;
-        } else {
-          cardRef.aspect = newAspect;
+      if (isPrimary) {
+        // 손을 떼는 즉시 840스텝 초고밀도 곡선 + 네온 글로우 + 3D 핸들 섀도우 + 필기/레이저 캔버스 해상도 100% 동기화!
+        this.syncGraphCardRectFromWidget(false);
+      } else {
+        const extraInkCanvas = bodyEl ? bodyEl.querySelector('.problem-card-canvas') : null;
+        if (extraInkCanvas) extraInkCanvas._needsSizeSync = true;
+        const strokes = this._getPipCardInkStrokesArray(cardRef);
+        if (strokes && strokes.length > 0 && typeof widget._renderCardInkCanvas === 'function') {
+          widget._renderCardInkCanvas();
         }
-
-        this._reprojectPipCardInkFromMathCoords(cardRef, newW, newH);
-
-        if (isPrimary) {
-          this.syncGraphCardRectFromWidget();
-        } else {
-          if (typeof widget._renderCardInkCanvas === 'function') {
-            widget._renderCardInkCanvas();
-          } else if (gCanvas) {
-            const dpr = this.getCanvasDpr();
-            gCanvas.width = Math.round(newW * dpr);
-            gCanvas.height = Math.round(newH * dpr);
-            if (typeof cardRef._renderExtraCardInk === 'function') cardRef._renderExtraCardInk();
-          }
-          if (typeof widget._syncCardLaserSize === 'function') widget._syncCardLaserSize();
-          this.requestPipGraphCardRender(cardRef);
+        if (typeof widget._syncCardLaserSize === 'function') {
+          widget._syncCardLaserSize();
         }
+        this.renderPipGraphCard(cardRef);
       }
     }
 

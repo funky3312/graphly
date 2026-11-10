@@ -7851,7 +7851,7 @@
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    const isDragging = !!(this.isDraggingCurve || this.draggedHandleIdx !== null || this.isPanning || this.activePwDragIdx !== null || this.isResizingVf);
+    const isDragging = !!(this.isDraggingCurve || this.draggedHandleIdx !== null || this.isPanning || this._isResizingPipCard || this.activePwDragIdx !== null || this.isResizingVf);
 
     // 활성 곡선 선택 시 네온 글로우 발광 (드래그 중에는 저사양 PC 프레임 보존을 위해 블러 바이패스, 흑백 모드 시 블러 없음)
     if (!this.isMonochromeMode && isActive && this.isCurveSelected && !isExport && !isDragging) {
@@ -8731,7 +8731,7 @@
       const s = this.mathToScreen(h.x + ox, evalY);
       const isDragging = this.draggedHandleIdx === idx;
       const isPip = Boolean(this._isRenderingGraphSnapshot);
-      const isActivelyDraggingInPip = Boolean(isPip && (this.isDraggingCurve || this.draggedHandleIdx !== null || this.isPanning));
+      const isActivelyDraggingInPip = Boolean(isPip && (this.isDraggingCurve || this.draggedHandleIdx !== null || this.isPanning || this._isResizingPipCard));
       const radius = isPip ? (isDragging ? 5.6 : 4.4) : (isDragging ? 8.5 : 6.5);
 
       // 선택된 점 깜빡임 펄스 링 (키보드 방향키 미세조정 상태)

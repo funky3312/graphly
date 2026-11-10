@@ -710,16 +710,20 @@
       this._isDraggingOrResizingAnyCard = false;
       const pWidget = document.getElementById('problemCardWidget');
       if (pWidget && typeof pWidget._cancelCardDrag === 'function') pWidget._cancelCardDrag();
+      if (pWidget && typeof pWidget._cancelCardResize === 'function') pWidget._cancelCardResize('pen_or_pinch');
       const gWidget = document.getElementById('graphCardWidget');
       if (gWidget && typeof gWidget._cancelCardDrag === 'function') gWidget._cancelCardDrag();
+      if (gWidget && typeof gWidget._cancelCardResize === 'function') gWidget._cancelCardResize('pen_or_pinch');
       if (Array.isArray(this.extraProblemCards)) {
         this.extraProblemCards.forEach(c => {
           if (c && c.el && typeof c.el._cancelCardDrag === 'function') c.el._cancelCardDrag();
+          if (c && c.el && typeof c.el._cancelCardResize === 'function') c.el._cancelCardResize('pen_or_pinch');
         });
       }
       if (Array.isArray(this.extraGraphCards)) {
         this.extraGraphCards.forEach(c => {
           if (c && c.el && typeof c.el._cancelCardDrag === 'function') c.el._cancelCardDrag();
+          if (c && c.el && typeof c.el._cancelCardResize === 'function') c.el._cancelCardResize('pen_or_pinch');
         });
       }
     }
