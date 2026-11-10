@@ -7517,6 +7517,9 @@
     if (!slides.length) return;
 
     this.isStudentAudioVideoOnlyMode = true;
+    if (this.virtualStylusEl) {
+      this.virtualStylusEl.style.display = 'none';
+    }
     document.body.classList.add('student-audio-video-only');
     document.body.classList.remove('viewer-graph-touch-mode');
 
@@ -7916,6 +7919,9 @@
     if (!pkg || !Array.isArray(pkg.playlistSlides) || !pkg.playlistSlides.length) return;
     this._commitPendingViewerCarouselImmediately();
     this.exitStudentAudioVideoOnlyMode();
+    if (this.virtualStylusEl) {
+      this.virtualStylusEl.style.display = 'none';
+    }
     this._viewerPkg = pkg;
     this._mobileViewerFsAttempted = false;
     this._preloadSmartViewerSlides(pkg);
@@ -8289,6 +8295,9 @@
 
     this._isAudioSyncPlayerVisible = false;
     if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
+    if (this.virtualStylusEl) {
+      this.virtualStylusEl.style.display = 'none';
+    }
     document.body.classList.add('viewer-graph-touch-mode');
     if (this.pdfPageBoardData) {
       this._viewerTouchSavedPdfBoardData = this.pdfPageBoardData;

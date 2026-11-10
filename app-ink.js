@@ -798,6 +798,9 @@
 
   updateStylusPenPosition(x, y, e = null) {
     if (!this.virtualStylusEl) return;
+    if (this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive) {
+      return;
+    }
 
     // 🌟 [아이패드(iPadOS) 물리 펜슬 필기 시 가상 펜 DOM 오버레이 & 메뉴 히트테스트 100% 생략]:
     // 아이패드에서는 실제 펜촉이 화면 유리에 직접 닿으므로 펜촉 아래에서 매 프레임 DOM 스타일 11개와

@@ -539,6 +539,7 @@
     let _mCloud = null, _mShare = null, _mSmart = null, _mGuide = null, _mShortcut = null, _viewerEl = null;
     const isAnyModalOrOverlayBlockingCanvas = () => {
       if (this.isDraggingPillRemote) return true;
+      if (this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive) return true;
       if (this.isPdfModalOpen || this.isNAxisStudioOpen) return true;
       if (!_mCloud) _mCloud = document.getElementById('modalCloudHub');
       if (_mCloud && _mCloud.classList.contains('show')) return true;
@@ -3628,7 +3629,9 @@
         }
 
         if (this.isDraggingPillRemote || isAnyModalOrOverlayBlockingCanvas()) {
-          if (this.virtualStylusEl && !this.isAudioPlaying) this.virtualStylusEl.style.display = 'none';
+          if (this.virtualStylusEl && !this.isAudioPlaying && !this._isAudioReplayActive && !this.isStudentAudioVideoOnlyMode) {
+            this.virtualStylusEl.style.display = 'none';
+          }
           return;
         }
         if (!this.isPanning && !this.isBoardPanning && this._uiPointerIds && e.pointerId !== undefined && this._uiPointerIds.has(e.pointerId) && !this.isDrawingSticker && !this._tappingBoardSticker) {
