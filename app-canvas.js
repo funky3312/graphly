@@ -6690,13 +6690,15 @@
             w: textW + 8,
             h: fontSize + 4
           };
-          this.renderedDropLineLabels.push({
-            id: item.id,
-            which: 'x',
-            box,
-            screenPos: { x: Fx.x, y: labelYPos + fontSize / 2 },
-            currentText: item.labelX
-          });
+          if (!isExport && Array.isArray(this.renderedDropLineLabels)) {
+            this.renderedDropLineLabels.push({
+              id: item.id,
+              which: 'x',
+              box,
+              screenPos: { x: Fx.x, y: labelYPos + fontSize / 2 },
+              currentText: item.labelX
+            });
+          }
 
           // 편집 모드 호버 하이라이트
           if (!isExport && this.dropLineHoverLabel && this.dropLineHoverLabel.id === item.id && this.dropLineHoverLabel.which === 'x') {
@@ -6782,13 +6784,15 @@
             w: textW + 8,
             h: fontSize + 4
           };
-          this.renderedDropLineLabels.push({
-            id: item.id,
-            which: 'y',
-            box,
-            screenPos: { x: labelXPos - textW / 2, y: Fy.y },
-            currentText: item.labelY
-          });
+          if (!isExport && Array.isArray(this.renderedDropLineLabels)) {
+            this.renderedDropLineLabels.push({
+              id: item.id,
+              which: 'y',
+              box,
+              screenPos: { x: labelXPos - textW / 2, y: Fy.y },
+              currentText: item.labelY
+            });
+          }
 
           // 편집 모드 호버 하이라이트
           if (!isExport && this.dropLineHoverLabel && this.dropLineHoverLabel.id === item.id && this.dropLineHoverLabel.which === 'y') {

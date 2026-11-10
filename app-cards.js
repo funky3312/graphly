@@ -6094,8 +6094,81 @@
       }
     }
 
+    _rehydrateSnapGeneralExprFns(snapObj) {
+      if (!snapObj || !Array.isArray(snapObj.graphs)) return;
+      snapObj.graphs.forEach(g => {
+        if (g && g.type === 'general_expr' && Array.isArray(g.handles)) {
+          g.handles.forEach(h => {
+            if (h && typeof h.fn !== 'function' && h.rawExpr && typeof window !== 'undefined' && window.SafeMathCompiler) {
+              const comp = window.SafeMathCompiler.compile(h.rawExpr);
+              if (comp && comp.success) h.fn = comp.fn;
+            }
+          });
+        }
+      });
+    }
+
+    // 🌟 [그래프 카드 복제 / 새 카드로 추가 시 그래프 ID 재발급 & 보조 수선(dropLines) 바인딩 동기화]:
+    // 새 카드의 그래프마다 고유 ID(g_...)를 새로 발급할 때, 보조 수선의 binding(layerId, layerIds, candKey)도
+    // 새 그래프 ID로 정확히 매핑하여 updateDropLinesTracking()에서 삭제되지 않고 개형 변형 시 실시간 추적되도록 보장합니다.
+    _rebindClonedSnapshotGraphAndDropLineIds(snapObj) {
+      if (!snapObj || typeof snapObj !== 'object') return new Map();
+      const idMap = new Map();
+      const ts = Date.now();
+      if (Array.isArray(snapObj.graphs)) {
+        snapObj.graphs.forEach((g, idx) => {
+          if (!g) return;
+          const oldId = g.id ? String(g.id) : null;
+          const newId = 'g_' + ts + '_' + Math.random().toString(36).substr(2, 4) + idx.toString(36);
+          g.id = newId;
+          if (oldId) {
+            idMap.set(oldId, newId);
+          }
+        });
+      }
+      if (Array.isArray(snapObj.dropLines)) {
+        const sortedIdPairs = idMap.size > 0
+          ? Array.from(idMap.entries()).sort((a, b) => b[0].length - a[0].length)
+          : [];
+        snapObj.dropLines.forEach((dl, idx) => {
+          if (!dl) return;
+          dl.id = 'dl_' + ts + '_' + Math.random().toString(36).substr(2, 3) + idx.toString(36);
+          delete dl._hoverX;
+          delete dl._hoverY;
+          if (dl.binding && typeof dl.binding === 'object') {
+            const b = dl.binding;
+            if (b.layerId && idMap.has(b.layerId)) {
+              b.layerId = idMap.get(b.layerId);
+            }
+            if (Array.isArray(b.layerIds)) {
+              b.layerIds = b.layerIds.map(lid => (lid && idMap.has(lid)) ? idMap.get(lid) : lid);
+            }
+            if (typeof b.candKey === 'string' && b.candKey.length > 0 && sortedIdPairs.length > 0) {
+              let nextKey = b.candKey;
+              for (let i = 0; i < sortedIdPairs.length; i++) {
+                const [oldId, newId] = sortedIdPairs[i];
+                if (oldId && nextKey.includes(oldId)) {
+                  nextKey = nextKey.split(oldId).join(newId);
+                }
+              }
+              b.candKey = nextKey;
+            }
+          }
+        });
+      }
+      if (Array.isArray(snapObj.textLabels)) {
+        snapObj.textLabels.forEach((tl, idx) => {
+          if (!tl) return;
+          tl.id = 'txt_' + ts + '_' + Math.random().toString(36).substr(2, 3) + idx.toString(36);
+        });
+      }
+      this._rehydrateSnapGeneralExprFns(snapObj);
+      return idMap;
+    }
+
     _savePipCardSnapshot(cardRef, snapObj) {
       if (!snapObj) return;
+      this._rehydrateSnapGeneralExprFns(snapObj);
       const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
       const jsonStr = JSON.stringify(snapObj);
       if (isPrimary) {
@@ -6169,6 +6242,7 @@
         dropLineHoverCandidate: this.dropLineHoverCandidate,
         dropLineHoverScissors: this.dropLineHoverScissors,
         renderedScissors: this.renderedScissors,
+        renderedDropLineLabels: this.renderedDropLineLabels,
         textLabels: this.textLabels,
         useIntersectionDetector: this.useIntersectionDetector,
         intersections: this.intersections,
@@ -6221,6 +6295,7 @@
         this.dropLineHoverCandidate = snapObj._pipDropLineHoverCand || null;
         this.dropLineHoverScissors = snapObj._pipDropLineHoverScissors || null;
         this.renderedScissors = Array.isArray(snapObj._pipRenderedScissors) ? snapObj._pipRenderedScissors : [];
+        this.renderedDropLineLabels = Array.isArray(snapObj._pipRenderedDropLineLabels) ? snapObj._pipRenderedDropLineLabels : [];
         this.textLabels = snapObj.textLabels || [];
         // 대표님 지침: 교점표시(교점판독기)는 오직 전체화면 그래프 모드에서만 작동하도록 창모드에서는 100% 비활성화!
         this.useIntersectionDetector = false;
@@ -6260,6 +6335,7 @@
         snapObj.showInverseGuide = this.showInverseGuide;
         snapObj.dropLines = this.dropLines;
         snapObj._pipRenderedScissors = this.renderedScissors;
+        snapObj._pipRenderedDropLineLabels = this.renderedDropLineLabels;
         return res;
       } finally {
         Object.assign(this, backup);
@@ -8156,16 +8232,15 @@
       const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
 
       const clonedSnap = JSON.parse(JSON.stringify(srcSnap));
-      if (Array.isArray(clonedSnap.graphs)) {
-        clonedSnap.graphs.forEach(g => {
-          if (g) g.id = 'g_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-        });
-      }
+      this._rebindClonedSnapshotGraphAndDropLineIds(clonedSnap);
       clonedSnap.isPipLocked = false;
       clonedSnap.isCurveSelected = false;
       clonedSnap.selectedHandleIdx = null;
       clonedSnap.draggedHandleIdx = null;
       clonedSnap.isPipDropLineMode = false;
+      clonedSnap._pipDropLineHoverCand = null;
+      clonedSnap._pipDropLineHoverScissors = null;
+      clonedSnap._pipRenderedScissors = [];
       clonedSnap.isPipSymPopoverOpen = false;
       clonedSnap._isPipCardSnapshot = true;
       clonedSnap._pipCardW = cardW;
@@ -8190,7 +8265,13 @@
         if (this.showInverseGuide) this.drawInverseGuide(tctx);
         if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
         if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
+        if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
         this.drawAllCurves(tctx);
+        if (this.usePiecewise && this.graphs.length >= 1) {
+          this.drawPiecewiseBoundaries(tctx);
+        }
+        this.drawDropLines(tctx, true);
+        this.drawTextLabels(tctx);
       });
       tctx.restore();
       const dataUrl = tempCanvas.toDataURL('image/png');
@@ -8278,11 +8359,7 @@
       const fullCenterMathY = (this.panY || 0) / Math.max(1e-6, fullUnitScale);
 
       const updatedSnap = JSON.parse(this.getPureGraphSnapshot());
-      if (Array.isArray(updatedSnap.graphs)) {
-        updatedSnap.graphs.forEach(g => {
-          if (g) g.id = 'g_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-        });
-      }
+      this._rebindClonedSnapshotGraphAndDropLineIds(updatedSnap);
       updatedSnap.xSpan = (prevSnap && typeof prevSnap.xSpan === 'number') ? prevSnap.xSpan : (isTrig ? 14.0 : 6.2);
       updatedSnap.ySpan = (prevSnap && typeof prevSnap.ySpan === 'number') ? prevSnap.ySpan : (isTrig ? 5.0 : 5.1);
       updatedSnap.zoomLevel = (prevSnap && typeof prevSnap.zoomLevel === 'number') ? prevSnap.zoomLevel : 1.0;
@@ -8294,6 +8371,10 @@
       updatedSnap.isCurveSelected = false;
       updatedSnap.selectedHandleIdx = null;
       updatedSnap.draggedHandleIdx = null;
+      updatedSnap.isPipDropLineMode = false;
+      updatedSnap._pipDropLineHoverCand = null;
+      updatedSnap._pipDropLineHoverScissors = null;
+      updatedSnap._pipRenderedScissors = [];
       updatedSnap.useIntersectionDetector = false;
       updatedSnap._isPipCardSnapshot = true;
       updatedSnap._pipCardW = cardW;
@@ -8314,7 +8395,13 @@
         if (this.showInverseGuide) this.drawInverseGuide(tctx);
         if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
         if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
+        if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
         this.drawAllCurves(tctx);
+        if (this.usePiecewise && this.graphs.length >= 1) {
+          this.drawPiecewiseBoundaries(tctx);
+        }
+        this.drawDropLines(tctx, true);
+        this.drawTextLabels(tctx);
       });
       tctx.restore();
       const dataUrl = tempCanvas.toDataURL('image/png');
@@ -8654,13 +8741,35 @@
         if (isValidExistingTarget) {
           const snap = this._getMutablePipCardSnapshot(targetCard);
           if (snap && Array.isArray(snap.graphs)) {
-            parsed.graphs.forEach(g => {
-              if (snap.graphs.length < 12) {
-                const cloned = JSON.parse(JSON.stringify(g));
-                cloned.id = 'g_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+            const presetClone = JSON.parse(JSON.stringify(parsed));
+            this._rebindClonedSnapshotGraphAndDropLineIds(presetClone);
+            const addedGraphIds = new Set();
+            (presetClone.graphs || []).forEach(cloned => {
+              if (cloned && snap.graphs.length < 12) {
                 snap.graphs.push(cloned);
+                if (cloned.id) addedGraphIds.add(cloned.id);
               }
             });
+            if (Array.isArray(presetClone.dropLines) && presetClone.dropLines.length > 0) {
+              if (!Array.isArray(snap.dropLines)) snap.dropLines = [];
+              presetClone.dropLines.forEach(dl => {
+                if (!dl) return;
+                const b = dl.binding;
+                if (b && Array.isArray(b.layerIds) && b.layerIds.length > 0) {
+                  if (b.layerIds.every(lid => addedGraphIds.has(lid))) {
+                    snap.dropLines.push(dl);
+                  }
+                } else if (!b || !b.layerId || addedGraphIds.has(b.layerId)) {
+                  snap.dropLines.push(dl);
+                }
+              });
+            }
+            if (Array.isArray(presetClone.textLabels) && presetClone.textLabels.length > 0) {
+              if (!Array.isArray(snap.textLabels)) snap.textLabels = [];
+              presetClone.textLabels.forEach(tl => {
+                if (tl) snap.textLabels.push(tl);
+              });
+            }
             snap.activeGraphIdx = snap.graphs.length - 1;
             snap.showXAxis = presetShowX;
             snap.showYAxis = presetShowY;
@@ -8690,6 +8799,7 @@
         const cardW = 430;
         const aspect = 0.82;
         const cardH = Math.round(cardW * aspect);
+        this._rebindClonedSnapshotGraphAndDropLineIds(parsed);
         const isTrig = parsed.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
         parsed.xSpan = isTrig ? 14.0 : 6.2;
         parsed.ySpan = isTrig ? 5.0 : 5.1;
@@ -8713,6 +8823,7 @@
     }
 
     _spawnCenteredPipCardFromSnapObj(snapObj, cardW, aspect, toastMsg) {
+      this._rehydrateSnapGeneralExprFns(snapObj);
       this.deselectAllPipGraphCards();
       const cardH = Math.round(cardW * aspect);
       const existingCount = (this._hasPrimaryGraphCard ? 1 : 0) + (Array.isArray(this.extraGraphCards) ? this.extraGraphCards.length : 0);
@@ -8737,7 +8848,13 @@
         if (this.showInverseGuide) this.drawInverseGuide(tctx);
         if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
         if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
+        if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
         this.drawAllCurves(tctx);
+        if (this.usePiecewise && this.graphs.length >= 1) {
+          this.drawPiecewiseBoundaries(tctx);
+        }
+        this.drawDropLines(tctx, true);
+        this.drawTextLabels(tctx);
       });
       tctx.restore();
       const dataUrl = tempCanvas.toDataURL('image/png');
@@ -8757,6 +8874,7 @@
       }
       this.syncPipCardLockUI(createdRef);
       this.renderPipGraphCard(createdRef);
+      this.scheduleBakePipGraphCardToImg(createdRef);
       if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
         this.closeDrawer();
       }
