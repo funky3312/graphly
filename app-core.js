@@ -2669,7 +2669,9 @@ class GraphApp {
         this.showXAxis = !(this.showXAxis !== false);
         this.syncAxisVisibilityUI();
         if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
-        this._refreshAllOpenPipGraphCards();
+        if (this.isGraphCovered && typeof this._applyAxisVisibilityToTargetPipCard === 'function') {
+          this._applyAxisVisibilityToTargetPipCard(this.showXAxis, this.showYAxis);
+        }
         this.render();
       };
     }
@@ -2681,7 +2683,9 @@ class GraphApp {
         this.showYAxis = !(this.showYAxis !== false);
         this.syncAxisVisibilityUI();
         if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
-        this._refreshAllOpenPipGraphCards();
+        if (this.isGraphCovered && typeof this._applyAxisVisibilityToTargetPipCard === 'function') {
+          this._applyAxisVisibilityToTargetPipCard(this.showXAxis, this.showYAxis);
+        }
         this.render();
       };
     }

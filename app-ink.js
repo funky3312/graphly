@@ -588,14 +588,14 @@
     this._inkProfileCache = {
       deviceType: 'pc',
       useCoalescedEvents: true,        // PC 액정타블렛 200~240Hz 하드웨어 중간 샘플 정식 수집 (빠른 원 다각형 각짐 방지)
-      minRawDistPen: 0.6,              // PC 액정타블렛 펜 최소 점 간격 (px) — 세밀한 획 지연 제거
+      minRawDistPen: 0.95,             // PC 액정타블렛 펜 최소 점 간격 (px) — 1px 미만 디지타이저 계단 노이즈 필터링 & 자연스러운 베지어 호 확보
       minRawDistMouse: 1.0,            // 마우스/전자칠판 최소 점 간격 (px)
-      minCardDistPen: 0.5,             // 카드 내부 PC 액정타블렛 최소 점 간격 (px)
+      minCardDistPen: 0.8,             // 카드 내부 PC 액정타블렛 최소 점 간격 (px)
       minCardDistMouse: 0.9,
       forwardGuardMaxDist: 3.0,        // 펜 정지 직전 미세 떨림의 역주행만 차단하는 반경(px)
-      forwardGuardMinCos: -0.05,       // 진행 방향 역주행 패킷 폐기 임계값
-      streamlineWeight: 0.12,          // PC 액정타블렛 맞춤 1차 EMA 보정 강도 (펜촉 밀착 추적성 극대화)
-      streamlineDecayDist: 18.0        // 빠른 원/곡선에서 보정이 0으로 감쇠되는 거리 (px)
+      forwardGuardMinCos: 0.0,         // 진행 방향 직각/역주행 미세 튐 패킷 폐기 임계값
+      streamlineWeight: 0.20,          // PC 액정타블렛 맞춤 1차 EMA 보정 강도 (글자 왜곡 없이 확대 시 잔떨림만 정돈)
+      streamlineDecayDist: 16.0        // 빠른 원/곡선에서 보정이 0으로 감쇠되는 거리 (px)
     };
     return this._inkProfileCache;
   }
@@ -978,7 +978,9 @@
     }
     this.updateAxesUI();
     if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
-    if (typeof this._refreshAllOpenPipGraphCards === 'function') this._refreshAllOpenPipGraphCards();
+    if (this.isGraphCovered && typeof this._applyAxisVisibilityToTargetPipCard === 'function') {
+      this._applyAxisVisibilityToTargetPipCard(this.showXAxis, this.showYAxis);
+    }
     this.render();
     const showAny = Boolean(this.showAxes && (this.showXAxis !== false || this.showYAxis !== false));
     this.showToast(showAny ? '📐 좌표축 표시 On (x·y축)' : '🪵 좌표축 숨김 (x·y축 Off)');

@@ -1180,6 +1180,8 @@
         xSpan: r3(raw.xSpan || 8.5),
         ySpan: r3(raw.ySpan || 6.0),
         showAxes: raw.showAxes !== false,
+        showXAxis: raw.showXAxis !== false,
+        showYAxis: raw.showYAxis !== false,
         showGuides: Boolean(raw.showGuides),
         usePiecewise: Boolean(raw.usePiecewise),
         piecewiseBoundaries: (raw.piecewiseBoundaries || []).map(v => r4(v)),

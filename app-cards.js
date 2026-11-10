@@ -1541,6 +1541,22 @@
     const topZ = 150 + allCards.length;
     targetEl.style.zIndex = String(topZ);
     this.highestProblemCardZIndex = topZ;
+
+    // 창모드 그래프 카드를 터치/선택하여 최상단으로 올릴 때, 해당 카드의 개별 좌표축(x축/y축) 상태를 설정 버튼 UI와 동기화
+    if (this.isGraphCovered && typeof this._getPipCardRefFromWidget === 'function') {
+      const cardRef = this._getPipCardRefFromWidget(targetEl);
+      if (cardRef) {
+        this._lastFocusedPipCardRef = cardRef;
+        const snap = this._getMutablePipCardSnapshot(cardRef);
+        if (snap && !snap.isNAxisStudioCard) {
+          if (snap.showXAxis !== undefined) this.showXAxis = Boolean(snap.showXAxis);
+          if (snap.showYAxis !== undefined) this.showYAxis = Boolean(snap.showYAxis);
+          if (typeof this.syncAxisVisibilityUI === 'function') {
+            this.syncAxisVisibilityUI();
+          }
+        }
+      }
+    }
   }
 
   // 🔴 [카드 전용 상단 레이저 포인터 시스템 (문제 카드 & 그래프 카드 공용)]
@@ -2951,6 +2967,15 @@
         this.showInverseGuide = data.showInverseGuide;
         const chkInv = document.getElementById('chkInverseGuide');
         if (chkInv) chkInv.checked = this.showInverseGuide;
+      }
+      if (data.showXAxis !== undefined) {
+        this.showXAxis = Boolean(data.showXAxis);
+      }
+      if (data.showYAxis !== undefined) {
+        this.showYAxis = Boolean(data.showYAxis);
+      }
+      if (typeof this.syncAxisVisibilityUI === 'function') {
+        this.syncAxisVisibilityUI();
       }
       if (data.showGridNumbers !== undefined) {
         this.showGridNumbers = Boolean(data.showGridNumbers);
@@ -5304,8 +5329,8 @@
       this.xSpan = typeof snapObj.xSpan === 'number' ? snapObj.xSpan : 6.2;
       this.ySpan = typeof snapObj.ySpan === 'number' ? snapObj.ySpan : 5.1;
       this.showAxes = true;
-      this.showXAxis = backup.showXAxis !== false;
-      this.showYAxis = backup.showYAxis !== false;
+      this.showXAxis = (snapObj.showXAxis !== undefined) ? Boolean(snapObj.showXAxis) : (backup.showXAxis !== false);
+      this.showYAxis = (snapObj.showYAxis !== undefined) ? Boolean(snapObj.showYAxis) : (backup.showYAxis !== false);
       this.showGuides = Boolean(backup.showGuides);
       this.showAsymptotes = Boolean(backup.showAsymptotes);
       this.showInverseGuide = Boolean(snapObj.showInverseGuide);
@@ -5356,6 +5381,8 @@
       snapObj.panY = this.panY;
       snapObj.xSpan = this.xSpan;
       snapObj.ySpan = this.ySpan;
+      snapObj.showXAxis = this.showXAxis !== false;
+      snapObj.showYAxis = this.showYAxis !== false;
       snapObj.showInverseGuide = this.showInverseGuide;
       snapObj.dropLines = this.dropLines;
       snapObj._pipRenderedScissors = this.renderedScissors;
@@ -6351,7 +6378,9 @@
       }
     }
 
-    const bothAxesOff = (this.showXAxis === false && this.showYAxis === false);
+    const cardShowX = (snap && snap.showXAxis !== undefined) ? Boolean(snap.showXAxis) : (this.showXAxis !== false);
+    const cardShowY = (snap && snap.showYAxis !== undefined) ? Boolean(snap.showYAxis) : (this.showYAxis !== false);
+    const bothAxesOff = (!cardShowX && !cardShowY);
     if (bothAxesOff && snap && snap.isPipDropLineMode) {
       snap.isPipDropLineMode = false;
     }
@@ -6581,7 +6610,9 @@
     }
 
     const activeG = Array.isArray(snapObj.graphs) ? snapObj.graphs[snapObj.activeGraphIdx] : null;
-    const uiSig = `${Boolean(snapObj.isPipLocked)}|${Boolean(snapObj.isCurveSelected)}|${Boolean(snapObj.isPipDropLineMode)}|${Boolean(snapObj.isPipSymPopoverOpen)}|${Boolean(widget.classList.contains('card-ink-active'))}|${Boolean(this.showXAxis !== false)}|${Boolean(this.showYAxis !== false)}|${activeG ? `${activeG.id}:${Boolean(activeG.isAbsolute)}:${Boolean(activeG.isAbsPristine)}:${Boolean(activeG.linkedInverseId)}` : ''}`;
+    const cardShowX = (snapObj.showXAxis !== undefined) ? Boolean(snapObj.showXAxis) : (this.showXAxis !== false);
+    const cardShowY = (snapObj.showYAxis !== undefined) ? Boolean(snapObj.showYAxis) : (this.showYAxis !== false);
+    const uiSig = `${Boolean(snapObj.isPipLocked)}|${Boolean(snapObj.isCurveSelected)}|${Boolean(snapObj.isPipDropLineMode)}|${Boolean(snapObj.isPipSymPopoverOpen)}|${Boolean(widget.classList.contains('card-ink-active'))}|${Boolean(cardShowX)}|${Boolean(cardShowY)}|${activeG ? `${activeG.id}:${Boolean(activeG.isAbsolute)}:${Boolean(activeG.isAbsPristine)}:${Boolean(activeG.linkedInverseId)}` : ''}`;
     if (widget._lastPipLockUiSig !== uiSig) {
       widget._lastPipLockUiSig = uiSig;
       this.syncPipCardLockUI(cardRef);
@@ -6975,6 +7006,83 @@
       return true;
     }
     return false;
+  }
+
+  _getPipCardRefFromWidget(widgetEl) {
+    if (!widgetEl) return null;
+    const primaryWidget = document.getElementById('graphCardWidget');
+    if (widgetEl === primaryWidget && this._hasPrimaryGraphCard && this.graphCardData) {
+      return 'primary';
+    }
+    if (Array.isArray(this.extraGraphCards)) {
+      const found = this.extraGraphCards.find(c => c && c.el === widgetEl);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  _getTargetPipGraphCardForAxisOrPreset() {
+    const selected = this._getSelectedPipGraphCardTarget();
+    if (selected) return selected;
+
+    const candidates = [];
+    const primaryWidget = document.getElementById('graphCardWidget');
+    if (primaryWidget && primaryWidget.style.display !== 'none' && this._hasPrimaryGraphCard && this.graphCardData) {
+      const snap = this._getMutablePipCardSnapshot('primary');
+      if (snap && !snap.isNAxisStudioCard && Array.isArray(snap.graphs) && snap.graphs.length > 0) {
+        candidates.push({
+          cardRef: 'primary',
+          widget: primaryWidget,
+          snap,
+          isPrimary: true,
+          zIndex: parseInt(primaryWidget.style.zIndex, 10) || 150
+        });
+      }
+    }
+    if (Array.isArray(this.extraGraphCards)) {
+      this.extraGraphCards.forEach(c => {
+        if (c && c.el && c.el.style.display !== 'none') {
+          const snap = this._getMutablePipCardSnapshot(c);
+          if (snap && !snap.isNAxisStudioCard && Array.isArray(snap.graphs) && snap.graphs.length > 0) {
+            candidates.push({
+              cardRef: c,
+              widget: c.el,
+              snap,
+              isPrimary: false,
+              zIndex: parseInt(c.el.style.zIndex, 10) || 150
+            });
+          }
+        }
+      });
+    }
+    if (candidates.length === 0) return null;
+    if (candidates.length === 1) return candidates[0];
+
+    const unlocked = candidates.filter(it => !it.snap.isPipLocked);
+    const pool = unlocked.length > 0 ? unlocked : candidates;
+    if (this._lastFocusedPipCardRef) {
+      const focused = pool.find(it => it.cardRef === this._lastFocusedPipCardRef);
+      if (focused) return focused;
+    }
+    pool.sort((a, b) => b.zIndex - a.zIndex);
+    return pool[0];
+  }
+
+  _applyAxisVisibilityToTargetPipCard(showX, showY) {
+    if (!this.isGraphCovered) return false;
+    const target = this._getTargetPipGraphCardForAxisOrPreset();
+    if (!target || !target.snap) return false;
+    target.snap.showXAxis = showX !== false;
+    target.snap.showYAxis = showY !== false;
+    this._savePipCardSnapshot(target.cardRef, target.snap);
+    if (target.widget) target.widget._lastPipLockUiSig = '';
+    this.syncPipCardLockUI(target.cardRef);
+    this.renderPipGraphCard(target.cardRef);
+    this.bakePipGraphCardToImg(target.cardRef);
+    if (this.isAudioRecording) {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
+    return true;
   }
 
   _refreshAllOpenPipGraphCards() {
@@ -7542,6 +7650,8 @@
       periodicStepY: 0,
       isPiecewiseLocked: false,
       showInverseGuide: false,
+      showXAxis: this.showXAxis !== false,
+      showYAxis: this.showYAxis !== false,
       showGridNumbers: false,
       dropLines: [],
       textLabels: [],
@@ -7566,6 +7676,11 @@
       if (this.graphColorMode === 'fixed' && this.fixedGraphColor) {
         parsed.graphs.forEach(g => { if (g) g.color = this.fixedGraphColor; });
       }
+      const presetShowX = parsed.showXAxis !== false;
+      const presetShowY = parsed.showYAxis !== false;
+      parsed.showXAxis = presetShowX;
+      parsed.showYAxis = presetShowY;
+
       const targetCard = (this._pipTargetCard && this._pipTargetCard !== 'new') ? this._pipTargetCard : null;
       const isValidExistingTarget = Boolean(
         (targetCard === 'primary' && this._hasPrimaryGraphCard && this.graphCardData) ||
@@ -7583,9 +7698,14 @@
             }
           });
           snap.activeGraphIdx = snap.graphs.length - 1;
+          snap.showXAxis = presetShowX;
+          snap.showYAxis = presetShowY;
           snap.isPipLocked = false;
           snap.isCurveSelected = true;
           snap.selectedHandleIdx = null;
+          this.showXAxis = presetShowX;
+          this.showYAxis = presetShowY;
+          if (typeof this.syncAxisVisibilityUI === 'function') this.syncAxisVisibilityUI();
           const { widget } = this._getPipCardWidgetAndSnapRaw(targetCard);
           this.deselectAllPipGraphCards(widget);
           if (widget) widget._lastPipLockUiSig = '';
@@ -7617,6 +7737,9 @@
       parsed._isPipCardSnapshot = true;
       parsed._pipCardW = cardW;
       parsed._pipCardH = cardH;
+      this.showXAxis = presetShowX;
+      this.showYAxis = presetShowY;
+      if (typeof this.syncAxisVisibilityUI === 'function') this.syncAxisVisibilityUI();
 
       this._spawnCenteredPipCardFromSnapObj(parsed, cardW, aspect, `⭐ [${item.name}] 창 생성됨! 조작 후 상단 [🔓 잠금]을 누르면 확정됩니다.`);
       return true;

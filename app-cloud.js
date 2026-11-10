@@ -2832,17 +2832,28 @@
 
     const zeroY = toSvgY(0);
     const zeroX = toSvgX(0);
-    const axesSvg = `<line x1="2" y1="${zeroY}" x2="${W - 2}" y2="${zeroY}" stroke="currentColor" stroke-width="0.6" opacity="0.28"/><line x1="${zeroX}" y1="2" x2="${zeroX}" y2="${H - 2}" stroke="currentColor" stroke-width="0.6" opacity="0.28"/>`;
+    const xAxisLine = (this.showXAxis !== false)
+      ? `<line x1="2" y1="${zeroY}" x2="${W - 2}" y2="${zeroY}" stroke="currentColor" stroke-width="0.6" opacity="0.28"/>`
+      : '';
+    const yAxisLine = (this.showYAxis !== false)
+      ? `<line x1="${zeroX}" y1="2" x2="${zeroX}" y2="${H - 2}" stroke="currentColor" stroke-width="0.6" opacity="0.28"/>`
+      : '';
+    const axesSvg = `${xAxisLine}${yAxisLine}`;
 
     return `<svg width="42" height="28" viewBox="0 0 ${W} ${H}" fill="none">${axesSvg}${boundaryLinesSvg}${pathsSvg}</svg>`;
   }
 
   saveCurrentGraphToCustomPresets(customName = '') {
+    let pipTargetForPreset = null;
     if (this.isGraphCovered) {
-      this.showToast('그래프 창 상단의 [⤢ 크게 열기]를 누른 후 등록해 주세요');
-      return null;
-    }
-    if (!this.graphs || this.graphs.length === 0) {
+      if (typeof this._getTargetPipGraphCardForAxisOrPreset === 'function') {
+        pipTargetForPreset = this._getTargetPipGraphCardForAxisOrPreset();
+      }
+      if (!pipTargetForPreset || !pipTargetForPreset.snap || !Array.isArray(pipTargetForPreset.snap.graphs) || pipTargetForPreset.snap.graphs.length === 0) {
+        this.showToast('⚠️ 먼저 캔버스에 등록할 그래프를 그려주세요!');
+        return null;
+      }
+    } else if (!this.graphs || this.graphs.length === 0) {
       this.showToast('⚠️ 먼저 캔버스에 등록할 그래프를 그려주세요!');
       return null;
     }
@@ -2857,14 +2868,30 @@
       return null;
     }
 
-    const cleanName = (customName && String(customName).trim())
-      ? String(customName).trim()
-      : this._buildSmartCustomGraphName();
-    const badge = this._buildSmartCustomGraphBadge();
-    const svgThumb = this._generateCustomGraphSvgThumb();
+    let cleanName = '';
+    let badge = '';
+    let svgThumb = '';
+    let rawSnapObj = null;
 
-    // 순수 수학 그래프 + 구간분할 + 주기·계단형 + 보조수선 + 텍스트라벨 스냅샷 (필기 낙서는 제외하여 깨끗한 재사용 보장)
-    const rawSnapObj = JSON.parse(this.getPureGraphSnapshot());
+    if (pipTargetForPreset && typeof this._withPipCardGraphState === 'function') {
+      const cardW = pipTargetForPreset.snap._pipCardW || 430;
+      const cardH = pipTargetForPreset.snap._pipCardH || 353;
+      this._withPipCardGraphState(pipTargetForPreset.snap, cardW, cardH, () => {
+        cleanName = (customName && String(customName).trim())
+          ? String(customName).trim()
+          : this._buildSmartCustomGraphName();
+        badge = this._buildSmartCustomGraphBadge();
+        svgThumb = this._generateCustomGraphSvgThumb();
+        rawSnapObj = JSON.parse(this.getPureGraphSnapshot());
+      });
+    } else {
+      cleanName = (customName && String(customName).trim())
+        ? String(customName).trim()
+        : this._buildSmartCustomGraphName();
+      badge = this._buildSmartCustomGraphBadge();
+      svgThumb = this._generateCustomGraphSvgThumb();
+      rawSnapObj = JSON.parse(this.getPureGraphSnapshot());
+    }
     rawSnapObj.graphInkStrokes = [];
 
     const newItem = {
