@@ -1530,6 +1530,7 @@
         this.updateStylusPenPosition(pos.x, pos.y, e);
         this._lastInkScreenPos = { x: pos.x, y: pos.y };
         this._prevRawInkScreenPos = null;
+        this._prevRawInkCrossSign = 0;
         this._lastRawInkScreenPos = { x: pos.x, y: pos.y };
         this._lastMoveEventScreenPos = { x: pos.x, y: pos.y };
         const downTs = (typeof e.timeStamp === 'number' && e.timeStamp > 0) ? e.timeStamp : null;
@@ -2268,22 +2269,31 @@
             const pPos = (ev === e && events.length === 1) ? pos : getPos(ev);
 
             const lastRaw = this._lastRawInkScreenPos;
+            let isRawAlternating = false;
             if (lastRaw) {
               const rawDist = Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y);
               if (rawDist < minRawDist) continue;
 
-              // 🛡️ [역주행 점프 컷오프 (Monotonic Forward Guard)]:
-              // 진행 방향 대비 뒤로 튀는 패킷(cosAngle < forwardGuardMinCos)을 폐기하여 원 2줄 겹침 및 직선 왕복 두꺼워짐 차단
-              if (this._prevRawInkScreenPos && rawDist < inkProfile.forwardGuardMaxDist) {
+              // 🛡️ [역주행 점프 컷오프 (Monotonic Forward Guard) & PC 교번 잔떨림 감지]:
+              if (this._prevRawInkScreenPos) {
                 const vxPrev = lastRaw.x - this._prevRawInkScreenPos.x;
                 const vyPrev = lastRaw.y - this._prevRawInkScreenPos.y;
                 const vxNew = pPos.x - lastRaw.x;
                 const vyNew = pPos.y - lastRaw.y;
                 const lenPrev = Math.hypot(vxPrev, vyPrev);
-                if (lenPrev > 0.5) {
-                  const cosAngle = (vxPrev * vxNew + vyPrev * vyNew) / (lenPrev * rawDist);
-                  if (cosAngle < inkProfile.forwardGuardMinCos) {
-                    continue;
+                if (lenPrev > 0.35) {
+                  if (rawDist < inkProfile.forwardGuardMaxDist) {
+                    const cosAngle = (vxPrev * vxNew + vyPrev * vyNew) / (lenPrev * rawDist);
+                    if (cosAngle < inkProfile.forwardGuardMinCos) {
+                      continue;
+                    }
+                  }
+                  if (inkProfile.deviceType === 'pc') {
+                    const curCross = (vxPrev * vyNew - vyPrev * vxNew) / lenPrev;
+                    isRawAlternating = Boolean(this._prevRawInkCrossSign && curCross * this._prevRawInkCrossSign < 0);
+                    if (Math.abs(curCross) > 0.08) {
+                      this._prevRawInkCrossSign = curCross > 0 ? 1 : -1;
+                    }
                   }
                 }
               }
@@ -2295,7 +2305,7 @@
             let sy = pPos.y;
             const liveLen = this._liveBezierScreenPts ? this._liveBezierScreenPts.length : 0;
 
-            // 🌟 [기기별 맞춤 스트림라인 (PC: 코너 보존형 추세 스트림라인 / 아이패드: 1차 EMA 그대로 보존)]:
+            // 🌟 [기기별 맞춤 스트림라인 (PC: 곡률 보존형 미세 표면 다듬기 / 아이패드: 1차 EMA 그대로 보존)]:
             if (!this.currentInkStroke.isHighlighter && liveLen >= 1) {
               const pPrev = this._liveBezierScreenPts[liveLen - 1];
               if (inkProfile.deviceType === 'pc' && typeof this._computePcCornerAwareStreamline === 'function') {
@@ -2308,7 +2318,8 @@
                   pPrev2 ? pPrev2.x : 0,
                   pPrev2 ? pPrev2.y : 0,
                   Boolean(pPrev2),
-                  inkProfile
+                  inkProfile,
+                  isRawAlternating
                 );
                 sx = smoothed.x;
                 sy = smoothed.y;
@@ -3355,7 +3366,7 @@
           const tailDist = Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y);
           if (tailDist >= 0.15) {
             const isShortStroke = (this._liveBezierScreenPts.length <= 2);
-            const tailKeep = (this.getDeviceInkProfile().deviceType === 'pc' && tailDist < 4.5) ? 0.38 : 0.25;
+            const tailKeep = (this.getDeviceInkProfile().deviceType === 'pc') ? 0.12 : 0.25;
             const endX = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.x : (lastSmoothed.x * tailKeep + rawEnd.x * (1 - tailKeep));
             const endY = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.y : (lastSmoothed.y * tailKeep + rawEnd.y * (1 - tailKeep));
             let p = this._lastPressure || 0.5;
@@ -3387,6 +3398,7 @@
 
         this._inkHoldDetected = false;
         this._prevRawInkScreenPos = null;
+        this._prevRawInkCrossSign = 0;
         this._lastRawInkScreenPos = null;
         this._lastMoveEventScreenPos = null;
         this._lastInkSampleTs = null;

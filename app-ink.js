@@ -596,30 +596,30 @@
       }
       this._inkProfileCache = {
         deviceType: 'pc',
-        useCoalescedEvents: true,        // PC 액정타블렛 고속 구간(>=8.5px) 240Hz 중간 샘플 수집 (빠른 원 다각형 각짐 방지)
-        coalescedMergeMaxSpan: 8.5,      // 일반 글씨 속도(<8.5px/frame)에서는 아이패드처럼 단일 확정 이벤트([e])만 사용해 240Hz 격자 계단 노이즈 원천 차단
-        minRawDistPen: 1.45,             // PC 액정타블렛 펜 최소 점 간격 (px) — ±1px 디지타이저 진동 필터링 & 매끄러운 2차 베지어 아치 스팬 확보
-        minRawDistMouse: 1.35,           // 마우스/전자칠판 최소 점 간격 (px)
-        minCardDistPen: 1.15,            // 카드 내부 PC 액정타블렛 최소 점 간격 (px)
-        minCardDistMouse: 1.15,
-        minSmoothedDist: 0.75,           // 칠판 스트림라인 보정 후 최소 제어점 간격 (px)
-        minCardSmoothedDist: 0.55,       // 카드 스트림라인 보정 후 최소 제어점 간격 (px)
-        forwardGuardMaxDist: 3.5,        // 펜 정지 직전 미세 떨림의 역주행만 차단하는 반경(px)
-        forwardGuardMinCos: 0.08,        // 진행 방향 직각/역주행 미세 튐 패킷 폐기 임계값
-        streamlineWeight: 0.36,          // PC 액정타블렛 맞춤 코너 보존형 스트림라인 강도 (아이패드 OS 하드웨어 보정에 대응하는 소프트웨어 안정화)
-        streamlineDecayDist: 26.0,       // 빠른 원/곡선에서 보정이 자연 감쇠되는 거리 (px)
-        trendStabilizeWeight: 0.16       // 직선·완만한 곡선(cos > 0.72)에서 좌우(법선) 미세 굴곡을 추세선으로 정렬하는 가중치
+        useCoalescedEvents: true,        // PC 액정타블렛 240Hz 서브 샘플 수집 (작은 글씨·곡선 제어점 보존)
+        coalescedMergeMaxSpan: 1.8,      // 펜이 거의 멈춘 초저속(<1.8px/frame) 제자리 코일 진동일 때만 프레임 내 가중 평균 병합
+        minRawDistPen: 0.65,             // 표준 순정 펜 최소 간격 (px) — 0.5px 이하 픽셀 계단 떨림만 거르고 작은 수식·받침 디테일 100% 보존
+        minRawDistMouse: 1.25,           // 마우스/전자칠판 최소 점 간격 (px)
+        minCardDistPen: 0.55,            // 카드 내부 PC 액정타블렛 최소 점 간격 (px)
+        minCardDistMouse: 1.05,
+        minCardSmoothedDist: 0.30,       // 카드 스트림라인 보정 후 중복 제어점 최소 간격 (px)
+        forwardGuardMaxDist: 1.6,        // 펜 정지 직전 1.6px 이내 미세 역주행 스파이크만 차단
+        forwardGuardMinCos: -0.35,       // 직각(90°)·예각 글씨 꺾임은 100% 통과시키고 110° 이상 역방향 튐만 폐기
+        streamlineWeight: 0.14,          // 아이패드(0.14)와 동일한 빠릿한 표준 순정 스트림라인 (획 수축·둥글어짐 원천 방지)
+        streamlineDecayDist: 15.0,       // 일반·고속 필기 시 지연 없이 펜촉을 1:1 즉각 추종
+        surfacePolishMaxPx: 0.55         // 좌우 교번 표면 잔떨림 흡수 상한 (px) — 글씨 크기·모양 변화 없이 표면 톱니만 정돈
       };
       return this._inkProfileCache;
     }
 
     /**
-     * 🎯 [PC 액정타블렛 전용 스마트 코얼레스드 필터 & 코너 보존형 추세 스트림라인 헬퍼]
+     * 🎯 [PC 액정타블렛 전용 곡률 보존형 미세 표면 다듬기 (Curvature-Preserving Surface Micro-Polish)]
      * - 아이패드(deviceType === 'ipad')에서는 호출되지 않으며, 오직 PC 환경에서만 작동합니다.
-     * 1) 일반 필기 속도(프레임당 이동 경로 < 8.5px)에서는 240Hz 서브 패킷의 격자 계단 노이즈를 막기 위해
-     *    아이패드와 동일하게 프레임 확정 이벤트([e])만 채택하고, 고속 큰 원/긴 획(>= 8.5px)에서만 서브 샘플을 전부 살립니다.
-     * 2) 꺾임 각도(cosTurn)를 분석해 글자의 모서리(ㄱ, ㄴ, ㄹ, ㅅ 등 cos < 0.35)는 날렵하게 보존하고,
-     *    완만한 직선·곡선 구간(cos > 0.72)에서는 좌우(법선) 떨림을 추세선으로 정렬해 확대 시에도 울퉁불퉁함이 없도록 보정합니다.
+     * 1) 일반 필기 속도(>= 1.8px/frame)에서는 240Hz 서브 샘플을 그대로 살려 작은 글씨·수식이 동글동글하게 뭉개지지 않게 하고,
+     *    펜이 거의 멈춘 제자리 미세 진동(< 1.8px/frame)에서만 가중 평균으로 코일 노이즈를 상쇄합니다.
+     * 2) 기본 궤적 당김(streamlineWeight: 0.14)은 아이패드 순정과 동일하게 가볍게 유지해 획 길이 축소·지연감을 없애고,
+     *    원시 진행 방향이 좌·우로 교번(+/-)하는 타블렛 표면 격자 잔떨림만 최대 0.55px 한도 내에서 현(Chord) 중심선으로 다듬습니다.
+     *    (한 방향으로 일관되게 도는 작은 원 'ㅇ'이나 'ㄱ·ㄴ·ㄹ·3' 꺾임 모서리는 깎지 않고 원형 그대로 날렵하게 보존합니다.)
      */
     _selectPcCoalescedEvents(e, inkProfile) {
       if (!inkProfile || !inkProfile.useCoalescedEvents || typeof e.getCoalescedEvents !== 'function') {
@@ -632,7 +632,7 @@
       if (inkProfile.deviceType !== 'pc') {
         return coalesced;
       }
-      const maxSpan = inkProfile.coalescedMergeMaxSpan || 8.5;
+      const maxSpan = inkProfile.coalescedMergeMaxSpan || 1.8;
       let subPathLen = 0;
       for (let i = 1; i < coalesced.length; i++) {
         const p0 = coalesced[i - 1];
@@ -642,8 +642,6 @@
           return coalesced;
         }
       }
-      // 🌟 일반 글씨 속도(< 8.5px/frame)에서는 프레임 내 240Hz 서브 패킷들의 선형 가중 평균(Ramp-Weighted Centroid)을 구해
-      // 액정타블렛 디지타이저 코일의 고주파 교번 진동(+-0.8px 격자 노이즈)을 지연 없이 프레임 내부에서 상쇄합니다!
       let sumX = 0;
       let sumY = 0;
       let sumW = 0;
@@ -664,11 +662,11 @@
       }];
     }
 
-    _computePcCornerAwareStreamline(rawX, rawY, p1x, p1y, p2x, p2y, hasP2, inkProfile) {
+    _computePcCornerAwareStreamline(rawX, rawY, p1x, p1y, p2x, p2y, hasP2, inkProfile, isRawAlternating = false) {
       const stepD = Math.hypot(rawX - p1x, rawY - p1y);
       if (stepD < 0.001) return { x: rawX, y: rawY, stepD: 0 };
-      const decayDist = inkProfile.streamlineDecayDist || 26.0;
-      let weight = (inkProfile.streamlineWeight || 0.36) * Math.max(0, 1 - stepD / decayDist);
+      const decayDist = inkProfile.streamlineDecayDist || 15.0;
+      let weight = (inkProfile.streamlineWeight || 0.14) * Math.max(0, 1 - stepD / decayDist);
       let targetX = rawX;
       let targetY = rawY;
 
@@ -676,25 +674,38 @@
         const vx1 = p1x - p2x;
         const vy1 = p1y - p2y;
         const len1 = Math.hypot(vx1, vy1);
-        if (len1 > 0.4) {
+        if (len1 > 0.35) {
           const vx2 = rawX - p1x;
           const vy2 = rawY - p1y;
           const cosTurn = (vx1 * vx2 + vy1 * vy2) / (len1 * stepD);
-          if (cosTurn < 0.35) {
-            // 꺾임 모서리(ㄱ, ㄴ, ㄹ, ㅅ, 수식 첨자 등): 모서리가 둥글게 뭉개지지 않도록 스트림라인 즉시 완화
-            const cornerScale = Math.max(0.22, (cosTurn + 0.25) / 0.60);
-            weight *= cornerScale;
-          } else if (stepD < 18.0) {
-            // 완만한 직선·곡선 구간: P2 -> Praw 현(Chord) 중심선 방향으로 투영해 오버슈트 없이 좌우(법선) 지그재그 굴곡을 70%+ 평탄화
-            const cx = rawX - p2x;
-            const cy = rawY - p2y;
-            const cLen = Math.hypot(cx, cy);
-            if (cLen > 0.8) {
-              const chordX = p1x + (cx / cLen) * stepD;
-              const chordY = p1y + (cy / cLen) * stepD;
-              const chordBlend = 0.32 * ((cosTurn - 0.35) / 0.65) * Math.max(0, 1 - stepD / 18.0);
-              targetX = rawX * (1 - chordBlend) + chordX * chordBlend;
-              targetY = rawY * (1 - chordBlend) + chordY * chordBlend;
+          const cx = rawX - p2x;
+          const cy = rawY - p2y;
+          const cLen = Math.hypot(cx, cy);
+          const maxPolish = inkProfile.surfacePolishMaxPx || 0.55;
+
+          if (cosTurn < 0.20) {
+            // 급격한 모서리(ㄱ, ㄴ, ㄹ, ㅅ, 수식 부호 등): 지연 없이 칼날처럼 꺾이도록 즉시 해제
+            weight *= 0.20;
+          } else if (cLen > 0.6 && stepD < 14.0) {
+            const chordX = p1x + (cx / cLen) * stepD;
+            const chordY = p1y + (cy / cLen) * stepD;
+            const dx = chordX - rawX;
+            const dy = chordY - rawY;
+            const dev = Math.hypot(dx, dy);
+
+            if (isRawAlternating && dev > 0.001 && dev < 1.25) {
+              // 좌·우 교번(+/-) 표면 격자 잔떨림만 최대 0.55px 한도 내에서 현 중심선으로 흡수
+              const polish = Math.min(maxPolish, dev * 0.68 * (1 - dev / 1.6));
+              targetX += (dx / dev) * polish;
+              targetY += (dy / dev) * polish;
+            } else if (!isRawAlternating && dev > 0.001 && dev < 0.42 && cosTurn > 0.85) {
+              // 직선 주행 중 미세 계단 흔들림만 최대 0.16px 이내로 초경량 정돈
+              const polish = Math.min(0.16, dev * 0.40);
+              targetX += (dx / dev) * polish;
+              targetY += (dy / dev) * polish;
+            } else if (!isRawAlternating && cosTurn < 0.85) {
+              // 한 방향으로 회전하는 의도된 곡선(작은 원 'ㅇ', '3', 'e'): 반지름 수축이 없도록 당김 완화
+              weight *= 0.55;
             }
           }
         }
@@ -4880,18 +4891,28 @@
 
         const prevPt = stroke.points[stroke.points.length - 1];
         const lastRaw = stroke._lastRawPx || (prevPt ? { x: prevPt.nx * rw, y: prevPt.ny * rh } : null);
+        let isRawAlternating = false;
         if (lastRaw) {
           const rawStepDist = Math.hypot(rawPxX - lastRaw.x, rawPxY - lastRaw.y);
           if (rawStepDist < minDist) continue;
-          if (stroke._prevRawPx && rawStepDist < inkProfile.forwardGuardMaxDist) {
+          if (stroke._prevRawPx) {
             const vxPrev = lastRaw.x - stroke._prevRawPx.x;
             const vyPrev = lastRaw.y - stroke._prevRawPx.y;
             const vxNew = rawPxX - lastRaw.x;
             const vyNew = rawPxY - lastRaw.y;
             const lenPrev = Math.hypot(vxPrev, vyPrev);
-            if (lenPrev > 0.5) {
-              const cosAngle = (vxPrev * vxNew + vyPrev * vyNew) / (lenPrev * rawStepDist);
-              if (cosAngle < inkProfile.forwardGuardMinCos) continue;
+            if (lenPrev > 0.35) {
+              if (rawStepDist < inkProfile.forwardGuardMaxDist) {
+                const cosAngle = (vxPrev * vxNew + vyPrev * vyNew) / (lenPrev * rawStepDist);
+                if (cosAngle < inkProfile.forwardGuardMinCos) continue;
+              }
+              if (inkProfile.deviceType === 'pc') {
+                const curCross = (vxPrev * vyNew - vyPrev * vxNew) / lenPrev;
+                isRawAlternating = Boolean(stroke._prevRawCrossSign && curCross * stroke._prevRawCrossSign < 0);
+                if (Math.abs(curCross) > 0.08) {
+                  stroke._prevRawCrossSign = curCross > 0 ? 1 : -1;
+                }
+              }
             }
           }
         }
@@ -4915,7 +4936,8 @@
               prev2Pt ? prev2Pt.nx * rw : 0,
               prev2Pt ? prev2Pt.ny * rh : 0,
               Boolean(prev2Pt),
-              inkProfile
+              inkProfile,
+              isRawAlternating
             );
             sx = smoothed.x;
             sy = smoothed.y;
@@ -4931,7 +4953,7 @@
 
         const stepDist = prevPt ? Math.hypot(sx - prevPt.nx * rw, sy - prevPt.ny * rh) : 0;
         const minSmoothed = (inkProfile.deviceType === 'pc' && stroke.points.length >= 2)
-          ? (inkProfile.minCardSmoothedDist || 0.55)
+          ? (inkProfile.minCardSmoothedDist || 0.30)
           : 0.20;
         if (prevPt && stepDist < minSmoothed) continue;
 
@@ -4985,10 +5007,10 @@
         const lastX = lastPt.nx * rw;
         const lastY = lastPt.ny * rh;
         const tailDist = Math.hypot(rawEnd.x - lastX, rawEnd.y - lastY);
-        if (tailDist >= 0.25) {
-          const tailKeep = (this.getDeviceInkProfile().deviceType === 'pc' && stroke.points.length > 2 && tailDist < 4.5) ? 0.34 : 0.18;
-          const endX = stroke.isHighlighter ? rawEnd.x : (lastX * tailKeep + rawEnd.x * (1 - tailKeep));
-          const endY = stroke.isHighlighter ? rawEnd.y : (lastY * tailKeep + rawEnd.y * (1 - tailKeep));
+        if (tailDist >= 0.15) {
+          const tailKeep = (this.getDeviceInkProfile().deviceType === 'pc') ? 0.12 : 0.18;
+          const endX = (stroke.isHighlighter || stroke.points.length <= 2) ? rawEnd.x : (lastX * tailKeep + rawEnd.x * (1 - tailKeep));
+          const endY = (stroke.isHighlighter || stroke.points.length <= 2) ? rawEnd.y : (lastY * tailKeep + rawEnd.y * (1 - tailKeep));
           let p = (typeof lastPt.p === 'number') ? lastPt.p : 0.5;
           const curPenStyle = stroke.penStyle || 'ballpen';
           if (curPenStyle === 'fountain') {
