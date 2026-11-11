@@ -678,13 +678,14 @@
       const findBackAnchor = (fromRawIdx, minDist = 1.25) => {
         const origin = rawHist[fromRawIdx];
         if (!origin) return null;
-        for (let j = fromRawIdx - 1; j >= 0; j--) {
+        const minScanIdx = Math.max(0, fromRawIdx - 24);
+        for (let j = fromRawIdx - 1; j >= minScanIdx; j--) {
           const cand = rawHist[j];
           if (Math.hypot(origin.x - cand.x, origin.y - cand.y) >= minDist) {
             return cand;
           }
         }
-        return fromRawIdx > 0 ? rawHist[0] : null;
+        return fromRawIdx > 0 ? rawHist[minScanIdx] : null;
       };
 
       const fairAt = (idx) => {
@@ -849,6 +850,12 @@
           if (dStep >= stepPx) {
             maybeMarkBufTurnPinned(x, y);
             buf.push({ x, y, p, t, pinned: false });
+            if (rawHist.length > 36) {
+              rawHist.splice(0, rawHist.length - 16);
+              for (let rIdx = 0; rIdx < rawHist.length; rIdx++) {
+                rawHist[rIdx].rawIdx = rIdx;
+              }
+            }
             segRaws = [rawHist[rawHist.length - 1]];
           }
 
@@ -860,6 +867,75 @@
             const faired = fairAt(nextIdx);
             if (faired) out.push(faired);
             emittedIdx = nextIdx;
+          }
+          return out;
+        },
+
+        peekLiveTipPoints(rawPos, rawP) {
+          if (buf.length === 0) return [];
+          const cand = (rawPos && Number.isFinite(rawPos.x) && Number.isFinite(rawPos.y)) ? rawPos : lastRaw;
+          const baseIdx = Math.max(0, emittedIdx - 2);
+          const local = [];
+          for (let i = baseIdx; i < buf.length; i++) {
+            const b = buf[i];
+            local.push({ x: b.x, y: b.y, p: b.p, t: b.t, pinned: Boolean(b.pinned) });
+          }
+          const emitLocalIdx = emittedIdx - baseIdx;
+          if (cand && local.length > 0) {
+            const lastLocal = local[local.length - 1];
+            const tipDist = Math.hypot(cand.x - lastLocal.x, cand.y - lastLocal.y);
+            const tipP = (typeof rawP === 'number' && !Number.isNaN(rawP)) ? rawP : lastLocal.p;
+            if (tipDist >= stepPx * 0.45) {
+              local.push({ x: cand.x, y: cand.y, p: tipP, t: lastLocal.t, pinned: true });
+            } else if (tipDist >= 0.12) {
+              if (local.length - 1 > emitLocalIdx && !lastLocal.pinned) {
+                lastLocal.x = cand.x;
+                lastLocal.y = cand.y;
+                lastLocal.p = tipP;
+                lastLocal.pinned = true;
+              } else {
+                local.push({ x: cand.x, y: cand.y, p: tipP, t: lastLocal.t, pinned: true });
+              }
+            } else {
+              lastLocal.pinned = true;
+            }
+          } else if (local.length > 0) {
+            local[local.length - 1].pinned = true;
+          }
+
+          if (local.length - 1 <= emitLocalIdx) return [];
+          const out = [];
+          for (let k = emitLocalIdx + 1; k < local.length; k++) {
+            const pt = local[k];
+            if (pt.pinned || k <= 0 || k >= local.length - 1) {
+              out.push({ x: pt.x, y: pt.y, p: pt.p });
+              continue;
+            }
+            let fx = pt.x;
+            let fy = pt.y;
+            if (k >= 2 && k + 2 < local.length && !local[k - 1].pinned && !local[k + 1].pinned) {
+              const m2 = local[k - 2], m1 = local[k - 1], p1 = local[k + 1], p2 = local[k + 2];
+              const vx1 = pt.x - m2.x, vy1 = pt.y - m2.y;
+              const vx2 = p2.x - pt.x, vy2 = p2.y - pt.y;
+              const dL = Math.hypot(vx1, vy1), dR = Math.hypot(vx2, vy2);
+              if (dL >= 0.05 && dR >= 0.05 && dL <= 11.5 && dR <= 11.5 && ((vx1 * vx2 + vy1 * vy2) / (dL * dR)) >= -0.05) {
+                fx = (-3 * (m2.x + p2.x) + 12 * (m1.x + p1.x) + 17 * pt.x) / 35;
+                fy = (-3 * (m2.y + p2.y) + 12 * (m1.y + p1.y) + 17 * pt.y) / 35;
+              } else {
+                fx = 0.16 * (m1.x + p1.x) + 0.68 * pt.x;
+                fy = 0.16 * (m1.y + p1.y) + 0.68 * pt.y;
+              }
+            } else {
+              const m1 = local[k - 1], p1 = local[k + 1];
+              const vx1 = pt.x - m1.x, vy1 = pt.y - m1.y;
+              const vx2 = p1.x - pt.x, vy2 = p1.y - pt.y;
+              const dL = Math.hypot(vx1, vy1), dR = Math.hypot(vx2, vy2);
+              if (dL >= 0.05 && dR >= 0.05 && ((vx1 * vx2 + vy1 * vy2) / (dL * dR)) >= 0.35) {
+                fx = 0.16 * (m1.x + p1.x) + 0.68 * pt.x;
+                fy = 0.16 * (m1.y + p1.y) + 0.68 * pt.y;
+              }
+            }
+            out.push({ x: fx, y: fy, p: pt.p });
           }
           return out;
         },
@@ -2258,7 +2334,31 @@
       }
     }
 
-    eraseInkAtPoint(screenX, screenY, eraseRadius = null, deferRender = false) {
+    _distSegmentToSegment(a0, a1, b0, b1) {
+      if (!a0 || !a1 || !b0 || !b1) return Infinity;
+      const d1x = a1.x - a0.x;
+      const d1y = a1.y - a0.y;
+      const d2x = b1.x - b0.x;
+      const d2y = b1.y - b0.y;
+      const cross = (px, py, qx, qy) => px * qy - py * qx;
+      const c1 = cross(d1x, d1y, b0.x - a0.x, b0.y - a0.y);
+      const c2 = cross(d1x, d1y, b1.x - a0.x, b1.y - a0.y);
+      const c3 = cross(d2x, d2y, a0.x - b0.x, a0.y - b0.y);
+      const c4 = cross(d2x, d2y, a1.x - b0.x, a1.y - b0.y);
+      if (((c1 <= 0 && c2 >= 0) || (c1 >= 0 && c2 <= 0)) && ((c3 <= 0 && c4 >= 0) || (c3 >= 0 && c4 <= 0))) {
+        if (Math.abs(cross(d1x, d1y, d2x, d2y)) > 1e-9) {
+          return 0;
+        }
+      }
+      return Math.min(
+        this.distToSegment(a0, b0, b1),
+        this.distToSegment(a1, b0, b1),
+        this.distToSegment(b0, a0, a1),
+        this.distToSegment(b1, a0, a1)
+      );
+    }
+
+    eraseInkAtPoint(screenX, screenY, eraseRadius = null, deferRender = false, prevScreenPos = null) {
       eraseRadius = (typeof eraseRadius === 'number' && !isNaN(eraseRadius)) ? eraseRadius : (this.currentEraserSize || 14);
       let stickerErased = false;
       if (Array.isArray(this.boardStickers) && this.boardStickers.length > 0) {
@@ -2271,21 +2371,47 @@
       }
       if (!this.inkStrokes || this.inkStrokes.length === 0) return stickerErased;
 
-      const isInsideStage = this.isInsideCompactStage({ x: screenX, y: screenY });
       const cullPad = eraseRadius + 24;
       const cursorPt = { x: screenX, y: screenY };
+      const hasSweep = Boolean(
+        prevScreenPos &&
+        Number.isFinite(prevScreenPos.x) &&
+        Number.isFinite(prevScreenPos.y) &&
+        Math.hypot(screenX - prevScreenPos.x, screenY - prevScreenPos.y) >= 1.5
+      );
+      const sweepMinX = hasSweep ? Math.min(prevScreenPos.x, screenX) : screenX;
+      const sweepMaxX = hasSweep ? Math.max(prevScreenPos.x, screenX) : screenX;
+      const sweepMinY = hasSweep ? Math.min(prevScreenPos.y, screenY) : screenY;
+      const sweepMaxY = hasSweep ? Math.max(prevScreenPos.y, screenY) : screenY;
+      const segHit = (pA, pB) => hasSweep
+        ? (this._distSegmentToSegment(prevScreenPos, cursorPt, pA, pB) <= eraseRadius)
+        : (this.distToSegment(cursorPt, pA, pB) <= eraseRadius);
 
       let modified = false;
-      const remaining = this.inkStrokes.filter(stroke => {
+      const totalLen = this.inkStrokes.length;
+      const remaining = [];
+      const removedBatch = [];
+
+      for (let sIdx = 0; sIdx < totalLen; sIdx++) {
+        const stroke = this.inkStrokes[sIdx];
+        if (!stroke) continue;
         const strokeTarget = stroke.target || 'board';
-        if (this.isGraphCovered && !this.pdfPageBoardData && strokeTarget !== 'board') return true;
-        if ((!this.isGraphCovered || this.pdfPageBoardData) && strokeTarget !== 'graph') return true;
-        if (strokeTarget === 'graph' && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return true;
-
-
+        if (this.isGraphCovered && !this.pdfPageBoardData && strokeTarget !== 'board') {
+          remaining.push(stroke);
+          continue;
+        }
+        if ((!this.isGraphCovered || this.pdfPageBoardData) && strokeTarget !== 'graph') {
+          remaining.push(stroke);
+          continue;
+        }
+        if (strokeTarget === 'graph' && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) {
+          remaining.push(stroke);
+          continue;
+        }
 
         const isBoard = strokeTarget === 'board';
         const bz = this.boardZoom || 1.0;
+        let hit = false;
 
         // 🌟 기하 도형(Shape) 최단거리 검사
         if (stroke.shape) {
@@ -2301,17 +2427,19 @@
           }
 
           if (stroke.shape.type === 'line') {
-            if (this.distToSegment(cursorPt, s1, s2) <= eraseRadius) {
-              modified = true;
-              return false;
-            }
+            if (segHit(s1, s2)) hit = true;
           } else if (stroke.shape.type === 'circle') {
             const sc = isBoard ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
             const sr = isBoard ? (stroke.shape.radius * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x);
             const dToCenter = Math.hypot(screenX - sc.x, screenY - sc.y);
             if (Math.abs(dToCenter - sr) <= eraseRadius) {
-              modified = true;
-              return false;
+              hit = true;
+            } else if (hasSweep) {
+              const dSegCenter = this.distToSegment(sc, prevScreenPos, cursorPt);
+              const dPrevCenter = Math.hypot(prevScreenPos.x - sc.x, prevScreenPos.y - sc.y);
+              const minC = dSegCenter;
+              const maxC = Math.max(dPrevCenter, dToCenter);
+              if (minC <= sr + eraseRadius && maxC >= Math.max(0, sr - eraseRadius)) hit = true;
             }
           } else if (stroke.shape.type === 'ellipse') {
             const sc = isBoard ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
@@ -2319,10 +2447,7 @@
             const sry = isBoard ? (stroke.shape.ry * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y);
             const normD = Math.hypot((screenX - sc.x) / Math.max(1, srx), (screenY - sc.y) / Math.max(1, sry));
             const avgR = (srx + sry) / 2;
-            if (Math.abs(normD - 1) * avgR <= eraseRadius) {
-              modified = true;
-              return false;
-            }
+            if (Math.abs(normD - 1) * avgR <= eraseRadius) hit = true;
           } else if (stroke.shape.type === 'rect') {
             const rs1 = isBoard ? this.boardToScreen(stroke.shape.min.x, stroke.shape.min.y) : this.mathToScreen(stroke.shape.min.x, stroke.shape.min.y);
             const rs2 = isBoard ? this.boardToScreen(stroke.shape.max.x, stroke.shape.max.y) : this.mathToScreen(stroke.shape.max.x, stroke.shape.max.y);
@@ -2330,84 +2455,78 @@
             const rw = Math.abs(rs2.x - rs1.x), rh = Math.abs(rs2.y - rs1.y);
             const p1 = { x: rx, y: ry }, p2 = { x: rx + rw, y: ry };
             const p3 = { x: rx + rw, y: ry + rh }, p4 = { x: rx, y: ry + rh };
-            if (this.distToSegment(cursorPt, p1, p2) <= eraseRadius ||
-              this.distToSegment(cursorPt, p2, p3) <= eraseRadius ||
-              this.distToSegment(cursorPt, p3, p4) <= eraseRadius ||
-              this.distToSegment(cursorPt, p4, p1) <= eraseRadius) {
-              modified = true;
-              return false;
+            if (segHit(p1, p2) || segHit(p2, p3) || segHit(p3, p4) || segHit(p4, p1)) {
+              hit = true;
             }
           } else if (stroke.shape.pts && stroke.shape.pts.length >= 2) {
             const sPts = stroke.shape.pts.map(pt => isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y));
             for (let i = 0; i < sPts.length - 1; i++) {
-              if (this.distToSegment(cursorPt, sPts[i], sPts[i + 1]) <= eraseRadius) {
-                modified = true;
-                return false;
+              if (segHit(sPts[i], sPts[i + 1])) {
+                hit = true;
+                break;
               }
             }
-            if (stroke.shape.closed && sPts.length >= 3) {
-              if (this.distToSegment(cursorPt, sPts[sPts.length - 1], sPts[0]) <= eraseRadius) {
-                modified = true;
-                return false;
+            if (!hit && stroke.shape.closed && sPts.length >= 3) {
+              if (segHit(sPts[sPts.length - 1], sPts[0])) {
+                hit = true;
               }
             }
           }
         }
 
-        if (!stroke.points || stroke.points.length === 0) return false;
+        if (hit) {
+          modified = true;
+          removedBatch.push({ stroke, index: sIdx });
+          continue;
+        }
 
-        // 🌟 [O(1) AABB 바운딩박스 프리컬링]: 지우개 반경 바깥에 있는 수백 개 필기 획은
-        // 포인트별 좌표 변환 및 선분 거리 계산을 0회로 즉시 건너뛰어 수업 후반부 지우개 랙을 원천 차단합니다!
+        if (!stroke.points || stroke.points.length === 0) continue;
+
+        // 🌟 [O(1) AABB 바운딩박스 프리컬링 (고속 스윕 캡슐 포함)]:
         if (!stroke.shape) {
           const sb = this._getStrokeScreenBounds(stroke, isBoard);
           if (
             sb &&
-            (screenX < sb.minX - cullPad ||
-              screenX > sb.maxX + cullPad ||
-              screenY < sb.minY - cullPad ||
-              screenY > sb.maxY + cullPad)
+            (sweepMaxX < sb.minX - cullPad ||
+              sweepMinX > sb.maxX + cullPad ||
+              sweepMaxY < sb.minY - cullPad ||
+              sweepMinY > sb.maxY + cullPad)
           ) {
-            return true;
+            remaining.push(stroke);
+            continue;
           }
         }
 
         // 바운딩박스가 겹치는 소수의 후보 획에 대해서만 단일 패스 점·선분 정밀 판정 수행
         const pts = stroke.points;
         let prevS = isBoard ? this.boardToScreen(pts[0].x, pts[0].y) : this.mathToScreen(pts[0].x, pts[0].y);
-        if (Math.hypot(prevS.x - screenX, prevS.y - screenY) <= eraseRadius) {
+        if (hasSweep ? (this.distToSegment(prevS, prevScreenPos, cursorPt) <= eraseRadius) : (Math.hypot(prevS.x - screenX, prevS.y - screenY) <= eraseRadius)) {
           modified = true;
-          return false;
+          removedBatch.push({ stroke, index: sIdx });
+          continue;
         }
         for (let i = 1; i < pts.length; i++) {
           const curS = isBoard ? this.boardToScreen(pts[i].x, pts[i].y) : this.mathToScreen(pts[i].x, pts[i].y);
-          if (Math.hypot(curS.x - screenX, curS.y - screenY) <= eraseRadius) {
-            modified = true;
-            return false;
-          }
-          if (this.distToSegment(cursorPt, prevS, curS) <= eraseRadius) {
-            modified = true;
-            return false;
+          if (segHit(prevS, curS)) {
+            hit = true;
+            break;
           }
           prevS = curS;
         }
 
-        return true;
-      });
+        if (hit) {
+          modified = true;
+          removedBatch.push({ stroke, index: sIdx });
+        } else {
+          remaining.push(stroke);
+        }
+      }
 
       if (this.isAudioRecording && !this.isAudioRecordPaused) {
         this.recordAudioCursorPoint(screenX, screenY, '#f43f5e', true, { cursorKind: 'eraser' });
       }
 
       if (modified) {
-        const remainingSet = new Set(remaining);
-        const removedBatch = [];
-        for (let i = 0; i < this.inkStrokes.length; i++) {
-          const st = this.inkStrokes[i];
-          if (st && !remainingSet.has(st)) {
-            removedBatch.push({ stroke: st, index: i });
-          }
-        }
-
         if (this.isAudioRecording && !this.isAudioRecordPaused) {
           const eraseTimeMs = this.getAudioRecordElapsedMs();
           if (!this.audioErasedStrokes) this.audioErasedStrokes = [];
@@ -2437,8 +2556,10 @@
         }
 
         this.inkStrokes = remaining;
-        this._inkBakeDirty = true;
         this._hasSceneFreeze = false;
+        if (!this._patchInkCacheForRemovedStrokes(removedBatch)) {
+          this._inkBakeDirty = true;
+        }
         if (deferRender && typeof this.requestRender === 'function') {
           this.requestRender();
         } else {
@@ -4934,6 +5055,7 @@
 
     clearInkCache() {
       this._hasSceneFreeze = false;
+      this._hasLiveTipPatch = false;
       this._hasBakedStrokes = false;
       this._inkBakeDirty = true;
       this._inkBakeCamera = null;
@@ -5191,6 +5313,24 @@
             });
             added = true;
           }
+          if (typeof stroke._pcFairer.peekLiveTipPoints === 'function') {
+            const tipPxPts = stroke._pcFairer.peekLiveTipPoints({ x: rawPxX, y: rawPxY }, moveP);
+            if (tipPxPts && tipPxPts.length > 0) {
+              const tipNorm = new Array(tipPxPts.length);
+              for (let tIdx = 0; tIdx < tipPxPts.length; tIdx++) {
+                const tp = tipPxPts[tIdx];
+                tipNorm[tIdx] = {
+                  nx: Math.max(0, Math.min(1, tp.x / rw)),
+                  ny: Math.max(0, Math.min(1, tp.y / rh)),
+                  p: tp.p
+                };
+              }
+              stroke._pcLiveTipNormPts = tipNorm;
+              added = true;
+            } else {
+              stroke._pcLiveTipNormPts = null;
+            }
+          }
           continue;
         }
 
@@ -5235,6 +5375,7 @@
     // 🌟 [문제/그래프 카드 펜 뗄 때(pointerup) 끝점 마감]
     _finishCardStrokeTail(stroke, e, rect, w, h, recT) {
       if (!stroke || !Array.isArray(stroke.points) || stroke.points.length === 0) return;
+      stroke._pcLiveTipNormPts = null;
       if (stroke.isShape || stroke._shapeHoldDetected) return;
       const rw = Math.max(1, w || (rect && rect.width) || 430);
       const rh = Math.max(1, h || (rect && rect.height) || 353);
@@ -5431,17 +5572,28 @@
           ctx.lineWidth = lineW;
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
-          ctx.beginPath();
-          ctx.arc(p0.x / nibX, p0.y / nibY, lineW / 2, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.beginPath();
-          ctx.moveTo(p0.x / nibX, p0.y / nibY);
-          ctx.lineTo(mx / nibX, my / nibY);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(p0.x / nibX, p0.y / nibY);
-          ctx.lineTo(p1.x / nibX, p1.y / nibY);
-          ctx.stroke();
+          if (blurVal > 0 || (typeof ctx.globalAlpha === 'number' && ctx.globalAlpha < 0.999)) {
+            ctx.beginPath();
+            ctx.arc(p0.x / nibX, p0.y / nibY, lineW / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(p0.x / nibX, p0.y / nibY);
+            ctx.lineTo(mx / nibX, my / nibY);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(p0.x / nibX, p0.y / nibY);
+            ctx.lineTo(p1.x / nibX, p1.y / nibY);
+            ctx.stroke();
+          } else if (Math.hypot(p1.x - p0.x, p1.y - p0.y) < 0.05) {
+            ctx.beginPath();
+            ctx.arc(p0.x / nibX, p0.y / nibY, lineW / 2, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.beginPath();
+            ctx.moveTo(p0.x / nibX, p0.y / nibY);
+            ctx.lineTo(p1.x / nibX, p1.y / nibY);
+            ctx.stroke();
+          }
         } else {
           const w0 = this.computePenStyleWidth(effBaseSize, p0.p, penStyle);
           const wMid = this.computePenStyleWidth(effBaseSize, (p0.p + p1.p) * 0.5, penStyle);
@@ -5462,30 +5614,62 @@
         ctx.lineJoin = 'round';
         const firstMidX = (pts[0].x + pts[1].x) * 0.5;
         const firstMidY = (pts[0].y + pts[1].y) * 0.5;
-        ctx.beginPath();
-        ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
-        ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
-        ctx.stroke();
-        let prevMidX = firstMidX;
-        let prevMidY = firstMidY;
-        for (let i = 1; i < pts.length - 1; i++) {
-          const midX = (pts[i].x + pts[i + 1].x) * 0.5;
-          const midY = (pts[i].y + pts[i + 1].y) * 0.5;
+        const last = pts[pts.length - 1];
+        if (blurVal > 0 || (typeof ctx.globalAlpha === 'number' && ctx.globalAlpha < 0.999)) {
+          ctx.beginPath();
+          ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
+          ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
+          ctx.stroke();
+          let prevMidX = firstMidX;
+          let prevMidY = firstMidY;
+          for (let i = 1; i < pts.length - 1; i++) {
+            const midX = (pts[i].x + pts[i + 1].x) * 0.5;
+            const midY = (pts[i].y + pts[i + 1].y) * 0.5;
+            ctx.beginPath();
+            ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
+            ctx.quadraticCurveTo(pts[i].x / nibX, pts[i].y / nibY, midX / nibX, midY / nibY);
+            ctx.stroke();
+            prevMidX = midX;
+            prevMidY = midY;
+          }
           ctx.beginPath();
           ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
-          ctx.quadraticCurveTo(pts[i].x / nibX, pts[i].y / nibY, midX / nibX, midY / nibY);
+          ctx.lineTo(last.x / nibX, last.y / nibY);
           ctx.stroke();
-          prevMidX = midX;
-          prevMidY = midY;
+        } else {
+          // 🌟 [드로우콜 35배 압축 패스트패스]: 불투명 균일 굵기(ballpen / flat, blurVal === 0) 획을
+          // 점 단위 ctx.stroke() 대신 단 1회의 연속 2차 베지어 Path로 일괄 렌더링!
+          let hasMotion = (Math.hypot(last.x - pts[0].x, last.y - pts[0].y) >= 0.05);
+          if (!hasMotion) {
+            for (let i = 1; i < pts.length; i++) {
+              if (Math.hypot(pts[i].x - pts[0].x, pts[i].y - pts[0].y) >= 0.05) {
+                hasMotion = true;
+                break;
+              }
+            }
+          }
+          if (!hasMotion) {
+            ctx.beginPath();
+            ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
+            ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
+            for (let i = 1; i < pts.length - 1; i++) {
+              const pCur = pts[i];
+              const pNext = pts[i + 1];
+              const midX = (pCur.x + pNext.x) * 0.5;
+              const midY = (pCur.y + pNext.y) * 0.5;
+              ctx.quadraticCurveTo(pCur.x / nibX, pCur.y / nibY, midX / nibX, midY / nibY);
+            }
+            ctx.lineTo(last.x / nibX, last.y / nibY);
+            ctx.stroke();
+          }
         }
-        const last = pts[pts.length - 1];
-        ctx.beginPath();
-        ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
-        ctx.lineTo(last.x / nibX, last.y / nibY);
-        ctx.stroke();
         ctx.restore();
         return;
       }
@@ -5635,6 +5819,213 @@
       }
     }
 
+    // 🌟 [PC Savitzky-Golay 룩어헤드(~10px) 시각적 유격 0.00px 제거용 초소형 마이크로 패치 브릿지]:
+    // 확정된 다림질 제어점(drawLiveBezierStep) 뒤쪽의 미방출 펜끝 구간(~9px)만 40x40px급 초소형 백업 패치 위에
+    // 실시간 연결 렌더링했다가 다음 이벤트에서 0.002ms 만에 복원하여, 완성 곡선 품질은 100% 보존하면서 펜촉 지연을 0ms로 제거!
+    _restoreLiveTipPatch() {
+      if (!this._hasLiveTipPatch || !this._liveTipPatchCanvas || !this.ctx) {
+        this._hasLiveTipPatch = false;
+        return;
+      }
+      const r = this._liveTipPatchRect;
+      if (r && r.w > 0 && r.h > 0) {
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(r.x, r.y, r.w, r.h);
+        ctx.drawImage(this._liveTipPatchCanvas, 0, 0, r.w, r.h, r.x, r.y, r.w, r.h);
+        ctx.restore();
+      }
+      this._hasLiveTipPatch = false;
+    }
+
+    drawLiveTipBridge(committedScreenPts, tipPts, stroke = this.currentInkStroke) {
+      if (!stroke || stroke.isHighlighter || !this.canvas || !this.ctx || !committedScreenPts || committedScreenPts.length === 0 || !tipPts || tipPts.length === 0) {
+        return;
+      }
+      const ctx = this.ctx;
+      const L = committedScreenPts.length;
+      const chain = (L === 1)
+        ? [committedScreenPts[0], ...tipPts]
+        : [committedScreenPts[L - 2], committedScreenPts[L - 1], ...tipPts];
+      if (chain.length < 2) return;
+
+      const isBoardInk = (stroke.target || 'board') === 'board';
+      const zoomRatio = isBoardInk
+        ? ((this.boardZoom || 1.0) / (stroke.boardZoom || 1.0))
+        : (stroke.zoom ? (this.zoomLevel / stroke.zoom) : 1.0);
+      const rawBaseSize = (stroke.size || 4.2) * zoomRatio;
+      const penStyle = stroke.penStyle || 'ballpen';
+      const blurVal = Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
+      const baseSize = (blurVal > 0) ? rawBaseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : rawBaseSize;
+      const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
+
+      let minX = chain[0].x, maxX = chain[0].x, minY = chain[0].y, maxY = chain[0].y;
+      let maxW = this.computePenStyleWidth(baseSize, chain[0].p !== undefined ? chain[0].p : 0.5, penStyle);
+      for (let i = 1; i < chain.length; i++) {
+        const pt = chain[i];
+        if (pt.x < minX) minX = pt.x;
+        else if (pt.x > maxX) maxX = pt.x;
+        if (pt.y < minY) minY = pt.y;
+        else if (pt.y > maxY) maxY = pt.y;
+        const wCand = this.computePenStyleWidth(baseSize, pt.p !== undefined ? pt.p : 0.5, penStyle);
+        if (wCand > maxW) maxW = wCand;
+      }
+
+      const padCss = Math.ceil(maxW * 1.55 + blurVal * 2.2 + 6);
+      const px0 = Math.max(0, Math.floor((minX - padCss) * dpr));
+      const py0 = Math.max(0, Math.floor((minY - padCss) * dpr));
+      const px1 = Math.min(this.canvas.width, Math.ceil((maxX + padCss) * dpr));
+      const py1 = Math.min(this.canvas.height, Math.ceil((maxY + padCss) * dpr));
+      const pw = px1 - px0;
+      const ph = py1 - py0;
+      if (pw <= 0 || ph <= 0) return;
+
+      if (!this._liveTipPatchCanvas && typeof document !== 'undefined' && typeof document.createElement === 'function') {
+        this._liveTipPatchCanvas = document.createElement('canvas');
+        this._liveTipPatchCanvas.width = Math.max(256, pw);
+        this._liveTipPatchCanvas.height = Math.max(256, ph);
+        this._liveTipPatchCtx = this._liveTipPatchCanvas.getContext('2d');
+      }
+      if (!this._liveTipPatchCanvas || !this._liveTipPatchCtx) return;
+      if (this._liveTipPatchCanvas.width < pw || this._liveTipPatchCanvas.height < ph) {
+        this._liveTipPatchCanvas.width = Math.max(this._liveTipPatchCanvas.width, pw + 128);
+        this._liveTipPatchCanvas.height = Math.max(this._liveTipPatchCanvas.height, ph + 128);
+      }
+      const pCtx = this._liveTipPatchCtx;
+      pCtx.setTransform(1, 0, 0, 1, 0, 0);
+      pCtx.clearRect(0, 0, pw, ph);
+      pCtx.drawImage(this.canvas, px0, py0, pw, ph, 0, 0, pw, ph);
+      this._liveTipPatchRect = { x: px0, y: py0, w: pw, h: ph };
+      this._hasLiveTipPatch = true;
+
+      const strokeColor = this.isMonochromeMode ? '#000000' : (stroke.color || '#1e293b');
+      const isFlatNib = (penStyle === 'flat');
+      const nibX = isFlatNib ? 1.38 : 1.0;
+      const nibY = isFlatNib ? 0.68 : 1.0;
+      const isUniform = (penStyle === 'ballpen' || penStyle === 'flat');
+      const tipPt = chain[chain.length - 1];
+      const uniformW = this.computePenStyleWidth(baseSize, tipPt.p !== undefined ? tipPt.p : 0.5, penStyle);
+
+      const renderTipCurve = (color) => {
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        if (this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2) {
+          const pr = this._lastPdfPageScreenRect;
+          ctx.beginPath();
+          ctx.rect(pr.x, pr.y, pr.w, pr.h);
+          ctx.clip();
+        }
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        if (blurVal > 0) {
+          ctx.shadowColor = color;
+          ctx.shadowBlur = blurVal * dpr * 0.65;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+        } else {
+          ctx.shadowBlur = 0;
+        }
+        if (isFlatNib) {
+          ctx.scale(nibX, nibY);
+        }
+
+        const M = chain.length;
+        if (isUniform) {
+          ctx.lineWidth = uniformW;
+          ctx.beginPath();
+          if (L === 1) {
+            ctx.moveTo(chain[0].x / nibX, chain[0].y / nibY);
+            if (M === 2) {
+              ctx.lineTo(chain[1].x / nibX, chain[1].y / nibY);
+            } else {
+              ctx.lineTo(((chain[0].x + chain[1].x) * 0.5) / nibX, ((chain[0].y + chain[1].y) * 0.5) / nibY);
+              for (let i = 1; i < M - 1; i++) {
+                const mx = (chain[i].x + chain[i + 1].x) * 0.5;
+                const my = (chain[i].y + chain[i + 1].y) * 0.5;
+                ctx.quadraticCurveTo(chain[i].x / nibX, chain[i].y / nibY, mx / nibX, my / nibY);
+              }
+              ctx.lineTo(chain[M - 1].x / nibX, chain[M - 1].y / nibY);
+            }
+          } else {
+            const startMx = (chain[0].x + chain[1].x) * 0.5;
+            const startMy = (chain[0].y + chain[1].y) * 0.5;
+            ctx.moveTo(startMx / nibX, startMy / nibY);
+            for (let i = 1; i < M - 1; i++) {
+              const mx = (chain[i].x + chain[i + 1].x) * 0.5;
+              const my = (chain[i].y + chain[i + 1].y) * 0.5;
+              ctx.quadraticCurveTo(chain[i].x / nibX, chain[i].y / nibY, mx / nibX, my / nibY);
+            }
+            ctx.lineTo(chain[M - 1].x / nibX, chain[M - 1].y / nibY);
+          }
+          ctx.stroke();
+        } else {
+          if (L === 1) {
+            if (M === 2) {
+              const w0 = this.computePenStyleWidth(baseSize, chain[0].p, penStyle);
+              const w1 = this.computePenStyleWidth(baseSize, chain[1].p, penStyle);
+              this.drawVariableWidthLineSegment(ctx, chain[0].x, chain[0].y, chain[1].x, chain[1].y, w0, w1);
+            } else {
+              const w0 = this.computePenStyleWidth(baseSize, chain[0].p, penStyle);
+              let prevMx = (chain[0].x + chain[1].x) * 0.5;
+              let prevMy = (chain[0].y + chain[1].y) * 0.5;
+              let prevMw = this.computePenStyleWidth(baseSize, (chain[0].p + chain[1].p) * 0.5, penStyle);
+              this.drawVariableWidthLineSegment(ctx, chain[0].x, chain[0].y, prevMx, prevMy, w0, prevMw);
+              for (let i = 1; i < M - 1; i++) {
+                const mx = (chain[i].x + chain[i + 1].x) * 0.5;
+                const my = (chain[i].y + chain[i + 1].y) * 0.5;
+                const mw = this.computePenStyleWidth(baseSize, (chain[i].p + chain[i + 1].p) * 0.5, penStyle);
+                this.drawVariableWidthQuadSegment(ctx, prevMx, prevMy, chain[i].x, chain[i].y, mx, my, prevMw, mw);
+                prevMx = mx;
+                prevMy = my;
+                prevMw = mw;
+              }
+              const wEnd = this.computePenStyleWidth(baseSize, chain[M - 1].p, penStyle);
+              this.drawVariableWidthLineSegment(ctx, prevMx, prevMy, chain[M - 1].x, chain[M - 1].y, prevMw, wEnd);
+            }
+          } else {
+            let prevMx = (chain[0].x + chain[1].x) * 0.5;
+            let prevMy = (chain[0].y + chain[1].y) * 0.5;
+            let prevMw = this.computePenStyleWidth(baseSize, (chain[0].p + chain[1].p) * 0.5, penStyle);
+            for (let i = 1; i < M - 1; i++) {
+              const mx = (chain[i].x + chain[i + 1].x) * 0.5;
+              const my = (chain[i].y + chain[i + 1].y) * 0.5;
+              const mw = this.computePenStyleWidth(baseSize, (chain[i].p + chain[i + 1].p) * 0.5, penStyle);
+              this.drawVariableWidthQuadSegment(ctx, prevMx, prevMy, chain[i].x, chain[i].y, mx, my, prevMw, mw);
+              prevMx = mx;
+              prevMy = my;
+              prevMw = mw;
+            }
+            const wEnd = this.computePenStyleWidth(baseSize, chain[M - 1].p, penStyle);
+            this.drawVariableWidthLineSegment(ctx, prevMx, prevMy, chain[M - 1].x, chain[M - 1].y, prevMw, wEnd);
+          }
+        }
+        ctx.restore();
+      };
+
+      renderTipCurve(strokeColor);
+
+      const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+      const isLight = curTheme.isLight || this.isMonochromeMode;
+      if (isBoardInk && this.hasActiveProblemCard() && !isLight && !this.isMonochromeMode && this.problemCardRect) {
+        const c = (stroke.color || '').toLowerCase();
+        if (c === '#ffffff' || c === '#fff') {
+          const r = this.problemCardRect;
+          if (maxX >= r.x - 10 && minX <= r.x + r.w + 10 && maxY >= r.y - 10 && minY <= r.y + r.h + 10) {
+            ctx.save();
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.beginPath();
+            ctx.rect(r.x, r.y, r.w, r.h);
+            ctx.clip();
+            renderTipCurve('#0f172a');
+            ctx.restore();
+          }
+        }
+      }
+    }
+
     rebuildInkCache() {
       this.clearInkCache();
       if (!this.inkStrokes || this.inkStrokes.length === 0) {
@@ -5727,9 +6118,9 @@
         clearTimeout(this._pendingIncrementalBakeTimer);
       }
       const isIPad = this.isIOSOrIPad();
-      const idleGuardMs = isIPad ? 900 : 180;
-      const retryDelayMs = isIPad ? 600 : 180;
-      const initialDelayMs = isIPad ? 1000 : 220;
+      const idleGuardMs = isIPad ? 900 : 750;
+      const retryDelayMs = isIPad ? 600 : 450;
+      const initialDelayMs = isIPad ? 1000 : 850;
       const flushWhenIdle = () => {
         this._pendingIncrementalBakeTimer = null;
         const sincePen = this._lastPenActiveTime ? (Date.now() - this._lastPenActiveTime) : 99999;
@@ -5963,6 +6354,237 @@
       };
     }
 
+    _getStrokeVisualScreenBounds(stroke, isBoardInk) {
+      if (!stroke) return null;
+      const bz = this.boardZoom || 1.0;
+      const zoomRatio = isBoardInk
+        ? (bz / (stroke.boardZoom || 1.0))
+        : (stroke.zoom ? ((this.zoomLevel || 1.0) / stroke.zoom) : 1.0);
+      const baseSize = (stroke.size || 4.2) * zoomRatio;
+      const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : 1;
+      const blurVal = (!stroke.isHighlighter && typeof stroke.softBlur === 'number' && stroke.softBlur > 0) ? stroke.softBlur : 0;
+      const blurPad = blurVal > 0 ? (blurVal * dpr * 1.5 + 6) : 0;
+
+      let widthPad = baseSize * 1.15;
+      if (stroke.isHighlighter) {
+        const hlBase = stroke.highlighterSize ? stroke.highlighterSize : Math.max(10, (stroke.size || 4.2) * 2.6);
+        widthPad = Math.max(4, hlBase * zoomRatio) * 0.75;
+      } else if (stroke.penStyle === 'brush') {
+        widthPad = baseSize * 2.1;
+      } else if (stroke.penStyle === 'fountain') {
+        widthPad = baseSize * 1.35;
+      }
+      const pad = Math.ceil(widthPad + blurPad + 10);
+
+      if (stroke.shape) {
+        const sh = stroke.shape;
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        const addPt = (pt) => {
+          if (!pt) return;
+          const sp = isBoardInk ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
+          if (sp.x < minX) minX = sp.x;
+          if (sp.x > maxX) maxX = sp.x;
+          if (sp.y < minY) minY = sp.y;
+          if (sp.y > maxY) maxY = sp.y;
+        };
+        if (sh.type === 'line' && sh.start && sh.end) {
+          addPt(sh.start);
+          addPt(sh.end);
+        } else if (sh.type === 'circle' && sh.center) {
+          const sc = isBoardInk ? this.boardToScreen(sh.center.x, sh.center.y) : this.mathToScreen(sh.center.x, sh.center.y);
+          const sr = isBoardInk ? (sh.radius * bz) : Math.abs(this.mathToScreen(sh.center.x + sh.radius, sh.center.y).x - sc.x);
+          minX = sc.x - sr; maxX = sc.x + sr;
+          minY = sc.y - sr; maxY = sc.y + sr;
+        } else if (sh.type === 'ellipse' && sh.center) {
+          const sc = isBoardInk ? this.boardToScreen(sh.center.x, sh.center.y) : this.mathToScreen(sh.center.x, sh.center.y);
+          const srx = isBoardInk ? (sh.rx * bz) : Math.abs(this.mathToScreen(sh.center.x + sh.rx, sh.center.y).x - sc.x);
+          const sry = isBoardInk ? (sh.ry * bz) : Math.abs(this.mathToScreen(sh.center.x, sh.center.y + sh.ry).y - sc.y);
+          minX = sc.x - srx; maxX = sc.x + srx;
+          minY = sc.y - sry; maxY = sc.y + sry;
+        } else if (sh.type === 'rect' && sh.min && sh.max) {
+          addPt(sh.min);
+          addPt(sh.max);
+        } else if (Array.isArray(sh.pts)) {
+          for (let i = 0; i < sh.pts.length; i++) addPt(sh.pts[i]);
+        }
+        if (Number.isFinite(minX) && Number.isFinite(maxX)) {
+          return { minX: minX - pad, maxX: maxX + pad, minY: minY - pad, maxY: maxY + pad };
+        }
+      }
+
+      const sb = this._getStrokeScreenBounds(stroke, isBoardInk);
+      if (!sb) return null;
+      return {
+        minX: sb.minX - pad,
+        maxX: sb.maxX + pad,
+        minY: sb.minY - pad,
+        maxY: sb.maxY + pad
+      };
+    }
+
+    // 🌟 [다량 필기 시 지우개 0.2ms 국소 클립 패치 엔진 (Dirty-Rect Scissor Cache Patch)]:
+    // 수백~수천 획이 쌓인 상태에서 지우개로 문지를 때 매 프레임 2,500만 픽셀 전체를 지우고 전수 리빌드하지 않고,
+    // 방금 지워진 획의 바운딩박스 영역만 오프스크린 베이크 버퍼에서 국소 clearRect + 겹치는 이웃 획만 2-Pass 재합성!
+    _patchInkCacheForRemovedStrokes(removedBatch) {
+      if (!Array.isArray(removedBatch) || removedBatch.length === 0) return true;
+
+      if (Array.isArray(this._pendingIncrementalBakeStrokes) && this._pendingIncrementalBakeStrokes.length > 0) {
+        const removedSet = new Set();
+        for (let i = 0; i < removedBatch.length; i++) {
+          if (removedBatch[i] && removedBatch[i].stroke) removedSet.add(removedBatch[i].stroke);
+        }
+        this._pendingIncrementalBakeStrokes = this._pendingIncrementalBakeStrokes.filter(st => st && !removedSet.has(st));
+        if (this._pendingIncrementalBakeStrokes.length > 0 && !this._inkBakeDirty) {
+          this._flushPendingIncrementalBakes();
+        }
+      }
+
+      if (!this.inkStrokes || this.inkStrokes.length === 0) {
+        this.clearInkCache();
+        this._inkBakeDirty = false;
+        return true;
+      }
+
+      if (this._inkBakeDirty || !this._hasBakedStrokes || !this._inkBakeCamera) {
+        return false;
+      }
+
+      const { dpr, sw, sh, padX, padY, width: bakeW, height: bakeH } = this._getInkBakeMetrics();
+      const cam = this._inkBakeCamera;
+      if (
+        cam.panX !== (this.panX || 0) ||
+        cam.panY !== (this.panY || 0) ||
+        cam.zoomLevel !== (this.zoomLevel || 1.0) ||
+        cam.boardPanX !== (this.boardPanX || 0) ||
+        cam.boardPanY !== (this.boardPanY || 0) ||
+        cam.boardZoom !== (this.boardZoom || 1.0) ||
+        cam.boardZoomOffsetX !== (this.boardZoomOffsetX || 0) ||
+        cam.boardZoomOffsetY !== (this.boardZoomOffsetY || 0) ||
+        cam.padX !== padX ||
+        cam.padY !== padY ||
+        !this.inkBakeCanvas || this.inkBakeCanvas.width !== bakeW || this.inkBakeCanvas.height !== bakeH ||
+        !this.inkGraphBakeCanvas || this.inkGraphBakeCanvas.width !== bakeW || this.inkGraphBakeCanvas.height !== bakeH
+      ) {
+        return false;
+      }
+
+      let bMinX = Infinity, bMaxX = -Infinity, bMinY = Infinity, bMaxY = -Infinity;
+      let gMinX = Infinity, gMaxX = -Infinity, gMinY = Infinity, gMaxY = -Infinity;
+      let hasBoardRemoved = false;
+      let hasGraphRemoved = false;
+
+      for (let i = 0; i < removedBatch.length; i++) {
+        const st = removedBatch[i] && removedBatch[i].stroke;
+        if (!st) continue;
+        const isBoard = (st.target || 'board') === 'board';
+        if (!isBoard && Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+        const vb = this._getStrokeVisualScreenBounds(st, isBoard);
+        if (!vb) return false;
+        if (isBoard) {
+          hasBoardRemoved = true;
+          if (vb.minX < bMinX) bMinX = vb.minX;
+          if (vb.maxX > bMaxX) bMaxX = vb.maxX;
+          if (vb.minY < bMinY) bMinY = vb.minY;
+          if (vb.maxY > bMaxY) bMaxY = vb.maxY;
+        } else {
+          hasGraphRemoved = true;
+          if (vb.minX < gMinX) gMinX = vb.minX;
+          if (vb.maxX > gMaxX) gMaxX = vb.maxX;
+          if (vb.minY < gMinY) gMinY = vb.minY;
+          if (vb.maxY > gMaxY) gMaxY = vb.maxY;
+        }
+      }
+
+      const minLimX = -padX - 2;
+      const maxLimX = sw + padX + 2;
+      const minLimY = -padY - 2;
+      const maxLimY = sh + padY + 2;
+
+      if (hasBoardRemoved && this.inkBakeCtx) {
+        const cx0 = Math.max(minLimX, Math.floor(bMinX));
+        const cy0 = Math.max(minLimY, Math.floor(bMinY));
+        const cx1 = Math.min(maxLimX, Math.ceil(bMaxX));
+        const cy1 = Math.min(maxLimY, Math.ceil(bMaxY));
+        if (cx1 > cx0 && cy1 > cy0) {
+          const bCtx = this.inkBakeCtx;
+          bCtx.save();
+          bCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
+          bCtx.beginPath();
+          bCtx.rect(cx0, cy0, cx1 - cx0, cy1 - cy0);
+          bCtx.clip();
+          bCtx.clearRect(cx0 - 1, cy0 - 1, (cx1 - cx0) + 2, (cy1 - cy0) + 2);
+          for (let pass = 0; pass < 2; pass++) {
+            const wantHl = (pass === 0);
+            for (let i = 0; i < this.inkStrokes.length; i++) {
+              const st = this.inkStrokes[i];
+              if (!st || st === this.currentInkStroke) continue;
+              if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(st)) continue;
+              if (Boolean(st.isHighlighter) !== wantHl) continue;
+              if ((st.target || 'board') !== 'board') continue;
+              const vb = this._getStrokeVisualScreenBounds(st, true);
+              if (vb && (vb.maxX < cx0 || vb.minX > cx1 || vb.maxY < cy0 || vb.minY > cy1)) continue;
+              this.renderSingleStroke(bCtx, st, null, false);
+            }
+          }
+          bCtx.restore();
+        }
+      }
+
+      if (hasGraphRemoved && this.inkGraphBakeCtx) {
+        const cx0 = Math.max(minLimX, Math.floor(gMinX));
+        const cy0 = Math.max(minLimY, Math.floor(gMinY));
+        const cx1 = Math.min(maxLimX, Math.ceil(gMaxX));
+        const cy1 = Math.min(maxLimY, Math.ceil(gMaxY));
+        if (cx1 > cx0 && cy1 > cy0) {
+          const gCtx = this.inkGraphBakeCtx;
+          gCtx.save();
+          gCtx.setTransform(dpr, 0, 0, dpr, padX * dpr, padY * dpr);
+          gCtx.beginPath();
+          gCtx.rect(cx0, cy0, cx1 - cx0, cy1 - cy0);
+          gCtx.clip();
+          gCtx.clearRect(cx0 - 1, cy0 - 1, (cx1 - cx0) + 2, (cy1 - cy0) + 2);
+          for (let pass = 0; pass < 2; pass++) {
+            const wantHl = (pass === 0);
+            for (let i = 0; i < this.inkStrokes.length; i++) {
+              const st = this.inkStrokes[i];
+              if (!st || st === this.currentInkStroke) continue;
+              if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(st)) continue;
+              if (Boolean(st.isHighlighter) !== wantHl) continue;
+              if ((st.target || 'board') !== 'graph') continue;
+              if (Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
+              const vb = this._getStrokeVisualScreenBounds(st, false);
+              if (vb && (vb.maxX < cx0 || vb.minX > cx1 || vb.maxY < cy0 || vb.minY > cy1)) continue;
+              this.renderSingleStroke(gCtx, st, null, false);
+            }
+          }
+          gCtx.restore();
+        }
+      }
+
+      return true;
+    }
+
+    _getScratchPointArray(len, slot = 0) {
+      if (!this._scratchPtSlots) {
+        this._scratchPtSlots = [
+          { pool: [], view: [] },
+          { pool: [], view: [] },
+          { pool: [], view: [] }
+        ];
+      }
+      const entry = this._scratchPtSlots[slot] || (this._scratchPtSlots[slot] = { pool: [], view: [] });
+      const pool = entry.pool;
+      while (pool.length < len) {
+        pool.push({ x: 0, y: 0, p: 0.5 });
+      }
+      const view = entry.view;
+      view.length = len;
+      for (let i = 0; i < len; i++) {
+        view[i] = pool[i];
+      }
+      return view;
+    }
+
     renderSingleStroke(targetCtx, stroke, forceColor = null, isLiveDrawing = false) {
       if (!stroke || !stroke.points || stroke.points.length === 0) return;
 
@@ -6100,17 +6722,16 @@
 
       const srcPts = stroke.points;
       const nPts = srcPts.length;
-      const pts = new Array(nPts);
+      const pts = this._getScratchPointArray(nPts, 0);
       if (isBoardInk) {
         const offX = (this.boardZoomOffsetX || 0) + (this.boardPanX || 0);
         const offY = (this.boardZoomOffsetY || 0) + (this.boardPanY || 0);
         for (let i = 0; i < nPts; i++) {
           const pt = srcPts[i];
-          pts[i] = {
-            x: pt.x * bz + offX,
-            y: pt.y * bz + offY,
-            p: (pt.p !== undefined ? pt.p : 0.5)
-          };
+          const outPt = pts[i];
+          outPt.x = pt.x * bz + offX;
+          outPt.y = pt.y * bz + offY;
+          outPt.p = (pt.p !== undefined ? pt.p : 0.5);
         }
       } else {
         const orig = this.mathToScreen(0, 0);
@@ -6119,11 +6740,10 @@
         const scaleY = unit.y - orig.y;
         for (let i = 0; i < nPts; i++) {
           const pt = srcPts[i];
-          pts[i] = {
-            x: orig.x + pt.x * scaleX,
-            y: orig.y + pt.y * scaleY,
-            p: (pt.p !== undefined ? pt.p : 0.5)
-          };
+          const outPt = pts[i];
+          outPt.x = orig.x + pt.x * scaleX;
+          outPt.y = orig.y + pt.y * scaleY;
+          outPt.p = (pt.p !== undefined ? pt.p : 0.5);
         }
       }
 
@@ -6158,6 +6778,40 @@
       if (isExport && this._activeExportFilter && this._activeExportFilter.includeProblem === false) {
         return rects;
       }
+      const hasPrimaryProb = (typeof this.hasActiveProblemCard === 'function') && this.hasActiveProblemCard();
+      const hasExtraProb = Array.isArray(this.extraProblemCards) && this.extraProblemCards.length > 0;
+      if (!hasPrimaryProb && !hasExtraProb) {
+        return rects;
+      }
+
+      // 🌟 [강제 동기 레이아웃 리플로우(Forced Reflow) 0회 캐시]:
+      // 지우개/렌더링 매 프레임마다 getBoundingClientRect()를 호출하면 브라우저가 DOM 전체 레이아웃을 강제 재계산하므로,
+      // 카드 이동/리사이즈 중이 아닐 때는 순수 JS 스타일 시그니처가 바뀌었을 때만 측정하고 평소에는 0.000ms 캐시를 반환!
+      if (!isExport && !this._isDraggingOrResizingAnyCard) {
+        const pWidget = (hasPrimaryProb && typeof document !== 'undefined') ? document.getElementById('problemCardWidget') : null;
+        let layoutSig = `${this.screenWidth || 0}|${this.screenHeight || 0}|${this.boardPanX || 0}|${this.boardPanY || 0}|${this.boardZoom || 1}`;
+        if (pWidget) {
+          const pMin = (pWidget.classList && pWidget.classList.contains('minimized')) ? 1 : 0;
+          const pr = this.problemCardRect;
+          layoutSig += `|P:${pWidget.style ? pWidget.style.display : ''},${pWidget.style ? pWidget.style.left : ''},${pWidget.style ? pWidget.style.top : ''},${pWidget.style ? pWidget.style.width : ''},${pWidget.style ? pWidget.style.transform : ''},${pMin},${pr ? Math.round(pr.h) : 0}`;
+        }
+        if (hasExtraProb) {
+          for (let i = 0; i < this.extraProblemCards.length; i++) {
+            const ep = this.extraProblemCards[i];
+            const el = ep && ep.el;
+            if (!el) continue;
+            const eMin = (el.classList && el.classList.contains('minimized')) ? 1 : 0;
+            layoutSig += `|E${i}:${el.style ? el.style.display : ''},${el.style ? el.style.left : ''},${el.style ? el.style.top : ''},${el.style ? el.style.width : ''},${el.style ? el.style.transform : ''},${eMin}`;
+          }
+        }
+        if (this._whiteCardRectsCacheSig === layoutSig && Array.isArray(this._whiteCardRectsCacheVal)) {
+          return this._whiteCardRectsCacheVal;
+        }
+        this._whiteCardRectsCacheSig = layoutSig;
+      } else if (!isExport) {
+        this._whiteCardRectsCacheSig = null;
+      }
+
       const offX = (isExport && this._exportCropOffset && typeof this._exportCropOffset.x === 'number') ? this._exportCropOffset.x : 0;
       const offY = (isExport && this._exportCropOffset && typeof this._exportCropOffset.y === 'number') ? this._exportCropOffset.y : 0;
       const canvasRect = (this.canvas && typeof this.canvas.getBoundingClientRect === 'function')
@@ -6192,47 +6846,85 @@
         }
       };
 
-      if (typeof this.hasActiveProblemCard === 'function' && this.hasActiveProblemCard()) {
+      if (hasPrimaryProb) {
         const pWidget = (typeof document !== 'undefined') ? document.getElementById('problemCardWidget') : null;
         addBodyRect(pWidget, this.problemCardRect);
       }
-      if (Array.isArray(this.extraProblemCards)) {
+      if (hasExtraProb) {
         for (let i = 0; i < this.extraProblemCards.length; i++) {
           const ep = this.extraProblemCards[i];
           if (ep && ep.el) addBodyRect(ep.el, ep.rect || null);
         }
       }
+      if (!isExport && this._whiteCardRectsCacheSig) {
+        this._whiteCardRectsCacheVal = rects;
+      }
       return rects;
     }
 
-    _drawWhiteBoardInkContrastOverProblemCards(ctx, strokesList, isExport = false) {
-      if (!Array.isArray(strokesList) || strokesList.length === 0) return;
+    _isWhiteBoardContrastStroke(s) {
+      if (!s || (s.target || 'board') !== 'board' || s.isHighlighter) return false;
+      const c = s.color;
+      if (!c) return false;
+      if (c === '#ffffff' || c === '#fff' || c === '#FFFFFF' || c === '#FFF') return Boolean(s.points && s.points.length > 0);
+      const col = c.toLowerCase();
+      return (col === '#ffffff' || col === '#fff') && Boolean(s.points && s.points.length > 0);
+    }
+
+    _drawWhiteBoardInkContrastOverProblemCards(ctx, strokesList, isExport = false, extraLiveStroke = null) {
+      const hasList = Array.isArray(strokesList) && strokesList.length > 0;
+      const hasExtra = this._isWhiteBoardContrastStroke(extraLiveStroke);
+      if (!hasList && !hasExtra) return;
+
+      const hasPrimaryProb = (typeof this.hasActiveProblemCard === 'function') && this.hasActiveProblemCard();
+      const hasExtraProb = Array.isArray(this.extraProblemCards) && this.extraProblemCards.length > 0;
+      if (!hasPrimaryProb && !hasExtraProb) return;
+
+      let anyWhite = hasExtra;
+      if (!anyWhite && hasList) {
+        for (let i = 0; i < strokesList.length; i++) {
+          if (this._isWhiteBoardContrastStroke(strokesList[i])) {
+            anyWhite = true;
+            break;
+          }
+        }
+      }
+      if (!anyWhite) return;
+
       const cardRects = this._getVisibleWhiteProblemCardScreenRects(isExport);
       if (cardRects.length === 0) return;
 
       for (let rIdx = 0; rIdx < cardRects.length; rIdx++) {
         const r = cardRects[rIdx];
-        const whiteStrokes = strokesList.filter(s => {
-          if (!s || (s.target || 'board') !== 'board' || s.isHighlighter) return false;
-          const col = (s.color || '').toLowerCase();
-          if (col !== '#ffffff' && col !== '#fff') return false;
-          if (!s.points || s.points.length === 0) return false;
+        let clipped = false;
+        const drawIfOverlaps = (st, forceLive = false) => {
+          if (!this._isWhiteBoardContrastStroke(st)) return;
           if (typeof this._getStrokeScreenBounds === 'function') {
-            const sb = this._getStrokeScreenBounds(s, true);
-            if (sb) {
-              return (sb.maxX >= r.x && sb.minX <= r.x + r.w && sb.maxY >= r.y && sb.minY <= r.y + r.h);
+            const sb = this._getStrokeScreenBounds(st, true);
+            if (sb && (sb.maxX < r.x || sb.minX > r.x + r.w || sb.maxY < r.y || sb.minY > r.y + r.h)) {
+              return;
             }
           }
-          return true;
-        });
-        if (whiteStrokes.length > 0) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(r.x, r.y, r.w, r.h);
-          ctx.clip();
-          whiteStrokes.forEach(stroke => {
-            this.renderSingleStroke(ctx, stroke, '#0f172a', !isExport && stroke === this.currentInkStroke);
-          });
+          if (!clipped) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(r.x, r.y, r.w, r.h);
+            ctx.clip();
+            clipped = true;
+          }
+          this.renderSingleStroke(ctx, st, '#0f172a', forceLive || (!isExport && st === this.currentInkStroke));
+        };
+        if (hasList) {
+          for (let i = 0; i < strokesList.length; i++) {
+            const st = strokesList[i];
+            if (extraLiveStroke && st === extraLiveStroke) continue;
+            drawIfOverlaps(st, false);
+          }
+        }
+        if (hasExtra) {
+          drawIfOverlaps(extraLiveStroke, true);
+        }
+        if (clipped) {
           ctx.restore();
         }
       }
@@ -6399,10 +7091,10 @@
 
       // 2차 패스: [스마트 오토 컨트라스트] 다크 칠판에서 기본 흰색 펜(#ffffff)으로 흰색 문제 카드(#1 및 추가 문제 카드) 위에 필기했을 때
       if ((!filterTarget || filterTarget === 'board') && !isLight && !this.isMonochromeMode) {
-        const liveStrokes = (this.isDrawingInk && this.currentInkStroke && (this.currentInkStroke.target || 'board') === 'board')
-          ? [...(this.inkStrokes || []), this.currentInkStroke]
-          : (this.inkStrokes || []);
-        this._drawWhiteBoardInkContrastOverProblemCards(ctx, liveStrokes, false);
+        const extraLive = (this.isDrawingInk && this.currentInkStroke && (this.currentInkStroke.target || 'board') === 'board')
+          ? this.currentInkStroke
+          : null;
+        this._drawWhiteBoardInkContrastOverProblemCards(ctx, this.inkStrokes || [], false, extraLive);
       }
 
       // drawLassoOverlay는 최상단 렌더링 파이프라인(render)에서 일괄 수행

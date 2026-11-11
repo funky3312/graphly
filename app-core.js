@@ -262,6 +262,15 @@ class GraphApp {
       else if (savedStylusPref === 'false') this.showVirtualStylus = false;
     } catch (err) { }
 
+    // 🎙️ 녹음 볼륨 (마이크 수음 감도 & 출력 음량: 20% ~ 150%, 기본 100%)
+    this.audioRecordVolume = 100;
+    try {
+      const savedRecVol = parseInt(localStorage.getItem('graphly_audio_record_volume_v1'), 10);
+      if (Number.isFinite(savedRecVol) && savedRecVol >= 20 && savedRecVol <= 150) {
+        this.audioRecordVolume = Math.round(savedRecVol / 5) * 5;
+      }
+    } catch (err) { }
+
     // [🪢 올가미(Lasso) 선택 & 풀이 이동 툴 상태]
     this.isLassoSelecting = false;       // 올가미 루프 드로잉 중 플래그
     this.lassoPoints = [];               // 올가미 화면 좌표 루프 [{x, y}]
@@ -3019,6 +3028,45 @@ class GraphApp {
       chkStylus.onchange = (e) => {
         this.toggleVirtualStylus(Boolean(e.target.checked));
         if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
+      };
+    }
+
+    // 🎙️ 환경설정 > 녹음 볼륨 슬라이더 & ◀ ▶ 스테퍼 (20% ~ 150%, 기본 100%)
+    const sliderAudioRecVol = document.getElementById('sliderAudioRecVol');
+    const lblAudioRecVol = document.getElementById('lblAudioRecVol');
+    const btnAudioRecVolDown = document.getElementById('btnAudioRecVolDown');
+    const btnAudioRecVolUp = document.getElementById('btnAudioRecVolUp');
+    this.setAudioRecordVolume = (rawVal) => {
+      const num = Number(rawVal);
+      const clamped = Number.isFinite(num)
+        ? Math.max(20, Math.min(150, Math.round(num / 5) * 5))
+        : 100;
+      this.audioRecordVolume = clamped;
+      if (sliderAudioRecVol) sliderAudioRecVol.value = String(clamped);
+      if (lblAudioRecVol) lblAudioRecVol.textContent = `${clamped}%`;
+      try {
+        localStorage.setItem('graphly_audio_record_volume_v1', String(clamped));
+      } catch (err) { }
+      if (typeof this._applyLiveAudioRecordVolume === 'function') {
+        this._applyLiveAudioRecordVolume();
+      }
+    };
+    this.setAudioRecordVolume(this.audioRecordVolume || 100);
+    if (sliderAudioRecVol) {
+      sliderAudioRecVol.oninput = (e) => {
+        this.setAudioRecordVolume(parseFloat(e.target.value));
+      };
+    }
+    if (btnAudioRecVolDown) {
+      btnAudioRecVolDown.onclick = (e) => {
+        e.stopPropagation();
+        this.setAudioRecordVolume((this.audioRecordVolume || 100) - 5);
+      };
+    }
+    if (btnAudioRecVolUp) {
+      btnAudioRecVolUp.onclick = (e) => {
+        e.stopPropagation();
+        this.setAudioRecordVolume((this.audioRecordVolume || 100) + 5);
       };
     }
 

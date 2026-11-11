@@ -390,6 +390,14 @@
     if (btnSettingsLogout) {
       btnSettingsLogout.onclick = () => this.handleCloudLogout();
     }
+    const btnRailSettings = document.getElementById('btnRailSettings');
+    if (btnRailSettings) {
+      btnRailSettings.addEventListener('click', () => {
+        if (this.cloudUser && typeof this.refreshAccountSubscriptionStatusUI === 'function') {
+          this.refreshAccountSubscriptionStatusUI();
+        }
+      }, { passive: true });
+    }
 
     // 🔍 클라우드 보관함(윈도우 탐색기) 상단 툴바 & 폴더/하위폴더 추가 & 하단 저장/선택 관리 바 컨트롤 바인딩
     const inpLibSearch = document.getElementById('inputCloudLibrarySearch');
@@ -2278,67 +2286,197 @@
     this.renderMyLibraryList();
   }
 
-  syncCloudAuthUI() {
-    const lblBtn = document.getElementById('lblCloudAuthBtnText');
-    const lblStatus = document.getElementById('lblCloudUserStatus');
-    const boxEmailLogin = document.getElementById('cloudEmailLoginBox');
-    const btnEmailToggle = document.getElementById('btnCloudEmailLoginToggle');
-    const verifyBanner = document.getElementById('cloudEmailVerifyBanner');
-    const lblProAcct = document.getElementById('lblProModalAccountStatus');
-    const btnProGoLogin = document.getElementById('btnProModalGoLogin');
-    const lblSettingsAcct = document.getElementById('lblSettingsAccountStatus');
-    const settingsLoggedOutRow = document.getElementById('settingsAccountLoggedOutActions');
-    const settingsLoggedInRow = document.getElementById('settingsAccountLoggedInActions');
+  getSubscriptionRemainingInfo(nowMs = Date.now()) {
+    const emptyInfo = {
+      tier: 'free',
+      isPaid: false,
+      activeExpiresAt: 0,
+      remainingDays: 0,
+      formattedDate: '',
+      deferredProDays: 0,
+      totalExpiresAt: 0,
+      totalFormattedDate: ''
+    };
+    if (!this.cloudUser || !this.cloudUser.uid) return emptyInfo;
+    const tier = this.getUserSubscriptionTier();
+    if (tier !== 'pro' && tier !== 'premium') return emptyInfo;
 
-    if (this.cloudUser) {
-      const emailStr = this.cloudUser.email || this.cloudUser.loginId || '';
-      const tier = this.getUserSubscriptionTier();
-      const tierTag = tier === 'premium' ? ' · 💎 Premium' : (tier === 'pro' ? ' · 👑 Pro' : '');
-      if (lblStatus) {
-        lblStatus.style.display = 'inline-flex';
-        lblStatus.textContent = `🟢 ${this.cloudUser.displayName} (${emailStr})${tierTag}`;
+    const uid = this.cloudUser.uid;
+    const meta = (this._subStateMeta && this._subStateMeta.uid === uid)
+      ? this._subStateMeta
+      : this._readStoredSubStateForUid(uid);
+
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const premExp = meta ? (Number(meta.premiumExpiresAt) || 0) : 0;
+    const proExp = meta ? (Number(meta.proExpiresAt) || 0) : 0;
+    const totExp = meta ? (Number(meta.expiresAt) || 0) : 0;
+
+    const activeExpiresAt = tier === 'premium'
+      ? (premExp > nowMs ? premExp : (totExp > nowMs ? totExp : 0))
+      : (proExp > nowMs ? proExp : (totExp > nowMs ? totExp : 0));
+
+    const totalExpiresAt = Math.max(activeExpiresAt, proExp, totExp);
+    const deferredProDays = (tier === 'premium' && activeExpiresAt > nowMs && proExp > activeExpiresAt + 60000)
+      ? Math.max(1, Math.ceil((proExp - activeExpiresAt) / DAY_MS))
+      : 0;
+
+    const formatDateDot = (ts) => {
+      if (!ts || !(ts > 0)) return '';
+      try {
+        const d = new Date(Number(ts));
+        if (Number.isNaN(d.getTime())) return '';
+        return `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}.`;
+      } catch (e) {
+        return '';
       }
-      if (lblBtn) lblBtn.textContent = '로그아웃';
-      if (boxEmailLogin) boxEmailLogin.style.display = 'none';
-      if (verifyBanner) verifyBanner.style.display = 'none';
-      if (btnEmailToggle) btnEmailToggle.style.display = 'none';
-      if (lblProAcct) {
-        lblProAcct.textContent = `✅ 결제 귀속 계정: ${this.cloudUser.displayName} (${emailStr})${tierTag}`;
-      }
-      if (btnProGoLogin) btnProGoLogin.style.display = 'none';
-      if (lblSettingsAcct) {
-        lblSettingsAcct.style.display = 'flex';
-        const acctText = emailStr || this.cloudUser.displayName || '';
-        const planLabel = tier === 'premium' ? '💎 Premium' : (tier === 'pro' ? '👑 Pro 플랜' : '무료 플랜');
-        const planClass = tier === 'free' ? 'is-free' : 'is-pro';
-        lblSettingsAcct.innerHTML = '';
-        const spanEmail = document.createElement('span');
-        spanEmail.className = 'settings-account-id-text';
-        spanEmail.textContent = acctText;
-        spanEmail.title = acctText;
-        const spanPlan = document.createElement('span');
-        spanPlan.className = `settings-account-plan-badge ${planClass}`;
-        spanPlan.textContent = planLabel;
-        lblSettingsAcct.appendChild(spanEmail);
-        lblSettingsAcct.appendChild(spanPlan);
-      }
-      if (settingsLoggedOutRow) settingsLoggedOutRow.style.display = 'none';
-      if (settingsLoggedInRow) settingsLoggedInRow.style.display = 'flex';
-    } else {
+    };
+
+    const remainingDays = activeExpiresAt > nowMs
+      ? Math.max(1, Math.ceil((activeExpiresAt - nowMs) / DAY_MS))
+      : 0;
+
+    return {
+      tier,
+      isPaid: true,
+      activeExpiresAt,
+      remainingDays,
+      formattedDate: formatDateDot(activeExpiresAt),
+      deferredProDays,
+      totalExpiresAt,
+      totalFormattedDate: formatDateDot(totalExpiresAt)
+    };
+  }
+
+  refreshAccountSubscriptionStatusUI() {
+    const lblStatus = document.getElementById('lblCloudUserStatus');
+    const lblProAcct = document.getElementById('lblProModalAccountStatus');
+    const lblSettingsAcct = document.getElementById('lblSettingsAccountStatus');
+
+    if (!this.cloudUser) {
       if (lblStatus) {
         lblStatus.style.display = 'none';
         lblStatus.textContent = '';
       }
-      if (lblBtn) lblBtn.textContent = '구글 로그인';
-      if (btnEmailToggle) btnEmailToggle.style.display = 'inline-flex';
       if (lblProAcct) {
         lblProAcct.textContent = '🔒 결제 전 로그인이 필요합니다.';
       }
-      if (btnProGoLogin) btnProGoLogin.style.display = 'inline-flex';
       if (lblSettingsAcct) {
+        lblSettingsAcct.classList.remove('has-sub-expiry');
         lblSettingsAcct.style.display = 'none';
         lblSettingsAcct.textContent = '';
+        lblSettingsAcct.title = '';
       }
+      return;
+    }
+
+    const emailStr = this.cloudUser.email || this.cloudUser.loginId || '';
+    const subInfo = this.getSubscriptionRemainingInfo();
+    const tier = subInfo.tier;
+    const tierTag = tier === 'premium' ? ' · 💎 Premium' : (tier === 'pro' ? ' · 👑 Pro' : '');
+    const hasExpiry = subInfo.isPaid && subInfo.remainingDays > 0;
+
+    if (lblStatus) {
+      lblStatus.style.display = 'inline-flex';
+      const remainSuffix = hasExpiry ? ` (${subInfo.remainingDays}일 남음)` : '';
+      lblStatus.textContent = `🟢 ${this.cloudUser.displayName} (${emailStr})${tierTag}${remainSuffix}`;
+    }
+
+    if (lblProAcct) {
+      let proModalSuffix = '';
+      if (hasExpiry) {
+        const datePart = subInfo.formattedDate ? ` · ${subInfo.formattedDate}까지` : '';
+        const deferPart = subInfo.deferredProDays > 0 ? `, 이후 Pro ${subInfo.deferredProDays}일 자동 연장` : '';
+        proModalSuffix = ` (${subInfo.remainingDays}일 남음${datePart}${deferPart})`;
+      }
+      lblProAcct.textContent = `✅ 결제 귀속 계정: ${this.cloudUser.displayName} (${emailStr})${tierTag}${proModalSuffix}`;
+    }
+
+    if (lblSettingsAcct) {
+      lblSettingsAcct.style.display = 'flex';
+      lblSettingsAcct.style.color = '';
+      lblSettingsAcct.style.fontSize = '';
+      lblSettingsAcct.style.fontWeight = '';
+      lblSettingsAcct.innerHTML = '';
+
+      const acctText = emailStr || this.cloudUser.displayName || '';
+      const planLabel = tier === 'premium' ? '💎 Premium' : (tier === 'pro' ? '👑 Pro 플랜' : '무료 플랜');
+      const planClass = tier === 'premium' ? 'is-pro is-premium' : (tier === 'pro' ? 'is-pro' : 'is-free');
+
+      const spanEmail = document.createElement('span');
+      spanEmail.className = 'settings-account-id-text';
+      spanEmail.textContent = acctText;
+      spanEmail.title = acctText;
+
+      const spanPlan = document.createElement('span');
+      spanPlan.className = `settings-account-plan-badge ${planClass}`;
+      spanPlan.textContent = planLabel;
+
+      if (hasExpiry) {
+        lblSettingsAcct.classList.add('has-sub-expiry');
+        const mainRow = document.createElement('div');
+        mainRow.className = 'settings-account-main-row';
+        mainRow.appendChild(spanEmail);
+        mainRow.appendChild(spanPlan);
+
+        const expRow = document.createElement('div');
+        expRow.className = 'settings-account-sub-expiry-row';
+
+        const spanDays = document.createElement('span');
+        spanDays.className = `settings-account-remain-days ${tier === 'premium' ? 'is-premium' : 'is-pro'}`;
+        spanDays.textContent = `${subInfo.remainingDays}일 남음`;
+
+        const spanDate = document.createElement('span');
+        spanDate.className = 'settings-account-expire-date';
+        const dateText = subInfo.formattedDate ? `${subInfo.formattedDate}까지` : '';
+        spanDate.textContent = subInfo.deferredProDays > 0
+          ? `${dateText}${dateText ? ' ' : ''}(+Pro ${subInfo.deferredProDays}일)`
+          : dateText;
+
+        expRow.appendChild(spanDays);
+        if (spanDate.textContent) {
+          expRow.appendChild(spanDate);
+        }
+        lblSettingsAcct.appendChild(mainRow);
+        lblSettingsAcct.appendChild(expRow);
+
+        const tooltipParts = [`${planLabel} · ${subInfo.remainingDays}일 남음`];
+        if (subInfo.formattedDate) tooltipParts.push(`(${subInfo.formattedDate}까지)`);
+        if (subInfo.deferredProDays > 0) {
+          tooltipParts.push(`이후 Pro ${subInfo.deferredProDays}일 자동 연장`);
+        }
+        lblSettingsAcct.title = tooltipParts.join(' ');
+      } else {
+        lblSettingsAcct.classList.remove('has-sub-expiry');
+        lblSettingsAcct.title = '';
+        lblSettingsAcct.appendChild(spanEmail);
+        lblSettingsAcct.appendChild(spanPlan);
+      }
+    }
+  }
+
+  syncCloudAuthUI() {
+    const lblBtn = document.getElementById('lblCloudAuthBtnText');
+    const boxEmailLogin = document.getElementById('cloudEmailLoginBox');
+    const btnEmailToggle = document.getElementById('btnCloudEmailLoginToggle');
+    const verifyBanner = document.getElementById('cloudEmailVerifyBanner');
+    const btnProGoLogin = document.getElementById('btnProModalGoLogin');
+    const settingsLoggedOutRow = document.getElementById('settingsAccountLoggedOutActions');
+    const settingsLoggedInRow = document.getElementById('settingsAccountLoggedInActions');
+
+    this.refreshAccountSubscriptionStatusUI();
+
+    if (this.cloudUser) {
+      if (lblBtn) lblBtn.textContent = '로그아웃';
+      if (boxEmailLogin) boxEmailLogin.style.display = 'none';
+      if (verifyBanner) verifyBanner.style.display = 'none';
+      if (btnEmailToggle) btnEmailToggle.style.display = 'none';
+      if (btnProGoLogin) btnProGoLogin.style.display = 'none';
+      if (settingsLoggedOutRow) settingsLoggedOutRow.style.display = 'none';
+      if (settingsLoggedInRow) settingsLoggedInRow.style.display = 'flex';
+    } else {
+      if (lblBtn) lblBtn.textContent = '구글 로그인';
+      if (btnEmailToggle) btnEmailToggle.style.display = 'inline-flex';
+      if (btnProGoLogin) btnProGoLogin.style.display = 'inline-flex';
       if (settingsLoggedOutRow) settingsLoggedOutRow.style.display = 'flex';
       if (settingsLoggedInRow) settingsLoggedInRow.style.display = 'none';
     }
@@ -2598,29 +2736,35 @@
         proMaxSlides: 50,
         premiumMaxSlides: 50,
 
-        // [1] Free (무료 기본)
-        freeMaxCloudBytes: 50 * MB,          // 클라우드 용량 50 MB
-        freeMaxCustomGraphs: 3,              // ⭐ 내 그래프 프리셋 최대 3개
-        freeMaxRecordMs: 3 * 60 * 1000,      // 수업 녹화 최대 3분 (180,000ms)
-        freeShareExpiryDays: 3,              // 공유 링크 3일 후 자동 폭파
+        // [1] Free (무료 회원 · 비로그인 공통 기준 / 클라우드·프리셋은 로그인 전용)
+        freeMaxCloudBytes: 100 * MB,         // 클라우드 보관함 용량 100 MB (로그인 시)
+        freeMaxCustomGraphs: 3,              // ⭐ 내 그래프 프리셋 최대 3개 (로그인 시)
+        freeMaxRecordMs: 5 * 60 * 1000,      // 1회 수업 녹화 최대 5분 (300,000ms)
+        freeShareDailyLimit: 3,              // 공유 링크 1일 3개 제한
+        freeShareExpiryDays: 3,              // 공유 링크 3일 후 만료
 
         // [2] Pro (프로)
-        proMaxCloudBytes: 5 * GB,            // 클라우드 용량 5 GB
-        proMaxCustomGraphs: 100,             // ⭐ 내 그래프 프리셋 최대 100개
-        proMaxRecordMs: 60 * 60 * 1000,      // 수업 녹화 최대 60분 (3,600,000ms)
-        proShareExpiryDays: 7,               // 공유 링크 7일 후 자동 폭파
-        proMonthlyPrice: 4900,               // 월간(30일) 표시 가격 (VAT 포함)
-        proYearlyPrice: 49000,               // 연간(365일) 표시 가격 (VAT 포함)
+        proMaxCloudBytes: 5 * GB,            // 클라우드 보관함 용량 5 GB
+        proMaxCustomGraphs: 30,              // ⭐ 내 그래프 프리셋 최대 30개
+        proMaxRecordMs: 60 * 60 * 1000,      // 1회 수업 녹화 최대 60분 (3,600,000ms)
+        proShareExpiryDays: 7,               // 공유 링크 무제한 · 7일 후 만료
+        proMonthlyPrice: 4900,               // 월간(30일) 할인가 (VAT 포함)
+        proMonthlyRegularPrice: 9900,        // 월간(30일) 정가 표시용
+        proYearlyPrice: 49000,               // 연간(365일) 할인가 (VAT 포함)
+        proYearlyRegularPrice: 99000,        // 연간(365일) 정가 표시용
 
         // [3] Premium (프리미엄)
-        premiumMaxCloudBytes: 20 * GB,       // 클라우드 용량 20 GB
+        premiumMaxCloudBytes: 20 * GB,       // 클라우드 보관함 용량 20 GB
         premiumMaxCustomGraphs: 100,         // ⭐ 내 그래프 프리셋 최대 100개
-        premiumMaxRecordMs: 60 * 60 * 1000,  // 수업 녹화 최대 60분 (3,600,000ms)
-        premiumSharePermanent: true,         // 공유 링크 만료 없음 (영구)
+        premiumMaxRecordMs: 60 * 60 * 1000,  // 1회 수업 녹화 최대 60분 (3,600,000ms)
+        premiumSharePermanent: true,         // 공유 링크 무제한 · 영구 유지
         premiumShareFolderName: '🔗 공유 링크', // 링크 원본 자동 귀속 전용 폴더
         premiumShareGraceDays: 7,            // 만료 시 7일 유예 후 공유 링크 일시잠금 (문서 삭제 금지 · 재구독 시 즉시 복구)
-        premiumMonthlyPrice: 14900,          // 월간(30일) 표시 가격 (VAT 포함)
-        premiumYearlyPrice: 149000           // 연간(365일) 표시 가격 (VAT 포함)
+        premiumPromoBannerEnabled: true,     // 뷰어 상단 홍보배너 제공
+        premiumMonthlyPrice: 9900,           // 월간(30일) 할인가 (VAT 포함)
+        premiumMonthlyRegularPrice: 19900,   // 월간(30일) 정가 표시용
+        premiumYearlyPrice: 99000,           // 연간(365일) 할인가 (VAT 포함)
+        premiumYearlyRegularPrice: 199000    // 연간(365일) 정가 표시용
       };
     }
     return this.SUBSCRIPTION_QUOTA_CONFIG;
@@ -2780,26 +2924,30 @@
         tierLabel: '👑 Pro',
         maxCloudBytes: maxBytes,
         maxCloudLabel: this.formatBytesHuman(maxBytes),
-        maxCustomGraphs: Number(cfg.proMaxCustomGraphs) || 100,
+        maxCustomGraphs: Number(cfg.proMaxCustomGraphs) || 30,
         maxRecordMs: Number(cfg.proMaxRecordMs) || (60 * 60 * 1000),
         sharePermanent: false,
         isPermanentShare: false,
+        shareDailyLimit: 0,
         shareExpiryDays: Number(cfg.proShareExpiryDays) || 7,
         shareFolderName: '',
         shareGraceDays: 0
       };
     }
-    const maxBytes = Number(cfg.freeMaxCloudBytes) || (50 * 1024 * 1024);
+    const maxBytes = Number(cfg.freeMaxCloudBytes) || (100 * 1024 * 1024);
+    const isLoggedIn = Boolean(this.cloudUser && this.cloudUser.uid);
     return {
       tier: 'free',
-      label: '무료',
-      tierLabel: '무료',
+      isGuest: !isLoggedIn,
+      label: isLoggedIn ? '무료' : '비로그인',
+      tierLabel: isLoggedIn ? '무료' : '비로그인',
       maxCloudBytes: maxBytes,
       maxCloudLabel: this.formatBytesHuman(maxBytes),
-      maxCustomGraphs: Number(cfg.freeMaxCustomGraphs) || 3,
-      maxRecordMs: Number(cfg.freeMaxRecordMs) || (3 * 60 * 1000),
+      maxCustomGraphs: isLoggedIn ? (Number(cfg.freeMaxCustomGraphs) || 3) : 0,
+      maxRecordMs: Number(cfg.freeMaxRecordMs) || (5 * 60 * 1000),
       sharePermanent: false,
       isPermanentShare: false,
+      shareDailyLimit: Number(cfg.freeShareDailyLimit) || 3,
       shareExpiryDays: Number(cfg.freeShareExpiryDays) || 3,
       shareFolderName: '',
       shareGraceDays: 0
@@ -2934,8 +3082,14 @@
                     message: '토스페이먼츠 결제 취소 내역이 확인되어 무료 플랜으로 전환되었습니다.'
                   });
                 }
-              } else if (verifyData.tier && verifyData.tier !== resolvedMeta.tier) {
-                applySubMeta(this._extractSubMetaFromDoc(targetUid, verifyData));
+              } else if (verifyData.tier) {
+                const nextMeta = this._extractSubMetaFromDoc(targetUid, verifyData);
+                const expChanged = Math.abs((Number(nextMeta.expiresAt) || 0) - (Number(resolvedMeta.expiresAt) || 0)) > 60000
+                  || Math.abs((Number(nextMeta.proExpiresAt) || 0) - (Number(resolvedMeta.proExpiresAt) || 0)) > 60000
+                  || Math.abs((Number(nextMeta.premiumExpiresAt) || 0) - (Number(resolvedMeta.premiumExpiresAt) || 0)) > 60000;
+                if (nextMeta.tier !== resolvedMeta.tier || expChanged) {
+                  applySubMeta(nextMeta);
+                }
               }
             })
             .catch(() => { })
@@ -2953,7 +3107,7 @@
     const cfg = this.getSubscriptionQuotaConfig();
     const hardCap = Math.max(
       Number(cfg.premiumMaxCustomGraphs) || 100,
-      Number(cfg.proMaxCustomGraphs) || 100,
+      Number(cfg.proMaxCustomGraphs) || 30,
       Number(cfg.freeMaxCustomGraphs) || 3
     );
 
@@ -2981,11 +3135,26 @@
 
   getCustomGraphQuotaStatus() {
     const cfg = this.getSubscriptionQuotaConfig();
+    const isLoggedIn = Boolean(this.cloudUser && this.cloudUser.uid);
+    const freeLimit = Number(cfg.freeMaxCustomGraphs) || 3;
+    const proLimit = Number(cfg.proMaxCustomGraphs) || 30;
+    const premiumLimit = Number(cfg.premiumMaxCustomGraphs) || 100;
+    if (!isLoggedIn) {
+      return {
+        tier: 'guest',
+        isGuest: true,
+        isPro: false,
+        currentCount: 0,
+        maxLimit: 0,
+        premiumLimit,
+        proLimit,
+        freeLimit,
+        isReached: true,
+        badgeText: '🔒 로그인 필요'
+      };
+    }
     const tier = this.getUserSubscriptionTier();
     const isPro = (tier === 'pro' || tier === 'premium');
-    const freeLimit = Number(cfg.freeMaxCustomGraphs) || 3;
-    const proLimit = Number(cfg.proMaxCustomGraphs) || 100;
-    const premiumLimit = Number(cfg.premiumMaxCustomGraphs) || 100;
     const maxLimit = tier === 'premium' ? premiumLimit : (tier === 'pro' ? proLimit : freeLimit);
     const hardCap = Math.max(premiumLimit, proLimit, freeLimit);
     if (Array.isArray(this.customGraphPresets) && cfg.enforceCustomGraphLimit && this.customGraphPresets.length > hardCap) {
@@ -3000,7 +3169,9 @@
     if (tier === 'premium') {
       badgeText = `💎 Premium ${totalCount} / ${maxLimit}`;
     } else if (tier === 'pro') {
-      badgeText = `👑 Pro ${totalCount} / ${maxLimit}`;
+      badgeText = totalCount > maxLimit
+        ? `👑 Pro ${maxLimit} / ${maxLimit} (보관 ${totalCount})`
+        : `👑 Pro ${totalCount} / ${maxLimit}`;
     } else if (totalCount > maxLimit) {
       badgeText = `무료 ${maxLimit} / ${maxLimit} (보관 ${totalCount})`;
     } else {
@@ -3008,9 +3179,11 @@
     }
     return {
       tier,
+      isGuest: false,
       isPro,
       currentCount: totalCount,
       maxLimit,
+      premiumLimit,
       proLimit,
       freeLimit,
       isReached,
@@ -3052,8 +3225,8 @@
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[ch]));
     const benefitHighlightText = isPremium
-      ? '💎 클라우드 20GB · 내 그래프 100개 · 60분 녹화 · 영구 공유 링크 활성화'
-      : '👑 클라우드 5GB · 내 그래프 100개 · 60분 녹화 · 7일 공유 링크 활성화';
+      ? '💎 클라우드 20GB · 내 그래프 100개 · 60분 녹화 · 영구 링크 · 홍보배너 활성화'
+      : '👑 클라우드 5GB · 내 그래프 30개 · 60분 녹화 · 무제한 공유(7일) 활성화';
 
     backdrop.innerHTML = `
       <div class="smart-modal-card" style="max-width: 450px; width: 92%; text-align: center; padding: 26px 22px 20px;">
@@ -3156,8 +3329,8 @@
     if (oid.startsWith('GRAPHLY_PRO_1M_')) return 'PRO_1M';
     const cfg = this.getSubscriptionQuotaConfig();
     const numAmt = Number(amount) || 0;
-    if (numAmt === Number(cfg.premiumYearlyPrice)) return 'PREMIUM_1Y';
-    if (numAmt === Number(cfg.premiumMonthlyPrice)) return 'PREMIUM_1M';
+    if (numAmt === Number(cfg.premiumYearlyPrice) || numAmt === 149000) return 'PREMIUM_1Y';
+    if (numAmt === Number(cfg.premiumMonthlyPrice) || numAmt === 14900) return 'PREMIUM_1M';
     if (numAmt === Number(cfg.proYearlyPrice) || numAmt === 39000) return 'PRO_1Y';
     return 'PRO_1M';
   }
@@ -3403,6 +3576,11 @@
   }
 
   _loadCustomGraphsFromStorage() {
+    // 비로그인(guest) 상태에서는 [⭐ 내 그래프] 프리셋을 비활성화하고 로그인한 계정에서만 로드
+    if (!this.cloudUser || !this.cloudUser.uid) {
+      this.customGraphPresets = [];
+      return;
+    }
     try {
       const key = this._getCustomGraphsStorageKey();
       const raw = localStorage.getItem(key);
@@ -3413,17 +3591,15 @@
           return;
         }
       }
-      // 로그인 직후 해당 계정 키에 데이터가 없으면 비로그인(guest) 시절 등록해둔 그래프를 자동 승계하고 공용 PC 보호를 위해 guest 키는 비움
-      if (this.cloudUser && this.cloudUser.uid) {
-        const guestRaw = localStorage.getItem('graphly_custom_graphs_v1_guest');
-        if (guestRaw) {
-          const guestParsed = JSON.parse(guestRaw);
-          if (Array.isArray(guestParsed) && guestParsed.length > 0) {
-            this.customGraphPresets = this._normalizeAndCapCustomGraphPresets(guestParsed);
-            localStorage.setItem(key, JSON.stringify(this.customGraphPresets));
-            try { localStorage.removeItem('graphly_custom_graphs_v1_guest'); } catch (e2) { }
-            return;
-          }
+      // 로그인 직후 해당 계정 키에 데이터가 없으면 구버전 비로그인(guest) 시절 등록해둔 그래프를 1회 자동 승계하고 guest 키는 비움
+      const guestRaw = localStorage.getItem('graphly_custom_graphs_v1_guest');
+      if (guestRaw) {
+        const guestParsed = JSON.parse(guestRaw);
+        if (Array.isArray(guestParsed) && guestParsed.length > 0) {
+          this.customGraphPresets = this._normalizeAndCapCustomGraphPresets(guestParsed);
+          localStorage.setItem(key, JSON.stringify(this.customGraphPresets));
+          try { localStorage.removeItem('graphly_custom_graphs_v1_guest'); } catch (e2) { }
+          return;
         }
       }
     } catch (e) { }
@@ -3745,6 +3921,11 @@
   }
 
   saveCurrentGraphToCustomPresets(customName = '') {
+    if (!this.cloudUser || !this.cloudUser.uid) {
+      this.promptCloudLoginForLibrary('🔒 [⭐ 내 그래프] 프리셋 등록은 무료 로그인 후 이용할 수 있습니다.');
+      return null;
+    }
+
     let pipTargetForPreset = null;
     if (this.isGraphCovered) {
       if (typeof this._getTargetPipGraphCardForAxisOrPreset === 'function') {
@@ -3759,15 +3940,20 @@
       return null;
     }
 
-    // 👑 구독(Pro: 최대 100개) vs 비구독(Free: 최대 3개) 개수 제한 체크
+    // 👑 등급별(Free: 3개 / Pro: 30개 / Premium: 100개) 개수 제한 체크
     const quota = this.getCustomGraphQuotaStatus();
     if (quota.isReached) {
-      if (quota.isPro) {
+      if (quota.tier === 'premium') {
         this.showToast(`⚠️ [⭐ 내 그래프]는 최대 ${quota.maxLimit}개까지 저장할 수 있습니다. 안 쓰는 프리셋을 정리한 뒤 등록해 주세요!`);
-      } else {
-        this.showToast(`👑 무료 버전은 [⭐ 내 그래프]를 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Pro 업그레이드 시 최대 ${quota.proLimit}개까지 등록됩니다!`);
+      } else if (quota.tier === 'pro') {
+        this.showToast(`💎 Pro 플랜은 [⭐ 내 그래프]를 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Premium 업그레이드 시 최대 ${quota.premiumLimit}개까지 등록됩니다!`);
         if (typeof this.openProPricingModal === 'function') {
-          this.openProPricingModal();
+          this.openProPricingModal('premium');
+        }
+      } else {
+        this.showToast(`👑 무료 버전은 [⭐ 내 그래프]를 최대 ${quota.maxLimit}개까지 등록할 수 있습니다. Pro 업그레이드 시 최대 ${quota.proLimit}개(Premium ${quota.premiumLimit}개)까지 등록됩니다!`);
+        if (typeof this.openProPricingModal === 'function') {
+          this.openProPricingModal('pro');
         }
       }
       return null;
@@ -3830,6 +4016,10 @@
   }
 
   loadCustomGraphPreset(presetId) {
+    if (!this.cloudUser || !this.cloudUser.uid) {
+      this.promptCloudLoginForLibrary('🔒 [⭐ 내 그래프] 프리셋은 무료 로그인 후 이용할 수 있습니다.');
+      return false;
+    }
     if (!Array.isArray(this.customGraphPresets)) return false;
     const idx = this.customGraphPresets.findIndex(it => it && it.id === presetId);
     if (idx === -1) return false;
@@ -3837,11 +4027,18 @@
     if (!item || !item.snapshot) return false;
 
     const cfg = this.getSubscriptionQuotaConfig();
-    const freeLimit = Number(cfg.freeMaxCustomGraphs) || 3;
-    if (cfg.enforceCustomGraphLimit && !this.isProSubscriber() && idx >= freeLimit) {
-      this.showToast(`🔒 무료 버전은 기본 ${freeLimit}개까지 사용할 수 있습니다. Pro 활성화 시 보관된 ${this.customGraphPresets.length}개 프리셋이 즉시 잠금 해제됩니다!`);
-      if (typeof this.openProPricingModal === 'function') {
-        this.openProPricingModal();
+    const quota = this.getCustomGraphQuotaStatus();
+    if (cfg.enforceCustomGraphLimit && idx >= quota.maxLimit) {
+      if (quota.tier === 'pro') {
+        this.showToast(`🔒 Pro 플랜은 기본 ${quota.maxLimit}개까지 사용할 수 있습니다. Premium 업그레이드 시 보관된 ${this.customGraphPresets.length}개 프리셋이 즉시 잠금 해제됩니다!`);
+        if (typeof this.openProPricingModal === 'function') {
+          this.openProPricingModal('premium');
+        }
+      } else {
+        this.showToast(`🔒 무료 버전은 기본 ${quota.maxLimit}개까지 사용할 수 있습니다. 이용권 업그레이드 시 보관된 ${this.customGraphPresets.length}개 프리셋이 잠금 해제됩니다!`);
+        if (typeof this.openProPricingModal === 'function') {
+          this.openProPricingModal('pro');
+        }
       }
       return false;
     }
@@ -3920,13 +4117,28 @@
     if (!scrollList) return;
     scrollList.innerHTML = '';
 
+    if (!this.cloudUser || !this.cloudUser.uid) {
+      const cfg = this.getSubscriptionQuotaConfig();
+      const guestCard = document.createElement('div');
+      guestCard.className = 'custom-graph-guest-notice';
+      guestCard.innerHTML = `
+        <div class="custom-graph-guest-title">🔒 무료 로그인 후 내 그래프를 등록하세요</div>
+        <div class="custom-graph-guest-desc">무료 회원 ${cfg.freeMaxCustomGraphs || 3}개 · Pro ${cfg.proMaxCustomGraphs || 30}개 · Premium ${cfg.premiumMaxCustomGraphs || 100}개까지 계정에 자동 저장·동기화됩니다.</div>
+      `;
+      guestCard.onclick = (ev) => {
+        ev.stopPropagation();
+        this.promptCloudLoginForLibrary('🔑 무료 로그인 후 [⭐ 내 그래프] 프리셋을 등록해 보세요!');
+      };
+      scrollList.appendChild(guestCard);
+      return;
+    }
+
     if (!Array.isArray(this.customGraphPresets) || this.customGraphPresets.length === 0) {
       return;
     }
 
     const cfg = this.getSubscriptionQuotaConfig();
-    const isPro = this.isProSubscriber();
-    const freeLimit = Number(cfg.freeMaxCustomGraphs) || 3;
+    const quota = this.getCustomGraphQuotaStatus();
     const rawQuery = String(this._customGraphSearchQuery || '').trim();
     const escapeHtml = (str) => String(str || '').replace(/[&<>"']/g, (ch) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -3941,9 +4153,9 @@
       }
       renderedCount++;
 
-      const isLockedForFree = Boolean(cfg.enforceCustomGraphLimit && !isPro && idx >= freeLimit);
+      const isLockedForTier = Boolean(cfg.enforceCustomGraphLimit && idx >= quota.maxLimit);
       const card = document.createElement('div');
-      card.className = isLockedForFree ? 'custom-graph-card is-pro-locked' : 'custom-graph-card';
+      card.className = isLockedForTier ? 'custom-graph-card is-pro-locked' : 'custom-graph-card';
       card.setAttribute('data-custom-graph-id', item.id);
       card.dataset.customPresetId = item.id;
 
@@ -7548,10 +7760,19 @@
       const usageTxtEl = document.getElementById('lblCloudQuotaUsageText');
 
       if (badgeTierEl) {
-        badgeTierEl.className = 'cloud-quota-tier-badge is-' + quota.tier;
+        badgeTierEl.className = 'cloud-quota-tier-badge tier-' + quota.tier + ' is-' + quota.tier;
         badgeTierEl.textContent = quota.tier === 'premium'
           ? '💎 Premium'
           : (quota.tier === 'pro' ? '👑 Pro' : '무료 플랜');
+        const subInfo = typeof this.getSubscriptionRemainingInfo === 'function'
+          ? this.getSubscriptionRemainingInfo()
+          : null;
+        if (subInfo && subInfo.isPaid && subInfo.remainingDays > 0) {
+          const dateSuffix = subInfo.formattedDate ? ` (${subInfo.formattedDate}까지)` : '';
+          badgeTierEl.title = `${subInfo.remainingDays}일 남음${dateSuffix}`;
+        } else {
+          badgeTierEl.title = '';
+        }
       }
       if (btnUpgEl) {
         if (quota.tier === 'premium') {

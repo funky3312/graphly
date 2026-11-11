@@ -794,6 +794,10 @@
           lpFilter.Q.value = 0.707;
 
           // 5. Broadcast Soft-Knee Compressor: 판서하며 고개를 돌려 작아진 목소리는 키우고 큰 소리는 부드럽게 평준화
+          const gainPair = this._getAudioRecordGainPair();
+          const preGain = ctx.createGain();
+          preGain.gain.value = gainPair.preGain;
+
           const compressor = ctx.createDynamicsCompressor();
           compressor.threshold.value = -23;
           compressor.knee.value = 16;
@@ -803,7 +807,7 @@
 
           // 6. Make-up Gain & Brickwall Limiter: 전체 음량을 풍성하게 올리면서 클리핑(찢어짐) 100% 차단
           const makeupGain = ctx.createGain();
-          makeupGain.gain.value = 1.22;
+          makeupGain.gain.value = gainPair.makeupGain;
 
           const limiter = ctx.createDynamicsCompressor();
           limiter.threshold.value = -1.2;
@@ -818,13 +822,16 @@
           mudFilter.connect(warmthFilter);
           warmthFilter.connect(presenceFilter);
           presenceFilter.connect(lpFilter);
-          lpFilter.connect(compressor);
+          lpFilter.connect(preGain);
+          preGain.connect(compressor);
           compressor.connect(makeupGain);
           makeupGain.connect(limiter);
           limiter.connect(dest);
 
           if (dest.stream && dest.stream.getAudioTracks().length > 0) {
             this._audioVoiceContext = ctx;
+            this._audioPreGainNode = preGain;
+            this._audioMakeupGainNode = makeupGain;
             dest.stream.getAudioTracks().forEach(tr => {
               tr.enabled = !this.isAudioMicMuted;
             });
@@ -837,7 +844,39 @@
       return rawStream;
     }
 
+    _getAudioRecordGainPair() {
+      const volPct = Math.max(20, Math.min(150, Number(this.audioRecordVolume) || 100));
+      const ratio = volPct / 100;
+      if (ratio < 1.0) {
+        // 100% 미만으로 볼륨을 줄일 때는 컴프레서 진입 전 감도(preGain)와 출력 게인(makeupGain)을 함께 낮춰
+        // 숨소리·주변 잔소음이 컴프레서에 의해 예민하게 증폭되는 현상을 완화하면서 목표 볼륨 비율(1.22 * ratio)을 정확히 달성
+        const halfScale = Math.sqrt(ratio);
+        return {
+          preGain: halfScale,
+          makeupGain: 1.22 * halfScale
+        };
+      }
+      return {
+        preGain: 1.0,
+        makeupGain: 1.22 * ratio
+      };
+    }
+
+    _applyLiveAudioRecordVolume() {
+      try {
+        const pair = this._getAudioRecordGainPair();
+        if (this._audioPreGainNode && this._audioPreGainNode.gain) {
+          this._audioPreGainNode.gain.value = pair.preGain;
+        }
+        if (this._audioMakeupGainNode && this._audioMakeupGainNode.gain) {
+          this._audioMakeupGainNode.gain.value = pair.makeupGain;
+        }
+      } catch (e) { }
+    }
+
     _cleanupProcessedAudioStream() {
+      this._audioPreGainNode = null;
+      this._audioMakeupGainNode = null;
       if (this.audioMediaStream) {
         try {
           this.audioMediaStream.getTracks().forEach(tr => tr.stop());

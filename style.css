@@ -17114,3 +17114,97 @@ body.theme-light #modalNAxisStudio .n-axis-canvas-chip.active {
   border-color: #d97706;
   color: #ffffff;
 }
+
+/* 🎙️ 환경설정(#panelSettings) > 녹음 볼륨 한 줄 슬라이더 레이아웃 정렬 */
+#panelSettings #rowAudioRecVol .single-line-slider-label {
+  width: auto !important;
+  min-width: 48px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+#panelSettings #lblAudioRecVol {
+  min-width: 32px !important;
+  text-align: right !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+/* 📅 환경설정(#panelSettings) > 계정 및 이용권 잔여일수·만료일 표시 (v60) */
+#panelSettings .settings-account-plan-badge.is-premium {
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  color: #7c3aed;
+}
+
+body:not(.theme-light) #panelSettings .settings-account-plan-badge.is-premium {
+  background: rgba(167, 139, 250, 0.18);
+  border: 1px solid rgba(167, 139, 250, 0.34);
+  color: #ddd6fe;
+}
+
+#panelSettings .settings-account-id-box.has-sub-expiry {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 6px 8px;
+}
+
+#panelSettings .settings-account-main-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+#panelSettings .settings-account-sub-expiry-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(148, 163, 184, 0.32);
+  font-size: 10.8px;
+  line-height: 1.25;
+}
+
+body:not(.theme-light) #panelSettings .settings-account-sub-expiry-row {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+#panelSettings .settings-account-remain-days {
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+#panelSettings .settings-account-remain-days.is-pro {
+  color: #047857;
+}
+
+body:not(.theme-light) #panelSettings .settings-account-remain-days.is-pro {
+  color: #6ee7b7;
+}
+
+#panelSettings .settings-account-remain-days.is-premium {
+  color: #7c3aed;
+}
+
+body:not(.theme-light) #panelSettings .settings-account-remain-days.is-premium {
+  color: #c4b5fd;
+}
+
+#panelSettings .settings-account-expire-date {
+  color: #64748b;
+  font-weight: 500;
+  font-size: 10.4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body:not(.theme-light) #panelSettings .settings-account-expire-date {
+  color: #94a3b8;
+}

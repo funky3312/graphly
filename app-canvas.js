@@ -989,12 +989,14 @@
 
       // 🌟 [액정 타블렛 펜 지우개 버튼 / 펜 꼬리 팁 즉각 발동] 🌟
       if (isStylusEraser) {
+        this._restoreLiveTipPatch();
         this._isTemporaryStylusEraser = true;
         this.isDrawingInk = true;
         this.isStylusDrawing = true;
+        this._lastEraserScreenPos = { x: pos.x, y: pos.y };
         if (this.virtualStylusEl) this.virtualStylusEl.classList.add('drawing');
         this.updateStylusPenPosition(pos.x, pos.y, e);
-        this.eraseInkAtPoint(pos.x, pos.y);
+        this.eraseInkAtPoint(pos.x, pos.y, null, true);
         return;
       }
 
@@ -1438,12 +1440,14 @@
         this._lastPressure = pressure;
 
         if (this.activeInkTool === 'eraser') {
+          this._restoreLiveTipPatch();
           this.isDrawingInk = true;
           this.isStylusDrawing = true;
           this._hasSceneFreeze = false;
+          this._lastEraserScreenPos = { x: pos.x, y: pos.y };
           if (this.virtualStylusEl) this.virtualStylusEl.classList.add('drawing');
           this.updateStylusPenPosition(pos.x, pos.y, e);
-          this.eraseInkAtPoint(pos.x, pos.y);
+          this.eraseInkAtPoint(pos.x, pos.y, null, true);
           return;
         }
 
@@ -1520,6 +1524,7 @@
           this.captureSceneFreeze();
         } else {
           this._hasSceneFreeze = false;
+          this._hasLiveTipPatch = false;
           if (hadSelectedGraphHandleOrCurve) {
             this._inkBakeDirty = true;
           }
@@ -2183,7 +2188,9 @@
       if (this.isDrawingInk || this._isTemporaryStylusEraser) {
         const isStylusEraser = this.isStylusEraserEvent(e) || this._isTemporaryStylusEraser;
         if (this.activeInkTool === 'eraser' || isStylusEraser) {
-          this.eraseInkAtPoint(pos.x, pos.y, null, true);
+          const prevEraserPos = this._lastEraserScreenPos || null;
+          this._lastEraserScreenPos = { x: pos.x, y: pos.y };
+          this.eraseInkAtPoint(pos.x, pos.y, null, true, prevEraserPos);
           return;
         } else if (this.activeInkTool === 'laser' && this.currentMainLaserStroke) {
           const nowPerf = performance.now();
@@ -2264,6 +2271,7 @@
           const recTMove = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
 
           let addedPoints = 0;
+          let rawAcceptedOnPc = false;
           let lastRecSx = pos.x;
           let lastRecSy = pos.y;
           for (let i = 0; i < events.length; i++) {
@@ -2332,6 +2340,10 @@
 
             // 🌟 [PC 전용 무수축 2차 곡선 다림질 (Savitzky-Golay Streaming Fairer) — 아이패드 경로 100% 무수정 격리]:
             if (inkProfile.deviceType === 'pc' && !this.currentInkStroke.isHighlighter && this._pcMainStrokeFairer) {
+              if (!rawAcceptedOnPc) {
+                rawAcceptedOnPc = true;
+                this._restoreLiveTipPatch();
+              }
               const readyPts = this._pcMainStrokeFairer.pushRaw(pPos.x, pPos.y, pressure, recTMove);
               for (let k = 0; k < readyPts.length; k++) {
                 const fPt = readyPts[k];
@@ -2385,9 +2397,17 @@
               this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
             }
           }
-          if (addedPoints > 0 && recTMove !== undefined) {
+          if (rawAcceptedOnPc && inkProfile.deviceType === 'pc' && !this.currentInkStroke.isHighlighter && this._pcMainStrokeFairer && typeof this._pcMainStrokeFairer.peekLiveTipPoints === 'function') {
+            const tipPts = this._pcMainStrokeFairer.peekLiveTipPoints(this._lastRawInkScreenPos, this._lastPressure);
+            if (tipPts && tipPts.length > 0) {
+              this.drawLiveTipBridge(this._liveBezierScreenPts, tipPts, this.currentInkStroke);
+            }
+          }
+          if ((addedPoints > 0 || rawAcceptedOnPc) && recTMove !== undefined) {
             this.currentInkStroke.tEnd = recTMove;
-            this.recordAudioCursorPoint(lastRecSx, lastRecSy, this.currentInkStroke.color, true);
+            const curSx = addedPoints > 0 ? lastRecSx : (this._lastRawInkScreenPos ? this._lastRawInkScreenPos.x : lastRecSx);
+            const curSy = addedPoints > 0 ? lastRecSy : (this._lastRawInkScreenPos ? this._lastRawInkScreenPos.y : lastRecSy);
+            this.recordAudioCursorPoint(curSx, curSy, this.currentInkStroke.color, true);
           }
           // 일반 펜 필기 중에는 전체 화면 재렌더링(requestRender)을 호출하지 않아 2360x1640 캔버스 복사 부하가 0.0%입니다!
           if (addedPoints > 0 && this.currentInkStroke.isHighlighter) {
@@ -3363,6 +3383,7 @@
             this._lastRawInkScreenPos = { x: upPos.x, y: upPos.y };
           }
         }
+        this._restoreLiveTipPatch();
         if (!this._inkHoldDetected && this.currentInkStroke && !this.currentInkStroke.isShape && this._lastRawInkScreenPos && this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
           const rawEnd = this._lastRawInkScreenPos;
           const curPenStyle = this.currentInkStroke.penStyle || 'ballpen';
@@ -3427,6 +3448,7 @@
         }
 
         this._pcMainStrokeFairer = null;
+        this._lastEraserScreenPos = null;
         this._inkHoldDetected = false;
         this._prevRawInkScreenPos = null;
         this._lastRawInkScreenPos = null;
@@ -3451,6 +3473,13 @@
         if (wasOneShotEraser) {
           this._liveBezierScreenPts = null;
           this.setActiveInkTool('pen');
+          return;
+        }
+        if (!finishedStroke && !hadSceneFreeze) {
+          this._liveBezierScreenPts = null;
+          if (this._inkBakeDirty) {
+            this.requestRender();
+          }
           return;
         }
 
@@ -4564,6 +4593,9 @@
   // --- [초고속 무결점 렌더링 파이프라인 (5개 겹쳐도 0.1ms 미만)] ---
   render(targetCtx = this.ctx, width = this.screenWidth, height = this.screenHeight, isExport = false) {
     if (this.isPdfModalOpen && !isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) return;
+    if (!isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) {
+      this._hasLiveTipPatch = false;
+    }
     const ctx = targetCtx;
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
 

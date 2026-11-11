@@ -128,6 +128,18 @@
       const effH = Math.max(1, h);
       const padPx = radiusPx + 2;
       const cursorPt = { x: sx, y: sy };
+      const prevPt = (undoMeta && undoMeta.prevPtPx && Number.isFinite(undoMeta.prevPtPx.x) && Number.isFinite(undoMeta.prevPtPx.y))
+        ? undoMeta.prevPtPx
+        : null;
+      const hasSweep = Boolean(prevPt && Math.hypot(sx - prevPt.x, sy - prevPt.y) >= 1.5);
+      const sweepMinX = hasSweep ? Math.min(prevPt.x, sx) : sx;
+      const sweepMaxX = hasSweep ? Math.max(prevPt.x, sx) : sx;
+      const sweepMinY = hasSweep ? Math.min(prevPt.y, sy) : sy;
+      const sweepMaxY = hasSweep ? Math.max(prevPt.y, sy) : sy;
+      const segHit = (pA, pB) => (hasSweep && typeof this._distSegmentToSegment === 'function')
+        ? (this._distSegmentToSegment(prevPt, cursorPt, pA, pB) <= radiusPx)
+        : (this.distToSegment(cursorPt, pA, pB) <= radiusPx);
+
       const removedBatch = [];
       let writeIdx = 0;
 
@@ -139,10 +151,11 @@
         const cb = this._getCardStrokeNormBounds(stroke);
         if (
           cb &&
-          (sx < cb.minNx * effW - padPx ||
-            sx > cb.maxNx * effW + padPx ||
-            sy < cb.minNy * effH - padPx ||
-            sy > cb.maxNy * effH + padPx)
+          !stroke.isShape &&
+          (sweepMaxX < cb.minNx * effW - padPx ||
+            sweepMinX > cb.maxNx * effW + padPx ||
+            sweepMaxY < cb.minNy * effH - padPx ||
+            sweepMinY > cb.maxNy * effH + padPx)
         ) {
           strokesArr[writeIdx++] = stroke;
           continue;
@@ -152,17 +165,13 @@
         let hit = false;
         let prevPx = pts[0].nx * effW;
         let prevPy = pts[0].ny * effH;
-        if (Math.hypot(prevPx - sx, prevPy - sy) <= radiusPx) {
+        if (hasSweep ? (this.distToSegment({ x: prevPx, y: prevPy }, prevPt, cursorPt) <= radiusPx) : (Math.hypot(prevPx - sx, prevPy - sy) <= radiusPx)) {
           hit = true;
         } else {
           for (let i = 1; i < pts.length; i++) {
             const curPx = pts[i].nx * effW;
             const curPy = pts[i].ny * effH;
-            if (Math.hypot(curPx - sx, curPy - sy) <= radiusPx) {
-              hit = true;
-              break;
-            }
-            if (this.distToSegment(cursorPt, { x: prevPx, y: prevPy }, { x: curPx, y: curPy }) <= radiusPx) {
+            if (segHit({ x: prevPx, y: prevPy }, { x: curPx, y: curPy })) {
               hit = true;
               break;
             }
@@ -186,6 +195,42 @@
       }
 
       strokesArr.length = writeIdx;
+
+      const targetCanvas = undoMeta && undoMeta.targetCanvas;
+      if (targetCanvas) {
+        let prevDirty = targetCanvas._pendingEraseDirtyNorm || null;
+        let needFull = Boolean(prevDirty && prevDirty.full);
+        let dMinNx = prevDirty && Number.isFinite(prevDirty.minNx) ? prevDirty.minNx : Infinity;
+        let dMaxNx = prevDirty && Number.isFinite(prevDirty.maxNx) ? prevDirty.maxNx : -Infinity;
+        let dMinNy = prevDirty && Number.isFinite(prevDirty.minNy) ? prevDirty.minNy : Infinity;
+        let dMaxNy = prevDirty && Number.isFinite(prevDirty.maxNy) ? prevDirty.maxNy : -Infinity;
+        let maxPadPx = prevDirty && typeof prevDirty.padPx === 'number' ? prevDirty.padPx : 10;
+        const removedSet = (prevDirty && prevDirty.removedSet instanceof Set) ? prevDirty.removedSet : new Set();
+
+        for (let i = 0; i < removedBatch.length; i++) {
+          const st = removedBatch[i].stroke;
+          if (st) removedSet.add(st);
+          if (!st || st.isShape || st.cardShape) {
+            needFull = true;
+            break;
+          }
+          const cb = this._getCardStrokeNormBounds(st);
+          if (!cb) {
+            needFull = true;
+            break;
+          }
+          if (cb.minNx < dMinNx) dMinNx = cb.minNx;
+          if (cb.maxNx > dMaxNx) dMaxNx = cb.maxNx;
+          if (cb.minNy < dMinNy) dMinNy = cb.minNy;
+          if (cb.maxNy > dMaxNy) dMaxNy = cb.maxNy;
+          const stPad = Math.ceil((st.isHighlighter ? (st.highlighterSize || 20) * 0.75 : ((st.size || 4.2) * 1.25)) + ((st.softBlur || 0) * 3.5) + 6);
+          if (stPad > maxPadPx) maxPadPx = stPad;
+        }
+
+        targetCanvas._pendingEraseDirtyNorm = needFull
+          ? { full: true }
+          : { full: false, minNx: dMinNx, maxNx: dMaxNx, minNy: dMinNy, maxNy: dMaxNy, padPx: maxPadPx, removedSet };
+      }
 
       if (undoMeta && Array.isArray(this.undoStack)) {
         const curEntry = this._currentCardEraseUndoEntry;
@@ -512,7 +557,7 @@
         canvas._cardIdleBakeTimer = null;
       }
       const isIPad = typeof this.isIOSOrIPad === 'function' && this.isIOSOrIPad();
-      const delayMs = isIPad ? 550 : 220;
+      const delayMs = isIPad ? 550 : 500;
       const runCatchup = () => {
         canvas._cardIdleBakeTimer = null;
         if (canvas.isConnected === false) return;
@@ -521,9 +566,9 @@
           this.isDrawingInk ||
           this._isDrawingCardInk ||
           this.isStylusDrawing ||
-          (this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 300));
+          (this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 420));
         if (isBusy) {
-          canvas._cardIdleBakeTimer = setTimeout(runCatchup, 220);
+          canvas._cardIdleBakeTimer = setTimeout(runCatchup, 320);
           return;
         }
         if (
@@ -541,6 +586,169 @@
         this._ensureCardBakeUpTo(canvas, bCanvas, bCtx, strokeList, strokeList.length, w, h, dpr, sizeScale, options);
       };
       canvas._cardIdleBakeTimer = setTimeout(runCatchup, delayMs);
+    }
+
+    _restoreCardLiveTipPatch(canvas, ctx) {
+      if (!canvas || !canvas._hasLiveTipPatch || !canvas._liveTipPatchCanvas || !ctx) {
+        if (canvas) canvas._hasLiveTipPatch = false;
+        return;
+      }
+      const r = canvas._liveTipPatchRect;
+      if (r && r.w > 0 && r.h > 0) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(r.x, r.y, r.w, r.h);
+        ctx.drawImage(canvas._liveTipPatchCanvas, 0, 0, r.w, r.h, r.x, r.y, r.w, r.h);
+        ctx.restore();
+      }
+      canvas._hasLiveTipPatch = false;
+    }
+
+    _drawCardLiveTipBridge(canvas, ctx, stroke, w, h, dpr, sizeScale, options = {}) {
+      if (!canvas || !ctx || !stroke || stroke.isHighlighter || !Array.isArray(stroke.points) || stroke.points.length === 0) return;
+      const tipNormPts = stroke._pcLiveTipNormPts;
+      if (!Array.isArray(tipNormPts) || tipNormPts.length === 0) return;
+
+      const pts = stroke.points;
+      const L = pts.length;
+      const chain = [];
+      if (L === 1) {
+        chain.push({ x: pts[0].nx * w, y: pts[0].ny * h, p: pts[0].p !== undefined ? pts[0].p : 0.5 });
+      } else {
+        chain.push({ x: pts[L - 2].nx * w, y: pts[L - 2].ny * h, p: pts[L - 2].p !== undefined ? pts[L - 2].p : 0.5 });
+        chain.push({ x: pts[L - 1].nx * w, y: pts[L - 1].ny * h, p: pts[L - 1].p !== undefined ? pts[L - 1].p : 0.5 });
+      }
+      for (let i = 0; i < tipNormPts.length; i++) {
+        const tp = tipNormPts[i];
+        chain.push({ x: tp.nx * w, y: tp.ny * h, p: tp.p !== undefined ? tp.p : 0.5 });
+      }
+      if (chain.length < 2) return;
+
+      const st = this._resolveCardStrokeDrawStyle(stroke, sizeScale, options);
+      let minX = chain[0].x, maxX = chain[0].x, minY = chain[0].y, maxY = chain[0].y;
+      let maxW = this.computePenStyleWidth(st.effBaseSize, chain[0].p, st.penStyle);
+      for (let i = 1; i < chain.length; i++) {
+        const pt = chain[i];
+        if (pt.x < minX) minX = pt.x;
+        else if (pt.x > maxX) maxX = pt.x;
+        if (pt.y < minY) minY = pt.y;
+        else if (pt.y > maxY) maxY = pt.y;
+        const wc = this.computePenStyleWidth(st.effBaseSize, pt.p, st.penStyle);
+        if (wc > maxW) maxW = wc;
+      }
+
+      const padCss = Math.ceil(maxW * 1.55 + st.blurVal * 2.2 + 6);
+      const px0 = Math.max(0, Math.floor((minX - padCss) * dpr));
+      const py0 = Math.max(0, Math.floor((minY - padCss) * dpr));
+      const px1 = Math.min(canvas.width, Math.ceil((maxX + padCss) * dpr));
+      const py1 = Math.min(canvas.height, Math.ceil((maxY + padCss) * dpr));
+      const pw = px1 - px0;
+      const ph = py1 - py0;
+      if (pw <= 0 || ph <= 0) return;
+
+      if (!canvas._liveTipPatchCanvas && typeof document !== 'undefined' && typeof document.createElement === 'function') {
+        canvas._liveTipPatchCanvas = document.createElement('canvas');
+        canvas._liveTipPatchCanvas.width = Math.max(192, pw);
+        canvas._liveTipPatchCanvas.height = Math.max(192, ph);
+        canvas._liveTipPatchCtx = canvas._liveTipPatchCanvas.getContext('2d');
+      }
+      if (!canvas._liveTipPatchCanvas || !canvas._liveTipPatchCtx) return;
+      if (canvas._liveTipPatchCanvas.width < pw || canvas._liveTipPatchCanvas.height < ph) {
+        canvas._liveTipPatchCanvas.width = Math.max(canvas._liveTipPatchCanvas.width, pw + 96);
+        canvas._liveTipPatchCanvas.height = Math.max(canvas._liveTipPatchCanvas.height, ph + 96);
+      }
+      const pCtx = canvas._liveTipPatchCtx;
+      pCtx.setTransform(1, 0, 0, 1, 0, 0);
+      pCtx.clearRect(0, 0, pw, ph);
+      pCtx.drawImage(canvas, px0, py0, pw, ph, 0, 0, pw, ph);
+      canvas._liveTipPatchRect = { x: px0, y: py0, w: pw, h: ph };
+      canvas._hasLiveTipPatch = true;
+
+      ctx.save();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = st.strokeColor;
+      ctx.fillStyle = st.strokeColor;
+      ctx.globalAlpha = 1.0 * st.ghostMul;
+      if (st.blurVal > 0) {
+        ctx.shadowColor = st.strokeColor;
+        ctx.shadowBlur = st.blurVal * st.dpr * 0.65;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      } else {
+        ctx.shadowBlur = 0;
+      }
+      if (st.isFlatNib) {
+        ctx.scale(st.nibX, st.nibY);
+      }
+
+      const M = chain.length;
+      const isUniform = (st.penStyle === 'ballpen' || st.penStyle === 'flat');
+      if (isUniform) {
+        ctx.lineWidth = this.computePenStyleWidth(st.effBaseSize, chain[M - 1].p, st.penStyle);
+        ctx.beginPath();
+        if (L === 1) {
+          ctx.moveTo(chain[0].x / st.nibX, chain[0].y / st.nibY);
+          if (M === 2) {
+            ctx.lineTo(chain[1].x / st.nibX, chain[1].y / st.nibY);
+          } else {
+            ctx.lineTo(((chain[0].x + chain[1].x) * 0.5) / st.nibX, ((chain[0].y + chain[1].y) * 0.5) / st.nibY);
+            for (let i = 1; i < M - 1; i++) {
+              const mx = (chain[i].x + chain[i + 1].x) * 0.5;
+              const my = (chain[i].y + chain[i + 1].y) * 0.5;
+              ctx.quadraticCurveTo(chain[i].x / st.nibX, chain[i].y / st.nibY, mx / st.nibX, my / st.nibY);
+            }
+            ctx.lineTo(chain[M - 1].x / st.nibX, chain[M - 1].y / st.nibY);
+          }
+        } else {
+          ctx.moveTo(((chain[0].x + chain[1].x) * 0.5) / st.nibX, ((chain[0].y + chain[1].y) * 0.5) / st.nibY);
+          for (let i = 1; i < M - 1; i++) {
+            const mx = (chain[i].x + chain[i + 1].x) * 0.5;
+            const my = (chain[i].y + chain[i + 1].y) * 0.5;
+            ctx.quadraticCurveTo(chain[i].x / st.nibX, chain[i].y / st.nibY, mx / st.nibX, my / st.nibY);
+          }
+          ctx.lineTo(chain[M - 1].x / st.nibX, chain[M - 1].y / st.nibY);
+        }
+        ctx.stroke();
+      } else {
+        if (L === 1) {
+          if (M === 2) {
+            const w0 = this.computePenStyleWidth(st.effBaseSize, chain[0].p, st.penStyle);
+            const w1 = this.computePenStyleWidth(st.effBaseSize, chain[1].p, st.penStyle);
+            this.drawVariableWidthLineSegment(ctx, chain[0].x, chain[0].y, chain[1].x, chain[1].y, w0, w1);
+          } else {
+            const w0 = this.computePenStyleWidth(st.effBaseSize, chain[0].p, st.penStyle);
+            let prevMx = (chain[0].x + chain[1].x) * 0.5;
+            let prevMy = (chain[0].y + chain[1].y) * 0.5;
+            let prevMw = this.computePenStyleWidth(st.effBaseSize, (chain[0].p + chain[1].p) * 0.5, st.penStyle);
+            this.drawVariableWidthLineSegment(ctx, chain[0].x, chain[0].y, prevMx, prevMy, w0, prevMw);
+            for (let i = 1; i < M - 1; i++) {
+              const mx = (chain[i].x + chain[i + 1].x) * 0.5;
+              const my = (chain[i].y + chain[i + 1].y) * 0.5;
+              const mw = this.computePenStyleWidth(st.effBaseSize, (chain[i].p + chain[i + 1].p) * 0.5, st.penStyle);
+              this.drawVariableWidthQuadSegment(ctx, prevMx, prevMy, chain[i].x, chain[i].y, mx, my, prevMw, mw);
+              prevMx = mx; prevMy = my; prevMw = mw;
+            }
+            const wEnd = this.computePenStyleWidth(st.effBaseSize, chain[M - 1].p, st.penStyle);
+            this.drawVariableWidthLineSegment(ctx, prevMx, prevMy, chain[M - 1].x, chain[M - 1].y, prevMw, wEnd);
+          }
+        } else {
+          let prevMx = (chain[0].x + chain[1].x) * 0.5;
+          let prevMy = (chain[0].y + chain[1].y) * 0.5;
+          let prevMw = this.computePenStyleWidth(st.effBaseSize, (chain[0].p + chain[1].p) * 0.5, st.penStyle);
+          for (let i = 1; i < M - 1; i++) {
+            const mx = (chain[i].x + chain[i + 1].x) * 0.5;
+            const my = (chain[i].y + chain[i + 1].y) * 0.5;
+            const mw = this.computePenStyleWidth(st.effBaseSize, (chain[i].p + chain[i + 1].p) * 0.5, st.penStyle);
+            this.drawVariableWidthQuadSegment(ctx, prevMx, prevMy, chain[i].x, chain[i].y, mx, my, prevMw, mw);
+            prevMx = mx; prevMy = my; prevMw = mw;
+          }
+          const wEnd = this.computePenStyleWidth(st.effBaseSize, chain[M - 1].p, st.penStyle);
+          this.drawVariableWidthLineSegment(ctx, prevMx, prevMy, chain[M - 1].x, chain[M - 1].y, prevMw, wEnd);
+        }
+      }
+      ctx.restore();
     }
 
     _renderSingleCardInkStroke(ctx, stroke, w, h, sizeScale, options = {}) {
@@ -571,30 +779,57 @@
       }
 
       const len = stroke.points.length;
-      const rawPts = new Array(len);
+      const useScratch = (typeof this._getScratchPointArray === 'function');
+      const rawPts = useScratch ? this._getScratchPointArray(len, 1) : new Array(len);
       for (let i = 0; i < len; i++) {
         const pt = stroke.points[i];
-        rawPts[i] = {
-          x: pt.nx * w,
-          y: pt.ny * h,
-          p: pt.p !== undefined ? pt.p : 0.5
-        };
+        if (useScratch) {
+          const outPt = rawPts[i];
+          outPt.x = pt.nx * w;
+          outPt.y = pt.ny * h;
+          outPt.p = pt.p !== undefined ? pt.p : 0.5;
+        } else {
+          rawPts[i] = {
+            x: pt.nx * w,
+            y: pt.ny * h,
+            p: pt.p !== undefined ? pt.p : 0.5
+          };
+        }
       }
 
       let pts = rawPts;
       if (applyStreamline && !stroke.isShape && !stroke._inPlaceStreamlined && len > 1) {
-        pts = new Array(len);
-        pts[0] = rawPts[0];
+        pts = useScratch ? this._getScratchPointArray(len, 2) : new Array(len);
+        if (useScratch) {
+          pts[0].x = rawPts[0].x;
+          pts[0].y = rawPts[0].y;
+          pts[0].p = rawPts[0].p;
+        } else {
+          pts[0] = rawPts[0];
+        }
         for (let i = 1; i < len - 1; i++) {
           const prev = pts[i - 1];
           const curr = rawPts[i];
-          pts[i] = {
-            x: prev.x * 0.22 + curr.x * 0.78,
-            y: prev.y * 0.22 + curr.y * 0.78,
-            p: prev.p * 0.22 + curr.p * 0.78
-          };
+          if (useScratch) {
+            const outPt = pts[i];
+            outPt.x = prev.x * 0.22 + curr.x * 0.78;
+            outPt.y = prev.y * 0.22 + curr.y * 0.78;
+            outPt.p = prev.p * 0.22 + curr.p * 0.78;
+          } else {
+            pts[i] = {
+              x: prev.x * 0.22 + curr.x * 0.78,
+              y: prev.y * 0.22 + curr.y * 0.78,
+              p: prev.p * 0.22 + curr.p * 0.78
+            };
+          }
         }
-        pts[len - 1] = rawPts[len - 1];
+        if (useScratch) {
+          pts[len - 1].x = rawPts[len - 1].x;
+          pts[len - 1].y = rawPts[len - 1].y;
+          pts[len - 1].p = rawPts[len - 1].p;
+        } else {
+          pts[len - 1] = rawPts[len - 1];
+        }
       }
 
       this.drawPenStyledPointArray(ctx, pts, st.isHighlighter ? ctx.lineWidth : st.baseSize, st.penStyle, stroke.softBlur, st.isHighlighter);
@@ -617,6 +852,8 @@
           clearTimeout(canvas._cardIdleBakeTimer);
           canvas._cardIdleBakeTimer = null;
         }
+        canvas._hasLiveTipPatch = false;
+        canvas._pendingEraseDirtyNorm = null;
         canvas._bakeValid = false;
         canvas._bakeCount = 0;
         canvas._bakedRefs = [];
@@ -643,6 +880,8 @@
           clearTimeout(canvas._cardIdleBakeTimer);
           canvas._cardIdleBakeTimer = null;
         }
+        canvas._hasLiveTipPatch = false;
+        canvas._pendingEraseDirtyNorm = null;
         canvas._bakeValid = false;
         canvas._bakedRefs = [];
         canvas._liveActiveStroke = null;
@@ -686,6 +925,8 @@
       if (bCanvas.width !== canvas.width || bCanvas.height !== canvas.height) {
         bCanvas.width = canvas.width;
         bCanvas.height = canvas.height;
+        canvas._hasLiveTipPatch = false;
+        canvas._pendingEraseDirtyNorm = null;
         canvas._bakeValid = false;
         canvas._bakedRefs = [];
         canvas._liveActiveStroke = null;
@@ -694,6 +935,8 @@
       }
       if (canvas._bakeGeoSig !== geoSig) {
         canvas._bakeGeoSig = geoSig;
+        canvas._hasLiveTipPatch = false;
+        canvas._pendingEraseDirtyNorm = null;
         canvas._bakeValid = false;
         canvas._bakedRefs = [];
         canvas._liveActiveStroke = null;
@@ -722,15 +965,20 @@
           canvas._displaySyncedGeoSig === geoSig &&
           curPtCount >= (canvas._liveRenderedPointCount || 0)
         ) {
+          this._restoreCardLiveTipPatch(canvas, ctx);
           const prevRendered = canvas._liveRenderedPointCount || 0;
           if (curPtCount > prevRendered) {
             this._renderCardInkIncrementalSteps(ctx, activeStroke, w, h, dpr, sizeScale, prevRendered, curPtCount, options);
             canvas._liveRenderedPointCount = curPtCount;
           }
+          if (activeStroke._pcLiveTipNormPts && activeStroke._pcLiveTipNormPts.length > 0) {
+            this._drawCardLiveTipBridge(canvas, ctx, activeStroke, w, h, dpr, sizeScale, options);
+          }
           return;
         }
 
         // 새 획 시작(pointerdown) 또는 지오메트리 변경 직후 첫 프레임 초기화
+        canvas._hasLiveTipPatch = false;
         const completedCount = (strokeList[strokeList.length - 1] === activeStroke)
           ? (strokeList.length - 1)
           : Math.max(0, strokeList.indexOf(activeStroke));
@@ -763,6 +1011,9 @@
           this._renderCardInkIncrementalSteps(ctx, activeStroke, w, h, dpr, sizeScale, 0, curPtCount, options);
           canvas._liveRenderedPointCount = curPtCount;
         }
+        if (activeStroke._pcLiveTipNormPts && activeStroke._pcLiveTipNormPts.length > 0) {
+          this._drawCardLiveTipBridge(canvas, ctx, activeStroke, w, h, dpr, sizeScale, options);
+        }
         return;
       }
 
@@ -776,6 +1027,7 @@
         canvas._displaySyncedGeoSig === geoSig &&
         strokeList[strokeList.length - 1] === activeStroke
       ) {
+        this._restoreCardLiveTipPatch(canvas, ctx);
         const curPtCount = Array.isArray(activeStroke.points) ? activeStroke.points.length : 0;
         const prevRendered = canvas._liveRenderedPointCount || 0;
         if (curPtCount > prevRendered) {
@@ -796,6 +1048,7 @@
 
       // 형광펜 또는 도형 자동보정(Hold-to-Shape) 실시간 드로잉
       if (activeStroke && !commitStroke) {
+        canvas._hasLiveTipPatch = false;
         canvas._liveActiveStroke = null;
         canvas._liveRenderedPointCount = 0;
         canvas._displaySyncedCount = -1;
@@ -820,11 +1073,13 @@
         clearTimeout(canvas._cardIdleBakeTimer);
         canvas._cardIdleBakeTimer = null;
       }
+      canvas._hasLiveTipPatch = false;
       canvas._liveActiveStroke = null;
       canvas._liveRenderedPointCount = 0;
 
       // 형광펜 / 도형 자동보정 완료(commitStroke = true): 직전 획들까지 유효하면 신규 획들만 증분 베이크!
       if (activeStroke && commitStroke && strokeList[strokeList.length - 1] === activeStroke) {
+        canvas._pendingEraseDirtyNorm = null;
         this._ensureCardBakeUpTo(canvas, bCanvas, bCtx, strokeList, strokeList.length, w, h, dpr, sizeScale, options);
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -840,7 +1095,107 @@
         return;
       }
 
-      // 명시적 전체 재렌더링(!activeStroke: Undo/Redo, 지우개, 카드 리사이즈, 창모드 좌표 재투영 등):
+      const pendingEraseDirty = canvas._pendingEraseDirtyNorm;
+      canvas._pendingEraseDirtyNorm = null;
+
+      // 🌟 [카드 지우개 0.2ms 국소 클립 패치 (Card Dirty-Rect Scissor Erase)]:
+      // 문제 카드/그래프 카드에 필기가 수백 획 쌓여 있을 때 지우개로 문지르면 전체 획을 다시 그리지 않고,
+      // 지워진 획의 바운딩박스 영역만 _bakeCanvas에서 국소 clearRect + 겹치는 획만 재합성!
+      if (
+        pendingEraseDirty &&
+        !pendingEraseDirty.full &&
+        canvas._bakeValid &&
+        Array.isArray(canvas._bakedRefs) &&
+        bCtx
+      ) {
+        const currentSet = new Set(strokeList);
+        const removedSet = (pendingEraseDirty.removedSet instanceof Set) ? pendingEraseDirty.removedSet : null;
+        let bakeRefsConsistent = true;
+        for (let i = 0; i < canvas._bakedRefs.length; i++) {
+          const bst = canvas._bakedRefs[i];
+          if (!currentSet.has(bst) && !(removedSet && removedSet.has(bst))) {
+            bakeRefsConsistent = false;
+            break;
+          }
+        }
+
+        if (bakeRefsConsistent) {
+          const bakedSet = new Set(canvas._bakedRefs);
+          let hasUnbakedTail = false;
+          for (let i = 0; i < strokeList.length; i++) {
+            if (!bakedSet.has(strokeList[i])) {
+              hasUnbakedTail = true;
+              break;
+            }
+          }
+          if (hasUnbakedTail) {
+            bCtx.save();
+            bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            for (let i = 0; i < strokeList.length; i++) {
+              const st = strokeList[i];
+              if (st && !bakedSet.has(st)) {
+                this._renderSingleCardInkStroke(bCtx, st, w, h, sizeScale, options);
+              }
+            }
+            bCtx.restore();
+          }
+
+          const padPx = Math.max(8, Math.ceil((pendingEraseDirty.padPx || 10) * Math.max(1, sizeScale)));
+          const cx0 = Math.max(0, Math.floor(pendingEraseDirty.minNx * w) - padPx);
+          const cy0 = Math.max(0, Math.floor(pendingEraseDirty.minNy * h) - padPx);
+          const cx1 = Math.min(w, Math.ceil(pendingEraseDirty.maxNx * w) + padPx);
+          const cy1 = Math.min(h, Math.ceil(pendingEraseDirty.maxNy * h) + padPx);
+          if (cx1 > cx0 && cy1 > cy0) {
+            bCtx.save();
+            bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            bCtx.beginPath();
+            bCtx.rect(cx0, cy0, cx1 - cx0, cy1 - cy0);
+            bCtx.clip();
+            bCtx.clearRect(cx0 - 1, cy0 - 1, (cx1 - cx0) + 2, (cy1 - cy0) + 2);
+            for (let i = 0; i < strokeList.length; i++) {
+              const st = strokeList[i];
+              if (!st) continue;
+              if (!st.isShape && !st.cardShape) {
+                const cb = this._getCardStrokeNormBounds(st);
+                if (cb) {
+                  const stPad = Math.ceil((st.isHighlighter ? (st.highlighterSize || 20) * 0.75 : ((st.size || 4.2) * 1.25)) * sizeScale + ((st.softBlur || 0) * 3.5) + 5);
+                  if (
+                    cb.maxNx * w + stPad < cx0 ||
+                    cb.minNx * w - stPad > cx1 ||
+                    cb.maxNy * h + stPad < cy0 ||
+                    cb.minNy * h - stPad > cy1
+                  ) {
+                    continue;
+                  }
+                }
+              }
+              this._renderSingleCardInkStroke(bCtx, st, w, h, sizeScale, options);
+            }
+            bCtx.restore();
+          }
+
+          canvas._bakeValid = true;
+          canvas._bakeCount = strokeList.length;
+          canvas._bakedRefs = strokeList.slice();
+          canvas._bakeFirstStroke = strokeList[0] || null;
+          canvas._bakeLastStroke = strokeList[strokeList.length - 1] || null;
+
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(bCanvas, 0, 0);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          this.drawCardLassoOverlay(ctx, w, h, widgetEl);
+          ctx.restore();
+          canvas._displaySyncedGeoSig = geoSig;
+          canvas._displaySyncedCount = strokeList.length;
+          canvas._displaySyncedFirst = strokeList[0] || null;
+          canvas._displaySyncedLast = strokeList[strokeList.length - 1] || null;
+          return;
+        }
+      }
+
+      // 명시적 전체 재렌더링(!activeStroke: Undo/Redo, 카드 리사이즈, 창모드 좌표 재투영 등):
       // 포인트 인플레이스 변형(_reprojectPipCardInkFromMathCoords 등)까지 100% 반영하기 위해 _bakeCanvas를 전체 갱신합니다.
       canvas._bakeValid = false;
       this._ensureCardBakeUpTo(canvas, bCanvas, bCtx, strokeList, strokeList.length, w, h, dpr, sizeScale, options);
@@ -885,7 +1240,7 @@
       );
     }
 
-    eraseProblemInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null, deferRender = false) {
+    eraseProblemInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null, deferRender = false, prevPtPx = null) {
       radiusPx = (typeof radiusPx === 'number' && !isNaN(radiusPx)) ? radiusPx : Math.max(6, (this.currentEraserSize || 14) * 1.25);
       const pWidget = document.getElementById('problemCardWidget');
       let stickerErased = false;
@@ -893,6 +1248,7 @@
         stickerErased = Boolean(this.eraseCardStickerAtNormalizedPoint(pWidget, nx, ny, w, h, radiusPx));
       }
       if (!this.problemInkStrokes || this.problemInkStrokes.length === 0) return stickerErased;
+      const pCanvas = document.getElementById('problemCardCanvas');
       const sx = nx * w;
       const sy = ny * h;
       const inkErased = this._eraseCardStrokesInPlace(
@@ -905,12 +1261,13 @@
         {
           cardKind: 'problem',
           cardEl: pWidget,
+          targetCanvas: pCanvas,
+          prevPtPx,
           renderFn: () => this.renderProblemCardCanvas()
         }
       );
 
       if (inkErased) {
-        const pCanvas = document.getElementById('problemCardCanvas');
         if (deferRender && pCanvas) {
           this._scheduleCardLiveFrameRender(pCanvas, () => this.renderProblemCardCanvas());
         } else {
@@ -1875,7 +2232,8 @@
           );
           if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
             this._problemCardStylusEraser = true;
-            this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, null, false);
+            pCanvas._lastErasePtPx = { x: pos.nx * pos.w, y: pos.ny * pos.h };
+            this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, null, true, null);
             return true;
           }
 
@@ -1934,7 +2292,10 @@
             (e.pointerType === 'pen' && (typeof e.buttons === 'number' && (e.buttons & 2) !== 0))
           );
           if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
-            this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, null, true);
+            const prevErasePx = pCanvas._lastErasePtPx || null;
+            const curErasePx = { x: pos.nx * pos.w, y: pos.ny * pos.h };
+            pCanvas._lastErasePtPx = curErasePx;
+            this.eraseProblemInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, null, true, prevErasePx);
             return;
           }
 
@@ -2000,6 +2361,7 @@
           this._currentCardEraseUndoEntry = null;
           activeProblemPointerId = null;
           this._problemCardStylusEraser = false;
+          pCanvas._lastErasePtPx = null;
           activeProblemDrawRect = null;
           currentStroke = null;
           const pendingProblemEraseRender = !finishedCardStroke ? pCanvas._pendingCardLiveRenderFn : null;
@@ -2785,7 +3147,7 @@
         let activeExtraDrawRect = null;
         let activeExtraPointerId = null;
 
-        const eraseExtraCardAtPoint = (sx, sy, rw, rh, deferRender = false) => {
+        const eraseExtraCardAtPoint = (sx, sy, rw, rh, deferRender = false, prevPtPx = null) => {
           const extraEraseR = Math.max(6, (this.currentEraserSize || 14) * 1.25);
           const stickerErased = Boolean(this.eraseCardStickerAtNormalizedPoint(
             cardWidgetEl,
@@ -2808,6 +3170,8 @@
             {
               cardKind: 'extra',
               cardEl: cardWidgetEl,
+              targetCanvas: extraInkCanvas,
+              prevPtPx,
               renderFn: () => renderExtraCardInk()
             }
           );
@@ -2886,7 +3250,8 @@
           );
           if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
             cardWidgetEl._extraStylusEraser = true;
-            eraseExtraCardAtPoint(nx * rw, ny * rh, rw, rh, false);
+            extraInkCanvas._lastErasePtPx = { x: nx * rw, y: ny * rh };
+            eraseExtraCardAtPoint(nx * rw, ny * rh, rw, rh, true, null);
             return true;
           }
           const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
@@ -2945,7 +3310,10 @@
           const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rw));
           const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rh));
           if (this.activeInkTool === 'eraser' || cardWidgetEl._extraStylusEraser) {
-            eraseExtraCardAtPoint(nx * rw, ny * rh, rw, rh, true);
+            const prevErasePx = extraInkCanvas._lastErasePtPx || null;
+            const curErasePx = { x: nx * rw, y: ny * rh };
+            extraInkCanvas._lastErasePtPx = curErasePx;
+            eraseExtraCardAtPoint(curErasePx.x, curErasePx.y, rw, rh, true, prevErasePx);
             return;
           }
           if (!curExtraStroke) return;
@@ -3011,6 +3379,7 @@
           this._currentCardEraseUndoEntry = null;
           activeExtraPointerId = null;
           cardWidgetEl._extraStylusEraser = false;
+          extraInkCanvas._lastErasePtPx = null;
           activeExtraDrawRect = null;
           curExtraStroke = null;
           const pendingExtraEraseRender = !finishedSt ? extraInkCanvas._pendingCardLiveRenderFn : null;
@@ -5694,7 +6063,7 @@
       );
     }
 
-    eraseGraphCardInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null, deferRender = false) {
+    eraseGraphCardInkAtNormalizedPoint(nx, ny, w, h, radiusPx = null, deferRender = false, prevPtPx = null) {
       radiusPx = (typeof radiusPx === 'number' && !isNaN(radiusPx)) ? radiusPx : Math.max(6, (this.currentEraserSize || 14) * 1.25);
       const gWidget = document.getElementById('graphCardWidget');
       let stickerErased = false;
@@ -5702,6 +6071,7 @@
         stickerErased = Boolean(this.eraseCardStickerAtNormalizedPoint(gWidget, nx, ny, w, h, radiusPx));
       }
       if (!this.graphInkStrokes || this.graphInkStrokes.length === 0) return stickerErased;
+      const gCanvas = document.getElementById('graphCardCanvas');
       const tx = nx * w;
       const ty = ny * h;
       const inkErased = this._eraseCardStrokesInPlace(
@@ -5714,11 +6084,12 @@
         {
           cardKind: 'graph',
           cardEl: gWidget,
+          targetCanvas: gCanvas,
+          prevPtPx,
           renderFn: () => this.renderGraphCardCanvas()
         }
       );
       if (inkErased) {
-        const gCanvas = document.getElementById('graphCardCanvas');
         if (deferRender && gCanvas) {
           this._scheduleCardLiveFrameRender(gCanvas, () => this.renderGraphCardCanvas());
         } else {
@@ -5872,7 +6243,8 @@
           );
           if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
             this._graphCardStylusEraser = true;
-            this.eraseGraphCardInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, null, false);
+            gCanvas._lastErasePtPx = { x: pos.nx * pos.w, y: pos.ny * pos.h };
+            this.eraseGraphCardInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, null, true, null);
             return true;
           }
 
@@ -5930,7 +6302,10 @@
             (e.pointerType === 'pen' && (typeof e.buttons === 'number' && (e.buttons & 2) !== 0))
           );
           if (this.activeInkTool === 'eraser' || isCardStylusEraser) {
-            this.eraseGraphCardInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, null, true);
+            const prevErasePx = gCanvas._lastErasePtPx || null;
+            const curErasePx = { x: pos.nx * pos.w, y: pos.ny * pos.h };
+            gCanvas._lastErasePtPx = curErasePx;
+            this.eraseGraphCardInkAtNormalizedPoint(pos.nx, pos.ny, pos.w, pos.h, null, true, prevErasePx);
             return;
           }
           if (!currentStroke) return;
@@ -5996,6 +6371,7 @@
           this._currentCardEraseUndoEntry = null;
           activeGraphCardPointerId = null;
           this._graphCardStylusEraser = false;
+          gCanvas._lastErasePtPx = null;
           activeGraphDrawRect = null;
           currentStroke = null;
           const pendingGraphEraseRender = !finishedCardStroke ? gCanvas._pendingCardLiveRenderFn : null;

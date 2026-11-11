@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261112_58">
+  <link rel="stylesheet" href="style.css?v=20261112_61">
 </head>
 
 <body class="theme-light">
@@ -532,6 +532,20 @@
                       <span class="vf-toggle-slider"></span>
                     </label>
                   </label>
+
+                  <div id="rowAudioRecVol" class="single-line-slider-row"
+                    title="녹음 시 마이크 수음 감도 및 볼륨 조절 (기본 100%, 소리가 예민하게 들어갈 때는 60~85% 권장)">
+                    <span class="single-line-slider-label">녹음 볼륨</span>
+                    <button type="button" id="btnAudioRecVolDown" class="single-line-step-btn"
+                      title="녹음 볼륨 줄이기 (-5%)">◀</button>
+                    <div class="single-line-slider-track">
+                      <input type="range" id="sliderAudioRecVol" class="slider-bar" min="20" max="150" step="5"
+                        value="100">
+                    </div>
+                    <button type="button" id="btnAudioRecVolUp" class="single-line-step-btn"
+                      title="녹음 볼륨 키우기 (+5%)">▶</button>
+                    <span id="lblAudioRecVol" class="single-line-slider-val">100%</span>
+                  </div>
                 </div>
 
                 <!-- 섹션: 단축키 설정 -->
@@ -2971,15 +2985,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261112_58"></script>
-  <script src="app-core.js?v=20261112_58"></script>
-  <script src="app-ink.js?v=20261112_58"></script>
-  <script src="app-pdf.js?v=20261112_58"></script>
-  <script src="app-cards.js?v=20261112_58"></script>
-  <script src="app-cloud.js?v=20261112_58"></script>
-  <script src="app-canvas.js?v=20261112_58"></script>
-  <script src="app-toolkit.js?v=20261112_58"></script>
-  <script src="app.js?v=20261112_58"></script>
+  <script src="engine.js?v=20261112_61"></script>
+  <script src="app-core.js?v=20261112_61"></script>
+  <script src="app-ink.js?v=20261112_61"></script>
+  <script src="app-pdf.js?v=20261112_61"></script>
+  <script src="app-cards.js?v=20261112_61"></script>
+  <script src="app-cloud.js?v=20261112_61"></script>
+  <script src="app-canvas.js?v=20261112_61"></script>
+  <script src="app-toolkit.js?v=20261112_61"></script>
+  <script src="app.js?v=20261112_61"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (등록된 완성 도구가 2개 이상일 때 자동 표출)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -3146,7 +3160,7 @@
   </div>
 
   <script>
-    if ('serviceWorkigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister())).catch(() => { });
         if ('caches' in window) caches.keys().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => { });
