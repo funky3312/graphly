@@ -637,6 +637,7 @@
     const btnOpenProSettings = document.getElementById('btnOpenProPricingFromSettings');
     const modalPro = document.getElementById('modalProPricing');
     const btnClosePro = document.getElementById('btnCloseProPricingModal');
+    const btnPayNow = document.getElementById('btnProModalPayNow');
     const btnCycleMonthly = document.getElementById('btnBillingCycleMonthly');
     const btnCycleYearly = document.getElementById('btnBillingCycleYearly');
     const cardPlanPro = document.getElementById('cardPlanPro');
