@@ -6093,13 +6093,77 @@
       });
     };
 
-    const offCurveCenterTypes = new Set(['exp_basic', 'log_basic', 'rational_basic', 'killer_log_frac', 'geom_circle']);
+    const offCurveCenterTypes = new Set(['exp_basic', 'log_basic', 'rational_basic', 'killer_log_frac', 'geom_circle', 'general_expr']);
 
-    // 1. 모든 그래프의 실제 곡선 위 특이점 핸들러(극점, 변곡점, 꼭짓점, 시작점, 대칭중심 등)
+    // 1. 모든 그래프의 실제 곡선 위 특이점 핸들러(극점, 변곡점, 꼭짓점, 시작점, 대칭중심, 평면도형 꼭짓점 등)
     this.graphs.forEach((g, gIdx) => {
       if (!g || !g.handles) return;
-      if (g.type === 'geom_circle' || g.type === 'geom_triangle' || g.type === 'geom_quad') return;
+      if (g.type === 'geom_circle' || g.type === 'geom_triangle' || g.type === 'geom_quad') {
+        if (g.type === 'geom_circle' && g.handles.length >= 2) {
+          const cp = this.engine.getHandleWorldPos(g, g.handles[0]);
+          const rp = this.engine.getHandleWorldPos(g, g.handles[1]);
+          const rad = Math.hypot(rp.x - cp.x, rp.y - cp.y);
+          if (rad > 1e-4 && isFinite(rad)) {
+            addCand(cp.x + rad, cp.y, '우측 끝', g.color, g.id, null, `${g.id}_circ_0`);
+            addCand(cp.x - rad, cp.y, '좌측 끝', g.color, g.id, null, `${g.id}_circ_1`);
+            addCand(cp.x, cp.y + rad, '최고점', g.color, g.id, null, `${g.id}_circ_2`);
+            addCand(cp.x, cp.y - rad, '최저점', g.color, g.id, null, `${g.id}_circ_3`);
+            if (this.showXAxis !== false && Math.abs(cp.y) <= rad + 1e-7) {
+              const dx = Math.sqrt(Math.max(0, rad * rad - cp.y * cp.y));
+              if (dx < 1e-5) addCand(cp.x, 0, 'x절편', g.color, g.id, null, `${g.id}_root_0`);
+              else {
+                addCand(cp.x - dx, 0, 'x절편', g.color, g.id, null, `${g.id}_root_0`);
+                addCand(cp.x + dx, 0, 'x절편', g.color, g.id, null, `${g.id}_root_1`);
+              }
+            }
+            if (this.showYAxis !== false && Math.abs(cp.x) <= rad + 1e-7) {
+              const dy = Math.sqrt(Math.max(0, rad * rad - cp.x * cp.x));
+              if (dy < 1e-5) addCand(0, cp.y, 'y절편', g.color, g.id, null, `${g.id}_yint_0`);
+              else {
+                addCand(0, cp.y - dy, 'y절편', g.color, g.id, null, `${g.id}_yint_0`);
+                addCand(0, cp.y + dy, 'y절편', g.color, g.id, null, `${g.id}_yint_1`);
+              }
+            }
+          }
+        } else {
+          const verts = g.handles.map((h, hIdx) => {
+            const wp = this.engine.getHandleWorldPos(g, h);
+            addCand(wp.x, wp.y, h.name || '꼭짓점', g.color, g.id, hIdx, `${g.id}_h_${hIdx}`);
+            return wp;
+          });
+          const nV = verts.length;
+          for (let k = 0; k < nV; k++) {
+            const a = verts[k];
+            const b = verts[(k + 1) % nV];
+            if (this.showXAxis !== false && ((a.y <= 0 && b.y >= 0) || (a.y >= 0 && b.y <= 0)) && Math.abs(b.y - a.y) > 1e-7) {
+              const t0 = (0 - a.y) / (b.y - a.y);
+              if (t0 >= -1e-6 && t0 <= 1 + 1e-6) {
+                addCand(a.x + t0 * (b.x - a.x), 0, 'x절편', g.color, g.id, null, `${g.id}_root_${k}`);
+              }
+            }
+            if (this.showYAxis !== false && ((a.x <= 0 && b.x >= 0) || (a.x >= 0 && b.x <= 0)) && Math.abs(b.x - a.x) > 1e-7) {
+              const t0 = (0 - a.x) / (b.x - a.x);
+              if (t0 >= -1e-6 && t0 <= 1 + 1e-6) {
+                addCand(0, a.y + t0 * (b.y - a.y), 'y절편', g.color, g.id, null, `${g.id}_yint_${k}`);
+              }
+            }
+          }
+        }
+        return;
+      }
       const isTrans = Boolean(g.isTransposedYX);
+      const isDegenerateVerticalLinear = g.type === '1st_linear' && g.handles.length >= 2 &&
+        Math.abs(g.handles[1].x - g.handles[0].x) < 1e-4;
+      if (isDegenerateVerticalLinear) {
+        const wp0 = this.engine.getHandleWorldPos(g, g.handles[0]);
+        addCand(wp0.x, wp0.y, g.handles[0].name || '기준점', g.color, g.id, 0, `${g.id}_h_0`);
+        if (!isTrans && this.showXAxis !== false) {
+          addCand(wp0.x, 0, 'x절편', g.color, g.id, null, `${g.id}_root_0`);
+        } else if (isTrans && this.showYAxis !== false) {
+          addCand(0, wp0.y, 'y절편', g.color, g.id, null, `${g.id}_yint_0`);
+        }
+        return;
+      }
       const paramMin = isTrans ? scanMinY : scanMinX;
       const paramMax = isTrans ? scanMaxY : scanMaxX;
       const mapInnerX = (innerX) => this.engine.baseXToWorldX(g, innerX);
@@ -6372,10 +6436,139 @@
 
     const searchRadiusPx = Math.ceil(maxDist);
     this.graphs.forEach((g, gIdx) => {
-      if (!g || g.type === 'geom_circle' || g.type === 'geom_triangle' || g.type === 'geom_quad') return;
+      if (!g) return;
+      if (g.type === 'geom_circle' || g.type === 'geom_triangle' || g.type === 'geom_quad') {
+        try {
+          if (g.type === 'geom_circle' && g.handles && g.handles.length >= 2) {
+            const cp = this.engine.getHandleWorldPos(g, g.handles[0]);
+            const rp = this.engine.getHandleWorldPos(g, g.handles[1]);
+            const rad = Math.hypot(rp.x - cp.x, rp.y - cp.y);
+            if (rad > 1e-4 && isFinite(rad)) {
+              const mCur = this.screenToMath(screenPos.x, screenPos.y);
+              const baseAng = Math.atan2(mCur.y - cp.y, mCur.x - cp.x);
+              const evalCirc = (ang) => {
+                const mx = cp.x + rad * Math.cos(ang);
+                const my = cp.y + rad * Math.sin(ang);
+                const s = this.mathToScreen(mx, my);
+                return { mx, my, sx: s.x, sy: s.y, d: Math.hypot(s.x - screenPos.x, s.y - screenPos.y), ang };
+              };
+              let bestC = evalCirc(baseAng);
+              const refinedC = refineInterval(evalCirc, baseAng - 0.35, baseAng + 0.35);
+              if (refinedC && refinedC.d < bestC.d) bestC = refinedC;
+              if (bestC && bestC.d < bestCurveDist) {
+                bestCurveDist = bestC.d;
+                bestCurvePoint = {
+                  x: bestC.mx,
+                  y: bestC.my,
+                  name: '원 위 점',
+                  color: g.color || '#00d2d3',
+                  layerId: g.id,
+                  handleIndex: null,
+                  candKey: `${g.id}_cpt_${Math.round(bestC.ang * 100) / 100}`,
+                  type: 'geom_circle_pt',
+                  anchorAngle: bestC.ang,
+                  isCandidate: false,
+                  screenX: bestC.sx,
+                  screenY: bestC.sy,
+                  dist: bestC.d
+                };
+              }
+            }
+          } else if (g.handles && g.handles.length >= 3) {
+            const verts = g.handles.map(h => this.engine.getHandleWorldPos(g, h));
+            const nV = verts.length;
+            for (let k = 0; k < nV; k++) {
+              const va = verts[k];
+              const vb = verts[(k + 1) % nV];
+              const sa = this.mathToScreen(va.x, va.y);
+              const sb = this.mathToScreen(vb.x, vb.y);
+              const vx = sb.x - sa.x;
+              const vy = sb.y - sa.y;
+              const lenSq = vx * vx + vy * vy;
+              let tProj = lenSq > 1e-6 ? ((screenPos.x - sa.x) * vx + (screenPos.y - sa.y) * vy) / lenSq : 0;
+              tProj = Math.max(0, Math.min(1, tProj));
+              const sx = sa.x + tProj * vx;
+              const sy = sa.y + tProj * vy;
+              const d = Math.hypot(sx - screenPos.x, sy - screenPos.y);
+              if (d < bestCurveDist) {
+                bestCurveDist = d;
+                const mx = va.x + tProj * (vb.x - va.x);
+                const my = va.y + tProj * (vb.y - va.y);
+                bestCurvePoint = {
+                  x: mx,
+                  y: my,
+                  name: '변 위 점',
+                  color: g.color || '#00d2d3',
+                  layerId: g.id,
+                  handleIndex: null,
+                  candKey: `${g.id}_edge_${k}_${Math.round(tProj * 100)}`,
+                  type: 'geom_edge',
+                  edgeIdx: k,
+                  edgeT: tProj,
+                  isCandidate: false,
+                  screenX: sx,
+                  screenY: sy,
+                  dist: d
+                };
+              }
+            }
+          }
+        } catch (err) { }
+        return;
+      }
+      if (g.type === '1st_linear' && g.handles && g.handles.length >= 2 && Math.abs(g.handles[1].x - g.handles[0].x) < 1e-4) {
+        const wp0 = this.engine.getHandleWorldPos(g, g.handles[0]);
+        if (!g.isTransposedYX) {
+          const sxLine = this.mathToScreen(wp0.x, 0).x;
+          const d = Math.abs(sxLine - screenPos.x);
+          if (d < bestCurveDist) {
+            const my = this.screenToMath(sxLine, screenPos.y).y;
+            const s = this.mathToScreen(wp0.x, my);
+            bestCurveDist = d;
+            bestCurvePoint = {
+              x: wp0.x,
+              y: my,
+              name: '직선 점',
+              color: g.color || '#00d2d3',
+              layerId: g.id,
+              handleIndex: null,
+              candKey: `${g.id}_vline_${Math.round(my * 100) / 100}`,
+              type: 'vert_line',
+              isCandidate: false,
+              screenX: s.x,
+              screenY: s.y,
+              dist: d
+            };
+          }
+        } else {
+          const syLine = this.mathToScreen(0, wp0.y).y;
+          const d = Math.abs(syLine - screenPos.y);
+          if (d < bestCurveDist) {
+            const mx = this.screenToMath(screenPos.x, syLine).x;
+            const s = this.mathToScreen(mx, wp0.y);
+            bestCurveDist = d;
+            bestCurvePoint = {
+              x: mx,
+              y: wp0.y,
+              name: '직선 점',
+              color: g.color || '#00d2d3',
+              layerId: g.id,
+              handleIndex: null,
+              candKey: `${g.id}_hline_${Math.round(mx * 100) / 100}`,
+              type: 'horiz_line',
+              isCandidate: false,
+              screenX: s.x,
+              screenY: s.y,
+              dist: d
+            };
+          }
+        }
+        return;
+      }
       try {
         let localBest = null;
         let prevSample = null;
+        let prevCoord = null;
         const crossingIntervals = [];
         const isTrans = Boolean(g.isTransposedYX);
         const evalFn = isTrans ? ((sy) => evalScreenPointTrans(g, sy)) : ((sx) => evalScreenPoint(g, gIdx, sx));
@@ -6383,6 +6576,26 @@
         for (let delta = -searchRadiusPx; delta <= searchRadiusPx; delta += 2) {
           const sCoord = (isTrans ? screenPos.y : screenPos.x) + delta;
           const pt = evalFn(sCoord);
+          if (prevCoord !== null && ((prevSample === null) !== (pt === null))) {
+            // 정의역 경계(무리함수 시작점·반원 끝점 등) 정밀 이분 탐색
+            let validC = pt ? sCoord : prevCoord;
+            let nullC = pt ? prevCoord : sCoord;
+            let bestBoundPt = pt || prevSample;
+            for (let bIt = 0; bIt < 10; bIt++) {
+              const midC = (validC + nullC) * 0.5;
+              const midPt = evalFn(midC);
+              if (midPt) {
+                validC = midC;
+                bestBoundPt = midPt;
+              } else {
+                nullC = midC;
+              }
+            }
+            if (bestBoundPt && (!localBest || bestBoundPt.d < localBest.d)) {
+              localBest = bestBoundPt;
+            }
+            crossingIntervals.push([Math.min(validC, pt ? sCoord : prevCoord), Math.max(validC, pt ? sCoord : prevCoord)]);
+          }
           if (pt) {
             if (!localBest || pt.d < localBest.d) {
               localBest = pt;
@@ -6404,6 +6617,7 @@
             }
           }
           prevSample = pt;
+          prevCoord = sCoord;
         }
 
         if (localBest) {
@@ -6491,7 +6705,7 @@
       return true;
     });
 
-    const offCurveCenterTypes = new Set(['exp_basic', 'log_basic', 'rational_basic', 'killer_log_frac', 'geom_circle']);
+    const offCurveCenterTypes = new Set(['exp_basic', 'log_basic', 'rational_basic', 'killer_log_frac', 'geom_circle', 'general_expr']);
 
     this.dropLines.forEach(item => {
       if (!item.binding) return;
@@ -6512,8 +6726,8 @@
           ) || [];
           const validRoots = roots.filter(r => {
             if (!this.usePiecewise) return true;
-            const visA = gA.isIndependent ? true : this.isInsidePiece(gIdxA, r.x);
-            const visB = gB.isIndependent ? true : this.isInsidePiece(gIdxB, r.x);
+            const visA = (gA.isIndependent || gA.isTransposedYX) ? true : this.isInsidePiece(gIdxA, r.x);
+            const visB = (gB.isIndependent || gB.isTransposedYX) ? true : this.isInsidePiece(gIdxB, r.x);
             return visA && visB;
           });
           if (validRoots.length > 0) {
@@ -6539,6 +6753,9 @@
       if (!g) return;
 
       const isTrans = Boolean(g.isTransposedYX);
+      const isGeom = typeof g.type === 'string' && g.type.startsWith('geom_');
+      const isDegenerateVerticalLinear = g.type === '1st_linear' && Array.isArray(g.handles) && g.handles.length >= 2 &&
+        Math.abs(g.handles[1].x - g.handles[0].x) < 1e-4;
       const mapInnerX = (innerX) => this.engine.baseXToWorldX(g, innerX);
       const evalParam = (pVal) => isTrans
         ? this.engine.evaluatePipeline(g, pVal)
@@ -6553,25 +6770,62 @@
         }
       };
 
-      // (A) 특정 핸들러(극점, 변곡점, 꼭짓점, 시작점 등)에 바인딩된 경우
+      // (A) 특정 핸들러(극점, 변곡점, 꼭짓점, 시작점, 도형 꼭짓점 등)에 바인딩된 경우
       if (b.type === 'candidate' && b.handleIndex !== null && b.handleIndex !== undefined) {
         if (g.handles && g.handles[b.handleIndex]) {
-          const h = g.handles[b.handleIndex];
-          const newX = mapInnerX(h.x);
-          const isOffCurveCenter = (h.type === 'asymptote') || (h.type === 'center' && offCurveCenterTypes.has(g.type));
-          const fallbackY = this.engine.baseYToWorldY(g, h.y, true);
-          let evalY = isOffCurveCenter
-            ? this.engine.baseYToWorldY(g, h.y, false)
-            : evalParam(newX);
-          if (isNaN(evalY) || !isFinite(evalY)) {
-            evalY = fallbackY;
+          if (isGeom || isDegenerateVerticalLinear) {
+            const wp = this.engine.getHandleWorldPos(g, g.handles[b.handleIndex]);
+            item.sourceX = wp.x;
+            item.sourceY = wp.y;
+          } else {
+            const h = g.handles[b.handleIndex];
+            const newX = mapInnerX(h.x);
+            const isOffCurveCenter = (h.type === 'asymptote') || (h.type === 'center' && offCurveCenterTypes.has(g.type));
+            const fallbackY = this.engine.baseYToWorldY(g, h.y, true);
+            let evalY = isOffCurveCenter
+              ? this.engine.baseYToWorldY(g, h.y, false)
+              : evalParam(newX);
+            if (isNaN(evalY) || !isFinite(evalY)) {
+              evalY = fallbackY;
+            }
+            assignTrackedPos(newX, evalY);
           }
-          assignTrackedPos(newX, evalY);
         }
       }
       // (A-1) x절편에 바인딩된 경우 실시간 영점 추적
       else if (b.type === 'candidate' && (b.name === 'x절편' || (typeof b.candKey === 'string' && b.candKey.includes('_root_')))) {
-        if (isTrans) {
+        if (isGeom && g.type === 'geom_circle' && g.handles && g.handles.length >= 2) {
+          const cp = this.engine.getHandleWorldPos(g, g.handles[0]);
+          const rp = this.engine.getHandleWorldPos(g, g.handles[1]);
+          const rad = Math.hypot(rp.x - cp.x, rp.y - cp.y);
+          if (Math.abs(cp.y) <= rad + 1e-7) {
+            const dx = Math.sqrt(Math.max(0, rad * rad - cp.y * cp.y));
+            const xA = cp.x - dx;
+            const xB = cp.x + dx;
+            item.sourceX = (Math.abs(xA - item.sourceX) <= Math.abs(xB - item.sourceX)) ? xA : xB;
+            item.sourceY = 0;
+          }
+        } else if (isGeom && g.handles && g.handles.length >= 3) {
+          const verts = g.handles.map(h => this.engine.getHandleWorldPos(g, h));
+          let bestX = null;
+          let bestD = Infinity;
+          for (let k = 0; k < verts.length; k++) {
+            const va = verts[k];
+            const vb = verts[(k + 1) % verts.length];
+            if (((va.y <= 0 && vb.y >= 0) || (va.y >= 0 && vb.y <= 0)) && Math.abs(vb.y - va.y) > 1e-7) {
+              const t0 = (0 - va.y) / (vb.y - va.y);
+              if (t0 >= -1e-6 && t0 <= 1 + 1e-6) {
+                const rx = va.x + t0 * (vb.x - va.x);
+                const d = Math.abs(rx - item.sourceX);
+                if (d < bestD) { bestD = d; bestX = rx; }
+              }
+            }
+          }
+          if (bestX !== null) { item.sourceX = bestX; item.sourceY = 0; }
+        } else if (isDegenerateVerticalLinear && !isTrans) {
+          item.sourceX = this.engine.getHandleWorldPos(g, g.handles[0]).x;
+          item.sourceY = 0;
+        } else if (isTrans) {
           const x0 = this.engine.evaluatePipeline(g, 0);
           if (!isNaN(x0) && isFinite(x0)) {
             item.sourceX = x0;
@@ -6600,11 +6854,23 @@
           }
         }
       }
-      // (A-2) 삼각함수(sin, cos, tan) 주기별 극대·극소·대칭중심 및 기함수 분수형 대칭 극소점에 바인딩된 경우
+      // (A-2) 삼각함수(sin, cos, tan) 주기별 극대·극소·대칭중심, 원 끝점 및 기함수 분수형 대칭 극소점에 바인딩된 경우
       else if (b.type === 'candidate' && typeof b.candKey === 'string') {
         const trigMatch = b.candKey.match(/_trig_q_(-?\d+)$/);
         const tanMatch = b.candKey.match(/_tan_p_(-?\d+)$/);
-        if (trigMatch && (g.type === 'sin_1period' || g.type === 'cos_1period') && g.handles && g.handles.length >= 1) {
+        const circMatch = b.candKey.match(/_circ_([0-3])$/);
+        if (circMatch && g.type === 'geom_circle' && g.handles && g.handles.length >= 2) {
+          const cp = this.engine.getHandleWorldPos(g, g.handles[0]);
+          const rp = this.engine.getHandleWorldPos(g, g.handles[1]);
+          const rad = Math.hypot(rp.x - cp.x, rp.y - cp.y);
+          const ci = parseInt(circMatch[1], 10);
+          if (rad > 1e-4 && isFinite(rad)) {
+            if (ci === 0) { item.sourceX = cp.x + rad; item.sourceY = cp.y; }
+            else if (ci === 1) { item.sourceX = cp.x - rad; item.sourceY = cp.y; }
+            else if (ci === 2) { item.sourceX = cp.x; item.sourceY = cp.y + rad; }
+            else if (ci === 3) { item.sourceX = cp.x; item.sourceY = cp.y - rad; }
+          }
+        } else if (trigMatch && (g.type === 'sin_1period' || g.type === 'cos_1period') && g.handles && g.handles.length >= 1) {
           const k = parseInt(trigMatch[1], 10);
           const h0 = g.handles[0];
           const h1 = g.handles.length >= 2 ? g.handles[1] : null;
@@ -6636,7 +6902,38 @@
             assignTrackedPos(newX, evalY);
           }
         } else if (b.name === 'y절편' || b.candKey.includes('_yint_')) {
-          if (isTrans) {
+          if (isGeom && g.type === 'geom_circle' && g.handles && g.handles.length >= 2) {
+            const cp = this.engine.getHandleWorldPos(g, g.handles[0]);
+            const rp = this.engine.getHandleWorldPos(g, g.handles[1]);
+            const rad = Math.hypot(rp.x - cp.x, rp.y - cp.y);
+            if (Math.abs(cp.x) <= rad + 1e-7) {
+              const dy = Math.sqrt(Math.max(0, rad * rad - cp.x * cp.x));
+              const yA = cp.y - dy;
+              const yB = cp.y + dy;
+              item.sourceX = 0;
+              item.sourceY = (Math.abs(yA - item.sourceY) <= Math.abs(yB - item.sourceY)) ? yA : yB;
+            }
+          } else if (isGeom && g.handles && g.handles.length >= 3) {
+            const verts = g.handles.map(h => this.engine.getHandleWorldPos(g, h));
+            let bestY = null;
+            let bestD = Infinity;
+            for (let k = 0; k < verts.length; k++) {
+              const va = verts[k];
+              const vb = verts[(k + 1) % verts.length];
+              if (((va.x <= 0 && vb.x >= 0) || (va.x >= 0 && vb.x <= 0)) && Math.abs(vb.x - va.x) > 1e-7) {
+                const t0 = (0 - va.x) / (vb.x - va.x);
+                if (t0 >= -1e-6 && t0 <= 1 + 1e-6) {
+                  const ry = va.y + t0 * (vb.y - va.y);
+                  const d = Math.abs(ry - item.sourceY);
+                  if (d < bestD) { bestD = d; bestY = ry; }
+                }
+              }
+            }
+            if (bestY !== null) { item.sourceX = 0; item.sourceY = bestY; }
+          } else if (isDegenerateVerticalLinear && isTrans) {
+            item.sourceX = 0;
+            item.sourceY = this.engine.getHandleWorldPos(g, g.handles[0]).y;
+          } else if (isTrans) {
             const nG = { ...g, isTransposedYX: false };
             const yRoots = this.engine.findFunctionIntersections(nG, null, { xmin: item.sourceY - 30, xmax: item.sourceY + 30 }, null) || [];
             if (yRoots.length > 0) {
@@ -6681,10 +6978,41 @@
           }
         }
       }
-      // (C) 일반 곡선 위의 임의 점 또는 교점에서 이관된 점인 경우 (freezeOffset.x 이중 가산 방지!)
+      // (C) 평면도형(원 둘레·다각형 변)·수직/수평 직선·일반 곡선 위의 임의 점 동적 추적
+      else if (b.type === 'geom_circle_pt' && g.type === 'geom_circle' && g.handles && g.handles.length >= 2) {
+        const cp = this.engine.getHandleWorldPos(g, g.handles[0]);
+        const rp = this.engine.getHandleWorldPos(g, g.handles[1]);
+        const rad = Math.hypot(rp.x - cp.x, rp.y - cp.y);
+        const ang = (typeof b.anchorAngle === 'number') ? b.anchorAngle : Math.atan2(item.sourceY - cp.y, item.sourceX - cp.x);
+        if (rad > 1e-4 && isFinite(rad)) {
+          item.sourceX = cp.x + rad * Math.cos(ang);
+          item.sourceY = cp.y + rad * Math.sin(ang);
+        }
+      }
+      else if (b.type === 'geom_edge' && (g.type === 'geom_triangle' || g.type === 'geom_quad') && g.handles && g.handles.length >= 3) {
+        const nV = g.handles.length;
+        const k = ((typeof b.edgeIdx === 'number' ? b.edgeIdx : 0) % nV + nV) % nV;
+        const tProj = (typeof b.edgeT === 'number') ? Math.max(0, Math.min(1, b.edgeT)) : 0.5;
+        const va = this.engine.getHandleWorldPos(g, g.handles[k]);
+        const vb = this.engine.getHandleWorldPos(g, g.handles[(k + 1) % nV]);
+        item.sourceX = va.x + tProj * (vb.x - va.x);
+        item.sourceY = va.y + tProj * (vb.y - va.y);
+      }
+      else if (b.type === 'vert_line' && g.handles && g.handles.length >= 1) {
+        const wp0 = this.engine.getHandleWorldPos(g, g.handles[0]);
+        item.sourceX = wp0.x;
+        if (typeof b.anchorY === 'number') item.sourceY = b.anchorY;
+      }
+      else if (b.type === 'horiz_line' && g.handles && g.handles.length >= 1) {
+        const wp0 = this.engine.getHandleWorldPos(g, g.handles[0]);
+        item.sourceY = wp0.y;
+        if (typeof b.anchorX === 'number') item.sourceX = b.anchorX;
+      }
       else if (b.type === 'curve') {
         if (typeof b.anchorBaseX !== 'number') {
-          const legacyWorldParam = (typeof b.anchorX === 'number' ? b.anchorX : (isTrans ? item.sourceY : item.sourceX));
+          const legacyWorldParam = isTrans
+            ? item.sourceY
+            : (typeof b.anchorX === 'number' ? b.anchorX : item.sourceX);
           b.anchorBaseX = this.engine.worldXToBaseX(g, legacyWorldParam);
         }
         const newX = mapInnerX(b.anchorBaseX);
@@ -6719,6 +7047,7 @@
     const boundGraph = (target && target.layerId && Array.isArray(this.graphs))
       ? this.graphs.find(gr => gr && gr.id === target.layerId)
       : null;
+    const anchorParam = (boundGraph && boundGraph.isTransposedYX) ? y : x;
     const item = {
       id: 'dl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
       sourceX: x,
@@ -6736,10 +7065,14 @@
         handleIndex: target.handleIndex,
         name: target.name,
         candKey: target.candKey,
-        anchorX: (boundGraph && boundGraph.isTransposedYX) ? y : x,
+        anchorX: anchorParam,
         anchorBaseX: (boundGraph && this.engine)
-          ? this.engine.worldXToBaseX(boundGraph, boundGraph.isTransposedYX ? y : x)
-          : x
+          ? this.engine.worldXToBaseX(boundGraph, anchorParam)
+          : anchorParam,
+        anchorY: y,
+        edgeIdx: target.edgeIdx,
+        edgeT: target.edgeT,
+        anchorAngle: target.anchorAngle
       } : null
     };
     this.dropLines.push(item);

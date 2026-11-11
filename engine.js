@@ -1683,6 +1683,8 @@ class GraphMathEngine {
     const diffs = new Float64Array(steps + 1);
     const valid = new Uint8Array(steps + 1);
 
+    let validCnt = 0;
+    let zeroCnt = 0;
     for (let i = 0; i <= steps; i++) {
       const curX = extMin + i * dx;
       xs[i] = curX;
@@ -1694,7 +1696,13 @@ class GraphMathEngine {
       } else {
         valid[i] = 1;
         diffs[i] = y1 - y2;
+        validCnt++;
+        if (Math.abs(diffs[i]) < 1e-6) zeroCnt++;
       }
+    }
+    // 자기역함수(y = x, y = -x + k, y = 1/x 등) 완전 일치 곡선의 5000개 중복 가짜 교점 폭주 원천 차단
+    if (validCnt > 20 && zeroCnt >= validCnt * 0.65) {
+      return [];
     }
 
     const crossRoots = [];
@@ -1704,6 +1712,7 @@ class GraphMathEngine {
       if (!valid[i] || !valid[i + 1]) continue;
       const d1 = diffs[i];
       const d2 = diffs[i + 1];
+      if (Math.abs(d1) < 1e-10 && Math.abs(d2) < 1e-10) continue;
 
       // 점근선 점프(불연속) 1차 필터링
       if (Math.abs(d2 - d1) > 40 && Math.sign(d1) !== Math.sign(d2)) continue;

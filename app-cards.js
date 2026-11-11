@@ -6491,6 +6491,11 @@
             idMap.set(oldId, newId);
           }
         });
+        snapObj.graphs.forEach(g => {
+          if (g && g.linkedInverseId && idMap.has(String(g.linkedInverseId))) {
+            g.linkedInverseId = idMap.get(String(g.linkedInverseId));
+          }
+        });
       }
       if (Array.isArray(snapObj.dropLines)) {
         const sortedIdPairs = idMap.size > 0
@@ -8445,11 +8450,53 @@
           ? snap.activeGraphIdx
           : (snap.graphs.length - 1);
         const delG = snap.graphs[delIdx];
+        const delId = delG ? delG.id : null;
         if (delG && delG.linkedInverseId) {
           const partner = snap.graphs.find(item => item && item.id === delG.linkedInverseId);
           if (partner) partner.linkedInverseId = null;
         }
         snap.graphs.splice(delIdx, 1);
+        if (delId && Array.isArray(snap.dropLines) && snap.dropLines.length > 0) {
+          snap.dropLines = snap.dropLines.filter(dl => {
+            if (!dl || !dl.binding) return true;
+            const b = dl.binding;
+            if (b.isIntersection || b.name === '교점') {
+              const ids = b.layerIds || (b.layerId ? [b.layerId] : []);
+              const survivingId = ids.find(id => id !== delId && snap.graphs.some(gr => gr && gr.id === id));
+              if (survivingId) {
+                const survivingGraph = snap.graphs.find(gr => gr && gr.id === survivingId);
+                b.layerId = survivingId;
+                b.layerIds = [survivingId];
+                b.isIntersection = false;
+                b.name = '곡선 점';
+                const isSurvGeom = survivingGraph && typeof survivingGraph.type === 'string' && survivingGraph.type.startsWith('geom_');
+                if (isSurvGeom && survivingGraph.type === 'geom_circle' && Array.isArray(survivingGraph.handles) && survivingGraph.handles.length >= 2 && this.engine) {
+                  const cp = this.engine.getHandleWorldPos(survivingGraph, survivingGraph.handles[0]);
+                  b.type = 'geom_circle_pt';
+                  b.anchorAngle = Math.atan2(dl.sourceY - cp.y, dl.sourceX - cp.x);
+                } else if (!isSurvGeom) {
+                  const isVertSurv = survivingGraph && survivingGraph.type === '1st_linear' && !survivingGraph.isTransposedYX &&
+                    Array.isArray(survivingGraph.handles) && survivingGraph.handles.length >= 2 &&
+                    Math.abs(survivingGraph.handles[1].x - survivingGraph.handles[0].x) < 1e-4;
+                  if (isVertSurv) {
+                    b.type = 'vert_line';
+                    b.anchorY = dl.sourceY;
+                  } else {
+                    b.type = 'curve';
+                    const worldParam = (survivingGraph && survivingGraph.isTransposedYX) ? dl.sourceY : dl.sourceX;
+                    b.anchorX = worldParam;
+                    if (survivingGraph && this.engine) {
+                      b.anchorBaseX = this.engine.worldXToBaseX(survivingGraph, worldParam);
+                    }
+                  }
+                }
+                return true;
+              }
+              return false;
+            }
+            return b.layerId !== delId;
+          });
+        }
         if (!snap.graphs.some(item => item && item.linkedInverseId)) {
           snap.showInverseGuide = false;
         }
@@ -10525,6 +10572,10 @@
                   if (allowY) existing.showY = true;
                   this.showToast('📍 보조 수선 복원 완료');
                 } else {
+                  const boundGraph = (target && target.layerId && Array.isArray(this.graphs))
+                    ? this.graphs.find(gr => gr && gr.id === target.layerId)
+                    : null;
+                  const anchorParam = (boundGraph && boundGraph.isTransposedYX) ? target.y : target.x;
                   this.dropLines.push({
                     id: 'dl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
                     sourceX: target.x,
@@ -10542,7 +10593,14 @@
                       handleIndex: target.handleIndex,
                       name: target.name,
                       candKey: target.candKey,
-                      anchorX: target.x
+                      anchorX: anchorParam,
+                      anchorBaseX: (boundGraph && this.engine)
+                        ? this.engine.worldXToBaseX(boundGraph, anchorParam)
+                        : anchorParam,
+                      anchorY: target.y,
+                      edgeIdx: target.edgeIdx,
+                      edgeT: target.edgeT,
+                      anchorAngle: target.anchorAngle
                     }
                   });
                   const toastMsg = (allowX && allowY)
