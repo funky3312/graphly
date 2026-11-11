@@ -1513,6 +1513,7 @@
         if (isHighlighterStroke) {
           if (hadSelectedGraphHandleOrCurve || this._inkBakeDirty) {
             this.isDrawingInk = false;
+            this._pcMainStrokeFairer = null;
             this._hasSceneFreeze = false;
             this.render();
           }
@@ -1530,7 +1531,6 @@
         this.updateStylusPenPosition(pos.x, pos.y, e);
         this._lastInkScreenPos = { x: pos.x, y: pos.y };
         this._prevRawInkScreenPos = null;
-        this._prevRawInkCrossSign = 0;
         this._lastRawInkScreenPos = { x: pos.x, y: pos.y };
         this._lastMoveEventScreenPos = { x: pos.x, y: pos.y };
         const downTs = (typeof e.timeStamp === 'number' && e.timeStamp > 0) ? e.timeStamp : null;
@@ -1549,6 +1549,15 @@
         const recT0 = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
         if (recT0 !== undefined) {
           this.recordAudioCursorPoint(pos.x, pos.y, this.currentInkColor, true);
+        }
+        this._pcMainStrokeFairer = null;
+        if (!isHighlighterStroke) {
+          const downInkProfile = this.getDeviceInkProfile();
+          if (downInkProfile.deviceType === 'pc' && typeof this._createPcStrokeFairer === 'function') {
+            const fairStep = (e.pointerType === 'pen') ? (downInkProfile.pcFairStepPen || 1.95) : (downInkProfile.pcFairStepMouse || 2.10);
+            this._pcMainStrokeFairer = this._createPcStrokeFairer(fairStep);
+            this._pcMainStrokeFairer.start(pos.x, pos.y, pressure, recT0);
+          }
         }
         this.currentInkStroke = {
           id: 'ink_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
@@ -2269,70 +2278,28 @@
             const pPos = (ev === e && events.length === 1) ? pos : getPos(ev);
 
             const lastRaw = this._lastRawInkScreenPos;
-            let isRawAlternating = false;
             if (lastRaw) {
               const rawDist = Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y);
               if (rawDist < minRawDist) continue;
 
-              // 🛡️ [역주행 점프 컷오프 (Monotonic Forward Guard) & PC 교번 잔떨림 감지]:
-              if (this._prevRawInkScreenPos) {
+              // 🛡️ [역주행 점프 컷오프 (Monotonic Forward Guard)]:
+              if (this._prevRawInkScreenPos && rawDist < inkProfile.forwardGuardMaxDist) {
                 const vxPrev = lastRaw.x - this._prevRawInkScreenPos.x;
                 const vyPrev = lastRaw.y - this._prevRawInkScreenPos.y;
                 const vxNew = pPos.x - lastRaw.x;
                 const vyNew = pPos.y - lastRaw.y;
                 const lenPrev = Math.hypot(vxPrev, vyPrev);
                 if (lenPrev > 0.35) {
-                  if (rawDist < inkProfile.forwardGuardMaxDist) {
-                    const cosAngle = (vxPrev * vxNew + vyPrev * vyNew) / (lenPrev * rawDist);
-                    if (cosAngle < inkProfile.forwardGuardMinCos) {
-                      continue;
-                    }
-                  }
-                  if (inkProfile.deviceType === 'pc') {
-                    const curCross = (vxPrev * vyNew - vyPrev * vxNew) / lenPrev;
-                    isRawAlternating = Boolean(this._prevRawInkCrossSign && curCross * this._prevRawInkCrossSign < 0);
-                    if (Math.abs(curCross) > 0.08) {
-                      this._prevRawInkCrossSign = curCross > 0 ? 1 : -1;
-                    }
+                  const cosAngle = (vxPrev * vxNew + vyPrev * vyNew) / (lenPrev * rawDist);
+                  if (cosAngle < inkProfile.forwardGuardMinCos) {
+                    continue;
                   }
                 }
               }
             }
+            const moveStepDist = lastRaw ? Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y) : 0;
             this._prevRawInkScreenPos = lastRaw ? { x: lastRaw.x, y: lastRaw.y } : { x: pPos.x, y: pPos.y };
             this._lastRawInkScreenPos = { x: pPos.x, y: pPos.y };
-
-            let sx = pPos.x;
-            let sy = pPos.y;
-            const liveLen = this._liveBezierScreenPts ? this._liveBezierScreenPts.length : 0;
-
-            // 🌟 [기기별 맞춤 스트림라인 (PC: 곡률 보존형 미세 표면 다듬기 / 아이패드: 1차 EMA 그대로 보존)]:
-            if (!this.currentInkStroke.isHighlighter && liveLen >= 1) {
-              const pPrev = this._liveBezierScreenPts[liveLen - 1];
-              if (inkProfile.deviceType === 'pc' && typeof this._computePcCornerAwareStreamline === 'function') {
-                const pPrev2 = (liveLen >= 2) ? this._liveBezierScreenPts[liveLen - 2] : null;
-                const smoothed = this._computePcCornerAwareStreamline(
-                  pPos.x,
-                  pPos.y,
-                  pPrev.x,
-                  pPrev.y,
-                  pPrev2 ? pPrev2.x : 0,
-                  pPrev2 ? pPrev2.y : 0,
-                  Boolean(pPrev2),
-                  inkProfile,
-                  isRawAlternating
-                );
-                sx = smoothed.x;
-                sy = smoothed.y;
-              } else {
-                const stepD = Math.hypot(pPos.x - pPrev.x, pPos.y - pPrev.y);
-                const weight = inkProfile.streamlineWeight * Math.max(0, 1 - stepD / inkProfile.streamlineDecayDist);
-                if (weight > 0.005) {
-                  sx = pPos.x * (1 - weight) + pPrev.x * weight;
-                  sy = pPos.y * (1 - weight) + pPrev.y * weight;
-                }
-              }
-            }
-            this._lastInkScreenPos = { x: sx, y: sy };
 
             let rawPressure = 0.5;
             if (typeof ev.pressure === 'number' && ev.pressure > 0) {
@@ -2341,7 +2308,6 @@
                 this._strokeHasRealPressure = true;
               }
             }
-            const moveStepDist = lastRaw ? Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y) : 0;
             const curPenStyle = (this.currentInkStroke && this.currentInkStroke.penStyle) || this.inkPenStyle || 'ballpen';
             const ptCount = this.currentInkStroke && this.currentInkStroke.points ? this.currentInkStroke.points.length : 1;
             const dtMs = (evTs > 0 && typeof this._lastInkAcceptedTs === 'number' && this._lastInkAcceptedTs > 0)
@@ -2359,12 +2325,50 @@
               dtMs
             );
             this._lastPressure = pressure;
-            lastRecSx = sx;
-            lastRecSy = sy;
 
             if (!this._liveBezierScreenPts) {
               this._liveBezierScreenPts = [];
             }
+
+            // 🌟 [PC 전용 무수축 2차 곡선 다림질 (Savitzky-Golay Streaming Fairer) — 아이패드 경로 100% 무수정 격리]:
+            if (inkProfile.deviceType === 'pc' && !this.currentInkStroke.isHighlighter && this._pcMainStrokeFairer) {
+              const readyPts = this._pcMainStrokeFairer.pushRaw(pPos.x, pPos.y, pressure, recTMove);
+              for (let k = 0; k < readyPts.length; k++) {
+                const fPt = readyPts[k];
+                this._lastInkScreenPos = { x: fPt.x, y: fPt.y };
+                lastRecSx = fPt.x;
+                lastRecSy = fPt.y;
+                if (this.currentInkStroke.target === 'graph') {
+                  const m = this.screenToMath(fPt.x, fPt.y);
+                  this.currentInkStroke.points.push({ x: m.x, y: m.y, p: fPt.p, t: fPt.t });
+                } else {
+                  const bPt = this.screenToBoard(fPt.x, fPt.y);
+                  this.currentInkStroke.points.push({ x: bPt.x, y: bPt.y, p: fPt.p, t: fPt.t });
+                }
+                addedPoints++;
+                this._liveBezierScreenPts.push({ x: fPt.x, y: fPt.y, p: fPt.p });
+                this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
+              }
+              continue;
+            }
+
+            let sx = pPos.x;
+            let sy = pPos.y;
+            const liveLen = this._liveBezierScreenPts.length;
+
+            // 🌟 [아이패드(iPadOS WebKit) 1차 EMA 스트림라인 그대로 보존]:
+            if (!this.currentInkStroke.isHighlighter && liveLen >= 1) {
+              const pPrev = this._liveBezierScreenPts[liveLen - 1];
+              const stepD = Math.hypot(pPos.x - pPrev.x, pPos.y - pPrev.y);
+              const weight = inkProfile.streamlineWeight * Math.max(0, 1 - stepD / inkProfile.streamlineDecayDist);
+              if (weight > 0.005) {
+                sx = pPos.x * (1 - weight) + pPrev.x * weight;
+                sy = pPos.y * (1 - weight) + pPrev.y * weight;
+              }
+            }
+            this._lastInkScreenPos = { x: sx, y: sy };
+            lastRecSx = sx;
+            lastRecSy = sy;
 
             if (this.currentInkStroke.target === 'graph') {
               const m = this.screenToMath(sx, sy);
@@ -3360,45 +3364,71 @@
           }
         }
         if (!this._inkHoldDetected && this.currentInkStroke && !this.currentInkStroke.isShape && this._lastRawInkScreenPos && this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
-          const lastSmoothed = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
           const rawEnd = this._lastRawInkScreenPos;
           const curPenStyle = this.currentInkStroke.penStyle || 'ballpen';
-          const tailDist = Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y);
-          if (tailDist >= 0.15) {
-            const isShortStroke = (this._liveBezierScreenPts.length <= 2);
-            const tailKeep = (this.getDeviceInkProfile().deviceType === 'pc') ? 0.12 : 0.25;
-            const endX = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.x : (lastSmoothed.x * tailKeep + rawEnd.x * (1 - tailKeep));
-            const endY = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.y : (lastSmoothed.y * tailKeep + rawEnd.y * (1 - tailKeep));
+          if (this.getDeviceInkProfile().deviceType === 'pc' && !this.currentInkStroke.isHighlighter && this._pcMainStrokeFairer) {
             let p = this._lastPressure || 0.5;
             if (curPenStyle === 'fountain') {
               p = Math.max(0.10, p * 0.55);
             } else if (curPenStyle === 'brush') {
               p = Math.max(0.06, p * 0.45);
             }
-            this._liveBezierScreenPts.push({ x: endX, y: endY, p: p });
             const recTUp = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
-            if (recTUp !== undefined) {
+            const tailPts = this._pcMainStrokeFairer.finish(rawEnd.x, rawEnd.y, p, recTUp);
+            if (recTUp !== undefined && tailPts.length > 0) {
               this.currentInkStroke.tEnd = recTUp;
             }
-            if (this.currentInkStroke.target === 'graph') {
-              const m = this.screenToMath(endX, endY);
-              this.currentInkStroke.points.push({ x: m.x, y: m.y, p: p, t: recTUp });
-            } else {
-              const bPt = this.screenToBoard(endX, endY);
-              this.currentInkStroke.points.push({ x: bPt.x, y: bPt.y, p: p, t: recTUp });
-            }
-            // 🌟 [핵심 버그 수정]: 꼬리 점(pC)을 추가했을 때는 먼저 직전 중점(mid1)에서 새 중점(mid2)까지의
-            // 2차 베지어 구간(isFinalTail = false)을 반드시 이어준 뒤, 아래 마감 단계에서 mid2 -> pC(isFinalTail = true)를 그려야
-            // 중간 구간(mid1~mid2)이 비면서 느낌표(!)처럼 끝점이 분리되는 현상이 100% 사라집니다!
-            if (!this.currentInkStroke.isHighlighter) {
+            for (let k = 0; k < tailPts.length; k++) {
+              const fPt = tailPts[k];
+              this._liveBezierScreenPts.push({ x: fPt.x, y: fPt.y, p: fPt.p });
+              if (this.currentInkStroke.target === 'graph') {
+                const m = this.screenToMath(fPt.x, fPt.y);
+                this.currentInkStroke.points.push({ x: m.x, y: m.y, p: fPt.p, t: fPt.t });
+              } else {
+                const bPt = this.screenToBoard(fPt.x, fPt.y);
+                this.currentInkStroke.points.push({ x: bPt.x, y: bPt.y, p: fPt.p, t: fPt.t });
+              }
               this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
+            }
+          } else {
+            const lastSmoothed = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
+            const tailDist = Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y);
+            if (tailDist >= 0.15) {
+              const isShortStroke = (this._liveBezierScreenPts.length <= 2);
+              const tailKeep = 0.25;
+              const endX = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.x : (lastSmoothed.x * tailKeep + rawEnd.x * (1 - tailKeep));
+              const endY = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.y : (lastSmoothed.y * tailKeep + rawEnd.y * (1 - tailKeep));
+              let p = this._lastPressure || 0.5;
+              if (curPenStyle === 'fountain') {
+                p = Math.max(0.10, p * 0.55);
+              } else if (curPenStyle === 'brush') {
+                p = Math.max(0.06, p * 0.45);
+              }
+              this._liveBezierScreenPts.push({ x: endX, y: endY, p: p });
+              const recTUp = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
+              if (recTUp !== undefined) {
+                this.currentInkStroke.tEnd = recTUp;
+              }
+              if (this.currentInkStroke.target === 'graph') {
+                const m = this.screenToMath(endX, endY);
+                this.currentInkStroke.points.push({ x: m.x, y: m.y, p: p, t: recTUp });
+              } else {
+                const bPt = this.screenToBoard(endX, endY);
+                this.currentInkStroke.points.push({ x: bPt.x, y: bPt.y, p: p, t: recTUp });
+              }
+              // 🌟 [핵심 버그 수정]: 꼬리 점(pC)을 추가했을 때는 먼저 직전 중점(mid1)에서 새 중점(mid2)까지의
+              // 2차 베지어 구간(isFinalTail = false)을 반드시 이어준 뒤, 아래 마감 단계에서 mid2 -> pC(isFinalTail = true)를 그려야
+              // 중간 구간(mid1~mid2)이 비면서 느낌표(!)처럼 끝점이 분리되는 현상이 100% 사라집니다!
+              if (!this.currentInkStroke.isHighlighter) {
+                this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
+              }
             }
           }
         }
 
+        this._pcMainStrokeFairer = null;
         this._inkHoldDetected = false;
         this._prevRawInkScreenPos = null;
-        this._prevRawInkCrossSign = 0;
         this._lastRawInkScreenPos = null;
         this._lastMoveEventScreenPos = null;
         this._lastInkSampleTs = null;

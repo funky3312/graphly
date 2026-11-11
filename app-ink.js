@@ -596,30 +596,35 @@
       }
       this._inkProfileCache = {
         deviceType: 'pc',
-        useCoalescedEvents: true,        // PC 액정타블렛 240Hz 서브 샘플 수집 (작은 글씨·곡선 제어점 보존)
-        coalescedMergeMaxSpan: 1.8,      // 펜이 거의 멈춘 초저속(<1.8px/frame) 제자리 코일 진동일 때만 프레임 내 가중 평균 병합
-        minRawDistPen: 0.65,             // 표준 순정 펜 최소 간격 (px) — 0.5px 이하 픽셀 계단 떨림만 거르고 작은 수식·받침 디테일 100% 보존
-        minRawDistMouse: 1.25,           // 마우스/전자칠판 최소 점 간격 (px)
-        minCardDistPen: 0.55,            // 카드 내부 PC 액정타블렛 최소 점 간격 (px)
-        minCardDistMouse: 1.05,
-        minCardSmoothedDist: 0.30,       // 카드 스트림라인 보정 후 중복 제어점 최소 간격 (px)
-        forwardGuardMaxDist: 1.6,        // 펜 정지 직전 1.6px 이내 미세 역주행 스파이크만 차단
-        forwardGuardMinCos: -0.35,       // 직각(90°)·예각 글씨 꺾임은 100% 통과시키고 110° 이상 역방향 튐만 폐기
-        streamlineWeight: 0.14,          // 아이패드(0.14)와 동일한 빠릿한 표준 순정 스트림라인 (획 수축·둥글어짐 원천 방지)
-        streamlineDecayDist: 15.0,       // 일반·고속 필기 시 지연 없이 펜촉을 1:1 즉각 추종
-        surfacePolishMaxPx: 0.55         // 좌우 교번 표면 잔떨림 흡수 상한 (px) — 글씨 크기·모양 변화 없이 표면 톱니만 정돈
+        useCoalescedEvents: true,        // PC 액정타블렛 240Hz 서브 샘플 수집 (빠른 원·작은 곡선 제어점 보존)
+        coalescedMergeMaxSpan: 1.4,      // 펜이 거의 멈춘 초저속(<1.4px/frame) 제자리 코일 진동일 때만 프레임 내 가중 평균 병합
+        minRawDistPen: 0.45,             // 원시 중복 샘플 컷오프 (px) — 세밀한 모서리 감지를 위해 240Hz 원시 궤적 보존
+        minRawDistMouse: 0.85,           // 마우스/전자칠판 원시 최소 점 간격 (px)
+        minCardDistPen: 0.40,            // 카드 내부 PC 액정타블렛 원시 최소 점 간격 (px)
+        minCardDistMouse: 0.75,
+        pcFairStepPen: 1.95,             // 칠판 PC 2차 다항식 다림질 기준 등간격 리샘플 보폭 (px) — 6~12px 격자 물결 제거 최적 스팬
+        pcFairStepMouse: 2.10,
+        pcFairCardStepPen: 1.65,         // 카드 내부 작은 수식용 PC 2차 다항식 다림질 보폭 (px)
+        pcFairCardStepMouse: 1.80,
+        forwardGuardMaxDist: 1.5,        // 펜 정지 직전 1.5px 이내 미세 역주행 스파이크만 차단
+        forwardGuardMinCos: -0.55,       // 직각·예각 글씨 꺾임은 100% 통과시키고 123° 이상 역방향 튐만 폐기
+        streamlineWeight: 0.14,          // 형광펜/보조 경로용 표준 경량값
+        streamlineDecayDist: 15.0
       };
       return this._inkProfileCache;
     }
 
     /**
-     * 🎯 [PC 액정타블렛 전용 곡률 보존형 미세 표면 다듬기 (Curvature-Preserving Surface Micro-Polish)]
-     * - 아이패드(deviceType === 'ipad')에서는 호출되지 않으며, 오직 PC 환경에서만 작동합니다.
-     * 1) 일반 필기 속도(>= 1.8px/frame)에서는 240Hz 서브 샘플을 그대로 살려 작은 글씨·수식이 동글동글하게 뭉개지지 않게 하고,
-     *    펜이 거의 멈춘 제자리 미세 진동(< 1.8px/frame)에서만 가중 평균으로 코일 노이즈를 상쇄합니다.
-     * 2) 기본 궤적 당김(streamlineWeight: 0.14)은 아이패드 순정과 동일하게 가볍게 유지해 획 길이 축소·지연감을 없애고,
-     *    원시 진행 방향이 좌·우로 교번(+/-)하는 타블렛 표면 격자 잔떨림만 최대 0.55px 한도 내에서 현(Chord) 중심선으로 다듬습니다.
-     *    (한 방향으로 일관되게 도는 작은 원 'ㅇ'이나 'ㄱ·ㄴ·ㄹ·3' 꺾임 모서리는 깎지 않고 원형 그대로 날렵하게 보존합니다.)
+     * 🎯 [PC 액정타블렛 전용 무수축 2차 곡선 다림질 엔진 (Zero-Shrinkage Quadratic Savitzky-Golay Streaming Fairer)]
+     * - 아이패드(deviceType === 'ipad')에서는 단 1줄도 호출되지 않으며, 오직 PC 환경에서만 작동합니다.
+     * - 왜 단방향 EMA(streamline) 대신 대칭형 2차 다항식 필터인가?
+     *   1) 액정타블렛(Wacom/Huion/XP-Pen EMR) 대각선·곡선 필기 시 발생하는 파장 6~12px의 센서 격자 물결(Wobble)은
+     *      단방향 EMA로 잡으려 하면 위상 지연 때문에 글씨가 짧아지고 작은 고리('6, 8, 9, 0')가 안쪽으로 쪼그라듭니다.
+     *   2) 반면 시작점·끝점·급격한 모서리('7, ㄱ, ㄴ, ㄹ')를 Pin(고정)한 상태에서 내부 제어점에 대칭 5/7점 2차(Quadratic)
+     *      Savitzky-Golay 필터([-3,12,17,12,-3]/35, [-2,3,6,7,6,3,-2]/21)를 스트리밍 적용하면:
+     *      - 포물선·원호(2차 곡률)를 수학적으로 100% 보존하여 작은 원 반지름 수축 0% 달성
+     *      - 시작점과 끝점 고정(Pinning)으로 짧은 획·받침·점 잘림(짤뚱해짐) 0.00px 보장
+     *      - 모서리 고정(Corner Pinning)으로 '7'의 꺾임 각도를 칼날처럼 보존하면서 대각선·곡선 표면 물결만 매끄럽게 제거합니다.
      */
     _selectPcCoalescedEvents(e, inkProfile) {
       if (!inkProfile || !inkProfile.useCoalescedEvents || typeof e.getCoalescedEvents !== 'function') {
@@ -632,7 +637,7 @@
       if (inkProfile.deviceType !== 'pc') {
         return coalesced;
       }
-      const maxSpan = inkProfile.coalescedMergeMaxSpan || 1.8;
+      const maxSpan = inkProfile.coalescedMergeMaxSpan || 1.4;
       let subPathLen = 0;
       for (let i = 1; i < coalesced.length; i++) {
         const p0 = coalesced[i - 1];
@@ -662,63 +667,270 @@
       }];
     }
 
-    _computePcCornerAwareStreamline(rawX, rawY, p1x, p1y, p2x, p2y, hasP2, inkProfile, isRawAlternating = false) {
-      const stepD = Math.hypot(rawX - p1x, rawY - p1y);
-      if (stepD < 0.001) return { x: rawX, y: rawY, stepD: 0 };
-      const decayDist = inkProfile.streamlineDecayDist || 15.0;
-      let weight = (inkProfile.streamlineWeight || 0.14) * Math.max(0, 1 - stepD / decayDist);
-      let targetX = rawX;
-      let targetY = rawY;
+    _createPcStrokeFairer(minStep = 1.95) {
+      const stepPx = Math.max(1.1, Number(minStep) || 1.95);
+      const buf = [];
+      const rawHist = [];
+      let segRaws = [];
+      let emittedIdx = -1;
+      let lastRaw = null;
 
-      if (hasP2) {
-        const vx1 = p1x - p2x;
-        const vy1 = p1y - p2y;
-        const len1 = Math.hypot(vx1, vy1);
-        if (len1 > 0.35) {
-          const vx2 = rawX - p1x;
-          const vy2 = rawY - p1y;
-          const cosTurn = (vx1 * vx2 + vy1 * vy2) / (len1 * stepD);
-          const cx = rawX - p2x;
-          const cy = rawY - p2y;
-          const cLen = Math.hypot(cx, cy);
-          const maxPolish = inkProfile.surfacePolishMaxPx || 0.55;
-
-          if (cosTurn < 0.20) {
-            // 급격한 모서리(ㄱ, ㄴ, ㄹ, ㅅ, 수식 부호 등): 지연 없이 칼날처럼 꺾이도록 즉시 해제
-            weight *= 0.20;
-          } else if (cLen > 0.6 && stepD < 14.0) {
-            const chordX = p1x + (cx / cLen) * stepD;
-            const chordY = p1y + (cy / cLen) * stepD;
-            const dx = chordX - rawX;
-            const dy = chordY - rawY;
-            const dev = Math.hypot(dx, dy);
-
-            if (isRawAlternating && dev > 0.001 && dev < 1.25) {
-              // 좌·우 교번(+/-) 표면 격자 잔떨림만 최대 0.55px 한도 내에서 현 중심선으로 흡수
-              const polish = Math.min(maxPolish, dev * 0.68 * (1 - dev / 1.6));
-              targetX += (dx / dev) * polish;
-              targetY += (dy / dev) * polish;
-            } else if (!isRawAlternating && dev > 0.001 && dev < 0.42 && cosTurn > 0.85) {
-              // 직선 주행 중 미세 계단 흔들림만 최대 0.16px 이내로 초경량 정돈
-              const polish = Math.min(0.16, dev * 0.40);
-              targetX += (dx / dev) * polish;
-              targetY += (dy / dev) * polish;
-            } else if (!isRawAlternating && cosTurn < 0.85) {
-              // 한 방향으로 회전하는 의도된 곡선(작은 원 'ㅇ', '3', 'e'): 반지름 수축이 없도록 당김 완화
-              weight *= 0.55;
-            }
+      const findBackAnchor = (fromRawIdx, minDist = 1.25) => {
+        const origin = rawHist[fromRawIdx];
+        if (!origin) return null;
+        for (let j = fromRawIdx - 1; j >= 0; j--) {
+          const cand = rawHist[j];
+          if (Math.hypot(origin.x - cand.x, origin.y - cand.y) >= minDist) {
+            return cand;
           }
         }
-      }
+        return fromRawIdx > 0 ? rawHist[0] : null;
+      };
 
-      if (weight > 0.005) {
-        return {
-          x: targetX * (1 - weight) + p1x * weight,
-          y: targetY * (1 - weight) + p1y * weight,
-          stepD
-        };
-      }
-      return { x: targetX, y: targetY, stepD };
+      const fairAt = (idx) => {
+        const pt = buf[idx];
+        if (!pt) return null;
+        if (pt.pinned || idx <= 0 || idx >= buf.length - 1) {
+          return { x: pt.x, y: pt.y, p: pt.p, t: pt.t };
+        }
+
+        let usableR = 0;
+        for (let r = 1; r <= 3; r++) {
+          if (idx - r < 0 || idx + r >= buf.length) break;
+          // 모서리/끝점 Pin을 경계로 삼는 것은 허용하되, Pin 너머 다른 획 구간을 침범하지 않도록 차단
+          if (r >= 2 && (buf[idx - r + 1].pinned || buf[idx + r - 1].pinned)) break;
+
+          const pL = buf[idx - r];
+          const pR = buf[idx + r];
+          const vx1 = pt.x - pL.x;
+          const vy1 = pt.y - pL.y;
+          const vx2 = pR.x - pt.x;
+          const vy2 = pR.y - pt.y;
+          const dL = Math.hypot(vx1, vy1);
+          const dR = Math.hypot(vx2, vy2);
+          if (dL < 0.05 || dR < 0.05) break;
+
+          if (r >= 2) {
+            // 급가속/급감속 비대칭 보폭 또는 초소형 루프('6' 하단 작은 고리 등 >93° 회전) 과스팬 보호
+            if (dL > 11.5 || dR > 11.5) break;
+            if (Math.max(dL, dR) > Math.min(dL, dR) * 2.35 + 2.5) break;
+            const spanCos = (vx1 * vx2 + vy1 * vy2) / (dL * dR);
+            if (spanCos < -0.05) break;
+          } else {
+            const turnCos = (vx1 * vx2 + vy1 * vy2) / (dL * dR);
+            if (turnCos < 0.35) break;
+          }
+          usableR = r;
+        }
+
+        let fx = pt.x;
+        let fy = pt.y;
+        if (usableR === 3) {
+          const m3 = buf[idx - 3], m2 = buf[idx - 2], m1 = buf[idx - 1];
+          const p1 = buf[idx + 1], p2 = buf[idx + 2], p3 = buf[idx + 3];
+          fx = (-2 * (m3.x + p3.x) + 3 * (m2.x + p2.x) + 6 * (m1.x + p1.x) + 7 * pt.x) / 21;
+          fy = (-2 * (m3.y + p3.y) + 3 * (m2.y + p2.y) + 6 * (m1.y + p1.y) + 7 * pt.y) / 21;
+        } else if (usableR === 2) {
+          const m2 = buf[idx - 2], m1 = buf[idx - 1];
+          const p1 = buf[idx + 1], p2 = buf[idx + 2];
+          fx = (-3 * (m2.x + p2.x) + 12 * (m1.x + p1.x) + 17 * pt.x) / 35;
+          fy = (-3 * (m2.y + p2.y) + 12 * (m1.y + p1.y) + 17 * pt.y) / 35;
+        } else if (usableR === 1) {
+          const m1 = buf[idx - 1];
+          const p1 = buf[idx + 1];
+          fx = 0.16 * (m1.x + p1.x) + 0.68 * pt.x;
+          fy = 0.16 * (m1.y + p1.y) + 0.68 * pt.y;
+        }
+
+        let fp = pt.p;
+        if (usableR >= 1) {
+          const m1 = buf[idx - 1];
+          const p1 = buf[idx + 1];
+          if (typeof m1.p === 'number' && typeof pt.p === 'number' && typeof p1.p === 'number') {
+            fp = 0.20 * m1.p + 0.60 * pt.p + 0.20 * p1.p;
+          }
+        }
+        return { x: fx, y: fy, p: fp, t: pt.t };
+      };
+
+      const maybeMarkBufTurnPinned = (nx, ny) => {
+        if (buf.length < 2) return;
+        const bPrev = buf[buf.length - 2];
+        const bLast = buf[buf.length - 1];
+        if (bLast.pinned) return;
+        const vx1 = bLast.x - bPrev.x;
+        const vy1 = bLast.y - bPrev.y;
+        const vx2 = nx - bLast.x;
+        const vy2 = ny - bLast.y;
+        const l1 = Math.hypot(vx1, vy1);
+        const l2 = Math.hypot(vx2, vy2);
+        if (l1 > 0.35 && l2 > 0.35) {
+          const cosB = (vx1 * vx2 + vy1 * vy2) / (l1 * l2);
+          if (cosB < 0.44) {
+            bLast.pinned = true;
+          }
+        }
+      };
+
+      const checkIntermediateCornerPin = (nx, ny) => {
+        if (segRaws.length < 2 || buf.length === 0) return;
+        const startPt = buf[buf.length - 1];
+        const cdx = nx - startPt.x;
+        const cdy = ny - startPt.y;
+        const cLen = Math.hypot(cdx, cdy);
+
+        let bestIdx = -1;
+        let bestScore = 0;
+        for (let i = 1; i < segRaws.length; i++) {
+          const cand = segRaws[i];
+          const dFromStart = Math.hypot(cand.x - startPt.x, cand.y - startPt.y);
+          const dToNew = Math.hypot(nx - cand.x, ny - cand.y);
+          if (dFromStart < 0.30 || dToNew < 0.85) continue;
+
+          const backPt = findBackAnchor(cand.rawIdx, 1.20) || startPt;
+          const vx1 = cand.x - backPt.x;
+          const vy1 = cand.y - backPt.y;
+          const vx2 = nx - cand.x;
+          const vy2 = ny - cand.y;
+          const l1 = Math.hypot(vx1, vy1);
+          const l2 = Math.hypot(vx2, vy2);
+          if (l1 < 0.70 || l2 < 0.85) continue;
+
+          const cosTurn = (vx1 * vx2 + vy1 * vy2) / (l1 * l2);
+          if (cosTurn >= 0.44) continue;
+
+          const perpDev = cLen > 0.25
+            ? Math.abs(cdx * (cand.y - startPt.y) - cdy * (cand.x - startPt.x)) / cLen
+            : dFromStart;
+          if (perpDev >= 0.34 && perpDev * (1 - cosTurn) > bestScore) {
+            bestScore = perpDev * (1 - cosTurn);
+            bestIdx = i;
+          }
+        }
+
+        if (bestIdx >= 1) {
+          const apex = segRaws[bestIdx];
+          maybeMarkBufTurnPinned(apex.x, apex.y);
+          buf.push({ x: apex.x, y: apex.y, p: apex.p, t: apex.t, pinned: true });
+          segRaws = segRaws.slice(bestIdx);
+        }
+      };
+
+      return {
+        start(x, y, p, t) {
+          buf.length = 0;
+          rawHist.length = 0;
+          const p0 = { x, y, p, t, rawIdx: 0 };
+          rawHist.push(p0);
+          segRaws = [p0];
+          buf.push({ x, y, p, t, pinned: true });
+          emittedIdx = 0;
+          lastRaw = { x, y, p, t };
+        },
+
+        pushRaw(x, y, p, t) {
+          if (buf.length === 0) {
+            this.start(x, y, p, t);
+            return [];
+          }
+
+          if (!lastRaw || Math.hypot(x - lastRaw.x, y - lastRaw.y) >= 0.05) {
+            // 1) 리샘플 보폭 이내에 숨어 있는 급격한 꼭짓점('7, ㄱ, ㄴ, ㄹ, 4' — 감속 2~5샘플 회전 포함) 정밀 Pin 고정
+            checkIntermediateCornerPin(x, y);
+            const rawEntry = { x, y, p, t, rawIdx: rawHist.length };
+            rawHist.push(rawEntry);
+            segRaws.push(rawEntry);
+            lastRaw = { x, y, p, t };
+          }
+
+          // 2) 균일 보폭(stepPx) 리샘플링으로 고밀도 격자 계단 노이즈 제거
+          const lastAdded = buf[buf.length - 1];
+          const dStep = Math.hypot(x - lastAdded.x, y - lastAdded.y);
+          if (dStep >= stepPx) {
+            maybeMarkBufTurnPinned(x, y);
+            buf.push({ x, y, p, t, pinned: false });
+            segRaws = [rawHist[rawHist.length - 1]];
+          }
+
+          // 3) 4샘플(~7.8px, 약 10ms) 룩어헤드가 확보된 제어점을 순차 다림질 후 즉시 방출
+          const out = [];
+          const safeEnd = buf.length - 5;
+          while (emittedIdx < safeEnd) {
+            const nextIdx = emittedIdx + 1;
+            const faired = fairAt(nextIdx);
+            if (faired) out.push(faired);
+            emittedIdx = nextIdx;
+          }
+          return out;
+        },
+
+        peekPendingTail(rawPos) {
+          if (buf.length === 0) return [];
+          const out = [];
+          for (let i = emittedIdx + 1; i < buf.length; i++) {
+            const pt = buf[i];
+            out.push({ x: pt.x, y: pt.y, p: pt.p, t: pt.t });
+          }
+          const cand = (rawPos && Number.isFinite(rawPos.x) && Number.isFinite(rawPos.y)) ? rawPos : lastRaw;
+          if (cand) {
+            const ref = out.length > 0 ? out[out.length - 1] : buf[buf.length - 1];
+            if (ref && Math.hypot(cand.x - ref.x, cand.y - ref.y) >= 0.40) {
+              out.push({ x: cand.x, y: cand.y, p: ref.p, t: ref.t });
+            }
+          }
+          return out;
+        },
+
+        finish(endX, endY, endP, endT) {
+          if (buf.length === 0) return [];
+          const prelimLast = buf[buf.length - 1];
+          const fx = (Number.isFinite(endX)) ? endX : (lastRaw ? lastRaw.x : prelimLast.x);
+          const fy = (Number.isFinite(endY)) ? endY : (lastRaw ? lastRaw.y : prelimLast.y);
+          const fp = (typeof endP === 'number' && !Number.isNaN(endP)) ? endP : (lastRaw ? lastRaw.p : prelimLast.p);
+          const ft = (endT !== undefined) ? endT : (lastRaw ? lastRaw.t : prelimLast.t);
+
+          checkIntermediateCornerPin(fx, fy);
+
+          const lastAdded = buf[buf.length - 1];
+          const tailDist = Math.hypot(fx - lastAdded.x, fy - lastAdded.y);
+
+          if (buf.length === 1) {
+            if (tailDist >= 0.15) {
+              buf.push({ x: fx, y: fy, p: fp, t: ft, pinned: true });
+            } else {
+              lastAdded.pinned = true;
+            }
+          } else if (tailDist >= stepPx * 0.55) {
+            maybeMarkBufTurnPinned(fx, fy);
+            buf.push({ x: fx, y: fy, p: fp, t: ft, pinned: true });
+          } else if (tailDist >= 0.05) {
+            if (!lastAdded.pinned) {
+              // 끝점 직전 미세 잔여 구간(<0.55*step)은 이중 제어점 꺾임을 막기 위해 마지막 점을 실제 펜 끝으로 연장 고정
+              lastAdded.x = fx;
+              lastAdded.y = fy;
+              lastAdded.p = fp;
+              lastAdded.t = ft;
+              lastAdded.pinned = true;
+            } else if (tailDist >= 0.25) {
+              buf.push({ x: fx, y: fy, p: fp, t: ft, pinned: true });
+            }
+          } else {
+            lastAdded.p = fp;
+            lastAdded.pinned = true;
+          }
+
+          buf[buf.length - 1].pinned = true;
+
+          const out = [];
+          while (emittedIdx < buf.length - 1) {
+            const nextIdx = emittedIdx + 1;
+            const faired = fairAt(nextIdx);
+            if (faired) out.push(faired);
+            emittedIdx = nextIdx;
+          }
+          return out;
+        }
+      };
     }
 
     isStylusPalmRejectionActive() {
@@ -2775,8 +2987,26 @@
 
     _onInkHoldTriggered() {
       if (!this.isDrawingInk || !this.currentInkStroke) return;
-      const shape = this.recognizeInkShape(this.currentInkStroke);
+      let strokeForHold = this.currentInkStroke;
+      if (this._pcMainStrokeFairer && typeof this._pcMainStrokeFairer.peekPendingTail === 'function') {
+        const extraScreenPts = this._pcMainStrokeFairer.peekPendingTail(this._lastRawInkScreenPos);
+        if (extraScreenPts.length > 0) {
+          const isGraphTarget = (this.currentInkStroke.target !== 'board');
+          const mergedPts = this.currentInkStroke.points.concat(
+            extraScreenPts.map(sp => {
+              const c = isGraphTarget ? this.screenToMath(sp.x, sp.y) : this.screenToBoard(sp.x, sp.y);
+              return { x: c.x, y: c.y, p: sp.p, t: sp.t };
+            })
+          );
+          strokeForHold = { ...this.currentInkStroke, points: mergedPts };
+        }
+      }
+      const shape = this.recognizeInkShape(strokeForHold);
       if (shape) {
+        if (strokeForHold !== this.currentInkStroke) {
+          this.currentInkStroke.points = strokeForHold.points;
+        }
+        this._pcMainStrokeFairer = null;
         this._inkHoldDetected = true;
         this.currentInkStroke.shape = shape;
         this.currentInkStroke.isShape = true;
@@ -2943,16 +3173,25 @@
     }
 
     recognizeAndApplyCardStrokeShape(cardStroke, cardW, cardH) {
-      if (!cardStroke || !Array.isArray(cardStroke.points) || cardStroke.points.length < 4) return false;
+      if (!cardStroke || !Array.isArray(cardStroke.points)) return false;
       const w = Math.max(1, cardW || 480);
       const h = Math.max(1, cardH || 360);
+      let ptsForHold = cardStroke.points.map(pt => ({ x: pt.nx * w, y: pt.ny * h }));
+      if (cardStroke._pcFairer && typeof cardStroke._pcFairer.peekPendingTail === 'function') {
+        const extra = cardStroke._pcFairer.peekPendingTail(cardStroke._lastRawPx);
+        if (extra.length > 0) {
+          ptsForHold = ptsForHold.concat(extra.map(sp => ({ x: sp.x, y: sp.y })));
+        }
+      }
+      if (ptsForHold.length < 4) return false;
       const pixelStroke = {
         _isCardPixelSpace: true,
         isHighlighter: Boolean(cardStroke.isHighlighter),
-        points: cardStroke.points.map(pt => ({ x: pt.nx * w, y: pt.ny * h }))
+        points: ptsForHold
       };
       const shape = this.recognizeInkShape(pixelStroke);
       if (!shape) return false;
+      cardStroke._pcFairer = null;
 
       let cardShape = null;
       if (shape.type === 'line' && shape.start && shape.end) {
@@ -4853,7 +5092,7 @@
       }
     }
 
-    // 🌟 [문제/그래프 카드 PC vs 아이패드 이원화 샘플 수집 + 경량 1차 스트림라인]:
+    // 🌟 [문제/그래프 카드 PC vs 아이패드 이원화 샘플 수집 (PC: 무수축 2차 곡선 다림질 / 아이패드: 1차 스트림라인 그대로 보존)]:
     _appendCardStrokeSamplesFromMoveEvent(stroke, e, rect, w, h, recT) {
       if (!stroke || !Array.isArray(stroke.points) || !e) return false;
       const rLeft = rect ? rect.left : 0;
@@ -4866,6 +5105,14 @@
       let events = [e];
       if (inkProfile.deviceType === 'pc') {
         events = this._selectPcCoalescedEvents(e, inkProfile);
+        if (!stroke.isHighlighter && !stroke._pcFairer && typeof this._createPcStrokeFairer === 'function') {
+          const fairStep = (e.pointerType === 'pen') ? (inkProfile.pcFairCardStepPen || 1.65) : (inkProfile.pcFairCardStepMouse || 1.80);
+          stroke._pcFairer = this._createPcStrokeFairer(fairStep);
+          const p0 = stroke.points[0];
+          if (p0) {
+            stroke._pcFairer.start(p0.nx * rw, p0.ny * rh, p0.p, p0.t);
+          }
+        }
       } else if (inkProfile.useCoalescedEvents && typeof e.getCoalescedEvents === 'function') {
         const coalesced = e.getCoalescedEvents();
         if (coalesced && coalesced.length > 0) {
@@ -4891,71 +5138,26 @@
 
         const prevPt = stroke.points[stroke.points.length - 1];
         const lastRaw = stroke._lastRawPx || (prevPt ? { x: prevPt.nx * rw, y: prevPt.ny * rh } : null);
-        let isRawAlternating = false;
         if (lastRaw) {
           const rawStepDist = Math.hypot(rawPxX - lastRaw.x, rawPxY - lastRaw.y);
           if (rawStepDist < minDist) continue;
-          if (stroke._prevRawPx) {
+          if (stroke._prevRawPx && rawStepDist < inkProfile.forwardGuardMaxDist) {
             const vxPrev = lastRaw.x - stroke._prevRawPx.x;
             const vyPrev = lastRaw.y - stroke._prevRawPx.y;
             const vxNew = rawPxX - lastRaw.x;
             const vyNew = rawPxY - lastRaw.y;
             const lenPrev = Math.hypot(vxPrev, vyPrev);
             if (lenPrev > 0.35) {
-              if (rawStepDist < inkProfile.forwardGuardMaxDist) {
-                const cosAngle = (vxPrev * vxNew + vyPrev * vyNew) / (lenPrev * rawStepDist);
-                if (cosAngle < inkProfile.forwardGuardMinCos) continue;
-              }
-              if (inkProfile.deviceType === 'pc') {
-                const curCross = (vxPrev * vyNew - vyPrev * vxNew) / lenPrev;
-                isRawAlternating = Boolean(stroke._prevRawCrossSign && curCross * stroke._prevRawCrossSign < 0);
-                if (Math.abs(curCross) > 0.08) {
-                  stroke._prevRawCrossSign = curCross > 0 ? 1 : -1;
-                }
-              }
+              const cosAngle = (vxPrev * vxNew + vyPrev * vyNew) / (lenPrev * rawStepDist);
+              if (cosAngle < inkProfile.forwardGuardMinCos) continue;
             }
           }
         }
 
+        const moveRawDist = lastRaw ? Math.hypot(rawPxX - lastRaw.x, rawPxY - lastRaw.y) : 0;
         stroke._prevRawPx = lastRaw ? { x: lastRaw.x, y: lastRaw.y } : { x: rawPxX, y: rawPxY };
         stroke._lastRawPx = { x: rawPxX, y: rawPxY };
         stroke._inPlaceStreamlined = true;
-
-        let sx = rawPxX;
-        let sy = rawPxY;
-        if (!stroke.isHighlighter && prevPt) {
-          const p1x = prevPt.nx * rw;
-          const p1y = prevPt.ny * rh;
-          if (inkProfile.deviceType === 'pc') {
-            const prev2Pt = (stroke.points.length >= 2) ? stroke.points[stroke.points.length - 2] : null;
-            const smoothed = this._computePcCornerAwareStreamline(
-              rawPxX,
-              rawPxY,
-              p1x,
-              p1y,
-              prev2Pt ? prev2Pt.nx * rw : 0,
-              prev2Pt ? prev2Pt.ny * rh : 0,
-              Boolean(prev2Pt),
-              inkProfile,
-              isRawAlternating
-            );
-            sx = smoothed.x;
-            sy = smoothed.y;
-          } else {
-            const stepD = Math.hypot(rawPxX - p1x, rawPxY - p1y);
-            const weight = inkProfile.streamlineWeight * Math.max(0, 1 - stepD / inkProfile.streamlineDecayDist);
-            if (weight > 0.005) {
-              sx = rawPxX * (1 - weight) + p1x * weight;
-              sy = rawPxY * (1 - weight) + p1y * weight;
-            }
-          }
-        }
-
-        const stepDist = prevPt ? Math.hypot(sx - prevPt.nx * rw, sy - prevPt.ny * rh) : 0;
-        const minSmoothed = (inkProfile.deviceType === 'pc' && stroke.points.length >= 2)
-          ? (inkProfile.minCardSmoothedDist || 0.30)
-          : 0.20;
-        if (prevPt && stepDist < minSmoothed) continue;
 
         const rawP = (typeof ev.pressure === 'number') ? ev.pressure : 0.5;
         if (rawP > 0 && Math.abs(rawP - 0.5) > 0.01) stroke._hasHwP = true;
@@ -4964,6 +5166,49 @@
           ? (evTs - stroke._lastAcceptedTs)
           : null;
         if (evTs > 0) stroke._lastAcceptedTs = evTs;
+
+        if (inkProfile.deviceType === 'pc' && stroke._pcFairer) {
+          const prevMoveP = (typeof stroke._lastMoveP === 'number') ? stroke._lastMoveP : (prevPt ? prevPt.p : 0.5);
+          const moveP = this.computeDynamicStrokePressure(
+            rawP || 0.5,
+            Boolean(stroke._hasHwP),
+            moveRawDist,
+            stroke.penStyle || 'ballpen',
+            prevMoveP,
+            stroke.points.length,
+            0,
+            dtMs
+          );
+          stroke._lastMoveP = moveP;
+          const readyPts = stroke._pcFairer.pushRaw(rawPxX, rawPxY, moveP, recT);
+          for (let k = 0; k < readyPts.length; k++) {
+            const fPt = readyPts[k];
+            stroke.points.push({
+              nx: Math.max(0, Math.min(1, fPt.x / rw)),
+              ny: Math.max(0, Math.min(1, fPt.y / rh)),
+              p: fPt.p,
+              t: fPt.t
+            });
+            added = true;
+          }
+          continue;
+        }
+
+        let sx = rawPxX;
+        let sy = rawPxY;
+        if (!stroke.isHighlighter && prevPt) {
+          const p1x = prevPt.nx * rw;
+          const p1y = prevPt.ny * rh;
+          const stepD = Math.hypot(rawPxX - p1x, rawPxY - p1y);
+          const weight = inkProfile.streamlineWeight * Math.max(0, 1 - stepD / inkProfile.streamlineDecayDist);
+          if (weight > 0.005) {
+            sx = rawPxX * (1 - weight) + p1x * weight;
+            sy = rawPxY * (1 - weight) + p1y * weight;
+          }
+        }
+
+        const stepDist = prevPt ? Math.hypot(sx - prevPt.nx * rw, sy - prevPt.ny * rh) : 0;
+        if (prevPt && stepDist < 0.20) continue;
 
         const moveP = this.computeDynamicStrokePressure(
           rawP || 0.5,
@@ -5002,15 +5247,40 @@
         rawEnd = { x: endNx * rw, y: endNy * rh };
       }
 
+      if (this.getDeviceInkProfile().deviceType === 'pc' && stroke._pcFairer) {
+        const lastPt = stroke.points[stroke.points.length - 1];
+        let p = (typeof stroke._lastMoveP === 'number') ? stroke._lastMoveP : ((typeof lastPt.p === 'number') ? lastPt.p : 0.5);
+        const curPenStyle = stroke.penStyle || 'ballpen';
+        if (curPenStyle === 'fountain') {
+          p = Math.max(0.10, p * 0.55);
+        } else if (curPenStyle === 'brush') {
+          p = Math.max(0.06, p * 0.45);
+        }
+        const ex = rawEnd ? rawEnd.x : (lastPt.nx * rw);
+        const ey = rawEnd ? rawEnd.y : (lastPt.ny * rh);
+        const tailPts = stroke._pcFairer.finish(ex, ey, p, recT !== undefined ? recT : lastPt.t);
+        for (let k = 0; k < tailPts.length; k++) {
+          const fPt = tailPts[k];
+          stroke.points.push({
+            nx: Math.max(0, Math.min(1, fPt.x / rw)),
+            ny: Math.max(0, Math.min(1, fPt.y / rh)),
+            p: fPt.p,
+            t: fPt.t
+          });
+        }
+        stroke._pcFairer = null;
+        return;
+      }
+
       if (rawEnd && stroke.points.length >= 1) {
         const lastPt = stroke.points[stroke.points.length - 1];
         const lastX = lastPt.nx * rw;
         const lastY = lastPt.ny * rh;
         const tailDist = Math.hypot(rawEnd.x - lastX, rawEnd.y - lastY);
-        if (tailDist >= 0.15) {
-          const tailKeep = (this.getDeviceInkProfile().deviceType === 'pc') ? 0.12 : 0.18;
-          const endX = (stroke.isHighlighter || stroke.points.length <= 2) ? rawEnd.x : (lastX * tailKeep + rawEnd.x * (1 - tailKeep));
-          const endY = (stroke.isHighlighter || stroke.points.length <= 2) ? rawEnd.y : (lastY * tailKeep + rawEnd.y * (1 - tailKeep));
+        if (tailDist >= 0.25) {
+          const tailKeep = 0.18;
+          const endX = stroke.isHighlighter ? rawEnd.x : (lastX * tailKeep + rawEnd.x * (1 - tailKeep));
+          const endY = stroke.isHighlighter ? rawEnd.y : (lastY * tailKeep + rawEnd.y * (1 - tailKeep));
           let p = (typeof lastPt.p === 'number') ? lastPt.p : 0.5;
           const curPenStyle = stroke.penStyle || 'ballpen';
           if (curPenStyle === 'fountain') {
