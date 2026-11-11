@@ -5767,6 +5767,7 @@
     handleCustomShortcutKeyDown(e) {
       if (!e || e.defaultPrevented) return false;
       if (this.isShortcutSettingsModalOpen()) return false;
+      if (this.isNAxisStudioOpen || this.isMathToolkitOpen) return false;
       const targetEl = e.target;
       if (targetEl) {
         const tag = targetEl.tagName ? targetEl.tagName.toUpperCase() : '';

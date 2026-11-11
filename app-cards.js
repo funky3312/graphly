@@ -4040,7 +4040,6 @@
         'btnQuickDropLine',
         'btnQuickText',
         'btnRailPiecewise',
-        'btnRailNAxis',
         'btnInkToggleAxes'
       ];
       graphOnlyIds.forEach(id => {
@@ -7833,7 +7832,11 @@
       const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
       if (!widget) return;
       const snap = this._getMutablePipCardSnapshot(cardRef);
-      const isLocked = Boolean(snap && snap.isPipLocked);
+      const isStudioCard = Boolean(snap && snap.isNAxisStudioCard);
+      if (isStudioCard && snap && !snap.isPipLocked) {
+        snap.isPipLocked = true;
+      }
+      const isLocked = Boolean(isStudioCard || (snap && snap.isPipLocked));
       widget.classList.toggle('pip-locked-mode', isLocked);
       if (!isLocked) {
         if (widget._pipStealthTimer) {
@@ -7845,9 +7848,17 @@
       const btnLock = isPrimary
         ? document.getElementById('btnGraphCardLock')
         : widget.querySelector('.btn-extra-lock');
+      const btnAddFunc = isPrimary
+        ? document.getElementById('btnGraphCardAddFunc')
+        : widget.querySelector('.btn-card-add-func');
+
+      if (btnAddFunc) {
+        btnAddFunc.style.display = isStudioCard ? 'none' : '';
+      }
 
       if (btnLock) {
-        if (btnLock._renderedLockedState !== isLocked) {
+        btnLock.style.display = isStudioCard ? 'none' : '';
+        if (!isStudioCard && btnLock._renderedLockedState !== isLocked) {
           btnLock._renderedLockedState = isLocked;
           if (isLocked) {
             btnLock.classList.remove('unlocked-editing');
@@ -7870,10 +7881,10 @@
         snap.isPipDropLineMode = false;
       }
       const btnDropLine = widget.querySelector('.btn-card-dropline');
-      const isDlActive = Boolean(snap && !snap.isPipLocked && snap.isPipDropLineMode && !bothAxesOff && !widget.classList.contains('card-ink-active'));
+      const isDlActive = Boolean(!isStudioCard && snap && !snap.isPipLocked && snap.isPipDropLineMode && !bothAxesOff && !widget.classList.contains('card-ink-active'));
       if (btnDropLine) {
         btnDropLine.classList.toggle('active', isDlActive);
-        btnDropLine.style.display = bothAxesOff ? 'none' : '';
+        btnDropLine.style.display = (isStudioCard || bothAxesOff) ? 'none' : '';
       }
       const liveCv = widget.querySelector('.graph-card-live-canvas');
       if (liveCv) {
@@ -8172,6 +8183,9 @@
 
       const snapObj = this._getMutablePipCardSnapshot(cardRef);
       if (!snapObj || snapObj.isNAxisStudioCard || !Array.isArray(snapObj.graphs) || snapObj.graphs.length === 0) {
+        if (snapObj && snapObj.isNAxisStudioCard) {
+          this.syncPipCardLockUI(cardRef);
+        }
         liveCanvas.style.display = 'none';
         if (imgEl) imgEl.style.opacity = '1';
         widget.classList.remove('pip-manipulating');

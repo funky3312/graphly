@@ -401,7 +401,9 @@
         '#modalSmartInput',
         '#modalShare',
         '#modalPdfViewer',
-        '#modalCloudHub'
+        '#modalCloudHub',
+        '#modalNAxisStudio',
+        '#modalMathToolkitLauncher'
       ];
       menuContainerSelectors.forEach(sel => {
         const el = document.querySelector(sel);

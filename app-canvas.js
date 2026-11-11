@@ -606,7 +606,7 @@
     const isAnyModalOrOverlayBlockingCanvas = () => {
       if (this.isDraggingPillRemote) return true;
       if (this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive) return true;
-      if (this.isPdfModalOpen || this.isNAxisStudioOpen) return true;
+      if (this.isPdfModalOpen || this.isNAxisStudioOpen || this.isMathToolkitOpen) return true;
       if (!_mCloud) _mCloud = document.getElementById('modalCloudHub');
       if (_mCloud && _mCloud.classList.contains('show')) return true;
       if (!_mShare) _mShare = document.getElementById('modalShare');
