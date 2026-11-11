@@ -3499,8 +3499,12 @@
     const shortTypeNames = {
       '1st_linear': '일차',
       '2nd_quadratic': '이차',
+      '3rd_monotonic': '삼차단조',
+      '3rd_basic_cubic': '삼차기본',
       '3rd_normal': '삼차',
       '3rd_inflection': '삼차변곡',
+      '4th_basic_bowl': '사차기본',
+      '4th_skew': '사차비대칭U',
       '4th_symmetric': '사차W',
       '4th_asymmetric': '비대칭사차',
       '4th_inflection': '사차변곡',
@@ -11575,6 +11579,17 @@
           }
           return hObj;
         });
+
+        // #share= 역직렬화 시 뒤집힌 다항함수의 극대/극소 핸들 성격·라벨 정밀 복원
+        if ((g.type === '4th_skew' || g.type === '4th_basic_bowl') && g.handles.length >= 2) {
+          const isUp = g.handles[1].y >= g.handles[0].y;
+          g.handles[0].type = isUp ? 'min' : 'max';
+          g.handles[0].name = isUp ? '극소' : '극대';
+        } else if (g.type === '4th_inflection' && g.handles.length >= 2) {
+          const isMin = g.handles[1].y <= g.handles[0].y;
+          g.handles[1].type = isMin ? 'min' : 'max';
+          g.handles[1].name = isMin ? '극소' : '극대';
+        }
       }
 
       return g;

@@ -5,7 +5,7 @@
  */
 
 const FUNC_METADATA = {
-  // 1. 다항함수 (1차 -> 2차 -> 3차 -> 4차 3종 순서 정렬)
+  // 1. 다항함수 (1차 -> 2차 -> 3차 3종 -> 4차 5종: 판별식/극값 생성 진화 순서 정렬)
   "1st_linear": {
     name: "일차함수",
     category: "📐 다항함수",
@@ -24,6 +24,24 @@ const FUNC_METADATA = {
       { name: "조절점", x: 1.0, y: 1.0, type: "point" }
     ]
   },
+  "3rd_monotonic": {
+    name: "삼차 (단조)",
+    category: "📐 다항함수",
+    svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 18 C7.5 12, 9.5 11.2, 12 10 C14.5 8.8, 16.5 8, 20 2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
+    handles: [
+      { name: "변곡점", x: 0.0, y: 0.0, type: "inflection" },
+      { name: "조절점", x: 1.4, y: 2.2, type: "point" }
+    ]
+  },
+  "3rd_basic_cubic": {
+    name: "삼차 기본 (y=x³)",
+    category: "📐 다항함수",
+    svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 17 C9 17, 9.5 10, 12 10 C14.5 10, 15 3, 20 3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
+    handles: [
+      { name: "변곡점", x: 0.0, y: 0.0, type: "inflection" },
+      { name: "조절점", x: 1.2, y: 1.7, type: "point" }
+    ]
+  },
   "3rd_normal": {
     name: "삼차함수",
     category: "📐 다항함수",
@@ -34,17 +52,36 @@ const FUNC_METADATA = {
       { name: "변곡점", x: 0.0, y: 0.0, type: "inflection" }
     ]
   },
-  "3rd_basic_cubic": {
-    name: "삼차 기본 (y=x³)",
+  "4th_basic_bowl": {
+    name: "사차 기본 (y=x⁴)",
     category: "📐 다항함수",
-    svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 17 C10 17, 10 3, 20 3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
+    svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 5 C7 19, 17 19, 20 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
-      { name: "변곡점", x: 0.0, y: 0.0, type: "inflection" },
-      { name: "조절점", x: 1.2, y: 1.7, type: "point" }
+      { name: "극소", x: 0.0, y: -2.0, type: "min" },
+      { name: "조절점", x: 1.4, y: 1.8, type: "point" }
+    ]
+  },
+  "4th_skew": {
+    name: "사차함수 1",
+    category: "📐 다항함수",
+    svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 4 C6 9, 8 10.2, 10 11.8 C12 13.4, 13.2 16.5, 15 16.5 C17 16.5, 18.5 10, 20 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
+    handles: [
+      { name: "극소", x: 0.6, y: -2.0, type: "min" },
+      { name: "굴곡점", x: -1.0, y: 0.0, type: "point" },
+      { name: "조절점", x: 1.4, y: 1.5, type: "point" }
+    ]
+  },
+  "4th_inflection": {
+    name: "사차함수 2",
+    category: "📐 다항함수",
+    svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 5 C6 9.5 7.5 9.5 9.5 9.5 C11.5 9.5 12.5 16 14.5 16 C16.5 16 18 10 20 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
+    handles: [
+      { name: "변곡점", x: -1.0, y: 1.0, type: "inflection" },
+      { name: "극소", x: 1.0, y: -2.0, type: "min" }
     ]
   },
   "4th_symmetric": {
-    name: "사차함수 1",
+    name: "사차함수 3",
     category: "📐 다항함수",
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 5 Q6 17 8.5 11 Q12 6 15.5 11 Q18 17 20 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
@@ -54,31 +91,13 @@ const FUNC_METADATA = {
     ]
   },
   "4th_asymmetric": {
-    name: "사차함수 2",
+    name: "사차함수 4",
     category: "📐 다항함수",
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 7 Q6.5 14 9 10 Q11 6 13 11 Q16 20 20 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
       { name: "극소", x: -1.5, y: -1.8, type: "min" },
       { name: "극대", x: -0.1, y: 1.0, type: "max" },
       { name: "극소", x: 1.5, y: -3.0, type: "min" }
-    ]
-  },
-  "4th_inflection": {
-    name: "사차함수 3",
-    category: "📐 다항함수",
-    svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 5 C6 9.5 7.5 9.5 9.5 9.5 C11.5 9.5 12.5 16 14.5 16 C16.5 16 18 10 20 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
-    handles: [
-      { name: "변곡점", x: -1.0, y: 1.0, type: "inflection" },
-      { name: "극소", x: 1.0, y: -2.0, type: "min" }
-    ]
-  },
-  "4th_basic_bowl": {
-    name: "사차 기본 (y=x⁴)",
-    category: "📐 다항함수",
-    svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 5 C7 19, 17 19, 20 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
-    handles: [
-      { name: "극소", x: 0.0, y: -2.0, type: "min" },
-      { name: "조절점", x: 1.4, y: 1.8, type: "point" }
     ]
   },
 
@@ -359,8 +378,50 @@ class GraphMathEngine {
     return GraphMathEngine.baseYToWorldY(g, rawY);
   }
 
+  // 사차함수 1 (극값 1개 + f'=0 허근 비대칭 U형: f'(x) = 4a(x-x0)[(x-x1)^2 + T*d^2], T > 0) 5자유도 역산
+  static _solve4thSkewParams(handles) {
+    const x0 = handles[0].x, y0 = handles[0].y;
+    const x1 = handles[1].x, y1 = handles[1].y;
+    let d = x1 - x0;
+    if (Math.abs(d) < 1e-4) d = d >= 0 ? 1e-4 : -1e-4;
+    let dy1 = y1 - y0;
+    if (Math.abs(dy1) < 1e-4) dy1 = dy1 >= 0 ? 1e-4 : -1e-4;
+
+    let T = 5.0 / 48.0;
+    let k = -0.5;
+    if (handles.length >= 3 && handles[2]) {
+      const rawK = (handles[2].x - x0) / d;
+      k = rawK < 0 ? Math.max(-1.8, Math.min(-0.35, rawK)) : -0.5;
+      const Ak = Math.pow(k, 4) - (8.0 / 3.0) * Math.pow(k, 3) + 2.0 * k * k;
+      const k2 = k * k;
+      const T_MIN = 0.015;
+      const T_MAX = 12.0;
+      const R_at_Tmin = (Ak + 2.0 * k2 * T_MIN) / (1.0 / 3.0 + 2.0 * T_MIN);
+      const R_at_Tmax = (Ak + 2.0 * k2 * T_MAX) / (1.0 / 3.0 + 2.0 * T_MAX);
+      const Rraw = (handles[2].y - y0) / dy1;
+      const R = Math.max(R_at_Tmax, Math.min(R_at_Tmin, Rraw));
+      const denomR = 6.0 * (R - k2);
+      if (Math.abs(denomR) > 1e-9) {
+        T = (3.0 * Ak - R) / denomR;
+      }
+      T = Math.max(T_MIN, Math.min(T_MAX, T));
+    }
+
+    const scaleDenom = Math.pow(d, 4) * (1.0 / 3.0 + 2.0 * T);
+    let a = dy1 / Math.max(1e-8, scaleDenom);
+    a = Math.max(-2000.0, Math.min(2000.0, a));
+    return { x0, y0, d, dy1, k, T, a };
+  }
+
   static evaluate(ftype, handles, x) {
     switch (ftype) {
+      case "4th_skew": {
+        const { x0, y0, d, T, a } = GraphMathEngine._solve4thSkewParams(handles);
+        const u = x - x0;
+        const poly = Math.pow(u, 4) - (8.0 / 3.0) * d * Math.pow(u, 3) + 2.0 * (1.0 + T) * d * d * u * u;
+        return y0 + a * poly;
+      }
+
       case "4th_symmetric": {
         const x0 = handles[1].x;
         const p = Math.max(0.2, Math.abs(handles[2].x - x0));
@@ -440,6 +501,22 @@ class GraphMathEngine {
         let a = (y1 - y0) / Math.pow(dx, 3);
         a = Math.max(-500.0, Math.min(500.0, a));
         return a * Math.pow(x - x0, 3) + y0;
+      }
+
+      case "3rd_monotonic": {
+        const x0 = handles[0].x, y0 = handles[0].y;
+        const x1 = handles[1].x, y1 = handles[1].y;
+        let dx = x1 - x0;
+        if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
+        let dy = y1 - y0;
+        if (Math.abs(dy) < 1e-4) dy = dy >= 0 ? 1e-4 : -1e-4;
+        const alpha = 0.35;
+        let m = alpha * (dy / dx);
+        let a = (1.0 - alpha) * (dy / Math.pow(dx, 3));
+        m = Math.max(-2000.0, Math.min(2000.0, m));
+        a = Math.max(-2000.0, Math.min(2000.0, a));
+        const u = x - x0;
+        return y0 + a * Math.pow(u, 3) + m * u;
       }
 
       case "2nd_quadratic": {
@@ -778,6 +855,28 @@ class GraphMathEngine {
         handles[1].x = x0 + dx;
         handles[1].y = newY;
       }
+    } else if (ftype === "3rd_monotonic") {
+      if (idx === 0) {
+        const dx = handles[1].x - handles[0].x;
+        const dy = handles[1].y - handles[0].y;
+        handles[0].x = newX;
+        handles[0].y = newY;
+        handles[1].x = newX + dx;
+        handles[1].y = newY + dy;
+      } else if (idx === 1) {
+        const x0 = handles[0].x;
+        const y0 = handles[0].y;
+        const minGapX = 0.35;
+        const minGapY = 0.25;
+        let dx = newX - x0;
+        let dy = newY - y0;
+        if (Math.abs(dx) < minGapX) dx = dx >= 0 ? minGapX : -minGapX;
+        if (Math.abs(dy) < minGapY) dy = dy >= 0 ? minGapY : -minGapY;
+        const maxDy = Math.min(1950.0 * Math.abs(dx) / 0.35, 1950.0 * Math.pow(Math.abs(dx), 3) / 0.65);
+        if (Math.abs(dy) > maxDy) dy = dy >= 0 ? maxDy : -maxDy;
+        handles[1].x = x0 + dx;
+        handles[1].y = y0 + dy;
+      }
     } else if (ftype === "3rd_basic_cubic") {
       if (idx === 0) {
         const dx = handles[1].x - handles[0].x;
@@ -809,6 +908,93 @@ class GraphMathEngine {
         if (Math.abs(dx) < minGap) dx = dx >= 0 ? minGap : -minGap;
         handles[1].x = x0 + dx;
         handles[1].y = newY;
+      }
+    } else if (ftype === "4th_skew") {
+      const T_MIN = 0.015;
+      const T_MAX = 12.0;
+      if (idx === 0) {
+        const shiftX = newX - handles[0].x;
+        const shiftY = newY - handles[0].y;
+        handles.forEach(h => {
+          h.x += shiftX;
+          h.y += shiftY;
+        });
+      } else if (idx === 1) {
+        const x0 = handles[0].x;
+        const y0 = handles[0].y;
+        const prevSignX = (handles[1].x - x0) < 0 ? -1 : 1;
+        const prevSignY = (handles[1].y - y0) < 0 ? -1 : 1;
+        let dNew = newX - x0;
+        if (Math.abs(dNew) < 0.45) dNew = dNew >= 0 ? 0.45 : -0.45;
+        let dy1New = newY - y0;
+        if (Math.abs(dy1New) < 0.25) dy1New = dy1New >= 0 ? 0.25 : -0.25;
+
+        if (handles[2]) {
+          if (dNew * prevSignX < 0) handles[2].x = x0 - (handles[2].x - x0);
+          if (dy1New * prevSignY < 0) handles[2].y = y0 - (handles[2].y - y0);
+        }
+
+        const maxDy1 = Math.max(0.25, 1950.0 * Math.pow(dNew, 4) * (1.0 / 3.0 + 2.0 * T_MIN));
+        if (Math.abs(dy1New) > maxDy1) dy1New = dy1New >= 0 ? maxDy1 : -maxDy1;
+
+        handles[1].x = x0 + dNew;
+        handles[1].y = y0 + dy1New;
+        handles[0].type = dy1New >= 0 ? "min" : "max";
+        handles[0].name = dy1New >= 0 ? "극소" : "극대";
+
+        if (handles[2]) {
+          let rawK = (handles[2].x - x0) / dNew;
+          if (!(rawK < 0)) rawK = -0.5;
+          const k = Math.max(-1.8, Math.min(-0.35, rawK));
+          handles[2].x = x0 + k * dNew;
+          const Ak = Math.pow(k, 4) - (8.0 / 3.0) * Math.pow(k, 3) + 2.0 * k * k;
+          const k2 = k * k;
+          const R_at_Tmin = (Ak + 2.0 * k2 * T_MIN) / (1.0 / 3.0 + 2.0 * T_MIN);
+          const R_at_Tmax = (Ak + 2.0 * k2 * T_MAX) / (1.0 / 3.0 + 2.0 * T_MAX);
+          const Rraw = (handles[2].y - y0) / dy1New;
+          const clampedR = Math.max(R_at_Tmax, Math.min(R_at_Tmin, Rraw));
+          handles[2].y = y0 + dy1New * clampedR;
+        }
+      } else if (idx === 2 && handles[2]) {
+        const x0 = handles[0].x;
+        const y0 = handles[0].y;
+        let d = handles[1].x - x0;
+        if (Math.abs(d) < 0.45) {
+          d = d >= 0 ? 0.45 : -0.45;
+          handles[1].x = x0 + d;
+        }
+        let rawK = (newX - x0) / d;
+        const k = Math.max(-1.8, Math.min(-0.35, rawK));
+        handles[2].x = x0 + k * d;
+
+        const prevSignY = (handles[1].y - y0) < 0 ? -1 : 1;
+        let dy2New = newY - y0;
+        if (Math.abs(dy2New) < 0.25) dy2New = dy2New >= 0 ? 0.25 : -0.25;
+        if (dy2New * prevSignY < 0) {
+          handles[1].y = y0 - (handles[1].y - y0);
+        }
+
+        const Ak = Math.pow(k, 4) - (8.0 / 3.0) * Math.pow(k, 3) + 2.0 * k * k;
+        const k2 = k * k;
+        const R_at_Tmin = (Ak + 2.0 * k2 * T_MIN) / (1.0 / 3.0 + 2.0 * T_MIN);
+        const R_at_Tmax = (Ak + 2.0 * k2 * T_MAX) / (1.0 / 3.0 + 2.0 * T_MAX);
+        const maxDy1 = Math.max(0.25, 1950.0 * Math.pow(d, 4) * (1.0 / 3.0 + 2.0 * T_MIN));
+        const maxDy2 = maxDy1 * R_at_Tmin;
+        if (Math.abs(dy2New) > maxDy2) dy2New = dy2New >= 0 ? maxDy2 : -maxDy2;
+        handles[2].y = y0 + dy2New;
+
+        let dy1Cur = handles[1].y - y0;
+        if (Math.abs(dy1Cur) < 0.25) dy1Cur = dy2New >= 0 ? 0.25 : -0.25;
+        const Rraw = dy2New / dy1Cur;
+        const clampedR = Math.max(R_at_Tmax, Math.min(R_at_Tmin, Rraw));
+        let dy1Synced = dy2New / clampedR;
+        if (Math.abs(dy1Synced) < 0.25) {
+          dy1Synced = dy2New >= 0 ? 0.25 : -0.25;
+          handles[2].y = y0 + dy1Synced * clampedR;
+        }
+        handles[1].y = y0 + dy1Synced;
+        handles[0].type = dy1Synced >= 0 ? "min" : "max";
+        handles[0].name = dy1Synced >= 0 ? "극소" : "극대";
       }
     } else if (ftype === "1st_linear") {
       if (idx === 0) {
@@ -1024,9 +1210,14 @@ class GraphMathEngine {
     // 모든 핸들의 y 좌표 부호 반전
     handles.forEach(h => {
       h.y = -h.y;
-      // 극대/극소 성격 스왑
-      if (h.type === "max") h.type = "min";
-      else if (h.type === "min") h.type = "max";
+      // 극대/극소 성격 및 명칭 스왑
+      if (h.type === "max") {
+        h.type = "min";
+        if (h.name === "극대") h.name = "극소";
+      } else if (h.type === "min") {
+        h.type = "max";
+        if (h.name === "극소") h.name = "극대";
+      }
     });
   }
 

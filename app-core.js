@@ -2675,19 +2675,21 @@ class GraphApp {
       '4th_basic_bowl': '사차 (y=x⁴)'
     };
 
-    // 대분류 제목 없이 구분선/간격만으로 위에서부터 순서대로 직관 배치
+    // 대분류 제목 없이 구분선/간격만으로 위에서부터 순서대로 직관 배치 (판별식·극값 생성 진화 순서)
     const blocks = [
       {
-        cols: 3,
+        cols: 2,
         items: [
           { key: '1st_linear', code: '11' },
           { key: '2nd_quadratic', code: '12' },
-          { key: '3rd_normal', code: '13' },
+          { key: '3rd_monotonic', code: '13' },
           { key: '3rd_basic_cubic', code: '14' },
-          { key: '4th_symmetric', code: '15' },
-          { key: '4th_asymmetric', code: '16' },
-          { key: '4th_inflection', code: '17' },
-          { key: '4th_basic_bowl', code: '18' }
+          { key: '3rd_normal', code: '15' },
+          { key: '4th_basic_bowl', code: '16' },
+          { key: '4th_skew', code: '17' },
+          { key: '4th_inflection', code: '18' },
+          { key: '4th_symmetric', code: '19' },
+          { key: '4th_asymmetric', code: '20' }
         ]
       },
       {
@@ -3847,6 +3849,7 @@ class GraphApp {
           ph.x = parseFloat(h.x.toFixed(3));
           ph.y = parseFloat(h.y.toFixed(3));
           ph.type = h.type;
+          if (h.name) ph.name = h.name;
           ph.reflectX = Boolean(h.reflectX);
           ph.reflectY = Boolean(h.reflectY);
           if (h.fn) ph.fn = h.fn;
@@ -3855,6 +3858,7 @@ class GraphApp {
           ph.x = parseFloat(h.y.toFixed(3));
           ph.y = parseFloat(h.x.toFixed(3));
           if (h.type) ph.type = h.type;
+          if (h.name) ph.name = h.name;
         }
       });
     }

@@ -182,6 +182,13 @@
         }
         break;
 
+      case '3rd_monotonic':
+      case '3rd_basic_cubic':
+        if (h.length >= 1) {
+          pts.push({ x: h[0].x, y: g.isAbsolute ? Math.abs(h[0].y) : h[0].y, type: 'inflection', label: '변곡점' });
+        }
+        break;
+
       case '3rd_normal':
         if (h.length >= 2) {
           const sorted = [...h.slice(0, 2)].sort((a, b) => a.x - b.x);
@@ -189,6 +196,14 @@
           const y2 = sorted[1].y;
           pts.push({ x: sorted[0].x, y: g.isAbsolute ? Math.abs(y1) : y1, type: 'max', label: '극점' });
           pts.push({ x: sorted[1].x, y: g.isAbsolute ? Math.abs(y2) : y2, type: 'min', label: '극점' });
+        }
+        break;
+
+      case '4th_basic_bowl':
+      case '4th_skew':
+        if (h.length >= 1) {
+          const lab = h[0].type === 'max' ? '극대' : '극소';
+          pts.push({ x: h[0].x, y: g.isAbsolute ? Math.abs(h[0].y) : h[0].y, type: h[0].type || 'min', label: lab });
         }
         break;
 
@@ -2607,7 +2622,7 @@
               // Y축 스냅이 안 걸렸다면 캡처영역 중앙선 스냅 검사
               let symmetryCenterXMath = this.curveHandlesSnapshot[0].x;
               const g = this.activeGraph;
-              if (g.type === '2nd_quadratic') symmetryCenterXMath = this.curveHandlesSnapshot[0].x;
+              if (g.type === '2nd_quadratic' || g.type === '3rd_monotonic' || g.type === '3rd_basic_cubic' || g.type === '4th_basic_bowl') symmetryCenterXMath = this.curveHandlesSnapshot[0].x;
               else if (g.type === '3rd_normal' && this.curveHandlesSnapshot.length >= 2) symmetryCenterXMath = (this.curveHandlesSnapshot[0].x + this.curveHandlesSnapshot[1].x) / 2.0;
               else if (g.type === '4th_symmetric' && this.curveHandlesSnapshot.length >= 2) symmetryCenterXMath = this.curveHandlesSnapshot[1].x;
               else if (g.type === 'rational_basic') symmetryCenterXMath = this.curveHandlesSnapshot[0].x;
@@ -9680,8 +9695,9 @@
               ? '변곡점'
               : ((h.type === 'center' || h.type === 'asymptote')
                 ? (h.name || '대칭중심')
-                : (h.type === 'vertex' ? (h.name || '꼭짓점') : '점'))));
-        const coordText = `${hName} (${(h.x + ox).toFixed(2)}, ${evalY.toFixed(2)})`;
+                : (h.type === 'vertex' ? (h.name || '꼭짓점') : (h.name || '점')))));
+        const fmtCoord = (v) => (Math.abs(v) < 0.005 ? 0 : v).toFixed(2);
+        const coordText = `${hName} (${fmtCoord(wp.x)}, ${fmtCoord(wp.y)})`;
         const tipY = s.y - radius - (isPip ? 12 : 16);
         this.drawPillBadge(ctx, coordText, s.x, tipY, {
           font: isPip ? 'bold 9.5px system-ui, -apple-system, sans-serif' : 'bold 11px system-ui, -apple-system, sans-serif',
