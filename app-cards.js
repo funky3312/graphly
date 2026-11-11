@@ -8194,12 +8194,18 @@
         if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(ctx, this._snapshotCropBounds);
 
         const cleanPass = !isManipulating;
+        const isLivePipDropLine = Boolean(
+          !snapObj.isPipLocked &&
+          snapObj.isPipDropLineMode &&
+          !widget.classList.contains('card-ink-active') &&
+          !widget.classList.contains('card-laser-active')
+        );
         this.drawAllCurves(ctx, cleanPass);
 
         if (this.usePiecewise && this.graphs.length >= 1) {
           this.drawPiecewiseBoundaries(ctx, cleanPass);
         }
-        this.drawDropLines(ctx, cleanPass);
+        this.drawDropLines(ctx, cleanPass && !isLivePipDropLine);
         this.drawTextLabels(ctx, cleanPass);
 
         if (isManipulating && this.activeGraph) {
@@ -9750,10 +9756,13 @@
             snap.isPipDropLineMode = true;
             snap._pipDropLineHoverCand = null;
             snap._pipDropLineHoverScissors = null;
-            if (widget.classList.contains('card-ink-active')) {
-              widget.classList.remove('card-ink-active');
+            if (widget.classList.contains('card-ink-active') || widget.classList.contains('card-laser-active')) {
+              widget.classList.remove('card-ink-active', 'card-laser-active');
               const laserBtn = widget.querySelector('.btn-card-laser');
               if (laserBtn) laserBtn.classList.remove('active');
+            }
+            if (this.isInkMode && (this.activeInkTool === 'laser' || this.activeInkTool === 'sticker')) {
+              this.setActiveInkTool('pen');
             }
             // 수선 버튼 클릭 즉시 특이점/교점 캐시를 사전 워밍업하여 첫 마우스 이동부터 0ms 반응 보장
             const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
@@ -10110,7 +10119,7 @@
               snap._pipDropLineHoverScissors = null;
               snap._pipDropLineHoverCand = null;
             } else {
-              initCand = this.findNearestDropLineTarget({ x: pos.x, y: pos.y }, isTouch ? 24 : 16);
+              initCand = this.findNearestDropLineTarget({ x: pos.x, y: pos.y }, isTouch ? 24 : 20);
             }
           });
           if (hitScissors) {
@@ -10262,7 +10271,7 @@
             this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
               overScissors = this.hitTestScissors({ x: pos.x, y: pos.y });
               if (!overScissors) {
-                cand = this.findNearestDropLineTarget({ x: pos.x, y: pos.y }, 16);
+                cand = this.findNearestDropLineTarget({ x: pos.x, y: pos.y }, 20);
               }
             });
             const prevSc = snap._pipDropLineHoverScissors;
@@ -10270,7 +10279,7 @@
             const scChanged = (Boolean(prevSc) !== Boolean(overScissors)) ||
               (prevSc && overScissors && (prevSc.id !== overScissors.id || prevSc.which !== overScissors.which));
             const candChanged = (Boolean(prevCand) !== Boolean(cand)) ||
-              (prevCand && cand && (Math.abs(prevCand.x - cand.x) > 1e-4 || Math.abs(prevCand.y - cand.y) > 1e-4 || prevCand.name !== cand.name));
+              (prevCand && cand && (Math.abs(prevCand.x - cand.x) > 1e-4 || Math.abs(prevCand.y - cand.y) > 1e-4 || prevCand.name !== cand.name || prevCand.isCandidate !== cand.isCandidate));
             snap._pipDropLineHoverScissors = overScissors;
             snap._pipDropLineHoverCand = cand;
             liveCanvas.style.cursor = overScissors ? 'pointer' : 'crosshair';
@@ -10661,6 +10670,16 @@
 
       liveCanvas.addEventListener('pointerup', finishPipInteraction);
       liveCanvas.addEventListener('pointercancel', finishPipInteraction);
+      liveCanvas.addEventListener('pointerleave', () => {
+        if (activeMode) return;
+        const snap = this._getMutablePipCardSnapshot(cardRef);
+        if (!snap || !snap.isPipDropLineMode) return;
+        if (snap._pipDropLineHoverCand || snap._pipDropLineHoverScissors) {
+          snap._pipDropLineHoverCand = null;
+          snap._pipDropLineHoverScissors = null;
+          this.requestPipGraphCardRender(cardRef);
+        }
+      });
 
       // 4. 카드 위 마우스 휠: 잠금 전(!snap.isPipLocked) 상태일 때 카드 내부 그래프 배율(zoomLevel) 줌인/줌아웃
       liveCanvas.addEventListener('wheel', (e) => {

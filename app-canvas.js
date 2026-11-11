@@ -3823,6 +3823,7 @@
           !this.isLassoSelecting &&
           !this.isDrawingSticker &&
           !this._tappingBoardSticker &&
+          !this._isAimingDropLine &&
           !this.isPanning &&
           !this.isBoardPanning &&
           !this.isDraggingCurve &&
@@ -4090,7 +4091,10 @@
           if (this.isGraphCovered && typeof this._hasAnyActivePipCardSelectionOrMode === 'function' && this._hasAnyActivePipCardSelectionOrMode()) {
             const hasPipDl = Boolean(
               (this.pipGraphLiveSnap && this.pipGraphLiveSnap.isPipDropLineMode) ||
-              (Array.isArray(this.extraGraphCards) && this.extraGraphCards.some(c => c && c.liveSnap && c.liveSnap.isPipDropLineMode))
+              (Array.isArray(this.extraGraphCards) && this.extraGraphCards.some(c => {
+                const s = c && typeof this._getMutablePipCardSnapshot === 'function' ? this._getMutablePipCardSnapshot(c) : (c && c.pipLiveSnap);
+                return Boolean(s && s.isPipDropLineMode);
+              }))
             );
             if (hasPipDl && typeof this.deselectAllPipGraphCards === 'function') {
               e.preventDefault();
@@ -5915,6 +5919,9 @@
       this.dropLineHoverCandidate = null;
       this._isAimingDropLine = false;
     } else {
+      if (this.isGraphSnapMode && typeof this.toggleGraphSnapMode === 'function') {
+        this.toggleGraphSnapMode(false);
+      }
       if (this.isTextToolMode) {
         this.isTextToolMode = false;
         const btnTxt = document.getElementById('btnQuickText');
@@ -5922,9 +5929,15 @@
         const cEl = this.canvas && this.canvas.parentElement;
         if (cEl) cEl.classList.remove('text-tool-active');
       }
+      this.isCurveSelected = false;
+      this.selectedHandleIdx = null;
+      this.draggedHandleIdx = null;
+      this.isDraggingCurve = false;
+      this.curveDragStart = null;
       if (this.isInkMode && this.activeInkTool !== 'select') {
         this.setActiveInkTool('select');
       }
+      this.collectDropLineCandidates();
     }
     const btn = document.getElementById('btnQuickDropLine');
     if (btn) btn.classList.toggle('active', this.isDropLineMode);
