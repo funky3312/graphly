@@ -115,9 +115,23 @@
     });
     this.myLibraryCache = [];
     this._restoreActiveCloudUserSession();
+    this._loadPromoBannerConfigForCurrentUser();
     if (this.cloudUser && this.cloudUser.uid) {
       this.syncUserProSubscriptionFromCloud();
       setTimeout(() => this.fetchMyLibraryFromCloud(), 500);
+    }
+    if (typeof this._idbCacheGet === 'function') {
+      try {
+        const curGuestId = localStorage.getItem('graphly_guest_device_id_v1');
+        if (!curGuestId) {
+          this._idbCacheGet('graphly_guest_device_id_v1').then((idbId) => {
+            if (idbId && /^gdev_[a-f0-9]{24,64}$/.test(String(idbId))) {
+              this._cachedGuestShareDeviceId = String(idbId);
+              try { localStorage.setItem('graphly_guest_device_id_v1', String(idbId)); } catch (_) { }
+            }
+          }).catch(() => { });
+        }
+      } catch (e) { }
     }
 
     // 비동기로 Firebase SDK 초기화 및 OAuth 팝업 브리지 사전 예열 (판서/초기 로딩 블로킹 0%)
@@ -713,6 +727,7 @@
     if (btnOpenProSettings) {
       btnOpenProSettings.onclick = () => this.openProPricingModal();
     }
+    this.initPromoBannerModalEvents();
     const btnOpenGuideSettings = document.getElementById('btnOpenGuideNoticeFromSettings');
     const btnBugReportSettings = document.getElementById('btnBugReportFromSettings');
     const modalGuide = document.getElementById('modalGuideNotice');
@@ -2366,6 +2381,9 @@
         lblSettingsAcct.textContent = '';
         lblSettingsAcct.title = '';
       }
+      if (typeof this.syncPromoBannerEntryButtonsUI === 'function') {
+        this.syncPromoBannerEntryButtonsUI();
+      }
       return;
     }
 
@@ -2452,6 +2470,9 @@
         lblSettingsAcct.appendChild(spanPlan);
       }
     }
+    if (typeof this.syncPromoBannerEntryButtonsUI === 'function') {
+      this.syncPromoBannerEntryButtonsUI();
+    }
   }
 
   syncCloudAuthUI() {
@@ -2523,7 +2544,8 @@
       autoColorSequence: Array.isArray(this.autoColorSequence) && this.autoColorSequence.length > 0
         ? [...this.autoColorSequence]
         : ['#c74440', '#2d70b3', '#388c46', '#6042a6'],
-      customShortcuts: this.customShortcuts || {}
+      customShortcuts: this.customShortcuts || {},
+      promoBannerConfig: this._sanitizePromoBannerConfig(this.promoBannerConfig || this._getDefaultPromoBannerConfig())
     };
   }
 
@@ -2627,6 +2649,9 @@
           this.syncShortcutTooltipsAndGuideUI();
         }
       }
+      if (prefs.promoBannerConfig && typeof prefs.promoBannerConfig === 'object') {
+        this._savePromoBannerConfigForCurrentUser(prefs.promoBannerConfig, false);
+      }
       this.requestRender();
     } finally {
       this._isApplyingUserPrefs = false;
@@ -2680,15 +2705,20 @@
           graphColorMode: 'auto',
           fixedGraphColor: '#1e293b',
           autoColorSequence: ['#c74440', '#2d70b3', '#388c46', '#6042a6'],
-          customShortcuts: {}
+          customShortcuts: {},
+          promoBannerConfig: this._getDefaultPromoBannerConfig()
         };
         this._applyUserPreferences(defaultPrefs, true);
         try {
           localStorage.setItem(this._getUserPrefsStorageKey('guest'), JSON.stringify(defaultPrefs));
         } catch (_) { }
+      } else {
+        this._loadPromoBannerConfigForCurrentUser();
       }
       return;
     }
+
+    this._loadPromoBannerConfigForCurrentUser();
 
     // 1. 로컬에 캐시된 해당 계정 프로필이 있으면 0.00초 만에 즉시 먼저 적용
     let localPrefs = null;
@@ -2911,6 +2941,7 @@
         maxRecordMs: Number(cfg.premiumMaxRecordMs) || (60 * 60 * 1000),
         sharePermanent: isPerm,
         isPermanentShare: isPerm,
+        shareDailyLimit: 0,
         shareExpiryDays: 0,
         shareFolderName: cfg.premiumShareFolderName || '🔗 공유 링크',
         shareGraceDays: Number(cfg.premiumShareGraceDays) || 7
@@ -3618,6 +3649,7 @@
   }
 
   _saveCustomGraphsToStorage() {
+    if (!this.cloudUser || !this.cloudUser.uid) return;
     if (Array.isArray(this.customGraphPresets)) {
       this.customGraphPresets = this._normalizeAndCapCustomGraphPresets(this.customGraphPresets);
     }
@@ -4196,7 +4228,8 @@
       const safeTitle = escapeHtml(item.name || '나만의 그래프');
       const safeBadge = escapeHtml(item.badge || '커스텀 그래프');
       const safeSvgThumb = this._sanitizeCustomGraphSvgThumb(item.svgThumb);
-      const lockBadgeHtml = isLockedForFree ? `<span class="custom-graph-lock-tag" title="Pro 전용 보관 프리셋">🔒</span>` : '';
+      const lockTitle = quota.tier === 'pro' ? 'Premium 전용 보관 프리셋' : '상위 플랜 전용 보관 프리셋';
+      const lockBadgeHtml = isLockedForTier ? `<span class="custom-graph-lock-tag" title="${lockTitle}">🔒</span>` : '';
 
       card.innerHTML = `
         <div class="custom-graph-card-left">
@@ -4345,7 +4378,11 @@
       };
     }
 
-    this._populateCustomGraphScrollList(scrollList);
+    try {
+      this._populateCustomGraphScrollList(scrollList);
+    } catch (err) {
+      console.error('[Graphly] Custom graph preset list render error:', err);
+    }
   }
 
   _hashLocalAccountPassword(rawPw) {
@@ -4779,6 +4816,10 @@
     const normEmail = String(userInfo.email || userInfo.loginId || '').trim().toLowerCase();
     const provider = userInfo.authProvider === 'google' ? 'google' : 'email';
     const canonicalUid = this._getCanonicalUidForEmail(normEmail, userInfo.uid, provider);
+    const prevUid = (this.cloudUser && this.cloudUser.uid) ? String(this.cloudUser.uid) : '';
+    if (prevUid !== canonicalUid && typeof this._resetActiveShareSessionCache === 'function') {
+      this._resetActiveShareSessionCache();
+    }
     this.cloudUser = {
       uid: canonicalUid,
       rawUid: userInfo.rawUid || userInfo.uid || canonicalUid,
@@ -4819,6 +4860,9 @@
     this.myLibraryCache = [];
     this._subStateMeta = null;
     this.isProUser = false;
+    if (typeof this._resetActiveShareSessionCache === 'function') {
+      this._resetActiveShareSessionCache();
+    }
     this._persistActiveCloudUserSession();
     this.syncCloudAuthUI();
     this.syncProPricingModalUI();
@@ -4838,7 +4882,9 @@
 
     const isYearly = (cycle === 'yearly');
     const proPrice = isYearly ? (Number(cfg.proYearlyPrice) || 49000) : (Number(cfg.proMonthlyPrice) || 4900);
-    const premPrice = isYearly ? (Number(cfg.premiumYearlyPrice) || 149000) : (Number(cfg.premiumMonthlyPrice) || 14900);
+    const premPrice = isYearly ? (Number(cfg.premiumYearlyPrice) || 99000) : (Number(cfg.premiumMonthlyPrice) || 9900);
+    const proRegPrice = isYearly ? (Number(cfg.proYearlyRegularPrice) || 99000) : (Number(cfg.proMonthlyRegularPrice) || 9900);
+    const premRegPrice = isYearly ? (Number(cfg.premiumYearlyRegularPrice) || 199000) : (Number(cfg.premiumMonthlyRegularPrice) || 19900);
     const unitText = isYearly ? '/ 365일(VAT포함)' : '/ 30일(VAT포함)';
     const periodNote = isYearly ? '제공기간: 결제일로부터 365일 (단건)' : '제공기간: 결제일로부터 30일 (단건)';
 
@@ -4873,23 +4919,26 @@
       if (el) el.textContent = txt;
     };
     setTxt('lblPlanFreeCloud', this.formatBytesHuman(cfg.freeMaxCloudBytes));
-    setTxt('lblPlanFreeGraphs', `${cfg.freeMaxCustomGraphs}개`);
-    setTxt('lblPlanFreeRec', `${Math.round((cfg.freeMaxRecordMs || 180000) / 60000)}분`);
-    setTxt('lblPlanFreeShare', `${cfg.freeShareExpiryDays}일 후 자동 폭파`);
+    setTxt('lblPlanFreeGraphs', `${cfg.freeMaxCustomGraphs}개 (로그인)`);
+    setTxt('lblPlanFreeRec', `${Math.round((cfg.freeMaxRecordMs || 300000) / 60000)}분`);
+    setTxt('lblPlanFreeShare', `1일 ${cfg.freeShareDailyLimit || 3}개 · ${cfg.freeShareExpiryDays || 3}일 만료`);
 
+    setTxt('lblPlanProRegularPrice', `정가 ${proRegPrice.toLocaleString('ko-KR')}원`);
     setTxt('lblPlanProPrice', `${proPrice.toLocaleString('ko-KR')}원`);
     setTxt('lblPlanProCycleUnit', unitText);
     setTxt('lblPlanProCloud', this.formatBytesHuman(cfg.proMaxCloudBytes));
     setTxt('lblPlanProGraphs', `${cfg.proMaxCustomGraphs}개`);
     setTxt('lblPlanProRec', `${Math.round((cfg.proMaxRecordMs || 3600000) / 60000)}분`);
-    setTxt('lblPlanProShare', `${cfg.proShareExpiryDays}일 유지`);
+    setTxt('lblPlanProShare', `무제한 · ${cfg.proShareExpiryDays || 7}일 만료`);
     setTxt('lblPlanProPeriodNote', periodNote);
 
+    setTxt('lblPlanPremiumRegularPrice', `정가 ${premRegPrice.toLocaleString('ko-KR')}원`);
     setTxt('lblPlanPremiumPrice', `${premPrice.toLocaleString('ko-KR')}원`);
     setTxt('lblPlanPremiumCycleUnit', unitText);
     setTxt('lblPlanPremiumCloud', this.formatBytesHuman(cfg.premiumMaxCloudBytes));
     setTxt('lblPlanPremiumGraphs', `${cfg.premiumMaxCustomGraphs}개`);
     setTxt('lblPlanPremiumRec', `${Math.round((cfg.premiumMaxRecordMs || 3600000) / 60000)}분`);
+    setTxt('lblPlanPremiumShare', '무제한 · 영구 링크');
     setTxt('lblPlanPremiumPeriodNote', periodNote);
 
     const activeUserTier = this.getUserSubscriptionTier();
@@ -4969,8 +5018,8 @@
     const planMap = {
       PRO_1M: { amount: Number(cfg.proMonthlyPrice) || 4900, name: 'Graphly Pro 1개월 이용권 (30일)' },
       PRO_1Y: { amount: Number(cfg.proYearlyPrice) || 49000, name: 'Graphly Pro 1년 이용권 (365일)' },
-      PREMIUM_1M: { amount: Number(cfg.premiumMonthlyPrice) || 14900, name: 'Graphly Premium 1개월 이용권 (30일)' },
-      PREMIUM_1Y: { amount: Number(cfg.premiumYearlyPrice) || 149000, name: 'Graphly Premium 1년 이용권 (365일)' }
+      PREMIUM_1M: { amount: Number(cfg.premiumMonthlyPrice) || 9900, name: 'Graphly Premium 1개월 이용권 (30일)' },
+      PREMIUM_1Y: { amount: Number(cfg.premiumYearlyPrice) || 99000, name: 'Graphly Premium 1년 이용권 (365일)' }
     };
     const chosen = planMap[planCode] || planMap.PRO_1M;
     const planAmount = chosen.amount;
@@ -6073,11 +6122,11 @@
     return total;
   }
 
-  // 요금제별 클라우드 용량 한도(Free 50MB / Pro 5GB / Premium 20GB) 초과 여부 사전 점검
+  // 요금제별 클라우드 용량 한도(Free 100MB / Pro 5GB / Premium 20GB) 초과 여부 사전 점검
   checkCanUploadBytesToCloud(newBytes, replacingBytes = 0, contextLabel = '클라우드 저장') {
     const quota = typeof this.getCurrentTierQuota === 'function'
       ? this.getCurrentTierQuota()
-      : { tier: 'free', tierLabel: '무료', maxCloudBytes: 50 * 1024 * 1024, maxCloudLabel: '50 MB' };
+      : { tier: 'free', tierLabel: '무료', maxCloudBytes: 100 * 1024 * 1024, maxCloudLabel: '100 MB' };
     const usedBytes = Math.max(0, this.getUserCloudLibraryTotalBytes() - Math.max(0, Number(replacingBytes) || 0));
     const addBytes = Math.max(0, Number(newBytes) || 0);
     const projectedBytes = usedBytes + addBytes;
@@ -6484,6 +6533,9 @@
       : ((payloadObj && payloadObj.expiresAt) || 0);
     const isPermanentShare = Boolean((options && options.isPermanentShare) || (payloadObj && payloadObj.isPermanentShare));
     const premiumActiveUntilMs = Number((options && options.premiumActiveUntilMs) || (payloadObj && payloadObj.premiumActiveUntil) || 0);
+    const baseUid = (options && options.baseOwnerUid)
+      ? String(options.baseOwnerUid)
+      : ((this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous');
 
     const CHUNK_LIMIT = 700000; // UTF-8 + JSON 이스케이프 후 ~700KB 이내 안전 분할 (Firestore 1MiB 하드 리밋 방어)
     const isUserLibrary = (collectionName === 'user_library');
@@ -6492,6 +6544,7 @@
     // user_library는 로그인/목록 조회 시 본문 다운로드 트래픽을 0으로 만들기 위해 항상 경량 매니페스트 + 전용 청크(user_library 내 chunk_UID)로 분리!
     if (!isUserLibrary && netEscapedBytes <= CHUNK_LIMIT) {
       const singleRes = await this._firestoreRestWriteSingleDoc(collectionName, docId, netStr, {
+        ownerUid: baseUid,
         expireAtMs,
         isPermanentShare,
         premiumActiveUntilMs
@@ -6506,7 +6559,6 @@
     const chunks = this._splitStringIntoSafeFirestoreChunks(netStr, CHUNK_LIMIT);
     const prefix = `${docId}_part_`;
     const chunkCollection = isUserLibrary ? 'user_library' : 'shared_workspaces';
-    const baseUid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'anonymous';
     const chunkOwnerUid = isUserLibrary ? `chunk_${baseUid}` : `chunk_share_${baseUid}`;
 
     const BATCH_SIZE = 6;
@@ -6542,6 +6594,7 @@
       payloadObj._chunkCount = chunks.length;
     }
     const writeRes = await this._firestoreRestWriteSingleDoc(collectionName, docId, JSON.stringify(manifestObj), {
+      ownerUid: baseUid,
       expireAtMs,
       isPermanentShare,
       premiumActiveUntilMs
@@ -7020,7 +7073,7 @@
         slideData: null
       };
 
-      // 요금제 용량 한도(Free 50MB / Pro 5GB / Premium 20GB) 사전 점검 (초과 시 기존 데이터 파괴 없이 즉시 차단)
+      // 요금제 용량 한도(Free 100MB / Pro 5GB / Premium 20GB) 사전 점검 (초과 시 기존 데이터 파괴 없이 즉시 차단)
       const previewFullStr = this._stringifyWithDeduplicatedSnapshots(itemObj);
       const previewNetStr = await this._compressJsonStringGzipBase64(previewFullStr);
       itemObj.rawByteSize = this._measureUtf8Bytes(previewFullStr);
@@ -7480,7 +7533,7 @@
       return [];
     }
 
-    // 업로드 전 총 용량 사전 점검 (Free 50MB / Pro 5GB / Premium 20GB)
+    // 업로드 전 총 용량 사전 점검 (Free 100MB / Pro 5GB / Premium 20GB)
     let totalNewBytes = 0;
     let totalReplacingBytes = 0;
     pendingEntries.forEach(({ itemObj, overwriteTarget }) => {
@@ -7744,14 +7797,14 @@
     const totalCount = this.myLibraryCache.length;
     if (badgeEl) badgeEl.textContent = String(totalCount);
 
-    // 0. 좌측 하단 클라우드 사용 용량 게이지 동기화 (Free 50MB / Pro 5GB / Premium 20GB)
+    // 0. 좌측 하단 클라우드 사용 용량 게이지 동기화 (Free 100MB / Pro 5GB / Premium 20GB)
     const quotaBoxEl = document.getElementById('cloudStorageQuotaBox');
     if (quotaBoxEl) {
       const quota = typeof this.getCurrentTierQuota === 'function'
         ? this.getCurrentTierQuota()
-        : { tier: 'free', tierLabel: '무료', maxCloudBytes: 50 * 1024 * 1024, maxCloudLabel: '50 MB' };
+        : { tier: 'free', tierLabel: '무료', maxCloudBytes: 100 * 1024 * 1024, maxCloudLabel: '100 MB' };
       const usedBytes = this.getUserCloudLibraryTotalBytes();
-      const maxBytes = Math.max(1, Number(quota.maxCloudBytes) || (50 * 1024 * 1024));
+      const maxBytes = Math.max(1, Number(quota.maxCloudBytes) || (100 * 1024 * 1024));
       const ratioPct = Math.min(100, Math.max(0, (usedBytes / maxBytes) * 100));
 
       const badgeTierEl = document.getElementById('lblCloudQuotaTierBadge');
@@ -9476,6 +9529,521 @@
     };
   }
 
+  // ============================================================================
+  // 💎 [Premium 전용 뷰어 상단 강사·학원 홍보배너 빌더 & 스마트 뷰어 렌더링 엔진]
+  // ============================================================================
+  _getDefaultPromoBannerConfig() {
+    return {
+      enabled: false,
+      theme: 'slate',
+      badgeText: '',
+      messageText: '',
+      ctaLabel: '',
+      ctaUrl: ''
+    };
+  }
+
+  _cleanSingleLinePromoText(val, maxLen = 50) {
+    if (val == null) return '';
+    return String(val)
+      .replace(/[\u0000-\u001F\u007F]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, maxLen);
+  }
+
+  _normalizeSafePromoUrl(rawUrl) {
+    const trimmed = String(rawUrl == null ? '' : rawUrl)
+      .replace(/[\u0000-\u001F\u007F]/g, '')
+      .trim();
+    if (!trimmed) return { ok: true, url: '' };
+    if (trimmed.length > 350 || /[<>"'\s]/.test(trimmed)) {
+      return { ok: false, url: '' };
+    }
+    if (/^(javascript|data|vbscript|file|blob|about):/i.test(trimmed)) {
+      return { ok: false, url: '' };
+    }
+    let candidate = trimmed;
+    if (!/^https?:\/\//i.test(candidate)) {
+      if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(candidate)) {
+        return { ok: false, url: '' };
+      }
+      candidate = 'https://' + candidate.replace(/^\/+/, '');
+    }
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        return { ok: false, url: '' };
+      }
+      const host = String(parsed.hostname || '').toLowerCase();
+      if (!host || (!host.includes('.') && host !== 'localhost' && host !== '127.0.0.1')) {
+        return { ok: false, url: '' };
+      }
+      return { ok: true, url: parsed.href };
+    } catch (e) {
+      return { ok: false, url: '' };
+    }
+  }
+
+  _sanitizePromoBannerConfig(raw) {
+    const base = this._getDefaultPromoBannerConfig();
+    if (!raw || typeof raw !== 'object') return base;
+    const validThemes = ['slate', 'royal', 'violet', 'emerald', 'amber'];
+    const theme = validThemes.includes(String(raw.theme || '')) ? String(raw.theme) : 'slate';
+    const badgeText = this._cleanSingleLinePromoText(raw.badgeText, 24);
+    const messageText = this._cleanSingleLinePromoText(raw.messageText, 52);
+    const ctaLabel = this._cleanSingleLinePromoText(raw.ctaLabel, 14);
+    const urlCheck = this._normalizeSafePromoUrl(raw.ctaUrl);
+    return {
+      enabled: Boolean(raw.enabled),
+      theme,
+      badgeText,
+      messageText,
+      ctaLabel,
+      ctaUrl: urlCheck.ok ? urlCheck.url : ''
+    };
+  }
+
+  _getPromoBannerStorageKey(uid = null) {
+    const targetUid = uid || ((this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest');
+    return `graphly_promo_banner_v1_${targetUid}`;
+  }
+
+  _loadPromoBannerConfigForCurrentUser() {
+    let loaded = this._getDefaultPromoBannerConfig();
+    try {
+      const raw = localStorage.getItem(this._getPromoBannerStorageKey());
+      if (raw) {
+        loaded = this._sanitizePromoBannerConfig(JSON.parse(raw));
+      }
+    } catch (e) { }
+    this.promoBannerConfig = loaded;
+    if (typeof this.syncPromoBannerEntryButtonsUI === 'function') {
+      this.syncPromoBannerEntryButtonsUI();
+    }
+    return this.promoBannerConfig;
+  }
+
+  _savePromoBannerConfigForCurrentUser(cfg, syncCloud = true) {
+    const clean = this._sanitizePromoBannerConfig(cfg);
+    this.promoBannerConfig = clean;
+    try {
+      localStorage.setItem(this._getPromoBannerStorageKey(), JSON.stringify(clean));
+    } catch (e) { }
+    if (syncCloud && typeof this.scheduleSaveUserPreferences === 'function') {
+      this.scheduleSaveUserPreferences();
+    }
+    if (typeof this.syncPromoBannerEntryButtonsUI === 'function') {
+      this.syncPromoBannerEntryButtonsUI();
+    }
+    if (typeof this._invalidateShareModalLinkCache === 'function') {
+      this._invalidateShareModalLinkCache();
+    }
+    return clean;
+  }
+
+  getPromoBannerConfig() {
+    if (!this.promoBannerConfig || typeof this.promoBannerConfig !== 'object') {
+      return this._loadPromoBannerConfigForCurrentUser();
+    }
+    return this._sanitizePromoBannerConfig(this.promoBannerConfig);
+  }
+
+  getEffectiveSharePromoBanner() {
+    if (!this.cloudUser || !this.cloudUser.uid) return null;
+    const quota = typeof this.getCurrentTierQuota === 'function' ? this.getCurrentTierQuota() : null;
+    if (!quota || quota.tier !== 'premium' || !quota.isPermanentShare) return null;
+    const cfg = this.getPromoBannerConfig();
+    if (!cfg.enabled) return null;
+    if (!cfg.badgeText && !cfg.messageText) return null;
+    return {
+      enabled: true,
+      theme: cfg.theme,
+      badgeText: cfg.badgeText,
+      messageText: cfg.messageText,
+      ctaLabel: cfg.ctaUrl ? (cfg.ctaLabel || '바로가기') : '',
+      ctaUrl: cfg.ctaUrl || ''
+    };
+  }
+
+  _getPromoBannerSignature() {
+    const eff = this.getEffectiveSharePromoBanner();
+    if (!eff) return 'nopromo';
+    return `${eff.theme}|${eff.badgeText}|${eff.messageText}|${eff.ctaLabel}|${eff.ctaUrl}`;
+  }
+
+  _getValidViewerPromoBanner(pkg) {
+    if (!pkg || !pkg.promoBanner || typeof pkg.promoBanner !== 'object') return null;
+    if (pkg.promoBanner.enabled === false) return null;
+
+    const isLocalPreview = Boolean(pkg._isLocalPreview === true);
+    const isPermShare = Boolean(pkg.isPermanentShare || pkg._topIsPermanentShare || pkg.expiresAt === 0);
+    if (!isLocalPreview && !isPermShare) return null;
+
+    if (!isLocalPreview && isPermShare) {
+      const hasTop = Boolean(pkg._hasTopPremiumActiveUntil || pkg._topPremiumActiveUntil !== undefined);
+      const premUntil = hasTop
+        ? (Number(pkg._topPremiumActiveUntil) || 0)
+        : (Number(pkg.premiumActiveUntil) || 0);
+      const cfg = typeof this.getSubscriptionQuotaConfig === 'function' ? this.getSubscriptionQuotaConfig() : null;
+      const graceDays = (cfg && Number(cfg.premiumShareGraceDays)) || 7;
+      const graceMs = graceDays * 24 * 60 * 60 * 1000;
+      if ((hasTop && premUntil <= 0) || (premUntil > 0 && Date.now() > (premUntil + graceMs))) {
+        return null;
+      }
+    }
+
+    const clean = this._sanitizePromoBannerConfig(pkg.promoBanner);
+    if (!clean.badgeText && !clean.messageText) return null;
+    return clean;
+  }
+
+  _renderPromoBannerPillDOM(banner, variant = 'header') {
+    const clean = this._sanitizePromoBannerConfig(banner);
+    const pill = document.createElement('div');
+    pill.className = `viewer-promo-banner-pill theme-${clean.theme}` + (variant === 'gate' ? ' is-gate-banner' : '');
+
+    if (variant === 'gate' || variant === 'header') {
+      pill.addEventListener('pointerdown', (e) => e.stopPropagation());
+      pill.addEventListener('click', (e) => e.stopPropagation());
+    }
+
+    const hasBadge = Boolean(clean.badgeText);
+    const hasMsg = Boolean(clean.messageText);
+
+    if (hasBadge) {
+      const badgeEl = document.createElement('span');
+      badgeEl.className = 'viewer-promo-badge';
+      badgeEl.textContent = clean.badgeText;
+      pill.appendChild(badgeEl);
+    }
+
+    if (hasMsg || !hasBadge) {
+      const msgEl = document.createElement('span');
+      msgEl.className = 'viewer-promo-msg';
+      msgEl.textContent = hasMsg ? clean.messageText : '우리 학원·선생님 한 줄 홍보 문구가 여기에 표시됩니다';
+      pill.appendChild(msgEl);
+    }
+
+    if (clean.ctaUrl) {
+      const ctaLink = document.createElement('a');
+      ctaLink.className = 'viewer-promo-cta-btn';
+      ctaLink.href = clean.ctaUrl;
+      ctaLink.target = '_blank';
+      ctaLink.rel = 'noopener noreferrer nofollow';
+      ctaLink.textContent = `${clean.ctaLabel || '바로가기'} ↗`;
+      ctaLink.addEventListener('pointerdown', (e) => e.stopPropagation());
+      ctaLink.addEventListener('click', (e) => e.stopPropagation());
+      pill.appendChild(ctaLink);
+    }
+
+    return pill;
+  }
+
+  syncPromoBannerEntryButtonsUI() {
+    const badgeSettings = document.getElementById('badgeSettingsPromoStatus');
+    const isLoggedIn = Boolean(this.cloudUser && this.cloudUser.uid);
+    const tier = isLoggedIn && typeof this.getUserSubscriptionTier === 'function'
+      ? this.getUserSubscriptionTier()
+      : 'free';
+    const cfg = this.getPromoBannerConfig();
+    const hasContent = Boolean(cfg.badgeText || cfg.messageText);
+
+    if (badgeSettings) {
+      badgeSettings.classList.remove('is-on', 'is-off');
+      if (isLoggedIn && tier === 'premium') {
+        if (cfg.enabled && hasContent) {
+          badgeSettings.textContent = '켜짐 ON';
+          badgeSettings.classList.add('is-on');
+        } else {
+          badgeSettings.textContent = hasContent ? '꺼짐 OFF' : '설정하기';
+          badgeSettings.classList.add('is-off');
+        }
+      } else {
+        badgeSettings.textContent = '💎 Premium';
+      }
+    }
+
+    this.syncShareModalPromoBannerUI();
+  }
+
+  syncShareModalPromoBannerUI() {
+    const lblSummary = document.getElementById('lblSharePromoSummary');
+    const wrapToggle = document.getElementById('wrapShareQuickPromoToggle');
+    const chkToggle = document.getElementById('chkShareQuickPromoToggle');
+    const btnOpen = document.getElementById('btnOpenPromoBannerFromShare');
+    if (!lblSummary && !btnOpen) return;
+
+    const isLoggedIn = Boolean(this.cloudUser && this.cloudUser.uid);
+    const tier = isLoggedIn && typeof this.getUserSubscriptionTier === 'function'
+      ? this.getUserSubscriptionTier()
+      : 'free';
+    const cfg = this.getPromoBannerConfig();
+    const hasContent = Boolean(cfg.badgeText || cfg.messageText);
+
+    if (isLoggedIn && tier === 'premium') {
+      if (wrapToggle) wrapToggle.style.display = hasContent ? 'inline-flex' : 'none';
+      if (chkToggle) chkToggle.checked = Boolean(cfg.enabled && hasContent);
+      if (lblSummary) {
+        if (!hasContent) {
+          lblSummary.textContent = '홍보배너 · 문구를 설정해 보세요';
+        } else {
+          const previewTitle = [cfg.badgeText, cfg.messageText].filter(Boolean).join(' · ');
+          lblSummary.textContent = `${cfg.enabled ? '홍보배너 ON' : '홍보배너 OFF'} · ${previewTitle}`;
+        }
+      }
+      if (btnOpen) {
+        btnOpen.textContent = hasContent ? '설정' : '+ 배너 작성';
+      }
+    } else {
+      if (wrapToggle) wrapToggle.style.display = 'none';
+      if (lblSummary) {
+        lblSummary.textContent = '뷰어 상단 학원·선생님 홍보배너 (💎 Premium)';
+      }
+      if (btnOpen) {
+        btnOpen.textContent = '미리보기 ▸';
+      }
+    }
+  }
+
+  _collectDraftPromoBannerFromModal() {
+    const chkEnabled = document.getElementById('chkPromoBannerEnabled');
+    const inpBadge = document.getElementById('inputPromoBadgeText');
+    const inpMsg = document.getElementById('inputPromoMessageText');
+    const inpCtaLabel = document.getElementById('inputPromoCtaLabel');
+    const inpCtaUrl = document.getElementById('inputPromoCtaUrl');
+    const rawUrl = inpCtaUrl ? inpCtaUrl.value : '';
+    const urlCheck = this._normalizeSafePromoUrl(rawUrl);
+    return {
+      draft: {
+        enabled: chkEnabled ? Boolean(chkEnabled.checked) : true,
+        theme: this._draftPromoTheme || 'slate',
+        badgeText: this._cleanSingleLinePromoText(inpBadge ? inpBadge.value : '', 24),
+        messageText: this._cleanSingleLinePromoText(inpMsg ? inpMsg.value : '', 52),
+        ctaLabel: this._cleanSingleLinePromoText(inpCtaLabel ? inpCtaLabel.value : '', 14),
+        ctaUrl: urlCheck.ok ? urlCheck.url : ''
+      },
+      rawUrl: String(rawUrl || '').trim(),
+      urlValid: urlCheck.ok
+    };
+  }
+
+  renderPromoBannerLivePreview() {
+    const mount = document.getElementById('promoBannerLivePreviewMount');
+    if (!mount) return;
+    const { draft } = this._collectDraftPromoBannerFromModal();
+    const sampleBanner = {
+      enabled: true,
+      theme: draft.theme || 'slate',
+      badgeText: draft.badgeText || (!draft.messageText ? '대치 OO수학 · 김수학T' : ''),
+      messageText: draft.messageText || (!draft.badgeText ? '겨울방학 미적분 특강 개강 · 상시 질의응답' : ''),
+      ctaLabel: draft.ctaUrl ? (draft.ctaLabel || '바로가기') : (draft.ctaLabel || (!draft.badgeText && !draft.messageText ? '상담·블로그' : '')),
+      ctaUrl: draft.ctaUrl || (!draft.badgeText && !draft.messageText ? 'https://graphly.net' : '')
+    };
+    mount.innerHTML = '';
+    mount.classList.toggle('is-disabled-preview', !draft.enabled);
+    mount.appendChild(this._renderPromoBannerPillDOM(sampleBanner, 'preview'));
+  }
+
+  syncPromoBannerSettingsModalUI() {
+    const isLoggedIn = Boolean(this.cloudUser && this.cloudUser.uid);
+    const tier = isLoggedIn && typeof this.getUserSubscriptionTier === 'function'
+      ? this.getUserSubscriptionTier()
+      : 'free';
+    const isPremium = Boolean(isLoggedIn && tier === 'premium');
+
+    const upsellNotice = document.getElementById('promoBannerUpsellNotice');
+    const btnSave = document.getElementById('btnSavePromoBannerModal');
+    if (upsellNotice) {
+      upsellNotice.style.display = isPremium ? 'none' : 'block';
+    }
+    if (btnSave) {
+      btnSave.textContent = isPremium ? '💾 배너 설정 저장' : '💎 Premium 업그레이드하고 적용하기';
+      btnSave.classList.toggle('is-upsell-btn', !isPremium);
+    }
+
+    const themeChips = document.querySelectorAll('#promoThemeChips .promo-theme-chip');
+    themeChips.forEach((chip) => {
+      chip.classList.toggle('active', chip.dataset.promoTheme === (this._draftPromoTheme || 'slate'));
+    });
+
+    this.renderPromoBannerLivePreview();
+  }
+
+  openPromoBannerSettingsModal() {
+    const modal = document.getElementById('modalPromoBannerSettings');
+    if (!modal) return;
+
+    const cfg = this.getPromoBannerConfig();
+    const hasExisting = Boolean(cfg.badgeText || cfg.messageText || cfg.ctaUrl);
+    this._draftPromoTheme = cfg.theme || 'slate';
+
+    const chkEnabled = document.getElementById('chkPromoBannerEnabled');
+    const inpBadge = document.getElementById('inputPromoBadgeText');
+    const inpMsg = document.getElementById('inputPromoMessageText');
+    const inpCtaLabel = document.getElementById('inputPromoCtaLabel');
+    const inpCtaUrl = document.getElementById('inputPromoCtaUrl');
+
+    if (chkEnabled) chkEnabled.checked = hasExisting ? Boolean(cfg.enabled) : true;
+    if (inpBadge) inpBadge.value = cfg.badgeText || '';
+    if (inpMsg) inpMsg.value = cfg.messageText || '';
+    if (inpCtaLabel) inpCtaLabel.value = cfg.ctaLabel || '';
+    if (inpCtaUrl) inpCtaUrl.value = cfg.ctaUrl || '';
+
+    this.syncPromoBannerSettingsModalUI();
+    modal.classList.add('show');
+  }
+
+  initPromoBannerModalEvents() {
+    if (this._promoBannerEventsBound) return;
+    this._promoBannerEventsBound = true;
+
+    const modal = document.getElementById('modalPromoBannerSettings');
+    const btnOpenSettings = document.getElementById('btnOpenPromoBannerFromSettings');
+    const btnOpenShare = document.getElementById('btnOpenPromoBannerFromShare');
+    const chkQuickShare = document.getElementById('chkShareQuickPromoToggle');
+    const btnClose = document.getElementById('btnClosePromoBannerModal');
+    const btnCancel = document.getElementById('btnCancelPromoBannerModal');
+    const btnReset = document.getElementById('btnResetPromoBannerDraft');
+    const btnSave = document.getElementById('btnSavePromoBannerModal');
+    const chkEnabled = document.getElementById('chkPromoBannerEnabled');
+    const inpBadge = document.getElementById('inputPromoBadgeText');
+    const inpMsg = document.getElementById('inputPromoMessageText');
+    const inpCtaLabel = document.getElementById('inputPromoCtaLabel');
+    const inpCtaUrl = document.getElementById('inputPromoCtaUrl');
+
+    if (btnOpenSettings) {
+      btnOpenSettings.onclick = () => this.openPromoBannerSettingsModal();
+    }
+    if (btnOpenShare) {
+      btnOpenShare.onclick = () => this.openPromoBannerSettingsModal();
+    }
+    if (chkQuickShare) {
+      chkQuickShare.onchange = () => {
+        const isLoggedIn = Boolean(this.cloudUser && this.cloudUser.uid);
+        const tier = isLoggedIn && typeof this.getUserSubscriptionTier === 'function'
+          ? this.getUserSubscriptionTier()
+          : 'free';
+        if (!isLoggedIn || tier !== 'premium') {
+          chkQuickShare.checked = false;
+          this.openPromoBannerSettingsModal();
+          return;
+        }
+        const cur = this.getPromoBannerConfig();
+        if (!cur.badgeText && !cur.messageText) {
+          chkQuickShare.checked = false;
+          this.openPromoBannerSettingsModal();
+          return;
+        }
+        cur.enabled = Boolean(chkQuickShare.checked);
+        this._savePromoBannerConfigForCurrentUser(cur, true);
+        this.showToast(cur.enabled ? '📢 공유 링크 홍보배너가 켜졌습니다.' : '🔕 공유 링크 홍보배너가 꺼졌습니다.');
+      };
+    }
+
+    const closeModal = () => {
+      if (modal) modal.classList.remove('show');
+    };
+    if (btnClose) btnClose.onclick = closeModal;
+    if (btnCancel) btnCancel.onclick = closeModal;
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+      });
+    }
+
+    document.querySelectorAll('#promoThemeChips .promo-theme-chip').forEach((chip) => {
+      chip.onclick = () => {
+        this._draftPromoTheme = chip.dataset.promoTheme || 'slate';
+        this.syncPromoBannerSettingsModalUI();
+      };
+    });
+
+    [chkEnabled, inpBadge, inpMsg, inpCtaLabel, inpCtaUrl].forEach((el) => {
+      if (!el) return;
+      el.addEventListener('input', () => this.renderPromoBannerLivePreview());
+      el.addEventListener('change', () => this.renderPromoBannerLivePreview());
+    });
+
+    if (btnReset) {
+      btnReset.onclick = () => {
+        this._draftPromoTheme = 'slate';
+        if (chkEnabled) chkEnabled.checked = false;
+        if (inpBadge) inpBadge.value = '';
+        if (inpMsg) inpMsg.value = '';
+        if (inpCtaLabel) inpCtaLabel.value = '';
+        if (inpCtaUrl) inpCtaUrl.value = '';
+        this.syncPromoBannerSettingsModalUI();
+      };
+    }
+
+    if (btnSave) {
+      btnSave.onclick = () => {
+        const { draft, rawUrl, urlValid } = this._collectDraftPromoBannerFromModal();
+        if (rawUrl && !urlValid) {
+          this.showToast('⚠️ 올바른 인터넷 주소(https://...) 형식으로 입력해 주세요.');
+          if (inpCtaUrl && typeof inpCtaUrl.focus === 'function') inpCtaUrl.focus();
+          return;
+        }
+
+        const isLoggedIn = Boolean(this.cloudUser && this.cloudUser.uid);
+        const tier = isLoggedIn && typeof this.getUserSubscriptionTier === 'function'
+          ? this.getUserSubscriptionTier()
+          : 'free';
+
+        if (!isLoggedIn || tier !== 'premium') {
+          // 작성해 둔 문구 초안을 로컬에 보존한 뒤 즉시 Premium 업그레이드 창으로 자연스럽게 연결
+          this._savePromoBannerConfigForCurrentUser(draft, Boolean(isLoggedIn));
+          closeModal();
+          const modalShare = document.getElementById('modalShare');
+          if (modalShare) modalShare.classList.remove('show');
+          this.openProPricingModal('premium');
+          return;
+        }
+
+        if (draft.enabled && !draft.badgeText && !draft.messageText) {
+          this.showToast('💡 배너를 켜려면 소속/선생님 이름 또는 한 줄 홍보 문구를 입력해 주세요.');
+          if (inpMsg && typeof inpMsg.focus === 'function') inpMsg.focus();
+          return;
+        }
+
+        this._savePromoBannerConfigForCurrentUser(draft, true);
+        closeModal();
+        this.showToast('✅ 뷰어 상단 홍보배너 설정이 저장되었습니다!');
+      };
+    }
+  }
+
+  syncSmartViewerPromoBannerUI(pkg = this._viewerPkg) {
+    const headerEl = document.getElementById('smartNoteViewerHeader');
+    const headerWrap = document.getElementById('viewerHeaderPromoBannerWrap');
+    const gateWrap = document.getElementById('viewerGatePromoBannerWrap');
+    const validBanner = this._getValidViewerPromoBanner(pkg);
+
+    if (headerWrap) {
+      headerWrap.innerHTML = '';
+      if (validBanner) {
+        headerWrap.appendChild(this._renderPromoBannerPillDOM(validBanner, 'header'));
+        headerWrap.style.display = 'inline-flex';
+      } else {
+        headerWrap.style.display = 'none';
+      }
+    }
+    if (headerEl) {
+      headerEl.classList.toggle('has-promo-banner', Boolean(validBanner));
+    }
+
+    if (gateWrap) {
+      gateWrap.innerHTML = '';
+      if (validBanner) {
+        gateWrap.appendChild(this._renderPromoBannerPillDOM(validBanner, 'gate'));
+        gateWrap.style.display = 'flex';
+      } else {
+        gateWrap.style.display = 'none';
+      }
+    }
+  }
+
   async buildExportSharePackageObject(scope = 'current', filterOpts = null) {
     if (this.isAudioRecording) {
       await this.stopAudioRecording();
@@ -9497,33 +10065,313 @@
     const nowMs = Date.now();
     const quota = typeof this.getCurrentTierQuota === 'function'
       ? this.getCurrentTierQuota()
-      : { tier: 'free', shareExpiryDays: 3, isPermanentShare: false, shareFolderName: '🔗 공유 링크' };
-    const isPerm = Boolean(quota.isPermanentShare && quota.tier === 'premium');
+      : { tier: 'free', isGuest: !(this.cloudUser && this.cloudUser.uid), shareDailyLimit: 3, shareExpiryDays: 3, isPermanentShare: false, shareFolderName: '🔗 공유 링크' };
+    const isGuest = Boolean(quota.isGuest || !this.cloudUser || !this.cloudUser.uid);
+    const isPerm = Boolean(!isGuest && quota.isPermanentShare && quota.tier === 'premium');
     const expDays = isPerm ? 0 : (Number(quota.shareExpiryDays) || (quota.tier === 'pro' ? 7 : 3));
     const expiresAtMs = isPerm ? 0 : (nowMs + expDays * 24 * 60 * 60 * 1000);
     const premUntilMs = isPerm
       ? (Number(this._subStateMeta && (this._subStateMeta.premiumExpiresAt || this._subStateMeta.expiresAt)) || (nowMs + 31 * 24 * 60 * 60 * 1000))
       : 0;
-    const randPart = (Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6)).padEnd(8, '0').slice(0, 8);
+    const randPart = this._generateSecureRandomAlphaNum(10);
     const shortId = 's' + nowMs.toString(36) + randPart;
+    const effOwnerUid = (!isGuest && this.cloudUser && this.cloudUser.uid)
+      ? this.cloudUser.uid
+      : this._getOrCreateGuestShareDeviceId();
+    const effPromoBanner = isPerm ? this.getEffectiveSharePromoBanner() : null;
     return {
       id: shortId,
       title: filteredSlides.length > 1
         ? `공유 수업 ${filteredSlides.length}문항 세트 (${new Date(nowMs).toLocaleDateString('ko-KR')})`
         : `공유 수업 노트 (${new Date(nowMs).toLocaleDateString('ko-KR')})`,
       createdAt: nowMs,
+      updatedAt: nowMs,
       expiresAt: expiresAtMs,
-      shareTier: quota.tier || 'free',
+      shareTier: isGuest ? 'guest' : (quota.tier || 'free'),
       shareExpiryDays: expDays,
       isPermanentShare: isPerm,
       premiumActiveUntil: premUntilMs,
-      ownerUid: (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : '',
+      promoBanner: effPromoBanner,
+      ownerUid: effOwnerUid,
       exportScope: effScope,
       exportFilter: { ...effFilter },
       isPlaylist: filteredSlides.length > 1,
       playlistSlides: filteredSlides,
       currentIndex: 0
     };
+  }
+
+  // ============================================================================
+  // 🔑 [비로그인 기기 토큰 · 세션 편집 키 · KST 자정 기준 1일 3개 공유 쿼터 & 서버 티켓 연동]
+  // ============================================================================
+  _generateSecureRandomHex(byteLen = 16) {
+    const len = Math.max(8, Number(byteLen) || 16);
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const arr = new Uint8Array(len);
+      crypto.getRandomValues(arr);
+      let out = '';
+      for (let i = 0; i < arr.length; i++) {
+        out += arr[i].toString(16).padStart(2, '0');
+      }
+      return out;
+    }
+    let fallback = '';
+    while (fallback.length < len * 2) {
+      fallback += Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
+    }
+    return fallback.slice(0, len * 2);
+  }
+
+  _generateSecureRandomAlphaNum(charLen = 10) {
+    const alphabet = '0123456789abcdefghijklmnopqrstuvwxyz';
+    const len = Math.max(6, Number(charLen) || 10);
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const arr = new Uint8Array(len);
+      crypto.getRandomValues(arr);
+      let out = '';
+      for (let i = 0; i < len; i++) {
+        out += alphabet[arr[i] % 36];
+      }
+      return out;
+    }
+    let fallback = '';
+    while (fallback.length < len) {
+      fallback += Math.random().toString(36).slice(2);
+    }
+    return fallback.replace(/[^a-z0-9]/g, '0').slice(0, len);
+  }
+
+  _getKstDateKey(nowMs = Date.now()) {
+    return new Date(Number(nowMs) + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+
+  _getOrCreateGuestShareDeviceId() {
+    if (this._cachedGuestShareDeviceId && /^gdev_[a-f0-9]{24,64}$/.test(this._cachedGuestShareDeviceId)) {
+      return this._cachedGuestShareDeviceId;
+    }
+    const storageKey = 'graphly_guest_device_id_v1';
+    try {
+      const saved = String(localStorage.getItem(storageKey) || '').trim();
+      if (/^gdev_[a-f0-9]{24,64}$/.test(saved)) {
+        this._cachedGuestShareDeviceId = saved;
+        return saved;
+      }
+    } catch (e) { }
+    const fresh = 'gdev_' + this._generateSecureRandomHex(16);
+    this._cachedGuestShareDeviceId = fresh;
+    try { localStorage.setItem(storageKey, fresh); } catch (e) { }
+    if (typeof this._idbCacheSet === 'function') {
+      this._idbCacheSet(storageKey, fresh, 0).catch(() => { });
+    }
+    return fresh;
+  }
+
+  _getOrCreateSessionOwnerEditKey(shortId) {
+    const cleanId = String(shortId || '').trim();
+    if (!this._sessionShareEditKeys) {
+      this._sessionShareEditKeys = new Map();
+    }
+    if (this._sessionShareEditKeys.has(cleanId)) {
+      return this._sessionShareEditKeys.get(cleanId);
+    }
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        const saved = String(sessionStorage.getItem('graphly_share_edit_key_' + cleanId) || '').trim();
+        if (/^[a-f0-9]{24,64}$/.test(saved)) {
+          this._sessionShareEditKeys.set(cleanId, saved);
+          return saved;
+        }
+      }
+    } catch (e) { }
+    const freshKey = this._generateSecureRandomHex(16);
+    this._sessionShareEditKeys.set(cleanId, freshKey);
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('graphly_share_edit_key_' + cleanId, freshKey);
+      }
+    } catch (e) { }
+    return freshKey;
+  }
+
+  _resetActiveShareSessionCache() {
+    this._activeSessionShareShortId = '';
+    this._lastShareNoteSessionKey = '';
+    this._lastShareContentSig = '';
+    this._lastShareTier = '';
+    this._lastSessionShareManifestMeta = null;
+  }
+
+  _getShareDailyStorageKey() {
+    if (this.cloudUser && this.cloudUser.uid) {
+      const emailNorm = String(this.cloudUser.email || '').trim().toLowerCase();
+      const acctTag = emailNorm ? emailNorm.replace(/[^a-z0-9@._-]/g, '_') : String(this.cloudUser.uid);
+      return `graphly_share_daily_v1_user_${acctTag}`;
+    }
+    return `graphly_share_daily_v1_${this._getOrCreateGuestShareDeviceId()}`;
+  }
+
+  getShareDailyUsageStatus() {
+    const quota = typeof this.getCurrentTierQuota === 'function'
+      ? this.getCurrentTierQuota()
+      : { tier: 'free', isGuest: !(this.cloudUser && this.cloudUser.uid), shareDailyLimit: 3 };
+    const isGuest = Boolean(quota.isGuest || !this.cloudUser || !this.cloudUser.uid);
+    const tier = isGuest ? 'guest' : (quota.tier || 'free');
+    const dailyLimit = (tier === 'pro' || tier === 'premium') ? 0 : (Number(quota.shareDailyLimit) || 3);
+    const kstDate = this._getKstDateKey();
+    if (dailyLimit <= 0) {
+      return {
+        tier,
+        isGuest: false,
+        dailyLimit: 0,
+        usedCount: 0,
+        remainingCount: Infinity,
+        kstDate
+      };
+    }
+    let usedCount = 0;
+    try {
+      const raw = localStorage.getItem(this._getShareDailyStorageKey());
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.date === kstDate) {
+          usedCount = Math.max(0, Number(parsed.count) || 0);
+        }
+      }
+    } catch (e) { }
+    return {
+      tier,
+      isGuest,
+      dailyLimit,
+      usedCount,
+      remainingCount: Math.max(0, dailyLimit - usedCount),
+      kstDate
+    };
+  }
+
+  _syncLocalShareDailyUsage(kstDate, usedCount) {
+    const effDate = String(kstDate || this._getKstDateKey());
+    const effCount = Math.max(0, Number(usedCount) || 0);
+    try {
+      localStorage.setItem(this._getShareDailyStorageKey(), JSON.stringify({
+        date: effDate,
+        count: effCount,
+        updatedAt: Date.now()
+      }));
+    } catch (e) { }
+    if (typeof this.refreshShareTierNoticeUI === 'function') {
+      this.refreshShareTierNoticeUI();
+    }
+  }
+
+  _handleShareDailyLimitExceeded(isGuest = false) {
+    const modalShare = document.getElementById('modalShare');
+    if (modalShare) modalShare.classList.remove('show');
+    if (isGuest || !this.cloudUser || !this.cloudUser.uid) {
+      if (typeof this.promptCloudLoginForLibrary === 'function') {
+        this.promptCloudLoginForLibrary('🔒 오늘 비로그인 공유 한도(1일 3개)를 모두 사용했습니다. 무료 로그인 시 계정당 1일 3개가 추가 제공됩니다!');
+      } else {
+        this.showToast('🔒 오늘 비로그인 공유 한도(1일 3개)를 모두 사용했습니다. 무료 로그인 후 이용해 주세요!');
+      }
+      return;
+    }
+    this.showToast('👑 오늘 무료 공유 링크 한도(1일 3개)를 모두 사용했습니다. Pro 업그레이드 시 무제한(7일 유지)으로 공유됩니다!');
+    if (typeof this.openProPricingModal === 'function') {
+      this.openProPricingModal('pro');
+    }
+  }
+
+  async _requestShareUploadTicket(shortId, slideCount = 1, isReuse = false) {
+    const isHttpEnv = Boolean(typeof window !== 'undefined' && window.location && /^https?:$/i.test(window.location.protocol));
+    const isGuest = !this.cloudUser || !this.cloudUser.uid;
+    const ownerEditKey = this._getOrCreateSessionOwnerEditKey(shortId);
+    const deviceId = this._getOrCreateGuestShareDeviceId();
+
+    if (!isHttpEnv) {
+      const usage = this.getShareDailyUsageStatus();
+      if (!isReuse && usage.dailyLimit > 0 && usage.remainingCount <= 0) {
+        return { ok: false, code: 'DAILY_SHARE_LIMIT_EXCEEDED', dailyUsed: usage.usedCount, kstDate: usage.kstDate };
+      }
+      const nextUsed = (!isReuse && usage.dailyLimit > 0) ? (usage.usedCount + 1) : usage.usedCount;
+      return {
+        ok: true,
+        fallbackLocal: true,
+        dailyLimit: usage.dailyLimit,
+        dailyUsed: nextUsed,
+        kstDate: usage.kstDate
+      };
+    }
+
+    const endpoint = this.SHARE_TICKET_BACKEND_URL || 'https://asia-northeast3-graphly-net.cloudfunctions.net/issueShareUploadTicket';
+    const headers = { 'Content-Type': 'application/json' };
+    if (!isGuest && typeof this._getFirebaseIdTokenForRest === 'function') {
+      const idToken = await this._getFirebaseIdTokenForRest(true);
+      if (idToken) {
+        headers['Authorization'] = 'Bearer ' + idToken;
+      }
+    }
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          shortId,
+          ownerEditKey,
+          deviceId,
+          uid: (!isGuest && this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : '',
+          slideCount: Math.max(1, Number(slideCount) || 1),
+          isReuse: Boolean(isReuse)
+        })
+      });
+      if (res.status === 404 && !isGuest) {
+        // Cloud Functions 배포 전 환경에서 로그인 회원의 공유 중단 방지 폴백
+        const usage = this.getShareDailyUsageStatus();
+        if (!isReuse && usage.dailyLimit > 0 && usage.remainingCount <= 0) {
+          return { ok: false, code: 'DAILY_SHARE_LIMIT_EXCEEDED', dailyUsed: usage.usedCount, kstDate: usage.kstDate };
+        }
+        return {
+          ok: true,
+          fallbackLocal: true,
+          dailyLimit: usage.dailyLimit,
+          dailyUsed: (!isReuse && usage.dailyLimit > 0) ? (usage.usedCount + 1) : usage.usedCount,
+          kstDate: usage.kstDate
+        };
+      }
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || !data.ok) {
+        return data || { ok: false, code: `HTTP_${res.status}` };
+      }
+      return data;
+    } catch (err) {
+      if (!isGuest) {
+        const usage = this.getShareDailyUsageStatus();
+        if (!isReuse && usage.dailyLimit > 0 && usage.remainingCount <= 0) {
+          return { ok: false, code: 'DAILY_SHARE_LIMIT_EXCEEDED', dailyUsed: usage.usedCount, kstDate: usage.kstDate };
+        }
+        return {
+          ok: true,
+          fallbackLocal: true,
+          dailyLimit: usage.dailyLimit,
+          dailyUsed: (!isReuse && usage.dailyLimit > 0) ? (usage.usedCount + 1) : usage.usedCount,
+          kstDate: usage.kstDate
+        };
+      }
+      return { ok: false, code: 'NETWORK_ERROR' };
+    }
+  }
+
+  async _lockShareUploadTicketOnServer(shortId) {
+    const isHttpEnv = Boolean(typeof window !== 'undefined' && window.location && /^https?:$/i.test(window.location.protocol));
+    if (!isHttpEnv || !shortId) return;
+    const ownerEditKey = this._getOrCreateSessionOwnerEditKey(shortId);
+    const endpoint = this.SHARE_LOCK_BACKEND_URL || 'https://asia-northeast3-graphly-net.cloudfunctions.net/lockShareUploadTicket';
+    try {
+      await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shortId, ownerEditKey })
+      });
+    } catch (e) { }
   }
 
   _computeShareNoteSessionKey(scope, slides) {
@@ -9539,7 +10387,8 @@
 
   _computeShareContentSignature(scope, filterOpts, slides) {
     const f = filterOpts || {};
-    const filterKey = `${scope || 'current'}|${Boolean(f.includeProblem)}|${Boolean(f.includeGraph)}|${Boolean(f.includeInk)}|${f.includeAudio !== false}`;
+    const promoSig = typeof this._getPromoBannerSignature === 'function' ? this._getPromoBannerSignature() : 'nopromo';
+    const filterKey = `${scope || 'current'}|${Boolean(f.includeProblem)}|${Boolean(f.includeGraph)}|${Boolean(f.includeInk)}|${f.includeAudio !== false}|${promoSig}`;
     const arr = Array.isArray(slides) ? slides : [];
     const slideSigs = arr.map((s, idx) => {
       if (!s) return String(idx);
@@ -9588,8 +10437,10 @@
   }
 
   async createCloudSharePackage(scope = null, filterOpts = null) {
-    if (!this.cloudUser || !this.cloudUser.uid) {
-      this.promptCloudLoginForLibrary('🔒 수업 공유 링크 및 QR 생성은 무료 로그인 후 이용할 수 있습니다.');
+    // 0) 활성 재사용 세션이 없는 신규 공유 시, 로컬 1일 3개 한도 도달 여부를 스냅샷 렌더링 전에 0.00초 즉시 점검!
+    const preUsage = this.getShareDailyUsageStatus();
+    if (!this._activeSessionShareShortId && preUsage.dailyLimit > 0 && preUsage.remainingCount <= 0) {
+      this._handleShareDailyLimitExceeded(preUsage.isGuest);
       return null;
     }
 
@@ -9618,18 +10469,51 @@
       return this._activeSessionShareShortId;
     }
 
-    // 2) 동일한 문제/수업 노트에서 필기·오타·음성을 수정하고 다시 공유를 누른 경우: 직전 shortId 재사용
-    const isReusingSessionShortId = Boolean(this._activeSessionShareShortId && this._lastShareNoteSessionKey === noteSessionKey);
+    // 2) 동일한 문제/수업 노트 & 동일 등급에서 필기·오타·음성을 수정하고 다시 공유를 누른 경우: 직전 shortId 재사용 (쿼터 추가 차감 0!)
+    const isReusingSessionShortId = Boolean(
+      this._activeSessionShareShortId &&
+      this._lastShareNoteSessionKey === noteSessionKey &&
+      this._lastShareTier === pkg.shareTier
+    );
+    if (!isReusingSessionShortId && preUsage.dailyLimit > 0 && preUsage.remainingCount <= 0) {
+      this._handleShareDailyLimitExceeded(preUsage.isGuest);
+      return null;
+    }
     if (isReusingSessionShortId) {
       pkg.id = this._activeSessionShareShortId;
     }
     const shortId = pkg.id;
     const prevSessionMeta = isReusingSessionShortId ? this._lastSessionShareManifestMeta : null;
 
+    // 3) 서버 티켓 발급 & 1일 3개 쿼터 원자적 검증 (Guest 기기별 / Free 계정별 / Pro·Premium 무제한)
+    const ticketRes = await this._requestShareUploadTicket(
+      shortId,
+      Array.isArray(pkg.playlistSlides) ? pkg.playlistSlides.length : 1,
+      isReusingSessionShortId
+    );
+    if (!ticketRes || !ticketRes.ok) {
+      if (ticketRes && ticketRes.code === 'DAILY_SHARE_LIMIT_EXCEEDED') {
+        this._syncLocalShareDailyUsage(ticketRes.kstDate, ticketRes.dailyUsed || preUsage.dailyLimit || 3);
+        this._handleShareDailyLimitExceeded(preUsage.isGuest);
+      } else if (ticketRes && ticketRes.code === 'IP_EMERGENCY_RATE_LIMIT') {
+        this.promptCloudLoginForLibrary('⚠️ 현재 네트워크의 비로그인 일일 비상 한도에 도달했습니다. 무료 로그인 후 즉시 공유할 수 있습니다!');
+      } else {
+        this.showToast('⚠️ 공유 링크 티켓 발급에 실패했습니다. 네트워크 연결을 확인해 주세요.');
+      }
+      return null;
+    }
+
+    if (!ticketRes.fallbackLocal) {
+      pkg.isPermanentShare = Boolean(ticketRes.isPermanentShare);
+      pkg.shareExpiryDays = Number(ticketRes.shareExpiryDays) || 0;
+      pkg.expiresAt = pkg.isPermanentShare ? 0 : (Number(ticketRes.expiresAtMs) || pkg.expiresAt);
+      pkg.premiumActiveUntil = pkg.isPermanentShare ? (Number(ticketRes.premiumActiveUntilMs) || pkg.premiumActiveUntil) : 0;
+    }
+
     const fullPkgJson = this._stringifyWithDeduplicatedSnapshots(pkg);
     const compressedFullPkg = await this._compressJsonStringGzipBase64(fullPkgJson);
 
-    // 3) 음성 데이터 Lazy Load 분리 준비 및 총 용량 사전 측정 (Premium 20GB 쿼터 연동)
+    // 4) 음성 데이터 Lazy Load 분리 준비 및 총 용량 사전 측정 (Premium 20GB 쿼터 연동)
     const cloudPkg = JSON.parse(fullPkgJson);
     const audioMap = {};
     let hasAnyAudio = false;
@@ -9661,18 +10545,22 @@
     if (pkg.isPermanentShare) {
       const replacingBytes = existingLibShareItem ? (Number(existingLibShareItem.byteSize) || 0) : 0;
       if (!this.checkCanUploadBytesToCloud(totalShareBytes, replacingBytes, '영구 공유 링크 생성')) {
+        await this._lockShareUploadTicketOnServer(shortId);
         return null;
       }
     }
 
-    // 4) 서버 업로드 실행 (실패 시 가짜 성공 없이 즉시 null 반환하여 데이터 무결성 100% 보장)
+    const baseUid = (this.cloudUser && this.cloudUser.uid)
+      ? this.cloudUser.uid
+      : this._getOrCreateGuestShareDeviceId();
+
+    // 5) 서버 업로드 실행 (실패 시 가짜 성공 없이 즉시 null 반환하여 데이터 무결성 100% 보장)
     try {
       const CHUNK_LIMIT = 700000;
       let uploadedAudioChunkCount = 0;
       const audioPrefix = `${shortId}_audio_`;
       if (hasAnyAudio && audioNetStr) {
         const audioChunks = this._splitStringIntoSafeFirestoreChunks(audioNetStr, CHUNK_LIMIT);
-        const baseUid = this.cloudUser.uid;
         const AUDIO_BATCH_SIZE = 6;
         for (let b = 0; b < audioChunks.length; b += AUDIO_BATCH_SIZE) {
           const batchSlice = audioChunks.slice(b, b + AUDIO_BATCH_SIZE);
@@ -9695,12 +10583,13 @@
 
       await this._firestoreRestWrite('shared_workspaces', shortId, cloudPkg, {
         skipLocalFullCache: true,
+        baseOwnerUid: baseUid,
         expireAtMs: pkg.isPermanentShare ? 0 : (pkg.expiresAt || 0),
         isPermanentShare: Boolean(pkg.isPermanentShare),
         premiumActiveUntilMs: Number(pkg.premiumActiveUntil) || 0
       });
 
-      // 이전 세션 공유를 덮어쓴 경우 남은 꼬리 청크 정리
+      // 이전 세션 공유를 덮어쓴 경우 티켓 잠금 직전에 남은 꼬리 청크 정리
       if (prevSessionMeta) {
         const cleanTasks = [];
         const oldPartCnt = Number(prevSessionMeta._chunkCount) || 0;
@@ -9719,6 +10608,11 @@
         }
       }
 
+      // 업로드 완료 즉시 서버 티켓 잠금 (외부 열람자의 사후 위변조 0% 보장)
+      if (!ticketRes.fallbackLocal) {
+        await this._lockShareUploadTicketOnServer(shortId);
+      }
+
       this._lastSessionShareManifestMeta = {
         id: shortId,
         _isChunked: Boolean(cloudPkg._isChunked),
@@ -9731,8 +10625,13 @@
         _audioChunkCount: cloudPkg._audioChunkCount || 0
       };
     } catch (err) {
-      this.showToast('⚠️ 공유 링크 서버 업로드에 실패했습니다. 네트워크 연결 또는 로그인 상태를 확인해 주세요.');
+      await this._lockShareUploadTicketOnServer(shortId);
+      this.showToast('⚠️ 공유 링크 서버 업로드에 실패했습니다. 네트워크 연결 상태를 확인해 주세요.');
       return null;
+    }
+
+    if (ticketRes && Number(ticketRes.dailyLimit) > 0) {
+      this._syncLocalShareDailyUsage(ticketRes.kstDate, ticketRes.dailyUsed);
     }
 
     this._activeSessionShareShortId = shortId;
@@ -9745,9 +10644,9 @@
     await this._idbCacheSet('graphly_full_doc_' + shortId, compressedFullPkg, pkg.expiresAt || 0).catch(() => { });
     try { localStorage.removeItem('graphly_cloud_share_' + shortId); } catch (e) { }
 
-    // 5) 💎 [Premium 핵심 정책]: 영구 공유 링크 생성 시 원본을 무조건 내 클라우드 [🔗 공유 링크] 폴더로 자동 귀속!
+    // 6) 💎 [Premium 핵심 정책]: 영구 공유 링크 생성 시 원본을 무조건 내 클라우드 [🔗 공유 링크] 폴더로 자동 귀속!
     // (청크 중복 업로드 0바이트 — 경량 매니페스트만 기록하여 20GB 쿼터에 합산 & 보관함에서 파일 삭제 시 링크 동시 폭파)
-    if (pkg.isPermanentShare) {
+    if (pkg.isPermanentShare && this.cloudUser && this.cloudUser.uid) {
       try {
         const quota = typeof this.getCurrentTierQuota === 'function' ? this.getCurrentTierQuota() : null;
         const defaultShareFolder = (quota && quota.shareFolderName) || '🔗 공유 링크';
@@ -10009,7 +10908,11 @@
         }
         if (checkRes.ok) {
           const checkData = await checkRes.json();
-          if (checkData && checkData.fields) {
+          const serverUpdateMs = (checkData && checkData.updateTime) ? (Date.parse(checkData.updateTime) || 0) : 0;
+          const cachedStampMs = Number(pkg.updatedAt || pkg.createdAt || 0);
+          if (serverUpdateMs > 0 && cachedStampMs > 0 && serverUpdateMs > cachedStampMs + 5000) {
+            pkg = null;
+          } else if (checkData && checkData.fields) {
             if (checkData.fields.isPermanentShare && checkData.fields.isPermanentShare.booleanValue) {
               pkg._topIsPermanentShare = true;
             }
@@ -10731,6 +11634,8 @@
     const pkg = {
       id: 'preview_' + Date.now().toString(36),
       createdAt: Date.now(),
+      _isLocalPreview: true,
+      promoBanner: this.getEffectiveSharePromoBanner(),
       exportScope: previewSlides.length > 1 ? 'all' : 'current',
       exportFilter: { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true },
       isPlaylist: Boolean(this.isLessonPlaylistActive) || previewSlides.length > 1,
@@ -11083,6 +11988,7 @@
     }
     this._viewerPkg = pkg;
     this._mobileViewerFsAttempted = false;
+    this.syncSmartViewerPromoBannerUI(pkg);
     const startIdx = Math.max(0, Math.min(pkg.playlistSlides.length - 1, pkg.currentIndex || 0));
     this._preloadSmartViewerSlides(pkg, startIdx);
     document.body.classList.remove('viewer-graph-touch-mode');

@@ -601,7 +601,7 @@
       if (isPro) {
         return (cfg && cfg.proMaxRecordMs) ? cfg.proMaxRecordMs : (60 * 60 * 1000);
       }
-      return (cfg && cfg.freeMaxRecordMs) ? cfg.freeMaxRecordMs : (3 * 60 * 1000);
+      return (cfg && cfg.freeMaxRecordMs) ? cfg.freeMaxRecordMs : (5 * 60 * 1000);
     }
 
     _computeOtherSlidesRecordedDurationMs() {
@@ -648,7 +648,7 @@
       const maxMinutes = Math.max(1, Math.round(maxDurationMs / 60000));
       const totalElapsed = this.getTotalLessonRecordedDurationMs();
 
-      // 제한 시간(무료 3분 / Pro·Premium 60분) 도달 시 데이터 보호를 위해 안전하게 자동 마감
+      // 제한 시간(비로그인·무료 5분 / Pro·Premium 60분) 도달 시 데이터 보호를 위해 안전하게 자동 마감
       if (totalElapsed >= maxDurationMs && !this._isAutoStoppingByLimit) {
         this._isAutoStoppingByLimit = true;
         const isPaid = (typeof this.isProSubscriber === 'function') ? this.isProSubscriber() : Boolean(this.isProUser);

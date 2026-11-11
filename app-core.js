@@ -6603,8 +6603,15 @@ class GraphApp {
       const syncShareTierNoticeUI = () => {
         const lblTierNotice = document.getElementById('lblShareLinkTierNotice');
         if (!lblTierNotice) return;
+        const usage = (typeof this.getShareDailyUsageStatus === 'function')
+          ? this.getShareDailyUsageStatus()
+          : null;
         if (!this.cloudUser || !this.cloudUser.uid) {
-          lblTierNotice.textContent = '🔒 공유 링크 · QR 생성은 무료 로그인 후 이용 가능 (이미지·파일 저장은 비로그인 가능)';
+          const quota = (typeof this.getCurrentTierQuota === 'function') ? this.getCurrentTierQuota() : null;
+          const days = (quota && quota.shareExpiryDays) ? quota.shareExpiryDays : 3;
+          const limit = (usage && usage.dailyLimit) ? usage.dailyLimit : 3;
+          const rem = (usage && typeof usage.remainingCount === 'number') ? usage.remainingCount : limit;
+          lblTierNotice.textContent = `🔗 비로그인 공유: 오늘 남은 횟수 ${rem}/${limit}회 · ${days}일 후 만료 (Pro 무제한)`;
           return;
         }
         const tier = (typeof this.getUserSubscriptionTier === 'function')
@@ -6612,16 +6619,22 @@ class GraphApp {
           : (this.isProUser ? 'pro' : 'free');
         const quota = (typeof this.getCurrentTierQuota === 'function') ? this.getCurrentTierQuota() : null;
         if (tier === 'premium') {
-          lblTierNotice.textContent = '💎 Premium 영구 공유 링크 · 원본 파일이 내 클라우드 [🔗 공유 링크] 폴더에 자동 보관됩니다';
+          lblTierNotice.textContent = '💎 Premium 무제한 영구 링크 · 원본 파일이 내 클라우드 [🔗 공유 링크] 폴더에 자동 저장됩니다';
         } else if (tier === 'pro') {
           const days = (quota && quota.shareExpiryDays) ? quota.shareExpiryDays : 7;
-          lblTierNotice.textContent = `👑 Pro 공유 링크 유효기간: 생성일로부터 ${days}일 (Premium 업그레이드 시 만료 없음)`;
+          lblTierNotice.textContent = `👑 Pro 무제한 공유 · 생성일로부터 ${days}일 유지 (Premium 업그레이드 시 영구 유지)`;
         } else {
           const days = (quota && quota.shareExpiryDays) ? quota.shareExpiryDays : 3;
-          lblTierNotice.textContent = `🔗 무료 공유 링크 유효기간: 생성일로부터 ${days}일 (Pro 7일 · Premium 영구 유지)`;
+          const limit = (usage && usage.dailyLimit) ? usage.dailyLimit : 3;
+          const rem = (usage && typeof usage.remainingCount === 'number') ? usage.remainingCount : limit;
+          lblTierNotice.textContent = `🔗 무료 공유: 오늘 남은 횟수 ${rem}/${limit}회 · ${days}일 후 만료 (Pro 7일 무제한 · Premium 영구)`;
         }
       };
+      this.refreshShareTierNoticeUI = syncShareTierNoticeUI;
       syncShareTierNoticeUI();
+      if (typeof this.syncShareModalPromoBannerUI === 'function') {
+        this.syncShareModalPromoBannerUI();
+      }
     };
 
     const renderQr = (urlStr) => {
@@ -6641,9 +6654,16 @@ class GraphApp {
     let cachedCloudShareSig = '';
     let shareLinkGenerationPromise = null;
 
+    this._invalidateShareModalLinkCache = () => {
+      cachedCloudShareUrl = '';
+      cachedCloudShareSig = '';
+      shareLinkGenerationPromise = null;
+    };
+
     const getShareFilterSig = () => {
       const f = this.exportFilter || {};
-      return `${this.exportScope}|${Boolean(f.includeProblem)}|${Boolean(f.includeGraph)}|${Boolean(f.includeInk)}|${f.includeAudio !== false}`;
+      const promoSig = typeof this._getPromoBannerSignature === 'function' ? this._getPromoBannerSignature() : 'nopromo';
+      return `${this.exportScope}|${Boolean(f.includeProblem)}|${Boolean(f.includeGraph)}|${Boolean(f.includeInk)}|${f.includeAudio !== false}|${promoSig}`;
     };
 
     // ⚡ 체크박스·범위 변경 시에는 0.00초 만에 UI만 즉시 갱신 (무거운 스캔·클라우드 업로드·QR 렌더링 전혀 안 함!)
@@ -6660,16 +6680,8 @@ class GraphApp {
     };
 
     // 🚀 실제로 [공유 링크 복사] 또는 [QR 생성·저장] 버튼을 눌렀을 때만 클라우드 공유 링크 생성!
+    // (비로그인 기기당 1일 3개 · 무료 회원 계정당 1일 3개 · Pro/Premium 무제한)
     const ensureCloudShareLinkOnDemand = async () => {
-      if (!this.cloudUser || !this.cloudUser.uid) {
-        if (modal) modal.classList.remove('show');
-        if (typeof this.promptCloudLoginForLibrary === 'function') {
-          this.promptCloudLoginForLibrary('🔒 공유 링크 및 QR 생성은 무료 회원가입·로그인 후 이용할 수 있습니다.');
-        } else {
-          this.showToast('🔒 공유 링크 및 QR 생성은 무료 로그인 후 이용할 수 있습니다.');
-        }
-        return null;
-      }
       const curSig = getShareFilterSig();
       if (cachedCloudShareUrl && cachedCloudShareSig === curSig) {
         return cachedCloudShareUrl;

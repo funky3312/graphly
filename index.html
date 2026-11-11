@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261112_61">
+  <link rel="stylesheet" href="style.css?v=20261112_65">
 </head>
 
 <body class="theme-light">
@@ -633,8 +633,17 @@
                   </div>
                 </div>
 
-                <!-- 섹션: 이용권 구매 · 사용법 및 문의 -->
+                <!-- 섹션: 뷰어 홍보배너 · 이용권 구매 · 사용법 및 문의 -->
                 <div class="settings-clean-divider-block">
+                  <button type="button" id="btnOpenPromoBannerFromSettings"
+                    class="settings-clean-btn settings-promo-open-btn"
+                    style="width: 100%; margin-bottom: 5px;"
+                    title="영구 공유 링크 열람 시 학생 뷰어 상단에 노출되는 학원·선생님 홍보배너를 설정합니다 (Premium 전용)">
+                    <span class="settings-promo-open-left">
+                      <span>뷰어 홍보배너 설정</span>
+                    </span>
+                    <span id="badgeSettingsPromoStatus" class="settings-promo-status-badge">💎 Premium</span>
+                  </button>
                   <button type="button" id="btnOpenProPricingFromSettings" class="settings-clean-btn"
                     style="width: 100%;">
                     이용권 구매
@@ -2090,6 +2099,20 @@
             </button>
           </div>
           <div id="lblShareLinkTierNotice" class="share-link-tier-notice"></div>
+          <div id="shareModalPromoBannerBox" class="share-promo-banner-quick-row">
+            <div class="share-promo-quick-left">
+              <span class="share-promo-quick-icon">📢</span>
+              <span id="lblSharePromoSummary" class="share-promo-quick-summary">뷰어 홍보배너</span>
+            </div>
+            <div class="share-promo-quick-right">
+              <label id="wrapShareQuickPromoToggle" class="vf-toggle-wrap share-promo-mini-toggle" style="display: none;"
+                title="이번 공유 링크에 홍보배너 표시 켜기/끄기">
+                <input type="checkbox" id="chkShareQuickPromoToggle">
+                <span class="vf-toggle-slider"></span>
+              </label>
+              <button type="button" id="btnOpenPromoBannerFromShare" class="share-promo-config-btn">💎 미리보기</button>
+            </div>
+          </div>
           <!-- 오프스크린 QR 생성 캔버스 및 호환용 숨김 필드 -->
           <div style="display: none !important;">
             <input type="text" id="inputShareLink" class="share-link-input" readonly>
@@ -2162,6 +2185,9 @@
         </div>
         <span id="lblViewerTitleBadge" class="viewer-title-badge" style="display: none;">Graphly</span>
       </div>
+
+      <!-- 💎 Premium 강사·학원 홍보배너 (상단 바 노출 시 함께 내려오고, 문제 풀이 몰입 시 화면 밖으로 완전히 숨김) -->
+      <div id="viewerHeaderPromoBannerWrap" class="smart-viewer-center-promo" style="display: none;"></div>
 
       <div class="smart-viewer-right">
         <button type="button" id="btnViewerPlayAudioLecture_legacy" class="viewer-top-btn viewer-top-btn-audio"
@@ -2250,6 +2276,7 @@
 
     <!-- 🌟 처음 열렸을 때 뒷배경 노트를 살짝 흐리게 보여주고 정중앙에 띄우는 전체화면 시작 게이트 -->
     <div id="viewerFullscreenGate" class="viewer-fullscreen-gate" style="display: none;">
+      <div id="viewerGatePromoBannerWrap" class="viewer-gate-promo-wrap" style="display: none;"></div>
       <button type="button" id="btnViewerFullscreenGateStart" class="viewer-fullscreen-gate-btn">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
           stroke-linecap="round" stroke-linejoin="round">
@@ -2546,7 +2573,7 @@
               <div class="cloud-quota-bar-track">
                 <div id="barCloudQuotaFill" class="cloud-quota-bar-fill" style="width: 0%;"></div>
               </div>
-              <div id="lblCloudQuotaUsageText" class="cloud-quota-usage-text">0 KB / 50 MB</div>
+              <div id="lblCloudQuotaUsageText" class="cloud-quota-usage-text">0 KB / 100 MB</div>
             </div>
           </aside>
 
@@ -2664,15 +2691,17 @@
           <div id="cardPlanFree" class="pro-plan-select-card pricing-tier-card is-free-baseline">
             <div class="pricing-tier-badge badge-free">기본 제공</div>
             <div class="pricing-tier-name">Free <span class="pricing-tier-sub">무료</span></div>
+            <div class="pricing-tier-regular-price is-placeholder" aria-hidden="true">정가 0원</div>
             <div class="pricing-tier-price-row">
               <span class="pricing-tier-price">0원</span>
               <span class="pricing-tier-unit">/ 평생 무료</span>
             </div>
             <ul class="pricing-tier-features">
-              <li>☁️ 클라우드 보관함 <strong id="lblPlanFreeCloud">50 MB</strong></li>
-              <li>⭐ 내 그래프 프리셋 <strong id="lblPlanFreeGraphs">3개</strong></li>
-              <li>🎙️ 수업 연속 녹화 <strong id="lblPlanFreeRec">3분</strong></li>
-              <li>🔗 공유 링크 <strong id="lblPlanFreeShare">3일 후 자동 폭파</strong></li>
+              <li>💾 내 기기(로컬) 저장 <strong>무제한</strong></li>
+              <li>☁️ 클라우드 보관함 <strong id="lblPlanFreeCloud">100 MB</strong></li>
+              <li>⭐ 내 그래프 프리셋 <strong id="lblPlanFreeGraphs">3개 (로그인)</strong></li>
+              <li>🎙️ 수업 연속 녹화 <strong id="lblPlanFreeRec">5분</strong></li>
+              <li>🔗 공유 링크 <strong id="lblPlanFreeShare">1일 3개 · 3일 만료</strong></li>
             </ul>
             <div id="lblPlanFreeCurrentState" class="pricing-tier-foot-note">회원가입 즉시 무료 제공</div>
           </div>
@@ -2681,34 +2710,39 @@
           <div id="cardPlanPro" class="pro-plan-select-card pricing-tier-card is-selectable active" data-tier="pro">
             <div class="pricing-tier-badge badge-pro">👑 강사 추천 BEST</div>
             <div class="pricing-tier-name">Pro <span class="pricing-tier-sub">프로</span></div>
+            <div id="lblPlanProRegularPrice" class="pricing-tier-regular-price">정가 9,900원</div>
             <div class="pricing-tier-price-row">
               <span id="lblPlanProPrice" class="pricing-tier-price price-pro">4,900원</span>
               <span id="lblPlanProCycleUnit" class="pricing-tier-unit">/ 30일(VAT포함)</span>
             </div>
             <ul class="pricing-tier-features">
+              <li>💾 내 기기(로컬) 저장 <strong>무제한</strong></li>
               <li>☁️ 클라우드 보관함 <strong id="lblPlanProCloud">5 GB</strong></li>
-              <li>⭐ 내 그래프 프리셋 <strong id="lblPlanProGraphs">100개</strong></li>
+              <li>⭐ 내 그래프 프리셋 <strong id="lblPlanProGraphs">30개</strong></li>
               <li>🎙️ 수업 연속 녹화 <strong id="lblPlanProRec">60분</strong></li>
-              <li>🔗 공유 링크 <strong id="lblPlanProShare">7일 유지</strong></li>
+              <li>🔗 공유 링크 <strong id="lblPlanProShare">무제한 · 7일 만료</strong></li>
             </ul>
             <div id="lblPlanProPeriodNote" class="pricing-tier-foot-note">제공기간: 결제일로부터 30일 (단건)</div>
           </div>
 
-          <!-- 3) Premium (영구 링크 · 대용량) -->
+          <!-- 3) Premium (영구 링크 · 대용량 · 홍보배너) -->
           <div id="cardPlanPremium" class="pro-plan-select-card pricing-tier-card is-selectable tier-premium"
             data-tier="premium">
             <div class="pricing-tier-badge badge-premium">💎 학원·연구실 마스터</div>
             <div class="pricing-tier-name">Premium <span class="pricing-tier-sub">프리미엄</span></div>
+            <div id="lblPlanPremiumRegularPrice" class="pricing-tier-regular-price">정가 19,900원</div>
             <div class="pricing-tier-price-row">
-              <span id="lblPlanPremiumPrice" class="pricing-tier-price price-premium">14,900원</span>
+              <span id="lblPlanPremiumPrice" class="pricing-tier-price price-premium">9,900원</span>
               <span id="lblPlanPremiumCycleUnit" class="pricing-tier-unit">/ 30일(VAT포함)</span>
             </div>
             <ul class="pricing-tier-features">
+              <li>💾 내 기기(로컬) 저장 <strong>무제한</strong></li>
               <li>☁️ 클라우드 보관함 <strong id="lblPlanPremiumCloud">20 GB</strong></li>
               <li>⭐ 내 그래프 프리셋 <strong id="lblPlanPremiumGraphs">100개</strong></li>
               <li>🎙️ 수업 연속 녹화 <strong id="lblPlanPremiumRec">60분</strong></li>
-              <li>♾️ 공유 링크 <strong id="lblPlanPremiumShare">만료 없음 (영구)</strong></li>
-              <li class="feature-sub-highlight">📂 링크 원본 내 클라우드 자동 귀속</li>
+              <li>♾️ 공유 링크 <strong id="lblPlanPremiumShare">무제한 · 영구 링크</strong></li>
+              <li class="feature-sub-highlight">📂 링크 원본 클라우드 자동 저장</li>
+              <li class="feature-sub-highlight">📢 뷰어 상단 강사·학원 홍보배너</li>
             </ul>
             <div id="lblPlanPremiumPeriodNote" class="pricing-tier-foot-note">제공기간: 결제일로부터 30일 (단건)</div>
           </div>
@@ -2739,6 +2773,112 @@
           <strong>상호명:</strong> 큐비오랩 (CubioLab) | <strong>대표자:</strong> 이광철 | <strong>사업자등록번호:</strong> 354-08-03569<br>
           <strong>주소:</strong> 경기도 양주시 옥정로 222, 6층 606호(옥정동, 스카이타워) | <strong>고객센터:</strong> 070-8018-8238 |
           <strong>이메일:</strong> help@cubiolab.com
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- [💎 Premium 전용 뷰어 상단 강사·학원 홍보배너 설정 모달 (실시간 미리보기 스마트 빌더)] -->
+  <div id="modalPromoBannerSettings" class="smart-modal-backdrop">
+    <div class="smart-modal-card promo-banner-modal-card">
+      <div class="smart-modal-header">
+        <div class="smart-modal-title">
+          <span class="modal-icon">📢</span>
+          <span class="modal-title-text">뷰어 상단 홍보배너 설정</span>
+          <span class="promo-modal-premium-pill">💎 Premium</span>
+        </div>
+        <button type="button" id="btnClosePromoBannerModal" class="btn-modal-close" title="닫기">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="smart-modal-body promo-banner-modal-body">
+        <!-- 비-Premium 이용자 안내 배너 -->
+        <div id="promoBannerUpsellNotice" class="promo-banner-upsell-notice" style="display: none;">
+          <span>💎 <strong>Premium 전용 혜택</strong>입니다. 아래에서 우리 학원·선생님 배너를 미리 꾸며보고 업그레이드 후 바로 적용해 보세요!</span>
+        </div>
+
+        <!-- 실시간 뷰어 노출 미리보기 스테이지 -->
+        <div class="promo-live-preview-stage">
+          <div class="promo-live-preview-caption">학생 뷰어 상단 노출 미리보기</div>
+          <div id="promoBannerLivePreviewMount" class="promo-live-preview-mount"></div>
+        </div>
+
+        <!-- 배너 표시 ON/OFF 스위치 -->
+        <label class="promo-enable-switch-row">
+          <div class="promo-enable-text-col">
+            <span class="promo-enable-title">공유 링크 열람 시 상단 홍보배너 표시</span>
+            <span class="promo-enable-sub">첫 화면([전체화면으로 보기] 위)과 상단 바에 노출되며, 문제 풀이 중에는 자동 숨김됩니다.</span>
+          </div>
+          <label class="vf-toggle-wrap">
+            <input type="checkbox" id="chkPromoBannerEnabled" checked>
+            <span class="vf-toggle-slider"></span>
+          </label>
+        </label>
+
+        <!-- 컬러 테마 선택 -->
+        <div class="promo-field-group">
+          <label class="promo-field-label">배너 컬러 테마</label>
+          <div id="promoThemeChips" class="promo-theme-chips">
+            <button type="button" class="promo-theme-chip active" data-promo-theme="slate">
+              <span class="promo-theme-dot" style="background: #0f172a;"></span>
+              <span>슬레이트</span>
+            </button>
+            <button type="button" class="promo-theme-chip" data-promo-theme="royal">
+              <span class="promo-theme-dot" style="background: #2563eb;"></span>
+              <span>로열 블루</span>
+            </button>
+            <button type="button" class="promo-theme-chip" data-promo-theme="violet">
+              <span class="promo-theme-dot" style="background: #7c3aed;"></span>
+              <span>바이올렛</span>
+            </button>
+            <button type="button" class="promo-theme-chip" data-promo-theme="emerald">
+              <span class="promo-theme-dot" style="background: #059669;"></span>
+              <span>에메랄드</span>
+            </button>
+            <button type="button" class="promo-theme-chip" data-promo-theme="amber">
+              <span class="promo-theme-dot" style="background: #d97706;"></span>
+              <span>웜 골드</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 소속/선생님 배지 & 한 줄 홍보 문구 -->
+        <div class="promo-field-grid-two">
+          <div class="promo-field-group">
+            <label class="promo-field-label" for="inputPromoBadgeText">소속 · 선생님 이름 <span class="promo-opt-tag">선택 · 최대 24자</span></label>
+            <input type="text" id="inputPromoBadgeText" class="settings-clean-input promo-text-input" maxlength="24"
+              placeholder="예: 대치 OO수학 · 김수학T" autocomplete="off">
+          </div>
+          <div class="promo-field-group">
+            <label class="promo-field-label" for="inputPromoCtaLabel">연결 버튼 이름 <span class="promo-opt-tag">선택 · 최대 14자</span></label>
+            <input type="text" id="inputPromoCtaLabel" class="settings-clean-input promo-text-input" maxlength="14"
+              placeholder="예: 상담·블로그" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="promo-field-group">
+          <label class="promo-field-label" for="inputPromoMessageText">한 줄 홍보 문구 <span class="promo-opt-tag">최대 52자</span></label>
+          <input type="text" id="inputPromoMessageText" class="settings-clean-input promo-text-input" maxlength="52"
+            placeholder="예: 겨울방학 미적분 특강 개강 · 상시 질의응답 환영" autocomplete="off">
+        </div>
+
+        <div class="promo-field-group">
+          <label class="promo-field-label" for="inputPromoCtaUrl">연결 링크 주소 <span class="promo-opt-tag">선택 · 카톡 오픈채팅, 블로그, 유튜브, 홈페이지</span></label>
+          <input type="url" id="inputPromoCtaUrl" class="settings-clean-input promo-text-input" maxlength="350"
+            placeholder="https://open.kakao.com/... (비워두면 버튼 없이 깔끔한 공지 배너로 표시)" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="smart-modal-footer promo-banner-modal-footer">
+        <button type="button" id="btnResetPromoBannerDraft" class="btn-secondary promo-reset-btn">초기화</button>
+        <div class="promo-footer-right">
+          <button type="button" id="btnCancelPromoBannerModal" class="btn-secondary promo-cancel-btn">취소</button>
+          <button type="button" id="btnSavePromoBannerModal" class="btn-primary promo-save-btn">💾 배너 설정 저장</button>
         </div>
       </div>
     </div>
@@ -2985,15 +3125,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261112_61"></script>
-  <script src="app-core.js?v=20261112_61"></script>
-  <script src="app-ink.js?v=20261112_61"></script>
-  <script src="app-pdf.js?v=20261112_61"></script>
-  <script src="app-cards.js?v=20261112_61"></script>
-  <script src="app-cloud.js?v=20261112_61"></script>
-  <script src="app-canvas.js?v=20261112_61"></script>
-  <script src="app-toolkit.js?v=20261112_61"></script>
-  <script src="app.js?v=20261112_61"></script>
+  <script src="engine.js?v=20261112_65"></script>
+  <script src="app-core.js?v=20261112_65"></script>
+  <script src="app-ink.js?v=20261112_65"></script>
+  <script src="app-pdf.js?v=20261112_65"></script>
+  <script src="app-cards.js?v=20261112_65"></script>
+  <script src="app-cloud.js?v=20261112_65"></script>
+  <script src="app-canvas.js?v=20261112_65"></script>
+  <script src="app-toolkit.js?v=20261112_65"></script>
+  <script src="app.js?v=20261112_65"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (등록된 완성 도구가 2개 이상일 때 자동 표출)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
