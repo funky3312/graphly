@@ -1024,7 +1024,10 @@ class GraphApp {
       this.problemInkStrokes = JSON.parse(JSON.stringify(pc.problemInkStrokes || []));
       this.problemCardStickers = JSON.parse(JSON.stringify(pc.problemCardStickers || []));
       if (typeof pWidget._renderCardStickers === 'function') pWidget._renderCardStickers();
-      if (pImg) pImg.src = pc.imgSrc || '';
+      const safePcImgSrc = (typeof this._sanitizeCardImageUrl === 'function')
+        ? this._sanitizeCardImageUrl(pc.imgSrc || '')
+        : (pc.imgSrc || '');
+      if (pImg) pImg.src = safePcImgSrc;
       if (pTitle) pTitle.textContent = pc.titleText || '문제';
       if (pToggle) pToggle.textContent = pc.toggleText || '▾';
       pWidget.classList.toggle('minimized', Boolean(pc.minimized));
@@ -1115,7 +1118,10 @@ class GraphApp {
       this.graphInkStrokes = JSON.parse(JSON.stringify(gc.graphInkStrokes || []));
       this.graphCardStickers = JSON.parse(JSON.stringify(gc.graphCardStickers || []));
       if (typeof gWidget._renderCardStickers === 'function') gWidget._renderCardStickers();
-      if (gImg) gImg.src = gc.imgSrc || '';
+      const safeGcImgSrc = (typeof this._sanitizeCardImageUrl === 'function')
+        ? this._sanitizeCardImageUrl(gc.imgSrc || '')
+        : (gc.imgSrc || '');
+      if (gImg) gImg.src = safeGcImgSrc;
       if (gTitle) gTitle.textContent = gc.titleText || '보관 그래프 #1';
       if (gToggle) gToggle.textContent = gc.toggleText || '▾';
       gWidget.classList.toggle('minimized', Boolean(gc.minimized));
@@ -1608,6 +1614,23 @@ class GraphApp {
       if (!jsonStr) return;
       const data = (typeof jsonStr === 'string') ? JSON.parse(jsonStr) : jsonStr;
       this.graphs = data.graphs || [];
+      if (Array.isArray(this.graphs) && typeof window !== 'undefined' && window.SafeMathCompiler) {
+        this.graphs.forEach(g => {
+          if (g && g.type === 'general_expr' && Array.isArray(g.handles)) {
+            g.handles.forEach(h => {
+              if (h && typeof h.fn !== 'function') {
+                const rawExpr = h.rawExpr || g.customExpr || '';
+                if (rawExpr) {
+                  const comp = window.SafeMathCompiler.compile(rawExpr);
+                  if (comp && comp.success) {
+                    h.fn = comp.fn;
+                  }
+                }
+              }
+            });
+          }
+        });
+      }
       this.activeGraphIdx = data.activeGraphIdx !== undefined ? data.activeGraphIdx : -1;
       if (data.zoomLevel !== undefined) {
         this.zoomLevel = data.zoomLevel;
@@ -1805,7 +1828,8 @@ class GraphApp {
 
         const badge = document.createElement('span');
         badge.className = 'layer-badge';
-        badge.textContent = this.meta[g.type]?.name || '도형';
+        const baseBadgeName = this.meta[g.type]?.name || '도형';
+        badge.textContent = g.isTransposedYX ? `${baseBadgeName} (y=x)` : baseBadgeName;
 
         left.appendChild(dot);
         left.appendChild(title);
@@ -1818,13 +1842,18 @@ class GraphApp {
         // 구간 분할 모드 활성 시: '구간 참여' vs '독립 곡선' 원클릭 토글 뱃지
         if (this.usePiecewise && this.graphs.length >= 2) {
           const roleBtn = document.createElement('button');
-          const isIndep = Boolean(g.isIndependent);
+          const isIndep = Boolean(g.isIndependent || g.isTransposedYX);
           roleBtn.className = `btn-layer-role ${isIndep ? 'independent' : 'piecewise'}`;
           roleBtn.textContent = isIndep ? '🌐 독립' : '✂️ 구간';
           roleBtn.title = isIndep ? '독립 곡선' : '구간 합성';
           roleBtn.style.cssText = `padding: 2px 5px; font-size: 10px; font-weight: 600; border-radius: 4px; border: 1px solid ${isIndep ? '#00cec9' : '#a29bfe'}; background: ${isIndep ? 'rgba(0, 206, 201, 0.16)' : 'rgba(162, 155, 254, 0.16)'}; color: ${isIndep ? '#00cec9' : '#a29bfe'}; cursor: pointer; line-height: 1.2;`;
           roleBtn.onclick = (e) => {
             e.stopPropagation();
+            if (g.isTransposedYX) {
+              g.isIndependent = true;
+              this.showToast('ℹ️ y=x 대칭 전치 그래프는 항상 독립 곡선으로 동작합니다.');
+              return;
+            }
             this.pushHistoryState();
             g.isIndependent = !isIndep;
             if (!g.isIndependent) {
@@ -2045,8 +2074,11 @@ class GraphApp {
               // 남은 그래프로 부모 바인딩을 이관!
               b.layerId = survivingGraph.id;
               b.layerIds = ids.filter(id => id !== removedGraphId);
+              b.isIntersection = false;
               b.type = 'curve'; // 남은 그래프 위의 곡선 점으로 부드럽게 전환하여 추적 유지!
-              b.anchorX = dl.sourceX;
+              const worldParam = survivingGraph.isTransposedYX ? dl.sourceY : dl.sourceX;
+              b.anchorX = worldParam;
+              b.anchorBaseX = this.engine.worldXToBaseX(survivingGraph, worldParam);
               return true; // 교점 수선 살아남음!
             } else {
               // 두 그래프가 모두 삭제되었거나 남은 부모가 없으면 삭제!
@@ -2395,7 +2427,13 @@ class GraphApp {
     const curOy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
     g.transforms.push({ offset: { x: curOx, y: curOy }, abs: true });
     g.freezeOffset = { x: 0, y: 0 };
+    const partner = this.getLinkedPartner(g);
+    if (partner && typeof this._syncLinkedPartnerToTransposedMirror === 'function') {
+      this._syncLinkedPartnerToTransposedMirror(g, partner);
+      this.renderLayerList();
+    }
     this.syncControls();
+    this.updateIntersections();
     this.render();
     const stage = g.transforms.length + 1;
     this.showToast(`✨ ${stage}차 절댓값 재접기 완료!`);
@@ -2766,6 +2804,26 @@ class GraphApp {
     }
 
     this._inkBakeDirty = true;
+    if (this._hasPrimaryGraphCard && typeof this.renderPipGraphCard === 'function') {
+      this.renderPipGraphCard('primary');
+    }
+    if (Array.isArray(this.extraGraphCards) && typeof this.renderPipGraphCard === 'function') {
+      this.extraGraphCards.forEach(c => {
+        if (c) this.renderPipGraphCard(c);
+      });
+    }
+    if (typeof this.renderProblemCardCanvas === 'function') this.renderProblemCardCanvas();
+    if (typeof this.renderGraphCardCanvas === 'function') this.renderGraphCardCanvas();
+    if (Array.isArray(this.extraProblemCards)) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el && typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+      });
+    }
+    if (Array.isArray(this.extraGraphCards)) {
+      this.extraGraphCards.forEach(c => {
+        if (c && c.el && typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
+      });
+    }
     this.render();
   }
 
@@ -3749,13 +3807,25 @@ class GraphApp {
       this.engine.dragHandle(g.handles, g.type, idx, x, y, altKey, isKeyboard);
     }
 
-    // 4. [🔗 역함수 대칭 연동: 핸들러 좌표 x ↔ y 스왑 미러링]
+    // 4. [🔗 역함수 대칭 연동: 전치(Group 3)는 1:1 미러링, 표준 역함수/도형(Group 1·2)은 x ↔ y 스왑]
     const partner = this.getLinkedPartner(g);
     if (partner && partner.handles && partner.handles.length === g.handles.length) {
+      const isTransposedPair = (Boolean(g.isTransposedYX) !== Boolean(partner.isTransposedYX));
       g.handles.forEach((h, hIdx) => {
-        if (partner.handles[hIdx]) {
-          partner.handles[hIdx].x = parseFloat(h.y.toFixed(3));
-          partner.handles[hIdx].y = parseFloat(h.x.toFixed(3));
+        const ph = partner.handles[hIdx];
+        if (!ph) return;
+        if (isTransposedPair) {
+          ph.x = parseFloat(h.x.toFixed(3));
+          ph.y = parseFloat(h.y.toFixed(3));
+          ph.type = h.type;
+          ph.reflectX = Boolean(h.reflectX);
+          ph.reflectY = Boolean(h.reflectY);
+          if (h.fn) ph.fn = h.fn;
+          if (h.rawExpr !== undefined) ph.rawExpr = h.rawExpr;
+        } else {
+          ph.x = parseFloat(h.y.toFixed(3));
+          ph.y = parseFloat(h.x.toFixed(3));
+          if (h.type) ph.type = h.type;
         }
       });
     }
@@ -3778,16 +3848,30 @@ class GraphApp {
     const modeNames = {
       free: '자유', parallelogram: '평행사변형', rectangle: '직사각형', rhombus: '마름모', square: '정사각형'
     };
+    const syncQuadPartner = (g) => {
+      const partner = this.getLinkedPartner(g);
+      if (!partner || partner.type !== 'geom_quad' || !Array.isArray(partner.handles) || partner.handles.length !== g.handles.length) return;
+      partner.shapeMode = g.shapeMode || 'free';
+      partner.originCenter = Boolean(g.originCenter);
+      const isTransposedPair = (Boolean(g.isTransposedYX) !== Boolean(partner.isTransposedYX));
+      g.handles.forEach((h, i) => {
+        if (!partner.handles[i]) return;
+        partner.handles[i].x = isTransposedPair ? h.x : h.y;
+        partner.handles[i].y = isTransposedPair ? h.y : h.x;
+      });
+    };
 
     document.querySelectorAll('.quad-mode-btn').forEach(btn => {
       btn.onclick = () => {
         const g = this.activeGraph;
-        if (g.type !== 'geom_quad') return;
+        if (!g || g.type !== 'geom_quad') return;
         this.pushHistoryState();
         g.shapeMode = btn.dataset.qmode;
         this.engine.applyQuadMode(g.handles, g.shapeMode, !!g.originCenter);
+        syncQuadPartner(g);
         this.selectedHandleIdx = null;
         this.syncShapePanel();
+        this.updateIntersections();
         this.showToast(`📐 ${modeNames[g.shapeMode]} 모드! 꼭짓점을 끌어 보세요.`);
         this.render();
       };
@@ -3797,10 +3881,12 @@ class GraphApp {
     if (chkOrigin) {
       chkOrigin.onchange = (e) => {
         const g = this.activeGraph;
-        if (g.type !== 'geom_quad') return;
+        if (!g || g.type !== 'geom_quad') return;
         this.pushHistoryState();
         g.originCenter = e.target.checked;
         this.engine.applyQuadMode(g.handles, g.shapeMode || 'free', g.originCenter);
+        syncQuadPartner(g);
+        this.updateIntersections();
         this.showToast(g.originCenter ? '🎯 원점 중심 고정 ON (점대칭)' : '🎯 원점 중심 고정 해제');
         this.render();
       };
@@ -3811,14 +3897,16 @@ class GraphApp {
     if (btnDiamond) {
       btnDiamond.onclick = () => {
         const g = this.activeGraph;
-        if (g.type !== 'geom_quad') return;
+        if (!g || g.type !== 'geom_quad') return;
         this.pushHistoryState();
         g.shapeMode = 'rhombus';
         g.originCenter = true;
         const pts = [[2, 0], [0, 2], [-2, 0], [0, -2]];
         g.handles.forEach((h, i) => { h.x = pts[i][0]; h.y = pts[i][1]; });
+        syncQuadPartner(g);
         this.selectedHandleIdx = null;
         this.syncShapePanel();
+        this.updateIntersections();
         this.showToast('🔷 원점 중심 마름모 완성! 꼭짓점을 축 방향으로 끌어 보세요.');
         this.render();
       };
@@ -4770,17 +4858,21 @@ class GraphApp {
     const boundaries = this.piecewiseBoundaries || [];
     const n = boundaries.length;
 
-    // 고해상도 내보내기(isExport) 시에도 비율이 축소되지 않도록 스케일 팩터 연동
-    const exportScale = isExport ? Math.max(1, this.screenWidth / 1440) : 1;
+    // expCtx.scale(effScale, effScale)에서 이미 고해상도 배율이 일괄 반영되므로 이중 배율(exportScale) 제거
+    const exportScale = 1;
     // 🌟 [대표님 피드백 반영]: 경계점 포함/배제 동그라미(●/○) 크기를 기존의 약 2/3 비율(dotR = 6.6px, 외경 ~7.4px)로 단정하게 최적화!
     const dotR = 6.6;
-    const openFillBg = (this.isMonochromeMode || curTheme.isLight || (isExport && this.exportTransparent))
+    const isTransparentExport = Boolean(isExport && this.exportTransparent);
+    const openFillBg = (this.isMonochromeMode || curTheme.isLight)
       ? '#ffffff'
-      : curTheme.bg;
+      : (curTheme.bg || '#1e1e2e');
 
     const drawEndpointCircle = (pt, graphObj, isFilled) => {
       if (!pt || !graphObj || pt.x < -30 || pt.x > this.screenWidth + 30 || pt.y < -30 || pt.y > this.screenHeight + 30) return;
-      const strokeColor = this.isMonochromeMode ? '#000000' : graphObj.color;
+      let strokeColor = this.isMonochromeMode ? '#000000' : (graphObj.color || '#2563eb');
+      if (!this.isMonochromeMode && (curTheme.isLight || isTransparentExport) && (strokeColor.toLowerCase() === '#ffffff' || strokeColor.toLowerCase() === '#fff')) {
+        strokeColor = '#222f3e';
+      }
       ctx.save();
       ctx.setLineDash([]);
       ctx.shadowBlur = 0;
@@ -4796,10 +4888,22 @@ class GraphApp {
       } else {
         // ○ 빈 동그라미 (열린 점): 내부로 들어온 곡선 끝자락을 완벽히 가리고 선명한 링으로 렌더링
         const openR = dotR * exportScale;
+        if (isTransparentExport) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, Math.max(0.5, openR - 0.4), 0, Math.PI * 2);
+          ctx.fillStyle = '#000000';
+          ctx.fill();
+          ctx.restore();
+        } else {
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, openR, 0, Math.PI * 2);
+          ctx.fillStyle = openFillBg;
+          ctx.fill();
+        }
         ctx.beginPath();
         ctx.arc(pt.x, pt.y, openR, 0, Math.PI * 2);
-        ctx.fillStyle = openFillBg;
-        ctx.fill();
         ctx.lineWidth = 2.1 * exportScale;
         ctx.strokeStyle = strokeColor;
         ctx.stroke();
@@ -5459,50 +5563,21 @@ class GraphApp {
       // 약식 거듭제곱: x2 -> x^2, t3 -> t^3, )2 -> )^2
       s = s.replace(/([xt\)])(\d+)(?![\d\.])/gi, '$1^$2');
 
-      // 함수명 및 상수 토큰화 (암묵적 곱셈 정규식이 exp, sqrt, Math.E 등을 깨뜨리지 않도록 보호!)
-      const fnTokens = [];
-      const fnMap = {
-        asin: 'Math.asin', acos: 'Math.acos', atan: 'Math.atan',
-        sqrt: 'Math.sqrt', floor: 'Math.floor', ceil: 'Math.ceil',
-        sin: 'Math.sin', cos: 'Math.cos', tan: 'Math.tan',
-        abs: 'Math.abs', exp: 'Math.exp', ln: 'Math.log', log: 'Math.log10'
-      };
-      s = s.replace(/(asin|acos|atan|sqrt|floor|ceil|sin|cos|tan|abs|exp|ln|log)/gi, (m) => {
-        const idx = fnTokens.length;
-        fnTokens.push(fnMap[m.toLowerCase()] || `Math.${m.toLowerCase()}`);
-        return `@F${String.fromCharCode(65 + idx)}@`;
-      });
+      // 상용구 log(x)는 기존 N축 동작과 동일하게 상용로그(log10)로 매핑, 독립 변수 t는 x로 통합 바인딩
+      s = s.replace(/(?<![a-zA-Z])log(?=\()/gi, 'log10');
+      s = s.replace(/(?<![a-zA-Z])t(?![a-zA-Z])/g, 'x');
 
-      s = s.replace(/pi/gi, '@PI@');
-      s = s.replace(/(?<![a-zA-Z])e(?![a-zA-Z])/gi, '@E@');
-
-      // 안전한 암묵적 곱셈 삽입
-      s = s.replace(/(\d)([xt@\(])/gi, '$1*$2');
-      s = s.replace(/(\))([\dxt@\(])/gi, '$1*$2');
-      s = s.replace(/([xt])([@\(])/gi, '$1*$2');
-      s = s.replace(/(@PI@|@E@)([\dxt@\(])/gi, '$1*$2');
-
-      // 거듭제곱 ^ -> ** (단, -x^2 형태가 -(x**2)로 계산되도록 보정)
-      s = s.replace(/\^/g, '**');
-      s = s.replace(/(^|[\(\+\-\*\/,])\-([xt@PI@@E@]+)\*\*(\d+(\.\d+)?)/gi, '$1-(($2)**$3)');
-
-      // 토큰 복원
-      s = s.replace(/@PI@/g, 'Math.PI').replace(/@E@/g, 'Math.E');
-      s = s.replace(/@F([A-Z])@/g, (_, ch) => fnTokens[ch.charCodeAt(0) - 65]);
-
-      try {
-        const fn = new Function('_v', `
-          try {
-            const x = _v, t = _v;
-            const val = (${s});
+      // 🛡️ SafeMathCompiler 스택 평가 엔진 사용 (eval / new Function 0% — 동적 코드 실행 원천 차단)
+      if (typeof SafeMathCompiler !== 'undefined' && typeof SafeMathCompiler.compile === 'function') {
+        const compiled = SafeMathCompiler.compile(s);
+        if (compiled && compiled.success && typeof compiled.fn === 'function') {
+          return (_v) => {
+            const val = compiled.fn(_v);
             return (typeof val === 'number' && !isNaN(val) && isFinite(val)) ? val : NaN;
-          } catch(e) { return NaN; }
-        `);
-        fn(1.0);
-        return fn;
-      } catch (e) {
-        return () => 0;
+          };
+        }
       }
+      return () => 0;
     }
 
     let compiledG = compileMathExpr(inputG ? inputG.value : '2.5 * cos(x)', 'x');
@@ -6493,6 +6568,28 @@ class GraphApp {
       if (lblSummary) {
         lblSummary.textContent = `✨ ${scopeText}의 [${parts.join(' + ')}] 영역만 깔끔한 직사각형으로 자동 스캔하여 내보냅니다.`;
       }
+      const syncShareTierNoticeUI = () => {
+        const lblTierNotice = document.getElementById('lblShareLinkTierNotice');
+        if (!lblTierNotice) return;
+        if (!this.cloudUser || !this.cloudUser.uid) {
+          lblTierNotice.textContent = '🔒 공유 링크 · QR 생성은 무료 로그인 후 이용 가능 (이미지·파일 저장은 비로그인 가능)';
+          return;
+        }
+        const tier = (typeof this.getUserSubscriptionTier === 'function')
+          ? this.getUserSubscriptionTier()
+          : (this.isProUser ? 'pro' : 'free');
+        const quota = (typeof this.getCurrentTierQuota === 'function') ? this.getCurrentTierQuota() : null;
+        if (tier === 'premium') {
+          lblTierNotice.textContent = '💎 Premium 영구 공유 링크 · 원본 파일이 내 클라우드 [🔗 공유 링크] 폴더에 자동 보관됩니다';
+        } else if (tier === 'pro') {
+          const days = (quota && quota.shareExpiryDays) ? quota.shareExpiryDays : 7;
+          lblTierNotice.textContent = `👑 Pro 공유 링크 유효기간: 생성일로부터 ${days}일 (Premium 업그레이드 시 만료 없음)`;
+        } else {
+          const days = (quota && quota.shareExpiryDays) ? quota.shareExpiryDays : 3;
+          lblTierNotice.textContent = `🔗 무료 공유 링크 유효기간: 생성일로부터 ${days}일 (Pro 7일 · Premium 영구 유지)`;
+        }
+      };
+      syncShareTierNoticeUI();
     };
 
     const renderQr = (urlStr) => {
@@ -6532,6 +6629,15 @@ class GraphApp {
 
     // 🚀 실제로 [공유 링크 복사] 또는 [QR 생성·저장] 버튼을 눌렀을 때만 클라우드 공유 링크 생성!
     const ensureCloudShareLinkOnDemand = async () => {
+      if (!this.cloudUser || !this.cloudUser.uid) {
+        if (modal) modal.classList.remove('show');
+        if (typeof this.promptCloudLoginForLibrary === 'function') {
+          this.promptCloudLoginForLibrary('🔒 공유 링크 및 QR 생성은 무료 회원가입·로그인 후 이용할 수 있습니다.');
+        } else {
+          this.showToast('🔒 공유 링크 및 QR 생성은 무료 로그인 후 이용할 수 있습니다.');
+        }
+        return null;
+      }
       const curSig = getShareFilterSig();
       if (cachedCloudShareUrl && cachedCloudShareSig === curSig) {
         return cachedCloudShareUrl;
@@ -6541,8 +6647,6 @@ class GraphApp {
       }
       cachedCloudShareSig = curSig;
       const baseUrl = window.location.href.split('#')[0];
-      const codeNormal = window.GraphStateSerializer ? window.GraphStateSerializer.serialize(this, false) : '';
-      const fallbackNormalUrl = `${baseUrl}#share=${codeNormal}`;
 
       const genTask = (async () => {
         try {
@@ -6555,8 +6659,10 @@ class GraphApp {
             return cloudUrl;
           }
         } catch (err) { }
-        cachedCloudShareUrl = fallbackNormalUrl;
-        return fallbackNormalUrl;
+        cachedCloudShareUrl = '';
+        cachedCloudShareSig = '';
+        shareLinkGenerationPromise = null;
+        return null;
       })();
       shareLinkGenerationPromise = genTask;
       return await genTask;
@@ -6620,8 +6726,8 @@ class GraphApp {
 
     if (btnModalCopyImg) {
       btnModalCopyImg.onclick = async () => {
-        await this.copyToClipboard(this.exportFilter);
-        triggerExportBtnSuccess(btnModalCopyImg, lblModalCopyImg, '복사 완료', '이미지 복사');
+        const copied = await this.copyToClipboard(this.exportFilter);
+        triggerExportBtnSuccess(btnModalCopyImg, lblModalCopyImg, copied ? '복사 완료' : 'PNG 저장됨', '이미지 복사');
       };
     }
 
@@ -6703,6 +6809,10 @@ class GraphApp {
       btnCopyShare.onclick = async () => {
         if (lblBtnCopyShare) lblBtnCopyShare.textContent = '링크 생성 중...';
         const finalUrl = await ensureCloudShareLinkOnDemand();
+        if (!finalUrl) {
+          if (lblBtnCopyShare) lblBtnCopyShare.textContent = '공유 링크 복사';
+          return;
+        }
         await copyTextToClipboard(finalUrl);
         triggerExportBtnSuccess(btnCopyShare, lblBtnCopyShare, '링크 복사 완료', '공유 링크 복사');
       };
@@ -6711,6 +6821,7 @@ class GraphApp {
     if (btnCopyStudent) {
       btnCopyStudent.onclick = async () => {
         const finalUrl = await ensureCloudShareLinkOnDemand();
+        if (!finalUrl) return;
         await copyTextToClipboard(finalUrl);
       };
     }
@@ -6721,6 +6832,10 @@ class GraphApp {
         if (!qrCanvas) return;
         if (lblBtnDownloadQr) lblBtnDownloadQr.textContent = 'QR 생성 중...';
         const finalUrl = await ensureCloudShareLinkOnDemand();
+        if (!finalUrl) {
+          if (lblBtnDownloadQr) lblBtnDownloadQr.textContent = 'QR 저장';
+          return;
+        }
         renderQr(finalUrl);
         const dataUrl = qrCanvas.toDataURL('image/png');
         const link = document.createElement('a');

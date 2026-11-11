@@ -1097,6 +1097,11 @@
       this._isAudioWaitingForNextSlideSetup = false;
       this._alreadyArchivedBeforePdfModal = false;
       if (this._autoPausedByPdfModal) {
+        const pausedDelta = this.audioRecordPauseStartMs
+          ? Math.max(0, performance.now() - this.audioRecordPauseStartMs)
+          : 0;
+        this.audioRecordTotalPausedMs = (this.audioRecordTotalPausedMs || 0) + pausedDelta;
+        this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + pausedDelta;
         this._autoPausedByPdfModal = false;
         this.isAudioRecordPaused = false;
         this.audioRecordPauseStartMs = 0;
@@ -1119,6 +1124,27 @@
       } else {
         this.showToast(`📚 ${loadedItems.length}개의 이미지 문제를 캔버스당 1문제씩(펼친 상태) 등록했습니다! 우상단 [<] [>] 버튼으로 넘기며 수업하세요.`);
       }
+    }
+
+    _escapeCardHtml(val) {
+      return String(val == null ? '' : val)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    _sanitizeCardImageUrl(rawUrl) {
+      if (!rawUrl || typeof rawUrl !== 'string') return '';
+      const trimmed = rawUrl.trim();
+      if (/^data:image\/(?:png|jpe?g|webp|gif|bmp)(?:;charset=[^;,]+)?;base64,[a-zA-Z0-9+/=\s]+$/i.test(trimmed)) {
+        return trimmed;
+      }
+      if (/^blob:/i.test(trimmed)) {
+        return trimmed;
+      }
+      return '';
     }
 
     spawnExtraProblemCard(dataUrl, pageNum = 1, initialWidth = null, sourceCanvas = null, options = null) {
@@ -1158,14 +1184,17 @@
       el.style.left = `${Math.round(baseX)}px`;
       el.style.top = `${Math.round(baseY)}px`;
       this.bringCardToFront(el);
+      const safePdfPageNum = this._escapeCardHtml(pdfPageNum);
+      const safeTitleText = this._escapeCardHtml(titleText);
+      const safeDataUrl = this._sanitizeCardImageUrl(dataUrl);
       const restorePageBtnHtml = isPdfPageCard
-        ? `<button class="card-btn btn-extra-restore-page" title="이 페이지(p.${pdfPageNum})를 메인 캔버스로 다시 열기"><span>🔄</span></button>`
+        ? `<button class="card-btn btn-extra-restore-page" title="이 페이지(p.${safePdfPageNum})를 메인 캔버스로 다시 열기"><span>🔄</span></button>`
         : '';
       el.innerHTML = `
       <div class="problem-card-header">
         <div class="problem-card-title-group">
           <div class="problem-card-drag-handle">
-            <span class="card-title-text">${titleText}</span>
+            <span class="card-title-text">${safeTitleText}</span>
           </div>
         </div>
         <div class="problem-card-actions">
@@ -1184,7 +1213,7 @@
         </div>
       </div>
       <div class="problem-card-body">
-        <img class="problem-card-img" src="${dataUrl}" alt="${titleText}" draggable="false" />
+        <img class="problem-card-img" alt="${safeTitleText}" draggable="false" />
       </div>
       <div class="problem-card-resize-handle"></div>
     `;
@@ -1200,6 +1229,9 @@
             el._renderCardInkCanvas();
           }
         });
+        if (safeDataUrl) {
+          extraImgEl.src = safeDataUrl;
+        }
       }
 
       const startMin = Boolean(options && options.startMinimized);
@@ -1615,12 +1647,13 @@
         this.syncProblemCardRectFromWidget();
         this.render();
       };
-      imgObj.src = dataUrl;
+      const safePrimaryUrl = this._sanitizeCardImageUrl(dataUrl);
+      if (safePrimaryUrl) imgObj.src = safePrimaryUrl;
 
       const img = document.getElementById('problemCardImg');
       const title = document.getElementById('problemCardTitle');
 
-      if (img) img.src = dataUrl;
+      if (img && safePrimaryUrl) img.src = safePrimaryUrl;
       if (title) {
         if (typeof pageNum === 'number') {
           title.textContent = `문제 (p.${pageNum})`;
@@ -4663,6 +4696,9 @@
       if (rw < 20 || rh < 20) return;
 
       // 1. 스샷 전용 클린 렌더링 (조작 핸들 숨김 + 드래그한 박스 테두리에 맞춰 x·y축 화살촉 ▶, ▲ 칼같이 배치!)
+      const prevCovered = this.isGraphCovered;
+      let cropCanvas = null;
+      let dataUrl = '';
       this._isRenderingGraphSnapshot = true;
       this._snapshotCropBounds = {
         minX: rx,
@@ -4674,25 +4710,26 @@
         w: rw,
         h: rh
       };
-      const prevCovered = this.isGraphCovered;
       this.isGraphCovered = false;
+      try {
+        const snapScale = 3.5;
+        cropCanvas = document.createElement('canvas');
+        cropCanvas.width = Math.max(1, Math.round(rw * snapScale));
+        cropCanvas.height = Math.max(1, Math.round(rh * snapScale));
+        const cctx = cropCanvas.getContext('2d');
+        cctx.save();
+        cctx.scale(snapScale, snapScale);
+        cctx.translate(-rx, -ry);
+        this.render(cctx, this.screenWidth, this.screenHeight, false);
+        cctx.restore();
 
-      const snapScale = 3.5;
-      const cropCanvas = document.createElement('canvas');
-      cropCanvas.width = Math.max(1, Math.round(rw * snapScale));
-      cropCanvas.height = Math.max(1, Math.round(rh * snapScale));
-      const cctx = cropCanvas.getContext('2d');
-      cctx.save();
-      cctx.scale(snapScale, snapScale);
-      cctx.translate(-rx, -ry);
-      this.render(cctx, this.screenWidth, this.screenHeight, false);
-      cctx.restore();
-
-      const dataUrl = cropCanvas.toDataURL('image/png');
-      this._isRenderingGraphSnapshot = false;
-      this._snapshotCropBounds = null;
-      this.isGraphCovered = prevCovered;
-      this._editingGraphCardTarget = null;
+        dataUrl = cropCanvas.toDataURL('image/png');
+      } finally {
+        this._isRenderingGraphSnapshot = false;
+        this._snapshotCropBounds = null;
+        this.isGraphCovered = prevCovered;
+        this._editingGraphCardTarget = null;
+      }
 
       // 크롭 영역의 수학적 중심과 범위를 카드 로컬 좌표계로 변환하여 카드 안에서도 즉시 라이브 조작 가능하도록 보존!
       let customSnapObj = null;
@@ -4985,12 +5022,14 @@
       el.style.left = `${Math.round(baseX)}px`;
       el.style.top = `${Math.round(baseY)}px`;
 
+      const safeCaseIdx = this._escapeCardHtml(caseIdx);
+      const safeGraphImgUrl = this._sanitizeCardImageUrl(dataUrl);
       const bodyH = Math.round(cardW * aspect);
       el.innerHTML = `
       <div class="problem-card-header">
         <div class="problem-card-title-group">
           <div class="problem-card-drag-handle">
-            <span class="card-title-text">#${caseIdx}</span>
+            <span class="card-title-text">#${safeCaseIdx}</span>
           </div>
         </div>
         <div class="problem-card-actions">
@@ -5017,10 +5056,14 @@
         </div>
       </div>
       <div class="problem-card-body" style="height:${bodyH}px;">
-        <img class="problem-card-img" src="${dataUrl}" alt="그래프 보관 ${caseIdx}" draggable="false" />
+        <img class="problem-card-img" alt="그래프 보관 ${safeCaseIdx}" draggable="false" />
       </div>
       <div class="problem-card-resize-handle"></div>
     `;
+      const extraGraphImgEl = el.querySelector('.problem-card-img');
+      if (extraGraphImgEl && safeGraphImgUrl) {
+        extraGraphImgEl.src = safeGraphImgUrl;
+      }
       const stageGraphParent = (this.canvas && this.canvas.parentElement) || document.body;
       stageGraphParent.appendChild(el);
       this.attachCardLaserSystem(el);
@@ -6587,6 +6630,9 @@
         this.screenWidth = effW;
         this.screenHeight = effH;
         this.graphs = snapObj.graphs || [];
+        if (this.engine && typeof this.engine.ensureCompiledFunctions === 'function') {
+          this.engine.ensureCompiledFunctions(this.graphs);
+        }
         this.activeGraphIdx = typeof snapObj.activeGraphIdx === 'number' ? snapObj.activeGraphIdx : (this.graphs.length > 0 ? 0 : -1);
         this.isCurveSelected = Boolean(snapObj.isCurveSelected);
         this.selectedHandleIdx = (typeof snapObj.selectedHandleIdx === 'number') ? snapObj.selectedHandleIdx : null;
@@ -7415,9 +7461,57 @@
       }
     }
 
-    _applyGraphSymmetry(g, axis) {
+    _syncLinkedPartnerToTransposedMirror(src, partner) {
+      if (!src || !partner) return;
+      const isGeom = (src.type === 'geom_circle' || src.type === 'geom_triangle' || src.type === 'geom_quad');
+      if (isGeom) return;
+      partner.type = src.type;
+      partner.category = src.category;
+      partner.isTransposedYX = !Boolean(src.isTransposedYX);
+      if (partner.isTransposedYX) {
+        partner.isIndependent = true;
+      }
+      partner.handles = (src.handles || []).map(h => {
+        const cloned = {
+          name: h.name,
+          x: parseFloat(h.x.toFixed(3)),
+          y: parseFloat(h.y.toFixed(3)),
+          type: h.type,
+          hidden: Boolean(h.hidden),
+          reflectX: Boolean(h.reflectX),
+          reflectY: Boolean(h.reflectY)
+        };
+        if (h.fn) cloned.fn = h.fn;
+        if (h.rawExpr !== undefined) cloned.rawExpr = h.rawExpr;
+        return cloned;
+      });
+      if (src.customExpr !== undefined) partner.customExpr = src.customExpr;
+      const srcOx = (src.freezeOffset && typeof src.freezeOffset.x === 'number') ? src.freezeOffset.x : 0;
+      const srcOy = (src.freezeOffset && typeof src.freezeOffset.y === 'number') ? src.freezeOffset.y : 0;
+      partner.freezeOffset = { x: srcOx, y: srcOy };
+      partner.transforms = (src.transforms || []).map(t => ({
+        offset: {
+          x: (t && t.offset && typeof t.offset.x === 'number') ? t.offset.x : 0,
+          y: (t && t.offset && typeof t.offset.y === 'number') ? t.offset.y : 0
+        },
+        invertV: Boolean(t && t.invertV),
+        invertH: Boolean(t && t.invertH),
+        abs: Boolean(t && t.abs)
+      }));
+      partner.isAbsolute = Boolean(src.isAbsolute);
+      partner.isAbsPristine = Boolean(src.isAbsPristine);
+      partner.isFrozen = Boolean(src.isFrozen);
+      partner.frozenInvertH = Boolean(src.frozenInvertH);
+      partner.frozenInvertV = Boolean(src.frozenInvertV);
+      partner.frozenAbsolute = Boolean(src.frozenAbsolute);
+    }
+
+    _applyGraphSymmetry(g, axis, graphsList = this.graphs, _skipPartner = false) {
       if (!g || !Array.isArray(g.handles)) return '';
-      if (axis === 'x' || axis === 'origin') {
+      const internalAxis = (g.isTransposedYX && (axis === 'x' || axis === 'y'))
+        ? (axis === 'x' ? 'y' : 'x')
+        : axis;
+      if (internalAxis === 'x' || internalAxis === 'origin') {
         const hasFold = Boolean(g.isAbsolute || (Array.isArray(g.transforms) && g.transforms.length > 0));
         if (hasFold) {
           if (!Array.isArray(g.transforms)) g.transforms = [];
@@ -7442,7 +7536,7 @@
           }
         }
       }
-      if (axis === 'y' || axis === 'origin') {
+      if (internalAxis === 'y' || internalAxis === 'origin') {
         this.engine.reflectYAxis(g.handles, g.type);
         if (g.freezeOffset && typeof g.freezeOffset.x === 'number') {
           g.freezeOffset.x = -g.freezeOffset.x;
@@ -7455,13 +7549,21 @@
           });
         }
       }
+      if (!_skipPartner && g.linkedInverseId && Array.isArray(graphsList)) {
+        const partner = graphsList.find(other => other && other.id === g.linkedInverseId && other !== g);
+        if (partner) {
+          const partnerAxis = axis === 'x' ? 'y' : (axis === 'y' ? 'x' : 'origin');
+          this._applyGraphSymmetry(partner, partnerAxis, graphsList, true);
+        }
+      }
       if (axis === 'x') return '↕️ x축 대칭 완료!';
       if (axis === 'y') return '↔️ y축 대칭 완료!';
       return '🎯 원점 대칭 완료!';
     }
 
-    _applyGraphToggleAbsolute(g) {
+    _applyGraphToggleAbsolute(g, graphsList = this.graphs) {
       if (!g) return '';
+      let msg = '';
       // Case 1: 방금 절댓값을 씌웠고 아직 이동하지 않은 상태(isAbsPristine === true) -> 이전 단계로 해제
       if (g.isAbsolute && g.isAbsPristine) {
         if (Array.isArray(g.transforms) && g.transforms.length > 0) {
@@ -7472,17 +7574,17 @@
           // 연속 클릭 시 1차 절댓값까지 곧바로 해제할 수 있도록 isAbsPristine 유지 (이동 시 false로 전환됨)
           g.isAbsPristine = true;
           const stage = g.transforms.filter(t => t && t.abs).length + 1;
-          return `📉 ${stage + 1}차 절댓값 해제`;
+          msg = `📉 ${stage + 1}차 절댓값 해제`;
+        } else {
+          g.isAbsolute = false;
+          g.isAbsPristine = false;
+          g.transforms = [];
+          g.freezeOffset = { x: 0, y: 0 };
+          msg = '📈 |f(x)| 절댓값 해제';
         }
-        g.isAbsolute = false;
-        g.isAbsPristine = false;
-        g.transforms = [];
-        g.freezeOffset = { x: 0, y: 0 };
-        return '📈 |f(x)| 절댓값 해제';
       }
-
       // Case 2: 이미 절댓값이 씌워진 상태에서 평행이동/조작을 거친 경우(isAbsPristine === false) -> 다단계 재절댓값(||f(x)| - k|)!
-      if (g.isAbsolute && !g.isAbsPristine) {
+      else if (g.isAbsolute && !g.isAbsPristine) {
         if (!Array.isArray(g.transforms)) g.transforms = [];
         const curOx = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
         const curOy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
@@ -7490,13 +7592,22 @@
         g.freezeOffset = { x: 0, y: 0 };
         g.isAbsPristine = true;
         const stage = g.transforms.filter(t => t && t.abs).length + 1;
-        return `✨ ${stage}차 절댓값 꺾어올리기 완료!`;
+        msg = `✨ ${stage}차 절댓값 꺾어올리기 완료!`;
+      }
+      // Case 3: 최초 1차 절댓값 적용
+      else {
+        g.isAbsolute = true;
+        g.isAbsPristine = true;
+        msg = '📈 |f(x)| 절댓값 꺾어올리기 적용!';
       }
 
-      // Case 3: 최초 1차 절댓값 적용
-      g.isAbsolute = true;
-      g.isAbsPristine = true;
-      return '📈 |f(x)| 절댓값 꺾어올리기 적용!';
+      if (g.linkedInverseId && Array.isArray(graphsList)) {
+        const partner = graphsList.find(other => other && other.id === g.linkedInverseId && other !== g);
+        if (partner) {
+          this._syncLinkedPartnerToTransposedMirror(g, partner);
+        }
+      }
+      return msg;
     }
 
     _cloneInverseGraphInPipSnap(snap) {
@@ -7514,54 +7625,103 @@
         return false;
       }
 
-      let targetType = null;
-      if (src.type === 'exp_basic') targetType = 'log_basic';
-      else if (src.type === 'log_basic') targetType = 'exp_basic';
-      else if (src.type === '2nd_quadratic') targetType = 'sqrt_basic';
-      else if (src.type === 'sqrt_basic') targetType = '2nd_quadratic';
-      else if (src.type === 'rational_basic') targetType = 'rational_basic';
-      else if (src.type === '1st_linear') targetType = '1st_linear';
-
-      if (!targetType) {
-        const srcName = (this.meta && this.meta[src.type] && this.meta[src.type].name) || '함수';
-        this.showToast(`ℹ️ 역함수 복제는 지수·로그, 이차·무리, 유리, 일차함수를 지원합니다. (${srcName})`);
-        return false;
-      }
-
       this._pushWorkspaceUndoSnapshot('↺ 카드 y=x 역함수 생성이 취소되었습니다', '↻ 카드 y=x 역함수 다시 생성됨');
 
-      const newHandles = (src.handles || []).map((h, i) => {
-        let handleName = h.name;
-        let isHidden = h.hidden;
-        if (targetType === 'sqrt_basic' && i === 0) {
-          handleName = '시작점';
-          isHidden = false;
-        } else if (targetType === '2nd_quadratic' && i === 0) {
-          handleName = '꼭짓점';
-          isHidden = false;
-        }
-        return {
-          name: handleName,
-          x: parseFloat(h.y.toFixed(3)),
-          y: parseFloat(h.x.toFixed(3)),
-          type: h.type,
-          hidden: isHidden
-        };
-      });
+      const hasFoldedAbs = Boolean(
+        src.isAbsolute ||
+        src.frozenAbsolute ||
+        (Array.isArray(src.transforms) && src.transforms.some(t => t && t.abs))
+      );
+      const isGeom = (src.type === 'geom_circle' || src.type === 'geom_triangle' || src.type === 'geom_quad');
+      const isPureOneToOne = !src.isTransposedYX && !hasFoldedAbs && (
+        src.type === 'exp_basic' ||
+        src.type === 'log_basic' ||
+        src.type === 'rational_basic' ||
+        src.type === '1st_linear'
+      );
+
+      let targetType = src.type;
+      let nextTransposed = false;
+      let useCoordinateSwap = false;
+
+      if (isGeom) {
+        targetType = src.type;
+        nextTransposed = false;
+        useCoordinateSwap = true;
+      } else if (isPureOneToOne) {
+        if (src.type === 'exp_basic') targetType = 'log_basic';
+        else if (src.type === 'log_basic') targetType = 'exp_basic';
+        else targetType = src.type;
+        nextTransposed = false;
+        useCoordinateSwap = true;
+      } else {
+        targetType = src.type;
+        nextTransposed = !Boolean(src.isTransposedYX);
+        useCoordinateSwap = false;
+      }
 
       const srcOx = (src.freezeOffset && typeof src.freezeOffset.x === 'number') ? src.freezeOffset.x : 0;
       const srcOy = (src.freezeOffset && typeof src.freezeOffset.y === 'number') ? src.freezeOffset.y : 0;
-      const newFreezeOffset = { x: srcOy, y: srcOx };
 
-      const newTransforms = (src.transforms || []).map(t => ({
-        offset: {
-          x: (t.offset && typeof t.offset.y === 'number') ? t.offset.y : 0,
-          y: (t.offset && typeof t.offset.x === 'number') ? t.offset.x : 0
-        },
-        invertV: Boolean(t && t.invertH),
-        invertH: Boolean(t && t.invertV),
-        abs: Boolean(t && t.abs)
-      }));
+      let newHandles;
+      let newFreezeOffset;
+      let newTransforms;
+      let nextFrozenInvertH;
+      let nextFrozenInvertV;
+
+      if (useCoordinateSwap) {
+        newHandles = (src.handles || []).map(h => {
+          const cloned = {
+            name: h.name,
+            x: parseFloat(h.y.toFixed(3)),
+            y: parseFloat(h.x.toFixed(3)),
+            type: h.type,
+            hidden: Boolean(h.hidden)
+          };
+          if (h.reflectX !== undefined) cloned.reflectX = Boolean(h.reflectY);
+          if (h.reflectY !== undefined) cloned.reflectY = Boolean(h.reflectX);
+          return cloned;
+        });
+        newFreezeOffset = { x: srcOy, y: srcOx };
+        newTransforms = (src.transforms || []).map(t => ({
+          offset: {
+            x: (t.offset && typeof t.offset.y === 'number') ? t.offset.y : 0,
+            y: (t.offset && typeof t.offset.x === 'number') ? t.offset.x : 0
+          },
+          invertV: Boolean(t && t.invertH),
+          invertH: Boolean(t && t.invertV),
+          abs: Boolean(t && t.abs)
+        }));
+        nextFrozenInvertH = Boolean(src.frozenInvertV);
+        nextFrozenInvertV = Boolean(src.frozenInvertH);
+      } else {
+        newHandles = (src.handles || []).map(h => {
+          const cloned = {
+            name: h.name,
+            x: parseFloat(h.x.toFixed(3)),
+            y: parseFloat(h.y.toFixed(3)),
+            type: h.type,
+            hidden: Boolean(h.hidden),
+            reflectX: Boolean(h.reflectX),
+            reflectY: Boolean(h.reflectY)
+          };
+          if (h.fn) cloned.fn = h.fn;
+          if (h.rawExpr !== undefined) cloned.rawExpr = h.rawExpr;
+          return cloned;
+        });
+        newFreezeOffset = { x: srcOx, y: srcOy };
+        newTransforms = (src.transforms || []).map(t => ({
+          offset: {
+            x: (t.offset && typeof t.offset.x === 'number') ? t.offset.x : 0,
+            y: (t.offset && typeof t.offset.y === 'number') ? t.offset.y : 0
+          },
+          invertV: Boolean(t && t.invertV),
+          invertH: Boolean(t && t.invertH),
+          abs: Boolean(t && t.abs)
+        }));
+        nextFrozenInvertH = Boolean(src.frozenInvertH);
+        nextFrozenInvertV = Boolean(src.frozenInvertV);
+      }
 
       const autoSeq = (Array.isArray(this.colorPalette) && this.colorPalette.length > 0)
         ? this.colorPalette
@@ -7585,17 +7745,20 @@
         color: nextColor,
         lineWidth: src.lineWidth || this.defaultGraphLineWidth || 2.8,
         isAbsolute: Boolean(src.isAbsolute),
-        shapeMode: 'free',
-        originCenter: false,
+        isAbsPristine: Boolean(src.isAbsPristine),
+        shapeMode: isGeom ? (src.shapeMode || 'free') : 'free',
+        originCenter: isGeom ? Boolean(src.originCenter) : false,
         isFrozen: Boolean(src.isFrozen),
         freezeOffset: newFreezeOffset,
         transforms: newTransforms,
-        frozenInvertH: Boolean(src.frozenInvertV),
-        frozenInvertV: Boolean(src.frozenInvertH),
+        frozenInvertH: nextFrozenInvertH,
+        frozenInvertV: nextFrozenInvertV,
         frozenAbsolute: Boolean(src.frozenAbsolute),
-        isIndependent: Boolean(snap.usePiecewise),
+        isIndependent: nextTransposed ? true : Boolean(snap.usePiecewise),
+        isTransposedYX: nextTransposed,
         linkedInverseId: src.id
       };
+      if (src.customExpr !== undefined) newGraph.customExpr = src.customExpr;
 
       src.linkedInverseId = newId;
       snap.graphs.push(newGraph);
@@ -7604,9 +7767,17 @@
       snap.isCurveSelected = true;
       snap.showInverseGuide = true;
 
-      const srcName = (this.meta && this.meta[src.type] && this.meta[src.type].name) || '함수';
+      const srcName = (this.meta && this.meta[src.type] && this.meta[src.type].name) || '그래프';
       const tgtName = (this.meta && this.meta[targetType] && this.meta[targetType].name) || '역함수';
-      this.showToast(`🔄 ${srcName}의 y=x 대칭 역함수 (${tgtName}) 생성 완료!`);
+      if (src.type === '2nd_quadratic' && !src.isTransposedYX && !hasFoldedAbs) {
+        this.showToast('🔄 이차함수의 y=x 대칭 그래프 생성! (💡 반쪽 역함수 쌍은 [무리함수]를 y=x 대칭시키면 완성됩니다)');
+      } else if (isGeom) {
+        this.showToast(`🔄 ${srcName}의 y=x 대칭 도형 복제 완료!`);
+      } else if (!nextTransposed && targetType !== src.type) {
+        this.showToast(`🔄 ${srcName}의 y=x 대칭 역함수 (${tgtName}) 생성 완료!`);
+      } else {
+        this.showToast(`🔄 ${srcName}의 y=x 대칭 그래프 생성 완료!`);
+      }
       return true;
     }
 
@@ -7974,7 +8145,7 @@
       const activeG = Array.isArray(snapObj.graphs) ? snapObj.graphs[snapObj.activeGraphIdx] : null;
       const cardShowX = (snapObj.showXAxis !== undefined) ? Boolean(snapObj.showXAxis) : (this.showXAxis !== false);
       const cardShowY = (snapObj.showYAxis !== undefined) ? Boolean(snapObj.showYAxis) : (this.showYAxis !== false);
-      const uiSig = `${Boolean(snapObj.isPipLocked)}|${Boolean(snapObj.isCurveSelected)}|${Boolean(snapObj.isPipDropLineMode)}|${Boolean(snapObj.isPipSymPopoverOpen)}|${Boolean(widget.classList.contains('card-ink-active'))}|${Boolean(cardShowX)}|${Boolean(cardShowY)}|${activeG ? `${activeG.id}:${Boolean(activeG.isAbsolute)}:${Boolean(activeG.isAbsPristine)}:${Boolean(activeG.linkedInverseId)}` : ''}`;
+      const uiSig = `${Boolean(snapObj.isPipLocked)}|${Boolean(snapObj.isCurveSelected)}|${Boolean(snapObj.isPipDropLineMode)}|${Boolean(snapObj.isPipSymPopoverOpen)}|${Boolean(widget.classList.contains('card-ink-active'))}|${Boolean(cardShowX)}|${Boolean(cardShowY)}|${activeG ? `${activeG.id}:${Boolean(activeG.isAbsolute)}:${Boolean(activeG.isAbsPristine)}:${Boolean(activeG.linkedInverseId)}:${Boolean(activeG.isTransposedYX)}` : ''}`;
       if (widget._lastPipLockUiSig !== uiSig) {
         widget._lastPipLockUiSig = uiSig;
         this.syncPipCardLockUI(cardRef);
@@ -8017,13 +8188,14 @@
         if (this.showAxes) this.drawAxes(ctx, this._snapshotCropBounds);
         if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(ctx, this._snapshotCropBounds);
 
-        this.drawAllCurves(ctx);
+        const cleanPass = !isManipulating;
+        this.drawAllCurves(ctx, cleanPass);
 
         if (this.usePiecewise && this.graphs.length >= 1) {
-          this.drawPiecewiseBoundaries(ctx);
+          this.drawPiecewiseBoundaries(ctx, cleanPass);
         }
-        this.drawDropLines(ctx);
-        this.drawTextLabels(ctx);
+        this.drawDropLines(ctx, cleanPass);
+        this.drawTextLabels(ctx, cleanPass);
 
         if (isManipulating && this.activeGraph) {
           this.drawHandles(ctx, this.activeGraph);
@@ -8063,12 +8235,12 @@
         if (this.showAsymptotes) this.drawAllAsymptotes(cctx);
         if (this.showAxes) this.drawAxes(cctx, this._snapshotCropBounds);
         if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(cctx, this._snapshotCropBounds);
-        this.drawAllCurves(cctx);
+        this.drawAllCurves(cctx, true);
         if (this.usePiecewise && this.graphs.length >= 1) {
-          this.drawPiecewiseBoundaries(cctx);
+          this.drawPiecewiseBoundaries(cctx, true);
         }
         this.drawDropLines(cctx, true);
-        this.drawTextLabels(cctx);
+        this.drawTextLabels(cctx, true);
       });
       cctx.restore();
 
@@ -9659,8 +9831,9 @@
 
             if (act === 'flipX' || act === 'flipY' || act === 'flipOrigin') {
               const axis = act === 'flipX' ? 'x' : (act === 'flipY' ? 'y' : 'origin');
-              const msg = this._applyGraphSymmetry(g, axis);
+              const msg = this._applyGraphSymmetry(g, axis, snap.graphs);
               widget._lastPipLockUiSig = '';
+              this._savePipCardSnapshot(cardRef, snap);
               this.renderPipGraphCard(cardRef);
               this.scheduleBakePipGraphCardToImg(cardRef);
               if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
@@ -9684,8 +9857,9 @@
                 if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
               }
             } else if (act === 'abs') {
-              const msg = this._applyGraphToggleAbsolute(g);
+              const msg = this._applyGraphToggleAbsolute(g, snap.graphs);
               widget._lastPipLockUiSig = '';
+              this._savePipCardSnapshot(cardRef, snap);
               this.renderPipGraphCard(cardRef);
               this.scheduleBakePipGraphCardToImg(cardRef);
               if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
@@ -9798,20 +9972,11 @@
         let resolvedCursor = 'default';
         this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
           if (snap.isCurveSelected && this.activeGraph && Array.isArray(this.activeGraph.handles)) {
-            let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
-            let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
-            if (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
-              for (const t of this.activeGraph.transforms) {
-                if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
-                if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
-              }
-            }
             for (const h of this.activeGraph.handles) {
               if (!h || h.hidden) continue;
-              const targetY = (this.activeGraph.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) ? Math.abs(h.y) : h.y;
-              let evalY = (h.type === 'center' || h.type === 'asymptote') ? (targetY + oy) : this.engine.evaluatePipeline(this.activeGraph, h.x + ox);
-              if (isNaN(evalY) || !isFinite(evalY)) evalY = targetY + oy;
-              const s = this.mathToScreen(h.x + ox, evalY);
+              const wPos = this.engine.getHandleWorldPos(this.activeGraph, h);
+              if (!wPos || isNaN(wPos.x) || isNaN(wPos.y)) continue;
+              const s = this.mathToScreen(wPos.x, wPos.y);
               if (Math.hypot(s.x - pos.x, s.y - pos.y) <= 13.5) {
                 resolvedCursor = 'pointer';
                 return;
@@ -9933,25 +10098,11 @@
           this._withPipCardGraphState(snap, pos.cardW, pos.cardH, () => {
             const handleHitDist = isTouch ? 16 : 13.5;
             if (snap.isCurveSelected && this.activeGraph && Array.isArray(this.activeGraph.handles)) {
-              let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
-              let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
-              if (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
-                for (const t of this.activeGraph.transforms) {
-                  if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
-                  if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
-                }
-              }
               this.activeGraph.handles.forEach((h, idx) => {
                 if (!h || h.hidden) return;
-                let targetY = h.y;
-                if (this.activeGraph.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
-                  targetY = Math.abs(h.y);
-                }
-                let evalY = (h.type === 'center' || h.type === 'asymptote')
-                  ? (targetY + oy)
-                  : this.engine.evaluatePipeline(this.activeGraph, h.x + ox);
-                if (isNaN(evalY) || !isFinite(evalY)) evalY = targetY + oy;
-                const s = this.mathToScreen(h.x + ox, evalY);
+                const wPos = this.engine.getHandleWorldPos(this.activeGraph, h);
+                if (!wPos || isNaN(wPos.x) || isNaN(wPos.y)) return;
+                const s = this.mathToScreen(wPos.x, wPos.y);
                 if (Math.hypot(s.x - pos.x, s.y - pos.y) <= handleHitDist) {
                   hitHandleIdx = idx;
                 }
@@ -10153,21 +10304,25 @@
               this.axisSnapActiveY = true;
             }
 
+            let paramVal = g.isTransposedYX ? m.y : m.x;
+            let outVal = g.isTransposedYX ? m.x : m.y;
+            const paramSnapThreshold = g.isTransposedYX ? snapThresholdMathY : snapThresholdMathX;
+
             if (["2nd_quadratic", "abs_v", "4th_w", "4th_u"].includes(g.type) && this.draggedHandleIdx === 1) {
               const h0x = g.handles[0].x + ox;
-              if (Math.abs(m.x - h0x) < snapThresholdMathX * 1.0) {
+              if (Math.abs(paramVal - h0x) < paramSnapThreshold * 1.0) {
                 if (g.type === "4th_w") {
                   const curDist = Math.abs(g.handles[1].x - g.handles[0].x);
-                  m.x = h0x + Math.max(0.5, curDist);
+                  paramVal = h0x + Math.max(0.5, curDist);
                 } else {
-                  m.x = h0x + 1.0;
+                  paramVal = h0x + 1.0;
                 }
                 this.symmetrySnapActive = true;
               }
             }
 
             // 전체화면 그래프 모드와 동일한 시그니처: dragActiveHandle(idx, x, y, altKey)
-            this.dragActiveHandle(this.draggedHandleIdx, m.x - ox, m.y - oy, e.altKey);
+            this.dragActiveHandle(this.draggedHandleIdx, paramVal - ox, outVal - oy, e.altKey);
             if (g.isAbsolute && g.isAbsPristine && movedDuringInteraction) {
               g.isAbsPristine = false;
             }
@@ -10177,10 +10332,10 @@
               const labelParts = [];
               if (this.axisSnapActiveX) labelParts.push('x=0');
               if (this.axisSnapActiveY) labelParts.push('y=0');
-              let dispY = (g.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) ? Math.abs(h.y) : h.y;
-              let evalY = (h.type === 'center' || h.type === 'asymptote') ? (dispY + oy) : this.engine.evaluatePipeline(g, h.x + ox);
-              if (isNaN(evalY) || !isFinite(evalY)) evalY = dispY + oy;
-              this.snappedPoints.push({ x: h.x + ox, y: evalY, label: labelParts.join(', ') });
+              const wPos = this.engine.getHandleWorldPos(g, h);
+              if (wPos && !isNaN(wPos.x) && !isNaN(wPos.y)) {
+                this.snappedPoints.push({ x: wPos.x, y: wPos.y, label: labelParts.join(', ') });
+              }
             }
           });
           this.requestPipGraphCardRender(cardRef);
@@ -10273,11 +10428,15 @@
             const isShiftDrag = Boolean(e.shiftKey);
             const hasTransforms = Boolean(g.isAbsolute || g.isFrozen || g.frozenInvertH || g.frozenInvertV || g.frozenAbsolute || (g.transforms && g.transforms.length > 0));
             const partner = this.getLinkedPartner(g);
+            const effDx = g.isTransposedYX ? deltaY : deltaX;
+            const effDy = g.isTransposedYX ? deltaX : deltaY;
+            const pEffDx = partner ? (partner.isTransposedYX ? deltaX : deltaY) : 0;
+            const pEffDy = partner ? (partner.isTransposedYX ? deltaY : deltaX) : 0;
             if (isShiftDrag && g.isAbsolute) {
               g.handles.forEach((h, i) => {
                 if (curveInitHandles[i]) {
-                  h.x = curveInitHandles[i].x + deltaX;
-                  h.y = curveInitHandles[i].y + deltaY;
+                  h.x = curveInitHandles[i].x + effDx;
+                  h.y = curveInitHandles[i].y + effDy;
                 }
               });
               if (g.isAbsPristine && (Math.abs(deltaX) > 0.02 || Math.abs(deltaY) > 0.02)) {
@@ -10286,36 +10445,42 @@
               if (partner && partnerInitHandles && Array.isArray(partner.handles)) {
                 partner.handles.forEach((h, i) => {
                   if (partnerInitHandles[i]) {
-                    h.x = partnerInitHandles[i].x + deltaY;
-                    h.y = partnerInitHandles[i].y + deltaX;
+                    h.x = partnerInitHandles[i].x + pEffDx;
+                    h.y = partnerInitHandles[i].y + pEffDy;
                   }
                 });
+                if (partner.isAbsolute && partner.isAbsPristine && (Math.abs(deltaX) > 0.02 || Math.abs(deltaY) > 0.02)) {
+                  partner.isAbsPristine = false;
+                }
               }
             } else if (hasTransforms) {
-              const newOx = Math.round((curveInitFreezeOffset.x + deltaX) * 100) / 100;
-              const newOy = Math.round((curveInitFreezeOffset.y + deltaY) * 100) / 100;
+              const newOx = Math.round((curveInitFreezeOffset.x + effDx) * 100) / 100;
+              const newOy = Math.round((curveInitFreezeOffset.y + effDy) * 100) / 100;
               g.freezeOffset = { x: newOx, y: newOy };
               if (g.isAbsolute && g.isAbsPristine && (Math.abs(deltaX) > 0.02 || Math.abs(deltaY) > 0.02)) {
                 g.isAbsPristine = false;
               }
               if (partner && partnerInitFreezeOffset) {
                 partner.freezeOffset = {
-                  x: Math.round((partnerInitFreezeOffset.x + deltaY) * 100) / 100,
-                  y: Math.round((partnerInitFreezeOffset.y + deltaX) * 100) / 100
+                  x: Math.round((partnerInitFreezeOffset.x + pEffDx) * 100) / 100,
+                  y: Math.round((partnerInitFreezeOffset.y + pEffDy) * 100) / 100
                 };
+                if (partner.isAbsolute && partner.isAbsPristine && (Math.abs(deltaX) > 0.02 || Math.abs(deltaY) > 0.02)) {
+                  partner.isAbsPristine = false;
+                }
               }
             } else {
               g.handles.forEach((h, i) => {
                 if (curveInitHandles[i]) {
-                  h.x = curveInitHandles[i].x + deltaX;
-                  h.y = curveInitHandles[i].y + deltaY;
+                  h.x = curveInitHandles[i].x + effDx;
+                  h.y = curveInitHandles[i].y + effDy;
                 }
               });
               if (partner && partnerInitHandles && Array.isArray(partner.handles)) {
                 partner.handles.forEach((h, i) => {
                   if (partnerInitHandles[i]) {
-                    h.x = partnerInitHandles[i].x + deltaY;
-                    h.y = partnerInitHandles[i].y + deltaX;
+                    h.x = partnerInitHandles[i].x + pEffDx;
+                    h.y = partnerInitHandles[i].y + pEffDy;
                   }
                 });
               }

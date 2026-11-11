@@ -330,6 +330,19 @@
         }
         break;
 
+      case 'geom_circle':
+        if (h.length >= 1) {
+          pts.push({ x: h[0].x, y: h[0].y, type: 'center', label: '중심' });
+        }
+        break;
+
+      case 'geom_triangle':
+      case 'geom_quad':
+        h.forEach((vh) => {
+          pts.push({ x: vh.x, y: vh.y, type: 'vertex', label: `꼭짓점 ${vh.name || ''}`.trim() });
+        });
+        break;
+
       default:
         if (h.length > 0) {
           pts.push({ x: h[0].x, y: h[0].y, type: 'center', label: '중심' });
@@ -352,6 +365,11 @@
       }
       for (let i = 0; i < asymX.length; i++) asymX[i] += ox;
       for (let i = 0; i < asymY.length; i++) asymY[i] += oy;
+    }
+
+    if (g.isTransposedYX) {
+      const swappedPts = pts.map(p => ({ ...p, x: p.y, y: p.x }));
+      return { pts: swappedPts, asymX: asymY, asymY: asymX };
     }
 
     return { pts, asymX, asymY };
@@ -424,8 +442,10 @@
 
     // 0. 평면도형 (원, 삼각형, 사각형) 히트 판정
     if (g.type === 'geom_circle' && g.handles.length >= 2) {
-      const s0 = this.mathToScreen(g.handles[0].x, g.handles[0].y);
-      const s1 = this.mathToScreen(g.handles[1].x, g.handles[1].y);
+      const w0 = this.engine.getHandleWorldPos(g, g.handles[0]);
+      const w1 = this.engine.getHandleWorldPos(g, g.handles[1]);
+      const s0 = this.mathToScreen(w0.x, w0.y);
+      const s1 = this.mathToScreen(w1.x, w1.y);
       const rPx = Math.hypot(s1.x - s0.x, s1.y - s0.y);
       const d = Math.hypot(pos.x - s0.x, pos.y - s0.y);
       if (d <= rPx + 14) return Math.min(Math.abs(d - rPx), 6);
@@ -433,7 +453,10 @@
     }
 
     if ((g.type === 'geom_triangle' || g.type === 'geom_quad') && g.handles.length >= 3) {
-      const pts = g.handles.map(h => this.mathToScreen(h.x, h.y));
+      const pts = g.handles.map(h => {
+        const wp = this.engine.getHandleWorldPos(g, h);
+        return this.mathToScreen(wp.x, wp.y);
+      });
       let minDist = Infinity;
       for (let i = 0; i < pts.length; i++) {
         const p1 = pts[i];
@@ -444,15 +467,21 @@
       return minDist;
     }
 
-    // 1. 일차함수 완전 수직선 특수 판정
+    // 1. 일차함수 완전 수직선(또는 전치 수평선) 특수 판정
     if (g.type === '1st_linear' && g.handles.length >= 2) {
-      if (Math.abs(g.handles[1].x - g.handles[0].x) < 1e-4) {
-        const sx = this.mathToScreen(g.handles[0].x, 0).x;
+      const wx0 = this.engine.baseXToWorldX(g, g.handles[0].x);
+      const wx1 = this.engine.baseXToWorldX(g, g.handles[1].x);
+      if (Math.abs(wx1 - wx0) < 1e-4) {
+        if (g.isTransposedYX) {
+          const sy = this.mathToScreen(0, wx0).y;
+          return Math.abs(pos.y - sy);
+        }
+        const sx = this.mathToScreen(wx0, 0).x;
         return Math.abs(pos.x - sx);
       }
     }
 
-    // 🌟 [Screen Polyline Distance 최적화: 가파른 삼차·사차함수 구간도 100% 칼스냅 판정] 🌟
+    // 🌟 [Screen Polyline Distance 최적화: 가파른 삼차·사차함수 및 y=x 전치 곡선도 100% 칼스냅 판정] 🌟
     if (
       g._screenPts &&
       g._screenPts.length >= 2 &&
@@ -478,6 +507,28 @@
       if (isFinite(minDist)) {
         return minDist;
       }
+    }
+
+    if (g.isTransposedYX) {
+      const effSpanY = this.ySpan / Math.max(0.01, this.zoomLevel);
+      const pxToMathY = (effSpanY * 2) / Math.max(1, this.screenHeight);
+      let minDistPx = Infinity;
+      let prevSampleScreen = null;
+      [-12, -9, -6, -3, 0, 3, 6, 9, 12].forEach(offsetPx => {
+        const sampleY = m.y + offsetPx * pxToMathY;
+        const evalX = this.engine.evaluatePipeline(g, sampleY);
+        if (!isNaN(evalX) && isFinite(evalX) && Math.abs(evalX) < 150) {
+          const s = this.mathToScreen(evalX, sampleY);
+          const dist = prevSampleScreen
+            ? this.distToSegment(pos, prevSampleScreen, s)
+            : Math.hypot(pos.x - s.x, pos.y - s.y);
+          if (dist < minDistPx) minDistPx = dist;
+          prevSampleScreen = s;
+        } else {
+          prevSampleScreen = null;
+        }
+      });
+      return minDistPx;
     }
 
     const effSpanX = this.xSpan / Math.max(0.01, this.zoomLevel);
@@ -1074,28 +1125,11 @@
       let prioHandleIdx = null;
 
       if (canManipulateHandles && this.activeGraph && this.activeGraph.handles) {
-        let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
-        let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
-        if (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
-          for (const t of this.activeGraph.transforms) {
-            if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
-            if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
-          }
-        }
         this.activeGraph.handles.forEach((h, idx) => {
           if (h.hidden) return;
           if (!this.isCurveSelected && (h.type === 'center' || h.type === 'asymptote') && ["cos_1period", "rational_basic", "exp_basic", "log_basic"].includes(this.activeGraph.type)) return;
-          let targetY = h.y;
-          if (this.activeGraph.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
-            targetY = Math.abs(h.y);
-          }
-          let evalY = (h.type === 'center' || h.type === 'asymptote')
-            ? (targetY + oy)
-            : this.engine.evaluatePipeline(this.activeGraph, h.x + ox);
-          if (isNaN(evalY) || !isFinite(evalY)) {
-            evalY = targetY + oy;
-          }
-          const s = this.mathToScreen(h.x + ox, evalY);
+          const wp = this.engine.getHandleWorldPos(this.activeGraph, h);
+          const s = this.mathToScreen(wp.x, wp.y);
           const dist = Math.hypot(s.x - pos.x, s.y - pos.y);
           if (dist <= prioHitDist) {
             prioHandleIdx = idx;
@@ -1201,7 +1235,7 @@
           }
           const m = this.screenToMath(pos.x, pos.y);
           this.curveDragStart = { mx: m.x, my: m.y, startScreenX: pos.x, startScreenY: pos.y };
-          this.curveHandlesSnapshot = JSON.parse(JSON.stringify(this.activeGraph.handles));
+          this.curveHandlesSnapshot = (this.activeGraph.handles || []).map(h => ({ ...h }));
           this.curveFreezeStart = {
             ox: (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0,
             oy: (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0
@@ -1210,9 +1244,21 @@
             type: this.activeGraph.type,
             handles: this.curveHandlesSnapshot,
             isAbsolute: this.activeGraph.isAbsolute,
+            isTransposedYX: Boolean(this.activeGraph.isTransposedYX),
             freezeOffset: this.activeGraph.freezeOffset,
             transforms: this.activeGraph.transforms
           });
+          const selPartner = this.getLinkedPartner(this.activeGraph);
+          if (selPartner) {
+            this.partnerHandlesSnapshot = (selPartner.handles || []).map(h => ({ ...h }));
+            this.partnerFreezeStart = {
+              ox: (selPartner.freezeOffset && typeof selPartner.freezeOffset.x === 'number') ? selPartner.freezeOffset.x : 0,
+              oy: (selPartner.freezeOffset && typeof selPartner.freezeOffset.y === 'number') ? selPartner.freezeOffset.y : 0
+            };
+          } else {
+            this.partnerHandlesSnapshot = null;
+            this.partnerFreezeStart = null;
+          }
           if (isPwGroupDrag) {
             this._pwGroupBoundariesSnapshot = [...(this.piecewiseBoundaries || [])];
             this._pwGroupGraphsSnapshot = this.graphs.map(gItem => ({
@@ -1570,27 +1616,10 @@
 
       // 1. 현재 활성 그래프의 핸들 터치 여부 우선 확인 (그래프가 선택되어 활성화된 상태에서만 조작!)
       if (canManipulateHandles && this.isCurveSelected && this.activeGraph && this.activeGraph.handles) {
-        let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
-        let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
-        if (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
-          for (const t of this.activeGraph.transforms) {
-            if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
-            if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
-          }
-        }
         this.activeGraph.handles.forEach((h, idx) => {
           if (h.hidden) return;
-          let targetY = h.y;
-          if (this.activeGraph.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
-            targetY = Math.abs(h.y);
-          }
-          let evalY = (h.type === 'center' || h.type === 'asymptote')
-            ? (targetY + oy)
-            : this.engine.evaluatePipeline(this.activeGraph, h.x + ox);
-          if (isNaN(evalY) || !isFinite(evalY)) {
-            evalY = targetY + oy;
-          }
-          const s = this.mathToScreen(h.x + ox, evalY);
+          const wp = this.engine.getHandleWorldPos(this.activeGraph, h);
+          const s = this.mathToScreen(wp.x, wp.y);
           const dist = Math.hypot(s.x - pos.x, s.y - pos.y);
           if (dist <= handleHitDist) {
             hitHandleIdx = idx;
@@ -1656,7 +1685,7 @@
           this.canvas.style.cursor = 'move';
         }
         this.curveDragStart = { mx: m.x, my: m.y, startScreenX: pos.x, startScreenY: pos.y };
-        this.curveHandlesSnapshot = JSON.parse(JSON.stringify(this.activeGraph.handles));
+        this.curveHandlesSnapshot = (this.activeGraph.handles || []).map(h => ({ ...h }));
         this.curveFreezeStart = {
           ox: (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0,
           oy: (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0
@@ -1664,7 +1693,7 @@
         if (isPwGroupDrag) {
           this._pwGroupBoundariesSnapshot = [...(this.piecewiseBoundaries || [])];
           this._pwGroupGraphsSnapshot = this.graphs.map(gItem => ({
-            handles: JSON.parse(JSON.stringify(gItem.handles || [])),
+            handles: (gItem.handles || []).map(h => ({ ...h })),
             ox: (gItem.freezeOffset && typeof gItem.freezeOffset.x === 'number') ? gItem.freezeOffset.x : 0,
             oy: (gItem.freezeOffset && typeof gItem.freezeOffset.y === 'number') ? gItem.freezeOffset.y : 0
           }));
@@ -1678,6 +1707,7 @@
           type: this.activeGraph.type,
           handles: this.curveHandlesSnapshot,
           isAbsolute: this.activeGraph.isAbsolute,
+          isTransposedYX: Boolean(this.activeGraph.isTransposedYX),
           freezeOffset: this.activeGraph.freezeOffset,
           transforms: this.activeGraph.transforms
         };
@@ -1685,7 +1715,7 @@
 
         const partner = this.getLinkedPartner(this.activeGraph);
         if (partner) {
-          this.partnerHandlesSnapshot = JSON.parse(JSON.stringify(partner.handles));
+          this.partnerHandlesSnapshot = (partner.handles || []).map(h => ({ ...h }));
           this.partnerFreezeStart = {
             ox: (partner.freezeOffset && typeof partner.freezeOffset.x === 'number') ? partner.freezeOffset.x : 0,
             oy: (partner.freezeOffset && typeof partner.freezeOffset.y === 'number') ? partner.freezeOffset.y : 0
@@ -2443,7 +2473,7 @@
 
             // 2) [대표님 핵심 기획]: 사차함수 중앙 극대점(idx=1) 평행이동 시 극소점이 x축(y=0)에 닿을 때 찰칵 자석 스냅!
             const g = this.activeGraph;
-            if (!snappedY && g && g.type === '4th_symmetric' && this.draggedHandleIdx === 1 && g.handles.length >= 3) {
+            if (!snappedY && g && !g.isTransposedYX && g.type === '4th_symmetric' && this.draggedHandleIdx === 1 && g.handles.length >= 3) {
               const deltaY = g.handles[1].y - g.handles[0].y; // 극대-극소 높이차
               if (Math.abs(m.y - deltaY) < snapDistMath) {
                 m.y = deltaY;
@@ -2458,22 +2488,45 @@
           }
 
           // Y축 (x=0) 스냅 (y축이 표시되어 있을 때만 반응)
-          if (this.showYAxis !== false && Math.abs(m.x) < snapDistMath) {
-            m.x = 0.0;
-            this.axisSnapActiveX = true;
-            this.snappedPoints.push({ x: 0.0, y: m.y, label: 'y축 밀착' });
+          if (this.showYAxis !== false) {
+            let snappedX = false;
+            if (Math.abs(m.x) < snapDistMath) {
+              m.x = 0.0;
+              this.axisSnapActiveX = true;
+              this.snappedPoints.push({ x: 0.0, y: m.y, label: 'y축 밀착' });
+              snappedX = true;
+            }
+            const g = this.activeGraph;
+            if (!snappedX && g && g.isTransposedYX && g.type === '4th_symmetric' && this.draggedHandleIdx === 1 && g.handles.length >= 3) {
+              const deltaX = g.handles[1].y - g.handles[0].y;
+              if (Math.abs(m.x - deltaX) < snapDistMath) {
+                m.x = deltaX;
+                this.axisSnapActiveX = true;
+                let oy = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+                const dy = m.y - (g.handles[1].x + oy);
+                this.snappedPoints.push({ x: 0.0, y: g.handles[0].x + oy + dy, isContinuity: true, label: '극점 y축 접함' });
+                this.snappedPoints.push({ x: 0.0, y: g.handles[2].x + oy + dy, isContinuity: true, label: '극점 y축 접함' });
+              }
+            }
           }
         }
 
-        let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
-        let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
-        if (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
-          for (const t of this.activeGraph.transforms) {
-            if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
-            if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
+        const gAct = this.activeGraph;
+        const worldParam = (gAct && gAct.isTransposedYX) ? m.y : m.x;
+        const worldVal = (gAct && gAct.isTransposedYX) ? m.x : m.y;
+        const baseParam = this.engine.worldXToBaseX(gAct, worldParam);
+        const fzOy = (gAct && gAct.freezeOffset && typeof gAct.freezeOffset.y === 'number') ? gAct.freezeOffset.y : 0;
+        let baseVal = worldVal - fzOy;
+        if (gAct && gAct.frozenInvertV) baseVal = -baseVal;
+        if (gAct && gAct.transforms && gAct.transforms.length > 0) {
+          for (let ti = gAct.transforms.length - 1; ti >= 0; ti--) {
+            const t = gAct.transforms[ti];
+            if (!t) continue;
+            if (t.invertV) baseVal = -baseVal;
+            if (t.offset && typeof t.offset.y === 'number') baseVal -= t.offset.y;
           }
         }
-        this.dragActiveHandle(this.draggedHandleIdx, m.x - ox, m.y - oy, e.altKey);
+        this.dragActiveHandle(this.draggedHandleIdx, baseParam, baseVal, e.altKey);
         if (this.activeGraph && this.activeGraph.isAbsolute && this.activeGraph.isAbsPristine) {
           this.activeGraph.isAbsPristine = false;
           this.syncCurveContextBar();
@@ -2517,6 +2570,7 @@
               type: this.activeGraph.type,
               handles: this.curveHandlesSnapshot,
               isAbsolute: this.activeGraph.isAbsolute,
+              isTransposedYX: Boolean(this.activeGraph.isTransposedYX),
               freezeOffset: this.activeGraph.freezeOffset,
               transforms: this.activeGraph.transforms
             });
@@ -2700,17 +2754,33 @@
           const ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
           const oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
           const hasTransforms = this.activeGraph.isAbsolute || (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) || this.activeGraph.isFrozen || ox !== 0 || oy !== 0;
+          const effDx = this.activeGraph.isTransposedYX ? deltaY : deltaX;
+          const effDy = this.activeGraph.isTransposedYX ? deltaX : deltaY;
 
           if (isShiftDrag && this.activeGraph.isAbsolute) {
             // 💡 [Shift + 몸통 드래그]: 원함수 내부 핸들 이동 ➔ 실시간 접힘 모핑! (|f(x)-k|)
             this.activeGraph.handles.forEach((h, idx) => {
-              h.x = this.curveHandlesSnapshot[idx].x + deltaX;
-              h.y = this.curveHandlesSnapshot[idx].y + deltaY;
+              h.x = this.curveHandlesSnapshot[idx].x + effDx;
+              h.y = this.curveHandlesSnapshot[idx].y + effDy;
             });
             if (this.activeGraph.isAbsPristine && (Math.abs(deltaX) > 0.05 || Math.abs(deltaY) > 0.05)) {
               this.activeGraph.isAbsPristine = false;
               this.syncCurveContextBar();
               this.syncControls();
+            }
+            const partner = this.getLinkedPartner(this.activeGraph);
+            if (partner && this.partnerHandlesSnapshot) {
+              const pEffDx = partner.isTransposedYX ? deltaX : deltaY;
+              const pEffDy = partner.isTransposedYX ? deltaY : deltaX;
+              partner.handles.forEach((h, idx) => {
+                if (this.partnerHandlesSnapshot[idx]) {
+                  h.x = this.partnerHandlesSnapshot[idx].x + pEffDx;
+                  h.y = this.partnerHandlesSnapshot[idx].y + pEffDy;
+                }
+              });
+              if (partner.isAbsolute && partner.isAbsPristine && (Math.abs(deltaX) > 0.05 || Math.abs(deltaY) > 0.05)) {
+                partner.isAbsPristine = false;
+              }
             }
             this.showShiftMorphHint();
           } else if (hasTransforms) {
@@ -2718,8 +2788,8 @@
             if (!this.activeGraph.freezeOffset) this.activeGraph.freezeOffset = { x: 0, y: 0 };
             const initOx = (this.curveFreezeStart && typeof this.curveFreezeStart.ox === 'number') ? this.curveFreezeStart.ox : 0;
             const initOy = (this.curveFreezeStart && typeof this.curveFreezeStart.oy === 'number') ? this.curveFreezeStart.oy : 0;
-            const newOx = Math.round((initOx + deltaX) * 100) / 100;
-            const newOy = Math.round((initOy + deltaY) * 100) / 100;
+            const newOx = Math.round((initOx + effDx) * 100) / 100;
+            const newOy = Math.round((initOy + effDy) * 100) / 100;
             if (this.activeGraph.freezeOffset.x !== newOx || this.activeGraph.freezeOffset.y !== newOy) {
               this.activeGraph.freezeOffset.x = newOx;
               this.activeGraph.freezeOffset.y = newOy;
@@ -2731,29 +2801,33 @@
               }
             }
 
-            // 🔗 [역함수 대칭 연동: dx ↔ dy 스왑 평행이동]
+            // 🔗 [역함수 대칭 연동: dx ↔ dy 스왑 평행이동 (y=x 전치 완벽 호환)]
             const partner = this.getLinkedPartner(this.activeGraph);
             if (partner && this.partnerFreezeStart) {
+              const pEffDx = partner.isTransposedYX ? deltaX : deltaY;
+              const pEffDy = partner.isTransposedYX ? deltaY : deltaX;
               if (!partner.freezeOffset) partner.freezeOffset = { x: 0, y: 0 };
-              partner.freezeOffset.x = Math.round((this.partnerFreezeStart.ox + deltaY) * 100) / 100;
-              partner.freezeOffset.y = Math.round((this.partnerFreezeStart.oy + deltaX) * 100) / 100;
+              partner.freezeOffset.x = Math.round((this.partnerFreezeStart.ox + pEffDx) * 100) / 100;
+              partner.freezeOffset.y = Math.round((this.partnerFreezeStart.oy + pEffDy) * 100) / 100;
             }
           } else if (this.isShapeCenterLocked(this.activeGraph)) {
             this.showCenterLockHint(); // 원점 중심 고정 중에는 통째 이동 불가
           } else {
             // 일반 함수: 핸들 전체 평행이동
             this.activeGraph.handles.forEach((h, idx) => {
-              h.x = this.curveHandlesSnapshot[idx].x + deltaX;
-              h.y = this.curveHandlesSnapshot[idx].y + deltaY;
+              h.x = this.curveHandlesSnapshot[idx].x + effDx;
+              h.y = this.curveHandlesSnapshot[idx].y + effDy;
             });
 
-            // 🔗 [역함수 대칭 연동: 일반 함수 핸들 dx ↔ dy 스왑 평행이동]
+            // 🔗 [역함수 대칭 연동: 일반 함수 핸들 dx ↔ dy 스왑 평행이동 (y=x 전치 완벽 호환)]
             const partner = this.getLinkedPartner(this.activeGraph);
             if (partner && this.partnerHandlesSnapshot) {
+              const pEffDx = partner.isTransposedYX ? deltaX : deltaY;
+              const pEffDy = partner.isTransposedYX ? deltaY : deltaX;
               partner.handles.forEach((h, idx) => {
                 if (this.partnerHandlesSnapshot[idx]) {
-                  h.x = this.partnerHandlesSnapshot[idx].x + deltaY;
-                  h.y = this.partnerHandlesSnapshot[idx].y + deltaX;
+                  h.x = this.partnerHandlesSnapshot[idx].x + pEffDx;
+                  h.y = this.partnerHandlesSnapshot[idx].y + pEffDy;
                 }
               });
             }
@@ -2836,27 +2910,10 @@
         const canManipulateHandles = (!this.isInkMode || this.activeInkTool === 'select');
         let isOverHandle = false;
         if (canManipulateHandles && this.isCurveSelected && this.activeGraph && this.activeGraph.handles) {
-          let ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
-          let oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
-          if (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) {
-            for (const t of this.activeGraph.transforms) {
-              if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
-              if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
-            }
-          }
           this.activeGraph.handles.forEach(h => {
             if (h.hidden) return;
-            let targetY = h.y;
-            if (this.activeGraph.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
-              targetY = Math.abs(h.y);
-            }
-            let evalY = (h.type === 'center' || h.type === 'asymptote')
-              ? (targetY + oy)
-              : this.engine.evaluatePipeline(this.activeGraph, h.x + ox);
-            if (isNaN(evalY) || !isFinite(evalY)) {
-              evalY = targetY + oy;
-            }
-            const s = this.mathToScreen(h.x + ox, evalY);
+            const wp = this.engine.getHandleWorldPos(this.activeGraph, h);
+            const s = this.mathToScreen(wp.x, wp.y);
             if (Math.hypot(s.x - pos.x, s.y - pos.y) <= 18) {
               isOverHandle = true;
             }
@@ -4130,10 +4187,17 @@
           if (!h) return;
           let newX = h.x;
           let newY = h.y;
-          if (e.key === 'ArrowUp') newY += step;
-          else if (e.key === 'ArrowDown') newY -= step;
-          else if (e.key === 'ArrowLeft') newX -= step;
-          else if (e.key === 'ArrowRight') newX += step;
+          if (this.activeGraph.isTransposedYX) {
+            if (e.key === 'ArrowUp') newX += step;
+            else if (e.key === 'ArrowDown') newX -= step;
+            else if (e.key === 'ArrowLeft') newY -= step;
+            else if (e.key === 'ArrowRight') newY += step;
+          } else {
+            if (e.key === 'ArrowUp') newY += step;
+            else if (e.key === 'ArrowDown') newY -= step;
+            else if (e.key === 'ArrowLeft') newX -= step;
+            else if (e.key === 'ArrowRight') newX += step;
+          }
 
           // [대표님 핵심 기획]: 키보드 방향키 조작 시에는 자석 효과 및 모핑을 100% 완전 바이패스!
           this.axisSnapActiveX = false;
@@ -4178,36 +4242,42 @@
             const ox = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.x === 'number') ? this.activeGraph.freezeOffset.x : 0;
             const oy = (this.activeGraph.freezeOffset && typeof this.activeGraph.freezeOffset.y === 'number') ? this.activeGraph.freezeOffset.y : 0;
             const hasTransforms = this.activeGraph.isAbsolute || (this.activeGraph.transforms && this.activeGraph.transforms.length > 0) || this.activeGraph.isFrozen || ox !== 0 || oy !== 0;
+            const effDx = this.activeGraph.isTransposedYX ? dy : dx;
+            const effDy = this.activeGraph.isTransposedYX ? dx : dy;
 
             if (hasTransforms) {
               if (!this.activeGraph.freezeOffset) this.activeGraph.freezeOffset = { x: 0, y: 0 };
-              this.activeGraph.freezeOffset.x = Math.round((this.activeGraph.freezeOffset.x + dx) * 100) / 100;
-              this.activeGraph.freezeOffset.y = Math.round((this.activeGraph.freezeOffset.y + dy) * 100) / 100;
+              this.activeGraph.freezeOffset.x = Math.round((this.activeGraph.freezeOffset.x + effDx) * 100) / 100;
+              this.activeGraph.freezeOffset.y = Math.round((this.activeGraph.freezeOffset.y + effDy) * 100) / 100;
               if (this.activeGraph.isAbsolute && this.activeGraph.isAbsPristine) {
                 this.activeGraph.isAbsPristine = false;
                 this.syncCurveContextBar();
                 this.syncControls();
               }
 
-              // 🔗 [역함수 대칭 연동: dx ↔ dy 스왑 평행이동]
+              // 🔗 [역함수 대칭 연동: dx ↔ dy 스왑 평행이동 (y=x 전치 완벽 호환)]
               const partner = this.getLinkedPartner(this.activeGraph);
               if (partner) {
+                const pEffDx = partner.isTransposedYX ? dx : dy;
+                const pEffDy = partner.isTransposedYX ? dy : dx;
                 if (!partner.freezeOffset) partner.freezeOffset = { x: 0, y: 0 };
-                partner.freezeOffset.x = Math.round((partner.freezeOffset.x + dy) * 100) / 100;
-                partner.freezeOffset.y = Math.round((partner.freezeOffset.y + dx) * 100) / 100;
+                partner.freezeOffset.x = Math.round((partner.freezeOffset.x + pEffDx) * 100) / 100;
+                partner.freezeOffset.y = Math.round((partner.freezeOffset.y + pEffDy) * 100) / 100;
               }
             } else {
               this.activeGraph.handles.forEach(h => {
-                h.x += dx;
-                h.y += dy;
+                h.x += effDx;
+                h.y += effDy;
               });
 
-              // 🔗 [역함수 대칭 연동: 일반 함수 핸들 dx ↔ dy 스왑 평행이동]
+              // 🔗 [역함수 대칭 연동: 일반 함수 핸들 dx ↔ dy 스왑 평행이동 (y=x 전치 완벽 호환)]
               const partner = this.getLinkedPartner(this.activeGraph);
               if (partner && partner.handles) {
+                const pEffDx = partner.isTransposedYX ? dx : dy;
+                const pEffDy = partner.isTransposedYX ? dy : dx;
                 partner.handles.forEach(h => {
-                  h.x += dy;
-                  h.y += dx;
+                  h.x += pEffDx;
+                  h.y += pEffDy;
                 });
               }
             }
@@ -4563,7 +4633,7 @@
       const pdfClipRect = (this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2)
         ? this._lastPdfPageScreenRect
         : null;
-      if (isExport && !this.useViewfinder) {
+      if (isExport) {
         if (pdfClipRect) {
           ctx.save();
           ctx.beginPath();
@@ -4620,7 +4690,7 @@
 
     // 1. 점선 그리드 가이드 (정사각형 내부에만 단정하게 표시)
     if (this.showGuides && !this.isCleanView) {
-      this.drawGuides(ctx);
+      this.drawGuides(ctx, squareBounds, isExport);
     }
 
     // 1.5. y = x 항등직선 대칭 기준선 (역함수 모드)
@@ -4632,17 +4702,17 @@
 
     // 2. 점근선 렌더링 (모든 관련 그래프 점근선 표시)
     if (hasGraphs && this.showAsymptotes) {
-      this.drawAllAsymptotes(ctx);
+      this.drawAllAsymptotes(ctx, isExport);
     }
 
     // 3. 좌표축 & 화살표 (정사각형 끝단에 화살촉 및 x·y 이름표 칼같이 배치!)
     if (this.showAxes) {
-      this.drawAxes(ctx, squareBounds);
+      this.drawAxes(ctx, squareBounds, isExport);
     }
 
     // 3.5. 그리드 눈금 숫자 표시 (확대·축소에 비례하여 크기가 함께 조절되는 단정한 좌표 숫자)
     if (this.showGridNumbers && !this.isCleanView) {
-      this.drawGridNumbers(ctx, squareBounds);
+      this.drawGridNumbers(ctx, squareBounds, isExport);
     }
 
     // 4. 대칭의 중심 (활성 그래프 변곡점/점근선교점 등 은은한 십자선 마커)
@@ -4691,7 +4761,7 @@
     }
 
     // 🌟 [내보내기/복사 시 화면에 떠 있는 문제 카드 & 그래프 카드 합성] 🌟
-    if (isExport && !this._isRenderingGraphSnapshot && !this.useViewfinder) {
+    if (isExport && !this._isRenderingGraphSnapshot && !(this.useViewfinder && !this.isGraphCovered)) {
       this.drawFloatingCardsForExport(ctx, expFilter);
     }
 
@@ -4879,8 +4949,8 @@
       const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
       const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
       const hSig = (g.handles || []).map(h => `${h.x.toFixed(4)}:${h.y.toFixed(4)}:${h.type}:${h.hidden ? 1 : 0}`).join(';');
-      const tSig = (g.transforms || []).map(t => `${t.type || ''}:${t.offset ? t.offset.x : 0}:${t.offset ? t.offset.y : 0}:${t.invertH ? 1 : 0}:${t.invertV ? 1 : 0}:${t.absolute ? 1 : 0}`).join(';');
-      sigParts.push(`${g.id}|${g.type}|${g.color}|${g.isAbsolute ? 1 : 0}|${g.isFrozen ? 1 : 0}|${g.frozenInvertH ? 1 : 0}|${g.frozenInvertV ? 1 : 0}|${g.frozenAbsolute ? 1 : 0}|${g.isIndependent ? 1 : 0}|${ox.toFixed(4)},${oy.toFixed(4)}|${hSig}|${tSig}`);
+      const tSig = (g.transforms || []).map(t => `${t.type || ''}:${t.offset ? t.offset.x : 0}:${t.offset ? t.offset.y : 0}:${t.invertH ? 1 : 0}:${t.invertV ? 1 : 0}:${(t.abs || t.absolute) ? 1 : 0}`).join(';');
+      sigParts.push(`${g.id}|${g.type}|${g.color}|${g.isTransposedYX ? 1 : 0}|${g.isAbsolute ? 1 : 0}|${g.isFrozen ? 1 : 0}|${g.frozenInvertH ? 1 : 0}|${g.frozenInvertV ? 1 : 0}|${g.frozenAbsolute ? 1 : 0}|${g.isIndependent ? 1 : 0}|${ox.toFixed(4)},${oy.toFixed(4)}|${hSig}|${tSig}`);
     }
     const cacheSig = sigParts.join('||');
     if (this._intersectionCacheSig === cacheSig && Array.isArray(this._intersectionCacheList)) {
@@ -4922,11 +4992,13 @@
         if (processedPairs.has(pairKey)) return;
         processedPairs.add(pairKey);
 
-        const roots = this.engine.findIntersections(mainG, targetG, rangeX, screenRect, isFastDrag);
+        const wMain = this._wrapGraphForScreenIntersections(mainG);
+        const wTarget = this._wrapGraphForScreenIntersections(targetG);
+        const roots = this.engine.findIntersections(wMain, wTarget, rangeX, screenRect, isFastDrag);
         roots.forEach(r => {
           if (isPwActive) {
-            const isMainVisible = this.isInsidePiece(mainIdx, r.x);
-            const isTargetVisible = this.isInsidePiece(targetIdx, r.x);
+            const isMainVisible = mainG.isIndependent ? true : this.isInsidePiece(mainIdx, r.x);
+            const isTargetVisible = targetG.isIndependent ? true : this.isInsidePiece(targetIdx, r.x);
             if (!isMainVisible || !isTargetVisible) {
               return;
             }
@@ -4960,9 +5032,10 @@
       }
     } else if (this.showXAxis !== false) {
       // 단일 그래프일 때는 x축과의 교점(실근) 판독 (x축이 표시되어 있을 때만)
-      const roots = this.engine.findIntersections(g1, null, rangeX, screenRect, isFastDrag);
+      const wG1 = this._wrapGraphForScreenIntersections(g1);
+      const roots = this.engine.findIntersections(wG1, null, rangeX, screenRect, isFastDrag);
       roots.forEach(r => {
-        if (this.usePiecewise && this.graphs.length >= 2) {
+        if (this.usePiecewise && this.graphs.length >= 1 && !g1.isIndependent) {
           if (!this.isInsidePiece(this.activeGraphIdx, r.x)) {
             return;
           }
@@ -5470,10 +5543,14 @@
     return;
   }
 
-  drawAxes(ctx, bounds = null) {
+  drawAxes(ctx, bounds = null, isExport = false) {
     const orig = this.mathToScreen(0, 0);
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
-    const axisColor = this.isMonochromeMode ? '#000000' : curTheme.axis;
+    const isTransparentExport = Boolean(isExport && this.exportTransparent);
+    const darkTransparentContrast = Boolean(isTransparentExport && !curTheme.isLight && !this.isMonochromeMode);
+    const axisColor = this.isMonochromeMode
+      ? '#000000'
+      : (darkTransparentContrast ? '#1e293b' : curTheme.axis);
     const isPip = Boolean(this._isRenderingGraphSnapshot);
     const pipScale = isPip ? 0.78 : 1.0;
     // 🌟 [대표님 피드백 반영]: 데스모스 스타일의 샤프하고 세련된 축 두께 (창모드에서는 0.78배 축소)
@@ -5545,9 +5622,9 @@
       }
     }
 
-    // [수능·평가원 표준 축 이름표 (x/t, y, 원점 O) 렌더링 - 데스모스/교과서급 KaTeX Math 이탤릭 & Halo 외곽선 엔진]
+    // [수능·평가원 표준 축 이름표 (x/t, y, 원점 O) 렌더링 - 출판용 STIX/Times 이탤릭 & Halo 외곽선 엔진]
     if (this.showAxisLabels) {
-      let fontFam = '"KaTeX_Math", "Times New Roman", Georgia, serif';
+      let fontFam = "'STIX Two Text', 'Times New Roman', 'Cambria Math', serif";
       if (this.dropLineFontFamily === 'pretendard') fontFam = "'Pretendard', -apple-system, sans-serif";
       else if (this.dropLineFontFamily === 'batang') fontFam = "'KoPubWorld Batang', 'Batang', serif";
 
@@ -5556,7 +5633,7 @@
       const originFSize = Math.max(7.5, Math.round(fSize * 0.95 * 10) / 10);
       const axisPad = Math.max(3, Math.round(6 * zRatio));
       const haloLw = Math.max(2, Math.min(4.5, 3.5 * zRatio));
-      const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.isLight ? '#ffffff' : (curTheme.bg || '#1e1e2e'));
+      const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || (curTheme.isLight ? '#ffffff' : '#1e1e2e'));
 
       // 1. X축 이름표 (예: x, t, k)
       if (showX && this.axisLabelX && orig.y >= yTop && orig.y <= yBottom) {
@@ -5570,7 +5647,7 @@
         ctx.textBaseline = 'top';
         const labelXPos = xEnd - arrowSize - axisPad;
         const labelYPos = Math.min(yBottom - fSize - 4, Math.max(yTop + 4, orig.y + axisPad));
-        ctx.strokeText(this.axisLabelX, labelXPos, labelYPos);
+        if (!isTransparentExport) ctx.strokeText(this.axisLabelX, labelXPos, labelYPos);
         ctx.fillText(this.axisLabelX, labelXPos, labelYPos);
         ctx.restore();
       }
@@ -5587,7 +5664,7 @@
         ctx.textBaseline = 'top';
         const labelXPos = Math.max(xStart + fSize, orig.x - axisPad);
         const labelYPos = yTop + arrowSize + Math.max(2, Math.round(4 * zRatio));
-        ctx.strokeText(this.axisLabelY, labelXPos, labelYPos);
+        if (!isTransparentExport) ctx.strokeText(this.axisLabelY, labelXPos, labelYPos);
         ctx.fillText(this.axisLabelY, labelXPos, labelYPos);
         ctx.restore();
       }
@@ -5602,7 +5679,7 @@
         ctx.lineJoin = 'round';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
-        ctx.strokeText('O', orig.x + axisPad, orig.y + axisPad);
+        if (!isTransparentExport) ctx.strokeText('O', orig.x + axisPad, orig.y + axisPad);
         ctx.fillText('O', orig.x + axisPad, orig.y + axisPad);
         ctx.restore();
       }
@@ -5613,10 +5690,13 @@
     ctx.restore();
   }
 
-  drawGuides(ctx) {
+  drawGuides(ctx, bounds = null, isExport = false) {
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    const darkTransparentContrast = Boolean(isExport && this.exportTransparent && !curTheme.isLight && !this.isMonochromeMode);
     ctx.save();
-    ctx.strokeStyle = this.isMonochromeMode ? 'rgba(0, 0, 0, 0.08)' : curTheme.grid;
+    ctx.strokeStyle = this.isMonochromeMode
+      ? 'rgba(0, 0, 0, 0.08)'
+      : (darkTransparentContrast ? 'rgba(30, 41, 59, 0.14)' : curTheme.grid);
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 4]);
 
@@ -5626,7 +5706,9 @@
     const mBottom = this.screenToMath(0, this.screenHeight).y;
     const mTop = this.screenToMath(0, 0).y;
 
-    const spanX = mRight - mLeft;
+    const spanX = (isExport && typeof this._exportBaseSpanX === 'number' && this._exportBaseSpanX > 0)
+      ? this._exportBaseSpanX
+      : (mRight - mLeft);
     let step = 1;
     if (spanX > 90) step = 5;
     else if (spanX > 45) step = 2;
@@ -5662,10 +5744,11 @@
     ctx.restore();
   }
 
-  drawGridNumbers(ctx, bounds = null) {
+  drawGridNumbers(ctx, bounds = null, isExport = false) {
     const orig = this.mathToScreen(0, 0);
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
-    const isLight = curTheme.isLight || this.isMonochromeMode;
+    const isTransparentExport = Boolean(isExport && this.exportTransparent);
+    const isLight = curTheme.isLight || this.isMonochromeMode || isTransparentExport;
     const textColor = this.isMonochromeMode
       ? '#000000'
       : (isLight ? 'rgba(45, 52, 54, 0.78)' : 'rgba(255, 255, 255, 0.78)');
@@ -5674,7 +5757,7 @@
       : (isLight ? 'rgba(45, 52, 54, 0.52)' : 'rgba(255, 255, 255, 0.52)');
     const haloColor = this.isMonochromeMode
       ? '#ffffff'
-      : (isLight ? '#ffffff' : (curTheme.bg || '#1e272e'));
+      : (curTheme.bg || (curTheme.isLight ? '#ffffff' : '#1e272e'));
 
     const xStart = bounds ? bounds.minX : 0;
     const xEnd = bounds ? bounds.maxX : this.screenWidth;
@@ -5686,7 +5769,9 @@
     const mBottom = this.screenToMath(0, yBottom).y;
     const mTop = this.screenToMath(0, yTop).y;
 
-    const fullSpanX = this.screenToMath(this.screenWidth, 0).x - this.screenToMath(0, 0).x;
+    const fullSpanX = (isExport && typeof this._exportBaseSpanX === 'number' && this._exportBaseSpanX > 0)
+      ? this._exportBaseSpanX
+      : (this.screenToMath(this.screenWidth, 0).x - this.screenToMath(0, 0).x);
     let step = 1;
     if (fullSpanX > 90) step = 5;
     else if (fullSpanX > 45) step = 2;
@@ -5738,7 +5823,7 @@
         const labelStr = String(Math.round(xVal * 1000) / 1000);
         const labelY = orig.y + offsetPx;
         if (labelY + fontPx <= yBottom - 2) {
-          ctx.strokeText(labelStr, s.x, labelY);
+          if (!isTransparentExport) ctx.strokeText(labelStr, s.x, labelY);
           ctx.fillText(labelStr, s.x, labelY);
           renderedX.push(Number(labelStr));
         }
@@ -5769,7 +5854,7 @@
         const labelStr = String(Math.round(yVal * 1000) / 1000);
         const labelX = orig.x - offsetPx;
         if (labelX - fontPx >= xStart + 2) {
-          ctx.strokeText(labelStr, labelX, s.y);
+          if (!isTransparentExport) ctx.strokeText(labelStr, labelX, s.y);
           ctx.fillText(labelStr, labelX, s.y);
           renderedY.push(Number(labelStr));
         }
@@ -5902,6 +5987,29 @@
   }
 
   // [📍 화면 렌더링과 100% 동일한 구간분할/주기함수 반영 곡선 Y값 평가 헬퍼]
+  _wrapGraphForScreenIntersections(g) {
+    if (!g) return g;
+    if (this.usePiecewise && this.isPiecewisePeriodic && this.piecewiseBoundaries && this.piecewiseBoundaries.length >= 2 && !g.isIndependent) {
+      const b0 = this.piecewiseBoundaries[0];
+      const bLast = this.piecewiseBoundaries[this.piecewiseBoundaries.length - 1];
+      const T = bLast - b0;
+      if (T > 1e-4) {
+        const stepY = this.periodicStepY || 0;
+        const eng = this.engine;
+        return Object.assign({}, g, {
+          _periodicEval: (mx) => {
+            const curCycleK = Math.floor((mx - b0) / T);
+            let xBase = mx - curCycleK * T;
+            if (xBase >= bLast - 1e-6) xBase = b0;
+            if (xBase < b0) xBase = b0;
+            return eng.evaluatePipeline(g, xBase) + curCycleK * stepY;
+          }
+        });
+      }
+    }
+    return g;
+  }
+
   evaluateGraphAtForScreen(g, gIdx, mx) {
     if (!g) return NaN;
     if (this.usePiecewise && this.graphs && this.graphs.length >= 1 && !g.isIndependent && gIdx !== null && gIdx !== undefined) {
@@ -5932,8 +6040,12 @@
     // 포인터가 마우스를 뒤따라오며 렉이 걸리던 현상을 원천 차단!
     const mLeft = this.screenToMath(0, 0).x;
     const mRight = this.screenToMath(this.screenWidth || 1440, 0).x;
+    const mBottom = this.screenToMath(0, this.screenHeight || 900).y;
+    const mTop = this.screenToMath(0, 0).y;
     const scanMinX = Math.min(-22, Math.min(mLeft, mRight) - 4);
     const scanMaxX = Math.max(22, Math.max(mLeft, mRight) + 4);
+    const scanMinY = Math.min(-22, Math.min(mBottom, mTop) - 4);
+    const scanMaxY = Math.max(22, Math.max(mBottom, mTop) + 4);
 
     const sigParts = [
       this.usePiecewise ? 1 : 0,
@@ -5946,7 +6058,9 @@
       this.showXAxis !== false ? 1 : 0,
       this.showYAxis !== false ? 1 : 0,
       Math.round(scanMinX),
-      Math.round(scanMaxX)
+      Math.round(scanMaxX),
+      Math.round(scanMinY),
+      Math.round(scanMaxY)
     ];
     if (this.graphs) {
       for (let i = 0; i < this.graphs.length; i++) {
@@ -5955,8 +6069,8 @@
         const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
         const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
         const hSig = (g.handles || []).map(h => `${h.x.toFixed(4)}:${h.y.toFixed(4)}:${h.type}:${h.hidden ? 1 : 0}`).join(';');
-        const tSig = (g.transforms || []).map(t => `${t.type || ''}:${t.offset ? t.offset.x : 0}:${t.offset ? t.offset.y : 0}:${t.invertH ? 1 : 0}:${t.invertV ? 1 : 0}:${t.absolute ? 1 : 0}`).join(';');
-        sigParts.push(`${g.id}|${g.type}|${g.color}|${g.isAbsolute ? 1 : 0}|${g.isFrozen ? 1 : 0}|${g.frozenInvertH ? 1 : 0}|${g.frozenInvertV ? 1 : 0}|${g.frozenAbsolute ? 1 : 0}|${g.isIndependent ? 1 : 0}|${g.customExpr || ''}|${ox.toFixed(4)},${oy.toFixed(4)}|${hSig}|${tSig}`);
+        const tSig = (g.transforms || []).map(t => `${t.type || ''}:${t.offset ? t.offset.x : 0}:${t.offset ? t.offset.y : 0}:${t.invertH ? 1 : 0}:${t.invertV ? 1 : 0}:${(t.abs || t.absolute) ? 1 : 0}`).join(';');
+        sigParts.push(`${g.id}|${g.type}|${g.color}|${g.isTransposedYX ? 1 : 0}|${g.isAbsolute ? 1 : 0}|${g.isFrozen ? 1 : 0}|${g.frozenInvertH ? 1 : 0}|${g.frozenInvertV ? 1 : 0}|${g.frozenAbsolute ? 1 : 0}|${g.isIndependent ? 1 : 0}|${g.customExpr || ''}|${ox.toFixed(4)},${oy.toFixed(4)}|${hSig}|${tSig}`);
       }
     }
     const cacheSig = sigParts.join('||');
@@ -5985,19 +6099,16 @@
     this.graphs.forEach((g, gIdx) => {
       if (!g || !g.handles) return;
       if (g.type === 'geom_circle' || g.type === 'geom_triangle' || g.type === 'geom_quad') return;
-      const baseOx = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
-      let ox = baseOx;
-      let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
-      const hasTransforms = Boolean(g.transforms && g.transforms.length > 0);
-      if (hasTransforms) {
-        for (const t of g.transforms) {
-          if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
-          if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
-        }
-      }
-      const mapInnerX = (innerX) => {
-        if (hasTransforms) return innerX + ox;
-        return g.frozenInvertH ? (baseOx - innerX) : (baseOx + innerX);
+      const isTrans = Boolean(g.isTransposedYX);
+      const paramMin = isTrans ? scanMinY : scanMinX;
+      const paramMax = isTrans ? scanMaxY : scanMaxX;
+      const mapInnerX = (innerX) => this.engine.baseXToWorldX(g, innerX);
+      const evalParam = (pVal) => isTrans
+        ? this.engine.evaluatePipeline(g, pVal)
+        : this.evaluateGraphAtForScreen(g, gIdx, pVal);
+      const emitGraphCand = (pVal, outVal, labelName, handleIdx, candKey) => {
+        if (isTrans) addCand(outVal, pVal, labelName, g.color, g.id, handleIdx, candKey);
+        else addCand(pVal, outVal, labelName, g.color, g.id, handleIdx, candKey);
       };
 
       // 🌊 [삼각함수(sin, cos, tan) 주기별 모든 극대(최대)·극소(최소)·대칭중심 자석 스냅 지원]
@@ -6008,8 +6119,8 @@
         if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
         const qStep = (g.type === 'sin_1period') ? dx : (dx / 4.0);
         if (Math.abs(qStep) >= 0.05) {
-          const invMin = hasTransforms ? (scanMinX - ox) : (g.frozenInvertH ? (baseOx - scanMinX) : (scanMinX - baseOx));
-          const invMax = hasTransforms ? (scanMaxX - ox) : (g.frozenInvertH ? (baseOx - scanMaxX) : (scanMaxX - baseOx));
+          const invMin = this.engine.worldXToBaseX(g, paramMin);
+          const invMax = this.engine.worldXToBaseX(g, paramMax);
           const kA = (invMin - h0.x) / qStep;
           const kB = (invMax - h0.x) / qStep;
           const kMin = Math.max(-80, Math.floor(Math.min(kA, kB)) - 1);
@@ -6026,14 +6137,14 @@
               if (pass === 1 && isCrestOrTrough) continue;
 
               const candX = mapInnerX(h0.x + k * qStep);
-              if (candX < scanMinX || candX > scanMaxX) continue;
-              if (this.usePiecewise && !g.isIndependent && !this.isInsidePiece(gIdx, candX)) continue;
+              if (candX < paramMin || candX > paramMax) continue;
+              if (!isTrans && this.usePiecewise && !g.isIndependent && !this.isInsidePiece(gIdx, candX)) continue;
 
-              const evalY = this.evaluateGraphAtForScreen(g, gIdx, candX);
+              const evalY = evalParam(candX);
               if (isNaN(evalY) || !isFinite(evalY) || Math.abs(evalY) > 100) continue;
 
-              const yL = this.evaluateGraphAtForScreen(g, gIdx, candX - eps);
-              const yR = this.evaluateGraphAtForScreen(g, gIdx, candX + eps);
+              const yL = evalParam(candX - eps);
+              const yR = evalParam(candX + eps);
               let labelName = '특이점';
               if (isCrestOrTrough) {
                 if (!isNaN(yL) && !isNaN(yR)) {
@@ -6041,7 +6152,7 @@
                   if (Math.abs(evalY - midNeighbor) < 1e-5) {
                     labelName = '대칭중심';
                   } else {
-                    labelName = (evalY >= midNeighbor) ? '극대' : '극소';
+                    labelName = isTrans ? '극점' : ((evalY >= midNeighbor) ? '극대' : '극소');
                   }
                 } else {
                   labelName = '극점';
@@ -6050,9 +6161,9 @@
                 // 중심선 교차점 (단, |f(x)| 절댓값 꺾임으로 인해 첨점 극소/극대가 된 경우 극소/극대로 표기)
                 if (!isNaN(yL) && !isNaN(yR)) {
                   if (evalY < yL - 1e-4 && evalY < yR - 1e-4) {
-                    labelName = '극소';
+                    labelName = isTrans ? '극점' : '극소';
                   } else if (evalY > yL + 1e-4 && evalY > yR + 1e-4) {
-                    labelName = '극대';
+                    labelName = isTrans ? '극점' : '극대';
                   } else {
                     labelName = '대칭중심';
                   }
@@ -6060,7 +6171,7 @@
                   labelName = '대칭중심';
                 }
               }
-              addCand(candX, evalY, labelName, g.color, g.id, null, `${g.id}_trig_q_${k}`);
+              emitGraphCand(candX, evalY, labelName, null, `${g.id}_trig_q_${k}`);
             }
           }
         }
@@ -6071,19 +6182,19 @@
         if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
         const pStep = dx * 4.0;
         if (Math.abs(pStep) >= 0.1) {
-          const invMin = hasTransforms ? (scanMinX - ox) : (g.frozenInvertH ? (baseOx - scanMinX) : (scanMinX - baseOx));
-          const invMax = hasTransforms ? (scanMaxX - ox) : (g.frozenInvertH ? (baseOx - scanMaxX) : (scanMaxX - baseOx));
+          const invMin = this.engine.worldXToBaseX(g, paramMin);
+          const invMax = this.engine.worldXToBaseX(g, paramMax);
           const kA = (invMin - h0.x) / pStep;
           const kB = (invMax - h0.x) / pStep;
           const kMin = Math.max(-60, Math.floor(Math.min(kA, kB)) - 1);
           const kMax = Math.min(60, Math.ceil(Math.max(kA, kB)) + 1);
           for (let k = kMin; k <= kMax; k++) {
             const candX = mapInnerX(h0.x + k * pStep);
-            if (candX < scanMinX || candX > scanMaxX) continue;
-            if (this.usePiecewise && !g.isIndependent && !this.isInsidePiece(gIdx, candX)) continue;
-            const evalY = this.evaluateGraphAtForScreen(g, gIdx, candX);
+            if (candX < paramMin || candX > paramMax) continue;
+            if (!isTrans && this.usePiecewise && !g.isIndependent && !this.isInsidePiece(gIdx, candX)) continue;
+            const evalY = evalParam(candX);
             if (isNaN(evalY) || !isFinite(evalY) || Math.abs(evalY) > 100) continue;
-            addCand(candX, evalY, '대칭중심', g.color, g.id, null, `${g.id}_tan_p_${k}`);
+            emitGraphCand(candX, evalY, '대칭중심', null, `${g.id}_tan_p_${k}`);
           }
         }
       } else {
@@ -6093,11 +6204,12 @@
           if (h.type === 'center' && offCurveCenterTypes.has(g.type)) return;
 
           const candX = mapInnerX(h.x);
-          const evalY = this.evaluateGraphAtForScreen(g, gIdx, candX);
+          const evalY = evalParam(candX);
           if (isNaN(evalY) || !isFinite(evalY) || Math.abs(evalY) > 100) return;
 
           let labelName = h.name || '특이점';
-          addCand(candX, evalY, labelName, g.color, g.id, hIdx, `${g.id}_h_${hIdx}`);
+          if (isTrans && (labelName === '극대' || labelName === '극소')) labelName = '극점';
+          emitGraphCand(candX, evalY, labelName, hIdx, `${g.id}_h_${hIdx}`);
         });
       }
 
@@ -6105,29 +6217,42 @@
       if (g.type === 'killer_frac_odd' && g.handles.length >= 2) {
         const symInnerX = 2.0 * g.handles[0].x - g.handles[1].x;
         const symX = mapInnerX(symInnerX);
-        const symY = this.evaluateGraphAtForScreen(g, gIdx, symX);
+        const symY = evalParam(symX);
         if (!isNaN(symY) && isFinite(symY)) {
-          addCand(symX, symY, '극소', g.color, g.id, null, `${g.id}_sym_min`);
+          emitGraphCand(symX, symY, isTrans ? '극점' : '극소', null, `${g.id}_sym_min`);
         }
       }
 
-      // 2. y절편 f(0) (y축이 표시되어 있을 때만)
+      // 2. y절편 (x = 0)
       if (this.showYAxis !== false) {
         try {
-          const y0 = this.evaluateGraphAtForScreen(g, gIdx, 0);
-          if (!isNaN(y0) && isFinite(y0) && Math.abs(y0) < 50) {
-            addCand(0, y0, 'y절편', g.color, g.id, null, `${g.id}_y0`);
+          if (isTrans) {
+            const nG = { ...g, isTransposedYX: false };
+            const yRoots = this.engine.findFunctionIntersections(nG, null, { xmin: scanMinY, xmax: scanMaxY }, null);
+            if (yRoots && yRoots.length > 0) {
+              yRoots.forEach((r, rIdx) => {
+                if (Math.abs(r.x) < 60) {
+                  addCand(0, r.x, 'y절편', g.color, g.id, null, `${g.id}_yint_${rIdx}`);
+                }
+              });
+            }
+          } else {
+            const y0 = this.evaluateGraphAtForScreen(g, gIdx, 0);
+            if (!isNaN(y0) && isFinite(y0) && Math.abs(y0) < 50) {
+              addCand(0, y0, 'y절편', g.color, g.id, null, `${g.id}_y0`);
+            }
           }
         } catch (err) { }
       }
 
-      // 3. x절편 (실근 f(x) = 0, x축이 표시되어 있을 때만)
+      // 3. x절편 (y = 0)
       if (this.showXAxis !== false) {
         try {
-          const roots = this.engine.findIntersections(g, null, { xmin: scanMinX, xmax: scanMaxX }, null);
+          const wG = this._wrapGraphForScreenIntersections(g);
+          const roots = this.engine.findIntersections(wG, null, { xmin: scanMinX, xmax: scanMaxX }, null);
           if (roots && roots.length > 0) {
             roots.forEach((r, rIdx) => {
-              if (this.usePiecewise && !g.isIndependent && !this.isInsidePiece(gIdx, r.x)) return;
+              if (!isTrans && this.usePiecewise && !g.isIndependent && !this.isInsidePiece(gIdx, r.x)) return;
               addCand(r.x, 0, 'x절편', g.color, g.id, null, `${g.id}_root_${rIdx}`);
             });
           }
@@ -6137,10 +6262,13 @@
 
     // 4. 다중 그래프 간의 실시간 교점 (두 부모의 layerIds 모두 보존)
     if (this.graphs.length >= 2) {
+      const scanRect = { xmin: scanMinX, xmax: scanMaxX, ymin: scanMinY, ymax: scanMaxY };
       for (let i = 0; i < this.graphs.length; i++) {
         for (let j = i + 1; j < this.graphs.length; j++) {
           try {
-            const roots = this.engine.findIntersections(this.graphs[i], this.graphs[j], { xmin: scanMinX, xmax: scanMaxX }, null);
+            const wGi = this._wrapGraphForScreenIntersections(this.graphs[i]);
+            const wGj = this._wrapGraphForScreenIntersections(this.graphs[j]);
+            const roots = this.engine.findIntersections(wGi, wGj, { xmin: scanMinX, xmax: scanMaxX }, scanRect);
             if (roots && roots.length > 0) {
               roots.forEach((r, rIdx) => {
                 if (this.usePiecewise) {
@@ -6201,14 +6329,23 @@
       return { mx, my, sx: s.x, sy: s.y, d };
     };
 
-    const refineInterval = (g, gIdx, leftSx, rightSx) => {
-      let a = leftSx;
-      let b = rightSx;
+    const evalScreenPointTrans = (g, sy) => {
+      const my = this.screenToMath(screenPos.x, sy).y;
+      const mx = this.engine.evaluatePipeline(g, my);
+      if (isNaN(mx) || !isFinite(mx) || Math.abs(mx) > 100) return null;
+      const s = this.mathToScreen(mx, my);
+      const d = Math.hypot(s.x - screenPos.x, s.y - screenPos.y);
+      return { mx, my, sx: s.x, sy: s.y, d };
+    };
+
+    const refineInterval = (evalFn, leftCoord, rightCoord) => {
+      let a = leftCoord;
+      let b = rightCoord;
       const phi = (Math.sqrt(5) - 1) / 2;
       let x1 = b - phi * (b - a);
       let x2 = a + phi * (b - a);
-      let p1 = evalScreenPoint(g, gIdx, x1);
-      let p2 = evalScreenPoint(g, gIdx, x2);
+      let p1 = evalFn(x1);
+      let p2 = evalFn(x2);
       for (let iter = 0; iter < 8; iter++) {
         const d1 = p1 ? p1.d : Infinity;
         const d2 = p2 ? p2.d : Infinity;
@@ -6217,16 +6354,16 @@
           x2 = x1;
           p2 = p1;
           x1 = b - phi * (b - a);
-          p1 = evalScreenPoint(g, gIdx, x1);
+          p1 = evalFn(x1);
         } else {
           a = x1;
           x1 = x2;
           p1 = p2;
           x2 = a + phi * (b - a);
-          p2 = evalScreenPoint(g, gIdx, x2);
+          p2 = evalFn(x2);
         }
       }
-      const mid = evalScreenPoint(g, gIdx, (a + b) * 0.5);
+      const mid = evalFn((a + b) * 0.5);
       let best = mid;
       if (p1 && (!best || p1.d < best.d)) best = p1;
       if (p2 && (!best || p2.d < best.d)) best = p2;
@@ -6240,20 +6377,29 @@
         let localBest = null;
         let prevSample = null;
         const crossingIntervals = [];
+        const isTrans = Boolean(g.isTransposedYX);
+        const evalFn = isTrans ? ((sy) => evalScreenPointTrans(g, sy)) : ((sx) => evalScreenPoint(g, gIdx, sx));
 
-        for (let dx = -searchRadiusPx; dx <= searchRadiusPx; dx += 2) {
-          const sx = screenPos.x + dx;
-          const pt = evalScreenPoint(g, gIdx, sx);
+        for (let delta = -searchRadiusPx; delta <= searchRadiusPx; delta += 2) {
+          const sCoord = (isTrans ? screenPos.y : screenPos.x) + delta;
+          const pt = evalFn(sCoord);
           if (pt) {
             if (!localBest || pt.d < localBest.d) {
               localBest = pt;
             }
             if (prevSample) {
-              const dyPrev = prevSample.sy - screenPos.y;
-              const dyCurr = pt.sy - screenPos.y;
-              // 가파른 구간에서 마우스 높이를 가로지르는 경우(Zero-Crossing) 정밀 탐색 구간 추가
-              if ((dyPrev * dyCurr <= 0) && Math.abs(prevSample.sy - pt.sy) < this.screenHeight * 1.5) {
-                crossingIntervals.push([prevSample.sx, pt.sx]);
+              if (isTrans) {
+                const dxPrev = prevSample.sx - screenPos.x;
+                const dxCurr = pt.sx - screenPos.x;
+                if ((dxPrev * dxCurr <= 0) && Math.abs(prevSample.sx - pt.sx) < this.screenWidth * 1.5) {
+                  crossingIntervals.push([prevSample.sy, pt.sy]);
+                }
+              } else {
+                const dyPrev = prevSample.sy - screenPos.y;
+                const dyCurr = pt.sy - screenPos.y;
+                if ((dyPrev * dyCurr <= 0) && Math.abs(prevSample.sy - pt.sy) < this.screenHeight * 1.5) {
+                  crossingIntervals.push([prevSample.sx, pt.sx]);
+                }
               }
             }
           }
@@ -6261,14 +6407,15 @@
         }
 
         if (localBest) {
-          const refined = refineInterval(g, gIdx, localBest.sx - 2.2, localBest.sx + 2.2);
+          const baseC = isTrans ? localBest.sy : localBest.sx;
+          const refined = refineInterval(evalFn, baseC - 2.2, baseC + 2.2);
           if (refined && refined.d < localBest.d) {
             localBest = refined;
           }
         }
         for (let cIdx = 0; cIdx < crossingIntervals.length; cIdx++) {
           const [cLeft, cRight] = crossingIntervals[cIdx];
-          const refinedCross = refineInterval(g, gIdx, cLeft, cRight);
+          const refinedCross = refineInterval(evalFn, cLeft, cRight);
           if (refinedCross && (!localBest || refinedCross.d < localBest.d)) {
             localBest = refinedCross;
           }
@@ -6276,6 +6423,7 @@
 
         if (localBest && localBest.d < bestCurveDist) {
           bestCurveDist = localBest.d;
+          const paramCoord = isTrans ? localBest.my : localBest.mx;
           bestCurvePoint = {
             x: localBest.mx,
             y: localBest.my,
@@ -6283,7 +6431,7 @@
             color: g.color || '#00d2d3',
             layerId: g.id,
             handleIndex: null,
-            candKey: `${g.id}_pt_${Math.round(localBest.mx * 100) / 100}`,
+            candKey: `${g.id}_pt_${Math.round(paramCoord * 100) / 100}`,
             type: 'curve',
             isCandidate: false,
             screenX: localBest.sx,
@@ -6328,7 +6476,8 @@
           if (b.layerId !== surviving.id) {
             b.layerId = surviving.id;
             b.type = 'curve';
-            b.anchorX = item.sourceX;
+            b.anchorX = surviving.isTransposedYX ? item.sourceY : item.sourceX;
+            b.anchorBaseX = this.engine.worldXToBaseX(surviving, b.anchorX);
           }
           return true;
         }
@@ -6348,43 +6497,107 @@
       if (!item.binding) return;
       const b = item.binding;
 
-      // 1. 바인딩된 그래프 탐색
-      const g = this.graphs.find(graph => graph.id === b.layerId);
-      if (!g) return;
-
-      const baseOx = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
-      let ox = baseOx;
-      let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
-      const hasTransforms = Boolean(g.transforms && g.transforms.length > 0);
-      if (hasTransforms) {
-        for (const t of g.transforms) {
-          if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
-          if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
+      // (0) 다중 그래프 교점(교점)에 바인딩된 경우 실시간 교점 재추적
+      if (b.isIntersection && Array.isArray(b.layerIds) && b.layerIds.length >= 2) {
+        const gIdxA = this.graphs.findIndex(gr => gr && gr.id === b.layerIds[0]);
+        const gIdxB = this.graphs.findIndex(gr => gr && gr.id === b.layerIds[1]);
+        if (gIdxA >= 0 && gIdxB >= 0) {
+          const gA = this.graphs[gIdxA];
+          const gB = this.graphs[gIdxB];
+          const roots = this.engine.findIntersections(
+            this._wrapGraphForScreenIntersections(gA),
+            this._wrapGraphForScreenIntersections(gB),
+            { xmin: item.sourceX - 30, xmax: item.sourceX + 30 },
+            { xmin: item.sourceX - 30, xmax: item.sourceX + 30, ymin: item.sourceY - 30, ymax: item.sourceY + 30 }
+          ) || [];
+          const validRoots = roots.filter(r => {
+            if (!this.usePiecewise) return true;
+            const visA = gA.isIndependent ? true : this.isInsidePiece(gIdxA, r.x);
+            const visB = gB.isIndependent ? true : this.isInsidePiece(gIdxB, r.x);
+            return visA && visB;
+          });
+          if (validRoots.length > 0) {
+            let best = validRoots[0];
+            let bestDist = Math.hypot(best.x - item.sourceX, best.y - item.sourceY);
+            for (let rIdx = 1; rIdx < validRoots.length; rIdx++) {
+              const d = Math.hypot(validRoots[rIdx].x - item.sourceX, validRoots[rIdx].y - item.sourceY);
+              if (d < bestDist) {
+                bestDist = d;
+                best = validRoots[rIdx];
+              }
+            }
+            item.sourceX = best.x;
+            item.sourceY = best.y;
+          }
+          return;
         }
       }
-      const mapInnerX = (innerX) => {
-        if (hasTransforms) return innerX + ox;
-        return g.frozenInvertH ? (baseOx - innerX) : (baseOx + innerX);
+
+      // 1. 바인딩된 그래프 탐색
+      const gIdx = this.graphs.findIndex(graph => graph && graph.id === b.layerId);
+      const g = gIdx >= 0 ? this.graphs[gIdx] : null;
+      if (!g) return;
+
+      const isTrans = Boolean(g.isTransposedYX);
+      const mapInnerX = (innerX) => this.engine.baseXToWorldX(g, innerX);
+      const evalParam = (pVal) => isTrans
+        ? this.engine.evaluatePipeline(g, pVal)
+        : this.evaluateGraphAtForScreen(g, gIdx, pVal);
+      const assignTrackedPos = (pVal, outVal) => {
+        if (isTrans) {
+          item.sourceX = outVal;
+          item.sourceY = pVal;
+        } else {
+          item.sourceX = pVal;
+          item.sourceY = outVal;
+        }
       };
 
       // (A) 특정 핸들러(극점, 변곡점, 꼭짓점, 시작점 등)에 바인딩된 경우
       if (b.type === 'candidate' && b.handleIndex !== null && b.handleIndex !== undefined) {
         if (g.handles && g.handles[b.handleIndex]) {
           const h = g.handles[b.handleIndex];
-          let targetY = h.y;
-          if (g.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
-            targetY = Math.abs(h.y);
-          }
           const newX = mapInnerX(h.x);
           const isOffCurveCenter = (h.type === 'asymptote') || (h.type === 'center' && offCurveCenterTypes.has(g.type));
+          const fallbackY = this.engine.baseYToWorldY(g, h.y, true);
           let evalY = isOffCurveCenter
-            ? (targetY + oy)
-            : this.engine.evaluatePipeline(g, newX);
+            ? this.engine.baseYToWorldY(g, h.y, false)
+            : evalParam(newX);
           if (isNaN(evalY) || !isFinite(evalY)) {
-            evalY = targetY + oy;
+            evalY = fallbackY;
           }
-          item.sourceX = newX;
-          item.sourceY = evalY;
+          assignTrackedPos(newX, evalY);
+        }
+      }
+      // (A-1) x절편에 바인딩된 경우 실시간 영점 추적
+      else if (b.type === 'candidate' && (b.name === 'x절편' || (typeof b.candKey === 'string' && b.candKey.includes('_root_')))) {
+        if (isTrans) {
+          const x0 = this.engine.evaluatePipeline(g, 0);
+          if (!isNaN(x0) && isFinite(x0)) {
+            item.sourceX = x0;
+            item.sourceY = 0;
+          }
+        } else {
+          const roots = this.engine.findIntersections(
+            this._wrapGraphForScreenIntersections(g),
+            null,
+            { xmin: item.sourceX - 30, xmax: item.sourceX + 30 },
+            null
+          ) || [];
+          const validRoots = roots.filter(r => (!this.usePiecewise || g.isIndependent || this.isInsidePiece(gIdx, r.x)));
+          if (validRoots.length > 0) {
+            let best = validRoots[0];
+            let bestDist = Math.abs(best.x - item.sourceX);
+            for (let rIdx = 1; rIdx < validRoots.length; rIdx++) {
+              const d = Math.abs(validRoots[rIdx].x - item.sourceX);
+              if (d < bestDist) {
+                bestDist = d;
+                best = validRoots[rIdx];
+              }
+            }
+            item.sourceX = best.x;
+            item.sourceY = 0;
+          }
         }
       }
       // (A-2) 삼각함수(sin, cos, tan) 주기별 극대·극소·대칭중심 및 기함수 분수형 대칭 극소점에 바인딩된 경우
@@ -6399,10 +6612,9 @@
           if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
           const qStep = (g.type === 'sin_1period') ? dx : (dx / 4.0);
           const newX = mapInnerX(h0.x + k * qStep);
-          const evalY = this.engine.evaluatePipeline(g, newX);
+          const evalY = evalParam(newX);
           if (!isNaN(evalY) && isFinite(evalY)) {
-            item.sourceX = newX;
-            item.sourceY = evalY;
+            assignTrackedPos(newX, evalY);
           }
         } else if (tanMatch && g.type === 'tan_1period' && g.handles && g.handles.length >= 1) {
           const k = parseInt(tanMatch[1], 10);
@@ -6412,43 +6624,73 @@
           if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
           const pStep = dx * 4.0;
           const newX = mapInnerX(h0.x + k * pStep);
-          const evalY = this.engine.evaluatePipeline(g, newX);
+          const evalY = evalParam(newX);
           if (!isNaN(evalY) && isFinite(evalY)) {
-            item.sourceX = newX;
-            item.sourceY = evalY;
+            assignTrackedPos(newX, evalY);
           }
         } else if (b.candKey.endsWith('_sym_min') && g.type === 'killer_frac_odd' && g.handles && g.handles.length >= 2) {
           const symInnerX = 2.0 * g.handles[0].x - g.handles[1].x;
           const newX = mapInnerX(symInnerX);
-          const evalY = this.engine.evaluatePipeline(g, newX);
+          const evalY = evalParam(newX);
           if (!isNaN(evalY) && isFinite(evalY)) {
-            item.sourceX = newX;
-            item.sourceY = evalY;
+            assignTrackedPos(newX, evalY);
           }
-        } else if (b.name === 'y절편') {
-          const y0 = this.engine.evaluatePipeline(g, 0);
+        } else if (b.name === 'y절편' || b.candKey.includes('_yint_')) {
+          if (isTrans) {
+            const nG = { ...g, isTransposedYX: false };
+            const yRoots = this.engine.findFunctionIntersections(nG, null, { xmin: item.sourceY - 30, xmax: item.sourceY + 30 }, null) || [];
+            if (yRoots.length > 0) {
+              let best = yRoots[0];
+              let bestDist = Math.abs(best.x - item.sourceY);
+              for (let rIdx = 1; rIdx < yRoots.length; rIdx++) {
+                const d = Math.abs(yRoots[rIdx].x - item.sourceY);
+                if (d < bestDist) { bestDist = d; best = yRoots[rIdx]; }
+              }
+              item.sourceX = 0;
+              item.sourceY = best.x;
+            }
+          } else {
+            const y0 = this.evaluateGraphAtForScreen(g, gIdx, 0);
+            if (!isNaN(y0) && isFinite(y0)) {
+              item.sourceX = 0;
+              item.sourceY = y0;
+            }
+          }
+        }
+      }
+      // (B) 절편인 경우
+      else if (b.type === 'candidate' && b.name === 'y절편') {
+        if (isTrans) {
+          const nG = { ...g, isTransposedYX: false };
+          const yRoots = this.engine.findFunctionIntersections(nG, null, { xmin: item.sourceY - 30, xmax: item.sourceY + 30 }, null) || [];
+          if (yRoots.length > 0) {
+            let best = yRoots[0];
+            let bestDist = Math.abs(best.x - item.sourceY);
+            for (let rIdx = 1; rIdx < yRoots.length; rIdx++) {
+              const d = Math.abs(yRoots[rIdx].x - item.sourceY);
+              if (d < bestDist) { bestDist = d; best = yRoots[rIdx]; }
+            }
+            item.sourceX = 0;
+            item.sourceY = best.x;
+          }
+        } else {
+          const y0 = this.evaluateGraphAtForScreen(g, gIdx, 0);
           if (!isNaN(y0) && isFinite(y0)) {
             item.sourceX = 0;
             item.sourceY = y0;
           }
         }
       }
-      // (B) 절편인 경우
-      else if (b.type === 'candidate' && b.name === 'y절편') {
-        const y0 = this.engine.evaluatePipeline(g, 0);
-        if (!isNaN(y0) && isFinite(y0)) {
-          item.sourceX = 0;
-          item.sourceY = y0;
-        }
-      }
-      // (C) 일반 곡선 위의 임의 점 또는 교점에서 이관된 점인 경우
+      // (C) 일반 곡선 위의 임의 점 또는 교점에서 이관된 점인 경우 (freezeOffset.x 이중 가산 방지!)
       else if (b.type === 'curve') {
-        const curAnchorX = (typeof b.anchorX === 'number' ? b.anchorX : item.sourceX);
-        const newX = curAnchorX + ox;
-        const evalY = this.engine.evaluatePipeline(g, newX);
+        if (typeof b.anchorBaseX !== 'number') {
+          const legacyWorldParam = (typeof b.anchorX === 'number' ? b.anchorX : (isTrans ? item.sourceY : item.sourceX));
+          b.anchorBaseX = this.engine.worldXToBaseX(g, legacyWorldParam);
+        }
+        const newX = mapInnerX(b.anchorBaseX);
+        const evalY = evalParam(newX);
         if (!isNaN(evalY) && isFinite(evalY)) {
-          item.sourceX = newX;
-          item.sourceY = evalY;
+          assignTrackedPos(newX, evalY);
         }
       }
     });
@@ -6474,6 +6716,9 @@
     }
 
     this.pushHistoryState();
+    const boundGraph = (target && target.layerId && Array.isArray(this.graphs))
+      ? this.graphs.find(gr => gr && gr.id === target.layerId)
+      : null;
     const item = {
       id: 'dl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
       sourceX: x,
@@ -6491,7 +6736,10 @@
         handleIndex: target.handleIndex,
         name: target.name,
         candKey: target.candKey,
-        anchorX: x
+        anchorX: (boundGraph && boundGraph.isTransposedYX) ? y : x,
+        anchorBaseX: (boundGraph && this.engine)
+          ? this.engine.worldXToBaseX(boundGraph, boundGraph.isTransposedYX ? y : x)
+          : x
       } : null
     };
     this.dropLines.push(item);
@@ -6637,7 +6885,8 @@
     this.updateDropLinesTracking();
 
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
-    const isLight = curTheme.isLight || this.isMonochromeMode;
+    const isTransparentExport = Boolean(isExport && this.exportTransparent);
+    const isLight = curTheme.isLight || this.isMonochromeMode || isTransparentExport;
 
     // 수선 선 및 텍스트 색상 (교재 출판용 최고급 시인성)
     const lineColor = this.isMonochromeMode ? '#000000' : (isLight ? 'rgba(30, 41, 59, 0.88)' : 'rgba(241, 245, 249, 0.82)');
@@ -6646,7 +6895,7 @@
     const scissorsBorder = isLight ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.25)';
 
     // 폰트 스택 매핑
-    let fontFam = '"KaTeX_Math", "Times New Roman", Georgia, serif';
+    let fontFam = "'STIX Two Text', 'Times New Roman', 'Cambria Math', serif";
     if (this.dropLineFontFamily === 'pretendard') {
       fontFam = "'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif";
     } else if (this.dropLineFontFamily === 'batang') {
@@ -6707,13 +6956,15 @@
           ctx.textBaseline = 'top';
 
           const labelYPos = Fx.y + dropPad;
-          const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.isLight ? '#ffffff' : (curTheme.bg || '#1e1e2e'));
-          ctx.save();
-          ctx.strokeStyle = haloColor;
-          ctx.lineWidth = dropHaloLw;
-          ctx.lineJoin = 'round';
-          ctx.strokeText(item.labelX, Fx.x, labelYPos);
-          ctx.restore();
+          const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || (curTheme.isLight ? '#ffffff' : '#1e1e2e'));
+          if (!isTransparentExport) {
+            ctx.save();
+            ctx.strokeStyle = haloColor;
+            ctx.lineWidth = dropHaloLw;
+            ctx.lineJoin = 'round';
+            ctx.strokeText(item.labelX, Fx.x, labelYPos);
+            ctx.restore();
+          }
           ctx.fillText(item.labelX, Fx.x, labelYPos);
 
           const metrics = ctx.measureText(item.labelX);
@@ -6801,13 +7052,15 @@
           ctx.textBaseline = 'middle';
 
           const labelXPos = Fy.x - dropPad;
-          const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.isLight ? '#ffffff' : (curTheme.bg || '#1e1e2e'));
-          ctx.save();
-          ctx.strokeStyle = haloColor;
-          ctx.lineWidth = dropHaloLw;
-          ctx.lineJoin = 'round';
-          ctx.strokeText(item.labelY, labelXPos, Fy.y);
-          ctx.restore();
+          const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || (curTheme.isLight ? '#ffffff' : '#1e1e2e'));
+          if (!isTransparentExport) {
+            ctx.save();
+            ctx.strokeStyle = haloColor;
+            ctx.lineWidth = dropHaloLw;
+            ctx.lineJoin = 'round';
+            ctx.strokeText(item.labelY, labelXPos, Fy.y);
+            ctx.restore();
+          }
           ctx.fillText(item.labelY, labelXPos, Fy.y);
 
           const metrics = ctx.measureText(item.labelY);
@@ -7127,9 +7380,10 @@
     if (!this.textLabels || this.textLabels.length === 0) return;
 
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
-    const isLight = curTheme.isLight || this.isMonochromeMode;
+    const isTransparentExport = Boolean(isExport && this.exportTransparent);
+    const isLight = curTheme.isLight || this.isMonochromeMode || isTransparentExport;
     const defaultTextColor = this.isMonochromeMode ? '#000000' : (isLight ? '#0f172a' : '#f8fafc');
-    const haloColor = this.isMonochromeMode ? '#ffffff' : (isLight ? '#ffffff' : (curTheme.bg || '#1e1e2e'));
+    const haloColor = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || (curTheme.isLight ? '#ffffff' : '#1e1e2e'));
 
     let fontFam = "'STIX Two Text', 'Times New Roman', 'Cambria Math', serif";
     if (this.dropLineFontFamily === 'pretendard') fontFam = "'Pretendard', -apple-system, sans-serif";
@@ -7138,29 +7392,36 @@
     ctx.save();
 
     this.textLabels.forEach(item => {
-      if (!item.text && item.id !== this.activeEditingTextId) return;
+      if (!item.text && (isExport || item.id !== this.activeEditingTextId)) return;
 
       const s = this.mathToScreen(item.mathX, item.mathY);
       const baseSize = item.fontSize || this.textLabelFontSize || 16;
       const fSize = this.getEffectiveTextLabelFontSize(item);
       const scaleRatio = fSize / Math.max(1, baseSize);
 
-      // 현재 인라인 편집 중인 텍스트는 캔버스 렌더링 생략 (DOM 인풋이 표시)
-      if (item.id === this.activeEditingTextId) return;
+      // 현재 인라인 편집 중인 텍스트는 실시간 화면에서만 캔버스 렌더링 생략 (내보내기 시에는 반드시 출력!)
+      if (!isExport && item.id === this.activeEditingTextId) return;
+
+      let resolvedColor = this.isMonochromeMode ? '#000000' : (item.color || defaultTextColor);
+      if (!this.isMonochromeMode && isLight && (resolvedColor.toLowerCase() === '#ffffff' || resolvedColor.toLowerCase() === '#fff')) {
+        resolvedColor = '#0f172a';
+      }
 
       ctx.save();
       ctx.font = `italic 500 ${fSize}px ${fontFam}`;
-      ctx.fillStyle = this.isMonochromeMode ? '#000000' : (item.color || defaultTextColor);
+      ctx.fillStyle = resolvedColor;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
 
-      // 외곽 헤일로(Halo) 후 텍스트 출력으로 시인성 극대화
-      ctx.save();
-      ctx.strokeStyle = haloColor;
-      ctx.lineWidth = Math.max(2, Math.min(4.5, 3.2 * scaleRatio));
-      ctx.lineJoin = 'round';
-      ctx.strokeText(item.text, s.x, s.y);
-      ctx.restore();
+      // 외곽 헤일로(Halo) 후 텍스트 출력으로 시인성 극대화 (투명 배경 내보내기 시에는 흰 테두리 잔상 방지)
+      if (!isTransparentExport) {
+        ctx.save();
+        ctx.strokeStyle = haloColor;
+        ctx.lineWidth = Math.max(2, Math.min(4.5, 3.2 * scaleRatio));
+        ctx.lineJoin = 'round';
+        ctx.strokeText(item.text, s.x, s.y);
+        ctx.restore();
+      }
       ctx.fillText(item.text, s.x, s.y);
 
       const metrics = ctx.measureText(item.text);
@@ -7220,17 +7481,32 @@
   }
 
   findInverseCandidate(src) {
-    const inverseMap = {
+    if (!src) return null;
+    const isGeom = typeof src.type === 'string' && src.type.startsWith('geom_');
+    if (isGeom) {
+      return this.graphs.find(other => other !== src && other.type === src.type && !other.linkedInverseId) || null;
+    }
+    const hasFoldedAbs = Boolean(
+      src.isAbsolute ||
+      src.frozenAbsolute ||
+      (Array.isArray(src.transforms) && src.transforms.some(t => t && t.abs))
+    );
+    const pureInverseMap = {
       'exp_basic': 'log_basic',
       'log_basic': 'exp_basic',
-      '2nd_quadratic': 'sqrt_basic',
-      'sqrt_basic': '2nd_quadratic',
       'rational_basic': 'rational_basic',
       '1st_linear': '1st_linear'
     };
-    const targetType = inverseMap[src.type];
-    if (!targetType) return null;
-    return this.graphs.find(other => other !== src && other.type === targetType && !other.linkedInverseId) || null;
+    if (!src.isTransposedYX && !hasFoldedAbs && pureInverseMap[src.type]) {
+      const targetType = pureInverseMap[src.type];
+      const nativeCand = this.graphs.find(
+        other => other !== src && other.type === targetType && !other.isTransposedYX && !other.linkedInverseId
+      );
+      if (nativeCand) return nativeCand;
+    }
+    return this.graphs.find(
+      other => other !== src && other.type === src.type && Boolean(other.isTransposedYX) !== Boolean(src.isTransposedYX) && !other.linkedInverseId
+    ) || null;
   }
 
   toggleInverseLink(idx = this.activeGraphIdx) {
@@ -7242,7 +7518,7 @@
       const partner = this.getLinkedPartner(g);
       if (partner) partner.linkedInverseId = null;
       g.linkedInverseId = null;
-      this.showToast('🔓 원함수와 역함수의 연동이 해제되었습니다. 이제 각자 독립적으로 조작할 수 있습니다.');
+      this.showToast('🔓 y=x 대칭 연동이 해제되었습니다. 이제 두 그래프를 각자 독립적으로 조작할 수 있습니다.');
     } else {
       const candidate = this.findInverseCandidate(g);
       if (candidate) {
@@ -7250,22 +7526,23 @@
         if (!candidate.id) candidate.id = Date.now() + 1;
         g.linkedInverseId = candidate.id;
         candidate.linkedInverseId = g.id;
-        const gName = this.meta[g.type]?.name || '함수';
-        const cName = this.meta[candidate.type]?.name || '역함수';
-        this.showToast(`🔗 ${gName}와 ${cName}가 다시 대칭 연동되었습니다!`);
+        const gName = this.meta[g.type]?.name || '그래프';
+        const cName = this.meta[candidate.type]?.name || '대칭 그래프';
+        this.showToast(`🔗 ${gName}와 ${cName}가 다시 y=x 대칭 연동되었습니다!`);
       } else {
-        this.showToast('ℹ️ 연동할 상대 역함수가 없습니다. [🔄 역함수 복제]로 새로 생성하세요.');
+        this.showToast('ℹ️ 연동할 대칭 그래프가 없습니다. [y=x (역함수)] 버튼으로 새로 생성하세요.');
       }
     }
 
     this.renderLayerList();
     this.syncControls();
+    this.syncCurveContextBar();
     this.render();
   }
 
   cloneInverseGraph() {
     if (!this.activeGraph) {
-      this.showToast('ℹ️ 역함수를 생성할 원본 그래프를 먼저 선택하세요.');
+      this.showToast('ℹ️ y=x 대칭시킬 원본 그래프를 먼저 선택하세요.');
       return;
     }
     if (this.graphs.length >= 12) {
@@ -7274,67 +7551,84 @@
     }
 
     const src = this.activeGraph;
-
-    // 1) 고교 수학 대표 역함수 타입 스마트 1:1 매핑
-    let targetType = null;
-    if (src.type === 'exp_basic') {
-      targetType = 'log_basic';
-    } else if (src.type === 'log_basic') {
-      targetType = 'exp_basic';
-    } else if (src.type === '2nd_quadratic') {
-      targetType = 'sqrt_basic';
-    } else if (src.type === 'sqrt_basic') {
-      targetType = '2nd_quadratic';
-    } else if (src.type === 'rational_basic') {
-      targetType = 'rational_basic';
-    } else if (src.type === '1st_linear') {
-      targetType = '1st_linear';
-    }
-
-    if (!targetType) {
-      const srcName = this.meta[src.type]?.name || '함수';
-      this.showToast(`ℹ️ 역함수 복제는 지수·로그, 이차·무리, 유리, 일차함수를 지원합니다. (${srcName})`);
-      return;
-    }
-
     this.pushHistoryState();
 
-    // 2) 핸들러 좌표 y = x 대칭 (x ↔ y 스왑)
-    const newHandles = (src.handles || []).map((h, i) => {
-      let handleName = h.name;
-      let isHidden = h.hidden;
-      if (targetType === 'sqrt_basic' && i === 0) {
-        handleName = '시작점';
-        isHidden = false;
-      } else if (targetType === '2nd_quadratic' && i === 0) {
-        handleName = '꼭짓점';
-        isHidden = false;
-      }
-      return {
-        name: handleName,
-        x: parseFloat(h.y.toFixed(3)),
-        y: parseFloat(h.x.toFixed(3)),
-        type: h.type,
-        hidden: isHidden
-      };
-    });
+    // 기존에 연결되어 있던 이전 대칭 파트너가 있다면 깔끔히 연결 해제
+    if (src.linkedInverseId) {
+      const prevPartner = this.getLinkedPartner(src);
+      if (prevPartner) prevPartner.linkedInverseId = null;
+      src.linkedInverseId = null;
+    }
 
-    // 3) 평행이동(freezeOffset) 및 다단변환(transforms) y = x 대칭 (dx ↔ dy 스왑)
+    const isGeom = typeof src.type === 'string' && src.type.startsWith('geom_');
+    const hasFoldedAbs = Boolean(
+      src.isAbsolute ||
+      src.frozenAbsolute ||
+      (Array.isArray(src.transforms) && src.transforms.some(t => t && t.abs))
+    );
+    const pureInverseMap = {
+      'exp_basic': 'log_basic',
+      'log_basic': 'exp_basic',
+      'rational_basic': 'rational_basic',
+      '1st_linear': '1st_linear'
+    };
+
     const srcOx = (src.freezeOffset && typeof src.freezeOffset.x === 'number') ? src.freezeOffset.x : 0;
     const srcOy = (src.freezeOffset && typeof src.freezeOffset.y === 'number') ? src.freezeOffset.y : 0;
-    const newFreezeOffset = { x: srcOy, y: srcOx };
 
-    const newTransforms = (src.transforms || []).map(t => ({
-      offset: {
-        x: (t.offset && typeof t.offset.y === 'number') ? t.offset.y : 0,
-        y: (t.offset && typeof t.offset.x === 'number') ? t.offset.x : 0
-      },
-      invertV: t.invertH || false,
-      invertH: t.invertV || false,
-      abs: t.abs || false
-    }));
+    let targetType = src.type;
+    let nextTransposed = false;
+    let newHandles;
+    let newFreezeOffset;
+    let newTransforms;
+    let newFrozenInvertH;
+    let newFrozenInvertV;
 
-    // 4) 색상: 색상 고정 모드면 고정 색상, 자동 배색이면 지정된 순환 컬러 배정
+    if (isGeom || (!src.isTransposedYX && !hasFoldedAbs && pureInverseMap[src.type])) {
+      // [그룹 1 & 2]: 순수 1:1 초등 역함수(일차·유리·지수↔로그) 및 평면도형(원·삼각형·사각형) -> 표준 좌표계 유지 & (x, y) ↔ (y, x) 스왑
+      targetType = isGeom ? src.type : pureInverseMap[src.type];
+      nextTransposed = false;
+      newHandles = (src.handles || []).map(h => ({
+        ...h,
+        x: Number(h.y),
+        y: Number(h.x)
+      }));
+      newFreezeOffset = { x: srcOy, y: srcOx };
+      newTransforms = (src.transforms || []).map(t => ({
+        offset: {
+          x: (t.offset && typeof t.offset.y === 'number') ? t.offset.y : 0,
+          y: (t.offset && typeof t.offset.x === 'number') ? t.offset.x : 0
+        },
+        invertV: Boolean(t.invertH),
+        invertH: Boolean(t.invertV),
+        abs: Boolean(t.abs)
+      }));
+      newFrozenInvertH = Boolean(src.frozenInvertV);
+      newFrozenInvertV = Boolean(src.frozenInvertH);
+    } else {
+      // [그룹 3]: 이차·무리·삼차·사차·삼각·킬러·범용수식 및 |f(x)| 접힌 그래프 -> 좌표축 전치(isTransposedYX 토글) 100% 데칼코마니 미러링!
+      targetType = src.type;
+      nextTransposed = !Boolean(src.isTransposedYX);
+      newHandles = (src.handles || []).map(h => ({
+        ...h,
+        x: Number(h.x),
+        y: Number(h.y)
+      }));
+      newFreezeOffset = { x: srcOx, y: srcOy };
+      newTransforms = (src.transforms || []).map(t => ({
+        offset: {
+          x: (t.offset && typeof t.offset.x === 'number') ? t.offset.x : 0,
+          y: (t.offset && typeof t.offset.y === 'number') ? t.offset.y : 0
+        },
+        invertV: Boolean(t.invertV),
+        invertH: Boolean(t.invertH),
+        abs: Boolean(t.abs)
+      }));
+      newFrozenInvertH = Boolean(src.frozenInvertH);
+      newFrozenInvertV = Boolean(src.frozenInvertV);
+    }
+
+    // 색상: 색상 고정 모드면 고정 색상, 자동 배색이면 지정된 순환 컬러 배정
     const autoSeq = (Array.isArray(this.colorPalette) && this.colorPalette.length > 0)
       ? this.colorPalette
       : ['#c74440', '#2d70b3', '#388c46', '#6042a6'];
@@ -7342,9 +7636,8 @@
       ? this.fixedGraphColor
       : autoSeq[this.graphs.length % autoSeq.length];
 
-    // 5) 새 그래프 객체 생성 및 상호 대칭 연동 (Linked Inverse)
     if (!src.id) src.id = Date.now() - 1;
-    const newId = Date.now() + Math.floor(Math.random() * 1000);
+    const newId = Date.now() + Math.floor(Math.random() * 1000) + 1;
 
     const newGraph = {
       id: newId,
@@ -7353,16 +7646,19 @@
       handles: newHandles,
       color: nextColor,
       lineWidth: src.lineWidth || 2.8,
+      isTransposedYX: nextTransposed,
       isAbsolute: Boolean(src.isAbsolute),
-      shapeMode: 'free',
-      originCenter: false,
+      isAbsPristine: Boolean(src.isAbsPristine),
+      customExpr: src.customExpr,
+      shapeMode: isGeom ? (src.shapeMode || 'free') : 'free',
+      originCenter: isGeom ? Boolean(src.originCenter) : false,
       isFrozen: Boolean(src.isFrozen),
       freezeOffset: newFreezeOffset,
       transforms: newTransforms,
-      frozenInvertH: Boolean(src.frozenInvertV),
-      frozenInvertV: Boolean(src.frozenInvertH),
+      frozenInvertH: newFrozenInvertH,
+      frozenInvertV: newFrozenInvertV,
       frozenAbsolute: Boolean(src.frozenAbsolute),
-      isIndependent: Boolean(this.usePiecewise),
+      isIndependent: Boolean(this.usePiecewise || nextTransposed),
       linkedInverseId: src.id
     };
 
@@ -7384,9 +7680,17 @@
     this.updateIntersections();
     this.render();
 
-    const srcName = this.meta[src.type]?.name || '함수';
+    const srcName = this.meta[src.type]?.name || '그래프';
     const tgtName = this.meta[targetType]?.name || '역함수';
-    this.showToast(`🔄 ${srcName}의 y=x 대칭 역함수 (${tgtName}) 생성 완료!`);
+    if (src.type === '2nd_quadratic' && !src.isTransposedYX && !hasFoldedAbs) {
+      this.showToast('🔄 이차함수의 y=x 대칭 그래프 생성! (💡 반쪽 역함수 쌍은 [무리함수]를 y=x 대칭시키면 완성됩니다)');
+    } else if (isGeom) {
+      this.showToast(`🔄 ${srcName}의 y=x 대칭 도형 복제 완료!`);
+    } else if (!nextTransposed && targetType !== src.type) {
+      this.showToast(`🔄 ${srcName}의 y=x 대칭 역함수 (${tgtName}) 생성 완료!`);
+    } else {
+      this.showToast(`🔄 ${srcName}의 y=x 대칭 그래프 생성 완료!`);
+    }
   }
 
 
@@ -7395,6 +7699,7 @@
     if (!this.activeGraph) return;
     this.pushHistoryState();
     this._applyGraphSymmetry(this.activeGraph, 'x');
+    this.updateIntersections();
     this.showToast('↕️ x축 대칭 완료!');
     this.render();
   }
@@ -7403,6 +7708,7 @@
     if (!this.activeGraph) return;
     this.pushHistoryState();
     this._applyGraphSymmetry(this.activeGraph, 'y');
+    this.updateIntersections();
     this.showToast('↔️ y축 대칭 완료!');
     this.render();
   }
@@ -7411,6 +7717,7 @@
     if (!this.activeGraph) return;
     this.pushHistoryState();
     this._applyGraphSymmetry(this.activeGraph, 'origin');
+    this.updateIntersections();
     this.showToast('🎯 원점 대칭 완료!');
     this.render();
   }
@@ -7425,6 +7732,8 @@
     const msg = this._applyGraphToggleAbsolute(g);
     this.syncControls();
     this.syncCurveContextBar();
+    this.renderLayerList();
+    this.updateIntersections();
     this.render();
     if (msg) this.showToast(msg);
   }
@@ -7553,6 +7862,11 @@
         this.pushHistoryState();
         this.activeGraph.freezeOffset = { x: 0, y: 0 };
         this.activeGraph.transforms = [];
+        const partner = this.getLinkedPartner(this.activeGraph);
+        if (partner) {
+          partner.freezeOffset = { x: 0, y: 0 };
+          partner.transforms = [];
+        }
         this.syncControls();
         this.showToast('↺ 곡선 위치가 원위치로 리셋되었습니다.');
         this.render();
@@ -7686,12 +8000,14 @@
     let newFreezeOffset;
     if (hasOuterTransforms) {
       newHandles = (src.handles || []).map(h => ({ ...h }));
-      newFreezeOffset = { x: parseFloat((srcOx + 1.5).toFixed(3)), y: srcOy };
+      newFreezeOffset = src.isTransposedYX
+        ? { x: srcOx, y: parseFloat((srcOy + 1.5).toFixed(3)) }
+        : { x: parseFloat((srcOx + 1.5).toFixed(3)), y: srcOy };
     } else {
       newHandles = (src.handles || []).map(h => ({
         ...h,
-        x: parseFloat((h.x + srcOx + 1.5).toFixed(3)),
-        y: parseFloat((h.y + srcOy).toFixed(3))
+        x: parseFloat((h.x + srcOx + (src.isTransposedYX ? 0 : 1.5)).toFixed(3)),
+        y: parseFloat((h.y + srcOy + (src.isTransposedYX ? 1.5 : 0)).toFixed(3))
       }));
       newFreezeOffset = { x: 0, y: 0 };
     }
@@ -7703,7 +8019,10 @@
       handles: newHandles,
       color: nextColor,
       lineWidth: src.lineWidth || 2.8,
+      isTransposedYX: Boolean(src.isTransposedYX),
       isAbsolute: Boolean(src.isAbsolute),
+      isAbsPristine: Boolean(src.isAbsPristine),
+      customExpr: src.customExpr,
       shapeMode: src.shapeMode || 'free',
       originCenter: Boolean(src.originCenter),
       isFrozen: Boolean(src.isFrozen),
@@ -7717,7 +8036,7 @@
       frozenInvertH: Boolean(src.frozenInvertH),
       frozenInvertV: Boolean(src.frozenInvertV),
       frozenAbsolute: Boolean(src.frozenAbsolute),
-      isIndependent: Boolean(this.usePiecewise),
+      isIndependent: Boolean(this.usePiecewise || src.isTransposedYX),
       linkedInverseId: null
     };
 
@@ -7736,79 +8055,93 @@
     this.showToast(`📋 f${idx + 1}(x) (${name}) 복제 완료!`);
   }
 
-  drawAllAsymptotes(ctx) {
+  drawAllAsymptotes(ctx, isExport = false) {
+    const asymTypes = [
+      'exp_basic', 'log_basic', 'rational_basic', 'tan_1period',
+      'killer_frac_odd', 'killer_exp_linear', 'killer_exp_quad', 'killer_log_frac'
+    ];
     this.graphs.forEach(g => {
-      if (['exp_basic', 'log_basic', 'rational_basic', 'tan_1period'].includes(g.type)) {
-        this.drawSingleAsymptote(ctx, g);
+      if (g && asymTypes.includes(g.type)) {
+        this.drawSingleAsymptote(ctx, g, isExport);
       }
     });
   }
 
-  drawSingleAsymptote(ctx, g) {
+  drawSingleAsymptote(ctx, g, isExport = false) {
+    if (!g || !Array.isArray(g.handles) || g.handles.length === 0) return;
     const isPip = Boolean(this._isRenderingGraphSnapshot);
+    const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    const isTransparentExport = Boolean(isExport && this.exportTransparent);
+    let asymColor = this.isMonochromeMode ? '#000000' : (g.color || '#2563eb');
+    if (!this.isMonochromeMode && (curTheme.isLight || isTransparentExport) && (asymColor.toLowerCase() === '#ffffff' || asymColor.toLowerCase() === '#fff')) {
+      asymColor = '#222f3e';
+    }
     ctx.save();
-    ctx.strokeStyle = this.isMonochromeMode ? '#000000' : g.color;
+    ctx.strokeStyle = asymColor;
     ctx.globalAlpha = this.isMonochromeMode ? 0.75 : 0.55;
     ctx.lineWidth = isPip ? 1.0 : 1.2;
     ctx.setLineDash(isPip ? [4, 4] : [5, 5]);
 
-    let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
-    let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
-    if (g.transforms && g.transforms.length > 0) {
-      for (const t of g.transforms) {
-        if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
-        if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
-      }
-    }
-
-    if (g.type === 'exp_basic') {
-      const y0 = g.handles[0].y + oy;
-      const s = this.mathToScreen(0, y0);
+    const wx0 = this.engine.baseXToWorldX(g, g.handles[0].x);
+    const wy0 = this.engine.baseYToWorldY(g, g.handles[0].y, true);
+    const isTrans = Boolean(g.isTransposedYX);
+    const drawHorizAsym = (mathY) => {
+      const sy = this.mathToScreen(0, mathY).y;
       ctx.beginPath();
-      ctx.moveTo(0, s.y);
-      ctx.lineTo(this.screenWidth, s.y);
-      ctx.stroke();
-    } else if (g.type === 'log_basic') {
-      const x0 = g.handles[0].x + ox;
-      const s = this.mathToScreen(x0, 0);
-      ctx.beginPath();
-      ctx.moveTo(s.x, 0);
-      ctx.lineTo(s.x, this.screenHeight);
-      ctx.stroke();
-    } else if (g.type === 'rational_basic') {
-      const x0 = g.handles[0].x + ox;
-      const y0 = g.handles[0].y + oy;
-      const sx = this.mathToScreen(x0, 0).x;
-      const sy = this.mathToScreen(0, y0).y;
-
-      ctx.beginPath();
-      ctx.moveTo(sx, 0);
-      ctx.lineTo(sx, this.screenHeight);
       ctx.moveTo(0, sy);
       ctx.lineTo(this.screenWidth, sy);
       ctx.stroke();
+    };
+    const drawVertAsym = (mathX) => {
+      const sx = this.mathToScreen(mathX, 0).x;
+      ctx.beginPath();
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx, this.screenHeight);
+      ctx.stroke();
+    };
+
+    if (g.type === 'exp_basic' || g.type === 'killer_frac_odd' || g.type === 'killer_exp_linear' || g.type === 'killer_exp_quad') {
+      if (isTrans) drawVertAsym(wy0);
+      else drawHorizAsym(wy0);
+    } else if (g.type === 'log_basic' || g.type === 'killer_log_frac') {
+      if (isTrans) drawHorizAsym(wx0);
+      else drawVertAsym(wx0);
+      if (g.type === 'killer_log_frac') {
+        if (isTrans) drawVertAsym(wy0);
+        else drawHorizAsym(wy0);
+      }
+    } else if (g.type === 'rational_basic') {
+      if (isTrans) {
+        drawHorizAsym(wx0);
+        drawVertAsym(wy0);
+      } else {
+        drawVertAsym(wx0);
+        drawHorizAsym(wy0);
+      }
     } else if (g.type === 'tan_1period') {
-      const x0 = g.handles[0].x + ox;
-      let dx = g.handles.length >= 2 ? (g.handles[1].x + ox) - x0 : 0.785;
-      if (Math.abs(dx) < 0.2) dx = dx >= 0 ? 0.2 : -0.2;
+      const x0 = wx0;
+      const x1 = g.handles.length >= 2
+        ? this.engine.baseXToWorldX(g, g.handles[1].x)
+        : this.engine.baseXToWorldX(g, g.handles[0].x + 0.785);
+      let dx = x1 - x0;
+      if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
       const omega = Math.PI / (4.0 * Math.abs(dx));
       const halfPeriod = Math.PI / (2.0 * omega);
       const period = Math.PI / omega;
 
-      const mLeft = this.screenToMath(0, 0).x;
-      const mRight = this.screenToMath(this.screenWidth, 0).x;
+      const boundA = isTrans ? this.screenToMath(0, this.screenHeight).y : this.screenToMath(0, 0).x;
+      const boundB = isTrans ? this.screenToMath(0, 0).y : this.screenToMath(this.screenWidth, 0).x;
+      const minBound = Math.min(boundA, boundB);
+      const maxBound = Math.max(boundA, boundB);
 
-      const kMin = Math.floor((mLeft - x0 - halfPeriod) / period) - 1;
-      const kMax = Math.ceil((mRight - x0 - halfPeriod) / period) + 1;
+      const kMin = Math.floor((minBound - x0 - halfPeriod) / period) - 1;
+      const kMax = Math.ceil((maxBound - x0 - halfPeriod) / period) + 1;
 
       for (let k = kMin; k <= kMax; k++) {
-        const asyX = x0 + halfPeriod + k * period;
-        if (asyX >= mLeft && asyX <= mRight) {
-          const sx = this.mathToScreen(asyX, 0).x;
-          ctx.beginPath();
-          ctx.moveTo(sx, 0);
-          ctx.lineTo(sx, this.screenHeight);
-          ctx.stroke();
+        const asyP = x0 + halfPeriod + k * period;
+        if (asyP >= minBound && asyP <= maxBound) {
+          if (isTrans) drawHorizAsym(asyP);
+          else drawVertAsym(asyP);
         }
       }
     }
@@ -7873,9 +8206,10 @@
   drawSingleCurve(ctx, g, isActive, isExport = false, gIdx = 0) {
     ctx.save();
     const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+    const isTransparentExport = Boolean(isExport && this.exportTransparent);
     let curveColor = this.isMonochromeMode ? '#000000' : (g.color || '#2563eb');
-    // 밝은 배경(화이트/포스트잇)일 때 흰색 곡선을 다크로 스마트 시인성 보호!
-    if (!this.isMonochromeMode && curTheme.isLight && (curveColor.toLowerCase() === '#ffffff' || curveColor.toLowerCase() === '#fff')) {
+    // 밝은 배경(화이트/포스트잇) 또는 다크테마 투명배경 내보내기 시 흰색 곡선을 다크로 스마트 시인성 보호!
+    if (!this.isMonochromeMode && (curTheme.isLight || isTransparentExport) && (curveColor.toLowerCase() === '#ffffff' || curveColor.toLowerCase() === '#fff')) {
       curveColor = '#222f3e';
     }
     ctx.strokeStyle = curveColor;
@@ -7895,10 +8229,15 @@
       ctx.shadowBlur = 0;
     }
 
+    const mapGeomPt = (h) => this.mathToScreen(
+      this.engine.baseXToWorldX(g, h.x),
+      this.engine.baseYToWorldY(g, h.y, true)
+    );
+
     // [📐 평면도형 특수 케이스: 원 (Circle)]
     if (g.type === 'geom_circle' && g.handles.length >= 2) {
-      const s0 = this.mathToScreen(g.handles[0].x, g.handles[0].y);
-      const s1 = this.mathToScreen(g.handles[1].x, g.handles[1].y);
+      const s0 = mapGeomPt(g.handles[0]);
+      const s1 = mapGeomPt(g.handles[1]);
       const rPx = Math.hypot(s1.x - s0.x, s1.y - s0.y);
 
       ctx.beginPath();
@@ -7926,7 +8265,7 @@
 
     // [📐 평면도형 특수 케이스: 삼각형 (Triangle)]
     if (g.type === 'geom_triangle' && g.handles.length >= 3) {
-      const pts = g.handles.map(h => this.mathToScreen(h.x, h.y));
+      const pts = g.handles.map(mapGeomPt);
       ctx.beginPath();
       ctx.moveTo(pts[0].x, pts[0].y);
       ctx.lineTo(pts[1].x, pts[1].y);
@@ -7956,7 +8295,7 @@
 
     // [📐 평면도형 특수 케이스: 사각형 (Quadrilateral)]
     if (g.type === 'geom_quad' && g.handles.length >= 4) {
-      const pts = g.handles.map(h => this.mathToScreen(h.x, h.y));
+      const pts = g.handles.map(mapGeomPt);
       ctx.beginPath();
       ctx.moveTo(pts[0].x, pts[0].y);
       ctx.lineTo(pts[1].x, pts[1].y);
@@ -7985,20 +8324,31 @@
       return;
     }
 
-    // [일차함수 특수 케이스: 완전 수직선 (x = x0)]
+    const isTrans = Boolean(g.isTransposedYX);
+    const isPwActive = !isTrans && this.usePiecewise && this.graphs.length >= 1 && !g.isIndependent;
+
+    // [일차함수 특수 케이스: 완전 수직선 (x = x0) 또는 전치 수평선 (y = x0)]
     if (g.type === '1st_linear' && g.handles.length >= 2) {
-      if (Math.abs(g.handles[1].x - g.handles[0].x) < 1e-4) {
-        const sx = this.mathToScreen(g.handles[0].x, 0).x;
-        ctx.beginPath();
-        ctx.moveTo(sx, 0);
-        ctx.lineTo(sx, this.screenHeight);
-        ctx.stroke();
+      const wx0 = this.engine.baseXToWorldX(g, g.handles[0].x);
+      const wx1 = this.engine.baseXToWorldX(g, g.handles[1].x);
+      if (Math.abs(wx1 - wx0) < 1e-4) {
+        if (isTrans) {
+          const sy = this.mathToScreen(0, wx0).y;
+          ctx.beginPath();
+          ctx.moveTo(0, sy);
+          ctx.lineTo(this.screenWidth, sy);
+          ctx.stroke();
+        } else if (!isPwActive || this.isInsidePiece(gIdx, wx0)) {
+          const sx = this.mathToScreen(wx0, 0).x;
+          ctx.beginPath();
+          ctx.moveTo(sx, 0);
+          ctx.lineTo(sx, this.screenHeight);
+          ctx.stroke();
+        }
         ctx.restore();
         return;
       }
     }
-
-    const isPwActive = this.usePiecewise && this.graphs.length >= 1 && !g.isIndependent;
 
     // [대표님 킬러 기획: 선택된 바로 그 함수만 원래 숨겨진 개형을 은은한 점선(Ghost)으로 짠! 표시]
     // 캔버스 빈 공간을 클릭하여 선택 해제하면 점선이 싹 사라지고 깔끔한 완성본 삽도로 자동 복귀!
@@ -8051,46 +8401,53 @@
       }
     };
 
-    // [유리함수 특수 케이스: 프리징 아닐 때 상하단 화면 끝 관통 2-브랜치 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
-    if (!this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'rational_basic' && g.handles.length >= 2) {
+    // [유리함수 특수 케이스: 프리징/전치 아닐 때 상하단 화면 끝 관통 2-브랜치 렌더링 (주기·전치 시 traceCurve 샘플러로 통일)]
+    if (!isTrans && !this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'rational_basic' && g.handles.length >= 2) {
       if (!isExport) resetGraphScreenPts(g);
       renderSpecialWithPiecewise((filter) => this.drawRationalCurve(ctx, g, gIdx, filter));
       ctx.restore();
       return;
     }
 
-    // [로그함수 특수 케이스: 프리징 아닐 때 수직 점근선 상하단 관통 고밀도 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
-    if (!this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'log_basic' && g.handles.length >= 2) {
+    // [로그함수 특수 케이스: 프리징/전치 아닐 때 수직 점근선 상하단 관통 고밀도 렌더링]
+    if (!isTrans && !this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'log_basic' && g.handles.length >= 2) {
       if (!isExport) resetGraphScreenPts(g);
       renderSpecialWithPiecewise((filter) => this.drawLogCurve(ctx, g, gIdx, filter));
       ctx.restore();
       return;
     }
 
-    // [탄젠트 특수 케이스: 프리징 아닐 때 주기별 점근선 상하단 관통 고밀도 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
-    if (!this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'tan_1period' && g.handles.length >= 1) {
+    // [탄젠트 특수 케이스: 프리징/전치 아닐 때 주기별 점근선 상하단 관통 고밀도 렌더링]
+    if (!isTrans && !this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'tan_1period' && g.handles.length >= 1) {
       if (!isExport) resetGraphScreenPts(g);
       renderSpecialWithPiecewise((filter) => this.drawTangentCurve(ctx, g, gIdx, filter));
       ctx.restore();
       return;
     }
 
-    // [무리함수 특수 케이스: 프리징 아닐 때 시작점 칼고정 고정밀 렌더링 (주기함수 시 traceCurve 샘플러로 통일)]
-    if (!this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'sqrt_basic' && g.handles.length >= 2) {
+    // [무리함수 특수 케이스: 프리징/전치 아닐 때 시작점 칼고정 고정밀 렌더링]
+    if (!isTrans && !this.isPiecewisePeriodic && !hasComplexOuter && g.type === 'sqrt_basic' && g.handles.length >= 2) {
       if (!isExport) resetGraphScreenPts(g);
       renderSpecialWithPiecewise((filter) => this.drawSqrtCurve(ctx, g, gIdx, filter));
       ctx.restore();
       return;
     }
 
-    // 🚀 [초고밀도 렌더링 & 절댓값 첨점(Cusp) 칼고정 엔진]:
-    // 확대·축소 시 샘플 그리드가 이동하며 절댓값 꺾인 점(x축 접점)이나 극점이 들썩거리며 떨리는 현상을 0.000%로 원천 박멸!
-    // (창모드 카드 내부 실시간 드래그 중에는 카드 폭 240~430px에 맞춘 320스텝 + 극점·첨점 100% 고정으로 iPad 120Hz 렉을 원천 차단하고, 손을 떼는 즉시 840스텝으로 복원)
+    // 🚀 [초고밀도 렌더링 & 절댓값 첨점(Cusp) 칼고정 엔진 (y=x 전치 완벽 지원)]:
     const isPipDrag = Boolean(isDragging && this._isRenderingGraphSnapshot);
     const steps = isExport ? 1500 : (isPipDrag ? 320 : (isDragging ? 600 : 840));
     const mLeft = this.screenToMath(0, 0).x;
     const mRight = this.screenToMath(this.screenWidth, 0).x;
-    const stepSize = (mRight - mLeft) / steps;
+    const mBottom = this.screenToMath(0, this.screenHeight).y;
+    const mTop = this.screenToMath(0, 0).y;
+    const paramStart = isTrans ? mBottom : mLeft;
+    const paramEnd = isTrans ? mTop : mRight;
+    const viewSpanY = isTrans ? Math.max(1, Math.abs(mRight - mLeft)) : Math.max(1, Math.abs(mTop - mBottom));
+    const yCutoff = isTrans
+      ? Math.max(100, Math.max(Math.abs(mLeft), Math.abs(mRight)) * 2.5 + 50)
+      : Math.max(100, Math.max(Math.abs(mTop), Math.abs(mBottom)) * 2.5 + 50);
+    const stepSize = (paramEnd - paramStart) / steps;
+    const paramToScreen = (pVal, outVal) => isTrans ? this.mathToScreen(outVal, pVal) : this.mathToScreen(pVal, outVal);
 
     if (!isExport) {
       resetGraphScreenPts(g);
@@ -8100,24 +8457,16 @@
     const isAbsActive = Boolean(g.isAbsolute || (g.isFrozen && g.frozenAbsolute) || g.frozenAbsolute || hasTransformAbs);
 
     // 절댓값(Math.abs) 적용 직전의 '부호 있는(Signed) 내부 함수값 배열'을 반환하는 헬퍼:
-    // 기존에는 evaluatePipeline()이 이미 Math.abs()를 씌운 양수(>= 0)만 반환했기 때문에
-    // (prevRawY > 0 && rawY < 0) 부호 반전 조건이 영원히 false가 되어 x축 첨점 보정이 작동하지 않았던 문제를 완벽 해결!
     const getSignedFoldValues = (evalX) => {
-      const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
       const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+      const baseX = this.engine.worldXToBaseX(g, evalX);
       const folds = [];
+      let y = this.engine.evaluate(g.type, g.handles, baseX);
+      if (g.isAbsolute) {
+        folds.push(y);
+        y = Math.abs(y);
+      }
       if (g.transforms && g.transforms.length > 0) {
-        let curX = evalX;
-        let totalOx = ox;
-        for (const t of g.transforms) {
-          if (t.offset && typeof t.offset.x === 'number') totalOx += t.offset.x;
-        }
-        curX -= totalOx;
-        let y = this.engine.evaluate(g.type, g.handles, curX);
-        if (g.isAbsolute) {
-          folds.push(y);
-          y = Math.abs(y);
-        }
         for (const t of g.transforms) {
           if (t.offset && typeof t.offset.y === 'number') y += t.offset.y;
           if (t.invertV) y = -y;
@@ -8126,18 +8475,12 @@
             y = Math.abs(y);
           }
         }
+        if (g.frozenInvertV) y = -y;
         y += oy;
         if (g.frozenAbsolute) {
           folds.push(y);
         }
         return folds;
-      }
-      let baseX = evalX - ox;
-      if (g.frozenInvertH) baseX = -baseX;
-      let y = this.engine.evaluate(g.type, g.handles, baseX);
-      if (g.isAbsolute) {
-        folds.push(y);
-        y = Math.abs(y);
       }
       if (g.frozenInvertV) y = -y;
       y += oy;
@@ -8172,20 +8515,51 @@
       return xZero;
     };
 
-    // 그래프의 극점·꼭짓점 등 핸들 X좌표도 샘플링에 고정하여 축소 시 극점이 들썩거리는 현상까지 원천 방지
+    // 그래프의 극점·꼭짓점 등 핸들 매개변수 좌표도 샘플링에 고정하여 축소 시 극점이 들썩거리는 현상까지 원천 방지
     const pinnedHandleXs = [];
-    if (g.handles && g.handles.length > 0 && !(this.usePiecewise && this.isPiecewisePeriodic && !g.isIndependent)) {
-      let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
-      if (g.transforms && g.transforms.length > 0) {
-        for (const t of g.transforms) {
-          if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
-        }
-      }
+    if (g.handles && g.handles.length > 0 && !(isPwActive && this.isPiecewisePeriodic)) {
+      const minVisX = Math.min(paramStart, paramEnd);
+      const maxVisX = Math.max(paramStart, paramEnd);
       for (let hIdx = 0; hIdx < g.handles.length; hIdx++) {
-        const hx = g.handles[hIdx].x + ox;
-        if (hx > mLeft && hx < mRight) pinnedHandleXs.push(hx);
+        const hx = this.engine.baseXToWorldX(g, g.handles[hIdx].x);
+        if (hx > minVisX && hx < maxVisX) pinnedHandleXs.push(hx);
       }
     }
+
+    const isPeriodicPw = Boolean(!isTrans && this.usePiecewise && this.isPiecewisePeriodic && this.piecewiseBoundaries && this.piecewiseBoundaries.length >= 2 && !g.isIndependent);
+    const pwB0 = isPeriodicPw ? this.piecewiseBoundaries[0] : 0;
+    const pwBLast = isPeriodicPw ? this.piecewiseBoundaries[this.piecewiseBoundaries.length - 1] : 0;
+    const pwT = isPeriodicPw ? (pwBLast - pwB0) : 0;
+    const pwStepY = this.periodicStepY || 0;
+
+    const evalAtWorldX = (targetMx) => {
+      let evalX = targetMx;
+      let yOffset = 0;
+      let curCycleK = 0;
+      if (isPeriodicPw && pwT > 1e-4) {
+        curCycleK = Math.floor((targetMx - pwB0) / pwT);
+        let xBase = targetMx - curCycleK * pwT;
+        if (xBase >= pwBLast - 1e-6) xBase = pwB0;
+        if (xBase < pwB0) xBase = pwB0;
+        evalX = xBase;
+        yOffset = curCycleK * pwStepY;
+      }
+      const y = this.engine.evaluatePipeline(g, evalX) + yOffset;
+      const valid = !isNaN(y) && isFinite(y) && Math.abs(y) <= yCutoff;
+      return { evalX, yOffset, curCycleK, y, valid };
+    };
+
+    const bisectDomainEdge = (validX, invalidX) => {
+      let vX = validX;
+      let invX = invalidX;
+      for (let b = 0; b < 18; b++) {
+        const mid = 0.5 * (vX + invX);
+        const res = evalAtWorldX(mid);
+        if (res.valid) vX = mid;
+        else invX = mid;
+      }
+      return vX;
+    };
 
     const traceCurve = (filterInside = null) => {
       ctx.beginPath();
@@ -8195,107 +8569,207 @@
       let prevEvalX = null;
       let prevFolds = null;
       let prevCycleK = null;
+      let prevGridMx = null;
+      let prevGridInPiece = false;
+      let prevGridValid = false;
+      let prevGridCycleK = null;
       const collectPts = !isExport && (filterInside === null || filterInside === true);
 
-      const emitScreenPoint = (targetMx, targetEvalX, yOff) => {
-        const yVal = this.engine.evaluatePipeline(g, targetEvalX) + yOff;
-        if (isNaN(yVal) || !isFinite(yVal) || Math.abs(yVal) > 100) return;
-        const sp = this.mathToScreen(targetMx, yVal);
-        ctx.lineTo(sp.x, sp.y);
-        if (collectPts) g._screenPts.push({ x: sp.x, y: sp.y });
-      };
-
-      for (let i = 0; i <= steps; i++) {
-        const mx = mLeft + i * stepSize;
-
-        // Piecewise 구간 필터 적용
-        if (filterInside !== null) {
-          const inPiece = this.isInsidePiece(gIdx, mx);
-          if (inPiece !== filterInside) {
-            if (started && collectPts && g._screenPts.length > 0 && g._screenPts[g._screenPts.length - 1] !== null) {
-              g._screenPts.push(null);
-            }
-            started = false;
-            prevRawY = null;
-            prevMx = null;
-            prevEvalX = null;
-            prevFolds = null;
-            continue;
-          }
-        }
-
-        // [❄️ 형상 프리징 & 계층형 2차 변환(대칭/2차 절댓값) 파이프라인 연산]
-        let evalX = mx;
-        let yOffset = 0;
-        let curCycleK = 0;
-        if (this.usePiecewise && this.isPiecewisePeriodic && this.piecewiseBoundaries.length >= 2 && !g.isIndependent) {
-          const b0 = this.piecewiseBoundaries[0];
-          const bLast = this.piecewiseBoundaries[this.piecewiseBoundaries.length - 1];
-          const T = bLast - b0;
-          if (T > 1e-4) {
-            curCycleK = Math.floor((mx - b0) / T);
-            let xBase = mx - curCycleK * T;
-            if (xBase >= bLast - 1e-6) xBase = b0;
-            if (xBase < b0) xBase = b0;
-            evalX = xBase;
-            yOffset = curCycleK * (this.periodicStepY || 0);
-          }
-        }
-
-        if (started && prevCycleK !== null && curCycleK !== prevCycleK) {
+      const breakSegment = () => {
+        if (started) {
           ctx.stroke();
           ctx.beginPath();
           if (collectPts && g._screenPts.length > 0 && g._screenPts[g._screenPts.length - 1] !== null) {
             g._screenPts.push(null);
           }
-          started = false;
-          prevRawY = null;
-          prevMx = null;
-          prevEvalX = null;
-          prevFolds = null;
+        }
+        started = false;
+        prevRawY = null;
+        prevMx = null;
+        prevEvalX = null;
+        prevFolds = null;
+      };
+
+      const emitScreenPoint = (targetMx, targetEvalX, yOff) => {
+        const yVal = this.engine.evaluatePipeline(g, targetEvalX) + yOff;
+        if (isNaN(yVal) || !isFinite(yVal) || Math.abs(yVal) > yCutoff) return;
+        const sp = paramToScreen(targetMx, yVal);
+        if (!started) {
+          ctx.moveTo(sp.x, sp.y);
+          started = true;
+        } else {
+          ctx.lineTo(sp.x, sp.y);
+        }
+        if (collectPts) g._screenPts.push({ x: sp.x, y: sp.y });
+      };
+
+      const emitWorldPoint = (targetMx) => {
+        const res = evalAtWorldX(targetMx);
+        if (!res.valid) return;
+        const sp = paramToScreen(targetMx, res.y);
+        if (!started) {
+          ctx.moveTo(sp.x, sp.y);
+          started = true;
+        } else {
+          ctx.lineTo(sp.x, sp.y);
+        }
+        if (collectPts) g._screenPts.push({ x: sp.x, y: sp.y });
+      };
+
+      for (let i = 0; i <= steps; i++) {
+        const mx = paramStart + i * stepSize;
+
+        // Piecewise 구간 필터 적용 (경계선 끝점 정밀 밀착 보간 포함)
+        if (!isTrans && filterInside !== null) {
+          const inPiece = (this.isInsidePiece(gIdx, mx) === filterInside);
+          if (!inPiece) {
+            if (started && prevMx !== null) {
+              let lo = prevMx, hi = mx;
+              for (let b = 0; b < 14; b++) {
+                const mid = 0.5 * (lo + hi);
+                if (this.isInsidePiece(gIdx, mid) === filterInside) lo = mid;
+                else hi = mid;
+              }
+              emitWorldPoint(lo);
+            }
+            breakSegment();
+            prevGridMx = mx;
+            prevGridInPiece = false;
+            prevGridValid = false;
+            continue;
+          } else if (!prevGridInPiece && prevGridMx !== null) {
+            let lo = prevGridMx, hi = mx;
+            for (let b = 0; b < 14; b++) {
+              const mid = 0.5 * (lo + hi);
+              if (this.isInsidePiece(gIdx, mid) === filterInside) hi = mid;
+              else lo = mid;
+            }
+            emitWorldPoint(hi);
+          }
+        }
+
+        const curRes = evalAtWorldX(mx);
+        const { evalX, yOffset, curCycleK, y: rawY, valid: curValid } = curRes;
+
+        if (started && prevCycleK !== null && curCycleK !== prevCycleK) {
+          breakSegment();
         }
         prevCycleK = curCycleK;
 
-        const rawY = this.engine.evaluatePipeline(g, evalX) + yOffset;
-
-        if (isNaN(rawY) || !isFinite(rawY) || Math.abs(rawY) > 100) {
-          if (started && collectPts && g._screenPts.length > 0 && g._screenPts[g._screenPts.length - 1] !== null) {
-            g._screenPts.push(null);
+        if (!curValid) {
+          if (started && prevMx !== null && (prevGridCycleK === null || prevGridCycleK === curCycleK)) {
+            const edgeMx = bisectDomainEdge(prevMx, mx);
+            if (Math.abs(edgeMx - prevMx) > 1e-9) {
+              for (let q = 5; q >= 1; q--) {
+                const frac = (q / 6) * (q / 6);
+                emitWorldPoint(edgeMx + (prevMx - edgeMx) * frac);
+              }
+              emitWorldPoint(edgeMx);
+            }
           }
-          started = false;
-          prevRawY = null;
-          prevMx = null;
-          prevEvalX = null;
-          prevFolds = null;
+          breakSegment();
+          prevGridMx = mx;
+          prevGridInPiece = true;
+          prevGridValid = false;
+          prevGridCycleK = curCycleK;
           continue;
+        }
+
+        // 정의역 시작점(예: sqrt(4 - x^2), 전치 무리함수 반포물선 꼭짓점) 정밀 밀착 + 제곱근 곡률 보간
+        if (!started && prevGridMx !== null && prevGridInPiece && !prevGridValid && (prevGridCycleK === null || prevGridCycleK === curCycleK)) {
+          const edgeMx = bisectDomainEdge(mx, prevGridMx);
+          if (Math.abs(mx - edgeMx) > 1e-9) {
+            const edgeRes = evalAtWorldX(edgeMx);
+            if (edgeRes.valid) {
+              const spEdge = paramToScreen(edgeMx, edgeRes.y);
+              ctx.moveTo(spEdge.x, spEdge.y);
+              started = true;
+              if (collectPts) g._screenPts.push({ x: spEdge.x, y: spEdge.y });
+              prevRawY = edgeRes.y;
+              prevMx = edgeMx;
+              prevEvalX = edgeRes.evalX;
+              prevFolds = isAbsActive ? getSignedFoldValues(edgeRes.evalX) : null;
+              for (let q = 1; q < 6; q++) {
+                const frac = (q / 6) * (q / 6);
+                const subP = edgeMx + (mx - edgeMx) * frac;
+                const subRes = evalAtWorldX(subP);
+                if (subRes.valid) {
+                  const spSub = paramToScreen(subP, subRes.y);
+                  ctx.lineTo(spSub.x, spSub.y);
+                  if (collectPts) g._screenPts.push({ x: spSub.x, y: spSub.y });
+                  prevRawY = subRes.y;
+                  prevMx = subP;
+                  prevEvalX = subRes.evalX;
+                  prevFolds = isAbsActive ? getSignedFoldValues(subRes.evalX) : null;
+                }
+              }
+            }
+          }
         }
 
         const curFolds = isAbsActive ? getSignedFoldValues(evalX) : null;
 
-        // [점근선 유령선(Ghost Line) 분리: tan(x), 1/x 등 인접 샘플 간 급격한 도약 및 부호 반전 시 단절]
-        if (started && prevRawY !== null) {
+        // [유한 계단 불연속(floor/ceil/sign) 및 동부호/이부호 점근선(1/x^2, |1/x|, |tan(x)|, 1/x+20) 8단계 이분 판별 엔진]
+        if (started && prevRawY !== null && prevMx !== null) {
           const dy = rawY - prevRawY;
-          const isAsymptoteJump = (Math.abs(dy) > this.ySpan * 1.5) && (Math.sign(prevRawY) !== Math.sign(rawY));
-          if (isAsymptoteJump) {
-            ctx.stroke();
-            ctx.beginPath();
-            if (collectPts && g._screenPts.length > 0 && g._screenPts[g._screenPts.length - 1] !== null) {
-              g._screenPts.push(null);
+          if (Math.abs(dy) > Math.max(0.08, viewSpanY * 0.015)) {
+            let hasDiscontinuity = false;
+            let ax = prevMx, bx = mx, ay = prevRawY, by = rawY;
+            for (let bIter = 0; bIter < 8; bIter++) {
+              const midX = 0.5 * (ax + bx);
+              const midRes = evalAtWorldX(midX);
+              if (!midRes.valid || midRes.curCycleK !== curCycleK) {
+                hasDiscontinuity = true;
+                break;
+              }
+              const my = midRes.y;
+              const minEnd = Math.min(ay, by);
+              const maxEnd = Math.max(ay, by);
+              if ((my < minEnd - viewSpanY * 0.25) || (my > maxEnd + viewSpanY * 0.25)) {
+                hasDiscontinuity = true;
+                break;
+              }
+              if (Math.abs(my - ay) >= Math.abs(by - my)) {
+                bx = midX;
+                by = my;
+              } else {
+                ax = midX;
+                ay = my;
+              }
             }
-            started = false;
+            if (!hasDiscontinuity) {
+              const narrowedJump = Math.abs(by - ay);
+              if ((narrowedJump >= Math.abs(dy) * 0.75 && narrowedJump > 0.05) || narrowedJump > viewSpanY * 0.6) {
+                hasDiscontinuity = true;
+              }
+            }
+            if (hasDiscontinuity) {
+              if (!isNaN(ay) && isFinite(ay) && Math.abs(ay) <= yCutoff && Math.abs(ax - prevMx) > 1e-9) {
+                const spL = paramToScreen(ax, ay);
+                ctx.lineTo(spL.x, spL.y);
+                if (collectPts) g._screenPts.push({ x: spL.x, y: spL.y });
+              }
+              breakSegment();
+              if (!isNaN(by) && isFinite(by) && Math.abs(by) <= yCutoff && Math.abs(mx - bx) > 1e-9) {
+                const spR = paramToScreen(bx, by);
+                ctx.moveTo(spR.x, spR.y);
+                started = true;
+                if (collectPts) g._screenPts.push({ x: spR.x, y: spR.y });
+              }
+            }
           }
         }
 
         // 🌟 [절댓값 부호 교차(Zero-Crossing) & 첨점(Cusp) 0.000% 칼밀착 엔진]:
-        // 부호 있는(Signed) 내부 함수값(prevFolds ↔ curFolds)의 부호 반전을 추적하여,
-        // 확대·축소 중 샘플 그리드가 어떻게 이동하든 x축 꺾인 점(첨점)을 1e-9 정밀도로 정확히 찾아 박아줍니다!
         if (started && prevMx !== null && prevEvalX !== null) {
           const extraEvalPoints = [];
+          const segMinMx = Math.min(prevMx, mx);
+          const segMaxMx = Math.max(prevMx, mx);
 
           // (A) 구간 내 고정 핸들(극점·꼭짓점) 삽입
           for (let pIdx = 0; pIdx < pinnedHandleXs.length; pIdx++) {
             const hx = pinnedHandleXs[pIdx];
-            if (hx > prevMx && hx < mx) {
+            if (hx > segMinMx && hx < segMaxMx) {
               extraEvalPoints.push(hx);
             }
           }
@@ -8330,10 +8804,10 @@
           }
 
           if (extraEvalPoints.length > 0) {
-            extraEvalPoints.sort((a, b) => a - b);
+            extraEvalPoints.sort((a, b) => (stepSize >= 0 ? (a - b) : (b - a)));
             for (let eIdx = 0; eIdx < extraEvalPoints.length; eIdx++) {
               const subMx = extraEvalPoints[eIdx];
-              if (subMx <= prevMx + 1e-9 || subMx >= mx - 1e-9) continue;
+              if (subMx <= segMinMx + 1e-9 || subMx >= segMaxMx - 1e-9) continue;
               if (eIdx > 0 && Math.abs(subMx - extraEvalPoints[eIdx - 1]) < 1e-7) continue;
               const subEvalX = prevEvalX + (subMx - prevMx);
               emitScreenPoint(subMx, subEvalX, yOffset);
@@ -8341,7 +8815,7 @@
           }
         }
 
-        const s = this.mathToScreen(mx, rawY);
+        const s = paramToScreen(mx, rawY);
 
         if (!started) {
           ctx.moveTo(s.x, s.y);
@@ -8357,6 +8831,10 @@
         prevMx = mx;
         prevEvalX = evalX;
         prevFolds = curFolds;
+        prevGridMx = mx;
+        prevGridInPiece = true;
+        prevGridValid = true;
+        prevGridCycleK = curCycleK;
       }
 
       ctx.stroke();
@@ -8739,30 +9217,11 @@
     if (!g || !g.handles) return;
     // 🔒 [구간 분할 잠금 상태에서도 핸들러는 그대로 표시하여 개별 함수 모양(극점·기울기) 조절 허용!]
 
-    let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
-    let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
-    if (g.transforms && g.transforms.length > 0) {
-      for (const t of g.transforms) {
-        if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
-        if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
-      }
-    }
-
     g.handles.forEach((h, idx) => {
       if (h.hidden) return; // 숨겨진 핸들은 노출하지 않음
 
-      let targetY = h.y;
-      if (g.isAbsolute && ["max", "min", "point", "vertex", "inflection"].includes(h.type)) {
-        targetY = Math.abs(h.y);
-      }
-      let evalY = (h.type === 'center' || h.type === 'asymptote')
-        ? (targetY + oy)
-        : this.engine.evaluatePipeline(g, h.x + ox);
-      if (isNaN(evalY) || !isFinite(evalY)) {
-        evalY = targetY + oy;
-      }
-
-      const s = this.mathToScreen(h.x + ox, evalY);
+      const wp = this.engine.getHandleWorldPos(g, h);
+      const s = this.mathToScreen(wp.x, wp.y);
       const isDragging = this.draggedHandleIdx === idx;
       const isPip = Boolean(this._isRenderingGraphSnapshot);
       const isActivelyDraggingInPip = Boolean(isPip && (this.isDraggingCurve || this.draggedHandleIdx !== null || this.isPanning || this._isResizingPipCard));
@@ -9089,7 +9548,47 @@
           ctx.clip();
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
-          const hiResSource = hasValidLiveGraphCvs
+          const bzCard = Math.max(0.25, this.boardZoom || 1.0);
+          const unzoomedW = Math.max(1, bw / bzCard);
+          const unzoomedH = Math.max(1, bh / bzCard);
+          const exportCardRef = isGraphCard
+            ? ((el.id === 'graphCardWidget')
+              ? 'primary'
+              : (Array.isArray(this.extraGraphCards) ? this.extraGraphCards.find(c => c && c.el === el) : null))
+            : null;
+          let cleanPipCanvas = null;
+          if (isGraphCard && exportCardRef && typeof this._getMutablePipCardSnapshot === 'function' && typeof this._withPipCardGraphState === 'function') {
+            const pipSnap = this._getMutablePipCardSnapshot(exportCardRef);
+            if (pipSnap && !pipSnap.isNAxisStudioCard && Array.isArray(pipSnap.graphs) && pipSnap.graphs.length > 0) {
+              const pipScale = 2.5;
+              cleanPipCanvas = document.createElement('canvas');
+              cleanPipCanvas.width = Math.max(1, Math.round(unzoomedW * pipScale));
+              cleanPipCanvas.height = Math.max(1, Math.round(unzoomedH * pipScale));
+              const pCtx = cleanPipCanvas.getContext('2d');
+              if (pCtx) {
+                pCtx.save();
+                pCtx.scale(pipScale, pipScale);
+                this._withPipCardGraphState(pipSnap, unzoomedW, unzoomedH, () => {
+                  const pipTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
+                  pCtx.fillStyle = this.isMonochromeMode ? '#ffffff' : (pipTheme.bg || '#ffffff');
+                  pCtx.fillRect(0, 0, unzoomedW, unzoomedH);
+                  if (this.showGuides) this.drawGuides(pCtx, this._snapshotCropBounds, true);
+                  if (this.showInverseGuide) this.drawInverseGuide(pCtx);
+                  if (this.showAsymptotes) this.drawAllAsymptotes(pCtx, true);
+                  if (this.showAxes) this.drawAxes(pCtx, this._snapshotCropBounds, true);
+                  if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(pCtx, this._snapshotCropBounds, true);
+                  this.drawAllCurves(pCtx, true);
+                  if (this.usePiecewise && this.graphs.length >= 1) {
+                    this.drawPiecewiseBoundaries(pCtx, true);
+                  }
+                  this.drawDropLines(pCtx, true);
+                  this.drawTextLabels(pCtx, true);
+                });
+                pCtx.restore();
+              }
+            }
+          }
+          const hiResSource = cleanPipCanvas || (hasValidLiveGraphCvs
             ? liveGraphCvs
             : ((
               el.id === 'problemCardWidget' &&
@@ -9115,8 +9614,16 @@
                   return (found && found.sourceCanvas) ? found.sourceCanvas : imgEl;
                 })()
                 : imgEl
-            ));
+            )));
+          ctx.save();
+          if (this.isMonochromeMode && !cleanPipCanvas) {
+            ctx.filter = 'grayscale(100%) contrast(108%)';
+          }
           ctx.drawImage(hiResSource, bx, by, bw, bh);
+          ctx.restore();
+          if (cleanPipCanvas) {
+            try { cleanPipCanvas.width = 1; cleanPipCanvas.height = 1; } catch (e) { }
+          }
           if (incInk) {
             const cardStrokes = (el.id === 'problemCardWidget')
               ? (this.problemInkStrokes || [])
@@ -9128,14 +9635,11 @@
               let sizeScale;
               if (isProbCard) {
                 const refW = (el.id === 'problemCardWidget') ? 520 : 480;
-                sizeScale = Math.max(0.6, bw / refW);
+                sizeScale = Math.max(0.6, unzoomedW / refW) * bzCard;
               } else {
-                const exportCardRef = (el.id === 'graphCardWidget')
-                  ? 'primary'
-                  : (Array.isArray(this.extraGraphCards) ? this.extraGraphCards.find(c => c && c.el === el) : null);
-                sizeScale = typeof this.getPipCardFinePenScale === 'function'
-                  ? this.getPipCardFinePenScale(exportCardRef, bw, bh)
-                  : 0.54;
+                sizeScale = (typeof this.getPipCardFinePenScale === 'function'
+                  ? this.getPipCardFinePenScale(exportCardRef, unzoomedW, unzoomedH)
+                  : 0.54) * bzCard;
               }
               cardStrokes.forEach(st => {
                 if (!st || !st.points || st.points.length === 0) return;
@@ -9674,16 +10178,26 @@
 
   // --- [선택된 요소 직사각형 자동 스캔 오프스크린 렌더링 엔진] ---
   getExportCanvas(filterOpts = null, precomputedBounds = undefined, customScale = null) {
-    const dpi = this.exportDPI;
+    const dpi = this.exportDPI || 300;
     const exportCanvas = document.createElement('canvas');
     const prevFilter = this._activeExportFilter;
     this._activeExportFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
 
     try {
-      const smartBounds = (precomputedBounds !== undefined)
-        ? precomputedBounds
-        : this.getSmartExportBounds(this._activeExportFilter);
-      const scaleFactor = customScale || ((dpi >= 600) ? 3 : 2);
+      const useVfCrop = Boolean(precomputedBounds === undefined && this.useViewfinder && !this.isGraphCovered);
+      let smartBounds;
+      if (precomputedBounds !== undefined) {
+        smartBounds = precomputedBounds;
+      } else if (useVfCrop) {
+        const vf = this.getVfScreenRect();
+        smartBounds = { x: vf.x, y: vf.y, width: vf.w, height: vf.h, w: vf.w, h: vf.h };
+      } else {
+        smartBounds = this.getSmartExportBounds(this._activeExportFilter);
+      }
+      const defaultScale = useVfCrop
+        ? (((this.vfTargetWIn || 2.5) * dpi) / Math.max(1, smartBounds.width))
+        : ((dpi >= 600) ? 3 : 2);
+      const scaleFactor = customScale || defaultScale;
       const sw = smartBounds ? smartBounds.width : this.screenWidth;
       const sh = smartBounds ? smartBounds.height : this.screenHeight;
       const maxPx = 8192;
@@ -9697,11 +10211,13 @@
       if (smartBounds) {
         const cropX = smartBounds.x;
         const cropY = smartBounds.y;
+        const baseSpanX = Math.abs(this.screenToMath(this.screenWidth, 0).x - this.screenToMath(0, 0).x);
         const backup = {
           sw: this.screenWidth,
           sh: this.screenHeight,
           panX: this.panX,
           panY: this.panY,
+          xSpan: this.xSpan,
           ySpan: this.ySpan,
           lockAspect: this.lockAspect,
           boardPanX: this.boardPanX,
@@ -9709,39 +10225,48 @@
           boardZoom: this.boardZoom,
           boardZoomOffsetX: this.boardZoomOffsetX,
           boardZoomOffsetY: this.boardZoomOffsetY,
-          exportCropOffset: this._exportCropOffset
+          exportCropOffset: this._exportCropOffset,
+          exportBaseSpanX: this._exportBaseSpanX
         };
 
-        const origX = backup.sw / 2 + backup.panX;
-        const origY = backup.sh / 2 + backup.panY;
+        try {
+          const origX = backup.sw / 2 + backup.panX;
+          const origY = backup.sh / 2 + backup.panY;
 
-        this.screenWidth = sw;
-        this.screenHeight = sh;
-        this.panX = (origX - cropX) - sw / 2;
-        this.panY = (origY - cropY) - sh / 2;
-        this.ySpan = backup.ySpan * (sh / Math.max(1, backup.sh));
-        this.lockAspect = true;
-        this.boardPanX = (backup.boardPanX || 0) - cropX;
-        this.boardPanY = (backup.boardPanY || 0) - cropY;
-        this._exportCropOffset = { x: cropX, y: cropY };
+          this.screenWidth = sw;
+          this.screenHeight = sh;
+          this.panX = (origX - cropX) - sw / 2;
+          this.panY = (origY - cropY) - sh / 2;
+          this.ySpan = backup.ySpan * (sh / Math.max(1, backup.sh));
+          if (!backup.lockAspect) {
+            this.xSpan = backup.xSpan * (sw / Math.max(1, backup.sw));
+          }
+          this.lockAspect = backup.lockAspect;
+          this.boardPanX = (backup.boardPanX || 0) - cropX;
+          this.boardPanY = (backup.boardPanY || 0) - cropY;
+          this._exportCropOffset = { x: cropX, y: cropY };
+          this._exportBaseSpanX = baseSpanX;
 
-        expCtx.save();
-        expCtx.scale(effScale, effScale);
-        this.render(expCtx, sw, sh, true);
-        expCtx.restore();
-
-        this.screenWidth = backup.sw;
-        this.screenHeight = backup.sh;
-        this.panX = backup.panX;
-        this.panY = backup.panY;
-        this.ySpan = backup.ySpan;
-        this.lockAspect = backup.lockAspect;
-        this.boardPanX = backup.boardPanX;
-        this.boardPanY = backup.boardPanY;
-        this.boardZoom = backup.boardZoom;
-        this.boardZoomOffsetX = backup.boardZoomOffsetX;
-        this.boardZoomOffsetY = backup.boardZoomOffsetY;
-        this._exportCropOffset = backup.exportCropOffset;
+          expCtx.save();
+          expCtx.scale(effScale, effScale);
+          this.render(expCtx, sw, sh, true);
+          expCtx.restore();
+        } finally {
+          this.screenWidth = backup.sw;
+          this.screenHeight = backup.sh;
+          this.panX = backup.panX;
+          this.panY = backup.panY;
+          this.xSpan = backup.xSpan;
+          this.ySpan = backup.ySpan;
+          this.lockAspect = backup.lockAspect;
+          this.boardPanX = backup.boardPanX;
+          this.boardPanY = backup.boardPanY;
+          this.boardZoom = backup.boardZoom;
+          this.boardZoomOffsetX = backup.boardZoomOffsetX;
+          this.boardZoomOffsetY = backup.boardZoomOffsetY;
+          this._exportCropOffset = backup.exportCropOffset;
+          this._exportBaseSpanX = backup.exportBaseSpanX;
+        }
       } else {
         expCtx.save();
         expCtx.scale(effScale, effScale);
@@ -9757,42 +10282,67 @@
 
   async copyToClipboard(filterOpts = null) {
     try {
-      await this._waitForSlideImagesReady();
-      const exp = this.getExportCanvas(filterOpts);
-      return await new Promise((resolve) => {
-        exp.canvas.toBlob(async (rawBlob) => {
-          if (!rawBlob) { resolve(false); return; }
+      const buildHighDpiPngBlob = async () => {
+        await this._waitForSlideImagesReady();
+        const exp = this.getExportCanvas(filterOpts);
+        const rawBlob = await new Promise((res) => exp.canvas.toBlob(res, 'image/png'));
+        try { exp.canvas.width = 1; exp.canvas.height = 1; } catch (e) { }
+        if (!rawBlob) throw new Error('PNG_BLOB_FAILED');
+        return await this.injectDpiToBlob(rawBlob, exp.dpi);
+      };
+
+      // Safari / iPadOS 사용자 제스처(Transient Activation) 보존을 위해 Promise 기반 ClipboardItem을 동기 등록
+      if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.write === 'function' && typeof ClipboardItem !== 'undefined') {
+        try {
+          const blobPromise = buildHighDpiPngBlob();
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blobPromise })
+          ]);
+          return true;
+        } catch (syncClipErr) {
           try {
-            const highDpiBlob = await this.injectDpiToBlob(rawBlob, exp.dpi);
+            const resolvedBlob = await buildHighDpiPngBlob();
             await navigator.clipboard.write([
-              new ClipboardItem({ 'image/png': highDpiBlob })
+              new ClipboardItem({ 'image/png': resolvedBlob })
             ]);
-            resolve(true);
-          } catch (clipErr) {
-            this.downloadPNG(filterOpts);
-            resolve(false);
+            return true;
+          } catch (fallbackClipErr) {
+            await this.downloadPNG(filterOpts);
+            return false;
           }
-        }, 'image/png');
-      });
+        }
+      }
+
+      await this.downloadPNG(filterOpts);
+      return false;
     } catch (err) {
       console.error(err);
       return false;
     }
   }
 
-  downloadPNG(filterOpts = null, customFileName = null) {
+  async downloadPNG(filterOpts = null, customFileName = null) {
+    try {
+      await this._waitForSlideImagesReady();
+    } catch (e) { }
     const exp = this.getExportCanvas(filterOpts);
     return new Promise((resolve) => {
       exp.canvas.toBlob(async (rawBlob) => {
+        try { exp.canvas.width = 1; exp.canvas.height = 1; } catch (e) { }
         if (!rawBlob) { resolve(false); return; }
-        const highDpiBlob = await this.injectDpiToBlob(rawBlob, exp.dpi);
-        const url = URL.createObjectURL(highDpiBlob);
-        const link = document.createElement('a');
-        link.download = customFileName || `Graphly_스캔_${Date.now()}.png`;
-        link.href = url;
-        link.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-        resolve(true);
+        try {
+          const highDpiBlob = await this.injectDpiToBlob(rawBlob, exp.dpi);
+          const url = URL.createObjectURL(highDpiBlob);
+          const link = document.createElement('a');
+          link.download = customFileName || `Graphly_스캔_${Date.now()}.png`;
+          link.href = url;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          resolve(true);
+        } catch (err) {
+          console.error(err);
+          resolve(false);
+        }
       }, 'image/png');
     });
   }
@@ -9902,55 +10452,65 @@
     }
     const slides = pkg.playlistSlides;
     const canvasItems = [];
-    for (let i = 0; i < slides.length; i++) {
-      const sl = slides[i];
-      let dataUrl = (sl && sl.viewerSnapshotDataUrl === '__SAME_AS_PDF_BOARD__' && sl.pdfPageBoardData)
-        ? sl.pdfPageBoardData.dataUrl
-        : (sl ? sl.viewerSnapshotDataUrl : '');
-      if (!dataUrl && sl) {
-        if (typeof this._isPureUnannotatedPdfPageSlide === 'function' && this._isPureUnannotatedPdfPageSlide(sl, pkg.exportFilter || null)) {
-          dataUrl = sl.pdfPageBoardData.dataUrl;
-          sl.viewerSnapshotDataUrl = dataUrl;
-        } else {
-          this.deserializeFullSlideState(sl);
-          await this._waitForSlideImagesReady();
-          const snap = this.captureCurrentSlideViewerSnapshot(pkg.exportFilter || null, false);
-          dataUrl = snap.dataUrl;
-          sl.viewerSnapshotDataUrl = dataUrl;
+    let backupCurrent = null;
+    try {
+      for (let i = 0; i < slides.length; i++) {
+        const sl = slides[i];
+        let dataUrl = (sl && sl.viewerSnapshotDataUrl === '__SAME_AS_PDF_BOARD__' && sl.pdfPageBoardData)
+          ? sl.pdfPageBoardData.dataUrl
+          : (sl ? sl.viewerSnapshotDataUrl : '');
+        if (!dataUrl && sl) {
+          if (typeof this._isPureUnannotatedPdfPageSlide === 'function' && this._isPureUnannotatedPdfPageSlide(sl, pkg.exportFilter || null)) {
+            dataUrl = sl.pdfPageBoardData.dataUrl;
+            sl.viewerSnapshotDataUrl = dataUrl;
+          } else {
+            if (!backupCurrent && typeof this.serializeFullSlideState === 'function') {
+              backupCurrent = this.serializeFullSlideState('viewer_pdf_backup');
+            }
+            this.deserializeFullSlideState(sl);
+            await this._waitForSlideImagesReady();
+            const snap = this.captureCurrentSlideViewerSnapshot(pkg.exportFilter || null, false);
+            dataUrl = snap.dataUrl;
+            sl.viewerSnapshotDataUrl = dataUrl;
+          }
+        }
+        if (dataUrl) {
+          const c = await new Promise((resolve) => {
+            const im = new Image();
+            im.onload = () => {
+              const off = document.createElement('canvas');
+              off.width = Math.max(1, im.naturalWidth || 1200);
+              off.height = Math.max(1, im.naturalHeight || 800);
+              off.getContext('2d').drawImage(im, 0, 0);
+              resolve(off);
+            };
+            im.onerror = () => resolve(null);
+            im.src = dataUrl;
+          });
+          if (c) canvasItems.push({ canvas: c, bgColor: '#ffffff' });
         }
       }
-      if (dataUrl) {
-        const c = await new Promise((resolve) => {
-          const im = new Image();
-          im.onload = () => {
-            const off = document.createElement('canvas');
-            off.width = Math.max(1, im.naturalWidth || 1200);
-            off.height = Math.max(1, im.naturalHeight || 800);
-            off.getContext('2d').drawImage(im, 0, 0);
-            resolve(off);
-          };
-          im.onerror = () => resolve(null);
-          im.src = dataUrl;
-        });
-        if (c) canvasItems.push({ canvas: c, bgColor: '#ffffff' });
+      if (canvasItems.length === 0) return false;
+      const pdfBlob = this.buildMultiPagePdfBlobFromCanvases(canvasItems);
+      if (!pdfBlob) return false;
+      const url = URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.download = `Graphly_캔버스노트_${canvasItems.length}장_${Date.now()}.pdf`;
+      link.href = url;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      this.showToast(`📄 전체 캔버스(${canvasItems.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
+      return true;
+    } finally {
+      if (backupCurrent && typeof this.deserializeFullSlideState === 'function') {
+        try { this.deserializeFullSlideState(backupCurrent); } catch (e) { }
       }
+      canvasItems.forEach((item) => {
+        if (item && item.canvas) {
+          try { item.canvas.width = 1; item.canvas.height = 1; } catch (e) { }
+        }
+      });
     }
-    if (canvasItems.length === 0) return false;
-    const pdfBlob = this.buildMultiPagePdfBlobFromCanvases(canvasItems);
-    canvasItems.forEach((item) => {
-      if (item && item.canvas) {
-        try { item.canvas.width = 1; item.canvas.height = 1; } catch (e) { }
-      }
-    });
-    if (!pdfBlob) return false;
-    const url = URL.createObjectURL(pdfBlob);
-    const link = document.createElement('a');
-    link.download = `Graphly_캔버스노트_${canvasItems.length}장_${Date.now()}.pdf`;
-    link.href = url;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-    this.showToast(`📄 전체 캔버스(${canvasItems.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
-    return true;
   }
 
   async downloadExportImages(scope = 'current', filterOpts = null) {
@@ -9962,25 +10522,33 @@
       if (allSlides.length > 1) {
         const backupCurrent = this.serializeFullSlideState('backup');
         const canvasItems = [];
-        for (let i = 0; i < allSlides.length; i++) {
-          this.deserializeFullSlideState(allSlides[i]);
-          await this._waitForSlideImagesReady();
-          const exp = this.getExportCanvas(effFilter);
-          const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
-          const bgColor = (!this.isMonochromeMode && curTheme && curTheme.bg) ? curTheme.bg : '#ffffff';
-          canvasItems.push({ canvas: exp.canvas, bgColor });
-        }
-        this.deserializeFullSlideState(backupCurrent);
-        const pdfBlob = this.buildMultiPagePdfBlobFromCanvases(canvasItems);
-        if (pdfBlob) {
-          const url = URL.createObjectURL(pdfBlob);
-          const link = document.createElement('a');
-          link.download = `Graphly_캔버스노트_${allSlides.length}장_${Date.now()}.pdf`;
-          link.href = url;
-          link.click();
-          setTimeout(() => URL.revokeObjectURL(url), 2000);
-          this.showToast(`📄 전체 캔버스(${allSlides.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
-          return pdfBlob;
+        try {
+          for (let i = 0; i < allSlides.length; i++) {
+            this.deserializeFullSlideState(allSlides[i]);
+            await this._waitForSlideImagesReady();
+            const exp = this.getExportCanvas(effFilter);
+            const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
+            const bgColor = (!this.isMonochromeMode && curTheme && curTheme.bg) ? curTheme.bg : '#ffffff';
+            canvasItems.push({ canvas: exp.canvas, bgColor });
+          }
+          const pdfBlob = this.buildMultiPagePdfBlobFromCanvases(canvasItems);
+          if (pdfBlob) {
+            const url = URL.createObjectURL(pdfBlob);
+            const link = document.createElement('a');
+            link.download = `Graphly_캔버스노트_${allSlides.length}장_${Date.now()}.pdf`;
+            link.href = url;
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
+            this.showToast(`📄 전체 캔버스(${allSlides.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
+            return pdfBlob;
+          }
+        } finally {
+          try { this.deserializeFullSlideState(backupCurrent); } catch (e) { }
+          canvasItems.forEach((item) => {
+            if (item && item.canvas) {
+              try { item.canvas.width = 1; item.canvas.height = 1; } catch (e) { }
+            }
+          });
         }
       }
     }

@@ -588,6 +588,10 @@
     }
 
     getMaxAudioRecordDurationMs() {
+      if (typeof this.getCurrentTierQuota === 'function') {
+        const q = this.getCurrentTierQuota();
+        if (q && q.maxRecordMs > 0) return q.maxRecordMs;
+      }
       const cfg = (typeof this.getSubscriptionQuotaConfig === 'function')
         ? this.getSubscriptionQuotaConfig()
         : null;
@@ -597,7 +601,28 @@
       if (isPro) {
         return (cfg && cfg.proMaxRecordMs) ? cfg.proMaxRecordMs : (60 * 60 * 1000);
       }
-      return (cfg && cfg.freeMaxRecordMs) ? cfg.freeMaxRecordMs : (10 * 60 * 1000);
+      return (cfg && cfg.freeMaxRecordMs) ? cfg.freeMaxRecordMs : (3 * 60 * 1000);
+    }
+
+    _computeOtherSlidesRecordedDurationMs() {
+      if (!Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length <= 1) return 0;
+      const curIdx = (typeof this.lessonPlaylistIndex === 'number') ? this.lessonPlaylistIndex : -1;
+      let sumMs = 0;
+      for (let i = 0; i < this.lessonPlaylistSlides.length; i++) {
+        if (i === curIdx) continue;
+        const sl = this.lessonPlaylistSlides[i];
+        if (!sl || !sl.audioSyncData) continue;
+        const dur = Number(sl.audioSyncData.durationMs) || 0;
+        if (dur > 0) sumMs += dur;
+      }
+      return Math.max(0, Math.round(sumMs));
+    }
+
+    getTotalLessonRecordedDurationMs() {
+      const basePriorMs = this.isAudioRecording
+        ? Math.max(0, Number(this._sessionBasePriorRecordedMs) || 0)
+        : this._computeOtherSlidesRecordedDurationMs();
+      return basePriorMs + this.getAudioSessionElapsedMs();
     }
 
     _updateAudioRecordProgressRings(forceSync = false) {
@@ -620,18 +645,19 @@
       }
 
       const maxDurationMs = Math.max(1000, this.getMaxAudioRecordDurationMs());
-      const sessionElapsed = this.getAudioSessionElapsedMs();
+      const maxMinutes = Math.max(1, Math.round(maxDurationMs / 60000));
+      const totalElapsed = this.getTotalLessonRecordedDurationMs();
 
-      // 제한 시간(무료 10분 / 구독 60분) 도달 시 데이터 보호를 위해 안전하게 자동 마감
-      if (sessionElapsed >= maxDurationMs && !this._isAutoStoppingByLimit) {
+      // 제한 시간(무료 3분 / Pro·Premium 60분) 도달 시 데이터 보호를 위해 안전하게 자동 마감
+      if (totalElapsed >= maxDurationMs && !this._isAutoStoppingByLimit) {
         this._isAutoStoppingByLimit = true;
-        const isPro = (typeof this.isProSubscriber === 'function') ? this.isProSubscriber() : Boolean(this.isProUser);
+        const isPaid = (typeof this.isProSubscriber === 'function') ? this.isProSubscriber() : Boolean(this.isProUser);
         this.stopAudioRecording({ silentToast: true }).then(() => {
           this._isAutoStoppingByLimit = false;
           this.showToast(
-            isPro
-              ? '⏹ 60분 연속 녹화가 안전하게 자동 완료되었습니다.'
-              : '⏹ 무료 플랜 10분 녹화가 자동 완료되었습니다. (Pro 구독 시 60분 연속 녹화)'
+            isPaid
+              ? `⏹ ${maxMinutes}분 녹화가 안전하게 자동 완료되었습니다.`
+              : `⏹ 무료 플랜 ${maxMinutes}분 녹화가 자동 완료되었습니다. (Pro·Premium 구독 시 60분 녹화)`
           );
         }).catch(() => {
           this._isAutoStoppingByLimit = false;
@@ -639,12 +665,22 @@
         return;
       }
 
+      const remainMs = Math.max(0, maxDurationMs - totalElapsed);
+      const isPaidNow = (typeof this.isProSubscriber === 'function') ? this.isProSubscriber() : Boolean(this.isProUser);
+      const warnThresholdMs = isPaidNow ? 180000 : 30000;
+      if (!this._warnedEndingSoonInSession && totalElapsed >= 5000 && remainMs > 0 && remainMs <= warnThresholdMs) {
+        this._warnedEndingSoonInSession = true;
+        const remainSec = Math.max(1, Math.ceil(remainMs / 1000));
+        const remainLabel = remainSec >= 60 ? `약 ${Math.round(remainSec / 60)}분` : `${remainSec}초`;
+        this.showToast(`⏳ 녹화 제한 시간(${maxMinutes}분) 종료까지 ${remainLabel} 남았습니다.`);
+      }
+
       // 필기 획을 긋고 있는 도중에는 DOM 속성 갱신을 건너뛰어 필기 성능 영향 0% 보장
       if (!forceSync && (this.isDrawingInk || this._isDrawingCardInk || this.isStylusDrawing || this.isDrawingLaser || this.isErasingInk)) return;
 
-      const elapsedRatio = Math.max(0, Math.min(1, sessionElapsed / maxDurationMs));
+      const elapsedRatio = Math.max(0, Math.min(1, totalElapsed / maxDurationMs));
       const remainRatio = 1 - elapsedRatio;
-      const isEndingSoon = remainRatio <= 0.10; // 남은 시간 10% 이하 (무료 1분 / 구독 6분)
+      const isEndingSoon = remainMs <= warnThresholdMs || remainRatio <= 0.10;
 
       const offFab = Math.round(elapsedRatio * cFab * 100) / 100;
       const offStealth = Math.round(elapsedRatio * cStealth * 100) / 100;
@@ -1467,6 +1503,12 @@
           this._inkBakeDirty = true;
         }
         this.graphs = JSON.parse(JSON.stringify(kf.graphs || []));
+        if (this.engine && typeof this.engine.ensureCompiledFunctions === 'function') {
+          this.engine.ensureCompiledFunctions(this.graphs);
+        }
+        if (kf.showInverseGuide !== undefined) {
+          this.showInverseGuide = Boolean(kf.showInverseGuide);
+        }
         this.activeGraphIdx = typeof kf.activeGraphIdx === 'number' ? kf.activeGraphIdx : (this.graphs.length > 0 ? 0 : -1);
         if (kf.isCurveSelected !== undefined) this.isCurveSelected = Boolean(kf.isCurveSelected);
         if (kf.selectedHandleIdx !== undefined) this.selectedHandleIdx = kf.selectedHandleIdx;
@@ -1628,14 +1670,16 @@
             if (!st || typeof this.spawnExtraGraphArchiveCard !== 'function') break;
             this.spawnExtraGraphArchiveCard(
               'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-              st.aspect || 0.82,
-              st.pipSnap ? JSON.parse(JSON.stringify(st.pipSnap)) : null,
-              [],
-              [],
-              typeof st.baseX === 'number' ? st.baseX : 560,
-              typeof st.baseY === 'number' ? st.baseY : 68,
               typeof st.w === 'number' ? st.w : 360,
-              Boolean(st.min)
+              typeof st.aspect === 'number' ? st.aspect : 0.82,
+              st.pipSnap ? JSON.parse(JSON.stringify(st.pipSnap)) : null,
+              null,
+              {
+                directBasePos: {
+                  x: typeof st.baseX === 'number' ? st.baseX : 560,
+                  y: typeof st.baseY === 'number' ? st.baseY : 68
+                }
+              }
             );
           }
         }
@@ -1708,10 +1752,15 @@
           });
         }
 
-        if (this.extraProblemCards && this.extraProblemCards.length > 0 && Array.isArray(kf.extraProbStates)) {
+        if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+          const visibleProbCount = typeof kf.extraProbsCount === 'number'
+            ? kf.extraProbsCount
+            : (Array.isArray(kf.extraProbStates) ? kf.extraProbStates.length : this.extraProblemCards.length);
           this.extraProblemCards.forEach((c, idx) => {
-            const st = kf.extraProbStates[idx];
-            if (c && c.el && st) {
+            if (!c || !c.el) return;
+            c.el.style.display = (!this.isGraphCovered || idx >= visibleProbCount) ? 'none' : 'flex';
+            const st = Array.isArray(kf.extraProbStates) ? kf.extraProbStates[idx] : null;
+            if (st) {
               if (st.pdfAnchor) {
                 c.pdfAnchor = { ...st.pdfAnchor };
                 c.el._pdfAnchor = { ...st.pdfAnchor };
@@ -2433,7 +2482,22 @@
 
     async startAudioRecording() {
       if (this.isAudioRecording) return;
+      const maxDurationMs = Math.max(1000, this.getMaxAudioRecordDurationMs());
+      const priorOtherSlidesMs = this._computeOtherSlidesRecordedDurationMs();
+      if (priorOtherSlidesMs >= maxDurationMs) {
+        const maxMinutes = Math.max(1, Math.round(maxDurationMs / 60000));
+        const isPaid = (typeof this.isProSubscriber === 'function') ? this.isProSubscriber() : Boolean(this.isProUser);
+        if (!isPaid) {
+          this.showToast(`⚠️ 무료 플랜 녹화 한도(${maxMinutes}분)를 모두 사용했습니다. Pro·Premium 업그레이드 시 60분까지 녹화 가능합니다.`);
+          if (typeof this.openProPricingModal === 'function') this.openProPricingModal('pro');
+        } else {
+          this.showToast(`⚠️ 현재 수업 노트의 최대 녹화 시간(${maxMinutes}분)에 도달했습니다. 새 노트에서 녹화를 이어가 주세요.`);
+        }
+        return;
+      }
       this.stopAudioPlayback(true);
+      this._sessionBasePriorRecordedMs = priorOtherSlidesMs;
+      this._warnedEndingSoonInSession = false;
 
       // 녹음 시작 전 이미 그려져 있던 스트로크들은 배경 스트로크(preExisting: true)로 마킹하여 영상 모드에서도 처음부터 보이게 유지
       const markPreExisting = (arr) => {
@@ -3296,6 +3360,7 @@
             snapB._isDraggingCurve
           );
           const sameAbsStage = (
+            Boolean(gA.isTransposedYX) === Boolean(gB.isTransposedYX) &&
             Boolean(gA.isAbsolute) === Boolean(gB.isAbsolute) &&
             ((gA.transforms && gA.transforms.length) || 0) === ((gB.transforms && gB.transforms.length) || 0)
           );
@@ -3461,6 +3526,7 @@
           const gM = merged.graphs[gIdx];
           if (!gA || !gB || gA.type !== gB.type) continue;
           const sameAbsStage = (
+            Boolean(gA.isTransposedYX) === Boolean(gB.isTransposedYX) &&
             Boolean(gA.isAbsolute) === Boolean(gB.isAbsolute) &&
             ((gA.transforms && gA.transforms.length) || 0) === ((gB.transforms && gB.transforms.length) || 0)
           );
@@ -4582,7 +4648,7 @@
       await this.enterStudentAudioVideoOnlyMode({
         ...this._viewerPkg,
         currentIndex: slideIdx
-      }, true);
+      }, true, { startMs, mode });
     }
 
     // ============================================================================

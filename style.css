@@ -16373,3 +16373,526 @@ body:not(.theme-light) #modalShare .settings-clean-btn.export-btn-success-fx:hov
     transform: scale(1) rotate(0deg);
   }
 }
+
+/* ============================================================================
+   👑 [3단계 요금제 모달 (#modalProPricing) · 클라우드 용량 게이지 · 영구 공유 링크 UI]
+   ============================================================================ */
+.pricing-modal-card {
+  max-width: 720px !important;
+  width: 95vw !important;
+}
+
+.pricing-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 82vh;
+  overflow-y: auto;
+  padding: 16px 18px !important;
+}
+
+.pricing-cycle-toggle-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.pricing-cycle-toggle-bar {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.14);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.pricing-cycle-btn {
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+body:not(.theme-light) .pricing-cycle-btn {
+  color: #94a3b8;
+}
+
+.pricing-cycle-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.1);
+}
+
+body:not(.theme-light) .pricing-cycle-btn.active {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+.pricing-cycle-save-pill {
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(79, 70, 229, 0.14);
+  color: #4f46e5;
+}
+
+body:not(.theme-light) .pricing-cycle-save-pill {
+  background: rgba(129, 140, 248, 0.22);
+  color: #a5b4fc;
+}
+
+.pricing-tier-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 680px) {
+  .pricing-tier-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pricing-tier-card {
+  border: 1.5px solid rgba(148, 163, 184, 0.32);
+  background: rgba(248, 250, 252, 0.65);
+  border-radius: 13px;
+  padding: 13px 13px 11px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+
+body:not(.theme-light) .pricing-tier-card {
+  background: rgba(30, 41, 59, 0.55);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+.pricing-tier-card.is-free-baseline {
+  opacity: 0.92;
+  cursor: default;
+}
+
+.pricing-tier-card.is-selectable {
+  cursor: pointer;
+}
+
+.pricing-tier-card.is-selectable:hover {
+  border-color: rgba(37, 99, 235, 0.55);
+  transform: translateY(-1px);
+}
+
+.pricing-tier-card.is-selectable.tier-premium:hover {
+  border-color: rgba(124, 58, 237, 0.6);
+}
+
+.pricing-tier-card.is-selectable.active {
+  border: 2px solid #2563eb;
+  background: rgba(37, 99, 235, 0.07);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.14);
+}
+
+body:not(.theme-light) .pricing-tier-card.is-selectable.active {
+  background: rgba(37, 99, 235, 0.18);
+}
+
+.pricing-tier-card.is-selectable.tier-premium.active {
+  border: 2px solid #7c3aed;
+  background: rgba(124, 58, 237, 0.08);
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.18);
+}
+
+body:not(.theme-light) .pricing-tier-card.is-selectable.tier-premium.active {
+  background: rgba(124, 58, 237, 0.22);
+}
+
+.pricing-tier-badge {
+  align-self: flex-start;
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.pricing-tier-badge.badge-free {
+  background: rgba(100, 116, 139, 0.14);
+  color: #475569;
+}
+
+body:not(.theme-light) .pricing-tier-badge.badge-free {
+  color: #cbd5e1;
+}
+
+.pricing-tier-badge.badge-pro {
+  background: rgba(37, 99, 235, 0.13);
+  color: #2563eb;
+}
+
+body:not(.theme-light) .pricing-tier-badge.badge-pro {
+  background: rgba(96, 165, 250, 0.2);
+  color: #93c5fd;
+}
+
+.pricing-tier-badge.badge-premium {
+  background: rgba(124, 58, 237, 0.14);
+  color: #7c3aed;
+}
+
+body:not(.theme-light) .pricing-tier-badge.badge-premium {
+  background: rgba(167, 139, 250, 0.22);
+  color: #c4b5fd;
+}
+
+.pricing-tier-name {
+  font-size: 15.5px;
+  font-weight: 800;
+  color: var(--text-main, #0f172a);
+}
+
+.pricing-tier-sub {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #64748b;
+  margin-left: 3px;
+}
+
+.pricing-tier-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.pricing-tier-price {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-main, #0f172a);
+}
+
+.pricing-tier-price.price-pro {
+  color: #2563eb;
+}
+
+body:not(.theme-light) .pricing-tier-price.price-pro {
+  color: #60a5fa;
+}
+
+.pricing-tier-price.price-premium {
+  color: #7c3aed;
+}
+
+body:not(.theme-light) .pricing-tier-price.price-premium {
+  color: #c4b5fd;
+}
+
+.pricing-tier-unit {
+  font-size: 10.8px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.pricing-tier-features {
+  list-style: none;
+  margin: 4px 0 2px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4.5px;
+  font-size: 11.8px;
+  line-height: 1.4;
+  color: var(--text-main, #334155);
+  flex: 1;
+}
+
+body:not(.theme-light) .pricing-tier-features {
+  color: #e2e8f0;
+}
+
+.pricing-tier-features .feature-sub-highlight {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7c3aed;
+}
+
+body:not(.theme-light) .pricing-tier-features .feature-sub-highlight {
+  color: #c4b5fd;
+}
+
+.pricing-tier-foot-note {
+  font-size: 10.8px;
+  color: #64748b;
+  border-top: 1px dashed rgba(148, 163, 184, 0.25);
+  padding-top: 6px;
+  margin-top: auto;
+}
+
+.pricing-buyer-box {
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pricing-account-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+}
+
+.pricing-account-status-text {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e40af;
+}
+
+body:not(.theme-light) .pricing-account-status-text {
+  color: #93c5fd;
+}
+
+.pricing-go-login-btn {
+  padding: 5px 10px !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+}
+
+.pricing-buyer-label {
+  font-size: 11.8px;
+  font-weight: 700;
+  color: var(--text-main, #0f172a);
+}
+
+.pricing-buyer-inputs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pricing-buyer-input {
+  flex: 1;
+  min-width: 130px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: var(--bg-panel, #ffffff);
+  color: var(--text-main, #0f172a);
+  font-size: 12.5px;
+}
+
+.pricing-buyer-input.email-col {
+  flex: 1.4;
+  min-width: 170px;
+}
+
+.pricing-pay-submit-btn {
+  width: 100%;
+  padding: 13px;
+  border-radius: 10px;
+  font-size: 14.5px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+
+.pricing-pay-submit-btn.is-premium-selected {
+  background: linear-gradient(135deg, #7c3aed, #4f46e5);
+}
+
+.pricing-pay-submit-btn:hover {
+  filter: brightness(1.06);
+}
+
+.pricing-legal-footer {
+  font-size: 11.2px;
+  color: #64748b;
+  line-height: 1.62;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  padding-top: 9px;
+}
+
+/* 클라우드 보관함 좌측 하단 용량 게이지 */
+.cloud-storage-quota-box {
+  flex-shrink: 0;
+  margin-top: 4px;
+  padding: 7px 7px 6px 7px;
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cloud-quota-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.cloud-quota-tier-badge {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1.5px 6px;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.15);
+  color: #475569;
+  white-space: nowrap;
+}
+
+body:not(.theme-light) .cloud-quota-tier-badge {
+  color: #cbd5e1;
+}
+
+.cloud-quota-tier-badge.tier-pro {
+  background: rgba(37, 99, 235, 0.14);
+  color: #2563eb;
+}
+
+body:not(.theme-light) .cloud-quota-tier-badge.tier-pro {
+  background: rgba(96, 165, 250, 0.22);
+  color: #93c5fd;
+}
+
+.cloud-quota-tier-badge.tier-premium {
+  background: rgba(124, 58, 237, 0.15);
+  color: #7c3aed;
+}
+
+body:not(.theme-light) .cloud-quota-tier-badge.tier-premium {
+  background: rgba(167, 139, 250, 0.22);
+  color: #c4b5fd;
+}
+
+.cloud-quota-upgrade-btn {
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+  font-size: 9.8px;
+  font-weight: 700;
+  padding: 1.5px 5px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+body:not(.theme-light) .cloud-quota-upgrade-btn {
+  border-color: rgba(96, 165, 250, 0.4);
+  background: rgba(37, 99, 235, 0.2);
+  color: #93c5fd;
+}
+
+.cloud-quota-bar-track {
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.24);
+  overflow: hidden;
+}
+
+.cloud-quota-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #2563eb;
+  transition: width 0.2s ease, background 0.2s ease;
+}
+
+.cloud-quota-bar-fill.is-warn {
+  background: #f59e0b;
+}
+
+.cloud-quota-bar-fill.is-danger {
+  background: #ef4444;
+}
+
+.cloud-quota-usage-text {
+  font-size: 10.2px;
+  font-weight: 600;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body:not(.theme-light) .cloud-quota-usage-text {
+  color: #94a3b8;
+}
+
+/* 내보내기 모달 공유 링크 등급 안내 줄 */
+.share-link-tier-notice {
+  margin-top: 5px;
+  font-size: 10.8px;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.35;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+body:not(.theme-light) .share-link-tier-notice {
+  color: #94a3b8;
+}
+
+/* 클라우드 보관함 내 영구 공유 링크 배지 & 빠른 링크 복사 버튼 */
+.cloud-perm-link-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.13);
+  color: #7c3aed;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+body:not(.theme-light) .cloud-perm-link-badge {
+  background: rgba(167, 139, 250, 0.22);
+  color: #c4b5fd;
+}
+
+.btn-cloud-copy-perm-link {
+  border: 1px solid rgba(124, 58, 237, 0.32);
+  background: rgba(124, 58, 237, 0.08);
+  color: #7c3aed;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+body:not(.theme-light) .btn-cloud-copy-perm-link {
+  border-color: rgba(167, 139, 250, 0.35);
+  background: rgba(124, 58, 237, 0.2);
+  color: #c4b5fd;
+}
+
+.btn-cloud-copy-perm-link:hover {
+  background: rgba(124, 58, 237, 0.18);
+}

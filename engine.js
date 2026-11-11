@@ -236,58 +236,127 @@ const FUNC_METADATA = {
 };
 
 class GraphMathEngine {
+  // 기본 핸들/특이점 X좌표 -> 변환(대칭·다단변환·평행이동) 반영 월드 X좌표
+  static baseXToWorldX(g, baseX) {
+    if (!g || typeof baseX !== 'number' || isNaN(baseX)) return baseX;
+    let wx = baseX;
+    if (g.transforms && g.transforms.length > 0) {
+      for (let ti = 0; ti < g.transforms.length; ti++) {
+        const t = g.transforms[ti];
+        if (!t) continue;
+        if (t.invertH) wx = -wx;
+        if (t.offset && typeof t.offset.x === 'number') wx += t.offset.x;
+      }
+    }
+    if (g.frozenInvertH) wx = -wx;
+    const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+    return wx + ox;
+  }
+
+  // 월드 X좌표 -> 내부 기본 함수 평가용 X좌표 (baseXToWorldX의 정확한 역변환)
+  static worldXToBaseX(g, worldX) {
+    if (!g || typeof worldX !== 'number' || isNaN(worldX)) return worldX;
+    const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+    let curX = worldX - ox;
+    if (g.frozenInvertH) curX = -curX;
+    if (g.transforms && g.transforms.length > 0) {
+      for (let ti = g.transforms.length - 1; ti >= 0; ti--) {
+        const t = g.transforms[ti];
+        if (!t) continue;
+        if (t.offset && typeof t.offset.x === 'number') curX -= t.offset.x;
+        if (t.invertH) curX = -curX;
+      }
+    }
+    return curX;
+  }
+
+  // 기본 함수 Y값(수평 점근선·도형 꼭짓점 등) -> 변환(절댓값·대칭·다단변환·평행이동) 반영 월드 Y좌표
+  static baseYToWorldY(g, baseY, applyAbs = true) {
+    if (!g || typeof baseY !== 'number' || isNaN(baseY) || !isFinite(baseY)) return NaN;
+    let wy = baseY;
+    if (applyAbs && g.isAbsolute) wy = Math.abs(wy);
+    if (g.transforms && g.transforms.length > 0) {
+      for (let ti = 0; ti < g.transforms.length; ti++) {
+        const t = g.transforms[ti];
+        if (!t) continue;
+        if (t.offset && typeof t.offset.y === 'number') wy += t.offset.y;
+        if (t.invertV) wy = -wy;
+        if (applyAbs && t.abs) wy = Math.abs(wy);
+      }
+    }
+    if (g.frozenInvertV) wy = -wy;
+    const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+    wy += oy;
+    if (applyAbs && g.frozenAbsolute) wy = Math.abs(wy);
+    return wy;
+  }
+
+  // 핸들(극점·중심·점근선·도형 꼭짓점)의 월드 (x, y) 좌표 통합 산출 (다단변환·대칭·절댓값·y=x 전치 완벽 호환)
+  static getHandleWorldPos(g, h) {
+    if (!g || !h) return { x: 0, y: 0 };
+    const isGeom = typeof g.type === 'string' && g.type.startsWith('geom_');
+    const isVertLine = g.type === '1st_linear' && Array.isArray(g.handles) && g.handles.length >= 2 &&
+      Math.abs(g.handles[1].x - g.handles[0].x) < 1e-4;
+    const paramPos = GraphMathEngine.baseXToWorldX(g, h.x);
+    let valPos;
+    if (isGeom) {
+      valPos = GraphMathEngine.baseYToWorldY(g, h.y, true);
+    } else if (isVertLine || h.type === 'center' || h.type === 'asymptote') {
+      valPos = GraphMathEngine.baseYToWorldY(g, h.y, false);
+    } else {
+      valPos = GraphMathEngine.evaluatePipeline(g, paramPos);
+      if (typeof valPos !== 'number' || isNaN(valPos) || !isFinite(valPos)) {
+        valPos = GraphMathEngine.baseYToWorldY(g, h.y, true);
+      }
+    }
+    if (g.isTransposedYX) {
+      return { x: valPos, y: paramPos };
+    }
+    return { x: paramPos, y: valPos };
+  }
+
+  // JSON 직렬화 복원 후 범용 수식(general_expr) 컴파일 함수(fn) 자동 재수화
+  static ensureCompiledFunctions(graphs) {
+    if (!Array.isArray(graphs)) return;
+    for (let i = 0; i < graphs.length; i++) {
+      const g = graphs[i];
+      if (!g || g.type !== 'general_expr' || !Array.isArray(g.handles) || g.handles.length === 0) continue;
+      const h0 = g.handles[0];
+      const exprSrc = h0.rawExpr || g.customExpr || '';
+      if (typeof h0.fn !== 'function' && exprSrc && typeof SafeMathCompiler !== 'undefined') {
+        const comp = SafeMathCompiler.compile(exprSrc);
+        if (comp && comp.success && typeof comp.fn === 'function') {
+          h0.fn = comp.fn;
+          if (!h0.rawExpr) h0.rawExpr = exprSrc;
+        }
+      }
+    }
+  }
+
   // --- [❄️ 무한 다단 절댓값 & 형상 평행이동 계층형 파이프라인] ---
   static evaluatePipeline(g, x) {
     if (!g) return 0.0;
+    if (typeof g._periodicEval === 'function') {
+      return g._periodicEval(x);
+    }
     if (!g.handles || g.handles.length === 0) return NaN;
 
     const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
     const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
     const hasOuter = g.isFrozen || ox !== 0 || oy !== 0 || g.frozenInvertH || g.frozenInvertV || g.frozenAbsolute || (g.transforms && g.transforms.length > 0);
 
-    // 0. 무한 다단 변환 파이프라인(transforms)이 있는 경우 체이닝 연산
-    if (g.transforms && g.transforms.length > 0) {
-      let curX = x;
-      let totalOx = ox;
-      for (const t of g.transforms) {
-        if (t.offset && typeof t.offset.x === 'number') totalOx += t.offset.x;
-      }
-      curX -= totalOx;
-
-      let y = GraphMathEngine.evaluate(g.type, g.handles, curX);
-      if (g.isAbsolute) y = Math.abs(y);
-
-      for (const t of g.transforms) {
-        if (t.offset && typeof t.offset.y === 'number') y += t.offset.y;
-        if (t.invertV) y = -y;
-        if (t.abs) y = Math.abs(y);
-      }
-
-      y += oy;
-      if (g.frozenAbsolute) y = Math.abs(y);
-      return y;
-    }
-
     if (!hasOuter) {
       // [순수 1차 기본 수식]
       let y = GraphMathEngine.evaluate(g.type, g.handles, x);
+      if (isNaN(y) || !isFinite(y)) return NaN;
       if (g.isAbsolute) y = Math.abs(y);
       return y;
     }
 
-    // [평행이동/대칭/절댓값 계층 연산]
-    let evalX = x - ox;
-    if (g.frozenInvertH) evalX = -evalX;
-
-    let y = GraphMathEngine.evaluate(g.type, g.handles, evalX);
-    if (isNaN(y) || !isFinite(y)) return NaN;
-
-    if (g.isAbsolute) y = Math.abs(y);
-    if (g.frozenInvertV) y = -y;
-    y += oy;
-    if (g.frozenAbsolute) y = Math.abs(y);
-
-    return y;
+    const evalX = GraphMathEngine.worldXToBaseX(g, x);
+    const rawY = GraphMathEngine.evaluate(g.type, g.handles, evalX);
+    if (isNaN(rawY) || !isFinite(rawY)) return NaN;
+    return GraphMathEngine.baseYToWorldY(g, rawY);
   }
 
   static evaluate(ftype, handles, x) {
@@ -431,11 +500,11 @@ class GraphMathEngine {
         if (Math.abs(dx) < 1e-4) dx = dx >= 0 ? 1e-4 : -1e-4;
 
         if (dx > 0) {
-          if (x < x0) return NaN;
-          return y0 + dy * Math.sqrt((x - x0) / dx);
+          if (x < x0 - 1e-11) return NaN;
+          return y0 + dy * Math.sqrt(Math.max(0.0, x - x0) / dx);
         } else {
-          if (x > x0) return NaN;
-          return y0 + dy * Math.sqrt((x0 - x) / -dx);
+          if (x > x0 + 1e-11) return NaN;
+          return y0 + dy * Math.sqrt(Math.max(0.0, x0 - x) / -dx);
         }
       }
 
@@ -527,14 +596,15 @@ class GraphMathEngine {
       }
 
       case "killer_log_frac": {
-        // y = a * ln(x) / x [x=x0+p/e 통과 후 x=x0+p에서 극대]
+        // y = a * ln(x) / x [x=x0+p/e 통과 후 x=x0+p에서 극대 (y축 대칭 p < 0 완벽 호환)]
         const x0 = handles[0].x, y0 = handles[0].y;
         let p = handles[1].x - x0;
         let q = handles[1].y - y0;
-        if (p <= 0.1) p = 0.1;
+        if (Math.abs(p) < 0.1) p = p >= 0 ? 0.1 : -0.1;
         const dx = x - x0;
-        if (dx <= 1e-4) return NaN;
-        return y0 + (p * q * Math.log((Math.E * dx) / p)) / dx;
+        const u = dx / p;
+        if (u <= 1e-4) return NaN;
+        return y0 + (q * Math.log(Math.E * u)) / u;
       }
 
       // --- [🌐 범용 수식: y = a * f(b(x - h)) + k 임의 수식 초고속 평가] ---
@@ -542,7 +612,14 @@ class GraphMathEngine {
         if (!handles || handles.length === 0) return NaN;
         const h = handles[0].x || 0.0;
         const k = handles[0].y || 0.0;
-        const fn = handles[0].fn || null;
+        let fn = handles[0].fn || null;
+        if ((!fn || typeof fn !== 'function') && handles[0].rawExpr && typeof SafeMathCompiler !== 'undefined') {
+          const comp = SafeMathCompiler.compile(handles[0].rawExpr);
+          if (comp && comp.success && typeof comp.fn === 'function') {
+            handles[0].fn = comp.fn;
+            fn = comp.fn;
+          }
+        }
         if (!fn || typeof fn !== 'function') return NaN;
         const refX = !!handles[0].reflectX;
         const refY = !!handles[0].reflectY;
@@ -894,8 +971,9 @@ class GraphMathEngine {
         let dx = newX - x0;
         let dy = newY - y0;
         if (ftype === "killer_log_frac") {
-          // 로그 분수형은 x > 0 필수
-          dx = Math.max(0.35, dx);
+          // 로그 분수형: 현재 방향(기본 우측 p > 0 또는 y축 대칭 좌측 p < 0) 기준 최소 간격 0.35 유지
+          const prevSide = (handles[1].x - x0) < 0 ? -1 : 1;
+          dx = prevSide > 0 ? Math.max(0.35, dx) : Math.min(-0.35, dx);
         } else {
           if (Math.abs(dx) < minGapX) dx = dx >= 0 ? minGapX : -minGapX;
         }
@@ -1157,24 +1235,405 @@ class GraphMathEngine {
   }
 
   // --- [⚡ 실시간 교점판독기: 초고속 수치해석 실근 & 접점 탐색 및 화면 밖 추적 엔진] ---
+  static _findMixedTransposedIntersections(gNorm, gTrans, rangeX, viewRect, isFastDrag = false) {
+    const rangeY = (viewRect && typeof viewRect.ymin === 'number' && typeof viewRect.ymax === 'number')
+      ? { xmin: viewRect.ymin, xmax: viewRect.ymax }
+      : rangeX;
+
+    // 1. gNorm이 수직선(x = vertX)인 경우
+    if (!gNorm._periodicEval && gNorm.type === '1st_linear' && gNorm.handles && gNorm.handles.length >= 2 &&
+        Math.abs(gNorm.handles[1].x - gNorm.handles[0].x) < 1e-4) {
+      const vertX = GraphMathEngine.baseXToWorldX(gNorm, gNorm.handles[0].x);
+      if (!gTrans._periodicEval && gTrans.type === '1st_linear' && gTrans.handles && gTrans.handles.length >= 2 &&
+          Math.abs(gTrans.handles[1].x - gTrans.handles[0].x) < 1e-4) {
+        const horizY = GraphMathEngine.baseXToWorldX(gTrans, gTrans.handles[0].x);
+        const out = [{ x: vertX, y: horizY, type: 'cross' }];
+        GraphMathEngine._annotateOffscreen(out, viewRect);
+        return out;
+      }
+      const nTrans = { ...gTrans, isTransposedYX: false };
+      const horizDummy = { type: '1st_linear', isTransposedYX: false, handles: [{ x: 0, y: vertX }, { x: 1, y: vertX }] };
+      const sub = GraphMathEngine.findFunctionIntersections(nTrans, horizDummy, rangeY, null, isFastDrag);
+      const out = sub.map(r => ({ x: vertX, y: r.x, type: r.type })).sort((a, b) => a.x - b.x || a.y - b.y);
+      GraphMathEngine._annotateOffscreen(out, viewRect);
+      return out;
+    }
+
+    // 2. gTrans가 수평선(내부 수직 h[0].x === h[1].x -> 화면 y = horizY)인 경우
+    if (!gTrans._periodicEval && gTrans.type === '1st_linear' && gTrans.handles && gTrans.handles.length >= 2 &&
+        Math.abs(gTrans.handles[1].x - gTrans.handles[0].x) < 1e-4) {
+      const horizY = GraphMathEngine.baseXToWorldX(gTrans, gTrans.handles[0].x);
+      const horizNorm = { type: '1st_linear', isTransposedYX: false, handles: [{ x: 0, y: horizY }, { x: 1, y: horizY }] };
+      return GraphMathEngine.findFunctionIntersections(gNorm, horizNorm, rangeX, viewRect, isFastDrag);
+    }
+
+    const evalNorm = (x) => GraphMathEngine.evaluatePipeline(gNorm, x);
+    const evalTrans = (y) => GraphMathEngine.evaluatePipeline(gTrans, y);
+
+    // 3. Y 탐색 범위 산출
+    let minY = -18.0;
+    let maxY = 18.0;
+    if (viewRect && typeof viewRect.ymin === 'number' && typeof viewRect.ymax === 'number') {
+      const spanY = (viewRect.ymax - viewRect.ymin) || 10.0;
+      minY = Math.min(minY, viewRect.ymin - spanY * 0.7);
+      maxY = Math.max(maxY, viewRect.ymax + spanY * 0.7);
+    } else if (rangeX && typeof rangeX.xmin === 'number' && typeof rangeX.xmax === 'number') {
+      const spanX = (rangeX.xmax - rangeX.xmin) || 10.0;
+      minY = Math.min(minY, rangeX.xmin - spanX * 0.7);
+      maxY = Math.max(maxY, rangeX.xmax + spanX * 0.7);
+    }
+    if (Array.isArray(gTrans.handles)) {
+      gTrans.handles.forEach(h => {
+        const wy = GraphMathEngine.baseXToWorldX(gTrans, h.x);
+        if (typeof wy === 'number' && isFinite(wy)) {
+          minY = Math.min(minY, wy - 8.0);
+          maxY = Math.max(maxY, wy + 8.0);
+        }
+      });
+    }
+    if (Array.isArray(gNorm.handles)) {
+      gNorm.handles.forEach(h => {
+        const wp = GraphMathEngine.getHandleWorldPos(gNorm, h);
+        if (wp && typeof wp.y === 'number' && isFinite(wp.y)) {
+          minY = Math.min(minY, wp.y - 8.0);
+          maxY = Math.max(maxY, wp.y + 8.0);
+        }
+      });
+    }
+
+    const targetDy = isFastDrag ? 0.045 : 0.016;
+    const rawSpan = maxY - minY;
+    const baseSteps = isFastDrag
+      ? Math.min(1400, Math.max(480, Math.ceil(rawSpan / targetDy)))
+      : Math.min(5000, Math.max(1200, Math.ceil(rawSpan / targetDy)));
+    const dy = rawSpan / baseSteps;
+    const extMinY = Math.floor(minY / dy) * dy;
+
+    // 4. 적응형 아크길이 보강 샘플링 (|ΔF(y)| 급증 구간 자동 세분화)
+    const ys = [];
+    const fxs = [];
+    const diffs = [];
+    const valid = [];
+    const maxTotalSamples = isFastDrag ? 4500 : 14000;
+    const maxSub = isFastDrag ? 8 : 24;
+
+    const pushSample = (curY, preFx) => {
+      const fx = (preFx !== undefined) ? preFx : evalTrans(curY);
+      if (isNaN(fx) || !isFinite(fx) || Math.abs(fx) > 1e5) {
+        ys.push(curY); fxs.push(NaN); diffs.push(0); valid.push(0);
+        return;
+      }
+      const gy = evalNorm(fx);
+      if (isNaN(gy) || !isFinite(gy)) {
+        ys.push(curY); fxs.push(fx); diffs.push(0); valid.push(0);
+      } else {
+        ys.push(curY); fxs.push(fx); diffs.push(gy - curY); valid.push(1);
+      }
+    };
+
+    let prevGridY = extMinY;
+    let prevGridFx = evalTrans(prevGridY);
+    pushSample(prevGridY, prevGridFx);
+
+    for (let i = 1; i <= baseSteps; i++) {
+      const curY = extMinY + i * dy;
+      const curFx = evalTrans(curY);
+      if (
+        ys.length < maxTotalSamples &&
+        isFinite(prevGridFx) && isFinite(curFx) &&
+        Math.abs(curFx - prevGridFx) > targetDy * 2.0 &&
+        Math.abs(curFx - prevGridFx) < 35.0
+      ) {
+        const subN = Math.min(maxSub, Math.ceil(Math.abs(curFx - prevGridFx) / (targetDy * 1.5)));
+        for (let s = 1; s < subN && ys.length < maxTotalSamples; s++) {
+          const subY = prevGridY + (curY - prevGridY) * (s / subN);
+          pushSample(subY);
+        }
+      }
+      pushSample(curY, curFx);
+      prevGridY = curY;
+      prevGridFx = curFx;
+    }
+
+    const nSamples = ys.length;
+    let validCnt = 0;
+    let zeroCnt = 0;
+    for (let i = 0; i < nSamples; i++) {
+      if (valid[i]) {
+        validCnt++;
+        if (Math.abs(diffs[i]) < 1e-6) zeroCnt++;
+      }
+    }
+    // 자기역함수 직선(예: y = -x + 2) 등 완전 일치 곡선 중복 점 폭주 방지
+    if (validCnt > 20 && zeroCnt >= validCnt * 0.65) {
+      return [];
+    }
+
+    const evalDiff = (yVal) => {
+      const fx = evalTrans(yVal);
+      if (isNaN(fx) || !isFinite(fx)) return NaN;
+      const gy = evalNorm(fx);
+      if (isNaN(gy) || !isFinite(gy)) return NaN;
+      return gy - yVal;
+    };
+
+    const estimateNormSlope = (fx) => {
+      const eps = 1e-5;
+      const gp = evalNorm(fx + eps);
+      const gm = evalNorm(fx - eps);
+      if (isFinite(gp) && isFinite(gm)) return Math.abs(gp - gm) / (2.0 * eps);
+      if (isFinite(gp)) {
+        const g0 = evalNorm(fx);
+        if (isFinite(g0)) return Math.abs(gp - g0) / eps;
+      }
+      if (isFinite(gm)) {
+        const g0 = evalNorm(fx);
+        if (isFinite(g0)) return Math.abs(g0 - gm) / eps;
+      }
+      return 1.0;
+    };
+
+    const crossRoots = [];
+    const dedupDist = 0.012;
+    const addRoot = (rx, ry, rType) => {
+      if (!isFinite(rx) || !isFinite(ry)) return;
+      const exist = crossRoots.find(cr => Math.hypot(cr.x - rx, cr.y - ry) < dedupDist);
+      if (!exist) {
+        crossRoots.push({ x: rx, y: ry, type: rType });
+      } else if (rType === 'tangent') {
+        exist.type = 'tangent';
+      }
+    };
+
+    // 5. 닫힌 정의역 경계 끝점 교점 탐색 (예: y = sqrt(x - a) + a 와 그 y=x 대칭 반포물선의 시작점 교점)
+    const pureAsymptoteCutoffTypes = new Set(['log_basic', 'rational_basic', 'tan_1period', 'killer_log_frac']);
+    const mayHaveClosedDomainEdge = !pureAsymptoteCutoffTypes.has(gTrans.type) || !pureAsymptoteCutoffTypes.has(gNorm.type);
+    if (mayHaveClosedDomainEdge) {
+      for (let i = 0; i < nSamples - 1; i++) {
+        if (valid[i] === valid[i + 1]) continue;
+        const vIdx = valid[i] ? i : (i + 1);
+        const uIdx = valid[i] ? (i + 1) : i;
+        if (Math.abs(diffs[vIdx]) > 2.0) continue;
+        let yV = ys[vIdx], yU = ys[uIdx];
+        for (let b = 0; b < 36; b++) {
+          const ym = 0.5 * (yV + yU);
+          const dm = evalDiff(ym);
+          if (isFinite(dm)) yV = ym;
+          else yU = ym;
+        }
+        const fxEdge = evalTrans(yV);
+        const gyEdge = isFinite(fxEdge) ? evalNorm(fxEdge) : NaN;
+        if (!isFinite(gyEdge)) continue;
+        const yInner = yV + (ys[vIdx] - yV) * 0.05;
+        const fxInner = evalTrans(yInner);
+        if (!isFinite(fxInner) || Math.abs(fxEdge - fxInner) > 0.25) continue;
+        const slopeG = estimateNormSlope(fxEdge);
+        const perpErr = Math.abs(gyEdge - yV) / Math.hypot(1.0, slopeG);
+        if (perpErr < (isFastDrag ? 2.5e-3 : 1.2e-3)) {
+          addRoot(fxEdge, 0.5 * (gyEdge + yV), 'cross');
+        }
+      }
+    }
+
+    // 6. 관통 교점 및 격자 정렬 접점 탐색
+    const bisectIters = isFastDrag ? 20 : 28;
+    for (let i = 0; i < nSamples - 1; i++) {
+      if (!valid[i] || !valid[i + 1]) continue;
+      const d1 = diffs[i];
+      const d2 = diffs[i + 1];
+
+      if ((Math.abs(d2 - d1) > 40 || Math.abs(fxs[i + 1] - fxs[i]) > 40) && Math.sign(d1) !== Math.sign(d2)) continue;
+
+      if (d1 * d2 <= 0) {
+        let low = ys[i];
+        let high = ys[i + 1];
+        let lowDiff = d1;
+        let highDiff = d2;
+        let aborted = false;
+
+        for (let iter = 0; iter < bisectIters; iter++) {
+          const mid = 0.5 * (low + high);
+          const mDiff = evalDiff(mid);
+          if (isNaN(mDiff) || !isFinite(mDiff)) {
+            aborted = true;
+            break;
+          }
+          if (lowDiff * mDiff <= 0) {
+            high = mid;
+            highDiff = mDiff;
+          } else {
+            low = mid;
+            lowDiff = mDiff;
+          }
+        }
+        if (aborted) continue;
+
+        const midY = 0.5 * (low + high);
+        const midDiff = evalDiff(midY);
+        if (isNaN(midDiff) || !isFinite(midDiff)) continue;
+
+        let rY = midY;
+        let bestAbs = Math.abs(midDiff);
+        if (Math.abs(lowDiff) < bestAbs) { bestAbs = Math.abs(lowDiff); rY = low; }
+        if (Math.abs(highDiff) < bestAbs) { bestAbs = Math.abs(highDiff); rY = high; }
+
+        const fxLow = evalTrans(low);
+        const fxHigh = evalTrans(high);
+        if (!isFinite(fxLow) || !isFinite(fxHigh) || Math.abs(fxHigh - fxLow) > 1.0) continue;
+
+        const rX = evalTrans(rY);
+        if (isNaN(rX) || !isFinite(rX)) continue;
+        const slopeG = estimateNormSlope(rX);
+        const perpResid = bestAbs / Math.hypot(1.0, slopeG);
+        const residLimit = isFastDrag ? 2e-3 : 2e-4;
+        if (perpResid > residLimit || (Math.abs(highDiff - lowDiff) / Math.hypot(1.0, slopeG)) > 2.0) continue;
+
+        const gAtRx = evalNorm(rX);
+        if (!isFinite(gAtRx)) continue;
+
+        let rootType = 'cross';
+        const probeEps = 1.5e-3;
+        const dLeft = evalDiff(rY - probeEps);
+        const dRight = evalDiff(rY + probeEps);
+        if (
+          isFinite(dLeft) && isFinite(dRight) &&
+          Math.abs(dLeft) > 1e-12 && Math.abs(dRight) > 1e-12 &&
+          Math.sign(dLeft) === Math.sign(dRight)
+        ) {
+          rootType = 'tangent';
+        }
+        addRoot(rX, 0.5 * (gAtRx + rY), rootType);
+      }
+    }
+
+    // 7. 비격자 접점(중근) 황금분할 탐색 (수직 거리 정규화)
+    const tangentRoots = [];
+    const goldenIters = isFastDrag ? 18 : 28;
+    const phi = 0.618033988749895;
+    for (let i = 1; i < nSamples - 1; i++) {
+      if (!valid[i - 1] || !valid[i] || !valid[i + 1]) continue;
+      const dPrev = diffs[i - 1];
+      const dCurr = diffs[i];
+      const dNext = diffs[i + 1];
+      if (Math.sign(dPrev) !== Math.sign(dNext) || Math.sign(dPrev) === 0) continue;
+
+      const absPrev = Math.abs(dPrev);
+      const absCurr = Math.abs(dCurr);
+      const absNext = Math.abs(dNext);
+      const roughSlope = estimateNormSlope(fxs[i]);
+      const perpCurr = absCurr / Math.hypot(1.0, roughSlope);
+
+      if (absCurr < absPrev && absCurr <= absNext && perpCurr < 0.06) {
+        let l = ys[i - 1], r = ys[i + 1];
+        let y1 = r - phi * (r - l);
+        let y2 = l + phi * (r - l);
+        let f1 = Math.abs(evalDiff(y1));
+        let f2 = Math.abs(evalDiff(y2));
+
+        for (let it = 0; it < goldenIters; it++) {
+          if (f1 < f2) {
+            r = y2; y2 = y1; f2 = f1;
+            y1 = r - phi * (r - l);
+            f1 = Math.abs(evalDiff(y1));
+          } else {
+            l = y1; y1 = y2; f1 = f2;
+            y2 = l + phi * (r - l);
+            f2 = Math.abs(evalDiff(y2));
+          }
+        }
+
+        const bestY = 0.5 * (l + r);
+        const rawBest = evalDiff(bestY);
+        if (isNaN(rawBest) || !isFinite(rawBest)) continue;
+        const bestFx = evalTrans(bestY);
+        const bestGy = isFinite(bestFx) ? evalNorm(bestFx) : NaN;
+        if (!isFinite(bestGy)) continue;
+
+        const slopeG = estimateNormSlope(bestFx);
+        const normFactor = Math.hypot(1.0, slopeG);
+        const bestPerp = Math.abs(rawBest) / normFactor;
+        const localVar = Math.max(Math.abs(dPrev - dCurr), Math.abs(dNext - dCurr)) / normFactor;
+        const tanTol = Math.min(isFastDrag ? 1.5e-3 : 5e-4, Math.max(1e-5, localVar * 1.5e-2));
+
+        if (bestPerp <= tanTol) {
+          const minCrossSep = 0.025;
+          const isNearCross = crossRoots.some(cr => Math.hypot(cr.x - bestFx, cr.y - bestGy) < minCrossSep);
+          const isNearTangent = tangentRoots.some(tr => Math.hypot(tr.x - bestFx, tr.y - bestGy) < minCrossSep);
+          if (!isNearCross && !isNearTangent) {
+            tangentRoots.push({ x: bestFx, y: 0.5 * (bestGy + bestY), type: 'tangent' });
+          }
+        }
+      }
+    }
+
+    const allRoots = [...crossRoots, ...tangentRoots].sort((a, b) => a.x - b.x || a.y - b.y);
+    const merged = [];
+    for (const r of allRoots) {
+      if (!merged.some(m => Math.hypot(m.x - r.x, m.y - r.y) < dedupDist)) {
+        merged.push(r);
+      }
+    }
+    GraphMathEngine._annotateOffscreen(merged, viewRect);
+    return merged;
+  }
+
   static findFunctionIntersections(g1, g2, rangeX, viewRect, isFastDrag = false) {
     if (!g1 || !g1.handles || g1.handles.length === 0) return [];
+
+    // [🔄 y=x 좌표축 전치(isTransposedYX) 그래프 교점 라우팅 — 순수 표준 그래프 쌍은 기존 고속 경로 100% 보존]
+    const t1 = Boolean(g1 && g1.isTransposedYX);
+    const t2 = Boolean(g2 && g2.isTransposedYX);
+    if (t1 || t2) {
+      // (A) 전치 그래프 vs x축(y = 0)
+      if (!g2) {
+        if (!g1._periodicEval && g1.type === '1st_linear' && g1.handles.length >= 2 &&
+            Math.abs(g1.handles[1].x - g1.handles[0].x) < 1e-4) {
+          return [];
+        }
+        const x0 = GraphMathEngine.evaluatePipeline(g1, 0.0);
+        if (!isNaN(x0) && isFinite(x0)) {
+          const out = [{ x: x0, y: 0.0, type: 'cross' }];
+          GraphMathEngine._annotateOffscreen(out, viewRect);
+          return out;
+        }
+        return [];
+      }
+      // (B) 전치 그래프 vs 전치 그래프: (y, x) 공간에서 기존 엔진 재사용 후 좌표 복원
+      if (t1 && t2) {
+        const rangeY = (viewRect && typeof viewRect.ymin === 'number' && typeof viewRect.ymax === 'number')
+          ? { xmin: viewRect.ymin, xmax: viewRect.ymax }
+          : rangeX;
+        const n1 = { ...g1, isTransposedYX: false };
+        const n2 = { ...g2, isTransposedYX: false };
+        const sub = GraphMathEngine.findFunctionIntersections(n1, n2, rangeY, null, isFastDrag);
+        const swapped = sub.map(r => ({ x: r.y, y: r.x, type: r.type })).sort((a, b) => a.x - b.x || a.y - b.y);
+        GraphMathEngine._annotateOffscreen(swapped, viewRect);
+        return swapped;
+      }
+      // (C) 표준 함수 y = G(x) vs 전치 함수 x = F(y)
+      const gNorm = t1 ? g2 : g1;
+      const gTrans = t1 ? g1 : g2;
+      return GraphMathEngine._findMixedTransposedIntersections(gNorm, gTrans, rangeX, viewRect, isFastDrag);
+    }
 
     const evalG = (g, x) => {
       return GraphMathEngine.evaluatePipeline(g, x);
     };
 
-    // 1. 일차함수 완전 수직선 특수 케이스 처리 (x = c)
-    if (g1.type === '1st_linear' && g1.handles.length >= 2 && Math.abs(g1.handles[1].x - g1.handles[0].x) < 1e-4) {
-      const vertX = g1.handles[0].x;
+    // 1. 일차함수 완전 수직선 특수 케이스 처리 (x = c, 평행이동/대칭 반영)
+    if (!g1._periodicEval && g1.type === '1st_linear' && g1.handles.length >= 2 && Math.abs(g1.handles[1].x - g1.handles[0].x) < 1e-4) {
+      const vertX = GraphMathEngine.baseXToWorldX(g1, g1.handles[0].x);
+      if (g2 && !g2._periodicEval && g2.type === '1st_linear' && g2.handles.length >= 2 && Math.abs(g2.handles[1].x - g2.handles[0].x) < 1e-4) {
+        return [];
+      }
       const targetY = evalG(g2, vertX);
       if (!isNaN(targetY) && isFinite(targetY)) {
         return [{ x: vertX, y: targetY, type: 'cross' }];
       }
       return [];
     }
-    if (g2 && g2.type === '1st_linear' && g2.handles.length >= 2 && Math.abs(g2.handles[1].x - g2.handles[0].x) < 1e-4) {
-      const vertX = g2.handles[0].x;
+    if (g2 && !g2._periodicEval && g2.type === '1st_linear' && g2.handles.length >= 2 && Math.abs(g2.handles[1].x - g2.handles[0].x) < 1e-4) {
+      const vertX = GraphMathEngine.baseXToWorldX(g2, g2.handles[0].x);
       const targetY = evalG(g1, vertX);
       if (!isNaN(targetY) && isFinite(targetY)) {
         return [{ x: vertX, y: targetY, type: 'cross' }];
@@ -1190,15 +1649,20 @@ class GraphMathEngine {
       minX = Math.min(minX, rangeX.xmin - spanX * 0.7);
       maxX = Math.max(maxX, rangeX.xmax + spanX * 0.7);
     }
-    const allHandles = [...(g1.handles || []), ...(g2 ? g2.handles || [] : [])];
-    if (allHandles.length > 0) {
-      allHandles.forEach(h => {
+    const expandByHandles = (gObj) => {
+      if (!gObj || !Array.isArray(gObj.handles)) return;
+      gObj.handles.forEach(h => {
         if (typeof h.x === 'number' && isFinite(h.x)) {
-          minX = Math.min(minX, h.x - 8.0);
-          maxX = Math.max(maxX, h.x + 8.0);
+          const wx = GraphMathEngine.baseXToWorldX(gObj, h.x);
+          if (typeof wx === 'number' && isFinite(wx)) {
+            minX = Math.min(minX, wx - 8.0);
+            maxX = Math.max(maxX, wx + 8.0);
+          }
         }
       });
-    }
+    };
+    expandByHandles(g1);
+    expandByHandles(g2);
 
     // [핵심 혁신]: 화각(Zoom)에 전혀 영향받지 않는 '초고밀도 고정 해상도(Fixed High-Resolution)' 스캐닝!
     // 가장 가까이서 들여다봤을 때와 100% 동일한 수학적 정밀도(dx <= 0.016)를 유지하여
@@ -1235,40 +1699,75 @@ class GraphMathEngine {
 
     const crossRoots = [];
 
-    // B. 관통 교점 탐색 (부호 반전 & 20회 초정밀 이분법 수렴)
+    // B. 관통 교점 및 격자 정렬 접점 탐색 (부호 반전 & 초정밀 이분법 + 불연속/점근선 완전 소거)
     for (let i = 0; i < steps; i++) {
       if (!valid[i] || !valid[i + 1]) continue;
       const d1 = diffs[i];
       const d2 = diffs[i + 1];
 
-      // 점근선 점프(불연속) 필터링
+      // 점근선 점프(불연속) 1차 필터링
       if (Math.abs(d2 - d1) > 40 && Math.sign(d1) !== Math.sign(d2)) continue;
 
       if (d1 * d2 <= 0) {
         let low = xs[i];
         let high = xs[i + 1];
         let lowDiff = d1;
+        let highDiff = d2;
+        let aborted = false;
 
-        const bisectIters = isFastDrag ? 12 : 20;
+        const bisectIters = isFastDrag ? 16 : 22;
         for (let iter = 0; iter < bisectIters; iter++) {
           const mid = (low + high) / 2.0;
           const mDiff = evalG(g1, mid) - evalG(g2, mid);
-          if (isNaN(mDiff) || !isFinite(mDiff)) break;
+          if (isNaN(mDiff) || !isFinite(mDiff)) {
+            aborted = true;
+            break;
+          }
           if (lowDiff * mDiff <= 0) {
             high = mid;
+            highDiff = mDiff;
           } else {
             low = mid;
             lowDiff = mDiff;
           }
         }
+        if (aborted) continue;
 
-        const rX = (low + high) / 2.0;
+        const midX = (low + high) / 2.0;
+        const midDiff = evalG(g1, midX) - evalG(g2, midX);
+        if (isNaN(midDiff) || !isFinite(midDiff)) continue;
+
+        let rX = midX;
+        let bestAbs = Math.abs(midDiff);
+        if (Math.abs(lowDiff) < bestAbs) { bestAbs = Math.abs(lowDiff); rX = low; }
+        if (Math.abs(highDiff) < bestAbs) { bestAbs = Math.abs(highDiff); rX = high; }
+
+        // 연속성 정밀 검증: 계단함수 점프(floor/sign) 및 미세 진폭 탄젠트 점근선(0.05*tan) 가짜 근 원천 제거
+        const residLimit = isFastDrag ? 2e-3 : 2e-4;
+        if (bestAbs > residLimit || Math.abs(highDiff - lowDiff) > 2.0) continue;
+
         const rY = evalG(g1, rX);
         if (!isNaN(rY) && isFinite(rY)) {
+          // 격자점에 정확히 걸린 짝수차 접점(y=x^2 vs y=0 등) 부호 유지 판별
+          let rootType = 'cross';
+          const probeEps = 1.5e-3;
+          const dLeft = evalG(g1, rX - probeEps) - evalG(g2, rX - probeEps);
+          const dRight = evalG(g1, rX + probeEps) - evalG(g2, rX + probeEps);
+          if (
+            isFinite(dLeft) && isFinite(dRight) &&
+            Math.abs(dLeft) > 1e-12 && Math.abs(dRight) > 1e-12 &&
+            Math.sign(dLeft) === Math.sign(dRight)
+          ) {
+            rootType = 'tangent';
+          }
+
           // 중복 추가 방지 (화각과 무관한 절대 고정 거리 0.012)
           const dedupDist = 0.012;
-          if (!crossRoots.some(cr => Math.abs(cr.x - rX) < dedupDist)) {
-            crossRoots.push({ x: rX, y: rY, type: 'cross' });
+          const existCross = crossRoots.find(cr => Math.abs(cr.x - rX) < dedupDist);
+          if (!existCross) {
+            crossRoots.push({ x: rX, y: rY, type: rootType });
+          } else if (rootType === 'tangent') {
+            existCross.type = 'tangent';
           }
         }
       }
@@ -1289,9 +1788,8 @@ class GraphMathEngine {
       const absCurr = Math.abs(dCurr);
       const absNext = Math.abs(dNext);
 
-      // 국소 극소점: 이전/이후보다 차이가 작고, 접점 허용 임계치 이내일 때
+      // 국소 극소점: 이전/이후보다 차이가 작고, 접점 후보 범위 이내일 때
       if (absCurr < absPrev && absCurr < absNext && absCurr < 0.06) {
-        // 정밀 황금비 탐색 (Golden Section Search 25회: 오차 < 10^-6)
         let l = xs[i - 1], r = xs[i + 1];
         const phi = 0.618033988749895;
         let x1 = r - phi * (r - l);
@@ -1299,7 +1797,7 @@ class GraphMathEngine {
         let f1 = Math.abs(evalG(g1, x1) - evalG(g2, x1));
         let f2 = Math.abs(evalG(g1, x2) - evalG(g2, x2));
 
-        const goldenIters = isFastDrag ? 12 : 25;
+        const goldenIters = isFastDrag ? 18 : 28;
         for (let it = 0; it < goldenIters; it++) {
           if (f1 < f2) {
             r = x2;
@@ -1317,10 +1815,15 @@ class GraphMathEngine {
         }
 
         const bestX = (l + r) / 2.0;
-        const bestDiff = Math.abs(evalG(g1, bestX) - evalG(g2, bestX));
+        const rawBest = evalG(g1, bestX) - evalG(g2, bestX);
+        if (isNaN(rawBest) || !isFinite(rawBest)) continue;
+        const bestDiff = Math.abs(rawBest);
 
-        if (bestDiff <= 0.038) {
-          // 이미 crossRoots에 있는 관통 교점과 충분히 떨어져 있는 경우에만 접점으로 등록
+        // 국소 변화량 비례 정밀 임계치: 만나지 않는 허공 곡선(예: x^2 + 0.03 vs 0)의 유령 접점 100% 차단!
+        const localVar = Math.max(Math.abs(dPrev - dCurr), Math.abs(dNext - dCurr));
+        const tanTol = Math.min(isFastDrag ? 1.5e-3 : 5e-4, Math.max(1e-5, localVar * 1e-2));
+
+        if (bestDiff <= tanTol) {
           const minCrossSep = 0.025;
           const isNearCross = crossRoots.some(cr => Math.abs(cr.x - bestX) < minCrossSep);
           const isNearTangent = tangentRoots.some(tr => Math.abs(tr.x - bestX) < minCrossSep);
@@ -1403,27 +1906,44 @@ class GraphMathEngine {
   // 객체 → 비교용 기본 요소(primitive) 환원
   static _toPrimitive(g) {
     if (!g) return { kind: 'func', f: () => 0.0 }; // null = x축(y=0)
+    if (typeof g._periodicEval === 'function') {
+      return { kind: 'func', f: (x) => g._periodicEval(x) };
+    }
     const h = g.handles || [];
     if (g.type === 'geom_circle') {
       if (h.length < 2) return null;
+      const cx = GraphMathEngine.baseXToWorldX(g, h[0].x);
+      const cy = GraphMathEngine.baseYToWorldY(g, h[0].y);
       const r = Math.hypot(h[1].x - h[0].x, h[1].y - h[0].y);
-      return { kind: 'circle', cx: h[0].x, cy: h[0].y, r };
+      return { kind: 'circle', cx, cy, r };
     }
     if (g.type === 'geom_triangle' || g.type === 'geom_quad') {
       if (h.length < 3) return null;
       const segs = [];
       for (let i = 0; i < h.length; i++) {
         const a = h[i], b = h[(i + 1) % h.length];
-        segs.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+        segs.push({
+          x1: GraphMathEngine.baseXToWorldX(g, a.x),
+          y1: GraphMathEngine.baseYToWorldY(g, a.y),
+          x2: GraphMathEngine.baseXToWorldX(g, b.x),
+          y2: GraphMathEngine.baseYToWorldY(g, b.y)
+        });
       }
       return { kind: 'segs', segs };
     }
-    // 완전 수직선 x = c (일차함수 특수 케이스) → 아주 긴 선분으로 환원
-    if (g.type === '1st_linear' && h.length >= 2 && Math.abs(h[1].x - h[0].x) < 1e-4) {
-      const c = h[0].x;
+    // 완전 수직선 x = c (일차함수 특수 케이스) → 아주 긴 선분으로 환원 (전치 시 수평선 y = c)
+    if (g.type === '1st_linear' && h.length >= 2 && Math.abs(h[1].x - g.handles[0].x) < 1e-4) {
+      const c = GraphMathEngine.baseXToWorldX(g, h[0].x);
+      if (g.isTransposedYX) {
+        return { kind: 'func', f: () => c };
+      }
       return { kind: 'segs', segs: [{ x1: c, y1: -1e5, x2: c, y2: 1e5 }] };
     }
     if (h.length === 0) return null;
+    if (g.isTransposedYX) {
+      const tf = (y) => GraphMathEngine.evaluatePipeline(g, y);
+      return { kind: 'tfunc', f: tf };
+    }
     const f = (x) => {
       return GraphMathEngine.evaluatePipeline(g, x);
     };
@@ -1661,13 +2181,25 @@ class GraphMathEngine {
 
     const raw = [];
     const pair = (a, b) => {
-      // a, b 순서를 정규화: func < segs < circle
-      const rank = { func: 0, segs: 1, circle: 2 };
+      // a, b 순서를 정규화: func/tfunc < segs < circle
+      const rank = { func: 0, tfunc: 0, segs: 1, circle: 2 };
       if (rank[a.kind] > rank[b.kind]) { const t = a; a = b; b = t; }
       if (a.kind === 'func' && b.kind === 'segs') {
         b.segs.forEach(s => raw.push(...GraphMathEngine._funcSegment(a.f, s, tol)));
       } else if (a.kind === 'func' && b.kind === 'circle') {
         raw.push(...GraphMathEngine._funcCircle(a.f, b, tol));
+      } else if (a.kind === 'tfunc' && b.kind === 'segs') {
+        b.segs.forEach(s => {
+          const sSwap = { x1: s.y1, y1: s.x1, x2: s.y2, y2: s.x2 };
+          GraphMathEngine._funcSegment(a.f, sSwap, tol).forEach(p => {
+            raw.push({ x: p.y, y: p.x, type: p.type });
+          });
+        });
+      } else if (a.kind === 'tfunc' && b.kind === 'circle') {
+        const cSwap = { cx: b.cy, cy: b.cx, r: b.r };
+        GraphMathEngine._funcCircle(a.f, cSwap, tol).forEach(p => {
+          raw.push({ x: p.y, y: p.x, type: p.type });
+        });
       } else if (a.kind === 'segs' && b.kind === 'segs') {
         a.segs.forEach(sa => b.segs.forEach(sb => raw.push(...GraphMathEngine._segSeg(sa, sb))));
       } else if (a.kind === 'segs' && b.kind === 'circle') {
@@ -1758,38 +2290,165 @@ class SafeMathCompiler {
       s = s.replace(pattern, replacement);
     }
 
-    // 중첩 절댓값 |...| -> abs(...) 변환
-    let absGuard = 0;
-    while (/\|[^|]+\|/.test(s) && absGuard < 8) {
-      s = s.replace(/\|([^|]+)\|/g, 'abs($1)');
-      absGuard++;
+    // 1. 가우스 기호 [expr] -> floor(expr) (안쪽부터 순차 치환)
+    let bracketGuard = 0;
+    while (/\[[^\[\]]+\]/.test(s) && bracketGuard < 10) {
+      s = s.replace(/\[([^\[\]]+)\]/g, 'floor($1)');
+      bracketGuard++;
+    }
+
+    // 2. 중첩·연속 절댓값 |...| -> abs(...) 결정론적 스택 파서 (|2|x| - 3|, |x + |x - 1||, ||x| - 2| 완벽 지원)
+    if (s.includes('|')) {
+      s = SafeMathCompiler._convertPipeAbs(s);
     }
 
     // 지수 연산자 통일 (** -> ^)
     s = s.replace(/\*\*/g, '^');
 
+    // 3. 역삼각함수 표기: sin^-1(x), sin^(-1)(x) -> asin(x) 등
+    s = s.replace(/\b(sin|cos|tan)\s*\^\s*(?:\(\s*-1\s*\)|-1)\b/gi, (_, fn) => 'a' + fn.toLowerCase());
+
+    // 4. 밑 지정 로그 및 함수 거듭제곱 표기: log_2(x), log_3(x), sin^2(x), cos^2 x 등
+    s = SafeMathCompiler._rewriteLogBasesAndFuncPowers(s);
+
     // 한국식 간편 거듭제곱: x2 -> x^2, x3 -> x^3, x4 -> x^4
     s = s.replace(/\bx(\d+)\b/gi, 'x^$1');
 
-    // 괄호 없는 기본 함수 보정: sinx -> sin(x), cosx -> cos(x), sqrtx -> sqrt(x), lnx -> ln(x)
-    s = s.replace(/\b(sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|exp|ln|log|sqrt|cbrt|abs)\s*x\b/gi, '$1(x)');
+    // 괄호 없는 기본 함수 보정: sinx -> sin(x), cosx -> cos(x) (단, sin x^2처럼 뒤에 ^가 오면 보존하여 sin(x^2)로 해석)
+    s = s.replace(/\b(sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|exp|ln|log10|log2|log|sqrt|cbrt|abs|floor|ceil|round|sign)\s*x\b(?!\s*\^)/gi, '$1(x)');
 
+    return s;
+  }
+
+  static _convertPipeAbs(s) {
+    let totalPipes = 0;
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === '|') totalPipes++;
+    }
+    if (totalPipes === 0 || totalPipes % 2 !== 0) return s;
+
+    let out = '';
+    let depth = 0;
+    let pipesSeen = 0;
+    let prevWasOpenDelim = true;
+
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === ' ' || ch === '\t') {
+        out += ch;
+        continue;
+      }
+      if (ch !== '|') {
+        out += ch;
+        prevWasOpenDelim = '(+-*/^,'.includes(ch);
+        continue;
+      }
+
+      const remainingPipes = totalPipes - pipesSeen;
+      pipesSeen++;
+
+      let nextNonSpace = '';
+      for (let k = i + 1; k < s.length; k++) {
+        if (s[k] !== ' ' && s[k] !== '\t') {
+          nextNonSpace = s[k];
+          break;
+        }
+      }
+
+      let isOpen = false;
+      if (depth === 0) {
+        isOpen = true;
+      } else if (remainingPipes <= depth) {
+        isOpen = false;
+      } else if (prevWasOpenDelim) {
+        isOpen = true;
+      } else if (!nextNonSpace || '+-*/^),|'.includes(nextNonSpace)) {
+        isOpen = false;
+      } else {
+        isOpen = true;
+      }
+
+      if (isOpen) {
+        out += 'abs(';
+        depth++;
+        prevWasOpenDelim = true;
+      } else {
+        out += ')';
+        depth--;
+        prevWasOpenDelim = false;
+      }
+    }
+    return depth === 0 ? out : s;
+  }
+
+  static _findMatchingParen(str, openIdx) {
+    let depth = 0;
+    for (let i = openIdx; i < str.length; i++) {
+      if (str[i] === '(') depth++;
+      else if (str[i] === ')') {
+        depth--;
+        if (depth === 0) return i;
+      }
+    }
+    return -1;
+  }
+
+  static _rewriteLogBasesAndFuncPowers(str) {
+    let s = str;
+    s = s.replace(/\blog_\{?10\}?(?=\s*[\(a-zA-Z0-9])/gi, 'log10');
+    s = s.replace(/\blog_\{?2\}?(?=\s*[\(a-zA-Z0-9])/gi, 'log2');
+    s = s.replace(/\blog_\{?e\}?(?=\s*[\(a-zA-Z0-9])/gi, 'ln');
+
+    // 일반 밑 로그: log_a(expr) -> (ln(expr)/ln(a))
+    let logGuard = 0;
+    const genLogRe = /\blog_\{?(\d+(?:\.\d+)?)\}?\s*\(/i;
+    while (logGuard < 12) {
+      const m = genLogRe.exec(s);
+      if (!m) break;
+      const openIdx = m.index + m[0].length - 1;
+      const closeIdx = SafeMathCompiler._findMatchingParen(s, openIdx);
+      if (closeIdx < 0) break;
+      const baseStr = m[1];
+      const inner = s.slice(openIdx + 1, closeIdx);
+      s = s.slice(0, m.index) + `(ln(${inner})/ln(${baseStr}))` + s.slice(closeIdx + 1);
+      logGuard++;
+    }
+
+    // 삼각·로그 거듭제곱: sin^2(expr) -> (sin(expr))^2 및 sin^2 x -> (sin(x))^2
+    let powGuard = 0;
+    const fnPowParenRe = /\b(sin|cos|tan|sinh|cosh|tanh|ln|log10|log2|log)\s*\^\s*(\d+(?:\.\d+)?)\s*\(/i;
+    while (powGuard < 16) {
+      const m = fnPowParenRe.exec(s);
+      if (!m) break;
+      const openIdx = m.index + m[0].length - 1;
+      const closeIdx = SafeMathCompiler._findMatchingParen(s, openIdx);
+      if (closeIdx < 0) break;
+      const fnName = m[1];
+      const expStr = m[2];
+      const inner = s.slice(openIdx + 1, closeIdx);
+      s = s.slice(0, m.index) + `(${fnName}(${inner}))^${expStr}` + s.slice(closeIdx + 1);
+      powGuard++;
+    }
+    s = s.replace(/\b(sin|cos|tan|sinh|cosh|tanh|ln|log10|log2|log)\s*\^\s*(\d+(?:\.\d+)?)\s*x\b/gi, '($1(x))^$2');
     return s;
   }
 
   static insertImplicitMul(s) {
     // 1. 숫자 + 변수/함수/상수/여는괄호: 2x -> 2*x, 3sin -> 3*sin, 4( -> 4*(
-    s = s.replace(/(\d+(?:\.\d+)?)\s*([a-zA-Z(])/g, '$1*$2');
+    //    (단, log2/log10 같은 식별자 내부 숫자와 1e-3 과학적 표기는 보존!)
+    s = s.replace(/(?<![a-zA-Z0-9_.])(\d+(?:\.\d+)?)(?![eE][+-]?\d+\b(?!\s*\^))\s*([a-zA-Z(])/g, '$1*$2');
 
     // 2. 닫는괄호 + 숫자/변수/함수/여는괄호: )2 -> )*2, )x -> )*x, )( -> )*(
     s = s.replace(/\)\s*([a-zA-Z0-9(])/g, ')*$1');
 
     // 3. 변수 x + 여는괄호/상수/함수: x( -> x*(, x e -> x*e, x sin -> x*sin
     s = s.replace(/\bx\s*\(/gi, 'x*(');
-    s = s.replace(/\bx\s*(sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|exp|ln|log|sqrt|cbrt|abs|pi|e)\b/gi, 'x*$1');
+    s = s.replace(/\bx\s*(sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|exp|ln|log10|log2|log|sqrt|cbrt|abs|floor|ceil|round|sign|pi|e)\b/gi, 'x*$1');
 
-    // 4. 상수 pi 뒤 변수/함수/괄호
-    s = s.replace(/\bpi\s*([x(])/gi, 'pi*$1');
+    // 4. 상수 pi, e 뒤 여는괄호/변수/함수: pi(x+1) -> pi*(x+1), e(x+1) -> e*(x+1)
+    s = s.replace(/\b(pi|e)\s*\(/gi, '$1*(');
+    s = s.replace(/\b(pi|e)\s+(x|sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|exp|ln|log10|log2|log|sqrt|cbrt|abs|floor|ceil|round|sign|pi|e)\b/gi, '$1*$2');
+    s = s.replace(/\bpi\s*x\b/gi, 'pi*x');
 
     return s;
   }
@@ -1819,7 +2478,7 @@ class SafeMathCompiler {
       // 마이너스 (-) : 이항 뺄셈 vs 단항 음수 판별
       if (ch === '-') {
         const prev = tokens[tokens.length - 1];
-        if (!prev || (prev.type === 'OP' && prev.value !== ')') || prev.type === 'UNARY_MINUS') {
+        if (!prev || (prev.type === 'OP' && prev.value !== ')') || prev.type === 'UNARY_MINUS' || prev.type === 'FUNC') {
           tokens.push({ type: 'UNARY_MINUS', value: 'neg' });
         } else {
           tokens.push({ type: 'OP', value: '-' });
@@ -1828,15 +2487,22 @@ class SafeMathCompiler {
         continue;
       }
 
-      // 숫자
+      // 숫자 (과학적 표기 1e-3, 2.5e+4 포함 — 단, 2e^x는 지수 연산이므로 분리)
       if (/\d|\./.test(ch)) {
         let numStr = '';
         while (i < len && /[\d.]/.test(s[i])) {
           numStr += s[i];
           i++;
         }
-        const n = parseFloat(numStr);
-        if (isNaN(n)) return { error: `잘못된 숫자 형식: ${numStr}` };
+        if (i < len && (s[i] === 'e' || s[i] === 'E')) {
+          const sciMatch = s.slice(i).match(/^[eE]([+-]?\d+)\b(?!\s*\^)/);
+          if (sciMatch) {
+            numStr += sciMatch[0];
+            i += sciMatch[0].length;
+          }
+        }
+        const n = Number(numStr);
+        if (numStr === '.' || isNaN(n)) return { error: `잘못된 숫자 형식: ${numStr}` };
         tokens.push({ type: 'NUM', value: n });
         continue;
       }
@@ -1877,6 +2543,7 @@ class SafeMathCompiler {
     const PRECEDENCE = {
       '+': 2,
       '-': 2,
+      'func_noparen': 2.5,
       '*': 3,
       '/': 3,
       'neg': 4,
@@ -1892,11 +2559,22 @@ class SafeMathCompiler {
 
       if (token.type === 'NUM' || token.type === 'CONST' || token.type === 'VAR') {
         output.push(token);
-      } else if (token.type === 'FUNC' || token.type === 'UNARY_MINUS') {
+      } else if (token.type === 'FUNC') {
+        const nextTok = tokens[i + 1];
+        if (!nextTok || (nextTok.type === 'OP' && nextTok.value === ')')) {
+          return { error: `함수 '${token.value}'의 인자가 비어 있습니다.` };
+        }
+        const hasParen = Boolean(nextTok.type === 'OP' && nextTok.value === '(');
+        opStack.push({ ...token, hasParen });
+      } else if (token.type === 'UNARY_MINUS') {
         opStack.push(token);
       } else if (token.type === 'OP') {
         const val = token.value;
         if (val === '(') {
+          const nextTok = tokens[i + 1];
+          if (nextTok && nextTok.type === 'OP' && nextTok.value === ')') {
+            return { error: '빈 괄호 ()는 사용할 수 없습니다.' };
+          }
           opStack.push(token);
         } else if (val === ')') {
           let foundParen = false;
@@ -1911,7 +2589,7 @@ class SafeMathCompiler {
           if (!foundParen) {
             return { error: '괄호의 짝이 맞지 않습니다.' };
           }
-          if (opStack.length > 0 && opStack[opStack.length - 1].type === 'FUNC') {
+          if (opStack.length > 0 && opStack[opStack.length - 1].type === 'FUNC' && opStack[opStack.length - 1].hasParen) {
             output.push(opStack.pop());
           }
         } else {
@@ -1922,8 +2600,11 @@ class SafeMathCompiler {
           while (opStack.length > 0) {
             const top = opStack[opStack.length - 1];
             if (top.type === 'OP' && top.value === '(') break;
+            if (top.type === 'FUNC' && top.hasParen) break;
 
-            const topPrec = (top.type === 'UNARY_MINUS') ? PRECEDENCE['neg'] : (PRECEDENCE[top.value] || 0);
+            const topPrec = (top.type === 'UNARY_MINUS')
+              ? PRECEDENCE['neg']
+              : (top.type === 'FUNC' ? PRECEDENCE['func_noparen'] : (PRECEDENCE[top.value] || 0));
             if ((!isRight && topPrec >= prec) || (isRight && topPrec > prec)) {
               output.push(opStack.pop());
             } else {
@@ -1943,7 +2624,42 @@ class SafeMathCompiler {
       output.push(top);
     }
 
+    // 정적 RPN 스택 아리티(Arity) 검증: 2 + * 3, sin() 등 불완전 수식을 컴파일 시점에 즉시 검출!
+    let simDepth = 0;
+    for (let j = 0; j < output.length; j++) {
+      const it = output[j];
+      if (it.type === 'NUM' || it.type === 'CONST' || it.type === 'VAR') {
+        simDepth += 1;
+      } else if (it.type === 'UNARY_MINUS' || it.type === 'FUNC') {
+        if (simDepth < 1) return { error: '수식 구문이 올바르지 않습니다.' };
+      } else if (it.type === 'OP') {
+        if (simDepth < 2) return { error: `연산자 '${it.value}' 앞뒤의 항을 확인해 주세요.` };
+        simDepth -= 1;
+      }
+    }
+    if (simDepth !== 1) {
+      return { error: '수식 구문이 완성되지 않았습니다.' };
+    }
+
     return { rpn: output };
+  }
+
+  static _evalRealPower(a, b) {
+    if (isNaN(a) || isNaN(b)) return NaN;
+    if (a >= 0 || Number.isInteger(b)) {
+      return Math.pow(a, b);
+    }
+    // 음수 밑의 유리수 지수 a^(p/q): 홀수 분모 q (예: x^(1/3), x^(2/3)) 실수 거듭제곱근 지원!
+    for (let q = 3; q <= 15; q += 2) {
+      const pRound = Math.round(b * q);
+      if (Math.abs(b * q - pRound) < 1e-9) {
+        const root = Math.pow(-a, 1.0 / q);
+        const mag = Math.pow(root, Math.abs(pRound));
+        const signed = (Math.abs(pRound) % 2 === 1) ? -mag : mag;
+        return pRound < 0 ? (Math.abs(signed) < 1e-15 ? NaN : (1.0 / signed)) : signed;
+      }
+    }
+    return NaN;
   }
 
   static compile(raw) {
@@ -1997,8 +2713,7 @@ class SafeMathCompiler {
               else stack.push(a / b);
               break;
             case '^':
-              if (a < 0 && !Number.isInteger(b)) stack.push(NaN);
-              else stack.push(Math.pow(a, b));
+              stack.push(SafeMathCompiler._evalRealPower(a, b));
               break;
             default: stack.push(NaN);
           }
@@ -2134,8 +2849,8 @@ class SmartMathParser {
       };
     }
 
-    // [유형 2-B: 지수함수 2^x, 2^(x-p) + q 등]
-    const expMatch = norm.match(/^([+-]?\d*(?:\.\d+)?)?\*?2\^(?:\(?x([+-]\d*(?:\.\d+)?)?\)?)([+-]\d*(?:\.\d+)?)?$/);
+    // [유형 2-B: 지수함수 2^x, 2^(x-p) + q 등 (괄호 없는 2^x - 3 과 2^(x-3) 엄격 구분!)]
+    const expMatch = norm.match(/^([+-]?\d*(?:\.\d+)?)?\*?2\^(?:\(x([+-]\d*(?:\.\d+)?)?\)|x)([+-]\d*(?:\.\d+)?)?$/);
     if (expMatch) {
       const aStr = expMatch[1];
       const a = (!aStr || aStr === '+') ? 1.0 : (aStr === '-' ? -1.0 : parseFloat(aStr));
@@ -2243,18 +2958,16 @@ class SmartMathParser {
         const b = poly[2] || 0.0;
         const c = poly[1] || 0.0;
         const d = poly[0] || 0.0;
+        const f = (x) => a * Math.pow(x, 3) + b * Math.pow(x, 2) + c * x + d;
+        const preview = `y = ${a !== 1 ? (a === -1 ? '-' : a) : ''}x³ ${b !== 0 ? (b > 0 ? `+ ${b}x²` : `- ${Math.abs(b)}x²`) : ''} ${c !== 0 ? (c > 0 ? `+ ${c}x` : `- ${Math.abs(c)}x`) : ''} ${d !== 0 ? (d > 0 ? `+ ${d}` : `- ${Math.abs(d)}`) : ''}`.trim();
 
         // 도함수: y' = 3a*x^2 + 2b*x + c = 0
         const disc = 4.0 * b * b - 12.0 * a * c;
-        let xMax = -1.0, yMax = 2.0, xMin = 1.0, yMin = -2.0;
 
-        if (disc > 0) {
+        if (disc > 1e-9) {
           const r1 = (-2.0 * b - Math.sqrt(disc)) / (6.0 * a);
           const r2 = (-2.0 * b + Math.sqrt(disc)) / (6.0 * a);
-          const f = (x) => a * Math.pow(x, 3) + b * Math.pow(x, 2) + c * x + d;
-          const y1 = f(r1);
-          const y2 = f(r2);
-
+          let xMax, yMax, xMin, yMin;
           if (a > 0) {
             xMax = Math.min(r1, r2);
             yMax = f(xMax);
@@ -2266,27 +2979,39 @@ class SmartMathParser {
             xMax = Math.max(r1, r2);
             yMax = f(xMax);
           }
-        } else {
-          // 변곡점 중심 근사
+          const xInf = (xMax + xMin) / 2.0;
+          const yInf = (yMax + yMin) / 2.0;
+
+          return {
+            success: true,
+            ftype: '3rd_normal',
+            typeName: '삼차함수 (N자형)',
+            preview,
+            details: `극대: (${xMax.toFixed(2)}, ${yMax.toFixed(2)}), 극소: (${xMin.toFixed(2)}, ${yMin.toFixed(2)})`,
+            handles: [
+              { name: '극대', x: xMax, y: yMax, type: 'max' },
+              { name: '극소', x: xMin, y: yMin, type: 'min' },
+              { name: '변곡점', x: xInf, y: yInf, type: 'inflection' }
+            ]
+          };
+        } else if (Math.abs(disc) <= 1e-9) {
+          // 삼중근/변곡 접선 기울기 0인 순수 삼차형: y = a(x - xi)^3 + yi -> 3rd_basic_cubic 정밀 매핑!
           const xi = -b / (3.0 * a);
-          const f = (x) => a * Math.pow(x, 3) + b * Math.pow(x, 2) + c * x + d;
-          xMax = xi - 1.0; yMax = f(xMax);
-          xMin = xi + 1.0; yMin = f(xMin);
+          const yi = f(xi);
+          return {
+            success: true,
+            ftype: '3rd_basic_cubic',
+            typeName: '삼차 기본형 (변곡)',
+            preview,
+            details: `변곡점: (${xi.toFixed(2)}, ${yi.toFixed(2)}), 계수 a = ${a.toFixed(2)}`,
+            handles: [
+              { name: '변곡점', x: xi, y: yi, type: 'inflection' },
+              { name: '곡률 조절점', x: xi + 1.0, y: yi + a, type: 'point' }
+            ]
+          };
         }
-
-        const preview = `y = ${a !== 1 ? (a === -1 ? '-' : a) : ''}x³ ${b !== 0 ? (b > 0 ? `+ ${b}x²` : `- ${Math.abs(b)}x²`) : ''} ${c !== 0 ? (c > 0 ? `+ ${c}x` : `- ${Math.abs(c)}x`) : ''} ${d !== 0 ? (d > 0 ? `+ ${d}` : `- ${Math.abs(d)}`) : ''}`.trim();
-
-        return {
-          success: true,
-          ftype: '3rd_normal',
-          typeName: '삼차함수 (N자형)',
-          preview,
-          details: `극대: (${xMax.toFixed(2)}, ${yMax.toFixed(2)}), 극소: (${xMin.toFixed(2)}, ${yMin.toFixed(2)})`,
-          handles: [
-            { name: '극대', x: xMax, y: yMax, type: 'max' },
-            { name: '극소', x: xMin, y: yMin, type: 'min' }
-          ]
-        };
+        // disc < 0 (예: y = x^3 + x 등 접선 기울기가 양/음으로 유지되는 단조 삼차함수)는
+        // 가짜 극대·극소가 생기지 않도록 아래 SafeMathCompiler 범용 수식(general_expr)으로 정확히 폴백!
       }
     }
 
@@ -2357,7 +3082,8 @@ class SmartMathParser {
 class GraphStateSerializer {
   static serialize(app, isStudentMode = false) {
     if (!app) return '';
-    const graphs = (app.graphs || []).map(g => {
+    const graphsList = app.graphs || [];
+    const graphs = graphsList.map((g, gIdx) => {
       const item = {
         t: g.type,
         c: g.color,
@@ -2373,16 +3099,30 @@ class GraphStateSerializer {
           return pt;
         })
       };
-      if (g.quadMode) item.qm = g.quadMode;
-      if (g.quadOriginCenter) item.qo = 1;
-      if (g.isFrozen) {
-        item.fz = 1;
-        if (g.freezeOffset && (g.freezeOffset.x || g.freezeOffset.y)) {
-          item.fzo = [Number((g.freezeOffset.x || 0).toFixed(2)), Number((g.freezeOffset.y || 0).toFixed(2))];
-        }
-        if (g.frozenInvertH) item.fzh = 1;
-        if (g.frozenInvertV) item.fzv = 1;
-        if (g.frozenAbsolute) item.fza = 1;
+      if (g.isTransposedYX) item.tyx = 1;
+      if (g.linkedInverseId !== undefined && g.linkedInverseId !== null) {
+        const pIdx = graphsList.findIndex(cand => cand && cand.id === g.linkedInverseId);
+        if (pIdx >= 0 && pIdx !== gIdx) item.li = pIdx;
+      }
+      const qm = (g.shapeMode && g.shapeMode !== 'free') ? g.shapeMode : g.quadMode;
+      if (qm) item.qm = qm;
+      if (g.originCenter || g.quadOriginCenter) item.qo = 1;
+      if (g.isIndependent) item.ind = 1;
+      if (g.isFrozen) item.fz = 1;
+      if (g.freezeOffset && (g.freezeOffset.x || g.freezeOffset.y)) {
+        item.fzo = [Number((g.freezeOffset.x || 0).toFixed(3)), Number((g.freezeOffset.y || 0).toFixed(3))];
+      }
+      if (g.frozenInvertH) item.fzh = 1;
+      if (g.frozenInvertV) item.fzv = 1;
+      if (g.frozenAbsolute) item.fza = 1;
+      if (Array.isArray(g.transforms) && g.transforms.length > 0) {
+        item.tr = g.transforms.map(tr => ({
+          ox: Number(((tr.offset && tr.offset.x) || 0).toFixed(3)),
+          oy: Number(((tr.offset && tr.offset.y) || 0).toFixed(3)),
+          ih: tr.invertH ? 1 : 0,
+          iv: tr.invertV ? 1 : 0,
+          ab: tr.abs ? 1 : 0
+        }));
       }
       return item;
     });
@@ -2396,6 +3136,9 @@ class GraphStateSerializer {
       zm: Number((app.zoomLevel || 1.0).toFixed(2)),
       int: app.useIntersectionDetector ? 1 : 0
     };
+    if (app.panX) opts.px = Number(app.panX.toFixed(1));
+    if (app.panY) opts.py = Number(app.panY.toFixed(1));
+    if (app.showInverseGuide) opts.ig = 1;
 
     if (app.usePiecewise) {
       opts.pw = 1;
@@ -2405,6 +3148,14 @@ class GraphStateSerializer {
         opts.pwbs = bList.map(b => Number(b.toFixed(2)));
         opts.pwm = app.piecewiseFuncMap ? [...app.piecewiseFuncMap] : [];
       }
+      if (Array.isArray(app.piecewiseInclusions) && app.piecewiseInclusions.length > 0) {
+        opts.pwi = [...app.piecewiseInclusions];
+      }
+      if (app.isPiecewisePeriodic) {
+        opts.pwp = 1;
+        if (app.periodicStepY) opts.pws = Number(app.periodicStepY.toFixed(3));
+      }
+      if (app.isPiecewiseLocked) opts.pwl = 1;
       opts.pwr = app.pwActiveRange || 'left';
       opts.pwg = app.showPiecewiseGhost ? 1 : 0;
     }
@@ -2413,6 +3164,13 @@ class GraphStateSerializer {
       opts.vf = 1;
       opts.vfa = app.vfAspectName || '4:3';
       opts.vfw = Math.round(app.vfScreenW || 680);
+      if (app.vfTargetWIn) opts.vfti = Number(app.vfTargetWIn.toFixed(2));
+    }
+    if (Array.isArray(app.dropLines) && app.dropLines.length > 0) {
+      opts.dl = app.dropLines;
+    }
+    if (Array.isArray(app.textLabels) && app.textLabels.length > 0) {
+      opts.tl = app.textLabels;
     }
 
     const payload = {

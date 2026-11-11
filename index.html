@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261110_44">
+  <link rel="stylesheet" href="style.css?v=20261111_49">
 </head>
 
 <body class="theme-light">
@@ -2076,6 +2076,7 @@
               <span id="lblBtnDownloadQr">QR 저장</span>
             </button>
           </div>
+          <div id="lblShareLinkTierNotice" class="share-link-tier-notice"></div>
           <!-- 오프스크린 QR 생성 캔버스 및 호환용 숨김 필드 -->
           <div style="display: none !important;">
             <input type="text" id="inputShareLink" class="share-link-input" readonly>
@@ -2520,9 +2521,19 @@
 
       <div class="smart-modal-body cloud-hub-body cloud-explorer-body">
         <div id="panelCloudMyLibrary" class="cloud-explorer-layout">
-          <!-- 좌측 패널: 폴더 트리 -->
+          <!-- 좌측 패널: 폴더 트리 + 클라우드 용량 게이지 -->
           <aside class="cloud-explorer-sidebar" id="cloudExplorerSidebar">
             <div id="cloudFolderChipBar" class="cloud-folder-tree-list"></div>
+            <div id="cloudStorageQuotaBox" class="cloud-storage-quota-box">
+              <div class="cloud-quota-top-row">
+                <span id="lblCloudQuotaTierBadge" class="cloud-quota-tier-badge">무료</span>
+                <button type="button" id="btnCloudQuotaUpgrade" class="cloud-quota-upgrade-btn" title="요금제 업그레이드">업그레이드</button>
+              </div>
+              <div class="cloud-quota-bar-track">
+                <div id="barCloudQuotaFill" class="cloud-quota-bar-fill" style="width: 0%;"></div>
+              </div>
+              <div id="lblCloudQuotaUsageText" class="cloud-quota-usage-text">0 KB / 50 MB</div>
+            </div>
           </aside>
 
           <!-- ↔️ 좌·우 폭 조절선 (마우스·터치·펜으로 끌어 트리 폭 조절 · 더블클릭 시 기본 폭 복원) -->
@@ -2605,13 +2616,13 @@
     </div>
   </div>
 
-  <!-- [👑 Graphly Pro 이용권 결제 & 사업자 정보 모달 (구글 로그인 / 일반 ID 회원 계정 귀속 결제)] -->
+  <!-- [👑 Graphly Pro / Premium 3단계 이용권 결제 & 사업자 정보 모달 (구글 로그인 / 일반 ID 회원 계정 귀속 결제)] -->
   <div id="modalProPricing" class="smart-modal-backdrop">
-    <div class="smart-modal-card" style="max-width: 560px; width: 94%;">
+    <div class="smart-modal-card pricing-modal-card">
       <div class="smart-modal-header">
         <div class="smart-modal-title">
           <span class="modal-icon">👑</span>
-          <span class="modal-title-text">Graphly Pro 이용권 구매</span>
+          <span class="modal-title-text">Graphly 이용권 안내 · 구매</span>
         </div>
         <button type="button" id="btnCloseProPricingModal" class="btn-modal-close"><svg width="15" height="15"
             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -2620,57 +2631,94 @@
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg></button>
       </div>
-      <div class="smart-modal-body"
-        style="display:flex; flex-direction:column; gap:12px; max-height:78vh; overflow-y:auto;">
-        <!-- 요금제 선택 카드 -->
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-          <div id="cardPlanPro1M" class="pro-plan-select-card active"
-            style="border:2px solid #2563eb; background:rgba(37,99,235,0.08); border-radius:12px; padding:14px; cursor:pointer;">
-            <div style="font-size:11px; font-weight:800; color:#2563eb; margin-bottom:4px;">얼리버드 특가 BEST</div>
-            <div style="font-size:15px; font-weight:800;">Graphly Pro 1개월권</div>
-            <div style="font-size:22px; font-weight:800; color:#2563eb; margin:4px 0;">3,900원 <span
-                style="font-size:11px; font-weight:600; color:#64748b;">/ 30일(VAT포함)</span></div>
-            <div style="font-size:11.5px; color:#475569;">제공기간: 결제일로부터 30일 (단건 이용권)</div>
+      <div class="smart-modal-body pricing-modal-body">
+        <!-- 월간 / 연간 결제 주기 토글 -->
+        <div class="pricing-cycle-toggle-wrap">
+          <div id="billingCycleToggleBar" class="pricing-cycle-toggle-bar">
+            <button type="button" id="btnBillingCycleMonthly" class="pricing-cycle-btn active" data-cycle="monthly">
+              월간 이용권 (30일)
+            </button>
+            <button type="button" id="btnBillingCycleYearly" class="pricing-cycle-btn" data-cycle="yearly">
+              연간 이용권 (365일) <span class="pricing-cycle-save-pill">2개월 무료</span>
+            </button>
           </div>
-          <div id="cardPlanPro1Y" class="pro-plan-select-card"
-            style="border:1.5px solid rgba(148,163,184,0.35); background:rgba(148,163,184,0.05); border-radius:12px; padding:14px; cursor:pointer;">
-            <div style="font-size:11px; font-weight:800; color:#4f46e5; margin-bottom:4px;">2개월 무료 할인</div>
-            <div style="font-size:15px; font-weight:800;">Graphly Pro 1년권</div>
-            <div style="font-size:22px; font-weight:800; color:#0f172a; margin:4px 0;">39,000원 <span
-                style="font-size:11px; font-weight:600; color:#64748b;">/ 365일(VAT포함)</span></div>
-            <div style="font-size:11.5px; color:#475569;">제공기간: 결제일로부터 365일 (단건 이용권)</div>
+        </div>
+
+        <!-- 3단계 요금제(Free / Pro / Premium) 비교 및 선택 카드 -->
+        <div class="pricing-tier-grid">
+          <!-- 1) Free (무료 기본) -->
+          <div id="cardPlanFree" class="pro-plan-select-card pricing-tier-card is-free-baseline">
+            <div class="pricing-tier-badge badge-free">기본 제공</div>
+            <div class="pricing-tier-name">Free <span class="pricing-tier-sub">무료</span></div>
+            <div class="pricing-tier-price-row">
+              <span class="pricing-tier-price">0원</span>
+              <span class="pricing-tier-unit">/ 평생 무료</span>
+            </div>
+            <ul class="pricing-tier-features">
+              <li>☁️ 클라우드 보관함 <strong id="lblPlanFreeCloud">50 MB</strong></li>
+              <li>⭐ 내 그래프 프리셋 <strong id="lblPlanFreeGraphs">3개</strong></li>
+              <li>🎙️ 수업 연속 녹화 <strong id="lblPlanFreeRec">3분</strong></li>
+              <li>🔗 공유 링크 <strong id="lblPlanFreeShare">3일 후 자동 폭파</strong></li>
+            </ul>
+            <div id="lblPlanFreeCurrentState" class="pricing-tier-foot-note">회원가입 즉시 무료 제공</div>
+          </div>
+
+          <!-- 2) Pro (강사 표준) -->
+          <div id="cardPlanPro" class="pro-plan-select-card pricing-tier-card is-selectable active" data-tier="pro">
+            <div class="pricing-tier-badge badge-pro">👑 강사 추천 BEST</div>
+            <div class="pricing-tier-name">Pro <span class="pricing-tier-sub">프로</span></div>
+            <div class="pricing-tier-price-row">
+              <span id="lblPlanProPrice" class="pricing-tier-price price-pro">4,900원</span>
+              <span id="lblPlanProCycleUnit" class="pricing-tier-unit">/ 30일(VAT포함)</span>
+            </div>
+            <ul class="pricing-tier-features">
+              <li>☁️ 클라우드 보관함 <strong id="lblPlanProCloud">5 GB</strong></li>
+              <li>⭐ 내 그래프 프리셋 <strong id="lblPlanProGraphs">100개</strong></li>
+              <li>🎙️ 수업 연속 녹화 <strong id="lblPlanProRec">60분</strong></li>
+              <li>🔗 공유 링크 <strong id="lblPlanProShare">7일 유지</strong></li>
+            </ul>
+            <div id="lblPlanProPeriodNote" class="pricing-tier-foot-note">제공기간: 결제일로부터 30일 (단건)</div>
+          </div>
+
+          <!-- 3) Premium (영구 링크 · 대용량) -->
+          <div id="cardPlanPremium" class="pro-plan-select-card pricing-tier-card is-selectable tier-premium" data-tier="premium">
+            <div class="pricing-tier-badge badge-premium">💎 학원·연구실 마스터</div>
+            <div class="pricing-tier-name">Premium <span class="pricing-tier-sub">프리미엄</span></div>
+            <div class="pricing-tier-price-row">
+              <span id="lblPlanPremiumPrice" class="pricing-tier-price price-premium">14,900원</span>
+              <span id="lblPlanPremiumCycleUnit" class="pricing-tier-unit">/ 30일(VAT포함)</span>
+            </div>
+            <ul class="pricing-tier-features">
+              <li>☁️ 클라우드 보관함 <strong id="lblPlanPremiumCloud">20 GB</strong></li>
+              <li>⭐ 내 그래프 프리셋 <strong id="lblPlanPremiumGraphs">100개</strong></li>
+              <li>🎙️ 수업 연속 녹화 <strong id="lblPlanPremiumRec">60분</strong></li>
+              <li>♾️ 공유 링크 <strong id="lblPlanPremiumShare">만료 없음 (영구)</strong></li>
+              <li class="feature-sub-highlight">📂 링크 원본 내 클라우드 자동 귀속</li>
+            </ul>
+            <div id="lblPlanPremiumPeriodNote" class="pricing-tier-foot-note">제공기간: 결제일로부터 30일 (단건)</div>
           </div>
         </div>
 
         <!-- 결제 귀속 계정 확인 및 주문자 정보 -->
-        <div
-          style="background:rgba(148,163,184,0.08); border:1px solid rgba(148,163,184,0.25); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
-          <div id="proModalAccountStatusBox"
-            style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:8px 10px; border-radius:8px; background:rgba(37,99,235,0.08); border:1px solid rgba(37,99,235,0.25);">
-            <span id="lblProModalAccountStatus" style="font-size:12px; font-weight:700; color:#1e40af;">🔒 결제 전 로그인이
-              필요합니다.</span>
-            <button type="button" id="btnProModalGoLogin" class="btn-primary"
-              style="padding:5px 10px; font-size:11.5px; font-weight:700; border-radius:6px;">🔑 로그인하기</button>
+        <div class="pricing-buyer-box">
+          <div id="proModalAccountStatusBox" class="pricing-account-status-row">
+            <span id="lblProModalAccountStatus" class="pricing-account-status-text">🔒 결제 전 로그인이 필요합니다.</span>
+            <button type="button" id="btnProModalGoLogin" class="btn-primary pricing-go-login-btn">🔑 로그인하기</button>
           </div>
-          <div style="font-size:12px; font-weight:700;">구매자 정보 (결제 영수증 수신 및 이용권 귀속 확인)</div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <input type="text" id="inputProBuyerName" placeholder="구매자 성명"
-              style="flex:1; min-width:130px; padding:8px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.4); font-size:12.5px;">
-            <input type="email" id="inputProBuyerEmail" placeholder="이메일 주소 (영수증 수신용)"
-              style="flex:1.4; min-width:170px; padding:8px 10px; border-radius:7px; border:1px solid rgba(148,163,184,0.4); font-size:12.5px;">
+          <div class="pricing-buyer-label">구매자 정보 (결제 영수증 수신 및 이용권 귀속 확인)</div>
+          <div class="pricing-buyer-inputs">
+            <input type="text" id="inputProBuyerName" class="pricing-buyer-input" placeholder="구매자 성명">
+            <input type="email" id="inputProBuyerEmail" class="pricing-buyer-input email-col" placeholder="이메일 주소 (영수증 수신용)">
           </div>
         </div>
 
-        <button type="button" id="btnProModalPayNow" class="btn-primary"
-          style="width:100%; padding:13px; border-radius:10px; font-size:15px; font-weight:800; background:linear-gradient(135deg,#2563eb,#4f46e5); color:#fff; border:none; cursor:pointer;">
-          💳 토스페이먼츠 카드 결제하기 (3,900원)
+        <button type="button" id="btnProModalPayNow" class="btn-primary pricing-pay-submit-btn">
+          💳 토스페이먼츠 카드 결제하기 (Pro · 4,900원)
         </button>
 
         <!-- 환불 규정 및 사업자 정보 명시 -->
-        <div
-          style="font-size:11.5px; color:#64748b; line-height:1.65; border-top:1px solid rgba(148,163,184,0.22); padding-top:10px;">
-          <strong>[서비스 제공 및 환불 안내]</strong> 결제 완료 즉시 권한이 활성화되며, 결제일로부터 7일 이내 미사용 시 100% 전액 환불됩니다. 중도 해지 시 잔여 일수 일할 계산
-          금액에서 위약금(10%) 공제 후 환불됩니다.<br>
+        <div class="pricing-legal-footer">
+          <strong>[서비스 제공 및 환불 안내]</strong> 결제 완료 즉시 권한이 활성화되며(자동 정기결제 아님 · 단건 기간권), 결제일로부터 7일 이내 미사용 시 100% 전액 환불됩니다. 중도 해지 시 잔여 일수 일할 계산 금액에서 위약금(10%) 공제 후 환불됩니다.<br>
           <strong>상호명:</strong> 큐비오랩 (CubioLab) | <strong>대표자:</strong> 이광철 | <strong>사업자등록번호:</strong> 354-08-03569<br>
           <strong>주소:</strong> 경기도 양주시 옥정로 222, 6층 606호(옥정동, 스카이타워) | <strong>고객센터:</strong> 070-8018-8238 |
           <strong>이메일:</strong> help@cubiolab.com
@@ -2920,14 +2968,14 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261110_44"></script>
-  <script src="app-core.js?v=20261110_44"></script>
-  <script src="app-ink.js?v=20261110_44"></script>
-  <script src="app-pdf.js?v=20261110_44"></script>
-  <script src="app-cards.js?v=20261110_44"></script>
-  <script src="app-cloud.js?v=20261110_44"></script>
-  <script src="app-canvas.js?v=20261110_44"></script>
-  <script src="app.js?v=20261110_44"></script>
+  <script src="engine.js?v=20261111_49"></script>
+  <script src="app-core.js?v=20261111_49"></script>
+  <script src="app-ink.js?v=20261111_49"></script>
+  <script src="app-pdf.js?v=20261111_49"></script>
+  <script src="app-cards.js?v=20261111_49"></script>
+  <script src="app-cloud.js?v=20261111_49"></script>
+  <script src="app-canvas.js?v=20261111_49"></script>
+  <script src="app.js?v=20261111_49"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">

@@ -5859,9 +5859,102 @@
       targetCtx.restore();
     }
 
+    _getVisibleWhiteProblemCardScreenRects(isExport = false) {
+      const rects = [];
+      if (isExport && this._activeExportFilter && this._activeExportFilter.includeProblem === false) {
+        return rects;
+      }
+      const offX = (isExport && this._exportCropOffset && typeof this._exportCropOffset.x === 'number') ? this._exportCropOffset.x : 0;
+      const offY = (isExport && this._exportCropOffset && typeof this._exportCropOffset.y === 'number') ? this._exportCropOffset.y : 0;
+      const canvasRect = (this.canvas && typeof this.canvas.getBoundingClientRect === 'function')
+        ? this.canvas.getBoundingClientRect()
+        : { left: 0, top: 0 };
+
+      const addBodyRect = (widgetEl, fallbackRect = null) => {
+        if (widgetEl && typeof document !== 'undefined') {
+          if (widgetEl.style && widgetEl.style.display === 'none') return;
+          if (widgetEl.classList && widgetEl.classList.contains('minimized')) return;
+          const bodyEl = widgetEl.querySelector ? widgetEl.querySelector('.problem-card-body') : null;
+          if (bodyEl && typeof bodyEl.getBoundingClientRect === 'function') {
+            const bRect = bodyEl.getBoundingClientRect();
+            if (bRect.width > 2 && bRect.height > 2) {
+              rects.push({
+                x: bRect.left - canvasRect.left - offX,
+                y: bRect.top - canvasRect.top - offY,
+                w: bRect.width,
+                h: bRect.height
+              });
+              return;
+            }
+          }
+        }
+        if (fallbackRect && fallbackRect.w > 2 && fallbackRect.h > 2) {
+          rects.push({
+            x: fallbackRect.x - offX,
+            y: fallbackRect.y - offY,
+            w: fallbackRect.w,
+            h: fallbackRect.h
+          });
+        }
+      };
+
+      if (typeof this.hasActiveProblemCard === 'function' && this.hasActiveProblemCard()) {
+        const pWidget = (typeof document !== 'undefined') ? document.getElementById('problemCardWidget') : null;
+        addBodyRect(pWidget, this.problemCardRect);
+      }
+      if (Array.isArray(this.extraProblemCards)) {
+        for (let i = 0; i < this.extraProblemCards.length; i++) {
+          const ep = this.extraProblemCards[i];
+          if (ep && ep.el) addBodyRect(ep.el, ep.rect || null);
+        }
+      }
+      return rects;
+    }
+
+    _drawWhiteBoardInkContrastOverProblemCards(ctx, strokesList, isExport = false) {
+      if (!Array.isArray(strokesList) || strokesList.length === 0) return;
+      const cardRects = this._getVisibleWhiteProblemCardScreenRects(isExport);
+      if (cardRects.length === 0) return;
+
+      for (let rIdx = 0; rIdx < cardRects.length; rIdx++) {
+        const r = cardRects[rIdx];
+        const whiteStrokes = strokesList.filter(s => {
+          if (!s || (s.target || 'board') !== 'board' || s.isHighlighter) return false;
+          const col = (s.color || '').toLowerCase();
+          if (col !== '#ffffff' && col !== '#fff') return false;
+          if (!s.points || s.points.length === 0) return false;
+          if (typeof this._getStrokeScreenBounds === 'function') {
+            const sb = this._getStrokeScreenBounds(s, true);
+            if (sb) {
+              return (sb.maxX >= r.x && sb.minX <= r.x + r.w && sb.maxY >= r.y && sb.minY <= r.y + r.h);
+            }
+          }
+          return true;
+        });
+        if (whiteStrokes.length > 0) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(r.x, r.y, r.w, r.h);
+          ctx.clip();
+          whiteStrokes.forEach(stroke => {
+            this.renderSingleStroke(ctx, stroke, '#0f172a', !isExport && stroke === this.currentInkStroke);
+          });
+          ctx.restore();
+        }
+      }
+    }
+
     drawInkStrokes(ctx, isExport = false, filterTarget = null) {
       if (isExport) {
         if (!this.inkStrokes || this.inkStrokes.length === 0) return;
+        const curThemeExp = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { isLight: false };
+        const isLightExp = Boolean(curThemeExp.isLight || this.isMonochromeMode);
+        const darkTransparentContrast = Boolean(this.exportTransparent && !isLightExp && !this.isMonochromeMode);
+        const resolveExpOverride = (stroke) => {
+          if (!darkTransparentContrast || !stroke || stroke.isHighlighter) return null;
+          const c = (stroke.color || '').toLowerCase();
+          return (c === '#ffffff' || c === '#fff') ? '#1e293b' : null;
+        };
         const strokesToDraw = filterTarget
           ? this.inkStrokes.filter(s => {
             const t = s.target || 'board';
@@ -5871,7 +5964,10 @@
           })
           : this.inkStrokes;
         strokesToDraw.filter(s => s && s.isHighlighter).forEach(stroke => this.renderSingleStroke(ctx, stroke, null, false));
-        strokesToDraw.filter(s => s && !s.isHighlighter).forEach(stroke => this.renderSingleStroke(ctx, stroke, null, false));
+        strokesToDraw.filter(s => s && !s.isHighlighter).forEach(stroke => this.renderSingleStroke(ctx, stroke, resolveExpOverride(stroke), false));
+        if ((!filterTarget || filterTarget === 'board') && !isLightExp && !this.isMonochromeMode && !this.exportTransparent) {
+          this._drawWhiteBoardInkContrastOverProblemCards(ctx, strokesToDraw, true);
+        }
         return;
       }
 
@@ -6007,29 +6103,12 @@
         }
       }
 
-      // 2차 패스: [스마트 오토 컨트라스트] 다크 칠판에서 기본 흰색 펜(#ffffff)으로 흰색 문제 카드 위에 필기했을 때
-      if ((!filterTarget || filterTarget === 'board') && this.hasActiveProblemCard() && !isLight && !this.isMonochromeMode && this.problemCardRect) {
-        const r = this.problemCardRect;
-
-        const whiteStrokes = (this.inkStrokes || []).filter(s => {
-          if (!s || (s.target || 'board') !== 'board') return false;
-          if (!s.color || (s.color.toLowerCase() !== '#ffffff' && s.color.toLowerCase() !== '#fff')) return false;
-          if (!s.points || s.points.length === 0) return false;
-          const sb = this._getStrokeScreenBounds(s, true);
-          if (!sb) return false;
-          return (sb.maxX >= r.x && sb.minX <= r.x + r.w && sb.maxY >= r.y && sb.minY <= r.y + r.h);
-        });
-
-        if (whiteStrokes.length > 0) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(r.x, r.y, r.w, r.h);
-          ctx.clip();
-          whiteStrokes.forEach(stroke => {
-            this.renderSingleStroke(ctx, stroke, '#0f172a', stroke === this.currentInkStroke);
-          });
-          ctx.restore();
-        }
+      // 2차 패스: [스마트 오토 컨트라스트] 다크 칠판에서 기본 흰색 펜(#ffffff)으로 흰색 문제 카드(#1 및 추가 문제 카드) 위에 필기했을 때
+      if ((!filterTarget || filterTarget === 'board') && !isLight && !this.isMonochromeMode) {
+        const liveStrokes = (this.isDrawingInk && this.currentInkStroke && (this.currentInkStroke.target || 'board') === 'board')
+          ? [...(this.inkStrokes || []), this.currentInkStroke]
+          : (this.inkStrokes || []);
+        this._drawWhiteBoardInkContrastOverProblemCards(ctx, liveStrokes, false);
       }
 
       // drawLassoOverlay는 최상단 렌더링 파이프라인(render)에서 일괄 수행
