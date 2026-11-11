@@ -956,30 +956,6 @@ body.theme-light .func-preset-section {
   border-radius: 4px;
 }
 
-.func-btn.shortcut-armed,
-.custom-graph-card.shortcut-armed {
-  border-color: rgba(0, 210, 211, 0.7) !important;
-  background: rgba(0, 210, 211, 0.11) !important;
-}
-
-body.theme-light .func-btn.shortcut-armed,
-body.theme-light .custom-graph-card.shortcut-armed {
-  border-color: rgba(13, 148, 136, 0.65) !important;
-  background: rgba(13, 148, 136, 0.09) !important;
-}
-
-.func-btn.shortcut-armed .func-num-badge,
-.custom-graph-card.shortcut-armed .func-num-badge {
-  background: #00d2d3 !important;
-  color: #0f172a !important;
-}
-
-body.theme-light .func-btn.shortcut-armed .func-num-badge,
-body.theme-light .custom-graph-card.shortcut-armed .func-num-badge {
-  background: #0d9488 !important;
-  color: #ffffff !important;
-}
-
 .func-cat-header {
   display: flex;
   align-items: center;
@@ -1038,14 +1014,14 @@ body.theme-light .func-cat-num {
   border: 1px solid var(--panel-border);
   color: var(--text-muted);
   border-radius: 6px;
-  padding: 4px 5px;
-  min-height: 26px;
+  padding: 4px 7px;
+  min-height: 27px;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   transition: all 0.13s ease;
   user-select: none;
   min-width: 0;
@@ -1065,38 +1041,6 @@ body.theme-light .func-cat-num {
   box-shadow: 0 0 8px rgba(0, 210, 211, 0.18);
 }
 
-.func-num-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  font-weight: 800;
-  line-height: 1;
-  padding: 2px 3.5px;
-  border-radius: 3.5px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #94a3b8;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-.func-btn:hover .func-num-badge,
-.func-btn.active .func-num-badge {
-  background: rgba(0, 210, 211, 0.22);
-  color: #00d2d3;
-}
-
-body.theme-light .func-num-badge {
-  background: rgba(15, 23, 42, 0.07);
-  color: #64748b;
-}
-
-body.theme-light .func-btn:hover .func-num-badge,
-body.theme-light .func-btn.active .func-num-badge {
-  background: rgba(13, 148, 136, 0.16);
-  color: #0f766e;
-}
-
 .func-icon-wrap {
   display: flex;
   align-items: center;
@@ -1105,9 +1049,9 @@ body.theme-light .func-btn.active .func-num-badge {
 }
 
 .mini-func-icon {
-  width: 14px;
-  height: 12px;
-  opacity: 0.85;
+  width: 16px;
+  height: 13px;
+  opacity: 0.88;
   transition: all 0.13s ease;
 }
 
@@ -1121,7 +1065,7 @@ body.theme-light .func-btn.active .func-num-badge {
 }
 
 .func-name-text {
-  font-size: 10.5px;
+  font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

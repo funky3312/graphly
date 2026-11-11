@@ -4819,7 +4819,7 @@
             category: 'graph',
             categoryLabel: '📈 그래프 · 수학 도구',
             name: '그래프 추가창 열기 / 닫기',
-            desc: '개형 선택 창 토글 (열린 상태에서 숫자 11~64 연속 소환)',
+            desc: '함수 선택창 열기 ↔ 닫기 (다시 열면 새 창에 추가)',
             defaultKey: 'G',
             buttonIds: ['btnRailPresets'],
             baseTitle: '그래프 추가'
@@ -5767,10 +5767,15 @@
     handleCustomShortcutKeyDown(e) {
       if (!e || e.defaultPrevented) return false;
       if (this.isShortcutSettingsModalOpen()) return false;
-
-      // 그래프 추가창(panelPresets)이 열려 있을 때 단독 숫자키(0~9)는 11~109 그래프 코드 연속 소환에 우선 양보!
-      if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        if (/^[0-9]$/.test(e.key) || /^Digit[0-9]$/.test(e.code) || /^Numpad[0-9]$/.test(e.code)) {
+      const targetEl = e.target;
+      if (targetEl) {
+        const tag = targetEl.tagName ? targetEl.tagName.toUpperCase() : '';
+        if (
+          (tag === 'INPUT' && !['range', 'checkbox', 'radio', 'button', 'color', 'file'].includes(String(targetEl.type || '').toLowerCase())) ||
+          tag === 'TEXTAREA' ||
+          tag === 'SELECT' ||
+          targetEl.isContentEditable
+        ) {
           return false;
         }
       }
@@ -5917,29 +5922,16 @@
         }
         case 'graph_open_presets': {
           if (this.isPdfModalOpen || (this.smartViewerState && this.smartViewerState.isOpen)) return false;
-          if (this.isGraphCovered) {
-            document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
-            if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
-              if (this._pipSessionOrigin === 'rail' && this._pipTargetCard === 'new') {
-                this.closeDrawer();
-              } else {
-                this._pipTargetCard = 'new';
-                this._pipSessionOrigin = 'rail';
-                this.openDrawer('panelPresets');
-                this.showToast('➕ 새 그래프 창 모드 — 선택하는 함수들이 새 창에 담깁니다.');
-              }
-            } else {
-              this._pipTargetCard = 'new';
-              this._pipSessionOrigin = 'rail';
-              this.openDrawer('panelPresets');
-            }
-            return true;
-          }
           if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
             this.closeDrawer();
-          } else {
-            this.openDrawer('panelPresets');
+            return true;
           }
+          if (this.isGraphCovered) {
+            document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+            this._pipTargetCard = 'new';
+            this._pipSessionOrigin = 'rail';
+          }
+          this.openDrawer('panelPresets');
           return true;
         }
         case 'graph_toggle_axes': {

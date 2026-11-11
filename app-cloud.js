@@ -3905,10 +3905,10 @@
     return true;
   }
 
-  _matchesCustomGraphSearchQuery(item, codeStr, rawQuery) {
+  _matchesCustomGraphSearchQuery(item, rawQuery) {
     const q = String(rawQuery || '').trim().toLowerCase();
     if (!q) return true;
-    const haystack = `${codeStr || ''} ${item && item.name ? item.name : ''} ${item && item.badge ? item.badge : ''}`.toLowerCase();
+    const haystack = `${item && item.name ? item.name : ''} ${item && item.badge ? item.badge : ''}`.toLowerCase();
     const tokens = q.split(/\s+/).filter(Boolean);
     for (let i = 0; i < tokens.length; i++) {
       if (!haystack.includes(tokens[i])) return false;
@@ -3936,9 +3936,7 @@
 
     this.customGraphPresets.forEach((item, idx) => {
       if (!item) return;
-      const presetNum = 71 + idx;
-      const codeStr = String(presetNum);
-      if (rawQuery && !this._matchesCustomGraphSearchQuery(item, codeStr, rawQuery)) {
+      if (rawQuery && !this._matchesCustomGraphSearchQuery(item, rawQuery)) {
         return;
       }
       renderedCount++;
@@ -3948,9 +3946,6 @@
       card.className = isLockedForFree ? 'custom-graph-card is-pro-locked' : 'custom-graph-card';
       card.setAttribute('data-custom-graph-id', item.id);
       card.dataset.customPresetId = item.id;
-      if (!isLockedForFree && presetNum <= 109) {
-        card.dataset.funcCode = codeStr;
-      }
 
       const isRenaming = (this._renamingCustomGraphId === item.id);
       if (isRenaming) {
@@ -3993,7 +3988,6 @@
 
       card.innerHTML = `
         <div class="custom-graph-card-left">
-          <span class="func-num-badge">${codeStr}</span>
           <div class="custom-graph-thumb-box">${safeSvgThumb}</div>
           <div class="custom-graph-info">
             <div class="custom-graph-title">${lockBadgeHtml}${safeTitle}</div>
@@ -4007,7 +4001,6 @@
       `;
 
       card.onclick = () => {
-        this._clearPendingGraphShortcutDigit();
         this.loadCustomGraphPreset(item.id);
       };
 
@@ -4036,10 +4029,6 @@
       emptyEl.className = 'custom-graph-empty';
       emptyEl.textContent = '일치하는 프리셋이 없습니다.';
       scrollList.appendChild(emptyEl);
-    }
-
-    if (this._pendingGraphShortcutCatDigit && typeof this._highlightPendingGraphShortcutPrefix === 'function') {
-      this._highlightPendingGraphShortcutPrefix(this._pendingGraphShortcutCatDigit);
     }
   }
 
@@ -4086,7 +4075,7 @@
         </svg>
       </span>
       <input type="text" id="inputCustomGraphSearch" class="custom-graph-search-input"
-        placeholder="프리셋 검색 (이름·번호)" autocomplete="off" spellcheck="false" />
+        placeholder="프리셋 검색" autocomplete="off" spellcheck="false" />
       <button type="button" id="btnClearCustomGraphSearch" class="custom-graph-search-clear" title="검색어 지우기" style="display: none;">✕</button>
     `;
     regWrap.appendChild(searchBox);
