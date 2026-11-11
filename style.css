@@ -608,8 +608,14 @@ body.theme-light .rail-zoom-action-btn:active {
   color: #94a3b8;
   font-size: 13px;
   cursor: pointer;
+  min-width: 28px;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 4px 6px;
-  border-radius: 4px;
+  border-radius: 6px;
+  touch-action: manipulation;
   transition: all 0.12s ease;
 }
 

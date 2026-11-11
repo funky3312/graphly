@@ -5920,9 +5920,17 @@
           if (this.isGraphCovered) {
             document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
             if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
-              this.closeDrawer();
+              if (this._pipSessionOrigin === 'rail' && this._pipTargetCard === 'new') {
+                this.closeDrawer();
+              } else {
+                this._pipTargetCard = 'new';
+                this._pipSessionOrigin = 'rail';
+                this.openDrawer('panelPresets');
+                this.showToast('➕ 새 그래프 창 모드 — 선택하는 함수들이 새 창에 담깁니다.');
+              }
             } else {
               this._pipTargetCard = 'new';
+              this._pipSessionOrigin = 'rail';
               this.openDrawer('panelPresets');
             }
             return true;

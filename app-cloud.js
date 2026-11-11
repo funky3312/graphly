@@ -973,6 +973,9 @@
   openCloudHubModal(options = null) {
     const modalCloud = document.getElementById('modalCloudHub');
     if (!modalCloud) return;
+    if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
+      this.closeDrawer();
+    }
     if (!(options && options.fromExportModal)) {
       this._returnToShareModalAfterCloudSave = false;
       this._pendingExportCloudFilter = null;
@@ -8276,6 +8279,16 @@
     this.lessonPlaylistIndex = nextIdx;
     const targetSlide = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
     this.deserializeFullSlideState(targetSlide);
+    if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+      document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+      this._pipTargetCard = 'new';
+      this._pipSessionOrigin = 'rail';
+      const btnPresets = document.getElementById('btnRailPresets');
+      if (btnPresets) btnPresets.classList.add('active');
+    } else {
+      this._pipTargetCard = null;
+      this._pipSessionOrigin = null;
+    }
     if (wasRecording) {
       this._beginNextSlideAudioSegmentAfterSwitch();
     } else if (wasPlayingAudio && this.audioSyncData && this.audioSyncData.durationMs > 0) {
@@ -8554,6 +8567,16 @@
   }
 
   clearCurrentCanvasOnly() {
+    if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+      document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+      this._pipTargetCard = 'new';
+      this._pipSessionOrigin = 'rail';
+      const btnPresets = document.getElementById('btnRailPresets');
+      if (btnPresets) btnPresets.classList.add('active');
+    } else {
+      this._pipTargetCard = null;
+      this._pipSessionOrigin = null;
+    }
     // 1) PDF 한 페이지 통째 모드인 경우: 현재 PDF 페이지 위에 그린 그래프·보관카드(#1,#2)·문제카드·판서만 싹 비움 (다른 페이지는 보존!)
     if (this.pdfPageBoardData) {
       const hasOnPage = (
@@ -10462,6 +10485,9 @@
   }
 
   async openCurrentWorkspaceInSmartViewer() {
+    if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
+      this.closeDrawer();
+    }
     if (this.isAudioRecording) {
       await this.stopAudioRecording();
     } else if (this._pendingSlideAudioFinalizers && this._pendingSlideAudioFinalizers.length > 0) {

@@ -5389,7 +5389,18 @@
         }
         el.remove();
         this.extraGraphCards = this.extraGraphCards.filter(c => c !== cardItem);
-        if (this._pipTargetCard === cardItem) this._pipTargetCard = null;
+        if (this._pipTargetCard === cardItem) {
+          document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+          if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+            this._pipTargetCard = 'new';
+            this._pipSessionOrigin = 'rail';
+            const btnPresets = document.getElementById('btnRailPresets');
+            if (btnPresets) btnPresets.classList.add('active');
+          } else {
+            this._pipTargetCard = null;
+            this._pipSessionOrigin = null;
+          }
+        }
         if (this._editingGraphCardTarget === cardItem) this._editingGraphCardTarget = null;
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(true);
@@ -5407,6 +5418,15 @@
     restoreLiveGraphFromCard(silent = false, targetSnapshot = null, caseIdx = null, keepMinimizedCards = false, sourceCardTarget = null) {
       this._hasSpawnedNewCardInSession = false;
       this._lastSpawnedPipCardRef = null;
+      if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets' && typeof this.closeDrawer === 'function') {
+        this.closeDrawer();
+      } else {
+        this._pipTargetCard = null;
+        this._pipSessionOrigin = null;
+        if (typeof document !== 'undefined') {
+          document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+        }
+      }
       const activeTarget = sourceCardTarget || (caseIdx === 1 ? 'primary' : null);
       if (activeTarget && typeof this._ensurePipCardInkMathCoords === 'function') {
         this._ensurePipCardInkMathCoords(activeTarget);
@@ -6347,7 +6367,18 @@
           widget._pdfAnchor = null;
           widget._pipSnapObj = null;
           widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked', 'card-ink-active');
-          if (this._pipTargetCard === 'primary') this._pipTargetCard = null;
+          if (this._pipTargetCard === 'primary') {
+            document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+            if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+              this._pipTargetCard = 'new';
+              this._pipSessionOrigin = 'rail';
+              const btnPresets = document.getElementById('btnRailPresets');
+              if (btnPresets) btnPresets.classList.add('active');
+            } else {
+              this._pipTargetCard = null;
+              this._pipSessionOrigin = null;
+            }
+          }
           if (this._editingGraphCardTarget === 'primary') this._editingGraphCardTarget = null;
           this.renderGraphCardCanvas();
           if (gCanvas) {
@@ -9245,7 +9276,18 @@
         widget._pdfAnchor = null;
         widget._pipSnapObj = null;
         widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked', 'card-ink-active', 'card-header-peek');
-        if (this._pipTargetCard === 'primary') this._pipTargetCard = null;
+        if (this._pipTargetCard === 'primary') {
+          document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+          if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+            this._pipTargetCard = 'new';
+            this._pipSessionOrigin = 'rail';
+            const btnPresets = document.getElementById('btnRailPresets');
+            if (btnPresets) btnPresets.classList.add('active');
+          } else {
+            this._pipTargetCard = null;
+            this._pipSessionOrigin = null;
+          }
+        }
         if (this._editingGraphCardTarget === 'primary') this._editingGraphCardTarget = null;
         this.renderGraphCardCanvas();
         widget.style.display = 'none';
@@ -9260,7 +9302,18 @@
         }
         widget.remove();
         this.extraGraphCards = (this.extraGraphCards || []).filter(c => c !== cardRef);
-        if (this._pipTargetCard === cardRef) this._pipTargetCard = null;
+        if (this._pipTargetCard === cardRef) {
+          document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+          if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+            this._pipTargetCard = 'new';
+            this._pipSessionOrigin = 'rail';
+            const btnPresets = document.getElementById('btnRailPresets');
+            if (btnPresets) btnPresets.classList.add('active');
+          } else {
+            this._pipTargetCard = null;
+            this._pipSessionOrigin = null;
+          }
+        }
         if (this._editingGraphCardTarget === cardRef) this._editingGraphCardTarget = null;
       }
       if (this.isAudioRecording) {
@@ -9375,6 +9428,9 @@
             this.showToast('⚠️ 한 카드에는 최대 12개까지 함수를 추가할 수 있습니다.');
             return;
           }
+          if (typeof this._pushWorkspaceUndoSnapshot === 'function') {
+            this._pushWorkspaceUndoSnapshot('↺ 카드에 추가한 함수가 취소되었습니다', '↻ 함수 추가 다시 실행됨');
+          }
           const nextType = preferredType || presetOrder[snap.graphs.length % presetOrder.length];
           const nextColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
             ? this.fixedGraphColor
@@ -9416,21 +9472,23 @@
             widget._lastPipLockUiSig = '';
           }
 
+          this._savePipCardSnapshot(targetCard, snap);
           this.syncPipCardLockUI(targetCard);
           this.renderPipGraphCard(targetCard);
           this.scheduleBakePipGraphCardToImg(targetCard);
-          if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
-            this.closeDrawer();
-          }
+          // 🌟 [대표님 핵심 UX 기획]: 함수 추가 서랍이 열린 상태에서는 닫지 않고 유지하여 연속으로 누르는 함수를 한 창에 모두 담기! ([✕] 수동 닫기)
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
           }
-          this.showToast(`✨ 카드에 f${snap.graphs.length}(x) (${this.meta[nextType].name}) 추가됨! 핸들을 드래그해 조절하세요.`);
+          this.showToast(`✨ 카드에 f${snap.graphs.length}(x) (${this.meta[nextType].name}) 추가됨! 이어서 더 담거나 [✕]로 닫으세요.`);
           return;
         }
       }
 
       // 새 PiP 그래프 카드를 화면 중앙에 생성!
+      if (typeof this._pushWorkspaceUndoSnapshot === 'function') {
+        this._pushWorkspaceUndoSnapshot('↺ 추가된 새 그래프 창이 취소되었습니다', '↻ 새 그래프 창 추가 다시 실행됨');
+      }
       const nextType = preferredType || presetOrder[0];
       const nextColor = (this.graphColorMode === 'fixed' && this.fixedGraphColor)
         ? this.fixedGraphColor
@@ -9488,7 +9546,17 @@
         _pipCardH: cardH
       };
 
-      this._spawnCenteredPipCardFromSnapObj(snapObj, cardW, aspect, `${this.meta[nextType].name} 창 생성됨! 조작 후 상단 [🔓 잠금]을 누르면 확정됩니다.`);
+      const createdRef = this._spawnCenteredPipCardFromSnapObj(
+        snapObj,
+        cardW,
+        aspect,
+        `${this.meta[nextType].name} 창 생성됨! 이어서 함수를 더 담거나 [✕]로 닫으세요.`,
+        { keepPresetDrawerOpen: true }
+      );
+      if (createdRef && !this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+        this._pipTargetCard = createdRef;
+      }
+      return createdRef;
     }
 
     loadCustomPresetToPipCardInBoardMode(item) {
@@ -9514,6 +9582,13 @@
         if (isValidExistingTarget) {
           const snap = this._getMutablePipCardSnapshot(targetCard);
           if (snap && Array.isArray(snap.graphs)) {
+            if (snap.graphs.length >= 12) {
+              this.showToast('⚠️ 한 카드에는 최대 12개까지 함수를 추가할 수 있습니다.');
+              return false;
+            }
+            if (typeof this._pushWorkspaceUndoSnapshot === 'function') {
+              this._pushWorkspaceUndoSnapshot('↺ 카드에 추가한 프리셋이 취소되었습니다', '↻ 프리셋 추가 다시 실행됨');
+            }
             const presetClone = JSON.parse(JSON.stringify(parsed));
             this._rebindClonedSnapshotGraphAndDropLineIds(presetClone);
             const addedGraphIds = new Set();
@@ -9554,21 +9629,25 @@
             if (typeof this.syncAxisVisibilityUI === 'function') this.syncAxisVisibilityUI();
             const { widget } = this._getPipCardWidgetAndSnapRaw(targetCard);
             this.deselectAllPipGraphCards(widget);
-            if (widget) widget._lastPipLockUiSig = '';
+            if (widget) {
+              this.bringCardToFront(widget);
+              widget._lastPipLockUiSig = '';
+            }
+            this._savePipCardSnapshot(targetCard, snap);
             this.syncPipCardLockUI(targetCard);
             this.renderPipGraphCard(targetCard);
             this.scheduleBakePipGraphCardToImg(targetCard);
-            if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
-              this.closeDrawer();
-            }
             if (this.isAudioRecording) {
               this._recordAudioWorkspaceStateIfNeeded(true);
             }
-            this.showToast(`⭐ 카드에 [${item.name}] 프리셋이 추가되었습니다!`);
+            this.showToast(`⭐ 카드에 [${item.name}] 프리셋이 추가되었습니다! 이어서 더 담거나 [✕]로 닫으세요.`);
             return true;
           }
         }
 
+        if (typeof this._pushWorkspaceUndoSnapshot === 'function') {
+          this._pushWorkspaceUndoSnapshot('↺ 추가된 새 그래프 창이 취소되었습니다', '↻ 새 그래프 창 추가 다시 실행됨');
+        }
         const cardW = 430;
         const aspect = 0.82;
         const cardH = Math.round(cardW * aspect);
@@ -9588,22 +9667,56 @@
         this.showYAxis = presetShowY;
         if (typeof this.syncAxisVisibilityUI === 'function') this.syncAxisVisibilityUI();
 
-        this._spawnCenteredPipCardFromSnapObj(parsed, cardW, aspect, `⭐ [${item.name}] 창 생성됨! 조작 후 상단 [🔓 잠금]을 누르면 확정됩니다.`);
+        const createdRef = this._spawnCenteredPipCardFromSnapObj(
+          parsed,
+          cardW,
+          aspect,
+          `⭐ [${item.name}] 창 생성됨! 이어서 함수를 더 담거나 [✕]로 닫으세요.`,
+          { keepPresetDrawerOpen: true }
+        );
+        if (createdRef && !this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+          this._pipTargetCard = createdRef;
+        }
         return true;
       } catch (_) {
         return false;
       }
     }
 
-    _spawnCenteredPipCardFromSnapObj(snapObj, cardW, aspect, toastMsg) {
+    _spawnCenteredPipCardFromSnapObj(snapObj, cardW, aspect, toastMsg, spawnOpts = null) {
       this._rehydrateSnapGeneralExprFns(snapObj);
       this.deselectAllPipGraphCards();
+      const keepDrawerOpen = Boolean(
+        spawnOpts &&
+        spawnOpts.keepPresetDrawerOpen &&
+        !this.isDrawerCollapsed &&
+        this.activeDrawerPanel === 'panelPresets'
+      );
       const cardH = Math.round(cardW * aspect);
       const existingCount = (this._hasPrimaryGraphCard ? 1 : 0) + (Array.isArray(this.extraGraphCards) ? this.extraGraphCards.length : 0);
       const cascade = (existingCount % 5) * 22;
       const vw = window.innerWidth || 1440;
       const vh = window.innerHeight || 900;
-      const centerX = Math.round((vw - cardW) * 0.5 + (this.hasActiveProblemCard() ? 70 : 0) + cascade);
+      let centerX = Math.round((vw - cardW) * 0.5 + (this.hasActiveProblemCard() ? 70 : 0) + cascade);
+      if (keepDrawerOpen) {
+        let drawerRight = 410;
+        if (typeof document !== 'undefined') {
+          const rdEl = document.getElementById('railDrawer');
+          if (rdEl && typeof rdEl.getBoundingClientRect === 'function') {
+            const rdRect = rdEl.getBoundingClientRect();
+            if (rdRect.width > 40 && rdRect.right > 80) {
+              drawerRight = Math.round(rdRect.right);
+            }
+          }
+        }
+        const minClearX = drawerRight + 14 + cascade;
+        const maxClearX = Math.max(76, vw - cardW - 58);
+        if (maxClearX >= drawerRight + 14) {
+          centerX = Math.min(maxClearX, Math.max(centerX, minClearX));
+        } else {
+          centerX = Math.max(76, Math.min(centerX, vw - cardW - 18));
+        }
+      }
       const centerY = Math.round(Math.max(64, (vh - cardH) * 0.5 - 24 + cascade));
 
       const snapScale = 2.5;
@@ -9648,7 +9761,7 @@
       this.syncPipCardLockUI(createdRef);
       this.renderPipGraphCard(createdRef);
       this.scheduleBakePipGraphCardToImg(createdRef);
-      if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
+      if (!keepDrawerOpen && typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
         this.closeDrawer();
       }
       if (this.isAudioRecording) {
@@ -9686,9 +9799,10 @@
             this.closeDrawer();
           } else {
             this._pipTargetCard = cardRef;
+            this._pipSessionOrigin = 'card';
             btnAddFunc.classList.add('active');
             this.openDrawer('panelPresets');
-            this.showToast('➕ 이 카드에 함께 그릴 함수를 선택하세요!');
+            this.showToast('➕ 이 카드에 함께 그릴 함수를 선택하세요! 다 담았으면 [✕]로 닫으세요.');
           }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);

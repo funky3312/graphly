@@ -1241,6 +1241,20 @@ class GraphApp {
     this.syncLessonPlaylistNavBarUI();
     this.syncWorkspaceModeUI();
     this.syncGraphSnapBarUI();
+    if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets' && this.isGraphCovered) {
+      const curTarget = this._pipTargetCard;
+      const stillValid = Boolean(
+        (curTarget === 'primary' && this._hasPrimaryGraphCard && this.graphCardData) ||
+        (curTarget && curTarget !== 'primary' && curTarget !== 'new' && Array.isArray(this.extraGraphCards) && this.extraGraphCards.includes(curTarget))
+      );
+      if (!stillValid) {
+        this._pipTargetCard = 'new';
+        this._pipSessionOrigin = 'rail';
+        document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+        const btnPresets = document.getElementById('btnRailPresets');
+        if (btnPresets) btnPresets.classList.add('active');
+      }
+    }
     this._inkBakeDirty = true;
     this.updateIntersections();
     this.render();
@@ -2173,7 +2187,16 @@ class GraphApp {
         this.extraGraphCards.forEach(c => { if (c && c.el) c.el.remove(); });
         this.extraGraphCards = [];
       }
-      this._pipTargetCard = null;
+      document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+      if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+        this._pipTargetCard = 'new';
+        this._pipSessionOrigin = 'rail';
+        const btnPresets = document.getElementById('btnRailPresets');
+        if (btnPresets) btnPresets.classList.add('active');
+      } else {
+        this._pipTargetCard = null;
+        this._pipSessionOrigin = null;
+      }
       this.render();
       this.showToast('🗑️ 칠판 위의 모든 그래프 카드를 비웠습니다.');
       return;
@@ -2726,7 +2749,7 @@ class GraphApp {
           <span class="func-name-text">${labelText}</span>
         `;
         btn.onclick = () => {
-          if (this.graphs.length >= 12) {
+          if (!this.isGraphCovered && this.graphs.length >= 12) {
             this.showToast('⚠️ 그래프는 최대 12개까지 동시에 추가할 수 있습니다.');
             return;
           }
@@ -3422,6 +3445,9 @@ class GraphApp {
     if (btnExport && panelExport) {
       btnExport.onclick = (e) => {
         e.stopPropagation();
+        if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
+          this.closeDrawer();
+        }
         panelExport.classList.remove('show');
         btnExport.classList.remove('active');
         if (this._openShareModalWithCloudPackage) {
@@ -3574,6 +3600,9 @@ class GraphApp {
         if (isOpen) {
           this.closeRailResetPopover();
           return;
+        }
+        if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
+          this.closeDrawer();
         }
         const railEl = document.getElementById('sidebarRail');
         if (railEl) {
@@ -3944,12 +3973,20 @@ class GraphApp {
 
     this.activeDrawerPanel = 'panelPresets';
     this.isDrawerCollapsed = true;
+    this._pipTargetCard = null;
+    this._pipSessionOrigin = null;
 
     this.openDrawer = (panelId) => {
       if (typeof this.closeRailResetPopover === 'function') {
         this.closeRailResetPopover();
       }
-      this.activeDrawerPanel = panelId || this.activeDrawerPanel || 'panelPresets';
+      const nextPanel = panelId || this.activeDrawerPanel || 'panelPresets';
+      if (nextPanel !== 'panelPresets') {
+        document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+        this._pipTargetCard = null;
+        this._pipSessionOrigin = null;
+      }
+      this.activeDrawerPanel = nextPanel;
       this.isDrawerCollapsed = false;
       rail.classList.remove('drawer-collapsed');
       const railDrawerEl = document.getElementById('railDrawer');
@@ -3959,9 +3996,13 @@ class GraphApp {
       if (iconToggle) iconToggle.textContent = '◀';
       if (btnToggle) btnToggle.title = '\\';
 
-      // 레일 독 버튼 활성화 상태 갱신
+      // 레일 독 버튼 활성화 상태 갱신 (카드 상단 [+]로 연 경우 해당 카드의 [+]만 활성 표시)
       document.querySelectorAll('.rail-btn[data-panel]').forEach(b => {
-        b.classList.toggle('active', b.dataset.panel === this.activeDrawerPanel);
+        if (b.dataset.panel === 'panelPresets' && this.isGraphCovered && this._pipSessionOrigin === 'card') {
+          b.classList.remove('active');
+        } else {
+          b.classList.toggle('active', b.dataset.panel === this.activeDrawerPanel);
+        }
       });
 
       // 서랍 헤더 타이틀 갱신
@@ -3999,6 +4040,7 @@ class GraphApp {
         b.classList.remove('active');
       });
       this._pipTargetCard = null;
+      this._pipSessionOrigin = null;
 
       if (this.isAudioRecording) {
         this._recordAudioWorkspaceStateIfNeeded(true);
@@ -4010,6 +4052,11 @@ class GraphApp {
 
     this.toggleDrawer = () => {
       if (this.isDrawerCollapsed) {
+        if ((this.activeDrawerPanel || 'panelPresets') === 'panelPresets' && this.isGraphCovered) {
+          document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
+          this._pipTargetCard = 'new';
+          this._pipSessionOrigin = 'rail';
+        }
         this.openDrawer(this.activeDrawerPanel);
       } else {
         this.closeDrawer();
@@ -4021,12 +4068,20 @@ class GraphApp {
       btn.onclick = () => {
         const targetPanel = btn.dataset.panel;
         if (targetPanel === 'panelPresets' && this.isGraphCovered) {
-          const wasCardTarget = Boolean(this._pipTargetCard && this._pipTargetCard !== 'new');
           document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
-          if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets' && !wasCardTarget) {
-            this.closeDrawer();
+          const isAlreadyOpenOnPresets = (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets');
+          if (isAlreadyOpenOnPresets) {
+            if (this._pipSessionOrigin === 'rail' && this._pipTargetCard === 'new') {
+              this.closeDrawer();
+            } else {
+              this._pipTargetCard = 'new';
+              this._pipSessionOrigin = 'rail';
+              this.openDrawer('panelPresets');
+              this.showToast('➕ 새 그래프 창 모드 — 선택하는 함수들이 새 창에 담깁니다.');
+            }
           } else {
             this._pipTargetCard = 'new';
+            this._pipSessionOrigin = 'rail';
             this.openDrawer('panelPresets');
           }
           return;
@@ -4040,20 +4095,41 @@ class GraphApp {
     });
 
     if (btnClose) {
-      btnClose.onclick = () => this.closeDrawer();
+      btnClose.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+      });
+      btnClose.onclick = (e) => {
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        this.closeDrawer();
+      };
     }
 
     if (btnToggle) {
       btnToggle.onclick = () => this.toggleDrawer();
     }
 
-    // [대표님 핵심 UX 기획]: 서랍(추가창/설정창 등) 영역 외의 곳(칠판 캔버스 등)을 터치/클릭하면 자동 닫기
+    // [대표님 핵심 UX 기획]:
+    // 1) 그래프 추가창(panelPresets)은 한 번 열리면 바깥 캔버스 터치(아이패드 손날 터치 포함)로 닫히지 않고,
+    //    원하는 함수를 한 윈도우에 모두 담은 뒤 [✕] 버튼으로 수동으로 닫도록 고정!
+    // 2) 기타 설정 서랍(환경설정·스타일·구간분할)은 바깥 클릭 시 자동 닫히되, 아이패드 애플펜슬 손날(팜 리젝션) 오터치는 무시!
     window.addEventListener('pointerdown', (e) => {
       if (this.isDrawerCollapsed) return;
+      if (this.activeDrawerPanel === 'panelPresets') return;
       const target = e.target;
       if (!target || typeof target.closest !== 'function') return;
       // 서랍 내부, 좌측 레일 버튼, 또는 그래프 카드 상단 [+] 함수 추가 버튼 클릭 시에는 유지
       if (target.closest('#railDrawer') || target.closest('#sidebarRail') || target.closest('.btn-card-add-func')) return;
+      // 아이패드 펜슬 필기 중 손날(광폭 터치 / 팜 리젝션 활성)이 캔버스에 닿았을 때는 서랍이 저절로 닫히지 않도록 보호
+      const isTouch = Boolean(e && (e.pointerType === 'touch' || (e.touches && e.touches.length > 0 && !e.pointerType)));
+      const isWidePalm = Boolean(e && e.pointerType === 'touch' && ((e.width || 0) >= 32 || (e.height || 0) >= 32));
+      if (isTouch && (isWidePalm || (typeof this.isStylusPalmRejectionActive === 'function' && this.isStylusPalmRejectionActive()))) {
+        if (target === this.canvas || target.id === 'graphCanvas' || target.closest('.problem-card-widget')) {
+          return;
+        }
+      }
       // 스마트 수식 입력 모달, 요금제 모달 등 팝업 모달 내부 클릭 시에는 서랍 유지
       if (
         target.closest('#modalSmartInput') ||
@@ -6169,6 +6245,9 @@ class GraphApp {
     };
 
     const openModal = (studioState = null) => {
+      if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
+        this.closeDrawer();
+      }
       isAutoPlaying = false;
       if (autoPlayAnimId) cancelAnimationFrame(autoPlayAnimId);
       if (btnAutoPlay) btnAutoPlay.textContent = '▶ 자동 순항';
