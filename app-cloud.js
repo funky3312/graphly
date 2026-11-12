@@ -5856,6 +5856,14 @@
       pWidget.classList.toggle('pip-locked-mode', Boolean(pc.pipLocked));
       pWidget.classList.toggle('pip-stealth-locked', Boolean(pc.pipStealth));
       if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(pWidget);
+      if (
+        typeof this.scheduleProblemCardStealth === 'function' &&
+        pWidget.classList.contains('pip-locked-mode') &&
+        !pWidget.classList.contains('pip-stealth-locked') &&
+        !pWidget.classList.contains('minimized')
+      ) {
+        this.scheduleProblemCardStealth(pWidget, 3000);
+      }
       pWidget.style.transform = '';
       pWidget.style.left = pc.left || '72px';
       pWidget.style.top = pc.top || '18px';
@@ -5888,6 +5896,14 @@
           createdProb.el.classList.toggle('pip-locked-mode', Boolean(ep.pipLocked));
           createdProb.el.classList.toggle('pip-stealth-locked', Boolean(ep.pipStealth));
           if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(createdProb.el);
+          if (
+            typeof this.scheduleProblemCardStealth === 'function' &&
+            createdProb.el.classList.contains('pip-locked-mode') &&
+            !createdProb.el.classList.contains('pip-stealth-locked') &&
+            !createdProb.el.classList.contains('minimized')
+          ) {
+            this.scheduleProblemCardStealth(createdProb.el, 3000);
+          }
           if (typeof createdProb.el._renderCardInkCanvas === 'function') createdProb.el._renderCardInkCanvas();
           if (typeof createdProb.el._renderCardStickers === 'function') createdProb.el._renderCardStickers();
         }

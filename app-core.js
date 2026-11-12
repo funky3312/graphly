@@ -1044,6 +1044,14 @@ class GraphApp {
       pWidget.classList.toggle('pip-locked-mode', Boolean(pc.pipLocked));
       pWidget.classList.toggle('pip-stealth-locked', Boolean(pc.pipStealth));
       if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(pWidget);
+      if (
+        typeof this.scheduleProblemCardStealth === 'function' &&
+        pWidget.classList.contains('pip-locked-mode') &&
+        !pWidget.classList.contains('pip-stealth-locked') &&
+        !pWidget.classList.contains('minimized')
+      ) {
+        this.scheduleProblemCardStealth(pWidget, 3000);
+      }
       const pLaserBtn = pWidget.querySelector('.btn-card-laser');
       if (pLaserBtn) pLaserBtn.classList.toggle('active', Boolean(pc.cardInkActive));
       pWidget.style.left = pc.left || '72px';
@@ -1096,6 +1104,14 @@ class GraphApp {
           c.el.classList.toggle('pip-locked-mode', Boolean(st.pipLocked));
           c.el.classList.toggle('pip-stealth-locked', Boolean(st.pipStealth));
           if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(c.el);
+          if (
+            typeof this.scheduleProblemCardStealth === 'function' &&
+            c.el.classList.contains('pip-locked-mode') &&
+            !c.el.classList.contains('pip-stealth-locked') &&
+            !c.el.classList.contains('minimized')
+          ) {
+            this.scheduleProblemCardStealth(c.el, 3000);
+          }
           const lBtn = c.el.querySelector('.btn-card-laser');
           if (lBtn) lBtn.classList.toggle('active', Boolean(st.cardInkActive));
           if (typeof c.el._renderCardStickers === 'function') c.el._renderCardStickers();
@@ -2543,23 +2559,33 @@ class GraphApp {
       return;
     }
 
-    const targetCard = (this._pipTargetCard && this._pipTargetCard !== 'new') ? this._pipTargetCard : null;
-    const isValidTarget = Boolean(
-      (targetCard === 'primary' && this._hasPrimaryGraphCard && this.graphCardData) ||
-      (targetCard && targetCard !== 'primary' && Array.isArray(this.extraGraphCards) && this.extraGraphCards.includes(targetCard))
+    let resolvedCard = null;
+    const explicitCard = (this._pipTargetCard && this._pipTargetCard !== 'new') ? this._pipTargetCard : null;
+    const isValidExplicit = Boolean(
+      (explicitCard === 'primary' && this._hasPrimaryGraphCard && this.graphCardData) ||
+      (explicitCard && explicitCard !== 'primary' && Array.isArray(this.extraGraphCards) && this.extraGraphCards.includes(explicitCard))
     );
-    if (isValidTarget && typeof this._getMutablePipCardSnapshot === 'function') {
-      const snap = this._getMutablePipCardSnapshot(targetCard);
-      if (snap && !snap.isPipLocked && Array.isArray(snap.graphs) && snap.graphs.length > 0) {
+    if (isValidExplicit) {
+      resolvedCard = explicitCard;
+    } else if (typeof this._getTargetPipGraphCardForAxisOrPreset === 'function') {
+      const targetObj = this._getTargetPipGraphCardForAxisOrPreset();
+      if (targetObj && targetObj.cardRef) {
+        resolvedCard = targetObj.cardRef;
+      }
+    }
+    if (resolvedCard && typeof this._getMutablePipCardSnapshot === 'function') {
+      const snap = this._getMutablePipCardSnapshot(resolvedCard);
+      if (snap && !snap.isNAxisStudioCard && Array.isArray(snap.graphs) && snap.graphs.length > 0) {
         if (typeof this._pushWorkspaceUndoSnapshot === 'function') {
           this._pushWorkspaceUndoSnapshot('↺ 그래프 색상이 이전 상태로 복원되었습니다', '↻ 그래프 색상 변경 다시 실행됨');
         }
         snap.graphs.forEach((g, idx) => {
           if (g) g.color = isFixed ? fixedColor : seq[idx % seq.length];
         });
-        if (typeof this.syncPipCardLockUI === 'function') this.syncPipCardLockUI(targetCard);
-        if (typeof this.renderPipGraphCard === 'function') this.renderPipGraphCard(targetCard);
-        if (typeof this.scheduleBakePipGraphCardToImg === 'function') this.scheduleBakePipGraphCardToImg(targetCard);
+        if (typeof this._savePipCardSnapshot === 'function') this._savePipCardSnapshot(resolvedCard, snap);
+        if (typeof this.syncPipCardLockUI === 'function') this.syncPipCardLockUI(resolvedCard);
+        if (typeof this.renderPipGraphCard === 'function') this.renderPipGraphCard(resolvedCard);
+        if (typeof this.scheduleBakePipGraphCardToImg === 'function') this.scheduleBakePipGraphCardToImg(resolvedCard);
         if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
           this._recordAudioWorkspaceStateIfNeeded(true);
         }

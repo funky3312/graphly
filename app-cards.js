@@ -1594,9 +1594,12 @@
       const startMin = Boolean(options && options.startMinimized);
       const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum, sourceCanvas: sourceCanvas || null };
       if (startMin) {
-        el.classList.add('minimized');
+        el.classList.add('minimized', 'pip-locked-mode');
+        this.syncProblemCardLockUI(el);
         const chev = el.querySelector('.card-fold-chevron');
         if (chev) chev.textContent = '▸';
+      } else {
+        this.setProblemCardLockedByWidget(el, true, false);
       }
       this.extraProblemCards.push(cardItem);
       this.updateProblemCardPosition(true);
@@ -1613,9 +1616,17 @@
         const nextMin = !wasMin;
         cardItem.isMin = nextMin;
         el.classList.toggle('minimized', nextMin);
-        if (!nextMin && el._savedExpandedWidth) {
-          el.style.width = el._savedExpandedWidth;
-          if (typeof el._syncCardLaserSize === 'function') el._syncCardLaserSize();
+        if (nextMin) {
+          this.clearProblemCardStealthTimer(el);
+          el.classList.remove('pip-stealth-locked');
+        } else {
+          if (el._savedExpandedWidth) {
+            el.style.width = el._savedExpandedWidth;
+            if (typeof el._syncCardLaserSize === 'function') el._syncCardLaserSize();
+          }
+          if (el.classList.contains('pip-locked-mode')) {
+            this.scheduleProblemCardStealth(el, 3000);
+          }
         }
         const chev = el.querySelector('.card-fold-chevron');
         if (chev) chev.textContent = nextMin ? '▸' : '▾';
@@ -1652,6 +1663,10 @@
           if (e.cancelable !== false) e.preventDefault();
           e.stopPropagation();
           return;
+        }
+        if (e.pointerType === 'pen') {
+          this._markStylusPenDetected();
+          this._lastPenActiveTime = Date.now();
         }
         this.bringCardToFront(el);
         e.preventDefault();
@@ -1693,6 +1708,9 @@
       };
       window.addEventListener('pointermove', (e) => {
         if (!isDragging || el.isConnected === false) return;
+        if (e.pointerType === 'pen') {
+          this._lastPenActiveTime = Date.now();
+        }
         if (e.pointerType === 'mouse' && typeof e.buttons === 'number' && e.buttons === 0) {
           el._cancelCardDrag();
           return;
@@ -1820,7 +1838,8 @@
           if (e.pointerType === 'touch' && (
             this.isDrawingInk ||
             this._isDrawingCardInk ||
-            (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450))
+            (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450)) ||
+            this._shouldIgnoreCanvasTouchPointer(e)
           )) {
             if (e.cancelable !== false) e.preventDefault();
             e.stopPropagation();
@@ -2023,12 +2042,12 @@
       const cardW = initialWidth || 520;
 
       if (widget) {
-        this.setProblemCardLockedByWidget(widget, false, false);
         widget.classList.remove('minimized', 'card-ink-active', 'card-laser-active');
         const pInkBtn = document.getElementById('btnProblemCardLaser');
         if (pInkBtn) pInkBtn.classList.remove('active');
         if (widget._cardLaserState) widget._cardLaserState.active = false;
         widget.style.display = 'flex';
+        this.setProblemCardLockedByWidget(widget, true, false);
         this.problemCardBaseX = 72;
         this.problemCardBaseY = 18;
         widget.style.left = '72px';
@@ -2430,6 +2449,10 @@
             e.stopPropagation();
             return;
           }
+          if (e.pointerType === 'pen') {
+            this._markStylusPenDetected();
+            this._lastPenActiveTime = Date.now();
+          }
           this.bringCardToFront(widget);
           e.preventDefault();
           e.stopPropagation();
@@ -2471,6 +2494,9 @@
         };
         window.addEventListener('pointermove', (e) => {
           if (!isDragging) return;
+          if (e.pointerType === 'pen') {
+            this._lastPenActiveTime = Date.now();
+          }
           if (e.pointerType === 'mouse' && typeof e.buttons === 'number' && e.buttons === 0) {
             widget._cancelCardDrag();
             return;
@@ -2617,7 +2643,8 @@
           if (e.pointerType === 'touch' && (
             this.isDrawingInk ||
             this._isDrawingCardInk ||
-            (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450))
+            (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450)) ||
+            this._shouldIgnoreCanvasTouchPointer(e)
           )) {
             if (e.cancelable !== false) e.preventDefault();
             e.stopPropagation();
@@ -2762,8 +2789,16 @@
       const nextMin = !wasMin;
       this.isProblemCardMinimized = nextMin;
       widget.classList.toggle('minimized', nextMin);
-      if (!nextMin && widget._savedExpandedWidth) {
-        widget.style.width = widget._savedExpandedWidth;
+      if (nextMin) {
+        this.clearProblemCardStealthTimer(widget);
+        widget.classList.remove('pip-stealth-locked');
+      } else {
+        if (widget._savedExpandedWidth) {
+          widget.style.width = widget._savedExpandedWidth;
+        }
+        if (widget.classList.contains('pip-locked-mode')) {
+          this.scheduleProblemCardStealth(widget, 3000);
+        }
       }
       if (icon) icon.textContent = nextMin ? '▸' : '▾';
       this.updateProblemCardPosition();
@@ -5512,6 +5547,10 @@
           e.stopPropagation();
           return;
         }
+        if (e.pointerType === 'pen') {
+          this._markStylusPenDetected();
+          this._lastPenActiveTime = Date.now();
+        }
         this.bringCardToFront(el);
         e.preventDefault();
         e.stopPropagation();
@@ -5552,6 +5591,9 @@
       };
       window.addEventListener('pointermove', (e) => {
         if (!isDragging || el.isConnected === false) return;
+        if (e.pointerType === 'pen') {
+          this._lastPenActiveTime = Date.now();
+        }
         if (e.pointerType === 'mouse' && typeof e.buttons === 'number' && e.buttons === 0) {
           el._cancelCardDrag();
           return;
@@ -5647,7 +5689,8 @@
           if (e.pointerType === 'touch' && (
             this.isDrawingInk ||
             this._isDrawingCardInk ||
-            (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450))
+            (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450)) ||
+            this._shouldIgnoreCanvasTouchPointer(e)
           )) {
             if (e.cancelable !== false) e.preventDefault();
             e.stopPropagation();
@@ -6495,6 +6538,10 @@
             e.stopPropagation();
             return;
           }
+          if (e.pointerType === 'pen') {
+            this._markStylusPenDetected();
+            this._lastPenActiveTime = Date.now();
+          }
           this.bringCardToFront(widget);
           e.preventDefault();
           e.stopPropagation();
@@ -6536,6 +6583,9 @@
         };
         window.addEventListener('pointermove', (e) => {
           if (!isDragging) return;
+          if (e.pointerType === 'pen') {
+            this._lastPenActiveTime = Date.now();
+          }
           if (e.pointerType === 'mouse' && typeof e.buttons === 'number' && e.buttons === 0) {
             widget._cancelCardDrag();
             return;
@@ -6634,7 +6684,8 @@
           if (e.pointerType === 'touch' && (
             this.isDrawingInk ||
             this._isDrawingCardInk ||
-            (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450))
+            (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450)) ||
+            this._shouldIgnoreCanvasTouchPointer(e)
           )) {
             if (e.cancelable !== false) e.preventDefault();
             e.stopPropagation();
@@ -8399,7 +8450,8 @@
       if (isLocked) {
         // 🔒 잠금 후: 가로세로 비율을 고정한 채로 그래프와 카드 전체를 비례 확대/축소
         const lockedAspect = startState.startAspect || (isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82));
-        newW = Math.round(Math.max(200, Math.min(window.innerWidth * 0.85, startState.startW + dw)));
+        const minWForAspect = Math.max(200, Math.ceil(140 / Math.max(0.15, lockedAspect)));
+        newW = Math.round(Math.max(minWForAspect, Math.min(window.innerWidth * 0.85, startState.startW + dw)));
         newH = Math.round(Math.max(140, newW * lockedAspect));
         nextAspect = lockedAspect;
       } else {
@@ -8415,11 +8467,18 @@
       startState.lastAppliedW = newW;
       startState.lastAppliedH = newH;
 
-      if (!isLocked && snap) {
-        snap.xSpan = startState.startXSpan * (newW / Math.max(1, startState.startW));
-        snap.ySpan = startState.startYSpan * (newH / Math.max(1, startState.startH));
-        snap.panX = startState.startPanX;
-        snap.panY = startState.startPanY;
+      if (snap) {
+        if (!isLocked) {
+          snap.xSpan = startState.startXSpan * (newW / Math.max(1, startState.startW));
+          snap.ySpan = startState.startYSpan * (newH / Math.max(1, startState.startH));
+          snap.panX = startState.startPanX;
+          snap.panY = startState.startPanY;
+        } else {
+          snap.xSpan = startState.startXSpan;
+          snap.ySpan = startState.startYSpan;
+          snap.panX = startState.startPanX * (newW / Math.max(1, startState.startW));
+          snap.panY = startState.startPanY * (newH / Math.max(1, startState.startH));
+        }
         snap._pipCardW = newW;
         snap._pipCardH = newH;
       }
@@ -8506,15 +8565,21 @@
         } else {
           cardRef.aspect = revAspect;
         }
-        if (snap && !startState.isLocked) {
+        if (snap) {
           snap.xSpan = startState.startXSpan;
           snap.ySpan = startState.startYSpan;
           snap.panX = startState.startPanX;
           snap.panY = startState.startPanY;
           snap._pipCardW = revW;
           snap._pipCardH = revH;
-          this._reprojectPipCardInkFromMathCoords(cardRef, revW, revH);
+          if (!startState.isLocked) {
+            this._reprojectPipCardInkFromMathCoords(cardRef, revW, revH);
+          }
         }
+      }
+
+      if (snap) {
+        this._savePipCardSnapshot(cardRef, snap);
       }
 
       if (widget._pipRenderRafId) {
@@ -9155,12 +9220,13 @@
       if (candidates.length === 0) return null;
       if (candidates.length === 1) return candidates[0];
 
+      if (this._lastFocusedPipCardRef) {
+        const directFocused = candidates.find(it => it.cardRef === this._lastFocusedPipCardRef);
+        if (directFocused) return directFocused;
+      }
+
       const unlocked = candidates.filter(it => !it.snap.isPipLocked);
       const pool = unlocked.length > 0 ? unlocked : candidates;
-      if (this._lastFocusedPipCardRef) {
-        const focused = pool.find(it => it.cardRef === this._lastFocusedPipCardRef);
-        if (focused) return focused;
-      }
       pool.sort((a, b) => b.zIndex - a.zIndex);
       return pool[0];
     }
