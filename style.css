@@ -16954,16 +16954,193 @@ body.theme-light .math-toolkit-item-desc {
   color: #64748b;
 }
 
-/* N축 합성함수 우하단 비주얼 슬롯 컨트롤러 */
+/* N축 합성함수 스튜디오 반응형 비율 고정 (하단 잘림 0px 보장) & 우하단 비주얼 슬롯 컨트롤러 */
+#modalNAxisStudio .n-axis-studio-card {
+  width: fit-content;
+  max-width: 96vw;
+  max-height: 94vh;
+}
+
+#modalNAxisStudio .n-axis-studio-header {
+  flex-shrink: 0;
+}
+
+#modalNAxisStudio .n-axis-studio-body {
+  position: relative;
+  width: min(1140px, 95vw, calc((93vh - 48px) * 1.6764706));
+  aspect-ratio: 1140 / 680;
+  height: auto;
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+#modalNAxisStudio #nAxisStudioCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+
 #modalNAxisStudio .n-axis-control-quadrant {
-  width: 544px;
-  height: 312px;
-  padding: 10px 14px;
+  right: 1.4%;
+  bottom: 1.8%;
+  width: 47.2%;
+  height: auto;
+  max-height: 46.8%;
+  padding: 8px 12px;
+  overflow-y: auto;
+}
+
+#modalNAxisStudio .n-axis-tab-content {
+  gap: 5px;
+  justify-content: space-between;
+}
+
+#modalNAxisStudio .n-axis-slider-box {
+  padding: 5px 10px;
+}
+
+#modalNAxisStudio .n-axis-stat-card {
+  padding: 3px 8px;
+}
+
+@media (max-height: 740px) {
+  #modalNAxisStudio .n-axis-control-quadrant {
+    max-height: 48%;
+    padding: 6px 10px;
+  }
+  #modalNAxisStudio .n-axis-visual-slots {
+    gap: 3px;
+    padding: 4px 8px;
+  }
+  #modalNAxisStudio .n-axis-slot-block + .n-axis-slot-block {
+    padding-top: 4px;
+  }
+  #modalNAxisStudio .n-axis-stats-grid {
+    display: none;
+  }
+  #modalNAxisStudio .n-axis-slider-box {
+    padding: 4px 9px;
+  }
+  #modalNAxisStudio .n-axis-btn-action,
+  #modalNAxisStudio .n-axis-btn-outline {
+    padding: 4px 9px;
+  }
+}
+
+/* 칠판에 삽입된 합성함수 3-그래프 판서 카드: 불필요한 함수추가/수선/잠금 버튼 숨김 */
+.n-axis-studio-board-card .btn-card-add-func,
+.n-axis-studio-board-card .btn-card-dropline,
+.n-axis-studio-board-card .btn-extra-lock,
+.n-axis-studio-board-card #btnGraphCardLock {
+  display: none !important;
+}
+
+/* 합성함수 실행 전 그래프 2개 세팅 안내 모달 */
+.n-axis-setup-notice-card {
+  width: min(460px, 92vw);
+}
+
+.n-axis-setup-notice-body {
+  padding: 20px 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.n-axis-setup-notice-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #f8fafc;
+  letter-spacing: -0.02em;
+}
+
+body.theme-light .n-axis-setup-notice-title {
+  color: #0f172a;
+}
+
+.n-axis-setup-notice-desc {
+  font-size: 13px;
+  line-height: 1.58;
+  color: #cbd5e1;
+}
+
+body.theme-light .n-axis-setup-notice-desc {
+  color: #475569;
+}
+
+.n-axis-setup-notice-status {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  font-size: 12px;
+  font-weight: 700;
+  color: #93c5fd;
+  line-height: 1.45;
+}
+
+body.theme-light .n-axis-setup-notice-status {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.n-axis-setup-notice-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.n-axis-notice-btn {
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 8px 15px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.n-axis-notice-btn.secondary {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #cbd5e1;
+}
+
+.n-axis-notice-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+body.theme-light .n-axis-notice-btn.secondary {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+body.theme-light .n-axis-notice-btn.secondary:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.n-axis-notice-btn.primary {
+  background: #2563eb;
+  border: 1px solid #2563eb;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+
+.n-axis-notice-btn.primary:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
 }
 
 .n-axis-visual-slots {
-  gap: 7px;
-  padding: 7px 10px;
+  gap: 5px;
+  padding: 6px 9px;
 }
 
 .n-axis-slot-block {
