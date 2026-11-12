@@ -2419,6 +2419,7 @@ class GraphApp {
     this.lessonPlaylistIndex = 0;
     this.isTopSlideBarHidden = false;
     this.lessonTeachingMode = null;
+    this._activeLoadedCloudLibraryMeta = null;
     this._lastShareModalDeckTitle = '';
     const inpDeckReset = document.getElementById('inputShareModalDeckTitle');
     if (inpDeckReset) inpDeckReset.value = '';
@@ -6653,28 +6654,53 @@ class GraphApp {
         const usage = (typeof this.getShareDailyUsageStatus === 'function')
           ? this.getShareDailyUsageStatus()
           : null;
-        if (!this.cloudUser || !this.cloudUser.uid) {
-          const quota = (typeof this.getCurrentTierQuota === 'function') ? this.getCurrentTierQuota() : null;
-          const days = (quota && quota.shareExpiryDays) ? quota.shareExpiryDays : 3;
-          const limit = (usage && usage.dailyLimit) ? usage.dailyLimit : 3;
-          const rem = (usage && typeof usage.remainingCount === 'number') ? usage.remainingCount : limit;
-          lblTierNotice.textContent = `🔗 비로그인 공유: 오늘 남은 횟수 ${rem}/${limit}회 · ${days}일 후 만료 (Pro 무제한)`;
-          return;
-        }
-        const tier = (typeof this.getUserSubscriptionTier === 'function')
-          ? this.getUserSubscriptionTier()
-          : (this.isProUser ? 'pro' : 'free');
         const quota = (typeof this.getCurrentTierQuota === 'function') ? this.getCurrentTierQuota() : null;
-        if (tier === 'premium') {
-          lblTierNotice.textContent = '💎 Premium 무제한 영구 링크 · 원본 파일이 내 클라우드 [🔗 공유 링크] 폴더에 자동 저장됩니다';
-        } else if (tier === 'pro') {
-          const days = (quota && quota.shareExpiryDays) ? quota.shareExpiryDays : 7;
-          lblTierNotice.textContent = `👑 Pro 무제한 공유 · 생성일로부터 ${days}일 유지 (Premium 업그레이드 시 영구 유지)`;
-        } else {
-          const days = (quota && quota.shareExpiryDays) ? quota.shareExpiryDays : 3;
-          const limit = (usage && usage.dailyLimit) ? usage.dailyLimit : 3;
+        const isLoggedIn = Boolean(this.cloudUser && this.cloudUser.uid);
+        const tier = isLoggedIn
+          ? ((typeof this.getUserSubscriptionTier === 'function') ? this.getUserSubscriptionTier() : (this.isProUser ? 'pro' : 'free'))
+          : 'guest';
+
+        let mainText = '';
+        let subText = '';
+        if (!isLoggedIn) {
+          const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 3;
+          const limit = (usage && usage.dailyLimit) ? usage.dailyLimit : 5;
           const rem = (usage && typeof usage.remainingCount === 'number') ? usage.remainingCount : limit;
-          lblTierNotice.textContent = `🔗 무료 공유: 오늘 남은 횟수 ${rem}/${limit}회 · ${days}일 후 만료 (Pro 7일 무제한 · Premium 영구)`;
+          mainText = `즉석 단기 공유 · 오늘 ${rem}/${limit}회 남음 · ${days}일 후 만료`;
+          subText = '수정 자동 반영 · 영구 링크는 클라우드 보관함 이용';
+        } else if (tier === 'premium') {
+          const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 7;
+          mainText = `즉석 단기 공유 · 무제한 · ${days}일 후 자동 만료`;
+          subText = '영구 링크 · 수정 반영은 클라우드 보관함에서 추출';
+        } else if (tier === 'pro') {
+          const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 7;
+          mainText = `즉석 단기 공유 · 무제한 · ${days}일 후 자동 만료`;
+          subText = '수정 자동 반영 · 영구 링크(Premium)는 보관함 이용';
+        } else {
+          const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 3;
+          const limit = (usage && usage.dailyLimit) ? usage.dailyLimit : 5;
+          const rem = (usage && typeof usage.remainingCount === 'number') ? usage.remainingCount : limit;
+          mainText = `즉석 단기 공유 · 오늘 ${rem}/${limit}회 남음 · ${days}일 후 만료`;
+          subText = '수정 자동 반영 · 영구 링크(Premium)는 보관함 이용';
+        }
+
+        lblTierNotice.innerHTML = `
+          <div class="share-tier-notice-main">${mainText}</div>
+          <div class="share-tier-notice-sub">
+            <span class="share-tier-notice-sub-text">${subText}</span>
+            <button type="button" id="btnShareNoticeOpenVault" class="share-tier-vault-link-btn">보관함 ▸</button>
+          </div>
+        `;
+        const btnVault = lblTierNotice.querySelector('#btnShareNoticeOpenVault');
+        if (btnVault) {
+          btnVault.onclick = () => {
+            const inpTitleEl = document.getElementById('inputShareModalDeckTitle');
+            const carryTitle = (inpTitleEl && inpTitleEl.value.trim()) ? inpTitleEl.value.trim() : (this._lastShareModalDeckTitle || '');
+            if (modal) modal.classList.remove('show');
+            if (typeof this.openCloudHubModal === 'function') {
+              this.openCloudHubModal({ prefillTitle: carryTitle });
+            }
+          };
         }
       };
       this.refreshShareTierNoticeUI = syncShareTierNoticeUI;

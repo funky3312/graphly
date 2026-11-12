@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261113_77">
+  <link rel="stylesheet" href="style.css?v=20261113_80">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -2695,6 +2695,99 @@
         </div>
       </div>
     </div>
+
+    <!-- [클라우드 보관함 파일별 공유 옵션 미니 팝오버 (기본: 문제·그래프·필기·음성 전체 체크 시작 · 옵션별 초경량 주소표 링크/QR 발급)] -->
+    <div id="cloudShareOptionPopover" class="cloud-share-option-popover" style="display: none;" role="dialog"
+      aria-label="클라우드 공유 옵션">
+      <div class="cloud-share-pop-header">
+        <div class="cloud-share-pop-title-wrap">
+          <svg class="cloud-share-pop-title-icon" width="13.5" height="13.5" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 17H7A5 5 0 0 1 7 7h2" />
+            <path d="M15 7h2a5 5 0 1 1 0 10h-2" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+          </svg>
+          <span id="lblCloudSharePopTitle" class="cloud-share-pop-title">공유 링크 · QR 추출</span>
+        </div>
+        <button type="button" id="btnCloseCloudSharePop" class="cloud-share-pop-close" title="닫기 (ESC)"
+          aria-label="닫기">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="cloud-share-pop-body">
+        <div class="cloud-share-pop-subtitle-row">
+          <span class="cloud-share-pop-subtitle">포함 항목</span>
+          <span id="lblCloudSharePopFilterSummary" class="cloud-share-pop-filter-tag">전체 포함</span>
+        </div>
+
+        <div class="cloud-share-pop-chips">
+          <label class="cloud-share-layer-chip active" id="lblCloudShareOptProblem">
+            <input type="checkbox" id="chkCloudShareOptProblem" checked style="display: none;">
+            <svg class="cloud-share-check-icon" width="11" height="11" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <span>문제</span>
+          </label>
+          <label class="cloud-share-layer-chip active" id="lblCloudShareOptGraph">
+            <input type="checkbox" id="chkCloudShareOptGraph" checked style="display: none;">
+            <svg class="cloud-share-check-icon" width="11" height="11" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <span>그래프</span>
+          </label>
+          <label class="cloud-share-layer-chip active" id="lblCloudShareOptInk">
+            <input type="checkbox" id="chkCloudShareOptInk" checked style="display: none;">
+            <svg class="cloud-share-check-icon" width="11" height="11" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <span>필기</span>
+          </label>
+          <label class="cloud-share-layer-chip active" id="lblCloudShareOptAudio">
+            <input type="checkbox" id="chkCloudShareOptAudio" checked style="display: none;">
+            <svg class="cloud-share-check-icon" width="11" height="11" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <span>음성</span>
+          </label>
+        </div>
+
+        <div id="lblCloudSharePopStatus" class="cloud-share-pop-status"></div>
+
+        <div class="cloud-share-pop-actions">
+          <button type="button" id="btnCloudSharePopCopyLink" class="cloud-share-pop-btn is-primary">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 17H7A5 5 0 0 1 7 7h2" />
+              <path d="M15 7h2a5 5 0 1 1 0 10h-2" />
+              <line x1="8" y1="12" x2="16" y2="12" />
+            </svg>
+            <span id="lblBtnCloudSharePopCopy">링크 복사</span>
+          </button>
+          <button type="button" id="btnCloudSharePopSaveQr" class="cloud-share-pop-btn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+              <path d="M14 14h3v3h-3z" />
+              <path d="M20 14v3h-2" />
+              <path d="M14 20h3" />
+              <path d="M19 19h2v2h-2z" />
+            </svg>
+            <span id="lblBtnCloudSharePopQr">QR 저장</span>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- [Graphly 이용권 안내 · 구매 모달 (Stitch 최종 시안: 카드별 주기 탭 분리형 · 무스크롤 정밀 벡터 UI)] -->
@@ -2799,7 +2892,7 @@
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                   </svg>
-                  <span>공유 링크 <span id="lblPlanFreeShare">1일 3개 · 3일 만료</span></span>
+                  <span>공유 링크 <span id="lblPlanFreeShare">1일 5개 · 3일 만료</span></span>
                 </li>
               </ul>
             </div>
@@ -3024,7 +3117,7 @@
                     stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12"></polyline>
                   </svg>
-                  <span>링크 원본 클라우드 자동 저장</span>
+                  <span>보관함 영구 QR · 수정 자동 반영</span>
                 </div>
                 <div class="pricing-exclusive-item">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
@@ -3461,15 +3554,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261113_77"></script>
-  <script src="app-core.js?v=20261113_77"></script>
-  <script src="app-ink.js?v=20261113_77"></script>
-  <script src="app-pdf.js?v=20261113_77"></script>
-  <script src="app-cards.js?v=20261113_77"></script>
-  <script src="app-cloud.js?v=20261113_77"></script>
-  <script src="app-canvas.js?v=20261113_77"></script>
-  <script src="app-toolkit.js?v=20261113_77"></script>
-  <script src="app.js?v=20261113_77"></script>
+  <script src="engine.js?v=20261113_80"></script>
+  <script src="app-core.js?v=20261113_80"></script>
+  <script src="app-ink.js?v=20261113_80"></script>
+  <script src="app-pdf.js?v=20261113_80"></script>
+  <script src="app-cards.js?v=20261113_80"></script>
+  <script src="app-cloud.js?v=20261113_80"></script>
+  <script src="app-canvas.js?v=20261113_80"></script>
+  <script src="app-toolkit.js?v=20261113_80"></script>
+  <script src="app.js?v=20261113_80"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">

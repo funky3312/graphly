@@ -20195,3 +20195,485 @@ body.theme-light .promo-banner-modal-footer {
   transform: translateX(1.5px);
 }
 
+/* ==========================================================================
+   [v79: Two-Track 공유 안내(내보내기 창) & 클라우드 보관함 공유 옵션 미니 팝오버]
+   ========================================================================== */
+#modalShare .share-link-tier-notice {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 3px;
+}
+
+body:not(.theme-light) #modalShare .share-link-tier-notice {
+  background: rgba(30, 41, 59, 0.52);
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+#modalShare .share-tier-notice-main {
+  font-size: 10.8px;
+  font-weight: 700;
+  color: #334155;
+  line-height: 1.32;
+  letter-spacing: -0.01em;
+}
+
+body:not(.theme-light) #modalShare .share-tier-notice-main {
+  color: #e2e8f0;
+}
+
+#modalShare .share-tier-notice-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+#modalShare .share-tier-notice-sub-text {
+  font-size: 10.2px;
+  font-weight: 500;
+  color: #64748b;
+  line-height: 1.3;
+  min-width: 0;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body:not(.theme-light) #modalShare .share-tier-notice-sub-text {
+  color: #94a3b8;
+}
+
+#modalShare .share-tier-vault-link-btn {
+  flex-shrink: 0;
+  height: 20px;
+  padding: 0 6.5px;
+  border-radius: 5px;
+  border: 1px solid rgba(37, 99, 235, 0.28);
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.13s ease, border-color 0.13s ease, color 0.13s ease;
+}
+
+#modalShare .share-tier-vault-link-btn:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+body:not(.theme-light) #modalShare .share-tier-vault-link-btn {
+  border-color: rgba(96, 165, 250, 0.36);
+  background: rgba(37, 99, 235, 0.2);
+  color: #93c5fd;
+}
+
+body:not(.theme-light) #modalShare .share-tier-vault-link-btn:hover {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+/* 클라우드 보관함 행 내 공유 배지 클릭/호버 피드백 & 팝오버 오픈 버튼 강조 */
+#modalCloudHub .cloud-perm-link-badge {
+  cursor: pointer;
+  transition: background 0.13s ease, color 0.13s ease, border-color 0.13s ease;
+}
+
+#modalCloudHub .cloud-perm-link-badge:hover {
+  filter: brightness(0.95);
+}
+
+.btn-cloud-share-item.is-popover-open {
+  background: #eff6ff !important;
+  border-color: #2563eb !important;
+  color: #2563eb !important;
+}
+
+body:not(.theme-light) .btn-cloud-share-item.is-popover-open {
+  background: rgba(59, 130, 246, 0.25) !important;
+  border-color: #60a5fa !important;
+  color: #93c5fd !important;
+}
+
+/* 클라우드 보관함 공유 옵션 미니 팝오버 (#cloudShareOptionPopover) */
+.cloud-share-option-popover {
+  position: fixed;
+  width: 274px;
+  z-index: 260;
+  border-radius: 13px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 16px 38px -8px rgba(15, 23, 42, 0.22), 0 4px 12px rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+  overflow: hidden;
+  user-select: none;
+  word-break: keep-all;
+  animation: cloudSharePopIn 0.13s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body:not(.theme-light) .cloud-share-option-popover {
+  background: #0f172a;
+  border-color: rgba(148, 163, 184, 0.28);
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.62);
+  color: #f8fafc;
+}
+
+@keyframes cloudSharePopIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.cloud-share-pop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px 8px 11px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+body:not(.theme-light) .cloud-share-pop-header {
+  background: rgba(30, 41, 59, 0.65);
+  border-bottom-color: rgba(148, 163, 184, 0.18);
+}
+
+.cloud-share-pop-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cloud-share-pop-title-icon {
+  flex-shrink: 0;
+  color: #2563eb;
+}
+
+body:not(.theme-light) .cloud-share-pop-title-icon {
+  color: #60a5fa;
+}
+
+.cloud-share-pop-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body:not(.theme-light) .cloud-share-pop-title {
+  color: #f8fafc;
+}
+
+.cloud-share-pop-close {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.cloud-share-pop-close:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+body:not(.theme-light) .cloud-share-pop-close {
+  color: #94a3b8;
+}
+
+body:not(.theme-light) .cloud-share-pop-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.cloud-share-pop-body {
+  padding: 10px 11px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cloud-share-pop-subtitle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.cloud-share-pop-subtitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+}
+
+body:not(.theme-light) .cloud-share-pop-subtitle {
+  color: #cbd5e1;
+}
+
+.cloud-share-pop-filter-tag {
+  font-size: 10.2px;
+  font-weight: 700;
+  padding: 1.5px 6.5px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.cloud-share-pop-filter-tag.is-partial {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: rgba(37, 99, 235, 0.25);
+}
+
+body:not(.theme-light) .cloud-share-pop-filter-tag {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+body:not(.theme-light) .cloud-share-pop-filter-tag.is-partial {
+  background: rgba(37, 99, 235, 0.22);
+  color: #93c5fd;
+  border-color: rgba(96, 165, 250, 0.36);
+}
+
+.cloud-share-pop-chips {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.cloud-share-layer-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 28px;
+  padding: 4px 3px;
+  border-radius: 6.5px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #64748b;
+  font-size: 11.2px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.13s ease, border-color 0.13s ease, color 0.13s ease;
+}
+
+.cloud-share-layer-chip:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.cloud-share-layer-chip .cloud-share-check-icon {
+  flex-shrink: 0;
+  color: #cbd5e1;
+  opacity: 0.55;
+  transition: color 0.13s ease, opacity 0.13s ease;
+}
+
+.cloud-share-layer-chip.active {
+  background: rgba(37, 99, 235, 0.11);
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.cloud-share-layer-chip.active .cloud-share-check-icon {
+  color: #2563eb;
+  opacity: 1;
+}
+
+body:not(.theme-light) .cloud-share-layer-chip {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+}
+
+body:not(.theme-light) .cloud-share-layer-chip:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: #ffffff;
+}
+
+body:not(.theme-light) .cloud-share-layer-chip.active {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: #60a5fa;
+  color: #eff6ff;
+}
+
+body:not(.theme-light) .cloud-share-layer-chip.active .cloud-share-check-icon {
+  color: #60a5fa;
+}
+
+.cloud-share-pop-status {
+  display: flex;
+  align-items: center;
+  gap: 5.5px;
+  padding: 5px 7.5px;
+  border-radius: 7px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 10.4px;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.3;
+}
+
+body:not(.theme-light) .cloud-share-pop-status {
+  background: rgba(30, 41, 59, 0.52);
+  border-color: rgba(148, 163, 184, 0.18);
+  color: #94a3b8;
+}
+
+.cloud-share-pop-status .pop-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #94a3b8;
+  flex-shrink: 0;
+}
+
+.cloud-share-pop-status.is-new-perm .pop-status-dot {
+  background: #7c3aed;
+}
+
+.cloud-share-pop-status.is-active {
+  background: #eff6ff;
+  border-color: rgba(37, 99, 235, 0.22);
+  color: #1e40af;
+}
+
+.cloud-share-pop-status.is-active .pop-status-dot {
+  background: #2563eb;
+}
+
+.cloud-share-pop-status.is-active-perm {
+  background: #f5f3ff;
+  border-color: rgba(124, 58, 237, 0.25);
+  color: #5b21b6;
+}
+
+.cloud-share-pop-status.is-active-perm .pop-status-dot {
+  background: #7c3aed;
+}
+
+body:not(.theme-light) .cloud-share-pop-status.is-active {
+  background: rgba(37, 99, 235, 0.18);
+  border-color: rgba(96, 165, 250, 0.3);
+  color: #bfdbfe;
+}
+
+body:not(.theme-light) .cloud-share-pop-status.is-active-perm {
+  background: rgba(124, 58, 237, 0.2);
+  border-color: rgba(167, 139, 250, 0.34);
+  color: #ddd6fe;
+}
+
+.cloud-share-pop-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.cloud-share-pop-btn {
+  height: 31px;
+  padding: 0 8px;
+  border-radius: 7.5px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #1e293b;
+  font-size: 11.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.13s ease, border-color 0.13s ease, color 0.13s ease;
+}
+
+.cloud-share-pop-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.cloud-share-pop-btn.is-primary {
+  background: #1e293b;
+  border-color: #1e293b;
+  color: #ffffff;
+}
+
+.cloud-share-pop-btn.is-primary:hover:not(:disabled) {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #ffffff;
+}
+
+.cloud-share-pop-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+body:not(.theme-light) .cloud-share-pop-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #e2e8f0;
+}
+
+body:not(.theme-light) .cloud-share-pop-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+
+body:not(.theme-light) .cloud-share-pop-btn.is-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+body:not(.theme-light) .cloud-share-pop-btn.is-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.cloud-share-pop-btn.is-success-flash,
+.cloud-share-pop-btn.is-primary.is-success-flash {
+  background: #059669 !important;
+  border-color: #059669 !important;
+  color: #ffffff !important;
+}
+
+
