@@ -1594,9 +1594,12 @@
       const startMin = Boolean(options && options.startMinimized);
       const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum, sourceCanvas: sourceCanvas || null };
       if (startMin) {
-        el.classList.add('minimized');
+        el.classList.add('minimized', 'pip-locked-mode');
+        this.syncProblemCardLockUI(el);
         const chev = el.querySelector('.card-fold-chevron');
         if (chev) chev.textContent = '▸';
+      } else {
+        this.setProblemCardLockedByWidget(el, true, false);
       }
       this.extraProblemCards.push(cardItem);
       this.updateProblemCardPosition(true);
@@ -1613,9 +1616,15 @@
         const nextMin = !wasMin;
         cardItem.isMin = nextMin;
         el.classList.toggle('minimized', nextMin);
-        if (!nextMin && el._savedExpandedWidth) {
-          el.style.width = el._savedExpandedWidth;
-          if (typeof el._syncCardLaserSize === 'function') el._syncCardLaserSize();
+        if (nextMin) {
+          this.clearProblemCardStealthTimer(el);
+          el.classList.remove('pip-stealth-locked');
+        } else {
+          if (el._savedExpandedWidth) {
+            el.style.width = el._savedExpandedWidth;
+            if (typeof el._syncCardLaserSize === 'function') el._syncCardLaserSize();
+          }
+          this.scheduleProblemCardStealth(el, 3000);
         }
         const chev = el.querySelector('.card-fold-chevron');
         if (chev) chev.textContent = nextMin ? '▸' : '▾';
@@ -2023,12 +2032,12 @@
       const cardW = initialWidth || 520;
 
       if (widget) {
-        this.setProblemCardLockedByWidget(widget, false, false);
         widget.classList.remove('minimized', 'card-ink-active', 'card-laser-active');
         const pInkBtn = document.getElementById('btnProblemCardLaser');
         if (pInkBtn) pInkBtn.classList.remove('active');
         if (widget._cardLaserState) widget._cardLaserState.active = false;
         widget.style.display = 'flex';
+        this.setProblemCardLockedByWidget(widget, true, false);
         this.problemCardBaseX = 72;
         this.problemCardBaseY = 18;
         widget.style.left = '72px';
@@ -2762,8 +2771,14 @@
       const nextMin = !wasMin;
       this.isProblemCardMinimized = nextMin;
       widget.classList.toggle('minimized', nextMin);
-      if (!nextMin && widget._savedExpandedWidth) {
-        widget.style.width = widget._savedExpandedWidth;
+      if (nextMin) {
+        this.clearProblemCardStealthTimer(widget);
+        widget.classList.remove('pip-stealth-locked');
+      } else {
+        if (widget._savedExpandedWidth) {
+          widget.style.width = widget._savedExpandedWidth;
+        }
+        this.scheduleProblemCardStealth(widget, 3000);
       }
       if (icon) icon.textContent = nextMin ? '▸' : '▾';
       this.updateProblemCardPosition();
@@ -2920,6 +2935,9 @@
       if (resizeHandlePeekEl) {
         resizeHandlePeekEl.addEventListener('pointerdown', activateCardHeaderPeek, { passive: true });
       }
+      cardWidgetEl.querySelectorAll('.pip-edge-viewport-handle').forEach((edgeH) => {
+        edgeH.addEventListener('pointerdown', activateCardHeaderPeek, { passive: true });
+      });
       if (!this._cardHeaderPeekGlobalDismissBound) {
         this._cardHeaderPeekGlobalDismissBound = true;
         document.addEventListener('pointerdown', (ev) => {
@@ -3461,8 +3479,8 @@
             } else if (typeof this.deselectAllPipGraphCards === 'function') {
               this.deselectAllPipGraphCards();
             }
-            if (typeof this._getPipCardRefByWidget === 'function' && typeof this.wakeUpPipGraphCardStealth === 'function') {
-              const cRef = this._getPipCardRefByWidget(cardWidgetEl);
+            if (typeof this._getPipCardRefFromWidget === 'function' && typeof this.wakeUpPipGraphCardStealth === 'function') {
+              const cRef = this._getPipCardRefFromWidget(cardWidgetEl);
               if (cRef) this.wakeUpPipGraphCardStealth(cRef, false);
             }
           } else {
@@ -3494,8 +3512,8 @@
           }
           syncCanvasSize();
         } else if (cardWidgetEl.classList.contains('graph-card-widget')) {
-          if (typeof this._getPipCardRefByWidget === 'function' && typeof this.schedulePipGraphCardStealth === 'function') {
-            const cRef = this._getPipCardRefByWidget(cardWidgetEl);
+          if (typeof this._getPipCardRefFromWidget === 'function' && typeof this.schedulePipGraphCardStealth === 'function') {
+            const cRef = this._getPipCardRefFromWidget(cardWidgetEl);
             if (cRef) this.schedulePipGraphCardStealth(cRef, 3000);
           }
         } else if (typeof this.scheduleProblemCardStealth === 'function') {
@@ -5294,6 +5312,7 @@
         if (toggleBtn) toggleBtn.textContent = '▾';
         this.bringCardToFront(widget);
         this.renderPipGraphCard('primary');
+        this.schedulePipGraphCardStealth('primary', 3000);
       }
 
       this.updateProblemCardPosition();
@@ -5308,6 +5327,22 @@
           : '📦 그래프가 보관되었습니다! 카드 위를 슥 끌어 자유롭게 이동하세요.');
       }
       return createdTargetRef;
+    }
+
+    _ensurePipEdgeViewportHandles(widget) {
+      if (!widget || widget.querySelector('.pip-edge-viewport-handle')) return;
+      const rightHandle = document.createElement('div');
+      rightHandle.className = 'pip-edge-viewport-handle pip-edge-viewport-handle-right';
+      rightHandle.dataset.resizeMode = 'expandX';
+      rightHandle.title = '가로 시야 확장/축소 (그래프 배율 고정)';
+
+      const bottomHandle = document.createElement('div');
+      bottomHandle.className = 'pip-edge-viewport-handle pip-edge-viewport-handle-bottom';
+      bottomHandle.dataset.resizeMode = 'expandY';
+      bottomHandle.title = '세로 시야 확장/축소 (그래프 배율 고정)';
+
+      widget.appendChild(rightHandle);
+      widget.appendChild(bottomHandle);
     }
 
     spawnExtraGraphArchiveCard(dataUrl, cardW, aspect, graphSnapshot = null, sourceRect = null, options = null) {
@@ -5437,6 +5472,7 @@
       }
       const stageGraphParent = (this.canvas && this.canvas.parentElement) || document.body;
       stageGraphParent.appendChild(el);
+      this._ensurePipEdgeViewportHandles(el);
       this.attachCardLaserSystem(el);
 
       const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), aspect, isMin: false, graphSnapshot: graphSnapshot || this.getPureGraphSnapshot(), caseIdx, pdfAnchor: null };
@@ -5463,6 +5499,7 @@
         if (typeof el._renderCardInkCanvas === 'function') el._renderCardInkCanvas();
       };
       this.renderPipGraphCard(cardItem);
+      this.schedulePipGraphCardStealth(cardItem, 3000);
 
       el._savedExpandedWidth = `${Math.round(cardW)}px`;
       const toggleExtraGraphMin = () => {
@@ -5476,10 +5513,14 @@
         const nextMin = !wasMin;
         cardItem.isMin = nextMin;
         el.classList.toggle('minimized', nextMin);
-        if (!nextMin) {
+        if (nextMin) {
+          this.clearPipGraphCardStealthTimer(cardItem);
+          el.classList.remove('pip-stealth-locked');
+        } else {
           const restoredW = parseFloat(el._savedExpandedWidth) || cardW;
           syncExtraSize(restoredW);
           if (typeof el._syncCardLaserSize === 'function') el._syncCardLaserSize();
+          this.schedulePipGraphCardStealth(cardItem, 3000);
         }
         const chev = el.querySelector('.card-fold-chevron');
         if (chev) chev.textContent = nextMin ? '▸' : '▾';
@@ -5500,8 +5541,9 @@
 
       // 제목 및 몸통 드래그 이동 전용 (삼각형 접기 원버튼과 완벽 분리!)
       let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
+      let downPointerType = 'mouse';
       el.addEventListener('pointerdown', (e) => {
-        if (e.target.closest('.problem-card-resize-handle')) return;
+        if (e.target.closest('.problem-card-resize-handle, .pip-edge-viewport-handle')) return;
         if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
           this.bringCardToFront(el);
           e.stopPropagation();
@@ -5512,6 +5554,10 @@
           e.stopPropagation();
           return;
         }
+        if (e.pointerType === 'pen') {
+          this._markStylusPenDetected();
+          this._lastPenActiveTime = Date.now();
+        }
         this.bringCardToFront(el);
         e.preventDefault();
         e.stopPropagation();
@@ -5519,9 +5565,8 @@
         dragMoved = false;
         startX = e.clientX;
         startY = e.clientY;
-        if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
-          this.clearPipGraphCardStealthTimer(cardItem);
-        }
+        downPointerType = e.pointerType || 'mouse';
+        this.clearPipGraphCardStealthTimer(cardItem);
         if (this.isGraphCovered && this.pdfPageBoardData && el._pdfAnchor) {
           const s = this.mathToScreen(el._pdfAnchor.mx, el._pdfAnchor.my);
           initX = s.x;
@@ -5583,6 +5628,9 @@
       const stopDrag = () => {
         if (isDragging) {
           const wasMoved = dragMoved;
+          const tapX = startX;
+          const tapY = startY;
+          const tapPType = downPointerType;
           isDragging = false;
           dragMoved = false;
           this._isDraggingOrResizingAnyCard = false;
@@ -5596,12 +5644,13 @@
           this.updateProblemCardPosition(true, el);
           if (wasMoved) {
             el._justDraggedTime = performance.now();
-            if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
+            if (!el.classList.contains('pip-stealth-locked')) {
               this.schedulePipGraphCardStealth(cardItem, 3000);
             }
-          } else if (el.classList.contains('pip-locked-mode')) {
-            if (el.classList.contains('pip-stealth-locked')) {
-              this.wakeUpPipGraphCardStealth(cardItem, true);
+          } else {
+            const snap = this._getMutablePipCardSnapshot(cardItem);
+            if ((snap && snap.isPipLocked) || el.classList.contains('pip-locked-mode')) {
+              this._handleLockedPipCardTapWake(cardItem, tapX, tapY, tapPType);
             } else {
               this.schedulePipGraphCardStealth(cardItem, 3000);
             }
@@ -5614,9 +5663,9 @@
       window.addEventListener('pointerup', stopDrag);
       window.addEventListener('pointercancel', stopDrag);
 
-      // 우하단 리사이즈 (잠금 전: 그래프 크기 고정 + 현재 센터 기준 시야 자유 확장 / 잠금 후: 비율 고정 전체 확대·축소 — iPad 120Hz VSync 병합 & pointerId 격리)
-      const rHandle = el.querySelector('.problem-card-resize-handle');
-      if (rHandle) {
+      // 우하단 비례 스케일 핸들('scale') + 우측/하단 초슬림 시야 확장 마이크로 필('expandX' / 'expandY') 통합 리사이즈 엔진
+      const allResizeHandles = el.querySelectorAll('.problem-card-resize-handle, .pip-edge-viewport-handle');
+      if (allResizeHandles.length > 0) {
         let isResizing = false;
         let resizeMoved = false;
         let resizeStartState = null;
@@ -5643,32 +5692,38 @@
           this.finalizePipCardResize(cardItem, prevStart, true);
         };
 
-        rHandle.addEventListener('pointerdown', (e) => {
-          if (e.pointerType === 'touch' && (
-            this.isDrawingInk ||
-            this._isDrawingCardInk ||
-            (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450))
-          )) {
-            if (e.cancelable !== false) e.preventDefault();
+        allResizeHandles.forEach((handleEl) => {
+          const handleMode = handleEl.dataset.resizeMode || 'scale';
+          handleEl.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'touch' && (
+              this.isDrawingInk ||
+              this._isDrawingCardInk ||
+              (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450))
+            )) {
+              if (e.cancelable !== false) e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
+            if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
+              if (e.cancelable !== false) e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
+            if (e.pointerType === 'pen') {
+              this._markStylusPenDetected();
+              this._lastPenActiveTime = Date.now();
+            }
+            this.bringCardToFront(el);
+            e.preventDefault();
             e.stopPropagation();
-            return;
-          }
-          if (e.pointerType === 'pen') {
-            this._markStylusPenDetected();
-            this._lastPenActiveTime = Date.now();
-          }
-          this.bringCardToFront(el);
-          e.preventDefault();
-          e.stopPropagation();
-          try { rHandle.setPointerCapture(e.pointerId); } catch (_) { }
-          isResizing = true;
-          resizeMoved = false;
-          activeResizePointerId = (e.pointerId !== undefined) ? e.pointerId : null;
-          activeResizePointerType = e.pointerType || 'mouse';
-          if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
+            try { handleEl.setPointerCapture(e.pointerId); } catch (_) { }
+            isResizing = true;
+            resizeMoved = false;
+            activeResizePointerId = (e.pointerId !== undefined) ? e.pointerId : null;
+            activeResizePointerType = e.pointerType || 'mouse';
             this.clearPipGraphCardStealthTimer(cardItem);
-          }
-          resizeStartState = this.capturePipCardResizeStart(cardItem, e);
+            resizeStartState = this.capturePipCardResizeStart(cardItem, e, handleMode);
+          });
         });
         window.addEventListener('pointermove', (e) => {
           if (!isResizing || !resizeStartState || el.isConnected === false) return;
@@ -5708,6 +5763,7 @@
           }
           const wasResizeMoved = resizeMoved;
           const finishedStart = resizeStartState;
+          const finishedPointerType = activeResizePointerType || 'mouse';
           isResizing = false;
           resizeMoved = false;
           resizeStartState = null;
@@ -5716,12 +5772,15 @@
           this._isDraggingOrResizingAnyCard = false;
           this.finalizePipCardResize(cardItem, finishedStart, false);
           this.scheduleBakePipGraphCardToImg(cardItem);
-          if (el.classList.contains('pip-locked-mode')) {
-            if (!wasResizeMoved && el.classList.contains('pip-stealth-locked')) {
-              this.wakeUpPipGraphCardStealth(cardItem, true);
-            } else if (!el.classList.contains('pip-stealth-locked')) {
-              this.schedulePipGraphCardStealth(cardItem, 3000);
-            }
+          if (!wasResizeMoved && el.classList.contains('pip-stealth-locked')) {
+            this._handleLockedPipCardTapWake(
+              cardItem,
+              finishedStart ? finishedStart.startX : 0,
+              finishedStart ? finishedStart.startY : 0,
+              finishedPointerType
+            );
+          } else if (!el.classList.contains('pip-stealth-locked')) {
+            this.schedulePipGraphCardStealth(cardItem, 3000);
           }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
@@ -6452,6 +6511,7 @@
       applyLongPressShield(document.getElementById('problemCardWidget'));
       applyLongPressShield(document.getElementById('inkFloatingToolbar'));
       applyLongPressShield(document.getElementById('quickPillRemote'));
+      this._ensurePipEdgeViewportHandles(widget);
       this.attachCardLaserSystem(widget);
       this.attachCardLaserSystem(document.getElementById('problemCardWidget'));
 
@@ -6467,12 +6527,18 @@
         const nextMin = !wasMin;
         this.isGraphCardMinimized = nextMin;
         widget.classList.toggle('minimized', nextMin);
-        if (!nextMin && widget._savedExpandedWidth) {
+        if (nextMin) {
+          this.clearPipGraphCardStealthTimer('primary');
+          widget.classList.remove('pip-stealth-locked');
+        } else if (widget._savedExpandedWidth) {
           widget.style.width = widget._savedExpandedWidth;
         }
         const icon = document.getElementById('iconGraphCardToggle');
         if (icon) icon.textContent = nextMin ? '▸' : '▾';
         this.syncGraphCardRectFromWidget();
+        if (!nextMin) {
+          this.schedulePipGraphCardStealth('primary', 3000);
+        }
       };
       if (widget) widget._toggleCardMin = togglePrimaryGraphMin;
 
@@ -6482,9 +6548,10 @@
         let dragMoved = false;
         let startX = 0, startY = 0;
         let initialBaseX = 580, initialBaseY = 68;
+        let downPointerType = 'mouse';
 
         widget.addEventListener('pointerdown', (e) => {
-          if (e.target.closest('.problem-card-resize-handle')) return;
+          if (e.target.closest('.problem-card-resize-handle, .pip-edge-viewport-handle')) return;
           if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
             this.bringCardToFront(widget);
             e.stopPropagation();
@@ -6495,6 +6562,10 @@
             e.stopPropagation();
             return;
           }
+          if (e.pointerType === 'pen') {
+            this._markStylusPenDetected();
+            this._lastPenActiveTime = Date.now();
+          }
           this.bringCardToFront(widget);
           e.preventDefault();
           e.stopPropagation();
@@ -6502,9 +6573,8 @@
           dragMoved = false;
           startX = e.clientX;
           startY = e.clientY;
-          if (widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
-            this.clearPipGraphCardStealthTimer('primary');
-          }
+          downPointerType = e.pointerType || 'mouse';
+          this.clearPipGraphCardStealthTimer('primary');
           if (this.isGraphCovered && this.pdfPageBoardData && widget._pdfAnchor) {
             const s = this.mathToScreen(widget._pdfAnchor.mx, widget._pdfAnchor.my);
             initialBaseX = s.x;
@@ -6568,6 +6638,9 @@
         const stopDrag = () => {
           if (isDragging) {
             const wasMoved = dragMoved;
+            const tapX = startX;
+            const tapY = startY;
+            const tapPType = downPointerType;
             isDragging = false;
             dragMoved = false;
             this._isDraggingOrResizingAnyCard = false;
@@ -6582,12 +6655,13 @@
             this.syncGraphCardRectFromWidget(true);
             if (wasMoved) {
               widget._justDraggedTime = performance.now();
-              if (widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
+              if (!widget.classList.contains('pip-stealth-locked')) {
                 this.schedulePipGraphCardStealth('primary', 3000);
               }
-            } else if (widget.classList.contains('pip-locked-mode')) {
-              if (widget.classList.contains('pip-stealth-locked')) {
-                this.wakeUpPipGraphCardStealth('primary', true);
+            } else {
+              const snap = this._getMutablePipCardSnapshot('primary');
+              if ((snap && snap.isPipLocked) || widget.classList.contains('pip-locked-mode')) {
+                this._handleLockedPipCardTapWake('primary', tapX, tapY, tapPType);
               } else {
                 this.schedulePipGraphCardStealth('primary', 3000);
               }
@@ -6601,7 +6675,10 @@
         window.addEventListener('pointercancel', stopDrag);
       }
 
-      if (resizeHandle) {
+      const primaryResizeHandles = widget
+        ? Array.from(widget.querySelectorAll('.problem-card-resize-handle, .pip-edge-viewport-handle'))
+        : (resizeHandle ? [resizeHandle] : []);
+      if (primaryResizeHandles.length > 0) {
         let isResizing = false;
         let resizeMoved = false;
         let resizeStartState = null;
@@ -6630,32 +6707,38 @@
           };
         }
 
-        resizeHandle.addEventListener('pointerdown', (e) => {
-          if (e.pointerType === 'touch' && (
-            this.isDrawingInk ||
-            this._isDrawingCardInk ||
-            (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450))
-          )) {
-            if (e.cancelable !== false) e.preventDefault();
+        primaryResizeHandles.forEach((handleEl) => {
+          const handleMode = handleEl.dataset.resizeMode || 'scale';
+          handleEl.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'touch' && (
+              this.isDrawingInk ||
+              this._isDrawingCardInk ||
+              (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 450))
+            )) {
+              if (e.cancelable !== false) e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
+            if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) {
+              if (e.cancelable !== false) e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
+            if (e.pointerType === 'pen') {
+              this._markStylusPenDetected();
+              this._lastPenActiveTime = Date.now();
+            }
+            if (widget) this.bringCardToFront(widget);
+            e.preventDefault();
             e.stopPropagation();
-            return;
-          }
-          if (e.pointerType === 'pen') {
-            this._markStylusPenDetected();
-            this._lastPenActiveTime = Date.now();
-          }
-          if (widget) this.bringCardToFront(widget);
-          e.preventDefault();
-          e.stopPropagation();
-          try { resizeHandle.setPointerCapture(e.pointerId); } catch (_) { }
-          isResizing = true;
-          resizeMoved = false;
-          activeResizePointerId = (e.pointerId !== undefined) ? e.pointerId : null;
-          activeResizePointerType = e.pointerType || 'mouse';
-          if (widget && widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
+            try { handleEl.setPointerCapture(e.pointerId); } catch (_) { }
+            isResizing = true;
+            resizeMoved = false;
+            activeResizePointerId = (e.pointerId !== undefined) ? e.pointerId : null;
+            activeResizePointerType = e.pointerType || 'mouse';
             this.clearPipGraphCardStealthTimer('primary');
-          }
-          resizeStartState = this.capturePipCardResizeStart('primary', e);
+            resizeStartState = this.capturePipCardResizeStart('primary', e, handleMode);
+          });
         });
 
         window.addEventListener('pointermove', (e) => {
@@ -6697,6 +6780,7 @@
           }
           const wasResizeMoved = resizeMoved;
           const finishedStart = resizeStartState;
+          const finishedPointerType = activeResizePointerType || 'mouse';
           isResizing = false;
           resizeMoved = false;
           resizeStartState = null;
@@ -6705,9 +6789,14 @@
           this._isDraggingOrResizingAnyCard = false;
           this.finalizePipCardResize('primary', finishedStart, false);
           this.scheduleBakePipGraphCardToImg('primary');
-          if (widget && widget.classList.contains('pip-locked-mode')) {
+          if (widget) {
             if (!wasResizeMoved && widget.classList.contains('pip-stealth-locked')) {
-              this.wakeUpPipGraphCardStealth('primary', true);
+              this._handleLockedPipCardTapWake(
+                'primary',
+                finishedStart ? finishedStart.startX : 0,
+                finishedStart ? finishedStart.startY : 0,
+                finishedPointerType
+              );
             } else if (!widget.classList.contains('pip-stealth-locked')) {
               this.schedulePipGraphCardStealth('primary', 3000);
             }
@@ -7618,6 +7707,56 @@
       return null;
     }
 
+    _isWorkspaceBusyForCardAutoLock() {
+      if (typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) {
+        return true;
+      }
+      if (
+        this.isDrawingInk ||
+        this._isDrawingCardInk ||
+        this.isPanning ||
+        this.isDraggingCurve ||
+        this.draggedHandleIdx !== null ||
+        this._isInteractingWithPipCard ||
+        this._isDraggingOrResizingAnyCard
+      ) {
+        return true;
+      }
+      if (this._lastPenActiveTime && (Date.now() - this._lastPenActiveTime < 350)) {
+        return true;
+      }
+      return false;
+    }
+
+    _shouldKeepPipCardOpen(cardRef, widget, snap) {
+      if (!widget || widget.style.display === 'none' || widget.classList.contains('minimized')) {
+        return true;
+      }
+      if (widget.classList.contains('card-ink-active') || widget.classList.contains('card-laser-active')) {
+        return true;
+      }
+      if (
+        widget._keepOpenForCardPlusMenu &&
+        !this.isDrawerCollapsed &&
+        this.activeDrawerPanel === 'panelPresets' &&
+        this._pipTargetCard === cardRef
+      ) {
+        return true;
+      }
+      if (snap && !snap.isNAxisStudioCard && !snap.isPipLocked) {
+        if (
+          snap.isCurveSelected ||
+          (snap.selectedHandleIdx !== null && snap.selectedHandleIdx !== undefined) ||
+          (snap.draggedHandleIdx !== null && snap.draggedHandleIdx !== undefined) ||
+          snap.isPipDropLineMode ||
+          snap.isPipSymPopoverOpen
+        ) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     clearProblemCardStealthTimer(widgetEl) {
       if (widgetEl && widgetEl._probStealthTimer) {
         clearTimeout(widgetEl._probStealthTimer);
@@ -7627,30 +7766,44 @@
 
     scheduleProblemCardStealth(widgetEl, delayMs = 3000) {
       if (!widgetEl) return;
+      if (
+        !widgetEl.classList.contains('pip-locked-mode') ||
+        widgetEl.classList.contains('card-ink-active') ||
+        widgetEl.classList.contains('card-laser-active') ||
+        widgetEl.classList.contains('minimized')
+      ) {
+        this.clearProblemCardStealthTimer(widgetEl);
+        widgetEl.classList.remove('pip-stealth-locked');
+        return;
+      }
+      if (widgetEl.classList.contains('pip-stealth-locked') && delayMs > 0) {
+        this.clearProblemCardStealthTimer(widgetEl);
+        return;
+      }
       this.clearProblemCardStealthTimer(widgetEl);
-      if (!widgetEl.classList.contains('pip-locked-mode')) {
-        widgetEl.classList.remove('pip-stealth-locked');
-        return;
-      }
-      if (widgetEl.classList.contains('card-ink-active')) {
-        widgetEl.classList.remove('pip-stealth-locked');
-        return;
-      }
       if (delayMs <= 0) {
         widgetEl.classList.add('pip-stealth-locked');
         return;
       }
       widgetEl._probStealthTimer = setTimeout(() => {
         widgetEl._probStealthTimer = null;
+        if (!widgetEl.isConnected || widgetEl.style.display === 'none') return;
         if (
-          widgetEl.classList.contains('pip-locked-mode') &&
-          !widgetEl.classList.contains('card-ink-active') &&
-          !this._isDraggingOrResizingAnyCard
+          !widgetEl.classList.contains('pip-locked-mode') ||
+          widgetEl.classList.contains('card-ink-active') ||
+          widgetEl.classList.contains('card-laser-active') ||
+          widgetEl.classList.contains('minimized')
         ) {
-          widgetEl.classList.add('pip-stealth-locked');
-          if (this.isAudioRecording && !this._isApplyingAudioTimelineState) {
-            this._recordAudioWorkspaceStateIfNeeded(true);
-          }
+          widgetEl.classList.remove('pip-stealth-locked');
+          return;
+        }
+        if (this._isWorkspaceBusyForCardAutoLock()) {
+          this.scheduleProblemCardStealth(widgetEl, 350);
+          return;
+        }
+        widgetEl.classList.add('pip-stealth-locked');
+        if (this.isAudioRecording && !this._isApplyingAudioTimelineState) {
+          this._recordAudioWorkspaceStateIfNeeded(true);
         }
       }, delayMs);
     }
@@ -7676,19 +7829,8 @@
         widgetEl.classList.remove('pip-stealth-locked');
       }
       const btnLock = widgetEl.querySelector('.btn-problem-lock');
-      if (btnLock && btnLock._renderedLockedState !== isLocked) {
-        btnLock._renderedLockedState = isLocked;
-        if (isLocked) {
-          btnLock.classList.remove('unlocked-editing');
-          btnLock.classList.add('locked-confirmed');
-          btnLock.innerHTML = '<span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg></span>';
-          btnLock.title = '잠금됨 — 클릭하여 잠금 해제 (메뉴·테두리 상시 표시)';
-        } else {
-          btnLock.classList.remove('locked-confirmed');
-          btnLock.classList.add('unlocked-editing');
-          btnLock.innerHTML = '<span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg></span>';
-          btnLock.title = '클릭하여 잠금 — 3초 뒤 테두리와 상단 메뉴가 숨겨지며 톡 치면 다시 나타납니다';
-        }
+      if (btnLock) {
+        btnLock.style.display = 'none';
       }
     }
 
@@ -7731,37 +7873,169 @@
 
     schedulePipGraphCardStealth(cardRef, delayMs = 3000) {
       const { widget } = this._getPipCardWidgetAndSnapRaw(cardRef);
-      if (!widget) return;
-      this.clearPipGraphCardStealthTimer(cardRef);
-      const snap = this._getMutablePipCardSnapshot(cardRef);
-      if (!snap || !snap.isPipLocked) {
-        widget.classList.remove('pip-stealth-locked', 'pip-locked-mode');
+      if (!widget || widget.isConnected === false || widget.style.display === 'none') {
+        this.clearPipGraphCardStealthTimer(cardRef);
         return;
       }
-      widget.classList.add('pip-locked-mode');
-      if (widget.classList.contains('card-ink-active')) {
+      const snap = this._getMutablePipCardSnapshot(cardRef);
+      if (!snap) {
+        this.clearPipGraphCardStealthTimer(cardRef);
+        return;
+      }
+      if (this._shouldKeepPipCardOpen(cardRef, widget, snap)) {
+        this.clearPipGraphCardStealthTimer(cardRef);
         widget.classList.remove('pip-stealth-locked');
         return;
       }
-      if (delayMs <= 0) {
-        widget.classList.add('pip-stealth-locked');
+      if ((snap.isPipLocked || snap.isNAxisStudioCard) && widget.classList.contains('pip-stealth-locked') && delayMs > 0) {
+        this.clearPipGraphCardStealthTimer(cardRef);
+        widget.classList.add('pip-locked-mode');
         return;
       }
+      this.clearPipGraphCardStealthTimer(cardRef);
+
+      const applyAutoLockAndStealth = () => {
+        if (!widget.isConnected || widget.style.display === 'none') return;
+        const curSnap = this._getMutablePipCardSnapshot(cardRef);
+        if (!curSnap || this._shouldKeepPipCardOpen(cardRef, widget, curSnap)) {
+          widget.classList.remove('pip-stealth-locked');
+          return;
+        }
+        widget._keepOpenForCardPlusMenu = false;
+        if (!curSnap.isPipLocked) {
+          this._ensurePipCardInkMathCoords(cardRef);
+          curSnap.isPipLocked = true;
+          curSnap.isCurveSelected = false;
+          curSnap.selectedHandleIdx = null;
+          curSnap.draggedHandleIdx = null;
+          curSnap.isPipDropLineMode = false;
+          curSnap.isPipSymPopoverOpen = false;
+          curSnap._pipDropLineHoverCand = null;
+          curSnap._pipDropLineHoverScissors = null;
+          curSnap._activeSnapHint = null;
+          widget.classList.remove('pip-manipulating');
+          widget.classList.add('pip-locked-mode', 'pip-stealth-locked');
+          widget._lastPipLockUiSig = '';
+          this._savePipCardSnapshot(cardRef, curSnap);
+          this.syncPipCardLockUI(cardRef);
+          this.renderPipGraphCard(cardRef);
+          this.scheduleBakePipGraphCardToImg(cardRef);
+        } else {
+          widget.classList.add('pip-locked-mode', 'pip-stealth-locked');
+        }
+        if (this.isAudioRecording && !this._isApplyingAudioTimelineState) {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+        }
+      };
+
+      if (delayMs <= 0) {
+        applyAutoLockAndStealth();
+        return;
+      }
+
       widget._pipStealthTimer = setTimeout(() => {
         widget._pipStealthTimer = null;
-        const curSnap = this._getMutablePipCardSnapshot(cardRef);
-        if (
-          curSnap &&
-          curSnap.isPipLocked &&
-          !widget.classList.contains('card-ink-active') &&
-          !this._isDraggingOrResizingAnyCard
-        ) {
-          widget.classList.add('pip-stealth-locked');
-          if (this.isAudioRecording && !this._isApplyingAudioTimelineState) {
-            this._recordAudioWorkspaceStateIfNeeded(true);
-          }
+        if (!widget.isConnected || widget.style.display === 'none') return;
+        const checkSnap = this._getMutablePipCardSnapshot(cardRef);
+        if (!checkSnap || this._shouldKeepPipCardOpen(cardRef, widget, checkSnap)) {
+          widget.classList.remove('pip-stealth-locked');
+          return;
         }
+        if (this._isWorkspaceBusyForCardAutoLock()) {
+          this.schedulePipGraphCardStealth(cardRef, 350);
+          return;
+        }
+        applyAutoLockAndStealth();
       }, delayMs);
+    }
+
+    scheduleAllIdlePipCardsAutoLock(delayMs = 3000) {
+      if (this._hasPrimaryGraphCard && this.graphCardData) {
+        const primaryWidget = document.getElementById('graphCardWidget');
+        if (primaryWidget) primaryWidget._keepOpenForCardPlusMenu = false;
+        this.schedulePipGraphCardStealth('primary', delayMs);
+      }
+      if (Array.isArray(this.extraGraphCards)) {
+        this.extraGraphCards.forEach((c) => {
+          if (c && c.el) {
+            c.el._keepOpenForCardPlusMenu = false;
+            this.schedulePipGraphCardStealth(c, delayMs);
+          }
+        });
+      }
+    }
+
+    _handleLockedPipCardTapWake(cardRef, tapClientX, tapClientY, tapPointerType = 'mouse') {
+      const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
+      if (!widget || widget.style.display === 'none') return;
+      if (
+        widget.classList.contains('minimized') ||
+        widget.classList.contains('card-ink-active') ||
+        widget.classList.contains('card-laser-active')
+      ) {
+        return;
+      }
+      const snap = this._getMutablePipCardSnapshot(cardRef);
+      if (!snap || snap.isNAxisStudioCard || !Array.isArray(snap.graphs) || snap.graphs.length === 0) {
+        this.wakeUpPipGraphCardStealth(cardRef, true);
+        return;
+      }
+
+      this.deselectAllPipGraphCards(widget);
+      this.clearPipGraphCardStealthTimer(cardRef);
+      this._ensurePipCardInkMathCoords(cardRef);
+
+      snap.isPipLocked = false;
+      snap.isPipDropLineMode = false;
+      snap.isPipSymPopoverOpen = false;
+      snap._pipDropLineHoverCand = null;
+      snap._pipDropLineHoverScissors = null;
+      snap.selectedHandleIdx = null;
+      snap.draggedHandleIdx = null;
+      snap._activeSnapHint = null;
+      widget.classList.remove('pip-locked-mode', 'pip-stealth-locked');
+
+      let hitCurveIdx = null;
+      const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
+      const liveCanvas = bodyEl ? bodyEl.querySelector('.graph-card-live-canvas') : null;
+      if (liveCanvas && typeof tapClientX === 'number' && typeof tapClientY === 'number') {
+        const rect = liveCanvas.getBoundingClientRect();
+        if (
+          rect.width > 10 &&
+          rect.height > 10 &&
+          tapClientX >= rect.left &&
+          tapClientX <= rect.right &&
+          tapClientY >= rect.top &&
+          tapClientY <= rect.bottom
+        ) {
+          const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
+          const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || rect.width || 430));
+          const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
+          const localX = (tapClientX - rect.left) * (cardW / Math.max(1, rect.width));
+          const localY = (tapClientY - rect.top) * (cardH / Math.max(1, rect.height));
+          const isTouchTap = (tapPointerType === 'touch' || tapPointerType === 'pen');
+          this._withPipCardGraphState(snap, cardW, cardH, () => {
+            hitCurveIdx = this.hitTestAllCurves({ x: localX, y: localY }, isTouchTap);
+          });
+        }
+      }
+
+      if (hitCurveIdx !== null && hitCurveIdx >= 0) {
+        snap.activeGraphIdx = hitCurveIdx;
+        snap.isCurveSelected = true;
+      } else {
+        snap.isCurveSelected = false;
+      }
+
+      widget._lastPipLockUiSig = '';
+      this._savePipCardSnapshot(cardRef, snap);
+      this.syncPipCardLockUI(cardRef);
+      this.renderPipGraphCard(cardRef);
+      this.scheduleBakePipGraphCardToImg(cardRef);
+      this.schedulePipGraphCardStealth(cardRef, 3000);
+      if (this.isAudioRecording && !this._isApplyingAudioTimelineState) {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
     }
 
     wakeUpPipGraphCardStealth(cardRef, restartTimer = true) {
@@ -8218,7 +8492,7 @@
       const isLocked = Boolean(isStudioCard || (snap && snap.isPipLocked));
       widget.classList.toggle('pip-locked-mode', isLocked);
       if (!isLocked) {
-        if (widget._pipStealthTimer) {
+        if (this._shouldKeepPipCardOpen(cardRef, widget, snap) && widget._pipStealthTimer) {
           clearTimeout(widget._pipStealthTimer);
           widget._pipStealthTimer = null;
         }
@@ -8236,21 +8510,7 @@
       }
 
       if (btnLock) {
-        btnLock.style.display = isStudioCard ? 'none' : '';
-        if (!isStudioCard && btnLock._renderedLockedState !== isLocked) {
-          btnLock._renderedLockedState = isLocked;
-          if (isLocked) {
-            btnLock.classList.remove('unlocked-editing');
-            btnLock.classList.add('locked-confirmed');
-            btnLock.innerHTML = '<span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg></span>';
-            btnLock.title = '잠금됨 — 클릭하여 잠금 해제 (핸들 조작 · 축 이동 · 시야 영역 확장)';
-          } else {
-            btnLock.classList.remove('locked-confirmed');
-            btnLock.classList.add('unlocked-editing');
-            btnLock.innerHTML = '<span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg></span>';
-            btnLock.title = '조작 중 — 클릭하여 잠금 (비율 고정 확대/축소 & 여백 드래그로 카드 이동)';
-          }
-        }
+        btnLock.style.display = 'none';
       }
 
       const cardShowX = (snap && snap.showXAxis !== undefined) ? Boolean(snap.showXAxis) : (this.showXAxis !== false);
@@ -8261,6 +8521,7 @@
       }
       const btnDropLine = widget.querySelector('.btn-card-dropline');
       const isDlActive = Boolean(!isStudioCard && snap && !snap.isPipLocked && snap.isPipDropLineMode && !bothAxesOff && !widget.classList.contains('card-ink-active'));
+      widget.classList.toggle('pip-dropline-active', isDlActive);
       if (btnDropLine) {
         btnDropLine.classList.toggle('active', isDlActive);
         btnDropLine.style.display = (isStudioCard || bothAxesOff) ? 'none' : '';
@@ -8333,7 +8594,7 @@
       }
     }
 
-    capturePipCardResizeStart(cardRef, e) {
+    capturePipCardResizeStart(cardRef, e, resizeMode = 'scale') {
       const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
       if (!widget) return null;
       this._ensurePipCardInkMathCoords(cardRef);
@@ -8342,6 +8603,7 @@
       const startW = Math.max(160, parseFloat(widget.style.width) || widget.offsetWidth || 430);
       const startH = Math.max(120, (bodyEl && parseFloat(bodyEl.style.height)) || Math.round(startW * aspect));
       const snap = this._getMutablePipCardSnapshot(cardRef);
+      const resolvedMode = (resizeMode === 'expandX' || resizeMode === 'expandY') ? resizeMode : 'scale';
       if (snap) {
         snap._pipCardW = Math.round(startW);
         snap._pipCardH = Math.round(startH);
@@ -8367,6 +8629,7 @@
         lastAppliedW: Math.round(startW),
         lastAppliedH: Math.round(startH),
         startAspect: startH / Math.max(1, startW),
+        resizeMode: resolvedMode,
         isLocked: Boolean(snap && snap.isPipLocked),
         startXSpan: snap ? (snap.xSpan || 6.2) : 6.2,
         startYSpan: snap ? (snap.ySpan || 5.1) : 5.1,
@@ -8390,23 +8653,32 @@
 
       const dw = (e.clientX - startState.startX) / scaleRatio;
       const dh = (e.clientY - startState.startY) / scaleRatio;
-      const isLocked = Boolean(snap && snap.isPipLocked);
+      const mode = (startState.resizeMode === 'expandX' || startState.resizeMode === 'expandY')
+        ? startState.resizeMode
+        : 'scale';
+      const isViewportExpand = (mode === 'expandX' || mode === 'expandY');
 
       let newW;
       let newH;
       let nextAspect;
 
-      if (isLocked) {
-        // 🔒 잠금 후: 가로세로 비율을 고정한 채로 그래프와 카드 전체를 비례 확대/축소
-        const lockedAspect = startState.startAspect || (isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82));
-        newW = Math.round(Math.max(200, Math.min(window.innerWidth * 0.85, startState.startW + dw)));
-        newH = Math.round(Math.max(140, newW * lockedAspect));
-        nextAspect = lockedAspect;
-      } else {
-        // 🔓 잠금 전: 그래프 실제 크기(unitScale)는 100% 고정한 채로 현재 카드 센터 기준 화면 영역(시야)만 자유 확장/축소 (와이드 뷰 지원)
+      if (mode === 'expandX') {
+        // ↔️ 우측 마이크로 필: 그래프 실제 배율(unitScale) 및 세로 높이는 100% 고정한 채 가로 시야(xSpan)만 확장/축소
         newW = Math.round(Math.max(200, Math.min(window.innerWidth * 0.88, startState.startW + dw)));
+        newH = Math.round(startState.startH);
+        nextAspect = newH / Math.max(1, newW);
+      } else if (mode === 'expandY') {
+        // ↕️ 하단 마이크로 필: 그래프 실제 배율(unitScale) 및 가로 폭은 100% 고정한 채 세로 시야(ySpan)만 확장/축소
+        newW = Math.round(startState.startW);
         newH = Math.round(Math.max(140, Math.min(window.innerHeight * 0.82, startState.startH + dh)));
         nextAspect = newH / Math.max(1, newW);
+      } else {
+        // ↘️ 우하단 코너 핸들('scale'): 언제나 현재 가로세로 비율을 고정한 채 그래프와 카드 전체를 비례 확대/축소
+        const lockedAspect = startState.startAspect || (isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82));
+        const minWForAspect = Math.max(200, Math.ceil(140 / Math.max(0.15, lockedAspect)));
+        newW = Math.round(Math.max(minWForAspect, Math.min(window.innerWidth * 0.85, startState.startW + dw)));
+        newH = Math.round(Math.max(140, newW * lockedAspect));
+        nextAspect = lockedAspect;
       }
 
       if (startState.lastAppliedW === newW && startState.lastAppliedH === newH) {
@@ -8415,11 +8687,23 @@
       startState.lastAppliedW = newW;
       startState.lastAppliedH = newH;
 
-      if (!isLocked && snap) {
-        snap.xSpan = startState.startXSpan * (newW / Math.max(1, startState.startW));
-        snap.ySpan = startState.startYSpan * (newH / Math.max(1, startState.startH));
-        snap.panX = startState.startPanX;
-        snap.panY = startState.startPanY;
+      if (snap) {
+        if (mode === 'expandX') {
+          snap.xSpan = startState.startXSpan * (newW / Math.max(1, startState.startW));
+          snap.ySpan = startState.startYSpan;
+          snap.panX = startState.startPanX;
+          snap.panY = startState.startPanY;
+        } else if (mode === 'expandY') {
+          snap.xSpan = startState.startXSpan;
+          snap.ySpan = startState.startYSpan * (newH / Math.max(1, startState.startH));
+          snap.panX = startState.startPanX;
+          snap.panY = startState.startPanY;
+        } else {
+          snap.xSpan = startState.startXSpan;
+          snap.ySpan = startState.startYSpan;
+          snap.panX = startState.startPanX * (newW / Math.max(1, startState.startW));
+          snap.panY = startState.startPanY * (newH / Math.max(1, startState.startH));
+        }
         snap._pipCardW = newW;
         snap._pipCardH = newH;
       }
@@ -8460,7 +8744,7 @@
           inkCanvas._needsSizeSync = false;
           inkCanvas._skipLayoutMeasureOnce = true;
         }
-        if (!isLocked) {
+        if (isViewportExpand) {
           // _reprojectPipCardInkFromMathCoords 내부에서 renderGraphCardCanvas / _renderCardInkCanvas 1회 자동 호출!
           this._reprojectPipCardInkFromMathCoords(cardRef, newW, newH);
         } else if (isPrimary) {
@@ -8506,15 +8790,21 @@
         } else {
           cardRef.aspect = revAspect;
         }
-        if (snap && !startState.isLocked) {
+        if (snap) {
           snap.xSpan = startState.startXSpan;
           snap.ySpan = startState.startYSpan;
           snap.panX = startState.startPanX;
           snap.panY = startState.startPanY;
           snap._pipCardW = revW;
           snap._pipCardH = revH;
-          this._reprojectPipCardInkFromMathCoords(cardRef, revW, revH);
+          if (startState.resizeMode === 'expandX' || startState.resizeMode === 'expandY') {
+            this._reprojectPipCardInkFromMathCoords(cardRef, revW, revH);
+          }
         }
+      }
+
+      if (snap) {
+        this._savePipCardSnapshot(cardRef, snap);
       }
 
       if (widget._pipRenderRafId) {
@@ -8762,17 +9052,28 @@
     }
 
     _hasAnyActivePipCardSelectionOrMode() {
-      if (this._hasPrimaryGraphCard && this.graphCardData) {
-        const snap = this.pipGraphLiveSnap;
-        if (snap && (snap.isPipDropLineMode || snap.isCurveSelected || snap.selectedHandleIdx !== null || snap.isPipSymPopoverOpen)) {
+      const checkCard = (widget, snap) => {
+        if (!widget || widget.style.display === 'none' || widget.classList.contains('minimized')) return false;
+        if (widget.classList.contains('card-ink-active') || widget.classList.contains('card-laser-active')) return false;
+        if (widget._keepOpenForCardPlusMenu) return true;
+        if (!snap || snap.isNAxisStudioCard) return false;
+        if (snap.isPipDropLineMode || snap.isCurveSelected || snap.selectedHandleIdx !== null || snap.isPipSymPopoverOpen) {
           return true;
         }
+        if (!snap.isPipLocked && !widget._pipStealthTimer) {
+          return true;
+        }
+        return false;
+      };
+      if (this._hasPrimaryGraphCard && this.graphCardData) {
+        const primaryWidget = document.getElementById('graphCardWidget');
+        const snap = (primaryWidget && primaryWidget._pipSnapObj) || null;
+        if (checkCard(primaryWidget, snap)) return true;
       }
       if (Array.isArray(this.extraGraphCards)) {
         for (let i = 0; i < this.extraGraphCards.length; i++) {
           const c = this.extraGraphCards[i];
-          const snap = c && c.liveSnap;
-          if (snap && (snap.isPipDropLineMode || snap.isCurveSelected || snap.selectedHandleIdx !== null || snap.isPipSymPopoverOpen)) {
+          if (c && c.el && checkCard(c.el, c._pipSnapObj || c.el._pipSnapObj || null)) {
             return true;
           }
         }
@@ -8789,6 +9090,7 @@
       let anyDropLineTurnedOff = false;
       const primaryWidget = document.getElementById('graphCardWidget');
       if (primaryWidget && primaryWidget !== exceptWidget && this._hasPrimaryGraphCard && this.graphCardData) {
+        primaryWidget._keepOpenForCardPlusMenu = false;
         const snap = this._getMutablePipCardSnapshot('primary');
         if (snap && (snap.isCurveSelected || snap.selectedHandleIdx !== null || snap.isPipDropLineMode || snap.isPipSymPopoverOpen || primaryWidget.classList.contains('pip-manipulating'))) {
           if (snap.isPipDropLineMode) anyDropLineTurnedOff = true;
@@ -8806,12 +9108,16 @@
           this.syncPipCardLockUI('primary');
           this.renderPipGraphCard('primary');
           this.scheduleBakePipGraphCardToImg('primary');
+          this.schedulePipGraphCardStealth('primary', 3000);
           anyChanged = true;
+        } else if (snap && !snap.isPipLocked && !primaryWidget._pipStealthTimer) {
+          this.schedulePipGraphCardStealth('primary', 3000);
         }
       }
       if (Array.isArray(this.extraGraphCards)) {
         this.extraGraphCards.forEach(c => {
           if (c && c.el && c.el !== exceptWidget) {
+            c.el._keepOpenForCardPlusMenu = false;
             const snap = this._getMutablePipCardSnapshot(c);
             if (snap && (snap.isCurveSelected || snap.selectedHandleIdx !== null || snap.isPipDropLineMode || snap.isPipSymPopoverOpen || c.el.classList.contains('pip-manipulating'))) {
               if (snap.isPipDropLineMode) anyDropLineTurnedOff = true;
@@ -8829,7 +9135,10 @@
               this.syncPipCardLockUI(c);
               this.renderPipGraphCard(c);
               this.scheduleBakePipGraphCardToImg(c);
+              this.schedulePipGraphCardStealth(c, 3000);
               anyChanged = true;
+            } else if (snap && !snap.isPipLocked && !c.el._pipStealthTimer) {
+              this.schedulePipGraphCardStealth(c, 3000);
             }
           }
         });
@@ -8979,10 +9288,14 @@
           snap.selectedHandleIdx = null;
         } else {
           snap.isCurveSelected = false;
+          if (widget) widget._keepOpenForCardPlusMenu = false;
         }
+        if (widget) widget._lastPipLockUiSig = '';
         this._savePipCardSnapshot(cardRef, snap);
+        this.syncPipCardLockUI(cardRef);
         this.renderPipGraphCard(cardRef);
         this.scheduleBakePipGraphCardToImg(cardRef);
+        this.schedulePipGraphCardStealth(cardRef, 3000);
         if (this.isAudioRecording) this._recordAudioWorkspaceStateIfNeeded(true);
         return true;
       }
@@ -9115,6 +9428,10 @@
         if (found) return found;
       }
       return null;
+    }
+
+    _getPipCardRefByWidget(widgetEl) {
+      return this._getPipCardRefFromWidget(widgetEl);
     }
 
     _getTargetPipGraphCardForAxisOrPreset() {
@@ -9382,6 +9699,8 @@
         if (createdWidget) {
           this.bringCardToFront(createdWidget);
         }
+        this.schedulePipGraphCardStealth(cardRef, 3000);
+        this.schedulePipGraphCardStealth(createdRef, 3000);
         const newCaseNum = (createdRef === 'primary') ? 1 : (createdRef.caseIdx || (this.extraGraphCards.length + 1));
         this.showToast(`⧉ #${newCaseNum} 그래프 창이 복제되었습니다!`);
       }
@@ -9636,6 +9955,7 @@
         if (createdWidget) {
           this.bringCardToFront(createdWidget);
         }
+        this.schedulePipGraphCardStealth(createdRef, 3000);
         this.updateProblemCardPosition(true);
         this.render();
         if (this.isAudioRecording) {
@@ -9763,6 +10083,7 @@
           this._syncFullGraphInkBackToPipCard(createdRef, cardW, cardH, cardUnitScale, fullUnitScale);
           this.renderPipGraphCard(createdRef);
           this.scheduleBakePipGraphCardToImg(createdRef);
+          this.schedulePipGraphCardStealth(createdRef, 3000);
         }
         return;
       }
@@ -9786,7 +10107,7 @@
       const cardUnitScale = (cardH / 2) / Math.max(0.05, updatedSnap.ySpan / updatedSnap.zoomLevel);
       updatedSnap.panX = -fullCenterMathX * cardUnitScale;
       updatedSnap.panY = fullCenterMathY * cardUnitScale;
-      updatedSnap.isPipLocked = Boolean(prevSnap && prevSnap.isPipLocked);
+      updatedSnap.isPipLocked = Boolean(prevSnap && prevSnap.isNAxisStudioCard);
       updatedSnap.isCurveSelected = false;
       updatedSnap.selectedHandleIdx = null;
       updatedSnap.draggedHandleIdx = null;
@@ -9801,6 +10122,7 @@
       this.syncPipCardLockUI(target);
       this.renderPipGraphCard(target);
       this.scheduleBakePipGraphCardToImg(target);
+      this.schedulePipGraphCardStealth(target, 3000);
       if (this.isAudioRecording) {
         this._recordAudioWorkspaceStateIfNeeded(true);
       }
@@ -9861,6 +10183,7 @@
             if (laserBtn) laserBtn.classList.remove('active');
           }
           if (widget) {
+            widget._keepOpenForCardPlusMenu = false;
             this.bringCardToFront(widget);
             widget._lastPipLockUiSig = '';
           }
@@ -9869,6 +10192,7 @@
           this.syncPipCardLockUI(targetCard);
           this.renderPipGraphCard(targetCard);
           this.scheduleBakePipGraphCardToImg(targetCard);
+          this.schedulePipGraphCardStealth(targetCard, 3000);
           // 🌟 [대표님 핵심 UX 기획]: 함수 추가 서랍이 열린 상태에서는 닫지 않고 유지하여 연속으로 누르는 함수를 한 창에 모두 담기! ([✕] 수동 닫기)
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
@@ -10023,6 +10347,7 @@
             const { widget } = this._getPipCardWidgetAndSnapRaw(targetCard);
             this.deselectAllPipGraphCards(widget);
             if (widget) {
+              widget._keepOpenForCardPlusMenu = false;
               this.bringCardToFront(widget);
               widget._lastPipLockUiSig = '';
             }
@@ -10030,6 +10355,7 @@
             this.syncPipCardLockUI(targetCard);
             this.renderPipGraphCard(targetCard);
             this.scheduleBakePipGraphCardToImg(targetCard);
+            this.schedulePipGraphCardStealth(targetCard, 3000);
             if (this.isAudioRecording) {
               this._recordAudioWorkspaceStateIfNeeded(true);
             }
@@ -10160,6 +10486,7 @@
       this.syncPipCardLockUI(createdRef);
       this.renderPipGraphCard(createdRef);
       this.scheduleBakePipGraphCardToImg(createdRef);
+      this.schedulePipGraphCardStealth(createdRef, 3000);
       if (!keepDrawerOpen && typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed) {
         this.closeDrawer();
       }
@@ -10195,11 +10522,22 @@
           const isAlreadyTargetingThis = (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets' && this._pipTargetCard === cardRef);
           document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
           if (isAlreadyTargetingThis) {
+            widget._keepOpenForCardPlusMenu = false;
             this.closeDrawer();
           } else {
+            this.deselectAllPipGraphCards(widget);
             this._pipTargetCard = cardRef;
             this._pipSessionOrigin = 'card';
+            widget._keepOpenForCardPlusMenu = true;
             btnAddFunc.classList.add('active');
+            const snap = this._getMutablePipCardSnapshot(cardRef);
+            if (snap && snap.isPipLocked && !snap.isNAxisStudioCard) {
+              snap.isPipLocked = false;
+              this._savePipCardSnapshot(cardRef, snap);
+            }
+            this.clearPipGraphCardStealthTimer(cardRef);
+            widget._lastPipLockUiSig = '';
+            this.syncPipCardLockUI(cardRef);
             this.openDrawer('panelPresets');
             this.showToast('➕ 이 카드에 함께 그릴 함수를 선택하세요! 다 담았으면 [✕]로 닫으세요.');
           }
@@ -10296,6 +10634,7 @@
           this.syncPipCardLockUI(cardRef);
           this.renderPipGraphCard(cardRef);
           this.scheduleBakePipGraphCardToImg(cardRef);
+          this.schedulePipGraphCardStealth(cardRef, 3000);
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
           }
@@ -10585,6 +10924,8 @@
           return;
         }
 
+        widget._keepOpenForCardPlusMenu = false;
+        this.clearPipGraphCardStealthTimer(cardRef);
         this.bringCardToFront(widget);
         if (document.activeElement && document.activeElement !== document.body && typeof document.activeElement.blur === 'function') {
           try { document.activeElement.blur(); } catch (_) { }
@@ -11176,6 +11517,7 @@
           }
         }
         this.scheduleBakePipGraphCardToImg(cardRef);
+        this.schedulePipGraphCardStealth(cardRef, 3000);
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(true);
         }
@@ -11210,6 +11552,7 @@
         this._reprojectPipCardInkFromMathCoords(cardRef, cardW, cardH);
         this.renderPipGraphCard(cardRef);
         this.scheduleBakePipGraphCardToImg(cardRef);
+        this.schedulePipGraphCardStealth(cardRef, 3000);
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(false);
         }

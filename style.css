@@ -17998,3 +17998,102 @@ body.theme-light .promo-banner-modal-footer {
     text-align: center;
   }
 }
+
+/* ============================================================================
+   ✨ [v70] 수동 잠금 버튼 제거 & 3초 자동 잠금·스텔스 + 캔바형 우측/하단 초슬림 시야확장 캡슐
+   ============================================================================ */
+.btn-card-lock-edit,
+#btnGraphCardLock,
+#btnProblemCardLock,
+.btn-problem-lock,
+.btn-extra-lock {
+  display: none !important;
+}
+
+.pip-edge-viewport-handle {
+  position: absolute;
+  background: transparent !important;
+  pointer-events: auto !important;
+  touch-action: none !important;
+  z-index: 24 !important;
+  transition: opacity 0.22s ease;
+}
+
+.pip-edge-viewport-handle-right {
+  right: -16px;
+  top: calc(50% + 17.5px);
+  transform: translateY(-50%);
+  width: 24px;
+  height: 56px;
+  cursor: ew-resize !important;
+}
+
+.pip-edge-viewport-handle-bottom {
+  bottom: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 24px;
+  cursor: ns-resize !important;
+}
+
+.pip-edge-viewport-handle::after {
+  content: '';
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.44);
+  pointer-events: none;
+  transition: background 0.15s ease, transform 0.15s ease, opacity 0.22s ease;
+}
+
+body.theme-light .pip-edge-viewport-handle::after {
+  background: #cbd5e1;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.pip-edge-viewport-handle-right::after {
+  right: 10.5px;
+  top: 50%;
+  width: 3.5px;
+  height: 26px;
+  transform: translateY(-50%);
+}
+
+.pip-edge-viewport-handle-bottom::after {
+  bottom: 10.5px;
+  left: 50%;
+  width: 26px;
+  height: 3.5px;
+  transform: translateX(-50%);
+}
+
+.pip-edge-viewport-handle:hover::after,
+.pip-edge-viewport-handle:active::after {
+  background: rgba(203, 213, 225, 0.88);
+}
+
+body.theme-light .pip-edge-viewport-handle:hover::after,
+body.theme-light .pip-edge-viewport-handle:active::after {
+  background: #64748b;
+}
+
+.problem-card-widget.minimized .pip-edge-viewport-handle,
+.n-axis-studio-board-card .pip-edge-viewport-handle {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+.graph-card-widget.pip-stealth-locked .pip-edge-viewport-handle,
+body.theme-light .graph-card-widget.pip-stealth-locked .pip-edge-viewport-handle,
+.graph-card-widget.card-ink-active .pip-edge-viewport-handle,
+.graph-card-widget.card-laser-active .pip-edge-viewport-handle,
+.graph-card-widget.pip-dropline-active .pip-edge-viewport-handle,
+body.ink-laser-tool-active .pip-edge-viewport-handle,
+body.ink-sticker-tool-active .pip-edge-viewport-handle {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.graph-card-widget.pip-stealth-locked .pip-edge-viewport-handle::after {
+  opacity: 0 !important;
+}

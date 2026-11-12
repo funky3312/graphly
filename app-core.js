@@ -1041,9 +1041,12 @@ class GraphApp {
       if (pToggle) pToggle.textContent = pc.toggleText || '▾';
       pWidget.classList.toggle('minimized', Boolean(pc.minimized));
       pWidget.classList.toggle('card-ink-active', Boolean(pc.cardInkActive));
-      pWidget.classList.toggle('pip-locked-mode', Boolean(pc.pipLocked));
+      pWidget.classList.toggle('pip-locked-mode', pc.pipLocked !== undefined ? Boolean(pc.pipLocked) : true);
       pWidget.classList.toggle('pip-stealth-locked', Boolean(pc.pipStealth));
       if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(pWidget);
+      if (typeof this.scheduleProblemCardStealth === 'function' && pWidget.classList.contains('pip-locked-mode') && !pWidget.classList.contains('pip-stealth-locked')) {
+        this.scheduleProblemCardStealth(pWidget, 3000);
+      }
       const pLaserBtn = pWidget.querySelector('.btn-card-laser');
       if (pLaserBtn) pLaserBtn.classList.toggle('active', Boolean(pc.cardInkActive));
       pWidget.style.left = pc.left || '72px';
@@ -1093,9 +1096,12 @@ class GraphApp {
           c.el.style.display = st.display || 'flex';
           c.el.classList.toggle('minimized', Boolean(st.minimized));
           c.el.classList.toggle('card-ink-active', Boolean(st.cardInkActive));
-          c.el.classList.toggle('pip-locked-mode', Boolean(st.pipLocked));
+          c.el.classList.toggle('pip-locked-mode', st.pipLocked !== undefined ? Boolean(st.pipLocked) : true);
           c.el.classList.toggle('pip-stealth-locked', Boolean(st.pipStealth));
           if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(c.el);
+          if (typeof this.scheduleProblemCardStealth === 'function' && c.el.classList.contains('pip-locked-mode') && !c.el.classList.contains('pip-stealth-locked')) {
+            this.scheduleProblemCardStealth(c.el, 3000);
+          }
           const lBtn = c.el.querySelector('.btn-card-laser');
           if (lBtn) lBtn.classList.toggle('active', Boolean(st.cardInkActive));
           if (typeof c.el._renderCardStickers === 'function') c.el._renderCardStickers();
@@ -1149,9 +1155,7 @@ class GraphApp {
       this.syncPipCardLockUI('primary');
       this.renderPipGraphCard('primary');
       this.renderGraphCardCanvas();
-      if (gWidget.classList.contains('pip-locked-mode')) {
-        this.schedulePipGraphCardStealth('primary', 3000);
-      }
+      this.schedulePipGraphCardStealth('primary', 3000);
     } else {
       this.clearPipGraphCardStealthTimer('primary');
       this._hasPrimaryGraphCard = false;
@@ -1210,7 +1214,6 @@ class GraphApp {
           c.el.classList.toggle('card-ink-active', Boolean(st.cardInkActive));
           c.el.classList.toggle('pip-locked-mode', Boolean(st.pipLocked));
           c.el.classList.toggle('pip-stealth-locked', Boolean(st.pipStealth));
-          if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(c.el);
           const lBtn = c.el.querySelector('.btn-card-laser');
           if (lBtn) lBtn.classList.toggle('active', Boolean(st.cardInkActive));
         }
@@ -1219,9 +1222,7 @@ class GraphApp {
         this.renderPipGraphCard(c);
         if (typeof c.el._renderCardStickers === 'function') c.el._renderCardStickers();
         if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
-        if (c.el.classList.contains('pip-locked-mode')) {
-          this.schedulePipGraphCardStealth(c, 3000);
-        }
+        this.schedulePipGraphCardStealth(c, 3000);
       }
     });
 
@@ -2549,7 +2550,7 @@ class GraphApp {
     );
     if (isValidTarget && typeof this._getMutablePipCardSnapshot === 'function') {
       const snap = this._getMutablePipCardSnapshot(targetCard);
-      if (snap && !snap.isPipLocked && Array.isArray(snap.graphs) && snap.graphs.length > 0) {
+      if (snap && !snap.isNAxisStudioCard && Array.isArray(snap.graphs) && snap.graphs.length > 0) {
         if (typeof this._pushWorkspaceUndoSnapshot === 'function') {
           this._pushWorkspaceUndoSnapshot('↺ 그래프 색상이 이전 상태로 복원되었습니다', '↻ 그래프 색상 변경 다시 실행됨');
         }
@@ -4069,6 +4070,9 @@ class GraphApp {
       });
       this._pipTargetCard = null;
       this._pipSessionOrigin = null;
+      if (typeof this.scheduleAllIdlePipCardsAutoLock === 'function') {
+        this.scheduleAllIdlePipCardsAutoLock(3000);
+      }
 
       if (this.isAudioRecording) {
         this._recordAudioWorkspaceStateIfNeeded(true);
