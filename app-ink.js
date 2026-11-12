@@ -403,6 +403,7 @@
         '#modalPdfViewer',
         '#modalCloudHub',
         '#modalNAxisStudio',
+        '#modalNAxisSetupNotice',
         '#modalMathToolkitLauncher'
       ];
       menuContainerSelectors.forEach(sel => {
@@ -513,6 +514,7 @@
         el.closest('#modalPdfViewer') ||
         el.closest('.pdf-modal-container') ||
         el.closest('.n-axis-studio-backdrop') ||
+        el.closest('.math-toolkit-backdrop') ||
         el.closest('.pw-region-popover') ||
         el.closest('.btn-exit-fullscreen') ||
         el.closest('.drop-line-label-input') ||

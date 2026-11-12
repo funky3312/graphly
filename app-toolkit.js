@@ -131,7 +131,7 @@
   }
 
   // =========================================================================
-  // 1. 시각화 도구 허브 & 그래프 2개 미설정 안내 모달
+  // 1. 시각화 도구 메뉴바(#panelToolkit) & 확장형 스튜디오 모달 생명주기 허브
   // =========================================================================
   GraphApp.prototype.registerMathToolkitTool = function (toolDef) {
     if (!toolDef || !toolDef.id || typeof toolDef.open !== 'function') return;
@@ -143,6 +143,9 @@
       this.mathToolkitRegistry[existingIdx] = toolDef;
     } else {
       this.mathToolkitRegistry.push(toolDef);
+    }
+    if (typeof this.renderMathToolkitPanel === 'function') {
+      this.renderMathToolkitPanel();
     }
   };
 
@@ -159,7 +162,7 @@
   };
 
   GraphApp.prototype._resumeAudioAfterToolkitIfNeeded = function () {
-    if (this.isMathToolkitOpen || this.isNAxisStudioOpen) return;
+    if (this.isMathToolkitOpen || this.isNAxisStudioOpen || this._activeToolkitModalId) return;
     if (this.isAudioRecording && this._autoPausedByToolkitModal) {
       this._autoPausedByToolkitModal = false;
       if (this.isAudioRecordPaused) {
@@ -179,25 +182,98 @@
     }
   };
 
+  // 추후 추가될 별도 모달형 시각화 도구들을 위한 공통 모달 세션 시작/종료 헬퍼
+  GraphApp.prototype.openToolkitModalSession = function (toolId, closeCallback = null) {
+    if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
+      this.closeDrawer();
+    }
+    this._pauseAudioForToolkitIfNeeded();
+    this._activeToolkitModalId = toolId || 'custom_toolkit_modal';
+    this._activeToolkitCloseFn = typeof closeCallback === 'function' ? closeCallback : null;
+    this.isMathToolkitOpen = true;
+  };
+
+  GraphApp.prototype.closeToolkitModalSession = function (toolId = null) {
+    if (toolId && this._activeToolkitModalId && this._activeToolkitModalId !== toolId) return;
+    this._activeToolkitModalId = null;
+    this._activeToolkitCloseFn = null;
+    const noticeEl = document.getElementById('modalNAxisSetupNotice');
+    const isNoticeOpen = Boolean(noticeEl && noticeEl.classList.contains('show'));
+    this.isMathToolkitOpen = isNoticeOpen;
+    this._resumeAudioAfterToolkitIfNeeded();
+  };
+
+  GraphApp.prototype.renderMathToolkitPanel = function () {
+    const container = document.getElementById('toolkitDrawerGrid');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const tools = Array.isArray(this.mathToolkitRegistry) ? this.mathToolkitRegistry.filter(Boolean) : [];
+    if (tools.length === 0) return;
+
+    const chevronSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+    const defaultIconSvg = `<svg viewBox="0 0 24 20" class="mini-func-icon" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="7" height="7" rx="1.5"/><polygon points="17.5 2 21 9 14 9"/><circle cx="6.5" cy="15" r="3"/><path d="M13 16c1.5-4 3-4 4 0 1 2.8 2.2 1 3.2-2.5"/></svg>`;
+
+    let currentGrid = null;
+    let currentCols = 0;
+
+    tools.forEach((tool, idx) => {
+      const targetCols = tool.cols === 2 ? 2 : 1;
+      if (tool.dividerBefore && idx > 0) {
+        const divLine = document.createElement('div');
+        divLine.className = 'func-block-divider';
+        container.appendChild(divLine);
+        currentGrid = null;
+      }
+      if (!currentGrid || currentCols !== targetCols) {
+        currentGrid = document.createElement('div');
+        currentGrid.className = `func-cat-grid cols-${targetCols}`;
+        currentCols = targetCols;
+        container.appendChild(currentGrid);
+      }
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'func-btn toolkit-tool-btn';
+      btn.dataset.toolId = tool.id;
+      if (tool.desc || tool.title) {
+        btn.title = tool.title || '';
+      }
+      btn.innerHTML = `
+        <span class="func-icon-wrap">${tool.iconSvg || defaultIconSvg}</span>
+        <span class="func-name-text">${tool.title || ''}</span>
+        <span class="toolkit-open-chevron" aria-hidden="true">${chevronSvg}</span>
+      `;
+      btn.onclick = () => {
+        if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
+          this.closeDrawer();
+        }
+        tool.open();
+      };
+      currentGrid.appendChild(btn);
+    });
+  };
+
   GraphApp.prototype.initMathToolkitHub = function () {
     if (this._mathToolkitHubInitialized) return;
     this._mathToolkitHubInitialized = true;
     this.isMathToolkitOpen = false;
+    this._activeToolkitModalId = null;
+    this._activeToolkitCloseFn = null;
     if (!Array.isArray(this.mathToolkitRegistry)) {
       this.mathToolkitRegistry = [];
     }
 
-    // 1호 정식 도구 등록: 합성함수 시각화
+    // 1호 정식 도구 등록: 합성함수 스튜디오
     this.registerMathToolkitTool({
       id: 'n_axis_composite',
-      title: '합성함수 시각화',
+      title: '합성함수 스튜디오',
       desc: '캔버스에 준비된 그래프(#1, #2)를 연동해 합성 개형을 관찰하고 3개 그래프 판서 도면을 삽입합니다.',
-      iconSvg: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>`,
+      iconSvg: `<svg viewBox="0 0 24 20" class="mini-func-icon" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h4v4"/><path d="M4 17 20 3"/><path d="M20 13v4h-4"/><path d="M14 12l6 5"/><path d="M4 3l5 4.5"/></svg>`,
       open: () => this.openNAxisStudioModal()
     });
 
     const launcherModal = document.getElementById('modalMathToolkitLauncher');
-    const gridEl = document.getElementById('mathToolkitGrid');
     const btnClose = document.getElementById('btnCloseMathToolkit');
 
     // 그래프 2개 미설정 안내 모달 바인딩
@@ -222,8 +298,7 @@
         noticeModal.classList.remove('show');
         noticeModal.style.display = 'none';
       }
-      const isLauncherShown = Boolean(launcherModal && launcherModal.classList.contains('show'));
-      this.isMathToolkitOpen = isLauncherShown;
+      this.isMathToolkitOpen = Boolean(this._activeToolkitModalId);
       this._resumeAudioAfterToolkitIfNeeded();
     };
 
@@ -241,7 +316,7 @@
       if (count === 0) {
         if (lblNoticeTitle) lblNoticeTitle.textContent = '함수 1·2번을 먼저 세팅해 주세요';
         if (lblNoticeDesc) {
-          lblNoticeDesc.innerHTML = '합성함수 시각화는 내가 화면에 그린 그래프들의 합성 개형을 관찰하는 도구입니다.<br>먼저 그래프 2개(<b>#1</b>, <b>#2</b>)를 세팅한 뒤 다시 실행해 주세요.';
+          lblNoticeDesc.innerHTML = '합성함수 스튜디오는 내가 화면에 그린 그래프들의 합성 개형을 관찰하는 도구입니다.<br>먼저 그래프 2개(<b>#1</b>, <b>#2</b>)를 세팅한 뒤 다시 실행해 주세요.';
         }
         if (boxNoticeStatus) {
           boxNoticeStatus.textContent = '현재 세팅된 그래프: 0개 (최소 2개 필요)';
@@ -306,53 +381,32 @@
         noticeModal.classList.remove('show');
         noticeModal.style.display = 'none';
       }
+      if (typeof this._activeToolkitCloseFn === 'function') {
+        const closeFn = this._activeToolkitCloseFn;
+        this._activeToolkitModalId = null;
+        this._activeToolkitCloseFn = null;
+        closeFn();
+      }
       this.isMathToolkitOpen = false;
       if (launcherModal) {
         launcherModal.classList.remove('show');
         launcherModal.style.display = 'none';
       }
+      if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelToolkit' && typeof this.closeDrawer === 'function') {
+        this.closeDrawer();
+      }
       this._resumeAudioAfterToolkitIfNeeded();
     };
 
     const openHub = () => {
-      const tools = Array.isArray(this.mathToolkitRegistry) ? this.mathToolkitRegistry.filter(Boolean) : [];
-      if (tools.length === 0) return;
-
-      if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
-        this.closeDrawer();
+      this.renderMathToolkitPanel();
+      if (typeof this.openDrawer === 'function') {
+        if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelToolkit') {
+          this.closeDrawer();
+        } else {
+          this.openDrawer('panelToolkit');
+        }
       }
-
-      // 등록된 완성 도구가 1개일 때는 불필요한 중간 모달 없이 즉시 오픈 (추후 2개 이상 등록 시 자동으로 그리드 런처 표출!)
-      if (tools.length === 1 || !launcherModal || !gridEl) {
-        tools[0].open();
-        return;
-      }
-
-      this._pauseAudioForToolkitIfNeeded();
-      gridEl.innerHTML = '';
-      tools.forEach(tool => {
-        const card = document.createElement('button');
-        card.type = 'button';
-        card.className = 'math-toolkit-item-card';
-        card.innerHTML = `
-          <div class="math-toolkit-item-icon">${tool.iconSvg || ''}</div>
-          <div class="math-toolkit-item-info">
-            <div class="math-toolkit-item-title">${tool.title || ''}</div>
-            <div class="math-toolkit-item-desc">${tool.desc || ''}</div>
-          </div>
-        `;
-        card.addEventListener('click', () => {
-          this.isMathToolkitOpen = false;
-          launcherModal.classList.remove('show');
-          launcherModal.style.display = 'none';
-          tool.open();
-        });
-        gridEl.appendChild(card);
-      });
-
-      this.isMathToolkitOpen = true;
-      launcherModal.style.display = 'flex';
-      launcherModal.classList.add('show');
     };
 
     this.openMathToolkitHub = openHub;
@@ -364,6 +418,8 @@
         if (e.target === launcherModal) closeHub();
       });
     }
+
+    this.renderMathToolkitPanel();
   };
 
   // =========================================================================
@@ -2317,7 +2373,8 @@
     this.closeNAxisStudioModal = closeModal;
     this.getNAxisStudioState = getNAxisStudioState;
 
-    if (btnRail) btnRail.onclick = () => this.openMathToolkitHub();
+    // 좌측 레일 버튼(#btnRailNAxis)은 data-panel="panelToolkit"을 통해 initRailDrawer()에서 표준 서랍 토글로 제어
+    if (btnRail && !btnRail.dataset.panel) btnRail.onclick = () => this.openMathToolkitHub();
     if (btnQuick) btnQuick.onclick = () => openModal();
     if (btnClose) btnClose.onclick = closeModal;
 
@@ -2577,6 +2634,13 @@
         if (this.isNAxisStudioOpen) {
           e.preventDefault();
           closeModal();
+          return;
+        }
+        if (typeof this._activeToolkitCloseFn === 'function') {
+          e.preventDefault();
+          const closeCustomFn = this._activeToolkitCloseFn;
+          this.closeToolkitModalSession();
+          closeCustomFn();
           return;
         }
         if (this.isMathToolkitOpen && typeof this.closeMathToolkitHub === 'function') {

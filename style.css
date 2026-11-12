@@ -15445,7 +15445,7 @@ body:not(.theme-light) .shortcut-mini-icon-btn {
      그래프 모드 우상단 [필기 복귀 · 카드 추가](#graphSnapFloatingBar)만 깔끔하게 노출
    ============================================================================ */
 body.ui-all-hidden-mode #railDock,
-body.ui-all-hidden-mode #railDrawer:not([data-active-panel="panelPresets"]),
+body.ui-all-hidden-mode #railDrawer:not([data-active-panel="panelPresets"]):not([data-active-panel="panelToolkit"]),
 body.ui-all-hidden-mode #rightActionToolbar,
 body.ui-all-hidden-mode #inkFloatingToolbar,
 body.ui-all-hidden-mode #lessonPlaylistNavBar,
@@ -15460,7 +15460,8 @@ body.ui-all-hidden-mode #pwRegionPopover {
   pointer-events: none !important;
 }
 
-body.ui-all-hidden-mode #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelPresets"] {
+body.ui-all-hidden-mode #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelPresets"],
+body.ui-all-hidden-mode #sidebarRail:not(.drawer-collapsed) #railDrawer[data-active-panel="panelToolkit"] {
   left: 18px !important;
 }
 
@@ -18196,3 +18197,60 @@ body.ink-sticker-tool-active .pip-edge-viewport-handle {
 .graph-card-widget.pip-stealth-locked .pip-edge-viewport-handle::after {
   opacity: 0 !important;
 }
+
+/* ============================================================================
+   📐 [시각화 도구 서랍 메뉴바 (#panelToolkit) — 함수 추가 창(#panelPresets) 1:1 통일 디자인]
+   ============================================================================ */
+.rail-drawer[data-active-panel="panelToolkit"] {
+  width: 244px;
+}
+
+.rail-drawer[data-active-panel="panelToolkit"] .drawer-header {
+  padding: 8px 12px;
+}
+
+.rail-drawer[data-active-panel="panelToolkit"] .drawer-subpanels-container {
+  padding: 8px 10px;
+}
+
+#panelToolkit.active {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.func-cat-grid.cols-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#panelToolkit .toolkit-tool-btn {
+  width: 100%;
+  min-height: 31px;
+  padding: 5px 9px;
+  gap: 7px;
+  font-size: 11.5px;
+}
+
+#panelToolkit .toolkit-tool-btn .func-name-text {
+  flex: 1;
+  text-align: left;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+#panelToolkit .toolkit-open-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0.42;
+  pointer-events: none;
+  transition: transform 0.14s ease, opacity 0.14s ease;
+}
+
+#panelToolkit .toolkit-tool-btn:hover .toolkit-open-chevron {
+  opacity: 0.9;
+  transform: translateX(1.5px);
+}
+

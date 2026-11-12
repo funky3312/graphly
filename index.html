@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261112_71">
+  <link rel="stylesheet" href="style.css?v=20261112_72">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -121,8 +121,8 @@
               <line x1="8.12" y1="8.12" x2="12" y2="12" />
             </svg></span>
         </button>
-        <!-- 📐 수학 시각화 도구 허브 (합성함수 · 비율관계 · 수열 · 입체단면 등 확장형 모달) -->
-        <button class="rail-btn" id="btnRailNAxis" title="시각화 도구">
+        <!-- 📐 수학 시각화 도구 메뉴바 (합성함수 스튜디오 · 비율관계 · 수열 · 입체단면 등 확장형 스튜디오 런처) -->
+        <button class="rail-btn" data-panel="panelToolkit" id="btnRailNAxis" title="시각화 도구">
           <span class="rail-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="3" width="7" height="7" rx="1.8" />
@@ -433,6 +433,19 @@
                   <div id="pwControls"></div>
                   <button id="btnPwReset"></button>
                   <div id="pwDescBadge"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4-2. 패널: 시각화 도구 (별도 모달창으로 열리는 확장형 시각화 스튜디오 메뉴바) -->
+            <div class="drawer-panel" id="panelToolkit" style="display: none;">
+              <div class="panel-section" style="border: none; padding: 0;">
+                <div class="section-title settings-clean-subtitle"
+                  style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                  <span>도구 선택</span>
+                </div>
+                <div id="toolkitDrawerGrid" class="func-top-blocks-wrap toolkit-drawer-list">
+                  <!-- JS(renderMathToolkitPanel)로 등록된 시각화 도구 버튼 동적 생성 -->
                 </div>
               </div>
             </div>
@@ -3125,17 +3138,17 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261112_71"></script>
-  <script src="app-core.js?v=20261112_71"></script>
-  <script src="app-ink.js?v=20261112_71"></script>
-  <script src="app-pdf.js?v=20261112_71"></script>
-  <script src="app-cards.js?v=20261112_71"></script>
-  <script src="app-cloud.js?v=20261112_71"></script>
-  <script src="app-canvas.js?v=20261112_71"></script>
-  <script src="app-toolkit.js?v=20261112_71"></script>
-  <script src="app.js?v=20261112_71"></script>
+  <script src="engine.js?v=20261112_72"></script>
+  <script src="app-core.js?v=20261112_72"></script>
+  <script src="app-ink.js?v=20261112_72"></script>
+  <script src="app-pdf.js?v=20261112_72"></script>
+  <script src="app-cards.js?v=20261112_72"></script>
+  <script src="app-cloud.js?v=20261112_72"></script>
+  <script src="app-canvas.js?v=20261112_72"></script>
+  <script src="app-toolkit.js?v=20261112_72"></script>
+  <script src="app.js?v=20261112_72"></script>
 
-  <!-- [📐 수학 시각화 도구 선택 모달 (등록된 완성 도구가 2개 이상일 때 자동 표출)] -->
+  <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
     <div class="math-toolkit-card">
       <div class="n-axis-studio-header">
@@ -3160,7 +3173,7 @@
     </div>
   </div>
 
-  <!-- [📌 합성함수 실행 전 그래프 2개 세팅 안내 모달] -->
+  <!-- [📌 합성함수 스튜디오 실행 전 그래프 2개 세팅 안내 모달] -->
   <div id="modalNAxisSetupNotice" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
     <div class="math-toolkit-card n-axis-setup-notice-card">
       <div class="n-axis-studio-header">
@@ -3173,7 +3186,7 @@
               <path d="M15 15l6 6" />
               <path d="M4 4l5 5" />
             </svg></span>
-          <span class="n-axis-title-text">합성함수 시각화 안내</span>
+          <span class="n-axis-title-text">합성함수 스튜디오 안내</span>
         </div>
         <button id="btnCloseNAxisNotice" class="btn-n-axis-close" title="닫기 (Esc)"><svg width="15" height="15"
             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -3185,7 +3198,7 @@
       <div class="n-axis-setup-notice-body">
         <div id="lblNAxisNoticeTitle" class="n-axis-setup-notice-title">합성할 그래프 2개를 먼저 준비해 주세요</div>
         <div id="lblNAxisNoticeDesc" class="n-axis-setup-notice-desc">
-          합성함수 시각화는 화면에 그려진 내가 만든 그래프들을 연동하여 관찰하는 도구입니다.<br>
+          합성함수 스튜디오는 화면에 그려진 내가 만든 그래프들을 연동하여 관찰하는 도구입니다.<br>
           그래프 1번·2번을 먼저 세팅한 뒤 다시 실행해 주세요.
         </div>
         <div id="boxNAxisNoticeStatus" class="n-axis-setup-notice-status"></div>
@@ -3197,7 +3210,7 @@
     </div>
   </div>
 
-  <!-- [🔀 100% 개형 조작형 N축 합성함수 시각화 모달] -->
+  <!-- [🔀 100% 개형 조작형 N축 합성함수 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
       <div class="n-axis-studio-header">
@@ -3210,7 +3223,7 @@
               <path d="M15 15l6 6" />
               <path d="M4 4l5 5" />
             </svg></span>
-          <span class="n-axis-title-text">합성함수 시각화</span>
+          <span class="n-axis-title-text">합성함수 스튜디오</span>
           <span class="n-axis-tag-badge">그래프 위의 점을 드래그해 치역·극점 매칭</span>
         </div>
         <div class="n-axis-header-actions" style="display:flex; align-items:center; gap:8px;">

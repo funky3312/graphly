@@ -1979,10 +1979,17 @@
           if (iconToggle) iconToggle.textContent = isOpen ? '◀' : '▶';
           const activePanelId = kf.activeDrawerPanel || this.activeDrawerPanel || 'panelPresets';
           if (kf.activeDrawerPanel) this.activeDrawerPanel = kf.activeDrawerPanel;
+          if (railDrawerEl) {
+            railDrawerEl.dataset.activePanel = activePanelId;
+          }
+          if (activePanelId === 'panelToolkit' && typeof this.renderMathToolkitPanel === 'function') {
+            this.renderMathToolkitPanel();
+          }
           const panelTitles = {
             panelPresets: '그래프 추가',
             panelTransform: '변환 & 대칭',
             panelPiecewise: '구간 분할',
+            panelToolkit: '시각화 도구',
             panelViewfinder: '캡처 규격',
             panelSettings: '환경 설정',
             panelStyle: '스타일 & 배경'
@@ -4923,6 +4930,16 @@
             buttonIds: ['btnTriggerGraphSnap'],
             baseTitle: '카드 추가'
           },
+          {
+            id: 'graph_open_toolkit',
+            category: 'graph',
+            categoryLabel: '📈 그래프 · 수학 도구',
+            name: '시각화 도구창 열기 / 닫기',
+            desc: '합성함수 스튜디오 등 시각화 도구 메뉴바 열기 ↔ 닫기',
+            defaultKey: '',
+            buttonIds: ['btnRailNAxis'],
+            baseTitle: '시각화 도구'
+          },
 
           // 3. 📄 슬라이드 · 뷰어 이동 (slide)
           {
@@ -5806,7 +5823,7 @@
     handleCustomShortcutKeyDown(e) {
       if (!e || e.defaultPrevented) return false;
       if (this.isShortcutSettingsModalOpen()) return false;
-      if (this.isNAxisStudioOpen || this.isMathToolkitOpen) return false;
+      if (this.isNAxisStudioOpen || this.isMathToolkitOpen || this._activeToolkitModalId) return false;
       const targetEl = e.target;
       if (targetEl) {
         const tag = targetEl.tagName ? targetEl.tagName.toUpperCase() : '';
@@ -6000,6 +6017,15 @@
         }
         case 'graph_capture_card': {
           this.toggleGraphSnapMode();
+          return true;
+        }
+        case 'graph_open_toolkit': {
+          if (this.isPdfModalOpen || (this.smartViewerState && this.smartViewerState.isOpen)) return false;
+          if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelToolkit') {
+            this.closeDrawer();
+          } else {
+            this.openDrawer('panelToolkit');
+          }
           return true;
         }
         case 'graph_open_smart_input': {

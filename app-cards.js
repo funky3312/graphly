@@ -10414,7 +10414,11 @@
         ) ||
         (
           !this.isDrawerCollapsed &&
-          (this.activeDrawerPanel === 'panelStyle' || this.activeDrawerPanel === 'panelSettings')
+          (
+            this.activeDrawerPanel === 'panelToolkit' ||
+            this.activeDrawerPanel === 'panelStyle' ||
+            this.activeDrawerPanel === 'panelSettings'
+          )
         )
       );
       const cardH = Math.round(cardW * aspect);
