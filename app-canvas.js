@@ -602,13 +602,15 @@
     };
 
     this._uiPointerIds = new Set();
-    let _mCloud = null, _mShare = null, _mSmart = null, _mGuide = null, _mShortcut = null, _viewerEl = null;
+    let _mCloud = null, _mShare = null, _mSmart = null, _mGuide = null, _mShortcut = null, _mProPricing = null, _viewerEl = null;
     const isAnyModalOrOverlayBlockingCanvas = () => {
       if (this.isDraggingPillRemote) return true;
       if (this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive) return true;
       if (this.isPdfModalOpen || this.isNAxisStudioOpen || this.isMathToolkitOpen || this._activeToolkitModalId) return true;
       if (!_mCloud) _mCloud = document.getElementById('modalCloudHub');
       if (_mCloud && _mCloud.classList.contains('show')) return true;
+      if (!_mProPricing) _mProPricing = document.getElementById('modalProPricing');
+      if (_mProPricing && _mProPricing.classList.contains('show')) return true;
       if (!_mShare) _mShare = document.getElementById('modalShare');
       if (_mShare && _mShare.classList.contains('show')) return true;
       if (!_mSmart) _mSmart = document.getElementById('modalSmartInput');
@@ -4110,6 +4112,12 @@
 
       // ESC 키: 서랍(추가창) 닫기, 올가미 선택 해제 또는 PDF 크롭모드/모달 닫기
       if (e.key === 'Escape' && !isInput) {
+        const mPro = document.getElementById('modalProPricing');
+        if (mPro && mPro.classList.contains('show')) {
+          e.preventDefault();
+          mPro.classList.remove('show');
+          return;
+        }
         if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
           e.preventDefault();
           this.closeDrawer();

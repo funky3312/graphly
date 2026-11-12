@@ -686,54 +686,84 @@
     const btnPayNow = document.getElementById('btnProModalPayNow');
     const btnCycleMonthly = document.getElementById('btnBillingCycleMonthly');
     const btnCycleYearly = document.getElementById('btnBillingCycleYearly');
+    const btnProCycleMonthly = document.getElementById('btnProCycleMonthly');
+    const btnProCycleYearly = document.getElementById('btnProCycleYearly');
+    const btnPremiumCycleMonthly = document.getElementById('btnPremiumCycleMonthly');
+    const btnPremiumCycleYearly = document.getElementById('btnPremiumCycleYearly');
     const cardPlanPro = document.getElementById('cardPlanPro');
     const cardPlanPremium = document.getElementById('cardPlanPremium');
     const cardPro1M = document.getElementById('cardPlanPro1M');
     const cardPro1Y = document.getElementById('cardPlanPro1Y');
 
+    this._tierBillingCycles = { pro: 'monthly', premium: 'monthly' };
     this._selectedPricingTier = 'pro';
     this._selectedBillingCycle = 'monthly';
+    this._lastAppliedBillingCycle = 'monthly';
     if (typeof this.syncProPricingModalUI === 'function') {
       this.syncProPricingModalUI();
     }
 
-    if (btnCycleMonthly) {
-      btnCycleMonthly.onclick = () => {
-        this._selectedBillingCycle = 'monthly';
-        this.syncProPricingModalUI();
+    const selectCardAndCycle = (tier, cycle = '') => {
+      const targetTier = (tier === 'premium') ? 'premium' : 'pro';
+      if (!this._tierBillingCycles) {
+        this._tierBillingCycles = { pro: 'monthly', premium: 'monthly' };
+      }
+      if (cycle === 'monthly' || cycle === 'yearly') {
+        this._tierBillingCycles[targetTier] = cycle;
+      }
+      const resolvedCycle = (this._tierBillingCycles[targetTier] === 'yearly') ? 'yearly' : 'monthly';
+      this._selectedPricingTier = targetTier;
+      this._selectedBillingCycle = resolvedCycle;
+      this._lastAppliedBillingCycle = resolvedCycle;
+      this.syncProPricingModalUI();
+    };
+
+    if (btnProCycleMonthly) {
+      btnProCycleMonthly.onclick = (e) => {
+        if (e) e.stopPropagation();
+        selectCardAndCycle('pro', 'monthly');
       };
+    }
+    if (btnProCycleYearly) {
+      btnProCycleYearly.onclick = (e) => {
+        if (e) e.stopPropagation();
+        selectCardAndCycle('pro', 'yearly');
+      };
+    }
+    if (btnPremiumCycleMonthly) {
+      btnPremiumCycleMonthly.onclick = (e) => {
+        if (e) e.stopPropagation();
+        selectCardAndCycle('premium', 'monthly');
+      };
+    }
+    if (btnPremiumCycleYearly) {
+      btnPremiumCycleYearly.onclick = (e) => {
+        if (e) e.stopPropagation();
+        selectCardAndCycle('premium', 'yearly');
+      };
+    }
+    if (btnCycleMonthly) {
+      btnCycleMonthly.onclick = () => selectCardAndCycle(this._selectedPricingTier, 'monthly');
     }
     if (btnCycleYearly) {
-      btnCycleYearly.onclick = () => {
-        this._selectedBillingCycle = 'yearly';
-        this.syncProPricingModalUI();
-      };
+      btnCycleYearly.onclick = () => selectCardAndCycle(this._selectedPricingTier, 'yearly');
     }
     if (cardPlanPro) {
-      cardPlanPro.onclick = () => {
-        this._selectedPricingTier = 'pro';
-        this.syncProPricingModalUI();
-      };
+      cardPlanPro.onclick = () => selectCardAndCycle('pro');
     }
     if (cardPlanPremium) {
-      cardPlanPremium.onclick = () => {
-        this._selectedPricingTier = 'premium';
-        this.syncProPricingModalUI();
-      };
+      cardPlanPremium.onclick = () => selectCardAndCycle('premium');
     }
     if (cardPro1M) {
-      cardPro1M.onclick = () => {
-        this._selectedPricingTier = 'pro';
-        this._selectedBillingCycle = 'monthly';
-        this.syncProPricingModalUI();
-      };
+      cardPro1M.onclick = () => selectCardAndCycle('pro', 'monthly');
     }
     if (cardPro1Y) {
-      cardPro1Y.onclick = () => {
-        this._selectedPricingTier = 'pro';
-        this._selectedBillingCycle = 'yearly';
-        this.syncProPricingModalUI();
-      };
+      cardPro1Y.onclick = () => selectCardAndCycle('pro', 'yearly');
+    }
+    if (modalPro) {
+      modalPro.addEventListener('click', (e) => {
+        if (e.target === modalPro) modalPro.classList.remove('show');
+      });
     }
     if (btnOpenProHub) {
       btnOpenProHub.onclick = () => {
@@ -2399,6 +2429,7 @@
   refreshAccountSubscriptionStatusUI() {
     const lblStatus = document.getElementById('lblCloudUserStatus');
     const lblProAcct = document.getElementById('lblProModalAccountStatus');
+    const lblProAcctBadge = document.getElementById('lblProModalAccountBadge');
     const lblSettingsAcct = document.getElementById('lblSettingsAccountStatus');
 
     if (!this.cloudUser) {
@@ -2406,8 +2437,12 @@
         lblStatus.style.display = 'none';
         lblStatus.textContent = '';
       }
+      if (lblProAcctBadge) {
+        lblProAcctBadge.className = 'pricing-acct-badge is-guest';
+        lblProAcctBadge.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg><span>로그인 필요</span>`;
+      }
       if (lblProAcct) {
-        lblProAcct.textContent = '🔒 결제 전 로그인이 필요합니다.';
+        lblProAcct.textContent = '결제할 계정에 먼저 로그인해 주세요.';
       }
       if (lblSettingsAcct) {
         lblSettingsAcct.classList.remove('has-sub-expiry');
@@ -2433,14 +2468,33 @@
       lblStatus.textContent = `🟢 ${this.cloudUser.displayName} (${emailStr})${tierTag}${remainSuffix}`;
     }
 
+    if (lblProAcctBadge) {
+      lblProAcctBadge.className = 'pricing-acct-badge is-verified';
+      lblProAcctBadge.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg><span>인증된 귀속 계정</span>`;
+    }
+
     if (lblProAcct) {
-      let proModalSuffix = '';
-      if (hasExpiry) {
-        const datePart = subInfo.formattedDate ? ` · ${subInfo.formattedDate}까지` : '';
-        const deferPart = subInfo.deferredProDays > 0 ? `, 이후 Pro ${subInfo.deferredProDays}일 자동 연장` : '';
-        proModalSuffix = ` (${subInfo.remainingDays}일 남음${datePart}${deferPart})`;
+      lblProAcct.innerHTML = '';
+      const spanName = document.createElement('span');
+      spanName.textContent = this.cloudUser.displayName || '회원';
+      lblProAcct.appendChild(spanName);
+
+      if (emailStr) {
+        const spanMail = document.createElement('span');
+        spanMail.className = 'acct-muted';
+        spanMail.textContent = ` (${emailStr})`;
+        lblProAcct.appendChild(spanMail);
       }
-      lblProAcct.textContent = `✅ 결제 귀속 계정: ${this.cloudUser.displayName} (${emailStr})${tierTag}${proModalSuffix}`;
+
+      if (hasExpiry) {
+        const cleanTierName = tier === 'premium' ? 'Premium' : 'Pro';
+        const datePart = subInfo.formattedDate ? ` · ${subInfo.formattedDate}까지` : '';
+        const deferPart = subInfo.deferredProDays > 0 ? `, 이후 Pro ${subInfo.deferredProDays}일 연장` : '';
+        const spanSub = document.createElement('span');
+        spanSub.className = 'acct-sub-pill';
+        spanSub.textContent = ` · ${cleanTierName} ${subInfo.remainingDays}일 남음${datePart}${deferPart}`;
+        lblProAcct.appendChild(spanSub);
+      }
     }
 
     if (lblSettingsAcct) {
@@ -4898,6 +4952,10 @@
       this._resetActiveShareSessionCache();
     }
     this._persistActiveCloudUserSession();
+    const inpBuyerName = document.getElementById('inputProBuyerName');
+    const inpBuyerEmail = document.getElementById('inputProBuyerEmail');
+    if (inpBuyerName) inpBuyerName.value = '';
+    if (inpBuyerEmail) inpBuyerEmail.value = '';
     this.syncCloudAuthUI();
     this.syncProPricingModalUI();
     this.renderMyLibraryList();
@@ -4910,25 +4968,52 @@
   syncProPricingModalUI() {
     const cfg = this.getSubscriptionQuotaConfig();
     const tier = (this._selectedPricingTier === 'premium') ? 'premium' : 'pro';
-    const cycle = (this._selectedBillingCycle === 'yearly') ? 'yearly' : 'monthly';
+    if (!this._tierBillingCycles) {
+      this._tierBillingCycles = { pro: 'monthly', premium: 'monthly' };
+    }
+    if (
+      (this._selectedBillingCycle === 'yearly' || this._selectedBillingCycle === 'monthly') &&
+      this._selectedBillingCycle !== this._lastAppliedBillingCycle
+    ) {
+      this._tierBillingCycles[tier] = this._selectedBillingCycle;
+    }
+
+    const proCycle = (this._tierBillingCycles.pro === 'yearly') ? 'yearly' : 'monthly';
+    const premCycle = (this._tierBillingCycles.premium === 'yearly') ? 'yearly' : 'monthly';
+    const cycle = (tier === 'premium') ? premCycle : proCycle;
+
     this._selectedPricingTier = tier;
     this._selectedBillingCycle = cycle;
+    this._lastAppliedBillingCycle = cycle;
 
-    const isYearly = (cycle === 'yearly');
-    const proPrice = isYearly ? (Number(cfg.proYearlyPrice) || 49000) : (Number(cfg.proMonthlyPrice) || 4900);
-    const premPrice = isYearly ? (Number(cfg.premiumYearlyPrice) || 99000) : (Number(cfg.premiumMonthlyPrice) || 9900);
-    const proRegPrice = isYearly ? (Number(cfg.proYearlyRegularPrice) || 99000) : (Number(cfg.proMonthlyRegularPrice) || 9900);
-    const premRegPrice = isYearly ? (Number(cfg.premiumYearlyRegularPrice) || 199000) : (Number(cfg.premiumMonthlyRegularPrice) || 19900);
-    const unitText = isYearly ? '/ 365일(VAT포함)' : '/ 30일(VAT포함)';
-    const periodNote = isYearly ? '제공기간: 결제일로부터 365일 (단건)' : '제공기간: 결제일로부터 30일 (단건)';
+    const isProYearly = (proCycle === 'yearly');
+    const isPremYearly = (premCycle === 'yearly');
+    const isSelectedYearly = (cycle === 'yearly');
+
+    const proPrice = isProYearly ? (Number(cfg.proYearlyPrice) || 49000) : (Number(cfg.proMonthlyPrice) || 4900);
+    const proRegPrice = isProYearly ? (Number(cfg.proYearlyRegularPrice) || 99000) : (Number(cfg.proMonthlyRegularPrice) || 9900);
+    const premPrice = isPremYearly ? (Number(cfg.premiumYearlyPrice) || 99000) : (Number(cfg.premiumMonthlyPrice) || 9900);
+    const premRegPrice = isPremYearly ? (Number(cfg.premiumYearlyRegularPrice) || 199000) : (Number(cfg.premiumMonthlyRegularPrice) || 19900);
+
+    const calcDiscountPct = (sale, reg) => {
+      if (!(reg > 0 && sale > 0 && sale < reg)) return 50;
+      return Math.max(1, 100 - Math.ceil((sale / reg) * 100));
+    };
+    const proDiscountPct = calcDiscountPct(proPrice, proRegPrice);
+    const premDiscountPct = calcDiscountPct(premPrice, premRegPrice);
+
+    const proUnitText = isProYearly ? '/ 365일' : '/ 30일';
+    const premUnitText = isPremYearly ? '/ 365일' : '/ 30일';
+    const proPeriodNote = isProYearly ? '제공기간: 결제일로부터 365일 (단건)' : '제공기간: 결제일로부터 30일 (단건)';
+    const premPeriodNote = isPremYearly ? '제공기간: 결제일로부터 365일 (단건)' : '제공기간: 결제일로부터 30일 (단건)';
 
     const selectedCode = tier === 'premium'
-      ? (isYearly ? 'PREMIUM_1Y' : 'PREMIUM_1M')
-      : (isYearly ? 'PRO_1Y' : 'PRO_1M');
+      ? (isSelectedYearly ? 'PREMIUM_1Y' : 'PREMIUM_1M')
+      : (isSelectedYearly ? 'PRO_1Y' : 'PRO_1M');
     const selectedAmount = tier === 'premium' ? premPrice : proPrice;
     const selectedName = tier === 'premium'
-      ? (isYearly ? 'Graphly Premium 1년 이용권 (365일)' : 'Graphly Premium 1개월 이용권 (30일)')
-      : (isYearly ? 'Graphly Pro 1년 이용권 (365일)' : 'Graphly Pro 1개월 이용권 (30일)');
+      ? (isSelectedYearly ? 'Graphly Premium 1년 이용권 (365일)' : 'Graphly Premium 1개월 이용권 (30일)')
+      : (isSelectedYearly ? 'Graphly Pro 1년 이용권 (365일)' : 'Graphly Pro 1개월 이용권 (30일)');
 
     this._selectedProPlan = {
       code: selectedCode,
@@ -4938,10 +5023,19 @@
       amount: selectedAmount
     };
 
-    const btnMonthly = document.getElementById('btnBillingCycleMonthly');
-    const btnYearly = document.getElementById('btnBillingCycleYearly');
-    if (btnMonthly) btnMonthly.classList.toggle('active', !isYearly);
-    if (btnYearly) btnYearly.classList.toggle('active', isYearly);
+    const btnProMonthly = document.getElementById('btnProCycleMonthly');
+    const btnProYearly = document.getElementById('btnProCycleYearly');
+    const btnPremMonthly = document.getElementById('btnPremiumCycleMonthly');
+    const btnPremYearly = document.getElementById('btnPremiumCycleYearly');
+    if (btnProMonthly) btnProMonthly.classList.toggle('active', !isProYearly);
+    if (btnProYearly) btnProYearly.classList.toggle('active', isProYearly);
+    if (btnPremMonthly) btnPremMonthly.classList.toggle('active', !isPremYearly);
+    if (btnPremYearly) btnPremYearly.classList.toggle('active', isPremYearly);
+
+    const btnMonthlyLegacy = document.getElementById('btnBillingCycleMonthly');
+    const btnYearlyLegacy = document.getElementById('btnBillingCycleYearly');
+    if (btnMonthlyLegacy) btnMonthlyLegacy.classList.toggle('active', !isSelectedYearly);
+    if (btnYearlyLegacy) btnYearlyLegacy.classList.toggle('active', isSelectedYearly);
 
     const cardPro = document.getElementById('cardPlanPro');
     const cardPremium = document.getElementById('cardPlanPremium');
@@ -4953,27 +5047,32 @@
       if (el) el.textContent = txt;
     };
     setTxt('lblPlanFreeCloud', this.formatBytesHuman(cfg.freeMaxCloudBytes));
-    setTxt('lblPlanFreeGraphs', `${cfg.freeMaxCustomGraphs}개 (로그인)`);
+    setTxt('lblPlanFreeGraphs', `${cfg.freeMaxCustomGraphs}개`);
     setTxt('lblPlanFreeRec', `${Math.round((cfg.freeMaxRecordMs || 300000) / 60000)}분`);
     setTxt('lblPlanFreeShare', `1일 ${cfg.freeShareDailyLimit || 3}개 · ${cfg.freeShareExpiryDays || 3}일 만료`);
 
+    setTxt('lblPlanProDiscountBadge', `${proDiscountPct}% 특별할인`);
+    setTxt('lblPlanProDiscountPill', `-${proDiscountPct}%`);
     setTxt('lblPlanProRegularPrice', `정가 ${proRegPrice.toLocaleString('ko-KR')}원`);
     setTxt('lblPlanProPrice', `${proPrice.toLocaleString('ko-KR')}원`);
-    setTxt('lblPlanProCycleUnit', unitText);
+    setTxt('lblPlanProCycleUnit', proUnitText);
     setTxt('lblPlanProCloud', this.formatBytesHuman(cfg.proMaxCloudBytes));
     setTxt('lblPlanProGraphs', `${cfg.proMaxCustomGraphs}개`);
     setTxt('lblPlanProRec', `${Math.round((cfg.proMaxRecordMs || 3600000) / 60000)}분`);
-    setTxt('lblPlanProShare', `무제한 · ${cfg.proShareExpiryDays || 7}일 만료`);
-    setTxt('lblPlanProPeriodNote', periodNote);
+    setTxt('lblPlanProShareDays', `${cfg.proShareExpiryDays || 7}일 만료`);
+    setTxt('lblPlanProPeriodNote', proPeriodNote);
+    setTxt('lblPlanProSelectState', tier === 'pro' ? '선택됨' : '선택하기');
 
+    setTxt('lblPlanPremiumDiscountPill', `-${premDiscountPct}%`);
     setTxt('lblPlanPremiumRegularPrice', `정가 ${premRegPrice.toLocaleString('ko-KR')}원`);
     setTxt('lblPlanPremiumPrice', `${premPrice.toLocaleString('ko-KR')}원`);
-    setTxt('lblPlanPremiumCycleUnit', unitText);
+    setTxt('lblPlanPremiumCycleUnit', premUnitText);
     setTxt('lblPlanPremiumCloud', this.formatBytesHuman(cfg.premiumMaxCloudBytes));
     setTxt('lblPlanPremiumGraphs', `${cfg.premiumMaxCustomGraphs}개`);
     setTxt('lblPlanPremiumRec', `${Math.round((cfg.premiumMaxRecordMs || 3600000) / 60000)}분`);
-    setTxt('lblPlanPremiumShare', '무제한 · 영구 링크');
-    setTxt('lblPlanPremiumPeriodNote', periodNote);
+    setTxt('lblPlanPremiumShare', '영구 링크');
+    setTxt('lblPlanPremiumPeriodNote', premPeriodNote);
+    setTxt('lblPlanPremiumSelectState', tier === 'premium' ? '선택됨' : '선택하기');
 
     const activeUserTier = this.getUserSubscriptionTier();
     setTxt(
@@ -4983,11 +5082,18 @@
         : '기본 무료 등급'
     );
 
+    const lblFinalAmt = document.getElementById('lblProModalFinalAmount');
+    if (lblFinalAmt) {
+      lblFinalAmt.textContent = `${selectedAmount.toLocaleString('ko-KR')}원`;
+      lblFinalAmt.classList.toggle('is-premium-selected', tier === 'premium');
+    }
+
+    const tierTitle = tier === 'premium' ? 'Premium' : 'Pro';
+    const cycleBadgeDays = isSelectedYearly ? '365일' : '30일';
+    setTxt('lblProModalPayBtnBadge', `${tierTitle} ${cycleBadgeDays}`);
+
     const btnPayNow = document.getElementById('btnProModalPayNow');
     if (btnPayNow) {
-      const tierTitle = tier === 'premium' ? 'Premium' : 'Pro';
-      const cycleShort = isYearly ? '1년' : '1개월';
-      btnPayNow.textContent = `💳 토스페이먼츠 카드 결제하기 (${tierTitle} ${cycleShort} · ${selectedAmount.toLocaleString('ko-KR')}원)`;
       btnPayNow.classList.toggle('is-premium-selected', tier === 'premium');
     }
   }
@@ -4995,6 +5101,9 @@
   openProPricingModal(preferredTier = '') {
     const modalPro = document.getElementById('modalProPricing');
     if (!modalPro) return;
+    if (this.virtualStylusEl && !this.isAudioPlaying) {
+      this.virtualStylusEl.style.display = 'none';
+    }
     if (preferredTier === 'premium' || preferredTier === 'pro') {
       this._selectedPricingTier = preferredTier;
     } else if (this.getUserSubscriptionTier() === 'pro') {

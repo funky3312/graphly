@@ -402,6 +402,7 @@
         '#modalShare',
         '#modalPdfViewer',
         '#modalCloudHub',
+        '#modalProPricing',
         '#modalNAxisStudio',
         '#modalNAxisSetupNotice',
         '#modalMathToolkitLauncher'
