@@ -17559,15 +17559,183 @@ body.theme-light .math-toolkit-item-desc {
   color: #64748b;
 }
 
-/* N축 합성함수 스튜디오 반응형 비율 고정 (하단 잘림 0px 보장) & 우하단 비주얼 슬롯 컨트롤러 */
+/* N축 합성함수 스튜디오 — Stitch 시안 1 (퓨어 라인-벡터 라이트형) & GPU 블러 제거 무지연 레이아웃 */
+#modalNAxisStudio.n-axis-studio-backdrop,
+body.theme-light #modalNAxisStudio.n-axis-studio-backdrop {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.theme-light #modalNAxisStudio.n-axis-studio-backdrop {
+  background: rgba(15, 23, 42, 0.36);
+}
+
+body:not(.theme-light) #modalNAxisStudio.n-axis-studio-backdrop {
+  background: rgba(4, 8, 16, 0.72);
+}
+
 #modalNAxisStudio .n-axis-studio-card {
   width: fit-content;
   max-width: 96vw;
   max-height: 94vh;
+  border-radius: 16px;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-studio-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.14), 0 0 0 1px rgba(15, 23, 42, 0.03);
+}
+
+body:not(.theme-light) #modalNAxisStudio .n-axis-studio-card {
+  background: #0b1120;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
 }
 
 #modalNAxisStudio .n-axis-studio-header {
   flex-shrink: 0;
+  height: 48px;
+  padding: 0 16px;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-studio-header {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+body:not(.theme-light) #modalNAxisStudio .n-axis-studio-header {
+  background: #0f172a;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+#modalNAxisStudio .n-axis-header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#modalNAxisStudio .n-axis-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  color: #e2e8f0;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-logo {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #1e293b;
+}
+
+#modalNAxisStudio .n-axis-title-text {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: #f8fafc;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-title-text {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+#modalNAxisStudio .n-axis-tag-badge {
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 2.5px 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #94a3b8;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-tag-badge {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  font-weight: 500;
+}
+
+#modalNAxisStudio .btn-n-axis-archive {
+  height: 32px;
+  padding: 0 13px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(203, 213, 225, 0.26);
+  color: #f1f5f9;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.1s ease;
+}
+
+#modalNAxisStudio .btn-n-axis-archive:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(226, 232, 240, 0.42);
+  color: #ffffff;
+  transform: none;
+  box-shadow: none;
+}
+
+#modalNAxisStudio .btn-n-axis-archive:active {
+  transform: scale(0.985);
+}
+
+body.theme-light #modalNAxisStudio .btn-n-axis-archive {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #1e293b;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+body.theme-light #modalNAxisStudio .btn-n-axis-archive:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.07);
+}
+
+#modalNAxisStudio .btn-n-axis-close {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+#modalNAxisStudio .btn-n-axis-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #f8fafc;
+  transform: none;
+}
+
+body.theme-light #modalNAxisStudio .btn-n-axis-close {
+  color: #64748b;
+}
+
+body.theme-light #modalNAxisStudio .btn-n-axis-close:hover {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #0f172a;
 }
 
 #modalNAxisStudio .n-axis-studio-body {
@@ -17577,6 +17745,11 @@ body.theme-light .math-toolkit-item-desc {
   height: auto;
   flex: 0 1 auto;
   min-height: 0;
+  background: #0b1120;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-studio-body {
+  background: #ffffff;
 }
 
 #modalNAxisStudio #nAxisStudioCanvas {
@@ -17588,23 +17761,36 @@ body.theme-light .math-toolkit-item-desc {
 }
 
 #modalNAxisStudio .n-axis-control-quadrant {
-  left: 50.3%;
-  right: 1.25%;
-  top: 51.6%;
-  bottom: 1.6%;
+  left: 50.8%;
+  right: 1.3%;
+  top: 51.8%;
+  bottom: 1.8%;
   width: auto;
   height: auto;
   max-height: none;
-  padding: clamp(9px, 1.6vh, 15px) clamp(11px, 1.35vw, 17px);
-  border-radius: 15px;
+  padding: clamp(9px, 1.55vh, 14px) clamp(11px, 1.3vw, 15px);
+  border-radius: 14px;
   overflow-x: hidden;
   overflow-y: auto;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transform: translateZ(0);
+  contain: layout paint;
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+body.theme-light #modalNAxisStudio .n-axis-control-quadrant {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
 }
 
 #modalNAxisStudio .n-axis-tab-content {
   height: 100%;
   min-height: 0;
-  gap: clamp(6px, 1.1vh, 11px);
+  gap: clamp(6px, 1.05vh, 10px);
   justify-content: space-between;
 }
 
@@ -17612,53 +17798,330 @@ body.theme-light .math-toolkit-item-desc {
   display: none !important;
 }
 
+#modalNAxisStudio .n-axis-visual-slots {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  gap: clamp(5px, 0.95vh, 9px);
+  padding: clamp(8px, 1.3vh, 12px) clamp(10px, 1.2vw, 14px);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+body.theme-light #modalNAxisStudio .n-axis-visual-slots {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+#modalNAxisStudio .n-axis-slot-block {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(4px, 0.75vh, 7px);
+}
+
+#modalNAxisStudio .n-axis-slot-block + .n-axis-slot-block {
+  padding-top: clamp(5px, 1vh, 9px);
+  border-top: 1px dashed rgba(148, 163, 184, 0.2);
+}
+
+body.theme-light #modalNAxisStudio .n-axis-slot-block + .n-axis-slot-block {
+  border-top-color: #e2e8f0;
+}
+
+#modalNAxisStudio .n-axis-slot-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#modalNAxisStudio .n-axis-slot-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+#modalNAxisStudio .n-axis-slot-role {
+  font-size: clamp(11.5px, 1.6vh, 12.8px);
+  font-weight: 600;
+  padding: 0;
+  border-radius: 0;
+  background: transparent !important;
+  color: #e2e8f0 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-slot-role {
+  color: #334155 !important;
+}
+
+#modalNAxisStudio .n-axis-slot-role::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+#modalNAxisStudio .n-axis-slot-role.inner::before {
+  background: #2563eb;
+}
+
+#modalNAxisStudio .n-axis-slot-role.outer::before {
+  background: #dc2626;
+}
+
+#modalNAxisStudio .n-axis-slot-active-name {
+  margin-left: auto;
+  font-size: clamp(11px, 1.5vh, 12px);
+  font-weight: 500;
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-slot-active-name {
+  color: #64748b;
+}
+
+#modalNAxisStudio .n-axis-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 0;
+  max-height: 74px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+#modalNAxisStudio .n-axis-chip {
+  min-height: clamp(29px, 4.2vh, 35px);
+  padding: 0 clamp(10px, 1.15vw, 15px);
+  font-size: clamp(11.8px, 1.65vh, 13px);
+  font-weight: 500;
+  border-radius: 8px;
+  line-height: 1.25;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: 1 1 0;
+  min-width: 108px;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+#modalNAxisStudio .n-axis-chip:only-child {
+  flex: 0 1 240px;
+}
+
+#modalNAxisStudio .n-axis-chip-check {
+  flex-shrink: 0;
+}
+
+#modalNAxisStudio .n-axis-canvas-chip {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.6);
+  color: #94a3b8;
+  box-shadow: none;
+}
+
+#modalNAxisStudio .n-axis-canvas-chip:hover {
+  border-color: rgba(203, 213, 225, 0.42);
+  background: rgba(30, 41, 59, 0.85);
+  color: #e2e8f0;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-canvas-chip {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #64748b;
+  box-shadow: none;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-canvas-chip:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+}
+
+#modalNAxisStudio #nAxisChipsG .n-axis-canvas-chip.active,
+#modalNAxisStudio #nAxisChipsF .n-axis-canvas-chip.active {
+  background: rgba(241, 245, 249, 0.12);
+  border: 1.5px solid #cbd5e1;
+  color: #f8fafc;
+  font-weight: 650;
+  box-shadow: none;
+}
+
+body.theme-light #modalNAxisStudio #nAxisChipsG .n-axis-canvas-chip.active,
+body.theme-light #modalNAxisStudio #nAxisChipsF .n-axis-canvas-chip.active {
+  background: #f1f5f9;
+  border: 1.5px solid #1e293b;
+  color: #0f172a;
+  font-weight: 650;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
 #modalNAxisStudio .n-axis-slider-box {
   flex-shrink: 0;
-  padding: clamp(6px, 1.15vh, 11px) clamp(10px, 1.3vw, 16px);
-  border-radius: 11px;
+  padding: clamp(6px, 1.15vh, 10px) clamp(10px, 1.25vw, 14px);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+body.theme-light #modalNAxisStudio .n-axis-slider-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
 }
 
 #modalNAxisStudio .n-axis-slider-header {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  font-size: clamp(11.5px, 1.65vh, 13.5px);
-  font-weight: 700;
-  margin-bottom: clamp(3px, 0.65vh, 7px);
+  font-size: clamp(11.5px, 1.6vh, 12.8px);
+  font-weight: 600;
+  color: #cbd5e1;
+  margin-bottom: clamp(4px, 0.7vh, 7px);
+}
+
+body.theme-light #modalNAxisStudio .n-axis-slider-header {
+  color: #334155;
 }
 
 #modalNAxisStudio #lblNAxisCurX {
-  font-weight: 800;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: clamp(11px, 1.5vh, 12px);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  min-width: 82px;
+  text-align: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  color: #f8fafc;
+}
+
+body.theme-light #modalNAxisStudio #lblNAxisCurX {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
 }
 
 #modalNAxisStudio #sliderNAxisX {
+  -webkit-appearance: none;
+  appearance: none;
   display: block;
   width: 100%;
-  height: clamp(17px, 2.5vh, 22px);
+  height: clamp(16px, 2.3vh, 20px);
   margin: 0;
-  accent-color: #2563eb;
+  background: transparent;
   cursor: pointer;
+}
+
+#modalNAxisStudio #sliderNAxisX:focus {
+  outline: none;
+}
+
+#modalNAxisStudio #sliderNAxisX::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: #334155;
+}
+
+body.theme-light #modalNAxisStudio #sliderNAxisX::-webkit-slider-runnable-track {
+  background: #e2e8f0;
+}
+
+#modalNAxisStudio #sliderNAxisX::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: #334155;
+}
+
+body.theme-light #modalNAxisStudio #sliderNAxisX::-moz-range-track {
+  background: #e2e8f0;
+}
+
+#modalNAxisStudio #sliderNAxisX::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin-top: -5.5px;
+  border-radius: 50%;
+  background: #0f172a;
+  border: 2px solid #f8fafc;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform 0.1s ease;
+}
+
+body.theme-light #modalNAxisStudio #sliderNAxisX::-webkit-slider-thumb {
+  background: #ffffff;
+  border: 2px solid #1e293b;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14);
+}
+
+#modalNAxisStudio #sliderNAxisX::-webkit-slider-thumb:hover {
+  transform: scale(1.12);
+}
+
+#modalNAxisStudio #sliderNAxisX::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #0f172a;
+  border: 2px solid #f8fafc;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+body.theme-light #modalNAxisStudio #sliderNAxisX::-moz-range-thumb {
+  background: #ffffff;
+  border: 2px solid #1e293b;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14);
 }
 
 #modalNAxisStudio .n-axis-footer-actions {
   flex-shrink: 0;
   display: flex;
   align-items: stretch;
-  gap: clamp(5px, 0.7vw, 9px);
+  gap: clamp(5px, 0.7vw, 8px);
 }
 
 #modalNAxisStudio .n-axis-btn-action,
 #modalNAxisStudio .n-axis-btn-outline {
-  height: clamp(34px, 5.2vh, 43px);
-  padding: 0 clamp(8px, 1vw, 14px);
-  font-size: clamp(11.5px, 1.75vh, 13.8px);
-  font-weight: 700;
-  border-radius: 10px;
+  height: clamp(34px, 5.1vh, 41px);
+  padding: 0 clamp(8px, 0.95vw, 13px);
+  font-size: clamp(11.5px, 1.68vh, 13px);
+  font-weight: 600;
+  border-radius: 9px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
   white-space: nowrap;
   min-width: 0;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.1s ease;
+}
+
+#modalNAxisStudio .n-axis-btn-action:active,
+#modalNAxisStudio .n-axis-btn-outline:active {
+  transform: scale(0.985);
 }
 
 #modalNAxisStudio .n-axis-btn-action svg,
@@ -17667,37 +18130,134 @@ body.theme-light .math-toolkit-item-desc {
 }
 
 #modalNAxisStudio #btnNAxisAutoPlay {
-  flex: 1.18 1 0;
-  font-weight: 800;
+  flex: 1.15 1 0;
+  font-weight: 650;
+  background: rgba(241, 245, 249, 0.12);
+  border: 1.5px solid #cbd5e1;
+  color: #f8fafc;
+  box-shadow: none;
+}
+
+#modalNAxisStudio #btnNAxisAutoPlay:hover {
+  background: rgba(241, 245, 249, 0.18);
+  border-color: #f8fafc;
+}
+
+#modalNAxisStudio #btnNAxisAutoPlay.is-playing {
+  background: rgba(241, 245, 249, 0.2);
+  border-color: #ffffff;
 }
 
 body.theme-light #modalNAxisStudio #btnNAxisAutoPlay {
-  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.24);
+  background: #f1f5f9;
+  border: 1.5px solid #1e293b;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+body.theme-light #modalNAxisStudio #btnNAxisAutoPlay:hover {
+  background: #e2e8f0;
+  border-color: #0f172a;
+  color: #0f172a;
+}
+
+body.theme-light #modalNAxisStudio #btnNAxisAutoPlay.is-playing {
+  background: #e2e8f0;
+  border-color: #0f172a;
 }
 
 #modalNAxisStudio #btnNAxisAutoFit,
 #modalNAxisStudio #btnNAxisSwap {
   flex: 1 1 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  color: #cbd5e1;
+}
+
+#modalNAxisStudio #btnNAxisAutoFit:hover,
+#modalNAxisStudio #btnNAxisSwap:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(203, 213, 225, 0.42);
+  color: #f8fafc;
+}
+
+body.theme-light #modalNAxisStudio #btnNAxisAutoFit,
+body.theme-light #modalNAxisStudio #btnNAxisSwap {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02);
+}
+
+body.theme-light #modalNAxisStudio #btnNAxisAutoFit svg,
+body.theme-light #modalNAxisStudio #btnNAxisSwap svg {
+  color: #475569;
+}
+
+body.theme-light #modalNAxisStudio #btnNAxisAutoFit:hover,
+body.theme-light #modalNAxisStudio #btnNAxisSwap:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
 }
 
 #modalNAxisStudio .n-axis-speed-group {
-  height: clamp(34px, 5.2vh, 43px);
+  height: clamp(34px, 5.1vh, 41px);
   padding: 3px;
-  border-radius: 10px;
+  border-radius: 9px;
   display: inline-flex;
   align-items: stretch;
   gap: 2px;
   flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+body.theme-light #modalNAxisStudio .n-axis-speed-group {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
 }
 
 #modalNAxisStudio .n-axis-speed-btn {
-  padding: 0 clamp(6px, 0.85vw, 11px);
-  font-size: clamp(11px, 1.6vh, 13px);
-  font-weight: 800;
-  border-radius: 7px;
+  padding: 0 clamp(6px, 0.8vw, 10px);
+  font-size: clamp(11px, 1.55vh, 12.5px);
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #94a3b8;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  transition: all 0.13s ease;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-speed-btn {
+  color: #64748b;
+}
+
+#modalNAxisStudio .n-axis-speed-btn:hover:not(.active) {
+  color: #e2e8f0;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-speed-btn:hover:not(.active) {
+  color: #334155;
+}
+
+#modalNAxisStudio .n-axis-speed-btn.active {
+  background: #1e293b;
+  border-color: rgba(203, 213, 225, 0.34);
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-speed-btn.active {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #0f172a;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 
 @media (max-height: 650px) {
@@ -17719,15 +18279,14 @@ body.theme-light #modalNAxisStudio #btnNAxisAutoPlay {
   }
   #modalNAxisStudio .n-axis-slot-role {
     font-size: 11px;
-    padding: 2px 7px;
   }
   #modalNAxisStudio .n-axis-slot-active-name {
-    font-size: 12px;
+    font-size: 11px;
   }
   #modalNAxisStudio .n-axis-chip {
     min-height: 25px;
     padding: 0 9px;
-    font-size: 11.5px;
+    font-size: 11.2px;
   }
   #modalNAxisStudio .n-axis-slider-box {
     padding: 4px 9px;
@@ -17743,7 +18302,7 @@ body.theme-light #modalNAxisStudio #btnNAxisAutoPlay {
   #modalNAxisStudio .n-axis-btn-outline,
   #modalNAxisStudio .n-axis-speed-group {
     height: 31px;
-    font-size: 11.5px;
+    font-size: 11.2px;
   }
   #modalNAxisStudio .n-axis-btn-action svg,
   #modalNAxisStudio .n-axis-btn-outline svg {
@@ -17760,7 +18319,12 @@ body.theme-light #modalNAxisStudio #btnNAxisAutoPlay {
   display: none !important;
 }
 
-/* 합성함수 실행 전 그래프 2개 세팅 안내 모달 */
+/* 합성함수 실행 전 그래프 2개 세팅 안내 모달 (무채색 벡터 톤 일체화) */
+#modalNAxisSetupNotice.n-axis-studio-backdrop {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 .n-axis-setup-notice-card {
   width: min(460px, 92vw);
 }
@@ -17796,18 +18360,18 @@ body.theme-light .n-axis-setup-notice-desc {
 .n-axis-setup-notice-status {
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(59, 130, 246, 0.12);
-  border: 1px solid rgba(59, 130, 246, 0.28);
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.24);
   font-size: 12px;
-  font-weight: 700;
-  color: #93c5fd;
+  font-weight: 600;
+  color: #e2e8f0;
   line-height: 1.45;
 }
 
 body.theme-light .n-axis-setup-notice-status {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  color: #1d4ed8;
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #334155;
 }
 
 .n-axis-setup-notice-actions {
@@ -17821,7 +18385,7 @@ body.theme-light .n-axis-setup-notice-status {
 .n-axis-notice-btn {
   border-radius: 9px;
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 600;
   padding: 8px 15px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -17839,179 +18403,38 @@ body.theme-light .n-axis-setup-notice-status {
 }
 
 body.theme-light .n-axis-notice-btn.secondary {
-  background: #f8fafc;
-  border-color: #cbd5e1;
+  background: #ffffff;
+  border-color: #e2e8f0;
   color: #475569;
 }
 
 body.theme-light .n-axis-notice-btn.secondary:hover {
-  background: #f1f5f9;
+  background: #f8fafc;
+  border-color: #cbd5e1;
   color: #0f172a;
 }
 
 .n-axis-notice-btn.primary {
-  background: #2563eb;
-  border: 1px solid #2563eb;
-  color: #ffffff;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  background: rgba(241, 245, 249, 0.14);
+  border: 1.5px solid #cbd5e1;
+  color: #f8fafc;
+  box-shadow: none;
 }
 
 .n-axis-notice-btn.primary:hover {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
+  background: rgba(241, 245, 249, 0.22);
 }
 
-.n-axis-visual-slots {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-evenly;
-  gap: clamp(6px, 1vh, 10px);
-  padding: clamp(8px, 1.35vh, 13px) clamp(10px, 1.25vw, 15px);
-  border-radius: 12px;
-}
-
-.n-axis-slot-block {
-  display: flex;
-  flex-direction: column;
-  gap: clamp(5px, 0.8vh, 8px);
-}
-
-.n-axis-slot-block + .n-axis-slot-block {
-  padding-top: clamp(6px, 1.1vh, 10px);
-  border-top: 1px dashed rgba(148, 163, 184, 0.22);
-}
-
-body.theme-light .n-axis-slot-block + .n-axis-slot-block {
-  border-top-color: #e2e8f0;
-}
-
-.n-axis-slot-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.n-axis-slot-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.n-axis-slot-role {
-  font-size: clamp(11.5px, 1.6vh, 13px);
-  font-weight: 800;
-  padding: 3px 9px;
-  border-radius: 7px;
-  flex-shrink: 0;
-}
-
-.n-axis-slot-role.inner {
-  background: rgba(59, 130, 246, 0.18);
-  color: #60a5fa;
-}
-
-.n-axis-slot-role.outer {
-  background: rgba(239, 68, 68, 0.18);
-  color: #f87171;
-}
-
-body.theme-light .n-axis-slot-role.inner {
-  background: rgba(37, 99, 235, 0.11);
-  color: #2563eb;
-}
-
-body.theme-light .n-axis-slot-role.outer {
-  background: rgba(220, 38, 38, 0.11);
-  color: #dc2626;
-}
-
-.n-axis-slot-active-name {
-  font-size: clamp(12.5px, 1.75vh, 14px);
-  font-weight: 800;
-  color: #f1f5f9;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-body.theme-light .n-axis-slot-active-name {
+body.theme-light .n-axis-notice-btn.primary {
+  background: #f1f5f9;
+  border: 1.5px solid #1e293b;
   color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
 }
 
-.n-axis-chips-wrap {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin-top: 0;
-  max-height: 74px;
-  overflow-y: auto;
-  padding-right: 2px;
-}
-
-#modalNAxisStudio .n-axis-chip {
-  min-height: clamp(29px, 4.2vh, 35px);
-  padding: 0 clamp(11px, 1.2vw, 16px);
-  font-size: clamp(12px, 1.68vh, 13.5px);
-  font-weight: 700;
-  border-radius: 9px;
-  line-height: 1.25;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  flex: 1 1 0;
-  min-width: 110px;
-  transition: all 0.15s ease;
-}
-
-#modalNAxisStudio .n-axis-chip:only-child {
-  flex: 0 1 240px;
-}
-
-#modalNAxisStudio .n-axis-canvas-chip {
-  border-color: rgba(148, 163, 184, 0.28);
-  background: rgba(255, 255, 255, 0.06);
-  color: #e2e8f0;
-}
-
-#modalNAxisStudio .n-axis-canvas-chip:hover {
-  border-color: rgba(96, 165, 250, 0.6);
-  background: rgba(59, 130, 246, 0.14);
-  color: #ffffff;
-}
-
-body.theme-light #modalNAxisStudio .n-axis-canvas-chip {
-  border: 1.5px solid #cbd5e1;
-  background: #f8fafc;
-  color: #334155;
-}
-
-body.theme-light #modalNAxisStudio .n-axis-canvas-chip:hover {
-  border-color: #93c5fd;
-  background: #eff6ff;
-  color: #1e40af;
-}
-
-#modalNAxisStudio #nAxisChipsG .n-axis-canvas-chip.active,
-body.theme-light #modalNAxisStudio #nAxisChipsG .n-axis-canvas-chip.active {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #ffffff;
-  font-weight: 800;
-  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.25);
-}
-
-#modalNAxisStudio #nAxisChipsF .n-axis-canvas-chip.active,
-body.theme-light #modalNAxisStudio #nAxisChipsF .n-axis-canvas-chip.active {
-  background: #dc2626;
-  border-color: #dc2626;
-  color: #ffffff;
-  font-weight: 800;
-  box-shadow: 0 3px 10px rgba(220, 38, 38, 0.24);
+body.theme-light .n-axis-notice-btn.primary:hover {
+  background: #e2e8f0;
+  border-color: #0f172a;
 }
 
 /* 🎙️ 환경설정(#panelSettings) > 녹음 볼륨 한 줄 슬라이더 레이아웃 정렬 */

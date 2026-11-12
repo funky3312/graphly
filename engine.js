@@ -424,8 +424,10 @@ class GraphMathEngine {
       }
 
       case "4th_asymmetric": {
-        const sorted = [...handles].sort((a, b) => a.x - b.x);
-        let [h1, h2, h3] = sorted;
+        let h1 = handles[0], h2 = handles[1], h3 = handles[2];
+        if (h1.x > h2.x) { const tmp = h1; h1 = h2; h2 = tmp; }
+        if (h2.x > h3.x) { const tmp = h2; h2 = h3; h3 = tmp; }
+        if (h1.x > h2.x) { const tmp = h1; h1 = h2; h2 = tmp; }
         let x1 = h1.x, y1 = h1.y;
         let x2 = h2.x, y2 = h2.y;
         let x3 = h3.x;
@@ -468,9 +470,10 @@ class GraphMathEngine {
       }
 
       case "3rd_normal": {
-        const sorted = [...handles.slice(0, 2)].sort((a, b) => a.x - b.x);
-        const x1 = sorted[0].x, y1 = sorted[0].y;
-        const x2 = sorted[1].x, y2 = sorted[1].y;
+        const hFirst = handles[0].x <= handles[1].x ? handles[0] : handles[1];
+        const hSecond = handles[0].x <= handles[1].x ? handles[1] : handles[0];
+        const x1 = hFirst.x, y1 = hFirst.y;
+        const x2 = hSecond.x, y2 = hSecond.y;
         let p = (x2 - x1) / 2.0;
         if (Math.abs(p) < 0.2) p = 0.2;
         const x0 = (x1 + x2) / 2.0;

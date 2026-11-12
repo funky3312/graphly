@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261112_73">
+  <link rel="stylesheet" href="style.css?v=20261112_74">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -3165,15 +3165,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261112_73"></script>
-  <script src="app-core.js?v=20261112_73"></script>
-  <script src="app-ink.js?v=20261112_73"></script>
-  <script src="app-pdf.js?v=20261112_73"></script>
-  <script src="app-cards.js?v=20261112_73"></script>
-  <script src="app-cloud.js?v=20261112_73"></script>
-  <script src="app-canvas.js?v=20261112_73"></script>
-  <script src="app-toolkit.js?v=20261112_73"></script>
-  <script src="app.js?v=20261112_73"></script>
+  <script src="engine.js?v=20261112_74"></script>
+  <script src="app-core.js?v=20261112_74"></script>
+  <script src="app-ink.js?v=20261112_74"></script>
+  <script src="app-pdf.js?v=20261112_74"></script>
+  <script src="app-cards.js?v=20261112_74"></script>
+  <script src="app-cloud.js?v=20261112_74"></script>
+  <script src="app-canvas.js?v=20261112_74"></script>
+  <script src="app-toolkit.js?v=20261112_74"></script>
+  <script src="app.js?v=20261112_74"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -3242,29 +3242,26 @@
     <div class="n-axis-studio-card">
       <div class="n-axis-studio-header">
         <div class="n-axis-header-title">
-          <span class="n-axis-logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M16 3h5v5" />
-              <path d="M4 20 21 3" />
-              <path d="M21 16v5h-5" />
-              <path d="M15 15l6 6" />
-              <path d="M4 4l5 5" />
+          <span class="n-axis-logo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19L19 4M19 4H12M19 4V11" />
+              <path d="M4 5L20 21" stroke-dasharray="2.2 2.4" stroke-opacity="0.55" />
             </svg></span>
           <span class="n-axis-title-text">합성함수 스튜디오</span>
-          <span class="n-axis-tag-badge">그래프 위의 점을 드래그해 치역·극점 매칭</span>
+          <span class="n-axis-tag-badge">점을 드래그해 치역·극점 매칭</span>
         </div>
         <div class="n-axis-header-actions" style="display:flex; align-items:center; gap:8px;">
           <button id="btnNAxisArchiveToBoard" class="btn-n-axis-archive" title="겉함수 · 속함수 · 합성함수 3개 그래프를 판서용 카드로 칠판에 삽입합니다">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
               stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 3v12" />
-              <path d="m7 10 5 5 5-5" />
-              <rect x="3" y="17" width="18" height="4" rx="1.5" />
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
             <span>캔버스 삽입</span>
           </button>
           <button id="btnCloseNAxisStudio" class="btn-n-axis-close" title="닫기 (Esc)"><svg width="15" height="15"
-              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
               stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
@@ -3317,20 +3314,21 @@
                 <div class="n-axis-stat-label">1) 입력 x</div>
                 <div class="n-axis-stat-val" id="dispNAxisX">0.40</div>
               </div>
-              <div class="n-axis-stat-card" style="border-left-color: #d97706;">
+              <div class="n-axis-stat-card" style="border-left-color: #64748b;">
                 <div class="n-axis-stat-label">2) 속함수 t = g(x)</div>
                 <div class="n-axis-stat-val" id="dispNAxisT">0.78</div>
               </div>
-              <div class="n-axis-stat-card" style="border-left-color: #7c3aed;">
+              <div class="n-axis-stat-card" style="border-left-color: #0f172a;">
                 <div class="n-axis-stat-label">3) 최종 y = f(g(x))</div>
                 <div class="n-axis-stat-val" id="dispNAxisY">-1.87</div>
               </div>
             </div>
 
             <div class="n-axis-footer-actions">
-              <button type="button" id="btnNAxisAutoPlay" class="n-axis-btn-action"><svg width="15" height="15"
-                  viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                  <polygon points="5 3 19 12 5 21 5 3" />
+              <button type="button" id="btnNAxisAutoPlay" class="n-axis-btn-action"><svg width="14" height="14"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                  stroke-linejoin="round">
+                  <polygon points="6 4 20 12 6 20 6 4" />
                 </svg><span>자동 순항</span></button>
               <div class="n-axis-speed-group">
                 <button type="button" class="n-axis-speed-btn" data-speed="0.5">0.5x</button>
@@ -3338,20 +3336,21 @@
                 <button type="button" class="n-axis-speed-btn" data-speed="2.0">2.0x</button>
               </div>
               <button type="button" id="btnNAxisAutoFit" class="n-axis-btn-outline"
-                title="현재 개형에 맞춰 화면 배율을 보기 좋게 정렬합니다"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M15 3h6v6" />
-                  <path d="M9 21H3v-6" />
-                  <path d="M21 3l-7 7" />
-                  <path d="M3 21l7-7" />
+                title="현재 개형에 맞춰 화면 배율을 보기 좋게 정렬합니다"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="15 3 21 3 21 9" />
+                  <polyline points="9 21 3 21 3 15" />
+                  <line x1="21" y1="3" x2="14" y2="10" />
+                  <line x1="3" y1="21" x2="10" y2="14" />
                 </svg><span>시야 맞춤</span></button>
               <button type="button" id="btnNAxisSwap" class="n-axis-btn-outline"
-                title="겉함수와 속함수를 서로 맞바꿉니다 (f∘g ⇄ g∘f)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M16 3h5v5" />
-                  <path d="M4 20 21 3" />
-                  <path d="M8 21H3v-5" />
-                  <path d="M20 4 3 21" />
+                title="겉함수와 속함수를 서로 맞바꿉니다 (f∘g ⇄ g∘f)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="16 3 21 3 21 8" />
+                  <line x1="4" y1="20" x2="21" y2="3" />
+                  <polyline points="21 16 21 21 16 21" />
+                  <line x1="15" y1="15" x2="21" y2="21" />
+                  <line x1="4" y1="4" x2="9" y2="9" />
                 </svg><span>겉 ⇄ 속</span></button>
             </div>
           </div>
