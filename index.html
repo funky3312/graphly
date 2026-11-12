@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261112_70">
+  <link rel="stylesheet" href="style.css?v=20261112_71">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -3125,15 +3125,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261112_70"></script>
-  <script src="app-core.js?v=20261112_70"></script>
-  <script src="app-ink.js?v=20261112_70"></script>
-  <script src="app-pdf.js?v=20261112_70"></script>
-  <script src="app-cards.js?v=20261112_70"></script>
-  <script src="app-cloud.js?v=20261112_70"></script>
-  <script src="app-canvas.js?v=20261112_70"></script>
-  <script src="app-toolkit.js?v=20261112_70"></script>
-  <script src="app.js?v=20261112_70"></script>
+  <script src="engine.js?v=20261112_71"></script>
+  <script src="app-core.js?v=20261112_71"></script>
+  <script src="app-ink.js?v=20261112_71"></script>
+  <script src="app-pdf.js?v=20261112_71"></script>
+  <script src="app-cards.js?v=20261112_71"></script>
+  <script src="app-cloud.js?v=20261112_71"></script>
+  <script src="app-canvas.js?v=20261112_71"></script>
+  <script src="app-toolkit.js?v=20261112_71"></script>
+  <script src="app.js?v=20261112_71"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (등록된 완성 도구가 2개 이상일 때 자동 표출)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -3246,12 +3246,6 @@
                     <span class="n-axis-slot-role inner">속함수 g(x)</span>
                     <span id="lblNAxisActiveG" class="n-axis-slot-active-name">#1 함수</span>
                   </div>
-                  <div class="n-axis-slot-mini-tools">
-                    <button type="button" id="btnNAxisAbsG" class="n-axis-mini-toggle"
-                      title="속함수 전체 절댓값 |g(x)| 꺾어올리기">|g|</button>
-                    <button type="button" id="btnNAxisFlipG" class="n-axis-mini-toggle"
-                      title="속함수 상하 부호 반전 -g(x)">↕반전</button>
-                  </div>
                 </div>
                 <div id="nAxisChipsG" class="n-axis-quick-chips n-axis-chips-wrap"></div>
               </div>
@@ -3262,12 +3256,6 @@
                   <div class="n-axis-slot-title">
                     <span class="n-axis-slot-role outer">겉함수 f(t)</span>
                     <span id="lblNAxisActiveF" class="n-axis-slot-active-name">#2 함수</span>
-                  </div>
-                  <div class="n-axis-slot-mini-tools">
-                    <button type="button" id="btnNAxisAbsF" class="n-axis-mini-toggle"
-                      title="겉함수 전체 절댓값 |f(t)| 꺾어올리기">|f|</button>
-                    <button type="button" id="btnNAxisFlipF" class="n-axis-mini-toggle"
-                      title="겉함수 상하 부호 반전 -f(t)">↕반전</button>
                   </div>
                 </div>
                 <div id="nAxisChipsF" class="n-axis-quick-chips n-axis-chips-wrap"></div>
@@ -3283,7 +3271,7 @@
               <input type="range" id="sliderNAxisX" min="-3.14" max="3.14" step="0.01" value="0.4">
             </div>
 
-            <!-- 실시간 3단계 추적 스탯 -->
+            <!-- 실시간 3단계 추적 스탯 (하위 호환 DOM 보존) -->
             <div class="n-axis-stats-grid">
               <div class="n-axis-stat-card" style="border-left-color: #2563eb;">
                 <div class="n-axis-stat-label">1) 입력 x</div>
@@ -3300,35 +3288,31 @@
             </div>
 
             <div class="n-axis-footer-actions">
-              <div style="display:flex; align-items:center; gap:6px;">
-                <button id="btnNAxisAutoPlay" class="n-axis-btn-action"><svg width="13" height="13" viewBox="0 0 24 24"
-                    fill="currentColor" stroke="none" style="vertical-align:-2px;margin-right:3px;">
-                    <polygon points="5 3 19 12 5 21 5 3" />
-                  </svg>자동 순항</button>
-                <div class="n-axis-speed-group">
-                  <button class="n-axis-speed-btn" data-speed="0.5">0.5x</button>
-                  <button class="n-axis-speed-btn active" data-speed="1.0">1.0x</button>
-                  <button class="n-axis-speed-btn" data-speed="2.0">2.0x</button>
-                </div>
+              <button type="button" id="btnNAxisAutoPlay" class="n-axis-btn-action"><svg width="15" height="15"
+                  viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg><span>자동 순항</span></button>
+              <div class="n-axis-speed-group">
+                <button type="button" class="n-axis-speed-btn" data-speed="0.5">0.5x</button>
+                <button type="button" class="n-axis-speed-btn active" data-speed="1.0">1.0x</button>
+                <button type="button" class="n-axis-speed-btn" data-speed="2.0">2.0x</button>
               </div>
-              <div style="display:flex; gap:6px;">
-                <button id="btnNAxisAutoFit" class="n-axis-btn-outline" title="현재 개형에 맞춰 화면 배율을 보기 좋게 정렬합니다"><svg
-                    width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;">
-                    <path d="M15 3h6v6" />
-                    <path d="M9 21H3v-6" />
-                    <path d="M21 3l-7 7" />
-                    <path d="M3 21l7-7" />
-                  </svg>시야 맞춤</button>
-                <button id="btnNAxisSwap" class="n-axis-btn-outline" title="겉함수와 속함수를 서로 맞바꿉니다 (f∘g ⇄ g∘f)"><svg
-                    width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;">
-                    <path d="M16 3h5v5" />
-                    <path d="M4 20 21 3" />
-                    <path d="M8 21H3v-5" />
-                    <path d="M20 4 3 21" />
-                  </svg>겉 ⇄ 속</button>
-              </div>
+              <button type="button" id="btnNAxisAutoFit" class="n-axis-btn-outline"
+                title="현재 개형에 맞춰 화면 배율을 보기 좋게 정렬합니다"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M15 3h6v6" />
+                  <path d="M9 21H3v-6" />
+                  <path d="M21 3l-7 7" />
+                  <path d="M3 21l7-7" />
+                </svg><span>시야 맞춤</span></button>
+              <button type="button" id="btnNAxisSwap" class="n-axis-btn-outline"
+                title="겉함수와 속함수를 서로 맞바꿉니다 (f∘g ⇄ g∘f)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 3h5v5" />
+                  <path d="M4 20 21 3" />
+                  <path d="M8 21H3v-5" />
+                  <path d="M20 4 3 21" />
+                </svg><span>겉 ⇄ 속</span></button>
             </div>
           </div>
         </div>

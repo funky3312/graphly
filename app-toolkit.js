@@ -723,10 +723,6 @@
     const lblActiveF = document.getElementById('lblNAxisActiveF');
     const chipsContainerG = document.getElementById('nAxisChipsG');
     const chipsContainerF = document.getElementById('nAxisChipsF');
-    const btnAbsG = document.getElementById('btnNAxisAbsG');
-    const btnFlipG = document.getElementById('btnNAxisFlipG');
-    const btnAbsF = document.getElementById('btnNAxisAbsF');
-    const btnFlipF = document.getElementById('btnNAxisFlipF');
 
     let availableCanvasCandidates = [];
 
@@ -2074,10 +2070,6 @@
     function syncSlotControllerUI() {
       if (lblActiveG) lblActiveG.textContent = getSlotDisplayTitle(slotG);
       if (lblActiveF) lblActiveF.textContent = getSlotDisplayTitle(slotF);
-      if (btnAbsG) btnAbsG.classList.toggle('active', Boolean(slotG.absOut));
-      if (btnFlipG) btnFlipG.classList.toggle('active', Boolean(slotG.invertOut));
-      if (btnAbsF) btnAbsF.classList.toggle('active', Boolean(slotF.absOut));
-      if (btnFlipF) btnFlipF.classList.toggle('active', Boolean(slotF.invertOut));
 
       const renderChipsFor = (container, slot, isInner) => {
         if (!container) return;
@@ -2088,7 +2080,7 @@
           const badge = document.createElement('span');
           badge.className = 'n-axis-chip n-axis-canvas-chip active';
           badge.style.cursor = 'default';
-          badge.textContent = `📌 ${slot.label || '보관된 함수'}`;
+          badge.textContent = slot.label || '보관된 함수';
           container.appendChild(badge);
           return;
         }
@@ -2097,7 +2089,7 @@
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'n-axis-chip n-axis-canvas-chip' + (slot.sourceId === cand.id ? ' active' : '');
-          btn.textContent = `📌 ${cand.label}`;
+          btn.textContent = cand.label;
           btn.addEventListener('click', () => {
             const nextSlot = makeSlotFromCanvasCandidate(cand);
             if (isInner) {
@@ -2137,7 +2129,7 @@
         autoPlayAnimId = null;
       }
       if (btnAutoPlay) {
-        btnAutoPlay.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="vertical-align:-2px;margin-right:3px;"><polygon points="5 3 19 12 5 21 5 3" /></svg>자동 순항`;
+        btnAutoPlay.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3" /></svg><span>자동 순항</span>`;
       }
     };
 
@@ -2538,7 +2530,7 @@
           stopAutoPlay();
         } else {
           isAutoPlaying = true;
-          btnAutoPlay.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="vertical-align:-2px;margin-right:3px;"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>정지`;
+          btnAutoPlay.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg><span>정지</span>`;
           if (currentX >= xMax - (xMax - xMin) * 0.02) currentX = xMin;
           loopAutoPlay();
         }
@@ -2569,39 +2561,6 @@
         slotG = prevF;
         slotF = prevG;
         autoFitRange(true);
-        syncSlotControllerUI();
-        renderStudio();
-      });
-    }
-
-    if (btnAbsG) {
-      btnAbsG.addEventListener('click', () => {
-        slotG.absOut = !slotG.absOut;
-        computeCriticalSnapPoints();
-        syncSlotControllerUI();
-        renderStudio();
-      });
-    }
-    if (btnFlipG) {
-      btnFlipG.addEventListener('click', () => {
-        slotG.invertOut = !slotG.invertOut;
-        computeCriticalSnapPoints();
-        syncSlotControllerUI();
-        renderStudio();
-      });
-    }
-    if (btnAbsF) {
-      btnAbsF.addEventListener('click', () => {
-        slotF.absOut = !slotF.absOut;
-        computeCriticalSnapPoints();
-        syncSlotControllerUI();
-        renderStudio();
-      });
-    }
-    if (btnFlipF) {
-      btnFlipF.addEventListener('click', () => {
-        slotF.invertOut = !slotF.invertOut;
-        computeCriticalSnapPoints();
         syncSlotControllerUI();
         renderStudio();
       });

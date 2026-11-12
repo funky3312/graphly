@@ -16983,49 +16983,167 @@ body.theme-light .math-toolkit-item-desc {
 }
 
 #modalNAxisStudio .n-axis-control-quadrant {
-  right: 1.4%;
-  bottom: 1.8%;
-  width: 47.2%;
+  left: 50.3%;
+  right: 1.25%;
+  top: 51.6%;
+  bottom: 1.6%;
+  width: auto;
   height: auto;
-  max-height: 46.8%;
-  padding: 8px 12px;
+  max-height: none;
+  padding: clamp(9px, 1.6vh, 15px) clamp(11px, 1.35vw, 17px);
+  border-radius: 15px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
 #modalNAxisStudio .n-axis-tab-content {
-  gap: 5px;
+  height: 100%;
+  min-height: 0;
+  gap: clamp(6px, 1.1vh, 11px);
   justify-content: space-between;
 }
 
+#modalNAxisStudio .n-axis-stats-grid {
+  display: none !important;
+}
+
 #modalNAxisStudio .n-axis-slider-box {
-  padding: 5px 10px;
+  flex-shrink: 0;
+  padding: clamp(6px, 1.15vh, 11px) clamp(10px, 1.3vw, 16px);
+  border-radius: 11px;
 }
 
-#modalNAxisStudio .n-axis-stat-card {
-  padding: 3px 8px;
+#modalNAxisStudio .n-axis-slider-header {
+  align-items: center;
+  font-size: clamp(11.5px, 1.65vh, 13.5px);
+  font-weight: 700;
+  margin-bottom: clamp(3px, 0.65vh, 7px);
 }
 
-@media (max-height: 740px) {
+#modalNAxisStudio #lblNAxisCurX {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+#modalNAxisStudio #sliderNAxisX {
+  display: block;
+  width: 100%;
+  height: clamp(17px, 2.5vh, 22px);
+  margin: 0;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+#modalNAxisStudio .n-axis-footer-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  gap: clamp(5px, 0.7vw, 9px);
+}
+
+#modalNAxisStudio .n-axis-btn-action,
+#modalNAxisStudio .n-axis-btn-outline {
+  height: clamp(34px, 5.2vh, 43px);
+  padding: 0 clamp(8px, 1vw, 14px);
+  font-size: clamp(11.5px, 1.75vh, 13.8px);
+  font-weight: 700;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+#modalNAxisStudio .n-axis-btn-action svg,
+#modalNAxisStudio .n-axis-btn-outline svg {
+  flex-shrink: 0;
+}
+
+#modalNAxisStudio #btnNAxisAutoPlay {
+  flex: 1.18 1 0;
+  font-weight: 800;
+}
+
+body.theme-light #modalNAxisStudio #btnNAxisAutoPlay {
+  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.24);
+}
+
+#modalNAxisStudio #btnNAxisAutoFit,
+#modalNAxisStudio #btnNAxisSwap {
+  flex: 1 1 0;
+}
+
+#modalNAxisStudio .n-axis-speed-group {
+  height: clamp(34px, 5.2vh, 43px);
+  padding: 3px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+#modalNAxisStudio .n-axis-speed-btn {
+  padding: 0 clamp(6px, 0.85vw, 11px);
+  font-size: clamp(11px, 1.6vh, 13px);
+  font-weight: 800;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-height: 650px) {
   #modalNAxisStudio .n-axis-control-quadrant {
-    max-height: 48%;
-    padding: 6px 10px;
+    padding: 7px 9px;
+  }
+  #modalNAxisStudio .n-axis-tab-content {
+    gap: 5px;
   }
   #modalNAxisStudio .n-axis-visual-slots {
+    gap: 4px;
+    padding: 6px 8px;
+  }
+  #modalNAxisStudio .n-axis-slot-block {
     gap: 3px;
-    padding: 4px 8px;
   }
   #modalNAxisStudio .n-axis-slot-block + .n-axis-slot-block {
     padding-top: 4px;
   }
-  #modalNAxisStudio .n-axis-stats-grid {
-    display: none;
+  #modalNAxisStudio .n-axis-slot-role {
+    font-size: 11px;
+    padding: 2px 7px;
+  }
+  #modalNAxisStudio .n-axis-slot-active-name {
+    font-size: 12px;
+  }
+  #modalNAxisStudio .n-axis-chip {
+    min-height: 25px;
+    padding: 0 9px;
+    font-size: 11.5px;
   }
   #modalNAxisStudio .n-axis-slider-box {
     padding: 4px 9px;
   }
+  #modalNAxisStudio .n-axis-slider-header {
+    font-size: 11px;
+    margin-bottom: 2px;
+  }
+  #modalNAxisStudio #sliderNAxisX {
+    height: 15px;
+  }
   #modalNAxisStudio .n-axis-btn-action,
-  #modalNAxisStudio .n-axis-btn-outline {
-    padding: 4px 9px;
+  #modalNAxisStudio .n-axis-btn-outline,
+  #modalNAxisStudio .n-axis-speed-group {
+    height: 31px;
+    font-size: 11.5px;
+  }
+  #modalNAxisStudio .n-axis-btn-action svg,
+  #modalNAxisStudio .n-axis-btn-outline svg {
+    width: 13px;
+    height: 13px;
   }
 }
 
@@ -17139,18 +17257,24 @@ body.theme-light .n-axis-notice-btn.secondary:hover {
 }
 
 .n-axis-visual-slots {
-  gap: 5px;
-  padding: 6px 9px;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  gap: clamp(6px, 1vh, 10px);
+  padding: clamp(8px, 1.35vh, 13px) clamp(10px, 1.25vw, 15px);
+  border-radius: 12px;
 }
 
 .n-axis-slot-block {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: clamp(5px, 0.8vh, 8px);
 }
 
 .n-axis-slot-block + .n-axis-slot-block {
-  padding-top: 6px;
+  padding-top: clamp(6px, 1.1vh, 10px);
   border-top: 1px dashed rgba(148, 163, 184, 0.22);
 }
 
@@ -17168,15 +17292,15 @@ body.theme-light .n-axis-slot-block + .n-axis-slot-block {
 .n-axis-slot-title {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   min-width: 0;
 }
 
 .n-axis-slot-role {
-  font-size: 11.5px;
+  font-size: clamp(11.5px, 1.6vh, 13px);
   font-weight: 800;
-  padding: 1.5px 7px;
-  border-radius: 5px;
+  padding: 3px 9px;
+  border-radius: 7px;
   flex-shrink: 0;
 }
 
@@ -17201,8 +17325,8 @@ body.theme-light .n-axis-slot-role.outer {
 }
 
 .n-axis-slot-active-name {
-  font-size: 12px;
-  font-weight: 700;
+  font-size: clamp(12.5px, 1.75vh, 14px);
+  font-weight: 800;
   color: #f1f5f9;
   white-space: nowrap;
   overflow: hidden;
@@ -17213,101 +17337,76 @@ body.theme-light .n-axis-slot-active-name {
   color: #0f172a;
 }
 
-.n-axis-slot-mini-tools {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.n-axis-mini-toggle {
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.05);
-  color: #cbd5e1;
-  font-size: 10.5px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: all 0.14s ease;
-}
-
-.n-axis-mini-toggle:hover {
-  border-color: #38bdf8;
-  color: #ffffff;
-}
-
-.n-axis-mini-toggle.active {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #ffffff;
-}
-
-body.theme-light .n-axis-mini-toggle {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #475569;
-}
-
-body.theme-light .n-axis-mini-toggle:hover {
-  background: #eff6ff;
-  border-color: #3b82f6;
-  color: #1d4ed8;
-}
-
-body.theme-light .n-axis-mini-toggle.active {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #ffffff;
-}
-
 .n-axis-chips-wrap {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  max-height: 48px;
+  gap: 7px;
+  margin-top: 0;
+  max-height: 74px;
   overflow-y: auto;
   padding-right: 2px;
 }
 
 #modalNAxisStudio .n-axis-chip {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2.5px 7.5px;
-  border-radius: 5px;
-  line-height: 1.3;
+  min-height: clamp(29px, 4.2vh, 35px);
+  padding: 0 clamp(11px, 1.2vw, 16px);
+  font-size: clamp(12px, 1.68vh, 13.5px);
+  font-weight: 700;
+  border-radius: 9px;
+  line-height: 1.25;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: 1 1 0;
+  min-width: 110px;
+  transition: all 0.15s ease;
 }
 
-#modalNAxisStudio .n-axis-chip.active {
-  background: #00d2d3;
-  border-color: #00d2d3;
-  color: #0f172a;
-  font-weight: 800;
-}
-
-body.theme-light #modalNAxisStudio .n-axis-chip.active {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #ffffff;
+#modalNAxisStudio .n-axis-chip:only-child {
+  flex: 0 1 240px;
 }
 
 #modalNAxisStudio .n-axis-canvas-chip {
-  border-color: rgba(250, 204, 21, 0.45);
-  background: rgba(250, 204, 21, 0.12);
-  color: #fde047;
+  border-color: rgba(148, 163, 184, 0.28);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+}
+
+#modalNAxisStudio .n-axis-canvas-chip:hover {
+  border-color: rgba(96, 165, 250, 0.6);
+  background: rgba(59, 130, 246, 0.14);
+  color: #ffffff;
 }
 
 body.theme-light #modalNAxisStudio .n-axis-canvas-chip {
-  border-color: rgba(217, 119, 6, 0.4);
-  background: #fffbeb;
-  color: #b45309;
+  border: 1.5px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
 }
 
-#modalNAxisStudio .n-axis-canvas-chip.active,
-body.theme-light #modalNAxisStudio .n-axis-canvas-chip.active {
-  background: #d97706;
-  border-color: #d97706;
+body.theme-light #modalNAxisStudio .n-axis-canvas-chip:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1e40af;
+}
+
+#modalNAxisStudio #nAxisChipsG .n-axis-canvas-chip.active,
+body.theme-light #modalNAxisStudio #nAxisChipsG .n-axis-canvas-chip.active {
+  background: #2563eb;
+  border-color: #2563eb;
   color: #ffffff;
+  font-weight: 800;
+  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.25);
+}
+
+#modalNAxisStudio #nAxisChipsF .n-axis-canvas-chip.active,
+body.theme-light #modalNAxisStudio #nAxisChipsF .n-axis-canvas-chip.active {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: 0 3px 10px rgba(220, 38, 38, 0.24);
 }
 
 /* 🎙️ 환경설정(#panelSettings) > 녹음 볼륨 한 줄 슬라이더 레이아웃 정렬 */
