@@ -4306,6 +4306,9 @@
       try {
         const data = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
         this.graphs = JSON.parse(JSON.stringify(data.graphs || []));
+        if (this.engine && typeof this.engine.ensureCompiledFunctions === 'function') {
+          this.engine.ensureCompiledFunctions(this.graphs);
+        }
         this.graphs.forEach(g => {
           if (g && g.type === 'general_expr' && Array.isArray(g.handles)) {
             g.handles.forEach(h => {

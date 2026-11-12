@@ -1637,6 +1637,9 @@ class GraphApp {
       if (!jsonStr) return;
       const data = (typeof jsonStr === 'string') ? JSON.parse(jsonStr) : jsonStr;
       this.graphs = data.graphs || [];
+      if (this.engine && typeof this.engine.ensureCompiledFunctions === 'function') {
+        this.engine.ensureCompiledFunctions(this.graphs);
+      }
       if (Array.isArray(this.graphs) && typeof window !== 'undefined' && window.SafeMathCompiler) {
         this.graphs.forEach(g => {
           if (g && g.type === 'general_expr' && Array.isArray(g.handles)) {

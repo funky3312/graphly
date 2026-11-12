@@ -66,9 +66,8 @@ const FUNC_METADATA = {
     category: "📐 다항함수",
     svg: `<svg viewBox="0 0 24 20" class="mini-func-icon"><path d="M4 4 C6 9, 8 10.2, 10 11.8 C12 13.4, 13.2 16.5, 15 16.5 C17 16.5, 18.5 10, 20 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
     handles: [
-      { name: "극소", x: 0.6, y: -2.0, type: "min" },
-      { name: "굴곡점", x: -1.0, y: 0.0, type: "point" },
-      { name: "조절점", x: 1.4, y: 1.5, type: "point" }
+      { name: "극소", x: 1.0, y: -2.0, type: "min" },
+      { name: "굴곡점", x: -1.0, y: 1.0, type: "point" }
     ]
   },
   "4th_inflection": {
@@ -334,12 +333,19 @@ class GraphMathEngine {
     return { x: paramPos, y: valPos };
   }
 
-  // JSON 직렬화 복원 후 범용 수식(general_expr) 컴파일 함수(fn) 자동 재수화
+  // JSON 직렬화 복원 후 범용 수식(general_expr) 컴파일 함수(fn) 자동 재수화 및 구버전 핸들 정규화
   static ensureCompiledFunctions(graphs) {
     if (!Array.isArray(graphs)) return;
     for (let i = 0; i < graphs.length; i++) {
       const g = graphs[i];
-      if (!g || g.type !== 'general_expr' || !Array.isArray(g.handles) || g.handles.length === 0) continue;
+      if (!g || !Array.isArray(g.handles) || g.handles.length === 0) continue;
+      if (g.type === '4th_skew' && g.handles.length > 2) {
+        g.handles = g.handles.slice(0, 2);
+        const isUp = g.handles[1].y >= g.handles[0].y;
+        g.handles[0].type = isUp ? 'min' : 'max';
+        g.handles[0].name = isUp ? '극소' : '극대';
+      }
+      if (g.type !== 'general_expr') continue;
       const h0 = g.handles[0];
       const exprSrc = h0.rawExpr || g.customExpr || '';
       if (typeof h0.fn !== 'function' && exprSrc && typeof SafeMathCompiler !== 'undefined') {
@@ -378,39 +384,22 @@ class GraphMathEngine {
     return GraphMathEngine.baseYToWorldY(g, rawY);
   }
 
-  // 사차함수 1 (극값 1개 + f'=0 허근 비대칭 U형: f'(x) = 4a(x-x0)[(x-x1)^2 + T*d^2], T > 0) 5자유도 역산
+  // 사차함수 1 (극값 1개 + f'=0 허근 비대칭 U형: f'(x) = 4a(x-x0)[(x-x1)^2 + T*d^2], T > 0 고정 2핸들 직관형)
   static _solve4thSkewParams(handles) {
     const x0 = handles[0].x, y0 = handles[0].y;
-    const x1 = handles[1].x, y1 = handles[1].y;
+    const h1 = (handles.length >= 2 && handles[1]) ? handles[1] : { x: x0 - 2.0, y: y0 + 3.0 };
+    const x1 = h1.x, y1 = h1.y;
     let d = x1 - x0;
     if (Math.abs(d) < 1e-4) d = d >= 0 ? 1e-4 : -1e-4;
     let dy1 = y1 - y0;
     if (Math.abs(dy1) < 1e-4) dy1 = dy1 >= 0 ? 1e-4 : -1e-4;
 
-    let T = 5.0 / 48.0;
-    let k = -0.5;
-    if (handles.length >= 3 && handles[2]) {
-      const rawK = (handles[2].x - x0) / d;
-      k = rawK < 0 ? Math.max(-1.8, Math.min(-0.35, rawK)) : -0.5;
-      const Ak = Math.pow(k, 4) - (8.0 / 3.0) * Math.pow(k, 3) + 2.0 * k * k;
-      const k2 = k * k;
-      const T_MIN = 0.015;
-      const T_MAX = 12.0;
-      const R_at_Tmin = (Ak + 2.0 * k2 * T_MIN) / (1.0 / 3.0 + 2.0 * T_MIN);
-      const R_at_Tmax = (Ak + 2.0 * k2 * T_MAX) / (1.0 / 3.0 + 2.0 * T_MAX);
-      const Rraw = (handles[2].y - y0) / dy1;
-      const R = Math.max(R_at_Tmax, Math.min(R_at_Tmin, Rraw));
-      const denomR = 6.0 * (R - k2);
-      if (Math.abs(denomR) > 1e-9) {
-        T = (3.0 * Ak - R) / denomR;
-      }
-      T = Math.max(T_MIN, Math.min(T_MAX, T));
-    }
-
+    // 황금 허근 비율 고정 (0 < T < 1/3: 수평변곡과 확실히 구별되는 기울어진 변곡 어깨 유지 & 핸들 100% 직관 추종)
+    const T = 0.085;
     const scaleDenom = Math.pow(d, 4) * (1.0 / 3.0 + 2.0 * T);
     let a = dy1 / Math.max(1e-8, scaleDenom);
-    a = Math.max(-2000.0, Math.min(2000.0, a));
-    return { x0, y0, d, dy1, k, T, a };
+    a = Math.max(-10000.0, Math.min(10000.0, a));
+    return { x0, y0, d, dy1, T, a };
   }
 
   static evaluate(ftype, handles, x) {
@@ -910,91 +899,20 @@ class GraphMathEngine {
         handles[1].y = newY;
       }
     } else if (ftype === "4th_skew") {
-      const T_MIN = 0.015;
-      const T_MAX = 12.0;
-      if (idx === 0) {
-        const shiftX = newX - handles[0].x;
-        const shiftY = newY - handles[0].y;
-        handles.forEach(h => {
-          h.x += shiftX;
-          h.y += shiftY;
-        });
-      } else if (idx === 1) {
-        const x0 = handles[0].x;
-        const y0 = handles[0].y;
-        const prevSignX = (handles[1].x - x0) < 0 ? -1 : 1;
-        const prevSignY = (handles[1].y - y0) < 0 ? -1 : 1;
-        let dNew = newX - x0;
-        if (Math.abs(dNew) < 0.45) dNew = dNew >= 0 ? 0.45 : -0.45;
-        let dy1New = newY - y0;
-        if (Math.abs(dy1New) < 0.25) dy1New = dy1New >= 0 ? 0.25 : -0.25;
-
-        if (handles[2]) {
-          if (dNew * prevSignX < 0) handles[2].x = x0 - (handles[2].x - x0);
-          if (dy1New * prevSignY < 0) handles[2].y = y0 - (handles[2].y - y0);
+      if (handles.length > 2) handles.length = 2;
+      if (handles.length >= 2 && (idx === 0 || idx === 1)) {
+        const minGap = 0.4;
+        const otherIdx = idx === 0 ? 1 : 0;
+        const otherX = handles[otherIdx].x;
+        if (newX < otherX) {
+          handles[idx].x = Math.min(newX, otherX - minGap);
+        } else {
+          handles[idx].x = Math.max(newX, otherX + minGap);
         }
-
-        const maxDy1 = Math.max(0.25, 1950.0 * Math.pow(dNew, 4) * (1.0 / 3.0 + 2.0 * T_MIN));
-        if (Math.abs(dy1New) > maxDy1) dy1New = dy1New >= 0 ? maxDy1 : -maxDy1;
-
-        handles[1].x = x0 + dNew;
-        handles[1].y = y0 + dy1New;
-        handles[0].type = dy1New >= 0 ? "min" : "max";
-        handles[0].name = dy1New >= 0 ? "극소" : "극대";
-
-        if (handles[2]) {
-          let rawK = (handles[2].x - x0) / dNew;
-          if (!(rawK < 0)) rawK = -0.5;
-          const k = Math.max(-1.8, Math.min(-0.35, rawK));
-          handles[2].x = x0 + k * dNew;
-          const Ak = Math.pow(k, 4) - (8.0 / 3.0) * Math.pow(k, 3) + 2.0 * k * k;
-          const k2 = k * k;
-          const R_at_Tmin = (Ak + 2.0 * k2 * T_MIN) / (1.0 / 3.0 + 2.0 * T_MIN);
-          const R_at_Tmax = (Ak + 2.0 * k2 * T_MAX) / (1.0 / 3.0 + 2.0 * T_MAX);
-          const Rraw = (handles[2].y - y0) / dy1New;
-          const clampedR = Math.max(R_at_Tmax, Math.min(R_at_Tmin, Rraw));
-          handles[2].y = y0 + dy1New * clampedR;
-        }
-      } else if (idx === 2 && handles[2]) {
-        const x0 = handles[0].x;
-        const y0 = handles[0].y;
-        let d = handles[1].x - x0;
-        if (Math.abs(d) < 0.45) {
-          d = d >= 0 ? 0.45 : -0.45;
-          handles[1].x = x0 + d;
-        }
-        let rawK = (newX - x0) / d;
-        const k = Math.max(-1.8, Math.min(-0.35, rawK));
-        handles[2].x = x0 + k * d;
-
-        const prevSignY = (handles[1].y - y0) < 0 ? -1 : 1;
-        let dy2New = newY - y0;
-        if (Math.abs(dy2New) < 0.25) dy2New = dy2New >= 0 ? 0.25 : -0.25;
-        if (dy2New * prevSignY < 0) {
-          handles[1].y = y0 - (handles[1].y - y0);
-        }
-
-        const Ak = Math.pow(k, 4) - (8.0 / 3.0) * Math.pow(k, 3) + 2.0 * k * k;
-        const k2 = k * k;
-        const R_at_Tmin = (Ak + 2.0 * k2 * T_MIN) / (1.0 / 3.0 + 2.0 * T_MIN);
-        const R_at_Tmax = (Ak + 2.0 * k2 * T_MAX) / (1.0 / 3.0 + 2.0 * T_MAX);
-        const maxDy1 = Math.max(0.25, 1950.0 * Math.pow(d, 4) * (1.0 / 3.0 + 2.0 * T_MIN));
-        const maxDy2 = maxDy1 * R_at_Tmin;
-        if (Math.abs(dy2New) > maxDy2) dy2New = dy2New >= 0 ? maxDy2 : -maxDy2;
-        handles[2].y = y0 + dy2New;
-
-        let dy1Cur = handles[1].y - y0;
-        if (Math.abs(dy1Cur) < 0.25) dy1Cur = dy2New >= 0 ? 0.25 : -0.25;
-        const Rraw = dy2New / dy1Cur;
-        const clampedR = Math.max(R_at_Tmax, Math.min(R_at_Tmin, Rraw));
-        let dy1Synced = dy2New / clampedR;
-        if (Math.abs(dy1Synced) < 0.25) {
-          dy1Synced = dy2New >= 0 ? 0.25 : -0.25;
-          handles[2].y = y0 + dy1Synced * clampedR;
-        }
-        handles[1].y = y0 + dy1Synced;
-        handles[0].type = dy1Synced >= 0 ? "min" : "max";
-        handles[0].name = dy1Synced >= 0 ? "극소" : "극대";
+        handles[idx].y = newY;
+        const isUp = handles[1].y >= handles[0].y;
+        handles[0].type = isUp ? "min" : "max";
+        handles[0].name = isUp ? "극소" : "극대";
       }
     } else if (ftype === "1st_linear") {
       if (idx === 0) {

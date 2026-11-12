@@ -12696,8 +12696,11 @@
           return hObj;
         });
 
-        // #share= 역직렬화 시 뒤집힌 다항함수의 극대/극소 핸들 성격·라벨 정밀 복원
+        // #share= 역직렬화 시 뒤집힌 다항함수의 극대/극소 핸들 성격·라벨 정밀 복원 (구버전 3핸들 4th_skew 2핸들 하위호환 포함)
         if ((g.type === '4th_skew' || g.type === '4th_basic_bowl') && g.handles.length >= 2) {
+          if (g.type === '4th_skew' && g.handles.length > 2) {
+            g.handles = g.handles.slice(0, 2);
+          }
           const isUp = g.handles[1].y >= g.handles[0].y;
           g.handles[0].type = isUp ? 'min' : 'max';
           g.handles[0].name = isUp ? '극소' : '극대';
