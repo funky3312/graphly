@@ -10077,10 +10077,16 @@
       this._rehydrateSnapGeneralExprFns(snapObj);
       this.deselectAllPipGraphCards();
       const keepDrawerOpen = Boolean(
-        spawnOpts &&
-        spawnOpts.keepPresetDrawerOpen &&
-        !this.isDrawerCollapsed &&
-        this.activeDrawerPanel === 'panelPresets'
+        (
+          spawnOpts &&
+          spawnOpts.keepPresetDrawerOpen &&
+          !this.isDrawerCollapsed &&
+          this.activeDrawerPanel === 'panelPresets'
+        ) ||
+        (
+          !this.isDrawerCollapsed &&
+          (this.activeDrawerPanel === 'panelStyle' || this.activeDrawerPanel === 'panelSettings')
+        )
       );
       const cardH = Math.round(cardW * aspect);
       const existingCount = (this._hasPrimaryGraphCard ? 1 : 0) + (Array.isArray(this.extraGraphCards) ? this.extraGraphCards.length : 0);

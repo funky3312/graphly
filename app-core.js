@@ -2054,9 +2054,14 @@ class GraphApp {
     if (this.isInkMode && this.activeInkTool !== 'select') {
       this.setActiveInkTool('select');
     }
-    // 🌟 [대표님 기획 반영]: 그래프 추가창(panelPresets)에서 함수를 선택하는 동안에는 창이 닫히지 않고 유지!
-    // (✕ 버튼, ESC 키, 또는 창 바깥 영역을 터치할 때만 자동으로 닫힘)
-    if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed && this.activeDrawerPanel !== 'panelPresets') {
+    // 🌟 [대표님 기획 반영]: 그래프 추가(panelPresets)·스타일 & 배경(panelStyle)·환경 설정(panelSettings)은 열려 있는 동안 닫히지 않고 유지!
+    if (
+      typeof this.closeDrawer === 'function' &&
+      !this.isDrawerCollapsed &&
+      this.activeDrawerPanel !== 'panelPresets' &&
+      this.activeDrawerPanel !== 'panelStyle' &&
+      this.activeDrawerPanel !== 'panelSettings'
+    ) {
       this.closeDrawer();
     }
 
@@ -4118,12 +4123,18 @@ class GraphApp {
     }
 
     // [대표님 핵심 UX 기획]:
-    // 1) 그래프 추가창(panelPresets)은 한 번 열리면 바깥 캔버스 터치(아이패드 손날 터치 포함)로 닫히지 않고,
-    //    원하는 함수를 한 윈도우에 모두 담은 뒤 [✕] 버튼으로 수동으로 닫도록 고정!
-    // 2) 기타 설정 서랍(환경설정·스타일·구간분할)은 바깥 클릭 시 자동 닫히되, 아이패드 애플펜슬 손날(팜 리젝션) 오터치는 무시!
+    // 1) 그래프 추가(panelPresets)·스타일 & 배경(panelStyle)·환경 설정(panelSettings)은 한 번 열리면
+    //    바깥 영역 터치/클릭으로 닫히지 않고 [✕] 버튼으로 닫도록 고정!
+    // 2) 기타 서랍(구간분할 등)은 바깥 클릭 시 자동 닫히되, 아이패드 애플펜슬 손날(팜 리젝션) 오터치는 무시!
     window.addEventListener('pointerdown', (e) => {
       if (this.isDrawerCollapsed) return;
-      if (this.activeDrawerPanel === 'panelPresets') return;
+      if (
+        this.activeDrawerPanel === 'panelPresets' ||
+        this.activeDrawerPanel === 'panelStyle' ||
+        this.activeDrawerPanel === 'panelSettings'
+      ) {
+        return;
+      }
       const target = e.target;
       if (!target || typeof target.closest !== 'function') return;
       // 서랍 내부, 좌측 레일 버튼, 또는 그래프 카드 상단 [+] 함수 추가 버튼 클릭 시에는 유지
