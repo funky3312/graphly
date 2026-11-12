@@ -4112,6 +4112,12 @@
 
       // ESC 키: 서랍(추가창) 닫기, 올가미 선택 해제 또는 PDF 크롭모드/모달 닫기
       if (e.key === 'Escape' && !isInput) {
+        const mLoginNotice = document.getElementById('modalPricingLoginNotice');
+        if (mLoginNotice && mLoginNotice.classList.contains('show')) {
+          e.preventDefault();
+          mLoginNotice.classList.remove('show');
+          return;
+        }
         const mPro = document.getElementById('modalProPricing');
         if (mPro && mPro.classList.contains('show')) {
           e.preventDefault();

@@ -2407,6 +2407,9 @@
 
     promptCloudLoginForLibrary(toastMessage = '🔒 클라우드 보관함은 로그인 후 이용할 수 있습니다.') {
       this.showToast(toastMessage);
+      if (this.isAllUIHidden && typeof this.toggleAllUIHidden === 'function') {
+        this.toggleAllUIHidden(false);
+      }
       const modalCloud = document.getElementById('modalCloudHub');
       if (modalCloud) modalCloud.classList.remove('show');
       const modalShare = document.getElementById('modalShare');
@@ -5189,15 +5192,67 @@
       modalPro.classList.add('show');
     }
 
+    showPricingLoginRequiredModal(customMsg = '') {
+      if (typeof document === 'undefined' || !document.body) return;
+      let backdrop = document.getElementById('modalPricingLoginNotice');
+      if (!backdrop) {
+        backdrop = document.createElement('div');
+        backdrop.id = 'modalPricingLoginNotice';
+        backdrop.className = 'smart-modal-backdrop pricing-login-notice-backdrop';
+        backdrop.addEventListener('click', (e) => {
+          if (e.target === backdrop) backdrop.classList.remove('show');
+        });
+        document.body.appendChild(backdrop);
+      }
+      const escapeText = (str) => String(str || '').replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[ch]));
+      const descText = customMsg || '이용권은 로그인한 계정에 귀속됩니다. 먼저 로그인 후 결제를 진행해 주세요.';
+      backdrop.innerHTML = `
+        <div class="smart-modal-card pricing-login-notice-card" role="alertdialog" aria-modal="true" aria-labelledby="lblPricingLoginNoticeTitle">
+          <div class="pricing-login-notice-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          </div>
+          <div id="lblPricingLoginNoticeTitle" class="pricing-login-notice-title">로그인이 필요합니다</div>
+          <p class="pricing-login-notice-desc">${escapeText(descText)}</p>
+          <div class="pricing-login-notice-actions">
+            <button type="button" id="btnCancelPricingLoginNotice" class="pricing-login-notice-btn is-secondary">닫기</button>
+            <button type="button" id="btnGoPricingLoginNotice" class="pricing-login-notice-btn is-primary">로그인하기</button>
+          </div>
+        </div>
+      `;
+      backdrop.classList.add('show');
+      const btnCancel = backdrop.querySelector('#btnCancelPricingLoginNotice');
+      const btnGo = backdrop.querySelector('#btnGoPricingLoginNotice');
+      if (btnCancel) {
+        btnCancel.onclick = () => {
+          backdrop.classList.remove('show');
+        };
+      }
+      if (btnGo) {
+        btnGo.onclick = () => {
+          backdrop.classList.remove('show');
+          const modalPro = document.getElementById('modalProPricing');
+          if (modalPro) modalPro.classList.remove('show');
+          this.promptCloudLoginForLibrary('🔑 로그인 또는 회원가입 후 결제를 진행해 주세요.');
+        };
+      }
+    }
+
     async requestTossPaymentFromStudio() {
       if (!this.cloudUser || !this.cloudUser.uid) {
-        const modalPro = document.getElementById('modalProPricing');
-        if (modalPro) modalPro.classList.remove('show');
-        this.promptCloudLoginForLibrary('🔒 이용권 결제는 로그인한 계정에 귀속됩니다. 먼저 로그인을 진행해 주세요!');
+        this.showPricingLoginRequiredModal('이용권은 로그인한 계정에 귀속됩니다. 먼저 로그인 후 결제를 진행해 주세요.');
         return false;
       }
       if (typeof window.TossPayments !== 'function') {
-        this.showToast('⚠️ 토스페이먼츠 결제 모듈을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.');
+        this.showTossPaymentResultModal({
+          status: 'warning',
+          title: '결제 모듈 준비 중',
+          message: '결제 모듈을 불러오는 중입니다. 잠시 후 다시 눌러 주세요.'
+        });
         return false;
       }
       if (typeof this._ensureFirebaseInitialized === 'function') {
@@ -5213,9 +5268,7 @@
         } catch (e) { }
       }
       if (!idToken) {
-        const modalPro = document.getElementById('modalProPricing');
-        if (modalPro) modalPro.classList.remove('show');
-        this.promptCloudLoginForLibrary('🔒 안전한 결제 본인 인증을 위해 다시 한 번 로그인을 진행해 주세요!');
+        this.showPricingLoginRequiredModal('안전한 결제 인증을 위해 다시 한 번 로그인 후 결제를 진행해 주세요.');
         return false;
       }
 

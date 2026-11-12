@@ -17032,6 +17032,8 @@ body:not(.theme-light) .pricing-header-close-btn:hover {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 body:not(.theme-light) .pricing-tier-section {
@@ -17627,8 +17629,10 @@ body:not(.theme-light) .pricing-tier-card.active .pricing-card-select-cta {
   color: #5eead4;
 }
 
-/* 3. 하단 통합 결제 독 (Checkout Dock) */
+/* 3. 하단 통합 결제 독 (Checkout Dock — 어떤 화면에서도 하단 고정 보장) */
 .pricing-checkout-dock {
+  position: relative;
+  z-index: 3;
   background: #f8fafc;
   border-top: 1px solid #e2e8f0;
   padding: 12px 22px 11px;
@@ -17965,8 +17969,8 @@ body:not(.theme-light) .pricing-legal-footer {
   font-weight: 400;
 }
 
-/* 반응형 대응: 좁은 태블릿/모바일 및 초저높이 창 */
-@media (max-height: 675px) and (min-width: 840px) {
+/* 반응형 대응: 초저높이 창 · 아이패드 세로모드(744~920px) · 모바일(739px 이하) */
+@media (max-height: 675px) and (min-width: 740px) {
   .pricing-modal-header {
     height: 48px;
   }
@@ -17992,20 +17996,145 @@ body:not(.theme-light) .pricing-legal-footer {
   }
 }
 
-@media (max-width: 840px) {
+/* 아이패드 세로모드(744px ~ 920px: iPad mini / iPad / iPad Air / iPad Pro 11" 세로) — 3열 한 화면 무스크롤 + 하단 결제창 100% 노출 */
+@media (max-width: 920px) and (min-width: 740px) {
+  #modalProPricing.smart-modal-backdrop {
+    padding: 10px;
+  }
+
   #modalProPricing .pricing-modal-card {
+    max-width: 97.5vw !important;
+  }
+
+  .pricing-modal-header {
+    padding: 0 16px;
+  }
+
+  .pricing-tier-section {
+    padding: 14px 14px 12px;
+  }
+
+  .pricing-tier-grid {
+    gap: 10px;
+  }
+
+  .pricing-tier-card {
+    padding: 15px 12px 12px;
+  }
+
+  .pricing-tier-name {
+    font-size: 19px;
+  }
+
+  .pricing-tier-price {
+    font-size: 23.5px;
+  }
+
+  .pricing-tier-unit {
+    font-size: 12px;
+  }
+
+  .pricing-tier-desc {
+    font-size: 12px;
+  }
+
+  .pricing-card-cycle-seg {
+    padding: 2.5px;
+    gap: 2px;
+  }
+
+  .pricing-card-cycle-tab {
+    font-size: 10.6px;
+    padding: 0 3px;
+    gap: 2.5px;
+  }
+
+  .cycle-save-mini-badge {
+    font-size: 9px;
+    padding: 1px 3px;
+  }
+
+  .pricing-tier-features {
+    font-size: 12.4px;
+    gap: 8.5px;
+  }
+
+  .pricing-tier-features li {
+    gap: 6.5px;
+  }
+
+  .pricing-feat-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .pricing-tier-features .feat-sub-note {
+    font-size: 11.4px;
+  }
+
+  .pricing-exclusive-item {
+    font-size: 11.6px;
+  }
+
+  .pricing-card-foot-bar {
+    font-size: 11px;
+  }
+
+  .pricing-tier-foot-note {
+    font-size: 10.2px;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
+  }
+
+  .pricing-card-select-cta {
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+
+  .pricing-checkout-dock {
+    padding: 11px 16px 10px;
+  }
+
+  .pricing-inline-field.buyer-name-field {
+    width: 122px;
+  }
+
+  .pricing-inline-field.buyer-email-field {
+    min-width: 165px;
+  }
+
+  .pricing-pay-submit-btn {
+    padding: 0 14px;
+    font-size: 13.5px;
+  }
+}
+
+/* 모바일 및 좁은 분할화면(739px 이하): 카드 영역만 내부 스크롤 + 하단 결제 독 고정 노출 */
+@media (max-width: 739px) {
+  #modalProPricing .pricing-modal-card {
+    max-height: min(92vh, 92dvh);
+    overflow: hidden;
+  }
+
+  .pricing-tier-section {
+    padding: 12px 14px;
     overflow-y: auto;
   }
 
   .pricing-tier-grid {
     grid-template-columns: 1fr;
-    gap: 14px;
+    gap: 12px;
+    flex: 0 0 auto;
+  }
+
+  .pricing-checkout-dock {
+    padding: 10px 14px 9px;
   }
 
   .pricing-checkout-main-row {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: 9px;
   }
 
   .pricing-buyer-inputs {
@@ -18013,12 +18142,12 @@ body:not(.theme-light) .pricing-legal-footer {
   }
 
   .pricing-inline-field.buyer-name-field {
-    width: 125px;
+    width: 116px;
   }
 
   .pricing-inline-field.buyer-email-field {
     max-width: none;
-    min-width: 180px;
+    min-width: 160px;
   }
 
   .pricing-checkout-right {
@@ -18032,6 +18161,119 @@ body:not(.theme-light) .pricing-legal-footer {
   .pricing-pay-submit-btn {
     flex: 1;
   }
+}
+
+/* 비로그인 결제 시도 시 안내 모달 (#modalPricingLoginNotice) */
+#modalPricingLoginNotice.pricing-login-notice-backdrop {
+  z-index: 100025;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 16px;
+}
+
+#modalPricingLoginNotice .pricing-login-notice-card {
+  max-width: 380px !important;
+  width: 92vw !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 14px !important;
+  padding: 24px 22px 20px !important;
+  box-shadow: 0 22px 45px -10px rgba(15, 23, 42, 0.28) !important;
+  text-align: center;
+  color: #0f172a;
+  word-break: keep-all;
+}
+
+body:not(.theme-light) #modalPricingLoginNotice .pricing-login-notice-card {
+  background: #1e293b !important;
+  border-color: rgba(148, 163, 184, 0.25) !important;
+  color: #f8fafc;
+}
+
+.pricing-login-notice-icon {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 12px;
+  border-radius: 12px;
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
+  color: #134e4a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body:not(.theme-light) .pricing-login-notice-icon {
+  background: rgba(19, 78, 74, 0.4);
+  border-color: rgba(45, 212, 191, 0.3);
+  color: #5eead4;
+}
+
+.pricing-login-notice-title {
+  font-size: 17.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 7px;
+  color: inherit;
+}
+
+.pricing-login-notice-desc {
+  margin: 0 0 18px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #475569;
+}
+
+body:not(.theme-light) .pricing-login-notice-desc {
+  color: #cbd5e1;
+}
+
+.pricing-login-notice-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pricing-login-notice-btn {
+  flex: 1 1 0%;
+  height: 40px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.14s ease, border-color 0.14s ease;
+}
+
+.pricing-login-notice-btn.is-secondary {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+}
+
+.pricing-login-notice-btn.is-secondary:hover {
+  background: #e2e8f0;
+}
+
+body:not(.theme-light) .pricing-login-notice-btn.is-secondary {
+  background: #334155;
+  border-color: rgba(148, 163, 184, 0.25);
+  color: #e2e8f0;
+}
+
+.pricing-login-notice-btn.is-primary {
+  background: #134e4a;
+  border: 1px solid #134e4a;
+  color: #ffffff;
+}
+
+.pricing-login-notice-btn.is-primary:hover {
+  background: #0f3f3c;
+}
+
+body:not(.theme-light) .pricing-login-notice-btn.is-primary {
+  background: #0f766e;
+  border-color: #0f766e;
 }
 
 /* 클라우드 보관함 좌측 하단 용량 게이지 (Stitch 카드 스타일) */
