@@ -10200,7 +10200,7 @@
       if (livePrimarySnap) {
         if (bodyEl) {
           const cw = Math.max(160, Math.round(parseFloat(gWidget.style.width) || bodyEl.clientWidth || 430));
-          const ch = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || bodyEl.clientHeight || (cw * (this.graphCardAspect || 0.82))));
+          const ch = Math.max(60, Math.round(parseFloat(bodyEl.style.height) || bodyEl.clientHeight || (cw * (this.graphCardAspect || 0.82))));
           livePrimarySnap._isPipCardSnapshot = true;
           livePrimarySnap._pipCardW = cw;
           livePrimarySnap._pipCardH = ch;
@@ -10245,7 +10245,7 @@
         if (liveExtraSnap) {
           if (bodyEl) {
             const cw = Math.max(160, Math.round(parseFloat(c.el.style.width) || bodyEl.clientWidth || 430));
-            const ch = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || bodyEl.clientHeight || (cw * (c.aspect || 0.82))));
+            const ch = Math.max(60, Math.round(parseFloat(bodyEl.style.height) || bodyEl.clientHeight || (cw * (c.aspect || 0.82))));
             liveExtraSnap._isPipCardSnapshot = true;
             liveExtraSnap._pipCardW = cw;
             liveExtraSnap._pipCardH = ch;

@@ -1555,9 +1555,9 @@
           </div>
         </div>
         <div class="problem-card-actions">
-          <button type="button" class="card-btn btn-card-lock-edit btn-problem-lock unlocked-editing" title="클릭하여 잠금 — 3초 뒤 테두리와 상단 메뉴가 숨겨지며 톡 치면 다시 나타납니다">
+          <button type="button" class="card-btn btn-card-lock-edit btn-problem-lock locked-confirmed" style="display:none;" title="잠금됨">
             <span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;">
-              <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg>
+              <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg>
             </span>
           </button>
           <button type="button" class="card-btn btn-card-laser" title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
@@ -2820,8 +2820,8 @@
         if (this._activePeekCardEl === widget) {
           this._activePeekCardEl = null;
         }
-        widget.classList.remove('card-header-peek');
-        this.setProblemCardLockedByWidget(widget, false, false);
+        widget.classList.remove('card-header-peek', 'pip-stealth-locked', 'card-ink-active', 'card-laser-active');
+        this.clearProblemCardStealthTimer(widget);
         widget.style.display = 'none';
         widget.style.transform = '';
         widget._pdfAnchor = null;
@@ -2898,6 +2898,9 @@
         if (cardRef) {
           const prevFocusedRef = this._lastFocusedPipCardRef;
           this._lastFocusedPipCardRef = cardRef;
+          if (prevFocusedRef !== cardRef && typeof this.deselectAllPipGraphCards === 'function') {
+            this.deselectAllPipGraphCards(targetEl);
+          }
           const snap = this._getMutablePipCardSnapshot(cardRef);
           if (snap && !snap.isNAxisStudioCard) {
             const nextX = snap.showXAxis !== undefined ? Boolean(snap.showXAxis) : this.showXAxis;
@@ -3461,21 +3464,11 @@
         window.addEventListener('pointercancel', endExtraCardInk, true);
       }
 
-      // 🌟 [문제 카드 상단 [🔓/🔒] 잠금·스텔스 토글 버튼 바인딩 (그래프 카드와 100% 동일한 사용성)] 🌟
+      // 🌟 [문제 카드 상시 이동·자동 스텔스 모드 고정 (합성함수 보드 카드와 동일 — 잠금 버튼 숨김)] 🌟
       if (!cardWidgetEl.classList.contains('graph-card-widget')) {
         const probLockBtn = cardWidgetEl.querySelector('.btn-problem-lock');
-        if (probLockBtn && !probLockBtn._probLockBound) {
-          probLockBtn._probLockBound = true;
-          probLockBtn.addEventListener('pointerdown', (e) => {
-            e.stopPropagation();
-          });
-          probLockBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            this.bringCardToFront(cardWidgetEl);
-            const nextLocked = !cardWidgetEl.classList.contains('pip-locked-mode');
-            this.setProblemCardLockedByWidget(cardWidgetEl, nextLocked, true);
-          });
+        if (probLockBtn) {
+          probLockBtn.style.display = 'none';
         }
       }
 
@@ -5511,10 +5504,16 @@
         const nextMin = !wasMin;
         cardItem.isMin = nextMin;
         el.classList.toggle('minimized', nextMin);
-        if (!nextMin) {
+        if (nextMin) {
+          this.clearPipGraphCardStealthTimer(cardItem);
+          el.classList.remove('pip-stealth-locked');
+        } else {
           const restoredW = parseFloat(el._savedExpandedWidth) || cardW;
           syncExtraSize(restoredW);
           if (typeof el._syncCardLaserSize === 'function') el._syncCardLaserSize();
+          if (el.classList.contains('pip-locked-mode')) {
+            this.schedulePipGraphCardStealth(cardItem, 3000);
+          }
         }
         const chev = el.querySelector('.card-fold-chevron');
         if (chev) chev.textContent = nextMin ? '▸' : '▾';
@@ -5622,9 +5621,12 @@
           this._recordAudioWorkspaceStateIfNeeded(false);
         }
       });
-      const stopDrag = () => {
+      const stopDrag = (e) => {
         if (isDragging) {
           const wasMoved = dragMoved;
+          const isCancel = Boolean(e && e.type === 'pointercancel');
+          const tapX = (e && typeof e.clientX === 'number') ? e.clientX : startX;
+          const tapY = (e && typeof e.clientY === 'number') ? e.clientY : startY;
           isDragging = false;
           dragMoved = false;
           this._isDraggingOrResizingAnyCard = false;
@@ -5638,15 +5640,11 @@
           this.updateProblemCardPosition(true, el);
           if (wasMoved) {
             el._justDraggedTime = performance.now();
-            if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
-              this.schedulePipGraphCardStealth(cardItem, 3000);
-            }
-          } else if (el.classList.contains('pip-locked-mode')) {
-            if (el.classList.contains('pip-stealth-locked')) {
-              this.wakeUpPipGraphCardStealth(cardItem, true);
-            } else {
-              this.schedulePipGraphCardStealth(cardItem, 3000);
-            }
+          }
+          if (!isCancel) {
+            this._handlePipGraphCardPointerEndStealthOrDoubleTap(cardItem, el, tapX, tapY, wasMoved);
+          } else {
+            el._stealthWakeTapStamp = null;
           }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
@@ -5759,12 +5757,13 @@
           this._isDraggingOrResizingAnyCard = false;
           this.finalizePipCardResize(cardItem, finishedStart, false);
           this.scheduleBakePipGraphCardToImg(cardItem);
-          if (el.classList.contains('pip-locked-mode')) {
-            if (!wasResizeMoved && el.classList.contains('pip-stealth-locked')) {
-              this.wakeUpPipGraphCardStealth(cardItem, true);
-            } else if (!el.classList.contains('pip-stealth-locked')) {
-              this.schedulePipGraphCardStealth(cardItem, 3000);
-            }
+          const isCancel = Boolean(e && e.type === 'pointercancel');
+          const tapX = (e && typeof e.clientX === 'number') ? e.clientX : (finishedStart ? finishedStart.startX : 0);
+          const tapY = (e && typeof e.clientY === 'number') ? e.clientY : (finishedStart ? finishedStart.startY : 0);
+          if (!isCancel) {
+            this._handlePipGraphCardPointerEndStealthOrDoubleTap(cardItem, el, tapX, tapY, wasResizeMoved);
+          } else {
+            el._stealthWakeTapStamp = null;
           }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
@@ -5936,7 +5935,7 @@
         if (parsedSnapForFull && parsedSnapForFull._isPipCardSnapshot) {
           this._syncCanvasMetricsIfStale();
           const isTrig = Array.isArray(this.graphs) && this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
-          const cardH = Math.max(80, parsedSnapForFull._pipCardH || 353);
+          const cardH = Math.max(60, parsedSnapForFull._pipCardH || 353);
           const cardYSpan = parsedSnapForFull.ySpan || (isTrig ? 5.0 : 5.1);
           const cardZoom = Math.max(0.15, Math.min(3.5, Number(parsedSnapForFull.zoomLevel) || 1.0));
           const cardUnitScale = (cardH / 2) / Math.max(0.05, cardYSpan / cardZoom);
@@ -6075,7 +6074,7 @@
         const isTrig = Array.isArray(snap.graphs) && snap.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
         const ySpan = snap.ySpan || (isTrig ? 5.0 : 5.1);
         const zoom = snap.zoomLevel || 1.0;
-        const effH = Math.max(80, h || snap._pipCardH || 353);
+        const effH = Math.max(60, h || snap._pipCardH || 353);
         const unitScale = (effH / 2) / Math.max(0.1, ySpan / zoom);
         return Math.max(0.32, Math.min(1.25, (unitScale / 34.6) * 0.54));
       }
@@ -6510,8 +6509,16 @@
         const nextMin = !wasMin;
         this.isGraphCardMinimized = nextMin;
         widget.classList.toggle('minimized', nextMin);
-        if (!nextMin && widget._savedExpandedWidth) {
-          widget.style.width = widget._savedExpandedWidth;
+        if (nextMin) {
+          this.clearPipGraphCardStealthTimer('primary');
+          widget.classList.remove('pip-stealth-locked');
+        } else {
+          if (widget._savedExpandedWidth) {
+            widget.style.width = widget._savedExpandedWidth;
+          }
+          if (widget.classList.contains('pip-locked-mode')) {
+            this.schedulePipGraphCardStealth('primary', 3000);
+          }
         }
         const icon = document.getElementById('iconGraphCardToggle');
         if (icon) icon.textContent = nextMin ? '▸' : '▾';
@@ -6615,9 +6622,12 @@
           }
         });
 
-        const stopDrag = () => {
+        const stopDrag = (e) => {
           if (isDragging) {
             const wasMoved = dragMoved;
+            const isCancel = Boolean(e && e.type === 'pointercancel');
+            const tapX = (e && typeof e.clientX === 'number') ? e.clientX : startX;
+            const tapY = (e && typeof e.clientY === 'number') ? e.clientY : startY;
             isDragging = false;
             dragMoved = false;
             this._isDraggingOrResizingAnyCard = false;
@@ -6632,15 +6642,11 @@
             this.syncGraphCardRectFromWidget(true);
             if (wasMoved) {
               widget._justDraggedTime = performance.now();
-              if (widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
-                this.schedulePipGraphCardStealth('primary', 3000);
-              }
-            } else if (widget.classList.contains('pip-locked-mode')) {
-              if (widget.classList.contains('pip-stealth-locked')) {
-                this.wakeUpPipGraphCardStealth('primary', true);
-              } else {
-                this.schedulePipGraphCardStealth('primary', 3000);
-              }
+            }
+            if (!isCancel) {
+              this._handlePipGraphCardPointerEndStealthOrDoubleTap('primary', widget, tapX, tapY, wasMoved);
+            } else {
+              widget._stealthWakeTapStamp = null;
             }
             if (this.isAudioRecording) {
               this._recordAudioWorkspaceStateIfNeeded(true);
@@ -6756,12 +6762,13 @@
           this._isDraggingOrResizingAnyCard = false;
           this.finalizePipCardResize('primary', finishedStart, false);
           this.scheduleBakePipGraphCardToImg('primary');
-          if (widget && widget.classList.contains('pip-locked-mode')) {
-            if (!wasResizeMoved && widget.classList.contains('pip-stealth-locked')) {
-              this.wakeUpPipGraphCardStealth('primary', true);
-            } else if (!widget.classList.contains('pip-stealth-locked')) {
-              this.schedulePipGraphCardStealth('primary', 3000);
-            }
+          const isCancel = Boolean(e && e.type === 'pointercancel');
+          const tapX = (e && typeof e.clientX === 'number') ? e.clientX : (finishedStart ? finishedStart.startX : 0);
+          const tapY = (e && typeof e.clientY === 'number') ? e.clientY : (finishedStart ? finishedStart.startY : 0);
+          if (!isCancel) {
+            this._handlePipGraphCardPointerEndStealthOrDoubleTap('primary', widget, tapX, tapY, wasResizeMoved);
+          } else if (widget) {
+            widget._stealthWakeTapStamp = null;
           }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
@@ -7019,7 +7026,7 @@
     _withPipCardGraphState(snapObj, cardW, cardH, callback) {
       if (!snapObj) return null;
       const effW = Math.max(80, Math.round(cardW || 380));
-      const effH = Math.max(80, Math.round(cardH || 312));
+      const effH = Math.max(60, Math.round(cardH || 312));
 
       if (!snapObj._isPipCardSnapshot) {
         const oldSw = Math.max(1, this.screenWidth || window.innerWidth || 1440);
@@ -7237,7 +7244,7 @@
       const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
       const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
       const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
-      const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
+      const cardH = Math.max(60, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
 
       this._withPipCardGraphState(snap, cardW, cardH, () => {
         strokes.forEach(st => {
@@ -7313,7 +7320,7 @@
       if (!snap || snap.isNAxisStudioCard) return;
 
       const effW = Math.max(80, Math.round(cardW || 430));
-      const effH = Math.max(80, Math.round(cardH || 353));
+      const effH = Math.max(60, Math.round(cardH || 353));
 
       this._withPipCardGraphState(snap, effW, effH, () => {
         strokes.forEach(st => {
@@ -7392,7 +7399,7 @@
     _convertCardStrokeListToFullGraphInkStrokes(cardStrokes, snapObj = null, cardW = 430, cardH = 353) {
       if (!Array.isArray(cardStrokes) || cardStrokes.length === 0) return [];
       const effW = Math.max(160, Math.round(cardW || 430));
-      const effH = Math.max(120, Math.round(cardH || 353));
+      const effH = Math.max(60, Math.round(cardH || 353));
 
       const ensureMathFn = () => {
         cardStrokes.forEach(st => {
@@ -7556,7 +7563,7 @@
       const bodyEl = widget ? (isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body')) : null;
       const aspect = isPrimary ? (this.graphCardAspect || 0.82) : ((cardRef && cardRef.aspect) || 0.82);
       const cardW = Math.max(160, Math.round((widget && parseFloat(widget.style.width)) || (bodyEl && bodyEl.clientWidth) || 430));
-      const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
+      const cardH = Math.max(60, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
       this._ensurePipCardInkMathCoords(cardRef);
       if (!Array.isArray(cardStrokes) || cardStrokes.length === 0) {
         return [];
@@ -7585,7 +7592,7 @@
       if (!snap || snap.isNAxisStudioCard) return;
 
       const effW = Math.max(160, Math.round(cardW || 430));
-      const effH = Math.max(120, Math.round(cardH || 353));
+      const effH = Math.max(60, Math.round(cardH || 353));
 
       const graphStrokes = Array.isArray(this.inkStrokes)
         ? this.inkStrokes.filter(s => s && s.target === 'graph' && Array.isArray(s.points) && s.points.length > 0)
@@ -7679,11 +7686,8 @@
     scheduleProblemCardStealth(widgetEl, delayMs = 3000) {
       if (!widgetEl) return;
       this.clearProblemCardStealthTimer(widgetEl);
-      if (!widgetEl.classList.contains('pip-locked-mode')) {
-        widgetEl.classList.remove('pip-stealth-locked');
-        return;
-      }
-      if (widgetEl.classList.contains('card-ink-active')) {
+      widgetEl.classList.add('pip-locked-mode');
+      if (widgetEl.classList.contains('card-ink-active') || widgetEl.classList.contains('minimized')) {
         widgetEl.classList.remove('pip-stealth-locked');
         return;
       }
@@ -7696,6 +7700,7 @@
         if (
           widgetEl.classList.contains('pip-locked-mode') &&
           !widgetEl.classList.contains('card-ink-active') &&
+          !widgetEl.classList.contains('minimized') &&
           !this._isDraggingOrResizingAnyCard
         ) {
           widgetEl.classList.add('pip-stealth-locked');
@@ -7721,54 +7726,34 @@
 
     syncProblemCardLockUI(widgetEl) {
       if (!widgetEl) return;
-      const isLocked = widgetEl.classList.contains('pip-locked-mode');
-      if (!isLocked) {
+      widgetEl.classList.add('pip-locked-mode');
+      if (widgetEl.classList.contains('card-ink-active') || widgetEl.classList.contains('minimized')) {
         this.clearProblemCardStealthTimer(widgetEl);
         widgetEl.classList.remove('pip-stealth-locked');
       }
       const btnLock = widgetEl.querySelector('.btn-problem-lock');
-      if (btnLock && btnLock._renderedLockedState !== isLocked) {
-        btnLock._renderedLockedState = isLocked;
-        if (isLocked) {
-          btnLock.classList.remove('unlocked-editing');
-          btnLock.classList.add('locked-confirmed');
-          btnLock.innerHTML = '<span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg></span>';
-          btnLock.title = '잠금됨 — 클릭하여 잠금 해제 (메뉴·테두리 상시 표시)';
-        } else {
-          btnLock.classList.remove('locked-confirmed');
-          btnLock.classList.add('unlocked-editing');
-          btnLock.innerHTML = '<span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg></span>';
-          btnLock.title = '클릭하여 잠금 — 3초 뒤 테두리와 상단 메뉴가 숨겨지며 톡 치면 다시 나타납니다';
-        }
+      if (btnLock) {
+        btnLock.style.display = 'none';
       }
     }
 
-    setProblemCardLockedByWidget(widgetEl, locked, showToast = false) {
+    setProblemCardLockedByWidget(widgetEl, locked = true, showToast = false) {
       if (!widgetEl) return;
-      const isLocked = Boolean(locked);
-      if (isLocked) {
-        widgetEl.classList.remove('pip-stealth-locked');
-        widgetEl.classList.add('pip-locked-mode');
-        this.scheduleProblemCardStealth(widgetEl, 3000);
-      } else {
+      // 문제 카드는 합성함수 보드 카드와 동일하게 상시 이동 모드 + 3초 자동 스텔스로 일원화 (필기 ON 시에만 메뉴 유지)
+      widgetEl.classList.add('pip-locked-mode');
+      if (widgetEl.classList.contains('card-ink-active') || widgetEl.classList.contains('minimized')) {
         this.clearProblemCardStealthTimer(widgetEl);
-        widgetEl.classList.remove('pip-locked-mode', 'pip-stealth-locked');
-        if (widgetEl.classList.contains('card-ink-active')) {
-          widgetEl.classList.remove('card-ink-active');
-          const laserBtn = widgetEl.querySelector('.btn-card-laser');
-          if (laserBtn) laserBtn.classList.remove('active');
-        }
+        widgetEl.classList.remove('pip-stealth-locked');
+      } else {
+        widgetEl.classList.remove('pip-stealth-locked');
+        this.scheduleProblemCardStealth(widgetEl, 3000);
       }
       this.syncProblemCardLockUI(widgetEl);
       if (this.isAudioRecording && !this._isApplyingAudioTimelineState) {
         this._recordAudioWorkspaceStateIfNeeded(true);
       }
       if (showToast) {
-        if (isLocked) {
-          this.showToast('🔒 카드 잠금 완료! 3초 뒤 테두리와 상단 메뉴가 숨겨지며, 카드를 톡 터치하면 다시 나타납니다.');
-        } else {
-          this.showToast('🔓 잠금 해제됨! 상단 메뉴와 테두리가 유지됩니다.');
-        }
+        this.showToast('🔒 3초 뒤 테두리와 상단 메뉴가 숨겨지며, 카드를 톡 터치하면 다시 나타납니다.');
       }
     }
 
@@ -7790,7 +7775,7 @@
         return;
       }
       widget.classList.add('pip-locked-mode');
-      if (widget.classList.contains('card-ink-active')) {
+      if (widget.classList.contains('card-ink-active') || widget.classList.contains('minimized')) {
         widget.classList.remove('pip-stealth-locked');
         return;
       }
@@ -7805,6 +7790,7 @@
           curSnap &&
           curSnap.isPipLocked &&
           !widget.classList.contains('card-ink-active') &&
+          !widget.classList.contains('minimized') &&
           !this._isDraggingOrResizingAnyCard
         ) {
           widget.classList.add('pip-stealth-locked');
@@ -7813,6 +7799,54 @@
           }
         }
       }, delayMs);
+    }
+
+    _handlePipGraphCardPointerEndStealthOrDoubleTap(cardRef, widget, tapX, tapY, wasMoved) {
+      if (!widget || !widget.classList.contains('pip-locked-mode')) {
+        if (widget) widget._stealthWakeTapStamp = null;
+        return;
+      }
+      if (wasMoved) {
+        widget._stealthWakeTapStamp = null;
+        if (!widget.classList.contains('pip-stealth-locked')) {
+          this.schedulePipGraphCardStealth(cardRef, 3000);
+        }
+        return;
+      }
+      const snap = this._getMutablePipCardSnapshot(cardRef);
+      const canDoubleTapUnlock = Boolean(
+        snap &&
+        snap.isPipLocked &&
+        !snap.isNAxisStudioCard &&
+        !widget.classList.contains('card-ink-active') &&
+        !widget.classList.contains('minimized')
+      );
+      if (widget.classList.contains('pip-stealth-locked')) {
+        if (canDoubleTapUnlock) {
+          widget._stealthWakeTapStamp = {
+            ts: performance.now(),
+            x: Number.isFinite(tapX) ? tapX : 0,
+            y: Number.isFinite(tapY) ? tapY : 0
+          };
+        } else {
+          widget._stealthWakeTapStamp = null;
+        }
+        this.wakeUpPipGraphCardStealth(cardRef, true);
+        return;
+      }
+      const prevStamp = widget._stealthWakeTapStamp;
+      widget._stealthWakeTapStamp = null;
+      if (
+        canDoubleTapUnlock &&
+        prevStamp &&
+        (performance.now() - prevStamp.ts <= 360) &&
+        (Math.hypot((Number.isFinite(tapX) ? tapX : prevStamp.x) - prevStamp.x, (Number.isFinite(tapY) ? tapY : prevStamp.y) - prevStamp.y) <= 32)
+      ) {
+        this._pushWorkspaceUndoSnapshot('↺ 그래프 카드 잠금 상태로 복원되었습니다', '↻ 그래프 카드 잠금 해제 다시 실행됨');
+        this.setPipCardLocked(cardRef, false, true);
+        return;
+      }
+      this.schedulePipGraphCardStealth(cardRef, 3000);
     }
 
     wakeUpPipGraphCardStealth(cardRef, restartTimer = true) {
@@ -8274,6 +8308,16 @@
           widget._pipStealthTimer = null;
         }
         widget.classList.remove('pip-stealth-locked');
+      } else if (
+        widget.style.display !== 'none' &&
+        !widget.classList.contains('pip-stealth-locked') &&
+        !widget._pipStealthTimer &&
+        !widget.classList.contains('card-ink-active') &&
+        !widget.classList.contains('minimized') &&
+        !this._isDraggingOrResizingAnyCard &&
+        !this.isAudioPlaying
+      ) {
+        this.schedulePipGraphCardStealth(cardRef, 3000);
       }
       const btnLock = isPrimary
         ? document.getElementById('btnGraphCardLock')
@@ -8391,7 +8435,7 @@
       const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
       const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
       const startW = Math.max(160, parseFloat(widget.style.width) || widget.offsetWidth || 430);
-      const startH = Math.max(120, (bodyEl && parseFloat(bodyEl.style.height)) || Math.round(startW * aspect));
+      const startH = Math.max(60, (bodyEl && parseFloat(bodyEl.style.height)) || Math.round(startW * aspect));
       const snap = this._getMutablePipCardSnapshot(cardRef);
       if (snap) {
         snap._pipCardW = Math.round(startW);
@@ -8448,16 +8492,18 @@
       let nextAspect;
 
       if (isLocked) {
-        // 🔒 잠금 후: 가로세로 비율을 고정한 채로 그래프와 카드 전체를 비례 확대/축소
-        const lockedAspect = startState.startAspect || (isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82));
-        const minWForAspect = Math.max(200, Math.ceil(140 / Math.max(0.15, lockedAspect)));
-        newW = Math.round(Math.max(minWForAspect, Math.min(window.innerWidth * 0.85, startState.startW + dw)));
-        newH = Math.round(Math.max(140, newW * lockedAspect));
+        // 🔒 잠금 후: 가로세로 비율을 고정한 채로 그래프와 카드 전체를 비례 확대/축소 (초와이드·세로형 모두 왜곡 0%)
+        const lockedAspect = Math.max(0.08, startState.startAspect || (isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82)));
+        const minWForAspect = Math.max(170, Math.ceil(72 / lockedAspect));
+        const maxWByViewportH = Math.floor((window.innerHeight * 0.85) / lockedAspect);
+        const maxWForAspect = Math.max(minWForAspect, Math.min(Math.floor(window.innerWidth * 0.88), maxWByViewportH));
+        newW = Math.round(Math.max(minWForAspect, Math.min(maxWForAspect, startState.startW + dw)));
+        newH = Math.round(Math.max(60, newW * lockedAspect));
         nextAspect = lockedAspect;
       } else {
         // 🔓 잠금 전: 그래프 실제 크기(unitScale)는 100% 고정한 채로 현재 카드 센터 기준 화면 영역(시야)만 자유 확장/축소 (와이드 뷰 지원)
-        newW = Math.round(Math.max(200, Math.min(window.innerWidth * 0.88, startState.startW + dw)));
-        newH = Math.round(Math.max(140, Math.min(window.innerHeight * 0.82, startState.startH + dh)));
+        newW = Math.round(Math.max(180, Math.min(window.innerWidth * 0.88, startState.startW + dw)));
+        newH = Math.round(Math.max(80, Math.min(window.innerHeight * 0.85, startState.startH + dh)));
         nextAspect = newH / Math.max(1, newW);
       }
 
@@ -8647,7 +8693,7 @@
 
       const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
       const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || bodyEl.clientWidth || 430));
-      const cardH = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
+      const cardH = Math.max(60, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
       const dpr = this.getCanvasDpr();
       const targetW = Math.round(cardW * dpr);
       const targetH = Math.round(cardH * dpr);
@@ -8715,7 +8761,7 @@
       const imgEl = bodyEl ? bodyEl.querySelector('.problem-card-img') : null;
       const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
       const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
-      const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
+      const cardH = Math.max(60, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
 
       const snapScale = 3.0;
       const cropCanvas = document.createElement('canvas');
@@ -9037,7 +9083,7 @@
       const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
       const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
       const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
-      const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
+      const cardH = Math.max(60, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
 
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -9366,7 +9412,7 @@
       const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
       const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
       const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
-      const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
+      const cardH = Math.max(60, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
 
       const clonedSnap = JSON.parse(JSON.stringify(srcSnap));
       this._rebindClonedSnapshotGraphAndDropLineIds(clonedSnap);
@@ -9611,7 +9657,7 @@
           cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
         }
       }
-      const cardH = Math.max(120, Math.round(cardW * aspect));
+      const cardH = Math.max(60, Math.round(cardW * aspect));
       const isTrig = this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
 
       const {
@@ -9841,7 +9887,7 @@
       const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (target.aspect || 0.82);
       const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
       const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
-      const cardH = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
+      const cardH = Math.max(60, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
       const isTrig = Array.isArray(this.graphs) && this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
 
       const updatedSnap = JSON.parse(this.getPureGraphSnapshot());
@@ -10351,7 +10397,7 @@
             // 수선 버튼 클릭 즉시 특이점/교점 캐시를 사전 워밍업하여 첫 마우스 이동부터 0ms 반응 보장
             const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
             const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || bodyEl.clientWidth || 360));
-            const cardH = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
+            const cardH = Math.max(60, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
             this._withPipCardGraphState(snap, cardW, cardH, () => {
               this.collectDropLineCandidates();
             });
@@ -10571,7 +10617,7 @@
         const rect = liveCanvas.getBoundingClientRect();
         const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
         const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || rect.width || 430));
-        const cardH = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
+        const cardH = Math.max(60, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
         const scaleX = cardW / Math.max(1, rect.width);
         const scaleY = cardH / Math.max(1, rect.height);
         cachedDownGeom = {
@@ -11277,7 +11323,7 @@
         snap.zoomLevel = Math.max(0.35, Math.min(3.5, parseFloat(((snap.zoomLevel || 1.0) + delta).toFixed(2))));
         const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
         const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || bodyEl.clientWidth || 360));
-        const cardH = Math.max(120, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
+        const cardH = Math.max(60, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
         this._reprojectPipCardInkFromMathCoords(cardRef, cardW, cardH);
         this.renderPipGraphCard(cardRef);
         this.scheduleBakePipGraphCardToImg(cardRef);

@@ -874,7 +874,7 @@ class GraphApp {
       livePrimarySnap = this._getMutablePipCardSnapshot('primary');
       if (livePrimarySnap) {
         const cw = Math.max(160, Math.round(parseFloat(gWidget.style.width) || (gBody && gBody.clientWidth) || 430));
-        const ch = Math.max(120, Math.round((gBody && parseFloat(gBody.style.height)) || (cw * (this.graphCardAspect || 0.82))));
+        const ch = Math.max(60, Math.round((gBody && parseFloat(gBody.style.height)) || (cw * (this.graphCardAspect || 0.82))));
         livePrimarySnap._isPipCardSnapshot = true;
         livePrimarySnap._pipCardW = cw;
         livePrimarySnap._pipCardH = ch;
@@ -907,7 +907,7 @@ class GraphApp {
         liveExtraSnap = this._getMutablePipCardSnapshot(c);
         if (liveExtraSnap) {
           const cw = Math.max(160, Math.round((c.el && parseFloat(c.el.style.width)) || (bodyEl && bodyEl.clientWidth) || 430));
-          const ch = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cw * (c.aspect || 0.82))));
+          const ch = Math.max(60, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cw * (c.aspect || 0.82))));
           liveExtraSnap._isPipCardSnapshot = true;
           liveExtraSnap._pipCardW = cw;
           liveExtraSnap._pipCardH = ch;
@@ -1041,8 +1041,8 @@ class GraphApp {
       if (pToggle) pToggle.textContent = pc.toggleText || '▾';
       pWidget.classList.toggle('minimized', Boolean(pc.minimized));
       pWidget.classList.toggle('card-ink-active', Boolean(pc.cardInkActive));
-      pWidget.classList.toggle('pip-locked-mode', Boolean(pc.pipLocked));
-      pWidget.classList.toggle('pip-stealth-locked', Boolean(pc.pipStealth));
+      pWidget.classList.add('pip-locked-mode');
+      pWidget.classList.toggle('pip-stealth-locked', Boolean(pc.pipStealth && !pc.cardInkActive && !pc.minimized));
       if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(pWidget);
       if (
         typeof this.scheduleProblemCardStealth === 'function' &&
@@ -1101,8 +1101,8 @@ class GraphApp {
           c.el.style.display = st.display || 'flex';
           c.el.classList.toggle('minimized', Boolean(st.minimized));
           c.el.classList.toggle('card-ink-active', Boolean(st.cardInkActive));
-          c.el.classList.toggle('pip-locked-mode', Boolean(st.pipLocked));
-          c.el.classList.toggle('pip-stealth-locked', Boolean(st.pipStealth));
+          c.el.classList.add('pip-locked-mode');
+          c.el.classList.toggle('pip-stealth-locked', Boolean(st.pipStealth && !st.cardInkActive && !st.minimized));
           if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(c.el);
           if (
             typeof this.scheduleProblemCardStealth === 'function' &&

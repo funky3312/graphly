@@ -1272,7 +1272,7 @@
         });
         const w = r1(raw._pipCardW || fallbackW || 430);
         const aspect = r3(raw.aspect || fallbackAspect || 0.82);
-        const h = r1(raw._pipCardH || Math.max(120, Math.round(w * aspect)));
+        const h = r1(raw._pipCardH || Math.max(60, Math.round(w * aspect)));
         return {
           graphs: clonedGraphs,
           activeGraphIdx: typeof raw.activeGraphIdx === 'number' ? raw.activeGraphIdx : (clonedGraphs.length > 0 ? 0 : -1),
@@ -1603,10 +1603,8 @@
             const btnPInk = pWidget.querySelector('.btn-card-laser');
             if (btnPInk) btnPInk.classList.toggle('active', pInkOn);
           }
-          if (kf.probCardLocked !== undefined) {
-            pWidget.classList.toggle('pip-locked-mode', Boolean(kf.probCardLocked));
-            if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(pWidget);
-          }
+          pWidget.classList.add('pip-locked-mode');
+          if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(pWidget);
           if (kf.probCardStealth !== undefined) {
             if (typeof this.clearProblemCardStealthTimer === 'function') this.clearProblemCardStealthTimer(pWidget);
             pWidget.classList.toggle('pip-stealth-locked', Boolean(kf.probCardStealth));
@@ -1659,7 +1657,7 @@
               this.graphCardBaseY = kf.graphCardBaseY;
               gWidget.style.top = `${Math.round(kf.graphCardBaseY)}px`;
             }
-            if (typeof kf.graphCardAspect === 'number' && kf.graphCardAspect > 0.1) {
+            if (typeof kf.graphCardAspect === 'number' && kf.graphCardAspect > 0.05) {
               this.graphCardAspect = kf.graphCardAspect;
             }
             const targetCardW = (typeof kf.graphCardW === 'number' && kf.graphCardW >= 140)
@@ -1670,11 +1668,11 @@
             }
             if (kf.graphCardPipSnap && typeof kf.graphCardPipSnap === 'object') {
               const clonedPipSnap = JSON.parse(JSON.stringify(kf.graphCardPipSnap));
-              if (typeof clonedPipSnap.aspect === 'number' && clonedPipSnap.aspect > 0.1) {
+              if (typeof clonedPipSnap.aspect === 'number' && clonedPipSnap.aspect > 0.05) {
                 this.graphCardAspect = clonedPipSnap.aspect;
               }
               const effAspect = this.graphCardAspect || 0.82;
-              const targetCardH = Math.max(120, Math.round(targetCardW * effAspect));
+              const targetCardH = Math.max(60, Math.round(targetCardW * effAspect));
               clonedPipSnap._isPipCardSnapshot = true;
               clonedPipSnap._pipCardW = targetCardW;
               clonedPipSnap._pipCardH = targetCardH;
@@ -1748,7 +1746,7 @@
                   const btnInk = c.el.querySelector('.btn-card-ink');
                   if (btnInk) btnInk.classList.toggle('active', inkOn);
                 }
-                if (typeof st.aspect === 'number' && st.aspect > 0.1) {
+                if (typeof st.aspect === 'number' && st.aspect > 0.05) {
                   c.aspect = st.aspect;
                 }
                 const cw = (typeof st.w === 'number' && st.w >= 140)
@@ -1759,11 +1757,11 @@
                 }
                 if (st.pipSnap && typeof st.pipSnap === 'object') {
                   const clonedExtraSnap = JSON.parse(JSON.stringify(st.pipSnap));
-                  if (typeof clonedExtraSnap.aspect === 'number' && clonedExtraSnap.aspect > 0.1) {
+                  if (typeof clonedExtraSnap.aspect === 'number' && clonedExtraSnap.aspect > 0.05) {
                     c.aspect = clonedExtraSnap.aspect;
                   }
                   const effAspect = c.aspect || 0.82;
-                  const ch = Math.max(120, Math.round(cw * effAspect));
+                  const ch = Math.max(60, Math.round(cw * effAspect));
                   clonedExtraSnap._isPipCardSnapshot = true;
                   clonedExtraSnap._pipCardW = cw;
                   clonedExtraSnap._pipCardH = ch;
@@ -1822,10 +1820,8 @@
                 const btnEInk = c.el.querySelector('.btn-card-laser');
                 if (btnEInk) btnEInk.classList.toggle('active', eInkOn);
               }
-              if (st.locked !== undefined) {
-                c.el.classList.toggle('pip-locked-mode', Boolean(st.locked));
-                if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(c.el);
-              }
+              c.el.classList.add('pip-locked-mode');
+              if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(c.el);
               if (st.stealth !== undefined) {
                 if (typeof this.clearProblemCardStealthTimer === 'function') this.clearProblemCardStealthTimer(c.el);
                 c.el.classList.toggle('pip-stealth-locked', Boolean(st.stealth));

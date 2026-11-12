@@ -5746,7 +5746,7 @@
         if (livePrimarySnap) {
           const bodyEl = document.getElementById('graphCardBody');
           const cw = Math.max(160, Math.round(parseFloat(gWidget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
-          const ch = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cw * (this.graphCardAspect || 0.82))));
+          const ch = Math.max(60, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cw * (this.graphCardAspect || 0.82))));
           livePrimarySnap._isPipCardSnapshot = true;
           livePrimarySnap._pipCardW = cw;
           livePrimarySnap._pipCardH = ch;
@@ -5794,7 +5794,7 @@
               if (liveExtraSnap) {
                 const bodyEl = c.el.querySelector('.problem-card-body');
                 const cw = Math.max(160, Math.round(parseFloat(c.el.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
-                const ch = Math.max(120, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cw * (c.aspect || 0.82))));
+                const ch = Math.max(60, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cw * (c.aspect || 0.82))));
                 liveExtraSnap._isPipCardSnapshot = true;
                 liveExtraSnap._pipCardW = cw;
                 liveExtraSnap._pipCardH = ch;
@@ -5975,8 +5975,8 @@
         if (pTitle) pTitle.textContent = pc.titleText || '문제';
         if (pToggle) pToggle.textContent = pc.toggleText || (pc.minimized ? '▸' : '▾');
         pWidget.classList.toggle('minimized', Boolean(pc.minimized));
-        pWidget.classList.toggle('pip-locked-mode', Boolean(pc.pipLocked));
-        pWidget.classList.toggle('pip-stealth-locked', Boolean(pc.pipStealth));
+        pWidget.classList.add('pip-locked-mode');
+        pWidget.classList.toggle('pip-stealth-locked', Boolean(pc.pipStealth && !pc.minimized));
         if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(pWidget);
         if (
           typeof this.scheduleProblemCardStealth === 'function' &&
@@ -6015,8 +6015,8 @@
             createdProb.el._pdfAnchor = createdProb.pdfAnchor ? { ...createdProb.pdfAnchor } : null;
             createdProb.el._cardInkStrokes = JSON.parse(JSON.stringify(ep.cardInkStrokes || []));
             createdProb.el._cardStickers = JSON.parse(JSON.stringify(ep.cardStickers || []));
-            createdProb.el.classList.toggle('pip-locked-mode', Boolean(ep.pipLocked));
-            createdProb.el.classList.toggle('pip-stealth-locked', Boolean(ep.pipStealth));
+            createdProb.el.classList.add('pip-locked-mode');
+            createdProb.el.classList.toggle('pip-stealth-locked', Boolean(ep.pipStealth && !ep.isMin));
             if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(createdProb.el);
             if (
               typeof this.scheduleProblemCardStealth === 'function' &&
@@ -15071,7 +15071,7 @@ autoCenterGraphForTouchViewer(rawSnapshot = null) {
   // 1. 창모드(PiP 그래프 카드) 핫스팟: 원점이나 핸들 평균이 아니라, 창모드에서 보고 있던 센터 좌표(centerMathX, centerMathY)에 100% 초점 동기화!
   if (parsedSnap && isPipHotspot) {
     const isTrig = Array.isArray(this.graphs) && this.graphs.some(g => g && ["sin_1period", "cos_1period", "tan_1period"].includes(g.type));
-    const cardH = Math.max(80, parsedSnap._pipCardH || 353);
+    const cardH = Math.max(60, parsedSnap._pipCardH || 353);
     const cardYSpan = (typeof parsedSnap.ySpan === 'number' && parsedSnap.ySpan > 0) ? parsedSnap.ySpan : (isTrig ? 5.0 : 5.1);
     const cardZoom = (typeof parsedSnap.zoomLevel === 'number' && parsedSnap.zoomLevel > 0) ? parsedSnap.zoomLevel : 1.0;
     const cardUnitScale = (cardH / 2) / Math.max(0.1, cardYSpan / cardZoom);

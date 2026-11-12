@@ -19314,11 +19314,13 @@ body.theme-light #modalNAxisStudio .n-axis-speed-btn.active {
   }
 }
 
-/* 칠판에 삽입된 합성함수 3-그래프 판서 카드: 불필요한 함수추가/수선/잠금 버튼 숨김 */
+/* 칠판에 삽입된 합성함수 3-그래프 판서 카드 및 문제 카드: 조작할 개형이 없는 정적 카드는 잠금 버튼 숨김(상시 이동·3초 자동 스텔스) */
 .n-axis-studio-board-card .btn-card-add-func,
 .n-axis-studio-board-card .btn-card-dropline,
 .n-axis-studio-board-card .btn-extra-lock,
-.n-axis-studio-board-card #btnGraphCardLock {
+.n-axis-studio-board-card #btnGraphCardLock,
+#btnProblemCardLock,
+.btn-problem-lock {
   display: none !important;
 }
 
