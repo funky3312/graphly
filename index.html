@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261113_81">
+  <link rel="stylesheet" href="style.css?v=20261113_82">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -2790,25 +2790,24 @@
     </div>
   </div>
 
-  <!-- [Graphly 이용권 안내 · 구매 모달 (Stitch 최종 시안: 카드별 주기 탭 분리형 · 무스크롤 정밀 벡터 UI)] -->
+  <!-- [Graphly 이용권 안내 모달 (딥 포레스트 칠판 슬레이트 톤 · 3열 수평 줄 맞춤 · 확대 타이포 무스크롤 UI)] -->
   <div id="modalProPricing" class="smart-modal-backdrop">
     <div class="smart-modal-card pricing-modal-card" role="dialog" aria-modal="true" aria-labelledby="lblProPricingModalTitle">
-      <!-- 1. 헤더 바 (상단 공통 주기 토글 제거 · 정밀 크라운 라인 벡터) -->
+      <!-- 1. 헤더 바 -->
       <div class="pricing-modal-header">
         <div class="pricing-header-left">
           <div class="pricing-header-brand-icon" aria-hidden="true">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
               stroke-linecap="round" stroke-linejoin="round">
               <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"></path>
             </svg>
           </div>
           <div class="pricing-header-titles">
-            <div id="lblProPricingModalTitle" class="pricing-header-title">Graphly 이용권 안내 · 구매</div>
-            <span class="pricing-header-subtitle">선생님과 학생을 위한 실시간 수식 판서 스튜디오</span>
+            <div id="lblProPricingModalTitle" class="pricing-header-title">Graphly 이용권 안내</div>
           </div>
         </div>
         <button type="button" id="btnCloseProPricingModal" class="pricing-header-close-btn" aria-label="닫기" title="닫기 (ESC)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
             stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
@@ -2816,45 +2815,31 @@
         </button>
       </div>
 
-      <!-- 2. 3단계 요금제(Free / Pro / Premium) 카드별 주기 탭 분리형 그리드 -->
+      <!-- 2. 3단계 요금제(Free / Pro / Premium) 3열 수평 정렬 그리드 -->
       <div class="pricing-tier-section">
         <div class="pricing-tier-grid">
-          <!-- CARD 1: Free (무료 기본) -->
+          <!-- CARD 1: Free -->
           <div id="cardPlanFree" class="pro-plan-select-card pricing-tier-card is-free-baseline">
             <div class="pricing-card-top-body">
-              <div class="pricing-card-meta-row">
-                <span class="pricing-chip chip-free">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <path d="m9 12 2 2 4-4"></path>
-                  </svg>
-                  기본 제공
-                </span>
-                <span class="pricing-card-acct-tag">무료 계정</span>
-              </div>
-
-              <div class="pricing-card-price-block">
-                <div class="pricing-tier-name-row">
+              <div class="pricing-card-head-zone">
+                <div class="pricing-tier-name-bar">
                   <span class="pricing-tier-name">Free</span>
-                  <span class="pricing-tier-sub">무료 체험</span>
                 </div>
+                <div class="pricing-regular-price-row is-empty-spacer" aria-hidden="true"></div>
                 <div class="pricing-tier-price-row">
                   <span class="pricing-tier-price">0원</span>
                   <span class="pricing-tier-unit">/ 평생 무료</span>
                 </div>
-                <p class="pricing-tier-desc">개인 학습 및 단기 수업 준비용</p>
-              </div>
-
-              <div class="pricing-card-cycle-seg seg-static" aria-hidden="true">
-                <div class="pricing-cycle-seg-static-pill">평생 무료 체험 (기본)</div>
+                <div class="pricing-cycle-slot is-free-desc-slot">
+                  <p class="pricing-tier-desc">개인 학습 및 단기 수업 준비용</p>
+                </div>
               </div>
 
               <div class="pricing-card-divider"></div>
 
               <ul class="pricing-tier-features">
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                     stroke-linecap="round" stroke-linejoin="round">
                     <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
                     <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
@@ -2864,42 +2849,42 @@
                   <span>내 기기(로컬) 저장 <strong>무제한</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>
                   </svg>
-                  <span>클라우드 보관함 <strong id="lblPlanFreeCloud">100 MB</strong></span>
+                  <span>클라우드 보관함 <strong id="lblPlanFreeCloud">100 MB</strong> <span class="feat-sub-note">(로그인)</span></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path>
                   </svg>
-                  <span>내 그래프 프리셋 <strong id="lblPlanFreeGraphs">3개</strong> (로그인)</span>
+                  <span>내 그래프 프리셋 <strong id="lblPlanFreeGraphs">3개</strong> <span class="feat-sub-note">(로그인)</span></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
                     <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
                     <line x1="12" y1="19" x2="12" y2="22"></line>
                   </svg>
-                  <span>수업 연속 녹화 <strong id="lblPlanFreeRec">5분</strong></span>
+                  <span>1회 최대 녹화 <strong id="lblPlanFreeRec">5분</strong></span>
                 </li>
-                <li class="is-muted-feat">
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                <li>
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                   </svg>
-                  <span>공유 링크 <span id="lblPlanFreeShare">1일 5개 · 3일 만료</span></span>
+                  <span>링크 생성 <span id="lblPlanFreeShare" class="feat-share-meta">1일 5개 · 3일 만료</span></span>
                 </li>
               </ul>
             </div>
 
             <div class="pricing-card-foot-bar is-free-foot">
               <div class="pricing-free-status-pill">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
                   stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
@@ -2908,38 +2893,19 @@
             </div>
           </div>
 
-          <!-- CARD 2: Pro (프로 강사용 · 카드별 주기 탭) -->
+          <!-- CARD 2: Pro -->
           <div id="cardPlanPro" class="pro-plan-select-card pricing-tier-card is-selectable tier-pro active"
             data-tier="pro">
-            <div class="pricing-floating-best-pill">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-              </svg>
-              <span>강사 추천 BEST</span>
-            </div>
-
             <div class="pricing-card-top-body">
-              <div class="pricing-card-meta-row has-top-pill">
-                <span class="pricing-chip chip-pro">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"></path>
-                  </svg>
-                  <span id="lblPlanProDiscountBadge">50% 특별할인</span>
-                </span>
-                <span class="pricing-radio-indicator" aria-hidden="true">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
-                </span>
-              </div>
-
-              <div class="pricing-card-price-block">
-                <div class="pricing-tier-name-row">
+              <div class="pricing-card-head-zone">
+                <div class="pricing-tier-name-bar">
                   <span class="pricing-tier-name name-pro">Pro</span>
-                  <span class="pricing-tier-sub sub-pro">프로 강사용</span>
+                  <span class="pricing-radio-indicator" aria-hidden="true">
+                    <svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </span>
                 </div>
                 <div class="pricing-regular-price-row">
                   <span id="lblPlanProRegularPrice" class="pricing-tier-regular-price">정가 9,900원</span>
@@ -2952,67 +2918,66 @@
                     <span class="pricing-tier-vat">(VAT포함)</span>
                   </span>
                 </div>
-                <p class="pricing-tier-desc">대부분의 학원 및 학교 선생님이 선택</p>
-              </div>
-
-              <!-- Pro 카드 전용 월간/연간 주기 탭 -->
-              <div class="pricing-card-cycle-seg seg-pro" role="tablist" aria-label="Pro 이용권 주기 선택">
-                <button type="button" id="btnProCycleMonthly" class="pricing-card-cycle-tab active" data-tier="pro"
-                  data-cycle="monthly">
-                  <span class="cycle-active-dot" aria-hidden="true"></span>
-                  <span>월간 (30일)</span>
-                </button>
-                <button type="button" id="btnProCycleYearly" class="pricing-card-cycle-tab" data-tier="pro"
-                  data-cycle="yearly">
-                  <span class="cycle-active-dot" aria-hidden="true"></span>
-                  <span>연간 (365일)</span>
-                  <span class="cycle-save-mini-badge">2개월 무료</span>
-                </button>
+                <div class="pricing-cycle-slot">
+                  <div class="pricing-card-cycle-seg seg-pro" role="tablist" aria-label="Pro 이용권 주기 선택">
+                    <button type="button" id="btnProCycleMonthly" class="pricing-card-cycle-tab active" data-tier="pro"
+                      data-cycle="monthly">
+                      <span class="cycle-active-dot" aria-hidden="true"></span>
+                      <span>월간 (30일)</span>
+                    </button>
+                    <button type="button" id="btnProCycleYearly" class="pricing-card-cycle-tab" data-tier="pro"
+                      data-cycle="yearly">
+                      <span class="cycle-active-dot" aria-hidden="true"></span>
+                      <span>연간 (365일)</span>
+                      <span class="cycle-save-mini-badge">2개월 무료</span>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div class="pricing-card-divider divider-pro"></div>
 
               <ul class="pricing-tier-features feats-pro">
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                     stroke-linecap="round" stroke-linejoin="round">
                     <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
                     <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
                     <line x1="6" y1="6" x2="6.01" y2="6"></line>
                     <line x1="6" y1="18" x2="6.01" y2="18"></line>
                   </svg>
-                  <span>내 기기(로컬) 저장 <strong class="strong-dark">무제한</strong></span>
+                  <span>내 기기(로컬) 저장 <strong>무제한</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>
                   </svg>
-                  <span>클라우드 보관함 <strong id="lblPlanProCloud">5 GB</strong> (50배)</span>
+                  <span>클라우드 보관함 <strong id="lblPlanProCloud">5 GB</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path>
                   </svg>
                   <span>내 그래프 프리셋 <strong id="lblPlanProGraphs">30개</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
                     <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
                     <line x1="12" y1="19" x2="12" y2="22"></line>
                   </svg>
-                  <span>수업 연속 녹화 <strong id="lblPlanProRec">60분</strong> 고화질</span>
+                  <span>1회 최대 녹화 <strong id="lblPlanProRec">60분</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                   </svg>
-                  <span>공유 링크 <strong class="strong-dark">무제한</strong> · <span id="lblPlanProShareDays">7일 만료</span></span>
+                  <span>링크 생성 <strong>무제한</strong> · <span id="lblPlanProShareDays" class="feat-share-meta">7일 만료</span></span>
                 </li>
               </ul>
             </div>
@@ -3023,30 +2988,19 @@
             </div>
           </div>
 
-          <!-- CARD 3: Premium (프리미엄 · 카드별 주기 탭) -->
+          <!-- CARD 3: Premium -->
           <div id="cardPlanPremium" class="pro-plan-select-card pricing-tier-card is-selectable tier-premium"
             data-tier="premium">
             <div class="pricing-card-top-body">
-              <div class="pricing-card-meta-row">
-                <span class="pricing-chip chip-premium">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M6 3h12l4 6-10 12L2 9l4-6z"></path>
-                  </svg>
-                  학원·연구실 마스터
-                </span>
-                <span class="pricing-radio-indicator" aria-hidden="true">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
-                </span>
-              </div>
-
-              <div class="pricing-card-price-block">
-                <div class="pricing-tier-name-row">
+              <div class="pricing-card-head-zone">
+                <div class="pricing-tier-name-bar">
                   <span class="pricing-tier-name name-premium">Premium</span>
-                  <span class="pricing-tier-sub sub-premium">프리미엄</span>
+                  <span class="pricing-radio-indicator" aria-hidden="true">
+                    <svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </span>
                 </div>
                 <div class="pricing-regular-price-row">
                   <span id="lblPlanPremiumRegularPrice" class="pricing-tier-regular-price">정가 19,900원</span>
@@ -3059,72 +3013,83 @@
                     <span class="pricing-tier-vat">(VAT포함)</span>
                   </span>
                 </div>
-                <p class="pricing-tier-desc">대용량 판서 녹화 및 영구 아카이빙</p>
-              </div>
-
-              <!-- Premium 카드 전용 월간/연간 주기 탭 -->
-              <div class="pricing-card-cycle-seg seg-premium" role="tablist" aria-label="Premium 이용권 주기 선택">
-                <button type="button" id="btnPremiumCycleMonthly" class="pricing-card-cycle-tab active"
-                  data-tier="premium" data-cycle="monthly">
-                  <span class="cycle-active-dot" aria-hidden="true"></span>
-                  <span>월간 (30일)</span>
-                </button>
-                <button type="button" id="btnPremiumCycleYearly" class="pricing-card-cycle-tab" data-tier="premium"
-                  data-cycle="yearly">
-                  <span class="cycle-active-dot" aria-hidden="true"></span>
-                  <span>연간 (365일)</span>
-                  <span class="cycle-save-mini-badge">2개월 무료</span>
-                </button>
+                <div class="pricing-cycle-slot">
+                  <div class="pricing-card-cycle-seg seg-premium" role="tablist" aria-label="Premium 이용권 주기 선택">
+                    <button type="button" id="btnPremiumCycleMonthly" class="pricing-card-cycle-tab active"
+                      data-tier="premium" data-cycle="monthly">
+                      <span class="cycle-active-dot" aria-hidden="true"></span>
+                      <span>월간 (30일)</span>
+                    </button>
+                    <button type="button" id="btnPremiumCycleYearly" class="pricing-card-cycle-tab" data-tier="premium"
+                      data-cycle="yearly">
+                      <span class="cycle-active-dot" aria-hidden="true"></span>
+                      <span>연간 (365일)</span>
+                      <span class="cycle-save-mini-badge">2개월 무료</span>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div class="pricing-card-divider divider-premium"></div>
 
               <ul class="pricing-tier-features feats-premium">
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                    <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                    <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                  </svg>
+                  <span>내 기기(로컬) 저장 <strong>무제한</strong></span>
+                </li>
+                <li>
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>
                   </svg>
                   <span>클라우드 보관함 <strong id="lblPlanPremiumCloud">20 GB</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path>
                   </svg>
                   <span>내 그래프 프리셋 <strong id="lblPlanPremiumGraphs">100개</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="22"></line>
+                  </svg>
+                  <span>1회 최대 녹화 <strong id="lblPlanPremiumRec">60분</strong></span>
+                </li>
+                <li>
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                   </svg>
-                  <span>공유 링크 무제한 · <strong id="lblPlanPremiumShare">영구 링크</strong></span>
+                  <span>링크 생성 <strong>무제한</strong> · <strong id="lblPlanPremiumShare">영구 링크</strong></span>
                 </li>
               </ul>
 
               <div class="pricing-premium-exclusive-box">
                 <div class="pricing-exclusive-title">
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"
                     stroke-linecap="round" stroke-linejoin="round">
                     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
                   </svg>
                   <span>PREMIUM 전용 혜택</span>
                 </div>
                 <div class="pricing-exclusive-item">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12"></polyline>
                   </svg>
-                  <span>보관함 영구 QR · 수정 자동 반영</span>
-                </div>
-                <div class="pricing-exclusive-item">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
-                  <span>뷰어 상단 강사·학원 홍보배너</span>
+                  <span>뷰어 시작, 종료 시 홍보배너</span>
                 </div>
               </div>
             </div>
@@ -3137,7 +3102,7 @@
         </div>
       </div>
 
-      <!-- 3. 하단 통합 결제 독 (Checkout Dock — 중복 안내 문구 제거 & 영수증 수신 이메일 입력란 대폭 확장) -->
+      <!-- 3. 하단 통합 결제 독 (Checkout Dock) -->
       <div class="pricing-checkout-dock">
         <div class="pricing-checkout-main-row">
           <!-- 좌측: 귀속 계정 확인 + 확장된 영수증 수신 이메일 입력 폼 -->
@@ -3169,19 +3134,19 @@
             </div>
           </div>
 
-          <!-- 우측: 최종 결제 금액 & 토스페이먼츠 솔리드 CTA 버튼 -->
+          <!-- 우측: 최종 결제 금액 & 카드 결제 CTA 버튼 -->
           <div class="pricing-checkout-right">
             <div class="pricing-final-price-col">
               <div class="pricing-final-price-label">최종 결제 금액 (VAT 포함)</div>
               <div id="lblProModalFinalAmount" class="pricing-final-price-val">4,900원</div>
             </div>
             <button type="button" id="btnProModalPayNow" class="pricing-pay-submit-btn">
-              <svg class="pricing-pay-card-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <svg class="pricing-pay-card-icon" width="16.5" height="16.5" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="2" y="5" width="20" height="14" rx="2"></rect>
                 <line x1="2" y1="10" x2="22" y2="10"></line>
               </svg>
-              <span>토스페이먼츠 카드 결제하기</span>
+              <span>카드 결제하기</span>
               <span id="lblProModalPayBtnBadge" class="pricing-pay-plan-pill">Pro 30일</span>
             </button>
           </div>
@@ -3191,7 +3156,7 @@
         <div class="pricing-legal-footer"
           title="상호명: 큐비오랩(CubioLab) · 대표자: 이광철 · 사업자등록번호: 354-08-03569 · 주소: 경기도 양주시 옥정로 222, 6층 606호(옥정동, 스카이타워)">
           <div class="pricing-legal-left">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+            <svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
               stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10"></circle>
               <line x1="12" y1="8" x2="12" y2="12"></line>
@@ -3554,15 +3519,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261113_81"></script>
-  <script src="app-core.js?v=20261113_81"></script>
-  <script src="app-ink.js?v=20261113_81"></script>
-  <script src="app-pdf.js?v=20261113_81"></script>
-  <script src="app-cards.js?v=20261113_81"></script>
-  <script src="app-cloud.js?v=20261113_81"></script>
-  <script src="app-canvas.js?v=20261113_81"></script>
-  <script src="app-toolkit.js?v=20261113_81"></script>
-  <script src="app.js?v=20261113_81"></script>
+  <script src="engine.js?v=20261113_82"></script>
+  <script src="app-core.js?v=20261113_82"></script>
+  <script src="app-ink.js?v=20261113_82"></script>
+  <script src="app-pdf.js?v=20261113_82"></script>
+  <script src="app-cards.js?v=20261113_82"></script>
+  <script src="app-cloud.js?v=20261113_82"></script>
+  <script src="app-canvas.js?v=20261113_82"></script>
+  <script src="app-toolkit.js?v=20261113_82"></script>
+  <script src="app.js?v=20261113_82"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
