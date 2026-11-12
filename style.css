@@ -13177,23 +13177,115 @@ body.theme-light .audio-btn-zoom.is-zoomed {
 }
 
 /* =========================================================================
-   ☁️🪟 [윈도우 파일 탐색기 100% 동일 클라우드 보관함 (#modalCloudHub)]
-   - 상단: 상위 폴더(⬆️) + 주소 표시줄(Breadcrumb) + 새 폴더 + 검색
-   - 중단: 좌측 폴더 트리 + 우측 폴더/파일 탐색기 (더블클릭 열기 & 드래그 앤 드롭 이동)
-   - 하단: 윈도우 '다른 이름으로 저장' 표준 바 (파일 이름 + 현재 폴더에 저장)
+   ☁️🪟 [Stitch 정밀 벡터 아이콘 시스템 & 클라우드 보관함 (#modalCloudHub)]
+   - 상단: 상위 폴더 + 주소 표시줄(Breadcrumb) + 새 폴더 + 업로드 + 검색
+   - 중단: 좌측 폴더 트리/용량 카드 + 우측 폴더/파일 탐색기 (우측 원클릭 공유링크[🔗] · 이름변경[✎])
+   - 하단: 스마트 전환 바 (평소 [✓ 저장] ⇄ 체크박스 선택 시 [전체선택/N개 선택됨 + 칠판에 열기/다운로드/이동/삭제])
    ========================================================================= */
+@keyframes cloudVaultSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.cv-spin {
+  animation: cloudVaultSpin 0.75s linear infinite;
+}
+
 .cloud-hub-modal-card.cloud-explorer-modal-card {
-  width: 80vw !important;
-  max-width: 600px !important;
-  height: min(560px, 82vh) !important;
-  max-height: 85vh !important;
+  width: min(860px, 92vw) !important;
+  max-width: 860px !important;
+  height: min(620px, 86vh) !important;
+  max-height: 88vh !important;
+  border-radius: 18px !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 24px 64px -12px rgba(15, 23, 42, 0.22), 0 4px 16px rgba(15, 23, 42, 0.06) !important;
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
 }
 
+body:not(.theme-light) .cloud-hub-modal-card.cloud-explorer-modal-card {
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.65) !important;
+}
+
+#modalCloudHub .cloud-hub-header {
+  padding: 13px 18px !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  flex-wrap: nowrap;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-hub-header {
+  background: rgba(15, 23, 42, 0.94) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+#modalCloudHub .smart-modal-title {
+  gap: 9px;
+}
+
+#modalCloudHub .cloud-vault-header-badge {
+  width: 32px;
+  height: 32px;
+  padding: 0 !important;
+  border-radius: 9px;
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-vault-header-badge {
+  background: rgba(59, 130, 246, 0.18) !important;
+  color: #60a5fa !important;
+  border-color: rgba(96, 165, 250, 0.28);
+}
+
+#modalCloudHub .modal-title-text {
+  font-size: 15.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+body:not(.theme-light) #modalCloudHub .modal-title-text {
+  color: #f8fafc;
+}
+
+#modalCloudHub #btnCloseCloudHub {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+#modalCloudHub #btnCloseCloudHub:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+body:not(.theme-light) #modalCloudHub #btnCloseCloudHub {
+  color: #94a3b8;
+}
+
+body:not(.theme-light) #modalCloudHub #btnCloseCloudHub:hover {
+  background: rgba(148, 163, 184, 0.16);
+  color: #f8fafc;
+}
+
 .cloud-hub-body.cloud-explorer-body {
   padding: 0 !important;
+  gap: 0 !important;
   flex: 1 !important;
   min-height: 0 !important;
   display: flex !important;
@@ -13201,57 +13293,71 @@ body.theme-light .audio-btn-zoom.is-zoomed {
   overflow: hidden !important;
 }
 
-.cloud-count-sub {
+#badgeMyLibraryCount.cloud-count-sub {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 21px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
   font-weight: 700;
-  color: #64748b;
-  font-size: 12.5px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
 }
 
-/* 🧭 상단 윈도우 탐색기 툴바 (위로 버튼 + 경로 주소창 + 새 폴더 + 검색) */
+body:not(.theme-light) #badgeMyLibraryCount.cloud-count-sub {
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+}
+
+/* 🧭 상단 탐색기 툴바 (상위 이동 + 경로 주소창 + 새 폴더 + 업로드 + 검색) */
 .win-explorer-toolbar {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 8px 14px;
-  background: rgba(248, 250, 252, 0.92);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  gap: 8px;
+  padding: 9px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
   flex-shrink: 0;
 }
 
 body:not(.theme-light) .win-explorer-toolbar {
-  background: rgba(15, 23, 42, 0.65);
+  background: rgba(15, 23, 42, 0.72);
   border-bottom-color: rgba(148, 163, 184, 0.18);
 }
 
 .win-explorer-up-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 7px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
   background: #ffffff;
-  color: #334155;
+  color: #475569;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
   padding: 0;
-  transition: all 0.12s ease;
+  transition: all 0.14s ease;
 }
 
 .win-explorer-up-btn:hover:not(:disabled) {
-  background: rgba(37, 99, 235, 0.08);
-  border-color: #2563eb;
+  background: #eff6ff;
+  border-color: rgba(37, 99, 235, 0.45);
   color: #2563eb;
 }
 
 .win-explorer-up-btn:disabled {
-  opacity: 0.38;
+  opacity: 0.4;
   cursor: default;
 }
 
 body:not(.theme-light) .win-explorer-up-btn {
-  background: rgba(30, 41, 59, 0.8);
+  background: rgba(30, 41, 59, 0.85);
   border-color: rgba(148, 163, 184, 0.25);
   color: #cbd5e1;
 }
@@ -13259,10 +13365,10 @@ body:not(.theme-light) .win-explorer-up-btn {
 .win-explorer-address-bar {
   flex: 1;
   min-width: 0;
-  height: 30px;
+  height: 34px;
   padding: 0 8px;
-  border-radius: 7px;
-  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
   background: #ffffff;
   display: flex;
   align-items: center;
@@ -13284,30 +13390,44 @@ body:not(.theme-light) .win-explorer-address-bar {
 .win-crumb-item {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 7px;
-  border-radius: 5px;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 6px;
   border: 1px solid transparent;
   background: transparent;
-  color: #334155;
-  font-size: 12px;
-  font-weight: 700;
+  color: #475569;
+  font-size: 12.5px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.12s ease;
 }
 
+.win-crumb-item .cv-svg {
+  color: #2563eb;
+  flex-shrink: 0;
+}
+
+body:not(.theme-light) .win-crumb-item .cv-svg {
+  color: #60a5fa;
+}
+
 .win-crumb-item:hover {
-  background: rgba(37, 99, 235, 0.08);
+  background: #eff6ff;
   color: #1d4ed8;
 }
 
 .win-crumb-item.active {
   color: #0f172a;
-  font-weight: 800;
+  font-weight: 750;
 }
 
 body:not(.theme-light) .win-crumb-item {
   color: #cbd5e1;
+}
+
+body:not(.theme-light) .win-crumb-item:hover {
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
 }
 
 body:not(.theme-light) .win-crumb-item.active {
@@ -13316,7 +13436,7 @@ body:not(.theme-light) .win-crumb-item.active {
 
 .win-crumb-sep {
   color: #94a3b8;
-  font-size: 11px;
+  font-size: 12px;
   padding: 0 1px;
   user-select: none;
 }
@@ -13324,32 +13444,42 @@ body:not(.theme-light) .win-crumb-item.active {
 .win-explorer-action-group {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
 .win-explorer-cmd-btn {
-  height: 30px;
-  padding: 0 9px;
-  border-radius: 7px;
-  border: 1px solid rgba(148, 163, 184, 0.38);
+  height: 34px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
   background: #ffffff;
   color: #334155;
-  font-size: 11.5px;
-  font-weight: 800;
+  font-size: 12.5px;
+  font-weight: 700;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: all 0.12s ease;
+  transition: all 0.13s ease;
+}
+
+.win-explorer-cmd-btn svg {
+  flex-shrink: 0;
+  color: #475569;
+  transition: color 0.13s ease;
 }
 
 .win-explorer-cmd-btn:hover {
-  background: rgba(37, 99, 235, 0.08);
-  border-color: #2563eb;
+  background: #eff6ff;
+  border-color: rgba(37, 99, 235, 0.45);
   color: #1d4ed8;
+}
+
+.win-explorer-cmd-btn:hover svg {
+  color: #2563eb;
 }
 
 .win-explorer-cmd-btn.primary-cmd {
@@ -13364,10 +13494,28 @@ body:not(.theme-light) .win-crumb-item.active {
   border-color: #2563eb;
 }
 
-.win-explorer-cmd-btn.danger-cmd:hover {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: #ef4444;
+.win-explorer-cmd-btn.primary-cmd:hover svg {
+  color: #ffffff;
+}
+
+.win-explorer-cmd-btn.danger-cmd {
+  background: #fef2f2;
+  border-color: #fecaca;
   color: #dc2626;
+}
+
+.win-explorer-cmd-btn.danger-cmd svg {
+  color: #dc2626;
+}
+
+.win-explorer-cmd-btn.danger-cmd:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+.win-explorer-cmd-btn.danger-cmd:hover svg {
+  color: #ffffff;
 }
 
 body:not(.theme-light) .win-explorer-cmd-btn {
@@ -13376,10 +13524,38 @@ body:not(.theme-light) .win-explorer-cmd-btn {
   color: #e2e8f0;
 }
 
-body:not(.theme-light) .win-explorer-cmd-btn.primary-cmd {
+body:not(.theme-light) .win-explorer-cmd-btn svg {
+  color: #94a3b8;
+}
+
+body:not(.theme-light) .win-explorer-cmd-btn:hover {
   background: rgba(59, 130, 246, 0.2);
-  border-color: rgba(96, 165, 250, 0.45);
+  border-color: rgba(96, 165, 250, 0.5);
   color: #93c5fd;
+}
+
+body:not(.theme-light) .win-explorer-cmd-btn:hover svg {
+  color: #93c5fd;
+}
+
+body:not(.theme-light) .win-explorer-cmd-btn.danger-cmd {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #fca5a5;
+}
+
+body:not(.theme-light) .win-explorer-cmd-btn.danger-cmd svg {
+  color: #fca5a5;
+}
+
+body:not(.theme-light) .win-explorer-cmd-btn.danger-cmd:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+body:not(.theme-light) .win-explorer-cmd-btn.danger-cmd:hover svg {
+  color: #ffffff;
 }
 
 .win-explorer-move-wrap {
@@ -13397,10 +13573,10 @@ body:not(.theme-light) .win-explorer-cmd-btn.primary-cmd {
   max-height: min(380px, 60vh);
   overflow: hidden;
   background: #ffffff;
-  border: 1px solid rgba(148, 163, 184, 0.45);
+  border: 1px solid #cbd5e1;
   border-radius: 12px;
-  box-shadow: 0 -10px 32px rgba(15, 23, 42, 0.22);
-  padding: 8px;
+  box-shadow: 0 -10px 32px rgba(15, 23, 42, 0.18), 0 4px 12px rgba(15, 23, 42, 0.06);
+  padding: 9px;
   z-index: 2500;
   display: flex;
   flex-direction: column;
@@ -13417,10 +13593,14 @@ body:not(.theme-light) .win-explorer-move-menu {
 .win-move-menu-top {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
   flex-shrink: 0;
-  padding-bottom: 5px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+body:not(.theme-light) .win-move-menu-top {
+  border-bottom-color: rgba(148, 163, 184, 0.2);
 }
 
 .win-move-menu-header-row {
@@ -13445,8 +13625,8 @@ body:not(.theme-light) .win-move-menu-header {
 }
 
 .win-move-menu-fold-all-btn {
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
   color: #475569;
   font-size: 10.5px;
   font-weight: 700;
@@ -13460,7 +13640,7 @@ body:not(.theme-light) .win-move-menu-header {
 .win-move-menu-fold-all-btn:hover {
   border-color: #2563eb;
   color: #1d4ed8;
-  background: rgba(37, 99, 235, 0.08);
+  background: #eff6ff;
 }
 
 body:not(.theme-light) .win-move-menu-fold-all-btn {
@@ -13469,29 +13649,54 @@ body:not(.theme-light) .win-move-menu-fold-all-btn {
   color: #cbd5e1;
 }
 
-.win-move-menu-search-input {
-  width: 100%;
-  height: 27px;
+.win-move-menu-search-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
   padding: 0 9px;
-  border-radius: 6px;
-  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 7px;
+  border: 1px solid #cbd5e1;
   background: #f8fafc;
-  color: #0f172a;
-  font-size: 11.5px;
-  font-weight: 600;
-  outline: none;
+  color: #94a3b8;
   box-sizing: border-box;
   transition: border-color 0.12s ease, background 0.12s ease;
 }
 
-.win-move-menu-search-input:focus {
+.win-move-menu-search-box:focus-within {
   background: #ffffff;
   border-color: #2563eb;
+  color: #2563eb;
+}
+
+body:not(.theme-light) .win-move-menu-search-box {
+  background: rgba(15, 23, 42, 0.8);
+  border-color: rgba(148, 163, 184, 0.28);
+  color: #64748b;
+}
+
+body:not(.theme-light) .win-move-menu-search-box:focus-within {
+  border-color: #60a5fa;
+  color: #60a5fa;
+}
+
+.win-move-menu-search-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 600;
+  outline: none !important;
+  box-sizing: border-box;
 }
 
 body:not(.theme-light) .win-move-menu-search-input {
-  background: rgba(15, 23, 42, 0.8);
-  border-color: rgba(148, 163, 184, 0.28);
   color: #f8fafc;
 }
 
@@ -13502,7 +13707,7 @@ body:not(.theme-light) .win-move-menu-search-input {
   overflow-x: auto;
   display: flex;
   flex-direction: column;
-  gap: 0px !important;
+  gap: 1px !important;
   padding-right: 2px;
 }
 
@@ -13512,8 +13717,8 @@ body:not(.theme-light) .win-move-menu-search-input {
 }
 
 .win-move-menu-list::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.4);
-  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
 }
 
 .win-move-menu-item {
@@ -13521,18 +13726,18 @@ body:not(.theme-light) .win-move-menu-search-input {
   min-width: 100%;
   box-sizing: border-box;
   flex-shrink: 0 !important;
-  min-height: 23px !important;
+  min-height: 28px !important;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 6px;
   text-align: left;
-  padding: 1.5px 6px !important;
+  padding: 3px 8px !important;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: 6px;
   background: transparent;
   color: #1e293b;
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.25;
   font-weight: 600;
   cursor: pointer;
@@ -13541,7 +13746,7 @@ body:not(.theme-light) .win-move-menu-search-input {
 }
 
 .win-move-menu-item:hover:not(.is-disabled-target) {
-  background: rgba(37, 99, 235, 0.11);
+  background: #eff6ff;
   color: #1d4ed8;
 }
 
@@ -13562,7 +13767,7 @@ body:not(.theme-light) .win-move-menu-item:hover:not(.is-disabled-target) {
 .win-move-item-left {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 5px;
   min-width: max-content;
 }
 
@@ -13578,9 +13783,14 @@ body:not(.theme-light) .win-move-menu-item:hover:not(.is-disabled-target) {
   font-size: 10px;
   font-weight: 700;
   color: #64748b;
-  background: rgba(148, 163, 184, 0.18);
-  padding: 1px 5px;
+  background: #f1f5f9;
+  padding: 1.5px 6px;
   border-radius: 4px;
+}
+
+body:not(.theme-light) .win-move-cur-badge {
+  background: rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
 }
 
 .win-move-sub-toggle {
@@ -13600,7 +13810,7 @@ body:not(.theme-light) .win-move-menu-item:hover:not(.is-disabled-target) {
 }
 
 .win-move-sub-toggle:hover {
-  background: rgba(37, 99, 235, 0.15);
+  background: #eff6ff;
   border-color: #2563eb;
   color: #1d4ed8;
 }
@@ -13614,41 +13824,74 @@ body:not(.theme-light) .win-move-sub-toggle {
 .win-move-menu-empty {
   padding: 18px 8px;
   text-align: center;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   color: #94a3b8;
 }
 
 .cloud-library-search-wrap {
-  width: 118px;
+  width: 164px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cloud-library-search-wrap:focus-within {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.cloud-library-search-icon {
+  color: #94a3b8;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+
+.cloud-library-search-wrap:focus-within .cloud-library-search-icon {
+  color: #2563eb;
+}
+
+body:not(.theme-light) .cloud-library-search-wrap {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(148, 163, 184, 0.26);
+}
+
+body:not(.theme-light) .cloud-library-search-wrap:focus-within {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
 .cloud-library-search-input {
+  flex: 1;
+  min-width: 0;
   width: 100%;
-  height: 30px;
-  padding: 0 10px;
-  border-radius: 7px;
-  border: 1px solid rgba(148, 163, 184, 0.38);
-  background: #ffffff;
+  height: 100%;
+  padding: 0;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
   color: #0f172a;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
-  outline: none;
+  outline: none !important;
   box-sizing: border-box;
-  transition: border-color 0.15s ease;
+}
+
+.cloud-library-search-input::placeholder {
+  color: #94a3b8;
+  font-weight: 500;
 }
 
 body:not(.theme-light) .cloud-library-search-input {
-  background: rgba(15, 23, 42, 0.85);
-  border-color: rgba(148, 163, 184, 0.26);
   color: #f8fafc;
-}
-
-.cloud-library-search-input:focus {
-  border-color: #2563eb;
 }
 
 /* 중단 2단 레이아웃 (좌측 폴더 트리 + 우측 폴더/파일 뷰) */
@@ -13666,19 +13909,21 @@ body:not(.theme-light) .cloud-library-search-input {
 
 /* 좌측 폴더 트리 사이드바 */
 .cloud-explorer-sidebar {
-  width: 168px;
-  min-width: 115px;
+  width: 208px;
+  min-width: 148px;
   max-width: 360px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  padding: 4px 4px;
-  background: rgba(248, 250, 252, 0.65);
+  gap: 6px;
+  padding: 8px;
+  background: #f8fafc;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 body:not(.theme-light) .cloud-explorer-sidebar {
-  background: rgba(15, 23, 42, 0.42);
+  background: rgba(15, 23, 42, 0.52);
 }
 
 /* ↔️ 좌측 폴더 트리와 우측 파일 목록 사이 폭 조절선 (Splitter) */
@@ -13700,7 +13945,7 @@ body:not(.theme-light) .cloud-explorer-sidebar {
   content: '';
   width: 1px;
   height: 100%;
-  background: rgba(148, 163, 184, 0.28);
+  background: #e2e8f0;
   transition: background 0.12s ease, width 0.12s ease;
 }
 
@@ -13709,22 +13954,19 @@ body:not(.theme-light) .cloud-explorer-splitter::before {
 }
 
 .cloud-explorer-splitter::after {
-  content: '⋮';
+  content: '';
   position: absolute;
-  font-size: 11px;
-  line-height: 1;
-  color: #94a3b8;
-  background: rgba(248, 250, 252, 0.95);
-  padding: 3px 1px;
-  border-radius: 3px;
+  width: 3px;
+  height: 24px;
+  border-radius: 999px;
+  background: #cbd5e1;
   pointer-events: none;
-  opacity: 0.75;
-  transition: color 0.12s ease, opacity 0.12s ease;
+  opacity: 0.72;
+  transition: background 0.12s ease, opacity 0.12s ease, height 0.12s ease;
 }
 
 body:not(.theme-light) .cloud-explorer-splitter::after {
-  background: rgba(15, 23, 42, 0.9);
-  color: #64748b;
+  background: #475569;
 }
 
 .cloud-explorer-splitter:hover::before,
@@ -13735,7 +13977,8 @@ body:not(.theme-light) .cloud-explorer-splitter::after {
 
 .cloud-explorer-splitter:hover::after,
 .cloud-explorer-splitter.is-dragging::after {
-  color: #2563eb;
+  background: #2563eb;
+  height: 30px;
   opacity: 1;
 }
 
@@ -13747,7 +13990,7 @@ body:not(.theme-light) .cloud-explorer-splitter::after {
   -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
-  gap: 0px !important;
+  gap: 1px !important;
   padding-right: 2px;
   padding-bottom: 2px;
 }
@@ -13758,30 +14001,27 @@ body:not(.theme-light) .cloud-explorer-splitter::after {
 }
 
 .cloud-folder-tree-list::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.35);
-  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.38);
+  border-radius: 999px;
 }
 
 .cloud-tree-node {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 3px;
-  padding-top: 1.5px !important;
-  padding-bottom: 1.5px !important;
-  padding-left: 4px;
-  padding-right: 6px;
-  border-radius: 5px;
+  gap: 4px;
+  padding: 4px 8px !important;
+  border-radius: 7px;
   border: 1px solid transparent;
   background: transparent;
   color: #334155;
-  font-size: 11.5px;
-  line-height: 1.2;
+  font-size: 12.5px;
+  line-height: 1.25;
   font-weight: 600;
   cursor: pointer;
   user-select: none;
-  transition: background 0.1s ease, border-color 0.1s ease;
-  min-height: 21px !important;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  min-height: 29px !important;
   width: max-content;
   min-width: 100%;
   box-sizing: border-box;
@@ -13796,41 +14036,41 @@ body:not(.theme-light) .cloud-tree-node {
 }
 
 .cloud-tree-node.active {
-  background: rgba(37, 99, 235, 0.12);
-  border-color: rgba(37, 99, 235, 0.28);
-  color: #1d4ed8;
-  font-weight: 800;
+  background: #eff6ff;
+  border-color: rgba(37, 99, 235, 0.22);
+  color: #2563eb;
+  font-weight: 750;
 }
 
 body:not(.theme-light) .cloud-tree-node.active {
-  background: rgba(59, 130, 246, 0.22);
-  border-color: rgba(96, 165, 250, 0.4);
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(96, 165, 250, 0.36);
   color: #93c5fd;
 }
 
 .cloud-tree-node-left {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 5px;
   min-width: max-content;
   flex: 1;
 }
 
-/* 🌲 윈도우 탐색기식 점선(dotted) 트리 가이드 (⋮ · ├ · └, 단계당 7px 초슬림 들여쓰기) */
+/* 🌲 정밀 계층 트리 가이드 (단계당 9px 들여쓰기) */
 .cloud-tree-indent-group {
   display: inline-flex;
   align-items: center;
   margin-left: 5px;
-  margin-right: 0px;
+  margin-right: 0;
   flex-shrink: 0;
 }
 
 .cloud-tree-indent-guide {
   display: inline-block;
-  width: 7px;
-  height: 21px;
-  margin-top: -2px;
-  margin-bottom: -2px;
+  width: 9px;
+  height: 29px;
+  margin-top: -4px;
+  margin-bottom: -4px;
   flex-shrink: 0;
   position: relative;
   box-sizing: border-box;
@@ -13839,19 +14079,19 @@ body:not(.theme-light) .cloud-tree-node.active {
 .cloud-tree-indent-guide.has-vline::before {
   content: '';
   position: absolute;
-  left: 0;
+  left: 1px;
   top: 0;
   bottom: 0;
-  border-left: 1px dotted #94a3b8;
+  border-left: 1px solid #cbd5e1;
 }
 
 .cloud-tree-indent-guide.is-branch::before {
   content: '';
   position: absolute;
-  left: 0;
+  left: 1px;
   top: 0;
   bottom: 0;
-  border-left: 1px dotted #94a3b8;
+  border-left: 1px solid #cbd5e1;
 }
 
 .cloud-tree-indent-guide.is-branch.is-last-branch::before {
@@ -13861,19 +14101,19 @@ body:not(.theme-light) .cloud-tree-node.active {
 .cloud-tree-indent-guide.is-branch::after {
   content: '';
   position: absolute;
-  left: 0;
+  left: 1px;
   top: 50%;
-  width: 6px;
-  border-top: 1px dotted #94a3b8;
+  width: 7px;
+  border-top: 1px solid #cbd5e1;
 }
 
 body:not(.theme-light) .cloud-tree-indent-guide.has-vline::before,
 body:not(.theme-light) .cloud-tree-indent-guide.is-branch::before {
-  border-left-color: rgba(148, 163, 184, 0.55);
+  border-left-color: rgba(148, 163, 184, 0.38);
 }
 
 body:not(.theme-light) .cloud-tree-indent-guide.is-branch::after {
-  border-top-color: rgba(148, 163, 184, 0.55);
+  border-top-color: rgba(148, 163, 184, 0.38);
 }
 
 .cloud-tree-chevron {
@@ -13881,9 +14121,36 @@ body:not(.theme-light) .cloud-tree-indent-guide.is-branch::after {
 }
 
 .cloud-tree-icon {
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
   line-height: 1;
   flex-shrink: 0;
+}
+
+.cloud-tree-icon .cv-svg-folder {
+  color: #3b82f6;
+}
+
+.cloud-tree-icon .cv-svg-cloud {
+  color: #2563eb;
+}
+
+.cloud-tree-node.active .cloud-tree-icon,
+.cloud-tree-node.active .cloud-tree-icon .cv-svg {
+  color: #2563eb;
+}
+
+body:not(.theme-light) .cloud-tree-icon {
+  color: #94a3b8;
+}
+
+body:not(.theme-light) .cloud-tree-icon .cv-svg-folder,
+body:not(.theme-light) .cloud-tree-icon .cv-svg-cloud,
+body:not(.theme-light) .cloud-tree-node.active .cloud-tree-icon,
+body:not(.theme-light) .cloud-tree-node.active .cloud-tree-icon .cv-svg {
+  color: #60a5fa;
 }
 
 .cloud-tree-name {
@@ -13901,9 +14168,13 @@ body:not(.theme-light) .cloud-tree-indent-guide.is-branch::after {
 
 .cloud-tree-divider {
   height: 1px;
-  background: rgba(148, 163, 184, 0.22);
-  margin: 3px 4px;
+  background: #e2e8f0;
+  margin: 5px 4px;
   flex-shrink: 0;
+}
+
+body:not(.theme-light) .cloud-tree-divider {
+  background: rgba(148, 163, 184, 0.18);
 }
 
 /* 우측 메인 파일/폴더 탐색기 영역 */
@@ -13921,13 +14192,12 @@ body:not(.theme-light) .cloud-explorer-main {
   background: rgba(15, 23, 42, 0.3);
 }
 
-/* 윈도우 탐색기 상단 컬럼 헤더 (이름 | 수정한 날짜 | 분량 | 관리) */
 .win-explorer-col-header {
   display: flex;
   align-items: center;
   padding: 6px 12px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(248, 250, 252, 0.8);
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
   font-size: 11px;
   font-weight: 700;
   color: #64748b;
@@ -13943,21 +14213,63 @@ body:not(.theme-light) .win-explorer-col-header {
 
 .col-chk-wrap,
 .win-row-chk-wrap {
-  width: 20px;
+  width: 22px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  margin-right: 3px;
+  margin-right: 6px;
   cursor: pointer;
 }
 
+/* 정밀 커스텀 16×16 체크박스 (선택/부분선택 벡터 마크) */
 .win-explorer-checkbox {
-  width: 13px;
-  height: 13px;
-  accent-color: #2563eb;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 4.5px;
+  border: 1.5px solid #cbd5e1;
+  background-color: #ffffff;
   cursor: pointer;
   margin: 0;
+  flex-shrink: 0;
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 12px 12px;
+}
+
+.win-explorer-checkbox:hover {
+  border-color: #64748b;
+}
+
+.win-explorer-checkbox:checked {
+  background-color: #2563eb;
+  border-color: #2563eb;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 8.3L6.5 11.3L12.5 4.8' stroke='white' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.win-explorer-checkbox:indeterminate {
+  background-color: #2563eb;
+  border-color: #2563eb;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cline x1='4' y1='8' x2='12' y2='8' stroke='white' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+body:not(.theme-light) .win-explorer-checkbox {
+  background-color: rgba(15, 23, 42, 0.72);
+  border-color: rgba(148, 163, 184, 0.44);
+}
+
+body:not(.theme-light) .win-explorer-checkbox:hover {
+  border-color: #94a3b8;
+}
+
+body:not(.theme-light) .win-explorer-checkbox:checked,
+body:not(.theme-light) .win-explorer-checkbox:indeterminate {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
 }
 
 .win-explorer-col-header .col-name {
@@ -13965,54 +14277,42 @@ body:not(.theme-light) .win-explorer-col-header {
   min-width: 0;
 }
 
-.win-explorer-col-header .col-name small {
-  font-weight: 600;
-  color: #94a3b8;
-  margin-left: 4px;
-}
-
-.win-explorer-col-header .col-date {
-  width: 92px;
-  text-align: left;
-  flex-shrink: 0;
-}
-
-.win-explorer-col-header .col-size {
-  width: 58px;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.win-explorer-col-header .col-act {
-  width: 56px;
-  text-align: right;
-  flex-shrink: 0;
-}
-
 /* ➕ 새 폴더 인라인 생성 행 */
 .win-inline-new-folder-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: rgba(37, 99, 235, 0.07);
-  border-bottom: 1px solid rgba(37, 99, 235, 0.25);
+  gap: 7px;
+  padding: 8px 12px;
+  background: #eff6ff;
+  border-bottom: 1px solid rgba(37, 99, 235, 0.22);
   flex-shrink: 0;
+}
+
+body:not(.theme-light) .win-inline-new-folder-row {
+  background: rgba(37, 99, 235, 0.14);
+  border-bottom-color: rgba(96, 165, 250, 0.28);
 }
 
 .win-folder-icon {
-  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
   flex-shrink: 0;
 }
 
+body:not(.theme-light) .win-folder-icon {
+  color: #60a5fa;
+}
+
 .win-new-folder-target-badge {
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 11.5px;
+  font-weight: 750;
   color: #1d4ed8;
-  background: rgba(37, 99, 235, 0.12);
-  padding: 2px 7px;
-  border-radius: 5px;
-  max-width: 140px;
+  background: #dbeafe;
+  padding: 3px 8px;
+  border-radius: 6px;
+  max-width: 150px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -14027,31 +14327,73 @@ body:not(.theme-light) .win-new-folder-target-badge {
 .win-new-folder-input {
   flex: 1;
   min-width: 0;
-  height: 28px;
-  padding: 0 8px;
-  border-radius: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 7px;
   border: 1.5px solid #2563eb;
   background: #ffffff;
   color: #0f172a;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 12.5px;
+  font-weight: 600;
   outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
 body:not(.theme-light) .win-new-folder-input {
   background: rgba(15, 23, 42, 0.92);
+  border-color: #60a5fa;
   color: #f8fafc;
 }
 
 .win-new-folder-btn {
-  padding: 4px 10px !important;
-  font-size: 11.5px !important;
-  font-weight: 700 !important;
-  border-radius: 6px !important;
+  height: 30px;
+  padding: 0 11px !important;
+  font-size: 12px !important;
+  font-weight: 750 !important;
+  border-radius: 7px !important;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* 우측 폴더 + 파일 리스트 컨테이너 */
+#modalCloudHub .win-new-folder-btn.btn-primary,
+#modalCloudHub .cloud-item-rename-save {
+  background: #2563eb !important;
+  border: 1px solid #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.2);
+}
+
+#modalCloudHub .win-new-folder-btn.btn-primary:hover,
+#modalCloudHub .cloud-item-rename-save:hover {
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+#modalCloudHub .win-new-folder-btn.btn-secondary,
+#modalCloudHub .cloud-item-rename-cancel {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #475569 !important;
+}
+
+#modalCloudHub .win-new-folder-btn.btn-secondary:hover,
+#modalCloudHub .cloud-item-rename-cancel:hover {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-new-folder-btn.btn-secondary,
+body:not(.theme-light) #modalCloudHub .cloud-item-rename-cancel {
+  background: rgba(30, 41, 59, 0.85) !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  color: #cbd5e1 !important;
+}
+
+/* 우측 폴더 + 파일 리스트 컨테이너 (초슬림 5px 스크롤바) */
 .cloud-item-list.cloud-explorer-file-list {
   flex: 1 !important;
   min-height: 0 !important;
@@ -14059,48 +14401,70 @@ body:not(.theme-light) .win-new-folder-input {
   overflow-y: auto !important;
   display: flex;
   flex-direction: column;
-  gap: 0px !important;
-  padding: 4px 8px !important;
+  gap: 2px !important;
+  padding: 6px 10px !important;
 }
 
-/* 행 공통 스타일 (폴더 행 & 파일 행 — 고밀도 초슬림 리스트) */
+.cloud-item-list.cloud-explorer-file-list::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.cloud-item-list.cloud-explorer-file-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cloud-item-list.cloud-explorer-file-list::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.cloud-item-list.cloud-explorer-file-list::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+body:not(.theme-light) .cloud-item-list.cloud-explorer-file-list::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+}
+
+/* 행 공통 스타일 (폴더 행 & 파일 행 — 쾌적한 36px SaaS 리스트) */
 .win-explorer-row {
   display: flex;
   align-items: center;
-  padding: 1.5px 8px !important;
-  border-radius: 5px;
+  padding: 4px 10px !important;
+  border-radius: 8px;
   border: 1px solid transparent;
   background: transparent;
   cursor: pointer;
   user-select: none;
-  transition: background 0.1s ease, border-color 0.1s ease;
-  min-height: 23px !important;
+  transition: background 0.12s ease, border-color 0.12s ease;
+  min-height: 36px !important;
   box-sizing: border-box;
 }
 
 .win-explorer-row:hover {
-  background: rgba(37, 99, 235, 0.06);
+  background: #f8fafc;
 }
 
 .win-explorer-row.selected {
-  background: rgba(37, 99, 235, 0.11);
-  border-color: rgba(37, 99, 235, 0.32);
+  background: #eff6ff;
+  border-color: rgba(37, 99, 235, 0.24);
 }
 
 body:not(.theme-light) .win-explorer-row:hover {
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(59, 130, 246, 0.09);
 }
 
 body:not(.theme-light) .win-explorer-row.selected {
-  background: rgba(59, 130, 246, 0.22);
-  border-color: rgba(96, 165, 250, 0.42);
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(96, 165, 250, 0.38);
 }
 
-/* 드래그 앤 드롭 하이라이트 (폴더 위나 트리 노드, 주소창 위에 드래그했을 때) */
+/* 드래그 앤 드롭 하이라이트 */
 .drop-target-hover {
-  background: rgba(37, 99, 235, 0.18) !important;
+  background: rgba(37, 99, 235, 0.14) !important;
   border-color: #2563eb !important;
-  box-shadow: 0 0 0 1.5px rgba(37, 99, 235, 0.35);
+  box-shadow: 0 0 0 1.5px rgba(37, 99, 235, 0.3);
 }
 
 .win-explorer-row.dragging-source {
@@ -14112,38 +14476,57 @@ body:not(.theme-light) .win-explorer-row.selected {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding-right: 6px;
+  gap: 8px;
+  padding-right: 8px;
 }
 
 .win-row-icon {
-  font-size: 13.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
   flex-shrink: 0;
 }
 
-.win-row-slide-badge {
+.win-row-icon.is-folder-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+}
+
+body:not(.theme-light) .win-row-icon.is-folder-icon {
+  background: rgba(59, 130, 246, 0.18);
+  color: #60a5fa;
+}
+
+/* Stitch Option A: .graphly 수업 파일 전용 커스텀 삼차함수 타일 아이콘 */
+.graphly-file-tile-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: #eef2ff;
+  color: #2563eb;
+  border: 1px solid rgba(37, 99, 235, 0.12);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 1px 6px;
-  border-radius: 5px;
-  background: rgba(37, 99, 235, 0.1);
-  color: #2563eb;
-  font-size: 10.5px;
-  font-weight: 800;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
-body:not(.theme-light) .win-row-slide-badge {
-  background: rgba(59, 130, 246, 0.22);
-  color: #93c5fd;
+body:not(.theme-light) .graphly-file-tile-icon {
+  background: rgba(59, 130, 246, 0.18);
+  color: #60a5fa;
+  border-color: rgba(96, 165, 250, 0.25);
 }
 
 .win-row-title {
-  font-size: 12.5px;
-  line-height: 1.2;
+  font-size: 13px;
+  line-height: 1.3;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: #0f172a;
   white-space: nowrap;
   overflow: hidden;
@@ -14158,10 +14541,57 @@ body:not(.theme-light) .win-row-title {
   color: #f1f5f9;
 }
 
-.win-row-meta-right {
-  display: flex;
+.win-folder-item-count {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.cloud-perm-link-badge {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  font-size: 10.5px;
+  font-weight: 750;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+body:not(.theme-light) .cloud-perm-link-badge {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+  border-color: rgba(96, 165, 250, 0.32);
+}
+
+.cloud-perm-link-badge.is-copied-flash {
+  background: #ecfdf5;
+  color: #059669;
+  border-color: rgba(5, 150, 105, 0.28);
+}
+
+.cloud-perm-link-badge.is-copied-flash svg {
+  width: 11px;
+  height: 11px;
+}
+
+body:not(.theme-light) .cloud-perm-link-badge.is-copied-flash {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.36);
+}
+
+.win-row-byte-size {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
   flex-shrink: 0;
 }
 
@@ -14184,137 +14614,197 @@ body:not(.theme-light) .win-row-title {
   margin-left: 8px;
 }
 
-.win-footer-open-btn {
-  height: 32px;
-  padding: 0 12px !important;
-  font-size: 12px !important;
-  font-weight: 800 !important;
-  border-radius: 7px !important;
-  border: 1px solid rgba(37, 99, 235, 0.38) !important;
-  background: rgba(37, 99, 235, 0.08) !important;
-  color: #1d4ed8 !important;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.win-footer-open-btn:hover {
-  background: #2563eb !important;
-  color: #ffffff !important;
-}
-
-body:not(.theme-light) .win-footer-open-btn {
-  background: rgba(59, 130, 246, 0.2) !important;
-  border-color: rgba(96, 165, 250, 0.45) !important;
-  color: #93c5fd !important;
-}
-
-.win-row-open-pill {
-  padding: 3px 8px;
-  border-radius: 5px;
-  border: 1px solid rgba(37, 99, 235, 0.32);
-  background: rgba(37, 99, 235, 0.08);
-  color: #2563eb;
-  font-size: 11px;
-  font-weight: 800;
-  cursor: pointer;
-  opacity: 0.92;
-  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
-  white-space: nowrap;
-}
-
-.win-explorer-row:hover .win-row-open-pill,
-.win-explorer-row.selected .win-row-open-pill {
-  opacity: 1;
-}
-
-.win-row-open-pill:hover {
-  background: #2563eb;
-  color: #ffffff;
-}
-
-body:not(.theme-light) .win-row-open-pill {
-  color: #93c5fd;
-  border-color: rgba(96, 165, 250, 0.35);
-  background: rgba(59, 130, 246, 0.15);
-}
-
 .cloud-item-folder-badge {
   display: inline-flex;
   align-items: center;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: rgba(148, 163, 184, 0.16);
+  gap: 3.5px;
+  padding: 2px 6.5px;
+  border-radius: 5px;
+  background: #f1f5f9;
   color: #475569;
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 700;
   flex-shrink: 0;
 }
 
+.cloud-item-folder-badge .cv-svg {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
 body:not(.theme-light) .cloud-item-folder-badge {
-  background: rgba(148, 163, 184, 0.2);
+  background: rgba(148, 163, 184, 0.18);
   color: #cbd5e1;
 }
 
-.btn-cloud-dl-item,
-.btn-cloud-move-item,
-.btn-cloud-edit-item,
-.btn-cloud-del-item {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
+/* [1안 확정] 우측 액션 버튼 상시 노출 — 모노크롬 슬레이트(#94a3b8) & 호버/링크활성 시 로열 블루 점등 */
+.btn-cloud-share-item,
+.btn-cloud-edit-item {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
   border: 1px solid transparent;
   background: transparent;
-  color: #64748b;
-  font-size: 11px;
+  color: #94a3b8;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  opacity: 0.85;
-  transition: all 0.12s ease;
-}
-
-.win-explorer-row:hover .btn-cloud-dl-item,
-.win-explorer-row:hover .btn-cloud-move-item,
-.win-explorer-row:hover .btn-cloud-edit-item,
-.win-explorer-row:hover .btn-cloud-del-item,
-.win-explorer-row.selected .btn-cloud-dl-item,
-.win-explorer-row.selected .btn-cloud-move-item,
-.win-explorer-row.selected .btn-cloud-edit-item,
-.win-explorer-row.selected .btn-cloud-del-item {
   opacity: 1;
+  flex-shrink: 0;
+  transition: background 0.13s ease, color 0.13s ease, border-color 0.13s ease;
 }
 
-.btn-cloud-dl-item:hover,
-.btn-cloud-move-item:hover,
-.btn-cloud-edit-item:hover {
-  background: rgba(37, 99, 235, 0.12);
+.win-explorer-row:hover .btn-cloud-share-item:not(.is-link-active),
+.win-explorer-row:hover .btn-cloud-edit-item,
+.win-explorer-row.selected .btn-cloud-share-item:not(.is-link-active),
+.win-explorer-row.selected .btn-cloud-edit-item {
+  color: #64748b;
+}
+
+body:not(.theme-light) .win-explorer-row:hover .btn-cloud-share-item:not(.is-link-active),
+body:not(.theme-light) .win-explorer-row:hover .btn-cloud-edit-item,
+body:not(.theme-light) .win-explorer-row.selected .btn-cloud-share-item:not(.is-link-active),
+body:not(.theme-light) .win-explorer-row.selected .btn-cloud-edit-item {
+  color: #cbd5e1;
+}
+
+.btn-cloud-share-item:hover:not(:disabled),
+.btn-cloud-edit-item:hover:not(:disabled) {
+  background: #eff6ff;
+  border-color: rgba(37, 99, 235, 0.24);
+  color: #2563eb !important;
+}
+
+body:not(.theme-light) .btn-cloud-share-item:hover:not(:disabled),
+body:not(.theme-light) .btn-cloud-edit-item:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: rgba(96, 165, 250, 0.4);
+  color: #93c5fd !important;
+}
+
+.btn-cloud-share-item.is-link-active {
   color: #2563eb;
+  background: #eff6ff;
+  border-color: rgba(37, 99, 235, 0.22);
 }
 
-.btn-cloud-del-item:hover {
-  background: rgba(239, 68, 68, 0.14);
-  color: #ef4444;
+.btn-cloud-share-item.is-link-active:hover:not(:disabled) {
+  background: #dbeafe;
+  border-color: rgba(37, 99, 235, 0.42);
+  color: #1d4ed8 !important;
 }
 
-/* 💾 하단 스마트 전환 바: 기본은 [여기에 저장], 체크 시에만 [열기 · 이동 · 삭제] */
+body:not(.theme-light) .btn-cloud-share-item.is-link-active {
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(96, 165, 250, 0.34);
+}
+
+.btn-cloud-share-item.is-copied-flash {
+  color: #059669 !important;
+  background: #ecfdf5 !important;
+  border-color: rgba(5, 150, 105, 0.3) !important;
+}
+
+body:not(.theme-light) .btn-cloud-share-item.is-copied-flash {
+  color: #34d399 !important;
+  background: rgba(16, 185, 129, 0.2) !important;
+  border-color: rgba(52, 211, 153, 0.38) !important;
+}
+
+.btn-cloud-share-item.is-loading {
+  color: #2563eb !important;
+  background: #eff6ff !important;
+  cursor: wait;
+}
+
+/* 인라인 이름 변경 행 */
+.win-inline-rename-wrap {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 1px 0;
+}
+
+.cloud-item-rename-input {
+  flex: 1;
+  min-width: 0;
+  height: 29px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1.5px solid #2563eb;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 12.5px;
+  font-weight: 600;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+body:not(.theme-light) .cloud-item-rename-input {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: #60a5fa;
+  color: #f8fafc;
+}
+
+.cloud-item-rename-save,
+.cloud-item-rename-cancel {
+  height: 29px;
+  padding: 0 11px !important;
+  border-radius: 7px !important;
+  font-size: 11.5px !important;
+  font-weight: 750 !important;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* 비로그인 / 빈 폴더 안내 상태 */
+.cloud-login-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 20px;
+}
+
+.cloud-login-empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+body:not(.theme-light) .cloud-login-empty-icon {
+  background: rgba(59, 130, 246, 0.18);
+  color: #60a5fa;
+  border-color: rgba(96, 165, 250, 0.28);
+}
+
+/* 💾 하단 스마트 전환 바: 기본은 [✓ 저장], 체크박스 선택 시 [전체선택/N개 선택됨 + 칠판에 열기/다운로드/이동/삭제] */
 .win-explorer-save-footer {
   display: flex;
   align-items: center;
-  padding: 9px 14px;
-  background: rgba(248, 250, 252, 0.96);
-  border-top: 1px solid rgba(148, 163, 184, 0.28);
+  padding: 10px 16px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
   flex-shrink: 0;
-  min-height: 52px;
+  min-height: 56px;
   box-sizing: border-box;
 }
 
 body:not(.theme-light) .win-explorer-save-footer {
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(15, 23, 42, 0.88);
   border-top-color: rgba(148, 163, 184, 0.2);
 }
 
@@ -14327,7 +14817,11 @@ body:not(.theme-light) .win-explorer-save-footer {
 }
 
 .win-selection-footer-left {
-  display: none !important;
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: nowrap;
 }
 
 .win-selection-footer-right {
@@ -14342,12 +14836,13 @@ body:not(.theme-light) .win-explorer-save-footer {
 .win-selection-all-label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   font-size: 12.5px;
-  font-weight: 800;
+  font-weight: 750;
   color: #334155;
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
 }
 
 body:not(.theme-light) .win-selection-all-label {
@@ -14357,16 +14852,19 @@ body:not(.theme-light) .win-selection-all-label {
 .win-selection-count-badge {
   display: inline-flex;
   align-items: center;
-  padding: 3px 9px;
+  padding: 3px 10px;
   border-radius: 999px;
-  background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  color: #2563eb;
   font-size: 12px;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 body:not(.theme-light) .win-selection-count-badge {
-  background: rgba(59, 130, 246, 0.24);
+  background: rgba(59, 130, 246, 0.22);
+  border-color: rgba(96, 165, 250, 0.35);
   color: #93c5fd;
 }
 
@@ -14374,39 +14872,63 @@ body:not(.theme-light) .win-selection-count-badge {
   border: none;
   background: transparent;
   color: #64748b;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
-  padding: 4px 6px;
-  border-radius: 5px;
+  padding: 4px 7px;
+  border-radius: 6px;
   cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .win-selection-clear-btn:hover {
-  background: rgba(148, 163, 184, 0.16);
+  background: #e2e8f0;
   color: #0f172a;
 }
 
+body:not(.theme-light) .win-selection-clear-btn {
+  color: #94a3b8;
+}
+
 body:not(.theme-light) .win-selection-clear-btn:hover {
+  background: rgba(148, 163, 184, 0.16);
   color: #f8fafc;
 }
 
-.win-selection-footer-right {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex-shrink: 0;
+.win-action-open-primary {
+  height: 34px !important;
+  padding: 0 14px !important;
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.24);
+}
+
+.win-action-open-primary svg {
+  color: #ffffff !important;
+}
+
+.win-action-open-primary:hover {
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+.win-action-open-primary:hover svg {
+  color: #ffffff !important;
 }
 
 .win-save-footer-left {
   flex: 1;
-  min-width: 220px;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .win-save-label {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 800;
   color: #334155;
   white-space: nowrap;
@@ -14419,16 +14941,22 @@ body:not(.theme-light) .win-save-label {
 .win-save-title-input {
   flex: 1;
   min-width: 0;
-  height: 32px;
-  padding: 0 10px;
-  border-radius: 7px;
-  border: 1px solid rgba(148, 163, 184, 0.45);
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
   background: #ffffff;
   color: #0f172a;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   outline: none;
   box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.win-save-title-input::placeholder {
+  color: #94a3b8;
+  font-weight: 500;
 }
 
 body:not(.theme-light) .win-save-title-input {
@@ -14439,12 +14967,18 @@ body:not(.theme-light) .win-save-title-input {
 
 .win-save-title-input:focus {
   border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+body:not(.theme-light) .win-save-title-input:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
 .win-save-footer-right {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
@@ -14476,16 +15010,35 @@ body:not(.theme-light) .cloud-scope-pill.active {
 }
 
 .win-save-submit-btn {
-  height: 32px;
-  padding: 0 13px !important;
-  font-size: 12px !important;
+  height: 36px !important;
+  padding: 0 16px !important;
+  font-size: 13px !important;
   font-weight: 800 !important;
-  border-radius: 7px !important;
+  border-radius: 8px !important;
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.24);
   display: inline-flex;
   align-items: center;
   gap: 5px;
   white-space: nowrap;
   cursor: pointer;
+}
+
+.win-save-submit-btn svg {
+  color: #ffffff !important;
+}
+
+.win-save-submit-btn:hover:not(:disabled) {
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+.win-save-submit-btn:disabled {
+  opacity: 0.68;
+  cursor: wait;
 }
 
 .win-save-submit-btn small {
@@ -14498,21 +15051,41 @@ body:not(.theme-light) .cloud-scope-pill.active {
 }
 
 .btn-cloud-go-settings-login {
-  margin-top: 8px;
-  padding: 7px 14px;
+  margin-top: 6px;
+  padding: 8px 16px;
   border-radius: 8px;
-  border: 1px solid rgba(37, 99, 235, 0.35);
-  background: rgba(37, 99, 235, 0.08);
-  color: #2563eb;
-  font-size: 12px;
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 12.5px;
   font-weight: 800;
   cursor: pointer;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.22);
   transition: all 0.14s ease;
 }
 
 .btn-cloud-go-settings-login:hover {
-  background: #2563eb;
+  background: #1d4ed8;
+  border-color: #1d4ed8;
   color: #ffffff;
+}
+
+@media (max-width: 680px) {
+  .cloud-explorer-sidebar {
+    width: 152px;
+    min-width: 120px;
+    padding: 6px;
+  }
+
+  .cloud-library-search-wrap {
+    width: 122px;
+  }
+
+  .win-selection-mode-row,
+  #cloudFooterActionRow {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
 }
 
 /* ==========================================================================
@@ -16700,15 +17273,24 @@ body:not(.theme-light) .pricing-account-status-text {
   padding-top: 9px;
 }
 
-/* 클라우드 보관함 좌측 하단 용량 게이지 */
+/* 클라우드 보관함 좌측 하단 용량 게이지 (Stitch 카드 스타일) */
 .cloud-storage-quota-box {
   flex-shrink: 0;
-  margin-top: 4px;
-  padding: 7px 7px 6px 7px;
-  border-top: 1px solid rgba(148, 163, 184, 0.24);
+  margin-top: 2px;
+  padding: 9px 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+}
+
+body:not(.theme-light) .cloud-storage-quota-box {
+  background: rgba(15, 23, 42, 0.62);
+  border-color: rgba(148, 163, 184, 0.2);
+  box-shadow: none;
 }
 
 .cloud-quota-top-row {
@@ -16719,21 +17301,22 @@ body:not(.theme-light) .pricing-account-status-text {
 }
 
 .cloud-quota-tier-badge {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 800;
-  padding: 1.5px 6px;
+  padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(100, 116, 139, 0.15);
+  background: #f1f5f9;
   color: #475569;
   white-space: nowrap;
 }
 
 body:not(.theme-light) .cloud-quota-tier-badge {
+  background: rgba(148, 163, 184, 0.16);
   color: #cbd5e1;
 }
 
 .cloud-quota-tier-badge.tier-pro {
-  background: rgba(37, 99, 235, 0.14);
+  background: #eff6ff;
   color: #2563eb;
 }
 
@@ -16743,7 +17326,7 @@ body:not(.theme-light) .cloud-quota-tier-badge.tier-pro {
 }
 
 .cloud-quota-tier-badge.tier-premium {
-  background: rgba(124, 58, 237, 0.15);
+  background: rgba(124, 58, 237, 0.14);
   color: #7c3aed;
 }
 
@@ -16753,15 +17336,25 @@ body:not(.theme-light) .cloud-quota-tier-badge.tier-premium {
 }
 
 .cloud-quota-upgrade-btn {
-  border: 1px solid rgba(37, 99, 235, 0.35);
-  background: rgba(37, 99, 235, 0.08);
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  background: #eff6ff;
   color: #2563eb;
-  font-size: 9.8px;
-  font-weight: 700;
-  padding: 1.5px 5px;
-  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 750;
+  padding: 2px 6.5px;
+  border-radius: 6px;
   cursor: pointer;
   white-space: nowrap;
+  transition: all 0.13s ease;
+}
+
+.cloud-quota-upgrade-btn:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
 }
 
 body:not(.theme-light) .cloud-quota-upgrade-btn {
@@ -16770,12 +17363,22 @@ body:not(.theme-light) .cloud-quota-upgrade-btn {
   color: #93c5fd;
 }
 
+body:not(.theme-light) .cloud-quota-upgrade-btn:hover {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
 .cloud-quota-bar-track {
   width: 100%;
-  height: 5px;
+  height: 5.5px;
   border-radius: 999px;
-  background: rgba(148, 163, 184, 0.24);
+  background: #e2e8f0;
   overflow: hidden;
+}
+
+body:not(.theme-light) .cloud-quota-bar-track {
+  background: rgba(148, 163, 184, 0.24);
 }
 
 .cloud-quota-bar-fill {
@@ -16794,8 +17397,9 @@ body:not(.theme-light) .cloud-quota-upgrade-btn {
 }
 
 .cloud-quota-usage-text {
-  font-size: 10.2px;
+  font-size: 10.8px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
   color: #64748b;
   white-space: nowrap;
   overflow: hidden;
