@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261114_92">
+  <link rel="stylesheet" href="style.css?v=20261114_93">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -3698,15 +3698,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261114_92"></script>
-  <script src="app-core.js?v=20261114_92"></script>
-  <script src="app-ink.js?v=20261114_92"></script>
-  <script src="app-pdf.js?v=20261114_92"></script>
-  <script src="app-cards.js?v=20261114_92"></script>
-  <script src="app-cloud.js?v=20261114_92"></script>
-  <script src="app-canvas.js?v=20261114_92"></script>
-  <script src="app-toolkit.js?v=20261114_92"></script>
-  <script src="app.js?v=20261114_92"></script>
+  <script src="engine.js?v=20261114_93"></script>
+  <script src="app-core.js?v=20261114_93"></script>
+  <script src="app-ink.js?v=20261114_93"></script>
+  <script src="app-pdf.js?v=20261114_93"></script>
+  <script src="app-cards.js?v=20261114_93"></script>
+  <script src="app-cloud.js?v=20261114_93"></script>
+  <script src="app-canvas.js?v=20261114_93"></script>
+  <script src="app-toolkit.js?v=20261114_93"></script>
+  <script src="app.js?v=20261114_93"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -3896,7 +3896,7 @@
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r)> rster())).catch(() => { });
+        navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister())).catch(() => { });
         if ('caches' in window) caches.keys().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => { });
       });
     }
