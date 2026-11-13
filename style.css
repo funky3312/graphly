@@ -25988,41 +25988,47 @@ body.theme-light #lessonPlaylistNavBar #lblPlaylistSlideInfo .slide-total-num {
   padding: 0 !important;
   margin: 0 !important;
   border-radius: 8px !important;
-  background: #f8fafc !important;
-  border: 1px solid #f8fafc !important;
-  color: #0f172a !important;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.34) !important;
+  background: rgba(15, 23, 42, 0.95) !important;
+  border: 1px solid rgba(148, 163, 184, 0.32) !important;
+  color: #e2e8f0 !important;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.36), 0 1px 4px rgba(0, 0, 0, 0.2) !important;
   transform: none !important;
-  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease !important;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease !important;
 }
 
 #lessonPlaylistNavBar #btnPlaylistAddSlide:hover {
-  background: #ffffff !important;
-  border-color: #ffffff !important;
-  color: #0f172a !important;
+  background: rgba(30, 41, 59, 0.98) !important;
+  border-color: rgba(203, 213, 225, 0.52) !important;
+  color: #ffffff !important;
   transform: none !important;
 }
 
 body.theme-light #lessonPlaylistNavBar #btnPlaylistAddSlide {
-  background: #0f172a !important;
-  border: 1px solid #0f172a !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.14) !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #1e293b !important;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04) !important;
 }
 
 body.theme-light #lessonPlaylistNavBar #btnPlaylistAddSlide:hover {
-  background: #1e293b !important;
-  border-color: #1e293b !important;
-  color: #ffffff !important;
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
   transform: none !important;
 }
 
 #lessonPlaylistNavBar.is-add-menu-open #btnPlaylistAddSlide {
-  box-shadow: 0 0 0 2px rgba(248, 250, 252, 0.32), 0 6px 16px rgba(0, 0, 0, 0.34) !important;
+  background: rgba(30, 41, 59, 0.98) !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 0.5px #f8fafc, 0 8px 20px rgba(0, 0, 0, 0.44) !important;
 }
 
 body.theme-light #lessonPlaylistNavBar.is-add-menu-open #btnPlaylistAddSlide {
-  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.22), 0 4px 12px rgba(15, 23, 42, 0.14) !important;
+  background: #f1f5f9 !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+  box-shadow: 0 0 0 0.5px #0f172a, 0 6px 16px rgba(15, 23, 42, 0.10) !important;
 }
 
 body.student-audio-video-only #lessonPlaylistNavBar #btnPlaylistAddSlide {
