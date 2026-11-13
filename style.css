@@ -4786,7 +4786,7 @@ body.pdf-modal-open #lassoActionFloatingBar {
   transition: background 0.15s ease, opacity 0.15s ease;
 }
 
-.problem-card-body:hover ~ .problem-card-resize-handle::after,
+.problem-card-body:hover~.problem-card-resize-handle::after,
 .problem-card-resize-handle:hover::after {
   background: linear-gradient(135deg, transparent 50%, rgba(148, 163, 184, 0.72) 50%);
 }
@@ -5092,7 +5092,7 @@ body.theme-light .problem-card-resize-handle::after {
   background: linear-gradient(135deg, transparent 50%, rgba(37, 99, 235, 0.48) 50%) !important;
 }
 
-body.theme-light .problem-card-body:hover ~ .problem-card-resize-handle::after,
+body.theme-light .problem-card-body:hover~.problem-card-resize-handle::after,
 body.theme-light .problem-card-resize-handle:hover::after {
   background: linear-gradient(135deg, transparent 50%, rgba(37, 99, 235, 0.72) 50%) !important;
 }
@@ -5276,13 +5276,13 @@ body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-body {
 }
 
 .problem-card-widget.pip-stealth-locked .problem-card-resize-handle,
-.problem-card-widget.pip-stealth-locked .problem-card-body:hover ~ .problem-card-resize-handle,
+.problem-card-widget.pip-stealth-locked .problem-card-body:hover~.problem-card-resize-handle,
 body.theme-light .problem-card-widget.pip-stealth-locked .problem-card-resize-handle,
-body.theme-light .problem-card-widget.pip-stealth-locked .problem-card-body:hover ~ .problem-card-resize-handle,
+body.theme-light .problem-card-widget.pip-stealth-locked .problem-card-body:hover~.problem-card-resize-handle,
 .graph-card-widget.pip-stealth-locked .problem-card-resize-handle,
-.graph-card-widget.pip-stealth-locked .problem-card-body:hover ~ .problem-card-resize-handle,
+.graph-card-widget.pip-stealth-locked .problem-card-body:hover~.problem-card-resize-handle,
 body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-resize-handle,
-body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-body:hover ~ .problem-card-resize-handle {
+body.theme-light .graph-card-widget.pip-stealth-locked .problem-card-body:hover~.problem-card-resize-handle {
   opacity: 0 !important;
   background: transparent !important;
   pointer-events: auto !important;
@@ -16750,12 +16750,12 @@ body:not(.theme-light) #modalShare .btn-modal-close:hover {
   height: 13.5px;
 }
 
-#modalShare .settings-clean-divider-block > div[style*="grid"],
-#modalShare .settings-clean-divider-block > div[style*="flex"] {
+#modalShare .settings-clean-divider-block>div[style*="grid"],
+#modalShare .settings-clean-divider-block>div[style*="flex"] {
   gap: 7px !important;
 }
 
-#modalShare .settings-clean-divider-block > div[style*="margin-top"] {
+#modalShare .settings-clean-divider-block>div[style*="margin-top"] {
   margin-top: 7px !important;
 }
 
@@ -16777,9 +16777,11 @@ body:not(.theme-light) #modalShare .btn-modal-close:hover {
   #modalShare .smart-modal-header {
     padding: 11px 14px !important;
   }
+
   #modalShare .unified-export-body {
     padding: 12px 14px 15px !important;
   }
+
   #modalShare .vf-chip,
   #modalShare .settings-clean-btn,
   #modalShare .settings-clean-input {
@@ -18904,12 +18906,12 @@ body.theme-light #modalNAxisStudio .n-axis-visual-slots {
   gap: clamp(4px, 0.75vh, 7px);
 }
 
-#modalNAxisStudio .n-axis-slot-block + .n-axis-slot-block {
+#modalNAxisStudio .n-axis-slot-block+.n-axis-slot-block {
   padding-top: clamp(5px, 1vh, 9px);
   border-top: 1px dashed rgba(148, 163, 184, 0.2);
 }
 
-body.theme-light #modalNAxisStudio .n-axis-slot-block + .n-axis-slot-block {
+body.theme-light #modalNAxisStudio .n-axis-slot-block+.n-axis-slot-block {
   border-top-color: #e2e8f0;
 }
 
@@ -19346,46 +19348,58 @@ body.theme-light #modalNAxisStudio .n-axis-speed-btn.active {
   #modalNAxisStudio .n-axis-control-quadrant {
     padding: 7px 9px;
   }
+
   #modalNAxisStudio .n-axis-tab-content {
     gap: 5px;
   }
+
   #modalNAxisStudio .n-axis-visual-slots {
     gap: 4px;
     padding: 6px 8px;
   }
+
   #modalNAxisStudio .n-axis-slot-block {
     gap: 3px;
   }
-  #modalNAxisStudio .n-axis-slot-block + .n-axis-slot-block {
+
+  #modalNAxisStudio .n-axis-slot-block+.n-axis-slot-block {
     padding-top: 4px;
   }
+
   #modalNAxisStudio .n-axis-slot-role {
     font-size: 11px;
   }
+
   #modalNAxisStudio .n-axis-slot-active-name {
     font-size: 11px;
   }
+
   #modalNAxisStudio .n-axis-chip {
     min-height: 25px;
     padding: 0 9px;
     font-size: 11.2px;
   }
+
   #modalNAxisStudio .n-axis-slider-box {
     padding: 4px 9px;
   }
+
   #modalNAxisStudio .n-axis-slider-header {
     font-size: 11px;
     margin-bottom: 2px;
   }
+
   #modalNAxisStudio #sliderNAxisX {
     height: 15px;
   }
+
   #modalNAxisStudio .n-axis-btn-action,
   #modalNAxisStudio .n-axis-btn-outline,
   #modalNAxisStudio .n-axis-speed-group {
     height: 31px;
     font-size: 11.2px;
   }
+
   #modalNAxisStudio .n-axis-btn-action svg,
   #modalNAxisStudio .n-axis-btn-outline svg {
     width: 13px;
@@ -20406,6 +20420,7 @@ body:not(.theme-light) .cloud-share-option-popover {
     opacity: 0;
     transform: translateY(-4px) scale(0.98);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -20798,7 +20813,7 @@ body:not(.theme-light) .rail-drawer[data-active-panel="panelPresets"] .drawer-he
   gap: 8px;
 }
 
-#panelPresets > .preset-panel-main-section {
+#panelPresets>.preset-panel-main-section {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -21645,5 +21660,4169 @@ body:not(.theme-light) #panelPresets #quadModePanel .btn-sub-action {
   color: #e2e8f0;
 }
 
+/* ============================================================================
+   [v89: 좌측 작업 서랍 1차 통일 (#panelStyle · #panelPiecewise · #panelToolkit · #panelTransform)
+    — Stitch 시안 1 Pure Ink Charcoal (#0F172A) · 0% OS 컬러 이모지 · 타 패널 100% 무간섭 격리]
+   ============================================================================ */
+.rail-drawer[data-active-panel="panelStyle"] {
+  width: 276px;
+  border-radius: 12px !important;
+}
 
+.rail-drawer[data-active-panel="panelPiecewise"],
+.rail-drawer[data-active-panel="panelTransform"] {
+  width: 264px;
+  border-radius: 12px !important;
+}
 
+.rail-drawer[data-active-panel="panelToolkit"] {
+  width: 256px;
+  border-radius: 12px !important;
+}
+
+body.theme-light .rail-drawer[data-active-panel="panelStyle"],
+body.theme-light .rail-drawer[data-active-panel="panelPiecewise"],
+body.theme-light .rail-drawer[data-active-panel="panelToolkit"],
+body.theme-light .rail-drawer[data-active-panel="panelTransform"] {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.13), 0 4px 12px -2px rgba(15, 23, 42, 0.05) !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) .rail-drawer[data-active-panel="panelStyle"],
+body:not(.theme-light) .rail-drawer[data-active-panel="panelPiecewise"],
+body:not(.theme-light) .rail-drawer[data-active-panel="panelToolkit"],
+body:not(.theme-light) .rail-drawer[data-active-panel="panelTransform"] {
+  background: #0f172a !important;
+  border: 1px solid rgba(148, 163, 184, 0.2) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.65) !important;
+  color: #f8fafc !important;
+}
+
+.rail-drawer[data-active-panel="panelStyle"] .drawer-header,
+.rail-drawer[data-active-panel="panelPiecewise"] .drawer-header,
+.rail-drawer[data-active-panel="panelToolkit"] .drawer-header,
+.rail-drawer[data-active-panel="panelTransform"] .drawer-header {
+  padding: 10px 12px;
+}
+
+body.theme-light .rail-drawer[data-active-panel="panelStyle"] .drawer-header,
+body.theme-light .rail-drawer[data-active-panel="panelPiecewise"] .drawer-header,
+body.theme-light .rail-drawer[data-active-panel="panelToolkit"] .drawer-header,
+body.theme-light .rail-drawer[data-active-panel="panelTransform"] .drawer-header {
+  background: #ffffff;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+body:not(.theme-light) .rail-drawer[data-active-panel="panelStyle"] .drawer-header,
+body:not(.theme-light) .rail-drawer[data-active-panel="panelPiecewise"] .drawer-header,
+body:not(.theme-light) .rail-drawer[data-active-panel="panelToolkit"] .drawer-header,
+body:not(.theme-light) .rail-drawer[data-active-panel="panelTransform"] .drawer-header {
+  background: #0f172a;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.rail-drawer[data-active-panel="panelStyle"] #drawerTitle,
+.rail-drawer[data-active-panel="panelPiecewise"] #drawerTitle,
+.rail-drawer[data-active-panel="panelToolkit"] #drawerTitle,
+.rail-drawer[data-active-panel="panelTransform"] #drawerTitle {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+body.theme-light .rail-drawer[data-active-panel="panelStyle"] #drawerTitle,
+body.theme-light .rail-drawer[data-active-panel="panelPiecewise"] #drawerTitle,
+body.theme-light .rail-drawer[data-active-panel="panelToolkit"] #drawerTitle,
+body.theme-light .rail-drawer[data-active-panel="panelTransform"] #drawerTitle {
+  color: #0f172a;
+}
+
+body:not(.theme-light) .rail-drawer[data-active-panel="panelStyle"] #drawerTitle,
+body:not(.theme-light) .rail-drawer[data-active-panel="panelPiecewise"] #drawerTitle,
+body:not(.theme-light) .rail-drawer[data-active-panel="panelToolkit"] #drawerTitle,
+body:not(.theme-light) .rail-drawer[data-active-panel="panelTransform"] #drawerTitle {
+  color: #f8fafc;
+}
+
+.rail-drawer[data-active-panel="panelStyle"] .drawer-subpanels-container,
+.rail-drawer[data-active-panel="panelPiecewise"] .drawer-subpanels-container,
+.rail-drawer[data-active-panel="panelToolkit"] .drawer-subpanels-container,
+.rail-drawer[data-active-panel="panelTransform"] .drawer-subpanels-container {
+  padding: 10px 12px 12px;
+}
+
+#panelStyle.active,
+#panelPiecewise.active,
+#panelToolkit.active,
+#panelTransform.active {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* 섹션 소제목 & 구분선 */
+#panelStyle .settings-clean-subtitle,
+#panelPiecewise .settings-clean-subtitle,
+#panelToolkit .settings-clean-subtitle,
+#panelTransform .section-title {
+  margin-bottom: 5px !important;
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
+  color: #64748b !important;
+}
+
+body:not(.theme-light) #panelStyle .settings-clean-subtitle,
+body:not(.theme-light) #panelPiecewise .settings-clean-subtitle,
+body:not(.theme-light) #panelToolkit .settings-clean-subtitle,
+body:not(.theme-light) #panelTransform .section-title {
+  color: #94a3b8 !important;
+}
+
+#panelStyle .settings-clean-divider-block,
+#panelPiecewise .settings-clean-divider-block {
+  margin-top: 10px !important;
+  padding-top: 10px !important;
+  border-top: 1px solid #f1f5f9 !important;
+}
+
+body:not(.theme-light) #panelStyle .settings-clean-divider-block,
+body:not(.theme-light) #panelPiecewise .settings-clean-divider-block {
+  border-top-color: rgba(148, 163, 184, 0.14) !important;
+}
+
+/* [1] 스타일 & 배경 상단 2탭 세그먼트 바 (필기 · 배경 | 그래프) — #panelPresets 상단 탭과 1:1 통일 */
+#panelStyle .style-panel-tabs {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 2px !important;
+  padding: 2px !important;
+  margin-bottom: 10px !important;
+  border-radius: 8px !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+body:not(.theme-light) #panelStyle .style-panel-tabs {
+  background: rgba(30, 41, 59, 0.85) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+#panelStyle .style-panel-tabs .style-tab-btn {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 8px !important;
+  border-radius: 6px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: #64748b !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+  box-shadow: none !important;
+}
+
+#panelStyle .style-panel-tabs .style-tab-btn:hover {
+  background: transparent !important;
+  color: #0f172a !important;
+}
+
+#panelStyle .style-panel-tabs .style-tab-btn.active {
+  background: #ffffff !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  box-shadow: inset 0 0 0 0.5px #0f172a !important;
+}
+
+body:not(.theme-light) #panelStyle .style-panel-tabs .style-tab-btn {
+  color: #94a3b8 !important;
+}
+
+body:not(.theme-light) #panelStyle .style-panel-tabs .style-tab-btn:hover {
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #panelStyle .style-panel-tabs .style-tab-btn.active {
+  background: #1e293b !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 0 0 0.5px #f8fafc !important;
+}
+
+/* [2] 배경 색상 5칸 칩 (화이트 · 칠판 · 차콜 · 블랙 · 노트) — 블루 워시 제거 & 차콜 키라인 */
+#panelStyle .compact-theme-row {
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 4px !important;
+}
+
+#panelStyle .compact-theme-row .theme-chip {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 7px !important;
+  padding: 6px 2px 5px !important;
+  gap: 4px !important;
+  box-shadow: none !important;
+  transition: background 0.14s ease, border-color 0.14s ease !important;
+}
+
+#panelStyle .compact-theme-row .theme-chip .theme-name {
+  color: #64748b !important;
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+}
+
+#panelStyle .compact-theme-row .theme-chip:hover {
+  background: #f8fafc !important;
+  border-color: #94a3b8 !important;
+}
+
+#panelStyle .compact-theme-row .theme-chip:hover .theme-name {
+  color: #0f172a !important;
+}
+
+#panelStyle .compact-theme-row .theme-chip.active {
+  background: #ffffff !important;
+  border-color: #0f172a !important;
+  box-shadow: inset 0 0 0 0.6px #0f172a !important;
+}
+
+#panelStyle .compact-theme-row .theme-chip.active .theme-name {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+body:not(.theme-light) #panelStyle .compact-theme-row .theme-chip {
+  background: rgba(30, 41, 59, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+body:not(.theme-light) #panelStyle .compact-theme-row .theme-chip .theme-name {
+  color: #94a3b8 !important;
+}
+
+body:not(.theme-light) #panelStyle .compact-theme-row .theme-chip:hover {
+  background: rgba(51, 65, 85, 0.7) !important;
+  border-color: rgba(203, 213, 225, 0.45) !important;
+}
+
+body:not(.theme-light) #panelStyle .compact-theme-row .theme-chip:hover .theme-name {
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #panelStyle .compact-theme-row .theme-chip.active {
+  background: #1e293b !important;
+  border-color: #f8fafc !important;
+  box-shadow: inset 0 0 0 0.5px #f8fafc !important;
+}
+
+body:not(.theme-light) #panelStyle .compact-theme-row .theme-chip.active .theme-name {
+  color: #ffffff !important;
+}
+
+/* [3] 일반 선택 칩 (.vf-chip: 배경 속지 · 펜 스타일 · 수선 형태) — 시안 1 Pure Ink Charcoal */
+#panelStyle .vf-chip:not(.graph-color-mode-chip) {
+  min-height: 29px !important;
+  padding: 5px 4px !important;
+  border-radius: 6px !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+#panelStyle .vf-chip:not(.graph-color-mode-chip):hover {
+  background: #f8fafc !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+#panelStyle .vf-chip:not(.graph-color-mode-chip).active {
+  background: #ffffff !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  box-shadow: inset 0 0 0 0.6px #0f172a !important;
+}
+
+body:not(.theme-light) #panelStyle .vf-chip:not(.graph-color-mode-chip) {
+  background: rgba(30, 41, 59, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  color: #cbd5e1 !important;
+}
+
+body:not(.theme-light) #panelStyle .vf-chip:not(.graph-color-mode-chip):hover {
+  background: rgba(51, 65, 85, 0.72) !important;
+  border-color: rgba(203, 213, 225, 0.5) !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #panelStyle .vf-chip:not(.graph-color-mode-chip).active {
+  background: #1e293b !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 0 0 0.5px #f8fafc !important;
+}
+
+/* [4] 그래프 탭: [자동 배색 | 색상 고정] 미니 세그먼트 & 6×2 컬러 스와치 아틀라스 */
+#panelStyle #graphColorModeGroup {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 1.5px !important;
+  padding: 2px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+body:not(.theme-light) #panelStyle #graphColorModeGroup {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+#panelStyle #graphColorModeGroup .graph-color-mode-chip {
+  min-height: 21px !important;
+  height: 21px !important;
+  padding: 0 7px !important;
+  border-radius: 4.5px !important;
+  border: none !important;
+  background: transparent !important;
+  color: #64748b !important;
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+#panelStyle #graphColorModeGroup .graph-color-mode-chip:hover {
+  color: #0f172a !important;
+}
+
+#panelStyle #graphColorModeGroup .graph-color-mode-chip.active {
+  background: #0f172a !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+body:not(.theme-light) #panelStyle #graphColorModeGroup .graph-color-mode-chip {
+  color: #94a3b8 !important;
+}
+
+body:not(.theme-light) #panelStyle #graphColorModeGroup .graph-color-mode-chip:hover {
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #panelStyle #graphColorModeGroup .graph-color-mode-chip.active {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+#panelStyle #graphColorPalette {
+  display: grid !important;
+  grid-template-columns: repeat(6, 1fr) !important;
+  justify-items: center;
+  align-items: center;
+  gap: 8px 6px !important;
+  padding: 9px 8px;
+  margin: 5px 0 8px !important;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+body:not(.theme-light) #panelStyle #graphColorPalette {
+  background: rgba(30, 41, 59, 0.5);
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+#panelStyle #graphColorPalette .color-dot {
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(15, 23, 42, 0.14);
+  color: #ffffff !important;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.38);
+  box-shadow: none;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+body:not(.theme-light) #panelStyle #graphColorPalette .color-dot {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+#panelStyle #graphColorPalette .color-dot:hover {
+  transform: scale(1.1);
+}
+
+body.theme-light #panelStyle #graphColorPalette .color-dot.active {
+  border-color: transparent !important;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3.5px #0f172a !important;
+}
+
+body:not(.theme-light) #panelStyle #graphColorPalette .color-dot.active {
+  border-color: transparent !important;
+  box-shadow: 0 0 0 2px #0f172a, 0 0 0 3.5px #f8fafc !important;
+}
+
+/* [5] 정밀 슬라이더 & 토글 행 — Stitch 시안 1 중공 링(Hollow Ring) 썸 & 차콜 스위치 */
+#panelStyle .settings-toggle-list,
+#panelStyle .single-line-slider-list,
+#panelPiecewise .settings-toggle-list,
+#panelPiecewise .single-line-slider-list {
+  gap: 4px !important;
+  margin-top: 4px !important;
+}
+
+#panelStyle .setting-toggle-item,
+#panelStyle .single-line-slider-row,
+#panelPiecewise .setting-toggle-item,
+#panelPiecewise .single-line-slider-row {
+  padding: 5px 8px !important;
+  min-height: 30px !important;
+  border-radius: 7px !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+#panelStyle .setting-toggle-item:hover,
+#panelPiecewise .setting-toggle-item:hover {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}
+
+body:not(.theme-light) #panelStyle .setting-toggle-item,
+body:not(.theme-light) #panelStyle .single-line-slider-row,
+body:not(.theme-light) #panelPiecewise .setting-toggle-item,
+body:not(.theme-light) #panelPiecewise .single-line-slider-row {
+  background: rgba(30, 41, 59, 0.5) !important;
+  border: 1px solid rgba(148, 163, 184, 0.16) !important;
+}
+
+body:not(.theme-light) #panelStyle .setting-toggle-item:hover,
+body:not(.theme-light) #panelPiecewise .setting-toggle-item:hover {
+  background: rgba(51, 65, 85, 0.62) !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+}
+
+#panelStyle .setting-name,
+#panelStyle .single-line-slider-label,
+#panelPiecewise .setting-name,
+#panelPiecewise .single-line-slider-label {
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  color: #334155 !important;
+}
+
+#panelStyle .single-line-slider-label,
+#panelPiecewise .single-line-slider-label {
+  width: 48px !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+#panelStyle .style-compact-inline-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+#panelStyle .style-compact-inline-row .single-line-slider-label {
+  width: 54px !important;
+  flex-shrink: 0 !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+#panelStyle .ink-size-preview-row {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+body:not(.theme-light) #panelStyle .setting-name,
+body:not(.theme-light) #panelStyle .single-line-slider-label,
+body:not(.theme-light) #panelPiecewise .setting-name,
+body:not(.theme-light) #panelPiecewise .single-line-slider-label {
+  color: #e2e8f0 !important;
+}
+
+#panelStyle .single-line-step-btn,
+#panelPiecewise .single-line-step-btn,
+body.theme-light #panelPiecewise #btnPwStepMinus,
+body.theme-light #panelPiecewise #btnPwStepPlus {
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: #64748b !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+#panelStyle .single-line-step-btn:hover,
+#panelPiecewise .single-line-step-btn:hover,
+body.theme-light #panelPiecewise #btnPwStepMinus:hover,
+body.theme-light #panelPiecewise #btnPwStepPlus:hover {
+  background: #e2e8f0 !important;
+  border-color: transparent !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelStyle .single-line-step-btn,
+body:not(.theme-light) #panelPiecewise .single-line-step-btn,
+body:not(.theme-light) #panelPiecewise #btnPwStepMinus,
+body:not(.theme-light) #panelPiecewise #btnPwStepPlus {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: #94a3b8 !important;
+  box-shadow: none !important;
+}
+
+body:not(.theme-light) #panelStyle .single-line-step-btn:hover,
+body:not(.theme-light) #panelPiecewise .single-line-step-btn:hover,
+body:not(.theme-light) #panelPiecewise #btnPwStepMinus:hover,
+body:not(.theme-light) #panelPiecewise #btnPwStepPlus:hover {
+  background: rgba(148, 163, 184, 0.18) !important;
+  color: #ffffff !important;
+}
+
+#panelStyle .slider-bar,
+#panelStyle #sliderInkSize,
+#panelPiecewise .slider-bar {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px !important;
+  border-radius: 999px !important;
+  background: #cbd5e1 !important;
+  accent-color: #0f172a !important;
+  outline: none;
+}
+
+body:not(.theme-light) #panelStyle .slider-bar,
+body:not(.theme-light) #panelStyle #sliderInkSize,
+body:not(.theme-light) #panelPiecewise .slider-bar {
+  background: rgba(148, 163, 184, 0.32) !important;
+  accent-color: #f8fafc !important;
+}
+
+#panelStyle .slider-bar::-webkit-slider-thumb,
+#panelStyle #sliderInkSize::-webkit-slider-thumb,
+#panelPiecewise .slider-bar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px !important;
+  height: 13px !important;
+  border-radius: 50% !important;
+  background: #ffffff !important;
+  border: 2px solid #0f172a !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.18) !important;
+  cursor: pointer;
+}
+
+body:not(.theme-light) #panelStyle .slider-bar::-webkit-slider-thumb,
+body:not(.theme-light) #panelStyle #sliderInkSize::-webkit-slider-thumb,
+body:not(.theme-light) #panelPiecewise .slider-bar::-webkit-slider-thumb {
+  background: #0f172a !important;
+  border: 2px solid #f8fafc !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5) !important;
+}
+
+#panelStyle .single-line-slider-val,
+#panelPiecewise .single-line-slider-val,
+#panelPiecewise .pw-period-val-label {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelStyle .single-line-slider-val,
+body:not(.theme-light) #panelPiecewise .single-line-slider-val,
+body:not(.theme-light) #panelPiecewise .pw-period-val-label {
+  color: #f8fafc !important;
+}
+
+/* 토글 스위치 — ON 시 시안 1 Pure Ink Charcoal (#0F172A) */
+#panelStyle .vf-toggle-slider,
+#panelPiecewise .vf-toggle-slider {
+  background-color: #cbd5e1 !important;
+}
+
+#panelStyle .vf-toggle-wrap input:checked+.vf-toggle-slider,
+#panelPiecewise .vf-toggle-wrap input:checked+.vf-toggle-slider {
+  background-color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelStyle .vf-toggle-slider,
+body:not(.theme-light) #panelPiecewise .vf-toggle-slider {
+  background-color: rgba(148, 163, 184, 0.28) !important;
+}
+
+body:not(.theme-light) #panelStyle .vf-toggle-wrap input:checked+.vf-toggle-slider,
+body:not(.theme-light) #panelPiecewise .vf-toggle-wrap input:checked+.vf-toggle-slider {
+  background-color: #e2e8f0 !important;
+}
+
+body:not(.theme-light) #panelStyle .vf-toggle-wrap input:checked+.vf-toggle-slider::before,
+body:not(.theme-light) #panelPiecewise .vf-toggle-wrap input:checked+.vf-toggle-slider::before {
+  background-color: #0f172a !important;
+}
+
+/* [6] 수식 폰트 셀렉트 & 축 이름표 입력창 & 하단 액션 버튼 */
+#panelStyle #selMathFont {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  height: 29px !important;
+  border-radius: 6px !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+}
+
+#panelStyle #selMathFont:focus {
+  border-color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelStyle #selMathFont {
+  background: rgba(30, 41, 59, 0.65) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #panelStyle #selMathFont option {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+#panelStyle .axis-name-input-box {
+  flex: 1 1 0% !important;
+  min-width: 0 !important;
+  height: 30px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 6px !important;
+  padding: 0 8px !important;
+  border-radius: 6px !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+#panelStyle .axis-name-input-box:focus-within {
+  border-color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelStyle .axis-name-input-box {
+  background: rgba(30, 41, 59, 0.6) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+}
+
+#panelStyle .axis-name-input-box span {
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: #64748b !important;
+}
+
+body:not(.theme-light) #panelStyle .axis-name-input-box span {
+  color: #94a3b8 !important;
+}
+
+#panelStyle #inputAxisNameX,
+#panelStyle #inputAxisNameY {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  height: 24px !important;
+  padding: 0 2px !important;
+  margin: 0 !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  text-align: right !important;
+  font-size: 12px !important;
+  font-family: 'STIX Two Text', 'Pretendard', serif !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  background: transparent !important;
+}
+
+body:not(.theme-light) #panelStyle #inputAxisNameX,
+body:not(.theme-light) #panelStyle #inputAxisNameY {
+  color: #f8fafc !important;
+}
+
+#panelStyle .settings-clean-btn,
+#panelPiecewise .settings-clean-btn,
+body.theme-light #panelPiecewise #btnPwStepMatch,
+body.theme-light #panelPiecewise #btnPwStepReset {
+  height: 30px !important;
+  border-radius: 6px !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #334155 !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+#panelStyle .settings-clean-btn:hover,
+#panelPiecewise .settings-clean-btn:hover,
+body.theme-light #panelPiecewise #btnPwStepMatch:hover,
+body.theme-light #panelPiecewise #btnPwStepReset:hover {
+  background: #f8fafc !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelStyle .settings-clean-btn,
+body:not(.theme-light) #panelPiecewise .settings-clean-btn,
+body:not(.theme-light) #panelPiecewise #btnPwStepMatch,
+body:not(.theme-light) #panelPiecewise #btnPwStepReset {
+  background: rgba(30, 41, 59, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #e2e8f0 !important;
+  box-shadow: none !important;
+}
+
+body:not(.theme-light) #panelStyle .settings-clean-btn:hover,
+body:not(.theme-light) #panelPiecewise .settings-clean-btn:hover,
+body:not(.theme-light) #panelPiecewise #btnPwStepMatch:hover,
+body:not(.theme-light) #panelPiecewise #btnPwStepReset:hover {
+  background: rgba(51, 65, 85, 0.72) !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+}
+
+/* [7] 시각화 도구 서랍 (#panelToolkit) & 변환 서랍 (#panelTransform) — 시안 1 무채색 차콜 마감 */
+#panelToolkit .toolkit-tool-btn,
+#panelTransform .transform-btn {
+  border-radius: 7px !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+  transform: none !important;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease !important;
+}
+
+#panelToolkit .toolkit-tool-btn:hover,
+#panelTransform .transform-btn:hover,
+#panelTransform .btn-inverse-highlight:hover {
+  background: #f8fafc !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+  box-shadow: none !important;
+}
+
+#panelTransform .transform-btn.active {
+  background: #ffffff !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  box-shadow: inset 0 0 0 0.6px #0f172a !important;
+}
+
+#panelToolkit .toolkit-tool-btn .func-icon-wrap,
+#panelToolkit .toolkit-tool-btn .mini-func-icon,
+#panelToolkit .toolkit-open-chevron {
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelToolkit .toolkit-tool-btn,
+body:not(.theme-light) #panelTransform .transform-btn {
+  background: rgba(30, 41, 59, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #panelToolkit .toolkit-tool-btn:hover,
+body:not(.theme-light) #panelTransform .transform-btn:hover,
+body:not(.theme-light) #panelTransform .btn-inverse-highlight:hover {
+  background: rgba(51, 65, 85, 0.75) !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+body:not(.theme-light) #panelTransform .transform-btn.active {
+  background: #1e293b !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: inset 0 0 0 0.5px #f8fafc !important;
+}
+
+body:not(.theme-light) #panelToolkit .toolkit-tool-btn .func-icon-wrap,
+body:not(.theme-light) #panelToolkit .toolkit-tool-btn .mini-func-icon,
+body:not(.theme-light) #panelToolkit .toolkit-open-chevron {
+  color: #f8fafc !important;
+}
+
+#panelTransform #btnToggleInverseLink {
+  border-color: #dc2626 !important;
+  color: #b91c1c !important;
+  background: #fef2f2 !important;
+  font-weight: 700 !important;
+}
+
+body:not(.theme-light) #panelTransform #btnToggleInverseLink {
+  border-color: rgba(248, 113, 113, 0.55) !important;
+  color: #fca5a5 !important;
+  background: rgba(127, 29, 29, 0.28) !important;
+}
+
+/* ============================================================================
+   [v90: 2단계 — 환경 설정 서랍(#panelSettings) · 사용법 및 문의(#modalGuideNotice) · 단축키 설정(#modalShortcutSettings)
+    — Stitch 시안 1 Pure Ink Charcoal (#0F172A) · 0% OS 컬러 이모지 · 타 패널/모달 100% 무간섭 격리]
+   ============================================================================ */
+.rail-drawer[data-active-panel="panelSettings"] {
+  width: 264px;
+  border-radius: 12px !important;
+}
+
+body.theme-light .rail-drawer[data-active-panel="panelSettings"] {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.13), 0 4px 12px -2px rgba(15, 23, 42, 0.05) !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) .rail-drawer[data-active-panel="panelSettings"] {
+  background: #0f172a !important;
+  border: 1px solid rgba(148, 163, 184, 0.2) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.65) !important;
+  color: #f8fafc !important;
+}
+
+.rail-drawer[data-active-panel="panelSettings"] .drawer-header {
+  padding: 10px 12px;
+}
+
+body.theme-light .rail-drawer[data-active-panel="panelSettings"] .drawer-header {
+  background: #ffffff;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+body:not(.theme-light) .rail-drawer[data-active-panel="panelSettings"] .drawer-header {
+  background: #0f172a;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.rail-drawer[data-active-panel="panelSettings"] #drawerTitle {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+body.theme-light .rail-drawer[data-active-panel="panelSettings"] #drawerTitle {
+  color: #0f172a;
+}
+
+body:not(.theme-light) .rail-drawer[data-active-panel="panelSettings"] #drawerTitle {
+  color: #f8fafc;
+}
+
+.rail-drawer[data-active-panel="panelSettings"] .drawer-subpanels-container {
+  padding: 10px 12px 12px;
+}
+
+#panelSettings.active {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* [1] 환경 설정 (#panelSettings) 소제목 · 구분선 · 칩 · 스위치 · 슬라이더 */
+#panelSettings .settings-clean-subtitle {
+  margin-bottom: 5px !important;
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
+  color: #64748b !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-clean-subtitle {
+  color: #94a3b8 !important;
+}
+
+#panelSettings .settings-clean-divider-block {
+  margin-top: 10px !important;
+  padding-top: 10px !important;
+  border-top: 1px solid #f1f5f9 !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-clean-divider-block {
+  border-top-color: rgba(148, 163, 184, 0.14) !important;
+}
+
+#panelSettings .vf-chip {
+  min-height: 29px !important;
+  padding: 5px 4px !important;
+  border-radius: 6px !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+#panelSettings .vf-chip:hover {
+  background: #f8fafc !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+#panelSettings .vf-chip.active {
+  background: #ffffff !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  box-shadow: inset 0 0 0 0.6px #0f172a !important;
+}
+
+body:not(.theme-light) #panelSettings .vf-chip {
+  background: rgba(30, 41, 59, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  color: #cbd5e1 !important;
+}
+
+body:not(.theme-light) #panelSettings .vf-chip:hover {
+  background: rgba(51, 65, 85, 0.72) !important;
+  border-color: rgba(203, 213, 225, 0.5) !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #panelSettings .vf-chip.active {
+  background: #1e293b !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 0 0 0.5px #f8fafc !important;
+}
+
+#panelSettings .settings-toggle-list {
+  gap: 4px !important;
+  margin-top: 4px !important;
+}
+
+#panelSettings .setting-toggle-item,
+#panelSettings .single-line-slider-row {
+  padding: 5px 8px !important;
+  min-height: 30px !important;
+  border-radius: 7px !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+#panelSettings .setting-toggle-item:hover {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}
+
+body:not(.theme-light) #panelSettings .setting-toggle-item,
+body:not(.theme-light) #panelSettings .single-line-slider-row {
+  background: rgba(30, 41, 59, 0.5) !important;
+  border: 1px solid rgba(148, 163, 184, 0.16) !important;
+}
+
+body:not(.theme-light) #panelSettings .setting-toggle-item:hover {
+  background: rgba(51, 65, 85, 0.62) !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+}
+
+#panelSettings .setting-name,
+#panelSettings .single-line-slider-label {
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  color: #334155 !important;
+}
+
+body:not(.theme-light) #panelSettings .setting-name,
+body:not(.theme-light) #panelSettings .single-line-slider-label {
+  color: #e2e8f0 !important;
+}
+
+#panelSettings .vf-toggle-slider {
+  background-color: #cbd5e1 !important;
+}
+
+#panelSettings .vf-toggle-wrap input:checked+.vf-toggle-slider {
+  background-color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelSettings .vf-toggle-slider {
+  background-color: rgba(148, 163, 184, 0.28) !important;
+}
+
+body:not(.theme-light) #panelSettings .vf-toggle-wrap input:checked+.vf-toggle-slider {
+  background-color: #e2e8f0 !important;
+}
+
+body:not(.theme-light) #panelSettings .vf-toggle-wrap input:checked+.vf-toggle-slider::before {
+  background-color: #0f172a !important;
+}
+
+/* 좌표축 표시 [x축] [y축] — 다크모드 스카이블루 완전 제거 & 무채색 차콜 일원화 */
+#panelSettings .axis-vis-chip {
+  height: 21px !important;
+  min-width: 34px !important;
+  padding: 0 7px !important;
+  border-radius: 5px !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #64748b !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+#panelSettings .axis-vis-chip:hover {
+  border-color: #64748b !important;
+  color: #0f172a !important;
+}
+
+#panelSettings .axis-vis-chip.active {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+body:not(.theme-light) #panelSettings .axis-vis-chip {
+  background: rgba(15, 23, 42, 0.6) !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  color: #94a3b8 !important;
+}
+
+body:not(.theme-light) #panelSettings .axis-vis-chip:hover {
+  border-color: #cbd5e1 !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #panelSettings .axis-vis-chip.active {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+/* 녹음 볼륨 슬라이더 & SVG 스테퍼 */
+#panelSettings .single-line-step-btn {
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: #64748b !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+#panelSettings .single-line-step-btn:hover {
+  background: #e2e8f0 !important;
+  border-color: transparent !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelSettings .single-line-step-btn {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: #94a3b8 !important;
+}
+
+body:not(.theme-light) #panelSettings .single-line-step-btn:hover {
+  background: rgba(148, 163, 184, 0.18) !important;
+  color: #ffffff !important;
+}
+
+#panelSettings .slider-bar {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px !important;
+  border-radius: 999px !important;
+  background: #cbd5e1 !important;
+  accent-color: #0f172a !important;
+  outline: none;
+}
+
+body:not(.theme-light) #panelSettings .slider-bar {
+  background: rgba(148, 163, 184, 0.32) !important;
+  accent-color: #f8fafc !important;
+}
+
+#panelSettings .slider-bar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px !important;
+  height: 13px !important;
+  border-radius: 50% !important;
+  background: #ffffff !important;
+  border: 2px solid #0f172a !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.18) !important;
+  cursor: pointer;
+}
+
+body:not(.theme-light) #panelSettings .slider-bar::-webkit-slider-thumb {
+  background: #0f172a !important;
+  border: 2px solid #f8fafc !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5) !important;
+}
+
+#panelSettings .single-line-slider-val {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelSettings .single-line-slider-val {
+  color: #f8fafc !important;
+}
+
+/* 환경 설정 버튼 · 단축키 진입 · 계정 상태 · 아이디 로그인 박스 */
+#panelSettings .settings-clean-btn {
+  height: 30px !important;
+  border-radius: 6px !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #334155 !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+#panelSettings .settings-clean-btn:hover {
+  background: #f8fafc !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-clean-btn {
+  background: rgba(30, 41, 59, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #e2e8f0 !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-clean-btn:hover {
+  background: rgba(51, 65, 85, 0.72) !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+}
+
+#panelSettings .settings-shortcut-open-btn {
+  padding: 0 10px !important;
+}
+
+#panelSettings .settings-shortcut-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  color: #64748b !important;
+}
+
+#panelSettings .settings-shortcut-count-text {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+body:not(.theme-light) #panelSettings .settings-shortcut-count-text {
+  color: #f8fafc;
+}
+
+#panelSettings .settings-account-id-box {
+  border-radius: 7px !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-account-id-box {
+  background: rgba(30, 41, 59, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  color: #f8fafc !important;
+}
+
+#panelSettings .settings-account-plan-badge.is-free {
+  background: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #475569 !important;
+}
+
+#panelSettings .settings-account-plan-badge.is-pro {
+  background: #ffffff !important;
+  border: 1px solid #0f172a !important;
+  color: #0f172a !important;
+}
+
+#panelSettings .settings-account-plan-badge.is-premium {
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-account-plan-badge.is-free {
+  background: rgba(51, 65, 85, 0.7) !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  color: #cbd5e1 !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-account-plan-badge.is-pro {
+  background: #1e293b !important;
+  border-color: #f8fafc !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-account-plan-badge.is-premium {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+#panelSettings .settings-account-remain-days.is-pro,
+#panelSettings .settings-account-remain-days.is-premium {
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-account-remain-days.is-pro,
+body:not(.theme-light) #panelSettings .settings-account-remain-days.is-premium {
+  color: #f8fafc !important;
+}
+
+#panelSettings #cloudEmailLoginBox {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 8px !important;
+  padding: 8px !important;
+}
+
+body:not(.theme-light) #panelSettings #cloudEmailLoginBox {
+  background: rgba(30, 41, 59, 0.5) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+#panelSettings #cloudEmailLoginBox>div:first-child {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 2px !important;
+  padding: 2px !important;
+  border-radius: 7px !important;
+  background: #e2e8f0 !important;
+}
+
+body:not(.theme-light) #panelSettings #cloudEmailLoginBox>div:first-child {
+  background: rgba(15, 23, 42, 0.75) !important;
+}
+
+#panelSettings #tabBtnCloudIdLogin,
+#panelSettings #tabBtnCloudIdSignup {
+  height: 25px !important;
+  border-radius: 5.5px !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: #64748b !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+
+#panelSettings #tabBtnCloudIdLogin.active,
+#panelSettings #tabBtnCloudIdSignup.active {
+  background: #ffffff !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+body:not(.theme-light) #panelSettings #tabBtnCloudIdLogin,
+body:not(.theme-light) #panelSettings #tabBtnCloudIdSignup {
+  color: #94a3b8 !important;
+}
+
+body:not(.theme-light) #panelSettings #tabBtnCloudIdLogin.active,
+body:not(.theme-light) #panelSettings #tabBtnCloudIdSignup.active {
+  background: #1e293b !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+}
+
+#panelSettings .settings-clean-input {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+  border-radius: 6px !important;
+}
+
+#panelSettings .settings-clean-input:focus {
+  border-color: #0f172a !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-clean-input {
+  background: rgba(15, 23, 42, 0.75) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-clean-input:focus {
+  border-color: #f8fafc !important;
+}
+
+#panelSettings .settings-clean-btn.settings-clean-btn-solid,
+#panelSettings .settings-clean-btn.settings-clean-btn-solid:hover {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+body:not(.theme-light) #panelSettings .settings-clean-btn.settings-clean-btn-solid,
+body:not(.theme-light) #panelSettings .settings-clean-btn.settings-clean-btn-solid:hover {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* ============================================================================
+   [2] 사용법 및 문의 모달 (#modalGuideNotice) & 단축키 설정 모달 (#modalShortcutSettings) 공통 헤더/외곽
+   ============================================================================ */
+#modalGuideNotice.smart-modal-backdrop,
+#modalShortcutSettings.smart-modal-backdrop {
+  z-index: 12000;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 16px;
+}
+
+body:not(.theme-light) #modalGuideNotice.smart-modal-backdrop,
+body:not(.theme-light) #modalShortcutSettings.smart-modal-backdrop {
+  background: rgba(2, 6, 23, 0.68);
+}
+
+.rail-drawer[data-active-panel="panelSettings"] #panelSettings .panel-body::-webkit-scrollbar,
+#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+}
+
+.rail-drawer[data-active-panel="panelSettings"] #panelSettings .panel-body::-webkit-scrollbar-track,
+#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.rail-drawer[data-active-panel="panelSettings"] #panelSettings .panel-body::-webkit-scrollbar-thumb,
+#modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.48) !important;
+  border-radius: 999px !important;
+}
+
+body:not(.theme-light) .rail-drawer[data-active-panel="panelSettings"] #panelSettings .panel-body::-webkit-scrollbar-thumb,
+body:not(.theme-light) #modalShortcutSettings #shortcutSettingsList::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35) !important;
+}
+
+#modalGuideNotice .smart-modal-card,
+#modalShortcutSettings .smart-modal-card {
+  border-radius: 14px !important;
+  overflow: hidden !important;
+}
+
+body.theme-light #modalGuideNotice .smart-modal-card,
+body.theme-light #modalShortcutSettings .smart-modal-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 22px 50px -12px rgba(15, 23, 42, 0.22), 0 6px 18px -4px rgba(15, 23, 42, 0.08) !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalGuideNotice .smart-modal-card,
+body:not(.theme-light) #modalShortcutSettings .smart-modal-card {
+  background: #0f172a !important;
+  border: 1px solid rgba(148, 163, 184, 0.22) !important;
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.68) !important;
+  color: #f8fafc !important;
+}
+
+#modalGuideNotice .smart-modal-header,
+#modalShortcutSettings .smart-modal-header {
+  padding: 13px 18px !important;
+  background: transparent !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+body:not(.theme-light) #modalGuideNotice .smart-modal-header,
+body:not(.theme-light) #modalShortcutSettings .smart-modal-header {
+  border-bottom-color: rgba(148, 163, 184, 0.15) !important;
+}
+
+#modalGuideNotice .modal-icon,
+#modalShortcutSettings .modal-icon {
+  width: auto !important;
+  height: auto !important;
+  padding: 0 !important;
+  margin-right: 2px !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #0f172a !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+body:not(.theme-light) #modalGuideNotice .modal-icon,
+body:not(.theme-light) #modalShortcutSettings .modal-icon {
+  color: #f8fafc !important;
+}
+
+#modalGuideNotice .modal-title-text,
+#modalShortcutSettings .modal-title-text {
+  font-size: 15.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalGuideNotice .modal-title-text,
+body:not(.theme-light) #modalShortcutSettings .modal-title-text {
+  color: #f8fafc !important;
+}
+
+#modalGuideNotice .btn-modal-close,
+#modalShortcutSettings .btn-modal-close {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  border: none !important;
+  color: #64748b !important;
+}
+
+#modalGuideNotice .btn-modal-close:hover,
+#modalShortcutSettings .btn-modal-close:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalGuideNotice .btn-modal-close,
+body:not(.theme-light) #modalShortcutSettings .btn-modal-close {
+  color: #94a3b8 !important;
+}
+
+body:not(.theme-light) #modalGuideNotice .btn-modal-close:hover,
+body:not(.theme-light) #modalShortcutSettings .btn-modal-close:hover {
+  background: rgba(148, 163, 184, 0.16) !important;
+  color: #ffffff !important;
+}
+
+/* ============================================================================
+   [3] 사용법 및 문의 모달 (#modalGuideNotice) 전용 레이아웃
+   ============================================================================ */
+#modalGuideNotice .guide-notice-modal-card {
+  max-width: 468px !important;
+  width: min(468px, 92vw) !important;
+}
+
+#modalGuideNotice .guide-notice-modal-body {
+  padding: 16px 18px 18px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+}
+
+#modalGuideNotice .guide-section-card {
+  margin: 0 !important;
+  padding: 14px 16px !important;
+  border-radius: 10px !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-section-card {
+  background: rgba(30, 41, 59, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+#modalGuideNotice .guide-card-title {
+  margin: 0 0 9px 0 !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-card-title {
+  color: #f8fafc !important;
+}
+
+#modalGuideNotice .guide-bullet-list {
+  margin: 0 !important;
+  padding-left: 16px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  font-size: 12.5px !important;
+  line-height: 1.55 !important;
+  color: #334155 !important;
+}
+
+#modalGuideNotice .guide-bullet-list li {
+  margin-bottom: 0 !important;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-bullet-list {
+  color: #cbd5e1 !important;
+}
+
+#modalGuideNotice .guide-inline-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+#modalGuideNotice .guide-inline-kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-inline-chip {
+  background: #0f172a;
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #f8fafc;
+}
+
+#modalGuideNotice .guide-contact-card {
+  padding: 16px !important;
+  border-radius: 10px !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  text-align: center !important;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-contact-card {
+  background: rgba(30, 41, 59, 0.35) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+#modalGuideNotice .guide-contact-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 5px;
+  letter-spacing: -0.01em;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-contact-title {
+  color: #f8fafc;
+}
+
+#modalGuideNotice .guide-contact-desc {
+  margin: 0 0 12px 0;
+  font-size: 12.2px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-contact-desc {
+  color: #94a3b8;
+}
+
+#modalGuideNotice .guide-contact-desc strong {
+  color: #334155;
+  font-weight: 700;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-contact-desc strong {
+  color: #e2e8f0;
+}
+
+#modalGuideNotice .guide-email-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 18px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1.5px solid #0f172a;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  user-select: text;
+}
+
+body:not(.theme-light) #modalGuideNotice .guide-email-pill {
+  background: #1e293b;
+  border-color: #f8fafc;
+  color: #f8fafc;
+}
+
+/* ============================================================================
+   [4] 단축키 설정 모달 (#modalShortcutSettings) 전용 레이아웃
+   ============================================================================ */
+#modalShortcutSettings .shortcut-settings-modal-card {
+  width: min(720px, 94vw) !important;
+  max-width: 720px !important;
+  max-height: 84vh !important;
+}
+
+#modalShortcutSettings .shortcut-account-sync-badge {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #334155 !important;
+  margin-left: 8px !important;
+}
+
+#modalShortcutSettings .shortcut-account-sync-badge.is-guest {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  color: #64748b !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-account-sync-badge {
+  background: rgba(30, 41, 59, 0.85) !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  color: #e2e8f0 !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-account-sync-badge.is-guest {
+  background: rgba(30, 41, 59, 0.5) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  color: #94a3b8 !important;
+}
+
+#modalShortcutSettings .shortcut-settings-toolbar {
+  padding: 10px 18px !important;
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  gap: 8px !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-settings-toolbar {
+  background: rgba(30, 41, 59, 0.45) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.15) !important;
+}
+
+#modalShortcutSettings .shortcut-cat-tabs {
+  gap: 4px !important;
+}
+
+#modalShortcutSettings .shortcut-cat-tab {
+  height: 30px !important;
+  padding: 0 11px !important;
+  border-radius: 7px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+  color: #475569 !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+#modalShortcutSettings .shortcut-cat-tab:hover {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+#modalShortcutSettings .shortcut-cat-tab.active {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-cat-tab {
+  background: rgba(30, 41, 59, 0.65) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #cbd5e1 !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-cat-tab:hover {
+  background: rgba(51, 65, 85, 0.8) !important;
+  border-color: rgba(203, 213, 225, 0.5) !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-cat-tab.active {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+#modalShortcutSettings .shortcut-search-wrap {
+  position: relative !important;
+  flex: 0 1 206px !important;
+  min-width: 156px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+#modalShortcutSettings .shortcut-search-icon {
+  position: absolute;
+  left: 9px;
+  color: #64748b;
+  pointer-events: none;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-search-icon {
+  color: #94a3b8;
+}
+
+#modalShortcutSettings .shortcut-search-input {
+  height: 30px !important;
+  padding: 0 10px 0 28px !important;
+  border-radius: 7px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+}
+
+#modalShortcutSettings .shortcut-search-input:focus {
+  border-color: #0f172a !important;
+  box-shadow: none !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-search-input {
+  background: rgba(15, 23, 42, 0.85) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-search-input:focus {
+  border-color: #f8fafc !important;
+}
+
+#modalShortcutSettings .shortcut-notice-banner {
+  padding: 8px 18px !important;
+  font-size: 11.8px !important;
+  font-weight: 500 !important;
+  color: #475569 !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-notice-banner {
+  color: #cbd5e1 !important;
+  background: rgba(15, 23, 42, 0.6) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.14) !important;
+}
+
+#modalShortcutSettings .shortcut-notice-banner.is-recording {
+  background: #0f172a !important;
+  color: #f8fafc !important;
+  border-bottom-color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-notice-banner.is-recording {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+  border-bottom-color: #e2e8f0 !important;
+}
+
+#modalShortcutSettings .shortcut-notice-banner.is-warning {
+  background: #fffbeb !important;
+  color: #92400e !important;
+  border-bottom-color: #fde68a !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-notice-banner.is-warning {
+  background: rgba(120, 53, 15, 0.35) !important;
+  color: #fde68a !important;
+  border-bottom-color: rgba(251, 191, 36, 0.3) !important;
+}
+
+#modalShortcutSettings .shortcut-cat-section-header {
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  padding: 4px 2px 5px !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-cat-section-header {
+  color: #f8fafc !important;
+  border-bottom-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+#modalShortcutSettings .shortcut-row {
+  border-radius: 8px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #f8fafc !important;
+  padding: 8px 12px !important;
+}
+
+#modalShortcutSettings .shortcut-row:hover {
+  background: #ffffff !important;
+  border-color: #94a3b8 !important;
+}
+
+#modalShortcutSettings .shortcut-row.is-recording-row {
+  background: #ffffff !important;
+  border-color: #0f172a !important;
+  box-shadow: inset 0 0 0 0.6px #0f172a !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-row {
+  background: rgba(30, 41, 59, 0.5) !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-row:hover {
+  background: rgba(30, 41, 59, 0.82) !important;
+  border-color: rgba(203, 213, 225, 0.45) !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-row.is-recording-row {
+  background: #1e293b !important;
+  border-color: #f8fafc !important;
+  box-shadow: inset 0 0 0 0.5px #f8fafc !important;
+}
+
+#modalShortcutSettings .shortcut-row-title {
+  font-size: 12.8px !important;
+  font-weight: 700 !important;
+}
+
+#modalShortcutSettings .shortcut-custom-dot {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  padding: 1px 6px !important;
+  border-radius: 4px !important;
+  background: #0f172a !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-custom-dot {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+#modalShortcutSettings .shortcut-bind-btn {
+  min-width: 124px !important;
+  height: 30px !important;
+  padding: 0 11px !important;
+  border-radius: 6px !important;
+  border: 1px solid #cbd5e1 !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+#modalShortcutSettings .shortcut-bind-btn:hover {
+  border-color: #0f172a !important;
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+#modalShortcutSettings .shortcut-bind-btn.is-unassigned {
+  border-style: dashed !important;
+  border-color: #cbd5e1 !important;
+  background: #f8fafc !important;
+  color: #94a3b8 !important;
+  font-weight: 600 !important;
+}
+
+#modalShortcutSettings .shortcut-bind-btn.is-customized {
+  border-style: solid !important;
+  border-color: #0f172a !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  box-shadow: inset 0 0 0 0.5px #0f172a !important;
+}
+
+#modalShortcutSettings .shortcut-bind-btn.is-recording {
+  border-style: solid !important;
+  border-color: #0f172a !important;
+  background: #0f172a !important;
+  color: #ffffff !important;
+  font-size: 11.2px !important;
+  font-weight: 700 !important;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.16) !important;
+  animation: none !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-bind-btn {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.32) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-bind-btn:hover {
+  border-color: #f8fafc !important;
+  background: #1e293b !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-bind-btn.is-unassigned {
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  background: rgba(15, 23, 42, 0.45) !important;
+  color: #64748b !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-bind-btn.is-customized {
+  border-color: #f8fafc !important;
+  background: #1e293b !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 0 0 0.5px #f8fafc !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-bind-btn.is-recording {
+  border-color: #f8fafc !important;
+  background: #f8fafc !important;
+  color: #0f172a !important;
+  box-shadow: 0 0 0 2px rgba(248, 250, 252, 0.2) !important;
+}
+
+#modalShortcutSettings .shortcut-mini-icon-btn {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 6px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+  color: #64748b !important;
+}
+
+#modalShortcutSettings .shortcut-mini-icon-btn:hover:not(:disabled),
+#modalShortcutSettings .shortcut-mini-icon-btn.is-reset-btn:hover:not(:disabled) {
+  background: #f8fafc !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-mini-icon-btn {
+  background: rgba(15, 23, 42, 0.65) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #94a3b8 !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-mini-icon-btn:hover:not(:disabled),
+body:not(.theme-light) #modalShortcutSettings .shortcut-mini-icon-btn.is-reset-btn:hover:not(:disabled) {
+  background: #1e293b !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+}
+
+#modalShortcutSettings .shortcut-settings-footer {
+  padding: 12px 18px !important;
+  background: #f8fafc !important;
+  border-top: 1px solid #e2e8f0 !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-settings-footer {
+  background: rgba(30, 41, 59, 0.45) !important;
+  border-top-color: rgba(148, 163, 184, 0.15) !important;
+}
+
+#modalShortcutSettings .shortcut-reset-all-btn,
+#modalShortcutSettings .shortcut-cancel-btn {
+  height: 34px !important;
+  padding: 0 13px !important;
+  border-radius: 7px !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #334155 !important;
+  font-size: 12.2px !important;
+  font-weight: 600 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  box-shadow: none !important;
+}
+
+#modalShortcutSettings .shortcut-reset-all-btn:hover,
+#modalShortcutSettings .shortcut-cancel-btn:hover {
+  background: #f8fafc !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-reset-all-btn,
+body:not(.theme-light) #modalShortcutSettings .shortcut-cancel-btn {
+  background: rgba(30, 41, 59, 0.7) !important;
+  border-color: rgba(148, 163, 184, 0.26) !important;
+  color: #e2e8f0 !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-reset-all-btn:hover,
+body:not(.theme-light) #modalShortcutSettings .shortcut-cancel-btn:hover {
+  background: rgba(51, 65, 85, 0.85) !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+}
+
+#modalShortcutSettings .shortcut-save-btn,
+#modalShortcutSettings .shortcut-save-btn.has-unsaved-changes {
+  height: 34px !important;
+  padding: 0 16px !important;
+  border-radius: 7px !important;
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
+  color: #ffffff !important;
+  font-size: 12.2px !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+#modalShortcutSettings .shortcut-save-btn:hover,
+#modalShortcutSettings .shortcut-save-btn.has-unsaved-changes:hover {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-save-btn,
+body:not(.theme-light) #modalShortcutSettings .shortcut-save-btn.has-unsaved-changes {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShortcutSettings .shortcut-save-btn:hover,
+body:not(.theme-light) #modalShortcutSettings .shortcut-save-btn.has-unsaved-changes:hover {
+  background: #e2e8f0 !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+@media (max-width: 640px) {
+  #modalShortcutSettings .shortcut-search-wrap {
+    flex: 1 1 100% !important;
+  }
+
+  #modalShortcutSettings .shortcut-row {
+    flex-wrap: wrap;
+    gap: 8px !important;
+  }
+
+  #modalShortcutSettings .shortcut-row-controls {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+/* ============================================================================
+   [v91] Step 3 — 내보내기(#modalShare) & 홍보배너 설정(#modalPromoBannerSettings)
+   Stitch 시안 1 "퓨어 라인-벡터 차콜 (#0F172A)" 디자인 통일 (480px 아이패드 무스크롤 100% 보존)
+   ============================================================================ */
+
+/* [1] 백드롭 계층 & 공통 모달 외곽/헤더 (#modalPromoBannerSettings는 #modalShare 위에 오픈되므로 12100) */
+#modalShare.smart-modal-backdrop {
+  z-index: 12000;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 16px;
+}
+
+#modalPromoBannerSettings.smart-modal-backdrop {
+  z-index: 12100;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 16px;
+}
+
+body:not(.theme-light) #modalShare.smart-modal-backdrop,
+body:not(.theme-light) #modalPromoBannerSettings.smart-modal-backdrop {
+  background: rgba(2, 6, 23, 0.68);
+}
+
+#modalShare .unified-export-modal-card {
+  max-width: 480px !important;
+  width: min(480px, 92vw) !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+}
+
+#modalPromoBannerSettings .promo-banner-modal-card {
+  max-width: 548px !important;
+  width: min(548px, 94vw) !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+}
+
+body.theme-light #modalShare .smart-modal-card,
+body.theme-light #modalPromoBannerSettings .smart-modal-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 22px 50px -12px rgba(15, 23, 42, 0.22), 0 6px 18px -4px rgba(15, 23, 42, 0.08) !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare .smart-modal-card,
+body:not(.theme-light) #modalPromoBannerSettings .smart-modal-card {
+  background: #0f172a !important;
+  border: 1px solid rgba(148, 163, 184, 0.22) !important;
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.68) !important;
+  color: #f8fafc !important;
+}
+
+#modalShare .smart-modal-header,
+#modalPromoBannerSettings .smart-modal-header {
+  padding: 13px 18px !important;
+  background: transparent !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+body:not(.theme-light) #modalShare .smart-modal-header,
+body:not(.theme-light) #modalPromoBannerSettings .smart-modal-header {
+  border-bottom-color: rgba(148, 163, 184, 0.15) !important;
+}
+
+#modalShare .modal-icon,
+#modalPromoBannerSettings .modal-icon {
+  width: auto !important;
+  height: auto !important;
+  padding: 0 !important;
+  margin-right: 2px !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #0f172a !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+body:not(.theme-light) #modalShare .modal-icon,
+body:not(.theme-light) #modalPromoBannerSettings .modal-icon {
+  color: #f8fafc !important;
+}
+
+#modalShare .modal-title-text,
+#modalPromoBannerSettings .modal-title-text {
+  font-size: 15.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare .modal-title-text,
+body:not(.theme-light) #modalPromoBannerSettings .modal-title-text {
+  color: #f8fafc !important;
+}
+
+#modalShare .btn-modal-close,
+#modalPromoBannerSettings .btn-modal-close {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  border: none !important;
+  color: #64748b !important;
+}
+
+#modalShare .btn-modal-close:hover,
+#modalPromoBannerSettings .btn-modal-close:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare .btn-modal-close,
+body:not(.theme-light) #modalPromoBannerSettings .btn-modal-close {
+  color: #94a3b8 !important;
+}
+
+body:not(.theme-light) #modalShare .btn-modal-close:hover,
+body:not(.theme-light) #modalPromoBannerSettings .btn-modal-close:hover {
+  background: rgba(148, 163, 184, 0.16) !important;
+  color: #ffffff !important;
+}
+
+/* [2] 내보내기 모달 (#modalShare) — 시안 1 Pure Ink Charcoal 칩·버튼·토글·인풋 */
+#modalShare .settings-clean-divider-block {
+  border-top: 1px solid #f1f5f9 !important;
+}
+
+body:not(.theme-light) #modalShare .settings-clean-divider-block {
+  border-top-color: rgba(148, 163, 184, 0.15) !important;
+}
+
+#modalShare .settings-clean-subtitle {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
+  color: #64748b !important;
+}
+
+body:not(.theme-light) #modalShare .settings-clean-subtitle {
+  color: #94a3b8 !important;
+}
+
+/* 범위 & 포함 항목 칩: 기본 슬레이트 / 활성 1.5px 차콜 키라인 */
+#modalShare .vf-chip {
+  min-height: 38px !important;
+  padding: 7px 10px !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  border-radius: 8px !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #64748b !important;
+  box-shadow: none !important;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease !important;
+}
+
+#modalShare .vf-chip:hover {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+#modalShare .vf-chip.active {
+  background: #ffffff !important;
+  border: 1.5px solid #0f172a !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06) !important;
+}
+
+body:not(.theme-light) #modalShare .vf-chip {
+  background: rgba(30, 41, 59, 0.5) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  color: #94a3b8 !important;
+}
+
+body:not(.theme-light) #modalShare .vf-chip:hover {
+  background: rgba(51, 65, 85, 0.72) !important;
+  border-color: rgba(203, 213, 225, 0.45) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalShare .vf-chip.active {
+  background: rgba(30, 41, 59, 0.95) !important;
+  border: 1.5px solid #f8fafc !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+#modalShare .export-layer-chip {
+  gap: 5px !important;
+  padding: 7px 6px !important;
+}
+
+#modalShare .export-layer-chip .export-layer-check-icon {
+  color: #cbd5e1 !important;
+  opacity: 0.55 !important;
+}
+
+#modalShare .export-layer-chip.active .export-layer-check-icon {
+  color: #0f172a !important;
+  opacity: 1 !important;
+}
+
+body:not(.theme-light) #modalShare .export-layer-chip .export-layer-check-icon {
+  color: #64748b !important;
+}
+
+body:not(.theme-light) #modalShare .export-layer-chip.active .export-layer-check-icon {
+  color: #f8fafc !important;
+  opacity: 1 !important;
+}
+
+/* 액션 버튼 (2x2 이미지·공유 + 파일·클라우드 저장) */
+#modalShare .settings-clean-btn {
+  height: 40px !important;
+  padding: 0 14px !important;
+  border-radius: 9px !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: none !important;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease !important;
+}
+
+#modalShare .settings-clean-btn .share-action-svg {
+  flex-shrink: 0;
+  color: currentColor;
+  opacity: 0.85;
+}
+
+#modalShare .settings-clean-btn:hover {
+  background: #f8fafc !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare .settings-clean-btn {
+  background: rgba(30, 41, 59, 0.65) !important;
+  border-color: rgba(148, 163, 184, 0.26) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalShare .settings-clean-btn:hover {
+  background: rgba(51, 65, 85, 0.85) !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+}
+
+/* [클라우드에 저장] 프라이머리 차콜 버튼 (Stitch W4 시안 직결) */
+#modalShare #btnShareModalToLibrary.share-primary-cta-btn {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+#modalShare #btnShareModalToLibrary.share-primary-cta-btn:hover {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalShare #btnShareModalToLibrary.share-primary-cta-btn {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare #btnShareModalToLibrary.share-primary-cta-btn:hover {
+  background: #e2e8f0 !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* 내보내기 완료 피드백 애니메이션도 블루 그라데이션 제거 -> 차콜 솔리드 통일 */
+#modalShare .settings-clean-btn.export-btn-success-fx,
+#modalShare .settings-clean-btn.export-btn-success-fx:hover {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+  transition: none !important;
+}
+
+body:not(.theme-light) #modalShare .settings-clean-btn.export-btn-success-fx,
+body:not(.theme-light) #modalShare .settings-clean-btn.export-btn-success-fx:hover {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+#modalShare .settings-clean-btn.export-btn-success-fx .share-action-svg {
+  display: none !important;
+}
+
+/* 공유 한도 안내 & [보관함 >] 버튼 차콜 통일 */
+#modalShare .share-link-tier-notice {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+body:not(.theme-light) #modalShare .share-link-tier-notice {
+  background: rgba(30, 41, 59, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+#modalShare .share-tier-notice-main {
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare .share-tier-notice-main {
+  color: #f8fafc !important;
+}
+
+#modalShare .share-tier-vault-link-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  height: 26px !important;
+  padding: 0 9px !important;
+  border-radius: 6px !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+  font-size: 11.8px !important;
+  font-weight: 700 !important;
+}
+
+#modalShare .share-tier-vault-link-btn:hover {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalShare .share-tier-vault-link-btn {
+  background: rgba(30, 41, 59, 0.9) !important;
+  border-color: rgba(148, 163, 184, 0.35) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalShare .share-tier-vault-link-btn:hover {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* 홍보배너 빠른 컨트롤 행 차콜 통일 (퍼플 제거) */
+#modalShare .share-promo-banner-quick-row {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+body:not(.theme-light) #modalShare .share-promo-banner-quick-row {
+  background: rgba(30, 41, 59, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+#modalShare .share-promo-quick-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare .share-promo-quick-icon {
+  color: #f8fafc !important;
+}
+
+#modalShare .share-promo-quick-summary {
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare .share-promo-quick-summary {
+  color: #e2e8f0 !important;
+}
+
+#modalShare .share-promo-config-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  height: 27px !important;
+  padding: 0 10px !important;
+  border-radius: 6px !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+#modalShare .share-promo-config-btn:hover {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalShare .share-promo-config-btn {
+  background: rgba(30, 41, 59, 0.9) !important;
+  border-color: rgba(148, 163, 184, 0.35) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalShare .share-promo-config-btn:hover {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* 파일명 입력창 차콜 포커스 */
+#modalShare .settings-clean-input {
+  height: 40px !important;
+  padding: 0 12px !important;
+  border-radius: 9px !important;
+  font-size: 13.5px !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+#modalShare .settings-clean-input:focus {
+  background: #ffffff !important;
+  border-color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare .settings-clean-input {
+  background: rgba(30, 41, 59, 0.65) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalShare .settings-clean-input:focus {
+  background: rgba(30, 41, 59, 0.95) !important;
+  border-color: #f8fafc !important;
+}
+
+/* #modalShare 및 #modalPromoBannerSettings 내부 토글 스위치 차콜 통일 */
+#modalShare .vf-toggle-wrap,
+#modalPromoBannerSettings .vf-toggle-wrap {
+  width: 34px !important;
+  height: 19px !important;
+  flex-shrink: 0 !important;
+}
+
+#modalShare .vf-toggle-slider,
+#modalPromoBannerSettings .vf-toggle-slider {
+  background: #cbd5e1 !important;
+  border: none !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
+}
+
+#modalShare .vf-toggle-slider::before,
+#modalPromoBannerSettings .vf-toggle-slider::before {
+  width: 15px !important;
+  height: 15px !important;
+  left: 2px !important;
+  bottom: 2px !important;
+  background: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.2) !important;
+}
+
+#modalShare .vf-toggle-wrap input:checked+.vf-toggle-slider,
+#modalPromoBannerSettings .vf-toggle-wrap input:checked+.vf-toggle-slider {
+  background: #0f172a !important;
+  box-shadow: none !important;
+}
+
+#modalShare .vf-toggle-wrap input:checked+.vf-toggle-slider::before,
+#modalPromoBannerSettings .vf-toggle-wrap input:checked+.vf-toggle-slider::before {
+  transform: translateX(15px) !important;
+  background: #ffffff !important;
+}
+
+body:not(.theme-light) #modalShare .vf-toggle-slider,
+body:not(.theme-light) #modalPromoBannerSettings .vf-toggle-slider {
+  background: #475569 !important;
+}
+
+body:not(.theme-light) #modalShare .vf-toggle-wrap input:checked+.vf-toggle-slider,
+body:not(.theme-light) #modalPromoBannerSettings .vf-toggle-wrap input:checked+.vf-toggle-slider {
+  background: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalShare .vf-toggle-wrap input:checked+.vf-toggle-slider::before,
+body:not(.theme-light) #modalPromoBannerSettings .vf-toggle-wrap input:checked+.vf-toggle-slider::before {
+  background: #0f172a !important;
+}
+
+/* [3] 뷰어 상단 홍보배너 설정 모달 (#modalPromoBannerSettings) 차콜 통일 */
+#modalPromoBannerSettings .promo-modal-premium-pill {
+  padding: 2px 8px !important;
+  margin-left: 6px !important;
+  border-radius: 6px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-modal-premium-pill {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+#modalPromoBannerSettings .promo-banner-modal-body {
+  padding: 15px 18px !important;
+  gap: 11px !important;
+}
+
+#modalPromoBannerSettings .promo-banner-upsell-notice {
+  padding: 9px 12px !important;
+  border-radius: 8px !important;
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #334155 !important;
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+  word-break: keep-all !important;
+}
+
+#modalPromoBannerSettings .promo-banner-upsell-notice strong {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-banner-upsell-notice {
+  background: rgba(30, 41, 59, 0.65) !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  color: #cbd5e1 !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-banner-upsell-notice strong {
+  color: #f8fafc !important;
+}
+
+#modalPromoBannerSettings .promo-live-preview-stage {
+  padding: 12px 14px 14px !important;
+  border-radius: 10px !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-live-preview-stage {
+  background: rgba(15, 23, 42, 0.72) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+}
+
+#modalPromoBannerSettings .promo-live-preview-caption {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: #64748b !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-live-preview-caption {
+  color: #94a3b8 !important;
+}
+
+#modalPromoBannerSettings .promo-enable-switch-row {
+  padding: 10px 12px !important;
+  border-radius: 9px !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-enable-switch-row {
+  background: rgba(30, 41, 59, 0.52) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+#modalPromoBannerSettings .promo-enable-title {
+  color: #0f172a !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-enable-title {
+  color: #f8fafc !important;
+}
+
+#modalPromoBannerSettings .promo-enable-sub {
+  color: #64748b !important;
+  font-size: 11.2px !important;
+  word-break: keep-all !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-enable-sub {
+  color: #94a3b8 !important;
+}
+
+#modalPromoBannerSettings .promo-field-label {
+  color: #0f172a !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-field-label {
+  color: #f8fafc !important;
+}
+
+#modalPromoBannerSettings .promo-opt-tag {
+  color: #64748b !important;
+  font-size: 10.8px !important;
+  font-weight: 500 !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-opt-tag {
+  color: #94a3b8 !important;
+}
+
+/* 배너 컬러 테마 칩: 컬러 도트 유지 + 활성 테두리 1.5px 차콜 통일 */
+#modalPromoBannerSettings .promo-theme-chip {
+  height: 32px !important;
+  border-radius: 7px !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+#modalPromoBannerSettings .promo-theme-chip:hover {
+  background: #f8fafc !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+#modalPromoBannerSettings .promo-theme-chip.active {
+  background: #ffffff !important;
+  border: 1.5px solid #0f172a !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06) !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-theme-chip {
+  background: rgba(30, 41, 59, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #cbd5e1 !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-theme-chip:hover {
+  background: rgba(51, 65, 85, 0.8) !important;
+  border-color: rgba(203, 213, 225, 0.5) !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-theme-chip.active {
+  background: rgba(30, 41, 59, 0.95) !important;
+  border: 1.5px solid #f8fafc !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+#modalPromoBannerSettings .promo-theme-dot {
+  border: 1px solid rgba(15, 23, 42, 0.18) !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-theme-dot {
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+
+#modalPromoBannerSettings .promo-text-input {
+  height: 35px !important;
+  padding: 0 11px !important;
+  border-radius: 8px !important;
+  font-size: 12.5px !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+#modalPromoBannerSettings .promo-text-input:focus {
+  background: #ffffff !important;
+  border-color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-text-input {
+  background: rgba(30, 41, 59, 0.65) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-text-input:focus {
+  background: rgba(30, 41, 59, 0.95) !important;
+  border-color: #f8fafc !important;
+}
+
+/* 홍보배너 푸터 버튼 차콜 통일 */
+#modalPromoBannerSettings .promo-banner-modal-footer {
+  padding: 12px 18px !important;
+  background: #f8fafc !important;
+  border-top: 1px solid #e2e8f0 !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-banner-modal-footer {
+  background: rgba(30, 41, 59, 0.45) !important;
+  border-top-color: rgba(148, 163, 184, 0.15) !important;
+}
+
+#modalPromoBannerSettings .promo-reset-btn,
+#modalPromoBannerSettings .promo-cancel-btn {
+  height: 34px !important;
+  padding: 0 13px !important;
+  border-radius: 7px !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #334155 !important;
+  font-size: 12.2px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+#modalPromoBannerSettings .promo-reset-btn:hover,
+#modalPromoBannerSettings .promo-cancel-btn:hover {
+  background: #f8fafc !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-reset-btn,
+body:not(.theme-light) #modalPromoBannerSettings .promo-cancel-btn {
+  background: rgba(30, 41, 59, 0.7) !important;
+  border-color: rgba(148, 163, 184, 0.26) !important;
+  color: #e2e8f0 !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-reset-btn:hover,
+body:not(.theme-light) #modalPromoBannerSettings .promo-cancel-btn:hover {
+  background: rgba(51, 65, 85, 0.85) !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+}
+
+#modalPromoBannerSettings .promo-save-btn,
+#modalPromoBannerSettings .promo-save-btn.is-upsell-btn {
+  height: 34px !important;
+  padding: 0 16px !important;
+  border-radius: 7px !important;
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
+  color: #ffffff !important;
+  font-size: 12.2px !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+#modalPromoBannerSettings .promo-save-btn:hover,
+#modalPromoBannerSettings .promo-save-btn.is-upsell-btn:hover {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-save-btn,
+body:not(.theme-light) #modalPromoBannerSettings .promo-save-btn.is-upsell-btn {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-save-btn:hover,
+body:not(.theme-light) #modalPromoBannerSettings .promo-save-btn.is-upsell-btn:hover {
+  background: #e2e8f0 !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* ============================================================================
+   [v92: Step 4 — 클라우드 보관함(#modalCloudHub · #cloudShareOptionPopover · #modalCloudDupResolve) ·
+    PDF 교재 뷰어(#modalPdfViewer) · 슬라이드/초기화 팝오버 & 합성함수 안내(#modalNAxisSetupNotice)
+    Stitch 시안 1 Pure Ink Charcoal 통일 (#modalProPricing · #modalNAxisStudio 100% 무간섭 격리)]
+   ============================================================================ */
+
+/* 1. 클라우드 보관함 (#modalCloudHub) 최상위 레이어(z-index: 12000) & 슬림 스크롤바 */
+#modalCloudHub.smart-modal-backdrop {
+  z-index: 12000 !important;
+}
+
+#modalCloudHub #cloudFolderChipBar::-webkit-scrollbar,
+#modalCloudHub #myLibraryList::-webkit-scrollbar,
+#modalCloudHub .win-move-menu-list::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+#modalCloudHub #cloudFolderChipBar::-webkit-scrollbar-track,
+#modalCloudHub #myLibraryList::-webkit-scrollbar-track,
+#modalCloudHub .win-move-menu-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#modalCloudHub #cloudFolderChipBar::-webkit-scrollbar-thumb,
+#modalCloudHub #myLibraryList::-webkit-scrollbar-thumb,
+#modalCloudHub .win-move-menu-list::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.34);
+  border-radius: 999px;
+}
+
+#modalCloudHub #cloudFolderChipBar::-webkit-scrollbar-thumb:hover,
+#modalCloudHub #myLibraryList::-webkit-scrollbar-thumb:hover,
+#modalCloudHub .win-move-menu-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 0.56);
+}
+
+body:not(.theme-light) #modalCloudHub #cloudFolderChipBar::-webkit-scrollbar-thumb,
+body:not(.theme-light) #modalCloudHub #myLibraryList::-webkit-scrollbar-thumb,
+body:not(.theme-light) #modalCloudHub .win-move-menu-list::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.32);
+}
+
+/* 1-A. 헤더 아이콘 배지 & 카운트 필 */
+#modalCloudHub .cloud-vault-header-badge {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-vault-header-badge {
+  background: rgba(30, 41, 59, 0.85) !important;
+  color: #f8fafc !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+}
+
+#modalCloudHub #badgeMyLibraryCount.cloud-count-sub {
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #334155 !important;
+}
+
+body:not(.theme-light) #modalCloudHub #badgeMyLibraryCount.cloud-count-sub {
+  background: rgba(30, 41, 59, 0.85) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #e2e8f0 !important;
+}
+
+/* 1-B. 상단 탐색기 주소창 · 명령 버튼 · 검색창 차콜 키라인 */
+#modalCloudHub .win-explorer-up-btn:hover:not(:disabled) {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-explorer-up-btn:hover:not(:disabled) {
+  background: rgba(51, 65, 85, 0.85) !important;
+  border-color: rgba(203, 213, 225, 0.45) !important;
+  color: #f8fafc !important;
+}
+
+#modalCloudHub .win-crumb-item .cv-svg {
+  color: #475569 !important;
+}
+
+#modalCloudHub .win-crumb-item.active .cv-svg {
+  color: #0f172a !important;
+}
+
+#modalCloudHub .win-crumb-item:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-crumb-item .cv-svg {
+  color: #94a3b8 !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-crumb-item.active .cv-svg {
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-crumb-item:hover {
+  background: rgba(248, 250, 252, 0.1) !important;
+  color: #f8fafc !important;
+}
+
+#modalCloudHub .win-explorer-cmd-btn:not(.danger-cmd):not(.win-save-submit-btn):not(.win-action-open-primary):hover {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+#modalCloudHub .win-explorer-cmd-btn:not(.danger-cmd):not(.win-save-submit-btn):not(.win-action-open-primary):hover svg {
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-explorer-cmd-btn:not(.danger-cmd):not(.win-save-submit-btn):not(.win-action-open-primary):hover {
+  background: rgba(51, 65, 85, 0.88) !important;
+  border-color: rgba(203, 213, 225, 0.45) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-explorer-cmd-btn:not(.danger-cmd):not(.win-save-submit-btn):not(.win-action-open-primary):hover svg {
+  color: #f8fafc !important;
+}
+
+#modalCloudHub .cloud-library-search-wrap:focus-within {
+  border-color: #0f172a !important;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.08) !important;
+}
+
+#modalCloudHub .cloud-library-search-wrap:focus-within .cloud-library-search-icon {
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-library-search-wrap:focus-within {
+  border-color: #f8fafc !important;
+  box-shadow: 0 0 0 2px rgba(248, 250, 252, 0.12) !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-library-search-wrap:focus-within .cloud-library-search-icon {
+  color: #f8fafc !important;
+}
+
+/* 1-C. 좌측 폴더 트리 · 스플리터 · 용량 게이지 카드 */
+#modalCloudHub .cloud-tree-icon .cv-svg-folder,
+#modalCloudHub .cloud-tree-icon .cv-svg-cloud {
+  color: #475569 !important;
+}
+
+#modalCloudHub .cloud-tree-node.active {
+  background: #ffffff !important;
+  border: 1.5px solid #0f172a !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+#modalCloudHub .cloud-tree-node.active .cloud-tree-icon,
+#modalCloudHub .cloud-tree-node.active .cloud-tree-icon .cv-svg {
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-tree-icon .cv-svg-folder,
+body:not(.theme-light) #modalCloudHub .cloud-tree-icon .cv-svg-cloud {
+  color: #94a3b8 !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-tree-node.active {
+  background: rgba(30, 41, 59, 0.92) !important;
+  border: 1.5px solid #f8fafc !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-tree-node.active .cloud-tree-icon,
+body:not(.theme-light) #modalCloudHub .cloud-tree-node.active .cloud-tree-icon .cv-svg {
+  color: #f8fafc !important;
+}
+
+#modalCloudHub .cloud-explorer-splitter:hover::before,
+#modalCloudHub .cloud-explorer-splitter.is-dragging::before,
+#modalCloudHub .cloud-explorer-splitter:hover::after,
+#modalCloudHub .cloud-explorer-splitter.is-dragging::after {
+  background: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-explorer-splitter:hover::before,
+body:not(.theme-light) #modalCloudHub .cloud-explorer-splitter.is-dragging::before,
+body:not(.theme-light) #modalCloudHub .cloud-explorer-splitter:hover::after,
+body:not(.theme-light) #modalCloudHub .cloud-explorer-splitter.is-dragging::after {
+  background: #f8fafc !important;
+}
+
+#modalCloudHub .cloud-quota-tier-badge {
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #334155 !important;
+}
+
+#modalCloudHub .cloud-quota-tier-badge.tier-pro {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+#modalCloudHub .cloud-quota-tier-badge.tier-premium {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-quota-tier-badge {
+  background: rgba(30, 41, 59, 0.85) !important;
+  border-color: rgba(148, 163, 184, 0.25) !important;
+  color: #cbd5e1 !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-quota-tier-badge.tier-pro {
+  background: rgba(51, 65, 85, 0.85) !important;
+  border-color: rgba(203, 213, 225, 0.4) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-quota-tier-badge.tier-premium {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+#modalCloudHub .cloud-quota-upgrade-btn {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+#modalCloudHub .cloud-quota-upgrade-btn:hover {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-quota-upgrade-btn {
+  background: rgba(30, 41, 59, 0.88) !important;
+  border-color: rgba(148, 163, 184, 0.35) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-quota-upgrade-btn:hover {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+#modalCloudHub .cloud-quota-bar-fill:not(.is-warn):not(.is-danger) {
+  background: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-quota-bar-fill:not(.is-warn):not(.is-danger) {
+  background: #f8fafc !important;
+}
+
+/* 1-D. 체크박스 · 새 폴더/이름변경 인라인 행 · 파일/폴더 리스트 행 · 공유 배지 */
+#modalCloudHub .win-explorer-checkbox {
+  transition: none !important;
+}
+
+#modalCloudHub .win-explorer-checkbox:checked {
+  background-color: #0f172a !important;
+  border-color: #0f172a !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 8.3L6.5 11.3L12.5 4.8' stroke='white' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+}
+
+#modalCloudHub .win-explorer-checkbox:indeterminate {
+  background-color: #0f172a !important;
+  border-color: #0f172a !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cline x1='4' y1='8' x2='12' y2='8' stroke='white' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E") !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-explorer-checkbox:checked {
+  background-color: #f8fafc !important;
+  border-color: #f8fafc !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 8.3L6.5 11.3L12.5 4.8' stroke='%230f172a' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-explorer-checkbox:indeterminate {
+  background-color: #f8fafc !important;
+  border-color: #f8fafc !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cline x1='4' y1='8' x2='12' y2='8' stroke='%230f172a' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E") !important;
+}
+
+#modalCloudHub .win-inline-new-folder-row {
+  background: #f8fafc !important;
+  border-bottom: 1px solid #cbd5e1 !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-inline-new-folder-row {
+  background: rgba(30, 41, 59, 0.72) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.28) !important;
+}
+
+#modalCloudHub .win-folder-icon {
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-folder-icon {
+  color: #f8fafc !important;
+}
+
+#modalCloudHub .win-new-folder-target-badge {
+  background: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-new-folder-target-badge {
+  background: rgba(51, 65, 85, 0.82) !important;
+  border-color: rgba(148, 163, 184, 0.32) !important;
+  color: #f8fafc !important;
+}
+
+#modalCloudHub .win-new-folder-input,
+#modalCloudHub .cloud-item-rename-input {
+  border: 1.5px solid #0f172a !important;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.08) !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-new-folder-input,
+body:not(.theme-light) #modalCloudHub .cloud-item-rename-input {
+  border-color: #f8fafc !important;
+  box-shadow: 0 0 0 2px rgba(248, 250, 252, 0.12) !important;
+}
+
+#modalCloudHub .win-new-folder-btn.btn-primary,
+#modalCloudHub .cloud-item-rename-save {
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+#modalCloudHub .win-new-folder-btn.btn-primary:hover,
+#modalCloudHub .cloud-item-rename-save:hover {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-new-folder-btn.btn-primary,
+body:not(.theme-light) #modalCloudHub .cloud-item-rename-save {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-new-folder-btn.btn-primary:hover,
+body:not(.theme-light) #modalCloudHub .cloud-item-rename-save:hover {
+  background: #e2e8f0 !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+#modalCloudHub .win-explorer-row:hover {
+  background: #f8fafc !important;
+}
+
+#modalCloudHub .win-explorer-row.selected {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-explorer-row:hover {
+  background: rgba(248, 250, 252, 0.06) !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-explorer-row.selected {
+  background: rgba(248, 250, 252, 0.1) !important;
+  border-color: rgba(203, 213, 225, 0.32) !important;
+}
+
+#modalCloudHub .drop-target-hover {
+  background: rgba(15, 23, 42, 0.06) !important;
+  border-color: #0f172a !important;
+  box-shadow: 0 0 0 1.5px rgba(15, 23, 42, 0.2) !important;
+}
+
+body:not(.theme-light) #modalCloudHub .drop-target-hover {
+  background: rgba(248, 250, 252, 0.1) !important;
+  border-color: #f8fafc !important;
+  box-shadow: 0 0 0 1.5px rgba(248, 250, 252, 0.24) !important;
+}
+
+#modalCloudHub .win-row-icon.is-folder-icon,
+#modalCloudHub .graphly-file-tile-icon {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-row-icon.is-folder-icon,
+body:not(.theme-light) #modalCloudHub .graphly-file-tile-icon {
+  background: rgba(30, 41, 59, 0.82) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #f8fafc !important;
+}
+
+#modalCloudHub .cloud-perm-link-badge {
+  background: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-perm-link-badge {
+  background: rgba(51, 65, 85, 0.8) !important;
+  border-color: rgba(203, 213, 225, 0.34) !important;
+  color: #f8fafc !important;
+}
+
+#modalCloudHub .cloud-perm-link-badge.is-copied-flash {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-perm-link-badge.is-copied-flash {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+#modalCloudHub .btn-cloud-share-item:hover:not(:disabled),
+#modalCloudHub .btn-cloud-edit-item:hover:not(:disabled) {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .btn-cloud-share-item:hover:not(:disabled),
+body:not(.theme-light) #modalCloudHub .btn-cloud-edit-item:hover:not(:disabled) {
+  background: rgba(51, 65, 85, 0.85) !important;
+  border-color: rgba(203, 213, 225, 0.38) !important;
+  color: #f8fafc !important;
+}
+
+#modalCloudHub .btn-cloud-share-item.is-link-active {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .btn-cloud-share-item.is-link-active {
+  background: rgba(51, 65, 85, 0.78) !important;
+  border-color: rgba(203, 213, 225, 0.34) !important;
+  color: #f8fafc !important;
+}
+
+#modalCloudHub .btn-cloud-share-item.is-popover-open,
+#modalCloudHub .btn-cloud-share-item.is-copied-flash,
+#modalCloudHub .btn-cloud-share-item.is-loading {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+  transition: none !important;
+}
+
+body:not(.theme-light) #modalCloudHub .btn-cloud-share-item.is-popover-open,
+body:not(.theme-light) #modalCloudHub .btn-cloud-share-item.is-copied-flash,
+body:not(.theme-light) #modalCloudHub .btn-cloud-share-item.is-loading {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+#modalCloudHub .cloud-login-empty-icon {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .cloud-login-empty-icon {
+  background: rgba(30, 41, 59, 0.82) !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  color: #f8fafc !important;
+}
+
+#modalCloudHub .btn-cloud-go-settings-login {
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+#modalCloudHub .btn-cloud-go-settings-login:hover {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalCloudHub .btn-cloud-go-settings-login {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .btn-cloud-go-settings-login:hover {
+  background: #e2e8f0 !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* 1-E. 하단 스마트 푸터 ([저장] · [칠판에 열기] · 폴더 이동 드롭다운) */
+#modalCloudHub .win-save-title-input:focus {
+  border-color: #0f172a !important;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.08) !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-save-title-input:focus {
+  border-color: #f8fafc !important;
+  box-shadow: 0 0 0 2px rgba(248, 250, 252, 0.12) !important;
+}
+
+#modalCloudHub .win-save-submit-btn,
+#modalCloudHub .win-action-open-primary {
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+#modalCloudHub .win-save-submit-btn svg,
+#modalCloudHub .win-action-open-primary svg {
+  color: #ffffff !important;
+}
+
+#modalCloudHub .win-save-submit-btn:hover:not(:disabled),
+#modalCloudHub .win-action-open-primary:hover:not(:disabled) {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-save-submit-btn,
+body:not(.theme-light) #modalCloudHub .win-action-open-primary {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-save-submit-btn svg,
+body:not(.theme-light) #modalCloudHub .win-action-open-primary svg {
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-save-submit-btn:hover:not(:disabled),
+body:not(.theme-light) #modalCloudHub .win-action-open-primary:hover:not(:disabled) {
+  background: #e2e8f0 !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+#modalCloudHub .win-selection-count-badge {
+  background: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-selection-count-badge {
+  background: rgba(51, 65, 85, 0.85) !important;
+  border-color: rgba(203, 213, 225, 0.35) !important;
+  color: #f8fafc !important;
+}
+
+#modalCloudHub .win-move-menu-fold-all-btn:hover,
+#modalCloudHub .win-move-sub-toggle:hover,
+#modalCloudHub .win-move-menu-item:hover:not(.is-disabled-target) {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+#modalCloudHub .win-move-menu-search-box:focus-within {
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-move-menu-fold-all-btn:hover,
+body:not(.theme-light) #modalCloudHub .win-move-sub-toggle:hover,
+body:not(.theme-light) #modalCloudHub .win-move-menu-item:hover:not(.is-disabled-target) {
+  background: rgba(51, 65, 85, 0.85) !important;
+  border-color: rgba(203, 213, 225, 0.35) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalCloudHub .win-move-menu-search-box:focus-within {
+  border-color: #f8fafc !important;
+  color: #f8fafc !important;
+}
+
+/* 2. 클라우드 공유 옵션 미니 팝오버 (#cloudShareOptionPopover — z-index: 12050) */
+#cloudShareOptionPopover.cloud-share-option-popover {
+  z-index: 12050 !important;
+}
+
+#cloudShareOptionPopover .cloud-share-pop-title-icon {
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #cloudShareOptionPopover .cloud-share-pop-title-icon {
+  color: #f8fafc !important;
+}
+
+#cloudShareOptionPopover .cloud-share-pop-filter-tag.is-partial {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #cloudShareOptionPopover .cloud-share-pop-filter-tag.is-partial {
+  background: rgba(51, 65, 85, 0.85) !important;
+  border-color: rgba(203, 213, 225, 0.36) !important;
+  color: #f8fafc !important;
+}
+
+#cloudShareOptionPopover .cloud-share-layer-chip.active {
+  background: #ffffff !important;
+  border: 1.5px solid #0f172a !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+#cloudShareOptionPopover .cloud-share-layer-chip.active .cloud-share-check-icon {
+  color: #0f172a !important;
+  opacity: 1 !important;
+}
+
+body:not(.theme-light) #cloudShareOptionPopover .cloud-share-layer-chip.active {
+  background: rgba(30, 41, 59, 0.92) !important;
+  border: 1.5px solid #f8fafc !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #cloudShareOptionPopover .cloud-share-layer-chip.active .cloud-share-check-icon {
+  color: #f8fafc !important;
+}
+
+#cloudShareOptionPopover .cloud-share-pop-status.is-active,
+#cloudShareOptionPopover .cloud-share-pop-status.is-active-perm,
+#cloudShareOptionPopover .cloud-share-pop-status.is-new-perm {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+#cloudShareOptionPopover .cloud-share-pop-status.is-active .pop-status-dot,
+#cloudShareOptionPopover .cloud-share-pop-status.is-active-perm .pop-status-dot,
+#cloudShareOptionPopover .cloud-share-pop-status.is-new-perm .pop-status-dot {
+  background: #0f172a !important;
+}
+
+body:not(.theme-light) #cloudShareOptionPopover .cloud-share-pop-status.is-active,
+body:not(.theme-light) #cloudShareOptionPopover .cloud-share-pop-status.is-active-perm,
+body:not(.theme-light) #cloudShareOptionPopover .cloud-share-pop-status.is-new-perm {
+  background: rgba(30, 41, 59, 0.82) !important;
+  border-color: rgba(203, 213, 225, 0.32) !important;
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #cloudShareOptionPopover .cloud-share-pop-status.is-active .pop-status-dot,
+body:not(.theme-light) #cloudShareOptionPopover .cloud-share-pop-status.is-active-perm .pop-status-dot,
+body:not(.theme-light) #cloudShareOptionPopover .cloud-share-pop-status.is-new-perm .pop-status-dot {
+  background: #f8fafc !important;
+}
+
+#cloudShareOptionPopover .cloud-share-pop-btn.is-primary {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+#cloudShareOptionPopover .cloud-share-pop-btn.is-primary:hover:not(:disabled) {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #cloudShareOptionPopover .cloud-share-pop-btn.is-primary {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #cloudShareOptionPopover .cloud-share-pop-btn.is-primary:hover:not(:disabled) {
+  background: #e2e8f0 !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+#cloudShareOptionPopover .cloud-share-pop-btn.is-success-flash,
+#cloudShareOptionPopover .cloud-share-pop-btn.is-primary.is-success-flash {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #cloudShareOptionPopover .cloud-share-pop-btn.is-success-flash,
+body:not(.theme-light) #cloudShareOptionPopover .cloud-share-pop-btn.is-primary.is-success-flash {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* 3. 파일 이름 중복 해결 모달 (#modalCloudDupResolve — z-index: 100050) */
+#modalCloudDupResolve.cloud-dup-modal-backdrop {
+  z-index: 100050 !important;
+}
+
+#modalCloudDupResolve .cloud-dup-modal-title svg {
+  color: #0f172a;
+  flex-shrink: 0;
+}
+
+#modalCloudDupResolve .cloud-dup-choice-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#modalCloudDupResolve .cloud-dup-choice-btn.is-overwrite {
+  background: #f8fafc !important;
+  border: 1.5px solid #0f172a !important;
+}
+
+#modalCloudDupResolve .cloud-dup-choice-btn.is-overwrite:hover {
+  background: #f1f5f9 !important;
+  border-color: #0f172a !important;
+}
+
+#modalCloudDupResolve .cloud-dup-choice-btn.is-overwrite .cloud-dup-choice-main {
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalCloudDupResolve .cloud-dup-modal-card {
+  background: #0f172a;
+  border-color: rgba(148, 163, 184, 0.3);
+  color: #f8fafc;
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.65);
+}
+
+body:not(.theme-light) #modalCloudDupResolve .cloud-dup-modal-title,
+body:not(.theme-light) #modalCloudDupResolve .cloud-dup-modal-title svg {
+  color: #f8fafc;
+}
+
+body:not(.theme-light) #modalCloudDupResolve .cloud-dup-modal-desc {
+  background: rgba(30, 41, 59, 0.72);
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #cbd5e1;
+}
+
+body:not(.theme-light) #modalCloudDupResolve .cloud-dup-choice-btn {
+  background: rgba(30, 41, 59, 0.65);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+body:not(.theme-light) #modalCloudDupResolve .cloud-dup-choice-btn:hover {
+  background: rgba(51, 65, 85, 0.85);
+  border-color: rgba(203, 213, 225, 0.5);
+}
+
+body:not(.theme-light) #modalCloudDupResolve .cloud-dup-choice-btn.is-overwrite {
+  background: rgba(30, 41, 59, 0.95) !important;
+  border-color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalCloudDupResolve .cloud-dup-choice-main,
+body:not(.theme-light) #modalCloudDupResolve .cloud-dup-choice-btn.is-overwrite .cloud-dup-choice-main {
+  color: #f8fafc !important;
+}
+
+body:not(.theme-light) #modalCloudDupResolve .cloud-dup-choice-sub,
+body:not(.theme-light) #modalCloudDupResolve .cloud-dup-apply-all-label {
+  color: #94a3b8;
+}
+
+body:not(.theme-light) #modalCloudDupResolve .cloud-dup-cancel-btn {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: #e2e8f0;
+}
+
+body:not(.theme-light) #modalCloudDupResolve .cloud-dup-cancel-btn:hover {
+  background: rgba(51, 65, 85, 0.92);
+  color: #ffffff;
+}
+
+/* 4. PDF 교재 뷰어 (#modalPdfViewer) & 드롭 오버레이 (#pdfDropOverlay) */
+#modalPdfViewer.pdf-modal-backdrop {
+  z-index: 12000 !important;
+}
+
+#modalPdfViewer #pdfViewport::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+#modalPdfViewer #pdfViewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#modalPdfViewer #pdfViewport::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.42);
+  border-radius: 999px;
+}
+
+#modalPdfViewer #pdfViewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 0.65);
+}
+
+body:not(.theme-light) #modalPdfViewer #pdfViewport::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.36);
+}
+
+#modalPdfViewer .pdf-file-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #e2e8f0 !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-file-icon {
+  color: #0f172a !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-modal-container {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 12px !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-modal-header {
+  background: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-header-btn-subtle,
+body.theme-light #modalPdfViewer .pdf-tool-btn,
+body.theme-light #modalPdfViewer .pdf-nav-btn {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #1e293b !important;
+  box-shadow: none !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-header-btn-subtle:hover,
+body.theme-light #modalPdfViewer .pdf-tool-btn:hover,
+body.theme-light #modalPdfViewer .pdf-nav-btn:hover:not(:disabled) {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+#modalPdfViewer .pdf-page-input {
+  color: #f8fafc !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+}
+
+#modalPdfViewer .pdf-page-input:focus {
+  border-color: #f8fafc !important;
+  outline: none !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-page-input {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-page-input:focus {
+  border-color: #0f172a !important;
+}
+
+/* [영역 캡처] 토글 스위치 (#btnPdfCropToggle) — OFF: 슬레이트 아웃라인 / ON(.active): 차콜 솔리드 점등 */
+#modalPdfViewer .pdf-crop-toggle-btn {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(203, 213, 225, 0.28) !important;
+  color: #f1f5f9 !important;
+  box-shadow: none !important;
+  transition: none !important;
+}
+
+#modalPdfViewer .pdf-crop-toggle-btn:hover {
+  background: rgba(248, 250, 252, 0.12) !important;
+  border-color: rgba(248, 250, 252, 0.45) !important;
+  color: #ffffff !important;
+}
+
+#modalPdfViewer .pdf-crop-toggle-btn.active {
+  background: #f8fafc !important;
+  border: 1.5px solid #f8fafc !important;
+  color: #0f172a !important;
+  box-shadow: none !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-crop-toggle-btn {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #1e293b !important;
+  font-weight: 700 !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-crop-toggle-btn:hover {
+  background: #f1f5f9 !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-crop-toggle-btn.active {
+  background: #0f172a !important;
+  border: 1.5px solid #0f172a !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+/* [전체 페이지 캡처] 액션 버튼 (#btnPdfOpenFullPage) — 퍼플 그라데이션 제거 · 정갈한 차콜 키라인/호버 반전 */
+#modalPdfViewer .pdf-open-page-btn {
+  background: rgba(248, 250, 252, 0.08) !important;
+  border: 1.5px solid rgba(248, 250, 252, 0.55) !important;
+  color: #f8fafc !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+#modalPdfViewer .pdf-open-page-btn:hover {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-open-page-btn {
+  background: #f8fafc !important;
+  border: 1.5px solid #0f172a !important;
+  color: #0f172a !important;
+  box-shadow: none !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-open-page-btn:hover {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+body.theme-light #modalPdfViewer .btn-modal-close:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+#modalPdfViewer .pdf-page-number-tag {
+  background: #0f172a !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+#modalPdfViewer .pdf-crop-box,
+body.theme-light #modalPdfViewer .pdf-crop-box {
+  border: 2px dashed #0f172a !important;
+  background: rgba(15, 23, 42, 0.09) !important;
+}
+
+#modalPdfViewer .crop-handle,
+body.theme-light #modalPdfViewer .crop-handle {
+  background: #0f172a !important;
+  border: 1.5px solid #ffffff !important;
+}
+
+#pdfDropOverlay .pdf-drop-card {
+  border: 2px dashed #f8fafc !important;
+  background: rgba(15, 23, 42, 0.92) !important;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45) !important;
+  animation: none !important;
+}
+
+#pdfDropOverlay .drop-icon {
+  color: #f8fafc !important;
+}
+
+body.theme-light #pdfDropOverlay .pdf-drop-card {
+  border: 2px dashed #0f172a !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.14) !important;
+}
+
+body.theme-light #pdfDropOverlay .drop-icon {
+  color: #0f172a !important;
+}
+
+/* 아이패드 세로모드(744px~880px) PDF 상단 바 무스크롤 수납 최적화 */
+@media (max-width: 880px) {
+  #modalPdfViewer .pdf-modal-header {
+    padding: 0 10px !important;
+    gap: 6px !important;
+  }
+
+  #modalPdfViewer .pdf-file-title {
+    max-width: 96px !important;
+    font-size: 12.5px !important;
+  }
+
+  #modalPdfViewer .pdf-header-btn-subtle {
+    padding: 0 8px !important;
+    font-size: 11.5px !important;
+  }
+
+  #modalPdfViewer .pdf-header-center {
+    gap: 4px !important;
+  }
+
+  #modalPdfViewer .pdf-tool-btn,
+  #modalPdfViewer .pdf-nav-btn {
+    padding: 0 7px !important;
+    font-size: 12px !important;
+  }
+
+  #modalPdfViewer .pdf-crop-toggle-btn,
+  #modalPdfViewer .pdf-open-page-btn {
+    padding: 0 9px !important;
+    font-size: 12px !important;
+    height: 32px !important;
+  }
+}
+
+/* 5. 남은 소형 팝오버 (#pdfToGraphCropFloatingBar · #playlistAddSlideMenu · #playlistGridPopover · #railResetBoardPopover) */
+#pdfToGraphCropFloatingBar.pdf-to-graph-crop-bar {
+  background: rgba(15, 23, 42, 0.97) !important;
+  border: 1px solid rgba(148, 163, 184, 0.34) !important;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.44) !important;
+}
+
+body.theme-light #pdfToGraphCropFloatingBar.pdf-to-graph-crop-bar {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14) !important;
+}
+
+#pdfToGraphCropFloatingBar .pdf-crop-choice-btn {
+  background: #f8fafc !important;
+  border: 1px solid #f8fafc !important;
+  color: #0f172a !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  box-shadow: none !important;
+}
+
+body.theme-light #pdfToGraphCropFloatingBar .pdf-crop-choice-btn {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+#pdfToGraphCropFloatingBar .pdf-skip-choice-btn {
+  background: rgba(30, 41, 59, 0.85) !important;
+  border: 1px solid rgba(203, 213, 225, 0.35) !important;
+  color: #f8fafc !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  box-shadow: none !important;
+}
+
+body.theme-light #pdfToGraphCropFloatingBar .pdf-skip-choice-btn {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #1e293b !important;
+}
+
+body.theme-light #pdfToGraphCropFloatingBar .pdf-skip-choice-btn:hover {
+  background: #f1f5f9 !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+}
+
+#btnCancelPdfCropToGraph.pdf-crop-active-pill {
+  background: #0f172a !important;
+  border: 1.5px solid #f8fafc !important;
+  color: #f8fafc !important;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.3) !important;
+}
+
+body.theme-light #btnCancelPdfCropToGraph.pdf-crop-active-pill {
+  background: #0f172a !important;
+  border: 1.5px solid #0f172a !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.18) !important;
+}
+
+body.theme-light #btnCancelPdfCropToGraph.pdf-crop-active-pill .pdf-crop-active-cancel-x {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+}
+
+#lessonPlaylistNavBar .slim-add-slide-btn {
+  background: rgba(248, 250, 252, 0.12) !important;
+  border: 1px solid rgba(203, 213, 225, 0.36) !important;
+  color: #f8fafc !important;
+}
+
+#lessonPlaylistNavBar .slim-add-slide-btn:hover {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+body.theme-light #lessonPlaylistNavBar .slim-add-slide-btn {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+body.theme-light #lessonPlaylistNavBar .slim-add-slide-btn:hover {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+#playlistAddSlideMenu .slide-add-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: currentColor;
+}
+
+#playlistAddSlideMenu .slide-add-menu-item:hover {
+  background: rgba(248, 250, 252, 0.12) !important;
+  color: #ffffff !important;
+}
+
+body.theme-light #playlistAddSlideMenu .slide-add-menu-item:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+#playlistGridPopover .slide-grid-select-btn:hover {
+  background: rgba(248, 250, 252, 0.16) !important;
+  border-color: #f8fafc !important;
+  color: #ffffff !important;
+}
+
+body.theme-light #playlistGridPopover .slide-grid-select-btn:hover {
+  background: #f1f5f9 !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+}
+
+#playlistGridPopover .slide-chips-grid .slide-chip-item.active,
+#pdfBoardGridPopover .slide-chips-grid .slide-chip-item.active {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+  box-shadow: none !important;
+}
+
+body.theme-light #playlistGridPopover .slide-chips-grid .slide-chip-item.active,
+body.theme-light #pdfBoardGridPopover .slide-chips-grid .slide-chip-item.active {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+#playlistGridPopover .slide-chips-grid .slide-chip-item.slide-chip-add-blank,
+#pdfBoardGridPopover .slide-chips-grid .slide-chip-item.slide-chip-add-blank {
+  border: 1.5px dashed rgba(203, 213, 225, 0.45) !important;
+  background: rgba(248, 250, 252, 0.06) !important;
+  color: #e2e8f0 !important;
+}
+
+#playlistGridPopover .slide-chips-grid .slide-chip-item.slide-chip-add-blank:hover,
+#pdfBoardGridPopover .slide-chips-grid .slide-chip-item.slide-chip-add-blank:hover {
+  background: #f8fafc !important;
+  border-style: solid !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+body.theme-light #playlistGridPopover .slide-chips-grid .slide-chip-item.slide-chip-add-blank,
+body.theme-light #pdfBoardGridPopover .slide-chips-grid .slide-chip-item.slide-chip-add-blank {
+  border: 1.5px dashed #94a3b8 !important;
+  background: #f8fafc !important;
+  color: #334155 !important;
+}
+
+body.theme-light #playlistGridPopover .slide-chips-grid .slide-chip-item.slide-chip-add-blank:hover,
+body.theme-light #pdfBoardGridPopover .slide-chips-grid .slide-chip-item.slide-chip-add-blank:hover {
+  background: #0f172a !important;
+  border-style: solid !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+#railResetBoardPopover.rail-reset-board-popover {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14) !important;
+}
+
+body:not(.theme-light) #railResetBoardPopover.rail-reset-board-popover {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.52) !important;
+}
+
+#railResetBoardPopover .settings-clean-btn {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #1e293b !important;
+  font-weight: 600 !important;
+}
+
+#railResetBoardPopover .settings-clean-btn:hover {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #railResetBoardPopover .settings-clean-btn {
+  background: rgba(30, 41, 59, 0.8) !important;
+  border-color: rgba(148, 163, 184, 0.25) !important;
+  color: #e2e8f0 !important;
+}
+
+body:not(.theme-light) #railResetBoardPopover .settings-clean-btn:hover {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* 6. 합성함수 스튜디오 사전 안내 모달 (#modalNAxisSetupNotice — z-index: 12000) */
+#modalNAxisSetupNotice.n-axis-studio-backdrop {
+  z-index: 12000 !important;
+  background: rgba(15, 23, 42, 0.52) !important;
+}
+
+#modalNAxisSetupNotice .n-axis-setup-notice-card {
+  border-radius: 16px !important;
+}
+
+body.theme-light #modalNAxisSetupNotice .n-axis-setup-notice-card {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.2) !important;
+}
+
+body.theme-light #modalNAxisSetupNotice .n-axis-studio-header {
+  background: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light #modalNAxisSetupNotice .n-axis-logo {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+#modalNAxisSetupNotice .n-axis-notice-card,
+#modalNAxisSetupNotice #lblNAxisNoticeDesc,
+#modalNAxisSetupNotice #lblNAxisNoticeTitle {
+  word-break: keep-all;
+}
+
+#modalNAxisSetupNotice .n-axis-notice-btn.primary {
+  background: #f8fafc !important;
+  border: 1px solid #f8fafc !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+#modalNAxisSetupNotice .n-axis-notice-btn.primary:hover {
+  background: #e2e8f0 !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+body.theme-light #modalNAxisSetupNotice .n-axis-notice-btn.primary {
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
+  color: #ffffff !important;
+}
+
+body.theme-light #modalNAxisSetupNotice .n-axis-notice-btn.primary:hover {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  color: #ffffff !important;
+}

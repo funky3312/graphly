@@ -331,7 +331,7 @@
           lblNoticeDesc.innerHTML = '합성함수를 관찰하려면 최소 2개의 그래프가 세팅되어 있어야 합니다.<br>두 번째 그래프를 추가하거나, 같은 함수를 합성하려면 카드 상단의 <b>[복제]</b> 버튼으로 2개를 만든 뒤 다시 실행해 주세요.';
         }
         if (boxNoticeStatus) {
-          boxNoticeStatus.textContent = `현재 세팅됨: 📌 ${firstLabel} (1개 더 필요)`;
+          boxNoticeStatus.textContent = `현재 세팅됨: ${firstLabel} (1개 더 필요)`;
         }
         if (btnOpenDrawerFromNotice) {
           btnOpenDrawerFromNotice.textContent = '+ 두 번째 그래프 추가';

@@ -1382,8 +1382,8 @@
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
         const folderLabel = folderPath
-          ? `📁 ${String(folderPath).replace(/\//g, ' › ')}`
-          : '☁️ 내 클라우드';
+          ? String(folderPath).replace(/\//g, ' › ')
+          : '내 클라우드';
         const safeFolderLabel = folderLabel
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
@@ -1395,18 +1395,19 @@
         backdrop.innerHTML = `
         <div class="cloud-dup-modal-card" role="dialog" aria-modal="true">
           <div class="cloud-dup-modal-title">
-            <span>⚠️ 같은 이름의 파일이 이미 있습니다</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span>같은 이름의 파일이 이미 있습니다</span>
           </div>
           <div class="cloud-dup-modal-desc">
             <strong>[${safeFolderLabel}]</strong> 폴더에 이미 <strong>"${safeTitle}"</strong> 파일이 있습니다.<br>어떻게 처리할까요?
           </div>
           <div class="cloud-dup-modal-actions">
             <button type="button" class="cloud-dup-choice-btn is-overwrite" data-dup-act="overwrite">
-              <span class="cloud-dup-choice-main">🔄 덮어쓰기 (기존 파일 교체)</span>
+              <span class="cloud-dup-choice-main"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>덮어쓰기 (기존 파일 교체)</span></span>
               <span class="cloud-dup-choice-sub">기존 파일을 지우고 지금 파일로 업데이트합니다</span>
             </button>
             <button type="button" class="cloud-dup-choice-btn" data-dup-act="rename">
-              <span class="cloud-dup-choice-main">➕ 새 이름으로 저장 — "${safeNextTitle}"</span>
+              <span class="cloud-dup-choice-main"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg><span>새 이름으로 저장 — "${safeNextTitle}"</span></span>
               <span class="cloud-dup-choice-sub">이름 뒤에 번호를 붙여 두 파일을 모두 유지합니다</span>
             </button>
           </div>
@@ -2184,10 +2185,10 @@
       if (!sel) return;
       const prevVal = sel.value;
       const folders = this.getCloudFoldersList();
-      sel.innerHTML = `<option value="">📁 기본 보관함</option>` +
+      sel.innerHTML = `<option value="">기본 보관함</option>` +
         folders.map(f => {
           const esc = f.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-          return `<option value="${esc}">📁 ${esc}</option>`;
+          return `<option value="${esc}">${esc}</option>`;
         }).join('');
       const targetVal = (prevVal && folders.includes(prevVal))
         ? prevVal
@@ -2569,7 +2570,7 @@
         lblSettingsAcct.innerHTML = '';
 
         const acctText = emailStr || this.cloudUser.displayName || '';
-        const planLabel = tier === 'premium' ? '💎 Premium' : (tier === 'pro' ? '👑 Pro 플랜' : '무료 플랜');
+        const planLabel = tier === 'premium' ? 'Premium' : (tier === 'pro' ? 'Pro' : '무료');
         const planClass = tier === 'premium' ? 'is-pro is-premium' : (tier === 'pro' ? 'is-pro' : 'is-free');
 
         const spanEmail = document.createElement('span');
@@ -3398,9 +3399,12 @@
       const isLoading = status === 'loading';
       const isSuccess = status === 'success';
       const isPremium = tier === 'premium' || /premium|프리미엄/i.test(String(planName || title || ''));
-      const accentColor = isPremium ? '#7c3aed' : '#2563eb';
-      const icon = isLoading ? '⏳' : (isSuccess ? (isPremium ? '💎' : '🎉') : '⚠️');
-      const resolvedTitle = title || (isLoading ? '결제 승인 확인 중...' : (isSuccess ? `Graphly ${isPremium ? 'Premium' : 'Pro'} 결제가 완료되었습니다!` : '결제 안내'));
+      const iconSvg = isLoading
+        ? '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="cv-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>'
+        : (isSuccess
+          ? '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+          : '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>');
+      const resolvedTitle = title || (isLoading ? '결제 승인 확인 중...' : (isSuccess ? `Graphly ${isPremium ? 'Premium' : 'Pro'} 결제가 완료되었습니다` : '결제 안내'));
       const numAmt = Number(amount) || 0;
       const formattedAmt = numAmt > 0 ? `${numAmt.toLocaleString('ko-KR')}원 (VAT 포함)` : '';
       let formattedExp = '';
@@ -3416,32 +3420,32 @@
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
       }[ch]));
       const benefitHighlightText = isPremium
-        ? '💎 클라우드 20GB · 내 그래프 100개 · 60분 녹화 · 영구 링크 · 홍보배너 활성화'
-        : '👑 클라우드 5GB · 내 그래프 30개 · 60분 녹화 · 무제한 공유(7일) 활성화';
+        ? '클라우드 20GB · 내 그래프 100개 · 60분 녹화 · 영구 링크 · 홍보배너 활성화'
+        : '클라우드 5GB · 내 그래프 30개 · 60분 녹화 · 무제한 공유(7일) 활성화';
 
       backdrop.innerHTML = `
-      <div class="smart-modal-card" style="max-width: 450px; width: 92%; text-align: center; padding: 26px 22px 20px;">
-        <div style="font-size: 42px; line-height: 1; margin-bottom: 12px;">${icon}</div>
-        <div style="font-size: 18.5px; font-weight: 800; color: ${isSuccess ? accentColor : 'inherit'}; margin-bottom: 8px;">
+      <div class="smart-modal-card" style="max-width: 440px; width: 92%; text-align: center; padding: 26px 22px 20px; border-radius: 18px;">
+        <div style="width: 46px; height: 46px; margin: 0 auto 14px; border-radius: 13px; background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; display: flex; align-items: center; justify-content: center;">${iconSvg}</div>
+        <div style="font-size: 18px; font-weight: 800; color: inherit; margin-bottom: 8px; letter-spacing: -0.02em;">
           ${escapeText(resolvedTitle)}
         </div>
-        <div style="font-size: 13.5px; opacity: 0.85; line-height: 1.55; margin-bottom: 16px;">
+        <div style="font-size: 13px; opacity: 0.82; line-height: 1.58; margin-bottom: 16px;">
           ${escapeText(message || (isSuccess ? `결제가 최종 승인되어 모든 ${isPremium ? 'Premium' : 'Pro'} 기능이 즉시 활성화되었습니다.` : ''))}
         </div>
         ${isSuccess ? `
-          <div style="background: rgba(37,99,235,0.07); border: 1px solid rgba(37,99,235,0.22); border-radius: 12px; padding: 14px; text-align: left; font-size: 13px; display: flex; flex-direction: column; gap: 7px; margin-bottom: 18px;">
+          <div style="background: rgba(148,163,184,0.09); border: 1px solid rgba(148,163,184,0.28); border-radius: 12px; padding: 14px; text-align: left; font-size: 13px; display: flex; flex-direction: column; gap: 7px; margin-bottom: 18px;">
             ${planName ? `<div style="display:flex; justify-content:space-between; gap:8px;"><span style="opacity:0.75; font-weight:600;">이용권</span><strong style="font-weight:800;">${escapeText(planName)}</strong></div>` : ''}
-            ${formattedAmt ? `<div style="display:flex; justify-content:space-between; gap:8px;"><span style="opacity:0.75; font-weight:600;">결제 금액</span><strong style="color:${accentColor}; font-weight:800;">${escapeText(formattedAmt)}</strong></div>` : ''}
+            ${formattedAmt ? `<div style="display:flex; justify-content:space-between; gap:8px;"><span style="opacity:0.75; font-weight:600;">결제 금액</span><strong style="font-weight:800;">${escapeText(formattedAmt)}</strong></div>` : ''}
             ${formattedExp ? `<div style="display:flex; justify-content:space-between; gap:8px;"><span style="opacity:0.75; font-weight:600;">이용 기간</span><strong style="font-weight:800;">${escapeText(formattedExp)}</strong></div>` : ''}
-            <div style="border-top: 1px dashed rgba(148,163,184,0.35); margin-top: 4px; padding-top: 8px; font-size: 11.8px; color: ${accentColor}; font-weight: 700; text-align: center;">
+            <div style="border-top: 1px dashed rgba(148,163,184,0.35); margin-top: 4px; padding-top: 8px; font-size: 11.8px; font-weight: 700; text-align: center; opacity: 0.88;">
               ${benefitHighlightText}
             </div>
           </div>
         ` : ''}
         ${!isLoading ? `
           <button type="button" id="btnConfirmTossPaymentResultModal" class="btn-primary"
-            style="width: 100%; padding: 12.5px; border-radius: 10px; font-size: 14.5px; font-weight: 800; background: ${isSuccess ? (isPremium ? 'linear-gradient(135deg,#7c3aed,#4f46e5)' : 'linear-gradient(135deg,#2563eb,#4f46e5)') : '#334155'}; color: #fff; border: none; cursor: pointer;">
-            ${isSuccess ? `${isPremium ? '💎' : '👑'} 확인 (바로 시작하기)` : '확인'}
+            style="width: 100%; height: 42px; border-radius: 10px; font-size: 14px; font-weight: 800; background: #0f172a; color: #fff; border: 1px solid #0f172a; cursor: pointer;">
+            ${isSuccess ? '확인 (바로 시작하기)' : '확인'}
           </button>
         ` : ''}
       </div>
@@ -4621,7 +4625,7 @@
       const banner = document.getElementById('cloudEmailVerifyBanner');
       const lblMsg = document.getElementById('lblEmailVerifyPendingMsg');
       if (lblMsg) {
-        lblMsg.textContent = customMsg || `📩 [${normEmail}] 메일함으로 인증 링크를 발송했습니다! 메일에서 인증 링크를 클릭한 뒤 아래 [인증 완료 확인]을 눌러주세요.`;
+        lblMsg.textContent = customMsg || `[${normEmail}] 메일함으로 인증 링크를 발송했습니다. 메일에서 인증 링크를 클릭한 뒤 아래 [인증 완료 확인]을 눌러주세요.`;
       }
       if (banner) banner.style.display = 'block';
     }
@@ -5364,7 +5368,7 @@
         }
       };
       if (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:') {
-        const fileMsg = '⚠️ 로컬 파일(file://)에서는 Google OAuth가 제한됩니다. graphly.net 또는 아이디 로그인을 이용해 주세요.';
+        const fileMsg = '로컬 파일(file://)에서는 Google OAuth가 제한됩니다. graphly.net 또는 아이디 로그인을 이용해 주세요.';
         showAccountInlineNotice(fileMsg, true);
         this.showToast(fileMsg);
         return;
@@ -5387,7 +5391,7 @@
           } catch (e) { }
         }
         const guideMsg = `${inAppInfo.appName} 앱 내장 브라우저에서는 Google 보안 정책상 구글 로그인이 제한됩니다. 우측 메뉴(⋯)에서 [Safari / 외부 브라우저로 열기]를 누르시거나 아래 [아이디 로그인]을 이용해 주세요.`;
-        showAccountInlineNotice(`⚠️ ${guideMsg}`, true);
+        showAccountInlineNotice(guideMsg, true);
         if (typeof this.showTossPaymentResultModal === 'function') {
           this.showTossPaymentResultModal({
             status: 'warning',
@@ -11637,7 +11641,9 @@
         lblMenuNextPdfPage.textContent = '다음 페이지';
       }
       if (iconMenuPickPdf) {
-        iconMenuPickPdf.textContent = isPdfPageMode ? '🔍' : '✂️';
+        iconMenuPickPdf.innerHTML = isPdfPageMode
+          ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+          : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>';
       }
       if (lblMenuPickPdf) {
         lblMenuPickPdf.textContent = isPdfPageMode ? '페이지 선택' : '다음 캡처';
@@ -12211,7 +12217,7 @@
             badgeSettings.classList.add('is-off');
           }
         } else {
-          badgeSettings.textContent = '💎 Premium';
+          badgeSettings.textContent = 'Premium';
         }
       }
 
@@ -12249,10 +12255,10 @@
       } else {
         if (wrapToggle) wrapToggle.style.display = 'none';
         if (lblSummary) {
-          lblSummary.textContent = '뷰어 상단 학원·선생님 홍보배너 (💎 Premium)';
+          lblSummary.textContent = '뷰어 상단 학원·선생님 홍보배너 (Premium)';
         }
         if (btnOpen) {
-          btnOpen.textContent = '미리보기 ▸';
+          btnOpen.innerHTML = '<span>미리보기</span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg>';
         }
       }
     }
@@ -12309,7 +12315,7 @@
         upsellNotice.style.display = isPremium ? 'none' : 'block';
       }
       if (btnSave) {
-        btnSave.textContent = isPremium ? '💾 배너 설정 저장' : '💎 Premium 업그레이드하고 적용하기';
+        btnSave.textContent = isPremium ? '배너 설정 저장' : 'Premium 업그레이드하고 적용';
         btnSave.classList.toggle('is-upsell-btn', !isPremium);
       }
 
@@ -13294,9 +13300,14 @@
       overlay.id = 'modalPermanentShareLocked';
       overlay.style.cssText = 'position:fixed;inset:0;z-index:13500;background:rgba(15,23,42,0.66);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:18px;';
       overlay.innerHTML = `
-      <div style="width:100%;max-width:410px;background:#ffffff;border-radius:20px;padding:26px 24px 22px;box-shadow:0 24px 60px rgba(15,23,42,0.34);text-align:center;color:#0f172a;font-family:Pretendard,sans-serif;">
-        <div style="font-size:40px;line-height:1;margin-bottom:12px;">🔒</div>
-        <div style="font-size:18px;font-weight:800;margin-bottom:8px;letter-spacing:-0.3px;">일시 잠금된 공유 링크입니다</div>
+      <div style="width:100%;max-width:410px;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;padding:26px 24px 22px;box-shadow:0 24px 60px rgba(15,23,42,0.30);text-align:center;color:#0f172a;font-family:Pretendard,sans-serif;word-break:keep-all;">
+        <div style="width:46px;height:46px;margin:0 auto 14px;border-radius:13px;background:#f8fafc;border:1px solid #cbd5e1;color:#0f172a;display:flex;align-items:center;justify-content:center;">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <div style="font-size:17.5px;font-weight:800;margin-bottom:8px;letter-spacing:-0.3px;">일시 잠금된 공유 링크입니다</div>
         <div style="font-size:13px;color:#475569;line-height:1.65;margin-bottom:18px;">
           작성자의 <strong>Premium 구독</strong>이 만료된 후 유예기간(${graceDays}일)이 지나<br>
           현재 외부 열람이 일시 중지된 상태입니다.<br>
@@ -13305,7 +13316,7 @@
           </span>
         </div>
         <button type="button" id="btnClosePermShareLockModal"
-          style="width:100%;height:42px;border:none;border-radius:11px;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;font-size:13.5px;font-weight:800;cursor:pointer;">
+          style="width:100%;height:41px;border:none;border-radius:10px;background:#0f172a;color:#ffffff;font-size:13.5px;font-weight:700;cursor:pointer;">
           확인
         </button>
       </div>
@@ -13335,7 +13346,7 @@
       overlay.style.cssText = 'position:fixed;inset:0;z-index:13550;background:rgba(15,23,42,0.64);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;padding:18px;';
       overlay.innerHTML = `
       <div style="width:100%;max-width:416px;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;padding:26px 24px 22px;box-shadow:0 24px 60px rgba(15,23,42,0.30);text-align:center;color:#0f172a;font-family:Pretendard,sans-serif;word-break:keep-all;">
-        <div style="width:46px;height:46px;margin:0 auto 14px;border-radius:13px;background:#eff6ff;border:1px solid #bfdbfe;color:#2563eb;display:flex;align-items:center;justify-content:center;">
+        <div style="width:46px;height:46px;margin:0 auto 14px;border-radius:13px;background:#f8fafc;border:1px solid #cbd5e1;color:#0f172a;display:flex;align-items:center;justify-content:center;">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
             <line x1="12" y1="8" x2="12" y2="12"></line>

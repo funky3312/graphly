@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261114_88">
+  <link rel="stylesheet" href="style.css?v=20261114_92">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -233,8 +233,8 @@
                   <div class="category-tabs preset-seg-tabs" role="tablist" aria-label="그래프 카테고리">
                     <button type="button" class="cat-tab-btn active" data-cat="tab_basic">기본 · 도형</button>
                     <button type="button" class="cat-tab-btn" data-cat="tab_calculus">미적분</button>
-                    <button type="button" class="cat-tab-btn cat-tab-my-graphs" id="btnCatTabMyGraphs" data-cat="⭐ 내 그래프"
-                      title="자주 쓰는 내 그래프 보관함">내 그래프</button>
+                    <button type="button" class="cat-tab-btn cat-tab-my-graphs" id="btnCatTabMyGraphs"
+                      data-cat="⭐ 내 그래프" title="자주 쓰는 내 그래프 보관함">내 그래프</button>
                   </div>
                   <button type="button" id="btnClearAllGraphs" class="preset-clear-btn" title="현재 그래프 비우기">비우기</button>
                 </div>
@@ -271,9 +271,9 @@
                   </label>
                 </div>
                 <div class="pw-action-row">
-                  <button type="button" id="btnQuadDiamond" class="btn-sub-action"><svg width="13" height="13" viewBox="0 0 24 24"
-                      fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"
-                      style="vertical-align:-1.5px;margin-right:5px;">
+                  <button type="button" id="btnQuadDiamond" class="btn-sub-action"><svg width="13" height="13"
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round"
+                      stroke-linejoin="round" style="vertical-align:-1.5px;margin-right:5px;">
                       <polygon points="12 2 22 12 12 22 2 12" />
                     </svg>원점 중심 마름모</button>
                 </div>
@@ -304,7 +304,6 @@
                       <line x1="4" y1="12" x2="20" y2="12" />
                     </svg>y축 대칭</button>
                   <button id="btnCloneInverse" class="transform-btn btn-inverse-highlight"
-                    style="background: rgba(162, 155, 254, 0.22); border-color: rgba(162, 155, 254, 0.6); color: #a29bfe; font-weight: 700;"
                     title="y=x 대칭 역함수 생성 & 실시간 연동"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                       stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
                       style="vertical-align:-2px;margin-right:4px;">
@@ -320,10 +319,10 @@
                     </svg>|f(x)| 절댓값</button>
                 </div>
 
-                <!-- 🔗 역함수 대칭 연동 중일 때: 가위로 자르기 버튼 -->
+                <!-- 역함수 대칭 연동 중일 때: 연동끊기 버튼 -->
                 <div id="inverseLinkBox" style="margin-top: 8px;">
                   <button id="btnToggleInverseLink" class="transform-btn"
-                    style="width: 100%; display: none; background: rgba(255, 107, 107, 0.18); border: 1px solid rgba(255, 107, 107, 0.6); color: #ff7675; font-weight: 700; padding: 8px;">
+                    style="width: 100%; display: none; padding: 8px;">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                       stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
                       style="vertical-align:-2px;margin-right:4px;">
@@ -338,14 +337,18 @@
 
                 <!-- 하단 서브 액션: 복제 및 리셋 -->
                 <div style="display: flex; gap: 6px; margin-top: 8px;">
-                  <button id="btnDuplicateGraph" class="transform-btn"
-                    style="flex: 1; background: rgba(255, 234, 167, 0.15); border-color: rgba(255, 234, 167, 0.4); color: #ffeaa7;"><svg
-                      width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-                      stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;">
+                  <button id="btnDuplicateGraph" class="transform-btn" style="flex: 1;"><svg width="13" height="13"
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+                      stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;">
                       <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                     </svg>그래프 복제</button>
-                  <button id="btnResetFreezeOffset" class="transform-btn" style="flex: 1;">↺ 이동 리셋</button>
+                  <button id="btnResetFreezeOffset" class="transform-btn" style="flex: 1;"><svg width="13" height="13"
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+                      stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;pointer-events:none;">
+                      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                      <path d="M3 3v5h5" />
+                    </svg>이동 리셋</button>
                 </div>
 
                 <!-- 숨김 유지용 체크박스 DOM (JS 에러 방지용) -->
@@ -392,17 +395,24 @@
                     <div class="settings-toggle-list">
                       <div class="setting-toggle-item" style="cursor: default;">
                         <span class="setting-name">주기 (T)</span>
-                        <span id="pwPeriodicPeriodLabel" style="font-size: 11.5px; font-weight: 700; color: #334155;">T
-                          = 2.0</span>
+                        <span id="pwPeriodicPeriodLabel" class="pw-period-val-label">T = 2.0</span>
                       </div>
                       <div class="single-line-slider-row">
                         <span class="single-line-slider-label">높이 차</span>
-                        <button id="btnPwStepMinus" type="button" class="single-line-step-btn">◀</button>
+                        <button id="btnPwStepMinus" type="button" class="single-line-step-btn"><svg width="11"
+                            height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+                            <polyline points="15 18 9 12 15 6" />
+                          </svg></button>
                         <div class="single-line-slider-track">
                           <input type="range" id="sliderPwStep" class="slider-bar" min="-6" max="6" step="0.05"
                             value="0">
                         </div>
-                        <button id="btnPwStepPlus" type="button" class="single-line-step-btn">▶</button>
+                        <button id="btnPwStepPlus" type="button" class="single-line-step-btn"><svg width="11"
+                            height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg></button>
                         <span id="pwPeriodicStepLabel" class="single-line-slider-val">+0</span>
                       </div>
                     </div>
@@ -540,13 +550,21 @@
                     title="녹음 시 마이크 수음 감도 및 볼륨 조절 (기본 100%, 소리가 예민하게 들어갈 때는 60~85% 권장)">
                     <span class="single-line-slider-label">녹음 볼륨</span>
                     <button type="button" id="btnAudioRecVolDown" class="single-line-step-btn"
-                      title="녹음 볼륨 줄이기 (-5%)">◀</button>
+                      title="녹음 볼륨 줄이기 (-5%)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        style="pointer-events:none;">
+                        <polyline points="15 18 9 12 15 6" />
+                      </svg></button>
                     <div class="single-line-slider-track">
                       <input type="range" id="sliderAudioRecVol" class="slider-bar" min="20" max="150" step="5"
                         value="100">
                     </div>
                     <button type="button" id="btnAudioRecVolUp" class="single-line-step-btn"
-                      title="녹음 볼륨 키우기 (+5%)">▶</button>
+                      title="녹음 볼륨 키우기 (+5%)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        style="pointer-events:none;">
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg></button>
                     <span id="lblAudioRecVol" class="single-line-slider-val">100%</span>
                   </div>
                 </div>
@@ -558,7 +576,11 @@
                     <span class="settings-shortcut-open-left">
                       <span>단축키 설정</span>
                     </span>
-                    <span id="badgeShortcutCustomStatus" class="settings-shortcut-badge">▸</span>
+                    <span id="badgeShortcutCustomStatus" class="settings-shortcut-badge"><svg width="12" height="12"
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
+                        stroke-linejoin="round" style="pointer-events:none;">
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg></span>
                   </button>
                 </div>
 
@@ -786,22 +808,31 @@
                     <!-- 0. 블러 -->
                     <div class="single-line-slider-row" title="부드러운 외곽 블러 및 펜 모퉁이 보정 강도 (0.0 ~ 5.0)">
                       <span class="single-line-slider-label">블러</span>
-                      <button type="button" id="btnInkBlurDown" class="single-line-step-btn"
-                        title="블러 줄이기 (-0.5)">◀</button>
+                      <button type="button" id="btnInkBlurDown" class="single-line-step-btn" title="블러 줄이기 (-0.5)"><svg
+                          width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                          stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+                          <polyline points="15 18 9 12 15 6" />
+                        </svg></button>
                       <div class="ink-size-preview-row single-line-slider-track">
                         <input type="range" id="sliderInkBlur" class="slider-bar" min="0" max="5.0" step="0.5"
                           value="0">
                       </div>
-                      <button type="button" id="btnInkBlurUp" class="single-line-step-btn"
-                        title="블러 높이기 (+0.5)">▶</button>
+                      <button type="button" id="btnInkBlurUp" class="single-line-step-btn" title="블러 높이기 (+0.5)"><svg
+                          width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                          stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg></button>
                       <span id="lblCurrentInkBlur" class="single-line-slider-val">0.0</span>
                     </div>
 
                     <!-- 1. 펜 굵기 -->
                     <div class="single-line-slider-row">
                       <span class="single-line-slider-label">펜 굵기</span>
-                      <button type="button" id="btnInkSizeDown" class="single-line-step-btn"
-                        title="글씨 크기 줄이기 ([)">◀</button>
+                      <button type="button" id="btnInkSizeDown" class="single-line-step-btn" title="글씨 크기 줄이기 ([)"><svg
+                          width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                          stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+                          <polyline points="15 18 9 12 15 6" />
+                        </svg></button>
                       <div class="ink-size-preview-row single-line-slider-track">
                         <div class="ink-size-preview-box" style="display: none;">
                           <span id="inkSizePreviewDot" class="preview-circle" style="width: 9px; height: 9px;"></span>
@@ -809,8 +840,11 @@
                         <input type="range" id="sliderInkSize" class="slider-bar" min="1.0" max="18.0" step="0.2"
                           value="4.2">
                       </div>
-                      <button type="button" id="btnInkSizeUp" class="single-line-step-btn"
-                        title="글씨 크기 키우기 (])">▶</button>
+                      <button type="button" id="btnInkSizeUp" class="single-line-step-btn" title="글씨 크기 키우기 (])"><svg
+                          width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                          stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg></button>
                       <span id="lblCurrentInkSize" class="single-line-slider-val">4.2</span>
                       <span id="lblFlyoutSizeVal" style="display: none;">4.2 pt</span>
                     </div>
@@ -828,27 +862,41 @@
                     <div class="single-line-slider-row">
                       <span class="single-line-slider-label">형광펜</span>
                       <button type="button" id="btnHighlighterSizeDown" class="single-line-step-btn"
-                        title="형광펜 크기 줄이기">◀</button>
+                        title="형광펜 크기 줄이기"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                          style="pointer-events:none;">
+                          <polyline points="15 18 9 12 15 6" />
+                        </svg></button>
                       <div class="ink-size-preview-row single-line-slider-track">
                         <input type="range" id="sliderHighlighterSize" class="slider-bar" min="6" max="44" step="2"
                           value="16">
                       </div>
                       <button type="button" id="btnHighlighterSizeUp" class="single-line-step-btn"
-                        title="형광펜 크기 키우기">▶</button>
+                        title="형광펜 크기 키우기"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                          style="pointer-events:none;">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg></button>
                       <span id="lblCurrentHighlighterSize" class="single-line-slider-val">16</span>
                     </div>
 
                     <!-- 3. 지우개 -->
                     <div class="single-line-slider-row">
                       <span class="single-line-slider-label">지우개</span>
-                      <button type="button" id="btnEraserSizeDown" class="single-line-step-btn"
-                        title="지우개 크기 줄이기">◀</button>
+                      <button type="button" id="btnEraserSizeDown" class="single-line-step-btn" title="지우개 크기 줄이기"><svg
+                          width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                          stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+                          <polyline points="15 18 9 12 15 6" />
+                        </svg></button>
                       <div class="ink-size-preview-row single-line-slider-track">
                         <input type="range" id="sliderEraserSize" class="slider-bar" min="4" max="44" step="2"
                           value="14">
                       </div>
-                      <button type="button" id="btnEraserSizeUp" class="single-line-step-btn"
-                        title="지우개 크기 키우기">▶</button>
+                      <button type="button" id="btnEraserSizeUp" class="single-line-step-btn" title="지우개 크기 키우기"><svg
+                          width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                          stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg></button>
                       <span id="lblCurrentEraserSize" class="single-line-slider-val">14</span>
                     </div>
                   </div>
@@ -887,11 +935,19 @@
                   </div>
                   <div class="single-line-slider-row">
                     <span class="single-line-slider-label">선 두께</span>
-                    <button type="button" id="btnLwDown" class="single-line-step-btn" title="선 두께 줄이기">◀</button>
+                    <button type="button" id="btnLwDown" class="single-line-step-btn" title="선 두께 줄이기"><svg width="11"
+                        height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+                        <polyline points="15 18 9 12 15 6" />
+                      </svg></button>
                     <div class="single-line-slider-track">
                       <input type="range" id="sliderLw" class="slider-bar" min="1.0" max="6.0" step="0.2" value="2.8">
                     </div>
-                    <button type="button" id="btnLwUp" class="single-line-step-btn" title="선 두께 키우기">▶</button>
+                    <button type="button" id="btnLwUp" class="single-line-step-btn" title="선 두께 키우기"><svg width="11"
+                        height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg></button>
                     <span id="lblLw" class="single-line-slider-val">2.8</span>
                   </div>
                   <div style="display: none;">
@@ -927,13 +983,20 @@
                     <div class="single-line-slider-row">
                       <span class="single-line-slider-label">텍스트</span>
                       <button type="button" id="btnTextLabelSizeDown" class="single-line-step-btn"
-                        title="텍스트 크기 줄이기">◀</button>
+                        title="텍스트 크기 줄이기"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                          style="pointer-events:none;">
+                          <polyline points="15 18 9 12 15 6" />
+                        </svg></button>
                       <div class="single-line-slider-track">
                         <input type="range" id="sliderTextLabelSize" class="slider-bar" min="12" max="52" step="1"
                           value="20">
                       </div>
-                      <button type="button" id="btnTextLabelSizeUp" class="single-line-step-btn"
-                        title="텍스트 크기 키우기">▶</button>
+                      <button type="button" id="btnTextLabelSizeUp" class="single-line-step-btn" title="텍스트 크기 키우기"><svg
+                          width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                          stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg></button>
                       <span id="lblTextLabelSize" class="single-line-slider-val">20</span>
                     </div>
                   </div>
@@ -964,13 +1027,20 @@
                     <div class="single-line-slider-row" style="margin-top: 6px;">
                       <span class="single-line-slider-label">축 글자</span>
                       <button type="button" id="btnAxisLabelSizeDown" class="single-line-step-btn"
-                        title="축 이름표 줄이기">◀</button>
+                        title="축 이름표 줄이기"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                          style="pointer-events:none;">
+                          <polyline points="15 18 9 12 15 6" />
+                        </svg></button>
                       <div class="single-line-slider-track">
                         <input type="range" id="sliderAxisLabelSize" class="slider-bar" min="12" max="48" step="1"
                           value="22">
                       </div>
-                      <button type="button" id="btnAxisLabelSizeUp" class="single-line-step-btn"
-                        title="축 이름표 키우기">▶</button>
+                      <button type="button" id="btnAxisLabelSizeUp" class="single-line-step-btn" title="축 이름표 키우기"><svg
+                          width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                          stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg></button>
                       <span id="lblAxisLabelSize" class="single-line-slider-val">22</span>
                     </div>
                   </div>
@@ -1812,8 +1882,7 @@
           </div>
           <div class="problem-card-actions">
             <button id="btnProblemCardLock" type="button"
-              class="card-btn btn-card-lock-edit btn-problem-lock locked-confirmed" style="display: none;"
-              title="잠금됨">
+              class="card-btn btn-card-lock-edit btn-problem-lock locked-confirmed" style="display: none;" title="잠금됨">
               <span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;">
                 <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                   stroke-linecap="round" stroke-linejoin="round">
@@ -1970,19 +2039,39 @@
         </button>
       </div>
 
-      <!-- [✂️ PDF 전체화면 판서 모드 ➔ 좌측 [+] 버튼 바로 옆 위아래 균형 2지선다 팝업] -->
+      <!-- [PDF 전체화면 판서 모드 ➔ 좌측 [+] 버튼 바로 옆 위아래 균형 2지선다 팝업] -->
       <div id="pdfToGraphCropFloatingBar" class="graph-snap-floating-bar pdf-to-graph-crop-bar" style="display: none;">
         <button id="btnStartPdfCropToGraph" class="btn-trigger-graph-snap pdf-crop-choice-btn">
-          <span>✂️ 캡처 후 이동</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="6" cy="6" r="3" />
+            <circle cx="6" cy="18" r="3" />
+            <line x1="20" y1="4" x2="8.12" y2="15.88" />
+            <line x1="14.47" y1="14.48" x2="20" y2="20" />
+            <line x1="8.12" y1="8.12" x2="12" y2="12" />
+          </svg>
+          <span>캡처 후 이동</span>
         </button>
         <button id="btnSkipPdfCropToGraph" class="btn-trigger-graph-snap pdf-skip-choice-btn">
-          <span>▶ 바로 이동</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+          <span>바로 이동</span>
         </button>
       </div>
-      <!-- [✂️ 캡처 후 이동 클릭 시: 좌측 메뉴는 사라지고 상단에 작게 뜨는 캡처 상태/취소 버튼] -->
+      <!-- [캡처 후 이동 클릭 시: 좌측 메뉴는 사라지고 상단에 작게 뜨는 캡처 상태/취소 버튼] -->
       <button type="button" id="btnCancelPdfCropToGraph" class="pdf-crop-active-pill" style="display: none;"
         title="클릭하여 캡처 취소">
-        <span>✂️ 문제 영역 드래그</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="6" cy="6" r="3" />
+          <circle cx="6" cy="18" r="3" />
+          <line x1="20" y1="4" x2="8.12" y2="15.88" />
+          <line x1="14.47" y1="14.48" x2="20" y2="20" />
+          <line x1="8.12" y1="8.12" x2="12" y2="12" />
+        </svg>
+        <span>문제 영역 드래그</span>
         <span class="pdf-crop-active-cancel-x">✕</span>
       </button>
       <div id="graphSnapDragBox" class="graph-snap-drag-box" style="display: none;"></div>
@@ -1995,6 +2084,12 @@
     <div class="smart-modal-card share-modal-card unified-export-modal-card">
       <div class="smart-modal-header">
         <div class="smart-modal-title">
+          <span class="modal-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg></span>
           <span class="modal-title-text">내보내기</span>
         </div>
         <button id="btnCloseShareModal" class="btn-modal-close"><svg width="14" height="14" viewBox="0 0 24 24"
@@ -2080,31 +2175,61 @@
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
             <button type="button" id="btnExportModalCopyImg" class="settings-clean-btn">
+              <svg class="share-action-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
               <span id="lblExportModalCopyImg">이미지 복사</span>
             </button>
             <button type="button" id="btnExportModalSavePng" class="settings-clean-btn">
+              <svg class="share-action-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
               <span id="lblExportModalSavePng">PNG 저장</span>
             </button>
             <button type="button" id="btnCopyShareLink" class="settings-clean-btn">
+              <svg class="share-action-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
               <span id="lblBtnCopyShareLink">공유 링크 복사</span>
             </button>
             <button type="button" id="btnDownloadQr" class="settings-clean-btn">
+              <svg class="share-action-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="7" height="7" rx="1" />
+                <rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" />
+                <rect x="14" y="14" width="3" height="3" />
+                <path d="M21 14h-3v3" />
+                <path d="M18 21h3v-3" />
+                <path d="M14 20h1" />
+              </svg>
               <span id="lblBtnDownloadQr">QR 저장</span>
             </button>
           </div>
           <div id="lblShareLinkTierNotice" class="share-link-tier-notice"></div>
           <div id="shareModalPromoBannerBox" class="share-promo-banner-quick-row">
             <div class="share-promo-quick-left">
-              <span class="share-promo-quick-icon">📢</span>
+              <span class="share-promo-quick-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m3 11 18-5v12L3 14v-3z" />
+                  <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+                </svg></span>
               <span id="lblSharePromoSummary" class="share-promo-quick-summary">뷰어 홍보배너</span>
             </div>
             <div class="share-promo-quick-right">
-              <label id="wrapShareQuickPromoToggle" class="vf-toggle-wrap share-promo-mini-toggle" style="display: none;"
-                title="이번 공유 링크에 홍보배너 표시 켜기/끄기">
+              <label id="wrapShareQuickPromoToggle" class="vf-toggle-wrap share-promo-mini-toggle"
+                style="display: none;" title="이번 공유 링크에 홍보배너 표시 켜기/끄기">
                 <input type="checkbox" id="chkShareQuickPromoToggle">
                 <span class="vf-toggle-slider"></span>
               </label>
-              <button type="button" id="btnOpenPromoBannerFromShare" class="share-promo-config-btn">💎 미리보기</button>
+              <button type="button" id="btnOpenPromoBannerFromShare" class="share-promo-config-btn">미리보기</button>
             </div>
           </div>
           <!-- 오프스크린 QR 생성 캔버스 및 호환용 숨김 필드 -->
@@ -2126,7 +2251,7 @@
           <div style="display: flex; gap: 5px;">
             <select id="selectExportCloudFolder" class="export-cloud-folder-select" title="클라우드 저장 폴더 선택"
               style="display: none !important;">
-              <option value="">📁 기본 보관함</option>
+              <option value="">기본 보관함</option>
             </select>
             <input type="text" id="inputShareModalDeckTitle" class="settings-clean-input" style="flex: 1; min-width: 0;"
               placeholder="파일명 입력 (비워두면 자동)" autocomplete="off" autocorrect="off" autocapitalize="off"
@@ -2137,9 +2262,20 @@
           </div>
           <div style="display: flex; gap: 5px; margin-top: 5px;">
             <button type="button" id="btnShareModalExportFile" class="settings-clean-btn" style="flex: 1;">
+              <svg class="share-action-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
               <span id="lblShareModalExportFile">내 기기에 저장</span>
             </button>
-            <button type="button" id="btnShareModalToLibrary" class="settings-clean-btn" style="flex: 1;">
+            <button type="button" id="btnShareModalToLibrary" class="settings-clean-btn share-primary-cta-btn"
+              style="flex: 1;">
+              <svg class="share-action-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+              </svg>
               <span id="lblShareModalToLibrary">클라우드에 저장</span>
             </button>
           </div>
@@ -2307,7 +2443,7 @@
     </button>
     <button id="btnPdfBoardPageInfo" class="pdf-board-page-pill slim-page-pill slide-counter-pill"
       title="클릭하여 페이지 바둑판 목록 열기">
-      <span id="lblPdfBoardPageInfo">📄 p.1 / 1 ▾</span>
+      <span id="lblPdfBoardPageInfo">p.1 / 1 ▾</span>
     </button>
     <button id="btnPdfBoardNext" class="pdf-board-nav-btn pdf-board-next-primary slim-next-btn" title="다음 페이지">
       <span>다음</span>
@@ -2349,7 +2485,7 @@
     <div id="pdfBoardGridPopover" class="slide-grid-popover" style="display: none;">
       <div class="slide-grid-popover-header">
         <span class="slide-grid-popover-title">열어본 PDF 페이지</span>
-        <button type="button" id="btnPdfBoardClearAll" class="slide-grid-del-current-btn" title="전체 캔버스 비우기">🗑️ 전체
+        <button type="button" id="btnPdfBoardClearAll" class="slide-grid-del-current-btn" title="전체 캔버스 비우기">전체
           비우기</button>
       </div>
       <div id="pdfBoardSlideChips" class="slide-chips-strip slide-chips-grid"></div>
@@ -2467,15 +2603,32 @@
     <!-- [+] 클릭 시 PDF 열림 상태에서 뜨는 캔버스 추가 메뉴 (통PDF: 3줄 / 캡처모드: 2줄) -->
     <div id="playlistAddSlideMenu" class="slide-add-menu-popover" style="display: none;">
       <button type="button" id="btnAddSlideMenuNextPdfPage" class="slide-add-menu-item">
-        <span class="slide-add-menu-icon">📄</span>
+        <span class="slide-add-menu-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <polyline points="10 13 14 13 14 17" />
+            <line x1="10" y1="17" x2="14" y2="13" />
+          </svg></span>
         <span id="lblAddSlideMenuNextPdfPage">다음 페이지</span>
       </button>
       <button type="button" id="btnAddSlideMenuPickPdf" class="slide-add-menu-item">
-        <span id="iconAddSlideMenuPickPdf" class="slide-add-menu-icon">🔍</span>
+        <span id="iconAddSlideMenuPickPdf" class="slide-add-menu-icon" aria-hidden="true"><svg width="14" height="14"
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round"
+            stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg></span>
         <span id="lblAddSlideMenuPickPdf">페이지 선택</span>
       </button>
       <button type="button" id="btnAddSlideMenuBlankCanvas" class="slide-add-menu-item">
-        <span class="slide-add-menu-icon">📝</span>
+        <span class="slide-add-menu-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="12" y1="18" x2="12" y2="12" />
+            <line x1="9" y1="15" x2="15" y2="15" />
+          </svg></span>
         <span>빈 캔버스</span>
       </button>
     </div>
@@ -2521,8 +2674,9 @@
             <button type="button" id="btnStartLessonPlaylist"><span id="lblSelectedPlaylistCount">0</span></button>
             <span id="lblCloudExplorerCurrentPath"></span>
           </div>
-          <button id="btnCloseCloudHub" class="btn-modal-close" title="닫기"><svg width="16" height="16" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+          <button id="btnCloseCloudHub" class="btn-modal-close" title="닫기"><svg width="16" height="16"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round"
+              stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg></button>
@@ -2542,7 +2696,8 @@
         <button type="button" id="btnCloudAddRootFolder" class="win-explorer-cmd-btn" title="현재 폴더 안에 새 폴더 만들기">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
             stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+            <path
+              d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
             <line x1="12" y1="10" x2="12" y2="16" />
             <line x1="9" y1="13" x2="15" y2="13" />
           </svg>
@@ -2558,8 +2713,7 @@
           </svg>
           <span>업로드</span>
         </button>
-        <input type="file" id="inputCloudUploadLocalFiles" accept=".graphly" multiple
-          style="display: none;">
+        <input type="file" id="inputCloudUploadLocalFiles" accept=".graphly" multiple style="display: none;">
         <div id="cloudLibrarySearchWrap" class="cloud-library-search-wrap">
           <svg class="cloud-library-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
@@ -2579,8 +2733,8 @@
             <div id="cloudStorageQuotaBox" class="cloud-storage-quota-box">
               <div class="cloud-quota-top-row">
                 <span id="lblCloudQuotaTierBadge" class="cloud-quota-tier-badge">무료 플랜</span>
-                <button type="button" id="btnCloudQuotaUpgrade" class="cloud-quota-upgrade-btn"
-                  title="요금제 업그레이드">용량 확장</button>
+                <button type="button" id="btnCloudQuotaUpgrade" class="cloud-quota-upgrade-btn" title="요금제 업그레이드">용량
+                  확장</button>
               </div>
               <div class="cloud-quota-bar-track">
                 <div id="barCloudQuotaFill" class="cloud-quota-bar-fill" style="width: 0%;"></div>
@@ -2598,7 +2752,8 @@
             <div id="cloudNewFolderInlineRow" class="win-inline-new-folder-row" style="display: none;">
               <span class="win-folder-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                  <path
+                    d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
                   <line x1="12" y1="10" x2="12" y2="16" />
                   <line x1="9" y1="13" x2="15" y2="13" />
                 </svg></span>
@@ -2690,8 +2845,7 @@
           </svg>
           <span id="lblCloudSharePopTitle" class="cloud-share-pop-title">공유 링크 · QR 추출</span>
         </div>
-        <button type="button" id="btnCloseCloudSharePop" class="cloud-share-pop-close" title="닫기 (ESC)"
-          aria-label="닫기">
+        <button type="button" id="btnCloseCloudSharePop" class="cloud-share-pop-close" title="닫기 (ESC)" aria-label="닫기">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" />
@@ -2773,7 +2927,8 @@
 
   <!-- [Graphly 이용권 안내 모달 (딥 포레스트 칠판 슬레이트 톤 · 3열 수평 줄 맞춤 · 확대 타이포 무스크롤 UI)] -->
   <div id="modalProPricing" class="smart-modal-backdrop">
-    <div class="smart-modal-card pricing-modal-card" role="dialog" aria-modal="true" aria-labelledby="lblProPricingModalTitle">
+    <div class="smart-modal-card pricing-modal-card" role="dialog" aria-modal="true"
+      aria-labelledby="lblProPricingModalTitle">
       <!-- 1. 헤더 바 -->
       <div class="pricing-modal-header">
         <div class="pricing-header-left">
@@ -2787,7 +2942,8 @@
             <div id="lblProPricingModalTitle" class="pricing-header-title">Graphly 이용권 안내</div>
           </div>
         </div>
-        <button type="button" id="btnCloseProPricingModal" class="pricing-header-close-btn" aria-label="닫기" title="닫기 (ESC)">
+        <button type="button" id="btnCloseProPricingModal" class="pricing-header-close-btn" aria-label="닫기"
+          title="닫기 (ESC)">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
             stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" />
@@ -2820,8 +2976,8 @@
 
               <ul class="pricing-tier-features">
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
                     <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
                     <line x1="6" y1="6" x2="6.01" y2="6"></line>
@@ -2830,22 +2986,24 @@
                   <span>내 기기(로컬) 저장 <strong>무제한</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>
                   </svg>
-                  <span>클라우드 보관함 <strong id="lblPlanFreeCloud">100 MB</strong> <span class="feat-sub-note">(로그인)</span></span>
+                  <span>클라우드 보관함 <strong id="lblPlanFreeCloud">100 MB</strong> <span
+                      class="feat-sub-note">(로그인)</span></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path>
                   </svg>
-                  <span>내 그래프 프리셋 <strong id="lblPlanFreeGraphs">3개</strong> <span class="feat-sub-note">(로그인)</span></span>
+                  <span>내 그래프 프리셋 <strong id="lblPlanFreeGraphs">3개</strong> <span
+                      class="feat-sub-note">(로그인)</span></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
                     <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
                     <line x1="12" y1="19" x2="12" y2="22"></line>
@@ -2853,8 +3011,8 @@
                   <span>1회 최대 녹화 <strong id="lblPlanFreeRec">5분</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                   </svg>
@@ -2882,8 +3040,8 @@
                 <div class="pricing-tier-name-bar">
                   <span class="pricing-tier-name name-pro">Pro</span>
                   <span class="pricing-radio-indicator" aria-hidden="true">
-                    <svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7"
-                      stroke-linecap="round" stroke-linejoin="round">
+                    <svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round">
                       <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
                   </span>
@@ -2920,8 +3078,8 @@
 
               <ul class="pricing-tier-features feats-pro">
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
                     <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
                     <line x1="6" y1="6" x2="6.01" y2="6"></line>
@@ -2930,22 +3088,22 @@
                   <span>내 기기(로컬) 저장 <strong>무제한</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>
                   </svg>
                   <span>클라우드 보관함 <strong id="lblPlanProCloud">5 GB</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path>
                   </svg>
                   <span>내 그래프 프리셋 <strong id="lblPlanProGraphs">30개</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
                     <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
                     <line x1="12" y1="19" x2="12" y2="22"></line>
@@ -2953,12 +3111,13 @@
                   <span>1회 최대 녹화 <strong id="lblPlanProRec">60분</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                   </svg>
-                  <span>링크 생성 <strong>무제한</strong> · <span id="lblPlanProShareDays" class="feat-share-meta">7일 만료</span></span>
+                  <span>링크 생성 <strong>무제한</strong> · <span id="lblPlanProShareDays" class="feat-share-meta">7일
+                      만료</span></span>
                 </li>
               </ul>
             </div>
@@ -2977,8 +3136,8 @@
                 <div class="pricing-tier-name-bar">
                   <span class="pricing-tier-name name-premium">Premium</span>
                   <span class="pricing-radio-indicator" aria-hidden="true">
-                    <svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7"
-                      stroke-linecap="round" stroke-linejoin="round">
+                    <svg width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round">
                       <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
                   </span>
@@ -3015,8 +3174,8 @@
 
               <ul class="pricing-tier-features feats-premium">
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
                     <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
                     <line x1="6" y1="6" x2="6.01" y2="6"></line>
@@ -3025,22 +3184,22 @@
                   <span>내 기기(로컬) 저장 <strong>무제한</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>
                   </svg>
                   <span>클라우드 보관함 <strong id="lblPlanPremiumCloud">20 GB</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path>
                   </svg>
                   <span>내 그래프 프리셋 <strong id="lblPlanPremiumGraphs">100개</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
                     <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
                     <line x1="12" y1="19" x2="12" y2="22"></line>
@@ -3048,8 +3207,8 @@
                   <span>1회 최대 녹화 <strong id="lblPlanPremiumRec">60분</strong></span>
                 </li>
                 <li>
-                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round">
+                  <svg class="pricing-feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                   </svg>
@@ -3061,7 +3220,9 @@
                 <div class="pricing-exclusive-title">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"
                     stroke-linecap="round" stroke-linejoin="round">
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                    <polygon
+                      points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
+                    </polygon>
                   </svg>
                   <span>PREMIUM 전용 혜택</span>
                 </div>
@@ -3158,9 +3319,13 @@
     <div class="smart-modal-card promo-banner-modal-card">
       <div class="smart-modal-header">
         <div class="smart-modal-title">
-          <span class="modal-icon">📢</span>
+          <span class="modal-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m3 11 18-5v12L3 14v-3z" />
+              <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+            </svg></span>
           <span class="modal-title-text">뷰어 상단 홍보배너 설정</span>
-          <span class="promo-modal-premium-pill">💎 Premium</span>
+          <span class="promo-modal-premium-pill">Premium</span>
         </div>
         <button type="button" id="btnClosePromoBannerModal" class="btn-modal-close" title="닫기">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -3174,7 +3339,7 @@
       <div class="smart-modal-body promo-banner-modal-body">
         <!-- 비-Premium 이용자 안내 배너 -->
         <div id="promoBannerUpsellNotice" class="promo-banner-upsell-notice" style="display: none;">
-          <span>💎 <strong>Premium 전용 혜택</strong>입니다. 아래에서 우리 학원·선생님 배너를 미리 꾸며보고 업그레이드 후 바로 적용해 보세요!</span>
+          <span><strong>Premium 전용 혜택</strong>입니다. 아래에서 우리 학원·선생님 배너를 미리 꾸며보고 업그레이드 후 바로 적용해 보세요.</span>
         </div>
 
         <!-- 실시간 뷰어 노출 미리보기 스테이지 -->
@@ -3187,7 +3352,7 @@
         <label class="promo-enable-switch-row">
           <div class="promo-enable-text-col">
             <span class="promo-enable-title">공유 링크 열람 시 상단 홍보배너 표시</span>
-            <span class="promo-enable-sub">첫 화면([전체화면으로 보기] 위)과 상단 바에 노출되며, 문제 풀이 중에는 자동 숨김됩니다.</span>
+            <span class="promo-enable-sub">첫 화면([전체화면으로 보기] 위)과 상단 바에 노출되며, 풀이 중 자동 숨김됩니다.</span>
           </div>
           <label class="vf-toggle-wrap">
             <input type="checkbox" id="chkPromoBannerEnabled" checked>
@@ -3225,25 +3390,29 @@
         <!-- 소속/선생님 배지 & 한 줄 홍보 문구 -->
         <div class="promo-field-grid-two">
           <div class="promo-field-group">
-            <label class="promo-field-label" for="inputPromoBadgeText">소속 · 선생님 이름 <span class="promo-opt-tag">선택 · 최대 24자</span></label>
+            <label class="promo-field-label" for="inputPromoBadgeText">소속 · 선생님 이름 <span class="promo-opt-tag">선택 · 최대
+                24자</span></label>
             <input type="text" id="inputPromoBadgeText" class="settings-clean-input promo-text-input" maxlength="24"
               placeholder="예: 대치 OO수학 · 김수학T" autocomplete="off">
           </div>
           <div class="promo-field-group">
-            <label class="promo-field-label" for="inputPromoCtaLabel">연결 버튼 이름 <span class="promo-opt-tag">선택 · 최대 14자</span></label>
+            <label class="promo-field-label" for="inputPromoCtaLabel">연결 버튼 이름 <span class="promo-opt-tag">선택 · 최대
+                14자</span></label>
             <input type="text" id="inputPromoCtaLabel" class="settings-clean-input promo-text-input" maxlength="14"
               placeholder="예: 상담·블로그" autocomplete="off">
           </div>
         </div>
 
         <div class="promo-field-group">
-          <label class="promo-field-label" for="inputPromoMessageText">한 줄 홍보 문구 <span class="promo-opt-tag">최대 52자</span></label>
+          <label class="promo-field-label" for="inputPromoMessageText">한 줄 홍보 문구 <span class="promo-opt-tag">최대
+              52자</span></label>
           <input type="text" id="inputPromoMessageText" class="settings-clean-input promo-text-input" maxlength="52"
             placeholder="예: 겨울방학 미적분 특강 개강 · 상시 질의응답 환영" autocomplete="off">
         </div>
 
         <div class="promo-field-group">
-          <label class="promo-field-label" for="inputPromoCtaUrl">연결 링크 주소 <span class="promo-opt-tag">선택 · 카톡 오픈채팅, 블로그, 유튜브, 홈페이지</span></label>
+          <label class="promo-field-label" for="inputPromoCtaUrl">연결 링크 주소 <span class="promo-opt-tag">선택 · 카톡 오픈채팅,
+              블로그, 유튜브, 홈페이지</span></label>
           <input type="url" id="inputPromoCtaUrl" class="settings-clean-input promo-text-input" maxlength="350"
             placeholder="https://open.kakao.com/... (비워두면 버튼 없이 깔끔한 공지 배너로 표시)" autocomplete="off">
         </div>
@@ -3253,7 +3422,7 @@
         <button type="button" id="btnResetPromoBannerDraft" class="btn-secondary promo-reset-btn">초기화</button>
         <div class="promo-footer-right">
           <button type="button" id="btnCancelPromoBannerModal" class="btn-secondary promo-cancel-btn">취소</button>
-          <button type="button" id="btnSavePromoBannerModal" class="btn-primary promo-save-btn">💾 배너 설정 저장</button>
+          <button type="button" id="btnSavePromoBannerModal" class="btn-primary promo-save-btn">배너 설정 저장</button>
         </div>
       </div>
     </div>
@@ -3381,12 +3550,16 @@
   </div>
 
   <!-- 토스트 팝업 메시지 -->
-  <!-- [💡 사용법 및 문의 모달] -->
+  <!-- [사용법 및 문의 모달 — Stitch 시안 1 Pure Ink Charcoal] -->
   <div id="modalGuideNotice" class="smart-modal-backdrop">
-    <div class="smart-modal-card guide-notice-modal-card" style="max-width: 480px; width: 92vw;">
+    <div class="smart-modal-card guide-notice-modal-card">
       <div class="smart-modal-header">
         <div class="smart-modal-title">
-          <span class="modal-icon">💡</span>
+          <span class="modal-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+            </svg></span>
           <span class="modal-title-text">사용법 및 문의</span>
         </div>
         <button type="button" id="btnCloseGuideNoticeModal" class="btn-modal-close"><svg width="15" height="15"
@@ -3397,48 +3570,63 @@
           </svg></button>
       </div>
 
-      <div class="smart-modal-body guide-notice-modal-body"
-        style="padding: 18px 20px; display: flex; flex-direction: column; gap: 16px;">
+      <div class="smart-modal-body guide-notice-modal-body">
         <!-- 핵심 사용법 요약 -->
-        <div id="guidePanelHowTo" class="guide-section-card" style="margin: 0; padding: 14px 16px;">
-          <h4 class="guide-card-title" style="margin: 0 0 10px 0; font-size: 14px;">🚀 핵심 사용법</h4>
-          <ul class="guide-bullet-list"
-            style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.5;">
-            <li><strong>PDF · 이미지 열기:</strong> 좌상단 <strong>[📁 불러오기]</strong> 또는 화면에 파일을 끌어다 놓아 문제를 캡처·배치합니다.</li>
-            <li><strong>실시간 그래프 조작:</strong> 좌측 <strong>[📈 그래프]</strong>에서 개형을 추가하고 극점·변곡점을 드래그해 즉시 변형합니다.</li>
-            <li><strong>교재 삽도 복사:</strong> 그래프 선택 후 <strong>Ctrl + C</strong>를 눌러 한글(HWP)·PPT에 바로 붙여넣습니다.</li>
-            <li><strong>판서 &amp; 공유:</strong> 상단 필기바와 우측 <strong>[🎙️ 녹음]</strong>·<strong>[📤 내보내기]</strong>로 수업 판서와
-              링크를 공유합니다.</li>
+        <div id="guidePanelHowTo" class="guide-section-card">
+          <h4 class="guide-card-title">핵심 사용법</h4>
+          <ul class="guide-bullet-list">
+            <li><strong>PDF · 이미지 열기:</strong> 좌상단 <span class="guide-inline-chip">파일 열기</span> 또는 화면에 파일을 끌어다 놓아 문제를
+              캡처·배치합니다.</li>
+            <li><strong>실시간 그래프 조작:</strong> 좌측 <span class="guide-inline-chip">그래프 추가</span>에서 개형을 선택하고 극점·변곡점을 드래그해 즉시
+              변형합니다.</li>
+            <li><strong>교재 삽도 복사:</strong> 그래프 선택 후 <span class="guide-inline-chip guide-inline-kbd">Ctrl + C</span>를 눌러
+              한글(HWP)·PPT에 바로 붙여넣습니다.</li>
+            <li><strong>판서 &amp; 공유:</strong> 필기 도구바와 우상단 <span class="guide-inline-chip">녹음</span> · <span
+                class="guide-inline-chip">내보내기</span>로 수업 판서와 링크를 공유합니다.</li>
           </ul>
         </div>
 
         <!-- 오류 제보 및 건의사항 안내 -->
-        <div
-          style="padding: 20px 18px; border-radius: 12px; background: rgba(37, 99, 235, 0.06); border: 1.5px solid rgba(59, 130, 246, 0.25); text-align: center;">
-          <div style="font-size: 15px; font-weight: 800; color: var(--text-main, #0f172a); margin-bottom: 6px;">
-            ✉️ 오류 제보 · 건의사항 · 이용 문의
+        <div class="guide-contact-card">
+          <div class="guide-contact-title">
+            오류 제보 · 건의사항 · 이용 문의
           </div>
-          <p style="margin: 0 0 14px 0; font-size: 13px; color: var(--text-muted, #475569); line-height: 1.5;">
+          <p class="guide-contact-desc">
             사용 중 발생한 <strong>오류(버그)</strong>나 <strong>기능 건의사항</strong>, <strong>결제·계정 문의</strong>는<br>아래 공식 이메일로 보내주시면
             빠르게 확인 후 반영하겠습니다.
           </p>
-          <div
-            style="display: inline-block; padding: 10px 22px; border-radius: 10px; background: var(--bg-panel, #ffffff); border: 1.5px solid rgba(37, 99, 235, 0.35); font-size: 18px; font-weight: 800; color: #2563eb; letter-spacing: 0.3px; user-select: text;">
-            help@cubiolab.com
+          <div class="guide-email-pill">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="2" y="4" width="20" height="16" rx="2" />
+              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+            </svg>
+            <span>help@cubiolab.com</span>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- [⌨️ 개인 로그인 계정 귀속 단축키 커스터마이징 모달] -->
+  <!-- [개인 로그인 계정 귀속 단축키 커스터마이징 모달 — Stitch 시안 1 Pure Ink Charcoal] -->
   <div id="modalShortcutSettings" class="smart-modal-backdrop">
     <div class="smart-modal-card shortcut-settings-modal-card">
       <div class="smart-modal-header shortcut-settings-header">
         <div class="smart-modal-title">
-          <span class="modal-icon">⌨️</span>
+          <span class="modal-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2" />
+              <path d="M6 8h.01" />
+              <path d="M10 8h.01" />
+              <path d="M14 8h.01" />
+              <path d="M18 8h.01" />
+              <path d="M8 12h.01" />
+              <path d="M12 12h.01" />
+              <path d="M16 12h.01" />
+              <path d="M7 16h10" />
+            </svg></span>
           <span class="modal-title-text">단축키 설정</span>
-          <span id="badgeShortcutAccountSync" class="shortcut-account-sync-badge">☁️ 계정 자동 연동</span>
+          <span id="badgeShortcutAccountSync" class="shortcut-account-sync-badge">계정 자동 동기화</span>
         </div>
         <button type="button" id="btnCloseShortcutSettings" class="btn-modal-close" title="저장하지 않고 닫기">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -3453,21 +3641,26 @@
       <div class="shortcut-settings-toolbar">
         <div class="shortcut-cat-tabs" id="shortcutCategoryTabs">
           <button type="button" class="shortcut-cat-tab active" data-scat="all">전체</button>
-          <button type="button" class="shortcut-cat-tab" data-scat="ink">✒️ 판서·펜</button>
-          <button type="button" class="shortcut-cat-tab" data-scat="graph">📈 그래프·수학</button>
-          <button type="button" class="shortcut-cat-tab" data-scat="slide">📄 슬라이드·뷰어</button>
-          <button type="button" class="shortcut-cat-tab" data-scat="system">⚡ 편집·녹화·시스템</button>
+          <button type="button" class="shortcut-cat-tab" data-scat="ink">판서 · 펜</button>
+          <button type="button" class="shortcut-cat-tab" data-scat="graph">그래프 · 수학</button>
+          <button type="button" class="shortcut-cat-tab" data-scat="slide">슬라이드 · 뷰어</button>
+          <button type="button" class="shortcut-cat-tab" data-scat="system">편집 · 시스템</button>
         </div>
         <div class="shortcut-search-wrap">
-          <input type="text" id="inputShortcutSearch" class="shortcut-search-input" placeholder="🔍 기능 이름 또는 키 검색..."
+          <svg class="shortcut-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input type="text" id="inputShortcutSearch" class="shortcut-search-input" placeholder="기능 이름 또는 키 검색"
             autocomplete="off">
         </div>
       </div>
 
       <!-- 상태 안내 배너 (중복 키 해제 알림 및 입력 대기 안내) -->
       <div id="shortcutModalNoticeBanner" class="shortcut-notice-banner">
-        💡 기능 옆의 <strong>[단축키 버튼]</strong>을 클릭한 뒤 원하는 키를 누르세요. (중복 키 입력 시 기존 기능은 <strong>미지정</strong>으로 변경되며, 하단
-        <strong>[💾 저장하기]</strong>를 눌러야 반영됩니다)
+        기능 옆의 <strong>[단축키 버튼]</strong>을 클릭한 뒤 원하는 키를 누르세요. (중복 키 입력 시 기존 기능은 <strong>미지정</strong>으로 변경되며, 하단
+        <strong>[저장하기]</strong>를 눌러야 반영됩니다)
       </div>
 
       <!-- 기능 및 단축키 리스트 -->
@@ -3475,15 +3668,20 @@
         <!-- JS 동적 렌더링 -->
       </div>
 
-      <!-- 하단 푸터 ([🔄 기본값으로 초기화] | [취소] [💾 저장하기]) -->
+      <!-- 하단 푸터 ([기본값 초기화] | [취소] [저장하기]) -->
       <div class="smart-modal-footer shortcut-settings-footer">
         <button type="button" id="btnResetAllShortcuts" class="btn-secondary shortcut-reset-all-btn"
           title="모든 단축키를 초기 기본값으로 되돌립니다">
-          🔄 기본값으로 초기화
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
+            stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+          <span>기본값 초기화</span>
         </button>
         <div class="shortcut-footer-right">
           <button type="button" id="btnCancelShortcutSettings" class="btn-secondary shortcut-cancel-btn">취소</button>
-          <button type="button" id="btnSaveShortcutSettings" class="btn-primary shortcut-save-btn">💾 저장하기</button>
+          <button type="button" id="btnSaveShortcutSettings" class="btn-primary shortcut-save-btn">저장하기</button>
         </div>
       </div>
     </div>
@@ -3500,15 +3698,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261114_88"></script>
-  <script src="app-core.js?v=20261114_88"></script>
-  <script src="app-ink.js?v=20261114_88"></script>
-  <script src="app-pdf.js?v=20261114_88"></script>
-  <script src="app-cards.js?v=20261114_88"></script>
-  <script src="app-cloud.js?v=20261114_88"></script>
-  <script src="app-canvas.js?v=20261114_88"></script>
-  <script src="app-toolkit.js?v=20261114_88"></script>
-  <script src="app.js?v=20261114_88"></script>
+  <script src="engine.js?v=20261114_92"></script>
+  <script src="app-core.js?v=20261114_92"></script>
+  <script src="app-ink.js?v=20261114_92"></script>
+  <script src="app-pdf.js?v=20261114_92"></script>
+  <script src="app-cards.js?v=20261114_92"></script>
+  <script src="app-cloud.js?v=20261114_92"></script>
+  <script src="app-canvas.js?v=20261114_92"></script>
+  <script src="app-toolkit.js?v=20261114_92"></script>
+  <script src="app.js?v=20261114_92"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -3586,7 +3784,8 @@
           <span class="n-axis-tag-badge">점을 드래그해 치역·극점 매칭</span>
         </div>
         <div class="n-axis-header-actions" style="display:flex; align-items:center; gap:8px;">
-          <button id="btnNAxisArchiveToBoard" class="btn-n-axis-archive" title="겉함수 · 속함수 · 합성함수 3개 그래프를 판서용 카드로 칠판에 삽입합니다">
+          <button id="btnNAxisArchiveToBoard" class="btn-n-axis-archive"
+            title="겉함수 · 속함수 · 합성함수 3개 그래프를 판서용 카드로 칠판에 삽입합니다">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
               stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -3697,7 +3896,7 @@
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister())).catch(() => { });
+        navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r)> rster())).catch(() => { });
         if ('caches' in window) caches.keys().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => { });
       });
     }

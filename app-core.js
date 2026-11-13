@@ -2653,12 +2653,12 @@ class GraphApp {
     // 사각형 모드 패널 동기화 (사각형 활성 시에만 표시)
     this.syncShapePanel();
 
-    // 🔗 역함수 대칭 연동 상태 버튼 동기화 (대표님 기획: '✂️ 연동끊기'로 직관화)
+    // 🔗 역함수 대칭 연동 상태 버튼 동기화 (단색 벡터 아이콘 일원화 — 0% OS 컬러 이모지)
     const btnToggleLink = document.getElementById('btnToggleInverseLink');
     if (btnToggleLink) {
       if (g && g.linkedInverseId) {
         btnToggleLink.style.display = 'block';
-        btnToggleLink.innerHTML = '✂️ 연동끊기';
+        btnToggleLink.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;pointer-events:none;"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>연동끊기';
         btnToggleLink.title = '클릭 시 두 함수의 연동을 끊어 각자 독립적으로 조작합니다.';
       } else {
         btnToggleLink.style.display = 'none';
@@ -2670,9 +2670,9 @@ class GraphApp {
     if (btnToggleAbs) {
       const isAbsActive = g ? Boolean(g.isAbsolute && g.isAbsPristine) : false;
       btnToggleAbs.classList.toggle('active', isAbsActive);
-      btnToggleAbs.style.background = isAbsActive ? 'rgba(0, 210, 211, 0.22)' : '';
-      btnToggleAbs.style.borderColor = isAbsActive ? 'var(--accent-cyan)' : '';
-      btnToggleAbs.style.color = isAbsActive ? 'var(--accent-cyan)' : '';
+      btnToggleAbs.style.background = '';
+      btnToggleAbs.style.borderColor = '';
+      btnToggleAbs.style.color = '';
     }
 
     // 🌟 [대표님 기획: ⚙️ 설정 패널 체크박스 및 바깥 캡처영역 버튼 동기화]
@@ -7035,7 +7035,7 @@ class GraphApp {
           : 'PNG 저장';
       }
       if (lblSummary) {
-        lblSummary.textContent = `✨ ${scopeText}의 [${parts.join(' + ')}] 영역만 깔끔한 직사각형으로 자동 스캔하여 내보냅니다.`;
+        lblSummary.textContent = `${scopeText}의 [${parts.join(' + ')}] 영역만 깔끔한 직사각형으로 자동 스캔하여 내보냅니다.`;
       }
       const syncShareTierNoticeUI = () => {
         const lblTierNotice = document.getElementById('lblShareLinkTierNotice');
@@ -7077,7 +7077,7 @@ class GraphApp {
           <div class="share-tier-notice-main">${mainText}</div>
           <div class="share-tier-notice-sub">
             <span class="share-tier-notice-sub-text">${subText}</span>
-            <button type="button" id="btnShareNoticeOpenVault" class="share-tier-vault-link-btn">보관함 ▸</button>
+            <button type="button" id="btnShareNoticeOpenVault" class="share-tier-vault-link-btn"><span>보관함</span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg></button>
           </div>
         `;
         const btnVault = lblTierNotice.querySelector('#btnShareNoticeOpenVault');

@@ -1806,7 +1806,7 @@
       const statusText = document.getElementById('pdfCropStatusText');
       if (statusText) {
         if (this.isPdfCropModeActive) {
-          statusText.innerHTML = '✂️ <b>문제 영역을 네모로 드래그하세요!</b>';
+          statusText.innerHTML = '<b>문제 영역을 네모로 드래그하세요</b>';
         } else {
           statusText.innerHTML = '';
         }

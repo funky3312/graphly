@@ -4710,7 +4710,7 @@
           {
             id: 'ink_tool_pen',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '펜 도구',
             desc: '일반 필기 펜으로 즉시 전환',
             defaultKey: 'P',
@@ -4720,8 +4720,8 @@
           {
             id: 'ink_tool_select',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
-            name: '선택 / 이동 (✋ 조작) 도구',
+            categoryLabel: '판서 · 펜 도구',
+            name: '선택 / 이동 (조작) 도구',
             desc: '필기 중 그래프·카드·객체 이동 및 조작으로 전환',
             defaultKey: 'V',
             buttonIds: ['btnInkSelect'],
@@ -4730,7 +4730,7 @@
           {
             id: 'ink_toggle_mode',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '필기바 보이기 / 숨기기',
             desc: '상단 필기 도구 바 표시 또는 숨기기',
             defaultKey: '',
@@ -4740,7 +4740,7 @@
           {
             id: 'ink_tool_highlighter',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '형광펜 도구 (펜↔형광펜)',
             desc: '반투명 형광펜 전환 (다시 누르면 펜으로 복귀)',
             defaultKey: '',
@@ -4750,7 +4750,7 @@
           {
             id: 'ink_tool_eraser',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '지우개 도구 (펜↔지우개)',
             desc: '필기 지우개 전환 (다시 누르면 펜으로 복귀)',
             defaultKey: 'E',
@@ -4760,7 +4760,7 @@
           {
             id: 'ink_tool_lasso',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '올가미 선택 도구',
             desc: '필기 획을 묶어서 이동·복제·색상변경·삭제',
             defaultKey: 'L',
@@ -4770,7 +4770,7 @@
           {
             id: 'ink_tool_laser',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '레이저 포인터',
             desc: '사르륵 사라지는 판서용 레이저 포인터 전환',
             defaultKey: '',
@@ -4780,7 +4780,7 @@
           {
             id: 'ink_tool_sticker',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '가림막 스티커 도구',
             desc: '드래그하여 정답/풀이 가림막 스티커 생성',
             defaultKey: '',
@@ -4790,7 +4790,7 @@
           {
             id: 'ink_size_down',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '펜 굵기 줄이기 (−)',
             desc: '필기 펜 굵기를 한 단계 가늘게 조절',
             defaultKey: '[',
@@ -4800,7 +4800,7 @@
           {
             id: 'ink_size_up',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '펜 굵기 키우기 (+)',
             desc: '필기 펜 굵기를 한 단계 굵게 조절',
             defaultKey: ']',
@@ -4810,7 +4810,7 @@
           {
             id: 'ink_color_1',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '펜 색상 1번 (기본 검정/분필)',
             desc: '첫 번째 펜 색상 즉시 선택',
             defaultKey: ''
@@ -4818,7 +4818,7 @@
           {
             id: 'ink_color_2',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '펜 색상 2번 (파랑/노랑)',
             desc: '두 번째 펜 색상 즉시 선택',
             defaultKey: ''
@@ -4826,7 +4826,7 @@
           {
             id: 'ink_color_3',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '펜 색상 3번 (빨강/코랄)',
             desc: '세 번째 펜 색상 즉시 선택',
             defaultKey: ''
@@ -4834,7 +4834,7 @@
           {
             id: 'ink_color_4',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '펜 색상 4번 (초록/스카이)',
             desc: '네 번째 펜 색상 즉시 선택',
             defaultKey: ''
@@ -4842,7 +4842,7 @@
           {
             id: 'ink_color_5',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '펜 색상 5번 (보라/민트)',
             desc: '다섯 번째 펜 색상 즉시 선택',
             defaultKey: ''
@@ -4850,7 +4850,7 @@
           {
             id: 'ink_clear_all',
             category: 'ink',
-            categoryLabel: '✒️ 판서 · 펜 도구',
+            categoryLabel: '판서 · 펜 도구',
             name: '현재 칠판 필기 비우기',
             desc: '현재 슬라이드의 펜 필기만 모두 지우기',
             defaultKey: '',
@@ -4862,7 +4862,7 @@
           {
             id: 'graph_open_presets',
             category: 'graph',
-            categoryLabel: '📈 그래프 · 수학 도구',
+            categoryLabel: '그래프 · 수학 도구',
             name: '그래프 추가창 열기 / 닫기',
             desc: '함수 선택창 열기 ↔ 닫기 (다시 열면 새 창에 추가)',
             defaultKey: 'G',
@@ -4872,7 +4872,7 @@
           {
             id: 'graph_toggle_axes',
             category: 'graph',
-            categoryLabel: '📈 그래프 · 수학 도구',
+            categoryLabel: '그래프 · 수학 도구',
             name: '좌표축 표시 켜기 / 끄기',
             desc: '좌표평면(x·y축) ↔ 순수 빈 칠판 즉시 전환',
             defaultKey: 'A',
@@ -4882,7 +4882,7 @@
           {
             id: 'graph_toggle_dropline',
             category: 'graph',
-            categoryLabel: '📈 그래프 · 수학 도구',
+            categoryLabel: '그래프 · 수학 도구',
             name: '보조 수선 도구 켜기 / 끄기',
             desc: '극점·교점에서 x축/y축으로 점선 수선 내리기',
             defaultKey: 'D',
@@ -4892,7 +4892,7 @@
           {
             id: 'graph_toggle_text',
             category: 'graph',
-            categoryLabel: '📈 그래프 · 수학 도구',
+            categoryLabel: '그래프 · 수학 도구',
             name: '텍스트 입력 도구 켜기 / 끄기',
             desc: '칠판 원하는 위치에 수식·텍스트 라벨 추가',
             defaultKey: 'T',
@@ -4902,7 +4902,7 @@
           {
             id: 'graph_toggle_intersections',
             category: 'graph',
-            categoryLabel: '📈 그래프 · 수학 도구',
+            categoryLabel: '그래프 · 수학 도구',
             name: '교점 표시 켜기 / 끄기',
             desc: '두 그래프 사이의 교점 마커 자동 탐색 표시',
             defaultKey: '',
@@ -4912,7 +4912,7 @@
           {
             id: 'graph_add_piecewise',
             category: 'graph',
-            categoryLabel: '📈 그래프 · 수학 도구',
+            categoryLabel: '그래프 · 수학 도구',
             name: '구간 분할선 추가',
             desc: '구간별 함수(Piecewise) 세로 경계선 추가',
             defaultKey: '',
@@ -4922,7 +4922,7 @@
           {
             id: 'graph_capture_card',
             category: 'graph',
-            categoryLabel: '📈 그래프 · 수학 도구',
+            categoryLabel: '그래프 · 수학 도구',
             name: '그래프 카드 캡처 (카드 추가)',
             desc: '현재 그래프 영역을 드래그 캡처하여 칠판 카드로 고정',
             defaultKey: '',
@@ -4932,7 +4932,7 @@
           {
             id: 'graph_open_toolkit',
             category: 'graph',
-            categoryLabel: '📈 그래프 · 수학 도구',
+            categoryLabel: '그래프 · 수학 도구',
             name: '시각화 도구창 열기 / 닫기',
             desc: '합성함수 스튜디오 등 시각화 도구 메뉴바 열기 ↔ 닫기',
             defaultKey: '',
@@ -4944,7 +4944,7 @@
           {
             id: 'slide_prev',
             category: 'slide',
-            categoryLabel: '📄 슬라이드 · 뷰어 이동',
+            categoryLabel: '슬라이드 · 뷰어 이동',
             name: '이전 캔버스(슬라이드)로 이동',
             desc: '수업 캔버스 또는 PDF 칠판 이전 페이지로 이동',
             defaultKey: 'PageUp',
@@ -4954,7 +4954,7 @@
           {
             id: 'slide_next',
             category: 'slide',
-            categoryLabel: '📄 슬라이드 · 뷰어 이동',
+            categoryLabel: '슬라이드 · 뷰어 이동',
             name: '다음 캔버스(슬라이드)로 이동',
             desc: '수업 캔버스 또는 PDF 칠판 다음 페이지로 이동',
             defaultKey: 'PageDown',
@@ -4964,7 +4964,7 @@
           {
             id: 'slide_add_blank',
             category: 'slide',
-            categoryLabel: '📄 슬라이드 · 뷰어 이동',
+            categoryLabel: '슬라이드 · 뷰어 이동',
             name: '새 빈 캔버스 추가',
             desc: '현재 칠판을 보존하고 다음 빈 슬라이드 즉시 생성',
             defaultKey: '',
@@ -4974,7 +4974,7 @@
           {
             id: 'pdf_open_or_crop',
             category: 'slide',
-            categoryLabel: '📄 슬라이드 · 뷰어 이동',
+            categoryLabel: '슬라이드 · 뷰어 이동',
             name: 'PDF 시험지 열기 / 문제 캡처',
             desc: 'PDF 시험지 창을 열거나 문제 영역 캡처 모드 전환',
             defaultKey: 'C',
@@ -4984,7 +4984,7 @@
           {
             id: 'viewer_open_preview',
             category: 'slide',
-            categoryLabel: '📄 슬라이드 · 뷰어 이동',
+            categoryLabel: '슬라이드 · 뷰어 이동',
             name: '표준 뷰어 (시험지 미리보기) 열기',
             desc: '학생용 뷰어 화면으로 전환하여 전체 슬라이드·영상 확인',
             defaultKey: '',
@@ -4994,7 +4994,7 @@
           {
             id: 'drawer_toggle',
             category: 'slide',
-            categoryLabel: '📄 슬라이드 · 뷰어 이동',
+            categoryLabel: '슬라이드 · 뷰어 이동',
             name: '좌측 사이드 메뉴 접기 / 펼치기',
             desc: '좌측 개형/설정 서랍 패널 열기 또는 닫기',
             defaultKey: '\\'
@@ -5004,7 +5004,7 @@
           {
             id: 'sys_undo',
             category: 'system',
-            categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+            categoryLabel: '편집 · 녹화 · 시스템',
             name: '실행 취소 (Undo)',
             desc: '직전 필기 또는 그래프 조작 되돌리기',
             defaultKey: 'Ctrl+Z',
@@ -5014,7 +5014,7 @@
           {
             id: 'sys_redo',
             category: 'system',
-            categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+            categoryLabel: '편집 · 녹화 · 시스템',
             name: '다시 실행 (Redo)',
             desc: '취소한 작업을 다시 복구하기',
             defaultKey: 'Ctrl+Y',
@@ -5024,7 +5024,7 @@
           {
             id: 'sys_delete_selected',
             category: 'system',
-            categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+            categoryLabel: '편집 · 녹화 · 시스템',
             name: '선택 항목 삭제',
             desc: '선택된 그래프 곡선, 올가미 필기, 텍스트 라벨 삭제',
             defaultKey: 'Delete'
@@ -5032,7 +5032,7 @@
           {
             id: 'sys_copy_image',
             category: 'system',
-            categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+            categoryLabel: '편집 · 녹화 · 시스템',
             name: '현재 화면 클립보드 이미지 복사',
             desc: '한글(HWP)·PPT에 바로 붙여넣을 수 있게 고화질 이미지 복사',
             defaultKey: 'Ctrl+C',
@@ -5042,7 +5042,7 @@
           {
             id: 'sys_record_toggle',
             category: 'system',
-            categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+            categoryLabel: '편집 · 녹화 · 시스템',
             name: '영상 녹화 시작 / 일시정지',
             desc: '음성·필기·그래프 동기화 해설 녹화 시작 또는 일시정지/재개',
             defaultKey: '',
@@ -5052,7 +5052,7 @@
           {
             id: 'sys_record_stop',
             category: 'system',
-            categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+            categoryLabel: '편집 · 녹화 · 시스템',
             name: '영상 녹화 종료',
             desc: '진행 중인 해설 녹화를 완료하고 저장',
             defaultKey: '',
@@ -5062,7 +5062,7 @@
           {
             id: 'sys_fullscreen_toggle',
             category: 'system',
-            categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+            categoryLabel: '편집 · 녹화 · 시스템',
             name: '전체화면 켜기 / 끄기',
             desc: '브라우저 여백 없는 몰입형 전체화면 전환',
             defaultKey: '',
@@ -5072,7 +5072,7 @@
           {
             id: 'sys_toggle_hide_ui',
             category: 'system',
-            categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+            categoryLabel: '편집 · 녹화 · 시스템',
             name: '아이콘 모두 숨기기 / 보이기',
             desc: '화면의 모든 메뉴·툴바 아이콘을 숨기고 깔끔한 칠판만 표시',
             defaultKey: 'H',
@@ -5082,7 +5082,7 @@
           {
             id: 'sys_open_cloud_hub',
             category: 'system',
-            categoryLabel: '⚡ 편집 · 녹화 · 시스템',
+            categoryLabel: '편집 · 녹화 · 시스템',
             name: '클라우드 보관함 열기',
             desc: '내 클라우드 폴더 탐색기 및 저장/불러오기 창 열기',
             defaultKey: '',
@@ -5287,7 +5287,7 @@
             const canceledDef = this.getShortcutDefinitions().find(d => d.id === this._recordingShortcutActionId);
             this._recordingShortcutActionId = null;
             this.setShortcutModalBanner(
-              `ℹ️ [${canceledDef ? canceledDef.name : '기능'}] 단축키 입력을 취소했습니다.`,
+              `[${canceledDef ? canceledDef.name : '기능'}] 단축키 입력을 취소했습니다.`,
               'normal'
             );
             this.renderShortcutSettingsModalList();
@@ -5302,7 +5302,7 @@
 
           if (normKey === 'F5' || normKey === 'Ctrl+R') {
             this.setShortcutModalBanner(
-              `⚠️ [${this.formatShortcutKeyForDisplay(normKey)}] 키는 브라우저 새로고침 보호를 위해 사용할 수 없습니다.`,
+              `[${this.formatShortcutKeyForDisplay(normKey)}] 키는 브라우저 새로고침 보호를 위해 사용할 수 없습니다.`,
               'warning'
             );
             return;
@@ -5480,16 +5480,16 @@
       if (badgeSync) {
         if (this.cloudUser && this.cloudUser.uid) {
           const emailOrName = this.cloudUser.displayName || this.cloudUser.email || '로그인 계정';
-          badgeSync.textContent = `☁️ ${emailOrName} 계정 연동`;
+          badgeSync.textContent = `${emailOrName} · 계정 동기화`;
           badgeSync.classList.remove('is-guest');
         } else {
-          badgeSync.textContent = '💻 비로그인 (로그인 시 내 계정에 영구 귀속)';
+          badgeSync.textContent = '비로그인 · 로그인 시 계정에 영구 귀속';
           badgeSync.classList.add('is-guest');
         }
       }
 
       this.setShortcutModalBanner(
-        '💡 기능 옆의 <strong>[단축키 버튼]</strong>을 클릭한 뒤 원하는 키를 누르세요. (중복 키 입력 시 기존 기능은 <strong>미지정</strong>으로 변경되며, 하단 <strong>[💾 저장하기]</strong>를 눌러야 최종 반영됩니다)',
+        '기능 옆의 <strong>[단축키 버튼]</strong>을 클릭한 뒤 원하는 키를 누르세요. (중복 키 입력 시 기존 기능은 <strong>미지정</strong>으로 변경되며, 하단 <strong>[저장하기]</strong>를 눌러야 최종 반영됩니다)',
         'normal'
       );
       this._syncShortcutSaveBtnState();
@@ -5509,7 +5509,7 @@
       const btnSave = document.getElementById('btnSaveShortcutSettings');
       if (!btnSave) return;
       btnSave.classList.toggle('has-unsaved-changes', Boolean(this._shortcutModalDirty));
-      btnSave.textContent = this._shortcutModalDirty ? '💾 저장하기 (변경됨)' : '💾 저장하기';
+      btnSave.textContent = this._shortcutModalDirty ? '변경사항 저장' : '저장하기';
     }
 
     assignDraftShortcutKey(actionId, newKey) {
@@ -5541,17 +5541,17 @@
       const dispKey = this.formatShortcutKeyForDisplay(cleanKey);
       if (unassignedDef) {
         this.setShortcutModalBanner(
-          `⚠️ 기존 <strong>[${unassignedDef.name}]</strong>에 지정되어 있던 <strong>'${dispKey}'</strong> 단축키를 <strong>[미지정]</strong>으로 바꾸고, <strong>[${targetDef.name}]</strong>에 지정했습니다. (하단 <strong>[💾 저장하기]</strong>를 눌러야 최종 반영됩니다)`,
+          `기존 <strong>[${unassignedDef.name}]</strong>에 지정되어 있던 <strong>'${dispKey}'</strong> 단축키를 <strong>[미지정]</strong>으로 바꾸고, <strong>[${targetDef.name}]</strong>에 지정했습니다. (하단 <strong>[변경사항 저장]</strong>을 눌러야 최종 반영됩니다)`,
           'warning'
         );
       } else if (cleanKey) {
         this.setShortcutModalBanner(
-          `✅ <strong>[${targetDef.name}]</strong> 단축키가 <strong>[${dispKey}]</strong>(으)로 지정되었습니다. 하단 <strong>[💾 저장하기]</strong>를 누르면 최종 반영됩니다.`,
+          `<strong>[${targetDef.name}]</strong> 단축키가 <strong>[${dispKey}]</strong>(으)로 지정되었습니다. 하단 <strong>[변경사항 저장]</strong>을 누르면 최종 반영됩니다.`,
           'normal'
         );
       } else {
         this.setShortcutModalBanner(
-          `ℹ️ <strong>[${targetDef.name}]</strong> 단축키가 <strong>[미지정]</strong>으로 비워졌습니다. 하단 <strong>[💾 저장하기]</strong>를 누르면 최종 반영됩니다.`,
+          `<strong>[${targetDef.name}]</strong> 단축키가 <strong>[미지정]</strong>으로 비워졌습니다. 하단 <strong>[변경사항 저장]</strong>을 누르면 최종 반영됩니다.`,
           'normal'
         );
       }
@@ -5568,7 +5568,7 @@
       this._shortcutModalDirty = true;
       this._syncShortcutSaveBtnState();
       this.setShortcutModalBanner(
-        '🔄 모든 단축키가 초기 기본값으로 되돌려졌습니다. 하단 <strong>[💾 저장하기]</strong>를 누르면 최종 반영됩니다.',
+        '모든 단축키가 초기 기본값으로 되돌려졌습니다. 하단 <strong>[변경사항 저장]</strong>을 누르면 최종 반영됩니다.',
         'normal'
       );
       this.renderShortcutSettingsModalList();
@@ -5691,7 +5691,7 @@
             + (!isRecording && isUnassigned ? ' is-unassigned' : '')
             + (!isRecording && !isUnassigned && isCustomized ? ' is-customized' : '');
           bindBtn.textContent = isRecording
-            ? '⌨️ 키를 누르세요... (ESC 취소)'
+            ? '키 입력 대기 · ESC 취소'
             : this.formatShortcutKeyForDisplay(curKey);
           bindBtn.title = isRecording
             ? '원하는 단축키를 누르세요 (ESC: 취소)'
@@ -5701,13 +5701,13 @@
             if (this._recordingShortcutActionId === def.id) {
               this._recordingShortcutActionId = null;
               this.setShortcutModalBanner(
-                '💡 기능 옆의 <strong>[단축키 버튼]</strong>을 클릭한 뒤 원하는 키를 누르세요.',
+                '기능 옆의 <strong>[단축키 버튼]</strong>을 클릭한 뒤 원하는 키를 누르세요.',
                 'normal'
               );
             } else {
               this._recordingShortcutActionId = def.id;
               this.setShortcutModalBanner(
-                `⌨️ <strong>[${def.name}]</strong>에 지정할 키를 눌러주세요... (<strong>ESC</strong>: 취소 / 중복 키 입력 시 기존 단축키는 <strong>미지정</strong>으로 해제됩니다)`,
+                `<strong>[${def.name}]</strong>에 지정할 키를 눌러주세요... (<strong>ESC</strong>: 취소 / 중복 키 입력 시 기존 단축키는 <strong>미지정</strong>으로 해제됩니다)`,
                 'recording'
               );
             }
@@ -5717,7 +5717,7 @@
           const clearBtn = document.createElement('button');
           clearBtn.type = 'button';
           clearBtn.className = 'shortcut-mini-icon-btn';
-          clearBtn.textContent = '✕';
+          clearBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
           clearBtn.title = '단축키 비우기 (미지정으로 변경)';
           clearBtn.disabled = isUnassigned;
           clearBtn.onclick = (e) => {
@@ -5728,7 +5728,7 @@
           const resetOneBtn = document.createElement('button');
           resetOneBtn.type = 'button';
           resetOneBtn.className = 'shortcut-mini-icon-btn is-reset-btn';
-          resetOneBtn.textContent = '↺';
+          resetOneBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
           resetOneBtn.title = `이 기능을 기본값(${defaultDisp})으로 복원`;
           resetOneBtn.disabled = !isCustomized;
           resetOneBtn.onclick = (e) => {
@@ -5761,7 +5761,10 @@
       }).length;
       const badgeSettings = document.getElementById('badgeShortcutCustomStatus');
       if (badgeSettings) {
-        badgeSettings.textContent = customCount > 0 ? `${customCount}개 ▸` : '▸';
+        const chevronSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;"><polyline points="9 18 15 12 9 6"/></svg>';
+        badgeSettings.innerHTML = customCount > 0
+          ? `<span class="settings-shortcut-count-text">${customCount}개 변경</span>${chevronSvg}`
+          : chevronSvg;
       }
 
       // 2. 툴바/메뉴 버튼의 마우스오버 툴팁(title)에 현재 단축키 실시간 반영
