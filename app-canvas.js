@@ -2490,6 +2490,9 @@
         this.piecewiseBoundaries[idx] = newX;
         if (idx === 0) this.pwK = newX;
 
+        if (this.isPiecewisePeriodic && !this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPiecewise' && typeof this.syncPeriodicUI === 'function') {
+          this.syncPeriodicUI();
+        }
         this.updatePwDescBadge();
         this.requestRender();
         return;

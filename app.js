@@ -1981,6 +1981,9 @@
           if (activePanelId === 'panelToolkit' && typeof this.renderMathToolkitPanel === 'function') {
             this.renderMathToolkitPanel();
           }
+          if (activePanelId === 'panelPiecewise' && typeof this.syncPeriodicUI === 'function') {
+            this.syncPeriodicUI();
+          }
           const panelTitles = {
             panelPresets: '그래프 추가',
             panelTransform: '변환 & 대칭',

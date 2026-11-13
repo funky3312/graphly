@@ -1731,6 +1731,11 @@ class GraphApp {
       if (data.isPiecewiseLocked !== undefined) {
         this.isPiecewiseLocked = Boolean(data.isPiecewiseLocked);
       }
+      if (!this._isApplyingAudioTimelineState) {
+        const pwPop = document.getElementById('pwRegionPopover');
+        if (pwPop) pwPop.style.display = 'none';
+        this._openPwRegionIdx = null;
+      }
       this.syncPeriodicUI();
       if (data.showInverseGuide !== undefined) {
         this.showInverseGuide = data.showInverseGuide;
@@ -2073,11 +2078,12 @@ class GraphApp {
     if (this.isInkMode && this.activeInkTool !== 'select') {
       this.setActiveInkTool('select');
     }
-    // 🌟 [대표님 기획 반영]: 그래프 추가(panelPresets)·시각화 도구(panelToolkit)·스타일 & 배경(panelStyle)·환경 설정(panelSettings)은 열려 있는 동안 닫히지 않고 유지!
+    // 🌟 [대표님 기획 반영]: 그래프 추가(panelPresets)·구간 분할(panelPiecewise)·시각화 도구(panelToolkit)·스타일 & 배경(panelStyle)·환경 설정(panelSettings)은 열려 있는 동안 닫히지 않고 유지!
     if (
       typeof this.closeDrawer === 'function' &&
       !this.isDrawerCollapsed &&
       this.activeDrawerPanel !== 'panelPresets' &&
+      this.activeDrawerPanel !== 'panelPiecewise' &&
       this.activeDrawerPanel !== 'panelToolkit' &&
       this.activeDrawerPanel !== 'panelStyle' &&
       this.activeDrawerPanel !== 'panelSettings'
@@ -2175,6 +2181,10 @@ class GraphApp {
       if (btnQuick) btnQuick.classList.remove('active');
       const pwControls = document.getElementById('pwControls');
       if (pwControls) pwControls.style.display = 'none';
+      const pwPopover = document.getElementById('pwRegionPopover');
+      if (pwPopover) pwPopover.style.display = 'none';
+      this._openPwRegionIdx = null;
+      this.syncPeriodicUI();
 
       this.showToast(`🗑️ ${removedName} 삭제됨`);
     } else {
@@ -4072,6 +4082,9 @@ class GraphApp {
       if (this.activeDrawerPanel === 'panelToolkit' && typeof this.renderMathToolkitPanel === 'function') {
         this.renderMathToolkitPanel();
       }
+      if (this.activeDrawerPanel === 'panelPiecewise' && typeof this.syncPeriodicUI === 'function') {
+        this.syncPeriodicUI();
+      }
       document.querySelectorAll('.drawer-panel').forEach(p => {
         const isMatch = (p.id === this.activeDrawerPanel);
         p.style.display = isMatch ? 'flex' : 'none';
@@ -4158,13 +4171,14 @@ class GraphApp {
     }
 
     // [대표님 핵심 UX 기획]:
-    // 1) 그래프 추가(panelPresets)·시각화 도구(panelToolkit)·스타일 & 배경(panelStyle)·환경 설정(panelSettings)은 한 번 열리면
-    //    바깥 영역 터치/클릭으로 닫히지 않고 [✕] 버튼(또는 도구 실행)으로 닫도록 고정!
-    // 2) 기타 서랍(구간분할 등)은 바깥 클릭 시 자동 닫히되, 아이패드 애플펜슬 손날(팜 리젝션) 오터치는 무시!
+    // 1) 그래프 추가(panelPresets)·구간 분할(panelPiecewise)·시각화 도구(panelToolkit)·스타일 & 배경(panelStyle)·환경 설정(panelSettings)은
+    //    한 번 열리면 바깥 영역 터치/클릭으로 닫히지 않고 [✕] 버튼(또는 활성 아이콘 재탭 / 도구 실행)으로 닫도록 고정!
+    // 2) 기타 보조 서랍은 바깥 클릭 시 자동 닫히되, 아이패드 애플펜슬 손날(팜 리젝션) 오터치는 무시!
     window.addEventListener('pointerdown', (e) => {
       if (this.isDrawerCollapsed) return;
       if (
         this.activeDrawerPanel === 'panelPresets' ||
+        this.activeDrawerPanel === 'panelPiecewise' ||
         this.activeDrawerPanel === 'panelToolkit' ||
         this.activeDrawerPanel === 'panelStyle' ||
         this.activeDrawerPanel === 'panelSettings'
@@ -4244,13 +4258,10 @@ class GraphApp {
       };
     }
 
-    // 사이드바 분할선 추가 버튼 (+ 선추가) -> 원클릭 즉시 자동 닫힘
+    // 사이드바 분할선 추가 버튼 (+ 선추가) -> 연속 2~3개 추가 편의를 위해 서랍 열린 상태 유지 ([✕]로 수동 닫기)
     if (btnAdd) {
       btnAdd.onclick = () => {
         this.addPiecewiseBoundary();
-        if (typeof this.closeDrawer === 'function') {
-          this.closeDrawer();
-        }
       };
     }
 
@@ -4280,14 +4291,11 @@ class GraphApp {
     // 체크박스 버튼 없이, 화면에서 특정 곡선을 클릭/선택하면 그 곡선만 점선이 나오고,
     // 다른 곡선을 클릭하면 그 곡선만 점선이 나오며, 빈 공간 클릭 시 점선이 싹 사라짐!
 
-    // 🎯 교점 스냅 -> 원클릭 즉시 자동 닫힘
+    // 🎯 교점 스냅 -> 스냅 후 추가 조작(선 추가·주기 반복 등)을 위해 서랍 열린 상태 유지 ([✕]로 수동 닫기)
     const btnSnap = document.getElementById('btnPwSnap');
     if (btnSnap) {
       btnSnap.onclick = () => {
         this.snapPwToIntersection();
-        if (typeof this.closeDrawer === 'function') {
-          this.closeDrawer();
-        }
       };
     }
 
@@ -4391,6 +4399,9 @@ class GraphApp {
     if (chk) chk.checked = true;
     const container = document.getElementById('pwControls');
     if (container) container.style.display = 'flex';
+    const popover = document.getElementById('pwRegionPopover');
+    if (popover) popover.style.display = 'none';
+    this._openPwRegionIdx = null;
 
     this.showToast('↺ 구간 분할이 기본 상태(x=0)로 깔끔히 초기화되었습니다!');
     this.updatePwDescBadge();
@@ -4418,7 +4429,7 @@ class GraphApp {
       this.piecewiseInclusions = ['right'];
       this.pwK = 0.0;
       this.selectedPwBoundaryIdx = 0;
-      this.showToast('✂️ 구간 분할 시작! (세로선 1개 = 2개 영역). [✂️]를 다시 누르면 선이 추가됩니다.');
+      this.showToast('✂️ 구간 분할 시작! (세로선 1개 = 2개 영역). [+ 선 추가]를 누르면 선이 계속 추가됩니다.');
     } else {
       // 새로운 세로선 위치 결정 (마지막 선 + 2.0 또는 화면 범위 내)
       const lastX = this.piecewiseBoundaries[this.piecewiseBoundaries.length - 1];
@@ -4454,7 +4465,11 @@ class GraphApp {
 
     const container = document.getElementById('pwControls');
     if (container) container.style.display = 'flex';
+    const popover = document.getElementById('pwRegionPopover');
+    if (popover) popover.style.display = 'none';
+    this._openPwRegionIdx = null;
 
+    this.syncPeriodicUI();
     this.updatePwDescBadge();
     this.render();
   }
@@ -4827,6 +4842,11 @@ class GraphApp {
       this.showToast(`🎯 세로선들을 교점에 칼밀착 정렬했습니다!`);
     }
 
+    const popover = document.getElementById('pwRegionPopover');
+    if (popover) popover.style.display = 'none';
+    this._openPwRegionIdx = null;
+
+    this.syncPeriodicUI();
     this.updatePwDescBadge();
     this.render();
   }

@@ -4452,7 +4452,14 @@
           }
         }
       });
-      if (!isBoard) {
+      if (isBoard && !this._isCapturingExportSnapshots && !this._isApplyingAudioTimelineState) {
+        const pwPopover = document.getElementById('pwRegionPopover');
+        if (pwPopover) pwPopover.style.display = 'none';
+        this._openPwRegionIdx = null;
+        if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPiecewise' && typeof this.closeDrawer === 'function') {
+          this.closeDrawer();
+        }
+      } else if (!isBoard) {
         const btnInt = document.getElementById('btnQuickIntersection');
         if (btnInt) btnInt.classList.toggle('active', Boolean(this.useIntersectionDetector));
         if (this.useIntersectionDetector) {

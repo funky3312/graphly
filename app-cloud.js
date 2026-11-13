@@ -4270,13 +4270,24 @@
         this.syncControls();
         this.renderLayerList();
       }
+      if (typeof this.syncPeriodicUI === 'function') {
+        this.syncPeriodicUI();
+      }
       this.updatePwDescBadge();
       this.updateIntersections();
 
       if (this.isInkMode && this.activeInkTool !== 'select') {
         this.setActiveInkTool('select');
       }
-      if (typeof this.closeDrawer === 'function' && !this.isDrawerCollapsed && this.activeDrawerPanel !== 'panelPresets') {
+      if (
+        typeof this.closeDrawer === 'function' &&
+        !this.isDrawerCollapsed &&
+        this.activeDrawerPanel !== 'panelPresets' &&
+        this.activeDrawerPanel !== 'panelPiecewise' &&
+        this.activeDrawerPanel !== 'panelToolkit' &&
+        this.activeDrawerPanel !== 'panelStyle' &&
+        this.activeDrawerPanel !== 'panelSettings'
+      ) {
         this.closeDrawer();
       }
 
