@@ -90,6 +90,9 @@
           this.isWaitingForFilePicker = true;
           this._filePickerOpenedAt = performance.now();
           restoreDefaultCursorForFilePicker();
+          if (typeof this._syncGraphlyFileInputAcceptForDevice === 'function') {
+            this._syncGraphlyFileInputAcceptForDevice(fileInput, '.pdf,.png,.jpg,.jpeg,.webp,.graphly');
+          }
           fileInput.value = '';
           fileInput.click();
         }
@@ -180,22 +183,30 @@
             return;
           }
 
-          // 2.5) .graphly.html / .graphly / .json / .html 파일 불러오기 (카톡/iOS 중복 번호 (1).html 포함)
-          const graphlyFile = rawFiles.find(f => f.name && /\.(graphly|json|html|htm)$/i.test(f.name));
+          // 2.5) .graphly 전용 수업 파일 불러오기
+          const graphlyFile = rawFiles.find(f => f && (typeof this._isGraphlyFileName === 'function'
+            ? this._isGraphlyFileName(f.name)
+            : (f.name && /\.graphly$/i.test(f.name.trim()))));
           if (graphlyFile) {
-            this.importGraphlyDeckFile(graphlyFile);
+            if (this.isPdfModalOpen && typeof this.closePdfModal === 'function') {
+              this.closePdfModal();
+            }
+            await this.importGraphlyDeckFile(graphlyFile);
             return;
           }
 
           // 3) PDF 파일 불러오기
-          const pdfFile = rawFiles.find(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+          const pdfFile = rawFiles.find(f => f.type === 'application/pdf' || (f.name && f.name.toLowerCase().endsWith('.pdf')));
           if (pdfFile) {
             if (this._pendingImportLessonMode) {
               this.setLessonTeachingMode(this._pendingImportLessonMode);
               this._pendingImportLessonMode = null;
             }
             this.loadPdfFromFile(pdfFile);
+            return;
           }
+
+          this.showToast('⚠️ PDF, 이미지 또는 Graphly 파일(.graphly)만 열 수 있습니다.');
         };
       }
 
@@ -305,6 +316,10 @@
       // PDF 파일 드래그 앤 드롭
       const dropOverlay = document.getElementById('pdfDropOverlay');
       let dragCounter = 0;
+      this._resetPdfDropOverlayState = () => {
+        dragCounter = 0;
+        if (dropOverlay) dropOverlay.style.display = 'none';
+      };
 
       window.addEventListener('dragenter', (e) => {
         e.preventDefault();
@@ -331,10 +346,19 @@
         e.preventDefault();
         dragCounter = 0;
         if (dropOverlay) dropOverlay.style.display = 'none';
+        const modalCloud = document.getElementById('modalCloudHub');
+        if (modalCloud && modalCloud.classList.contains('show')) return;
         if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          const file = e.dataTransfer.files[0];
-          if (file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf') {
+          const droppedArr = Array.from(e.dataTransfer.files);
+          const file = droppedArr[0];
+          if ((file.name && file.name.toLowerCase().endsWith('.pdf')) || file.type === 'application/pdf') {
             this.loadPdfFromFile(file);
+            return;
+          }
+          const hasPdf = droppedArr.some(f => f && (f.type === 'application/pdf' || (f.name && f.name.toLowerCase().endsWith('.pdf'))));
+          const hasImage = droppedArr.some(f => f && ((f.type && f.type.startsWith('image/')) || (f.name && /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name))));
+          if (!hasPdf && !hasImage) {
+            this.showToast('⚠️ PDF, 이미지 또는 Graphly 파일(.graphly)만 열 수 있습니다.');
           }
         }
       });

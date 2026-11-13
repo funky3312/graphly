@@ -7071,7 +7071,13 @@ class GraphApp {
     }
 
     if (btnShareExportFile) {
-      btnShareExportFile.onclick = () => {
+      btnShareExportFile.onclick = async () => {
+        if (this.isAudioRecording) {
+          await this.stopAudioRecording();
+        } else if (this._pendingSlideAudioFinalizers && this._pendingSlideAudioFinalizers.length > 0) {
+          await Promise.all(this._pendingSlideAudioFinalizers).catch(() => { });
+          this._pendingSlideAudioFinalizers = [];
+        }
         const slides = getShareModalFilteredSlides();
         const stageSuffix = getExportStageSuffixLabel();
         const defaultTitle = slides.length > 1
@@ -7085,7 +7091,7 @@ class GraphApp {
         }
         const title = typedTitle || defaultTitle;
         const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : `#수업노트 ${stageSuffix}`;
-        this.exportGraphlyDeckFile(title, tags, slides);
+        await this.exportGraphlyDeckFile(title, tags, slides, this.exportFilter);
         triggerExportBtnSuccess(btnShareExportFile, lblShareExportFile, '파일 저장 완료', '내 기기에 저장');
       };
     }
@@ -7093,45 +7099,6 @@ class GraphApp {
 
   // --- [URL 해시에서 상태 복원 및 스마트 판서 이미지 뷰어 자동 진입 엔진 (#cloud= & #share=)] ---
   checkUrlHashForState() {
-    if (!this._selfLaunchMessageBound) {
-      this._selfLaunchMessageBound = true;
-      if (typeof window.name === 'string' && window.name.startsWith('GRAPHLY_AUTOPACK:')) {
-        try {
-          const rawPack = window.name.slice('GRAPHLY_AUTOPACK:'.length);
-          window.name = '';
-          this._decompressJsonStringGzipBase64(rawPack).then((jsonStr) => {
-            try {
-              const parsedPack = JSON.parse(jsonStr);
-              if (parsedPack) {
-                setTimeout(() => {
-                  this.loadGraphlyPackObject(parsedPack, parsedPack.title || '더블클릭 수업 파일', true);
-                }, 60);
-              }
-            } catch (e) { }
-          }).catch(() => { });
-        } catch (err) { }
-      }
-      window.addEventListener('message', (e) => {
-        if (!e || !e.data || e.data.type !== 'GRAPHLY_AUTO_OPEN_DECK') return;
-        if (typeof e.data.rawPack === 'string' && e.data.rawPack) {
-          this._decompressJsonStringGzipBase64(e.data.rawPack).then((jsonStr) => {
-            try {
-              const parsed = JSON.parse(jsonStr);
-              if (parsed) this.loadGraphlyPackObject(parsed, parsed.title || '더블클릭 수업 파일', true);
-            } catch (err) { }
-          }).catch(() => { });
-          return;
-        }
-        if (e.data.pack) {
-          this.loadGraphlyPackObject(e.data.pack, e.data.pack.title || '더블클릭 수업 파일', true);
-        }
-      });
-      if (window.parent && window.parent !== window) {
-        try {
-          window.parent.postMessage({ type: 'GRAPHLY_APP_READY' }, '*');
-        } catch (err) { }
-      }
-    }
     const hash = window.location.hash;
     if (!hash) return;
 

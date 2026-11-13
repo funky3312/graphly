@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261113_84">
+  <link rel="stylesheet" href="style.css?v=20261113_85">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -69,7 +69,7 @@
               <polyline points="9 14 12 11 15 14" />
             </svg></span>
         </button>
-        <input type="file" id="pdfFileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.graphly,.json,.html" multiple
+        <input type="file" id="pdfFileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.graphly" multiple
           style="display: none;">
         <!-- ☁️ 2. 클라우드 보관함 (폴더 탐색기 · 클라우드 저장 & 불러오기 통합) -->
         <button class="rail-btn" id="btnCloudHub" title="클라우드 보관함 (저장 & 불러오기)">
@@ -2530,7 +2530,7 @@
             <span id="lblResumePdfFileName"></span>
             <button type="button" id="btnOpenLocalFileFromHub"></button>
             <button type="button" id="btnImportGraphlyFile"></button>
-            <input type="file" id="inputImportGraphlyFile" accept=".graphly,.json,.html">
+            <input type="file" id="inputImportGraphlyFile" accept=".graphly">
             <div id="lblCloudSaveBoxTitle"></div>
             <input type="text" id="inputCloudSaveTags">
             <button type="button" id="btnExportGraphlyFile"></button>
@@ -2577,7 +2577,7 @@
           </svg>
           <span>업로드</span>
         </button>
-        <input type="file" id="inputCloudUploadLocalFiles" accept=".graphly,.html,.json" multiple
+        <input type="file" id="inputCloudUploadLocalFiles" accept=".graphly" multiple
           style="display: none;">
         <div id="cloudLibrarySearchWrap" class="cloud-library-search-wrap">
           <svg class="cloud-library-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
@@ -3519,15 +3519,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261113_84"></script>
-  <script src="app-core.js?v=20261113_84"></script>
-  <script src="app-ink.js?v=20261113_84"></script>
-  <script src="app-pdf.js?v=20261113_84"></script>
-  <script src="app-cards.js?v=20261113_84"></script>
-  <script src="app-cloud.js?v=20261113_84"></script>
-  <script src="app-canvas.js?v=20261113_84"></script>
-  <script src="app-toolkit.js?v=20261113_84"></script>
-  <script src="app.js?v=20261113_84"></script>
+  <script src="engine.js?v=20261113_85"></script>
+  <script src="app-core.js?v=20261113_85"></script>
+  <script src="app-ink.js?v=20261113_85"></script>
+  <script src="app-pdf.js?v=20261113_85"></script>
+  <script src="app-cards.js?v=20261113_85"></script>
+  <script src="app-cloud.js?v=20261113_85"></script>
+  <script src="app-canvas.js?v=20261113_85"></script>
+  <script src="app-toolkit.js?v=20261113_85"></script>
+  <script src="app.js?v=20261113_85"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
