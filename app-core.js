@@ -323,7 +323,8 @@ class GraphApp {
       postit: { name: '포스트잇', bg: '#fef7e0', axis: '#2d3436', grid: 'rgba(0, 0, 0, 0.07)', vfBorder: 'rgba(0, 0, 0, 0.16)', isLight: true }
     };
     this.currentThemeKey = 'white_paper'; // [대표님 기획]: 기본 테마 화이트 페이퍼 (데스모스 스타일)!
-    this._currentCat = '📐 다항함수';    // 선택된 카테고리 기억
+    this._currentCat = 'tab_basic';      // 선택된 프리셋 탭 ('tab_basic' | 'tab_calculus' | '⭐ 내 그래프')
+    this._squarePresetThumbCache = {};   // 1:1 정사각형 개형 SVG 메모이제이션 캐시
 
     // 뷰포트 오프셋 (팬 이동)
     this.panX = 0;
@@ -2024,7 +2025,9 @@ class GraphApp {
     this.activeGraphIdx = this.graphs.length - 1;
     this.selectedHandleIdx = null;
     this.isCurveSelected = true;
-    this._currentCat = newGraph.category;
+    if (this._currentCat !== '⭐ 내 그래프') {
+      this._currentCat = this.normalizePresetTab(newGraph.category);
+    }
 
     // 삼각함수는 6~8주기가 한눈에 보이도록 대파노라마 화각 확장 (단, PDF 개념 페이지 위에서는 아담한 그래프 스케일 ySpan=8.4 유지!)
     if (this.pdfPageBoardData) {
@@ -2241,6 +2244,8 @@ class GraphApp {
         this._pipTargetCard = null;
         this._pipSessionOrigin = null;
       }
+      this.syncPresetActiveButtons();
+      this.syncShapePanel();
       this.render();
       this.showToast('🗑️ 칠판 위의 모든 그래프 카드를 비웠습니다.');
       return;
@@ -2475,9 +2480,7 @@ class GraphApp {
     this.activeGraphIdx = idx;
     this.selectedHandleIdx = null;
     this.isCurveSelected = true;
-    if (this.activeGraph && this._currentCat !== '⭐ 내 그래프') {
-      this._currentCat = this.activeGraph.category;
-    }
+    this._currentCat = this.normalizePresetTab(this._currentCat);
 
     this.syncControls();
     this.renderLayerList();
@@ -2607,13 +2610,12 @@ class GraphApp {
   syncControls() {
     const g = this.activeGraph;
 
-    // 카테고리 탭 동기화 (⭐ 내 그래프 탭 열람 중일 때는 현재 탭 고정 유지)
-    const curCat = (this._currentCat === '⭐ 내 그래프')
-      ? '⭐ 내 그래프'
-      : (g ? g.category : (this._currentCat || '📐 다항함수'));
-    document.querySelectorAll('.cat-tab-btn').forEach(tab => {
+    // 카테고리 탭 동기화 (3탭: tab_basic | tab_calculus | ⭐ 내 그래프)
+    const curCat = this.normalizePresetTab(this._currentCat);
+    document.querySelectorAll('#panelPresets .cat-tab-btn').forEach(tab => {
       tab.classList.toggle('active', tab.dataset.cat === curCat);
     });
+    this.syncPresetActiveButtons();
 
     this.syncGraphColorPaletteUI();
     this._syncLineWidthSliderUI();
@@ -2696,109 +2698,439 @@ class GraphApp {
     this.syncCurveContextBar();
   }
 
-  renderFuncList() {
-    const grid = document.getElementById('funcGrid');
-    if (!grid) return;
-    grid.innerHTML = '';
+  normalizePresetTab(cat) {
+    if (cat === '⭐ 내 그래프' || cat === 'tab_custom') return '⭐ 내 그래프';
+    if (cat === 'tab_calculus' || cat === '🔥 수능 킬러') return 'tab_calculus';
+    return 'tab_basic';
+  }
 
-    const shortDisplayNames = {
-      '3rd_basic_cubic': '삼차 (y=x³)',
-      '4th_basic_bowl': '사차 (y=x⁴)'
+  _resolvePresetTargetContext() {
+    if (!this.isGraphCovered) {
+      return {
+        g: this.activeGraph || null,
+        isBoardPip: false,
+        cardRef: null,
+        snap: null,
+        widget: null
+      };
+    }
+    if (this._pipTargetCard === 'new') {
+      return { g: null, isBoardPip: true, cardRef: null, snap: null, widget: null };
+    }
+    let resolvedCard = null;
+    const explicitCard = (this._pipTargetCard && this._pipTargetCard !== 'new') ? this._pipTargetCard : null;
+    const isValidExplicit = Boolean(
+      (explicitCard === 'primary' && this._hasPrimaryGraphCard && this.graphCardData) ||
+      (explicitCard && explicitCard !== 'primary' && Array.isArray(this.extraGraphCards) && this.extraGraphCards.includes(explicitCard))
+    );
+    if (isValidExplicit) {
+      resolvedCard = explicitCard;
+    } else if (typeof this._getTargetPipGraphCardForAxisOrPreset === 'function') {
+      const targetObj = this._getTargetPipGraphCardForAxisOrPreset();
+      if (targetObj && targetObj.cardRef) {
+        resolvedCard = targetObj.cardRef;
+      }
+    }
+    if (!resolvedCard || typeof this._getMutablePipCardSnapshot !== 'function') {
+      return { g: null, isBoardPip: true, cardRef: null, snap: null, widget: null };
+    }
+    const snap = this._getMutablePipCardSnapshot(resolvedCard);
+    if (!snap || snap.isNAxisStudioCard || !Array.isArray(snap.graphs) || snap.graphs.length === 0) {
+      return { g: null, isBoardPip: true, cardRef: resolvedCard, snap: null, widget: null };
+    }
+    const idx = (typeof snap.activeGraphIdx === 'number' && snap.activeGraphIdx >= 0 && snap.activeGraphIdx < snap.graphs.length)
+      ? snap.activeGraphIdx
+      : (snap.graphs.length - 1);
+    const widgetInfo = (typeof this._getPipCardWidgetAndSnapRaw === 'function')
+      ? this._getPipCardWidgetAndSnapRaw(resolvedCard)
+      : null;
+    return {
+      g: snap.graphs[idx] || null,
+      isBoardPip: true,
+      cardRef: resolvedCard,
+      snap,
+      widget: widgetInfo ? widgetInfo.widget : null
     };
+  }
 
-    // 대분류 제목·번호 배지 없이 구분선/간격만으로 위에서부터 직관 배치 (판별식·극값 생성 진화 순서)
-    const blocks = [
-      {
-        cols: 2,
-        items: [
-          '1st_linear',
-          '2nd_quadratic',
-          '3rd_monotonic',
-          '3rd_basic_cubic',
-          '3rd_normal',
-          '4th_basic_bowl',
-          '4th_skew',
-          '4th_inflection',
-          '4th_symmetric',
-          '4th_asymmetric'
-        ]
-      },
-      {
-        cols: 2,
-        items: [
-          'rational_basic',
-          'sqrt_basic',
-          'exp_basic',
-          'log_basic'
-        ]
-      },
-      {
-        cols: 3,
-        items: [
-          'sin_1period',
-          'cos_1period',
-          'tan_1period',
-          'geom_circle',
-          'geom_triangle',
-          'geom_quad'
-        ]
-      },
-      {
-        cols: 2,
-        items: [
-          'killer_frac_odd',
-          'killer_exp_linear',
-          'killer_exp_quad',
-          'killer_log_frac'
-        ]
-      }
-    ];
-
-    const topBlocksWrap = document.createElement('div');
-    topBlocksWrap.className = 'func-top-blocks-wrap';
-
-    blocks.forEach((blk, blkIdx) => {
-      if (blkIdx > 0) {
-        const divLine = document.createElement('div');
-        divLine.className = 'func-block-divider';
-        topBlocksWrap.appendChild(divLine);
-      }
-
-      const secGrid = document.createElement('div');
-      secGrid.className = `func-cat-grid cols-${blk.cols}`;
-
-      blk.items.forEach((key) => {
-        const data = this.meta[key];
-        if (!data) return;
-        const labelText = shortDisplayNames[key] || data.name;
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'func-btn';
-        btn.dataset.preset = key;
-        btn.innerHTML = `
-          <span class="func-icon-wrap">${data.svg || ''}</span>
-          <span class="func-name-text">${labelText}</span>
-        `;
-        btn.onclick = () => {
-          if (!this.isGraphCovered && this.graphs.length >= 12) {
-            this.showToast('⚠️ 그래프는 최대 12개까지 동시에 추가할 수 있습니다.');
-            return;
-          }
-          this.addGraph(key);
-        };
-        secGrid.appendChild(btn);
-      });
-
-      topBlocksWrap.appendChild(secGrid);
+  syncPresetActiveButtons() {
+    const activeTab = this.normalizePresetTab(this._currentCat);
+    document.querySelectorAll('#panelPresets .cat-tab-btn').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.cat === activeTab);
     });
 
-    grid.appendChild(topBlocksWrap);
+    const myTabBtn = document.getElementById('btnCatTabMyGraphs');
+    if (myTabBtn) {
+      const isLoggedIn = Boolean(this.cloudUser && this.cloudUser.uid);
+      const count = (isLoggedIn && Array.isArray(this.customGraphPresets)) ? this.customGraphPresets.length : 0;
+      const nextHtml = count > 0
+        ? `<span>내 그래프</span><span class="preset-tab-count-pill">${count}</span>`
+        : `<span>내 그래프</span>`;
+      if (myTabBtn._lastRenderedHtml !== nextHtml) {
+        myTabBtn._lastRenderedHtml = nextHtml;
+        myTabBtn.innerHTML = nextHtml;
+      }
+    }
 
-    // 하단 프리셋 섹션 (나만의 그래프 보관함 — 독립 스크롤)
-    const presetSec = document.createElement('div');
-    presetSec.className = 'func-preset-section';
-    this.renderCustomGraphPresetList(presetSec);
-    grid.appendChild(presetSec);
+    const grid = document.getElementById('funcGrid');
+    if (!grid) return;
+    const ctx = this._resolvePresetTargetContext();
+    const activeType = (ctx && ctx.g && ctx.g.type) ? ctx.g.type : '';
+    grid.querySelectorAll('.func-btn[data-preset]').forEach(btn => {
+      btn.classList.toggle('active', Boolean(activeType && btn.dataset.preset === activeType));
+    });
+  }
+
+  _buildSquarePresetThumbnailSvg(key) {
+    if (!this._squarePresetThumbCache) this._squarePresetThumbCache = {};
+    if (this._squarePresetThumbCache[key]) return this._squarePresetThumbCache[key];
+
+    const E = this.engine || window.GraphMathEngine;
+    if (!E || typeof E.evaluate !== 'function') {
+      return (this.meta && this.meta[key] && this.meta[key].svg) || '';
+    }
+
+    const W = 64, H = 64;
+    const sampleCurve = (handles, xMin, xMax, yMin, yMax, pad = 8.5, steps = 84) => {
+      const innerW = W - pad * 2;
+      const innerH = H - pad * 2;
+      const toX = (x) => pad + ((x - xMin) / (xMax - xMin)) * innerW;
+      const toY = (y) => H - pad - ((y - yMin) / (yMax - yMin)) * innerH;
+      const segments = [];
+      let cur = [];
+      for (let i = 0; i <= steps; i++) {
+        const x = xMin + (xMax - xMin) * (i / steps);
+        const y = E.evaluate(key, handles, x);
+        if (typeof y !== 'number' || isNaN(y) || !isFinite(y)) {
+          if (cur.length >= 2) segments.push(cur);
+          cur = [];
+          continue;
+        }
+        const sx = toX(x);
+        const sy = toY(y);
+        if (sy < pad - 2 || sy > H - pad + 2) {
+          if (cur.length > 0) {
+            const prev = cur[cur.length - 1];
+            const clipY = sy < pad - 2 ? pad - 1.5 : H - pad + 1.5;
+            if (Math.abs(sy - prev.sy) > 1e-6) {
+              const t = (clipY - prev.sy) / (sy - prev.sy);
+              if (t >= 0 && t <= 1) {
+                cur.push({ sx: prev.sx + t * (sx - prev.sx), sy: clipY });
+              }
+            }
+            if (cur.length >= 2) segments.push(cur);
+            cur = [];
+          }
+          continue;
+        }
+        cur.push({ sx, sy });
+      }
+      if (cur.length >= 2) segments.push(cur);
+
+      const d = segments.map(seg => {
+        const kept = [seg[0]];
+        for (let i = 1; i < seg.length - 1; i++) {
+          const prev = kept[kept.length - 1];
+          const p = seg[i];
+          if (Math.hypot(p.sx - prev.sx, p.sy - prev.sy) >= 1.3) {
+            kept.push(p);
+          }
+        }
+        kept.push(seg[seg.length - 1]);
+        return kept.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${p.sx.toFixed(1)},${p.sy.toFixed(1)}`).join(' ');
+      }).join(' ');
+
+      return {
+        d,
+        toX: (x) => Number(toX(x).toFixed(1)),
+        toY: (y) => Number(toY(y).toFixed(1))
+      };
+    };
+
+    let axesSvg = '';
+    let guidesSvg = '';
+    let dotsSvg = '';
+    let pathD = '';
+
+    const solidDot = (cx, cy) => `<circle class="sq-dot-solid" cx="${cx}" cy="${cy}" r="2.35"/>`;
+    const hollowDot = (cx, cy) => `<circle class="sq-dot-hollow" cx="${cx}" cy="${cy}" r="2.35"/>`;
+    const dashedLine = (x1, y1, x2, y2) => `<line class="sq-guide" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    const axisCross = (x0, y0, pad = 6) => (
+      `<line class="sq-axis" x1="${pad}" y1="${y0}" x2="${W - pad}" y2="${y0}"/>` +
+      `<line class="sq-axis" x1="${x0}" y1="${pad}" x2="${x0}" y2="${H - pad}"/>`
+    );
+
+    switch (key) {
+      case '3rd_monotonic': {
+        const handles = [{ x: 0, y: 0 }, { x: 1.35, y: 2.35 }];
+        const s = sampleCurve(handles, -1.48, 1.48, -2.55, 2.55, 8.5, 84);
+        const m = 0.35 * (2.35 / 1.35);
+        pathD = s.d;
+        guidesSvg = dashedLine(s.toX(-1.28), s.toY(-1.28 * m), s.toX(1.28), s.toY(1.28 * m));
+        dotsSvg = hollowDot(s.toX(0), s.toY(0));
+        break;
+      }
+      case '3rd_basic_cubic': {
+        const handles = [{ x: 0, y: 0 }, { x: 1.2, y: 1.728 }];
+        const s = sampleCurve(handles, -1.36, 1.36, -2.45, 2.45, 8.5, 84);
+        pathD = s.d;
+        guidesSvg = dashedLine(s.toX(-1.16), s.toY(0), s.toX(1.16), s.toY(0));
+        dotsSvg = hollowDot(s.toX(0), s.toY(0));
+        break;
+      }
+      case '3rd_normal': {
+        const handles = [{ x: -1, y: 2.05 }, { x: 1, y: -2.05 }, { x: 0, y: 0 }];
+        const s = sampleCurve(handles, -2.12, 2.12, -2.85, 2.85, 8.5, 88);
+        pathD = s.d;
+        dotsSvg = solidDot(s.toX(-1), s.toY(2.05)) + solidDot(s.toX(1), s.toY(-2.05));
+        break;
+      }
+      case '4th_basic_bowl': {
+        const handles = [{ x: 0, y: -2.0 }, { x: 1.35, y: 1.85 }];
+        const s = sampleCurve(handles, -1.5, 1.5, -2.4, 2.75, 8.5, 84);
+        pathD = s.d;
+        guidesSvg = dashedLine(s.toX(-1.12), s.toY(-2.0), s.toX(1.12), s.toY(-2.0));
+        dotsSvg = solidDot(s.toX(0), s.toY(-2.0));
+        break;
+      }
+      case '4th_skew': {
+        const handles = [{ x: 0.9, y: -2.0 }, { x: -0.95, y: 0.65 }];
+        const p = E._solve4thSkewParams(handles);
+        const s = sampleCurve(handles, -1.85, 2.02, -2.45, 2.8, 8.5, 84);
+        const xs = -0.95;
+        const ys = E.evaluate('4th_skew', handles, xs);
+        const slope = 4 * p.a * (xs - p.x0) * (p.T * p.d * p.d);
+        pathD = s.d;
+        guidesSvg = dashedLine(s.toX(xs - 0.68), s.toY(ys - 0.68 * slope), s.toX(xs + 0.68), s.toY(ys + 0.68 * slope));
+        dotsSvg = hollowDot(s.toX(xs), s.toY(ys)) + solidDot(s.toX(0.9), s.toY(-2.0));
+        break;
+      }
+      case '4th_inflection': {
+        const handles = [{ x: -0.85, y: 0.65 }, { x: 0.95, y: -2.0 }];
+        const s = sampleCurve(handles, -1.72, 1.7, -2.45, 2.8, 8.5, 84);
+        pathD = s.d;
+        guidesSvg = dashedLine(s.toX(-1.5), s.toY(0.65), s.toX(-0.15), s.toY(0.65));
+        dotsSvg = hollowDot(s.toX(-0.85), s.toY(0.65)) + solidDot(s.toX(0.95), s.toY(-2.0));
+        break;
+      }
+      case '4th_symmetric': {
+        const handles = [{ x: -1.35, y: -2.0 }, { x: 0.0, y: 0.95 }, { x: 1.35, y: -2.0 }];
+        const s = sampleCurve(handles, -2.18, 2.18, -2.45, 2.75, 8.5, 92);
+        pathD = s.d;
+        guidesSvg = dashedLine(s.toX(-1.88), s.toY(-2.0), s.toX(1.88), s.toY(-2.0));
+        dotsSvg = solidDot(s.toX(-1.35), s.toY(-2.0)) + solidDot(s.toX(0), s.toY(0.95)) + solidDot(s.toX(1.35), s.toY(-2.0));
+        break;
+      }
+      case '4th_asymmetric': {
+        const handles = [{ x: -1.25, y: -0.15 }, { x: -0.25, y: 1.15 }, { x: 1.25, y: -2.5 }];
+        const yL = E.evaluate('4th_asymmetric', handles, -1.25);
+        const yM = E.evaluate('4th_asymmetric', handles, -0.25);
+        const yR = E.evaluate('4th_asymmetric', handles, 1.25);
+        const s = sampleCurve(handles, -2.0, 2.18, -2.85, 2.55, 8.5, 92);
+        pathD = s.d;
+        guidesSvg = dashedLine(s.toX(-1.72), s.toY(yL), s.toX(-0.75), s.toY(yL)) +
+          dashedLine(s.toX(0.75), s.toY(yR), s.toX(1.72), s.toY(yR));
+        dotsSvg = solidDot(s.toX(-1.25), s.toY(yL)) + solidDot(s.toX(-0.25), s.toY(yM)) + solidDot(s.toX(1.25), s.toY(yR));
+        break;
+      }
+      case 'killer_exp_linear': {
+        const handles = [{ x: 0, y: 0 }, { x: 0.9, y: 2.1 }];
+        const s = sampleCurve(handles, -0.65, 3.8, -1.7, 2.6, 7.5, 96);
+        pathD = s.d;
+        axesSvg = axisCross(s.toX(0), s.toY(0), 5.5);
+        guidesSvg = dashedLine(s.toX(0.9), s.toY(2.1), s.toX(0.9), s.toY(0));
+        dotsSvg = hollowDot(s.toX(0), s.toY(0)) + solidDot(s.toX(0.9), s.toY(2.1));
+        break;
+      }
+      case 'killer_exp_quad': {
+        const handles = [{ x: 0, y: 0 }, { x: 1.5, y: 1.55 }];
+        const s = sampleCurve(handles, -0.82, 4.18, -0.65, 2.65, 7.5, 110);
+        pathD = s.d;
+        axesSvg = axisCross(s.toX(0), s.toY(0), 5.5);
+        guidesSvg = dashedLine(s.toX(1.5), s.toY(1.55), s.toX(1.5), s.toY(0));
+        dotsSvg = solidDot(s.toX(0), s.toY(0)) + solidDot(s.toX(1.5), s.toY(1.55));
+        break;
+      }
+      case 'killer_log_frac': {
+        const handles = [{ x: 0, y: 0 }, { x: 1.75, y: 1.85 }];
+        const xInt = 1.75 / Math.E;
+        const s = sampleCurve(handles, -0.55, 7.4, -2.1, 2.4, 7.5, 130);
+        pathD = s.d;
+        axesSvg = axisCross(s.toX(0), s.toY(0), 5.5);
+        guidesSvg = dashedLine(s.toX(1.75), s.toY(1.85), s.toX(1.75), s.toY(0));
+        dotsSvg = hollowDot(s.toX(xInt), s.toY(0)) + solidDot(s.toX(1.75), s.toY(1.85));
+        break;
+      }
+      case 'killer_frac_odd': {
+        const handles = [{ x: 0, y: 0 }, { x: 1.0, y: 2.05 }];
+        const s = sampleCurve(handles, -3.8, 3.8, -2.65, 2.65, 7.5, 96);
+        pathD = s.d;
+        axesSvg = axisCross(s.toX(0), s.toY(0), 5.5);
+        guidesSvg = dashedLine(s.toX(1.0), s.toY(2.05), s.toX(1.0), s.toY(0)) +
+          dashedLine(s.toX(-1.0), s.toY(-2.05), s.toX(-1.0), s.toY(0));
+        dotsSvg = hollowDot(s.toX(0), s.toY(0)) + solidDot(s.toX(-1.0), s.toY(-2.05)) + solidDot(s.toX(1.0), s.toY(2.05));
+        break;
+      }
+      default:
+        return (this.meta && this.meta[key] && this.meta[key].svg) || '';
+    }
+
+    const svg = `<svg viewBox="0 0 64 64" class="preset-sq-svg" fill="none" aria-hidden="true">${axesSvg}${guidesSvg}<path class="sq-curve" d="${pathD}"/>${dotsSvg}</svg>`;
+    this._squarePresetThumbCache[key] = svg;
+    return svg;
+  }
+
+  renderFuncList(forceRebuild = false) {
+    const grid = document.getElementById('funcGrid');
+    if (!grid) return;
+
+    const activeTab = this.normalizePresetTab(this._currentCat);
+    this.syncPresetActiveButtons();
+
+    if (activeTab === '⭐ 내 그래프') {
+      grid.innerHTML = '';
+      grid.dataset.renderedTab = '⭐ 내 그래프';
+      grid.classList.add('is-my-graphs-tab');
+      const presetSec = document.createElement('div');
+      presetSec.className = 'func-preset-section is-full-tab';
+      this.renderCustomGraphPresetList(presetSec);
+      grid.appendChild(presetSec);
+      this.syncShapePanel();
+      return;
+    }
+
+    grid.classList.remove('is-my-graphs-tab');
+    if (!forceRebuild && grid.dataset.renderedTab === activeTab && grid.children.length > 0) {
+      this.syncPresetActiveButtons();
+      this.syncShapePanel();
+      return;
+    }
+
+    grid.innerHTML = '';
+    grid.dataset.renderedTab = activeTab;
+
+    const bindPresetClick = (btn, key) => {
+      btn.onclick = () => {
+        if (!this.isGraphCovered && this.graphs.length >= 12) {
+          this.showToast('⚠️ 그래프는 최대 12개까지 동시에 추가할 수 있습니다.');
+          return;
+        }
+        this.addGraph(key);
+        this.syncPresetActiveButtons();
+        this.syncShapePanel();
+      };
+    };
+
+    const createTextChipRow = (items, cols) => {
+      const row = document.createElement('div');
+      row.className = `preset-chip-grid cols-${cols}`;
+      items.forEach(({ key, label, isMath }) => {
+        if (!this.meta || !this.meta[key]) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = isMath ? 'func-btn preset-chip-btn is-math-label' : 'func-btn preset-chip-btn';
+        btn.dataset.preset = key;
+        btn.innerHTML = `<span class="func-name-text">${label}</span>`;
+        bindPresetClick(btn, key);
+        row.appendChild(btn);
+      });
+      return row;
+    };
+
+    const createSquareThumbGrid = (items) => {
+      const sqGrid = document.createElement('div');
+      sqGrid.className = 'preset-square-grid';
+      items.forEach(({ key, label, isFormula }) => {
+        if (!this.meta || !this.meta[key]) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = isFormula ? 'func-btn preset-square-card is-formula-label' : 'func-btn preset-square-card';
+        btn.dataset.preset = key;
+        btn.innerHTML = `
+          <span class="preset-sq-canvas">${this._buildSquarePresetThumbnailSvg(key)}</span>
+          <span class="func-name-text preset-sq-label">${label}</span>
+        `;
+        bindPresetClick(btn, key);
+        sqGrid.appendChild(btn);
+      });
+      return sqGrid;
+    };
+
+    const createSectionTitle = (text) => {
+      const el = document.createElement('div');
+      el.className = 'preset-group-label';
+      el.textContent = text;
+      return el;
+    };
+
+    const scrollWrap = document.createElement('div');
+    scrollWrap.className = 'preset-tab-scroll-body';
+
+    if (activeTab === 'tab_basic') {
+      // 1. 기본 · 초월 · 삼각 (텍스트 칩 — 이름만으로 즉시 식별되는 기본 함수군)
+      const basicGroup = document.createElement('div');
+      basicGroup.className = 'preset-group-block';
+      basicGroup.appendChild(createSectionTitle('기본 함수'));
+      basicGroup.appendChild(createTextChipRow([
+        { key: '1st_linear', label: '일차' },
+        { key: '2nd_quadratic', label: '이차' }
+      ], 2));
+      basicGroup.appendChild(createTextChipRow([
+        { key: 'rational_basic', label: '유리' },
+        { key: 'sqrt_basic', label: '무리' },
+        { key: 'exp_basic', label: '지수' },
+        { key: 'log_basic', label: '로그' }
+      ], 4));
+      basicGroup.appendChild(createTextChipRow([
+        { key: 'sin_1period', label: 'sin', isMath: true },
+        { key: 'cos_1period', label: 'cos', isMath: true },
+        { key: 'tan_1period', label: 'tan', isMath: true }
+      ], 3));
+      scrollWrap.appendChild(basicGroup);
+
+      // 2. 삼차 · 사차 개형 (3열 1:1 정사각형 개형 아틀라스 — 접선·극점 마커 정밀 구분)
+      const polyGroup = document.createElement('div');
+      polyGroup.className = 'preset-group-block';
+      polyGroup.appendChild(createSectionTitle('삼차 · 사차 개형'));
+      polyGroup.appendChild(createSquareThumbGrid([
+        { key: '3rd_monotonic', label: '삼차 · 단조' },
+        { key: '3rd_basic_cubic', label: '삼차 (y=x³)' },
+        { key: '3rd_normal', label: '삼차 · 극값 2' },
+        { key: '4th_basic_bowl', label: '사차 (y=x⁴)' },
+        { key: '4th_skew', label: '사차 · 비대칭 U' },
+        { key: '4th_inflection', label: '사차 · 삼중근' },
+        { key: '4th_symmetric', label: '사차 · 대칭 W' },
+        { key: '4th_asymmetric', label: '사차 · 비대칭 W' }
+      ]));
+      scrollWrap.appendChild(polyGroup);
+
+      // 3. 평면도형 (3열 텍스트 칩)
+      const geomGroup = document.createElement('div');
+      geomGroup.className = 'preset-group-block';
+      geomGroup.appendChild(createSectionTitle('평면도형'));
+      geomGroup.appendChild(createTextChipRow([
+        { key: 'geom_circle', label: '원' },
+        { key: 'geom_triangle', label: '삼각형' },
+        { key: 'geom_quad', label: '사각형' }
+      ], 3));
+      scrollWrap.appendChild(geomGroup);
+    } else if (activeTab === 'tab_calculus') {
+      // 미적분 1:1 정사각형 개형 아틀라스 (좌표축 · 점근선 · 원점 통과/접함 · 극점 수선 포함)
+      const calcGroup = document.createElement('div');
+      calcGroup.className = 'preset-group-block';
+      calcGroup.appendChild(createSectionTitle('초월 · 분수 개형'));
+      calcGroup.appendChild(createSquareThumbGrid([
+        { key: 'killer_exp_linear', label: 'ax·e⁻ᵇˣ', isFormula: true },
+        { key: 'killer_exp_quad', label: 'ax²·e⁻ᵇˣ', isFormula: true },
+        { key: 'killer_log_frac', label: 'a·lnx/x', isFormula: true },
+        { key: 'killer_frac_odd', label: 'ax/(x²+b)', isFormula: true }
+      ]));
+      scrollWrap.appendChild(calcGroup);
+    }
+
+    grid.appendChild(scrollWrap);
+    this.syncPresetActiveButtons();
+    this.syncShapePanel();
   }
 
   // --- [✨ 클린 뷰 (핸들 및 보조선 숨김, 단축키 H)] ---
@@ -2898,18 +3230,16 @@ class GraphApp {
       btnClearAll.onclick = () => this.clearAllGraphs();
     }
 
-    // 카테고리 탭
-    document.querySelectorAll('.cat-tab-btn').forEach(tab => {
+    // 카테고리 탭 (3탭: 기본·도형 | 미적분 | 내 그래프)
+    document.querySelectorAll('#panelPresets .cat-tab-btn').forEach(tab => {
       tab.onclick = (e) => {
         const btn = e.currentTarget || (e.target && e.target.closest ? e.target.closest('.cat-tab-btn') : e.target);
         if (!btn) return;
-        const nextCat = btn.dataset.cat;
-        document.querySelectorAll('.cat-tab-btn').forEach(t => t.classList.remove('active'));
-        btn.classList.add('active');
+        const nextCat = this.normalizePresetTab(btn.dataset.cat);
+        document.querySelectorAll('#panelPresets .cat-tab-btn').forEach(t => {
+          t.classList.toggle('active', t.dataset.cat === nextCat);
+        });
         this._currentCat = nextCat;
-        if (this.activeGraph && nextCat !== '⭐ 내 그래프') {
-          this.activeGraph.category = nextCat;
-        }
         this.renderFuncList();
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(true);
@@ -3930,8 +4260,10 @@ class GraphApp {
   syncShapePanel() {
     const panel = document.getElementById('quadModePanel');
     if (!panel) return;
-    const g = this.activeGraph;
-    const isQuad = !!g && g.type === 'geom_quad';
+    const isBasicTab = (this.normalizePresetTab(this._currentCat) === 'tab_basic');
+    const ctx = this._resolvePresetTargetContext();
+    const g = ctx ? ctx.g : null;
+    const isQuad = Boolean(isBasicTab && g && g.type === 'geom_quad');
     panel.style.display = isQuad ? '' : 'none';
     if (!isQuad) return;
     const mode = g.shapeMode || 'free';
@@ -3944,8 +4276,9 @@ class GraphApp {
     const modeNames = {
       free: '자유', parallelogram: '평행사변형', rectangle: '직사각형', rhombus: '마름모', square: '정사각형'
     };
-    const syncQuadPartner = (g) => {
-      const partner = this.getLinkedPartner(g);
+    const syncQuadPartnerInGraphList = (g, graphsList) => {
+      if (!g || !g.linkedInverseId || !Array.isArray(graphsList)) return;
+      const partner = graphsList.find(item => item && item.id === g.linkedInverseId);
       if (!partner || partner.type !== 'geom_quad' || !Array.isArray(partner.handles) || partner.handles.length !== g.handles.length) return;
       partner.shapeMode = g.shapeMode || 'free';
       partner.originCenter = Boolean(g.originCenter);
@@ -3957,54 +4290,86 @@ class GraphApp {
       });
     };
 
+    const applyQuadMutation = (mutateFn, undoMsg, redoMsg, toastMsg) => {
+      const ctx = this._resolvePresetTargetContext();
+      const g = ctx ? ctx.g : null;
+      if (!g || g.type !== 'geom_quad') return;
+
+      if (ctx.isBoardPip && ctx.cardRef && ctx.snap) {
+        if (typeof this._pushWorkspaceUndoSnapshot === 'function') {
+          this._pushWorkspaceUndoSnapshot(undoMsg, redoMsg);
+        }
+        mutateFn(g);
+        syncQuadPartnerInGraphList(g, ctx.snap.graphs);
+        ctx.snap.selectedHandleIdx = null;
+        if (typeof this._savePipCardSnapshot === 'function') this._savePipCardSnapshot(ctx.cardRef, ctx.snap);
+        this.syncShapePanel();
+        if (typeof this.syncPipCardLockUI === 'function') this.syncPipCardLockUI(ctx.cardRef);
+        if (typeof this.renderPipGraphCard === 'function') this.renderPipGraphCard(ctx.cardRef);
+        if (typeof this.scheduleBakePipGraphCardToImg === 'function') this.scheduleBakePipGraphCardToImg(ctx.cardRef);
+        if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+        }
+        if (toastMsg) this.showToast(toastMsg);
+        return;
+      }
+
+      this.pushHistoryState();
+      mutateFn(g);
+      syncQuadPartnerInGraphList(g, this.graphs);
+      this.selectedHandleIdx = null;
+      this.syncShapePanel();
+      this.updateIntersections();
+      if (toastMsg) this.showToast(toastMsg);
+      this.render();
+    };
+
     document.querySelectorAll('.quad-mode-btn').forEach(btn => {
       btn.onclick = () => {
-        const g = this.activeGraph;
-        if (!g || g.type !== 'geom_quad') return;
-        this.pushHistoryState();
-        g.shapeMode = btn.dataset.qmode;
-        this.engine.applyQuadMode(g.handles, g.shapeMode, !!g.originCenter);
-        syncQuadPartner(g);
-        this.selectedHandleIdx = null;
-        this.syncShapePanel();
-        this.updateIntersections();
-        this.showToast(`📐 ${modeNames[g.shapeMode]} 모드! 꼭짓점을 끌어 보세요.`);
-        this.render();
+        const nextMode = btn.dataset.qmode;
+        applyQuadMutation(
+          (g) => {
+            g.shapeMode = nextMode;
+            this.engine.applyQuadMode(g.handles, g.shapeMode, !!g.originCenter);
+          },
+          '↺ 사각형 모드 변경이 취소되었습니다',
+          '↻ 사각형 모드 변경 다시 실행됨',
+          `📐 ${modeNames[nextMode]} 모드! 꼭짓점을 끌어 보세요.`
+        );
       };
     });
 
     const chkOrigin = document.getElementById('chkQuadOrigin');
     if (chkOrigin) {
       chkOrigin.onchange = (e) => {
-        const g = this.activeGraph;
-        if (!g || g.type !== 'geom_quad') return;
-        this.pushHistoryState();
-        g.originCenter = e.target.checked;
-        this.engine.applyQuadMode(g.handles, g.shapeMode || 'free', g.originCenter);
-        syncQuadPartner(g);
-        this.updateIntersections();
-        this.showToast(g.originCenter ? '🎯 원점 중심 고정 ON (점대칭)' : '🎯 원점 중심 고정 해제');
-        this.render();
+        const checked = Boolean(e.target.checked);
+        applyQuadMutation(
+          (g) => {
+            g.originCenter = checked;
+            this.engine.applyQuadMode(g.handles, g.shapeMode || 'free', g.originCenter);
+          },
+          '↺ 원점 중심 고정 변경이 취소되었습니다',
+          '↻ 원점 중심 고정 변경 다시 실행됨',
+          checked ? '🎯 원점 중심 고정 ON (점대칭)' : '🎯 원점 중심 고정 해제'
+        );
       };
     }
 
-    // 🔷 원클릭: 원점 중심 마름모 |x|/a + |y|/b = 1  (꼭짓점이 좌표축 위)
+    // 원클릭: 원점 중심 마름모 |x|/a + |y|/b = 1  (꼭짓점이 좌표축 위)
     const btnDiamond = document.getElementById('btnQuadDiamond');
     if (btnDiamond) {
       btnDiamond.onclick = () => {
-        const g = this.activeGraph;
-        if (!g || g.type !== 'geom_quad') return;
-        this.pushHistoryState();
-        g.shapeMode = 'rhombus';
-        g.originCenter = true;
-        const pts = [[2, 0], [0, 2], [-2, 0], [0, -2]];
-        g.handles.forEach((h, i) => { h.x = pts[i][0]; h.y = pts[i][1]; });
-        syncQuadPartner(g);
-        this.selectedHandleIdx = null;
-        this.syncShapePanel();
-        this.updateIntersections();
-        this.showToast('🔷 원점 중심 마름모 완성! 꼭짓점을 축 방향으로 끌어 보세요.');
-        this.render();
+        applyQuadMutation(
+          (g) => {
+            g.shapeMode = 'rhombus';
+            g.originCenter = true;
+            const pts = [[2, 0], [0, 2], [-2, 0], [0, -2]];
+            g.handles.forEach((h, i) => { h.x = pts[i][0]; h.y = pts[i][1]; });
+          },
+          '↺ 원점 중심 마름모 변환이 취소되었습니다',
+          '↻ 원점 중심 마름모 변환 다시 실행됨',
+          '🔷 원점 중심 마름모 완성! 꼭짓점을 축 방향으로 끌어 보세요.'
+        );
       };
     }
   }
@@ -4079,6 +4444,10 @@ class GraphApp {
       }
 
       // 서랍 내부 패널 표시 전환
+      if (this.activeDrawerPanel === 'panelPresets') {
+        this.syncPresetActiveButtons();
+        this.syncShapePanel();
+      }
       if (this.activeDrawerPanel === 'panelToolkit' && typeof this.renderMathToolkitPanel === 'function') {
         this.renderMathToolkitPanel();
       }
