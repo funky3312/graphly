@@ -11531,11 +11531,11 @@
       const total = effectiveSlides.length;
       const curIdx = hasPlaylist ? (this.lessonPlaylistIndex || 0) : 0;
       const cur = curIdx + 1;
-      const arrowChar = this._isSlideGridOpen ? '▴' : '▾';
       const lbl = document.getElementById('lblPlaylistSlideInfo');
       if (lbl) {
-        lbl.textContent = `${cur} / ${total} ${arrowChar}`;
+        lbl.innerHTML = `<span class="slide-cur-num">${cur}</span><span class="slide-total-num">/${total}</span>`;
       }
+      navBar.classList.toggle('is-grid-open', Boolean(this._isSlideGridOpen));
 
       const gridPop = document.getElementById('playlistGridPopover');
       if (gridPop) {
@@ -11580,6 +11580,8 @@
           const chip = document.createElement('div');
           chip.className = 'slide-chip-item'
             + (isSelectedForDel ? ' selected-for-delete' : (isActive ? ' active' : ''));
+          chip.setAttribute('role', 'button');
+          chip.dataset.slideIdx = String(idx);
           const shortLabel = String(idx + 1);
           chip.title = isSelectMode
             ? (isSelectedForDel ? `${idx + 1}번 삭제 선택 해제` : `${idx + 1}번 삭제 선택`)
@@ -11638,9 +11640,11 @@
       if (!hasOpenPdf) {
         this._isAddSlideMenuOpen = false;
       }
+      const isAddMenuVisible = Boolean(this._isAddSlideMenuOpen && hasOpenPdf);
       if (addMenuPop) {
-        addMenuPop.style.display = (this._isAddSlideMenuOpen && hasOpenPdf) ? 'flex' : 'none';
+        addMenuPop.style.display = isAddMenuVisible ? 'flex' : 'none';
       }
+      navBar.classList.toggle('is-add-menu-open', isAddMenuVisible);
       const btnMenuNextPdfPage = document.getElementById('btnAddSlideMenuNextPdfPage');
       const iconMenuPickPdf = document.getElementById('iconAddSlideMenuPickPdf');
       const lblMenuPickPdf = document.getElementById('lblAddSlideMenuPickPdf');

@@ -25826,3 +25826,237 @@ body.theme-light #modalNAxisSetupNotice .n-axis-notice-btn.primary:hover {
   border-color: #1e293b !important;
   color: #ffffff !important;
 }
+
+/* 7. 우측 상단 캔버스 전환 바 (#lessonPlaylistNavBar — Stitch 시안 3 스튜디오 키라인 스플릿 칩 · 114px × 30px) */
+#lessonPlaylistNavBar.lesson-playlist-nav-bar {
+  padding: 0 !important;
+  gap: 4px !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  align-items: center !important;
+}
+
+#lessonPlaylistNavBar button * {
+  pointer-events: none !important;
+}
+
+#lessonPlaylistNavBar .playlist-stepper-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.36), 0 1px 4px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+body.theme-light #lessonPlaylistNavBar .playlist-stepper-chip {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+#lessonPlaylistNavBar.is-grid-open .playlist-stepper-chip {
+  border-color: #f8fafc;
+  box-shadow: 0 0 0 0.5px #f8fafc, 0 8px 20px rgba(0, 0, 0, 0.44);
+}
+
+body.theme-light #lessonPlaylistNavBar.is-grid-open .playlist-stepper-chip {
+  border-color: #0f172a;
+  box-shadow: 0 0 0 0.5px #0f172a, 0 6px 16px rgba(15, 23, 42, 0.10);
+}
+
+#lessonPlaylistNavBar #btnPlaylistPrev,
+#lessonPlaylistNavBar #btnPlaylistNext {
+  width: 22px !important;
+  min-width: 22px !important;
+  height: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #cbd5e1 !important;
+  transition: background 0.12s ease, color 0.12s ease, opacity 0.12s ease !important;
+}
+
+#lessonPlaylistNavBar #btnPlaylistPrev {
+  border-right: 1px solid rgba(148, 163, 184, 0.2) !important;
+}
+
+#lessonPlaylistNavBar #btnPlaylistNext {
+  border-left: 1px solid rgba(148, 163, 184, 0.2) !important;
+}
+
+body.theme-light #lessonPlaylistNavBar #btnPlaylistPrev,
+body.theme-light #lessonPlaylistNavBar #btnPlaylistNext {
+  color: #475569 !important;
+}
+
+body.theme-light #lessonPlaylistNavBar #btnPlaylistPrev {
+  border-right: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light #lessonPlaylistNavBar #btnPlaylistNext {
+  border-left: 1px solid #e2e8f0 !important;
+}
+
+#lessonPlaylistNavBar #btnPlaylistPrev:hover:not(:disabled),
+#lessonPlaylistNavBar #btnPlaylistNext:hover:not(:disabled) {
+  background: rgba(248, 250, 252, 0.1) !important;
+  color: #ffffff !important;
+}
+
+body.theme-light #lessonPlaylistNavBar #btnPlaylistPrev:hover:not(:disabled),
+body.theme-light #lessonPlaylistNavBar #btnPlaylistNext:hover:not(:disabled) {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+#lessonPlaylistNavBar #btnPlaylistPrev:disabled,
+#lessonPlaylistNavBar #btnPlaylistNext:disabled {
+  opacity: 0.30 !important;
+  cursor: default !important;
+}
+
+#lessonPlaylistNavBar #btnPlaylistSlideInfo {
+  min-width: 36px !important;
+  height: 100% !important;
+  padding: 0 6px !important;
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: background 0.12s ease !important;
+}
+
+#lessonPlaylistNavBar #btnPlaylistSlideInfo:hover,
+#lessonPlaylistNavBar.is-grid-open #btnPlaylistSlideInfo {
+  background: rgba(248, 250, 252, 0.1) !important;
+}
+
+body.theme-light #lessonPlaylistNavBar #btnPlaylistSlideInfo:hover,
+body.theme-light #lessonPlaylistNavBar.is-grid-open #btnPlaylistSlideInfo {
+  background: #f1f5f9 !important;
+}
+
+#lessonPlaylistNavBar #lblPlaylistSlideInfo {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+#lessonPlaylistNavBar #lblPlaylistSlideInfo .slide-cur-num {
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+body.theme-light #lessonPlaylistNavBar #lblPlaylistSlideInfo .slide-cur-num {
+  color: #0f172a;
+}
+
+#lessonPlaylistNavBar #lblPlaylistSlideInfo .slide-total-num {
+  font-weight: 500;
+  color: #94a3b8;
+  margin-left: 0.5px;
+}
+
+body.theme-light #lessonPlaylistNavBar #lblPlaylistSlideInfo .slide-total-num {
+  color: #94a3b8;
+}
+
+#lessonPlaylistNavBar #btnPlaylistAddSlide {
+  width: 30px !important;
+  min-width: 30px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 8px !important;
+  background: #f8fafc !important;
+  border: 1px solid #f8fafc !important;
+  color: #0f172a !important;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.34) !important;
+  transform: none !important;
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease !important;
+}
+
+#lessonPlaylistNavBar #btnPlaylistAddSlide:hover {
+  background: #ffffff !important;
+  border-color: #ffffff !important;
+  color: #0f172a !important;
+  transform: none !important;
+}
+
+body.theme-light #lessonPlaylistNavBar #btnPlaylistAddSlide {
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.14) !important;
+}
+
+body.theme-light #lessonPlaylistNavBar #btnPlaylistAddSlide:hover {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  color: #ffffff !important;
+  transform: none !important;
+}
+
+#lessonPlaylistNavBar.is-add-menu-open #btnPlaylistAddSlide {
+  box-shadow: 0 0 0 2px rgba(248, 250, 252, 0.32), 0 6px 16px rgba(0, 0, 0, 0.34) !important;
+}
+
+body.theme-light #lessonPlaylistNavBar.is-add-menu-open #btnPlaylistAddSlide {
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.22), 0 4px 12px rgba(15, 23, 42, 0.14) !important;
+}
+
+body.student-audio-video-only #lessonPlaylistNavBar #btnPlaylistAddSlide {
+  display: none !important;
+}
+
+#lessonPlaylistNavBar #playlistGridPopover {
+  top: calc(100% + 6px) !important;
+  border-radius: 10px !important;
+}
+
+#lessonPlaylistNavBar #playlistAddSlideMenu {
+  top: calc(100% + 6px) !important;
+  border-radius: 10px !important;
+}
+
+#lessonPlaylistNavBar #playlistAddSlideMenu .slide-add-menu-item {
+  border-radius: 6px;
+}
+
+#lessonPlaylistNavBar #playlistGridPopover .slide-chips-grid .slide-chip-item {
+  border-radius: 6px !important;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+#lessonPlaylistNavBar #playlistGridPopover .slide-chips-grid .slide-chip-item:not(.active):not(.selected-for-delete):hover {
+  background: rgba(248, 250, 252, 0.14) !important;
+  border-color: rgba(248, 250, 252, 0.45) !important;
+  color: #ffffff !important;
+}
+
+body.theme-light #lessonPlaylistNavBar #playlistGridPopover .slide-chips-grid .slide-chip-item:not(.active):not(.selected-for-delete):hover {
+  background: #f1f5f9 !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
+}

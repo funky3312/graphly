@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261114_93">
+  <link rel="stylesheet" href="style.css?v=20261114_95">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -2543,28 +2543,30 @@
     </div>
   </div>
 
-  <!-- [🎯 수업 캔버스 묶음 우측 상단 초슬림 4버튼 캡슐 ([ ◀ ] [ 1 / 4 ▾ ] [ ▶ ] [ + ]) & 5열 바둑판 팝오버] -->
+  <!-- [🎯 수업 캔버스 묶음 우측 상단 스튜디오 키라인 스플릿 칩 ([ ‹ | 1/4 | › ] + [ + ], 114px) & 5열 바둑판 팝오버] -->
   <div id="lessonPlaylistNavBar" class="pdf-board-nav-bar lesson-playlist-nav-bar slim-slide-nav-bar"
     style="display: none;">
-    <button id="btnPlaylistPrev" class="pdf-board-nav-btn slim-nav-arrow" title="이전 캔버스">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-        stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="15 18 9 12 15 6" />
-      </svg>
-    </button>
-    <button id="btnPlaylistSlideInfo" class="pdf-board-page-pill lesson-playlist-pill slide-counter-pill"
-      title="클릭하여 전체 캔버스 바둑판 열기">
-      <span id="lblPlaylistSlideInfo">1 / 1 ▾</span>
-    </button>
-    <button id="btnPlaylistNext" class="pdf-board-nav-btn slim-nav-arrow" title="다음 캔버스">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-        stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="9 18 15 12 9 6" />
-      </svg>
-    </button>
+    <div class="playlist-stepper-chip">
+      <button id="btnPlaylistPrev" class="pdf-board-nav-btn slim-nav-arrow" title="이전 캔버스">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
+      <button id="btnPlaylistSlideInfo" class="pdf-board-page-pill lesson-playlist-pill slide-counter-pill"
+        title="클릭하여 전체 캔버스 바둑판 열기">
+        <span id="lblPlaylistSlideInfo"><span class="slide-cur-num">1</span><span class="slide-total-num">/1</span></span>
+      </button>
+      <button id="btnPlaylistNext" class="pdf-board-nav-btn slim-nav-arrow" title="다음 캔버스">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
+    </div>
     <button id="btnPlaylistAddSlide" class="pdf-board-close-btn slim-icon-btn slim-add-slide-btn"
       title="다음 문제 캡처 / 새 캔버스 추가">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
         stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="5" x2="12" y2="19" />
         <line x1="5" y1="12" x2="19" y2="12" />
@@ -3701,15 +3703,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261114_93"></script>
-  <script src="app-core.js?v=20261114_93"></script>
-  <script src="app-ink.js?v=20261114_93"></script>
-  <script src="app-pdf.js?v=20261114_93"></script>
-  <script src="app-cards.js?v=20261114_93"></script>
-  <script src="app-cloud.js?v=20261114_93"></script>
-  <script src="app-canvas.js?v=20261114_93"></script>
-  <script src="app-toolkit.js?v=20261114_93"></script>
-  <script src="app.js?v=20261114_93"></script>
+  <script src="engine.js?v=20261114_95"></script>
+  <script src="app-core.js?v=20261114_95"></script>
+  <script src="app-ink.js?v=20261114_95"></script>
+  <script src="app-pdf.js?v=20261114_95"></script>
+  <script src="app-cards.js?v=20261114_95"></script>
+  <script src="app-cloud.js?v=20261114_95"></script>
+  <script src="app-canvas.js?v=20261114_95"></script>
+  <script src="app-toolkit.js?v=20261114_95"></script>
+  <script src="app.js?v=20261114_95"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
