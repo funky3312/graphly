@@ -597,7 +597,7 @@
         target.tagName === 'SELECT' ||
         target.tagName === 'LABEL' ||
         target.tagName === 'A' ||
-        (target.closest && target.closest('button, .rail-btn, .quick-fab-btn, .rail-dock, .sidebar-rail, .canvas-quick-toolbar, .curve-context-bar, .pw-region-popover, .drawer-panel, .rail-drawer, .modal, .smart-modal-backdrop, .smart-modal-card, .pdf-modal-backdrop, .pdf-modal-container, .n-axis-studio-backdrop, .n-axis-studio-card, .smart-note-viewer-overlay, .viewer-graph-touch-bar, .pdf-board-nav-bar, .lesson-playlist-nav-bar, .top-slide-bar-mini-tab, .quick-pill-remote, .ink-dock, .problem-card-widget, .graph-card-widget, .graph-snap-floating-bar, .ink-floating-toolbar, .lasso-action-floating-bar'))
+        (target.closest && target.closest('button, .rail-btn, .quick-fab-btn, .rail-dock, .sidebar-rail, .canvas-quick-toolbar, .curve-context-bar, .pw-region-popover, .drawer-panel, .rail-drawer, .modal, .smart-modal-backdrop, .smart-modal-card, .pdf-modal-backdrop, .pdf-modal-container, .n-axis-studio-backdrop, .n-axis-studio-card, .smart-note-viewer-overlay, .viewer-graph-touch-bar, .pdf-board-nav-bar, .lesson-playlist-nav-bar, .top-slide-bar-mini-tab, .quick-pill-remote, .ink-dock, .problem-card-widget, .graph-card-widget, .graph-snap-floating-bar, .ink-floating-toolbar, .lasso-action-floating-bar, .audio-rec-side-menu, .stealth-rec-dot-wrap'))
       );
     };
 

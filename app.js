@@ -625,6 +625,20 @@
       return basePriorMs + this.getAudioSessionElapsedMs();
     }
 
+    _syncAudioRecPopupHudTime() {
+      const timeStr = this.isAudioRecording
+        ? this.formatAudioTimeMmSs(
+          this.audioSessionStartMs
+            ? this.getAudioSessionElapsedMs()
+            : this.getAudioRecordElapsedMs()
+        )
+        : '00:00';
+      const elMain = document.getElementById('lblAudioRecHudTime');
+      if (elMain && elMain.textContent !== timeStr) elMain.textContent = timeStr;
+      const elStealth = document.getElementById('lblStealthRecHudTime');
+      if (elStealth && elStealth.textContent !== timeStr) elStealth.textContent = timeStr;
+    }
+
     _updateAudioRecordProgressRings(forceSync = false) {
       const btnFab = document.getElementById('btnAudioRecordToggle');
       const btnStealthDot = document.getElementById('btnStealthRecordDot');
@@ -2644,11 +2658,16 @@
       this._audioRecordTimerId = setInterval(() => {
         if (!this.isAudioRecording) return;
         const isActivelyDrawingNow = Boolean(this.isDrawingInk || this._isDrawingCardInk || this.isStylusDrawing || this.isDrawingLaser || this.isErasingInk);
-        if (!isActivelyDrawingNow && lblTimer) {
-          const elapsed = this.getAudioRecordElapsedMs();
-          const nextTimeStr = this.formatAudioTimeMmSs(elapsed);
-          if (lblTimer.textContent !== nextTimeStr) {
-            lblTimer.textContent = nextTimeStr;
+        if (!isActivelyDrawingNow) {
+          if (lblTimer) {
+            const elapsed = this.getAudioRecordElapsedMs();
+            const nextTimeStr = this.formatAudioTimeMmSs(elapsed);
+            if (lblTimer.textContent !== nextTimeStr) {
+              lblTimer.textContent = nextTimeStr;
+            }
+          }
+          if (this._isAudioRecMenuOpen) {
+            this._syncAudioRecPopupHudTime();
           }
         }
         this._updateAudioRecordProgressRings(false);
@@ -2808,6 +2827,7 @@
         btnFab.classList.toggle('has-audio', hasAudio && !this.isAudioRecording);
       }
       if (sideMenu) {
+        sideMenu.classList.toggle('is-paused', Boolean(this.isAudioRecording && isPaused));
         sideMenu.style.display = (this.isAudioRecording && !isHiddenUI && this._isAudioRecMenuOpen) ? 'flex' : 'none';
       }
       if (wrapStealthDot) {
@@ -2820,8 +2840,14 @@
           : '녹화 중 (클릭 시 일시정지 / 종료)';
       }
       if (stealthSideMenu) {
+        stealthSideMenu.classList.toggle('is-paused', Boolean(this.isAudioRecording && isPaused));
         stealthSideMenu.style.display = (this.isAudioRecording && isHiddenUI && this._isAudioRecMenuOpen) ? 'flex' : 'none';
       }
+      const hudStatusMain = document.getElementById('lblAudioRecHudStatus');
+      if (hudStatusMain) hudStatusMain.textContent = isPaused ? 'PAUSED' : 'REC';
+      const hudStatusStealth = document.getElementById('lblStealthRecHudStatus');
+      if (hudStatusStealth) hudStatusStealth.textContent = isPaused ? 'PAUSED' : 'REC';
+      this._syncAudioRecPopupHudTime();
 
       if (!bar) return;
       if (this.isAudioRecording) {
@@ -2845,11 +2871,21 @@
             ? '녹화 일시정지됨 (이어녹화 시 끊김 없이 연결)'
             : '음성·필기·펜포인터·그래프 실시간 동기화 중';
         }
+        const nextIconState = isPaused ? 'play' : 'pause';
+        const nextIconSvg = isPaused
+          ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M6.5 4.6c0-.8.88-1.28 1.56-.85l11.2 7.4c.62.41.62 1.29 0 1.7l-11.2 7.4c-.68.43-1.56-.05-1.56-.85V4.6Z"/></svg>'
+          : '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="4.5" height="16" rx="1.2"/><rect x="14.5" y="4" width="4.5" height="16" rx="1.2"/></svg>';
         if (btnPauseRec) btnPauseRec.classList.toggle('is-paused', isPaused);
-        if (iconPauseRec) iconPauseRec.textContent = isPaused ? '▶' : '⏸';
+        if (iconPauseRec && iconPauseRec.dataset.iconState !== nextIconState) {
+          iconPauseRec.dataset.iconState = nextIconState;
+          iconPauseRec.innerHTML = nextIconSvg;
+        }
         if (lblPauseRec) lblPauseRec.textContent = isPaused ? '이어녹화' : '일시정지';
         if (btnStealthPauseRec) btnStealthPauseRec.classList.toggle('is-paused', isPaused);
-        if (iconStealthPauseRec) iconStealthPauseRec.textContent = isPaused ? '▶' : '⏸';
+        if (iconStealthPauseRec && iconStealthPauseRec.dataset.iconState !== nextIconState) {
+          iconStealthPauseRec.dataset.iconState = nextIconState;
+          iconStealthPauseRec.innerHTML = nextIconSvg;
+        }
         if (lblStealthPauseRec) lblStealthPauseRec.textContent = isPaused ? '이어녹화' : '일시정지';
 
         const btnMic = document.getElementById('btnAudioMicMuteToggle');

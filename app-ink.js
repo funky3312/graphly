@@ -405,7 +405,10 @@
         '#modalProPricing',
         '#modalNAxisStudio',
         '#modalNAxisSetupNotice',
-        '#modalMathToolkitLauncher'
+        '#modalMathToolkitLauncher',
+        '#wrapStealthRecordDot',
+        '#panelAudioRecordActions',
+        '#panelStealthRecordActions'
       ];
       menuContainerSelectors.forEach(sel => {
         const el = document.querySelector(sel);
@@ -517,6 +520,8 @@
         el.closest('.n-axis-studio-backdrop') ||
         el.closest('.math-toolkit-backdrop') ||
         el.closest('.pw-region-popover') ||
+        el.closest('.audio-rec-side-menu') ||
+        el.closest('#wrapStealthRecordDot') ||
         el.closest('.btn-exit-fullscreen') ||
         el.closest('.drop-line-label-input') ||
         el.closest('.canvas-text-input') ||

@@ -26806,3 +26806,335 @@ body.theme-light #lassoActionFloatingBar .lasso-action-btn:not(.lasso-action-del
   border-color: #94a3b8;
   color: #0f172a;
 }
+
+
+/* ==========================================================================
+   🎙️ [v98: 녹화 제어 팝업 (#panelAudioRecordActions · #panelStealthRecordActions) Stitch 시안 3 — 마이크로 타임코드 스튜디오 카드]
+   - 스펙: 116px × 92px (r: 10px), 우측 툴바/스텔스 닷과 8px 유격
+   - 상단 24px 마이크로 타임코드 HUD (REC/PAUSED 상태 점 + JetBrains Mono tabular-nums MM:SS)
+   - 하단 2단 키라인 액션 버튼 (일시정지 화이트 키라인 ⇄ 이어녹화 Pure Ink Charcoal #0F172A 반전 + 종료 뮤트 크림슨 포인트)
+   - OS 컬러 이모지 0%, 스타일러스 자식 포인터 씹힘 0%, 스텔스 모드 수직 점프 0%
+   ========================================================================== */
+body.ios-top-guard-active .stealth-rec-dot-wrap {
+  top: calc(12px + var(--ios-top-safe-guard, 36px));
+}
+
+@keyframes stealthRecFlyoutIn {
+  from {
+    opacity: 0;
+    transform: translateX(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+#panelAudioRecordActions.audio-rec-side-menu,
+#panelStealthRecordActions.audio-rec-side-menu {
+  width: 116px;
+  min-width: 116px;
+  padding: 0;
+  gap: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  box-sizing: border-box;
+  right: calc(100% + 8px);
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.44), 0 2px 6px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+body.theme-light #panelAudioRecordActions.audio-rec-side-menu,
+body.theme-light #panelStealthRecordActions.audio-rec-side-menu {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.05);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+#panelStealthRecordActions.stealth-rec-side-menu {
+  top: 0 !important;
+  right: calc(100% + 8px) !important;
+  transform: none !important;
+  animation: stealthRecFlyoutIn 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 1. 상단 마이크로 타임코드 HUD 헤더 (24px) */
+#panelAudioRecordActions .audio-rec-hud-header,
+#panelStealthRecordActions .audio-rec-hud-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 24px;
+  padding: 0 8px;
+  background: rgba(30, 41, 59, 0.70);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.20);
+  box-sizing: border-box;
+  cursor: default;
+}
+
+body.theme-light #panelAudioRecordActions .audio-rec-hud-header,
+body.theme-light #panelStealthRecordActions .audio-rec-hud-header {
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+#panelAudioRecordActions .audio-rec-hud-header *,
+#panelStealthRecordActions .audio-rec-hud-header * {
+  pointer-events: none;
+}
+
+#panelAudioRecordActions .audio-rec-hud-state,
+#panelStealthRecordActions .audio-rec-hud-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4.5px;
+  min-width: 0;
+}
+
+#panelAudioRecordActions .audio-rec-hud-dot,
+#panelStealthRecordActions .audio-rec-hud-dot {
+  width: 5.5px;
+  height: 5.5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #ef4444;
+  box-shadow: 0 0 0 1.5px rgba(239, 68, 68, 0.22);
+}
+
+body.theme-light #panelAudioRecordActions .audio-rec-hud-dot,
+body.theme-light #panelStealthRecordActions .audio-rec-hud-dot {
+  background: #dc2626;
+  box-shadow: 0 0 0 1.5px rgba(220, 38, 38, 0.16);
+}
+
+#panelAudioRecordActions.is-paused .audio-rec-hud-dot,
+#panelStealthRecordActions.is-paused .audio-rec-hud-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 0 1.5px rgba(245, 158, 11, 0.22);
+}
+
+body.theme-light #panelAudioRecordActions.is-paused .audio-rec-hud-dot,
+body.theme-light #panelStealthRecordActions.is-paused .audio-rec-hud-dot {
+  background: #d97706;
+  box-shadow: 0 0 0 1.5px rgba(217, 119, 6, 0.18);
+}
+
+#panelAudioRecordActions .audio-rec-hud-status,
+#panelStealthRecordActions .audio-rec-hud-status {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: #f87171;
+}
+
+body.theme-light #panelAudioRecordActions .audio-rec-hud-status,
+body.theme-light #panelStealthRecordActions .audio-rec-hud-status {
+  color: #dc2626;
+}
+
+#panelAudioRecordActions.is-paused .audio-rec-hud-status,
+#panelStealthRecordActions.is-paused .audio-rec-hud-status {
+  color: #fbbf24;
+  letter-spacing: 0.02em;
+}
+
+body.theme-light #panelAudioRecordActions.is-paused .audio-rec-hud-status,
+body.theme-light #panelStealthRecordActions.is-paused .audio-rec-hud-status {
+  color: #d97706;
+}
+
+#panelAudioRecordActions .audio-rec-hud-time,
+#panelStealthRecordActions .audio-rec-hud-time {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: #f8fafc;
+}
+
+body.theme-light #panelAudioRecordActions .audio-rec-hud-time,
+body.theme-light #panelStealthRecordActions .audio-rec-hud-time {
+  color: #0f172a;
+}
+
+#panelAudioRecordActions.is-paused .audio-rec-hud-time,
+#panelStealthRecordActions.is-paused .audio-rec-hud-time {
+  color: #94a3b8;
+}
+
+body.theme-light #panelAudioRecordActions.is-paused .audio-rec-hud-time,
+body.theme-light #panelStealthRecordActions.is-paused .audio-rec-hud-time {
+  color: #64748b;
+}
+
+/* 2. 하단 2단 키라인 액션 버튼 그룹 (총 높이 1 + 24 + 5 + 26 + 4 + 26 + 5 + 1 = 92px) */
+#panelAudioRecordActions .audio-rec-hud-actions,
+#panelStealthRecordActions .audio-rec-hud-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 5px 6px;
+  box-sizing: border-box;
+}
+
+#panelAudioRecordActions .audio-rec-side-btn,
+#panelStealthRecordActions .audio-rec-side-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  gap: 5.5px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  box-sizing: border-box;
+  cursor: pointer;
+  filter: none !important;
+  transform: none;
+  transition: background-color 0.1s ease, border-color 0.1s ease, color 0.1s ease, transform 0.08s ease;
+}
+
+#panelAudioRecordActions .audio-rec-side-btn > *,
+#panelStealthRecordActions .audio-rec-side-btn > * {
+  pointer-events: none;
+}
+
+#panelAudioRecordActions .audio-rec-side-btn:hover,
+#panelStealthRecordActions .audio-rec-side-btn:hover {
+  transform: none;
+  filter: none !important;
+}
+
+#panelAudioRecordActions .audio-rec-side-btn:active,
+#panelStealthRecordActions .audio-rec-side-btn:active {
+  transform: scale(0.97);
+}
+
+#panelAudioRecordActions .audio-rec-btn-icon,
+#panelStealthRecordActions .audio-rec-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+/* [버튼 1-A] 녹화 중 기본 상태: 정갈한 키라인 '일시정지' 버튼 */
+#panelAudioRecordActions .audio-rec-side-btn.audio-btn-pause-rec,
+#panelStealthRecordActions .audio-rec-side-btn.audio-btn-pause-rec {
+  background: rgba(30, 41, 59, 0.78) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  color: #f1f5f9 !important;
+  box-shadow: none !important;
+}
+
+#panelAudioRecordActions .audio-rec-side-btn.audio-btn-pause-rec:hover,
+#panelStealthRecordActions .audio-rec-side-btn.audio-btn-pause-rec:hover {
+  background: rgba(51, 65, 85, 0.94) !important;
+  border-color: rgba(203, 213, 225, 0.44) !important;
+  color: #ffffff !important;
+}
+
+body.theme-light #panelAudioRecordActions .audio-rec-side-btn.audio-btn-pause-rec,
+body.theme-light #panelStealthRecordActions .audio-rec-side-btn.audio-btn-pause-rec {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03) !important;
+}
+
+body.theme-light #panelAudioRecordActions .audio-rec-side-btn.audio-btn-pause-rec:hover,
+body.theme-light #panelStealthRecordActions .audio-rec-side-btn.audio-btn-pause-rec:hover {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+/* [버튼 1-B] 일시정지 상태 (.is-paused): 1순위 행동 유도 Pure Ink Charcoal 솔리드 반전 '이어녹화' */
+#panelAudioRecordActions .audio-rec-side-btn.audio-btn-pause-rec.is-paused,
+#panelStealthRecordActions .audio-rec-side-btn.audio-btn-pause-rec.is-paused {
+  background: #f8fafc !important;
+  border: 1px solid #f8fafc !important;
+  color: #0f172a !important;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28) !important;
+}
+
+#panelAudioRecordActions .audio-rec-side-btn.audio-btn-pause-rec.is-paused:hover,
+#panelStealthRecordActions .audio-rec-side-btn.audio-btn-pause-rec.is-paused:hover {
+  background: #e2e8f0 !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+body.theme-light #panelAudioRecordActions .audio-rec-side-btn.audio-btn-pause-rec.is-paused,
+body.theme-light #panelStealthRecordActions .audio-rec-side-btn.audio-btn-pause-rec.is-paused {
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18) !important;
+}
+
+body.theme-light #panelAudioRecordActions .audio-rec-side-btn.audio-btn-pause-rec.is-paused:hover,
+body.theme-light #panelStealthRecordActions .audio-rec-side-btn.audio-btn-pause-rec.is-paused:hover {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  color: #ffffff !important;
+}
+
+/* [버튼 2] '종료' 버튼: 평상시 무채색 키라인 + 뮤트 크림슨 정지 사각 아이콘, 호버 시 은은한 로즈 틴트 */
+#panelAudioRecordActions .audio-rec-side-btn.audio-btn-stop,
+#panelStealthRecordActions .audio-rec-side-btn.audio-btn-stop {
+  background: rgba(30, 41, 59, 0.56) !important;
+  border: 1px solid rgba(148, 163, 184, 0.24) !important;
+  color: #cbd5e1 !important;
+  box-shadow: none !important;
+}
+
+#panelAudioRecordActions .audio-rec-side-btn.audio-btn-stop .audio-rec-stop-icon,
+#panelStealthRecordActions .audio-rec-side-btn.audio-btn-stop .audio-rec-stop-icon {
+  color: #f87171;
+}
+
+#panelAudioRecordActions .audio-rec-side-btn.audio-btn-stop:hover,
+#panelStealthRecordActions .audio-rec-side-btn.audio-btn-stop:hover {
+  background: rgba(244, 63, 94, 0.16) !important;
+  border-color: rgba(251, 113, 133, 0.44) !important;
+  color: #fecdd3 !important;
+}
+
+body.theme-light #panelAudioRecordActions .audio-rec-side-btn.audio-btn-stop,
+body.theme-light #panelStealthRecordActions .audio-rec-side-btn.audio-btn-stop {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #334155 !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03) !important;
+}
+
+body.theme-light #panelAudioRecordActions .audio-rec-side-btn.audio-btn-stop .audio-rec-stop-icon,
+body.theme-light #panelStealthRecordActions .audio-rec-side-btn.audio-btn-stop .audio-rec-stop-icon {
+  color: #dc2626;
+}
+
+body.theme-light #panelAudioRecordActions .audio-rec-side-btn.audio-btn-stop:hover,
+body.theme-light #panelStealthRecordActions .audio-rec-side-btn.audio-btn-stop:hover {
+  background: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+  color: #be123c !important;
+}

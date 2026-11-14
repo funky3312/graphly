@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261114_97">
+  <link rel="stylesheet" href="style.css?v=20261114_98">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -1408,17 +1408,33 @@
             </span>
           </button>
           <div class="audio-rec-side-menu" id="panelAudioRecordActions" style="display: none;">
-            <button type="button" id="btnAudioPauseRecord" class="audio-rec-side-btn audio-btn-pause-rec"
-              title="일시정지 / 이어녹화">
-              <span id="iconAudioPauseRecord">⏸</span>
-              <span id="lblAudioPauseRecord">일시정지</span>
-            </button>
-            <button type="button" id="btnAudioStopRecord" class="audio-rec-side-btn audio-btn-stop" title="녹화 종료">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="4" y="4" width="16" height="16" rx="2.5" />
-              </svg>
-              <span>종료</span>
-            </button>
+            <div class="audio-rec-hud-header" aria-live="off">
+              <span class="audio-rec-hud-state">
+                <span class="audio-rec-hud-dot" aria-hidden="true"></span>
+                <span id="lblAudioRecHudStatus" class="audio-rec-hud-status">REC</span>
+              </span>
+              <span id="lblAudioRecHudTime" class="audio-rec-hud-time">00:00</span>
+            </div>
+            <div class="audio-rec-hud-actions">
+              <button type="button" id="btnAudioPauseRecord" class="audio-rec-side-btn audio-btn-pause-rec"
+                title="일시정지 / 이어녹화">
+                <span id="iconAudioPauseRecord" class="audio-rec-btn-icon" data-icon-state="pause" aria-hidden="true">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="5" y="4" width="4.5" height="16" rx="1.2" />
+                    <rect x="14.5" y="4" width="4.5" height="16" rx="1.2" />
+                  </svg>
+                </span>
+                <span id="lblAudioPauseRecord">일시정지</span>
+              </button>
+              <button type="button" id="btnAudioStopRecord" class="audio-rec-side-btn audio-btn-stop" title="녹화 종료">
+                <span class="audio-rec-btn-icon audio-rec-stop-icon" aria-hidden="true">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="3.5" y="3.5" width="17" height="17" rx="3" />
+                  </svg>
+                </span>
+                <span>종료</span>
+              </button>
+            </div>
           </div>
         </div>
         <button id="btnInkMode" class="quick-fab-btn" title="필기">
@@ -1540,17 +1556,33 @@
           <span class="stealth-rec-dot-core"></span>
         </button>
         <div class="audio-rec-side-menu stealth-rec-side-menu" id="panelStealthRecordActions" style="display: none;">
-          <button type="button" id="btnStealthPauseRecord" class="audio-rec-side-btn audio-btn-pause-rec"
-            title="일시정지 / 이어녹화">
-            <span id="iconStealthPauseRecord">⏸</span>
-            <span id="lblStealthPauseRecord">일시정지</span>
-          </button>
-          <button type="button" id="btnStealthStopRecord" class="audio-rec-side-btn audio-btn-stop" title="녹화 종료">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="4" y="4" width="16" height="16" rx="2.5" />
-            </svg>
-            <span>종료</span>
-          </button>
+          <div class="audio-rec-hud-header" aria-live="off">
+            <span class="audio-rec-hud-state">
+              <span class="audio-rec-hud-dot" aria-hidden="true"></span>
+              <span id="lblStealthRecHudStatus" class="audio-rec-hud-status">REC</span>
+            </span>
+            <span id="lblStealthRecHudTime" class="audio-rec-hud-time">00:00</span>
+          </div>
+          <div class="audio-rec-hud-actions">
+            <button type="button" id="btnStealthPauseRecord" class="audio-rec-side-btn audio-btn-pause-rec"
+              title="일시정지 / 이어녹화">
+              <span id="iconStealthPauseRecord" class="audio-rec-btn-icon" data-icon-state="pause" aria-hidden="true">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="5" y="4" width="4.5" height="16" rx="1.2" />
+                  <rect x="14.5" y="4" width="4.5" height="16" rx="1.2" />
+                </svg>
+              </span>
+              <span id="lblStealthPauseRecord">일시정지</span>
+            </button>
+            <button type="button" id="btnStealthStopRecord" class="audio-rec-side-btn audio-btn-stop" title="녹화 종료">
+              <span class="audio-rec-btn-icon audio-rec-stop-icon" aria-hidden="true">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="3.5" y="3.5" width="17" height="17" rx="3" />
+                </svg>
+              </span>
+              <span>종료</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -3703,15 +3735,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261114_97"></script>
-  <script src="app-core.js?v=20261114_97"></script>
-  <script src="app-ink.js?v=20261114_97"></script>
-  <script src="app-pdf.js?v=20261114_97"></script>
-  <script src="app-cards.js?v=20261114_97"></script>
-  <script src="app-cloud.js?v=20261114_97"></script>
-  <script src="app-canvas.js?v=20261114_97"></script>
-  <script src="app-toolkit.js?v=20261114_97"></script>
-  <script src="app.js?v=20261114_97"></script>
+  <script src="engine.js?v=20261114_98"></script>
+  <script src="app-core.js?v=20261114_98"></script>
+  <script src="app-ink.js?v=20261114_98"></script>
+  <script src="app-pdf.js?v=20261114_98"></script>
+  <script src="app-cards.js?v=20261114_98"></script>
+  <script src="app-cloud.js?v=20261114_98"></script>
+  <script src="app-canvas.js?v=20261114_98"></script>
+  <script src="app-toolkit.js?v=20261114_98"></script>
+  <script src="app.js?v=20261114_98"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
