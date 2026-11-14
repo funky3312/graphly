@@ -26066,3 +26066,743 @@ body.theme-light #lessonPlaylistNavBar #playlistGridPopover .slide-chips-grid .s
   border-color: #0f172a !important;
   color: #0f172a !important;
 }
+
+/* ============================================================================
+   [v97: 필기바(가로·세로 #inkFloatingToolbar) & 미니 리모컨(#quickPillRemote) 통일]
+   - Stitch 시안 2-Soft ①: 소프트 쿨그레이(#E2E8F0 + #94A3B8) 액티브 & #F1F5F9 소프트 인셋 트레이
+   - 현행 인라인 SVG 벡터 100% 보존 · 까만 채움(#0F172A) 0% · 기존 표시/도킹/리플레이 가드 무간섭
+   ============================================================================ */
+#inkFloatingToolbar .ink-tool-btn > *,
+#quickPillRemote button > *,
+#lassoActionFloatingBar button > * {
+  pointer-events: none !important;
+}
+
+/* 1. 필기 플로팅 툴바 (#inkFloatingToolbar — 가로 하단 / 좌·우 세로 도킹 공통 쉘 & 인셋 트레이) */
+#inkFloatingToolbar.ink-floating-toolbar {
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.22);
+}
+
+body.theme-light #inkFloatingToolbar.ink-floating-toolbar {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 10px 26px -4px rgba(15, 23, 42, 0.10), 0 2px 6px -1px rgba(15, 23, 42, 0.05);
+}
+
+#inkFloatingToolbar.ink-floating-toolbar[data-dock-pos="bottom"] {
+  padding: 6px 10px;
+  gap: 6px;
+}
+
+#inkFloatingToolbar.ink-floating-toolbar[data-dock-pos="left"],
+#inkFloatingToolbar.ink-floating-toolbar[data-dock-pos="right"] {
+  width: 50px;
+  padding: 7px 5px;
+  gap: 4.5px;
+}
+
+#inkFloatingToolbar .ink-divider {
+  display: none !important;
+}
+
+#inkFloatingToolbar .ink-dock-drag-handle {
+  color: #64748b;
+  opacity: 0.7;
+  padding: 0 2px;
+}
+
+#inkFloatingToolbar .ink-dock-drag-handle:hover {
+  color: #cbd5e1;
+  opacity: 1;
+}
+
+body.theme-light #inkFloatingToolbar .ink-dock-drag-handle {
+  color: #94a3b8;
+  opacity: 0.8;
+}
+
+body.theme-light #inkFloatingToolbar .ink-dock-drag-handle:hover {
+  color: #475569;
+  opacity: 1;
+}
+
+/* 도구군 · 5색 팔레트 · 줌 조절기 소프트 인셋 트레이 (#F1F5F9 / 다크 슬레이트) */
+#inkFloatingToolbar .ink-tool-group,
+#inkFloatingToolbar .ink-color-group,
+#inkFloatingToolbar .ink-zoom-group {
+  box-sizing: border-box;
+  background: rgba(30, 41, 59, 0.76);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+}
+
+body.theme-light #inkFloatingToolbar .ink-tool-group,
+body.theme-light #inkFloatingToolbar .ink-color-group,
+body.theme-light #inkFloatingToolbar .ink-zoom-group {
+  background: #f1f5f9;
+  border: 1px solid rgba(203, 213, 225, 0.68);
+}
+
+#inkFloatingToolbar[data-dock-pos="bottom"] .ink-tool-group {
+  padding: 3px;
+  gap: 2.5px;
+}
+
+#inkFloatingToolbar[data-dock-pos="bottom"] .ink-color-group {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 9px;
+  gap: 7px;
+}
+
+#inkFloatingToolbar[data-dock-pos="bottom"] .ink-zoom-group {
+  padding: 3px;
+  gap: 2px;
+}
+
+/* 세로형 필기바(left / right): 50px 단일 축 정렬 & 5색 원형 스와치 1열 대칭 배치 */
+#inkFloatingToolbar[data-dock-pos="left"] .ink-tool-group,
+#inkFloatingToolbar[data-dock-pos="right"] .ink-tool-group {
+  width: 100%;
+  padding: 3px 2px;
+  gap: 2.5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#inkFloatingToolbar[data-dock-pos="left"] .ink-color-group,
+#inkFloatingToolbar[data-dock-pos="right"] .ink-color-group {
+  width: 100%;
+  padding: 6px 0;
+  gap: 5.5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#inkFloatingToolbar[data-dock-pos="left"] .ink-zoom-group,
+#inkFloatingToolbar[data-dock-pos="right"] .ink-zoom-group {
+  width: 100%;
+  padding: 2.5px 2px;
+  gap: 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 필기바 버튼 기본 · 호버 · 소프트 쿨그레이 액티브 키캡 */
+#inkFloatingToolbar .ink-tool-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #cbd5e1;
+  box-shadow: none;
+  transition: background-color 0.08s ease, border-color 0.08s ease, color 0.08s ease;
+}
+
+body.theme-light #inkFloatingToolbar .ink-tool-btn {
+  border-color: transparent;
+  background: transparent;
+  color: #475569;
+  box-shadow: none;
+}
+
+#inkFloatingToolbar[data-dock-pos="bottom"] .ink-zoom-step-btn {
+  width: 30px;
+  height: 34px;
+  border-radius: 7px;
+}
+
+#inkFloatingToolbar[data-dock-pos="bottom"] #btnInkToPillRemote,
+#inkFloatingToolbar[data-dock-pos="bottom"] #btnInkClose {
+  width: 32px;
+  height: 34px;
+}
+
+#inkFloatingToolbar[data-dock-pos="left"] .ink-tool-btn,
+#inkFloatingToolbar[data-dock-pos="right"] .ink-tool-btn {
+  width: 32px;
+  height: 29px;
+  border-radius: 7.5px;
+}
+
+#inkFloatingToolbar[data-dock-pos="left"] .ink-zoom-step-btn,
+#inkFloatingToolbar[data-dock-pos="right"] .ink-zoom-step-btn {
+  width: 32px;
+  height: 26px;
+  border-radius: 6.5px;
+}
+
+#inkFloatingToolbar[data-dock-pos="left"] #btnInkClearAll,
+#inkFloatingToolbar[data-dock-pos="right"] #btnInkClearAll,
+#inkFloatingToolbar[data-dock-pos="left"] #btnInkToPillRemote,
+#inkFloatingToolbar[data-dock-pos="right"] #btnInkToPillRemote,
+#inkFloatingToolbar[data-dock-pos="left"] #btnInkClose,
+#inkFloatingToolbar[data-dock-pos="right"] #btnInkClose {
+  width: 32px;
+  height: 28px;
+}
+
+#inkFloatingToolbar .ink-tool-btn:not(.active):hover {
+  background: rgba(248, 250, 252, 0.09);
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #f8fafc;
+  transform: none;
+}
+
+body.theme-light #inkFloatingToolbar .ink-tool-btn:not(.active):hover {
+  background: #ffffff;
+  border-color: rgba(203, 213, 225, 0.85);
+  color: #0f172a;
+  transform: none;
+}
+
+#inkFloatingToolbar #btnInkToPillRemote:hover {
+  background: rgba(51, 65, 85, 0.85) !important;
+  border-color: rgba(148, 163, 184, 0.34) !important;
+  color: #f8fafc !important;
+  transform: none;
+}
+
+body.theme-light #inkFloatingToolbar #btnInkToPillRemote:hover {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+  transform: none;
+}
+
+#inkFloatingToolbar #btnInkClearAll:hover,
+#inkFloatingToolbar #btnInkClose:hover {
+  background: rgba(244, 63, 94, 0.16) !important;
+  border-color: rgba(244, 63, 94, 0.36) !important;
+  color: #fb7185 !important;
+  transform: none;
+}
+
+body.theme-light #inkFloatingToolbar #btnInkClearAll:hover,
+body.theme-light #inkFloatingToolbar #btnInkClose:hover {
+  background: #fef2f2 !important;
+  border-color: #fecdd3 !important;
+  color: #e11d48 !important;
+  transform: none;
+}
+
+/* 필기바 액티브 키캡 — 소프트 쿨그레이 (#E2E8F0 + #94A3B8 / 다크 소프트 슬레이트 #334155) */
+#inkFloatingToolbar .ink-tool-btn.active,
+#inkFloatingToolbar .ink-tool-btn.ink-sticker-btn.active {
+  background: #334155 !important;
+  border-color: rgba(203, 213, 225, 0.46) !important;
+  color: #f8fafc !important;
+}
+
+#inkFloatingToolbar .ink-tool-btn.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active),
+#inkFloatingToolbar .ink-tool-btn.ink-sticker-btn.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 1px 3px rgba(0, 0, 0, 0.28) !important;
+}
+
+body.theme-light #inkFloatingToolbar .ink-tool-btn.active,
+body.theme-light #inkFloatingToolbar .ink-tool-btn.ink-sticker-btn.active {
+  background: #e2e8f0 !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+body.theme-light #inkFloatingToolbar .ink-tool-btn.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active),
+body.theme-light #inkFloatingToolbar .ink-tool-btn.ink-sticker-btn.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 1px 2px rgba(15, 23, 42, 0.06) !important;
+}
+
+body.theme-light #inkFloatingToolbar #btnInkLaser.active .ink-btn-icon {
+  color: #dc2626 !important;
+}
+
+body.theme-light #inkFloatingToolbar #btnInkSticker.active .ink-btn-icon {
+  color: #ca8a04 !important;
+}
+
+/* 필기바 & 미니 리모컨 5색 스와치 더블 링 (인라인 boxShadow 무시 보장) */
+#inkFloatingToolbar .ink-color-dot {
+  width: 16.5px;
+  height: 16.5px;
+  border: 1.5px solid rgba(255, 255, 255, 0.26);
+  transition: transform 0.1s ease;
+}
+
+body.theme-light #inkFloatingToolbar .ink-color-dot {
+  border: 1.5px solid rgba(15, 23, 42, 0.14);
+}
+
+#inkFloatingToolbar[data-dock-pos="left"] .ink-color-dot,
+#inkFloatingToolbar[data-dock-pos="right"] .ink-color-dot {
+  width: 14px;
+  height: 14px;
+}
+
+#quickPillRemote .pill-color-dot {
+  width: 14.5px;
+  height: 14.5px;
+  border: 1.5px solid rgba(255, 255, 255, 0.26);
+  transition: transform 0.1s ease;
+}
+
+body.theme-light #quickPillRemote .pill-color-dot {
+  border: 1.5px solid rgba(15, 23, 42, 0.14);
+}
+
+#inkFloatingToolbar .ink-color-dot.active,
+#quickPillRemote .pill-color-dot.active {
+  transform: scale(1.12);
+  border-color: #0f172a !important;
+}
+
+#inkFloatingToolbar .ink-color-dot.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active),
+#quickPillRemote .pill-color-dot.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active) {
+  box-shadow: 0 0 0 1.5px #0f172a, 0 0 0 3px #cbd5e1 !important;
+}
+
+body.theme-light #inkFloatingToolbar .ink-color-dot.active,
+body.theme-light #quickPillRemote .pill-color-dot.active {
+  transform: scale(1.12);
+  border-color: #ffffff !important;
+}
+
+body.theme-light #inkFloatingToolbar .ink-color-dot.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active),
+body.theme-light #quickPillRemote .pill-color-dot.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active) {
+  box-shadow: 0 0 0 1.5px #ffffff, 0 0 0 3px #94a3b8 !important;
+}
+
+/* 2. 미니 리모컨 (#quickPillRemote — 폭 112px · 4모듈 단일 행 화이트 엘리베이션 · 인셋 트레이) */
+#quickPillRemote.quick-pill-remote {
+  width: 112px;
+  box-sizing: border-box;
+  padding: 6px;
+  gap: 5px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.46), 0 3px 8px rgba(0, 0, 0, 0.22);
+}
+
+body.theme-light #quickPillRemote.quick-pill-remote {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 10px 25px -3px rgba(15, 23, 42, 0.10), 0 4px 10px -2px rgba(15, 23, 42, 0.05);
+}
+
+#quickPillRemote .pill-remote-top-bar {
+  margin-bottom: 0;
+  padding: 0 1px;
+}
+
+#quickPillRemote .pill-remote-drag-handle {
+  color: #64748b;
+}
+
+#quickPillRemote .pill-remote-drag-handle:hover {
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+body.theme-light #quickPillRemote .pill-remote-drag-handle {
+  color: #94a3b8;
+}
+
+body.theme-light #quickPillRemote .pill-remote-drag-handle:hover {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+#quickPillRemote .pill-remote-expand-btn,
+#quickPillRemote .pill-remote-close-btn {
+  width: 19px;
+  height: 19px;
+  border-radius: 5.5px;
+  color: #94a3b8;
+}
+
+body.theme-light #quickPillRemote .pill-remote-expand-btn,
+body.theme-light #quickPillRemote .pill-remote-close-btn {
+  color: #64748b;
+}
+
+#quickPillRemote .pill-remote-expand-btn:hover {
+  background: rgba(51, 65, 85, 0.85);
+  color: #f8fafc;
+}
+
+body.theme-light #quickPillRemote .pill-remote-expand-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+#quickPillRemote .pill-remote-close-btn:hover {
+  background: rgba(244, 63, 94, 0.16);
+  color: #fb7185;
+}
+
+body.theme-light #quickPillRemote .pill-remote-close-btn:hover {
+  background: #fef2f2;
+  color: #e11d48;
+}
+
+/* 0단: [필기 ⇄ 이동] 메인 스왑 버튼 (원색 그라데이션 제거 · 소프트 쿨그레이 & 화이트 카드) */
+#quickPillRemote .pill-remote-swap-btn {
+  height: 30px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  gap: 4px;
+  border: 1px solid transparent;
+  filter: none;
+  transition: background-color 0.08s ease, border-color 0.08s ease, color 0.08s ease;
+}
+
+#quickPillRemote .pill-remote-swap-btn.mode-pen {
+  background: #334155;
+  border-color: rgba(203, 213, 225, 0.46);
+  color: #f8fafc;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 1px 3px rgba(0, 0, 0, 0.26);
+}
+
+body.theme-light #quickPillRemote .pill-remote-swap-btn.mode-pen {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  color: #0f172a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+#quickPillRemote .pill-remote-swap-btn.mode-select {
+  background: #1e293b;
+  border-color: rgba(148, 163, 184, 0.34);
+  color: #e2e8f0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+body.theme-light #quickPillRemote .pill-remote-swap-btn.mode-select {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+#quickPillRemote .pill-remote-swap-btn.mode-subtool {
+  background: rgba(30, 41, 59, 0.62);
+  border-color: rgba(148, 163, 184, 0.18);
+  color: #94a3b8;
+  box-shadow: none;
+}
+
+body.theme-light #quickPillRemote .pill-remote-swap-btn.mode-subtool {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #64748b;
+  box-shadow: none;
+}
+
+#quickPillRemote .pill-remote-swap-btn:hover {
+  transform: none;
+  filter: none;
+}
+
+#quickPillRemote .pill-remote-swap-btn.mode-pen:hover {
+  background: #3b4d63;
+}
+
+body.theme-light #quickPillRemote .pill-remote-swap-btn.mode-pen:hover {
+  background: #d8e1ec;
+  border-color: #64748b;
+}
+
+#quickPillRemote .pill-remote-swap-btn.mode-select:hover {
+  background: #28364a;
+  color: #f8fafc;
+}
+
+body.theme-light #quickPillRemote .pill-remote-swap-btn.mode-select:hover {
+  background: #ffffff;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+#quickPillRemote .pill-remote-swap-btn.mode-subtool:hover {
+  background: rgba(51, 65, 85, 0.78);
+  color: #e2e8f0;
+}
+
+body.theme-light #quickPillRemote .pill-remote-swap-btn.mode-subtool:hover {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+/* 4단 모듈 선택 스위치 ([도구][줌][색상][기타] — 112px 내 줄바꿈 없는 단일 행 & 화이트 엘리베이션 칩) */
+#quickPillRemote .pill-module-bar {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: center;
+  gap: 1.5px;
+  width: 100%;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(30, 41, 59, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+body.theme-light #quickPillRemote .pill-module-bar {
+  background: #f1f5f9;
+  border: 1px solid rgba(203, 213, 225, 0.72);
+}
+
+#quickPillRemote .pill-mod-chip {
+  height: 19px;
+  border-radius: 5.5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  padding: 0;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+body.theme-light #quickPillRemote .pill-mod-chip {
+  background: transparent;
+  border-color: transparent;
+  color: #64748b;
+  box-shadow: none;
+}
+
+#quickPillRemote .pill-mod-chip:not(.active):hover {
+  color: #f8fafc;
+  border-color: transparent;
+}
+
+body.theme-light #quickPillRemote .pill-mod-chip:not(.active):hover {
+  color: #0f172a;
+  border-color: transparent;
+}
+
+#quickPillRemote .pill-mod-chip.active {
+  background: #334155;
+  border-color: rgba(203, 213, 225, 0.38);
+  color: #f8fafc;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+body.theme-light #quickPillRemote .pill-mod-chip.active {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #0f172a;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+/* 모듈 섹션 인셋 트레이 & 버튼 */
+#quickPillRemote .pill-remote-sep {
+  display: none !important;
+}
+
+#quickPillRemote .pill-remote-section {
+  gap: 0;
+}
+
+#quickPillRemote .pill-remote-grid,
+#quickPillRemote .pill-color-row {
+  box-sizing: border-box;
+  width: 100%;
+  border-radius: 9px;
+  background: rgba(30, 41, 59, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+body.theme-light #quickPillRemote .pill-remote-grid,
+body.theme-light #quickPillRemote .pill-color-row {
+  background: #f8fafc;
+  border: 1px solid rgba(203, 213, 225, 0.72);
+}
+
+#quickPillRemote #pillSecTools .pill-remote-grid,
+#quickPillRemote #pillSecExtra .pill-remote-grid {
+  padding: 3.5px;
+  gap: 3.5px;
+}
+
+#quickPillRemote #pillSecZoom .pill-remote-grid {
+  padding: 2.5px;
+  gap: 2px;
+}
+
+#quickPillRemote #pillSecColor .pill-color-row {
+  padding: 5.5px 6px;
+  gap: 3px;
+}
+
+#quickPillRemote .pill-remote-btn {
+  height: 29px;
+  border-radius: 6.5px;
+  border: 1px solid rgba(148, 163, 184, 0.20);
+  background: rgba(15, 23, 42, 0.55);
+  color: #cbd5e1;
+  box-shadow: none;
+  box-sizing: border-box;
+  transition: background-color 0.08s ease, border-color 0.08s ease, color 0.08s ease;
+}
+
+body.theme-light #quickPillRemote .pill-remote-btn {
+  background: #ffffff;
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  color: #334155;
+  box-shadow: 0 1px 1.5px rgba(15, 23, 42, 0.03);
+}
+
+#quickPillRemote #pillSecZoom .pill-zoom-btn {
+  height: 25px;
+  border-radius: 6px;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+body.theme-light #quickPillRemote #pillSecZoom .pill-zoom-btn {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+#quickPillRemote .pill-remote-btn:not(.active):hover {
+  background: rgba(51, 65, 85, 0.78);
+  border-color: rgba(148, 163, 184, 0.36);
+  color: #f8fafc;
+  transform: none;
+}
+
+body.theme-light #quickPillRemote .pill-remote-btn:not(.active):hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+  transform: none;
+}
+
+#quickPillRemote #pillSecZoom .pill-zoom-btn:hover {
+  background: rgba(51, 65, 85, 0.85);
+  border-color: rgba(148, 163, 184, 0.32);
+  color: #f8fafc;
+}
+
+body.theme-light #quickPillRemote #pillSecZoom .pill-zoom-btn:hover {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+#quickPillRemote #btnPillClearAll:hover {
+  background: rgba(244, 63, 94, 0.16);
+  border-color: rgba(244, 63, 94, 0.38);
+  color: #fb7185;
+}
+
+body.theme-light #quickPillRemote #btnPillClearAll:hover {
+  background: #fef2f2;
+  border-color: #fecdd3;
+  color: #e11d48;
+}
+
+/* 미니 리모컨 보조 도구 액티브 — 핫핑크/보라/노랑 그라데이션 제거 · 소프트 쿨그레이 일원화 */
+#quickPillRemote .pill-remote-btn.active,
+#quickPillRemote #btnPillLasso.pill-remote-btn.active,
+#quickPillRemote #btnPillHighlighter.pill-remote-btn.active,
+#quickPillRemote .pill-remote-btn.pill-sticker-btn.active {
+  background: #334155 !important;
+  border-color: rgba(203, 213, 225, 0.46) !important;
+  color: #f8fafc !important;
+}
+
+#quickPillRemote .pill-remote-btn.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active),
+#quickPillRemote #btnPillLasso.pill-remote-btn.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active),
+#quickPillRemote #btnPillHighlighter.pill-remote-btn.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active),
+#quickPillRemote .pill-remote-btn.pill-sticker-btn.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 1px 3px rgba(0, 0, 0, 0.28) !important;
+}
+
+body.theme-light #quickPillRemote .pill-remote-btn.active,
+body.theme-light #quickPillRemote #btnPillLasso.pill-remote-btn.active,
+body.theme-light #quickPillRemote #btnPillHighlighter.pill-remote-btn.active,
+body.theme-light #quickPillRemote .pill-remote-btn.pill-sticker-btn.active {
+  background: #e2e8f0 !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+body.theme-light #quickPillRemote .pill-remote-btn.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active),
+body.theme-light #quickPillRemote #btnPillLasso.pill-remote-btn.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active),
+body.theme-light #quickPillRemote #btnPillHighlighter.pill-remote-btn.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active),
+body.theme-light #quickPillRemote .pill-remote-btn.pill-sticker-btn.active:not(.replay-ui-btn-hover):not(.replay-ui-btn-active) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 1px 2px rgba(15, 23, 42, 0.06) !important;
+}
+
+#quickPillRemote #btnPillLaser {
+  color: #ef4444 !important;
+}
+
+#quickPillRemote #btnPillLaser.active {
+  color: #f87171 !important;
+}
+
+body.theme-light #quickPillRemote #btnPillLaser.active {
+  color: #dc2626 !important;
+}
+
+#quickPillRemote #btnPillSticker {
+  color: #eab308 !important;
+}
+
+#quickPillRemote #btnPillSticker.active {
+  color: #facc15 !important;
+}
+
+body.theme-light #quickPillRemote #btnPillSticker.active {
+  color: #ca8a04 !important;
+}
+
+/* 3. 올가미 선택 보조 플로팅바 (#lassoActionFloatingBar — 네온 시안 테두리 제거 · 동일 쿨그레이 키라인 통일) */
+#lassoActionFloatingBar.lasso-action-floating-bar {
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(148, 163, 184, 0.30);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.36), 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+body.theme-light #lassoActionFloatingBar.lasso-action-floating-bar {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.10), 0 2px 5px rgba(15, 23, 42, 0.05);
+}
+
+#lassoActionFloatingBar .lasso-color-dot:hover {
+  box-shadow: 0 0 0 2px #94a3b8;
+}
+
+#lassoActionFloatingBar .lasso-action-btn:not(.lasso-action-del):hover {
+  background: #334155;
+  border-color: rgba(203, 213, 225, 0.42);
+  color: #f8fafc;
+}
+
+body.theme-light #lassoActionFloatingBar .lasso-action-btn:not(.lasso-action-del):hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
