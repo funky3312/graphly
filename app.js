@@ -12,9 +12,13 @@
     // ==========================================================================
     initAudioSyncControls() {
       this.isAudioRecording = false;
+      this._isStartingAudioRecording = false;
+      this._stoppingAudioRecordingPromise = null;
       this.isAudioRecordPaused = false;
       this.isAudioMicMuted = false;
       this._pendingSlideAudioFinalizers = [];
+      this._lastRecorderStopPromise = null;
+      this._pendingSlideRecorderStarter = null;
       this.audioRecordStartMs = 0;
       this.audioRecordPauseStartMs = 0;
       this.audioRecordTotalPausedMs = 0;
@@ -933,6 +937,85 @@
       return this.isAudioMicMuted;
     }
 
+    _stopMediaRecorderSafely(recorder, timeoutMs = 800) {
+      if (!recorder || recorder.state === 'inactive') {
+        return Promise.resolve();
+      }
+      return new Promise((resolve) => {
+        let settled = false;
+        let timerId = null;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          if (timerId) {
+            clearTimeout(timerId);
+            timerId = null;
+          }
+          try {
+            if (typeof recorder.removeEventListener === 'function') {
+              recorder.removeEventListener('stop', finish);
+              recorder.removeEventListener('error', finish);
+            }
+          } catch (e) { }
+          resolve();
+        };
+        timerId = setTimeout(finish, Math.max(200, Number(timeoutMs) || 800));
+        try {
+          if (typeof recorder.addEventListener === 'function') {
+            recorder.addEventListener('stop', finish, { once: true });
+            recorder.addEventListener('error', finish, { once: true });
+          }
+          recorder.onstop = finish;
+          recorder.onerror = finish;
+        } catch (e) { }
+        try {
+          if (recorder.state === 'paused' && typeof recorder.requestData === 'function') {
+            try { recorder.requestData(); } catch (reqErr) { }
+          }
+          recorder.stop();
+        } catch (e) {
+          finish();
+        }
+      });
+    }
+
+    _blobToDataUrlSafely(blob, timeoutMs = 5000) {
+      if (!blob || blob.size <= 0 || typeof FileReader === 'undefined') {
+        return Promise.resolve('');
+      }
+      return new Promise((resolve) => {
+        let settled = false;
+        let timerId = null;
+        let reader = null;
+        const finish = (val) => {
+          if (settled) return;
+          settled = true;
+          if (timerId) {
+            clearTimeout(timerId);
+            timerId = null;
+          }
+          resolve(typeof val === 'string' ? val : '');
+        };
+        timerId = setTimeout(() => {
+          try {
+            if (reader && reader.readyState === 1 && typeof reader.abort === 'function') {
+              reader.abort();
+            }
+          } catch (e) { }
+          finish('');
+        }, Math.max(500, Number(timeoutMs) || 5000));
+        try {
+          reader = new FileReader();
+          reader.onloadend = () => finish(typeof reader.result === 'string' ? reader.result : '');
+          reader.onerror = () => finish('');
+          reader.onabort = () => finish('');
+          reader.readAsDataURL(blob);
+        } catch (e) {
+          finish('');
+        }
+      });
+    }
+
     // 🌟 [원테이크 통째 강의 녹음 + 슬라이드별 자동 챕터 분할 & 왕복(3번➔2번➔3번) 이어녹음 엔진]:
     // 선생님이 녹음 버튼을 한 번 켜고 1번 ➔ 2번 ➔ ... ➔ 10번 슬라이드를 넘기거나,
     // 3번에서 2번으로 돌아갔다가 다시 3번으로 넘어오며 통째로 강의를 찍을 때,
@@ -964,7 +1047,9 @@
       const priorSegs = Array.isArray(this._priorSlideAudioSegments)
         ? JSON.parse(JSON.stringify(this._priorSlideAudioSegments))
         : [];
+      const segUid = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const newSeg = {
+        segUid,
         startMs: segStartMs,
         endMs: durationMs,
         durationMs: segDurMs,
@@ -974,7 +1059,6 @@
         nextSlideStartMs: typeof resolvedNextStartMs === 'number' ? resolvedNextStartMs : 0
       };
       const audioSegments = [...priorSegs, newSeg];
-      const segIdx = audioSegments.length - 1;
       const primaryAudioUrl = (audioSegments[0] && audioSegments[0].audioDataUrl) || fallbackSegSilentUrl;
 
       const recordedStageW = Math.round(
@@ -1013,70 +1097,91 @@
       const prevChunksRef = (prevRecorder && Array.isArray(prevRecorder._localChunks))
         ? prevRecorder._localChunks
         : (this.audioRecordedChunks ? [...this.audioRecordedChunks] : []);
-      const targetSlideIdx = this.lessonPlaylistIndex;
-      const segCreatedAt = segAudioSyncData.createdAt;
+      const segSessionId = segAudioSyncData.sessionId;
       const wasMuted = Boolean(this.isAudioMicMuted);
       this.audioMediaRecorder = null;
       this.audioRecordedChunks = [];
 
-      if (prevRecorder && prevRecorder.state !== 'inactive') {
+      const needsStop = Boolean(prevRecorder && prevRecorder.state !== 'inactive');
+      const hasBufferedChunks = Boolean(
+        !wasMuted && (
+          (prevRecorder && Array.isArray(prevRecorder._localChunks) && prevRecorder._localChunks.length > 0) ||
+          prevChunksRef.length > 0
+        )
+      );
+      if (needsStop || hasBufferedChunks) {
         if (!this._pendingSlideAudioFinalizers) this._pendingSlideAudioFinalizers = [];
-        const p = new Promise((resolve) => {
-          prevRecorder.onstop = async () => {
-            try {
-              const finalChunks = (prevRecorder && Array.isArray(prevRecorder._localChunks) && prevRecorder._localChunks.length > 0)
-                ? prevRecorder._localChunks
-                : prevChunksRef;
-              if (!wasMuted && finalChunks.length > 0) {
-                const blob = new Blob(finalChunks, { type: mimeType });
-                const dataUrl = await new Promise((res) => {
-                  const reader = new FileReader();
-                  reader.onloadend = () => res(reader.result || '');
-                  reader.onerror = () => res('');
-                  reader.readAsDataURL(blob);
-                });
-                if (dataUrl) {
-                  if (segAudioSyncData.audioSegments && segAudioSyncData.audioSegments[segIdx]) {
-                    segAudioSyncData.audioSegments[segIdx].audioDataUrl = dataUrl;
-                  }
-                  if (segIdx === 0) {
-                    segAudioSyncData.audioDataUrl = dataUrl;
-                  }
-                  if (Array.isArray(this.lessonPlaylistSlides)) {
-                    const applyUrlToSlideSync = (slideSync) => {
-                      if (!slideSync) return;
-                      if (Array.isArray(slideSync.audioSegments) && slideSync.audioSegments[segIdx]) {
-                        slideSync.audioSegments[segIdx].audioDataUrl = dataUrl;
+        // 1) 하드웨어/브라우저 MediaRecorder 정지 대기(최대 800ms 안전 타임아웃)만 분리하여 다음 슬라이드 마이크 즉시(0ms 지연) 출발 보장!
+        const stopOnlyPromise = needsStop
+          ? this._stopMediaRecorderSafely(prevRecorder, 800)
+          : Promise.resolve();
+        if (needsStop) {
+          this._lastRecorderStopPromise = stopOnlyPromise;
+          stopOnlyPromise.then(() => {
+            if (this._lastRecorderStopPromise === stopOnlyPromise) {
+              this._lastRecorderStopPromise = null;
+            }
+          });
+        }
+        // 2) 대용량 Blob ➔ Base64 DataURL 변환은 백그라운드 Finalizer 큐에서 비동기 마감 및 완료 즉시 참조 해제(RAM 보호)
+        let finalizePromise = null;
+        finalizePromise = stopOnlyPromise.then(async () => {
+          try {
+            const finalChunks = (prevRecorder && Array.isArray(prevRecorder._localChunks) && prevRecorder._localChunks.length > 0)
+              ? prevRecorder._localChunks
+              : prevChunksRef;
+            if (!wasMuted && finalChunks.length > 0) {
+              const blob = new Blob(finalChunks, { type: mimeType });
+              const dataUrl = await this._blobToDataUrlSafely(blob, 5000);
+              if (dataUrl) {
+                const applyUrlBySegUid = (slideSync) => {
+                  if (!slideSync || typeof slideSync !== 'object') return;
+                  if (segSessionId && slideSync.sessionId && slideSync.sessionId !== segSessionId) return;
+                  if (!Array.isArray(slideSync.audioSegments)) return;
+                  for (let sIdx = 0; sIdx < slideSync.audioSegments.length; sIdx++) {
+                    const segObj = slideSync.audioSegments[sIdx];
+                    if (segObj && segObj.segUid === segUid) {
+                      segObj.audioDataUrl = dataUrl;
+                      if (sIdx === 0) {
+                        slideSync.audioDataUrl = slideSync._compact ? '' : dataUrl;
                       }
-                      if (segIdx === 0) {
-                        slideSync.audioDataUrl = dataUrl;
-                      }
-                    };
-                    if (this.lessonPlaylistSlides[targetSlideIdx] && this.lessonPlaylistSlides[targetSlideIdx].audioSyncData) {
-                      applyUrlToSlideSync(this.lessonPlaylistSlides[targetSlideIdx].audioSyncData);
                     }
-                    this.lessonPlaylistSlides.forEach(sl => {
-                      if (sl && sl.audioSyncData && sl.audioSyncData.createdAt === segCreatedAt) {
-                        applyUrlToSlideSync(sl.audioSyncData);
-                      }
-                    });
                   }
-                  if (this.lessonPlaylistIndex === targetSlideIdx && Array.isArray(this._priorSlideAudioSegments) && this._priorSlideAudioSegments[segIdx]) {
-                    this._priorSlideAudioSegments[segIdx].audioDataUrl = dataUrl;
+                };
+                applyUrlBySegUid(segAudioSyncData);
+                if (this.audioSyncData && this.audioSyncData !== segAudioSyncData) {
+                  applyUrlBySegUid(this.audioSyncData);
+                }
+                if (Array.isArray(this.lessonPlaylistSlides)) {
+                  this.lessonPlaylistSlides.forEach(sl => {
+                    if (sl && sl.audioSyncData) {
+                      applyUrlBySegUid(sl.audioSyncData);
+                    }
+                  });
+                }
+                if (
+                  (!segSessionId || !this._currentAudioRecordingSessionId || this._currentAudioRecordingSessionId === segSessionId) &&
+                  Array.isArray(this._priorSlideAudioSegments)
+                ) {
+                  for (let pIdx = 0; pIdx < this._priorSlideAudioSegments.length; pIdx++) {
+                    const pSeg = this._priorSlideAudioSegments[pIdx];
+                    if (pSeg && pSeg.segUid === segUid) {
+                      pSeg.audioDataUrl = dataUrl;
+                    }
                   }
                 }
               }
-            } catch (e) { }
-            resolve();
-          };
-          try {
-            prevRecorder.stop();
-          } catch (e) {
-            resolve();
+            }
+          } catch (e) { }
+        }).finally(() => {
+          if (Array.isArray(this._pendingSlideAudioFinalizers) && finalizePromise) {
+            const fIdx = this._pendingSlideAudioFinalizers.indexOf(finalizePromise);
+            if (fIdx !== -1) {
+              this._pendingSlideAudioFinalizers.splice(fIdx, 1);
+            }
           }
         });
-        this._lastRecorderStopPromise = p;
-        this._pendingSlideAudioFinalizers.push(p);
+        this._pendingSlideAudioFinalizers.push(finalizePromise);
       }
     }
 
@@ -1168,19 +1273,29 @@
       }
 
       if (window.MediaRecorder) {
+        let starterPromise = null;
         const startNextRecorder = async () => {
           if (this._lastRecorderStopPromise) {
             try { await this._lastRecorderStopPromise; } catch (e) { }
           }
           if (!this.isAudioRecording || this._audioSegmentToken !== segToken) return;
           try {
+            const hasLiveRawTrack = !this.audioRawStream || (
+              typeof this.audioRawStream.getAudioTracks === 'function' &&
+              this.audioRawStream.getAudioTracks().some(tr => tr.readyState === 'live')
+            );
             const hasLiveTrack = Boolean(
+              hasLiveRawTrack &&
               this.audioMediaStream &&
               typeof this.audioMediaStream.getAudioTracks === 'function' &&
               this.audioMediaStream.getAudioTracks().some(tr => tr.readyState === 'live')
             );
             if (!hasLiveTrack && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
-              this.audioMediaStream = await this._acquireProcessedAudioStream();
+              try {
+                this.audioMediaStream = await this._acquireProcessedAudioStream();
+              } catch (micReacqErr) {
+                this._cleanupProcessedAudioStream();
+              }
             }
             if (!this.isAudioRecording || this._audioSegmentToken !== segToken || !this.audioMediaStream) return;
             this.audioMediaStream.getAudioTracks().forEach(tr => {
@@ -1195,6 +1310,7 @@
                 localChunks.push(ev.data);
               }
             };
+            recorder.onerror = () => { };
             recorder.start(250);
             if (this.isAudioRecordPaused && recorder.state === 'recording') {
               try { recorder.pause(); } catch (e) { }
@@ -1204,7 +1320,12 @@
             this.audioMediaRecorder = null;
           }
         };
-        this._pendingSlideRecorderStarter = startNextRecorder();
+        starterPromise = startNextRecorder().finally(() => {
+          if (this._pendingSlideRecorderStarter === starterPromise) {
+            this._pendingSlideRecorderStarter = null;
+          }
+        });
+        this._pendingSlideRecorderStarter = starterPromise;
       }
       this.syncAudioRecordUI();
     }
@@ -2540,268 +2661,300 @@
     }
 
     async startAudioRecording() {
-      if (this.isAudioRecording) return;
-      const maxDurationMs = Math.max(1000, this.getMaxAudioRecordDurationMs());
-      const priorOtherSlidesMs = this._computeOtherSlidesRecordedDurationMs();
-      if (priorOtherSlidesMs >= maxDurationMs) {
-        const maxMinutes = Math.max(1, Math.round(maxDurationMs / 60000));
-        const isPaid = (typeof this.isProSubscriber === 'function') ? this.isProSubscriber() : Boolean(this.isProUser);
-        if (!isPaid) {
-          this.showToast(`⚠️ 무료 플랜 녹화 한도(${maxMinutes}분)를 모두 사용했습니다. Pro·Premium 업그레이드 시 60분까지 녹화 가능합니다.`);
-          if (typeof this.openProPricingModal === 'function') this.openProPricingModal('pro');
-        } else {
-          this.showToast(`⚠️ 현재 수업 노트의 최대 녹화 시간(${maxMinutes}분)에 도달했습니다. 새 노트에서 녹화를 이어가 주세요.`);
-        }
-        return;
+      if (this._stoppingAudioRecordingPromise) {
+        try { await this._stoppingAudioRecordingPromise; } catch (e) { }
       }
-      this.stopAudioPlayback(true);
-      this._sessionBasePriorRecordedMs = priorOtherSlidesMs;
-      this._warnedEndingSoonInSession = false;
-
-      // 녹음 시작 전 이미 그려져 있던 스트로크들은 배경 스트로크(preExisting: true)로 마킹하여 영상 모드에서도 처음부터 보이게 유지
-      const markPreExisting = (arr) => {
-        if (!Array.isArray(arr)) return;
-        arr.forEach(st => {
-          if (st && st.tStart === undefined) {
-            st.preExisting = true;
+      if (this.isAudioRecording || this._isStartingAudioRecording) return;
+      this._isStartingAudioRecording = true;
+      try {
+        const maxDurationMs = Math.max(1000, this.getMaxAudioRecordDurationMs());
+        const priorOtherSlidesMs = this._computeOtherSlidesRecordedDurationMs();
+        if (priorOtherSlidesMs >= maxDurationMs) {
+          const maxMinutes = Math.max(1, Math.round(maxDurationMs / 60000));
+          const isPaid = (typeof this.isProSubscriber === 'function') ? this.isProSubscriber() : Boolean(this.isProUser);
+          if (!isPaid) {
+            this.showToast(`⚠️ 무료 플랜 녹화 한도(${maxMinutes}분)를 모두 사용했습니다. Pro·Premium 업그레이드 시 60분까지 녹화 가능합니다.`);
+            if (typeof this.openProPricingModal === 'function') this.openProPricingModal('pro');
+          } else {
+            this.showToast(`⚠️ 현재 수업 노트의 최대 녹화 시간(${maxMinutes}분)에 도달했습니다. 새 노트에서 녹화를 이어가 주세요.`);
           }
-        });
-      };
-      markPreExisting(this.inkStrokes);
-      markPreExisting(this.problemInkStrokes);
-      markPreExisting(this.graphInkStrokes);
+          return;
+        }
+        this.stopAudioPlayback(true);
+        this._sessionBasePriorRecordedMs = priorOtherSlidesMs;
+        this._warnedEndingSoonInSession = false;
 
-      this.audioRecordedChunks = [];
-      this.audioTimeline = [];
-      this.audioMediaStream = null;
-      this.audioMediaRecorder = null;
-      this._audioMimeType = 'audio/webm';
+        // 녹음 시작 전 이미 그려져 있던 스트로크들은 배경 스트로크(preExisting: true)로 마킹하여 영상 모드에서도 처음부터 보이게 유지
+        const markPreExisting = (arr) => {
+          if (!Array.isArray(arr)) return;
+          arr.forEach(st => {
+            if (st && st.tStart === undefined) {
+              st.preExisting = true;
+            }
+          });
+        };
+        markPreExisting(this.inkStrokes);
+        markPreExisting(this.problemInkStrokes);
+        markPreExisting(this.graphInkStrokes);
 
-      if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function' && window.MediaRecorder) {
-        try {
-          const stream = await this._acquireProcessedAudioStream();
-          if (!stream) throw new Error('no_audio_stream');
-          this.audioMediaStream = stream;
-          const candidates = [
-            'audio/webm;codecs=opus',
-            'audio/webm',
-            'audio/mp4',
-            'audio/ogg;codecs=opus'
-          ];
-          let chosenMime = '';
-          for (const m of candidates) {
-            if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(m)) {
-              chosenMime = m;
-              break;
+        this.audioRecordedChunks = [];
+        this.audioTimeline = [];
+        this.audioMediaStream = null;
+        this.audioMediaRecorder = null;
+        this._lastRecorderStopPromise = null;
+        this._pendingSlideRecorderStarter = null;
+        this._audioMimeType = 'audio/webm';
+
+        if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function' && window.MediaRecorder) {
+          try {
+            const stream = await this._acquireProcessedAudioStream();
+            if (!stream) throw new Error('no_audio_stream');
+            this.audioMediaStream = stream;
+            const candidates = [
+              'audio/webm;codecs=opus',
+              'audio/webm',
+              'audio/mp4',
+              'audio/ogg;codecs=opus'
+            ];
+            let chosenMime = '';
+            for (const m of candidates) {
+              if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(m)) {
+                chosenMime = m;
+                break;
+              }
+            }
+            this._audioMimeType = chosenMime || 'audio/webm';
+            const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 36000 } : { audioBitsPerSecond: 36000 };
+            const recorder = new MediaRecorder(stream, recOpts);
+            const localChunks = [];
+            recorder._localChunks = localChunks;
+            this.audioRecordedChunks = localChunks;
+            recorder.ondataavailable = (ev) => {
+              if (ev.data && ev.data.size > 0) {
+                localChunks.push(ev.data);
+              }
+            };
+            recorder.onerror = () => { };
+            recorder.start(250);
+            this.audioMediaRecorder = recorder;
+          } catch (micErr) {
+            // 마이크가 없거나 권한이 거부된 환경(또는 헤드리스 테스트)에서는 타이머 동기화 모드로 끊김 없이 진행!
+            this._cleanupProcessedAudioStream();
+            this.audioMediaRecorder = null;
+          }
+        }
+
+        this.isAudioRecording = true;
+        this._currentAudioRecordingSessionId = Date.now();
+        this.isAudioRecordPaused = false;
+        this._isAudioRecMenuOpen = false;
+        this._isRecBarStealthHidden = true;
+        this._isAudioWaitingForNextSlideSetup = false;
+        this._alreadyArchivedBeforePdfModal = false;
+        this._autoPausedByPdfModal = false;
+        this._resumedSlideBaseOffsetMs = 0;
+        this._priorSlideAudioSegments = [];
+        const startPerfNow = performance.now();
+        this.audioRecordStartMs = startPerfNow;
+        this.audioSessionStartMs = startPerfNow;
+        this.audioRecordPauseStartMs = 0;
+        this.audioRecordTotalPausedMs = 0;
+        this.audioSessionTotalPausedMs = 0;
+        this._isAutoStoppingByLimit = false;
+        this._lastAudioCursorRecordMs = -100;
+        this._lastAudioStateRecordMs = -100;
+        this._lastAudioStateCheckMs = -100;
+        this._wasActivelyDraggingGraph = false;
+        this._lastRecordedStateHash = '';
+        this.audioInitialState = this._captureAudioWorkspaceKeyframe();
+        this._recordAudioWorkspaceStateIfNeeded(true);
+
+        // 칠판 모드(isGraphCovered)에서 녹음을 시작할 때만 자동으로 펜 도구를 켜주고,
+        // 실시간 그래프 모드(!isGraphCovered)에서는 선생님이 그래프 극점 핸들을 바로 잡고 움직일 수 있도록 현재 도구 상태(선택/이동 또는 필기)를 그대로 존중!
+        if (this.isGraphCovered) {
+          if (!this.isInkMode) {
+            this.toggleInkMode(true);
+          }
+          if (this.activeInkTool === 'select' || this.activeInkTool === 'eraser') {
+            this.setActiveInkTool('pen');
+          }
+        }
+
+        const lblTimer = document.getElementById('lblAudioRecordTimer');
+        if (lblTimer) lblTimer.textContent = '00:00';
+        this._updateAudioRecordProgressRings(true);
+        if (this._audioRecordTimerId) clearInterval(this._audioRecordTimerId);
+        this._audioRecordTimerId = setInterval(() => {
+          if (!this.isAudioRecording) return;
+          const isActivelyDrawingNow = Boolean(this.isDrawingInk || this._isDrawingCardInk || this.isStylusDrawing || this.isDrawingLaser || this.isErasingInk);
+          if (!isActivelyDrawingNow) {
+            if (lblTimer) {
+              const elapsed = this.getAudioRecordElapsedMs();
+              const nextTimeStr = this.formatAudioTimeMmSs(elapsed);
+              if (lblTimer.textContent !== nextTimeStr) {
+                lblTimer.textContent = nextTimeStr;
+              }
+            }
+            if (this._isAudioRecMenuOpen) {
+              this._syncAudioRecPopupHudTime();
             }
           }
-          this._audioMimeType = chosenMime || 'audio/webm';
-          const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 36000 } : { audioBitsPerSecond: 36000 };
-          const recorder = new MediaRecorder(stream, recOpts);
-          const localChunks = [];
-          recorder._localChunks = localChunks;
-          this.audioRecordedChunks = localChunks;
-          recorder.ondataavailable = (ev) => {
-            if (ev.data && ev.data.size > 0) {
-              localChunks.push(ev.data);
-            }
-          };
-          recorder.start(250);
-          this.audioMediaRecorder = recorder;
-        } catch (micErr) {
-          // 마이크가 없거나 권한이 거부된 환경(또는 헤드리스 테스트)에서는 타이머 동기화 모드로 끊김 없이 진행!
-          this._cleanupProcessedAudioStream();
-          this.audioMediaRecorder = null;
-        }
+          this._updateAudioRecordProgressRings(false);
+          this._recordAudioWorkspaceStateIfNeeded(false);
+        }, 200);
+
+        this.syncAudioRecordUI();
+        this.showToast('🎬 영상 녹화가 시작되었습니다. (다시 누르면 일시정지 / 종료)');
+      } finally {
+        this._isStartingAudioRecording = false;
       }
-
-      this.isAudioRecording = true;
-      this._currentAudioRecordingSessionId = Date.now();
-      this.isAudioRecordPaused = false;
-      this._isAudioRecMenuOpen = false;
-      this._isRecBarStealthHidden = true;
-      this._isAudioWaitingForNextSlideSetup = false;
-      this._alreadyArchivedBeforePdfModal = false;
-      this._autoPausedByPdfModal = false;
-      this._resumedSlideBaseOffsetMs = 0;
-      this._priorSlideAudioSegments = [];
-      const startPerfNow = performance.now();
-      this.audioRecordStartMs = startPerfNow;
-      this.audioSessionStartMs = startPerfNow;
-      this.audioRecordPauseStartMs = 0;
-      this.audioRecordTotalPausedMs = 0;
-      this.audioSessionTotalPausedMs = 0;
-      this._isAutoStoppingByLimit = false;
-      this._lastAudioCursorRecordMs = -100;
-      this._lastAudioStateRecordMs = -100;
-      this._lastAudioStateCheckMs = -100;
-      this._wasActivelyDraggingGraph = false;
-      this._lastRecordedStateHash = '';
-      this.audioInitialState = this._captureAudioWorkspaceKeyframe();
-      this._recordAudioWorkspaceStateIfNeeded(true);
-
-      // 칠판 모드(isGraphCovered)에서 녹음을 시작할 때만 자동으로 펜 도구를 켜주고,
-      // 실시간 그래프 모드(!isGraphCovered)에서는 선생님이 그래프 극점 핸들을 바로 잡고 움직일 수 있도록 현재 도구 상태(선택/이동 또는 필기)를 그대로 존중!
-      if (this.isGraphCovered) {
-        if (!this.isInkMode) {
-          this.toggleInkMode(true);
-        }
-        if (this.activeInkTool === 'select' || this.activeInkTool === 'eraser') {
-          this.setActiveInkTool('pen');
-        }
-      }
-
-      const lblTimer = document.getElementById('lblAudioRecordTimer');
-      if (lblTimer) lblTimer.textContent = '00:00';
-      this._updateAudioRecordProgressRings(true);
-      if (this._audioRecordTimerId) clearInterval(this._audioRecordTimerId);
-      this._audioRecordTimerId = setInterval(() => {
-        if (!this.isAudioRecording) return;
-        const isActivelyDrawingNow = Boolean(this.isDrawingInk || this._isDrawingCardInk || this.isStylusDrawing || this.isDrawingLaser || this.isErasingInk);
-        if (!isActivelyDrawingNow) {
-          if (lblTimer) {
-            const elapsed = this.getAudioRecordElapsedMs();
-            const nextTimeStr = this.formatAudioTimeMmSs(elapsed);
-            if (lblTimer.textContent !== nextTimeStr) {
-              lblTimer.textContent = nextTimeStr;
-            }
-          }
-          if (this._isAudioRecMenuOpen) {
-            this._syncAudioRecPopupHudTime();
-          }
-        }
-        this._updateAudioRecordProgressRings(false);
-        this._recordAudioWorkspaceStateIfNeeded(false);
-      }, 200);
-
-      this.syncAudioRecordUI();
-      this.showToast('🎬 영상 녹화가 시작되었습니다. (다시 누르면 일시정지 / 종료)');
     }
 
-    async stopAudioRecording(options = {}) {
-      if (!this.isAudioRecording) return null;
-      if (this._pendingSlideRecorderStarter) {
-        await this._pendingSlideRecorderStarter.catch(() => { });
-        this._pendingSlideRecorderStarter = null;
+    stopAudioRecording(options = {}) {
+      if (this._stoppingAudioRecordingPromise) {
+        return this._stoppingAudioRecordingPromise;
       }
-      const segStartMs = Math.max(0, Number(this._resumedSlideBaseOffsetMs) || 0);
-      const durationMs = Math.max(segStartMs + 300, this.getAudioRecordElapsedMs());
-      const segDurMs = Math.max(100, durationMs - segStartMs);
-      try {
-        this._recordAudioWorkspaceStateIfNeeded(true);
-        this.audioFinalState = this._captureAudioWorkspaceKeyframe();
-      } catch (e) { }
-      this.isAudioRecording = false;
-      this.isAudioRecordPaused = false;
-      this._isAudioRecMenuOpen = false;
-      this.audioRecordPauseStartMs = 0;
-      this.audioRecordTotalPausedMs = 0;
-      this.audioSessionTotalPausedMs = 0;
-      this._updateAudioRecordProgressRings(true);
+      if (!this.isAudioRecording) return Promise.resolve(null);
 
-      if (this._audioRecordTimerId) {
-        clearInterval(this._audioRecordTimerId);
-        this._audioRecordTimerId = null;
-      }
+      let stopTask = null;
+      stopTask = (async () => {
+        if (this._lastRecorderStopPromise) {
+          await this._lastRecorderStopPromise.catch(() => { });
+        }
+        if (this._pendingSlideRecorderStarter) {
+          await this._pendingSlideRecorderStarter.catch(() => { });
+          this._pendingSlideRecorderStarter = null;
+        }
+        const segStartMs = Math.max(0, Number(this._resumedSlideBaseOffsetMs) || 0);
+        const durationMs = Math.max(segStartMs + 300, this.getAudioRecordElapsedMs());
+        const segDurMs = Math.max(100, durationMs - segStartMs);
+        try {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+          this.audioFinalState = this._captureAudioWorkspaceKeyframe();
+        } catch (e) { }
+        this.isAudioRecording = false;
+        this.isAudioRecordPaused = false;
+        this._isAudioRecMenuOpen = false;
+        this.audioRecordPauseStartMs = 0;
+        this.audioRecordTotalPausedMs = 0;
+        this.audioSessionTotalPausedMs = 0;
+        this._updateAudioRecordProgressRings(true);
 
-      let audioDataUrl = '';
-      const activeRec = this.audioMediaRecorder;
-      const recChunks = (activeRec && Array.isArray(activeRec._localChunks))
-        ? activeRec._localChunks
-        : (this.audioRecordedChunks || []);
-      if (activeRec && activeRec.state !== 'inactive') {
-        await new Promise((resolve) => {
-          activeRec.onstop = () => resolve();
-          try {
-            activeRec.stop();
-          } catch (e) {
-            resolve();
+        if (this._audioRecordTimerId) {
+          clearInterval(this._audioRecordTimerId);
+          this._audioRecordTimerId = null;
+        }
+
+        let audioDataUrl = '';
+        const wasMuted = Boolean(this.isAudioMicMuted);
+        const activeRec = this.audioMediaRecorder;
+        const recChunks = (activeRec && Array.isArray(activeRec._localChunks))
+          ? activeRec._localChunks
+          : (this.audioRecordedChunks ? [...this.audioRecordedChunks] : []);
+        if (activeRec && activeRec.state !== 'inactive') {
+          await this._stopMediaRecorderSafely(activeRec, 800);
+        }
+        this._cleanupProcessedAudioStream();
+        this.audioMediaRecorder = null;
+        this.audioRecordedChunks = [];
+
+        const finalRecChunks = (activeRec && Array.isArray(activeRec._localChunks) && activeRec._localChunks.length > 0)
+          ? activeRec._localChunks
+          : recChunks;
+        if (!wasMuted && finalRecChunks && finalRecChunks.length > 0) {
+          const blob = new Blob(finalRecChunks, { type: this._audioMimeType || 'audio/webm' });
+          audioDataUrl = await this._blobToDataUrlSafely(blob, 5000);
+        }
+
+        if (Array.isArray(this._pendingSlideAudioFinalizers) && this._pendingSlideAudioFinalizers.length > 0) {
+          const otherFinalizers = this._pendingSlideAudioFinalizers.filter(p => p && p !== stopTask);
+          if (otherFinalizers.length > 0) {
+            await Promise.all(otherFinalizers).catch(() => { });
           }
-        });
-      }
-      this._cleanupProcessedAudioStream();
-      this.audioMediaRecorder = null;
+        }
 
-      if (recChunks && recChunks.length > 0) {
-        const blob = new Blob(recChunks, { type: this._audioMimeType || 'audio/webm' });
-        audioDataUrl = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result || '');
-          reader.onerror = () => resolve('');
-          reader.readAsDataURL(blob);
-        });
-      }
+        if (!audioDataUrl || wasMuted) {
+          audioDataUrl = this._createSilentWavDataUrl(segDurMs);
+        }
 
-      if (this._pendingSlideAudioFinalizers && this._pendingSlideAudioFinalizers.length > 0) {
-        await Promise.all(this._pendingSlideAudioFinalizers).catch(() => { });
-        this._pendingSlideAudioFinalizers = [];
-      }
+        const currentMime = this._audioMimeType || 'audio/wav';
+        const priorSegs = Array.isArray(this._priorSlideAudioSegments)
+          ? JSON.parse(JSON.stringify(this._priorSlideAudioSegments))
+          : [];
+        const newSeg = {
+          segUid: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          startMs: segStartMs,
+          endMs: durationMs,
+          durationMs: segDurMs,
+          audioDataUrl,
+          mimeType: currentMime,
+          nextSlideIdx: null,
+          nextSlideStartMs: 0
+        };
+        const audioSegments = [...priorSegs, newSeg];
+        const primaryAudioUrl = (audioSegments[0] && audioSegments[0].audioDataUrl) || audioDataUrl;
 
-      if (!audioDataUrl || this.isAudioMicMuted) {
-        audioDataUrl = this._createSilentWavDataUrl(segDurMs);
-      }
+        const recordedStageW = Math.round(
+          (this.audioInitialState && this.audioInitialState.stageW) ||
+          (this.audioFinalState && this.audioFinalState.stageW) ||
+          this.screenWidth ||
+          window.innerWidth ||
+          1440
+        );
+        const recordedStageH = Math.round(
+          (this.audioInitialState && this.audioInitialState.stageH) ||
+          (this.audioFinalState && this.audioFinalState.stageH) ||
+          this.screenHeight ||
+          window.innerHeight ||
+          900
+        );
 
-      const currentMime = this._audioMimeType || 'audio/wav';
-      const priorSegs = Array.isArray(this._priorSlideAudioSegments)
-        ? JSON.parse(JSON.stringify(this._priorSlideAudioSegments))
-        : [];
-      const newSeg = {
-        startMs: segStartMs,
-        endMs: durationMs,
-        durationMs: segDurMs,
-        audioDataUrl,
-        mimeType: currentMime,
-        nextSlideIdx: null,
-        nextSlideStartMs: 0
-      };
-      const audioSegments = [...priorSegs, newSeg];
-      const primaryAudioUrl = (audioSegments[0] && audioSegments[0].audioDataUrl) || audioDataUrl;
+        this.audioSyncData = {
+          version: '1.2',
+          sessionId: this._currentAudioRecordingSessionId || null,
+          createdAt: Date.now(),
+          stageW: recordedStageW,
+          stageH: recordedStageH,
+          durationMs,
+          mimeType: currentMime,
+          audioDataUrl: primaryAudioUrl,
+          audioSegments,
+          initialState: this.audioInitialState || this.audioFinalState,
+          finalState: this.audioFinalState,
+          timeline: this.audioTimeline,
+          laserStrokes: this.audioLaserStrokes || [],
+          erasedStrokes: this.audioErasedStrokes || []
+        };
 
-      const recordedStageW = Math.round(
-        (this.audioInitialState && this.audioInitialState.stageW) ||
-        (this.audioFinalState && this.audioFinalState.stageW) ||
-        this.screenWidth ||
-        window.innerWidth ||
-        1440
-      );
-      const recordedStageH = Math.round(
-        (this.audioInitialState && this.audioInitialState.stageH) ||
-        (this.audioFinalState && this.audioFinalState.stageH) ||
-        this.screenHeight ||
-        window.innerHeight ||
-        900
-      );
+        this._resumedSlideBaseOffsetMs = 0;
+        this._priorSlideAudioSegments = [];
+        if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex]) {
+          this.saveCurrentSlideIntoPlaylist();
+        }
+        this.audioPlayCurrentMs = durationMs;
+        this._isAudioSyncPlayerVisible = false;
+        this.audioReplayViewMode = 'video';
+        this.syncAudioRecordUI();
+        if (!options || !options.silentToast) {
+          this.showToast('⏹ 영상 녹화가 완료되었습니다.');
+        }
+        return this.audioSyncData;
+      })().finally(() => {
+        if (Array.isArray(this._pendingSlideAudioFinalizers) && stopTask) {
+          const sIdx = this._pendingSlideAudioFinalizers.indexOf(stopTask);
+          if (sIdx !== -1) {
+            this._pendingSlideAudioFinalizers.splice(sIdx, 1);
+          }
+        }
+        if (this._stoppingAudioRecordingPromise === stopTask) {
+          this._stoppingAudioRecordingPromise = null;
+        }
+      });
 
-      this.audioSyncData = {
-        version: '1.2',
-        sessionId: this._currentAudioRecordingSessionId || null,
-        createdAt: Date.now(),
-        stageW: recordedStageW,
-        stageH: recordedStageH,
-        durationMs,
-        mimeType: currentMime,
-        audioDataUrl: primaryAudioUrl,
-        audioSegments,
-        initialState: this.audioInitialState || this.audioFinalState,
-        finalState: this.audioFinalState,
-        timeline: this.audioTimeline,
-        laserStrokes: this.audioLaserStrokes || [],
-        erasedStrokes: this.audioErasedStrokes || []
-      };
-
-      this._resumedSlideBaseOffsetMs = 0;
-      this._priorSlideAudioSegments = [];
-      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex]) {
-        this.saveCurrentSlideIntoPlaylist();
-      }
-      this.audioPlayCurrentMs = durationMs;
-      this._isAudioSyncPlayerVisible = false;
-      this.audioReplayViewMode = 'video';
-      this.syncAudioRecordUI();
-      if (!options || !options.silentToast) {
-        this.showToast('⏹ 영상 녹화가 완료되었습니다.');
-      }
-      return this.audioSyncData;
+      this._stoppingAudioRecordingPromise = stopTask;
+      if (!this._pendingSlideAudioFinalizers) this._pendingSlideAudioFinalizers = [];
+      this._pendingSlideAudioFinalizers.push(stopTask);
+      return stopTask;
     }
 
     syncAudioRecordUI() {
@@ -5723,8 +5876,10 @@
         localStorage.setItem('graphly_custom_shortcuts_v1', JSON.stringify(this.customShortcuts));
       } catch (_) { }
 
-      // 로그인 계정 환경설정(localStorage + Firestore user_preferences)에 즉시 저장
-      if (typeof this.scheduleSaveUserPreferences === 'function') {
+      // 로그인 계정 환경설정(localStorage + Firestore user_preferences)에 0ms 즉시 저장
+      if (typeof this.flushSaveUserPreferencesNow === 'function') {
+        this.flushSaveUserPreferencesNow();
+      } else if (typeof this.scheduleSaveUserPreferences === 'function') {
         this.scheduleSaveUserPreferences();
       }
 

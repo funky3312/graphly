@@ -348,6 +348,16 @@ class GraphApp {
     this.dropLineStyle = 'dashed';     // 'dashed' | 'solid'
     this.dropLineFontFamily = 'stix';  // 'stix' | 'pretendard' | 'batang'
     this.dropLineFontSize = 15;        // 기본 15 pt
+    try {
+      const savedDlStyle = localStorage.getItem('graphly_drop_line_style_v1');
+      if (savedDlStyle === 'dashed' || savedDlStyle === 'solid') {
+        this.dropLineStyle = savedDlStyle;
+      }
+      const savedMathFont = localStorage.getItem('graphly_math_font_v1');
+      if (savedMathFont && ['stix', 'pretendard', 'batang'].includes(savedMathFont)) {
+        this.dropLineFontFamily = savedMathFont;
+      }
+    } catch (err) { }
     this.dropLineHoverCandidate = null;// 마우스 근처 자석 스냅 후보점 {x, y, name}
     this.dropLineHoverScissors = null; // 호버 중인 가위 버튼 {id, which}
     this.dropLineHoverLabel = null;    // 호버 중인 좌표 라벨 {id, which}
@@ -362,6 +372,22 @@ class GraphApp {
     this.textLabelFontSize = 20;       // 자유 텍스트 기본 20 pt (확장 범위: 12~52 pt)
     this.showAxisLabels = false;       // 대표님 기획: 기본 축 이름표 (x, y, O) 자동 표시 여부 (기본값: false / 체크 해제)
     this.axisLabelFontSize = 22;       // 축 이름표 폰트 크기 기본 22 pt (확장 범위: 12~48 pt)
+    try {
+      const savedTxtSz = parseInt(localStorage.getItem('graphly_text_label_size_v1'), 10);
+      if (Number.isFinite(savedTxtSz) && savedTxtSz >= 12 && savedTxtSz <= 52) {
+        this.textLabelFontSize = savedTxtSz;
+      }
+      const savedAxisLbl = localStorage.getItem('graphly_show_axis_labels_v1');
+      if (savedAxisLbl === 'true') this.showAxisLabels = true;
+      else if (savedAxisLbl === 'false') this.showAxisLabels = false;
+      const savedAxisSz = parseInt(localStorage.getItem('graphly_axis_label_size_v1'), 10);
+      if (Number.isFinite(savedAxisSz) && savedAxisSz >= 12 && savedAxisSz <= 48) {
+        this.axisLabelFontSize = savedAxisSz;
+      }
+    } catch (err) { }
+    this._preferredTextLabelFontSize = this.textLabelFontSize;
+    this._preferredShowAxisLabels = this.showAxisLabels;
+    this._preferredAxisLabelFontSize = this.axisLabelFontSize;
     this.axisLabelX = 'x';             // 기본 가로축 이름표 (t, k 등 변경 가능)
     this.axisLabelY = 'y';             // 기본 세로축 이름표
     this.activeEditingTextId = null;   // 인라인 편집 중인 텍스트 라벨 ID
@@ -396,6 +422,11 @@ class GraphApp {
     this.cloudUser = null;
     this.myLibraryCache = [];
     this.communityHubCache = [];
+    this._userPrefsBootReady = false;
+    this._hydratedRemotePrefsUid = null;
+    this._lastAppliedLocalPrefsUid = null;
+    this._pendingPrefsWriteUid = null;
+    this._preHydrationBaselinePrefs = null;
 
     // 👑 [구독(Pro) vs 비구독(Free) 개수 제한 컨트롤 타워 & ⭐ 내 그래프 보관함 초기화]
     this.initCustomGraphPresets();
@@ -404,6 +435,13 @@ class GraphApp {
     this.initShareModal();
     this.initCloudHubAndPlaylist();
     this.initShortcutCustomization();
+    this._userPrefsBootReady = true;
+    if (typeof this._bindUserPreferencesLifecycleFlush === 'function') {
+      this._bindUserPreferencesLifecycleFlush();
+    }
+    if (typeof this.syncCloudAuthUI === 'function') {
+      this.syncCloudAuthUI();
+    }
     this.initNAxisStudioModal();
     this.bindEvents();
     this.resizeCanvas();
@@ -600,8 +638,11 @@ class GraphApp {
       if (subPanelAxis) subPanelAxis.style.display = this.showAxisLabels ? 'block' : 'none';
       chkAxis.onchange = (e) => {
         this.pushHistoryState();
-        this.showAxisLabels = e.target.checked;
+        this.showAxisLabels = Boolean(e.target.checked);
+        this._preferredShowAxisLabels = this.showAxisLabels;
+        try { localStorage.setItem('graphly_show_axis_labels_v1', String(this.showAxisLabels)); } catch (_) { }
         if (subPanelAxis) subPanelAxis.style.display = this.showAxisLabels ? 'block' : 'none';
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
         this.render();
         this.showToast(this.showAxisLabels ? '📍 기본 축 이름표 (x, y, O) 켜짐' : '📍 기본 축 이름표 (x, y, O) 숨김');
       };
@@ -728,7 +769,10 @@ class GraphApp {
     if (selFont) {
       selFont.value = this.dropLineFontFamily || 'stix';
       selFont.onchange = (e) => {
-        this.dropLineFontFamily = e.target.value;
+        const nextFont = ['stix', 'pretendard', 'batang'].includes(e.target.value) ? e.target.value : 'stix';
+        this.dropLineFontFamily = nextFont;
+        try { localStorage.setItem('graphly_math_font_v1', nextFont); } catch (_) { }
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
         this.render();
       };
     }
@@ -736,16 +780,22 @@ class GraphApp {
     const btnDashed = document.getElementById('btnDropLineDashed');
     const btnSolid = document.getElementById('btnDropLineSolid');
     if (btnDashed && btnSolid) {
+      btnDashed.classList.toggle('active', this.dropLineStyle !== 'solid');
+      btnSolid.classList.toggle('active', this.dropLineStyle === 'solid');
       btnDashed.onclick = () => {
         this.dropLineStyle = 'dashed';
         btnDashed.classList.add('active');
         btnSolid.classList.remove('active');
+        try { localStorage.setItem('graphly_drop_line_style_v1', 'dashed'); } catch (_) { }
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
         this.render();
       };
       btnSolid.onclick = () => {
         this.dropLineStyle = 'solid';
         btnSolid.classList.add('active');
         btnDashed.classList.remove('active');
+        try { localStorage.setItem('graphly_drop_line_style_v1', 'solid'); } catch (_) { }
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
         this.render();
       };
     }
@@ -3505,13 +3555,12 @@ class GraphApp {
       };
     }
 
-    // 필기 모드 가상 펜 포인터 표시 토글 (아이패드·전자칠판 OFF / 액정타블렛·PC ON)
+    // 필기 모드 가상 펜 포인터 표시 토글 (기기별 영구 로컬 설정: 아이패드·전자칠판 OFF / 액정타블렛·PC ON)
     const chkStylus = document.getElementById('chkShowVirtualStylus');
     if (chkStylus) {
       chkStylus.checked = Boolean(this.showVirtualStylus);
       chkStylus.onchange = (e) => {
         this.toggleVirtualStylus(Boolean(e.target.checked));
-        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
       };
     }
 
@@ -3665,6 +3714,7 @@ class GraphApp {
       } else {
         this.defaultGraphLineWidth = val;
         try { localStorage.setItem('graphly_default_graph_lw_v1', String(val)); } catch (err) { }
+        if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
         if (this.graphs.length > 0) {
           if (pushHist) this.pushHistoryState();
           this.graphs.forEach(g => {

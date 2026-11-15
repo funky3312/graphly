@@ -1662,24 +1662,28 @@
 
 
     setTextLabelFontSize(size) {
-      this.textLabelFontSize = size;
+      const clamped = Math.max(12, Math.min(52, Math.round(Number(size) || 20)));
+      this.textLabelFontSize = clamped;
+      this._preferredTextLabelFontSize = clamped;
+      try { localStorage.setItem('graphly_text_label_size_v1', String(clamped)); } catch (_) { }
       const slider = document.getElementById('sliderTextLabelSize');
-      if (slider) slider.value = size;
+      if (slider) slider.value = clamped;
       const lbl = document.getElementById('lblTextLabelSize');
-      if (lbl) lbl.textContent = `${size}`;
+      if (lbl) lbl.textContent = `${clamped}`;
       const curUnitScale = typeof this.getCurrentMathUnitScale === 'function' ? this.getCurrentMathUnitScale() : 90;
       if (this.selectedTextLabelId) {
         const sel = this.textLabels.find(t => t.id === this.selectedTextLabelId);
         if (sel) {
-          sel.fontSize = size;
+          sel.fontSize = clamped;
           sel.baseUnitScale = curUnitScale;
         }
       } else {
         this.textLabels.forEach(t => {
-          t.fontSize = size;
+          t.fontSize = clamped;
           t.baseUnitScale = curUnitScale;
         });
       }
+      if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
       this.render();
     }
 
@@ -1693,11 +1697,15 @@
     }
 
     setAxisLabelFontSize(size) {
-      this.axisLabelFontSize = size;
+      const clamped = Math.max(12, Math.min(48, Math.round(Number(size) || 22)));
+      this.axisLabelFontSize = clamped;
+      this._preferredAxisLabelFontSize = clamped;
+      try { localStorage.setItem('graphly_axis_label_size_v1', String(clamped)); } catch (_) { }
       const slider = document.getElementById('sliderAxisLabelSize');
-      if (slider) slider.value = size;
+      if (slider) slider.value = clamped;
       const lbl = document.getElementById('lblAxisLabelSize');
-      if (lbl) lbl.textContent = `${size}`;
+      if (lbl) lbl.textContent = `${clamped}`;
+      if (typeof this.scheduleSaveUserPreferences === 'function') this.scheduleSaveUserPreferences();
       this.render();
     }
 
@@ -4572,6 +4580,9 @@
       if (typeof this._saveQuickPillRemoteSettings === 'function') {
         this._saveQuickPillRemoteSettings();
       }
+      if (typeof this.scheduleSaveUserPreferences === 'function') {
+        this.scheduleSaveUserPreferences();
+      }
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         this._recordAudioWorkspaceStateIfNeeded(true);
       }
@@ -4591,6 +4602,9 @@
       }
       if (typeof this._saveQuickPillRemoteSettings === 'function') {
         this._saveQuickPillRemoteSettings();
+      }
+      if (typeof this.scheduleSaveUserPreferences === 'function') {
+        this.scheduleSaveUserPreferences();
       }
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         this._recordAudioWorkspaceStateIfNeeded(true);
@@ -4612,6 +4626,9 @@
           if (typeof this._saveQuickPillRemoteSettings === 'function') {
             this._saveQuickPillRemoteSettings();
           }
+          if (typeof this.scheduleSaveUserPreferences === 'function') {
+            this.scheduleSaveUserPreferences();
+          }
           if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
             this._recordAudioWorkspaceStateIfNeeded(true);
           }
@@ -4630,6 +4647,9 @@
         if (typeof this._saveQuickPillRemoteSettings === 'function') {
           this._saveQuickPillRemoteSettings();
         }
+        if (typeof this.scheduleSaveUserPreferences === 'function') {
+          this.scheduleSaveUserPreferences();
+        }
         if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
           this._recordAudioWorkspaceStateIfNeeded(true);
         }
@@ -4647,6 +4667,9 @@
         this.syncInkUiVisibility();
         if (typeof this._saveQuickPillRemoteSettings === 'function') {
           this._saveQuickPillRemoteSettings();
+        }
+        if (typeof this.scheduleSaveUserPreferences === 'function') {
+          this.scheduleSaveUserPreferences();
         }
         if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
           this._recordAudioWorkspaceStateIfNeeded(true);
@@ -5006,6 +5029,9 @@
       if (typeof this._saveQuickPillRemoteSettings === 'function') {
         this._saveQuickPillRemoteSettings();
       }
+      if (typeof this.scheduleSaveUserPreferences === 'function') {
+        this.scheduleSaveUserPreferences();
+      }
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         this._recordAudioWorkspaceStateIfNeeded(true);
       }
@@ -5028,6 +5054,9 @@
 
       if (typeof this._saveQuickPillRemoteSettings === 'function') {
         this._saveQuickPillRemoteSettings();
+      }
+      if (typeof this.scheduleSaveUserPreferences === 'function') {
+        this.scheduleSaveUserPreferences();
       }
       if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
         this._recordAudioWorkspaceStateIfNeeded(true);

@@ -294,8 +294,33 @@
           this._lastSessionLockCheckMs = now;
           this.verifyActiveDeviceSessionLock();
           this.syncUserProSubscriptionFromCloud();
+          if (this.cloudUser && this.cloudUser.uid && this._hydratedRemotePrefsUid !== this.cloudUser.uid) {
+            this.onUserPreferencesAuthChanged();
+          }
+          if (this.cloudUser && this.cloudUser.uid && typeof this.onCustomGraphUserChanged === 'function') {
+            const cgMeta = typeof this._readCustomGraphsLocalMeta === 'function'
+              ? this._readCustomGraphsLocalMeta(this.cloudUser.uid)
+              : null;
+            if (this._hydratedCustomGraphsUid !== this.cloudUser.uid || (cgMeta && cgMeta.dirtyOffline)) {
+              this.onCustomGraphUserChanged();
+            }
+          }
         };
         window.addEventListener('focus', checkSessionOnFocus, { passive: true });
+        window.addEventListener('online', () => {
+          if (!this.cloudUser || !this.cloudUser.uid) return;
+          if (this._hydratedRemotePrefsUid !== this.cloudUser.uid) {
+            this.onUserPreferencesAuthChanged();
+          }
+          if (typeof this.onCustomGraphUserChanged === 'function') {
+            const cgMeta = typeof this._readCustomGraphsLocalMeta === 'function'
+              ? this._readCustomGraphsLocalMeta(this.cloudUser.uid)
+              : null;
+            if (this._hydratedCustomGraphsUid !== this.cloudUser.uid || (cgMeta && cgMeta.dirtyOffline)) {
+              this.onCustomGraphUserChanged();
+            }
+          }
+        }, { passive: true });
         document.addEventListener('visibilitychange', () => {
           if (!document.hidden) checkSessionOnFocus();
         }, { passive: true });
@@ -1199,6 +1224,7 @@
 
     _saveCloudFoldersList(folders, syncToCloud = true) {
       if (!this.cloudUser || !this.cloudUser.uid) return;
+      const curUid = this.cloudUser.uid;
       const unique = Array.from(new Set((folders || []).map(f => String(f || '').trim().replace(/^\/+|\/+$/g, '')).filter(Boolean)));
       try {
         const key = this._getCloudFoldersStorageKey();
@@ -1206,14 +1232,24 @@
           localStorage.setItem(key, JSON.stringify(unique));
         }
       } catch (e) { }
-      if (syncToCloud && typeof this._firestoreRestWriteSingleDoc === 'function') {
-        const docId = `folders_${this.cloudUser.uid}`;
+      if (syncToCloud && this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestWriteSingleDoc === 'function') {
+        const docId = `folders_${curUid}`;
         const payload = JSON.stringify({
-          uid: this.cloudUser.uid,
+          uid: curUid,
           folders: unique,
           updatedAt: Date.now()
         });
-        this._firestoreRestWriteSingleDoc('user_preferences', docId, payload).catch(() => { });
+        this._firestoreRestWriteSingleDoc('user_preferences', docId, payload, { ownerUid: curUid }).catch(async (err) => {
+          const msg = String((err && err.message) || '');
+          if (msg.includes('401') && this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
+            try {
+              await this._fbAuth.currentUser.getIdToken(true);
+              if (this.cloudUser && this.cloudUser.uid === curUid) {
+                await this._firestoreRestWriteSingleDoc('user_preferences', docId, payload, { ownerUid: curUid });
+              }
+            } catch (_) { }
+          }
+        });
       }
     }
 
@@ -2680,18 +2716,52 @@
     }
 
     // ============================================================================
-    // 👤 [로그인 계정별 개인 칠판 프로필(환경설정 · 필기바 위치 · 펜/배경 · 단축키) 클라우드 동기화 엔진]
-    // - 공용 전자칠판에서 로그인하는 즉시 내 세팅으로 전환되고, 로그아웃 시 공용 기본값으로 복귀!
+    // 👤 [로그인 계정별 개인 칠판 프로필(환경설정 · 필기바 위치 · 펜/배경 · 단축키) 로컬 영구 보존 & 클라우드 동기화 엔진]
+    // - 어떤 경우에도 공장초기화(defaultPrefs 덮어쓰기) 없이 기기 로컬 설정을 영구 유지하며,
+    //   로그인 시 해당 계정의 클라우드 프로필을 모든 본인 기기(학원 PC·액정타블렛·집 PC·아이패드)에 일관 동기화!
+    // - 기기 하드웨어 종속 항목(펜 포인터 표시 showVirtualStylus, 녹음 볼륨 audioRecordVolume)은 기기별 로컬 전용 유지!
     // ============================================================================
     _getUserPrefsStorageKey(uid = null) {
       const targetUid = uid || ((this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest');
       return `graphly_user_prefs_v1_${targetUid}`;
     }
 
+    _isSharedUrlViewActive() {
+      if (this._initialSharedCloudPkg || this._initialSharedData) return true;
+      if (typeof window !== 'undefined' && window.location && typeof window.location.hash === 'string') {
+        if (/(?:#|&)(?:cloud|share|student)=/.test(window.location.hash)) return true;
+      }
+      return false;
+    }
+
     _collectCurrentUserPreferences() {
+      const prefLw = (typeof this.defaultGraphLineWidth === 'number' && Number.isFinite(this.defaultGraphLineWidth))
+        ? Math.max(1.0, Math.min(6.0, parseFloat(this.defaultGraphLineWidth.toFixed(1))))
+        : 2.8;
+      const prefTxtSz = (typeof this._preferredTextLabelFontSize === 'number' && Number.isFinite(this._preferredTextLabelFontSize))
+        ? Math.max(12, Math.min(52, Math.round(this._preferredTextLabelFontSize)))
+        : ((typeof this.textLabelFontSize === 'number' && Number.isFinite(this.textLabelFontSize))
+          ? Math.max(12, Math.min(52, Math.round(this.textLabelFontSize)))
+          : 20);
+      const prefAxisSz = (typeof this._preferredAxisLabelFontSize === 'number' && Number.isFinite(this._preferredAxisLabelFontSize))
+        ? Math.max(12, Math.min(48, Math.round(this._preferredAxisLabelFontSize)))
+        : ((typeof this.axisLabelFontSize === 'number' && Number.isFinite(this.axisLabelFontSize))
+          ? Math.max(12, Math.min(48, Math.round(this.axisLabelFontSize)))
+          : 22);
+      const prefShowAxisLbl = (typeof this._preferredShowAxisLabels === 'boolean')
+        ? this._preferredShowAxisLabels
+        : Boolean(this.showAxisLabels);
+
       return {
         updatedAt: Date.now(),
         inkDockPosition: this.inkDockPosition || 'bottom',
+        preferredInkUiMode: (this.preferredInkUiMode === 'pill') ? 'pill' : 'bar',
+        pillModules: {
+          tools: this.pillModules ? Boolean(this.pillModules.tools) : true,
+          zoom: this.pillModules ? Boolean(this.pillModules.zoom) : true,
+          color: this.pillModules ? Boolean(this.pillModules.color) : false,
+          extra: this.pillModules ? Boolean(this.pillModules.extra) : false
+        },
         inkPenStyle: this.inkPenStyle || 'ballpen',
         savedPenColor: this.savedPenColor || '#1e293b',
         savedHighlighterColor: this.savedHighlighterColor || '#1e293b',
@@ -2701,7 +2771,6 @@
         eraserSize: typeof this.currentEraserSize === 'number' ? this.currentEraserSize : 14,
         themeKey: this.currentThemeKey || 'white_paper',
         boardPaperType: this.boardPaperType || 'blank',
-        showVirtualStylus: Boolean(this.showVirtualStylus),
         useMagneticSnap: Boolean(this.useMagneticSnap),
         showXAxis: this.showXAxis !== false,
         showYAxis: this.showYAxis !== false,
@@ -2709,29 +2778,95 @@
         showGuidesV2: Boolean(this.showGuides),
         showGridNumbers: Boolean(this.showGridNumbers),
         showAsymptotes: Boolean(this.showAsymptotes),
+        defaultGraphLineWidth: prefLw,
+        dropLineFontFamily: ['stix', 'pretendard', 'batang'].includes(this.dropLineFontFamily) ? this.dropLineFontFamily : 'stix',
+        dropLineStyle: (this.dropLineStyle === 'solid') ? 'solid' : 'dashed',
+        showAxisLabels: prefShowAxisLbl,
+        textLabelFontSize: prefTxtSz,
+        axisLabelFontSize: prefAxisSz,
         graphColorMode: this.graphColorMode || 'auto',
         fixedGraphColor: this.fixedGraphColor || '#1e293b',
         autoColorSequence: Array.isArray(this.autoColorSequence) && this.autoColorSequence.length > 0
           ? [...this.autoColorSequence]
           : ['#c74440', '#2d70b3', '#388c46', '#6042a6'],
-        customShortcuts: this.customShortcuts || {},
+        customShortcuts: { ...(this.customShortcuts || {}) },
         promoBannerConfig: this._sanitizePromoBannerConfig(this.promoBannerConfig || this._getDefaultPromoBannerConfig())
       };
     }
 
-    _applyUserPreferences(prefs, silent = true) {
+    _applyUserPreferences(prefs, silent = true, opts = null) {
       if (!prefs || typeof prefs !== 'object') return;
+      if (this._saveUserPrefsTimer) {
+        clearTimeout(this._saveUserPrefsTimer);
+        this._saveUserPrefsTimer = null;
+      }
+      const preserveSlideCanvasState = Boolean(opts && opts.preserveSlideCanvasState);
+      const hasLoadedSlideAssets = Boolean(
+        preserveSlideCanvasState ||
+        (this.isLessonPlaylistActive && ((this.graphs && this.graphs.length > 0) || (this.textLabels && this.textLabels.length > 0)))
+      );
       this._isApplyingUserPrefs = true;
       try {
+        if (!preserveSlideCanvasState) {
+          if (prefs.themeKey && this.canvasThemes && this.canvasThemes[prefs.themeKey]) {
+            this.setCanvasTheme(prefs.themeKey, !silent);
+          }
+          if (prefs.boardPaperType && ['blank', 'grid', 'lined', 'dot'].includes(prefs.boardPaperType)) {
+            this.setBoardPaperType(prefs.boardPaperType, !silent);
+          }
+        }
         if (prefs.inkDockPosition && ['left', 'bottom', 'right'].includes(prefs.inkDockPosition)) {
           this.setInkDockPosition(prefs.inkDockPosition, !silent, false);
+        }
+        if (prefs.pillModules && typeof prefs.pillModules === 'object') {
+          if (!this.pillModules) {
+            this.pillModules = { tools: true, zoom: true, color: false, extra: false };
+          }
+          if (typeof prefs.pillModules.tools === 'boolean') this.pillModules.tools = prefs.pillModules.tools;
+          if (typeof prefs.pillModules.zoom === 'boolean') this.pillModules.zoom = prefs.pillModules.zoom;
+          if (typeof prefs.pillModules.color === 'boolean') this.pillModules.color = prefs.pillModules.color;
+          if (typeof prefs.pillModules.extra === 'boolean') this.pillModules.extra = prefs.pillModules.extra;
+        }
+        if (prefs.preferredInkUiMode === 'pill' || prefs.preferredInkUiMode === 'bar') {
+          this.preferredInkUiMode = prefs.preferredInkUiMode;
+          if (!this._isAudioReplayActive && !this._isApplyingAudioTimelineState) {
+            const wasAnyInkUiVisible = Boolean(this.isQuickPillRemoteOpen || !this.isBottomInkBarHidden);
+            if (wasAnyInkUiVisible) {
+              const wantPill = (prefs.preferredInkUiMode === 'pill');
+              this.isQuickPillRemoteOpen = wantPill;
+              this.isBottomInkBarHidden = wantPill;
+            }
+            if (typeof this.syncQuickPillRemoteUI === 'function') {
+              this.syncQuickPillRemoteUI();
+            }
+            if (typeof this.syncInkUiVisibility === 'function') {
+              this.syncInkUiVisibility({ clampPillPosition: Boolean(this.isQuickPillRemoteOpen) });
+            }
+            if (typeof this._saveQuickPillRemoteSettings === 'function') {
+              this._saveQuickPillRemoteSettings();
+            }
+          }
+        } else if (prefs.pillModules && typeof prefs.pillModules === 'object' && !this._isAudioReplayActive && !this._isApplyingAudioTimelineState) {
+          if (typeof this.syncQuickPillRemoteUI === 'function') {
+            this.syncQuickPillRemoteUI();
+          }
+          if (typeof this._saveQuickPillRemoteSettings === 'function') {
+            this._saveQuickPillRemoteSettings();
+          }
         }
         if (prefs.inkPenStyle && ['ballpen', 'flat', 'fountain', 'brush'].includes(prefs.inkPenStyle)) {
           this.setInkPenStyle(prefs.inkPenStyle, !silent);
         }
         if (prefs.savedPenColor && /^#[0-9a-fA-F]{3,8}$/.test(prefs.savedPenColor)) {
-          this.savedPenColor = prefs.savedPenColor;
-          try { localStorage.setItem('graphly_pen_color_v1', prefs.savedPenColor); } catch (_) { }
+          let nextPenColor = prefs.savedPenColor;
+          const curThemeObj = this.canvasThemes && this.canvasThemes[this.currentThemeKey];
+          if (curThemeObj && !curThemeObj.isLight && nextPenColor.toLowerCase() === '#1e293b') {
+            nextPenColor = '#ffffff';
+          } else if (curThemeObj && curThemeObj.isLight && nextPenColor.toLowerCase() === '#ffffff') {
+            nextPenColor = '#1e293b';
+          }
+          this.savedPenColor = nextPenColor;
+          try { localStorage.setItem('graphly_pen_color_v1', nextPenColor); } catch (_) { }
         }
         if (prefs.savedHighlighterColor && /^#[0-9a-fA-F]{3,8}$/.test(prefs.savedHighlighterColor)) {
           this.savedHighlighterColor = prefs.savedHighlighterColor;
@@ -2750,46 +2885,97 @@
         if (typeof prefs.eraserSize === 'number' && !isNaN(prefs.eraserSize)) {
           this.setEraserSize(prefs.eraserSize);
         }
-        if (prefs.themeKey && this.canvasThemes && this.canvasThemes[prefs.themeKey]) {
-          this.setCanvasTheme(prefs.themeKey, !silent);
-        }
-        if (prefs.boardPaperType && ['blank', 'grid', 'lined', 'dot'].includes(prefs.boardPaperType)) {
-          this.setBoardPaperType(prefs.boardPaperType, !silent);
-        }
-        if (typeof prefs.showVirtualStylus === 'boolean') {
-          this.showVirtualStylus = prefs.showVirtualStylus;
-          const chk = document.getElementById('chkShowVirtualStylus');
-          if (chk) chk.checked = prefs.showVirtualStylus;
-          this.updateInkCursor();
-        }
         if (typeof prefs.useMagneticSnap === 'boolean') {
           this.useMagneticSnap = prefs.useMagneticSnap;
           const chk = document.getElementById('chkMagneticSnap');
           if (chk) chk.checked = prefs.useMagneticSnap;
         }
-        this.showXAxis = (typeof prefs.showXAxis === 'boolean') ? prefs.showXAxis : true;
-        this.showYAxis = (typeof prefs.showYAxis === 'boolean') ? prefs.showYAxis : true;
-        if (typeof this.syncAxisVisibilityUI === 'function') {
-          this.syncAxisVisibilityUI();
+        if (!preserveSlideCanvasState) {
+          this.showXAxis = (typeof prefs.showXAxis === 'boolean') ? prefs.showXAxis : true;
+          this.showYAxis = (typeof prefs.showYAxis === 'boolean') ? prefs.showYAxis : true;
+          if (typeof this.syncAxisVisibilityUI === 'function') {
+            this.syncAxisVisibilityUI();
+          }
+          if (typeof prefs.showGuidesV2 === 'boolean') {
+            this.showGuides = prefs.showGuidesV2;
+            const chk = document.getElementById('chkGuides');
+            if (chk) chk.checked = prefs.showGuidesV2;
+          } else if (typeof prefs.showGuides === 'boolean') {
+            this.showGuides = prefs.showGuides;
+            const chk = document.getElementById('chkGuides');
+            if (chk) chk.checked = prefs.showGuides;
+          } else {
+            this.showGuides = false;
+            const chk = document.getElementById('chkGuides');
+            if (chk) chk.checked = false;
+          }
+          if (typeof prefs.showGridNumbers === 'boolean') {
+            this.showGridNumbers = prefs.showGridNumbers;
+            const chk = document.getElementById('chkGridNumbers');
+            if (chk) chk.checked = prefs.showGridNumbers;
+          }
+          if (typeof prefs.showAsymptotes === 'boolean') {
+            this.showAsymptotes = prefs.showAsymptotes;
+            const chk = document.getElementById('chkAsymptotes');
+            if (chk) chk.checked = prefs.showAsymptotes;
+          }
         }
-        if (typeof prefs.showGuidesV2 === 'boolean') {
-          this.showGuides = prefs.showGuidesV2;
-          const chk = document.getElementById('chkGuides');
-          if (chk) chk.checked = prefs.showGuidesV2;
-        } else {
-          this.showGuides = false;
-          const chk = document.getElementById('chkGuides');
-          if (chk) chk.checked = false;
+        if (typeof prefs.defaultGraphLineWidth === 'number' && Number.isFinite(prefs.defaultGraphLineWidth)) {
+          const nextLw = Math.max(1.0, Math.min(6.0, parseFloat(prefs.defaultGraphLineWidth.toFixed(1))));
+          this.defaultGraphLineWidth = nextLw;
+          try { localStorage.setItem('graphly_default_graph_lw_v1', String(nextLw)); } catch (_) { }
+          if (typeof this._syncLineWidthSliderUI === 'function') {
+            this._syncLineWidthSliderUI();
+          }
         }
-        if (typeof prefs.showGridNumbers === 'boolean') {
-          this.showGridNumbers = prefs.showGridNumbers;
-          const chk = document.getElementById('chkGridNumbers');
-          if (chk) chk.checked = prefs.showGridNumbers;
+        if (prefs.dropLineFontFamily && ['stix', 'pretendard', 'batang'].includes(prefs.dropLineFontFamily)) {
+          this.dropLineFontFamily = prefs.dropLineFontFamily;
+          try { localStorage.setItem('graphly_math_font_v1', prefs.dropLineFontFamily); } catch (_) { }
+          const selFont = document.getElementById('selMathFont');
+          if (selFont) selFont.value = prefs.dropLineFontFamily;
         }
-        if (typeof prefs.showAsymptotes === 'boolean') {
-          this.showAsymptotes = prefs.showAsymptotes;
-          const chk = document.getElementById('chkAsymptotes');
-          if (chk) chk.checked = prefs.showAsymptotes;
+        if (prefs.dropLineStyle === 'dashed' || prefs.dropLineStyle === 'solid') {
+          this.dropLineStyle = prefs.dropLineStyle;
+          try { localStorage.setItem('graphly_drop_line_style_v1', prefs.dropLineStyle); } catch (_) { }
+          const btnDashed = document.getElementById('btnDropLineDashed');
+          const btnSolid = document.getElementById('btnDropLineSolid');
+          if (btnDashed) btnDashed.classList.toggle('active', prefs.dropLineStyle !== 'solid');
+          if (btnSolid) btnSolid.classList.toggle('active', prefs.dropLineStyle === 'solid');
+        }
+        if (typeof prefs.showAxisLabels === 'boolean') {
+          this._preferredShowAxisLabels = prefs.showAxisLabels;
+          try { localStorage.setItem('graphly_show_axis_labels_v1', String(prefs.showAxisLabels)); } catch (_) { }
+          if (!hasLoadedSlideAssets) {
+            this.showAxisLabels = prefs.showAxisLabels;
+            const chkAxisLbl = document.getElementById('chkShowAxisLabels');
+            if (chkAxisLbl) chkAxisLbl.checked = prefs.showAxisLabels;
+            const subAxisPanel = document.getElementById('axisLabelsSubPanel');
+            if (subAxisPanel) subAxisPanel.style.display = prefs.showAxisLabels ? 'block' : 'none';
+          }
+        }
+        if (typeof prefs.textLabelFontSize === 'number' && Number.isFinite(prefs.textLabelFontSize)) {
+          const nextTxtSz = Math.max(12, Math.min(52, Math.round(prefs.textLabelFontSize)));
+          this._preferredTextLabelFontSize = nextTxtSz;
+          try { localStorage.setItem('graphly_text_label_size_v1', String(nextTxtSz)); } catch (_) { }
+          if (!hasLoadedSlideAssets) {
+            this.textLabelFontSize = nextTxtSz;
+            const slTxt = document.getElementById('sliderTextLabelSize');
+            if (slTxt) slTxt.value = nextTxtSz;
+            const lblTxt = document.getElementById('lblTextLabelSize');
+            if (lblTxt) lblTxt.textContent = `${nextTxtSz}`;
+          }
+        }
+        if (typeof prefs.axisLabelFontSize === 'number' && Number.isFinite(prefs.axisLabelFontSize)) {
+          const nextAxisSz = Math.max(12, Math.min(48, Math.round(prefs.axisLabelFontSize)));
+          this._preferredAxisLabelFontSize = nextAxisSz;
+          try { localStorage.setItem('graphly_axis_label_size_v1', String(nextAxisSz)); } catch (_) { }
+          if (!hasLoadedSlideAssets) {
+            this.axisLabelFontSize = nextAxisSz;
+            const slAxis = document.getElementById('sliderAxisLabelSize');
+            if (slAxis) slAxis.value = nextAxisSz;
+            const lblAxis = document.getElementById('lblAxisLabelSize');
+            if (lblAxis) lblAxis.textContent = `${nextAxisSz}`;
+          }
         }
         if (prefs.graphColorMode === 'fixed' || prefs.graphColorMode === 'auto') {
           this.graphColorMode = prefs.graphColorMode;
@@ -2819,7 +3005,7 @@
             this.syncShortcutTooltipsAndGuideUI();
           }
         }
-        if (prefs.promoBannerConfig && typeof prefs.promoBannerConfig === 'object') {
+        if (this.cloudUser && this.cloudUser.uid && prefs.promoBannerConfig && typeof prefs.promoBannerConfig === 'object') {
           this._savePromoBannerConfigForCurrentUser(prefs.promoBannerConfig, false);
         }
         this.requestRender();
@@ -2828,8 +3014,150 @@
       }
     }
 
+    _diffUserPreferencesAgainstBaseline(basePrefs, curPrefs) {
+      const patch = {};
+      let hasChanges = false;
+      if (!curPrefs || typeof curPrefs !== 'object') return { hasChanges: false, patch };
+      const base = (basePrefs && typeof basePrefs === 'object') ? basePrefs : {};
+      const keys = Object.keys(curPrefs);
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        if (k === 'updatedAt') continue;
+        if (JSON.stringify(curPrefs[k]) !== JSON.stringify(base[k])) {
+          patch[k] = curPrefs[k];
+          hasChanges = true;
+        }
+      }
+      return { hasChanges, patch };
+    }
+
+    async _readUserPreferencesDocStatus(docId) {
+      if (typeof window !== 'undefined' && window.location && !/^https?:$/i.test(window.location.protocol)) {
+        return { status: 'unsupported', data: null, httpStatus: 0 };
+      }
+      let idToken = await this._getFirebaseIdTokenForRest(true);
+      if (!idToken) {
+        return { status: 'no_token', data: null, httpStatus: 0 };
+      }
+      const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/user_preferences/${encodeURIComponent(docId)}`;
+      try {
+        let res = await this._fetchFirestoreDocWithRetry(url, {
+          headers: { Authorization: 'Bearer ' + idToken }
+        });
+        if (res && res.status === 401 && this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
+          try {
+            const refreshedToken = await this._fbAuth.currentUser.getIdToken(true);
+            if (refreshedToken) {
+              idToken = refreshedToken;
+              res = await this._fetchFirestoreDocWithRetry(url, {
+                headers: { Authorization: 'Bearer ' + idToken }
+              }, 1);
+            }
+          } catch (_) { }
+        }
+        if (!res) {
+          return { status: 'error', data: null, httpStatus: 0 };
+        }
+        if (res.status === 404) {
+          return { status: 'not_found', data: null, httpStatus: 404 };
+        }
+        if (!res.ok) {
+          return { status: 'error', data: null, httpStatus: res.status };
+        }
+        const doc = await res.json();
+        if (doc && doc.fields && doc.fields.jsonPayload && typeof doc.fields.jsonPayload.stringValue === 'string') {
+          const rawVal = await this._decompressJsonStringGzipBase64(doc.fields.jsonPayload.stringValue);
+          const parsed = JSON.parse(rawVal);
+          if (parsed && typeof parsed === 'object') {
+            return { status: 'ok', data: parsed, httpStatus: 200 };
+          }
+        }
+        return { status: 'error', data: null, httpStatus: res.status };
+      } catch (err) {
+        return { status: 'error', data: null, httpStatus: 0 };
+      }
+    }
+
+    async _writeUserPreferencesToFirestoreNow(targetUid, prefsObj) {
+      if (!targetUid || targetUid === 'guest') return false;
+      if (!this._canSyncCustomGraphsToFirestore() || typeof this._firestoreRestWriteSingleDoc !== 'function') {
+        return false;
+      }
+      if (!this.cloudUser || this.cloudUser.uid !== targetUid) return false;
+      const docId = `pref_user_${targetUid}`;
+      const jsonStr = JSON.stringify(prefsObj || this._collectCurrentUserPreferences());
+      try {
+        await this._firestoreRestWriteSingleDoc('user_preferences', docId, jsonStr, { ownerUid: targetUid });
+        return true;
+      } catch (err) {
+        const msg = String((err && err.message) || '');
+        if (msg.includes('401') && this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
+          try {
+            await this._fbAuth.currentUser.getIdToken(true);
+            if (this.cloudUser && this.cloudUser.uid === targetUid) {
+              await this._firestoreRestWriteSingleDoc('user_preferences', docId, jsonStr, { ownerUid: targetUid });
+              return true;
+            }
+          } catch (_) { }
+        }
+        return false;
+      }
+    }
+
+    _bindUserPreferencesLifecycleFlush() {
+      if (this._userPrefsLifecycleFlushBound || typeof window === 'undefined') return;
+      this._userPrefsLifecycleFlushBound = true;
+      const flushIfPending = () => {
+        if (this._saveUserPrefsTimer) {
+          this.flushSaveUserPreferencesNow();
+        }
+      };
+      window.addEventListener('pagehide', flushIfPending);
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden) flushIfPending();
+        });
+      }
+    }
+
+    flushSaveUserPreferencesNow() {
+      if (
+        !this._userPrefsBootReady ||
+        this._isApplyingUserPrefs ||
+        this._isCapturingExportSnapshots ||
+        this._isAudioReplayActive ||
+        this._isApplyingAudioTimelineState
+      ) return;
+      if (this._saveUserPrefsTimer) {
+        clearTimeout(this._saveUserPrefsTimer);
+        this._saveUserPrefsTimer = null;
+      }
+      const prefs = this._collectCurrentUserPreferences();
+      try {
+        localStorage.setItem(this._getUserPrefsStorageKey(), JSON.stringify(prefs));
+      } catch (_) { }
+
+      if (!this.cloudUser || !this.cloudUser.uid) return;
+      const curUid = this.cloudUser.uid;
+      if (this._hydratedRemotePrefsUid !== curUid) {
+        // 원격 프로필 수신 완료 전에는 클라우드 덮어쓰기를 보류하고 수신 직후 변경분만 안전 병합 업로드
+        this._pendingPrefsWriteUid = curUid;
+        if (this._inflightPrefsSyncUid !== curUid) {
+          this.onUserPreferencesAuthChanged();
+        }
+        return;
+      }
+      this._writeUserPreferencesToFirestoreNow(curUid, prefs);
+    }
+
     scheduleSaveUserPreferences() {
-      if (this._isApplyingUserPrefs) return;
+      if (
+        !this._userPrefsBootReady ||
+        this._isApplyingUserPrefs ||
+        this._isCapturingExportSnapshots ||
+        this._isAudioReplayActive ||
+        this._isApplyingAudioTimelineState
+      ) return;
       const prefs = this._collectCurrentUserPreferences();
       try {
         localStorage.setItem(this._getUserPrefsStorageKey(), JSON.stringify(prefs));
@@ -2837,87 +3165,165 @@
 
       if (this._saveUserPrefsTimer) {
         clearTimeout(this._saveUserPrefsTimer);
+        this._saveUserPrefsTimer = null;
       }
-      this._saveUserPrefsTimer = setTimeout(() => {
-        if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestWriteSingleDoc === 'function') {
-          const docId = `pref_user_${this.cloudUser.uid}`;
-          this._firestoreRestWriteSingleDoc('user_preferences', docId, JSON.stringify(this._collectCurrentUserPreferences())).catch(() => { });
+
+      if (this.cloudUser && this.cloudUser.uid && this._hydratedRemotePrefsUid !== this.cloudUser.uid) {
+        this._pendingPrefsWriteUid = this.cloudUser.uid;
+        if (this._inflightPrefsSyncUid !== this.cloudUser.uid) {
+          this.onUserPreferencesAuthChanged();
         }
+        return;
+      }
+
+      this._saveUserPrefsTimer = setTimeout(() => {
+        this._saveUserPrefsTimer = null;
+        this.flushSaveUserPreferencesNow();
       }, 450);
     }
 
     async onUserPreferencesAuthChanged() {
       const curUid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest';
-      const prevUid = this._lastSyncedPrefsUid || null;
-      if (prevUid === curUid) return;
-      this._lastSyncedPrefsUid = curUid;
+      const prevLocalUid = this._lastAppliedLocalPrefsUid || null;
+      const isSharedView = this._isSharedUrlViewActive();
 
       if (curUid === 'guest') {
-        // 로그인 상태에서 로그아웃한 경우: 공용 칠판 보호를 위해 표준 기본값으로 깔끔하게 초기화!
-        if (prevUid && prevUid !== 'guest') {
-          const defaultPrefs = {
-            inkDockPosition: 'bottom',
-            inkPenStyle: 'ballpen',
-            inkSoftBlur: 0.0,
-            inkSize: 4.2,
-            highlighterSize: 16,
-            eraserSize: 14,
-            themeKey: 'white_paper',
-            boardPaperType: 'blank',
-            showVirtualStylus: true,
-            useMagneticSnap: true,
-            showXAxis: true,
-            showYAxis: true,
-            showGuides: false,
-            showGuidesV2: false,
-            showGridNumbers: false,
-            showAsymptotes: false,
-            graphColorMode: 'auto',
-            fixedGraphColor: '#1e293b',
-            autoColorSequence: ['#c74440', '#2d70b3', '#388c46', '#6042a6'],
-            customShortcuts: {},
-            promoBannerConfig: this._getDefaultPromoBannerConfig()
-          };
-          this._applyUserPreferences(defaultPrefs, true);
+        this._hydratedRemotePrefsUid = null;
+        this._pendingPrefsWriteUid = null;
+        this._preHydrationBaselinePrefs = null;
+        this._loadPromoBannerConfigForCurrentUser();
+
+        if (prevLocalUid && prevLocalUid !== 'guest') {
+          // 로그아웃 또는 다른 기기 접속으로 인한 자동 로그아웃 시:
+          // 절대 공장초기화(defaultPrefs)하지 않고 현재 기기에 설정된 모든 환경을 그대로 보존!
+          this._lastAppliedLocalPrefsUid = 'guest';
+          if (this._userPrefsBootReady) {
+            try {
+              localStorage.setItem(this._getUserPrefsStorageKey('guest'), JSON.stringify(this._collectCurrentUserPreferences()));
+            } catch (_) { }
+          }
+        } else if (prevLocalUid !== 'guest') {
+          // 비로그인 상태로 앱 시작 시: 이 기기에 마지막으로 저장된 로컬 설정 복원
+          this._lastAppliedLocalPrefsUid = 'guest';
           try {
-            localStorage.setItem(this._getUserPrefsStorageKey('guest'), JSON.stringify(defaultPrefs));
+            const guestRaw = localStorage.getItem(this._getUserPrefsStorageKey('guest'));
+            if (guestRaw) {
+              const guestPrefs = JSON.parse(guestRaw);
+              if (guestPrefs && typeof guestPrefs === 'object') {
+                this._applyUserPreferences(guestPrefs, true, { preserveSlideCanvasState: isSharedView });
+              }
+            }
           } catch (_) { }
-        } else {
-          this._loadPromoBannerConfigForCurrentUser();
         }
         return;
       }
 
-      this._loadPromoBannerConfigForCurrentUser();
-
-      // 1. 로컬에 캐시된 해당 계정 프로필이 있으면 0.00초 만에 즉시 먼저 적용
-      let localPrefs = null;
-      try {
-        const raw = localStorage.getItem(this._getUserPrefsStorageKey(curUid));
-        if (raw) {
-          localPrefs = JSON.parse(raw);
-          if (localPrefs && typeof localPrefs === 'object') {
-            this._applyUserPreferences(localPrefs, true);
-          }
-        }
-      } catch (_) { }
-
-      // 2. 클라우드(Firestore)에 저장된 계정 프로필 조회 및 동기화
-      if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestReadDoc === 'function') {
+      // 1. 로그인 계정 전환 시 로컬에 캐시된 해당 계정 프로필이 있으면 0.00초 만에 즉시 먼저 적용
+      if (prevLocalUid !== curUid) {
+        this._lastAppliedLocalPrefsUid = curUid;
+        this._hydratedRemotePrefsUid = null;
+        this._pendingPrefsWriteUid = null;
+        this._loadPromoBannerConfigForCurrentUser();
         try {
-          const docId = `pref_user_${curUid}`;
-          const remotePrefs = await this._firestoreRestReadDoc('user_preferences', docId, true);
-          if (remotePrefs && typeof remotePrefs === 'object' && (remotePrefs.inkDockPosition || remotePrefs.themeKey)) {
-            this._applyUserPreferences(remotePrefs, true);
-            try {
-              localStorage.setItem(this._getUserPrefsStorageKey(curUid), JSON.stringify(remotePrefs));
-            } catch (_) { }
-          } else if (!localPrefs) {
-            // 첫 로그인 계정이면 현재 세팅을 클라우드 초기 프로필로 등록
-            this.scheduleSaveUserPreferences();
+          const raw = localStorage.getItem(this._getUserPrefsStorageKey(curUid));
+          if (raw) {
+            const localPrefs = JSON.parse(raw);
+            if (localPrefs && typeof localPrefs === 'object') {
+              this._applyUserPreferences(localPrefs, true, { preserveSlideCanvasState: isSharedView });
+            }
           }
         } catch (_) { }
+        this._preHydrationBaselinePrefs = this._collectCurrentUserPreferences();
       }
+
+      // 2. 이미 현재 계정의 클라우드 원격 동기화가 완료된 상태면 중복 네트워크 호출 생략
+      if (this._hydratedRemotePrefsUid === curUid) return;
+      if (!this._canSyncCustomGraphsToFirestore()) return;
+      if (this._inflightPrefsSyncUid === curUid && this._inflightPrefsSyncPromise) {
+        return this._inflightPrefsSyncPromise;
+      }
+
+      this._inflightPrefsSyncUid = curUid;
+      const syncTask = (async () => {
+        try {
+          let readRes = await this._readUserPreferencesDocStatus(`pref_user_${curUid}`);
+          if (!this.cloudUser || this.cloudUser.uid !== curUid) return;
+
+          let resolvedRemotePrefs = null;
+          let migratedFromSibling = false;
+
+          if (readRes.status === 'ok' && readRes.data) {
+            resolvedRemotePrefs = readRes.data;
+          } else if (readRes.status === 'not_found') {
+            // 동일 본인인증 이메일의 교차 로그인(Google acct_... ↔ 아이디 id_...) 프로필도 확인하여 승계
+            let siblingStatus = 'not_found';
+            if (this.cloudUser.email && this.cloudUser.email.includes('@')) {
+              const altProvider = this.cloudUser.authProvider === 'google' ? 'email' : 'google';
+              const siblingUid = this._getCanonicalUidForEmail(this.cloudUser.email, '', altProvider);
+              if (siblingUid && siblingUid !== curUid) {
+                const sibRes = await this._readUserPreferencesDocStatus(`pref_user_${siblingUid}`);
+                if (!this.cloudUser || this.cloudUser.uid !== curUid) return;
+                siblingStatus = sibRes.status;
+                if (sibRes.status === 'ok' && sibRes.data) {
+                  resolvedRemotePrefs = sibRes.data;
+                  migratedFromSibling = true;
+                }
+              }
+            }
+            if (!resolvedRemotePrefs) {
+              if (siblingStatus !== 'not_found') {
+                // 일시적 통신/토큰 오류 시 절대 클라우드를 로컬 값으로 덮어쓰지 않고 다음 인증/포커스 시 재시도
+                return;
+              }
+              // 완전히 처음 가입/로그인한 계정(404 확정)일 때만 현재 기기 세팅을 클라우드 초기 프로필로 등록
+              this._hydratedRemotePrefsUid = curUid;
+              this._pendingPrefsWriteUid = null;
+              const seedPrefs = this._collectCurrentUserPreferences();
+              try {
+                localStorage.setItem(this._getUserPrefsStorageKey(curUid), JSON.stringify(seedPrefs));
+              } catch (_) { }
+              await this._writeUserPreferencesToFirestoreNow(curUid, seedPrefs);
+              return;
+            }
+          } else {
+            // no_token(Firebase SDK 로딩 대기 중) 또는 error(일시적 네트워크/권한 오류)일 때는
+            // 절대 클라우드 문서를 덮어쓰지 않고 _hydratedRemotePrefsUid도 비워두어 인증 완료 즉시 재조회!
+            return;
+          }
+
+          if (resolvedRemotePrefs && typeof resolvedRemotePrefs === 'object') {
+            const hadPendingLocalEdit = (this._pendingPrefsWriteUid === curUid);
+            const diff = hadPendingLocalEdit
+              ? this._diffUserPreferencesAgainstBaseline(this._preHydrationBaselinePrefs, this._collectCurrentUserPreferences())
+              : { hasChanges: false, patch: {} };
+
+            const finalPrefs = diff.hasChanges
+              ? { ...resolvedRemotePrefs, ...diff.patch, updatedAt: Date.now() }
+              : resolvedRemotePrefs;
+
+            this._applyUserPreferences(finalPrefs, true, { preserveSlideCanvasState: this._isSharedUrlViewActive() });
+            this._hydratedRemotePrefsUid = curUid;
+            this._pendingPrefsWriteUid = null;
+            const syncedSnapshot = this._collectCurrentUserPreferences();
+            this._preHydrationBaselinePrefs = syncedSnapshot;
+            try {
+              localStorage.setItem(this._getUserPrefsStorageKey(curUid), JSON.stringify(syncedSnapshot));
+            } catch (_) { }
+
+            if (diff.hasChanges || migratedFromSibling) {
+              await this._writeUserPreferencesToFirestoreNow(curUid, syncedSnapshot);
+            }
+          }
+        } finally {
+          if (this._inflightPrefsSyncUid === curUid) {
+            this._inflightPrefsSyncUid = null;
+            this._inflightPrefsSyncPromise = null;
+          }
+        }
+      })();
+
+      this._inflightPrefsSyncPromise = syncTask;
+      return syncTask;
     }
 
     // ============================================================================
@@ -3782,9 +4188,40 @@
       this._loadCustomGraphsFromStorage();
     }
 
-    _getCustomGraphsStorageKey() {
-      const uid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest';
-      return `graphly_custom_graphs_v1_${uid}`;
+    _getCustomGraphsStorageKey(uid = null) {
+      const targetUid = uid || ((this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest');
+      return `graphly_custom_graphs_v1_${targetUid}`;
+    }
+
+    _getCustomGraphsMetaStorageKey(uid = null) {
+      const targetUid = uid || ((this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest');
+      return `graphly_custom_graphs_meta_v1_${targetUid}`;
+    }
+
+    _readCustomGraphsLocalMeta(uid = null) {
+      try {
+        const raw = localStorage.getItem(this._getCustomGraphsMetaStorageKey(uid));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            return {
+              updatedAt: Number(parsed.updatedAt) || 0,
+              dirtyOffline: Boolean(parsed.dirtyOffline)
+            };
+          }
+        }
+      } catch (_) { }
+      return { updatedAt: 0, dirtyOffline: false };
+    }
+
+    _writeCustomGraphsLocalMeta(uid, meta) {
+      if (!uid || uid === 'guest') return;
+      try {
+        localStorage.setItem(this._getCustomGraphsMetaStorageKey(uid), JSON.stringify({
+          updatedAt: Number(meta && meta.updatedAt) || Date.now(),
+          dirtyOffline: Boolean(meta && meta.dirtyOffline)
+        }));
+      } catch (_) { }
     }
 
     _loadCustomGraphsFromStorage() {
@@ -3809,6 +4246,7 @@
           const guestParsed = JSON.parse(guestRaw);
           if (Array.isArray(guestParsed) && guestParsed.length > 0) {
             this.customGraphPresets = this._normalizeAndCapCustomGraphPresets(guestParsed);
+            this._pendingMigratedGuestGraphs = this.customGraphPresets.slice();
             localStorage.setItem(key, JSON.stringify(this.customGraphPresets));
             try { localStorage.removeItem('graphly_custom_graphs_v1_guest'); } catch (e2) { }
             return;
@@ -3829,58 +4267,251 @@
       );
     }
 
+    async _readCustomGraphsDocStatus(docId) {
+      if (typeof window !== 'undefined' && window.location && !/^https?:$/i.test(window.location.protocol)) {
+        return { status: 'unsupported', data: null, remoteUpdatedAtMs: 0, httpStatus: 0 };
+      }
+      let idToken = await this._getFirebaseIdTokenForRest(true);
+      if (!idToken) {
+        return { status: 'no_token', data: null, remoteUpdatedAtMs: 0, httpStatus: 0 };
+      }
+      const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/user_custom_graphs/${encodeURIComponent(docId)}`;
+      try {
+        let res = await this._fetchFirestoreDocWithRetry(url, {
+          headers: { Authorization: 'Bearer ' + idToken }
+        });
+        if (res && res.status === 401 && this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
+          try {
+            const refreshedToken = await this._fbAuth.currentUser.getIdToken(true);
+            if (refreshedToken) {
+              idToken = refreshedToken;
+              res = await this._fetchFirestoreDocWithRetry(url, {
+                headers: { Authorization: 'Bearer ' + idToken }
+              }, 1);
+            }
+          } catch (_) { }
+        }
+        if (!res) {
+          return { status: 'error', data: null, remoteUpdatedAtMs: 0, httpStatus: 0 };
+        }
+        if (res.status === 404) {
+          return { status: 'not_found', data: null, remoteUpdatedAtMs: 0, httpStatus: 404 };
+        }
+        if (!res.ok) {
+          return { status: 'error', data: null, remoteUpdatedAtMs: 0, httpStatus: res.status };
+        }
+        const doc = await res.json();
+        const remoteUpdatedAtMs = Number(doc && doc.fields && doc.fields.createdAt && doc.fields.createdAt.integerValue)
+          || (doc && doc.updateTime ? Date.parse(doc.updateTime) : 0)
+          || 0;
+        if (doc && doc.fields && doc.fields.jsonPayload && typeof doc.fields.jsonPayload.stringValue === 'string') {
+          const rawVal = await this._decompressJsonStringGzipBase64(doc.fields.jsonPayload.stringValue);
+          const parsed = JSON.parse(rawVal);
+          if (Array.isArray(parsed)) {
+            return { status: 'ok', data: parsed, remoteUpdatedAtMs, httpStatus: 200 };
+          }
+          if (parsed && typeof parsed === 'object' && Array.isArray(parsed.presets)) {
+            return { status: 'ok', data: parsed.presets, remoteUpdatedAtMs: Number(parsed.updatedAt) || remoteUpdatedAtMs, httpStatus: 200 };
+          }
+        }
+        return { status: 'error', data: null, remoteUpdatedAtMs: 0, httpStatus: res.status };
+      } catch (_) {
+        return { status: 'error', data: null, remoteUpdatedAtMs: 0, httpStatus: 0 };
+      }
+    }
+
+    async _uploadCustomGraphsToFirestoreNow(targetUid, listToSave, editTimestampMs = Date.now()) {
+      if (!targetUid || targetUid === 'guest') return false;
+      if (!this._canSyncCustomGraphsToFirestore() || typeof this._firestoreRestWriteSingleDoc !== 'function') {
+        return false;
+      }
+      if (!this.cloudUser || this.cloudUser.uid !== targetUid) return false;
+      const docId = `cg_user_${targetUid}`;
+      const rawJson = JSON.stringify(Array.isArray(listToSave) ? listToSave : []);
+      const compressFn = (typeof this._compressJsonStringGzipBase64 === 'function')
+        ? this._compressJsonStringGzipBase64.bind(this)
+        : (async (s) => s);
+      try {
+        const packed = await compressFn(rawJson);
+        await this._firestoreRestWriteSingleDoc('user_custom_graphs', docId, packed, { ownerUid: targetUid });
+        this._writeCustomGraphsLocalMeta(targetUid, { updatedAt: editTimestampMs, dirtyOffline: false });
+        this._hydratedCustomGraphsUid = targetUid;
+        return true;
+      } catch (err) {
+        const msg = String((err && err.message) || '');
+        if (msg.includes('401') && this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
+          try {
+            await this._fbAuth.currentUser.getIdToken(true);
+            if (this.cloudUser && this.cloudUser.uid === targetUid) {
+              const packedRetry = await compressFn(rawJson);
+              await this._firestoreRestWriteSingleDoc('user_custom_graphs', docId, packedRetry, { ownerUid: targetUid });
+              this._writeCustomGraphsLocalMeta(targetUid, { updatedAt: editTimestampMs, dirtyOffline: false });
+              this._hydratedCustomGraphsUid = targetUid;
+              return true;
+            }
+          } catch (_) { }
+        }
+        return false;
+      }
+    }
+
     _saveCustomGraphsToStorage() {
       if (!this.cloudUser || !this.cloudUser.uid) return;
+      const targetUid = this.cloudUser.uid;
       if (Array.isArray(this.customGraphPresets)) {
         this.customGraphPresets = this._normalizeAndCapCustomGraphPresets(this.customGraphPresets);
       }
-      const rawJson = JSON.stringify(this.customGraphPresets || []);
+      const snapshotList = Array.isArray(this.customGraphPresets) ? this.customGraphPresets.slice() : [];
+      const rawJson = JSON.stringify(snapshotList);
+      const nowMs = Date.now();
+      this._customGraphsLocalEditSeq = (this._customGraphsLocalEditSeq || 0) + 1;
       try {
-        const key = this._getCustomGraphsStorageKey();
+        const key = this._getCustomGraphsStorageKey(targetUid);
         localStorage.setItem(key, rawJson);
       } catch (e) { }
+      this._writeCustomGraphsLocalMeta(targetUid, { updatedAt: nowMs, dirtyOffline: true });
       if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestWriteSingleDoc === 'function') {
-        const docId = `cg_user_${this.cloudUser.uid}`;
-        const compressFn = (typeof this._compressJsonStringGzipBase64 === 'function')
-          ? this._compressJsonStringGzipBase64.bind(this)
-          : (async (s) => s);
-        compressFn(rawJson)
-          .then((packed) => this._firestoreRestWriteSingleDoc('user_custom_graphs', docId, packed))
-          .catch(() => { });
+        this._uploadCustomGraphsToFirestoreNow(targetUid, snapshotList, nowMs);
       }
     }
 
     async onCustomGraphUserChanged() {
-      this._loadCustomGraphsFromStorage();
       const curUid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest';
-      const shouldFetchRemote = (this._lastSyncedCustomGraphsUid !== curUid);
-      this._lastSyncedCustomGraphsUid = curUid;
-      if (shouldFetchRemote && this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestReadDoc === 'function') {
+      if (this._lastLoadedCustomGraphsLocalUid !== curUid) {
+        this._lastLoadedCustomGraphsLocalUid = curUid;
+        this._loadCustomGraphsFromStorage();
+      } else if (curUid === 'guest') {
+        this.customGraphPresets = [];
+      }
+
+      if (curUid === 'guest') {
+        this._hydratedCustomGraphsUid = null;
+        this._inflightCustomGraphsUid = null;
+        this._lastSyncedCustomGraphsUid = 'guest';
+        this.renderFuncList();
+        return;
+      }
+
+      this.renderFuncList();
+
+      const localMeta = this._readCustomGraphsLocalMeta(curUid);
+      if (this._hydratedCustomGraphsUid === curUid && !localMeta.dirtyOffline) {
+        return;
+      }
+      if (!this._canSyncCustomGraphsToFirestore()) {
+        return;
+      }
+      if (this._inflightCustomGraphsUid === curUid && this._inflightCustomGraphsPromise) {
+        return this._inflightCustomGraphsPromise;
+      }
+
+      this._inflightCustomGraphsUid = curUid;
+      const startEditSeq = this._customGraphsLocalEditSeq || 0;
+      const syncPromise = (async () => {
         try {
-          const idToken = await this._getFirebaseIdTokenForRest(true);
-          if (idToken) {
-            const docId = `cg_user_${this.cloudUser.uid}`;
-            let remoteList = await this._firestoreRestReadDoc('user_custom_graphs', docId, true);
-            if ((!Array.isArray(remoteList) || remoteList.length === 0) && this.cloudUser.email && this.cloudUser.email.includes('@')) {
+          const readRes = await this._readCustomGraphsDocStatus(`cg_user_${curUid}`);
+          if (!this.cloudUser || this.cloudUser.uid !== curUid) return;
+          if ((this._customGraphsLocalEditSeq || 0) !== startEditSeq) return;
+
+          const latestMeta = this._readCustomGraphsLocalMeta(curUid);
+          const migratedGuest = Array.isArray(this._pendingMigratedGuestGraphs) && this._pendingMigratedGuestGraphs.length > 0
+            ? this._pendingMigratedGuestGraphs.slice()
+            : null;
+
+          if (readRes.status === 'ok' && Array.isArray(readRes.data)) {
+            if (latestMeta.dirtyOffline && latestMeta.updatedAt > (readRes.remoteUpdatedAtMs || 0)) {
+              // 이 기기에서 오프라인/탭종료 직전 수정한 최신 변경분이 아직 서버에 안 올라간 경우: 로컬 변경분을 서버로 업로드!
+              this._pendingMigratedGuestGraphs = null;
+              await this._uploadCustomGraphsToFirestoreNow(curUid, this.customGraphPresets || [], latestMeta.updatedAt);
+              this.renderFuncList();
+              return;
+            }
+
+            // 클라우드 문서를 단일 진실 공급원(Authoritative)으로 채택하여 타 기기에서 삭제(부분 삭제 · 전체 0개 삭제)한 프리셋이 절대 부활하지 않도록 보장!
+            const nextList = migratedGuest
+              ? this._normalizeAndCapCustomGraphPresets([...readRes.data, ...migratedGuest])
+              : this._normalizeAndCapCustomGraphPresets(readRes.data);
+            this.customGraphPresets = nextList;
+            this._pendingMigratedGuestGraphs = null;
+            try {
+              localStorage.setItem(this._getCustomGraphsStorageKey(curUid), JSON.stringify(this.customGraphPresets));
+            } catch (_) { }
+            this._writeCustomGraphsLocalMeta(curUid, {
+              updatedAt: readRes.remoteUpdatedAtMs || Date.now(),
+              dirtyOffline: false
+            });
+            this._hydratedCustomGraphsUid = curUid;
+            this._lastSyncedCustomGraphsUid = curUid;
+            if (migratedGuest) {
+              await this._uploadCustomGraphsToFirestoreNow(curUid, this.customGraphPresets, Date.now());
+            }
+            this.renderFuncList();
+            return;
+          }
+
+          if (readRes.status === 'not_found') {
+            // 주 계정 문서(cg_user_<curUid>)가 확정 404일 때만 동일 이메일 교차 로그인(acct_ ⇄ id_) 문서를 조회해 승계
+            let siblingStatus = 'not_found';
+            let siblingData = null;
+            if (this.cloudUser.email && this.cloudUser.email.includes('@')) {
               const altProvider = this.cloudUser.authProvider === 'google' ? 'email' : 'google';
               const siblingUid = this._getCanonicalUidForEmail(this.cloudUser.email, '', altProvider);
-              if (siblingUid && siblingUid !== this.cloudUser.uid) {
-                remoteList = await this._firestoreRestReadDoc('user_custom_graphs', `cg_user_${siblingUid}`, true);
+              if (siblingUid && siblingUid !== curUid) {
+                const sibRes = await this._readCustomGraphsDocStatus(`cg_user_${siblingUid}`);
+                if (!this.cloudUser || this.cloudUser.uid !== curUid) return;
+                if ((this._customGraphsLocalEditSeq || 0) !== startEditSeq) return;
+                siblingStatus = sibRes.status;
+                if (sibRes.status === 'ok' && Array.isArray(sibRes.data)) {
+                  siblingData = sibRes.data;
+                }
               }
             }
-            if (Array.isArray(remoteList) && remoteList.length > 0) {
-              this.customGraphPresets = this._normalizeAndCapCustomGraphPresets([
-                ...remoteList,
+
+            if (siblingData !== null) {
+              const mergedSibling = this._normalizeAndCapCustomGraphPresets([
+                ...siblingData,
                 ...(this.customGraphPresets || [])
               ]);
+              this.customGraphPresets = mergedSibling;
+              this._pendingMigratedGuestGraphs = null;
               try {
-                localStorage.setItem(this._getCustomGraphsStorageKey(), JSON.stringify(this.customGraphPresets));
-              } catch (e) { }
+                localStorage.setItem(this._getCustomGraphsStorageKey(curUid), JSON.stringify(this.customGraphPresets));
+              } catch (_) { }
+              this._hydratedCustomGraphsUid = curUid;
+              this._lastSyncedCustomGraphsUid = curUid;
+              await this._uploadCustomGraphsToFirestoreNow(curUid, this.customGraphPresets, Date.now());
+              this.renderFuncList();
+              return;
             }
+
+            if (siblingStatus !== 'not_found') {
+              // 일시적 통신/토큰 장애 시 로컬 캐시를 보존하고 다음 포커스/온라인 복구 시 재시도
+              return;
+            }
+
+            // 완전 신규 계정(404 확정): 로컬/게스트 승계 프리셋이 있으면 클라우드에 초기 시드 등록
+            this._pendingMigratedGuestGraphs = null;
+            this._hydratedCustomGraphsUid = curUid;
+            this._lastSyncedCustomGraphsUid = curUid;
+            if (Array.isArray(this.customGraphPresets) && this.customGraphPresets.length > 0) {
+              await this._uploadCustomGraphsToFirestoreNow(curUid, this.customGraphPresets, Date.now());
+            } else {
+              this._writeCustomGraphsLocalMeta(curUid, { updatedAt: Date.now(), dirtyOffline: false });
+            }
+            this.renderFuncList();
+            return;
           }
-        } catch (e) { }
-      }
-      this.renderFuncList();
+          // no_token / error 상태일 때는 로컬 데이터를 건드리지 않고 _hydratedCustomGraphsUid를 비워두어 자동 재시도 보장
+        } catch (_) {
+        } finally {
+          if (this._inflightCustomGraphsUid === curUid) {
+            this._inflightCustomGraphsUid = null;
+            this._inflightCustomGraphsPromise = null;
+          }
+        }
+      })();
+      this._inflightCustomGraphsPromise = syncPromise;
+      return syncPromise;
     }
 
     _buildSmartCustomGraphName() {
@@ -9194,10 +9825,33 @@
           : [];
         const candidateUids = Array.from(new Set([uid, ...uidVariants, ...emailVariants].filter(Boolean)));
         const folderDocId = `folders_${uid}`;
-        const [remoteFolderDoc, remoteItems] = await Promise.all([
-          this._firestoreRestReadDoc('user_preferences', folderDocId, true).catch(() => null),
+        const readFolderStatusFn = (typeof this._readUserPreferencesDocStatus === 'function')
+          ? (dId) => this._readUserPreferencesDocStatus(dId).catch(() => ({ status: 'error', data: null }))
+          : async (dId) => {
+            const d = await this._firestoreRestReadDoc('user_preferences', dId, true).catch(() => null);
+            return d ? { status: 'ok', data: d } : { status: 'error', data: null };
+          };
+        const [primaryFolderRes, remoteItems] = await Promise.all([
+          readFolderStatusFn(folderDocId),
           this._firestoreRestQueryByOwner('user_library', candidateUids, 500).catch(() => null)
         ]);
+        let resolvedFolderDoc = (primaryFolderRes && primaryFolderRes.status === 'ok' && primaryFolderRes.data)
+          ? primaryFolderRes.data
+          : null;
+        let migratedFoldersFromSibling = false;
+        if (!resolvedFolderDoc && primaryFolderRes && primaryFolderRes.status === 'not_found') {
+          // 주 계정 폴더 문서(folders_<uid>)가 확정 404일 때 동일 이메일 교차 로그인(Google acct_ ⇄ 이메일 id_) 폴더 트리를 안전 승계!
+          const siblingCandidates = candidateUids.filter(cUid => cUid && cUid !== uid);
+          for (let sIdx = 0; sIdx < siblingCandidates.length; sIdx++) {
+            const sibUid = siblingCandidates[sIdx];
+            const sibRes = await readFolderStatusFn(`folders_${sibUid}`);
+            if (sibRes && sibRes.status === 'ok' && sibRes.data && Array.isArray(sibRes.data.folders)) {
+              resolvedFolderDoc = sibRes.data;
+              migratedFoldersFromSibling = true;
+              break;
+            }
+          }
+        }
 
         // 1. 수업 파일 목록 및 파일별 폴더 위치(folder)·제목(title) 클라우드 최신본 우선 반영
         if (Array.isArray(remoteItems)) {
@@ -9248,9 +9902,31 @@
           this._saveMyLibraryCacheForCurrentUser();
         }
 
-        // 2. 폴더 트리 클라우드 동기화
-        if (remoteFolderDoc && Array.isArray(remoteFolderDoc.folders)) {
-          this._saveCloudFoldersList(remoteFolderDoc.folders, false);
+        // 2. 폴더 트리 클라우드 동기화 (교차 로그인 승계 시 현재 UID 문서에도 즉시 시드 등록)
+        if (resolvedFolderDoc && Array.isArray(resolvedFolderDoc.folders)) {
+          if (migratedFoldersFromSibling) {
+            let localExplicit = [];
+            try {
+              const fKey = this._getCloudFoldersStorageKey();
+              const fSaved = fKey ? localStorage.getItem(fKey) : null;
+              if (fSaved) {
+                const fParsed = JSON.parse(fSaved);
+                if (Array.isArray(fParsed)) localExplicit = fParsed;
+              }
+            } catch (_) { }
+            this._saveCloudFoldersList([...resolvedFolderDoc.folders, ...localExplicit], true);
+          } else {
+            this._saveCloudFoldersList(resolvedFolderDoc.folders, false);
+          }
+        } else if (primaryFolderRes && primaryFolderRes.status === 'not_found') {
+          try {
+            const fKey = this._getCloudFoldersStorageKey();
+            const fSaved = fKey ? localStorage.getItem(fKey) : null;
+            const fParsed = fSaved ? JSON.parse(fSaved) : null;
+            if (Array.isArray(fParsed) && fParsed.length > 0) {
+              this._saveCloudFoldersList(fParsed, true);
+            }
+          } catch (_) { }
         }
 
         this.syncExportCloudFolderSelect();
@@ -12286,8 +12962,12 @@
       try {
         localStorage.setItem(this._getPromoBannerStorageKey(), JSON.stringify(clean));
       } catch (e) { }
-      if (syncCloud && typeof this.scheduleSaveUserPreferences === 'function') {
-        this.scheduleSaveUserPreferences();
+      if (syncCloud) {
+        if (typeof this.flushSaveUserPreferencesNow === 'function') {
+          this.flushSaveUserPreferencesNow();
+        } else if (typeof this.scheduleSaveUserPreferences === 'function') {
+          this.scheduleSaveUserPreferences();
+        }
       }
       if (typeof this.syncPromoBannerEntryButtonsUI === 'function') {
         this.syncPromoBannerEntryButtonsUI();
