@@ -1608,6 +1608,7 @@
       const toggleExtraMin = () => {
         if (el._lastToggleTime && performance.now() - el._lastToggleTime < 75) return;
         el._lastToggleTime = performance.now();
+        el._stealthWakeTapStamp = null;
         const wasMin = el.classList.contains('minimized');
         if (!wasMin) {
           const curW = parseFloat(el.style.width) || Math.round(el.getBoundingClientRect().width);
@@ -1651,7 +1652,7 @@
       }
 
       // 1. 제목 및 카드 몸통 드래그 이동 전용 (접기 버튼은 드래그에서 완벽 분리!)
-      let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
+      let isDragging = false, dragMoved = false, dragStartedOnHeader = false, activeDragPointerId = null, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
       el.addEventListener('pointerdown', (e) => {
         if (e.target.closest('.problem-card-resize-handle')) return;
         if (e.target.closest('.problem-card-actions') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
@@ -1673,6 +1674,8 @@
         e.stopPropagation();
         isDragging = true;
         dragMoved = false;
+        dragStartedOnHeader = Boolean(e.target && e.target.closest && e.target.closest('.problem-card-header'));
+        activeDragPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
         startX = e.clientX;
         startY = e.clientY;
         if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
@@ -1696,6 +1699,9 @@
       el._cancelCardDrag = () => {
         isDragging = false;
         dragMoved = false;
+        dragStartedOnHeader = false;
+        activeDragPointerId = null;
+        el._stealthWakeTapStamp = null;
         this._isDraggingOrResizingAnyCard = false;
         el.classList.remove('is-dragging-card');
         delete el._dragDomLeft;
@@ -1708,6 +1714,7 @@
       };
       window.addEventListener('pointermove', (e) => {
         if (!isDragging || el.isConnected === false) return;
+        if (activeDragPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeDragPointerId) return;
         if (e.pointerType === 'pen') {
           this._lastPenActiveTime = Date.now();
         }
@@ -1739,11 +1746,18 @@
           this._recordAudioWorkspaceStateIfNeeded(false);
         }
       });
-      const stopDrag = () => {
+      const stopDrag = (e) => {
         if (isDragging) {
+          if (e && activeDragPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeDragPointerId) return;
           const wasMoved = dragMoved;
+          const startedOnHeader = dragStartedOnHeader;
+          const isCancel = Boolean(e && e.type === 'pointercancel');
+          const tapX = (e && typeof e.clientX === 'number') ? e.clientX : startX;
+          const tapY = (e && typeof e.clientY === 'number') ? e.clientY : startY;
           isDragging = false;
           dragMoved = false;
+          dragStartedOnHeader = false;
+          activeDragPointerId = null;
           this._isDraggingOrResizingAnyCard = false;
           el.classList.remove('is-dragging-card');
           delete el._dragDomLeft;
@@ -1755,15 +1769,11 @@
           this.updateProblemCardPosition(true, el);
           if (wasMoved) {
             el._justDraggedTime = performance.now();
-            if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
-              this.scheduleProblemCardStealth(el, 3000);
-            }
-          } else if (el.classList.contains('pip-locked-mode')) {
-            if (el.classList.contains('pip-stealth-locked')) {
-              this.wakeUpProblemCardStealth(el, true);
-            } else {
-              this.scheduleProblemCardStealth(el, 3000);
-            }
+          }
+          if (!isCancel) {
+            this._handleProblemCardPointerEndStealthOrDoubleTap(el, tapX, tapY, wasMoved, startedOnHeader, e);
+          } else {
+            el._stealthWakeTapStamp = null;
           }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
@@ -1824,6 +1834,7 @@
           resizeMoved = false;
           activeResizePointerId = null;
           activeResizePointerType = null;
+          el._stealthWakeTapStamp = null;
           this._isDraggingOrResizingAnyCard = false;
           el.style.width = `${Math.round(rStartW)}px`;
           const extraCvs = el.querySelector('.problem-card-canvas');
@@ -1899,6 +1910,9 @@
             applyExtraProbResizeStep(ev);
           }
           const wasResizeMoved = resizeMoved;
+          const isCancel = Boolean(e && e.type === 'pointercancel');
+          const tapX = (e && typeof e.clientX === 'number') ? e.clientX : rStartX;
+          const tapY = (e && typeof e.clientY === 'number') ? e.clientY : rStartY;
           isResizing = false;
           resizeMoved = false;
           activeResizePointerId = null;
@@ -1912,12 +1926,10 @@
           if (typeof el._syncCardLaserSize === 'function') {
             el._syncCardLaserSize();
           }
-          if (el.classList.contains('pip-locked-mode')) {
-            if (!wasResizeMoved && el.classList.contains('pip-stealth-locked')) {
-              this.wakeUpProblemCardStealth(el, true);
-            } else if (!el.classList.contains('pip-stealth-locked')) {
-              this.scheduleProblemCardStealth(el, 3000);
-            }
+          if (!isCancel) {
+            this._handleProblemCardPointerEndStealthOrDoubleTap(el, tapX, tapY, wasResizeMoved, false, e);
+          } else {
+            el._stealthWakeTapStamp = null;
           }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
@@ -2042,6 +2054,7 @@
       const cardW = initialWidth || 520;
 
       if (widget) {
+        widget._stealthWakeTapStamp = null;
         widget.classList.remove('minimized', 'card-ink-active', 'card-laser-active');
         const pInkBtn = document.getElementById('btnProblemCardLaser');
         if (pInkBtn) pInkBtn.classList.remove('active');
@@ -2433,6 +2446,8 @@
       if (widget) {
         let isDragging = false;
         let dragMoved = false;
+        let dragStartedOnHeader = false;
+        let activeDragPointerId = null;
         let startX = 0, startY = 0;
         let initialBaseX = 72, initialBaseY = 18;
 
@@ -2458,6 +2473,8 @@
           e.stopPropagation();
           isDragging = true;
           dragMoved = false;
+          dragStartedOnHeader = Boolean(e.target && e.target.closest && e.target.closest('.problem-card-header'));
+          activeDragPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
           startX = e.clientX;
           startY = e.clientY;
           if (widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
@@ -2482,6 +2499,9 @@
         widget._cancelCardDrag = () => {
           isDragging = false;
           dragMoved = false;
+          dragStartedOnHeader = false;
+          activeDragPointerId = null;
+          widget._stealthWakeTapStamp = null;
           this._isDraggingOrResizingAnyCard = false;
           widget.classList.remove('is-dragging-card');
           delete widget._dragDomLeft;
@@ -2494,6 +2514,7 @@
         };
         window.addEventListener('pointermove', (e) => {
           if (!isDragging) return;
+          if (activeDragPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeDragPointerId) return;
           if (e.pointerType === 'pen') {
             this._lastPenActiveTime = Date.now();
           }
@@ -2526,11 +2547,18 @@
           }
         });
 
-        const stopDrag = () => {
+        const stopDrag = (e) => {
           if (isDragging) {
+            if (e && activeDragPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeDragPointerId) return;
             const wasMoved = dragMoved;
+            const startedOnHeader = dragStartedOnHeader;
+            const isCancel = Boolean(e && e.type === 'pointercancel');
+            const tapX = (e && typeof e.clientX === 'number') ? e.clientX : startX;
+            const tapY = (e && typeof e.clientY === 'number') ? e.clientY : startY;
             isDragging = false;
             dragMoved = false;
+            dragStartedOnHeader = false;
+            activeDragPointerId = null;
             this._isDraggingOrResizingAnyCard = false;
             widget.classList.remove('is-dragging-card');
             delete widget._dragDomLeft;
@@ -2543,15 +2571,11 @@
             this.syncProblemCardRectFromWidget();
             if (wasMoved) {
               widget._justDraggedTime = performance.now();
-              if (widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
-                this.scheduleProblemCardStealth(widget, 3000);
-              }
-            } else if (widget.classList.contains('pip-locked-mode')) {
-              if (widget.classList.contains('pip-stealth-locked')) {
-                this.wakeUpProblemCardStealth(widget, true);
-              } else {
-                this.scheduleProblemCardStealth(widget, 3000);
-              }
+            }
+            if (!isCancel) {
+              this._handleProblemCardPointerEndStealthOrDoubleTap(widget, tapX, tapY, wasMoved, startedOnHeader, e);
+            } else {
+              widget._stealthWakeTapStamp = null;
             }
             if (this.isAudioRecording) {
               this._recordAudioWorkspaceStateIfNeeded(true);
@@ -2633,6 +2657,7 @@
             resizeMoved = false;
             activeResizePointerId = null;
             activeResizePointerType = null;
+            widget._stealthWakeTapStamp = null;
             this._isDraggingOrResizingAnyCard = false;
             widget.style.width = `${Math.round(startW)}px`;
             this.syncProblemCardRectFromWidget();
@@ -2706,17 +2731,20 @@
             applyPrimaryProbResizeStep(ev);
           }
           const wasResizeMoved = resizeMoved;
+          const isCancel = Boolean(e && e.type === 'pointercancel');
+          const tapX = (e && typeof e.clientX === 'number') ? e.clientX : startX;
+          const tapY = (e && typeof e.clientY === 'number') ? e.clientY : startY;
           isResizing = false;
           resizeMoved = false;
           activeResizePointerId = null;
           activeResizePointerType = null;
           this._isDraggingOrResizingAnyCard = false;
           this.syncProblemCardRectFromWidget();
-          if (widget && widget.classList.contains('pip-locked-mode')) {
-            if (!wasResizeMoved && widget.classList.contains('pip-stealth-locked')) {
-              this.wakeUpProblemCardStealth(widget, true);
-            } else if (!widget.classList.contains('pip-stealth-locked')) {
-              this.scheduleProblemCardStealth(widget, 3000);
+          if (widget) {
+            if (!isCancel) {
+              this._handleProblemCardPointerEndStealthOrDoubleTap(widget, tapX, tapY, wasResizeMoved, false, e);
+            } else {
+              widget._stealthWakeTapStamp = null;
             }
           }
           if (this.isAudioRecording) {
@@ -2781,6 +2809,7 @@
       if (!widget) return;
       if (widget._lastToggleTime && performance.now() - widget._lastToggleTime < 75) return;
       widget._lastToggleTime = performance.now();
+      widget._stealthWakeTapStamp = null;
       const wasMin = widget.classList.contains('minimized');
       if (!wasMin) {
         const curW = parseFloat(widget.style.width) || Math.round(widget.getBoundingClientRect().width);
@@ -2817,6 +2846,7 @@
       }
       const widget = document.getElementById('problemCardWidget');
       if (widget) {
+        widget._stealthWakeTapStamp = null;
         if (this._activePeekCardEl === widget) {
           this._activePeekCardEl = null;
         }
@@ -3473,12 +3503,15 @@
       }
 
       // 🌟 [대표님 킬러 기획: 카드 상단 [✒️] 버튼 = '카드 몸통 드래그 이동 ⇄ 카드 위 밑줄·필기 고정' 토글!]
-      const handleCardInkBtnToggle = (e) => {
+      const handleCardInkBtnToggle = (e, forceState = null) => {
         if (e) {
           e.preventDefault();
           e.stopPropagation();
         }
-        const nextInkActive = !cardWidgetEl.classList.contains('card-ink-active');
+        const curInkActive = cardWidgetEl.classList.contains('card-ink-active');
+        const nextInkActive = (typeof forceState === 'boolean') ? forceState : !curInkActive;
+        cardWidgetEl._stealthWakeTapStamp = null;
+        if (nextInkActive === curInkActive) return;
         cardWidgetEl.classList.toggle('card-ink-active', nextInkActive);
         laserBtn.classList.toggle('active', nextInkActive);
 
@@ -3551,6 +3584,9 @@
         }
         handleCardInkBtnToggle(e);
       });
+      cardWidgetEl._setCardInkActive = (nextState) => {
+        handleCardInkBtnToggle(null, Boolean(nextState));
+      };
 
       const isLaserActiveOnCard = () => Boolean((this.isInkMode && this.activeInkTool === 'laser') || state.active);
 
@@ -5241,6 +5277,7 @@
         if (widget) {
           this.graphInkStrokes = [];
           this.renderGraphCardCanvas();
+          widget._stealthWakeTapStamp = null;
           widget.classList.remove('minimized', 'card-ink-active', 'card-laser-active');
           const gInkBtn = document.getElementById('btnGraphCardLaser');
           if (gInkBtn) gInkBtn.classList.remove('active');
@@ -5503,6 +5540,7 @@
       const toggleExtraGraphMin = () => {
         if (el._lastToggleTime && performance.now() - el._lastToggleTime < 75) return;
         el._lastToggleTime = performance.now();
+        el._stealthWakeTapStamp = null;
         const wasMin = el.classList.contains('minimized');
         if (!wasMin) {
           const curW = parseFloat(el.style.width) || Math.round(el.getBoundingClientRect().width);
@@ -5540,7 +5578,7 @@
       });
 
       // 제목 및 몸통 드래그 이동 전용 (삼각형 접기 원버튼과 완벽 분리!)
-      let isDragging = false, dragMoved = false, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
+      let isDragging = false, dragMoved = false, dragStartedOnHeader = false, activeDragPointerId = null, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
       el.addEventListener('pointerdown', (e) => {
         if (e.target.closest('.problem-card-resize-handle')) return;
         if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
@@ -5562,6 +5600,8 @@
         e.stopPropagation();
         isDragging = true;
         dragMoved = false;
+        dragStartedOnHeader = Boolean(e.target && e.target.closest && e.target.closest('.problem-card-header'));
+        activeDragPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
         startX = e.clientX;
         startY = e.clientY;
         if (el.classList.contains('pip-locked-mode') && !el.classList.contains('pip-stealth-locked')) {
@@ -5585,6 +5625,9 @@
       el._cancelCardDrag = () => {
         isDragging = false;
         dragMoved = false;
+        dragStartedOnHeader = false;
+        activeDragPointerId = null;
+        el._stealthWakeTapStamp = null;
         this._isDraggingOrResizingAnyCard = false;
         el.classList.remove('is-dragging-card');
         delete el._dragDomLeft;
@@ -5597,6 +5640,7 @@
       };
       window.addEventListener('pointermove', (e) => {
         if (!isDragging || el.isConnected === false) return;
+        if (activeDragPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeDragPointerId) return;
         if (e.pointerType === 'pen') {
           this._lastPenActiveTime = Date.now();
         }
@@ -5630,12 +5674,16 @@
       });
       const stopDrag = (e) => {
         if (isDragging) {
+          if (e && activeDragPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeDragPointerId) return;
           const wasMoved = dragMoved;
+          const startedOnHeader = dragStartedOnHeader;
           const isCancel = Boolean(e && e.type === 'pointercancel');
           const tapX = (e && typeof e.clientX === 'number') ? e.clientX : startX;
           const tapY = (e && typeof e.clientY === 'number') ? e.clientY : startY;
           isDragging = false;
           dragMoved = false;
+          dragStartedOnHeader = false;
+          activeDragPointerId = null;
           this._isDraggingOrResizingAnyCard = false;
           el.classList.remove('is-dragging-card');
           delete el._dragDomLeft;
@@ -5649,7 +5697,7 @@
             el._justDraggedTime = performance.now();
           }
           if (!isCancel) {
-            this._handlePipGraphCardPointerEndStealthOrDoubleTap(cardItem, el, tapX, tapY, wasMoved);
+            this._handlePipGraphCardPointerEndStealthOrDoubleTap(cardItem, el, tapX, tapY, wasMoved, startedOnHeader, e);
           } else {
             el._stealthWakeTapStamp = null;
           }
@@ -5686,6 +5734,7 @@
           resizeStartState = null;
           activeResizePointerId = null;
           activeResizePointerType = null;
+          el._stealthWakeTapStamp = null;
           this._isDraggingOrResizingAnyCard = false;
           this.finalizePipCardResize(cardItem, prevStart, true);
         };
@@ -5768,7 +5817,7 @@
           const tapX = (e && typeof e.clientX === 'number') ? e.clientX : (finishedStart ? finishedStart.startX : 0);
           const tapY = (e && typeof e.clientY === 'number') ? e.clientY : (finishedStart ? finishedStart.startY : 0);
           if (!isCancel) {
-            this._handlePipGraphCardPointerEndStealthOrDoubleTap(cardItem, el, tapX, tapY, wasResizeMoved);
+            this._handlePipGraphCardPointerEndStealthOrDoubleTap(cardItem, el, tapX, tapY, wasResizeMoved, false, e);
           } else {
             el._stealthWakeTapStamp = null;
           }
@@ -6508,6 +6557,7 @@
         if (!widget) return;
         if (widget._lastToggleTime && performance.now() - widget._lastToggleTime < 75) return;
         widget._lastToggleTime = performance.now();
+        widget._stealthWakeTapStamp = null;
         const wasMin = widget.classList.contains('minimized');
         if (!wasMin) {
           const curW = parseFloat(widget.style.width) || Math.round(widget.getBoundingClientRect().width);
@@ -6537,6 +6587,8 @@
       if (widget) {
         let isDragging = false;
         let dragMoved = false;
+        let dragStartedOnHeader = false;
+        let activeDragPointerId = null;
         let startX = 0, startY = 0;
         let initialBaseX = 580, initialBaseY = 68;
 
@@ -6561,6 +6613,8 @@
           e.stopPropagation();
           isDragging = true;
           dragMoved = false;
+          dragStartedOnHeader = Boolean(e.target && e.target.closest && e.target.closest('.problem-card-header'));
+          activeDragPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
           startX = e.clientX;
           startY = e.clientY;
           if (widget.classList.contains('pip-locked-mode') && !widget.classList.contains('pip-stealth-locked')) {
@@ -6585,6 +6639,9 @@
         widget._cancelCardDrag = () => {
           isDragging = false;
           dragMoved = false;
+          dragStartedOnHeader = false;
+          activeDragPointerId = null;
+          widget._stealthWakeTapStamp = null;
           this._isDraggingOrResizingAnyCard = false;
           widget.classList.remove('is-dragging-card');
           delete widget._dragDomLeft;
@@ -6597,6 +6654,7 @@
         };
         window.addEventListener('pointermove', (e) => {
           if (!isDragging) return;
+          if (activeDragPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeDragPointerId) return;
           if (e.pointerType === 'pen') {
             this._lastPenActiveTime = Date.now();
           }
@@ -6631,12 +6689,16 @@
 
         const stopDrag = (e) => {
           if (isDragging) {
+            if (e && activeDragPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeDragPointerId) return;
             const wasMoved = dragMoved;
+            const startedOnHeader = dragStartedOnHeader;
             const isCancel = Boolean(e && e.type === 'pointercancel');
             const tapX = (e && typeof e.clientX === 'number') ? e.clientX : startX;
             const tapY = (e && typeof e.clientY === 'number') ? e.clientY : startY;
             isDragging = false;
             dragMoved = false;
+            dragStartedOnHeader = false;
+            activeDragPointerId = null;
             this._isDraggingOrResizingAnyCard = false;
             widget.classList.remove('is-dragging-card');
             delete widget._dragDomLeft;
@@ -6651,7 +6713,7 @@
               widget._justDraggedTime = performance.now();
             }
             if (!isCancel) {
-              this._handlePipGraphCardPointerEndStealthOrDoubleTap('primary', widget, tapX, tapY, wasMoved);
+              this._handlePipGraphCardPointerEndStealthOrDoubleTap('primary', widget, tapX, tapY, wasMoved, startedOnHeader, e);
             } else {
               widget._stealthWakeTapStamp = null;
             }
@@ -6688,6 +6750,7 @@
             resizeStartState = null;
             activeResizePointerId = null;
             activeResizePointerType = null;
+            widget._stealthWakeTapStamp = null;
             this._isDraggingOrResizingAnyCard = false;
             this.finalizePipCardResize('primary', prevStart, true);
           };
@@ -6773,7 +6836,7 @@
           const tapX = (e && typeof e.clientX === 'number') ? e.clientX : (finishedStart ? finishedStart.startX : 0);
           const tapY = (e && typeof e.clientY === 'number') ? e.clientY : (finishedStart ? finishedStart.startY : 0);
           if (!isCancel) {
-            this._handlePipGraphCardPointerEndStealthOrDoubleTap('primary', widget, tapX, tapY, wasResizeMoved);
+            this._handlePipGraphCardPointerEndStealthOrDoubleTap('primary', widget, tapX, tapY, wasResizeMoved, false, e);
           } else if (widget) {
             widget._stealthWakeTapStamp = null;
           }
@@ -6809,6 +6872,7 @@
           this.graphCardPdfAnchor = null;
           widget._pdfAnchor = null;
           widget._pipSnapObj = null;
+          widget._stealthWakeTapStamp = null;
           widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked', 'card-ink-active');
           if (this._pipTargetCard === 'primary') {
             document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
@@ -7746,6 +7810,7 @@
 
     setProblemCardLockedByWidget(widgetEl, locked = true, showToast = false) {
       if (!widgetEl) return;
+      widgetEl._stealthWakeTapStamp = null;
       // 문제 카드는 합성함수 보드 카드와 동일하게 상시 이동 모드 + 3초 자동 스텔스로 일원화 (필기 ON 시에만 메뉴 유지)
       widgetEl.classList.add('pip-locked-mode');
       if (widgetEl.classList.contains('card-ink-active') || widgetEl.classList.contains('minimized')) {
@@ -7808,7 +7873,120 @@
       }, delayMs);
     }
 
-    _handlePipGraphCardPointerEndStealthOrDoubleTap(cardRef, widget, tapX, tapY, wasMoved) {
+    _isCardDoubleTapBlockedByGlobalState() {
+      if (this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive) return true;
+      if (this.isGraphSnapMode || this.isPdfToGraphCropMode) return true;
+      if (this.isInkMode && (this.activeInkTool === 'laser' || this.activeInkTool === 'sticker')) return true;
+      return false;
+    }
+
+    _canTriggerCardDoubleTapInkMode(widgetEl) {
+      if (!widgetEl || widgetEl.style.display === 'none') return false;
+      if (this._isCardDoubleTapBlockedByGlobalState()) return false;
+      if (!widgetEl.classList.contains('pip-locked-mode')) return false;
+      if (widgetEl.classList.contains('card-ink-active') || widgetEl.classList.contains('minimized')) return false;
+      if (typeof widgetEl._setCardInkActive !== 'function') return false;
+      return true;
+    }
+
+    _activateCardInkModeFromDoubleTap(widgetEl, tapX, tapY, pointerEv = null) {
+      if (!this._canTriggerCardDoubleTapInkMode(widgetEl)) return false;
+      widgetEl._stealthWakeTapStamp = null;
+      widgetEl._setCardInkActive(true);
+      if (this.isInkMode && this.activeInkTool === 'sticker') {
+        this.setActiveInkTool('pen');
+      }
+      if (this._lastPointerEvent) {
+        delete this._lastPointerEvent._overMenuChecked;
+        delete this._lastPointerEvent._overMenuResult;
+      }
+      const pType = (pointerEv && pointerEv.pointerType)
+        ? pointerEv.pointerType
+        : ((this._lastPointerEvent && this._lastPointerEvent.pointerType) || 'mouse');
+      if (Number.isFinite(tapX) && Number.isFinite(tapY)) {
+        const hitTarget = (typeof document !== 'undefined' && typeof document.elementFromPoint === 'function')
+          ? document.elementFromPoint(tapX, tapY)
+          : null;
+        const synthEv = {
+          clientX: tapX,
+          clientY: tapY,
+          pointerType: pType,
+          buttons: 0,
+          button: 0,
+          target: hitTarget
+        };
+        this._lastPointerEvent = synthEv;
+        if (pType !== 'touch' && this.canvas && typeof this.updateStylusPenPosition === 'function') {
+          const cRect = this.canvasRect || (typeof this.updateCanvasRect === 'function' ? this.updateCanvasRect() : this.canvas.getBoundingClientRect());
+          const relX = cRect ? (tapX - cRect.left) : tapX;
+          const relY = cRect ? (tapY - cRect.top) : tapY;
+          this.updateStylusPenPosition(relX, relY, synthEv);
+        }
+      }
+      if (typeof this.updateInkCursor === 'function') {
+        this.updateInkCursor();
+      }
+      return true;
+    }
+
+    _handleProblemCardPointerEndStealthOrDoubleTap(widget, tapX, tapY, wasMoved, startedOnHeader = false, pointerEv = null) {
+      if (!widget || !widget.classList.contains('pip-locked-mode')) {
+        if (widget) widget._stealthWakeTapStamp = null;
+        return;
+      }
+      if (wasMoved) {
+        widget._stealthWakeTapStamp = null;
+        if (!widget.classList.contains('pip-stealth-locked')) {
+          this.scheduleProblemCardStealth(widget, 3000);
+        }
+        return;
+      }
+      const now = performance.now();
+      const canDoubleTapInk = Boolean(!startedOnHeader && this._canTriggerCardDoubleTapInkMode(widget));
+      if (widget.classList.contains('pip-stealth-locked')) {
+        widget._stealthWakeTapStamp = canDoubleTapInk
+          ? { ts: now, x: Number.isFinite(tapX) ? tapX : 0, y: Number.isFinite(tapY) ? tapY : 0 }
+          : null;
+        this.wakeUpProblemCardStealth(widget, true);
+        return;
+      }
+      const prevStamp = widget._stealthWakeTapStamp;
+      if (
+        canDoubleTapInk &&
+        prevStamp &&
+        (now - prevStamp.ts <= 360) &&
+        (Math.hypot((Number.isFinite(tapX) ? tapX : prevStamp.x) - prevStamp.x, (Number.isFinite(tapY) ? tapY : prevStamp.y) - prevStamp.y) <= 32)
+      ) {
+        widget._stealthWakeTapStamp = null;
+        this._activateCardInkModeFromDoubleTap(widget, tapX, tapY, pointerEv);
+        return;
+      }
+      widget._stealthWakeTapStamp = canDoubleTapInk
+        ? { ts: now, x: Number.isFinite(tapX) ? tapX : 0, y: Number.isFinite(tapY) ? tapY : 0 }
+        : null;
+      this.scheduleProblemCardStealth(widget, 3000);
+    }
+
+    _deactivateCardInkModeForGraphEdit(widget) {
+      if (!widget) return;
+      widget._stealthWakeTapStamp = null;
+      if (!widget.classList.contains('card-ink-active') && !widget.classList.contains('card-laser-active')) return;
+      widget.classList.remove('card-ink-active', 'card-laser-active');
+      const laserBtn = widget.querySelector('.btn-card-laser');
+      if (laserBtn) laserBtn.classList.remove('active');
+      if (this._activeCardLasso && this._activeCardLasso.widgetEl === widget && typeof this.clearCardLassoSelection === 'function') {
+        this.clearCardLassoSelection();
+      }
+      if (this._lastPointerEvent) {
+        delete this._lastPointerEvent._overMenuChecked;
+        delete this._lastPointerEvent._overMenuResult;
+      }
+      if (typeof this.updateInkCursor === 'function') {
+        this.updateInkCursor();
+      }
+    }
+
+    _handlePipGraphCardPointerEndStealthOrDoubleTap(cardRef, widget, tapX, tapY, wasMoved, startedOnHeader = false, pointerEv = null) {
       if (!widget || !widget.classList.contains('pip-locked-mode')) {
         if (widget) widget._stealthWakeTapStamp = null;
         return;
@@ -7820,39 +7998,35 @@
         }
         return;
       }
+      const now = performance.now();
       const snap = this._getMutablePipCardSnapshot(cardRef);
-      const canDoubleTapUnlock = Boolean(
-        snap &&
-        snap.isPipLocked &&
-        !snap.isNAxisStudioCard &&
-        !widget.classList.contains('card-ink-active') &&
-        !widget.classList.contains('minimized')
+      const isCardLocked = Boolean(!snap || snap.isNAxisStudioCard || snap.isPipLocked);
+      const canDoubleTapInk = Boolean(
+        !startedOnHeader &&
+        isCardLocked &&
+        this._canTriggerCardDoubleTapInkMode(widget)
       );
       if (widget.classList.contains('pip-stealth-locked')) {
-        if (canDoubleTapUnlock) {
-          widget._stealthWakeTapStamp = {
-            ts: performance.now(),
-            x: Number.isFinite(tapX) ? tapX : 0,
-            y: Number.isFinite(tapY) ? tapY : 0
-          };
-        } else {
-          widget._stealthWakeTapStamp = null;
-        }
+        widget._stealthWakeTapStamp = canDoubleTapInk
+          ? { ts: now, x: Number.isFinite(tapX) ? tapX : 0, y: Number.isFinite(tapY) ? tapY : 0 }
+          : null;
         this.wakeUpPipGraphCardStealth(cardRef, true);
         return;
       }
       const prevStamp = widget._stealthWakeTapStamp;
-      widget._stealthWakeTapStamp = null;
       if (
-        canDoubleTapUnlock &&
+        canDoubleTapInk &&
         prevStamp &&
-        (performance.now() - prevStamp.ts <= 360) &&
+        (now - prevStamp.ts <= 360) &&
         (Math.hypot((Number.isFinite(tapX) ? tapX : prevStamp.x) - prevStamp.x, (Number.isFinite(tapY) ? tapY : prevStamp.y) - prevStamp.y) <= 32)
       ) {
-        this._pushWorkspaceUndoSnapshot('↺ 그래프 카드 잠금 상태로 복원되었습니다', '↻ 그래프 카드 잠금 해제 다시 실행됨');
-        this.setPipCardLocked(cardRef, false, true);
+        widget._stealthWakeTapStamp = null;
+        this._activateCardInkModeFromDoubleTap(widget, tapX, tapY, pointerEv);
         return;
       }
+      widget._stealthWakeTapStamp = canDoubleTapInk
+        ? { ts: now, x: Number.isFinite(tapX) ? tapX : 0, y: Number.isFinite(tapY) ? tapY : 0 }
+        : null;
       this.schedulePipGraphCardStealth(cardRef, 3000);
     }
 
@@ -7886,6 +8060,7 @@
       const { widget } = this._getPipCardWidgetAndSnapRaw(cardRef);
       const snap = this._getMutablePipCardSnapshot(cardRef);
       if (!widget || !snap) return;
+      widget._stealthWakeTapStamp = null;
 
       this._ensurePipCardInkMathCoords(cardRef);
       snap.isPipLocked = Boolean(locked);
@@ -7910,11 +8085,7 @@
         snap.draggedHandleIdx = null;
         snap._activeSnapHint = null;
         widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked');
-        if (widget.classList.contains('card-ink-active')) {
-          widget.classList.remove('card-ink-active');
-          const laserBtn = widget.querySelector('.btn-card-laser');
-          if (laserBtn) laserBtn.classList.remove('active');
-        }
+        this._deactivateCardInkModeForGraphEdit(widget);
       }
 
       widget._lastPipLockUiSig = '';
@@ -9975,12 +10146,8 @@
           snap.isPipLocked = false;
           snap.isCurveSelected = true;
 
-          if (widget && widget.classList.contains('card-ink-active')) {
-            widget.classList.remove('card-ink-active');
-            const laserBtn = widget.querySelector('.btn-card-laser');
-            if (laserBtn) laserBtn.classList.remove('active');
-          }
           if (widget) {
+            this._deactivateCardInkModeForGraphEdit(widget);
             this.bringCardToFront(widget);
             widget._lastPipLockUiSig = '';
           }
@@ -10143,6 +10310,7 @@
             const { widget } = this._getPipCardWidgetAndSnapRaw(targetCard);
             this.deselectAllPipGraphCards(widget);
             if (widget) {
+              this._deactivateCardInkModeForGraphEdit(widget);
               this.bringCardToFront(widget);
               widget._lastPipLockUiSig = '';
             }
@@ -10393,11 +10561,7 @@
             snap.isPipDropLineMode = true;
             snap._pipDropLineHoverCand = null;
             snap._pipDropLineHoverScissors = null;
-            if (widget.classList.contains('card-ink-active') || widget.classList.contains('card-laser-active')) {
-              widget.classList.remove('card-ink-active', 'card-laser-active');
-              const laserBtn = widget.querySelector('.btn-card-laser');
-              if (laserBtn) laserBtn.classList.remove('active');
-            }
+            this._deactivateCardInkModeForGraphEdit(widget);
             if (this.isInkMode && (this.activeInkTool === 'laser' || this.activeInkTool === 'sticker')) {
               this.setActiveInkTool('pen');
             }
