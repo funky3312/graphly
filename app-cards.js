@@ -1563,6 +1563,9 @@
           <button type="button" class="card-btn btn-card-laser" title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
             <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></span>
           </button>
+          <button type="button" class="card-btn btn-card-stamp" title="현재 문제를 칠판에 영구 박제 후 창 닫기 (무경계 필기 · 취소: 되돌리기 ↺)">
+            <span style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21h14"/><path d="M19 16v-1a2 2 0 0 0-2-2h-2.5a1.5 1.5 0 0 1-1.5-1.5V8a2 2 0 1 0-4 0v3.5A1.5 1.5 0 0 1 7.5 13H5a2 2 0 0 0-2 2v1h16Z"/></svg></span>
+          </button>
           ${restorePageBtnHtml}
           <button class="card-btn btn-card-close btn-extra-close" title="닫기">
             <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
@@ -1962,6 +1965,18 @@
         };
       }
 
+      // 3.8. 스탬프 박제 버튼 (박제 후 창 닫기)
+      const btnExtraStamp = el.querySelector('.btn-card-stamp');
+      if (btnExtraStamp) {
+        btnExtraStamp.addEventListener('pointerdown', (ev) => {
+          ev.stopPropagation();
+        });
+        btnExtraStamp.onclick = (ev) => {
+          ev.stopPropagation();
+          this.stampProblemCardToBoard(cardItem);
+        };
+      }
+
       // 4. 닫기 버튼
       const btnClose = el.querySelector('.btn-extra-close');
       if (btnClose) {
@@ -2174,6 +2189,7 @@
       const btnZoomIn = document.getElementById('btnProblemCardZoomIn');
       const btnZoomOut = document.getElementById('btnProblemCardZoomOut');
       const btnClearInk = document.getElementById('btnProblemCardClearInk');
+      const btnStamp = document.getElementById('btnProblemCardStamp');
 
       if (!widget) return;
 
@@ -2801,6 +2817,17 @@
           this.clearProblemCardInk();
         };
       }
+
+      // 8. 문제 카드 스탬프 영구 박제 버튼 (찰칵 효과 후 창 닫기)
+      if (btnStamp) {
+        btnStamp.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+        });
+        btnStamp.onclick = (e) => {
+          if (e) e.stopPropagation();
+          this.stampProblemCardToBoard('primary');
+        };
+      }
     }
 
     toggleProblemCardMinimize() {
@@ -2836,7 +2863,8 @@
       this.render();
     }
 
-    closeProblemCard() {
+    closeProblemCard(options = null) {
+      const preserveBoardPan = Boolean(options && options.preserveBoardPan);
       const pCanvas = document.getElementById('problemCardCanvas');
       if (pCanvas) {
         this._cancelCardCanvasPendingTasks(pCanvas, true);
@@ -2860,11 +2888,13 @@
         this.problemCardImage = null;
         this.problemCardRect = null;
         this.problemInkStrokes = [];
+        this.problemCardStickers = [];
+        if (typeof widget._renderCardStickers === 'function') widget._renderCardStickers();
         this.compactGraphStage = null;
         this.savedProblemCardViewState = null;
         this.problemCardBaseX = 72;
         this.problemCardBaseY = 18;
-        if (!this.extraProblemCards || this.extraProblemCards.length === 0) {
+        if (!preserveBoardPan && (!this.extraProblemCards || this.extraProblemCards.length === 0)) {
           this.boardPanX = 0;
           this.boardPanY = 0;
         }
@@ -9717,8 +9747,19 @@
       if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
       this.inkStrokes.push(stampStroke);
 
+      const promotedStickers = this._promoteCardStickersToBoardRect(
+        widget,
+        bx,
+        by,
+        bw,
+        bh,
+        isPdfBoard,
+        recElapsed,
+        false
+      );
+
       if (!Array.isArray(this.undoStack)) this.undoStack = [];
-      this.undoStack.push({ type: 'stroke_add', stroke: stampStroke });
+      this.undoStack.push({ type: 'stroke_add', stroke: stampStroke, promotedStickers });
       if (this.undoStack.length > (this.maxHistory || 80)) {
         this.undoStack.shift();
       }
@@ -9748,6 +9789,279 @@
       }
 
       this.showToast('📌 현재 그래프가 캔버스에 스탬프로 박제되었습니다! (취소: 되돌리기 ↺)');
+      return stampStroke;
+    }
+
+    _spawnStampShutterFlashFx(clientRect) {
+      if (typeof document === 'undefined' || !document.body || !clientRect || !(clientRect.width >= 16 && clientRect.height >= 16)) {
+        return;
+      }
+      const fx = document.createElement('div');
+      fx.className = 'stamp-shutter-flash-fx';
+      fx.style.left = `${Math.round(clientRect.left)}px`;
+      fx.style.top = `${Math.round(clientRect.top)}px`;
+      fx.style.width = `${Math.round(clientRect.width)}px`;
+      fx.style.height = `${Math.round(clientRect.height)}px`;
+      document.body.appendChild(fx);
+      const cleanup = () => {
+        if (fx.parentNode) fx.parentNode.removeChild(fx);
+      };
+      fx.addEventListener('animationend', cleanup, { once: true });
+      setTimeout(cleanup, 260);
+    }
+
+    _promoteCardStickersToBoardRect(widgetEl, bx, by, bw, bh, isPdfBoard, recElapsed, fromProblemStamp = false) {
+      if (!widgetEl || typeof this.getCardStickersArray !== 'function') return [];
+      const srcStickers = this.getCardStickersArray(widgetEl);
+      if (!Array.isArray(srcStickers) || srcStickers.length === 0) return [];
+      if (!Array.isArray(this.boardStickers)) this.boardStickers = [];
+      const promoted = [];
+      for (let i = 0; i < srcStickers.length; i++) {
+        const s = srcStickers[i];
+        if (!s || !(s.nw > 0 && s.nh > 0)) continue;
+        const sx1 = bx + (Number(s.nx) || 0) * bw;
+        const sy1 = by + (Number(s.ny) || 0) * bh;
+        const sx2 = sx1 + (Number(s.nw) || 0) * bw;
+        const sy2 = sy1 + (Number(s.nh) || 0) * bh;
+        const p1 = isPdfBoard ? this.screenToMath(sx1, sy1) : this.screenToBoard(sx1, sy1);
+        const p2 = isPdfBoard ? this.screenToMath(sx2, sy2) : this.screenToBoard(sx2, sy2);
+        const newStk = {
+          id: `stk_stamp_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`,
+          target: isPdfBoard ? 'graph' : 'board',
+          onPdfBoard: Boolean(isPdfBoard),
+          x1: p1.x,
+          y1: p1.y,
+          x2: p2.x,
+          y2: p2.y,
+          revealed: Boolean(s.revealed),
+          isStampedCardSticker: true,
+          fromProblemStamp: Boolean(fromProblemStamp)
+        };
+        if (recElapsed !== undefined) {
+          newStk.tStart = recElapsed;
+        }
+        this.boardStickers.push(newStk);
+        promoted.push(newStk);
+      }
+      return promoted;
+    }
+
+    stampProblemCardToBoard(cardRef = 'primary') {
+      if (!cardRef || !this.isGraphCovered || !this.canvas) return null;
+      const isPrimary = (cardRef === 'primary');
+      const widget = isPrimary ? document.getElementById('problemCardWidget') : (cardRef && cardRef.el);
+      if (!widget || widget.style.display === 'none' || widget.classList.contains('graph-card-widget')) {
+        return null;
+      }
+      if (
+        widget.classList.contains('minimized') ||
+        (isPrimary && this.isProblemCardMinimized) ||
+        (!isPrimary && cardRef.isMin)
+      ) {
+        this.showToast('ℹ️ 접힌 문제 카드를 먼저 펼친 뒤 스탬프를 찍어주세요.');
+        return null;
+      }
+
+      const bodyEl = isPrimary ? document.getElementById('problemCardBody') : widget.querySelector('.problem-card-body');
+      const imgEl = isPrimary ? document.getElementById('problemCardImg') : (bodyEl && bodyEl.querySelector('.problem-card-img'));
+      if (!bodyEl) return null;
+
+      const cRect = this.canvas.getBoundingClientRect();
+      const bRect = bodyEl.getBoundingClientRect();
+      if (!(bRect.width >= 24)) return null;
+
+      let resolvedDataUrl = '';
+      if (isPrimary && this.problemCardData && this.problemCardData.imgUrl) {
+        resolvedDataUrl = this.problemCardData.imgUrl;
+      } else if (imgEl && imgEl.src) {
+        resolvedDataUrl = imgEl.src;
+      }
+      const liveSourceCanvas = isPrimary
+        ? ((this.problemCardImage && typeof this.problemCardImage.getContext === 'function' && !this.problemCardImage._evicted && this.problemCardImage.width > 4)
+          ? this.problemCardImage
+          : null)
+        : ((cardRef.sourceCanvas && typeof cardRef.sourceCanvas.getContext === 'function' && !cardRef.sourceCanvas._evicted && cardRef.sourceCanvas.width > 4)
+          ? cardRef.sourceCanvas
+          : null);
+      if (!resolvedDataUrl && liveSourceCanvas) {
+        try {
+          resolvedDataUrl = liveSourceCanvas.toDataURL('image/png');
+        } catch (_) { }
+      }
+      if (!resolvedDataUrl) {
+        this.showToast('⚠️ 스탬프로 찍을 문제 이미지가 아직 준비되지 않았습니다.');
+        return null;
+      }
+
+      let readyDrawable = null;
+      if (liveSourceCanvas) {
+        readyDrawable = liveSourceCanvas;
+      } else if (imgEl && imgEl.complete && imgEl.naturalWidth > 0) {
+        readyDrawable = imgEl.cloneNode(false);
+      }
+
+      const fallbackAspect = (liveSourceCanvas && liveSourceCanvas.width > 0)
+        ? (liveSourceCanvas.height / liveSourceCanvas.width)
+        : ((imgEl && imgEl.complete && imgEl.naturalWidth > 0)
+          ? (imgEl.naturalHeight / imgEl.naturalWidth)
+          : (isPrimary && this.problemCardAspect > 0 ? this.problemCardAspect : 0));
+      const effBodyClientH = (bRect.height >= 24)
+        ? bRect.height
+        : (fallbackAspect > 0 ? Math.max(24, bRect.width * fallbackAspect) : 0);
+      if (!(effBodyClientH >= 24)) return null;
+
+      const scaleCssX = (this.screenWidth && cRect.width > 0) ? (this.screenWidth / cRect.width) : 1;
+      const scaleCssY = (this.screenHeight && cRect.height > 0) ? (this.screenHeight / cRect.height) : 1;
+      const bx = (bRect.left - cRect.left) * scaleCssX;
+      const by = (bRect.top - cRect.top) * scaleCssY;
+      const bw = bRect.width * scaleCssX;
+      const bh = effBodyClientH * scaleCssY;
+
+      const bzCard = Math.max(0.25, this.pdfPageBoardData ? (this.zoomLevel || 1.0) : (this.boardZoom || 1.0));
+      const logicalW = Math.max(80, Math.round(parseFloat(widget.style.width) || (bw / bzCard) || (isPrimary ? 520 : 480)));
+      const natAspect = fallbackAspect > 0 ? fallbackAspect : (bh / Math.max(1, bw));
+      const logicalH = Math.max(40, Math.round(logicalW * natAspect));
+
+      const rawCardStrokes = isPrimary ? (this.problemInkStrokes || []) : (widget._cardInkStrokes || []);
+      const compactCardStrokes = (Array.isArray(rawCardStrokes) && rawCardStrokes.length > 0)
+        ? (typeof this._compactStrokesArray === 'function'
+          ? this._compactStrokesArray(rawCardStrokes)
+          : JSON.parse(JSON.stringify(rawCardStrokes)))
+        : [];
+
+      // 🌟 [원클릭 Undo 보장]: 스탬프 추가 + 문제 카드 창 닫기를 단 하나의 workspace_snapshot으로 묶어 [↺] 1번에 박제 취소 + 창 원상 복구!
+      this._pushWorkspaceUndoSnapshot(
+        '↺ 문제 박제가 취소되고 문제 창이 복원되었습니다',
+        '↻ 문제 스탬프 박제 다시 실행됨'
+      );
+
+      const isPdfBoard = Boolean(this.pdfPageBoardData);
+      const pTL = isPdfBoard ? this.screenToMath(bx, by) : this.screenToBoard(bx, by);
+      const pBR = isPdfBoard ? this.screenToMath(bx + bw, by + bh) : this.screenToBoard(bx + bw, by + bh);
+      const recElapsed = (this.isAudioRecording && typeof this.getAudioRecordElapsedMs === 'function')
+        ? Math.max(0, Math.round(this.getAudioRecordElapsedMs()))
+        : undefined;
+
+      const ptTL = recElapsed !== undefined
+        ? { x: pTL.x, y: pTL.y, p: 0.5, t: recElapsed }
+        : { x: pTL.x, y: pTL.y, p: 0.5 };
+      const ptBR = recElapsed !== undefined
+        ? { x: pBR.x, y: pBR.y, p: 0.5, t: recElapsed }
+        : { x: pBR.x, y: pBR.y, p: 0.5 };
+
+      const stampStroke = {
+        id: `pstamp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        isGraphStamp: true,
+        isProblemStamp: true,
+        target: isPdfBoard ? 'graph' : 'board',
+        isBoard: !isPdfBoard,
+        onPdfBoard: isPdfBoard,
+        color: '#1e293b',
+        size: 2.5,
+        penStyle: 'ballpen',
+        isHighlighter: false,
+        boardZoom: !isPdfBoard ? (this.boardZoom || 1.0) : undefined,
+        zoom: isPdfBoard ? (this.zoomLevel || 1.0) : undefined,
+        tStart: recElapsed,
+        tEnd: recElapsed,
+        points: [ptTL, ptBR],
+        graphStamp: {
+          kind: 'image',
+          isProblemCard: true,
+          refCardW: isPrimary ? 520 : 480,
+          logicalW,
+          logicalH,
+          dataUrl: resolvedDataUrl,
+          cardStrokes: compactCardStrokes
+        }
+      };
+
+      if (readyDrawable && typeof document !== 'undefined') {
+        try {
+          Object.defineProperty(stampStroke, '_stampCache', {
+            value: {
+              canvas: document.createElement('canvas'),
+              key: '',
+              img: (readyDrawable.tagName === 'IMG') ? readyDrawable : null,
+              imgUrl: (readyDrawable.tagName === 'IMG') ? resolvedDataUrl : '',
+              liveDrawable: readyDrawable
+            },
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) { }
+      }
+
+      // PDF 영역 캡처 직후 백그라운드 초고해상도 벡터 보강(_upgradeCroppedProblemCardToVectorUltraHD) 진행 중 스탬프를 누른 경우 자동 연결
+      if (this._lastPlacedProblemCardTarget) {
+        const pt = this._lastPlacedProblemCardTarget;
+        if (
+          (isPrimary && pt.type === 'primary' && pt.problemCardData === this.problemCardData) ||
+          (!isPrimary && pt.type === 'extra' && pt.cardItem === cardRef)
+        ) {
+          pt.stampedStroke = stampStroke;
+        }
+      }
+
+      if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
+      this.inkStrokes.push(stampStroke);
+
+      this._promoteCardStickersToBoardRect(
+        widget,
+        bx,
+        by,
+        bw,
+        bh,
+        isPdfBoard,
+        recElapsed,
+        true
+      );
+
+      // 방금 쌓은 workspace_snapshot 엔트리에 스탬프 참조 기록 (녹화 중 Undo/Redo 타임라인 정밀 연동)
+      const topUndo = Array.isArray(this.undoStack) && this.undoStack.length > 0
+        ? this.undoStack[this.undoStack.length - 1]
+        : null;
+      if (topUndo && topUndo.type === 'workspace_snapshot') {
+        topUndo.stampedStroke = stampStroke;
+      }
+
+      // 찰칵! 플래시 피드백 (pointer-events: none 으로 즉시 필기 무차단)
+      this._spawnStampShutterFlashFx({
+        left: bRect.left,
+        top: bRect.top,
+        width: bRect.width,
+        height: effBodyClientH
+      });
+
+      // 문제 카드 창 즉시 닫기 (카메라 패닝 유지)
+      if (isPrimary) {
+        this.closeProblemCard({ preserveBoardPan: true });
+      } else {
+        this.clearProblemCardStealthTimer(widget);
+        this._hibernateDetachedCardCanvases(widget);
+        if (this._activePeekCardEl === widget) {
+          this._activePeekCardEl = null;
+        }
+        widget.remove();
+        this.extraProblemCards = (this.extraProblemCards || []).filter(c => c !== cardRef);
+      }
+
+      if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
+        this.toggleInkMode(true);
+      }
+
+      this._inkBakeDirty = true;
+      this.render();
+
+      if (this.isLessonPlaylistActive && typeof this.saveCurrentSlideIntoPlaylist === 'function') {
+        this.saveCurrentSlideIntoPlaylist();
+      }
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
+
+      this.showToast('📌 문제가 칠판에 박제되었습니다! 경계 없이 자유롭게 필기하세요 (취소: 되돌리기 ↺)');
       return stampStroke;
     }
 

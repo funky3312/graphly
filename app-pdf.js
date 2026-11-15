@@ -3063,6 +3063,18 @@
             setTimeout(applyUltraDomSwapWhenIdle, 120);
             return;
           }
+          if (targetRef && targetRef.stampedStroke && targetRef.stampedStroke.graphStamp) {
+            targetRef.stampedStroke.graphStamp.dataUrl = ultraDataUrl;
+            if (targetRef.stampedStroke._stampCache) {
+              targetRef.stampedStroke._stampCache.key = '';
+              if (decodedUltraImg) {
+                targetRef.stampedStroke._stampCache.img = decodedUltraImg;
+                targetRef.stampedStroke._stampCache.imgUrl = ultraDataUrl;
+                targetRef.stampedStroke._stampCache.liveDrawable = null;
+              }
+            }
+            this._inkBakeDirty = true;
+          }
           if (targetRef && targetRef.type === 'extra' && targetRef.cardItem) {
             const extraCard = targetRef.cardItem;
             if (extraCard && extraCard.el) {
@@ -3070,7 +3082,7 @@
               if (imgEl) imgEl.src = ultraDataUrl;
               releaseTempCropCanvas(extraCard.sourceCanvas);
               extraCard.sourceCanvas = null;
-              if (extraCard.el.isConnected !== false) {
+              if (extraCard.el.isConnected !== false || (targetRef && targetRef.stampedStroke)) {
                 schedulePlaylistSync();
                 if (!isBusyWritingNow()) this.requestRender();
               }
@@ -3101,6 +3113,9 @@
             if (pImg) pImg.src = ultraDataUrl;
             this.problemCardImage = decodedUltraImg || pImg || null;
             this.syncProblemCardRectFromWidget();
+            schedulePlaylistSync();
+            if (!isBusyWritingNow()) this.requestRender();
+          } else if (targetRef && targetRef.stampedStroke) {
             schedulePlaylistSync();
             if (!isBusyWritingNow()) this.requestRender();
           }

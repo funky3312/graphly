@@ -4785,14 +4785,12 @@
           ctx.clip();
         }
         this.drawFloatingCardsForExport(ctx, expFilter);
-        if (expFilter.includeInk !== false || expFilter.includeGraph !== false) {
+        if (expFilter.includeInk !== false || expFilter.includeGraph !== false || expFilter.includeProblem !== false) {
           if (this.pdfPageBoardData) {
             this.drawInkStrokes(ctx, true, 'graph');
           }
           this.drawInkStrokes(ctx, true, 'board');
-          if (expFilter.includeInk !== false) {
-            this.drawBoardStickers(ctx, true);
-          }
+          this.drawBoardStickers(ctx, true);
         }
         if (pdfClipRect) {
           ctx.restore();
@@ -10402,6 +10400,7 @@
     const effFilter = filterOpts || this._activeExportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
     const incProb = effFilter.includeProblem !== false;
     const incGraph = effFilter.includeGraph !== false;
+    const incInk = effFilter.includeInk !== false;
 
     const cropX = smartBounds ? smartBounds.x : 0;
     const cropY = smartBounds ? smartBounds.y : 0;
@@ -10414,6 +10413,13 @@
     // 1. 칠판/그래프 캔버스 위 스티커
     if (Array.isArray(this.boardStickers) && this.boardStickers.length > 0) {
       this.boardStickers.forEach((stk) => {
+        if (!stk) return;
+        const allowStk = (stk.fromProblemStamp || stk.onPdfBoard)
+          ? incProb
+          : (((stk.isStampedCardSticker && !stk.fromProblemStamp) || stk.target === 'graph')
+            ? incGraph
+            : incInk);
+        if (!allowStk) return;
         const r = this.getBoardStickerScreenRect(stk);
         if (!r || r.w < 4 || r.h < 4) return;
         stickerHotspots.push({
@@ -10492,9 +10498,9 @@
     const incInk = effFilter.includeInk !== false;
 
     const activeTarget = (this.isGraphCovered && !this.pdfPageBoardData) ? 'board' : 'graph';
-    const activeStrokes = (incInk || incGraph) ? (this.inkStrokes || []).filter(s => {
+    const activeStrokes = (incInk || incGraph || incProb) ? (this.inkStrokes || []).filter(s => {
       if (!s) return false;
-      if (s.isGraphStamp ? !incGraph : !incInk) return false;
+      if (s.isProblemStamp ? !incProb : (s.isGraphStamp ? !incGraph : !incInk)) return false;
       if (this.pdfPageBoardData) return Boolean(s.onPdfBoard);
       if ((s.target || 'board') !== activeTarget) return false;
       if (activeTarget === 'graph' && Boolean(s.onPdfBoard)) return false;
@@ -10518,7 +10524,16 @@
 
     const hasPdfBoard = Boolean(incProb && this.pdfPageBoardData);
     const hasLiveGraph = Boolean(incGraph && !this.isGraphCovered && this.graphs && this.graphs.length > 0);
-    const activeBoardStickers = (this.boardStickers || []).filter(stk => Boolean(this.getBoardStickerScreenRect(stk)));
+    const activeBoardStickers = (this.boardStickers || []).filter(stk => {
+      if (!stk) return false;
+      const allowStk = (stk.fromProblemStamp || stk.onPdfBoard)
+        ? incProb
+        : (((stk.isStampedCardSticker && !stk.fromProblemStamp) || stk.target === 'graph')
+          ? incGraph
+          : incInk);
+      if (!allowStk) return false;
+      return Boolean(this.getBoardStickerScreenRect(stk));
+    });
 
     if (activeStrokes.length === 0 && activeBoardStickers.length === 0 && cardEls.length === 0 && !hasPdfBoard && !hasLiveGraph) {
       return null;

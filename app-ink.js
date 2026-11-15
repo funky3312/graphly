@@ -1929,7 +1929,14 @@
         (this.extraProblemCards && this.extraProblemCards.some(c => c && c.el && ((c.el._cardInkStrokes && c.el._cardInkStrokes.length > 0) || (c.el._cardStickers && c.el._cardStickers.length > 0)))) ||
         (this.extraGraphCards && this.extraGraphCards.some(c => c && c.el && ((c.el._cardInkStrokes && c.el._cardInkStrokes.length > 0) || (c.el._cardStickers && c.el._cardStickers.length > 0))))
       );
-      const hasBoardStickers = Boolean(this.boardStickers && this.boardStickers.length > 0);
+      const hasErasableBoardStickers = Boolean(
+        this.boardStickers &&
+        this.boardStickers.some(s => s && !s.isStampedCardSticker)
+      );
+      const hasAnyStampedSticker = Boolean(
+        this.boardStickers &&
+        this.boardStickers.some(s => s && s.isStampedCardSticker)
+      );
       const hasErasableBoardInk = Boolean(
         Array.isArray(this.inkStrokes) &&
         this.inkStrokes.some(s => s && !s.isGraphStamp)
@@ -1938,9 +1945,9 @@
         Array.isArray(this.inkStrokes) &&
         this.inkStrokes.some(s => s && s.isGraphStamp)
       );
-      if (!hasErasableBoardInk && !hasCardInk && !hasBoardStickers) {
-        if (hasAnyGraphStamp) {
-          this.showToast('ℹ️ 박제된 그래프 스탬프는 유지됩니다. (방금 찍은 스탬프 취소: 되돌리기 ↺)');
+      if (!hasErasableBoardInk && !hasCardInk && !hasErasableBoardStickers) {
+        if (hasAnyGraphStamp || hasAnyStampedSticker) {
+          this.showToast('ℹ️ 박제된 스탬프는 유지됩니다. (방금 찍은 스탬프 취소: 되돌리기 ↺)');
         }
         return;
       }
@@ -1977,13 +1984,13 @@
           });
         }
       }
-      if (hasBoardStickers) {
+      if (hasErasableBoardStickers) {
         if (this.isGraphCovered && !this.pdfPageBoardData) {
-          this.boardStickers = (this.boardStickers || []).filter(s => (s.target || 'board') !== 'board');
+          this.boardStickers = (this.boardStickers || []).filter(s => Boolean(s && s.isStampedCardSticker) || (s.target || 'board') !== 'board');
         } else if (this.pdfPageBoardData) {
-          this.boardStickers = (this.boardStickers || []).filter(s => !s.onPdfBoard && (s.target || 'board') !== 'board');
+          this.boardStickers = (this.boardStickers || []).filter(s => Boolean(s && s.isStampedCardSticker) || (!s.onPdfBoard && (s.target || 'board') !== 'board'));
         } else {
-          this.boardStickers = (this.boardStickers || []).filter(s => (s.target || 'board') !== 'graph' || Boolean(s.onPdfBoard));
+          this.boardStickers = (this.boardStickers || []).filter(s => Boolean(s && s.isStampedCardSticker) || (s.target || 'board') !== 'graph' || Boolean(s.onPdfBoard));
         }
       }
 
@@ -1991,13 +1998,13 @@
       // 문제 창이 켜져 있고 바깥창 풀이 필기가 있을 때 1차 클릭: 바깥 칠판 풀이 필기만 깔끔히 비움! (그래프 수식 주석은 보존)
       // 2차 클릭 (바깥창 필기가 없을 때): 그래프 창 내부 주석까지 모두 비움!
       if (this.isGraphCovered && !this.pdfPageBoardData) {
-        this.inkStrokes = this.inkStrokes.filter(s => Boolean(s && s.isGraphStamp) || (s.target || 'board') !== 'board');
+        this.inkStrokes = (this.inkStrokes || []).filter(s => s && (Boolean(s.isGraphStamp) || (s.target || 'board') !== 'board'));
         this.showToast('🧹 필기 모드 필기를 깔끔하게 비웠습니다.');
       } else if (this.pdfPageBoardData) {
-        this.inkStrokes = this.inkStrokes.filter(s => Boolean(s && s.isGraphStamp) || (!s.onPdfBoard && (s.target || 'board') !== 'board'));
+        this.inkStrokes = (this.inkStrokes || []).filter(s => s && (Boolean(s.isGraphStamp) || (!s.onPdfBoard && (s.target || 'board') !== 'board')));
         this.showToast('🧹 PDF 페이지 위 필기를 깔끔하게 비웠습니다.');
       } else {
-        this.inkStrokes = this.inkStrokes.filter(s => Boolean(s && s.isGraphStamp) || (s.target || 'board') !== 'graph' || Boolean(s.onPdfBoard));
+        this.inkStrokes = (this.inkStrokes || []).filter(s => s && (Boolean(s.isGraphStamp) || (s.target || 'board') !== 'graph' || Boolean(s.onPdfBoard)));
         this.showToast('🧹 그래프 모드 필기를 비웠습니다.');
       }
       this._inkBakeDirty = true;
@@ -2077,7 +2084,7 @@
     }
 
     deleteBoardSticker(stk) {
-      if (!stk || !Array.isArray(this.boardStickers)) return false;
+      if (!stk || stk.isStampedCardSticker || !Array.isArray(this.boardStickers)) return false;
       const idx = this.boardStickers.findIndex(s => s === stk || (s && stk && s.id && s.id === stk.id));
       if (idx === -1) return false;
       const removed = this.boardStickers.splice(idx, 1)[0];
@@ -2187,15 +2194,20 @@
             let downPt = null;
             itemEl.addEventListener('pointerdown', (ev) => {
               if (this.isInkMode && this.activeInkTool === 'sticker') return;
-              ev.preventDefault();
-              ev.stopPropagation();
-              if ((this.isInkMode && this.activeInkTool === 'eraser') || (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev))) {
+              const isEraserNow = Boolean((this.isInkMode && this.activeInkTool === 'eraser') || (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev)));
+              if (isEraserNow) {
+                if (stk.isStampedCardSticker) return;
+                ev.preventDefault();
+                ev.stopPropagation();
                 this.removeBoardStickerById(stk.id);
                 return;
               }
+              ev.preventDefault();
+              ev.stopPropagation();
               downPt = { x: ev.clientX, y: ev.clientY };
             });
             itemEl.addEventListener('pointerenter', (ev) => {
+              if (stk.isStampedCardSticker) return;
               if (((this.isInkMode && this.activeInkTool === 'eraser') || (typeof this.isStylusEraserEvent === 'function' && this.isStylusEraserEvent(ev))) && ev.buttons > 0) {
                 this.removeBoardStickerById(stk.id);
               }
@@ -2272,6 +2284,16 @@
       if (hasStickers) {
         for (let i = 0; i < this.boardStickers.length; i++) {
           const stk = this.boardStickers[i];
+          if (!stk) continue;
+          if (isExport && this._activeExportFilter) {
+            const ef = this._activeExportFilter;
+            const allowStk = (stk.fromProblemStamp || stk.onPdfBoard)
+              ? (ef.includeProblem !== false)
+              : (((stk.isStampedCardSticker && !stk.fromProblemStamp) || stk.target === 'graph')
+                ? (ef.includeGraph !== false)
+                : (ef.includeInk !== false));
+            if (!allowStk) continue;
+          }
           const rect = this.getBoardStickerScreenRect(stk);
           if (!rect || rect.w < 4 || rect.h < 4) continue;
           const { x, y, w, h } = rect;
@@ -6740,7 +6762,8 @@
       if (!cache || !cache.canvas) return;
 
       const gs = stroke.graphStamp;
-      const cacheKey = `${pxW}x${pxH}|${effThemeKey}|${this.isMonochromeMode ? 1 : 0}|${forceLightSurface ? 1 : 0}`;
+      const omitStampCardInk = Boolean(isExportPass && this._activeExportFilter && this._activeExportFilter.includeInk === false);
+      const cacheKey = `${pxW}x${pxH}|${effThemeKey}|${this.isMonochromeMode ? 1 : 0}|${forceLightSurface ? 1 : 0}|${omitStampCardInk ? 0 : (Array.isArray(gs.cardStrokes) ? gs.cardStrokes.length : 0)}`;
       if (cache.key !== cacheKey || cache.canvas.width !== pxW || cache.canvas.height !== pxH) {
         if (cache.canvas.width !== pxW) cache.canvas.width = pxW;
         if (cache.canvas.height !== pxH) cache.canvas.height = pxH;
@@ -6810,27 +6833,49 @@
                 : gs.dataUrl;
               if (safeUrl) imgObj.src = safeUrl;
             }
-            if (cache.img && cache.img.complete && cache.img.naturalWidth > 0) {
+            const decodedImgReady = Boolean(cache.img && cache.img.complete && cache.img.naturalWidth > 0);
+            const liveFallbackReady = Boolean(
+              !decodedImgReady &&
+              cache.liveDrawable &&
+              ((cache.liveDrawable.tagName === 'CANVAS' && !cache.liveDrawable._evicted && cache.liveDrawable.width > 4) ||
+                (cache.liveDrawable.complete && cache.liveDrawable.naturalWidth > 0))
+            );
+            const drawSrc = decodedImgReady ? cache.img : (liveFallbackReady ? cache.liveDrawable : null);
+            if (drawSrc) {
               sCtx.save();
               if (this.isMonochromeMode) {
                 sCtx.filter = 'grayscale(100%) contrast(108%)';
               }
               sCtx.imageSmoothingEnabled = true;
               try { sCtx.imageSmoothingQuality = 'high'; } catch (_) { }
-              sCtx.drawImage(cache.img, 0, 0, logicalW, logicalH);
+              sCtx.drawImage(drawSrc, 0, 0, logicalW, logicalH);
               sCtx.restore();
+              if (!decodedImgReady) {
+                readyToCache = false;
+              } else {
+                cache.liveDrawable = null;
+              }
             } else {
               readyToCache = false;
             }
           }
 
-          if (Array.isArray(gs.cardStrokes) && gs.cardStrokes.length > 0 && typeof this._renderSingleCardInkStroke === 'function') {
-            const sizeScale = (typeof this.getPipCardFinePenScale === 'function')
-              ? this.getPipCardFinePenScale('primary', logicalW, logicalH)
-              : 1.0;
+          if (!omitStampCardInk && Array.isArray(gs.cardStrokes) && gs.cardStrokes.length > 0 && typeof this._renderSingleCardInkStroke === 'function') {
+            const isProbCardStamp = Boolean(gs.isProblemCard);
+            const sizeScale = isProbCardStamp
+              ? Math.max(0.6, logicalW / (Number(gs.refCardW) || 520))
+              : ((typeof this.getPipCardFinePenScale === 'function')
+                ? this.getPipCardFinePenScale('primary', logicalW, logicalH)
+                : 1.0);
             const resolveCardStrokeForSurface = (cs) => {
               if (!cs || cs.isHighlighter || this.isMonochromeMode) return cs;
               const cLow = (cs.color || '').toLowerCase();
+              if (isProbCardStamp) {
+                if (cLow === '#ffffff' || cLow === '#fff') {
+                  return { ...cs, color: '#1e293b' };
+                }
+                return cs;
+              }
               if (effIsLight && (cLow === '#ffffff' || cLow === '#fff' || cLow === '#f8fafc')) {
                 return { ...cs, color: '#1e293b' };
               }
@@ -6839,13 +6884,21 @@
               }
               return cs;
             };
-            const cardDrawOpts = {
-              isProbCard: effIsLight,
-              applyStreamline: true,
-              minPenWidth: 0.85,
-              minHlWidth: 3,
-              defaultHlMin: 8
-            };
+            const cardDrawOpts = isProbCardStamp
+              ? {
+                isProbCard: true,
+                applyStreamline: true,
+                minPenWidth: 0,
+                minHlWidth: 4,
+                defaultHlMin: 10
+              }
+              : {
+                isProbCard: effIsLight,
+                applyStreamline: true,
+                minPenWidth: 0.85,
+                minHlWidth: 3,
+                defaultHlMin: 8
+              };
             for (let pass = 0; pass < 2; pass++) {
               const wantHl = (pass === 0);
               for (let i = 0; i < gs.cardStrokes.length; i++) {
@@ -7240,12 +7293,13 @@
           const c = (stroke.color || '').toLowerCase();
           return (c === '#ffffff' || c === '#fff') ? '#1e293b' : null;
         };
-        const expFilter = this._activeExportFilter || { includeGraph: true, includeInk: true };
+        const expFilter = this._activeExportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+        const allowProbExp = expFilter.includeProblem !== false;
         const allowStampExp = expFilter.includeGraph !== false;
         const allowInkExp = expFilter.includeInk !== false;
         const strokesToDraw = this.inkStrokes.filter(s => {
           if (!s) return false;
-          if (s.isGraphStamp ? !allowStampExp : !allowInkExp) return false;
+          if (s.isProblemStamp ? !allowProbExp : (s.isGraphStamp ? !allowStampExp : !allowInkExp)) return false;
           if (!filterTarget) return true;
           const t = s.target || 'board';
           if (t !== filterTarget) return false;

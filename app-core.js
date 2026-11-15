@@ -936,8 +936,23 @@ class GraphApp {
       };
     });
 
+    const stampCaches = [];
+    if (Array.isArray(this.inkStrokes)) {
+      for (let i = 0; i < this.inkStrokes.length; i++) {
+        const st = this.inkStrokes[i];
+        if (st && st.isGraphStamp && st._stampCache) {
+          stampCaches.push({
+            id: st.id || '',
+            dataUrl: (st.graphStamp && st.graphStamp.dataUrl) || '',
+            cache: st._stampCache
+          });
+        }
+      }
+    }
+
     return {
       historyJson: this.getHistorySnapshot(),
+      stampCaches,
       primaryProblemCard: hasPrimaryProblem ? {
         display: pWidget.style.display,
         minimized: pWidget.classList.contains('minimized'),
@@ -1011,6 +1026,34 @@ class GraphApp {
   _restoreFullWorkspaceSnapshot(wsSnap) {
     if (!wsSnap) return;
     this.restoreHistorySnapshot(wsSnap.historyJson);
+    if (Array.isArray(wsSnap.stampCaches) && wsSnap.stampCaches.length > 0 && Array.isArray(this.inkStrokes)) {
+      for (let i = 0; i < this.inkStrokes.length; i++) {
+        const st = this.inkStrokes[i];
+        if (!st || !st.isGraphStamp) continue;
+        const curCache = st._stampCache;
+        const alreadyDecoded = Boolean(
+          curCache &&
+          ((curCache.img && curCache.img.complete && curCache.img.naturalWidth > 0) || curCache.liveDrawable)
+        );
+        if (alreadyDecoded) continue;
+        const matched = wsSnap.stampCaches.find(entry =>
+          entry &&
+          ((entry.id && st.id && entry.id === st.id) ||
+            (entry.dataUrl && st.graphStamp && entry.dataUrl === st.graphStamp.dataUrl))
+        );
+        if (matched && matched.cache) {
+          matched.cache.key = '';
+          try {
+            Object.defineProperty(st, '_stampCache', {
+              value: matched.cache,
+              writable: true,
+              configurable: true,
+              enumerable: false
+            });
+          } catch (_) { }
+        }
+      }
+    }
 
     // 1. 기본 문제 카드 복원 또는 숨김
     const pWidget = document.getElementById('problemCardWidget');
@@ -1042,7 +1085,7 @@ class GraphApp {
       if (pToggle) pToggle.textContent = pc.toggleText || '▾';
       pWidget.classList.toggle('minimized', Boolean(pc.minimized));
       pWidget.classList.toggle('card-ink-active', Boolean(pc.cardInkActive));
-      pWidget.classList.add('pip-locked-mode');
+      pWidget.classList.toggle('pip-locked-mode', pc.pipLocked !== false);
       pWidget.classList.toggle('pip-stealth-locked', Boolean(pc.pipStealth && !pc.cardInkActive && !pc.minimized));
       if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(pWidget);
       if (
@@ -1064,7 +1107,7 @@ class GraphApp {
       this.syncProblemCardRectFromWidget();
       this.renderProblemCardCanvas();
     } else {
-      this.closeProblemCard();
+      this.closeProblemCard({ preserveBoardPan: true });
     }
 
     // 2. 다중 추가 문제 카드 복원
@@ -1102,7 +1145,7 @@ class GraphApp {
           c.el.style.display = st.display || 'flex';
           c.el.classList.toggle('minimized', Boolean(st.minimized));
           c.el.classList.toggle('card-ink-active', Boolean(st.cardInkActive));
-          c.el.classList.add('pip-locked-mode');
+          c.el.classList.toggle('pip-locked-mode', st.pipLocked !== false);
           c.el.classList.toggle('pip-stealth-locked', Boolean(st.pipStealth && !st.cardInkActive && !st.minimized));
           if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(c.el);
           if (
@@ -1341,14 +1384,22 @@ class GraphApp {
     this.isHistoryProcessing = true;
     const prevSnap = this.undoStack.pop();
 
-    // 🌟 [새 캔버스 전체 초기화 / 그래프·문제 창 닫기 실행 취소: 문제 카드·보관 카드·그래프·필기 100% 원상 복구]
+    // 🌟 [새 캔버스 전체 초기화 / 그래프·문제 창 닫기·스탬프 박제 실행 취소: 문제 카드·보관 카드·그래프·필기 100% 원상 복구]
     if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'workspace_snapshot') {
       const currentFull = this._captureFullWorkspaceSnapshot();
+      const stampedId = (prevSnap.stampedStroke && prevSnap.stampedStroke.id) || prevSnap.stampedStrokeId || null;
+      if (this.isAudioRecording && Array.isArray(this.audioErasedStrokes) && prevSnap.stampedStroke && typeof prevSnap.stampedStroke.tStart === 'number') {
+        const recT = (typeof this.getAudioRecordElapsedMs === 'function')
+          ? Math.max(0, Math.round(this.getAudioRecordElapsedMs()))
+          : 0;
+        this.audioErasedStrokes.push({ ...JSON.parse(JSON.stringify(prevSnap.stampedStroke)), erasedAt: recT });
+      }
       this.redoStack.push({
         type: 'workspace_snapshot',
         snapshot: currentFull,
         toastUndo: prevSnap.toastUndo,
-        toastRedo: prevSnap.toastRedo
+        toastRedo: prevSnap.toastRedo,
+        stampedStrokeId: stampedId
       });
       this._restoreFullWorkspaceSnapshot(prevSnap.snapshot);
       this._inkBakeDirty = true;
@@ -1455,6 +1506,10 @@ class GraphApp {
       if (idx !== -1) {
         this.inkStrokes.splice(idx, 1);
       }
+      if (Array.isArray(prevSnap.promotedStickers) && prevSnap.promotedStickers.length > 0 && Array.isArray(this.boardStickers)) {
+        const rmIds = new Set(prevSnap.promotedStickers.map(s => s && s.id).filter(Boolean));
+        this.boardStickers = this.boardStickers.filter(s => !prevSnap.promotedStickers.includes(s) && !(s && s.id && rmIds.has(s.id)));
+      }
       if (this.isAudioRecording && Array.isArray(this.audioErasedStrokes) && prevSnap.stroke && typeof prevSnap.stroke.tStart === 'number') {
         const recT = (typeof this.getAudioRecordElapsedMs === 'function')
           ? Math.max(0, Math.round(this.getAudioRecordElapsedMs()))
@@ -1517,16 +1572,40 @@ class GraphApp {
     this.isHistoryProcessing = true;
     const nextSnap = this.redoStack.pop();
 
-    // 🌟 [새 캔버스 전체 초기화 / 그래프·문제 창 닫기 다시 실행]
+    // 🌟 [새 캔버스 전체 초기화 / 그래프·문제 창 닫기·스탬프 박제 다시 실행]
     if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'workspace_snapshot') {
       const currentFull = this._captureFullWorkspaceSnapshot();
-      this.undoStack.push({
+      const undoEntry = {
         type: 'workspace_snapshot',
         snapshot: currentFull,
         toastUndo: nextSnap.toastUndo,
-        toastRedo: nextSnap.toastRedo
-      });
+        toastRedo: nextSnap.toastRedo,
+        stampedStrokeId: nextSnap.stampedStrokeId || null
+      };
+      this.undoStack.push(undoEntry);
       this._restoreFullWorkspaceSnapshot(nextSnap.snapshot);
+      if (nextSnap.stampedStrokeId && Array.isArray(this.inkStrokes)) {
+        let matched = null;
+        for (let k = this.inkStrokes.length - 1; k >= 0; k--) {
+          if (this.inkStrokes[k] && this.inkStrokes[k].id === nextSnap.stampedStrokeId) {
+            matched = this.inkStrokes[k];
+            break;
+          }
+        }
+        if (matched) {
+          if (this.isAudioRecording && typeof this.getAudioRecordElapsedMs === 'function') {
+            const recT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
+            matched.id = `pstamp_redo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+            matched.tStart = recT;
+            matched.tEnd = recT;
+            if (Array.isArray(matched.points)) {
+              matched.points.forEach(pt => { if (pt) pt.t = recT; });
+            }
+            undoEntry.stampedStrokeId = matched.id;
+          }
+          undoEntry.stampedStroke = matched;
+        }
+      }
       this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
@@ -1618,6 +1697,7 @@ class GraphApp {
     if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'stroke_add') {
       if (this.isAudioRecording && nextSnap.stroke && nextSnap.stroke.isGraphStamp && typeof this.getAudioRecordElapsedMs === 'function') {
         const recT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
+        nextSnap.stroke.id = `gstamp_redo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         nextSnap.stroke.tStart = recT;
         nextSnap.stroke.tEnd = recT;
         if (Array.isArray(nextSnap.stroke.points)) {
@@ -1625,6 +1705,10 @@ class GraphApp {
         }
       }
       this.inkStrokes.push(nextSnap.stroke);
+      if (Array.isArray(nextSnap.promotedStickers) && nextSnap.promotedStickers.length > 0) {
+        if (!Array.isArray(this.boardStickers)) this.boardStickers = [];
+        this.boardStickers.push(...nextSnap.promotedStickers);
+      }
       this.undoStack.push(nextSnap);
       this._inkBakeDirty = true;
       this.isHistoryProcessing = false;

@@ -6739,6 +6739,7 @@
       if (slide.primaryProblemCard || (Array.isArray(slide.extraProblems) && slide.extraProblems.length > 0)) {
         return false;
       }
+      const incProb = !filterOpts || filterOpts.includeProblem !== false;
       const incGraph = !filterOpts || filterOpts.includeGraph !== false;
       if (incGraph && (slide.primaryGraphCard || (Array.isArray(slide.extraGraphs) && slide.extraGraphs.length > 0))) {
         return false;
@@ -6748,10 +6749,20 @@
         try {
           const hObj = typeof slide.historyJson === 'string' ? JSON.parse(slide.historyJson) : slide.historyJson;
           if (hObj) {
-            if (incInk && Array.isArray(hObj.inkStrokes) && hObj.inkStrokes.length > 0) {
+            if (
+              Array.isArray(hObj.inkStrokes) &&
+              hObj.inkStrokes.some(st => st && (st.isProblemStamp ? incProb : (st.isGraphStamp ? incGraph : incInk)))
+            ) {
               return false;
             }
-            if (Array.isArray(hObj.boardStickers) && hObj.boardStickers.length > 0) {
+            if (
+              Array.isArray(hObj.boardStickers) &&
+              hObj.boardStickers.some(stk => stk && (
+                (stk.fromProblemStamp || stk.onPdfBoard)
+                  ? incProb
+                  : (((stk.isStampedCardSticker && !stk.fromProblemStamp) || stk.target === 'graph') ? incGraph : incInk)
+              ))
+            ) {
               return false;
             }
           }
@@ -7330,6 +7341,10 @@
         const historyBase = {};
         const historyGraph = {};
         let boardInkStrokes = [];
+        const probStampsIndexed = [];
+        const graphStampsIndexed = [];
+        const inkStrokesIndexed = [];
+        const stampCardInkMap = {};
         const probStickersIndexed = [];
         const graphStickersIndexed = [];
         const inkStickersIndexed = [];
@@ -7339,14 +7354,40 @@
           hadBoardStickersProp = Object.prototype.hasOwnProperty.call(hObj, 'boardStickers');
           Object.keys(hObj).forEach((hk) => {
             if (hk === 'inkStrokes') {
-              boardInkStrokes = Array.isArray(hObj.inkStrokes) ? hObj.inkStrokes : [];
+              if (Array.isArray(hObj.inkStrokes)) {
+                hObj.inkStrokes.forEach((st, stIdx) => {
+                  if (!st) return;
+                  if (st.isProblemStamp) {
+                    const cleanSt = JSON.parse(JSON.stringify(st));
+                    if (cleanSt.graphStamp && Array.isArray(cleanSt.graphStamp.cardStrokes) && cleanSt.graphStamp.cardStrokes.length > 0) {
+                      stampCardInkMap[stIdx] = cleanSt.graphStamp.cardStrokes;
+                      cleanSt.graphStamp.cardStrokes = [];
+                      hasInkContent = true;
+                    }
+                    probStampsIndexed.push({ order: stIdx, st: cleanSt });
+                    hasProbContent = true;
+                  } else if (st.isGraphStamp) {
+                    const cleanSt = JSON.parse(JSON.stringify(st));
+                    if (cleanSt.graphStamp && Array.isArray(cleanSt.graphStamp.cardStrokes) && cleanSt.graphStamp.cardStrokes.length > 0) {
+                      stampCardInkMap[stIdx] = cleanSt.graphStamp.cardStrokes;
+                      cleanSt.graphStamp.cardStrokes = [];
+                      hasInkContent = true;
+                    }
+                    graphStampsIndexed.push({ order: stIdx, st: cleanSt });
+                    hasGraphContent = true;
+                  } else {
+                    inkStrokesIndexed.push({ order: stIdx, st });
+                    boardInkStrokes.push(st);
+                  }
+                });
+              }
             } else if (hk === 'boardStickers') {
               if (Array.isArray(hObj.boardStickers)) {
                 hObj.boardStickers.forEach((stk, stkIdx) => {
                   if (!stk) return;
-                  if (stk.onPdfBoard) {
+                  if (stk.fromProblemStamp || stk.onPdfBoard) {
                     probStickersIndexed.push({ order: stkIdx, stk });
-                  } else if (stk.target === 'graph') {
+                  } else if ((stk.isStampedCardSticker && !stk.fromProblemStamp) || stk.target === 'graph') {
                     graphStickersIndexed.push({ order: stkIdx, stk });
                   } else {
                     inkStickersIndexed.push({ order: stkIdx, stk });
@@ -7401,13 +7442,14 @@
         }
 
         const cleanPdfBoard = s.pdfPageBoardData ? JSON.parse(JSON.stringify(s.pdfPageBoardData)) : null;
-        if (cleanPdfBoard || probStickersIndexed.length > 0) hasProbContent = true;
+        if (cleanPdfBoard || probStickersIndexed.length > 0 || probStampsIndexed.length > 0) hasProbContent = true;
 
         probSlides.push({
           primaryProblemCard: cleanPrimaryProb,
           extraProblems: cleanExtraProbs,
           pdfPageBoardData: cleanPdfBoard,
-          probStickersIndexed
+          probStickersIndexed,
+          probStampsIndexed
         });
 
         // 2) Graph Layer 분해 (순수 그래프 카드/스냅샷/백업/실시간 함수만 보존, 내부 필기는 ink 채널로 격리)
@@ -7490,6 +7532,7 @@
         if (
           cleanCoveredBackup ||
           graphStickersIndexed.length > 0 ||
+          graphStampsIndexed.length > 0 ||
           (Array.isArray(historyGraph.graphs) && historyGraph.graphs.length > 0) ||
           (Array.isArray(historyGraph.dropLines) && historyGraph.dropLines.length > 0) ||
           (Array.isArray(historyGraph.textLabels) && historyGraph.textLabels.length > 0) ||
@@ -7503,15 +7546,18 @@
           extraGraphs: cleanExtraGraphs,
           coveredGraphStateBackup: cleanCoveredBackup,
           historyGraph,
-          graphStickersIndexed
+          graphStickersIndexed,
+          graphStampsIndexed
         });
 
         // 3) Ink Layer 분해
-        if (boardInkStrokes.length > 0 || inkStickersIndexed.length > 0) {
+        if (boardInkStrokes.length > 0 || inkStickersIndexed.length > 0 || Object.keys(stampCardInkMap).length > 0) {
           hasInkContent = true;
         }
         inkSlides.push({
           boardInkStrokes,
+          inkStrokesIndexed,
+          stampCardInkMap,
           inkStickersIndexed,
           primaryProblemInk: primaryProbInk,
           extraProblemsInk: extraProbsInk,
@@ -7780,9 +7826,49 @@
             hObj.usePiecewise = false;
           }
 
-          hObj.inkStrokes = (incInk && ik && Array.isArray(ik.boardInkStrokes))
-            ? JSON.parse(JSON.stringify(ik.boardInkStrokes))
-            : [];
+          const hasIndexedStrokes = Boolean(
+            (pr && Array.isArray(pr.probStampsIndexed)) ||
+            (gr && Array.isArray(gr.graphStampsIndexed)) ||
+            (ik && Array.isArray(ik.inkStrokesIndexed))
+          );
+          if (hasIndexedStrokes) {
+            const combinedStrokes = [];
+            const cardInkMap = (incInk && ik && ik.stampCardInkMap && typeof ik.stampCardInkMap === 'object')
+              ? ik.stampCardInkMap
+              : null;
+            if (incProb && pr && Array.isArray(pr.probStampsIndexed)) {
+              pr.probStampsIndexed.forEach(entry => {
+                if (!entry || !entry.st) return;
+                const clonedSt = JSON.parse(JSON.stringify(entry.st));
+                if (cardInkMap && Array.isArray(cardInkMap[entry.order]) && clonedSt.graphStamp) {
+                  clonedSt.graphStamp.cardStrokes = JSON.parse(JSON.stringify(cardInkMap[entry.order]));
+                }
+                combinedStrokes.push({ order: entry.order || 0, st: clonedSt });
+              });
+            }
+            if (incGraph && gr && Array.isArray(gr.graphStampsIndexed)) {
+              gr.graphStampsIndexed.forEach(entry => {
+                if (!entry || !entry.st) return;
+                const clonedSt = JSON.parse(JSON.stringify(entry.st));
+                if (cardInkMap && Array.isArray(cardInkMap[entry.order]) && clonedSt.graphStamp) {
+                  clonedSt.graphStamp.cardStrokes = JSON.parse(JSON.stringify(cardInkMap[entry.order]));
+                }
+                combinedStrokes.push({ order: entry.order || 0, st: clonedSt });
+              });
+            }
+            if (incInk && ik && Array.isArray(ik.inkStrokesIndexed)) {
+              ik.inkStrokesIndexed.forEach(entry => {
+                if (!entry || !entry.st) return;
+                combinedStrokes.push({ order: entry.order || 0, st: JSON.parse(JSON.stringify(entry.st)) });
+              });
+            }
+            combinedStrokes.sort((a, b) => (a.order || 0) - (b.order || 0));
+            hObj.inkStrokes = combinedStrokes.map(entry => entry.st);
+          } else {
+            hObj.inkStrokes = (incInk && ik && Array.isArray(ik.boardInkStrokes))
+              ? JSON.parse(JSON.stringify(ik.boardInkStrokes))
+              : [];
+          }
 
           const combinedStickers = [];
           if (incProb && pr && Array.isArray(pr.probStickersIndexed)) {
@@ -7799,8 +7885,9 @@
             hObj.boardStickers = combinedStickers.map(entry => JSON.parse(JSON.stringify(entry.stk)));
           }
 
-          // 그래프만 단독 공유 시(!incProb && !incInk && incGraph) 칠판 덮개 아래 백업된 실시간 그래프 자동 언커버
-          if (!incProb && !incInk && incGraph && slide.isGraphCovered && !slide.primaryGraphCard && (!slide.extraGraphs || slide.extraGraphs.length === 0)) {
+          // 그래프만 단독 공유 시(!incProb && !incInk && incGraph) 칠판 덮개 아래 백업된 실시간 그래프 자동 언커버 (칠판 위 박제된 그래프 스탬프가 없을 때만)
+          const hasBoardGraphStamp = Array.isArray(hObj.inkStrokes) && hObj.inkStrokes.some(st => st && st.isGraphStamp && !st.isProblemStamp);
+          if (!incProb && !incInk && incGraph && slide.isGraphCovered && !hasBoardGraphStamp && !slide.primaryGraphCard && (!slide.extraGraphs || slide.extraGraphs.length === 0)) {
             if ((!hObj.graphs || hObj.graphs.length === 0) && slide.coveredGraphStateBackup && Array.isArray(slide.coveredGraphStateBackup.graphs) && slide.coveredGraphStateBackup.graphs.length > 0) {
               hObj.graphs = JSON.parse(JSON.stringify(slide.coveredGraphStateBackup.graphs));
             }
@@ -10612,113 +10699,6 @@
           if (idxA !== -1 && idxB !== -1) {
             const [start, end] = idxA < idxB ? [idxA, idxB] : [idxB, idxA];
             for (let i = start; i <= end; i++) {
-              this._selectedCloudExplorerKeys.add(visKeys[i]);
-            }
-          }
-        } else if (e.ctrlKey || e.metaKey) {
-          if (this._selectedCloudExplorerKeys.has(rowKey)) {
-            this._selectedCloudExplorerKeys.delete(rowKey);
-          } else {
-            this._selectedCloudExplorerKeys.add(rowKey);
-          }
-        } else {
-          if (this._selectedCloudExplorerKeys.size === 1 && this._selectedCloudExplorerKeys.has(rowKey)) {
-            this._selectedCloudExplorerKeys.clear();
-          } else {
-            this._selectedCloudExplorerKeys.clear();
-            this._selectedCloudExplorerKeys.add(rowKey);
-          }
-        }
-        this._lastClickedCloudExplorerKey = rowKey;
-        syncAllRowSelectionsInPlace();
-      };
-
-      visibleFolders.forEach(fPath => {
-        const segName = fPath.split('/').pop();
-        const displaySegName = this._cleanCloudFolderDisplayLabel(segName);
-        const rowKey = `folder:${fPath}`;
-        const isSelected = this._selectedCloudExplorerKeys.has(rowKey);
-        const row = document.createElement('div');
-        row.className = 'win-explorer-row is-folder-row' + (isSelected ? ' selected' : '');
-        row.dataset.rowKey = rowKey;
-
-        const safeRowSegName = this._escapeHtmlStr(displaySegName);
-        const safeRawSegVal = this._escapeHtmlStr(segName);
-        if (this._renamingCloudFolderPath === fPath) {
-          row.classList.add('is-renaming-row');
-          row.innerHTML = `
-          <div class="win-inline-rename-wrap">
-            <span class="win-row-icon is-folder-icon">${this._getCloudVaultIconSvg('folderClosed')}</span>
-            <input type="text" class="cloud-item-rename-input" value="${safeRawSegVal}" />
-            <button type="button" class="btn-primary cloud-item-rename-save">확인</button>
-            <button type="button" class="btn-secondary cloud-item-rename-cancel">취소</button>
-          </div>
-        `;
-          const inpRen = row.querySelector('.cloud-item-rename-input');
-          const btnSaveRen = row.querySelector('.cloud-item-rename-save');
-          const btnCancelRen = row.querySelector('.cloud-item-rename-cancel');
-          if (inpRen) {
-            inpRen.onclick = (e) => e.stopPropagation();
-            inpRen.onkeydown = (e) => {
-              e.stopPropagation();
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                this.renameCloudFolder(fPath, inpRen.value);
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                this._renamingCloudFolderPath = null;
-                this.renderMyLibraryList();
-              }
-            };
-            setTimeout(() => { inpRen.focus(); inpRen.select(); }, 20);
-          }
-          if (btnSaveRen) {
-            btnSaveRen.onclick = (e) => {
-              e.stopPropagation();
-              this.renameCloudFolder(fPath, inpRen ? inpRen.value : segName);
-            };
-          }
-          if (btnCancelRen) {
-            btnCancelRen.onclick = (e) => {
-              e.stopPropagation();
-              this._renamingCloudFolderPath = null;
-              this.renderMyLibraryList();
-            };
-          }
-          listEl.appendChild(row);
-          return;
-        }
-
-        const folderCnt = folderItemCountMap.get(fPath) || 0;
-        const folderCntHtml = folderCnt > 0
-          ? `<span class="win-folder-item-count">${folderCnt}개 항목</span>`
-          : '';
-
-        row.innerHTML = `
-        <label class="win-row-chk-wrap" title="체크하여 폴더 선택">
-          <input type="checkbox" class="win-explorer-checkbox" ${isSelected ? 'checked' : ''}>
-        </label>
-        <div class="win-row-name-col" title="클릭하여 [${safeRowSegName}] 폴더 열기">
-          <span class="win-row-icon is-folder-icon">${this._getCloudVaultIconSvg('folderClosed')}</span>
-          <span class="win-row-title">${safeRowSegName}</span>
-          ${folderCntHtml}
-        </div>
-        <div class="win-row-act-col">
-          <button type="button" class="btn-cloud-edit-item" title="폴더 이름 바꾸기 (F2)">${this._getCloudVaultIconSvg('renamePencil')}</button>
-        </div>
-      `;
-
-        const enterFolder = () => {
-          this._activeCloudFolder = fPath;
-          this._selectedCloudExplorerKeys.clear();
-          if (!this._collapsedCloudFolders) this._collapsedCloudFolders = new Set();
-          this._collapsedCloudFolders.delete(fPath);
-          this.syncExportCloudFolderSelect();
-          this.renderMyLibraryList();
-        };
-
-        const chkEl = row.querySelector('.win-explorer-checkbox');
-        const chkLabel = row.querySelector('.win-row-chk-wrap');
         if (chkLabel) {
           chkLabel.onclick = (e) => e.stopPropagation();
         }
@@ -11810,15 +11790,36 @@
       if (slide.historyJson) {
         try {
           const hObj = typeof slide.historyJson === 'string' ? JSON.parse(slide.historyJson) : slide.historyJson;
-          if (!incInk) {
-            hObj.inkStrokes = [];
+          if (Array.isArray(hObj.inkStrokes)) {
+            hObj.inkStrokes = hObj.inkStrokes.filter(st => {
+              if (!st) return false;
+              if (st.isProblemStamp) return incProb;
+              if (st.isGraphStamp) return incGraph;
+              return incInk;
+            });
+            if (!incInk) {
+              hObj.inkStrokes.forEach(st => {
+                if (st && st.graphStamp && Array.isArray(st.graphStamp.cardStrokes)) {
+                  st.graphStamp.cardStrokes = [];
+                }
+              });
+            }
           }
+          if (Array.isArray(hObj.boardStickers) && (!incProb || !incGraph || !incInk)) {
+            hObj.boardStickers = hObj.boardStickers.filter(stk => {
+              if (!stk) return false;
+              if (stk.fromProblemStamp || stk.onPdfBoard) return incProb;
+              if ((stk.isStampedCardSticker && !stk.fromProblemStamp) || stk.target === 'graph') return incGraph;
+              return incInk;
+            });
+          }
+          const hasBoardGraphStamp = Array.isArray(hObj.inkStrokes) && hObj.inkStrokes.some(st => st && st.isGraphStamp && !st.isProblemStamp);
           if (!incGraph) {
             hObj.graphs = [];
             hObj.dropLines = [];
             hObj.textLabels = [];
             hObj.usePiecewise = false;
-          } else if (!incProb && !incInk && slide.isGraphCovered && !slide.primaryGraphCard && (!slide.extraGraphs || slide.extraGraphs.length === 0)) {
+          } else if (!incProb && !incInk && slide.isGraphCovered && !hasBoardGraphStamp && !slide.primaryGraphCard && (!slide.extraGraphs || slide.extraGraphs.length === 0)) {
             // 그래프만 내보내기할 때 칠판 판서 모드로 덮여 있던 실시간 그래프가 있으면 자동으로 꺼내서 복원
             if ((!hObj.graphs || hObj.graphs.length === 0) && slide.coveredGraphStateBackup && Array.isArray(slide.coveredGraphStateBackup.graphs) && slide.coveredGraphStateBackup.graphs.length > 0) {
               hObj.graphs = JSON.parse(JSON.stringify(slide.coveredGraphStateBackup.graphs));
@@ -11901,14 +11902,18 @@
 
       if (!incInk) {
         expanded.laserStrokes = [];
-        expanded.erasedStrokes = [];
+        expanded.erasedStrokes = Array.isArray(expanded.erasedStrokes)
+          ? expanded.erasedStrokes.filter(e => e && (e.isProblemStamp ? incProb : (e.isGraphStamp ? incGraph : false)))
+          : [];
       } else if (Array.isArray(expanded.erasedStrokes)) {
         expanded.erasedStrokes = expanded.erasedStrokes.filter((entry) => {
           if (!entry) return false;
+          if (entry.isProblemStamp) return incProb;
+          if (entry.isGraphStamp) return incGraph;
           const tgt = String(entry.target || '');
           const ck = String(entry.cardKey || '');
-          if (!incProb && (tgt === 'problem' || ck.startsWith('problem'))) return false;
-          if (!incGraph && (tgt === 'graph' || ck.startsWith('graph'))) return false;
+          if (!incProb && (tgt === 'problem' || ck.startsWith('problem') || entry.onPdfBoard)) return false;
+          if (!incGraph && !entry.onPdfBoard && (tgt === 'graph' || ck.startsWith('graph'))) return false;
           return true;
         });
       }
@@ -11947,6 +11952,42 @@
       ));
       if (this.pdfPageBoardData && this.pdfPageBoardData.img) {
         imgs.push(this.pdfPageBoardData.img);
+      }
+      if (Array.isArray(this.inkStrokes) && typeof Image !== 'undefined') {
+        for (let i = 0; i < this.inkStrokes.length; i++) {
+          const st = this.inkStrokes[i];
+          if (!st || !st.isGraphStamp || !st.graphStamp || st.graphStamp.kind !== 'image' || !st.graphStamp.dataUrl) {
+            continue;
+          }
+          let cache = st._stampCache;
+          if (!cache && typeof document !== 'undefined') {
+            cache = { canvas: document.createElement('canvas'), key: '', img: null, imgUrl: '' };
+            try {
+              Object.defineProperty(st, '_stampCache', {
+                value: cache,
+                writable: true,
+                configurable: true,
+                enumerable: false
+              });
+            } catch (_) {
+              continue;
+            }
+          }
+          if (!cache) continue;
+          if (!cache.img || cache.imgUrl !== st.graphStamp.dataUrl) {
+            const stampImg = new Image();
+            const safeUrl = (typeof this._sanitizeCardImageUrl === 'function')
+              ? this._sanitizeCardImageUrl(st.graphStamp.dataUrl)
+              : st.graphStamp.dataUrl;
+            cache.img = stampImg;
+            cache.imgUrl = st.graphStamp.dataUrl;
+            cache.key = '';
+            if (safeUrl) stampImg.src = safeUrl;
+          }
+          if (cache.img) {
+            imgs.push(cache.img);
+          }
+        }
       }
       await Promise.all(imgs.map(img => {
         const attrSrc = img && typeof img.getAttribute === 'function' ? img.getAttribute('src') : '';
