@@ -13677,7 +13677,7 @@
 
       this._viewerZoom = 1.0;
       this._viewerMinZoom = 1.0;
-      this._viewerMaxZoom = 2.5;
+      this._viewerMaxZoom = 3.5;
       this._viewerIsWidthFitScrollable = false;
       this._viewerPanX = 0;
       this._viewerPanY = 0;
@@ -13738,7 +13738,7 @@
       if (btnZoomIn) {
         btnZoomIn.onclick = () => {
           const currZ = this._viewerZoom || 1.0;
-          const maxZ = this._viewerMaxZoom || 2.5;
+          const maxZ = this._viewerMaxZoom || 3.5;
           let nextZ = Math.round((currZ + 0.12) * 100) / 100;
           // 축소 구간에서 확대해 올라올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
           if (currZ < 0.99 && nextZ >= 0.96) nextZ = 1.0;
@@ -14031,7 +14031,7 @@
             const midX = (pts[0].x + pts[1].x) / 2;
             const midY = (pts[0].y + pts[1].y) / 2;
             const minZ = this._viewerMinZoom || 1.0;
-            const maxZ = this._viewerMaxZoom || 2.5;
+            const maxZ = this._viewerMaxZoom || 3.5;
             const nextZoom = Math.max(minZ, Math.min(maxZ, pinchStartZoom * (dist / pinchStartDist)));
             const rect = viewport.getBoundingClientRect();
             const cx = rect.left + rect.width / 2;
@@ -14114,7 +14114,7 @@
           if (wasMultiTouch) {
             wasMultiTouch = false;
             const minZ = this._viewerMinZoom || 1.0;
-            const maxZ = this._viewerMaxZoom || 2.5;
+            const maxZ = this._viewerMaxZoom || 3.5;
             if ((this._viewerZoom || 1.0) < minZ) {
               this._viewerZoom = minZ;
             } else if ((this._viewerZoom || 1.0) > maxZ) {
@@ -14567,7 +14567,7 @@
 
     _resolveNeighborViewerZoom(neighborMinZoom = 1.0, neighborBaseW = null, sourceZoom = (this._viewerZoom || 1.0), sourceMinZoom = (this._viewerMinZoom || 1.0), sourceMaxPanX = null, viewport = null) {
       const safeNeighborMin = Number.isFinite(neighborMinZoom) && neighborMinZoom > 0 ? neighborMinZoom : 1.0;
-      const maxZ = this._viewerMaxZoom || 2.5;
+      const maxZ = this._viewerMaxZoom || 3.5;
       const currZ = Number.isFinite(sourceZoom) && sourceZoom > 0 ? sourceZoom : 1.0;
       const effSourceMaxPanX = typeof sourceMaxPanX === 'number'
         ? sourceMaxPanX
@@ -15095,7 +15095,7 @@
       this._viewerMinZoom = minZoom;
       this._viewerIsWidthFitScrollable = isWidthFitScrollable;
 
-      const maxZ = this._viewerMaxZoom || 2.5;
+      const maxZ = this._viewerMaxZoom || 3.5;
       let nextZoom = 1.0;
       if (options && options.preserveViewState) {
         if (prevZoom > 1.02) {
@@ -15172,7 +15172,7 @@
       const viewport = document.getElementById('smartNoteViewerViewport');
       const prevZoom = this._viewerZoom || 1.0;
       const minZoom = this._viewerMinZoom || 1.0;
-      const maxZoom = this._viewerMaxZoom || 2.5;
+      const maxZoom = this._viewerMaxZoom || 3.5;
       const { maxPanY: prevMaxPanY } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, prevZoom, viewport);
       let clampedZoom = Math.max(minZoom, Math.min(maxZoom, nextZoom));
 

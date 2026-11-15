@@ -1256,10 +1256,13 @@
       this.setZoomLevel(1.0);
 
       const aspect = pageCanvas.height / Math.max(1, pageCanvas.width);
-      const sw = Math.max(800, this.screenWidth || window.innerWidth || 1920);
-      const sh = Math.max(600, this.screenHeight || window.innerHeight || 1080);
+      const sw = Math.max(360, this.screenWidth || window.innerWidth || 1920);
+      const sh = Math.max(360, this.screenHeight || window.innerHeight || 1080);
       const unitScale = (sh / 2) / baseYSpan;
-      const targetScreenW = Math.min(sw - 148, Math.max(sw * 0.84, sh * 1.18));
+      const isCompactTabletWidth = sw <= 1440;
+      const sideClearancePx = isCompactTabletWidth ? 112 : 148;
+      const widthRatio = isCompactTabletWidth ? 0.91 : 0.84;
+      const targetScreenW = Math.min(sw - sideClearancePx, Math.max(sw * widthRatio, sh * 1.18));
       const mathW = targetScreenW / unitScale;
       const mathH = mathW * aspect;
 

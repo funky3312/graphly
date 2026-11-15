@@ -4509,7 +4509,7 @@
       if (this.targetZoom === undefined || this.targetZoom === null) {
         this.targetZoom = this.zoomLevel;
       }
-      this.targetZoom = Math.max(0.25, Math.min(4.0, this.targetZoom * factor));
+      this.targetZoom = Math.max(0.5, Math.min(3.5, this.targetZoom * factor));
 
       if (!this._isZoomAnimating) {
         this._isZoomAnimating = true;
@@ -5383,7 +5383,7 @@
 
   setBoardZoom(nextZoom, pivotScreenX = null, pivotScreenY = null) {
     const oldZoom = this.boardZoom || 1.0;
-    const clamped = Math.max(0.25, Math.min(3.5, Math.round(nextZoom * 100) / 100));
+    const clamped = Math.max(0.5, Math.min(3.5, Math.round(nextZoom * 100) / 100));
     if (Math.abs(clamped - oldZoom) < 0.001) return clamped;
     const px = (typeof pivotScreenX === 'number') ? pivotScreenX : ((this.screenWidth || window.innerWidth) / 2);
     const py = (typeof pivotScreenY === 'number') ? pivotScreenY : ((this.screenHeight || window.innerHeight) / 2);
@@ -5573,7 +5573,7 @@
 
       if (st.zoomUnlocked) {
         const oldBZ = st.startBoardZoom || 1.0;
-        const nextBZ = Math.max(0.25, Math.min(3.5, oldBZ * dampedRatio));
+        const nextBZ = Math.max(0.5, Math.min(3.5, oldBZ * dampedRatio));
         const startBx = (st.startMidX - st.startBoardPanX - (st.startBoardZoomOffsetX || 0)) / oldBZ;
         const startBy = (st.startMidY - st.startBoardPanY - (st.startBoardZoomOffsetY || 0)) / oldBZ;
         this.boardZoom = nextBZ;
@@ -5586,7 +5586,7 @@
       // 1층 실시간 그래프 및 PDF 1페이지 보드: 두 손가락 이동(Pan) + 두 손가락 핀치 중심점 기준 서브픽셀 줌(Pinch-to-Zoom)
       const oldZoom = st.startZoom || 1.0;
       const nextZoom = st.zoomUnlocked
-        ? Math.max(0.15, Math.min(3.5, oldZoom * dampedRatio))
+        ? Math.max(0.5, Math.min(3.5, oldZoom * dampedRatio))
         : oldZoom;
 
       if (st.zoomUnlocked) {
@@ -5621,17 +5621,26 @@
 
   zoomByStep(delta) {
     if (this.isGraphCovered && !this.pdfPageBoardData) {
-      this.setBoardZoom((this.boardZoom || 1.0) + delta);
+      const currBZ = this.boardZoom || 1.0;
+      let nextBZ = Math.round((currBZ + delta) * 100) / 100;
+      if (delta > 0 && currBZ < 0.99 && nextBZ >= 0.96) nextBZ = 1.0;
+      else if (delta < 0 && currBZ > 1.01 && nextBZ <= 1.04) nextBZ = 1.0;
+      this.setBoardZoom(nextBZ);
       this.render();
       return;
     }
-    this.setZoomLevel(this.zoomLevel + delta);
+    const currZ = this.zoomLevel || 1.0;
+    let nextZ = Math.round((currZ + delta) * 100) / 100;
+    if (delta > 0 && currZ < 0.99 && nextZ >= 0.96) nextZ = 1.0;
+    else if (delta < 0 && currZ > 1.01 && nextZ <= 1.04) nextZ = 1.0;
+    this.setZoomLevel(nextZ);
     this.render();
   }
 
   // 🌟 [통합 줌 배율 제어 및 UI 실시간 동기화] 🌟
-  setZoomLevel(val) {
-    this.zoomLevel = Math.max(0.15, Math.min(3.5, Math.round(val * 100) / 100));
+  setZoomLevel(val, options = null) {
+    const minZ = (options && options.allowSubMin) ? 0.15 : 0.5;
+    this.zoomLevel = Math.max(minZ, Math.min(3.5, Math.round(val * 100) / 100));
     this.targetZoom = this.zoomLevel;
     this._inkBakeDirty = true;
     const slZoom = document.getElementById('sliderZoom');

@@ -4938,7 +4938,7 @@
         this.panY = typeof s.panY === 'number' ? s.panY : 0;
         this.xSpan = s.xSpan || 11.5;
         this.ySpan = s.ySpan || 8.4;
-        this.setZoomLevel(typeof s.zoomLevel === 'number' ? s.zoomLevel : 1.0);
+        this.setZoomLevel(typeof s.zoomLevel === 'number' ? s.zoomLevel : 1.0, { allowSubMin: true });
         this.syncPdfBoardNavBarUI();
       } else if (this._savedLayer2BoardPan) {
         this.boardPanX = this._savedLayer2BoardPan.x;
@@ -6000,7 +6000,7 @@
 
           this.xSpan = isTrig ? 20.0 : 8.5;
           this.ySpan = isTrig ? 5.5 : 6.0;
-          this.setZoomLevel(cardZoom);
+          this.setZoomLevel(cardZoom, { allowSubMin: true });
           this.zoomLevel = cardZoom;
           this.targetZoom = cardZoom;
           this._isZoomAnimating = false;
