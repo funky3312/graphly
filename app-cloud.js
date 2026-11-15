@@ -13676,6 +13676,9 @@
       this._smartViewerEventsBound = true;
 
       this._viewerZoom = 1.0;
+      this._viewerMinZoom = 1.0;
+      this._viewerMaxZoom = 2.5;
+      this._viewerIsWidthFitScrollable = false;
       this._viewerPanX = 0;
       this._viewerPanY = 0;
       this._viewerSlideIdx = 0;
@@ -13734,18 +13737,36 @@
       }
       if (btnZoomIn) {
         btnZoomIn.onclick = () => {
-          const nextZ = Math.round(((this._viewerZoom || 1.0) + 0.10) * 100) / 100;
-          this.setSmartViewerZoom(nextZ);
+          const currZ = this._viewerZoom || 1.0;
+          const maxZ = this._viewerMaxZoom || 2.5;
+          let nextZ = Math.round((currZ + 0.12) * 100) / 100;
+          // 축소 구간에서 확대해 올라올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
+          if (currZ < 0.99 && nextZ >= 0.96) nextZ = 1.0;
+          this.setSmartViewerZoom(Math.min(maxZ, nextZ));
         };
       }
       if (btnZoomOut) {
         btnZoomOut.onclick = () => {
-          const nextZ = Math.round(((this._viewerZoom || 1.0) - 0.10) * 100) / 100;
-          this.setSmartViewerZoom(nextZ);
+          const currZ = this._viewerZoom || 1.0;
+          const minZ = this._viewerMinZoom || 1.0;
+          let nextZ = Math.round((currZ - 0.12) * 100) / 100;
+          // 확대 구간에서 축소해 내려올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
+          if (currZ > 1.01 && nextZ <= 1.04) nextZ = 1.0;
+          this.setSmartViewerZoom(Math.max(minZ, nextZ));
         };
       }
       if (btnZoomFit) {
-        btnZoomFit.onclick = () => this.fitSmartViewerStageToScreen();
+        btnZoomFit.onclick = () => {
+          const currZ = this._viewerZoom || 1.0;
+          const minZ = this._viewerMinZoom || 1.0;
+          this._setSmartViewerCarouselAnimating(false);
+          // 100%(가로폭 맞춤) 상태에서 세로가 긴 문서라면 원클릭으로 [한 페이지 전체 맞춤(~50%)] 토글!
+          if (Math.abs(currZ - 1.0) <= 0.02 && minZ < 0.96) {
+            this.setSmartViewerZoom(minZ);
+            return;
+          }
+          this.fitSmartViewerStageToScreen(false);
+        };
       }
       if (btnDownload) {
         btnDownload.onclick = async () => {
@@ -13814,31 +13835,26 @@
         const icExit = document.getElementById('iconViewerFullscreenExit');
         if (icEnter) icEnter.style.display = isFs ? 'none' : '';
         if (icExit) icExit.style.display = isFs ? '' : 'none';
-        if (overlay && overlay.style.display !== 'none' && (this._viewerZoom || 1.0) <= 1.02) {
-          this.fitSmartViewerStageToScreen(true);
+        if (overlay && overlay.style.display !== 'none' && !this._viewerSwitchingSlide) {
+          this.fitSmartViewerStageToScreen(false, null, { preserveViewState: true });
         }
       };
       document.addEventListener('fullscreenchange', syncFullscreenIcons);
       document.addEventListener('webkitfullscreenchange', syncFullscreenIcons);
       window.addEventListener('resize', () => {
-        if (overlay && overlay.style.display !== 'none') {
-          if ((this._viewerZoom || 1.0) <= 1.02) {
-            this.fitSmartViewerStageToScreen(true);
-          } else {
-            this._clampSmartViewerPan();
-            this._applySmartViewerTransform();
-          }
+        if (overlay && overlay.style.display !== 'none' && !this._viewerSwitchingSlide) {
+          this.fitSmartViewerStageToScreen(false, null, { preserveViewState: true });
         }
       });
       window.addEventListener('orientationchange', () => {
         setTimeout(() => {
           if (overlay && overlay.style.display !== 'none') {
-            this.fitSmartViewerStageToScreen(true);
+            this.fitSmartViewerStageToScreen(false);
           }
         }, 120);
       });
 
-      // 키보드 좌우 방향키 페이지 넘김 & 단축키 지원
+      // 키보드 좌우 방향키 페이지 넘김 · 상하 스크롤 & 단축키 지원
       window.addEventListener('keydown', (e) => {
         if (!overlay || overlay.style.display === 'none') return;
         if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
@@ -13852,13 +13868,22 @@
             e.preventDefault();
             this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next');
           }
+        } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          const { maxPanY } = this._getSmartViewerMaxPan();
+          if (maxPanY > 1) {
+            e.preventDefault();
+            this._setSmartViewerCarouselAnimating(false);
+            this._viewerPanY = (this._viewerPanY || 0) + (e.key === 'ArrowUp' ? 140 : -140);
+            this._clampSmartViewerPan();
+            this._applySmartViewerTransform();
+          }
         } else if (e.key === 'Escape') {
           if (overlay.classList.contains('viewer-immersive-fullscreen')) {
             overlay.classList.remove('viewer-immersive-fullscreen');
             syncFullscreenIcons();
           }
         } else if (e.key === '0') {
-          this.fitSmartViewerStageToScreen();
+          this.fitSmartViewerStageToScreen(false);
         }
       });
 
@@ -13892,6 +13917,7 @@
         const activePointers = new Map();
         let dragStartX = 0, dragStartY = 0;
         let panStartX = 0, panStartY = 0;
+        let dragAxisLock = null; // null | 'x' | 'y'
         let startAtLeftEdge = false, startAtRightEdge = false;
         let pointerDownTime = 0;
         let lastMoveX = 0, lastMoveTime = 0, velocityX = 0;
@@ -13908,9 +13934,33 @@
           e.preventDefault();
           this._commitPendingViewerCarouselImmediately();
           this._setSmartViewerCarouselAnimating(false);
-          // PC 마우스 휠 및 트랙패드 핀치: 첫 화면(100%)부터 확대 상태까지 언제나 커서 위치 기준 즉시 확대/축소!
-          const step = (e.ctrlKey || e.metaKey) ? 1.08 : 1.11;
-          const factor = e.deltaY < 0 ? step : (1 / step);
+          // 1) Ctrl/Cmd + 휠 (트랙패드 두 손가락 핀치 포함): 언제나 커서 중심 확대/축소 (minZoom ~ 250%)
+          if (e.ctrlKey || e.metaKey) {
+            const step = 1.08;
+            const factor = e.deltaY < 0 ? step : (1 / step);
+            this.setSmartViewerZoom((this._viewerZoom || 1.0) * factor, e.clientX, e.clientY);
+            return;
+          }
+          // 2) 가로 화면의 세로 문서(가로폭 맞춤 슬라이드): 표준 PDF 뷰어와 동일하게 일반 마우스 휠 = 상하(및 확대 시 좌우) 스크롤!
+          if (this._viewerIsWidthFitScrollable) {
+            const { maxPanX, maxPanY, vh } = this._getSmartViewerMaxPan();
+            const unitScale = e.deltaMode === 1 ? 36 : (e.deltaMode === 2 ? Math.max(240, vh * 0.85) : 1);
+            const dxPx = (e.deltaX || 0) * unitScale;
+            const dyPx = (e.deltaY || 0) * unitScale;
+            if (maxPanY > 0.5 || maxPanX > 0.5) {
+              if (maxPanX > 0.5) {
+                this._viewerPanX = (this._viewerPanX || 0) - dxPx;
+              }
+              if (maxPanY > 0.5) {
+                this._viewerPanY = (this._viewerPanY || 0) - dyPx;
+              }
+              this._clampSmartViewerPan();
+              this._applySmartViewerTransform();
+            }
+            return;
+          }
+          // 3) 일반 가로(16:9 등) 판서 슬라이드: 기존과 100% 동일하게 마우스 휠 즉시 확대/축소 유지
+          const factor = e.deltaY < 0 ? 1.11 : (1 / 1.11);
           this.setSmartViewerZoom((this._viewerZoom || 1.0) * factor, e.clientX, e.clientY);
         }, { passive: false });
 
@@ -13939,6 +13989,7 @@
           activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
           if (activePointers.size === 1) {
             wasMultiTouch = false;
+            dragAxisLock = null;
             pointerDownTime = performance.now();
             dragStartX = e.clientX;
             dragStartY = e.clientY;
@@ -13948,13 +13999,12 @@
             panStartX = this._viewerPanX || 0;
             panStartY = this._viewerPanY || 0;
             const zoom = this._viewerZoom || 1.0;
-            const vw = Math.max(200, viewport.clientWidth);
-            const zoomedW = (this._viewerBaseW || 1000) * zoom;
-            const maxPanX = Math.max(0, (zoomedW - vw) / 2);
+            const { maxPanX } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, zoom, viewport);
             startAtLeftEdge = (panStartX >= maxPanX - 6);
             startAtRightEdge = (panStartX <= -maxPanX + 6);
           } else if (activePointers.size === 2) {
             wasMultiTouch = true;
+            dragAxisLock = null;
             this._viewerSuppressHotspotClickUntil = performance.now() + 350;
             if (singleTapTimer) {
               clearTimeout(singleTapTimer);
@@ -13980,7 +14030,9 @@
             const dist = Math.max(10, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
             const midX = (pts[0].x + pts[1].x) / 2;
             const midY = (pts[0].y + pts[1].y) / 2;
-            const nextZoom = Math.max(1.0, Math.min(3.0, pinchStartZoom * (dist / pinchStartDist)));
+            const minZ = this._viewerMinZoom || 1.0;
+            const maxZ = this._viewerMaxZoom || 2.5;
+            const nextZoom = Math.max(minZ, Math.min(maxZ, pinchStartZoom * (dist / pinchStartDist)));
             const rect = viewport.getBoundingClientRect();
             const cx = rect.left + rect.width / 2;
             const cy = rect.top + rect.height / 2;
@@ -14003,12 +14055,33 @@
 
             const dx = e.clientX - dragStartX;
             const dy = e.clientY - dragStartY;
-            if (Math.hypot(dx, dy) >= 8) {
+            const dist = Math.hypot(dx, dy);
+            if (dist >= 8) {
               this._viewerSuppressHotspotClickUntil = now + 280;
             }
-            if ((this._viewerZoom || 1.0) <= 1.02) {
-              // 기본 배율(100%): 1:1 쫀득한 좌우 캐러셀 스와이프 페이지 넘김 프리뷰 (옆 페이지 동시 슬라이딩)
-              if (Math.abs(dx) > 3) {
+            const currZoom = this._viewerZoom || 1.0;
+            const { maxPanX, maxPanY } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, currZoom, viewport);
+            if (maxPanX <= 1) {
+              // 문서 가로폭이 화면 안에 다 들어와 있는 모든 상태(축소 ~50%, 기본 100%, PC 소폭 확대):
+              // 상하 스크롤(↕)과 좌우 원스와이프 캐러셀 페이지 넘김(↔)을 방향 잠금으로 완벽 분리!
+              if (maxPanY > 1) {
+                if (!dragAxisLock && dist >= 6) {
+                  dragAxisLock = (Math.abs(dx) > Math.abs(dy) * 1.06) ? 'x' : 'y';
+                }
+                if (dragAxisLock === 'y') {
+                  this._viewerPanX = 0;
+                  this._viewerPanY = panStartY + dy;
+                  this._clampSmartViewerPan();
+                  this._applySmartViewerTransform();
+                } else if (dragAxisLock === 'x') {
+                  const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
+                  const atEdge = (dx > 0 && this._viewerSlideIdx <= 0) || (dx < 0 && this._viewerSlideIdx >= total - 1);
+                  this._viewerPanX = dx * (atEdge ? 0.22 : 1.0);
+                  this._viewerPanY = panStartY;
+                  this._applySmartViewerTransform();
+                }
+              } else if (Math.abs(dx) > 3) {
+                dragAxisLock = 'x';
                 const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
                 const atEdge = (dx > 0 && this._viewerSlideIdx <= 0) || (dx < 0 && this._viewerSlideIdx >= total - 1);
                 this._viewerPanX = dx * (atEdge ? 0.22 : 1.0);
@@ -14016,7 +14089,7 @@
                 this._applySmartViewerTransform();
               }
             } else {
-              // 확대 상태(>100%): 경계 이탈 없는 부드러운 2D 패닝
+              // 문서 가로폭이 화면보다 넓게 확대된 상태(maxPanX > 1): 경계 이탈 없는 부드러운 2D 패닝
               this._viewerPanX = panStartX + dx;
               this._viewerPanY = panStartY + dy;
               this._clampSmartViewerPan();
@@ -14035,15 +14108,22 @@
           const totalDy = e.clientY - dragStartY;
           const moveDist = Math.hypot(totalDx, totalDy);
           const elapsed = performance.now() - pointerDownTime;
+          const finishedAxisLock = dragAxisLock;
+          dragAxisLock = null;
 
           if (wasMultiTouch) {
             wasMultiTouch = false;
-            if ((this._viewerZoom || 1.0) < 1.0) {
-              this.fitSmartViewerStageToScreen(true);
-            } else {
-              this._clampSmartViewerPan();
-              this._applySmartViewerTransform();
+            const minZ = this._viewerMinZoom || 1.0;
+            const maxZ = this._viewerMaxZoom || 2.5;
+            if ((this._viewerZoom || 1.0) < minZ) {
+              this._viewerZoom = minZ;
+            } else if ((this._viewerZoom || 1.0) > maxZ) {
+              this._viewerZoom = maxZ;
+            } else if (minZ < 0.96 && Math.abs((this._viewerZoom || 1.0) - 1.0) < 0.025) {
+              this._viewerZoom = 1.0;
             }
+            this._clampSmartViewerPan();
+            this._applySmartViewerTransform();
             return;
           }
 
@@ -14055,17 +14135,19 @@
             }
             const now = performance.now();
             if (now - lastTapTime < 280 && Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) < 36) {
-              // 더블탭: 터치한 지점 중심으로 100% ⇄ 180% 즉시 확대/축소 토글
+              // 더블탭: 축소(<94%) ➔ 100% 복귀 / 기본(100%) ➔ 단 집중 확대(200% or 180%) / 확대(>108%) ➔ 읽던 세로 위치 유지하며 100% 복귀!
               if (singleTapTimer) {
                 clearTimeout(singleTapTimer);
                 singleTapTimer = null;
               }
               lastTapTime = 0;
-              if (stage) stage.classList.add('swipe-animating');
-              if ((this._viewerZoom || 1.0) > 1.08) {
-                this.fitSmartViewerStageToScreen(true);
+              this._setSmartViewerCarouselAnimating(false);
+              const currZ = this._viewerZoom || 1.0;
+              if (currZ < 0.94 || currZ > 1.08) {
+                this.setSmartViewerZoom(1.0, e.clientX, e.clientY);
               } else {
-                this.setSmartViewerZoom(1.8, e.clientX, e.clientY);
+                const targetDoubleTapZoom = this._viewerIsWidthFitScrollable ? 2.0 : 1.8;
+                this.setSmartViewerZoom(targetDoubleTapZoom, e.clientX, e.clientY);
               }
               return;
             }
@@ -14085,9 +14167,15 @@
           const isHorizSwipe = Math.abs(totalDx) > Math.abs(totalDy) * 0.92;
           const isFastFlickNext = (totalDx <= -18 && velocityX <= -0.22);
           const isFastFlickPrev = (totalDx >= 18 && velocityX >= 0.22);
+          const { maxPanX: finishMaxPanX } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, this._viewerZoom || 1.0, viewport);
 
-          // 2) 기본 배율(100%)에서 좌우 스와이프(또는 빠른 플릭) 시 이전/다음 페이지 즉시 넘김!
-          if ((this._viewerZoom || 1.0) <= 1.02) {
+          // 2) 문서 가로폭이 화면 안에 다 들어온 상태(축소 ~ 100% 및 PC 소폭 확대)에서 좌우 원스와이프 즉시 넘김!
+          if (finishMaxPanX <= 1) {
+            if (finishedAxisLock === 'y') {
+              this._clampSmartViewerPan();
+              this._applySmartViewerTransform();
+              return;
+            }
             if (isHorizSwipe && (totalDx <= -26 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
               this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next', velocityX);
               return;
@@ -14096,9 +14184,20 @@
               this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev', velocityX);
               return;
             }
-            this._setSmartViewerCarouselAnimating(true, 320);
+            if (Math.abs(this._viewerPanX || 0) > 0.5) {
+              this._setSmartViewerCarouselAnimating(true, 280);
+              if (this._viewerSnapBackTimer) clearTimeout(this._viewerSnapBackTimer);
+              this._viewerSnapBackTimer = setTimeout(() => {
+                this._viewerSnapBackTimer = null;
+                if (!this._viewerCarouselTimer) {
+                  this._setSmartViewerCarouselAnimating(false);
+                }
+              }, 290);
+            } else {
+              this._setSmartViewerCarouselAnimating(false);
+            }
             this._viewerPanX = 0;
-            this._viewerPanY = 0;
+            this._clampSmartViewerPan();
             this._applySmartViewerTransform();
             return;
           }
@@ -14193,6 +14292,8 @@
 
     async enterStudentAudioVideoOnlyMode(pkg, autoPlay = false, options = null) {
       if (!pkg) return;
+      this._commitPendingViewerCarouselImmediately();
+      this._setSmartViewerCarouselAnimating(false);
       this._clearSmartViewerPreloadedImages();
       if (typeof this._ensureCloudShareAudioLoaded === 'function') {
         await this._ensureCloudShareAudioLoaded(pkg);
@@ -14416,22 +14517,92 @@
     _calcSmartViewerFitSize(iw, ih, viewport = null) {
       const vp = viewport || document.getElementById('smartNoteViewerViewport');
       const isMobileViewport = (typeof window !== 'undefined') && (window.innerWidth <= 768 || window.innerHeight <= 500);
-      const padX = isMobileViewport ? 0 : 20;
+      const rawW = (vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth;
+      const rawH = (vp && vp.clientHeight) ? vp.clientHeight : window.innerHeight;
+      const padX = isMobileViewport ? 0 : 24;
       const padY = isMobileViewport ? 0 : 56;
-      const vw = Math.max(180, ((vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth) - padX);
-      const vh = Math.max(160, ((vp && vp.clientHeight) ? vp.clientHeight : window.innerHeight) - padY);
+      const vw = Math.max(180, rawW - padX);
+      const vh = Math.max(160, rawH - padY);
       const safeW = Math.max(1, iw || 1000);
       const safeH = Math.max(1, ih || 700);
-      const fitScale = Math.min(vw / safeW, vh / safeH);
+      const containScale = Math.min(vw / safeW, vh / safeH);
+
+      // 🌟 세로형 시험지/PDF(safeH > safeW * 1.06)를 가로 화면(vw > vh * 1.02)에서 열 때:
+      // 양옆 여백을 둔 가로폭 맞춤(100%) + 맨 위(상단) 시작으로 설정하고,
+      // 한 페이지 세로 전체가 화면에 쏙 들어오는 배율(minZoom, 약 45~52%)까지 축소를 지원!
+      const isPortraitDoc = safeH > safeW * 1.06;
+      const isLandscapeScreen = vw > vh * 1.02;
+      let fitScale = containScale;
+      if (isPortraitDoc && isLandscapeScreen) {
+        const maxReadableDocW = Math.max(1320, Math.round(vh * 1.18));
+        const targetDocW = Math.min(vw, maxReadableDocW);
+        fitScale = Math.max(containScale, targetDocW / safeW);
+      }
+
       const displayW = Math.max(2, Math.round((safeW * fitScale) / 2) * 2);
       const displayH = Math.max(2, Math.round((safeH * fitScale) / 2) * 2);
-      return { displayW, displayH };
+      const rawMinZoom = Math.min(1.0, vw / displayW, vh / displayH);
+      const minZoom = (rawMinZoom > 0.97)
+        ? 1.0
+        : Math.max(0.25, Math.round(rawMinZoom * 1000) / 1000);
+      const edgePadY = isMobileViewport ? 0 : 16;
+      const isWidthFitScrollable = displayH > (rawH - edgePadY * 2 + 1);
+      return { displayW, displayH, minZoom, isWidthFitScrollable };
     }
 
-    _getSmartViewerSlideStride(viewport = null, neighborWOverride = null) {
+    _getSmartViewerMaxPan(baseW = this._viewerBaseW, baseH = this._viewerBaseH, zoom = (this._viewerZoom || 1.0), viewport = null) {
+      const vp = viewport || document.getElementById('smartNoteViewerViewport');
+      const isMobileViewport = (typeof window !== 'undefined') && (window.innerWidth <= 768 || window.innerHeight <= 500);
+      const vw = Math.max(180, (vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth);
+      const vh = Math.max(160, (vp && vp.clientHeight) ? vp.clientHeight : window.innerHeight);
+      const zoomedW = Math.max(2, (baseW || 1000) * zoom);
+      const zoomedH = Math.max(2, (baseH || 700) * zoom);
+      const maxPanX = zoomedW > vw + 1 ? Math.max(0, (zoomedW - vw) / 2) : 0;
+      const edgePadY = isMobileViewport ? 0 : 16;
+      const maxPanY = zoomedH > (vh - edgePadY * 2 + 1)
+        ? Math.max(0, (zoomedH - vh) / 2 + edgePadY)
+        : 0;
+      return { maxPanX, maxPanY, vw, vh, zoomedW, zoomedH };
+    }
+
+    _resolveNeighborViewerZoom(neighborMinZoom = 1.0, neighborBaseW = null, sourceZoom = (this._viewerZoom || 1.0), sourceMinZoom = (this._viewerMinZoom || 1.0), sourceMaxPanX = null, viewport = null) {
+      const safeNeighborMin = Number.isFinite(neighborMinZoom) && neighborMinZoom > 0 ? neighborMinZoom : 1.0;
+      const maxZ = this._viewerMaxZoom || 2.5;
+      const currZ = Number.isFinite(sourceZoom) && sourceZoom > 0 ? sourceZoom : 1.0;
+      const effSourceMaxPanX = typeof sourceMaxPanX === 'number'
+        ? sourceMaxPanX
+        : this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, currZ, viewport).maxPanX;
+
+      // 1) 종이 가로폭이 화면보다 넓게 확대된 상태(Edge Swipe 전환)면 다음 장은 깔끔하게 100% 상단으로 시작!
+      if (effSourceMaxPanX > 1) return 1.0;
+
+      // 2) 소폭 확대(100% < currZ)였으나 종이가 아직 화면 폭 안에 들어와 있었던 경우(예: PC 와이드 모니터 112~136%):
+      // 옆 페이지도 그 배율에서 가로 넘침이 없다면 그대로 유지, 넘치면(예: 16:9 슬라이드) 100%로 맞춤!
+      if (currZ > 1.02) {
+        const vp = viewport || document.getElementById('smartNoteViewerViewport');
+        const vw = Math.max(180, (vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth);
+        const nbW = neighborBaseW || this._viewerBaseW || vw;
+        if (nbW * currZ <= vw + 1) {
+          return Math.min(maxZ, currZ);
+        }
+        return 1.0;
+      }
+
+      // 3) 기본 100% 상태
+      if (currZ >= 0.98) return 1.0;
+
+      // 4) 축소 상태(<98%, 예: ~50% 한 페이지 전체 보기 또는 76~88% 부분 축소): 축소 탐색 흐름 그대로 유지!
+      if (sourceMinZoom < 0.98 && Math.abs(currZ - sourceMinZoom) <= 0.025) {
+        return safeNeighborMin;
+      }
+      return Math.max(safeNeighborMin, Math.min(1.0, currZ));
+    }
+
+    _getSmartViewerSlideStride(viewport = null, neighborWOverride = null, currVisualWOverride = null) {
       const vp = viewport || document.getElementById('smartNoteViewerViewport');
       const vw = Math.max(280, (vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth);
-      const currW = Math.max(200, this._viewerBaseW || vw);
+      const zoom = this._viewerZoom || 1.0;
+      const currW = Math.max(200, currVisualWOverride || Math.round((this._viewerBaseW || vw) * zoom));
       const neighborW = Math.max(200, neighborWOverride || currW);
       const pageGap = ((typeof window !== 'undefined') && window.innerWidth <= 768) ? 14 : 22;
       // 정지 상태(px=0)에서는 옆 페이지가 뷰포트 가장자리 바로 4px 밖에 숨어 대기하고,
@@ -14481,6 +14652,16 @@
       const bindNeighborStage = (stageEl, imgEl, neighborSlide) => {
         if (!stageEl || !imgEl) return;
         if (neighborSlide && neighborSlide.viewerSnapshotDataUrl) {
+          const applyNeighborDataset = (fit) => {
+            stageEl.dataset.fitW = String(fit.displayW);
+            stageEl.dataset.fitH = String(fit.displayH);
+            stageEl.dataset.minZoom = String(fit.minZoom);
+            const nZoom = this._resolveNeighborViewerZoom(fit.minZoom, fit.displayW);
+            const nW = Math.max(2, Math.round((fit.displayW * nZoom) / 2) * 2);
+            const nH = Math.max(2, Math.round((fit.displayH * nZoom) / 2) * 2);
+            imgEl.style.width = `${nW}px`;
+            imgEl.style.height = `${nH}px`;
+          };
           stageEl.dataset.ready = '1';
           if (imgEl.src !== neighborSlide.viewerSnapshotDataUrl) {
             imgEl.onload = () => {
@@ -14489,9 +14670,8 @@
                 neighborSlide.viewerSnapshotHeight || imgEl.naturalHeight || this._viewerBaseH || 700,
                 viewport
               );
-              stageEl.dataset.fitW = String(fit.displayW);
-              imgEl.style.width = `${fit.displayW}px`;
-              imgEl.style.height = `${fit.displayH}px`;
+              applyNeighborDataset(fit);
+              this._applySmartViewerTransform();
             };
             imgEl.src = neighborSlide.viewerSnapshotDataUrl;
           }
@@ -14500,12 +14680,12 @@
             neighborSlide.viewerSnapshotHeight || imgEl.naturalHeight || this._viewerBaseH || 700,
             viewport
           );
-          stageEl.dataset.fitW = String(fit.displayW);
-          imgEl.style.width = `${fit.displayW}px`;
-          imgEl.style.height = `${fit.displayH}px`;
+          applyNeighborDataset(fit);
         } else {
           stageEl.dataset.ready = '0';
           stageEl.dataset.fitW = '';
+          stageEl.dataset.fitH = '';
+          stageEl.dataset.minZoom = '';
           stageEl.style.display = 'none';
         }
       };
@@ -14674,8 +14854,13 @@
       }
       this._viewerPkg = pkg;
       this._mobileViewerFsAttempted = false;
+      this._viewerZoom = 1.0;
+      this._viewerMinZoom = 1.0;
+      this._viewerPanX = 0;
+      this._viewerPanY = 0;
       this.syncSmartViewerPromoBannerUI(pkg);
       const startIdx = Math.max(0, Math.min(pkg.playlistSlides.length - 1, pkg.currentIndex || 0));
+      this._viewerSlideIdx = startIdx;
       this._preloadSmartViewerSlides(pkg, startIdx);
       document.body.classList.remove('viewer-graph-touch-mode');
       const touchBar = document.getElementById('viewerGraphTouchBar');
@@ -14723,9 +14908,17 @@
       // 🌟 [순정 PDF 뷰어급 3-패널 실시간 캐러셀 슬라이드 전환]:
       // 100% 배율에서 옆 페이지로 넘길 때 pointerup과 동일한 프레임에서 0ms 딜레이로 즉시 출발하며,
       // 남은 이동 거리와 손가락 속도에 맞춘 320~430ms iOS 감속 곡선(cubic-bezier(0.16, 1, 0.3, 1))으로 사뿐히 안착!
+      const sourceZoomBeforeSwitch = this._viewerZoom || 1.0;
+      const sourceMinZoomBeforeSwitch = this._viewerMinZoom || 1.0;
+      const { maxPanX: preSwitchMaxPanX } = this._getSmartViewerMaxPan(
+        this._viewerBaseW,
+        this._viewerBaseH,
+        sourceZoomBeforeSwitch,
+        viewport
+      );
       const canCarouselGlide = Boolean(
         (swipeDir === 'next' || swipeDir === 'prev') &&
-        (this._viewerZoom || 1.0) <= 1.02 &&
+        preSwitchMaxPanX <= 1 &&
         stage &&
         imgEl &&
         imgEl.src &&
@@ -14743,27 +14936,39 @@
           slide.viewerSnapshotHeight || (nImg && nImg.naturalHeight) || this._viewerBaseH || 700,
           viewport
         );
+        const nextSlideZoom = this._resolveNeighborViewerZoom(
+          targetFit.minZoom,
+          targetFit.displayW,
+          sourceZoomBeforeSwitch,
+          sourceMinZoomBeforeSwitch,
+          preSwitchMaxPanX,
+          viewport
+        );
+        const targetVisualW = Math.max(2, Math.round((targetFit.displayW * nextSlideZoom) / 2) * 2);
+        const targetVisualH = Math.max(2, Math.round((targetFit.displayH * nextSlideZoom) / 2) * 2);
 
         if (nStage && nImg) {
           nStage.dataset.ready = '1';
           nStage.dataset.fitW = String(targetFit.displayW);
+          nStage.dataset.fitH = String(targetFit.displayH);
+          nStage.dataset.minZoom = String(targetFit.minZoom);
           if (nImg.src !== slide.viewerSnapshotDataUrl) {
             nImg.src = slide.viewerSnapshotDataUrl;
           }
-          nImg.style.width = `${targetFit.displayW}px`;
-          nImg.style.height = `${targetFit.displayH}px`;
+          nImg.style.width = `${targetVisualW}px`;
+          nImg.style.height = `${targetVisualH}px`;
         }
 
-        // 화살표 버튼 클릭이나 키보드로 넘길 때(현재 panX === 0)는 시작 위치를 먼저 고정한 뒤 전체 폭 슬라이딩
+        // 화살표 버튼 클릭이나 키보드로 넘길 때(현재 panX === 0)는 읽던 세로 위치(panY)를 흔들지 않은 채 수평 슬라이딩 출발!
         if (Math.abs(this._viewerPanX || 0) < 1) {
           this._setSmartViewerCarouselAnimating(false);
           this._viewerPanX = 0;
-          this._viewerPanY = 0;
           this._applySmartViewerTransform();
           void stage.offsetWidth;
         }
 
-        const stride = this._getSmartViewerSlideStride(viewport, targetFit.displayW);
+        const currVisualW = Math.max(2, Math.round(((this._viewerBaseW || targetFit.displayW) * sourceZoomBeforeSwitch) / 2) * 2);
+        const stride = this._getSmartViewerSlideStride(viewport, targetVisualW, currVisualW);
         const alreadyMoved = Math.min(stride, Math.abs(this._viewerPanX || 0));
         const remainRatio = Math.max(0.22, 1 - (alreadyMoved / Math.max(1, stride)));
         const absVel = Math.min(2.4, Math.abs(releaseVelocityX || 0));
@@ -14771,7 +14976,6 @@
 
         this._setSmartViewerCarouselAnimating(true, durationMs);
         this._viewerPanX = swipeDir === 'next' ? -stride : stride;
-        this._viewerPanY = 0;
         this._applySmartViewerTransform();
         this._syncSmartViewerHeaderControls(idx, total, slide);
 
@@ -14785,11 +14989,27 @@
             slide.viewerSnapshotHeight || (imgEl && imgEl.naturalHeight) || targetFit.displayH,
             viewport
           );
+          const committedZoom = this._resolveNeighborViewerZoom(
+            finalFit.minZoom,
+            finalFit.displayW,
+            sourceZoomBeforeSwitch,
+            sourceMinZoomBeforeSwitch,
+            preSwitchMaxPanX,
+            viewport
+          );
+          const { maxPanY: committedMaxPanY } = this._getSmartViewerMaxPan(
+            finalFit.displayW,
+            finalFit.displayH,
+            committedZoom,
+            viewport
+          );
           this._viewerBaseW = finalFit.displayW;
           this._viewerBaseH = finalFit.displayH;
-          this._viewerZoom = 1.0;
+          this._viewerMinZoom = finalFit.minZoom;
+          this._viewerIsWidthFitScrollable = finalFit.isWidthFitScrollable;
+          this._viewerZoom = committedZoom;
           this._viewerPanX = 0;
-          this._viewerPanY = 0;
+          this._viewerPanY = committedMaxPanY;
           this._renderSmartViewerHotspots(slide, idx);
           this._syncSmartViewerNeighborStages(idx);
           this._prewarmNeighborSlideSnapshots(idx);
@@ -14810,48 +15030,97 @@
 
       if (imgEl && slide.viewerSnapshotDataUrl) {
         if (imgEl.src !== slide.viewerSnapshotDataUrl) {
-          await new Promise((res) => {
-            let done = false;
-            const finish = () => {
-              if (done) return;
-              done = true;
-              imgEl.onload = null;
-              imgEl.onerror = null;
-              res();
-            };
-            imgEl.onload = finish;
-            imgEl.onerror = finish;
-            imgEl.src = slide.viewerSnapshotDataUrl;
-            if (imgEl.complete && imgEl.naturalWidth > 0) finish();
-            setTimeout(finish, 180);
-          });
+          this._viewerSwitchingSlide = true;
+          try {
+            await new Promise((res) => {
+              let done = false;
+              const finish = () => {
+                if (done) return;
+                done = true;
+                imgEl.onload = null;
+                imgEl.onerror = null;
+                res();
+              };
+              imgEl.onload = finish;
+              imgEl.onerror = finish;
+              imgEl.src = slide.viewerSnapshotDataUrl;
+              if (imgEl.complete && imgEl.naturalWidth > 0) finish();
+              setTimeout(finish, 180);
+            });
+          } finally {
+            this._viewerSwitchingSlide = false;
+          }
         }
       }
 
       this._renderSmartViewerHotspots(slide, idx);
-      this.fitSmartViewerStageToScreen(false, swipeDir);
+      const preserveZoomOnSwitch = (prevIdx !== idx && preSwitchMaxPanX <= 1)
+        ? {
+            preserveZoomFrom: sourceZoomBeforeSwitch,
+            preserveMinZoomFrom: sourceMinZoomBeforeSwitch,
+            preserveMaxPanXFrom: preSwitchMaxPanX
+          }
+        : null;
+      this.fitSmartViewerStageToScreen(false, swipeDir, preserveZoomOnSwitch);
       this._syncSmartViewerNeighborStages(idx);
       this._prewarmNeighborSlideSnapshots(idx);
     }
 
-    fitSmartViewerStageToScreen(preserveZoomResetOnly = false, swipeDir = null) {
+    fitSmartViewerStageToScreen(preserveZoomResetOnly = false, swipeDir = null, options = null) {
       this._commitPendingViewerCarouselImmediately();
       const viewport = document.getElementById('smartNoteViewerViewport');
       const stage = document.getElementById('smartNoteViewerStage');
       const imgEl = document.getElementById('smartNoteViewerImg');
       if (!viewport || !imgEl) return;
 
+      const prevZoom = this._viewerZoom || 1.0;
+      const prevMinZoom = this._viewerMinZoom || 1.0;
+      const { maxPanX: prevMaxPanX, maxPanY: prevMaxPanY } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, prevZoom, viewport);
+      const prevScrollProgressX = prevMaxPanX > 2
+        ? Math.max(0, Math.min(1, (prevMaxPanX - (this._viewerPanX || 0)) / (2 * prevMaxPanX)))
+        : 0.5;
+      const prevScrollProgressY = prevMaxPanY > 2
+        ? Math.max(0, Math.min(1, (prevMaxPanY - (this._viewerPanY || 0)) / (2 * prevMaxPanY)))
+        : 0;
+
       const slide = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides))
         ? this._viewerPkg.playlistSlides[this._viewerSlideIdx || 0]
         : null;
       const iw = Math.max(1, (slide && slide.viewerSnapshotWidth) || imgEl.naturalWidth || 1000);
       const ih = Math.max(1, (slide && slide.viewerSnapshotHeight) || imgEl.naturalHeight || 700);
-      const { displayW, displayH } = this._calcSmartViewerFitSize(iw, ih, viewport);
+      const { displayW, displayH, minZoom, isWidthFitScrollable } = this._calcSmartViewerFitSize(iw, ih, viewport);
 
       this._viewerBaseW = displayW;
       this._viewerBaseH = displayH;
-      this._viewerZoom = 1.0;
-      this._viewerPanY = 0;
+      this._viewerMinZoom = minZoom;
+      this._viewerIsWidthFitScrollable = isWidthFitScrollable;
+
+      const maxZ = this._viewerMaxZoom || 2.5;
+      let nextZoom = 1.0;
+      if (options && options.preserveViewState) {
+        if (prevZoom > 1.02) {
+          nextZoom = Math.max(minZoom, Math.min(maxZ, prevZoom));
+        } else {
+          nextZoom = this._resolveNeighborViewerZoom(minZoom, displayW, prevZoom, prevMinZoom, 0, viewport);
+        }
+      } else if (options && typeof options.preserveZoomFrom === 'number') {
+        nextZoom = this._resolveNeighborViewerZoom(
+          minZoom,
+          displayW,
+          options.preserveZoomFrom,
+          options.preserveMinZoomFrom || 1.0,
+          options.preserveMaxPanXFrom || 0,
+          viewport
+        );
+      }
+      this._viewerZoom = nextZoom;
+
+      const { maxPanX: nextMaxPanX, maxPanY: nextMaxPanY } = this._getSmartViewerMaxPan(displayW, displayH, nextZoom, viewport);
+      if (options && options.preserveViewState && nextMaxPanY > 2 && prevMaxPanY > 2) {
+        this._viewerPanY = nextMaxPanY - prevScrollProgressY * (2 * nextMaxPanY);
+      } else {
+        this._viewerPanY = nextMaxPanY;
+      }
 
       if (stage && (swipeDir === 'next' || swipeDir === 'prev')) {
         this._setSmartViewerCarouselAnimating(false);
@@ -14859,15 +15128,23 @@
         this._applySmartViewerTransform();
         void stage.offsetWidth;
         this._setSmartViewerCarouselAnimating(true, 360);
+        if (this._viewerSnapBackTimer) clearTimeout(this._viewerSnapBackTimer);
+        this._viewerSnapBackTimer = setTimeout(() => {
+          this._viewerSnapBackTimer = null;
+          if (!this._viewerCarouselTimer) {
+            this._setSmartViewerCarouselAnimating(false);
+          }
+        }, 370);
         this._viewerPanX = 0;
         this._applySmartViewerTransform();
       } else {
-        if (preserveZoomResetOnly) {
-          this._setSmartViewerCarouselAnimating(true, 320);
+        this._setSmartViewerCarouselAnimating(false);
+        if (options && options.preserveViewState && nextMaxPanX > 2 && prevMaxPanX > 2) {
+          this._viewerPanX = nextMaxPanX - prevScrollProgressX * (2 * nextMaxPanX);
         } else {
-          this._setSmartViewerCarouselAnimating(false);
+          this._viewerPanX = 0;
         }
-        this._viewerPanX = 0;
+        this._clampSmartViewerPan();
         this._syncSmartViewerNeighborStages(this._viewerSlideIdx || 0);
       }
     }
@@ -14876,34 +15153,31 @@
       const viewport = document.getElementById('smartNoteViewerViewport');
       if (!viewport) return;
       const zoom = this._viewerZoom || 1.0;
-      if (zoom <= 1.01) {
+      const { maxPanX, maxPanY } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, zoom, viewport);
+      if (maxPanX <= 0.5) {
         this._viewerPanX = 0;
-        this._viewerPanY = 0;
-        return;
+      } else {
+        this._viewerPanX = Math.max(-maxPanX, Math.min(maxPanX, this._viewerPanX || 0));
       }
-      const vw = Math.max(180, viewport.clientWidth);
-      const vh = Math.max(160, viewport.clientHeight);
-      const zoomedW = (this._viewerBaseW || 1000) * zoom;
-      const zoomedH = (this._viewerBaseH || 700) * zoom;
-
-      const maxPanX = Math.max(0, (zoomedW - vw) / 2);
-      const maxPanY = Math.max(0, (zoomedH - vh) / 2);
-      this._viewerPanX = Math.max(-maxPanX, Math.min(maxPanX, this._viewerPanX || 0));
-      this._viewerPanY = Math.max(-maxPanY, Math.min(maxPanY, this._viewerPanY || 0));
+      if (maxPanY <= 0.5) {
+        this._viewerPanY = 0;
+      } else {
+        this._viewerPanY = Math.max(-maxPanY, Math.min(maxPanY, this._viewerPanY || 0));
+      }
     }
 
     setSmartViewerZoom(nextZoom, focalClientX = null, focalClientY = null) {
       this._commitPendingViewerCarouselImmediately();
+      this._setSmartViewerCarouselAnimating(false);
       const viewport = document.getElementById('smartNoteViewerViewport');
       const prevZoom = this._viewerZoom || 1.0;
-      const clampedZoom = Math.max(1.0, Math.min(3.0, nextZoom));
+      const minZoom = this._viewerMinZoom || 1.0;
+      const maxZoom = this._viewerMaxZoom || 2.5;
+      const { maxPanY: prevMaxPanY } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, prevZoom, viewport);
+      let clampedZoom = Math.max(minZoom, Math.min(maxZoom, nextZoom));
 
-      if (Math.abs(clampedZoom - 1.0) < 0.02) {
-        this._viewerZoom = 1.0;
-        this._viewerPanX = 0;
-        this._viewerPanY = 0;
-        this._applySmartViewerTransform();
-        return;
+      if (Math.abs(clampedZoom - 1.0) < 0.02 && Math.abs(nextZoom - minZoom) > 0.02) {
+        clampedZoom = 1.0;
       }
 
       if (viewport && Number.isFinite(focalClientX) && Number.isFinite(focalClientY)) {
@@ -14913,6 +15187,17 @@
         const ratio = clampedZoom / Math.max(0.1, prevZoom);
         this._viewerPanX = (focalClientX - cx) - ((focalClientX - cx - (this._viewerPanX || 0)) * ratio);
         this._viewerPanY = (focalClientY - cy) - ((focalClientY - cy - (this._viewerPanY || 0)) * ratio);
+      } else if (prevZoom > 0.05) {
+        const { maxPanY: nextMaxPanY } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, clampedZoom, viewport);
+        const wasAtTopEdge = prevMaxPanY > 0.5 && Math.abs((this._viewerPanY || 0) - prevMaxPanY) <= 2;
+        if ((prevMaxPanY <= 0.5 || wasAtTopEdge) && nextMaxPanY > 0.5) {
+          this._viewerPanX = (this._viewerPanX || 0) * (clampedZoom / prevZoom);
+          this._viewerPanY = nextMaxPanY;
+        } else {
+          const ratio = clampedZoom / prevZoom;
+          this._viewerPanX = (this._viewerPanX || 0) * ratio;
+          this._viewerPanY = (this._viewerPanY || 0) * ratio;
+        }
       }
 
       this._viewerZoom = clampedZoom;
@@ -14925,8 +15210,11 @@
       const stage = document.getElementById('smartNoteViewerStage');
       const prevStage = document.getElementById('smartNoteViewerPrevStage');
       const nextStage = document.getElementById('smartNoteViewerNextStage');
+      const prevImg = document.getElementById('smartNoteViewerPrevImg');
+      const nextImg = document.getElementById('smartNoteViewerNextImg');
       const imgEl = document.getElementById('smartNoteViewerImg');
       const lblZoom = document.getElementById('lblViewerZoom');
+      const btnZoomFit = document.getElementById('btnViewerZoomFit');
       const zoom = this._viewerZoom || 1.0;
       const baseW = this._viewerBaseW || 1000;
       const baseH = this._viewerBaseH || 700;
@@ -14943,23 +15231,46 @@
         stage.style.transform = `translate3d(calc(-50% + ${px}px), calc(-50% + ${py}px), 0)`;
       }
 
-      const showNeighbors = (zoom <= 1.02);
+      const { maxPanX: currMaxPanX } = this._getSmartViewerMaxPan(baseW, baseH, zoom, viewport);
+      const showNeighbors = (currMaxPanX <= 1);
       if (prevStage) {
         if (showNeighbors && prevStage.dataset.ready === '1') {
-          const prevW = Number(prevStage.dataset.fitW) || baseW;
-          const prevStride = this._getSmartViewerSlideStride(viewport, prevW);
+          const prevBaseW = Number(prevStage.dataset.fitW) || baseW;
+          const prevBaseH = Number(prevStage.dataset.fitH) || baseH;
+          const prevMinZ = Number(prevStage.dataset.minZoom) || 1.0;
+          const prevZoom = this._resolveNeighborViewerZoom(prevMinZ, prevBaseW, zoom, this._viewerMinZoom || 1.0, currMaxPanX, viewport);
+          const prevW = Math.max(2, Math.round((prevBaseW * prevZoom) / 2) * 2);
+          const prevH = Math.max(2, Math.round((prevBaseH * prevZoom) / 2) * 2);
+          if (prevImg) {
+            prevImg.style.width = `${prevW}px`;
+            prevImg.style.height = `${prevH}px`;
+          }
+          const prevStride = this._getSmartViewerSlideStride(viewport, prevW, zoomedW);
+          const { maxPanY: prevMaxPanY } = this._getSmartViewerMaxPan(prevBaseW, prevBaseH, prevZoom, viewport);
+          const prevPy = Math.round(prevMaxPanY);
           prevStage.style.display = 'inline-block';
-          prevStage.style.transform = `translate3d(calc(-50% + ${px - prevStride}px), calc(-50% + ${py}px), 0)`;
+          prevStage.style.transform = `translate3d(calc(-50% + ${px - prevStride}px), calc(-50% + ${prevPy}px), 0)`;
         } else {
           prevStage.style.display = 'none';
         }
       }
       if (nextStage) {
         if (showNeighbors && nextStage.dataset.ready === '1') {
-          const nextW = Number(nextStage.dataset.fitW) || baseW;
-          const nextStride = this._getSmartViewerSlideStride(viewport, nextW);
+          const nextBaseW = Number(nextStage.dataset.fitW) || baseW;
+          const nextBaseH = Number(nextStage.dataset.fitH) || baseH;
+          const nextMinZ = Number(nextStage.dataset.minZoom) || 1.0;
+          const nextZoom = this._resolveNeighborViewerZoom(nextMinZ, nextBaseW, zoom, this._viewerMinZoom || 1.0, currMaxPanX, viewport);
+          const nextW = Math.max(2, Math.round((nextBaseW * nextZoom) / 2) * 2);
+          const nextH = Math.max(2, Math.round((nextBaseH * nextZoom) / 2) * 2);
+          if (nextImg) {
+            nextImg.style.width = `${nextW}px`;
+            nextImg.style.height = `${nextH}px`;
+          }
+          const nextStride = this._getSmartViewerSlideStride(viewport, nextW, zoomedW);
+          const { maxPanY: nextMaxPanY } = this._getSmartViewerMaxPan(nextBaseW, nextBaseH, nextZoom, viewport);
+          const nextPy = Math.round(nextMaxPanY);
           nextStage.style.display = 'inline-block';
-          nextStage.style.transform = `translate3d(calc(-50% + ${px + nextStride}px), calc(-50% + ${py}px), 0)`;
+          nextStage.style.transform = `translate3d(calc(-50% + ${px + nextStride}px), calc(-50% + ${nextPy}px), 0)`;
         } else {
           nextStage.style.display = 'none';
         }
@@ -14967,6 +15278,12 @@
 
       if (lblZoom) {
         lblZoom.textContent = `${Math.round(zoom * 100)}%`;
+      }
+      if (btnZoomFit) {
+        const minZ = this._viewerMinZoom || 1.0;
+        btnZoomFit.title = (Math.abs(zoom - 1.0) <= 0.02 && minZ < 0.96)
+          ? `한 페이지 전체 맞춤 보기 (${Math.round(minZ * 100)}%)`
+          : '가로폭 맞춤 초기화 (100%)';
       }
     }
 
@@ -15037,6 +15354,8 @@
 
     enterViewerGraphTouchMode(hotspot, slideIdx = 0) {
       if (!hotspot || !hotspot.graphSnapshot) return;
+      this._commitPendingViewerCarouselImmediately();
+      this._setSmartViewerCarouselAnimating(false);
       try {
         const parsed = typeof hotspot.graphSnapshot === 'string' ? JSON.parse(hotspot.graphSnapshot) : hotspot.graphSnapshot;
         if (parsed && parsed.isNAxisStudioCard && parsed.nAxisStudioState) {
@@ -15252,10 +15571,15 @@
       if (touchBar) touchBar.style.display = 'none';
 
       const overlay = document.getElementById('smartNoteViewerOverlay');
-      if (overlay) overlay.style.display = 'flex';
+      if (overlay) {
+        overlay.style.display = 'flex';
+        this.fitSmartViewerStageToScreen(false, null, { preserveViewState: true });
+      }
     }
 
     async exitSmartNoteViewerToEditMode() {
+      this._commitPendingViewerCarouselImmediately();
+      this._setSmartViewerCarouselAnimating(false);
       if (this._viewerPkg && typeof this._ensureCloudShareAudioLoaded === 'function') {
         const btnEdit = document.getElementById('btnViewerEnterEdit');
         const prevTxt = btnEdit ? btnEdit.innerHTML : '';
