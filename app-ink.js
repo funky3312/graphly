@@ -1056,7 +1056,10 @@
       );
       const isWithinPenGuard = Boolean(
         isPenDrawingNow ||
-        (this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 650))
+        (this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 220))
+      );
+      const isWithinSingleTouchPenGuard = Boolean(
+        this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 450)
       );
       const palmRejectionActive = this.isStylusPalmRejectionActive();
       // 🛡️ [아이패드/스타일러스 태블릿 표준 고정]:
@@ -1069,7 +1072,8 @@
           this.isDropLineMode ||
           this.isTextToolMode ||
           this.isGraphSnapMode ||
-          this.isPdfToGraphCropMode
+          this.isPdfToGraphCropMode ||
+          isWithinSingleTouchPenGuard
         )
       );
 

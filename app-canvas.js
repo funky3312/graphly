@@ -3855,6 +3855,17 @@
           }
         }
         const isEffectivePen = (e.pointerType === 'pen');
+        const isPenContacting = isEffectivePen && Boolean(
+          this.isPointerDownOnCanvas ||
+          (typeof e.buttons === 'number' && e.buttons > 0) ||
+          (typeof e.pressure === 'number' && e.pressure > 0) ||
+          this.isDrawingInk ||
+          this.isStylusDrawing ||
+          this._isDrawingCardInk ||
+          this.isLassoSelecting ||
+          this.isDrawingSticker ||
+          this._isAimingDropLine
+        );
         this._isPointerInsideWindow = true;
         this._lastPointerEvent = e;
         if (this.isWaitingForFilePicker) {
@@ -3884,7 +3895,7 @@
         if (this._isInteractingWithPipCard || this._isDraggingOrResizingAnyCard) {
           if (isEffectivePen) {
             this._markStylusPenDetected();
-            this._lastPenActiveTime = Date.now();
+            if (isPenContacting) this._lastPenActiveTime = Date.now();
           }
           if (this.virtualStylusEl && !this.isAudioPlaying && !this._isAudioReplayActive && !this.isStudentAudioVideoOnlyMode) {
             this.virtualStylusEl.style.display = 'none';
@@ -3905,7 +3916,7 @@
           } else {
             if (isEffectivePen) {
               this._markStylusPenDetected();
-              this._lastPenActiveTime = Date.now();
+              if (isPenContacting) this._lastPenActiveTime = Date.now();
             }
             if (e.target && e.target.closest && e.target.closest('.problem-card-body') && !this.isPointerOverMenu(e)) {
               const cPos = getPos(e);
@@ -3950,7 +3961,7 @@
 
         if (isEffectivePen) {
           this._markStylusPenDetected();
-          this._lastPenActiveTime = nowT;
+          if (isPenContacting) this._lastPenActiveTime = nowT;
         }
 
         if ((this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting || this.isDrawingSticker) && this._activeDrawingPointerId !== null && this._activeDrawingPointerId !== undefined) {
