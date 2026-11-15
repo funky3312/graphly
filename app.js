@@ -3258,28 +3258,61 @@
       let panBaseX = 0;
       let panBaseY = 0;
       let isPinchingStage = false;
+      let pinchId1 = null;
+      let pinchId2 = null;
+      let pinchInitDist = 0;
+      let pinchInitMidX = 0;
+      let pinchInitMidY = 0;
+      let pinchZoomUnlocked = false;
+      let pinchParallelPanLocked = false;
       let pinchStartDist = 0;
+      let pinchSmoothDist = 0;
       let pinchStartZoom = 1.0;
+      let pinchSmoothMidX = 0;
+      let pinchSmoothMidY = 0;
       let pinchPrevMidX = 0;
       let pinchPrevMidY = 0;
       let lastTapMs = 0;
       let lastTapX = 0;
       let lastTapY = 0;
 
+      const startReplayPinch = (t0, t1) => {
+        isPanningStage = false;
+        isPinchingStage = true;
+        pinchId1 = t0.identifier;
+        pinchId2 = t1.identifier;
+        const initD = Math.max(24, Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY));
+        const initMX = (t0.clientX + t1.clientX) * 0.5;
+        const initMY = (t0.clientY + t1.clientY) * 0.5;
+        pinchInitDist = initD;
+        pinchInitMidX = initMX;
+        pinchInitMidY = initMY;
+        pinchZoomUnlocked = false;
+        pinchParallelPanLocked = false;
+        pinchStartDist = initD;
+        pinchSmoothDist = initD;
+        pinchStartZoom = this._replayViewerZoom || 1.0;
+        pinchSmoothMidX = initMX;
+        pinchSmoothMidY = initMY;
+        pinchPrevMidX = initMX;
+        pinchPrevMidY = initMY;
+      };
+
       window.addEventListener('touchstart', (e) => {
         if (!this._isFixedReplayStageActive()) return;
         if (isOuterReplayControl(e.target)) return;
         e.stopPropagation();
-        if (e.touches && e.touches.length === 2) {
-          isPanningStage = false;
-          isPinchingStage = true;
-          pinchStartDist = Math.max(10, Math.hypot(
-            e.touches[0].clientX - e.touches[1].clientX,
-            e.touches[0].clientY - e.touches[1].clientY
-          ));
-          pinchStartZoom = this._replayViewerZoom || 1.0;
-          pinchPrevMidX = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
-          pinchPrevMidY = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+        if (e.touches && e.touches.length >= 2) {
+          if (isPinchingStage && pinchId1 !== null && pinchId2 !== null) {
+            let has1 = false;
+            let has2 = false;
+            for (let i = 0; i < e.touches.length; i++) {
+              if (e.touches[i].identifier === pinchId1) has1 = true;
+              if (e.touches[i].identifier === pinchId2) has2 = true;
+            }
+            if (has1 && has2) return;
+          }
+          startReplayPinch(e.touches[0], e.touches[1]);
         } else if (e.touches && e.touches.length === 1) {
           const t0 = e.touches[0];
           const now = performance.now();
@@ -3307,19 +3340,56 @@
         if (!this._isFixedReplayStageActive()) return;
         if (isOuterReplayControl(e.target)) return;
         e.stopPropagation();
-        if (isPinchingStage && e.touches && e.touches.length === 2) {
+        if (isPinchingStage && e.touches && e.touches.length >= 2) {
           e.preventDefault();
-          const dist = Math.max(10, Math.hypot(
-            e.touches[0].clientX - e.touches[1].clientX,
-            e.touches[0].clientY - e.touches[1].clientY
-          ));
-          const midX = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
-          const midY = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
-          this._replayViewerPanX = (this._replayViewerPanX || 0) + (midX - pinchPrevMidX);
-          this._replayViewerPanY = (this._replayViewerPanY || 0) + (midY - pinchPrevMidY);
-          pinchPrevMidX = midX;
-          pinchPrevMidY = midY;
-          this.zoomReplayStageAtPoint(pinchStartZoom * (dist / pinchStartDist), midX, midY);
+          let t1 = null;
+          let t2 = null;
+          for (let i = 0; i < e.touches.length; i++) {
+            const t = e.touches[i];
+            if (t.identifier === pinchId1) t1 = t;
+            else if (t.identifier === pinchId2) t2 = t;
+          }
+          if (!t1 || !t2) {
+            startReplayPinch(e.touches[0], e.touches[1]);
+            return;
+          }
+          const rawDist = Math.max(24, Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY));
+          const rawMidX = (t1.clientX + t2.clientX) * 0.5;
+          const rawMidY = (t1.clientY + t2.clientY) * 0.5;
+          const panTravel = Math.hypot(rawMidX - pinchInitMidX, rawMidY - pinchInitMidY);
+          const distDelta = Math.abs(rawDist - pinchInitDist);
+          if (!pinchZoomUnlocked && panTravel >= 26 && distDelta < 14) {
+            pinchParallelPanLocked = true;
+          }
+          const jitterMid = Math.hypot(rawMidX - pinchSmoothMidX, rawMidY - pinchSmoothMidY);
+          const alphaMid = (jitterMid < 1.0) ? 0.32 : 0.68;
+          pinchSmoothMidX = pinchSmoothMidX + (rawMidX - pinchSmoothMidX) * alphaMid;
+          pinchSmoothMidY = pinchSmoothMidY + (rawMidY - pinchSmoothMidY) * alphaMid;
+
+          this._replayViewerPanX = (this._replayViewerPanX || 0) + (pinchSmoothMidX - pinchPrevMidX);
+          this._replayViewerPanY = (this._replayViewerPanY || 0) + (pinchSmoothMidY - pinchPrevMidY);
+          pinchPrevMidX = pinchSmoothMidX;
+          pinchPrevMidY = pinchSmoothMidY;
+
+          if (!pinchZoomUnlocked) {
+            const unlockThreshold = pinchParallelPanLocked ? 28 : 14;
+            if (distDelta >= unlockThreshold) {
+              pinchZoomUnlocked = true;
+              pinchStartDist = rawDist;
+              pinchSmoothDist = rawDist;
+              pinchStartZoom = this._replayViewerZoom || 1.0;
+            } else {
+              this._syncReplayFixedStageLayout();
+              return;
+            }
+          }
+          const jitterDist = Math.abs(rawDist - pinchSmoothDist);
+          const alphaDist = (jitterDist < 1.0) ? 0.32 : 0.68;
+          pinchSmoothDist = pinchSmoothDist + (rawDist - pinchSmoothDist) * alphaDist;
+          const nextZoom = (typeof this._computeStandardPinchZoom === 'function')
+            ? this._computeStandardPinchZoom(pinchSmoothDist, pinchStartDist, pinchStartZoom, 1.0, 4.5, 1.0)
+            : Math.max(1.0, Math.min(4.5, pinchStartZoom * Math.pow((pinchSmoothDist + 65) / (pinchStartDist + 65), 0.95)));
+          this.zoomReplayStageAtPoint(nextZoom, pinchSmoothMidX, pinchSmoothMidY);
         } else if (isPanningStage && e.touches && e.touches.length === 1) {
           e.preventDefault();
           const t0 = e.touches[0];
@@ -3329,17 +3399,21 @@
         }
       }, { passive: false, capture: true });
 
-      window.addEventListener('touchend', (e) => {
+      const onReplayTouchEnd = (e) => {
         if (!this._isFixedReplayStageActive()) return;
         if (isOuterReplayControl(e.target)) return;
         e.stopPropagation();
         if (!e.touches || e.touches.length < 2) {
           isPinchingStage = false;
+          pinchId1 = null;
+          pinchId2 = null;
         }
         if (!e.touches || e.touches.length === 0) {
           isPanningStage = false;
         }
-      }, { passive: true, capture: true });
+      };
+      window.addEventListener('touchend', onReplayTouchEnd, { passive: true, capture: true });
+      window.addEventListener('touchcancel', onReplayTouchEnd, { passive: true, capture: true });
 
       // 3. PC 마우스 드래그 패닝 (확대 상태일 때) & 더블클릭 줌 토글
       let isMousePanningStage = false;

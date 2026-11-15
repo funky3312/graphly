@@ -13927,10 +13927,14 @@
         let moveSamples = [];
         let wasBrakingInertia = false;
         let wasMultiTouch = false;
-        let pinchStartDist = 0;
+        let pinchId1 = null, pinchId2 = null;
+        let pinchInitDist = 0, pinchInitMidX = 0, pinchInitMidY = 0;
+        let pinchStartDist = 0, pinchSmoothDist = 0;
         let pinchStartZoom = 1.0;
         let pinchStartPanX = 0, pinchStartPanY = 0;
         let pinchStartMidX = 0, pinchStartMidY = 0;
+        let pinchSmoothMidX = 0, pinchSmoothMidY = 0;
+        let pinchPanUnlocked = false, pinchZoomUnlocked = false, pinchParallelPanLocked = false;
         let lastTapTime = 0;
         let lastTapX = 0, lastTapY = 0;
         let singleTapTimer = null;
@@ -13992,8 +13996,22 @@
             }
           }
 
-          activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          // 🛡️ 두 손가락 핀치 진행 중 3번째 손가락/손날 스침은 무시하여 화면 점프를 원천 차단
+          if (
+            this._isViewerPinching &&
+            pinchId1 !== null &&
+            pinchId2 !== null &&
+            activePointers.has(pinchId1) &&
+            activePointers.has(pinchId2) &&
+            e.pointerId !== pinchId1 &&
+            e.pointerId !== pinchId2
+          ) {
+            return;
+          }
+
+          activePointers.set(e.pointerId, { id: e.pointerId, x: e.clientX, y: e.clientY });
           if (activePointers.size === 1) {
+            this._isViewerPinching = false;
             wasMultiTouch = false;
             dragAxisLock = null;
             pointerDownTime = performance.now();
@@ -14028,36 +14046,106 @@
               singleTapTimer = null;
             }
             const pts = Array.from(activePointers.values());
-            pinchStartDist = Math.max(10, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
-            pinchStartMidX = (pts[0].x + pts[1].x) / 2;
-            pinchStartMidY = (pts[0].y + pts[1].y) / 2;
+            pinchId1 = pts[0].id;
+            pinchId2 = pts[1].id;
+            const initDist = Math.max(24, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
+            const initMidX = (pts[0].x + pts[1].x) / 2;
+            const initMidY = (pts[0].y + pts[1].y) / 2;
+            pinchInitDist = initDist;
+            pinchInitMidX = initMidX;
+            pinchInitMidY = initMidY;
+            pinchStartDist = initDist;
+            pinchSmoothDist = initDist;
+            pinchStartMidX = initMidX;
+            pinchStartMidY = initMidY;
+            pinchSmoothMidX = initMidX;
+            pinchSmoothMidY = initMidY;
             pinchStartZoom = this._viewerZoom || 1.0;
             pinchStartPanX = this._viewerPanX || 0;
             pinchStartPanY = this._viewerPanY || 0;
+            pinchPanUnlocked = false;
+            pinchZoomUnlocked = false;
+            pinchParallelPanLocked = false;
+            const curBaseW = this._viewerBaseW || 1000;
+            const curBaseH = this._viewerBaseH || 700;
+            this._viewerPinchBaseW = Math.max(2, Math.round((curBaseW * pinchStartZoom) / 2) * 2);
+            this._viewerPinchBaseH = Math.max(2, Math.round((curBaseH * pinchStartZoom) / 2) * 2);
+            this._isViewerPinching = true;
           }
         });
 
         window.addEventListener('pointermove', (e) => {
           if (!activePointers.has(e.pointerId)) return;
-          activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          activePointers.set(e.pointerId, { id: e.pointerId, x: e.clientX, y: e.clientY });
 
           if (activePointers.size === 2) {
             this._viewerSuppressHotspotClickUntil = performance.now() + 350;
-            const pts = Array.from(activePointers.values());
-            const dist = Math.max(10, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
-            const midX = (pts[0].x + pts[1].x) / 2;
-            const midY = (pts[0].y + pts[1].y) / 2;
+            const pt1 = (pinchId1 !== null && activePointers.has(pinchId1)) ? activePointers.get(pinchId1) : null;
+            const pt2 = (pinchId2 !== null && activePointers.has(pinchId2)) ? activePointers.get(pinchId2) : null;
+            const pts = (pt1 && pt2) ? [pt1, pt2] : Array.from(activePointers.values());
+            const rawDist = Math.max(24, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
+            const rawMidX = (pts[0].x + pts[1].x) / 2;
+            const rawMidY = (pts[0].y + pts[1].y) / 2;
+            const panTravel = Math.hypot(rawMidX - pinchInitMidX, rawMidY - pinchInitMidY);
+            const distDeltaFromInit = Math.abs(rawDist - pinchInitDist);
+
+            if (!pinchPanUnlocked && panTravel >= 10) {
+              pinchPanUnlocked = true;
+              pinchStartMidX = rawMidX;
+              pinchStartMidY = rawMidY;
+              pinchSmoothMidX = rawMidX;
+              pinchSmoothMidY = rawMidY;
+              pinchStartPanX = this._viewerPanX || 0;
+              pinchStartPanY = this._viewerPanY || 0;
+            }
+            if (!pinchZoomUnlocked && panTravel >= 26 && distDeltaFromInit < 14) {
+              pinchParallelPanLocked = true;
+            }
+            if (!pinchZoomUnlocked) {
+              const unlockThreshold = pinchParallelPanLocked ? 28 : 14;
+              if (distDeltaFromInit >= unlockThreshold) {
+                pinchZoomUnlocked = true;
+                pinchPanUnlocked = true;
+                pinchStartDist = rawDist;
+                pinchSmoothDist = rawDist;
+                pinchStartMidX = rawMidX;
+                pinchStartMidY = rawMidY;
+                pinchSmoothMidX = rawMidX;
+                pinchSmoothMidY = rawMidY;
+                pinchStartZoom = this._viewerZoom || 1.0;
+                pinchStartPanX = this._viewerPanX || 0;
+                pinchStartPanY = this._viewerPanY || 0;
+              }
+            }
+            if (!pinchPanUnlocked && !pinchZoomUnlocked) {
+              return;
+            }
+
+            const jitterMid = Math.hypot(rawMidX - pinchSmoothMidX, rawMidY - pinchSmoothMidY);
+            const alphaMid = (jitterMid < 1.0) ? 0.32 : 0.68;
+            pinchSmoothMidX = pinchSmoothMidX + (rawMidX - pinchSmoothMidX) * alphaMid;
+            pinchSmoothMidY = pinchSmoothMidY + (rawMidY - pinchSmoothMidY) * alphaMid;
+
             const minZ = this._viewerMinZoom || 1.0;
             const maxZ = this._viewerMaxZoom || 3.5;
-            const nextZoom = Math.max(minZ, Math.min(maxZ, pinchStartZoom * (dist / pinchStartDist)));
+            let nextZoom = pinchStartZoom;
+            if (pinchZoomUnlocked) {
+              const jitterDist = Math.abs(rawDist - pinchSmoothDist);
+              const alphaDist = (jitterDist < 1.0) ? 0.32 : 0.68;
+              pinchSmoothDist = pinchSmoothDist + (rawDist - pinchSmoothDist) * alphaDist;
+              nextZoom = (typeof this._computeStandardPinchZoom === 'function')
+                ? this._computeStandardPinchZoom(pinchSmoothDist, pinchStartZoom ? pinchStartDist : rawDist, pinchStartZoom, minZ, maxZ, 1.0)
+                : Math.max(minZ, Math.min(maxZ, pinchStartZoom * Math.pow((pinchSmoothDist + 65) / (pinchStartDist + 65), 0.95)));
+            }
+
             const rect = viewport.getBoundingClientRect();
             const cx = rect.left + rect.width / 2;
             const cy = rect.top + rect.height / 2;
             const scaleRatio = nextZoom / Math.max(0.1, pinchStartZoom);
 
             this._viewerZoom = nextZoom;
-            this._viewerPanX = (midX - cx) - ((pinchStartMidX - cx - pinchStartPanX) * scaleRatio);
-            this._viewerPanY = (midY - cy) - ((pinchStartMidY - cy - pinchStartPanY) * scaleRatio);
+            this._viewerPanX = (pinchSmoothMidX - cx) - ((pinchStartMidX - cx - pinchStartPanX) * scaleRatio);
+            this._viewerPanY = (pinchSmoothMidY - cy) - ((pinchStartMidY - cy - pinchStartPanY) * scaleRatio);
             this._clampSmartViewerPan();
             this._applySmartViewerTransform();
             return;
@@ -14123,6 +14211,18 @@
           if (!activePointers.has(e.pointerId)) return;
           activePointers.delete(e.pointerId);
 
+          if (activePointers.size < 2 && this._isViewerPinching) {
+            this._isViewerPinching = false;
+            pinchId1 = null;
+            pinchId2 = null;
+            const minZ = this._viewerMinZoom || 1.0;
+            if (minZ < 0.96 && Math.abs((this._viewerZoom || 1.0) - 1.0) < 0.025) {
+              this._viewerZoom = 1.0;
+            }
+            this._clampSmartViewerPan();
+            this._applySmartViewerTransform();
+          }
+
           if (activePointers.size > 0) return;
 
           const nowUp = performance.now();
@@ -14140,6 +14240,9 @@
           moveSamples = [];
 
           if (wasMultiTouch) {
+            this._isViewerPinching = false;
+            pinchId1 = null;
+            pinchId2 = null;
             wasMultiTouch = false;
             const minZ = this._viewerMinZoom || 1.0;
             const maxZ = this._viewerMaxZoom || 3.5;
@@ -15343,6 +15446,7 @@
     }
 
     setSmartViewerZoom(nextZoom, focalClientX = null, focalClientY = null) {
+      this._isViewerPinching = false;
       this._commitPendingViewerCarouselImmediately();
       this._setSmartViewerCarouselAnimating(false);
       const viewport = document.getElementById('smartNoteViewerViewport');
@@ -15397,21 +15501,41 @@
       const zoomedW = Math.max(2, Math.round((baseW * zoom) / 2) * 2);
       const zoomedH = Math.max(2, Math.round((baseH * zoom) / 2) * 2);
 
-      if (imgEl) {
-        imgEl.style.width = `${zoomedW}px`;
-        imgEl.style.height = `${zoomedH}px`;
-      }
       const px = Math.round(this._viewerPanX || 0);
       const py = Math.round(this._viewerPanY || 0);
-      if (stage) {
-        const use2dTiledRaster = zoom > 1.35 && !stage.classList.contains('swipe-animating');
-        stage.style.transform = use2dTiledRaster
-          ? `translate(calc(-50% + ${px}px), calc(-50% + ${py}px))`
-          : `translate3d(calc(-50% + ${px}px), calc(-50% + ${py}px), 0)`;
+      if (this._isViewerPinching && this._viewerPinchBaseW > 2 && this._viewerPinchBaseH > 2) {
+        // 🚀 핀치 진행 중: 이미지 레이아웃 크기(width/height) 리플로우와 2px 정수 반올림 계단 떨림을 0%로 차단하고
+        // 순수 120Hz 서브픽셀 GPU 합성 스케일로 매끄럽게 구동한 뒤, 손가락을 떼는 즉시(0ms) 정밀 2D 칼화질 타일로 복원!
+        const w0 = this._viewerPinchBaseW;
+        const h0 = this._viewerPinchBaseH;
+        if (imgEl) {
+          imgEl.style.width = `${w0}px`;
+          imgEl.style.height = `${h0}px`;
+        }
+        const sX = (baseW * zoom) / w0;
+        const sY = (baseH * zoom) / h0;
+        const fpx = Number(this._viewerPanX) || 0;
+        const fpy = Number(this._viewerPanY) || 0;
+        if (stage) {
+          stage.style.willChange = 'transform';
+          stage.style.transform = `translate3d(calc(-50% + ${fpx.toFixed(2)}px), calc(-50% + ${fpy.toFixed(2)}px), 0) scale(${sX.toFixed(5)}, ${sY.toFixed(5)})`;
+        }
+      } else {
+        if (imgEl) {
+          imgEl.style.width = `${zoomedW}px`;
+          imgEl.style.height = `${zoomedH}px`;
+        }
+        if (stage) {
+          stage.style.willChange = '';
+          const use2dTiledRaster = zoom > 1.35 && !stage.classList.contains('swipe-animating');
+          stage.style.transform = use2dTiledRaster
+            ? `translate(calc(-50% + ${px}px), calc(-50% + ${py}px))`
+            : `translate3d(calc(-50% + ${px}px), calc(-50% + ${py}px), 0)`;
+        }
       }
 
       const { maxPanX: currMaxPanX } = this._getSmartViewerMaxPan(baseW, baseH, zoom, viewport);
-      const showNeighbors = (currMaxPanX <= 1);
+      const showNeighbors = !this._isViewerPinching && (currMaxPanX <= 1);
       if (prevStage) {
         if (showNeighbors && prevStage.dataset.ready === '1') {
           const prevBaseW = Number(prevStage.dataset.fitW) || baseW;

@@ -5432,6 +5432,41 @@
     return clamped;
   }
 
+  // 🌟 [굿노트 / iPadOS PDF 표준 통일 핀치 물리 곡선 + 100% 자석 걸림턱(Magnetic Detent) 엔진]
+  // - 가상 간격 쿠션(+65px) + 0.95 댐핑으로 손가락 간격이 좁을 때(50~80px) 배율이 급전직하하는 과민 현상을 원천 제거
+  // - 확대 상태(>105%)에서 오므릴 때는 100%(기준 화면)에서 1차로 착! 멈추고, 100% 상태에서 한 번 더 오므릴 때 50%까지 부드럽게 축소
+  // - 축소 상태(<95%, 전체 보기)에서 벌릴 때는 100%~112% 구간을 자석 걸림턱으로 잡아주며 더 벌리면 단절(0px 점프) 없이 연속 확대
+  _computeStandardPinchZoom(smoothDist, startDist, startZoom, minZoom = 0.5, maxZoom = 3.5, detentZoom = 1.0) {
+    const VIRTUAL_SPAN_CUSHION_PX = 65;
+    const DAMPING_EXPONENT = 0.95;
+    const safeSmooth = Math.max(24, Number(smoothDist) || 24);
+    const safeStart = Math.max(24, Number(startDist) || 24);
+    const baseZoom = Math.max(0.1, Number(startZoom) || 1.0);
+    const ratio = Math.pow(
+      (safeSmooth + VIRTUAL_SPAN_CUSHION_PX) / (safeStart + VIRTUAL_SPAN_CUSHION_PX),
+      DAMPING_EXPONENT
+    );
+    const rawZoom = baseZoom * ratio;
+    let adjustedZoom = rawZoom;
+
+    if (typeof detentZoom === 'number' && detentZoom > 0 && minZoom < detentZoom - 0.02 && maxZoom > detentZoom + 0.02) {
+      if (baseZoom > detentZoom * 1.05) {
+        if (rawZoom <= detentZoom) {
+          adjustedZoom = detentZoom;
+        }
+      } else if (baseZoom < detentZoom * 0.95) {
+        const upperRelease = detentZoom * 1.12;
+        if (rawZoom >= detentZoom && rawZoom <= upperRelease) {
+          adjustedZoom = detentZoom;
+        } else if (rawZoom > upperRelease) {
+          adjustedZoom = detentZoom + (rawZoom - upperRelease);
+        }
+      }
+    }
+
+    return Math.max(minZoom, Math.min(maxZoom, adjustedZoom));
+  }
+
   _startCanvasTwoFingerPinch(p1, p2) {
     // 🛡️ 애플펜슬로 필기 중일 때는 어떤 경우에도 획을 취소(pop)하거나 핀치를 시작하지 않음!
     if (this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) {
@@ -5466,6 +5501,7 @@
       id2: p2.id,
       panUnlocked: false,
       zoomUnlocked: false,
+      _parallelPanLocked: false,
       initX1: x1,
       initY1: y1,
       initX2: x2,
@@ -5546,31 +5582,39 @@
     const rawMidX = (x1 + x2) / 2;
     const rawMidY = (y1 + y2) / 2;
     const rawDist = Math.max(24, Math.hypot(x2 - x1, y2 - y1));
-
-    const midX = rawMidX;
-    const midY = rawMidY;
+    const panTravelFromInit = Math.hypot(rawMidX - st.initMidX, rawMidY - st.initMidY);
+    const distDeltaFromInit = Math.abs(rawDist - st.initDist);
 
     // 10px 2점 이동 데드존: 손날이 두 지점에 닿은 채 미세하게 흔들릴 때는 패닝/캐시 더티(_inkBakeDirty)가 발동하지 않도록 보호
-    if (!st.panUnlocked) {
-      if (Math.hypot(midX - st.initMidX, midY - st.initMidY) >= 10) {
-        st.panUnlocked = true;
-        st.startMidX = midX;
-        st.startMidY = midY;
-        st.startPanX = this.panX || 0;
-        st.startPanY = this.panY || 0;
-        st.startBoardPanX = this.boardPanX || 0;
-        st.startBoardPanY = this.boardPanY || 0;
-      }
+    if (!st.panUnlocked && panTravelFromInit >= 10) {
+      st.panUnlocked = true;
+      st.startMidX = rawMidX;
+      st.startMidY = rawMidY;
+      st.smoothMidX = rawMidX;
+      st.smoothMidY = rawMidY;
+      st.startPanX = this.panX || 0;
+      st.startPanY = this.panY || 0;
+      st.startBoardPanX = this.boardPanX || 0;
+      st.startBoardPanY = this.boardPanY || 0;
+    }
+
+    // 🛡️ 두 손가락 나란히 스크롤(Pan-First Lock): 줌 없이 26px 이상 평행 이동이 확정된 경우,
+    // 이동 도중 검지·중지 간격이 16~26px 미세하게 좁아져도 화면이 꿀렁이며 줌이 오발동하지 않도록 28px 잠금턱 부여!
+    if (!st.zoomUnlocked && panTravelFromInit >= 26 && distDeltaFromInit < 16) {
+      st._parallelPanLocked = true;
     }
 
     if (!st.zoomUnlocked) {
-      if (Math.abs(rawDist - st.initDist) >= 16) {
+      const zoomUnlockThreshold = st._parallelPanLocked ? 28 : 16;
+      if (distDeltaFromInit >= zoomUnlockThreshold) {
         st.zoomUnlocked = true;
         st.panUnlocked = true;
         st.startDist = rawDist;
         st.smoothDist = rawDist;
-        st.startMidX = midX;
-        st.startMidY = midY;
+        st.startMidX = rawMidX;
+        st.startMidY = rawMidY;
+        st.smoothMidX = rawMidX;
+        st.smoothMidY = rawMidY;
         st.startZoom = this.zoomLevel || 1.0;
         st.startBoardZoom = this.boardZoom || 1.0;
         st.startBoardZoomOffsetX = this.boardZoomOffsetX || 0;
@@ -5587,27 +5631,35 @@
     }
     this._pinchHadActiveMoveInGesture = true;
 
+    // 🛡️ 중점(smoothMid)과 거리(smoothDist)의 위상 동기화 EMA 로우패스 필터:
+    // 기존에는 거리만 필터링되고 중점은 생좌표가 반영되어 120Hz 핀치 중 초점이 미세하게 진동하던 문제를 원천 제거!
+    if (typeof st.smoothMidX !== 'number') st.smoothMidX = rawMidX;
+    if (typeof st.smoothMidY !== 'number') st.smoothMidY = rawMidY;
+    const jitterMid = Math.hypot(rawMidX - st.smoothMidX, rawMidY - st.smoothMidY);
+    const alphaMid = (jitterMid < 1.0) ? 0.32 : 0.68;
+    st.smoothMidX = st.smoothMidX + (rawMidX - st.smoothMidX) * alphaMid;
+    st.smoothMidY = st.smoothMidY + (rawMidY - st.smoothMidY) * alphaMid;
+    const midX = st.smoothMidX;
+    const midY = st.smoothMidY;
+
     const dx = midX - st.startMidX;
     const dy = midY - st.startMidY;
 
-    let dampedRatio = 1.0;
     if (st.zoomUnlocked) {
       if (typeof st.smoothDist !== 'number') st.smoothDist = rawDist;
       const jitterDist = Math.abs(rawDist - st.smoothDist);
-      const alphaDist = (jitterDist < 0.8) ? 0.35 : 0.72;
+      const alphaDist = (jitterDist < 1.0) ? 0.32 : 0.68;
       st.smoothDist = st.smoothDist + (rawDist - st.smoothDist) * alphaDist;
-      const rawRatio = Math.max(24, st.smoothDist) / Math.max(24, st.startDist);
-      dampedRatio = Math.pow(rawRatio, 0.85);
     }
 
     if (this.isGraphCovered && !this.pdfPageBoardData) {
-      // 2층 일반 판서 칠판: 두 손가락 이동(패닝) + 두 손가락 핀치(칠판·카드·필기 일체형 확대/축소)
+      // 2층 일반 판서 칠판: 두 손가락 이동(패닝) + 두 손가락 핀치(칠판·카드·필기 일체형 확대/축소 + 100% 자석 걸림턱)
       this.boardPanX = st.startBoardPanX + dx;
       this.boardPanY = st.startBoardPanY + dy;
 
       if (st.zoomUnlocked) {
         const oldBZ = st.startBoardZoom || 1.0;
-        const nextBZ = Math.max(0.5, Math.min(3.5, oldBZ * dampedRatio));
+        const nextBZ = this._computeStandardPinchZoom(st.smoothDist, st.startDist, oldBZ, 0.5, 3.5, 1.0);
         const startBx = (st.startMidX - st.startBoardPanX - (st.startBoardZoomOffsetX || 0)) / oldBZ;
         const startBy = (st.startMidY - st.startBoardPanY - (st.startBoardZoomOffsetY || 0)) / oldBZ;
         this.boardZoom = nextBZ;
@@ -5617,10 +5669,10 @@
 
       this._inkBakeDirty = true;
     } else {
-      // 1층 실시간 그래프 및 PDF 1페이지 보드: 두 손가락 이동(Pan) + 두 손가락 핀치 중심점 기준 서브픽셀 줌(Pinch-to-Zoom)
+      // 1층 실시간 그래프 및 PDF 1페이지 보드: 두 손가락 이동(Pan) + 두 손가락 핀치 중심점 기준 서브픽셀 줌 + 100% 자석 걸림턱
       const oldZoom = st.startZoom || 1.0;
       const nextZoom = st.zoomUnlocked
-        ? Math.max(0.5, Math.min(3.5, oldZoom * dampedRatio))
+        ? this._computeStandardPinchZoom(st.smoothDist, st.startDist, oldZoom, 0.5, 3.5, 1.0)
         : oldZoom;
 
       if (st.zoomUnlocked) {

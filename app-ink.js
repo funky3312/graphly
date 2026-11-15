@@ -1085,6 +1085,20 @@
           for (const [k, v] of this.activePointers.entries()) {
             if (nowT - (v.time || 0) > 1200) this.activePointers.delete(k);
           }
+          // 🛡️ 이미 두 손가락(id1, id2) 핀치가 안정적으로 작동 중일 때 손날/약지(3번째 터치)가 스치더라도
+          // 진행 중인 핀치가 끊기거나 좌표쌍이 뒤바뀌어 화면이 튀지 않도록 추가 터치를 완벽 무시!
+          if (
+            this._pinchState &&
+            this._pinchState.id1 !== undefined &&
+            this._pinchState.id2 !== undefined &&
+            this.activePointers.has(this._pinchState.id1) &&
+            this.activePointers.has(this._pinchState.id2) &&
+            e.pointerId !== this._pinchState.id1 &&
+            e.pointerId !== this._pinchState.id2
+          ) {
+            e._touchIgnoreChecked = true;
+            return true;
+          }
           this.activePointers.set(e.pointerId, {
             id: e.pointerId,
             x: e.clientX,
@@ -1094,7 +1108,7 @@
           });
           if (this.activePointers.size >= 3) {
             this._pinchState = null;
-            this._pinchWasActiveInGesture = false;
+            this._pinchWasActiveInGesture = true;
             this.isPanning = false;
             this.isBoardPanning = false;
             e._touchIgnoreChecked = true;
