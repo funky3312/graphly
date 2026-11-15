@@ -794,6 +794,8 @@
           }
           this.syncAudioRecordUI();
         }
+        this._stopPdfViewportInertia();
+        if (this._pdfTouchPointers) this._pdfTouchPointers.clear();
         modal.style.display = 'flex';
         document.body.classList.add('pdf-modal-open');
         this.isPdfModalOpen = true;
@@ -839,6 +841,8 @@
     }
 
     closePdfModal() {
+      this._stopPdfViewportInertia();
+      if (this._pdfTouchPointers) this._pdfTouchPointers.clear();
       const viewport = document.getElementById('pdfViewport');
       if (viewport && this.isPdfModalOpen) {
         this.savedPdfScrollTop = viewport.scrollTop;
@@ -1837,7 +1841,130 @@
       });
     }
 
+    _stopPdfViewportInertia() {
+      const wasActive = Boolean(this._pdfViewportInertiaRaf);
+      if (this._pdfViewportInertiaRaf) {
+        cancelAnimationFrame(this._pdfViewportInertiaRaf);
+        this._pdfViewportInertiaRaf = null;
+      }
+      this._pdfViewportInertiaVx = 0;
+      this._pdfViewportInertiaVy = 0;
+      return wasActive;
+    }
+
+    _computePdfPanReleaseVelocity(samples, nowUp) {
+      if (!Array.isArray(samples) || samples.length < 2) return { vx: 0, vy: 0 };
+      const last = samples[samples.length - 1];
+      if (!last || (nowUp - last.t) > 65) return { vx: 0, vy: 0 };
+      for (let i = samples.length - 2; i >= 0; i--) {
+        const s = samples[i];
+        if ((last.t - s.t) >= 32) {
+          if (Math.hypot(last.x - s.x, last.y - s.y) < 2.5) {
+            return { vx: 0, vy: 0 };
+          }
+          break;
+        }
+      }
+      let anchor = samples[samples.length - 2];
+      for (let i = 0; i < samples.length - 1; i++) {
+        const dtCandidate = last.t - samples[i].t;
+        if (dtCandidate >= 14 && dtCandidate <= 85) {
+          anchor = samples[i];
+          break;
+        }
+      }
+      const dt = last.t - anchor.t;
+      if (dt < 6) return { vx: 0, vy: 0 };
+      let vx = -(last.x - anchor.x) / dt;
+      let vy = -(last.y - anchor.y) / dt;
+      const mag = Math.hypot(vx, vy);
+      const maxSpeed = 4.2;
+      if (mag > maxSpeed) {
+        vx = (vx / mag) * maxSpeed;
+        vy = (vy / mag) * maxSpeed;
+      }
+      return { vx, vy };
+    }
+
+    _startPdfViewportInertia(viewport, initVx, initVy) {
+      this._stopPdfViewportInertia();
+      if (!viewport || !this.isPdfModalOpen || this.isPdfCropModeActive) return;
+      let vx = Number(initVx) || 0;
+      let vy = Number(initVy) || 0;
+      const mag = Math.hypot(vx, vy);
+      if (mag < 0.18) return;
+      const maxSpeed = 4.2;
+      if (mag > maxSpeed) {
+        vx = (vx / mag) * maxSpeed;
+        vy = (vy / mag) * maxSpeed;
+      }
+      this._pdfViewportInertiaVx = vx;
+      this._pdfViewportInertiaVy = vy;
+      let posLeft = viewport.scrollLeft;
+      let posTop = viewport.scrollTop;
+      let prevT = performance.now();
+
+      const step = (now) => {
+        if (!this.isPdfModalOpen || this.isPdfCropModeActive || this._isPdfViewportPanning || this._pdfPinchState) {
+          this._stopPdfViewportInertia();
+          return;
+        }
+        const dt = Math.min(34, Math.max(6, now - prevT));
+        prevT = now;
+        const maxLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+        const maxTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+
+        if (maxLeft <= 0.5) {
+          posLeft = 0;
+          vx = 0;
+        } else {
+          posLeft += vx * dt;
+          if (posLeft <= 0) {
+            posLeft = 0;
+            vx = 0;
+          } else if (posLeft >= maxLeft) {
+            posLeft = maxLeft;
+            vx = 0;
+          }
+        }
+
+        if (maxTop <= 0.5) {
+          posTop = 0;
+          vy = 0;
+        } else {
+          posTop += vy * dt;
+          if (posTop <= 0) {
+            posTop = 0;
+            vy = 0;
+          } else if (posTop >= maxTop) {
+            posTop = maxTop;
+            vy = 0;
+          }
+        }
+
+        viewport.scrollLeft = posLeft;
+        viewport.scrollTop = posTop;
+        this.savedPdfScrollLeft = viewport.scrollLeft;
+        this.savedPdfScrollTop = viewport.scrollTop;
+
+        const decay = Math.pow(0.925, dt / 16.667);
+        vx *= decay;
+        vy *= decay;
+        this._pdfViewportInertiaVx = vx;
+        this._pdfViewportInertiaVy = vy;
+
+        if (Math.hypot(vx, vy) < 0.05) {
+          this._stopPdfViewportInertia();
+          return;
+        }
+        this._pdfViewportInertiaRaf = requestAnimationFrame(step);
+      };
+
+      this._pdfViewportInertiaRaf = requestAnimationFrame(step);
+    }
+
     scrollToPdfPage(pageNum) {
+      this._stopPdfViewportInertia();
       if (!this.pdfDoc) return;
       pageNum = Math.max(1, Math.min(pageNum, this.pdfTotalPages));
       const target = document.getElementById(`pdfPageWrapper_${pageNum}`);
@@ -1885,6 +2012,7 @@
     }
 
     setPdfZoom(zoom, options = null) {
+      this._stopPdfViewportInertia();
       const prevZoom = this.pdfZoom || 1.5;
       const nextZoom = Math.max(0.5, Math.min(zoom, 4.0));
       const isFastPreview = Boolean(options && options.fastPreview);
@@ -2000,6 +2128,8 @@
     }
 
     togglePdfCropMode(forceVal = null) {
+      this._stopPdfViewportInertia();
+      if (this._pdfTouchPointers) this._pdfTouchPointers.clear();
       const prevState = Boolean(this.isPdfCropModeActive);
       let nextState = (forceVal !== null) ? Boolean(forceVal) : !prevState;
       if (this.lessonTeachingMode === 'page') {
@@ -2065,6 +2195,7 @@
       this._pdfPinchState = null;
 
       const startPdfViewerPinch = (p1, p2) => {
+        this._stopPdfViewportInertia();
         this.isPdfCropping = false;
         this._isPdfViewportPanning = false;
         this._pdfViewportPanStart = null;
@@ -2175,30 +2306,32 @@
         }
       };
 
+      const hasNativeTouchEvents = ('ontouchstart' in window);
+
       // iOS / iPadOS Safari & Android TouchEvents 직결 지원:
-      // 1손가락 터치는 e.preventDefault()를 호출하지 않아 브라우저 C++ 순정 스크롤이 작동하고,
-      // 2손가락 이상 핀치 시에만 e.preventDefault()로 네이티브 스크롤과 JS 스크롤의 충돌을 원천 차단합니다!
+      // touchstart는 passive: true로 등록하여 1손가락 터치 시 JS 대기(0ms) 없이 WebKit 120Hz UIScrollView 관성 스크롤이 즉시 출발하고,
+      // 2손가락 이상 핀치 시에는 CSS touch-action: pan-x pan-y 및 touchmove preventDefault()로 커스텀 핀치 줌만 깔끔하게 동작합니다!
       viewport.addEventListener('touchstart', (e) => {
+        this._stopPdfViewportInertia();
         if (e.touches && e.touches.length >= 2) {
-          if (e.cancelable) e.preventDefault();
           startPdfViewerPinch(
             { x: e.touches[0].clientX, y: e.touches[0].clientY },
             { x: e.touches[1].clientX, y: e.touches[1].clientY }
           );
         }
-      }, { passive: false });
+      }, { passive: true });
 
       viewport.addEventListener('touchmove', (e) => {
-        if (e.touches && e.touches.length >= 2) {
-          if (e.cancelable) e.preventDefault();
-          movePdfViewerPinch(
-            { x: e.touches[0].clientX, y: e.touches[0].clientY },
-            { x: e.touches[1].clientX, y: e.touches[1].clientY }
-          );
-        }
+        if (!e.touches || e.touches.length < 2) return;
+        if (e.cancelable) e.preventDefault();
+        movePdfViewerPinch(
+          { x: e.touches[0].clientX, y: e.touches[0].clientY },
+          { x: e.touches[1].clientX, y: e.touches[1].clientY }
+        );
       }, { passive: false });
 
       const onPdfTouchEnd = (e) => {
+        if (!this.isPdfModalOpen) return;
         if (!e.touches || e.touches.length < 2) {
           if (!e.touches || e.touches.length === 0) {
             this._pdfTouchPointers.clear();
@@ -2208,14 +2341,42 @@
       };
       viewport.addEventListener('touchend', onPdfTouchEnd, { passive: true });
       viewport.addEventListener('touchcancel', onPdfTouchEnd, { passive: true });
+      window.addEventListener('touchend', onPdfTouchEnd, { passive: true });
+      window.addEventListener('touchcancel', onPdfTouchEnd, { passive: true });
+
+      const clearPdfTouchPointerCapture = (e) => {
+        if (!e || e.pointerType !== 'touch') return;
+        if (this._pdfTouchPointers && this._pdfTouchPointers.has(e.pointerId)) {
+          this._pdfTouchPointers.delete(e.pointerId);
+          if (this._pdfTouchPointers.size < 2) {
+            endPdfViewerPinch();
+          }
+        }
+      };
+      window.addEventListener('pointerup', clearPdfTouchPointerCapture, { capture: true, passive: true });
+      window.addEventListener('pointercancel', clearPdfTouchPointerCapture, { capture: true, passive: true });
 
       viewport.addEventListener('pointerdown', (e) => {
+        this._stopPdfViewportInertia();
         if (e.pointerType === 'touch') {
-          this._pdfTouchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          const nowP = performance.now();
+          // W3C PointerEvent 불변식: touch의 isPrimary === true는 화면에 닿는 첫 번째 손가락일 때만 참이므로 이전 잔류 유령 포인터를 0ms 즉시 소거!
+          if (e.isPrimary) {
+            this._pdfTouchPointers.clear();
+            endPdfViewerPinch();
+          } else {
+            for (const [pid, pt] of this._pdfTouchPointers.entries()) {
+              if (nowP - (pt.t || 0) > 1200) this._pdfTouchPointers.delete(pid);
+            }
+          }
+          this._pdfTouchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY, t: nowP });
+          // TouchEvent 지원 기기(iPad/Android)의 이동 모드에서는 1손가락 터치를 100% 브라우저 순정 관성 스크롤에 위임
+          if (hasNativeTouchEvents && !this.isPdfCropModeActive) {
+            return;
+          }
           if (this._pdfTouchPointers.size >= 2) {
             e.preventDefault();
-            // TouchEvent가 지원되는 환경에서는 touchstart/touchmove에서 단일 경로로 처리하여 이중 호출 충돌 방지!
-            if (!('ontouchstart' in window)) {
+            if (!hasNativeTouchEvents) {
               const pts = Array.from(this._pdfTouchPointers.values());
               startPdfViewerPinch(pts[0], pts[1]);
             } else {
@@ -2226,20 +2387,25 @@
           }
         }
         // ✋ [이동 모드(!this.isPdfCropModeActive)]:
-        // 인위적 JS 관성 루프 없이 100% 직관적인 1:1 이동 지원 (손가락 터치는 브라우저 순정 하드웨어 스크롤)
+        // 손가락 터치는 브라우저 순정 하드웨어 관성 스크롤, 애플펜슬(pen)·마우스 드래그는 감속 관성 + 터치 즉시 정지(Touch-to-Stop) 지원!
         if (!this.isPdfCropModeActive) {
-          if (e.pointerType === 'touch' && this._shouldIgnoreCanvasTouchPointer(e)) return;
+          if (e.pointerType === 'touch') return;
           if (e.button !== 0 && e.pointerType === 'mouse') return;
           if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
             e.preventDefault();
           }
+          try {
+            viewport.setPointerCapture(e.pointerId);
+          } catch (_) { }
+          const nowP = performance.now();
           this._isPdfViewportPanning = true;
           this._pdfViewportPanStart = {
             clientX: e.clientX,
             clientY: e.clientY,
             scrollLeft: viewport.scrollLeft,
             scrollTop: viewport.scrollTop,
-            pointerId: e.pointerId
+            pointerId: e.pointerId,
+            samples: [{ x: e.clientX, y: e.clientY, t: nowP }]
           };
           viewport.classList.add('panning-active');
           return;
@@ -2331,14 +2497,15 @@
 
       const handleCropMove = (e) => {
         if (!this.isPdfModalOpen) return;
+        if (hasNativeTouchEvents && e.pointerType === 'touch' && !this.isPdfCropping) return;
         if (!this.isPdfCropping && !this._isPdfViewportPanning && (!this._pdfTouchPointers || this._pdfTouchPointers.size === 0)) return;
         if (e._pdfCropMoveHandled) return;
         e._pdfCropMoveHandled = true;
         if (e.pointerType === 'touch' && this._pdfTouchPointers && this._pdfTouchPointers.has(e.pointerId)) {
-          this._pdfTouchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          this._pdfTouchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
           if (this._pdfTouchPointers.size >= 2) {
             e.preventDefault();
-            if (!('ontouchstart' in window)) {
+            if (!hasNativeTouchEvents) {
               const pts = Array.from(this._pdfTouchPointers.values());
               movePdfViewerPinch(pts[0], pts[1]);
             }
@@ -2346,12 +2513,22 @@
           }
         }
         if (this._isPdfViewportPanning && this._pdfViewportPanStart && (!this._pdfTouchPointers || this._pdfTouchPointers.size < 2)) {
-          // 마우스/펜 버튼을 이미 뗀 상태(buttons === 0)면 즉시 패닝 종료!
-          if ((e.pointerType === 'mouse' || e.pointerType === 'pen') && typeof e.buttons === 'number' && e.buttons === 0) {
+          if (e.pointerId !== undefined && e.pointerId !== this._pdfViewportPanStart.pointerId) return;
+          // 마우스 버튼을 이미 뗀 상태(buttons === 0)면 즉시 패닝 종료 (애플펜슬은 가벼운 접촉 시 buttons=0 오탐 방지를 위해 pointerup으로만 종료)
+          if (e.pointerType === 'mouse' && typeof e.buttons === 'number' && e.buttons === 0) {
+            try { viewport.releasePointerCapture(this._pdfViewportPanStart.pointerId); } catch (_) { }
             this._isPdfViewportPanning = false;
             this._pdfViewportPanStart = null;
             viewport.classList.remove('panning-active');
             return;
+          }
+          const nowM = performance.now();
+          const samples = this._pdfViewportPanStart.samples;
+          if (Array.isArray(samples)) {
+            samples.push({ x: e.clientX, y: e.clientY, t: nowM });
+            while (samples.length > 2 && (nowM - samples[0].t) > 100) {
+              samples.shift();
+            }
           }
           const dx = e.clientX - this._pdfViewportPanStart.clientX;
           const dy = e.clientY - this._pdfViewportPanStart.clientY;
@@ -2362,6 +2539,9 @@
           return;
         }
         if (this._isPdfViewportPanning) {
+          if (this._pdfViewportPanStart && this._pdfViewportPanStart.pointerId !== undefined) {
+            try { viewport.releasePointerCapture(this._pdfViewportPanStart.pointerId); } catch (_) { }
+          }
           this._isPdfViewportPanning = false;
           this._pdfViewportPanStart = null;
           viewport.classList.remove('panning-active');
@@ -2397,9 +2577,28 @@
           }
         }
         if (this._isPdfViewportPanning) {
-          this._isPdfViewportPanning = false;
-          this._pdfViewportPanStart = null;
-          viewport.classList.remove('panning-active');
+          const panState = this._pdfViewportPanStart;
+          if (!e || e.pointerId === undefined || !panState || e.pointerId === panState.pointerId) {
+            if (panState && panState.pointerId !== undefined) {
+              try { viewport.releasePointerCapture(panState.pointerId); } catch (_) { }
+            }
+            this._isPdfViewportPanning = false;
+            this._pdfViewportPanStart = null;
+            viewport.classList.remove('panning-active');
+            if (e && e.type === 'pointerup' && panState && Array.isArray(panState.samples)) {
+              const nowUp = performance.now();
+              const lastS = panState.samples[panState.samples.length - 1];
+              if (lastS && (nowUp - lastS.t) <= 28 && typeof e.clientX === 'number' && typeof e.clientY === 'number') {
+                if (Math.hypot(e.clientX - lastS.x, e.clientY - lastS.y) >= 1.5) {
+                  panState.samples.push({ x: e.clientX, y: e.clientY, t: nowUp });
+                }
+              }
+              const { vx, vy } = this._computePdfPanReleaseVelocity(panState.samples, nowUp);
+              if (Math.hypot(vx, vy) >= 0.18) {
+                this._startPdfViewportInertia(viewport, vx, vy);
+              }
+            }
+          }
         }
         if (!this.isPdfCropping || !this.cropTargetWrapper || !this.pdfCropStart) return;
         this.isPdfCropping = false;
@@ -2526,6 +2725,7 @@
 
       // 마우스 휠은 passive: true로 등록하여 크롬/엣지 C++ 컴포지터 스레드가 JS 대기(0ms) 없이 144Hz로 즉시 스크롤하도록 보장!
       viewport.addEventListener('wheel', () => {
+        this._stopPdfViewportInertia();
         if (this.isPdfCropping && typeof this._cropLastClientX === 'number') {
           requestAnimationFrame(() => {
             updateCropBoxFromPointer(this._cropLastClientX, this._cropLastClientY);
@@ -2539,6 +2739,14 @@
         }
         if (!this._pdfTouchPointers || this._pdfTouchPointers.size < 2) {
           endPdfViewerPinch();
+        }
+        if (this._isPdfViewportPanning) {
+          if (this._pdfViewportPanStart && this._pdfViewportPanStart.pointerId !== undefined) {
+            try { viewport.releasePointerCapture(this._pdfViewportPanStart.pointerId); } catch (_) { }
+          }
+          this._isPdfViewportPanning = false;
+          this._pdfViewportPanStart = null;
+          viewport.classList.remove('panning-active');
         }
         this.isPdfCropping = false;
         if (this.activeCropPointerId !== null && this.activeCropPointerId !== undefined) {

@@ -13758,6 +13758,7 @@
       }
       if (btnZoomFit) {
         btnZoomFit.onclick = () => {
+          this._stopSmartViewerInertia();
           const currZ = this._viewerZoom || 1.0;
           const minZ = this._viewerMinZoom || 1.0;
           this._setSmartViewerCarouselAnimating(false);
@@ -13873,6 +13874,7 @@
           const { maxPanY } = this._getSmartViewerMaxPan();
           if (maxPanY > 1) {
             e.preventDefault();
+            this._stopSmartViewerInertia();
             this._setSmartViewerCarouselAnimating(false);
             this._viewerPanY = (this._viewerPanY || 0) + (e.key === 'ArrowUp' ? 140 : -140);
             this._clampSmartViewerPan();
@@ -13922,6 +13924,8 @@
         let startAtLeftEdge = false, startAtRightEdge = false;
         let pointerDownTime = 0;
         let lastMoveX = 0, lastMoveTime = 0, velocityX = 0;
+        let moveSamples = [];
+        let wasBrakingInertia = false;
         let wasMultiTouch = false;
         let pinchStartDist = 0;
         let pinchStartZoom = 1.0;
@@ -13969,6 +13973,7 @@
           // 좌우 가장자리 화살표 버튼 클릭만 예외 처리하고, 그래프/스티커 핫스팟 위에서도 스와이프·핀치 줌 100% 허용!
           if (e.target.closest('.viewer-edge-nav-btn')) return;
           if (e.button !== 0 && e.pointerType === 'mouse') return;
+          const stoppedInertia = this._stopSmartViewerInertia();
           this._commitPendingViewerCarouselImmediately();
           this._setSmartViewerCarouselAnimating(false);
 
@@ -13992,11 +13997,20 @@
             wasMultiTouch = false;
             dragAxisLock = null;
             pointerDownTime = performance.now();
+            wasBrakingInertia = Boolean(stoppedInertia.wasActive && stoppedInertia.speed >= 0.14);
+            if (wasBrakingInertia) {
+              this._viewerSuppressHotspotClickUntil = pointerDownTime + 380;
+              if (singleTapTimer) {
+                clearTimeout(singleTapTimer);
+                singleTapTimer = null;
+              }
+            }
             dragStartX = e.clientX;
             dragStartY = e.clientY;
             lastMoveX = e.clientX;
             lastMoveTime = pointerDownTime;
             velocityX = 0;
+            moveSamples = [{ x: e.clientX, y: e.clientY, t: pointerDownTime }];
             panStartX = this._viewerPanX || 0;
             panStartY = this._viewerPanY || 0;
             const zoom = this._viewerZoom || 1.0;
@@ -14005,6 +14019,8 @@
             startAtRightEdge = (panStartX <= -maxPanX + 6);
           } else if (activePointers.size === 2) {
             wasMultiTouch = true;
+            wasBrakingInertia = false;
+            moveSamples = [];
             dragAxisLock = null;
             this._viewerSuppressHotspotClickUntil = performance.now() + 350;
             if (singleTapTimer) {
@@ -14053,6 +14069,10 @@
             velocityX = (e.clientX - lastMoveX) / dt;
             lastMoveX = e.clientX;
             lastMoveTime = now;
+            moveSamples.push({ x: e.clientX, y: e.clientY, t: now });
+            while (moveSamples.length > 2 && (now - moveSamples[0].t) > 100) {
+              moveSamples.shift();
+            }
 
             const dx = e.clientX - dragStartX;
             const dy = e.clientY - dragStartY;
@@ -14105,12 +14125,19 @@
 
           if (activePointers.size > 0) return;
 
+          const nowUp = performance.now();
+          const isPointerCancel = Boolean(e && e.type === 'pointercancel');
           const totalDx = e.clientX - dragStartX;
           const totalDy = e.clientY - dragStartY;
           const moveDist = Math.hypot(totalDx, totalDy);
-          const elapsed = performance.now() - pointerDownTime;
+          const elapsed = nowUp - pointerDownTime;
           const finishedAxisLock = dragAxisLock;
+          const didBrakeInertia = wasBrakingInertia;
           dragAxisLock = null;
+          wasBrakingInertia = false;
+
+          const samplesSnap = moveSamples;
+          moveSamples = [];
 
           if (wasMultiTouch) {
             wasMultiTouch = false;
@@ -14130,11 +14157,15 @@
 
           // 1) 툭 터치(Single Tap) vs 더블탭(Double Tap) 판별
           if (moveDist < 8 && elapsed < 380) {
+            // 관성 스크롤 도중 화면을 툭 눌러 멈춘 경우(Touch-to-Stop)에는 상단 바 토글·더블탭 줌·핫스팟 오작동을 모두 건너뛰고 즉시 정지만 수행!
+            if (isPointerCancel || didBrakeInertia) {
+              return;
+            }
             // 그래프/스티커 핫스팟 위를 툭 탭한 경우는 핫스팟 고유 클릭 동작에 위임
             if (e.target && e.target.closest && e.target.closest('.viewer-graph-hotspot, .viewer-sticker-hotspot')) {
               return;
             }
-            const now = performance.now();
+            const now = nowUp;
             if (now - lastTapTime < 280 && Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) < 36) {
               // 더블탭: 축소(<94%) ➔ 100% 복귀 / 기본(100%) ➔ 단 집중 확대(200% or 180%) / 확대(>108%) ➔ 읽던 세로 위치 유지하며 100% 복귀!
               if (singleTapTimer) {
@@ -14164,24 +14195,40 @@
             return;
           }
 
+          if (!isPointerCancel && samplesSnap.length >= 1) {
+            const lastS = samplesSnap[samplesSnap.length - 1];
+            if (lastS && (nowUp - lastS.t) <= 28 && typeof e.clientX === 'number' && typeof e.clientY === 'number') {
+              if (Math.hypot(e.clientX - lastS.x, e.clientY - lastS.y) >= 1.5) {
+                samplesSnap.push({ x: e.clientX, y: e.clientY, t: nowUp });
+              }
+            }
+          }
+          const { vx: releaseVx, vy: releaseVy } = isPointerCancel
+            ? { vx: 0, vy: 0 }
+            : this._computeSmartViewerReleaseVelocity(samplesSnap, nowUp);
+
           const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
           const isHorizSwipe = Math.abs(totalDx) > Math.abs(totalDy) * 0.92;
           const isFastFlickNext = (totalDx <= -18 && velocityX <= -0.22);
           const isFastFlickPrev = (totalDx >= 18 && velocityX >= 0.22);
-          const { maxPanX: finishMaxPanX } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, this._viewerZoom || 1.0, viewport);
+          const { maxPanX: finishMaxPanX, maxPanY: finishMaxPanY } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, this._viewerZoom || 1.0, viewport);
 
-          // 2) 문서 가로폭이 화면 안에 다 들어온 상태(축소 ~ 100% 및 PC 소폭 확대)에서 좌우 원스와이프 즉시 넘김!
+          // 2) 문서 가로폭이 화면 안에 다 들어온 상태(축소 ~ 100% 및 PC 소폭 확대)에서 상하 관성 스크롤 & 좌우 원스와이프 즉시 넘김!
           if (finishMaxPanX <= 1) {
-            if (finishedAxisLock === 'y') {
+            if (finishedAxisLock === 'y' || (!finishedAxisLock && !isHorizSwipe && finishMaxPanY > 1 && Math.abs(totalDy) >= 10)) {
+              this._viewerPanX = 0;
               this._clampSmartViewerPan();
               this._applySmartViewerTransform();
+              if (!isPointerCancel && finishMaxPanY > 1 && Math.abs(releaseVy) >= 0.18) {
+                this._startSmartViewerInertia(0, releaseVy, true);
+              }
               return;
             }
-            if (isHorizSwipe && (totalDx <= -26 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
+            if (!isPointerCancel && isHorizSwipe && (totalDx <= -26 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
               this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next', velocityX);
               return;
             }
-            if (isHorizSwipe && (totalDx >= 26 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
+            if (!isPointerCancel && isHorizSwipe && (totalDx >= 26 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
               this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev', velocityX);
               return;
             }
@@ -14204,7 +14251,7 @@
           }
 
           // 3) 확대 상태(>100%)에서도 좌/우 끝단에 닿은 채로 한 번 더 밀면(Edge Swipe) 다음/이전 페이지로 전환!
-          if (isHorizSwipe) {
+          if (!isPointerCancel && isHorizSwipe) {
             if (startAtRightEdge && (totalDx <= -44 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
               this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next', velocityX);
               return;
@@ -14213,6 +14260,11 @@
               this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev', velocityX);
               return;
             }
+          }
+
+          // 4) 확대 상태(maxPanX > 1) 2D 자유 패닝 후 감속 관성 스크롤(끝단에서는 페이지 자동 넘김 없이 깔끔히 정지)
+          if (!isPointerCancel && Math.hypot(releaseVx, releaseVy) >= 0.18) {
+            this._startSmartViewerInertia(releaseVx, releaseVy, false);
           }
         };
 
@@ -14503,7 +14555,130 @@
       });
     }
 
+    _stopSmartViewerInertia() {
+      const wasActive = Boolean(this._viewerInertiaRafId);
+      const speed = wasActive ? (this._viewerInertiaSpeed || 0) : 0;
+      if (this._viewerInertiaRafId) {
+        cancelAnimationFrame(this._viewerInertiaRafId);
+        this._viewerInertiaRafId = null;
+      }
+      this._viewerInertiaSpeed = 0;
+      return { wasActive, speed };
+    }
+
+    _computeSmartViewerReleaseVelocity(samples, nowUp) {
+      if (!Array.isArray(samples) || samples.length < 2) return { vx: 0, vy: 0 };
+      const last = samples[samples.length - 1];
+      if (!last || (nowUp - last.t) > 65) return { vx: 0, vy: 0 };
+      for (let i = samples.length - 2; i >= 0; i--) {
+        const s = samples[i];
+        if ((last.t - s.t) >= 32) {
+          if (Math.hypot(last.x - s.x, last.y - s.y) < 2.5) {
+            return { vx: 0, vy: 0 };
+          }
+          break;
+        }
+      }
+      let anchor = samples[samples.length - 2];
+      for (let i = 0; i < samples.length - 1; i++) {
+        const dtCandidate = last.t - samples[i].t;
+        if (dtCandidate >= 14 && dtCandidate <= 85) {
+          anchor = samples[i];
+          break;
+        }
+      }
+      const dt = last.t - anchor.t;
+      if (dt < 6) return { vx: 0, vy: 0 };
+      let vx = (last.x - anchor.x) / dt;
+      let vy = (last.y - anchor.y) / dt;
+      const mag = Math.hypot(vx, vy);
+      const maxSpeed = 4.2;
+      if (mag > maxSpeed) {
+        vx = (vx / mag) * maxSpeed;
+        vy = (vy / mag) * maxSpeed;
+      }
+      return { vx, vy };
+    }
+
+    _startSmartViewerInertia(initVx, initVy, verticalOnly = false) {
+      this._stopSmartViewerInertia();
+      this._setSmartViewerCarouselAnimating(false);
+      let vx = verticalOnly ? 0 : (Number(initVx) || 0);
+      let vy = Number(initVy) || 0;
+      const mag = Math.hypot(vx, vy);
+      if (mag < 0.18) return;
+      const maxSpeed = 4.2;
+      if (mag > maxSpeed) {
+        vx = (vx / mag) * maxSpeed;
+        vy = (vy / mag) * maxSpeed;
+      }
+      this._viewerInertiaSpeed = Math.hypot(vx, vy);
+      let prevT = performance.now();
+
+      const step = (now) => {
+        const overlay = document.getElementById('smartNoteViewerOverlay');
+        if (!overlay || overlay.style.display === 'none' || document.body.classList.contains('viewer-graph-touch-mode') || this._isAudioReplayActive) {
+          this._stopSmartViewerInertia();
+          return;
+        }
+        const dt = Math.min(34, Math.max(6, now - prevT));
+        prevT = now;
+        const viewport = document.getElementById('smartNoteViewerViewport');
+        const { maxPanX, maxPanY } = this._getSmartViewerMaxPan(
+          this._viewerBaseW,
+          this._viewerBaseH,
+          this._viewerZoom || 1.0,
+          viewport
+        );
+
+        if (verticalOnly || maxPanX <= 0.5) {
+          this._viewerPanX = 0;
+          vx = 0;
+        } else {
+          this._viewerPanX = (this._viewerPanX || 0) + vx * dt;
+          if (this._viewerPanX <= -maxPanX) {
+            this._viewerPanX = -maxPanX;
+            vx = 0;
+          } else if (this._viewerPanX >= maxPanX) {
+            this._viewerPanX = maxPanX;
+            vx = 0;
+          }
+        }
+
+        if (maxPanY <= 0.5) {
+          this._viewerPanY = 0;
+          vy = 0;
+        } else {
+          this._viewerPanY = (this._viewerPanY || 0) + vy * dt;
+          if (this._viewerPanY <= -maxPanY) {
+            this._viewerPanY = -maxPanY;
+            vy = 0;
+          } else if (this._viewerPanY >= maxPanY) {
+            this._viewerPanY = maxPanY;
+            vy = 0;
+          }
+        }
+
+        this._applySmartViewerTransform();
+
+        const decay = Math.pow(0.925, dt / 16.667);
+        vx *= decay;
+        vy *= decay;
+        const nextSpeed = Math.hypot(vx, vy);
+        this._viewerInertiaSpeed = nextSpeed;
+        if (nextSpeed < 0.05) {
+          this._viewerInertiaRafId = null;
+          this._viewerInertiaSpeed = 0;
+          return;
+        }
+        this._viewerInertiaRafId = requestAnimationFrame(step);
+      };
+
+      this._viewerInertiaRafId = requestAnimationFrame(step);
+    }
+
     _commitPendingViewerCarouselImmediately() {
+      this._stopSmartViewerInertia();
       if (this._viewerCarouselTimer) {
         clearTimeout(this._viewerCarouselTimer);
         this._viewerCarouselTimer = null;

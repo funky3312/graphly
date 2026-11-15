@@ -4172,6 +4172,22 @@ body.theme-light .ink-size-btn.active .ink-size-circle {
   overscroll-behavior-y: none !important;
 }
 
+/* PDF 모달이 열려 있는 동안 루트 html/body의 touch-action: none 잠금을 pan-x pan-y로 완화하여
+   아이패드/태블릿 Safari에서 자연스러운 대각선 손가락 스와이프가 상위 touch-action: none에 걸려 헛도는 현상을 원천 차단 */
+html:has(body.pdf-modal-open),
+body.pdf-modal-open {
+  touch-action: pan-x pan-y !important;
+}
+
+#modalPdfViewer,
+#modalPdfViewer .pdf-modal-container {
+  touch-action: pan-x pan-y;
+}
+
+#modalPdfViewer .pdf-modal-header {
+  touch-action: pan-x manipulation;
+}
+
 /* PDF 뷰어가 열려 있는 동안 뒷창 4K 칠판·필기 캔버스·위젯·툴바의 GPU 페인팅/합성을 100% 일시정지 */
 body.pdf-modal-open .main-workspace,
 body.pdf-modal-open #quickPillRemote,
@@ -4448,7 +4464,7 @@ body.pdf-modal-open #lassoActionFloatingBar {
   }
 }
 
-/* PDF 세로 연속 스크롤 뷰포트 (즉각적이고 시원시원한 네이티브 스크롤) */
+/* PDF 세로 연속 스크롤 뷰포트 (즉각적이고 시원시원한 네이티브 120Hz 관성 스크롤) */
 .pdf-viewport {
   flex: 1;
   overflow-y: auto;
@@ -4456,6 +4472,7 @@ body.pdf-modal-open #lassoActionFloatingBar {
   position: relative;
   background: #090d16;
   scroll-behavior: auto !important;
+  -webkit-overflow-scrolling: touch;
   cursor: default;
   touch-action: pan-x pan-y;
   overscroll-behavior: none !important;
@@ -4463,7 +4480,17 @@ body.pdf-modal-open #lassoActionFloatingBar {
   overscroll-behavior-y: none !important;
 }
 
-.pdf-viewport.crop-mode {
+.pdf-viewport:not(.crop-mode),
+.pdf-viewport:not(.crop-mode) .pdf-pages-container,
+.pdf-viewport:not(.crop-mode) .pdf-page-wrapper,
+.pdf-viewport:not(.crop-mode) .pdf-page-canvas {
+  touch-action: pan-x pan-y;
+}
+
+.pdf-viewport.crop-mode,
+.pdf-viewport.crop-mode .pdf-pages-container,
+.pdf-viewport.crop-mode .pdf-page-wrapper,
+.pdf-viewport.crop-mode .pdf-page-canvas {
   cursor: crosshair !important;
   user-select: none !important;
   -webkit-user-select: none !important;
