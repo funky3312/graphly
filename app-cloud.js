@@ -10699,6 +10699,113 @@
           if (idxA !== -1 && idxB !== -1) {
             const [start, end] = idxA < idxB ? [idxA, idxB] : [idxB, idxA];
             for (let i = start; i <= end; i++) {
+              this._selectedCloudExplorerKeys.add(visKeys[i]);
+            }
+          }
+        } else if (e.ctrlKey || e.metaKey) {
+          if (this._selectedCloudExplorerKeys.has(rowKey)) {
+            this._selectedCloudExplorerKeys.delete(rowKey);
+          } else {
+            this._selectedCloudExplorerKeys.add(rowKey);
+          }
+        } else {
+          if (this._selectedCloudExplorerKeys.size === 1 && this._selectedCloudExplorerKeys.has(rowKey)) {
+            this._selectedCloudExplorerKeys.clear();
+          } else {
+            this._selectedCloudExplorerKeys.clear();
+            this._selectedCloudExplorerKeys.add(rowKey);
+          }
+        }
+        this._lastClickedCloudExplorerKey = rowKey;
+        syncAllRowSelectionsInPlace();
+      };
+
+      visibleFolders.forEach(fPath => {
+        const segName = fPath.split('/').pop();
+        const displaySegName = this._cleanCloudFolderDisplayLabel(segName);
+        const rowKey = `folder:${fPath}`;
+        const isSelected = this._selectedCloudExplorerKeys.has(rowKey);
+        const row = document.createElement('div');
+        row.className = 'win-explorer-row is-folder-row' + (isSelected ? ' selected' : '');
+        row.dataset.rowKey = rowKey;
+
+        const safeRowSegName = this._escapeHtmlStr(displaySegName);
+        const safeRawSegVal = this._escapeHtmlStr(segName);
+        if (this._renamingCloudFolderPath === fPath) {
+          row.classList.add('is-renaming-row');
+          row.innerHTML = `
+          <div class="win-inline-rename-wrap">
+            <span class="win-row-icon is-folder-icon">${this._getCloudVaultIconSvg('folderClosed')}</span>
+            <input type="text" class="cloud-item-rename-input" value="${safeRawSegVal}" />
+            <button type="button" class="btn-primary cloud-item-rename-save">확인</button>
+            <button type="button" class="btn-secondary cloud-item-rename-cancel">취소</button>
+          </div>
+        `;
+          const inpRen = row.querySelector('.cloud-item-rename-input');
+          const btnSaveRen = row.querySelector('.cloud-item-rename-save');
+          const btnCancelRen = row.querySelector('.cloud-item-rename-cancel');
+          if (inpRen) {
+            inpRen.onclick = (e) => e.stopPropagation();
+            inpRen.onkeydown = (e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                this.renameCloudFolder(fPath, inpRen.value);
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                this._renamingCloudFolderPath = null;
+                this.renderMyLibraryList();
+              }
+            };
+            setTimeout(() => { inpRen.focus(); inpRen.select(); }, 20);
+          }
+          if (btnSaveRen) {
+            btnSaveRen.onclick = (e) => {
+              e.stopPropagation();
+              this.renameCloudFolder(fPath, inpRen ? inpRen.value : segName);
+            };
+          }
+          if (btnCancelRen) {
+            btnCancelRen.onclick = (e) => {
+              e.stopPropagation();
+              this._renamingCloudFolderPath = null;
+              this.renderMyLibraryList();
+            };
+          }
+          listEl.appendChild(row);
+          return;
+        }
+
+        const folderCnt = folderItemCountMap.get(fPath) || 0;
+        const folderCntHtml = folderCnt > 0
+          ? `<span class="win-folder-item-count">${folderCnt}개 항목</span>`
+          : '';
+
+        row.innerHTML = `
+        <label class="win-row-chk-wrap" title="체크하여 폴더 선택">
+          <input type="checkbox" class="win-explorer-checkbox" ${isSelected ? 'checked' : ''}>
+        </label>
+        <div class="win-row-name-col" title="클릭하여 [${safeRowSegName}] 폴더 열기">
+          <span class="win-row-icon is-folder-icon">${this._getCloudVaultIconSvg('folderClosed')}</span>
+          <span class="win-row-title">${safeRowSegName}</span>
+          ${folderCntHtml}
+        </div>
+        <div class="win-row-act-col">
+          <button type="button" class="btn-cloud-edit-item" title="폴더 이름 바꾸기 (F2)">${this._getCloudVaultIconSvg('renamePencil')}</button>
+        </div>
+      `;
+
+        const enterFolder = () => {
+          this._activeCloudFolder = fPath;
+          this._selectedCloudExplorerKeys.clear();
+          if (!this._collapsedCloudFolders) this._collapsedCloudFolders = new Set();
+          this._collapsedCloudFolders.delete(fPath);
+          this.syncExportCloudFolderSelect();
+          this.renderMyLibraryList();
+        };
+
+        const chkEl = row.querySelector('.win-explorer-checkbox');
+        const chkLabel = row.querySelector('.win-row-chk-wrap');
         if (chkLabel) {
           chkLabel.onclick = (e) => e.stopPropagation();
         }
