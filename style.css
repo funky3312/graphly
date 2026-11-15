@@ -6923,19 +6923,19 @@ body.theme-light .btn-card-stamp:hover {
 
 @keyframes stampShutterFlashOut {
   0% {
-    opacity: 0.92;
-    transform: scale(0.992);
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.55), inset 0 0 0 999px rgba(255, 255, 255, 0.42);
-  }
-  45% {
-    opacity: 0.65;
+    opacity: 1;
     transform: scale(1);
-    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.28), inset 0 0 0 999px rgba(255, 255, 255, 0.14);
+    background: rgba(15, 23, 42, 0.04);
+  }
+  42% {
+    opacity: 0.7;
+    transform: scale(0.988);
+    background: rgba(15, 23, 42, 0.025);
   }
   100% {
     opacity: 0;
-    transform: scale(1.004);
-    box-shadow: 0 0 0 6px rgba(37, 99, 235, 0), inset 0 0 0 999px rgba(255, 255, 255, 0);
+    transform: scale(1);
+    background: rgba(15, 23, 42, 0);
   }
 }
 
@@ -6943,8 +6943,9 @@ body.theme-light .btn-card-stamp:hover {
   position: fixed;
   pointer-events: none !important;
   z-index: 9999;
-  border-radius: 6px;
-  animation: stampShutterFlashOut 0.21s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  border-radius: 4px;
+  box-shadow: none !important;
+  animation: stampShutterFlashOut 0.16s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 
