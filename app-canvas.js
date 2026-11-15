@@ -10925,6 +10925,9 @@
             const snap = this.captureCurrentSlideViewerSnapshot(pkg.exportFilter || null, false);
             dataUrl = snap.dataUrl;
             sl.viewerSnapshotDataUrl = dataUrl;
+            if (snap && snap.canvas) {
+              try { snap.canvas.width = 1; snap.canvas.height = 1; } catch (e) { }
+            }
           }
         }
         if (dataUrl) {

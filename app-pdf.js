@@ -946,7 +946,7 @@
       if (!pageCanvas._cachedDataUrl) {
         pageCanvas._cachedDataUrl = (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/'))
           ? dataUrl
-          : this.encodeCanvasSmartWebP(pageCanvas, 0.78);
+          : this.encodeCanvasSmartWebP(pageCanvas, 0.88);
       }
       const key = this._getPdfBoardCacheKey(pageNum, pageCanvas._cachedDataUrl);
       if (!key) return;
@@ -959,7 +959,7 @@
       this._pdfPageCanvasCacheOrder.push(key);
 
       const isIOSDevice = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
-      const MAX_CACHED_PDF_CANVASES = isIOSDevice ? 3 : 6;
+      const MAX_CACHED_PDF_CANVASES = isIOSDevice ? 2 : 5;
       const activeCv = (this.pdfPageBoardData && this.pdfPageBoardData.canvas) || null;
       const suspendedCv = (this._suspendedPdfBoardState && this._suspendedPdfBoardState.pdfPageBoardData && this._suspendedPdfBoardState.pdfPageBoardData.canvas) || null;
       let guard = 0;
@@ -1096,10 +1096,11 @@
       // 카메라가 이동·줌인 중일 때만 경량 Mipmap 텍스처 + 하드웨어 이중선형 보간('medium')으로 랙을 0%로 방어하며,
       // 이동이 멈추는 즉시(정지·판서·내보내기 시) 0.00초 만에 원본 초고해상도(3.4x~4.2x) 캔버스 + 최고 화질('high')로 복원합니다!
       const isActivelyMovingCamera = !isExport && Boolean(this.isPanning || this._isZoomAnimating || this._pinchState);
-      const drawX = isActivelyMovingCamera ? x : Math.round(x);
-      const drawY = isActivelyMovingCamera ? y : Math.round(y);
-      const drawW = isActivelyMovingCamera ? w : Math.round(w);
-      const drawH = isActivelyMovingCamera ? h : Math.round(h);
+      const snapToCssPixel = !isExport && !isActivelyMovingCamera;
+      const drawX = snapToCssPixel ? Math.round(x) : x;
+      const drawY = snapToCssPixel ? Math.round(y) : y;
+      const drawW = snapToCssPixel ? Math.round(w) : w;
+      const drawH = snapToCssPixel ? Math.round(h) : h;
       const sourceTex = (isActivelyMovingCamera && (this.zoomLevel || 1.0) <= 1.65 && pageCanvas._mipCanvas)
         ? pageCanvas._mipCanvas
         : pageCanvas;
@@ -1184,8 +1185,8 @@
       // 현재 캔버스의 이전 문제 카드·그래프 카드·필기·PDF 보드 데이터를 100% 깨끗하게 초기화하여 슬라이드 간 섞임 원천 차단!
       this.resetBoardAndProblemCardsForNext();
 
-      // PDF 페이지 QHD/Retina 스위트스팟(가로 ~1920px, 스케일 2.4x~3.1x — 칼선명도 유지 + 용량 75% 다이어트!) 오프스크린 렌더링
-      // + 이동/줌 중 랙 0%를 보장하는 1/2 Mipmap 동시 생성 + 아이패드 RAM 보호를 위한 최대 6장 LRU 캐시 관리!
+      // PDF 페이지 캡처모드급 초선명 마스터 세팅(가로 ~2800px / WebP 0.88 — 태블릿·PC 2.5x 확대 시 네이티브 PDF급 선명도!) 오프스크린 렌더링
+      // + iOS/iPadOS WebKit 하드웨어 캔버스 한계(4096px / 16.77MP) 안전 클램프 + 1/2 Mipmap 가속 + LRU 캐시(iOS 2장 / PC 5장) 보호!
       if (this._pdfPageCanvasCacheDoc !== this.pdfDoc) {
         if (this._pdfPageCanvasCache) {
           Object.keys(this._pdfPageCanvasCache).forEach((k) => {
@@ -1208,8 +1209,13 @@
       if (!pageCanvas) {
         const page = await this.pdfDoc.getPage(targetPage);
         const baseVp = page.getViewport({ scale: 1.0 });
-        const targetMinPxW = 1920;
-        const renderScale = Math.max(2.4, Math.min(3.1, targetMinPxW / Math.max(1, baseVp.width)));
+        const targetMinPxW = 2800;
+        const maxSidePx = 4032;
+        const maxAreaPx = 15500000;
+        const rawScale = Math.max(2.0, Math.min(4.7, targetMinPxW / Math.max(1, baseVp.width)));
+        const maxSideScale = maxSidePx / Math.max(1, baseVp.width, baseVp.height);
+        const maxAreaScale = Math.sqrt(maxAreaPx / Math.max(1, baseVp.width * baseVp.height));
+        const renderScale = Math.max(1.0, Math.min(rawScale, maxSideScale, maxAreaScale));
         const vp = page.getViewport({ scale: renderScale });
         pageCanvas = document.createElement('canvas');
         pageCanvas.width = Math.round(vp.width);
@@ -1232,10 +1238,10 @@
           pageCanvas._mipCanvas = mipCanvas;
         } catch (e) { }
 
-        pageCanvas._cachedDataUrl = this.encodeCanvasSmartWebP(pageCanvas, 0.78);
+        pageCanvas._cachedDataUrl = this.encodeCanvasSmartWebP(pageCanvas, 0.88);
         this._putPdfPageCanvasInCache(targetPage, pageCanvas, pageCanvas._cachedDataUrl);
       } else if (!pageCanvas._cachedDataUrl) {
-        pageCanvas._cachedDataUrl = this.encodeCanvasSmartWebP(pageCanvas, 0.78);
+        pageCanvas._cachedDataUrl = this.encodeCanvasSmartWebP(pageCanvas, 0.88);
       }
 
       // 🌟 [대표님 피드백 반영: PDF 삽입 시 화면 거의 꽉 차게 확대 삽입 + 그래프 소환 시 아담한 비율 보장!] 🌟

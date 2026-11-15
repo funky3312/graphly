@@ -2935,7 +2935,7 @@
           freeMaxSlides: 50,
           proMaxSlides: 50,
           premiumMaxSlides: 50,
-          maxSingleSharePayloadBytes: 80 * MB, // 단일 수업 노트/공유 패키지 최대 용량 가드 (80 MB)
+          maxSingleSharePayloadBytes: 150 * MB, // 단일 수업 노트/공유 패키지 최대 용량 가드 (150 MB — 아이패드 50장 필기+60분 녹음 여유 수용)
           shareBurstLimitPerMin: 15,           // 매크로 폭주 방지 분당 신규 공유 링크 상한
 
           // [1] Free (무료 회원 · 비로그인 공통 기준 / 클라우드·프리셋은 로그인 전용)
@@ -5942,7 +5942,7 @@
           dataUrl: activePdfBoard.dataUrl ||
             (activePdfBoard.canvas && activePdfBoard.canvas._cachedDataUrl) ||
             (activePdfBoard.canvas && !activePdfBoard.canvas._evicted && activePdfBoard.canvas.width > 4
-              ? (activePdfBoard.dataUrl = (activePdfBoard.canvas._cachedDataUrl = this.encodeCanvasSmartWebP(activePdfBoard.canvas, 0.78)))
+              ? (activePdfBoard.dataUrl = (activePdfBoard.canvas._cachedDataUrl = this.encodeCanvasSmartWebP(activePdfBoard.canvas, 0.88)))
               : ''),
           pixelW: activePdfBoard.pixelW || (activePdfBoard.canvas && !activePdfBoard.canvas._evicted && activePdfBoard.canvas.width > 4 ? activePdfBoard.canvas.width : 0),
           pixelH: activePdfBoard.pixelH || (activePdfBoard.canvas && !activePdfBoard.canvas._evicted && activePdfBoard.canvas.height > 4 ? activePdfBoard.canvas.height : 0),
@@ -6453,19 +6453,22 @@
       return total;
     }
 
-    // 요금제별 클라우드 용량 한도(Free 100MB / Pro 5GB / Premium 20GB) 및 단일 노트 용량 상한(80MB) 사전 점검
-    checkCanUploadBytesToCloud(newBytes, replacingBytes = 0, contextLabel = '클라우드 저장') {
+    // 요금제별 클라우드 용량 한도(Free 100MB / Pro 5GB / Premium 20GB) 및 단일 노트 용량 상한(150MB) 사전 점검
+    checkCanUploadBytesToCloud(newBytes, replacingBytes = 0, contextLabel = '클라우드 저장', maxSingleEntryBytes = null) {
       const cfg = typeof this.getSubscriptionQuotaConfig === 'function' ? this.getSubscriptionQuotaConfig() : null;
       const maxSingleBytes = (cfg && Number(cfg.maxSingleSharePayloadBytes) > 0)
         ? Number(cfg.maxSingleSharePayloadBytes)
-        : (80 * 1024 * 1024);
+        : (150 * 1024 * 1024);
       const quota = typeof this.getCurrentTierQuota === 'function'
         ? this.getCurrentTierQuota()
         : { tier: 'free', tierLabel: '무료', maxCloudBytes: 100 * 1024 * 1024, maxCloudLabel: '100 MB' };
       const usedBytes = Math.max(0, this.getUserCloudLibraryTotalBytes() - Math.max(0, Number(replacingBytes) || 0));
       const addBytes = Math.max(0, Number(newBytes) || 0);
-      if (addBytes > maxSingleBytes) {
-        const limStr = typeof this.formatBytesHuman === 'function' ? this.formatBytesHuman(maxSingleBytes) : '80 MB';
+      const singleCheckBytes = (typeof maxSingleEntryBytes === 'number' && maxSingleEntryBytes >= 0)
+        ? Math.max(0, maxSingleEntryBytes)
+        : addBytes;
+      if (singleCheckBytes > maxSingleBytes) {
+        const limStr = typeof this.formatBytesHuman === 'function' ? this.formatBytesHuman(maxSingleBytes) : '150 MB';
         this.showToast(`⚠️ ${contextLabel} 불가: 단일 수업 노트 권장 최대 용량(${limStr})을 초과했습니다. 쾌적한 열람을 위해 단원별로 나누어 저장해 주세요.`);
         return false;
       }
@@ -6762,7 +6765,7 @@
       if (!slide || !slide.pdfPageBoardData || !slide.pdfPageBoardData.dataUrl) return false;
       const pbd = slide.pdfPageBoardData;
       const aspect = (typeof pbd.aspect === 'number' && pbd.aspect > 0) ? pbd.aspect : 1.414;
-      const snapW = Math.max(600, Math.round(pbd.pixelW || 1920));
+      const snapW = Math.max(600, Math.round(pbd.pixelW || 2800));
       const snapH = Math.max(600, Math.round(pbd.pixelH || (snapW * aspect)));
       slide.viewerSnapshotDataUrl = pbd.dataUrl;
       slide.viewerSnapshotWidth = snapW;
@@ -6844,6 +6847,9 @@
           slides[i].viewerStickerHotspots = snap.stickerHotspots;
           slides[i].viewerSmartBounds = snap.smartBounds;
           slides[i]._viewerHiResRendered = true;
+          if (snap && snap.canvas) {
+            try { snap.canvas.width = 1; snap.canvas.height = 1; } catch (e) { }
+          }
         }
       } finally {
         if (isOuterLoop) {
@@ -8959,13 +8965,16 @@
       // 업로드 전 총 용량 사전 점검 (Free 100MB / Pro 5GB / Premium 20GB)
       let totalNewBytes = 0;
       let totalReplacingBytes = 0;
+      let maxEntryBytes = 0;
       pendingEntries.forEach(({ itemObj, overwriteTarget }) => {
-        totalNewBytes += Number(itemObj.byteSize) || 0;
+        const entrySz = Number(itemObj.byteSize) || 0;
+        totalNewBytes += entrySz;
+        if (entrySz > maxEntryBytes) maxEntryBytes = entrySz;
         if (overwriteTarget) {
           totalReplacingBytes += Number(overwriteTarget.byteSize) || Number(overwriteTarget.rawByteSize) || 0;
         }
       });
-      if (!this.checkCanUploadBytesToCloud(totalNewBytes, totalReplacingBytes, '파일 업로드')) {
+      if (!this.checkCanUploadBytesToCloud(totalNewBytes, totalReplacingBytes, '파일 업로드', maxEntryBytes)) {
         return [];
       }
 
@@ -11686,7 +11695,7 @@
                 ? this._getPdfPageCanvasFromCache(s.pdfPageBoardData.pageNum, '')
                 : null);
             if (cv) {
-              s.pdfPageBoardData.dataUrl = cv._cachedDataUrl || (cv._cachedDataUrl = this.encodeCanvasSmartWebP(cv, 0.78));
+              s.pdfPageBoardData.dataUrl = cv._cachedDataUrl || (cv._cachedDataUrl = this.encodeCanvasSmartWebP(cv, 0.88));
             }
           }
           if (s && s.audioSyncData) {
@@ -11971,7 +11980,34 @@
       const stickerHotspots = this.extractStickerHotspotsForBounds(smartBounds, effFilter);
       this._omitStickersForViewerSnapshot = true;
       const isMobileDevice = (typeof window !== 'undefined') && (window.innerWidth <= 768 || window.innerHeight <= 500);
-      const targetScale = isMobileDevice ? 1.8 : (forCloud ? 2.2 : 2.8);
+      const hasPdfBoardForSnap = Boolean(
+        effFilter.includeProblem !== false &&
+        this.pdfPageBoardData &&
+        this.pdfPageBoardData.mathW > 0 &&
+        this.pdfPageBoardData.mathH > 0 &&
+        smartBounds &&
+        smartBounds.width > 0 &&
+        smartBounds.height > 0
+      );
+      let targetScale = isMobileDevice ? 1.8 : (forCloud ? 2.2 : 2.8);
+      if (hasPdfBoardForSnap) {
+        const pbd = this.pdfPageBoardData;
+        const cx = pbd.centerX || 0;
+        const cy = pbd.centerY || 0;
+        const pTL = this.mathToScreen(cx - pbd.mathW / 2, cy + pbd.mathH / 2);
+        const pBR = this.mathToScreen(cx + pbd.mathW / 2, cy - pbd.mathH / 2);
+        const pdfScreenW = Math.max(1, Math.abs(pBR.x - pTL.x));
+        const nativePxW = (pbd.canvas && !pbd.canvas._evicted && pbd.canvas.width > 4)
+          ? pbd.canvas.width
+          : (pbd.pixelW || 2800);
+        const targetPdfPxW = Math.max(2400, Math.min(2850, nativePxW));
+        const rawPdfScale = targetPdfPxW / pdfScreenW;
+        const maxSnapSide = isMobileDevice ? 3200 : 4080;
+        const maxSnapArea = isMobileDevice ? 9800000 : 15800000;
+        const sideCapScale = maxSnapSide / Math.max(1, smartBounds.width, smartBounds.height);
+        const areaCapScale = Math.sqrt(maxSnapArea / Math.max(1, smartBounds.width * smartBounds.height));
+        targetScale = Math.max(0.2, Math.min(rawPdfScale, sideCapScale, areaCapScale));
+      }
       let exp;
       try {
         exp = this.getExportCanvas(effFilter, smartBounds, targetScale);
@@ -11981,8 +12017,9 @@
       let dataUrl = '';
       try {
         const allowJpeg = !this.exportTransparent;
+        const webpQuality = hasPdfBoardForSnap ? 0.88 : 0.80;
         dataUrl = (forCloud || isMobileDevice)
-          ? this.encodeCanvasSmartWebP(exp.canvas, 0.80, allowJpeg)
+          ? this.encodeCanvasSmartWebP(exp.canvas, webpQuality, allowJpeg)
           : exp.canvas.toDataURL('image/png');
       } catch (e) {
         dataUrl = exp.canvas.toDataURL('image/png');
@@ -12991,9 +13028,9 @@
       const cfgSingle = typeof this.getSubscriptionQuotaConfig === 'function' ? this.getSubscriptionQuotaConfig() : null;
       const maxSingleBytes = (cfgSingle && Number(cfgSingle.maxSingleSharePayloadBytes) > 0)
         ? Number(cfgSingle.maxSingleSharePayloadBytes)
-        : (80 * 1024 * 1024);
+        : (150 * 1024 * 1024);
       if (this._measureUtf8Bytes(compressedFullPkg) > maxSingleBytes) {
-        const limStr = typeof this.formatBytesHuman === 'function' ? this.formatBytesHuman(maxSingleBytes) : '80 MB';
+        const limStr = typeof this.formatBytesHuman === 'function' ? this.formatBytesHuman(maxSingleBytes) : '150 MB';
         this.showToast(`⚠️ 공유 불가: 단일 공유 패키지 최대 용량(${limStr})을 초과했습니다. 슬라이드를 나누어 공유해 주세요.`);
         return null;
       }
@@ -14423,6 +14460,9 @@
           slide.viewerStickerHotspots = snap.stickerHotspots;
           slide.viewerSmartBounds = snap.smartBounds;
           slide._viewerHiResRendered = true;
+          if (snap && snap.canvas) {
+            try { snap.canvas.width = 1; snap.canvas.height = 1; } catch (e) { }
+          }
         }
       }
       if (slide.viewerSnapshotDataUrl) {
