@@ -1214,6 +1214,9 @@
     }
 
     renderProblemCardCanvas(activeStroke = null, commitStroke = false) {
+      if (typeof this._activeProblemStampGhostCleanup === 'function') {
+        this._activeProblemStampGhostCleanup();
+      }
       const pCanvas = document.getElementById('problemCardCanvas');
       if (!pCanvas) return;
       const dpr = this.getCanvasDpr();
@@ -2911,6 +2914,9 @@
     // 🌟 [카드 터치/클릭 시 최상단 Z-Index 우선순위 자동 승격 엔진] 🌟
     bringCardToFront(targetEl) {
       if (!targetEl) return;
+      if (typeof this._activeProblemStampGhostCleanup === 'function') {
+        this._activeProblemStampGhostCleanup();
+      }
       const allCards = [
         document.getElementById('problemCardWidget'),
         ...((this.extraProblemCards || []).map(c => c && c.el)),
@@ -9792,22 +9798,140 @@
       return stampStroke;
     }
 
-    _spawnStampShutterFlashFx(clientRect) {
-      if (typeof document === 'undefined' || !document.body || !clientRect || !(clientRect.width >= 16 && clientRect.height >= 16)) {
+    _spawnStampShutterFlashFx(opts) {
+      if (typeof document === 'undefined' || !document.body || !opts) {
         return;
       }
-      const fx = document.createElement('div');
-      fx.className = 'stamp-shutter-flash-fx';
-      fx.style.left = `${Math.round(clientRect.left)}px`;
-      fx.style.top = `${Math.round(clientRect.top)}px`;
-      fx.style.width = `${Math.round(clientRect.width)}px`;
-      fx.style.height = `${Math.round(clientRect.height)}px`;
-      document.body.appendChild(fx);
+      if (typeof this._activeProblemStampGhostCleanup === 'function') {
+        this._activeProblemStampGhostCleanup();
+      }
+
+      const { widget, bodyEl, resolvedDataUrl, hasCardInk, fallbackBodyHeight } = opts;
+      if (!widget || !bodyEl || !resolvedDataUrl) return;
+
+      const host = widget.parentElement || document.body;
+      const ghostEl = document.createElement('div');
+      ghostEl.className = 'problem-card-widget problem-stamp-ghost-fx stamp-shutter-flash-fx' +
+        (widget.classList.contains('card-ink-active') ? ' card-ink-active' : '');
+      ghostEl.setAttribute('aria-hidden', 'true');
+      ghostEl.style.cssText = widget.style.cssText;
+      ghostEl.style.display = 'flex';
+      ghostEl.style.pointerEvents = 'none';
+
+      const headerSrc = widget.querySelector('.problem-card-header');
+      if (headerSrc) {
+        const headerClone = headerSrc.cloneNode(true);
+        headerClone.removeAttribute('id');
+        headerClone.querySelectorAll('[id]').forEach((el) => el.removeAttribute('id'));
+        const stampBtnClone = headerClone.querySelector('.btn-card-stamp');
+        if (stampBtnClone) stampBtnClone.classList.add('stamp-btn-just-pressed');
+        ghostEl.appendChild(headerClone);
+      }
+
+      const ghostBody = document.createElement('div');
+      ghostBody.className = 'problem-card-body problem-stamp-body-press';
+      const rawBodyOffsetH = bodyEl.offsetHeight;
+      if (rawBodyOffsetH >= 24) {
+        ghostBody.style.height = `${rawBodyOffsetH}px`;
+      } else if (fallbackBodyHeight >= 24) {
+        const wRect = widget.getBoundingClientRect();
+        const cssW = parseFloat(widget.style.width) || wRect.width || 480;
+        const scaleRatio = (wRect.width > 10 && cssW > 10) ? (wRect.width / cssW) : 1;
+        ghostBody.style.height = `${Math.max(24, Math.round(fallbackBodyHeight / Math.max(0.2, scaleRatio)))}px`;
+      }
+
+      const ghostImg = document.createElement('img');
+      ghostImg.className = 'problem-card-img';
+      ghostImg.src = resolvedDataUrl;
+      ghostImg.alt = '';
+      ghostImg.draggable = false;
+      ghostBody.appendChild(ghostImg);
+
+      let ghostInkCvs = null;
+      if (hasCardInk) {
+        const srcInkCvs = bodyEl.querySelector('canvas');
+        if (srcInkCvs && srcInkCvs.width > 4 && srcInkCvs.height > 4) {
+          ghostInkCvs = document.createElement('canvas');
+          ghostInkCvs.className = 'problem-stamp-ghost-ink';
+          ghostInkCvs.width = srcInkCvs.width;
+          ghostInkCvs.height = srcInkCvs.height;
+          ghostInkCvs.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;';
+          try {
+            const gCtx = ghostInkCvs.getContext('2d');
+            if (gCtx) gCtx.drawImage(srcInkCvs, 0, 0);
+          } catch (_) { }
+          ghostBody.appendChild(ghostInkCvs);
+        }
+      }
+
+      ghostEl.appendChild(ghostBody);
+      host.appendChild(ghostEl);
+
+      let cleaned = false;
+      const ac = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      let tFrameOnly = null;
+      let tVanish = null;
+      let tRemove = null;
+
       const cleanup = () => {
-        if (fx.parentNode) fx.parentNode.removeChild(fx);
+        if (cleaned) return;
+        cleaned = true;
+        if (tFrameOnly) clearTimeout(tFrameOnly);
+        if (tVanish) clearTimeout(tVanish);
+        if (tRemove) clearTimeout(tRemove);
+        if (ac) {
+          try { ac.abort(); } catch (_) { }
+        }
+        if (ghostInkCvs) {
+          ghostInkCvs.width = 1;
+          ghostInkCvs.height = 1;
+          ghostInkCvs = null;
+        }
+        if (ghostEl.parentNode) {
+          ghostEl.parentNode.removeChild(ghostEl);
+        }
+        if (this._activeProblemStampGhostCleanup === cleanup) {
+          this._activeProblemStampGhostCleanup = null;
+        }
       };
-      fx.addEventListener('animationend', cleanup, { once: true });
-      setTimeout(cleanup, 260);
+
+      this._activeProblemStampGhostCleanup = cleanup;
+
+      // 0.19s 찰칵 움찔 직후: 내부 이미지만 투명화하여 밑에 박제된 선명한 본문 + 실시간 펜 획이 그대로 투과되도록 전환 (창 헤더/테두리 유지)
+      tFrameOnly = setTimeout(() => {
+        if (!cleaned) {
+          ghostEl.classList.add('ghost-frame-only');
+          if (ghostInkCvs) {
+            ghostInkCvs.width = 1;
+            ghostInkCvs.height = 1;
+          }
+        }
+      }, 195);
+
+      // ~0.5초 유지 후: 잠금처럼 메뉴가 내려오지 않고, 제자리에서 창 헤더와 경계선만 깔끔하게 즉시 소거
+      tVanish = setTimeout(() => {
+        if (!cleaned) ghostEl.classList.add('ghost-vanish');
+      }, 480);
+      tRemove = setTimeout(cleanup, 560);
+
+      if (ac && typeof window !== 'undefined') {
+        const sig = { capture: true, passive: true, signal: ac.signal };
+        window.addEventListener('wheel', cleanup, sig);
+        window.addEventListener('keydown', (e) => {
+          if (e.ctrlKey || e.metaKey || e.key === ' ') cleanup();
+        }, sig);
+        window.addEventListener('touchstart', (e) => {
+          if (e.touches && e.touches.length >= 2) cleanup();
+        }, sig);
+        window.addEventListener('pointerdown', (e) => {
+          if (
+            e.button === 1 ||
+            (e.target && e.target.closest && e.target.closest('#btnUndo, #btnRedo, #btnZoomIn, #btnZoomOut, #sliderZoom, .rail-btn, .lesson-slide-item, .slide-nav-btn, #btnResetAll'))
+          ) {
+            cleanup();
+          }
+        }, sig);
+      }
     }
 
     _promoteCardStickersToBoardRect(widgetEl, bx, by, bw, bh, isPdfBoard, recElapsed, fromProblemStamp = false) {
@@ -10026,12 +10150,13 @@
         topUndo.stampedStroke = stampStroke;
       }
 
-      // 찰칵! 플래시 피드백 (pointer-events: none 으로 즉시 필기 무차단)
+      // 찰칵 움찔(0.19s) + 0.5초간 창 헤더/테두리 유지 후 메뉴 이동 없이 즉시 소거 (pointer-events: none 으로 즉시 필기 무차단)
       this._spawnStampShutterFlashFx({
-        left: bRect.left,
-        top: bRect.top,
-        width: bRect.width,
-        height: effBodyClientH
+        widget,
+        bodyEl,
+        resolvedDataUrl,
+        hasCardInk: compactCardStrokes.length > 0,
+        fallbackBodyHeight: effBodyClientH
       });
 
       // 문제 카드 창 즉시 닫기 (카메라 패닝 유지)

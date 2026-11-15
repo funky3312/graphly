@@ -6921,31 +6921,65 @@ body.theme-light .btn-card-stamp:hover {
   animation: pipStampPressFlash 0.19s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-@keyframes stampShutterFlashOut {
+@keyframes problemStampBodyPress {
   0% {
-    opacity: 1;
     transform: scale(1);
-    background: rgba(15, 23, 42, 0.04);
+    filter: brightness(1);
   }
   42% {
-    opacity: 0.7;
-    transform: scale(0.988);
-    background: rgba(15, 23, 42, 0.025);
+    transform: scale(0.976);
+    filter: brightness(0.97);
   }
   100% {
-    opacity: 0;
     transform: scale(1);
-    background: rgba(15, 23, 42, 0);
+    filter: brightness(1);
   }
 }
 
-.stamp-shutter-flash-fx {
-  position: fixed;
+.problem-card-widget.problem-stamp-ghost-fx,
+.problem-card-widget.problem-stamp-ghost-fx .problem-card-header,
+.problem-card-widget.problem-stamp-ghost-fx .problem-card-body,
+.problem-card-widget.problem-stamp-ghost-fx * {
   pointer-events: none !important;
-  z-index: 9999;
-  border-radius: 4px;
-  box-shadow: none !important;
-  animation: stampShutterFlashOut 0.16s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.problem-card-widget.problem-stamp-ghost-fx .problem-card-header {
+  opacity: 1 !important;
+  transform: none !important;
+  transition: none !important;
+}
+
+.problem-card-widget.problem-stamp-ghost-fx .btn-card-stamp.stamp-btn-just-pressed {
+  color: #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.14) !important;
+}
+
+body.theme-light .problem-card-widget.problem-stamp-ghost-fx .btn-card-stamp.stamp-btn-just-pressed {
+  color: #2563eb !important;
+  background: rgba(37, 99, 235, 0.11) !important;
+}
+
+.problem-card-widget.problem-stamp-ghost-fx .problem-card-body {
+  transition: none !important;
+}
+
+.problem-card-widget.problem-stamp-ghost-fx .problem-card-body.problem-stamp-body-press {
+  animation: problemStampBodyPress 0.19s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.problem-card-widget.problem-stamp-ghost-fx.ghost-frame-only .problem-card-body,
+body.theme-light .problem-card-widget.problem-stamp-ghost-fx.ghost-frame-only .problem-card-body {
+  background: transparent !important;
+}
+
+.problem-card-widget.problem-stamp-ghost-fx.ghost-frame-only .problem-card-img,
+.problem-card-widget.problem-stamp-ghost-fx.ghost-frame-only .problem-stamp-ghost-ink {
+  opacity: 0 !important;
+}
+
+.problem-card-widget.problem-stamp-ghost-fx.ghost-vanish {
+  opacity: 0 !important;
+  transition: opacity 0.07s ease-out !important;
 }
 
 
