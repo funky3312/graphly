@@ -5951,7 +5951,8 @@
           mathH: activePdfBoard.mathH,
           centerX: activePdfBoard.centerX,
           centerY: activePdfBoard.centerY,
-          baseYSpan: activePdfBoard.baseYSpan
+          baseYSpan: activePdfBoard.baseYSpan,
+          pdfDocUid: activePdfBoard.pdfDocUid || ''
         } : null,
         audioSyncData: this.audioSyncData ? this._compactAudioSyncData(this.audioSyncData) : null
       };
@@ -15228,7 +15229,10 @@
       const px = Math.round(this._viewerPanX || 0);
       const py = Math.round(this._viewerPanY || 0);
       if (stage) {
-        stage.style.transform = `translate3d(calc(-50% + ${px}px), calc(-50% + ${py}px), 0)`;
+        const use2dTiledRaster = zoom > 1.35 && !stage.classList.contains('swipe-animating');
+        stage.style.transform = use2dTiledRaster
+          ? `translate(calc(-50% + ${px}px), calc(-50% + ${py}px))`
+          : `translate3d(calc(-50% + ${px}px), calc(-50% + ${py}px), 0)`;
       }
 
       const { maxPanX: currMaxPanX } = this._getSmartViewerMaxPan(baseW, baseH, zoom, viewport);

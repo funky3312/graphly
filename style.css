@@ -10147,7 +10147,6 @@ body.theme-light .viewer-top-btn-edit:hover {
   overflow: hidden;
   background: #1e293b;
   z-index: 2;
-  will-change: transform;
 }
 
 body.theme-light .smart-viewer-stage {
@@ -10161,6 +10160,7 @@ body.theme-light .smart-viewer-stage {
 }
 
 .smart-viewer-stage.swipe-animating {
+  will-change: transform;
   transition: transform var(--viewer-swipe-dur, 400ms) cubic-bezier(0.16, 1, 0.3, 1), width 0.18s ease, height 0.18s ease;
 }
 

@@ -1517,7 +1517,7 @@
         // 🌟 [무렉(Zero-Stutter) 아키텍처]: 반투명 형광펜일 때만 씬 프리즈를 캡처하고,
         // 일반 펜(pen) 필기 시에는 pointerdown 입력 핸들러 내부에서 전체 render()나 rebuildInkCache()를 절대 동기 실행하지 않음!
         if (isHighlighterStroke) {
-          if (hadSelectedGraphHandleOrCurve || this._inkBakeDirty) {
+          if (hadSelectedGraphHandleOrCurve || this._inkBakeDirty || this._canvasHasLowResCameraFrame) {
             this.isDrawingInk = false;
             this._pcMainStrokeFairer = null;
             this._hasSceneFreeze = false;
@@ -3702,9 +3702,15 @@
         if (e.pointerType === 'pen') {
           this._markStylusPenDetected();
           this._lastPenActiveTime = nowT;
+          const hadActivePinchOnPenDown = Boolean(this._pinchState || this._pinchWasActiveInGesture);
           if (this.activePointers) this.activePointers.clear();
           this._pinchState = null;
           this._pinchWasActiveInGesture = false;
+          this._pinchHadActiveMoveInGesture = false;
+          if (hadActivePinchOnPenDown) {
+            this._hasSceneFreeze = false;
+            this.requestRender();
+          }
           if (e.target === this.canvas && !this.isSpacePressed && e.button !== 1 && !isAnyModalOrOverlayBlockingCanvas()) {
             if (this._uiPointerIds && e.pointerId !== undefined) this._uiPointerIds.delete(e.pointerId);
             return;
@@ -3801,7 +3807,9 @@
             this.isPanning = false;
             this.isBoardPanning = false;
             this._pinchState = null;
+            this._pinchHadActiveMoveInGesture = false;
             this._activePanPointerId = null;
+            this._hasSceneFreeze = false;
           }
           this.isPointerDownOnCanvas = true;
           this._pointerDownStart = { time: nowT, x: e.clientX, y: e.clientY };
@@ -3967,14 +3975,30 @@
           this._uiPointerIds.delete(e.pointerId);
         }
         if (this.isPdfModalOpen) return;
+        const hasTrackedTouchOrPinch = Boolean(
+          this._pinchState ||
+          this._pinchWasActiveInGesture ||
+          (e.pointerType === 'touch' && this.activePointers && e.pointerId !== undefined && this.activePointers.has(e.pointerId))
+        );
         if (e.pointerType === 'touch') {
-          if (wasUiPointer && !this._pinchState && !(this.activePointers && this.activePointers.has(e.pointerId))) {
+          if (wasUiPointer && !hasTrackedTouchOrPinch) {
             return;
           }
-          if (this._shouldIgnoreCanvasTouchPointer(e)) return;
+          if (this._shouldIgnoreCanvasTouchPointer(e)) {
+            this.isPointerDownOnCanvas = false;
+            if (this._activeDrawingPointerId === e.pointerId) {
+              this._activeDrawingPointerId = null;
+              this._activeDrawingPointerType = null;
+            }
+            if (this._activePanPointerId === e.pointerId) {
+              this._activePanPointerId = null;
+            }
+            return;
+          }
         }
         if (
           wasUiPointer &&
+          !hasTrackedTouchOrPinch &&
           !this.isDrawingInk &&
           !this.isStylusDrawing &&
           !this.isDrawingSticker &&
@@ -4020,7 +4044,7 @@
         }
 
         lastPointerUpTime = nowT;
-        if (this.isDrawingInk || this.isStylusDrawing || this.isDrawingSticker || this._tappingBoardSticker || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
+        if (hasTrackedTouchOrPinch || this.isDrawingInk || this.isStylusDrawing || this.isDrawingSticker || this._tappingBoardSticker || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
           handleUp(e);
         }
       };
@@ -4670,6 +4694,16 @@
         }
       }
       return;
+    }
+
+    if (!isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) {
+      this._canvasHasLowResCameraFrame = Boolean(
+        this.isPanning ||
+        this.isBoardPanning ||
+        this._pinchState ||
+        this._isZoomAnimating ||
+        this._isWheelZooming
+      );
     }
 
     if (this.isGraphCovered && !isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) {

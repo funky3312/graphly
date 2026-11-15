@@ -1157,9 +1157,13 @@
       }
 
       if (e.type === 'pointerup' || e.type === 'pointercancel') {
+        if (this._pinchState && this._pinchState._hasPendingMove && typeof this._applyPendingTwoFingerPinchStep === 'function') {
+          this._applyPendingTwoFingerPinchStep();
+        }
         if (this._pinchState && (this._pinchState.panUnlocked || this._pinchState.zoomUnlocked)) {
           this._pinchHadActiveMoveInGesture = true;
         }
+        const wasPinchStateActive = Boolean(this._pinchState);
         const hadPinchGesture = Boolean(this._pinchState || this._pinchWasActiveInGesture);
         if (this.activePointers && e.pointerId !== undefined) {
           this.activePointers.delete(e.pointerId);
@@ -1174,14 +1178,18 @@
         if (hadPinchGesture) {
           this.isPanning = false;
           this.isBoardPanning = false;
-          if (this._pinchHadActiveMoveInGesture && !this._pinchState) {
+          if (!this._pinchState && (wasPinchStateActive || this._pinchHadActiveMoveInGesture || allFingersUp)) {
             if (allFingersUp) {
               this._pinchHadActiveMoveInGesture = false;
             }
             if (this.isGraphCovered) {
               this.updateProblemCardPosition(false);
             }
-            this._scheduleIdleInkCacheRebuild(120);
+            this._hasSceneFreeze = false;
+            this.requestRender();
+            if (this._inkBakeDirty) {
+              this._scheduleIdleInkCacheRebuild(90);
+            }
           }
           return true;
         }
@@ -5099,6 +5107,10 @@
     // 필기 도중(pointermove)에는 520단계 함수 수식 계산, 격자, 축, 수선 렌더링을 100% 생략하고 이 텍스처만 0.01ms 만에 Blit합니다.
     captureSceneFreeze() {
       if (!this.canvas || !this.sceneFreezeCanvas || !this.sceneFreezeCtx) return;
+      if (this._canvasHasLowResCameraFrame) {
+        this._hasSceneFreeze = false;
+        this.render();
+      }
       const dpr = this.getCanvasDpr();
       if (this.sceneFreezeCanvas.width !== this.canvas.width || this.sceneFreezeCanvas.height !== this.canvas.height) {
         this.sceneFreezeCanvas.width = this.canvas.width;
@@ -6142,6 +6154,10 @@
           return;
         }
         this._flushPendingIncrementalBakes();
+        if (this._needsRenderAfterInkStroke) {
+          this._needsRenderAfterInkStroke = false;
+          this.requestRender();
+        }
       };
       this._pendingIncrementalBakeTimer = setTimeout(flushWhenIdle, initialDelayMs);
     }
