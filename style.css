@@ -6982,6 +6982,50 @@ body.theme-light .problem-card-widget.problem-stamp-ghost-fx.ghost-frame-only .p
   transition: opacity 0.07s ease-out !important;
 }
 
+/* 🌟 [동일 크기 그래프 스탬프 가로·세로 줄맞춤 초미니멀 여백 가이드라인 (무채색 1.5px 점선 · 리플레이 자동 은닉)] 🌟 */
+.graph-stamp-snap-guide-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none !important;
+  z-index: 9998;
+  display: none;
+  overflow: hidden;
+}
+
+body.audio-replay-active .graph-stamp-snap-guide-overlay,
+body.student-audio-video-only .graph-stamp-snap-guide-overlay {
+  display: none !important;
+}
+
+.graph-stamp-snap-guide-overlay .snap-guide-line {
+  position: fixed;
+  left: 0;
+  top: 0;
+  pointer-events: none !important;
+  display: none;
+  will-change: transform;
+}
+
+.graph-stamp-snap-guide-overlay .snap-guide-line.is-horiz {
+  height: 1.5px;
+  border: 0;
+  background-image: repeating-linear-gradient(to right, rgba(212, 212, 216, 0.40) 0 5px, transparent 5px 9px);
+}
+
+.graph-stamp-snap-guide-overlay .snap-guide-line.is-vert {
+  width: 1.5px;
+  border: 0;
+  background-image: repeating-linear-gradient(to bottom, rgba(212, 212, 216, 0.40) 0 5px, transparent 5px 9px);
+}
+
+body.theme-light .graph-stamp-snap-guide-overlay .snap-guide-line.is-horiz {
+  background-image: repeating-linear-gradient(to right, rgba(115, 115, 122, 0.46) 0 5px, transparent 5px 9px);
+}
+
+body.theme-light .graph-stamp-snap-guide-overlay .snap-guide-line.is-vert {
+  background-image: repeating-linear-gradient(to bottom, rgba(115, 115, 122, 0.46) 0 5px, transparent 5px 9px);
+}
+
 
 /* 🌟 [그래프 보관 카드 & 문제 카드 이동/리사이즈/하단메뉴 클릭 중 상단 전체화면 종료 X 배지 출현 100% 원천 차단] 🌟 */
 .problem-card-widget,

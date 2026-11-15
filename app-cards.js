@@ -5615,6 +5615,7 @@
 
       // 제목 및 몸통 드래그 이동 전용 (삼각형 접기 원버튼과 완벽 분리!)
       let isDragging = false, dragMoved = false, dragStartedOnHeader = false, activeDragPointerId = null, startX = 0, startY = 0, initX = cardItem.baseX, initY = cardItem.baseY;
+      let stampSnapCtx = null;
       el.addEventListener('pointerdown', (e) => {
         if (e.target.closest('.problem-card-resize-handle')) return;
         if (e.target.closest('.problem-card-actions') || e.target.closest('.pip-header-curve-tools') || e.target.closest('.card-fold-triangle-btn') || e.target.closest('.card-title-fold-btn')) {
@@ -5636,6 +5637,8 @@
         e.stopPropagation();
         isDragging = true;
         dragMoved = false;
+        stampSnapCtx = null;
+        this._hideGraphStampSnapGuides();
         dragStartedOnHeader = Boolean(e.target && e.target.closest && e.target.closest('.problem-card-header'));
         activeDragPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
         startX = e.clientX;
@@ -5663,6 +5666,8 @@
         dragMoved = false;
         dragStartedOnHeader = false;
         activeDragPointerId = null;
+        stampSnapCtx = null;
+        this._hideGraphStampSnapGuides();
         el._stealthWakeTapStamp = null;
         this._isDraggingOrResizingAnyCard = false;
         el.classList.remove('is-dragging-card');
@@ -5689,20 +5694,53 @@
         if (!dragMoved) {
           if (Math.hypot(dx, dy) <= 5) return;
           dragMoved = true;
+          stampSnapCtx = this._prepareGraphStampSnapContext(el);
         }
         this._isDraggingOrResizingAnyCard = true;
         if (this.isGraphCovered && this.pdfPageBoardData) {
-          const nextX = Math.round(initX + dx);
-          const nextY = Math.round(initY + dy);
+          let nextX = Math.round(initX + dx);
+          let nextY = Math.round(initY + dy);
+          let snapStep = null;
+          if (stampSnapCtx && !e.altKey) {
+            snapStep = this._computeGraphStampSnapStep(stampSnapCtx, dx, dy);
+            if (snapStep.snappedX) nextX = Math.round(snapStep.finalWidgetCanvasX);
+            if (snapStep.snappedY) nextY = Math.round(snapStep.finalWidgetCanvasY);
+          }
           this._pinCardToPdfBoardAtScreenPos(el, nextX, nextY, true);
           this.updateProblemCardPosition(true, el);
+          if (stampSnapCtx) {
+            this._renderGraphStampSnapGuides(stampSnapCtx, snapStep, el);
+          }
         } else {
           const dScale = (this.isGraphCovered && !this.pdfPageBoardData)
             ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0))
             : 1.0;
-          cardItem.baseX = Math.round(initX + (dx / dScale));
-          cardItem.baseY = Math.round(initY + (dy / dScale));
+          let nextBaseX = Math.round(initX + (dx / dScale));
+          let nextBaseY = Math.round(initY + (dy / dScale));
+          let snapStep = null;
+          if (stampSnapCtx && !e.altKey) {
+            snapStep = this._computeGraphStampSnapStep(stampSnapCtx, dx, dy);
+            if (snapStep.snappedX) {
+              const exactBX = this.screenToBoard(snapStep.finalWidgetCanvasX, 0).x;
+              const roundBX = Math.round(exactBX);
+              nextBaseX = Math.abs(this.boardToScreen(roundBX, 0).x - snapStep.finalWidgetCanvasX) <= 0.5
+                ? roundBX
+                : Math.round(exactBX * 100) / 100;
+            }
+            if (snapStep.snappedY) {
+              const exactBY = this.screenToBoard(0, snapStep.finalWidgetCanvasY).y;
+              const roundBY = Math.round(exactBY);
+              nextBaseY = Math.abs(this.boardToScreen(0, roundBY).y - snapStep.finalWidgetCanvasY) <= 0.5
+                ? roundBY
+                : Math.round(exactBY * 100) / 100;
+            }
+          }
+          cardItem.baseX = nextBaseX;
+          cardItem.baseY = nextBaseY;
           this.updateProblemCardPosition(true, el);
+          if (stampSnapCtx) {
+            this._renderGraphStampSnapGuides(stampSnapCtx, snapStep, el);
+          }
         }
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(false);
@@ -5720,6 +5758,8 @@
           dragMoved = false;
           dragStartedOnHeader = false;
           activeDragPointerId = null;
+          stampSnapCtx = null;
+          this._hideGraphStampSnapGuides();
           this._isDraggingOrResizingAnyCard = false;
           el.classList.remove('is-dragging-card');
           delete el._dragDomLeft;
@@ -6627,6 +6667,7 @@
         let activeDragPointerId = null;
         let startX = 0, startY = 0;
         let initialBaseX = 580, initialBaseY = 68;
+        let stampSnapCtx = null;
 
         widget.addEventListener('pointerdown', (e) => {
           if (e.target.closest('.problem-card-resize-handle')) return;
@@ -6649,6 +6690,8 @@
           e.stopPropagation();
           isDragging = true;
           dragMoved = false;
+          stampSnapCtx = null;
+          this._hideGraphStampSnapGuides();
           dragStartedOnHeader = Boolean(e.target && e.target.closest && e.target.closest('.problem-card-header'));
           activeDragPointerId = (e.pointerId !== undefined) ? e.pointerId : null;
           startX = e.clientX;
@@ -6677,6 +6720,8 @@
           dragMoved = false;
           dragStartedOnHeader = false;
           activeDragPointerId = null;
+          stampSnapCtx = null;
+          this._hideGraphStampSnapGuides();
           widget._stealthWakeTapStamp = null;
           this._isDraggingOrResizingAnyCard = false;
           widget.classList.remove('is-dragging-card');
@@ -6703,20 +6748,53 @@
           if (!dragMoved) {
             if (Math.hypot(dx, dy) <= 5) return;
             dragMoved = true;
+            stampSnapCtx = this._prepareGraphStampSnapContext(widget);
           }
           this._isDraggingOrResizingAnyCard = true;
           if (this.isGraphCovered && this.pdfPageBoardData) {
-            const nextX = Math.round(initialBaseX + dx);
-            const nextY = Math.round(initialBaseY + dy);
+            let nextX = Math.round(initialBaseX + dx);
+            let nextY = Math.round(initialBaseY + dy);
+            let snapStep = null;
+            if (stampSnapCtx && !e.altKey) {
+              snapStep = this._computeGraphStampSnapStep(stampSnapCtx, dx, dy);
+              if (snapStep.snappedX) nextX = Math.round(snapStep.finalWidgetCanvasX);
+              if (snapStep.snappedY) nextY = Math.round(snapStep.finalWidgetCanvasY);
+            }
             this._pinCardToPdfBoardAtScreenPos(widget, nextX, nextY, true);
             this.updateProblemCardPosition(true, widget);
+            if (stampSnapCtx) {
+              this._renderGraphStampSnapGuides(stampSnapCtx, snapStep, widget);
+            }
           } else {
             const dScale = (this.isGraphCovered && !this.pdfPageBoardData)
               ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0))
               : 1.0;
-            this.graphCardBaseX = Math.round(initialBaseX + (dx / dScale));
-            this.graphCardBaseY = Math.round(initialBaseY + (dy / dScale));
+            let nextBaseX = Math.round(initialBaseX + (dx / dScale));
+            let nextBaseY = Math.round(initialBaseY + (dy / dScale));
+            let snapStep = null;
+            if (stampSnapCtx && !e.altKey) {
+              snapStep = this._computeGraphStampSnapStep(stampSnapCtx, dx, dy);
+              if (snapStep.snappedX) {
+                const exactBX = this.screenToBoard(snapStep.finalWidgetCanvasX, 0).x;
+                const roundBX = Math.round(exactBX);
+                nextBaseX = Math.abs(this.boardToScreen(roundBX, 0).x - snapStep.finalWidgetCanvasX) <= 0.5
+                  ? roundBX
+                  : Math.round(exactBX * 100) / 100;
+              }
+              if (snapStep.snappedY) {
+                const exactBY = this.screenToBoard(0, snapStep.finalWidgetCanvasY).y;
+                const roundBY = Math.round(exactBY);
+                nextBaseY = Math.abs(this.boardToScreen(0, roundBY).y - snapStep.finalWidgetCanvasY) <= 0.5
+                  ? roundBY
+                  : Math.round(exactBY * 100) / 100;
+              }
+            }
+            this.graphCardBaseX = nextBaseX;
+            this.graphCardBaseY = nextBaseY;
             this.updateProblemCardPosition(true, widget);
+            if (stampSnapCtx) {
+              this._renderGraphStampSnapGuides(stampSnapCtx, snapStep, widget);
+            }
           }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(false);
@@ -6735,6 +6813,8 @@
             dragMoved = false;
             dragStartedOnHeader = false;
             activeDragPointerId = null;
+            stampSnapCtx = null;
+            this._hideGraphStampSnapGuides();
             this._isDraggingOrResizingAnyCard = false;
             widget.classList.remove('is-dragging-card');
             delete widget._dragDomLeft;
@@ -9794,8 +9874,339 @@
         this._recordAudioWorkspaceStateIfNeeded(true);
       }
 
+      this._hideGraphStampSnapGuides();
       this.showToast('📌 현재 그래프가 캔버스에 스탬프로 박제되었습니다! (취소: 되돌리기 ↺)');
       return stampStroke;
+    }
+
+    // 🌟 [동일 크기 그래프 스탬프 가로·세로 줄맞춤 자석(8px) & 초미니멀 1.5px 여백 가이드라인] 🌟
+    _ensureGraphStampSnapGuideOverlay() {
+      if (this._graphStampSnapGuideEls && this._graphStampSnapGuideEls.root && this._graphStampSnapGuideEls.root.isConnected) {
+        return this._graphStampSnapGuideEls;
+      }
+      if (typeof document === 'undefined' || !document.body) return null;
+      let root = document.getElementById('graphStampSnapGuideOverlay');
+      if (!root) {
+        root = document.createElement('div');
+        root.id = 'graphStampSnapGuideOverlay';
+        root.className = 'graph-stamp-snap-guide-overlay';
+        root.setAttribute('aria-hidden', 'true');
+        root.innerHTML = [
+          '<div class="snap-guide-line is-horiz"></div>',
+          '<div class="snap-guide-line is-horiz"></div>',
+          '<div class="snap-guide-line is-vert"></div>',
+          '<div class="snap-guide-line is-vert"></div>'
+        ].join('');
+        document.body.appendChild(root);
+      }
+      const lines = root.querySelectorAll('.snap-guide-line');
+      this._graphStampSnapGuideEls = {
+        root,
+        hTop: lines[0],
+        hBottom: lines[1],
+        vLeft: lines[2],
+        vRight: lines[3]
+      };
+      if (!this._boundStampGuideBlurHide && typeof window !== 'undefined') {
+        this._boundStampGuideBlurHide = () => this._hideGraphStampSnapGuides();
+        window.addEventListener('blur', this._boundStampGuideBlurHide);
+      }
+      return this._graphStampSnapGuideEls;
+    }
+
+    _hideGraphStampSnapGuides() {
+      if (!this._stampGuideVisible) return;
+      this._stampGuideVisible = false;
+      const els = this._graphStampSnapGuideEls;
+      if (!els || !els.root) return;
+      els.root.style.display = 'none';
+      els.hTop.style.display = 'none';
+      els.hBottom.style.display = 'none';
+      els.vLeft.style.display = 'none';
+      els.vRight.style.display = 'none';
+    }
+
+    _prepareGraphStampSnapContext(widgetEl) {
+      if (!this.isGraphCovered || !this.canvas || !widgetEl || widgetEl.classList.contains('minimized')) {
+        return null;
+      }
+      const strokes = this.inkStrokes;
+      if (!Array.isArray(strokes) || strokes.length === 0) return null;
+
+      const isPdfBoard = Boolean(this.pdfPageBoardData);
+      let hasCandidateStamp = false;
+      for (let i = 0; i < strokes.length; i++) {
+        const st = strokes[i];
+        if (st && st.isGraphStamp && !st.isProblemStamp && Boolean(st.onPdfBoard) === isPdfBoard) {
+          hasCandidateStamp = true;
+          break;
+        }
+      }
+      if (!hasCandidateStamp) return null;
+
+      const bodyEl = (widgetEl.id === 'graphCardWidget')
+        ? document.getElementById('graphCardBody')
+        : widgetEl.querySelector('.problem-card-body');
+      if (!bodyEl) return null;
+
+      const cRect = this.canvas.getBoundingClientRect();
+      const wRect = widgetEl.getBoundingClientRect();
+      const bRect = bodyEl.getBoundingClientRect();
+      if (!(cRect.width > 10 && bRect.width >= 24 && bRect.height >= 24)) return null;
+
+      const scaleCssX = (this.screenWidth && cRect.width > 0) ? (this.screenWidth / cRect.width) : 1;
+      const scaleCssY = (this.screenHeight && cRect.height > 0) ? (this.screenHeight / cRect.height) : 1;
+      const startBodyX = (bRect.left - cRect.left) * scaleCssX;
+      const startBodyY = (bRect.top - cRect.top) * scaleCssY;
+      const bodyW = bRect.width * scaleCssX;
+      const bodyH = bRect.height * scaleCssY;
+      const bodyOffX = (bRect.left - wRect.left) * scaleCssX;
+      const bodyOffY = (bRect.top - wRect.top) * scaleCssY;
+
+      const vw = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1920;
+      const vh = (typeof window !== 'undefined' && window.innerHeight) ? window.innerHeight : 1080;
+      const targets = [];
+
+      for (let i = 0; i < strokes.length; i++) {
+        const st = strokes[i];
+        if (!st || !st.isGraphStamp || st.isProblemStamp) continue;
+        if (Boolean(st.onPdfBoard) !== isPdfBoard) continue;
+        if (!Array.isArray(st.points) || st.points.length < 2) continue;
+        const pt0 = st.points[0];
+        const pt1 = st.points[1];
+        if (!pt0 || !pt1) continue;
+
+        const p0 = isPdfBoard ? this.mathToScreen(pt0.x, pt0.y) : this.boardToScreen(pt0.x, pt0.y);
+        const p1 = isPdfBoard ? this.mathToScreen(pt1.x, pt1.y) : this.boardToScreen(pt1.x, pt1.y);
+        const tx = Math.min(p0.x, p1.x);
+        const ty = Math.min(p0.y, p1.y);
+        const tw = Math.abs(p1.x - p0.x);
+        const th = Math.abs(p1.y - p0.y);
+
+        // 창 크기가 변경되었다면 간섭 0%: 가로·세로 모두 현재 그래프 창과 동일 크기(±2.5px)인 스탬프만 줄맞춤 대상에 포함
+        if (Math.abs(tw - bodyW) > 2.5 || Math.abs(th - bodyH) > 2.5) continue;
+
+        const vx1 = (tx / scaleCssX) + cRect.left;
+        const vy1 = (ty / scaleCssY) + cRect.top;
+        const vx2 = ((tx + tw) / scaleCssX) + cRect.left;
+        const vy2 = ((ty + th) / scaleCssY) + cRect.top;
+        if (vx2 < 16 || vx1 > vw - 16 || vy2 < 16 || vy1 > vh - 16) continue;
+
+        targets.push({ x: tx, y: ty, w: tw, h: th });
+      }
+
+      if (targets.length === 0) return null;
+      return {
+        cLeft: cRect.left,
+        cTop: cRect.top,
+        scaleCssX,
+        scaleCssY,
+        startBodyX,
+        startBodyY,
+        bodyW,
+        bodyH,
+        bodyOffX,
+        bodyOffY,
+        isPdfBoard,
+        targets
+      };
+    }
+
+    _computeGraphStampSnapStep(snapCtx, dxClient, dyClient) {
+      const candBodyX = snapCtx.startBodyX + dxClient * snapCtx.scaleCssX;
+      const candBodyY = snapCtx.startBodyY + dyClient * snapCtx.scaleCssY;
+      const SNAP_TOL = 8 * Math.max(snapCtx.scaleCssX, snapCtx.scaleCssY);
+      const minSepX = snapCtx.bodyW * 0.65;
+      const minSepY = snapCtx.bodyH * 0.65;
+
+      let bestRow = null;
+      let bestRowDist = SNAP_TOL + 0.001;
+      let bestCol = null;
+      let bestColDist = SNAP_TOL + 0.001;
+
+      const targets = snapCtx.targets;
+      for (let i = 0; i < targets.length; i++) {
+        const t = targets[i];
+        if (Math.abs(candBodyX - t.x) >= minSepX) {
+          const dyAbs = Math.abs(candBodyY - t.y);
+          if (dyAbs < bestRowDist) {
+            bestRowDist = dyAbs;
+            bestRow = t;
+          }
+        }
+        if (Math.abs(candBodyY - t.y) >= minSepY) {
+          const dxAbs = Math.abs(candBodyX - t.x);
+          if (dxAbs < bestColDist) {
+            bestColDist = dxAbs;
+            bestCol = t;
+          }
+        }
+      }
+
+      const finalBodyX = bestCol ? bestCol.x : candBodyX;
+      const finalBodyY = bestRow ? bestRow.y : candBodyY;
+      return {
+        snappedX: Boolean(bestCol),
+        snappedY: Boolean(bestRow),
+        finalBodyX,
+        finalBodyY,
+        finalWidgetCanvasX: finalBodyX - snapCtx.bodyOffX,
+        finalWidgetCanvasY: finalBodyY - snapCtx.bodyOffY
+      };
+    }
+
+    _renderGraphStampSnapGuides(snapCtx, snapStep, widgetEl) {
+      if (!snapCtx || !snapStep || (!snapStep.snappedX && !snapStep.snappedY)) {
+        this._hideGraphStampSnapGuides();
+        return;
+      }
+
+      let effSnapX = snapStep.snappedX;
+      let effSnapY = snapStep.snappedY;
+
+      // 통 PDF 경계 클램핑으로 실제 카드가 스냅 위치에 도달하지 못한 경우 거짓 가이드라인 차단
+      if (snapCtx.isPdfBoard && widgetEl && widgetEl._pdfAnchor) {
+        const s = this.mathToScreen(widgetEl._pdfAnchor.mx, widgetEl._pdfAnchor.my);
+        if (effSnapX && Math.abs((s.x + snapCtx.bodyOffX) - snapStep.finalBodyX) > 1.8) {
+          effSnapX = false;
+        }
+        if (effSnapY && Math.abs((s.y + snapCtx.bodyOffY) - snapStep.finalBodyY) > 1.8) {
+          effSnapY = false;
+        }
+      }
+
+      if (!effSnapX && !effSnapY) {
+        this._hideGraphStampSnapGuides();
+        return;
+      }
+
+      const els = this._ensureGraphStampSnapGuideOverlay();
+      if (!els) return;
+
+      const curL = snapStep.finalBodyX;
+      const curR = curL + snapCtx.bodyW;
+      const curT = snapStep.finalBodyY;
+      const curB = curT + snapCtx.bodyH;
+
+      let shownHoriz = false;
+      let shownVert = false;
+
+      if (effSnapY) {
+        let bestGapDist = Infinity;
+        let gapX1 = 0;
+        let gapX2 = 0;
+        for (let i = 0; i < snapCtx.targets.length; i++) {
+          const t = snapCtx.targets[i];
+          if (Math.abs(t.y - curT) > 1.8) continue;
+          const tR = t.x + t.w;
+          if (tR <= curL + 2) {
+            const d = Math.max(0, curL - tR);
+            if (d < bestGapDist) {
+              bestGapDist = d;
+              gapX1 = tR;
+              gapX2 = curL;
+            }
+          } else if (curR <= t.x + 2) {
+            const d = Math.max(0, t.x - curR);
+            if (d < bestGapDist) {
+              bestGapDist = d;
+              gapX1 = curR;
+              gapX2 = t.x;
+            }
+          }
+        }
+        if (bestGapDist < Infinity) {
+          let vx1 = (gapX1 / snapCtx.scaleCssX) + snapCtx.cLeft;
+          let vx2 = (gapX2 / snapCtx.scaleCssX) + snapCtx.cLeft;
+          if (vx2 - vx1 < 8) {
+            const mid = (vx1 + vx2) * 0.5;
+            vx1 = mid - 5;
+            vx2 = mid + 5;
+          } else {
+            vx1 += 2;
+            vx2 -= 2;
+          }
+          const rx1 = Math.round(vx1);
+          const wPx = Math.max(4, Math.round(vx2 - vx1));
+          const vyTop = Math.round((curT / snapCtx.scaleCssY) + snapCtx.cTop);
+          const vyBot = Math.round((curB / snapCtx.scaleCssY) + snapCtx.cTop);
+
+          els.hTop.style.display = 'block';
+          els.hTop.style.width = `${wPx}px`;
+          els.hTop.style.transform = `translate3d(${rx1}px, ${vyTop}px, 0)`;
+
+          els.hBottom.style.display = 'block';
+          els.hBottom.style.width = `${wPx}px`;
+          els.hBottom.style.transform = `translate3d(${rx1}px, ${vyBot}px, 0)`;
+          shownHoriz = true;
+        }
+      }
+      if (!shownHoriz) {
+        els.hTop.style.display = 'none';
+        els.hBottom.style.display = 'none';
+      }
+
+      if (effSnapX) {
+        let bestGapDist = Infinity;
+        let gapY1 = 0;
+        let gapY2 = 0;
+        for (let i = 0; i < snapCtx.targets.length; i++) {
+          const t = snapCtx.targets[i];
+          if (Math.abs(t.x - curL) > 1.8) continue;
+          const tB = t.y + t.h;
+          if (tB <= curT + 2) {
+            const d = Math.max(0, curT - tB);
+            if (d < bestGapDist) {
+              bestGapDist = d;
+              gapY1 = tB;
+              gapY2 = curT;
+            }
+          } else if (curB <= t.y + 2) {
+            const d = Math.max(0, t.y - curB);
+            if (d < bestGapDist) {
+              bestGapDist = d;
+              gapY1 = curB;
+              gapY2 = t.y;
+            }
+          }
+        }
+        if (bestGapDist < Infinity) {
+          let vy1 = (gapY1 / snapCtx.scaleCssY) + snapCtx.cTop;
+          let vy2 = (gapY2 / snapCtx.scaleCssY) + snapCtx.cTop;
+          if (vy2 - vy1 < 8) {
+            const mid = (vy1 + vy2) * 0.5;
+            vy1 = mid - 5;
+            vy2 = mid + 5;
+          } else {
+            vy1 += 2;
+            vy2 -= 2;
+          }
+          const ry1 = Math.round(vy1);
+          const hPx = Math.max(4, Math.round(vy2 - vy1));
+          const vxLeft = Math.round((curL / snapCtx.scaleCssX) + snapCtx.cLeft);
+          const vxRight = Math.round((curR / snapCtx.scaleCssX) + snapCtx.cLeft);
+
+          els.vLeft.style.display = 'block';
+          els.vLeft.style.height = `${hPx}px`;
+          els.vLeft.style.transform = `translate3d(${vxLeft}px, ${ry1}px, 0)`;
+
+          els.vRight.style.display = 'block';
+          els.vRight.style.height = `${hPx}px`;
+          els.vRight.style.transform = `translate3d(${vxRight}px, ${ry1}px, 0)`;
+          shownVert = true;
+        }
+      }
+      if (!shownVert) {
+        els.vLeft.style.display = 'none';
+        els.vRight.style.display = 'none';
+      }
+
+      if (shownHoriz || shownVert) {
+        this._stampGuideVisible = true;
+        els.root.style.display = 'block';
+      } else {
+        this._hideGraphStampSnapGuides();
+      }
     }
 
     _spawnStampShutterFlashFx(opts) {
