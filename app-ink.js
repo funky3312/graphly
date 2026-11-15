@@ -1714,7 +1714,7 @@
       if (triggerRender) {
         if (Array.isArray(this.inkStrokes)) {
           this.inkStrokes.forEach(st => {
-            if (st && !st.isHighlighter) st.softBlur = clamped;
+            if (st && !st.isHighlighter && !st.isGraphStamp) st.softBlur = clamped;
           });
         }
         if (Array.isArray(this.problemInkStrokes)) {
@@ -1930,7 +1930,20 @@
         (this.extraGraphCards && this.extraGraphCards.some(c => c && c.el && ((c.el._cardInkStrokes && c.el._cardInkStrokes.length > 0) || (c.el._cardStickers && c.el._cardStickers.length > 0))))
       );
       const hasBoardStickers = Boolean(this.boardStickers && this.boardStickers.length > 0);
-      if ((!this.inkStrokes || this.inkStrokes.length === 0) && !hasCardInk && !hasBoardStickers) return;
+      const hasErasableBoardInk = Boolean(
+        Array.isArray(this.inkStrokes) &&
+        this.inkStrokes.some(s => s && !s.isGraphStamp)
+      );
+      const hasAnyGraphStamp = Boolean(
+        Array.isArray(this.inkStrokes) &&
+        this.inkStrokes.some(s => s && s.isGraphStamp)
+      );
+      if (!hasErasableBoardInk && !hasCardInk && !hasBoardStickers) {
+        if (hasAnyGraphStamp) {
+          this.showToast('ℹ️ 박제된 그래프 스탬프는 유지됩니다. (방금 찍은 스탬프 취소: 되돌리기 ↺)');
+        }
+        return;
+      }
       this.pushHistoryState();
       if (hasCardInk) {
         this.problemInkStrokes = [];
@@ -1978,13 +1991,13 @@
       // 문제 창이 켜져 있고 바깥창 풀이 필기가 있을 때 1차 클릭: 바깥 칠판 풀이 필기만 깔끔히 비움! (그래프 수식 주석은 보존)
       // 2차 클릭 (바깥창 필기가 없을 때): 그래프 창 내부 주석까지 모두 비움!
       if (this.isGraphCovered && !this.pdfPageBoardData) {
-        this.inkStrokes = this.inkStrokes.filter(s => (s.target || 'board') !== 'board');
+        this.inkStrokes = this.inkStrokes.filter(s => Boolean(s && s.isGraphStamp) || (s.target || 'board') !== 'board');
         this.showToast('🧹 필기 모드 필기를 깔끔하게 비웠습니다.');
       } else if (this.pdfPageBoardData) {
-        this.inkStrokes = this.inkStrokes.filter(s => !s.onPdfBoard && (s.target || 'board') !== 'board');
+        this.inkStrokes = this.inkStrokes.filter(s => Boolean(s && s.isGraphStamp) || (!s.onPdfBoard && (s.target || 'board') !== 'board'));
         this.showToast('🧹 PDF 페이지 위 필기를 깔끔하게 비웠습니다.');
       } else {
-        this.inkStrokes = this.inkStrokes.filter(s => (s.target || 'board') !== 'graph' || Boolean(s.onPdfBoard));
+        this.inkStrokes = this.inkStrokes.filter(s => Boolean(s && s.isGraphStamp) || (s.target || 'board') !== 'graph' || Boolean(s.onPdfBoard));
         this.showToast('🧹 그래프 모드 필기를 비웠습니다.');
       }
       this._inkBakeDirty = true;
@@ -2425,6 +2438,10 @@
       for (let sIdx = 0; sIdx < totalLen; sIdx++) {
         const stroke = this.inkStrokes[sIdx];
         if (!stroke) continue;
+        if (stroke.isGraphStamp) {
+          remaining.push(stroke);
+          continue;
+        }
         const strokeTarget = stroke.target || 'board';
         if (this.isGraphCovered && !this.pdfPageBoardData && strokeTarget !== 'board') {
           remaining.push(stroke);
@@ -3702,7 +3719,7 @@
     }
 
     isStrokeInLasso(stroke, lassoPoly) {
-      if (!stroke || !lassoPoly || lassoPoly.length < 3) return false;
+      if (!stroke || stroke.isGraphStamp || !lassoPoly || lassoPoly.length < 3) return false;
       const isBoard = (stroke.target || 'board') === 'board';
       if (this.isGraphCovered && !this.pdfPageBoardData && !isBoard) return false;
       if (!this.isGraphCovered && isBoard) return false;
@@ -6060,6 +6077,14 @@
       }
     }
 
+    _getStrokeRenderPass(stroke) {
+      if (!stroke) return -1;
+      if (stroke.isGraphStamp) {
+        return (stroke.graphStamp && stroke.graphStamp.kind === 'image') ? 0 : 2;
+      }
+      return stroke.isHighlighter ? 1 : 3;
+    }
+
     rebuildInkCache() {
       this.clearInkCache();
       if (!this.inkStrokes || this.inkStrokes.length === 0) {
@@ -6069,16 +6094,13 @@
 
       const { padX, padY } = this._getInkBakeMetrics();
 
-      // 🌟 [대표님 피드백: 형광펜 언더레이 2-Pass 베이킹 (검은 글씨 절대 가리지 않음!)] 🌟
-      // Pass 1 (하단 레이어): 모든 형광펜(isHighlighter === true) 획을 먼저 바닥에 렌더링
-      // Pass 2 (상단 레이어): 일반 펜(!isHighlighter) 획을 그 위에 선명하게 렌더링
-      for (let pass = 0; pass < 2; pass++) {
-        const wantHighlighter = (pass === 0);
+      // 🌟 [4-Pass 베이킹]: 0(불투명 이미지 스탬프) ➔ 1(형광펜 언더레이) ➔ 2(투명 벡터 스탬프) ➔ 3(일반 펜 최상단)
+      for (let pass = 0; pass < 4; pass++) {
         for (let i = 0; i < this.inkStrokes.length; i++) {
           const stroke = this.inkStrokes[i];
           if (!stroke || stroke === this.currentInkStroke) continue;
           if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(stroke)) continue;
-          if (Boolean(stroke.isHighlighter) !== wantHighlighter) continue;
+          if (this._getStrokeRenderPass(stroke) !== pass) continue;
           const isBoard = (stroke.target || 'board') === 'board';
           if (!isBoard && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
           const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
@@ -6551,13 +6573,12 @@
           bCtx.rect(cx0, cy0, cx1 - cx0, cy1 - cy0);
           bCtx.clip();
           bCtx.clearRect(cx0 - 1, cy0 - 1, (cx1 - cx0) + 2, (cy1 - cy0) + 2);
-          for (let pass = 0; pass < 2; pass++) {
-            const wantHl = (pass === 0);
+          for (let pass = 0; pass < 4; pass++) {
             for (let i = 0; i < this.inkStrokes.length; i++) {
               const st = this.inkStrokes[i];
               if (!st || st === this.currentInkStroke) continue;
               if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(st)) continue;
-              if (Boolean(st.isHighlighter) !== wantHl) continue;
+              if (this._getStrokeRenderPass(st) !== pass) continue;
               if ((st.target || 'board') !== 'board') continue;
               const vb = this._getStrokeVisualScreenBounds(st, true);
               if (vb && (vb.maxX < cx0 || vb.minX > cx1 || vb.maxY < cy0 || vb.minY > cy1)) continue;
@@ -6581,13 +6602,12 @@
           gCtx.rect(cx0, cy0, cx1 - cx0, cy1 - cy0);
           gCtx.clip();
           gCtx.clearRect(cx0 - 1, cy0 - 1, (cx1 - cx0) + 2, (cy1 - cy0) + 2);
-          for (let pass = 0; pass < 2; pass++) {
-            const wantHl = (pass === 0);
+          for (let pass = 0; pass < 4; pass++) {
             for (let i = 0; i < this.inkStrokes.length; i++) {
               const st = this.inkStrokes[i];
               if (!st || st === this.currentInkStroke) continue;
               if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.has(st)) continue;
-              if (Boolean(st.isHighlighter) !== wantHl) continue;
+              if (this._getStrokeRenderPass(st) !== pass) continue;
               if ((st.target || 'board') !== 'graph') continue;
               if (Boolean(st.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
               const vb = this._getStrokeVisualScreenBounds(st, false);
@@ -6623,8 +6643,249 @@
       return view;
     }
 
+    _renderGraphStampStroke(targetCtx, stroke) {
+      if (!targetCtx || !stroke || !stroke.graphStamp || !Array.isArray(stroke.points) || stroke.points.length < 2) return;
+      const isBoardInk = (stroke.target || 'board') === 'board';
+      const p0 = stroke.points[0];
+      const p1 = stroke.points[1];
+      if (!p0 || !p1) return;
+
+      const s0 = isBoardInk ? this.boardToScreen(p0.x, p0.y) : this.mathToScreen(p0.x, p0.y);
+      const s1 = isBoardInk ? this.boardToScreen(p1.x, p1.y) : this.mathToScreen(p1.x, p1.y);
+      if (!s0 || !s1 || !Number.isFinite(s0.x) || !Number.isFinite(s0.y) || !Number.isFinite(s1.x) || !Number.isFinite(s1.y)) {
+        return;
+      }
+
+      const bx = Math.min(s0.x, s1.x);
+      const by = Math.min(s0.y, s1.y);
+      const bw = Math.abs(s1.x - s0.x);
+      const bh = Math.abs(s1.y - s0.y);
+      if (!(bw >= 2 && bh >= 2)) return;
+
+      if (targetCtx === this.ctx || targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx) {
+        const isBakeTarget = (targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx);
+        const sw = this.screenWidth || 1280;
+        const sh = this.screenHeight || 720;
+        const padX = isBakeTarget ? 540 : 0;
+        const padY = isBakeTarget ? 540 : 0;
+        const margin = 32;
+        if (
+          bx + bw < -padX - margin ||
+          bx > sw + padX + margin ||
+          by + bh < -padY - margin ||
+          by > sh + padY + margin
+        ) {
+          return;
+        }
+      }
+
+      let ctxScale = (typeof this.getCanvasDpr === 'function')
+        ? this.getCanvasDpr()
+        : ((typeof window !== 'undefined' && window.devicePixelRatio) || 2);
+      if (typeof targetCtx.getTransform === 'function') {
+        const tr = targetCtx.getTransform();
+        if (tr && Number.isFinite(tr.a) && Number.isFinite(tr.b)) {
+          const mScale = Math.hypot(tr.a, tr.b);
+          if (mScale > 0.1) ctxScale = mScale;
+        }
+      }
+      const effScale = Math.min(4.0, Math.max(1.5, ctxScale));
+      const rawPxW = Math.max(4, bw * effScale);
+      const rawPxH = Math.max(4, bh * effScale);
+      const MAX_STAMP_SIDE = 2048;
+      const MAX_STAMP_AREA = 3600000;
+      let clampRatio = 1.0;
+      if (rawPxW > MAX_STAMP_SIDE || rawPxH > MAX_STAMP_SIDE) {
+        clampRatio = Math.min(clampRatio, MAX_STAMP_SIDE / Math.max(rawPxW, rawPxH));
+      }
+      if (rawPxW * rawPxH > MAX_STAMP_AREA) {
+        clampRatio = Math.min(clampRatio, Math.sqrt(MAX_STAMP_AREA / (rawPxW * rawPxH)));
+      }
+      const pxW = Math.max(4, Math.round((rawPxW * clampRatio) / 2) * 2);
+      const pxH = Math.max(4, Math.round((rawPxH * clampRatio) / 2) * 2);
+
+      const rawThemeKey = this.currentThemeKey || 'white_paper';
+      const rawThemeObj = (this.canvasThemes && this.canvasThemes[rawThemeKey]) || { isLight: true };
+      const isExportPass = Boolean(
+        this._activeExportFilter &&
+        targetCtx !== this.ctx &&
+        targetCtx !== this.inkBakeCtx &&
+        targetCtx !== this.inkGraphBakeCtx
+      );
+      const forceLightSurface = Boolean(
+        stroke.onPdfBoard ||
+        this.isMonochromeMode ||
+        (isExportPass && this.exportTransparent && !rawThemeObj.isLight)
+      );
+      const effThemeKey = (forceLightSurface && !rawThemeObj.isLight && this.canvasThemes && this.canvasThemes.white_paper)
+        ? 'white_paper'
+        : rawThemeKey;
+      const effThemeObj = (this.canvasThemes && this.canvasThemes[effThemeKey]) || { isLight: true };
+      const effIsLight = Boolean(effThemeObj.isLight || this.isMonochromeMode || forceLightSurface);
+
+      let cache = stroke._stampCache;
+      if (!cache && typeof document !== 'undefined') {
+        cache = { canvas: document.createElement('canvas'), key: '', img: null, imgUrl: '' };
+        try {
+          Object.defineProperty(stroke, '_stampCache', {
+            value: cache,
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) {
+          return;
+        }
+      }
+      if (!cache || !cache.canvas) return;
+
+      const gs = stroke.graphStamp;
+      const cacheKey = `${pxW}x${pxH}|${effThemeKey}|${this.isMonochromeMode ? 1 : 0}|${forceLightSurface ? 1 : 0}`;
+      if (cache.key !== cacheKey || cache.canvas.width !== pxW || cache.canvas.height !== pxH) {
+        if (cache.canvas.width !== pxW) cache.canvas.width = pxW;
+        if (cache.canvas.height !== pxH) cache.canvas.height = pxH;
+        const sCtx = cache.canvas.getContext('2d');
+        if (!sCtx) return;
+
+        const logicalW = Math.max(80, Number(gs.logicalW) || (gs.snap && Number(gs.snap._pipCardW)) || 360);
+        const logicalH = Math.max(50, Number(gs.logicalH) || (gs.snap && Number(gs.snap._pipCardH)) || 295);
+
+        sCtx.save();
+        sCtx.setTransform(1, 0, 0, 1, 0, 0);
+        sCtx.clearRect(0, 0, pxW, pxH);
+        sCtx.setTransform(pxW / logicalW, 0, 0, pxH / logicalH, 0, 0);
+
+        const prevThemeKey = this.currentThemeKey;
+        let readyToCache = true;
+        try {
+          this.currentThemeKey = effThemeKey;
+          if (gs.kind === 'vector' && gs.snap && typeof this._withPipCardGraphState === 'function') {
+            if (Array.isArray(gs.snap.graphs) && typeof window !== 'undefined' && window.SafeMathCompiler) {
+              gs.snap.graphs.forEach(g => {
+                if (g && g.type === 'general_expr' && Array.isArray(g.handles)) {
+                  g.handles.forEach(h => {
+                    if (h && !h.fn && h.rawExpr) {
+                      const comp = window.SafeMathCompiler.compile(h.rawExpr);
+                      if (comp && comp.success) h.fn = comp.fn;
+                    }
+                  });
+                }
+              });
+            }
+            this._withPipCardGraphState(gs.snap, logicalW, logicalH, () => {
+              if (gs.snap.showGuides !== undefined) this.showGuides = Boolean(gs.snap.showGuides);
+              if (gs.snap.showAsymptotes !== undefined) this.showAsymptotes = Boolean(gs.snap.showAsymptotes);
+              if (gs.snap.showGridNumbers !== undefined) this.showGridNumbers = Boolean(gs.snap.showGridNumbers);
+              this.isCurveSelected = false;
+              this.selectedHandleIdx = null;
+              this.draggedHandleIdx = null;
+              this.isDropLineMode = false;
+              this.dropLineHoverCandidate = null;
+              this.dropLineHoverScissors = null;
+
+              if (this.showGuides) this.drawGuides(sCtx, this._snapshotCropBounds);
+              if (this.showInverseGuide) this.drawInverseGuide(sCtx);
+              if (this.showAsymptotes) this.drawAllAsymptotes(sCtx);
+              if (this.showAxes) this.drawAxes(sCtx, this._snapshotCropBounds);
+              if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(sCtx, this._snapshotCropBounds);
+              this.drawAllCurves(sCtx, true);
+              if (this.usePiecewise && this.graphs.length >= 1) {
+                this.drawPiecewiseBoundaries(sCtx, true);
+              }
+              this.drawDropLines(sCtx, true);
+              this.drawTextLabels(sCtx, true);
+            });
+          } else if (gs.kind === 'image' && gs.dataUrl && typeof Image !== 'undefined') {
+            if (!cache.img || cache.imgUrl !== gs.dataUrl) {
+              const imgObj = new Image();
+              cache.img = imgObj;
+              cache.imgUrl = gs.dataUrl;
+              imgObj.onload = () => {
+                cache.key = '';
+                this._inkBakeDirty = true;
+                this.requestRender();
+              };
+              const safeUrl = (typeof this._sanitizeCardImageUrl === 'function')
+                ? this._sanitizeCardImageUrl(gs.dataUrl)
+                : gs.dataUrl;
+              if (safeUrl) imgObj.src = safeUrl;
+            }
+            if (cache.img && cache.img.complete && cache.img.naturalWidth > 0) {
+              sCtx.save();
+              if (this.isMonochromeMode) {
+                sCtx.filter = 'grayscale(100%) contrast(108%)';
+              }
+              sCtx.imageSmoothingEnabled = true;
+              try { sCtx.imageSmoothingQuality = 'high'; } catch (_) { }
+              sCtx.drawImage(cache.img, 0, 0, logicalW, logicalH);
+              sCtx.restore();
+            } else {
+              readyToCache = false;
+            }
+          }
+
+          if (Array.isArray(gs.cardStrokes) && gs.cardStrokes.length > 0 && typeof this._renderSingleCardInkStroke === 'function') {
+            const sizeScale = (typeof this.getPipCardFinePenScale === 'function')
+              ? this.getPipCardFinePenScale('primary', logicalW, logicalH)
+              : 1.0;
+            const resolveCardStrokeForSurface = (cs) => {
+              if (!cs || cs.isHighlighter || this.isMonochromeMode) return cs;
+              const cLow = (cs.color || '').toLowerCase();
+              if (effIsLight && (cLow === '#ffffff' || cLow === '#fff' || cLow === '#f8fafc')) {
+                return { ...cs, color: '#1e293b' };
+              }
+              if (!effIsLight && (cLow === '#1e293b' || cLow === '#0f172a' || cLow === '#000000' || cLow === '#2d3436')) {
+                return { ...cs, color: '#f8fafc' };
+              }
+              return cs;
+            };
+            const cardDrawOpts = {
+              isProbCard: effIsLight,
+              applyStreamline: true,
+              minPenWidth: 0.85,
+              minHlWidth: 3,
+              defaultHlMin: 8
+            };
+            for (let pass = 0; pass < 2; pass++) {
+              const wantHl = (pass === 0);
+              for (let i = 0; i < gs.cardStrokes.length; i++) {
+                const cs = gs.cardStrokes[i];
+                if (!cs || Boolean(cs.isHighlighter) !== wantHl) continue;
+                this._renderSingleCardInkStroke(
+                  sCtx,
+                  resolveCardStrokeForSurface(cs),
+                  logicalW,
+                  logicalH,
+                  sizeScale,
+                  cardDrawOpts
+                );
+              }
+            }
+          }
+        } finally {
+          this.currentThemeKey = prevThemeKey;
+          sCtx.restore();
+        }
+        cache.key = readyToCache ? cacheKey : '';
+      }
+
+      const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
+      targetCtx.save();
+      if (ghostMul < 0.999) {
+        targetCtx.globalAlpha = (targetCtx.globalAlpha || 1.0) * ghostMul;
+      }
+      targetCtx.imageSmoothingEnabled = true;
+      try { targetCtx.imageSmoothingQuality = 'high'; } catch (_) { }
+      targetCtx.drawImage(cache.canvas, bx, by, bw, bh);
+      targetCtx.restore();
+    }
+
     renderSingleStroke(targetCtx, stroke, forceColor = null, isLiveDrawing = false) {
       if (!stroke || !stroke.points || stroke.points.length === 0) return;
+      if (stroke.isGraphStamp && stroke.graphStamp) {
+        this._renderGraphStampStroke(targetCtx, stroke);
+        return;
+      }
 
       const isBoardInk = (stroke.target || 'board') === 'board';
       const bz = this.boardZoom || 1.0;
@@ -6901,7 +7162,7 @@
     }
 
     _isWhiteBoardContrastStroke(s) {
-      if (!s || (s.target || 'board') !== 'board' || s.isHighlighter) return false;
+      if (!s || s.isGraphStamp || (s.target || 'board') !== 'board' || s.isHighlighter) return false;
       const c = s.color;
       if (!c) return false;
       if (c === '#ffffff' || c === '#fff' || c === '#FFFFFF' || c === '#FFF') return Boolean(s.points && s.points.length > 0);
@@ -6979,16 +7240,26 @@
           const c = (stroke.color || '').toLowerCase();
           return (c === '#ffffff' || c === '#fff') ? '#1e293b' : null;
         };
-        const strokesToDraw = filterTarget
-          ? this.inkStrokes.filter(s => {
-            const t = s.target || 'board';
-            if (t !== filterTarget) return false;
-            if (t === 'graph' && Boolean(s.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
-            return true;
-          })
-          : this.inkStrokes;
-        strokesToDraw.filter(s => s && s.isHighlighter).forEach(stroke => this.renderSingleStroke(ctx, stroke, null, false));
-        strokesToDraw.filter(s => s && !s.isHighlighter).forEach(stroke => this.renderSingleStroke(ctx, stroke, resolveExpOverride(stroke), false));
+        const expFilter = this._activeExportFilter || { includeGraph: true, includeInk: true };
+        const allowStampExp = expFilter.includeGraph !== false;
+        const allowInkExp = expFilter.includeInk !== false;
+        const strokesToDraw = this.inkStrokes.filter(s => {
+          if (!s) return false;
+          if (s.isGraphStamp ? !allowStampExp : !allowInkExp) return false;
+          if (!filterTarget) return true;
+          const t = s.target || 'board';
+          if (t !== filterTarget) return false;
+          if (t === 'graph' && Boolean(s.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
+          return true;
+        });
+        for (let pass = 0; pass < 4; pass++) {
+          for (let i = 0; i < strokesToDraw.length; i++) {
+            const stroke = strokesToDraw[i];
+            if (!stroke || this._getStrokeRenderPass(stroke) !== pass) continue;
+            const expOverride = (pass === 3) ? resolveExpOverride(stroke) : null;
+            this.renderSingleStroke(ctx, stroke, expOverride, false);
+          }
+        }
         if ((!filterTarget || filterTarget === 'board') && !isLightExp && !this.isMonochromeMode && !this.exportTransparent) {
           this._drawWhiteBoardInkContrastOverProblemCards(ctx, strokesToDraw, true);
         }

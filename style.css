@@ -6850,7 +6850,8 @@ body.graph-snap-crosshair #graphCanvas {
 }
 
 .card-btn-restore,
-.card-btn-duplicate {
+.card-btn-duplicate,
+.btn-card-stamp {
   width: 26px !important;
   height: 25px !important;
   padding: 0 !important;
@@ -6862,8 +6863,19 @@ body.graph-snap-crosshair #graphCanvas {
   border: 1px solid rgba(255, 255, 255, 0.14) !important;
 }
 
+.btn-card-stamp:hover {
+  background: rgba(0, 210, 211, 0.22) !important;
+  border-color: rgba(0, 210, 211, 0.55) !important;
+  color: #67e8f9 !important;
+}
+
+.btn-card-stamp:active {
+  transform: translateY(1px) scale(0.95);
+}
+
 body.theme-light .card-btn-restore,
-body.theme-light .card-btn-duplicate {
+body.theme-light .card-btn-duplicate,
+body.theme-light .btn-card-stamp {
   background: #f8fafc !important;
   color: #475569 !important;
   border: 1px solid rgba(15, 23, 42, 0.12) !important;
@@ -6874,6 +6886,40 @@ body.theme-light .card-btn-duplicate:hover {
   background: #e2e8f0 !important;
   color: #0f172a !important;
   border-color: rgba(15, 23, 42, 0.24) !important;
+}
+
+body.theme-light .btn-card-stamp:hover {
+  background: rgba(37, 99, 235, 0.12) !important;
+  color: #1d4ed8 !important;
+  border-color: rgba(37, 99, 235, 0.36) !important;
+}
+
+.graph-card-widget .problem-card-actions {
+  gap: 3.5px;
+}
+
+#problemCardWidget .btn-card-stamp,
+.extra-problem-card-widget .btn-card-stamp {
+  display: none !important;
+}
+
+@keyframes pipStampPressFlash {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  42% {
+    transform: scale(0.978);
+    filter: brightness(1.07);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+.problem-card-body.pip-stamp-flash {
+  animation: pipStampPressFlash 0.19s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 

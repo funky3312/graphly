@@ -1455,12 +1455,23 @@ class GraphApp {
       if (idx !== -1) {
         this.inkStrokes.splice(idx, 1);
       }
+      if (this.isAudioRecording && Array.isArray(this.audioErasedStrokes) && prevSnap.stroke && typeof prevSnap.stroke.tStart === 'number') {
+        const recT = (typeof this.getAudioRecordElapsedMs === 'function')
+          ? Math.max(0, Math.round(this.getAudioRecordElapsedMs()))
+          : 0;
+        this.audioErasedStrokes.push({ ...JSON.parse(JSON.stringify(prevSnap.stroke)), erasedAt: recT });
+      }
       this.redoStack.push(prevSnap);
       this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       this.render();
-      this.showToast('↺ 획 실행 취소됨');
+      this.showToast((prevSnap.stroke && prevSnap.stroke.isGraphStamp)
+        ? '↺ 방금 찍은 그래프 스탬프가 취소되었습니다'
+        : '↺ 획 실행 취소됨');
       return;
     }
 
@@ -1605,13 +1616,26 @@ class GraphApp {
 
     // 🌟 [0ms 초고속 잉크 획 단위 다시 실행]
     if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'stroke_add') {
+      if (this.isAudioRecording && nextSnap.stroke && nextSnap.stroke.isGraphStamp && typeof this.getAudioRecordElapsedMs === 'function') {
+        const recT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
+        nextSnap.stroke.tStart = recT;
+        nextSnap.stroke.tEnd = recT;
+        if (Array.isArray(nextSnap.stroke.points)) {
+          nextSnap.stroke.points.forEach(pt => { if (pt) pt.t = recT; });
+        }
+      }
       this.inkStrokes.push(nextSnap.stroke);
       this.undoStack.push(nextSnap);
       this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       this.render();
-      this.showToast('↻ 획 다시 실행됨');
+      this.showToast((nextSnap.stroke && nextSnap.stroke.isGraphStamp)
+        ? '↻ 그래프 스탬프 다시 실행됨'
+        : '↻ 획 다시 실행됨');
       return;
     }
 

@@ -13894,7 +13894,7 @@
         btnTouchReset.onclick = () => {
           if (this._activeViewerHotspot && this._activeViewerHotspot.graphSnapshot) {
             this.applyPureGraphSnapshot(this._activeViewerHotspot.graphSnapshot);
-            const hasLoadedGraphInk = Array.isArray(this.inkStrokes) && this.inkStrokes.some(s => s && s.target === 'graph');
+            const hasLoadedGraphInk = Array.isArray(this.inkStrokes) && this.inkStrokes.some(s => s && s.target === 'graph' && !s.onPdfBoard && !s.isGraphStamp);
             if (!hasLoadedGraphInk && typeof this._resolveFallbackViewerHotspotGraphInk === 'function') {
               const fallbackStrokes = this._resolveFallbackViewerHotspotGraphInk(this._activeViewerHotspot, this._viewerSlideIdx || 0);
               if (Array.isArray(fallbackStrokes) && fallbackStrokes.length > 0) {
@@ -15696,7 +15696,7 @@
       this.updateInkCursor();
 
       this.applyPureGraphSnapshot(hotspot.graphSnapshot);
-      const hasLoadedGraphInk = Array.isArray(this.inkStrokes) && this.inkStrokes.some(s => s && s.target === 'graph');
+      const hasLoadedGraphInk = Array.isArray(this.inkStrokes) && this.inkStrokes.some(s => s && s.target === 'graph' && !s.onPdfBoard && !s.isGraphStamp);
       if (!hasLoadedGraphInk) {
         const fallbackStrokes = this._resolveFallbackViewerHotspotGraphInk(hotspot, slideIdx);
         if (Array.isArray(fallbackStrokes) && fallbackStrokes.length > 0) {

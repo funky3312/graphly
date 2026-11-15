@@ -4785,12 +4785,14 @@
           ctx.clip();
         }
         this.drawFloatingCardsForExport(ctx, expFilter);
-        if (expFilter.includeInk !== false) {
+        if (expFilter.includeInk !== false || expFilter.includeGraph !== false) {
           if (this.pdfPageBoardData) {
             this.drawInkStrokes(ctx, true, 'graph');
           }
           this.drawInkStrokes(ctx, true, 'board');
-          this.drawBoardStickers(ctx, true);
+          if (expFilter.includeInk !== false) {
+            this.drawBoardStickers(ctx, true);
+          }
         }
         if (pdfClipRect) {
           ctx.restore();
@@ -10490,8 +10492,9 @@
     const incInk = effFilter.includeInk !== false;
 
     const activeTarget = (this.isGraphCovered && !this.pdfPageBoardData) ? 'board' : 'graph';
-    const activeStrokes = incInk ? (this.inkStrokes || []).filter(s => {
+    const activeStrokes = (incInk || incGraph) ? (this.inkStrokes || []).filter(s => {
       if (!s) return false;
+      if (s.isGraphStamp ? !incGraph : !incInk) return false;
       if (this.pdfPageBoardData) return Boolean(s.onPdfBoard);
       if ((s.target || 'board') !== activeTarget) return false;
       if (activeTarget === 'graph' && Boolean(s.onPdfBoard)) return false;
@@ -10534,7 +10537,7 @@
     const bz = this.boardZoom || 1.0;
     activeStrokes.forEach(s => {
       const isBoard = (s.target || 'board') === 'board';
-      const pad = Math.max(8, (s.size || 4) * (s.isHighlighter ? 2.5 : 1.5));
+      const pad = s.isGraphStamp ? 4 : Math.max(8, (s.size || 4) * (s.isHighlighter ? 2.5 : 1.5));
       if (s.shape) {
         const sh = s.shape;
         if (sh.type === 'line' && sh.start && sh.end) {

@@ -4361,7 +4361,7 @@
         showGridNumbers: Boolean(this.showGridNumbers),
         dropLines: this.dropLines || [],
         textLabels: this.textLabels || [],
-        graphInkStrokes: (this.inkStrokes || []).filter(s => s && (s.target || 'board') === 'graph' && !s.onPdfBoard)
+        graphInkStrokes: (this.inkStrokes || []).filter(s => s && (s.target || 'board') === 'graph' && !s.onPdfBoard && !s.isGraphStamp)
       });
     }
 
@@ -4437,7 +4437,7 @@
           this.textLabels = JSON.parse(JSON.stringify(data.textLabels));
         }
         if (Array.isArray(data.graphInkStrokes)) {
-          const preservedStrokes = (this.inkStrokes || []).filter(s => s && ((s.target || 'board') === 'board' || s.onPdfBoard));
+          const preservedStrokes = (this.inkStrokes || []).filter(s => s && ((s.target || 'board') === 'board' || s.onPdfBoard || s.isGraphStamp));
           this.inkStrokes = [...preservedStrokes, ...JSON.parse(JSON.stringify(data.graphInkStrokes))];
           this._inkBakeDirty = true;
         }
@@ -4661,12 +4661,12 @@
             const nowT = this.getAudioRecordElapsedMs();
             if (!this.audioErasedStrokes) this.audioErasedStrokes = [];
             this.inkStrokes.forEach(s => {
-              if (s && (s.target || 'board') !== 'board' && !s.onPdfBoard) {
+              if (s && (s.target || 'board') !== 'board' && !s.onPdfBoard && !s.isGraphStamp) {
                 this.audioErasedStrokes.push({ ...s, erasedAt: nowT });
               }
             });
           }
-          this.inkStrokes = this.inkStrokes.filter(s => s && ((s.target || 'board') === 'board' || s.onPdfBoard));
+          this.inkStrokes = this.inkStrokes.filter(s => s && ((s.target || 'board') === 'board' || s.onPdfBoard || s.isGraphStamp));
         }
         this.panX = 0;
         this.panY = 0;
@@ -5016,7 +5016,7 @@
       if (spawnedNewInSession) {
         this._editingGraphCardTarget = null;
         if (Array.isArray(this.inkStrokes)) {
-          this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
+          this.inkStrokes = this.inkStrokes.filter(s => s && (s.target !== 'graph' || s.onPdfBoard || s.isGraphStamp));
         }
         if (typeof this.clearInkCache === 'function') this.clearInkCache();
         this._restoreBoardModeStateAfterGraph();
@@ -5034,7 +5034,7 @@
       if (hadEditingCard && !hasLiveGraphs) {
         this._editingGraphCardTarget = null;
         if (Array.isArray(this.inkStrokes)) {
-          this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
+          this.inkStrokes = this.inkStrokes.filter(s => s && (s.target !== 'graph' || s.onPdfBoard || s.isGraphStamp));
         }
         if (typeof this.clearInkCache === 'function') this.clearInkCache();
         this._restoreBoardModeStateAfterGraph();
@@ -5974,12 +5974,12 @@
         if (this.isAudioRecording && Array.isArray(this.audioErasedStrokes)) {
           const recT = this.getAudioRecordElapsedMs();
           this.inkStrokes.forEach(s => {
-            if (s && (s.target || 'board') === 'graph' && !s.onPdfBoard) {
+            if (s && (s.target || 'board') === 'graph' && !s.onPdfBoard && !s.isGraphStamp) {
               this.audioErasedStrokes.push({ ...JSON.parse(JSON.stringify(s)), erasedAt: recT });
             }
           });
         }
-        this.inkStrokes = this.inkStrokes.filter(s => s && ((s.target || 'board') === 'board' || s.onPdfBoard));
+        this.inkStrokes = this.inkStrokes.filter(s => s && ((s.target || 'board') === 'board' || s.onPdfBoard || s.isGraphStamp));
       }
       this.dropLines = [];
       this.textLabels = [];
@@ -7648,7 +7648,7 @@
       const syncedStrokes = this._buildFullGraphInkStrokesFromPipCard(cardRef);
 
       if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
-      this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
+      this.inkStrokes = this.inkStrokes.filter(s => s && (s.target !== 'graph' || s.onPdfBoard || s.isGraphStamp));
 
       if (syncedStrokes.length > 0) {
         this.inkStrokes.push(...syncedStrokes);
@@ -7666,7 +7666,7 @@
       const effH = Math.max(60, Math.round(cardH || 353));
 
       const graphStrokes = Array.isArray(this.inkStrokes)
-        ? this.inkStrokes.filter(s => s && s.target === 'graph' && Array.isArray(s.points) && s.points.length > 0)
+        ? this.inkStrokes.filter(s => s && s.target === 'graph' && !s.onPdfBoard && !s.isGraphStamp && Array.isArray(s.points) && s.points.length > 0)
         : [];
 
       const newCardStrokes = [];
@@ -7727,12 +7727,12 @@
         if (this.isAudioRecording && Array.isArray(this.audioErasedStrokes)) {
           const recT = this.getAudioRecordElapsedMs();
           this.inkStrokes.forEach(s => {
-            if (s && s.target === 'graph') {
+            if (s && s.target === 'graph' && !s.onPdfBoard && !s.isGraphStamp) {
               this.audioErasedStrokes.push({ ...JSON.parse(JSON.stringify(s)), erasedAt: recT });
             }
           });
         }
-        this.inkStrokes = this.inkStrokes.filter(s => s && s.target !== 'graph');
+        this.inkStrokes = this.inkStrokes.filter(s => s && (s.target !== 'graph' || s.onPdfBoard || s.isGraphStamp));
       }
       this._inkBakeDirty = true;
       if (typeof this.clearInkCache === 'function') this.clearInkCache();
@@ -9576,6 +9576,181 @@
       };
     }
 
+    stampPipGraphCardToBoard(cardRef, triggerBtnEl = null) {
+      if (!cardRef || !this.isGraphCovered) return null;
+      const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
+      if (!widget || !widget.classList || !widget.classList.contains('graph-card-widget') || widget.style.display === 'none') {
+        return null;
+      }
+      if (
+        widget.classList.contains('minimized') ||
+        (isPrimary && this.isGraphCardMinimized) ||
+        (!isPrimary && cardRef.isMin)
+      ) {
+        this.showToast('ℹ️ 접힌 그래프 창을 먼저 펼친 뒤 스탬프를 찍어주세요.');
+        return null;
+      }
+
+      const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
+      if (!bodyEl || !this.canvas) return null;
+
+      this._closeAllPipHeaderPopovers();
+      this._ensurePipCardInkMathCoords(cardRef);
+
+      const cRect = this.canvas.getBoundingClientRect();
+      const bRect = bodyEl.getBoundingClientRect();
+      if (!(bRect.width >= 24 && bRect.height >= 24)) return null;
+
+      const scaleCssX = (this.screenWidth && cRect.width > 0) ? (this.screenWidth / cRect.width) : 1;
+      const scaleCssY = (this.screenHeight && cRect.height > 0) ? (this.screenHeight / cRect.height) : 1;
+      const bx = (bRect.left - cRect.left) * scaleCssX;
+      const by = (bRect.top - cRect.top) * scaleCssY;
+      const bw = bRect.width * scaleCssX;
+      const bh = bRect.height * scaleCssY;
+
+      const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
+      const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || bodyEl.clientWidth || bw || 430));
+      const cardH = Math.max(60, Math.round(parseFloat(bodyEl.style.height) || bodyEl.clientHeight || (cardW * aspect)));
+
+      if (widget._pendingPipInkReproject) {
+        widget._pendingPipInkReproject = null;
+        this._reprojectPipCardInkFromMathCoords(cardRef, cardW, cardH);
+      }
+
+      const snapObj = this._getMutablePipCardSnapshot(cardRef);
+      const srcCardStrokes = this._getPipCardInkStrokesArray(cardRef);
+      const compactCardStrokes = (Array.isArray(srcCardStrokes) && srcCardStrokes.length > 0)
+        ? (typeof this._compactStrokesArray === 'function'
+          ? this._compactStrokesArray(srcCardStrokes)
+          : JSON.parse(JSON.stringify(srcCardStrokes)))
+        : [];
+
+      let stampPayload = null;
+      if (snapObj && !snapObj.isNAxisStudioCard && Array.isArray(snapObj.graphs) && snapObj.graphs.length > 0) {
+        const snapClone = JSON.parse(JSON.stringify(snapObj));
+        snapClone.isPipLocked = true;
+        snapClone.isCurveSelected = false;
+        snapClone.selectedHandleIdx = null;
+        snapClone.draggedHandleIdx = null;
+        snapClone._isDraggingCurve = false;
+        snapClone._isPanningAxes = false;
+        snapClone._isResizingPipCard = false;
+        snapClone.isPipDropLineMode = false;
+        snapClone._pipDropLineHoverCand = null;
+        snapClone._pipDropLineHoverScissors = null;
+        snapClone._pipRenderedScissors = [];
+        snapClone.isPipSymPopoverOpen = false;
+        snapClone._activeSnapHint = null;
+        snapClone.axisSnapActiveX = false;
+        snapClone.axisSnapActiveY = false;
+        snapClone.symmetrySnapActive = false;
+        snapClone.snappedPoints = [];
+        snapClone.useIntersectionDetector = false;
+        snapClone._isPipCardSnapshot = true;
+        snapClone._pipCardW = cardW;
+        snapClone._pipCardH = cardH;
+        if (snapClone.showGuides === undefined) snapClone.showGuides = Boolean(this.showGuides);
+        if (snapClone.showAsymptotes === undefined) snapClone.showAsymptotes = Boolean(this.showAsymptotes);
+        if (snapClone.showGridNumbers === undefined) snapClone.showGridNumbers = Boolean(this.showGridNumbers);
+        if (Array.isArray(snapClone.graphs)) {
+          snapClone.graphs.forEach(g => {
+            if (g) delete g._screenPts;
+          });
+        }
+        stampPayload = {
+          kind: 'vector',
+          logicalW: cardW,
+          logicalH: cardH,
+          snap: snapClone,
+          cardStrokes: compactCardStrokes
+        };
+      } else {
+        const imgEl = bodyEl.querySelector('.problem-card-img');
+        const fallbackDataUrl = (isPrimary
+          ? (this.graphCardData && (this.graphCardData.dataUrl || this.graphCardData.imgUrl))
+          : cardRef.dataUrl) || (imgEl && imgEl.src) || '';
+        if (!fallbackDataUrl) {
+          this.showToast('⚠️ 스탬프로 찍을 그래프가 없습니다.');
+          return null;
+        }
+        stampPayload = {
+          kind: 'image',
+          logicalW: cardW,
+          logicalH: cardH,
+          dataUrl: fallbackDataUrl,
+          cardStrokes: compactCardStrokes
+        };
+      }
+
+      const isPdfBoard = Boolean(this.pdfPageBoardData);
+      const pTL = isPdfBoard ? this.screenToMath(bx, by) : this.screenToBoard(bx, by);
+      const pBR = isPdfBoard ? this.screenToMath(bx + bw, by + bh) : this.screenToBoard(bx + bw, by + bh);
+      const recElapsed = (this.isAudioRecording && typeof this.getAudioRecordElapsedMs === 'function')
+        ? Math.max(0, Math.round(this.getAudioRecordElapsedMs()))
+        : undefined;
+
+      const ptTL = recElapsed !== undefined
+        ? { x: pTL.x, y: pTL.y, p: 0.5, t: recElapsed }
+        : { x: pTL.x, y: pTL.y, p: 0.5 };
+      const ptBR = recElapsed !== undefined
+        ? { x: pBR.x, y: pBR.y, p: 0.5, t: recElapsed }
+        : { x: pBR.x, y: pBR.y, p: 0.5 };
+
+      const stampStroke = {
+        id: `gstamp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        isGraphStamp: true,
+        target: isPdfBoard ? 'graph' : 'board',
+        isBoard: !isPdfBoard,
+        onPdfBoard: isPdfBoard,
+        color: '#1e293b',
+        size: 2.5,
+        penStyle: 'ballpen',
+        isHighlighter: false,
+        boardZoom: !isPdfBoard ? (this.boardZoom || 1.0) : undefined,
+        zoom: isPdfBoard ? (this.zoomLevel || 1.0) : undefined,
+        tStart: recElapsed,
+        tEnd: recElapsed,
+        points: [ptTL, ptBR],
+        graphStamp: stampPayload
+      };
+
+      if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
+      this.inkStrokes.push(stampStroke);
+
+      if (!Array.isArray(this.undoStack)) this.undoStack = [];
+      this.undoStack.push({ type: 'stroke_add', stroke: stampStroke });
+      if (this.undoStack.length > (this.maxHistory || 80)) {
+        this.undoStack.shift();
+      }
+      this.redoStack = [];
+      this.updateUndoRedoUI();
+
+      this._inkBakeDirty = true;
+      this.requestRender();
+
+      if (snapObj && snapObj.isPipLocked && !widget.classList.contains('card-ink-active')) {
+        this.schedulePipGraphCardStealth(cardRef, 3000);
+      }
+
+      if (bodyEl.classList) {
+        bodyEl.classList.remove('pip-stamp-flash');
+        void bodyEl.offsetWidth;
+        bodyEl.classList.add('pip-stamp-flash');
+        if (bodyEl._stampFlashTimer) clearTimeout(bodyEl._stampFlashTimer);
+        bodyEl._stampFlashTimer = setTimeout(() => {
+          bodyEl._stampFlashTimer = null;
+          if (bodyEl.classList) bodyEl.classList.remove('pip-stamp-flash');
+        }, 220);
+      }
+
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
+
+      this.showToast('📌 현재 그래프가 캔버스에 스탬프로 박제되었습니다! (취소: 되돌리기 ↺)');
+      return stampStroke;
+    }
+
     duplicatePipGraphCard(cardRef) {
       if (!cardRef) return null;
       const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
@@ -10587,6 +10762,42 @@
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
           }
+        });
+      }
+
+      let btnStamp = widget.querySelector('.btn-card-stamp');
+      if (!btnStamp && actionsEl && widget.classList && widget.classList.contains('graph-card-widget')) {
+        btnStamp = document.createElement('button');
+        btnStamp.type = 'button';
+        btnStamp.className = 'card-btn btn-card-stamp';
+        btnStamp.title = '캔버스에 스탬프 찍기 (현재 그래프·수선·필기를 바닥에 영구 박제)';
+        btnStamp.innerHTML = `
+        <span style="display:inline-flex;align-items:center;justify-content:center;">
+          <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 21h14" />
+            <path d="M19 16v-2a2 2 0 0 0-2-2h-2.5a1.5 1.5 0 0 1-1.5-1.5V6a2 2 0 1 0-4 0v4.5A1.5 1.5 0 0 1 9.5 12H7a2 2 0 0 0-2 2v2h14z" />
+          </svg>
+        </span>
+      `;
+        const refAfterStamp = actionsEl.querySelector('.card-btn-duplicate') ||
+          actionsEl.querySelector('.card-btn-restore') ||
+          actionsEl.querySelector('.btn-card-close') ||
+          null;
+        if (refAfterStamp) {
+          actionsEl.insertBefore(btnStamp, refAfterStamp);
+        } else {
+          actionsEl.appendChild(btnStamp);
+        }
+      }
+      if (btnStamp) {
+        btnStamp.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+        });
+        btnStamp.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.bringCardToFront(widget);
+          this.stampPipGraphCardToBoard(cardRef, btnStamp);
         });
       }
 

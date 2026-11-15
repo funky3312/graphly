@@ -4103,6 +4103,15 @@
         return null;
       }
 
+      if (stroke.isGraphStamp) {
+        return {
+          stroke,
+          isCurrentlyWriting: false,
+          isActiveHighlight: false,
+          tipPoint: null
+        };
+      }
+
       // 이미 쓰기가 끝난 과거의 필기(playMs >= tEnd)는 도형 스냅(shape) 포함 100% 온전하게 표시!
       const shapeSnapMs = (typeof stroke.shapeSnapAt === 'number') ? stroke.shapeSnapAt : tEnd;
       if (playMs >= tEnd && playMs >= shapeSnapMs) {
@@ -4234,17 +4243,22 @@
       const isLight = curTheme.isLight || this.isMonochromeMode;
       const drawRepsBatch = (targetCtx, repsList) => {
         if (!repsList || repsList.length === 0) return;
-        repsList.filter(r => r.stroke.isHighlighter).forEach(r => {
-          this.renderSingleStroke(targetCtx, r.stroke, null, false);
-        });
-        repsList.filter(r => !r.stroke.isHighlighter).forEach(r => {
-          this.renderSingleStroke(targetCtx, r.stroke, null, false);
-        });
+        for (let pass = 0; pass < 4; pass++) {
+          for (let i = 0; i < repsList.length; i++) {
+            const st = repsList[i] && repsList[i].stroke;
+            if (!st) continue;
+            const stPass = (typeof this._getStrokeRenderPass === 'function')
+              ? this._getStrokeRenderPass(st)
+              : (st.isHighlighter ? 1 : 3);
+            if (stPass !== pass) continue;
+            this.renderSingleStroke(targetCtx, st, null, false);
+          }
+        }
         if ((!filterTarget || filterTarget === 'board') && this.hasActiveProblemCard() && !isLight && !this.isMonochromeMode && this.problemCardRect) {
           const r = this.problemCardRect;
           const whiteReps = repsList.filter(item => {
             const s = item.stroke;
-            if (!s || (s.target || 'board') !== 'board') return false;
+            if (!s || s.isGraphStamp || (s.target || 'board') !== 'board') return false;
             const c = (s.color || '').toLowerCase();
             return (c === '#ffffff' || c === '#fff');
           });
@@ -4268,10 +4282,14 @@
         const dpr = this.getCanvasDpr();
         const bw = (this.canvas && this.canvas.width > 0) ? this.canvas.width : Math.max(1, Math.round(this.screenWidth * dpr));
         const bh = (this.canvas && this.canvas.height > 0) ? this.canvas.height : Math.max(1, Math.round(this.screenHeight * dpr));
+        const firstRepSt = completedReps[0] && completedReps[0].stroke;
+        const lastRepSt = completedReps[completedReps.length - 1] && completedReps[completedReps.length - 1].stroke;
         const bakeKey = [
           targetSlot,
           completedReps.length,
           activeErased.length,
+          (firstRepSt && (firstRepSt.id || firstRepSt.tStart)) || '',
+          (lastRepSt && (lastRepSt.id || lastRepSt.tStart)) || '',
           Boolean(this.pdfPageBoardData),
           Math.round((this.panX || 0) * 10),
           Math.round((this.panY || 0) * 10),
