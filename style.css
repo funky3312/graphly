@@ -6863,10 +6863,20 @@ body.graph-snap-crosshair #graphCanvas {
   border: 1px solid rgba(255, 255, 255, 0.14) !important;
 }
 
-.btn-card-stamp:hover {
-  background: rgba(0, 210, 211, 0.22) !important;
-  border-color: rgba(0, 210, 211, 0.55) !important;
-  color: #67e8f9 !important;
+.card-btn.btn-card-stamp,
+.card-btn.btn-card-stamp:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #cbd5e1 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+}
+
+.card-btn.btn-card-stamp.is-hovered,
+.card-btn.btn-card-stamp.is-hovered:hover,
+.card-btn.btn-card-stamp:active,
+.card-btn.btn-card-stamp:hover:active {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
 }
 
 .btn-card-stamp:active {
@@ -6875,23 +6885,22 @@ body.graph-snap-crosshair #graphCanvas {
 
 body.theme-light .card-btn-restore,
 body.theme-light .card-btn-duplicate,
-body.theme-light .btn-card-stamp {
+body.theme-light .card-btn.btn-card-stamp,
+body.theme-light .card-btn.btn-card-stamp:hover {
   background: #f8fafc !important;
   color: #475569 !important;
   border: 1px solid rgba(15, 23, 42, 0.12) !important;
 }
 
 body.theme-light .card-btn-restore:hover,
-body.theme-light .card-btn-duplicate:hover {
+body.theme-light .card-btn-duplicate:hover,
+body.theme-light .card-btn.btn-card-stamp.is-hovered,
+body.theme-light .card-btn.btn-card-stamp.is-hovered:hover,
+body.theme-light .card-btn.btn-card-stamp:active,
+body.theme-light .card-btn.btn-card-stamp:hover:active {
   background: #e2e8f0 !important;
   color: #0f172a !important;
   border-color: rgba(15, 23, 42, 0.24) !important;
-}
-
-body.theme-light .btn-card-stamp:hover {
-  background: rgba(37, 99, 235, 0.12) !important;
-  color: #1d4ed8 !important;
-  border-color: rgba(37, 99, 235, 0.36) !important;
 }
 
 .graph-card-widget .problem-card-actions {
@@ -6950,13 +6959,15 @@ body.theme-light .btn-card-stamp:hover {
 }
 
 .problem-card-widget.problem-stamp-ghost-fx .btn-card-stamp.stamp-btn-just-pressed {
-  color: #38bdf8 !important;
-  background: rgba(56, 189, 248, 0.14) !important;
+  color: #cbd5e1 !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
 }
 
 body.theme-light .problem-card-widget.problem-stamp-ghost-fx .btn-card-stamp.stamp-btn-just-pressed {
-  color: #2563eb !important;
-  background: rgba(37, 99, 235, 0.11) !important;
+  color: #475569 !important;
+  background: #f8fafc !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
 }
 
 .problem-card-widget.problem-stamp-ghost-fx .problem-card-body {

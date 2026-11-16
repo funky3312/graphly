@@ -556,7 +556,7 @@ class GraphApp {
     }, { capture: true, passive: true });
 
     // 4) PC 마우스 & 애플펜슬 공중 호버링 지원 + 터치 직후 Sticky :hover 잔상 제거
-    const HOVER_ICON_SELECTOR = '.rail-btn, .quick-fab-btn, .rail-zoom-action-btn';
+    const HOVER_ICON_SELECTOR = '.rail-btn, .quick-fab-btn, .rail-zoom-action-btn, .btn-card-stamp';
     let currentHoveredIcon = null;
     let suppressHoverUntil = 0;
 
