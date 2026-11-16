@@ -1509,6 +1509,8 @@
 
     let hoveredHandleInfo = null;
     let draggingHandleState = null;
+    let isScrubbingCanvas = false;
+    let isSliderDragging = false;
 
     // --- 정적 배경 오프스크린 캐시 & 무할당(Zero-Allocation) TypedArray 버퍼 ---
     const CURVE_STEPS = 480;
@@ -1557,23 +1559,19 @@
       targetCtx.stroke();
     }
 
-    function drawQuadrantPillBadge(targetCtx, text, bx, by, pal) {
+    function drawQuadrantMathHeader(targetCtx, mathExpr, subRoleText, lx, ly, mathColor, pal) {
       targetCtx.save();
-      targetCtx.font = '600 11.8px Pretendard, system-ui, -apple-system, sans-serif';
-      const tw = targetCtx.measureText(text).width;
-      const bw = Math.ceil(tw + 18);
-      const bh = 23;
-      targetCtx.fillStyle = pal.badgeBg;
-      targetCtx.strokeStyle = pal.badgeBorder;
-      targetCtx.lineWidth = 1;
-      targetCtx.beginPath();
-      targetCtx.roundRect(bx, by, bw, bh, 6);
-      targetCtx.fill();
-      targetCtx.stroke();
-      targetCtx.fillStyle = pal.badgeText;
       targetCtx.textAlign = 'left';
-      targetCtx.textBaseline = 'middle';
-      targetCtx.fillText(text, bx + 9, by + bh * 0.5 + 0.5);
+      targetCtx.textBaseline = 'alphabetic';
+      targetCtx.font = 'italic 700 14.8px "STIX Two Text", "Times New Roman", Georgia, serif';
+      targetCtx.fillStyle = mathColor;
+      targetCtx.fillText(mathExpr, lx, ly);
+      if (subRoleText) {
+        const mw = targetCtx.measureText(mathExpr).width;
+        targetCtx.font = '500 11.2px Pretendard, system-ui, -apple-system, sans-serif';
+        targetCtx.fillStyle = pal.textMuted;
+        targetCtx.fillText(subRoleText, lx + mw + 8, ly - 0.5);
+      }
       targetCtx.restore();
     }
 
@@ -1593,24 +1591,24 @@
       const isLight = document.body.classList.contains('theme-light');
       const pal = isLight ? {
         bg: '#ffffff',
-        quadBg3: '#ffffff',
+        leftMaterialBg: '#f8fafc',
         divider: '#e2e8f0',
         axis: '#cbd5e1',
         axisArrow: '#94a3b8',
-        outerColor: '#dc2626',
-        innerColor: '#2563eb',
+        outerColor: '#c74440',
+        innerColor: '#0d9488',
         compColor: '#0f172a',
-        compGhost: 'rgba(15, 23, 42, 0.15)',
-        guideLine: 'rgba(220, 38, 38, 0.24)',
-        guideLineSnap: '#dc2626',
-        laserStroke: 'rgba(15, 23, 42, 0.40)',
-        laserDropStroke: 'rgba(100, 116, 139, 0.34)',
-        footDot: '#64748b',
-        badgeBg: 'rgba(255, 255, 255, 0.94)',
-        badgeBorder: '#e2e8f0',
-        badgeText: '#334155',
-        snapBg: 'rgba(248, 250, 252, 0.96)',
-        snapBorder: '#1e293b',
+        compGhost: 'rgba(15, 23, 42, 0.13)',
+        guideLine: 'rgba(148, 163, 184, 0.22)',
+        guideLineSnap: '#c74440',
+        laserStroke: 'rgba(15, 23, 42, 0.36)',
+        laserArrow: 'rgba(15, 23, 42, 0.52)',
+        laserDropStroke: 'rgba(148, 163, 184, 0.36)',
+        footDot: '#94a3b8',
+        outerHalo: 'rgba(199, 68, 64, 0.15)',
+        innerHalo: 'rgba(13, 148, 136, 0.15)',
+        snapBg: 'rgba(255, 255, 255, 0.96)',
+        snapBorder: '#cbd5e1',
         snapText: '#0f172a',
         textMain: '#0f172a',
         textMuted: '#64748b',
@@ -1618,24 +1616,24 @@
         handleFill: '#ffffff'
       } : {
         bg: '#0b1120',
-        quadBg3: '#0b1120',
-        divider: 'rgba(148, 163, 184, 0.22)',
-        axis: 'rgba(148, 163, 184, 0.38)',
-        axisArrow: '#94a3b8',
-        outerColor: '#f87171',
-        innerColor: '#60a5fa',
+        leftMaterialBg: '#080d1a',
+        divider: 'rgba(148, 163, 184, 0.14)',
+        axis: 'rgba(148, 163, 184, 0.32)',
+        axisArrow: '#64748b',
+        outerColor: '#f07167',
+        innerColor: '#2dd4bf',
         compColor: '#f8fafc',
-        compGhost: 'rgba(248, 250, 252, 0.20)',
-        guideLine: 'rgba(248, 113, 113, 0.26)',
-        guideLineSnap: '#f87171',
-        laserStroke: 'rgba(226, 232, 240, 0.46)',
-        laserDropStroke: 'rgba(148, 163, 184, 0.36)',
-        footDot: '#94a3b8',
-        badgeBg: 'rgba(15, 23, 42, 0.88)',
-        badgeBorder: 'rgba(148, 163, 184, 0.26)',
-        badgeText: '#e2e8f0',
+        compGhost: 'rgba(248, 250, 252, 0.16)',
+        guideLine: 'rgba(148, 163, 184, 0.15)',
+        guideLineSnap: '#f07167',
+        laserStroke: 'rgba(226, 232, 240, 0.42)',
+        laserArrow: 'rgba(226, 232, 240, 0.62)',
+        laserDropStroke: 'rgba(148, 163, 184, 0.28)',
+        footDot: '#64748b',
+        outerHalo: 'rgba(240, 113, 103, 0.18)',
+        innerHalo: 'rgba(45, 212, 191, 0.18)',
         snapBg: 'rgba(15, 23, 42, 0.95)',
-        snapBorder: '#cbd5e1',
+        snapBorder: 'rgba(203, 213, 225, 0.35)',
         snapText: '#f8fafc',
         textMain: '#f8fafc',
         textMuted: '#94a3b8',
@@ -1664,24 +1662,23 @@
         sctx.fillStyle = pal.bg;
         sctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
 
-        if (pal.quadBg3 !== pal.bg) {
-          sctx.fillStyle = pal.quadBg3;
-          sctx.fillRect(midX, 0, LOGICAL_W - midX, midY);
+        // 좌측 재료 사분면(겉함수 · 속함수) 미세 톤 분리로 점선 없이도 정돈된 공간감 형성
+        if (pal.leftMaterialBg !== pal.bg) {
+          sctx.fillStyle = pal.leftMaterialBg;
+          sctx.fillRect(0, 0, midX, LOGICAL_H);
         }
 
-        // 4분할 정밀 십자 점선 구분선
+        // 4분할 정밀 1px 헤어라인 실선 구분선 (점선 노이즈 제거)
         sctx.strokeStyle = pal.divider;
-        sctx.lineWidth = 1.2;
-        sctx.setLineDash([4, 4]);
+        sctx.lineWidth = 1.0;
         sctx.beginPath();
         sctx.moveTo(midX, 0);
         sctx.lineTo(midX, LOGICAL_H);
         sctx.moveTo(0, midY);
         sctx.lineTo(LOGICAL_W, midY);
         sctx.stroke();
-        sctx.setLineDash([]);
 
-        // 좌상단 겉함수 극점/첨점에서 좌하단 속함수 치역 영역으로 내려오는 세로 매칭 보조선
+        // 좌상단 겉함수 극점/첨점 세로 매칭 보조선 (평소엔 극세 무채색 실선, 스냅 시에만 강조)
         for (const feat of outerCriticalFeatures) {
           const gx = toScreenT(feat.t);
           if (gx < 20 || gx > midX - 20) continue;
@@ -1692,8 +1689,8 @@
           );
           sctx.save();
           sctx.strokeStyle = isSnappedHere ? pal.guideLineSnap : pal.guideLine;
-          sctx.lineWidth = isSnappedHere ? 1.9 : 1.1;
-          sctx.setLineDash(isSnappedHere ? [5, 3] : [3, 4]);
+          sctx.lineWidth = isSnappedHere ? 1.75 : 1.0;
+          if (isSnappedHere) sctx.setLineDash([4, 3]);
           const startSy = isFinite(feat.y) ? Math.max(22, Math.min(midY - 14, toScreenY(feat.y))) : 36;
           sctx.beginPath();
           sctx.moveTo(gx, startSy);
@@ -1709,15 +1706,15 @@
         sctx.clip();
 
         sctx.strokeStyle = pal.axis;
-        sctx.lineWidth = 1.25;
+        sctx.lineWidth = 1.2;
         sctx.beginPath();
         sctx.moveTo(toScreenT(tMin) - 8, topOriginY);
         sctx.lineTo(toScreenT(tMax) + 12, topOriginY);
         sctx.moveTo(topOriginX, toScreenY(yMin) + 8);
         sctx.lineTo(topOriginX, toScreenY(yMax) - 8);
         sctx.stroke();
-        drawArrowHeadOnCtx(sctx, toScreenT(tMax) + 14, topOriginY, 1, 0, 6.5, pal.axisArrow);
-        drawArrowHeadOnCtx(sctx, topOriginX, toScreenY(yMax) - 10, 0, -1, 6.5, pal.axisArrow);
+        drawArrowHeadOnCtx(sctx, toScreenT(tMax) + 14, topOriginY, 1, 0, 6.0, pal.axisArrow);
+        drawArrowHeadOnCtx(sctx, topOriginX, toScreenY(yMax) - 10, 0, -1, 6.0, pal.axisArrow);
 
         for (let i = 0; i <= CURVE_STEPS; i++) {
           const t = tMin + (i / CURVE_STEPS) * (tMax - tMin);
@@ -1731,13 +1728,13 @@
           }
         }
         sctx.strokeStyle = pal.outerColor;
-        sctx.lineWidth = 2.6;
+        sctx.lineWidth = 2.45;
         sctx.lineJoin = 'round';
         sctx.lineCap = 'round';
         drawSafeTypedCurveOnCtx(sctx, bufSx, bufSy, bufValid, CURVE_STEPS + 1);
         sctx.restore();
 
-        drawQuadrantPillBadge(sctx, '① 겉함수 y = f(t)', 14, 10, pal);
+        drawQuadrantMathHeader(sctx, 'y = f(t)', '겉함수', 18, 25, pal.outerColor, pal);
         sctx.font = 'italic 600 12.5px "STIX Two Text", "Times New Roman", serif';
         sctx.fillStyle = pal.textMuted;
         sctx.fillText('t', toScreenT(tMax) + 5, topOriginY + 15);
@@ -1750,15 +1747,15 @@
         sctx.clip();
 
         sctx.strokeStyle = pal.axis;
-        sctx.lineWidth = 1.25;
+        sctx.lineWidth = 1.2;
         sctx.beginPath();
         sctx.moveTo(toScreenT(tMin) - 8, botOriginY);
         sctx.lineTo(toScreenT(tMax) + 12, botOriginY);
         sctx.moveTo(botOriginX, toScreenLeftX(xMin) - 8);
         sctx.lineTo(botOriginX, toScreenLeftX(xMax) + 12);
         sctx.stroke();
-        drawArrowHeadOnCtx(sctx, toScreenT(tMax) + 14, botOriginY, 1, 0, 6.5, pal.axisArrow);
-        drawArrowHeadOnCtx(sctx, botOriginX, toScreenLeftX(xMax) + 14, 0, 1, 6.5, pal.axisArrow);
+        drawArrowHeadOnCtx(sctx, toScreenT(tMax) + 14, botOriginY, 1, 0, 6.0, pal.axisArrow);
+        drawArrowHeadOnCtx(sctx, botOriginX, toScreenLeftX(xMax) + 14, 0, 1, 6.0, pal.axisArrow);
 
         for (let i = 0; i <= CURVE_STEPS; i++) {
           const x = xMin + (i / CURVE_STEPS) * (xMax - xMin);
@@ -1772,17 +1769,17 @@
           }
         }
         sctx.strokeStyle = pal.innerColor;
-        sctx.lineWidth = 2.6;
+        sctx.lineWidth = 2.45;
         sctx.lineJoin = 'round';
         sctx.lineCap = 'round';
         drawSafeTypedCurveOnCtx(sctx, bufSx, bufSy, bufValid, CURVE_STEPS + 1);
         sctx.restore();
 
-        drawQuadrantPillBadge(sctx, '② 속함수 (90° 회전) t = g(x)', 14, midY + 10, pal);
-        sctx.font = '500 11px Pretendard, system-ui, sans-serif';
+        drawQuadrantMathHeader(sctx, 't = g(x)', '속함수 (90° 회전)', 18, midY + 25, pal.innerColor, pal);
+        sctx.font = 'italic 600 12.5px "STIX Two Text", "Times New Roman", serif';
         sctx.fillStyle = pal.textMuted;
-        sctx.fillText('치역 t →', toScreenT(tMax) - 36, botOriginY - 7);
-        sctx.fillText('입력 x ↓', botOriginX + 8, LOGICAL_H - 11);
+        sctx.fillText('t', toScreenT(tMax) + 5, botOriginY + 15);
+        sctx.fillText('x', botOriginX + 7, Math.min(LOGICAL_H - 9, toScreenLeftX(xMax) + 15));
 
         // 3. 우상단 (Quadrant 3): 최종 합성함수 y = f(g(x))
         sctx.save();
@@ -1791,15 +1788,15 @@
         sctx.clip();
 
         sctx.strokeStyle = pal.axis;
-        sctx.lineWidth = 1.25;
+        sctx.lineWidth = 1.2;
         sctx.beginPath();
         sctx.moveTo(toScreenRightX(xMin) - 8, rOriginY);
         sctx.lineTo(toScreenRightX(xMax) + 12, rOriginY);
         sctx.moveTo(rOriginX, toScreenY(yMin) + 8);
         sctx.lineTo(rOriginX, toScreenY(yMax) - 8);
         sctx.stroke();
-        drawArrowHeadOnCtx(sctx, toScreenRightX(xMax) + 14, rOriginY, 1, 0, 6.5, pal.axisArrow);
-        drawArrowHeadOnCtx(sctx, rOriginX, toScreenY(yMax) - 10, 0, -1, 6.5, pal.axisArrow);
+        drawArrowHeadOnCtx(sctx, toScreenRightX(xMax) + 14, rOriginY, 1, 0, 6.0, pal.axisArrow);
+        drawArrowHeadOnCtx(sctx, rOriginX, toScreenY(yMax) - 10, 0, -1, 6.0, pal.axisArrow);
 
         for (let i = 0; i <= COMP_STEPS; i++) {
           const x = xMin + (i / COMP_STEPS) * (xMax - xMin);
@@ -1816,11 +1813,11 @@
         sctx.lineJoin = 'round';
         sctx.lineCap = 'round';
         sctx.strokeStyle = isAutoPlaying ? pal.compGhost : pal.compColor;
-        sctx.lineWidth = isAutoPlaying ? 2.1 : 2.9;
+        sctx.lineWidth = isAutoPlaying ? 2.0 : 3.0;
         drawSafeTypedCurveOnCtx(sctx, compSx, compSy, compValid, COMP_STEPS + 1);
         sctx.restore();
 
-        drawQuadrantPillBadge(sctx, '③ 최종 합성함수 y = f(g(x))', midX + 14, 10, pal);
+        drawQuadrantMathHeader(sctx, 'y = f(g(x))', '합성함수', midX + 18, 25, pal.compColor, pal);
         sctx.font = 'italic 600 12.5px "STIX Two Text", "Times New Roman", serif';
         sctx.fillStyle = pal.textMuted;
         sctx.fillText('x', toScreenRightX(xMax) + 5, rOriginY + 15);
@@ -1855,14 +1852,14 @@
         ctx.rect(midX + 10, 35, LOGICAL_W - midX - 20, midY - 43);
         ctx.clip();
         ctx.strokeStyle = pal.compColor;
-        ctx.lineWidth = 3.0;
+        ctx.lineWidth = 3.1;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
         drawSafeTypedCurveOnCtx(ctx, compSx, compSy, compValid, cutoffCount, 240, tipOk, tipSx, tipSy);
         ctx.restore();
       }
 
-      // 4. 1:1 직교 추적선 & 이동 점 렌더링 (무채색 슬레이트 점선 + 정밀 벡터 노드)
+      // 4. 1:1 직교 추적선 & 이동 점 렌더링 (실선 흐름선 + 진행 화살촉 + 정밀 노드)
       if (isFinite(tVal) && isFinite(yVal) && !draggingHandleState) {
         const sxT = toScreenT(tVal);
         const syLeftX = toScreenLeftX(currentX);
@@ -1874,10 +1871,9 @@
         ctx.rect(8, 35, LOGICAL_W - 16, LOGICAL_H - 43);
         ctx.clip();
 
-        ctx.setLineDash([3.5, 3.5]);
-        ctx.lineWidth = 1.35;
-
-        // 축 수선의 발 보조선 (입력 x축 -> g(x), 합성점 -> 우상단 x축)
+        // 축 수선의 발 보조선 (미세 점선으로 힘을 빼서 주 흐름선 강조)
+        ctx.setLineDash([2.5, 3]);
+        ctx.lineWidth = 1.15;
         ctx.strokeStyle = pal.laserDropStroke;
         ctx.beginPath();
         ctx.moveTo(botOriginX, syLeftX);
@@ -1885,18 +1881,29 @@
         ctx.moveTo(sxRightX, syTopY);
         ctx.lineTo(sxRightX, rOriginY);
         ctx.stroke();
+        ctx.setLineDash([]);
 
-        // 핵심 함수간 투영선 (g(x) -> f(t) -> f(g(x)))
+        // 핵심 함수간 발사 투영선: 속함수 g(x) ──▲──> 겉함수 f(t) ──▶──> 최종 f(g(x))
         ctx.strokeStyle = pal.laserStroke;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.45;
+        ctx.lineJoin = 'round';
         ctx.beginPath();
         ctx.moveTo(sxT, syLeftX);
         ctx.lineTo(sxT, syTopY);
         ctx.lineTo(sxRightX, syTopY);
         ctx.stroke();
-        ctx.setLineDash([]);
 
-        const drawTrackDot = (px, py, color, r = 5.2, ringW = 1.8) => {
+        // 시선 흐름 안내용 마이크로 화살촉 (선분이 충분히 길 때만 깔끔하게 표기)
+        if (Math.abs(syLeftX - syTopY) > 46) {
+          const arrowY = (syLeftX > midY + 12 && syTopY < midY - 12) ? midY : (syLeftX + syTopY) * 0.5;
+          drawArrowHeadOnCtx(ctx, sxT, arrowY, 0, syTopY < syLeftX ? -1 : 1, 5.4, pal.laserArrow);
+        }
+        if (Math.abs(sxRightX - sxT) > 46) {
+          const arrowX = (sxT < midX - 12 && sxRightX > midX + 12) ? midX : (sxT + sxRightX) * 0.5;
+          drawArrowHeadOnCtx(ctx, arrowX, syTopY, sxRightX >= sxT ? 1 : -1, 0, 5.4, pal.laserArrow);
+        }
+
+        const drawTrackDot = (px, py, color, r = 4.8, ringW = 1.7) => {
           ctx.beginPath();
           ctx.arc(px, py, r, 0, Math.PI * 2);
           ctx.fillStyle = color;
@@ -1908,11 +1915,11 @@
           }
         };
 
-        drawTrackDot(botOriginX, syLeftX, pal.footDot, 3.3, 1.2);
-        drawTrackDot(sxRightX, rOriginY, pal.footDot, 3.3, 1.2);
-        drawTrackDot(sxT, syLeftX, pal.innerColor, 5.0, 1.8);
-        drawTrackDot(sxT, syTopY, pal.outerColor, 5.0, 1.8);
-        drawTrackDot(sxRightX, syTopY, pal.compColor, 5.8, 2.0);
+        drawTrackDot(botOriginX, syLeftX, pal.footDot, 2.5, 0);
+        drawTrackDot(sxRightX, rOriginY, pal.footDot, 2.5, 0);
+        drawTrackDot(sxT, syLeftX, pal.innerColor, 4.6, 1.7);
+        drawTrackDot(sxT, syTopY, pal.outerColor, 4.6, 1.7);
+        drawTrackDot(sxRightX, syTopY, pal.compColor, 5.4, 2.0);
 
         if (activeSnapLabel) {
           const badgeText = `${activeSnapLabel}  (x = ${currentX.toFixed(2)})`;
@@ -1924,7 +1931,7 @@
           const by = Math.max(38, Math.min(midY - bh - 10, syTopY - 30));
           ctx.fillStyle = pal.snapBg;
           ctx.strokeStyle = pal.snapBorder;
-          ctx.lineWidth = 1.2;
+          ctx.lineWidth = 1.1;
           ctx.beginPath();
           ctx.roundRect(bx, by, bw, bh, 6);
           ctx.fill();
@@ -1939,8 +1946,9 @@
         ctx.restore();
       }
 
-      // 5. 개형 직접 조작 핸들 렌더링 (겉함수 F & 속함수 G)
-      if (!isAutoPlaying) {
+      // 5. 개형 직접 조작 핸들 렌더링 (평소엔 3.8px 은은한 점, 호버/드래그 시 확대, 재생·스크러빙 중엔 숨김)
+      const shouldShowHandles = Boolean(draggingHandleState || (!isAutoPlaying && !isScrubbingCanvas && !isSliderDragging));
+      if (shouldShowHandles) {
         const handlesF = getInteractiveHandlesForSlot(slotF, 'F');
         const handlesG = getInteractiveHandlesForSlot(slotG, 'G');
         const allHandles = [...handlesF, ...handlesG];
@@ -1960,24 +1968,28 @@
             hoveredHandleInfo.mode === h.mode
           );
           const strokeCol = h.slotRole === 'F' ? pal.outerColor : pal.innerColor;
-          const rad = isDraggingThis ? 7.0 : (isHoveredThis ? 6.4 : 5.4);
+          const isActiveH = isDraggingThis || isHoveredThis;
+          const rad = isDraggingThis ? 6.8 : (isHoveredThis ? 6.0 : 3.8);
 
           ctx.save();
-          if (isDraggingThis || isHoveredThis) {
+          if (isActiveH) {
             ctx.beginPath();
             ctx.arc(h.sx, h.sy, rad + 4.5, 0, Math.PI * 2);
-            ctx.fillStyle = h.slotRole === 'F' ? 'rgba(220, 38, 38, 0.16)' : 'rgba(37, 99, 235, 0.16)';
+            ctx.fillStyle = h.slotRole === 'F' ? pal.outerHalo : pal.innerHalo;
             ctx.fill();
+          } else {
+            ctx.globalAlpha = 0.78;
           }
           ctx.beginPath();
           ctx.arc(h.sx, h.sy, rad, 0, Math.PI * 2);
           ctx.fillStyle = isDraggingThis ? strokeCol : pal.handleFill;
           ctx.fill();
-          ctx.lineWidth = 2.1;
+          ctx.lineWidth = isActiveH ? 2.1 : 1.65;
           ctx.strokeStyle = strokeCol;
           ctx.stroke();
+          ctx.globalAlpha = 1.0;
 
-          if (isDraggingThis || isHoveredThis) {
+          if (isActiveH) {
             const tip = h.name || '조절점';
             ctx.font = '600 11px Pretendard, system-ui, sans-serif';
             const tw = ctx.measureText(tip).width + 12;
@@ -2004,7 +2016,7 @@
           const by = activeGuideSnapInfo.quad === 'G' ? (midY + 38) : (midY - 32);
           ctx.fillStyle = pal.snapBg;
           ctx.strokeStyle = pal.snapBorder;
-          ctx.lineWidth = 1.3;
+          ctx.lineWidth = 1.2;
           ctx.beginPath();
           ctx.roundRect(bx, by, tw, 23, 6);
           ctx.fill();
@@ -2050,10 +2062,10 @@
       const isMono = Boolean(this.isMonochromeMode);
 
       const bgCol = isMono ? '#ffffff' : ((curTheme && curTheme.bg) ? curTheme.bg : (isLight ? '#ffffff' : '#0f1e19'));
-      const dividerCol = isMono ? 'rgba(15, 23, 42, 0.16)' : (isLight ? 'rgba(148, 163, 184, 0.42)' : 'rgba(148, 163, 184, 0.24)');
+      const dividerCol = isMono ? 'rgba(15, 23, 42, 0.14)' : (isLight ? 'rgba(148, 163, 184, 0.30)' : 'rgba(148, 163, 184, 0.18)');
       const axisCol = isMono ? '#0f172a' : (isLight ? '#1e293b' : 'rgba(248, 250, 252, 0.85)');
-      const outerCol = isMono ? '#0f172a' : (isLight ? '#dc2626' : '#ff6b6b');
-      const innerCol = isMono ? '#0f172a' : (isLight ? '#2563eb' : '#54a0ff');
+      const outerCol = isMono ? '#0f172a' : (isLight ? '#c74440' : '#f07167');
+      const innerCol = isMono ? '#0f172a' : (isLight ? '#0d9488' : '#2dd4bf');
       const compCol = isMono ? '#0f172a' : (isLight ? '#0f172a' : '#f8fafc');
 
       const padX = 54;
@@ -2080,11 +2092,10 @@
       octx.fillStyle = bgCol;
       octx.fillRect(0, 0, cardW, cardH);
 
-      // 은은한 십자 구획선 (선생님의 필기·보조선을 방해하지 않는 최소 명암)
+      // 은은한 1px 실선 십자 구획선 (점선 노이즈 제거, 필기 보조선 방해 0%)
       octx.save();
       octx.strokeStyle = dividerCol;
-      octx.lineWidth = 1.2;
-      octx.setLineDash([5, 6]);
+      octx.lineWidth = 1.0;
       octx.beginPath();
       octx.moveTo(cMidX, 18);
       octx.lineTo(cMidX, cardH - 18);
@@ -2504,6 +2515,8 @@
       draggingHandleState = null;
       hoveredHandleInfo = null;
       activeGuideSnapInfo = null;
+      isScrubbingCanvas = false;
+      isSliderDragging = false;
       this.isNAxisStudioOpen = false;
       modal.classList.remove('show');
       setTimeout(() => {
@@ -2613,7 +2626,6 @@
       return best;
     };
 
-    let isScrubbingCanvas = false;
     const scrubFromLogicalPos = (mx, my) => {
       if (isAutoPlaying) return;
       let nextX = null;
@@ -2710,6 +2722,7 @@
       }
       if (isScrubbingCanvas) {
         isScrubbingCanvas = false;
+        renderStudio();
         try { canvas.releasePointerCapture(e.pointerId); } catch (_) { }
       }
     };
@@ -2717,6 +2730,22 @@
     canvas.addEventListener('pointercancel', finishPointerInteraction);
 
     if (sliderX) {
+      const endSliderDrag = () => {
+        if (isSliderDragging) {
+          isSliderDragging = false;
+          renderStudio();
+        }
+      };
+      sliderX.addEventListener('pointerdown', () => {
+        if (!isSliderDragging) {
+          isSliderDragging = true;
+          renderStudio();
+        }
+      });
+      sliderX.addEventListener('pointerup', endSliderDrag);
+      sliderX.addEventListener('pointercancel', endSliderDrag);
+      sliderX.addEventListener('change', endSliderDrag);
+      sliderX.addEventListener('blur', endSliderDrag);
       sliderX.addEventListener('input', (e) => {
         if (isAutoPlaying) stopAutoPlay();
         const rawX = parseFloat(e.target.value);

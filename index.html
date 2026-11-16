@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261116_127">
+  <link rel="stylesheet" href="style.css?v=20261116_128">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -3826,15 +3826,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261116_127"></script>
-  <script src="app-core.js?v=20261116_127"></script>
-  <script src="app-ink.js?v=20261116_127"></script>
-  <script src="app-pdf.js?v=20261116_127"></script>
-  <script src="app-cards.js?v=20261116_127"></script>
-  <script src="app-cloud.js?v=20261116_127"></script>
-  <script src="app-canvas.js?v=20261116_127"></script>
-  <script src="app-toolkit.js?v=20261116_127"></script>
-  <script src="app.js?v=20261116_127"></script>
+  <script src="engine.js?v=20261116_128"></script>
+  <script src="app-core.js?v=20261116_128"></script>
+  <script src="app-ink.js?v=20261116_128"></script>
+  <script src="app-pdf.js?v=20261116_128"></script>
+  <script src="app-cards.js?v=20261116_128"></script>
+  <script src="app-cloud.js?v=20261116_128"></script>
+  <script src="app-canvas.js?v=20261116_128"></script>
+  <script src="app-toolkit.js?v=20261116_128"></script>
+  <script src="app.js?v=20261116_128"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -3934,16 +3934,23 @@
       <div class="n-axis-studio-body">
         <canvas id="nAxisStudioCanvas" width="1140" height="680"></canvas>
 
-        <!-- 우하단: 캔버스 연동 함수 슬롯 & 추적 컨트롤러 -->
+        <!-- 우하단: 무테두리 클린 데크 (캔버스 연동 함수 슬롯 & 추적 플레이어) -->
         <div class="n-axis-control-quadrant">
           <div id="tabContentNAxisCustom" class="n-axis-tab-content">
             <div class="n-axis-input-group n-axis-visual-slots">
-              <!-- 속함수 g(x) 슬롯 -->
+              <!-- 속함수 g(x) 슬롯 + 우측 [겉 ⇄ 속] 교체 버튼 -->
               <div class="n-axis-slot-block">
                 <div class="n-axis-slot-top">
                   <div class="n-axis-slot-title">
-                    <span class="n-axis-slot-role inner">속함수 g(x)</span>
+                    <span class="n-axis-slot-role inner"><span>속함수 <i>g</i>(<i>x</i>)</span></span>
                     <span id="lblNAxisActiveG" class="n-axis-slot-active-name">#1 함수</span>
+                    <button type="button" id="btnNAxisSwap" class="n-axis-btn-swap-inline"
+                      title="겉함수와 속함수를 서로 맞바꿉니다 (f∘g ⇄ g∘f)"><svg width="13" height="13" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M7 16V4m0 0L3 8m4-4l4 4" />
+                        <path d="M17 8v12m0 0l4-4m-4 4l-4-4" />
+                      </svg><span>겉·속 교체</span></button>
                   </div>
                 </div>
                 <div id="nAxisChipsG" class="n-axis-quick-chips n-axis-chips-wrap"></div>
@@ -3953,7 +3960,7 @@
               <div class="n-axis-slot-block">
                 <div class="n-axis-slot-top">
                   <div class="n-axis-slot-title">
-                    <span class="n-axis-slot-role outer">겉함수 f(t)</span>
+                    <span class="n-axis-slot-role outer"><span>겉함수 <i>f</i>(<i>t</i>)</span></span>
                     <span id="lblNAxisActiveF" class="n-axis-slot-active-name">#2 함수</span>
                   </div>
                 </div>
@@ -3964,7 +3971,7 @@
             <!-- 입력 x 탐색 슬라이더 -->
             <div class="n-axis-slider-box">
               <div class="n-axis-slider-header">
-                <span>입력 x 탐색 슬라이더</span>
+                <span>입력 <i>x</i> 탐색</span>
                 <span id="lblNAxisCurX">x = 0.40</span>
               </div>
               <input type="range" id="sliderNAxisX" min="-3.14" max="3.14" step="0.01" value="0.4">
@@ -3972,7 +3979,7 @@
 
             <!-- 실시간 3단계 추적 스탯 (하위 호환 DOM 보존) -->
             <div class="n-axis-stats-grid">
-              <div class="n-axis-stat-card" style="border-left-color: #2563eb;">
+              <div class="n-axis-stat-card" style="border-left-color: #0d9488;">
                 <div class="n-axis-stat-label">1) 입력 x</div>
                 <div class="n-axis-stat-val" id="dispNAxisX">0.40</div>
               </div>
@@ -4005,15 +4012,6 @@
                   <line x1="21" y1="3" x2="14" y2="10" />
                   <line x1="3" y1="21" x2="10" y2="14" />
                 </svg><span>시야 맞춤</span></button>
-              <button type="button" id="btnNAxisSwap" class="n-axis-btn-outline"
-                title="겉함수와 속함수를 서로 맞바꿉니다 (f∘g ⇄ g∘f)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="16 3 21 3 21 8" />
-                  <line x1="4" y1="20" x2="21" y2="3" />
-                  <polyline points="21 16 21 21 16 21" />
-                  <line x1="15" y1="15" x2="21" y2="21" />
-                  <line x1="4" y1="4" x2="9" y2="9" />
-                </svg><span>겉 ⇄ 속</span></button>
             </div>
           </div>
         </div>

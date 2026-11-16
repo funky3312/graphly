@@ -18840,7 +18840,7 @@ body.theme-light .math-toolkit-item-desc {
   color: #64748b;
 }
 
-/* N축 합성함수 스튜디오 — Stitch 시안 1 (퓨어 라인-벡터 라이트형) & GPU 블러 제거 무지연 레이아웃 */
+/* N축 합성함수 스튜디오 — 뮤트 아카데믹 팔레트(안 A) & 우하단 무테두리 클린 데크 인테리어 */
 #modalNAxisStudio.n-axis-studio-backdrop,
 body.theme-light #modalNAxisStudio.n-axis-studio-backdrop {
   backdrop-filter: none !important;
@@ -18848,11 +18848,11 @@ body.theme-light #modalNAxisStudio.n-axis-studio-backdrop {
 }
 
 body.theme-light #modalNAxisStudio.n-axis-studio-backdrop {
-  background: rgba(15, 23, 42, 0.36);
+  background: rgba(15, 23, 42, 0.38);
 }
 
 body:not(.theme-light) #modalNAxisStudio.n-axis-studio-backdrop {
-  background: rgba(4, 8, 16, 0.72);
+  background: rgba(4, 8, 16, 0.74);
 }
 
 #modalNAxisStudio .n-axis-studio-card {
@@ -18865,19 +18865,19 @@ body:not(.theme-light) #modalNAxisStudio.n-axis-studio-backdrop {
 body.theme-light #modalNAxisStudio .n-axis-studio-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.14), 0 0 0 1px rgba(15, 23, 42, 0.03);
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.15), 0 0 0 1px rgba(15, 23, 42, 0.03);
 }
 
 body:not(.theme-light) #modalNAxisStudio .n-axis-studio-card {
   background: #0b1120;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 26px 64px rgba(0, 0, 0, 0.62);
 }
 
 #modalNAxisStudio .n-axis-studio-header {
   flex-shrink: 0;
   height: 48px;
-  padding: 0 16px;
+  padding: 0 18px;
 }
 
 body.theme-light #modalNAxisStudio .n-axis-studio-header {
@@ -18886,62 +18886,48 @@ body.theme-light #modalNAxisStudio .n-axis-studio-header {
 }
 
 body:not(.theme-light) #modalNAxisStudio .n-axis-studio-header {
-  background: #0f172a;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  background: #0b1120;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 #modalNAxisStudio .n-axis-header-title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
 }
 
 #modalNAxisStudio .n-axis-logo {
-  width: 28px;
-  height: 28px;
+  width: 27px;
+  height: 27px;
   border-radius: 7px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(148, 163, 184, 0.2);
   color: #e2e8f0;
 }
 
 body.theme-light #modalNAxisStudio .n-axis-logo {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
-  color: #1e293b;
+  color: #0f172a;
 }
 
 #modalNAxisStudio .n-axis-title-text {
   font-size: 14px;
   font-weight: 700;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
   color: #f8fafc;
 }
 
 body.theme-light #modalNAxisStudio .n-axis-title-text {
   color: #0f172a;
-  font-weight: 700;
 }
 
 #modalNAxisStudio .n-axis-tag-badge {
-  font-size: 11.5px;
-  font-weight: 500;
-  padding: 2.5px 10px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.12);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  color: #94a3b8;
-}
-
-body.theme-light #modalNAxisStudio .n-axis-tag-badge {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  color: #64748b;
-  font-weight: 500;
+  display: none !important;
 }
 
 #modalNAxisStudio .btn-n-axis-archive {
@@ -18953,8 +18939,8 @@ body.theme-light #modalNAxisStudio .n-axis-tag-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(203, 213, 225, 0.26);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(203, 213, 225, 0.24);
   color: #f1f5f9;
   box-shadow: none;
   cursor: pointer;
@@ -18962,7 +18948,7 @@ body.theme-light #modalNAxisStudio .n-axis-tag-badge {
 }
 
 #modalNAxisStudio .btn-n-axis-archive:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.13);
   border-color: rgba(226, 232, 240, 0.42);
   color: #ffffff;
   transform: none;
@@ -18974,17 +18960,16 @@ body.theme-light #modalNAxisStudio .n-axis-tag-badge {
 }
 
 body.theme-light #modalNAxisStudio .btn-n-axis-archive {
-  background: #ffffff;
+  background: #f8fafc;
   border: 1px solid #cbd5e1;
-  color: #1e293b;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
 }
 
 body.theme-light #modalNAxisStudio .btn-n-axis-archive:hover {
-  background: #f8fafc;
+  background: #f1f5f9;
   border-color: #94a3b8;
   color: #0f172a;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.07);
 }
 
 #modalNAxisStudio .btn-n-axis-close {
@@ -19004,7 +18989,7 @@ body.theme-light #modalNAxisStudio .btn-n-axis-archive:hover {
 
 #modalNAxisStudio .btn-n-axis-close:hover {
   background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(148, 163, 184, 0.24);
+  border-color: rgba(148, 163, 184, 0.2);
   color: #f8fafc;
   transform: none;
 }
@@ -19014,8 +18999,8 @@ body.theme-light #modalNAxisStudio .btn-n-axis-close {
 }
 
 body.theme-light #modalNAxisStudio .btn-n-axis-close:hover {
-  background: #f8fafc;
-  border-color: #e2e8f0;
+  background: #f1f5f9;
+  border-color: transparent;
   color: #0f172a;
 }
 
@@ -19041,37 +19026,32 @@ body.theme-light #modalNAxisStudio .n-axis-studio-body {
   max-height: 100%;
 }
 
+/* 우하단 4사분면 무테두리 클린 데크 (중첩 박스 테두리 완전 제거) */
 #modalNAxisStudio .n-axis-control-quadrant {
-  left: 50.8%;
-  right: 1.3%;
-  top: 51.8%;
-  bottom: 1.8%;
+  left: 49.3%;
+  right: 0;
+  top: 50.3%;
+  bottom: 0;
   width: auto;
   height: auto;
   max-height: none;
-  padding: clamp(9px, 1.55vh, 14px) clamp(11px, 1.3vw, 15px);
-  border-radius: 14px;
+  padding: clamp(11px, 2vh, 20px) clamp(15px, 2vw, 24px);
+  border-radius: 0;
   overflow-x: hidden;
   overflow-y: auto;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   transform: translateZ(0);
   contain: layout paint;
-  background: #0f172a;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-}
-
-body.theme-light #modalNAxisStudio .n-axis-control-quadrant {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 #modalNAxisStudio .n-axis-tab-content {
   height: 100%;
   min-height: 0;
-  gap: clamp(6px, 1.05vh, 10px);
+  gap: clamp(7px, 1.3vh, 13px);
   justify-content: space-between;
 }
 
@@ -19085,31 +19065,26 @@ body.theme-light #modalNAxisStudio .n-axis-control-quadrant {
   display: flex;
   flex-direction: column;
   justify-content: space-evenly;
-  gap: clamp(5px, 0.95vh, 9px);
-  padding: clamp(8px, 1.3vh, 12px) clamp(10px, 1.2vw, 14px);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-}
-
-body.theme-light #modalNAxisStudio .n-axis-visual-slots {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  gap: clamp(7px, 1.25vh, 12px);
+  padding: 0;
+  border-radius: 0;
+  background: transparent !important;
+  border: none !important;
 }
 
 #modalNAxisStudio .n-axis-slot-block {
   display: flex;
   flex-direction: column;
-  gap: clamp(4px, 0.75vh, 7px);
+  gap: clamp(5px, 0.9vh, 8px);
 }
 
 #modalNAxisStudio .n-axis-slot-block+.n-axis-slot-block {
-  padding-top: clamp(5px, 1vh, 9px);
-  border-top: 1px dashed rgba(148, 163, 184, 0.2);
+  padding-top: clamp(7px, 1.25vh, 12px);
+  border-top: 1px solid rgba(148, 163, 184, 0.13);
 }
 
 body.theme-light #modalNAxisStudio .n-axis-slot-block+.n-axis-slot-block {
-  border-top-color: #e2e8f0;
+  border-top-color: #f1f5f9;
 }
 
 #modalNAxisStudio .n-axis-slot-top {
@@ -19129,15 +19104,16 @@ body.theme-light #modalNAxisStudio .n-axis-slot-block+.n-axis-slot-block {
 }
 
 #modalNAxisStudio .n-axis-slot-role {
-  font-size: clamp(11.5px, 1.6vh, 12.8px);
+  font-size: clamp(11.8px, 1.65vh, 13px);
   font-weight: 600;
+  letter-spacing: -0.01em;
   padding: 0;
   border-radius: 0;
   background: transparent !important;
   color: #e2e8f0 !important;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 0;
   flex-shrink: 0;
 }
 
@@ -19145,36 +19121,82 @@ body.theme-light #modalNAxisStudio .n-axis-slot-role {
   color: #334155 !important;
 }
 
+#modalNAxisStudio .n-axis-slot-role i,
+#modalNAxisStudio .n-axis-slider-header i {
+  font-family: "STIX Two Text", "Times New Roman", Georgia, serif;
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.06em;
+}
+
 #modalNAxisStudio .n-axis-slot-role::before {
   content: '';
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
 #modalNAxisStudio .n-axis-slot-role.inner::before {
-  background: #2563eb;
+  background: #2dd4bf;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-slot-role.inner::before {
+  background: #0d9488;
 }
 
 #modalNAxisStudio .n-axis-slot-role.outer::before {
-  background: #dc2626;
+  background: #f07167;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-slot-role.outer::before {
+  background: #c74440;
 }
 
 #modalNAxisStudio .n-axis-slot-active-name {
-  margin-left: auto;
-  font-size: clamp(11px, 1.5vh, 12px);
-  font-weight: 500;
-  color: #94a3b8;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: none !important;
 }
 
-body.theme-light #modalNAxisStudio .n-axis-slot-active-name {
-  color: #64748b;
+/* 슬롯 헤더 우측 인라인 [겉 ⇄ 속 교체] 알약 버튼 */
+#modalNAxisStudio .n-axis-btn-swap-inline {
+  margin-left: auto;
+  height: clamp(24px, 3.4vh, 27px);
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: clamp(11px, 1.48vh, 11.8px);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #cbd5e1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.1s ease;
+}
+
+#modalNAxisStudio .n-axis-btn-swap-inline:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(203, 213, 225, 0.4);
+  color: #f8fafc;
+}
+
+#modalNAxisStudio .n-axis-btn-swap-inline:active {
+  transform: scale(0.97);
+}
+
+body.theme-light #modalNAxisStudio .n-axis-btn-swap-inline {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+}
+
+body.theme-light #modalNAxisStudio .n-axis-btn-swap-inline:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
 }
 
 #modalNAxisStudio .n-axis-chips-wrap {
@@ -19182,13 +19204,13 @@ body.theme-light #modalNAxisStudio .n-axis-slot-active-name {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 0;
-  max-height: 74px;
+  max-height: 76px;
   overflow-y: auto;
   padding-right: 2px;
 }
 
 #modalNAxisStudio .n-axis-chip {
-  min-height: clamp(29px, 4.2vh, 35px);
+  min-height: clamp(30px, 4.3vh, 36px);
   padding: 0 clamp(10px, 1.15vw, 15px);
   font-size: clamp(11.8px, 1.65vh, 13px);
   font-weight: 500;
@@ -19199,7 +19221,7 @@ body.theme-light #modalNAxisStudio .n-axis-slot-active-name {
   justify-content: center;
   gap: 5px;
   flex: 1 1 0;
-  min-width: 108px;
+  min-width: 106px;
   transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
 
@@ -19212,15 +19234,15 @@ body.theme-light #modalNAxisStudio .n-axis-slot-active-name {
 }
 
 #modalNAxisStudio .n-axis-canvas-chip {
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.45);
   color: #94a3b8;
   box-shadow: none;
 }
 
 #modalNAxisStudio .n-axis-canvas-chip:hover {
-  border-color: rgba(203, 213, 225, 0.42);
-  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(203, 213, 225, 0.38);
+  background: rgba(30, 41, 59, 0.72);
   color: #e2e8f0;
 }
 
@@ -19237,45 +19259,62 @@ body.theme-light #modalNAxisStudio .n-axis-canvas-chip:hover {
   color: #334155;
 }
 
-#modalNAxisStudio #nAxisChipsG .n-axis-canvas-chip.active,
-#modalNAxisStudio #nAxisChipsF .n-axis-canvas-chip.active {
-  background: rgba(241, 245, 249, 0.12);
-  border: 1.5px solid #cbd5e1;
-  color: #f8fafc;
+/* 속함수 g(x) 활성 칩 — 딥 아카데믹 틸 컬러 매칭 */
+#modalNAxisStudio #nAxisChipsG .n-axis-canvas-chip.active {
+  background: rgba(45, 212, 191, 0.13);
+  border: 1.5px solid #2dd4bf;
+  color: #5eead4;
   font-weight: 650;
   box-shadow: none;
 }
 
-body.theme-light #modalNAxisStudio #nAxisChipsG .n-axis-canvas-chip.active,
-body.theme-light #modalNAxisStudio #nAxisChipsF .n-axis-canvas-chip.active {
-  background: #f1f5f9;
-  border: 1.5px solid #1e293b;
-  color: #0f172a;
+body.theme-light #modalNAxisStudio #nAxisChipsG .n-axis-canvas-chip.active {
+  background: rgba(13, 148, 136, 0.08);
+  border: 1.5px solid #0d9488;
+  color: #0f766e;
   font-weight: 650;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  box-shadow: none;
 }
 
+/* 겉함수 f(t) 활성 칩 — 뮤트 테라코타 컬러 매칭 */
+#modalNAxisStudio #nAxisChipsF .n-axis-canvas-chip.active {
+  background: rgba(240, 113, 103, 0.14);
+  border: 1.5px solid #f07167;
+  color: #fca5a5;
+  font-weight: 650;
+  box-shadow: none;
+}
+
+body.theme-light #modalNAxisStudio #nAxisChipsF .n-axis-canvas-chip.active {
+  background: rgba(199, 68, 64, 0.08);
+  border: 1.5px solid #c74440;
+  color: #9f2d2a;
+  font-weight: 650;
+  box-shadow: none;
+}
+
+/* 무테두리 입력 x 슬라이더 섹션 */
 #modalNAxisStudio .n-axis-slider-box {
   flex-shrink: 0;
-  padding: clamp(6px, 1.15vh, 10px) clamp(10px, 1.25vw, 14px);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  padding: clamp(8px, 1.35vh, 12px) 0 clamp(2px, 0.4vh, 4px);
+  border-radius: 0;
+  background: transparent !important;
+  border: none !important;
+  border-top: 1px solid rgba(148, 163, 184, 0.13) !important;
 }
 
 body.theme-light #modalNAxisStudio .n-axis-slider-box {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  border-top-color: #f1f5f9 !important;
 }
 
 #modalNAxisStudio .n-axis-slider-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: clamp(11.5px, 1.6vh, 12.8px);
+  font-size: clamp(11.8px, 1.65vh, 13px);
   font-weight: 600;
   color: #cbd5e1;
-  margin-bottom: clamp(4px, 0.7vh, 7px);
+  margin-bottom: clamp(5px, 0.8vh, 8px);
 }
 
 body.theme-light #modalNAxisStudio .n-axis-slider-header {
@@ -19289,18 +19328,17 @@ body.theme-light #modalNAxisStudio .n-axis-slider-header {
   font-variant-numeric: tabular-nums;
   min-width: 82px;
   text-align: center;
-  padding: 2px 8px;
+  padding: 2px 9px;
   border-radius: 6px;
-  background: rgba(15, 23, 42, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.26);
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.22);
   color: #f8fafc;
 }
 
 body.theme-light #modalNAxisStudio #lblNAxisCurX {
-  background: #ffffff;
+  background: #f8fafc;
   border: 1px solid #e2e8f0;
   color: #0f172a;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
 }
 
 #modalNAxisStudio #sliderNAxisX {
@@ -19308,7 +19346,7 @@ body.theme-light #modalNAxisStudio #lblNAxisCurX {
   appearance: none;
   display: block;
   width: 100%;
-  height: clamp(16px, 2.3vh, 20px);
+  height: clamp(16px, 2.4vh, 20px);
   margin: 0;
   background: transparent;
   cursor: pointer;
@@ -19341,20 +19379,20 @@ body.theme-light #modalNAxisStudio #sliderNAxisX::-moz-range-track {
 #modalNAxisStudio #sliderNAxisX::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 15px;
-  height: 15px;
-  margin-top: -5.5px;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
   border-radius: 50%;
   background: #0f172a;
-  border: 2px solid #f8fafc;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  border: 2.2px solid #f8fafc;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.38);
   transition: transform 0.1s ease;
 }
 
 body.theme-light #modalNAxisStudio #sliderNAxisX::-webkit-slider-thumb {
   background: #ffffff;
-  border: 2px solid #1e293b;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14);
+  border: 2.2px solid #0f172a;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.16);
 }
 
 #modalNAxisStudio #sliderNAxisX::-webkit-slider-thumb:hover {
@@ -19362,38 +19400,39 @@ body.theme-light #modalNAxisStudio #sliderNAxisX::-webkit-slider-thumb {
 }
 
 #modalNAxisStudio #sliderNAxisX::-moz-range-thumb {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: #0f172a;
-  border: 2px solid #f8fafc;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  border: 2.2px solid #f8fafc;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.38);
 }
 
 body.theme-light #modalNAxisStudio #sliderNAxisX::-moz-range-thumb {
   background: #ffffff;
-  border: 2px solid #1e293b;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14);
+  border: 2.2px solid #0f172a;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.16);
 }
 
+/* 하단 플레이어 액션 바 ([▶ 자동 순항] · [배속] · [시야 맞춤]) */
 #modalNAxisStudio .n-axis-footer-actions {
   flex-shrink: 0;
   display: flex;
   align-items: stretch;
-  gap: clamp(5px, 0.7vw, 8px);
+  gap: clamp(6px, 0.8vw, 9px);
 }
 
 #modalNAxisStudio .n-axis-btn-action,
 #modalNAxisStudio .n-axis-btn-outline {
-  height: clamp(34px, 5.1vh, 41px);
-  padding: 0 clamp(8px, 0.95vw, 13px);
-  font-size: clamp(11.5px, 1.68vh, 13px);
+  height: clamp(34px, 5.1vh, 40px);
+  padding: 0 clamp(10px, 1.05vw, 15px);
+  font-size: clamp(11.8px, 1.68vh, 13px);
   font-weight: 600;
   border-radius: 9px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 6px;
   white-space: nowrap;
   min-width: 0;
   cursor: pointer;
@@ -19411,79 +19450,79 @@ body.theme-light #modalNAxisStudio #sliderNAxisX::-moz-range-thumb {
 }
 
 #modalNAxisStudio #btnNAxisAutoPlay {
-  flex: 1.15 1 0;
+  flex: 1.35 1 0;
   font-weight: 650;
-  background: rgba(241, 245, 249, 0.12);
-  border: 1.5px solid #cbd5e1;
-  color: #f8fafc;
-  box-shadow: none;
+  background: #f1f5f9;
+  border: 1px solid #f1f5f9;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
 #modalNAxisStudio #btnNAxisAutoPlay:hover {
-  background: rgba(241, 245, 249, 0.18);
-  border-color: #f8fafc;
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #0f172a;
 }
 
 #modalNAxisStudio #btnNAxisAutoPlay.is-playing {
-  background: rgba(241, 245, 249, 0.2);
-  border-color: #ffffff;
+  background: rgba(45, 212, 191, 0.16);
+  border-color: #2dd4bf;
+  color: #5eead4;
+  box-shadow: none;
 }
 
 body.theme-light #modalNAxisStudio #btnNAxisAutoPlay {
-  background: #f1f5f9;
-  border: 1.5px solid #1e293b;
-  color: #0f172a;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  background: #0f172a;
+  border: 1px solid #0f172a;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
 }
 
 body.theme-light #modalNAxisStudio #btnNAxisAutoPlay:hover {
-  background: #e2e8f0;
-  border-color: #0f172a;
-  color: #0f172a;
+  background: #1e293b;
+  border-color: #1e293b;
+  color: #ffffff;
 }
 
 body.theme-light #modalNAxisStudio #btnNAxisAutoPlay.is-playing {
-  background: #e2e8f0;
-  border-color: #0f172a;
+  background: #f1f5f9;
+  border: 1.5px solid #0f172a;
+  color: #0f172a;
+  box-shadow: none;
 }
 
-#modalNAxisStudio #btnNAxisAutoFit,
-#modalNAxisStudio #btnNAxisSwap {
-  flex: 1 1 0;
+#modalNAxisStudio #btnNAxisAutoFit {
+  flex: 0.95 1 0;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  border: 1px solid rgba(148, 163, 184, 0.22);
   color: #cbd5e1;
 }
 
-#modalNAxisStudio #btnNAxisAutoFit:hover,
-#modalNAxisStudio #btnNAxisSwap:hover {
+#modalNAxisStudio #btnNAxisAutoFit:hover {
   background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(203, 213, 225, 0.42);
+  border-color: rgba(203, 213, 225, 0.4);
   color: #f8fafc;
 }
 
-body.theme-light #modalNAxisStudio #btnNAxisAutoFit,
-body.theme-light #modalNAxisStudio #btnNAxisSwap {
+body.theme-light #modalNAxisStudio #btnNAxisAutoFit {
   background: #ffffff;
   border: 1px solid #e2e8f0;
   color: #334155;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02);
+  box-shadow: none;
 }
 
-body.theme-light #modalNAxisStudio #btnNAxisAutoFit svg,
-body.theme-light #modalNAxisStudio #btnNAxisSwap svg {
+body.theme-light #modalNAxisStudio #btnNAxisAutoFit svg {
   color: #475569;
 }
 
-body.theme-light #modalNAxisStudio #btnNAxisAutoFit:hover,
-body.theme-light #modalNAxisStudio #btnNAxisSwap:hover {
+body.theme-light #modalNAxisStudio #btnNAxisAutoFit:hover {
   background: #f8fafc;
   border-color: #cbd5e1;
   color: #0f172a;
 }
 
 #modalNAxisStudio .n-axis-speed-group {
-  height: clamp(34px, 5.1vh, 41px);
+  height: clamp(34px, 5.1vh, 40px);
   padding: 3px;
   border-radius: 9px;
   display: inline-flex;
@@ -19491,17 +19530,17 @@ body.theme-light #modalNAxisStudio #btnNAxisSwap:hover {
   gap: 2px;
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 body.theme-light #modalNAxisStudio .n-axis-speed-group {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: #f1f5f9;
+  border: 1px solid transparent;
 }
 
 #modalNAxisStudio .n-axis-speed-btn {
-  padding: 0 clamp(6px, 0.8vw, 10px);
-  font-size: clamp(11px, 1.55vh, 12.5px);
+  padding: 0 clamp(7px, 0.85vw, 11px);
+  font-size: clamp(11px, 1.55vh, 12.2px);
   font-weight: 500;
   border-radius: 6px;
   border: 1px solid transparent;
@@ -19528,14 +19567,14 @@ body.theme-light #modalNAxisStudio .n-axis-speed-btn:hover:not(.active) {
 
 #modalNAxisStudio .n-axis-speed-btn.active {
   background: #1e293b;
-  border-color: rgba(203, 213, 225, 0.34);
+  border-color: rgba(203, 213, 225, 0.28);
   color: #f8fafc;
   font-weight: 700;
 }
 
 body.theme-light #modalNAxisStudio .n-axis-speed-btn.active {
   background: #ffffff;
-  border-color: #cbd5e1;
+  border-color: rgba(15, 23, 42, 0.06);
   color: #0f172a;
   font-weight: 700;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
@@ -19543,7 +19582,7 @@ body.theme-light #modalNAxisStudio .n-axis-speed-btn.active {
 
 @media (max-height: 650px) {
   #modalNAxisStudio .n-axis-control-quadrant {
-    padding: 7px 9px;
+    padding: 8px 12px;
   }
 
   #modalNAxisStudio .n-axis-tab-content {
@@ -19551,8 +19590,7 @@ body.theme-light #modalNAxisStudio .n-axis-speed-btn.active {
   }
 
   #modalNAxisStudio .n-axis-visual-slots {
-    gap: 4px;
-    padding: 6px 8px;
+    gap: 5px;
   }
 
   #modalNAxisStudio .n-axis-slot-block {
@@ -19560,30 +19598,32 @@ body.theme-light #modalNAxisStudio .n-axis-speed-btn.active {
   }
 
   #modalNAxisStudio .n-axis-slot-block+.n-axis-slot-block {
-    padding-top: 4px;
+    padding-top: 5px;
   }
 
   #modalNAxisStudio .n-axis-slot-role {
-    font-size: 11px;
+    font-size: 11.2px;
   }
 
-  #modalNAxisStudio .n-axis-slot-active-name {
-    font-size: 11px;
+  #modalNAxisStudio .n-axis-btn-swap-inline {
+    height: 22px;
+    padding: 0 8px;
+    font-size: 10.5px;
   }
 
   #modalNAxisStudio .n-axis-chip {
-    min-height: 25px;
+    min-height: 26px;
     padding: 0 9px;
     font-size: 11.2px;
   }
 
   #modalNAxisStudio .n-axis-slider-box {
-    padding: 4px 9px;
+    padding: 5px 0 2px;
   }
 
   #modalNAxisStudio .n-axis-slider-header {
-    font-size: 11px;
-    margin-bottom: 2px;
+    font-size: 11.2px;
+    margin-bottom: 3px;
   }
 
   #modalNAxisStudio #sliderNAxisX {
