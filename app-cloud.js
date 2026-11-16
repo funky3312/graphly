@@ -843,6 +843,9 @@
       this.openGuideNoticeModal = (defaultTab = 'howto') => {
         if (!modalGuide) return;
         switchGuideTab(defaultTab);
+        if (typeof this.syncShortcutTooltipsAndGuideUI === 'function') {
+          this.syncShortcutTooltipsAndGuideUI();
+        }
         modalGuide.classList.add('show');
       };
       if (btnOpenGuideSettings) {
@@ -854,12 +857,52 @@
       if (btnCloseGuide && modalGuide) {
         btnCloseGuide.onclick = () => modalGuide.classList.remove('show');
       }
-      const copySupportEmailWithToast = () => {
-        try {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText('help@cubiolab.com').catch(() => { });
+      if (modalGuide) {
+        modalGuide.addEventListener('click', (e) => {
+          if (e.target === modalGuide) {
+            modalGuide.classList.remove('show');
           }
-        } catch (err) { }
+        });
+      }
+      const fallbackCopyEmailText = (txt) => {
+        try {
+          if (typeof document === 'undefined' || !document.body) return;
+          const ta = document.createElement('textarea');
+          ta.value = txt;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          ta.style.pointerEvents = 'none';
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); } catch (_) { }
+          ta.remove();
+        } catch (_) { }
+      };
+      const copySupportEmailWithToast = () => {
+        const supportEmail = 'help@cubiolab.com';
+        try {
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            navigator.clipboard.writeText(supportEmail).catch(() => fallbackCopyEmailText(supportEmail));
+          } else {
+            fallbackCopyEmailText(supportEmail);
+          }
+        } catch (err) {
+          fallbackCopyEmailText(supportEmail);
+        }
+        const badgeCopy = document.getElementById('badgeGuideEmailCopy');
+        if (btnCopySupportEmail) {
+          btnCopySupportEmail.classList.add('copied');
+          if (badgeCopy) badgeCopy.textContent = '✓ 복사됨';
+          if (btnCopySupportEmail._copyResetTimer) {
+            clearTimeout(btnCopySupportEmail._copyResetTimer);
+          }
+          btnCopySupportEmail._copyResetTimer = setTimeout(() => {
+            btnCopySupportEmail._copyResetTimer = null;
+            btnCopySupportEmail.classList.remove('copied');
+            if (badgeCopy) badgeCopy.textContent = '복사';
+          }, 1800);
+        }
         this.showToast('📋 help@cubiolab.com 이메일 주소가 복사되었습니다!');
       };
       if (btnCopySupportEmail) {

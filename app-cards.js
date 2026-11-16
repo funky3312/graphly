@@ -10738,6 +10738,604 @@
       return false;
     }
 
+    _resolveActiveGraphCopyTarget() {
+      if (!this.canvas) return { blocked: true, target: null };
+      if (this.isPdfModalOpen || this.isNAxisStudioOpen || this.isMathToolkitOpen || this._activeToolkitModalId) {
+        return { blocked: true, target: null };
+      }
+      if (this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive || this._isPromoBannerViewerPreviewOpen) {
+        return { blocked: true, target: null };
+      }
+      if (this.smartViewerState && this.smartViewerState.isOpen) {
+        return { blocked: true, target: null };
+      }
+      if (this.isGraphSnapMode || this.isPdfToGraphCropMode || this._isPdfCropChoiceMenuOpen) {
+        return { blocked: true, target: null };
+      }
+      if (this._isDraggingOrResizingAnyCard || this.isDrawingInk || this._isDrawingCardInk || this.isDrawingSticker) {
+        return { blocked: true, target: null };
+      }
+      if (typeof document !== 'undefined') {
+        if (document.body && document.body.classList.contains('viewer-graph-touch-mode')) {
+          return { blocked: true, target: null };
+        }
+        const viewerOverlay = document.getElementById('smartNoteViewerOverlay');
+        if (viewerOverlay && viewerOverlay.style.display !== 'none') {
+          return { blocked: true, target: null };
+        }
+        if (document.querySelector('.smart-modal-backdrop.show')) {
+          return { blocked: true, target: null };
+        }
+      }
+
+      // 1층 전체화면 그래프 작업실(!isGraphCovered) 열림 상태
+      if (!this.isGraphCovered) {
+        if (this.isDraggingCurve || this.isPanning || (this.draggedHandleIdx !== null && this.draggedHandleIdx !== undefined)) {
+          return { blocked: true, target: null };
+        }
+        if (Array.isArray(this.graphs) && this.graphs.length > 0) {
+          return {
+            blocked: false,
+            target: { mode: 'fullscreen_graph', label: '', totalGraphCards: 1 }
+          };
+        }
+        return { blocked: false, target: null, reason: 'empty' };
+      }
+
+      // 2층 칠판/통PDF 모드: 화면에 열려 있는 그래프 창(#graphCardWidget + extraGraphCards)만 수집 (문제 카드 제외)
+      const candidates = [];
+      const gWidget = (typeof document !== 'undefined') ? document.getElementById('graphCardWidget') : null;
+      if (
+        gWidget &&
+        gWidget.isConnected !== false &&
+        gWidget.style.display !== 'none' &&
+        !gWidget.classList.contains('problem-stamp-ghost-fx') &&
+        this._hasPrimaryGraphCard &&
+        this.graphCardData
+      ) {
+        const snap = this._getMutablePipCardSnapshot('primary');
+        if (snap && (snap._isDraggingCurve || snap._isPanningAxes || (snap.draggedHandleIdx !== null && snap.draggedHandleIdx !== undefined))) {
+          return { blocked: true, target: null };
+        }
+        const hasGraphContent = Boolean(
+          (snap && snap.isNAxisStudioCard) ||
+          (snap && Array.isArray(snap.graphs) && snap.graphs.length > 0)
+        );
+        if (hasGraphContent) {
+          const titleEl = gWidget.querySelector('.card-title-text');
+          candidates.push({
+            mode: 'pip_card',
+            cardRef: 'primary',
+            widget: gWidget,
+            isPrimary: true,
+            snap,
+            label: (titleEl && titleEl.textContent ? titleEl.textContent.trim() : '#1'),
+            isMinimized: Boolean(this.isGraphCardMinimized || gWidget.classList.contains('minimized')),
+            isManipulating: Boolean(
+              snap &&
+              !snap.isPipLocked &&
+              !snap.isNAxisStudioCard &&
+              (snap.isCurveSelected || (snap.selectedHandleIdx !== null && snap.selectedHandleIdx !== undefined))
+            ),
+            zIndex: parseInt(gWidget.style.zIndex, 10) || 150,
+            domOrder: 0
+          });
+        }
+      }
+
+      if (Array.isArray(this.extraGraphCards)) {
+        for (let idx = 0; idx < this.extraGraphCards.length; idx++) {
+          const c = this.extraGraphCards[idx];
+          if (
+            c &&
+            c.el &&
+            c.el.isConnected !== false &&
+            c.el.style.display !== 'none' &&
+            !c.el.classList.contains('problem-stamp-ghost-fx')
+          ) {
+            const snap = this._getMutablePipCardSnapshot(c);
+            if (snap && (snap._isDraggingCurve || snap._isPanningAxes || (snap.draggedHandleIdx !== null && snap.draggedHandleIdx !== undefined))) {
+              return { blocked: true, target: null };
+            }
+            const hasGraphContent = Boolean(
+              (snap && snap.isNAxisStudioCard) ||
+              (snap && Array.isArray(snap.graphs) && snap.graphs.length > 0)
+            );
+            if (hasGraphContent) {
+              const titleEl = c.el.querySelector('.card-title-text');
+              const fallbackLabel = c.caseIdx ? `#${c.caseIdx}` : `#${idx + 2}`;
+              candidates.push({
+                mode: 'pip_card',
+                cardRef: c,
+                widget: c.el,
+                isPrimary: false,
+                snap,
+                label: (titleEl && titleEl.textContent ? titleEl.textContent.trim() : fallbackLabel),
+                isMinimized: Boolean(c.isMin || c.el.classList.contains('minimized')),
+                isManipulating: Boolean(
+                  snap &&
+                  !snap.isPipLocked &&
+                  !snap.isNAxisStudioCard &&
+                  (snap.isCurveSelected || (snap.selectedHandleIdx !== null && snap.selectedHandleIdx !== undefined))
+                ),
+                zIndex: parseInt(c.el.style.zIndex, 10) || 150,
+                domOrder: 1 + idx
+              });
+            }
+          }
+        }
+      }
+
+      if (candidates.length === 0) {
+        return { blocked: false, target: null, reason: 'empty' };
+      }
+
+      const expanded = candidates.filter(it => !it.isMinimized);
+      if (expanded.length === 0) {
+        return { blocked: false, target: null, reason: 'minimized' };
+      }
+
+      expanded.sort((a, b) => {
+        if (a.isManipulating !== b.isManipulating) return a.isManipulating ? -1 : 1;
+        if (b.zIndex !== a.zIndex) return b.zIndex - a.zIndex;
+        const aPeek = (this._activePeekCardEl === a.widget) ? 1 : 0;
+        const bPeek = (this._activePeekCardEl === b.widget) ? 1 : 0;
+        if (bPeek !== aPeek) return bPeek - aPeek;
+        const aFocusPip = (this._lastFocusedPipCardRef === a.cardRef) ? 1 : 0;
+        const bFocusPip = (this._lastFocusedPipCardRef === b.cardRef) ? 1 : 0;
+        if (bFocusPip !== aFocusPip) return bFocusPip - aFocusPip;
+        return b.domOrder - a.domOrder;
+      });
+
+      const chosen = expanded[0];
+      chosen.totalGraphCards = expanded.length;
+      return { blocked: false, target: chosen };
+    }
+
+    async _buildCleanGraphCopyCanvas(target) {
+      if (!target || typeof document === 'undefined') return null;
+      const dpi = this.exportDPI || 300;
+      const normalizeWhiteCurveColor = (col) => {
+        const lower = String(col || '').trim().toLowerCase();
+        if (lower === '#ffffff' || lower === '#fff' || lower === '#f8fafc' || lower === '#f1f5f9') {
+          return '#1e293b';
+        }
+        return col;
+      };
+
+      // Case 1: 칠판 위 그래프 창(PiP 카드) — 손필기·스티커·핸들·테두리 0% 순수 그래프만 추출
+      if (target.mode === 'pip_card') {
+        const { cardRef, widget, isPrimary } = target;
+        if (!widget) return null;
+        const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
+        const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
+        const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
+        const cardH = Math.max(60, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (bodyEl && bodyEl.clientHeight) || (cardW * aspect)));
+        const liveSnap = this._getMutablePipCardSnapshot(cardRef);
+        if (!liveSnap) return null;
+
+        // 1-A. 합성함수 스튜디오 도면 카드(isNAxisStudioCard): 원본 무필기 도면 이미지 추출
+        if (liveSnap.isNAxisStudioCard) {
+          const srcCanvas = isPrimary ? this.graphCardImage : (cardRef && cardRef.sourceCanvas);
+          if (
+            srcCanvas &&
+            typeof HTMLCanvasElement !== 'undefined' &&
+            srcCanvas instanceof HTMLCanvasElement &&
+            !srcCanvas._evicted &&
+            srcCanvas.width > 4 &&
+            srcCanvas.height > 4
+          ) {
+            const outCv = document.createElement('canvas');
+            outCv.width = srcCanvas.width;
+            outCv.height = srcCanvas.height;
+            const octx = outCv.getContext('2d');
+            octx.fillStyle = '#ffffff';
+            octx.fillRect(0, 0, outCv.width, outCv.height);
+            octx.drawImage(srcCanvas, 0, 0);
+            return { canvas: outCv, width: outCv.width, height: outCv.height, dpi };
+          }
+
+          const imgEl = bodyEl ? bodyEl.querySelector('.problem-card-img') : null;
+          if (imgEl && imgEl.complete && imgEl.naturalWidth > 4 && imgEl.naturalHeight > 4) {
+            const outCv = document.createElement('canvas');
+            outCv.width = imgEl.naturalWidth;
+            outCv.height = imgEl.naturalHeight;
+            const octx = outCv.getContext('2d');
+            octx.fillStyle = '#ffffff';
+            octx.fillRect(0, 0, outCv.width, outCv.height);
+            octx.drawImage(imgEl, 0, 0);
+            return { canvas: outCv, width: outCv.width, height: outCv.height, dpi };
+          }
+
+          const dataUrl = (isPrimary
+            ? (this.graphCardData && (this.graphCardData.dataUrl || this.graphCardData.imgUrl))
+            : (cardRef && cardRef.dataUrl)) || (imgEl && imgEl.src) || '';
+          if (!dataUrl || typeof Image === 'undefined') return null;
+          const decodedImg = await new Promise((resolve) => {
+            const im = new Image();
+            im.onload = () => resolve(im);
+            im.onerror = () => resolve(null);
+            im.src = (typeof this._sanitizeCardImageUrl === 'function')
+              ? this._sanitizeCardImageUrl(dataUrl)
+              : dataUrl;
+          });
+          if (!decodedImg || !(decodedImg.naturalWidth > 4 && decodedImg.naturalHeight > 4)) return null;
+          const outCv = document.createElement('canvas');
+          outCv.width = decodedImg.naturalWidth;
+          outCv.height = decodedImg.naturalHeight;
+          const octx = outCv.getContext('2d');
+          octx.fillStyle = '#ffffff';
+          octx.fillRect(0, 0, outCv.width, outCv.height);
+          octx.drawImage(decodedImg, 0, 0);
+          return { canvas: outCv, width: outCv.width, height: outCv.height, dpi };
+        }
+
+        // 1-B. 일반 벡터 그래프 카드: 원본 카드 상태 무변경(읽기 전용 복제본) + 인쇄용 화이트 배경 고해상도 렌더링
+        if (!Array.isArray(liveSnap.graphs) || liveSnap.graphs.length === 0) return null;
+        const snapClone = JSON.parse(JSON.stringify(liveSnap));
+        snapClone.isPipLocked = true;
+        snapClone.isCurveSelected = false;
+        snapClone.selectedHandleIdx = null;
+        snapClone.draggedHandleIdx = null;
+        snapClone._isDraggingCurve = false;
+        snapClone._isPanningAxes = false;
+        snapClone._isResizingPipCard = false;
+        snapClone.isPipDropLineMode = false;
+        snapClone._pipDropLineHoverCand = null;
+        snapClone._pipDropLineHoverScissors = null;
+        snapClone._pipRenderedScissors = [];
+        snapClone.isPipSymPopoverOpen = false;
+        snapClone._activeSnapHint = null;
+        snapClone.axisSnapActiveX = false;
+        snapClone.axisSnapActiveY = false;
+        snapClone.symmetrySnapActive = false;
+        snapClone.snappedPoints = [];
+        snapClone._isPipCardSnapshot = true;
+        snapClone._pipCardW = cardW;
+        snapClone._pipCardH = cardH;
+        if (Array.isArray(snapClone.graphs)) {
+          snapClone.graphs.forEach(g => {
+            if (!g) return;
+            delete g._screenPts;
+            if (!this.isMonochromeMode && g.color) {
+              g.color = normalizeWhiteCurveColor(g.color);
+            }
+            if (g.type === 'general_expr' && Array.isArray(g.handles) && typeof window !== 'undefined' && window.SafeMathCompiler) {
+              g.handles.forEach(h => {
+                if (h && !h.fn && h.rawExpr) {
+                  const comp = window.SafeMathCompiler.compile(h.rawExpr);
+                  if (comp && comp.success) h.fn = comp.fn;
+                }
+              });
+            }
+          });
+        }
+
+        const maxSide = 4096;
+        const snapScale = Math.min(3.0, maxSide / Math.max(1, cardW), maxSide / Math.max(1, cardH));
+        const pxW = Math.max(1, Math.round(cardW * snapScale));
+        const pxH = Math.max(1, Math.round(cardH * snapScale));
+        const cropCanvas = document.createElement('canvas');
+        cropCanvas.width = pxW;
+        cropCanvas.height = pxH;
+        const cctx = cropCanvas.getContext('2d');
+
+        const prevThemeKey = this.currentThemeKey;
+        const printThemeKey = (this.canvasThemes && this.canvasThemes.white_paper) ? 'white_paper' : prevThemeKey;
+        try {
+          this.currentThemeKey = printThemeKey;
+          cctx.save();
+          cctx.scale(snapScale, snapScale);
+          this._withPipCardGraphState(snapClone, cardW, cardH, () => {
+            this.isCurveSelected = false;
+            this.selectedHandleIdx = null;
+            this.draggedHandleIdx = null;
+            this.isDropLineMode = false;
+            this.dropLineHoverCandidate = null;
+            this.dropLineHoverScissors = null;
+
+            cctx.fillStyle = '#ffffff';
+            cctx.fillRect(0, 0, cardW, cardH);
+
+            if (this.showGuides) this.drawGuides(cctx, this._snapshotCropBounds, true);
+            if (this.showInverseGuide) this.drawInverseGuide(cctx);
+            if (this.showAsymptotes) this.drawAllAsymptotes(cctx, true);
+            if (this.showAxes) this.drawAxes(cctx, this._snapshotCropBounds, true);
+            if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(cctx, this._snapshotCropBounds, true);
+            this.drawAllCurves(cctx, true);
+            if (this.usePiecewise && this.graphs.length >= 1) {
+              this.drawPiecewiseBoundaries(cctx, true);
+            }
+            this.drawDropLines(cctx, true);
+            if (this.useIntersectionDetector && this.graphs.length >= 1) {
+              this.updateIntersections();
+              this.drawIntersections(cctx, true);
+            }
+            this.drawTextLabels(cctx, true);
+          });
+          cctx.restore();
+        } finally {
+          this.currentThemeKey = prevThemeKey;
+        }
+
+        return { canvas: cropCanvas, width: pxW, height: pxH, dpi };
+      }
+
+      // Case 2: 1층 전체화면 그래프 작업실(!isGraphCovered) 열림 상태 — 필기·문제 제외 순수 그래프 도면만 스마트 크롭 추출
+      if (target.mode === 'fullscreen_graph') {
+        if (!Array.isArray(this.graphs) || this.graphs.length === 0) return null;
+        const sw = Math.max(320, Math.round(this.screenWidth || window.innerWidth || 1280));
+        const sh = Math.max(240, Math.round(this.screenHeight || window.innerHeight || 720));
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        const expand = (sx, sy, pad = 0) => {
+          if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
+          if (sx - pad < minX) minX = sx - pad;
+          if (sy - pad < minY) minY = sy - pad;
+          if (sx + pad > maxX) maxX = sx + pad;
+          if (sy + pad > maxY) maxY = sy + pad;
+        };
+
+        const orig = this.mathToScreen(0, 0);
+        if (this.showAxes) {
+          expand(orig.x, orig.y, 140);
+        }
+        this.graphs.forEach(g => {
+          if (!g || !Array.isArray(g.handles)) return;
+          g.handles.forEach(h => {
+            if (!h) return;
+            const wPos = (this.engine && typeof this.engine.getHandleWorldPos === 'function')
+              ? this.engine.getHandleWorldPos(g, h)
+              : { x: h.x || 0, y: h.y || 0 };
+            if (wPos && Number.isFinite(wPos.x) && Number.isFinite(wPos.y)) {
+              const s = this.mathToScreen(wPos.x, wPos.y);
+              expand(s.x, s.y, 160);
+            }
+          });
+        });
+        if (this.usePiecewise && Array.isArray(this.piecewiseBoundaries)) {
+          this.piecewiseBoundaries.forEach(bx => {
+            const s = this.mathToScreen(bx, 0);
+            expand(s.x, orig.y, 120);
+          });
+        }
+        if (Array.isArray(this.dropLines)) {
+          this.dropLines.forEach(dl => {
+            if (!dl) return;
+            const s = this.mathToScreen(dl.sourceX, dl.sourceY);
+            const fx = this.mathToScreen(dl.sourceX, 0);
+            const fy = this.mathToScreen(0, dl.sourceY);
+            expand(s.x, s.y, 55);
+            expand(fx.x, fx.y, 55);
+            expand(fy.x, fy.y, 55);
+          });
+        }
+        if (Array.isArray(this.textLabels)) {
+          this.textLabels.forEach(tl => {
+            if (!tl) return;
+            const s = this.mathToScreen(tl.mathX, tl.mathY);
+            expand(s.x, s.y, 65);
+          });
+        }
+
+        let rx, ry, rw, rh;
+        if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+          rw = Math.min(sw, 620);
+          rh = Math.min(sh, 500);
+          rx = Math.round((sw - rw) * 0.5);
+          ry = Math.round((sh - rh) * 0.5);
+        } else {
+          const minFrameW = Math.min(sw, 540);
+          const minFrameH = Math.min(sh, 440);
+          let cLeft = Math.max(0, Math.floor(minX));
+          let cTop = Math.max(0, Math.floor(minY));
+          let cRight = Math.min(sw, Math.ceil(maxX));
+          let cBottom = Math.min(sh, Math.ceil(maxY));
+          if (cRight - cLeft < minFrameW) {
+            const cx = (cLeft + cRight) * 0.5;
+            cLeft = Math.max(0, Math.round(cx - minFrameW * 0.5));
+            cRight = Math.min(sw, cLeft + minFrameW);
+            cLeft = Math.max(0, cRight - minFrameW);
+          }
+          if (cBottom - cTop < minFrameH) {
+            const cy = (cTop + cBottom) * 0.5;
+            cTop = Math.max(0, Math.round(cy - minFrameH * 0.5));
+            cBottom = Math.min(sh, cTop + minFrameH);
+            cTop = Math.max(0, cBottom - minFrameH);
+          }
+          rx = cLeft;
+          ry = cTop;
+          rw = Math.max(120, cRight - cLeft);
+          rh = Math.max(100, cBottom - cTop);
+        }
+
+        const maxSide = 4096;
+        const snapScale = Math.min(3.0, maxSide / rw, maxSide / rh);
+        const pxW = Math.max(1, Math.round(rw * snapScale));
+        const pxH = Math.max(1, Math.round(rh * snapScale));
+        const cropCanvas = document.createElement('canvas');
+        cropCanvas.width = pxW;
+        cropCanvas.height = pxH;
+        const cctx = cropCanvas.getContext('2d');
+
+        const prevThemeKey = this.currentThemeKey;
+        const prevRenderingSnap = this._isRenderingGraphSnapshot;
+        const prevCropBounds = this._snapshotCropBounds;
+        const prevCurveSel = this.isCurveSelected;
+        const prevHandleIdx = this.selectedHandleIdx;
+        const prevDropMode = this.isDropLineMode;
+        const savedColors = this.graphs.map(g => (g ? g.color : undefined));
+        const cropBounds = { minX: rx, maxX: rx + rw, minY: ry, maxY: ry + rh, x: rx, y: ry, w: rw, h: rh };
+
+        try {
+          if (this.canvasThemes && this.canvasThemes.white_paper) {
+            this.currentThemeKey = 'white_paper';
+          }
+          if (!this.isMonochromeMode) {
+            this.graphs.forEach(g => {
+              if (g && g.color) g.color = normalizeWhiteCurveColor(g.color);
+            });
+          }
+          this._isRenderingGraphSnapshot = true;
+          this._snapshotCropBounds = cropBounds;
+          this.isCurveSelected = false;
+          this.selectedHandleIdx = null;
+          this.isDropLineMode = false;
+
+          cctx.save();
+          cctx.scale(snapScale, snapScale);
+          cctx.translate(-rx, -ry);
+          cctx.fillStyle = '#ffffff';
+          cctx.fillRect(rx, ry, rw, rh);
+
+          cctx.save();
+          cctx.beginPath();
+          cctx.rect(rx, ry, rw, rh);
+          cctx.clip();
+
+          if (this.showGuides && !this.isCleanView) this.drawGuides(cctx, cropBounds, true);
+          if (this.showInverseGuide && !this.isCleanView) this.drawInverseGuide(cctx);
+          if (this.showAsymptotes) this.drawAllAsymptotes(cctx, true);
+          if (this.showAxes) this.drawAxes(cctx, cropBounds, true);
+          if (this.showAxes && this.showGridNumbers && !this.isCleanView) this.drawGridNumbers(cctx, cropBounds, true);
+          this.drawAllCurves(cctx, true);
+          if (this.usePiecewise && this.graphs.length >= 1) {
+            this.drawPiecewiseBoundaries(cctx, true);
+          }
+          if (this.dropLines && this.dropLines.length > 0) {
+            this.drawDropLines(cctx, true);
+          }
+          cctx.restore();
+
+          if (this.useIntersectionDetector && this.graphs.length >= 1) {
+            this.updateIntersections();
+            this.drawIntersections(cctx, true);
+          }
+          if (this.textLabels && this.textLabels.length > 0) {
+            this.drawTextLabels(cctx, true);
+          }
+          cctx.restore();
+        } finally {
+          this.graphs.forEach((g, idx) => {
+            if (g && savedColors[idx] !== undefined) g.color = savedColors[idx];
+          });
+          this.currentThemeKey = prevThemeKey;
+          this._isRenderingGraphSnapshot = prevRenderingSnap;
+          this._snapshotCropBounds = prevCropBounds;
+          this.isCurveSelected = prevCurveSel;
+          this.selectedHandleIdx = prevHandleIdx;
+          this.isDropLineMode = prevDropMode;
+        }
+
+        return { canvas: cropCanvas, width: pxW, height: pxH, dpi };
+      }
+
+      return null;
+    }
+
+    copyActiveGraphToClipboard(e = null) {
+      const { blocked, target, reason } = this._resolveActiveGraphCopyTarget();
+      if (blocked) return false;
+      if (e && e.repeat) return true;
+
+      if (!target) {
+        if (reason === 'minimized') {
+          this.showToast('ℹ️ 접힌 그래프 창을 먼저 펼친 뒤 복사해 주세요.');
+        } else {
+          this.showToast('ℹ️ 복사할 그래프가 없습니다. 그래프를 먼저 추가해 주세요.');
+        }
+        return true;
+      }
+
+      const labelPrefix = (target.mode === 'pip_card' && target.totalGraphCards > 1 && target.label)
+        ? `${target.label} `
+        : '';
+      const successMsg = `📋 ${labelPrefix}그래프가 복사되었습니다! 한글(HWP)·PPT에 붙여넣으세요.`;
+
+      const triggerCopyVisualPulse = () => {
+        if (target.mode !== 'pip_card' || !target.widget) return;
+        const bodyEl = target.isPrimary
+          ? document.getElementById('graphCardBody')
+          : target.widget.querySelector('.problem-card-body');
+        if (bodyEl && bodyEl.classList) {
+          bodyEl.classList.remove('pip-stamp-flash');
+          void bodyEl.offsetWidth;
+          bodyEl.classList.add('pip-stamp-flash');
+          if (bodyEl._stampFlashTimer) clearTimeout(bodyEl._stampFlashTimer);
+          bodyEl._stampFlashTimer = setTimeout(() => {
+            bodyEl._stampFlashTimer = null;
+            if (bodyEl.classList) bodyEl.classList.remove('pip-stamp-flash');
+          }, 220);
+        }
+      };
+      triggerCopyVisualPulse();
+
+      let cachedBlobPromise = null;
+      const getHighDpiPngBlob = () => {
+        if (!cachedBlobPromise) {
+          cachedBlobPromise = (async () => {
+            const exp = await this._buildCleanGraphCopyCanvas(target);
+            if (!exp || !exp.canvas) throw new Error('GRAPH_COPY_CANVAS_EMPTY');
+            const rawBlob = await new Promise((res) => exp.canvas.toBlob(res, 'image/png'));
+            try { exp.canvas.width = 1; exp.canvas.height = 1; } catch (_) { }
+            if (!rawBlob) throw new Error('GRAPH_COPY_BLOB_FAILED');
+            return (typeof this.injectDpiToBlob === 'function')
+              ? await this.injectDpiToBlob(rawBlob, exp.dpi || 300)
+              : rawBlob;
+          })();
+        }
+        return cachedBlobPromise;
+      };
+
+      const downloadFallbackIfNeeded = async () => {
+        try {
+          const blob = await getHighDpiPngBlob();
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.download = `Graphly_그래프삽도_${Date.now()}.png`;
+          link.href = url;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          this.showToast('💾 클립보드 권한이 제한되어 그래프 PNG 파일로 저장되었습니다.');
+        } catch (err) {
+          console.error(err);
+          this.showToast('⚠️ 그래프 복사 중 오류가 발생했습니다.');
+        }
+      };
+
+      (async () => {
+        try {
+          if (
+            typeof navigator !== 'undefined' &&
+            navigator.clipboard &&
+            typeof navigator.clipboard.write === 'function' &&
+            typeof ClipboardItem !== 'undefined'
+          ) {
+            try {
+              const blobPromise = getHighDpiPngBlob();
+              await navigator.clipboard.write([
+                new ClipboardItem({ 'image/png': blobPromise })
+              ]);
+              this.showToast(successMsg);
+              return;
+            } catch (_) {
+              const resolvedBlob = await getHighDpiPngBlob();
+              await navigator.clipboard.write([
+                new ClipboardItem({ 'image/png': resolvedBlob })
+              ]);
+              this.showToast(successMsg);
+              return;
+            }
+          }
+          await downloadFallbackIfNeeded();
+        } catch (_) {
+          await downloadFallbackIfNeeded();
+        }
+      })();
+
+      return true;
+    }
+
     duplicatePipGraphCard(cardRef) {
       if (!cardRef) return null;
       const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);

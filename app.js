@@ -5375,11 +5375,9 @@
             id: 'sys_copy_image',
             category: 'system',
             categoryLabel: '편집 · 녹화 · 시스템',
-            name: '현재 화면 클립보드 이미지 복사',
-            desc: '한글(HWP)·PPT에 바로 붙여넣을 수 있게 고화질 이미지 복사',
-            defaultKey: 'Ctrl+C',
-            buttonIds: ['btnCopy'],
-            baseTitle: '한글/PPT에 1초 컷 붙여넣기'
+            name: '활성 그래프 창 삽도 복사',
+            desc: '최근 조작한 그래프 창의 순수 그래프(필기 제외)만 한글(HWP)·PPT용 고화질 이미지로 복사',
+            defaultKey: 'Ctrl+C'
           },
           {
             id: 'sys_record_toggle',
@@ -6167,6 +6165,21 @@
         }
       }
 
+      // 2-2. [사용법 및 문의] 모달 내 인라인 단축키 배지 실시간 동기화
+      if (typeof document !== 'undefined') {
+        const inlineMap = [
+          ['guideKbdCopyGraph', 'sys_copy_image', 'Ctrl + C'],
+          ['guideKbdStampCard', 'card_stamp_active', 'S'],
+          ['guideKbdHideUI', 'sys_toggle_hide_ui', 'H']
+        ];
+        inlineMap.forEach(([elId, actId, fallbackText]) => {
+          const kbdEl = document.getElementById(elId);
+          if (!kbdEl) return;
+          const rawAssigned = String(eff[actId] || '').trim();
+          kbdEl.textContent = rawAssigned ? this.formatShortcutKeyForDisplay(rawAssigned) : fallbackText;
+        });
+      }
+
       // 3. [사용법 & 공지사항 ➔ 단축키 안내] 탭의 단축키 목록도 실시간 동기화
       const guideGrid = document.getElementById('guideShortcutDynamicGrid');
       if (guideGrid) {
@@ -6531,8 +6544,10 @@
         case 'sys_copy_image': {
           const sel = (typeof window.getSelection === 'function') ? String(window.getSelection()) : '';
           if (sel && sel.trim().length > 0) return false;
-          this.copyToClipboard();
-          return true;
+          if (typeof this.copyActiveGraphToClipboard === 'function') {
+            return Boolean(this.copyActiveGraphToClipboard(e));
+          }
+          return false;
         }
         case 'sys_record_toggle': {
           if (this.isAudioRecording) {
