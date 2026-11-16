@@ -1408,28 +1408,10 @@
         const reader = new FileReader();
         reader.onload = (evt) => {
           const rawBase = (file._customClipboardLabel || file.name || '이미지 문제').replace(/\.[^/.]+$/, '');
-          const name = (rawBase.toLowerCase() === 'image' ? '클립보드 캡처' : rawBase);
-          const dataUrl = evt.target.result;
-          const probeImg = new Image();
-          let settled = false;
-          const finish = (aspectVal, decodedImg) => {
-            if (settled) return;
-            settled = true;
-            resolve({
-              name,
-              dataUrl,
-              aspect: aspectVal,
-              decodedImg
-            });
-          };
-          probeImg.onload = () => {
-            const asp = (probeImg.naturalWidth > 0 && probeImg.naturalHeight > 0)
-              ? (probeImg.naturalHeight / probeImg.naturalWidth)
-              : null;
-            finish(asp, asp ? probeImg : null);
-          };
-          probeImg.onerror = () => finish(null, null);
-          probeImg.src = dataUrl;
+          resolve({
+            name: (rawBase.toLowerCase() === 'image' ? '클립보드 캡처' : rawBase),
+            dataUrl: evt.target.result
+          });
         };
         reader.onerror = () => resolve(null);
         reader.readAsDataURL(file);
@@ -1461,13 +1443,6 @@
         this.resetBoardAndProblemCardsForNext();
         this.audioSyncData = null;
         this.setProblemCard(item.dataUrl, item.name, null, targetW);
-        if (item.aspect > 0) {
-          this.problemCardAspect = item.aspect;
-          if (item.decodedImg) {
-            this.problemCardImage = item.decodedImg;
-          }
-          this.syncProblemCardRectFromWidget();
-        }
         const slideNum = this.lessonPlaylistSlides.length + 1;
         const slide = this.serializeFullSlideState(item.name || String(slideNum));
         this.lessonPlaylistSlides.push(slide);
@@ -1475,20 +1450,6 @@
 
       this.lessonPlaylistIndex = Math.max(0, Math.min(this.lessonPlaylistSlides.length - 1, firstAddedSlideIdx));
       this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
-      const activeLoadedItem = loadedItems[0];
-      if (activeLoadedItem && activeLoadedItem.aspect > 0) {
-        this.problemCardAspect = activeLoadedItem.aspect;
-        if (activeLoadedItem.decodedImg) {
-          this.problemCardImage = activeLoadedItem.decodedImg;
-        }
-        this.syncProblemCardRectFromWidget();
-      }
-      if (typeof this.isShortcutSettingsModalOpen === 'function' && this.isShortcutSettingsModalOpen() && typeof this.closeShortcutSettingsModal === 'function') {
-        this.closeShortcutSettingsModal();
-      }
-      if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
-        this.closeDrawer();
-      }
       if (!this.isInkMode) {
         this.toggleInkMode(true);
       }
@@ -2155,24 +2116,13 @@
 
       // 1. 클립보드 이미지 붙여넣기 (Ctrl + V: 빈 캔버스면 현재 캔버스에, 내용이 있으면 자동으로 새 캔버스에 분리 생성!)
       window.addEventListener('paste', async (e) => {
-        // 텍스트 인풋/텍스트에어리어에 포커스가 있을 때는 문자열 붙여넣기 우선 (단, range/checkbox 등 비텍스트 컨트롤 포커스는 이미지 붙여넣기 허용)
+        // 텍스트 인풋/텍스트에어리어에 포커스가 있을 때는 문자열 붙여넣기 우선
         const activeEl = document.activeElement;
-        const activeTag = activeEl && activeEl.tagName ? activeEl.tagName.toUpperCase() : '';
-        const isTextEditable = Boolean(
-          activeEl && (
-            (activeTag === 'INPUT' && !['range', 'checkbox', 'radio', 'button', 'color', 'file'].includes(String(activeEl.type || '').toLowerCase())) ||
-            activeTag === 'TEXTAREA' ||
-            activeEl.isContentEditable
-          )
-        );
+        const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
+        if (isInput) return;
 
         const cbData = e.clipboardData || e.originalEvent?.clipboardData;
         if (!cbData) return;
-
-        if (isTextEditable) {
-          const hasText = cbData.types && Array.from(cbData.types).some(t => t === 'text/plain' || t === 'text/html');
-          if (hasText || activeEl.isContentEditable) return;
-        }
 
         const imageFiles = [];
         if (cbData.files && cbData.files.length > 0) {
@@ -2202,21 +2152,8 @@
 
         if (imageFiles.length > 0) {
           e.preventDefault();
-          if (activeEl && activeEl !== document.body && typeof activeEl.blur === 'function') {
-            try { activeEl.blur(); } catch (_) { }
-          }
           this._isReplacingViaNextCrop = false;
-          this._isClipboardImagePastePending = true;
-          this._pendingQuickCaptureAutoStamp = false;
-          try {
-            await this.loadImagesOnePerSlide(imageFiles);
-          } finally {
-            this._isClipboardImagePastePending = false;
-            if (this._pendingQuickCaptureAutoStamp) {
-              this._pendingQuickCaptureAutoStamp = false;
-              this.triggerQuickCaptureAutoStamp();
-            }
-          }
+          await this.loadImagesOnePerSlide(imageFiles);
         }
       });
 
@@ -10506,8 +10443,6 @@
         readyDrawable = liveSourceCanvas;
       } else if (imgEl && imgEl.complete && imgEl.naturalWidth > 0) {
         readyDrawable = imgEl.cloneNode(false);
-      } else if (isPrimary && this.problemCardImage && this.problemCardImage.tagName === 'IMG' && this.problemCardImage.complete && this.problemCardImage.naturalWidth > 0) {
-        readyDrawable = this.problemCardImage;
       }
 
       const fallbackAspect = (liveSourceCanvas && liveSourceCanvas.width > 0)
@@ -10515,10 +10450,9 @@
         : ((imgEl && imgEl.complete && imgEl.naturalWidth > 0)
           ? (imgEl.naturalHeight / imgEl.naturalWidth)
           : (isPrimary && this.problemCardAspect > 0 ? this.problemCardAspect : 0));
-      const imgReady = !imgEl || (imgEl.complete && imgEl.naturalWidth > 0);
-      const effBodyClientH = (imgReady && bRect.height >= 24)
+      const effBodyClientH = (bRect.height >= 24)
         ? bRect.height
-        : (fallbackAspect > 0 ? Math.max(24, bRect.width * fallbackAspect) : bRect.height);
+        : (fallbackAspect > 0 ? Math.max(24, bRect.width * fallbackAspect) : 0);
       if (!(effBodyClientH >= 24)) return null;
 
       const scaleCssX = (this.screenWidth && cRect.width > 0) ? (this.screenWidth / cRect.width) : 1;
@@ -10807,29 +10741,6 @@
       }
       if (target.kind === 'problem') {
         return Boolean(this.stampProblemCardToBoard(target.cardRef));
-      }
-      return false;
-    }
-
-    // ⚡ [Graphly_빠른캡처.exe 전용 자동 스탬프 직결 엔드포인트]: 사용자 커스텀 단축키(S 변경·해제 여부)와 100% 무관하게 동작
-    triggerQuickCaptureAutoStamp() {
-      if (!this.isGraphCovered || !this.canvas) return false;
-      if (this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive || this._isPromoBannerViewerPreviewOpen) {
-        return false;
-      }
-      if (this.smartViewerState && this.smartViewerState.isOpen) {
-        return false;
-      }
-      const pWidget = (typeof document !== 'undefined') ? document.getElementById('problemCardWidget') : null;
-      if (
-        pWidget &&
-        pWidget.isConnected !== false &&
-        pWidget.style.display !== 'none' &&
-        this.problemCardData &&
-        !this.isProblemCardMinimized &&
-        !pWidget.classList.contains('minimized')
-      ) {
-        return Boolean(this.stampProblemCardToBoard('primary'));
       }
       return false;
     }
