@@ -15034,24 +15034,32 @@
           e.preventDefault();
           e.stopPropagation();
         }
-        if (overlay) overlay.classList.remove('viewer-entry-gate-active');
+        if (overlay) {
+          overlay.classList.remove('viewer-entry-gate-active', 'viewer-immersive-fullscreen');
+        }
         if (fsGate) fsGate.style.display = 'none';
         this._mobileViewerFsAttempted = true;
         const uaGate = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
         const isMobileOrPadGate = /Android|iPhone|iPad|iPod/i.test(uaGate) || (/Macintosh/i.test(uaGate) && navigator.maxTouchPoints > 1);
         const isPromoPreviewGate = Boolean(this._viewerPkg && this._viewerPkg._isPromoBannerDraftPreview);
         const shouldReqNativeFs = !(isPromoPreviewGate && !isMobileOrPadGate);
-        this.toggleSmartViewerImmersiveMode(true, shouldReqNativeFs);
+        if (shouldReqNativeFs && !document.fullscreenElement && !document.webkitFullscreenElement) {
+          const docEl = document.documentElement;
+          const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen;
+          if (typeof req === 'function') {
+            try {
+              const p = req.call(docEl);
+              if (p && typeof p.catch === 'function') p.catch(() => { });
+            } catch (_) { }
+          }
+        }
+        this.toggleSmartViewerImmersiveMode(false, false);
         this.fitSmartViewerStageToScreen(true);
         setTimeout(() => {
           if (overlay && overlay.style.display !== 'none' && (this._viewerZoom || 1.0) <= 1.02) {
             this.fitSmartViewerStageToScreen(true);
           }
         }, 160);
-        const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
-        if (total > 1) {
-          this._flashViewerFloatingPageToast(this._viewerSlideIdx || 0, total);
-        }
       };
       if (btnFsGateStart) {
         btnFsGateStart.onclick = handleEnterFromFsGate;
@@ -16401,8 +16409,7 @@
         overlay.classList.toggle('is-promo-draft-preview', isPromoDraftPreview);
         overlay.style.display = 'flex';
         if ((!isMobileOrTabletOS && !isPromoDraftPreview) || (isAlreadyNativeFs && !isPromoDraftPreview) || !fsGate) {
-          overlay.classList.remove('viewer-entry-gate-active');
-          overlay.classList.toggle('viewer-immersive-fullscreen', isAlreadyNativeFs);
+          overlay.classList.remove('viewer-entry-gate-active', 'viewer-immersive-fullscreen');
           if (fsGate) fsGate.style.display = 'none';
         } else {
           overlay.classList.add('viewer-entry-gate-active');
