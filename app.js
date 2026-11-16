@@ -2154,10 +2154,9 @@
           pWidget.classList.toggle('minimized', Boolean(kf.probCardMin));
           this.isProblemCardMinimized = Boolean(kf.probCardMin);
           if (kf.probCardInkActive !== undefined) {
-            const pInkOn = Boolean(kf.probCardInkActive);
-            pWidget.classList.toggle('card-ink-active', pInkOn);
+            pWidget.classList.remove('card-ink-active');
             const btnPInk = pWidget.querySelector('.btn-card-laser');
-            if (btnPInk) btnPInk.classList.toggle('active', pInkOn);
+            if (btnPInk) btnPInk.classList.remove('active');
           }
           pWidget.classList.add('pip-locked-mode');
           if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(pWidget);
@@ -2196,10 +2195,9 @@
             gWidget.classList.toggle('minimized', Boolean(kf.graphCardMin));
             this.isGraphCardMinimized = Boolean(kf.graphCardMin);
             if (kf.graphCardInkActive !== undefined) {
-              const inkOn = Boolean(kf.graphCardInkActive);
-              gWidget.classList.toggle('card-ink-active', inkOn);
+              gWidget.classList.remove('card-ink-active');
               const btnInk = gWidget.querySelector('.btn-card-ink');
-              if (btnInk) btnInk.classList.toggle('active', inkOn);
+              if (btnInk) btnInk.classList.remove('active');
             }
             if (kf.graphCardPdfAnchor) {
               this.graphCardPdfAnchor = { ...kf.graphCardPdfAnchor };
@@ -2297,10 +2295,9 @@
                   c.el.style.top = `${Math.round(st.baseY)}px`;
                 }
                 if (st.inkActive !== undefined) {
-                  const inkOn = Boolean(st.inkActive);
-                  c.el.classList.toggle('card-ink-active', inkOn);
+                  c.el.classList.remove('card-ink-active');
                   const btnInk = c.el.querySelector('.btn-card-ink');
-                  if (btnInk) btnInk.classList.toggle('active', inkOn);
+                  if (btnInk) btnInk.classList.remove('active');
                 }
                 if (typeof st.aspect === 'number' && st.aspect > 0.05) {
                   c.aspect = st.aspect;
@@ -2371,10 +2368,9 @@
                 if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
               }
               if (st.inkActive !== undefined) {
-                const eInkOn = Boolean(st.inkActive);
-                c.el.classList.toggle('card-ink-active', eInkOn);
+                c.el.classList.remove('card-ink-active');
                 const btnEInk = c.el.querySelector('.btn-card-laser');
-                if (btnEInk) btnEInk.classList.toggle('active', eInkOn);
+                if (btnEInk) btnEInk.classList.remove('active');
               }
               c.el.classList.add('pip-locked-mode');
               if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(c.el);
@@ -6244,7 +6240,7 @@
       const assignedKey = String(eff.card_stamp_active || '').trim();
       const keyBadge = assignedKey ? ` (${this.formatShortcutKeyForDisplay(assignedKey)})` : '';
       if (isGraphCard) {
-        return `캔버스에 스탬프 찍기${keyBadge} (현재 그래프·수선·필기를 바닥에 영구 박제)`;
+        return `캔버스에 스탬프 찍기${keyBadge} (현재 그래프·수선을 바닥에 영구 박제)`;
       }
       return `현재 문제를 칠판에 영구 박제 후 창 닫기${keyBadge} (무경계 필기 · 취소: 되돌리기 ↺)`;
     }
@@ -6815,6 +6811,10 @@
         }
         case 'graph_open_presets': {
           if (this.isPdfModalOpen || (this.smartViewerState && this.smartViewerState.isOpen)) return false;
+          if (typeof this.handleRailPresetsTrigger === 'function') {
+            this.handleRailPresetsTrigger();
+            return true;
+          }
           if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
             this.closeDrawer();
             return true;

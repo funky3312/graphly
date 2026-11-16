@@ -3312,6 +3312,9 @@
         );
         const domLeft = isCardDragging ? el._dragDomLeft : baseX;
         const domTop = isCardDragging ? el._dragDomTop : baseY;
+        let screenLeft = baseX;
+        let screenTop = baseY;
+        let effScale = 1.0;
         if (isPdfBoard) {
           let anchor = el._pdfAnchor || (savedAnchorOwner && savedAnchorOwner.pdfAnchor) || null;
           if (!anchor || typeof anchor.mx !== 'number' || typeof anchor.my !== 'number') {
@@ -3326,6 +3329,9 @@
           const scaleRatio = (anchor.unitScale > 0 && curUS > 0)
             ? Math.max(0.2, Math.min(4.0, curUS / anchor.unitScale))
             : 1.0;
+          screenLeft = s.x;
+          screenTop = s.y;
+          effScale = scaleRatio;
           el.style.transformOrigin = '0 0';
           if (isCardDragging) {
             el.style.transform = Math.abs(scaleRatio - 1.0) > 0.002
@@ -3342,6 +3348,9 @@
           const s = this.boardToScreen(baseX, baseY);
           const tx = s.x - domLeft;
           const ty = s.y - domTop;
+          screenLeft = s.x;
+          screenTop = s.y;
+          effScale = bz;
           el.style.transformOrigin = '0 0';
           if (isCardDragging) {
             el.style.transform = Math.abs(bz - 1.0) > 0.002
@@ -3362,6 +3371,35 @@
         } else {
           el.style.transformOrigin = '';
           el.style.transform = '';
+        }
+
+        if (el.classList && !el.classList.contains('minimized')) {
+          const cssCardW = (isCardDragging && el._cachedDragW > 0)
+            ? el._cachedDragW
+            : (parseFloat(el.style.width) || el.offsetWidth || 480);
+          const screenRight = screenLeft + cssCardW * effScale;
+          const viewW = this.screenWidth || (typeof window !== 'undefined' ? window.innerWidth : 1440);
+          const dockSpanPx = 42 * effScale;
+          const flipLeft = (screenRight + dockSpanPx > viewW - 6) && (screenLeft >= dockSpanPx);
+          if (el._probSideDockLeft !== flipLeft) {
+            el._probSideDockLeft = flipLeft;
+            el.classList.toggle('prob-side-dock-left', flipLeft);
+          }
+          if (!el.classList.contains('graph-card-widget')) {
+            let dockTopPx = 0;
+            if (screenTop < 0) {
+              const bodyEl = el.querySelector('.problem-card-body');
+              const rawBodyH = (bodyEl && (parseFloat(bodyEl.style.height) || bodyEl.offsetHeight)) || el.offsetHeight || 200;
+              dockTopPx = Math.max(0, Math.min(Math.max(0, Math.round(rawBodyH - 64)), Math.round((4 - screenTop) / Math.max(0.2, effScale))));
+            }
+            if (el._probDockTopPx !== dockTopPx) {
+              el._probDockTopPx = dockTopPx;
+              const hdrEl = el.querySelector('.problem-card-header');
+              if (hdrEl) {
+                hdrEl.style.top = dockTopPx > 0 ? `${dockTopPx}px` : '';
+              }
+            }
+          }
         }
       };
 

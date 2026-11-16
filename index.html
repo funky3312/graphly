@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261117_147">
+  <link rel="stylesheet" href="style.css?v=20261117_151">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -203,6 +203,10 @@
           <button type="button" id="btnResetPopoverCurrent" class="settings-clean-btn">현재 캔버스 비우기</button>
           <button type="button" id="btnResetPopoverAll" class="settings-clean-btn">전체 캔버스 초기화</button>
         </div>
+      </div>
+      <!-- ➕ 그래프 추가 대상 선택 미니 팝오버 (새 창 · #1 · #2 ...) -->
+      <div id="railAddTargetPopover" class="rail-reset-board-popover rail-add-target-popover" style="display: none;">
+        <div id="railAddTargetList" class="rail-add-target-list"></div>
       </div>
       <!-- 슬라이드오버 플로팅 서랍 (Drawer) -->
       <div class="rail-drawer" id="railDrawer">
@@ -1926,14 +1930,6 @@
                 </svg>
               </span>
             </button>
-            <button id="btnProblemCardLaser" type="button" class="card-btn btn-card-laser"
-              title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
-              <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                  <path d="m15 5 4 4" />
-                </svg></span>
-            </button>
             <button id="btnProblemCardStamp" type="button" class="card-btn btn-card-stamp"
               title="현재 문제를 칠판에 영구 박제 후 창 닫기 (무경계 필기 · 취소: 되돌리기 ↺)">
               <span style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5"
@@ -1953,13 +1949,6 @@
                   <line x1="14.47" y1="14.48" x2="20" y2="20" />
                   <line x1="8.12" y1="8.12" x2="12" y2="12" />
                 </svg>다음 캡처</span>
-            </button>
-            <button id="btnProblemCardClearInk" class="card-btn" title="필기 지우기">
-              <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
-                  fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                </svg></span>
             </button>
             <button id="btnProblemCardClose" class="card-btn btn-card-close" title="닫기">
               <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
@@ -1997,21 +1986,8 @@
                 </svg>
               </span>
             </button>
-            <button id="btnGraphCardAddFunc" type="button" class="card-btn btn-card-add-func"
-              title="이 카드에 함수 추가 (한 카드에 여러 함수 겹쳐 그리기)">
-              <span
-                style="display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;line-height:1;">+</span>
-            </button>
-            <button id="btnGraphCardLaser" type="button" class="card-btn btn-card-laser"
-              title="카드 위 필기 켜기/끄기 (꺼짐: 핸들 조작·카드 이동 / 켜짐: 카드 위 밑줄·필기)">
-              <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                  <path d="m15 5 4 4" />
-                </svg></span>
-            </button>
             <button id="btnGraphCardDuplicate" type="button" class="card-btn card-btn-duplicate"
-              title="이 그래프 창 복제 (현재 그래프·필기 그대로 새 창 생성)">
+              title="이 그래프 창 복제 (현재 그래프 그대로 새 창 생성)">
               <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
                   fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
@@ -2026,13 +2002,6 @@
                   <polyline points="9 21 3 21 3 15" />
                   <line x1="21" y1="3" x2="14" y2="10" />
                   <line x1="3" y1="21" x2="10" y2="14" />
-                </svg></span>
-            </button>
-            <button id="btnGraphCardClearInk" class="card-btn" title="필기 지우기">
-              <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
-                  fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                 </svg></span>
             </button>
             <button id="btnGraphCardClose" class="card-btn btn-card-close" title="삭제">
@@ -3825,15 +3794,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261117_147"></script>
-  <script src="app-core.js?v=20261117_147"></script>
-  <script src="app-ink.js?v=20261117_147"></script>
-  <script src="app-pdf.js?v=20261117_147"></script>
-  <script src="app-cards.js?v=20261117_147"></script>
-  <script src="app-cloud.js?v=20261117_147"></script>
-  <script src="app-canvas.js?v=20261117_147"></script>
-  <script src="app-toolkit.js?v=20261117_147"></script>
-  <script src="app.js?v=20261117_147"></script>
+  <script src="engine.js?v=20261117_151"></script>
+  <script src="app-core.js?v=20261117_151"></script>
+  <script src="app-ink.js?v=20261117_151"></script>
+  <script src="app-pdf.js?v=20261117_151"></script>
+  <script src="app-cards.js?v=20261117_151"></script>
+  <script src="app-cloud.js?v=20261117_151"></script>
+  <script src="app-canvas.js?v=20261117_151"></script>
+  <script src="app-toolkit.js?v=20261117_151"></script>
+  <script src="app.js?v=20261117_151"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">

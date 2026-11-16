@@ -1134,9 +1134,9 @@ class GraphApp {
       if (pTitle) pTitle.textContent = pc.titleText || '문제';
       if (pToggle) pToggle.textContent = pc.toggleText || '▾';
       pWidget.classList.toggle('minimized', Boolean(pc.minimized));
-      pWidget.classList.toggle('card-ink-active', Boolean(pc.cardInkActive));
+      pWidget.classList.remove('card-ink-active');
       pWidget.classList.toggle('pip-locked-mode', pc.pipLocked !== false);
-      pWidget.classList.toggle('pip-stealth-locked', Boolean(pc.pipStealth && !pc.cardInkActive && !pc.minimized));
+      pWidget.classList.toggle('pip-stealth-locked', Boolean(pc.pipStealth && !pc.minimized));
       if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(pWidget);
       if (
         typeof this.scheduleProblemCardStealth === 'function' &&
@@ -1147,7 +1147,7 @@ class GraphApp {
         this.scheduleProblemCardStealth(pWidget, 3000);
       }
       const pLaserBtn = pWidget.querySelector('.btn-card-laser');
-      if (pLaserBtn) pLaserBtn.classList.toggle('active', Boolean(pc.cardInkActive));
+      if (pLaserBtn) pLaserBtn.classList.remove('active');
       pWidget.style.left = pc.left || '72px';
       pWidget.style.top = pc.top || '18px';
       pWidget.style.width = pc.width || '520px';
@@ -1194,9 +1194,9 @@ class GraphApp {
           if (st.zIndex) c.el.style.zIndex = st.zIndex;
           c.el.style.display = st.display || 'flex';
           c.el.classList.toggle('minimized', Boolean(st.minimized));
-          c.el.classList.toggle('card-ink-active', Boolean(st.cardInkActive));
+          c.el.classList.remove('card-ink-active');
           c.el.classList.toggle('pip-locked-mode', st.pipLocked !== false);
-          c.el.classList.toggle('pip-stealth-locked', Boolean(st.pipStealth && !st.cardInkActive && !st.minimized));
+          c.el.classList.toggle('pip-stealth-locked', Boolean(st.pipStealth && !st.minimized));
           if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(c.el);
           if (
             typeof this.scheduleProblemCardStealth === 'function' &&
@@ -1207,7 +1207,7 @@ class GraphApp {
             this.scheduleProblemCardStealth(c.el, 3000);
           }
           const lBtn = c.el.querySelector('.btn-card-laser');
-          if (lBtn) lBtn.classList.toggle('active', Boolean(st.cardInkActive));
+          if (lBtn) lBtn.classList.remove('active');
           if (typeof c.el._renderCardStickers === 'function') c.el._renderCardStickers();
           if (typeof c.el._renderCardInkCanvas === 'function') c.el._renderCardInkCanvas();
         }
@@ -1244,9 +1244,9 @@ class GraphApp {
       if (gTitle) gTitle.textContent = gc.titleText || '보관 그래프 #1';
       if (gToggle) gToggle.textContent = gc.toggleText || '▾';
       gWidget.classList.toggle('minimized', Boolean(gc.minimized));
-      gWidget.classList.toggle('card-ink-active', Boolean(gc.cardInkActive));
+      gWidget.classList.remove('card-ink-active');
       const gLaserBtn = gWidget.querySelector('.btn-card-laser');
-      if (gLaserBtn) gLaserBtn.classList.toggle('active', Boolean(gc.cardInkActive));
+      if (gLaserBtn) gLaserBtn.classList.remove('active');
       gWidget.style.left = gc.left || '580px';
       gWidget.style.top = gc.top || '68px';
       gWidget.style.width = gc.width || '430px';
@@ -1317,12 +1317,12 @@ class GraphApp {
           if (st.zIndex) c.el.style.zIndex = st.zIndex;
           c.el.style.display = st.display || 'flex';
           c.el.classList.toggle('minimized', Boolean(st.minimized));
-          c.el.classList.toggle('card-ink-active', Boolean(st.cardInkActive));
+          c.el.classList.remove('card-ink-active');
           c.el.classList.toggle('pip-locked-mode', Boolean(st.pipLocked));
           c.el.classList.toggle('pip-stealth-locked', Boolean(st.pipStealth));
           if (typeof this.syncProblemCardLockUI === 'function') this.syncProblemCardLockUI(c.el);
           const lBtn = c.el.querySelector('.btn-card-laser');
-          if (lBtn) lBtn.classList.toggle('active', Boolean(st.cardInkActive));
+          if (lBtn) lBtn.classList.remove('active');
         }
         c.el._lastPipLockUiSig = '';
         this.syncPipCardLockUI(c);
@@ -1373,6 +1373,12 @@ class GraphApp {
         const btnPresets = document.getElementById('btnRailPresets');
         if (btnPresets) btnPresets.classList.add('active');
       }
+      if (typeof this.syncPresetDrawerHeaderTargetLabel === 'function') {
+        this.syncPresetDrawerHeaderTargetLabel();
+      }
+    }
+    if (typeof this.closeRailAddTargetPopover === 'function') {
+      this.closeRailAddTargetPopover();
     }
     this._inkBakeDirty = true;
     this.updateIntersections();
@@ -2407,6 +2413,12 @@ class GraphApp {
       } else {
         this._pipTargetCard = null;
         this._pipSessionOrigin = null;
+      }
+      if (typeof this.closeRailAddTargetPopover === 'function') {
+        this.closeRailAddTargetPopover();
+      }
+      if (typeof this.syncPresetDrawerHeaderTargetLabel === 'function') {
+        this.syncPresetDrawerHeaderTargetLabel();
       }
       this.syncPresetActiveButtons();
       this.syncShapePanel();
@@ -4018,6 +4030,9 @@ class GraphApp {
     if (btnExport && panelExport) {
       btnExport.onclick = (e) => {
         e.stopPropagation();
+        if (typeof this.closeRailAddTargetPopover === 'function') {
+          this.closeRailAddTargetPopover();
+        }
         if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
           this.closeDrawer();
         }
@@ -4173,6 +4188,9 @@ class GraphApp {
         if (isOpen) {
           this.closeRailResetPopover();
           return;
+        }
+        if (typeof this.closeRailAddTargetPopover === 'function') {
+          this.closeRailAddTargetPopover();
         }
         if (!this.isDrawerCollapsed && typeof this.closeDrawer === 'function') {
           this.closeDrawer();
@@ -4587,9 +4605,146 @@ class GraphApp {
     this._pipTargetCard = null;
     this._pipSessionOrigin = null;
 
+    const railAddTargetPopover = document.getElementById('railAddTargetPopover');
+    const railAddTargetList = document.getElementById('railAddTargetList');
+    const btnRailPresets = document.getElementById('btnRailPresets');
+
+    this.closeRailAddTargetPopover = () => {
+      if (railAddTargetPopover) railAddTargetPopover.style.display = 'none';
+      document.querySelectorAll('.graph-card-widget.pip-target-hover-ring').forEach(el => {
+        el.classList.remove('pip-target-hover-ring');
+      });
+      if (btnRailPresets && (this.isDrawerCollapsed || this.activeDrawerPanel !== 'panelPresets')) {
+        btnRailPresets.classList.remove('active');
+      }
+    };
+
+    this.syncPresetDrawerHeaderTargetLabel = () => {
+      if (this.isDrawerCollapsed || this.activeDrawerPanel !== 'panelPresets' || !titleLbl) return;
+      if (!this.isGraphCovered) {
+        titleLbl.textContent = panelTitles.panelPresets || '그래프 추가';
+        return;
+      }
+      const cards = typeof this.getEditableBoardPipGraphCards === 'function'
+        ? this.getEditableBoardPipGraphCards()
+        : [];
+      if (this._pipTargetCard && this._pipTargetCard !== 'new') {
+        const match = cards.find(c => c.cardRef === this._pipTargetCard);
+        titleLbl.textContent = match
+          ? `${panelTitles.panelPresets || '그래프 추가'} · ${match.label}`
+          : (panelTitles.panelPresets || '그래프 추가');
+      } else {
+        titleLbl.textContent = cards.length > 0
+          ? `${panelTitles.panelPresets || '그래프 추가'} · 새 창`
+          : (panelTitles.panelPresets || '그래프 추가');
+      }
+    };
+
+    this.handleRailPresetsTrigger = () => {
+      if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
+        this.closeDrawer();
+        return;
+      }
+      if (!this.isGraphCovered) {
+        this.closeRailAddTargetPopover();
+        this.openDrawer('panelPresets');
+        return;
+      }
+      const cards = typeof this.getEditableBoardPipGraphCards === 'function'
+        ? this.getEditableBoardPipGraphCards()
+        : [];
+      if (cards.length === 0) {
+        this.closeRailAddTargetPopover();
+        this._pipTargetCard = 'new';
+        this._pipSessionOrigin = 'rail';
+        this.openDrawer('panelPresets');
+        return;
+      }
+      if (railAddTargetPopover && railAddTargetList) {
+        const isOpen = railAddTargetPopover.style.display !== 'none';
+        if (isOpen) {
+          this.closeRailAddTargetPopover();
+          return;
+        }
+        if (typeof this.closeRailResetPopover === 'function') {
+          this.closeRailResetPopover();
+        }
+        if (!this.isDrawerCollapsed) {
+          this.closeDrawer();
+        }
+        railAddTargetList.innerHTML = '';
+
+        const btnNew = document.createElement('button');
+        btnNew.type = 'button';
+        btnNew.className = 'settings-clean-btn rail-add-target-btn rail-add-target-new';
+        btnNew.textContent = '새 창';
+        btnNew.onclick = (ev) => {
+          ev.stopPropagation();
+          this.closeRailAddTargetPopover();
+          this._pipTargetCard = 'new';
+          this._pipSessionOrigin = 'rail';
+          this.openDrawer('panelPresets');
+        };
+        railAddTargetList.appendChild(btnNew);
+
+        cards.forEach((c) => {
+          const btnCard = document.createElement('button');
+          btnCard.type = 'button';
+          btnCard.className = 'settings-clean-btn rail-add-target-btn rail-add-target-card';
+          btnCard.textContent = c.label;
+          btnCard.addEventListener('pointerenter', () => {
+            if (c.widget) c.widget.classList.add('pip-target-hover-ring');
+          });
+          btnCard.addEventListener('pointerleave', () => {
+            if (c.widget) c.widget.classList.remove('pip-target-hover-ring');
+          });
+          btnCard.onclick = (ev) => {
+            ev.stopPropagation();
+            this.closeRailAddTargetPopover();
+            this._pipTargetCard = c.cardRef;
+            this._pipSessionOrigin = 'rail';
+            if (typeof this.wakeUpPipGraphCardStealth === 'function') {
+              this.wakeUpPipGraphCardStealth(c.cardRef, true);
+            }
+            if (c.widget && typeof this.bringCardToFront === 'function') {
+              this.bringCardToFront(c.widget);
+            }
+            this.openDrawer('panelPresets');
+          };
+          railAddTargetList.appendChild(btnCard);
+        });
+
+        if (btnRailPresets) {
+          const railRect = rail.getBoundingClientRect();
+          const btnRect = btnRailPresets.getBoundingClientRect();
+          const topOffset = Math.max(8, Math.round(btnRect.top - railRect.top - 4));
+          railAddTargetPopover.style.top = `${topOffset}px`;
+        }
+        railAddTargetPopover.style.display = 'block';
+        if (btnRailPresets) btnRailPresets.classList.add('active');
+        return;
+      }
+      this._pipTargetCard = 'new';
+      this._pipSessionOrigin = 'rail';
+      this.openDrawer('panelPresets');
+    };
+
+    if (railAddTargetPopover) {
+      railAddTargetPopover.addEventListener('pointerdown', (e) => e.stopPropagation());
+      railAddTargetPopover.addEventListener('click', (e) => e.stopPropagation());
+      document.addEventListener('pointerdown', (e) => {
+        if (!railAddTargetPopover || railAddTargetPopover.style.display === 'none') return;
+        if (railAddTargetPopover.contains(e.target) || (btnRailPresets && btnRailPresets.contains(e.target))) return;
+        this.closeRailAddTargetPopover();
+      });
+    }
+
     this.openDrawer = (panelId) => {
       if (typeof this.closeRailResetPopover === 'function') {
         this.closeRailResetPopover();
+      }
+      if (typeof this.closeRailAddTargetPopover === 'function') {
+        this.closeRailAddTargetPopover();
       }
       const nextPanel = panelId || this.activeDrawerPanel || 'panelPresets';
       if (nextPanel !== 'panelPresets') {
@@ -4607,7 +4762,7 @@ class GraphApp {
       if (iconToggle) iconToggle.textContent = '◀';
       if (btnToggle) btnToggle.title = '\\';
 
-      // 레일 독 버튼 활성화 상태 갱신 (카드 상단 [+]로 연 경우 해당 카드의 [+]만 활성 표시)
+      // 레일 독 버튼 활성화 상태 갱신
       document.querySelectorAll('.rail-btn[data-panel]').forEach(b => {
         if (b.dataset.panel === 'panelPresets' && this.isGraphCovered && this._pipSessionOrigin === 'card') {
           b.classList.remove('active');
@@ -4619,6 +4774,9 @@ class GraphApp {
       // 서랍 헤더 타이틀 갱신
       if (titleLbl) {
         titleLbl.textContent = panelTitles[this.activeDrawerPanel] || '설정';
+      }
+      if (this.activeDrawerPanel === 'panelPresets') {
+        this.syncPresetDrawerHeaderTargetLabel();
       }
 
       // 서랍 내부 패널 표시 전환
@@ -4661,6 +4819,7 @@ class GraphApp {
       });
       this._pipTargetCard = null;
       this._pipSessionOrigin = null;
+      this.closeRailAddTargetPopover();
 
       if (this.isAudioRecording) {
         this._recordAudioWorkspaceStateIfNeeded(true);
@@ -4673,9 +4832,8 @@ class GraphApp {
     this.toggleDrawer = () => {
       if (this.isDrawerCollapsed) {
         if ((this.activeDrawerPanel || 'panelPresets') === 'panelPresets' && this.isGraphCovered) {
-          document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
-          this._pipTargetCard = 'new';
-          this._pipSessionOrigin = 'rail';
+          this.handleRailPresetsTrigger();
+          return;
         }
         this.openDrawer(this.activeDrawerPanel);
       } else {
@@ -4683,18 +4841,18 @@ class GraphApp {
       }
     };
 
-    // 레일 독 버튼 클릭 이벤트 바인딩 (좌측 [+] 및 모든 레일 버튼 깔끔한 열기 ↔ 닫기 토글)
+    // 레일 독 버튼 클릭 이벤트 바인딩 (좌측 [+]는 그래프 카드 존재 시 새 창 · #1 · #2 미니 팝오버로 분기)
     document.querySelectorAll('.rail-btn[data-panel]').forEach(btn => {
-      btn.onclick = () => {
+      btn.onclick = (e) => {
         const targetPanel = btn.dataset.panel;
+        if (targetPanel === 'panelPresets') {
+          if (e) e.stopPropagation();
+          this.handleRailPresetsTrigger();
+          return;
+        }
         if (!this.isDrawerCollapsed && this.activeDrawerPanel === targetPanel) {
           this.closeDrawer();
           return;
-        }
-        if (targetPanel === 'panelPresets' && this.isGraphCovered) {
-          document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
-          this._pipTargetCard = 'new';
-          this._pipSessionOrigin = 'rail';
         }
         this.openDrawer(targetPanel);
       };

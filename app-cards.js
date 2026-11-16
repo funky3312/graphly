@@ -1319,6 +1319,12 @@
       this.graphInkStrokes = [];
       this.graphCardBaseX = undefined;
       this.graphCardBaseY = undefined;
+      if (typeof this.closeRailAddTargetPopover === 'function') {
+        this.closeRailAddTargetPopover();
+      }
+      if (typeof this.syncPresetDrawerHeaderTargetLabel === 'function') {
+        this.syncPresetDrawerHeaderTargetLabel();
+      }
     }
 
     resetBoardAndProblemCardsForNext() {
@@ -1643,9 +1649,6 @@
             <span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;">
               <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg>
             </span>
-          </button>
-          <button type="button" class="card-btn btn-card-laser" title="카드 위 필기 켜기/끄기 (꺼짐: 몸통 잡고 이동 / 켜짐: 카드 위 밑줄·필기)">
-            <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></span>
           </button>
           <button type="button" class="card-btn btn-card-stamp" title="현재 문제를 칠판에 영구 박제 후 창 닫기 (무경계 필기 · 취소: 되돌리기 ↺)">
             <span style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21h14"/><path d="M19 16v-1a2 2 0 0 0-2-2h-2.5a1.5 1.5 0 0 1-1.5-1.5V8a2 2 0 1 0-4 0v3.5A1.5 1.5 0 0 1 7.5 13H5a2 2 0 0 0-2 2v1h16Z"/></svg></span>
@@ -3001,7 +3004,11 @@
         if (this._activePeekCardEl === widget) {
           this._activePeekCardEl = null;
         }
-        widget.classList.remove('card-header-peek', 'pip-stealth-locked', 'card-ink-active', 'card-laser-active');
+        widget.classList.remove('card-header-peek', 'pip-stealth-locked', 'card-ink-active', 'card-laser-active', 'prob-side-dock-left');
+        widget._probSideDockLeft = false;
+        widget._probDockTopPx = 0;
+        const pHdr = document.getElementById('problemCardHeader');
+        if (pHdr) pHdr.style.top = '';
         this.clearProblemCardStealthTimer(widget);
         widget.style.display = 'none';
         widget.style.transform = '';
@@ -3117,7 +3124,7 @@
       const bodyEl = cardWidgetEl.querySelector('.problem-card-body');
       const laserBtn = cardWidgetEl.querySelector('.btn-card-laser');
       const headerEl = cardWidgetEl.querySelector('.problem-card-header');
-      if (!bodyEl || !laserBtn) return;
+      if (!bodyEl) return;
 
       // 🌟 [대표님 기획: 평소에는 상단바를 숨겨 '딱 그래프/문제만' 노출 + 터치/호버/카드필기ON 시에만 상단바 표시] 🌟
       const activateCardHeaderPeek = (ev) => {
@@ -3700,59 +3707,20 @@
         }
       }
 
-      // 🌟 [대표님 킬러 기획: 카드 상단 [✒️] 버튼 = '카드 몸통 드래그 이동 ⇄ 카드 위 밑줄·필기 고정' 토글!]
+      // 🌟 [카드 내부 필기 모드 은퇴 (스탬프 무경계 필기로 일원화): 활성화 차단 & 해제 클린업만 유지]
       const handleCardInkBtnToggle = (e, forceState = null) => {
         if (e) {
           e.preventDefault();
           e.stopPropagation();
         }
         const curInkActive = cardWidgetEl.classList.contains('card-ink-active');
-        const nextInkActive = (typeof forceState === 'boolean') ? forceState : !curInkActive;
+        const requestedState = (typeof forceState === 'boolean') ? forceState : !curInkActive;
+        const nextInkActive = requestedState ? false : false;
         cardWidgetEl._stealthWakeTapStamp = null;
         if (nextInkActive === curInkActive) return;
-        cardWidgetEl.classList.toggle('card-ink-active', nextInkActive);
-        laserBtn.classList.toggle('active', nextInkActive);
-
-        if (nextInkActive) {
-          if (cardWidgetEl.classList.contains('graph-card-widget')) {
-            if (typeof this.setPipCardLockedByWidget === 'function') {
-              this.setPipCardLockedByWidget(cardWidgetEl, true, false);
-            } else if (typeof this.deselectAllPipGraphCards === 'function') {
-              this.deselectAllPipGraphCards();
-            }
-            if (typeof this._getPipCardRefFromWidget === 'function' && typeof this.wakeUpPipGraphCardStealth === 'function') {
-              const cRef = this._getPipCardRefFromWidget(cardWidgetEl);
-              if (cRef) this.wakeUpPipGraphCardStealth(cRef, false);
-            }
-          } else {
-            if (typeof this.setProblemCardLockedByWidget === 'function') {
-              this.setProblemCardLockedByWidget(cardWidgetEl, true, false);
-            }
-            if (typeof this.wakeUpProblemCardStealth === 'function') {
-              this.wakeUpProblemCardStealth(cardWidgetEl, false);
-            }
-          }
-          // 접혀 있는 상태에서 [✒️] 버튼을 켜면 자동으로 카드를 펼쳐서 즉시 필기 가능하도록 처리!
-          if (cardWidgetEl.classList.contains('minimized') && typeof cardWidgetEl._toggleCardMin === 'function') {
-            cardWidgetEl._toggleCardMin();
-          }
-          if (!this.isInkMode) {
-            this.toggleInkMode(true);
-          }
-          if (this.activeInkTool === 'select' || this.activeInkTool === 'lasso' || this.activeInkTool === 'laser') {
-            this.setActiveInkTool('pen');
-          }
-          if (cardWidgetEl.id === 'problemCardWidget') {
-            this.syncProblemCardRectFromWidget();
-            this.renderProblemCardCanvas();
-          } else if (cardWidgetEl.id === 'graphCardWidget') {
-            this.syncGraphCardRectFromWidget();
-            this.renderGraphCardCanvas();
-          } else if (typeof cardWidgetEl._renderCardInkCanvas === 'function') {
-            cardWidgetEl._renderCardInkCanvas();
-          }
-          syncCanvasSize();
-        } else if (cardWidgetEl.classList.contains('graph-card-widget')) {
+        cardWidgetEl.classList.remove('card-ink-active');
+        if (laserBtn) laserBtn.classList.remove('active');
+        if (cardWidgetEl.classList.contains('graph-card-widget')) {
           if (typeof this._getPipCardRefFromWidget === 'function' && typeof this.schedulePipGraphCardStealth === 'function') {
             const cRef = this._getPipCardRefFromWidget(cardWidgetEl);
             if (cRef) this.schedulePipGraphCardStealth(cRef, 3000);
@@ -3764,26 +3732,9 @@
           this._recordAudioWorkspaceStateIfNeeded(true);
         }
       };
-      let handledInkToggleOnPointerUp = false;
-      laserBtn.addEventListener('pointerup', (e) => {
-        if (e.button && e.button !== 0) return;
-        handledInkToggleOnPointerUp = true;
-        handleCardInkBtnToggle(e);
-        setTimeout(() => { handledInkToggleOnPointerUp = false; }, 120);
-      });
-      laserBtn.addEventListener('click', (e) => {
-        if (handledInkToggleOnPointerUp) {
-          handledInkToggleOnPointerUp = false;
-          if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-          return;
-        }
-        handleCardInkBtnToggle(e);
-      });
       cardWidgetEl._setCardInkActive = (nextState) => {
-        handleCardInkBtnToggle(null, Boolean(nextState));
+        if (nextState) return;
+        handleCardInkBtnToggle(null, false);
       };
 
       const isLaserActiveOnCard = () => Boolean((this.isInkMode && this.activeInkTool === 'laser') || state.active);
@@ -4273,8 +4224,7 @@
 
       bodyEl.addEventListener('pointerdown', (e) => {
         if (!this.isInkMode || this.activeInkTool !== 'lasso') return;
-        const strokes = getCardInkStrokesForLasso();
-        if (!cardWidgetEl.classList.contains('card-ink-active') && strokes.length === 0) return;
+        if (!cardWidgetEl.classList.contains('card-ink-active')) return;
         if (e.target && e.target.closest && e.target.closest('button, .graph-card-pip-mini-bar, .problem-card-resize-handle')) return;
         if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) return;
         if (e.button && e.button !== 0) return;
@@ -5687,13 +5637,7 @@
               <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg>
             </span>
           </button>
-          <button type="button" class="card-btn btn-card-add-func btn-extra-add-func" title="이 카드에 함수 추가 (한 카드에 여러 함수 겹쳐 그리기)">
-            <span style="display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;line-height:1;">+</span>
-          </button>
-          <button type="button" class="card-btn btn-card-laser" title="카드 위 필기 켜기/끄기 (클릭 시 자동으로 그래프 잠금 후 필기)">
-            <span class="card-laser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></span>
-          </button>
-          <button type="button" class="card-btn card-btn-duplicate btn-extra-duplicate" title="이 그래프 창 복제 (현재 그래프·필기 그대로 새 창 생성)">
+          <button type="button" class="card-btn card-btn-duplicate btn-extra-duplicate" title="이 그래프 창 복제 (현재 그래프 그대로 새 창 생성)">
             <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
           </button>
           <button class="card-btn card-btn-restore btn-extra-restore" title="그래프 모드로 크게 열기 (교점·수선·구간분할 등 정밀 편집)">
@@ -6117,6 +6061,12 @@
           }
         }
         if (this._editingGraphCardTarget === cardItem) this._editingGraphCardTarget = null;
+        if (typeof this.closeRailAddTargetPopover === 'function') {
+          this.closeRailAddTargetPopover();
+        }
+        if (typeof this.syncPresetDrawerHeaderTargetLabel === 'function') {
+          this.syncPresetDrawerHeaderTargetLabel();
+        }
         if (this.isAudioRecording) {
           this._recordAudioWorkspaceStateIfNeeded(true);
         }
@@ -6141,6 +6091,9 @@
         if (typeof document !== 'undefined') {
           document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
         }
+      }
+      if (typeof this.closeRailAddTargetPopover === 'function') {
+        this.closeRailAddTargetPopover();
       }
       const activeTarget = sourceCardTarget || (caseIdx === 1 ? 'primary' : null);
       if (activeTarget && typeof this._ensurePipCardInkMathCoords === 'function') {
@@ -7199,7 +7152,8 @@
           widget._pdfAnchor = null;
           widget._pipSnapObj = null;
           widget._stealthWakeTapStamp = null;
-          widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked', 'card-ink-active');
+          widget._probSideDockLeft = false;
+          widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked', 'card-ink-active', 'prob-side-dock-left');
           if (this._pipTargetCard === 'primary') {
             document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
             if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
@@ -7218,6 +7172,12 @@
             this._cancelCardCanvasPendingTasks(gCanvas, true);
           }
           widget.style.display = 'none';
+          if (typeof this.closeRailAddTargetPopover === 'function') {
+            this.closeRailAddTargetPopover();
+          }
+          if (typeof this.syncPresetDrawerHeaderTargetLabel === 'function') {
+            this.syncPresetDrawerHeaderTargetLabel();
+          }
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
           }
@@ -8218,90 +8178,30 @@
       return false;
     }
 
-    _canTriggerCardDoubleTapInkMode(widgetEl) {
-      if (!widgetEl || widgetEl.style.display === 'none') return false;
-      if (this._isCardDoubleTapBlockedByGlobalState()) return false;
-      if (!widgetEl.classList.contains('pip-locked-mode')) return false;
-      if (widgetEl.classList.contains('card-ink-active') || widgetEl.classList.contains('minimized')) return false;
-      if (typeof widgetEl._setCardInkActive !== 'function') return false;
-      return true;
+    _canTriggerCardDoubleTapInkMode() {
+      return false;
     }
 
-    _activateCardInkModeFromDoubleTap(widgetEl, tapX, tapY, pointerEv = null) {
-      if (!this._canTriggerCardDoubleTapInkMode(widgetEl)) return false;
-      widgetEl._stealthWakeTapStamp = null;
-      widgetEl._setCardInkActive(true);
-      if (this.isInkMode && this.activeInkTool === 'sticker') {
-        this.setActiveInkTool('pen');
-      }
-      if (this._lastPointerEvent) {
-        delete this._lastPointerEvent._overMenuChecked;
-        delete this._lastPointerEvent._overMenuResult;
-      }
-      const pType = (pointerEv && pointerEv.pointerType)
-        ? pointerEv.pointerType
-        : ((this._lastPointerEvent && this._lastPointerEvent.pointerType) || 'mouse');
-      if (Number.isFinite(tapX) && Number.isFinite(tapY)) {
-        const hitTarget = (typeof document !== 'undefined' && typeof document.elementFromPoint === 'function')
-          ? document.elementFromPoint(tapX, tapY)
-          : null;
-        const synthEv = {
-          clientX: tapX,
-          clientY: tapY,
-          pointerType: pType,
-          buttons: 0,
-          button: 0,
-          target: hitTarget
-        };
-        this._lastPointerEvent = synthEv;
-        if (pType !== 'touch' && this.canvas && typeof this.updateStylusPenPosition === 'function') {
-          const cRect = this.canvasRect || (typeof this.updateCanvasRect === 'function' ? this.updateCanvasRect() : this.canvas.getBoundingClientRect());
-          const relX = cRect ? (tapX - cRect.left) : tapX;
-          const relY = cRect ? (tapY - cRect.top) : tapY;
-          this.updateStylusPenPosition(relX, relY, synthEv);
-        }
-      }
-      if (typeof this.updateInkCursor === 'function') {
-        this.updateInkCursor();
-      }
-      return true;
+    _activateCardInkModeFromDoubleTap() {
+      return false;
     }
 
-    _handleProblemCardPointerEndStealthOrDoubleTap(widget, tapX, tapY, wasMoved, startedOnHeader = false, pointerEv = null) {
+    _handleProblemCardPointerEndStealthOrDoubleTap(widget, tapX, tapY, wasMoved) {
       if (!widget || !widget.classList.contains('pip-locked-mode')) {
         if (widget) widget._stealthWakeTapStamp = null;
         return;
       }
+      widget._stealthWakeTapStamp = null;
       if (wasMoved) {
-        widget._stealthWakeTapStamp = null;
         if (!widget.classList.contains('pip-stealth-locked')) {
           this.scheduleProblemCardStealth(widget, 3000);
         }
         return;
       }
-      const now = performance.now();
-      const canDoubleTapInk = Boolean(!startedOnHeader && this._canTriggerCardDoubleTapInkMode(widget));
       if (widget.classList.contains('pip-stealth-locked')) {
-        widget._stealthWakeTapStamp = canDoubleTapInk
-          ? { ts: now, x: Number.isFinite(tapX) ? tapX : 0, y: Number.isFinite(tapY) ? tapY : 0 }
-          : null;
         this.wakeUpProblemCardStealth(widget, true);
         return;
       }
-      const prevStamp = widget._stealthWakeTapStamp;
-      if (
-        canDoubleTapInk &&
-        prevStamp &&
-        (now - prevStamp.ts <= 360) &&
-        (Math.hypot((Number.isFinite(tapX) ? tapX : prevStamp.x) - prevStamp.x, (Number.isFinite(tapY) ? tapY : prevStamp.y) - prevStamp.y) <= 32)
-      ) {
-        widget._stealthWakeTapStamp = null;
-        this._activateCardInkModeFromDoubleTap(widget, tapX, tapY, pointerEv);
-        return;
-      }
-      widget._stealthWakeTapStamp = canDoubleTapInk
-        ? { ts: now, x: Number.isFinite(tapX) ? tapX : 0, y: Number.isFinite(tapY) ? tapY : 0 }
-        : null;
       this.scheduleProblemCardStealth(widget, 3000);
     }
 
@@ -8324,47 +8224,22 @@
       }
     }
 
-    _handlePipGraphCardPointerEndStealthOrDoubleTap(cardRef, widget, tapX, tapY, wasMoved, startedOnHeader = false, pointerEv = null) {
+    _handlePipGraphCardPointerEndStealthOrDoubleTap(cardRef, widget, tapX, tapY, wasMoved) {
       if (!widget || !widget.classList.contains('pip-locked-mode')) {
         if (widget) widget._stealthWakeTapStamp = null;
         return;
       }
+      widget._stealthWakeTapStamp = null;
       if (wasMoved) {
-        widget._stealthWakeTapStamp = null;
         if (!widget.classList.contains('pip-stealth-locked')) {
           this.schedulePipGraphCardStealth(cardRef, 3000);
         }
         return;
       }
-      const now = performance.now();
-      const snap = this._getMutablePipCardSnapshot(cardRef);
-      const isCardLocked = Boolean(!snap || snap.isNAxisStudioCard || snap.isPipLocked);
-      const canDoubleTapInk = Boolean(
-        !startedOnHeader &&
-        isCardLocked &&
-        this._canTriggerCardDoubleTapInkMode(widget)
-      );
       if (widget.classList.contains('pip-stealth-locked')) {
-        widget._stealthWakeTapStamp = canDoubleTapInk
-          ? { ts: now, x: Number.isFinite(tapX) ? tapX : 0, y: Number.isFinite(tapY) ? tapY : 0 }
-          : null;
         this.wakeUpPipGraphCardStealth(cardRef, true);
         return;
       }
-      const prevStamp = widget._stealthWakeTapStamp;
-      if (
-        canDoubleTapInk &&
-        prevStamp &&
-        (now - prevStamp.ts <= 360) &&
-        (Math.hypot((Number.isFinite(tapX) ? tapX : prevStamp.x) - prevStamp.x, (Number.isFinite(tapY) ? tapY : prevStamp.y) - prevStamp.y) <= 32)
-      ) {
-        widget._stealthWakeTapStamp = null;
-        this._activateCardInkModeFromDoubleTap(widget, tapX, tapY, pointerEv);
-        return;
-      }
-      widget._stealthWakeTapStamp = canDoubleTapInk
-        ? { ts: now, x: Number.isFinite(tapX) ? tapX : 0, y: Number.isFinite(tapY) ? tapY : 0 }
-        : null;
       this.schedulePipGraphCardStealth(cardRef, 3000);
     }
 
@@ -8897,26 +8772,13 @@
       const hdrTools = widget.querySelector('.pip-header-curve-tools');
       const dragHandleEl = widget.querySelector('.problem-card-drag-handle');
       if (hdrTools) {
-        hdrTools.style.display = showCurveTools ? 'inline-flex' : 'none';
+        hdrTools.style.display = showCurveTools ? 'flex' : 'none';
         const pop = hdrTools.querySelector('.pip-hdr-popover');
         const symBtn = hdrTools.querySelector('[data-pip-act="symMenu"]');
         if (!showCurveTools) {
           if (pop) pop.style.display = 'none';
           if (symBtn) symBtn.classList.remove('open');
         } else {
-          const isSymOpen = Boolean(snap && snap.isPipSymPopoverOpen);
-          if (pop) {
-            if (isSymOpen) {
-              const hRect = widget.getBoundingClientRect();
-              pop.classList.toggle('pop-down', hRect.top < 48);
-              pop.style.display = 'flex';
-            } else {
-              pop.style.display = 'none';
-            }
-          }
-          if (symBtn) {
-            symBtn.classList.toggle('open', isSymOpen);
-          }
           const activeG = snap.graphs[snap.activeGraphIdx];
           const absBtn = hdrTools.querySelector('[data-pip-act="abs"]');
           if (absBtn) {
@@ -8929,10 +8791,28 @@
           hdrTools.querySelectorAll('[data-pip-act="unlinkInverse"]').forEach(uBtn => {
             uBtn.style.display = hasInverseLink ? 'inline-flex' : 'none';
           });
+          const isSymOpen = Boolean(snap && snap.isPipSymPopoverOpen);
+          if (pop) {
+            if (isSymOpen) {
+              const tRect = hdrTools.getBoundingClientRect();
+              const viewW = (typeof window !== 'undefined' && window.innerWidth) || 1440;
+              const viewH = (typeof window !== 'undefined' && window.innerHeight) || 900;
+              const openLeft = widget.classList.contains('prob-side-dock-left') || (tRect.right + 128 > viewW - 6 && tRect.left >= 128);
+              const openUp = (tRect.top + 96 > viewH - 8 && tRect.bottom >= 96);
+              pop.classList.toggle('pop-left', openLeft);
+              pop.classList.toggle('pop-up', openUp);
+              pop.style.display = 'grid';
+            } else {
+              pop.style.display = 'none';
+            }
+          }
+          if (symBtn) {
+            symBtn.classList.toggle('open', isSymOpen);
+          }
         }
       }
       if (dragHandleEl) {
-        dragHandleEl.style.display = showCurveTools ? 'none' : 'flex';
+        dragHandleEl.style.display = '';
       }
       if (isPrimary) {
         const btnClearInk = document.getElementById('btnGraphCardClearInk');
@@ -10397,6 +10277,7 @@
       const host = widget.parentElement || document.body;
       const ghostEl = document.createElement('div');
       ghostEl.className = 'problem-card-widget problem-stamp-ghost-fx stamp-shutter-flash-fx' +
+        (widget.classList.contains('prob-side-dock-left') ? ' prob-side-dock-left' : '') +
         (widget.classList.contains('card-ink-active') ? ' card-ink-active' : '');
       ghostEl.setAttribute('aria-hidden', 'true');
       ghostEl.style.cssText = widget.style.cssText;
@@ -11890,7 +11771,8 @@
         this.graphCardPdfAnchor = null;
         widget._pdfAnchor = null;
         widget._pipSnapObj = null;
-        widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked', 'card-ink-active', 'card-header-peek');
+        widget._probSideDockLeft = false;
+        widget.classList.remove('pip-manipulating', 'pip-locked-mode', 'pip-stealth-locked', 'card-ink-active', 'card-header-peek', 'prob-side-dock-left');
         if (this._pipTargetCard === 'primary') {
           document.querySelectorAll('.btn-card-add-func.active').forEach(b => b.classList.remove('active'));
           if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
@@ -11931,6 +11813,12 @@
         }
         if (this._editingGraphCardTarget === cardRef) this._editingGraphCardTarget = null;
       }
+      if (typeof this.closeRailAddTargetPopover === 'function') {
+        this.closeRailAddTargetPopover();
+      }
+      if (typeof this.syncPresetDrawerHeaderTargetLabel === 'function') {
+        this.syncPresetDrawerHeaderTargetLabel();
+      }
       if (this.isAudioRecording) {
         this._recordAudioWorkspaceStateIfNeeded(true);
       }
@@ -11939,6 +11827,46 @@
         this.showToast('🗑️ 그래프 창을 닫았습니다 (되돌리기 ↺로 복원 가능)');
       }
       return true;
+    }
+
+    getEditableBoardPipGraphCards() {
+      const list = [];
+      if (typeof document === 'undefined') return list;
+      const gWidget = document.getElementById('graphCardWidget');
+      if (
+        this._hasPrimaryGraphCard &&
+        this.graphCardData &&
+        gWidget &&
+        gWidget.isConnected !== false &&
+        gWidget.style.display !== 'none'
+      ) {
+        const snap = this._getMutablePipCardSnapshot('primary');
+        if (snap && !snap.isNAxisStudioCard) {
+          const tEl = document.getElementById('graphCardTitle') || gWidget.querySelector('.card-title-text');
+          const rawLbl = (tEl && tEl.textContent ? tEl.textContent.trim() : '') || '#1';
+          list.push({
+            cardRef: 'primary',
+            widget: gWidget,
+            label: rawLbl.startsWith('#') ? rawLbl : '#1'
+          });
+        }
+      }
+      if (Array.isArray(this.extraGraphCards)) {
+        this.extraGraphCards.forEach((c, idx) => {
+          if (!c || !c.el || c.el.isConnected === false || c.el.style.display === 'none') return;
+          const snap = this._getMutablePipCardSnapshot(c);
+          if (!snap || snap.isNAxisStudioCard) return;
+          const tEl = c.el.querySelector('.card-title-text');
+          const fallbackTag = `#${c.caseIdx || (idx + 2)}`;
+          const rawLbl = (tEl && tEl.textContent ? tEl.textContent.trim() : '') || fallbackTag;
+          list.push({
+            cardRef: c,
+            widget: c.el,
+            label: rawLbl.startsWith('#') ? rawLbl : fallbackTag
+          });
+        });
+      }
+      return list;
     }
 
     _syncFullGraphBackToEditingPipCard() {
@@ -12078,6 +12006,9 @@
           snap.isCurveSelected = true;
 
           if (widget) {
+            if (widget.classList.contains('minimized') && typeof widget._toggleCardMin === 'function') {
+              widget._toggleCardMin();
+            }
             this._deactivateCardInkModeForGraphEdit(widget);
             this.bringCardToFront(widget);
             widget._lastPipLockUiSig = '';
@@ -12087,6 +12018,9 @@
           this.syncPipCardLockUI(targetCard);
           this.renderPipGraphCard(targetCard);
           this.scheduleBakePipGraphCardToImg(targetCard);
+          if (typeof this.syncPresetDrawerHeaderTargetLabel === 'function') {
+            this.syncPresetDrawerHeaderTargetLabel();
+          }
           // 🌟 [대표님 핵심 UX 기획]: 함수 추가 서랍이 열린 상태에서는 닫지 않고 유지하여 연속으로 누르는 함수를 한 창에 모두 담기! ([✕] 수동 닫기)
           if (this.isAudioRecording) {
             this._recordAudioWorkspaceStateIfNeeded(true);
@@ -12166,6 +12100,9 @@
       );
       if (createdRef && !this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
         this._pipTargetCard = createdRef;
+        if (typeof this.syncPresetDrawerHeaderTargetLabel === 'function') {
+          this.syncPresetDrawerHeaderTargetLabel();
+        }
       }
       return createdRef;
     }
@@ -12241,6 +12178,9 @@
             const { widget } = this._getPipCardWidgetAndSnapRaw(targetCard);
             this.deselectAllPipGraphCards(widget);
             if (widget) {
+              if (widget.classList.contains('minimized') && typeof widget._toggleCardMin === 'function') {
+                widget._toggleCardMin();
+              }
               this._deactivateCardInkModeForGraphEdit(widget);
               this.bringCardToFront(widget);
               widget._lastPipLockUiSig = '';
@@ -12249,6 +12189,9 @@
             this.syncPipCardLockUI(targetCard);
             this.renderPipGraphCard(targetCard);
             this.scheduleBakePipGraphCardToImg(targetCard);
+            if (typeof this.syncPresetDrawerHeaderTargetLabel === 'function') {
+              this.syncPresetDrawerHeaderTargetLabel();
+            }
             if (this.isAudioRecording) {
               this._recordAudioWorkspaceStateIfNeeded(true);
             }
@@ -12288,6 +12231,9 @@
         );
         if (createdRef && !this.isDrawerCollapsed && this.activeDrawerPanel === 'panelPresets') {
           this._pipTargetCard = createdRef;
+          if (typeof this.syncPresetDrawerHeaderTargetLabel === 'function') {
+            this.syncPresetDrawerHeaderTargetLabel();
+          }
         }
         return true;
       } catch (_) {
@@ -12467,6 +12413,8 @@
       `;
         if (btnAddFunc && btnAddFunc.nextSibling) {
           actionsEl.insertBefore(btnDropLine, btnAddFunc.nextSibling);
+        } else if (btnLock && btnLock.nextSibling) {
+          actionsEl.insertBefore(btnDropLine, btnLock.nextSibling);
         } else {
           actionsEl.insertBefore(btnDropLine, actionsEl.firstChild);
         }
@@ -12528,7 +12476,7 @@
         btnStamp.className = 'card-btn btn-card-stamp';
         btnStamp.title = (typeof this.getStampButtonTooltipText === 'function')
           ? this.getStampButtonTooltipText(true)
-          : '캔버스에 스탬프 찍기 (현재 그래프·수선·필기를 바닥에 영구 박제)';
+          : '캔버스에 스탬프 찍기 (현재 그래프·수선을 바닥에 영구 박제)';
         btnStamp.innerHTML = `
         <span style="display:inline-flex;align-items:center;justify-content:center;">
           <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -12562,34 +12510,37 @@
         });
       }
 
-      const titleGroupEl = widget.querySelector('.problem-card-title-group');
       let hdrTools = widget.querySelector('.pip-header-curve-tools');
-      if (!hdrTools && titleGroupEl) {
+      if (!hdrTools) {
         hdrTools = document.createElement('div');
         hdrTools.className = 'pip-header-curve-tools';
         hdrTools.style.display = 'none';
         hdrTools.innerHTML = `
         <div class="pip-hdr-sym-wrap">
-          <button type="button" class="card-btn pip-hdr-btn" data-pip-act="symMenu" title="대칭 이동 (x축 · y축 · 원점 · y=x)">
-            <span>대칭</span><span class="pip-hdr-caret">▾</span>
+          <button type="button" class="card-btn pip-hdr-btn pip-hdr-sym-icon" data-pip-act="symMenu" title="대칭 이동 (x축 · y축 · 원점 · y=x)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="2.5 2.5"></line>
+              <polygon points="9 6 3 18 9 18 9 6"></polygon>
+              <polygon points="15 6 21 18 15 18 15 6"></polygon>
+            </svg>
           </button>
           <div class="pip-hdr-popover" style="display: none;">
             <button type="button" class="pip-pop-btn" data-pip-act="flipX" title="x축 대칭 (상하 반전)">↕ x축</button>
             <button type="button" class="pip-pop-btn" data-pip-act="flipY" title="y축 대칭 (좌우 반전)">↔ y축</button>
             <button type="button" class="pip-pop-btn" data-pip-act="flipOrigin" title="원점 대칭">⤡ 원점</button>
             <button type="button" class="pip-pop-btn" data-pip-act="flipYX" title="y=x 대칭 (역함수 생성 & 연동)">⤢ y=x</button>
-            <button type="button" class="pip-pop-btn" data-pip-act="unlinkInverse" style="display: none;" title="원함수와 역함수 대칭 연동 끊기">✂ 연동끊기</button>
+            <button type="button" class="pip-pop-btn pip-pop-unlink" data-pip-act="unlinkInverse" style="display: none;" title="원함수와 역함수 대칭 연동 끊기">✂ 연동끊기</button>
           </div>
         </div>
         <button type="button" class="card-btn pip-hdr-btn" data-pip-act="abs" title="절댓값 |f(x)| 꺾어올리기 (평행이동 후 다시 누르면 다단계 절댓값 ||f(x)|-k|)">|f|</button>
         <button type="button" class="card-btn pip-hdr-btn pip-hdr-del" data-pip-act="deleteCurve" title="선택된 함수 삭제">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
           </svg>
         </button>
       `;
-        titleGroupEl.appendChild(hdrTools);
+        widget.appendChild(hdrTools);
 
         hdrTools.addEventListener('pointerdown', (e) => {
           e.stopPropagation();
