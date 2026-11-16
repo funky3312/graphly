@@ -2115,6 +2115,9 @@
             dot.classList.toggle('active', (dot.dataset.color || '').toLowerCase() === String(kf.currentInkColor).toLowerCase());
           });
         }
+        if ((kf.activeInkTool || kf.currentInkColor) && typeof this._applyCurrentToolColorUI === 'function' && this.currentInkColor) {
+          this._applyCurrentToolColorUI(this.currentInkColor);
+        }
         if (kf.isGraphSnapMode !== undefined) {
           this.isGraphSnapMode = Boolean(kf.isGraphSnapMode);
         }
@@ -2631,10 +2634,12 @@
       if (!this.isAudioRecording || this.isAudioRecordPaused || this.isPdfModalOpen || this._isAudioWaitingForNextSlideSetup) return;
       const t = this.getAudioRecordElapsedMs();
       const cursorKind = this._detectCurrentAudioCursorKind(isDrawing, extraMeta);
+      const effColor = color || this.currentInkColor || '#00d2d3';
       const uiBtnKey = (extraMeta && extraMeta.uiBtnKey) ? extraMeta.uiBtnKey : '';
       const uiBarId = (extraMeta && extraMeta.uiBarId) ? extraMeta.uiBarId : '';
       const kindChanged = (
         cursorKind !== this._lastRecordedCursorKind ||
+        effColor !== (this._lastRecordedCursorColor || '') ||
         uiBtnKey !== (this._lastRecordedUiBtnKey || '') ||
         uiBarId !== (this._lastRecordedUiBarId || '') ||
         Boolean(isDrawing) !== Boolean(this._lastRecordedCursorIsDrawing)
@@ -2646,6 +2651,7 @@
       this._lastRecordedCursorPos = { x: screenX, y: screenY };
       this._lastAudioCursorRecordMs = t;
       this._lastRecordedCursorKind = cursorKind;
+      this._lastRecordedCursorColor = effColor;
       this._lastRecordedUiBtnKey = uiBtnKey;
       this._lastRecordedUiBarId = uiBarId;
       this._lastRecordedCursorIsDrawing = Boolean(isDrawing);
@@ -2655,7 +2661,7 @@
         type: 'cursor',
         x: Math.round(screenX * 10) / 10,
         y: Math.round(screenY * 10) / 10,
-        color: color || this.currentInkColor || '#00d2d3',
+        color: effColor,
         isDrawing: Boolean(isDrawing),
         cursorKind
       };
@@ -4244,6 +4250,10 @@
         svgs.pen.style.display = 'block';
       }
 
+      if ((kind === 'pen' || kind === 'highlighter') && typeof this._syncStylusTipColors === 'function') {
+        this._syncStylusTipColors(color, kind);
+      }
+
       // 마우스 클릭 / 그래프 핸들 잡기 시작 순간 ScreenStudio 스타일 클릭 파동(Click Ripple) 발동!
       const wasDrawing = Boolean(this._prevReplayIsDrawing);
       const prevKind = this._prevReplayCursorKind || 'pen';
@@ -4945,6 +4955,9 @@
         this._syncReplayFixedStageLayout();
         this._renderAudioReplayAtCurrentTime();
       }
+      if (!this._isAudioReplayActive && typeof this._syncStylusTipColors === 'function') {
+        this._syncStylusTipColors();
+      }
       this.syncAudioRecordUI();
     }
 
@@ -4967,6 +4980,9 @@
       }
       if (wasReplayActive && restoreFinal && this.audioSyncData && this.audioSyncData.finalState) {
         this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
+      }
+      if (typeof this._syncStylusTipColors === 'function') {
+        this._syncStylusTipColors();
       }
       this._inkBakeDirty = true;
       this.renderProblemCardCanvas();

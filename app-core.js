@@ -3343,6 +3343,9 @@ class GraphApp {
     }
 
     this._inkBakeDirty = true;
+    if (typeof this._applyCurrentToolColorUI === 'function' && this.currentInkColor) {
+      this._applyCurrentToolColorUI(this.currentInkColor);
+    }
     if (this._hasPrimaryGraphCard && typeof this.renderPipGraphCard === 'function') {
       this.renderPipGraphCard('primary');
     }
@@ -6094,6 +6097,16 @@ class GraphApp {
       }
     });
 
+    const paletteLowerSet = new Set(palette.map(c => String(c || '').toLowerCase()));
+    if (palette.length > 0) {
+      if (!paletteLowerSet.has((this.savedPenColor || '').toLowerCase())) {
+        this.savedPenColor = palette[0];
+      }
+      if (!paletteLowerSet.has((this.savedHighlighterColor || '').toLowerCase())) {
+        this.savedHighlighterColor = palette[0];
+      }
+    }
+
     if (!newColorMatch && palette.length > 0) {
       // 기본 0번 색상(화이트 테마: 차콜 블랙, 다크 테마: 분필 화이트)으로 자동 선택
       this.currentInkColor = palette[0];
@@ -6123,6 +6136,10 @@ class GraphApp {
         dot.style.boxShadow = (c.toLowerCase() === '#ffffff') ? 'inset 0 0 0 1px rgba(0,0,0,0.25)' : '';
       }
     });
+
+    if (typeof this._applyCurrentToolColorUI === 'function' && this.currentInkColor) {
+      this._applyCurrentToolColorUI(this.currentInkColor);
+    }
   }
 
   // --- [🔗 공유 모달 & 학생용 모드 & QR 코드 생성 엔진] ---

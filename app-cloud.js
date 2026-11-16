@@ -32,9 +32,30 @@
       if (typeof this._ensureFirebaseInitialized === 'function') {
         this._ensureFirebaseInitialized();
       }
+      const ensureVerifiedJwtClaim = async (u) => {
+        let tok = await u.getIdToken(false);
+        if (tok && u.emailVerified && this._verifiedJwtSyncedUid !== u.uid) {
+          try {
+            const seg = (tok.split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/');
+            const padded = seg + '='.repeat((4 - (seg.length % 4)) % 4);
+            const claims = JSON.parse(atob(padded));
+            const isGoogle = Boolean(claims && claims.firebase && claims.firebase.sign_in_provider === 'google.com');
+            if ((claims && claims.email_verified === true) || isGoogle) {
+              this._verifiedJwtSyncedUid = u.uid;
+            } else {
+              const fresh = await u.getIdToken(true);
+              if (fresh) {
+                tok = fresh;
+                this._verifiedJwtSyncedUid = u.uid;
+              }
+            }
+          } catch (_) { }
+        }
+        return tok;
+      };
       if (this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
         try {
-          return await this._fbAuth.currentUser.getIdToken(false);
+          return await ensureVerifiedJwtClaim(this._fbAuth.currentUser);
         } catch (e) {
           return '';
         }
@@ -48,7 +69,7 @@
         } catch (e) { }
         if (this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
           try {
-            return await this._fbAuth.currentUser.getIdToken(false);
+            return await ensureVerifiedJwtClaim(this._fbAuth.currentUser);
           } catch (e) {
             return '';
           }
@@ -2378,10 +2399,10 @@
       );
       const prefix = isIdAuth ? 'id_' : 'acct_';
       if (normEmail && normEmail.includes('@')) {
-        return prefix + normEmail.replace(/[^a-z0-9@._-]/g, '_');
+        return prefix + normEmail.replace(/[^a-z0-9@.+_-]/g, '_');
       }
       const raw = String(fallbackRawUid || normEmail || 'user').trim();
-      return raw.startsWith(prefix) ? raw : (prefix + raw.replace(/[^a-z0-9@._-]/g, '_'));
+      return raw.startsWith(prefix) ? raw : (prefix + raw.replace(/[^a-z0-9@.+_-]/g, '_'));
     }
 
     _registerNewDeviceSessionLock(uid) {
@@ -2474,6 +2495,7 @@
         }
       } catch (e) { }
       this.cloudUser = null;
+      this._verifiedJwtSyncedUid = '';
       this.myLibraryCache = [];
     }
 
@@ -5595,6 +5617,10 @@
             this.showToast('⏳ 아직 메일함의 인증 링크가 클릭되지 않았습니다. 메일함(스팸함 포함)을 확인해 주세요.');
             return false;
           }
+          if (typeof this._fbAuth.currentUser.getIdToken === 'function') {
+            await this._fbAuth.currentUser.getIdToken(true);
+            this._verifiedJwtSyncedUid = String(this._fbAuth.currentUser.uid || '');
+          }
           verifiedRawUid = String(this._fbAuth.currentUser.uid || canonicalUid);
           if (!account && typeof this._firestoreRestReadDoc === 'function') {
             try {
@@ -5741,6 +5767,7 @@
         } catch (e) { }
       }
       this.cloudUser = null;
+      this._verifiedJwtSyncedUid = '';
       this.myLibraryCache = [];
       this._subStateMeta = null;
       this.isProUser = false;
@@ -8676,7 +8703,22 @@
       const newChunkCount = (layerPrep && layerPrep.chunks) ? layerPrep.chunks.length : 0;
 
       if (!layerPrep) {
-        await this._deleteCloudVaultSingleLayer(vaultKey, prevChunkCount);
+        if (!vaultKey) return;
+        const emptyMarker = '{"_emptyVaultLayer":true}';
+        await this._firestoreRestWriteSingleDoc('cloud_share_vault', vaultKey, emptyMarker, {
+          ownerUid: effUid,
+          expireAtMs: 0
+        });
+        if (prevChunkCount > 0) {
+          const cleanTasks = [];
+          for (let ci = 0; ci < prevChunkCount; ci++) {
+            cleanTasks.push(this._firestoreRestDeleteDoc('cloud_share_vault', `${vaultKey}_part_${ci}`).catch(() => { }));
+          }
+          await Promise.all(cleanTasks);
+        }
+        if (typeof this._idbCacheSet === 'function') {
+          await this._idbCacheSet('graphly_vault_layer_' + vaultKey, emptyMarker, 0).catch(() => { });
+        }
         return;
       }
 
@@ -8783,7 +8825,7 @@
               : JSON.stringify(cachedStr);
             const parsed = typeof uncomp === 'string' ? JSON.parse(uncomp) : uncomp;
             if (parsed && !parsed._isVaultChunkManifest) {
-              return parsed;
+              return parsed._emptyVaultLayer ? null : parsed;
             }
           }
         } catch (e) { }
@@ -8835,7 +8877,7 @@
       if (typeof this._idbCacheSet === 'function') {
         await this._idbCacheSet('graphly_vault_layer_' + vaultKey, rawRootStr, 0).catch(() => { });
       }
-      return parsedRoot;
+      return (parsedRoot && parsedRoot._emptyVaultLayer) ? null : parsedRoot;
     }
 
     async _resolveVaultPointerSharePackage(pointerPkg, skipLocalCache = false) {
@@ -8991,7 +9033,7 @@
           const layerPrep = bundle.preparedLayers[code] || null;
           const prevMetaEntry = prevLayerMeta[code];
           const prevChunks = prevMetaEntry ? (Number(prevMetaEntry.chunks) || 0) : 0;
-          if (!layerPrep && (!prevMetaEntry || prevMetaEntry.exists === false)) {
+          if (!layerPrep && (!prevMetaEntry || prevMetaEntry.exists === false) && overwriteTarget && overwriteTarget._vaultEmptySeeded) {
             return Promise.resolve();
           }
           return this._writeCloudVaultSingleLayer(vKey, layerPrep, prevChunks, baseUid);
@@ -9002,6 +9044,7 @@
         itemObj._isVaultLayered = true;
         itemObj.vaultKeys = vaultKeys;
         itemObj.vaultLayerMeta = bundle.vaultLayerMeta;
+        itemObj._vaultEmptySeeded = true;
         itemObj._isChunked = false;
         itemObj._chunkCollection = '';
         itemObj._chunkDocPrefix = '';
@@ -10733,6 +10776,17 @@
           if (currentSlideCount > maxSlides) {
             this.showToast(`공유 링크는 한 번에 최대 ${maxSlides}문항까지만 생성할 수 있습니다. (현재 ${currentSlideCount}문항)`);
             return null;
+          }
+          if (this.cloudUser && this.cloudUser.uid && !cacheTarget._vaultEmptySeeded && cacheTarget.vaultKeys) {
+            try {
+              const vk = cacheTarget.vaultKeys;
+              const m = (cacheTarget.vaultLayerMeta && typeof cacheTarget.vaultLayerMeta === 'object') ? cacheTarget.vaultLayerMeta : {};
+              const seedPairs = [['pr', vk.probKey], ['gr', vk.graphKey], ['ik', vk.inkKey], ['au', vk.audioKey], ['sn', vk.snapKey]];
+              await Promise.all(seedPairs.map(([c, k]) => (k && (!m[c] || m[c].exists === false))
+                ? this._writeCloudVaultSingleLayer(k, null, 0, this.cloudUser.uid)
+                : Promise.resolve()));
+              cacheTarget._vaultEmptySeeded = true;
+            } catch (_) { }
           }
         }
 
@@ -13972,7 +14026,7 @@
     _getShareDailyStorageKey() {
       if (this.cloudUser && this.cloudUser.uid) {
         const emailNorm = String(this.cloudUser.email || '').trim().toLowerCase();
-        const acctTag = emailNorm ? emailNorm.replace(/[^a-z0-9@._-]/g, '_') : String(this.cloudUser.uid);
+        const acctTag = emailNorm ? emailNorm.replace(/[^a-z0-9@.+_-]/g, '_') : String(this.cloudUser.uid);
         return `graphly_share_daily_v1_user_${acctTag}`;
       }
       return `graphly_share_daily_v1_${this._getOrCreateGuestShareDeviceId()}`;
@@ -14736,7 +14790,7 @@
           return true;
         }
         const data = await res.json().catch(() => null);
-        if (res.status === 429 || (data && data.code === 'DAILY_VIEW_LIMIT_EXCEEDED')) {
+        if (data && data.code === 'DAILY_VIEW_LIMIT_EXCEEDED') {
           this.showShareDailyViewLimitModal(
             data && data.dailyViewLimit,
             data && data.linkTier

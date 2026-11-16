@@ -363,10 +363,13 @@
       this.stylusGrabbingSvg = document.getElementById('stylusGrabbingSvg');
       this.stylusCrosshairSvg = document.getElementById('stylusCrosshairSvg');
       this.stylusClickRippleEl = document.getElementById('stylusClickRipple');
+      this.stylusPenTip = document.getElementById('stylusPenTip');
+      this.stylusPenCap = document.getElementById('stylusPenCap');
+      this.stylusHighlighterTip = document.getElementById('stylusHighlighterTip');
+      this.stylusHighlighterBand = document.getElementById('stylusHighlighterBand');
+      this.stylusHighlighterGlow = document.getElementById('stylusHighlighterGlow');
       this.stylusColorBand = document.getElementById('stylusColorBand');
-      if (this.stylusColorBand) {
-        this.stylusColorBand.setAttribute('fill', this.currentInkColor || '#00d2d3');
-      }
+      this._syncStylusTipColors();
       this._isPointerInsideWindow = true;
 
       // 🌟 [대표님 피드백 반영]: 액정타블렛에서 설명 중 펜이 액정에서 멀어져도(pointerleave)
@@ -1526,28 +1529,123 @@
       return rawColor || '#facc15';
     }
 
+    _hexToRgbaForStylus(colorStr, alpha = 0.28) {
+      if (typeof colorStr !== 'string') return `rgba(250, 204, 21, ${alpha})`;
+      const s = colorStr.trim();
+      const m6 = /^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/.exec(s);
+      if (m6) {
+        return `rgba(${parseInt(m6[1], 16)}, ${parseInt(m6[2], 16)}, ${parseInt(m6[3], 16)}, ${alpha})`;
+      }
+      const m3 = /^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/.exec(s);
+      if (m3) {
+        return `rgba(${parseInt(m3[1] + m3[1], 16)}, ${parseInt(m3[2] + m3[2], 16)}, ${parseInt(m3[3] + m3[3], 16)}, ${alpha})`;
+      }
+      return `rgba(250, 204, 21, ${alpha})`;
+    }
+
+    _syncStylusTipColors(overrideColor = null, overrideTool = null) {
+      if (typeof document === 'undefined') return;
+      const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { isLight: true };
+      const isLight = Boolean(curTheme.isLight || this.isMonochromeMode);
+
+      const penTipEl = this.stylusPenTip || (this.stylusPenTip = document.getElementById('stylusPenTip'));
+      const penCapEl = this.stylusPenCap || (this.stylusPenCap = document.getElementById('stylusPenCap'));
+      const hlTipEl = this.stylusHighlighterTip || (this.stylusHighlighterTip = document.getElementById('stylusHighlighterTip'));
+      const hlBandEl = this.stylusHighlighterBand || (this.stylusHighlighterBand = document.getElementById('stylusHighlighterBand'));
+      const hlGlowEl = this.stylusHighlighterGlow || (this.stylusHighlighterGlow = document.getElementById('stylusHighlighterGlow'));
+
+      if (overrideTool === 'pen') {
+        const rawPen = overrideColor || this.currentInkColor || (isLight ? '#1e293b' : '#ffffff');
+        const penFill = this.isMonochromeMode ? '#000000' : rawPen;
+        if (this._appliedPenStylusFill !== penFill) {
+          this._appliedPenStylusFill = penFill;
+          if (penTipEl) penTipEl.setAttribute('fill', penFill);
+          if (penCapEl) penCapEl.setAttribute('fill', penFill);
+          if (this.stylusColorBand) this.stylusColorBand.setAttribute('fill', penFill);
+        }
+        return;
+      }
+
+      if (overrideTool === 'highlighter') {
+        const rawHl = overrideColor || this.currentInkColor || (isLight ? '#1e293b' : '#ffffff');
+        const hlFill = this.isMonochromeMode ? '#cbd5e1' : this.resolveHighlighterStrokeColor(rawHl, Boolean(curTheme.isLight));
+        const hlGlow = this._hexToRgbaForStylus(hlFill, this.isMonochromeMode ? 0.22 : (curTheme.isLight ? 0.28 : 0.30));
+        const hlSig = `${hlFill}|${hlGlow}`;
+        if (this._appliedHlStylusFill !== hlSig) {
+          this._appliedHlStylusFill = hlSig;
+          if (hlTipEl) hlTipEl.setAttribute('fill', hlFill);
+          if (hlBandEl) hlBandEl.setAttribute('fill', hlFill);
+          if (hlGlowEl) hlGlowEl.setAttribute('fill', hlGlow);
+        }
+        return;
+      }
+
+      const defaultNeutral = curTheme.isLight ? '#1e293b' : '#ffffff';
+      let rawPen = (this.activeInkTool === 'pen' ? this.currentInkColor : (this.savedPenColor || this.currentInkColor)) || defaultNeutral;
+      const rawPenLower = String(rawPen).toLowerCase();
+      if (!curTheme.isLight && !this.isMonochromeMode && rawPenLower === '#1e293b') {
+        rawPen = '#ffffff';
+      } else if (curTheme.isLight && rawPenLower === '#ffffff') {
+        rawPen = '#1e293b';
+      }
+      const penFill = this.isMonochromeMode ? '#000000' : rawPen;
+      if (this._appliedPenStylusFill !== penFill) {
+        this._appliedPenStylusFill = penFill;
+        if (penTipEl) penTipEl.setAttribute('fill', penFill);
+        if (penCapEl) penCapEl.setAttribute('fill', penFill);
+        if (this.stylusColorBand) this.stylusColorBand.setAttribute('fill', penFill);
+      }
+
+      const rawHl = (this.activeInkTool === 'highlighter' ? this.currentInkColor : (this.savedHighlighterColor || this.currentInkColor)) || defaultNeutral;
+      const hlFill = this.isMonochromeMode ? '#cbd5e1' : this.resolveHighlighterStrokeColor(rawHl, Boolean(curTheme.isLight));
+      const hlGlow = this._hexToRgbaForStylus(hlFill, this.isMonochromeMode ? 0.22 : (curTheme.isLight ? 0.28 : 0.30));
+      const hlSig = `${hlFill}|${hlGlow}`;
+      if (this._appliedHlStylusFill !== hlSig) {
+        this._appliedHlStylusFill = hlSig;
+        if (hlTipEl) hlTipEl.setAttribute('fill', hlFill);
+        if (hlBandEl) hlBandEl.setAttribute('fill', hlFill);
+        if (hlGlowEl) hlGlowEl.setAttribute('fill', hlGlow);
+      }
+    }
+
     _applyCurrentToolColorUI(color) {
       if (!color) return;
-      this.currentInkColor = color;
-      const isHl = (this.activeInkTool === 'highlighter');
-      document.querySelectorAll('.ink-color-dot, .pill-color-dot').forEach(dot => {
-        const dsCol = (dot.dataset.color || '').toLowerCase();
-        dot.classList.toggle('active', dsCol === (color || '').toLowerCase());
-        // 형광펜 모드에서는 1번 기본 도트(#1e293b)의 시각적 색상을 노란색(#facc15)으로 표시하여 직관성 극대화
-        if (dsCol === '#1e293b') {
-          dot.style.background = isHl ? '#facc15' : '#1e293b';
-        } else if (dot.dataset.color) {
-          dot.style.background = dot.dataset.color;
-        }
-      });
-      const displayCol = isHl ? this.resolveHighlighterStrokeColor(color, true) : color;
-      if (this.stylusColorBand) {
-        this.stylusColorBand.setAttribute('fill', displayCol);
+      const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { isLight: true };
+      const isLight = Boolean(curTheme.isLight);
+      let effColor = color;
+      const rawLower = String(color).toLowerCase();
+      if (!isLight && rawLower === '#1e293b') {
+        effColor = '#ffffff';
+      } else if (isLight && rawLower === '#ffffff') {
+        effColor = '#1e293b';
       }
-      const previewDot = document.getElementById('inkSizePreviewDot');
-      if (previewDot) previewDot.style.background = displayCol;
-      const tbDot = document.getElementById('inkSizeToolbarDot');
-      if (tbDot) tbDot.style.background = displayCol;
+      this.currentInkColor = effColor;
+      const isHl = (this.activeInkTool === 'highlighter');
+      const effLower = effColor.toLowerCase();
+      if (typeof document !== 'undefined') {
+        document.querySelectorAll('.ink-color-dot, .pill-color-dot').forEach(dot => {
+          const dsCol = (dot.dataset.color || '').toLowerCase();
+          dot.classList.toggle('active', dsCol === effLower);
+          // 형광펜 모드에서는 1번 기본 도트(라이트 #1e293b / 다크 #ffffff)의 시각적 색상을 노란 형광색으로 표시하여 직관성 극대화
+          if (dsCol === '#1e293b') {
+            dot.style.background = isHl ? '#facc15' : '#1e293b';
+          } else if (dsCol === '#ffffff') {
+            dot.style.background = isHl ? '#fde047' : '#ffffff';
+          } else if (dot.dataset.color) {
+            dot.style.background = dot.dataset.color;
+          }
+        });
+      }
+      const displayCol = this.isMonochromeMode
+        ? (isHl ? '#cbd5e1' : '#000000')
+        : (isHl ? this.resolveHighlighterStrokeColor(effColor, isLight) : effColor);
+      this._syncStylusTipColors();
+      if (typeof document !== 'undefined') {
+        const previewDot = document.getElementById('inkSizePreviewDot');
+        if (previewDot) previewDot.style.background = displayCol;
+        const tbDot = document.getElementById('inkSizeToolbarDot');
+        if (tbDot) tbDot.style.background = displayCol;
+      }
     }
 
     setActiveInkTool(tool) {
@@ -1875,7 +1973,7 @@
         if (this.showVirtualStylus) {
           this.canvas.classList.add('ink-cursor-pen');
           if (this.virtualStylusEl) {
-            if (this.stylusColorBand) this.stylusColorBand.setAttribute('fill', this.currentInkColor || '#00d2d3');
+            this._syncStylusTipColors();
             this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, this._lastPointerEvent);
           }
         } else {
@@ -1886,7 +1984,7 @@
         if (this.showVirtualStylus) {
           this.canvas.classList.add('ink-cursor-highlighter');
           if (this.virtualStylusEl) {
-            if (this.stylusColorBand) this.stylusColorBand.setAttribute('fill', this.currentInkColor || '#00d2d3');
+            this._syncStylusTipColors();
             this.updateStylusPenPosition(this.stylusPenPos.x, this.stylusPenPos.y, this._lastPointerEvent);
           }
         } else {

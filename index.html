@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261116_129">
+  <link rel="stylesheet" href="style.css?v=20261116_132">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -1145,22 +1145,21 @@
         </div>
       </div>
 
-      <!-- 🌟 [필기 모드 상시 가상 연필·형광펜·지우개 인디케이터 (모노크롬 벡터 라인 아트 / 팁 원점 0,0)] 🌟 -->
+      <!-- 🌟 [필기 모드 상시 가상 연필·형광펜·지우개 인디케이터 (펜촉·엔드캡 실시간 잉크 컬러 연동 / 팁 원점 0,0)] 🌟 -->
       <div id="virtualStylusPen" class="virtual-stylus-pen" style="display: none;">
-        <!-- ✏️ 펜 모드 SVG (원라인 클래식: 팁 원점 0,0 / 중앙 1줄 포인트 + 둥근 다크 엔드 캡) -->
+        <!-- ✏️ 펜 모드 SVG (원라인 클래식: 팁 원점 0,0 / 펜촉·엔드캡 세트 컬러 연동 + 화이트 바디 다크 윤곽선) -->
         <svg id="stylusPenSvg" class="stylus-svg" width="33" height="33" viewBox="0 0 28 28" fill="none"
           style="display: block; overflow: visible;">
-          <!-- 하단 둥근 다크 엔드 캡 (지우개·형광펜 패밀리룩 통일) -->
-          <path
+          <!-- 하단 둥근 엔드 캡 (선택한 펜 색상 실시간 연동 + 다크 윤곽선 고정) -->
+          <path id="stylusPenCap"
             d="M 15.6 11.0 L 17.5 12.9 C 18.7 14.1 18.7 16.0 17.5 17.2 L 17.2 17.5 C 16.0 18.7 14.1 18.7 12.9 17.5 L 11.0 15.6 Z"
-            fill="#0f172a" stroke="#0f172a" stroke-width="1.4" stroke-linejoin="round" />
-          <!-- 펜 본체 + 원뿔 촉 베이스 (클립 없는 매끈한 대칭 화이트 바디) -->
-          <path d="M 0.4 0.4 L 7.0 2.4 L 15.6 11.0 L 11.0 15.6 L 2.4 7.0 Z" fill="#ffffff" stroke="#0f172a"
+            fill="#1e293b" stroke="#0f172a" stroke-width="1.4" stroke-linejoin="round" />
+          <!-- 펜 본체 바디 (클립 없는 매끈한 대칭 화이트 바디) -->
+          <path d="M 7.0 2.4 L 15.6 11.0 L 11.0 15.6 L 2.4 7.0 Z" fill="#ffffff" stroke="#0f172a"
             stroke-width="1.45" stroke-linejoin="round" />
-          <!-- 펜촉 흑연 팁 (0,0 칼끝 스냅 & 곡선 경계) -->
-          <path d="M 0.4 0.4 L 3.6 1.4 A 2.5 2.5 0 0 1 1.4 3.6 Z" fill="#0f172a" />
-          <!-- 원뿔 촉 - 본체 경계선 -->
-          <line x1="7.0" y1="2.4" x2="2.4" y2="7.0" stroke="#0f172a" stroke-width="1.4" stroke-linecap="round" />
+          <!-- 원뿔 펜촉 팁 (0,0 칼끝 스냅 & 선택한 펜 색상 선명 발색 + 흰색 분필 대비 다크 윤곽선) -->
+          <path id="stylusPenTip" d="M 0.4 0.4 L 7.0 2.4 L 2.4 7.0 Z" fill="#1e293b"
+            stroke="#0f172a" stroke-width="1.4" stroke-linejoin="round" />
           <!-- 본체 정중앙 1줄 벡터 포인트 라인 -->
           <line x1="6.0" y1="6.0" x2="11.8" y2="11.8" stroke="#0f172a" stroke-width="1.3" stroke-linecap="round" />
         </svg>
@@ -1184,12 +1183,12 @@
           <line x1="4.8" y1="3.4" x2="8.8" y2="7.4" stroke="#0f172a" stroke-width="1.25" stroke-linecap="round" />
         </svg>
 
-        <!-- 🖍️ 형광펜 모드 SVG (모노크롬 벡터 사선 치즐 마커 / 팁 원점 0,0) -->
+        <!-- 🖍️ 형광펜 모드 SVG (사선 치즐 팁·엔드캡·원점 글로우 실시간 형광색 연동 / 팁 원점 0,0) -->
         <svg id="stylusHighlighterSvg" class="stylus-svg" width="33" height="33" viewBox="0 0 28 28" fill="none"
           style="display: none; overflow: visible;">
-          <circle id="stylusHighlighterGlow" cx="0" cy="0" r="5.5" fill="rgba(148, 163, 184, 0.20)" />
-          <!-- 사선 치즐 팁 (원점 0,0 스냅, 다크 모노크롬) -->
-          <polygon id="stylusHighlighterTip" points="0.2,0.2 4.2,-0.2 5.2,2.4 2.4,5.2 -0.2,2.6" fill="#0f172a"
+          <circle id="stylusHighlighterGlow" cx="0" cy="0" r="5.5" fill="rgba(250, 204, 21, 0.28)" />
+          <!-- 사선 치즐 팁 (원점 0,0 스냅, 실시간 형광 발색 + 다크 윤곽선) -->
+          <polygon id="stylusHighlighterTip" points="0.2,0.2 4.2,-0.2 5.2,2.4 2.4,5.2 -0.2,2.6" fill="#facc15"
             stroke="#0f172a" stroke-width="1.25" stroke-linejoin="round" />
           <!-- 마커 목(Neck) 단차 블록 -->
           <polygon points="4.8,1.4 7.6,2.2 2.2,7.6 1.4,4.8" fill="#ffffff" stroke="#0f172a" stroke-width="1.35"
@@ -1199,10 +1198,10 @@
             stroke-linejoin="round" />
           <line x1="7.2" y1="5.0" x2="14.2" y2="12.0" stroke="#0f172a" stroke-width="1.3" stroke-linecap="round" />
           <line x1="5.0" y1="7.2" x2="12.0" y2="14.2" stroke="#0f172a" stroke-width="1.3" stroke-linecap="round" />
-          <!-- 마커 하단 다크 엔드 캡 -->
+          <!-- 마커 하단 엔드 캡 (실시간 형광 발색 + 다크 윤곽선) -->
           <path id="stylusHighlighterBand"
             d="M 17.6 11.0 L 19.5 12.9 C 20.7 14.1 20.7 16.0 19.5 17.2 L 17.2 19.5 C 16.0 20.7 14.1 20.7 12.9 19.5 L 11.0 17.6 Z"
-            fill="#0f172a" stroke="#0f172a" stroke-width="1.35" stroke-linejoin="round" />
+            fill="#facc15" stroke="#0f172a" stroke-width="1.35" stroke-linejoin="round" />
         </svg>
 
         <!-- 🔴 레이저 포인터 모드 SVG (원점 0,0 펜촉 위치 100% 일치 / 네온 레드 코어 + 이중 발광 헤일로) -->
@@ -3826,15 +3825,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261116_129"></script>
-  <script src="app-core.js?v=20261116_129"></script>
-  <script src="app-ink.js?v=20261116_129"></script>
-  <script src="app-pdf.js?v=20261116_129"></script>
-  <script src="app-cards.js?v=20261116_129"></script>
-  <script src="app-cloud.js?v=20261116_129"></script>
-  <script src="app-canvas.js?v=20261116_129"></script>
-  <script src="app-toolkit.js?v=20261116_129"></script>
-  <script src="app.js?v=20261116_129"></script>
+  <script src="engine.js?v=20261116_132"></script>
+  <script src="app-core.js?v=20261116_132"></script>
+  <script src="app-ink.js?v=20261116_132"></script>
+  <script src="app-pdf.js?v=20261116_132"></script>
+  <script src="app-cards.js?v=20261116_132"></script>
+  <script src="app-cloud.js?v=20261116_132"></script>
+  <script src="app-canvas.js?v=20261116_132"></script>
+  <script src="app-toolkit.js?v=20261116_132"></script>
+  <script src="app.js?v=20261116_132"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
