@@ -212,7 +212,7 @@
       this._lastSessionLockRegisteredAt = 0;
       this._pendingSessionLockWritePromise = null;
       this._pendingAuthRedirectReturn = false;
-      this._restoringAuthRedirectWorkspace = false;
+      this._restoringAuthRedirectWorkspace = Boolean(this._restoringAuthRedirectWorkspace);
       try {
         const redirTs = Number(sessionStorage.getItem('graphly_pending_auth_redirect_v1') || 0);
         if (redirTs > 0) {
@@ -369,6 +369,9 @@
                       this.syncCloudAuthUI();
                       this.syncUserProSubscriptionFromCloud();
                     }
+                    if (typeof this._flushPendingPaymentOnAuthReady === 'function') {
+                      this._flushPendingPaymentOnAuthReady();
+                    }
                     const sinceRegisterMs = Date.now() - (this._lastSessionLockRegisteredAt || 0);
                     if (sinceRegisterMs > 10000) {
                       this.verifyActiveDeviceSessionLock();
@@ -435,6 +438,9 @@
         };
         window.addEventListener('focus', checkSessionOnFocus, { passive: true });
         window.addEventListener('online', () => {
+          if (typeof this._flushPendingPaymentOnAuthReady === 'function') {
+            this._flushPendingPaymentOnAuthReady();
+          }
           if (!this.cloudUser || !this.cloudUser.uid) return;
           if (this._hydratedRemotePrefsUid !== this.cloudUser.uid) {
             this.onUserPreferencesAuthChanged();
@@ -1584,6 +1590,9 @@
         Object.values(item._shareLinksMap).forEach((entry) => {
           if (entry && entry.shortId) {
             shareIdsToPurge.add(String(entry.shortId));
+          }
+          if (entry && entry.permShortId) {
+            shareIdsToPurge.add(String(entry.permShortId));
           }
         });
       }
@@ -3611,6 +3620,7 @@
       const shouldPreserveLiveCanvas = () => Boolean(
         this._isSharedUrlViewActive() ||
         this._restoringAuthRedirectWorkspace ||
+        this._restoredRedirectWorkspaceOnce ||
         (typeof this.hasAnyWorkspaceContent === 'function' && this.hasAnyWorkspaceContent()) ||
         (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
       );
@@ -4249,7 +4259,7 @@
     // ============================================================================
     // ⭐ [개인별 '자주 쓰는 내 그래프' 보관함 (My Custom Graph Presets) 엔진]
     // ============================================================================
-    showTossPaymentResultModal({ status = 'success', title = '', message = '', planName = '', amount = 0, expiresAt = 0, tier = '' } = {}) {
+    showTossPaymentResultModal({ status = 'success', title = '', message = '', planName = '', amount = 0, expiresAt = 0, tier = '', buttonText = '', onConfirm = null } = {}) {
       if (typeof document === 'undefined' || !document.body) return;
       let backdrop = document.getElementById('modalTossPaymentResult');
       if (!backdrop) {
@@ -4285,6 +4295,7 @@
       const benefitHighlightText = isPremium
         ? '클라우드 20GB · 내 그래프 100개 · 60분 녹화 · 영구 링크 · 홍보배너 활성화'
         : '클라우드 5GB · 내 그래프 30개 · 60분 녹화 · 무제한 공유(7일) 활성화';
+      const resolvedButtonLabel = buttonText || (isSuccess ? '확인 (바로 시작하기)' : '확인');
 
       backdrop.innerHTML = `
       <div class="smart-modal-card" style="max-width: 440px; width: 92%; text-align: center; padding: 26px 22px 20px; border-radius: 18px;">
@@ -4308,7 +4319,7 @@
         ${!isLoading ? `
           <button type="button" id="btnConfirmTossPaymentResultModal" class="btn-primary"
             style="width: 100%; height: 42px; border-radius: 10px; font-size: 14px; font-weight: 800; background: #0f172a; color: #fff; border: 1px solid #0f172a; cursor: pointer;">
-            ${isSuccess ? '확인 (바로 시작하기)' : '확인'}
+            ${escapeText(resolvedButtonLabel)}
           </button>
         ` : ''}
       </div>
@@ -4318,11 +4329,69 @@
       if (btnClose) {
         btnClose.onclick = () => {
           backdrop.classList.remove('show');
+          if (typeof onConfirm === 'function') {
+            onConfirm();
+          }
         };
       }
     }
 
+    _clearPendingTossPaymentStorage(alsoClearWorkspaceBackup = true) {
+      try {
+        localStorage.removeItem('graphly_pending_payment_confirm_v1');
+        localStorage.removeItem('graphly_pending_payment_uid');
+        localStorage.removeItem('graphly_pending_payment_plan_code');
+        localStorage.removeItem('graphly_pending_payment_plan');
+        localStorage.removeItem('graphly_pending_payment_id_token');
+      } catch (e) { }
+      if (alsoClearWorkspaceBackup && typeof this._idbCacheDelete === 'function') {
+        this._idbCacheDelete('graphly_pre_payment_workspace_v1').catch(() => { });
+      }
+    }
+
+    async _flushPendingPaymentOnAuthReady(forceImmediate = false) {
+      if (this._isConfirmingTossPayment) return false;
+      if (!forceImmediate && this._bootPaymentConfirmScheduled) return false;
+      const hasAuthReady = Boolean(
+        (this.cloudUser && this.cloudUser.uid) ||
+        (this._fbAuth && this._fbAuth.currentUser)
+      );
+      if (!forceImmediate && !hasAuthReady) return false;
+      let obj = null;
+      try {
+        const raw = localStorage.getItem('graphly_pending_payment_confirm_v1');
+        if (!raw) return false;
+        obj = JSON.parse(raw);
+      } catch (_) {
+        return false;
+      }
+      if (!obj || !obj.paymentKey || !obj.orderId || (Date.now() - (Number(obj.createdAt) || 0) >= 30 * 60 * 1000)) {
+        this._clearPendingTossPaymentStorage(true);
+        return false;
+      }
+      this._pendingPaymentAwaitAuth = false;
+      if (
+        typeof this.hasAnyWorkspaceContent === 'function' &&
+        !this.hasAnyWorkspaceContent() &&
+        !(this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1) &&
+        typeof this._restoreWorkspaceAfterTossRedirect === 'function'
+      ) {
+        await this._restoreWorkspaceAfterTossRedirect(true).catch(() => false);
+      }
+      return await this.confirmTossPaymentAndActivatePro({
+        ...obj,
+        uid: obj.uid || (this.cloudUser && this.cloudUser.uid) || ''
+      });
+    }
+
     async _saveWorkspaceBeforeTossRedirect() {
+      if ((this.isAudioRecording || this._stoppingAudioRecordingPromise) && typeof this.stopAudioRecording === 'function') {
+        await (this._stoppingAudioRecordingPromise || this.stopAudioRecording({ silentToast: true })).catch(() => { });
+      }
+      if (Array.isArray(this._pendingSlideAudioFinalizers) && this._pendingSlideAudioFinalizers.length > 0) {
+        await Promise.all(this._pendingSlideAudioFinalizers).catch(() => { });
+        this._pendingSlideAudioFinalizers = [];
+      }
       if (typeof this._idbCacheSet !== 'function') return;
       try {
         let slides = [];
@@ -4339,6 +4408,8 @@
           savedAt: Date.now(),
           isLessonPlaylistActive: Boolean(this.isLessonPlaylistActive),
           lessonPlaylistIndex: curIdx,
+          themeKey: this.currentThemeKey || '',
+          boardPaperType: this.boardPaperType || '',
           slides
         };
         const packed = await this._compressJsonStringGzipBase64(JSON.stringify(backupObj));
@@ -4346,19 +4417,36 @@
       } catch (e) { }
     }
 
-    async _restoreWorkspaceAfterTossRedirect() {
+    async _restoreWorkspaceAfterTossRedirect(keepBackupUntilConfirmed = false) {
       if (typeof this._idbCacheGet !== 'function') return false;
+      this._restoringAuthRedirectWorkspace = true;
       try {
         const raw = await this._idbCacheGet('graphly_pre_payment_workspace_v1');
         if (!raw) return false;
-        if (typeof this._idbCacheDelete === 'function') {
+        if (!keepBackupUntilConfirmed && typeof this._idbCacheDelete === 'function') {
           await this._idbCacheDelete('graphly_pre_payment_workspace_v1').catch(() => { });
         }
         const uncomp = typeof raw === 'string' ? await this._decompressJsonStringGzipBase64(raw) : JSON.stringify(raw);
         const parsed = typeof uncomp === 'string' ? JSON.parse(uncomp) : uncomp;
-        if (!parsed || !Array.isArray(parsed.slides) || parsed.slides.length === 0) return false;
-        if (parsed.savedAt && (Date.now() - Number(parsed.savedAt) > 2 * 60 * 60 * 1000)) return false;
+        if (!parsed || !Array.isArray(parsed.slides) || parsed.slides.length === 0) {
+          if (typeof this._idbCacheDelete === 'function') {
+            await this._idbCacheDelete('graphly_pre_payment_workspace_v1').catch(() => { });
+          }
+          return false;
+        }
+        if (parsed.savedAt && (Date.now() - Number(parsed.savedAt) > 2 * 60 * 60 * 1000)) {
+          if (typeof this._idbCacheDelete === 'function') {
+            await this._idbCacheDelete('graphly_pre_payment_workspace_v1').catch(() => { });
+          }
+          return false;
+        }
 
+        if (parsed.themeKey && this.canvasThemes && this.canvasThemes[parsed.themeKey] && typeof this.setCanvasTheme === 'function') {
+          this.setCanvasTheme(parsed.themeKey, false);
+        }
+        if (parsed.boardPaperType && typeof this.setBoardPaperType === 'function') {
+          this.setBoardPaperType(parsed.boardPaperType, false);
+        }
         if (parsed.slides.length > 1 || parsed.isLessonPlaylistActive) {
           const targetIdx = Math.max(0, Math.min(parsed.slides.length - 1, Number(parsed.lessonPlaylistIndex) || 0));
           this.startLessonPlaylist(parsed.slides, targetIdx);
@@ -4366,12 +4454,15 @@
           this.deserializeFullSlideState(parsed.slides[0]);
           this.syncLessonPlaylistNavBarUI();
         }
+        this._restoredRedirectWorkspaceOnce = true;
         if (typeof this.requestRender === 'function') {
           this.requestRender();
         }
         return true;
       } catch (e) {
         return false;
+      } finally {
+        this._restoringAuthRedirectWorkspace = false;
       }
     }
 
@@ -4394,6 +4485,16 @@
     }
 
     async confirmTossPaymentAndActivatePro({ paymentKey, orderId, amount, uid, planCode, planName, pendingIdToken }) {
+      if (this._isConfirmingTossPayment) return false;
+      if (!paymentKey || !orderId) {
+        this._clearPendingTossPaymentStorage(false);
+        this.showTossPaymentResultModal({
+          status: 'error',
+          title: '결제 정보 확인 필요',
+          message: '결제 승인에 필요한 주문 정보가 누락되었습니다.'
+        });
+        return false;
+      }
       this._isConfirmingTossPayment = true;
       this.showTossPaymentResultModal({
         status: 'loading',
@@ -4406,6 +4507,31 @@
         const numAmount = Number(amount) || Number(cfg.proMonthlyPrice) || 4900;
         const resolvedPlanCode = this._inferPlanCodeFromOrder(orderId, numAmount, planCode);
 
+        if (typeof this._ensureFirebaseInitialized === 'function') {
+          this._ensureFirebaseInitialized();
+        }
+        // 로컬 cloudUser 캐시가 비어 있거나 Firebase Auth 초기화 전인 경우 최대 2.5초 우선 대기
+        if ((!this.cloudUser || !(this._fbAuth && this._fbAuth.currentUser)) && !this._fbAuthInitialResolved && this._fbAuthReadyPromise) {
+          try {
+            await Promise.race([
+              this._fbAuthReadyPromise,
+              new Promise((resolve) => setTimeout(resolve, 2500))
+            ]);
+          } catch (_) { }
+        }
+
+        const resolveEffectiveUid = () => {
+          const directUid = String(uid || (this.cloudUser && this.cloudUser.uid) || '').trim();
+          if (directUid) return directUid;
+          if (this._fbAuth && this._fbAuth.currentUser) {
+            const cu = this._fbAuth.currentUser;
+            const hasGoogle = Array.isArray(cu.providerData) && cu.providerData.some((p) => p && p.providerId === 'google.com');
+            const prov = hasGoogle ? 'google' : 'email';
+            return this._getCanonicalUidForEmail(String(cu.email || '').trim().toLowerCase(), cu.uid, prov);
+          }
+          return '';
+        };
+
         // 최신 Firebase ID 토큰을 최우선 확보하고, 아직 초기화 전일 때만 직전 토큰으로 폴백
         let idToken = '';
         if (typeof this._getFirebaseIdTokenForRest === 'function') {
@@ -4414,9 +4540,28 @@
         if (!idToken && pendingIdToken) {
           idToken = String(pendingIdToken).trim();
         }
+        let effUid = resolveEffectiveUid();
 
-        if (paymentKey && orderId && confirmEndpoint) {
-          const sendConfirmFetch = async (bearerToken) => {
+        // 토큰 또는 계정 UID가 아직 확보되지 않은 경우: 400/401 오발송으로 큐가 훼손되지 않도록 보존 후 Auth 완료 대기
+        if (!idToken || !effUid) {
+          this._pendingPaymentAwaitAuth = true;
+          const authStillLoading = !this._fbAuthInitialResolved;
+          this.showTossPaymentResultModal({
+            status: 'warning',
+            title: authStillLoading ? '계정 인증 연결 확인 중...' : '로그인 후 결제가 최종 완료됩니다',
+            message: authStillLoading
+              ? '네트워크에서 로그인 세션을 확인하고 있습니다. 연결되는 즉시 결제가 자동으로 최종 승인됩니다.'
+              : '결제 인증 정보는 안전하게 보관 중입니다. 결제하신 계정으로 로그인하는 즉시 이용권이 자동 활성화됩니다.',
+            buttonText: authStillLoading ? '지금 다시 확인하기' : '로그인 창 열기',
+            onConfirm: authStillLoading
+              ? () => { this._flushPendingPaymentOnAuthReady(true); }
+              : () => { this.promptCloudLoginForLibrary('🔑 결제하신 계정으로 로그인하면 이용권이 즉시 활성화됩니다.'); }
+          });
+          return false;
+        }
+
+        if (confirmEndpoint) {
+          const sendConfirmFetch = async (bearerToken, targetOwnerUid) => {
             const headers = { 'Content-Type': 'application/json' };
             if (bearerToken) headers['Authorization'] = `Bearer ${bearerToken}`;
             return await fetch(confirmEndpoint, {
@@ -4426,7 +4571,7 @@
                 paymentKey: String(paymentKey),
                 orderId: String(orderId),
                 amount: numAmount,
-                uid: uid || (this.cloudUser && this.cloudUser.uid) || '',
+                uid: targetOwnerUid,
                 planCode: resolvedPlanCode,
                 planName: planName || 'Graphly 이용권',
                 idToken: bearerToken
@@ -4434,28 +4579,84 @@
             });
           };
 
-          let res = await sendConfirmFetch(idToken);
-          if (res.status === 401 && this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
-            try {
-              const refreshedToken = await this._fbAuth.currentUser.getIdToken(true);
-              if (refreshedToken) {
-                idToken = refreshedToken;
-                res = await sendConfirmFetch(refreshedToken);
-              }
-            } catch (e) { }
+          let res = await sendConfirmFetch(idToken, effUid);
+          if (res.status === 401) {
+            if (!this._fbAuthInitialResolved && this._fbAuthReadyPromise) {
+              try {
+                await Promise.race([
+                  this._fbAuthReadyPromise,
+                  new Promise((resolve) => setTimeout(resolve, 2500))
+                ]);
+              } catch (_) { }
+            }
+            if (this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
+              try {
+                const refreshedToken = await this._getFirebaseIdTokenForRest(true, true) || await this._fbAuth.currentUser.getIdToken(true);
+                if (refreshedToken) {
+                  idToken = refreshedToken;
+                  effUid = resolveEffectiveUid() || effUid;
+                  res = await sendConfirmFetch(refreshedToken, effUid);
+                }
+              } catch (e) { }
+            }
           }
 
-          const data = await res.json().catch(() => ({}));
-          if (res.ok && data && data.ok === true) {
-            try {
-              localStorage.removeItem('graphly_pending_payment_confirm_v1');
-              localStorage.removeItem('graphly_pending_payment_uid');
-              localStorage.removeItem('graphly_pending_payment_plan_code');
-              localStorage.removeItem('graphly_pending_payment_plan');
-              localStorage.removeItem('graphly_pending_payment_id_token');
-            } catch (e) { }
+          let data = await res.json().catch(() => ({}));
+          const isConflictOrProcessed = (httpStatus, codeStr) => (
+            httpStatus === 409 ||
+            /ALREADY_PROCESSING|ALREADY_PROCESSED|DUPLICATE_ORDER|PROVIDER_ERROR|FAILED_INTERNAL_SYSTEM_PROCESSING/i.test(String(codeStr || ''))
+          );
 
-            const targetUid = uid || (this.cloudUser && this.cloudUser.uid) || '';
+          // 승인 도중 새로고침 등으로 선행 요청과 경합한 경우 짧은 대기 후 멱등 재확인
+          if (!res.ok && isConflictOrProcessed(res.status, data && data.code)) {
+            for (const waitMs of [1200, 1800]) {
+              await new Promise((r) => setTimeout(r, waitMs));
+              res = await sendConfirmFetch(idToken, effUid);
+              data = await res.json().catch(() => ({}));
+              if (res.ok && data && data.ok === true) break;
+              if (!isConflictOrProcessed(res.status, data && data.code)) break;
+            }
+            // 구버전 서버 등에서 여전히 ALREADY_PROCESSED / DUPLICATE_ORDER가 반환될 경우,
+            // 반드시 구독 문서에 '이번 orderId'가 실제 기록되었는지 정밀 대조 (기존 Pro 회원의 미반영 업그레이드 오판 방지)
+            if (!res.ok && /ALREADY_PROCESSED|DUPLICATE_ORDER/i.test(String((data && data.code) || '')) && typeof this._firestoreRestReadDoc === 'function') {
+              const candidateSubUids = Array.from(new Set([
+                effUid,
+                (this.cloudUser && this.cloudUser.uid) ? String(this.cloudUser.uid) : ''
+              ].filter(Boolean)));
+              for (const checkUid of candidateSubUids) {
+                const subSnap = await this._firestoreRestReadDoc('user_subscriptions', `sub_${checkUid}`, true, false).catch(() => null);
+                const orderMatched = Boolean(
+                  subSnap && (
+                    String(subSnap.orderId || '') === String(orderId) ||
+                    (Array.isArray(subSnap.activeOrders) && subSnap.activeOrders.some((o) => o && String(o.orderId || '') === String(orderId)))
+                  )
+                );
+                if (orderMatched) {
+                  data = {
+                    ok: true,
+                    idempotent: true,
+                    tier: subSnap.tier,
+                    isPro: subSnap.isPro !== false,
+                    expiresAt: subSnap.expiresAt || 0,
+                    proExpiresAt: subSnap.proExpiresAt || subSnap.expiresAt || 0,
+                    premiumExpiresAt: subSnap.premiumExpiresAt || 0,
+                    planCode: resolvedPlanCode,
+                    planName: subSnap.planName || planName,
+                    orderId: String(orderId),
+                    amount: numAmount
+                  };
+                  break;
+                }
+              }
+            }
+          }
+
+          if (data && data.ok === true) {
+            this._pendingPaymentAwaitAuth = false;
+            this._clearPendingTossPaymentStorage(true);
+
+            const activeCloudUid = (this.cloudUser && this.cloudUser.uid) ? String(this.cloudUser.uid) : '';
+            const targetUid = activeCloudUid || effUid;
             const activatedTier = (data.tier === 'premium' || resolvedPlanCode.startsWith('PREMIUM_')) ? 'premium' : 'pro';
             const nextMeta = {
               uid: targetUid,
@@ -4470,6 +4671,9 @@
             this._subStateMeta = nextMeta;
             if (targetUid) {
               this._writeStoredSubStateForUid(targetUid, nextMeta);
+            }
+            if (effUid && effUid !== targetUid) {
+              this._writeStoredSubStateForUid(effUid, { ...nextMeta, uid: effUid });
             }
             this.isProUser = true;
             if (this.cloudUser) {
@@ -4494,14 +4698,54 @@
             });
             return true;
           } else {
-            if (res.status >= 400 && res.status < 500 && res.status !== 401) {
-              try { localStorage.removeItem('graphly_pending_payment_confirm_v1'); } catch (e) { }
+            const errCode = String((data && data.code) || '');
+            if (res.status === 401) {
+              this._pendingPaymentAwaitAuth = true;
+              const authStillLoading = !this._fbAuthInitialResolved;
+              this.showTossPaymentResultModal({
+                status: 'warning',
+                title: authStillLoading ? '계정 인증 연결 확인 중...' : '다시 로그인하면 결제가 완료됩니다',
+                message: authStillLoading
+                  ? '로그인 세션을 확인하고 있습니다. 확인되는 즉시 결제가 자동으로 최종 승인됩니다.'
+                  : '인증 토큰이 만료되었습니다. 결제하신 계정으로 다시 로그인하면 결제가 자동으로 승인됩니다.',
+                buttonText: authStillLoading ? '지금 다시 확인하기' : '로그인 창 열기',
+                onConfirm: authStillLoading
+                  ? () => { this._flushPendingPaymentOnAuthReady(true); }
+                  : () => { this.promptCloudLoginForLibrary('🔑 결제하신 계정으로 로그인하면 이용권이 즉시 활성화됩니다.'); }
+              });
+              return false;
+            }
+            if (res.status === 403 && (errCode === 'UID_MISMATCH' || errCode === 'EMAIL_NOT_VERIFIED' || !errCode)) {
+              this._pendingPaymentAwaitAuth = true;
+              this.showTossPaymentResultModal({
+                status: 'warning',
+                title: errCode === 'EMAIL_NOT_VERIFIED' ? '이메일 본인 인증 확인 필요' : '결제 계정 확인이 필요합니다',
+                message: (data && data.message)
+                  ? data.message
+                  : '결제를 진행한 본인 계정으로 로그인하면 이용권이 즉시 자동 활성화됩니다.',
+                buttonText: '계정 확인 열기',
+                onConfirm: () => { this.promptCloudLoginForLibrary('🔑 결제하신 본인 계정으로 로그인하면 이용권이 즉시 활성화됩니다.'); }
+              });
+              return false;
+            }
+            const isRetryableConflictOrServerErr = (
+              res.status === 409 ||
+              res.status === 429 ||
+              res.status >= 500 ||
+              isConflictOrProcessed(res.status, errCode)
+            );
+            if (!isRetryableConflictOrServerErr && res.status >= 400 && res.status < 500) {
+              this._clearPendingTossPaymentStorage(true);
             }
             const errMsg = (data && data.message) ? data.message : '결제 최종 승인에 실패했습니다.';
             this.showTossPaymentResultModal({
-              status: 'error',
-              title: '결제 승인 실패',
-              message: errMsg
+              status: isRetryableConflictOrServerErr ? 'warning' : 'error',
+              title: isRetryableConflictOrServerErr ? '결제 승인 재확인 안내' : '결제 승인 실패',
+              message: errMsg,
+              buttonText: isRetryableConflictOrServerErr ? '지금 다시 확인하기' : '',
+              onConfirm: isRetryableConflictOrServerErr
+                ? () => { this._flushPendingPaymentOnAuthReady(true); }
+                : null
             });
             return false;
           }
@@ -4515,9 +4759,11 @@
         }
       } catch (err) {
         this.showTossPaymentResultModal({
-          status: 'error',
-          title: '결제 승인 통신 오류',
-          message: '일시적인 네트워크 지연이 발생했습니다. 페이지를 새로고침하면 결제가 자동으로 다시 확인됩니다. (문의: help@cubiolab.com)'
+          status: 'warning',
+          title: '결제 승인 통신 지연',
+          message: '일시적인 네트워크 지연이 발생했습니다. 인터넷이 연결되면 자동 승인되거나, 아래 버튼을 눌러 바로 다시 확인할 수 있습니다. (문의: help@cubiolab.com)',
+          buttonText: '지금 다시 확인하기',
+          onConfirm: () => { this._flushPendingPaymentOnAuthReady(true); }
         });
       } finally {
         this._isConfirmingTossPayment = false;
@@ -4529,6 +4775,7 @@
       this.getSubscriptionQuotaConfig();
       this.isProUser = false;
       this._subStateMeta = null;
+      this._bootPaymentConfirmScheduled = false;
       try {
         if (!this.cloudUser && typeof this._restoreActiveCloudUserSession === 'function') {
           this._restoreActiveCloudUserSession();
@@ -4552,34 +4799,38 @@
             pendingIdToken: pendingIdToken,
             createdAt: Date.now()
           };
+          if (window.history && window.history.replaceState) {
+            window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+          }
           if (paidPaymentKey && paidOrderId) {
             try {
               localStorage.setItem('graphly_pending_payment_confirm_v1', JSON.stringify(confirmPayload));
             } catch (e) { }
+            this._restoringAuthRedirectWorkspace = true;
+            this._bootPaymentConfirmScheduled = true;
+            setTimeout(async () => {
+              await this._restoreWorkspaceAfterTossRedirect(true).catch(() => false);
+              this._bootPaymentConfirmScheduled = false;
+              this.confirmTossPaymentAndActivatePro(confirmPayload);
+            }, 150);
+          } else {
+            this._clearPendingTossPaymentStorage(false);
+            this._restoringAuthRedirectWorkspace = true;
+            setTimeout(() => {
+              this._restoreWorkspaceAfterTossRedirect(false).catch(() => false);
+            }, 150);
           }
-          if (window.history && window.history.replaceState) {
-            window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
-          }
-          setTimeout(() => {
-            this._restoreWorkspaceAfterTossRedirect().catch(() => { });
-            this.confirmTossPaymentAndActivatePro(confirmPayload);
-          }, 150);
         } else if (typeof window !== 'undefined' && window.location && window.location.search.includes('paymentStatus=fail')) {
-          try {
-            localStorage.removeItem('graphly_pending_payment_confirm_v1');
-            localStorage.removeItem('graphly_pending_payment_uid');
-            localStorage.removeItem('graphly_pending_payment_plan_code');
-            localStorage.removeItem('graphly_pending_payment_plan');
-            localStorage.removeItem('graphly_pending_payment_id_token');
-          } catch (e) { }
+          this._clearPendingTossPaymentStorage(false);
           const params = new URLSearchParams(window.location.search);
           const failCode = params.get('code') || '';
           const failMsg = params.get('message') || '결제가 취소되었거나 완료되지 않았습니다.';
           if (window.history && window.history.replaceState) {
             window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
           }
-          setTimeout(() => {
-            this._restoreWorkspaceAfterTossRedirect().catch(() => { });
+          this._restoringAuthRedirectWorkspace = true;
+          setTimeout(async () => {
+            await this._restoreWorkspaceAfterTossRedirect(false).catch(() => false);
             if (failCode !== 'PAY_PROCESS_CANCELED' && failCode !== 'USER_CANCEL') {
               this.showTossPaymentResultModal({
                 status: 'error',
@@ -4595,12 +4846,15 @@
             if (retryRaw) {
               const retryObj = JSON.parse(retryRaw);
               if (retryObj && retryObj.paymentKey && retryObj.orderId && (Date.now() - (Number(retryObj.createdAt) || 0) < 30 * 60 * 1000)) {
-                setTimeout(() => {
-                  this._restoreWorkspaceAfterTossRedirect().catch(() => { });
+                this._restoringAuthRedirectWorkspace = true;
+                this._bootPaymentConfirmScheduled = true;
+                setTimeout(async () => {
+                  await this._restoreWorkspaceAfterTossRedirect(true).catch(() => false);
+                  this._bootPaymentConfirmScheduled = false;
                   this.confirmTossPaymentAndActivatePro(retryObj);
                 }, 250);
               } else {
-                localStorage.removeItem('graphly_pending_payment_confirm_v1');
+                this._clearPendingTossPaymentStorage(true);
               }
             }
           } catch (e) { }
@@ -6187,6 +6441,9 @@
       this.syncCloudAuthUI();
       this.renderMyLibraryList();
       this.fetchMyLibraryFromCloud();
+      if (typeof this._flushPendingPaymentOnAuthReady === 'function') {
+        this._flushPendingPaymentOnAuthReady();
+      }
     }
 
     async handleCloudLogout(silentToast = false) {
@@ -6229,6 +6486,7 @@
       this._persistActiveCloudUserSession();
 
       if (!silentToast) {
+        this._restoredRedirectWorkspaceOnce = false;
         if ((this.isAudioRecording || this._stoppingAudioRecordingPromise) && typeof this.stopAudioRecording === 'function') {
           await (this._stoppingAudioRecordingPromise || this.stopAudioRecording({ silentToast: true })).catch(() => { });
         }
@@ -6652,7 +6910,10 @@
       }
       let idToken = '';
       if (typeof this._getFirebaseIdTokenForRest === 'function') {
-        idToken = await this._getFirebaseIdTokenForRest(true);
+        idToken = await this._getFirebaseIdTokenForRest(true, true);
+        if (!idToken) {
+          idToken = await this._getFirebaseIdTokenForRest(true, false);
+        }
       }
       if (!idToken && this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
         try {
@@ -6712,6 +6973,7 @@
         failUrl: baseUrl + '?paymentStatus=fail'
       }).catch((err) => {
         this._isNavigatingForTossPayment = false;
+        this._clearPendingTossPaymentStorage(true);
         if (err && (err.code === 'USER_CANCEL' || err.code === 'PAY_PROCESS_CANCELED')) return;
         this.showTossPaymentResultModal({
           status: 'error',
@@ -9725,10 +9987,10 @@
             if (rawMPayload) {
               const remoteM = JSON.parse(await this._decompressJsonStringGzipBase64(rawMPayload));
               if (remoteM && typeof remoteM === 'object' && this._isOwnedByCurrentCloudUser(remoteM)) {
-                const mergedLinks = {
-                  ...(overwriteTarget._shareLinksMap && typeof overwriteTarget._shareLinksMap === 'object' ? overwriteTarget._shareLinksMap : {}),
-                  ...(remoteM._shareLinksMap && typeof remoteM._shareLinksMap === 'object' ? remoteM._shareLinksMap : {})
-                };
+                const mergedLinks = this._mergeShareLinksMaps(
+                  overwriteTarget._shareLinksMap,
+                  remoteM._shareLinksMap
+                );
                 overwriteTarget = {
                   ...overwriteTarget,
                   ...remoteM,
@@ -9779,8 +10041,10 @@
           itemObj._tempShareId = overwriteTarget._tempShareId;
           itemObj._tempShareExpiresAt = overwriteTarget._tempShareExpiresAt || 0;
         }
-        if (overwriteTarget._shareLinksMap && typeof overwriteTarget._shareLinksMap === 'object' && !itemObj._shareLinksMap) {
-          itemObj._shareLinksMap = JSON.parse(JSON.stringify(overwriteTarget._shareLinksMap));
+        if (overwriteTarget._shareLinksMap && typeof overwriteTarget._shareLinksMap === 'object') {
+          itemObj._shareLinksMap = itemObj._shareLinksMap
+            ? this._mergeShareLinksMaps(overwriteTarget._shareLinksMap, itemObj._shareLinksMap)
+            : JSON.parse(JSON.stringify(overwriteTarget._shareLinksMap));
         }
       }
 
@@ -10794,8 +11058,9 @@
               const keepPrevSlides = (!remoteIt._isVaultLayered) &&
                 !(Number(remoteIt.vaultUpdatedAt || 0) > Number(prev.vaultUpdatedAt || 0));
               const mergedShareLinks = (prev._shareLinksMap || remoteIt._shareLinksMap)
-                ? { ...(prev._shareLinksMap || {}), ...(remoteIt._shareLinksMap || {}) }
+                ? this._mergeShareLinksMaps(prev._shareLinksMap, remoteIt._shareLinksMap)
                 : undefined;
+              const mergedLinkedShareId = remoteIt.linkedShareId || prev.linkedShareId || '';
               const mergedEntry = {
                 ...prev,
                 ...remoteIt,
@@ -10804,6 +11069,11 @@
                 playlistSlides: keepPrevSlides ? (prev.playlistSlides || null) : null,
                 slideData: keepPrevSlides ? (prev.slideData || null) : null
               };
+              if (mergedLinkedShareId) {
+                mergedEntry.linkedShareId = mergedLinkedShareId;
+              } else {
+                delete mergedEntry.linkedShareId;
+              }
               if (mergedShareLinks && Object.keys(mergedShareLinks).length > 0) {
                 mergedEntry._shareLinksMap = mergedShareLinks;
               }
@@ -10929,18 +11199,83 @@
       }
     }
 
+    _mergeShareLinksMaps(mapA, mapB) {
+      const a = (mapA && typeof mapA === 'object') ? mapA : {};
+      const b = (mapB && typeof mapB === 'object') ? mapB : {};
+      const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+      const out = {};
+      keys.forEach((sig) => {
+        const entA = a[sig];
+        const entB = b[sig];
+        if (!entA || typeof entA !== 'object') {
+          if (entB && typeof entB === 'object') out[sig] = { ...entB };
+          return;
+        }
+        if (!entB || typeof entB !== 'object') {
+          out[sig] = { ...entA };
+          return;
+        }
+        const permA = entA.permShortId || (entA.isPermanent && entA.shortId ? entA.shortId : '');
+        const permB = entB.permShortId || (entB.isPermanent && entB.shortId ? entB.shortId : '');
+        const newerIsB = (Number(entB.createdAt) || 0) >= (Number(entA.createdAt) || 0);
+        const keptPermId = String((newerIsB ? (permB || permA) : (permA || permB)) || '');
+        const primary = newerIsB ? entB : entA;
+        out[sig] = {
+          ...primary,
+          ...(keptPermId ? { permShortId: keptPermId } : {})
+        };
+      });
+      return out;
+    }
+
+    _resolveShareEntryActiveId(entry, nowMs = Date.now()) {
+      if (!entry || typeof entry !== 'object') return '';
+      const tier = (typeof this.getUserSubscriptionTier === 'function') ? this.getUserSubscriptionTier() : 'free';
+      const permId = String(entry.permShortId || (entry.isPermanent && entry.shortId ? entry.shortId : '') || '');
+      if (tier === 'premium') {
+        return permId;
+      }
+      if (!entry.isPermanent && entry.shortId) {
+        const expMs = Number(entry.expiresAt) || 0;
+        const notExpired = expMs <= 0 || expMs > nowMs + 60 * 1000;
+        if (!notExpired) return '';
+        if (tier === 'pro') {
+          const entryDays = Number(entry.shareExpiryDays) || 0;
+          const entryTier = String(entry.shareTier || '');
+          if ((entryDays > 0 && entryDays < 7) || entryTier === 'free' || entryTier === 'guest') {
+            return '';
+          }
+        }
+        return String(entry.shortId);
+      }
+      return '';
+    }
+
+    _resolveLegacyRootTempShareId(item, nowMs = Date.now()) {
+      if (!item || !item._tempShareId) return '';
+      if (item._shareLinksMap && typeof item._shareLinksMap === 'object' && item._shareLinksMap['1111']) {
+        return '';
+      }
+      const tier = (typeof this.getUserSubscriptionTier === 'function') ? this.getUserSubscriptionTier() : 'free';
+      if (tier === 'premium') return '';
+      const expMs = Number(item._tempShareExpiresAt) || 0;
+      if (!(expMs <= 0 || expMs > nowMs + 60 * 1000)) return '';
+      if (tier === 'pro' && expMs > 0) {
+        const baseMs = Number(item.updatedAt || item.createdAt) || nowMs;
+        if ((expMs - baseMs) < 4 * 86400000) return '';
+      }
+      return String(item._tempShareId);
+    }
+
     _isShareLinkEntryActive(entry, nowMs = Date.now()) {
-      if (!entry || !entry.shortId) return false;
-      if (entry.isPermanent) return true;
-      const expMs = Number(entry.expiresAt) || 0;
-      return expMs <= 0 || expMs > nowMs + 60 * 1000;
+      return Boolean(this._resolveShareEntryActiveId(entry, nowMs));
     }
 
     _hasPermanentCloudItemShare(item) {
       if (!item) return false;
       if (item.linkedShareId) return true;
       if (item._shareLinksMap && typeof item._shareLinksMap === 'object') {
-        return Object.values(item._shareLinksMap).some(ent => Boolean(ent && ent.shortId && ent.isPermanent));
+        return Object.values(item._shareLinksMap).some(ent => Boolean(ent && (ent.permShortId || (ent.shortId && ent.isPermanent))));
       }
       return false;
     }
@@ -10948,40 +11283,33 @@
     _getActiveCloudItemShareId(item, filterOpts = null) {
       if (!item) return '';
       const nowMs = Date.now();
+      const isPrem = this.isPremiumSubscriber();
       const mapObj = (item._shareLinksMap && typeof item._shareLinksMap === 'object') ? item._shareLinksMap : null;
 
       if (filterOpts) {
         const sig = this._getExportFilterSignatureKey(filterOpts);
-        if (mapObj && mapObj[sig] && this._isShareLinkEntryActive(mapObj[sig], nowMs)) {
-          return String(mapObj[sig].shortId);
-        }
+        const mappedId = (mapObj && mapObj[sig]) ? this._resolveShareEntryActiveId(mapObj[sig], nowMs) : '';
+        if (mappedId) return mappedId;
         if (sig === '1111') {
-          if (item.linkedShareId) return String(item.linkedShareId);
-          if (item._tempShareId) {
-            const expMs = Number(item._tempShareExpiresAt) || 0;
-            if (expMs <= 0 || expMs > nowMs + 60 * 1000) {
-              return String(item._tempShareId);
-            }
-          }
+          if (isPrem && item.linkedShareId) return String(item.linkedShareId);
+          const legacyTempId = this._resolveLegacyRootTempShareId(item, nowMs);
+          if (legacyTempId) return legacyTempId;
         }
         return '';
       }
 
       if (mapObj) {
-        if (mapObj['1111'] && this._isShareLinkEntryActive(mapObj['1111'], nowMs)) {
-          return String(mapObj['1111'].shortId);
+        const rootId = mapObj['1111'] ? this._resolveShareEntryActiveId(mapObj['1111'], nowMs) : '';
+        if (rootId) return rootId;
+        for (const ent of Object.values(mapObj)) {
+          const aid = this._resolveShareEntryActiveId(ent, nowMs);
+          if (aid) return aid;
         }
-        const anyActive = Object.values(mapObj).find(ent => this._isShareLinkEntryActive(ent, nowMs));
-        if (anyActive) return String(anyActive.shortId);
       }
 
-      if (item.linkedShareId) return String(item.linkedShareId);
-      if (item._tempShareId) {
-        const expMs = Number(item._tempShareExpiresAt) || 0;
-        if (expMs <= 0 || expMs > nowMs + 60 * 1000) {
-          return String(item._tempShareId);
-        }
-      }
+      if (isPrem && item.linkedShareId) return String(item.linkedShareId);
+      const legacyTempId = this._resolveLegacyRootTempShareId(item, nowMs);
+      if (legacyTempId) return legacyTempId;
       return '';
     }
 
@@ -11017,19 +11345,16 @@
       const activeIds = new Set();
       if (item._shareLinksMap && typeof item._shareLinksMap === 'object') {
         Object.values(item._shareLinksMap).forEach((ent) => {
-          if (this._isShareLinkEntryActive(ent, nowMs) && ent.shortId) {
-            activeIds.add(String(ent.shortId));
-          }
+          const aid = this._resolveShareEntryActiveId(ent, nowMs);
+          if (aid) activeIds.add(aid);
         });
       }
-      if (item.linkedShareId) {
+      if (this.isPremiumSubscriber() && item.linkedShareId) {
         activeIds.add(String(item.linkedShareId));
       }
-      if (item._tempShareId) {
-        const expMs = Number(item._tempShareExpiresAt) || 0;
-        if (expMs <= 0 || expMs > nowMs + 60 * 1000) {
-          activeIds.add(String(item._tempShareId));
-        }
+      const legacyTempId = this._resolveLegacyRootTempShareId(item, nowMs);
+      if (legacyTempId) {
+        activeIds.add(legacyTempId);
       }
       return activeIds.size;
     }
@@ -11455,15 +11780,18 @@
         const existingId = this._getActiveCloudItemShareId(item, f);
         if (existingId) {
           const mapEntry = (item._shareLinksMap && item._shareLinksMap[sig]) || null;
-          const isPermExisting = Boolean((mapEntry && mapEntry.isPermanent) || (sig === '1111' && item.linkedShareId));
+          const isPermExisting = this.isPremiumSubscriber() && Boolean(
+            (mapEntry && (mapEntry.isPermanent || mapEntry.permShortId)) ||
+            (sig === '1111' && item.linkedShareId)
+          );
           if (isPermExisting) {
             lblStatus.className = 'cloud-share-pop-status is-active-perm';
             lblStatus.innerHTML = `<span class="pop-status-dot"></span><span>발급된 영구 링크 활성 · 수정사항 자동 반영</span>`;
           } else {
-            const expMs = Number((mapEntry && mapEntry.expiresAt) || (sig === '1111' ? item._tempShareExpiresAt : 0)) || 0;
+            const expMs = Number((mapEntry && !mapEntry.isPermanent ? mapEntry.expiresAt : 0) || (sig === '1111' ? item._tempShareExpiresAt : 0)) || 0;
             const remDays = expMs > Date.now()
               ? Math.max(1, Math.ceil((expMs - Date.now()) / (24 * 60 * 60 * 1000)))
-              : (Number(mapEntry && mapEntry.shareExpiryDays) || 7);
+              : (Number(mapEntry && mapEntry.shareExpiryDays) || (this.getUserSubscriptionTier() === 'pro' ? 7 : 3));
             lblStatus.className = 'cloud-share-pop-status is-active';
             lblStatus.innerHTML = `<span class="pop-status-dot"></span><span>발급된 링크 활성(${remDays}일 남음) · 수정 자동 반영</span>`;
           }
@@ -11528,7 +11856,10 @@
       if (existingShareId) {
         const shareUrl = `${base}#cloud=${existingShareId}`;
         const mapEntry = (cacheTarget._shareLinksMap && cacheTarget._shareLinksMap[filterSig]) || null;
-        const isPermExisting = Boolean((mapEntry && mapEntry.isPermanent) || (filterSig === '1111' && cacheTarget.linkedShareId));
+        const isPermExisting = this.isPremiumSubscriber() && Boolean(
+          (mapEntry && (mapEntry.isPermanent || mapEntry.permShortId)) ||
+          (filterSig === '1111' && cacheTarget.linkedShareId)
+        );
         if (wantQr) {
           this._downloadQrCodePngForUrl(shareUrl, cacheTarget.title || item.title, effFilter);
           this._flashCloudShareBtnSuccess(item.id, 'QR 저장됨');
@@ -11835,9 +12166,19 @@
         if (!cacheTarget._shareLinksMap || typeof cacheTarget._shareLinksMap !== 'object') {
           cacheTarget._shareLinksMap = {};
         }
+        const prevMapEnt = cacheTarget._shareLinksMap[filterSig];
+        const prevPermId = (prevMapEnt && typeof prevMapEnt === 'object')
+          ? String(prevMapEnt.permShortId || (prevMapEnt.isPermanent && prevMapEnt.shortId ? prevMapEnt.shortId : '') || '')
+          : '';
+        const fallbackRootPermId = (!prevPermId && filterSig === '1111' && cacheTarget.linkedShareId)
+          ? String(cacheTarget.linkedShareId)
+          : '';
+        const resolvedPermShortId = isPerm ? String(shortId) : (prevPermId || fallbackRootPermId);
         cacheTarget._shareLinksMap[filterSig] = {
           shortId,
           isPermanent: Boolean(isPerm),
+          ...(resolvedPermShortId ? { permShortId: resolvedPermShortId } : {}),
+          shareTier: verifiedShareTier,
           expiresAt: isPerm ? 0 : (expiresAtMs || 0),
           shareExpiryDays: expDays,
           createdAt: nowMs,
@@ -12548,7 +12889,7 @@
 
         const activeShareCount = this._countActiveCloudItemShares(item);
         const hasActiveShare = activeShareCount > 0;
-        const isPermShare = this._hasPermanentCloudItemShare(item);
+        const isPermShare = this.isPremiumSubscriber() && this._hasPermanentCloudItemShare(item);
         const isPopoverOpenOnItem = (this._activeCloudSharePopoverItemId === item.id);
         const badgeLabelText = activeShareCount > 1 ? `공유 링크 ${activeShareCount}` : '공유 링크';
         const permLinkBadgeHtml = hasActiveShare
@@ -13794,6 +14135,14 @@
         const sideCapScale = maxSnapSide / Math.max(1, smartBounds.width, smartBounds.height);
         const areaCapScale = Math.sqrt(maxSnapArea / Math.max(1, smartBounds.width * smartBounds.height));
         targetScale = Math.max(0.2, Math.min(rawPdfScale, sideCapScale, areaCapScale));
+      } else if (this.isGraphCovered && !this.pdfPageBoardData && smartBounds && smartBounds.width > 0 && smartBounds.height > 0) {
+        const safeBz = Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0));
+        const rawBoardScale = targetScale / safeBz;
+        const maxSnapSide = isMobileDevice ? 3200 : 4080;
+        const maxSnapArea = isMobileDevice ? 9800000 : 15800000;
+        const sideCapScale = maxSnapSide / Math.max(1, smartBounds.width, smartBounds.height);
+        const areaCapScale = Math.sqrt(maxSnapArea / Math.max(1, smartBounds.width * smartBounds.height));
+        targetScale = Math.max(0.2, Math.min(rawBoardScale, sideCapScale, areaCapScale));
       }
       let exp;
       try {
@@ -14783,7 +15132,7 @@
     }
 
     // ============================================================================
-    // 🔑 [비로그인 기기 토큰 · 세션 편집 키 · KST 자정 기준 1일 3개 공유 쿼터 & 서버 티켓 연동]
+    // 🔑 [비로그인 기기 토큰 · 세션 편집 키 · KST 자정 기준 1일 5개 공유 쿼터 & 서버 티켓 연동]
     // ============================================================================
     _generateSecureRandomHex(byteLen = 16) {
       const len = Math.max(8, Number(byteLen) || 16);
@@ -15179,7 +15528,7 @@
     }
 
     async createCloudSharePackage(scope = null, filterOpts = null) {
-      // 0) 활성 재사용 세션이 없는 신규 공유 시, 로컬 1일 3개 한도 도달 여부를 스냅샷 렌더링 전에 0.00초 즉시 점검!
+      // 0) 활성 재사용 세션이 없는 신규 공유 시, 로컬 1일 5개 한도 도달 여부를 스냅샷 렌더링 전에 0.00초 즉시 점검!
       const preUsage = this.getShareDailyUsageStatus();
       if (!this._activeSessionShareShortId && preUsage.dailyLimit > 0 && preUsage.remainingCount <= 0) {
         this._handleShareDailyLimitExceeded(preUsage.isGuest);
@@ -17035,7 +17384,7 @@
       }
     }
 
-    _calcSmartViewerFitSize(iw, ih, viewport = null) {
+    _calcSmartViewerFitSize(iw, ih, viewport = null, slide = null) {
       const vp = viewport || document.getElementById('smartNoteViewerViewport');
       const isMobileViewport = (typeof window !== 'undefined') && (window.innerWidth <= 768 || window.innerHeight <= 500);
       const rawW = (vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth;
@@ -17049,9 +17398,16 @@
       const containScale = Math.min(vw / safeW, vh / safeH);
 
       // 🌟 세로형 시험지/PDF(safeH > safeW * 1.06)를 가로 화면(vw > vh * 1.02)에서 열 때:
-      // 양옆 여백을 둔 가로폭 맞춤(100%) + 맨 위(상단) 시작으로 설정하고,
-      // 한 페이지 세로 전체가 화면에 쏙 들어오는 배율(minZoom, 약 45~52%)까지 축소를 지원!
-      const isPortraitDoc = safeH > safeW * 1.06;
+      // PDF 통모드 슬라이드는 양옆 여백을 둔 가로폭 맞춤(100%) + 맨 위(상단) 시작으로 설정하고,
+      // 일반 칠판/문제카드 판서 슬라이드는 가로·세로 어떤 직사각형이든 뷰어 한 칸에 쏙 들어오도록(containScale) 유지!
+      const isPdfDocSlide = slide
+        ? Boolean(
+            slide.pdfPageBoardData ||
+            slide.viewerSnapshotDataUrl === '__SAME_AS_PDF_BOARD__' ||
+            (Array.isArray(slide.extraProblems) && slide.extraProblems.some(ep => ep && ep.isPdfPageCard))
+          )
+        : true;
+      const isPortraitDoc = isPdfDocSlide && (safeH > safeW * 1.06);
       const isLandscapeScreen = vw > vh * 1.02;
       let fitScale = containScale;
       if (isPortraitDoc && isLandscapeScreen) {
@@ -17189,7 +17545,8 @@
               const fit = this._calcSmartViewerFitSize(
                 neighborSlide.viewerSnapshotWidth || imgEl.naturalWidth || this._viewerBaseW || 1000,
                 neighborSlide.viewerSnapshotHeight || imgEl.naturalHeight || this._viewerBaseH || 700,
-                viewport
+                viewport,
+                neighborSlide
               );
               applyNeighborDataset(fit);
               this._applySmartViewerTransform();
@@ -17199,7 +17556,8 @@
           const fit = this._calcSmartViewerFitSize(
             neighborSlide.viewerSnapshotWidth || imgEl.naturalWidth || this._viewerBaseW || 1000,
             neighborSlide.viewerSnapshotHeight || imgEl.naturalHeight || this._viewerBaseH || 700,
-            viewport
+            viewport,
+            neighborSlide
           );
           applyNeighborDataset(fit);
         } else {
@@ -17470,7 +17828,8 @@
         const targetFit = this._calcSmartViewerFitSize(
           slide.viewerSnapshotWidth || (nImg && nImg.naturalWidth) || this._viewerBaseW || 1000,
           slide.viewerSnapshotHeight || (nImg && nImg.naturalHeight) || this._viewerBaseH || 700,
-          viewport
+          viewport,
+          slide
         );
         const nextSlideZoom = this._resolveNeighborViewerZoom(
           targetFit.minZoom,
@@ -17523,7 +17882,8 @@
           const finalFit = this._calcSmartViewerFitSize(
             slide.viewerSnapshotWidth || (imgEl && imgEl.naturalWidth) || targetFit.displayW,
             slide.viewerSnapshotHeight || (imgEl && imgEl.naturalHeight) || targetFit.displayH,
-            viewport
+            viewport,
+            slide
           );
           const committedZoom = this._resolveNeighborViewerZoom(
             finalFit.minZoom,
@@ -17624,7 +17984,7 @@
         : null;
       const iw = Math.max(1, (slide && slide.viewerSnapshotWidth) || imgEl.naturalWidth || 1000);
       const ih = Math.max(1, (slide && slide.viewerSnapshotHeight) || imgEl.naturalHeight || 700);
-      const { displayW, displayH, minZoom, isWidthFitScrollable } = this._calcSmartViewerFitSize(iw, ih, viewport);
+      const { displayW, displayH, minZoom, isWidthFitScrollable } = this._calcSmartViewerFitSize(iw, ih, viewport, slide);
 
       this._viewerBaseW = displayW;
       this._viewerBaseH = displayH;

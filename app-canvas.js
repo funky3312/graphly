@@ -10617,6 +10617,9 @@
       return null;
     }
 
+    const isBoardMode = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
+    const safeBz = isBoardMode ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0)) : 1.0;
+
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     const expand = (x, y, pad = 0) => {
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -10626,46 +10629,79 @@
       if (y + pad > maxY) maxY = y + pad;
     };
 
-    // 1. 선택된 필기 획 스캔
+    // 1. 선택된 필기 획 스캔 (본문에서 멀리 동떨어진 허공에 스쳐 찍힌 초미세 단일 오터치 점은 크롭 확장에서 제외)
     const bz = this.boardZoom || 1.0;
+    const strokeBoundsList = [];
     activeStrokes.forEach(s => {
       const isBoard = (s.target || 'board') === 'board';
-      const pad = s.isGraphStamp ? 4 : Math.max(8, (s.size || 4) * (s.isHighlighter ? 2.5 : 1.5));
+      const sScale = isBoard ? safeBz : 1.0;
+      const basePad = s.isGraphStamp ? 4 : Math.max(8, (s.size || 4) * (s.isHighlighter ? 2.5 : 1.5));
+      const pad = basePad * sScale;
+      let sMinX = Infinity, sMinY = Infinity, sMaxX = -Infinity, sMaxY = -Infinity;
+      const expandStroke = (x, y) => {
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        if (x < sMinX) sMinX = x;
+        if (y < sMinY) sMinY = y;
+        if (x > sMaxX) sMaxX = x;
+        if (y > sMaxY) sMaxY = y;
+      };
       if (s.shape) {
         const sh = s.shape;
         if (sh.type === 'line' && sh.start && sh.end) {
           const s1 = isBoard ? this.boardToScreen(sh.start.x, sh.start.y) : this.mathToScreen(sh.start.x, sh.start.y);
           const s2 = isBoard ? this.boardToScreen(sh.end.x, sh.end.y) : this.mathToScreen(sh.end.x, sh.end.y);
-          expand(s1.x, s1.y, pad);
-          expand(s2.x, s2.y, pad);
+          expandStroke(s1.x, s1.y);
+          expandStroke(s2.x, s2.y);
         } else if (sh.type === 'circle' && sh.center) {
           const sc = isBoard ? this.boardToScreen(sh.center.x, sh.center.y) : this.mathToScreen(sh.center.x, sh.center.y);
           const sr = isBoard ? (sh.radius * bz) : Math.abs(this.mathToScreen(sh.center.x + sh.radius, sh.center.y).x - sc.x);
-          expand(sc.x - sr, sc.y - sr, pad);
-          expand(sc.x + sr, sc.y + sr, pad);
+          expandStroke(sc.x - sr, sc.y - sr);
+          expandStroke(sc.x + sr, sc.y + sr);
         } else if (sh.type === 'ellipse' && sh.center) {
           const sc = isBoard ? this.boardToScreen(sh.center.x, sh.center.y) : this.mathToScreen(sh.center.x, sh.center.y);
           const srx = isBoard ? (sh.rx * bz) : Math.abs(this.mathToScreen(sh.center.x + sh.rx, sh.center.y).x - sc.x);
           const sry = isBoard ? (sh.ry * bz) : Math.abs(this.mathToScreen(sh.center.x, sh.center.y + sh.ry).y - sc.y);
-          expand(sc.x - srx, sc.y - sry, pad);
-          expand(sc.x + srx, sc.y + sry, pad);
+          expandStroke(sc.x - srx, sc.y - sry);
+          expandStroke(sc.x + srx, sc.y + sry);
         } else if (sh.type === 'rect' && sh.min && sh.max) {
           const rs1 = isBoard ? this.boardToScreen(sh.min.x, sh.min.y) : this.mathToScreen(sh.min.x, sh.min.y);
           const rs2 = isBoard ? this.boardToScreen(sh.max.x, sh.max.y) : this.mathToScreen(sh.max.x, sh.max.y);
-          expand(rs1.x, rs1.y, pad);
-          expand(rs2.x, rs2.y, pad);
+          expandStroke(rs1.x, rs1.y);
+          expandStroke(rs2.x, rs2.y);
         } else if (sh.pts && sh.pts.length > 0) {
           sh.pts.forEach(pt => {
             const sp = isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
-            expand(sp.x, sp.y, pad);
+            expandStroke(sp.x, sp.y);
           });
         }
       }
       if (s.points && s.points.length > 0) {
         s.points.forEach(pt => {
           const sp = isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
-          expand(sp.x, sp.y, pad);
+          expandStroke(sp.x, sp.y);
         });
+      }
+      if (Number.isFinite(sMinX) && Number.isFinite(sMinY) && Number.isFinite(sMaxX) && Number.isFinite(sMaxY)) {
+        const rawW = sMaxX - sMinX;
+        const rawH = sMaxY - sMinY;
+        const isTinyDot = Boolean(
+          !s.shape &&
+          !s.isProblemStamp &&
+          !s.isGraphStamp &&
+          !s.isHighlighter &&
+          Array.isArray(s.points) &&
+          s.points.length <= 6 &&
+          rawW <= 5 * sScale &&
+          rawH <= 5 * sScale
+        );
+        strokeBoundsList.push({ sMinX, sMinY, sMaxX, sMaxY, pad, isTinyDot });
+      }
+    });
+
+    strokeBoundsList.forEach(sb => {
+      if (!sb.isTinyDot) {
+        expand(sb.sMinX, sb.sMinY, sb.pad);
+        expand(sb.sMaxX, sb.sMaxY, sb.pad);
       }
     });
 
@@ -10751,11 +10787,33 @@
       }
     }
 
+    if (strokeBoundsList.length > 0) {
+      const hasCoreContent = Number.isFinite(minX) && Number.isFinite(minY) && Number.isFinite(maxX) && Number.isFinite(maxY);
+      const coreMinX = minX, coreMinY = minY, coreMaxX = maxX, coreMaxY = maxY;
+      const strayGapThreshold = 280 * safeBz;
+      strokeBoundsList.forEach(sb => {
+        if (!sb.isTinyDot) return;
+        if (!hasCoreContent) {
+          expand(sb.sMinX, sb.sMinY, sb.pad);
+          expand(sb.sMaxX, sb.sMaxY, sb.pad);
+          return;
+        }
+        const cx = (sb.sMinX + sb.sMaxX) * 0.5;
+        const cy = (sb.sMinY + sb.sMaxY) * 0.5;
+        const dx = Math.max(0, coreMinX - cx, cx - coreMaxX);
+        const dy = Math.max(0, coreMinY - cy, cy - coreMaxY);
+        if (Math.hypot(dx, dy) <= strayGapThreshold) {
+          expand(sb.sMinX, sb.sMinY, sb.pad);
+          expand(sb.sMaxX, sb.sMaxY, sb.pad);
+        }
+      });
+    }
+
     if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
       return null;
     }
 
-    const PAD = hasPdfBoard ? 14 : 36;
+    const PAD = hasPdfBoard ? 14 : Math.max(12, Math.round(36 * safeBz));
     const baseW = Math.max(800, Math.round(this.screenWidth || window.innerWidth || 1280));
     const baseH = Math.max(500, Math.round(this.screenHeight || window.innerHeight || 720));
 
@@ -10774,48 +10832,68 @@
       return { x: cropX, y: cropY, width: cropW, height: cropH, w: cropW, h: cropH };
     }
 
-    // 🌟 [대표님 핵심 기획: 기본 캡처 최소 영역 = 모니터 화면 1개 크기 보장 + 화면 밖 필기 시 자동 확장]
-    // 1) 좁은 영역에 조그만 원 하나만 그리더라도 그것만 잘려서 과도하게 확대되지 않도록,
-    //    기본적으로 현재 모니터 화면 1개 크기(0 ~ baseW, 0 ~ baseH)를 최소 캡처 영역으로 유지합니다.
-    // 2) 필기나 카드가 모니터 화면 영역을 넘어가서 작성된 경우에만 넘어간 만큼 캡처 영역을 자동 확장합니다.
-    const overlapsScreenX = (contentRight >= 0 && contentLeft <= baseW);
-    const overlapsScreenY = (contentBottom >= 0 && contentTop <= baseH);
+    // 🌟 [대표님 핵심 기획: 초기 1화면 내 판서는 화면 크기 비율 보장 + 화면 밖 확장 시 필기 영역 직사각형 정밀 크롭]
+    // 1) 보드 원본(100% 배율) 기준 초기 1화면(0 ~ baseW, 0 ~ baseH)을 현재 줌·패닝 화면 좌표로 변환하여,
+    //    아이패드 핀치 축소(50%~80%)나 패닝 상태에서도 빈 모니터 허공이 합쳐지지 않도록 정규화합니다.
+    // 2) 문제 카드 + 풀이 1줄 등 모든 요소가 초기 1화면 안에 있을 때는 초기 1화면 비율(minW × minH)을 그대로 보장합니다.
+    // 3) 가로·세로로 글씨가 화면 밖으로 나갔을 때는 반대쪽 빈 여백을 늘리지 않고 실제 필기·카드 직사각형 영역에 맞춰 잘라줍니다.
+    const minW = isBoardMode ? Math.max(200, Math.round(baseW * safeBz)) : baseW;
+    const minH = isBoardMode ? Math.max(140, Math.round(baseH * safeBz)) : baseH;
+    const homeOrigin = isBoardMode ? this.boardToScreen(0, 0) : { x: 0, y: 0 };
+    const homeLeft = homeOrigin.x;
+    const homeTop = homeOrigin.y;
+    const homeRight = homeLeft + minW;
+    const homeBottom = homeTop + minH;
+
+    const spanW = contentRight - contentLeft;
+    const spanH = contentBottom - contentTop;
+    const tol = Math.max(2, Math.round(4 * safeBz));
+    const isInsideHomeScreen = (
+      contentLeft >= homeLeft - tol &&
+      contentRight <= homeRight + tol &&
+      contentTop >= homeTop - tol &&
+      contentBottom <= homeBottom + tol
+    );
 
     let cropLeft, cropRight, cropTop, cropBottom;
-    if (overlapsScreenX) {
-      cropLeft = Math.min(0, contentLeft);
-      cropRight = Math.max(baseW, contentRight);
+    if (isInsideHomeScreen) {
+      cropLeft = homeLeft;
+      cropRight = homeRight;
+      cropTop = homeTop;
+      cropBottom = homeBottom;
+    } else if (spanW < minW * 0.5 && spanH < minH * 0.5) {
+      const midX = (contentLeft + contentRight) * 0.5;
+      const midY = (contentTop + contentBottom) * 0.5;
+      cropLeft = midX - minW * 0.5;
+      cropRight = cropLeft + minW;
+      cropTop = midY - minH * 0.5;
+      cropBottom = cropTop + minH;
     } else {
-      const spanW = contentRight - contentLeft;
-      if (spanW < baseW) {
-        const midX = (contentLeft + contentRight) / 2;
-        cropLeft = Math.floor(midX - baseW / 2);
-        cropRight = cropLeft + baseW;
+      const minRectW = Math.max(160, Math.round(minW * 0.38));
+      const minRectH = Math.max(120, Math.round(minH * 0.38));
+      if (spanW < minRectW) {
+        const midX = (contentLeft + contentRight) * 0.5;
+        cropLeft = midX - minRectW * 0.5;
+        cropRight = cropLeft + minRectW;
       } else {
         cropLeft = contentLeft;
         cropRight = contentRight;
       }
-    }
-
-    if (overlapsScreenY) {
-      cropTop = Math.min(0, contentTop);
-      cropBottom = Math.max(baseH, contentBottom);
-    } else {
-      const spanH = contentBottom - contentTop;
-      if (spanH < baseH) {
-        const midY = (contentTop + contentBottom) / 2;
-        cropTop = Math.floor(midY - baseH / 2);
-        cropBottom = cropTop + baseH;
+      if (spanH < minRectH) {
+        const midY = (contentTop + contentBottom) * 0.5;
+        cropTop = midY - minRectH * 0.5;
+        cropBottom = cropTop + minRectH;
       } else {
         cropTop = contentTop;
         cropBottom = contentBottom;
       }
     }
 
-    const cropX = Math.floor(cropLeft);
-    const cropY = Math.floor(cropTop);
-    const cropW = Math.min(8000, Math.max(baseW, Math.ceil(cropRight - cropLeft)));
-    const cropH = Math.min(8000, Math.max(baseH, Math.ceil(cropBottom - cropTop)));
+    const maxExportSpan = Math.max(8000, Math.round(8000 * safeBz));
+    const cropX = Math.round(cropLeft);
+    const cropY = Math.round(cropTop);
+    const cropW = Math.min(maxExportSpan, Math.max(60, Math.round(cropRight - cropLeft)));
+    const cropH = Math.min(maxExportSpan, Math.max(60, Math.round(cropBottom - cropTop)));
 
     return { x: cropX, y: cropY, width: cropW, height: cropH, w: cropW, h: cropH };
   }
@@ -10838,9 +10916,11 @@
       } else {
         smartBounds = this.getSmartExportBounds(this._activeExportFilter);
       }
+      const isBoardExport = Boolean(this.isGraphCovered && !this.pdfPageBoardData && !useVfCrop);
+      const boardZoomNorm = isBoardExport ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0)) : 1.0;
       const defaultScale = useVfCrop
         ? (((this.vfTargetWIn || 2.5) * dpi) / Math.max(1, smartBounds.width))
-        : ((dpi >= 600) ? 3 : 2);
+        : (((dpi >= 600) ? 3 : 2) / boardZoomNorm);
       const scaleFactor = customScale || defaultScale;
       const sw = smartBounds ? smartBounds.width : this.screenWidth;
       const sh = smartBounds ? smartBounds.height : this.screenHeight;
