@@ -7229,6 +7229,14 @@
 
     _getCompactHistoryObject() {
       const raw = JSON.parse(this.getHistorySnapshot());
+      const viewerOverlayEl = (typeof document !== 'undefined') ? document.getElementById('smartNoteViewerOverlay') : null;
+      const isViewerOpen = Boolean(viewerOverlayEl && viewerOverlayEl.style.display !== 'none');
+      raw.authorStageW = (isViewerOpen && this._restoredAuthorStageW >= 800)
+        ? Math.round(this._restoredAuthorStageW)
+        : Math.max(800, Math.round(this.screenWidth || window.innerWidth || 1280));
+      raw.authorStageH = (isViewerOpen && this._restoredAuthorStageH >= 500)
+        ? Math.round(this._restoredAuthorStageH)
+        : Math.max(500, Math.round(this.screenHeight || window.innerHeight || 720));
       if (Array.isArray(raw.inkStrokes)) {
         raw.inkStrokes = this._compactStrokesArray(raw.inkStrokes);
       }
@@ -17747,11 +17755,12 @@
       const vh = Math.max(160, rawH - padY);
       const safeW = Math.max(1, iw || 1000);
       const safeH = Math.max(1, ih || 700);
-      const containScale = Math.min(vw / safeW, vh / safeH);
+      let containScale = Math.min(vw / safeW, vh / safeH);
 
       // 🌟 세로형 시험지/PDF(safeH > safeW * 1.06)를 가로 화면(vw > vh * 1.02)에서 열 때:
       // PDF 통모드 슬라이드는 양옆 여백을 둔 가로폭 맞춤(100%) + 맨 위(상단) 시작으로 설정하고,
-      // 일반 칠판/문제카드 판서 슬라이드는 가로·세로 어떤 직사각형이든 뷰어 한 칸에 쏙 들어오도록(containScale) 유지!
+      // 일반 칠판/문제카드 판서 슬라이드는 가로맞춤/세로맞춤(containScale)으로 뷰어 한 화면에 100% 다 들어오도록 유지!
+      // (단, 화면 밖 빈 허공에 점 하나 등 초소형 요소만 찍힌 경우 10배 대왕 확대되지 않도록 원본 100% 크기 상한 적용)
       const isPdfDocSlide = slide
         ? Boolean(
             slide.pdfPageBoardData ||
@@ -17759,6 +17768,22 @@
             (Array.isArray(slide.extraProblems) && slide.extraProblems.some(ep => ep && ep.isPdfPageCard))
           )
         : true;
+      if (
+        slide &&
+        !isPdfDocSlide &&
+        slide.viewerSmartBounds &&
+        slide.viewerSmartBounds.isHomeScreen === false &&
+        slide.viewerSmartBounds.logicalW > 0 &&
+        slide.viewerSmartBounds.logicalH > 0 &&
+        slide.viewerSmartBounds.logicalW < 420 &&
+        slide.viewerSmartBounds.logicalH < 280
+      ) {
+        containScale = Math.min(
+          containScale,
+          slide.viewerSmartBounds.logicalW / safeW,
+          slide.viewerSmartBounds.logicalH / safeH
+        );
+      }
       const isPortraitDoc = isPdfDocSlide && (safeH > safeW * 1.06);
       const isLandscapeScreen = vw > vh * 1.02;
       let fitScale = containScale;

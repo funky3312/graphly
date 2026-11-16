@@ -1853,6 +1853,8 @@ class GraphApp {
       this.boardZoom = (typeof data.boardZoom === 'number') ? data.boardZoom : 1.0;
       this.boardZoomOffsetX = (typeof data.boardZoomOffsetX === 'number') ? data.boardZoomOffsetX : 0;
       this.boardZoomOffsetY = (typeof data.boardZoomOffsetY === 'number') ? data.boardZoomOffsetY : 0;
+      this._restoredAuthorStageW = (typeof data.authorStageW === 'number' && data.authorStageW >= 800) ? data.authorStageW : 0;
+      this._restoredAuthorStageH = (typeof data.authorStageH === 'number' && data.authorStageH >= 500) ? data.authorStageH : 0;
       if (data.xSpan !== undefined) this.xSpan = data.xSpan;
       if (data.ySpan !== undefined) this.ySpan = data.ySpan;
       if (data.showAxes !== undefined) {

@@ -10634,8 +10634,13 @@
     const safeBz = isBoardMode ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0)) : 1.0;
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let rawMinX = Infinity, rawMinY = Infinity, rawMaxX = -Infinity, rawMaxY = -Infinity;
     const expand = (x, y, pad = 0) => {
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      if (x < rawMinX) rawMinX = x;
+      if (y < rawMinY) rawMinY = y;
+      if (x > rawMaxX) rawMaxX = x;
+      if (y > rawMaxY) rawMaxY = y;
       if (x - pad < minX) minX = x - pad;
       if (y - pad < minY) minY = y - pad;
       if (x + pad > maxX) maxX = x + pad;
@@ -10827,8 +10832,14 @@
     }
 
     const PAD = hasPdfBoard ? 14 : Math.max(12, Math.round(36 * safeBz));
-    const baseW = Math.max(800, Math.round(this.screenWidth || window.innerWidth || 1280));
-    const baseH = Math.max(500, Math.round(this.screenHeight || window.innerHeight || 720));
+    const viewerOverlayEl = (typeof document !== 'undefined') ? document.getElementById('smartNoteViewerOverlay') : null;
+    const isViewerSnapActive = Boolean(viewerOverlayEl && viewerOverlayEl.style.display !== 'none');
+    const baseW = (isViewerSnapActive && this._restoredAuthorStageW >= 800)
+      ? Math.round(this._restoredAuthorStageW)
+      : Math.max(800, Math.round(this.screenWidth || window.innerWidth || 1280));
+    const baseH = (isViewerSnapActive && this._restoredAuthorStageH >= 500)
+      ? Math.round(this._restoredAuthorStageH)
+      : Math.max(500, Math.round(this.screenHeight || window.innerHeight || 720));
 
     const contentLeft = Math.floor(minX - PAD);
     const contentTop = Math.floor(minY - PAD);
@@ -10845,11 +10856,10 @@
       return { x: cropX, y: cropY, width: cropW, height: cropH, w: cropW, h: cropH };
     }
 
-    // 🌟 [대표님 핵심 기획: 초기 1화면 내 판서는 화면 크기 비율 보장 + 화면 밖 확장 시 필기 영역 직사각형 정밀 크롭]
-    // 1) 보드 원본(100% 배율) 기준 초기 1화면(0 ~ baseW, 0 ~ baseH)을 현재 줌·패닝 화면 좌표로 변환하여,
-    //    아이패드 핀치 축소(50%~80%)나 패닝 상태에서도 빈 모니터 허공이 합쳐지지 않도록 정규화합니다.
-    // 2) 문제 카드 + 풀이 1줄 등 모든 요소가 초기 1화면 안에 있을 때는 초기 1화면 비율(minW × minH)을 그대로 보장합니다.
-    // 3) 가로·세로로 글씨가 화면 밖으로 나갔을 때는 반대쪽 빈 여백을 늘리지 않고 실제 필기·카드 직사각형 영역에 맞춰 잘라줍니다.
+    // 🌟 [대표님 핵심 원칙 2줄 정석화]:
+    // 1) 초기 100% 홈 모니터 화면(0 ~ baseW, 0 ~ baseH) 안에 모든 요소(점 하나·문제카드·필기)가 들어있다면
+    //    바깥 여백(PAD) 오판 없이 순수 좌표 기준으로 100% 초기 모니터 비율(homeLeft~homeRight, homeTop~homeBottom) 그대로 보장!
+    // 2) 초기 모니터 경계 밖으로 넘어갔을 때만 군더더기 센터링 없이 실제 카드+필기 직사각형 그대로 크롭!
     const minW = isBoardMode ? Math.max(200, Math.round(baseW * safeBz)) : baseW;
     const minH = isBoardMode ? Math.max(140, Math.round(baseH * safeBz)) : baseH;
     const homeOrigin = isBoardMode ? this.boardToScreen(0, 0) : { x: 0, y: 0 };
@@ -10858,14 +10868,13 @@
     const homeRight = homeLeft + minW;
     const homeBottom = homeTop + minH;
 
-    const spanW = contentRight - contentLeft;
-    const spanH = contentBottom - contentTop;
-    const tol = Math.max(2, Math.round(4 * safeBz));
+    const tol = Math.max(4, Math.round(6 * safeBz));
     const isInsideHomeScreen = (
-      contentLeft >= homeLeft - tol &&
-      contentRight <= homeRight + tol &&
-      contentTop >= homeTop - tol &&
-      contentBottom <= homeBottom + tol
+      Number.isFinite(rawMinX) &&
+      rawMinX >= homeLeft - tol &&
+      rawMaxX <= homeRight + tol &&
+      rawMinY >= homeTop - tol &&
+      rawMaxY <= homeBottom + tol
     );
 
     let cropLeft, cropRight, cropTop, cropBottom;
@@ -10874,32 +10883,11 @@
       cropRight = homeRight;
       cropTop = homeTop;
       cropBottom = homeBottom;
-    } else if (spanW < minW * 0.5 && spanH < minH * 0.5) {
-      const midX = (contentLeft + contentRight) * 0.5;
-      const midY = (contentTop + contentBottom) * 0.5;
-      cropLeft = midX - minW * 0.5;
-      cropRight = cropLeft + minW;
-      cropTop = midY - minH * 0.5;
-      cropBottom = cropTop + minH;
     } else {
-      const minRectW = Math.max(160, Math.round(minW * 0.38));
-      const minRectH = Math.max(120, Math.round(minH * 0.38));
-      if (spanW < minRectW) {
-        const midX = (contentLeft + contentRight) * 0.5;
-        cropLeft = midX - minRectW * 0.5;
-        cropRight = cropLeft + minRectW;
-      } else {
-        cropLeft = contentLeft;
-        cropRight = contentRight;
-      }
-      if (spanH < minRectH) {
-        const midY = (contentTop + contentBottom) * 0.5;
-        cropTop = midY - minRectH * 0.5;
-        cropBottom = cropTop + minRectH;
-      } else {
-        cropTop = contentTop;
-        cropBottom = contentBottom;
-      }
+      cropLeft = contentLeft;
+      cropRight = contentRight;
+      cropTop = contentTop;
+      cropBottom = contentBottom;
     }
 
     const maxExportSpan = Math.max(8000, Math.round(8000 * safeBz));
@@ -10908,7 +10896,17 @@
     const cropW = Math.min(maxExportSpan, Math.max(60, Math.round(cropRight - cropLeft)));
     const cropH = Math.min(maxExportSpan, Math.max(60, Math.round(cropBottom - cropTop)));
 
-    return { x: cropX, y: cropY, width: cropW, height: cropH, w: cropW, h: cropH };
+    return {
+      x: cropX,
+      y: cropY,
+      width: cropW,
+      height: cropH,
+      w: cropW,
+      h: cropH,
+      isHomeScreen: Boolean(isInsideHomeScreen),
+      logicalW: Math.max(1, Math.round(cropW / safeBz)),
+      logicalH: Math.max(1, Math.round(cropH / safeBz))
+    };
   }
 
   // --- [선택된 요소 직사각형 자동 스캔 오프스크린 렌더링 엔진] ---
