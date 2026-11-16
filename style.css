@@ -10292,6 +10292,17 @@ body.theme-light .viewer-top-btn-edit:hover {
   border-color: #1e293b !important;
 }
 
+.viewer-top-btn-share svg {
+  flex-shrink: 0;
+}
+
+.viewer-top-btn-share.is-copied,
+body.theme-light .viewer-top-btn-share.is-copied {
+  background: #059669 !important;
+  border-color: #059669 !important;
+  color: #ffffff !important;
+}
+
 .viewer-top-btn-fullscreen {
   width: 28px;
   padding: 0;
@@ -10497,26 +10508,35 @@ body.theme-light .viewer-floating-page-toast {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 11px;
-  height: 60px;
-  padding: 0 32px;
+  gap: clamp(10px, 1.6vmin, 14px);
+  min-width: clamp(276px, 35vmin, 336px);
+  height: clamp(62px, 8.0vmin, 72px);
+  padding: 0 clamp(34px, 5.0vmin, 48px);
   border-radius: 999px;
-  border: 1.5px solid rgba(255, 255, 255, 0.22);
-  background: rgba(15, 23, 42, 0.94);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  border: 1.5px solid rgba(255, 255, 255, 0.34);
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   color: #ffffff;
-  font-size: 17.5px;
+  font-size: clamp(18px, 2.45vmin, 21.5px);
   font-weight: 800;
-  letter-spacing: -0.3px;
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.42), 0 0 0 4px rgba(15, 23, 42, 0.14);
+  letter-spacing: -0.35px;
+  white-space: nowrap;
+  box-shadow: 0 22px 52px rgba(15, 23, 42, 0.48);
   cursor: pointer;
+  z-index: 3;
   transition: transform 0.15s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.15s ease;
+}
+
+.viewer-fullscreen-gate-btn svg {
+  width: clamp(22px, 3.0vmin, 27px);
+  height: clamp(22px, 3.0vmin, 27px);
+  flex-shrink: 0;
 }
 
 .viewer-fullscreen-gate-btn:hover {
   transform: scale(1.03);
-  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.5), 0 0 0 5px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 26px 58px rgba(15, 23, 42, 0.56);
 }
 
 .viewer-fullscreen-gate-btn:active {
@@ -20243,161 +20263,394 @@ body.theme-light .promo-banner-modal-footer {
 }
 
 /* ============================================================================
-   📢 스마트 뷰어 홍보배너 캡슐 (초기 게이트 & 상단 헤더 공통 5테마)
+   📢 스마트 뷰어 홍보배너 캡슐 (모바일·패드 시작 게이트 & 해설 종료 엔딩 카드 5테마 반응형)
    ============================================================================ */
 .viewer-fullscreen-gate {
   flex-direction: column;
-  gap: 15px;
-  padding: 18px;
+  gap: clamp(36px, 6.4vmin, 54px);
+  padding: clamp(14px, 2.8vmin, 24px);
+}
+
+.smart-note-viewer-overlay.is-promo-draft-preview .viewer-fullscreen-gate {
+  padding-bottom: calc(66px + env(safe-area-inset-bottom, 0px));
 }
 
 .viewer-gate-promo-wrap {
   display: flex;
   align-items: center;
   justify-content: center;
-  max-width: min(560px, 92vw);
+  max-width: min(700px, 92vw);
   z-index: 2;
 }
 
 .smart-viewer-center-promo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  max-width: min(540px, calc(100vw - 430px));
-  pointer-events: auto;
+  display: none !important;
 }
 
 .viewer-promo-banner-pill {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 36px;
+  gap: clamp(6px, 0.95vmin, 8px);
+  min-height: clamp(32px, 3.8vmin, 36px);
   max-width: 100%;
-  padding: 5px 10px 5px 12px;
+  padding: clamp(3px, 0.5vmin, 4px) clamp(7px, 1.0vmin, 9px) clamp(3px, 0.5vmin, 4px) clamp(9px, 1.2vmin, 12px);
   border-radius: 999px;
   color: #ffffff;
-  font-size: 12.5px;
-  line-height: 1.3;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: clamp(11px, 1.35vmin, 12px);
+  line-height: 1.35;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  cursor: default;
   user-select: none;
 }
 
-.viewer-promo-banner-pill.is-gate-banner {
-  min-height: 42px;
-  padding: 6px 12px 6px 14px;
-  font-size: 13px;
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.44);
+.viewer-promo-banner-pill.is-gate-banner,
+.viewer-promo-banner-pill.is-ending-banner {
+  min-height: clamp(32px, 3.8vmin, 36px);
+  padding: clamp(3px, 0.55vmin, 4px) clamp(7px, 1.0vmin, 9px) clamp(3px, 0.55vmin, 4px) clamp(9px, 1.25vmin, 12px);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
 }
 
-/* 5대 컬러 테마 */
+/* 5대 컬러 테마 (메인 버튼보다 차분하고 은은한 반투명 글래스 질감으로 주객전도 원천 방지) */
 .viewer-promo-banner-pill.theme-slate {
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.94));
-  border-color: rgba(148, 163, 184, 0.34);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.78), rgba(51, 65, 85, 0.76));
+  border-color: rgba(203, 213, 225, 0.26);
 }
 
 .viewer-promo-banner-pill.theme-royal {
-  background: linear-gradient(135deg, rgba(30, 58, 138, 0.95), rgba(37, 99, 235, 0.93));
-  border-color: rgba(147, 197, 253, 0.38);
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.80), rgba(37, 99, 235, 0.78));
+  border-color: rgba(147, 197, 253, 0.30);
 }
 
 .viewer-promo-banner-pill.theme-violet {
-  background: linear-gradient(135deg, rgba(76, 29, 149, 0.95), rgba(124, 58, 237, 0.93));
-  border-color: rgba(216, 180, 254, 0.38);
+  background: linear-gradient(135deg, rgba(76, 29, 149, 0.80), rgba(124, 58, 237, 0.78));
+  border-color: rgba(216, 180, 254, 0.30);
 }
 
 .viewer-promo-banner-pill.theme-emerald {
-  background: linear-gradient(135deg, rgba(6, 78, 59, 0.95), rgba(5, 150, 105, 0.93));
-  border-color: rgba(110, 231, 183, 0.38);
+  background: linear-gradient(135deg, rgba(6, 78, 59, 0.80), rgba(5, 150, 105, 0.78));
+  border-color: rgba(110, 231, 183, 0.30);
 }
 
 .viewer-promo-banner-pill.theme-amber {
-  background: linear-gradient(135deg, rgba(120, 53, 15, 0.95), rgba(217, 119, 6, 0.93));
-  border-color: rgba(253, 224, 71, 0.38);
+  background: linear-gradient(135deg, rgba(120, 53, 15, 0.80), rgba(217, 119, 6, 0.78));
+  border-color: rgba(253, 224, 71, 0.30);
 }
 
 .viewer-promo-badge {
   display: inline-flex;
   align-items: center;
-  padding: 2.5px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.15);
   color: #ffffff;
-  font-size: 11px;
-  font-weight: 800;
+  font-size: clamp(10px, 1.25vmin, 11px);
+  font-weight: 700;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .viewer-promo-msg {
-  font-weight: 700;
-  color: #f8fafc;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 1 1 auto;
   min-width: 0;
+  font-weight: 600;
+  color: rgba(248, 250, 252, 0.95);
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .viewer-promo-cta-btn {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  height: 25px;
-  padding: 0 10px;
+  justify-content: center;
+  gap: 2.5px;
+  height: clamp(21px, 2.6vmin, 24px);
+  padding: 0 clamp(8px, 1.1vmin, 10px);
   border-radius: 999px;
-  background: #ffffff;
-  color: #0f172a !important;
-  font-size: 11px;
-  font-weight: 800;
+  background: rgba(255, 255, 255, 0.20);
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  color: #ffffff !important;
+  font-size: clamp(10px, 1.22vmin, 11px);
+  font-weight: 700;
   text-decoration: none !important;
   white-space: nowrap;
   flex-shrink: 0;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  transition: transform 0.12s ease, opacity 0.12s ease;
+  transition: transform 0.12s ease, background 0.12s ease;
 }
 
 .viewer-promo-cta-btn:hover {
   transform: translateY(-0.5px);
-  opacity: 0.95;
+  background: rgba(255, 255, 255, 0.28);
 }
 
-/* 📱 스마트폰/모바일 상단 바 노출 시: 페이지 버튼·영상보기와 겹치지 않도록 깔끔한 2단 캡슐로 배치되고 몰입 시 함께 슬라이드 아웃 */
-@media (max-width: 768px),
-(max-height: 500px) {
-  .smart-viewer-header.has-promo-banner {
-    flex-wrap: wrap;
-    row-gap: 6px;
+/* 📱 스마트폰 세로모드 (폭 600px 이하): 말줄임(...) 없이 아담한 2단 미니 명함으로 자동 전환 */
+@media (max-width: 600px) {
+  .viewer-fullscreen-gate-btn {
+    min-width: min(296px, 82vw);
+    height: 62px;
+    padding: 0 32px;
+    font-size: 18px;
   }
 
-  .smart-viewer-header.has-promo-banner .smart-viewer-center-promo {
-    order: 3;
-    flex: 1 1 100%;
+  .viewer-gate-promo-wrap {
+    width: auto;
+    max-width: min(338px, 90vw);
+  }
+
+  .viewer-promo-banner-pill.is-gate-banner.has-badge.has-msg.has-cta,
+  .viewer-promo-banner-pill.is-ending-banner.has-badge.has-msg.has-cta {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 6px;
+    row-gap: 3px;
+    width: fit-content;
     max-width: 100%;
+    border-radius: 16px;
+    padding: 6px 10px;
+  }
+
+  .viewer-promo-banner-pill.is-gate-banner.has-badge.has-msg.has-cta .viewer-promo-badge,
+  .viewer-promo-banner-pill.is-ending-banner.has-badge.has-msg.has-cta .viewer-promo-badge {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: clamp(9.5px, 2.7vw, 10.5px);
+    padding: 2px 7px;
+  }
+
+  .viewer-promo-banner-pill.is-gate-banner.has-badge.has-msg.has-cta .viewer-promo-cta-btn,
+  .viewer-promo-banner-pill.is-ending-banner.has-badge.has-msg.has-cta .viewer-promo-cta-btn {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    height: 21px;
+    padding: 0 7px;
+    font-size: clamp(9.5px, 2.7vw, 10.5px);
+  }
+
+  .viewer-promo-banner-pill.is-gate-banner.has-badge.has-msg.has-cta .viewer-promo-msg,
+  .viewer-promo-banner-pill.is-ending-banner.has-badge.has-msg.has-cta .viewer-promo-msg {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    text-align: left;
+    font-size: clamp(11px, 3.05vw, 11.5px);
+    line-height: 1.35;
+    padding: 0 2px;
+  }
+
+  .viewer-promo-banner-pill.is-gate-banner.has-badge.has-msg:not(.has-cta),
+  .viewer-promo-banner-pill.is-ending-banner.has-badge.has-msg:not(.has-cta) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
+    gap: 3px;
+    width: auto;
+    max-width: 100%;
+    border-radius: 16px;
+    padding: 7px 12px;
   }
 
-  .viewer-promo-banner-pill {
-    min-height: 32px;
-    padding: 4px 8px 4px 10px;
-    font-size: 11.5px;
-    gap: 6px;
-  }
-
-  .viewer-promo-banner-pill.is-gate-banner {
-    flex-wrap: wrap;
-    justify-content: center;
-    border-radius: 18px;
-    padding: 9px 13px;
-    max-width: 92vw;
-  }
-
-  .viewer-promo-banner-pill.is-gate-banner .viewer-promo-msg {
+  .viewer-promo-banner-pill.is-gate-banner.has-badge.has-msg:not(.has-cta) .viewer-promo-badge,
+  .viewer-promo-banner-pill.is-ending-banner.has-badge.has-msg:not(.has-cta) .viewer-promo-badge {
+    max-width: 100%;
     white-space: normal;
     text-align: center;
+    font-size: clamp(9.5px, 2.7vw, 10.5px);
+  }
+
+  .viewer-promo-banner-pill.is-gate-banner.has-badge.has-msg:not(.has-cta) .viewer-promo-msg,
+  .viewer-promo-banner-pill.is-ending-banner.has-badge.has-msg:not(.has-cta) .viewer-promo-msg {
+    text-align: center;
+    font-size: clamp(11px, 3.05vw, 11.5px);
+    line-height: 1.35;
+  }
+
+  .viewer-promo-banner-pill.is-gate-banner:not(.has-badge).has-msg.has-cta,
+  .viewer-promo-banner-pill.is-ending-banner:not(.has-badge).has-msg.has-cta {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 7px;
+    width: auto;
+    max-width: 100%;
+    border-radius: 16px;
+    padding: 6px 9px 6px 11px;
+  }
+
+  .viewer-promo-banner-pill.is-gate-banner:not(.has-badge).has-msg.has-cta .viewer-promo-msg,
+  .viewer-promo-banner-pill.is-ending-banner:not(.has-badge).has-msg.has-cta .viewer-promo-msg {
+    text-align: left;
+    font-size: clamp(11px, 3.05vw, 11.5px);
+    line-height: 1.35;
+  }
+
+  .viewer-promo-banner-pill.is-gate-banner.has-badge.has-cta:not(.has-msg),
+  .viewer-promo-banner-pill.is-ending-banner.has-badge.has-cta:not(.has-msg) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
+    padding: 4px 8px 4px 10px;
+    max-width: 100%;
+  }
+
+  .viewer-promo-banner-pill.is-gate-banner.has-badge.has-cta:not(.has-msg) .viewer-promo-badge,
+  .viewer-promo-banner-pill.is-ending-banner.has-badge.has-cta:not(.has-msg) .viewer-promo-badge {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: clamp(9.5px, 2.7vw, 10.5px);
+  }
+}
+
+/* 📱 스마트폰 가로모드 (세로 높이 500px 이하): 위계(메인 버튼 > 배너)와 분리 간격을 유지하면서 슬림 정합 */
+@media (max-height: 500px) {
+  .viewer-fullscreen-gate {
+    gap: 22px;
+    padding: 10px 16px;
+  }
+
+  .smart-note-viewer-overlay.is-promo-draft-preview .viewer-fullscreen-gate {
+    padding-bottom: calc(54px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .promo-draft-preview-back-btn {
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    height: 34px;
+    font-size: 12px;
+  }
+
+  .viewer-fullscreen-gate-btn {
+    min-width: 236px;
+    height: 50px;
+    padding: 0 28px;
+    font-size: 16px;
+    gap: 8px;
+  }
+
+  .viewer-fullscreen-gate-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .viewer-promo-banner-pill.is-gate-banner,
+  .viewer-promo-banner-pill.is-ending-banner {
+    min-height: 31px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+    font-size: 11px;
+  }
+}
+
+/* ============================================================================
+   🎬 [v123: Step 4 — 해설영상 재생 완료 엔딩 명함 & 바이럴 액션 카드 (#viewerAudioEndingOverlay)]
+   ============================================================================ */
+.viewer-audio-ending-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9450;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(26px, 4.6vmin, 38px);
+  padding: clamp(50px, 7vmin, 64px) clamp(14px, 3vmin, 24px) clamp(76px, 10vmin, 88px);
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(2.5px);
+  -webkit-backdrop-filter: blur(2.5px);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.viewer-audio-ending-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: clamp(9px, 1.8vmin, 13px);
+  max-width: 94vw;
+  z-index: 2;
+}
+
+.viewer-ending-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(7px, 1.2vmin, 9px);
+  height: clamp(50px, 6.5vmin, 58px);
+  padding: 0 clamp(22px, 3.4vmin, 32px);
+  border-radius: 999px;
+  font-size: clamp(15px, 2.05vmin, 17px);
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.15s ease, background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+
+.viewer-ending-action-btn svg {
+  width: clamp(16px, 2.2vmin, 20px);
+  height: clamp(16px, 2.2vmin, 20px);
+  flex-shrink: 0;
+}
+
+.viewer-ending-action-btn:hover {
+  transform: scale(1.025);
+}
+
+.viewer-ending-action-btn:active {
+  transform: scale(0.975);
+}
+
+.viewer-ending-btn-replay {
+  background: rgba(15, 23, 42, 0.96);
+  border: 1.5px solid rgba(255, 255, 255, 0.34);
+  color: #ffffff;
+  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.46);
+}
+
+.viewer-ending-btn-share {
+  background: rgba(255, 255, 255, 0.97);
+  border: 1.5px solid rgba(255, 255, 255, 0.94);
+  color: #0f172a;
+  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.34);
+}
+
+.viewer-ending-btn-share.is-copied {
+  background: #059669 !important;
+  border-color: #059669 !important;
+  color: #ffffff !important;
+}
+
+@media (max-height: 500px) {
+  .viewer-audio-ending-overlay {
+    gap: 15px;
+    padding: 46px 16px 64px;
+  }
+
+  .viewer-ending-action-btn {
+    height: 44px;
+    padding: 0 20px;
+    font-size: 14px;
+    gap: 7px;
+  }
+
+  .viewer-ending-action-btn svg {
+    width: 16px;
+    height: 16px;
   }
 }
 
@@ -24703,6 +24956,117 @@ body:not(.theme-light) #modalPromoBannerSettings .promo-save-btn.is-upsell-btn:h
   background: #e2e8f0 !important;
   border-color: #e2e8f0 !important;
   color: #0f172a !important;
+}
+
+/* [v120: Step 1 — 홍보배너 설정창 실시간 글자수 · 인라인 검증 · [실제 뷰어 화면으로 확인하기] & 무오염 프리뷰 복귀 버튼] */
+#modalPromoBannerSettings.is-behind-preview {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+#modalPromoBannerSettings .promo-opt-tag {
+  font-variant-numeric: tabular-nums !important;
+}
+
+#modalPromoBannerSettings .promo-text-input.is-invalid-url {
+  border-color: #dc2626 !important;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-text-input.is-invalid-url {
+  border-color: #f87171 !important;
+}
+
+#modalPromoBannerSettings .promo-validation-hint {
+  padding: 8px 11px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-validation-hint {
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.35);
+  border-color: rgba(248, 113, 113, 0.38);
+}
+
+#modalPromoBannerSettings .promo-viewer-preview-btn {
+  width: 100%;
+  height: 38px;
+  margin-top: 2px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 12.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+#modalPromoBannerSettings .promo-viewer-preview-btn:hover {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #ffffff;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-viewer-preview-btn {
+  background: rgba(30, 41, 59, 0.72);
+  border-color: rgba(148, 163, 184, 0.32);
+  color: #f8fafc;
+}
+
+body:not(.theme-light) #modalPromoBannerSettings .promo-viewer-preview-btn:hover {
+  background: #f8fafc;
+  border-color: #f8fafc;
+  color: #0f172a;
+}
+
+.smart-note-viewer-overlay.is-promo-draft-preview {
+  z-index: 12200 !important;
+}
+
+.promo-draft-preview-back-btn {
+  position: fixed;
+  left: 50%;
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 140;
+  height: 38px;
+  padding: 0 16px 0 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.38);
+  transition: transform 0.14s ease, background 0.14s ease;
+}
+
+.promo-draft-preview-back-btn:hover {
+  background: #0f172a;
+  transform: translateX(-50%) translateY(-1px);
+}
+
+.promo-draft-preview-back-btn:active {
+  transform: translateX(-50%) scale(0.98);
 }
 
 /* ============================================================================

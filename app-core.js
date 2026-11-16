@@ -7409,6 +7409,7 @@ class GraphApp {
       btnPreviewViewer.onclick = async () => {
         if (modal) modal.classList.remove('show');
         const pkg = await this.buildExportSharePackageObject(this.exportScope, this.exportFilter);
+        pkg._isLocalPreview = true;
         this._initialSharedCloudPkg = JSON.parse(JSON.stringify(pkg));
         await this.openSmartNoteViewer(pkg);
       };
@@ -7675,6 +7676,7 @@ class GraphApp {
         includeGraph: true,
         includeInk: true
       });
+      pkg._viewerShareUrl = window.location.href;
       this._initialSharedCloudPkg = JSON.parse(JSON.stringify(pkg));
       await this.openSmartNoteViewer(pkg);
     }, 120);

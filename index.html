@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261116_119">
+  <link rel="stylesheet" href="style.css?v=20261116_125">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -2360,8 +2360,8 @@
         <span id="lblViewerTitleBadge" class="viewer-title-badge" style="display: none;">Graphly</span>
       </div>
 
-      <!-- 💎 Premium 강사·학원 홍보배너 (상단 바 노출 시 함께 내려오고, 문제 풀이 몰입 시 화면 밖으로 완전히 숨김) -->
-      <div id="viewerHeaderPromoBannerWrap" class="smart-viewer-center-promo" style="display: none;"></div>
+      <!-- 하위 호환 유지용 비활성 슬롯 (상단 바 배너 미노출 정책 적용) -->
+      <div id="viewerHeaderPromoBannerWrap" class="smart-viewer-center-promo" style="display: none !important;"></div>
 
       <div class="smart-viewer-right">
         <button type="button" id="btnViewerPlayAudioLecture_legacy" class="viewer-top-btn viewer-top-btn-audio"
@@ -2384,6 +2384,23 @@
             <polygon points="6 4 20 12 6 20 6 4" />
           </svg>
           <span>영상보기</span>
+        </button>
+        <button type="button" id="btnViewerShareLink" class="viewer-top-btn viewer-top-btn-share"
+          style="display: none;" title="친구에게 이 수업 노트 공유하기">
+          <svg class="viewer-share-icon-default" width="13" height="13" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+          </svg>
+          <svg class="viewer-share-icon-copied" width="13" height="13" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"
+            style="display: none;" aria-hidden="true">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          <span class="viewer-share-btn-label">공유</span>
         </button>
         <button type="button" id="btnViewerEnterEdit" class="viewer-top-btn viewer-top-btn-edit"
           title="그래플리 편집 화면으로 전환">
@@ -2462,6 +2479,15 @@
         <span>전체화면으로 보기</span>
       </button>
     </div>
+
+    <!-- 👁️ 배너 설정 중 [실제 뷰어 화면으로 확인하기] 진입 시 모든 기기에서 노출되는 복귀 버튼 -->
+    <button type="button" id="btnExitPromoDraftPreview" class="promo-draft-preview-back-btn" style="display: none;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="15 18 9 12 15 6" />
+      </svg>
+      <span>배너 설정으로 돌아가기</span>
+    </button>
   </div>
 
   <!-- [📈 뷰어에서 그래프 터치 시 열리는 전용 슬림 상단 조작 바] -->
@@ -2581,6 +2607,38 @@
       <button type="button" id="btnAudioBackToViewer" class="audio-sync-btn audio-btn-viewer-back"
         style="display: none;" title="뷰어로 돌아가기">↩ 뷰어</button>
       <button type="button" id="btnAudioSyncCloseBar" class="audio-sync-btn audio-btn-close" title="플레이어 접기">✕</button>
+    </div>
+  </div>
+
+  <!-- [🎬 해설영상 재생 종료 엔딩 명함 & 바이럴 공유 오버레이 (뷰포트 1.0x 외부 고정)] -->
+  <div id="viewerAudioEndingOverlay" class="viewer-audio-ending-overlay" style="display: none;">
+    <div id="audioEndingPromoBannerWrap" class="viewer-gate-promo-wrap audio-ending-promo-wrap" style="display: none;"></div>
+    <div class="viewer-audio-ending-actions">
+      <button type="button" id="btnAudioEndingReplay" class="viewer-ending-action-btn viewer-ending-btn-replay">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="1 4 1 10 7 10" />
+          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+        </svg>
+        <span>다시 보기</span>
+      </button>
+      <button type="button" id="btnAudioEndingShare" class="viewer-ending-action-btn viewer-ending-btn-share"
+        style="display: none;">
+        <svg class="viewer-share-icon-default" width="15" height="15" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="18" cy="5" r="3" />
+          <circle cx="6" cy="12" r="3" />
+          <circle cx="18" cy="19" r="3" />
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+        </svg>
+        <svg class="viewer-share-icon-copied" width="15" height="15" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"
+          style="display: none;" aria-hidden="true">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+        <span class="viewer-share-btn-label">공유하기</span>
+      </button>
     </div>
   </div>
 
@@ -3360,7 +3418,7 @@
     </div>
   </div>
 
-  <!-- [💎 Premium 전용 뷰어 상단 강사·학원 홍보배너 설정 모달 (실시간 미리보기 스마트 빌더)] -->
+  <!-- [💎 Premium 전용 뷰어 시작·종료 홍보배너 설정 모달] -->
   <div id="modalPromoBannerSettings" class="smart-modal-backdrop">
     <div class="smart-modal-card promo-banner-modal-card">
       <div class="smart-modal-header">
@@ -3370,7 +3428,7 @@
               <path d="m3 11 18-5v12L3 14v-3z" />
               <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
             </svg></span>
-          <span class="modal-title-text">뷰어 상단 홍보배너 설정</span>
+          <span class="modal-title-text">뷰어 홍보배너 설정</span>
           <span class="promo-modal-premium-pill">Premium</span>
         </div>
         <button type="button" id="btnClosePromoBannerModal" class="btn-modal-close" title="닫기">
@@ -3385,20 +3443,14 @@
       <div class="smart-modal-body promo-banner-modal-body">
         <!-- 비-Premium 이용자 안내 배너 -->
         <div id="promoBannerUpsellNotice" class="promo-banner-upsell-notice" style="display: none;">
-          <span><strong>Premium 전용 혜택</strong>입니다. 아래에서 우리 학원·선생님 배너를 미리 꾸며보고 업그레이드 후 바로 적용해 보세요.</span>
-        </div>
-
-        <!-- 실시간 뷰어 노출 미리보기 스테이지 -->
-        <div class="promo-live-preview-stage">
-          <div class="promo-live-preview-caption">학생 뷰어 상단 노출 미리보기</div>
-          <div id="promoBannerLivePreviewMount" class="promo-live-preview-mount"></div>
+          <span><strong>Premium 전용 혜택</strong>입니다. 아래에서 우리 학원·선생님 배너를 미리 꾸며보고 실제 뷰어 화면으로 확인해 보세요.</span>
         </div>
 
         <!-- 배너 표시 ON/OFF 스위치 -->
         <label class="promo-enable-switch-row">
           <div class="promo-enable-text-col">
-            <span class="promo-enable-title">공유 링크 열람 시 상단 홍보배너 표시</span>
-            <span class="promo-enable-sub">첫 화면([전체화면으로 보기] 위)과 상단 바에 노출되며, 풀이 중 자동 숨김됩니다.</span>
+            <span class="promo-enable-title">공유 링크 열람 시 홍보배너 표시</span>
+            <span class="promo-enable-sub">모바일·패드 뷰어 첫 화면([전체화면으로 보기] 위)과 해설 영상 종료 시 노출됩니다.</span>
           </div>
           <label class="vf-toggle-wrap">
             <input type="checkbox" id="chkPromoBannerEnabled" checked>
@@ -3433,27 +3485,27 @@
           </div>
         </div>
 
-        <!-- 소속/선생님 배지 & 한 줄 홍보 문구 -->
+        <!-- 소속/선생님 배지 & 연결 버튼 이름 -->
         <div class="promo-field-grid-two">
           <div class="promo-field-group">
-            <label class="promo-field-label" for="inputPromoBadgeText">소속 · 선생님 이름 <span class="promo-opt-tag">선택 · 최대
-                24자</span></label>
-            <input type="text" id="inputPromoBadgeText" class="settings-clean-input promo-text-input" maxlength="24"
+            <label class="promo-field-label" for="inputPromoBadgeText">소속 · 선생님 이름 <span class="promo-opt-tag">선택 ·
+                <span id="cntPromoBadgeText">0</span> / 16자</span></label>
+            <input type="text" id="inputPromoBadgeText" class="settings-clean-input promo-text-input" maxlength="16"
               placeholder="예: 대치 OO수학 · 김수학T" autocomplete="off">
           </div>
           <div class="promo-field-group">
-            <label class="promo-field-label" for="inputPromoCtaLabel">연결 버튼 이름 <span class="promo-opt-tag">선택 · 최대
-                14자</span></label>
-            <input type="text" id="inputPromoCtaLabel" class="settings-clean-input promo-text-input" maxlength="14"
+            <label class="promo-field-label" for="inputPromoCtaLabel">연결 버튼 이름 <span class="promo-opt-tag">선택 ·
+                <span id="cntPromoCtaLabel">0</span> / 8자</span></label>
+            <input type="text" id="inputPromoCtaLabel" class="settings-clean-input promo-text-input" maxlength="8"
               placeholder="예: 상담·블로그" autocomplete="off">
           </div>
         </div>
 
         <div class="promo-field-group">
-          <label class="promo-field-label" for="inputPromoMessageText">한 줄 홍보 문구 <span class="promo-opt-tag">최대
-              52자</span></label>
-          <input type="text" id="inputPromoMessageText" class="settings-clean-input promo-text-input" maxlength="52"
-            placeholder="예: 겨울방학 미적분 특강 개강 · 상시 질의응답 환영" autocomplete="off">
+          <label class="promo-field-label" for="inputPromoMessageText">한 줄 홍보 문구 <span class="promo-opt-tag"><span
+                id="cntPromoMessageText">0</span> / 30자</span></label>
+          <input type="text" id="inputPromoMessageText" class="settings-clean-input promo-text-input" maxlength="30"
+            placeholder="예: 겨울방학 미적분 특강 개강 · 상시 질문 환영" autocomplete="off">
         </div>
 
         <div class="promo-field-group">
@@ -3462,6 +3514,17 @@
           <input type="url" id="inputPromoCtaUrl" class="settings-clean-input promo-text-input" maxlength="350"
             placeholder="https://open.kakao.com/... (비워두면 버튼 없이 깔끔한 공지 배너로 표시)" autocomplete="off">
         </div>
+
+        <div id="lblPromoValidationHint" class="promo-validation-hint" style="display: none;"></div>
+
+        <button type="button" id="btnPreviewPromoInViewer" class="promo-viewer-preview-btn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          <span>실제 뷰어 화면으로 확인하기</span>
+        </button>
       </div>
 
       <div class="smart-modal-footer promo-banner-modal-footer">
@@ -3744,15 +3807,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261116_119"></script>
-  <script src="app-core.js?v=20261116_119"></script>
-  <script src="app-ink.js?v=20261116_119"></script>
-  <script src="app-pdf.js?v=20261116_119"></script>
-  <script src="app-cards.js?v=20261116_119"></script>
-  <script src="app-cloud.js?v=20261116_119"></script>
-  <script src="app-canvas.js?v=20261116_119"></script>
-  <script src="app-toolkit.js?v=20261116_119"></script>
-  <script src="app.js?v=20261116_119"></script>
+  <script src="engine.js?v=20261116_125"></script>
+  <script src="app-core.js?v=20261116_125"></script>
+  <script src="app-ink.js?v=20261116_125"></script>
+  <script src="app-pdf.js?v=20261116_125"></script>
+  <script src="app-cards.js?v=20261116_125"></script>
+  <script src="app-cloud.js?v=20261116_125"></script>
+  <script src="app-canvas.js?v=20261116_125"></script>
+  <script src="app-toolkit.js?v=20261116_125"></script>
+  <script src="app.js?v=20261116_125"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">

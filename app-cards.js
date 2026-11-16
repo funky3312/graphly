@@ -1971,6 +1971,9 @@
       // 3.8. 스탬프 박제 버튼 (박제 후 창 닫기)
       const btnExtraStamp = el.querySelector('.btn-card-stamp');
       if (btnExtraStamp) {
+        if (typeof this.getStampButtonTooltipText === 'function') {
+          btnExtraStamp.title = this.getStampButtonTooltipText(false);
+        }
         btnExtraStamp.addEventListener('pointerdown', (ev) => {
           ev.stopPropagation();
         });
@@ -10601,6 +10604,140 @@
       return stampStroke;
     }
 
+    _resolveTopmostStampableCardTarget() {
+      if (!this.isGraphCovered || !this.canvas) return { blocked: true, target: null };
+      if (this.isPdfModalOpen || this.isNAxisStudioOpen || this.isMathToolkitOpen || this._activeToolkitModalId) {
+        return { blocked: true, target: null };
+      }
+      if (this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive || this._isPromoBannerViewerPreviewOpen) {
+        return { blocked: true, target: null };
+      }
+      if (this.smartViewerState && this.smartViewerState.isOpen) {
+        return { blocked: true, target: null };
+      }
+      if (this.isGraphSnapMode || this.isPdfToGraphCropMode || this._isPdfCropChoiceMenuOpen) {
+        return { blocked: true, target: null };
+      }
+      if (this._isDraggingOrResizingAnyCard || this.isDrawingInk || this._isDrawingCardInk || this.isDrawingSticker) {
+        return { blocked: true, target: null };
+      }
+      if (typeof document !== 'undefined') {
+        if (document.body && document.body.classList.contains('viewer-graph-touch-mode')) {
+          return { blocked: true, target: null };
+        }
+        const viewerOverlay = document.getElementById('smartNoteViewerOverlay');
+        if (viewerOverlay && viewerOverlay.style.display !== 'none') {
+          return { blocked: true, target: null };
+        }
+        if (document.querySelector('.smart-modal-backdrop.show')) {
+          return { blocked: true, target: null };
+        }
+      }
+
+      const candidates = [];
+
+      const pWidget = (typeof document !== 'undefined') ? document.getElementById('problemCardWidget') : null;
+      if (pWidget && pWidget.isConnected !== false && pWidget.style.display !== 'none' && this.problemCardData) {
+        candidates.push({
+          kind: 'problem',
+          cardRef: 'primary',
+          widget: pWidget,
+          isMinimized: Boolean(this.isProblemCardMinimized || pWidget.classList.contains('minimized')),
+          zIndex: parseInt(pWidget.style.zIndex, 10) || 150,
+          domOrder: 0
+        });
+      }
+
+      if (Array.isArray(this.extraProblemCards)) {
+        this.extraProblemCards.forEach((c, idx) => {
+          if (c && c.el && c.el.isConnected !== false && c.el.style.display !== 'none') {
+            candidates.push({
+              kind: 'problem',
+              cardRef: c,
+              widget: c.el,
+              isMinimized: Boolean(c.isMin || c.el.classList.contains('minimized')),
+              zIndex: parseInt(c.el.style.zIndex, 10) || 150,
+              domOrder: 1 + idx
+            });
+          }
+        });
+      }
+
+      const gWidget = (typeof document !== 'undefined') ? document.getElementById('graphCardWidget') : null;
+      if (gWidget && gWidget.isConnected !== false && gWidget.style.display !== 'none' && this._hasPrimaryGraphCard && this.graphCardData) {
+        const snap = this._getMutablePipCardSnapshot('primary');
+        if (snap && (snap._isDraggingCurve || snap._isPanningAxes || (snap.draggedHandleIdx !== null && snap.draggedHandleIdx !== undefined))) {
+          return { blocked: true, target: null };
+        }
+        candidates.push({
+          kind: 'graph',
+          cardRef: 'primary',
+          widget: gWidget,
+          isMinimized: Boolean(this.isGraphCardMinimized || gWidget.classList.contains('minimized')),
+          zIndex: parseInt(gWidget.style.zIndex, 10) || 150,
+          domOrder: 1000
+        });
+      }
+
+      if (Array.isArray(this.extraGraphCards)) {
+        for (let idx = 0; idx < this.extraGraphCards.length; idx++) {
+          const c = this.extraGraphCards[idx];
+          if (c && c.el && c.el.isConnected !== false && c.el.style.display !== 'none') {
+            const snap = this._getMutablePipCardSnapshot(c);
+            if (snap && (snap._isDraggingCurve || snap._isPanningAxes || (snap.draggedHandleIdx !== null && snap.draggedHandleIdx !== undefined))) {
+              return { blocked: true, target: null };
+            }
+            candidates.push({
+              kind: 'graph',
+              cardRef: c,
+              widget: c.el,
+              isMinimized: Boolean(c.isMin || c.el.classList.contains('minimized')),
+              zIndex: parseInt(c.el.style.zIndex, 10) || 150,
+              domOrder: 1001 + idx
+            });
+          }
+        }
+      }
+
+      if (candidates.length === 0) {
+        return { blocked: false, target: null };
+      }
+
+      const expanded = candidates.filter(it => !it.isMinimized);
+      const pool = expanded.length > 0 ? expanded : candidates;
+
+      pool.sort((a, b) => {
+        if (b.zIndex !== a.zIndex) return b.zIndex - a.zIndex;
+        const aPeek = (this._activePeekCardEl === a.widget) ? 1 : 0;
+        const bPeek = (this._activePeekCardEl === b.widget) ? 1 : 0;
+        if (bPeek !== aPeek) return bPeek - aPeek;
+        const aFocusPip = (a.kind === 'graph' && this._lastFocusedPipCardRef === a.cardRef) ? 1 : 0;
+        const bFocusPip = (b.kind === 'graph' && this._lastFocusedPipCardRef === b.cardRef) ? 1 : 0;
+        if (bFocusPip !== aFocusPip) return bFocusPip - aFocusPip;
+        return b.domOrder - a.domOrder;
+      });
+
+      return { blocked: false, target: pool[0] || null };
+    }
+
+    stampTopmostActiveCardToBoard(e = null) {
+      const { blocked, target } = this._resolveTopmostStampableCardTarget();
+      if (blocked || !target) return false;
+      if (e && e.repeat) return true;
+
+      if (target.kind === 'graph') {
+        const btnStamp = target.widget ? target.widget.querySelector('.btn-card-stamp') : null;
+        if (target.widget) {
+          this.bringCardToFront(target.widget);
+        }
+        return Boolean(this.stampPipGraphCardToBoard(target.cardRef, btnStamp));
+      }
+      if (target.kind === 'problem') {
+        return Boolean(this.stampProblemCardToBoard(target.cardRef));
+      }
+      return false;
+    }
+
     duplicatePipGraphCard(cardRef) {
       if (!cardRef) return null;
       const { widget, isPrimary } = this._getPipCardWidgetAndSnapRaw(cardRef);
@@ -11620,7 +11757,9 @@
         btnStamp = document.createElement('button');
         btnStamp.type = 'button';
         btnStamp.className = 'card-btn btn-card-stamp';
-        btnStamp.title = '캔버스에 스탬프 찍기 (현재 그래프·수선·필기를 바닥에 영구 박제)';
+        btnStamp.title = (typeof this.getStampButtonTooltipText === 'function')
+          ? this.getStampButtonTooltipText(true)
+          : '캔버스에 스탬프 찍기 (현재 그래프·수선·필기를 바닥에 영구 박제)';
         btnStamp.innerHTML = `
         <span style="display:inline-flex;align-items:center;justify-content:center;">
           <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -11640,6 +11779,9 @@
         }
       }
       if (btnStamp) {
+        if (typeof this.getStampButtonTooltipText === 'function' && widget.classList && widget.classList.contains('graph-card-widget')) {
+          btnStamp.title = this.getStampButtonTooltipText(true);
+        }
         btnStamp.addEventListener('pointerdown', (e) => {
           e.stopPropagation();
         });

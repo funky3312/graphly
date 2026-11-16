@@ -11768,6 +11768,11 @@
       const nextIdx = this.lessonPlaylistIndex + delta;
       if (nextIdx < 0 || nextIdx >= this.lessonPlaylistSlides.length) return;
 
+      this.hideAudioLectureEndingOverlay();
+      if (this.isStudentAudioVideoOnlyMode && !this._isAutoAdvancingAudioSlide) {
+        this._studentLectureStartSlideIdx = nextIdx;
+      }
+
       const wasRecording = Boolean(this.isAudioRecording);
       const wasPlayingAudio = Boolean(this.isAudioPlaying);
       if (wasRecording) {
@@ -11995,6 +12000,10 @@
       if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) return;
       if (targetIdx < 0 || targetIdx >= this.lessonPlaylistSlides.length) return;
       if (targetIdx === this.lessonPlaylistIndex) return;
+      this.hideAudioLectureEndingOverlay();
+      if (this.isStudentAudioVideoOnlyMode && !this._isAutoAdvancingAudioSlide) {
+        this._studentLectureStartSlideIdx = targetIdx;
+      }
       const wasRecording = Boolean(this.isAudioRecording);
       const wasPlayingAudio = Boolean(this.isAudioPlaying);
       if (wasRecording) {
@@ -13032,21 +13041,31 @@
 
       const clean = this._sanitizePromoBannerConfig(pkg.promoBanner);
       if (!clean.badgeText && !clean.messageText) return null;
+      if (isLocalPreview && pkg.promoBanner._isSampleCta) {
+        clean._isSampleCta = true;
+      }
       return clean;
     }
 
-    _renderPromoBannerPillDOM(banner, variant = 'header') {
+    _renderPromoBannerPillDOM(banner, variant = 'gate') {
       const clean = this._sanitizePromoBannerConfig(banner);
-      const pill = document.createElement('div');
-      pill.className = `viewer-promo-banner-pill theme-${clean.theme}` + (variant === 'gate' ? ' is-gate-banner' : '');
-
-      if (variant === 'gate' || variant === 'header') {
-        pill.addEventListener('pointerdown', (e) => e.stopPropagation());
-        pill.addEventListener('click', (e) => e.stopPropagation());
-      }
-
+      const isSampleCta = Boolean(banner && banner._isSampleCta);
       const hasBadge = Boolean(clean.badgeText);
       const hasMsg = Boolean(clean.messageText);
+      const showMsg = Boolean(hasMsg || !hasBadge);
+      const hasCta = Boolean(clean.ctaUrl);
+
+      const classes = ['viewer-promo-banner-pill', `theme-${clean.theme}`];
+      if (variant === 'gate') classes.push('is-gate-banner');
+      if (variant === 'ending') classes.push('is-ending-banner');
+      if (hasBadge) classes.push('has-badge');
+      if (showMsg) classes.push('has-msg');
+      if (hasCta) classes.push('has-cta');
+
+      const pill = document.createElement('div');
+      pill.className = classes.join(' ');
+      pill.addEventListener('pointerdown', (e) => e.stopPropagation());
+      pill.addEventListener('click', (e) => e.stopPropagation());
 
       if (hasBadge) {
         const badgeEl = document.createElement('span');
@@ -13055,22 +13074,29 @@
         pill.appendChild(badgeEl);
       }
 
-      if (hasMsg || !hasBadge) {
+      if (showMsg) {
         const msgEl = document.createElement('span');
         msgEl.className = 'viewer-promo-msg';
         msgEl.textContent = hasMsg ? clean.messageText : '우리 학원·선생님 한 줄 홍보 문구가 여기에 표시됩니다';
         pill.appendChild(msgEl);
       }
 
-      if (clean.ctaUrl) {
+      if (hasCta) {
         const ctaLink = document.createElement('a');
         ctaLink.className = 'viewer-promo-cta-btn';
-        ctaLink.href = clean.ctaUrl;
-        ctaLink.target = '_blank';
-        ctaLink.rel = 'noopener noreferrer nofollow';
+        ctaLink.href = isSampleCta ? '#' : clean.ctaUrl;
+        if (!isSampleCta) {
+          ctaLink.target = '_blank';
+          ctaLink.rel = 'noopener noreferrer nofollow';
+        }
         ctaLink.textContent = `${clean.ctaLabel || '바로가기'} ↗`;
         ctaLink.addEventListener('pointerdown', (e) => e.stopPropagation());
-        ctaLink.addEventListener('click', (e) => e.stopPropagation());
+        ctaLink.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (isSampleCta) {
+            e.preventDefault();
+          }
+        });
         pill.appendChild(ctaLink);
       }
 
@@ -13135,11 +13161,26 @@
       } else {
         if (wrapToggle) wrapToggle.style.display = 'none';
         if (lblSummary) {
-          lblSummary.textContent = '뷰어 상단 학원·선생님 홍보배너 (Premium)';
+          lblSummary.textContent = '뷰어 시작·종료 홍보배너 (Premium)';
         }
         if (btnOpen) {
           btnOpen.innerHTML = '<span>미리보기</span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg>';
         }
+      }
+    }
+
+    _setPromoModalValidationHint(msg = '') {
+      const hintEl = document.getElementById('lblPromoValidationHint');
+      const inpCtaUrl = document.getElementById('inputPromoCtaUrl');
+      if (!hintEl) return;
+      const text = String(msg || '').trim();
+      if (text) {
+        hintEl.textContent = text;
+        hintEl.style.display = 'block';
+      } else {
+        hintEl.textContent = '';
+        hintEl.style.display = 'none';
+        if (inpCtaUrl) inpCtaUrl.classList.remove('is-invalid-url');
       }
     }
 
@@ -13155,9 +13196,9 @@
         draft: {
           enabled: chkEnabled ? Boolean(chkEnabled.checked) : true,
           theme: this._draftPromoTheme || 'slate',
-          badgeText: this._cleanSingleLinePromoText(inpBadge ? inpBadge.value : '', 24),
-          messageText: this._cleanSingleLinePromoText(inpMsg ? inpMsg.value : '', 52),
-          ctaLabel: this._cleanSingleLinePromoText(inpCtaLabel ? inpCtaLabel.value : '', 14),
+          badgeText: this._cleanSingleLinePromoText(inpBadge ? inpBadge.value : '', 16),
+          messageText: this._cleanSingleLinePromoText(inpMsg ? inpMsg.value : '', 30),
+          ctaLabel: this._cleanSingleLinePromoText(inpCtaLabel ? inpCtaLabel.value : '', 8),
           ctaUrl: urlCheck.ok ? urlCheck.url : ''
         },
         rawUrl: String(rawUrl || '').trim(),
@@ -13165,21 +13206,130 @@
       };
     }
 
+    syncPromoBannerCharCounters() {
+      const inpBadge = document.getElementById('inputPromoBadgeText');
+      const inpMsg = document.getElementById('inputPromoMessageText');
+      const inpCtaLabel = document.getElementById('inputPromoCtaLabel');
+      const cntBadge = document.getElementById('cntPromoBadgeText');
+      const cntMsg = document.getElementById('cntPromoMessageText');
+      const cntCta = document.getElementById('cntPromoCtaLabel');
+
+      if (inpBadge && inpBadge.value.length > 16) inpBadge.value = inpBadge.value.slice(0, 16);
+      if (inpMsg && inpMsg.value.length > 30) inpMsg.value = inpMsg.value.slice(0, 30);
+      if (inpCtaLabel && inpCtaLabel.value.length > 8) inpCtaLabel.value = inpCtaLabel.value.slice(0, 8);
+
+      if (cntBadge) cntBadge.textContent = String(inpBadge ? inpBadge.value.length : 0);
+      if (cntMsg) cntMsg.textContent = String(inpMsg ? inpMsg.value.length : 0);
+      if (cntCta) cntCta.textContent = String(inpCtaLabel ? inpCtaLabel.value.length : 0);
+    }
+
     renderPromoBannerLivePreview() {
-      const mount = document.getElementById('promoBannerLivePreviewMount');
-      if (!mount) return;
-      const { draft } = this._collectDraftPromoBannerFromModal();
-      const sampleBanner = {
+      this.syncPromoBannerCharCounters();
+    }
+
+    async previewPromoBannerDraftInViewer() {
+      const inpCtaUrl = document.getElementById('inputPromoCtaUrl');
+      const { draft, rawUrl, urlValid } = this._collectDraftPromoBannerFromModal();
+      if (rawUrl && !urlValid) {
+        if (inpCtaUrl) {
+          inpCtaUrl.classList.add('is-invalid-url');
+          if (typeof inpCtaUrl.focus === 'function') inpCtaUrl.focus();
+        }
+        this._setPromoModalValidationHint('올바른 인터넷 주소(https://...) 형식으로 입력해 주세요.');
+        return;
+      }
+      this._setPromoModalValidationHint('');
+
+      const isSampleEmpty = !draft.badgeText && !draft.messageText;
+      const previewBanner = {
         enabled: true,
         theme: draft.theme || 'slate',
-        badgeText: draft.badgeText || (!draft.messageText ? '대치 OO수학 · 김수학T' : ''),
-        messageText: draft.messageText || (!draft.badgeText ? '겨울방학 미적분 특강 개강 · 상시 질의응답' : ''),
-        ctaLabel: draft.ctaUrl ? (draft.ctaLabel || '바로가기') : (draft.ctaLabel || (!draft.badgeText && !draft.messageText ? '상담·블로그' : '')),
-        ctaUrl: draft.ctaUrl || (!draft.badgeText && !draft.messageText ? 'https://graphly.net' : '')
+        badgeText: isSampleEmpty ? '대치 OO수학 · 김수학T' : draft.badgeText,
+        messageText: isSampleEmpty ? '겨울방학 미적분 특강 개강 · 상시 질문 환영' : draft.messageText,
+        ctaLabel: draft.ctaUrl
+          ? (draft.ctaLabel || '바로가기')
+          : (isSampleEmpty ? (draft.ctaLabel || '상담·블로그') : ''),
+        ctaUrl: draft.ctaUrl || (isSampleEmpty ? 'https://graphly.net' : ''),
+        _isSampleCta: Boolean(!draft.ctaUrl && isSampleEmpty)
       };
-      mount.innerHTML = '';
-      mount.classList.toggle('is-disabled-preview', !draft.enabled);
-      mount.appendChild(this._renderPromoBannerPillDOM(sampleBanner, 'preview'));
+
+      const snap = this.captureCurrentSlideViewerSnapshot(
+        { includeProblem: true, includeGraph: true, includeInk: true },
+        true
+      );
+      if (snap && snap.canvas) {
+        try { snap.canvas.width = 1; snap.canvas.height = 1; } catch (_) { }
+      }
+      if (!snap || !snap.dataUrl) return;
+
+      const modal = document.getElementById('modalPromoBannerSettings');
+      if (modal) {
+        modal.classList.add('is-behind-preview');
+      }
+      this._isPromoBannerDraftPreviewOpen = true;
+
+      const previewPkg = {
+        id: 'promo_draft_preview_' + Date.now().toString(36),
+        createdAt: Date.now(),
+        _isLocalPreview: true,
+        _isPromoBannerDraftPreview: true,
+        promoBanner: previewBanner,
+        exportScope: 'current',
+        exportFilter: { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: false },
+        isPlaylist: false,
+        currentIndex: 0,
+        playlistSlides: [{
+          slideTitle: '배너 미리보기',
+          viewerSnapshotDataUrl: snap.dataUrl,
+          viewerSnapshotWidth: snap.width || 1280,
+          viewerSnapshotHeight: snap.height || 720,
+          viewerGraphHotspots: [],
+          viewerStickerHotspots: [],
+          viewerSmartBounds: snap.smartBounds || null,
+          _viewerHiResRendered: true
+        }]
+      };
+
+      await this.openSmartNoteViewer(previewPkg, true);
+    }
+
+    closePromoBannerDraftPreview() {
+      if (!this._isPromoBannerDraftPreviewOpen && !(this._viewerPkg && this._viewerPkg._isPromoBannerDraftPreview)) {
+        return false;
+      }
+      this._isPromoBannerDraftPreviewOpen = false;
+      this._commitPendingViewerCarouselImmediately();
+      this._setSmartViewerCarouselAnimating(false);
+      this._stopSmartViewerInertia();
+      this._clearSmartViewerPreloadedImages();
+
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        const exitFs = document.exitFullscreen || document.webkitExitFullscreen;
+        if (typeof exitFs === 'function') {
+          try {
+            const p = exitFs.call(document);
+            if (p && typeof p.catch === 'function') p.catch(() => { });
+          } catch (_) { }
+        }
+      }
+
+      const overlay = document.getElementById('smartNoteViewerOverlay');
+      const fsGate = document.getElementById('viewerFullscreenGate');
+      const backBtn = document.getElementById('btnExitPromoDraftPreview');
+      if (backBtn) backBtn.style.display = 'none';
+      if (fsGate) fsGate.style.display = 'none';
+      if (overlay) {
+        overlay.style.display = 'none';
+        overlay.classList.remove('is-promo-draft-preview', 'viewer-entry-gate-active', 'viewer-immersive-fullscreen');
+      }
+      this._viewerPkg = null;
+
+      const modal = document.getElementById('modalPromoBannerSettings');
+      if (modal) {
+        modal.classList.remove('is-behind-preview');
+        modal.classList.add('show');
+      }
+      return true;
     }
 
     syncPromoBannerSettingsModalUI() {
@@ -13204,7 +13354,7 @@
         chip.classList.toggle('active', chip.dataset.promoTheme === (this._draftPromoTheme || 'slate'));
       });
 
-      this.renderPromoBannerLivePreview();
+      this.syncPromoBannerCharCounters();
     }
 
     openPromoBannerSettingsModal() {
@@ -13222,11 +13372,13 @@
       const inpCtaUrl = document.getElementById('inputPromoCtaUrl');
 
       if (chkEnabled) chkEnabled.checked = hasExisting ? Boolean(cfg.enabled) : true;
-      if (inpBadge) inpBadge.value = cfg.badgeText || '';
-      if (inpMsg) inpMsg.value = cfg.messageText || '';
-      if (inpCtaLabel) inpCtaLabel.value = cfg.ctaLabel || '';
+      if (inpBadge) inpBadge.value = (cfg.badgeText || '').slice(0, 16);
+      if (inpMsg) inpMsg.value = (cfg.messageText || '').slice(0, 30);
+      if (inpCtaLabel) inpCtaLabel.value = (cfg.ctaLabel || '').slice(0, 8);
       if (inpCtaUrl) inpCtaUrl.value = cfg.ctaUrl || '';
 
+      this._setPromoModalValidationHint('');
+      modal.classList.remove('is-behind-preview');
       this.syncPromoBannerSettingsModalUI();
       modal.classList.add('show');
     }
@@ -13243,6 +13395,8 @@
       const btnCancel = document.getElementById('btnCancelPromoBannerModal');
       const btnReset = document.getElementById('btnResetPromoBannerDraft');
       const btnSave = document.getElementById('btnSavePromoBannerModal');
+      const btnPreviewInViewer = document.getElementById('btnPreviewPromoInViewer');
+      const btnExitDraftPreview = document.getElementById('btnExitPromoDraftPreview');
       const chkEnabled = document.getElementById('chkPromoBannerEnabled');
       const inpBadge = document.getElementById('inputPromoBadgeText');
       const inpMsg = document.getElementById('inputPromoMessageText');
@@ -13279,7 +13433,8 @@
       }
 
       const closeModal = () => {
-        if (modal) modal.classList.remove('show');
+        this._setPromoModalValidationHint('');
+        if (modal) modal.classList.remove('show', 'is-behind-preview');
       };
       if (btnClose) btnClose.onclick = closeModal;
       if (btnCancel) btnCancel.onclick = closeModal;
@@ -13288,6 +13443,27 @@
           if (e.target === modal) closeModal();
         });
       }
+
+      if (btnPreviewInViewer) {
+        btnPreviewInViewer.onclick = () => {
+          this.previewPromoBannerDraftInViewer();
+        };
+      }
+      if (btnExitDraftPreview) {
+        btnExitDraftPreview.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.closePromoBannerDraftPreview();
+        };
+      }
+
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && (this._isPromoBannerDraftPreviewOpen || (this._viewerPkg && this._viewerPkg._isPromoBannerDraftPreview))) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          this.closePromoBannerDraftPreview();
+        }
+      }, { capture: true });
 
       document.querySelectorAll('#promoThemeChips .promo-theme-chip').forEach((chip) => {
         chip.onclick = () => {
@@ -13298,8 +13474,12 @@
 
       [chkEnabled, inpBadge, inpMsg, inpCtaLabel, inpCtaUrl].forEach((el) => {
         if (!el) return;
-        el.addEventListener('input', () => this.renderPromoBannerLivePreview());
-        el.addEventListener('change', () => this.renderPromoBannerLivePreview());
+        const onFieldChange = () => {
+          this._setPromoModalValidationHint('');
+          this.syncPromoBannerCharCounters();
+        };
+        el.addEventListener('input', onFieldChange);
+        el.addEventListener('change', onFieldChange);
       });
 
       if (btnReset) {
@@ -13310,6 +13490,7 @@
           if (inpMsg) inpMsg.value = '';
           if (inpCtaLabel) inpCtaLabel.value = '';
           if (inpCtaUrl) inpCtaUrl.value = '';
+          this._setPromoModalValidationHint('');
           this.syncPromoBannerSettingsModalUI();
         };
       }
@@ -13318,8 +13499,12 @@
         btnSave.onclick = () => {
           const { draft, rawUrl, urlValid } = this._collectDraftPromoBannerFromModal();
           if (rawUrl && !urlValid) {
+            if (inpCtaUrl) {
+              inpCtaUrl.classList.add('is-invalid-url');
+              if (typeof inpCtaUrl.focus === 'function') inpCtaUrl.focus();
+            }
+            this._setPromoModalValidationHint('올바른 인터넷 주소(https://...) 형식으로 입력해 주세요.');
             this.showToast('⚠️ 올바른 인터넷 주소(https://...) 형식으로 입력해 주세요.');
-            if (inpCtaUrl && typeof inpCtaUrl.focus === 'function') inpCtaUrl.focus();
             return;
           }
 
@@ -13339,14 +13524,16 @@
           }
 
           if (draft.enabled && !draft.badgeText && !draft.messageText) {
+            this._setPromoModalValidationHint('배너를 켜려면 소속·선생님 이름 또는 한 줄 홍보 문구를 입력해 주세요.');
             this.showToast('💡 배너를 켜려면 소속/선생님 이름 또는 한 줄 홍보 문구를 입력해 주세요.');
             if (inpMsg && typeof inpMsg.focus === 'function') inpMsg.focus();
             return;
           }
 
+          this._setPromoModalValidationHint('');
           this._savePromoBannerConfigForCurrentUser(draft, true);
           closeModal();
-          this.showToast('✅ 뷰어 상단 홍보배너 설정이 저장되었습니다!');
+          this.showToast('✅ 뷰어 홍보배너 설정이 저장되었습니다!');
         };
       }
     }
@@ -13357,17 +13544,13 @@
       const gateWrap = document.getElementById('viewerGatePromoBannerWrap');
       const validBanner = this._getValidViewerPromoBanner(pkg);
 
+      // 상단 헤더 홍보배너는 영구 미노출 정책 적용 (뷰어 첫 진입 게이트 & 해설 종료 엔딩 카드에만 노출)
       if (headerWrap) {
         headerWrap.innerHTML = '';
-        if (validBanner) {
-          headerWrap.appendChild(this._renderPromoBannerPillDOM(validBanner, 'header'));
-          headerWrap.style.display = 'inline-flex';
-        } else {
-          headerWrap.style.display = 'none';
-        }
+        headerWrap.style.display = 'none';
       }
       if (headerEl) {
-        headerEl.classList.toggle('has-promo-banner', Boolean(validBanner));
+        headerEl.classList.remove('has-promo-banner');
       }
 
       if (gateWrap) {
@@ -13379,6 +13562,210 @@
           gateWrap.style.display = 'none';
         }
       }
+    }
+
+    _getSmartViewerShareableUrl(pkg = this._viewerPkg) {
+      if (!pkg || pkg._isLocalPreview || pkg._isPromoBannerDraftPreview) return '';
+      if (typeof pkg._viewerShareUrl === 'string' && pkg._viewerShareUrl.trim()) {
+        return pkg._viewerShareUrl.trim();
+      }
+      if (typeof window !== 'undefined' && window.location) {
+        const hashAndSearch = String(window.location.hash || '') + String(window.location.search || '');
+        if (/(?:^|[#?&])(?:cloud|share|student)=[^&]+/i.test(hashAndSearch)) {
+          return String(window.location.href || '').trim();
+        }
+      }
+      return '';
+    }
+
+    _getSmartViewerShareTitle(pkg = this._viewerPkg) {
+      const rawTitle = (pkg && typeof pkg.title === 'string') ? pkg.title.trim() : '';
+      const isGenericTitle = !rawTitle || /^공유\s*수업/.test(rawTitle);
+      let baseTitle = rawTitle;
+      if (isGenericTitle && pkg && Array.isArray(pkg.playlistSlides) && pkg.playlistSlides.length > 0) {
+        const curIdx = Math.max(0, Math.min(pkg.playlistSlides.length - 1, this._viewerSlideIdx || 0));
+        const slideTitle = String((pkg.playlistSlides[curIdx] && pkg.playlistSlides[curIdx].slideTitle) || '').trim();
+        if (slideTitle && slideTitle !== '공유된 수업 노트') {
+          baseTitle = pkg.playlistSlides.length > 1
+            ? `${slideTitle} 외 ${pkg.playlistSlides.length - 1}문항`
+            : slideTitle;
+        }
+      }
+      if (!baseTitle) baseTitle = '수학 수업 노트';
+
+      const validBanner = this._getValidViewerPromoBanner(pkg);
+      if (validBanner && validBanner.badgeText) {
+        return `[${validBanner.badgeText}] ${baseTitle}`.slice(0, 70);
+      }
+      return /^Graphly/i.test(baseTitle) ? baseTitle.slice(0, 70) : `Graphly · ${baseTitle}`.slice(0, 70);
+    }
+
+    async _copyTextToClipboardReliable(text) {
+      const val = String(text || '');
+      if (!val) return false;
+      if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(val);
+          return true;
+        } catch (_) { }
+      }
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = val;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, val.length);
+        const copied = Boolean(document.execCommand && document.execCommand('copy'));
+        ta.remove();
+        return copied;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    _resetViewerShareBtnFeedback(btn, defaultLabel = '공유') {
+      if (!btn) return;
+      if (btn._shareFeedbackTimer) {
+        clearTimeout(btn._shareFeedbackTimer);
+        btn._shareFeedbackTimer = null;
+      }
+      btn.classList.remove('is-copied');
+      const iconDef = btn.querySelector('.viewer-share-icon-default');
+      const iconCopied = btn.querySelector('.viewer-share-icon-copied');
+      const lblEl = btn.querySelector('.viewer-share-btn-label');
+      if (iconDef) iconDef.style.display = '';
+      if (iconCopied) iconCopied.style.display = 'none';
+      if (lblEl) lblEl.textContent = defaultLabel;
+    }
+
+    _flashViewerShareCopiedFeedback(btn, defaultLabel = '공유', copiedLabel = '복사됨') {
+      if (!btn) return;
+      if (btn._shareFeedbackTimer) {
+        clearTimeout(btn._shareFeedbackTimer);
+        btn._shareFeedbackTimer = null;
+      }
+      btn.classList.add('is-copied');
+      const iconDef = btn.querySelector('.viewer-share-icon-default');
+      const iconCopied = btn.querySelector('.viewer-share-icon-copied');
+      const lblEl = btn.querySelector('.viewer-share-btn-label');
+      if (iconDef) iconDef.style.display = 'none';
+      if (iconCopied) iconCopied.style.display = '';
+      if (lblEl) lblEl.textContent = copiedLabel;
+
+      btn._shareFeedbackTimer = setTimeout(() => {
+        btn._shareFeedbackTimer = null;
+        this._resetViewerShareBtnFeedback(btn, defaultLabel);
+      }, 1800);
+    }
+
+    async shareCurrentViewerLink(triggerBtn = null, opts = {}) {
+      const pkg = this._viewerPkg;
+      const shareUrl = this._getSmartViewerShareableUrl(pkg);
+      if (!shareUrl) {
+        return { ok: false, method: 'none', reason: 'no_share_url' };
+      }
+      const shareTitle = this._getSmartViewerShareTitle(pkg);
+      const defaultLabel = opts.defaultLabel || '공유';
+      const copiedLabel = opts.copiedLabel || '복사됨';
+
+      const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+      const isMobileOrPadOS = /Android|iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+
+      if (isMobileOrPadOS && typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        const sharePayload = { title: shareTitle, url: shareUrl };
+        let canUseNative = true;
+        if (typeof navigator.canShare === 'function') {
+          try {
+            canUseNative = Boolean(navigator.canShare(sharePayload));
+          } catch (_) {
+            canUseNative = true;
+          }
+        }
+        if (canUseNative) {
+          try {
+            await navigator.share(sharePayload);
+            return { ok: true, method: 'native_share', url: shareUrl, title: shareTitle };
+          } catch (err) {
+            if (err && err.name === 'AbortError') {
+              return { ok: false, method: 'aborted', url: shareUrl, title: shareTitle };
+            }
+            // 인앱 웹뷰 권한 제약 등으로 실패 시 즉시 클립보드 복사로 안전 폴백
+          }
+        }
+      }
+
+      const copied = await this._copyTextToClipboardReliable(shareUrl);
+      if (triggerBtn) {
+        this._flashViewerShareCopiedFeedback(triggerBtn, defaultLabel, copiedLabel);
+      }
+      this.showToast('🔗 수업 노트 링크가 복사되었습니다! 친구에게 붙여넣어 공유해 보세요.');
+      return { ok: copied, method: 'clipboard', url: shareUrl, title: shareTitle };
+    }
+
+    showAudioLectureEndingOverlay() {
+      if (!this.isStudentAudioVideoOnlyMode) return;
+      const endingOverlay = document.getElementById('viewerAudioEndingOverlay');
+      if (!endingOverlay) return;
+
+      const bannerWrap = document.getElementById('audioEndingPromoBannerWrap');
+      const btnShare = document.getElementById('btnAudioEndingShare');
+      const validBanner = this._getValidViewerPromoBanner(this._viewerPkg);
+      const canShare = Boolean(this._getSmartViewerShareableUrl(this._viewerPkg));
+
+      if (bannerWrap) {
+        bannerWrap.innerHTML = '';
+        if (validBanner) {
+          bannerWrap.appendChild(this._renderPromoBannerPillDOM(validBanner, 'ending'));
+          bannerWrap.style.display = 'flex';
+        } else {
+          bannerWrap.style.display = 'none';
+        }
+      }
+
+      if (btnShare) {
+        this._resetViewerShareBtnFeedback(btnShare, '공유하기');
+        btnShare.style.display = canShare ? 'inline-flex' : 'none';
+      }
+
+      endingOverlay.style.display = 'flex';
+    }
+
+    hideAudioLectureEndingOverlay() {
+      const endingOverlay = document.getElementById('viewerAudioEndingOverlay');
+      if (endingOverlay && endingOverlay.style.display !== 'none') {
+        endingOverlay.style.display = 'none';
+      }
+      const btnShare = document.getElementById('btnAudioEndingShare');
+      if (btnShare) {
+        this._resetViewerShareBtnFeedback(btnShare, '공유하기');
+      }
+    }
+
+    replayFromAudioLectureEndingOverlay() {
+      this.hideAudioLectureEndingOverlay();
+      const targetStartSlide = (
+        this.isLessonPlaylistActive &&
+        Array.isArray(this.lessonPlaylistSlides) &&
+        typeof this._studentLectureStartSlideIdx === 'number' &&
+        this._studentLectureStartSlideIdx >= 0 &&
+        this._studentLectureStartSlideIdx < this.lessonPlaylistSlides.length &&
+        this.lessonPlaylistSlides[this._studentLectureStartSlideIdx] &&
+        this.lessonPlaylistSlides[this._studentLectureStartSlideIdx].audioSyncData &&
+        this.lessonPlaylistSlides[this._studentLectureStartSlideIdx].audioSyncData.durationMs > 0
+      ) ? this._studentLectureStartSlideIdx : this.lessonPlaylistIndex;
+
+      if (this.isLessonPlaylistActive && typeof targetStartSlide === 'number' && targetStartSlide !== this.lessonPlaylistIndex) {
+        this._isAutoAdvancingAudioSlide = true;
+        try {
+          this.jumpToPlaylistSlide(targetStartSlide);
+        } finally {
+          this._isAutoAdvancingAudioSlide = false;
+        }
+      }
+      this.playAudioSync(0, 'video');
     }
 
     async buildExportSharePackageObject(scope = 'current', filterOpts = null) {
@@ -14489,6 +14876,7 @@
         return;
       }
 
+      pkg._viewerShareUrl = window.location.href;
       this._initialSharedCloudPkg = JSON.parse(JSON.stringify(pkg));
       this.applyCloudSharePackage(pkg);
 
@@ -14527,6 +14915,7 @@
       const btnZoomFit = document.getElementById('btnViewerZoomFit');
       const btnDownload = document.getElementById('btnViewerDownloadPng');
       const btnWatchVideo = document.getElementById('btnViewerWatchVideo');
+      const btnShareLink = document.getElementById('btnViewerShareLink');
       const btnEdit = document.getElementById('btnViewerEnterEdit');
       const btnFullscreen = document.getElementById('btnViewerFullscreen');
 
@@ -14618,8 +15007,16 @@
           this.enterAudioLectureFromViewer(this._viewerSlideIdx);
         };
       }
+      if (btnShareLink) {
+        btnShareLink.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.shareCurrentViewerLink(btnShareLink, { defaultLabel: '공유', copiedLabel: '복사됨' });
+        };
+      }
       if (btnEdit) {
         btnEdit.onclick = () => {
+          if (this.closePromoBannerDraftPreview()) return;
           this.exitSmartNoteViewerToEditMode();
         };
       }
@@ -14640,7 +15037,11 @@
         if (overlay) overlay.classList.remove('viewer-entry-gate-active');
         if (fsGate) fsGate.style.display = 'none';
         this._mobileViewerFsAttempted = true;
-        this.toggleSmartViewerImmersiveMode(true, true);
+        const uaGate = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+        const isMobileOrPadGate = /Android|iPhone|iPad|iPod/i.test(uaGate) || (/Macintosh/i.test(uaGate) && navigator.maxTouchPoints > 1);
+        const isPromoPreviewGate = Boolean(this._viewerPkg && this._viewerPkg._isPromoBannerDraftPreview);
+        const shouldReqNativeFs = !(isPromoPreviewGate && !isMobileOrPadGate);
+        this.toggleSmartViewerImmersiveMode(true, shouldReqNativeFs);
         this.fitSmartViewerStageToScreen(true);
         setTimeout(() => {
           if (overlay && overlay.style.display !== 'none' && (this._viewerZoom || 1.0) <= 1.02) {
@@ -15290,6 +15691,7 @@
       const effMode = (options && options.mode === 'note') ? 'note' : 'video';
 
       this.isStudentAudioVideoOnlyMode = true;
+      this.hideAudioLectureEndingOverlay();
       if (this.virtualStylusEl) {
         this.virtualStylusEl.style.display = 'none';
       }
@@ -15310,6 +15712,7 @@
         currentIndex: Math.max(0, Math.min(slides.length - 1, pkg.currentIndex || 0))
       };
       this._viewerPkg = normalizedPkg;
+      this._studentLectureStartSlideIdx = normalizedPkg.currentIndex;
 
       // 🌟 [핵심 핀셋 수정: 1페이지(첫 슬라이드) 진입 시에도 2페이지와 100% 동일하게 고정 스테이지(replay-fixed-stage)를 먼저 켠 뒤 이미지를 로드·래스터화!]
       this._isAudioSyncPlayerVisible = true;
@@ -15362,6 +15765,7 @@
     }
 
     exitStudentAudioVideoOnlyMode() {
+      this.hideAudioLectureEndingOverlay();
       this.isStudentAudioVideoOnlyMode = false;
       this._isAudioSyncPlayerVisible = false;
       document.body.classList.remove('student-audio-video-only');
@@ -15888,6 +16292,11 @@
       if (btnWatchVideo) {
         btnWatchVideo.style.display = hasSlideAudio ? 'inline-flex' : 'none';
       }
+      const btnShareLink = document.getElementById('btnViewerShareLink');
+      if (btnShareLink) {
+        const canShareLink = Boolean(this._getSmartViewerShareableUrl(this._viewerPkg));
+        btnShareLink.style.display = canShareLink ? 'inline-flex' : 'none';
+      }
 
       const navGroup = document.getElementById('viewerSlideNavGroup');
       const btnCounter = document.getElementById('btnViewerSlideCounter');
@@ -15965,6 +16374,11 @@
       this._viewerMinZoom = 1.0;
       this._viewerPanX = 0;
       this._viewerPanY = 0;
+      const btnShareInit = document.getElementById('btnViewerShareLink');
+      if (btnShareInit) {
+        this._resetViewerShareBtnFeedback(btnShareInit, '공유');
+        btnShareInit.style.display = this._getSmartViewerShareableUrl(pkg) ? 'inline-flex' : 'none';
+      }
       this.syncSmartViewerPromoBannerUI(pkg);
       const startIdx = Math.max(0, Math.min(pkg.playlistSlides.length - 1, pkg.currentIndex || 0));
       this._viewerSlideIdx = startIdx;
@@ -15975,12 +16389,18 @@
 
       const overlay = document.getElementById('smartNoteViewerOverlay');
       const fsGate = document.getElementById('viewerFullscreenGate');
+      const backDraftBtn = document.getElementById('btnExitPromoDraftPreview');
+      const isPromoDraftPreview = Boolean(pkg && pkg._isPromoBannerDraftPreview);
+      if (backDraftBtn) {
+        backDraftBtn.style.display = isPromoDraftPreview ? 'inline-flex' : 'none';
+      }
       const isAlreadyNativeFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
       const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
       const isMobileOrTabletOS = /Android|iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
       if (overlay) {
+        overlay.classList.toggle('is-promo-draft-preview', isPromoDraftPreview);
         overlay.style.display = 'flex';
-        if (!isMobileOrTabletOS || isAlreadyNativeFs || !fsGate) {
+        if ((!isMobileOrTabletOS && !isPromoDraftPreview) || (isAlreadyNativeFs && !isPromoDraftPreview) || !fsGate) {
           overlay.classList.remove('viewer-entry-gate-active');
           overlay.classList.toggle('viewer-immersive-fullscreen', isAlreadyNativeFs);
           if (fsGate) fsGate.style.display = 'none';

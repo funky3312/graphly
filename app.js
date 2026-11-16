@@ -333,6 +333,36 @@
         };
       }
 
+      const endingOverlay = document.getElementById('viewerAudioEndingOverlay');
+      const btnEndingReplay = document.getElementById('btnAudioEndingReplay');
+      const btnEndingShare = document.getElementById('btnAudioEndingShare');
+      if (endingOverlay) {
+        endingOverlay.onclick = (e) => {
+          if (e.target === endingOverlay && typeof this.hideAudioLectureEndingOverlay === 'function') {
+            e.stopPropagation();
+            this.hideAudioLectureEndingOverlay();
+          }
+        };
+      }
+      if (btnEndingReplay) {
+        btnEndingReplay.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof this.replayFromAudioLectureEndingOverlay === 'function') {
+            this.replayFromAudioLectureEndingOverlay();
+          }
+        };
+      }
+      if (btnEndingShare) {
+        btnEndingShare.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof this.shareCurrentViewerLink === 'function') {
+            this.shareCurrentViewerLink(btnEndingShare, { defaultLabel: '공유하기', copiedLabel: '링크 복사됨' });
+          }
+        };
+      }
+
       const btnHideRecBar = document.getElementById('btnAudioHideRecBar');
       if (btnHideRecBar) {
         btnHideRecBar.onclick = (e) => {
@@ -3387,6 +3417,7 @@
         if (!target || typeof target.closest !== 'function') return false;
         return Boolean(
           target.closest('#audioSyncFloatingBar') ||
+          target.closest('#viewerAudioEndingOverlay') ||
           target.closest('#lessonPlaylistNavBar') ||
           target.closest('#topSlideBarMiniTab') ||
           target.closest('.slide-grid-popover') ||
@@ -4612,6 +4643,9 @@
 
     playAudioSync(fromMs = null, forceMode = null) {
       if (!this.audioSyncData || !this.audioSyncData.durationMs) return;
+      if (typeof this.hideAudioLectureEndingOverlay === 'function') {
+        this.hideAudioLectureEndingOverlay();
+      }
       if (forceMode) {
         this.audioReplayViewMode = forceMode;
       }
@@ -4686,7 +4720,12 @@
             const targetSlideIdx = curSeg.nextSlideIdx;
             const targetStartMs = typeof curSeg.nextSlideStartMs === 'number' ? curSeg.nextSlideStartMs : 0;
             this.pauseAudioPlayback(false);
-            this.jumpToPlaylistSlide(targetSlideIdx);
+            this._isAutoAdvancingAudioSlide = true;
+            try {
+              this.jumpToPlaylistSlide(targetSlideIdx);
+            } finally {
+              this._isAutoAdvancingAudioSlide = false;
+            }
             if (this._enteredAudioFromViewerSlideIdx !== null) {
               this._enteredAudioFromViewerSlideIdx = this.lessonPlaylistIndex;
             }
@@ -4724,7 +4763,12 @@
           ) {
             const keepViewMode = this.audioReplayViewMode || 'video';
             this.pauseAudioPlayback(true);
-            this.jumpToPlaylistSlide(fallbackNextIdx);
+            this._isAutoAdvancingAudioSlide = true;
+            try {
+              this.jumpToPlaylistSlide(fallbackNextIdx);
+            } finally {
+              this._isAutoAdvancingAudioSlide = false;
+            }
             if (this._enteredAudioFromViewerSlideIdx !== null) {
               this._enteredAudioFromViewerSlideIdx = this.lessonPlaylistIndex;
             }
@@ -4732,6 +4776,9 @@
             return;
           }
           this.pauseAudioPlayback(true);
+          if (this.isStudentAudioVideoOnlyMode && typeof this.showAudioLectureEndingOverlay === 'function') {
+            this.showAudioLectureEndingOverlay();
+          }
           return;
         }
 
@@ -4902,6 +4949,9 @@
     }
 
     stopAudioPlayback(restoreFinal = true) {
+      if (typeof this.hideAudioLectureEndingOverlay === 'function') {
+        this.hideAudioLectureEndingOverlay();
+      }
       const wasReplayActive = Boolean(this._isAudioReplayActive || this.isAudioPlaying);
       this._clearAudioPlayerBarAutoHide();
       this.pauseAudioPlayback(false);
@@ -4937,6 +4987,9 @@
 
     seekAudioSync(targetMs, autoPlay = false) {
       if (!this.audioSyncData) return;
+      if (typeof this.hideAudioLectureEndingOverlay === 'function') {
+        this.hideAudioLectureEndingOverlay();
+      }
       const dur = this.audioSyncData.durationMs || 1000;
       this.audioPlayCurrentMs = Math.max(0, Math.min(dur, Number(targetMs) || 0));
       this._audioPlayWallStartMs = performance.now();
@@ -5209,6 +5262,14 @@
             defaultKey: '',
             buttonIds: ['btnTriggerGraphSnap'],
             baseTitle: '카드 추가'
+          },
+          {
+            id: 'card_stamp_active',
+            category: 'graph',
+            categoryLabel: '그래프 · 수학 도구',
+            name: '현재 활성 창 스탬프 박제',
+            desc: '가장 최근에 조작한 그래프 창 또는 문제 카드를 칠판에 스탬프로 영구 박제',
+            defaultKey: 'S'
           },
           {
             id: 'graph_open_toolkit',
@@ -5736,7 +5797,24 @@
         result.ink_tool_pen = 'P';
         result.ink_toggle_mode = '';
       }
+      // [기존 커스텀 'S' 지정 계정 충돌 방지]: 이미 다른 기능에 'S'를 직접 배정해 둔 계정은 기존 설정을 보존하고 신규 스탬프 기본값('S')은 미지정으로 양보
+      if (!Object.prototype.hasOwnProperty.call(src, 'card_stamp_active') && String(result.card_stamp_active || '').toUpperCase() === 'S') {
+        const hasOtherCustomS = Object.keys(result).some(id => id !== 'card_stamp_active' && String(result[id] || '').trim().toUpperCase() === 'S');
+        if (hasOtherCustomS) {
+          result.card_stamp_active = '';
+        }
+      }
       return result;
+    }
+
+    getStampButtonTooltipText(isGraphCard = false) {
+      const eff = this._getEffectiveShortcutsMap(this.customShortcuts);
+      const assignedKey = String(eff.card_stamp_active || '').trim();
+      const keyBadge = assignedKey ? ` (${this.formatShortcutKeyForDisplay(assignedKey)})` : '';
+      if (isGraphCard) {
+        return `캔버스에 스탬프 찍기${keyBadge} (현재 그래프·수선·필기를 바닥에 영구 박제)`;
+      }
+      return `현재 문제를 칠판에 영구 박제 후 창 닫기${keyBadge} (무경계 필기 · 취소: 되돌리기 ↺)`;
     }
 
     setShortcutModalBanner(htmlText, mode = 'normal') {
@@ -6063,6 +6141,32 @@
         });
       });
 
+      // 2-1. 그래프 창 · 문제 카드 헤더의 동적 스탬프 버튼(.btn-card-stamp) 툴팁 실시간 동기화
+      if (typeof document !== 'undefined') {
+        const graphTip = this.getStampButtonTooltipText(true);
+        const probTip = this.getStampButtonTooltipText(false);
+        const seenStampBtns = new Set();
+        const applyStampBtnTip = (btnEl, widgetEl) => {
+          if (!btnEl || seenStampBtns.has(btnEl)) return;
+          seenStampBtns.add(btnEl);
+          const isGraphWidget = Boolean(widgetEl && widgetEl.classList && widgetEl.classList.contains('graph-card-widget'));
+          btnEl.title = isGraphWidget ? graphTip : probTip;
+        };
+        document.querySelectorAll('.problem-card-widget:not(.problem-stamp-ghost-fx) .btn-card-stamp').forEach(btnEl => {
+          applyStampBtnTip(btnEl, btnEl.closest('.problem-card-widget'));
+        });
+        if (Array.isArray(this.extraProblemCards)) {
+          this.extraProblemCards.forEach(c => {
+            if (c && c.el) applyStampBtnTip(c.el.querySelector('.btn-card-stamp'), c.el);
+          });
+        }
+        if (Array.isArray(this.extraGraphCards)) {
+          this.extraGraphCards.forEach(c => {
+            if (c && c.el) applyStampBtnTip(c.el.querySelector('.btn-card-stamp'), c.el);
+          });
+        }
+      }
+
       // 3. [사용법 & 공지사항 ➔ 단축키 안내] 탭의 단축키 목록도 실시간 동기화
       const guideGrid = document.getElementById('guideShortcutDynamicGrid');
       if (guideGrid) {
@@ -6303,6 +6407,12 @@
         case 'graph_capture_card': {
           this.toggleGraphSnapMode();
           return true;
+        }
+        case 'card_stamp_active': {
+          if (typeof this.stampTopmostActiveCardToBoard === 'function') {
+            return Boolean(this.stampTopmostActiveCardToBoard(e));
+          }
+          return false;
         }
         case 'graph_open_toolkit': {
           if (this.isPdfModalOpen || (this.smartViewerState && this.smartViewerState.isOpen)) return false;
