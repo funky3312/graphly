@@ -25,40 +25,79 @@
       return trimmed;
     }
 
-    async _getFirebaseIdTokenForRest(waitForAuthInit = true) {
+    async _getFirebaseIdTokenForRest(waitForAuthInit = true, forceRefresh = false) {
       if (typeof window !== 'undefined' && window.location && !/^https?:$/i.test(window.location.protocol)) {
         return '';
       }
       if (typeof this._ensureFirebaseInitialized === 'function') {
         this._ensureFirebaseInitialized();
       }
-      const ensureVerifiedJwtClaim = async (u) => {
-        let tok = await u.getIdToken(false);
-        if (tok && u.emailVerified && this._verifiedJwtSyncedUid !== u.uid) {
-          try {
-            const seg = (tok.split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/');
-            const padded = seg + '='.repeat((4 - (seg.length % 4)) % 4);
-            const claims = JSON.parse(atob(padded));
-            const isGoogle = Boolean(claims && claims.firebase && claims.firebase.sign_in_provider === 'google.com');
-            if ((claims && claims.email_verified === true) || isGoogle) {
+      const refreshDedup = (u) => {
+        if (!this._inflightIdTokenRefresh || this._inflightIdTokenRefresh.uid !== u.uid) {
+          const p = u.getIdToken(true).then((freshTok) => {
+            if (freshTok) {
+              this._lastProactiveTokenRefreshAt = Date.now();
+            }
+            return freshTok;
+          }).finally(() => {
+            if (this._inflightIdTokenRefresh && this._inflightIdTokenRefresh.p === p) {
+              this._inflightIdTokenRefresh = null;
+            }
+          });
+          this._inflightIdTokenRefresh = { uid: u.uid, p };
+        }
+        return this._inflightIdTokenRefresh.p;
+      };
+      const resolveToken = async (u) => {
+        try {
+          let tok = forceRefresh ? await refreshDedup(u) : await u.getIdToken(false);
+          if (tok) {
+            let expMs = 0;
+            let isClaimVerified = false;
+            try {
+              const seg = (tok.split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/');
+              const padded = seg + '='.repeat((4 - (seg.length % 4)) % 4);
+              const claims = JSON.parse(atob(padded));
+              expMs = (Number(claims && claims.exp) || 0) * 1000;
+              const isGoogle = Boolean(claims && claims.firebase && claims.firebase.sign_in_provider === 'google.com');
+              isClaimVerified = Boolean((claims && claims.email_verified === true) || isGoogle);
+            } catch (_) { }
+            if (u.emailVerified && isClaimVerified) {
               this._verifiedJwtSyncedUid = u.uid;
-            } else {
-              const fresh = await u.getIdToken(true);
-              if (fresh) {
-                tok = fresh;
-                this._verifiedJwtSyncedUid = u.uid;
+            }
+            const nowMs = Date.now();
+            const cooldownOk = !this._lastProactiveTokenRefreshAt || (nowMs - this._lastProactiveTokenRefreshAt >= 60000);
+            const needsProactiveRefresh = !forceRefresh && expMs > 0 && (expMs - nowMs < 300000) && cooldownOk;
+            const needsVerifiedClaimSync = Boolean(u.emailVerified && this._verifiedJwtSyncedUid !== u.uid);
+            if (needsProactiveRefresh || needsVerifiedClaimSync) {
+              try {
+                const fresh = await refreshDedup(u);
+                if (fresh) {
+                  tok = fresh;
+                  if (u.emailVerified) this._verifiedJwtSyncedUid = u.uid;
+                }
+              } catch (_) {
+                this._lastProactiveTokenRefreshAt = nowMs;
               }
             }
-          } catch (_) { }
+          }
+          return tok || '';
+        } catch (e) {
+          if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            return '';
+          }
+          try {
+            await new Promise((r) => setTimeout(r, 350));
+            const rescued = await refreshDedup(u);
+            if (rescued && u.emailVerified) this._verifiedJwtSyncedUid = u.uid;
+            return rescued || '';
+          } catch (_) {
+            return '';
+          }
         }
-        return tok;
       };
       if (this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
-        try {
-          return await ensureVerifiedJwtClaim(this._fbAuth.currentUser);
-        } catch (e) {
-          return '';
-        }
+        return await resolveToken(this._fbAuth.currentUser);
       }
       if (waitForAuthInit && this.cloudUser && !this._fbAuthInitialResolved && this._fbAuthReadyPromise) {
         try {
@@ -68,22 +107,18 @@
           ]);
         } catch (e) { }
         if (this._fbAuth && this._fbAuth.currentUser && typeof this._fbAuth.currentUser.getIdToken === 'function') {
-          try {
-            return await ensureVerifiedJwtClaim(this._fbAuth.currentUser);
-          } catch (e) {
-            return '';
-          }
+          return await resolveToken(this._fbAuth.currentUser);
         }
       }
       return '';
     }
 
-    async _buildFirestoreRestHeaders(includeJsonContentType = false, waitForAuthInit = true) {
+    async _buildFirestoreRestHeaders(includeJsonContentType = false, waitForAuthInit = true, forceRefresh = false) {
       const headers = {};
       if (includeJsonContentType) {
         headers['Content-Type'] = 'application/json';
       }
-      const idToken = await this._getFirebaseIdTokenForRest(waitForAuthInit);
+      const idToken = await this._getFirebaseIdTokenForRest(waitForAuthInit, forceRefresh);
       if (idToken) {
         headers['Authorization'] = 'Bearer ' + idToken;
       }
@@ -95,23 +130,66 @@
       if (!ua) return { isInApp: false, appName: '', isAndroid: false, isIOS: false, isKakao: false };
       const isAndroid = /Android/i.test(ua);
       const isIOS = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1);
-      const isKakao = /KAKAOTALK/i.test(ua);
+      const isKakaoTalk = /KAKAOTALK/i.test(ua);
+      const isKakaoWork = /KAKAOWORK/i.test(ua);
       const isNaver = /NAVER\(inapp/i.test(ua);
+      const isBand = /\bBAND\//i.test(ua);
       const isInstagram = /Instagram/i.test(ua);
       const isFacebook = /FBAN|FBAV|FB_IAB/i.test(ua);
       const isLine = /\bLine\//i.test(ua);
       const isEverytime = /everytimeApp/i.test(ua);
-      const isDaum = /DaumApps/i.test(ua);
-      const isInApp = Boolean(isKakao || isNaver || isInstagram || isFacebook || isLine || isEverytime || isDaum);
-      const appName = isKakao ? '카카오톡'
-        : isNaver ? '네이버 앱'
-          : isInstagram ? '인스타그램'
-            : isFacebook ? '페이스북'
-              : isLine ? '라인'
-                : isEverytime ? '에브리타임'
-                  : isDaum ? '다음 앱'
-                    : '인앱';
-      return { isInApp, appName, isAndroid, isIOS, isKakao };
+      const isDaum = /DaumApps|DaumCafe/i.test(ua);
+      const isAndroidWv = Boolean(isAndroid && /;\s*wv\b/i.test(ua));
+      const isInApp = Boolean(isKakaoTalk || isKakaoWork || isNaver || isBand || isInstagram || isFacebook || isLine || isEverytime || isDaum || isAndroidWv);
+      const appName = isKakaoTalk ? '카카오톡'
+        : isKakaoWork ? '카카오워크'
+          : isNaver ? '네이버 앱'
+            : isBand ? '네이버 밴드'
+              : isInstagram ? '인스타그램'
+                : isFacebook ? '페이스북'
+                  : isLine ? '라인'
+                    : isEverytime ? '에브리타임'
+                      : isDaum ? '다음 앱'
+                        : '인앱';
+      return { isInApp, appName, isAndroid, isIOS, isKakao: isKakaoTalk };
+    }
+
+    _setAccountAuthInlineStatus(msg, isError = false) {
+      const lblSettingsAcct = document.getElementById('lblSettingsAccountStatus');
+      if (lblSettingsAcct && !this.cloudUser) {
+        if (!msg) {
+          lblSettingsAcct.style.display = 'none';
+          lblSettingsAcct.textContent = '';
+          return;
+        }
+        lblSettingsAcct.classList.remove('has-sub-expiry');
+        lblSettingsAcct.style.display = 'flex';
+        lblSettingsAcct.style.color = isError ? '#dc2626' : '#475569';
+        lblSettingsAcct.style.fontSize = '11px';
+        lblSettingsAcct.style.fontWeight = '600';
+        lblSettingsAcct.textContent = msg;
+      }
+    }
+
+    _beginExplicitAuthFlow() {
+      const authSeq = (this._explicitAuthSeq = (this._explicitAuthSeq || 0) + 1);
+      this._isExplicitAuthFlowInProgress = true;
+      return authSeq;
+    }
+
+    _endExplicitAuthFlow(authSeq) {
+      if (this._explicitAuthSeq !== authSeq) return;
+      this._isExplicitAuthFlowInProgress = false;
+      if (this._standaloneSpoofActive) {
+        this._standaloneSpoofActive = false;
+        try {
+          if (this._origStandaloneDesc) {
+            Object.defineProperty(window.navigator, 'standalone', this._origStandaloneDesc);
+          } else if (typeof window !== 'undefined' && window.navigator) {
+            delete window.navigator.standalone;
+          }
+        } catch (e) { }
+      }
     }
 
     initCloudHubAndPlaylist() {
@@ -127,9 +205,31 @@
       };
 
       this._cloudIdAuthTab = 'login';
+      this._explicitAuthSeq = 0;
+      this._standaloneSpoofActive = false;
+      this._origStandaloneDesc = null;
       this._isExplicitAuthFlowInProgress = false;
       this._lastSessionLockRegisteredAt = 0;
       this._pendingSessionLockWritePromise = null;
+      this._pendingAuthRedirectReturn = false;
+      this._restoringAuthRedirectWorkspace = false;
+      try {
+        const redirTs = Number(sessionStorage.getItem('graphly_pending_auth_redirect_v1') || 0);
+        if (redirTs > 0) {
+          sessionStorage.removeItem('graphly_pending_auth_redirect_v1');
+          if (Date.now() - redirTs < 10 * 60 * 1000) {
+            this._pendingAuthRedirectReturn = true;
+            this._restoringAuthRedirectWorkspace = true;
+            setTimeout(() => {
+              this._restoreWorkspaceAfterTossRedirect()
+                .catch(() => false)
+                .finally(() => {
+                  this._restoringAuthRedirectWorkspace = false;
+                });
+            }, 80);
+          }
+        }
+      } catch (_) { }
       this._fbAuthInitialResolved = false;
       this._fbAuthReadyPromise = new Promise((resolve) => {
         this._resolveFbAuthReady = resolve;
@@ -217,7 +317,8 @@
               if (typeof this._fbAuth.getRedirectResult === 'function') {
                 this._fbAuth.getRedirectResult().then((redirectRes) => {
                   if (redirectRes && redirectRes.user) {
-                    this._applyFirebaseAuthUser(redirectRes.user, 'google', true);
+                    const recentlyLocked = Boolean(this._lastSessionLockRegisteredAt && (Date.now() - this._lastSessionLockRegisteredAt < 5000));
+                    this._applyFirebaseAuthUser(redirectRes.user, 'google', !recentlyLocked);
                   }
                 }).catch(() => { });
               }
@@ -253,6 +354,12 @@
                       isPro: Boolean(this.cloudUser && this.cloudUser.isPro)
                     };
                     this._persistActiveCloudUserSession();
+                    if (this._pendingAuthRedirectReturn) {
+                      this._pendingAuthRedirectReturn = false;
+                      if (!this._lastSessionLockRegisteredAt || (Date.now() - this._lastSessionLockRegisteredAt >= 5000)) {
+                        this._registerNewDeviceSessionLock(canonicalUid);
+                      }
+                    }
                     if (!alreadySameUser) {
                       this._loadMyLibraryCacheForCurrentUser();
                       this.syncCloudAuthUI();
@@ -266,7 +373,7 @@
                     if (sinceRegisterMs > 10000) {
                       this.verifyActiveDeviceSessionLock();
                     }
-                  } else if (this.cloudUser && !this.cloudUser.isReviewerTest) {
+                  } else if (this.cloudUser) {
                     this.cloudUser = null;
                     this.isProUser = false;
                     this._persistActiveCloudUserSession();
@@ -277,7 +384,6 @@
                   }
                 } else if (
                   this.cloudUser &&
-                  !this.cloudUser.isReviewerTest &&
                   (this._fbSignOutInProgress || (typeof window !== 'undefined' && window.location && /^https?:$/i.test(window.location.protocol)))
                 ) {
                   this.cloudUser = null;
@@ -2488,6 +2594,7 @@
             if (parsed.email && parsed.email.includes('@')) {
               parsed.uid = this._getCanonicalUidForEmail(parsed.email, parsed.uid, parsed.authProvider || 'google');
             }
+            delete parsed.isReviewerTest;
             this.cloudUser = parsed;
             this._loadMyLibraryCacheForCurrentUser();
             return;
@@ -2496,6 +2603,8 @@
       } catch (e) { }
       this.cloudUser = null;
       this._verifiedJwtSyncedUid = '';
+      this._inflightIdTokenRefresh = null;
+      this._lastProactiveTokenRefreshAt = 0;
       this.myLibraryCache = [];
     }
 
@@ -3251,6 +3360,12 @@
       const curUid = (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : 'guest';
       const prevLocalUid = this._lastAppliedLocalPrefsUid || null;
       const isSharedView = this._isSharedUrlViewActive();
+      const shouldPreserveLiveCanvas = () => Boolean(
+        this._isSharedUrlViewActive() ||
+        this._restoringAuthRedirectWorkspace ||
+        (typeof this.hasAnyWorkspaceContent === 'function' && this.hasAnyWorkspaceContent()) ||
+        (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
+      );
 
       if (curUid === 'guest') {
         this._hydratedRemotePrefsUid = null;
@@ -3275,7 +3390,7 @@
             if (guestRaw) {
               const guestPrefs = JSON.parse(guestRaw);
               if (guestPrefs && typeof guestPrefs === 'object') {
-                this._applyUserPreferences(guestPrefs, true, { preserveSlideCanvasState: isSharedView });
+                this._applyUserPreferences(guestPrefs, true, { preserveSlideCanvasState: isSharedView || Boolean(this._restoringAuthRedirectWorkspace) });
               }
             }
           } catch (_) { }
@@ -3294,7 +3409,7 @@
           if (raw) {
             const localPrefs = JSON.parse(raw);
             if (localPrefs && typeof localPrefs === 'object') {
-              this._applyUserPreferences(localPrefs, true, { preserveSlideCanvasState: isSharedView });
+              this._applyUserPreferences(localPrefs, true, { preserveSlideCanvasState: shouldPreserveLiveCanvas() });
             }
           }
         } catch (_) { }
@@ -3366,10 +3481,21 @@
               ? { ...resolvedRemotePrefs, ...diff.patch, updatedAt: Date.now() }
               : resolvedRemotePrefs;
 
-            this._applyUserPreferences(finalPrefs, true, { preserveSlideCanvasState: this._isSharedUrlViewActive() });
+            const preserveLiveCanvas = shouldPreserveLiveCanvas();
+            this._applyUserPreferences(finalPrefs, true, { preserveSlideCanvasState: preserveLiveCanvas });
             this._hydratedRemotePrefsUid = curUid;
             this._pendingPrefsWriteUid = null;
-            const syncedSnapshot = this._collectCurrentUserPreferences();
+            const curCollected = this._collectCurrentUserPreferences();
+            const syncedSnapshot = (preserveLiveCanvas && !diff.hasChanges)
+              ? {
+                ...curCollected,
+                themeKey: finalPrefs.themeKey || curCollected.themeKey,
+                boardPaperType: finalPrefs.boardPaperType || curCollected.boardPaperType,
+                showXAxis: typeof finalPrefs.showXAxis === 'boolean' ? finalPrefs.showXAxis : curCollected.showXAxis,
+                showYAxis: typeof finalPrefs.showYAxis === 'boolean' ? finalPrefs.showYAxis : curCollected.showYAxis,
+                showGuidesV2: typeof finalPrefs.showGuidesV2 === 'boolean' ? finalPrefs.showGuidesV2 : curCollected.showGuidesV2
+              }
+              : curCollected;
             this._preHydrationBaselinePrefs = syncedSnapshot;
             try {
               localStorage.setItem(this._getUserPrefsStorageKey(curUid), JSON.stringify(syncedSnapshot));
@@ -3516,16 +3642,15 @@
       try {
         const v3Key = this._getSubStateStorageKeyForUid(uid);
         const legacyKey = this._getProStorageKeyForUid(uid);
+        localStorage.removeItem(legacyKey);
         if (subMeta && (subMeta.isPro || subMeta.tier === 'pro' || subMeta.tier === 'premium')) {
           const normalized = { ...subMeta, uid };
           localStorage.setItem(v3Key, JSON.stringify(normalized));
-          localStorage.setItem(legacyKey, 'true');
           if (this.cloudUser && this.cloudUser.uid === uid) {
             this._subStateMeta = normalized;
           }
         } else {
           localStorage.removeItem(v3Key);
-          localStorage.removeItem(legacyKey);
           if (this.cloudUser && this.cloudUser.uid === uid) {
             this._subStateMeta = { uid, tier: 'free', isPro: false, isPremium: false, expiresAt: 0, proExpiresAt: 0, premiumExpiresAt: 0 };
           }
@@ -3556,9 +3681,8 @@
         if (premExp > 0 || proExp > 0 || totalExp > 0) {
           return 'free';
         }
+        return meta.isPro === true ? (meta.tier === 'premium' ? 'premium' : 'pro') : 'free';
       }
-      if (this.cloudUser.tier === 'premium') return 'premium';
-      if (this.cloudUser.tier === 'pro' || this.cloudUser.isPro === true || this.isProUser === true) return 'pro';
       return 'free';
     }
 
@@ -3674,13 +3798,7 @@
       if (storedV3) {
         this._subStateMeta = this._extractSubMetaFromDoc(targetUid, storedV3);
       } else {
-        let legacyLocalPro = false;
-        try {
-          legacyLocalPro = (localStorage.getItem(this._getProStorageKeyForUid(targetUid)) === 'true');
-        } catch (e) { }
-        this._subStateMeta = legacyLocalPro
-          ? { uid: targetUid, tier: 'pro', isPro: true, isPremium: false, expiresAt: 0, proExpiresAt: 0, premiumExpiresAt: 0 }
-          : { uid: targetUid, tier: 'free', isPro: false, isPremium: false, expiresAt: 0, proExpiresAt: 0, premiumExpiresAt: 0 };
+        this._subStateMeta = { uid: targetUid, tier: 'free', isPro: false, isPremium: false, expiresAt: 0, proExpiresAt: 0, premiumExpiresAt: 0 };
       }
       const initialTier = this.getUserSubscriptionTier();
       this.cloudUser.tier = initialTier;
@@ -3698,15 +3816,23 @@
           }
           const subDocId = `sub_${targetUid}`;
           let matchedSubUid = targetUid;
-          let remoteSub = await this._firestoreRestReadDoc('user_subscriptions', subDocId, true);
+          const primarySubStatus = { httpStatus: 0 };
+          let remoteSub = await this._firestoreRestReadDoc('user_subscriptions', subDocId, true, false, primarySubStatus);
+          if (!remoteSub && primarySubStatus.httpStatus !== 404) {
+            return this.isProSubscriber();
+          }
           let resolvedMeta = this._extractSubMetaFromDoc(targetUid, remoteSub);
 
           // 동일 본인인증 이메일의 교차 로그인(Google acct_... ↔ 아이디 id_...) 구독 문서도 함께 조회하여 상위 등급/유효 구독 승계
-          if (this.cloudUser.email && this.cloudUser.email.includes('@')) {
+          if (this.cloudUser && this.cloudUser.email && this.cloudUser.email.includes('@')) {
             const altProvider = this.cloudUser.authProvider === 'google' ? 'email' : 'google';
             const siblingUid = this._getCanonicalUidForEmail(this.cloudUser.email, '', altProvider);
             if (siblingUid && siblingUid !== targetUid) {
-              const siblingSub = await this._firestoreRestReadDoc('user_subscriptions', `sub_${siblingUid}`, true);
+              const siblingSubStatus = { httpStatus: 0 };
+              const siblingSub = await this._firestoreRestReadDoc('user_subscriptions', `sub_${siblingUid}`, true, false, siblingSubStatus);
+              if (!siblingSub && siblingSubStatus.httpStatus !== 404 && !resolvedMeta.isPro) {
+                return this.isProSubscriber();
+              }
               const siblingMeta = this._extractSubMetaFromDoc(targetUid, siblingSub);
               const rank = (t) => (t === 'premium' ? 2 : (t === 'pro' ? 1 : 0));
               if (rank(siblingMeta.tier) > rank(resolvedMeta.tier) || (rank(siblingMeta.tier) === rank(resolvedMeta.tier) && siblingMeta.expiresAt > resolvedMeta.expiresAt)) {
@@ -3739,12 +3865,13 @@
           // 🔄 토스페이먼츠 상점관리자에서 직접 결제를 취소했는지 백그라운드 실시간 교차 검증 및 즉시 등급 재계산
           if (resolvedMeta.isPro && remoteSub && (remoteSub.paymentKey || remoteSub.orderId || remoteSub.hasPaymentRecord || Array.isArray(remoteSub.activeOrders)) && !this._isVerifyingTossSubStatus) {
             this._isVerifyingTossSubStatus = true;
+            const verifyToken = (await this._getFirebaseIdTokenForRest(false)) || idToken;
             const verifyEndpoint = this.TOSS_VERIFY_BACKEND_URL || 'https://asia-northeast3-graphly-net.cloudfunctions.net/verifyTossSubscriptionStatus';
             fetch(verifyEndpoint, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + idToken
+                'Authorization': 'Bearer ' + verifyToken
               },
               body: JSON.stringify({
                 uid: matchedSubUid
@@ -4235,8 +4362,6 @@
           const storedV3 = this._readStoredSubStateForUid(this.cloudUser.uid);
           if (storedV3) {
             this._subStateMeta = this._extractSubMetaFromDoc(this.cloudUser.uid, storedV3);
-          } else if (localStorage.getItem(this._getProStorageKeyForUid(this.cloudUser.uid)) === 'true') {
-            this._subStateMeta = { uid: this.cloudUser.uid, tier: 'pro', isPro: true, isPremium: false, expiresAt: 0, proExpiresAt: 0, premiumExpiresAt: 0 };
           }
           const tier = this.getUserSubscriptionTier();
           this.isProUser = (tier !== 'free');
@@ -4325,7 +4450,6 @@
       return Boolean(
         this.cloudUser &&
         this.cloudUser.uid &&
-        !this.cloudUser.isReviewerTest &&
         typeof window !== 'undefined' &&
         window.location &&
         /^https?:$/i.test(window.location.protocol)
@@ -5366,11 +5490,15 @@
       const isSignup = (this._cloudIdAuthTab === 'signup');
 
       if (!normEmail || !pw) {
-        this.showToast('⚠️ 아이디(이메일 형식)와 비밀번호를 입력해 주세요.');
+        const msg = '⚠️ 아이디(이메일 형식)와 비밀번호를 입력해 주세요.';
+        this._setAccountAuthInlineStatus(msg, true);
+        this.showToast(msg);
         return false;
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normEmail)) {
-        this.showToast('⚠️ 아이디는 이메일 형식(예: teacher@naver.com)으로 입력해 주세요.');
+        const msg = '⚠️ 아이디는 이메일 형식(예: teacher@naver.com)으로 입력해 주세요.';
+        this._setAccountAuthInlineStatus(msg, true);
+        this.showToast(msg);
         return false;
       }
 
@@ -5383,18 +5511,24 @@
         this._ensureFirebaseInitialized();
       }
       if (canUseRemote && (!this._fbAuth || typeof this._fbAuth.signInWithEmailAndPassword !== 'function')) {
-        this.showToast('⏳ 로그인 보안 모듈을 불러오는 중입니다. 1초 후 다시 시도해 주세요.');
+        const msg = '⏳ 로그인 보안 모듈을 불러오는 중입니다. 1초 후 다시 시도해 주세요.';
+        this._setAccountAuthInlineStatus(msg, false);
+        this.showToast(msg);
         return false;
       }
 
       if (isSignup) {
         if (pw.length < 6) {
-          this.showToast('⚠️ 비밀번호는 6자 이상 입력해 주세요.');
+          const msg = '⚠️ 비밀번호는 6자 이상 입력해 주세요.';
+          this._setAccountAuthInlineStatus(msg, true);
+          this.showToast(msg);
           return false;
         }
         const pwConfirm = (inpPwConfirm && inpPwConfirm.value ? inpPwConfirm.value : '').trim();
         if (pw !== pwConfirm) {
-          this.showToast('⚠️ 비밀번호와 비밀번호 확인이 일치하지 않습니다.');
+          const msg = '⚠️ 비밀번호와 비밀번호 확인이 일치하지 않습니다.';
+          this._setAccountAuthInlineStatus(msg, true);
+          this.showToast(msg);
           return false;
         }
 
@@ -5403,7 +5537,8 @@
         const displayName = rawDisplayName || (rawEmail.split('@')[0] || '선생님');
 
         if (canUseRemote) {
-          this._isExplicitAuthFlowInProgress = true;
+          const authSeq = this._beginExplicitAuthFlow();
+          this._setAccountAuthInlineStatus('⏳ 회원가입 및 인증메일 발송 중...', false);
           try {
             const cred = await this._fbAuth.createUserWithEmailAndPassword(normEmail, pw);
             if (cred && cred.user) {
@@ -5458,21 +5593,29 @@
                   }
                 }
               } catch (signErr) {
-                this.showToast('⚠️ 이미 등록된 이메일입니다. [로그인] 탭에서 로그인하거나 [비밀번호 재설정]을 이용해 주세요.');
+                const msg = '⚠️ 이미 등록된 이메일입니다. [로그인] 탭에서 로그인하거나 [비밀번호 재설정]을 이용해 주세요.';
+                this._setAccountAuthInlineStatus(msg, true);
+                this.showToast(msg);
                 return false;
               }
             } else if (code === 'auth/operation-not-allowed') {
-              this.showToast('⚠️ Firebase 콘솔 [Authentication ➔ 로그인 방법]에서 [이메일/비밀번호] 사용 설정을 켜주세요.');
+              const msg = '⚠️ Firebase 콘솔 [Authentication ➔ 로그인 방법]에서 [이메일/비밀번호] 사용 설정을 켜주세요.';
+              this._setAccountAuthInlineStatus(msg, true);
+              this.showToast(msg);
               return false;
             } else if (code === 'auth/invalid-email') {
-              this.showToast('⚠️ 올바른 이메일 형식의 아이디를 입력해 주세요.');
+              const msg = '⚠️ 올바른 이메일 형식의 아이디를 입력해 주세요.';
+              this._setAccountAuthInlineStatus(msg, true);
+              this.showToast(msg);
               return false;
             } else {
-              this.showToast('⚠️ 회원가입 요청 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
+              const msg = '⚠️ 회원가입 요청 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+              this._setAccountAuthInlineStatus(msg, true);
+              this.showToast(msg);
               return false;
             }
           } finally {
-            this._isExplicitAuthFlowInProgress = false;
+            this._endExplicitAuthFlow(authSeq);
           }
         }
 
@@ -5495,13 +5638,15 @@
         }
 
         this._showEmailVerificationBanner(normEmail);
+        this._setAccountAuthInlineStatus(`📩 [${normEmail}] 인증 링크를 발송했습니다. 인증 후 아래 [인증 완료 확인]을 눌러주세요.`, false);
         this.showToast(`📩 [${normEmail}] 메일함으로 인증 링크를 발송했습니다! 인증 후 [인증 완료 확인]을 눌러주세요.`);
         return 'verification_pending';
       }
 
       // 아이디 로그인 모드: 상용 웹(http/https)에서는 100% Firebase Auth + 이메일 본인인증 통과 시에만 로그인 허용 (로컬 해시 우회 완전 제거)
       if (canUseRemote) {
-        this._isExplicitAuthFlowInProgress = true;
+        const authSeq = this._beginExplicitAuthFlow();
+        this._setAccountAuthInlineStatus('⏳ 아이디 로그인 확인 중...', false);
         try {
           const cred = await this._fbAuth.signInWithEmailAndPassword(normEmail, pw);
           if (cred && cred.user) {
@@ -5511,6 +5656,7 @@
                 normEmail,
                 `⏳ [${normEmail}] 아이디는 아직 이메일 인증이 완료되지 않았습니다. 메일함에서 인증 링크를 클릭한 뒤 아래 [인증 완료 확인]을 눌러주세요.`
               );
+              this._setAccountAuthInlineStatus('⏳ 이메일 인증을 완료한 뒤 아래 [인증 완료 확인]을 눌러주세요.', true);
               this.showToast('⏳ 이메일 인증을 완료해야 로그인할 수 있습니다.');
               return false;
             }
@@ -5553,33 +5699,46 @@
             this.showToast(`🎉 환영합니다, ${this.cloudUser.displayName}님! 로그인되었습니다.`);
             return true;
           }
+          this._setAccountAuthInlineStatus('⚠️ 로그인 정보를 확인할 수 없습니다. 다시 시도해 주세요.', true);
           return false;
         } catch (fbErr) {
           const code = (fbErr && fbErr.code) ? fbErr.code : '';
           if (code === 'auth/user-not-found') {
-            this.showToast('⚠️ 등록되지 않은 아이디입니다. [회원가입] 탭에서 먼저 가입해 주세요.');
+            const msg = '⚠️ 등록되지 않은 아이디입니다. [회원가입] 탭에서 먼저 가입해 주세요.';
+            this._setAccountAuthInlineStatus(msg, true);
+            this.showToast(msg);
             return false;
           }
           if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
-            this.showToast('⚠️ 아이디 또는 비밀번호가 일치하지 않습니다. (가입 전이라면 [회원가입] 탭을 이용해 주세요)');
+            const msg = '⚠️ 아이디 또는 비밀번호가 일치하지 않습니다. (가입 전이라면 [회원가입] 탭을 이용해 주세요)';
+            this._setAccountAuthInlineStatus(msg, true);
+            this.showToast(msg);
             return false;
           }
           if (code === 'auth/too-many-requests') {
-            this.showToast('⚠️ 로그인 시도가 너무 많습니다. 잠시 후 다시 시도하거나 [비밀번호 재설정]을 이용해 주세요.');
+            const msg = '⚠️ 로그인 시도가 너무 많습니다. 잠시 후 다시 시도하거나 [비밀번호 재설정]을 이용해 주세요.';
+            this._setAccountAuthInlineStatus(msg, true);
+            this.showToast(msg);
             return false;
           }
           if (code === 'auth/operation-not-allowed') {
-            this.showToast('⚠️ Firebase 콘솔 [Authentication ➔ 로그인 방법]에서 [이메일/비밀번호]를 사용 설정해 주세요.');
+            const msg = '⚠️ Firebase 콘솔 [Authentication ➔ 로그인 방법]에서 [이메일/비밀번호]를 사용 설정해 주세요.';
+            this._setAccountAuthInlineStatus(msg, true);
+            this.showToast(msg);
             return false;
           }
-          this.showToast('⚠️ 로그인 인증 서버와 연결할 수 없습니다. 네트워크 상태를 확인 후 다시 시도해 주세요.');
+          const msg = '⚠️ 로그인 인증 서버와 연결할 수 없습니다. 네트워크 상태를 확인 후 다시 시도해 주세요.';
+          this._setAccountAuthInlineStatus(msg, true);
+          this.showToast(msg);
           return false;
         } finally {
-          this._isExplicitAuthFlowInProgress = false;
+          this._endExplicitAuthFlow(authSeq);
         }
       }
 
-      this.showToast('⚠️ 오프라인 파일(file://) 모드에서는 클라우드 로그인을 지원하지 않습니다.');
+      const offlineMsg = '⚠️ 오프라인 파일(file://) 모드에서는 클라우드 로그인을 지원하지 않습니다.';
+      this._setAccountAuthInlineStatus(offlineMsg, true);
+      this.showToast(offlineMsg);
       return false;
     }
 
@@ -5588,7 +5747,9 @@
       const inpPw = document.getElementById('inputCloudEmailPw');
       const normEmail = String(explicitEmail || this._pendingVerifyEmail || (inpEmail && inpEmail.value) || '').trim().toLowerCase();
       if (!normEmail || !normEmail.includes('@')) {
-        this.showToast('⚠️ 인증을 확인할 아이디(이메일 주소)를 먼저 입력해 주세요.');
+        const msg = '⚠️ 인증을 확인할 아이디(이메일 주소)를 먼저 입력해 주세요.';
+        this._setAccountAuthInlineStatus(msg, true);
+        this.showToast(msg);
         return false;
       }
       const canonicalUid = this._getCanonicalUidForEmail(normEmail, '', 'email');
@@ -5600,7 +5761,8 @@
       let verifiedRawUid = canonicalUid;
 
       if (canUseRemote && this._fbAuth) {
-        this._isExplicitAuthFlowInProgress = true;
+        const authSeq = this._beginExplicitAuthFlow();
+        this._setAccountAuthInlineStatus('⏳ 이메일 인증 완료 여부를 확인하는 중...', false);
         try {
           if (!this._fbAuth.currentUser || String(this._fbAuth.currentUser.email || '').toLowerCase() !== normEmail) {
             const pwVal = (inpPw && inpPw.value ? inpPw.value : '').trim();
@@ -5609,12 +5771,16 @@
             }
           }
           if (!this._fbAuth.currentUser || String(this._fbAuth.currentUser.email || '').toLowerCase() !== normEmail) {
-            this.showToast('⚠️ 비밀번호를 입력한 뒤 다시 [인증 완료 확인]을 눌러주세요.');
+            const msg = '⚠️ 비밀번호를 입력한 뒤 다시 [인증 완료 확인]을 눌러주세요.';
+            this._setAccountAuthInlineStatus(msg, true);
+            this.showToast(msg);
             return false;
           }
           await this._fbAuth.currentUser.reload();
           if (!this._fbAuth.currentUser.emailVerified) {
-            this.showToast('⏳ 아직 메일함의 인증 링크가 클릭되지 않았습니다. 메일함(스팸함 포함)을 확인해 주세요.');
+            const msg = '⏳ 아직 메일함의 인증 링크가 클릭되지 않았습니다. 메일함(스팸함 포함)을 확인해 주세요.';
+            this._setAccountAuthInlineStatus(msg, true);
+            this.showToast(msg);
             return false;
           }
           if (typeof this._fbAuth.currentUser.getIdToken === 'function') {
@@ -5628,13 +5794,17 @@
             } catch (e) { }
           }
         } catch (e) {
-          this.showToast('⚠️ 이메일 인증 상태를 확인할 수 없습니다. 비밀번호를 확인 후 다시 시도해 주세요.');
+          const msg = '⚠️ 이메일 인증 상태를 확인할 수 없습니다. 비밀번호를 확인 후 다시 시도해 주세요.';
+          this._setAccountAuthInlineStatus(msg, true);
+          this.showToast(msg);
           return false;
         } finally {
-          this._isExplicitAuthFlowInProgress = false;
+          this._endExplicitAuthFlow(authSeq);
         }
       } else {
-        this.showToast('⚠️ 네트워크 연결 상태에서 이메일 인증을 확인해 주세요.');
+        const msg = '⚠️ 네트워크 연결 상태에서 이메일 인증을 확인해 주세요.';
+        this._setAccountAuthInlineStatus(msg, true);
+        this.showToast(msg);
         return false;
       }
 
@@ -5683,7 +5853,9 @@
       const inpPw = document.getElementById('inputCloudEmailPw');
       const normEmail = String(this._pendingVerifyEmail || (inpEmail && inpEmail.value) || '').trim().toLowerCase();
       if (!normEmail || !normEmail.includes('@')) {
-        this.showToast('⚠️ 인증메일을 재발송할 아이디(이메일 주소)를 입력해 주세요.');
+        const msg = '⚠️ 인증메일을 재발송할 아이디(이메일 주소)를 입력해 주세요.';
+        this._setAccountAuthInlineStatus(msg, true);
+        this.showToast(msg);
         return false;
       }
       if (this._fbAuth) {
@@ -5700,7 +5872,9 @@
         } catch (e) { }
       }
       this._showEmailVerificationBanner(normEmail);
-      this.showToast(`📩 [${normEmail}] 메일함으로 인증 링크를 다시 발송했습니다.`);
+      const sentMsg = `📩 [${normEmail}] 메일함으로 인증 링크를 다시 발송했습니다.`;
+      this._setAccountAuthInlineStatus(sentMsg, false);
+      this.showToast(sentMsg);
       return true;
     }
 
@@ -5708,16 +5882,32 @@
       const inpEmail = document.getElementById('inputCloudEmailId');
       const normEmail = String((inpEmail && inpEmail.value) || '').trim().toLowerCase();
       if (!normEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normEmail)) {
-        this.showToast('⚠️ 비밀번호 재설정 링크를 받을 아이디(이메일 주소)를 먼저 입력창에 적어주세요.');
+        const msg = '⚠️ 비밀번호 재설정 링크를 받을 아이디(이메일 주소)를 먼저 입력창에 적어주세요.';
+        this._setAccountAuthInlineStatus(msg, true);
+        this.showToast(msg);
         if (inpEmail) inpEmail.focus();
         return false;
       }
-      if (this._fbAuth && typeof this._fbAuth.sendPasswordResetEmail === 'function') {
-        try {
-          await this._fbAuth.sendPasswordResetEmail(normEmail);
-        } catch (e) { }
+      if (typeof this._ensureFirebaseInitialized === 'function') {
+        this._ensureFirebaseInitialized();
       }
-      this.showToast(`📩 [${normEmail}] 메일함으로 비밀번호 재설정 링크를 발송했습니다.`);
+      if (!this._fbAuth || typeof this._fbAuth.sendPasswordResetEmail !== 'function') {
+        const msg = '⏳ 로그인 보안 모듈을 불러오는 중입니다. 1초 후 다시 눌러주세요.';
+        this._setAccountAuthInlineStatus(msg, false);
+        this.showToast(msg);
+        return false;
+      }
+      try {
+        await this._fbAuth.sendPasswordResetEmail(normEmail);
+      } catch (e) {
+        const msg = '⚠️ 비밀번호 재설정 메일 발송에 실패했습니다. 아이디(이메일)를 확인해 주세요.';
+        this._setAccountAuthInlineStatus(msg, true);
+        this.showToast(msg);
+        return false;
+      }
+      const okMsg = `📩 [${normEmail}] 메일함으로 비밀번호 재설정 링크를 발송했습니다.`;
+      this._setAccountAuthInlineStatus(okMsg, false);
+      this.showToast(okMsg);
       return true;
     }
 
@@ -5753,6 +5943,15 @@
 
     async handleCloudLogout(silentToast = false) {
       const prevUid = (this.cloudUser && this.cloudUser.uid) ? String(this.cloudUser.uid) : '';
+      if (!silentToast && prevUid) {
+        if (this._saveUserPrefsTimer && typeof this.flushSaveUserPreferencesNow === 'function') {
+          this.flushSaveUserPreferencesNow();
+        }
+        const cgMeta = typeof this._readCustomGraphsLocalMeta === 'function' ? this._readCustomGraphsLocalMeta(prevUid) : null;
+        if (cgMeta && cgMeta.dirtyOffline && typeof this._uploadCustomGraphsToFirestoreNow === 'function') {
+          await this._uploadCustomGraphsToFirestoreNow(prevUid, this.customGraphPresets || [], cgMeta.updatedAt).catch(() => { });
+        }
+      }
       this._fbSignOutInProgress = true;
       if (this._fbAuth) {
         try {
@@ -5768,6 +5967,8 @@
       }
       this.cloudUser = null;
       this._verifiedJwtSyncedUid = '';
+      this._inflightIdTokenRefresh = null;
+      this._lastProactiveTokenRefreshAt = 0;
       this.myLibraryCache = [];
       this._subStateMeta = null;
       this.isProUser = false;
@@ -5775,15 +5976,204 @@
         this._resetActiveShareSessionCache();
       }
       this._persistActiveCloudUserSession();
-      const inpBuyerName = document.getElementById('inputProBuyerName');
-      const inpBuyerEmail = document.getElementById('inputProBuyerEmail');
-      if (inpBuyerName) inpBuyerName.value = '';
-      if (inpBuyerEmail) inpBuyerEmail.value = '';
+
+      if (!silentToast) {
+        if ((this.isAudioRecording || this._stoppingAudioRecordingPromise) && typeof this.stopAudioRecording === 'function') {
+          await (this._stoppingAudioRecordingPromise || this.stopAudioRecording({ silentToast: true })).catch(() => { });
+        }
+        if (Array.isArray(this._pendingSlideAudioFinalizers) && this._pendingSlideAudioFinalizers.length > 0) {
+          await Promise.all(this._pendingSlideAudioFinalizers).catch(() => { });
+          this._pendingSlideAudioFinalizers = [];
+        }
+        if (typeof this.stopAudioPlayback === 'function') this.stopAudioPlayback(false);
+        if (typeof this.exitStudentAudioVideoOnlyMode === 'function') this.exitStudentAudioVideoOnlyMode();
+        if (this.audioPlayerEl) {
+          try {
+            this.audioPlayerEl.pause();
+            this.audioPlayerEl.removeAttribute('src');
+            this.audioPlayerEl.load();
+          } catch (_) { }
+        }
+        this.audioSyncData = null;
+        this._isAudioSyncPlayerVisible = false;
+        this._priorSlideAudioSegments = [];
+        this._resumedSlideBaseOffsetMs = 0;
+        this.audioTimeline = [];
+        this.audioInitialState = null;
+        this.audioFinalState = null;
+
+        if (this.isNAxisStudioOpen && typeof this.closeNAxisStudioModal === 'function') this.closeNAxisStudioModal();
+        if (typeof this.closeNAxisSetupNoticeModal === 'function') this.closeNAxisSetupNoticeModal();
+        if (this.isMathToolkitOpen && typeof this.closeMathToolkitHub === 'function') this.closeMathToolkitHub();
+        ['modalCloudHub', 'modalShare', 'modalPromoBannerSettings', 'modalProPricing', 'modalShortcutSettings'].forEach((id) => {
+          const m = document.getElementById(id);
+          if (m) m.classList.remove('show');
+        });
+        if (typeof this.closePromoBannerDraftPreview === 'function') this.closePromoBannerDraftPreview();
+        if (typeof this._activeProblemStampGhostCleanup === 'function') this._activeProblemStampGhostCleanup();
+        if (typeof this._clearSmartViewerPreloadedImages === 'function') this._clearSmartViewerPreloadedImages();
+        const sv = document.getElementById('smartNoteViewerOverlay');
+        if (sv) {
+          sv.style.display = 'none';
+          sv.classList.remove('viewer-immersive-fullscreen');
+        }
+        ['smartNoteViewerImg', 'smartNoteViewerPrevImg', 'smartNoteViewerNextImg'].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.removeAttribute('src');
+        });
+        const svHot = document.getElementById('smartNoteViewerHotspots');
+        if (svHot) svHot.innerHTML = '';
+        ['viewerGraphTouchBar', 'sharedResetBar'].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.style.display = 'none';
+        });
+        document.body.classList.remove('viewer-graph-touch-mode', 'student-mode');
+        this._viewerPkg = this._initialSharedCloudPkg = this._initialSharedData = null;
+        if (typeof window !== 'undefined' && window.location && /(?:#|&)(?:cloud|share|student)=/.test(window.location.hash || '') && window.history && window.history.replaceState) {
+          window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+        }
+
+        if (this._deferredIdbSaveTimer) {
+          clearTimeout(this._deferredIdbSaveTimer);
+          this._deferredIdbSaveTimer = null;
+        }
+        if (this._lastPdfIdbSavePromise) {
+          await this._lastPdfIdbSavePromise.catch(() => { });
+          this._lastPdfIdbSavePromise = null;
+        }
+        if (this.isPdfModalOpen && typeof this.closePdfModal === 'function') this.closePdfModal();
+        if (this._pdfPageObserver) {
+          this._pdfPageObserver.disconnect();
+          this._pdfPageObserver = null;
+        }
+        if (this.pdfDoc && typeof this.pdfDoc.destroy === 'function') {
+          try { this.pdfDoc.destroy(); } catch (_) { }
+        }
+        this.pdfDoc = this._cachedPdfBytes = null;
+        this.pdfTotalPages = 0;
+        this.pdfCurrentPage = 1;
+        this.pdfFileName = '';
+        this.savedPdfScrollTop = 0;
+        this.savedPdfScrollLeft = 0;
+        this._pdfPageCanvasCache = {};
+        this._pdfPageCanvasCacheOrder = [];
+        if (typeof this._invalidatePdfBoardHiResTile === 'function') this._invalidatePdfBoardHiResTile(true);
+        const pdfCont = document.getElementById('pdfPagesContainer');
+        if (pdfCont) pdfCont.innerHTML = '';
+        const pdfTitle = document.getElementById('pdfFileName');
+        if (pdfTitle) {
+          pdfTitle.textContent = '';
+          pdfTitle.title = '';
+        }
+        const lblPdfTotal = document.getElementById('lblPdfTotalPages');
+        if (lblPdfTotal) lblPdfTotal.textContent = '0';
+        const inpPdf = document.getElementById('inputPdfFile');
+        if (inpPdf) inpPdf.value = '';
+
+        if (typeof this.closeGraphCard === 'function') this.closeGraphCard();
+        this.isHistoryProcessing = true;
+        this.isLessonPlaylistActive = true;
+        this.lessonPlaylistSlides = [{}];
+        try {
+          if (typeof this.resetNewCanvas === 'function') this.resetNewCanvas();
+        } finally {
+          this.isHistoryProcessing = false;
+        }
+        this.undoStack = [];
+        this.redoStack = [];
+        if (typeof this.updateUndoRedoUI === 'function') this.updateUndoRedoUI();
+        if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
+      }
+
+      ['inputProBuyerName', 'inputProBuyerEmail', 'inputCloudEmailPw'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
       this.syncCloudAuthUI();
       this.syncProPricingModalUI();
       this.renderMyLibraryList();
       this.renderFuncList();
+
       if (!silentToast) {
+        try {
+          const rmPrefixes = ['graphly_my_library_v2_', 'graphly_cloud_folders_v1_', 'graphly_full_doc_', 'graphly_cloud_share_'];
+          const acctPrefixes = ['graphly_promo_banner_v1_', 'graphly_sub_state_v3_', 'graphly_user_prefs_v1_', 'graphly_custom_graphs_v1_', 'graphly_custom_graphs_meta_v1_'];
+          const keepDirtyCgUid = (prevUid && typeof this._readCustomGraphsLocalMeta === 'function' && this._readCustomGraphsLocalMeta(prevUid).dirtyOffline)
+            ? prevUid
+            : '';
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i);
+            if (!k) continue;
+            if (k === 'graphly_last_pdf_view_state_v1' || rmPrefixes.some(p => k.startsWith(p))) {
+              localStorage.removeItem(k);
+            } else if (acctPrefixes.some(p => k.startsWith(p) && k !== p + 'guest')) {
+              if (keepDirtyCgUid && (k === 'graphly_custom_graphs_v1_' + keepDirtyCgUid || k === 'graphly_custom_graphs_meta_v1_' + keepDirtyCgUid)) {
+                continue;
+              }
+              localStorage.removeItem(k);
+            }
+          }
+          if (this._sessionShareEditKeys) this._sessionShareEditKeys.clear();
+          for (let i = sessionStorage.length - 1; i >= 0; i--) {
+            const sk = sessionStorage.key(i);
+            if (sk && sk.startsWith('graphly_share_edit_key_')) sessionStorage.removeItem(sk);
+          }
+        } catch (_) { }
+
+        const hasPendingPay = Boolean((() => {
+          try { return localStorage.getItem('graphly_pending_payment_confirm_v1'); } catch (_) { return ''; }
+        })());
+        await this._openCloudCacheDB().then(db => db && new Promise(res => {
+          const tx = db.transaction('kv', 'readwrite');
+          const st = tx.objectStore('kv');
+          const req = st.getAllKeys();
+          req.onsuccess = () => (req.result || []).forEach(k => {
+            if (
+              typeof k === 'string' && (
+                k.startsWith('graphly_full_doc_') ||
+                k.startsWith('graphly_vault_layer_') ||
+                k.startsWith('graphly_cloud_share_') ||
+                (!hasPendingPay && k === 'graphly_pre_payment_workspace_v1')
+              )
+            ) {
+              st.delete(k);
+            }
+          });
+          tx.oncomplete = tx.onerror = () => res();
+        })).catch(() => { });
+
+        if (typeof indexedDB !== 'undefined') {
+          await new Promise(res => {
+            try {
+              const pr = indexedDB.open('graphly_pdf_cache_db', 1);
+              pr.onupgradeneeded = (e) => {
+                if (!e.target.result.objectStoreNames.contains('last_pdf')) {
+                  e.target.result.createObjectStore('last_pdf');
+                }
+              };
+              pr.onsuccess = (e) => {
+                try {
+                  const pdb = e.target.result;
+                  if (!pdb.objectStoreNames.contains('last_pdf')) {
+                    pdb.close();
+                    return res();
+                  }
+                  const tx = pdb.transaction('last_pdf', 'readwrite');
+                  tx.objectStore('last_pdf').delete('current');
+                  tx.oncomplete = tx.onerror = () => {
+                    pdb.close();
+                    res();
+                  };
+                } catch (_) {
+                  res();
+                }
+              };
+              pr.onerror = () => res();
+            } catch (_) {
+              res();
+            }
+          });
+        }
         this.showToast('👋 안전하게 로그아웃되었습니다. (공용 PC 보호 완료)');
       }
     }
@@ -6088,13 +6478,7 @@
       }
       const lblSettingsAcct = document.getElementById('lblSettingsAccountStatus');
       const showAccountInlineNotice = (msg, isError = false) => {
-        if (lblSettingsAcct && !this.cloudUser) {
-          lblSettingsAcct.style.display = 'flex';
-          lblSettingsAcct.style.color = isError ? '#dc2626' : '#475569';
-          lblSettingsAcct.style.fontSize = '11px';
-          lblSettingsAcct.style.fontWeight = '600';
-          lblSettingsAcct.textContent = msg;
-        }
+        this._setAccountAuthInlineStatus(msg, isError);
       };
       if (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:') {
         const fileMsg = '로컬 파일(file://)에서는 Google OAuth가 제한됩니다. graphly.net 또는 아이디 로그인을 이용해 주세요.';
@@ -6110,21 +6494,26 @@
           boxEmailLogin.style.display = 'flex';
           this.switchCloudIdAuthTab('login');
         }
-        if (inAppInfo.isAndroid) {
-          try {
-            window.location.href = 'intent://' + curUrl.replace(/^https?:\/\//i, '') + '#Intent;scheme=https;package=com.android.chrome;end';
-          } catch (e) { }
-        } else if (inAppInfo.isIOS && inAppInfo.isKakao) {
-          try {
-            window.location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(curUrl);
-          } catch (e) { }
+        const hasUnsaved = typeof this.hasUnsavedWorkToProtect === 'function' && this.hasUnsavedWorkToProtect();
+        if (!hasUnsaved) {
+          if (inAppInfo.isAndroid) {
+            try {
+              window.location.href = 'intent://' + curUrl.replace(/^https?:\/\//i, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+            } catch (e) { }
+          } else if (inAppInfo.isIOS && inAppInfo.isKakao) {
+            try {
+              window.location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(curUrl);
+            } catch (e) { }
+          }
         }
-        const guideMsg = `${inAppInfo.appName} 앱 내장 브라우저에서는 Google 보안 정책상 구글 로그인이 제한됩니다. 우측 메뉴(⋯)에서 [Safari / 외부 브라우저로 열기]를 누르시거나 아래 [아이디 로그인]을 이용해 주세요.`;
+        const guideMsg = hasUnsaved
+          ? `${inAppInfo.appName} 내장 브라우저에서는 Google 로그인이 제한되며, 외부 브라우저로 이동하면 현재 판서가 초기화됩니다. 아래 [아이디 로그인]으로 로그인해 먼저 저장해 주세요.`
+          : `${inAppInfo.appName} 앱 내장 브라우저에서는 Google 보안 정책상 구글 로그인이 제한됩니다. 우측 메뉴(⋯)에서 [Safari / 외부 브라우저로 열기]를 누르시거나 아래 [아이디 로그인]을 이용해 주세요.`;
         showAccountInlineNotice(guideMsg, true);
         if (typeof this.showTossPaymentResultModal === 'function') {
           this.showTossPaymentResultModal({
             status: 'warning',
-            title: '외부 브라우저(Safari · Chrome) 열기 안내',
+            title: hasUnsaved ? '현재 판서 보호 · 아이디 로그인 안내' : '외부 브라우저(Safari · Chrome) 열기 안내',
             message: guideMsg
           });
         } else {
@@ -6143,27 +6532,48 @@
       const provider = new window.firebase.auth.GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       showAccountInlineNotice('⏳ Google 로그인 창을 여는 중...', false);
-      this._isExplicitAuthFlowInProgress = true;
+      const authSeq = this._beginExplicitAuthFlow();
       try { localStorage.setItem('graphly_last_auth_provider', 'google'); } catch (e) { }
 
       // iOS/iPadOS 홈화면 웹앱(PWA, navigator.standalone === true) 환경에서 Firebase SDK가
       // window.open 대신 분리된 <a target="_blank"> 합성 클릭 및 null 윈도우(new Rn(null))를 반환해
       // 팝업 로그인이 먹통이 되는 현상을 방지하기 위해 팝업 호출 순간 standalone 플래그를 우회
-      let restoredStandaloneDesc = null;
-      const hadStandaloneTrue = Boolean(typeof window !== 'undefined' && window.navigator && window.navigator.standalone === true);
-      if (hadStandaloneTrue) {
+      if (!this._standaloneSpoofActive && typeof window !== 'undefined' && window.navigator && window.navigator.standalone === true) {
         try {
-          restoredStandaloneDesc = Object.getOwnPropertyDescriptor(window.navigator, 'standalone') ||
-            Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.navigator), 'standalone');
+          this._origStandaloneDesc = Object.getOwnPropertyDescriptor(window.navigator, 'standalone') ||
+            Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.navigator), 'standalone') || null;
           Object.defineProperty(window.navigator, 'standalone', {
             get: () => false,
             configurable: true
           });
+          this._standaloneSpoofActive = true;
         } catch (e) { }
       }
 
       try {
-        const result = await this._fbAuth.signInWithPopup(provider);
+        const result = await new Promise((resolve, reject) => {
+          let settled = false;
+          const finish = (fn, val) => {
+            if (settled) return;
+            settled = true;
+            clearInterval(iv);
+            clearTimeout(wd);
+            fn(val);
+          };
+          const iv = setInterval(() => {
+            if (this._explicitAuthSeq !== authSeq) {
+              finish(reject, { code: 'auth/cancelled-popup-request' });
+              return;
+            }
+            const u = this._fbAuth && this._fbAuth.currentUser;
+            if (u && Array.isArray(u.providerData) && u.providerData.some(p => p && p.providerId === 'google.com')) {
+              finish(resolve, { user: u });
+            }
+          }, 800);
+          const wd = setTimeout(() => finish(reject, { code: 'auth/popup-closed-by-user' }), 90000);
+          this._fbAuth.signInWithPopup(provider).then(r => finish(resolve, r), e => finish(reject, e));
+        });
+        if (this._explicitAuthSeq !== authSeq) return;
         const authUser = (result && result.user) ? result.user : (this._fbAuth && this._fbAuth.currentUser ? this._fbAuth.currentUser : null);
         if (authUser) {
           if (lblSettingsAcct) {
@@ -6187,6 +6597,7 @@
           this.showToast(`🎉 환영합니다, ${this.cloudUser.displayName}님! 클라우드 보관함이 동기화되었습니다.`);
         }
       } catch (err) {
+        if (this._explicitAuthSeq !== authSeq) return;
         // 팝업 창 닫힘 이벤트 타이밍 차이로 catch로 넘어왔더라도 이미 Firebase 세션에 Google 계정이 인증 완료된 경우 정상 로그인 처리
         const fallbackUser = (this._fbAuth && this._fbAuth.currentUser) ? this._fbAuth.currentUser : null;
         const fallbackHasGoogle = Boolean(fallbackUser && Array.isArray(fallbackUser.providerData) && fallbackUser.providerData.some(p => p && p.providerId === 'google.com'));
@@ -6219,11 +6630,26 @@
           errCode === 'auth/web-storage-unsupported'
         ) {
           try {
-            showAccountInlineNotice('🔄 Google 로그인 페이지로 이동합니다...', false);
-            await this._fbAuth.signInWithRedirect(provider);
+            showAccountInlineNotice('🔄 작업 내용을 안전하게 임시 보관하고 Google 로그인으로 이동합니다...', false);
+            if ((this.isAudioRecording || this._stoppingAudioRecordingPromise) && typeof this.stopAudioRecording === 'function') {
+              await (this._stoppingAudioRecordingPromise || this.stopAudioRecording({ silentToast: true })).catch(() => { });
+            }
+            if (Array.isArray(this._pendingSlideAudioFinalizers) && this._pendingSlideAudioFinalizers.length > 0) {
+              await Promise.all(this._pendingSlideAudioFinalizers).catch(() => { });
+              this._pendingSlideAudioFinalizers = [];
+            }
+            await this._saveWorkspaceBeforeTossRedirect();
+            try { sessionStorage.setItem('graphly_pending_auth_redirect_v1', String(Date.now())); } catch (_) { }
+            this._isNavigatingForTossPayment = true;
+            await Promise.race([
+              this._fbAuth.signInWithRedirect(provider),
+              new Promise((_, rej) => setTimeout(() => rej(new Error('redirect_timeout')), 10000))
+            ]);
             return;
           } catch (redirErr) {
-            showAccountInlineNotice('⚠️ 브라우저 팝업 차단을 해제하거나 아이디 로그인을 이용해 주세요.', true);
+            this._isNavigatingForTossPayment = false;
+            try { sessionStorage.removeItem('graphly_pending_auth_redirect_v1'); } catch (_) { }
+            showAccountInlineNotice('⚠️ 브라우저 팝업 차단을 해제하거나 아래 [아이디 로그인]을 이용해 주세요.', true);
             return;
           }
         }
@@ -6238,16 +6664,7 @@
         }
         this.showToast('⚠️ 구글 로그인 창이 닫혔거나 취소되었습니다.');
       } finally {
-        this._isExplicitAuthFlowInProgress = false;
-        if (hadStandaloneTrue) {
-          try {
-            if (restoredStandaloneDesc) {
-              Object.defineProperty(window.navigator, 'standalone', restoredStandaloneDesc);
-            } else {
-              delete window.navigator.standalone;
-            }
-          } catch (e) { }
-        }
+        this._endExplicitAuthFlow(authSeq);
       }
     }
 
@@ -7218,19 +7635,30 @@
       }
       const body = { fields };
       const requireAuth = Boolean(this.cloudUser && this.cloudUser.uid) || collectionName !== 'shared_workspaces';
-      const reqHeaders = await this._buildFirestoreRestHeaders(true, requireAuth);
+      let reqHeaders = await this._buildFirestoreRestHeaders(true, requireAuth);
       const patchUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
-      const res = await fetch(patchUrl, {
+      const bodyStr = JSON.stringify(body);
+      let res = await fetch(patchUrl, {
         method: 'PATCH',
         headers: reqHeaders,
-        body: JSON.stringify(body)
+        body: bodyStr
       });
+      if (requireAuth && (res.status === 401 || (res.status === 403 && !reqHeaders.Authorization && this.cloudUser && this.cloudUser.uid))) {
+        reqHeaders = await this._buildFirestoreRestHeaders(true, true, true);
+        if (reqHeaders.Authorization || collectionName === 'shared_workspaces') {
+          res = await fetch(patchUrl, {
+            method: 'PATCH',
+            headers: reqHeaders,
+            body: bodyStr
+          });
+        }
+      }
       if (!res.ok) {
         const postUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}?documentId=${encodeURIComponent(docId)}`;
         const postRes = await fetch(postUrl, {
           method: 'POST',
           headers: reqHeaders,
-          body: JSON.stringify(body)
+          body: bodyStr
         });
         if (!postRes.ok) {
           throw new Error(`FIRESTORE_WRITE_FAILED_${postRes.status || res.status || 'ERR'}`);
@@ -7671,7 +8099,7 @@
       return writeRes;
     }
 
-    async _firestoreRestReadDoc(collectionName, docId, skipLocalCache = false, allowLockedForOwner = false) {
+    async _firestoreRestReadDoc(collectionName, docId, skipLocalCache = false, allowLockedForOwner = false, statusOut = null) {
       if (!skipLocalCache) {
         try {
           const idbVal = await this._idbCacheGet('graphly_full_doc_' + docId);
@@ -7681,18 +8109,31 @@
               ? await this._decompressJsonStringGzipBase64(localFull)
               : JSON.stringify(localFull);
             const parsedLocal = typeof uncompLocal === 'string' ? JSON.parse(uncompLocal) : uncompLocal;
-            if (parsedLocal) return this._restoreDeduplicatedSlideSnapshots(parsedLocal);
+            if (parsedLocal) {
+              if (statusOut && typeof statusOut === 'object') statusOut.httpStatus = 200;
+              return this._restoreDeduplicatedSlideSnapshots(parsedLocal);
+            }
           }
         } catch (e) { }
       }
       if (typeof window !== 'undefined' && window.location && !/^https?:$/i.test(window.location.protocol)) {
+        if (statusOut && typeof statusOut === 'object') statusOut.httpStatus = 0;
         return null;
       }
 
       const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
       const isPublicShareRead = (collectionName === 'shared_workspaces' || collectionName === 'cloud_share_vault');
-      const reqHeaders = isPublicShareRead ? {} : await this._buildFirestoreRestHeaders(false, true);
-      const res = await this._fetchFirestoreDocWithRetry(url, Object.keys(reqHeaders).length ? { headers: reqHeaders } : undefined);
+      let reqHeaders = isPublicShareRead ? {} : await this._buildFirestoreRestHeaders(false, true);
+      let res = await this._fetchFirestoreDocWithRetry(url, Object.keys(reqHeaders).length ? { headers: reqHeaders } : undefined);
+      if (!isPublicShareRead && res && (res.status === 401 || (res.status === 403 && !reqHeaders.Authorization && this.cloudUser && this.cloudUser.uid))) {
+        reqHeaders = await this._buildFirestoreRestHeaders(false, true, true);
+        if (reqHeaders.Authorization) {
+          res = await this._fetchFirestoreDocWithRetry(url, { headers: reqHeaders }, 1);
+        }
+      }
+      if (statusOut && typeof statusOut === 'object') {
+        statusOut.httpStatus = res ? (Number(res.status) || 0) : 0;
+      }
       if (!res || !res.ok) return null;
       const data = await res.json();
       if (data && data.fields && data.fields.jsonPayload && data.fields.jsonPayload.stringValue) {
@@ -7704,11 +8145,25 @@
         const topPremUntil = hasTopPremUntil
           ? (Number(data.fields.premiumActiveUntil.integerValue) || 0)
           : 0;
+        const hasTopShareTier = Boolean(data.fields.shareTier && typeof data.fields.shareTier.stringValue === 'string' && data.fields.shareTier.stringValue.trim());
+        const topShareTier = hasTopShareTier ? data.fields.shareTier.stringValue.trim() : '';
+        const topExpireMs = (data.fields.expireAt && data.fields.expireAt.timestampValue)
+          ? (Date.parse(data.fields.expireAt.timestampValue) || 0)
+          : 0;
         if (parsed && typeof parsed === 'object') {
           if (topIsPerm) parsed._topIsPermanentShare = true;
           if (hasTopPremUntil) {
             parsed._hasTopPremiumActiveUntil = true;
             parsed._topPremiumActiveUntil = topPremUntil;
+          }
+          if (hasTopShareTier) {
+            parsed._topShareTier = topShareTier;
+          }
+          if (collectionName === 'shared_workspaces' && !topIsPerm && topExpireMs > 0) {
+            parsed.isPermanentShare = false;
+            if (!parsed.expiresAt || Number(parsed.expiresAt) > topExpireMs) {
+              parsed.expiresAt = topExpireMs;
+            }
           }
         }
 
@@ -7742,6 +8197,15 @@
           if (hasTopPremUntil) {
             resolved._hasTopPremiumActiveUntil = true;
             resolved._topPremiumActiveUntil = topPremUntil;
+          }
+          if (hasTopShareTier) {
+            resolved._topShareTier = topShareTier;
+          }
+          if (collectionName === 'shared_workspaces' && !topIsPerm && topExpireMs > 0) {
+            resolved.isPermanentShare = false;
+            if (!resolved.expiresAt || Number(resolved.expiresAt) > topExpireMs) {
+              resolved.expiresAt = topExpireMs;
+            }
           }
         }
         return this._restoreDeduplicatedSlideSnapshots(resolved);
@@ -9081,8 +9545,8 @@
         return { ok: true, usedVault: true, manifestItem: lightweightItem };
       } catch (vaultErr) {
         const errMsg = String((vaultErr && vaultErr.message) || vaultErr || '');
-        // 새 firestore.rules 배포 전 환경(403)인 경우에만 기존 user_library 분할 저장으로 무중단 폴백
-        if (errMsg.includes('403')) {
+        // 새 firestore.rules 배포 전 환경(403)인 경우에만 기존 user_library 분할 저장으로 무중단 폴백 (단, 이미 고정 vaultKeys가 존재하는 덮어쓰기 문서는 영구 QR 보호를 위해 제외)
+        if (errMsg.includes('403') && !(overwriteTarget && overwriteTarget.vaultKeys && overwriteTarget.vaultKeys.skeletonKey)) {
           try {
             delete itemObj._isVaultLayered;
             delete itemObj.vaultKeys;
@@ -9149,12 +9613,23 @@
         }
       };
 
-      const reqHeaders = await this._buildFirestoreRestHeaders(true, true);
-      const res = await fetch(url, {
+      let reqHeaders = await this._buildFirestoreRestHeaders(true, true);
+      const bodyStr = JSON.stringify(queryBody);
+      let res = await fetch(url, {
         method: 'POST',
         headers: reqHeaders,
-        body: JSON.stringify(queryBody)
+        body: bodyStr
       });
+      if (res.status === 401 || (res.status === 403 && !reqHeaders.Authorization && this.cloudUser && this.cloudUser.uid)) {
+        reqHeaders = await this._buildFirestoreRestHeaders(true, true, true);
+        if (reqHeaders.Authorization) {
+          res = await fetch(url, {
+            method: 'POST',
+            headers: reqHeaders,
+            body: bodyStr
+          });
+        }
+      }
       if (!res.ok) return null;
       const rows = await res.json();
       if (!Array.isArray(rows)) return [];
@@ -9209,12 +9684,21 @@
         return;
       }
       const isPublicShare = (collectionName === 'shared_workspaces' && !this.cloudUser);
-      const reqHeaders = await this._buildFirestoreRestHeaders(false, !isPublicShare);
+      let reqHeaders = await this._buildFirestoreRestHeaders(false, !isPublicShare);
       const url = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
-      await fetch(url, {
+      const res = await fetch(url, {
         method: 'DELETE',
         headers: reqHeaders
       });
+      if (!isPublicShare && (res.status === 401 || (res.status === 403 && !reqHeaders.Authorization && this.cloudUser && this.cloudUser.uid))) {
+        reqHeaders = await this._buildFirestoreRestHeaders(false, true, true);
+        if (reqHeaders.Authorization) {
+          await fetch(url, {
+            method: 'DELETE',
+            headers: reqHeaders
+          });
+        }
+      }
     }
 
     _isOwnedByCurrentCloudUser(item) {
@@ -9921,6 +10405,7 @@
           readFolderStatusFn(folderDocId),
           this._firestoreRestQueryByOwner('user_library', candidateUids, 500).catch(() => null)
         ]);
+        if (!this.cloudUser || this.cloudUser.uid !== uid) return [];
         let resolvedFolderDoc = (primaryFolderRes && primaryFolderRes.status === 'ok' && primaryFolderRes.data)
           ? primaryFolderRes.data
           : null;
@@ -9938,6 +10423,7 @@
             }
           }
         }
+        if (!this.cloudUser || this.cloudUser.uid !== uid) return [];
 
         // 1. 수업 파일 목록 및 파일별 폴더 위치(folder)·제목(title) 클라우드 최신본 우선 반영
         if (Array.isArray(remoteItems)) {
@@ -10805,7 +11291,7 @@
         let premUntilMs = isPerm
           ? (Number(this._subStateMeta && (this._subStateMeta.premiumExpiresAt || this._subStateMeta.expiresAt)) || (nowMs + 31 * 24 * 60 * 60 * 1000))
           : 0;
-        const shortId = 's' + nowMs.toString(36) + this._generateSecureRandomAlphaNum(10);
+        let shortId = 's' + nowMs.toString(36) + this._generateSecureRandomAlphaNum(10);
         const effOwnerUid = (!isGuest && this.cloudUser && this.cloudUser.uid)
           ? this.cloudUser.uid
           : this._getOrCreateGuestShareDeviceId();
@@ -10829,11 +11315,18 @@
           }
           return null;
         }
+        if (ticketRes.shortId && ticketRes.shortId !== shortId) {
+          shortId = String(ticketRes.shortId);
+        }
         if (typeof this._recordClientShareBurstStamp === 'function') {
           this._recordClientShareBurstStamp();
         }
 
+        let verifiedShareTier = isGuest ? 'guest' : (quota.tier || 'free');
+        let verifiedPromoBanner = effPromoBanner;
         if (!ticketRes.fallbackLocal) {
+          if (ticketRes.tier) verifiedShareTier = String(ticketRes.tier);
+          if (verifiedShareTier !== 'premium') verifiedPromoBanner = null;
           isPerm = Boolean(ticketRes.isPermanentShare);
           expDays = Number(ticketRes.shareExpiryDays) || 0;
           expiresAtMs = isPerm ? 0 : (Number(ticketRes.expiresAtMs) || expiresAtMs);
@@ -10861,11 +11354,11 @@
             createdAt: nowMs,
             updatedAt: nowMs,
             expiresAt: expiresAtMs,
-            shareTier: isGuest ? 'guest' : (quota.tier || 'free'),
+            shareTier: verifiedShareTier,
             shareExpiryDays: expDays,
             isPermanentShare: isPerm,
             premiumActiveUntil: premUntilMs,
-            promoBanner: effPromoBanner,
+            promoBanner: verifiedPromoBanner,
             ownerUid: effOwnerUid,
             exportScope: slideCount > 1 ? 'all' : 'current',
             exportFilter: { ...effFilter },
@@ -10900,11 +11393,11 @@
             createdAt: nowMs,
             updatedAt: nowMs,
             expiresAt: expiresAtMs,
-            shareTier: isGuest ? 'guest' : (quota.tier || 'free'),
+            shareTier: verifiedShareTier,
             shareExpiryDays: expDays,
             isPermanentShare: isPerm,
             premiumActiveUntil: premUntilMs,
-            promoBanner: effPromoBanner,
+            promoBanner: verifiedPromoBanner,
             ownerUid: effOwnerUid,
             exportScope: filteredFallbackSlides.length > 1 ? 'all' : 'current',
             exportFilter: { ...effFilter },
@@ -13124,7 +13617,10 @@
 
       const isLocalPreview = Boolean(pkg._isLocalPreview === true);
       const isPermShare = Boolean(pkg.isPermanentShare || pkg._topIsPermanentShare || pkg.expiresAt === 0);
-      const isPremiumTierShare = Boolean(pkg.shareTier === 'premium');
+      const effShareTier = (typeof pkg._topShareTier === 'string' && pkg._topShareTier)
+        ? pkg._topShareTier
+        : String(pkg.shareTier || '');
+      const isPremiumTierShare = Boolean(effShareTier === 'premium');
       if (!isLocalPreview && !isPermShare && !isPremiumTierShare) return null;
 
       if (!isLocalPreview && isPermShare) {
@@ -14154,28 +14650,33 @@
       }
 
       const endpoint = this.SHARE_TICKET_BACKEND_URL || 'https://asia-northeast3-graphly-net.cloudfunctions.net/issueShareUploadTicket';
-      const headers = { 'Content-Type': 'application/json' };
+      let activeShortId = shortId;
+      let activeEditKey = ownerEditKey;
+      let idToken = '';
       if (!isGuest && typeof this._getFirebaseIdTokenForRest === 'function') {
-        const idToken = await this._getFirebaseIdTokenForRest(true);
-        if (idToken) {
-          headers['Authorization'] = 'Bearer ' + idToken;
-        }
+        idToken = await this._getFirebaseIdTokenForRest(true);
       }
 
-      try {
-        const res = await fetch(endpoint, {
+      const postTicketReq = async (tok, reqShortId, reqEditKey, reqIsReuse) => {
+        const reqHeaders = { 'Content-Type': 'application/json' };
+        if (tok) reqHeaders['Authorization'] = 'Bearer ' + tok;
+        return await fetch(endpoint, {
           method: 'POST',
-          headers,
+          headers: reqHeaders,
           body: JSON.stringify({
-            shortId,
-            ownerEditKey,
+            shortId: reqShortId,
+            ownerEditKey: reqEditKey,
             deviceId,
             uid: (!isGuest && this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : '',
             slideCount: Math.max(1, Number(slideCount) || 1),
-            isReuse: Boolean(isReuse),
+            isReuse: Boolean(reqIsReuse),
             shareSource: String(shareSource || 'direct_board')
           })
         });
+      };
+
+      try {
+        let res = await postTicketReq(idToken, activeShortId, activeEditKey, isReuse);
         if (res.status === 404 && !isGuest) {
           // Cloud Functions 배포 전 환경에서 로그인 회원의 공유 중단 방지 폴백
           const usage = this.getShareDailyUsageStatus();
@@ -14184,16 +14685,45 @@
           }
           return {
             ok: true,
+            shortId: activeShortId,
             fallbackLocal: true,
             dailyLimit: usage.dailyLimit,
             dailyUsed: (!isReuse && usage.dailyLimit > 0) ? (usage.usedCount + 1) : usage.usedCount,
             kstDate: usage.kstDate
           };
         }
-        const data = await res.json().catch(() => null);
+        let data = await res.json().catch(() => null);
+
+        // 로그인 회원(!isGuest)인데 만료·누락 토큰으로 서버가 비로그인(guest) 티켓으로 폴백했거나 덮어쓰기/비로그인 한도 오류를 반환한 경우 강제 토큰 갱신 후 1회 재요청
+        const downgradedToGuest = Boolean(!isGuest && data && data.ok && (data.isGuest === true || data.tier === 'guest'));
+        const guestFallbackBlocked = Boolean(
+          !isGuest &&
+          (!res.ok || !data || !data.ok) &&
+          data &&
+          (
+            data.code === 'FORBIDDEN_SHARE_OVERWRITE' ||
+            data.code === 'IP_EMERGENCY_RATE_LIMIT' ||
+            (!idToken && data.code === 'DAILY_SHARE_LIMIT_EXCEEDED') ||
+            (this.isProSubscriber() && data.code === 'DAILY_SHARE_LIMIT_EXCEEDED')
+          )
+        );
+        if ((downgradedToGuest || guestFallbackBlocked) && typeof this._getFirebaseIdTokenForRest === 'function') {
+          const freshToken = await this._getFirebaseIdTokenForRest(true, true);
+          if (freshToken) {
+            if (downgradedToGuest && !isReuse) {
+              this._lockShareUploadTicketOnServer(activeShortId).catch(() => { });
+              activeShortId = 's' + Date.now().toString(36) + this._generateSecureRandomAlphaNum(10);
+              activeEditKey = this._getOrCreateSessionOwnerEditKey(activeShortId);
+            }
+            res = await postTicketReq(freshToken, activeShortId, activeEditKey, isReuse);
+            data = await res.json().catch(() => null);
+          }
+        }
+
         if (!res.ok || !data || !data.ok) {
           return data || { ok: false, code: `HTTP_${res.status}` };
         }
+        if (!data.shortId) data.shortId = activeShortId;
         return data;
       } catch (err) {
         if (!isGuest) {
@@ -14337,7 +14867,7 @@
       if (isReusingSessionShortId) {
         pkg.id = this._activeSessionShareShortId;
       }
-      const shortId = pkg.id;
+      let shortId = pkg.id;
       const prevSessionMeta = isReusingSessionShortId ? this._lastSessionShareManifestMeta : null;
 
       const fullPkgJson = this._stringifyWithDeduplicatedSnapshots(pkg);
@@ -14374,6 +14904,10 @@
         }
         return null;
       }
+      if (ticketRes.shortId && ticketRes.shortId !== shortId) {
+        shortId = String(ticketRes.shortId);
+        pkg.id = shortId;
+      }
       if (!isReusingSessionShortId && typeof this._recordClientShareBurstStamp === 'function') {
         this._recordClientShareBurstStamp();
       }
@@ -14381,12 +14915,17 @@
       // 칠판 미저장 즉석 공유(Track A)는 항상 공용저장소 단기 휘발성 링크(3일/7일)로 동작하며 클라우드 보관함에 임시 파일을 자동 생성하지 않음!
       pkg.isPermanentShare = false;
       pkg.premiumActiveUntil = 0;
+      if (!ticketRes.fallbackLocal && ticketRes.tier) {
+        pkg.shareTier = String(ticketRes.tier);
+        if (pkg.shareTier !== 'premium') pkg.promoBanner = null;
+      }
       if (!ticketRes.fallbackLocal && Number(ticketRes.shareExpiryDays) > 0 && Number(ticketRes.expiresAtMs) > 0) {
         pkg.shareExpiryDays = Number(ticketRes.shareExpiryDays);
         pkg.expiresAt = Number(ticketRes.expiresAtMs);
       }
 
       const updatedPkgJson = this._stringifyWithDeduplicatedSnapshots(pkg);
+      const updatedCompressedPkg = await this._compressJsonStringGzipBase64(updatedPkgJson);
 
       // 4) 음성 데이터 Lazy Load 분리 준비
       const cloudPkg = JSON.parse(updatedPkgJson);
@@ -14503,8 +15042,8 @@
       this._lastShareTier = pkg.shareTier;
 
       // 로컬 IndexedDB 캐시 저장
-      await this._idbCacheSet('graphly_cloud_share_' + shortId, compressedFullPkg, pkg.expiresAt || 0).catch(() => { });
-      await this._idbCacheSet('graphly_full_doc_' + shortId, compressedFullPkg, pkg.expiresAt || 0).catch(() => { });
+      await this._idbCacheSet('graphly_cloud_share_' + shortId, updatedCompressedPkg, pkg.expiresAt || 0).catch(() => { });
+      await this._idbCacheSet('graphly_full_doc_' + shortId, updatedCompressedPkg, pkg.expiresAt || 0).catch(() => { });
       try { localStorage.removeItem('graphly_cloud_share_' + shortId); } catch (e) { }
 
       return shortId;
@@ -14911,6 +15450,9 @@
               if (checkData.fields.premiumActiveUntil && checkData.fields.premiumActiveUntil.integerValue !== undefined) {
                 pkg._hasTopPremiumActiveUntil = true;
                 pkg._topPremiumActiveUntil = Number(checkData.fields.premiumActiveUntil.integerValue) || 0;
+              }
+              if (checkData.fields.shareTier && typeof checkData.fields.shareTier.stringValue === 'string' && checkData.fields.shareTier.stringValue.trim()) {
+                pkg._topShareTier = checkData.fields.shareTier.stringValue.trim();
               }
             }
           }
