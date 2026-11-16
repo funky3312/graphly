@@ -16651,7 +16651,24 @@
           const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
           if (total <= 1) return;
           const isOpen = gridPopover.style.display !== 'none';
-          gridPopover.style.display = isOpen ? 'none' : 'block';
+          if (isOpen) {
+            gridPopover.style.display = 'none';
+            return;
+          }
+          gridPopover.style.left = 'auto';
+          gridPopover.style.right = '0px';
+          gridPopover.style.display = 'block';
+          const pRect = gridPopover.getBoundingClientRect();
+          const vw = window.innerWidth || 360;
+          if (pRect.left < 10 && gridPopover.parentElement) {
+            const parentRect = gridPopover.parentElement.getBoundingClientRect();
+            gridPopover.style.right = 'auto';
+            gridPopover.style.left = `${Math.round(10 - parentRect.left)}px`;
+          } else if (pRect.right > vw - 10 && gridPopover.parentElement) {
+            const parentRect = gridPopover.parentElement.getBoundingClientRect();
+            gridPopover.style.left = 'auto';
+            gridPopover.style.right = `${Math.round(parentRect.right - (vw - 10))}px`;
+          }
         };
         window.addEventListener('pointerdown', (ev) => {
           if (gridPopover.style.display === 'none') return;

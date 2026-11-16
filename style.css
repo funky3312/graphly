@@ -9996,7 +9996,7 @@ body.theme-light .smart-note-viewer-overlay {
   border-bottom: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   flex-wrap: nowrap;
   z-index: 30;
@@ -10118,8 +10118,11 @@ body.theme-light .viewer-page-counter-btn {
 .viewer-slide-grid-popover {
   position: absolute;
   top: calc(100% + 8px);
-  left: 0;
+  right: 0;
+  left: auto;
   width: 236px;
+  max-width: calc(100vw - 20px);
+  box-sizing: border-box;
   padding: 10px;
   border-radius: 14px;
   background: rgba(15, 23, 42, 0.96);
