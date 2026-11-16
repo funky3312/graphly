@@ -12031,11 +12031,15 @@
       this._alreadyArchivedBeforePdfModal = false;
       // PDF 모달에서 문제 크롭/페이지 삽입 직후 새 슬라이드 초기 상태가 누락되지 않도록 isPdfModalOpen 선해제
       this.isPdfModalOpen = false;
-      if (this._autoPausedByPdfModal) {
-        const pausedDelta = this.audioRecordPauseStartMs ? Math.max(0, performance.now() - this.audioRecordPauseStartMs) : 0;
+      if (this._autoPausedByPdfModal || this._autoPausedByAppBackground) {
+        const pausedDelta = (this.isAudioRecordPaused && this.audioRecordPauseStartMs)
+          ? Math.max(0, performance.now() - this.audioRecordPauseStartMs)
+          : 0;
         this.audioRecordTotalPausedMs = (this.audioRecordTotalPausedMs || 0) + pausedDelta;
         this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + pausedDelta;
         this._autoPausedByPdfModal = false;
+        this._autoPausedByAppBackground = false;
+        this._isAudioRecMenuOpen = false;
         this.isAudioRecordPaused = false;
         this.audioRecordPauseStartMs = 0;
       }

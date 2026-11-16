@@ -152,9 +152,13 @@
   GraphApp.prototype._pauseAudioForToolkitIfNeeded = function () {
     if (this.isAudioRecording && !this.isAudioRecordPaused) {
       this._autoPausedByToolkitModal = true;
+      if (typeof this._releaseAudioRecordWakeLock === 'function') this._releaseAudioRecordWakeLock();
       this.isAudioRecordPaused = true;
       this.audioRecordPauseStartMs = performance.now();
       if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'recording') {
+        try {
+          if (typeof this.audioMediaRecorder.requestData === 'function') this.audioMediaRecorder.requestData();
+        } catch (_) { }
         try { this.audioMediaRecorder.pause(); } catch (_) { }
       }
       if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
@@ -171,7 +175,9 @@
         this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + pausedDelta;
         this.isAudioRecordPaused = false;
         this.audioRecordPauseStartMs = 0;
-        if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'paused') {
+        if (typeof this._resumeOrRolloverAudioRecorderAfterPause === 'function') {
+          this._resumeOrRolloverAudioRecorderAfterPause();
+        } else if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'paused') {
           try { this.audioMediaRecorder.resume(); } catch (_) { }
         }
       }

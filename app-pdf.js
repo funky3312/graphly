@@ -787,9 +787,13 @@
         // PDF에서 문제를 고르는 동안에는 음성 녹음과 포인터 추적을 100% 중단하여 허공 포인터/공백 녹음을 원천 차단합니다!
         if (this.isAudioRecording && !this.isAudioRecordPaused) {
           this._autoPausedByPdfModal = true;
+          if (typeof this._releaseAudioRecordWakeLock === 'function') this._releaseAudioRecordWakeLock();
           this.isAudioRecordPaused = true;
           this.audioRecordPauseStartMs = performance.now();
           if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'recording') {
+            try {
+              if (typeof this.audioMediaRecorder.requestData === 'function') this.audioMediaRecorder.requestData();
+            } catch (e) { }
             try { this.audioMediaRecorder.pause(); } catch (e) { }
           }
           this.syncAudioRecordUI();
@@ -885,7 +889,9 @@
           this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + pausedDelta;
           this.isAudioRecordPaused = false;
           this.audioRecordPauseStartMs = 0;
-          if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'paused') {
+          if (typeof this._resumeOrRolloverAudioRecorderAfterPause === 'function') {
+            this._resumeOrRolloverAudioRecorderAfterPause();
+          } else if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'paused') {
             try { this.audioMediaRecorder.resume(); } catch (e) { }
           }
         }

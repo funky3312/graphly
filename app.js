@@ -15,6 +15,11 @@
       this._isStartingAudioRecording = false;
       this._stoppingAudioRecordingPromise = null;
       this.isAudioRecordPaused = false;
+      this._autoPausedByAppBackground = false;
+      this._hadBackgroundInterruptDuringPause = false;
+      this._hadActiveMicInSession = false;
+      this._audioWakeLockSentinel = null;
+      this._pendingAudioResumePromise = null;
       this.isAudioMicMuted = false;
       this._pendingSlideAudioFinalizers = [];
       this._lastRecorderStopPromise = null;
@@ -90,8 +95,29 @@
 
       if (!this._audioRecOutsideClickBound) {
         this._audioRecOutsideClickBound = true;
+        // 창 내림(백그라운드 전환)으로 자동 일시정지된 상태에서 복귀 후 바로 칠판·카드 판서를 시작하면 첫 획부터 유실 없이 즉시 이어녹화!
+        window.addEventListener('pointerdown', (e) => {
+          if (!this.isAudioRecording || !this.isAudioRecordPaused || !this._autoPausedByAppBackground) return;
+          if (this.isPdfModalOpen || this.isMathToolkitOpen || this.isNAxisStudioOpen || this._activeToolkitModalId) return;
+          if (typeof e.button === 'number' && e.button !== 0 && e.pointerType === 'mouse') return;
+          const t = e.target;
+          if (!t || typeof t.closest !== 'function') return;
+          if (t.closest(
+            '#wrapAudioRecordToggle, #wrapStealthRecordDot, button, a, input, select, textarea, label, ' +
+            '.modal-backdrop, .cloud-modal-backdrop, .n-axis-studio-backdrop, #sidebarRail, #railDrawer, ' +
+            '#inkFloatingToolbar, #rightActionToolbar, #quickPillRemote, .problem-card-header, .card-btn'
+          )) {
+            return;
+          }
+          if (t.id === 'graphCanvas' || t.closest('#graphCanvas, .problem-card-body, .card-ink-canvas')) {
+            this._isAudioRecMenuOpen = false;
+            this.togglePauseAudioRecording(false);
+          }
+        }, { capture: true, passive: true });
+
         window.addEventListener('pointerdown', (e) => {
           if (!this._isAudioRecMenuOpen) return;
+          if (this.isAudioRecording && this.isAudioRecordPaused && this._autoPausedByAppBackground) return;
           const t = e.target;
           if (t && typeof t.closest === 'function' && (
             t.closest('#wrapAudioRecordToggle') ||
@@ -259,14 +285,63 @@
           }
         };
 
+        const pauseAudioRecordingOnBackground = () => {
+          if (!this.isAudioRecording) return;
+          this._hadBackgroundInterruptDuringPause = true;
+          this._releaseAudioRecordWakeLock();
+          if (!this.isAudioRecordPaused) {
+            this._autoPausedByAppBackground = true;
+            this._recordAudioWorkspaceStateIfNeeded(true);
+            this.isAudioRecordPaused = true;
+            this.audioRecordPauseStartMs = performance.now();
+            if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'recording') {
+              try {
+                if (typeof this.audioMediaRecorder.requestData === 'function') {
+                  this.audioMediaRecorder.requestData();
+                }
+              } catch (e) { }
+              try { this.audioMediaRecorder.pause(); } catch (e) { }
+            }
+            this.syncAudioRecordUI();
+          } else if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'paused') {
+            try {
+              if (typeof this.audioMediaRecorder.requestData === 'function') {
+                this.audioMediaRecorder.requestData();
+              }
+            } catch (e) { }
+          }
+        };
+
+        const onAppReturnedToForeground = () => {
+          if (!this.isAudioRecording) return;
+          if (!this.isAudioRecordPaused) {
+            this._acquireAudioRecordWakeLock();
+            return;
+          }
+          if (
+            this._autoPausedByAppBackground &&
+            !this.isPdfModalOpen &&
+            !this.isMathToolkitOpen &&
+            !this.isNAxisStudioOpen &&
+            !this._activeToolkitModalId
+          ) {
+            this._isAudioRecMenuOpen = true;
+            this.syncAudioRecordUI();
+          }
+        };
+
         document.addEventListener('visibilitychange', () => {
           if (document.hidden || document.visibilityState === 'hidden') {
             pauseAudioOnAppBackground();
+            pauseAudioRecordingOnBackground();
+          } else {
+            onAppReturnedToForeground();
           }
         });
 
         window.addEventListener('pagehide', () => {
           pauseAudioOnAppBackground();
+          pauseAudioRecordingOnBackground();
         });
 
         window.addEventListener('blur', () => {
@@ -748,16 +823,327 @@
       }
     }
 
+    async _acquireAudioRecordWakeLock() {
+      try {
+        if (!this.isAudioRecording || this.isAudioRecordPaused) return;
+        if (typeof document !== 'undefined' && (document.hidden || document.visibilityState === 'hidden')) return;
+        if (typeof navigator === 'undefined' || !navigator.wakeLock || typeof navigator.wakeLock.request !== 'function') return;
+        if (this._audioWakeLockSentinel && !this._audioWakeLockSentinel.released) return;
+        const sentinel = await navigator.wakeLock.request('screen');
+        if (!this.isAudioRecording || this.isAudioRecordPaused || (typeof document !== 'undefined' && document.hidden)) {
+          try { await sentinel.release(); } catch (_) { }
+          return;
+        }
+        this._audioWakeLockSentinel = sentinel;
+        try {
+          sentinel.addEventListener('release', () => {
+            if (this._audioWakeLockSentinel === sentinel) {
+              this._audioWakeLockSentinel = null;
+            }
+          }, { once: true });
+        } catch (_) { }
+      } catch (_) { }
+    }
+
+    _releaseAudioRecordWakeLock() {
+      const s = this._audioWakeLockSentinel;
+      this._audioWakeLockSentinel = null;
+      if (s) {
+        try {
+          if (!s.released && typeof s.release === 'function') {
+            s.release().catch(() => { });
+          }
+        } catch (_) { }
+      }
+    }
+
+    _isAudioRecordPipelineHealthy() {
+      const rec = this.audioMediaRecorder;
+      if (!rec || rec._brokenByError || rec.state === 'inactive') return false;
+      if (!this.audioMediaStream || typeof this.audioMediaStream.getAudioTracks !== 'function') return false;
+      const mediaTracks = this.audioMediaStream.getAudioTracks();
+      if (!mediaTracks.length || !mediaTracks.some(tr => tr && tr.readyState === 'live')) return false;
+      if (this.audioRawStream && typeof this.audioRawStream.getAudioTracks === 'function') {
+        const rawTracks = this.audioRawStream.getAudioTracks();
+        if (!rawTracks.length || !rawTracks.some(tr => tr && tr.readyState === 'live')) return false;
+        if (this._hadBackgroundInterruptDuringPause && rawTracks.every(tr => tr && tr.muted)) return false;
+      }
+      if (this._audioVoiceContext && this._audioVoiceContext.state === 'closed') return false;
+      return true;
+    }
+
+    _applyFinalizedAudioDataUrlToMatchingSegment(segUid, segSessionId, dataUrl) {
+      if (!segUid || !dataUrl) return;
+      const applyUrl = (slideSync) => {
+        if (!slideSync || typeof slideSync !== 'object') return;
+        if (segSessionId && slideSync.sessionId && slideSync.sessionId !== segSessionId) return;
+        if (!Array.isArray(slideSync.audioSegments)) return;
+        for (let sIdx = 0; sIdx < slideSync.audioSegments.length; sIdx++) {
+          const segObj = slideSync.audioSegments[sIdx];
+          if (segObj && segObj.segUid === segUid) {
+            segObj.audioDataUrl = dataUrl;
+            if (sIdx === 0) {
+              slideSync.audioDataUrl = slideSync._compact ? '' : dataUrl;
+            }
+          }
+        }
+      };
+      if (this.audioSyncData) applyUrl(this.audioSyncData);
+      if (Array.isArray(this.lessonPlaylistSlides)) {
+        this.lessonPlaylistSlides.forEach(sl => {
+          if (sl && sl.audioSyncData) applyUrl(sl.audioSyncData);
+        });
+      }
+      if (
+        (!segSessionId || !this._currentAudioRecordingSessionId || this._currentAudioRecordingSessionId === segSessionId) &&
+        Array.isArray(this._priorSlideAudioSegments)
+      ) {
+        for (let pIdx = 0; pIdx < this._priorSlideAudioSegments.length; pIdx++) {
+          const pSeg = this._priorSlideAudioSegments[pIdx];
+          if (pSeg && pSeg.segUid === segUid) {
+            pSeg.audioDataUrl = dataUrl;
+          }
+        }
+      }
+    }
+
+    async _rolloverAudioRecorderInCurrentSlide() {
+      if (!this.isAudioRecording) return false;
+      const segStartMs = Math.max(0, Number(this._resumedSlideBaseOffsetMs) || 0);
+      const splitMs = Math.max(segStartMs, this.getAudioRecordElapsedMs());
+      const prevRecorder = this.audioMediaRecorder;
+      const prevChunksRef = (prevRecorder && Array.isArray(prevRecorder._localChunks))
+        ? prevRecorder._localChunks
+        : (this.audioRecordedChunks ? [...this.audioRecordedChunks] : []);
+      const prevMime = this._audioMimeType || 'audio/webm';
+      const wasMuted = Boolean(this.isAudioMicMuted);
+      const segSessionId = this._currentAudioRecordingSessionId || null;
+
+      this.audioMediaRecorder = null;
+      this.audioRecordedChunks = [];
+      const segToken = (this._audioSegmentToken = (this._audioSegmentToken || 0) + 1);
+
+      const needsStop = Boolean(prevRecorder && prevRecorder.state !== 'inactive');
+      const hasPriorSpanOrAudio = Boolean(
+        splitMs > segStartMs + 50 ||
+        (!wasMuted && prevChunksRef.length > 0)
+      );
+
+      let stopOnlyPromise = Promise.resolve();
+      if (needsStop) {
+        stopOnlyPromise = this._stopMediaRecorderSafely(prevRecorder, 800);
+        this._lastRecorderStopPromise = stopOnlyPromise;
+        stopOnlyPromise.then(() => {
+          if (this._lastRecorderStopPromise === stopOnlyPromise) {
+            this._lastRecorderStopPromise = null;
+          }
+        });
+      }
+
+      if (hasPriorSpanOrAudio) {
+        const safeEndMs = Math.max(segStartMs + 100, splitMs);
+        const prevDurMs = Math.max(100, safeEndMs - segStartMs);
+        const segUid = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const fallbackSilentUrl = this._createSilentWavDataUrl(prevDurMs);
+        if (!Array.isArray(this._priorSlideAudioSegments)) {
+          this._priorSlideAudioSegments = [];
+        }
+        this._priorSlideAudioSegments.push({
+          segUid,
+          startMs: segStartMs,
+          endMs: safeEndMs,
+          durationMs: prevDurMs,
+          audioDataUrl: fallbackSilentUrl,
+          mimeType: prevMime,
+          nextSlideIdx: null,
+          nextSlideStartMs: 0
+        });
+        this._resumedSlideBaseOffsetMs = safeEndMs;
+
+        if (needsStop || (!wasMuted && prevChunksRef.length > 0)) {
+          if (!this._pendingSlideAudioFinalizers) this._pendingSlideAudioFinalizers = [];
+          let finalizePromise = null;
+          finalizePromise = stopOnlyPromise.then(async () => {
+            try {
+              const finalChunks = (prevRecorder && Array.isArray(prevRecorder._localChunks) && prevRecorder._localChunks.length > 0)
+                ? prevRecorder._localChunks
+                : prevChunksRef;
+              if (!wasMuted && finalChunks.length > 0) {
+                const blob = new Blob(finalChunks, { type: prevMime });
+                const dataUrl = await this._blobToDataUrlSafely(blob, 5000);
+                if (dataUrl) {
+                  this._applyFinalizedAudioDataUrlToMatchingSegment(segUid, segSessionId, dataUrl);
+                }
+              }
+            } catch (_) { }
+          }).finally(() => {
+            if (Array.isArray(this._pendingSlideAudioFinalizers) && finalizePromise) {
+              const fIdx = this._pendingSlideAudioFinalizers.indexOf(finalizePromise);
+              if (fIdx !== -1) this._pendingSlideAudioFinalizers.splice(fIdx, 1);
+            }
+          });
+          this._pendingSlideAudioFinalizers.push(finalizePromise);
+        }
+      }
+
+      try { await stopOnlyPromise; } catch (_) { }
+      if (!this.isAudioRecording || this._audioSegmentToken !== segToken) return false;
+
+      if (!window.MediaRecorder || !navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+        return false;
+      }
+
+      try {
+        const stream = await this._acquireProcessedAudioStream();
+        if (!stream) throw new Error('no_audio_stream');
+        if (!this.isAudioRecording || this._audioSegmentToken !== segToken) {
+          this._cleanupProcessedAudioStream();
+          return false;
+        }
+        this.audioMediaStream = stream;
+        this.audioMediaStream.getAudioTracks().forEach(tr => {
+          tr.enabled = !this.isAudioMicMuted;
+        });
+
+        // 마이크 재획득 대기 시간(예: 블루투스·iOS 세션 복구 지연)이 발생한 경우 무음 브릿지로 타임라인 싱크 오차 0ms 보정
+        const actualStartMs = this.getAudioRecordElapsedMs();
+        const curBaseMs = Math.max(0, Number(this._resumedSlideBaseOffsetMs) || 0);
+        if (actualStartMs > curBaseMs + 80) {
+          const gapDur = actualStartMs - curBaseMs;
+          if (!Array.isArray(this._priorSlideAudioSegments)) {
+            this._priorSlideAudioSegments = [];
+          }
+          this._priorSlideAudioSegments.push({
+            segUid: `${Date.now()}_gap_${Math.random().toString(36).slice(2, 6)}`,
+            startMs: curBaseMs,
+            endMs: actualStartMs,
+            durationMs: gapDur,
+            audioDataUrl: this._createSilentWavDataUrl(gapDur),
+            mimeType: 'audio/wav',
+            nextSlideIdx: null,
+            nextSlideStartMs: 0
+          });
+          this._resumedSlideBaseOffsetMs = actualStartMs;
+        }
+
+        const candidates = [
+          'audio/webm;codecs=opus',
+          'audio/webm',
+          'audio/mp4',
+          'audio/ogg;codecs=opus'
+        ];
+        let chosenMime = (this._audioMimeType && this._audioMimeType !== 'audio/wav') ? this._audioMimeType : '';
+        if (chosenMime && typeof MediaRecorder.isTypeSupported === 'function' && !MediaRecorder.isTypeSupported(chosenMime)) {
+          chosenMime = '';
+        }
+        if (!chosenMime) {
+          for (const m of candidates) {
+            if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(m)) {
+              chosenMime = m;
+              break;
+            }
+          }
+        }
+        this._audioMimeType = chosenMime || 'audio/webm';
+        const recOpts = chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 36000 } : { audioBitsPerSecond: 36000 };
+        const localChunks = [];
+        const recorder = new MediaRecorder(stream, recOpts);
+        recorder._localChunks = localChunks;
+        this.audioRecordedChunks = localChunks;
+        recorder.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size > 0) {
+            localChunks.push(ev.data);
+          }
+        };
+        recorder.onerror = () => { recorder._brokenByError = true; };
+        recorder.start(250);
+        if (this.isAudioRecordPaused && recorder.state === 'recording') {
+          try { recorder.pause(); } catch (_) { }
+        }
+        this.audioMediaRecorder = recorder;
+        this._hadActiveMicInSession = true;
+        return true;
+      } catch (_) {
+        this._cleanupProcessedAudioStream();
+        this.audioMediaRecorder = null;
+        return false;
+      }
+    }
+
+    _resumeOrRolloverAudioRecorderAfterPause() {
+      this._autoPausedByAppBackground = false;
+      if (!this.isAudioRecording || this.isAudioRecordPaused) return Promise.resolve(false);
+      this._acquireAudioRecordWakeLock();
+
+      if (!this._hadActiveMicInSession) {
+        this._hadBackgroundInterruptDuringPause = false;
+        return Promise.resolve(true);
+      }
+
+      const ctx = this._audioVoiceContext;
+      const ctxNeedsAsyncResume = Boolean(ctx && ctx.state !== 'running' && ctx.state !== 'closed');
+      if (!ctxNeedsAsyncResume && this._isAudioRecordPipelineHealthy()) {
+        try {
+          if (this.audioMediaRecorder.state === 'paused') {
+            this.audioMediaRecorder.resume();
+          }
+          if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'recording') {
+            this._hadBackgroundInterruptDuringPause = false;
+            return Promise.resolve(true);
+          }
+        } catch (_) { }
+      }
+
+      let resumePromise = null;
+      resumePromise = (async () => {
+        try {
+          if (ctxNeedsAsyncResume && this._audioVoiceContext === ctx) {
+            try { await ctx.resume(); } catch (_) { }
+          }
+          if (!this.isAudioRecording || this.isAudioRecordPaused) return false;
+          if (
+            (!this._audioVoiceContext || this._audioVoiceContext.state === 'running') &&
+            this._isAudioRecordPipelineHealthy()
+          ) {
+            try {
+              if (this.audioMediaRecorder.state === 'paused') {
+                this.audioMediaRecorder.resume();
+              }
+              if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'recording') {
+                this._hadBackgroundInterruptDuringPause = false;
+                return true;
+              }
+            } catch (_) { }
+          }
+          this._hadBackgroundInterruptDuringPause = false;
+          return await this._rolloverAudioRecorderInCurrentSlide();
+        } finally {
+          if (this._pendingAudioResumePromise === resumePromise) {
+            this._pendingAudioResumePromise = null;
+          }
+        }
+      })();
+      this._pendingAudioResumePromise = resumePromise;
+      return resumePromise;
+    }
+
     togglePauseAudioRecording(forcePause = null) {
       if (!this.isAudioRecording) return false;
       const nextPaused = (typeof forcePause === 'boolean') ? forcePause : !this.isAudioRecordPaused;
       if (nextPaused === this.isAudioRecordPaused) return this.isAudioRecordPaused;
 
       if (nextPaused) {
+        this._autoPausedByAppBackground = false;
+        this._releaseAudioRecordWakeLock();
         this._recordAudioWorkspaceStateIfNeeded(true);
         this.isAudioRecordPaused = true;
         this.audioRecordPauseStartMs = performance.now();
         if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'recording') {
+          try {
+            if (typeof this.audioMediaRecorder.requestData === 'function') {
+              this.audioMediaRecorder.requestData();
+            }
+          } catch (e) { }
           try { this.audioMediaRecorder.pause(); } catch (e) { }
         }
         this.showToast('⏸ 녹화가 일시정지되었습니다. [▶ 이어녹화]를 누르면 끊김 없이 이어집니다.');
@@ -767,9 +1153,7 @@
         this.audioSessionTotalPausedMs = (this.audioSessionTotalPausedMs || 0) + pausedDelta;
         this.isAudioRecordPaused = false;
         this.audioRecordPauseStartMs = 0;
-        if (this.audioMediaRecorder && this.audioMediaRecorder.state === 'paused') {
-          try { this.audioMediaRecorder.resume(); } catch (e) { }
-        }
+        this._resumeOrRolloverAudioRecorderAfterPause();
         this._recordAudioWorkspaceStateIfNeeded(true);
         this.showToast('▶ 녹화를 이어서 진행합니다!');
       }
@@ -1312,21 +1696,28 @@
           try {
             const hasLiveRawTrack = !this.audioRawStream || (
               typeof this.audioRawStream.getAudioTracks === 'function' &&
-              this.audioRawStream.getAudioTracks().some(tr => tr.readyState === 'live')
+              this.audioRawStream.getAudioTracks().some(tr => tr.readyState === 'live') &&
+              !(this._hadBackgroundInterruptDuringPause && this.audioRawStream.getAudioTracks().every(tr => tr && tr.muted))
             );
             const hasLiveTrack = Boolean(
               hasLiveRawTrack &&
+              (!this._audioVoiceContext || this._audioVoiceContext.state !== 'closed') &&
               this.audioMediaStream &&
               typeof this.audioMediaStream.getAudioTracks === 'function' &&
               this.audioMediaStream.getAudioTracks().some(tr => tr.readyState === 'live')
             );
-            if (!hasLiveTrack && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
+            if (hasLiveTrack && this._audioVoiceContext && this._audioVoiceContext.state !== 'running') {
+              try { await this._audioVoiceContext.resume(); } catch (_) { }
+            }
+            const ctxHealthy = !this._audioVoiceContext || this._audioVoiceContext.state === 'running';
+            if ((!hasLiveTrack || !ctxHealthy) && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
               try {
                 this.audioMediaStream = await this._acquireProcessedAudioStream();
               } catch (micReacqErr) {
                 this._cleanupProcessedAudioStream();
               }
             }
+            this._hadBackgroundInterruptDuringPause = false;
             if (!this.isAudioRecording || this._audioSegmentToken !== segToken || !this.audioMediaStream) return;
             this.audioMediaStream.getAudioTracks().forEach(tr => {
               tr.enabled = !this.isAudioMicMuted;
@@ -1340,7 +1731,7 @@
                 localChunks.push(ev.data);
               }
             };
-            recorder.onerror = () => { };
+            recorder.onerror = () => { recorder._brokenByError = true; };
             recorder.start(250);
             if (this.isAudioRecordPaused && recorder.state === 'recording') {
               try { recorder.pause(); } catch (e) { }
@@ -2739,6 +3130,8 @@
         this.audioMediaRecorder = null;
         this._lastRecorderStopPromise = null;
         this._pendingSlideRecorderStarter = null;
+        this._pendingAudioResumePromise = null;
+        this._hadActiveMicInSession = false;
         this._audioMimeType = 'audio/webm';
 
         if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function' && window.MediaRecorder) {
@@ -2770,24 +3163,29 @@
                 localChunks.push(ev.data);
               }
             };
-            recorder.onerror = () => { };
+            recorder.onerror = () => { recorder._brokenByError = true; };
             recorder.start(250);
             this.audioMediaRecorder = recorder;
+            this._hadActiveMicInSession = true;
           } catch (micErr) {
             // 마이크가 없거나 권한이 거부된 환경(또는 헤드리스 테스트)에서는 타이머 동기화 모드로 끊김 없이 진행!
             this._cleanupProcessedAudioStream();
             this.audioMediaRecorder = null;
+            this._hadActiveMicInSession = false;
           }
         }
 
         this.isAudioRecording = true;
         this._currentAudioRecordingSessionId = Date.now();
         this.isAudioRecordPaused = false;
+        this._autoPausedByAppBackground = false;
+        this._hadBackgroundInterruptDuringPause = false;
         this._isAudioRecMenuOpen = false;
         this._isRecBarStealthHidden = true;
         this._isAudioWaitingForNextSlideSetup = false;
         this._alreadyArchivedBeforePdfModal = false;
         this._autoPausedByPdfModal = false;
+        this._acquireAudioRecordWakeLock();
         this._resumedSlideBaseOffsetMs = 0;
         this._priorSlideAudioSegments = [];
         const startPerfNow = performance.now();
@@ -2861,6 +3259,10 @@
           await this._pendingSlideRecorderStarter.catch(() => { });
           this._pendingSlideRecorderStarter = null;
         }
+        if (this._pendingAudioResumePromise) {
+          await this._pendingAudioResumePromise.catch(() => { });
+          this._pendingAudioResumePromise = null;
+        }
         const segStartMs = Math.max(0, Number(this._resumedSlideBaseOffsetMs) || 0);
         const durationMs = Math.max(segStartMs + 300, this.getAudioRecordElapsedMs());
         const segDurMs = Math.max(100, durationMs - segStartMs);
@@ -2870,6 +3272,10 @@
         } catch (e) { }
         this.isAudioRecording = false;
         this.isAudioRecordPaused = false;
+        this._autoPausedByAppBackground = false;
+        this._hadBackgroundInterruptDuringPause = false;
+        this._hadActiveMicInSession = false;
+        this._releaseAudioRecordWakeLock();
         this._isAudioRecMenuOpen = false;
         this.audioRecordPauseStartMs = 0;
         this.audioRecordTotalPausedMs = 0;

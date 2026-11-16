@@ -4111,6 +4111,19 @@
 
     // 키보드 단축키: 개인 맞춤 단축키 엔진(handleCustomShortcutKeyDown), 스페이스/쉬프트 팬 이동, ESC 복귀, 방향키 미세조정
     window.addEventListener('keydown', (e) => {
+      // ⚡ [Graphly_빠른캡처.exe 전용 내부 시스템 신호 (VK_F24)]: 사용자 스탬프 단축키 변경·해제 여부와 100% 무관하게 문제 카드 즉시 스탬프 박제
+      if ((e.key === 'F24' || e.code === 'F24' || e.keyCode === 135) && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+        e.preventDefault();
+        if (!e.repeat) {
+          if (this._isClipboardImagePastePending) {
+            this._pendingQuickCaptureAutoStamp = true;
+          } else if (typeof this.triggerQuickCaptureAutoStamp === 'function') {
+            this.triggerQuickCaptureAutoStamp();
+          }
+        }
+        return;
+      }
+
       if (this.isShortcutSettingsModalOpen && this.isShortcutSettingsModalOpen()) {
         return;
       }
