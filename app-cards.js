@@ -2298,6 +2298,10 @@
             return true;
           }
 
+          if (e && e.pointerType === 'mouse' && typeof e.shiftKey === 'boolean' && !e.shiftKey && this.isShiftPressed) {
+            this.isShiftPressed = false;
+          }
+          const isShiftLine = Boolean((e && e.shiftKey) || this.isShiftPressed);
           const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
           const initCardPenStyle = (this.activeInkTool === 'highlighter') ? 'ballpen' : (this.inkPenStyle || 'ballpen');
           const hasHwP = (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01);
@@ -2317,13 +2321,28 @@
             _prevRawPx: { x: startPxX, y: startPxY },
             _holdAnchorPx: { x: startPxX, y: startPxY },
             _lastMovePx: { x: startPxX, y: startPxY },
-            _shapeHoldDetected: false,
+            _shapeHoldDetected: isShiftLine,
             tStart: recT,
             tEnd: recT,
             points: [{ nx: pos.nx, ny: pos.ny, p: initP, t: recT }]
           };
+          if (isShiftLine) {
+            currentStroke._isShiftLine = true;
+            currentStroke.isShape = true;
+            if (recT !== undefined) {
+              currentStroke.shapeSnapAt = recT;
+            }
+            currentStroke.cardShape = {
+              type: 'line',
+              start: { nx: pos.nx, ny: pos.ny },
+              end: { nx: pos.nx, ny: pos.ny },
+              snapped: null
+            };
+          }
           this.problemInkStrokes.push(currentStroke);
-          restartProblemHoldTimer(pos.w, pos.h);
+          if (!isShiftLine) {
+            restartProblemHoldTimer(pos.w, pos.h);
+          }
           this.renderProblemCardCanvas(currentStroke);
           return true;
         };
@@ -2445,6 +2464,27 @@
             }
             const rw = Math.max(1, (endRect && endRect.width) || (pCanvas.width / this.getCanvasDpr()) || 400);
             const rh = Math.max(1, (endRect && endRect.height) || (pCanvas.height / this.getCanvasDpr()) || 300);
+            if (finishedCardStroke._isShiftLine) {
+              delete finishedCardStroke._isShiftLine;
+              const sh = finishedCardStroke.cardShape;
+              const isCancelOrZero = !e || e.type === 'pointercancel' || (e.clientX === 0 && e.clientY === 0);
+              if (!isCancelOrZero && sh && sh.type === 'line' && sh.start && sh.end && sh.start.nx === sh.end.nx && sh.start.ny === sh.end.ny && endRect && endRect.width > 0) {
+                const upNx = Math.max(0, Math.min(1, (e.clientX - endRect.left) / rw));
+                const upNy = Math.max(0, Math.min(1, (e.clientY - endRect.top) / rh));
+                if (Math.hypot((upNx - sh.start.nx) * rw, (upNy - sh.start.ny) * rh) >= 2.5) {
+                  this.updateHeldCardStrokeShape(finishedCardStroke, upNx, upNy, rw, rh);
+                }
+              }
+              const distPx = (sh && sh.type === 'line' && sh.start && sh.end)
+                ? Math.hypot((sh.end.nx - sh.start.nx) * rw, (sh.end.ny - sh.start.ny) * rh)
+                : 0;
+              if (distPx < 2.5) {
+                finishedCardStroke.isShape = false;
+                finishedCardStroke.cardShape = null;
+                finishedCardStroke._shapeHoldDetected = false;
+                delete finishedCardStroke.shapeSnapAt;
+              }
+            }
             this._finishCardStrokeTail(finishedCardStroke, e, endRect, rw, rh, recT);
             this.renderProblemCardCanvas(finishedCardStroke, true);
             this.undoStack.push({
@@ -3368,6 +3408,10 @@
             eraseExtraCardAtPoint(nx * rw, ny * rh, rw, rh, true, null);
             return true;
           }
+          if (e && e.pointerType === 'mouse' && typeof e.shiftKey === 'boolean' && !e.shiftKey && this.isShiftPressed) {
+            this.isShiftPressed = false;
+          }
+          const isShiftLine = Boolean((e && e.shiftKey) || this.isShiftPressed);
           const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
           const initExtraPenStyle = (this.activeInkTool === 'highlighter') ? 'ballpen' : (this.inkPenStyle || 'ballpen');
           const hasHwP = (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01);
@@ -3387,13 +3431,32 @@
             _prevRawPx: { x: startPxX, y: startPxY },
             _holdAnchorPx: { x: startPxX, y: startPxY },
             _lastMovePx: { x: startPxX, y: startPxY },
-            _shapeHoldDetected: false,
+            _shapeHoldDetected: isShiftLine,
             tStart: recT,
             tEnd: recT,
             points: [{ nx, ny, p: initP, t: recT }]
           };
+          if (isShiftLine) {
+            curExtraStroke._isShiftLine = true;
+            curExtraStroke.isShape = true;
+            if (recT !== undefined) {
+              curExtraStroke.shapeSnapAt = recT;
+            }
+            curExtraStroke.cardShape = {
+              type: 'line',
+              start: { nx, ny },
+              end: { nx, ny },
+              snapped: null
+            };
+          }
           cardWidgetEl._cardInkStrokes.push(curExtraStroke);
-          restartExtraHoldTimer(rw, rh);
+          if (isShiftLine) {
+            if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
+              this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true, curExtraStroke);
+            }
+          } else {
+            restartExtraHoldTimer(rw, rh);
+          }
           renderExtraCardInk(curExtraStroke);
           return true;
         };
@@ -3514,6 +3577,27 @@
             if (recT !== undefined) finishedSt.tEnd = recT;
             const rw = Math.max(1, (endRect && endRect.width) || (extraInkCanvas.width / this.getCanvasDpr()) || 430);
             const rh = Math.max(1, (endRect && endRect.height) || (extraInkCanvas.height / this.getCanvasDpr()) || 353);
+            if (finishedSt._isShiftLine) {
+              delete finishedSt._isShiftLine;
+              const sh = finishedSt.cardShape;
+              const isCancelOrZero = !e || e.type === 'pointercancel' || (e.clientX === 0 && e.clientY === 0);
+              if (!isCancelOrZero && sh && sh.type === 'line' && sh.start && sh.end && sh.start.nx === sh.end.nx && sh.start.ny === sh.end.ny && endRect && endRect.width > 0) {
+                const upNx = Math.max(0, Math.min(1, (e.clientX - endRect.left) / rw));
+                const upNy = Math.max(0, Math.min(1, (e.clientY - endRect.top) / rh));
+                if (Math.hypot((upNx - sh.start.nx) * rw, (upNy - sh.start.ny) * rh) >= 2.5) {
+                  this.updateHeldCardStrokeShape(finishedSt, upNx, upNy, rw, rh);
+                }
+              }
+              const distPx = (sh && sh.type === 'line' && sh.start && sh.end)
+                ? Math.hypot((sh.end.nx - sh.start.nx) * rw, (sh.end.ny - sh.start.ny) * rh)
+                : 0;
+              if (distPx < 2.5) {
+                finishedSt.isShape = false;
+                finishedSt.cardShape = null;
+                finishedSt._shapeHoldDetected = false;
+                delete finishedSt.shapeSnapAt;
+              }
+            }
             this._finishCardStrokeTail(finishedSt, e, endRect, rw, rh, recT);
             if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
               this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true, finishedSt);
@@ -6435,6 +6519,10 @@
             return true;
           }
 
+          if (e && e.pointerType === 'mouse' && typeof e.shiftKey === 'boolean' && !e.shiftKey && this.isShiftPressed) {
+            this.isShiftPressed = false;
+          }
+          const isShiftLine = Boolean((e && e.shiftKey) || this.isShiftPressed);
           const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
           const initGraphCardPenStyle = (this.activeInkTool === 'highlighter') ? 'ballpen' : (this.inkPenStyle || 'ballpen');
           const hasHwP = (typeof e.pressure === 'number' && e.pressure > 0 && Math.abs(e.pressure - 0.5) > 0.01);
@@ -6454,13 +6542,32 @@
             _prevRawPx: { x: startPxX, y: startPxY },
             _holdAnchorPx: { x: startPxX, y: startPxY },
             _lastMovePx: { x: startPxX, y: startPxY },
-            _shapeHoldDetected: false,
+            _shapeHoldDetected: isShiftLine,
             tStart: recT,
             tEnd: recT,
             points: [{ nx: pos.nx, ny: pos.ny, p: initP, t: recT }]
           };
+          if (isShiftLine) {
+            currentStroke._isShiftLine = true;
+            currentStroke.isShape = true;
+            if (recT !== undefined) {
+              currentStroke.shapeSnapAt = recT;
+            }
+            currentStroke.cardShape = {
+              type: 'line',
+              start: { nx: pos.nx, ny: pos.ny },
+              end: { nx: pos.nx, ny: pos.ny },
+              snapped: null
+            };
+          }
           this.graphInkStrokes.push(currentStroke);
-          restartGraphCardHoldTimer(pos.w, pos.h);
+          if (isShiftLine) {
+            if (typeof this._ensurePipCardInkMathCoords === 'function') {
+              this._ensurePipCardInkMathCoords('primary', true, currentStroke);
+            }
+          } else {
+            restartGraphCardHoldTimer(pos.w, pos.h);
+          }
           this.renderGraphCardCanvas(currentStroke);
           return true;
         };
@@ -6581,6 +6688,27 @@
             }
             const rw = Math.max(1, (endRect && endRect.width) || (gCanvas.width / this.getCanvasDpr()) || 430);
             const rh = Math.max(1, (endRect && endRect.height) || (gCanvas.height / this.getCanvasDpr()) || 353);
+            if (finishedCardStroke._isShiftLine) {
+              delete finishedCardStroke._isShiftLine;
+              const sh = finishedCardStroke.cardShape;
+              const isCancelOrZero = !e || e.type === 'pointercancel' || (e.clientX === 0 && e.clientY === 0);
+              if (!isCancelOrZero && sh && sh.type === 'line' && sh.start && sh.end && sh.start.nx === sh.end.nx && sh.start.ny === sh.end.ny && endRect && endRect.width > 0) {
+                const upNx = Math.max(0, Math.min(1, (e.clientX - endRect.left) / rw));
+                const upNy = Math.max(0, Math.min(1, (e.clientY - endRect.top) / rh));
+                if (Math.hypot((upNx - sh.start.nx) * rw, (upNy - sh.start.ny) * rh) >= 2.5) {
+                  this.updateHeldCardStrokeShape(finishedCardStroke, upNx, upNy, rw, rh);
+                }
+              }
+              const distPx = (sh && sh.type === 'line' && sh.start && sh.end)
+                ? Math.hypot((sh.end.nx - sh.start.nx) * rw, (sh.end.ny - sh.start.ny) * rh)
+                : 0;
+              if (distPx < 2.5) {
+                finishedCardStroke.isShape = false;
+                finishedCardStroke.cardShape = null;
+                finishedCardStroke._shapeHoldDetected = false;
+                delete finishedCardStroke.shapeSnapAt;
+              }
+            }
             this._finishCardStrokeTail(finishedCardStroke, e, endRect, rw, rh, recT);
             if (typeof this._ensurePipCardInkMathCoords === 'function') {
               this._ensurePipCardInkMathCoords('primary', true, finishedCardStroke);
@@ -7695,6 +7823,7 @@
           softBlur: cs.softBlur || 0,
           tStart: cs.tStart,
           tEnd: cs.tEnd,
+          shapeSnapAt: cs.shapeSnapAt,
           points: fullPts
         };
 
@@ -7826,12 +7955,23 @@
             _jitterPolished: true,
             tStart: gs.tStart,
             tEnd: gs.tEnd,
+            shapeSnapAt: gs.shapeSnapAt,
             points: pts
           };
 
           if (gs.isShape && gs._savedCardShape) {
             cStroke.isShape = true;
             cStroke.cardShape = JSON.parse(JSON.stringify(gs._savedCardShape));
+          } else if (gs.isShape && gs.shape && gs.shape.type === 'line' && gs.shape.start && gs.shape.end) {
+            const s0 = this.mathToScreen(gs.shape.start.x, gs.shape.start.y);
+            const s1 = this.mathToScreen(gs.shape.end.x, gs.shape.end.y);
+            cStroke.isShape = true;
+            cStroke.cardShape = {
+              type: 'line',
+              start: { nx: s0.x / effW, ny: s0.y / effH, mx: gs.shape.start.x, my: gs.shape.start.y },
+              end: { nx: s1.x / effW, ny: s1.y / effH, mx: gs.shape.end.x, my: gs.shape.end.y },
+              snapped: gs.shape.snapped || null
+            };
           } else if (gs.isShape && (gs.shapeType === 'line' || gs.shapeType === 'dashedLine' || gs.shapeType === 'arrow') && pts.length >= 2) {
             const p0 = pts[0];
             const p1 = pts[pts.length - 1];

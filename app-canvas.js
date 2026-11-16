@@ -1507,6 +1507,10 @@
         }
 
         const isHighlighterStroke = (this.activeInkTool === 'highlighter');
+        if (e && e.pointerType === 'mouse' && typeof e.shiftKey === 'boolean' && !e.shiftKey && this.isShiftPressed) {
+          this.isShiftPressed = false;
+        }
+        const isShiftLine = Boolean((e && e.shiftKey) || this.isShiftPressed);
         // 📄 [대표님 기획: PDF 통모드(페이지 모드) 바깥 베젤 영역 필기 시작 차단]
         if (this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect) {
           const pr = this._lastPdfPageScreenRect;
@@ -1514,9 +1518,9 @@
             return;
           }
         }
-        // 🌟 [무렉(Zero-Stutter) 아키텍처]: 반투명 형광펜일 때만 씬 프리즈를 캡처하고,
+        // 🌟 [무렉(Zero-Stutter) 아키텍처]: 반투명 형광펜 또는 Shift 즉시 직선일 때만 씬 프리즈를 캡처하고,
         // 일반 펜(pen) 필기 시에는 pointerdown 입력 핸들러 내부에서 전체 render()나 rebuildInkCache()를 절대 동기 실행하지 않음!
-        if (isHighlighterStroke) {
+        if (isHighlighterStroke || isShiftLine) {
           if (hadSelectedGraphHandleOrCurve || this._inkBakeDirty || this._canvasHasLowResCameraFrame) {
             this.isDrawingInk = false;
             this._pcMainStrokeFairer = null;
@@ -1558,7 +1562,7 @@
           this.recordAudioCursorPoint(pos.x, pos.y, this.currentInkColor, true);
         }
         this._pcMainStrokeFairer = null;
-        if (!isHighlighterStroke) {
+        if (!isHighlighterStroke && !isShiftLine) {
           const downInkProfile = this.getDeviceInkProfile();
           if (downInkProfile.deviceType === 'pc' && typeof this._createPcStrokeFairer === 'function') {
             const fairStep = (e.pointerType === 'pen') ? (downInkProfile.pcFairStepPen || 1.95) : (downInkProfile.pcFairStepMouse || 2.10);
@@ -1586,6 +1590,24 @@
             : [{ x: bPt0.x, y: bPt0.y, p: pressure, t: recT0 }]
         };
         this.inkStrokes.push(this.currentInkStroke);
+        if (isShiftLine) {
+          const startCoord = isGraphTarget ? { x: m.x, y: m.y } : { x: bPt0.x, y: bPt0.y };
+          this._inkHoldDetected = true;
+          this._shiftLineStartScreen = { x: pos.x, y: pos.y };
+          this.currentInkStroke._isShiftLine = true;
+          this.currentInkStroke.isShape = true;
+          if (recT0 !== undefined) {
+            this.currentInkStroke.shapeSnapAt = recT0;
+          }
+          this.currentInkStroke.shape = {
+            type: 'line',
+            start: { x: startCoord.x, y: startCoord.y },
+            end: { x: startCoord.x, y: startCoord.y },
+            snapped: null
+          };
+          this.render();
+          return;
+        }
         this._startInkHoldTimer();
         if (isHighlighterStroke) {
           this.render();
@@ -2232,9 +2254,18 @@
           }
           return;
         } else if (this.currentInkStroke) {
-          // 🌟 Draw & Hold 기하 도형 인식 완료 상태에서 홀드 드래그 중: 동적 크기/각도 실시간 조절!
+          // 🌟 Draw & Hold 기하 도형 인식 완료 또는 Shift 즉시 직선 상태에서 드래그 중: 동적 크기/각도 실시간 조절!
           if (this._inkHoldDetected && this.currentInkStroke.shape) {
             this._updateHeldShape(pos);
+            if (this.isAudioRecording) {
+              const recTMove = this.getAudioRecordElapsedMs();
+              this.currentInkStroke.tEnd = recTMove;
+              this.recordAudioCursorPoint(pos.x, pos.y, this.currentInkStroke.color, true);
+              if (this.currentInkStroke._isShiftLine && this.currentInkStroke.shape.end) {
+                const endPt = this.currentInkStroke.shape.end;
+                this.currentInkStroke.points.push({ x: endPt.x, y: endPt.y, p: 0.55, t: recTMove });
+              }
+            }
             this.requestRender();
             return;
           }
@@ -3075,7 +3106,7 @@
           ];
           const hitCorner = corners.find(c => Math.hypot(pos.x - c.x, pos.y - c.y) <= 22);
           nextCursor = hitCorner ? hitCorner.cursor : 'default';
-        } else if (this.isSpacePressed || this.isShiftPressed || (e && e.shiftKey)) {
+        } else if (this.isSpacePressed || (!(this.isInkMode && this.activeInkTool !== 'select') && (this.isShiftPressed || (e && e.shiftKey)))) {
           nextCursor = 'move';
         } else if (this.isInkMode && this.activeInkTool === 'select') {
           nextCursor = 'default';
@@ -3386,6 +3417,19 @@
           const upPos = getPos(e.touches ? (e.changedTouches ? e.changedTouches[0] : e.touches[0]) : e);
           if (upPos && Number.isFinite(upPos.x) && Number.isFinite(upPos.y)) {
             this._lastRawInkScreenPos = { x: upPos.x, y: upPos.y };
+            if (
+              this._inkHoldDetected &&
+              this.currentInkStroke &&
+              this.currentInkStroke._isShiftLine &&
+              this.currentInkStroke.shape &&
+              this.currentInkStroke.shape.type === 'line' &&
+              this.currentInkStroke.shape.start &&
+              this.currentInkStroke.shape.end &&
+              this.currentInkStroke.shape.start.x === this.currentInkStroke.shape.end.x &&
+              this.currentInkStroke.shape.start.y === this.currentInkStroke.shape.end.y
+            ) {
+              this._updateHeldShape(upPos);
+            }
           }
         }
         this._restoreLiveTipPatch();
@@ -3472,6 +3516,35 @@
         const finishedStroke = this.currentInkStroke;
         if (finishedStroke && this.isAudioRecording) {
           finishedStroke.tEnd = this.getAudioRecordElapsedMs();
+        }
+        const shiftStartScr = this._shiftLineStartScreen;
+        this._shiftLineStartScreen = null;
+        if (finishedStroke && finishedStroke._isShiftLine) {
+          delete finishedStroke._isShiftLine;
+          let lineDistPx = 0;
+          if (finishedStroke.shape && finishedStroke.shape.type === 'line' && finishedStroke.shape.start && finishedStroke.shape.end) {
+            const isBoardTarget = (finishedStroke.target || 'board') === 'board';
+            const s1 = shiftStartScr || (isBoardTarget
+              ? this.boardToScreen(finishedStroke.shape.start.x, finishedStroke.shape.start.y)
+              : this.mathToScreen(finishedStroke.shape.start.x, finishedStroke.shape.start.y));
+            const s2 = isBoardTarget
+              ? this.boardToScreen(finishedStroke.shape.end.x, finishedStroke.shape.end.y)
+              : this.mathToScreen(finishedStroke.shape.end.x, finishedStroke.shape.end.y);
+            lineDistPx = Math.hypot(s2.x - s1.x, s2.y - s1.y);
+          }
+          if (lineDistPx < 2.5) {
+            finishedStroke.shape = null;
+            finishedStroke.isShape = false;
+            delete finishedStroke.shapeSnapAt;
+            this._inkBakeDirty = true;
+          } else if (finishedStroke.shape && finishedStroke.shape.end && Array.isArray(finishedStroke.points) && finishedStroke.points.length <= 1) {
+            finishedStroke.points.push({
+              x: finishedStroke.shape.end.x,
+              y: finishedStroke.shape.end.y,
+              p: 0.55,
+              t: finishedStroke.tEnd
+            });
+          }
         }
         this.currentInkStroke = null;
         this._lastInkScreenPos = null;
@@ -3625,7 +3698,7 @@
       this.curveFeatsSnapshot = null;
       this.syncControls();
 
-      if (this.isShiftPressed || this.isSpacePressed) {
+      if (this.isSpacePressed || (this.isShiftPressed && !(this.isInkMode && this.activeInkTool !== 'select'))) {
         this.updateInkCursor();
         this.canvas.style.cursor = 'move';
       } else if (this.isInkMode && this.activeInkTool === 'select') {
@@ -4140,10 +4213,10 @@
         return;
       }
 
-      // Shift 키 누름 감지 (필기 모드 중 쉬프트 드래그로 쾌속 화면 이동 지원)
+      // Shift 키 누름 감지 (선택 모드에서는 화면 이동 커서, 펜·형광펜 필기 도구에서는 즉시 직선 모드로 작동)
       if ((e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !isInput && !this.isShiftPressed) {
         this.isShiftPressed = true;
-        if (this.isInkMode) {
+        if (this.isInkMode && this.activeInkTool === 'select') {
           this.canvas.style.cursor = 'move';
         }
       }

@@ -4781,13 +4781,25 @@
       }
 
       // Draw & Hold 도형인 경우 shapeSnapMs에 도달하기 전까지는 손으로 그리는 궤적을 보여주고, 도달 순간 도형으로 스냅!
+      // Shift + 드래그 즉시 직선(shapeSnapAt <= tStart + 1)인 경우 재생 중 끝점이 보간된 펜촉(interpTip)을 실시간 추종!
       const useSnappedShape = Boolean((stroke.shape || stroke.cardShape) && playMs >= shapeSnapMs);
+      const isInstantLineShape = Boolean(
+        useSnappedShape &&
+        typeof stroke.shapeSnapAt === 'number' &&
+        stroke.shapeSnapAt <= tStart + 1
+      );
+      const liveShape = (isInstantLineShape && stroke.shape && stroke.shape.type === 'line' && interpTip && interpTip.x !== undefined)
+        ? { ...stroke.shape, end: { x: interpTip.x, y: interpTip.y } }
+        : (useSnappedShape ? stroke.shape : null);
+      const liveCardShape = (isInstantLineShape && stroke.cardShape && stroke.cardShape.type === 'line' && interpTip && interpTip.nx !== undefined)
+        ? { ...stroke.cardShape, end: { nx: interpTip.nx, ny: interpTip.ny } }
+        : (useSnappedShape ? stroke.cardShape : null);
       return {
         stroke: {
           ...stroke,
           points: slicedPts,
-          shape: useSnappedShape ? stroke.shape : null,
-          cardShape: useSnappedShape ? stroke.cardShape : null,
+          shape: liveShape,
+          cardShape: liveCardShape,
           isShape: useSnappedShape
         },
         isCurrentlyWriting: true,
