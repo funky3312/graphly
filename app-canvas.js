@@ -3509,7 +3509,6 @@
         this.isDrawingInk = false;
         const hadSceneFreeze = Boolean(this._hasSceneFreeze && this.sceneFreezeCanvas);
         this._hasSceneFreeze = false;
-        const wasOneShotEraser = (this.activeInkTool === 'eraser' && !this._isTemporaryStylusEraser);
         this._erasedInCurrentStroke = false;
         this._currentEraseUndoEntry = null;
         this._preDragState = null;
@@ -3548,11 +3547,6 @@
         }
         this.currentInkStroke = null;
         this._lastInkScreenPos = null;
-        if (wasOneShotEraser) {
-          this._liveBezierScreenPts = null;
-          this.setActiveInkTool('pen');
-          return;
-        }
         if (!finishedStroke && !hadSceneFreeze) {
           this._liveBezierScreenPts = null;
           if (this._inkBakeDirty) {

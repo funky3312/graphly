@@ -1321,9 +1321,39 @@
       if (inpCloudTitle && prefillTitle) {
         inpCloudTitle.value = prefillTitle;
       }
-      this.verifyActiveDeviceSessionLock().then((valid) => {
-        if (valid) this.fetchMyLibraryFromCloud();
+      const syncUid = (this.cloudUser && this.cloudUser.uid) ? String(this.cloudUser.uid) : '';
+      const syncTask = this.verifyActiveDeviceSessionLock().then((valid) => {
+        if (valid && this.cloudUser && this.cloudUser.uid === syncUid) {
+          return this.fetchMyLibraryFromCloud();
+        }
+        return null;
+      }).catch(() => null);
+      this._inflightLibrarySyncPromise = syncTask;
+      syncTask.finally(() => {
+        if (this._inflightLibrarySyncPromise === syncTask) {
+          this._inflightLibrarySyncPromise = null;
+        }
       });
+    }
+
+    async _awaitPendingLibrarySyncBeforeWrite() {
+      if (!this.cloudUser || !this.cloudUser.uid) return;
+      if (typeof window !== 'undefined' && window.location && !/^https?:$/i.test(window.location.protocol)) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      const curUid = String(this.cloudUser.uid);
+      let waitTarget = this._inflightLibrarySyncPromise ||
+        ((this._inflightLibraryFetchObj && this._inflightLibraryFetchObj.uid === curUid) ? this._inflightLibraryFetchObj.promise : null);
+      if (!waitTarget && this._librarySyncedOnceUid !== curUid && (!Array.isArray(this.myLibraryCache) || this.myLibraryCache.length === 0)) {
+        waitTarget = this.fetchMyLibraryFromCloud();
+      }
+      if (waitTarget) {
+        try {
+          await Promise.race([
+            waitTarget,
+            new Promise((resolve) => setTimeout(resolve, 3500))
+          ]);
+        } catch (_) { }
+      }
     }
 
     openNewCloudFolderInput(parentPath = '') {
@@ -1770,6 +1800,121 @@
       }
     }
 
+    async _overwriteCloudItemWithAnotherLibraryItem(sourceItem, dupTarget, finalTitle, finalFolder) {
+      if (!sourceItem || !dupTarget || sourceItem.id === dupTarget.id) {
+        return { ok: false };
+      }
+      const hasAnyShareMeta = (it) => Boolean(
+        it && (
+          it.linkedShareId ||
+          it._tempShareId ||
+          (it._shareLinksMap && typeof it._shareLinksMap === 'object' && Object.keys(it._shareLinksMap).length > 0)
+        )
+      );
+      const dupHasShare = hasAnyShareMeta(dupTarget);
+      const srcHasShare = hasAnyShareMeta(sourceItem);
+      const srcHasPermShare = this._hasPermanentCloudItemShare(sourceItem);
+
+      // 예외 케이스: 기존 대상 파일에는 공유 링크가 전혀 없고, 옮기는 파일 쪽에만 공유 링크가 걸려 있는 경우 -> 옮기는 파일의 ID·링크 그대로 유지!
+      if (!dupHasShare && srcHasShare) {
+        const prevTitle = sourceItem.title;
+        const prevFolder = sourceItem.folder;
+        sourceItem.title = finalTitle;
+        sourceItem.folder = finalFolder;
+        try {
+          const isManifestOnly = Boolean(
+            sourceItem._isVaultLayered ||
+            sourceItem.linkedShareId ||
+            sourceItem._tempShareId ||
+            (sourceItem._shareLinksMap && typeof sourceItem._shareLinksMap === 'object' && Object.keys(sourceItem._shareLinksMap).length > 0) ||
+            (sourceItem._isChunked && sourceItem._chunkCount && sourceItem._chunkDocPrefix)
+          );
+          sourceItem.updatedAt = Date.now();
+          if (isManifestOnly) {
+            const manifestObj = { ...sourceItem, slideData: null, playlistSlides: null, updatedAt: sourceItem.updatedAt };
+            await this._firestoreRestWriteSingleDoc('user_library', sourceItem.id, JSON.stringify(manifestObj));
+          } else {
+            await this._firestoreRestWrite('user_library', sourceItem.id, sourceItem);
+          }
+        } catch (err) {
+          sourceItem.title = prevTitle;
+          sourceItem.folder = prevFolder;
+          this.showToast('⚠️ 클라우드 서버 덮어쓰기에 실패하여 기존 파일을 그대로 보존했습니다.');
+          return { ok: false };
+        }
+        await this._persistCloudItemMetadataChange(sourceItem);
+        await this._deleteCloudLibraryItemCompletely(dupTarget);
+        this._saveMyLibraryCacheForCurrentUser();
+        return { ok: true, item: sourceItem };
+      }
+
+      // 양쪽 파일 모두 공유 링크가 있고 옮기는 파일에도 영구 링크가 있는 드문 경우 실수 방지 확인
+      if (dupHasShare && srcHasPermShare) {
+        const okConfirm = window.confirm(
+          `⚠️ 현재 파일("${sourceItem.title || '파일'}")에도 별도의 [🔗 영구 공유 링크]가 연결되어 있습니다.\n\n덮어쓰기를 진행하면 기존 ["${finalTitle}"]의 영구 링크로 통합되어 내용이 업데이트되며, 현재 임시 파일의 링크는 정리됩니다.\n계속하시겠습니까?`
+        );
+        if (!okConfirm) {
+          return { ok: false, cancelled: true };
+        }
+      }
+
+      const resolvedSrc = await this._resolveChunkedItem(sourceItem);
+      const slides = Array.isArray(resolvedSrc && resolvedSrc.playlistSlides) && resolvedSrc.playlistSlides.length > 0
+        ? JSON.parse(JSON.stringify(resolvedSrc.playlistSlides))
+        : ((resolvedSrc && resolvedSrc.slideData) ? [JSON.parse(JSON.stringify(resolvedSrc.slideData))] : []);
+      if (!slides.length) {
+        this.showToast('⚠️ 덮어쓸 원본 파일 데이터를 불러오지 못해 기존 파일을 그대로 보존했습니다.');
+        return { ok: false };
+      }
+
+      const wasLoadedActive = Boolean(
+        this._activeLoadedCloudLibraryMeta &&
+        (this._activeLoadedCloudLibraryMeta.id === sourceItem.id || this._activeLoadedCloudLibraryMeta.id === dupTarget.id)
+      );
+      const isDeck = slides.length > 1 || Boolean((resolvedSrc && resolvedSrc.isPlaylist) || sourceItem.isPlaylist);
+      const summaryText = (resolvedSrc && resolvedSrc.summary) || sourceItem.summary || (isDeck
+        ? `📚 ${slides.length}문항 통째 수업 · ${this._buildSlideSummaryBadge(slides[0])}`
+        : this._buildSlideSummaryBadge(slides[0]));
+
+      const mergedItemObj = {
+        id: dupTarget.id,
+        title: finalTitle,
+        tags: sourceItem.tags || dupTarget.tags || (isDeck ? '#통째수업' : '#수학그래프'),
+        folder: finalFolder,
+        summary: summaryText,
+        isPlaylist: isDeck,
+        slideCount: slides.length,
+        playlistSlides: slides,
+        ownerUid: (this.cloudUser && this.cloudUser.uid) ? this.cloudUser.uid : (dupTarget.ownerUid || sourceItem.ownerUid),
+        ownerEmail: (this.cloudUser && this.cloudUser.email) || dupTarget.ownerEmail || sourceItem.ownerEmail || '',
+        authProvider: (this.cloudUser && this.cloudUser.authProvider) || dupTarget.authProvider || sourceItem.authProvider || 'email',
+        authorName: (this.cloudUser && this.cloudUser.displayName) || dupTarget.authorName || sourceItem.authorName || '내 보관함',
+        createdAt: dupTarget.createdAt || sourceItem.createdAt || Date.now(),
+        slideData: null
+      };
+
+      const saveRes = await this._saveLibraryItemWithVaultOrFallback(mergedItemObj, dupTarget, null, true, '파일 덮어쓰기');
+      if (!saveRes || !saveRes.ok) {
+        this.showToast('⚠️ 클라우드 서버 덮어쓰기에 실패하여 기존 파일을 그대로 보존했습니다.');
+        return { ok: false };
+      }
+
+      const savedManifest = saveRes.manifestItem || mergedItemObj;
+      await this._deleteCloudLibraryItemCompletely(sourceItem);
+      this.myLibraryCache = (this.myLibraryCache || []).filter(x => x && x.id !== savedManifest.id && x.id !== sourceItem.id);
+      this.myLibraryCache.unshift(savedManifest);
+      if (wasLoadedActive) {
+        this._activeLoadedCloudLibraryMeta = {
+          id: savedManifest.id,
+          title: savedManifest.title,
+          folder: savedManifest.folder || '',
+          tags: savedManifest.tags || ''
+        };
+      }
+      this._saveMyLibraryCacheForCurrentUser();
+      return { ok: true, item: savedManifest };
+    }
+
     async renameCloudLibraryItem(item, newTitle) {
       if (!item) return;
       const cleanTitle = String(newTitle || '').trim();
@@ -1778,6 +1923,7 @@
         this.renderMyLibraryList();
         return;
       }
+      await this._awaitPendingLibrarySyncBeforeWrite();
       const curFolder = String(item.folder || '').trim();
       const dupItem = this._findDuplicateCloudItem(cleanTitle, curFolder, item.id);
       let finalTitle = cleanTitle;
@@ -1791,8 +1937,13 @@
         if (res.action === 'rename') {
           finalTitle = nextTitle;
         } else if (res.action === 'overwrite') {
-          await this._deleteCloudLibraryItemCompletely(dupItem);
-          finalTitle = cleanTitle;
+          const owRes = await this._overwriteCloudItemWithAnotherLibraryItem(item, dupItem, cleanTitle, curFolder);
+          this.syncExportCloudFolderSelect();
+          this.renderMyLibraryList();
+          if (owRes && owRes.ok) {
+            this.showToast(`🔄 [${cleanTitle}] 파일을 최신 내용으로 덮어썼습니다!`);
+          }
+          return;
         }
       }
       item.title = finalTitle;
@@ -2234,83 +2385,167 @@
 
     async moveSelectedCloudItemsToFolder(targetFolder) {
       if (!this._selectedCloudExplorerKeys || this._selectedCloudExplorerKeys.size === 0) return;
+      await this._awaitPendingLibrarySyncBeforeWrite();
       const cleanTarget = String(targetFolder || '').trim();
       const keys = Array.from(this._selectedCloudExplorerKeys);
-      const folderPaths = keys.filter(k => k.startsWith('folder:')).map(k => k.slice(7));
+      const rawFolderPaths = keys.filter(k => k.startsWith('folder:')).map(k => k.slice(7));
       const fileIds = keys.filter(k => k.startsWith('file:')).map(k => k.slice(5));
 
-      let movedCnt = 0;
-      const updatedItems = [];
+      const effectiveFolderPaths = rawFolderPaths.filter(f => {
+        if (!f || cleanTarget === f || cleanTarget.startsWith(f + '/')) return false;
+        return !rawFolderPaths.some(other => other && other !== f && f.startsWith(other + '/'));
+      });
 
-      // 1. 선택된 폴더들 이동
-      let folderList = this.getCloudFoldersList();
-      for (const srcPath of folderPaths) {
-        if (!srcPath || cleanTarget === srcPath || cleanTarget.startsWith(srcPath + '/')) continue;
+      const folderMoveSpecs = [];
+      for (const srcPath of effectiveFolderPaths) {
         const baseName = srcPath.split('/').pop();
         const newPath = cleanTarget ? `${cleanTarget}/${baseName}` : baseName;
-        if (newPath === srcPath) continue;
-        folderList = folderList.map(f => {
-          if (f === srcPath) return newPath;
-          if (f.startsWith(srcPath + '/')) return newPath + f.slice(srcPath.length);
-          return f;
-        });
-        if (!folderList.includes(newPath)) folderList.push(newPath);
-        if (Array.isArray(this.myLibraryCache)) {
+        if (newPath !== srcPath) {
+          folderMoveSpecs.push({ srcPath, newPath });
+        }
+      }
+
+      const fileMovePlans = [];
+      const plannedIds = new Set();
+      if (Array.isArray(this.myLibraryCache)) {
+        for (const spec of folderMoveSpecs) {
           this.myLibraryCache.forEach(it => {
-            if (!it) return;
+            if (!it || !this._isOwnedByCurrentCloudUser(it) || plannedIds.has(it.id)) return;
             const curF = String(it.folder || '').trim();
-            if (curF === srcPath) {
-              it.folder = newPath;
-              if (!updatedItems.includes(it)) updatedItems.push(it);
-            } else if (curF.startsWith(srcPath + '/')) {
-              it.folder = newPath + curF.slice(srcPath.length);
-              if (!updatedItems.includes(it)) updatedItems.push(it);
+            if (curF === spec.srcPath) {
+              plannedIds.add(it.id);
+              fileMovePlans.push({ item: it, destFolder: spec.newPath, fromFolderMove: true });
+            } else if (curF.startsWith(spec.srcPath + '/')) {
+              plannedIds.add(it.id);
+              fileMovePlans.push({ item: it, destFolder: spec.newPath + curF.slice(spec.srcPath.length), fromFolderMove: true });
             }
           });
         }
-        movedCnt++;
+        fileIds.forEach(id => {
+          if (plannedIds.has(id)) return;
+          const it = this.myLibraryCache.find(x => x && x.id === id);
+          if (!it || !this._isOwnedByCurrentCloudUser(it)) return;
+          const curF = String(it.folder || '').trim();
+          if (curF !== cleanTarget) {
+            plannedIds.add(it.id);
+            fileMovePlans.push({ item: it, destFolder: cleanTarget, fromFolderMove: false });
+          }
+        });
       }
 
-      // 2. 선택된 파일들 이동 (동일 폴더 내 중복 파일명 발견 시 덮어쓰기/번호붙이기/취소 확인)
-      if (Array.isArray(this.myLibraryCache)) {
-        const targetFiles = fileIds
-          .map(id => this.myLibraryCache.find(x => x && x.id === id))
-          .filter(it => it && String(it.folder || '').trim() !== cleanTarget);
-        const conflictingIds = new Set(
-          targetFiles
-            .filter(it => Boolean(this._findDuplicateCloudItem(it.title, cleanTarget, it.id)))
-            .map(it => it.id)
-        );
-        let batchAction = null;
-        let processedConflicts = 0;
+      if (folderMoveSpecs.length === 0 && fileMovePlans.length === 0) return;
 
-        for (const it of targetFiles) {
-          const dupItem = this._findDuplicateCloudItem(it.title, cleanTarget, it.id);
-          if (dupItem) {
-            processedConflicts++;
-            const remainingConflicts = Math.max(0, conflictingIds.size - processedConflicts);
-            const nextTitle = this._getNextAvailableCloudTitle(it.title, cleanTarget, it.id);
-            let chosenAction = batchAction;
-            if (!chosenAction) {
-              const res = await this.promptCloudDuplicateResolution(it.title, cleanTarget, nextTitle, remainingConflicts);
-              chosenAction = (res && res.action) || 'cancel';
-              if (res && res.applyToAll && remainingConflicts > 0) {
-                batchAction = chosenAction;
-              }
-            }
-            if (chosenAction === 'cancel') {
-              continue;
-            } else if (chosenAction === 'rename') {
-              it.title = this._getNextAvailableCloudTitle(it.title, cleanTarget, it.id);
-            } else if (chosenAction === 'overwrite') {
-              await this._deleteCloudLibraryItemCompletely(dupItem);
+      // 1단계: 변경 전 충돌 검사 및 해결 방식 수집 ([취소] 선택 시 아무것도 변경하지 않고 즉시 이동 취소)
+      const simMap = new Map();
+      const simKey = (f, t) => `${String(f || '').trim()}\u0000${String(t || '').trim().toLowerCase()}`;
+      if (Array.isArray(this.myLibraryCache)) {
+        this.myLibraryCache.forEach(it => {
+          if (!it || !this._isOwnedByCurrentCloudUser(it) || plannedIds.has(it.id)) return;
+          const t = String(it.title || '').trim();
+          if (t) simMap.set(simKey(it.folder, t), it);
+        });
+      }
+
+      const computeNextSimTitle = (baseTitle, destF) => {
+        const cleanBase = String(baseTitle || '수업 노트').trim().replace(/\s*\(\d+\)$/, '').trim() || '수업 노트';
+        if (!simMap.has(simKey(destF, cleanBase))) return cleanBase;
+        let n = 2;
+        while (n < 1000) {
+          const cand = `${cleanBase} (${n})`;
+          if (!simMap.has(simKey(destF, cand))) return cand;
+          n++;
+        }
+        return `${cleanBase} (${Date.now().toString().slice(-4)})`;
+      };
+
+      const countRemainingConflictsAfter = (startIdx) => {
+        const tempOccupied = new Set(simMap.keys());
+        let rem = 0;
+        for (let j = startIdx + 1; j < fileMovePlans.length; j++) {
+          const p = fileMovePlans[j];
+          const k = simKey(p.destFolder, p.item.title);
+          if (tempOccupied.has(k)) rem++;
+          else tempOccupied.add(k);
+        }
+        return rem;
+      };
+
+      let batchAction = null;
+      for (let i = 0; i < fileMovePlans.length; i++) {
+        const plan = fileMovePlans[i];
+        const k = simKey(plan.destFolder, plan.item.title);
+        const conflictTarget = simMap.get(k) || null;
+        if (conflictTarget) {
+          const remainingConflicts = countRemainingConflictsAfter(i);
+          const nextTitle = computeNextSimTitle(plan.item.title, plan.destFolder);
+          let chosenAction = batchAction;
+          if (!chosenAction) {
+            const res = await this.promptCloudDuplicateResolution(plan.item.title, plan.destFolder, nextTitle, remainingConflicts);
+            chosenAction = (res && res.action) || 'cancel';
+            if (res && res.applyToAll && remainingConflicts > 0) {
+              batchAction = chosenAction;
             }
           }
-          it.folder = cleanTarget;
-          if (!updatedItems.includes(it)) updatedItems.push(it);
-          movedCnt++;
+          if (chosenAction === 'cancel') {
+            return;
+          } else if (chosenAction === 'rename') {
+            plan.action = 'rename';
+            plan.finalTitle = nextTitle;
+            simMap.set(simKey(plan.destFolder, nextTitle), plan.item);
+          } else if (chosenAction === 'overwrite') {
+            plan.action = 'overwrite';
+            plan.finalTitle = conflictTarget.title || plan.item.title;
+          }
+        } else {
+          plan.action = 'move';
+          plan.finalTitle = plan.item.title;
+          simMap.set(k, plan.item);
         }
       }
+
+      // 2단계: 확정된 파일 이동 / 번호 부여 / 영구링크 보존 덮어쓰기 실행
+      let movedCnt = 0;
+      const updatedItems = [];
+
+      for (const plan of fileMovePlans) {
+        const it = plan.item;
+        if (!it) continue;
+        if (plan.action === 'overwrite') {
+          const liveDup = this._findDuplicateCloudItem(plan.finalTitle, plan.destFolder, it.id);
+          if (liveDup) {
+            const owRes = await this._overwriteCloudItemWithAnotherLibraryItem(it, liveDup, liveDup.title || plan.finalTitle, plan.destFolder);
+            if (!owRes || !owRes.ok) continue;
+            if (!plan.fromFolderMove) movedCnt++;
+            continue;
+          }
+        }
+        it.title = plan.finalTitle;
+        it.folder = plan.destFolder;
+        if (!updatedItems.includes(it)) updatedItems.push(it);
+        if (!plan.fromFolderMove) movedCnt++;
+      }
+
+      // 3단계: 선택된 폴더 트리 경로 갱신 (일부 덮어쓰기 실패 시 잔류 파일 폴더는 보존)
+      let folderList = this.getCloudFoldersList();
+      for (const spec of folderMoveSpecs) {
+        const hasRemainingInSrc = Array.isArray(this.myLibraryCache) && this.myLibraryCache.some(it => {
+          if (!it || !this._isOwnedByCurrentCloudUser(it)) return false;
+          const curF = String(it.folder || '').trim();
+          return curF === spec.srcPath || curF.startsWith(spec.srcPath + '/');
+        });
+        if (!hasRemainingInSrc) {
+          folderList = folderList.map(f => {
+            if (f === spec.srcPath) return spec.newPath;
+            if (f.startsWith(spec.srcPath + '/')) return spec.newPath + f.slice(spec.srcPath.length);
+            return f;
+          });
+        }
+        if (!folderList.includes(spec.newPath)) {
+          folderList.push(spec.newPath);
+        }
+        movedCnt++;
+      }
+      folderList = Array.from(new Set(folderList));
 
       if (cleanTarget && !folderList.includes(cleanTarget)) {
         folderList.push(cleanTarget);
@@ -2343,7 +2578,7 @@
       const totalTargetCount = folderPaths.length + fileIds.size;
 
       if (!skipConfirm && totalTargetCount > 0) {
-        const hasLinkedPermShare = Array.isArray(this.myLibraryCache) && this.myLibraryCache.some(it => it && fileIds.has(it.id) && it.linkedShareId);
+        const hasLinkedPermShare = Array.isArray(this.myLibraryCache) && this.myLibraryCache.some(it => it && fileIds.has(it.id) && this._hasPermanentCloudItemShare(it));
         const permWarnSuffix = hasLinkedPermShare
           ? '\n\n⚠️ 선택한 파일 중 [🔗 영구 공유 링크] 원본이 포함되어 있습니다.\n삭제 시 학생들에게 배포된 공유 링크 및 QR 코드도 즉시 함께 폭파됩니다!'
           : '';
@@ -2357,22 +2592,32 @@
       const updatedItems = [];
       const itemsToDelete = [];
 
-      // 1. 선택된 폴더 삭제 (내부 파일은 상위 폴더로 보존)
-      folderPaths.forEach(clean => {
-        const isSub = clean.includes('/');
-        const parentFolder = isSub ? clean.split('/').slice(0, -1).join('/') : '';
-        folderList = folderList.filter(f => f !== clean && !f.startsWith(clean + '/'));
+      // 1. 선택된 폴더 삭제 (내부 파일은 상위 생존 폴더로 보존하되, 동명 파일 충돌 시 자동으로 "파일명 (2)" 번호 부여)
+      if (folderPaths.length > 0) {
+        const isDeletedFolderPath = (p) => folderPaths.some(delF => delF && (p === delF || p.startsWith(delF + '/')));
+        const resolveSurvivingParent = (startFolder) => {
+          let cur = String(startFolder || '').trim();
+          while (cur && isDeletedFolderPath(cur)) {
+            cur = cur.includes('/') ? cur.split('/').slice(0, -1).join('/') : '';
+          }
+          return cur;
+        };
+        folderList = folderList.filter(f => !isDeletedFolderPath(f));
         if (Array.isArray(this.myLibraryCache)) {
           this.myLibraryCache.forEach(it => {
             if (!it || fileIds.has(it.id)) return;
             const curF = String(it.folder || '').trim();
-            if (curF === clean || curF.startsWith(clean + '/')) {
-              it.folder = parentFolder || '';
+            if (curF && isDeletedFolderPath(curF)) {
+              const destParent = resolveSurvivingParent(curF);
+              if (this._findDuplicateCloudItem(it.title, destParent, it.id)) {
+                it.title = this._getNextAvailableCloudTitle(it.title, destParent, it.id);
+              }
+              it.folder = destParent;
               if (!updatedItems.includes(it)) updatedItems.push(it);
             }
           });
         }
-      });
+      }
       this._saveCloudFoldersList(folderList);
 
       // 2. 선택된 파일 삭제 (청크 문서 및 로컬 캐시까지 완전 삭제)
@@ -2605,6 +2850,9 @@
       this._verifiedJwtSyncedUid = '';
       this._inflightIdTokenRefresh = null;
       this._lastProactiveTokenRefreshAt = 0;
+      this._inflightLibrarySyncPromise = null;
+      this._inflightLibraryFetchObj = null;
+      this._librarySyncedOnceUid = '';
       this.myLibraryCache = [];
     }
 
@@ -5969,6 +6217,9 @@
       this._verifiedJwtSyncedUid = '';
       this._inflightIdTokenRefresh = null;
       this._lastProactiveTokenRefreshAt = 0;
+      this._inflightLibrarySyncPromise = null;
+      this._inflightLibraryFetchObj = null;
+      this._librarySyncedOnceUid = '';
       this.myLibraryCache = [];
       this._subStateMeta = null;
       this.isProUser = false;
@@ -9449,6 +9700,62 @@
         ? itemObj.playlistSlides
         : (itemObj.slideData ? [itemObj.slideData] : []);
 
+      // 다중 기기(교무실 PC ↔ 강의실 전자칠판) 구 캐시 덮어쓰기 방어: 서버의 최신 경량 매니페스트(<1KB, 본문 제외)를 선(先)병합하여 타 기기 발급 vaultKeys·영구 QR 링크(_shareLinksMap) 증발 원천 차단
+      if (
+        overwriteTarget &&
+        overwriteTarget.id &&
+        typeof window !== 'undefined' &&
+        window.location &&
+        /^https?:$/i.test(window.location.protocol) &&
+        (typeof navigator === 'undefined' || navigator.onLine !== false)
+      ) {
+        try {
+          let mHeaders = await this._buildFirestoreRestHeaders(false, true);
+          const mUrl = `https://firestore.googleapis.com/v1/projects/${this._firebaseProjectId}/databases/(default)/documents/user_library/${encodeURIComponent(overwriteTarget.id)}`;
+          let mRes = await fetch(mUrl, Object.keys(mHeaders).length ? { headers: mHeaders } : undefined);
+          if (mRes && (mRes.status === 401 || (mRes.status === 403 && !mHeaders.Authorization && this.cloudUser && this.cloudUser.uid))) {
+            mHeaders = await this._buildFirestoreRestHeaders(false, true, true);
+            if (mHeaders.Authorization) {
+              mRes = await fetch(mUrl, { headers: mHeaders });
+            }
+          }
+          if (mRes && mRes.ok) {
+            const mDoc = await mRes.json();
+            const rawMPayload = mDoc && mDoc.fields && mDoc.fields.jsonPayload && mDoc.fields.jsonPayload.stringValue;
+            if (rawMPayload) {
+              const remoteM = JSON.parse(await this._decompressJsonStringGzipBase64(rawMPayload));
+              if (remoteM && typeof remoteM === 'object' && this._isOwnedByCurrentCloudUser(remoteM)) {
+                const mergedLinks = {
+                  ...(overwriteTarget._shareLinksMap && typeof overwriteTarget._shareLinksMap === 'object' ? overwriteTarget._shareLinksMap : {}),
+                  ...(remoteM._shareLinksMap && typeof remoteM._shareLinksMap === 'object' ? remoteM._shareLinksMap : {})
+                };
+                overwriteTarget = {
+                  ...overwriteTarget,
+                  ...remoteM,
+                  vaultKeys: (remoteM.vaultKeys && remoteM.vaultKeys.skeletonKey) ? remoteM.vaultKeys : overwriteTarget.vaultKeys,
+                  vaultLayerMeta: remoteM.vaultLayerMeta || overwriteTarget.vaultLayerMeta,
+                  _vaultEmptySeeded: Boolean(remoteM._vaultEmptySeeded || overwriteTarget._vaultEmptySeeded),
+                  _isVaultLayered: Boolean(remoteM._isVaultLayered || overwriteTarget._isVaultLayered),
+                  linkedShareId: remoteM.linkedShareId || overwriteTarget.linkedShareId || '',
+                  _tempShareId: remoteM._tempShareId || overwriteTarget._tempShareId || '',
+                  _tempShareExpiresAt: Number(remoteM._tempShareExpiresAt || overwriteTarget._tempShareExpiresAt) || 0,
+                  playlistSlides: null,
+                  slideData: null
+                };
+                if (!overwriteTarget.linkedShareId) delete overwriteTarget.linkedShareId;
+                if (!overwriteTarget._tempShareId) {
+                  delete overwriteTarget._tempShareId;
+                  delete overwriteTarget._tempShareExpiresAt;
+                }
+                if (Object.keys(mergedLinks).length > 0) {
+                  overwriteTarget._shareLinksMap = mergedLinks;
+                }
+              }
+            }
+          }
+        } catch (_) { }
+      }
+
       const bundle = precomputedBundle || await this._prepareCloudVaultCompressedBundle(slides, nowMs);
       itemObj.byteSize = bundle.totalByteSize;
       itemObj.rawByteSize = bundle.totalRawByteSize;
@@ -9477,6 +9784,10 @@
         }
       }
 
+      const hasExistingVaultKeys = Boolean(
+        (overwriteTarget && (overwriteTarget._isVaultLayered || (overwriteTarget.vaultKeys && overwriteTarget.vaultKeys.skeletonKey))) ||
+        (itemObj && (itemObj._isVaultLayered || (itemObj.vaultKeys && itemObj.vaultKeys.skeletonKey)))
+      );
       const vaultKeys = (overwriteTarget && overwriteTarget.vaultKeys && overwriteTarget.vaultKeys.skeletonKey)
         ? { ...overwriteTarget.vaultKeys }
         : ((itemObj.vaultKeys && itemObj.vaultKeys.skeletonKey) ? { ...itemObj.vaultKeys } : this._generateCloudVaultKeys());
@@ -9546,7 +9857,7 @@
       } catch (vaultErr) {
         const errMsg = String((vaultErr && vaultErr.message) || vaultErr || '');
         // 새 firestore.rules 배포 전 환경(403)인 경우에만 기존 user_library 분할 저장으로 무중단 폴백 (단, 이미 고정 vaultKeys가 존재하는 덮어쓰기 문서는 영구 QR 보호를 위해 제외)
-        if (errMsg.includes('403') && !(overwriteTarget && overwriteTarget.vaultKeys && overwriteTarget.vaultKeys.skeletonKey)) {
+        if (errMsg.includes('403') && !hasExistingVaultKeys) {
           try {
             delete itemObj._isVaultLayered;
             delete itemObj.vaultKeys;
@@ -9770,7 +10081,8 @@
           ? String(customFolder || '').trim()
           : rawActiveFolder;
 
-        // 같은 폴더 안에 동일한 이름의 파일이 이미 있는지 먼저 확인 (덮어쓰기 / 새 이름으로 저장 / 취소)
+        // 같은 폴더 안에 동일한 이름의 파일이 이미 있는지 먼저 확인 (모달 오픈 직후 등 진행 중인 서버 목록 동기화가 있으면 우선 반영)
+        await this._awaitPendingLibrarySyncBeforeWrite();
         let finalTitle = rawTitle;
         let overwriteTargetItem = this._findDuplicateCloudItem(rawTitle, folderName);
         if (overwriteTargetItem) {
@@ -10186,22 +10498,45 @@
         return [];
       }
 
+      await this._awaitPendingLibrarySyncBeforeWrite();
       const pendingEntries = [];
+      const reservedLowerTitles = new Set();
+      (this.myLibraryCache || []).forEach(it => {
+        if (!it || !this._isOwnedByCurrentCloudUser(it)) return;
+        if (String(it.folder || '').trim() === destFolder) {
+          const t = String(it.title || '').trim().toLowerCase();
+          if (t) reservedLowerTitles.add(t);
+        }
+      });
+      const getBatchNextTitle = (baseTitle) => {
+        const cleanBase = String(baseTitle || '수업 노트').trim().replace(/\s*\(\d+\)$/, '').trim() || '수업 노트';
+        if (!reservedLowerTitles.has(cleanBase.toLowerCase())) return cleanBase;
+        let n = 2;
+        while (n < 1000) {
+          const candidate = `${cleanBase} (${n})`;
+          if (!reservedLowerTitles.has(candidate.toLowerCase())) return candidate;
+          n++;
+        }
+        return `${cleanBase} (${Date.now().toString().slice(-4)})`;
+      };
+
       let batchAction = null;
       for (let i = 0; i < parsedCandidates.length; i++) {
         const cand = parsedCandidates[i];
         let finalTitle = cand.rawTitle;
+        const normCandLower = String(cand.rawTitle || '').trim().toLowerCase();
         let overwriteTarget = this._findDuplicateCloudItem(cand.rawTitle, destFolder);
+        const dupPendingIdx = pendingEntries.findIndex(e => String(e.itemObj.title || '').trim().toLowerCase() === normCandLower);
 
-        if (overwriteTarget) {
+        if (overwriteTarget || dupPendingIdx >= 0) {
           let remainingConflicts = 0;
+          const futureSim = new Set(reservedLowerTitles);
           for (let j = i + 1; j < parsedCandidates.length; j++) {
-            if (this._findDuplicateCloudItem(parsedCandidates[j].rawTitle, destFolder) ||
-              parsedCandidates[j].rawTitle.trim().toLowerCase() === cand.rawTitle.trim().toLowerCase()) {
-              remainingConflicts++;
-            }
+            const jl = String(parsedCandidates[j].rawTitle || '').trim().toLowerCase();
+            if (futureSim.has(jl)) remainingConflicts++;
+            else futureSim.add(jl);
           }
-          const nextTitle = this._getNextAvailableCloudTitle(cand.rawTitle, destFolder);
+          const nextTitle = getBatchNextTitle(cand.rawTitle);
           let chosenAction = batchAction;
           if (!chosenAction) {
             const res = await this.promptCloudDuplicateResolution(cand.rawTitle, destFolder, nextTitle, remainingConflicts);
@@ -10216,9 +10551,19 @@
             finalTitle = nextTitle;
             overwriteTarget = null;
           } else if (chosenAction === 'overwrite') {
-            finalTitle = cand.rawTitle;
+            if (dupPendingIdx >= 0) {
+              if (!overwriteTarget && pendingEntries[dupPendingIdx].overwriteTarget) {
+                overwriteTarget = pendingEntries[dupPendingIdx].overwriteTarget;
+              }
+              finalTitle = pendingEntries[dupPendingIdx].itemObj.title || cand.rawTitle;
+              pendingEntries.splice(dupPendingIdx, 1);
+            } else {
+              finalTitle = (overwriteTarget && overwriteTarget.title) || cand.rawTitle;
+            }
           }
         }
+
+        reservedLowerTitles.add(String(finalTitle || '').trim().toLowerCase());
 
         const itemId = overwriteTarget
           ? overwriteTarget.id
@@ -10366,12 +10711,18 @@
         this.renderMyLibraryList();
         return [];
       }
-      try {
-        const idToken = await this._getFirebaseIdTokenForRest(true);
-        if (typeof window !== 'undefined' && window.location && /^https?:$/i.test(window.location.protocol) && !idToken) {
-          return this.myLibraryCache;
-        }
-        const uid = this.cloudUser.uid;
+      const reqUid = String(this.cloudUser.uid);
+      if (this._inflightLibraryFetchObj && this._inflightLibraryFetchObj.uid === reqUid) {
+        return await this._inflightLibraryFetchObj.promise;
+      }
+      const runFetchTask = (async () => {
+        try {
+          const idToken = await this._getFirebaseIdTokenForRest(true);
+          if (typeof window !== 'undefined' && window.location && /^https?:$/i.test(window.location.protocol) && !idToken) {
+            return this.myLibraryCache;
+          }
+          if (!this.cloudUser || this.cloudUser.uid !== reqUid) return [];
+          const uid = reqUid;
         const authCurrentUid = (this._fbAuth && this._fbAuth.currentUser && this._fbAuth.currentUser.uid)
           ? String(this._fbAuth.currentUser.uid)
           : '';
@@ -10470,6 +10821,7 @@
             }
           });
 
+          this._librarySyncedOnceUid = uid;
           this.myLibraryCache = Array.from(mergedMap.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
           this._saveMyLibraryCacheForCurrentUser();
         }
@@ -10503,8 +10855,15 @@
 
         this.syncExportCloudFolderSelect();
         this.renderMyLibraryList();
-      } catch (e) { }
-      return this.myLibraryCache;
+        } catch (e) { }
+        return this.myLibraryCache;
+      })().finally(() => {
+        if (this._inflightLibraryFetchObj && this._inflightLibraryFetchObj.promise === runFetchTask) {
+          this._inflightLibraryFetchObj = null;
+        }
+      });
+      this._inflightLibraryFetchObj = { uid: reqUid, promise: runFetchTask };
+      return await runFetchTask;
     }
 
     // ============================================================================

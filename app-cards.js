@@ -2433,7 +2433,6 @@
           if (e && e.pointerType === 'pen') {
             this._lastPenActiveTime = Date.now();
           }
-          const wasOneShotEraser = (this.activeInkTool === 'eraser' && !this._problemCardStylusEraser);
           const finishedCardStroke = currentStroke;
           const endRect = activeProblemDrawRect;
           isDrawingOnProblem = false;
@@ -2500,9 +2499,6 @@
             this.updateUndoRedoUI();
           }
           try { pCanvas.releasePointerCapture(e.pointerId); } catch (err) { }
-          if (wasOneShotEraser) {
-            this.setActiveInkTool('pen');
-          }
         };
 
         pCanvas.addEventListener('pointerup', endProblemDraw);
@@ -3548,7 +3544,6 @@
           if (e && e.pointerType === 'pen') {
             this._lastPenActiveTime = Date.now();
           }
-          const wasOneShotEraser = (this.activeInkTool === 'eraser' && !cardWidgetEl._extraStylusEraser);
           const finishedSt = curExtraStroke;
           const endRect = activeExtraDrawRect;
           isDrawingExtraInk = false;
@@ -3616,7 +3611,6 @@
             this.updateUndoRedoUI();
           }
           try { extraInkCanvas.releasePointerCapture(e.pointerId); } catch (err) { }
-          if (wasOneShotEraser) this.setActiveInkTool('pen');
         };
         extraInkCanvas.addEventListener('pointerup', endExtraCardInk);
         extraInkCanvas.addEventListener('pointercancel', endExtraCardInk);
@@ -6657,7 +6651,6 @@
           if (e && e.pointerType === 'pen') {
             this._lastPenActiveTime = Date.now();
           }
-          const wasOneShotEraser = (this.activeInkTool === 'eraser' && !this._graphCardStylusEraser);
           const finishedCardStroke = currentStroke;
           const endRect = activeGraphDrawRect;
           isDrawingOnGraphCard = false;
@@ -6727,9 +6720,6 @@
             this.updateUndoRedoUI();
           }
           try { gCanvas.releasePointerCapture(e.pointerId); } catch (err) { }
-          if (wasOneShotEraser) {
-            this.setActiveInkTool('pen');
-          }
         };
         gCanvas.addEventListener('pointerup', endGraphCardDraw);
         gCanvas.addEventListener('pointercancel', endGraphCardDraw);
