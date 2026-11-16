@@ -1406,12 +1406,86 @@
 
       const readAsDataURL = (file) => new Promise((resolve) => {
         const reader = new FileReader();
-        reader.onload = (evt) => {
+        reader.onload = async (evt) => {
+          const rawUrl = typeof evt.target.result === 'string' ? evt.target.result : '';
           const rawBase = (file._customClipboardLabel || file.name || '이미지 문제').replace(/\.[^/.]+$/, '');
-          resolve({
-            name: (rawBase.toLowerCase() === 'image' ? '클립보드 캡처' : rawBase),
-            dataUrl: evt.target.result
-          });
+          const cleanName = (rawBase.toLowerCase() === 'image' ? '클립보드 캡처' : rawBase);
+          if (!rawUrl) {
+            resolve(null);
+            return;
+          }
+          const isAlreadyCompactLossy = Boolean(
+            file &&
+            typeof file.size === 'number' &&
+            file.size > 0 &&
+            file.size <= 92160 &&
+            /^data:image\/(?:webp|jpe?g)/i.test(rawUrl)
+          );
+          if (isAlreadyCompactLossy || typeof Image === 'undefined' || typeof document === 'undefined') {
+            resolve({ name: cleanName, dataUrl: rawUrl });
+            return;
+          }
+          try {
+            const optimizedUrl = await new Promise((resOpt) => {
+              const im = new Image();
+              const timer = setTimeout(() => resOpt(''), 2500);
+              im.onload = async () => {
+                clearTimeout(timer);
+                const nw = im.naturalWidth || im.width || 0;
+                const nh = im.naturalHeight || im.height || 0;
+                if (nw <= 4 || nh <= 4) {
+                  resOpt('');
+                  return;
+                }
+                const maxSide = 2800;
+                const maxArea = 14800000;
+                let scale = 1.0;
+                if (nw > maxSide || nh > maxSide) {
+                  scale = Math.min(scale, maxSide / Math.max(nw, nh));
+                }
+                if ((nw * scale) * (nh * scale) > maxArea) {
+                  scale = Math.min(scale, Math.sqrt(maxArea / (nw * nh)));
+                }
+                const tw = Math.max(1, Math.round(nw * scale));
+                const th = Math.max(1, Math.round(nh * scale));
+                const cv = document.createElement('canvas');
+                cv.width = tw;
+                cv.height = th;
+                const cctx = cv.getContext('2d', { alpha: false }) || cv.getContext('2d');
+                if (!cctx) {
+                  resOpt('');
+                  return;
+                }
+                cctx.imageSmoothingEnabled = true;
+                cctx.imageSmoothingQuality = 'high';
+                cctx.fillStyle = '#ffffff';
+                cctx.fillRect(0, 0, tw, th);
+                cctx.drawImage(im, 0, 0, tw, th);
+                let out = '';
+                try {
+                  out = (typeof this.encodeCanvasSmartWebPAsync === 'function')
+                    ? await this.encodeCanvasSmartWebPAsync(cv, 0.88, true)
+                    : ((typeof this.encodeCanvasSmartWebP === 'function')
+                      ? this.encodeCanvasSmartWebP(cv, 0.88, true)
+                      : '');
+                } finally {
+                  try { cv.width = 1; cv.height = 1; } catch (_) { }
+                }
+                resOpt(out || '');
+              };
+              im.onerror = () => {
+                clearTimeout(timer);
+                resOpt('');
+              };
+              im.src = rawUrl;
+            });
+            const finalUrl = (optimizedUrl && (optimizedUrl.length < rawUrl.length || rawUrl.length > 600000))
+              ? optimizedUrl
+              : rawUrl;
+            resolve({ name: cleanName, dataUrl: finalUrl });
+          } catch (_) {
+            resolve({ name: cleanName, dataUrl: rawUrl });
+          }
         };
         reader.onerror = () => resolve(null);
         reader.readAsDataURL(file);
@@ -5277,19 +5351,27 @@
         h: rh
       };
       this.isGraphCovered = false;
+      const hasLiveVectorGraphs = Boolean(Array.isArray(this.graphs) && this.graphs.length > 0);
       try {
-        const snapScale = 3.5;
-        cropCanvas = document.createElement('canvas');
-        cropCanvas.width = Math.max(1, Math.round(rw * snapScale));
-        cropCanvas.height = Math.max(1, Math.round(rh * snapScale));
-        const cctx = cropCanvas.getContext('2d');
-        cctx.save();
-        cctx.scale(snapScale, snapScale);
-        cctx.translate(-rx, -ry);
-        this.render(cctx, this.screenWidth, this.screenHeight, false);
-        cctx.restore();
+        if (hasLiveVectorGraphs) {
+          dataUrl = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+          cropCanvas = { width: Math.max(1, Math.round(rw)), height: Math.max(1, Math.round(rh)) };
+        } else {
+          const snapScale = 3.0;
+          cropCanvas = document.createElement('canvas');
+          cropCanvas.width = Math.max(1, Math.round(rw * snapScale));
+          cropCanvas.height = Math.max(1, Math.round(rh * snapScale));
+          const cctx = cropCanvas.getContext('2d');
+          cctx.save();
+          cctx.scale(snapScale, snapScale);
+          cctx.translate(-rx, -ry);
+          this.render(cctx, this.screenWidth, this.screenHeight, false);
+          cctx.restore();
 
-        dataUrl = cropCanvas.toDataURL('image/png');
+          dataUrl = (typeof this.encodeCanvasSmartWebP === 'function')
+            ? this.encodeCanvasSmartWebP(cropCanvas, 0.88, true)
+            : cropCanvas.toDataURL('image/png');
+        }
       } finally {
         this._isRenderingGraphSnapshot = false;
         this._snapshotCropBounds = null;
@@ -5379,13 +5461,13 @@
         this.primaryGraphCardSnapshot = currentGraphSnapshot;
         this.graphCardData = { imgUrl: dataUrl, dataUrl, graphSnapshot: currentGraphSnapshot };
         this.isGraphCardMinimized = false;
-        this.graphCardImage = sourceCanvas;
+        this.graphCardImage = (sourceCanvas && typeof sourceCanvas.getContext === 'function') ? sourceCanvas : null;
         this.graphCardAspect = aspect;
         widget._pipSnapObj = null;
 
         const imgObj = new Image();
         imgObj.onload = () => {
-          if (!(options && typeof options.aspect === 'number') && imgObj.naturalWidth && imgObj.naturalHeight) {
+          if (!(options && typeof options.aspect === 'number') && imgObj.naturalWidth > 4 && imgObj.naturalHeight > 4) {
             this.graphCardAspect = imgObj.naturalHeight / imgObj.naturalWidth;
             this.syncGraphCardRectFromWidget();
           }
@@ -9191,54 +9273,29 @@
       const snapObj = this._getMutablePipCardSnapshot(cardRef);
       if (!snapObj || snapObj.isNAxisStudioCard || !Array.isArray(snapObj.graphs) || snapObj.graphs.length === 0) return null;
 
+      // 🌟 [창모드 벡터 그래프 카드 중복 3x 무손실 PNG 폐기]:
+      // 일반 수학 그래프 카드는 1~2KB 벡터 스냅샷(snapObj)만으로 라이브 캔버스 및 고해상도 내보내기를 100% 직접 렌더링하므로,
+      // 슬라이드 전환·저장 시 메인 스레드를 블로킹하고 장당 150~300KB를 차지하던 중복 PNG 베이킹을 생략하고 58B 경량 플레이스홀더만 유지합니다.
+      const TINY_PLACEHOLDER_GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
       const bodyEl = isPrimary ? document.getElementById('graphCardBody') : widget.querySelector('.problem-card-body');
       const imgEl = bodyEl ? bodyEl.querySelector('.problem-card-img') : null;
-      const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
-      const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || (bodyEl && bodyEl.clientWidth) || 430));
-      const cardH = Math.max(60, Math.round((bodyEl && parseFloat(bodyEl.style.height)) || (cardW * aspect)));
-
-      const snapScale = 3.0;
-      const cropCanvas = document.createElement('canvas');
-      cropCanvas.width = Math.max(1, Math.round(cardW * snapScale));
-      cropCanvas.height = Math.max(1, Math.round(cardH * snapScale));
-      const cctx = cropCanvas.getContext('2d');
-      cctx.save();
-      cctx.scale(snapScale, snapScale);
-
-      this._withPipCardGraphState(snapObj, cardW, cardH, () => {
-        const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
-        cctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
-        cctx.fillRect(0, 0, cardW, cardH);
-
-        if (this.showGuides) this.drawGuides(cctx, this._snapshotCropBounds);
-        if (this.showInverseGuide) this.drawInverseGuide(cctx);
-        if (this.showAsymptotes) this.drawAllAsymptotes(cctx);
-        if (this.showAxes) this.drawAxes(cctx, this._snapshotCropBounds);
-        if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(cctx, this._snapshotCropBounds);
-        this.drawAllCurves(cctx, true);
-        if (this.usePiecewise && this.graphs.length >= 1) {
-          this.drawPiecewiseBoundaries(cctx, true);
-        }
-        this.drawDropLines(cctx, true);
-        this.drawTextLabels(cctx, true);
-      });
-      cctx.restore();
-
-      const dataUrl = cropCanvas.toDataURL('image/png');
       this._savePipCardSnapshot(cardRef, snapObj);
       if (isPrimary) {
-        this.graphCardImage = cropCanvas;
+        if (this.graphCardImage && typeof this.graphCardImage.getContext === 'function' && this.graphCardImage.width > 1) {
+          try { this.graphCardImage.width = 1; this.graphCardImage.height = 1; } catch (_) { }
+        }
+        this.graphCardImage = null;
         if (this.graphCardData) {
-          this.graphCardData.imgUrl = dataUrl;
-          this.graphCardData.dataUrl = dataUrl;
+          this.graphCardData.imgUrl = TINY_PLACEHOLDER_GIF;
+          this.graphCardData.dataUrl = TINY_PLACEHOLDER_GIF;
         }
       } else if (cardRef) {
-        cardRef.dataUrl = dataUrl;
+        cardRef.dataUrl = TINY_PLACEHOLDER_GIF;
       }
-      if (imgEl) {
-        imgEl.src = dataUrl;
+      if (imgEl && imgEl.src !== TINY_PLACEHOLDER_GIF) {
+        imgEl.src = TINY_PLACEHOLDER_GIF;
       }
-      return { cropCanvas, dataUrl };
+      return { cropCanvas: null, dataUrl: TINY_PLACEHOLDER_GIF };
     }
 
     scheduleBakePipGraphCardToImg(cardRef, delayMs = 260) {
@@ -9252,33 +9309,10 @@
         clearTimeout(widget._bakePipTimerId);
         widget._bakePipTimerId = null;
       }
-      widget._pendingBakeCardRef = cardRef;
-      const runBakeWhenIdle = () => {
-        widget._bakePipTimerId = null;
-        if (cardRef === 'primary') {
-          if (!this._hasPrimaryGraphCard || !this.graphCardData || widget.style.display === 'none') {
-            widget._pendingBakeCardRef = null;
-            return;
-          }
-        } else if (!Array.isArray(this.extraGraphCards) || !this.extraGraphCards.includes(cardRef) || widget.isConnected === false) {
-          widget._pendingBakeCardRef = null;
-          return;
-        }
-        const nowT = Date.now();
-        const isBusy = (typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) ||
-          this.isDrawingInk ||
-          this._isDrawingCardInk ||
-          this.isStylusDrawing ||
-          this.isErasingInk ||
-          (this._lastPenActiveTime && (nowT - this._lastPenActiveTime < 320));
-        if (isBusy) {
-          widget._bakePipTimerId = setTimeout(runBakeWhenIdle, 240);
-          return;
-        }
-        widget._pendingBakeCardRef = null;
+      widget._pendingBakeCardRef = null;
+      if (snapObj && !snapObj.isNAxisStudioCard && Array.isArray(snapObj.graphs) && snapObj.graphs.length > 0) {
         this.bakePipGraphCardToImg(cardRef);
-      };
-      widget._bakePipTimerId = setTimeout(runBakeWhenIdle, delayMs);
+      }
     }
 
     flushPendingPipCardBakes() {

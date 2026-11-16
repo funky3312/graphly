@@ -2256,7 +2256,9 @@
 
       octx.restore();
       return {
-        dataUrl: offCv.toDataURL('image/png'),
+        dataUrl: (typeof this.encodeCanvasSmartWebP === 'function')
+          ? this.encodeCanvasSmartWebP(offCv, 0.88, true)
+          : offCv.toDataURL('image/png'),
         offCanvas: offCv,
         aspect: cardH / cardW
       };

@@ -4711,6 +4711,7 @@
 
   // --- [초고속 무결점 렌더링 파이프라인 (5개 겹쳐도 0.1ms 미만)] ---
   render(targetCtx = this.ctx, width = this.screenWidth, height = this.screenHeight, isExport = false) {
+    if (this._isDeserializingSlide && !isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) return;
     if (this.isPdfModalOpen && !isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) return;
     if (!isExport && !this._isRenderingGraphSnapshot && targetCtx === this.ctx) {
       this._hasLiveTipPatch = false;
@@ -10141,7 +10142,7 @@
         el.classList.contains('graph-card-widget')
       );
       const liveGraphCvs = (isGraphCard && bodyEl)
-        ? bodyEl.querySelector('.pip-graph-live-canvas')
+        ? bodyEl.querySelector('.graph-card-live-canvas, .pip-graph-live-canvas')
         : null;
       const hasValidLiveGraphCvs = Boolean(liveGraphCvs && liveGraphCvs.width > 0 && liveGraphCvs.height > 0);
       const hasValidImg = Boolean(imgEl && imgEl.complete && imgEl.naturalWidth > 0);
@@ -10154,7 +10155,7 @@
           const bw = bRect.width;
           const natAspect = hasValidLiveGraphCvs
             ? (bRect.height / bRect.width)
-            : ((imgEl.naturalHeight > 0 && imgEl.naturalWidth > 0)
+            : ((imgEl.naturalHeight > 4 && imgEl.naturalWidth > 4)
               ? (imgEl.naturalHeight / imgEl.naturalWidth)
               : (bRect.height / bRect.width));
           const bh = Math.max(1, Math.round(bw * natAspect));
@@ -10186,7 +10187,19 @@
           if (isGraphCard && exportCardRef && typeof this._getMutablePipCardSnapshot === 'function' && typeof this._withPipCardGraphState === 'function') {
             const pipSnap = this._getMutablePipCardSnapshot(exportCardRef);
             if (pipSnap && !pipSnap.isNAxisStudioCard && Array.isArray(pipSnap.graphs) && pipSnap.graphs.length > 0) {
-              const pipScale = 2.5;
+              let ctxExportScale = 2.5;
+              if (typeof ctx.getTransform === 'function') {
+                const tr = ctx.getTransform();
+                if (tr && Number.isFinite(tr.a) && Number.isFinite(tr.b)) {
+                  const m = Math.hypot(tr.a, tr.b);
+                  if (m > 0.1) ctxExportScale = m;
+                }
+              }
+              const pipScale = Math.min(
+                5.0,
+                3840 / Math.max(1, unzoomedW, unzoomedH),
+                Math.max(3.0, ctxExportScale * bzCard)
+              );
               cleanPipCanvas = document.createElement('canvas');
               cleanPipCanvas.width = Math.max(1, Math.round(unzoomedW * pipScale));
               cleanPipCanvas.height = Math.max(1, Math.round(unzoomedH * pipScale));
@@ -10920,12 +10933,15 @@
       const boardZoomNorm = isBoardExport ? Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0)) : 1.0;
       const defaultScale = useVfCrop
         ? (((this.vfTargetWIn || 2.5) * dpi) / Math.max(1, smartBounds.width))
-        : (((dpi >= 600) ? 3 : 2) / boardZoomNorm);
+        : (((dpi >= 600) ? 3.5 : 2.8) / boardZoomNorm);
       const scaleFactor = customScale || defaultScale;
       const sw = smartBounds ? smartBounds.width : this.screenWidth;
       const sh = smartBounds ? smartBounds.height : this.screenHeight;
-      const maxPx = 8192;
-      const effScale = Math.min(scaleFactor, maxPx / Math.max(1, sw), maxPx / Math.max(1, sh));
+      const isIOSCanvas = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+      const maxPx = isIOSCanvas ? 4032 : 8192;
+      const maxArea = isIOSCanvas ? 15500000 : 33554432;
+      const areaCap = Math.sqrt(maxArea / Math.max(1, sw * sh));
+      const effScale = Math.min(scaleFactor, maxPx / Math.max(1, sw), maxPx / Math.max(1, sh), areaCap);
       const pxW = Math.max(1, Math.round(sw * effScale));
       const pxH = Math.max(1, Math.round(sh * effScale));
       exportCanvas.width = pxW;

@@ -1807,7 +1807,7 @@ class GraphApp {
     this.showToast('↻ 다시 실행됨');
   }
 
-  restoreHistorySnapshot(jsonStr) {
+  restoreHistorySnapshot(jsonStr, skipRender = false) {
     try {
       if (!jsonStr) return;
       const data = (typeof jsonStr === 'string') ? JSON.parse(jsonStr) : jsonStr;
@@ -1943,12 +1943,16 @@ class GraphApp {
         if (lblText) lblText.textContent = `${this.textLabelFontSize}`;
       }
       if (data.inkStrokes) {
-        this.inkStrokes = JSON.parse(JSON.stringify(data.inkStrokes));
+        this.inkStrokes = (typeof this._fastCloneSlideValue === 'function')
+          ? this._fastCloneSlideValue(data.inkStrokes)
+          : JSON.parse(JSON.stringify(data.inkStrokes));
       } else {
         this.inkStrokes = [];
       }
       if (Array.isArray(data.boardStickers)) {
-        this.boardStickers = JSON.parse(JSON.stringify(data.boardStickers));
+        this.boardStickers = (typeof this._fastCloneSlideValue === 'function')
+          ? this._fastCloneSlideValue(data.boardStickers)
+          : JSON.parse(JSON.stringify(data.boardStickers));
       } else {
         this.boardStickers = [];
       }
@@ -1959,7 +1963,9 @@ class GraphApp {
       this.syncControls();
       this.renderLayerList();
       this.renderFuncList();
-      this.render();
+      if (!skipRender) {
+        this.render();
+      }
     } catch (e) {
       console.error('History restore error:', e);
     }
@@ -2493,6 +2499,11 @@ class GraphApp {
     );
 
     if (!hasAnything) {
+      if (typeof this._clearAllSlideInkBakeLruCache === 'function') this._clearAllSlideInkBakeLruCache();
+      if (typeof this._clearSlideProblemImageCache === 'function') this._clearSlideProblemImageCache();
+      this._loadedSlideRef = null;
+      this._loadedSlideFastSig = '';
+      this._slideDirty = false;
       this.showToast('ℹ️ 이미 깨끗한 새 캔버스 상태입니다.');
       return;
     }
@@ -2590,6 +2601,12 @@ class GraphApp {
     this.isLessonPlaylistActive = false;
     this.lessonPlaylistSlides = [];
     this.lessonPlaylistIndex = 0;
+    this._loadedSlideRef = null;
+    this._loadedSlideFastSig = '';
+    this._slideDirty = false;
+    if (typeof this._clearAllSlideInkBakeLruCache === 'function') {
+      this._clearAllSlideInkBakeLruCache();
+    }
     this.isTopSlideBarHidden = false;
     this.lessonTeachingMode = null;
     this._activeLoadedCloudLibraryMeta = null;
@@ -7425,9 +7442,37 @@ class GraphApp {
     if (btnPreviewViewer) {
       btnPreviewViewer.onclick = async () => {
         if (modal) modal.classList.remove('show');
+        const f = this.exportFilter || {};
+        const isFiltered = (f.includeProblem === false || f.includeGraph === false || f.includeInk === false || f.includeAudio === false);
+        const isPartialSingleScopeOnPlaylist = Boolean(
+          this.exportScope === 'current' &&
+          this.isLessonPlaylistActive &&
+          Array.isArray(this.lessonPlaylistSlides) &&
+          this.lessonPlaylistSlides.length > 1
+        );
+        const needsWorkspaceBackup = Boolean(isFiltered || isPartialSingleScopeOnPlaylist);
+        if (needsWorkspaceBackup) {
+          const rawBackupSlides = this._getActiveSlidesForExport('수업 노트');
+          this._localEditBackupBeforeFilteredPreview = {
+            isPlaylist: Boolean(this.isLessonPlaylistActive),
+            index: this.lessonPlaylistIndex || 0,
+            slides: (typeof this._fastCloneSlideValue === 'function')
+              ? this._fastCloneSlideValue(rawBackupSlides)
+              : JSON.parse(JSON.stringify(rawBackupSlides))
+          };
+        } else {
+          this._localEditBackupBeforeFilteredPreview = null;
+        }
         const pkg = await this.buildExportSharePackageObject(this.exportScope, this.exportFilter);
         pkg._isLocalPreview = true;
-        this._initialSharedCloudPkg = JSON.parse(JSON.stringify(pkg));
+        pkg._isLocalFilteredPreview = needsWorkspaceBackup;
+        pkg._isLocalDirectWorkspacePreview = !needsWorkspaceBackup;
+        if (this.exportScope === 'all' && this.isLessonPlaylistActive && typeof this.lessonPlaylistIndex === 'number') {
+          pkg.currentIndex = Math.max(0, Math.min((pkg.playlistSlides ? pkg.playlistSlides.length : 1) - 1, this.lessonPlaylistIndex));
+        }
+        this._initialSharedCloudPkg = (typeof this._fastCloneSlideValue === 'function')
+          ? this._fastCloneSlideValue(pkg)
+          : JSON.parse(JSON.stringify(pkg));
         await this.openSmartNoteViewer(pkg);
       };
     }

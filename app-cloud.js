@@ -7409,6 +7409,276 @@
       return syncData;
     }
 
+    _fastCloneSlideValue(val) {
+      if (val === null || typeof val !== 'object') return val;
+      if (typeof Node !== 'undefined' && val instanceof Node) return null;
+      if (Array.isArray(val)) {
+        const len = val.length;
+        const out = new Array(len);
+        for (let i = 0; i < len; i++) {
+          out[i] = this._fastCloneSlideValue(val[i]);
+        }
+        return out;
+      }
+      const copy = {};
+      const keys = Object.keys(val);
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        copy[k] = this._fastCloneSlideValue(val[k]);
+      }
+      if (val._inkLruId) {
+        try {
+          Object.defineProperty(copy, '_inkLruId', {
+            value: val._inkLruId,
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) { }
+      }
+      return copy;
+    }
+
+    _hasPureVectorGraphsInSnap(snapRaw) {
+      if (!snapRaw) return false;
+      let parsed = snapRaw;
+      if (typeof snapRaw === 'string') {
+        try { parsed = JSON.parse(snapRaw); } catch (_) { return false; }
+      }
+      return Boolean(parsed && typeof parsed === 'object' && !parsed.isNAxisStudioCard && Array.isArray(parsed.graphs) && parsed.graphs.length > 0);
+    }
+
+    _getOrCreateSlideProblemImageCached(safeSrc) {
+      if (!safeSrc || typeof Image === 'undefined') return null;
+      const cacheKey = `${safeSrc.length}:${safeSrc.slice(0, 48)}:${safeSrc.slice(-64)}`;
+      if (!this._slideProblemImgCache) this._slideProblemImgCache = new Map();
+      if (this._slideProblemImgCache.has(cacheKey)) {
+        const hit = this._slideProblemImgCache.get(cacheKey);
+        if (hit && hit.src === safeSrc) {
+          this._slideProblemImgCache.delete(cacheKey);
+          this._slideProblemImgCache.set(cacheKey, hit);
+          return hit;
+        }
+        this._slideProblemImgCache.delete(cacheKey);
+      }
+      while (this._slideProblemImgCache.size >= 6) {
+        const oldestK = this._slideProblemImgCache.keys().next().value;
+        if (oldestK === undefined) break;
+        const oldIm = this._slideProblemImgCache.get(oldestK);
+        this._slideProblemImgCache.delete(oldestK);
+        if (oldIm && oldIm !== this.problemCardImage) {
+          try { oldIm.onload = null; oldIm.onerror = null; oldIm.src = ''; } catch (_) { }
+        }
+      }
+      const imgObj = new Image();
+      imgObj.decoding = 'async';
+      imgObj.src = safeSrc;
+      this._slideProblemImgCache.set(cacheKey, imgObj);
+      return imgObj;
+    }
+
+    _clearSlideProblemImageCache() {
+      if (!this._slideProblemImgCache) return;
+      for (const im of this._slideProblemImgCache.values()) {
+        if (im) {
+          try { im.onload = null; im.onerror = null; im.src = ''; } catch (_) { }
+        }
+      }
+      this._slideProblemImgCache.clear();
+    }
+
+    _computeLiveWorkspaceFastSignature() {
+      let h = 2166136261 >>> 0;
+      const mix = (n) => {
+        h ^= (n | 0);
+        h = Math.imul(h, 16777619) >>> 0;
+      };
+      const mixStr = (s) => {
+        if (!s) return;
+        const l = s.length;
+        mix(l);
+        const step = l > 24 ? Math.floor(l / 12) : 1;
+        for (let i = 0; i < l; i += step) mix(s.charCodeAt(i));
+      };
+      mix(this.isGraphCovered ? 1 : 0);
+      mixStr(this.currentThemeKey || '');
+      mix(this.isMonochromeMode ? 1 : 0);
+      mix(Math.round((this.panX || 0) * 10));
+      mix(Math.round((this.panY || 0) * 10));
+      mix(Math.round((this.zoomLevel || 1) * 1000));
+      mix(Math.round((this.xSpan || 0) * 100));
+      mix(Math.round((this.ySpan || 0) * 100));
+      mix(Math.round((this.boardPanX || 0) * 10));
+      mix(Math.round((this.boardPanY || 0) * 10));
+      mix(Math.round((this.boardZoom || 1) * 1000));
+      mix(Math.round((this.boardZoomOffsetX || 0) * 10));
+      mix(Math.round((this.boardZoomOffsetY || 0) * 10));
+      mix((this.showAxes ? 1 : 0) | (this.showXAxis !== false ? 2 : 0) | (this.showYAxis !== false ? 4 : 0) | (this.showGuides ? 8 : 0) | (this.showGridNumbers ? 16 : 0) | (this.showInverseGuide ? 32 : 0) | (this.usePiecewise ? 64 : 0));
+      if (Array.isArray(this.piecewiseBoundaries)) {
+        mix(this.piecewiseBoundaries.length);
+        for (let i = 0; i < this.piecewiseBoundaries.length; i++) mix(Math.round((this.piecewiseBoundaries[i] || 0) * 100));
+      }
+      const gs = Array.isArray(this.graphs) ? this.graphs : [];
+      mix(gs.length);
+      for (let i = 0; i < gs.length; i++) {
+        const g = gs[i];
+        if (!g) continue;
+        mixStr(g.id || '');
+        mixStr(g.type || '');
+        mixStr(g.color || '');
+        mix((g.isAbsolute ? 1 : 0) | (g.isFrozen ? 2 : 0) | (g.isTransposedYX ? 4 : 0));
+        if (Array.isArray(g.handles)) {
+          mix(g.handles.length);
+          for (let j = 0; j < g.handles.length; j++) {
+            const hd = g.handles[j];
+            if (hd) {
+              mix(Math.round((hd.x || 0) * 1000));
+              mix(Math.round((hd.y || 0) * 1000));
+            }
+          }
+        }
+        if (g.freezeOffset) {
+          mix(Math.round((g.freezeOffset.x || 0) * 1000));
+          mix(Math.round((g.freezeOffset.y || 0) * 1000));
+        }
+        mix(Array.isArray(g.transforms) ? g.transforms.length : 0);
+      }
+      mix(Array.isArray(this.dropLines) ? this.dropLines.length : 0);
+      if (Array.isArray(this.dropLines)) {
+        for (let i = 0; i < this.dropLines.length; i++) {
+          const dl = this.dropLines[i];
+          if (dl) { mix(Math.round((dl.sourceX || 0) * 100)); mix(Math.round((dl.sourceY || 0) * 100)); }
+        }
+      }
+      mix(Array.isArray(this.textLabels) ? this.textLabels.length : 0);
+      if (Array.isArray(this.textLabels)) {
+        for (let i = 0; i < this.textLabels.length; i++) {
+          const tl = this.textLabels[i];
+          if (tl) { mixStr(tl.text || ''); mix(Math.round((tl.mathX || 0) * 100)); mix(Math.round((tl.mathY || 0) * 100)); }
+        }
+      }
+      const inks = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
+      mix(inks.length);
+      for (let i = 0; i < inks.length; i++) {
+        const s = inks[i];
+        if (!s) continue;
+        mixStr(s.id || '');
+        mixStr(s.color || '');
+        const pts = s.points;
+        const pLen = Array.isArray(pts) ? pts.length : 0;
+        mix(pLen);
+        if (pLen > 0) {
+          mix(Math.round((pts[0].x || 0) * 20));
+          mix(Math.round((pts[0].y || 0) * 20));
+          mix(Math.round((pts[pLen - 1].x || 0) * 20));
+          mix(Math.round((pts[pLen - 1].y || 0) * 20));
+        }
+      }
+      mix(Array.isArray(this.boardStickers) ? this.boardStickers.length : 0);
+
+      const pWidget = document.getElementById('problemCardWidget');
+      if (pWidget && this.problemCardData) {
+        mix(1);
+        mixStr(this.problemCardData.imgUrl ? String(this.problemCardData.imgUrl.length) : '');
+        mix(Math.round(this.problemCardBaseX || 0));
+        mix(Math.round(this.problemCardBaseY || 0));
+        mixStr(pWidget.style.width || '');
+        mix((pWidget.classList.contains('minimized') ? 1 : 0) | (pWidget.classList.contains('pip-locked-mode') ? 2 : 0) | (pWidget.classList.contains('pip-stealth-locked') ? 4 : 0));
+        mix(Array.isArray(this.problemInkStrokes) ? this.problemInkStrokes.length : 0);
+        mix(Array.isArray(this.problemCardStickers) ? this.problemCardStickers.length : 0);
+      } else {
+        mix(0);
+      }
+      if (Array.isArray(this.extraProblemCards)) {
+        mix(this.extraProblemCards.length);
+        for (let i = 0; i < this.extraProblemCards.length; i++) {
+          const ep = this.extraProblemCards[i];
+          if (ep && ep.el) {
+            mix(Math.round(ep.baseX || 0));
+            mix(Math.round(ep.baseY || 0));
+            mixStr(ep.el.style.width || '');
+            mix(ep.isMin ? 1 : 0);
+            mix(Array.isArray(ep.el._cardInkStrokes) ? ep.el._cardInkStrokes.length : 0);
+            mix(Array.isArray(ep.el._cardStickers) ? ep.el._cardStickers.length : 0);
+          }
+        }
+      }
+      const gWidget = document.getElementById('graphCardWidget');
+      if (gWidget && this._hasPrimaryGraphCard && this.graphCardData) {
+        mix(1);
+        mix(Math.round(this.graphCardBaseX || 0));
+        mix(Math.round(this.graphCardBaseY || 0));
+        mixStr(gWidget.style.width || '');
+        mix(gWidget.classList.contains('minimized') ? 1 : 0);
+        mix(Array.isArray(this.graphInkStrokes) ? this.graphInkStrokes.length : 0);
+        mix(Array.isArray(this.graphCardStickers) ? this.graphCardStickers.length : 0);
+        const ps = gWidget._pipSnapObj;
+        if (ps) {
+          mix(Math.round((ps.panX || 0) * 10));
+          mix(Math.round((ps.panY || 0) * 10));
+          mix(Math.round((ps.zoomLevel || 1) * 1000));
+          mix(ps.isPipLocked ? 1 : 0);
+          mix(Array.isArray(ps.graphs) ? ps.graphs.length : 0);
+          if (Array.isArray(ps.graphs)) {
+            for (let gi = 0; gi < ps.graphs.length; gi++) {
+              const gg = ps.graphs[gi];
+              if (gg && Array.isArray(gg.handles)) {
+                for (let hi = 0; hi < gg.handles.length; hi++) {
+                  const hh = gg.handles[hi];
+                  if (hh) { mix(Math.round((hh.x || 0) * 1000)); mix(Math.round((hh.y || 0) * 1000)); }
+                }
+              }
+            }
+          }
+          mix(Array.isArray(ps.dropLines) ? ps.dropLines.length : 0);
+        } else if (typeof this.primaryGraphCardSnapshot === 'string') {
+          mixStr(this.primaryGraphCardSnapshot);
+        }
+      } else {
+        mix(0);
+      }
+      if (Array.isArray(this.extraGraphCards)) {
+        mix(this.extraGraphCards.length);
+        for (let i = 0; i < this.extraGraphCards.length; i++) {
+          const eg = this.extraGraphCards[i];
+          if (eg && eg.el) {
+            mix(Math.round(eg.baseX || 0));
+            mix(Math.round(eg.baseY || 0));
+            mixStr(eg.el.style.width || '');
+            mix(eg.isMin ? 1 : 0);
+            mix(Array.isArray(eg.el._cardInkStrokes) ? eg.el._cardInkStrokes.length : 0);
+            mix(Array.isArray(eg.el._cardStickers) ? eg.el._cardStickers.length : 0);
+            const es = eg.el._pipSnapObj || eg._pipSnapObj;
+            if (es) {
+              mix(Math.round((es.panX || 0) * 10));
+              mix(Math.round((es.panY || 0) * 10));
+              mix(Math.round((es.zoomLevel || 1) * 1000));
+              mix(es.isPipLocked ? 1 : 0);
+              mix(Array.isArray(es.graphs) ? es.graphs.length : 0);
+              if (Array.isArray(es.graphs)) {
+                for (let gi = 0; gi < es.graphs.length; gi++) {
+                  const gg = es.graphs[gi];
+                  if (gg && Array.isArray(gg.handles)) {
+                    for (let hi = 0; hi < gg.handles.length; hi++) {
+                      const hh = gg.handles[hi];
+                      if (hh) { mix(Math.round((hh.x || 0) * 1000)); mix(Math.round((hh.y || 0) * 1000)); }
+                    }
+                  }
+                }
+              }
+              mix(Array.isArray(es.dropLines) ? es.dropLines.length : 0);
+            }
+          }
+        }
+      }
+      const activePdf = this.pdfPageBoardData || (this._suspendedPdfBoardState && this._suspendedPdfBoardState.pdfPageBoardData) || null;
+      mix(activePdf ? (activePdf.pageNum || 1) : 0);
+      mix(this.audioSyncData ? (this.audioSyncData.durationMs || 1) : 0);
+      mix(this.undoStack ? this.undoStack.length : 0);
+      mix(this.redoStack ? this.redoStack.length : 0);
+      return `${h.toString(36)}_${inks.length}_${this.undoStack ? this.undoStack.length : 0}`;
+    }
+
     // 현재 워크스페이스(판서 + 문제 카드 + #1,#2 그래프 카드 + 실시간 그래프)를 100% 직렬화 가능한 JSON 객체로 추출
     serializeFullSlideState(title = '') {
       const pWidget = document.getElementById('problemCardWidget');
@@ -7487,8 +7757,11 @@
             }
             const imgEl = c.el.querySelector('.problem-card-img');
             const titleEl = c.el.querySelector('.card-title-text');
+            const isVectorExtraGraph = this._hasPureVectorGraphsInSnap(c.graphSnapshot);
             extraGraphs.push({
-              dataUrl: imgEl ? imgEl.src : '',
+              dataUrl: isVectorExtraGraph
+                ? 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+                : (imgEl ? imgEl.src : ''),
               cardW: parseFloat(c.el.style.width) || 360,
               aspect: c.aspect || 0.65,
               titleText: titleEl ? titleEl.textContent : `#${c.caseIdx || 2}`,
@@ -7497,9 +7770,9 @@
               pdfAnchor: (c.el._pdfAnchor || c.pdfAnchor) ? { ...(c.el._pdfAnchor || c.pdfAnchor) } : null,
               isMin: Boolean(c.isMin),
               caseIdx: c.caseIdx || 2,
-              graphSnapshot: c.graphSnapshot ? JSON.parse(JSON.stringify(c.graphSnapshot)) : null,
+              graphSnapshot: c.graphSnapshot ? this._fastCloneSlideValue(c.graphSnapshot) : null,
               cardInkStrokes: this._compactStrokesArray(c.el._cardInkStrokes || []),
-              cardStickers: JSON.parse(JSON.stringify(c.el._cardStickers || []))
+              cardStickers: this._fastCloneSlideValue(c.el._cardStickers || [])
             });
           }
         });
@@ -7553,10 +7826,12 @@
           graphCardBaseX: this.graphCardBaseX,
           graphCardBaseY: this.graphCardBaseY,
           pdfAnchor: (gWidget._pdfAnchor || this.graphCardPdfAnchor) ? { ...(gWidget._pdfAnchor || this.graphCardPdfAnchor) } : null,
-          primaryGraphCardSnapshot: this.primaryGraphCardSnapshot ? JSON.parse(JSON.stringify(this.primaryGraphCardSnapshot)) : null,
+          primaryGraphCardSnapshot: this.primaryGraphCardSnapshot ? this._fastCloneSlideValue(this.primaryGraphCardSnapshot) : null,
           graphInkStrokes: this._compactStrokesArray(this.graphInkStrokes || []),
-          graphCardStickers: JSON.parse(JSON.stringify(this.graphCardStickers || [])),
-          imgSrc: gImg ? gImg.src : '',
+          graphCardStickers: this._fastCloneSlideValue(this.graphCardStickers || []),
+          imgSrc: this._hasPureVectorGraphsInSnap(this.primaryGraphCardSnapshot)
+            ? 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+            : (gImg ? gImg.src : ''),
           titleText: gTitle ? gTitle.textContent : '#1',
           toggleText: gToggle ? gToggle.textContent : '▾',
           minimized: gWidget.classList.contains('minimized'),
@@ -7593,6 +7868,8 @@
     // 직렬화된 슬라이드 JSON 객체를 현재 워크스페이스에 100% 무손실 복원
     deserializeFullSlideState(slideData) {
       if (!slideData) return;
+      this._isDeserializingSlide = true;
+      try {
 
       // 기존 추가 카드들 정리
       if (this.extraProblemCards && this.extraProblemCards.length > 0) {
@@ -7608,9 +7885,9 @@
         this.extraGraphCards = [];
       }
 
-      // 기본 히스토리 상태(판서 획, 텍스트, 뷰포트, 실시간 그래프) 복원
+      // 기본 히스토리 상태(판서 획, 텍스트, 뷰포트, 실시간 그래프) 복원 (중간 중복 렌더링/베이킹 생략!)
       if (slideData.historyJson) {
-        this.restoreHistorySnapshot(slideData.historyJson);
+        this.restoreHistorySnapshot(slideData.historyJson, true);
       }
 
       // 1. 기본 문제 카드 복원
@@ -7627,22 +7904,29 @@
         this.problemCardBaseY = typeof pc.problemCardBaseY === 'number' ? pc.problemCardBaseY : 18;
         this.problemCardPdfAnchor = pc.pdfAnchor ? { ...pc.pdfAnchor } : null;
         pWidget._pdfAnchor = this.problemCardPdfAnchor ? { ...this.problemCardPdfAnchor } : null;
-        this.problemInkStrokes = JSON.parse(JSON.stringify(pc.problemInkStrokes || []));
-        this.problemCardStickers = JSON.parse(JSON.stringify(pc.problemCardStickers || []));
+        this.problemInkStrokes = this._fastCloneSlideValue(pc.problemInkStrokes || []);
+        this.problemCardStickers = this._fastCloneSlideValue(pc.problemCardStickers || []);
         if (typeof pWidget._renderCardStickers === 'function') pWidget._renderCardStickers();
         const safePcImgSrc = (typeof this._sanitizeCardImageUrl === 'function')
           ? this._sanitizeCardImageUrl(pc.imgSrc || '')
           : (pc.imgSrc || '');
         if (safePcImgSrc) {
-          const imgObj = new Image();
-          imgObj.onload = () => {
-            if (imgObj.naturalWidth > 0 && imgObj.naturalHeight > 0) {
-              this.problemCardAspect = imgObj.naturalHeight / imgObj.naturalWidth;
-              this.syncProblemCardRectFromWidget();
+          const cachedProbImg = this._getOrCreateSlideProblemImageCached(safePcImgSrc);
+          if (cachedProbImg) {
+            if (cachedProbImg.complete && cachedProbImg.naturalWidth > 0 && cachedProbImg.naturalHeight > 0) {
+              this.problemCardAspect = cachedProbImg.naturalHeight / cachedProbImg.naturalWidth;
+            } else {
+              cachedProbImg.onload = () => {
+                if (this.problemCardImage === cachedProbImg && cachedProbImg.naturalWidth > 0 && cachedProbImg.naturalHeight > 0) {
+                  this.problemCardAspect = cachedProbImg.naturalHeight / cachedProbImg.naturalWidth;
+                  this.syncProblemCardRectFromWidget();
+                }
+              };
             }
-          };
-          imgObj.src = safePcImgSrc;
-          this.problemCardImage = imgObj;
+            this.problemCardImage = cachedProbImg;
+          } else {
+            this.problemCardImage = null;
+          }
         } else {
           this.problemCardImage = null;
         }
@@ -7733,20 +8017,24 @@
         this.graphCardBaseY = typeof gc.graphCardBaseY === 'number' ? gc.graphCardBaseY : 18;
         this.graphCardPdfAnchor = gc.pdfAnchor ? { ...gc.pdfAnchor } : null;
         gWidget._pdfAnchor = this.graphCardPdfAnchor ? { ...this.graphCardPdfAnchor } : null;
-        this.primaryGraphCardSnapshot = gc.primaryGraphCardSnapshot ? JSON.parse(JSON.stringify(gc.primaryGraphCardSnapshot)) : null;
+        this.primaryGraphCardSnapshot = gc.primaryGraphCardSnapshot ? this._fastCloneSlideValue(gc.primaryGraphCardSnapshot) : null;
         gWidget._pipSnapObj = null;
         gWidget._pipSnapRawRef = null;
-        this.graphInkStrokes = JSON.parse(JSON.stringify(gc.graphInkStrokes || []));
-        this.graphCardStickers = JSON.parse(JSON.stringify(gc.graphCardStickers || []));
+        this.graphInkStrokes = this._fastCloneSlideValue(gc.graphInkStrokes || []);
+        this.graphCardStickers = this._fastCloneSlideValue(gc.graphCardStickers || []);
         if (typeof gWidget._renderCardStickers === 'function') gWidget._renderCardStickers();
-        if (safeGcImgSrc) {
+        const isTinyPlaceholder = (safeGcImgSrc === 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+        if (safeGcImgSrc && !isTinyPlaceholder) {
           const gImgObj = new Image();
           gImgObj.src = safeGcImgSrc;
           this.graphCardImage = gImgObj;
         } else {
           this.graphCardImage = null;
         }
-        if (gImg) gImg.src = safeGcImgSrc;
+        if (gImg) {
+          const effGImgSrc = safeGcImgSrc || 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+          if (gImg.src !== effGImgSrc) gImg.src = effGImgSrc;
+        }
         if (gTitle) gTitle.textContent = gc.titleText || '#1';
         if (gToggle) gToggle.textContent = gc.toggleText || (gc.minimized ? '▸' : '▾');
         gWidget.classList.toggle('minimized', Boolean(gc.minimized));
@@ -7756,6 +8044,9 @@
         if (gc.zIndex) gWidget.style.zIndex = gc.zIndex;
         gWidget.style.display = gc.display || 'flex';
         this.syncGraphCardRectFromWidget();
+        if (typeof this.renderPipGraphCard === 'function') {
+          this.renderPipGraphCard('primary');
+        }
         const restoredPrimarySnap = this._getMutablePipCardSnapshot('primary');
         if (restoredPrimarySnap && restoredPrimarySnap.isPipLocked) {
           this.schedulePipGraphCardStealth('primary', 0);
@@ -7929,11 +8220,27 @@
       }
 
       this.updateProblemCardPosition();
+      if (typeof this.syncProblemCardRectFromWidget === 'function') {
+        this.syncProblemCardRectFromWidget();
+      }
       this.syncWorkspaceModeUI();
       this.syncGraphSnapBarUI();
-      this._inkBakeDirty = true;
+      const restoredFromInkLru = (typeof this._tryRestoreSlideInkBakeFromLru === 'function')
+        ? this._tryRestoreSlideInkBakeFromLru(slideData)
+        : false;
+      if (!restoredFromInkLru) {
+        this._inkBakeDirty = true;
+      }
       this.updateIntersections();
+      } finally {
+        this._isDeserializingSlide = false;
+      }
       this.render();
+      if (!this._isCapturingExportSnapshots) {
+        this._loadedSlideRef = slideData;
+        this._loadedSlideFastSig = this._computeLiveWorkspaceFastSignature();
+        this._slideDirty = false;
+      }
     }
 
     _buildSlideSummaryBadge(slideData) {
@@ -8468,53 +8775,19 @@
 
     async _populateSlideViewerSnapshotsForExport(slides, effFilter, forceRebuildAnnotated = false) {
       if (!Array.isArray(slides) || slides.length === 0) return slides;
-      const indicesNeedingRender = [];
+      // 🌟 [사전 스캔(viewerSnapshotDataUrl) 2중 저장 폐기 & 뷰어 즉시 온디맨드 렌더링 전환]:
+      // 저장·공유·내보내기 시 전 슬라이드를 강제로 넘기며 4K 사진을 구워 중복 저장하던 병목을 원천 제거(0바이트 · 페이지 넘김 0회)하고,
+      // 뷰어 오픈 시 현재 슬라이드만 즉시 온디맨드 고화질 렌더링 + 유휴 시 ±1장 프리워밍으로 구동합니다.
       for (let i = 0; i < slides.length; i++) {
         const s = slides[i];
         if (!s) continue;
-        if (this._isPureUnannotatedPdfPageSlide(s, effFilter)) {
-          this._applyFastPdfBoardViewerSnapshot(s);
-        } else if (forceRebuildAnnotated || !s.viewerSnapshotDataUrl || s.viewerSnapshotDataUrl === '__SAME_AS_PDF_BOARD__') {
-          indicesNeedingRender.push(i);
-        }
-      }
-      if (indicesNeedingRender.length === 0) {
-        return slides;
-      }
-
-      const isOuterLoop = !this._isCapturingExportSnapshots;
-      if (isOuterLoop) {
-        this._isCapturingExportSnapshots = true;
-        this._exportSnapshotLoopRawSlides = JSON.parse(JSON.stringify(slides));
-        this._exportSnapshotLoopBackupCurrent = this.serializeFullSlideState('backup');
-      }
-      try {
-        for (let k = 0; k < indicesNeedingRender.length; k++) {
-          const i = indicesNeedingRender[k];
-          this.deserializeFullSlideState(slides[i]);
-          await this._waitForSlideImagesReady();
-          const snap = this.captureCurrentSlideViewerSnapshot(effFilter, true);
-          slides[i].viewerSnapshotDataUrl = snap.dataUrl;
-          slides[i].viewerSnapshotWidth = snap.width;
-          slides[i].viewerSnapshotHeight = snap.height;
-          slides[i].viewerGraphHotspots = snap.hotspots;
-          slides[i].viewerStickerHotspots = snap.stickerHotspots;
-          slides[i].viewerSmartBounds = snap.smartBounds;
-          slides[i]._viewerHiResRendered = true;
-          if (snap && snap.canvas) {
-            try { snap.canvas.width = 1; snap.canvas.height = 1; } catch (e) { }
-          }
-        }
-      } finally {
-        if (isOuterLoop) {
-          this._isCapturingExportSnapshots = false;
-          const backupToRestore = this._exportSnapshotLoopBackupCurrent;
-          this._exportSnapshotLoopRawSlides = null;
-          this._exportSnapshotLoopBackupCurrent = null;
-          if (backupToRestore) {
-            this.deserializeFullSlideState(backupToRestore);
-          }
-        }
+        delete s.viewerSnapshotDataUrl;
+        delete s.viewerSnapshotWidth;
+        delete s.viewerSnapshotHeight;
+        delete s.viewerGraphHotspots;
+        delete s.viewerStickerHotspots;
+        delete s.viewerSmartBounds;
+        delete s._viewerHiResRendered;
       }
       return slides;
     }
@@ -12027,6 +12300,12 @@
         if (hasVaultKeys && cacheTarget.vaultKeys) {
           const vk = cacheTarget.vaultKeys;
           const isFullVisual = Boolean(effFilter.includeProblem && effFilter.includeGraph && effFilter.includeInk);
+          const hasSnapVaultLayer = Boolean(
+            isFullVisual &&
+            cacheTarget.vaultLayerMeta &&
+            cacheTarget.vaultLayerMeta.sn &&
+            cacheTarget.vaultLayerMeta.sn.exists !== false
+          );
           const pointerPkg = {
             id: shortId,
             _isVaultPointer: true,
@@ -12037,7 +12316,7 @@
               graphKey: effFilter.includeGraph ? (vk.graphKey || null) : null,
               inkKey: effFilter.includeInk ? (vk.inkKey || null) : null,
               audioKey: effFilter.includeAudio ? (vk.audioKey || null) : null,
-              snapKey: isFullVisual ? (vk.snapKey || null) : null
+              snapKey: hasSnapVaultLayer ? (vk.snapKey || null) : null
             },
             vaultUpdatedAt: Number(cacheTarget.vaultUpdatedAt) || nowMs,
             title: cacheTarget.title || item.title || '공유 수업 노트',
@@ -13036,7 +13315,7 @@
       if (!Array.isArray(slidesArray) || slidesArray.length === 0) return;
       const hasPageSlides = slidesArray.some(s => Boolean(s && s.pdfPageBoardData));
       this.setLessonTeachingMode(hasPageSlides ? 'page' : 'crop');
-      this.lessonPlaylistSlides = JSON.parse(JSON.stringify(slidesArray));
+      this.lessonPlaylistSlides = this._fastCloneSlideValue(slidesArray);
       this.lessonPlaylistIndex = Math.max(0, Math.min(slidesArray.length - 1, startIndex));
       this.isLessonPlaylistActive = true;
 
@@ -13049,8 +13328,37 @@
       if (this._isCapturingExportSnapshots || this.isStudentAudioVideoOnlyMode) return;
       if (!this.isLessonPlaylistActive || !this.lessonPlaylistSlides || !this.lessonPlaylistSlides.length) return;
       const curSlide = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
+      if (curSlide && typeof this._saveCurrentSlideInkBakeToLru === 'function') {
+        this._saveCurrentSlideInkBakeToLru(curSlide);
+      }
+      if (
+        !this._slideDirty &&
+        curSlide &&
+        this._loadedSlideRef === curSlide &&
+        !this.isAudioRecording &&
+        this._computeLiveWorkspaceFastSignature() === this._loadedSlideFastSig
+      ) {
+        return;
+      }
       const title = curSlide ? curSlide.slideTitle : `문항 ${this.lessonPlaylistIndex + 1}`;
-      this.lessonPlaylistSlides[this.lessonPlaylistIndex] = this.serializeFullSlideState(title);
+      const nextSlideObj = this.serializeFullSlideState(title);
+      if (curSlide && curSlide._inkLruId) {
+        try {
+          Object.defineProperty(nextSlideObj, '_inkLruId', {
+            value: curSlide._inkLruId,
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) { }
+      }
+      this.lessonPlaylistSlides[this.lessonPlaylistIndex] = nextSlideObj;
+      this._loadedSlideRef = nextSlideObj;
+      this._loadedSlideFastSig = this._computeLiveWorkspaceFastSignature();
+      this._slideDirty = false;
+      if (typeof this._saveCurrentSlideInkBakeToLru === 'function') {
+        this._saveCurrentSlideInkBakeToLru(nextSlideObj);
+      }
     }
 
     stepLessonPlaylist(delta) {
@@ -13776,19 +14084,19 @@
           this.saveCurrentSlideIntoPlaylist();
         }
         ensurePdfDataUrls(this.lessonPlaylistSlides);
-        return JSON.parse(JSON.stringify(this.lessonPlaylistSlides));
+        return this._fastCloneSlideValue(this.lessonPlaylistSlides);
       }
       if (this._isCapturingExportSnapshots && this._exportSnapshotLoopBackupCurrent) {
         ensurePdfDataUrls([this._exportSnapshotLoopBackupCurrent]);
-        return [JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent))];
+        return [this._fastCloneSlideValue(this._exportSnapshotLoopBackupCurrent)];
       }
       const singleSlide = this.serializeFullSlideState(fallbackTitle);
       ensurePdfDataUrls([singleSlide]);
-      return [JSON.parse(JSON.stringify(singleSlide))];
+      return [this._fastCloneSlideValue(singleSlide)];
     }
 
     _applyExportFilterToSlideData(rawSlide, filterOpts = null) {
-      const slide = JSON.parse(JSON.stringify(rawSlide));
+      const slide = this._fastCloneSlideValue(rawSlide);
       if (!filterOpts) return slide;
       const incProb = filterOpts.includeProblem !== false;
       const incGraph = filterOpts.includeGraph !== false;
@@ -14028,6 +14336,9 @@
     }
 
     async _waitForSlideImagesReady() {
+      if (this._pendingCropVectorUpgradePromise) {
+        try { await this._pendingCropVectorUpgradePromise; } catch (_) { }
+      }
       if (this.pdfPageBoardData && (!this.pdfPageBoardData.canvas || this.pdfPageBoardData.canvas._evicted || this.pdfPageBoardData.canvas.width <= 4) && this.pdfPageBoardData.dataUrl) {
         if (typeof this._ensurePdfBoardCanvasFromDataUrl === 'function') {
           await this._ensurePdfBoardCanvasFromDataUrl(this.pdfPageBoardData);
@@ -14108,6 +14419,8 @@
       const stickerHotspots = this.extractStickerHotspotsForBounds(smartBounds, effFilter);
       this._omitStickersForViewerSnapshot = true;
       const isMobileDevice = (typeof window !== 'undefined') && (window.innerWidth <= 768 || window.innerHeight <= 500);
+      const isIOSDevice = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+      const useWebKitCanvasCap = Boolean(isIOSDevice || isMobileDevice);
       const hasPdfBoardForSnap = Boolean(
         effFilter.includeProblem !== false &&
         this.pdfPageBoardData &&
@@ -14117,7 +14430,7 @@
         smartBounds.width > 0 &&
         smartBounds.height > 0
       );
-      let targetScale = isMobileDevice ? 1.8 : (forCloud ? 2.2 : 2.8);
+      let targetScale = isMobileDevice ? 2.6 : (forCloud ? 3.0 : 3.2);
       if (hasPdfBoardForSnap) {
         const pbd = this.pdfPageBoardData;
         const cx = pbd.centerX || 0;
@@ -14130,19 +14443,55 @@
           : (pbd.pixelW || 2800);
         const targetPdfPxW = Math.max(2400, Math.min(2850, nativePxW));
         const rawPdfScale = targetPdfPxW / pdfScreenW;
-        const maxSnapSide = isMobileDevice ? 3200 : 4080;
-        const maxSnapArea = isMobileDevice ? 9800000 : 15800000;
+        const maxSnapSide = isMobileDevice ? 3840 : 4080;
+        const maxSnapArea = isMobileDevice ? 12800000 : 15800000;
         const sideCapScale = maxSnapSide / Math.max(1, smartBounds.width, smartBounds.height);
         const areaCapScale = Math.sqrt(maxSnapArea / Math.max(1, smartBounds.width * smartBounds.height));
         targetScale = Math.max(0.2, Math.min(rawPdfScale, sideCapScale, areaCapScale));
       } else if (this.isGraphCovered && !this.pdfPageBoardData && smartBounds && smartBounds.width > 0 && smartBounds.height > 0) {
         const safeBz = Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0));
-        const rawBoardScale = targetScale / safeBz;
-        const maxSnapSide = isMobileDevice ? 3200 : 4080;
-        const maxSnapArea = isMobileDevice ? 9800000 : 15800000;
+        let minProbScreenW = 0;
+        if (effFilter.includeProblem !== false) {
+          if (typeof document !== 'undefined') {
+            const probEls = document.querySelectorAll('#problemCardWidget, .extra-problem-card-widget');
+            for (let pi = 0; pi < probEls.length; pi++) {
+              const pel = probEls[pi];
+              if (!pel || pel.style.display === 'none' || pel.classList.contains('minimized')) continue;
+              const bodyEl = pel.querySelector('.problem-card-body') || pel;
+              const r = bodyEl.getBoundingClientRect();
+              if (r && r.width >= 80 * safeBz && r.height >= 24 * safeBz) {
+                minProbScreenW = minProbScreenW > 0 ? Math.min(minProbScreenW, r.width) : r.width;
+              }
+            }
+          }
+          if (Array.isArray(this.inkStrokes)) {
+            for (let si = 0; si < this.inkStrokes.length; si++) {
+              const st = this.inkStrokes[si];
+              if (!st || !st.isProblemStamp || st.onPdfBoard || !Array.isArray(st.points) || st.points.length < 2) continue;
+              const p0 = this.boardToScreen(st.points[0].x, st.points[0].y);
+              const p1 = this.boardToScreen(st.points[1].x, st.points[1].y);
+              const sw = Math.abs(p1.x - p0.x);
+              if (sw >= 80 * safeBz) {
+                minProbScreenW = minProbScreenW > 0 ? Math.min(minProbScreenW, sw) : sw;
+              }
+            }
+          }
+        }
+        const probBoostScale = minProbScreenW > 0
+          ? Math.min(3.6 / safeBz, 1800 / minProbScreenW)
+          : 0;
+        const rawBoardScale = Math.max(targetScale / safeBz, probBoostScale);
+        const maxSnapSide = useWebKitCanvasCap ? (isMobileDevice ? 3840 : 4032) : 5760;
+        const maxSnapArea = useWebKitCanvasCap ? (isMobileDevice ? 12800000 : 15500000) : 19500000;
         const sideCapScale = maxSnapSide / Math.max(1, smartBounds.width, smartBounds.height);
         const areaCapScale = Math.sqrt(maxSnapArea / Math.max(1, smartBounds.width * smartBounds.height));
         targetScale = Math.max(0.2, Math.min(rawBoardScale, sideCapScale, areaCapScale));
+      } else if (smartBounds && smartBounds.width > 0 && smartBounds.height > 0) {
+        const maxSnapSide = useWebKitCanvasCap ? (isMobileDevice ? 3840 : 4032) : 5760;
+        const maxSnapArea = useWebKitCanvasCap ? (isMobileDevice ? 12800000 : 15500000) : 19500000;
+        const sideCapScale = maxSnapSide / Math.max(1, smartBounds.width, smartBounds.height);
+        const areaCapScale = Math.sqrt(maxSnapArea / Math.max(1, smartBounds.width * smartBounds.height));
+        targetScale = Math.max(0.2, Math.min(targetScale, sideCapScale, areaCapScale));
       }
       let exp;
       try {
@@ -14153,9 +14502,10 @@
       let dataUrl = '';
       try {
         const allowJpeg = !this.exportTransparent;
-        const webpQuality = hasPdfBoardForSnap ? 0.88 : 0.80;
-        dataUrl = (forCloud || isMobileDevice)
-          ? this.encodeCanvasSmartWebP(exp.canvas, webpQuality, allowJpeg)
+        const webpQuality = 0.88;
+        const isLargeLocalPreview = (!forCloud && !isMobileDevice && (exp.width * exp.height > 14000000));
+        dataUrl = (forCloud || isMobileDevice || isLargeLocalPreview)
+          ? this.encodeCanvasSmartWebP(exp.canvas, isLargeLocalPreview ? 0.92 : webpQuality, allowJpeg)
           : exp.canvas.toDataURL('image/png');
       } catch (e) {
         dataUrl = exp.canvas.toDataURL('image/png');
@@ -15632,11 +15982,8 @@
         pkg.expiresAt = Number(ticketRes.expiresAtMs);
       }
 
-      const updatedPkgJson = this._stringifyWithDeduplicatedSnapshots(pkg);
-      const updatedCompressedPkg = await this._compressJsonStringGzipBase64(updatedPkgJson);
-
-      // 4) 음성 데이터 Lazy Load 분리 준비
-      const cloudPkg = JSON.parse(updatedPkgJson);
+      // 4) 음성 데이터 Lazy Load 분리 준비 (불필요한 중복 Gzip 압축 및 문자열 재파싱 제거!)
+      const cloudPkg = this._fastCloneSlideValue(pkg);
       const audioMap = {};
       let hasAnyAudio = false;
       if (Array.isArray(cloudPkg.playlistSlides)) {
@@ -17107,6 +17454,9 @@
       if (typeof this._syncReplayFixedStageLayout === 'function') this._syncReplayFixedStageLayout();
       this._applyAudioTimelineStateAt(safeStartMs);
       this.updateProblemCardPosition();
+      if (typeof this.syncProblemCardRectFromWidget === 'function') {
+        this.syncProblemCardRectFromWidget();
+      }
       this.syncProblemCardRectFromWidget();
       this.syncGraphCardRectFromWidget();
       if (typeof this._refreshProblemCardImagesForReplayStage === 'function') {
@@ -17148,7 +17498,7 @@
       const rawSlides = this._getActiveSlidesForExport('수업 노트');
       if (!rawSlides || !rawSlides.length) return;
 
-      const previewSlides = JSON.parse(JSON.stringify(rawSlides)).map(s => {
+      const previewSlides = this._fastCloneSlideValue(rawSlides).map(s => {
         if (s) {
           delete s.viewerSnapshotDataUrl;
           delete s.viewerGraphHotspots;
@@ -17162,10 +17512,12 @@
         ? Math.max(0, Math.min(previewSlides.length - 1, this.lessonPlaylistIndex))
         : 0;
 
+      this._localEditBackupBeforeFilteredPreview = null;
       const pkg = {
         id: 'preview_' + Date.now().toString(36),
         createdAt: Date.now(),
         _isLocalPreview: true,
+        _isLocalDirectWorkspacePreview: true,
         promoBanner: this.getEffectiveSharePromoBanner(),
         exportScope: previewSlides.length > 1 ? 'all' : 'current',
         exportFilter: { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true },
@@ -17583,21 +17935,61 @@
       const missing = neighborIndices.filter(i => slides[i] && !slides[i].viewerSnapshotDataUrl);
       if (!missing.length) return;
 
-      await new Promise(r => setTimeout(r, 40));
-      if (this._viewerPrewarmToken !== token) return;
-      const overlay = document.getElementById('smartNoteViewerOverlay');
-      if (!overlay || overlay.style.display === 'none' || document.body.classList.contains('viewer-graph-touch-mode') || this._isAudioReplayActive) return;
+      const waitIdleStep = () => new Promise((resolve) => {
+        if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+          window.requestIdleCallback(() => resolve(), { timeout: 140 });
+        } else {
+          setTimeout(resolve, 65);
+        }
+      });
 
-      let generatedAny = false;
-      for (const nIdx of missing) {
+      const isViewerBusyAnimating = () => Boolean(
+        this._viewerCarouselTimer ||
+        this._isViewerPinching ||
+        this._viewerInertiaRafId ||
+        this._viewerSwitchingSlide
+      );
+
+      const prewarmTask = (async () => {
+        await waitIdleStep();
+        while (this._viewerPrewarmToken === token && isViewerBusyAnimating()) {
+          await new Promise(r => setTimeout(r, 80));
+        }
         if (this._viewerPrewarmToken !== token) return;
+        const overlay = document.getElementById('smartNoteViewerOverlay');
         if (!overlay || overlay.style.display === 'none' || document.body.classList.contains('viewer-graph-touch-mode') || this._isAudioReplayActive) return;
-        await this._ensureSlideViewerSnapshot(slides[nIdx]);
-        generatedAny = true;
-      }
-      if (generatedAny && this._viewerPrewarmToken === token && slides[this._viewerSlideIdx]) {
-        this.deserializeFullSlideState(slides[this._viewerSlideIdx]);
-        this._syncSmartViewerNeighborStages(this._viewerSlideIdx);
+
+        let generatedAny = false;
+        for (const nIdx of missing) {
+          while (this._viewerPrewarmToken === token && isViewerBusyAnimating()) {
+            await new Promise(r => setTimeout(r, 80));
+          }
+          if (this._viewerPrewarmToken !== token) return;
+          if (!overlay || overlay.style.display === 'none' || document.body.classList.contains('viewer-graph-touch-mode') || this._isAudioReplayActive) return;
+          await this._ensureSlideViewerSnapshot(slides[nIdx]);
+          generatedAny = true;
+          await waitIdleStep();
+        }
+        if (
+          generatedAny &&
+          this._viewerPrewarmToken === token &&
+          overlay &&
+          overlay.style.display !== 'none' &&
+          !document.body.classList.contains('viewer-graph-touch-mode') &&
+          !this._isAudioReplayActive &&
+          slides[this._viewerSlideIdx]
+        ) {
+          this.deserializeFullSlideState(slides[this._viewerSlideIdx]);
+          this._syncSmartViewerNeighborStages(this._viewerSlideIdx);
+        }
+      })();
+      this._inflightViewerPrewarmPromise = prewarmTask;
+      try {
+        await prewarmTask;
+      } finally {
+        if (this._inflightViewerPrewarmPromise === prewarmTask) {
+          this._inflightViewerPrewarmPromise = null;
+        }
       }
     }
 
@@ -18498,8 +18890,12 @@
     }
 
     async exitSmartNoteViewerToEditMode() {
+      this._viewerPrewarmToken = (this._viewerPrewarmToken || 0) + 1;
       this._commitPendingViewerCarouselImmediately();
       this._setSmartViewerCarouselAnimating(false);
+      if (this._inflightViewerPrewarmPromise) {
+        try { await this._inflightViewerPrewarmPromise; } catch (_) { }
+      }
       if (this._viewerPkg && typeof this._ensureCloudShareAudioLoaded === 'function') {
         const btnEdit = document.getElementById('btnViewerEnterEdit');
         const prevTxt = btnEdit ? btnEdit.innerHTML : '';
@@ -18530,8 +18926,34 @@
       if (touchBar) touchBar.style.display = 'none';
 
       if (this._viewerPkg) {
-        this._viewerPkg.currentIndex = this._viewerSlideIdx || 0;
-        this.applyCloudSharePackage(this._viewerPkg);
+        const targetIdx = this._viewerSlideIdx || 0;
+        if (this._viewerPkg._isLocalFilteredPreview && this._localEditBackupBeforeFilteredPreview) {
+          const bk = this._localEditBackupBeforeFilteredPreview;
+          this._localEditBackupBeforeFilteredPreview = null;
+          const safeIdx = bk.slides.length > 1
+            ? Math.max(0, Math.min(bk.slides.length - 1, this._viewerPkg.exportScope === 'all' ? targetIdx : bk.index))
+            : 0;
+          if (bk.isPlaylist || bk.slides.length > 1) {
+            this.startLessonPlaylist(bk.slides, safeIdx);
+          } else if (bk.slides[0]) {
+            this.isLessonPlaylistActive = false;
+            this.syncLessonPlaylistNavBarUI();
+            this.deserializeFullSlideState(bk.slides[0]);
+          }
+        } else if (
+          this._viewerPkg._isLocalDirectWorkspacePreview &&
+          this.isLessonPlaylistActive &&
+          Array.isArray(this.lessonPlaylistSlides) &&
+          this.lessonPlaylistSlides.length > 0 &&
+          this.lessonPlaylistSlides[targetIdx]
+        ) {
+          this.lessonPlaylistIndex = targetIdx;
+          this.deserializeFullSlideState(this.lessonPlaylistSlides[targetIdx]);
+          this.syncLessonPlaylistNavBarUI();
+        } else {
+          this._viewerPkg.currentIndex = targetIdx;
+          this.applyCloudSharePackage(this._viewerPkg);
+        }
       }
 
       const resetBar = document.getElementById('sharedResetBar');

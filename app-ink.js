@@ -6279,6 +6279,266 @@
       };
     }
 
+    _getOrAssignSlideLruId(slideRef) {
+      if (!slideRef || typeof slideRef !== 'object') return '';
+      if (slideRef._inkLruId) return slideRef._inkLruId;
+      const newId = 'slru_' + (++this._slideLruSeqCounter || (this._slideLruSeqCounter = 1));
+      try {
+        Object.defineProperty(slideRef, '_inkLruId', {
+          value: newId,
+          writable: true,
+          configurable: true,
+          enumerable: false
+        });
+      } catch (_) {
+        return '';
+      }
+      return newId;
+    }
+
+    _computeCurrentSlideInkBakeSignature() {
+      const strokes = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
+      if (strokes.length === 0) return '';
+      const { dpr, width, height, padX, padY } = this._getInkBakeMetrics();
+      let hash = 2166136261 >>> 0;
+      const mix = (n) => {
+        hash ^= (n | 0);
+        hash = Math.imul(hash, 16777619) >>> 0;
+      };
+      const mixStr = (str) => {
+        if (!str) return;
+        const len = str.length;
+        mix(len);
+        const step = len > 16 ? Math.floor(len / 8) : 1;
+        for (let i = 0; i < len; i += step) {
+          mix(str.charCodeAt(i));
+        }
+      };
+      let hasBoard = false;
+      let hasGraph = false;
+      let hasStamp = false;
+      for (let i = 0; i < strokes.length; i++) {
+        const s = strokes[i];
+        if (!s) continue;
+        const isBoard = (s.target || 'board') === 'board';
+        if (isBoard) hasBoard = true;
+        else hasGraph = true;
+        if (s.isGraphStamp) {
+          hasStamp = true;
+          if (s.graphStamp && s.graphStamp.kind === 'image') {
+            const c = s._stampCache;
+            if (!c || !c.img || !c.img.complete || !(c.img.naturalWidth > 0)) {
+              return '';
+            }
+            mix(c.img.naturalWidth);
+          }
+          mix(Array.isArray(s.graphStamp && s.graphStamp.cardStrokes) ? s.graphStamp.cardStrokes.length : 0);
+        }
+        mixStr(s.id || '');
+        mixStr(s.color || '');
+        mix(Math.round((s.size || 4) * 100));
+        mix(s.isHighlighter ? 1 : 0);
+        const pts = s.points;
+        const pLen = Array.isArray(pts) ? pts.length : 0;
+        mix(pLen);
+        if (pLen > 0) {
+          const p0 = pts[0];
+          const pN = pts[pLen - 1];
+          mix(Math.round((p0.x || 0) * 20));
+          mix(Math.round((p0.y || 0) * 20));
+          mix(Math.round((pN.x || 0) * 20));
+          mix(Math.round((pN.y || 0) * 20));
+        }
+        if (s.shape && s.shape.type) {
+          mixStr(s.shape.type);
+        }
+      }
+      if (!hasStamp && strokes.length < 8) return '';
+      const curThemeKey = this.currentThemeKey || 'white_paper';
+      const curTheme = (this.canvasThemes && this.canvasThemes[curThemeKey]) || { isLight: true };
+      const isLight = Boolean(curTheme.isLight || this.isMonochromeMode);
+      let darkProbClip = '';
+      if (!isLight && !this.isMonochromeMode && typeof this.hasActiveProblemCard === 'function' && this.hasActiveProblemCard()) {
+        if (typeof this.syncProblemCardRectFromWidget === 'function') {
+          this.syncProblemCardRectFromWidget();
+        }
+        if (this.problemCardRect) {
+          const r = this.problemCardRect;
+          darkProbClip = `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.w)},${Math.round(r.h)}`;
+        }
+      }
+      return [
+        strokes.length,
+        hash.toString(36),
+        hasBoard ? 1 : 0,
+        hasGraph ? 1 : 0,
+        curThemeKey,
+        this.isMonochromeMode ? 1 : 0,
+        this.pdfPageBoardData ? 1 : 0,
+        darkProbClip,
+        width,
+        height,
+        Math.round(dpr * 100),
+        padX,
+        padY,
+        Math.round((this.panX || 0) * 10),
+        Math.round((this.panY || 0) * 10),
+        Math.round((this.zoomLevel || 1.0) * 1000),
+        Math.round((this.boardPanX || 0) * 10),
+        Math.round((this.boardPanY || 0) * 10),
+        Math.round((this.boardZoom || 1.0) * 1000),
+        Math.round((this.boardZoomOffsetX || 0) * 10),
+        Math.round((this.boardZoomOffsetY || 0) * 10)
+      ].join('|');
+    }
+
+    _disposeSlideInkBakeLruEntry(entry) {
+      if (!entry) return;
+      if (entry.boardCanvas) {
+        try { entry.boardCanvas.width = 1; entry.boardCanvas.height = 1; } catch (_) { }
+        entry.boardCanvas = null;
+      }
+      if (entry.graphCanvas) {
+        try { entry.graphCanvas.width = 1; entry.graphCanvas.height = 1; } catch (_) { }
+        entry.graphCanvas = null;
+      }
+    }
+
+    _clearAllSlideInkBakeLruCache() {
+      if (!this._slideInkBakeLruMap) return;
+      for (const entry of this._slideInkBakeLruMap.values()) {
+        this._disposeSlideInkBakeLruEntry(entry);
+      }
+      this._slideInkBakeLruMap.clear();
+    }
+
+    _saveCurrentSlideInkBakeToLru(slideRef) {
+      if (!slideRef || this._isCapturingExportSnapshots || this._isAudioReplayActive) return false;
+      if (Array.isArray(this._pendingIncrementalBakeStrokes) && this._pendingIncrementalBakeStrokes.length > 0 && !this._inkBakeDirty) {
+        this._flushPendingIncrementalBakes();
+      }
+      if (this._inkBakeDirty || !this._hasBakedStrokes || !this._inkBakeCamera) return false;
+      if (this._lassoExcludedBakeSet && this._lassoExcludedBakeSet.size > 0) return false;
+      const sig = this._computeCurrentSlideInkBakeSignature();
+      if (!sig) return false;
+      const lruId = this._getOrAssignSlideLruId(slideRef);
+      if (!lruId) return false;
+
+      const cam = this._inkBakeCamera;
+      if (
+        cam.panX !== (this.panX || 0) ||
+        cam.panY !== (this.panY || 0) ||
+        cam.zoomLevel !== (this.zoomLevel || 1.0) ||
+        cam.boardPanX !== (this.boardPanX || 0) ||
+        cam.boardPanY !== (this.boardPanY || 0) ||
+        cam.boardZoom !== (this.boardZoom || 1.0) ||
+        cam.boardZoomOffsetX !== (this.boardZoomOffsetX || 0) ||
+        cam.boardZoomOffsetY !== (this.boardZoomOffsetY || 0)
+      ) {
+        return false;
+      }
+
+      if (!this._slideInkBakeLruMap) this._slideInkBakeLruMap = new Map();
+      const existing = this._slideInkBakeLruMap.get(lruId);
+      if (existing && existing.sig === sig) {
+        this._slideInkBakeLruMap.delete(lruId);
+        this._slideInkBakeLruMap.set(lruId, existing);
+        return true;
+      }
+      if (existing) {
+        this._disposeSlideInkBakeLruEntry(existing);
+        this._slideInkBakeLruMap.delete(lruId);
+      }
+
+      const strokes = this.inkStrokes || [];
+      let needBoard = false;
+      let needGraph = false;
+      for (let i = 0; i < strokes.length; i++) {
+        const s = strokes[i];
+        if (!s) continue;
+        if ((s.target || 'board') === 'board') needBoard = true;
+        else if (Boolean(s.onPdfBoard) === Boolean(this.pdfPageBoardData)) needGraph = true;
+      }
+      if (!needBoard && !needGraph) return false;
+
+      let boardCv = null;
+      let graphCv = null;
+      if (needBoard && this.inkBakeCanvas && this.inkBakeCanvas.width > 4 && this.inkBakeCanvas.height > 4) {
+        boardCv = document.createElement('canvas');
+        boardCv.width = this.inkBakeCanvas.width;
+        boardCv.height = this.inkBakeCanvas.height;
+        const bCtx = boardCv.getContext('2d');
+        if (bCtx) bCtx.drawImage(this.inkBakeCanvas, 0, 0);
+      }
+      if (needGraph && this.inkGraphBakeCanvas && this.inkGraphBakeCanvas.width > 4 && this.inkGraphBakeCanvas.height > 4) {
+        graphCv = document.createElement('canvas');
+        graphCv.width = this.inkGraphBakeCanvas.width;
+        graphCv.height = this.inkGraphBakeCanvas.height;
+        const gCtx = graphCv.getContext('2d');
+        if (gCtx) gCtx.drawImage(this.inkGraphBakeCanvas, 0, 0);
+      }
+
+      const isCompactMem = Boolean(
+        (typeof this.isIOSOrIPad === 'function' && this.isIOSOrIPad()) ||
+        (typeof window !== 'undefined' && (window.innerWidth <= 900 || window.innerHeight <= 600))
+      );
+      const maxEntries = isCompactMem ? 2 : 4;
+      while (this._slideInkBakeLruMap.size >= maxEntries) {
+        const oldestKey = this._slideInkBakeLruMap.keys().next().value;
+        if (oldestKey === undefined) break;
+        const oldEntry = this._slideInkBakeLruMap.get(oldestKey);
+        this._slideInkBakeLruMap.delete(oldestKey);
+        this._disposeSlideInkBakeLruEntry(oldEntry);
+      }
+
+      this._slideInkBakeLruMap.set(lruId, {
+        sig,
+        boardCanvas: boardCv,
+        graphCanvas: graphCv,
+        camera: { ...cam }
+      });
+      return true;
+    }
+
+    _tryRestoreSlideInkBakeFromLru(slideRef) {
+      if (!slideRef || !this._slideInkBakeLruMap || this._isCapturingExportSnapshots || this._isAudioReplayActive) return false;
+      const lruId = slideRef._inkLruId;
+      if (!lruId) return false;
+      const entry = this._slideInkBakeLruMap.get(lruId);
+      if (!entry) return false;
+
+      const sig = this._computeCurrentSlideInkBakeSignature();
+      if (!sig || entry.sig !== sig) return false;
+
+      this.clearInkCache();
+      if (entry.boardCanvas && this.inkBakeCtx && this.inkBakeCanvas) {
+        if (entry.boardCanvas.width !== this.inkBakeCanvas.width || entry.boardCanvas.height !== this.inkBakeCanvas.height) {
+          return false;
+        }
+        this.inkBakeCtx.save();
+        this.inkBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
+        this.inkBakeCtx.drawImage(entry.boardCanvas, 0, 0);
+        this.inkBakeCtx.restore();
+      }
+      if (entry.graphCanvas && this.inkGraphBakeCtx && this.inkGraphBakeCanvas) {
+        if (entry.graphCanvas.width !== this.inkGraphBakeCanvas.width || entry.graphCanvas.height !== this.inkGraphBakeCanvas.height) {
+          return false;
+        }
+        this.inkGraphBakeCtx.save();
+        this.inkGraphBakeCtx.setTransform(1, 0, 0, 1, 0, 0);
+        this.inkGraphBakeCtx.drawImage(entry.graphCanvas, 0, 0);
+        this.inkGraphBakeCtx.restore();
+      }
+
+      this._hasBakedStrokes = true;
+      this._inkBakeDirty = false;
+      this._inkBakeCamera = { ...entry.camera };
+
+      this._slideInkBakeLruMap.delete(lruId);
+      this._slideInkBakeLruMap.set(lruId, entry);
+      return true;
+    }
+
     _scheduleIdleInkCacheRebuild(delayMs = 350) {
       if (this._idleInkCacheRebuildTimer) {
         clearTimeout(this._idleInkCacheRebuildTimer);
@@ -6842,11 +7102,24 @@
           if (mScale > 0.1) ctxScale = mScale;
         }
       }
-      const effScale = Math.min(4.0, Math.max(1.5, ctxScale));
+      const rawThemeKey = this.currentThemeKey || 'white_paper';
+      const rawThemeObj = (this.canvasThemes && this.canvasThemes[rawThemeKey]) || { isLight: true };
+      const isExportPass = Boolean(
+        this._activeExportFilter &&
+        targetCtx !== this.ctx &&
+        targetCtx !== this.inkBakeCtx &&
+        targetCtx !== this.inkGraphBakeCtx
+      );
+      const isIOSMobile = Boolean(
+        (typeof this.isIOSOrIPad === 'function' && this.isIOSOrIPad()) ||
+        (typeof window !== 'undefined' && (window.innerWidth <= 768 || window.innerHeight <= 500))
+      );
+      const effScale = Math.min(isExportPass ? 5.0 : 4.0, Math.max(2.0, ctxScale));
       const rawPxW = Math.max(4, bw * effScale);
       const rawPxH = Math.max(4, bh * effScale);
-      const MAX_STAMP_SIDE = 2048;
-      const MAX_STAMP_AREA = 3600000;
+      const liveMaxArea = isIOSMobile ? 6800000 : 10000000;
+      const MAX_STAMP_SIDE = isExportPass ? (isIOSMobile ? 3840 : 4096) : (isIOSMobile ? 2880 : 3584);
+      const MAX_STAMP_AREA = isExportPass ? (isIOSMobile ? 12500000 : 15500000) : liveMaxArea;
       let clampRatio = 1.0;
       if (rawPxW > MAX_STAMP_SIDE || rawPxH > MAX_STAMP_SIDE) {
         clampRatio = Math.min(clampRatio, MAX_STAMP_SIDE / Math.max(rawPxW, rawPxH));
@@ -6857,14 +7130,6 @@
       const pxW = Math.max(4, Math.round((rawPxW * clampRatio) / 2) * 2);
       const pxH = Math.max(4, Math.round((rawPxH * clampRatio) / 2) * 2);
 
-      const rawThemeKey = this.currentThemeKey || 'white_paper';
-      const rawThemeObj = (this.canvasThemes && this.canvasThemes[rawThemeKey]) || { isLight: true };
-      const isExportPass = Boolean(
-        this._activeExportFilter &&
-        targetCtx !== this.ctx &&
-        targetCtx !== this.inkBakeCtx &&
-        targetCtx !== this.inkGraphBakeCtx
-      );
       const forceLightSurface = Boolean(
         stroke.onPdfBoard ||
         this.isMonochromeMode ||
@@ -6894,11 +7159,13 @@
 
       const gs = stroke.graphStamp;
       const omitStampCardInk = Boolean(isExportPass && this._activeExportFilter && this._activeExportFilter.includeInk === false);
+      const useTempExportCanvas = Boolean(isExportPass && (pxW * pxH > liveMaxArea) && typeof document !== 'undefined');
+      const workCanvas = useTempExportCanvas ? document.createElement('canvas') : cache.canvas;
       const cacheKey = `${pxW}x${pxH}|${effThemeKey}|${this.isMonochromeMode ? 1 : 0}|${forceLightSurface ? 1 : 0}|${omitStampCardInk ? 0 : (Array.isArray(gs.cardStrokes) ? gs.cardStrokes.length : 0)}`;
-      if (cache.key !== cacheKey || cache.canvas.width !== pxW || cache.canvas.height !== pxH) {
-        if (cache.canvas.width !== pxW) cache.canvas.width = pxW;
-        if (cache.canvas.height !== pxH) cache.canvas.height = pxH;
-        const sCtx = cache.canvas.getContext('2d');
+      if (useTempExportCanvas || cache.key !== cacheKey || workCanvas.width !== pxW || workCanvas.height !== pxH) {
+        if (workCanvas.width !== pxW) workCanvas.width = pxW;
+        if (workCanvas.height !== pxH) workCanvas.height = pxH;
+        const sCtx = workCanvas.getContext('2d');
         if (!sCtx) return;
 
         const logicalW = Math.max(80, Number(gs.logicalW) || (gs.snap && Number(gs.snap._pipCardW)) || 360);
@@ -7050,18 +7317,26 @@
           this.currentThemeKey = prevThemeKey;
           sCtx.restore();
         }
-        cache.key = readyToCache ? cacheKey : '';
+        if (!useTempExportCanvas) {
+          cache.key = readyToCache ? cacheKey : '';
+        }
       }
 
       const ghostMul = (typeof stroke._ghostAlpha === 'number') ? stroke._ghostAlpha : 1.0;
       targetCtx.save();
-      if (ghostMul < 0.999) {
-        targetCtx.globalAlpha = (targetCtx.globalAlpha || 1.0) * ghostMul;
+      try {
+        if (ghostMul < 0.999) {
+          targetCtx.globalAlpha = (targetCtx.globalAlpha || 1.0) * ghostMul;
+        }
+        targetCtx.imageSmoothingEnabled = true;
+        try { targetCtx.imageSmoothingQuality = 'high'; } catch (_) { }
+        targetCtx.drawImage(workCanvas, bx, by, bw, bh);
+      } finally {
+        targetCtx.restore();
+        if (useTempExportCanvas) {
+          try { workCanvas.width = 1; workCanvas.height = 1; } catch (_) { }
+        }
       }
-      targetCtx.imageSmoothingEnabled = true;
-      try { targetCtx.imageSmoothingQuality = 'high'; } catch (_) { }
-      targetCtx.drawImage(cache.canvas, bx, by, bw, bh);
-      targetCtx.restore();
     }
 
     renderSingleStroke(targetCtx, stroke, forceColor = null, isLiveDrawing = false) {

@@ -2796,7 +2796,7 @@
             ctx.fillRect(0, 0, sw, sh);
             ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
 
-            const dataUrl = this.encodeCanvasSmartWebP(cropCanvas, 0.85, true);
+            const dataUrl = this.encodeCanvasSmartWebP(cropCanvas, 0.88, true);
             const pageNum = this.cropTargetPageNum;
             const normCrop = {
               nx: x / rect.width,
@@ -2944,49 +2944,58 @@
     }
 
     async _upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop, targetRef = null) {
-      try {
-        if (!this.pdfDoc || !normCrop || normCrop.nw <= 0 || normCrop.nh <= 0) return;
-        const page = await this.pdfDoc.getPage(pageNum);
-        const baseVp = page.getViewport({ scale: 1.0 });
-        // 🌟 [뷰어 축소 배율(pdfZoom)과 무관한 4.8x~6.0x 초고해상도 벡터 캡처 보강]:
-        // 2단 모의고사의 긴 문제를 한 화면에 담기 위해 PDF 뷰어를 축소(예: 60%~100%)한 상태에서 캡처하더라도,
-        // 뷰어 반응속도는 100% 그대로 유지하고 칠판에 삽입되는 이미지만 원본 PDF 벡터 페이지(baseVp)에서
-        // 크롭 영역(normCrop)만 직접 추출하여 최소 가로 1,600px 보장(최대 변 4,200px) 칼화질로 렌더링합니다!
-        const rawCropW = Math.max(1, normCrop.nw * baseVp.width);
-        const rawCropH = Math.max(1, normCrop.nh * baseVp.height);
-        const desiredMinWidthPx = 1350;
-        let ultraScale = Math.max(3.2, Math.min(4.5, desiredMinWidthPx / rawCropW));
-        const maxDim = Math.max(rawCropW, rawCropH) * ultraScale;
-        if (maxDim > 2600) {
-          ultraScale = 2600 / Math.max(rawCropW, rawCropH);
+      const prevUpgrade = this._pendingCropVectorUpgradePromise;
+      const runUpgrade = async () => {
+        if (prevUpgrade) {
+          try { await prevUpgrade; } catch (_) { }
         }
-        const fullVp = page.getViewport({
-          scale: ultraScale,
-          offsetX: -normCrop.nx * baseVp.width * ultraScale,
-          offsetY: -normCrop.ny * baseVp.height * ultraScale
-        });
-        const targetW = Math.max(1, Math.round(rawCropW * ultraScale));
-        const targetH = Math.max(1, Math.round(rawCropH * ultraScale));
-        if (targetW > 3800 || targetH > 3800) return;
-
-        const vecCanvas = document.createElement('canvas');
-        vecCanvas.width = targetW;
-        vecCanvas.height = targetH;
-        const vCtx = vecCanvas.getContext('2d', { alpha: false }) || vecCanvas.getContext('2d');
-        vCtx.imageSmoothingEnabled = true;
-        vCtx.imageSmoothingQuality = 'high';
-        vCtx.fillStyle = '#ffffff';
-        vCtx.fillRect(0, 0, targetW, targetH);
-        await page.render({ canvasContext: vCtx, viewport: fullVp }).promise;
-
-        const ultraAspect = (vecCanvas.width > 0 && vecCanvas.height > 0) ? (vecCanvas.height / vecCanvas.width) : null;
-        const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.80, true);
-        vecCanvas._evicted = true;
         try {
-          vecCanvas.width = 1;
-          vecCanvas.height = 1;
-        } catch (e) { }
-        if (!ultraDataUrl) return;
+          if (!this.pdfDoc || !normCrop || normCrop.nw <= 0 || normCrop.nh <= 0) return;
+          const page = await this.pdfDoc.getPage(pageNum);
+          const baseVp = page.getViewport({ scale: 1.0 });
+          // 🌟 [뷰어 축소 배율(pdfZoom)과 무관한 4.0x~5.0x 통PDF급 초고해상도 벡터 캡처 보강]:
+          // 2단 모의고사의 긴 문제를 한 화면에 담기 위해 PDF 뷰어를 축소(예: 50%~100%)한 상태에서 캡처하더라도,
+          // 뷰어 반응속도는 100% 그대로 유지하고 칠판에 삽입되는 이미지만 원본 PDF 벡터 페이지(baseVp)에서
+          // 크롭 영역(normCrop)만 직접 추출하여 최소 가로 1,900px 지향(최대 변 3,800px · WebP 0.88) 칼화질로 렌더링합니다!
+          const rawCropW = Math.max(1, normCrop.nw * baseVp.width);
+          const rawCropH = Math.max(1, normCrop.nh * baseVp.height);
+          const desiredMinWidthPx = 1900;
+          let ultraScale = Math.max(4.0, Math.min(5.0, desiredMinWidthPx / rawCropW));
+          const maxDim = Math.max(rawCropW, rawCropH) * ultraScale;
+          if (maxDim > 3800) {
+            ultraScale = 3800 / Math.max(rawCropW, rawCropH);
+          }
+          const maxAreaPx = 14800000;
+          if ((rawCropW * ultraScale) * (rawCropH * ultraScale) > maxAreaPx) {
+            ultraScale = Math.sqrt(maxAreaPx / Math.max(1, rawCropW * rawCropH));
+          }
+          const fullVp = page.getViewport({
+            scale: ultraScale,
+            offsetX: -normCrop.nx * baseVp.width * ultraScale,
+            offsetY: -normCrop.ny * baseVp.height * ultraScale
+          });
+          const targetW = Math.max(1, Math.round(rawCropW * ultraScale));
+          const targetH = Math.max(1, Math.round(rawCropH * ultraScale));
+          if (targetW > 4032 || targetH > 4032) return;
+
+          const vecCanvas = document.createElement('canvas');
+          vecCanvas.width = targetW;
+          vecCanvas.height = targetH;
+          const vCtx = vecCanvas.getContext('2d', { alpha: false }) || vecCanvas.getContext('2d');
+          vCtx.imageSmoothingEnabled = true;
+          vCtx.imageSmoothingQuality = 'high';
+          vCtx.fillStyle = '#ffffff';
+          vCtx.fillRect(0, 0, targetW, targetH);
+          await page.render({ canvasContext: vCtx, viewport: fullVp }).promise;
+
+          const ultraAspect = (vecCanvas.width > 0 && vecCanvas.height > 0) ? (vecCanvas.height / vecCanvas.width) : null;
+          const ultraDataUrl = await this.encodeCanvasSmartWebPAsync(vecCanvas, 0.88, true);
+          vecCanvas._evicted = true;
+          try {
+            vecCanvas.width = 1;
+            vecCanvas.height = 1;
+          } catch (e) { }
+          if (!ultraDataUrl) return;
 
         // 1x1로 비운 vecCanvas 대신 내보내기([Ctrl+C]/PNG/공유) 시 즉시 사용할 디코딩 완료 Image 객체 준비
         let decodedUltraImg = null;
@@ -3127,8 +3136,18 @@
           }
         };
         applyUltraDomSwapWhenIdle();
-      } catch (err) {
-        // 벡터 보강 실패 시 기존 크롭 이미지 유지
+        } catch (err) {
+          // 벡터 보강 실패 시 기존 크롭 이미지 유지
+        }
+      };
+      const task = runUpgrade();
+      this._pendingCropVectorUpgradePromise = task;
+      try {
+        await task;
+      } finally {
+        if (this._pendingCropVectorUpgradePromise === task) {
+          this._pendingCropVectorUpgradePromise = null;
+        }
       }
     }
 
