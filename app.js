@@ -18,6 +18,9 @@
       this._autoPausedByAppBackground = false;
       this._hadBackgroundInterruptDuringPause = false;
       this._hadActiveMicInSession = false;
+      this._micTrackLostInSession = false;
+      this._notifiedMicLostInSession = false;
+      this._replaySavedLivePrimaryProb = null;
       this._audioWakeLockSentinel = null;
       this._pendingAudioResumePromise = null;
       this.isAudioMicMuted = false;
@@ -33,9 +36,6 @@
       this.audioTimeline = [];
       this.audioLaserStrokes = [];
       this.audioErasedStrokes = [];
-      this.audioLaserStrokes = [];
-      this.audioErasedStrokes = [];
-      this.audioErasedStrokes = [];
       this.audioInitialState = null;
       this.audioFinalState = null;
       this.audioSyncData = null;
@@ -46,6 +46,9 @@
       this.audioPlayCurrentMs = 0;
       this.audioPlaybackRate = 1.0;
       this.audioPlayerEl = null;
+      this._audioPlayerGestureUnlocked = false;
+      this._audioUnlockSeq = 0;
+      this._notifiedAudioCodecUnsupported = false;
       this._audioReplayRafId = null;
       this._audioRecordTimerId = null;
       this._lastAudioCursorRecordMs = -100;
@@ -173,6 +176,7 @@
           if (this.isAudioPlaying) {
             this.pauseAudioPlayback();
           } else {
+            this._unlockAudioPlayerForMobileGesture(false);
             this.playAudioSync();
           }
         };
@@ -374,7 +378,12 @@
           e.stopPropagation();
           this.stopAudioPlayback(true);
           this.audioSyncData = null;
+          this.audioLaserStrokes = [];
+          this.audioErasedStrokes = [];
           this._isAudioSyncPlayerVisible = false;
+          if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex] && typeof this.saveCurrentSlideIntoPlaylist === 'function') {
+            this.saveCurrentSlideIntoPlaylist();
+          }
           this.syncAudioRecordUI();
           this.render();
         };
@@ -423,6 +432,7 @@
         btnEndingReplay.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
+          this._unlockAudioPlayerForMobileGesture(false);
           if (typeof this.replayFromAudioLectureEndingOverlay === 'function') {
             this.replayFromAudioLectureEndingOverlay();
           }
@@ -907,6 +917,16 @@
       }
     }
 
+    _notifyAudioRecordTrackLost(reasonMsg) {
+      if (!this.isAudioRecording) return;
+      this._micTrackLostInSession = true;
+      this.syncAudioRecordUI();
+      if (!this._notifiedMicLostInSession && !this.isAudioMicMuted) {
+        this._notifiedMicLostInSession = true;
+        this.showToast(reasonMsg || '⚠️ 마이크 연결이 끊어져 음성이 녹음되지 않고 있습니다! 녹화를 멈추고 마이크를 확인해 주세요.');
+      }
+    }
+
     async _rolloverAudioRecorderInCurrentSlide() {
       if (!this.isAudioRecording) return false;
       const segStartMs = Math.max(0, Number(this._resumedSlideBaseOffsetMs) || 0);
@@ -1055,17 +1075,25 @@
             localChunks.push(ev.data);
           }
         };
-        recorder.onerror = () => { recorder._brokenByError = true; };
+        recorder.onerror = () => {
+          recorder._brokenByError = true;
+          this._notifyAudioRecordTrackLost('⚠️ 오디오 녹음기 오류가 발생하여 음성이 기록되지 않습니다. 녹화를 다시 시작해 주세요.');
+        };
         recorder.start(250);
         if (this.isAudioRecordPaused && recorder.state === 'recording') {
           try { recorder.pause(); } catch (_) { }
         }
         this.audioMediaRecorder = recorder;
         this._hadActiveMicInSession = true;
+        this._micTrackLostInSession = false;
+        this.syncAudioRecordUI();
         return true;
       } catch (_) {
         this._cleanupProcessedAudioStream();
         this.audioMediaRecorder = null;
+        if (this._hadActiveMicInSession) {
+          this._notifyAudioRecordTrackLost('⚠️ 마이크 재연결에 실패하여 이후 구간이 무음으로 기록됩니다.');
+        }
         return false;
       }
     }
@@ -1168,6 +1196,7 @@
       if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
         return null;
       }
+      this._setIosAudioSessionMode('play-and-record');
       const rawStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -1178,9 +1207,16 @@
         }
       });
       this.audioRawStream = rawStream;
+      this._micTrackLostInSession = false;
+      this._notifiedMicLostInSession = false;
       try {
         rawStream.getAudioTracks().forEach(tr => {
           tr.enabled = !this.isAudioMicMuted;
+          tr.onended = () => {
+            if (this.isAudioRecording && !this.isAudioRecordPaused && this.audioRawStream === rawStream) {
+              this._notifyAudioRecordTrackLost('⚠️ 마이크 연결이 끊어져 음성이 녹음되지 않고 있습니다! 녹화를 멈추고 마이크를 확인해 주세요.');
+            }
+          };
         });
       } catch (e) { }
 
@@ -1317,7 +1353,10 @@
       }
       if (this.audioRawStream) {
         try {
-          this.audioRawStream.getTracks().forEach(tr => tr.stop());
+          this.audioRawStream.getTracks().forEach(tr => {
+            tr.onended = null;
+            tr.stop();
+          });
         } catch (e) { }
         this.audioRawStream = null;
       }
@@ -1329,9 +1368,17 @@
         } catch (e) { }
         this._audioVoiceContext = null;
       }
+      if (!this.isAudioPlaying) {
+        this._setIosAudioSessionMode('auto');
+      }
     }
 
     toggleAudioMicMute(forceMuted = null) {
+      if (this.isAudioRecording && forceMuted === null && (!this._hadActiveMicInSession || this._micTrackLostInSession)) {
+        this.syncAudioRecordUI();
+        this.showToast('⚠️ 마이크 권한이 없거나 연결이 끊어진 상태입니다. 녹화를 멈추고 마이크 설정을 확인해 주세요.');
+        return true;
+      }
       this.isAudioMicMuted = (typeof forceMuted === 'boolean') ? forceMuted : !this.isAudioMicMuted;
       if (this.audioRawStream) {
         try {
@@ -1599,34 +1646,57 @@
       }
     }
 
-    _beginNextSlideAudioSegmentAfterSwitch() {
-      if (!this.isAudioRecording) return;
-      const markPreExisting = (arr) => {
+    _markSlideItemsPreExistingForAudio(forceReset = false) {
+      const markStrokes = (arr) => {
         if (!Array.isArray(arr)) return;
         arr.forEach(st => {
-          if (st && st.tStart === undefined) {
+          if (!st) return;
+          if (forceReset) {
+            st.preExisting = true;
+            delete st.tStart;
+            delete st.tEnd;
+          } else if (st.tStart === undefined) {
             st.preExisting = true;
           }
         });
       };
-      markPreExisting(this.inkStrokes);
-      markPreExisting(this.problemInkStrokes);
-      markPreExisting(this.graphInkStrokes);
+      const resetStickers = (arr) => {
+        if (!forceReset || !Array.isArray(arr)) return;
+        arr.forEach(stk => {
+          if (stk && stk.tStart !== undefined) delete stk.tStart;
+        });
+      };
+      markStrokes(this.inkStrokes);
+      markStrokes(this.problemInkStrokes);
+      markStrokes(this.graphInkStrokes);
+      resetStickers(this.boardStickers);
+      resetStickers(this.problemCardStickers);
+      resetStickers(this.graphCardStickers);
       if (this.extraProblemCards) {
         this.extraProblemCards.forEach(c => {
-          if (c && c.el && Array.isArray(c.el._cardInkStrokes)) markPreExisting(c.el._cardInkStrokes);
+          if (c && c.el) {
+            if (Array.isArray(c.el._cardInkStrokes)) markStrokes(c.el._cardInkStrokes);
+            if (Array.isArray(c.el._cardStickers)) resetStickers(c.el._cardStickers);
+          }
         });
       }
       if (this.extraGraphCards) {
         this.extraGraphCards.forEach(c => {
-          if (c && c.el && Array.isArray(c.el._cardInkStrokes)) markPreExisting(c.el._cardInkStrokes);
+          if (c && c.el) {
+            if (Array.isArray(c.el._cardInkStrokes)) markStrokes(c.el._cardInkStrokes);
+            if (Array.isArray(c.el._cardStickers)) resetStickers(c.el._cardStickers);
+          }
         });
       }
+    }
 
+    _beginNextSlideAudioSegmentAfterSwitch() {
+      if (!this.isAudioRecording) return;
       const isSameSession = !this._currentAudioRecordingSessionId || !this.audioSyncData || !this.audioSyncData.sessionId || this.audioSyncData.sessionId === this._currentAudioRecordingSessionId;
       const prevSync = (isSameSession && this.audioSyncData && typeof this.audioSyncData.durationMs === 'number' && this.audioSyncData.durationMs > 0)
         ? this._expandAudioSyncData(this.audioSyncData)
         : null;
+      this._markSlideItemsPreExistingForAudio(!prevSync);
 
       const localChunks = [];
       this.audioSyncData = null;
@@ -1715,6 +1785,9 @@
                 this.audioMediaStream = await this._acquireProcessedAudioStream();
               } catch (micReacqErr) {
                 this._cleanupProcessedAudioStream();
+                if (this._hadActiveMicInSession) {
+                  this._notifyAudioRecordTrackLost('⚠️ 마이크 연결이 끊어져 이후 슬라이드가 무음으로 기록됩니다.');
+                }
               }
             }
             this._hadBackgroundInterruptDuringPause = false;
@@ -1731,14 +1804,23 @@
                 localChunks.push(ev.data);
               }
             };
-            recorder.onerror = () => { recorder._brokenByError = true; };
+            recorder.onerror = () => {
+              recorder._brokenByError = true;
+              this._notifyAudioRecordTrackLost('⚠️ 오디오 녹음기 오류가 발생하여 음성이 기록되지 않습니다. 녹화를 다시 시작해 주세요.');
+            };
             recorder.start(250);
             if (this.isAudioRecordPaused && recorder.state === 'recording') {
               try { recorder.pause(); } catch (e) { }
             }
             this.audioMediaRecorder = recorder;
+            this._hadActiveMicInSession = true;
+            this._micTrackLostInSession = false;
+            this.syncAudioRecordUI();
           } catch (e) {
             this.audioMediaRecorder = null;
+            if (this._hadActiveMicInSession) {
+              this._notifyAudioRecordTrackLost('⚠️ 오디오 녹음기 시작에 실패하여 무음으로 기록됩니다.');
+            }
           }
         };
         starterPromise = startNextRecorder().finally(() => {
@@ -2076,6 +2158,208 @@
       };
     }
 
+    _restoreTempReplayProblemCards() {
+      if (this._replaySavedLivePrimaryProb) {
+        const bk = this._replaySavedLivePrimaryProb;
+        this._replaySavedLivePrimaryProb = null;
+        this.problemCardData = bk.problemCardData;
+        this.problemCardAspect = bk.problemCardAspect;
+        this.problemCardImage = bk.problemCardImage;
+        this.problemInkStrokes = Array.isArray(bk.problemInkStrokes) ? bk.problemInkStrokes : [];
+        const pImgEl = typeof document !== 'undefined' ? document.getElementById('problemCardImg') : null;
+        const pTitleEl = typeof document !== 'undefined' ? document.getElementById('problemCardTitle') : null;
+        const pWidget = typeof document !== 'undefined' ? document.getElementById('problemCardWidget') : null;
+        const pCanvas = typeof document !== 'undefined' ? document.getElementById('problemCardCanvas') : null;
+        if (pCanvas) {
+          pCanvas._bakeValid = false;
+          pCanvas._displaySyncedCount = -1;
+        }
+        if (pImgEl) pImgEl.src = bk.imgSrc || '';
+        if (pTitleEl && typeof bk.titleText === 'string') pTitleEl.textContent = bk.titleText;
+        if (!this.problemCardData) {
+          this.problemCardRect = null;
+          if (pWidget) pWidget.style.display = 'none';
+        }
+      } else if (this.problemCardData && this.problemCardData._tempFromProblemStamp) {
+        this.problemCardData = null;
+        this.problemCardImage = null;
+        this.problemCardRect = null;
+        this.problemInkStrokes = [];
+        const pWidget = typeof document !== 'undefined' ? document.getElementById('problemCardWidget') : null;
+        if (pWidget) pWidget.style.display = 'none';
+      }
+      if (Array.isArray(this.extraProblemCards) && this.extraProblemCards.some(c => c && c._tempFromProblemStamp)) {
+        this.extraProblemCards = this.extraProblemCards.filter(c => {
+          if (c && c._tempFromProblemStamp) {
+            if (c.el) {
+              if (typeof this.clearProblemCardStealthTimer === 'function') this.clearProblemCardStealthTimer(c.el);
+              if (typeof this._hibernateDetachedCardCanvases === 'function') this._hibernateDetachedCardCanvases(c.el);
+              if (this._activePeekCardEl === c.el) this._activePeekCardEl = null;
+              c.el.remove();
+            }
+            return false;
+          }
+          return true;
+        });
+      }
+    }
+
+    _syncReplayProblemCardsFromStamps(kf) {
+      const isReplayMode = Boolean(this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode);
+      if (!isReplayMode || !kf) {
+        this._restoreTempReplayProblemCards();
+        return;
+      }
+      const playMs = Math.max(0, Number(this.audioPlayCurrentMs) || 0);
+      const allSt = [
+        ...(this.inkStrokes || []),
+        ...((this.audioSyncData && Array.isArray(this.audioSyncData.erasedStrokes)) ? this.audioSyncData.erasedStrokes : [])
+      ];
+
+      // 1) 기본 문제 카드(#problemCardWidget): 박제 시점(tStart) 이전 구간에 스탬프 원본 이미지·필기 임시 바인딩
+      let matchedPrimaryStamp = null;
+      if (kf.probCardVisible) {
+        let bestT = Infinity;
+        for (let i = 0; i < allSt.length; i++) {
+          const s = allSt[i];
+          if (!s || !s.isProblemStamp || !s.graphStamp || !s.graphStamp.dataUrl) continue;
+          const gs = s.graphStamp;
+          if (gs.isExtraProblemCard || gs.refCardW === 480) continue;
+          const tSt = (typeof s.tStart === 'number') ? s.tStart : Infinity;
+          if (tSt > playMs && (s.erasedAt === undefined || s.erasedAt > playMs || !this.problemCardData || this.problemCardData._tempFromProblemStamp)) {
+            if (tSt < bestT) {
+              bestT = tSt;
+              matchedPrimaryStamp = s;
+            }
+          }
+        }
+      }
+
+      if (matchedPrimaryStamp) {
+        const gs = matchedPrimaryStamp.graphStamp;
+        const stampTag = matchedPrimaryStamp.id || `${matchedPrimaryStamp.tStart || 0}_${gs.logicalW || 0}`;
+        if (!this._replaySavedLivePrimaryProb) {
+          const pImgEl = typeof document !== 'undefined' ? document.getElementById('problemCardImg') : null;
+          const pTitleEl = typeof document !== 'undefined' ? document.getElementById('problemCardTitle') : null;
+          this._replaySavedLivePrimaryProb = {
+            problemCardData: (this.problemCardData && !this.problemCardData._tempFromProblemStamp) ? this.problemCardData : null,
+            problemCardAspect: this.problemCardAspect,
+            problemCardImage: this.problemCardImage,
+            problemInkStrokes: Array.isArray(this.problemInkStrokes) ? [...this.problemInkStrokes] : [],
+            imgSrc: pImgEl ? pImgEl.src : '',
+            titleText: pTitleEl ? pTitleEl.textContent : '문제'
+          };
+        }
+        if (!this.problemCardData || this.problemCardData._tempFromProblemStamp !== stampTag) {
+          this.problemCardData = { imgUrl: gs.dataUrl, _tempFromProblemStamp: stampTag };
+          this.problemCardAspect = (gs.logicalW > 0 && gs.logicalH > 0) ? (gs.logicalH / gs.logicalW) : 0.65;
+          this.problemCardImage = (matchedPrimaryStamp._stampCache && matchedPrimaryStamp._stampCache.img) || null;
+          this.problemInkStrokes = Array.isArray(gs.cardStrokes) ? JSON.parse(JSON.stringify(gs.cardStrokes)) : [];
+          const pCanvas = typeof document !== 'undefined' ? document.getElementById('problemCardCanvas') : null;
+          if (pCanvas) {
+            pCanvas._bakeValid = false;
+            pCanvas._displaySyncedCount = -1;
+          }
+          const pImgEl = typeof document !== 'undefined' ? document.getElementById('problemCardImg') : null;
+          if (pImgEl && pImgEl.src !== gs.dataUrl) {
+            pImgEl.onload = () => {
+              if (this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode) {
+                this.syncProblemCardRectFromWidget();
+                this.requestRender();
+              }
+            };
+            pImgEl.src = gs.dataUrl;
+          }
+        }
+      } else if (this._replaySavedLivePrimaryProb || (this.problemCardData && this.problemCardData._tempFromProblemStamp)) {
+        const bk = this._replaySavedLivePrimaryProb;
+        this._replaySavedLivePrimaryProb = null;
+        if (bk) {
+          this.problemCardData = bk.problemCardData;
+          this.problemCardAspect = bk.problemCardAspect;
+          this.problemCardImage = bk.problemCardImage;
+          this.problemInkStrokes = Array.isArray(bk.problemInkStrokes) ? bk.problemInkStrokes : [];
+          const pCanvas = typeof document !== 'undefined' ? document.getElementById('problemCardCanvas') : null;
+          if (pCanvas) {
+            pCanvas._bakeValid = false;
+            pCanvas._displaySyncedCount = -1;
+          }
+          const pImgEl = typeof document !== 'undefined' ? document.getElementById('problemCardImg') : null;
+          if (pImgEl && pImgEl.src !== (bk.imgSrc || '')) pImgEl.src = bk.imgSrc || '';
+          const pTitleEl = typeof document !== 'undefined' ? document.getElementById('problemCardTitle') : null;
+          if (pTitleEl && typeof bk.titleText === 'string') pTitleEl.textContent = bk.titleText;
+        } else {
+          this.problemCardData = null;
+          this.problemCardImage = null;
+          this.problemInkStrokes = [];
+        }
+        if (!this.problemCardData || !kf.probCardVisible) {
+          this.problemCardRect = null;
+          const pWidget = typeof document !== 'undefined' ? document.getElementById('problemCardWidget') : null;
+          if (pWidget) pWidget.style.display = 'none';
+        }
+      }
+
+      // 2) 추가 문제 카드(extraProblemCards): 박제된 추가 문제 스탬프가 있으면 박제 전 구간 동안 임시 소환
+      const targetExtraProbCount = typeof kf.extraProbsCount === 'number'
+        ? kf.extraProbsCount
+        : (Array.isArray(kf.extraProbStates) ? kf.extraProbStates.length : 0);
+      if (Array.isArray(this.extraProblemCards)) {
+        this.extraProblemCards = this.extraProblemCards.filter((c, idx) => {
+          if (c && c._tempFromProblemStamp) {
+            const stRef = c._tempStampRef;
+            const expired = !stRef || (typeof stRef.tStart === 'number' && stRef.tStart <= playMs) || idx >= targetExtraProbCount;
+            if (expired) {
+              if (c.el) {
+                if (typeof this.clearProblemCardStealthTimer === 'function') this.clearProblemCardStealthTimer(c.el);
+                if (typeof this._hibernateDetachedCardCanvases === 'function') this._hibernateDetachedCardCanvases(c.el);
+                if (this._activePeekCardEl === c.el) this._activePeekCardEl = null;
+                c.el.remove();
+              }
+              return false;
+            }
+          }
+          return true;
+        });
+      }
+      const curExtraLen = Array.isArray(this.extraProblemCards) ? this.extraProblemCards.length : 0;
+      if (targetExtraProbCount > curExtraLen && typeof this.spawnExtraProblemCard === 'function') {
+        const extraCands = allSt.filter(s => {
+          if (!s || !s.isProblemStamp || !s.graphStamp || !s.graphStamp.dataUrl) return false;
+          const gs = s.graphStamp;
+          if (!gs.isExtraProblemCard && gs.refCardW !== 480) return false;
+          return typeof s.tStart === 'number' && s.tStart > playMs;
+        }).sort((a, b) => (a.tStart || 0) - (b.tStart || 0));
+        const usedIds = new Set((this.extraProblemCards || []).map(c => c && c._tempFromProblemStamp).filter(Boolean));
+        for (let i = 0; i < extraCands.length && (this.extraProblemCards ? this.extraProblemCards.length : 0) < targetExtraProbCount; i++) {
+          const eSt = extraCands[i];
+          const eTag = eSt.id || `${eSt.tStart}_${i}`;
+          if (usedIds.has(eTag)) continue;
+          const gs = eSt.graphStamp;
+          const stCfg = (Array.isArray(kf.extraProbStates) && kf.extraProbStates[(this.extraProblemCards || []).length]) || null;
+          const spawned = this.spawnExtraProblemCard(
+            gs.dataUrl,
+            (this.extraProblemCards ? this.extraProblemCards.length : 0) + 2,
+            (stCfg && typeof stCfg.w === 'number') ? stCfg.w : (gs.logicalW || 480),
+            null,
+            {
+              customX: stCfg && typeof stCfg.baseX === 'number' ? stCfg.baseX : 104,
+              customY: stCfg && typeof stCfg.baseY === 'number' ? stCfg.baseY : 50,
+              startMinimized: Boolean(stCfg && stCfg.min)
+            }
+          );
+          if (spawned) {
+            spawned._tempFromProblemStamp = eTag;
+            spawned._tempStampRef = eSt;
+            if (spawned.el) {
+              spawned.el._cardInkStrokes = Array.isArray(gs.cardStrokes) ? JSON.parse(JSON.stringify(gs.cardStrokes)) : [];
+            }
+            usedIds.add(eTag);
+          }
+        }
+      }
+    }
+
     _applyAudioWorkspaceKeyframe(kf) {
       if (!kf) return;
       this._currentAppliedAudioKeyframe = kf;
@@ -2148,9 +2432,13 @@
           if (gW && typeof gW._renderCardStickers === 'function') gW._renderCardStickers();
         }
 
+        this._syncReplayProblemCardsFromStamps(kf);
         const pWidget = document.getElementById('problemCardWidget');
         if (pWidget && this.problemCardData) {
           pWidget.style.display = kf.probCardVisible ? 'flex' : 'none';
+          if (!kf.probCardVisible) {
+            this.problemCardRect = null;
+          }
           pWidget.classList.toggle('minimized', Boolean(kf.probCardMin));
           this.isProblemCardMinimized = Boolean(kf.probCardMin);
           if (kf.probCardInkActive !== undefined) {
@@ -3107,27 +3395,21 @@
         this._sessionBasePriorRecordedMs = priorOtherSlidesMs;
         this._warnedEndingSoonInSession = false;
 
-        // 녹음 시작 전 이미 그려져 있던 스트로크들은 배경 스트로크(preExisting: true)로 마킹하여 영상 모드에서도 처음부터 보이게 유지
-        const markPreExisting = (arr) => {
-          if (!Array.isArray(arr)) return;
-          arr.forEach(st => {
-            if (st && st.tStart === undefined) {
-              st.preExisting = true;
-            }
-          });
-        };
-        markPreExisting(this.inkStrokes);
-        markPreExisting(this.problemInkStrokes);
-        markPreExisting(this.graphInkStrokes);
+        // 녹음 시작 전 이미 그려져 있던 스트로크·스티커들은 배경 요소(preExisting: true)로 마킹하여 재녹음 시에도 유령 애니메이션 없이 처음부터 보이게 유지
+        this._markSlideItemsPreExistingForAudio(true);
 
         this.audioRecordedChunks = [];
         this.audioTimeline = [];
+        this.audioLaserStrokes = [];
+        this.audioErasedStrokes = [];
         this.audioMediaStream = null;
         this.audioMediaRecorder = null;
         this._lastRecorderStopPromise = null;
         this._pendingSlideRecorderStarter = null;
         this._pendingAudioResumePromise = null;
         this._hadActiveMicInSession = false;
+        this._micTrackLostInSession = false;
+        this._notifiedMicLostInSession = false;
         this._audioMimeType = 'audio/webm';
 
         if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function' && window.MediaRecorder) {
@@ -3159,7 +3441,10 @@
                 localChunks.push(ev.data);
               }
             };
-            recorder.onerror = () => { recorder._brokenByError = true; };
+            recorder.onerror = () => {
+              recorder._brokenByError = true;
+              this._notifyAudioRecordTrackLost('⚠️ 오디오 녹음기 오류가 발생하여 음성이 기록되지 않습니다. 녹화를 다시 시작해 주세요.');
+            };
             recorder.start(250);
             this.audioMediaRecorder = recorder;
             this._hadActiveMicInSession = true;
@@ -3234,7 +3519,11 @@
         }, 200);
 
         this.syncAudioRecordUI();
-        this.showToast('🎬 영상 녹화가 시작되었습니다. (다시 누르면 일시정지 / 종료)');
+        if (!this._hadActiveMicInSession && !this.isAudioMicMuted) {
+          this.showToast('⚠️ 마이크 권한이 없거나 장치를 찾을 수 없어 [무음(필기만)]으로 녹화됩니다.');
+        } else {
+          this.showToast('🎬 영상 녹화가 시작되었습니다. (다시 누르면 일시정지 / 종료)');
+        }
       } finally {
         this._isStartingAudioRecording = false;
       }
@@ -3271,6 +3560,8 @@
         this._autoPausedByAppBackground = false;
         this._hadBackgroundInterruptDuringPause = false;
         this._hadActiveMicInSession = false;
+        this._micTrackLostInSession = false;
+        this._notifiedMicLostInSession = false;
         this._releaseAudioRecordWakeLock();
         this._isAudioRecMenuOpen = false;
         this.audioRecordPauseStartMs = 0;
@@ -3482,10 +3773,15 @@
         const btnMic = document.getElementById('btnAudioMicMuteToggle');
         const iconMic = document.getElementById('iconAudioMicMute');
         const lblMic = document.getElementById('lblAudioMicMute');
-        const isMuted = Boolean(this.isAudioMicMuted);
+        const micUnavailable = Boolean(!this._hadActiveMicInSession || this._micTrackLostInSession);
+        const isMuted = Boolean(this.isAudioMicMuted || micUnavailable);
         if (btnMic) btnMic.classList.toggle('is-muted', isMuted);
         if (iconMic) iconMic.textContent = isMuted ? '🔇' : '🎤';
-        if (lblMic) lblMic.textContent = isMuted ? '무음 녹화' : '마이크 ON';
+        if (lblMic) {
+          lblMic.textContent = (micUnavailable && !this.isAudioMicMuted)
+            ? '마이크 없음(무음)'
+            : (isMuted ? '무음 녹화' : '마이크 ON');
+        }
         return;
       }
 
@@ -4978,12 +5274,58 @@
       return null;
     }
 
-    _syncAudioPlayerToPlayMs(playMs, shouldPlay = false) {
-      if (!this.audioSyncData) return null;
+    _setIosAudioSessionMode(mode) {
+      if (typeof navigator === 'undefined' || !navigator.audioSession) return;
+      try {
+        if (navigator.audioSession.type !== mode) {
+          navigator.audioSession.type = mode;
+        }
+      } catch (_) { }
+    }
+
+    _ensureAudioPlayerElement() {
       if (!this.audioPlayerEl) {
         this.audioPlayerEl = new Audio();
         this.audioPlayerEl.preload = 'auto';
+        this.audioPlayerEl.playsInline = true;
+        try {
+          this.audioPlayerEl.setAttribute('playsinline', '');
+          this.audioPlayerEl.setAttribute('webkit-playsinline', '');
+        } catch (_) { }
       }
+      return this.audioPlayerEl;
+    }
+
+    _unlockAudioPlayerForMobileGesture(needsAsyncPrime = false) {
+      if (this.isAudioRecording) return;
+      this._setIosAudioSessionMode('playback');
+      const player = this._ensureAudioPlayerElement();
+      if (!needsAsyncPrime || this._audioPlayerGestureUnlocked || this.isAudioPlaying) return;
+      const seq = (this._audioUnlockSeq = (this._audioUnlockSeq || 0) + 1);
+      this._audioPlayerGestureUnlocked = true;
+      this._activeAudioSegmentIdx = -1;
+      try {
+        player.src = this._createSilentWavDataUrl(40);
+        const p = player.play();
+        if (p && typeof p.then === 'function') {
+          p.then(() => {
+            if (this._audioUnlockSeq === seq && !this.isAudioPlaying && this.audioPlayerEl === player) {
+              try { player.pause(); } catch (_) { }
+            }
+          }).catch((err) => {
+            if (this._audioUnlockSeq === seq && (!err || err.name !== 'AbortError')) {
+              this._audioPlayerGestureUnlocked = false;
+            }
+          });
+        }
+      } catch (_) {
+        this._audioPlayerGestureUnlocked = false;
+      }
+    }
+
+    _syncAudioPlayerToPlayMs(playMs, shouldPlay = false) {
+      if (!this.audioSyncData) return null;
+      this._ensureAudioPlayerElement();
       const seg = this._getActiveAudioSegmentAt(playMs);
       if (!seg || !seg.audioDataUrl) return seg;
       const segChanged = (this._activeAudioSegmentIdx !== seg.idx || this.audioPlayerEl.src !== seg.audioDataUrl);
@@ -5019,10 +5361,24 @@
         } catch (e) { }
       }
       if (shouldPlay) {
+        this._setIosAudioSessionMode('playback');
+        const playSeq = (this._audioUnlockSeq = (this._audioUnlockSeq || 0) + 1);
         try {
           const playPromise = this.audioPlayerEl.play();
-          if (playPromise && typeof playPromise.catch === 'function') {
-            playPromise.catch(() => { });
+          if (playPromise && typeof playPromise.then === 'function') {
+            playPromise.then(() => {
+              this._audioPlayerGestureUnlocked = true;
+            }).catch((err) => {
+              if (this._audioUnlockSeq !== playSeq || !this.isAudioPlaying) return;
+              if (err && err.name === 'NotAllowedError') {
+                this.pauseAudioPlayback(false);
+                this.showAudioPlayerBarTemporarily(4000);
+                this.showToast('🔊 화면 하단의 [▶] 재생 버튼을 한 번 눌러 음성을 켜주세요.');
+              } else if (err && err.name === 'NotSupportedError' && !this._notifiedAudioCodecUnsupported) {
+                this._notifiedAudioCodecUnsupported = true;
+                this.showToast('ℹ️ 현재 기기 브라우저에서 음성 코덱이 제한되어 필기 영상으로 재생됩니다.');
+              }
+            });
           }
         } catch (e) { }
       }
@@ -5351,6 +5707,7 @@
         this._syncReplayFixedStageLayout();
         this._clearAudioReplaySmartUiState();
         if (this.virtualStylusEl) this.virtualStylusEl.style.display = 'none';
+        this._restoreTempReplayProblemCards();
         this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
         this.renderProblemCardCanvas();
         this.renderGraphCardCanvas();
@@ -5392,6 +5749,7 @@
       if (this.virtualStylusEl) {
         this.virtualStylusEl.style.display = 'none';
       }
+      this._restoreTempReplayProblemCards();
       if (wasReplayActive && restoreFinal && this.audioSyncData && this.audioSyncData.finalState) {
         this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
       }
@@ -5438,6 +5796,7 @@
 
     async enterAudioLectureFromViewer(slideIdx = 0, mode = 'video', startMs = 0) {
       if (!this._viewerPkg || !this._viewerPkg.playlistSlides || !this._viewerPkg.playlistSlides[slideIdx]) return;
+      this._unlockAudioPlayerForMobileGesture(true);
       const btnWatch = document.getElementById('btnViewerWatchVideo');
       const prevHtml = btnWatch ? btnWatch.innerHTML : '';
       if (typeof this._ensureCloudShareAudioLoaded === 'function' && (this._viewerPkg._hasLazyAudio || (this._viewerPkg.playlistSlides[slideIdx].audioSyncData && this._viewerPkg.playlistSlides[slideIdx].audioSyncData._isLazyAudioStub))) {

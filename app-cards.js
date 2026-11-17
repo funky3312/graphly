@@ -10564,6 +10564,8 @@
         graphStamp: {
           kind: 'image',
           isProblemCard: true,
+          isExtraProblemCard: !isPrimary,
+          extraCardIdx: (!isPrimary && Array.isArray(this.extraProblemCards)) ? this.extraProblemCards.indexOf(cardRef) : -1,
           refCardW: isPrimary ? 520 : 480,
           logicalW,
           logicalH,

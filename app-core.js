@@ -7642,6 +7642,15 @@ class GraphApp {
     if (btnPreviewViewer) {
       btnPreviewViewer.onclick = async () => {
         if (modal) modal.classList.remove('show');
+        if ((this.isAudioRecording || this._stoppingAudioRecordingPromise) && typeof this.stopAudioRecording === 'function') {
+          await (this._stoppingAudioRecordingPromise || this.stopAudioRecording()).catch(() => { });
+        }
+        if (Array.isArray(this._pendingSlideAudioFinalizers) && this._pendingSlideAudioFinalizers.length > 0) {
+          await Promise.all([...this._pendingSlideAudioFinalizers]).catch(() => { });
+        }
+        if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0 && typeof this.saveCurrentSlideIntoPlaylist === 'function') {
+          this.saveCurrentSlideIntoPlaylist();
+        }
         const f = this.exportFilter || {};
         const isFiltered = (f.includeProblem === false || f.includeGraph === false || f.includeInk === false || f.includeAudio === false);
         const isPartialSingleScopeOnPlaylist = Boolean(
@@ -7834,75 +7843,108 @@ class GraphApp {
       inpDeckTitle.addEventListener('change', syncDeckTitleToCloud);
     }
 
-    const getShareModalFilteredSlides = () => {
-      const fallbackTitle = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : '공유된 수업 세트';
-      return this._getFilteredSlidesForExport(fallbackTitle, this.exportScope, this.exportFilter);
+    const isExportFilterFullChecked = () => {
+      const f = this.exportFilter || {};
+      return f.includeProblem !== false && f.includeGraph !== false && f.includeInk !== false && f.includeAudio !== false;
     };
 
-    const getExportStageSuffixLabel = () => {
-      const f = this.exportFilter || {};
-      const p = f.includeProblem !== false;
-      const g = f.includeGraph !== false;
-      const i = f.includeInk !== false;
-      const a = f.includeAudio !== false;
-      if (p && !g && !i && !a) return '[문제]';
-      if (p && g && !i && !a) return '[문제+그래프]';
-      if (p && g && i && !a) return '[문제+그래프+필기]';
-      if (p && g && i && a) return '[통합본]';
-      const names = [];
-      if (p) names.push('문제');
-      if (g) names.push('그래프');
-      if (i) names.push('필기');
-      if (a) names.push('음성');
-      return `[${names.join('+')}]`;
+    const fullExportFilterObj = {
+      includeProblem: true,
+      includeGraph: true,
+      includeInk: true,
+      includeAudio: true
     };
 
     if (btnShareToLib) {
       btnShareToLib.onclick = async () => {
+        if (this._isPromptingPartialSave) return;
+        let useFullOriginal = true;
+        if (!isExportFilterFullChecked() && typeof this.promptPartialFilterSaveResolution === 'function') {
+          this._isPromptingPartialSave = true;
+          let choice = 'cancel';
+          try {
+            choice = await this.promptPartialFilterSaveResolution(this.exportFilter, 'cloud');
+          } finally {
+            this._isPromptingPartialSave = false;
+          }
+          if (!choice || choice === 'cancel') return;
+          useFullOriginal = (choice === 'full');
+        }
         const carryTitle = (inpDeckTitle && inpDeckTitle.value.trim())
           ? inpDeckTitle.value.trim()
           : (this._lastShareModalDeckTitle || '');
         const modalShare = document.getElementById('modalShare');
         if (modalShare) modalShare.classList.remove('show');
         this._returnToShareModalAfterCloudSave = true;
-        this._pendingExportCloudFilter = {
-          includeProblem: !this.exportFilter || this.exportFilter.includeProblem !== false,
-          includeGraph: !this.exportFilter || this.exportFilter.includeGraph !== false,
-          includeInk: !this.exportFilter || this.exportFilter.includeInk !== false,
-          includeAudio: !this.exportFilter || this.exportFilter.includeAudio !== false
-        };
+        this._pendingExportCloudFilter = useFullOriginal
+          ? null
+          : {
+              includeProblem: !this.exportFilter || this.exportFilter.includeProblem !== false,
+              includeGraph: !this.exportFilter || this.exportFilter.includeGraph !== false,
+              includeInk: !this.exportFilter || this.exportFilter.includeInk !== false,
+              includeAudio: !this.exportFilter || this.exportFilter.includeAudio !== false
+            };
         this._cloudExplorerSaveScope = (this.exportScope === 'current') ? 'current' : 'all';
         const inpCloudTitle = document.getElementById('inputCloudSaveTitle');
         if (inpCloudTitle && carryTitle) {
           inpCloudTitle.value = carryTitle;
         }
-        this.openCloudHubModal({ fromExportModal: true, prefillTitle: carryTitle });
+        this.openCloudHubModal({
+          fromExportModal: true,
+          prefillTitle: carryTitle,
+          skipLoadedMetaTitlePrefill: Boolean(!useFullOriginal && !carryTitle)
+        });
       };
     }
 
     if (btnShareExportFile) {
       btnShareExportFile.onclick = async () => {
-        if (this.isAudioRecording) {
-          await this.stopAudioRecording();
-        } else if (this._pendingSlideAudioFinalizers && this._pendingSlideAudioFinalizers.length > 0) {
-          await Promise.all(this._pendingSlideAudioFinalizers).catch(() => { });
-          this._pendingSlideAudioFinalizers = [];
+        if (this._isPromptingPartialSave || this._isExportingShareFile) return;
+        let useFullOriginal = true;
+        if (!isExportFilterFullChecked() && typeof this.promptPartialFilterSaveResolution === 'function') {
+          this._isPromptingPartialSave = true;
+          let choice = 'cancel';
+          try {
+            choice = await this.promptPartialFilterSaveResolution(this.exportFilter, 'local');
+          } finally {
+            this._isPromptingPartialSave = false;
+          }
+          if (!choice || choice === 'cancel') return;
+          useFullOriginal = (choice === 'full');
         }
-        const slides = getShareModalFilteredSlides();
-        const stageSuffix = getExportStageSuffixLabel();
-        const defaultTitle = slides.length > 1
-          ? `Graphly_${slides.length}문항_${stageSuffix}`
-          : `${slides[0].slideTitle || 'Graphly_수업노트'}_${stageSuffix}`;
-        const typedTitle = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : '';
-        if (typedTitle) {
-          this._lastShareModalDeckTitle = typedTitle;
-          const inpCloudTitle = document.getElementById('inputCloudSaveTitle');
-          if (inpCloudTitle) inpCloudTitle.value = typedTitle;
+        this._isExportingShareFile = true;
+        try {
+          if ((this.isAudioRecording || this._stoppingAudioRecordingPromise) && typeof this.stopAudioRecording === 'function') {
+            await (this._stoppingAudioRecordingPromise || this.stopAudioRecording()).catch(() => { });
+          }
+          if (Array.isArray(this._pendingSlideAudioFinalizers) && this._pendingSlideAudioFinalizers.length > 0) {
+            await Promise.all([...this._pendingSlideAudioFinalizers]).catch(() => { });
+          }
+          const effectiveFilter = useFullOriginal
+            ? fullExportFilterObj
+            : {
+                includeProblem: !this.exportFilter || this.exportFilter.includeProblem !== false,
+                includeGraph: !this.exportFilter || this.exportFilter.includeGraph !== false,
+                includeInk: !this.exportFilter || this.exportFilter.includeInk !== false,
+                includeAudio: !this.exportFilter || this.exportFilter.includeAudio !== false
+              };
+          const typedTitle = (inpDeckTitle && inpDeckTitle.value.trim()) ? inpDeckTitle.value.trim() : '';
+          if (typedTitle) {
+            this._lastShareModalDeckTitle = typedTitle;
+            const inpCloudTitle = document.getElementById('inputCloudSaveTitle');
+            if (inpCloudTitle) inpCloudTitle.value = typedTitle;
+          }
+          const fallbackSlideTitle = typedTitle || '수업 노트';
+          const slides = this._getFilteredSlidesForExport(fallbackSlideTitle, this.exportScope, effectiveFilter);
+          const title = typedTitle || (typeof this._allocateNextLocalAutoDateTimeTitle === 'function'
+            ? this._allocateNextLocalAutoDateTimeTitle()
+            : this._buildAutoDateTimeTitle());
+          const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : '#수업노트';
+          await this.exportGraphlyDeckFile(title, tags, slides, effectiveFilter);
+          triggerExportBtnSuccess(btnShareExportFile, lblShareExportFile, '파일 저장 완료', '내 기기에 저장');
+        } finally {
+          this._isExportingShareFile = false;
         }
-        const title = typedTitle || defaultTitle;
-        const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : `#수업노트 ${stageSuffix}`;
-        await this.exportGraphlyDeckFile(title, tags, slides, this.exportFilter);
-        triggerExportBtnSuccess(btnShareExportFile, lblShareExportFile, '파일 저장 완료', '내 기기에 저장');
       };
     }
   }

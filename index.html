@@ -8,6 +8,16 @@
   <meta http-equiv="Expires" content="0">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Graphly.net</title>
+  <meta name="description" content="실시간 수학 그래프 시각화와 판서·음성 해설을 한 번에 공유하는 스마트 수학 보드">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Graphly">
+  <meta property="og:title" content="Graphly — 수학 그래프 & 스마트 판서 노트">
+  <meta property="og:description" content="선생님이 공유한 수업 노트와 그래프·해설 영상을 설치 없이 바로 확인하세요.">
+  <meta property="og:url" content="https://graphly.net/">
+  <meta property="og:image" content="https://graphly.net/icon-512.png">
+  <meta property="og:image:width" content="512">
+  <meta property="og:image:height" content="512">
+  <meta name="twitter:card" content="summary">
   <meta name="theme-color" content="#ffffff">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -23,7 +33,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261117_157">
+  <link rel="stylesheet" href="style.css?v=20261117_162">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -2852,7 +2862,7 @@
             <div class="win-save-footer-left">
               <span class="win-save-label">파일 이름</span>
               <input type="text" id="inputCloudSaveTitle" class="win-save-title-input"
-                placeholder="현재 칠판 저장 제목 입력 (비워두면 날짜·문항수로 자동 저장)" autocomplete="off" autocorrect="off"
+                placeholder="현재 칠판 저장 제목 입력 (비워두면 날짜·시간으로 자동 저장)" autocomplete="off" autocorrect="off"
                 autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other"
                 data-lpignore="true">
             </div>
@@ -3798,15 +3808,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261117_157"></script>
-  <script src="app-core.js?v=20261117_157"></script>
-  <script src="app-ink.js?v=20261117_157"></script>
-  <script src="app-pdf.js?v=20261117_157"></script>
-  <script src="app-cards.js?v=20261117_157"></script>
-  <script src="app-cloud.js?v=20261117_157"></script>
-  <script src="app-canvas.js?v=20261117_157"></script>
-  <script src="app-toolkit.js?v=20261117_157"></script>
-  <script src="app.js?v=20261117_157"></script>
+  <script src="engine.js?v=20261117_162"></script>
+  <script src="app-core.js?v=20261117_162"></script>
+  <script src="app-ink.js?v=20261117_162"></script>
+  <script src="app-pdf.js?v=20261117_162"></script>
+  <script src="app-cards.js?v=20261117_162"></script>
+  <script src="app-cloud.js?v=20261117_162"></script>
+  <script src="app-canvas.js?v=20261117_162"></script>
+  <script src="app-toolkit.js?v=20261117_162"></script>
+  <script src="app.js?v=20261117_162"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">

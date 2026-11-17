@@ -11262,6 +11262,12 @@
   }
 
   async downloadExportImages(scope = 'current', filterOpts = null) {
+    if ((this.isAudioRecording || this._stoppingAudioRecordingPromise) && typeof this.stopAudioRecording === 'function') {
+      await (this._stoppingAudioRecordingPromise || this.stopAudioRecording({ silentToast: true })).catch(() => { });
+    }
+    if (Array.isArray(this._pendingSlideAudioFinalizers) && this._pendingSlideAudioFinalizers.length > 0) {
+      await Promise.all([...this._pendingSlideAudioFinalizers]).catch(() => { });
+    }
     const effScope = scope || this.exportScope || 'current';
     const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
 

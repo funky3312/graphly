@@ -13316,7 +13316,7 @@ body.audio-replay-active #audioSyncFloatingBar,
 body.student-audio-video-only #audioSyncFloatingBar {
   position: fixed !important;
   top: auto !important;
-  bottom: 18px !important;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important;
   left: 50% !important;
   transform: translateX(-50%) !important;
   padding: 7px 14px !important;
@@ -13363,7 +13363,7 @@ body.theme-light .audio-btn-zoom.is-zoomed {
   body.replay-fixed-stage #audioSyncFloatingBar,
   body.audio-replay-active #audioSyncFloatingBar,
   body.student-audio-video-only #audioSyncFloatingBar {
-    bottom: 12px !important;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
     padding: 6px 10px !important;
     gap: 6px !important;
   }
