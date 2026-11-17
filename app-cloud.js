@@ -10885,6 +10885,9 @@
         isPlaylist: slides.length > 1 || Boolean(pack.isPlaylist),
         currentIndex: 0
       };
+      delete normalizedPkg._isLocalPreview;
+      delete normalizedPkg._isPromoBannerDraftPreview;
+      delete normalizedPkg.promoBanner;
       this._initialSharedCloudPkg = JSON.parse(JSON.stringify(normalizedPkg));
       this.exitStudentAudioVideoOnlyMode();
       this.openSmartNoteViewer(normalizedPkg);
@@ -14683,7 +14686,7 @@
       if (!pkg || !pkg.promoBanner || typeof pkg.promoBanner !== 'object') return null;
       if (pkg.promoBanner.enabled === false) return null;
 
-      const isLocalPreview = Boolean(pkg._isLocalPreview === true);
+      const isLocalPreview = Boolean(pkg._isLocalPreview === true && !pkg._viewerShareUrl && !pkg._fromVaultPointer);
       const isPermShare = Boolean(pkg.isPermanentShare || pkg._topIsPermanentShare || pkg.expiresAt === 0);
       const effShareTier = (typeof pkg._topShareTier === 'string' && pkg._topShareTier)
         ? pkg._topShareTier
@@ -15825,15 +15828,16 @@
       } catch (e) { }
     }
 
-    _computeShareNoteSessionKey(scope, slides) {
+    _computeShareNoteSessionKey(scope, slides, filterOpts = null) {
       const effScope = scope || 'current';
+      const filterSig = this._getExportFilterSignatureKey(filterOpts);
       const arr = Array.isArray(slides) ? slides : [];
       const first = arr[0] || {};
       const probSrc = (first.primaryProblemCard && first.primaryProblemCard.imgSrc) ? String(first.primaryProblemCard.imgSrc) : '';
       const pdfSrc = (first.pdfPageBoardData && first.pdfPageBoardData.dataUrl) ? String(first.pdfPageBoardData.dataUrl) : '';
       const probSig = probSrc ? `${probSrc.length}:${probSrc.slice(0, 48)}:${probSrc.slice(-48)}` : 'noprob';
       const pdfSig = pdfSrc ? `${pdfSrc.length}:${pdfSrc.slice(0, 48)}:${pdfSrc.slice(-48)}` : 'nopdf';
-      return `${effScope}|cnt:${arr.length}|${probSig}|${pdfSig}`;
+      return `${effScope}|flt:${filterSig}|cnt:${arr.length}|${probSig}|${pdfSig}`;
     }
 
     _computeShareContentSignature(scope, filterOpts, slides) {
@@ -15906,7 +15910,7 @@
         return null;
       }
 
-      const noteSessionKey = this._computeShareNoteSessionKey(effScope, pkg.playlistSlides);
+      const noteSessionKey = this._computeShareNoteSessionKey(effScope, pkg.playlistSlides, effFilter);
       const contentSig = this._computeShareContentSignature(effScope, effFilter, pkg.playlistSlides);
 
       // 1) 내용이 1비트도 안 바뀐 상태에서 공유 모달을 다시 열어 버튼을 누른 경우: 서버 재업로드 없이 기존 링크 0.00초 즉시 반환!
@@ -16107,9 +16111,12 @@
       this._lastShareTier = pkg.shareTier;
 
       // 로컬 IndexedDB 캐시 저장
-      await this._idbCacheSet('graphly_cloud_share_' + shortId, updatedCompressedPkg, pkg.expiresAt || 0).catch(() => { });
-      await this._idbCacheSet('graphly_full_doc_' + shortId, updatedCompressedPkg, pkg.expiresAt || 0).catch(() => { });
-      try { localStorage.removeItem('graphly_cloud_share_' + shortId); } catch (e) { }
+      try {
+        const updatedCompressedPkg = await this._compressJsonStringGzipBase64(this._stringifyWithDeduplicatedSnapshots(pkg));
+        await this._idbCacheSet('graphly_cloud_share_' + shortId, updatedCompressedPkg, pkg.expiresAt || 0).catch(() => { });
+        await this._idbCacheSet('graphly_full_doc_' + shortId, updatedCompressedPkg, pkg.expiresAt || 0).catch(() => { });
+        localStorage.removeItem('graphly_cloud_share_' + shortId);
+      } catch (e) { }
 
       return shortId;
     }
@@ -16527,6 +16534,10 @@
       if (!pkg) {
         try {
           pkg = await this._firestoreRestReadDoc('shared_workspaces', shortId, forceFreshVaultFetch);
+          if (pkg && typeof pkg === 'object') {
+            delete pkg._isLocalPreview;
+            delete pkg._isPromoBannerDraftPreview;
+          }
           if (pkg && pkg._vaultOriginDeleted) {
             await purgeLocalShareCaches(pkg);
             this.showToast('🗑️ 작성자가 보관함에서 삭제하여 만료된 공유 링크입니다.');
@@ -16584,6 +16595,8 @@
         return;
       }
 
+      delete pkg._isLocalPreview;
+      delete pkg._isPromoBannerDraftPreview;
       pkg._viewerShareUrl = window.location.href;
       this._initialSharedCloudPkg = JSON.parse(JSON.stringify(pkg));
       this.applyCloudSharePackage(pkg);

@@ -10869,8 +10869,15 @@
     const homeBottom = homeTop + minH;
 
     const tol = Math.max(4, Math.round(6 * safeBz));
-    const isInsideHomeScreen = (
+    const overlapsHomeScreen = (
       Number.isFinite(rawMinX) &&
+      rawMinX <= homeRight + tol &&
+      rawMaxX >= homeLeft - tol &&
+      rawMinY <= homeBottom + tol &&
+      rawMaxY >= homeTop - tol
+    );
+    const isInsideHomeScreen = (
+      overlapsHomeScreen &&
       rawMinX >= homeLeft - tol &&
       rawMaxX <= homeRight + tol &&
       rawMinY >= homeTop - tol &&
@@ -10878,11 +10885,11 @@
     );
 
     let cropLeft, cropRight, cropTop, cropBottom;
-    if (isInsideHomeScreen) {
-      cropLeft = homeLeft;
-      cropRight = homeRight;
-      cropTop = homeTop;
-      cropBottom = homeBottom;
+    if (overlapsHomeScreen) {
+      cropLeft = (rawMinX >= homeLeft - tol) ? homeLeft : Math.min(homeLeft, contentLeft);
+      cropRight = (rawMaxX <= homeRight + tol) ? homeRight : Math.max(homeRight, contentRight);
+      cropTop = (rawMinY >= homeTop - tol) ? homeTop : Math.min(homeTop, contentTop);
+      cropBottom = (rawMaxY <= homeBottom + tol) ? homeBottom : Math.max(homeBottom, contentBottom);
     } else {
       cropLeft = contentLeft;
       cropRight = contentRight;
