@@ -1614,7 +1614,8 @@
       if (!(options && typeof options.customX === 'number') && baseX + cardW > window.innerWidth - 30) {
         baseX = Math.max(40, window.innerWidth - cardW - 50);
       }
-      if (!(options && typeof options.customY === 'number') && baseY > window.innerHeight - 200) {
+      const workspaceH = this.screenHeight || window.innerHeight || 900;
+      if (!(options && typeof options.customY === 'number') && baseY > workspaceH - 200) {
         baseY = Math.max(18, 18 + (this.extraProblemCards.length % 5) * 32);
       }
 
@@ -5450,12 +5451,13 @@
           }
 
           this.syncProblemCardRectFromWidget();
+          const workspaceH = this.screenHeight || window.innerHeight || 900;
           if (options && options.directBasePos && typeof options.directBasePos.x === 'number') {
             this.graphCardBaseX = Math.round(options.directBasePos.x);
             this.graphCardBaseY = Math.round(options.directBasePos.y);
           } else if (options && options.forceScreenPos && sourceRect) {
             const sx = Math.max(68, Math.min(window.innerWidth - cardW - 20, Math.round(sourceRect.x)));
-            const sy = Math.max(54, Math.min(window.innerHeight - Math.round(cardW * aspect) - 36, Math.round(sourceRect.y)));
+            const sy = Math.max(54, Math.min(workspaceH - Math.round(cardW * aspect) - 36, Math.round(sourceRect.y)));
             if (this.pdfPageBoardData) {
               this.graphCardBaseX = sx;
               this.graphCardBaseY = sy;
@@ -5476,7 +5478,7 @@
               }
             } else if (sourceRect) {
               this.graphCardBaseX = Math.max(72, Math.min(window.innerWidth - cardW - 24, Math.round(sourceRect.x)));
-              this.graphCardBaseY = Math.max(60, Math.min(window.innerHeight - 200, Math.round(sourceRect.y)));
+              this.graphCardBaseY = Math.max(60, Math.min(workspaceH - 200, Math.round(sourceRect.y)));
             } else {
               this.graphCardBaseX = 560;
               this.graphCardBaseY = 68;
@@ -5499,7 +5501,7 @@
               }
             } else if (sourceRect) {
               const sx = Math.max(72, Math.min(window.innerWidth - cardW - 24, Math.round(sourceRect.x)));
-              const sy = Math.max(60, Math.min(window.innerHeight - 200, Math.round(sourceRect.y)));
+              const sy = Math.max(60, Math.min(workspaceH - 200, Math.round(sourceRect.y)));
               const bPos = this.screenToBoard(sx, sy);
               this.graphCardBaseX = Math.round(bPos.x);
               this.graphCardBaseY = Math.round(bPos.y);
@@ -5553,6 +5555,7 @@
       const firstY = (typeof this.graphCardBaseY === 'number') ? this.graphCardBaseY : 68;
       const firstW = (primaryWidget && parseFloat(primaryWidget.style.width)) ? parseFloat(primaryWidget.style.width) : 220;
 
+      const workspaceH = this.screenHeight || window.innerHeight || 900;
       let baseX = 560;
       let baseY = 68;
       if (options && options.directBasePos && typeof options.directBasePos.x === 'number') {
@@ -5560,7 +5563,7 @@
         baseY = Math.round(options.directBasePos.y);
       } else if (options && options.forceScreenPos && sourceRect) {
         const sx = Math.max(68, Math.min(window.innerWidth - cardW - 20, Math.round(sourceRect.x)));
-        const sy = Math.max(54, Math.min(window.innerHeight - Math.round(cardW * aspect) - 36, Math.round(sourceRect.y)));
+        const sy = Math.max(54, Math.min(workspaceH - Math.round(cardW * aspect) - 36, Math.round(sourceRect.y)));
         if (this.pdfPageBoardData) {
           baseX = sx;
           baseY = sy;
@@ -5574,25 +5577,35 @@
           ? this.extraGraphCards[this.extraGraphCards.length - 1].el
           : primaryWidget;
         const prevRect = (prevEl && prevEl.style.display !== 'none') ? prevEl.getBoundingClientRect() : null;
+        const cRect = (this.canvas && typeof this.canvas.getBoundingClientRect === 'function')
+          ? this.canvas.getBoundingClientRect()
+          : null;
+        const cLeft = (cRect && Number.isFinite(cRect.left)) ? cRect.left : 0;
+        const cTop = (cRect && Number.isFinite(cRect.top)) ? cRect.top : 0;
+        const prevLocalLeft = prevRect ? (prevRect.left - cLeft) : 0;
+        const prevLocalRight = prevRect ? (prevRect.right - cLeft) : 0;
+        const prevLocalTop = prevRect ? (prevRect.top - cTop) : 0;
+        const prevLocalBottom = prevRect ? (prevRect.bottom - cTop) : 0;
         const isPrevVisibleOnScreen = Boolean(
           prevRect &&
           prevRect.width > 0 &&
-          prevRect.right > 80 &&
-          prevRect.left < window.innerWidth - 80 &&
-          prevRect.bottom > 50 &&
-          prevRect.top < window.innerHeight - 60
+          prevLocalRight > 80 &&
+          prevLocalLeft < window.innerWidth - 80 &&
+          prevLocalBottom > 50 &&
+          prevLocalTop < workspaceH - 60
         );
         if (isPrevVisibleOnScreen) {
-          baseX = Math.round(prevRect.right + 14);
-          baseY = Math.round(prevRect.top);
+          baseX = Math.round(prevLocalRight + 14);
+          baseY = Math.round(prevLocalTop);
           if (baseX + cardW + 20 > window.innerWidth) {
             const firstRect = (primaryWidget && primaryWidget.style.display !== 'none') ? primaryWidget.getBoundingClientRect() : prevRect;
-            baseX = Math.max(72, Math.min(window.innerWidth - cardW - 24, Math.round(firstRect.left)));
-            baseY = Math.min(window.innerHeight - 230, Math.round(prevRect.bottom + 18));
+            const firstLocalLeft = firstRect ? (firstRect.left - cLeft) : prevLocalLeft;
+            baseX = Math.max(72, Math.min(window.innerWidth - cardW - 24, Math.round(firstLocalLeft)));
+            baseY = Math.min(workspaceH - 230, Math.round(prevLocalBottom + 18));
           }
         } else if (sourceRect) {
           baseX = Math.max(72, Math.min(window.innerWidth - cardW - 24, Math.round(sourceRect.x)));
-          baseY = Math.max(60, Math.min(window.innerHeight - 200, Math.round(sourceRect.y)));
+          baseY = Math.max(60, Math.min(workspaceH - 200, Math.round(sourceRect.y)));
         } else {
           baseX = 560;
           baseY = 68;
@@ -5613,7 +5626,7 @@
         baseY = Math.round(prevY);
         if (baseX + cardW + 20 > window.innerWidth) {
           baseX = Math.max(72, Math.min(window.innerWidth - cardW - 24, firstX));
-          baseY = Math.min(window.innerHeight - 230, prevY + 232);
+          baseY = Math.min(workspaceH - 230, prevY + 232);
         }
       }
 
@@ -8801,10 +8814,11 @@
           if (pop) {
             if (isSymOpen) {
               const tRect = hdrTools.getBoundingClientRect();
+              const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
               const viewW = (typeof window !== 'undefined' && window.innerWidth) || 1440;
               const viewH = (typeof window !== 'undefined' && window.innerHeight) || 900;
               const openLeft = widget.classList.contains('prob-side-dock-left') || (tRect.right + 98 > viewW - 6 && tRect.left >= 98);
-              const openUp = (tRect.top + 96 > viewH - 8 && tRect.bottom >= 96);
+              const openUp = (tRect.top + 96 > viewH - 8 && tRect.bottom >= 96 + topGuard);
               pop.classList.toggle('pop-left', openLeft);
               pop.classList.toggle('pop-up', openUp);
               pop.style.display = 'grid';
@@ -8893,11 +8907,12 @@
       let newH;
       let nextAspect;
 
+      const workspaceH = this.screenHeight || window.innerHeight || 900;
       if (isLocked) {
         // 🔒 잠금 후: 가로세로 비율을 고정한 채로 그래프와 카드 전체를 비례 확대/축소 (초와이드·세로형 모두 왜곡 0%)
         const lockedAspect = Math.max(0.08, startState.startAspect || (isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82)));
         const minWForAspect = Math.max(170, Math.ceil(72 / lockedAspect));
-        const maxWByViewportH = Math.floor((window.innerHeight * 0.85) / lockedAspect);
+        const maxWByViewportH = Math.floor((workspaceH * 0.85) / lockedAspect);
         const maxWForAspect = Math.max(minWForAspect, Math.min(Math.floor(window.innerWidth * 0.88), maxWByViewportH));
         newW = Math.round(Math.max(minWForAspect, Math.min(maxWForAspect, startState.startW + dw)));
         newH = Math.round(Math.max(60, newW * lockedAspect));
@@ -8905,7 +8920,7 @@
       } else {
         // 🔓 잠금 전: 그래프 실제 크기(unitScale)는 100% 고정한 채로 현재 카드 센터 기준 화면 영역(시야)만 자유 확장/축소 (와이드 뷰 지원)
         newW = Math.round(Math.max(180, Math.min(window.innerWidth * 0.88, startState.startW + dw)));
-        newH = Math.round(Math.max(80, Math.min(window.innerHeight * 0.85, startState.startH + dh)));
+        newH = Math.round(Math.max(80, Math.min(workspaceH * 0.85, startState.startH + dh)));
         nextAspect = newH / Math.max(1, newW);
       }
 
@@ -9698,7 +9713,7 @@
         refAnchor = targetRef.el._pdfAnchor || targetRef.pdfAnchor || null;
       } else {
         const vw = window.innerWidth || 1440;
-        const vh = window.innerHeight || 900;
+        const vh = this.screenHeight || window.innerHeight || 900;
         const sx = Math.round((vw - cardW) * 0.5 + (this.hasActiveProblemCard() ? 70 : 0));
         const sy = Math.round(Math.max(64, (vh - cardH) * 0.5 - 24));
         if (!this.pdfPageBoardData && !this._suspendedPdfBoardState) {
@@ -10050,7 +10065,7 @@
         const vy1 = (ty / scaleCssY) + cRect.top;
         const vx2 = ((tx + tw) / scaleCssX) + cRect.left;
         const vy2 = ((ty + th) / scaleCssY) + cRect.top;
-        if (vx2 < 16 || vx1 > vw - 16 || vy2 < 16 || vy1 > vh - 16) continue;
+        if (vx2 < 16 || vx1 > vw - 16 || vy2 < Math.max(16, cRect.top + 8) || vy1 > vh - 16) continue;
 
         targets.push({ x: tx, y: ty, w: tw, h: th });
       }
@@ -12284,7 +12299,7 @@
       const existingCount = (this._hasPrimaryGraphCard ? 1 : 0) + (Array.isArray(this.extraGraphCards) ? this.extraGraphCards.length : 0);
       const cascade = (existingCount % 5) * 22;
       const vw = window.innerWidth || 1440;
-      const vh = window.innerHeight || 900;
+      const vh = this.screenHeight || window.innerHeight || 900;
       let centerX = Math.round((vw - cardW) * 0.5 + (this.hasActiveProblemCard() ? 70 : 0) + cascade);
       if (keepDrawerOpen) {
         let drawerRight = 410;

@@ -56,18 +56,17 @@ body.theme-light {
   color-scheme: light;
 }
 
-/* iOS/iPadOS 26(Liquid Glass) 상단 스크롤 엣지 블러(UIScrollEdgeEffect) 및 그라데이션 원천 차단 (A+B+C 통합):
-   1) 아이패드/iOS 환경(body.ios-top-guard-active)에서는 상단 시계 영역(--ios-top-safe-guard: 26px)을
-      불투명 단색 솔리드 가드(body::before, z-index: 99999)로 분리하고 .main-workspace를 그 아래에서 시작하여
-      필기를 위로 밀었을 때 시계 영역 뒤로 들어가며 뿌옇게 블러 처리되는 현상을 100% 차단 (PC/안드로이드는 0px로 영향 없음)
+/* iOS/iPadOS 26+(Liquid Glass) 홈 화면 웹앱(PWA Standalone) 상단 상태바·스크롤 엣지 블러(UIScrollEdgeEffect) 원천 차단:
+   1) 아이패드 홈 화면 웹앱(body.ios-top-guard-active)에서만 상단 시계+블러 번짐 영역(--ios-top-safe-guard: 36px)을
+      불투명 단색 솔리드 가드(body::before, z-index: 99999)로 분리하고 .main-workspace 및 전체 모달·뷰어를 그 아래에 정렬하여
+      필기·문제 카드·모달이 시계/블러 영역에 침범하거나 잘리는 현상을 100% 차단 (PC·안드로이드·일반 사파리는 0px 무개입)
    2) 상단 인접 고정 요소들의 backdrop-filter: blur를 제거하여 WebKit의 상단 블러 확장 버그를 차단 */
 @supports (-webkit-touch-callout: none) {
   :root {
-    --ios-top-safe-guard: env(safe-area-inset-top, 0px);
+    --ios-top-safe-guard: 0px;
   }
 
-  @media (display-mode: standalone),
-  (display-mode: fullscreen) {
+  @media (display-mode: standalone) {
     :root {
       --ios-top-safe-guard: max(env(safe-area-inset-top, 0px), 36px);
     }
@@ -86,9 +85,21 @@ body::before {
   left: 0;
   right: 0;
   height: var(--ios-top-safe-guard, 0px);
-  background-color: var(--app-root-bg, #ffffff);
+  background-color: var(--ios-top-guard-bg, var(--app-root-bg, #ffffff));
   pointer-events: none;
   z-index: 99999;
+}
+
+body:not(.ios-top-guard-active)::before {
+  height: 0px !important;
+  display: none !important;
+}
+
+/* 아이패드 홈 화면 웹앱(PWA)에서는 작동하지 않는 전체화면 버튼 자동 숨김 */
+body.ios-standalone-pwa #btnFullscreen,
+body.ios-standalone-pwa #btnQuickFullscreen,
+body.ios-standalone-pwa #btnViewerFullscreen {
+  display: none !important;
 }
 
 body.ios-top-guard-active .main-workspace,
@@ -107,21 +118,72 @@ body.ios-top-guard-active .pdf-crop-active-pill {
 
 body.ios-top-guard-active .graph-snap-floating-bar,
 body.ios-top-guard-active #graphSnapFloatingBar,
-body.ios-top-guard-active.ui-all-hidden-mode #graphSnapFloatingBar,
-body.ios-top-guard-active .ui-hidden-edge-pull-tab {
+body.ios-top-guard-active.ui-all-hidden-mode #graphSnapFloatingBar {
   top: calc(18px + var(--ios-top-safe-guard, 36px)) !important;
+}
+
+body.ios-top-guard-active .ui-hidden-edge-pull-tab {
+  top: calc(52px + var(--ios-top-safe-guard, 36px)) !important;
 }
 
 body.ios-top-guard-active .pdf-to-graph-crop-bar {
   top: calc(86px + var(--ios-top-safe-guard, 36px)) !important;
 }
 
-body.ios-top-guard-active #smartNoteViewerHeader {
-  top: calc(14px + var(--ios-top-safe-guard, 36px)) !important;
+body.ios-top-guard-active .smart-note-viewer-overlay,
+body.ios-top-guard-active .viewer-audio-ending-overlay {
+  top: var(--ios-top-safe-guard, 36px) !important;
+  height: calc(100vh - var(--ios-top-safe-guard, 36px)) !important;
+  height: calc(100dvh - var(--ios-top-safe-guard, 36px)) !important;
 }
 
 body.ios-top-guard-active #viewerGraphTouchBar {
   top: calc(14px + var(--ios-top-safe-guard, 36px)) !important;
+}
+
+body.ios-top-guard-active .pdf-modal-backdrop,
+body.ios-top-guard-active .n-axis-studio-backdrop,
+body.ios-top-guard-active .smart-modal-backdrop,
+body.ios-top-guard-active .pdf-drop-overlay,
+body.ios-top-guard-active .cloud-dup-modal-backdrop,
+body.ios-top-guard-active #modalPermanentShareLocked,
+body.ios-top-guard-active #modalShareDailyViewLimit,
+body.ios-top-guard-active #modalShareUnavailable {
+  top: var(--ios-top-safe-guard, 36px) !important;
+  height: calc(100vh - var(--ios-top-safe-guard, 36px)) !important;
+  height: calc(100dvh - var(--ios-top-safe-guard, 36px)) !important;
+}
+
+body.ios-top-guard-active .pdf-modal-container {
+  height: calc(96vh - var(--ios-top-safe-guard, 36px)) !important;
+  height: calc(96dvh - var(--ios-top-safe-guard, 36px)) !important;
+}
+
+body.ios-top-guard-active .n-axis-studio-card,
+body.ios-top-guard-active #modalNAxisStudio .n-axis-studio-card {
+  max-height: calc(94vh - var(--ios-top-safe-guard, 36px)) !important;
+  max-height: calc(94dvh - var(--ios-top-safe-guard, 36px)) !important;
+}
+
+body.ios-top-guard-active #modalProPricing .pricing-modal-card {
+  max-height: calc(92vh - var(--ios-top-safe-guard, 36px)) !important;
+  max-height: calc(92dvh - var(--ios-top-safe-guard, 36px)) !important;
+}
+
+body.ios-top-guard-active .smart-modal-card,
+body.ios-top-guard-active #modalCloudHub .cloud-hub-modal-card.cloud-explorer-modal-card,
+body.ios-top-guard-active #modalGuideNotice .guide-notice-modal-card,
+body.ios-top-guard-active #modalShortcutSettings .shortcut-settings-modal-card,
+body.ios-top-guard-active #modalShare .unified-export-modal-card,
+body.ios-top-guard-active #modalPromoBannerSettings .promo-banner-modal-card {
+  max-height: calc(100vh - var(--ios-top-safe-guard, 36px) - 24px) !important;
+  max-height: calc(100dvh - var(--ios-top-safe-guard, 36px) - 24px) !important;
+}
+
+body.ios-top-guard-active .smart-modal-card > .smart-modal-body {
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Method C: 상단 가장자리 인접 바들의 backdrop-filter: blur 제거 (솔리드/고밀도 캡슐화) */
@@ -12810,7 +12872,7 @@ body.ink-sticker-tool-active .problem-card-widget.card-ink-active .problem-card-
 }
 
 .workspace-sticker-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 210 !important;

@@ -2760,8 +2760,9 @@
                 targetT = kf.pillRemoteNormY * availH;
               }
             }
+            const topGuard = (!isFixedStage && typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
             targetL = Math.max(64, Math.min(vw - remW - 8, targetL));
-            targetT = Math.max(12, Math.min(vh - remH - 12, targetT));
+            targetT = Math.max(12 + topGuard, Math.min(vh - remH - 12, targetT));
             pillRemoteEl.style.left = `${Math.round(targetL)}px`;
             pillRemoteEl.style.top = `${Math.round(targetT)}px`;
           }
@@ -3970,6 +3971,18 @@
       };
     }
 
+    _getIosTopGuardPx() {
+      if (typeof document === 'undefined' || !document.body || !document.body.classList.contains('ios-top-guard-active')) {
+        return 0;
+      }
+      if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+        const raw = window.getComputedStyle(document.body).getPropertyValue('--ios-top-safe-guard');
+        const parsed = parseFloat(raw);
+        if (Number.isFinite(parsed) && parsed > 0) return parsed;
+      }
+      return 36;
+    }
+
     _syncReplayFixedStageLayout() {
       const active = this._isFixedReplayStageActive();
       const wsEl = document.querySelector('.main-workspace');
@@ -3993,6 +4006,7 @@
             btnZoom.textContent = '100%';
             btnZoom.classList.remove('is-zoomed');
           }
+          if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
           this.resizeCanvas();
           if (typeof this.syncProblemCardRectFromWidget === 'function') this.syncProblemCardRectFromWidget();
           if (typeof this.syncGraphCardRectFromWidget === 'function') this.syncGraphCardRectFromWidget();
@@ -4002,6 +4016,9 @@
 
       const wasFixedStage = document.body.classList.contains('replay-fixed-stage');
       document.body.classList.add('replay-fixed-stage');
+      if (!wasFixedStage && typeof this._syncIosTopGuardColor === 'function') {
+        this._syncIosTopGuardColor();
+      }
       const { w: stageW, h: stageH } = this._getActiveAudioReplayStageSize();
       document.body.style.setProperty('--replay-stage-w', `${stageW}px`);
       document.body.style.setProperty('--replay-stage-h', `${stageH}px`);
@@ -4015,9 +4032,11 @@
         this.resizeCanvas();
       }
 
+      const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
       const vw = Math.max(240, window.innerWidth || 1280);
-      const vh = Math.max(200, window.innerHeight || 720);
-      const fitScale = Math.min(vw / stageW, vh / stageH);
+      const rawVh = Math.max(200, window.innerHeight || 720);
+      const availH = Math.max(200, rawVh - topGuard);
+      const fitScale = Math.min(vw / stageW, availH / stageH);
       const userZoom = Math.max(1.0, Math.min(4.5, Number(this._replayViewerZoom) || 1.0));
       this._replayViewerZoom = userZoom;
       const totalScale = fitScale * userZoom;
@@ -4027,14 +4046,14 @@
       const scaledW = stageW * totalScale;
       const scaledH = stageH * totalScale;
       const baseX = (vw - scaledW) * 0.5;
-      const baseY = (vh - scaledH) * 0.5;
+      const baseY = topGuard + (availH - scaledH) * 0.5;
 
       if (userZoom <= 1.005) {
         this._replayViewerPanX = 0;
         this._replayViewerPanY = 0;
       } else {
         const maxPanX = Math.max(60, Math.abs(scaledW - vw) * 0.5 + Math.min(vw, scaledW) * 0.35);
-        const maxPanY = Math.max(60, Math.abs(scaledH - vh) * 0.5 + Math.min(vh, scaledH) * 0.35);
+        const maxPanY = Math.max(60, Math.abs(scaledH - availH) * 0.5 + Math.min(availH, scaledH) * 0.35);
         this._replayViewerPanX = Math.max(-maxPanX, Math.min(maxPanX, Number(this._replayViewerPanX) || 0));
         this._replayViewerPanY = Math.max(-maxPanY, Math.min(maxPanY, Number(this._replayViewerPanY) || 0));
       }
@@ -4087,10 +4106,13 @@
       if (!this._isFixedReplayStageActive()) return;
       const prevZoom = Math.max(1.0, Math.min(4.5, Number(this._replayViewerZoom) || 1.0));
       const clampedZoom = Math.max(1.0, Math.min(4.5, Number(nextZoom) || 1.0));
+      const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
       const vw = Math.max(240, window.innerWidth || 1280);
-      const vh = Math.max(200, window.innerHeight || 720);
+      const rawVh = Math.max(200, window.innerHeight || 720);
+      const availH = Math.max(200, rawVh - topGuard);
+      const centerY = topGuard + availH * 0.5;
       const fx = (typeof focalClientX === 'number') ? focalClientX : (vw * 0.5);
-      const fy = (typeof focalClientY === 'number') ? focalClientY : (vh * 0.5);
+      const fy = (typeof focalClientY === 'number') ? focalClientY : centerY;
 
       if (clampedZoom <= 1.005) {
         this._replayViewerZoom = 1.0;
@@ -4105,7 +4127,7 @@
       const curPanY = Number(this._replayViewerPanY) || 0;
       // 기준점(fx, fy)이 확대/축소 전후에도 화면상의 동일한 위치에 머물도록 팬 오프셋 역산
       this._replayViewerPanX = (fx - vw * 0.5) * (1 - ratio) + curPanX * ratio;
-      this._replayViewerPanY = (fy - vh * 0.5) * (1 - ratio) + curPanY * ratio;
+      this._replayViewerPanY = (fy - centerY) * (1 - ratio) + curPanY * ratio;
       this._replayViewerZoom = clampedZoom;
       this._syncReplayFixedStageLayout();
     }
@@ -7361,6 +7383,9 @@
           return false;
         }
         case 'sys_fullscreen_toggle': {
+          if (typeof document !== 'undefined' && document.body && document.body.classList.contains('ios-standalone-pwa')) {
+            return false;
+          }
           const btn = document.getElementById('btnFullscreen');
           if (btn) {
             btn.click();

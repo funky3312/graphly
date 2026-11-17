@@ -4641,8 +4641,9 @@
             const pillH = Math.max(54, (rect && rect.height) || remote.offsetHeight || 220);
             const rawL = Number.isFinite(parsedL) ? parsedL : ((rect && rect.left > 0) ? rect.left : 605);
             const rawT = Number.isFinite(parsedT) ? parsedT : ((rect && rect.top > 0) ? rect.top : 76);
+            const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
             const clampedL = Math.max(58, Math.min((window.innerWidth || 1440) - pillW - 58, rawL));
-            const clampedT = Math.max(12, Math.min((window.innerHeight || 900) - pillH - 12, rawT));
+            const clampedT = Math.max(12 + topGuard, Math.min((window.innerHeight || 900) - pillH - 12, rawT));
             remote.style.left = `${Math.round(clampedL)}px`;
             remote.style.top = `${Math.round(clampedT)}px`;
           }
@@ -4848,9 +4849,10 @@
             this.isBottomInkBarHidden = saved.hideBottomBar;
           }
           if (typeof saved.left === 'number' && typeof saved.top === 'number') {
+            const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
             const pillW = remote.offsetWidth || 98;
             const clampedL = Math.max(58, Math.min((window.innerWidth || 1440) - pillW - 58, saved.left));
-            const clampedT = Math.max(12, Math.min((window.innerHeight || 900) - 80, saved.top));
+            const clampedT = Math.max(12 + topGuard, Math.min((window.innerHeight || 900) - 80, saved.top));
             remote.style.left = `${clampedL}px`;
             remote.style.top = `${clampedT}px`;
           }
@@ -5088,9 +5090,10 @@
           e.stopPropagation();
           const dx = e.clientX - startX;
           const dy = e.clientY - startY;
+          const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
           const pillW = remote.offsetWidth || 98;
           const nextL = Math.max(58, Math.min((window.innerWidth || 1920) - pillW - 58, initialLeft + dx));
-          const nextT = Math.max(8, Math.min((window.innerHeight || 1080) - 56, initialTop + dy));
+          const nextT = Math.max(8 + topGuard, Math.min((window.innerHeight || 1080) - 56, initialTop + dy));
           remote.style.left = `${Math.round(nextL)}px`;
           remote.style.top = `${Math.round(nextT)}px`;
           if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {

@@ -6815,6 +6815,7 @@
           sv.style.display = 'none';
           sv.classList.remove('viewer-immersive-fullscreen');
         }
+        if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
         ['smartNoteViewerImg', 'smartNoteViewerPrevImg', 'smartNoteViewerNextImg'].forEach((id) => {
           const el = document.getElementById(id);
           if (el) el.removeAttribute('src');
@@ -15322,6 +15323,7 @@
         overlay.style.display = 'none';
         overlay.classList.remove('is-promo-draft-preview', 'viewer-entry-gate-active', 'viewer-immersive-fullscreen');
       }
+      if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
       this._viewerPkg = null;
 
       const modal = document.getElementById('modalPromoBannerSettings');
@@ -17216,7 +17218,8 @@
         const uaGate = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
         const isMobileOrPadGate = /Android|iPhone|iPad|iPod/i.test(uaGate) || (/Macintosh/i.test(uaGate) && navigator.maxTouchPoints > 1);
         const isPromoPreviewGate = Boolean(this._viewerPkg && this._viewerPkg._isPromoBannerDraftPreview);
-        const shouldReqNativeFs = !(isPromoPreviewGate && !isMobileOrPadGate);
+        const isStandalonePwa = Boolean(document.body && document.body.classList.contains('ios-standalone-pwa'));
+        const shouldReqNativeFs = !isStandalonePwa && !(isPromoPreviewGate && !isMobileOrPadGate);
         if (shouldReqNativeFs && !document.fullscreenElement && !document.webkitFullscreenElement) {
           const docEl = document.documentElement;
           const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen;
@@ -17885,6 +17888,7 @@
 
       const overlay = document.getElementById('smartNoteViewerOverlay');
       if (overlay) overlay.style.display = 'none';
+      if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
       const touchBar = document.getElementById('viewerGraphTouchBar');
       if (touchBar) touchBar.style.display = 'none';
       const resetBar = document.getElementById('sharedResetBar');
@@ -18218,8 +18222,9 @@
     _calcSmartViewerFitSize(iw, ih, viewport = null, slide = null) {
       const vp = viewport || document.getElementById('smartNoteViewerViewport');
       const isMobileViewport = (typeof window !== 'undefined') && (window.innerWidth <= 768 || window.innerHeight <= 500);
+      const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
       const rawW = (vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth;
-      const rawH = (vp && vp.clientHeight) ? vp.clientHeight : window.innerHeight;
+      const rawH = (vp && vp.clientHeight) ? vp.clientHeight : Math.max(160, window.innerHeight - topGuard);
       const padX = isMobileViewport ? 0 : 24;
       const padY = isMobileViewport ? 0 : 56;
       const vw = Math.max(180, rawW - padX);
@@ -18278,8 +18283,9 @@
     _getSmartViewerMaxPan(baseW = this._viewerBaseW, baseH = this._viewerBaseH, zoom = (this._viewerZoom || 1.0), viewport = null) {
       const vp = viewport || document.getElementById('smartNoteViewerViewport');
       const isMobileViewport = (typeof window !== 'undefined') && (window.innerWidth <= 768 || window.innerHeight <= 500);
+      const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
       const vw = Math.max(180, (vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth);
-      const vh = Math.max(160, (vp && vp.clientHeight) ? vp.clientHeight : window.innerHeight);
+      const vh = Math.max(160, (vp && vp.clientHeight) ? vp.clientHeight : Math.max(160, window.innerHeight - topGuard));
       const zoomedW = Math.max(2, (baseW || 1000) * zoom);
       const zoomedH = Math.max(2, (baseH || 700) * zoom);
       const maxPanX = zoomedW > vw + 1 ? Math.max(0, (zoomedW - vw) / 2) : 0;
@@ -18665,6 +18671,7 @@
           fsGate.style.display = 'flex';
         }
       }
+      if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
 
       await this.switchSmartViewerSlide(startIdx);
     }
@@ -19178,6 +19185,7 @@
 
       const overlay = document.getElementById('smartNoteViewerOverlay');
       if (overlay) overlay.style.display = 'none';
+      if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
 
       this._isAudioSyncPlayerVisible = false;
       if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
@@ -19381,6 +19389,7 @@
       const overlay = document.getElementById('smartNoteViewerOverlay');
       if (overlay) {
         overlay.style.display = 'flex';
+        if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
         this.fitSmartViewerStageToScreen(false, null, { preserveViewState: true });
       }
     }
@@ -19416,6 +19425,7 @@
       }
       document.body.classList.remove('viewer-graph-touch-mode');
       document.body.classList.remove('student-mode');
+      if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
       this._isAudioSyncPlayerVisible = false;
       if (typeof this.syncAudioRecordUI === 'function') this.syncAudioRecordUI();
       const touchBar = document.getElementById('viewerGraphTouchBar');
@@ -19699,33 +19709,55 @@
       return Math.min(2.5, Math.max(2.0, window.devicePixelRatio || 2.0));
     }
 
+    _syncIosTopGuardColor() {
+      if (typeof document === 'undefined' || !document.body) return;
+      const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || null;
+      const baseBg = (curTheme && curTheme.bg) ? curTheme.bg : '#ffffff';
+      if (document.documentElement) {
+        document.documentElement.style.setProperty('--app-root-bg', baseBg);
+        document.documentElement.style.backgroundColor = baseBg;
+      }
+      document.body.style.setProperty('--app-root-bg', baseBg);
+      document.body.style.backgroundColor = baseBg;
+
+      const isLight = document.body.classList.contains('theme-light');
+      const svOverlay = document.getElementById('smartNoteViewerOverlay');
+      const isViewerVisible = Boolean(
+        svOverlay &&
+        svOverlay.style.display !== 'none' &&
+        !document.body.classList.contains('viewer-graph-touch-mode')
+      );
+      const isReplayFixed = document.body.classList.contains('replay-fixed-stage');
+
+      let guardBg = baseBg;
+      if (isViewerVisible) {
+        guardBg = isLight ? '#eef2f6' : '#0b0f19';
+      } else if (isReplayFixed) {
+        guardBg = isLight ? '#eef2f6' : baseBg;
+      }
+      document.body.style.setProperty('--ios-top-guard-bg', guardBg);
+      if (document.documentElement) {
+        document.documentElement.style.setProperty('--ios-top-guard-bg', guardBg);
+      }
+    }
+
     _syncIosTopStatusGuard() {
       if (typeof window === 'undefined' || typeof document === 'undefined' || !document.body) return;
       const isIOS = this.isIOSOrIPad();
       if (!isIOS) {
-        document.body.classList.remove('ios-top-guard-active');
+        document.body.classList.remove('ios-top-guard-active', 'ios-standalone-pwa');
         return;
       }
+      const isNativeDomFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
       const isStandalone = Boolean(
         window.navigator.standalone === true ||
-        (window.matchMedia && (window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches))
+        (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
       );
-      const scrMin = Math.min(window.screen.width || 0, window.screen.height || 0);
-      const scrMax = Math.max(window.screen.width || 0, window.screen.height || 0);
-      const winH = window.innerHeight || 0;
-      const isFullTopViewport = (scrMin > 0 && Math.abs(winH - scrMin) < 48) || (scrMax > 0 && Math.abs(winH - scrMax) < 48);
-      const shouldGuard = isStandalone || isFullTopViewport;
+      document.body.classList.toggle('ios-standalone-pwa', isStandalone);
+      const shouldGuard = isStandalone && !isNativeDomFs;
       const prevGuard = document.body.classList.contains('ios-top-guard-active');
       document.body.classList.toggle('ios-top-guard-active', shouldGuard);
-      const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || null;
-      if (curTheme && curTheme.bg) {
-        if (document.documentElement) {
-          document.documentElement.style.setProperty('--app-root-bg', curTheme.bg);
-          document.documentElement.style.backgroundColor = curTheme.bg;
-        }
-        document.body.style.setProperty('--app-root-bg', curTheme.bg);
-        document.body.style.backgroundColor = curTheme.bg;
-      }
+      this._syncIosTopGuardColor();
       if (prevGuard !== shouldGuard && this.canvas) {
         this.updateCanvasRect();
       }

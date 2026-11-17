@@ -3969,6 +3969,7 @@ class GraphApp {
     };
 
     const toggleFullscreen = () => {
+      if (document.body && document.body.classList.contains('ios-standalone-pwa')) return;
       const isEntering = !document.body.classList.contains('fullscreen-mode');
       const docEl = document.documentElement;
       const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
@@ -4012,6 +4013,9 @@ class GraphApp {
         }
       } else {
         this.syncFullscreenButtonUI(true);
+      }
+      if (typeof this._syncIosTopStatusGuard === 'function') {
+        this._syncIosTopStatusGuard();
       }
       setTimeout(() => {
         this.resizeCanvas();
@@ -6160,6 +6164,9 @@ class GraphApp {
     }
     document.body.style.setProperty('--app-root-bg', theme.bg);
     document.body.style.backgroundColor = theme.bg;
+    if (typeof this._syncIosTopGuardColor === 'function') {
+      this._syncIosTopGuardColor();
+    }
 
     // 🌟 [컨테이너 배경 동기화]: 캔버스와 부모 컨테이너 배경색을 완전히 일치시켜 경계 깜빡임 0%화
     if (this.canvas && this.canvas.parentElement) {
