@@ -1544,7 +1544,10 @@
                 textsSnap: (this.selectedTextLabels || []).map(t => JSON.parse(JSON.stringify(t))),
                 lassoPointsSnap: (this.lassoPoints || []).map(p => ({ x: p.x, y: p.y }))
               };
-              this.canvas.style.cursor = (hitResize === 'br' || hitResize === 'tl') ? 'nwse-resize' : 'nesw-resize';
+              const isNwse = (hitResize === 'br' || hitResize === 'tl');
+              this.canvas.style.cursor = isNwse ? 'nwse-resize' : 'nesw-resize';
+              this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw');
+              this.canvas.classList.add(isNwse ? 'is-hover-resize-nwse' : 'is-hover-resize-nesw');
               this.syncLassoActionBarUI();
               this.render();
               return;
@@ -1563,6 +1566,7 @@
                 screenY: pos.y,
                 m: this.screenToMath(pos.x, pos.y)
               };
+              this.canvas.classList.remove('is-hover-resize-nwse', 'is-hover-resize-nesw');
               this.canvas.style.cursor = 'move';
               this.render();
               return;
@@ -1585,7 +1589,7 @@
               this._lassoStartPos = { x: pos.x, y: pos.y };
               this.lassoPoints = [{ x: pos.x, y: pos.y }];
               this.canvas.style.cursor = 'crosshair';
-              this.canvas.classList.remove('is-hover-selection');
+              this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw');
               this.render();
               return;
             }
@@ -2402,11 +2406,15 @@
         if (hasSelection) {
           const hitHandle = this.getLassoResizeHandleAt(pos);
           if (hitHandle) {
-            this.canvas.style.cursor = (hitHandle === 'br' || hitHandle === 'tl') ? 'nwse-resize' : 'nesw-resize';
-            this.canvas.classList.add('is-hover-selection');
+            const isNwse = (hitHandle === 'br' || hitHandle === 'tl');
+            this.canvas.style.cursor = isNwse ? 'nwse-resize' : 'nesw-resize';
+            this.canvas.classList.remove('is-hover-selection');
+            this.canvas.classList.toggle('is-hover-resize-nwse', isNwse);
+            this.canvas.classList.toggle('is-hover-resize-nesw', !isNwse);
           } else {
             const isOver = this.isPointInLassoSelection(pos);
             this.canvas.style.cursor = isOver ? 'move' : 'crosshair';
+            this.canvas.classList.remove('is-hover-resize-nwse', 'is-hover-resize-nesw');
             this.canvas.classList.toggle('is-hover-selection', isOver);
           }
         }
@@ -3476,7 +3484,19 @@
             }
             this._preDragState = null;
           }
-          this.canvas.style.cursor = 'move';
+          const hitAfterResize = this.getLassoResizeHandleAt(pos);
+          if (hitAfterResize) {
+            const isNwse = (hitAfterResize === 'br' || hitAfterResize === 'tl');
+            this.canvas.style.cursor = isNwse ? 'nwse-resize' : 'nesw-resize';
+            this.canvas.classList.remove('is-hover-selection');
+            this.canvas.classList.toggle('is-hover-resize-nwse', isNwse);
+            this.canvas.classList.toggle('is-hover-resize-nesw', !isNwse);
+          } else {
+            const isOverAfter = this.isPointInLassoSelection(pos);
+            this.canvas.style.cursor = isOverAfter ? 'move' : 'crosshair';
+            this.canvas.classList.remove('is-hover-resize-nwse', 'is-hover-resize-nesw');
+            this.canvas.classList.toggle('is-hover-selection', isOverAfter);
+          }
           this.syncLassoActionBarUI();
           this.render();
           return;
@@ -3498,6 +3518,8 @@
             }
             this._preDragState = null;
           }
+          this.canvas.classList.remove('is-hover-resize-nwse', 'is-hover-resize-nesw');
+          this.canvas.classList.add('is-hover-selection');
           this.canvas.style.cursor = 'move';
           this.render();
           return;
@@ -3528,7 +3550,7 @@
             this.selectedTextLabels = [];
             this.lassoBoundingBox = null;
             this.lassoPoints = [];
-            this.canvas.classList.remove('is-hover-selection');
+            this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw');
             this.setActiveInkTool('pen');
             return;
           }
@@ -4442,6 +4464,9 @@
           this.selectedTextLabels = [];
           this.lassoBoundingBox = null;
           this.lassoPoints = [];
+          if (this.canvas && this.canvas.classList) {
+            this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw');
+          }
           this.render();
           return;
         }

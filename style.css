@@ -4116,6 +4116,14 @@ canvas.ink-cursor-lasso.is-hover-selection {
   cursor: move !important;
 }
 
+canvas.ink-cursor-lasso.is-hover-resize-nwse {
+  cursor: nwse-resize !important;
+}
+
+canvas.ink-cursor-lasso.is-hover-resize-nesw {
+  cursor: nesw-resize !important;
+}
+
 canvas.ink-cursor-grab {
   cursor: move !important;
 }
@@ -7152,12 +7160,38 @@ body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active) .problem-card-wid
 body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active) #problemCardWidget.card-ink-active:not(.minimized) #problemCardCanvas,
 body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active) #graphCardWidget.card-ink-active:not(.minimized) #graphCardCanvas {
   pointer-events: auto !important;
+}
+
+body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active):not(.ink-lasso-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-canvas,
+body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active):not(.ink-lasso-tool-active) #problemCardWidget.card-ink-active:not(.minimized) #problemCardCanvas,
+body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active):not(.ink-lasso-tool-active) #graphCardWidget.card-ink-active:not(.minimized) #graphCardCanvas,
+body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active):not(.ink-lasso-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-body,
+body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active):not(.ink-lasso-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-img {
   cursor: none !important;
 }
 
-body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-body,
-body:not(.ink-laser-tool-active):not(.ink-sticker-tool-active) .problem-card-widget.card-ink-active:not(.minimized) .problem-card-img {
-  cursor: none !important;
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active:not(.minimized) .problem-card-canvas,
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active:not(.minimized) .problem-card-body,
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active:not(.minimized) .problem-card-img {
+  cursor: crosshair !important;
+}
+
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="move"]:not(.minimized) .problem-card-canvas,
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="move"]:not(.minimized) .problem-card-body,
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="move"]:not(.minimized) .problem-card-img {
+  cursor: move !important;
+}
+
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="nwse"]:not(.minimized) .problem-card-canvas,
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="nwse"]:not(.minimized) .problem-card-body,
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="nwse"]:not(.minimized) .problem-card-img {
+  cursor: nwse-resize !important;
+}
+
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="nesw"]:not(.minimized) .problem-card-canvas,
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="nesw"]:not(.minimized) .problem-card-body,
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="nesw"]:not(.minimized) .problem-card-img {
+  cursor: nesw-resize !important;
 }
 
 .problem-card-body,

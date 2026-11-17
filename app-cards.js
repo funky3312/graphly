@@ -4242,11 +4242,6 @@
 
       const isNormPointInCardLasso = (nx, ny, cl, rw, rh) => {
         if (!cl || !Array.isArray(cl.selectedStrokes) || cl.selectedStrokes.length === 0) return false;
-        if (Array.isArray(cl.lassoPts) && cl.lassoPts.length >= 3) {
-          if (this.isPointInPolygon({ x: nx, y: ny }, cl.lassoPts.map(p => ({ x: p.nx, y: p.ny })))) {
-            return true;
-          }
-        }
         const bbox = cl.bboxNorm || this.computeCardStrokesNormBBox(cl.selectedStrokes);
         if (!bbox) return false;
         const padX = 10 / Math.max(1, rw);
@@ -4295,6 +4290,7 @@
           if (corner && bbox) {
             cardLassoMode = 'resizing';
             curCl.isResizing = true;
+            cardWidgetEl.dataset.lassoCursor = (corner === 'tl' || corner === 'br') ? 'nwse' : 'nesw';
             cardLassoResizeCorner = corner;
             cardLassoResizeInitBox = { ...bbox };
             cardLassoResizeAnchor = {
@@ -4312,12 +4308,14 @@
           if (isNormPointInCardLasso(pos.nx, pos.ny, curCl, rw, rh)) {
             cardLassoMode = 'moving';
             curCl.isDragging = true;
+            cardWidgetEl.dataset.lassoCursor = 'move';
             cardLassoLastNorm = { nx: pos.nx, ny: pos.ny };
             return;
           }
         }
 
         cardLassoMode = 'drawing';
+        cardWidgetEl.dataset.lassoCursor = 'crosshair';
         this._activeCardLasso = {
           widgetEl: cardWidgetEl,
           getStrokes: getCardInkStrokesForLasso,
@@ -4335,7 +4333,33 @@
       }, { capture: true });
 
       bodyEl.addEventListener('pointermove', (e) => {
-        if (!cardLassoMode) return;
+        if (!cardLassoMode) {
+          if (this.isInkMode && this.activeInkTool === 'lasso' && cardWidgetEl.classList.contains('card-ink-active')) {
+            const clHover = (this._activeCardLasso && this._activeCardLasso.widgetEl === cardWidgetEl)
+              ? this._activeCardLasso
+              : null;
+            let nextCur = 'crosshair';
+            if (clHover && Array.isArray(clHover.selectedStrokes) && clHover.selectedStrokes.length > 0) {
+              const rect = bodyEl.getBoundingClientRect();
+              const rw = Math.max(1, rect.width);
+              const rh = Math.max(1, rect.height);
+              const hPos = getNormPos(e);
+              const bbox = clHover.bboxNorm || this.computeCardStrokesNormBBox(clHover.selectedStrokes);
+              const hCorner = hitTestCardLassoHandle(hPos.nx, hPos.ny, bbox, rw, rh);
+              if (hCorner) {
+                nextCur = (hCorner === 'tl' || hCorner === 'br') ? 'nwse' : 'nesw';
+              } else if (isNormPointInCardLasso(hPos.nx, hPos.ny, clHover, rw, rh)) {
+                nextCur = 'move';
+              }
+            }
+            if (cardWidgetEl.dataset.lassoCursor !== nextCur) {
+              cardWidgetEl.dataset.lassoCursor = nextCur;
+            }
+          } else if (cardWidgetEl.dataset.lassoCursor) {
+            delete cardWidgetEl.dataset.lassoCursor;
+          }
+          return;
+        }
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
 

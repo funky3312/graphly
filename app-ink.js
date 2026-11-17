@@ -1401,7 +1401,10 @@
           'ink-cursor-eraser',
           'ink-cursor-lasso',
           'ink-cursor-grab',
-          'ink-cursor-grabbing'
+          'ink-cursor-grabbing',
+          'is-hover-selection',
+          'is-hover-resize-nwse',
+          'is-hover-resize-nesw'
         );
         this.canvas.style.cursor = 'default';
         if (this.virtualStylusEl) {
@@ -1411,6 +1414,7 @@
       if (document.body) {
         document.body.classList.toggle('ink-laser-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'laser'));
         document.body.classList.toggle('ink-sticker-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'sticker'));
+        document.body.classList.toggle('ink-lasso-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'lasso'));
       }
 
       this.syncCurveContextBar();
@@ -1721,6 +1725,7 @@
       if (document.body) {
         document.body.classList.toggle('ink-laser-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'laser'));
         document.body.classList.toggle('ink-sticker-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'sticker'));
+        document.body.classList.toggle('ink-lasso-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'lasso'));
       }
 
       if (tool !== 'lasso') {
@@ -1732,6 +1737,9 @@
         this.isResizingLassoSelection = false;
         this.lassoResizeStart = null;
         this.lassoPoints = [];
+        if (this.canvas && this.canvas.classList) {
+          this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw');
+        }
         if (this._lassoExcludedBakeSet) {
           this._lassoExcludedBakeSet = null;
           this._inkBakeDirty = true;
@@ -3986,50 +3994,33 @@
       return false;
     }
 
-    // 🌟 [굿노트/삼성노트 표준] 올가미(Lasso) 핵심 연산 및 점선 추종 렌더러 🌟
-    isPointInLassoSelection(pos) {
+    // 🌟 [굿노트/삼성노트 표준] 올가미(Lasso) 핵심 연산 및 바운딩 박스 렌더러 🌟
+    _getLassoViewSignature() {
+      return `${this.boardPanX || 0}|${this.boardPanY || 0}|${this.boardZoom || 1}|${this.boardZoomOffsetX || 0}|${this.boardZoomOffsetY || 0}|${this.panX || 0}|${this.panY || 0}|${this.zoomLevel || 1}|${this.screenWidth || 0}|${this.screenHeight || 0}`;
+    }
+
+    _ensureFreshLassoBoundingBox() {
       const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
         (this.selectedTextLabels && this.selectedTextLabels.length > 0);
-      if (!hasSelection) return false;
-
-      // 1. 점선 루프가 있으면 무조건 실제 점선 루프 내부 판정을 최우선 적용!
-      if (this.lassoPoints && this.lassoPoints.length >= 3) {
-        if (this.isPointInPolygon(pos, this.lassoPoints)) {
-          return true;
-        }
-        // 사용자가 선택된 획/도형 위를 콕 찍었는지도 검사 (획/도형 접촉 시 드래그 허용)
-        const bPx = (this.boardPanX || 0);
-        const bPy = (this.boardPanY || 0);
-        for (const stroke of this.selectedInkStrokes) {
-          if (stroke.shape) {
-            const shapePts = this.getShapeSampleScreenPoints(stroke);
-            for (const s of shapePts) {
-              if (Math.hypot(s.x - pos.x, s.y - pos.y) <= 16) {
-                return true;
-              }
-            }
-          }
-          if (!stroke.points) continue;
-          const isBoard = (stroke.target || 'board') === 'board';
-          for (const pt of stroke.points) {
-            const s = isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
-            if (Math.hypot(s.x - pos.x, s.y - pos.y) <= 14) {
-              return true;
-            }
-          }
-        }
-        return false; // 점선 루프 밖이고 획 위도 아니면 100% 바깥 터치 (즉시 해제 대상)!
+      if (!hasSelection) return null;
+      const viewSig = this._getLassoViewSignature();
+      if (!this.lassoBoundingBox || this._lassoBBoxViewSig !== viewSig) {
+        this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
       }
+      return this.lassoBoundingBox;
+    }
 
-      // 2. 점선 루프가 없고 바운딩 박스만 존재하는 경우의 폴백
-      if (this.lassoBoundingBox) {
-        const pad = 8;
-        const bbox = this.lassoBoundingBox;
-        return (pos.x >= bbox.minX - pad && pos.x <= bbox.maxX + pad &&
-          pos.y >= bbox.minY - pad && pos.y <= bbox.maxY + pad);
-      }
-
-      return false;
+    isPointInLassoSelection(pos) {
+      if (!pos) return false;
+      const bbox = this._ensureFreshLassoBoundingBox();
+      if (!bbox) return false;
+      const pad = 10;
+      return (
+        pos.x >= bbox.minX - pad &&
+        pos.x <= bbox.maxX + pad &&
+        pos.y >= bbox.minY - pad &&
+        pos.y <= bbox.maxY + pad
+      );
     }
 
     calculateStrokesBoundingBox(strokes, texts = []) {
@@ -4093,6 +4084,7 @@
 
       if (minX === Infinity || !isFinite(minX)) return null;
 
+      this._lassoBBoxViewSig = this._getLassoViewSignature();
       return {
         minX,
         maxX,
@@ -4275,6 +4267,9 @@
     clearCardLassoSelection(skipRender = false) {
       const prev = this._activeCardLasso;
       this._activeCardLasso = null;
+      if (prev && prev.widgetEl && prev.widgetEl.dataset) {
+        delete prev.widgetEl.dataset.lassoCursor;
+      }
       if (prev && !skipRender && typeof prev.renderFn === 'function') {
         prev.renderFn();
       }
@@ -4378,25 +4373,6 @@
         cl.bboxNorm = this.computeCardStrokesNormBBox(cl.selectedStrokes);
       }
 
-      if (hasSel && Array.isArray(cl.lassoPts) && cl.lassoPts.length >= 3) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(cl.lassoPts[0].nx * w, cl.lassoPts[0].ny * h);
-        for (let i = 1; i < cl.lassoPts.length; i++) {
-          ctx.lineTo(cl.lassoPts[i].nx * w, cl.lassoPts[i].ny * h);
-        }
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(0, 210, 211, 0.045)';
-        ctx.fill();
-        ctx.strokeStyle = '#00d2d3';
-        ctx.lineWidth = 1.9;
-        ctx.setLineDash([7, 5]);
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.stroke();
-        ctx.restore();
-      }
-
       if (hasSel && cl.bboxNorm) {
         const pad = 8;
         const x1 = cl.bboxNorm.minNx * w - pad;
@@ -4405,25 +4381,25 @@
         const y2 = cl.bboxNorm.maxNy * h + pad;
 
         ctx.save();
-        ctx.strokeStyle = 'rgba(2, 132, 199, 0.55)';
-        ctx.lineWidth = 1.25;
-        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = 'rgba(14, 165, 233, 0.85)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
         ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
         ctx.setLineDash([]);
         const corners = [
-          { x: x1, y: y1, r: 5.0 },
-          { x: x2, y: y1, r: 5.0 },
-          { x: x1, y: y2, r: 5.0 },
-          { x: x2, y: y2, r: 6.5, isMain: true }
+          { x: x1, y: y1 },
+          { x: x2, y: y1 },
+          { x: x1, y: y2 },
+          { x: x2, y: y2 }
         ];
         corners.forEach(c => {
           ctx.beginPath();
-          ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
-          ctx.fillStyle = c.isMain ? '#0284c7' : '#ffffff';
+          ctx.arc(c.x, c.y, 5.0, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffffff';
           ctx.fill();
           ctx.lineWidth = 2.0;
-          ctx.strokeStyle = c.isMain ? '#ffffff' : '#0284c7';
+          ctx.strokeStyle = '#0284c7';
           ctx.stroke();
         });
         ctx.restore();
@@ -4648,11 +4624,10 @@
     }
 
     getLassoResizeHandleAt(pos) {
-      const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
-        (this.selectedTextLabels && this.selectedTextLabels.length > 0);
-      if (!hasSelection || !this.lassoBoundingBox) return null;
+      if (!pos) return null;
+      const bbox = this._ensureFreshLassoBoundingBox();
+      if (!bbox) return null;
 
-      const bbox = this.lassoBoundingBox;
       const pad = 10;
       const x1 = bbox.minX - pad;
       const y1 = bbox.minY - pad;
@@ -4734,37 +4709,9 @@
         ctx.restore();
       }
 
-      // 2. 선택 완료 및 드래그/리사이즈 중인 올가미 오버레이 + 4모서리 크기조절 핸들
-      const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
-        (this.selectedTextLabels && this.selectedTextLabels.length > 0);
-
-      if (hasSelection && !this.lassoBoundingBox) {
-        this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
-      }
-
-      if (hasSelection && this.lassoPoints && this.lassoPoints.length >= 3) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(this.lassoPoints[0].x, this.lassoPoints[0].y);
-        for (let i = 1; i < this.lassoPoints.length; i++) {
-          ctx.lineTo(this.lassoPoints[i].x, this.lassoPoints[i].y);
-        }
-        ctx.closePath();
-
-        ctx.fillStyle = 'rgba(0, 210, 211, 0.045)';
-        ctx.fill();
-
-        ctx.strokeStyle = '#00d2d3';
-        ctx.lineWidth = 1.9;
-        ctx.setLineDash([7, 5]);
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      if (hasSelection && this.lassoBoundingBox) {
-        const bbox = this.lassoBoundingBox;
+      // 2. 선택 완료 및 드래그/리사이즈 중인 바운딩 박스 + 균일한 4모서리 크기조절 핸들
+      const bbox = this._ensureFreshLassoBoundingBox();
+      if (bbox) {
         const pad = 10;
         const x1 = bbox.minX - pad;
         const y1 = bbox.minY - pad;
@@ -4774,26 +4721,25 @@
         const h = y2 - y1;
 
         ctx.save();
-        ctx.strokeStyle = 'rgba(2, 132, 199, 0.55)';
-        ctx.lineWidth = 1.25;
-        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = 'rgba(14, 165, 233, 0.85)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
         ctx.strokeRect(x1, y1, w, h);
 
-        // 4모서리 크기 조절 핸들 렌더링 (우하단 메인 핸들 강조)
         ctx.setLineDash([]);
         const corners = [
-          { x: x1, y: y1, r: 5.5 },
-          { x: x2, y: y1, r: 5.5 },
-          { x: x1, y: y2, r: 5.5 },
-          { x: x2, y: y2, r: 7.0, isMain: true }
+          { x: x1, y: y1 },
+          { x: x2, y: y1 },
+          { x: x1, y: y2 },
+          { x: x2, y: y2 }
         ];
         corners.forEach(c => {
           ctx.beginPath();
-          ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
-          ctx.fillStyle = c.isMain ? '#0284c7' : '#ffffff';
+          ctx.arc(c.x, c.y, 5.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffffff';
           ctx.fill();
           ctx.lineWidth = 2.0;
-          ctx.strokeStyle = c.isMain ? '#ffffff' : '#0284c7';
+          ctx.strokeStyle = '#0284c7';
           ctx.stroke();
         });
         ctx.restore();
