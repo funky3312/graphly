@@ -1764,6 +1764,7 @@
           tool: this.activeInkTool,
           penStyle: isHighlighterStroke ? 'ballpen' : (this.inkPenStyle || 'ballpen'),
           softBlur: isHighlighterStroke ? 0 : (this.inkSoftBlur || 0),
+          _hasHwP: hasRealHardwarePressure,
           target: strokeTarget,
           onPdfBoard: Boolean(this.pdfPageBoardData && isGraphTarget),
           color: this.currentInkColor,
@@ -1781,10 +1782,16 @@
         this.inkStrokes.push(this.currentInkStroke);
         if (isShiftLine) {
           const startCoord = isGraphTarget ? { x: m.x, y: m.y } : { x: bPt0.x, y: bPt0.y };
+          const shiftShapeP = this._computeRepresentativeShapePressure(
+            null,
+            this.currentInkStroke.penStyle || 'ballpen',
+            { isShiftLine: true, hasHwP: hasRealHardwarePressure, initialHwPressure: e ? e.pressure : 0.5 }
+          );
           this._inkHoldDetected = true;
           this._shiftLineStartScreen = { x: pos.x, y: pos.y };
           this.currentInkStroke._isShiftLine = true;
           this.currentInkStroke.isShape = true;
+          this.currentInkStroke.shapePressure = shiftShapeP;
           if (recT0 !== undefined) {
             this.currentInkStroke.shapeSnapAt = recT0;
           }
@@ -1792,7 +1799,8 @@
             type: 'line',
             start: { x: startCoord.x, y: startCoord.y },
             end: { x: startCoord.x, y: startCoord.y },
-            snapped: null
+            snapped: null,
+            p: shiftShapeP
           };
           this.render();
           return;
@@ -2456,15 +2464,15 @@
             return;
           }
 
-          // 🌟 [홀드 감지 정밀 앵커링]:
-          // 작은 글씨(`3`, `ㄴ` 등)를 쓰는 도중에는 홀드 타이머가 확실히 리셋되도록 이동 임계값을 낮추고(stepDist > 1.5 || dHold > 5),
-          // 완전히 멈춘 상태에서의 미세한 손떨림(stepDist <= 1.5px & dHold <= 5px)만 무시합니다!
+          // 🌟 [홀드 감지 정밀 앵커링 (W3C/모바일 표준 8px Slop 적용)]:
+          // 연속 필기 중에는 홀드 타이머가 확실히 리셋되면서도,
+          // 유리면 위에서 선을 긋고 멈출 때 발생하는 미세 손떨림(stepDist <= 2.5px & dHold <= 8px)으로 타이머가 초기화되지 않도록 보호!
           const prevMovePos = this._lastMoveEventScreenPos || pos;
           const stepDist = Math.hypot(pos.x - prevMovePos.x, pos.y - prevMovePos.y);
           this._lastMoveEventScreenPos = { x: pos.x, y: pos.y };
           if (this._inkHoldLastScreenPos) {
             const dHold = Math.hypot(pos.x - this._inkHoldLastScreenPos.x, pos.y - this._inkHoldLastScreenPos.y);
-            if (stepDist > 1.5 || dHold > 5) {
+            if (stepDist > 2.5 || dHold > 8) {
               this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
               this._lastSignificantMoveTime = Date.now();
               if (!this._inkHoldTimer) {

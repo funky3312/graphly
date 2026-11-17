@@ -2760,7 +2760,7 @@
 
     // 🌟 Draw & Hold 기하 도형 & 수학 함수 개형 인식 엔진 (Line, Circle, Ellipse, Rect, Triangle, Parabola, Cubic/Sine Wave) 🌟
     recognizeInkShape(stroke) {
-      if (!stroke || !stroke.points || stroke.points.length < 4) return null;
+      if (!stroke || !stroke.points || stroke.points.length < 2) return null;
 
       const isCardPixel = Boolean(stroke._isCardPixelSpace);
       const isBoard = !isCardPixel && (stroke.target || 'board') === 'board';
@@ -2782,9 +2782,9 @@
         return { x: m.x, y: m.y };
       };
 
-      // 🌟 [시작점·끝점 정지 미세 노이즈만 제한적으로 제거 (작은 글씨 `3`, `ㄴ` 곡선/모서리 훼손 원천 방지!)]:
-      // 기존 10px/12px 무조건 삭제는 20~28px 크기의 숫자 `3`이나 `ㄴ`의 곡선·모서리를 통째로 잘라내어 직선으로 둔갑시켰음.
-      // 따라서 전체 바운딩 크기 대비 최대 7~8%(최대 3.0~3.5px) 이내에 제자리 뭉친 정지 떨림 점만 제거합니다.
+      // 🌟 [PaleoSketch / ShortStraw 표준 양 끝단 Dehooking (정지 갈고리 정밀 제거 & 직선 무수축 보존)]:
+      // 펜을 대거나 멈출 때 양 끝 반경 내에 뭉친 정지 노이즈를 분리하되,
+      // 실제 직선 진행 방향에서 옆으로 꺾인 갈고리(Hook)는 완전히 버리고 일직선 감속 끝점은 길이를 100% 보존합니다.
       let rawMinX = rawScreenPts[0].x, rawMaxX = rawScreenPts[0].x;
       let rawMinY = rawScreenPts[0].y, rawMaxY = rawScreenPts[0].y;
       for (let i = 1; i < rawScreenPts.length; i++) {
@@ -2795,26 +2795,58 @@
         if (rp.y > rawMaxY) rawMaxY = rp.y;
       }
       const rawMaxDim = Math.max(1, rawMaxX - rawMinX, rawMaxY - rawMinY);
-      const startTrimRadius = Math.min(3.0, rawMaxDim * 0.07);
-      const endTrimRadius = Math.min(3.5, rawMaxDim * 0.08);
+      const startTrimRadius = Math.min(3.5, rawMaxDim * 0.08);
+      const endTrimRadius = Math.min(4.5, rawMaxDim * 0.10);
 
       const rawFirst = rawScreenPts[0];
       let trimStartIdx = 0;
-      while (trimStartIdx < rawScreenPts.length - 3 && Math.hypot(rawScreenPts[trimStartIdx + 1].x - rawFirst.x, rawScreenPts[trimStartIdx + 1].y - rawFirst.y) <= startTrimRadius) {
+      while (trimStartIdx < rawScreenPts.length - 2 && Math.hypot(rawScreenPts[trimStartIdx + 1].x - rawFirst.x, rawScreenPts[trimStartIdx + 1].y - rawFirst.y) <= startTrimRadius) {
         trimStartIdx++;
       }
       const rawLast = rawScreenPts[rawScreenPts.length - 1];
       let trimEndIdx = rawScreenPts.length - 1;
-      while (trimEndIdx > trimStartIdx + 2 && Math.hypot(rawScreenPts[trimEndIdx - 1].x - rawLast.x, rawScreenPts[trimEndIdx - 1].y - rawLast.y) <= endTrimRadius) {
+      while (trimEndIdx > trimStartIdx + 1 && Math.hypot(rawScreenPts[trimEndIdx - 1].x - rawLast.x, rawScreenPts[trimEndIdx - 1].y - rawLast.y) <= endTrimRadius) {
         trimEndIdx--;
       }
-      const trimmedPts = [rawFirst, ...rawScreenPts.slice(trimStartIdx + 1, trimEndIdx), rawLast];
 
-      // 2) 공간 거리(2.5px) 기준으로 균일하게 리샘플링하여 240Hz 중복 점으로 인한 arcLen 부풀림 차단 및 세밀한 굴곡 보존
+      const coreFirst = rawScreenPts[trimStartIdx];
+      const coreLast = rawScreenPts[trimEndIdx];
+      const coreDx = coreLast.x - coreFirst.x;
+      const coreDy = coreLast.y - coreFirst.y;
+      const coreLen = Math.hypot(coreDx, coreDy);
+      let keepRawFirst = (trimStartIdx === 0);
+      let keepRawLast = (trimEndIdx === rawScreenPts.length - 1);
+      if (coreLen >= 4) {
+        const ux = coreDx / coreLen;
+        const uy = coreDy / coreLen;
+        if (!keepRawFirst) {
+          const fx = rawFirst.x - coreFirst.x;
+          const fy = rawFirst.y - coreFirst.y;
+          const fAlong = -(fx * ux + fy * uy);
+          const fPerp = Math.abs(fx * uy - fy * ux);
+          if (fAlong >= 0 && fPerp <= 1.4) keepRawFirst = true;
+        }
+        if (!keepRawLast) {
+          const lx = rawLast.x - coreLast.x;
+          const ly = rawLast.y - coreLast.y;
+          const lAlong = lx * ux + ly * uy;
+          const lPerp = Math.abs(lx * uy - ly * ux);
+          if (lAlong >= 0 && lPerp <= 1.4) keepRawLast = true;
+        }
+      }
+      const middlePts = rawScreenPts.slice(trimStartIdx + 1, trimEndIdx);
+      const trimmedPts = [
+        ...(trimStartIdx === 0 ? [rawFirst] : (keepRawFirst ? [rawFirst, coreFirst] : [coreFirst])),
+        ...middlePts,
+        ...(trimEndIdx === rawScreenPts.length - 1 ? [rawLast] : (keepRawLast ? [coreLast, rawLast] : [coreLast]))
+      ];
+
+      // 2) 공간 거리(단거리 <30px는 1.5px, 일반은 2.5px) 기준으로 균일 리샘플링하여 240Hz 중복 점 부풀림 차단 및 작은 글씨 굴곡 보존
+      const resampleStep = rawMaxDim < 30 ? 1.5 : 2.5;
       const screenPts = [trimmedPts[0]];
       for (let i = 1; i < trimmedPts.length - 1; i++) {
         const prev = screenPts[screenPts.length - 1];
-        if (Math.hypot(trimmedPts[i].x - prev.x, trimmedPts[i].y - prev.y) >= 2.5) {
+        if (Math.hypot(trimmedPts[i].x - prev.x, trimmedPts[i].y - prev.y) >= resampleStep) {
           screenPts.push(trimmedPts[i]);
         }
       }
@@ -2840,7 +2872,7 @@
         if (screenPts[i + 1].y > maxY) maxY = screenPts[i + 1].y;
       }
 
-      if (arcLen < 30) return null;
+      if (arcLen < 9) return null;
 
       const W = Math.max(1, maxX - minX);
       const H = Math.max(1, maxY - minY);
@@ -2855,12 +2887,16 @@
         if (dev > maxLineDev) maxLineDev = dev;
       }
 
-      // --- [1. 직선 판별 (Straight Line & Axis Magnet Snap)] ---
-      // 🌟 작은 손글씨(`ㄴ`, `3` 등)가 직선으로 오판되지 않도록 최소 직선 거리(chordLen >= 30),
-      // 엄격한 직선도(straightness >= 0.89), 비례 이탈 허용치(maxLineDev <= max(4.5, chordLen * 0.075)) 적용!
-      const isStraightLine = (chordLen >= 30) &&
-        (maxLineDev <= Math.max(4.5, chordLen * 0.075)) &&
-        (straightness >= 0.89 || (straightness >= 0.85 && maxLineDev <= Math.max(3.5, chordLen * 0.055)));
+      // --- [1. 직선 판별 (Straight Line & Axis Magnet Snap — 9px+ 짧은 분수선 지원)] ---
+      // 🌟 필기앱 표준 물리 2~3mm(9px) 짧은 분수선(`2/3`)까지 직선 인식을 허용하되,
+      // 단거리(9~30px)에서는 PaleoSketch 직선도(>= 0.90)와 엄격한 수직 이탈 한도를 적용해 작은 글씨(`3`, `ㄴ`) 오인식을 0%로 차단!
+      const isShortLineCand = (chordLen >= 9 && chordLen < 30);
+      const isLongLineCand = (chordLen >= 30);
+      const isStraightLine = isShortLineCand
+        ? (straightness >= 0.90 && maxLineDev <= Math.max(2.2, chordLen * 0.085))
+        : (isLongLineCand &&
+          (maxLineDev <= Math.max(4.8, chordLen * 0.085)) &&
+          (straightness >= 0.90 || (straightness >= 0.85 && maxLineDev <= Math.max(3.8, chordLen * 0.065))));
 
       if (isStraightLine) {
         let endX = pEnd.x;
@@ -2871,14 +2907,16 @@
         const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
         const absAngle = Math.abs(angleDeg);
 
-        const snapAngleThresh = 4.0;
-        const diagAngleThresh = 1.5;
+        const snapAngleThresh = 4.5;
+        const diagAngleThresh = 2.0;
+        const isShortHorizSnap = (chordLen < 28 && Math.abs(dy) <= 2.2 && Math.abs(dx) >= 7.5);
+        const isShortVertSnap = (chordLen < 28 && Math.abs(dx) <= 2.2 && Math.abs(dy) >= 7.5);
 
         let snapped = null;
-        if (absAngle < snapAngleThresh || absAngle > (180 - snapAngleThresh)) {
+        if (absAngle < snapAngleThresh || absAngle > (180 - snapAngleThresh) || isShortHorizSnap) {
           endY = pStart.y;
           snapped = 'horizontal';
-        } else if (Math.abs(absAngle - 90) < snapAngleThresh) {
+        } else if (Math.abs(absAngle - 90) < snapAngleThresh || isShortVertSnap) {
           endX = pStart.x;
           snapped = 'vertical';
         } else if (Math.abs(absAngle - 45) < diagAngleThresh || Math.abs(absAngle - 135) < diagAngleThresh) {
@@ -2897,6 +2935,9 @@
           snapped: snapped
         };
       }
+
+      // 직선 외 곡선·닫힌 도형(삼차개형, 포물선, 삼각형, 원, 타원, 직사각형)은 기존 최소 크기(점 4개 · 30px) 100% 그대로 유지
+      if (stroke.points.length < 4 || arcLen < 30) return null;
 
       // --- [2. 열린 수학 함수 곡선 판별: 삼차함수(Cubic Wave) & 이차함수 포물선(Parabola)] ---
       const horizSpan = Math.abs(pEnd.x - pStart.x);
@@ -3274,6 +3315,128 @@
       return null;
     }
 
+    // 🌟 [도형 자동완성 실측 굵기 매칭]: 입필 삐침(0~18%)과 정지 홀드 떨림(82~100%)을 제외한
+    // 실제 획 몸통 구간의 거리 가중 중앙값 필압(Trimmed Arc-Length Weighted Median Pressure) 추출
+    _computeRepresentativeShapePressure(points, penStyle = 'ballpen', options = {}) {
+      if (!penStyle || penStyle === 'ballpen' || penStyle === 'flat') return 0.5;
+      if (options.isShiftLine) {
+        if (options.hasHwP && typeof options.initialHwPressure === 'number' && options.initialHwPressure > 0) {
+          const boosted = Math.pow(Math.max(0, options.initialHwPressure - 0.03) / 0.73, penStyle === 'brush' ? 0.80 : 0.88);
+          return Math.round(Math.max(0.18, Math.min(0.95, boosted)) * 1000) / 1000;
+        }
+        return 0.48;
+      }
+      if (!Array.isArray(points) || points.length === 0) return 0.48;
+      const L = points.length;
+      if (L === 1) return 0.48;
+
+      const cardW = options.cardW || 0;
+      const cardH = options.cardH || 0;
+      const toScreen = typeof options.toScreen === 'function' ? options.toScreen : null;
+      const coords = new Array(L);
+      for (let i = 0; i < L; i++) {
+        const pt = points[i] || {};
+        let sx = 0, sy = 0;
+        if (cardW > 0 && cardH > 0 && pt.nx !== undefined) {
+          sx = pt.nx * cardW;
+          sy = pt.ny * cardH;
+        } else if (toScreen && pt.x !== undefined) {
+          const s = toScreen(pt);
+          sx = s.x;
+          sy = s.y;
+        } else {
+          sx = pt.x !== undefined ? pt.x : (pt.nx || 0) * 480;
+          sy = pt.y !== undefined ? pt.y : (pt.ny || 0) * 360;
+        }
+        coords[i] = {
+          x: sx,
+          y: sy,
+          p: (typeof pt.p === 'number' && !isNaN(pt.p)) ? pt.p : 0.48
+        };
+      }
+
+      const segLens = new Array(L - 1);
+      let totalLen = 0;
+      for (let i = 0; i < L - 1; i++) {
+        const d = Math.hypot(coords[i + 1].x - coords[i].x, coords[i + 1].y - coords[i].y);
+        segLens[i] = d;
+        totalLen += d;
+      }
+      if (totalLen < 1e-3) {
+        return Math.round(Math.max(0.08, Math.min(0.98, coords[L - 1].p)) * 1000) / 1000;
+      }
+
+      const loDist = totalLen * 0.18;
+      const hiDist = totalLen * 0.82;
+      const samples = [];
+      let cum = 0;
+      for (let i = 0; i < L - 1; i++) {
+        const ds = segLens[i];
+        const d0 = cum;
+        const d1 = cum + ds;
+        cum = d1;
+        if (ds < 1e-5) continue;
+        const ov0 = Math.max(d0, loDist);
+        const ov1 = Math.min(d1, hiDist);
+        if (ov1 <= ov0) continue;
+        const pA = coords[i].p;
+        const pB = coords[i + 1].p;
+        let pSeg;
+        if (i === 0) {
+          // 첫 점(pointerdown)의 인위적 입필 감쇠가 짧은 2~3점 분수선을 가늘게 만들지 않도록 보정
+          pSeg = (!options.hasHwP && L <= 3) ? Math.max(pB, 0.45) : pB;
+        } else {
+          const u = (((ov0 + ov1) * 0.5) - d0) / ds;
+          pSeg = pA + (pB - pA) * u;
+          if (!options.hasHwP && L <= 3) {
+            pSeg = Math.max(pSeg, 0.45);
+          }
+        }
+        samples.push({ p: pSeg, w: ov1 - ov0 });
+      }
+
+      if (samples.length === 0) {
+        const fallbackP = (!options.hasHwP && L <= 3) ? Math.max(coords[L - 1].p, 0.45) : coords[L >> 1].p;
+        return Math.round(Math.max(0.08, Math.min(0.98, fallbackP)) * 1000) / 1000;
+      }
+
+      samples.sort((a, b) => a.p - b.p);
+      let totalW = 0;
+      for (let i = 0; i < samples.length; i++) totalW += samples[i].w;
+      const halfW = totalW * 0.5;
+      let accW = 0;
+      let medP = samples[samples.length - 1].p;
+      for (let i = 0; i < samples.length; i++) {
+        accW += samples[i].w;
+        if (accW >= halfW) {
+          medP = samples[i].p;
+          break;
+        }
+      }
+      return Math.round(Math.max(0.08, Math.min(0.98, medP)) * 1000) / 1000;
+    }
+
+    getRecognizedShapePressure(stroke) {
+      if (!stroke) return 0.5;
+      const penStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
+      if (penStyle === 'ballpen' || penStyle === 'flat') return 0.5;
+      if (typeof stroke.shapePressure === 'number' && !isNaN(stroke.shapePressure)) {
+        return stroke.shapePressure;
+      }
+      if (stroke.shape && typeof stroke.shape.p === 'number' && !isNaN(stroke.shape.p)) {
+        return stroke.shape.p;
+      }
+      if (stroke.cardShape && typeof stroke.cardShape.p === 'number' && !isNaN(stroke.cardShape.p)) {
+        return stroke.cardShape.p;
+      }
+      const isInstantShift = Boolean(
+        stroke._isShiftLine ||
+        (typeof stroke.shapeSnapAt === 'number' && typeof stroke.tStart === 'number' && stroke.shapeSnapAt <= stroke.tStart + 1)
+      );
+      if (isInstantShift) return 0.48;
+      return this._computeRepresentativeShapePressure(stroke.points, penStyle, { hasHwP: Boolean(stroke._hasHwP) });
+    }
+
     _startInkHoldTimer() {
       if (this._inkHoldTimer) {
         clearTimeout(this._inkHoldTimer);
@@ -3285,8 +3448,8 @@
         this._inkHoldTimer = null;
         if (!this.isDrawingInk || !this.currentInkStroke || this._inkHoldDetected) return;
         const idleMs = Date.now() - (this._lastSignificantMoveTime || 0);
-        if (idleMs < 330) {
-          this._inkHoldTimer = setTimeout(checkHold, Math.max(40, 340 - idleMs));
+        if (idleMs < 335) {
+          this._inkHoldTimer = setTimeout(checkHold, Math.max(16, 340 - idleMs));
           return;
         }
         this._onInkHoldTriggered();
@@ -3313,11 +3476,22 @@
       }
       const shape = this.recognizeInkShape(strokeForHold);
       if (shape) {
+        const isGraphTarget = (strokeForHold.target !== 'board');
+        const shapeP = this._computeRepresentativeShapePressure(
+          strokeForHold.points,
+          strokeForHold.penStyle || 'ballpen',
+          {
+            hasHwP: Boolean(this._strokeHasRealPressure),
+            toScreen: (pt) => isGraphTarget ? this.mathToScreen(pt.x, pt.y) : this.boardToScreen(pt.x, pt.y)
+          }
+        );
+        shape.p = shapeP;
         if (strokeForHold !== this.currentInkStroke) {
           this.currentInkStroke.points = strokeForHold.points;
         }
         this._pcMainStrokeFairer = null;
         this._inkHoldDetected = true;
+        this.currentInkStroke.shapePressure = shapeP;
         this.currentInkStroke.shape = shape;
         this.currentInkStroke.isShape = true;
         if (this.isAudioRecording) {
@@ -3347,21 +3521,24 @@
 
       const dx = endX - sStart.x;
       const dy = endY - sStart.y;
+      const dist = Math.hypot(dx, dy);
       const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
       const absAngle = Math.abs(angleDeg);
 
-      // 홀드 상태에서 직선을 돌릴 때 수평(0°, 180°), 수직(90°), 대각선(45°)에 마그네틱 자석 스냅! (자석 범위 슬림화: 1.5° / 1.2°)
-      const snapAngleThresh = 1.5;
-      const diagAngleThresh = 1.2;
+      // 홀드 드래그 중 수평·수직·45° 히스테리시스 스냅 (이미 스냅된 축은 5.0°까지 안정 유지하여 분수선 길이 조절 시 풀림 방지)
+      const horizThresh = (shape.snapped === 'horizontal') ? 5.0 : 4.0;
+      const vertThresh = (shape.snapped === 'vertical') ? 5.0 : 4.0;
+      const diagAngleThresh = (shape.snapped === 'diagonal') ? 2.4 : 1.8;
+      const shortHorizAssist = (dist < 28 && Math.abs(dy) <= (shape.snapped === 'horizontal' ? 2.5 : 2.0) && Math.abs(dx) >= 7.0);
+      const shortVertAssist = (dist < 28 && Math.abs(dx) <= (shape.snapped === 'vertical' ? 2.5 : 2.0) && Math.abs(dy) >= 7.0);
 
-      if (absAngle < snapAngleThresh || absAngle > (180 - snapAngleThresh)) {
+      if (absAngle < horizThresh || absAngle > (180 - horizThresh) || shortHorizAssist) {
         endY = sStart.y;
         shape.snapped = 'horizontal';
-      } else if (Math.abs(absAngle - 90) < snapAngleThresh) {
+      } else if (Math.abs(absAngle - 90) < vertThresh || shortVertAssist) {
         endX = sStart.x;
         shape.snapped = 'vertical';
       } else if (Math.abs(absAngle - 45) < diagAngleThresh || Math.abs(absAngle - 135) < diagAngleThresh) {
-        const dist = Math.hypot(dx, dy);
         const signX = dx >= 0 ? 1 : -1;
         const signY = dy >= 0 ? 1 : -1;
         endX = sStart.x + signX * dist * Math.SQRT1_2;
@@ -3380,11 +3557,14 @@
     }
 
     // 🌟 [문제 카드 & 그래프 보관 카드 통합 Draw & Hold 도형 자동 인식 엔진] 🌟
-    _buildNormalizedPointsFromCardShape(cardShape, tStart, tEnd) {
+    _buildNormalizedPointsFromCardShape(cardShape, tStart, tEnd, shapePressure) {
       if (!cardShape) return [];
       const ts = (typeof tStart === 'number') ? tStart : undefined;
       const te = (typeof tEnd === 'number') ? tEnd : ts;
       const makeTime = (u) => (ts !== undefined && te !== undefined) ? Math.round(ts + (te - ts) * u) : undefined;
+      const ptP = (typeof shapePressure === 'number' && !isNaN(shapePressure))
+        ? shapePressure
+        : ((cardShape && typeof cardShape.p === 'number' && !isNaN(cardShape.p)) ? cardShape.p : 0.5);
       const out = [];
 
       if (cardShape.type === 'line' && cardShape.start && cardShape.end) {
@@ -3394,7 +3574,7 @@
           out.push({
             nx: cardShape.start.nx + (cardShape.end.nx - cardShape.start.nx) * u,
             ny: cardShape.start.ny + (cardShape.end.ny - cardShape.start.ny) * u,
-            p: 0.55,
+            p: ptP,
             t: makeTime(u)
           });
         }
@@ -3410,7 +3590,7 @@
           out.push({
             nx: cardShape.center.nx + Math.cos(ang) * rx,
             ny: cardShape.center.ny + Math.sin(ang) * ry,
-            p: 0.55,
+            p: ptP,
             t: makeTime(u)
           });
         }
@@ -3435,12 +3615,12 @@
             out.push({
               nx: cA.nx + (cB.nx - cA.nx) * uSeg,
               ny: cA.ny + (cB.ny - cA.ny) * uSeg,
-              p: 0.55,
+              p: ptP,
               t: makeTime(uAll)
             });
           }
         }
-        out.push({ nx: corners[4].nx, ny: corners[4].ny, p: 0.55, t: makeTime(1) });
+        out.push({ nx: corners[4].nx, ny: corners[4].ny, p: ptP, t: makeTime(1) });
         return out;
       }
       if (Array.isArray(cardShape.pts) && cardShape.pts.length >= 2) {
@@ -3458,13 +3638,13 @@
               out.push({
                 nx: pA.nx + (pB.nx - pA.nx) * uSeg,
                 ny: pA.ny + (pB.ny - pA.ny) * uSeg,
-                p: 0.55,
+                p: ptP,
                 t: makeTime(uAll)
               });
             }
           }
           const lastV = vertices[vertices.length - 1];
-          out.push({ nx: lastV.nx, ny: lastV.ny, p: 0.55, t: makeTime(1) });
+          out.push({ nx: lastV.nx, ny: lastV.ny, p: ptP, t: makeTime(1) });
           return out;
         }
         const len = vertices.length;
@@ -3473,7 +3653,7 @@
           out.push({
             nx: vertices[i].nx,
             ny: vertices[i].ny,
-            p: 0.55,
+            p: ptP,
             t: makeTime(u)
           });
         }
@@ -3486,14 +3666,14 @@
       if (!cardStroke || !Array.isArray(cardStroke.points)) return false;
       const w = Math.max(1, cardW || 480);
       const h = Math.max(1, cardH || 360);
-      let ptsForHold = cardStroke.points.map(pt => ({ x: pt.nx * w, y: pt.ny * h }));
+      let ptsForHold = cardStroke.points.map(pt => ({ x: pt.nx * w, y: pt.ny * h, p: pt.p }));
       if (cardStroke._pcFairer && typeof cardStroke._pcFairer.peekPendingTail === 'function') {
         const extra = cardStroke._pcFairer.peekPendingTail(cardStroke._lastRawPx);
         if (extra.length > 0) {
-          ptsForHold = ptsForHold.concat(extra.map(sp => ({ x: sp.x, y: sp.y })));
+          ptsForHold = ptsForHold.concat(extra.map(sp => ({ x: sp.x, y: sp.y, p: sp.p })));
         }
       }
-      if (ptsForHold.length < 4) return false;
+      if (ptsForHold.length < 2) return false;
       const pixelStroke = {
         _isCardPixelSpace: true,
         isHighlighter: Boolean(cardStroke.isHighlighter),
@@ -3501,6 +3681,11 @@
       };
       const shape = this.recognizeInkShape(pixelStroke);
       if (!shape) return false;
+      const shapeP = this._computeRepresentativeShapePressure(
+        ptsForHold,
+        cardStroke.penStyle || 'ballpen',
+        { hasHwP: Boolean(cardStroke._hasHwP) }
+      );
       cardStroke._pcFairer = null;
 
       let cardShape = null;
@@ -3509,33 +3694,38 @@
           type: 'line',
           start: { nx: shape.start.x / w, ny: shape.start.y / h },
           end: { nx: shape.end.x / w, ny: shape.end.y / h },
-          snapped: shape.snapped || null
+          snapped: shape.snapped || null,
+          p: shapeP
         };
       } else if (shape.type === 'circle' && shape.center) {
         cardShape = {
           type: 'circle',
           center: { nx: shape.center.x / w, ny: shape.center.y / h },
           rx: shape.radius / w,
-          ry: shape.radius / h
+          ry: shape.radius / h,
+          p: shapeP
         };
       } else if (shape.type === 'ellipse' && shape.center) {
         cardShape = {
           type: 'ellipse',
           center: { nx: shape.center.x / w, ny: shape.center.y / h },
           rx: shape.rx / w,
-          ry: shape.ry / h
+          ry: shape.ry / h,
+          p: shapeP
         };
       } else if (shape.type === 'rect' && shape.min && shape.max) {
         cardShape = {
           type: 'rect',
           min: { nx: Math.min(shape.min.x, shape.max.x) / w, ny: Math.min(shape.min.y, shape.max.y) / h },
-          max: { nx: Math.max(shape.min.x, shape.max.x) / w, ny: Math.max(shape.min.y, shape.max.y) / h }
+          max: { nx: Math.max(shape.min.x, shape.max.x) / w, ny: Math.max(shape.min.y, shape.max.y) / h },
+          p: shapeP
         };
       } else if (Array.isArray(shape.pts) && shape.pts.length >= 2) {
         cardShape = {
           type: shape.type,
           closed: Boolean(shape.closed),
-          pts: shape.pts.map(p => ({ nx: p.x / w, ny: p.y / h }))
+          pts: shape.pts.map(p => ({ nx: p.x / w, ny: p.y / h })),
+          p: shapeP
         };
       }
       if (!cardShape) return false;
@@ -3549,8 +3739,9 @@
       }
       cardStroke._shapeHoldDetected = true;
       cardStroke.isShape = true;
+      cardStroke.shapePressure = shapeP;
       cardStroke.cardShape = cardShape;
-      cardStroke.points = this._buildNormalizedPointsFromCardShape(cardShape, cardStroke.tStart, recT);
+      cardStroke.points = this._buildNormalizedPointsFromCardShape(cardShape, cardStroke.tStart, recT, shapeP);
       return true;
     }
 
@@ -3566,20 +3757,23 @@
 
       const dx = endX - sStartX;
       const dy = endY - sStartY;
+      const dist = Math.hypot(dx, dy);
       const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
       const absAngle = Math.abs(angleDeg);
 
-      const snapAngleThresh = 1.8;
-      const diagAngleThresh = 1.2;
+      const horizThresh = (sh.snapped === 'horizontal') ? 5.0 : 4.0;
+      const vertThresh = (sh.snapped === 'vertical') ? 5.0 : 4.0;
+      const diagAngleThresh = (sh.snapped === 'diagonal') ? 2.4 : 1.8;
+      const shortHorizAssist = (dist < 28 && Math.abs(dy) <= (sh.snapped === 'horizontal' ? 2.5 : 2.0) && Math.abs(dx) >= 7.0);
+      const shortVertAssist = (dist < 28 && Math.abs(dx) <= (sh.snapped === 'vertical' ? 2.5 : 2.0) && Math.abs(dy) >= 7.0);
 
-      if (absAngle < snapAngleThresh || absAngle > (180 - snapAngleThresh)) {
+      if (absAngle < horizThresh || absAngle > (180 - horizThresh) || shortHorizAssist) {
         endY = sStartY;
         sh.snapped = 'horizontal';
-      } else if (Math.abs(absAngle - 90) < snapAngleThresh) {
+      } else if (Math.abs(absAngle - 90) < vertThresh || shortVertAssist) {
         endX = sStartX;
         sh.snapped = 'vertical';
       } else if (Math.abs(absAngle - 45) < diagAngleThresh || Math.abs(absAngle - 135) < diagAngleThresh) {
-        const dist = Math.hypot(dx, dy);
         const signX = dx >= 0 ? 1 : -1;
         const signY = dy >= 0 ? 1 : -1;
         endX = sStartX + signX * dist * Math.SQRT1_2;
@@ -3599,23 +3793,50 @@
       if (recT !== undefined) {
         cardStroke.tEnd = recT;
       }
-      cardStroke.points = this._buildNormalizedPointsFromCardShape(sh, cardStroke.tStart, recT);
+      const shapeP = this.getRecognizedShapePressure(cardStroke);
+      cardStroke.points = this._buildNormalizedPointsFromCardShape(sh, cardStroke.tStart, recT, shapeP);
       return true;
     }
 
     drawCardRecognizedShape(ctx, stroke, ox, oy, w, h, baseSize) {
       if (!ctx || !stroke || !stroke.isShape || !stroke.cardShape) return false;
       const sh = stroke.cardShape;
+      const isHighlighter = Boolean(stroke.isHighlighter);
+      const penStyle = isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
+      const blurVal = isHighlighter
+        ? 0
+        : Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
+      const effBaseSize = (blurVal > 0) ? baseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : baseSize;
+      const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
+      const isFlatNib = (!isHighlighter && penStyle === 'flat');
+      const nibX = isFlatNib ? 1.38 : 1.0;
+      const nibY = isFlatNib ? 0.68 : 1.0;
+
+      ctx.save();
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      if (!stroke.isHighlighter) {
-        ctx.lineWidth = Math.max(1.4, baseSize * 0.96);
+      if (!isHighlighter) {
+        const shapeP = this.getRecognizedShapePressure(stroke);
+        ctx.lineWidth = this.computePenStyleWidth(effBaseSize, shapeP, penStyle);
+        if (blurVal > 0) {
+          ctx.shadowColor = ctx.strokeStyle || '#1e293b';
+          ctx.shadowBlur = blurVal * dpr * 0.65;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+        } else {
+          ctx.shadowBlur = 0;
+        }
       }
+      if (isFlatNib) {
+        ctx.scale(nibX, nibY);
+      }
+
       if (sh.type === 'line' && sh.start && sh.end) {
         ctx.beginPath();
-        ctx.moveTo(ox + sh.start.nx * w, oy + sh.start.ny * h);
-        ctx.lineTo(ox + sh.end.nx * w, oy + sh.end.ny * h);
+        ctx.moveTo((ox + sh.start.nx * w) / nibX, (oy + sh.start.ny * h) / nibY);
+        ctx.lineTo((ox + sh.end.nx * w) / nibX, (oy + sh.end.ny * h) / nibY);
         ctx.stroke();
+        ctx.restore();
         return true;
       }
       if ((sh.type === 'circle' || sh.type === 'ellipse') && sh.center) {
@@ -3624,8 +3845,9 @@
         const rx = Math.max(2, Math.abs((sh.rx || 0) * w));
         const ry = Math.max(2, Math.abs((sh.ry || sh.rx || 0) * h));
         ctx.beginPath();
-        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx / nibX, cy / nibY, rx / nibX, ry / nibY, 0, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.restore();
         return true;
       }
       if (sh.type === 'rect' && sh.min && sh.max) {
@@ -3634,20 +3856,23 @@
         const x2 = ox + sh.max.nx * w;
         const y2 = oy + sh.max.ny * h;
         ctx.beginPath();
-        ctx.rect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
+        ctx.rect(Math.min(x1, x2) / nibX, Math.min(y1, y2) / nibY, Math.abs(x2 - x1) / nibX, Math.abs(y2 - y1) / nibY);
         ctx.stroke();
+        ctx.restore();
         return true;
       }
       if (Array.isArray(sh.pts) && sh.pts.length >= 2) {
         ctx.beginPath();
-        ctx.moveTo(ox + sh.pts[0].nx * w, oy + sh.pts[0].ny * h);
+        ctx.moveTo((ox + sh.pts[0].nx * w) / nibX, (oy + sh.pts[0].ny * h) / nibY);
         for (let i = 1; i < sh.pts.length; i++) {
-          ctx.lineTo(ox + sh.pts[i].nx * w, oy + sh.pts[i].ny * h);
+          ctx.lineTo((ox + sh.pts[i].nx * w) / nibX, (oy + sh.pts[i].ny * h) / nibY);
         }
         if (sh.closed) ctx.closePath();
         ctx.stroke();
+        ctx.restore();
         return true;
       }
+      ctx.restore();
       return false;
     }
 
@@ -7431,35 +7656,61 @@
 
       // 🌟 Draw & Hold 기하 도형 & 수학 곡선 렌더링 (직선, 정원, 타원, 직사각형, 삼각형, 이차함수 포물선, 삼차/삼각 개형) 🌟
       if (stroke.shape) {
-        const shapeBaseSize = (stroke.size || 3) * zoomRatio;
-        // PC · 아이패드 통일된 펜 굵기(1.0x)와 이질감 없이 매칭되는 도형 선 굵기(0.95배)
+        const shapeBaseSize = (stroke.size || 4.2) * zoomRatio;
+        const shapePenStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
+        const blurVal = stroke.isHighlighter
+          ? 0
+          : Math.max(0, Math.min(5.0, (typeof stroke.softBlur === 'number' && !isNaN(stroke.softBlur)) ? stroke.softBlur : (this.inkSoftBlur || 0)));
+        const effShapeBase = (blurVal > 0) ? shapeBaseSize * Math.max(0.76, 1.0 - blurVal * 0.038) : shapeBaseSize;
+        const dpr = (typeof this.getCanvasDpr === 'function') ? this.getCanvasDpr() : (window.devicePixelRatio || 1);
         const hlShapeBase = stroke.highlighterSize ? (stroke.highlighterSize * zoomRatio) : Math.max(8, shapeBaseSize * 2.5);
-        targetCtx.lineWidth = stroke.isHighlighter ? Math.max(4, hlShapeBase) : Math.max(1.2, shapeBaseSize * 0.95);
+        const shapeP = stroke.isHighlighter ? 0.5 : this.getRecognizedShapePressure(stroke);
+        targetCtx.lineWidth = stroke.isHighlighter
+          ? Math.max(4, hlShapeBase)
+          : this.computePenStyleWidth(effShapeBase, shapeP, shapePenStyle);
         targetCtx.strokeStyle = strokeColor;
+        if (blurVal > 0) {
+          targetCtx.shadowColor = strokeColor;
+          targetCtx.shadowBlur = blurVal * dpr * 0.65;
+          targetCtx.shadowOffsetX = 0;
+          targetCtx.shadowOffsetY = 0;
+        } else {
+          targetCtx.shadowBlur = 0;
+        }
+        const isFlatNib = (!stroke.isHighlighter && shapePenStyle === 'flat');
+        const nibX = isFlatNib ? 1.38 : 1.0;
+        const nibY = isFlatNib ? 0.68 : 1.0;
+        if (isFlatNib) {
+          targetCtx.scale(nibX, nibY);
+        }
 
         if (stroke.shape.type === 'line') {
           const s1 = isBoardInk ? this.boardToScreen(stroke.shape.start.x, stroke.shape.start.y) : this.mathToScreen(stroke.shape.start.x, stroke.shape.start.y);
           const s2 = isBoardInk ? this.boardToScreen(stroke.shape.end.x, stroke.shape.end.y) : this.mathToScreen(stroke.shape.end.x, stroke.shape.end.y);
           targetCtx.beginPath();
-          targetCtx.moveTo(s1.x, s1.y);
-          targetCtx.lineTo(s2.x, s2.y);
+          targetCtx.moveTo(s1.x / nibX, s1.y / nibY);
+          targetCtx.lineTo(s2.x / nibX, s2.y / nibY);
           targetCtx.stroke();
           targetCtx.restore();
           return;
         } else if (stroke.shape.type === 'circle') {
           const sc = isBoardInk ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
-          const sr = isBoardInk ? (stroke.shape.radius * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x);
+          const sr = Math.max(2, isBoardInk ? (stroke.shape.radius * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.radius, stroke.shape.center.y).x - sc.x));
           targetCtx.beginPath();
-          targetCtx.arc(sc.x, sc.y, Math.max(2, sr), 0, Math.PI * 2);
+          if (isFlatNib) {
+            targetCtx.ellipse(sc.x / nibX, sc.y / nibY, sr / nibX, sr / nibY, 0, 0, Math.PI * 2);
+          } else {
+            targetCtx.arc(sc.x, sc.y, sr, 0, Math.PI * 2);
+          }
           targetCtx.stroke();
           targetCtx.restore();
           return;
         } else if (stroke.shape.type === 'ellipse') {
           const sc = isBoardInk ? this.boardToScreen(stroke.shape.center.x, stroke.shape.center.y) : this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y);
-          const srx = isBoardInk ? (stroke.shape.rx * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.rx, stroke.shape.center.y).x - sc.x);
-          const sry = isBoardInk ? (stroke.shape.ry * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y);
+          const srx = Math.max(2, isBoardInk ? (stroke.shape.rx * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x + stroke.shape.rx, stroke.shape.center.y).x - sc.x));
+          const sry = Math.max(2, isBoardInk ? (stroke.shape.ry * bz) : Math.abs(this.mathToScreen(stroke.shape.center.x, stroke.shape.center.y + stroke.shape.ry).y - sc.y));
           targetCtx.beginPath();
-          targetCtx.ellipse(sc.x, sc.y, Math.max(2, srx), Math.max(2, sry), 0, 0, Math.PI * 2);
+          targetCtx.ellipse(sc.x / nibX, sc.y / nibY, srx / nibX, sry / nibY, 0, 0, Math.PI * 2);
           targetCtx.stroke();
           targetCtx.restore();
           return;
@@ -7471,16 +7722,16 @@
           const rw = Math.abs(s2.x - s1.x);
           const rh = Math.abs(s2.y - s1.y);
           targetCtx.beginPath();
-          targetCtx.rect(rx, ry, rw, rh);
+          targetCtx.rect(rx / nibX, ry / nibY, rw / nibX, rh / nibY);
           targetCtx.stroke();
           targetCtx.restore();
           return;
         } else if (stroke.shape.pts && stroke.shape.pts.length >= 2) {
           const sPts = stroke.shape.pts.map(pt => isBoardInk ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y));
           targetCtx.beginPath();
-          targetCtx.moveTo(sPts[0].x, sPts[0].y);
+          targetCtx.moveTo(sPts[0].x / nibX, sPts[0].y / nibY);
           for (let i = 1; i < sPts.length; i++) {
-            targetCtx.lineTo(sPts[i].x, sPts[i].y);
+            targetCtx.lineTo(sPts[i].x / nibX, sPts[i].y / nibY);
           }
           if (stroke.shape.closed) {
             targetCtx.closePath();

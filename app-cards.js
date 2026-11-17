@@ -2407,8 +2407,14 @@
             points: [{ nx: pos.nx, ny: pos.ny, p: initP, t: recT }]
           };
           if (isShiftLine) {
+            const shiftShapeP = this._computeRepresentativeShapePressure(
+              null,
+              initCardPenStyle,
+              { isShiftLine: true, hasHwP, initialHwPressure: e ? e.pressure : 0.5 }
+            );
             currentStroke._isShiftLine = true;
             currentStroke.isShape = true;
+            currentStroke.shapePressure = shiftShapeP;
             if (recT !== undefined) {
               currentStroke.shapeSnapAt = recT;
             }
@@ -2416,7 +2422,8 @@
               type: 'line',
               start: { nx: pos.nx, ny: pos.ny },
               end: { nx: pos.nx, ny: pos.ny },
-              snapped: null
+              snapped: null,
+              p: shiftShapeP
             };
           }
           this.problemInkStrokes.push(currentStroke);
@@ -2486,7 +2493,7 @@
 
           const holdAnchor = currentStroke._holdAnchorPx || { x: curPxX, y: curPxY };
           const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
-          if (moveStepDist > 1.5 || dHold > 5) {
+          if (moveStepDist > 2.5 || dHold > 8) {
             currentStroke._holdAnchorPx = { x: curPxX, y: curPxY };
             restartProblemHoldTimer(pos.w, pos.h);
           }
@@ -3517,8 +3524,14 @@
             points: [{ nx, ny, p: initP, t: recT }]
           };
           if (isShiftLine) {
+            const shiftShapeP = this._computeRepresentativeShapePressure(
+              null,
+              initExtraPenStyle,
+              { isShiftLine: true, hasHwP, initialHwPressure: e ? e.pressure : 0.5 }
+            );
             curExtraStroke._isShiftLine = true;
             curExtraStroke.isShape = true;
+            curExtraStroke.shapePressure = shiftShapeP;
             if (recT !== undefined) {
               curExtraStroke.shapeSnapAt = recT;
             }
@@ -3526,7 +3539,8 @@
               type: 'line',
               start: { nx, ny },
               end: { nx, ny },
-              snapped: null
+              snapped: null,
+              p: shiftShapeP
             };
           }
           cardWidgetEl._cardInkStrokes.push(curExtraStroke);
@@ -3602,7 +3616,7 @@
 
           const holdAnchor = curExtraStroke._holdAnchorPx || { x: curPxX, y: curPxY };
           const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
-          if (moveStepDist > 1.5 || dHold > 5) {
+          if (moveStepDist > 2.5 || dHold > 8) {
             curExtraStroke._holdAnchorPx = { x: curPxX, y: curPxY };
             restartExtraHoldTimer(rw, rh);
           }
@@ -6595,8 +6609,14 @@
             points: [{ nx: pos.nx, ny: pos.ny, p: initP, t: recT }]
           };
           if (isShiftLine) {
+            const shiftShapeP = this._computeRepresentativeShapePressure(
+              null,
+              initGraphCardPenStyle,
+              { isShiftLine: true, hasHwP, initialHwPressure: e ? e.pressure : 0.5 }
+            );
             currentStroke._isShiftLine = true;
             currentStroke.isShape = true;
+            currentStroke.shapePressure = shiftShapeP;
             if (recT !== undefined) {
               currentStroke.shapeSnapAt = recT;
             }
@@ -6604,7 +6624,8 @@
               type: 'line',
               start: { nx: pos.nx, ny: pos.ny },
               end: { nx: pos.nx, ny: pos.ny },
-              snapped: null
+              snapped: null,
+              p: shiftShapeP
             };
           }
           this.graphInkStrokes.push(currentStroke);
@@ -6678,7 +6699,7 @@
 
           const holdAnchor = currentStroke._holdAnchorPx || { x: curPxX, y: curPxY };
           const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
-          if (moveStepDist > 1.5 || dHold > 5) {
+          if (moveStepDist > 2.5 || dHold > 8) {
             currentStroke._holdAnchorPx = { x: curPxX, y: curPxY };
             restartGraphCardHoldTimer(pos.w, pos.h);
           }
@@ -7873,6 +7894,7 @@
           isHighlighter: Boolean(cs.isHighlighter),
           penStyle: cs.penStyle || 'ballpen',
           softBlur: cs.softBlur || 0,
+          shapePressure: (typeof cs.shapePressure === 'number') ? cs.shapePressure : ((cs.cardShape && typeof cs.cardShape.p === 'number') ? cs.cardShape.p : undefined),
           tStart: cs.tStart,
           tEnd: cs.tEnd,
           shapeSnapAt: cs.shapeSnapAt,
@@ -7883,47 +7905,55 @@
           fullStroke.isShape = true;
           fullStroke._savedCardShape = JSON.parse(JSON.stringify(cs.cardShape));
           const sh = cs.cardShape;
+          const shP = fullStroke.shapePressure;
           if (sh.type === 'line' && sh.start && typeof sh.start.mx === 'number' && sh.end && typeof sh.end.mx === 'number') {
             fullStroke.shape = {
               type: 'line',
               start: { x: sh.start.mx, y: sh.start.my },
-              end: { x: sh.end.mx, y: sh.end.my }
+              end: { x: sh.end.mx, y: sh.end.my },
+              snapped: sh.snapped || null,
+              p: shP
             };
           } else if ((sh.type === 'line' || sh.type === 'dashedLine' || sh.type === 'arrow') && typeof sh.mx1 === 'number') {
             fullStroke.shapeType = sh.type;
             fullStroke.shape = {
               type: 'line',
               start: { x: sh.mx1, y: sh.my1 },
-              end: { x: sh.mx2, y: sh.my2 }
+              end: { x: sh.mx2, y: sh.my2 },
+              p: shP
             };
             fullStroke.points = [
-              { x: sh.mx1, y: sh.my1, p: 0.5 },
-              { x: sh.mx2, y: sh.my2, p: 0.5 }
+              { x: sh.mx1, y: sh.my1, p: shP !== undefined ? shP : 0.5 },
+              { x: sh.mx2, y: sh.my2, p: shP !== undefined ? shP : 0.5 }
             ];
           } else if (sh.type === 'circle' && sh.center && typeof sh.center.mx === 'number') {
             fullStroke.shape = {
               type: 'circle',
               center: { x: sh.center.mx, y: sh.center.my },
-              radius: sh.mrx || 0.5
+              radius: sh.mrx || 0.5,
+              p: shP
             };
           } else if (sh.type === 'ellipse' && sh.center && typeof sh.center.mx === 'number') {
             fullStroke.shape = {
               type: 'ellipse',
               center: { x: sh.center.mx, y: sh.center.my },
               rx: sh.mrx || 0.5,
-              ry: sh.mry || sh.mrx || 0.5
+              ry: sh.mry || sh.mrx || 0.5,
+              p: shP
             };
           } else if (sh.type === 'rect' && sh.min && typeof sh.min.mx === 'number' && sh.max && typeof sh.max.mx === 'number') {
             fullStroke.shape = {
               type: 'rect',
               min: { x: sh.min.mx, y: sh.min.my },
-              max: { x: sh.max.mx, y: sh.max.my }
+              max: { x: sh.max.mx, y: sh.max.my },
+              p: shP
             };
           } else if (Array.isArray(sh.pts) && sh.pts.length >= 2 && typeof sh.pts[0].mx === 'number') {
             fullStroke.shape = {
               type: sh.type,
               closed: Boolean(sh.closed),
-              pts: sh.pts.map(vp => ({ x: vp.mx, y: vp.my }))
+              pts: sh.pts.map(vp => ({ x: vp.mx, y: vp.my })),
+              p: shP
             };
           }
         }
@@ -7996,6 +8026,9 @@
             ? Math.max(6, Math.min(64, parseFloat((gs.highlighterSize).toFixed(2))))
             : undefined;
 
+          const gsShapeP = (typeof gs.shapePressure === 'number')
+            ? gs.shapePressure
+            : ((gs.shape && typeof gs.shape.p === 'number') ? gs.shape.p : undefined);
           const cStroke = {
             color: gs.color || '#1e293b',
             size: cardBaseSize,
@@ -8003,6 +8036,7 @@
             isHighlighter: Boolean(gs.isHighlighter),
             penStyle: gs.penStyle || 'ballpen',
             softBlur: gs.softBlur || 0,
+            shapePressure: gsShapeP,
             _inPlaceStreamlined: true,
             _jitterPolished: true,
             tStart: gs.tStart,
@@ -8014,16 +8048,86 @@
           if (gs.isShape && gs._savedCardShape) {
             cStroke.isShape = true;
             cStroke.cardShape = JSON.parse(JSON.stringify(gs._savedCardShape));
-          } else if (gs.isShape && gs.shape && gs.shape.type === 'line' && gs.shape.start && gs.shape.end) {
-            const s0 = this.mathToScreen(gs.shape.start.x, gs.shape.start.y);
-            const s1 = this.mathToScreen(gs.shape.end.x, gs.shape.end.y);
-            cStroke.isShape = true;
-            cStroke.cardShape = {
-              type: 'line',
-              start: { nx: s0.x / effW, ny: s0.y / effH, mx: gs.shape.start.x, my: gs.shape.start.y },
-              end: { nx: s1.x / effW, ny: s1.y / effH, mx: gs.shape.end.x, my: gs.shape.end.y },
-              snapped: gs.shape.snapped || null
-            };
+            if (gsShapeP !== undefined && cStroke.cardShape.p === undefined) {
+              cStroke.cardShape.p = gsShapeP;
+            }
+          } else if (gs.isShape && gs.shape) {
+            const gsh = gs.shape;
+            if (gsh.type === 'line' && gsh.start && gsh.end) {
+              const s0 = this.mathToScreen(gsh.start.x, gsh.start.y);
+              const s1 = this.mathToScreen(gsh.end.x, gsh.end.y);
+              cStroke.isShape = true;
+              cStroke.cardShape = {
+                type: 'line',
+                start: { nx: s0.x / effW, ny: s0.y / effH, mx: gsh.start.x, my: gsh.start.y },
+                end: { nx: s1.x / effW, ny: s1.y / effH, mx: gsh.end.x, my: gsh.end.y },
+                snapped: gsh.snapped || null,
+                p: gsShapeP
+              };
+            } else if (gsh.type === 'circle' && gsh.center) {
+              const rad = gsh.radius || 0.5;
+              const sc = this.mathToScreen(gsh.center.x, gsh.center.y);
+              const sr = this.mathToScreen(gsh.center.x + rad, gsh.center.y - rad);
+              cStroke.isShape = true;
+              cStroke.cardShape = {
+                type: 'circle',
+                center: { nx: sc.x / effW, ny: sc.y / effH, mx: gsh.center.x, my: gsh.center.y },
+                rx: Math.abs(sr.x - sc.x) / effW,
+                ry: Math.abs(sr.y - sc.y) / effH,
+                mrx: rad,
+                mry: rad,
+                p: gsShapeP
+              };
+            } else if (gsh.type === 'ellipse' && gsh.center) {
+              const erx = gsh.rx || 0.5;
+              const ery = gsh.ry || erx;
+              const sc = this.mathToScreen(gsh.center.x, gsh.center.y);
+              const sr = this.mathToScreen(gsh.center.x + erx, gsh.center.y - ery);
+              cStroke.isShape = true;
+              cStroke.cardShape = {
+                type: 'ellipse',
+                center: { nx: sc.x / effW, ny: sc.y / effH, mx: gsh.center.x, my: gsh.center.y },
+                rx: Math.abs(sr.x - sc.x) / effW,
+                ry: Math.abs(sr.y - sc.y) / effH,
+                mrx: erx,
+                mry: ery,
+                p: gsShapeP
+              };
+            } else if (gsh.type === 'rect' && gsh.min && gsh.max) {
+              const minMx = Math.min(gsh.min.x, gsh.max.x);
+              const maxMx = Math.max(gsh.min.x, gsh.max.x);
+              const minMy = Math.min(gsh.min.y, gsh.max.y);
+              const maxMy = Math.max(gsh.min.y, gsh.max.y);
+              const sMin = this.mathToScreen(minMx, minMy);
+              const sMax = this.mathToScreen(maxMx, maxMy);
+              cStroke.isShape = true;
+              cStroke.cardShape = {
+                type: 'rect',
+                min: { nx: Math.min(sMin.x, sMax.x) / effW, ny: Math.min(sMin.y, sMax.y) / effH, mx: minMx, my: Math.max(minMy, maxMy) },
+                max: { nx: Math.max(sMin.x, sMax.x) / effW, ny: Math.max(sMin.y, sMax.y) / effH, mx: maxMx, my: Math.min(minMy, maxMy) },
+                p: gsShapeP
+              };
+            } else if (Array.isArray(gsh.pts) && gsh.pts.length >= 2) {
+              cStroke.isShape = true;
+              cStroke.cardShape = {
+                type: gsh.type,
+                closed: Boolean(gsh.closed),
+                pts: gsh.pts.map(vp => {
+                  const sv = this.mathToScreen(vp.x, vp.y);
+                  return { nx: sv.x / effW, ny: sv.y / effH, mx: vp.x, my: vp.y };
+                }),
+                p: gsShapeP
+              };
+            }
+            if (cStroke.cardShape && typeof this._buildNormalizedPointsFromCardShape === 'function') {
+              const normShapePts = this._buildNormalizedPointsFromCardShape(cStroke.cardShape, gs.tStart, gs.tEnd, gsShapeP);
+              if (normShapePts.length >= 2) {
+                cStroke.points = normShapePts.map(np => {
+                  const mp = this.screenToMath(np.nx * effW, np.ny * effH);
+                  return { nx: np.nx, ny: np.ny, mx: mp.x, my: mp.y, p: np.p, t: np.t };
+                });
+              }
+            }
           } else if (gs.isShape && (gs.shapeType === 'line' || gs.shapeType === 'dashedLine' || gs.shapeType === 'arrow') && pts.length >= 2) {
             const p0 = pts[0];
             const p1 = pts[pts.length - 1];
@@ -8031,7 +8135,8 @@
             cStroke.cardShape = {
               type: 'line',
               start: { nx: p0.nx, ny: p0.ny, mx: p0.mx, my: p0.my },
-              end: { nx: p1.nx, ny: p1.ny, mx: p1.mx, my: p1.my }
+              end: { nx: p1.nx, ny: p1.ny, mx: p1.mx, my: p1.my },
+              p: gsShapeP
             };
           }
 
