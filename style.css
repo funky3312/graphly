@@ -28505,3 +28505,35 @@ body.ui-all-hidden-mode #railAddTargetPopover {
 .graph-card-widget.pip-target-hover-ring > .problem-card-body {
   box-shadow: 0 0 0 2.5px rgba(59, 130, 246, 0.88), 0 14px 32px rgba(15, 23, 42, 0.22) !important;
 }
+
+/* =========================================================================
+   [v174 핀셋 패치] 결제 결과 안내창 (#modalTossPaymentResult) 하단 확인 버튼 정중앙 정렬 & 테마 격리
+   ========================================================================= */
+#modalTossPaymentResult #btnConfirmTossPaymentResultModal {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+#modalTossPaymentResult #btnConfirmTossPaymentResultModal:hover {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+body:not(.theme-light) #modalTossPaymentResult #btnConfirmTossPaymentResultModal {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalTossPaymentResult #btnConfirmTossPaymentResultModal:hover {
+  background: #e2e8f0 !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}

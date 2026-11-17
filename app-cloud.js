@@ -4670,7 +4670,7 @@
         ` : ''}
         ${!isLoading ? `
           <button type="button" id="btnConfirmTossPaymentResultModal" class="btn-primary"
-            style="width: 100%; height: 42px; border-radius: 10px; font-size: 14px; font-weight: 800; background: #0f172a; color: #fff; border: 1px solid #0f172a; cursor: pointer;">
+            style="width: 100%; height: 42px; border-radius: 10px; font-size: 14px; font-weight: 800; display: flex; align-items: center; justify-content: center; text-align: center; box-shadow: none; background: #0f172a; color: #fff; border: 1px solid #0f172a; cursor: pointer;">
             ${escapeText(resolvedButtonLabel)}
           </button>
         ` : ''}
