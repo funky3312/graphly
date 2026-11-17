@@ -895,12 +895,12 @@
             try { this.audioMediaRecorder.resume(); } catch (e) { }
           }
         }
-        const hasRecordedStrokes = Boolean(
-          (this.inkStrokes && this.inkStrokes.some(s => s && typeof s.tStart === 'number')) ||
-          (this.problemInkStrokes && this.problemInkStrokes.some(s => s && typeof s.tStart === 'number')) ||
-          (this.graphInkStrokes && this.graphInkStrokes.some(s => s && typeof s.tStart === 'number'))
+        const canInitInitialState = !this.audioInitialState || (
+          this.getAudioRecordElapsedMs() < 400 &&
+          (!this.audioTimeline || this.audioTimeline.length <= 1) &&
+          (this._resumedSlideBaseOffsetMs || 0) === 0
         );
-        if (this.getAudioRecordElapsedMs() < 1200 || (!hasRecordedStrokes && (this._resumedSlideBaseOffsetMs || 0) === 0)) {
+        if (canInitInitialState) {
           this.audioInitialState = this._captureAudioWorkspaceKeyframe();
         }
         this._recordAudioWorkspaceStateIfNeeded(true);
@@ -1405,7 +1405,9 @@
       } else {
         this._isAudioWaitingForNextSlideSetup = false;
         if (this.isAudioRecording) {
-          this.audioInitialState = this._captureAudioWorkspaceKeyframe();
+          if (!this.audioInitialState || (this.getAudioRecordElapsedMs() < 400 && (!this.audioTimeline || this.audioTimeline.length <= 1))) {
+            this.audioInitialState = this._captureAudioWorkspaceKeyframe();
+          }
           this._recordAudioWorkspaceStateIfNeeded(true);
         }
         if (this.isLessonPlaylistActive) {
@@ -1453,6 +1455,9 @@
       this.pdfPageBoardData.mathH = this.pdfPageBoardData.mathH * z0;
 
       // 2. 기존 PDF 위 개념 필기(target === 'graph') 좌표 및 줌 흡수
+      const prevPdfInkSnap = (this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
+        ? this._snapshotInkListForReconcile(this.inkStrokes)
+        : null;
       if (this.inkStrokes && this.inkStrokes.length > 0) {
         this.inkStrokes.forEach(s => {
           if (!s || (s.target || 'board') === 'board') return;
@@ -1489,6 +1494,12 @@
       this.panX = 0;
       this.panY = 0;
       this.setZoomLevel(1.0);
+      if (prevPdfInkSnap && this.isAudioRecording && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
+        this._reconcileInkStrokesForAudioRecording(prevPdfInkSnap, this.inkStrokes);
+      }
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       this._inkBakeDirty = true;
       this.clearInkCache();
     }
@@ -1633,6 +1644,20 @@
     closePdfPageBoard() {
       this._invalidatePdfBoardHiResTile(true);
       if (!this.pdfPageBoardData) return;
+      if (this.isAudioRecording) {
+        if (typeof this._archivePdfBoardForAudioRecording === 'function') {
+          this._archivePdfBoardForAudioRecording(this.pdfPageBoardData);
+        }
+        if (Array.isArray(this.inkStrokes) && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
+          const recT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
+          this.inkStrokes.forEach(s => {
+            if (s && s.onPdfBoard) {
+              this._archiveStrokeRemovedDuringRecording(s, recT);
+            }
+          });
+          this.inkStrokes = this.inkStrokes.filter(s => s && !s.onPdfBoard);
+        }
+      }
       this.pdfPageBoardData = null;
       this._suspendedPdfBoardState = null;
       this._lastPdfPageScreenRect = null;
@@ -1645,6 +1670,9 @@
       }
       this.syncWorkspaceModeUI();
       this.syncGraphSnapBarUI();
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       this.render();
     }
 

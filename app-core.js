@@ -1447,12 +1447,9 @@ class GraphApp {
     if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'workspace_snapshot') {
       const currentFull = this._captureFullWorkspaceSnapshot();
       const stampedId = (prevSnap.stampedStroke && prevSnap.stampedStroke.id) || prevSnap.stampedStrokeId || null;
-      if (this.isAudioRecording && Array.isArray(this.audioErasedStrokes) && prevSnap.stampedStroke && typeof prevSnap.stampedStroke.tStart === 'number') {
-        const recT = (typeof this.getAudioRecordElapsedMs === 'function')
-          ? Math.max(0, Math.round(this.getAudioRecordElapsedMs()))
-          : 0;
-        this.audioErasedStrokes.push({ ...JSON.parse(JSON.stringify(prevSnap.stampedStroke)), erasedAt: recT });
-      }
+      const prevInkRec = (this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
+        ? this._snapshotInkListForReconcile(this.inkStrokes)
+        : null;
       this.redoStack.push({
         type: 'workspace_snapshot',
         snapshot: currentFull,
@@ -1461,6 +1458,9 @@ class GraphApp {
         stampedStrokeId: stampedId
       });
       this._restoreFullWorkspaceSnapshot(prevSnap.snapshot);
+      if (prevInkRec && this.isAudioRecording && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
+        this._reconcileInkStrokesForAudioRecording(prevInkRec, this.inkStrokes);
+      }
       this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
@@ -1481,6 +1481,9 @@ class GraphApp {
       this.redoStack.push(prevSnap);
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       this.render();
       this.showToast('↺ 스티커 실행 취소됨');
       return;
@@ -1508,6 +1511,9 @@ class GraphApp {
       this.redoStack.push(prevSnap);
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       this.showToast('↺ 카드 스티커 실행 취소됨');
       return;
     }
@@ -1515,6 +1521,7 @@ class GraphApp {
     // 🌟 [0ms 초고속 카드 위 필기 획 단위 실행 취소]
     if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'card_stroke_add') {
       const targetArr = this._resolveCardUndoStrokesArray(prevSnap);
+      let removedCardStroke = null;
       if (Array.isArray(targetArr)) {
         let idx = targetArr.indexOf(prevSnap.stroke);
         if (idx === -1 && targetArr.length > 0 && prevSnap.stroke && prevSnap.stroke.points) {
@@ -1535,12 +1542,22 @@ class GraphApp {
             }
           }
         }
-        if (idx !== -1) targetArr.splice(idx, 1);
+        if (idx !== -1) {
+          removedCardStroke = targetArr.splice(idx, 1)[0];
+          if (removedCardStroke) prevSnap.stroke = removedCardStroke;
+        }
+      }
+      if (this.isAudioRecording && (removedCardStroke || prevSnap.stroke) && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
+        const ck = prevSnap.cardKey || (prevSnap.cardEl && typeof this.getAudioCardKey === 'function' ? this.getAudioCardKey(prevSnap.cardEl) : null);
+        this._archiveStrokeRemovedDuringRecording(removedCardStroke || prevSnap.stroke, null, ck ? { cardKey: ck } : null);
       }
       if (typeof prevSnap.renderFn === 'function') prevSnap.renderFn();
       this.redoStack.push(prevSnap);
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       this.showToast('↺ 카드 필기 실행 취소됨');
       return;
     }
@@ -1548,6 +1565,9 @@ class GraphApp {
     // 🌟 [0ms 초고속 카드 지우개 획 삭제 실행 취소]
     if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'card_strokes_erase') {
       const targetArr = this._resolveCardUndoStrokesArray(prevSnap);
+      const recCardRestoreT = (this.isAudioRecording && typeof this.getAudioRecordElapsedMs === 'function')
+        ? Math.max(0, Math.round(this.getAudioRecordElapsedMs()))
+        : null;
       if (Array.isArray(targetArr) && Array.isArray(prevSnap.batches)) {
         for (let b = prevSnap.batches.length - 1; b >= 0; b--) {
           const batch = prevSnap.batches[b];
@@ -1555,6 +1575,9 @@ class GraphApp {
           for (let i = 0; i < batch.length; i++) {
             const item = batch[i];
             if (!item || !item.stroke) continue;
+            if (recCardRestoreT !== null && typeof this._stampStrokeAppearedAtRecordingTime === 'function') {
+              this._stampStrokeAppearedAtRecordingTime(item.stroke, recCardRestoreT);
+            }
             const insertIdx = Math.max(0, Math.min(targetArr.length, item.index));
             targetArr.splice(insertIdx, 0, item.stroke);
           }
@@ -1564,6 +1587,9 @@ class GraphApp {
       this.redoStack.push(prevSnap);
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       this.showToast('↺ 지운 카드 필기 복구됨');
       return;
     }
@@ -1598,11 +1624,8 @@ class GraphApp {
         const rmIds = new Set(prevSnap.promotedStickers.map(s => s && s.id).filter(Boolean));
         this.boardStickers = this.boardStickers.filter(s => !prevSnap.promotedStickers.includes(s) && !(s && s.id && rmIds.has(s.id)));
       }
-      if (this.isAudioRecording && Array.isArray(this.audioErasedStrokes) && prevSnap.stroke && typeof prevSnap.stroke.tStart === 'number') {
-        const recT = (typeof this.getAudioRecordElapsedMs === 'function')
-          ? Math.max(0, Math.round(this.getAudioRecordElapsedMs()))
-          : 0;
-        this.audioErasedStrokes.push({ ...JSON.parse(JSON.stringify(prevSnap.stroke)), erasedAt: recT });
+      if (this.isAudioRecording && prevSnap.stroke && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
+        this._archiveStrokeRemovedDuringRecording(prevSnap.stroke);
       }
       this.redoStack.push(prevSnap);
       this._inkBakeDirty = true;
@@ -1621,6 +1644,9 @@ class GraphApp {
     // 🌟 [0ms 초고속 지우개 획 삭제 실행 취소]
     if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'strokes_erase') {
       if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
+      const recRestoreT = (this.isAudioRecording && typeof this.getAudioRecordElapsedMs === 'function')
+        ? Math.max(0, Math.round(this.getAudioRecordElapsedMs()))
+        : null;
       if (Array.isArray(prevSnap.batches)) {
         for (let b = prevSnap.batches.length - 1; b >= 0; b--) {
           const batch = prevSnap.batches[b];
@@ -1628,6 +1654,9 @@ class GraphApp {
           for (let i = 0; i < batch.length; i++) {
             const item = batch[i];
             if (!item || !item.stroke) continue;
+            if (recRestoreT !== null && typeof this._stampStrokeAppearedAtRecordingTime === 'function') {
+              this._stampStrokeAppearedAtRecordingTime(item.stroke, recRestoreT);
+            }
             const insertIdx = Math.max(0, Math.min(this.inkStrokes.length, item.index));
             this.inkStrokes.splice(insertIdx, 0, item.stroke);
           }
@@ -1643,9 +1672,18 @@ class GraphApp {
       return;
     }
 
+    const prevInkFallback = (this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
+      ? this._snapshotInkListForReconcile(this.inkStrokes)
+      : null;
     const currentSnap = this.getHistorySnapshot();
     this.redoStack.push(currentSnap);
     this.restoreHistorySnapshot(prevSnap);
+    if (prevInkFallback && this.isAudioRecording && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
+      this._reconcileInkStrokesForAudioRecording(prevInkFallback, this.inkStrokes);
+    }
+    if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
     this._inkBakeDirty = true;
     this.isHistoryProcessing = false;
     this.updateUndoRedoUI();
@@ -1663,6 +1701,9 @@ class GraphApp {
     // 🌟 [새 캔버스 전체 초기화 / 그래프·문제 창 닫기·스탬프 박제 다시 실행]
     if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'workspace_snapshot') {
       const currentFull = this._captureFullWorkspaceSnapshot();
+      const prevInkRedo = (this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
+        ? this._snapshotInkListForReconcile(this.inkStrokes)
+        : null;
       const undoEntry = {
         type: 'workspace_snapshot',
         snapshot: currentFull,
@@ -1672,27 +1713,21 @@ class GraphApp {
       };
       this.undoStack.push(undoEntry);
       this._restoreFullWorkspaceSnapshot(nextSnap.snapshot);
+      let matched = null;
       if (nextSnap.stampedStrokeId && Array.isArray(this.inkStrokes)) {
-        let matched = null;
         for (let k = this.inkStrokes.length - 1; k >= 0; k--) {
           if (this.inkStrokes[k] && this.inkStrokes[k].id === nextSnap.stampedStrokeId) {
             matched = this.inkStrokes[k];
             break;
           }
         }
-        if (matched) {
-          if (this.isAudioRecording && typeof this.getAudioRecordElapsedMs === 'function') {
-            const recT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
-            matched.id = `pstamp_redo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-            matched.tStart = recT;
-            matched.tEnd = recT;
-            if (Array.isArray(matched.points)) {
-              matched.points.forEach(pt => { if (pt) pt.t = recT; });
-            }
-            undoEntry.stampedStrokeId = matched.id;
-          }
-          undoEntry.stampedStroke = matched;
-        }
+      }
+      if (prevInkRedo && this.isAudioRecording && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
+        this._reconcileInkStrokesForAudioRecording(prevInkRedo, this.inkStrokes);
+      }
+      if (matched) {
+        undoEntry.stampedStrokeId = matched.id || undoEntry.stampedStrokeId;
+        undoEntry.stampedStroke = matched;
       }
       this._inkBakeDirty = true;
       this.isHistoryProcessing = false;
@@ -1714,6 +1749,9 @@ class GraphApp {
       this.undoStack.push(nextSnap);
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       this.render();
       this.showToast('↻ 스티커 다시 실행됨');
       return;
@@ -1741,6 +1779,9 @@ class GraphApp {
       this.undoStack.push(nextSnap);
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       this.showToast('↻ 카드 스티커 다시 실행됨');
       return;
     }
@@ -1748,6 +1789,9 @@ class GraphApp {
     // 🌟 [0ms 초고속 카드 위 필기 획 단위 다시 실행]
     if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'card_stroke_add') {
       const targetArr = this._resolveCardUndoStrokesArray(nextSnap);
+      if (this.isAudioRecording && nextSnap.stroke && typeof this._stampStrokeAppearedAtRecordingTime === 'function') {
+        this._stampStrokeAppearedAtRecordingTime(nextSnap.stroke);
+      }
       if (Array.isArray(targetArr)) {
         targetArr.push(nextSnap.stroke);
       }
@@ -1755,6 +1799,9 @@ class GraphApp {
       this.undoStack.push(nextSnap);
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       this.showToast('↻ 카드 필기 다시 실행됨');
       return;
     }
@@ -1772,6 +1819,11 @@ class GraphApp {
           }
         }
         if (toRemove.size > 0) {
+          if (this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
+            const ck = nextSnap.cardKey || (nextSnap.cardEl && typeof this.getAudioCardKey === 'function' ? this.getAudioCardKey(nextSnap.cardEl) : null);
+            const recCardRedoEraseT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
+            toRemove.forEach(st => this._archiveStrokeRemovedDuringRecording(st, recCardRedoEraseT, ck ? { cardKey: ck } : null));
+          }
           let writeIdx = 0;
           for (let i = 0; i < targetArr.length; i++) {
             const st = targetArr[i];
@@ -1786,20 +1838,17 @@ class GraphApp {
       this.undoStack.push(nextSnap);
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       this.showToast('↻ 카드 필기 지우기 다시 실행됨');
       return;
     }
 
     // 🌟 [0ms 초고속 잉크 획 단위 다시 실행]
     if (typeof nextSnap === 'object' && nextSnap !== null && nextSnap.type === 'stroke_add') {
-      if (this.isAudioRecording && nextSnap.stroke && nextSnap.stroke.isGraphStamp && typeof this.getAudioRecordElapsedMs === 'function') {
-        const recT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
-        nextSnap.stroke.id = `gstamp_redo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        nextSnap.stroke.tStart = recT;
-        nextSnap.stroke.tEnd = recT;
-        if (Array.isArray(nextSnap.stroke.points)) {
-          nextSnap.stroke.points.forEach(pt => { if (pt) pt.t = recT; });
-        }
+      if (this.isAudioRecording && nextSnap.stroke && typeof this._stampStrokeAppearedAtRecordingTime === 'function') {
+        this._stampStrokeAppearedAtRecordingTime(nextSnap.stroke);
       }
       this.inkStrokes.push(nextSnap.stroke);
       if (Array.isArray(nextSnap.promotedStickers) && nextSnap.promotedStickers.length > 0) {
@@ -1832,6 +1881,10 @@ class GraphApp {
           }
         }
         if (toRemove.size > 0) {
+          if (this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
+            const recRedoEraseT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
+            toRemove.forEach(st => this._archiveStrokeRemovedDuringRecording(st, recRedoEraseT));
+          }
           this.inkStrokes = this.inkStrokes.filter(st => !toRemove.has(st));
         }
       }
@@ -1845,9 +1898,18 @@ class GraphApp {
       return;
     }
 
+    const prevInkRedoFallback = (this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
+      ? this._snapshotInkListForReconcile(this.inkStrokes)
+      : null;
     const currentSnap = this.getHistorySnapshot();
     this.undoStack.push(currentSnap);
     this.restoreHistorySnapshot(nextSnap);
+    if (prevInkRedoFallback && this.isAudioRecording && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
+      this._reconcileInkStrokesForAudioRecording(prevInkRedoFallback, this.inkStrokes);
+    }
+    if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
     this._inkBakeDirty = true;
     this.isHistoryProcessing = false;
     this.updateUndoRedoUI();
@@ -3440,6 +3502,9 @@ class GraphApp {
       });
     }
     this.render();
+    if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
   }
 
   // ==========================================================================
@@ -4659,12 +4724,16 @@ class GraphApp {
     const btnRailPresets = document.getElementById('btnRailPresets');
 
     this.closeRailAddTargetPopover = () => {
+      const wasOpen = Boolean(railAddTargetPopover && railAddTargetPopover.style.display !== 'none');
       if (railAddTargetPopover) railAddTargetPopover.style.display = 'none';
       document.querySelectorAll('.graph-card-widget.pip-target-hover-ring').forEach(el => {
         el.classList.remove('pip-target-hover-ring');
       });
       if (btnRailPresets && (this.isDrawerCollapsed || this.activeDrawerPanel !== 'panelPresets')) {
         btnRailPresets.classList.remove('active');
+      }
+      if (wasOpen && this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
       }
     };
 
@@ -4771,6 +4840,9 @@ class GraphApp {
         }
         railAddTargetPopover.style.display = 'block';
         if (btnRailPresets) btnRailPresets.classList.add('active');
+        if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+        }
         return;
       }
       this._pipTargetCard = 'new';
@@ -6201,6 +6273,9 @@ class GraphApp {
     if (typeof this.scheduleSaveUserPreferences === 'function') {
       this.scheduleSaveUserPreferences();
     }
+    if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
     if (showMsg) {
       this.showToast(`🎨 캔버스 테마: ${theme.name} 적용 완료!`);
     }
@@ -6232,6 +6307,9 @@ class GraphApp {
     this.render();
     if (typeof this.scheduleSaveUserPreferences === 'function') {
       this.scheduleSaveUserPreferences();
+    }
+    if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+      this._recordAudioWorkspaceStateIfNeeded(true);
     }
     if (showMsg) {
       const names = { blank: '무지', grid: '모눈 노트', lined: '가로줄 노트', dot: '도트 노트' };

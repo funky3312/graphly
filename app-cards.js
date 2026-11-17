@@ -846,7 +846,20 @@
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const strokeList = Array.isArray(strokes) ? strokes : [];
+      const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
+      const replayCardKey = (isAudioReplay && widgetEl && typeof this.getAudioCardKey === 'function')
+        ? this.getAudioCardKey(widgetEl)
+        : null;
+      const activeCardErased = (
+        isAudioReplay &&
+        this.audioReplayViewMode !== 'note' &&
+        replayCardKey &&
+        Array.isArray(this.audioSyncData.erasedStrokes)
+      )
+        ? this.audioSyncData.erasedStrokes.filter(st => st && st.cardKey === replayCardKey && (typeof st.erasedAt !== 'number' || (this.audioPlayCurrentMs || 0) < st.erasedAt))
+        : [];
+      const baseStrokeList = Array.isArray(strokes) ? strokes : [];
+      const strokeList = activeCardErased.length > 0 ? [...baseStrokeList, ...activeCardErased] : baseStrokeList;
       if (strokeList.length === 0) {
         if (canvas._cardIdleBakeTimer) {
           clearTimeout(canvas._cardIdleBakeTimer);
@@ -872,7 +885,6 @@
         return;
       }
 
-      const isAudioReplay = Boolean(this._isAudioReplayActive && this.audioSyncData);
       const hasActiveLassoOnCard = Boolean(this._activeCardLasso && this._activeCardLasso.widgetEl === widgetEl);
 
       if (isAudioReplay || hasActiveLassoOnCard) {
@@ -1290,6 +1302,9 @@
     }
 
     closeGraphCard() {
+      if (this.isAudioRecording && typeof this._archiveCardAssetForAudioRecording === 'function') {
+        this._archiveCardAssetForAudioRecording('graph', 'primary');
+      }
       const gCanvas = document.getElementById('graphCardCanvas');
       if (gCanvas) {
         this._cancelCardCanvasPendingTasks(gCanvas, true);
@@ -1326,6 +1341,9 @@
       }
       if (typeof this.syncPresetDrawerHeaderTargetLabel === 'function') {
         this.syncPresetDrawerHeaderTargetLabel();
+      }
+      if (this.isAudioRecording && !this._isDeserializingSlide && !this._isApplyingAudioTimelineState && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
       }
     }
 
@@ -1558,7 +1576,9 @@
           if (wasAutoPausedBeforeLoad && typeof this._resumeOrRolloverAudioRecorderAfterPause === 'function') {
             this._resumeOrRolloverAudioRecorderAfterPause();
           }
-          this.audioInitialState = this._captureAudioWorkspaceKeyframe();
+          if (!this.audioInitialState || (this.getAudioRecordElapsedMs() < 400 && (!this.audioTimeline || this.audioTimeline.length <= 1))) {
+            this.audioInitialState = this._captureAudioWorkspaceKeyframe();
+          }
           this._recordAudioWorkspaceStateIfNeeded(true);
           this.syncAudioRecordUI();
         }
@@ -1685,7 +1705,11 @@
       }
 
       const startMin = Boolean(options && options.startMinimized);
-      const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum, sourceCanvas: sourceCanvas || null };
+      const assignedProbUid = (options && options.cardUid)
+        ? options.cardUid
+        : (typeof this._nextAudioStrokeId === 'function' ? this._nextAudioStrokeId('problem_uid') : `problem_uid_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
+      el._cardUid = assignedProbUid;
+      const cardItem = { cardUid: assignedProbUid, el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum, sourceCanvas: sourceCanvas || null };
       if (startMin) {
         el.classList.add('minimized', 'pip-locked-mode');
         this.syncProblemCardLockUI(el);
@@ -2075,6 +2099,9 @@
       if (btnClose) {
         btnClose.onclick = () => {
           this._pushWorkspaceUndoSnapshot('↺ 닫은 문제 카드가 복원되었습니다', '↻ 문제 카드 닫기 다시 실행됨');
+          if (this.isAudioRecording && typeof this._archiveCardAssetForAudioRecording === 'function') {
+            this._archiveCardAssetForAudioRecording('prob', cardItem);
+          }
           this.clearProblemCardStealthTimer(el);
           this._hibernateDetachedCardCanvases(el);
           if (this._activePeekCardEl === el) {
@@ -2090,14 +2117,18 @@
       }
 
       // 판서 모드 및 안내 토스트
-      if (!this.isInkMode) {
-        this.toggleInkMode(true);
+      if (!this._isApplyingAudioTimelineState && !this._isDeserializingSlide && !(options && options.silentToast)) {
+        if (!this.isInkMode) {
+          this.toggleInkMode(true);
+        }
+        this.setActiveInkTool('pen');
+        if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          this._recordAudioWorkspaceStateIfNeeded(true);
+        }
+        this.render();
+        const totalProblems = 1 + this.extraProblemCards.length;
+        this.showToast(`📋 ${totalProblems}번째 문제 카드가 추가되었습니다!`);
       }
-      this.setActiveInkTool('pen');
-      this.render();
-
-      const totalProblems = 1 + this.extraProblemCards.length;
-      this.showToast(`📋 ${totalProblems}번째 문제 카드가 추가되었습니다!`);
       return cardItem;
     }
 
@@ -2119,6 +2150,11 @@
       }
 
       this._isTempPdfProblemCard = Boolean(options && options.isTempPdfCard);
+      const nextPrimaryProbUid = (options && options.cardUid)
+        ? options.cardUid
+        : (typeof this._nextAudioStrokeId === 'function' ? this._nextAudioStrokeId('problem_uid') : `problem_uid_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
+      this.problemCardUid = nextPrimaryProbUid;
+      if (widget) widget._cardUid = nextPrimaryProbUid;
       this.problemCardData = {
         imgUrl: dataUrl,
         pageNum: pageNum
@@ -2185,6 +2221,9 @@
 
       this.updateProblemCardPosition();
       this.renderProblemCardCanvas();
+      if (this.isAudioRecording && !this._isDeserializingSlide && !this._isApplyingAudioTimelineState && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
+      }
       this.render();
     }
 
@@ -3008,6 +3047,9 @@
     }
 
     closeProblemCard(options = null) {
+      if (this.isAudioRecording && typeof this._archiveCardAssetForAudioRecording === 'function') {
+        this._archiveCardAssetForAudioRecording('prob', 'primary');
+      }
       const preserveBoardPan = Boolean(options && options.preserveBoardPan);
       const pCanvas = document.getElementById('problemCardCanvas');
       if (pCanvas) {
@@ -3046,6 +3088,9 @@
           this.boardPanX = 0;
           this.boardPanY = 0;
         }
+      }
+      if (this.isAudioRecording && !this._isDeserializingSlide && !this._isApplyingAudioTimelineState && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        this._recordAudioWorkspaceStateIfNeeded(true);
       }
       this.render();
     }
@@ -3098,6 +3143,9 @@
           targetEl.style.zIndex = nextTopZ;
         }
         this.highestProblemCardZIndex = topZ;
+        if (this.isAudioRecording && !this._isApplyingAudioTimelineState && !this._isDeserializingSlide && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          this._recordAudioWorkspaceStateIfNeeded(false);
+        }
       } else {
         this.highestProblemCardZIndex = curTargetZ;
       }
@@ -5222,6 +5270,14 @@
       if (spawnedNewInSession) {
         this._editingGraphCardTarget = null;
         if (Array.isArray(this.inkStrokes)) {
+          if (this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
+            const recT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
+            this.inkStrokes.forEach(s => {
+              if (s && s.target === 'graph' && !s.onPdfBoard && !s.isGraphStamp) {
+                this._archiveStrokeRemovedDuringRecording(s, recT);
+              }
+            });
+          }
           this.inkStrokes = this.inkStrokes.filter(s => s && (s.target !== 'graph' || s.onPdfBoard || s.isGraphStamp));
         }
         if (typeof this.clearInkCache === 'function') this.clearInkCache();
@@ -5240,6 +5296,14 @@
       if (hadEditingCard && !hasLiveGraphs) {
         this._editingGraphCardTarget = null;
         if (Array.isArray(this.inkStrokes)) {
+          if (this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
+            const recT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
+            this.inkStrokes.forEach(s => {
+              if (s && s.target === 'graph' && !s.onPdfBoard && !s.isGraphStamp) {
+                this._archiveStrokeRemovedDuringRecording(s, recT);
+              }
+            });
+          }
           this.inkStrokes = this.inkStrokes.filter(s => s && (s.target !== 'graph' || s.onPdfBoard || s.isGraphStamp));
         }
         if (typeof this.clearInkCache === 'function') this.clearInkCache();
@@ -5466,6 +5530,11 @@
         createdTargetRef = this.spawnExtraGraphArchiveCard(dataUrl, cardW, aspect, currentGraphSnapshot, sourceRect, options);
       } else {
         this._hasPrimaryGraphCard = true;
+        const nextPrimaryGraphUid = (options && options.cardUid)
+          ? options.cardUid
+          : (typeof this._nextAudioStrokeId === 'function' ? this._nextAudioStrokeId('graph_uid') : `graph_uid_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
+        this.graphCardUid = nextPrimaryGraphUid;
+        if (widget) widget._cardUid = nextPrimaryGraphUid;
         this.primaryGraphCardSnapshot = currentGraphSnapshot;
         this.graphCardData = { imgUrl: dataUrl, dataUrl, graphSnapshot: currentGraphSnapshot };
         this.isGraphCardMinimized = false;
@@ -5733,7 +5802,11 @@
       stageGraphParent.appendChild(el);
       this.attachCardLaserSystem(el);
 
-      const cardItem = { el, baseX: Math.round(baseX), baseY: Math.round(baseY), aspect, isMin: false, graphSnapshot: graphSnapshot || this.getPureGraphSnapshot(), caseIdx, pdfAnchor: null };
+      const assignedGraphUid = (options && options.cardUid)
+        ? options.cardUid
+        : (typeof this._nextAudioStrokeId === 'function' ? this._nextAudioStrokeId('graph_uid') : `graph_uid_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
+      el._cardUid = assignedGraphUid;
+      const cardItem = { cardUid: assignedGraphUid, el, baseX: Math.round(baseX), baseY: Math.round(baseY), aspect, isMin: false, graphSnapshot: graphSnapshot || this.getPureGraphSnapshot(), caseIdx, pdfAnchor: null };
       this.extraGraphCards.push(cardItem);
       this.attachPipGraphCardLiveSystem(el, cardItem);
       this.bringCardToFront(el);
@@ -8031,6 +8104,10 @@
     _syncPipCardInkToFullGraph(cardRef, cardUnitScale, fullUnitScale) {
       if (!cardRef) return;
       const syncedStrokes = this._buildFullGraphInkStrokesFromPipCard(cardRef);
+      if (this.isAudioRecording && syncedStrokes.length > 0 && typeof this._stampStrokeAppearedAtRecordingTime === 'function') {
+        const recT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
+        syncedStrokes.forEach(st => this._stampStrokeAppearedAtRecordingTime(st, recT));
+      }
 
       if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
       this.inkStrokes = this.inkStrokes.filter(s => s && (s.target !== 'graph' || s.onPdfBoard || s.isGraphStamp));
@@ -8192,14 +8269,22 @@
         });
       });
 
+      const prevCardStrokesSnap = (this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
+        ? this._snapshotInkListForReconcile(this._getPipCardInkStrokesArray(cardRef))
+        : null;
       this._setPipCardInkStrokesArray(cardRef, newCardStrokes);
       this._reprojectPipCardInkFromMathCoords(cardRef, effW, effH);
+      if (prevCardStrokesSnap && this.isAudioRecording && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
+        const { widget: targetWidget } = this._getPipCardWidgetAndSnapRaw(cardRef);
+        const ck = targetWidget && typeof this.getAudioCardKey === 'function' ? this.getAudioCardKey(targetWidget) : null;
+        this._reconcileInkStrokesForAudioRecording(prevCardStrokesSnap, this._getPipCardInkStrokesArray(cardRef), null, ck);
+      }
       if (!keepFullGraphInk && Array.isArray(this.inkStrokes)) {
-        if (this.isAudioRecording && Array.isArray(this.audioErasedStrokes)) {
-          const recT = this.getAudioRecordElapsedMs();
+        if (this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
+          const recT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
           this.inkStrokes.forEach(s => {
             if (s && s.target === 'graph' && !s.onPdfBoard && !s.isGraphStamp) {
-              this.audioErasedStrokes.push({ ...JSON.parse(JSON.stringify(s)), erasedAt: recT });
+              this._archiveStrokeRemovedDuringRecording(s, recT);
             }
           });
         }
@@ -10810,6 +10895,9 @@
       });
 
       // 문제 카드 창 즉시 닫기 (카메라 패닝 유지)
+      if (this.isAudioRecording && typeof this._archiveCardAssetForAudioRecording === 'function') {
+        this._archiveCardAssetForAudioRecording('prob', isPrimary ? 'primary' : cardRef, { stampStrokeId: stampStroke.id });
+      }
       if (isPrimary) {
         this.closeProblemCard({ preserveBoardPan: true });
       } else {
@@ -11659,6 +11747,10 @@
       );
 
       if (createdRef) {
+        if (this.isAudioRecording && clonedInk.length > 0 && typeof this._stampStrokeAppearedAtRecordingTime === 'function') {
+          const recDupT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
+          clonedInk.forEach(st => this._stampStrokeAppearedAtRecordingTime(st, recDupT));
+        }
         this._setPipCardInkStrokesArray(createdRef, clonedInk);
         const { widget: createdWidget, isPrimary: createdIsPrimary } = this._getPipCardWidgetAndSnapRaw(createdRef);
         if (createdWidget && clonedStickers.length > 0) {
@@ -11681,6 +11773,9 @@
         this.scheduleBakePipGraphCardToImg(createdRef);
         if (createdWidget) {
           this.bringCardToFront(createdWidget);
+        }
+        if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          this._recordAudioWorkspaceStateIfNeeded(true);
         }
         const newCaseNum = (createdRef === 'primary') ? 1 : (createdRef.caseIdx || (this.extraGraphCards.length + 1));
         this.showToast(`⧉ #${newCaseNum} 그래프 창이 복제되었습니다!`);
@@ -11953,6 +12048,9 @@
       if (!widget) return false;
 
       this._pushWorkspaceUndoSnapshot('↺ 닫은 그래프 창이 복원되었습니다', '↻ 그래프 창 닫기 다시 실행됨');
+      if (this.isAudioRecording && typeof this._archiveCardAssetForAudioRecording === 'function') {
+        this._archiveCardAssetForAudioRecording('graph', isPrimary ? 'primary' : cardRef);
+      }
       if (isPrimary) {
         this.clearPipGraphCardStealthTimer('primary');
         if (widget._bakePipTimerId) {

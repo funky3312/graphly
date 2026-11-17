@@ -7595,10 +7595,21 @@
         if (typeof st.tStart === 'number') st.tStart = Math.round(st.tStart);
         if (typeof st.tEnd === 'number') st.tEnd = Math.round(st.tEnd);
         if (typeof st.erasedAt === 'number') st.erasedAt = Math.round(st.erasedAt);
+        if (typeof st._lassoOpStartMs === 'number') st._lassoOpStartMs = Math.round(st._lassoOpStartMs);
         if (typeof st.holdUntil === 'number') st.holdUntil = Math.round(st.holdUntil);
         if (typeof st.shapeSnapAt === 'number') st.shapeSnapAt = Math.round(st.shapeSnapAt);
         if (typeof st.zoom === 'number') st.zoom = r3(st.zoom);
         const isBoardCoord = Boolean(st.isBoard);
+        const isBoardInkCoord = Boolean(st.isBoard || (st.target || 'board') === 'board');
+        if (st.shape && Array.isArray(st.shape.endTrack)) {
+          for (let k = 0; k < st.shape.endTrack.length; k++) {
+            const ep = st.shape.endTrack[k];
+            if (!ep) continue;
+            if (typeof ep.t === 'number') ep.t = Math.round(ep.t);
+            if (ep.x !== undefined) ep.x = isBoardInkCoord ? r1(ep.x) : r3(ep.x);
+            if (ep.y !== undefined) ep.y = isBoardInkCoord ? r1(ep.y) : r3(ep.y);
+          }
+        }
         if (Array.isArray(st.points)) {
           for (let j = 0; j < st.points.length; j++) {
             const pt = st.points[j];
@@ -7655,9 +7666,48 @@
         out.audioDataUrl = '';
       }
 
-      // 2) 레이저/지우개 스트로크 좌표 경량화
+      // 2) 레이저/지우개 스트로크 좌표 경량화 및 닫힌 카드 에셋 풀 중복 이미지 제거(0-Byte Deduplication)
       out.laserStrokes = this._compactStrokesArray(out.laserStrokes || []);
       out.erasedStrokes = this._compactStrokesArray(out.erasedStrokes || []);
+      if (out.cardAssetPool && typeof out.cardAssetPool === 'object') {
+        const allKnownStrokes = [...(this.inkStrokes || []), ...(out.erasedStrokes || [])];
+        const liveDataUrls = new Set();
+        const pImgLive = typeof document !== 'undefined' ? document.getElementById('problemCardImg') : null;
+        if (pImgLive && pImgLive.src && this.problemCardData) liveDataUrls.add(pImgLive.src);
+        (this.extraProblemCards || []).forEach(c => {
+          const ie = c && c.el && c.el.querySelector('.problem-card-img');
+          if (ie && ie.src) liveDataUrls.add(ie.src);
+        });
+        Object.keys(out.cardAssetPool).forEach(uid => {
+          const entry = out.cardAssetPool[uid];
+          if (!entry) return;
+          if (Array.isArray(entry.cardStrokes)) {
+            entry.cardStrokes = this._compactStrokesArray(entry.cardStrokes);
+          }
+          if (entry.kind === 'prob' && entry.dataUrl) {
+            if (liveDataUrls.has(entry.dataUrl)) {
+              // 현재 슬라이드에 살아 있는 문제 카드는 slide.primaryProblemCard / extraProblems에서 자동 공급되므로 중복 제거!
+              delete out.cardAssetPool[uid];
+              return;
+            }
+            const matchedStamp = allKnownStrokes.find(
+              s => s && s.id && s.isProblemStamp && s.graphStamp && s.graphStamp.dataUrl === entry.dataUrl
+            );
+            if (matchedStamp) {
+              entry.stampRefId = matchedStamp.id;
+              delete entry.dataUrl;
+            }
+          } else if (!entry.dataUrl) {
+            delete entry.dataUrl;
+          }
+        });
+        if (Object.keys(out.cardAssetPool).length === 0) {
+          delete out.cardAssetPool;
+        }
+      }
+      if (out.archivedPdfBoards && typeof out.archivedPdfBoards === 'object' && Object.keys(out.archivedPdfBoards).length === 0) {
+        delete out.archivedPdfBoards;
+      }
 
       // 3) 타임라인 state 키프레임 델타(Delta) 압축 및 커서 이벤트 경량화
       const r1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
@@ -8126,11 +8176,13 @@
             const imgEl = c.el.querySelector('.problem-card-img');
             const titleEl = c.el.querySelector('.card-title-text');
             extraProblems.push({
+              cardUid: c.cardUid || c.el._cardUid || null,
               dataUrl: imgEl ? imgEl.src : '',
               cardW: parseFloat(c.el.style.width) || 460,
               titleText: titleEl ? titleEl.textContent : '문제',
               baseX: c.baseX,
               baseY: c.baseY,
+              zIndex: c.el.style.zIndex || '',
               pdfAnchor: (c.el._pdfAnchor || c.pdfAnchor) ? { ...(c.el._pdfAnchor || c.pdfAnchor) } : null,
               isMin: Boolean(c.isMin),
               pipLocked: Boolean(c.el.classList.contains('pip-locked-mode')),
@@ -8170,6 +8222,7 @@
             const titleEl = c.el.querySelector('.card-title-text');
             const isVectorExtraGraph = this._hasPureVectorGraphsInSnap(c.graphSnapshot);
             extraGraphs.push({
+              cardUid: c.cardUid || c.el._cardUid || null,
               dataUrl: isVectorExtraGraph
                 ? 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
                 : (imgEl ? imgEl.src : ''),
@@ -8178,6 +8231,7 @@
               titleText: titleEl ? titleEl.textContent : `#${c.caseIdx || 2}`,
               baseX: c.baseX,
               baseY: c.baseY,
+              zIndex: c.el.style.zIndex || '',
               pdfAnchor: (c.el._pdfAnchor || c.pdfAnchor) ? { ...(c.el._pdfAnchor || c.pdfAnchor) } : null,
               isMin: Boolean(c.isMin),
               caseIdx: c.caseIdx || 2,
@@ -8208,7 +8262,23 @@
         retainedPdfAudioProbCard: Boolean(this._retainedPdfAudioProbCard),
         graphSessionArchived: Boolean(this._graphSessionArchived),
         graphCaseCounter: this._graphCaseCounter || 0,
+        themeKey: this.currentThemeKey || 'white_paper',
+        boardPaperType: this.boardPaperType || 'blank',
+        isMonochromeMode: Boolean(this.isMonochromeMode),
+        uiWorkspaceState: (() => {
+          const pillEl = typeof document !== 'undefined' ? document.getElementById('quickPillRemote') : null;
+          return {
+            pillRemoteOpen: Boolean(this.isQuickPillRemoteOpen),
+            pillRemoteLeft: pillEl ? (Math.round(parseFloat(pillEl.style.left)) || 605) : 605,
+            pillRemoteTop: pillEl ? (Math.round(parseFloat(pillEl.style.top)) || 76) : 76,
+            pillModules: this.pillModules ? { ...this.pillModules } : null,
+            inkDockPos: this.inkDockPosition || 'bottom',
+            inkBarHidden: Boolean(this.isBottomInkBarHidden),
+            allUIHidden: Boolean(this.isAllUIHidden)
+          };
+        })(),
         primaryProblemCard: hasPrimaryProblem ? {
+          cardUid: (savedLiveProb && savedLiveProb.uid) || this.problemCardUid || (pWidget && pWidget._cardUid) || null,
           problemCardData: effProbData ? { pageNum: effProbData.pageNum } : null,
           problemCardAspect: savedLiveProb ? savedLiveProb.problemCardAspect : this.problemCardAspect,
           isProblemCardMinimized: Boolean(this.isProblemCardMinimized),
@@ -8233,6 +8303,7 @@
         } : null,
         extraProblems,
         primaryGraphCard: hasPrimaryGraph ? {
+          cardUid: this.graphCardUid || (gWidget && gWidget._cardUid) || null,
           graphCardData: {},
           graphCardAspect: this.graphCardAspect,
           isGraphCardMinimized: Boolean(this.isGraphCardMinimized),
@@ -8310,6 +8381,8 @@
       const pToggle = document.getElementById('iconCardToggle');
       if (slideData.primaryProblemCard && pWidget) {
         const pc = slideData.primaryProblemCard;
+        this.problemCardUid = pc.cardUid || (typeof this._nextAudioStrokeId === 'function' ? this._nextAudioStrokeId('problem_uid') : 'problem_main');
+        pWidget._cardUid = this.problemCardUid;
         this.problemCardData = { ...(pc.problemCardData || {}), imgUrl: pc.imgSrc || (pc.problemCardData && pc.problemCardData.imgUrl) || '' };
         this.problemCardAspect = pc.problemCardAspect || 0.65;
         this.isProblemCardMinimized = Boolean(pc.isProblemCardMinimized);
@@ -8386,10 +8459,13 @@
             customTitle: ep.titleText || '문제',
             startMinimized: ep.isMin,
             isPdfPageCard: ep.isPdfPageCard,
-            pdfPageNum: ep.pdfPageNum
+            pdfPageNum: ep.pdfPageNum,
+            cardUid: ep.cardUid || null,
+            silentToast: true
           });
           const createdProb = this.extraProblemCards[this.extraProblemCards.length - 1];
           if (createdProb && createdProb.el) {
+            if (ep.zIndex) createdProb.el.style.zIndex = ep.zIndex;
             createdProb.pdfAnchor = ep.pdfAnchor ? { ...ep.pdfAnchor } : null;
             createdProb.el._pdfAnchor = createdProb.pdfAnchor ? { ...createdProb.pdfAnchor } : null;
             createdProb.el._cardInkStrokes = JSON.parse(JSON.stringify(ep.cardInkStrokes || []));
@@ -8418,6 +8494,8 @@
       const gToggle = document.getElementById('iconGraphCardToggle');
       if (slideData.primaryGraphCard && gWidget) {
         const gc = slideData.primaryGraphCard;
+        this.graphCardUid = gc.cardUid || (typeof this._nextAudioStrokeId === 'function' ? this._nextAudioStrokeId('graph_uid') : 'graph_main');
+        gWidget._cardUid = this.graphCardUid;
         this._hasPrimaryGraphCard = true;
         const rawGcImgSrc = gc.imgSrc || (gc.graphCardData && gc.graphCardData.dataUrl) || '';
         const safeGcImgSrc = (typeof this._sanitizeCardImageUrl === 'function')
@@ -8488,9 +8566,12 @@
       // 4. 추가 그래프 보관 카드(#2, #3...) 복원
       if (Array.isArray(slideData.extraGraphs)) {
         slideData.extraGraphs.forEach(eg => {
-          this.spawnExtraGraphArchiveCard(eg.dataUrl, eg.cardW || 360, eg.aspect || 0.65, eg.graphSnapshot || null);
+          this.spawnExtraGraphArchiveCard(eg.dataUrl, eg.cardW || 360, eg.aspect || 0.65, eg.graphSnapshot || null, null, {
+            cardUid: eg.cardUid || null
+          });
           const created = this.extraGraphCards[this.extraGraphCards.length - 1];
           if (created && created.el) {
+            if (eg.zIndex) created.el.style.zIndex = eg.zIndex;
             created.el._cardInkStrokes = JSON.parse(JSON.stringify(eg.cardInkStrokes || []));
             created.el._cardStickers = JSON.parse(JSON.stringify(eg.cardStickers || []));
             if (typeof created.el._renderCardInkCanvas === 'function') created.el._renderCardInkCanvas();
@@ -8514,6 +8595,26 @@
           }
         });
       }
+      if (slideData.primaryProblemCard && slideData.primaryProblemCard.zIndex && pWidget) {
+        pWidget.style.zIndex = slideData.primaryProblemCard.zIndex;
+      }
+      if (Array.isArray(slideData.extraProblems) && Array.isArray(this.extraProblemCards)) {
+        slideData.extraProblems.forEach((ep, idx) => {
+          if (ep && ep.zIndex && this.extraProblemCards[idx] && this.extraProblemCards[idx].el) {
+            this.extraProblemCards[idx].el.style.zIndex = ep.zIndex;
+          }
+        });
+      }
+      if (slideData.primaryGraphCard && slideData.primaryGraphCard.zIndex && gWidget) {
+        gWidget.style.zIndex = slideData.primaryGraphCard.zIndex;
+      }
+      if (Array.isArray(slideData.extraGraphs) && Array.isArray(this.extraGraphCards)) {
+        slideData.extraGraphs.forEach((eg, idx) => {
+          if (eg && eg.zIndex && this.extraGraphCards[idx] && this.extraGraphCards[idx].el) {
+            this.extraGraphCards[idx].el.style.zIndex = eg.zIndex;
+          }
+        });
+      }
 
       this._graphCaseCounter = slideData.graphCaseCounter || 0;
       this.isGraphCovered = slideData.isGraphCovered !== undefined ? Boolean(slideData.isGraphCovered) : true;
@@ -8521,6 +8622,44 @@
       this._savedLayer2BoardPan = slideData.savedLayer2BoardPan ? { ...slideData.savedLayer2BoardPan } : null;
       this._retainedPdfAudioProbCard = Boolean(slideData.retainedPdfAudioProbCard);
       this._graphSessionArchived = Boolean(slideData.graphSessionArchived);
+
+      const isSharedOrReplayCtx = Boolean(
+        this._isAudioReplayActive ||
+        this.isStudentAudioVideoOnlyMode ||
+        this._initialSharedCloudPkg ||
+        this._viewerPkg ||
+        this._isCapturingExportSnapshots
+      );
+      if (
+        isSharedOrReplayCtx &&
+        typeof this._applyReplayVisualThemeAndPaper === 'function' &&
+        (slideData.themeKey !== undefined || slideData.boardPaperType !== undefined || slideData.isMonochromeMode !== undefined)
+      ) {
+        this._applyReplayVisualThemeAndPaper(slideData.themeKey, slideData.boardPaperType, slideData.isMonochromeMode);
+      }
+      if ((this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode) && slideData.uiWorkspaceState && typeof slideData.uiWorkspaceState === 'object') {
+        const uiSt = slideData.uiWorkspaceState;
+        if (uiSt.pillModules && this.pillModules) {
+          this.pillModules = { ...this.pillModules, ...uiSt.pillModules };
+        }
+        if (uiSt.pillRemoteOpen !== undefined) {
+          this.isQuickPillRemoteOpen = Boolean(uiSt.pillRemoteOpen);
+        }
+        if (uiSt.inkBarHidden !== undefined) {
+          this.isBottomInkBarHidden = Boolean(uiSt.inkBarHidden);
+        }
+        if (uiSt.inkDockPos && ['left', 'bottom', 'right'].includes(uiSt.inkDockPos)) {
+          this.inkDockPosition = uiSt.inkDockPos;
+          const inkBarEl = typeof document !== 'undefined' ? document.getElementById('inkFloatingToolbar') : null;
+          if (inkBarEl) inkBarEl.dataset.dockPos = uiSt.inkDockPos;
+        }
+        if (uiSt.allUIHidden !== undefined) {
+          this.isAllUIHidden = Boolean(uiSt.allUIHidden);
+          if (typeof document !== 'undefined' && document.body) {
+            document.body.classList.toggle('ui-all-hidden-mode', this.isAllUIHidden);
+          }
+        }
+      }
 
       if (!this.isGraphCovered) {
         if (pWidget) pWidget.style.display = 'none';
@@ -14681,13 +14820,20 @@
 
       if (rawAudioSync._isLazyAudioStub) return rawAudioSync;
       const wasCompact = Boolean(rawAudioSync._compact);
+      const rawCloned = JSON.parse(JSON.stringify(rawAudioSync));
       const expanded = (typeof this._expandAudioSyncData === 'function')
-        ? this._expandAudioSyncData(rawAudioSync)
-        : JSON.parse(JSON.stringify(rawAudioSync));
+        ? this._expandAudioSyncData(rawCloned)
+        : rawCloned;
 
       const sanitizeKeyframe = (kf) => {
         if (!kf || typeof kf !== 'object') return kf;
         if (!incInk) {
+          kf.boardStickers = [];
+          kf.problemCardStickers = [];
+          kf.graphCardStickers = [];
+          kf.lassoState = null;
+          kf.stickerDraft = null;
+          kf.cardStickerDraft = null;
           if (kf.graphCardPipSnap && typeof kf.graphCardPipSnap === 'object') {
             kf.graphCardPipSnap.graphInkStrokes = [];
           }
@@ -14696,17 +14842,26 @@
           }
           if (Array.isArray(kf.extraGraphStates)) {
             kf.extraGraphStates.forEach((st) => {
-              if (st && st.pipSnap && typeof st.pipSnap === 'object') {
+              if (!st) return;
+              st.stickers = [];
+              if (st.pipSnap && typeof st.pipSnap === 'object') {
                 st.pipSnap.graphInkStrokes = [];
               }
+            });
+          }
+          if (Array.isArray(kf.extraProbStates)) {
+            kf.extraProbStates.forEach((st) => {
+              if (st) st.stickers = [];
             });
           }
         }
         if (!incProb) {
           kf.probCardVisible = false;
+          kf.probCardUid = null;
           kf.extraProbsCount = 0;
           kf.extraProbStates = [];
           kf.problemCardStickers = [];
+          kf.pdfBoardLayout = null;
         }
         if (!incGraph) {
           kf.graphs = [];
@@ -14715,6 +14870,7 @@
           kf.usePiecewise = false;
           kf.piecewiseBoundaries = [];
           kf.graphCardVisible = false;
+          kf.graphCardUid = null;
           kf.graphCardPipSnap = null;
           kf.graphCardSnap = null;
           kf.extraGraphsCount = 0;
@@ -14738,6 +14894,27 @@
             ev.isDrawing = false;
           }
         });
+      }
+
+      if (expanded.cardAssetPool && typeof expanded.cardAssetPool === 'object') {
+        Object.keys(expanded.cardAssetPool).forEach(uid => {
+          const entry = expanded.cardAssetPool[uid];
+          if (!entry) return;
+          if (!incProb && entry.kind === 'prob') {
+            delete expanded.cardAssetPool[uid];
+            return;
+          }
+          if (!incGraph && entry.kind === 'graph') {
+            delete expanded.cardAssetPool[uid];
+            return;
+          }
+          if (!incInk && Array.isArray(entry.cardStrokes)) {
+            entry.cardStrokes = [];
+          }
+        });
+      }
+      if (!incProb && expanded.archivedPdfBoards) {
+        expanded.archivedPdfBoards = {};
       }
 
       if (!incInk) {

@@ -362,6 +362,9 @@
       this.stylusGrabSvg = document.getElementById('stylusGrabSvg');
       this.stylusGrabbingSvg = document.getElementById('stylusGrabbingSvg');
       this.stylusCrosshairSvg = document.getElementById('stylusCrosshairSvg');
+      this.stylusMoveSvg = document.getElementById('stylusMoveSvg');
+      this.stylusNwseResizeSvg = document.getElementById('stylusNwseResizeSvg');
+      this.stylusNeswResizeSvg = document.getElementById('stylusNeswResizeSvg');
       this.stylusClickRippleEl = document.getElementById('stylusClickRipple');
       this.stylusPenTip = document.getElementById('stylusPenTip');
       this.stylusPenCap = document.getElementById('stylusPenCap');
@@ -1322,11 +1325,14 @@
       const isPenNow = !isEraserNow && !isLaserNow && !isHighlighterNow;
       const activeKind = isEraserNow ? 'eraser' : (isLaserNow ? 'laser' : (isHighlighterNow ? 'highlighter' : 'pen'));
 
-      // 🚀 [DOM Style Mutation 최소화]: 아이콘 종류가 바뀌었거나 숨겨진 상태에서 다시 켜질 때만 10개 SVG의 display 속성을 갱신!
+      // 🚀 [DOM Style Mutation 최소화]: 아이콘 종류가 바뀌었거나 숨겨진 상태에서 다시 켜질 때만 12개 SVG의 display 속성을 갱신!
       const needSvgSync = (
         this._lastVirtualStylusKind !== activeKind ||
         this.virtualStylusEl.style.display !== 'block' ||
-        (this.stylusArrowSvg && this.stylusArrowSvg.style.display !== 'none')
+        (this.stylusArrowSvg && this.stylusArrowSvg.style.display !== 'none') ||
+        (this.stylusMoveSvg && this.stylusMoveSvg.style.display !== 'none') ||
+        (this.stylusNwseResizeSvg && this.stylusNwseResizeSvg.style.display !== 'none') ||
+        (this.stylusNeswResizeSvg && this.stylusNeswResizeSvg.style.display !== 'none')
       );
       if (needSvgSync) {
         this._lastVirtualStylusKind = activeKind;
@@ -1341,6 +1347,9 @@
         if (this.stylusGrabSvg) this.stylusGrabSvg.style.display = 'none';
         if (this.stylusGrabbingSvg) this.stylusGrabbingSvg.style.display = 'none';
         if (this.stylusCrosshairSvg) this.stylusCrosshairSvg.style.display = 'none';
+        if (this.stylusMoveSvg) this.stylusMoveSvg.style.display = 'none';
+        if (this.stylusNwseResizeSvg) this.stylusNwseResizeSvg.style.display = 'none';
+        if (this.stylusNeswResizeSvg) this.stylusNeswResizeSvg.style.display = 'none';
         this.virtualStylusEl.style.display = 'block';
       }
 
@@ -1729,6 +1738,15 @@
       }
 
       if (tool !== 'lasso') {
+        const hadLassoVisual = Boolean(
+          this.isLassoSelecting ||
+          this.lassoBoundingBox ||
+          (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
+          (this.selectedTextLabels && this.selectedTextLabels.length > 0)
+        );
+        if (this.isAudioRecording && this._activeRecLassoOp && typeof this._commitAudioLassoTransformOp === 'function') {
+          try { this._commitAudioLassoTransformOp(); } catch (_) { }
+        }
         this.selectedInkStrokes = [];
         this.selectedTextLabels = [];
         this.lassoBoundingBox = null;
@@ -1748,6 +1766,9 @@
           this.clearCardLassoSelection();
         }
         this.syncLassoActionBarUI();
+        if (hadLassoVisual && this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
+        }
       }
 
       this.updateInkCursor();
@@ -1840,10 +1861,16 @@
       if (slider) slider.value = clamped;
 
       if (triggerRender) {
+        const recSnapMain = (this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
+          ? this._snapshotInkListForReconcile(this.inkStrokes)
+          : null;
         if (Array.isArray(this.inkStrokes)) {
           this.inkStrokes.forEach(st => {
             if (st && !st.isHighlighter && !st.isGraphStamp) st.softBlur = clamped;
           });
+        }
+        if (recSnapMain && this.isAudioRecording && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
+          this._reconcileInkStrokesForAudioRecording(recSnapMain, this.inkStrokes);
         }
         if (Array.isArray(this.problemInkStrokes)) {
           this.problemInkStrokes.forEach(st => {
@@ -2080,7 +2107,32 @@
         return;
       }
       this.pushHistoryState();
+      const isRecClear = Boolean(this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function');
+      const recTClear = isRecClear ? Math.max(0, Math.round(this.getAudioRecordElapsedMs())) : 0;
+      const prevMainInkSnap = (isRecClear && typeof this._snapshotInkListForReconcile === 'function')
+        ? this._snapshotInkListForReconcile(this.inkStrokes)
+        : null;
       if (hasCardInk) {
+        if (isRecClear) {
+          (this.problemInkStrokes || []).forEach(st => this._archiveStrokeRemovedDuringRecording(st, recTClear, { cardKey: 'problem_main' }));
+          (this.graphInkStrokes || []).forEach(st => this._archiveStrokeRemovedDuringRecording(st, recTClear, { cardKey: 'graph_main' }));
+          if (this.extraProblemCards) {
+            this.extraProblemCards.forEach(c => {
+              const ck = c && c.el && typeof this.getAudioCardKey === 'function' ? this.getAudioCardKey(c.el) : null;
+              if (ck && Array.isArray(c.el._cardInkStrokes)) {
+                c.el._cardInkStrokes.forEach(st => this._archiveStrokeRemovedDuringRecording(st, recTClear, { cardKey: ck }));
+              }
+            });
+          }
+          if (this.extraGraphCards) {
+            this.extraGraphCards.forEach(c => {
+              const ck = c && c.el && typeof this.getAudioCardKey === 'function' ? this.getAudioCardKey(c.el) : null;
+              if (ck && Array.isArray(c.el._cardInkStrokes)) {
+                c.el._cardInkStrokes.forEach(st => this._archiveStrokeRemovedDuringRecording(st, recTClear, { cardKey: ck }));
+              }
+            });
+          }
+        }
         this.problemInkStrokes = [];
         this.graphInkStrokes = [];
         this.problemCardStickers = [];
@@ -2134,6 +2186,12 @@
       } else {
         this.inkStrokes = (this.inkStrokes || []).filter(s => s && (Boolean(s.isGraphStamp) || (s.target || 'board') !== 'graph' || Boolean(s.onPdfBoard)));
         this.showToast('🧹 그래프 모드 필기를 비웠습니다.');
+      }
+      if (prevMainInkSnap && isRecClear && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
+        this._reconcileInkStrokesForAudioRecording(prevMainInkSnap, this.inkStrokes, recTClear);
+      }
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
       this._inkBakeDirty = true;
       this.render();
@@ -3596,6 +3654,9 @@
           const recT = this.getAudioRecordElapsedMs();
           this.currentInkStroke.tEnd = recT;
           this.currentInkStroke.shapeSnapAt = recT;
+          if (shape && shape.type === 'line' && shape.end) {
+            shape.endTrack = [{ t: Math.round(recT), x: shape.end.x, y: shape.end.y }];
+          }
         }
         this.render();
       }
@@ -4412,6 +4473,36 @@
       const bar = document.getElementById('lassoActionFloatingBar');
       if (!bar) return;
 
+      if (this._isAudioReplayActive) {
+        const rLasso = (this.audioReplayViewMode !== 'note' && this._currentAppliedAudioKeyframe)
+          ? this._currentAppliedAudioKeyframe.lassoState
+          : null;
+        if (!rLasso || !rLasso.showBar || !Array.isArray(rLasso.bbox) || rLasso.bbox.length < 4) {
+          bar.style.display = 'none';
+          return;
+        }
+        const [minX, minY, maxX, maxY] = rLasso.bbox;
+        const pad = 10;
+        bar.style.display = 'flex';
+        const screenW = this.screenWidth || window.innerWidth || 1280;
+        const barW = Math.max(264, bar.offsetWidth || 276);
+        const minLeft = 64;
+        const maxLeft = Math.max(minLeft, screenW - barW - 64);
+        const idealLeft = ((minX + maxX) / 2) - (barW / 2);
+        const clampedLeft = Math.max(minLeft, Math.min(maxLeft, idealLeft));
+        const topEdge = minY - pad;
+        const bottomEdge = maxY + pad;
+        bar.style.left = `${Math.round(clampedLeft)}px`;
+        if (topEdge >= 64) {
+          bar.style.top = `${Math.round(topEdge - 10)}px`;
+          bar.style.transform = 'translate(0, -100%)';
+        } else {
+          bar.style.top = `${Math.round(bottomEdge + 10)}px`;
+          bar.style.transform = 'translate(0, 0)';
+        }
+        return;
+      }
+
       const cl = this._activeCardLasso;
       const hasCardSelection = Boolean(
         cl &&
@@ -4510,6 +4601,9 @@
       if (!hasStrokes && !hasTexts) return;
 
       this.pushHistoryState();
+      const recColorSnap = (hasStrokes && this.isAudioRecording && typeof this._snapshotInkListForReconcile === 'function')
+        ? this._snapshotInkListForReconcile(this.inkStrokes)
+        : null;
       if (hasStrokes) {
         this.selectedInkStrokes.forEach(s => {
           s.color = color;
@@ -4519,6 +4613,12 @@
         this.selectedTextLabels.forEach(t => {
           t.color = color;
         });
+      }
+      if (recColorSnap && this.isAudioRecording && typeof this._reconcileInkStrokesForAudioRecording === 'function') {
+        this._reconcileInkStrokesForAudioRecording(recColorSnap, this.inkStrokes);
+      }
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
       }
       this._inkBakeDirty = true;
       this.render();
@@ -4531,9 +4631,15 @@
         const dnx = 0.045;
         const dny = 0.045;
         const newClones = [];
+        const recCardDupT = (this.isAudioRecording && typeof this.getAudioRecordElapsedMs === 'function')
+          ? Math.max(0, Math.round(this.getAudioRecordElapsedMs()))
+          : null;
         cl.selectedStrokes.forEach(orig => {
           const clone = JSON.parse(JSON.stringify(orig));
           this.translateCardStrokeNorm(clone, dnx, dny);
+          if (recCardDupT !== null && typeof this._stampStrokeAppearedAtRecordingTime === 'function') {
+            this._stampStrokeAppearedAtRecordingTime(clone, recCardDupT);
+          }
           arr.push(clone);
           newClones.push(clone);
         });
@@ -4595,6 +4701,9 @@
               });
             }
           }
+          if (this.isAudioRecording && typeof this._stampStrokeAppearedAtRecordingTime === 'function') {
+            this._stampStrokeAppearedAtRecordingTime(clone);
+          }
           this.inkStrokes.push(clone);
           newStrokes.push(clone);
         });
@@ -4618,6 +4727,9 @@
         this.lassoPoints = this.lassoPoints.map(pt => ({ x: pt.x + offsetPx, y: pt.y + offsetPx }));
       }
       this.lassoBoundingBox = this.calculateStrokesBoundingBox(newStrokes, newTexts);
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
+      }
       this._inkBakeDirty = true;
       this.render();
       this.showToast('📋 선택한 필기/도형이 복제되었습니다! 바로 드래그하여 이동하세요.');
@@ -4651,6 +4763,11 @@
     deleteSelectedInkStrokes() {
       const cl = this._activeCardLasso;
       if (cl && Array.isArray(cl.selectedStrokes) && cl.selectedStrokes.length > 0 && typeof cl.getStrokes === 'function' && typeof cl.setStrokes === 'function') {
+        if (this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
+          const ck = cl.widgetEl && typeof this.getAudioCardKey === 'function' ? this.getAudioCardKey(cl.widgetEl) : null;
+          const recDelT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
+          cl.selectedStrokes.forEach(st => this._archiveStrokeRemovedDuringRecording(st, recDelT, ck ? { cardKey: ck } : null));
+        }
         const set = new Set(cl.selectedStrokes);
         const nextArr = cl.getStrokes().filter(s => !set.has(s));
         cl.setStrokes(nextArr);
@@ -4671,6 +4788,10 @@
 
       this.pushHistoryState();
       if (hasStrokes) {
+        if (this.isAudioRecording && typeof this._archiveStrokeRemovedDuringRecording === 'function') {
+          const recDelT = Math.max(0, Math.round(this.getAudioRecordElapsedMs()));
+          this.selectedInkStrokes.forEach(st => this._archiveStrokeRemovedDuringRecording(st, recDelT));
+        }
         const set = new Set(this.selectedInkStrokes);
         this.inkStrokes = this.inkStrokes.filter(s => !set.has(s));
         this.selectedInkStrokes = [];
@@ -4683,6 +4804,9 @@
       this.lassoBoundingBox = null;
       this.lassoPoints = [];
       this._inkBakeDirty = true;
+      if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+        try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
+      }
       if (this.activeInkTool === 'lasso') {
         this.setActiveInkTool('pen');
         return;
@@ -4692,6 +4816,60 @@
     }
 
     drawLassoOverlay(ctx) {
+      if (this._isAudioReplayActive) {
+        const rLasso = (this.audioReplayViewMode !== 'note' && this._currentAppliedAudioKeyframe)
+          ? this._currentAppliedAudioKeyframe.lassoState
+          : null;
+        if (rLasso) {
+          if (rLasso.selecting && Array.isArray(rLasso.pts) && rLasso.pts.length > 1) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(rLasso.pts[0][0], rLasso.pts[0][1]);
+            for (let i = 1; i < rLasso.pts.length; i++) {
+              ctx.lineTo(rLasso.pts[i][0], rLasso.pts[i][1]);
+            }
+            ctx.strokeStyle = '#00d2d3';
+            ctx.lineWidth = 2.2;
+            ctx.setLineDash([6, 5]);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+            ctx.restore();
+          }
+          if (Array.isArray(rLasso.bbox) && rLasso.bbox.length >= 4) {
+            const pad = 10;
+            const x1 = rLasso.bbox[0] - pad;
+            const y1 = rLasso.bbox[1] - pad;
+            const x2 = rLasso.bbox[2] + pad;
+            const y2 = rLasso.bbox[3] + pad;
+            ctx.save();
+            ctx.strokeStyle = 'rgba(14, 165, 233, 0.85)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 4]);
+            ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+            ctx.setLineDash([]);
+            const corners = [
+              { x: x1, y: y1 },
+              { x: x2, y: y1 },
+              { x: x1, y: y2 },
+              { x: x2, y: y2 }
+            ];
+            corners.forEach(c => {
+              ctx.beginPath();
+              ctx.arc(c.x, c.y, 5.5, 0, Math.PI * 2);
+              ctx.fillStyle = '#ffffff';
+              ctx.fill();
+              ctx.lineWidth = 2.0;
+              ctx.strokeStyle = '#0284c7';
+              ctx.stroke();
+            });
+            ctx.restore();
+          }
+        }
+        this.syncLassoActionBarUI();
+        return;
+      }
+
       // 1. 드로잉 중인 올가미는 마우스/펜 끝을 매끄럽게 따라가는 깔끔한 점선으로 표시
       if (this.isLassoSelecting && this.lassoPoints && this.lassoPoints.length > 1) {
         ctx.save();
@@ -6177,27 +6355,28 @@
         return;
       }
 
+      const pVal = (pt) => (pt && typeof pt.p === 'number' && !isNaN(pt.p)) ? pt.p : 0.5;
       const firstMidX = (pts[0].x + pts[1].x) * 0.5;
       const firstMidY = (pts[0].y + pts[1].y) * 0.5;
-      const w0 = this.computePenStyleWidth(effBaseSize, pts[0].p, penStyle);
+      const w0 = this.computePenStyleWidth(effBaseSize, pVal(pts[0]), penStyle);
       ctx.beginPath();
       ctx.arc(pts[0].x, pts[0].y, w0 / 2, 0, Math.PI * 2);
       ctx.fill();
-      let prevMidW = this.computePenStyleWidth(effBaseSize, (pts[0].p + pts[1].p) * 0.5, penStyle);
+      let prevMidW = this.computePenStyleWidth(effBaseSize, (pVal(pts[0]) + pVal(pts[1])) * 0.5, penStyle);
       this.drawVariableWidthLineSegment(ctx, pts[0].x, pts[0].y, firstMidX, firstMidY, w0, prevMidW);
       let prevMidX = firstMidX;
       let prevMidY = firstMidY;
       for (let i = 1; i < pts.length - 1; i++) {
         const midX = (pts[i].x + pts[i + 1].x) * 0.5;
         const midY = (pts[i].y + pts[i + 1].y) * 0.5;
-        const nextMidW = this.computePenStyleWidth(effBaseSize, (pts[i].p + pts[i + 1].p) * 0.5, penStyle);
+        const nextMidW = this.computePenStyleWidth(effBaseSize, (pVal(pts[i]) + pVal(pts[i + 1])) * 0.5, penStyle);
         this.drawVariableWidthQuadSegment(ctx, prevMidX, prevMidY, pts[i].x, pts[i].y, midX, midY, prevMidW, nextMidW);
         prevMidX = midX;
         prevMidY = midY;
         prevMidW = nextMidW;
       }
       const last = pts[pts.length - 1];
-      const wLast = this.computePenStyleWidth(effBaseSize, last.p, penStyle);
+      const wLast = this.computePenStyleWidth(effBaseSize, pVal(last), penStyle);
       this.drawVariableWidthLineSegment(ctx, prevMidX, prevMidY, last.x, last.y, prevMidW, wLast);
       ctx.restore();
     }
@@ -6271,8 +6450,9 @@
             ctx.lineTo(mx / nibX, my / nibY);
             ctx.stroke();
           } else {
-            const w0 = this.computePenStyleWidth(baseSize, p0.p, penStyle);
-            const w1 = this.computePenStyleWidth(baseSize, isFinalTail ? p1.p : (p0.p + p1.p) * 0.5, penStyle);
+            const pOf = (pt) => (pt && typeof pt.p === 'number' && !isNaN(pt.p)) ? pt.p : 0.5;
+            const w0 = this.computePenStyleWidth(baseSize, pOf(p0), penStyle);
+            const w1 = this.computePenStyleWidth(baseSize, isFinalTail ? pOf(p1) : (pOf(p0) + pOf(p1)) * 0.5, penStyle);
             this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, mx, my, w0, w1);
           }
         } else {
@@ -6294,10 +6474,11 @@
             }
             ctx.stroke();
           } else {
-            const wMid1 = this.computePenStyleWidth(baseSize, (pA.p + pB.p) * 0.5, penStyle);
-            const wMid2 = this.computePenStyleWidth(baseSize, (pB.p + pC.p) * 0.5, penStyle);
+            const pOf = (pt) => (pt && typeof pt.p === 'number' && !isNaN(pt.p)) ? pt.p : 0.5;
+            const wMid1 = this.computePenStyleWidth(baseSize, (pOf(pA) + pOf(pB)) * 0.5, penStyle);
+            const wMid2 = this.computePenStyleWidth(baseSize, (pOf(pB) + pOf(pC)) * 0.5, penStyle);
             if (isFinalTail) {
-              const wEnd = this.computePenStyleWidth(baseSize, pC.p, penStyle);
+              const wEnd = this.computePenStyleWidth(baseSize, pOf(pC), penStyle);
               this.drawVariableWidthLineSegment(ctx, mid2X, mid2Y, pC.x, pC.y, wMid2, wEnd);
             } else {
               this.drawVariableWidthQuadSegment(ctx, mid1X, mid1Y, pB.x, pB.y, mid2X, mid2Y, wMid1, wMid2);

@@ -12158,7 +12158,25 @@ body.audio-replay-active .extra-problem-card-widget *,
 body.audio-replay-active .extra-graph-card-widget,
 body.audio-replay-active .extra-graph-card-widget *,
 body.audio-replay-active #workspaceStickerOverlay,
-body.audio-replay-active #workspaceStickerOverlay * {
+body.audio-replay-active #workspaceStickerOverlay *,
+body.student-audio-video-only #railAddTargetPopover,
+body.student-audio-video-only #railAddTargetPopover *,
+body.audio-replay-active #railAddTargetPopover,
+body.audio-replay-active #railAddTargetPopover *,
+body.student-audio-video-only #railResetBoardPopover,
+body.student-audio-video-only #railResetBoardPopover *,
+body.audio-replay-active #railResetBoardPopover,
+body.audio-replay-active #railResetBoardPopover *,
+body.student-audio-video-only #inkSizeFlyout,
+body.student-audio-video-only #inkSizeFlyout *,
+body.audio-replay-active #inkSizeFlyout,
+body.audio-replay-active #inkSizeFlyout *,
+body.student-audio-video-only #panelQuickTheme,
+body.student-audio-video-only #panelQuickTheme *,
+body.audio-replay-active #panelQuickTheme,
+body.audio-replay-active #panelQuickTheme *,
+body.student-audio-video-only #btnRestoreAllUITab,
+body.audio-replay-active #btnRestoreAllUITab {
   pointer-events: none !important;
 }
 

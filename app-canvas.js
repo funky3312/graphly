@@ -1548,6 +1548,9 @@
               this.canvas.style.cursor = isNwse ? 'nwse-resize' : 'nesw-resize';
               this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw');
               this.canvas.classList.add(isNwse ? 'is-hover-resize-nwse' : 'is-hover-resize-nesw');
+              if (this.isAudioRecording && typeof this._beginAudioLassoTransformOp === 'function') {
+                this._beginAudioLassoTransformOp('resize', { anchorX: info.ax, anchorY: info.ay });
+              }
               this.syncLassoActionBarUI();
               this.render();
               return;
@@ -1566,6 +1569,9 @@
                 screenY: pos.y,
                 m: this.screenToMath(pos.x, pos.y)
               };
+              if (this.isAudioRecording && typeof this._beginAudioLassoTransformOp === 'function') {
+                this._beginAudioLassoTransformOp('move', { startScreenX: pos.x, startScreenY: pos.y });
+              }
               this.canvas.classList.remove('is-hover-resize-nwse', 'is-hover-resize-nesw');
               this.canvas.style.cursor = 'move';
               this.render();
@@ -1590,6 +1596,9 @@
               this.lassoPoints = [{ x: pos.x, y: pos.y }];
               this.canvas.style.cursor = 'crosshair';
               this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw');
+              if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+                try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
+              }
               this.render();
               return;
             }
@@ -1607,6 +1616,9 @@
           this._lassoStartPos = { x: pos.x, y: pos.y };
           this.lassoPoints = [{ x: pos.x, y: pos.y }];
           this.canvas.style.cursor = 'crosshair';
+          if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+            try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
+          }
           this.render();
           return;
         }
@@ -2168,6 +2180,9 @@
           item.mathX = m.x + this.draggedTextOffset.dx;
           item.mathY = m.y + this.draggedTextOffset.dy;
         }
+        if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          this._recordAudioWorkspaceStateIfNeeded(false);
+        }
         this.requestRender();
         return;
       }
@@ -2248,7 +2263,9 @@
                 stroke.points = snap.points.map(pt => {
                   const sp = scaleScreenPt(toScr(pt));
                   const np = fromScr(sp);
-                  return { x: np.x, y: np.y, p: pt.p };
+                  return pt.t !== undefined
+                    ? { x: np.x, y: np.y, p: pt.p, t: pt.t }
+                    : { x: np.x, y: np.y, p: pt.p };
                 });
               }
 
@@ -2294,6 +2311,9 @@
           }
 
           this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
+          if (this.isAudioRecording && typeof this._updateAudioLassoTransformOp === 'function') {
+            this._updateAudioLassoTransformOp({ scale });
+          }
           if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0 && !this._lassoExcludedBakeSet) {
             this._inkBakeDirty = true;
           }
@@ -2383,6 +2403,9 @@
           this.lassoDragStart.screenY = pos.y;
           this.lassoDragStart.m = mCurrent;
           this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
+          if (this.isAudioRecording && typeof this._updateAudioLassoTransformOp === 'function') {
+            this._updateAudioLassoTransformOp({ screenX: pos.x, screenY: pos.y });
+          }
           if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0 && !this._lassoExcludedBakeSet) {
             this._inkBakeDirty = true;
           }
@@ -2476,6 +2499,22 @@
               if (this.currentInkStroke._isShiftLine && this.currentInkStroke.shape.end) {
                 const endPt = this.currentInkStroke.shape.end;
                 this.currentInkStroke.points.push({ x: endPt.x, y: endPt.y, p: 0.55, t: recTMove });
+              } else if (this.currentInkStroke.shape.type === 'line' && this.currentInkStroke.shape.end) {
+                const endPt = this.currentInkStroke.shape.end;
+                const rt = Math.round(recTMove);
+                if (!Array.isArray(this.currentInkStroke.shape.endTrack)) {
+                  this.currentInkStroke.shape.endTrack = [{ t: rt, x: endPt.x, y: endPt.y }];
+                } else {
+                  const tr = this.currentInkStroke.shape.endTrack;
+                  const lastEp = tr[tr.length - 1];
+                  if (lastEp && tr.length >= 2 && (rt - lastEp.t) < 14) {
+                    lastEp.t = rt;
+                    lastEp.x = endPt.x;
+                    lastEp.y = endPt.y;
+                  } else {
+                    tr.push({ t: rt, x: endPt.x, y: endPt.y });
+                  }
+                }
               }
             }
             this.requestRender();
@@ -2676,6 +2715,9 @@
         if (item) {
           item.mathX = m.x + this.draggedTextOffset.dx;
           item.mathY = m.y + this.draggedTextOffset.dy;
+        }
+        if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+          this._recordAudioWorkspaceStateIfNeeded(false);
         }
         this.requestRender();
         return;
@@ -3484,6 +3526,9 @@
             }
             this._preDragState = null;
           }
+          if (this.isAudioRecording && typeof this._commitAudioLassoTransformOp === 'function') {
+            this._commitAudioLassoTransformOp();
+          }
           const hitAfterResize = this.getLassoResizeHandleAt(pos);
           if (hitAfterResize) {
             const isNwse = (hitAfterResize === 'br' || hitAfterResize === 'tl');
@@ -3517,6 +3562,9 @@
               this.updateUndoRedoUI();
             }
             this._preDragState = null;
+          }
+          if (this.isAudioRecording && typeof this._commitAudioLassoTransformOp === 'function') {
+            this._commitAudioLassoTransformOp();
           }
           this.canvas.classList.remove('is-hover-resize-nwse', 'is-hover-resize-nesw');
           this.canvas.classList.add('is-hover-selection');
@@ -3583,6 +3631,9 @@
             this.lassoPoints = [];
             this.canvas.style.cursor = 'crosshair';
             this.canvas.classList.remove('is-hover-selection');
+          }
+          if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+            try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
           }
           this.render();
           return;
@@ -3723,6 +3774,30 @@
         const finishedStroke = this.currentInkStroke;
         if (finishedStroke && this.isAudioRecording) {
           finishedStroke.tEnd = this.getAudioRecordElapsedMs();
+          if (finishedStroke.shape && Array.isArray(finishedStroke.shape.endTrack)) {
+            const tr = finishedStroke.shape.endTrack;
+            const endPt = finishedStroke.shape.end;
+            if (endPt && tr.length >= 1) {
+              const firstEp = tr[0];
+              let movedTrack = false;
+              for (let ti = 1; ti < tr.length; ti++) {
+                if (Math.hypot(tr[ti].x - firstEp.x, tr[ti].y - firstEp.y) > 1e-4) {
+                  movedTrack = true;
+                  break;
+                }
+              }
+              if (!movedTrack && Math.hypot(endPt.x - firstEp.x, endPt.y - firstEp.y) > 1e-4) {
+                movedTrack = true;
+              }
+              if (movedTrack) {
+                tr.push({ t: Math.round(finishedStroke.tEnd), x: endPt.x, y: endPt.y });
+              } else {
+                delete finishedStroke.shape.endTrack;
+              }
+            } else {
+              delete finishedStroke.shape.endTrack;
+            }
+          }
         }
         const shiftStartScr = this._shiftLineStartScreen;
         this._shiftLineStartScreen = null;
@@ -8808,9 +8883,13 @@
     const symPop = document.getElementById('ctxSymmetryPopover');
     const absPop = document.getElementById('ctxAbsPopover');
     const btnSymMenu = document.getElementById('ctxBtnSymmetryMenu');
+    const wasOpen = Boolean((symPop && symPop.style.display !== 'none') || (absPop && absPop.style.display !== 'none'));
     if (symPop) symPop.style.display = 'none';
     if (absPop) absPop.style.display = 'none';
     if (btnSymMenu) btnSymMenu.classList.remove('active');
+    if (wasOpen && this.isAudioRecording && !this._isApplyingAudioTimelineState && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+      this._recordAudioWorkspaceStateIfNeeded(true);
+    }
   }
 
   initCurveContextBar() {
@@ -8830,6 +8909,9 @@
         if (!isOpen) {
           symPop.style.display = 'flex';
           btnSymMenu.classList.add('active');
+          if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+            this._recordAudioWorkspaceStateIfNeeded(true);
+          }
         }
       };
     }
@@ -8841,6 +8923,9 @@
         this.closeCurveContextSubPopovers();
         if (!isOpen) {
           absPop.style.display = 'flex';
+          if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+            this._recordAudioWorkspaceStateIfNeeded(true);
+          }
         }
       };
     }

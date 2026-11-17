@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261118_174">
+  <link rel="stylesheet" href="style.css?v=20261118_179">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -1259,7 +1259,7 @@
             fill="#fef3c7" stroke="#0f172a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
 
-        <!-- 🎯 보조 수선(📍) / 올가미 정밀 조준 과녁(Crosshair) 커서 SVG -->
+        <!-- 🎯 보조 수선(📍) / 올가미 · 가림막 스티커 정밀 조준 과녁(Crosshair) 커서 SVG -->
         <svg id="stylusCrosshairSvg" class="stylus-svg" width="28" height="28" viewBox="0 0 28 28" fill="none"
           style="display: none; overflow: visible;">
           <circle cx="0" cy="0" r="7.5" fill="rgba(0, 210, 211, 0.14)" stroke="#00d2d3" stroke-width="1.6" />
@@ -1268,6 +1268,35 @@
           <line x1="0" y1="-12" x2="0" y2="-4" stroke="#00d2d3" stroke-width="1.8" stroke-linecap="round" />
           <line x1="0" y1="4" x2="0" y2="12" stroke="#00d2d3" stroke-width="1.8" stroke-linecap="round" />
           <circle cx="0" cy="0" r="2.0" fill="#ffffff" stroke="#0f172a" stroke-width="1.0" />
+        </svg>
+
+        <!-- ✥ 올가미 선택 영역 4방향 이동(Move) 커서 SVG -->
+        <svg id="stylusMoveSvg" class="stylus-svg" width="28" height="28" viewBox="0 0 28 28" fill="none"
+          style="display: none; overflow: visible;">
+          <path
+            d="M 0 -11.5 L 3.8 -7.2 L 1.4 -7.2 L 1.4 -1.4 L 7.2 -1.4 L 7.2 -3.8 L 11.5 0 L 7.2 3.8 L 7.2 1.4 L 1.4 1.4 L 1.4 7.2 L 3.8 7.2 L 0 11.5 L -3.8 7.2 L -1.4 7.2 L -1.4 1.4 L -7.2 1.4 L -7.2 3.8 L -11.5 0 L -7.2 -3.8 L -7.2 -1.4 L -1.4 -1.4 L -1.4 -7.2 L -3.8 -7.2 Z"
+            fill="#ffffff" stroke="#0f172a" stroke-width="1.35" stroke-linejoin="round" />
+          <circle cx="0" cy="0" r="1.6" fill="#0ea5e9" />
+        </svg>
+
+        <!-- ↖↘ 대각선 양방향 크기 조절(NWSE Resize) 커서 SVG -->
+        <svg id="stylusNwseResizeSvg" class="stylus-svg" width="26" height="26" viewBox="0 0 26 26" fill="none"
+          style="display: none; overflow: visible;">
+          <g transform="rotate(45)">
+            <path
+              d="M -11 0 L -6.2 -4.2 L -6.2 -1.6 L 6.2 -1.6 L 6.2 -4.2 L 11 0 L 6.2 4.2 L 6.2 1.6 L -6.2 1.6 L -6.2 4.2 Z"
+              fill="#ffffff" stroke="#0f172a" stroke-width="1.4" stroke-linejoin="round" />
+          </g>
+        </svg>
+
+        <!-- ↗↙ 대각선 양방향 크기 조절(NESW Resize) 커서 SVG -->
+        <svg id="stylusNeswResizeSvg" class="stylus-svg" width="26" height="26" viewBox="0 0 26 26" fill="none"
+          style="display: none; overflow: visible;">
+          <g transform="rotate(-45)">
+            <path
+              d="M -11 0 L -6.2 -4.2 L -6.2 -1.6 L 6.2 -1.6 L 6.2 -4.2 L 11 0 L 6.2 4.2 L 6.2 1.6 L -6.2 1.6 L -6.2 4.2 Z"
+              fill="#ffffff" stroke="#0f172a" stroke-width="1.4" stroke-linejoin="round" />
+          </g>
         </svg>
 
         <!-- 💥 마우스 클릭/드래그 시작 순간 시각적 파동 링 (ScreenStudio 스타일 클릭 이펙트) -->
@@ -3834,15 +3863,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261118_174"></script>
-  <script src="app-core.js?v=20261118_174"></script>
-  <script src="app-ink.js?v=20261118_174"></script>
-  <script src="app-pdf.js?v=20261118_174"></script>
-  <script src="app-cards.js?v=20261118_174"></script>
-  <script src="app-cloud.js?v=20261118_174"></script>
-  <script src="app-canvas.js?v=20261118_174"></script>
-  <script src="app-toolkit.js?v=20261118_174"></script>
-  <script src="app.js?v=20261118_174"></script>
+  <script src="engine.js?v=20261118_179"></script>
+  <script src="app-core.js?v=20261118_179"></script>
+  <script src="app-ink.js?v=20261118_179"></script>
+  <script src="app-pdf.js?v=20261118_179"></script>
+  <script src="app-cards.js?v=20261118_179"></script>
+  <script src="app-cloud.js?v=20261118_179"></script>
+  <script src="app-canvas.js?v=20261118_179"></script>
+  <script src="app-toolkit.js?v=20261118_179"></script>
+  <script src="app.js?v=20261118_179"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
