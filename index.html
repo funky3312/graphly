@@ -33,7 +33,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261118_168">
+  <link rel="stylesheet" href="style.css?v=20261118_171">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -3645,57 +3645,98 @@
           </svg></button>
       </div>
 
+      <div class="guide-notice-tab-bar" role="tablist" aria-label="사용법 및 공지사항 탭">
+        <button type="button" id="tabBtnGuideHowTo" class="guide-tab-btn active">필기 팁</button>
+        <button type="button" id="tabBtnGuideShortcuts" class="guide-tab-btn">공유 팁</button>
+        <button type="button" id="tabBtnGuideNotices" class="guide-tab-btn">공지사항</button>
+      </div>
+
       <div class="smart-modal-body guide-notice-modal-body">
-        <!-- 1. 핵심 사용법 요약 -->
-        <div id="guidePanelHowTo" class="guide-section-card">
-          <h4 class="guide-card-title">핵심 사용법</h4>
+        <!-- 탭 1: 필기 팁 -->
+        <div id="guidePanelHowTo" class="guide-section-card guide-tab-panel">
           <ul class="guide-bullet-list">
-            <li><strong>파일 불러오기:</strong> 좌측 <span class="guide-inline-chip">파일 열기</span> 또는 화면에 PDF · 이미지를 끌어다 놓아
-              배치합니다.</li>
-            <li><strong>실시간 그래프:</strong> 좌측 <span class="guide-inline-chip">+ 그래프 추가</span>에서 개형 선택 후 극점·변곡점을 드래그해
-              조절합니다. (<span class="guide-inline-chip">구간 분할</span> · <span class="guide-inline-chip">합성함수</span> 지원)</li>
-            <li><strong>좌표 표기 · 고정:</strong> 우측 <span class="guide-inline-chip">교점 표시</span> · <span
-                class="guide-inline-chip">보조 수선</span> · <span class="guide-inline-chip">텍스트</span>로 좌표를 표기하고, <span
-                id="guideKbdStampCard" class="guide-inline-chip guide-inline-kbd">S</span> 키(스탬프)로 캔버스에 고정합니다.</li>
-            <li><strong>그래프 복사:</strong> 그래프 창 조작 후 <span id="guideKbdCopyGraph"
-                class="guide-inline-chip guide-inline-kbd">Ctrl + C</span>를 누르면 필기를 제외한 순수 그래프만 고화질 이미지로 복사됩니다.</li>
-            <li><strong>화면 복사 · 공유:</strong> 필기가 포함된 화면 복사와 <span class="guide-inline-chip">영상 녹화</span> ·
-              <strong>QR / 링크 공유</strong>는 우측 <span class="guide-inline-chip">내보내기</span>를 이용합니다.</li>
-          </ul>
-        </div>
-
-        <!-- 2. 활용 팁 -->
-        <div class="guide-section-card guide-tips-card">
-          <h4 class="guide-card-title">활용 팁</h4>
-          <ul class="guide-bullet-list">
-            <li><strong>화면 이동 · 확대:</strong> 필기바 <span class="guide-inline-chip">선택 / 이동</span>(<span
-                class="guide-inline-chip guide-inline-kbd">Space</span> + 드래그, 태블릿은 두 손가락 터치)으로 캔버스를 이동·확대합니다.</li>
-            <li><strong>화면 집중 모드:</strong> 우측 <span class="guide-inline-chip">메뉴 숨기기</span>(<span id="guideKbdHideUI"
-                class="guide-inline-chip guide-inline-kbd">H</span>) 또는 미니 리모컨 모드로 모든 메뉴를 숨기고 캔버스만 표시합니다.</li>
-            <li><strong>기기 간 자동 동기화:</strong> 로그인 시 <span class="guide-inline-chip">클라우드 보관함</span> · <span
-                class="guide-inline-chip">내 그래프</span> · <span class="guide-inline-chip">단축키 설정</span>이 모든 기기에 동기화됩니다.
+            <li class="guide-tip-multiline">
+              <strong>앱으로 실행 <span class="guide-title-sub">(주소창 숨김)</span></strong>
+              <div class="guide-sub-lines">
+                <div class="guide-sub-line"><span class="guide-device-tag">PC</span>주소창 우측 <span
+                    class="guide-inline-chip">앱 설치</span> 아이콘 클릭 <span class="guide-muted-note">(또는 <span
+                      class="guide-inline-chip guide-inline-kbd">F11</span> 전체화면)</span></div>
+                <div class="guide-sub-line"><span class="guide-device-tag">아이패드</span>Safari <span
+                    class="guide-inline-chip">공유</span> → <span class="guide-inline-chip">홈 화면에 추가</span></div>
+              </div>
             </li>
+            <li><strong>화면 이동:</strong> <span class="guide-inline-chip guide-inline-kbd">Space</span> + 드래그 (태블릿은 <span
+                class="guide-inline-chip">두 손가락 터치</span>)</li>
+            <li><strong>캔버스에 고정:</strong> 문제·그래프 배치 후 <span id="guideKbdStampCard"
+                class="guide-inline-chip guide-inline-kbd">S</span> 키(스탬프)로 배경에 고정</li>
+            <li><strong>가림막 스티커:</strong> 조건·정답을 가려두면 공유받은 학생도 직접 눌러 확인 가능</li>
+            <li><strong>전체 메뉴 숨김:</strong> <span id="guideKbdHideUI"
+                class="guide-inline-chip guide-inline-kbd">H</span> 키로 모든 메뉴를 숨기고 캔버스만 표시</li>
           </ul>
         </div>
 
-        <!-- 3. 오류 제보 및 이용 문의 안내 -->
+        <!-- 탭 2: 공유 팁 -->
+        <div id="guidePanelShortcuts" class="guide-section-card guide-tab-panel" style="display: none;">
+          <ul class="guide-bullet-list">
+            <li><strong>음성 · 필기 녹화:</strong> 우측 <span class="guide-inline-chip">녹화</span> 아이콘을 켜고 수업하면 목소리·필기 과정이 영상으로
+              기록</li>
+            <li><strong>용도별 골라 공유:</strong> 내보내기 체크박스로 수업 전엔 <span class="guide-inline-chip">문제만</span>, 수업 후엔 <span
+                class="guide-inline-chip">필기 + 음성</span> 배포</li>
+            <li><strong>링크 · QR 자동 반영:</strong> 보관함 원본 수정·저장 시 기존 공유 링크·영구 QR에 자동 업데이트</li>
+            <li><strong>순수 그래프 복사:</strong> 그래프 조작 후 <span id="guideKbdCopyGraph"
+                class="guide-inline-chip guide-inline-kbd">Ctrl + C</span> → 필기 제외 고화질 그래프만 복사 (한글·PPT용)</li>
+            <li><strong>기기 간 동기화:</strong> 로그인 시 모든 기기에 <span class="guide-inline-chip">보관함</span> · <span
+                class="guide-inline-chip">내 그래프</span> · <span class="guide-inline-chip">단축키</span> 자동 연동</li>
+          </ul>
+        </div>
+
+        <!-- 탭 3: 공지사항 -->
+        <div id="guidePanelNotices" class="guide-section-card guide-tab-panel" style="display: none;">
+          <div class="guide-notice-list">
+            <div class="guide-notice-item">
+              <div class="guide-notice-head">
+                <span class="guide-notice-badge">안내</span>
+                <span class="guide-notice-item-title">Graphly 정식 오픈 안내</span>
+                <span class="guide-notice-date">2026. 11</span>
+              </div>
+              <p class="guide-notice-desc">
+                정식 서비스가 시작되었습니다. 신규 기능 및 업데이트 소식은 이곳에서 안내해 드립니다.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 하단 상시 고정: 오류 제보 및 이용 문의 -->
         <div class="guide-contact-card">
           <div class="guide-contact-title">
             오류 제보 · 건의사항 · 이용 문의
           </div>
           <p class="guide-contact-desc">
-            사용 중 발생한 <strong>오류(버그)</strong>, <strong>기능 건의</strong>, <strong>결제·계정 문의</strong>는 아래 공식 이메일로 보내주세요.
-            <span class="guide-contact-subhint">로그인 계정 이메일을 함께 적어주시면 더욱 빠르게 확인됩니다.</span>
+            로그인 계정 이메일을 함께 남겨주시면 더욱 빠르게 확인됩니다.
           </p>
-          <button type="button" id="btnCopySupportEmail" class="guide-email-pill">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
-              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="2" y="4" width="20" height="16" rx="2" />
-              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-            </svg>
-            <span id="lblGuideSupportEmail">help@cubiolab.com</span>
-            <span id="badgeGuideEmailCopy" class="guide-email-copy-badge">복사</span>
-          </button>
+          <div class="guide-contact-actions">
+            <a href="https://pf.kakao.com/_qNxgNX/chat" target="_blank" rel="noopener noreferrer"
+              id="btnOpenKakaoSupportChat" class="guide-kakao-square-btn" title="카카오톡 채널 문의"
+              aria-label="카카오톡 채널 문의">
+              <svg width="38" height="38" viewBox="0 0 38 38" fill="none" aria-hidden="true">
+                <ellipse cx="19" cy="17.5" rx="13.8" ry="10.9" fill="#3C1E1E" />
+                <path d="M 11.4 25.0 L 9.85 31.05 C 9.7 31.6 10.25 31.95 10.75 31.55 L 16.2 27.0 Z" fill="#3C1E1E" />
+                <path
+                  d="M 9.98 14.6 H 13.38 M 11.68 14.6 V 20.4 M 14.23 20.4 L 16.08 14.6 L 17.93 20.4 M 14.86 18.6 H 17.30 M 20.28 14.6 V 20.4 H 22.98 M 25.03 14.6 V 20.4 M 27.93 14.6 L 25.43 17.65 M 26.13 16.8 L 28.03 20.4"
+                  stroke="var(--kakao-bg, #FEE500)" stroke-width="1.65" stroke-linecap="round"
+                  stroke-linejoin="round" />
+              </svg>
+            </a>
+            <button type="button" id="btnCopySupportEmail" class="guide-email-pill">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+              </svg>
+              <span id="lblGuideSupportEmail">help@cubiolab.com</span>
+              <span id="badgeGuideEmailCopy" class="guide-email-copy-badge">복사</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -3789,15 +3830,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261118_168"></script>
-  <script src="app-core.js?v=20261118_168"></script>
-  <script src="app-ink.js?v=20261118_168"></script>
-  <script src="app-pdf.js?v=20261118_168"></script>
-  <script src="app-cards.js?v=20261118_168"></script>
-  <script src="app-cloud.js?v=20261118_168"></script>
-  <script src="app-canvas.js?v=20261118_168"></script>
-  <script src="app-toolkit.js?v=20261118_168"></script>
-  <script src="app.js?v=20261118_168"></script>
+  <script src="engine.js?v=20261118_171"></script>
+  <script src="app-core.js?v=20261118_171"></script>
+  <script src="app-ink.js?v=20261118_171"></script>
+  <script src="app-pdf.js?v=20261118_171"></script>
+  <script src="app-cards.js?v=20261118_171"></script>
+  <script src="app-cloud.js?v=20261118_171"></script>
+  <script src="app-canvas.js?v=20261118_171"></script>
+  <script src="app-toolkit.js?v=20261118_171"></script>
+  <script src="app.js?v=20261118_171"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">

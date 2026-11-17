@@ -1703,7 +1703,9 @@
         // 📄 [대표님 기획: PDF 통모드(페이지 모드) 바깥 베젤 영역 필기 시작 차단]
         if (this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect) {
           const pr = this._lastPdfPageScreenRect;
-          if (pos.x < pr.x || pos.x > pr.x + pr.width || pos.y < pr.y || pos.y > pr.y + pr.height) {
+          const prW = (typeof pr.w === 'number') ? pr.w : pr.width;
+          const prH = (typeof pr.h === 'number') ? pr.h : pr.height;
+          if (pos.x < pr.x || pos.x > pr.x + prW || pos.y < pr.y || pos.y > pr.y + prH) {
             return;
           }
         }
@@ -4936,24 +4938,30 @@
         ctx.restore();
       }
 
-      // 다크 칠판 위 흰색 문제 카드 영역 스마트 오토 컨트라스트
+      // 다크 칠판 위 흰색 문제 카드 및 고정 문제 스탬프 영역 스마트 오토 컨트라스트
       const isLight = curTheme.isLight || this.isMonochromeMode;
       if (
         (this.currentInkStroke.target || 'board') === 'board' &&
-        this.hasActiveProblemCard() &&
+        !this.currentInkStroke.isHighlighter &&
         !isLight &&
-        !this.isMonochromeMode &&
-        this.problemCardRect
+        !this.isMonochromeMode
       ) {
         const c = (this.currentInkStroke.color || '').toLowerCase();
         if (c === '#ffffff' || c === '#fff') {
-          const r = this.problemCardRect;
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(r.x, r.y, r.w, r.h);
-          ctx.clip();
-          this.renderSingleStroke(ctx, this.currentInkStroke, '#0f172a', true);
-          ctx.restore();
+          const cardRects = (typeof this._getVisibleWhiteProblemCardScreenRects === 'function')
+            ? this._getVisibleWhiteProblemCardScreenRects(false)
+            : [];
+          if (cardRects.length > 0) {
+            ctx.save();
+            ctx.beginPath();
+            for (let rIdx = 0; rIdx < cardRects.length; rIdx++) {
+              const r = cardRects[rIdx];
+              ctx.rect(r.x, r.y, r.w, r.h);
+            }
+            ctx.clip();
+            this.renderSingleStroke(ctx, this.currentInkStroke, '#0f172a', true);
+            ctx.restore();
+          }
         }
       }
       return;

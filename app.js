@@ -194,6 +194,7 @@
           this.showAudioPlayerBarTemporarily(2800);
         };
         const onScrubEnd = () => {
+          if (!this._isScrubbingAudioBar) return;
           this._isScrubbingAudioBar = false;
           this.showAudioPlayerBarTemporarily(2800);
         };
@@ -5178,21 +5179,28 @@
             this.renderSingleStroke(targetCtx, st, null, false);
           }
         }
-        if ((!filterTarget || filterTarget === 'board') && this.hasActiveProblemCard() && !isLight && !this.isMonochromeMode && this.problemCardRect) {
-          const r = this.problemCardRect;
-          const whiteReps = repsList.filter(item => {
-            const s = item.stroke;
-            if (!s || s.isGraphStamp || (s.target || 'board') !== 'board') return false;
-            const c = (s.color || '').toLowerCase();
-            return (c === '#ffffff' || c === '#fff');
-          });
-          if (whiteReps.length > 0) {
-            targetCtx.save();
-            targetCtx.beginPath();
-            targetCtx.rect(r.x, r.y, r.w, r.h);
-            targetCtx.clip();
-            whiteReps.forEach(item => this.renderSingleStroke(targetCtx, item.stroke, '#0f172a', false));
-            targetCtx.restore();
+        if ((!filterTarget || filterTarget === 'board') && !isLight && !this.isMonochromeMode) {
+          const cardRects = (typeof this._getVisibleWhiteProblemCardScreenRects === 'function')
+            ? this._getVisibleWhiteProblemCardScreenRects(false)
+            : [];
+          if (cardRects.length > 0) {
+            const whiteReps = repsList.filter(item => {
+              const s = item.stroke;
+              if (!s || s.isGraphStamp || s.isHighlighter || (s.target || 'board') !== 'board') return false;
+              const c = (s.color || '').toLowerCase();
+              return (c === '#ffffff' || c === '#fff');
+            });
+            if (whiteReps.length > 0) {
+              targetCtx.save();
+              targetCtx.beginPath();
+              for (let rIdx = 0; rIdx < cardRects.length; rIdx++) {
+                const r = cardRects[rIdx];
+                targetCtx.rect(r.x, r.y, r.w, r.h);
+              }
+              targetCtx.clip();
+              whiteReps.forEach(item => this.renderSingleStroke(targetCtx, item.stroke, '#0f172a', false));
+              targetCtx.restore();
+            }
           }
         }
       };
@@ -5200,8 +5208,11 @@
       // 🌟 [리플레이 오프스크린 베이크 캐시]: 메인 캔버스와 100% 동일한 초고해상도 DPR(getCanvasDpr = 2.0~2.5x) 및 타깃별 독립 버퍼로 쓰기 완료 후에도 화질 저하 0%!
       if (ctx === this.ctx && completedReps.length > 0) {
         const targetSlot = filterTarget || 'all';
-        const pRectKey = this.problemCardRect
-          ? `${Math.round(this.problemCardRect.x)},${Math.round(this.problemCardRect.y)},${Math.round(this.problemCardRect.w)},${Math.round(this.problemCardRect.h)}`
+        const replayCardRects = (!isLight && !this.isMonochromeMode && typeof this._getVisibleWhiteProblemCardScreenRects === 'function')
+          ? this._getVisibleWhiteProblemCardScreenRects(false)
+          : [];
+        const pRectKey = replayCardRects.length > 0
+          ? replayCardRects.map(r => `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.w)},${Math.round(r.h)}`).join(';')
           : 'none';
         const dpr = this.getCanvasDpr();
         const bw = (this.canvas && this.canvas.width > 0) ? this.canvas.width : Math.max(1, Math.round(this.screenWidth * dpr));

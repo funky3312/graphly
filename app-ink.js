@@ -6017,9 +6017,9 @@
       if (!penStyle || penStyle === 'ballpen' || penStyle === 'flat') return 0.5;
       const isBrush = (penStyle === 'brush');
       const hasValidDt = (typeof dtMs === 'number' && Number.isFinite(dtMs) && dtMs > 0);
-      const dt = hasValidDt ? Math.min(50, Math.max(1, dtMs)) : null;
+      const dt = hasValidDt ? Math.min(50, Math.max(2.5, dtMs)) : null;
       const normSpd = (dt !== null)
-        ? Math.min(1, Math.max(0, ((moveStepDist / dt) - (isBrush ? 0.48 : 0.60)) / (isBrush ? 9.1 : 10.8)))
+        ? Math.min(1, Math.max(0, ((moveStepDist / dt) - (isBrush ? 0.12 : 0.15)) / (isBrush ? 2.28 : 2.70)))
         : Math.min(1.0, Math.max(0, (moveStepDist - (isBrush ? 2.0 : 2.5)) / (isBrush ? 38 : 45)));
       const velP = isBrush
         ? Math.max(0.05, Math.min(0.98, 0.96 - Math.pow(normSpd, 0.76) * 0.91 + cornerBoost * 0.18))
@@ -6274,7 +6274,13 @@
       const lastPt = screenPts[L - 1];
       const lineW = this.computePenStyleWidth(baseSize, lastPt.p, penStyle);
 
-      const strokeColor = this.isMonochromeMode ? '#000000' : (stroke.color || '#1e293b');
+      const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+      const isLight = Boolean(curTheme.isLight || this.isMonochromeMode);
+      const rawStrokeColor = stroke.color || '#1e293b';
+      const rawStrokeLower = rawStrokeColor.toLowerCase();
+      const strokeColor = this.isMonochromeMode
+        ? '#000000'
+        : ((stroke.onPdfBoard && !isLight && (rawStrokeLower === '#ffffff' || rawStrokeLower === '#fff')) ? '#0f172a' : rawStrokeColor);
       const isFlatNib = (penStyle === 'flat');
       const nibX = isFlatNib ? 1.38 : 1.0;
       const nibY = isFlatNib ? 0.68 : 1.0;
@@ -6357,17 +6363,33 @@
 
       drawPathOnCtx(strokeColor);
 
-      // 다크 테마에서 흰색 문제 카드 영역 위 흰색 펜 자동 반전 처리
-      const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
-      const isLight = curTheme.isLight || this.isMonochromeMode;
-      if (isBoardInk && this.hasActiveProblemCard() && !isLight && !this.isMonochromeMode && this.problemCardRect) {
-        const c = (stroke.color || '').toLowerCase();
-        if (c === '#ffffff' || c === '#fff') {
-          const r = this.problemCardRect;
-          if (lastPt.x >= r.x - 10 && lastPt.x <= r.x + r.w + 10 && lastPt.y >= r.y - 10 && lastPt.y <= r.y + r.h + 10) {
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(r.x, r.y, r.w, r.h);
+      // 다크 테마에서 흰색 문제 카드 및 고정 문제 스탬프 영역 위 흰색 펜 자동 반전 처리
+      if (isBoardInk && !isLight && !this.isMonochromeMode && (rawStrokeLower === '#ffffff' || rawStrokeLower === '#fff')) {
+        const cardRects = this._getVisibleWhiteProblemCardScreenRects(false);
+        if (cardRects.length > 0) {
+          const i0 = Math.max(0, L - 3);
+          let sMinX = lastPt.x, sMaxX = lastPt.x, sMinY = lastPt.y, sMaxY = lastPt.y;
+          for (let i = i0; i < L - 1; i++) {
+            const p = screenPts[i];
+            if (p.x < sMinX) sMinX = p.x;
+            else if (p.x > sMaxX) sMaxX = p.x;
+            if (p.y < sMinY) sMinY = p.y;
+            else if (p.y > sMaxY) sMaxY = p.y;
+          }
+          const pad = Math.max(10, lineW * 2);
+          let clipped = false;
+          for (let rIdx = 0; rIdx < cardRects.length; rIdx++) {
+            const r = cardRects[rIdx];
+            if (sMaxX >= r.x - pad && sMinX <= r.x + r.w + pad && sMaxY >= r.y - pad && sMinY <= r.y + r.h + pad) {
+              if (!clipped) {
+                ctx.save();
+                ctx.beginPath();
+                clipped = true;
+              }
+              ctx.rect(r.x, r.y, r.w, r.h);
+            }
+          }
+          if (clipped) {
             ctx.clip();
             drawPathOnCtx('#0f172a');
             ctx.restore();
@@ -6456,7 +6478,13 @@
       this._liveTipPatchRect = { x: px0, y: py0, w: pw, h: ph };
       this._hasLiveTipPatch = true;
 
-      const strokeColor = this.isMonochromeMode ? '#000000' : (stroke.color || '#1e293b');
+      const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
+      const isLight = Boolean(curTheme.isLight || this.isMonochromeMode);
+      const rawStrokeColor = stroke.color || '#1e293b';
+      const rawStrokeLower = rawStrokeColor.toLowerCase();
+      const strokeColor = this.isMonochromeMode
+        ? '#000000'
+        : ((stroke.onPdfBoard && !isLight && (rawStrokeLower === '#ffffff' || rawStrokeLower === '#fff')) ? '#0f172a' : rawStrokeColor);
       const isFlatNib = (penStyle === 'flat');
       const nibX = isFlatNib ? 1.38 : 1.0;
       const nibY = isFlatNib ? 0.68 : 1.0;
@@ -6564,17 +6592,23 @@
 
       renderTipCurve(strokeColor);
 
-      const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
-      const isLight = curTheme.isLight || this.isMonochromeMode;
-      if (isBoardInk && this.hasActiveProblemCard() && !isLight && !this.isMonochromeMode && this.problemCardRect) {
-        const c = (stroke.color || '').toLowerCase();
-        if (c === '#ffffff' || c === '#fff') {
-          const r = this.problemCardRect;
-          if (maxX >= r.x - 10 && minX <= r.x + r.w + 10 && maxY >= r.y - 10 && minY <= r.y + r.h + 10) {
-            ctx.save();
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            ctx.beginPath();
-            ctx.rect(r.x, r.y, r.w, r.h);
+      if (isBoardInk && !isLight && !this.isMonochromeMode && (rawStrokeLower === '#ffffff' || rawStrokeLower === '#fff')) {
+        const cardRects = this._getVisibleWhiteProblemCardScreenRects(false);
+        if (cardRects.length > 0) {
+          let clipped = false;
+          for (let rIdx = 0; rIdx < cardRects.length; rIdx++) {
+            const r = cardRects[rIdx];
+            if (maxX >= r.x - 10 && minX <= r.x + r.w + 10 && maxY >= r.y - 10 && minY <= r.y + r.h + 10) {
+              if (!clipped) {
+                ctx.save();
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                ctx.beginPath();
+                clipped = true;
+              }
+              ctx.rect(r.x, r.y, r.w, r.h);
+            }
+          }
+          if (clipped) {
             ctx.clip();
             renderTipCurve('#0f172a');
             ctx.restore();
@@ -7099,6 +7133,7 @@
       for (let i = 0; i < strokes.length; i++) {
         const s = strokes[i];
         if (!s || s === stroke || s.isHighlighter) continue;
+        if (this._getStrokeRenderPass(s) === 0) continue;
         const sTarget = s.target || 'board';
         if (sTarget !== target) continue;
         if (!isBoard && Boolean(s.onPdfBoard) !== Boolean(this.pdfPageBoardData)) continue;
@@ -7734,7 +7769,12 @@
       targetCtx.lineJoin = 'round';
 
       const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.dark_charcoal;
-      const isLight = curTheme.isLight || this.isMonochromeMode;
+      const isPdfWhiteSurface = Boolean(
+        stroke.onPdfBoard &&
+        !this.isMonochromeMode &&
+        !(this._activeExportFilter && this._activeExportFilter.includeProblem === false && !this.exportTransparent)
+      );
+      const isLight = Boolean(curTheme.isLight || this.isMonochromeMode || isPdfWhiteSurface);
 
       let strokeColor = forceColor || stroke.color;
       if (this.isMonochromeMode) {
@@ -7752,6 +7792,11 @@
           strokeColor = '#4ade80';
         } else if (rawLower === '#7c3aed') {
           strokeColor = '#c084fc';
+        }
+      } else if (!forceColor && isPdfWhiteSurface && !curTheme.isLight) {
+        const rawPenLower = (strokeColor || '').toLowerCase();
+        if (rawPenLower === '#ffffff' || rawPenLower === '#fff') {
+          strokeColor = '#0f172a';
         }
       }
 
@@ -7917,7 +7962,19 @@
       }
       const hasPrimaryProb = (typeof this.hasActiveProblemCard === 'function') && this.hasActiveProblemCard();
       const hasExtraProb = Array.isArray(this.extraProblemCards) && this.extraProblemCards.length > 0;
-      if (!hasPrimaryProb && !hasExtraProb) {
+      const allStrokes = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
+      let probStampSig = '';
+      let hasProbStamp = false;
+      for (let i = 0; i < allStrokes.length; i++) {
+        const st = allStrokes[i];
+        if (st && st.isProblemStamp && (st.target || 'board') === 'board' && Array.isArray(st.points) && st.points.length >= 2) {
+          hasProbStamp = true;
+          const p0 = st.points[0];
+          const p1 = st.points[1];
+          probStampSig += `|S:${st.id || i},${Math.round((p0.x || 0) * 10)},${Math.round((p0.y || 0) * 10)},${Math.round((p1.x || 0) * 10)},${Math.round((p1.y || 0) * 10)}`;
+        }
+      }
+      if (!hasPrimaryProb && !hasExtraProb && !hasProbStamp) {
         return rects;
       }
 
@@ -7926,7 +7983,7 @@
       // 카드 이동/리사이즈 중이 아닐 때는 순수 JS 스타일 시그니처가 바뀌었을 때만 측정하고 평소에는 0.000ms 캐시를 반환!
       if (!isExport && !this._isDraggingOrResizingAnyCard) {
         const pWidget = (hasPrimaryProb && typeof document !== 'undefined') ? document.getElementById('problemCardWidget') : null;
-        let layoutSig = `${this.screenWidth || 0}|${this.screenHeight || 0}|${this.boardPanX || 0}|${this.boardPanY || 0}|${this.boardZoom || 1}`;
+        let layoutSig = `${this.screenWidth || 0}|${this.screenHeight || 0}|${this.boardPanX || 0}|${this.boardPanY || 0}|${this.boardZoom || 1}|${this.boardZoomOffsetX || 0}|${this.boardZoomOffsetY || 0}${probStampSig}`;
         if (pWidget) {
           const pMin = (pWidget.classList && pWidget.classList.contains('minimized')) ? 1 : 0;
           const pr = this.problemCardRect;
@@ -7949,48 +8006,69 @@
         this._whiteCardRectsCacheSig = null;
       }
 
-      const offX = (isExport && this._exportCropOffset && typeof this._exportCropOffset.x === 'number') ? this._exportCropOffset.x : 0;
-      const offY = (isExport && this._exportCropOffset && typeof this._exportCropOffset.y === 'number') ? this._exportCropOffset.y : 0;
-      const canvasRect = (this.canvas && typeof this.canvas.getBoundingClientRect === 'function')
-        ? this.canvas.getBoundingClientRect()
-        : { left: 0, top: 0 };
-
-      const addBodyRect = (widgetEl, fallbackRect = null) => {
-        if (widgetEl && typeof document !== 'undefined') {
-          if (widgetEl.style && widgetEl.style.display === 'none') return;
-          if (widgetEl.classList && widgetEl.classList.contains('minimized')) return;
-          const bodyEl = widgetEl.querySelector ? widgetEl.querySelector('.problem-card-body') : null;
-          if (bodyEl && typeof bodyEl.getBoundingClientRect === 'function') {
-            const bRect = bodyEl.getBoundingClientRect();
-            if (bRect.width > 2 && bRect.height > 2) {
-              rects.push({
-                x: bRect.left - canvasRect.left - offX,
-                y: bRect.top - canvasRect.top - offY,
-                w: bRect.width,
-                h: bRect.height
-              });
-              return;
-            }
+      if (hasProbStamp) {
+        for (let i = 0; i < allStrokes.length; i++) {
+          const st = allStrokes[i];
+          if (!st || !st.isProblemStamp || (st.target || 'board') !== 'board' || !Array.isArray(st.points) || st.points.length < 2) continue;
+          const s0 = this.boardToScreen(st.points[0].x, st.points[0].y);
+          const s1 = this.boardToScreen(st.points[1].x, st.points[1].y);
+          const w = Math.abs(s1.x - s0.x);
+          const h = Math.abs(s1.y - s0.y);
+          if (w > 2 && h > 2) {
+            rects.push({
+              x: Math.min(s0.x, s1.x),
+              y: Math.min(s0.y, s1.y),
+              w,
+              h
+            });
           }
         }
-        if (fallbackRect && fallbackRect.w > 2 && fallbackRect.h > 2) {
-          rects.push({
-            x: fallbackRect.x - offX,
-            y: fallbackRect.y - offY,
-            w: fallbackRect.w,
-            h: fallbackRect.h
-          });
-        }
-      };
-
-      if (hasPrimaryProb) {
-        const pWidget = (typeof document !== 'undefined') ? document.getElementById('problemCardWidget') : null;
-        addBodyRect(pWidget, this.problemCardRect);
       }
-      if (hasExtraProb) {
-        for (let i = 0; i < this.extraProblemCards.length; i++) {
-          const ep = this.extraProblemCards[i];
-          if (ep && ep.el) addBodyRect(ep.el, ep.rect || null);
+
+      if (hasPrimaryProb || hasExtraProb) {
+        const offX = (isExport && this._exportCropOffset && typeof this._exportCropOffset.x === 'number') ? this._exportCropOffset.x : 0;
+        const offY = (isExport && this._exportCropOffset && typeof this._exportCropOffset.y === 'number') ? this._exportCropOffset.y : 0;
+        const canvasRect = (this.canvas && typeof this.canvas.getBoundingClientRect === 'function')
+          ? this.canvas.getBoundingClientRect()
+          : { left: 0, top: 0 };
+
+        const addBodyRect = (widgetEl, fallbackRect = null) => {
+          if (widgetEl && typeof document !== 'undefined') {
+            if (widgetEl.style && widgetEl.style.display === 'none') return;
+            if (widgetEl.classList && widgetEl.classList.contains('minimized')) return;
+            const bodyEl = widgetEl.querySelector ? widgetEl.querySelector('.problem-card-body') : null;
+            if (bodyEl && typeof bodyEl.getBoundingClientRect === 'function') {
+              const bRect = bodyEl.getBoundingClientRect();
+              if (bRect.width > 2 && bRect.height > 2) {
+                rects.push({
+                  x: bRect.left - canvasRect.left - offX,
+                  y: bRect.top - canvasRect.top - offY,
+                  w: bRect.width,
+                  h: bRect.height
+                });
+                return;
+              }
+            }
+          }
+          if (fallbackRect && fallbackRect.w > 2 && fallbackRect.h > 2) {
+            rects.push({
+              x: fallbackRect.x - offX,
+              y: fallbackRect.y - offY,
+              w: fallbackRect.w,
+              h: fallbackRect.h
+            });
+          }
+        };
+
+        if (hasPrimaryProb) {
+          const pWidget = (typeof document !== 'undefined') ? document.getElementById('problemCardWidget') : null;
+          addBodyRect(pWidget, this.problemCardRect);
+        }
+        if (hasExtraProb) {
+          for (let i = 0; i < this.extraProblemCards.length; i++) {
+            const ep = this.extraProblemCards[i];
+            if (ep && ep.el) addBodyRect(ep.el, ep.rect || null);
+          }
         }
       }
       if (!isExport && this._whiteCardRectsCacheSig) {
@@ -8012,10 +8090,6 @@
       const hasList = Array.isArray(strokesList) && strokesList.length > 0;
       const hasExtra = this._isWhiteBoardContrastStroke(extraLiveStroke);
       if (!hasList && !hasExtra) return;
-
-      const hasPrimaryProb = (typeof this.hasActiveProblemCard === 'function') && this.hasActiveProblemCard();
-      const hasExtraProb = Array.isArray(this.extraProblemCards) && this.extraProblemCards.length > 0;
-      if (!hasPrimaryProb && !hasExtraProb) return;
 
       let anyWhite = hasExtra;
       if (!anyWhite && hasList) {
