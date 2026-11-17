@@ -4433,17 +4433,18 @@ class GraphApp {
 
     // 2. [🧲 사차함수 좌우대칭 자석 스냅 (Symmetry Snap)] - 비대칭 사차함수(4th_asymmetric) 전용!
     // (대칭형 4th_symmetric은 이미 수학 엔진 레벨에서 100% 대칭이므로 이 스냅 검사를 타면 직전 프레임 대칭 좌표와 무한 루프로 충돌하여 뚝뚝 끊김 발생 -> 완전 제외)
-    if (!altKey && !isKeyboard && g.type === '4th_asymmetric' && g.handles.length >= 3) {
+    if (this.useMagneticSnap && !altKey && !isKeyboard && g.type === '4th_asymmetric' && g.handles.length >= 3) {
       if (idx === 0 || idx === 2) {
         const oppIdx = idx === 0 ? 2 : 0;
         const oppH = g.handles[oppIdx];
         const centerH = g.handles[1];
         const effSpanY = this.ySpan / this.zoomLevel;
         const unitScale = (this.screenHeight / 2) / effSpanY;
+        const symSnapPx = this._isRenderingGraphSnapshot ? 5.5 : 14;
 
         // A. 높이 자석 스냅 (반대편 극소와 y값 일치)
         const diffY = Math.abs(y - oppH.y);
-        if (diffY * unitScale < 14) {
+        if (diffY * unitScale < symSnapPx) {
           y = oppH.y;
           this.symmetrySnapActive = true;
           this.symmetrySnapY = oppH.y;
@@ -4453,7 +4454,7 @@ class GraphApp {
         // B. 간격 자석 스냅 (중앙 극대 기준 좌우 거리 일치)
         const oppDist = Math.abs(oppH.x - centerH.x);
         const currDist = Math.abs(x - centerH.x);
-        if (Math.abs(currDist - oppDist) * unitScale < 14) {
+        if (Math.abs(currDist - oppDist) * unitScale < symSnapPx) {
           x = idx === 0 ? centerH.x - oppDist : centerH.x + oppDist;
           this.snappedPoints.push({ x: x, y: y, label: '⚖️ 좌우대칭 간격 일치' });
         }

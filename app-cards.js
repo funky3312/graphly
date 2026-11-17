@@ -12700,8 +12700,23 @@
       let partnerInitHandles = null;
       let partnerInitFreezeOffset = null;
       let curveFeatsSnapshot = null;
+      let pwGroupInitBoundaries = null;
+      let pwGroupInitGraphs = null;
       let panInit = { x: 0, y: 0 };
       let movedDuringInteraction = false;
+
+      const PIP_SNAP_RADIUS_PX = 3.5;
+      const computePipSnapThresholds = () => {
+        const zoom = this.zoomLevel || 1.0;
+        const unitScaleY = (Math.max(1, this.screenHeight) / 2) / (this.ySpan / zoom);
+        const unitScaleX = this.lockAspect
+          ? unitScaleY
+          : ((Math.max(1, this.screenWidth) / 2) / (this.xSpan / zoom));
+        return {
+          x: PIP_SNAP_RADIUS_PX / Math.max(1e-6, unitScaleX),
+          y: PIP_SNAP_RADIUS_PX / Math.max(1e-6, unitScaleY)
+        };
+      };
 
       const getLocalPos = (e, useCached = false) => {
         const now = performance.now();
@@ -12957,8 +12972,20 @@
                 y: (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0
               };
               curveFeatsSnapshot = (typeof this.getGraphFeaturePoints === 'function')
-                ? this.getGraphFeaturePoints(g, curveInitHandles, curveInitFreezeOffset)
+                ? this.getGraphFeaturePoints(g)
                 : { pts: [], asymX: [], asymY: [] };
+              const isPwGroupDrag = Boolean(this.usePiecewise && this.isPiecewiseLocked && !g.isIndependent);
+              if (isPwGroupDrag) {
+                pwGroupInitBoundaries = [...(this.piecewiseBoundaries || [])];
+                pwGroupInitGraphs = this.graphs.map(gItem => ({
+                  handles: (gItem && Array.isArray(gItem.handles)) ? gItem.handles.map(h => ({ ...h })) : [],
+                  ox: (gItem && gItem.freezeOffset && typeof gItem.freezeOffset.x === 'number') ? gItem.freezeOffset.x : 0,
+                  oy: (gItem && gItem.freezeOffset && typeof gItem.freezeOffset.y === 'number') ? gItem.freezeOffset.y : 0
+                }));
+              } else {
+                pwGroupInitBoundaries = null;
+                pwGroupInitGraphs = null;
+              }
               const partner = this.getLinkedPartner(g);
               if (partner) {
                 partnerInitHandles = (partner.handles || []).map(h => ({ ...h }));
@@ -13080,64 +13107,45 @@
             const g = this.activeGraph;
             if (!g || this.draggedHandleIdx === null) return;
             const m = this.screenToMath(pos.x, pos.y);
-            let ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
-            let oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
-            if (g.transforms && g.transforms.length > 0) {
-              for (const t of g.transforms) {
-                if (t.offset && typeof t.offset.x === 'number') ox += t.offset.x;
-                if (t.offset && typeof t.offset.y === 'number') oy += t.offset.y;
-              }
-            }
-
-            // 🧲 창모드 세밀 조작: 자석 스냅 반경을 기존 8px에서 3.2px로 축소하여 미세 조정이 걸림 없이 매끄럽게 되도록 개선!
-            const snapThresholdMathX = (3.2 / Math.max(1, pos.cardW)) * this.xSpan * 2;
-            const snapThresholdMathY = (3.2 / Math.max(1, pos.cardH)) * this.ySpan * 2;
             this.axisSnapActiveX = false;
             this.axisSnapActiveY = false;
             this.symmetrySnapActive = false;
             this.snappedPoints = [];
 
-            if (this.showYAxis !== false && Math.abs(m.x) < snapThresholdMathX) {
-              m.x = 0;
-              this.axisSnapActiveX = true;
-            }
-            if (this.showXAxis !== false && Math.abs(m.y) < snapThresholdMathY) {
-              m.y = 0;
-              this.axisSnapActiveY = true;
+            if (this.useMagneticSnap && !e.altKey && typeof this.resolveHandleMagneticSnap === 'function') {
+              const snapThresh = computePipSnapThresholds();
+              const snapRes = this.resolveHandleMagneticSnap(
+                g,
+                this.draggedHandleIdx,
+                m.x,
+                m.y,
+                snapThresh.x,
+                snapThresh.y
+              );
+              m.x = snapRes.x;
+              m.y = snapRes.y;
+              this.axisSnapActiveX = snapRes.snappedX;
+              this.axisSnapActiveY = snapRes.snappedY;
+              this.snappedPoints = snapRes.snappedPoints;
             }
 
-            let paramVal = g.isTransposedYX ? m.y : m.x;
-            let outVal = g.isTransposedYX ? m.x : m.y;
-            const paramSnapThreshold = g.isTransposedYX ? snapThresholdMathY : snapThresholdMathX;
-
-            if (["2nd_quadratic", "abs_v", "4th_w", "4th_u"].includes(g.type) && this.draggedHandleIdx === 1) {
-              const h0x = g.handles[0].x + ox;
-              if (Math.abs(paramVal - h0x) < paramSnapThreshold * 1.0) {
-                if (g.type === "4th_w") {
-                  const curDist = Math.abs(g.handles[1].x - g.handles[0].x);
-                  paramVal = h0x + Math.max(0.5, curDist);
-                } else {
-                  paramVal = h0x + 1.0;
-                }
-                this.symmetrySnapActive = true;
+            const worldParam = g.isTransposedYX ? m.y : m.x;
+            const worldVal = g.isTransposedYX ? m.x : m.y;
+            const baseParam = this.engine.worldXToBaseX(g, worldParam);
+            const fzOy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+            let baseVal = worldVal - fzOy;
+            if (g.frozenInvertV) baseVal = -baseVal;
+            if (g.transforms && g.transforms.length > 0) {
+              for (let ti = g.transforms.length - 1; ti >= 0; ti--) {
+                const t = g.transforms[ti];
+                if (!t) continue;
+                if (t.invertV) baseVal = -baseVal;
+                if (t.offset && typeof t.offset.y === 'number') baseVal -= t.offset.y;
               }
             }
-
-            // 전체화면 그래프 모드와 동일한 시그니처: dragActiveHandle(idx, x, y, altKey)
-            this.dragActiveHandle(this.draggedHandleIdx, paramVal - ox, outVal - oy, e.altKey);
+            this.dragActiveHandle(this.draggedHandleIdx, baseParam, baseVal, e.altKey);
             if (g.isAbsolute && g.isAbsPristine && movedDuringInteraction) {
               g.isAbsPristine = false;
-            }
-
-            const h = g.handles[this.draggedHandleIdx];
-            if (h && (this.axisSnapActiveX || this.axisSnapActiveY)) {
-              const labelParts = [];
-              if (this.axisSnapActiveX) labelParts.push('x=0');
-              if (this.axisSnapActiveY) labelParts.push('y=0');
-              const wPos = this.engine.getHandleWorldPos(g, h);
-              if (wPos && !isNaN(wPos.x) && !isNaN(wPos.y)) {
-                this.snappedPoints.push({ x: wPos.x, y: wPos.y, label: labelParts.join(', ') });
-              }
             }
           });
           this.requestPipGraphCardRender(cardRef);
@@ -13154,17 +13162,25 @@
             let deltaX = m.x - curveStartMath.x;
             let deltaY = m.y - curveStartMath.y;
 
-            const snapThresholdMathX = (3.2 / Math.max(1, pos.cardW)) * this.xSpan * 2;
-            const snapThresholdMathY = (3.2 / Math.max(1, pos.cardH)) * this.ySpan * 2;
+            const snapThresh = computePipSnapThresholds();
+            const snapThresholdMathX = snapThresh.x;
+            const snapThresholdMathY = snapThresh.y;
             this.axisSnapActiveX = false;
             this.axisSnapActiveY = false;
             this.snappedPoints = [];
+
+            const isShiftDrag = Boolean(e.shiftKey);
+            const isPwGroupDragMove = Boolean(this.usePiecewise && this.isPiecewiseLocked && !g.isIndependent);
+            const isShiftAbsMorph = Boolean(isShiftDrag && g.isAbsolute);
+            const initOx = curveInitFreezeOffset ? (curveInitFreezeOffset.x || 0) : 0;
+            const initOy = curveInitFreezeOffset ? (curveInitFreezeOffset.y || 0) : 0;
+            const hasTransforms = Boolean(g.isAbsolute || g.isFrozen || g.frozenInvertH || g.frozenInvertV || g.frozenAbsolute || (g.transforms && g.transforms.length > 0) || initOx !== 0 || initOy !== 0);
 
             const feats = curveFeatsSnapshot || { pts: [], asymX: [], asymY: [] };
             let bestDx = null, minDistX = snapThresholdMathX;
             let bestDy = null, minDistY = snapThresholdMathY;
 
-            if (!e.altKey) {
+            if (this.useMagneticSnap && !e.altKey && !isPwGroupDragMove && !isShiftAbsMorph) {
               const canSnapYAxis = this.showYAxis !== false;
               const canSnapXAxis = this.showXAxis !== false;
               if (Array.isArray(feats.pts)) {
@@ -13225,10 +13241,100 @@
                   }
                 }
               }
+
+              // 창모드 구간분할(✂️) 경계 연속 결합 스냅 연동
+              if (this.usePiecewise && !this.isPiecewiseLocked && this.graphs.length >= 2 && this.piecewiseBoundaries && this.piecewiseBoundaries.length > 0 && !g.isIndependent && !g.isTransposedYX) {
+                const currIdx = this.activeGraphIdx;
+                const boundaries = this.piecewiseBoundaries;
+                const funcMap = this.piecewiseFuncMap || [];
+                const nG = this.graphs.length;
+                const contSnapDist = snapThresholdMathY * 1.45;
+
+                let bestContinuityY = null;
+                let minDiffCont = Infinity;
+                let snappedB = null;
+                let snappedTargetY = null;
+
+                for (let bIdx = 0; bIdx < boundaries.length; bIdx++) {
+                  const b = boundaries[bIdx];
+                  const leftIdx = funcMap[bIdx] !== undefined ? funcMap[bIdx] : (nG > 0 ? (bIdx % nG) : -1);
+                  const rightIdx = funcMap[bIdx + 1] !== undefined ? funcMap[bIdx + 1] : (nG > 0 ? ((bIdx + 1) % nG) : -1);
+
+                  let partnerIdx = null;
+                  if (currIdx === leftIdx && rightIdx !== currIdx && rightIdx >= 0) {
+                    partnerIdx = rightIdx;
+                  } else if (currIdx === rightIdx && leftIdx !== currIdx && leftIdx >= 0) {
+                    partnerIdx = leftIdx;
+                  }
+
+                  if (partnerIdx !== null && this.graphs[partnerIdx] && !this.graphs[partnerIdx].isIndependent && !this.graphs[partnerIdx].isTransposedYX) {
+                    const partnerGraph = this.graphs[partnerIdx];
+                    const partnerY = this.engine.evaluatePipeline(partnerGraph, b);
+                    if (!isNaN(partnerY) && isFinite(partnerY)) {
+                      const tempGraphX = hasTransforms
+                        ? {
+                            ...g,
+                            handles: curveInitHandles,
+                            freezeOffset: { x: initOx + deltaX, y: initOy }
+                          }
+                        : {
+                            ...g,
+                            handles: curveInitHandles.map(h => ({ ...h, x: h.x + deltaX })),
+                            freezeOffset: { x: 0, y: 0 }
+                          };
+                      const currBaseY = this.engine.evaluatePipeline(tempGraphX, b);
+                      if (!isNaN(currBaseY) && isFinite(currBaseY)) {
+                        const neededDeltaY = partnerY - currBaseY;
+                        const diff = Math.abs(deltaY - neededDeltaY);
+                        if (diff < contSnapDist && diff < minDiffCont) {
+                          minDiffCont = diff;
+                          bestContinuityY = neededDeltaY;
+                          snappedB = b;
+                          snappedTargetY = partnerY;
+                        }
+                      }
+                    }
+                  }
+                }
+
+                if (bestContinuityY !== null) {
+                  deltaY = bestContinuityY;
+                  this.axisSnapActiveY = true;
+                  this.snappedPoints = [{
+                    x: snappedB,
+                    y: snappedTargetY,
+                    isContinuity: true,
+                    label: '연속 결합'
+                  }];
+                }
+              }
             }
 
-            const isShiftDrag = Boolean(e.shiftKey);
-            const hasTransforms = Boolean(g.isAbsolute || g.isFrozen || g.frozenInvertH || g.frozenInvertV || g.frozenAbsolute || (g.transforms && g.transforms.length > 0));
+            if (isPwGroupDragMove && pwGroupInitBoundaries && pwGroupInitGraphs) {
+              for (let bi = 0; bi < pwGroupInitBoundaries.length; bi++) {
+                this.piecewiseBoundaries[bi] = parseFloat((pwGroupInitBoundaries[bi] + deltaX).toFixed(4));
+              }
+              this.graphs.forEach((gItem, gIdx) => {
+                if (!gItem || gItem.isIndependent) return;
+                const gSnap = pwGroupInitGraphs[gIdx];
+                if (!gSnap) return;
+                const gHasTransforms = Boolean(gItem.isAbsolute || (gItem.transforms && gItem.transforms.length > 0) || gItem.isFrozen || gItem.frozenInvertH || gItem.frozenInvertV || gItem.frozenAbsolute || gSnap.ox !== 0 || gSnap.oy !== 0);
+                if (gHasTransforms) {
+                  if (!gItem.freezeOffset) gItem.freezeOffset = { x: 0, y: 0 };
+                  gItem.freezeOffset.x = Math.round((gSnap.ox + deltaX) * 100) / 100;
+                  gItem.freezeOffset.y = Math.round((gSnap.oy + deltaY) * 100) / 100;
+                } else if (gItem.handles && gSnap.handles) {
+                  gItem.handles.forEach((h, hIdx) => {
+                    if (gSnap.handles[hIdx]) {
+                      h.x = gSnap.handles[hIdx].x + deltaX;
+                      h.y = gSnap.handles[hIdx].y + deltaY;
+                    }
+                  });
+                }
+              });
+              return;
+            }
+
             const partner = this.getLinkedPartner(g);
             const effDx = g.isTransposedYX ? deltaY : deltaX;
             const effDy = g.isTransposedYX ? deltaX : deltaY;
@@ -13302,6 +13408,8 @@
         cachedDownGeom = null;
         cachedDownGeomTs = 0;
         curveFeatsSnapshot = null;
+        pwGroupInitBoundaries = null;
+        pwGroupInitGraphs = null;
         if (widget._pipRenderRafId) {
           cancelAnimationFrame(widget._pipRenderRafId);
           widget._pipRenderRafId = null;
