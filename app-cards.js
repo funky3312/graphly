@@ -1317,6 +1317,8 @@
       this.graphCardRect = null;
       this.isGraphCardMinimized = false;
       this.graphInkStrokes = [];
+      this.graphCardStickers = [];
+      if (gWidget && typeof gWidget._renderCardStickers === 'function') gWidget._renderCardStickers();
       this.graphCardBaseX = undefined;
       this.graphCardBaseY = undefined;
       if (typeof this.closeRailAddTargetPopover === 'function') {
@@ -4616,7 +4618,7 @@
       if (btnPresets) {
         btnPresets.classList.remove('rail-graph-mode-switch');
         btnPresets.title = isBoard ? '새 그래프 카드 추가' : '그래프 추가';
-        btnPresets.innerHTML = `<span class="rail-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>`;
+        btnPresets.innerHTML = `<span class="rail-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M13.6 4.6C12 3.6 9.9 4.4 9.4 6.8L7.4 17.2C6.9 19.5 5.2 20.3 3.6 19.4" stroke-width="2"/><line x1="5.4" y1="11.2" x2="12.2" y2="11.2" stroke-width="1.95"/><line x1="18.2" y1="4.5" x2="18.2" y2="10.1" stroke-width="2.1"/><line x1="15.4" y1="7.3" x2="21" y2="7.3" stroke-width="2.1"/></svg></span>`;
       }
 
       const graphOnlyIds = [
@@ -5432,6 +5434,8 @@
 
         if (widget) {
           this.graphInkStrokes = [];
+          this.graphCardStickers = [];
+          if (typeof widget._renderCardStickers === 'function') widget._renderCardStickers();
           this.renderGraphCardCanvas();
           widget._stealthWakeTapStamp = null;
           widget.classList.remove('minimized', 'card-ink-active', 'card-laser-active');
@@ -7146,6 +7150,8 @@
             widget._bakePipTimerId = null;
           }
           this.graphInkStrokes = [];
+          this.graphCardStickers = [];
+          if (typeof widget._renderCardStickers === 'function') widget._renderCardStickers();
           this._hasPrimaryGraphCard = false;
           this.graphCardData = null;
           this.graphCardPdfAnchor = null;
@@ -8797,7 +8803,7 @@
               const tRect = hdrTools.getBoundingClientRect();
               const viewW = (typeof window !== 'undefined' && window.innerWidth) || 1440;
               const viewH = (typeof window !== 'undefined' && window.innerHeight) || 900;
-              const openLeft = widget.classList.contains('prob-side-dock-left') || (tRect.right + 128 > viewW - 6 && tRect.left >= 128);
+              const openLeft = widget.classList.contains('prob-side-dock-left') || (tRect.right + 98 > viewW - 6 && tRect.left >= 98);
               const openUp = (tRect.top + 96 > viewH - 8 && tRect.bottom >= 96);
               pop.classList.toggle('pop-left', openLeft);
               pop.classList.toggle('pop-up', openUp);
@@ -11421,7 +11427,13 @@
 
       const srcInk = this._getPipCardInkStrokesArray(cardRef);
       const clonedInk = Array.isArray(srcInk) ? JSON.parse(JSON.stringify(srcInk)) : [];
-      const clonedStickers = Array.isArray(widget._cardStickers) ? JSON.parse(JSON.stringify(widget._cardStickers)) : [];
+      const srcStickers = (typeof this.getCardStickersArray === 'function') ? this.getCardStickersArray(widget) : widget._cardStickers;
+      const clonedStickers = Array.isArray(srcStickers)
+        ? JSON.parse(JSON.stringify(srcStickers)).map((stk, i) => ({
+            ...stk,
+            id: `cstk_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`
+          }))
+        : [];
 
       const snapScale = 2.5;
       const tempCanvas = document.createElement('canvas');
@@ -11469,9 +11481,13 @@
         this._setPipCardInkStrokesArray(createdRef, clonedInk);
         const { widget: createdWidget, isPrimary: createdIsPrimary } = this._getPipCardWidgetAndSnapRaw(createdRef);
         if (createdWidget && clonedStickers.length > 0) {
-          createdWidget._cardStickers = clonedStickers;
-          if (typeof this.renderCardStickers === 'function') {
-            this.renderCardStickers(createdWidget);
+          const dstStickers = (typeof this.getCardStickersArray === 'function')
+            ? this.getCardStickersArray(createdWidget)
+            : (createdWidget._cardStickers = []);
+          dstStickers.length = 0;
+          dstStickers.push(...clonedStickers);
+          if (typeof createdWidget._renderCardStickers === 'function') {
+            createdWidget._renderCardStickers();
           }
         }
         this.syncPipCardLockUI(createdRef);
@@ -11766,6 +11782,8 @@
           this._activePeekCardEl = null;
         }
         this.graphInkStrokes = [];
+        this.graphCardStickers = [];
+        if (typeof widget._renderCardStickers === 'function') widget._renderCardStickers();
         this._hasPrimaryGraphCard = false;
         this.graphCardData = null;
         this.graphCardPdfAnchor = null;
@@ -12518,17 +12536,19 @@
         hdrTools.innerHTML = `
         <div class="pip-hdr-sym-wrap">
           <button type="button" class="card-btn pip-hdr-btn pip-hdr-sym-icon" data-pip-act="symMenu" title="대칭 이동 (x축 · y축 · 원점 · y=x)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="2.5 2.5"></line>
-              <polygon points="9 6 3 18 9 18 9 6"></polygon>
-              <polygon points="15 6 21 18 15 18 15 6"></polygon>
+            <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="3.5" x2="12" y2="6.6" stroke-width="1.75" opacity="0.72"></line>
+              <line x1="12" y1="10.4" x2="12" y2="13.6" stroke-width="1.75" opacity="0.72"></line>
+              <line x1="12" y1="17.4" x2="12" y2="20.5" stroke-width="1.75" opacity="0.72"></line>
+              <path d="M3.8 5.2C9.2 8.2 9.2 15.8 3.8 18.8"></path>
+              <path d="M20.2 5.2C14.8 8.2 14.8 15.8 20.2 18.8"></path>
             </svg>
           </button>
           <div class="pip-hdr-popover" style="display: none;">
-            <button type="button" class="pip-pop-btn" data-pip-act="flipX" title="x축 대칭 (상하 반전)">↕ x축</button>
-            <button type="button" class="pip-pop-btn" data-pip-act="flipY" title="y축 대칭 (좌우 반전)">↔ y축</button>
-            <button type="button" class="pip-pop-btn" data-pip-act="flipOrigin" title="원점 대칭">⤡ 원점</button>
-            <button type="button" class="pip-pop-btn" data-pip-act="flipYX" title="y=x 대칭 (역함수 생성 & 연동)">⤢ y=x</button>
+            <button type="button" class="pip-pop-btn" data-pip-act="flipX" title="x축 대칭 (상하 반전)">x축</button>
+            <button type="button" class="pip-pop-btn" data-pip-act="flipY" title="y축 대칭 (좌우 반전)">y축</button>
+            <button type="button" class="pip-pop-btn" data-pip-act="flipOrigin" title="원점 대칭">원점</button>
+            <button type="button" class="pip-pop-btn" data-pip-act="flipYX" title="y=x 대칭 (역함수 생성 & 연동)">y=x</button>
             <button type="button" class="pip-pop-btn pip-pop-unlink" data-pip-act="unlinkInverse" style="display: none;" title="원함수와 역함수 대칭 연동 끊기">✂ 연동끊기</button>
           </div>
         </div>

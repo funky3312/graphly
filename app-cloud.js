@@ -8068,6 +8068,7 @@
         this.graphCardRect = null;
         this.graphCardPdfAnchor = null;
         this.graphInkStrokes = [];
+        this.graphCardStickers = [];
         if (gWidget) {
           this.clearPipGraphCardStealthTimer('primary');
           gWidget._pdfAnchor = null;
@@ -8075,6 +8076,7 @@
           gWidget._pipSnapRawRef = null;
           gWidget.classList.remove('pip-locked-mode', 'pip-stealth-locked');
           gWidget.style.display = 'none';
+          if (typeof gWidget._renderCardStickers === 'function') gWidget._renderCardStickers();
         }
       }
 

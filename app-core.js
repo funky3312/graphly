@@ -1275,6 +1275,8 @@ class GraphApp {
         gWidget.style.display = 'none';
       }
       this.graphInkStrokes = [];
+      this.graphCardStickers = [];
+      if (gWidget && typeof gWidget._renderCardStickers === 'function') gWidget._renderCardStickers();
       this.renderGraphCardCanvas();
     }
 
@@ -1483,16 +1485,25 @@ class GraphApp {
       return;
     }
     if (typeof prevSnap === 'object' && prevSnap !== null && (prevSnap.type === 'card_sticker_add' || prevSnap.type === 'card_sticker_delete')) {
-      const arr = prevSnap.stickersArr || this.getCardStickersArray(prevSnap.cardEl);
+      const arr = (prevSnap.cardEl && typeof this.getCardStickersArray === 'function')
+        ? this.getCardStickersArray(prevSnap.cardEl)
+        : prevSnap.stickersArr;
       if (Array.isArray(arr)) {
         if (prevSnap.type === 'card_sticker_add') {
-          const idx = arr.indexOf(prevSnap.sticker);
-          if (idx !== -1) arr.splice(idx, 1);
+          const idx = arr.findIndex(s => s === prevSnap.sticker || (s && prevSnap.sticker && s.id && s.id === prevSnap.sticker.id));
+          if (idx !== -1) {
+            const removed = arr.splice(idx, 1)[0];
+            if (removed) prevSnap.sticker = removed;
+          }
         } else {
           arr.push(prevSnap.sticker);
         }
       }
-      if (typeof prevSnap.renderFn === 'function') prevSnap.renderFn();
+      if (prevSnap.cardEl && typeof prevSnap.cardEl._renderCardStickers === 'function') {
+        prevSnap.cardEl._renderCardStickers();
+      } else if (typeof prevSnap.renderFn === 'function') {
+        prevSnap.renderFn();
+      }
       this.redoStack.push(prevSnap);
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
@@ -1558,9 +1569,29 @@ class GraphApp {
 
     // 🌟 [0ms 초고속 잉크 획 단위 실행 취소]
     if (typeof prevSnap === 'object' && prevSnap !== null && prevSnap.type === 'stroke_add') {
-      const idx = this.inkStrokes.indexOf(prevSnap.stroke);
+      let idx = this.inkStrokes.indexOf(prevSnap.stroke);
+      if (idx === -1 && prevSnap.stroke) {
+        const sRef = prevSnap.stroke;
+        for (let k = this.inkStrokes.length - 1; k >= 0; k--) {
+          const cand = this.inkStrokes[k];
+          if (!cand) continue;
+          if (sRef.id ? cand.id === sRef.id : (
+            !cand.id &&
+            cand.points && sRef.points &&
+            cand.points.length === sRef.points.length &&
+            cand.color === sRef.color &&
+            cand.points[0] && sRef.points[0] &&
+            cand.points[0].x === sRef.points[0].x &&
+            cand.points[0].y === sRef.points[0].y
+          )) {
+            idx = k;
+            break;
+          }
+        }
+      }
       if (idx !== -1) {
-        this.inkStrokes.splice(idx, 1);
+        const removed = this.inkStrokes.splice(idx, 1)[0];
+        if (removed) prevSnap.stroke = removed;
       }
       if (Array.isArray(prevSnap.promotedStickers) && prevSnap.promotedStickers.length > 0 && Array.isArray(this.boardStickers)) {
         const rmIds = new Set(prevSnap.promotedStickers.map(s => s && s.id).filter(Boolean));
@@ -1687,16 +1718,25 @@ class GraphApp {
       return;
     }
     if (typeof nextSnap === 'object' && nextSnap !== null && (nextSnap.type === 'card_sticker_add' || nextSnap.type === 'card_sticker_delete')) {
-      const arr = nextSnap.stickersArr || this.getCardStickersArray(nextSnap.cardEl);
+      const arr = (nextSnap.cardEl && typeof this.getCardStickersArray === 'function')
+        ? this.getCardStickersArray(nextSnap.cardEl)
+        : nextSnap.stickersArr;
       if (Array.isArray(arr)) {
         if (nextSnap.type === 'card_sticker_add') {
           arr.push(nextSnap.sticker);
         } else {
-          const idx = arr.indexOf(nextSnap.sticker);
-          if (idx !== -1) arr.splice(idx, 1);
+          const idx = arr.findIndex(s => s === nextSnap.sticker || (s && nextSnap.sticker && s.id && s.id === nextSnap.sticker.id));
+          if (idx !== -1) {
+            const removed = arr.splice(idx, 1)[0];
+            if (removed) nextSnap.sticker = removed;
+          }
         }
       }
-      if (typeof nextSnap.renderFn === 'function') nextSnap.renderFn();
+      if (nextSnap.cardEl && typeof nextSnap.cardEl._renderCardStickers === 'function') {
+        nextSnap.cardEl._renderCardStickers();
+      } else if (typeof nextSnap.renderFn === 'function') {
+        nextSnap.renderFn();
+      }
       this.undoStack.push(nextSnap);
       this.isHistoryProcessing = false;
       this.updateUndoRedoUI();
