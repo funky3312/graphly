@@ -8,11 +8,11 @@
   <meta http-equiv="Expires" content="0">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Graphly.net</title>
-  <meta name="description" content="실시간 수학 그래프 시각화와 판서·음성 해설을 한 번에 공유하는 스마트 수학 보드">
+  <meta name="description" content="실시간 수학 그래프와 필기·음성 설명을 한 번에 작성하고 공유하는 스마트 수학 노트">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Graphly">
-  <meta property="og:title" content="Graphly — 수학 그래프 & 스마트 판서 노트">
-  <meta property="og:description" content="선생님이 공유한 수업 노트와 그래프·해설 영상을 설치 없이 바로 확인하세요.">
+  <meta property="og:title" content="Graphly — 인터랙티브 수학 그래프 & 필기 노트">
+  <meta property="og:description" content="공유된 노트와 인터랙티브 그래프·해설 영상을 설치 없이 바로 확인하세요.">
   <meta property="og:url" content="https://graphly.net/">
   <meta property="og:image" content="https://graphly.net/icon-512.png">
   <meta property="og:image:width" content="512">
@@ -33,7 +33,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261117_164">
+  <link rel="stylesheet" href="style.css?v=20261118_166">
 </head>
 
 <body class="theme-light workspace-board-mode">
@@ -45,7 +45,7 @@
         <h1 class="splash-logo">Graphly.net</h1>
       </div>
 
-      <button id="btnStartApp" class="btn-splash-start" title="클릭하여 시작하기">
+      <button id="btnStartApp" class="btn-splash-start">
         <span class="btn-start-text">시작하기</span>
       </button>
     </div>
@@ -74,7 +74,7 @@
       <!-- 56px 수직 아이콘 독 (Dock) -->
       <div class="rail-dock" id="railDock">
         <!-- 📁 1. 내 기기 파일 열기 (PDF · 이미지 · .graphly 즉시 탐색기 오픈) -->
-        <button class="rail-btn" id="btnPdfImport" title="파일 열기 (PDF · 이미지 · .graphly)">
+        <button class="rail-btn" id="btnPdfImport" title="파일 열기">
           <span class="rail-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
@@ -85,7 +85,7 @@
         <input type="file" id="pdfFileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.graphly" multiple
           style="display: none;">
         <!-- ☁️ 2. 클라우드 보관함 (폴더 탐색기 · 클라우드 저장 & 불러오기 통합) -->
-        <button class="rail-btn" id="btnCloudHub" title="클라우드 보관함 (저장 & 불러오기)">
+        <button class="rail-btn" id="btnCloudHub" title="클라우드 보관함">
           <span class="rail-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
               <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
@@ -255,9 +255,9 @@
                     <button type="button" class="cat-tab-btn active" data-cat="tab_basic">기본 · 도형</button>
                     <button type="button" class="cat-tab-btn" data-cat="tab_calculus">미적분</button>
                     <button type="button" class="cat-tab-btn cat-tab-my-graphs" id="btnCatTabMyGraphs"
-                      data-cat="⭐ 내 그래프" title="자주 쓰는 내 그래프 보관함">내 그래프</button>
+                      data-cat="⭐ 내 그래프">내 그래프</button>
                   </div>
-                  <button type="button" id="btnClearAllGraphs" class="preset-clear-btn" title="현재 그래프 비우기">비우기</button>
+                  <button type="button" id="btnClearAllGraphs" class="preset-clear-btn">비우기</button>
                 </div>
                 <div id="funcGrid" class="func-list-grid func-allinone-container">
                   <!-- JS로 3탭(기본·도형 / 미적분 / 내 그래프) 동적 렌더링 -->
@@ -310,22 +310,21 @@
                 </div>
                 <div class="transform-toolbar"
                   style="margin-top: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-                  <button id="btnInvertV" class="transform-btn" title="x축 대칭 (y -> -y)"><svg width="13" height="13"
+                  <button id="btnInvertV" class="transform-btn"><svg width="13" height="13"
                       viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
                       stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;">
                       <polyline points="7 15 12 20 17 15" />
                       <polyline points="7 9 12 4 17 9" />
                       <line x1="12" y1="4" x2="12" y2="20" />
                     </svg>x축 대칭</button>
-                  <button id="btnInvertH" class="transform-btn" title="y축 대칭 (x -> -x)"><svg width="13" height="13"
+                  <button id="btnInvertH" class="transform-btn"><svg width="13" height="13"
                       viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
                       stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;">
                       <polyline points="15 7 20 12 15 17" />
                       <polyline points="9 7 4 12 9 17" />
                       <line x1="4" y1="12" x2="20" y2="12" />
                     </svg>y축 대칭</button>
-                  <button id="btnCloneInverse" class="transform-btn btn-inverse-highlight"
-                    title="y=x 대칭 역함수 생성 & 실시간 연동"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                  <button id="btnCloneInverse" class="transform-btn btn-inverse-highlight"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                       stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
                       style="vertical-align:-2px;margin-right:4px;">
                       <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
@@ -333,14 +332,14 @@
                       <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
                       <path d="M8 16H3v5" />
                     </svg>y=x (역함수)</button>
-                  <button id="btnToggleAbs" class="transform-btn" title="|f(x)| 꺾어올리기 절댓값 토글"><svg width="13"
+                  <button id="btnToggleAbs" class="transform-btn"><svg width="13"
                       height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
                       stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;">
                       <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                     </svg>|f(x)| 절댓값</button>
                 </div>
 
-                <!-- 역함수 대칭 연동 중일 때: 연동끊기 버튼 -->
+                <!-- 역함수 대칭 연동 중일 때: 연동 해제 버튼 -->
                 <div id="inverseLinkBox" style="margin-top: 8px;">
                   <button id="btnToggleInverseLink" class="transform-btn"
                     style="width: 100%; display: none; padding: 8px;">
@@ -352,7 +351,7 @@
                       <line x1="20" y1="4" x2="8.12" y2="15.88" />
                       <line x1="14.47" y1="14.48" x2="20" y2="20" />
                       <line x1="8.12" y1="8.12" x2="12" y2="12" />
-                    </svg>연동끊기
+                    </svg>연동 해제
                   </button>
                 </div>
 
@@ -480,12 +479,9 @@
                 </div>
                 <div class="vf-aspect-chips ink-dock-pos-chips" id="inkDockPositionGroup"
                   style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
-                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="left"
-                    title="화면 왼쪽에 세로로 고정">왼쪽</button>
-                  <button type="button" class="vf-chip ink-dock-pos-chip active" data-dock-pos="bottom"
-                    title="화면 아래쪽에 가로로 고정">아래</button>
-                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="right"
-                    title="화면 오른쪽에 세로로 고정">오른쪽</button>
+                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="left">왼쪽</button>
+                  <button type="button" class="vf-chip ink-dock-pos-chip active" data-dock-pos="bottom">아래</button>
+                  <button type="button" class="vf-chip ink-dock-pos-chip" data-dock-pos="right">오른쪽</button>
                 </div>
               </div>
 
@@ -567,8 +563,7 @@
                     </label>
                   </label>
 
-                  <div id="rowAudioRecVol" class="single-line-slider-row"
-                    title="녹음 시 마이크 수음 감도 및 볼륨 조절 (기본 100%, 소리가 예민하게 들어갈 때는 60~85% 권장)">
+                  <div id="rowAudioRecVol" class="single-line-slider-row">
                     <span class="single-line-slider-label">녹음 볼륨</span>
                     <button type="button" id="btnAudioRecVolDown" class="single-line-step-btn"
                       title="녹음 볼륨 줄이기 (-5%)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
@@ -593,7 +588,7 @@
                 <!-- 섹션: 단축키 설정 -->
                 <div style="margin-top: 6px;">
                   <button type="button" id="btnOpenShortcutSettings"
-                    class="settings-clean-btn settings-shortcut-open-btn" title="단축키를 직접 지정하고 계정에 저장합니다">
+                    class="settings-clean-btn settings-shortcut-open-btn">
                     <span class="settings-shortcut-open-left">
                       <span>단축키 설정</span>
                     </span>
@@ -812,22 +807,18 @@
                   <div class="ink-pen-style-grid" id="inkPenStyleGroup"
                     style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 8px;">
                     <button type="button" class="vf-chip ink-pen-style-chip active" data-pen-style="ballpen"
-                      style="padding-left: 2px; padding-right: 2px; font-size: 11.5px;"
-                      title="필압에 관계없이 처음부터 끝까지 일정한 굵기">볼펜</button>
+                      style="padding-left: 2px; padding-right: 2px; font-size: 11.5px;">볼펜</button>
                     <button type="button" class="vf-chip ink-pen-style-chip" data-pen-style="flat"
-                      style="padding-left: 2px; padding-right: 2px; font-size: 11.5px;"
-                      title="가로획은 얇고 세로획은 도톰하게 써지는 납작 닙 글씨체">납작펜</button>
+                      style="padding-left: 2px; padding-right: 2px; font-size: 11.5px;">납작펜</button>
                     <button type="button" class="vf-chip ink-pen-style-chip" data-pen-style="fountain"
-                      style="padding-left: 2px; padding-right: 2px; font-size: 11.5px;"
-                      title="부드러운 필압 반응과 날렵한 획 끝 삐침 (명필 보정)">만년필</button>
+                      style="padding-left: 2px; padding-right: 2px; font-size: 11.5px;">만년필</button>
                     <button type="button" class="vf-chip ink-pen-style-chip" data-pen-style="brush"
-                      style="padding-left: 2px; padding-right: 2px; font-size: 11.5px;"
-                      title="필압에 따라 굵고 가는 대비가 뚜렷한 붓펜 스타일">붓펜</button>
+                      style="padding-left: 2px; padding-right: 2px; font-size: 11.5px;">붓펜</button>
                   </div>
 
                   <div class="single-line-slider-list">
                     <!-- 0. 블러 -->
-                    <div class="single-line-slider-row" title="부드러운 외곽 블러 및 펜 모퉁이 보정 강도 (0.0 ~ 5.0)">
+                    <div class="single-line-slider-row" title="획 부드러움 보정">
                       <span class="single-line-slider-label">블러</span>
                       <button type="button" id="btnInkBlurDown" class="single-line-step-btn" title="블러 줄이기 (-0.5)"><svg
                           width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -934,10 +925,9 @@
                     <div class="graph-color-mode-group" id="graphColorModeGroup"
                       style="display: inline-flex; gap: 4px;">
                       <button type="button" class="vf-chip graph-color-mode-chip active" data-color-mode="auto"
-                        style="padding: 3px 8px; font-size: 11px;" title="그래프를 추가할 때마다 서로 구분되는 색상으로 자동 배정합니다">자동
-                        배색</button>
+                        style="padding: 3px 8px; font-size: 11px;">자동 배색</button>
                       <button type="button" class="vf-chip graph-color-mode-chip" data-color-mode="fixed"
-                        style="padding: 3px 8px; font-size: 11px;" title="선택한 한 가지 색상으로 모든 그래프를 고정합니다">색상 고정</button>
+                        style="padding: 3px 8px; font-size: 11px;">색상 고정</button>
                     </div>
                   </div>
                   <div class="color-palette" id="graphColorPalette" style="margin-bottom: 8px;">
@@ -1114,7 +1104,7 @@
             <line x1="20" y1="4" x2="8.12" y2="15.88" />
             <line x1="14.47" y1="14.48" x2="20" y2="20" />
             <line x1="8.12" y1="8.12" x2="12" y2="12" />
-          </svg>연동끊기
+          </svg>연동 해제
         </button>
         <div class="ctx-sep"></div>
         <button id="ctxBtnDuplicate" class="ctx-btn ctx-btn-dup">
@@ -1308,7 +1298,7 @@
         </button>
 
         <!-- 1-2. 화면 아이콘 모두 숨기기 (클린 칠판 모드) -->
-        <button id="btnHideAllUI" class="quick-fab-btn" title="아이콘 모두 숨기기 (H)">
+        <button id="btnHideAllUI" class="quick-fab-btn" title="메뉴 숨기기 (H)">
           <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
               <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
@@ -1319,7 +1309,7 @@
         </button>
 
         <!-- 2. 뷰어 미리보기 (대표님 핵심 기획: 작업 화면 ⇄ 표준 뷰어 원클릭 전환 — 펼친 책 벡터 아이콘) -->
-        <button id="btnQuickOpenViewer" class="quick-fab-btn" title="뷰어 (시험지 미리보기)">
+        <button id="btnQuickOpenViewer" class="quick-fab-btn" title="뷰어 미리보기">
           <span class="fab-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
               <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
@@ -1397,9 +1387,9 @@
 
         <div class="quick-sep"></div>
 
-        <!-- 5. 판서 & 수학 킬러 도구 -->
+        <!-- 5. 필기 & 수학 도구 -->
         <div class="quick-btn-wrapper" id="wrapAudioRecordToggle">
-          <button id="btnAudioRecordToggle" class="quick-fab-btn" title="영상 녹화 시작 (녹화 중 클릭 시 일시정지 / 종료)">
+          <button id="btnAudioRecordToggle" class="quick-fab-btn" title="녹화 시작">
             <span class="fab-icon">
               <svg class="rec-icon-cam" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -1434,7 +1424,7 @@
             </div>
             <div class="audio-rec-hud-actions">
               <button type="button" id="btnAudioPauseRecord" class="audio-rec-side-btn audio-btn-pause-rec"
-                title="일시정지 / 이어녹화">
+                title="일시정지 / 재개">
                 <span id="iconAudioPauseRecord" class="audio-rec-btn-icon" data-icon-state="pause" aria-hidden="true">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                     <rect x="5" y="4" width="4.5" height="16" rx="1.2" />
@@ -1564,7 +1554,7 @@
 
       <!-- 🔴 아이콘 모두 숨김 상태 + 녹화 진행 중 전용: 우측 상단 초소형 스텔스 레드닷 & 일시정지/종료 팝업 -->
       <div id="wrapStealthRecordDot" class="stealth-rec-dot-wrap" style="display: none;">
-        <button type="button" id="btnStealthRecordDot" class="stealth-rec-dot-btn" title="녹화 중 (클릭 시 일시정지 / 종료)">
+        <button type="button" id="btnStealthRecordDot" class="stealth-rec-dot-btn" title="녹화 중">
           <svg class="stealth-rec-progress-ring-svg" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
             <circle class="rec-progress-ring-track" cx="10" cy="10" r="7.8" fill="none" stroke-width="1.7" />
             <circle id="ringStealthRecordDot" class="rec-progress-ring-bar" cx="10" cy="10" r="7.8" fill="none"
@@ -1582,7 +1572,7 @@
           </div>
           <div class="audio-rec-hud-actions">
             <button type="button" id="btnStealthPauseRecord" class="audio-rec-side-btn audio-btn-pause-rec"
-              title="일시정지 / 이어녹화">
+              title="일시정지 / 재개">
               <span id="iconStealthPauseRecord" class="audio-rec-btn-icon" data-icon-state="pause" aria-hidden="true">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                   <rect x="5" y="4" width="4.5" height="16" rx="1.2" />
@@ -1605,7 +1595,7 @@
 
       <!-- 👁️ 아이콘 모두 숨김 상태 전용: 우측 상단 초슬림·초투명 손잡이 복귀 탭 (숨기는 순간 1.2초간 나왔다가 연해지며 우측으로 은폐) -->
       <button type="button" id="btnRestoreAllUITab" class="ui-hidden-edge-pull-tab" style="display: none;"
-        title="아이콘 모두 보이기 (H)">
+        title="메뉴 표시 (H)">
         <svg width="10" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
           stroke-linecap="round" stroke-linejoin="round">
           <polyline points="15 18 9 12 15 6" />
@@ -1614,7 +1604,7 @@
 
       <!-- ✍️ 실시간 무한 칠판 필기 플로팅 툴바 (Ink Floating Dock) -->
       <div id="inkFloatingToolbar" class="ink-floating-toolbar" data-dock-pos="bottom" style="display: none;">
-        <div class="ink-dock-drag-handle" id="inkDockDragHandle" title="드래그하여 왼쪽·아래·오른쪽 이동 (클릭 시 위치 순환)">⋮⋮</div>
+        <div class="ink-dock-drag-handle" id="inkDockDragHandle" title="툴바 이동">⋮⋮</div>
         <div class="ink-tool-group">
           <button id="btnInkSelect" class="ink-tool-btn" title="선택 / 이동">
             <span class="ink-btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1659,7 +1649,7 @@
             </span>
           </button>
           <button id="btnInkLaser" class="ink-tool-btn ink-laser-tool-btn"
-            title="레이저 포인터 (칠판 & 카드 위 어디서나 사르륵 사라지는 레이저 펜)">
+            title="레이저 포인터">
             <span class="ink-btn-icon" style="color: #ef4444;">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round">
@@ -1672,7 +1662,7 @@
               </svg>
             </span>
           </button>
-          <button id="btnInkSticker" class="ink-tool-btn ink-sticker-btn" title="스티커 (드래그하여 연속 가림막 생성 · 터치할 때마다 열림/닫힘)">
+          <button id="btnInkSticker" class="ink-tool-btn ink-sticker-btn" title="가림막 스티커">
             <span class="ink-btn-icon" style="color: #eab308;">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round">
@@ -1817,11 +1807,10 @@
 
         <!-- 🌟 고정형 4단 모듈 선택 스위치 ([도구] · [줌] · [색상] · [기타] — 최상단 필기/이동 바로 밑에 고정되어 켜고 꺼도 버튼 위치 불변!) -->
         <div class="pill-module-bar">
-          <button type="button" id="btnPillModTools" class="pill-mod-chip active"
-            title="지우개 · 올가미 · 형광펜 · 레이저 켜기/끄기">도구</button>
-          <button type="button" id="btnPillModZoom" class="pill-mod-chip active" title="축소 · 확대 켜기/끄기">줌</button>
-          <button type="button" id="btnPillModColor" class="pill-mod-chip" title="5색 펜 색상 켜기/끄기">색상</button>
-          <button type="button" id="btnPillModExtra" class="pill-mod-chip" title="스티커 · 필기 비우기 켜기/끄기">기타</button>
+          <button type="button" id="btnPillModTools" class="pill-mod-chip active">도구</button>
+          <button type="button" id="btnPillModZoom" class="pill-mod-chip active">줌</button>
+          <button type="button" id="btnPillModColor" class="pill-mod-chip">색상</button>
+          <button type="button" id="btnPillModExtra" class="pill-mod-chip">기타</button>
         </div>
 
         <!-- 모듈 1: [도구] 섹션 (1행: 🧼 지우개 | 🪢 올가미 / 2행: 🖍️ 형광펜 | 🔴 레이저) -->
@@ -1903,7 +1892,7 @@
         <div id="pillSecExtra" class="pill-remote-section" style="display: none;">
           <div class="pill-remote-sep"></div>
           <div class="pill-remote-grid">
-            <button type="button" id="btnPillSticker" class="pill-remote-btn pill-sticker-btn" title="스티커 (가림막)"
+            <button type="button" id="btnPillSticker" class="pill-remote-btn pill-sticker-btn" title="가림막 스티커"
               style="color: #eab308;">
               <svg width="14.5" height="14.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round">
@@ -1945,7 +1934,7 @@
               </span>
             </button>
             <button id="btnProblemCardStamp" type="button" class="card-btn btn-card-stamp"
-              title="현재 문제를 칠판에 영구 박제 후 창 닫기 (무경계 필기 · 취소: 되돌리기 ↺)">
+              title="캔버스에 고정 (S)">
               <span style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5"
                   height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                   stroke-linecap="round" stroke-linejoin="round">
@@ -1990,7 +1979,7 @@
           </div>
           <div class="problem-card-actions">
             <button id="btnGraphCardLock" type="button" class="card-btn btn-card-lock-edit unlocked-editing"
-              title="조작 중 — 클릭하면 현재 시야·비율을 고정(잠금)합니다">
+              title="시야 잠금">
               <span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;">
                 <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                   stroke-linecap="round" stroke-linejoin="round">
@@ -2001,7 +1990,7 @@
               </span>
             </button>
             <button id="btnGraphCardDuplicate" type="button" class="card-btn card-btn-duplicate"
-              title="이 그래프 창 복제 (현재 그래프 그대로 새 창 생성)">
+              title="창 복제">
               <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
                   fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
@@ -2009,7 +1998,7 @@
                 </svg></span>
             </button>
             <button id="btnGraphCardRestore" class="card-btn card-btn-restore"
-              title="그래프 모드로 크게 열기 (교점·수선·구간분할 등 정밀 편집)">
+              title="크게 열기">
               <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24"
                   fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="15 3 21 3 21 9" />
@@ -2045,7 +2034,7 @@
           <span>필기 복귀</span>
         </button>
         <button id="btnAddNewPipCardFromGraph" class="btn-return-covered-board btn-add-new-pip-card"
-          style="display: none;" title="현재 그래프를 새 창모드 카드로 추가 (원본 카드는 보존됩니다)">
+          style="display: none;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <rect x="8" y="8" width="13" height="13" rx="2" ry="2" />
@@ -2348,11 +2337,11 @@
       <div class="smart-viewer-right">
         <button type="button" id="btnViewerPlayAudioLecture_legacy" class="viewer-top-btn viewer-top-btn-audio"
           style="display: none;">
-          <span>🎬 강의 전체 재생</span>
+          <span>전체 재생</span>
         </button>
         <button type="button" id="btnViewerNoteClickAudio_legacy" class="viewer-top-btn viewer-top-btn-note-audio"
           style="display: none;">
-          <span>📝 필기 클릭해 듣기</span>
+          <span>필기 눌러 듣기</span>
         </button>
         <div class="viewer-zoom-group">
           <button type="button" id="btnViewerZoomOut" class="viewer-zoom-btn" title="축소 (−)">−</button>
@@ -2361,14 +2350,14 @@
           <button type="button" id="btnViewerZoomIn" class="viewer-zoom-btn" title="확대 (+)">+</button>
         </div>
         <button type="button" id="btnViewerWatchVideo" class="viewer-top-btn viewer-top-btn-audio"
-          style="display: none;" title="녹음된 음성·필기·포인터·그래프 해설 영상 재생">
+          style="display: none;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none">
             <polygon points="6 4 20 12 6 20 6 4" />
           </svg>
           <span>영상보기</span>
         </button>
         <button type="button" id="btnViewerShareLink" class="viewer-top-btn viewer-top-btn-share"
-          style="display: none;" title="친구에게 이 수업 노트 공유하기">
+          style="display: none;">
           <svg class="viewer-share-icon-default" width="13" height="13" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="18" cy="5" r="3" />
@@ -2384,8 +2373,7 @@
           </svg>
           <span class="viewer-share-btn-label">공유</span>
         </button>
-        <button type="button" id="btnViewerEnterEdit" class="viewer-top-btn viewer-top-btn-edit"
-          title="그래플리 편집 화면으로 전환">
+        <button type="button" id="btnViewerEnterEdit" class="viewer-top-btn viewer-top-btn-edit">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 20h9" />
@@ -2394,7 +2382,7 @@
           <span>편집</span>
         </button>
         <button type="button" id="btnViewerFullscreen" class="viewer-top-btn viewer-top-btn-fullscreen"
-          title="전체화면 전환 (화면을 툭 터치해도 전체화면으로 전환됩니다)">
+          title="전체화면">
           <svg id="iconViewerFullscreenEnter" width="15" height="15" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 3 21 3 21 9" />
@@ -2494,7 +2482,7 @@
       </svg>
     </button>
     <button id="btnPdfBoardPageInfo" class="pdf-board-page-pill slim-page-pill slide-counter-pill"
-      title="클릭하여 페이지 바둑판 목록 열기">
+      title="페이지 목록">
       <span id="lblPdfBoardPageInfo">p.1 / 1 ▾</span>
     </button>
     <button id="btnPdfBoardNext" class="pdf-board-nav-btn pdf-board-next-primary slim-next-btn" title="다음 페이지">
@@ -2570,14 +2558,14 @@
       <span id="lblAudioPlayTime" class="audio-sync-time">00:00 / 00:00</span>
       <input type="range" id="audioSyncScrubber" class="audio-sync-scrubber" min="0" max="1000" step="10" value="0">
       <button type="button" id="btnAudioReplayViewMode_legacy" style="display:none !important;"
-        class="audio-sync-btn audio-btn-mode active-video" title="영상처럼 차근차근 써지며 재생할지, 완성된 노트를 보며 원하는 필기를 클릭해 들을지 전환합니다">
+        class="audio-sync-btn audio-btn-mode active-video" title="재생 모드 전환">
         <span id="lblAudioReplayViewMode">영상 모드</span>
       </button>
       <button type="button" id="btnAudioSyncSpeed" class="audio-sync-btn audio-btn-speed" title="재생 배속 변경">1.0x</button>
       <button type="button" id="btnAudioReplayZoomReset" class="audio-sync-btn audio-btn-zoom"
-        title="화면 확대/축소 초기화 (두 손가락 핀치 또는 마우스 휠로 원하는 부분 확대·이동 가능)">100%</button>
+        title="배율 초기화">100%</button>
       <button type="button" id="btnAudioShowFinalNote" class="audio-sync-btn audio-btn-final-note"
-        style="display: none;" title="영상을 멈추고 완성된 전체 필기 화면을 선명하게 봅니다 (원하는 필기 부분을 터치하면 그 지점부터 바로 재생됩니다)">전체필기</button>
+        style="display: none;" title="전체 필기 보기">전체 필기</button>
       <button type="button" id="btnAudioReRecord" class="audio-sync-btn audio-btn-rerecord" title="새로 녹음">재녹음</button>
       <button type="button" id="btnAudioSyncDelete" class="audio-sync-btn audio-btn-del" title="녹음 삭제">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
@@ -2635,7 +2623,7 @@
         </svg>
       </button>
       <button id="btnPlaylistSlideInfo" class="pdf-board-page-pill lesson-playlist-pill slide-counter-pill"
-        title="클릭하여 전체 캔버스 바둑판 열기">
+        title="캔버스 목록">
         <span id="lblPlaylistSlideInfo"><span class="slide-cur-num">1</span><span class="slide-total-num">/1</span></span>
       </button>
       <button id="btnPlaylistNext" class="pdf-board-nav-btn slim-nav-arrow" title="다음 캔버스">
@@ -2646,7 +2634,7 @@
       </button>
     </div>
     <button id="btnPlaylistAddSlide" class="pdf-board-close-btn slim-icon-btn slim-add-slide-btn"
-      title="다음 문제 캡처 / 새 캔버스 추가">
+      title="캔버스 추가">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
         stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="5" x2="12" y2="19" />
@@ -2779,7 +2767,7 @@
           </svg>
         </button>
         <div id="cloudExplorerBreadcrumbBar" class="win-explorer-address-bar"></div>
-        <button type="button" id="btnCloudAddRootFolder" class="win-explorer-cmd-btn" title="현재 폴더 안에 새 폴더 만들기">
+        <button type="button" id="btnCloudAddRootFolder" class="win-explorer-cmd-btn">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
             stroke-linecap="round" stroke-linejoin="round">
             <path
@@ -2789,8 +2777,7 @@
           </svg>
           <span>새 폴더</span>
         </button>
-        <button type="button" id="btnCloudUploadLocalFiles" class="win-explorer-cmd-btn"
-          title="내 기기(PC/패드)에 있는 .graphly 파일을 현재 폴더로 바로 올리기">
+        <button type="button" id="btnCloudUploadLocalFiles" class="win-explorer-cmd-btn">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -2830,7 +2817,7 @@
           </aside>
 
           <!-- 좌·우 폭 조절선 (마우스·터치·펜으로 끌어 트리 폭 조절 · 더블클릭 시 기본 폭 복원) -->
-          <div id="cloudExplorerSplitter" class="cloud-explorer-splitter" title="좌우로 끌어 폴더 트리 폭 조절 (더블클릭: 기본 크기)"></div>
+          <div id="cloudExplorerSplitter" class="cloud-explorer-splitter"></div>
 
           <!-- 우측 패널: 현재 폴더 내부 (하위폴더 + 수업 파일 목록) -->
           <section class="cloud-explorer-main">
@@ -2862,7 +2849,7 @@
             <div class="win-save-footer-left">
               <span class="win-save-label">파일 이름</span>
               <input type="text" id="inputCloudSaveTitle" class="win-save-title-input"
-                placeholder="현재 칠판 저장 제목 입력 (비워두면 날짜·시간으로 자동 저장)" autocomplete="off" autocorrect="off"
+                placeholder="파일명 입력 (비워두면 자동)" autocomplete="off" autocorrect="off"
                 autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other"
                 data-lpignore="true">
             </div>
@@ -2887,7 +2874,7 @@
           <!-- ② 선택 상태 (체크박스 1개 이상 선택 시 자동 전환): 좌측 선택 현황 + 우측 [열기 · 다운로드 · 이동 · 삭제] -->
           <div id="cloudFooterActionRow" class="win-footer-mode-row selection-mode-row" style="display: none;">
             <div class="win-selection-footer-left">
-              <label class="win-selection-all-label" title="현재 폴더 전체 선택/해제">
+              <label class="win-selection-all-label">
                 <input type="checkbox" id="chkCloudExplorerAll" class="win-explorer-checkbox">
                 <span>전체 선택</span>
               </label>
@@ -2895,21 +2882,19 @@
               <button type="button" id="btnCloudClearSelection" class="win-selection-clear-btn">선택 해제</button>
             </div>
             <div class="win-selection-footer-right">
-              <button type="button" id="btnCloudActionOpen" class="win-explorer-cmd-btn win-action-open-primary"
-                title="선택한 파일 불러오기 (여러 개 선택 시 연속 캔버스로 합쳐서 열기)">
-                <span id="lblCloudFooterOpenText">칠판에 열기</span>
+              <button type="button" id="btnCloudActionOpen" class="win-explorer-cmd-btn win-action-open-primary">
+                <span id="lblCloudFooterOpenText">캔버스에 열기</span>
               </button>
-              <button type="button" id="btnCloudActionDownload" class="win-explorer-cmd-btn"
-                title="선택한 파일을 내 기기(PC/태블릿)에 .graphly 파일로 다운로드">
+              <button type="button" id="btnCloudActionDownload" class="win-explorer-cmd-btn">
                 <span>다운로드</span>
               </button>
               <div class="win-explorer-move-wrap">
-                <button type="button" id="btnCloudActionMove" class="win-explorer-cmd-btn" title="선택한 항목을 다른 폴더로 이동">
+                <button type="button" id="btnCloudActionMove" class="win-explorer-cmd-btn">
                   <span>이동</span>
                 </button>
                 <div id="cloudMoveDropdownMenu" class="win-explorer-move-menu" style="display: none;"></div>
               </div>
-              <button type="button" id="btnCloudActionDelete" class="win-explorer-cmd-btn danger-cmd" title="선택한 항목 삭제">
+              <button type="button" id="btnCloudActionDelete" class="win-explorer-cmd-btn danger-cmd">
                 <span>삭제</span>
               </button>
             </div>
@@ -2929,7 +2914,7 @@
             <path d="M15 7h2a5 5 0 1 1 0 10h-2" />
             <line x1="8" y1="12" x2="16" y2="12" />
           </svg>
-          <span id="lblCloudSharePopTitle" class="cloud-share-pop-title">공유 링크 · QR 추출</span>
+          <span id="lblCloudSharePopTitle" class="cloud-share-pop-title">공유 링크 · QR</span>
         </div>
         <button type="button" id="btnCloseCloudSharePop" class="cloud-share-pop-close" title="닫기 (ESC)" aria-label="닫기">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -3054,7 +3039,7 @@
                   <span class="pricing-tier-unit">/ 평생 무료</span>
                 </div>
                 <div class="pricing-cycle-slot is-free-desc-slot">
-                  <p class="pricing-tier-desc">개인 학습 및 단기 수업 준비용</p>
+                  <p class="pricing-tier-desc">개인 학습 및 기본 활용</p>
                 </div>
               </div>
 
@@ -3425,7 +3410,7 @@
       <div class="smart-modal-body promo-banner-modal-body">
         <!-- 비-Premium 이용자 안내 배너 -->
         <div id="promoBannerUpsellNotice" class="promo-banner-upsell-notice" style="display: none;">
-          <span><strong>Premium 전용 혜택</strong>입니다. 아래에서 우리 학원·선생님 배너를 미리 꾸며보고 실제 뷰어 화면으로 확인해 보세요.</span>
+          <span><strong>Premium 전용 기능</strong>입니다. 공유 뷰어에 표시될 배너를 설정하고 미리 확인할 수 있습니다.</span>
         </div>
 
         <!-- 배너 표시 ON/OFF 스위치 -->
@@ -3467,13 +3452,13 @@
           </div>
         </div>
 
-        <!-- 소속/선생님 배지 & 연결 버튼 이름 -->
+        <!-- 소속/이름 배지 & 연결 버튼 이름 -->
         <div class="promo-field-grid-two">
           <div class="promo-field-group">
-            <label class="promo-field-label" for="inputPromoBadgeText">소속 · 선생님 이름 <span class="promo-opt-tag">선택 ·
+            <label class="promo-field-label" for="inputPromoBadgeText">소속 · 이름 <span class="promo-opt-tag">선택 ·
                 <span id="cntPromoBadgeText">0</span> / 16자</span></label>
             <input type="text" id="inputPromoBadgeText" class="settings-clean-input promo-text-input" maxlength="16"
-              placeholder="예: 대치 OO수학 · 김수학T" autocomplete="off">
+              placeholder="예: OO아카데미 · 홍길동" autocomplete="off">
           </div>
           <div class="promo-field-group">
             <label class="promo-field-label" for="inputPromoCtaLabel">연결 버튼 이름 <span class="promo-opt-tag">선택 ·
@@ -3487,7 +3472,7 @@
           <label class="promo-field-label" for="inputPromoMessageText">한 줄 홍보 문구 <span class="promo-opt-tag"><span
                 id="cntPromoMessageText">0</span> / 30자</span></label>
           <input type="text" id="inputPromoMessageText" class="settings-clean-input promo-text-input" maxlength="30"
-            placeholder="예: 겨울방학 미적분 특강 개강 · 상시 질문 환영" autocomplete="off">
+            placeholder="예: 신규 클래스 오픈 · 상시 질문 환영" autocomplete="off">
         </div>
 
         <div class="promo-field-group">
@@ -3505,7 +3490,7 @@
             <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
             <circle cx="12" cy="12" r="3" />
           </svg>
-          <span>실제 뷰어 화면으로 확인하기</span>
+          <span>뷰어에서 미리보기</span>
         </button>
       </div>
 
@@ -3533,8 +3518,8 @@
               <line x1="16" y1="17" x2="8" y2="17" />
               <polyline points="10 9 9 9 8 9" />
             </svg></span>
-          <span id="pdfFileName" class="pdf-file-title">수능_모의고사_기출.pdf</span>
-          <button id="btnPdfOpenAnother" class="pdf-header-btn-subtle" title="다른 파일 열기">
+          <span id="pdfFileName" class="pdf-file-title">문서.pdf</span>
+          <button id="btnPdfOpenAnother" class="pdf-header-btn-subtle">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
               stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
@@ -3571,9 +3556,8 @@
 
           <div class="pdf-divider"></div>
 
-          <!-- ✂️ 문제 영역 캡처 온/오프 토글 스위치 (기본 꺼짐=이동 모드 ⇄ 클릭 시 켜짐=캡처 모드 ⇄ 재클릭 시 꺼짐=이동 모드) -->
-          <button id="btnPdfCropToggle" class="pdf-crop-toggle-btn"
-            title="클릭하여 영역 캡처 켜기/끄기 (꺼짐: 화면 이동 / 켜짐: 네모 드래그 캡처)">
+          <!-- ✂️ 문제 영역 캡처 온/오프 토글 스위치 -->
+          <button id="btnPdfCropToggle" class="pdf-crop-toggle-btn">
             <span class="crop-btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="6" cy="6" r="3" />
@@ -3585,9 +3569,9 @@
             <span class="crop-btn-text">영역 캡처</span>
           </button>
 
-          <!-- 📄 전체 페이지 캡처 버튼 (개념 설명 · 여러 문제 판서용: 해당 PDF 페이지 전체를 칠판 캔버스로 바로 삽입!) -->
+          <!-- 📄 전체 페이지 캡처 버튼 -->
           <button id="btnPdfOpenFullPage" class="pdf-open-page-btn"
-            title="PDF 한 페이지를 통째로 칠판에 열어 판서합니다 (한 슬라이드에 여러 문제를 함께 다룰 때)">
+            title="페이지 전체를 캔버스 배경으로 열기">
             <span class="open-page-btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -3666,17 +3650,16 @@
         <div id="guidePanelHowTo" class="guide-section-card">
           <h4 class="guide-card-title">핵심 사용법</h4>
           <ul class="guide-bullet-list">
-            <li><strong>문제 불러오기:</strong> 좌측 <span class="guide-inline-chip">파일 열기</span> 또는 화면에 PDF · 이미지를 끌어다 놓아 문항을
+            <li><strong>파일 불러오기:</strong> 좌측 <span class="guide-inline-chip">파일 열기</span> 또는 화면에 PDF · 이미지를 끌어다 놓아
               배치합니다.</li>
             <li><strong>실시간 그래프:</strong> 좌측 <span class="guide-inline-chip">+ 그래프 추가</span>에서 개형 선택 후 극점·변곡점을 드래그해
-              변형합니다. (<span class="guide-inline-chip">구간 분할</span> · <span class="guide-inline-chip">합성함수</span> 지원)</li>
-            <li><strong>정밀 표기 · 박제:</strong> 우측 <span class="guide-inline-chip">교점 표시</span> · <span
+              조절합니다. (<span class="guide-inline-chip">구간 분할</span> · <span class="guide-inline-chip">합성함수</span> 지원)</li>
+            <li><strong>좌표 표기 · 고정:</strong> 우측 <span class="guide-inline-chip">교점 표시</span> · <span
                 class="guide-inline-chip">보조 수선</span> · <span class="guide-inline-chip">텍스트</span>로 좌표를 표기하고, <span
-                id="guideKbdStampCard" class="guide-inline-chip guide-inline-kbd">S</span> 키(도장 아이콘)로 칠판에 고정합니다.</li>
-            <li><strong>교재 삽도 복사:</strong> 그래프 창 조작 후 <span id="guideKbdCopyGraph"
-                class="guide-inline-chip guide-inline-kbd">Ctrl + C</span>를 누르면 필기를 제외한 순수 그래프만 복사되어 한글(HWP)·PPT에 바로
-              붙여넣습니다.</li>
-            <li><strong>화면 복사 · 공유:</strong> 필기가 포함된 전체 화면 복사와 <span class="guide-inline-chip">영상 녹화</span> · 학생용
+                id="guideKbdStampCard" class="guide-inline-chip guide-inline-kbd">S</span> 키(스탬프)로 캔버스에 고정합니다.</li>
+            <li><strong>그래프 복사:</strong> 그래프 창 조작 후 <span id="guideKbdCopyGraph"
+                class="guide-inline-chip guide-inline-kbd">Ctrl + C</span>를 누르면 필기를 제외한 순수 그래프만 고화질 이미지로 복사됩니다.</li>
+            <li><strong>화면 복사 · 공유:</strong> 필기가 포함된 화면 복사와 <span class="guide-inline-chip">영상 녹화</span> ·
               <strong>QR / 링크 공유</strong>는 우측 <span class="guide-inline-chip">내보내기</span>를 이용합니다.</li>
           </ul>
         </div>
@@ -3685,11 +3668,11 @@
         <div class="guide-section-card guide-tips-card">
           <h4 class="guide-card-title">활용 팁</h4>
           <ul class="guide-bullet-list">
-            <li><strong>화면 이동 · 확대:</strong> 필기바 <span class="guide-inline-chip">손바닥</span> 도구(<span
-                class="guide-inline-chip guide-inline-kbd">Space</span> + 드래그, 패드는 두 손가락 터치)로 칠판을 이동·확대합니다.</li>
-            <li><strong>수업 몰입 화면:</strong> 우측 <span class="guide-inline-chip">아이콘 숨기기</span>(<span id="guideKbdHideUI"
-                class="guide-inline-chip guide-inline-kbd">H</span>) 또는 미니 리모컨 모드로 깔끔한 칠판으로 전환합니다.</li>
-            <li><strong>학원 · 집 자동 연동:</strong> 로그인 시 <span class="guide-inline-chip">클라우드 보관함</span> · <span
+            <li><strong>화면 이동 · 확대:</strong> 필기바 <span class="guide-inline-chip">선택 / 이동</span>(<span
+                class="guide-inline-chip guide-inline-kbd">Space</span> + 드래그, 태블릿은 두 손가락 터치)으로 캔버스를 이동·확대합니다.</li>
+            <li><strong>화면 집중 모드:</strong> 우측 <span class="guide-inline-chip">메뉴 숨기기</span>(<span id="guideKbdHideUI"
+                class="guide-inline-chip guide-inline-kbd">H</span>) 또는 미니 리모컨 모드로 모든 메뉴를 숨기고 캔버스만 표시합니다.</li>
+            <li><strong>기기 간 자동 동기화:</strong> 로그인 시 <span class="guide-inline-chip">클라우드 보관함</span> · <span
                 class="guide-inline-chip">내 그래프</span> · <span class="guide-inline-chip">단축키 설정</span>이 모든 기기에 동기화됩니다.
             </li>
           </ul>
@@ -3702,9 +3685,9 @@
           </div>
           <p class="guide-contact-desc">
             사용 중 발생한 <strong>오류(버그)</strong>, <strong>기능 건의</strong>, <strong>결제·계정 문의</strong>는 아래 공식 이메일로 보내주세요.
-            <span class="guide-contact-subhint">(로그인하신 계정 이메일을 함께 적어주시면 더욱 빠르게 확인됩니다.)</span>
+            <span class="guide-contact-subhint">로그인 계정 이메일을 함께 적어주시면 더욱 빠르게 확인됩니다.</span>
           </p>
-          <button type="button" id="btnCopySupportEmail" class="guide-email-pill" title="클릭하여 이메일 주소 복사">
+          <button type="button" id="btnCopySupportEmail" class="guide-email-pill">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect x="2" y="4" width="20" height="16" rx="2" />
@@ -3751,7 +3734,7 @@
       <div class="shortcut-settings-toolbar">
         <div class="shortcut-cat-tabs" id="shortcutCategoryTabs">
           <button type="button" class="shortcut-cat-tab active" data-scat="all">전체</button>
-          <button type="button" class="shortcut-cat-tab" data-scat="ink">판서 · 펜</button>
+          <button type="button" class="shortcut-cat-tab" data-scat="ink">필기 · 펜</button>
           <button type="button" class="shortcut-cat-tab" data-scat="graph">그래프 · 수학</button>
           <button type="button" class="shortcut-cat-tab" data-scat="slide">슬라이드 · 뷰어</button>
           <button type="button" class="shortcut-cat-tab" data-scat="system">편집 · 시스템</button>
@@ -3769,8 +3752,7 @@
 
       <!-- 상태 안내 배너 (중복 키 해제 알림 및 입력 대기 안내) -->
       <div id="shortcutModalNoticeBanner" class="shortcut-notice-banner">
-        기능 옆의 <strong>[단축키 버튼]</strong>을 클릭한 뒤 원하는 키를 누르세요. (중복 키 입력 시 기존 기능은 <strong>미지정</strong>으로 변경되며, 하단
-        <strong>[저장하기]</strong>를 눌러야 반영됩니다)
+        변경할 기능의 단축키를 클릭한 뒤 새 키를 입력해 주세요.
       </div>
 
       <!-- 기능 및 단축키 리스트 -->
@@ -3780,8 +3762,7 @@
 
       <!-- 하단 푸터 ([기본값 초기화] | [취소] [저장하기]) -->
       <div class="smart-modal-footer shortcut-settings-footer">
-        <button type="button" id="btnResetAllShortcuts" class="btn-secondary shortcut-reset-all-btn"
-          title="모든 단축키를 초기 기본값으로 되돌립니다">
+        <button type="button" id="btnResetAllShortcuts" class="btn-secondary shortcut-reset-all-btn">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85"
             stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;">
             <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -3808,15 +3789,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261117_164"></script>
-  <script src="app-core.js?v=20261117_164"></script>
-  <script src="app-ink.js?v=20261117_164"></script>
-  <script src="app-pdf.js?v=20261117_164"></script>
-  <script src="app-cards.js?v=20261117_164"></script>
-  <script src="app-cloud.js?v=20261117_164"></script>
-  <script src="app-canvas.js?v=20261117_164"></script>
-  <script src="app-toolkit.js?v=20261117_164"></script>
-  <script src="app.js?v=20261117_164"></script>
+  <script src="engine.js?v=20261118_166"></script>
+  <script src="app-core.js?v=20261118_166"></script>
+  <script src="app-ink.js?v=20261118_166"></script>
+  <script src="app-pdf.js?v=20261118_166"></script>
+  <script src="app-cards.js?v=20261118_166"></script>
+  <script src="app-cloud.js?v=20261118_166"></script>
+  <script src="app-canvas.js?v=20261118_166"></script>
+  <script src="app-toolkit.js?v=20261118_166"></script>
+  <script src="app.js?v=20261118_166"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -3866,10 +3847,9 @@
           </svg></button>
       </div>
       <div class="n-axis-setup-notice-body">
-        <div id="lblNAxisNoticeTitle" class="n-axis-setup-notice-title">합성할 그래프 2개를 먼저 준비해 주세요</div>
+        <div id="lblNAxisNoticeTitle" class="n-axis-setup-notice-title">그래프 2개를 먼저 추가해 주세요</div>
         <div id="lblNAxisNoticeDesc" class="n-axis-setup-notice-desc">
-          합성함수 스튜디오는 화면에 그려진 내가 만든 그래프들을 연동하여 관찰하는 도구입니다.<br>
-          그래프 1번·2번을 먼저 세팅한 뒤 다시 실행해 주세요.
+          캔버스에 합성할 두 그래프(#1, #2)를 추가한 뒤 이용할 수 있습니다.
         </div>
         <div id="boxNAxisNoticeStatus" class="n-axis-setup-notice-status"></div>
         <div class="n-axis-setup-notice-actions">
@@ -3891,11 +3871,9 @@
               <path d="M4 5L20 21" stroke-dasharray="2.2 2.4" stroke-opacity="0.55" />
             </svg></span>
           <span class="n-axis-title-text">합성함수 스튜디오</span>
-          <span class="n-axis-tag-badge">점을 드래그해 치역·극점 매칭</span>
         </div>
         <div class="n-axis-header-actions" style="display:flex; align-items:center; gap:8px;">
-          <button id="btnNAxisArchiveToBoard" class="btn-n-axis-archive"
-            title="겉함수 · 속함수 · 합성함수 3개 그래프를 판서용 카드로 칠판에 삽입합니다">
+          <button id="btnNAxisArchiveToBoard" class="btn-n-axis-archive">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
               stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -3927,7 +3905,7 @@
                     <span class="n-axis-slot-role inner"><span>속함수 <i>g</i>(<i>x</i>)</span></span>
                     <span id="lblNAxisActiveG" class="n-axis-slot-active-name">#1 함수</span>
                     <button type="button" id="btnNAxisSwap" class="n-axis-btn-swap-inline"
-                      title="겉함수와 속함수를 서로 맞바꿉니다 (f∘g ⇄ g∘f)"><svg width="13" height="13" viewBox="0 0 24 24"
+                      title="겉함수·속함수 교체"><svg width="13" height="13" viewBox="0 0 24 24"
                         fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
                         stroke-linejoin="round">
                         <path d="M7 16V4m0 0L3 8m4-4l4 4" />
@@ -3980,14 +3958,13 @@
                   viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
                   stroke-linejoin="round">
                   <polygon points="6 4 20 12 6 20 6 4" />
-                </svg><span>자동 순항</span></button>
+                </svg><span>자동 재생</span></button>
               <div class="n-axis-speed-group">
                 <button type="button" class="n-axis-speed-btn" data-speed="0.5">0.5x</button>
                 <button type="button" class="n-axis-speed-btn active" data-speed="1.0">1.0x</button>
                 <button type="button" class="n-axis-speed-btn" data-speed="2.0">2.0x</button>
               </div>
-              <button type="button" id="btnNAxisAutoFit" class="n-axis-btn-outline"
-                title="현재 개형에 맞춰 화면 배율을 보기 좋게 정렬합니다"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+              <button type="button" id="btnNAxisAutoFit" class="n-axis-btn-outline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="15 3 21 3 21 9" />
                   <polyline points="9 21 3 21 3 15" />

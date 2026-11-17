@@ -274,7 +274,7 @@
     this.registerMathToolkitTool({
       id: 'n_axis_composite',
       title: '합성함수 스튜디오',
-      desc: '캔버스에 준비된 그래프(#1, #2)를 연동해 합성 개형을 관찰하고 3개 그래프 판서 도면을 삽입합니다.',
+      desc: '캔버스의 두 그래프(#1, #2)를 연동해 합성함수 개형을 관찰하고 카드로 삽입합니다.',
       iconSvg: `<svg viewBox="0 0 24 20" class="mini-func-icon" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h4v4"/><path d="M4 17 20 3"/><path d="M20 13v4h-4"/><path d="M14 12l6 5"/><path d="M4 3l5 4.5"/></svg>`,
       open: () => this.openNAxisStudioModal()
     });
@@ -320,24 +320,24 @@
 
       const count = Array.isArray(candidates) ? candidates.length : 0;
       if (count === 0) {
-        if (lblNoticeTitle) lblNoticeTitle.textContent = '함수 1·2번을 먼저 세팅해 주세요';
+        if (lblNoticeTitle) lblNoticeTitle.textContent = '그래프 2개를 먼저 추가해 주세요';
         if (lblNoticeDesc) {
-          lblNoticeDesc.innerHTML = '합성함수 스튜디오는 내가 화면에 그린 그래프들의 합성 개형을 관찰하는 도구입니다.<br>먼저 그래프 2개(<b>#1</b>, <b>#2</b>)를 세팅한 뒤 다시 실행해 주세요.';
+          lblNoticeDesc.innerHTML = '캔버스에 합성할 두 그래프(<b>#1</b>, <b>#2</b>)를 추가한 뒤 이용할 수 있습니다.';
         }
         if (boxNoticeStatus) {
-          boxNoticeStatus.textContent = '현재 세팅된 그래프: 0개 (최소 2개 필요)';
+          boxNoticeStatus.textContent = '현재 그래프: 0개 (최소 2개 필요)';
         }
         if (btnOpenDrawerFromNotice) {
           btnOpenDrawerFromNotice.textContent = '+ 그래프 추가 열기';
         }
       } else {
         const firstLabel = (candidates[0] && candidates[0].label) ? candidates[0].label : '#1 그래프';
-        if (lblNoticeTitle) lblNoticeTitle.textContent = '두 번째 그래프(#2)가 아직 없습니다';
+        if (lblNoticeTitle) lblNoticeTitle.textContent = '그래프 1개를 더 추가해 주세요';
         if (lblNoticeDesc) {
-          lblNoticeDesc.innerHTML = '합성함수를 관찰하려면 최소 2개의 그래프가 세팅되어 있어야 합니다.<br>두 번째 그래프를 추가하거나, 같은 함수를 합성하려면 카드 상단의 <b>[복제]</b> 버튼으로 2개를 만든 뒤 다시 실행해 주세요.';
+          lblNoticeDesc.innerHTML = '두 번째 그래프를 추가하거나 기존 그래프를 <b>[복제]</b>한 뒤 다시 실행해 주세요.';
         }
         if (boxNoticeStatus) {
-          boxNoticeStatus.textContent = `현재 세팅됨: ${firstLabel} (1개 더 필요)`;
+          boxNoticeStatus.textContent = `현재 그래프: ${firstLabel} (1개 더 필요)`;
         }
         if (btnOpenDrawerFromNotice) {
           btnOpenDrawerFromNotice.textContent = '+ 두 번째 그래프 추가';
@@ -2264,7 +2264,7 @@
       };
     };
 
-    const ICON_STUDIO_PLAY = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4" /></svg><span>자동 순항</span>`;
+    const ICON_STUDIO_PLAY = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4" /></svg><span>자동 재생</span>`;
     const ICON_STUDIO_PAUSE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg><span>정지</span>`;
     const ICON_CHIP_CHECK = `<svg class="n-axis-chip-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>`;
 

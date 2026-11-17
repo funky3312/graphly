@@ -6357,11 +6357,29 @@
       this.showToast('💡 보조 수선을 사용하려면 설정에서 x축 또는 y축을 켜주세요.');
       return;
     }
-    this.isDropLineMode = forceState !== undefined ? forceState : !this.isDropLineMode;
+    const wasDropLineMode = Boolean(this.isDropLineMode);
+    this.isDropLineMode = forceState !== undefined ? Boolean(forceState) : !wasDropLineMode;
+    const btn = document.getElementById('btnQuickDropLine');
+    if (btn) btn.classList.toggle('active', this.isDropLineMode);
+    const container = this.canvas.parentElement;
+    if (container) container.classList.toggle('drop-line-active', this.isDropLineMode);
+
     if (!this.isDropLineMode) {
       this.dropLineHoverCandidate = null;
       this._isAimingDropLine = false;
-    } else {
+      const restoreTool = wasDropLineMode ? this._preDropLineInkTool : null;
+      this._preDropLineInkTool = null;
+      if (restoreTool && restoreTool !== 'select' && this.isInkMode && this.activeInkTool === 'select' && !this.isGraphSnapMode) {
+        const keepTextMode = Boolean(this.isTextToolMode);
+        this.setActiveInkTool(restoreTool);
+        if (keepTextMode && !this.isTextToolMode) {
+          this.isTextToolMode = true;
+          const btnTxt = document.getElementById('btnQuickText');
+          if (btnTxt) btnTxt.classList.add('active');
+          if (container) container.classList.add('text-tool-active');
+        }
+      }
+    } else if (!wasDropLineMode) {
       if (this.isGraphSnapMode && typeof this.toggleGraphSnapMode === 'function') {
         this.toggleGraphSnapMode(false);
       }
@@ -6377,15 +6395,21 @@
       this.draggedHandleIdx = null;
       this.isDraggingCurve = false;
       this.curveDragStart = null;
-      if (this.isInkMode && this.activeInkTool !== 'select') {
-        this.setActiveInkTool('select');
+      if (this.isInkMode && this.activeInkTool && this.activeInkTool !== 'select') {
+        this._preDropLineInkTool = this.activeInkTool;
+        this._isSwitchingForDropLine = true;
+        try {
+          this.setActiveInkTool('select');
+        } finally {
+          this._isSwitchingForDropLine = false;
+        }
+      } else {
+        this._preDropLineInkTool = null;
       }
       this.collectDropLineCandidates();
+    } else {
+      this.collectDropLineCandidates();
     }
-    const btn = document.getElementById('btnQuickDropLine');
-    if (btn) btn.classList.toggle('active', this.isDropLineMode);
-    const container = this.canvas.parentElement;
-    if (container) container.classList.toggle('drop-line-active', this.isDropLineMode);
     this.updateInkCursor();
     this.render();
     this.showToast(this.isDropLineMode ? '📍 보조 수선 도구 켜짐 (극점·교점 클릭 시 수선 생성)' : '📍 보조 수선 도구 꺼짐');
@@ -11582,7 +11606,7 @@
       if (!pdfBlob) return false;
       const url = URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
-      link.download = `Graphly_캔버스노트_${canvasItems.length}장_${Date.now()}.pdf`;
+      link.download = `Graphly_Note_${canvasItems.length}p_${Date.now()}.pdf`;
       link.href = url;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
@@ -11628,7 +11652,7 @@
           if (pdfBlob) {
             const url = URL.createObjectURL(pdfBlob);
             const link = document.createElement('a');
-            link.download = `Graphly_캔버스노트_${allSlides.length}장_${Date.now()}.pdf`;
+            link.download = `Graphly_Note_${allSlides.length}p_${Date.now()}.pdf`;
             link.href = url;
             link.click();
             setTimeout(() => URL.revokeObjectURL(url), 2000);

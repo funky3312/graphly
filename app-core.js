@@ -292,7 +292,7 @@ class GraphApp {
 
     // [📑 닥줌형 PDF 교재 뷰어 & 2단 문제 박스 크롭 엔진 상태]
     this.pdfDoc = null;                  // PDFDocumentProxy 인스턴스
-    this.pdfFileName = '교재.pdf';       // 불러온 PDF 파일명
+    this.pdfFileName = '문서.pdf';       // 불러온 PDF 파일명
     this.pdfCurrentPage = 1;             // 현재 표시 중인 페이지 (1-based)
     this.pdfTotalPages = 1;              // 총 페이지 수
     this.pdfZoom = 1.25;                 // PDF 뷰포트 확대 배율
@@ -345,6 +345,7 @@ class GraphApp {
     // [📍 교재 보조 수선(Drop Lines) & 축 좌표 라벨 시스템]
     this.dropLines = [];               // 생성된 보조 수선 배열
     this.isDropLineMode = false;       // 보조 수선 도구 활성 여부 (단축키 D)
+    this._preDropLineInkTool = null;   // 보조 수선 진입 직전 필기 도구 기억 (종료 시 원복용)
     this.dropLineStyle = 'dashed';     // 'dashed' | 'solid'
     this.dropLineFontFamily = 'stix';  // 'stix' | 'pretendard' | 'batang'
     this.dropLineFontSize = 15;        // 기본 15 pt
@@ -2605,6 +2606,7 @@ class GraphApp {
     this._suspendedPdfBoardState = null;
     this._isTempPdfProblemCard = false;
     this._graphSessionArchived = false;
+    this._preDropLineInkTool = null;
     this.isPdfToGraphCropMode = false;
     this.isPdfToGraphCropDragging = false;
 
@@ -2887,8 +2889,8 @@ class GraphApp {
     if (btnToggleLink) {
       if (g && g.linkedInverseId) {
         btnToggleLink.style.display = 'block';
-        btnToggleLink.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;pointer-events:none;"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>연동끊기';
-        btnToggleLink.title = '클릭 시 두 함수의 연동을 끊어 각자 독립적으로 조작합니다.';
+        btnToggleLink.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;pointer-events:none;"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>연동 해제';
+        btnToggleLink.removeAttribute('title');
       } else {
         btnToggleLink.style.display = 'none';
       }
@@ -7040,7 +7042,7 @@ class GraphApp {
       }
       isAutoPlaying = false;
       if (autoPlayAnimId) cancelAnimationFrame(autoPlayAnimId);
-      if (btnAutoPlay) btnAutoPlay.textContent = '▶ 자동 순항';
+      if (btnAutoPlay) btnAutoPlay.textContent = '▶ 자동 재생';
       this.isNAxisStudioOpen = true;
       modal.style.display = 'flex';
       modal.classList.add('show');
@@ -7070,7 +7072,7 @@ class GraphApp {
       isAutoPlaying = false;
       this.isNAxisStudioOpen = false;
       if (autoPlayAnimId) cancelAnimationFrame(autoPlayAnimId);
-      if (btnAutoPlay) btnAutoPlay.textContent = '▶ 자동 순항';
+      if (btnAutoPlay) btnAutoPlay.textContent = '▶ 자동 재생';
       modal.classList.remove('show');
       setTimeout(() => {
         if (!modal.classList.contains('show')) {
@@ -7201,7 +7203,7 @@ class GraphApp {
     if (btnAutoPlay) {
       btnAutoPlay.addEventListener('click', () => {
         isAutoPlaying = !isAutoPlaying;
-        btnAutoPlay.textContent = isAutoPlaying ? '⏸ 정지' : '▶ 자동 순항';
+        btnAutoPlay.textContent = isAutoPlaying ? '⏸ 정지' : '▶ 자동 재생';
         if (isAutoPlaying) {
           if (currentX >= xMax - 0.05) currentX = xMin;
           loopAutoPlay();
@@ -7455,22 +7457,22 @@ class GraphApp {
           const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 3;
           const limit = (usage && usage.dailyLimit) ? usage.dailyLimit : 5;
           const rem = (usage && typeof usage.remainingCount === 'number') ? usage.remainingCount : limit;
-          mainText = `즉석 단기 공유 · 오늘 ${rem}/${limit}회 남음 · ${days}일 후 만료`;
-          subText = '수정 자동 반영 · 영구 링크는 클라우드 보관함 이용';
+          mainText = `기간 제한 링크 (${days}일) · 오늘 ${rem}/${limit}회 남음`;
+          subText = '수정 시 자동 반영 · 영구 링크는 보관함에서 생성';
         } else if (tier === 'premium') {
           const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 7;
-          mainText = `즉석 단기 공유 · 무제한 · ${days}일 후 자동 만료`;
-          subText = '영구 링크 · 수정 반영은 클라우드 보관함에서 추출';
+          mainText = `기간 제한 링크 (${days}일) · 무제한`;
+          subText = '수정 시 자동 반영 · 영구 링크는 보관함에서 생성';
         } else if (tier === 'pro') {
           const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 7;
-          mainText = `즉석 단기 공유 · 무제한 · ${days}일 후 자동 만료`;
-          subText = '수정 자동 반영 · 영구 링크(Premium)는 보관함 이용';
+          mainText = `기간 제한 링크 (${days}일) · 무제한`;
+          subText = '수정 시 자동 반영 · 영구 링크(Premium)는 보관함에서 생성';
         } else {
           const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 3;
           const limit = (usage && usage.dailyLimit) ? usage.dailyLimit : 5;
           const rem = (usage && typeof usage.remainingCount === 'number') ? usage.remainingCount : limit;
-          mainText = `즉석 단기 공유 · 오늘 ${rem}/${limit}회 남음 · ${days}일 후 만료`;
-          subText = '수정 자동 반영 · 영구 링크(Premium)는 보관함 이용';
+          mainText = `기간 제한 링크 (${days}일) · 오늘 ${rem}/${limit}회 남음`;
+          subText = '수정 시 자동 반영 · 영구 링크(Premium)는 보관함에서 생성';
         }
 
         lblTierNotice.innerHTML = `
@@ -7947,7 +7949,7 @@ class GraphApp {
           const title = typedTitle || (typeof this._allocateNextLocalAutoDateTimeTitle === 'function'
             ? this._allocateNextLocalAutoDateTimeTitle()
             : this._buildAutoDateTimeTitle());
-          const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : '#수업노트';
+          const tags = (inpDeckTags && inpDeckTags.value.trim()) ? inpDeckTags.value.trim() : '#노트';
           await this.exportGraphlyDeckFile(title, tags, slides, effectiveFilter);
           triggerExportBtnSuccess(btnShareExportFile, lblShareExportFile, '파일 저장 완료', '내 기기에 저장');
         } finally {

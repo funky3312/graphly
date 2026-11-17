@@ -549,7 +549,7 @@
       }
       if (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0) {
         this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
-        await this.loadPdfFromArrayBuffer(this._cachedPdfBytes, this.pdfFileName || (meta && meta.fileName) || '교재.pdf', { preserveScroll: true, skipIdbSave: true });
+        await this.loadPdfFromArrayBuffer(this._cachedPdfBytes, this.pdfFileName || (meta && meta.fileName) || '문서.pdf', { preserveScroll: true, skipIdbSave: true });
         this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
         this.togglePdfCropMode(autoCrop);
         return true;
@@ -568,7 +568,7 @@
             if (typeof cachedRec.zoom === 'number' && cachedRec.zoom >= 0.5) this.pdfZoom = cachedRec.zoom;
           }
           this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
-          await this.loadPdfFromArrayBuffer(normBytes, cachedRec.fileName || '교재.pdf', { preserveScroll: true, skipIdbSave: true });
+          await this.loadPdfFromArrayBuffer(normBytes, cachedRec.fileName || '문서.pdf', { preserveScroll: true, skipIdbSave: true });
           this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
           this.togglePdfCropMode(autoCrop);
           return true;
@@ -581,7 +581,7 @@
       return false;
     }
 
-    loadPdfFromArrayBuffer(arrayBuffer, fileName = '교재.pdf', options = null) {
+    loadPdfFromArrayBuffer(arrayBuffer, fileName = '문서.pdf', options = null) {
       if (!window.pdfjsLib) {
         this.showToast('⚠️ PDF.js 라이브러리를 불러오지 못했습니다.');
         return Promise.reject(new Error('PDF.js not loaded'));
@@ -707,12 +707,12 @@
       if (btnImport) {
         btnImport.classList.toggle('rail-btn-locked-disabled', isLocked);
         btnImport.title = isLocked
-          ? '수업 모드 확정됨 (우측 상단 캔버스바에서 추가하거나 [전체 비우기] 후 새로 불러오세요)'
-          : '파일 열기 (PDF · 이미지 · .graphly)';
+          ? '상단 바에서 페이지를 추가하거나 초기화 후 새 파일을 열 수 있습니다'
+          : '파일 열기';
       }
       if (btnCloudHub) {
         btnCloudHub.classList.remove('rail-btn-locked-disabled');
-        btnCloudHub.title = '클라우드 보관함 (저장 & 불러오기)';
+        btnCloudHub.title = '클라우드 보관함';
       }
     }
 
@@ -1395,8 +1395,10 @@
       if (!this.isInkMode) {
         this.toggleInkMode(true);
       }
-      // PDF 1페이지를 불러왔을 때는 이전 도구가 무엇이었든 무조건 이동 모드(select)로 시작하여 확대/초점 조절부터 편하게!
-      this.setActiveInkTool('select');
+      // 패드(두 손가락 이동)·액타(스페이스바 드래그) 중심 설계: 강제 이동 전환 없이 즉시 필기 가능하도록 펜(또는 형광펜) 유지!
+      if (this.activeInkTool !== 'highlighter') {
+        this.setActiveInkTool('pen');
+      }
 
       if (replaceMode) {
         this._finalizeAppendedCaptureSlide('');

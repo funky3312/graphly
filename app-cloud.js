@@ -279,7 +279,7 @@
           authProvider: authProvider,
           providerLabel: isGoogleProvider ? 'Google 로그인' : '아이디 로그인',
           loginId: normEmail || user.uid,
-          displayName: user.displayName || (normEmail ? normEmail.split('@')[0] : '선생님'),
+          displayName: user.displayName || (normEmail ? normEmail.split('@')[0] : '사용자'),
           email: normEmail,
           emailVerified: true
         }, Boolean(showWelcome));
@@ -348,7 +348,7 @@
                       authProvider: authProvider,
                       providerLabel: isGoogleProvider ? 'Google 로그인' : '아이디 로그인',
                       loginId: normEmail || user.uid,
-                      displayName: user.displayName || (this.cloudUser && this.cloudUser.displayName) || (normEmail ? normEmail.split('@')[0] : '선생님'),
+                      displayName: user.displayName || (this.cloudUser && this.cloudUser.displayName) || (normEmail ? normEmail.split('@')[0] : '사용자'),
                       email: normEmail,
                       emailVerified: true,
                       isPro: Boolean(this.cloudUser && this.cloudUser.isPro)
@@ -1115,9 +1115,9 @@
           const typedTitle = (inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : '';
           const slides = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
             ? (this.saveCurrentSlideIntoPlaylist(), JSON.parse(JSON.stringify(this.lessonPlaylistSlides)))
-            : [this.serializeFullSlideState(typedTitle || '수업 노트')];
+            : [this.serializeFullSlideState(typedTitle || '노트')];
           const rawTitle = typedTitle || this._allocateNextLocalAutoDateTimeTitle();
-          const rawTags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : '#통째수업';
+          const rawTags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : '#노트';
           this.exportGraphlyDeckFile(rawTitle, rawTags, slides);
         };
       }
@@ -1687,8 +1687,8 @@
           </div>
           <div class="cloud-dup-modal-actions">
             <button type="button" class="cloud-dup-choice-btn is-overwrite" data-dup-act="overwrite">
-              <span class="cloud-dup-choice-main"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>덮어쓰기 (기존 파일 교체)</span></span>
-              <span class="cloud-dup-choice-sub">기존 파일을 지우고 지금 파일로 업데이트합니다</span>
+              <span class="cloud-dup-choice-main"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>덮어쓰기</span></span>
+              <span class="cloud-dup-choice-sub">기존 파일을 현재 내용으로 업데이트합니다</span>
             </button>
             <button type="button" class="cloud-dup-choice-btn" data-dup-act="rename">
               <span class="cloud-dup-choice-main"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg><span>새 이름으로 저장 — "${safeNextTitle}"</span></span>
@@ -1814,19 +1814,19 @@
         <div class="cloud-dup-modal-card" role="dialog" aria-modal="true">
           <div class="cloud-dup-modal-title">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            <span>일부 요소가 체크 해제되어 있습니다</span>
+            <span>제외된 항목이 있습니다</span>
           </div>
           <div class="cloud-dup-modal-desc">
-            현재 <strong>[${safeExcluded}]</strong> 항목이 제외된 상태입니다.<br>제외된 채로 저장하면 해당 내용은 남지 않습니다. 어떻게 ${targetWord} 저장할까요?
+            현재 <strong>[${safeExcluded}]</strong> 항목이 선택 해제되어 있습니다.<br>어떻게 ${targetWord} 저장할까요?
           </div>
           <div class="cloud-dup-modal-actions">
             <button type="button" class="cloud-dup-choice-btn is-overwrite" data-partial-save-act="full">
-              <span class="cloud-dup-choice-main"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span>전체 원본으로 저장 (권장)</span></span>
-              <span class="cloud-dup-choice-sub">문제 · 그래프 · 필기 · 음성을 모두 포함해 원본 그대로 저장합니다</span>
+              <span class="cloud-dup-choice-main"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span>전체 항목 저장 (권장)</span></span>
+              <span class="cloud-dup-choice-sub">모든 항목을 원본 그대로 저장합니다</span>
             </button>
             <button type="button" class="cloud-dup-choice-btn" data-partial-save-act="filtered">
-              <span class="cloud-dup-choice-main"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg><span>체크한 요소만 저장 (${safeIncluded})</span></span>
-              <span class="cloud-dup-choice-sub">제외된 [${safeExcluded}] 없이 선택한 항목만 저장합니다</span>
+              <span class="cloud-dup-choice-main"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg><span>선택한 항목만 저장 (${safeIncluded})</span></span>
+              <span class="cloud-dup-choice-sub">해제된 항목을 제외하고 저장합니다</span>
             </button>
           </div>
           <div class="cloud-dup-modal-footer">
@@ -1865,6 +1865,78 @@
         document.body.appendChild(backdrop);
         const fullBtn = backdrop.querySelector('[data-partial-save-act="full"]');
         if (fullBtn) setTimeout(() => fullBtn.focus(), 20);
+      });
+    }
+
+    promptCloudConfirmDialog({ title = '확인', descHtml = '', confirmLabel = '확인', cancelLabel = '취소', isDanger = false } = {}) {
+      if (typeof document === 'undefined' || !document.body) {
+        if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+          const plain = String(descHtml || title).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
+          return Promise.resolve(Boolean(window.confirm(plain)));
+        }
+        return Promise.resolve(true);
+      }
+      return new Promise((resolve) => {
+        const existingModal = document.getElementById('modalCloudDupResolve');
+        if (existingModal && existingModal.parentNode) {
+          existingModal.parentNode.removeChild(existingModal);
+        }
+        const escHtml = (str) => String(str || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        const iconSvg = isDanger
+          ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>'
+          : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+
+        const backdrop = document.createElement('div');
+        backdrop.id = 'modalCloudDupResolve';
+        backdrop.className = 'cloud-dup-modal-backdrop';
+        backdrop.setAttribute('data-modal-kind', isDanger ? 'cloud-delete-confirm' : 'cloud-confirm');
+        backdrop.innerHTML = `
+        <div class="cloud-dup-modal-card" role="alertdialog" aria-modal="true">
+          <div class="cloud-dup-modal-title">
+            ${iconSvg}
+            <span>${escHtml(title)}</span>
+          </div>
+          <div class="cloud-dup-modal-desc">
+            ${descHtml}
+          </div>
+          <div class="cloud-dup-modal-footer" style="justify-content: flex-end; gap: 8px; margin-top: 2px;">
+            <button type="button" class="cloud-dup-cancel-btn" data-confirm-act="cancel">${escHtml(cancelLabel)}</button>
+            <button type="button" class="cloud-dup-confirm-primary-btn${isDanger ? ' is-danger' : ''}" data-confirm-act="confirm">${escHtml(confirmLabel)}</button>
+          </div>
+        </div>
+      `;
+
+        const cleanupAndResolve = (ok) => {
+          window.removeEventListener('keydown', onKeyDown, true);
+          if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+          resolve(Boolean(ok));
+        };
+
+        const onKeyDown = (e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            cleanupAndResolve(false);
+          }
+        };
+
+        window.addEventListener('keydown', onKeyDown, true);
+        backdrop.addEventListener('click', (e) => {
+          if (e.target === backdrop) cleanupAndResolve(false);
+        });
+        backdrop.querySelectorAll('[data-confirm-act]').forEach((btn) => {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            cleanupAndResolve(btn.getAttribute('data-confirm-act') === 'confirm');
+          };
+        });
+
+        document.body.appendChild(backdrop);
+        const focusBtn = backdrop.querySelector(isDanger ? '[data-confirm-act="cancel"]' : '[data-confirm-act="confirm"]');
+        if (focusBtn) setTimeout(() => focusBtn.focus(), 20);
       });
     }
 
@@ -2018,9 +2090,14 @@
 
       // 양쪽 파일 모두 공유 링크가 있고 옮기는 파일에도 영구 링크가 있는 드문 경우 실수 방지 확인
       if (dupHasShare && srcHasPermShare) {
-        const okConfirm = window.confirm(
-          `⚠️ 현재 파일("${sourceItem.title || '파일'}")에도 별도의 [🔗 영구 공유 링크]가 연결되어 있습니다.\n\n덮어쓰기를 진행하면 기존 ["${finalTitle}"]의 영구 링크로 통합되어 내용이 업데이트되며, 현재 임시 파일의 링크는 정리됩니다.\n계속하시겠습니까?`
-        );
+        const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const okConfirm = await this.promptCloudConfirmDialog({
+          title: '공유 링크 통합 안내',
+          descHtml: `이동할 파일(<strong>"${esc(sourceItem.title || '파일')}"</strong>)에도 영구 공유 링크가 연결되어 있습니다.<br>덮어쓰면 <strong>"${esc(finalTitle)}"</strong>의 공유 링크로 통합되며 기존 링크는 비활성화됩니다.`,
+          confirmLabel: '덮어쓰기',
+          cancelLabel: '취소',
+          isDanger: false
+        });
         if (!okConfirm) {
           return { ok: false, cancelled: true };
         }
@@ -2151,7 +2228,7 @@
       const fileCnt = Array.from(this._selectedCloudExplorerKeys).filter(k => k.startsWith('file:')).length;
       const folderCnt = Array.from(this._selectedCloudExplorerKeys).filter(k => k.startsWith('folder:')).length;
       const canOpen = (fileCnt > 0) || (fileCnt === 0 && folderCnt === 1);
-      const openLabelText = (fileCnt > 0) ? '칠판에 열기' : '폴더 열기';
+      const openLabelText = (fileCnt > 0) ? '캔버스에 열기' : '폴더 열기';
       if (btnOpen) {
         btnOpen.style.display = canOpen ? 'inline-flex' : 'none';
         btnOpen.innerHTML = `${this._getCloudVaultIconSvg('openCanvas')}<span id="lblCloudFooterOpenText">${openLabelText}</span>`;
@@ -2191,8 +2268,8 @@
         this.showToast('⚠️ 내려받을 파일 데이터가 없습니다.');
         return null;
       }
-      const title = resolved.title || 'Graphly_수업노트';
-      const tags = resolved.tags || '#수학그래프';
+      const title = resolved.title || 'Graphly_Note';
+      const tags = resolved.tags || '#노트';
       const fullFilter = { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
       return await this.exportGraphlyDeckFile(title, tags, slides, fullFilter);
     }
@@ -2208,7 +2285,7 @@
         .map(id => (this.myLibraryCache || []).find(it => it && it.id === id))
         .filter(Boolean);
       if (selectedFiles.length === 0) {
-        this.showToast('💾 폴더가 아닌 수업 파일을 선택해 주세요.');
+        this.showToast('💾 폴더가 아닌 파일을 선택해 주세요.');
         return null;
       }
       if (selectedFiles.length === 1) {
@@ -2222,14 +2299,14 @@
             const cloneSlide = JSON.parse(JSON.stringify(sl));
             if (!cloneSlide.slideTitle) {
               cloneSlide.slideTitle = resolved.playlistSlides.length > 1
-                ? `${resolved.title || '문항'} (${sIdx + 1})`
-                : (resolved.title || `문항 ${combinedSlides.length + 1}`);
+                ? `${resolved.title || '캔버스'} (${sIdx + 1})`
+                : (resolved.title || `캔버스 ${combinedSlides.length + 1}`);
             }
             combinedSlides.push(cloneSlide);
           });
         } else if (resolved.slideData) {
           const cloneSlide = JSON.parse(JSON.stringify(resolved.slideData));
-          cloneSlide.slideTitle = resolved.title || cloneSlide.slideTitle || `문항 ${combinedSlides.length + 1}`;
+          cloneSlide.slideTitle = resolved.title || cloneSlide.slideTitle || `캔버스 ${combinedSlides.length + 1}`;
           combinedSlides.push(cloneSlide);
         }
       }
@@ -2237,9 +2314,9 @@
         this.showToast('⚠️ 내려받을 파일 데이터가 없습니다.');
         return null;
       }
-      const bundleTitle = `${selectedFiles[0].title || 'Graphly_수업'} 외 ${selectedFiles.length - 1}건_통합세트`;
+      const bundleTitle = `${selectedFiles[0].title || 'Graphly_Note'} 외 ${selectedFiles.length - 1}건`;
       const fullFilter = { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
-      return await this.exportGraphlyDeckFile(bundleTitle, '#통째수업 #풀세트', combinedSlides, fullFilter);
+      return await this.exportGraphlyDeckFile(bundleTitle, '#노트', combinedSlides, fullFilter);
     }
 
     async handleCloudExplorerOpenSelected() {
@@ -2746,14 +2823,35 @@
       const totalTargetCount = folderPaths.length + fileIds.size;
 
       if (!skipConfirm && totalTargetCount > 0) {
-        const hasLinkedPermShare = Array.isArray(this.myLibraryCache) && this.myLibraryCache.some(it => it && fileIds.has(it.id) && this._hasPermanentCloudItemShare(it));
-        const permWarnSuffix = hasLinkedPermShare
-          ? '\n\n⚠️ 선택한 파일 중 [🔗 영구 공유 링크] 원본이 포함되어 있습니다.\n삭제 시 학생들에게 배포된 공유 링크 및 QR 코드도 즉시 함께 폭파됩니다!'
-          : '';
-        const confirmMsg = (folderPaths.length > 0 && fileIds.size === 0)
-          ? `선택한 폴더 ${folderPaths.length}개를 삭제하시겠습니까?\n(폴더 안의 수업 파일은 삭제되지 않고 상위 폴더로 안전하게 이동됩니다.)`
-          : `선택한 항목 ${totalTargetCount}개(파일 ${fileIds.size}개${folderPaths.length > 0 ? ` · 폴더 ${folderPaths.length}개` : ''})를 클라우드 보관함에서 영구 삭제하시겠습니까?${permWarnSuffix}`;
-        if (!window.confirm(confirmMsg)) return;
+        const hasLinkedShare = Array.isArray(this.myLibraryCache) && this.myLibraryCache.some(it => it && fileIds.has(it.id) && (
+          this._hasPermanentCloudItemShare(it) ||
+          (typeof this._countActiveCloudItemShares === 'function' && this._countActiveCloudItemShares(it) > 0)
+        ));
+        let confirmOpts;
+        if (folderPaths.length > 0 && fileIds.size === 0) {
+          confirmOpts = {
+            title: '선택한 폴더를 삭제하시겠습니까?',
+            descHtml: `선택한 폴더 <strong>${folderPaths.length}개</strong>를 삭제합니다.<br>폴더 안의 파일은 삭제되지 않고 상위 폴더로 이동됩니다.`,
+            confirmLabel: '폴더 삭제',
+            cancelLabel: '취소',
+            isDanger: true
+          };
+        } else {
+          const detailParts = [`파일 ${fileIds.size}개`];
+          if (folderPaths.length > 0) detailParts.push(`폴더 ${folderPaths.length}개`);
+          const shareWarnHtml = hasLinkedShare
+            ? '<br><span style="display:inline-block;margin-top:6px;">연결된 공유 링크와 QR 코드도 함께 비활성화되어 더 이상 열람할 수 없습니다.</span>'
+            : '';
+          confirmOpts = {
+            title: '선택한 항목을 영구 삭제하시겠습니까?',
+            descHtml: `선택한 항목 <strong>${totalTargetCount}개</strong>(${detailParts.join(' · ')})를 클라우드 보관함에서 영구 삭제합니다.${shareWarnHtml}`,
+            confirmLabel: '영구 삭제',
+            cancelLabel: '취소',
+            isDanger: true
+          };
+        }
+        const okDelete = await this.promptCloudConfirmDialog(confirmOpts);
+        if (!okDelete) return;
       }
 
       if (this.cloudUser && this.cloudUser.uid) {
@@ -3184,7 +3282,7 @@
 
       if (lblProAcctBadge) {
         lblProAcctBadge.className = 'pricing-acct-badge is-verified';
-        lblProAcctBadge.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg><span>인증된 귀속 계정</span>`;
+        lblProAcctBadge.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg><span>결제 계정</span>`;
       }
 
       if (lblProAcct) {
@@ -4113,12 +4211,12 @@
         : 1;
       const needed = Math.max(1, Number(addCount) || 1);
       if (currentCount + needed > maxSlides) {
-        const msg = `쾌적한 판서 반응속도와 아이패드·클라우드 안정성을 위해 한 수업 노트는 최대 ${maxSlides}장까지 담을 수 있습니다. (현재 ${currentCount}장) 다음 단원이나 문항은 새 노트로 나누어 진행해 주세요!`;
-        this.showToast(`⚠️ 한 수업 노트는 최대 ${maxSlides}장까지 추가할 수 있습니다.`);
+        const msg = `한 파일에는 최대 ${maxSlides}장까지 저장할 수 있습니다. 추가 내용은 새 파일에서 이어서 작성해 주세요.`;
+        this.showToast(`⚠️ 한 파일에는 최대 ${maxSlides}장까지 추가할 수 있습니다.`);
         if (typeof this.showTossPaymentResultModal === 'function') {
           this.showTossPaymentResultModal({
             status: 'warning',
-            title: `수업 노트 최대 슬라이드 한도 (${maxSlides}장)`,
+            title: `캔버스는 최대 ${maxSlides}장까지 추가할 수 있습니다`,
             message: msg
           });
         }
@@ -4549,7 +4647,7 @@
       const benefitHighlightText = isPremium
         ? '클라우드 20GB · 내 그래프 100개 · 60분 녹화 · 영구 링크 · 홍보배너 활성화'
         : '클라우드 5GB · 내 그래프 30개 · 60분 녹화 · 무제한 공유(7일) 활성화';
-      const resolvedButtonLabel = buttonText || (isSuccess ? '확인 (바로 시작하기)' : '확인');
+      const resolvedButtonLabel = buttonText || '확인';
 
       backdrop.innerHTML = `
       <div class="smart-modal-card" style="max-width: 440px; width: 92%; text-align: center; padding: 26px 22px 20px; border-radius: 18px;">
@@ -5006,8 +5104,8 @@
         } else {
           this.showTossPaymentResultModal({
             status: 'error',
-            title: '결제 승인 연결 오류',
-            message: '결제 승인 백엔드 서버 연결이 필요합니다.'
+            title: '결제 확인 연결 오류',
+            message: '결제 확인 중 서버 연결 오류가 발생했습니다.'
           });
           return false;
         }
@@ -5924,16 +6022,15 @@
       const closeSvg12 = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
 
       if (!this.cloudUser || !this.cloudUser.uid) {
-        const cfg = this.getSubscriptionQuotaConfig();
         const guestCard = document.createElement('div');
         guestCard.className = 'custom-graph-guest-notice';
         guestCard.innerHTML = `
-        <div class="custom-graph-guest-title">${lockSvg12}<span>무료 로그인 후 내 그래프를 등록하세요</span></div>
-        <div class="custom-graph-guest-desc">무료 회원 ${cfg.freeMaxCustomGraphs || 3}개 · Pro ${cfg.proMaxCustomGraphs || 30}개 · Premium ${cfg.premiumMaxCustomGraphs || 100}개까지 계정에 자동 저장·동기화됩니다.</div>
+        <div class="custom-graph-guest-title">${lockSvg12}<span>로그인 후 내 그래프를 저장할 수 있습니다</span></div>
+        <div class="custom-graph-guest-desc">자주 쓰는 그래프 구성을 저장하고 모든 기기에서 불러오세요.</div>
       `;
         guestCard.onclick = (ev) => {
           ev.stopPropagation();
-          this.promptCloudLoginForLibrary('🔑 무료 로그인 후 [⭐ 내 그래프] 프리셋을 등록해 보세요!');
+          this.promptCloudLoginForLibrary('🔑 로그인 후 [⭐ 내 그래프] 프리셋을 등록해 보세요!');
         };
         scrollList.appendChild(guestCard);
         return;
@@ -5943,8 +6040,8 @@
         const emptyEl = document.createElement('div');
         emptyEl.className = 'custom-graph-empty is-initial-empty';
         emptyEl.innerHTML = `
-          <div class="custom-graph-empty-title">등록된 그래프가 없습니다</div>
-          <div class="custom-graph-empty-desc">캔버스에 그린 함수·구간분할·수선을 위 버튼으로 저장해 바로 꺼내 쓰세요.</div>
+          <div class="custom-graph-empty-title">저장된 그래프가 없습니다</div>
+          <div class="custom-graph-empty-desc">자주 쓰는 그래프 구성을 저장해 두고 바로 불러올 수 있습니다.</div>
         `;
         scrollList.appendChild(emptyEl);
         return;
@@ -6087,7 +6184,6 @@
       btnAdd.className = 'custom-graph-add-btn';
       btnAdd.innerHTML = `
       <span class="custom-graph-add-left"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>현재 그래프 등록</span></span>
-      <span class="custom-graph-add-sub">세트 통째 저장</span>
     `;
       btnAdd.onclick = (e) => {
         e.stopPropagation();
@@ -6248,13 +6344,13 @@
       const isSignup = (this._cloudIdAuthTab === 'signup');
 
       if (!normEmail || !pw) {
-        const msg = '⚠️ 아이디(이메일 형식)와 비밀번호를 입력해 주세요.';
+        const msg = '아이디(이메일 형식)와 비밀번호를 입력해 주세요.';
         this._setAccountAuthInlineStatus(msg, true);
         this.showToast(msg);
         return false;
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normEmail)) {
-        const msg = '⚠️ 아이디는 이메일 형식(예: teacher@naver.com)으로 입력해 주세요.';
+        const msg = '아이디는 이메일 형식(예: user@example.com)으로 입력해 주세요.';
         this._setAccountAuthInlineStatus(msg, true);
         this.showToast(msg);
         return false;
@@ -6269,7 +6365,7 @@
         this._ensureFirebaseInitialized();
       }
       if (canUseRemote && (!this._fbAuth || typeof this._fbAuth.signInWithEmailAndPassword !== 'function')) {
-        const msg = '⏳ 로그인 보안 모듈을 불러오는 중입니다. 1초 후 다시 시도해 주세요.';
+        const msg = '잠시 후 다시 시도해 주세요.';
         this._setAccountAuthInlineStatus(msg, false);
         this.showToast(msg);
         return false;
@@ -6277,14 +6373,14 @@
 
       if (isSignup) {
         if (pw.length < 6) {
-          const msg = '⚠️ 비밀번호는 6자 이상 입력해 주세요.';
+          const msg = '비밀번호는 6자 이상 입력해 주세요.';
           this._setAccountAuthInlineStatus(msg, true);
           this.showToast(msg);
           return false;
         }
         const pwConfirm = (inpPwConfirm && inpPwConfirm.value ? inpPwConfirm.value : '').trim();
         if (pw !== pwConfirm) {
-          const msg = '⚠️ 비밀번호와 비밀번호 확인이 일치하지 않습니다.';
+          const msg = '비밀번호와 비밀번호 확인이 일치하지 않습니다.';
           this._setAccountAuthInlineStatus(msg, true);
           this.showToast(msg);
           return false;
@@ -6292,11 +6388,11 @@
 
         const existingAcc = registry[normEmail] || null;
         const rawDisplayName = (inpName && inpName.value ? inpName.value.trim() : '');
-        const displayName = rawDisplayName || (rawEmail.split('@')[0] || '선생님');
+        const displayName = rawDisplayName || (rawEmail.split('@')[0] || '사용자');
 
         if (canUseRemote) {
           const authSeq = this._beginExplicitAuthFlow();
-          this._setAccountAuthInlineStatus('⏳ 회원가입 및 인증메일 발송 중...', false);
+          this._setAccountAuthInlineStatus('회원가입 및 인증 메일 발송 중...', false);
           try {
             const cred = await this._fbAuth.createUserWithEmailAndPassword(normEmail, pw);
             if (cred && cred.user) {
@@ -6351,23 +6447,23 @@
                   }
                 }
               } catch (signErr) {
-                const msg = '⚠️ 이미 등록된 이메일입니다. [로그인] 탭에서 로그인하거나 [비밀번호 재설정]을 이용해 주세요.';
+                const msg = '이미 등록된 이메일입니다. [로그인] 또는 [비밀번호 재설정]을 이용해 주세요.';
                 this._setAccountAuthInlineStatus(msg, true);
                 this.showToast(msg);
                 return false;
               }
             } else if (code === 'auth/operation-not-allowed') {
-              const msg = '⚠️ Firebase 콘솔 [Authentication ➔ 로그인 방법]에서 [이메일/비밀번호] 사용 설정을 켜주세요.';
+              const msg = '현재 이메일 회원가입을 사용할 수 없습니다.';
               this._setAccountAuthInlineStatus(msg, true);
               this.showToast(msg);
               return false;
             } else if (code === 'auth/invalid-email') {
-              const msg = '⚠️ 올바른 이메일 형식의 아이디를 입력해 주세요.';
+              const msg = '올바른 이메일 형식으로 입력해 주세요.';
               this._setAccountAuthInlineStatus(msg, true);
               this.showToast(msg);
               return false;
             } else {
-              const msg = '⚠️ 회원가입 요청 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+              const msg = '회원가입 요청 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
               this._setAccountAuthInlineStatus(msg, true);
               this.showToast(msg);
               return false;
@@ -6396,7 +6492,7 @@
         }
 
         this._showEmailVerificationBanner(normEmail);
-        this._setAccountAuthInlineStatus(`📩 [${normEmail}] 인증 링크를 발송했습니다. 인증 후 아래 [인증 완료 확인]을 눌러주세요.`, false);
+        this._setAccountAuthInlineStatus(`[${normEmail}] 메일함으로 인증 링크를 발송했습니다. 인증 후 [인증 완료 확인]을 눌러주세요.`, false);
         this.showToast(`📩 [${normEmail}] 메일함으로 인증 링크를 발송했습니다! 인증 후 [인증 완료 확인]을 눌러주세요.`);
         return 'verification_pending';
       }
@@ -6404,7 +6500,7 @@
       // 아이디 로그인 모드: 상용 웹(http/https)에서는 100% Firebase Auth + 이메일 본인인증 통과 시에만 로그인 허용 (로컬 해시 우회 완전 제거)
       if (canUseRemote) {
         const authSeq = this._beginExplicitAuthFlow();
-        this._setAccountAuthInlineStatus('⏳ 아이디 로그인 확인 중...', false);
+        this._setAccountAuthInlineStatus('로그인 확인 중...', false);
         try {
           const cred = await this._fbAuth.signInWithEmailAndPassword(normEmail, pw);
           if (cred && cred.user) {
@@ -6412,9 +6508,9 @@
             if (!cred.user.emailVerified) {
               this._showEmailVerificationBanner(
                 normEmail,
-                `⏳ [${normEmail}] 아이디는 아직 이메일 인증이 완료되지 않았습니다. 메일함에서 인증 링크를 클릭한 뒤 아래 [인증 완료 확인]을 눌러주세요.`
+                `[${normEmail}] 이메일 인증이 완료되지 않았습니다. 메일함에서 인증 링크를 클릭한 뒤 아래 [인증 완료 확인]을 눌러주세요.`
               );
-              this._setAccountAuthInlineStatus('⏳ 이메일 인증을 완료한 뒤 아래 [인증 완료 확인]을 눌러주세요.', true);
+              this._setAccountAuthInlineStatus('이메일 인증 완료 후 아래 [인증 완료 확인]을 눌러주세요.', true);
               this.showToast('⏳ 이메일 인증을 완료해야 로그인할 수 있습니다.');
               return false;
             }
@@ -6425,7 +6521,7 @@
                 if (remoteAcc && remoteAcc.uid) account = remoteAcc;
               } catch (e) { }
             }
-            const dispName = cred.user.displayName || (account && account.displayName) || (normEmail.split('@')[0] || '선생님');
+            const dispName = cred.user.displayName || (account && account.displayName) || (normEmail.split('@')[0] || '사용자');
             const syncedAcc = {
               uid: canonicalUid,
               authProvider: 'email',
@@ -6457,35 +6553,35 @@
             this.showToast(`🎉 환영합니다, ${this.cloudUser.displayName}님! 로그인되었습니다.`);
             return true;
           }
-          this._setAccountAuthInlineStatus('⚠️ 로그인 정보를 확인할 수 없습니다. 다시 시도해 주세요.', true);
+          this._setAccountAuthInlineStatus('로그인 정보를 확인할 수 없습니다. 다시 시도해 주세요.', true);
           return false;
         } catch (fbErr) {
           const code = (fbErr && fbErr.code) ? fbErr.code : '';
           if (code === 'auth/user-not-found') {
-            const msg = '⚠️ 등록되지 않은 아이디입니다. [회원가입] 탭에서 먼저 가입해 주세요.';
+            const msg = '등록되지 않은 아이디입니다. [회원가입] 탭에서 먼저 가입해 주세요.';
             this._setAccountAuthInlineStatus(msg, true);
             this.showToast(msg);
             return false;
           }
           if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
-            const msg = '⚠️ 아이디 또는 비밀번호가 일치하지 않습니다. (가입 전이라면 [회원가입] 탭을 이용해 주세요)';
+            const msg = '아이디 또는 비밀번호가 일치하지 않습니다.';
             this._setAccountAuthInlineStatus(msg, true);
             this.showToast(msg);
             return false;
           }
           if (code === 'auth/too-many-requests') {
-            const msg = '⚠️ 로그인 시도가 너무 많습니다. 잠시 후 다시 시도하거나 [비밀번호 재설정]을 이용해 주세요.';
+            const msg = '로그인 시도가 너무 많습니다. 잠시 후 다시 시도하거나 [비밀번호 재설정]을 이용해 주세요.';
             this._setAccountAuthInlineStatus(msg, true);
             this.showToast(msg);
             return false;
           }
           if (code === 'auth/operation-not-allowed') {
-            const msg = '⚠️ Firebase 콘솔 [Authentication ➔ 로그인 방법]에서 [이메일/비밀번호]를 사용 설정해 주세요.';
+            const msg = '현재 이메일 로그인을 사용할 수 없습니다.';
             this._setAccountAuthInlineStatus(msg, true);
             this.showToast(msg);
             return false;
           }
-          const msg = '⚠️ 로그인 인증 서버와 연결할 수 없습니다. 네트워크 상태를 확인 후 다시 시도해 주세요.';
+          const msg = '로그인 서버와 연결할 수 없습니다. 네트워크 상태를 확인 후 다시 시도해 주세요.';
           this._setAccountAuthInlineStatus(msg, true);
           this.showToast(msg);
           return false;
@@ -6494,7 +6590,7 @@
         }
       }
 
-      const offlineMsg = '⚠️ 오프라인 파일(file://) 모드에서는 클라우드 로그인을 지원하지 않습니다.';
+      const offlineMsg = '오프라인 파일(file://) 모드에서는 클라우드 로그인을 지원하지 않습니다.';
       this._setAccountAuthInlineStatus(offlineMsg, true);
       this.showToast(offlineMsg);
       return false;
@@ -6505,7 +6601,7 @@
       const inpPw = document.getElementById('inputCloudEmailPw');
       const normEmail = String(explicitEmail || this._pendingVerifyEmail || (inpEmail && inpEmail.value) || '').trim().toLowerCase();
       if (!normEmail || !normEmail.includes('@')) {
-        const msg = '⚠️ 인증을 확인할 아이디(이메일 주소)를 먼저 입력해 주세요.';
+        const msg = '인증을 확인할 이메일 주소를 입력해 주세요.';
         this._setAccountAuthInlineStatus(msg, true);
         this.showToast(msg);
         return false;
@@ -6520,7 +6616,7 @@
 
       if (canUseRemote && this._fbAuth) {
         const authSeq = this._beginExplicitAuthFlow();
-        this._setAccountAuthInlineStatus('⏳ 이메일 인증 완료 여부를 확인하는 중...', false);
+        this._setAccountAuthInlineStatus('이메일 인증 상태를 확인하는 중...', false);
         try {
           if (!this._fbAuth.currentUser || String(this._fbAuth.currentUser.email || '').toLowerCase() !== normEmail) {
             const pwVal = (inpPw && inpPw.value ? inpPw.value : '').trim();
@@ -6529,14 +6625,14 @@
             }
           }
           if (!this._fbAuth.currentUser || String(this._fbAuth.currentUser.email || '').toLowerCase() !== normEmail) {
-            const msg = '⚠️ 비밀번호를 입력한 뒤 다시 [인증 완료 확인]을 눌러주세요.';
+            const msg = '비밀번호를 입력한 뒤 다시 [인증 완료 확인]을 눌러주세요.';
             this._setAccountAuthInlineStatus(msg, true);
             this.showToast(msg);
             return false;
           }
           await this._fbAuth.currentUser.reload();
           if (!this._fbAuth.currentUser.emailVerified) {
-            const msg = '⏳ 아직 메일함의 인증 링크가 클릭되지 않았습니다. 메일함(스팸함 포함)을 확인해 주세요.';
+            const msg = '아직 인증이 완료되지 않았습니다. 메일함(스팸함 포함)에서 인증 링크를 확인해 주세요.';
             this._setAccountAuthInlineStatus(msg, true);
             this.showToast(msg);
             return false;
@@ -6552,7 +6648,7 @@
             } catch (e) { }
           }
         } catch (e) {
-          const msg = '⚠️ 이메일 인증 상태를 확인할 수 없습니다. 비밀번호를 확인 후 다시 시도해 주세요.';
+          const msg = '이메일 인증 상태를 확인할 수 없습니다. 비밀번호를 확인한 뒤 다시 시도해 주세요.';
           this._setAccountAuthInlineStatus(msg, true);
           this.showToast(msg);
           return false;
@@ -6560,7 +6656,7 @@
           this._endExplicitAuthFlow(authSeq);
         }
       } else {
-        const msg = '⚠️ 네트워크 연결 상태에서 이메일 인증을 확인해 주세요.';
+        const msg = '네트워크 연결 상태에서 이메일 인증을 확인해 주세요.';
         this._setAccountAuthInlineStatus(msg, true);
         this.showToast(msg);
         return false;
@@ -6574,7 +6670,7 @@
         authProvider: 'email',
         providerLabel: '아이디 로그인',
         loginId: normEmail,
-        displayName: (this._fbAuth && this._fbAuth.currentUser && this._fbAuth.currentUser.displayName) || cleanBaseAcc.displayName || (normEmail.split('@')[0] || '선생님'),
+        displayName: (this._fbAuth && this._fbAuth.currentUser && this._fbAuth.currentUser.displayName) || cleanBaseAcc.displayName || (normEmail.split('@')[0] || '사용자'),
         email: normEmail,
         emailVerified: true,
         verifiedAt: Date.now()
@@ -6611,7 +6707,7 @@
       const inpPw = document.getElementById('inputCloudEmailPw');
       const normEmail = String(this._pendingVerifyEmail || (inpEmail && inpEmail.value) || '').trim().toLowerCase();
       if (!normEmail || !normEmail.includes('@')) {
-        const msg = '⚠️ 인증메일을 재발송할 아이디(이메일 주소)를 입력해 주세요.';
+        const msg = '인증 메일을 다시 받을 이메일 주소를 입력해 주세요.';
         this._setAccountAuthInlineStatus(msg, true);
         this.showToast(msg);
         return false;
@@ -6630,7 +6726,7 @@
         } catch (e) { }
       }
       this._showEmailVerificationBanner(normEmail);
-      const sentMsg = `📩 [${normEmail}] 메일함으로 인증 링크를 다시 발송했습니다.`;
+      const sentMsg = `[${normEmail}] 메일함으로 인증 링크를 다시 발송했습니다.`;
       this._setAccountAuthInlineStatus(sentMsg, false);
       this.showToast(sentMsg);
       return true;
@@ -6640,7 +6736,7 @@
       const inpEmail = document.getElementById('inputCloudEmailId');
       const normEmail = String((inpEmail && inpEmail.value) || '').trim().toLowerCase();
       if (!normEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normEmail)) {
-        const msg = '⚠️ 비밀번호 재설정 링크를 받을 아이디(이메일 주소)를 먼저 입력창에 적어주세요.';
+        const msg = '비밀번호 재설정 링크를 받을 이메일 주소를 입력해 주세요.';
         this._setAccountAuthInlineStatus(msg, true);
         this.showToast(msg);
         if (inpEmail) inpEmail.focus();
@@ -6650,7 +6746,7 @@
         this._ensureFirebaseInitialized();
       }
       if (!this._fbAuth || typeof this._fbAuth.sendPasswordResetEmail !== 'function') {
-        const msg = '⏳ 로그인 보안 모듈을 불러오는 중입니다. 1초 후 다시 눌러주세요.';
+        const msg = '잠시 후 다시 시도해 주세요.';
         this._setAccountAuthInlineStatus(msg, false);
         this.showToast(msg);
         return false;
@@ -6658,12 +6754,12 @@
       try {
         await this._fbAuth.sendPasswordResetEmail(normEmail);
       } catch (e) {
-        const msg = '⚠️ 비밀번호 재설정 메일 발송에 실패했습니다. 아이디(이메일)를 확인해 주세요.';
+        const msg = '비밀번호 재설정 메일 발송에 실패했습니다. 이메일 주소를 확인해 주세요.';
         this._setAccountAuthInlineStatus(msg, true);
         this.showToast(msg);
         return false;
       }
-      const okMsg = `📩 [${normEmail}] 메일함으로 비밀번호 재설정 링크를 발송했습니다.`;
+      const okMsg = `[${normEmail}] 메일함으로 비밀번호 재설정 링크를 발송했습니다.`;
       this._setAccountAuthInlineStatus(okMsg, false);
       this.showToast(okMsg);
       return true;
@@ -6684,7 +6780,7 @@
         authProvider: provider,
         providerLabel: provider === 'google' ? 'Google 로그인' : '아이디 로그인',
         loginId: normEmail || userInfo.uid,
-        displayName: userInfo.displayName || (normEmail ? normEmail.split('@')[0] : '선생님'),
+        displayName: userInfo.displayName || (normEmail ? normEmail.split('@')[0] : '사용자'),
         email: normEmail,
         emailVerified: true
       };
@@ -7074,7 +7170,7 @@
       setTxt('lblPlanFreeRec', `${Math.round((cfg.freeMaxRecordMs || 300000) / 60000)}분`);
       setTxt('lblPlanFreeShare', `1일 ${cfg.freeShareDailyLimit || 5}개 · ${cfg.freeShareExpiryDays || 3}일 만료`);
 
-      setTxt('lblPlanProDiscountBadge', `${proDiscountPct}% 특별할인`);
+      setTxt('lblPlanProDiscountBadge', `${proDiscountPct}% 할인`);
       setTxt('lblPlanProDiscountPill', `-${proDiscountPct}%`);
       setTxt('lblPlanProRegularPrice', `정가 ${proRegPrice.toLocaleString('ko-KR')}원`);
       setTxt('lblPlanProPrice', `${proPrice.toLocaleString('ko-KR')}원`);
@@ -7158,7 +7254,7 @@
       const escapeText = (str) => String(str || '').replace(/[&<>"']/g, (ch) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
       }[ch]));
-      const descText = customMsg || '이용권은 로그인한 계정에 귀속됩니다. 먼저 로그인 후 결제를 진행해 주세요.';
+      const descText = customMsg || '이용권은 로그인한 계정에 적용됩니다. 먼저 로그인 후 결제를 진행해 주세요.';
       backdrop.innerHTML = `
         <div class="smart-modal-card pricing-login-notice-card" role="alertdialog" aria-modal="true" aria-labelledby="lblPricingLoginNoticeTitle">
           <div class="pricing-login-notice-icon" aria-hidden="true">
@@ -7195,7 +7291,7 @@
 
     async requestTossPaymentFromStudio() {
       if (!this.cloudUser || !this.cloudUser.uid) {
-        this.showPricingLoginRequiredModal('이용권은 로그인한 계정에 귀속됩니다. 먼저 로그인 후 결제를 진행해 주세요.');
+        this.showPricingLoginRequiredModal('이용권은 로그인한 계정에 적용됩니다. 먼저 로그인 후 결제를 진행해 주세요.');
         return false;
       }
       if (typeof window.TossPayments !== 'function') {
@@ -7246,7 +7342,7 @@
 
       const inpName = document.getElementById('inputProBuyerName');
       const inpEmail = document.getElementById('inputProBuyerEmail');
-      const customerName = (inpName && inpName.value ? inpName.value.trim() : '') || this.cloudUser.displayName || '회원구매자';
+      const customerName = (inpName && inpName.value ? inpName.value.trim() : '') || this.cloudUser.displayName || '구매자';
       const customerEmail = (inpEmail && inpEmail.value ? inpEmail.value.trim() : '') || this.cloudUser.email || 'help@cubiolab.com';
       const tossClientKey = 'live_ck_Z1aOwX7K8mBMQNM924ba3yQxzvNP';
       const tossPayments = window.TossPayments(tossClientKey);
@@ -7321,13 +7417,13 @@
           }
         }
         const guideMsg = hasUnsaved
-          ? `${inAppInfo.appName} 내장 브라우저에서는 Google 로그인이 제한되며, 외부 브라우저로 이동하면 현재 판서가 초기화됩니다. 아래 [아이디 로그인]으로 로그인해 먼저 저장해 주세요.`
-          : `${inAppInfo.appName} 앱 내장 브라우저에서는 Google 보안 정책상 구글 로그인이 제한됩니다. 우측 메뉴(⋯)에서 [Safari / 외부 브라우저로 열기]를 누르시거나 아래 [아이디 로그인]을 이용해 주세요.`;
+          ? `${inAppInfo.appName} 브라우저에서는 Google 로그인이 지원되지 않습니다. 외부 브라우저로 이동하면 작성 중인 내용이 초기화되므로, [아이디 로그인] 후 먼저 저장해 주세요.`
+          : `${inAppInfo.appName} 브라우저에서는 Google 로그인이 지원되지 않습니다. 우측 메뉴(⋯)에서 외부 브라우저로 열거나 아래 [아이디 로그인]을 이용해 주세요.`;
         showAccountInlineNotice(guideMsg, true);
         if (typeof this.showTossPaymentResultModal === 'function') {
           this.showTossPaymentResultModal({
             status: 'warning',
-            title: hasUnsaved ? '현재 판서 보호 · 아이디 로그인 안내' : '외부 브라우저(Safari · Chrome) 열기 안내',
+            title: '인앱 브라우저 로그인 안내',
             message: guideMsg
           });
         } else {
@@ -7339,13 +7435,13 @@
         this._ensureFirebaseInitialized();
       }
       if (!window.firebase || !this._fbAuth) {
-        showAccountInlineNotice('⏳ 구글 로그인 모듈을 불러오는 중입니다. 1초 후 다시 눌러주세요.', false);
+        showAccountInlineNotice('잠시 후 다시 시도해 주세요.', false);
         this.showToast('⚠️ 구글 로그인 모듈을 불러오는 중입니다. 잠시 후 다시 눌러주세요.');
         return;
       }
       const provider = new window.firebase.auth.GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      showAccountInlineNotice('⏳ Google 로그인 창을 여는 중...', false);
+      showAccountInlineNotice('Google 로그인 창을 여는 중...', false);
       const authSeq = this._beginExplicitAuthFlow();
       try { localStorage.setItem('graphly_last_auth_provider', 'google'); } catch (e) { }
 
@@ -7404,7 +7500,7 @@
             authProvider: 'google',
             providerLabel: 'Google 로그인',
             loginId: normEmail || authUser.uid,
-            displayName: authUser.displayName || (normEmail ? normEmail.split('@')[0] : '선생님'),
+            displayName: authUser.displayName || (normEmail ? normEmail.split('@')[0] : '사용자'),
             email: normEmail,
             emailVerified: true
           }, true);
@@ -7430,7 +7526,7 @@
             authProvider: 'google',
             providerLabel: 'Google 로그인',
             loginId: normEmail || fallbackUser.uid,
-            displayName: fallbackUser.displayName || (normEmail ? normEmail.split('@')[0] : '선생님'),
+            displayName: fallbackUser.displayName || (normEmail ? normEmail.split('@')[0] : '사용자'),
             email: normEmail,
             emailVerified: true
           }, true);
@@ -7444,7 +7540,7 @@
           errCode === 'auth/web-storage-unsupported'
         ) {
           try {
-            showAccountInlineNotice('🔄 작업 내용을 안전하게 임시 보관하고 Google 로그인으로 이동합니다...', false);
+            showAccountInlineNotice('작업 내용을 임시 보관하고 Google 로그인으로 이동합니다...', false);
             if ((this.isAudioRecording || this._stoppingAudioRecordingPromise) && typeof this.stopAudioRecording === 'function') {
               await (this._stoppingAudioRecordingPromise || this.stopAudioRecording({ silentToast: true })).catch(() => { });
             }
@@ -7463,18 +7559,18 @@
           } catch (redirErr) {
             this._isNavigatingForTossPayment = false;
             try { sessionStorage.removeItem('graphly_pending_auth_redirect_v1'); } catch (_) { }
-            showAccountInlineNotice('⚠️ 브라우저 팝업 차단을 해제하거나 아래 [아이디 로그인]을 이용해 주세요.', true);
+            showAccountInlineNotice('브라우저 팝업 차단을 해제하거나 아래 [아이디 로그인]을 이용해 주세요.', true);
             return;
           }
         }
         if (errCode === 'auth/unauthorized-domain') {
           const curHost = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';
-          showAccountInlineNotice(`⚠️ 현재 접속 도메인(${curHost})이 Firebase 승인 도메인에 등록되지 않았습니다.`, true);
+          showAccountInlineNotice(`현재 접속 도메인(${curHost})에서는 Google 로그인을 사용할 수 없습니다.`, true);
           return;
         }
         this.syncCloudAuthUI();
         if (errCode && errCode !== 'auth/popup-closed-by-user' && errCode !== 'auth/cancelled-popup-request') {
-          showAccountInlineNotice(`⚠️ Google 로그인 오류 (${errCode}). 다시 시도하거나 아이디 로그인을 이용해 주세요.`, true);
+          showAccountInlineNotice('Google 로그인 중 오류가 발생했습니다. 다시 시도하거나 아이디 로그인을 이용해 주세요.', true);
         }
         this.showToast('⚠️ 구글 로그인 창이 닫혔거나 취소되었습니다.');
       } finally {
@@ -12370,7 +12466,7 @@
       const lblAudio = document.getElementById('lblCloudShareOptAudio');
 
       if (lblTitle) {
-        lblTitle.textContent = item.title || '수업 노트 공유';
+        lblTitle.textContent = item.title || '공유 링크 · QR';
         lblTitle.title = item.title || '';
       }
 
@@ -12404,14 +12500,14 @@
           );
           if (isPermExisting) {
             lblStatus.className = 'cloud-share-pop-status is-active-perm';
-            lblStatus.innerHTML = `<span class="pop-status-dot"></span><span>발급된 영구 링크 활성 · 수정사항 자동 반영</span>`;
+            lblStatus.innerHTML = `<span class="pop-status-dot"></span><span>영구 링크 사용 중 · 수정 시 자동 반영</span>`;
           } else {
             const expMs = Number((mapEntry && !mapEntry.isPermanent ? mapEntry.expiresAt : 0) || (sig === '1111' ? item._tempShareExpiresAt : 0)) || 0;
             const remDays = expMs > Date.now()
               ? Math.max(1, Math.ceil((expMs - Date.now()) / (24 * 60 * 60 * 1000)))
               : (Number(mapEntry && mapEntry.shareExpiryDays) || (this.getUserSubscriptionTier() === 'pro' ? 7 : 3));
             lblStatus.className = 'cloud-share-pop-status is-active';
-            lblStatus.innerHTML = `<span class="pop-status-dot"></span><span>발급된 링크 활성(${remDays}일 남음) · 수정 자동 반영</span>`;
+            lblStatus.innerHTML = `<span class="pop-status-dot"></span><span>기간 제한 링크 사용 중 (${remDays}일 남음) · 수정 시 자동 반영</span>`;
           }
         } else {
           const quota = typeof this.getCurrentTierQuota === 'function' ? this.getCurrentTierQuota() : null;
@@ -12420,18 +12516,18 @@
             : 'free';
           if (tier === 'premium') {
             lblStatus.className = 'cloud-share-pop-status is-new-perm';
-            lblStatus.innerHTML = `<span class="pop-status-dot"></span><span>영구 링크 발급 · 덮어쓰기 시 기존 QR 자동 반영</span>`;
+            lblStatus.innerHTML = `<span class="pop-status-dot"></span><span>영구 링크 · 저장 시 자동 반영</span>`;
           } else if (tier === 'pro') {
             const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 7;
             lblStatus.className = 'cloud-share-pop-status';
-            lblStatus.innerHTML = `<span class="pop-status-dot"></span><span>${days}일 유효 링크 · 덮어쓰기 시 QR 자동 반영</span>`;
+            lblStatus.innerHTML = `<span class="pop-status-dot"></span><span>기간 제한 링크 (${days}일) · 저장 시 자동 반영</span>`;
           } else {
             const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 3;
             const usage = typeof this.getShareDailyUsageStatus === 'function' ? this.getShareDailyUsageStatus() : null;
             const limit = (usage && usage.dailyLimit) ? usage.dailyLimit : 5;
             const rem = (usage && typeof usage.remainingCount === 'number') ? usage.remainingCount : limit;
             lblStatus.className = 'cloud-share-pop-status';
-            lblStatus.innerHTML = `<span class="pop-status-dot"></span><span>${days}일 유효 · 오늘 ${rem}/${limit}회 남음 · 수정 자동 반영</span>`;
+            lblStatus.innerHTML = `<span class="pop-status-dot"></span><span>기간 제한 링크 (${days}일) · 오늘 ${rem}/${limit}회 남음</span>`;
           }
         }
       }
@@ -13372,16 +13468,16 @@
           : '';
 
         row.innerHTML = `
-        <label class="win-row-chk-wrap" title="체크하여 폴더 선택">
+        <label class="win-row-chk-wrap">
           <input type="checkbox" class="win-explorer-checkbox" ${isSelected ? 'checked' : ''}>
         </label>
-        <div class="win-row-name-col" title="클릭하여 [${safeRowSegName}] 폴더 열기">
+        <div class="win-row-name-col">
           <span class="win-row-icon is-folder-icon">${this._getCloudVaultIconSvg('folderClosed')}</span>
           <span class="win-row-title">${safeRowSegName}</span>
           ${folderCntHtml}
         </div>
         <div class="win-row-act-col">
-          <button type="button" class="btn-cloud-edit-item" title="폴더 이름 바꾸기 (F2)">${this._getCloudVaultIconSvg('renamePencil')}</button>
+          <button type="button" class="btn-cloud-edit-item" title="이름 변경">${this._getCloudVaultIconSvg('renamePencil')}</button>
         </div>
       `;
 
@@ -13517,18 +13613,18 @@
         const isPopoverOpenOnItem = (this._activeCloudSharePopoverItemId === item.id);
         const badgeLabelText = activeShareCount > 1 ? `공유 링크 ${activeShareCount}` : '공유 링크';
         const permLinkBadgeHtml = hasActiveShare
-          ? `<span class="cloud-perm-link-badge" title="${isPermShare ? '영구 공유 링크 연동 파일 (클릭하여 옵션별 링크 복사 · QR 저장)' : '발급된 공유 링크 활성 (클릭하여 옵션별 링크 복사 · QR 저장)'}">${this._getCloudVaultIconSvg('shareBadgeLink')}<span>${badgeLabelText}</span></span>`
+          ? `<span class="cloud-perm-link-badge" title="공유 링크 관리">${this._getCloudVaultIconSvg('shareBadgeLink')}<span>${badgeLabelText}</span></span>`
           : '';
         const itemSizeHtml = (Number(item.byteSize) > 0 && typeof this.formatBytesHuman === 'function')
           ? `<span class="win-row-byte-size">${this.formatBytesHuman(item.byteSize)}</span>`
           : '';
-        const shareBtnTitle = '공유 옵션 선택 · 링크 복사 및 QR 저장';
+        const shareBtnTitle = '공유 링크 · QR';
 
         row.innerHTML = `
-        <label class="win-row-chk-wrap" title="체크하여 다중 선택">
+        <label class="win-row-chk-wrap">
           <input type="checkbox" class="win-explorer-checkbox" ${isSelected ? 'checked' : ''}>
         </label>
-        <div class="win-row-name-col" title="더블클릭하여 칠판에 열기">
+        <div class="win-row-name-col">
           <span class="win-row-icon is-file-icon">${this._getCloudVaultIconSvg('graphlyFile')}</span>
           ${folderBadgeHtml}
           <span class="win-row-title">${safeItemTitle}</span>
@@ -13537,7 +13633,7 @@
         <div class="win-row-act-col">
           ${itemSizeHtml}
           <button type="button" class="btn-cloud-share-item${hasActiveShare ? ' is-link-active' : ''}${isPopoverOpenOnItem ? ' is-popover-open' : ''}" title="${shareBtnTitle}">${this._getCloudVaultIconSvg('shareLink')}</button>
-          <button type="button" class="btn-cloud-edit-item" title="파일 이름 바꾸기 (F2)">${this._getCloudVaultIconSvg('renamePencil')}</button>
+          <button type="button" class="btn-cloud-edit-item" title="이름 변경">${this._getCloudVaultIconSvg('renamePencil')}</button>
         </div>
       `;
 
@@ -13930,6 +14026,12 @@
       }
 
       this.resetBoardAndProblemCardsForNext();
+      if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
+        this.toggleInkMode(true);
+      }
+      if (this.activeInkTool !== 'highlighter') {
+        this.setActiveInkTool('pen');
+      }
       this.audioSyncData = null;
       const nextNum = this.lessonPlaylistSlides.length + 1;
       const blankSlide = this.serializeFullSlideState(String(nextNum));
@@ -14392,9 +14494,7 @@
         lblMenuPickPdf.textContent = isPdfPageMode ? '페이지 선택' : '다음 캡처';
       }
       if (btnAddSlide) {
-        btnAddSlide.title = hasOpenPdf
-          ? (isPdfPageMode ? '캔버스 추가 메뉴 (다음 페이지 / 페이지 선택 / 빈 캔버스)' : '캔버스 추가 메뉴 (다음 캡처 / 빈 캔버스)')
-          : '새 빈 캔버스 추가';
+        btnAddSlide.title = '캔버스 추가';
       }
 
       navBar.style.display = 'flex';
@@ -15078,7 +15178,7 @@
       if (showMsg) {
         const msgEl = document.createElement('span');
         msgEl.className = 'viewer-promo-msg';
-        msgEl.textContent = hasMsg ? clean.messageText : '우리 학원·선생님 한 줄 홍보 문구가 여기에 표시됩니다';
+        msgEl.textContent = hasMsg ? clean.messageText : '한 줄 홍보 문구가 여기에 표시됩니다';
         pill.appendChild(msgEl);
       }
 
@@ -15245,8 +15345,8 @@
       const previewBanner = {
         enabled: true,
         theme: draft.theme || 'slate',
-        badgeText: isSampleEmpty ? '대치 OO수학 · 김수학T' : draft.badgeText,
-        messageText: isSampleEmpty ? '겨울방학 미적분 특강 개강 · 상시 질문 환영' : draft.messageText,
+        badgeText: isSampleEmpty ? 'OO아카데미 · 홍길동' : draft.badgeText,
+        messageText: isSampleEmpty ? '신규 클래스 오픈 · 상시 질문 환영' : draft.messageText,
         ctaLabel: draft.ctaUrl
           ? (draft.ctaLabel || '바로가기')
           : (isSampleEmpty ? (draft.ctaLabel || '상담·블로그') : ''),
@@ -15526,8 +15626,8 @@
           }
 
           if (draft.enabled && !draft.badgeText && !draft.messageText) {
-            this._setPromoModalValidationHint('배너를 켜려면 소속·선생님 이름 또는 한 줄 홍보 문구를 입력해 주세요.');
-            this.showToast('💡 배너를 켜려면 소속/선생님 이름 또는 한 줄 홍보 문구를 입력해 주세요.');
+            this._setPromoModalValidationHint('배너를 켜려면 소속·이름 또는 한 줄 홍보 문구를 입력해 주세요.');
+            this.showToast('배너를 켜려면 소속·이름 또는 한 줄 홍보 문구를 입력해 주세요.');
             if (inpMsg && typeof inpMsg.focus === 'function') inpMsg.focus();
             return;
           }
@@ -15582,18 +15682,18 @@
 
     _getSmartViewerShareTitle(pkg = this._viewerPkg) {
       const rawTitle = (pkg && typeof pkg.title === 'string') ? pkg.title.trim() : '';
-      const isGenericTitle = !rawTitle || /^공유\s*수업/.test(rawTitle);
+      const isGenericTitle = !rawTitle || /^(?:공유\s*(?:수업|노트)|공유된\s*(?:수업\s*)?노트)/.test(rawTitle);
       let baseTitle = rawTitle;
       if (isGenericTitle && pkg && Array.isArray(pkg.playlistSlides) && pkg.playlistSlides.length > 0) {
         const curIdx = Math.max(0, Math.min(pkg.playlistSlides.length - 1, this._viewerSlideIdx || 0));
         const slideTitle = String((pkg.playlistSlides[curIdx] && pkg.playlistSlides[curIdx].slideTitle) || '').trim();
-        if (slideTitle && slideTitle !== '공유된 수업 노트') {
+        if (slideTitle && !/^(?:공유된?\s*(?:수업\s*)?노트|수업\s*노트|노트)$/.test(slideTitle)) {
           baseTitle = pkg.playlistSlides.length > 1
-            ? `${slideTitle} 외 ${pkg.playlistSlides.length - 1}문항`
+            ? `${slideTitle} 외 ${pkg.playlistSlides.length - 1}장`
             : slideTitle;
         }
       }
-      if (!baseTitle) baseTitle = '수학 수업 노트';
+      if (!baseTitle) baseTitle = 'Graphly 노트';
 
       const validBanner = this._getValidViewerPromoBanner(pkg);
       if (validBanner && validBanner.badgeText) {
@@ -15780,10 +15880,10 @@
       const effScope = scope || this.exportScope || 'current';
       const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
       const rawSlides = (effScope === 'all')
-        ? this._getActiveSlidesForExport('공유된 수업 노트')
+        ? this._getActiveSlidesForExport('공유 노트')
         : (this._isCapturingExportSnapshots && this._exportSnapshotLoopBackupCurrent
           ? [JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent))]
-          : [this.serializeFullSlideState('공유된 수업 노트')]);
+          : [this.serializeFullSlideState('공유 노트')]);
       const filteredSlides = rawSlides.map(s => this._applyExportFilterToSlideData(s, effFilter));
 
       await this._populateSlideViewerSnapshotsForExport(filteredSlides, effFilter, true);
@@ -15793,7 +15893,7 @@
         ? this.getCurrentTierQuota()
         : { tier: 'free', isGuest: !(this.cloudUser && this.cloudUser.uid), shareDailyLimit: 5, shareExpiryDays: 3, isPermanentShare: false };
       const isGuest = Boolean(quota.isGuest || !this.cloudUser || !this.cloudUser.uid);
-      // Track A (칠판 [내보내기 / 공유] 즉석 링크): 전 요금제 공통으로 공용저장소 휘발성 단기 링크로 분리 (Guest·Free 3일 / Pro·Premium 7일 후 100% 자동 삭제)
+      // Track A (캔버스 [내보내기 / 공유] 기간 제한 링크): 전 요금제 공통 공용저장소 링크 (Guest·Free 3일 / Pro·Premium 7일 후 자동 삭제)
       const isPaidShortTier = Boolean(!isGuest && (quota.tier === 'pro' || quota.tier === 'premium'));
       const expDays = isPaidShortTier
         ? (Number(quota.shareExpiryDays) > 0 ? Number(quota.shareExpiryDays) : 7)
@@ -15809,8 +15909,8 @@
       return {
         id: shortId,
         title: filteredSlides.length > 1
-          ? `공유 수업 ${filteredSlides.length}문항 세트 (${new Date(nowMs).toLocaleDateString('ko-KR')})`
-          : `공유 수업 노트 (${new Date(nowMs).toLocaleDateString('ko-KR')})`,
+          ? `공유 노트 ${filteredSlides.length}장 (${new Date(nowMs).toLocaleDateString('ko-KR')})`
+          : `공유 노트 (${new Date(nowMs).toLocaleDateString('ko-KR')})`,
         createdAt: nowMs,
         updatedAt: nowMs,
         expiresAt: expiresAtMs,
@@ -16620,12 +16720,12 @@
             <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
           </svg>
         </div>
-        <div style="font-size:17.5px;font-weight:800;margin-bottom:8px;letter-spacing:-0.3px;">일시 잠금된 공유 링크입니다</div>
+        <div style="font-size:17.5px;font-weight:800;margin-bottom:8px;letter-spacing:-0.3px;">열람이 일시 중지된 링크입니다</div>
         <div style="font-size:13px;color:#475569;line-height:1.65;margin-bottom:18px;">
-          작성자의 <strong>Premium 구독</strong>이 만료된 후 유예기간(${graceDays}일)이 지나<br>
-          현재 외부 열람이 일시 중지된 상태입니다.<br>
+          현재 이 링크의 공유가 일시 중지되어<br>
+          내용을 표시할 수 없습니다.<br>
           <span style="display:inline-block;margin-top:6px;font-size:12px;color:#64748b;">
-            (수업 데이터는 삭제되지 않았으며, 작성자가 구독을 갱신하면<br>기존 링크와 QR 코드 그대로 즉시 복구됩니다.)
+            공유자에게 문의해 주세요.
           </span>
         </div>
         <button type="button" id="btnClosePermShareLockModal"
@@ -16666,13 +16766,11 @@
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
         </div>
-        <div style="font-size:17.5px;font-weight:800;margin-bottom:8px;letter-spacing:-0.3px;">일일 열람 트래픽 한도에 도달한 링크입니다</div>
+        <div style="font-size:17.5px;font-weight:800;margin-bottom:8px;letter-spacing:-0.3px;">오늘 열람 가능 인원을 초과했습니다</div>
         <div style="font-size:13px;color:#475569;line-height:1.65;margin-bottom:18px;">
-          무단 대규모 유포 및 서버 과부하 방지를 위해<br>
-          이 공유 링크의 오늘 열람 가능 인원(<strong>일 최대 ${effLim}명</strong>)이 모두 소진되었습니다.<br>
+          이 링크의 일일 열람 한도(<strong>${effLim}명</strong>)에 도달했습니다.<br>
           <span style="display:inline-block;margin-top:7px;font-size:12px;color:#64748b;">
-            매일 자정(00:00)에 열람 한도가 자동으로 초기화됩니다.<br>
-            (Pro 일 100명 · Premium 일 300명 대규모 반 열람 지원)
+            자정(00:00) 이후 다시 확인해 주세요.
           </span>
         </div>
         <button type="button" id="btnCloseShareViewLimitModal"
@@ -16702,8 +16800,8 @@
       }
       const safeDays = Math.max(0, Math.round(Number(expDays) || 0));
       let titleText = '만료되었거나 존재하지 않는 링크입니다';
-      let bodyHtml = `공유 유효기간이 지났거나 삭제되어<br>현재 열람할 수 없는 수업 링크입니다.`;
-      let subHtml = `(링크 주소를 다시 확인하거나 선생님께 새 링크를 요청해 주세요.)`;
+      let bodyHtml = `유효기간이 지났거나 삭제되어<br>현재 열람할 수 없는 공유 링크입니다.`;
+      let subHtml = `링크 주소를 다시 확인하거나 공유자에게 새 링크를 요청해 주세요.`;
       let iconSvg = `
         <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"></circle>
@@ -16715,11 +16813,11 @@
         titleText = '유효기간이 만료된 공유 링크입니다';
         const periodLabel = safeDays > 0 ? `<strong>${safeDays}일</strong>` : '유효기간';
         bodyHtml = `이 공유 링크의 열람 가능 기간(${periodLabel})이 지나<br>더 이상 내용을 확인할 수 없습니다.`;
-        subHtml = `(필요한 경우 선생님께 새로운 공유 링크를 요청해 주세요.)`;
+        subHtml = `필요한 경우 공유자에게 새로운 링크를 요청해 주세요.`;
       } else if (kind === 'deleted') {
         titleText = '삭제된 공유 링크입니다';
-        bodyHtml = `작성자가 보관함에서 원본 노트를 삭제하여<br>더 이상 열람할 수 없는 링크입니다.`;
-        subHtml = `(필요한 경우 선생님께 새로운 공유 링크를 요청해 주세요.)`;
+        bodyHtml = `작성자가 원본 노트를 삭제하여<br>더 이상 열람할 수 없는 링크입니다.`;
+        subHtml = `필요한 경우 공유자에게 새로운 링크를 요청해 주세요.`;
         iconSvg = `
           <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
@@ -16728,9 +16826,9 @@
           </svg>
         `;
       } else if (kind === 'load_error') {
-        titleText = '수업 노트를 불러오지 못했습니다';
+        titleText = '노트를 불러오지 못했습니다';
         bodyHtml = `네트워크 연결이 원활하지 않거나 일시적인 오류로<br>공유 데이터를 불러오지 못했습니다.`;
-        subHtml = `(인터넷 연결 상태를 확인한 뒤 페이지를 새로고침해 주세요.)`;
+        subHtml = `네트워크 상태를 확인한 뒤 새로고침해 주세요.`;
         iconSvg = `
           <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
@@ -17172,7 +17270,7 @@
           const img = document.getElementById('smartNoteViewerImg');
           if (!img || !img.src) return;
           const link = document.createElement('a');
-          link.download = `Graphly_판서노트_${this._viewerSlideIdx + 1}_${Date.now()}.png`;
+          link.download = `Graphly_Note_${this._viewerSlideIdx + 1}_${Date.now()}.png`;
           link.href = img.src;
           link.click();
         };
@@ -17978,7 +18076,7 @@
       if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
         this.saveCurrentSlideIntoPlaylist();
       }
-      const rawSlides = this._getActiveSlidesForExport('수업 노트');
+      const rawSlides = this._getActiveSlidesForExport('노트');
       if (!rawSlides || !rawSlides.length) return;
 
       const previewSlides = this._fastCloneSlideValue(rawSlides).map(s => {
@@ -18574,7 +18672,7 @@
       if (lblCounter) lblCounter.textContent = `${idx + 1} / ${total}`;
       if (btnCounter) {
         btnCounter.style.cursor = total > 1 ? 'pointer' : 'default';
-        btnCounter.title = total > 1 ? '페이지 목록 열기' : '현재 페이지';
+        btnCounter.title = total > 1 ? '페이지 목록' : '현재 페이지';
       }
       if (gridPopover) gridPopover.style.display = 'none';
       if (btnPrev) {
@@ -19097,8 +19195,8 @@
       if (btnZoomFit) {
         const minZ = this._viewerMinZoom || 1.0;
         btnZoomFit.title = (Math.abs(zoom - 1.0) <= 0.02 && minZ < 0.96)
-          ? `한 페이지 전체 맞춤 보기 (${Math.round(minZ * 100)}%)`
-          : '가로폭 맞춤 초기화 (100%)';
+          ? `전체 페이지 맞춤 (${Math.round(minZ * 100)}%)`
+          : '가로폭 맞춤 (100%)';
       }
     }
 

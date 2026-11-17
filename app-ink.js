@@ -1470,6 +1470,13 @@
           this._isAimingDropLine = false;
           const container = this.canvas && this.canvas.parentElement;
           if (container) container.classList.remove('drop-line-active');
+          const restoreDlTool = this._preDropLineInkTool;
+          this._preDropLineInkTool = null;
+          if (restoreDlTool && restoreDlTool !== 'select' && this.isInkMode && this.activeInkTool === 'select' && !this.isGraphSnapMode) {
+            this.setActiveInkTool(restoreDlTool);
+          }
+        } else {
+          this._preDropLineInkTool = null;
         }
         if (this.pipGraphLiveSnap && this.pipGraphLiveSnap.isPipDropLineMode) {
           this.pipGraphLiveSnap.isPipDropLineMode = false;
@@ -1649,6 +1656,9 @@
     }
 
     setActiveInkTool(tool) {
+      if (!this._isSwitchingForDropLine) {
+        this._preDropLineInkTool = null;
+      }
       this.activeInkTool = tool;
 
       // 🌟 [대표님 피드백 반영]: 펜(pen)과 형광펜(highlighter) 전환 시 각자 기억된 전용 색상으로 자동 스왑!

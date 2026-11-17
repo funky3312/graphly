@@ -1653,7 +1653,7 @@
               <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg>
             </span>
           </button>
-          <button type="button" class="card-btn btn-card-stamp" title="현재 문제를 칠판에 영구 박제 후 창 닫기 (무경계 필기 · 취소: 되돌리기 ↺)">
+          <button type="button" class="card-btn btn-card-stamp" title="${typeof this.getStampButtonTooltipText === 'function' ? this.getStampButtonTooltipText(false) : '캔버스에 고정 (S)'}">
             <span style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21h14"/><path d="M19 16v-1a2 2 0 0 0-2-2h-2.5a1.5 1.5 0 0 1-1.5-1.5V8a2 2 0 1 0-4 0v3.5A1.5 1.5 0 0 1 7.5 13H5a2 2 0 0 0-2 2v1h16Z"/></svg></span>
           </button>
           ${restorePageBtnHtml}
@@ -5042,6 +5042,7 @@
       this.isPdfToGraphCropMode = false;
       this.isPdfToGraphCropDragging = false;
       this.stopIntersectionLoop();
+      this._preDropLineInkTool = null;
       if (this.isDropLineMode) {
         this.isDropLineMode = false;
         this.dropLineHoverCandidate = null;
@@ -5649,15 +5650,15 @@
           </div>
         </div>
         <div class="problem-card-actions">
-          <button type="button" class="card-btn btn-card-lock-edit btn-extra-lock unlocked-editing" title="조작 중 — 클릭하면 현재 시야·비율을 고정(잠금)합니다">
+          <button type="button" class="card-btn btn-card-lock-edit btn-extra-lock unlocked-editing" title="시야 잠금">
             <span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;">
               <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg>
             </span>
           </button>
-          <button type="button" class="card-btn card-btn-duplicate btn-extra-duplicate" title="이 그래프 창 복제 (현재 그래프 그대로 새 창 생성)">
+          <button type="button" class="card-btn card-btn-duplicate btn-extra-duplicate" title="창 복제">
             <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
           </button>
-          <button class="card-btn card-btn-restore btn-extra-restore" title="그래프 모드로 크게 열기 (교점·수선·구간분할 등 정밀 편집)">
+          <button class="card-btn card-btn-restore btn-extra-restore" title="크게 열기">
             <span style="display:inline-flex;align-items:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></span>
           </button>
           <button class="card-btn btn-card-close btn-extra-close" title="삭제">
@@ -8748,12 +8749,12 @@
             btnLock.classList.remove('unlocked-editing');
             btnLock.classList.add('locked-confirmed');
             btnLock.innerHTML = '<span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg></span>';
-            btnLock.title = '잠금됨 — 클릭하여 잠금 해제 (핸들 조작 · 축 이동 · 시야 영역 확장)';
+            btnLock.title = '잠금 해제';
           } else {
             btnLock.classList.remove('locked-confirmed');
             btnLock.classList.add('unlocked-editing');
             btnLock.innerHTML = '<span class="card-lock-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg></span>';
-            btnLock.title = '조작 중 — 클릭하여 잠금 (비율 고정 확대/축소 & 여백 드래그로 카드 이동)';
+            btnLock.title = '시야 잠금';
           }
         }
       }
@@ -9927,6 +9928,13 @@
       this.redoStack = [];
       this.updateUndoRedoUI();
 
+      if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
+        this.toggleInkMode(true);
+      }
+      if (this.activeInkTool === 'select' || this.activeInkTool === 'eraser') {
+        this.setActiveInkTool('pen');
+      }
+
       this._inkBakeDirty = true;
       this.requestRender();
 
@@ -10664,6 +10672,9 @@
       if (!this.isInkMode && typeof this.toggleInkMode === 'function') {
         this.toggleInkMode(true);
       }
+      if (this.activeInkTool === 'select' || this.activeInkTool === 'eraser') {
+        this.setActiveInkTool('pen');
+      }
 
       this._inkBakeDirty = true;
       this.render();
@@ -10675,7 +10686,7 @@
         this._recordAudioWorkspaceStateIfNeeded(true);
       }
 
-      this.showToast('📌 문제가 칠판에 박제되었습니다! 경계 없이 자유롭게 필기하세요 (취소: 되돌리기 ↺)');
+      this.showToast('📌 문제가 캔버스에 고정되었습니다.');
       return stampStroke;
     }
 
@@ -12437,7 +12448,7 @@
         btnDropLine = document.createElement('button');
         btnDropLine.type = 'button';
         btnDropLine.className = 'card-btn btn-card-dropline';
-        btnDropLine.title = '보조 수선 그리기 (극점·교점·곡선 위를 콕 찍어 x·y축 점선 수선 표시)';
+        btnDropLine.title = '보조 수선';
         btnDropLine.innerHTML = `
         <span style="display:inline-flex;align-items:center;justify-content:center;">
           <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -12511,7 +12522,7 @@
         btnStamp.className = 'card-btn btn-card-stamp';
         btnStamp.title = (typeof this.getStampButtonTooltipText === 'function')
           ? this.getStampButtonTooltipText(true)
-          : '캔버스에 스탬프 찍기 (현재 그래프·수선을 바닥에 영구 박제)';
+          : '캔버스에 고정 (S)';
         btnStamp.innerHTML = `
         <span style="display:inline-flex;align-items:center;justify-content:center;">
           <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -12552,7 +12563,7 @@
         hdrTools.style.display = 'none';
         hdrTools.innerHTML = `
         <div class="pip-hdr-sym-wrap">
-          <button type="button" class="card-btn pip-hdr-btn pip-hdr-sym-icon" data-pip-act="symMenu" title="대칭 이동 (x축 · y축 · 원점 · y=x)">
+          <button type="button" class="card-btn pip-hdr-btn pip-hdr-sym-icon" data-pip-act="symMenu" title="대칭">
             <svg width="15.5" height="15.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="3.5" x2="12" y2="6.6" stroke-width="1.75" opacity="0.72"></line>
               <line x1="12" y1="10.4" x2="12" y2="13.6" stroke-width="1.75" opacity="0.72"></line>
@@ -12562,15 +12573,15 @@
             </svg>
           </button>
           <div class="pip-hdr-popover" style="display: none;">
-            <button type="button" class="pip-pop-btn" data-pip-act="flipX" title="x축 대칭 (상하 반전)">x축</button>
-            <button type="button" class="pip-pop-btn" data-pip-act="flipY" title="y축 대칭 (좌우 반전)">y축</button>
+            <button type="button" class="pip-pop-btn" data-pip-act="flipX" title="x축 대칭">x축</button>
+            <button type="button" class="pip-pop-btn" data-pip-act="flipY" title="y축 대칭">y축</button>
             <button type="button" class="pip-pop-btn" data-pip-act="flipOrigin" title="원점 대칭">원점</button>
-            <button type="button" class="pip-pop-btn" data-pip-act="flipYX" title="y=x 대칭 (역함수 생성 & 연동)">y=x</button>
-            <button type="button" class="pip-pop-btn pip-pop-unlink" data-pip-act="unlinkInverse" style="display: none;" title="원함수와 역함수 대칭 연동 끊기">✂ 연동끊기</button>
+            <button type="button" class="pip-pop-btn" data-pip-act="flipYX" title="역함수 (y=x)">y=x</button>
+            <button type="button" class="pip-pop-btn pip-pop-unlink" data-pip-act="unlinkInverse" style="display: none;" title="연동 해제">연동 해제</button>
           </div>
         </div>
-        <button type="button" class="card-btn pip-hdr-btn" data-pip-act="abs" title="절댓값 |f(x)| 꺾어올리기 (평행이동 후 다시 누르면 다단계 절댓값 ||f(x)|-k|)">|f|</button>
-        <button type="button" class="card-btn pip-hdr-btn pip-hdr-del" data-pip-act="deleteCurve" title="선택된 함수 삭제">
+        <button type="button" class="card-btn pip-hdr-btn" data-pip-act="abs" title="절댓값">|f|</button>
+        <button type="button" class="card-btn pip-hdr-btn pip-hdr-del" data-pip-act="deleteCurve" title="삭제">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
