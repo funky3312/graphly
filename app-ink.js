@@ -2795,8 +2795,8 @@
         if (rp.y > rawMaxY) rawMaxY = rp.y;
       }
       const rawMaxDim = Math.max(1, rawMaxX - rawMinX, rawMaxY - rawMinY);
-      const startTrimRadius = Math.min(3.5, rawMaxDim * 0.08);
-      const endTrimRadius = Math.min(4.5, rawMaxDim * 0.10);
+      const startTrimRadius = Math.min(3.5, Math.max(1.8, rawMaxDim * 0.10));
+      const endTrimRadius = Math.min(4.5, Math.max(2.6, rawMaxDim * 0.16));
 
       const rawFirst = rawScreenPts[0];
       let trimStartIdx = 0;
@@ -2806,6 +2806,20 @@
       const rawLast = rawScreenPts[rawScreenPts.length - 1];
       let trimEndIdx = rawScreenPts.length - 1;
       while (trimEndIdx > trimStartIdx + 1 && Math.hypot(rawScreenPts[trimEndIdx - 1].x - rawLast.x, rawScreenPts[trimEndIdx - 1].y - rawLast.y) <= endTrimRadius) {
+        // 작은 'ㄴ'·'ㄱ'의 정상적인 두 번째 변이 통째로 잘리지 않도록, 주 진행 방향과 수직으로 3px 이상 뻗은 코너 변은 보존
+        if (rawMaxDim < 24 && trimEndIdx - 1 > trimStartIdx) {
+          const cand = rawScreenPts[trimEndIdx - 1];
+          const dFromStart = Math.hypot(cand.x - rawFirst.x, cand.y - rawFirst.y);
+          const dToLast = Math.hypot(rawLast.x - cand.x, rawLast.y - cand.y);
+          if (dFromStart >= 4.0 && dToLast >= 2.8) {
+            const vx1 = cand.x - rawFirst.x, vy1 = cand.y - rawFirst.y;
+            const vx2 = rawLast.x - cand.x, vy2 = rawLast.y - cand.y;
+            const cosTurn = (vx1 * vx2 + vy1 * vy2) / (dFromStart * dToLast);
+            if (cosTurn > -0.35 && cosTurn < 0.45) {
+              break;
+            }
+          }
+        }
         trimEndIdx--;
       }
 
@@ -2872,7 +2886,7 @@
         if (screenPts[i + 1].y > maxY) maxY = screenPts[i + 1].y;
       }
 
-      if (arcLen < 9) return null;
+      if (arcLen < 7) return null;
 
       const W = Math.max(1, maxX - minX);
       const H = Math.max(1, maxY - minY);
@@ -2887,10 +2901,10 @@
         if (dev > maxLineDev) maxLineDev = dev;
       }
 
-      // --- [1. 직선 판별 (Straight Line & Axis Magnet Snap — 9px+ 짧은 분수선 지원)] ---
-      // 🌟 필기앱 표준 물리 2~3mm(9px) 짧은 분수선(`2/3`)까지 직선 인식을 허용하되,
-      // 단거리(9~30px)에서는 PaleoSketch 직선도(>= 0.90)와 엄격한 수직 이탈 한도를 적용해 작은 글씨(`3`, `ㄴ`) 오인식을 0%로 차단!
-      const isShortLineCand = (chordLen >= 9 && chordLen < 30);
+      // --- [1. 직선 판별 (Straight Line & Axis Magnet Snap — 7px+ 초단거리 분수선 지원)] ---
+      // 🌟 아이패드·액정타블렛 물리 ~1.8mm(7px) 짧은 분수선(`2/3`)까지 직선 인식을 허용하되,
+      // 단거리(7~30px)에서는 PaleoSketch 직선도(>= 0.90)와 엄격한 수직 이탈 한도를 적용해 작은 글씨(`3`, `ㄴ`) 오인식을 0%로 차단!
+      const isShortLineCand = (chordLen >= 7 && chordLen < 30);
       const isLongLineCand = (chordLen >= 30);
       const isStraightLine = isShortLineCand
         ? (straightness >= 0.90 && maxLineDev <= Math.max(2.2, chordLen * 0.085))
@@ -2909,8 +2923,8 @@
 
         const snapAngleThresh = 4.5;
         const diagAngleThresh = 2.0;
-        const isShortHorizSnap = (chordLen < 28 && Math.abs(dy) <= 2.2 && Math.abs(dx) >= 7.5);
-        const isShortVertSnap = (chordLen < 28 && Math.abs(dx) <= 2.2 && Math.abs(dy) >= 7.5);
+        const isShortHorizSnap = (chordLen < 28 && Math.abs(dy) <= 2.2 && Math.abs(dx) >= 5.5);
+        const isShortVertSnap = (chordLen < 28 && Math.abs(dx) <= 2.2 && Math.abs(dy) >= 5.5);
 
         let snapped = null;
         if (absAngle < snapAngleThresh || absAngle > (180 - snapAngleThresh) || isShortHorizSnap) {
@@ -3458,31 +3472,107 @@
       this._inkHoldTimer = setTimeout(checkHold, 340);
     }
 
+    // 🌟 [아이패드 강화유리 홀드 대기(340ms) 중 애플펜슬 미세 미끄러짐·틸트 흔들림 점 정밀 분리]:
+    // 정지 홀드 타이머(340ms)가 시작되기 전 실제 필기 구간(ageMs >= 330ms)의 궤적과 코너('ㄴ', '3')는 100% 보존하고,
+    // 멈춰서 대기하는 홀드 구간(ageMs < 330ms) 동안 정지 지점 주변(6.5px 이내)에서 맴돈 떨림·틸트 점열만 통째로 제거합니다.
+    _stripHoldDwellTailPoints(points, ptTimes, toScreenFn, nowPerf) {
+      if (!Array.isArray(points) || points.length < 3 || !Array.isArray(ptTimes) || ptTimes.length !== points.length) {
+        return { points, trimmedDwell: false };
+      }
+      const M = points.length;
+      if (typeof ptTimes[M - 1] !== 'number' || (nowPerf - ptTimes[M - 1]) >= 330) {
+        return { points, trimmedDwell: false };
+      }
+      const sPts = points.map(toScreenFn);
+
+      // 홀드 대기 구간(ageMs < 330ms) 진입 직전의 마지막 실제 필기 인덱스 탐색
+      let splitIdx = M - 1;
+      while (splitIdx > 1 && typeof ptTimes[splitIdx] === 'number' && (nowPerf - ptTimes[splitIdx]) < 330) {
+        splitIdx--;
+      }
+
+      // 만약 홀드 진입 직후 짧은 관성으로 직선 정방향 전진만 한 점이 있다면 그 끝점까지는 실제 획으로 인정
+      while (splitIdx < M - 1) {
+        const anchor = sPts[splitIdx];
+        const cDx = anchor.x - sPts[0].x;
+        const cDy = anchor.y - sPts[0].y;
+        const cLen = Math.hypot(cDx, cDy);
+        let maxClusterR = 0;
+        let maxForwardProj = 0;
+        for (let j = splitIdx + 1; j < M; j++) {
+          const dx = sPts[j].x - anchor.x;
+          const dy = sPts[j].y - anchor.y;
+          const d = Math.hypot(dx, dy);
+          if (d > maxClusterR) maxClusterR = d;
+          if (cLen > 1.0) {
+            const proj = (dx * cDx + dy * cDy) / cLen;
+            if (proj > maxForwardProj) maxForwardProj = proj;
+          }
+        }
+        if (maxClusterR <= 6.5 && maxForwardProj <= 1.8) {
+          return {
+            points: points.slice(0, splitIdx + 1),
+            trimmedDwell: true
+          };
+        }
+        splitIdx++;
+      }
+      return { points, trimmedDwell: false };
+    }
+
     _onInkHoldTriggered() {
       if (!this.isDrawingInk || !this.currentInkStroke) return;
+      const nowPerf = (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now();
+      const isGraphTarget = (this.currentInkStroke.target !== 'board');
+      const toScr = (pt) => isGraphTarget ? this.mathToScreen(pt.x, pt.y) : this.boardToScreen(pt.x, pt.y);
+      const fromScr = (sp) => isGraphTarget ? this.screenToMath(sp.x, sp.y) : this.screenToBoard(sp.x, sp.y);
+
       let strokeForHold = this.currentInkStroke;
       if (this._pcMainStrokeFairer && typeof this._pcMainStrokeFairer.peekPendingTail === 'function') {
         const extraScreenPts = this._pcMainStrokeFairer.peekPendingTail(this._lastRawInkScreenPos);
         if (extraScreenPts.length > 0) {
-          const isGraphTarget = (this.currentInkStroke.target !== 'board');
           const mergedPts = this.currentInkStroke.points.concat(
             extraScreenPts.map(sp => {
-              const c = isGraphTarget ? this.screenToMath(sp.x, sp.y) : this.screenToBoard(sp.x, sp.y);
+              const c = fromScr(sp);
               return { x: c.x, y: c.y, p: sp.p, t: sp.t };
             })
           );
           strokeForHold = { ...this.currentInkStroke, points: mergedPts };
         }
+      } else if (Array.isArray(this.currentInkStroke.points) && this.currentInkStroke.points.length >= 1) {
+        // 아이패드(비-Fairer) 경로: 홀드 대기 중 쌓인 유리면 미세 떨림 제거 + 스트림라인으로 뒤처진 전진 끝점 복원
+        const stripped = this._stripHoldDwellTailPoints(
+          this.currentInkStroke.points,
+          this.currentInkStroke._ptTimes,
+          toScr,
+          nowPerf
+        );
+        let cleanPts = stripped.points;
+        if (!stripped.trimmedDwell && this._lastRawInkScreenPos && cleanPts.length >= 1) {
+          const sFirst = toScr(cleanPts[0]);
+          const sLast = toScr(cleanPts[cleanPts.length - 1]);
+          const rawTip = this._lastRawInkScreenPos;
+          const tailGap = Math.hypot(rawTip.x - sLast.x, rawTip.y - sLast.y);
+          const isForwardExt = (cleanPts.length === 1) ||
+            (((sLast.x - sFirst.x) * (rawTip.x - sLast.x) + (sLast.y - sFirst.y) * (rawTip.y - sLast.y)) >= 0);
+          if (tailGap >= 0.25 && tailGap <= 5.0 && isForwardExt) {
+            const cEnd = fromScr(rawTip);
+            const lastPtObj = cleanPts[cleanPts.length - 1];
+            cleanPts = cleanPts.concat([{ x: cEnd.x, y: cEnd.y, p: lastPtObj.p, t: lastPtObj.t }]);
+          }
+        }
+        if (cleanPts !== this.currentInkStroke.points) {
+          strokeForHold = { ...this.currentInkStroke, points: cleanPts };
+        }
       }
       const shape = this.recognizeInkShape(strokeForHold);
       if (shape) {
-        const isGraphTarget = (strokeForHold.target !== 'board');
         const shapeP = this._computeRepresentativeShapePressure(
           strokeForHold.points,
           strokeForHold.penStyle || 'ballpen',
           {
             hasHwP: Boolean(this._strokeHasRealPressure),
-            toScreen: (pt) => isGraphTarget ? this.mathToScreen(pt.x, pt.y) : this.boardToScreen(pt.x, pt.y)
+            toScreen: toScr
           }
         );
         shape.p = shapeP;
@@ -3664,6 +3754,7 @@
 
     recognizeAndApplyCardStrokeShape(cardStroke, cardW, cardH) {
       if (!cardStroke || !Array.isArray(cardStroke.points)) return false;
+      const nowPerf = (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now();
       const w = Math.max(1, cardW || 480);
       const h = Math.max(1, cardH || 360);
       let ptsForHold = cardStroke.points.map(pt => ({ x: pt.nx * w, y: pt.ny * h, p: pt.p }));
@@ -3671,6 +3762,25 @@
         const extra = cardStroke._pcFairer.peekPendingTail(cardStroke._lastRawPx);
         if (extra.length > 0) {
           ptsForHold = ptsForHold.concat(extra.map(sp => ({ x: sp.x, y: sp.y, p: sp.p })));
+        }
+      } else if (ptsForHold.length >= 1) {
+        const stripped = this._stripHoldDwellTailPoints(
+          ptsForHold,
+          cardStroke._ptTimes,
+          (pt) => pt,
+          nowPerf
+        );
+        ptsForHold = stripped.points;
+        if (!stripped.trimmedDwell && cardStroke._lastRawPx && ptsForHold.length >= 1) {
+          const sFirst = ptsForHold[0];
+          const sLast = ptsForHold[ptsForHold.length - 1];
+          const rawTip = cardStroke._lastRawPx;
+          const tailGap = Math.hypot(rawTip.x - sLast.x, rawTip.y - sLast.y);
+          const isForwardExt = (ptsForHold.length === 1) ||
+            (((sLast.x - sFirst.x) * (rawTip.x - sLast.x) + (sLast.y - sFirst.y) * (rawTip.y - sLast.y)) >= 0);
+          if (tailGap >= 0.25 && tailGap <= 5.0 && isForwardExt) {
+            ptsForHold = ptsForHold.concat([{ x: rawTip.x, y: rawTip.y, p: sLast.p }]);
+          }
         }
       }
       if (ptsForHold.length < 2) return false;
@@ -5745,6 +5855,7 @@
           );
           stroke._lastMoveP = moveP;
           const readyPts = stroke._pcFairer.pushRaw(rawPxX, rawPxY, moveP, recT);
+          const sampleNow = (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now();
           for (let k = 0; k < readyPts.length; k++) {
             const fPt = readyPts[k];
             stroke.points.push({
@@ -5753,6 +5864,7 @@
               p: fPt.p,
               t: fPt.t
             });
+            if (Array.isArray(stroke._ptTimes)) stroke._ptTimes.push(sampleNow);
             added = true;
           }
           if (typeof stroke._pcFairer.peekLiveTipPoints === 'function') {
@@ -5809,6 +5921,9 @@
           p: moveP,
           t: recT
         });
+        if (Array.isArray(stroke._ptTimes)) {
+          stroke._ptTimes.push((typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now());
+        }
         added = true;
       }
       return added;

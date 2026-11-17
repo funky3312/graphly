@@ -1779,6 +1779,14 @@
             ? [{ x: m.x, y: m.y, p: pressure, t: recT0 }]
             : [{ x: bPt0.x, y: bPt0.y, p: pressure, t: recT0 }]
         };
+        try {
+          Object.defineProperty(this.currentInkStroke, '_ptTimes', {
+            value: [(typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now()],
+            writable: true,
+            configurable: true,
+            enumerable: false
+          });
+        } catch (_) { }
         this.inkStrokes.push(this.currentInkStroke);
         if (isShiftLine) {
           const startCoord = isGraphTarget ? { x: m.x, y: m.y } : { x: bPt0.x, y: bPt0.y };
@@ -2472,7 +2480,7 @@
           this._lastMoveEventScreenPos = { x: pos.x, y: pos.y };
           if (this._inkHoldLastScreenPos) {
             const dHold = Math.hypot(pos.x - this._inkHoldLastScreenPos.x, pos.y - this._inkHoldLastScreenPos.y);
-            if (stepDist > 2.5 || dHold > 8) {
+            if (stepDist > 4.5 || dHold > 8) {
               this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
               this._lastSignificantMoveTime = Date.now();
               if (!this._inkHoldTimer) {
@@ -2572,6 +2580,7 @@
                 this._restoreLiveTipPatch();
               }
               const readyPts = this._pcMainStrokeFairer.pushRaw(pPos.x, pPos.y, pressure, recTMove);
+              const pcPtNow = (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now();
               for (let k = 0; k < readyPts.length; k++) {
                 const fPt = readyPts[k];
                 this._lastInkScreenPos = { x: fPt.x, y: fPt.y };
@@ -2584,6 +2593,7 @@
                   const bPt = this.screenToBoard(fPt.x, fPt.y);
                   this.currentInkStroke.points.push({ x: bPt.x, y: bPt.y, p: fPt.p, t: fPt.t });
                 }
+                if (Array.isArray(this.currentInkStroke._ptTimes)) this.currentInkStroke._ptTimes.push(pcPtNow);
                 addedPoints++;
                 this._liveBezierScreenPts.push({ x: fPt.x, y: fPt.y, p: fPt.p });
                 this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
@@ -2615,6 +2625,9 @@
             } else {
               const bPt = this.screenToBoard(sx, sy);
               this.currentInkStroke.points.push({ x: bPt.x, y: bPt.y, p: pressure, t: recTMove });
+            }
+            if (Array.isArray(this.currentInkStroke._ptTimes)) {
+              this.currentInkStroke._ptTimes.push((typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now());
             }
             addedPoints++;
 

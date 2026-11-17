@@ -2406,6 +2406,14 @@
             tEnd: recT,
             points: [{ nx: pos.nx, ny: pos.ny, p: initP, t: recT }]
           };
+          try {
+            Object.defineProperty(currentStroke, '_ptTimes', {
+              value: [(typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now()],
+              writable: true,
+              configurable: true,
+              enumerable: false
+            });
+          } catch (_) { }
           if (isShiftLine) {
             const shiftShapeP = this._computeRepresentativeShapePressure(
               null,
@@ -2493,7 +2501,7 @@
 
           const holdAnchor = currentStroke._holdAnchorPx || { x: curPxX, y: curPxY };
           const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
-          if (moveStepDist > 2.5 || dHold > 8) {
+          if (moveStepDist > 4.5 || dHold > 8) {
             currentStroke._holdAnchorPx = { x: curPxX, y: curPxY };
             restartProblemHoldTimer(pos.w, pos.h);
           }
@@ -3523,6 +3531,14 @@
             tEnd: recT,
             points: [{ nx, ny, p: initP, t: recT }]
           };
+          try {
+            Object.defineProperty(curExtraStroke, '_ptTimes', {
+              value: [(typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now()],
+              writable: true,
+              configurable: true,
+              enumerable: false
+            });
+          } catch (_) { }
           if (isShiftLine) {
             const shiftShapeP = this._computeRepresentativeShapePressure(
               null,
@@ -3616,7 +3632,7 @@
 
           const holdAnchor = curExtraStroke._holdAnchorPx || { x: curPxX, y: curPxY };
           const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
-          if (moveStepDist > 2.5 || dHold > 8) {
+          if (moveStepDist > 4.5 || dHold > 8) {
             curExtraStroke._holdAnchorPx = { x: curPxX, y: curPxY };
             restartExtraHoldTimer(rw, rh);
           }
@@ -6608,6 +6624,14 @@
             tEnd: recT,
             points: [{ nx: pos.nx, ny: pos.ny, p: initP, t: recT }]
           };
+          try {
+            Object.defineProperty(currentStroke, '_ptTimes', {
+              value: [(typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now()],
+              writable: true,
+              configurable: true,
+              enumerable: false
+            });
+          } catch (_) { }
           if (isShiftLine) {
             const shiftShapeP = this._computeRepresentativeShapePressure(
               null,
@@ -6699,7 +6723,7 @@
 
           const holdAnchor = currentStroke._holdAnchorPx || { x: curPxX, y: curPxY };
           const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
-          if (moveStepDist > 2.5 || dHold > 8) {
+          if (moveStepDist > 4.5 || dHold > 8) {
             currentStroke._holdAnchorPx = { x: curPxX, y: curPxY };
             restartGraphCardHoldTimer(pos.w, pos.h);
           }
