@@ -2346,20 +2346,19 @@
           currentStroke._holdW = w;
           currentStroke._holdH = h;
           if (holdTimer) return;
-          const holdMs = (typeof this.getShapeHoldDelayMs === 'function') ? this.getShapeHoldDelayMs() : 600;
           const checkHold = () => {
             holdTimer = null;
             if (!isDrawingOnProblem || !currentStroke || currentStroke._shapeHoldDetected) return;
             const elapsed = Date.now() - (currentStroke._lastHoldMoveTime || 0);
-            if (elapsed < holdMs - 5) {
-              holdTimer = setTimeout(checkHold, Math.max(16, holdMs - elapsed));
+            if (elapsed < 340) {
+              holdTimer = setTimeout(checkHold, Math.max(16, 340 - elapsed));
               return;
             }
             if (this.recognizeAndApplyCardStrokeShape(currentStroke, currentStroke._holdW || w, currentStroke._holdH || h)) {
               this.renderProblemCardCanvas(currentStroke);
             }
           };
-          holdTimer = setTimeout(checkHold, holdMs);
+          holdTimer = setTimeout(checkHold, 340);
         };
 
         const getNormPos = (e, useCachedRect = false) => {
@@ -2454,12 +2453,6 @@
           try {
             Object.defineProperty(currentStroke, '_ptTimes', {
               value: [(typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now()],
-              writable: true,
-              configurable: true,
-              enumerable: false
-            });
-            Object.defineProperty(currentStroke, '_holdTrackState', {
-              value: this._createInkHoldTrackState(startPxX, startPxY),
               writable: true,
               configurable: true,
               enumerable: false
@@ -2567,19 +2560,13 @@
 
           const curPxX = pos.nx * pos.w;
           const curPxY = pos.ny * pos.h;
+          const prevMovePx = currentStroke._lastMovePx || { x: curPxX, y: curPxY };
+          const moveStepDist = Math.hypot(curPxX - prevMovePx.x, curPxY - prevMovePx.y);
           currentStroke._lastMovePx = { x: curPxX, y: curPxY };
-          if (!currentStroke._holdTrackState) {
-            const initAnchor = currentStroke._holdAnchorPx || { x: curPxX, y: curPxY };
-            try {
-              Object.defineProperty(currentStroke, '_holdTrackState', {
-                value: this._createInkHoldTrackState(initAnchor.x, initAnchor.y),
-                writable: true,
-                configurable: true,
-                enumerable: false
-              });
-            } catch (_) { }
-          }
-          if (this._shouldResetInkHoldOnMove(currentStroke._holdTrackState, curPxX, curPxY, Boolean(holdTimer))) {
+
+          const holdAnchor = currentStroke._holdAnchorPx || { x: curPxX, y: curPxY };
+          const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
+          if (moveStepDist > 4.5 || dHold > 8) {
             currentStroke._holdAnchorPx = { x: curPxX, y: curPxY };
             restartProblemHoldTimer(pos.w, pos.h);
           }
@@ -3536,13 +3523,12 @@
           curExtraStroke._holdW = rw;
           curExtraStroke._holdH = rh;
           if (extraHoldTimer) return;
-          const holdMs = (typeof this.getShapeHoldDelayMs === 'function') ? this.getShapeHoldDelayMs() : 600;
           const checkExtraHold = () => {
             extraHoldTimer = null;
             if (!isDrawingExtraInk || !curExtraStroke || curExtraStroke._shapeHoldDetected) return;
             const elapsed = Date.now() - (curExtraStroke._lastHoldMoveTime || 0);
-            if (elapsed < holdMs - 5) {
-              extraHoldTimer = setTimeout(checkExtraHold, Math.max(16, holdMs - elapsed));
+            if (elapsed < 340) {
+              extraHoldTimer = setTimeout(checkExtraHold, Math.max(16, 340 - elapsed));
               return;
             }
             if (this.recognizeAndApplyCardStrokeShape(curExtraStroke, curExtraStroke._holdW || rw, curExtraStroke._holdH || rh)) {
@@ -3552,7 +3538,7 @@
               renderExtraCardInk(curExtraStroke);
             }
           };
-          extraHoldTimer = setTimeout(checkExtraHold, holdMs);
+          extraHoldTimer = setTimeout(checkExtraHold, 340);
         };
 
         const startExtraCardStroke = (e) => {
@@ -3631,12 +3617,6 @@
           try {
             Object.defineProperty(curExtraStroke, '_ptTimes', {
               value: [(typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now()],
-              writable: true,
-              configurable: true,
-              enumerable: false
-            });
-            Object.defineProperty(curExtraStroke, '_holdTrackState', {
-              value: this._createInkHoldTrackState(startPxX, startPxY),
               writable: true,
               configurable: true,
               enumerable: false
@@ -3749,19 +3729,13 @@
 
           const curPxX = nx * rw;
           const curPxY = ny * rh;
+          const prevMovePx = curExtraStroke._lastMovePx || { x: curPxX, y: curPxY };
+          const moveStepDist = Math.hypot(curPxX - prevMovePx.x, curPxY - prevMovePx.y);
           curExtraStroke._lastMovePx = { x: curPxX, y: curPxY };
-          if (!curExtraStroke._holdTrackState) {
-            const initAnchor = curExtraStroke._holdAnchorPx || { x: curPxX, y: curPxY };
-            try {
-              Object.defineProperty(curExtraStroke, '_holdTrackState', {
-                value: this._createInkHoldTrackState(initAnchor.x, initAnchor.y),
-                writable: true,
-                configurable: true,
-                enumerable: false
-              });
-            } catch (_) { }
-          }
-          if (this._shouldResetInkHoldOnMove(curExtraStroke._holdTrackState, curPxX, curPxY, Boolean(extraHoldTimer))) {
+
+          const holdAnchor = curExtraStroke._holdAnchorPx || { x: curPxX, y: curPxY };
+          const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
+          if (moveStepDist > 4.5 || dHold > 8) {
             curExtraStroke._holdAnchorPx = { x: curPxX, y: curPxY };
             restartExtraHoldTimer(rw, rh);
           }
@@ -6706,13 +6680,12 @@
           currentStroke._holdW = w;
           currentStroke._holdH = h;
           if (graphHoldTimer) return;
-          const holdMs = (typeof this.getShapeHoldDelayMs === 'function') ? this.getShapeHoldDelayMs() : 600;
           const checkGraphHold = () => {
             graphHoldTimer = null;
             if (!isDrawingOnGraphCard || !currentStroke || currentStroke._shapeHoldDetected) return;
             const elapsed = Date.now() - (currentStroke._lastHoldMoveTime || 0);
-            if (elapsed < holdMs - 5) {
-              graphHoldTimer = setTimeout(checkGraphHold, Math.max(16, holdMs - elapsed));
+            if (elapsed < 340) {
+              graphHoldTimer = setTimeout(checkGraphHold, Math.max(16, 340 - elapsed));
               return;
             }
             if (this.recognizeAndApplyCardStrokeShape(currentStroke, currentStroke._holdW || w, currentStroke._holdH || h)) {
@@ -6722,7 +6695,7 @@
               this.renderGraphCardCanvas(currentStroke);
             }
           };
-          graphHoldTimer = setTimeout(checkGraphHold, holdMs);
+          graphHoldTimer = setTimeout(checkGraphHold, 340);
         };
 
         const getNormPos = (e, useCachedRect = false) => {
@@ -6815,12 +6788,6 @@
           try {
             Object.defineProperty(currentStroke, '_ptTimes', {
               value: [(typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now()],
-              writable: true,
-              configurable: true,
-              enumerable: false
-            });
-            Object.defineProperty(currentStroke, '_holdTrackState', {
-              value: this._createInkHoldTrackState(startPxX, startPxY),
               writable: true,
               configurable: true,
               enumerable: false
@@ -6932,19 +6899,13 @@
 
           const curPxX = pos.nx * pos.w;
           const curPxY = pos.ny * pos.h;
+          const prevMovePx = currentStroke._lastMovePx || { x: curPxX, y: curPxY };
+          const moveStepDist = Math.hypot(curPxX - prevMovePx.x, curPxY - prevMovePx.y);
           currentStroke._lastMovePx = { x: curPxX, y: curPxY };
-          if (!currentStroke._holdTrackState) {
-            const initAnchor = currentStroke._holdAnchorPx || { x: curPxX, y: curPxY };
-            try {
-              Object.defineProperty(currentStroke, '_holdTrackState', {
-                value: this._createInkHoldTrackState(initAnchor.x, initAnchor.y),
-                writable: true,
-                configurable: true,
-                enumerable: false
-              });
-            } catch (_) { }
-          }
-          if (this._shouldResetInkHoldOnMove(currentStroke._holdTrackState, curPxX, curPxY, Boolean(graphHoldTimer))) {
+
+          const holdAnchor = currentStroke._holdAnchorPx || { x: curPxX, y: curPxY };
+          const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
+          if (moveStepDist > 4.5 || dHold > 8) {
             currentStroke._holdAnchorPx = { x: curPxX, y: curPxY };
             restartGraphCardHoldTimer(pos.w, pos.h);
           }
