@@ -1185,6 +1185,9 @@
       if (isStylusEraser) {
         this._restoreLiveTipPatch();
         this._isTemporaryStylusEraser = true;
+        if (typeof this._cancelPdfBoardHiResTilePending === 'function') {
+          this._cancelPdfBoardHiResTilePending();
+        }
         this.isDrawingInk = true;
         this.isStylusDrawing = true;
         this._lastEraserScreenPos = { x: pos.x, y: pos.y };
@@ -1743,6 +1746,9 @@
           }
         }
 
+        if (typeof this._cancelPdfBoardHiResTilePending === 'function') {
+          this._cancelPdfBoardHiResTilePending();
+        }
         this.isDrawingInk = true;
         this.isStylusDrawing = true;
         if (this.virtualStylusEl) this.virtualStylusEl.classList.add('drawing');

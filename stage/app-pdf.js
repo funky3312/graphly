@@ -431,6 +431,8 @@
         if (typeof this._isSharedUrlViewActive === 'function' && this._isSharedUrlViewActive()) {
           return;
         }
+        // 🛡️ [아이패드 Safari 부팅 메모리 보호]: 새로고침/초기 부팅 시에는 가벼운 뷰 메타데이터만 복원하고,
+        // 수십~수백 MB 원본 PDF 바이트는 실제 이어 열기(resumeOrOpenCurrentPdf / appendNextPdfPageSlide) 시점에 온디맨드로 로드합니다.
         const meta = this._loadPdfViewStateMeta();
         if (meta) {
           if (meta.fileName && !this.pdfFileName) this.pdfFileName = meta.fileName;
@@ -438,21 +440,6 @@
           if (typeof meta.scrollTop === 'number') this.savedPdfScrollTop = meta.scrollTop;
           if (typeof meta.scrollLeft === 'number') this.savedPdfScrollLeft = meta.scrollLeft;
           if (typeof meta.zoom === 'number' && meta.zoom >= 0.5) this.pdfZoom = meta.zoom;
-        }
-        const cachedRec = await this._loadLastPdfFromIndexedDB();
-        if (cachedRec && cachedRec.bytes && (!this._cachedPdfBytes || !this._cachedPdfBytes.byteLength)) {
-          const rawBytes = cachedRec.bytes;
-          const normBytes = rawBytes instanceof Uint8Array
-            ? rawBytes
-            : (rawBytes instanceof ArrayBuffer ? new Uint8Array(rawBytes) : (rawBytes && rawBytes.buffer ? new Uint8Array(rawBytes.buffer) : null));
-          if (normBytes && normBytes.byteLength > 0) {
-            this._cachedPdfBytes = normBytes;
-            if (cachedRec.fileName) this.pdfFileName = cachedRec.fileName;
-            if (typeof cachedRec.currentPage === 'number' && cachedRec.currentPage >= 1 && !meta) {
-              this.pdfCurrentPage = cachedRec.currentPage;
-            }
-            this.syncLessonPlaylistNavBarUI();
-          }
         }
       } catch (err) { }
     }
@@ -1175,6 +1162,19 @@
     }
 
     async appendNextPdfPageSlide() {
+      if (!this.pdfDoc && (!this._cachedPdfBytes || !this._cachedPdfBytes.byteLength)) {
+        const cachedRec = await this._loadLastPdfFromIndexedDB();
+        if (cachedRec && cachedRec.bytes) {
+          const rawBytes = cachedRec.bytes;
+          const normBytes = rawBytes instanceof Uint8Array
+            ? rawBytes
+            : (rawBytes instanceof ArrayBuffer ? new Uint8Array(rawBytes) : (rawBytes && rawBytes.buffer ? new Uint8Array(rawBytes.buffer) : null));
+          if (normBytes && normBytes.byteLength > 0) {
+            this._cachedPdfBytes = normBytes;
+            if (cachedRec.fileName && !this.pdfFileName) this.pdfFileName = cachedRec.fileName;
+          }
+        }
+      }
       if (!this.pdfDoc && this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0) {
         await this.loadPdfFromArrayBuffer(this._cachedPdfBytes, this.pdfFileName || '교재.pdf', { preserveScroll: true, skipIdbSave: true });
         this.closePdfModal();
@@ -1297,6 +1297,8 @@
       const container = (typeof document !== 'undefined') ? document.getElementById('pdfPagesContainer') : null;
       if (!container) return;
       const keepCenter = this.pdfCurrentPage || 1;
+      const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+      const releaseAllHidden = Boolean(isIOS || this.lessonTeachingMode === 'page');
       const canvases = container.querySelectorAll('.pdf-page-canvas');
       for (let i = 0; i < canvases.length; i++) {
         const cv = canvases[i];
@@ -1316,7 +1318,8 @@
         cv._renderingZoom = null;
 
         const pNum = parseInt((cv.id || '').replace('pdfPageCanvas_', ''), 10);
-        if (pNum && Math.abs(pNum - keepCenter) > 1 && (cv.width > 4 || (this.pdfPageRenderStates && this.pdfPageRenderStates[pNum]))) {
+        const shouldTrim = releaseAllHidden ? Boolean(pNum) : Boolean(pNum && Math.abs(pNum - keepCenter) > 0);
+        if (shouldTrim && (cv.width > 4 || (this.pdfPageRenderStates && this.pdfPageRenderStates[pNum]))) {
           try {
             cv.width = 1;
             cv.height = 1;
@@ -1660,7 +1663,14 @@
       // 🚀 [구형 내장그래픽(Intel HD/UHD) 60fps 무손실 가속 & 정지 시 캡처모드급 초고화질 렌더링]:
       // 카메라가 이동·줌인 중일 때만 경량 Mipmap 텍스처 + 하드웨어 이중선형 보간('medium')으로 랙을 0%로 방어하며,
       // 이동이 멈추는 즉시(정지·판서·내보내기 시) 0.00초 만에 원본 초고해상도(3.4x~4.2x) 캔버스 + 최고 화질('high')로 복원합니다!
-      const isActivelyMovingCamera = !isExport && Boolean(this.isPanning || this._isZoomAnimating || this._pinchState);
+      const isActivelyMovingCamera = !isExport && Boolean(
+        this.isPanning ||
+        this.isBoardPanning ||
+        this._isZoomAnimating ||
+        this._pinchState ||
+        this._isWheelZooming
+      );
+      const isActivelyInkingAny = !isExport && Boolean(this.isDrawingInk || this.isStylusDrawing || this._isDrawingCardInk);
       const snapToCssPixel = !isExport && !isActivelyMovingCamera;
       const drawX = snapToCssPixel ? Math.round(x) : x;
       const drawY = snapToCssPixel ? Math.round(y) : y;
@@ -1678,7 +1688,7 @@
       );
       const sourceTex = canUseMipWithoutBlur ? pageCanvas._mipCanvas : pageCanvas;
 
-      if (isActivelyMovingCamera) {
+      if (isActivelyMovingCamera || isActivelyInkingAny) {
         this._cancelPdfBoardHiResTilePending();
       }
 
@@ -1696,7 +1706,7 @@
       ctx.shadowOffsetY = 0;
 
       ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
+      ctx.imageSmoothingQuality = isActivelyMovingCamera ? 'medium' : 'high';
       if (sourceTex) {
         ctx.drawImage(sourceTex, drawX, drawY, drawW, drawH);
       }
@@ -1719,53 +1729,94 @@
         ctx.restore();
       }
 
-      // 🌟 [고배율(132%~350%) 정지 시 현재 화면 영역만 1:1 원본 벡터 타일로 선명화]:
-      // 전체 페이지 캔버스(2,800px)는 그대로 유지해 기본 100%~132% 이동 중 재렌더링을 0회로 차단하면서,
-      // 고배율 줌/패닝이 멈춘 즉시 화면에 보이는 교집합만 백그라운드 Web Worker로 덮어 그려 350%에서도 칼화질을 보장합니다!
-      if (!isExport && !isActivelyMovingCamera && !this.isDrawingInk && ctx === this.ctx && !this._isRenderingGraphSnapshot) {
+      // 🌟 [고배율(132%~350%) 정지 시 현재 화면 영역만 1:1 원본 벡터 타일로 선명화 & 사파리 메모리 즉시 반환]:
+      // 1) 132% 이하로 줌아웃 시 고배율 타일 버퍼를 0×0으로 즉시 해제하여 WebKit VRAM 고갈 원천 차단
+      // 2) 정규화 좌표(uL,uT,uW,uH) + 96px 오버스캔 적용으로 미세 이동(<96px) 시 재렌더링 0회 및 이동 중 선명 타일 고정
+      if (!isExport && ctx === this.ctx && !this._isRenderingGraphSnapshot) {
         const docUid = this.pdfPageBoardData.pdfDocUid || '';
+        const pageNum = this.pdfPageBoardData.pageNum || 1;
+        const srcPageNum = this.pdfPageBoardData.pdfSourcePageNum || pageNum;
         const liveVecDoc = docUid ? this._getLivePdfDocForUid(docUid) : null;
         const hasLiveVectorDoc = Boolean(liveVecDoc && typeof liveVecDoc.getPage === 'function');
-        const baseTexW = pageCanvas.width || pageCanvas.naturalWidth || 2800;
-        if (hasLiveVectorDoc && (this.zoomLevel || 1.0) > 1.32 && (drawW * effDpr) > (baseTexW * 1.28)) {
-          const sw = Math.max(1, this.screenWidth || window.innerWidth || 1280);
-          const sh = Math.max(1, this.screenHeight || window.innerHeight || 720);
-          const visL = Math.max(0, Math.floor(drawX));
-          const visT = Math.max(0, Math.floor(drawY));
-          const visR = Math.min(sw, Math.ceil(drawX + drawW));
-          const visB = Math.min(sh, Math.ceil(drawY + drawH));
-          const visW = visR - visL;
-          const visH = visB - visT;
-          if (visW > 8 && visH > 8) {
-            const pageNum = this.pdfPageBoardData.pageNum || 1;
-            const srcPageNum = this.pdfPageBoardData.pdfSourcePageNum || pageNum;
-            const tileKey = `${docUid}|${srcPageNum}|${Math.round(drawX * 2)}|${Math.round(drawY * 2)}|${Math.round(drawW * 2)}|${Math.round(drawH * 2)}|${visL}|${visT}|${visW}|${visH}|${Math.round(effDpr * 100)}`;
-            const readyTile = this._pdfBoardHiResTile;
-            if (readyTile && readyTile.key === tileKey && readyTile.canvas && readyTile.canvas.width > 2 && readyTile.canvas.height > 2) {
-              ctx.save();
-              ctx.beginPath();
-              ctx.rect(drawX, drawY, drawW, drawH);
-              ctx.clip();
-              ctx.imageSmoothingEnabled = true;
-              ctx.imageSmoothingQuality = 'high';
-              ctx.drawImage(readyTile.canvas, visL, visT, visW, visH);
-              ctx.restore();
-            } else {
-              this._schedulePdfBoardHiResTile({
-                key: tileKey,
-                docUid,
-                pageNum,
-                srcPageNum,
-                drawX,
-                drawY,
-                drawW,
-                drawH,
-                visL,
-                visT,
-                visW,
-                visH,
-                effDpr
-              });
+        const baseTexW = (pageCanvas && (pageCanvas.width || pageCanvas.naturalWidth)) || 2800;
+        const needsHiResZoom = Boolean(hasLiveVectorDoc && (this.zoomLevel || 1.0) > 1.32 && (drawW * effDpr) > (baseTexW * 1.28));
+
+        if (!needsHiResZoom) {
+          if (this._pdfBoardHiResTile || this._pdfBoardHiResTileTimer || this._pdfBoardHiResTileRenderTask) {
+            this._invalidatePdfBoardHiResTile(true);
+          }
+        } else {
+          const readyTile = this._pdfBoardHiResTile;
+          const hasMatchingDocTile = Boolean(
+            readyTile &&
+            readyTile.docUid === docUid &&
+            readyTile.srcPageNum === srcPageNum &&
+            readyTile.canvas &&
+            readyTile.canvas.width > 2 &&
+            readyTile.canvas.height > 2
+          );
+          if (hasMatchingDocTile) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(drawX, drawY, drawW, drawH);
+            ctx.clip();
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = isActivelyMovingCamera ? 'medium' : 'high';
+            ctx.drawImage(
+              readyTile.canvas,
+              drawX + readyTile.uL * drawW,
+              drawY + readyTile.uT * drawH,
+              readyTile.uW * drawW,
+              readyTile.uH * drawH
+            );
+            ctx.restore();
+          }
+
+          if (!isActivelyMovingCamera && !isActivelyInkingAny) {
+            const sw = Math.max(1, this.screenWidth || window.innerWidth || 1280);
+            const sh = Math.max(1, this.screenHeight || window.innerHeight || 720);
+            const strictL = Math.max(0, Math.floor(-drawX));
+            const strictT = Math.max(0, Math.floor(-drawY));
+            const strictR = Math.min(Math.ceil(drawW), Math.ceil(sw - drawX));
+            const strictB = Math.min(Math.ceil(drawH), Math.ceil(sh - drawY));
+            if ((strictR - strictL) > 8 && (strictB - strictT) > 8) {
+              const zoomCloseEnough = Boolean(
+                hasMatchingDocTile &&
+                readyTile.renderedDrawW > 0 &&
+                Math.abs(drawW - readyTile.renderedDrawW) <= Math.max(2, drawW * 0.035)
+              );
+              const coversStrictViewport = Boolean(
+                zoomCloseEnough &&
+                (readyTile.uL * drawW) <= (strictL + 1.5) &&
+                (readyTile.uT * drawH) <= (strictT + 1.5) &&
+                ((readyTile.uL + readyTile.uW) * drawW) >= (strictR - 1.5) &&
+                ((readyTile.uT + readyTile.uH) * drawH) >= (strictB - 1.5)
+              );
+              if (!coversStrictViewport) {
+                const pad = 96;
+                const localL = Math.max(0, Math.floor(-pad - drawX));
+                const localT = Math.max(0, Math.floor(-pad - drawY));
+                const localR = Math.min(Math.ceil(drawW), Math.ceil(sw + pad - drawX));
+                const localB = Math.min(Math.ceil(drawH), Math.ceil(sh + pad - drawY));
+                const localW = localR - localL;
+                const localH = localB - localT;
+                if (localW > 8 && localH > 8) {
+                  const tileKey = `${docUid}|${srcPageNum}|${Math.round(drawW)}|${localL},${localT},${localW},${localH}|${Math.round(effDpr * 100)}`;
+                  this._schedulePdfBoardHiResTile({
+                    key: tileKey,
+                    docUid,
+                    pageNum,
+                    srcPageNum,
+                    drawW,
+                    drawH,
+                    localL,
+                    localT,
+                    localW,
+                    localH,
+                    effDpr
+                  });
+                }
+              }
             }
           }
         }
@@ -1928,7 +1979,7 @@
       const centerX = 0;
       const centerY = yTopMath - mathH / 2;
 
-      this._invalidatePdfBoardHiResTile(false);
+      this._invalidatePdfBoardHiResTile(true);
 
       this.pdfPageBoardData = {
         pageNum: targetPage,
@@ -2096,12 +2147,17 @@
 
     _invalidatePdfBoardHiResTile(releaseBuffers = false) {
       this._cancelPdfBoardHiResTilePending();
+      const prevTile = this._pdfBoardHiResTile;
       this._pdfBoardHiResTile = null;
+      if (prevTile && prevTile.canvas) {
+        try { prevTile.canvas.width = 0; prevTile.canvas.height = 0; } catch (e) { }
+      }
       if (releaseBuffers) {
         for (const k of ['_pdfBoardHiResCanvasA', '_pdfBoardHiResCanvasB']) {
           const cv = this[k];
           if (cv) {
-            try { cv.width = 1; cv.height = 1; } catch (e) { }
+            try { cv.width = 0; cv.height = 0; } catch (e) { }
+            this[k] = null;
           }
         }
       }
@@ -2117,95 +2173,128 @@
       const token = (this._pdfBoardHiResTileToken || 0) + 1;
       this._pdfBoardHiResTileToken = token;
 
-      this._pdfBoardHiResTileTimer = setTimeout(async () => {
+      const runTileWhenQuiet = () => {
         this._pdfBoardHiResTileTimer = null;
-        const liveVecDoc = req.docUid ? this._getLivePdfDocForUid(req.docUid) : null;
+        if (this._pdfBoardHiResTileToken !== token) return;
+        const sincePenMs = this._lastPenActiveTime ? (Date.now() - this._lastPenActiveTime) : 99999;
         if (
-          this._pdfBoardHiResTileToken !== token ||
-          this.isPdfModalOpen ||
-          !this.pdfPageBoardData ||
-          this.isPanning ||
-          this._pinchState ||
-          this._isZoomAnimating ||
-          !liveVecDoc ||
-          this.pdfPageBoardData.pdfDocUid !== req.docUid ||
-          (this.pdfPageBoardData.pageNum || 1) !== req.pageNum
+          this.isDrawingInk ||
+          this.isStylusDrawing ||
+          this._isDrawingCardInk ||
+          sincePenMs < 380
         ) {
-          if (this._pdfBoardHiResTileInFlightKey === req.key) {
-            this._pdfBoardHiResTileInFlightKey = null;
-          }
+          this._pdfBoardHiResTileTimer = setTimeout(runTileWhenQuiet, 260);
           return;
         }
-
-        try {
-          const page = await liveVecDoc.getPage(req.srcPageNum || req.pageNum || 1);
-          if (this._pdfBoardHiResTileToken !== token || !this.pdfPageBoardData) {
+        (async () => {
+          const liveVecDoc = req.docUid ? this._getLivePdfDocForUid(req.docUid) : null;
+          if (
+            this._pdfBoardHiResTileToken !== token ||
+            this.isPdfModalOpen ||
+            !this.pdfPageBoardData ||
+            this.isPanning ||
+            this.isBoardPanning ||
+            this._pinchState ||
+            this._isZoomAnimating ||
+            this._isWheelZooming ||
+            this.isDrawingInk ||
+            !liveVecDoc ||
+            this.pdfPageBoardData.pdfDocUid !== req.docUid ||
+            (this.pdfPageBoardData.pageNum || 1) !== req.pageNum
+          ) {
             if (this._pdfBoardHiResTileInFlightKey === req.key) {
               this._pdfBoardHiResTileInFlightKey = null;
             }
             return;
           }
 
-          const baseVp = page.getViewport({ scale: 1.0 });
-          let tileDpr = Math.min(2.5, Math.max(1.5, req.effDpr || 2.0));
-          const maxSideScale = 3840 / Math.max(1, req.visW, req.visH);
-          const maxAreaScale = Math.sqrt(12500000 / Math.max(1, req.visW * req.visH));
-          tileDpr = Math.max(1.0, Math.min(tileDpr, maxSideScale, maxAreaScale));
+          let stagingCv = null;
+          try {
+            const page = await liveVecDoc.getPage(req.srcPageNum || req.pageNum || 1);
+            if (this._pdfBoardHiResTileToken !== token || !this.pdfPageBoardData || this.isDrawingInk) {
+              if (this._pdfBoardHiResTileInFlightKey === req.key) {
+                this._pdfBoardHiResTileInFlightKey = null;
+              }
+              return;
+            }
 
-          const tilePxW = Math.max(1, Math.round(req.visW * tileDpr));
-          const tilePxH = Math.max(1, Math.round(req.visH * tileDpr));
-          const vecScale = (req.drawW / Math.max(1, baseVp.width)) * tileDpr;
-          const tileVp = page.getViewport({
-            scale: vecScale,
-            offsetX: (req.drawX - req.visL) * tileDpr,
-            offsetY: (req.drawY - req.visT) * tileDpr
-          });
+            const baseVp = page.getViewport({ scale: 1.0 });
+            const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+            let tileDpr = Math.min(isIOS ? 2.1 : 2.4, Math.max(1.5, req.effDpr || 2.0));
+            const maxSideScale = (isIOS ? 2880 : 3584) / Math.max(1, req.localW, req.localH);
+            const maxAreaScale = Math.sqrt((isIOS ? 6800000 : 10500000) / Math.max(1, req.localW * req.localH));
+            tileDpr = Math.max(1.0, Math.min(tileDpr, maxSideScale, maxAreaScale));
 
-          if (!this._pdfBoardHiResCanvasA) this._pdfBoardHiResCanvasA = document.createElement('canvas');
-          if (!this._pdfBoardHiResCanvasB) this._pdfBoardHiResCanvasB = document.createElement('canvas');
-          const activeCv = this._pdfBoardHiResTile && this._pdfBoardHiResTile.canvas;
-          const stagingCv = (activeCv === this._pdfBoardHiResCanvasA)
-            ? this._pdfBoardHiResCanvasB
-            : this._pdfBoardHiResCanvasA;
+            const tilePxW = Math.max(2, Math.round(req.localW * tileDpr));
+            const tilePxH = Math.max(2, Math.round(req.localH * tileDpr));
+            const effTileDpr = tilePxW / Math.max(1, req.localW);
+            const vecScale = (req.drawW / Math.max(1, baseVp.width)) * effTileDpr;
+            const tileVp = page.getViewport({
+              scale: vecScale,
+              offsetX: -req.localL * effTileDpr,
+              offsetY: -req.localT * effTileDpr
+            });
 
-          stagingCv.width = tilePxW;
-          stagingCv.height = tilePxH;
-          const tCtx = stagingCv.getContext('2d', { alpha: false }) || stagingCv.getContext('2d');
-          if (!tCtx) {
-            this._pdfBoardHiResTileInFlightKey = null;
-            return;
-          }
-          tCtx.fillStyle = '#ffffff';
-          tCtx.fillRect(0, 0, tilePxW, tilePxH);
+            stagingCv = document.createElement('canvas');
+            stagingCv.width = tilePxW;
+            stagingCv.height = tilePxH;
+            const tCtx = stagingCv.getContext('2d', { alpha: false }) || stagingCv.getContext('2d');
+            if (!tCtx) {
+              try { stagingCv.width = 0; stagingCv.height = 0; } catch (_) { }
+              stagingCv = null;
+              this._pdfBoardHiResTileInFlightKey = null;
+              return;
+            }
+            tCtx.fillStyle = '#ffffff';
+            tCtx.fillRect(0, 0, tilePxW, tilePxH);
 
-          const renderTask = page.render({ canvasContext: tCtx, viewport: tileVp });
-          this._pdfBoardHiResTileRenderTask = renderTask;
-          await renderTask.promise;
+            const renderTask = page.render({ canvasContext: tCtx, viewport: tileVp });
+            this._pdfBoardHiResTileRenderTask = renderTask;
+            await renderTask.promise;
 
-          if (this._pdfBoardHiResTileToken !== token) return;
-          this._pdfBoardHiResTileRenderTask = null;
-          this._pdfBoardHiResTileInFlightKey = null;
-          this._pdfBoardHiResTile = {
-            key: req.key,
-            visL: req.visL,
-            visT: req.visT,
-            visW: req.visW,
-            visH: req.visH,
-            canvas: stagingCv
-          };
-          this._hasSceneFreeze = false;
-          if (this.isDrawingInk || this.isStylusDrawing || this._isDrawingCardInk) {
-            this._needsRenderAfterInkStroke = true;
-          } else {
-            this.requestRender();
-          }
-        } catch (err) {
-          if (this._pdfBoardHiResTileToken === token) {
+            if (this._pdfBoardHiResTileToken !== token || !this.pdfPageBoardData) {
+              try { stagingCv.width = 0; stagingCv.height = 0; } catch (_) { }
+              stagingCv = null;
+              return;
+            }
             this._pdfBoardHiResTileRenderTask = null;
             this._pdfBoardHiResTileInFlightKey = null;
+
+            const oldTile = this._pdfBoardHiResTile;
+            const promotedCv = stagingCv;
+            stagingCv = null;
+            this._pdfBoardHiResTile = {
+              key: req.key,
+              docUid: req.docUid,
+              srcPageNum: req.srcPageNum,
+              renderedDrawW: req.drawW,
+              uL: req.localL / Math.max(1, req.drawW),
+              uT: req.localT / Math.max(1, req.drawH),
+              uW: req.localW / Math.max(1, req.drawW),
+              uH: req.localH / Math.max(1, req.drawH),
+              canvas: promotedCv
+            };
+            if (oldTile && oldTile.canvas && oldTile.canvas !== promotedCv) {
+              try { oldTile.canvas.width = 0; oldTile.canvas.height = 0; } catch (_) { }
+            }
+            this._hasSceneFreeze = false;
+            if (!this.isDrawingInk && !this.isStylusDrawing && !this._isDrawingCardInk) {
+              this.requestRender();
+            }
+          } catch (err) {
+            if (stagingCv) {
+              try { stagingCv.width = 0; stagingCv.height = 0; } catch (_) { }
+              stagingCv = null;
+            }
+            if (this._pdfBoardHiResTileToken === token) {
+              this._pdfBoardHiResTileRenderTask = null;
+              this._pdfBoardHiResTileInFlightKey = null;
+            }
           }
-        }
-      }, 75);
+        })();
+      };
+
+      this._pdfBoardHiResTileTimer = setTimeout(runTileWhenQuiet, 220);
     }
 
     closePdfPageBoard() {
@@ -2450,11 +2539,12 @@
         const cssH = (baseVp.height * targetZoom).toFixed(2);
         this._cachedPdfPageCssH = Math.round(baseVp.height * targetZoom);
 
-        // 표준 Retina 해상도 + iOS/iPadOS WebKit 하드웨어 캔버스 한계(4,032px / 15.5MP) 안전 클램프!
+        // 표준 Retina 해상도 + iOS/iPadOS WebKit 하드웨어 캔버스 메모리 상한 안전 클램프!
+        const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
         const dpr = Math.min(2.0, Math.max(1.5, window.devicePixelRatio || 1.5));
         const desiredScale = targetZoom * dpr;
-        const maxSideScale = 4032 / Math.max(1, baseVp.width, baseVp.height);
-        const maxAreaScale = Math.sqrt(15500000 / Math.max(1, baseVp.width * baseVp.height));
+        const maxSideScale = (isIOS ? 2880 : 4032) / Math.max(1, baseVp.width, baseVp.height);
+        const maxAreaScale = Math.sqrt((isIOS ? 6800000 : 15500000) / Math.max(1, baseVp.width * baseVp.height));
         const renderScale = Math.max(1.0, Math.min(desiredScale, maxSideScale, maxAreaScale));
         const viewport = page.getViewport({ scale: renderScale });
         const targetPxW = Math.max(1, Math.round(viewport.width));
@@ -2479,9 +2569,6 @@
         }
         targetSurface.width = targetPxW;
         targetSurface.height = targetPxH;
-        const renderCtx = targetSurface.getContext('2d', { alpha: false }) || targetSurface.getContext('2d');
-        renderCtx.fillStyle = '#ffffff';
-        renderCtx.fillRect(0, 0, targetPxW, targetPxH);
 
         const releaseStaging = () => {
           if (!hasExistingBitmap) return;
@@ -2493,6 +2580,20 @@
             canvas._pdfStagingCanvas = null;
           }
         };
+
+        const renderCtx = targetSurface.getContext('2d', { alpha: false }) || targetSurface.getContext('2d');
+        if (!renderCtx) {
+          releaseStaging();
+          if (canvas._renderToken === renderToken) {
+            canvas._pdfRenderTask = null;
+            canvas._isRenderingPdfPage = false;
+            canvas._renderingZoom = null;
+          }
+          if (onComplete) onComplete();
+          return;
+        }
+        renderCtx.fillStyle = '#ffffff';
+        renderCtx.fillRect(0, 0, targetPxW, targetPxH);
 
         const renderTask = page.render({ canvasContext: renderCtx, viewport });
         canvas._pdfRenderTask = renderTask;
@@ -4162,6 +4263,14 @@
 
     _scheduleSettledCardHiDpiRefresh() {
       if (this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode || this._isDeserializingSlide) return;
+      if (
+        !this.graphCardData &&
+        !this.problemCardData &&
+        !(Array.isArray(this.extraGraphCards) && this.extraGraphCards.length > 0) &&
+        !(Array.isArray(this.extraProblemCards) && this.extraProblemCards.length > 0)
+      ) {
+        return;
+      }
       if (typeof this._isSmartNoteViewerOverlayOpen === 'function' && this._isSmartNoteViewerOverlayOpen()) return;
       if (this._settledCardHiDpiTimer) {
         clearTimeout(this._settledCardHiDpiTimer);

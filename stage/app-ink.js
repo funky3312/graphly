@@ -6601,16 +6601,17 @@
       // 화면 상하좌우 바깥 영역(Overscan Margin)까지 넉넉히 베이크하여
       // 두 손가락 패닝/핀치 중 화면 위·아래·좌·우에서 내려오거나 들어오는 글씨가 절대 잘리지 않도록 보장
       // (단, iPadOS Safari의 단일 캔버스 픽셀 한도 16.7M 픽셀 및 변 길이를 초과하지 않도록 안전 캡 적용)
-      let padX = Math.min(520, Math.round(sw * 0.38));
-      let padY = Math.min(520, Math.round(sh * 0.48));
-      const maxSidePx = Math.max(Math.round(sw * dpr) + 160, Math.round(sh * dpr) + 160, 4000);
+      const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+      let padX = isIOS ? Math.min(220, Math.round(sw * 0.20)) : Math.min(520, Math.round(sw * 0.38));
+      let padY = isIOS ? Math.min(220, Math.round(sh * 0.24)) : Math.min(520, Math.round(sh * 0.48));
+      const maxSidePx = Math.max(Math.round(sw * dpr) + 160, Math.round(sh * dpr) + 160, isIOS ? 3200 : 4000);
       if (Math.round((sw + padX * 2) * dpr) > maxSidePx) {
         padX = Math.max(80, Math.floor((maxSidePx / dpr - sw) / 2));
       }
       if (Math.round((sh + padY * 2) * dpr) > maxSidePx) {
         padY = Math.max(80, Math.floor((maxSidePx / dpr - sh) / 2));
       }
-      const maxTotalPixels = 12500000;
+      const maxTotalPixels = isIOS ? 6400000 : 12500000;
       let totalW = Math.round((sw + padX * 2) * dpr);
       let totalH = Math.round((sh + padY * 2) * dpr);
       if (totalW * totalH > maxTotalPixels) {
@@ -8215,11 +8216,12 @@
         if (gCtx) gCtx.drawImage(this.inkGraphBakeCanvas, 0, 0);
       }
 
+      const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
       const isCompactMem = Boolean(
-        (typeof this.isIOSOrIPad === 'function' && this.isIOSOrIPad()) ||
+        isIOS ||
         (typeof window !== 'undefined' && (window.innerWidth <= 900 || window.innerHeight <= 600))
       );
-      const maxEntries = isCompactMem ? 2 : 4;
+      const maxEntries = isIOS ? 1 : (isCompactMem ? 2 : 4);
       while (this._slideInkBakeLruMap.size >= maxEntries) {
         const oldestKey = this._slideInkBakeLruMap.keys().next().value;
         if (oldestKey === undefined) break;

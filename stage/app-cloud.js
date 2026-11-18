@@ -8393,19 +8393,39 @@
       if (!slideData) return;
       this._viewerCompositeMountedSlide = null;
       this._viewerCompositeSmartBounds = null;
+      if (typeof this._invalidatePdfBoardHiResTile === 'function') {
+        this._invalidatePdfBoardHiResTile(true);
+      }
       this._isDeserializingSlide = true;
       try {
+
+      const releaseCardElCanvases = (rootEl) => {
+        if (!rootEl || typeof rootEl.querySelectorAll !== 'function') return;
+        rootEl.querySelectorAll('canvas').forEach((cv) => {
+          if (cv._bakeCanvas) {
+            try { cv._bakeCanvas.width = 0; cv._bakeCanvas.height = 0; } catch (_) { }
+            cv._bakeCanvas = null;
+          }
+          try { cv.width = 0; cv.height = 0; } catch (_) { }
+        });
+      };
 
       // 기존 추가 카드들 정리
       if (this.extraProblemCards && this.extraProblemCards.length > 0) {
         this.extraProblemCards.forEach(c => {
-          if (c && c.el && c.el.parentNode) c.el.parentNode.removeChild(c.el);
+          if (c && c.el) {
+            releaseCardElCanvases(c.el);
+            if (c.el.parentNode) c.el.parentNode.removeChild(c.el);
+          }
         });
         this.extraProblemCards = [];
       }
       if (this.extraGraphCards && this.extraGraphCards.length > 0) {
         this.extraGraphCards.forEach(c => {
-          if (c && c.el && c.el.parentNode) c.el.parentNode.removeChild(c.el);
+          if (c && c.el) {
+            releaseCardElCanvases(c.el);
+            if (c.el.parentNode) c.el.parentNode.removeChild(c.el);
+          }
         });
         this.extraGraphCards = [];
       }
