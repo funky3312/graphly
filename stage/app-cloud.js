@@ -18479,6 +18479,8 @@
           // 4) 확대 상태(maxPanX > 1) 2D 자유 패닝 후 감속 관성 스크롤(끝단에서는 페이지 자동 넘김 없이 깔끔히 정지)
           if (!isPointerCancel && Math.hypot(releaseVx, releaseVy) >= 0.18) {
             this._startSmartViewerInertia(releaseVx, releaseVy, false);
+          } else {
+            this._applySmartViewerTransform();
           }
         };
 
@@ -19196,7 +19198,34 @@
       return true;
     }
 
-    _renderViewerPdfInkCanvas(canvasEl, slide, targetCssW, targetCssH, isNeighbor = false) {
+    _isStrokeInViewerBox(st, minX, maxX, minY, maxY) {
+      if (!st) return false;
+      if (st.shape || st.isGraphStamp || st.isProblemStamp || !Array.isArray(st.points) || st.points.length === 0) {
+        return true;
+      }
+      let bb = st._vPtsBB;
+      if (!bb || bb.n !== st.points.length) {
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        const pts = st.points;
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i];
+          if (!p) continue;
+          if (p.x < x0) x0 = p.x;
+          if (p.x > x1) x1 = p.x;
+          if (p.y < y0) y0 = p.y;
+          if (p.y > y1) y1 = p.y;
+        }
+        bb = { minX: x0, maxX: x1, minY: y0, maxY: y1, n: pts.length };
+        try {
+          Object.defineProperty(st, '_vPtsBB', { value: bb, writable: true, configurable: true, enumerable: false });
+        } catch (_) {
+          st._vPtsBB = bb;
+        }
+      }
+      return !(bb.maxX < minX || bb.minX > maxX || bb.maxY < minY || bb.minY > maxY);
+    }
+
+    _renderViewerPdfInkCanvas(canvasEl, slide, targetCssW, targetCssH, isNeighbor = false, onlyIfUncovered = false) {
       if (!canvasEl) return;
       if (!slide || !slide._viewerUsesVectorInk || !slide.pdfPageBoardData) {
         if (canvasEl.width > 0 || canvasEl.height > 0) {
@@ -19217,54 +19246,6 @@
         return;
       }
 
-      const isTouchPad = this._isViewerTouchTabletOrMobile();
-      const dpr = isNeighbor ? 1.25 : this.getCanvasDpr();
-      const fullW = Math.max(2, Math.round((targetCssW || 1000) * dpr));
-      const fullH = Math.max(2, Math.round((targetCssH || 1400) * dpr));
-      const maxSide = isNeighbor ? 1440 : (isTouchPad ? 3360 : 4032);
-      const maxArea = isNeighbor ? 1650000 : (isTouchPad ? 7800000 : 12000000);
-      const rawSideScale = Math.min(1.0, maxSide / Math.max(1, fullW, fullH));
-      const rawAreaScale = Math.min(1.0, Math.sqrt(maxArea / Math.max(1, fullW * fullH)));
-      const fullCapScale = Math.min(rawSideScale, rawAreaScale);
-
-      // 🌟 [230%~350% 초고배율에서도 PDF와 100% 동일한 Retina 풀해상도 벡터 필기 타일링]:
-      // 100% 기본 배율(<=105%)에서는 페이지 전체를 단일 캔버스로 그려 세로 스크롤 재렌더링을 0회로 유지하고,
-      // 확대(>105%) 시 전체 크기가 캔버스 한계를 넘으면 현재 뷰포트(+오버스캔)만 풀 DPR로 잘라 그려 iPad WebKit 캔버스 메모리 초과 증발을 원천 차단합니다!
-      let tileL = 0;
-      let tileT = 0;
-      let tileCssW = Math.max(2, Math.round(targetCssW || 1000));
-      let tileCssH = Math.max(2, Math.round(targetCssH || 1400));
-      let effDpr = dpr;
-      const curViewerZoom = this._viewerZoom || 1.0;
-
-      if (!isNeighbor && curViewerZoom > 1.05 && fullCapScale < 0.98) {
-        const vpM = this._getSmartViewerViewportMetrics();
-        const px = Math.round(this._viewerPanX || 0);
-        const py = Math.round(this._viewerPanY || 0);
-        const stLeft = (vpM.rawW * 0.5 + px) - tileCssW * 0.5;
-        const stTop = (vpM.rawH * 0.5 + py) - tileCssH * 0.5;
-        const visL = Math.max(0, -stLeft);
-        const visT = Math.max(0, -stTop);
-        const visR = Math.min(tileCssW, vpM.rawW - stLeft);
-        const visB = Math.min(tileCssH, vpM.rawH - stTop);
-        const pad = isTouchPad ? 192 : ((vpM.rawW * dpr > 2800) ? 160 : 240);
-        const qStep = 128;
-        tileL = Math.max(0, Math.floor((visL - pad) / qStep) * qStep);
-        tileT = Math.max(0, Math.floor((visT - pad) / qStep) * qStep);
-        const tileR = Math.min(tileCssW, Math.ceil((visR + pad) / qStep) * qStep);
-        const tileB = Math.min(tileCssH, Math.ceil((visB + pad) / qStep) * qStep);
-        tileCssW = Math.max(2, tileR - tileL);
-        tileCssH = Math.max(2, tileB - tileT);
-        const tSide = maxSide / Math.max(1, tileCssW * dpr, tileCssH * dpr);
-        const tArea = Math.sqrt(maxArea / Math.max(1, (tileCssW * dpr) * (tileCssH * dpr)));
-        effDpr = dpr * Math.min(1.0, tSide, tArea);
-      } else {
-        effDpr = dpr * fullCapScale;
-      }
-
-      const pxW = Math.max(2, Math.round(tileCssW * effDpr));
-      const pxH = Math.max(2, Math.round(tileCssH * effDpr));
-
       if (!slide._viewerRuntimeUid) {
         const uid = 'vsl_' + (++this._viewerSlideRuntimeSeq || (this._viewerSlideRuntimeSeq = 1));
         try {
@@ -19273,22 +19254,115 @@
           slide._viewerRuntimeUid = uid;
         }
       }
+
+      const isTouchPad = this._isViewerTouchTabletOrMobile();
+      const dpr = isNeighbor ? 1.25 : this.getCanvasDpr();
+      const fullCssW = Math.max(2, Math.round(targetCssW || 1000));
+      const fullCssH = Math.max(2, Math.round(targetCssH || 1400));
+      const fullW = Math.max(2, Math.round(fullCssW * dpr));
+      const fullH = Math.max(2, Math.round(fullCssH * dpr));
+      const maxSide = isNeighbor ? 1440 : 3360;
+      const maxArea = isNeighbor ? 1650000 : 7800000;
+      const rawSideScale = Math.min(1.0, maxSide / Math.max(1, fullW, fullH));
+      const rawAreaScale = Math.min(1.0, Math.sqrt(maxArea / Math.max(1, fullW * fullH)));
+      const fullCapScale = Math.min(rawSideScale, rawAreaScale);
+
+      // 🌟 [230%~350% 초고배율 고정 크기 벡터 필기 타일링 & 패닝 중 GPU 버퍼 재할당 0회 보장]:
+      // 1) 타일 치수(fixedW x fixedH)를 뷰포트 기준으로 고정하여 페이지 상·중·하 어디로 이동해도 canvas.width/height 재할당을 0회로 차단!
+      // 2) 패닝 도중(onlyIfUncovered) 기존 오버스캔 타일이 현재 화면을 아직 덮고 있으면 0.000ms 즉시 리턴!
+      let tileL = 0;
+      let tileT = 0;
+      let tileCssW = fullCssW;
+      let tileCssH = fullCssH;
+      let effDpr = dpr;
+      const curViewerZoom = this._viewerZoom || 1.0;
+      const useSubTile = Boolean(!isNeighbor && curViewerZoom > 1.05 && fullCapScale < 0.98);
+
+      if (useSubTile) {
+        const vpM = this._getSmartViewerViewportMetrics();
+        const px = Math.round(this._viewerPanX || 0);
+        const py = Math.round(this._viewerPanY || 0);
+        const stLeft = (vpM.rawW * 0.5 + px) - fullCssW * 0.5;
+        const stTop = (vpM.rawH * 0.5 + py) - fullCssH * 0.5;
+        const visL = Math.max(0, -stLeft);
+        const visT = Math.max(0, -stTop);
+        const visR = Math.min(fullCssW, vpM.rawW - stLeft);
+        const visB = Math.min(fullCssH, vpM.rawH - stTop);
+
+        if (
+          onlyIfUncovered &&
+          canvasEl.style.display === 'block' &&
+          canvasEl._renderedSlideUid === slide._viewerRuntimeUid &&
+          canvasEl._renderedFullW === fullCssW &&
+          canvasEl._renderedFullH === fullCssH &&
+          typeof canvasEl._tileL === 'number'
+        ) {
+          const curL = canvasEl._tileL;
+          const curT = canvasEl._tileT;
+          const curR = curL + (canvasEl._tileCssW || 0);
+          const curB = curT + (canvasEl._tileCssH || 0);
+          if (curL <= visL + 1 && curT <= visT + 1 && curR >= visR - 1 && curB >= visB - 1) {
+            return;
+          }
+        }
+
+        const pad = isTouchPad ? 224 : 320;
+        const qStep = 256;
+        const fixedW = Math.min(fullCssW, Math.max(2, Math.ceil((vpM.rawW + pad * 2) / qStep) * qStep));
+        const fixedH = Math.min(fullCssH, Math.max(2, Math.ceil((vpM.rawH + pad * 2) / qStep) * qStep));
+        const midX = (visL + visR) * 0.5;
+        const midY = (visT + visB) * 0.5;
+        const rawL = Math.round((midX - fixedW * 0.5) / qStep) * qStep;
+        const rawT = Math.round((midY - fixedH * 0.5) / qStep) * qStep;
+        tileL = Math.max(0, Math.min(Math.max(0, fullCssW - fixedW), rawL));
+        tileT = Math.max(0, Math.min(Math.max(0, fullCssH - fixedH), rawT));
+        tileCssW = fixedW;
+        tileCssH = fixedH;
+        const tSide = maxSide / Math.max(1, tileCssW * dpr, tileCssH * dpr);
+        const tArea = Math.sqrt(maxArea / Math.max(1, (tileCssW * dpr) * (tileCssH * dpr)));
+        effDpr = dpr * Math.min(1.0, tSide, tArea);
+      } else {
+        if (
+          onlyIfUncovered &&
+          canvasEl.style.display === 'block' &&
+          canvasEl._renderedSlideUid === slide._viewerRuntimeUid &&
+          canvasEl._renderedFullW === fullCssW &&
+          canvasEl._renderedFullH === fullCssH
+        ) {
+          return;
+        }
+        effDpr = dpr * fullCapScale;
+      }
+
+      const pxW = Math.max(2, Math.round(tileCssW * effDpr));
+      const pxH = Math.max(2, Math.round(tileCssH * effDpr));
+
       const effFilter = (this._viewerPkg && this._viewerPkg.exportFilter) || null;
-      const renderKey = `${slide._viewerRuntimeUid}|${Math.round(targetCssW)}x${Math.round(targetCssH)}|${tileL},${tileT},${pxW}x${pxH}|${pdfStrokes.length}|${Boolean(effFilter && effFilter.includeInk === false)}`;
+      const renderKey = `${slide._viewerRuntimeUid}|${fullCssW}x${fullCssH}|${tileL},${tileT},${pxW}x${pxH}|${pdfStrokes.length}|${Boolean(effFilter && effFilter.includeInk === false)}`;
       if (canvasEl._renderedKey === renderKey && canvasEl.width === pxW && canvasEl.height === pxH && canvasEl.style.display === 'block') {
         return;
       }
 
-      canvasEl.width = pxW;
-      canvasEl.height = pxH;
+      if (canvasEl.width !== pxW || canvasEl.height !== pxH) {
+        canvasEl.width = pxW;
+        canvasEl.height = pxH;
+      }
       canvasEl.style.left = `${tileL}px`;
       canvasEl.style.top = `${tileT}px`;
       canvasEl.style.width = `${tileCssW}px`;
       canvasEl.style.height = `${tileCssH}px`;
       canvasEl.style.display = 'block';
       canvasEl._renderedKey = renderKey;
+      canvasEl._renderedSlideUid = slide._viewerRuntimeUid;
+      canvasEl._renderedFullW = fullCssW;
+      canvasEl._renderedFullH = fullCssH;
+      canvasEl._tileL = tileL;
+      canvasEl._tileT = tileT;
+      canvasEl._tileCssW = tileCssW;
+      canvasEl._tileCssH = tileCssH;
       const ctx = canvasEl.getContext('2d');
       if (!ctx) return;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, pxW, pxH);
 
       const pbd = slide.pdfPageBoardData;
@@ -19300,7 +19374,7 @@
       const unitScale = (shRef / 2) / Math.max(0.05, ySpan0 / z0);
       const sw = Math.max(10, pbd.mathW * unitScale);
       const sh = Math.max(10, pbd.mathH * unitScale);
-      const stageToMathPx = (targetCssW || 1000) / sw;
+      const stageToMathPx = fullCssW / sw;
       const effScale = stageToMathPx * effDpr;
 
       const saved = {
@@ -19328,16 +19402,34 @@
         this.currentThemeKey = slide.themeKey || 'white_paper';
         this._activeExportFilter = effFilter || { includeProblem: true, includeGraph: true, includeInk: true };
 
+        let cullMinX = -Infinity, cullMaxX = Infinity, cullMinY = -Infinity, cullMaxY = Infinity;
+        const doCull = Boolean(useSubTile && (tileCssW < fullCssW - 2 || tileCssH < fullCssH - 2));
+        if (doCull) {
+          const mTL = this.screenToMath(tileL / stageToMathPx, tileT / stageToMathPx);
+          const mBR = this.screenToMath((tileL + tileCssW) / stageToMathPx, (tileT + tileCssH) / stageToMathPx);
+          const padM = Math.max(0.8, 72 / Math.max(1, unitScale));
+          cullMinX = Math.min(mTL.x, mBR.x) - padM;
+          cullMaxX = Math.max(mTL.x, mBR.x) + padM;
+          cullMinY = Math.min(mTL.y, mBR.y) - padM;
+          cullMaxY = Math.max(mTL.y, mBR.y) + padM;
+        }
+
         ctx.save();
         if (tileL !== 0 || tileT !== 0) {
           ctx.translate(-tileL * effDpr, -tileT * effDpr);
         }
         ctx.scale(effScale, effScale);
         for (let i = 0; i < pdfStrokes.length; i++) {
-          if (pdfStrokes[i].isHighlighter) this.renderSingleStroke(ctx, pdfStrokes[i], null, false);
+          const st = pdfStrokes[i];
+          if (!st || !st.isHighlighter) continue;
+          if (doCull && !this._isStrokeInViewerBox(st, cullMinX, cullMaxX, cullMinY, cullMaxY)) continue;
+          this.renderSingleStroke(ctx, st, null, false);
         }
         for (let i = 0; i < pdfStrokes.length; i++) {
-          if (!pdfStrokes[i].isHighlighter) this.renderSingleStroke(ctx, pdfStrokes[i], null, false);
+          const st = pdfStrokes[i];
+          if (!st || st.isHighlighter) continue;
+          if (doCull && !this._isStrokeInViewerBox(st, cullMinX, cullMaxX, cullMinY, cullMaxY)) continue;
+          this.renderSingleStroke(ctx, st, null, false);
         }
         ctx.restore();
       } finally {
@@ -19356,6 +19448,10 @@
     }
 
     _clearSmartViewerPdfHiResTile(releaseBuffer = false) {
+      if (this._viewerPanSettleTimer) {
+        clearTimeout(this._viewerPanSettleTimer);
+        this._viewerPanSettleTimer = null;
+      }
       if (this._viewerPdfHiResTileTimer) {
         clearTimeout(this._viewerPdfHiResTileTimer);
         this._viewerPdfHiResTileTimer = null;
@@ -19452,6 +19548,7 @@
 
         let pdfOverrideCv = null;
         let stagingCv = null;
+        let savedCompositeInkStrokes = null;
         try {
           if (typeof document !== 'undefined' && document.body) {
             document.body.classList.toggle('theme-light', targetIsLight);
@@ -19548,16 +19645,58 @@
           const sCtx = stagingCv.getContext('2d', { alpha: false }) || stagingCv.getContext('2d');
           if (!sCtx) return null;
 
+          const visCropL = (localX / Math.max(1, zoomedW)) * sw;
+          const visCropT = (localY / Math.max(1, zoomedH)) * sh;
+          const visCropR = ((localX + localW) / Math.max(1, zoomedW)) * sw;
+          const visCropB = ((localY + localH) / Math.max(1, zoomedH)) * sh;
+
+          if ((localW < zoomedW - 4 || localH < zoomedH - 4) && Array.isArray(this.inkStrokes) && this.inkStrokes.length > 24) {
+            savedCompositeInkStrokes = this.inkStrokes;
+            const cullPad = 96;
+            const cMinX = visCropL - cullPad;
+            const cMaxX = visCropR + cullPad;
+            const cMinY = visCropT - cullPad;
+            const cMaxY = visCropB + cullPad;
+            const filteredStrokes = [];
+            for (let i = 0; i < savedCompositeInkStrokes.length; i++) {
+              const st = savedCompositeInkStrokes[i];
+              if (!st) continue;
+              if (st.shape || st.isGraphStamp || st.isProblemStamp || !Array.isArray(st.points) || st.points.length === 0) {
+                filteredStrokes.push(st);
+                continue;
+              }
+              const sbSt = (typeof this._getStrokeScreenBounds === 'function')
+                ? this._getStrokeScreenBounds(st, (st.target || 'board') === 'board')
+                : null;
+              if (!sbSt || !(sbSt.maxX < cMinX || sbSt.minX > cMaxX || sbSt.maxY < cMinY || sbSt.minY > cMaxY)) {
+                filteredStrokes.push(st);
+              }
+            }
+            this.inkStrokes = filteredStrokes;
+          }
+
           sCtx.save();
           sCtx.translate(-localX * effDprX, -localY * effDprY);
           sCtx.scale(vecScaleX, vecScaleY);
+          sCtx.beginPath();
+          sCtx.rect(visCropL - 8, visCropT - 8, (visCropR - visCropL) + 16, (visCropB - visCropT) + 16);
+          sCtx.clip();
           this.render(sCtx, sw, sh, true);
           sCtx.restore();
+
+          if (savedCompositeInkStrokes) {
+            this.inkStrokes = savedCompositeInkStrokes;
+            savedCompositeInkStrokes = null;
+          }
 
           const outCv = stagingCv;
           stagingCv = null;
           return { canvas: outCv, width: tilePxW, height: tilePxH };
         } finally {
+          if (savedCompositeInkStrokes) {
+            this.inkStrokes = savedCompositeInkStrokes;
+            savedCompositeInkStrokes = null;
+          }
           this._exportPdfHiResOverride = null;
           if (pdfOverrideCv) {
             try { pdfOverrideCv.width = 0; pdfOverrideCv.height = 0; } catch (_) { }
@@ -19729,10 +19868,13 @@
               return;
             }
             stagingCv = compRes.canvas;
-            hiResCv.width = compRes.width;
-            hiResCv.height = compRes.height;
+            if (hiResCv.width !== compRes.width || hiResCv.height !== compRes.height) {
+              hiResCv.width = compRes.width;
+              hiResCv.height = compRes.height;
+            }
             const dstCtx = hiResCv.getContext('2d', { alpha: false }) || hiResCv.getContext('2d');
             if (dstCtx) {
+              dstCtx.clearRect(0, 0, compRes.width, compRes.height);
               dstCtx.drawImage(stagingCv, 0, 0);
             }
             hiResCv.style.left = `${localX}px`;
@@ -19779,10 +19921,13 @@
           await renderTask.promise;
           if (this._viewerPdfHiResToken !== token || !this._isSmartNoteViewerOverlayOpen()) return;
 
-          hiResCv.width = tilePxW;
-          hiResCv.height = tilePxH;
+          if (hiResCv.width !== tilePxW || hiResCv.height !== tilePxH) {
+            hiResCv.width = tilePxW;
+            hiResCv.height = tilePxH;
+          }
           const dstCtx = hiResCv.getContext('2d', { alpha: false }) || hiResCv.getContext('2d');
           if (dstCtx) {
+            dstCtx.clearRect(0, 0, tilePxW, tilePxH);
             dstCtx.drawImage(stagingCv, 0, 0);
           }
           hiResCv.style.left = `${localX}px`;
@@ -20131,10 +20276,34 @@
         cancelAnimationFrame(this._viewerPinchSettleRafId);
         this._viewerPinchSettleRafId = null;
       }
+      if (this._viewerPanSettleTimer) {
+        clearTimeout(this._viewerPanSettleTimer);
+        this._viewerPanSettleTimer = null;
+      }
       this._viewerInertiaSpeed = 0;
       this._viewerInertiaVx = 0;
       this._viewerInertiaVy = 0;
       return { wasActive, speed, vx, vy };
+    }
+
+    _scheduleSmartViewerPanSettle(delayMs = 85) {
+      if (this._viewerPanSettleTimer) {
+        clearTimeout(this._viewerPanSettleTimer);
+      }
+      this._viewerPanSettleTimer = setTimeout(() => {
+        this._viewerPanSettleTimer = null;
+        if (!this._isSmartNoteViewerOverlayOpen()) return;
+        if (
+          this._isViewerPinching ||
+          this._viewerActivePointerCount > 0 ||
+          this._viewerInertiaRafId ||
+          this._viewerWheelGlideRafId ||
+          this._viewerPanFrameRafId
+        ) {
+          return;
+        }
+        this._applySmartViewerTransform();
+      }, delayMs);
     }
 
     _animateSmartViewerPinchSettle(fromPanX, fromPanY, toPanX, toPanY) {
@@ -21564,7 +21733,11 @@
         if (use2dFast) {
           if (stage.style.willChange) stage.style.willChange = '';
           stage.style.transform = `translate(calc(-50% + ${Math.round(fpx)}px), calc(-50% + ${Math.round(fpy)}px))`;
-          this._scheduleSmartViewerPdfHiResTile();
+          if (this._viewerPdfHiResTileTimer) {
+            clearTimeout(this._viewerPdfHiResTileTimer);
+            this._viewerPdfHiResTileTimer = null;
+          }
+          this._scheduleSmartViewerPanSettle(85);
           const curSlFast = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides))
             ? this._viewerPkg.playlistSlides[this._viewerSlideIdx || 0]
             : null;
@@ -21572,7 +21745,7 @@
             const mainInkFast = document.getElementById('smartNoteViewerInkCanvas');
             const zwFast = Math.max(2, Math.round(((this._viewerBaseW || 1000) * zoomFast) / 2) * 2);
             const zhFast = Math.max(2, Math.round(((this._viewerBaseH || 700) * zoomFast) / 2) * 2);
-            this._renderViewerPdfInkCanvas(mainInkFast, curSlFast, zwFast, zhFast, false);
+            this._renderViewerPdfInkCanvas(mainInkFast, curSlFast, zwFast, zhFast, false, true);
           }
         } else {
           if (stage.style.willChange !== 'transform') stage.style.willChange = 'transform';
@@ -21582,6 +21755,11 @@
             : `translate3d(calc(-50% + ${Math.round(fpx)}px), calc(-50% + ${Math.round(fpy)}px), 0)`;
         }
         return;
+      }
+
+      if (this._viewerPanSettleTimer) {
+        clearTimeout(this._viewerPanSettleTimer);
+        this._viewerPanSettleTimer = null;
       }
 
       const viewport = document.getElementById('smartNoteViewerViewport');
