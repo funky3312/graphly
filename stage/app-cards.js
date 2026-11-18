@@ -2346,7 +2346,7 @@
           currentStroke._holdW = w;
           currentStroke._holdH = h;
           if (holdTimer) return;
-          const holdMs = (typeof this.getShapeHoldDelayMs === 'function') ? this.getShapeHoldDelayMs() : 600;
+          const holdMs = (typeof this.getShapeHoldDelayMs === 'function') ? this.getShapeHoldDelayMs() : 800;
           const checkHold = () => {
             holdTimer = null;
             if (!isDrawingOnProblem || !currentStroke || currentStroke._shapeHoldDetected) return;
@@ -3536,7 +3536,7 @@
           curExtraStroke._holdW = rw;
           curExtraStroke._holdH = rh;
           if (extraHoldTimer) return;
-          const holdMs = (typeof this.getShapeHoldDelayMs === 'function') ? this.getShapeHoldDelayMs() : 600;
+          const holdMs = (typeof this.getShapeHoldDelayMs === 'function') ? this.getShapeHoldDelayMs() : 800;
           const checkExtraHold = () => {
             extraHoldTimer = null;
             if (!isDrawingExtraInk || !curExtraStroke || curExtraStroke._shapeHoldDetected) return;
@@ -6706,7 +6706,7 @@
           currentStroke._holdW = w;
           currentStroke._holdH = h;
           if (graphHoldTimer) return;
-          const holdMs = (typeof this.getShapeHoldDelayMs === 'function') ? this.getShapeHoldDelayMs() : 600;
+          const holdMs = (typeof this.getShapeHoldDelayMs === 'function') ? this.getShapeHoldDelayMs() : 800;
           const checkGraphHold = () => {
             graphHoldTimer = null;
             if (!isDrawingOnGraphCard || !currentStroke || currentStroke._shapeHoldDetected) return;

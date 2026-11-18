@@ -4352,8 +4352,8 @@
       }
 
       const dHold = Math.hypot(curX - holdState.anchorX, curY - holdState.anchorY);
-      const slopRadius = !isTimerActive ? 1.8 : (holdState.maxReach < 16.0 ? 3.2 : 5.8);
-      if (stepDist > 4.5 || dHold > slopRadius) {
+      const slopRadius = !isTimerActive ? 1.8 : (holdState.maxReach < 16.0 ? 2.8 : 3.8);
+      if (stepDist > 2.8 || dHold > slopRadius) {
         holdState.anchorX = curX;
         holdState.anchorY = curY;
         return true;
@@ -4389,7 +4389,7 @@
     }
 
     getShapeHoldDelayMs() {
-      return 600;
+      return 800;
     }
 
     _startInkHoldTimer() {
