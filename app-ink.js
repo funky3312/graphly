@@ -3419,7 +3419,7 @@
           const boosted = Math.pow(Math.max(0, options.initialHwPressure - 0.03) / 0.73, penStyle === 'brush' ? 0.80 : 0.88);
           return Math.round(Math.max(0.18, Math.min(0.95, boosted)) * 1000) / 1000;
         }
-        return 0.48;
+        return penStyle === 'brush' ? 0.58 : 0.60;
       }
       if (!Array.isArray(points) || points.length === 0) return 0.48;
       const L = points.length;
@@ -3528,8 +3528,178 @@
         stroke._isShiftLine ||
         (typeof stroke.shapeSnapAt === 'number' && typeof stroke.tStart === 'number' && stroke.shapeSnapAt <= stroke.tStart + 1)
       );
-      if (isInstantShift) return 0.48;
+      if (isInstantShift) return penStyle === 'brush' ? 0.58 : 0.60;
       return this._computeRepresentativeShapePressure(stroke.points, penStyle, { hasHwP: Boolean(stroke._hasHwP) });
+    }
+
+    // 🌟 [Shift + 드래그 직선 실측 굵기 1:1 매칭 전용 격리 헬퍼]:
+    // 일반 필기 전역 상태를 전혀 건드리지 않고, 해당 Shift 스트로크의 비열거(_shiftTrack) 로컬 버퍼에서만
+    // computeDynamicStrokePressure + _computeRepresentativeShapePressure(몸통 18~82% 가중 중앙값)를 수행합니다.
+    _initShiftLinePressure(stroke, e, startScreenX, startScreenY, hasHwP = false) {
+      if (!stroke) return 0.5;
+      try {
+        const penStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
+        if (penStyle === 'ballpen' || penStyle === 'flat') return 0.5;
+        const rawP = (e && typeof e.pressure === 'number' && Number.isFinite(e.pressure) && e.pressure > 0)
+          ? e.pressure
+          : 0.5;
+        const realHw = Boolean(hasHwP || (rawP > 0 && Math.abs(rawP - 0.5) > 0.01));
+        if (realHw) stroke._hasHwP = true;
+        const entryP = this._mapInitialStrokePressure(rawP, penStyle, realHw);
+        const initialShapeP = this._computeRepresentativeShapePressure(
+          null,
+          penStyle,
+          { isShiftLine: true, hasHwP: realHw, initialHwPressure: rawP }
+        );
+        const sx = Number.isFinite(startScreenX) ? startScreenX : 0;
+        const sy = Number.isFinite(startScreenY) ? startScreenY : 0;
+        const evTs = (e && typeof e.timeStamp === 'number' && Number.isFinite(e.timeStamp) && e.timeStamp > 0)
+          ? e.timeStamp
+          : 0;
+        Object.defineProperty(stroke, '_shiftTrack', {
+          value: {
+            startX: sx,
+            startY: sy,
+            lastX: sx,
+            lastY: sy,
+            lastTs: evTs,
+            lastP: entryP,
+            hasHwP: realHw,
+            maxRadialDist: 0,
+            samples: [{ x: sx, y: sy, p: entryP }]
+          },
+          writable: true,
+          configurable: true,
+          enumerable: false
+        });
+        return initialShapeP;
+      } catch (_) {
+        return 0.5;
+      }
+    }
+
+    _updateShiftLinePressure(stroke, e, curScreenX, curScreenY, eventToScreenFn = null) {
+      if (!stroke || !stroke._shiftTrack) return;
+      try {
+        const penStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
+        if (penStyle === 'ballpen' || penStyle === 'flat') return;
+        const tr = stroke._shiftTrack;
+        if (!Array.isArray(tr.samples)) return;
+
+        let events = null;
+        if (typeof eventToScreenFn === 'function' && e && typeof e.getCoalescedEvents === 'function') {
+          const inkProfile = (typeof this.getDeviceInkProfile === 'function') ? this.getDeviceInkProfile() : null;
+          if (inkProfile && inkProfile.deviceType === 'pc' && typeof this._selectPcCoalescedEvents === 'function') {
+            events = this._selectPcCoalescedEvents(e, inkProfile);
+          } else if (inkProfile && inkProfile.useCoalescedEvents) {
+            const c = e.getCoalescedEvents();
+            if (c && c.length > 0) events = c;
+          }
+        }
+
+        let updatedSamples = false;
+        const pushStep = (ev, sx, sy) => {
+          if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
+          const stepDist = Math.hypot(sx - tr.lastX, sy - tr.lastY);
+          if (stepDist < 1.2) return;
+
+          const rawP = (ev && typeof ev.pressure === 'number' && Number.isFinite(ev.pressure) && ev.pressure > 0)
+            ? ev.pressure
+            : 0.5;
+          if (!tr.hasHwP && rawP > 0 && Math.abs(rawP - 0.5) > 0.01) {
+            tr.hasHwP = true;
+            stroke._hasHwP = true;
+          }
+          const evTs = (ev && typeof ev.timeStamp === 'number' && Number.isFinite(ev.timeStamp) && ev.timeStamp > 0)
+            ? ev.timeStamp
+            : 0;
+          const dtMs = (evTs > 0 && tr.lastTs > 0 && evTs > tr.lastTs) ? (evTs - tr.lastTs) : null;
+          tr.lastX = sx;
+          tr.lastY = sy;
+          if (evTs > 0) tr.lastTs = evTs;
+
+          let prevPForCalc = tr.lastP;
+          if (tr.hasHwP && tr.samples.length === 1 && rawP > 0) {
+            // 첫 접촉(pointerdown)의 미세 입필 압력이 본 드래그 압력보다 약할 때 짧은 분수선이 가늘어지지 않도록 정렬
+            const boostedFirstMove = Math.min(1.0, Math.max(0.04, Math.pow(Math.max(0, rawP - 0.03) / 0.73, penStyle === 'brush' ? 0.80 : 0.88)));
+            if (boostedFirstMove > prevPForCalc) {
+              prevPForCalc = boostedFirstMove;
+            }
+          }
+
+          const moveP = this.computeDynamicStrokePressure(
+            rawP,
+            tr.hasHwP,
+            stepDist,
+            penStyle,
+            prevPForCalc,
+            tr.samples.length,
+            0,
+            dtMs
+          );
+          tr.lastP = moveP;
+
+          const radialDist = Math.hypot(sx - tr.startX, sy - tr.startY);
+          // 선이 뻗어나가는 전진 확장 구간만 샘플링하여 끝점 스냅 미세 조준(저속 이동) 시 마우스 선 부풀림 원천 차단
+          if (radialDist > tr.maxRadialDist + 1.0 && tr.samples.length < 320) {
+            tr.maxRadialDist = radialDist;
+            tr.samples.push({ x: sx, y: sy, p: moveP });
+            updatedSamples = true;
+          }
+        };
+
+        if (events && events.length > 1 && typeof eventToScreenFn === 'function') {
+          for (let i = 0; i < events.length; i++) {
+            const ev = events[i];
+            const sp = (i === events.length - 1 && Number.isFinite(curScreenX) && Number.isFinite(curScreenY))
+              ? { x: curScreenX, y: curScreenY }
+              : eventToScreenFn(ev);
+            if (sp) pushStep(ev, sp.x, sp.y);
+          }
+        } else {
+          pushStep(e, curScreenX, curScreenY);
+        }
+
+        if (updatedSamples && tr.samples.length >= 2) {
+          const nextShapeP = this._computeRepresentativeShapePressure(
+            tr.samples,
+            penStyle,
+            { hasHwP: tr.hasHwP }
+          );
+          if (typeof nextShapeP === 'number' && Number.isFinite(nextShapeP)) {
+            stroke.shapePressure = nextShapeP;
+            if (stroke.shape) stroke.shape.p = nextShapeP;
+            if (stroke.cardShape) stroke.cardShape.p = nextShapeP;
+          }
+        }
+      } catch (_) { }
+    }
+
+    _finalizeShiftLinePressure(stroke, e, endScreenX, endScreenY, isDotFallback = false) {
+      if (!stroke) return;
+      try {
+        if (!isDotFallback && stroke._shiftTrack && Number.isFinite(endScreenX) && Number.isFinite(endScreenY)) {
+          if (stroke._shiftTrack.samples && stroke._shiftTrack.samples.length < 2) {
+            this._updateShiftLinePressure(stroke, e, endScreenX, endScreenY, null);
+          }
+        }
+        delete stroke._shiftTrack;
+        if (isDotFallback) {
+          delete stroke.shapePressure;
+          return;
+        }
+        const penStyle = stroke.isHighlighter ? 'ballpen' : (stroke.penStyle || 'ballpen');
+        if (penStyle !== 'ballpen' && penStyle !== 'flat') {
+          const finalP = this.getRecognizedShapePressure(stroke);
+          if (typeof finalP === 'number' && Number.isFinite(finalP)) {
+            stroke.shapePressure = finalP;
+            if (stroke.shape) stroke.shape.p = finalP;
+            if (stroke.cardShape) stroke.cardShape.p = finalP;
+          }
+        }
+      } catch (_) {
+        try { delete stroke._shiftTrack; } catch (__e) { }
+      }
     }
 
     _startInkHoldTimer() {

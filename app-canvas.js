@@ -1808,10 +1808,12 @@
         this.inkStrokes.push(this.currentInkStroke);
         if (isShiftLine) {
           const startCoord = isGraphTarget ? { x: m.x, y: m.y } : { x: bPt0.x, y: bPt0.y };
-          const shiftShapeP = this._computeRepresentativeShapePressure(
-            null,
-            this.currentInkStroke.penStyle || 'ballpen',
-            { isShiftLine: true, hasHwP: hasRealHardwarePressure, initialHwPressure: e ? e.pressure : 0.5 }
+          const shiftShapeP = this._initShiftLinePressure(
+            this.currentInkStroke,
+            e,
+            pos.x,
+            pos.y,
+            hasRealHardwarePressure
           );
           this._inkHoldDetected = true;
           this._shiftLineStartScreen = { x: pos.x, y: pos.y };
@@ -2491,6 +2493,9 @@
         } else if (this.currentInkStroke) {
           // 🌟 Draw & Hold 기하 도형 인식 완료 또는 Shift 즉시 직선 상태에서 드래그 중: 동적 크기/각도 실시간 조절!
           if (this._inkHoldDetected && this.currentInkStroke.shape) {
+            if (this.currentInkStroke._isShiftLine) {
+              this._updateShiftLinePressure(this.currentInkStroke, e, pos.x, pos.y, (ev) => getPos(ev));
+            }
             this._updateHeldShape(pos);
             if (this.isAudioRecording) {
               const recTMove = this.getAudioRecordElapsedMs();
@@ -2498,7 +2503,8 @@
               this.recordAudioCursorPoint(pos.x, pos.y, this.currentInkStroke.color, true);
               if (this.currentInkStroke._isShiftLine && this.currentInkStroke.shape.end) {
                 const endPt = this.currentInkStroke.shape.end;
-                this.currentInkStroke.points.push({ x: endPt.x, y: endPt.y, p: 0.55, t: recTMove });
+                const recShiftP = (typeof this.currentInkStroke.shapePressure === 'number') ? this.currentInkStroke.shapePressure : 0.5;
+                this.currentInkStroke.points.push({ x: endPt.x, y: endPt.y, p: recShiftP, t: recTMove });
               } else if (this.currentInkStroke.shape.type === 'line' && this.currentInkStroke.shape.end) {
                 const endPt = this.currentInkStroke.shape.end;
                 const rt = Math.round(recTMove);
@@ -3804,6 +3810,7 @@
         if (finishedStroke && finishedStroke._isShiftLine) {
           delete finishedStroke._isShiftLine;
           let lineDistPx = 0;
+          let shiftEndScr = null;
           if (finishedStroke.shape && finishedStroke.shape.type === 'line' && finishedStroke.shape.start && finishedStroke.shape.end) {
             const isBoardTarget = (finishedStroke.target || 'board') === 'board';
             const s1 = shiftStartScr || (isBoardTarget
@@ -3812,20 +3819,37 @@
             const s2 = isBoardTarget
               ? this.boardToScreen(finishedStroke.shape.end.x, finishedStroke.shape.end.y)
               : this.mathToScreen(finishedStroke.shape.end.x, finishedStroke.shape.end.y);
+            shiftEndScr = s2;
             lineDistPx = Math.hypot(s2.x - s1.x, s2.y - s1.y);
           }
-          if (lineDistPx < 2.5) {
+          const isShiftDotFallback = (lineDistPx < 2.5);
+          this._finalizeShiftLinePressure(
+            finishedStroke,
+            isCancelOrZero ? null : e,
+            shiftEndScr ? shiftEndScr.x : NaN,
+            shiftEndScr ? shiftEndScr.y : NaN,
+            isShiftDotFallback
+          );
+          if (isShiftDotFallback) {
             finishedStroke.shape = null;
             finishedStroke.isShape = false;
             delete finishedStroke.shapeSnapAt;
             this._inkBakeDirty = true;
-          } else if (finishedStroke.shape && finishedStroke.shape.end && Array.isArray(finishedStroke.points) && finishedStroke.points.length <= 1) {
-            finishedStroke.points.push({
-              x: finishedStroke.shape.end.x,
-              y: finishedStroke.shape.end.y,
-              p: 0.55,
-              t: finishedStroke.tEnd
-            });
+          } else {
+            const finalShiftP = (typeof finishedStroke.shapePressure === 'number') ? finishedStroke.shapePressure : 0.5;
+            if (Array.isArray(finishedStroke.points)) {
+              for (let pi = 0; pi < finishedStroke.points.length; pi++) {
+                if (finishedStroke.points[pi]) finishedStroke.points[pi].p = finalShiftP;
+              }
+              if (finishedStroke.shape && finishedStroke.shape.end && finishedStroke.points.length <= 1) {
+                finishedStroke.points.push({
+                  x: finishedStroke.shape.end.x,
+                  y: finishedStroke.shape.end.y,
+                  p: finalShiftP,
+                  t: finishedStroke.tEnd
+                });
+              }
+            }
           }
         }
         this.currentInkStroke = null;

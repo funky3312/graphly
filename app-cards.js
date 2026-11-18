@@ -2459,10 +2459,12 @@
             });
           } catch (_) { }
           if (isShiftLine) {
-            const shiftShapeP = this._computeRepresentativeShapePressure(
-              null,
-              initCardPenStyle,
-              { isShiftLine: true, hasHwP, initialHwPressure: e ? e.pressure : 0.5 }
+            const shiftShapeP = this._initShiftLinePressure(
+              currentStroke,
+              e,
+              startPxX,
+              startPxY,
+              hasHwP
             );
             currentStroke._isShiftLine = true;
             currentStroke.isShape = true;
@@ -2530,6 +2532,21 @@
           }
 
           if (currentStroke._shapeHoldDetected && currentStroke.cardShape) {
+            if (currentStroke._isShiftLine) {
+              const pRect = activeProblemDrawRect;
+              this._updateShiftLinePressure(
+                currentStroke,
+                e,
+                pos.nx * pos.w,
+                pos.ny * pos.h,
+                (pRect && pRect.width > 0)
+                  ? (ev) => ({
+                    x: Math.max(0, Math.min(1, (ev.clientX - pRect.left) / pos.w)) * pos.w,
+                    y: Math.max(0, Math.min(1, (ev.clientY - pRect.top) / pos.h)) * pos.h
+                  })
+                  : null
+              );
+            }
             if (this.updateHeldCardStrokeShape(currentStroke, pos.nx, pos.ny, pos.w, pos.h)) {
               const shapeStrokeRef = currentStroke;
               this._scheduleCardLiveFrameRender(pCanvas, () => {
@@ -2614,13 +2631,22 @@
                 const upNx = Math.max(0, Math.min(1, (e.clientX - endRect.left) / rw));
                 const upNy = Math.max(0, Math.min(1, (e.clientY - endRect.top) / rh));
                 if (Math.hypot((upNx - sh.start.nx) * rw, (upNy - sh.start.ny) * rh) >= 2.5) {
+                  this._updateShiftLinePressure(finishedCardStroke, e, upNx * rw, upNy * rh, null);
                   this.updateHeldCardStrokeShape(finishedCardStroke, upNx, upNy, rw, rh);
                 }
               }
               const distPx = (sh && sh.type === 'line' && sh.start && sh.end)
                 ? Math.hypot((sh.end.nx - sh.start.nx) * rw, (sh.end.ny - sh.start.ny) * rh)
                 : 0;
-              if (distPx < 2.5) {
+              const isDotFallback = (distPx < 2.5);
+              this._finalizeShiftLinePressure(
+                finishedCardStroke,
+                isCancelOrZero ? null : e,
+                (sh && sh.end) ? (sh.end.nx * rw) : NaN,
+                (sh && sh.end) ? (sh.end.ny * rh) : NaN,
+                isDotFallback
+              );
+              if (isDotFallback) {
                 finishedCardStroke.isShape = false;
                 finishedCardStroke.cardShape = null;
                 finishedCardStroke._shapeHoldDetected = false;
@@ -3597,10 +3623,12 @@
             });
           } catch (_) { }
           if (isShiftLine) {
-            const shiftShapeP = this._computeRepresentativeShapePressure(
-              null,
-              initExtraPenStyle,
-              { isShiftLine: true, hasHwP, initialHwPressure: e ? e.pressure : 0.5 }
+            const shiftShapeP = this._initShiftLinePressure(
+              curExtraStroke,
+              e,
+              startPxX,
+              startPxY,
+              hasHwP
             );
             curExtraStroke._isShiftLine = true;
             curExtraStroke.isShape = true;
@@ -3672,6 +3700,20 @@
           }
 
           if (curExtraStroke._shapeHoldDetected && curExtraStroke.cardShape) {
+            if (curExtraStroke._isShiftLine) {
+              this._updateShiftLinePressure(
+                curExtraStroke,
+                e,
+                nx * rw,
+                ny * rh,
+                (rect && rect.width > 0)
+                  ? (ev) => ({
+                    x: Math.max(0, Math.min(1, (ev.clientX - rect.left) / rw)) * rw,
+                    y: Math.max(0, Math.min(1, (ev.clientY - rect.top) / rh)) * rh
+                  })
+                  : null
+              );
+            }
             if (this.updateHeldCardStrokeShape(curExtraStroke, nx, ny, rw, rh)) {
               const shapeStrokeRef = curExtraStroke;
               this._scheduleCardLiveFrameRender(extraInkCanvas, () => {
@@ -3755,13 +3797,22 @@
                 const upNx = Math.max(0, Math.min(1, (e.clientX - endRect.left) / rw));
                 const upNy = Math.max(0, Math.min(1, (e.clientY - endRect.top) / rh));
                 if (Math.hypot((upNx - sh.start.nx) * rw, (upNy - sh.start.ny) * rh) >= 2.5) {
+                  this._updateShiftLinePressure(finishedSt, e, upNx * rw, upNy * rh, null);
                   this.updateHeldCardStrokeShape(finishedSt, upNx, upNy, rw, rh);
                 }
               }
               const distPx = (sh && sh.type === 'line' && sh.start && sh.end)
                 ? Math.hypot((sh.end.nx - sh.start.nx) * rw, (sh.end.ny - sh.start.ny) * rh)
                 : 0;
-              if (distPx < 2.5) {
+              const isDotFallback = (distPx < 2.5);
+              this._finalizeShiftLinePressure(
+                finishedSt,
+                isCancelOrZero ? null : e,
+                (sh && sh.end) ? (sh.end.nx * rw) : NaN,
+                (sh && sh.end) ? (sh.end.ny * rh) : NaN,
+                isDotFallback
+              );
+              if (isDotFallback) {
                 finishedSt.isShape = false;
                 finishedSt.cardShape = null;
                 finishedSt._shapeHoldDetected = false;
@@ -6743,10 +6794,12 @@
             });
           } catch (_) { }
           if (isShiftLine) {
-            const shiftShapeP = this._computeRepresentativeShapePressure(
-              null,
-              initGraphCardPenStyle,
-              { isShiftLine: true, hasHwP, initialHwPressure: e ? e.pressure : 0.5 }
+            const shiftShapeP = this._initShiftLinePressure(
+              currentStroke,
+              e,
+              startPxX,
+              startPxY,
+              hasHwP
             );
             currentStroke._isShiftLine = true;
             currentStroke.isShape = true;
@@ -6816,6 +6869,21 @@
           }
 
           if (currentStroke._shapeHoldDetected && currentStroke.cardShape) {
+            if (currentStroke._isShiftLine) {
+              const gRect = activeGraphDrawRect;
+              this._updateShiftLinePressure(
+                currentStroke,
+                e,
+                pos.nx * pos.w,
+                pos.ny * pos.h,
+                (gRect && gRect.width > 0)
+                  ? (ev) => ({
+                    x: Math.max(0, Math.min(1, (ev.clientX - gRect.left) / pos.w)) * pos.w,
+                    y: Math.max(0, Math.min(1, (ev.clientY - gRect.top) / pos.h)) * pos.h
+                  })
+                  : null
+              );
+            }
             if (this.updateHeldCardStrokeShape(currentStroke, pos.nx, pos.ny, pos.w, pos.h)) {
               const shapeStrokeRef = currentStroke;
               this._scheduleCardLiveFrameRender(gCanvas, () => {
@@ -6901,13 +6969,22 @@
                 const upNx = Math.max(0, Math.min(1, (e.clientX - endRect.left) / rw));
                 const upNy = Math.max(0, Math.min(1, (e.clientY - endRect.top) / rh));
                 if (Math.hypot((upNx - sh.start.nx) * rw, (upNy - sh.start.ny) * rh) >= 2.5) {
+                  this._updateShiftLinePressure(finishedCardStroke, e, upNx * rw, upNy * rh, null);
                   this.updateHeldCardStrokeShape(finishedCardStroke, upNx, upNy, rw, rh);
                 }
               }
               const distPx = (sh && sh.type === 'line' && sh.start && sh.end)
                 ? Math.hypot((sh.end.nx - sh.start.nx) * rw, (sh.end.ny - sh.start.ny) * rh)
                 : 0;
-              if (distPx < 2.5) {
+              const isDotFallback = (distPx < 2.5);
+              this._finalizeShiftLinePressure(
+                finishedCardStroke,
+                isCancelOrZero ? null : e,
+                (sh && sh.end) ? (sh.end.nx * rw) : NaN,
+                (sh && sh.end) ? (sh.end.ny * rh) : NaN,
+                isDotFallback
+              );
+              if (isDotFallback) {
                 finishedCardStroke.isShape = false;
                 finishedCardStroke.cardShape = null;
                 finishedCardStroke._shapeHoldDetected = false;
