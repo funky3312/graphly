@@ -2601,8 +2601,9 @@
               }
               if (rawDist < minRawDist) continue;
 
-              // 🛡️ [역주행 점프 컷오프 (Monotonic Forward Guard)]:
-              if (this._prevRawInkScreenPos && rawDist < inkProfile.forwardGuardMaxDist) {
+              const rawPressSample = (typeof ev.pressure === 'number') ? ev.pressure : 0.5;
+              // 🛡️ [역주행 점프 및 펜 리프트오프 호버 스파이크 컷오프]:
+              if (this._prevRawInkScreenPos) {
                 const vxPrev = lastRaw.x - this._prevRawInkScreenPos.x;
                 const vyPrev = lastRaw.y - this._prevRawInkScreenPos.y;
                 const vxNew = pPos.x - lastRaw.x;
@@ -2610,8 +2611,63 @@
                 const lenPrev = Math.hypot(vxPrev, vyPrev);
                 if (lenPrev > 0.35) {
                   const cosAngle = (vxPrev * vxNew + vyPrev * vyNew) / (lenPrev * rawDist);
-                  if (cosAngle < inkProfile.forwardGuardMinCos) {
+                  if (rawDist < inkProfile.forwardGuardMaxDist && cosAngle < inkProfile.forwardGuardMinCos) {
                     continue;
+                  }
+                  // 펜을 화면에서 떼는 찰나 압력이 거의 0으로 빠지며 옆/뒤로 튀는 호버 스파이크 차단
+                  if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= 0.12 && rawDist < 4.2 && cosAngle < 0.65) {
+                    continue;
+                  }
+                }
+              }
+
+              // ✂️ [아이패드 애플펜슬 유리면 입필 삐침(Touch-Down Hook) 1회 정밀 절제]:
+              // 첫 착지 구간(p0 -> p1 <= 4.8px, 아직 캔버스에 미렌더링)이 실제 획 진행 방향(p1 -> p2)과 38° 이상(cos < 0.78) 꺾여 있으면
+              // 유리면 착지 미끄러짐/틸트 수렴 오차로 생긴 p0 꼬리를 도려내고 p1을 깔끔한 새 시작점(points[0])으로 재고정!
+              if (
+                e.pointerType === 'pen' &&
+                inkProfile.touchDownHookMaxLen > 0 &&
+                this.currentInkStroke &&
+                !this.currentInkStroke.isHighlighter &&
+                !this.currentInkStroke._drewLiveFirstHalf &&
+                !this.currentInkStroke._didTouchDownHookTrim &&
+                this._liveBezierScreenPts &&
+                this._liveBezierScreenPts.length === 2 &&
+                Array.isArray(this.currentInkStroke.points) &&
+                this.currentInkStroke.points.length === 2 &&
+                rawDist >= 1.4
+              ) {
+                const sp0 = this._liveBezierScreenPts[0];
+                const sp1 = this._liveBezierScreenPts[1];
+                const v01x = sp1.x - sp0.x;
+                const v01y = sp1.y - sp0.y;
+                const len01 = Math.hypot(v01x, v01y);
+                if (len01 > 0.25 && len01 <= inkProfile.touchDownHookMaxLen) {
+                  const v12x = pPos.x - sp1.x;
+                  const v12y = pPos.y - sp1.y;
+                  const len12 = Math.hypot(v12x, v12y);
+                  if (len12 >= 1.4) {
+                    const cosHook = (v01x * v12x + v01y * v12y) / (len01 * len12);
+                    if (cosHook < 0.78) {
+                      this._liveBezierScreenPts[0] = sp1;
+                      this._liveBezierScreenPts.pop();
+                      this.currentInkStroke.points[0] = this.currentInkStroke.points[1];
+                      this.currentInkStroke.points.pop();
+                      if (Array.isArray(this.currentInkStroke._ptTimes) && this.currentInkStroke._ptTimes.length >= 2) {
+                        this.currentInkStroke._ptTimes[0] = this.currentInkStroke._ptTimes[1];
+                        this.currentInkStroke._ptTimes.pop();
+                      }
+                      this._lastInkScreenPos = { x: sp1.x, y: sp1.y };
+                      this._prevRawInkScreenPos = { x: sp1.x, y: sp1.y };
+                      try {
+                        Object.defineProperty(this.currentInkStroke, '_didTouchDownHookTrim', {
+                          value: true,
+                          writable: true,
+                          configurable: true,
+                          enumerable: false
+                        });
+                      } catch (_) { }
+                    }
                   }
                 }
               }
@@ -3750,17 +3806,17 @@
             const lastSmoothed = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
             const tailDist = Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y);
             let isLiftOffKick = false;
-            if (!this.currentInkStroke.isHighlighter && this._liveBezierScreenPts.length >= 2 && tailDist < 2.2) {
+            if (!this.currentInkStroke.isHighlighter && this._liveBezierScreenPts.length >= 2 && tailDist < 4.5) {
               const prevEndPt = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 2];
               const vxPrev = lastSmoothed.x - prevEndPt.x;
               const vyPrev = lastSmoothed.y - prevEndPt.y;
               const lenPrev = Math.hypot(vxPrev, vyPrev);
               if (lenPrev > 0.35 && tailDist > 1e-4) {
                 const cosTail = (vxPrev * (rawEnd.x - lastSmoothed.x) + vyPrev * (rawEnd.y - lastSmoothed.y)) / (lenPrev * tailDist);
-                if (cosTail < 0.25) isLiftOffKick = true;
+                if (cosTail < 0.55) isLiftOffKick = true;
               }
             }
-            const minTailDist = (this._liveBezierScreenPts.length === 1 && !this.currentInkStroke.isHighlighter) ? 1.35 : 0.15;
+            const minTailDist = (this._liveBezierScreenPts.length === 1 && !this.currentInkStroke.isHighlighter) ? 1.85 : 0.15;
             if (tailDist >= minTailDist && !isLiftOffKick) {
               const isShortStroke = (this._liveBezierScreenPts.length <= 2);
               const tailKeep = 0.25;
