@@ -3993,14 +3993,17 @@
         this.canvas.style.cursor = 'default';
       }
 
-      // 마우스/터치 드래그로 상태가 실제로 변했으면 히스토리 스택에 푸시!
+      // 마우스/터치 드래그로 상태가 실제로 변했으면 히스토리 스택에 푸시! (단, 뷰어 그래프 터치 체험 중에는 편집 히스토리 오염 차단)
       if (this._preDragState) {
-        const afterSnap = this.getHistorySnapshot();
-        if (this._preDragState !== afterSnap) {
-          this.undoStack.push(this._preDragState);
-          if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
-          this.redoStack = [];
-          this.updateUndoRedoUI();
+        const isViewerTouchDrag = Boolean(typeof document !== 'undefined' && document.body && document.body.classList.contains('viewer-graph-touch-mode'));
+        if (!isViewerTouchDrag) {
+          const afterSnap = this.getHistorySnapshot();
+          if (this._preDragState !== afterSnap) {
+            this.undoStack.push(this._preDragState);
+            if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+            this.redoStack = [];
+            this.updateUndoRedoUI();
+          }
         }
         this._preDragState = null;
       }
@@ -4464,6 +4467,9 @@
       if (this.isShortcutSettingsModalOpen && this.isShortcutSettingsModalOpen()) {
         return;
       }
+      if ((typeof this._isSmartNoteViewerOverlayOpen === 'function' && this._isSmartNoteViewerOverlayOpen()) || this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive) {
+        return;
+      }
 
       const activeEl = document.activeElement;
       const isInput = activeEl && (
@@ -4472,6 +4478,16 @@
         activeEl.tagName === 'SELECT' ||
         activeEl.isContentEditable
       );
+
+      if (typeof document !== 'undefined' && document.body && document.body.classList.contains('viewer-graph-touch-mode')) {
+        if (e.key === 'Escape' && !isInput) {
+          e.preventDefault();
+          if (typeof this.exitViewerGraphTouchModeToViewer === 'function') {
+            this.exitViewerGraphTouchModeToViewer();
+          }
+          return;
+        }
+      }
 
       // 스페이스바 누름 감지 (필기 모드 중 팬 이동 지원 & 포커스된 버튼/슬라이더 자동 클릭·크기 축소 원천 차단)
       if ((e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') && !isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -4784,6 +4800,14 @@
     });
 
     window.addEventListener('keyup', (e) => {
+      if ((typeof this._isSmartNoteViewerOverlayOpen === 'function' && this._isSmartNoteViewerOverlayOpen()) || this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive) {
+        if (this.isSpacePressed || this.isShiftPressed) {
+          this.isSpacePressed = false;
+          this.isShiftPressed = false;
+          document.body.classList.remove('space-pan-ready', 'space-pan-dragging');
+        }
+        return;
+      }
       if (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') {
         const activeEl = document.activeElement;
         const isTextInput = activeEl && (
@@ -4826,12 +4850,15 @@
         }
       }
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && this._arrowPreSnap) {
-        const afterSnap = this.getHistorySnapshot();
-        if (this._arrowPreSnap !== afterSnap) {
-          this.undoStack.push(this._arrowPreSnap);
-          if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
-          this.redoStack = [];
-          this.updateUndoRedoUI();
+        const isViewerTouchArrow = Boolean(typeof document !== 'undefined' && document.body && document.body.classList.contains('viewer-graph-touch-mode'));
+        if (!isViewerTouchArrow) {
+          const afterSnap = this.getHistorySnapshot();
+          if (this._arrowPreSnap !== afterSnap) {
+            this.undoStack.push(this._arrowPreSnap);
+            if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+            this.redoStack = [];
+            this.updateUndoRedoUI();
+          }
         }
         this._arrowPreSnap = null;
       }
@@ -4917,6 +4944,7 @@
   // 🌟 [피그마/지오지브라급 Zoom-to-Cursor 부드러운 Lerp 수렴 물리 엔진] 🌟
   stepZoomLerp() {
     if (!this._isZoomAnimating) return false;
+    const isViewerTouchZoom = Boolean(typeof document !== 'undefined' && document.body && document.body.classList.contains('viewer-graph-touch-mode'));
     const diff = this.targetZoom - this.zoomLevel;
     if (Math.abs(diff) < 0.001) {
       // 수렴 완료
@@ -4924,8 +4952,8 @@
       const newZoom = this.targetZoom;
       if (this._zoomMousePos && oldZoom > 0) {
         const ratio = newZoom / oldZoom;
-        const boardOffsetX = (this.hasActiveProblemCard() && this.graphs && this.graphs.length > 0) ? (this.boardPanX || 0) : 0;
-        const boardOffsetY = (this.hasActiveProblemCard() && this.graphs && this.graphs.length > 0) ? (this.boardPanY || 0) : 0;
+        const boardOffsetX = (!isViewerTouchZoom && this.hasActiveProblemCard() && this.graphs && this.graphs.length > 0) ? (this.boardPanX || 0) : 0;
+        const boardOffsetY = (!isViewerTouchZoom && this.hasActiveProblemCard() && this.graphs && this.graphs.length > 0) ? (this.boardPanY || 0) : 0;
         const cx = this.screenWidth / 2 + this.panX + boardOffsetX;
         const cy = this.screenHeight / 2 + this.panY + boardOffsetY;
         const deltaX = (this._zoomMousePos.x - cx) * (1 - ratio);
@@ -4956,8 +4984,8 @@
 
     if (this._zoomMousePos && oldZoom > 0) {
       const ratio = newZoom / oldZoom;
-      const boardOffsetX = (this.hasActiveProblemCard() && this.graphs && this.graphs.length > 0) ? (this.boardPanX || 0) : 0;
-      const boardOffsetY = (this.hasActiveProblemCard() && this.graphs && this.graphs.length > 0) ? (this.boardPanY || 0) : 0;
+      const boardOffsetX = (!isViewerTouchZoom && this.hasActiveProblemCard() && this.graphs && this.graphs.length > 0) ? (this.boardPanX || 0) : 0;
+      const boardOffsetY = (!isViewerTouchZoom && this.hasActiveProblemCard() && this.graphs && this.graphs.length > 0) ? (this.boardPanY || 0) : 0;
       const cx = this.screenWidth / 2 + this.panX + boardOffsetX;
       const cy = this.screenHeight / 2 + this.panY + boardOffsetY;
       const deltaX = (this._zoomMousePos.x - cx) * (1 - ratio);
@@ -10880,6 +10908,25 @@
     const canvasRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
 
     const hotspots = [];
+    const floatingCardRects = [];
+    const toClippedNormRect = (left, top, right, bottom) => {
+      const x1 = Math.max(0, Math.min(1, (left - cropX) / cropW));
+      const y1 = Math.max(0, Math.min(1, (top - cropY) / cropH));
+      const x2 = Math.max(0, Math.min(1, (right - cropX) / cropW));
+      const y2 = Math.max(0, Math.min(1, (bottom - cropY) / cropH));
+      const nw = x2 - x1;
+      const nh = y2 - y1;
+      if (nw < 0.02 || nh < 0.02) return null;
+      return { nx: x1, ny: y1, nw, nh };
+    };
+    const computeOverlapRatio = (a, b) => {
+      const ix = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+      const iy = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+      const inter = ix * iy;
+      if (inter <= 0) return 0;
+      const areaA = Math.max(1, (a.right - a.left) * (a.bottom - a.top));
+      return inter / areaA;
+    };
 
     // 1. 판서 모드에 떠 있는 기본 그래프 보관 카드
     const gWidget = document.getElementById('graphCardWidget');
@@ -10911,16 +10958,20 @@
           const top = bRect.top - canvasRect.top;
           const right = bRect.right - canvasRect.left;
           const bottom = bRect.bottom - canvasRect.top;
-          hotspots.push({
-            id: 'graph_card_1',
-            caseIdx: 1,
-            label: '',
-            nx: Math.max(0, Math.min(0.95, (left - cropX) / cropW)),
-            ny: Math.max(0, Math.min(0.95, (top - cropY) / cropH)),
-            nw: Math.max(0.05, Math.min(1.0, (right - left) / cropW)),
-            nh: Math.max(0.05, Math.min(1.0, (bottom - top) / cropH)),
-            graphSnapshot: typeof snap === 'string' ? snap : JSON.stringify(snap)
-          });
+          const norm = toClippedNormRect(left, top, right, bottom);
+          if (norm) {
+            floatingCardRects.push({ left, top, right, bottom });
+            hotspots.push({
+              id: 'graph_card_1',
+              caseIdx: 1,
+              label: '',
+              nx: norm.nx,
+              ny: norm.ny,
+              nw: norm.nw,
+              nh: norm.nh,
+              graphSnapshot: typeof snap === 'string' ? snap : JSON.stringify(snap)
+            });
+          }
         }
       }
     }
@@ -10956,19 +11007,99 @@
             const top = bRect.top - canvasRect.top;
             const right = bRect.right - canvasRect.left;
             const bottom = bRect.bottom - canvasRect.top;
-            hotspots.push({
-              id: `graph_card_${c.caseIdx || idx + 2}`,
-              caseIdx: c.caseIdx || idx + 2,
-              label: '',
-              nx: Math.max(0, Math.min(0.95, (left - cropX) / cropW)),
-              ny: Math.max(0, Math.min(0.95, (top - cropY) / cropH)),
-              nw: Math.max(0.05, Math.min(1.0, (right - left) / cropW)),
-              nh: Math.max(0.05, Math.min(1.0, (bottom - top) / cropH)),
-              graphSnapshot: typeof snap === 'string' ? snap : JSON.stringify(snap)
-            });
+            const norm = toClippedNormRect(left, top, right, bottom);
+            if (norm) {
+              floatingCardRects.push({ left, top, right, bottom });
+              hotspots.push({
+                id: `graph_card_${c.caseIdx || idx + 2}`,
+                caseIdx: c.caseIdx || idx + 2,
+                label: '',
+                nx: norm.nx,
+                ny: norm.ny,
+                nw: norm.nw,
+                nh: norm.nh,
+                graphSnapshot: typeof snap === 'string' ? snap : JSON.stringify(snap)
+              });
+            }
           }
         }
       });
+    }
+
+    // 2.5. [캔버스에 고정(S)]으로 찍어 둔 벡터 그래프 스탬프 및 합성함수 스탬프 핫스팟 추출
+    if (this.isGraphCovered && Array.isArray(this.inkStrokes) && this.inkStrokes.length > 0) {
+      const stampEntries = [];
+      this.inkStrokes.forEach((st, stIdx) => {
+        if (!st || !st.isGraphStamp || st.isProblemStamp || !st.graphStamp || !Array.isArray(st.points) || st.points.length < 2) return;
+        const onActiveSurface = this.pdfPageBoardData
+          ? Boolean(st.onPdfBoard)
+          : (!st.onPdfBoard && (st.target || 'board') === 'board');
+        if (!onActiveSurface) return;
+
+        const gs = st.graphStamp;
+        const isVectorStamp = Boolean(gs.kind === 'vector' && gs.snap && Array.isArray(gs.snap.graphs) && gs.snap.graphs.length > 0);
+        const isNAxisStamp = Boolean(gs.nAxisStudioState);
+        if (!isVectorStamp && !isNAxisStamp) return;
+
+        const p0 = this.pdfPageBoardData ? this.mathToScreen(st.points[0].x, st.points[0].y) : this.boardToScreen(st.points[0].x, st.points[0].y);
+        const p1 = this.pdfPageBoardData ? this.mathToScreen(st.points[1].x, st.points[1].y) : this.boardToScreen(st.points[1].x, st.points[1].y);
+        const left = Math.min(p0.x, p1.x);
+        const right = Math.max(p0.x, p1.x);
+        const top = Math.min(p0.y, p1.y);
+        const bottom = Math.max(p0.y, p1.y);
+        if ((right - left) < 24 || (bottom - top) < 24) return;
+
+        const rectObj = { left, top, right, bottom };
+        if (floatingCardRects.some(fr => computeOverlapRatio(rectObj, fr) >= 0.72)) return;
+        const norm = toClippedNormRect(left, top, right, bottom);
+        if (!norm) return;
+
+        let snapPayload = null;
+        if (isVectorStamp) {
+          const snapCopy = JSON.parse(JSON.stringify(gs.snap));
+          const cw = Math.max(160, Math.round(gs.logicalW || snapCopy._pipCardW || 430));
+          const ch = Math.max(60, Math.round(gs.logicalH || snapCopy._pipCardH || 353));
+          snapCopy._isPipCardSnapshot = true;
+          snapCopy._pipCardW = cw;
+          snapCopy._pipCardH = ch;
+          if (effFilter.includeInk === false) {
+            snapCopy.graphInkStrokes = [];
+          } else if (Array.isArray(gs.cardStrokes) && gs.cardStrokes.length > 0 && typeof this._convertCardStrokeListToFullGraphInkStrokes === 'function') {
+            snapCopy.graphInkStrokes = this._compactStrokesArray(
+              this._convertCardStrokeListToFullGraphInkStrokes(JSON.parse(JSON.stringify(gs.cardStrokes)), snapCopy, cw, ch)
+            );
+          } else if (!Array.isArray(snapCopy.graphInkStrokes)) {
+            snapCopy.graphInkStrokes = [];
+          }
+          snapPayload = JSON.stringify(snapCopy);
+        } else if (isNAxisStamp) {
+          snapPayload = JSON.stringify({
+            isNAxisStudioCard: true,
+            isPipLocked: true,
+            graphs: [],
+            nAxisStudioState: gs.nAxisStudioState
+          });
+        }
+        if (!snapPayload) return;
+
+        const nextHs = {
+          id: `graph_stamp_${st.id || stIdx}`,
+          caseIdx: hotspots.length + stampEntries.length + 1,
+          label: '',
+          nx: norm.nx,
+          ny: norm.ny,
+          nw: norm.nw,
+          nh: norm.nh,
+          graphSnapshot: snapPayload
+        };
+        const dupIdx = stampEntries.findIndex(prev => computeOverlapRatio(prev.rect, rectObj) >= 0.72 && computeOverlapRatio(rectObj, prev.rect) >= 0.72);
+        if (dupIdx !== -1) {
+          stampEntries[dupIdx] = { rect: rectObj, hs: nextHs };
+        } else {
+          stampEntries.push({ rect: rectObj, hs: nextHs });
+        }
+      });
+      stampEntries.forEach(entry => hotspots.push(entry.hs));
     }
 
     // 3. 실시간 그래프 모드(!isGraphCovered)에서 공유한 경우 전체 그래프 영역을 #1 핫스팟으로 등록
@@ -11594,6 +11725,32 @@
     });
   }
 
+  _extractPdfJpegPageFromCanvas(srcCanvas, bgColor = '#ffffff') {
+    if (!srcCanvas) return null;
+    const pxW = Math.max(1, srcCanvas.width || 1200);
+    const pxH = Math.max(1, srcCanvas.height || 800);
+    const compCanvas = document.createElement('canvas');
+    compCanvas.width = pxW;
+    compCanvas.height = pxH;
+    let jpegDataUrl = '';
+    try {
+      const compCtx = compCanvas.getContext('2d');
+      compCtx.fillStyle = bgColor || '#ffffff';
+      compCtx.fillRect(0, 0, pxW, pxH);
+      compCtx.drawImage(srcCanvas, 0, 0);
+      jpegDataUrl = compCanvas.toDataURL('image/jpeg', 0.96);
+    } finally {
+      try { compCanvas.width = 1; compCanvas.height = 1; } catch (_) { }
+    }
+    const b64 = jpegDataUrl.split(',')[1] || '';
+    const binStr = atob(b64);
+    const jpegBytes = new Uint8Array(binStr.length);
+    for (let k = 0; k < binStr.length; k++) {
+      jpegBytes[k] = binStr.charCodeAt(k);
+    }
+    return { pxW, pxH, jpegBytes };
+  }
+
   // 🌟 [다중 슬라이드 단일 파일(Multi-Page PDF 1.4) 통합 빌더]:
   // 슬라이드 10장을 내보낼 때 낱장 PNG 10개로 흩어지지 않고, 모든 슬라이드를 1개의 고화질 다중 페이지 PDF 문서(.pdf)로 묶어줍니다!
   buildMultiPagePdfBlobFromCanvases(canvasItems = []) {
@@ -11625,28 +11782,25 @@
 
     for (let idx = 0; idx < canvasItems.length; idx++) {
       const item = canvasItems[idx];
-      const srcCanvas = item && item.canvas ? item.canvas : item;
-      const pxW = Math.max(1, (srcCanvas && srcCanvas.width) || 1200);
-      const pxH = Math.max(1, (srcCanvas && srcCanvas.height) || 800);
-      const bgColor = (item && item.bgColor) ? item.bgColor : '#ffffff';
+      let pxW = 1200;
+      let pxH = 800;
+      let jpegBytes = null;
 
-      // 투명 영역이 검게 변하지 않도록 배경색이 입혀진 합성 캔버스 생성 후 고화질 JPEG 바이트 추출
-      const compCanvas = document.createElement('canvas');
-      compCanvas.width = pxW;
-      compCanvas.height = pxH;
-      const compCtx = compCanvas.getContext('2d');
-      compCtx.fillStyle = bgColor;
-      compCtx.fillRect(0, 0, pxW, pxH);
-      if (srcCanvas) {
-        compCtx.drawImage(srcCanvas, 0, 0);
-      }
-
-      const jpegDataUrl = compCanvas.toDataURL('image/jpeg', 0.96);
-      const b64 = jpegDataUrl.split(',')[1] || '';
-      const binStr = atob(b64);
-      const jpegBytes = new Uint8Array(binStr.length);
-      for (let k = 0; k < binStr.length; k++) {
-        jpegBytes[k] = binStr.charCodeAt(k);
+      if (item && item.jpegBytes instanceof Uint8Array && item.pxW > 0 && item.pxH > 0) {
+        pxW = item.pxW;
+        pxH = item.pxH;
+        jpegBytes = item.jpegBytes;
+      } else {
+        const srcCanvas = item && item.canvas ? item.canvas : item;
+        const bgColor = (item && item.bgColor) ? item.bgColor : '#ffffff';
+        const extracted = this._extractPdfJpegPageFromCanvas(srcCanvas, bgColor);
+        if (extracted) {
+          pxW = extracted.pxW;
+          pxH = extracted.pxH;
+          jpegBytes = extracted.jpegBytes;
+        } else {
+          jpegBytes = new Uint8Array(0);
+        }
       }
 
       const pageObjId = 3 + idx * 3;
@@ -11698,7 +11852,8 @@
       this._restoreDeduplicatedSlideSnapshots(pkg);
     }
     const slides = pkg.playlistSlides;
-    const canvasItems = [];
+    const pageItems = [];
+    const activeViewerIdx = typeof this._viewerSlideIdx === 'number' ? this._viewerSlideIdx : 0;
     let backupCurrent = null;
     try {
       for (let i = 0; i < slides.length; i++) {
@@ -11706,6 +11861,7 @@
         let dataUrl = (sl && sl.viewerSnapshotDataUrl === '__SAME_AS_PDF_BOARD__' && sl.pdfPageBoardData)
           ? sl.pdfPageBoardData.dataUrl
           : (sl ? sl.viewerSnapshotDataUrl : '');
+        let tempGeneratedForPdf = false;
         if (!dataUrl && sl) {
           if (typeof this._isPureUnannotatedPdfPageSlide === 'function' && this._isPureUnannotatedPdfPageSlide(sl, pkg.exportFilter || null)) {
             dataUrl = sl.pdfPageBoardData.dataUrl;
@@ -11718,12 +11874,23 @@
             await this._waitForSlideImagesReady();
             const snap = this.captureCurrentSlideViewerSnapshot(pkg.exportFilter || null, false);
             dataUrl = snap.dataUrl;
-            sl.viewerSnapshotDataUrl = dataUrl;
+            if (Math.abs(i - activeViewerIdx) <= 6) {
+              sl.viewerSnapshotDataUrl = dataUrl;
+              sl.viewerSnapshotWidth = snap.width;
+              sl.viewerSnapshotHeight = snap.height;
+              sl._viewerDynamicSnapGenerated = true;
+            } else {
+              tempGeneratedForPdf = true;
+            }
             if (snap && snap.canvas) {
               try { snap.canvas.width = 1; snap.canvas.height = 1; } catch (e) { }
             }
           }
         }
+        const slTheme = (sl && !sl.isMonochromeMode && sl.themeKey && this.canvasThemes && this.canvasThemes[sl.themeKey])
+          ? this.canvasThemes[sl.themeKey]
+          : null;
+        const slideBgColor = (slTheme && slTheme.bg) ? slTheme.bg : '#ffffff';
         if (dataUrl) {
           const c = await new Promise((resolve) => {
             const im = new Image();
@@ -11737,29 +11904,37 @@
             im.onerror = () => resolve(null);
             im.src = dataUrl;
           });
-          if (c) canvasItems.push({ canvas: c, bgColor: '#ffffff' });
+          if (c) {
+            try {
+              const pageObj = this._extractPdfJpegPageFromCanvas(c, slideBgColor);
+              if (pageObj) pageItems.push(pageObj);
+            } finally {
+              try { c.width = 1; c.height = 1; } catch (e) { }
+            }
+          }
+          if (tempGeneratedForPdf) {
+            dataUrl = '';
+          }
         }
       }
-      if (canvasItems.length === 0) return false;
-      const pdfBlob = this.buildMultiPagePdfBlobFromCanvases(canvasItems);
+      if (pageItems.length === 0) return false;
+      const pdfBlob = this.buildMultiPagePdfBlobFromCanvases(pageItems);
       if (!pdfBlob) return false;
       const url = URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
-      link.download = `Graphly_Note_${canvasItems.length}p_${Date.now()}.pdf`;
+      link.download = `Graphly_Note_${pageItems.length}p_${Date.now()}.pdf`;
       link.href = url;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
-      this.showToast(`📄 전체 캔버스(${canvasItems.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
+      this.showToast(`📄 전체 캔버스(${pageItems.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
       return true;
     } finally {
       if (backupCurrent && typeof this.deserializeFullSlideState === 'function') {
         try { this.deserializeFullSlideState(backupCurrent); } catch (e) { }
       }
-      canvasItems.forEach((item) => {
-        if (item && item.canvas) {
-          try { item.canvas.width = 1; item.canvas.height = 1; } catch (e) { }
-        }
-      });
+      if (typeof this._syncSmartViewerThemeForSlide === 'function' && slides[activeViewerIdx]) {
+        this._syncSmartViewerThemeForSlide(slides[activeViewerIdx]);
+      }
     }
   }
 
@@ -11777,7 +11952,7 @@
       const allSlides = this._getFilteredSlidesForExport('수업 노트', 'all', effFilter);
       if (allSlides.length > 1) {
         const backupCurrent = this.serializeFullSlideState('backup');
-        const canvasItems = [];
+        const pageItems = [];
         try {
           for (let i = 0; i < allSlides.length; i++) {
             this.deserializeFullSlideState(allSlides[i]);
@@ -11785,9 +11960,16 @@
             const exp = this.getExportCanvas(effFilter);
             const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
             const bgColor = (!this.isMonochromeMode && curTheme && curTheme.bg) ? curTheme.bg : '#ffffff';
-            canvasItems.push({ canvas: exp.canvas, bgColor });
+            try {
+              const pageObj = this._extractPdfJpegPageFromCanvas(exp.canvas, bgColor);
+              if (pageObj) pageItems.push(pageObj);
+            } finally {
+              if (exp && exp.canvas) {
+                try { exp.canvas.width = 1; exp.canvas.height = 1; } catch (e) { }
+              }
+            }
           }
-          const pdfBlob = this.buildMultiPagePdfBlobFromCanvases(canvasItems);
+          const pdfBlob = this.buildMultiPagePdfBlobFromCanvases(pageItems);
           if (pdfBlob) {
             const url = URL.createObjectURL(pdfBlob);
             const link = document.createElement('a');
@@ -11800,11 +11982,6 @@
           }
         } finally {
           try { this.deserializeFullSlideState(backupCurrent); } catch (e) { }
-          canvasItems.forEach((item) => {
-            if (item && item.canvas) {
-              try { item.canvas.width = 1; item.canvas.height = 1; } catch (e) { }
-            }
-          });
         }
       }
     }

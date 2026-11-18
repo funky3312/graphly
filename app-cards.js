@@ -2235,6 +2235,7 @@
 
       // 1. 클립보드 이미지 붙여넣기 (Ctrl + V: 빈 캔버스면 현재 캔버스에, 내용이 있으면 자동으로 새 캔버스에 분리 생성!)
       window.addEventListener('paste', async (e) => {
+        if (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit()) return;
         // 텍스트 인풋/텍스트에어리어에 포커스가 있을 때는 문자열 붙여넣기 우선
         const activeEl = document.activeElement;
         const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
@@ -2285,6 +2286,10 @@
       });
 
       window.addEventListener('drop', async (e) => {
+        if (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit()) {
+          e.preventDefault();
+          return;
+        }
         const files = e.dataTransfer && e.dataTransfer.files;
         if (!files || files.length === 0) return;
 
@@ -10108,7 +10113,10 @@
           logicalW: cardW,
           logicalH: cardH,
           dataUrl: fallbackDataUrl,
-          cardStrokes: compactCardStrokes
+          cardStrokes: compactCardStrokes,
+          nAxisStudioState: (snapObj && snapObj.isNAxisStudioCard && snapObj.nAxisStudioState)
+            ? JSON.parse(JSON.stringify(snapObj.nAxisStudioState))
+            : undefined
         };
       }
 
@@ -10939,7 +10947,7 @@
       if (this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive || this._isPromoBannerViewerPreviewOpen) {
         return { blocked: true, target: null };
       }
-      if (this.smartViewerState && this.smartViewerState.isOpen) {
+      if (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit()) {
         return { blocked: true, target: null };
       }
       if (this.isGraphSnapMode || this.isPdfToGraphCropMode || this._isPdfCropChoiceMenuOpen) {
@@ -11073,7 +11081,7 @@
       if (this.isStudentAudioVideoOnlyMode || this._isAudioReplayActive || this._isPromoBannerViewerPreviewOpen) {
         return { blocked: true, target: null };
       }
-      if (this.smartViewerState && this.smartViewerState.isOpen) {
+      if (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit()) {
         return { blocked: true, target: null };
       }
       if (this.isGraphSnapMode || this.isPdfToGraphCropMode || this._isPdfCropChoiceMenuOpen) {

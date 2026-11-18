@@ -185,26 +185,56 @@
       }
 
       if (scrubber) {
-        scrubber.addEventListener('input', (e) => {
-          e.stopPropagation();
-          const targetMs = Number(e.target.value) || 0;
-          this.seekAudioSync(targetMs, false);
-          this.showAudioPlayerBarTemporarily(2800);
-        });
         const onScrubStart = () => {
-          this._isScrubbingAudioBar = true;
+          if (!this._isScrubbingAudioBar) {
+            this._wasPlayingBeforeScrub = Boolean(this.isAudioPlaying);
+            this._isScrubbingAudioBar = true;
+            if (this._wasPlayingBeforeScrub) {
+              this.isAudioPlaying = false;
+              if (this._audioReplayRafId) {
+                cancelAnimationFrame(this._audioReplayRafId);
+                this._audioReplayRafId = null;
+              }
+              if (this.audioPlayerEl) {
+                try { this.audioPlayerEl.pause(); } catch (_) { }
+              }
+            }
+          }
           this.showAudioPlayerBarTemporarily(2800);
         };
         const onScrubEnd = () => {
           if (!this._isScrubbingAudioBar) return;
+          const resumePlay = Boolean(this._wasPlayingBeforeScrub);
           this._isScrubbingAudioBar = false;
+          this._wasPlayingBeforeScrub = false;
+          const finalMs = Number(scrubber.value);
+          const safeFinalMs = Number.isFinite(finalMs) ? finalMs : (this.audioPlayCurrentMs || 0);
+          if (resumePlay) {
+            this.playAudioSync(safeFinalMs);
+          } else {
+            this.seekAudioSync(safeFinalMs, false);
+          }
           this.showAudioPlayerBarTemporarily(2800);
         };
+        scrubber.addEventListener('input', (e) => {
+          e.stopPropagation();
+          const targetMs = Number(e.target.value) || 0;
+          this.seekAudioSync(targetMs, false, { visualOnlyWhileScrubbing: Boolean(this._isScrubbingAudioBar) });
+          this.showAudioPlayerBarTemporarily(2800);
+        });
+        scrubber.addEventListener('change', (e) => {
+          e.stopPropagation();
+          if (this._isScrubbingAudioBar) {
+            onScrubEnd();
+          }
+        });
         scrubber.addEventListener('pointerdown', onScrubStart, { passive: true });
         scrubber.addEventListener('touchstart', onScrubStart, { passive: true });
         window.addEventListener('pointerup', onScrubEnd, { passive: true });
+        window.addEventListener('pointercancel', onScrubEnd, { passive: true });
         window.addEventListener('touchend', onScrubEnd, { passive: true });
         window.addEventListener('touchcancel', onScrubEnd, { passive: true });
+        window.addEventListener('blur', onScrubEnd, { passive: true });
       }
 
       if (btnSpeed) {
@@ -212,10 +242,19 @@
         btnSpeed.onclick = (e) => {
           e.stopPropagation();
           const idx = speeds.indexOf(this.audioPlaybackRate);
-          this.audioPlaybackRate = speeds[(idx + 1) % speeds.length];
+          const nextRate = speeds[(idx + 1) % speeds.length];
+          if (this.isAudioPlaying) {
+            const curMs = Math.max(0, Number(this.audioPlayCurrentMs) || 0);
+            this._audioPlayBaseOffsetMs = curMs;
+            this._audioPlayWallStartMs = performance.now();
+          }
+          this.audioPlaybackRate = nextRate;
           btnSpeed.textContent = `${this.audioPlaybackRate}x`;
           if (this.audioPlayerEl) {
-            this.audioPlayerEl.playbackRate = this.audioPlaybackRate;
+            try {
+              this.audioPlayerEl.defaultPlaybackRate = this.audioPlaybackRate;
+              this.audioPlayerEl.playbackRate = this.audioPlaybackRate;
+            } catch (_) { }
           }
           this.showAudioPlayerBarTemporarily(2800);
         };
@@ -5751,13 +5790,17 @@
         );
       };
 
-      // 1. PC 마우스 휠 확대/축소 (커서 위치 기준 줌)
+      // 1. PC 마우스 휠 / 트랙패드 확대/축소 (커서 위치 기준 줌, 가로 스와이프 deltaY===0 오작동 방어)
       window.addEventListener('wheel', (e) => {
         if (!this._isFixedReplayStageActive()) return;
         if (isOuterReplayControl(e.target)) return;
         e.preventDefault();
         e.stopPropagation();
-        const factor = e.deltaY < 0 ? 1.14 : (1 / 1.14);
+        if (!e.deltaY) return;
+        const isSmoothTrackpad = (e.deltaMode === 0 && Math.abs(e.deltaY) < 40);
+        const factor = isSmoothTrackpad
+          ? Math.exp(-e.deltaY * (e.ctrlKey || e.metaKey ? 0.01 : 0.0045))
+          : (e.deltaY < 0 ? 1.14 : (1 / 1.14));
         this.zoomReplayStageAtPoint((this._replayViewerZoom || 1.0) * factor, e.clientX, e.clientY);
       }, { passive: false, capture: true });
 
@@ -5959,6 +6002,95 @@
       window.addEventListener('pointerup', () => {
         isMousePanningStage = false;
       }, { capture: true });
+      window.addEventListener('pointercancel', () => {
+        isMousePanningStage = false;
+      }, { capture: true });
+
+      const resetReplayGestureState = () => {
+        isPanningStage = false;
+        isPinchingStage = false;
+        isMousePanningStage = false;
+        pinchId1 = null;
+        pinchId2 = null;
+      };
+      window.addEventListener('blur', resetReplayGestureState);
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) resetReplayGestureState();
+      });
+
+      // 4. 영상/음성 리플레이 전용 키보드 컨트롤러 (Space 재생/정지 · ←/→ ±5초 · 0/+/- 줌 · Esc)
+      window.addEventListener('keydown', (e) => {
+        if (!this.isStudentAudioVideoOnlyMode && !this._isAudioReplayActive) return;
+        if (typeof this._isSmartNoteViewerOverlayOpen === 'function' && this._isSmartNoteViewerOverlayOpen()) return;
+        if (document.body && document.body.classList.contains('viewer-graph-touch-mode')) return;
+        const nAxisModal = document.getElementById('modalNAxisStudio');
+        if (this.isNAxisStudioOpen || (nAxisModal && nAxisModal.style.display !== 'none')) return;
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable)) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+        if (e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (this.isAudioPlaying) {
+            this.pauseAudioPlayback(false);
+          } else {
+            this._unlockAudioPlayerForMobileGesture(false);
+            this.playAudioSync();
+          }
+          this.showAudioPlayerBarTemporarily(2800);
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          if (!this.audioSyncData) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const dur = this.audioSyncData.durationMs || 1000;
+          const delta = e.key === 'ArrowLeft' ? -5000 : 5000;
+          const nextMs = Math.max(0, Math.min(dur, (this.audioPlayCurrentMs || 0) + delta));
+          this.seekAudioSync(nextMs, false);
+        } else if (e.key === '0') {
+          e.preventDefault();
+          e.stopPropagation();
+          this.resetReplayViewerZoom();
+          this.showAudioPlayerBarTemporarily(2800);
+        } else if (e.key === '+' || e.key === '=') {
+          if (!this._isFixedReplayStageActive()) return;
+          e.preventDefault();
+          e.stopPropagation();
+          this.zoomReplayStageAtPoint((this._replayViewerZoom || 1.0) * 1.18, window.innerWidth / 2, window.innerHeight / 2);
+          this.showAudioPlayerBarTemporarily(2800);
+        } else if (e.key === '-' || e.key === '_') {
+          if (!this._isFixedReplayStageActive()) return;
+          e.preventDefault();
+          e.stopPropagation();
+          this.zoomReplayStageAtPoint((this._replayViewerZoom || 1.0) / 1.18, window.innerWidth / 2, window.innerHeight / 2);
+          this.showAudioPlayerBarTemporarily(2800);
+        } else if (e.key === 'Escape') {
+          const endOv = document.getElementById('viewerAudioEndingOverlay');
+          if (endOv && endOv.style.display !== 'none' && typeof this.hideAudioLectureEndingOverlay === 'function') {
+            e.preventDefault();
+            e.stopPropagation();
+            this.hideAudioLectureEndingOverlay();
+            return;
+          }
+          if ((this._replayViewerZoom || 1.0) > 1.01) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.resetReplayViewerZoom();
+            return;
+          }
+          if (!this.isStudentAudioVideoOnlyMode) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.stopAudioPlayback(true);
+            return;
+          }
+          const btnBack = document.getElementById('btnAudioBackToViewer');
+          if (btnBack && btnBack.style.display !== 'none') {
+            e.preventDefault();
+            e.stopPropagation();
+            btnBack.click();
+          }
+        }
+      });
 
       window.addEventListener('click', (e) => {
         if (!this._isFixedReplayStageActive() && !this.isStudentAudioVideoOnlyMode && !this._isAudioReplayActive) return;
@@ -7357,7 +7489,9 @@
         this.audioPlayerEl.src = seg.audioDataUrl;
       }
       try {
-        this.audioPlayerEl.playbackRate = this.audioPlaybackRate || 1.0;
+        const effRate = this.audioPlaybackRate || 1.0;
+        this.audioPlayerEl.defaultPlaybackRate = effRate;
+        this.audioPlayerEl.playbackRate = effRate;
       } catch (e) { }
       const localSec = Math.max(0, (playMs - (seg.startMs || 0)) / 1000);
       if (segChanged && localSec <= 0.05) {
@@ -7523,6 +7657,9 @@
             const targetSlideIdx = curSeg.nextSlideIdx;
             const targetStartMs = typeof curSeg.nextSlideStartMs === 'number' ? curSeg.nextSlideStartMs : 0;
             this.pauseAudioPlayback(false);
+            this._replayViewerZoom = 1.0;
+            this._replayViewerPanX = 0;
+            this._replayViewerPanY = 0;
             this._isAutoAdvancingAudioSlide = true;
             try {
               this.jumpToPlaylistSlide(targetSlideIdx);
@@ -7565,7 +7702,10 @@
             (typeof (curSeg && curSeg.nextSlideIdx) === 'number' || fallbackNextIdx === this.lessonPlaylistIndex + 1)
           ) {
             const keepViewMode = this.audioReplayViewMode || 'video';
-            this.pauseAudioPlayback(true);
+            this.pauseAudioPlayback(false);
+            this._replayViewerZoom = 1.0;
+            this._replayViewerPanX = 0;
+            this._replayViewerPanY = 0;
             this._isAutoAdvancingAudioSlide = true;
             try {
               this.jumpToPlaylistSlide(fallbackNextIdx);
@@ -7815,7 +7955,7 @@
       this.syncAudioRecordUI();
     }
 
-    seekAudioSync(targetMs, autoPlay = false) {
+    seekAudioSync(targetMs, autoPlay = false, options = null) {
       if (!this.audioSyncData) return;
       if (typeof this.hideAudioLectureEndingOverlay === 'function') {
         this.hideAudioLectureEndingOverlay();
@@ -7824,14 +7964,17 @@
       this.audioPlayCurrentMs = Math.max(0, Math.min(dur, Number(targetMs) || 0));
       this._audioPlayWallStartMs = performance.now();
       this._audioPlayBaseOffsetMs = this.audioPlayCurrentMs;
-      this._syncAudioPlayerToPlayMs(this.audioPlayCurrentMs, Boolean(this.isAudioPlaying));
+      const visualOnly = Boolean(options && options.visualOnlyWhileScrubbing);
+      if (!visualOnly) {
+        this._syncAudioPlayerToPlayMs(this.audioPlayCurrentMs, Boolean(this.isAudioPlaying));
+      }
       this._isAudioReplayActive = true;
       document.body.classList.add('audio-replay-active');
       this._syncReplayFixedStageLayout();
       this._renderAudioReplayAtCurrentTime();
       this.syncAudioRecordUI();
       this.showAudioPlayerBarTemporarily(2800);
-      if (autoPlay && !this.isAudioPlaying) {
+      if (!visualOnly && autoPlay && !this.isAudioPlaying) {
         this.playAudioSync(this.audioPlayCurrentMs);
       }
     }
@@ -9057,6 +9200,7 @@
       if (!e || e.defaultPrevented) return false;
       if (this.isShortcutSettingsModalOpen()) return false;
       if (this.isNAxisStudioOpen || this.isMathToolkitOpen || this._activeToolkitModalId) return false;
+      if (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit()) return false;
       const targetEl = e.target;
       if (targetEl) {
         const tag = targetEl.tagName ? targetEl.tagName.toUpperCase() : '';
@@ -9211,7 +9355,7 @@
           return false;
         }
         case 'graph_open_presets': {
-          if (this.isPdfModalOpen || (this.smartViewerState && this.smartViewerState.isOpen)) return false;
+          if (this.isPdfModalOpen || (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit())) return false;
           if (typeof this.handleRailPresetsTrigger === 'function') {
             this.handleRailPresetsTrigger();
             return true;
@@ -9263,7 +9407,7 @@
           return false;
         }
         case 'graph_open_toolkit': {
-          if (this.isPdfModalOpen || (this.smartViewerState && this.smartViewerState.isOpen)) return false;
+          if (this.isPdfModalOpen || (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit())) return false;
           if (!this.isDrawerCollapsed && this.activeDrawerPanel === 'panelToolkit') {
             this.closeDrawer();
           } else {

@@ -8047,30 +8047,55 @@ class GraphApp {
       if (m && m[1]) {
         const shortId = m[1];
         const isStudent = hash.includes('student=1') || hash.includes('student=true');
+        this._isPureSharedViewerSession = true;
+        this._sharedEnteredEditCleanState = null;
         this.restoreFromCloudShareId(shortId, isStudent);
+      } else if (typeof this._clearSharedViewerBooting === 'function') {
+        this._clearSharedViewerBooting();
       }
       return;
     }
 
-    if (!hash.includes('share=') && !hash.includes('student=')) return;
+    if (!hash.includes('share=') && !hash.includes('student=')) {
+      if (typeof this._clearSharedViewerBooting === 'function') this._clearSharedViewerBooting();
+      return;
+    }
 
-    if (!window.GraphStateSerializer) return;
+    if (!window.GraphStateSerializer) {
+      if (typeof this._clearSharedViewerBooting === 'function') this._clearSharedViewerBooting();
+      return;
+    }
     const data = window.GraphStateSerializer.deserialize(hash);
-    if (!data || !data.g) return;
+    if (!data || !data.g) {
+      if (typeof this._clearSharedViewerBooting === 'function') this._clearSharedViewerBooting();
+      return;
+    }
 
-    this._initialSharedData = JSON.parse(JSON.stringify(data));
+    this._isPureSharedViewerSession = true;
+    this._sharedEnteredEditCleanState = null;
+    this._initialSharedData = typeof this._fastCloneSlideValue === 'function'
+      ? this._fastCloneSlideValue(data)
+      : JSON.parse(JSON.stringify(data));
     this.applyState(data);
 
     // #share= / #student= 단일 그래프 링크도 스마트 이미지 뷰어(그래프 터치 조작 포함)로 즉시 오픈!
     setTimeout(async () => {
-      const pkg = await this.buildExportSharePackageObject('current', {
-        includeProblem: true,
-        includeGraph: true,
-        includeInk: true
-      });
-      pkg._viewerShareUrl = window.location.href;
-      this._initialSharedCloudPkg = JSON.parse(JSON.stringify(pkg));
-      await this.openSmartNoteViewer(pkg);
+      try {
+        const pkg = await this.buildExportSharePackageObject('current', {
+          includeProblem: true,
+          includeGraph: true,
+          includeInk: true
+        });
+        pkg._viewerShareUrl = window.location.href;
+        this._initialSharedCloudPkg = typeof this._fastCloneSlideValue === 'function'
+          ? this._fastCloneSlideValue(pkg)
+          : JSON.parse(JSON.stringify(pkg));
+        await this.openSmartNoteViewer(pkg);
+      } finally {
+        if (typeof this._clearSharedViewerBooting === 'function') {
+          this._clearSharedViewerBooting();
+        }
+      }
     }, 120);
   }
 }

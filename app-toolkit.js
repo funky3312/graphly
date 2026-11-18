@@ -2499,6 +2499,11 @@
         this.closeDrawer();
       }
 
+      const openedFromViewer = Boolean(typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit());
+      if (btnArchive) {
+        btnArchive.style.display = openedFromViewer ? 'none' : '';
+      }
+
       this.isNAxisStudioOpen = true;
       modal.style.display = 'flex';
       modal.classList.add('show');
@@ -2526,6 +2531,9 @@
       isScrubbingCanvas = false;
       isSliderDragging = false;
       this.isNAxisStudioOpen = false;
+      if (btnArchive) {
+        btnArchive.style.display = '';
+      }
       modal.classList.remove('show');
       setTimeout(() => {
         if (!modal.classList.contains('show')) {

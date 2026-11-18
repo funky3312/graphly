@@ -2251,6 +2251,7 @@
     }
 
     findBoardStickerAtScreenPos(pos, radius = 0) {
+      if (typeof document !== 'undefined' && document.body && document.body.classList.contains('viewer-graph-touch-mode')) return null;
       if (!pos || !Array.isArray(this.boardStickers) || this.boardStickers.length === 0) return null;
       const r = (typeof radius === 'number' && radius > 0) ? radius : 0;
       for (let i = this.boardStickers.length - 1; i >= 0; i--) {

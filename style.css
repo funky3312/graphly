@@ -10688,6 +10688,46 @@ body.theme-light .viewer-floating-page-toast {
   }
 }
 
+@media (max-width: 420px) {
+  .smart-viewer-header {
+    padding: 6px 8px;
+    gap: 4px;
+    justify-content: space-between;
+    box-sizing: border-box;
+    max-width: 100vw;
+  }
+
+  .smart-viewer-left,
+  .smart-viewer-right {
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .viewer-nav-arrow {
+    width: 24px;
+    height: 24px;
+  }
+
+  .viewer-page-counter-btn {
+    height: 24px;
+    min-width: 42px;
+    padding: 0 6px;
+    font-size: 11.5px;
+  }
+
+  .viewer-top-btn {
+    height: 26px;
+    padding: 0 7px;
+    font-size: 11px;
+    gap: 3px;
+  }
+
+  .viewer-top-btn-fullscreen {
+    width: 26px;
+    padding: 0;
+  }
+}
+
 /* ============================================================================
    📈 뷰어에서 그래프 클릭 시 열리는 클린 터치 조작 모드 (body.viewer-graph-touch-mode)
    ============================================================================ */
@@ -10826,9 +10866,25 @@ body.theme-light .viewer-touch-btn-primary:hover {
 body.viewer-graph-touch-mode #sidebarRail,
 body.viewer-graph-touch-mode #rightActionToolbar,
 body.viewer-graph-touch-mode #floatingInkBar,
+body.viewer-graph-touch-mode #inkFloatingToolbar,
 body.viewer-graph-touch-mode #quickPillRemote,
 body.viewer-graph-touch-mode #graphSnapFloatingBar,
+body.viewer-graph-touch-mode #pdfToGraphCropFloatingBar,
+body.viewer-graph-touch-mode #lassoActionFloatingBar,
 body.viewer-graph-touch-mode #curveContextBar,
+body.viewer-graph-touch-mode #ctxSymmetryPopover,
+body.viewer-graph-touch-mode #ctxAbsPopover,
+body.viewer-graph-touch-mode #pwRegionPopover,
+body.viewer-graph-touch-mode #railAddTargetPopover,
+body.viewer-graph-touch-mode #railResetBoardPopover,
+body.viewer-graph-touch-mode #inkSizeFlyout,
+body.viewer-graph-touch-mode #panelQuickTheme,
+body.viewer-graph-touch-mode #workspaceStickerOverlay,
+body.viewer-graph-touch-mode #wrapStealthRecordDot,
+body.viewer-graph-touch-mode #panelAudioRecordActions,
+body.viewer-graph-touch-mode #panelStealthRecordActions,
+body.viewer-graph-touch-mode #btnRestoreAllUITab,
+body.viewer-graph-touch-mode #audioSyncFloatingBar,
 body.viewer-graph-touch-mode #problemCardWidget,
 body.viewer-graph-touch-mode #graphCardWidget,
 body.viewer-graph-touch-mode .extra-problem-card-widget,
@@ -13017,6 +13073,23 @@ body.ink-sticker-tool-active .workspace-sticker-overlay .workspace-sticker-item 
   padding: 1px 4px;
   opacity: 0.68;
   background: rgba(254, 240, 138, 0.85);
+}
+
+.viewer-sticker-hotspot.is-compact-sticker .card-sticker-badge {
+  font-size: 10px;
+  padding: 1px 4px;
+  line-height: 1;
+}
+
+.viewer-sticker-hotspot.is-tiny-sticker .card-sticker-badge {
+  font-size: 9px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.viewer-sticker-hotspot.is-compact-sticker.revealed .card-sticker-badge {
+  display: none !important;
 }
 
 .card-sticker-del-btn {
@@ -28554,4 +28627,46 @@ body:not(.theme-light) #modalTossPaymentResult #btnConfirmTossPaymentResultModal
   background: #e2e8f0 !important;
   border-color: #e2e8f0 !important;
   color: #0f172a !important;
+}
+
+/* =========================================================================
+   [v181 핀셋 패치] 공유 링크(#cloud= / #share= / #student=) 부팅 시 빈 편집 칠판 FOUC 방지 베일
+   - 레이아웃 크기(clientWidth/getBoundingClientRect)는 100% 보존하면서 시각적 깜빡임만 은폐
+   ========================================================================= */
+html.shared-viewer-booting,
+html.shared-viewer-booting body {
+  background: #eef2f6 !important;
+}
+
+html.shared-viewer-booting .main-workspace,
+html.shared-viewer-booting #welcomeSplash,
+html.shared-viewer-booting #lessonPlaylistNavBar,
+html.shared-viewer-booting #quickPillRemote,
+html.shared-viewer-booting #inkFloatingToolbar,
+html.shared-viewer-booting #smartNoteViewerOverlay {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+html.shared-viewer-booting body::after {
+  content: "";
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  margin-top: -14px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(15, 23, 42, 0.12);
+  border-top-color: #3b82f6;
+  animation: graphlySharedBootSpin 0.68s linear infinite;
+  z-index: 9490;
+  pointer-events: none;
+}
+
+@keyframes graphlySharedBootSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }

@@ -323,6 +323,7 @@
 
       window.addEventListener('dragenter', (e) => {
         e.preventDefault();
+        if (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit()) return;
         const modalCloud = document.getElementById('modalCloudHub');
         if (modalCloud && modalCloud.classList.contains('show')) return;
         dragCounter++;
@@ -346,6 +347,7 @@
         e.preventDefault();
         dragCounter = 0;
         if (dropOverlay) dropOverlay.style.display = 'none';
+        if (typeof this._isViewerOrReplayBlockingEdit === 'function' && this._isViewerOrReplayBlockingEdit()) return;
         const modalCloud = document.getElementById('modalCloudHub');
         if (modalCloud && modalCloud.classList.contains('show')) return;
         if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -427,6 +429,9 @@
 
     async _preloadLastPdfFromIndexedDBOnBoot() {
       try {
+        if (typeof this._isSharedUrlViewActive === 'function' && this._isSharedUrlViewActive()) {
+          return;
+        }
         const meta = this._loadPdfViewStateMeta();
         if (meta) {
           if (meta.fileName && !this.pdfFileName) this.pdfFileName = meta.fileName;
