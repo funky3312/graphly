@@ -871,6 +871,8 @@
           const lastKf = this._lastAppliedAudioStateObj;
           this._lastAppliedAudioStateObj = null;
           this._applyAudioWorkspaceKeyframe(lastKf);
+        } else if (typeof this._isPdfBoardBoundedCameraActive === 'function' && this._isPdfBoardBoundedCameraActive()) {
+          this._clampPdfBoardCamera();
         }
         this.render();
       });
@@ -3274,9 +3276,16 @@
       } else if (this.isPanning) {
         this.canvas.style.cursor = 'move';
         this._inkBakeDirty = true;
+        if (typeof this._stopPdfBoardCameraSettle === 'function') {
+          this._stopPdfBoardCameraSettle(false);
+        }
         // [대표님 요청: 화면 전체 이동 시 중앙 걸림/덜그럭거림(센터 마그네틱 랙) 완전 제거 - 1:1 무저항 부드러운 패닝]
         this.panX = pos.x - this.panStart.x;
         this.panY = pos.y - this.panStart.y;
+        if (typeof this._isPdfBoardBoundedCameraActive === 'function' && this._isPdfBoardBoundedCameraActive()) {
+          this._clampPdfBoardCamera({ keepZoom: true });
+          this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
+        }
         this.snapActiveX = false;
         this.snapActiveY = false;
         this.requestRender();
@@ -4175,6 +4184,9 @@
         if (e.pointerType === 'pen') {
           this._markStylusPenDetected();
           this._lastPenActiveTime = nowT;
+          if (typeof this._stopPdfBoardCameraSettle === 'function') {
+            this._stopPdfBoardCameraSettle(true);
+          }
           const hadActivePinchOnPenDown = Boolean(this._pinchState || this._pinchWasActiveInGesture);
           if (this.activePointers) this.activePointers.clear();
           this._pinchState = null;
@@ -5038,6 +5050,76 @@
       }
 
       const pos = getPos(e);
+      if (typeof this._isPdfBoardBoundedCameraActive === 'function' && this._isPdfBoardBoundedCameraActive()) {
+        this._stopPdfBoardCameraSettle(false);
+        this._isWheelZooming = true;
+        if (this._wheelZoomIdleTimer) clearTimeout(this._wheelZoomIdleTimer);
+        const finishPdfWheelIdle = () => {
+          this._wheelZoomIdleTimer = null;
+          if (this.isDrawingInk || this._isDrawingCardInk || this.isStylusDrawing) {
+            this._wheelZoomIdleTimer = setTimeout(finishPdfWheelIdle, 160);
+            return;
+          }
+          this._isWheelZooming = false;
+          this.requestRender();
+        };
+        this._wheelZoomIdleTimer = setTimeout(finishPdfWheelIdle, 160);
+
+        const b = this._getPdfBoardCameraBounds();
+        if (!e.ctrlKey && !e.metaKey) {
+          if (b.canScrollY || b.canScrollX) {
+            const unitPx = e.deltaMode === 1 ? 36 : (e.deltaMode === 2 ? Math.max(240, b.availH * 0.85) : 1);
+            const dxPx = (e.deltaX || 0) * unitPx;
+            const dyPx = (e.deltaY || 0) * unitPx;
+            if (b.canScrollX) this.panX = (this.panX || 0) - dxPx;
+            if (b.canScrollY) this.panY = (this.panY || 0) - dyPx;
+            this._clampPdfBoardCamera({ keepZoom: true });
+            this._inkBakeDirty = true;
+            this.requestRender();
+            return;
+          }
+          if (!e.deltaY) return;
+        }
+
+        const isSmoothTrackpadPinch = Boolean((e.ctrlKey || e.metaKey) && e.deltaMode === 0 && Math.abs(e.deltaY) < 40);
+        if (isSmoothTrackpadPinch) {
+          const oldZ = this.zoomLevel || b.detentZoom;
+          let nextZ = Math.max(b.minZoom, Math.min(b.maxZoom, oldZ * Math.exp(-e.deltaY * 0.01)));
+          if (b.minZoom < b.detentZoom - 0.02 && Math.abs(nextZ - b.detentZoom) < 0.015) {
+            nextZ = b.detentZoom;
+          }
+          const ratio = nextZ / Math.max(0.1, oldZ);
+          const cx = this.screenWidth / 2 + (this.panX || 0);
+          const cy = this.screenHeight / 2 + (this.panY || 0);
+          this.zoomLevel = nextZ;
+          this.targetZoom = nextZ;
+          this._isZoomAnimating = false;
+          this.panX = (this.panX || 0) + (pos.x - cx) * (1 - ratio);
+          this.panY = (this.panY || 0) + (pos.y - cy) * (1 - ratio);
+          this._clampPdfBoardCamera({ keepZoom: true });
+          this._syncPdfBoardZoomLabels();
+          this._inkBakeDirty = true;
+          this.requestRender();
+          return;
+        }
+
+        this._zoomMousePos = { x: pos.x, y: pos.y };
+        const curTgt = (this.targetZoom === undefined || this.targetZoom === null) ? (this.zoomLevel || b.detentZoom) : this.targetZoom;
+        const factorPdf = e.deltaY < 0 ? 1.14 : (1 / 1.14);
+        let nextTgt = Math.max(b.minZoom, Math.min(b.maxZoom, curTgt * factorPdf));
+        if (e.deltaY < 0 && curTgt < b.detentZoom * 0.99 && nextTgt >= b.detentZoom * 0.95) nextTgt = b.detentZoom;
+        else if (e.deltaY > 0 && curTgt > b.detentZoom * 1.01 && nextTgt <= b.detentZoom * 1.05) nextTgt = b.detentZoom;
+        this.targetZoom = nextTgt;
+        if (!this._isZoomAnimating) {
+          this._isZoomAnimating = true;
+          const animatePdfZoom = () => {
+            if (this.stepZoomLerp()) requestAnimationFrame(animatePdfZoom);
+          };
+          requestAnimationFrame(animatePdfZoom);
+        }
+        return;
+      }
+
       this._zoomMousePos = { x: pos.x, y: pos.y };
 
       const factor = e.deltaY < 0 ? 1.15 : (1 / 1.15);
@@ -5065,6 +5147,7 @@
   stepZoomLerp() {
     if (!this._isZoomAnimating) return false;
     const isViewerTouchZoom = Boolean(typeof document !== 'undefined' && document.body && document.body.classList.contains('viewer-graph-touch-mode'));
+    const isPdfBounded = Boolean(typeof this._isPdfBoardBoundedCameraActive === 'function' && this._isPdfBoardBoundedCameraActive());
     const diff = this.targetZoom - this.zoomLevel;
     if (Math.abs(diff) < 0.001) {
       // 수렴 완료
@@ -5084,6 +5167,13 @@
       }
       this.zoomLevel = this.targetZoom;
       this._isZoomAnimating = false;
+      if (isPdfBounded) {
+        this._clampPdfBoardCamera({ keepZoom: true });
+        this._syncPdfBoardZoomLabels();
+        this._inkBakeDirty = true;
+        this.requestRender();
+        return false;
+      }
 
       const slZoom = document.getElementById('sliderZoom');
       if (slZoom) slZoom.value = this.zoomLevel;
@@ -5116,6 +5206,13 @@
     }
 
     this.zoomLevel = newZoom;
+    if (isPdfBounded) {
+      this._clampPdfBoardCamera({ keepZoom: true });
+      this._syncPdfBoardZoomLabels();
+      this._inkBakeDirty = true;
+      this.requestRender();
+      return true;
+    }
 
     const slZoom = document.getElementById('sliderZoom');
     if (slZoom) slZoom.value = this.zoomLevel;
@@ -6006,6 +6103,10 @@
     this.downInfo = null;
     this.isPanning = false;
     this.isBoardPanning = false;
+    const isPdfBounded = Boolean(typeof this._isPdfBoardBoundedCameraActive === 'function' && this._isPdfBoardBoundedCameraActive());
+    if (isPdfBounded && typeof this._stopPdfBoardCameraSettle === 'function') {
+      this._stopPdfBoardCameraSettle(true);
+    }
 
     const cRect = this.canvasRect || (this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 });
     const x1 = p1.x - cRect.left;
@@ -6015,6 +6116,8 @@
     const midX = (x1 + x2) / 2;
     const midY = (y1 + y2) / 2;
     const dist = Math.max(24, Math.hypot(x2 - x1, y2 - y1));
+    const pdfInitB = isPdfBounded ? this._getPdfBoardCameraBounds() : null;
+    const curPanX = this.panX || 0;
     this._pinchState = {
       id1: p1.id,
       id2: p2.id,
@@ -6038,13 +6141,20 @@
       startMidY: midY,
       smoothMidX: midX,
       smoothMidY: midY,
-      startPanX: this.panX || 0,
+      startPanX: curPanX,
       startPanY: this.panY || 0,
       startBoardPanX: this.boardPanX || 0,
       startBoardPanY: this.boardPanY || 0,
       latestP1: { id: p1.id, x: p1.x, y: p1.y },
       latestP2: { id: p2.id, x: p2.x, y: p2.y },
-      _hasPendingMove: false
+      _hasPendingMove: false,
+      pdfStartedAtLeftEdge: Boolean(pdfInitB && (!pdfInitB.canScrollX || Math.abs(curPanX - pdfInitB.maxPanX) <= 3)),
+      pdfStartedAtRightEdge: Boolean(pdfInitB && (!pdfInitB.canScrollX || Math.abs(curPanX - pdfInitB.minPanX) <= 3)),
+      pdfAxisLock: null,
+      pdfPullTurnDir: null,
+      pdfPullArmed: false,
+      pdfPullRawPx: 0,
+      pdfMoveSamples: isPdfBounded ? [{ x: midX, y: midY, t: performance.now() }] : null
     };
   }
 
@@ -6126,6 +6236,13 @@
     if (!st.zoomUnlocked) {
       const zoomUnlockThreshold = st._parallelPanLocked ? 28 : 16;
       if (distDeltaFromInit >= zoomUnlockThreshold) {
+        if (typeof this._isPdfBoardBoundedCameraActive === 'function' && this._isPdfBoardBoundedCameraActive()) {
+          this._clampPdfBoardCamera({ keepZoom: true });
+          this._syncPdfBoardPullTurnPill(null);
+          st.pdfPullTurnDir = null;
+          st.pdfPullArmed = false;
+          st.pdfPullRawPx = 0;
+        }
         st.zoomUnlocked = true;
         st.panUnlocked = true;
         st.startDist = rawDist;
@@ -6187,8 +6304,147 @@
       }
 
       this._inkBakeDirty = true;
+    } else if (typeof this._isPdfBoardBoundedCameraActive === 'function' && this._isPdfBoardBoundedCameraActive()) {
+      // 📄 [통PDF 페이지 수업 전용 뷰어형 카메라 물리]:
+      // 1) 화면 맞춤(100% 가로맞춤 ↔ 전체페이지 맞춤) 걸림턱 & 더 오므려도 손 떼면 화면 맞춤으로 탄성 복귀
+      // 2) 종이 경계 탁! 걸림 + 좌·우 끝에서 양손 당김 시 기존 추가된 슬라이드만 넘김 (첫/마지막 슬라이드는 저항 후 제자리 무반응 복귀)
+      const nowSample = performance.now();
+      if (Array.isArray(st.pdfMoveSamples)) {
+        st.pdfMoveSamples.push({ x: midX, y: midY, t: nowSample });
+        while (st.pdfMoveSamples.length > 2 && (nowSample - st.pdfMoveSamples[0].t) > 105) {
+          st.pdfMoveSamples.shift();
+        }
+      }
+      const oldZoom = st.startZoom || 1.0;
+      const b0 = this._getPdfBoardCameraBounds(oldZoom);
+
+      if (st.zoomUnlocked) {
+        this._syncPdfBoardPullTurnPill(null);
+        st.pdfPullTurnDir = null;
+        st.pdfPullArmed = false;
+        st.pdfPullRawPx = 0;
+
+        const rawPinchZ = this._computeStandardPinchZoom(
+          st.smoothDist,
+          st.startDist,
+          oldZoom,
+          b0.minZoom * 0.82,
+          b0.maxZoom,
+          b0.detentZoom
+        );
+        const nextZoom = rawPinchZ < b0.minZoom
+          ? Math.max(b0.minZoom * 0.90, b0.minZoom - (b0.minZoom - rawPinchZ) * 0.35)
+          : rawPinchZ;
+
+        this.zoomLevel = nextZoom;
+        this.targetZoom = nextZoom;
+        this._isZoomAnimating = false;
+        const pct = Math.round((nextZoom / Math.max(0.1, b0.detentZoom)) * 100);
+        if (st._lastDomZoomPct !== pct) {
+          st._lastDomZoomPct = pct;
+          this._syncPdfBoardZoomLabels();
+        }
+
+        const ratio = nextZoom / Math.max(0.1, oldZoom);
+        const cx = (this.screenWidth || window.innerWidth) / 2 + st.startPanX;
+        const cy = (this.screenHeight || window.innerHeight) / 2 + st.startPanY;
+        const rawPanX = st.startPanX + dx + (st.startMidX - cx) * (1 - ratio);
+        const rawPanY = st.startPanY + dy + (st.startMidY - cy) * (1 - ratio);
+        const bNext = this._getPdfBoardCameraBounds(nextZoom);
+        const softPadX = bNext.availW * 0.45;
+        const softPadY = bNext.availH * 0.45;
+        this.panX = Math.max(bNext.minPanX - softPadX, Math.min(bNext.maxPanX + softPadX, rawPanX));
+        this.panY = Math.max(bNext.minPanY - softPadY, Math.min(bNext.maxPanY + softPadY, rawPanY));
+        this.panOffset = { x: this.panX, y: this.panY };
+        this._inkBakeDirty = true;
+      } else {
+        const bCur = this._getPdfBoardCameraBounds(this.zoomLevel || b0.detentZoom);
+        const candY = st.startPanY + dy;
+        let nextPanY = candY;
+        if (candY > bCur.maxPanY) {
+          nextPanY = bCur.maxPanY + Math.min(14, (candY - bCur.maxPanY) * 0.14);
+        } else if (candY < bCur.minPanY) {
+          nextPanY = bCur.minPanY - Math.min(14, (bCur.minPanY - candY) * 0.14);
+        }
+
+        let pullPx = 0;
+        let pullAnchorX = bCur.centerPanX;
+        let nextPanX = bCur.centerPanX;
+
+        if (!bCur.canScrollX) {
+          if (!st.pdfAxisLock && Math.hypot(dx, dy) >= 12) {
+            st.pdfAxisLock = (Math.abs(dx) > Math.abs(dy) * 1.15) ? 'x' : 'y';
+          }
+          if (st.pdfAxisLock === 'x') {
+            nextPanY = Math.max(bCur.minPanY, Math.min(bCur.maxPanY, st.startPanY));
+            pullPx = dx;
+            pullAnchorX = bCur.centerPanX;
+          } else {
+            nextPanX = bCur.centerPanX;
+          }
+        } else {
+          const candX = st.startPanX + dx;
+          if (candX < bCur.minPanX) {
+            if (st.pdfStartedAtRightEdge && Math.abs(dx) > Math.abs(dy) * 1.28) {
+              pullPx = candX - bCur.minPanX;
+              pullAnchorX = bCur.minPanX;
+            } else {
+              nextPanX = bCur.minPanX;
+            }
+          } else if (candX > bCur.maxPanX) {
+            if (st.pdfStartedAtLeftEdge && Math.abs(dx) > Math.abs(dy) * 1.28) {
+              pullPx = candX - bCur.maxPanX;
+              pullAnchorX = bCur.maxPanX;
+            } else {
+              nextPanX = bCur.maxPanX;
+            }
+          } else {
+            nextPanX = candX;
+          }
+        }
+
+        if (Math.abs(pullPx) > 0.5) {
+          const wantNext = pullPx < 0;
+          const totalSlides = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides))
+            ? this.lessonPlaylistSlides.length
+            : 1;
+          const curIdx = this.lessonPlaylistIndex || 0;
+          const canTurn = wantNext
+            ? Boolean(this.isLessonPlaylistActive && curIdx < totalSlides - 1)
+            : Boolean(this.isLessonPlaylistActive && curIdx > 0);
+          if (canTurn) {
+            const threshold = bCur.canScrollX ? 82 : 66;
+            const absPull = Math.abs(pullPx);
+            const visShift = Math.sign(pullPx) * Math.min(104, Math.pow(absPull, 0.86) * 1.12);
+            nextPanX = pullAnchorX + visShift;
+            const prog = Math.min(1, absPull / threshold);
+            st.pdfPullTurnDir = wantNext ? 'next' : 'prev';
+            st.pdfPullArmed = (prog >= 1);
+            st.pdfPullRawPx = pullPx;
+            this._syncPdfBoardPullTurnPill(st.pdfPullTurnDir, prog, wantNext ? (curIdx + 2) : curIdx, totalSlides);
+          } else {
+            // 첫/마지막 슬라이드: 배지/반응 일절 없이 약한 고무줄 저항만 주고 손을 떼면 원래 위치로 복귀!
+            const visShift = Math.sign(pullPx) * Math.min(26, Math.abs(pullPx) * 0.16);
+            nextPanX = pullAnchorX + visShift;
+            st.pdfPullTurnDir = null;
+            st.pdfPullArmed = false;
+            st.pdfPullRawPx = 0;
+            this._syncPdfBoardPullTurnPill(null);
+          }
+        } else {
+          st.pdfPullTurnDir = null;
+          st.pdfPullArmed = false;
+          st.pdfPullRawPx = 0;
+          this._syncPdfBoardPullTurnPill(null);
+        }
+
+        this.panX = nextPanX;
+        this.panY = nextPanY;
+        this.panOffset = { x: nextPanX, y: nextPanY };
+        this._inkBakeDirty = true;
+      }
     } else {
-      // 1층 실시간 그래프 및 PDF 1페이지 보드: 두 손가락 이동(Pan) + 두 손가락 핀치 중심점 기준 서브픽셀 줌 + 100% 자석 걸림턱
+      // 1층 실시간 그래프: 두 손가락 이동(Pan) + 두 손가락 핀치 중심점 기준 서브픽셀 줌 + 100% 자석 걸림턱
       const oldZoom = st.startZoom || 1.0;
       const nextZoom = st.zoomUnlocked
         ? this._computeStandardPinchZoom(st.smoothDist, st.startDist, oldZoom, 0.5, 3.5, 1.0)
@@ -6224,6 +6480,82 @@
     return true;
   }
 
+  _finishCanvasTwoFingerPinch(isCancel = false) {
+    const st = this._pinchState;
+    if (typeof this._syncPdfBoardPullTurnPill === 'function') {
+      this._syncPdfBoardPullTurnPill(null);
+    }
+    if (!st || typeof this._isPdfBoardBoundedCameraActive !== 'function' || !this._isPdfBoardBoundedCameraActive()) {
+      return false;
+    }
+
+    if (!isCancel && !st.zoomUnlocked && st.pdfPullTurnDir) {
+      let vx = 0;
+      const samples = st.pdfMoveSamples;
+      const nowUp = performance.now();
+      if (Array.isArray(samples) && samples.length >= 2) {
+        const last = samples[samples.length - 1];
+        const first = samples[0];
+        const dt = last.t - first.t;
+        if ((nowUp - last.t) <= 95 && dt >= 8) {
+          vx = (last.x - first.x) / dt;
+        }
+      }
+      const isFlickTurn = (st.pdfPullTurnDir === 'next' && st.pdfPullRawPx <= -34 && vx <= -0.38) ||
+        (st.pdfPullTurnDir === 'prev' && st.pdfPullRawPx >= 34 && vx >= 0.38);
+      if (st.pdfPullArmed || isFlickTurn) {
+        const totalSlides = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides))
+          ? this.lessonPlaylistSlides.length
+          : 1;
+        const curIdx = this.lessonPlaylistIndex || 0;
+        const deltaIdx = st.pdfPullTurnDir === 'next' ? 1 : -1;
+        const nextIdx = curIdx + deltaIdx;
+        if (this.isLessonPlaylistActive && nextIdx >= 0 && nextIdx < totalSlides && typeof this.stepLessonPlaylist === 'function') {
+          const turnDir = st.pdfPullTurnDir;
+          this._clampPdfBoardCamera({ keepZoom: true });
+          this._pinchState = null;
+          this.stepLessonPlaylist(deltaIdx);
+          if (this._isPdfBoardBoundedCameraActive()) {
+            this._clampPdfBoardCamera({ snapDetent: true });
+            const finalZ = this.zoomLevel || 1.0;
+            const finalX = this.panX || 0;
+            const finalY = this.panY || 0;
+            this.panX = finalX + (turnDir === 'next' ? 36 : -36);
+            this.panOffset = { x: this.panX, y: finalY };
+            this.render();
+            this._animatePdfBoardCameraSettle(finalZ, finalX, finalY, 150);
+          }
+          return true;
+        }
+      }
+    }
+
+    const curZ = this.zoomLevel || 1.0;
+    const b0 = this._getPdfBoardCameraBounds(curZ);
+    let tgtZ = Math.max(b0.minZoom, Math.min(b0.maxZoom, curZ));
+    const startedZoomedIn = (st.startZoom || curZ) > b0.detentZoom * 1.08;
+    const detentSnapBand = startedZoomedIn ? (b0.detentZoom * 0.065) : (b0.detentZoom * 0.03);
+    if (Math.abs(tgtZ - b0.detentZoom) <= detentSnapBand) {
+      tgtZ = b0.detentZoom;
+    }
+    const bTgt = this._getPdfBoardCameraBounds(tgtZ);
+    let candX = this.panX || 0;
+    let candY = this.panY || 0;
+    if (Math.abs(tgtZ - curZ) > 0.002 && curZ > 0.05) {
+      const ratio = tgtZ / curZ;
+      candX *= ratio;
+      candY *= ratio;
+    }
+    const tgtX = Math.max(bTgt.minPanX, Math.min(bTgt.maxPanX, candX));
+    const tgtY = Math.max(bTgt.minPanY, Math.min(bTgt.maxPanY, candY));
+    if (Math.abs(tgtZ - curZ) > 0.002 || Math.hypot(tgtX - (this.panX || 0), tgtY - (this.panY || 0)) > 0.75) {
+      this._animatePdfBoardCameraSettle(tgtZ, tgtX, tgtY, 155);
+      return true;
+    }
+    this._clampPdfBoardCamera({ snapDetent: true });
+    return false;
+  }
+
   zoomByStep(delta) {
     if (this.isGraphCovered && !this.pdfPageBoardData) {
       const currBZ = this.boardZoom || 1.0;
@@ -6231,6 +6563,22 @@
       if (delta > 0 && currBZ < 0.99 && nextBZ >= 0.96) nextBZ = 1.0;
       else if (delta < 0 && currBZ > 1.01 && nextBZ <= 1.04) nextBZ = 1.0;
       this.setBoardZoom(nextBZ);
+      this.render();
+      return;
+    }
+    if (typeof this._isPdfBoardBoundedCameraActive === 'function' && this._isPdfBoardBoundedCameraActive()) {
+      this._stopPdfBoardCameraSettle(false);
+      const b = this._getPdfBoardCameraBounds();
+      const currZ = this.zoomLevel || b.detentZoom;
+      const stepAmt = delta * b.detentZoom;
+      let nextZ = Math.round((currZ + stepAmt) * 1000) / 1000;
+      if (delta > 0 && currZ < b.detentZoom * 0.99 && nextZ >= b.detentZoom * 0.95) nextZ = b.detentZoom;
+      else if (delta < 0 && currZ > b.detentZoom * 1.01 && nextZ <= b.detentZoom * 1.05) nextZ = b.detentZoom;
+      nextZ = Math.max(b.minZoom, Math.min(b.maxZoom, nextZ));
+      const ratio = nextZ / Math.max(0.1, currZ);
+      this.panX = (this.panX || 0) * ratio;
+      this.panY = (this.panY || 0) * ratio;
+      this.setZoomLevel(nextZ);
       this.render();
       return;
     }
@@ -6244,6 +6592,15 @@
 
   // 🌟 [통합 줌 배율 제어 및 UI 실시간 동기화] 🌟
   setZoomLevel(val, options = null) {
+    if (typeof this._isPdfBoardBoundedCameraActive === 'function' && this._isPdfBoardBoundedCameraActive() && !(options && options.allowSubMin)) {
+      const b = this._getPdfBoardCameraBounds();
+      this.zoomLevel = Math.max(b.minZoom, Math.min(b.maxZoom, Math.round(val * 1000) / 1000));
+      this.targetZoom = this.zoomLevel;
+      this._clampPdfBoardCamera({ keepZoom: true });
+      this._inkBakeDirty = true;
+      this._syncPdfBoardZoomLabels();
+      return;
+    }
     const minZ = (options && options.allowSubMin) ? 0.15 : 0.5;
     this.zoomLevel = Math.max(minZ, Math.min(3.5, Math.round(val * 100) / 100));
     this.targetZoom = this.zoomLevel;

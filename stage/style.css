@@ -29332,3 +29332,44 @@ body.ios-top-guard-active #graphlyIntroModal.intro-modal-backdrop {
     font-size: 12.5px;
   }
 }
+
+/* 📄 통PDF 수업 모드 양손 당겨서 슬라이드 이동 측면 배지 (0MB 메모리 · 포인터 무간섭) */
+.pdf-board-pull-turn-pill {
+  position: absolute;
+  top: 50%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  z-index: 415;
+  background: rgba(15, 23, 42, 0.84);
+  color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.pdf-board-pull-turn-pill.is-left {
+  left: 62px;
+}
+.pdf-board-pull-turn-pill.is-right {
+  right: 62px;
+}
+.pdf-board-pull-turn-pill.is-armed {
+  background: #2563eb;
+  border-color: #60a5fa;
+  color: #ffffff;
+  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.38);
+}
+body.theme-light .pdf-board-pull-turn-pill:not(.is-armed) {
+  background: rgba(255, 255, 255, 0.94);
+  color: #1e293b;
+  border-color: rgba(148, 163, 184, 0.48);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+}

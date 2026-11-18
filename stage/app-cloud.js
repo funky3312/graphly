@@ -8853,6 +8853,9 @@
       } finally {
         this._isDeserializingSlide = false;
       }
+      if (typeof this._isPdfBoardBoundedCameraActive === 'function' && this._isPdfBoardBoundedCameraActive()) {
+        this._clampPdfBoardCamera({ snapDetent: true });
+      }
       this.render();
       if (!this._isCapturingExportSnapshots) {
         this._loadedSlideRef = slideData;
@@ -22439,6 +22442,9 @@
       this._restoreSavedViewerTouchInkState(false);
       this._inkBakeDirty = true;
       this.resizeCanvas();
+      if (typeof this._isPdfBoardBoundedCameraActive === 'function' && this._isPdfBoardBoundedCameraActive()) {
+        this._clampPdfBoardCamera({ snapDetent: true });
+      }
       this.render();
       if (this._isPureSharedViewerSession) {
         this._isPureSharedViewerSession = false;

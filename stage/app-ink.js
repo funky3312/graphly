@@ -1119,6 +1119,7 @@
             time: nowT
           });
           if (this.activePointers.size >= 3) {
+            if (typeof this._syncPdfBoardPullTurnPill === 'function') this._syncPdfBoardPullTurnPill(null);
             this._pinchState = null;
             this._pinchWasActiveInGesture = true;
             this.isPanning = false;
@@ -1194,7 +1195,11 @@
         if (this.activePointers && e.pointerId !== undefined) {
           this.activePointers.delete(e.pointerId);
         }
+        let handledPdfPinchFinish = false;
         if (!this.activePointers || this.activePointers.size < 2) {
+          if (this._pinchState && typeof this._finishCanvasTwoFingerPinch === 'function') {
+            handledPdfPinchFinish = Boolean(this._finishCanvasTwoFingerPinch(e.type === 'pointercancel'));
+          }
           this._pinchState = null;
         }
         const allFingersUp = (!this.activePointers || this.activePointers.size === 0);
@@ -1208,13 +1213,15 @@
             if (allFingersUp) {
               this._pinchHadActiveMoveInGesture = false;
             }
-            if (this.isGraphCovered) {
-              this.updateProblemCardPosition(false);
-            }
-            this._hasSceneFreeze = false;
-            this.requestRender();
-            if (this._inkBakeDirty) {
-              this._scheduleIdleInkCacheRebuild(90);
+            if (!handledPdfPinchFinish) {
+              if (this.isGraphCovered) {
+                this.updateProblemCardPosition(false);
+              }
+              this._hasSceneFreeze = false;
+              this.requestRender();
+              if (this._inkBakeDirty) {
+                this._scheduleIdleInkCacheRebuild(90);
+              }
             }
           }
           return true;
