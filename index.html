@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261118_186">
+  <link rel="stylesheet" href="style.css?v=20261118_187">
   <script>
     (function () {
       try {
@@ -3683,12 +3683,20 @@
             </svg></span>
           <span class="modal-title-text">사용법 및 문의</span>
         </div>
-        <button type="button" id="btnCloseGuideNoticeModal" class="btn-modal-close"><svg width="15" height="15"
-            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg></button>
+        <div class="guide-header-right-actions">
+          <button type="button" id="btnOpenIntroFromGuide" class="btn-guide-open-intro" title="30초 핵심 기능 가이드 보기">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <polygon points="6 4 20 12 6 20 6 4" />
+            </svg>
+            <span>핵심 가이드</span>
+          </button>
+          <button type="button" id="btnCloseGuideNoticeModal" class="btn-modal-close"><svg width="15" height="15"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg></button>
+        </div>
       </div>
 
       <div class="guide-notice-tab-bar" role="tablist" aria-label="사용법 및 공지사항 탭">
@@ -3876,15 +3884,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261118_186"></script>
-  <script src="app-core.js?v=20261118_186"></script>
-  <script src="app-ink.js?v=20261118_186"></script>
-  <script src="app-pdf.js?v=20261118_186"></script>
-  <script src="app-cards.js?v=20261118_186"></script>
-  <script src="app-cloud.js?v=20261118_186"></script>
-  <script src="app-canvas.js?v=20261118_186"></script>
-  <script src="app-toolkit.js?v=20261118_186"></script>
-  <script src="app.js?v=20261118_186"></script>
+  <script src="engine.js?v=20261118_187"></script>
+  <script src="app-core.js?v=20261118_187"></script>
+  <script src="app-ink.js?v=20261118_187"></script>
+  <script src="app-pdf.js?v=20261118_187"></script>
+  <script src="app-cards.js?v=20261118_187"></script>
+  <script src="app-cloud.js?v=20261118_187"></script>
+  <script src="app-canvas.js?v=20261118_187"></script>
+  <script src="app-toolkit.js?v=20261118_187"></script>
+  <script src="app.js?v=20261118_187"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4064,6 +4072,71 @@
       </div>
     </div>
   </div>
+
+  <!-- [🎬 첫 접속자 전용 3탭 핵심 가이드 시연 애니메이션 모달 (코어 무간섭 독립 레이어)] -->
+  <div class="intro-modal-backdrop is-hidden" id="graphlyIntroModal" role="dialog" aria-modal="true"
+    aria-labelledby="introTourModalTitle" style="display: none;">
+    <div class="intro-modal-card">
+      <div class="intro-header">
+        <div class="intro-brand-group">
+          <span class="intro-badge">30초 핵심 가이드</span>
+          <h2 class="intro-title" id="introTourModalTitle">수식 입력 없이 드래그로 완성하는 스마트 칠판, Graphly</h2>
+        </div>
+        <button type="button" class="intro-close-btn" id="btnIntroSkipClose" title="닫기 (Esc)">
+          <span>건너뛰기</span>
+          <span>✕</span>
+        </button>
+      </div>
+
+      <div class="intro-tabs" role="tablist">
+        <button type="button" class="intro-tab-btn active" data-intro-tab="0" role="tab" aria-selected="true">
+          <div class="intro-tab-top">
+            <span class="intro-tab-num">1</span>
+            <span class="intro-tab-name">개형 드래그 · 교점 관찰</span>
+          </div>
+          <div class="intro-tab-progress-track"><div class="intro-tab-progress-fill" id="introTabProg0"></div></div>
+        </button>
+
+        <button type="button" class="intro-tab-btn" data-intro-tab="1" role="tab" aria-selected="false">
+          <div class="intro-tab-top">
+            <span class="intro-tab-num">2</span>
+            <span class="intro-tab-name">스탬프로 그래프 고정 · 해설</span>
+          </div>
+          <div class="intro-tab-progress-track"><div class="intro-tab-progress-fill" id="introTabProg1"></div></div>
+        </button>
+
+        <button type="button" class="intro-tab-btn" data-intro-tab="2" role="tab" aria-selected="false">
+          <div class="intro-tab-top">
+            <span class="intro-tab-num">3</span>
+            <span class="intro-tab-name">단계별 선택 공유</span>
+          </div>
+          <div class="intro-tab-progress-track"><div class="intro-tab-progress-fill" id="introTabProg2"></div></div>
+        </button>
+      </div>
+
+      <div class="intro-stage-wrap">
+        <div class="intro-stage-frame">
+          <canvas id="introTourCanvas"></canvas>
+          <div class="intro-caption-pill">
+            <span class="intro-caption-dot"></span>
+            <span id="introTourCaptionText">좌측 [f+]에서 비대칭 4차함수를 불러옵니다</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="intro-footer">
+        <div class="intro-playback-controls">
+          <button type="button" class="intro-ctrl-btn" id="btnIntroTogglePlay">⏸ 일시정지</button>
+          <button type="button" class="intro-ctrl-btn" id="btnIntroReplayTab">↺ 현재 탭 처음부터</button>
+        </div>
+        <div class="intro-cta-group">
+          <button type="button" class="intro-next-btn" id="btnIntroNextTab">다음 기능 보기 →</button>
+          <button type="button" class="intro-start-btn" id="btnIntroStartNow">바로 시작하기</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="app-intro.js?v=20261118_187"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
