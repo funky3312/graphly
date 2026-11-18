@@ -19926,6 +19926,10 @@
         this._applyReplayVisualThemeAndPaper(touchTargetSlide.themeKey, touchTargetSlide.boardPaperType, touchTargetSlide.isMonochromeMode);
       }
       this.isGraphCovered = false;
+      if (typeof this._viewerTouchSavedIsInkMode !== 'boolean') {
+        this._viewerTouchSavedIsInkMode = Boolean(this.isInkMode);
+        this._viewerTouchSavedActiveInkTool = this.activeInkTool || 'pen';
+      }
       this.isInkMode = false;
       if (typeof this.syncInkUiVisibility === 'function') {
         this.syncInkUiVisibility();
@@ -20094,6 +20098,33 @@
       this.panY = midY * unitPx;
     }
 
+    _restoreSavedViewerTouchInkState(keepStylusHidden = false) {
+      if (typeof this._viewerTouchSavedIsInkMode !== 'boolean') return;
+      const savedInkMode = this._viewerTouchSavedIsInkMode;
+      const savedTool = this._viewerTouchSavedActiveInkTool;
+      this._viewerTouchSavedIsInkMode = null;
+      this._viewerTouchSavedActiveInkTool = null;
+      this.isInkMode = savedInkMode;
+      if (savedTool) {
+        this.activeInkTool = savedTool;
+      }
+      if (typeof this.syncInkUiVisibility === 'function') {
+        this.syncInkUiVisibility({ clampPillPosition: Boolean(this.isInkMode && this.isQuickPillRemoteOpen) });
+      }
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.classList.toggle('ink-mode-active', Boolean(this.isInkMode));
+        document.body.classList.toggle('ink-laser-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'laser'));
+        document.body.classList.toggle('ink-sticker-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'sticker'));
+        document.body.classList.toggle('ink-lasso-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'lasso'));
+      }
+      if (typeof this.updateInkCursor === 'function') {
+        this.updateInkCursor();
+      }
+      if (keepStylusHidden && this.virtualStylusEl) {
+        this.virtualStylusEl.style.display = 'none';
+      }
+    }
+
     exitViewerGraphTouchModeToViewer() {
       document.body.classList.remove('viewer-graph-touch-mode');
       if (typeof this._viewerTouchSavedUseViewfinder === 'boolean') {
@@ -20126,6 +20157,7 @@
         this._syncSmartViewerThemeForSlide(curViewerSlide);
         this.fitSmartViewerStageToScreen(false, null, { preserveViewState: true });
       }
+      this._restoreSavedViewerTouchInkState(true);
     }
 
     async exitSmartNoteViewerToEditMode() {
@@ -20200,6 +20232,7 @@
       if (resetBar) {
         resetBar.style.display = 'none';
       }
+      this._restoreSavedViewerTouchInkState(false);
       this.resizeCanvas();
       this.render();
       if (this._isPureSharedViewerSession) {

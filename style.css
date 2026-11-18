@@ -28672,3 +28672,133 @@ html.shared-viewer-booting body::after {
     transform: rotate(360deg);
   }
 }
+
+/* ============================================================================
+   📸 [전체화면 그래프 Ctrl+C 순수 그래프 복사 시 뷰파인더 범위 셔터 스냅]
+   ============================================================================ */
+.fullscreen-graph-copy-shutter-fx {
+  display: none;
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 10px;
+  border: 1.5px solid rgba(15, 23, 42, 0.34);
+  background: rgba(255, 255, 255, 0);
+  pointer-events: none !important;
+  z-index: 185;
+  transform-origin: center center;
+  opacity: 0;
+}
+
+body:not(.theme-light) .fullscreen-graph-copy-shutter-fx {
+  border-color: rgba(248, 250, 252, 0.48);
+}
+
+.fullscreen-graph-copy-shutter-fx .shutter-corner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-color: #0f172a;
+  border-style: solid;
+  pointer-events: none !important;
+}
+
+body:not(.theme-light) .fullscreen-graph-copy-shutter-fx .shutter-corner {
+  border-color: #f8fafc;
+}
+
+.fullscreen-graph-copy-shutter-fx .shutter-corner.tl {
+  top: -1.5px;
+  left: -1.5px;
+  border-width: 2.5px 0 0 2.5px;
+  border-top-left-radius: 10px;
+}
+
+.fullscreen-graph-copy-shutter-fx .shutter-corner.tr {
+  top: -1.5px;
+  right: -1.5px;
+  border-width: 2.5px 2.5px 0 0;
+  border-top-right-radius: 10px;
+}
+
+.fullscreen-graph-copy-shutter-fx .shutter-corner.bl {
+  bottom: -1.5px;
+  left: -1.5px;
+  border-width: 0 0 2.5px 2.5px;
+  border-bottom-left-radius: 10px;
+}
+
+.fullscreen-graph-copy-shutter-fx .shutter-corner.br {
+  bottom: -1.5px;
+  right: -1.5px;
+  border-width: 0 2.5px 2.5px 0;
+  border-bottom-right-radius: 10px;
+}
+
+@keyframes fullscreenGraphCopyShutterSnap {
+  0% {
+    opacity: 0.96;
+    transform: scale(1.014);
+    background: rgba(255, 255, 255, 0.48);
+    box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.055);
+  }
+  28% {
+    opacity: 1;
+    transform: scale(0.986);
+    background: rgba(255, 255, 255, 0.22);
+    box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.065);
+  }
+  62% {
+    opacity: 0.92;
+    transform: scale(1);
+    background: rgba(255, 255, 255, 0);
+    box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.035);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+    background: rgba(255, 255, 255, 0);
+    box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0);
+  }
+}
+
+.fullscreen-graph-copy-shutter-fx.is-snapping {
+  animation: fullscreenGraphCopyShutterSnap 0.44s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ============================================================================
+   🔒 [PDF 수업 모드 중 좌측 [파일 열기] 잠금 클릭 시 1줄 초압축 캡슐 안내]
+   ============================================================================ */
+.locked-import-hint-pill {
+  position: fixed;
+  transform: translate3d(-4px, -50%, 0);
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.18);
+  pointer-events: none !important;
+  user-select: none !important;
+  z-index: 9200;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.16s ease;
+}
+
+body:not(.theme-light) .locked-import-hint-pill {
+  background: rgba(248, 250, 252, 0.95);
+  border-color: rgba(15, 23, 42, 0.14);
+  color: #0f172a;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42);
+}
+
+.locked-import-hint-pill.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translate3d(0, -50%, 0);
+}

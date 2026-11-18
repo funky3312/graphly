@@ -104,8 +104,7 @@
         btnImport.addEventListener('pointerdown', prewarmDefaultCursorOnButtonHover);
         btnImport.onclick = () => {
           if (this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page') {
-            const modeName = this.lessonTeachingMode === 'page' ? '페이지 모드' : '캡처 모드';
-            this.showToast(`🔒 현재 [${modeName}] 수업 중입니다. 우측 상단 캔버스바에서 추가하거나 [전체 비우기] 후 새로 불러오세요.`);
+            this._showLockedFileImportHint();
             return;
           }
           this._isReplacingViaNextCrop = false;
@@ -705,10 +704,56 @@
       this.syncLessonPlaylistNavBarUI();
     }
 
+    _hideLockedFileImportHint() {
+      const pill = (typeof document !== 'undefined') ? document.getElementById('lockedImportHintPill') : null;
+      if (!pill) return;
+      if (pill._hideTimer) {
+        clearTimeout(pill._hideTimer);
+        pill._hideTimer = null;
+      }
+      pill.classList.remove('show');
+    }
+
+    _showLockedFileImportHint() {
+      if (typeof document === 'undefined' || !document.body) return;
+      const btnImport = document.getElementById('btnPdfImport');
+      if (!btnImport) return;
+      let pill = document.getElementById('lockedImportHintPill');
+      if (!pill) {
+        pill = document.createElement('div');
+        pill.id = 'lockedImportHintPill';
+        pill.className = 'locked-import-hint-pill';
+        pill.setAttribute('aria-live', 'polite');
+        document.body.appendChild(pill);
+        window.addEventListener('pointerdown', (ev) => {
+          if (!pill.classList.contains('show')) return;
+          if (ev.target && ev.target.closest && ev.target.closest('#btnPdfImport')) return;
+          this._hideLockedFileImportHint();
+        }, { passive: true, capture: true });
+      }
+      pill.textContent = (this.lessonTeachingMode === 'page')
+        ? '페이지 추가는 우상단 [+] · 새 파일은 초기화 후 열기'
+        : '문제 추가는 우상단 [+] · 새 파일은 초기화 후 열기';
+      const rect = btnImport.getBoundingClientRect();
+      pill.style.left = `${Math.round(rect.right + 10)}px`;
+      pill.style.top = `${Math.round(rect.top + rect.height * 0.5)}px`;
+      if (pill._hideTimer) clearTimeout(pill._hideTimer);
+      pill.classList.remove('show');
+      void pill.offsetWidth;
+      pill.classList.add('show');
+      pill._hideTimer = setTimeout(() => {
+        pill._hideTimer = null;
+        pill.classList.remove('show');
+      }, 1800);
+    }
+
     syncCloudHubRailLockUI() {
       const btnImport = document.getElementById('btnPdfImport');
       const btnCloudHub = document.getElementById('btnCloudHub');
       const isLocked = (this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page');
+      if (!isLocked) {
+        this._hideLockedFileImportHint();
+      }
       if (btnImport) {
         btnImport.classList.toggle('rail-btn-locked-disabled', isLocked);
         btnImport.title = isLocked

@@ -11316,6 +11316,95 @@
       return { blocked: false, target: chosen };
     }
 
+    _computeFullscreenGraphCopyRect() {
+      if (!Array.isArray(this.graphs) || this.graphs.length === 0) return null;
+      const sw = Math.max(320, Math.round(this.screenWidth || window.innerWidth || 1280));
+      const sh = Math.max(240, Math.round(this.screenHeight || window.innerHeight || 720));
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      const expand = (sx, sy, pad = 0) => {
+        if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
+        if (sx - pad < minX) minX = sx - pad;
+        if (sy - pad < minY) minY = sy - pad;
+        if (sx + pad > maxX) maxX = sx + pad;
+        if (sy + pad > maxY) maxY = sy + pad;
+      };
+
+      const orig = this.mathToScreen(0, 0);
+      if (this.showAxes) {
+        expand(orig.x, orig.y, 140);
+      }
+      this.graphs.forEach(g => {
+        if (!g || !Array.isArray(g.handles)) return;
+        g.handles.forEach(h => {
+          if (!h) return;
+          const wPos = (this.engine && typeof this.engine.getHandleWorldPos === 'function')
+            ? this.engine.getHandleWorldPos(g, h)
+            : { x: h.x || 0, y: h.y || 0 };
+          if (wPos && Number.isFinite(wPos.x) && Number.isFinite(wPos.y)) {
+            const s = this.mathToScreen(wPos.x, wPos.y);
+            expand(s.x, s.y, 160);
+          }
+        });
+      });
+      if (this.usePiecewise && Array.isArray(this.piecewiseBoundaries)) {
+        this.piecewiseBoundaries.forEach(bx => {
+          const s = this.mathToScreen(bx, 0);
+          expand(s.x, orig.y, 120);
+        });
+      }
+      if (Array.isArray(this.dropLines)) {
+        this.dropLines.forEach(dl => {
+          if (!dl) return;
+          const s = this.mathToScreen(dl.sourceX, dl.sourceY);
+          const fx = this.mathToScreen(dl.sourceX, 0);
+          const fy = this.mathToScreen(0, dl.sourceY);
+          expand(s.x, s.y, 55);
+          expand(fx.x, fx.y, 55);
+          expand(fy.x, fy.y, 55);
+        });
+      }
+      if (Array.isArray(this.textLabels)) {
+        this.textLabels.forEach(tl => {
+          if (!tl) return;
+          const s = this.mathToScreen(tl.mathX, tl.mathY);
+          expand(s.x, s.y, 65);
+        });
+      }
+
+      let rx, ry, rw, rh;
+      if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+        rw = Math.min(sw, 620);
+        rh = Math.min(sh, 500);
+        rx = Math.round((sw - rw) * 0.5);
+        ry = Math.round((sh - rh) * 0.5);
+      } else {
+        const minFrameW = Math.min(sw, 540);
+        const minFrameH = Math.min(sh, 440);
+        let cLeft = Math.max(0, Math.floor(minX));
+        let cTop = Math.max(0, Math.floor(minY));
+        let cRight = Math.min(sw, Math.ceil(maxX));
+        let cBottom = Math.min(sh, Math.ceil(maxY));
+        if (cRight - cLeft < minFrameW) {
+          const cx = (cLeft + cRight) * 0.5;
+          cLeft = Math.max(0, Math.round(cx - minFrameW * 0.5));
+          cRight = Math.min(sw, cLeft + minFrameW);
+          cLeft = Math.max(0, cRight - minFrameW);
+        }
+        if (cBottom - cTop < minFrameH) {
+          const cy = (cTop + cBottom) * 0.5;
+          cTop = Math.max(0, Math.round(cy - minFrameH * 0.5));
+          cBottom = Math.min(sh, cTop + minFrameH);
+          cTop = Math.max(0, cBottom - minFrameH);
+        }
+        rx = cLeft;
+        ry = cTop;
+        rw = Math.max(120, cRight - cLeft);
+        rh = Math.max(100, cBottom - cTop);
+      }
+      return { rx, ry, rw, rh };
+    }
+
     async _buildCleanGraphCopyCanvas(target) {
       if (!target || typeof document === 'undefined') return null;
       const dpi = this.exportDPI || 300;
@@ -11487,91 +11576,9 @@
 
       // Case 2: 1층 전체화면 그래프 작업실(!isGraphCovered) 열림 상태 — 필기·문제 제외 순수 그래프 도면만 스마트 크롭 추출
       if (target.mode === 'fullscreen_graph') {
-        if (!Array.isArray(this.graphs) || this.graphs.length === 0) return null;
-        const sw = Math.max(320, Math.round(this.screenWidth || window.innerWidth || 1280));
-        const sh = Math.max(240, Math.round(this.screenHeight || window.innerHeight || 720));
-
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        const expand = (sx, sy, pad = 0) => {
-          if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
-          if (sx - pad < minX) minX = sx - pad;
-          if (sy - pad < minY) minY = sy - pad;
-          if (sx + pad > maxX) maxX = sx + pad;
-          if (sy + pad > maxY) maxY = sy + pad;
-        };
-
-        const orig = this.mathToScreen(0, 0);
-        if (this.showAxes) {
-          expand(orig.x, orig.y, 140);
-        }
-        this.graphs.forEach(g => {
-          if (!g || !Array.isArray(g.handles)) return;
-          g.handles.forEach(h => {
-            if (!h) return;
-            const wPos = (this.engine && typeof this.engine.getHandleWorldPos === 'function')
-              ? this.engine.getHandleWorldPos(g, h)
-              : { x: h.x || 0, y: h.y || 0 };
-            if (wPos && Number.isFinite(wPos.x) && Number.isFinite(wPos.y)) {
-              const s = this.mathToScreen(wPos.x, wPos.y);
-              expand(s.x, s.y, 160);
-            }
-          });
-        });
-        if (this.usePiecewise && Array.isArray(this.piecewiseBoundaries)) {
-          this.piecewiseBoundaries.forEach(bx => {
-            const s = this.mathToScreen(bx, 0);
-            expand(s.x, orig.y, 120);
-          });
-        }
-        if (Array.isArray(this.dropLines)) {
-          this.dropLines.forEach(dl => {
-            if (!dl) return;
-            const s = this.mathToScreen(dl.sourceX, dl.sourceY);
-            const fx = this.mathToScreen(dl.sourceX, 0);
-            const fy = this.mathToScreen(0, dl.sourceY);
-            expand(s.x, s.y, 55);
-            expand(fx.x, fx.y, 55);
-            expand(fy.x, fy.y, 55);
-          });
-        }
-        if (Array.isArray(this.textLabels)) {
-          this.textLabels.forEach(tl => {
-            if (!tl) return;
-            const s = this.mathToScreen(tl.mathX, tl.mathY);
-            expand(s.x, s.y, 65);
-          });
-        }
-
-        let rx, ry, rw, rh;
-        if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
-          rw = Math.min(sw, 620);
-          rh = Math.min(sh, 500);
-          rx = Math.round((sw - rw) * 0.5);
-          ry = Math.round((sh - rh) * 0.5);
-        } else {
-          const minFrameW = Math.min(sw, 540);
-          const minFrameH = Math.min(sh, 440);
-          let cLeft = Math.max(0, Math.floor(minX));
-          let cTop = Math.max(0, Math.floor(minY));
-          let cRight = Math.min(sw, Math.ceil(maxX));
-          let cBottom = Math.min(sh, Math.ceil(maxY));
-          if (cRight - cLeft < minFrameW) {
-            const cx = (cLeft + cRight) * 0.5;
-            cLeft = Math.max(0, Math.round(cx - minFrameW * 0.5));
-            cRight = Math.min(sw, cLeft + minFrameW);
-            cLeft = Math.max(0, cRight - minFrameW);
-          }
-          if (cBottom - cTop < minFrameH) {
-            const cy = (cTop + cBottom) * 0.5;
-            cTop = Math.max(0, Math.round(cy - minFrameH * 0.5));
-            cBottom = Math.min(sh, cTop + minFrameH);
-            cTop = Math.max(0, cBottom - minFrameH);
-          }
-          rx = cLeft;
-          ry = cTop;
-          rw = Math.max(120, cRight - cLeft);
-          rh = Math.max(100, cBottom - cTop);
-        }
+        const copyRect = this._computeFullscreenGraphCopyRect();
+        if (!copyRect) return null;
+        const { rx, ry, rw, rh } = copyRect;
 
         const maxSide = 4096;
         const snapScale = Math.min(3.0, maxSide / rw, maxSide / rh);
@@ -11677,6 +11684,39 @@
       const successMsg = `📋 ${labelPrefix}그래프가 복사되었습니다! 한글(HWP)·PPT에 붙여넣으세요.`;
 
       const triggerCopyVisualPulse = () => {
+        if (target.mode === 'fullscreen_graph') {
+          const rect = this._computeFullscreenGraphCopyRect();
+          const stageEl = (typeof document !== 'undefined')
+            ? (document.querySelector('.canvas-container') || (this.canvas && this.canvas.parentElement))
+            : null;
+          if (!rect || !stageEl) return;
+          let fxEl = document.getElementById('fullscreenGraphCopyShutterFx');
+          if (!fxEl) {
+            fxEl = document.createElement('div');
+            fxEl.id = 'fullscreenGraphCopyShutterFx';
+            fxEl.className = 'fullscreen-graph-copy-shutter-fx';
+            fxEl.setAttribute('aria-hidden', 'true');
+            fxEl.innerHTML = '<span class="shutter-corner tl"></span><span class="shutter-corner tr"></span><span class="shutter-corner bl"></span><span class="shutter-corner br"></span>';
+            stageEl.appendChild(fxEl);
+          } else if (fxEl.parentElement !== stageEl) {
+            stageEl.appendChild(fxEl);
+          }
+          fxEl.style.left = `${rect.rx}px`;
+          fxEl.style.top = `${rect.ry}px`;
+          fxEl.style.width = `${rect.rw}px`;
+          fxEl.style.height = `${rect.rh}px`;
+          fxEl.style.display = 'block';
+          fxEl.classList.remove('is-snapping');
+          void fxEl.offsetWidth;
+          fxEl.classList.add('is-snapping');
+          if (fxEl._shutterTimer) clearTimeout(fxEl._shutterTimer);
+          fxEl._shutterTimer = setTimeout(() => {
+            fxEl._shutterTimer = null;
+            fxEl.classList.remove('is-snapping');
+            fxEl.style.display = 'none';
+          }, 460);
+          return;
+        }
         if (target.mode !== 'pip_card' || !target.widget) return;
         const bodyEl = target.isPrimary
           ? document.getElementById('graphCardBody')
