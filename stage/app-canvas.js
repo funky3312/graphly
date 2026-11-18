@@ -937,8 +937,7 @@
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
         } else {
-          this.isPanning = true;
-          this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
+          this._beginCanvasPan(pos);
         }
         document.body.classList.add('space-pan-dragging');
         this.canvas.style.cursor = 'move';
@@ -1204,8 +1203,7 @@
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
         } else {
-          this.isPanning = true;
-          this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
+          this._beginCanvasPan(pos);
         }
         this.canvas.style.cursor = 'move';
         this.render();
@@ -1498,8 +1496,7 @@
           this.isBoardPanning = true;
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
         } else {
-          this.isPanning = true;
-          this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
+          this._beginCanvasPan(pos);
         }
         this.canvas.style.cursor = 'move';
         this.render();
@@ -2025,8 +2022,7 @@
           this.boardPanStart = { x: pos.x - (this.boardPanX || 0), y: pos.y - (this.boardPanY || 0) };
           this.canvas.style.cursor = 'move';
         } else {
-          this.isPanning = true;
-          this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
+          this._beginCanvasPan(pos);
           this.canvas.style.cursor = 'move';
         }
         this.render();
@@ -2160,8 +2156,7 @@
           if (this.inkStrokes && this.inkStrokes.length > 0) {
             this._inkBakeDirty = true;
           }
-          this.panX = pos.x - this.panStart.x;
-          this.panY = pos.y - this.panStart.y;
+          this._moveCanvasPan(pos);
           this.snapActiveX = false;
           this.snapActiveY = false;
           this.requestRender();
@@ -3276,16 +3271,7 @@
       } else if (this.isPanning) {
         this.canvas.style.cursor = 'move';
         this._inkBakeDirty = true;
-        if (typeof this._stopPdfBoardCameraSettle === 'function') {
-          this._stopPdfBoardCameraSettle(false);
-        }
-        // [대표님 요청: 화면 전체 이동 시 중앙 걸림/덜그럭거림(센터 마그네틱 랙) 완전 제거 - 1:1 무저항 부드러운 패닝]
-        this.panX = pos.x - this.panStart.x;
-        this.panY = pos.y - this.panStart.y;
-        if (typeof this._isPdfBoardBoundedCameraActive === 'function' && this._isPdfBoardBoundedCameraActive()) {
-          this._clampPdfBoardCamera({ keepZoom: true });
-          this.panStart = { x: pos.x - this.panX, y: pos.y - this.panY };
-        }
+        this._moveCanvasPan(pos);
         this.snapActiveX = false;
         this.snapActiveY = false;
         this.requestRender();
@@ -4084,11 +4070,13 @@
       if (this.isBoardPanning) {
         this.updateProblemCardPosition();
       }
+      const wasCanvasPanning = Boolean(this.isPanning);
       const wasPanningAny = Boolean(this.isPanning || this.isBoardPanning);
       const prevDownInfo = this.downInfo;
       this.isPanning = false;
       this.isBoardPanning = false;
-      if (wasPanningAny && this._inkBakeDirty && typeof this._scheduleIdleInkCacheRebuild === 'function') {
+      const handledPdfMousePanFinish = wasCanvasPanning ? Boolean(this._finishCanvasPan(false)) : false;
+      if (wasPanningAny && !handledPdfMousePanFinish && this._inkBakeDirty && typeof this._scheduleIdleInkCacheRebuild === 'function') {
         this._scheduleIdleInkCacheRebuild(140);
       }
       this.boardPanStart = null;
@@ -5066,27 +5054,37 @@
         this._wheelZoomIdleTimer = setTimeout(finishPdfWheelIdle, 160);
 
         const b = this._getPdfBoardCameraBounds();
-        if (!e.ctrlKey && !e.metaKey) {
-          if (b.canScrollY || b.canScrollX) {
-            const unitPx = e.deltaMode === 1 ? 36 : (e.deltaMode === 2 ? Math.max(240, b.availH * 0.85) : 1);
-            const dxPx = (e.deltaX || 0) * unitPx;
-            const dyPx = (e.deltaY || 0) * unitPx;
-            if (b.canScrollX) this.panX = (this.panX || 0) - dxPx;
-            if (b.canScrollY) this.panY = (this.panY || 0) - dyPx;
+        if (!e.ctrlKey && !e.metaKey && Math.abs(e.deltaX || 0) > Math.abs(e.deltaY || 0) * 1.25) {
+          if (b.canScrollX) {
+            const unitPx = e.deltaMode === 1 ? 36 : 1;
+            this.panX = (this.panX || 0) - ((e.deltaX || 0) * unitPx);
             this._clampPdfBoardCamera({ keepZoom: true });
             this._inkBakeDirty = true;
             this.requestRender();
-            return;
           }
-          if (!e.deltaY) return;
+          return;
+        }
+        if (!e.deltaY) return;
+
+        const nowW = performance.now();
+        const wantDir = e.deltaY > 0 ? 1 : -1;
+        if (this._pdfWheelDetentHoldUntil && nowW < this._pdfWheelDetentHoldUntil && this._pdfWheelDetentDir === wantDir) {
+          return;
         }
 
         const isSmoothTrackpadPinch = Boolean((e.ctrlKey || e.metaKey) && e.deltaMode === 0 && Math.abs(e.deltaY) < 40);
         if (isSmoothTrackpadPinch) {
           const oldZ = this.zoomLevel || b.detentZoom;
-          let nextZ = Math.max(b.minZoom, Math.min(b.maxZoom, oldZ * Math.exp(-e.deltaY * 0.01)));
-          if (b.minZoom < b.detentZoom - 0.02 && Math.abs(nextZ - b.detentZoom) < 0.015) {
+          const rawNextZ = oldZ * Math.exp(-e.deltaY * 0.01);
+          let nextZ = Math.max(b.minZoom, Math.min(b.maxZoom, rawNextZ));
+          if (wantDir === 1 && oldZ > b.detentZoom * 1.015 && nextZ <= b.detentZoom * 1.02) {
             nextZ = b.detentZoom;
+            this._pdfWheelDetentHoldUntil = nowW + 240;
+            this._pdfWheelDetentDir = 1;
+          } else if (wantDir === -1 && oldZ < b.detentZoom * 0.985 && nextZ >= b.detentZoom * 0.98) {
+            nextZ = b.detentZoom;
+            this._pdfWheelDetentHoldUntil = nowW + 220;
+            this._pdfWheelDetentDir = -1;
           }
           const ratio = nextZ / Math.max(0.1, oldZ);
           const cx = this.screenWidth / 2 + (this.panX || 0);
@@ -5104,11 +5102,22 @@
         }
 
         this._zoomMousePos = { x: pos.x, y: pos.y };
-        const curTgt = (this.targetZoom === undefined || this.targetZoom === null) ? (this.zoomLevel || b.detentZoom) : this.targetZoom;
-        const factorPdf = e.deltaY < 0 ? 1.14 : (1 / 1.14);
+        const curTgt = (this._isZoomAnimating && typeof this.targetZoom === 'number')
+          ? this.targetZoom
+          : (this.zoomLevel || b.detentZoom);
+        const factorPdf = e.deltaY < 0 ? 1.15 : (1 / 1.15);
         let nextTgt = Math.max(b.minZoom, Math.min(b.maxZoom, curTgt * factorPdf));
-        if (e.deltaY < 0 && curTgt < b.detentZoom * 0.99 && nextTgt >= b.detentZoom * 0.95) nextTgt = b.detentZoom;
-        else if (e.deltaY > 0 && curTgt > b.detentZoom * 1.01 && nextTgt <= b.detentZoom * 1.05) nextTgt = b.detentZoom;
+        if (wantDir === 1 && curTgt > b.detentZoom * 1.01 && nextTgt <= b.detentZoom * 1.05) {
+          // 확대 상태에서 마우스 휠을 아래로 굴릴 때 100%(가로폭 경계 맞춤)에서 먼저 '탁!' 걸려 정지!
+          // 그 상태에서 한 번 더 아래로 굴리면 전체 한 페이지 화면 맞춤(minZoom)으로 부드럽게 수렴!
+          nextTgt = b.detentZoom;
+          this._pdfWheelDetentHoldUntil = nowW + 300;
+          this._pdfWheelDetentDir = 1;
+        } else if (wantDir === -1 && curTgt < b.detentZoom * 0.99 && nextTgt >= b.detentZoom * 0.95) {
+          nextTgt = b.detentZoom;
+          this._pdfWheelDetentHoldUntil = nowW + 240;
+          this._pdfWheelDetentDir = -1;
+        }
         this.targetZoom = nextTgt;
         if (!this._isZoomAnimating) {
           this._isZoomAnimating = true;
@@ -6553,6 +6562,201 @@
       return true;
     }
     this._clampPdfBoardCamera({ snapDetent: true });
+    return false;
+  }
+
+  _beginCanvasPan(pos) {
+    this.isPanning = true;
+    const isPdfBounded = Boolean(typeof this._isPdfBoardBoundedCameraActive === 'function' && this._isPdfBoardBoundedCameraActive());
+    if (isPdfBounded && typeof this._stopPdfBoardCameraSettle === 'function') {
+      this._stopPdfBoardCameraSettle(true);
+    }
+    this.panStart = { x: pos.x - (this.panX || 0), y: pos.y - (this.panY || 0) };
+    if (isPdfBounded) {
+      const b0 = this._getPdfBoardCameraBounds();
+      const curX = this.panX || 0;
+      this._pdfMousePanState = {
+        startPosX: pos.x,
+        startPosY: pos.y,
+        startPanX: curX,
+        startPanY: this.panY || 0,
+        startedAtLeftEdge: Boolean(!b0.canScrollX || Math.abs(curX - b0.maxPanX) <= 3),
+        startedAtRightEdge: Boolean(!b0.canScrollX || Math.abs(curX - b0.minPanX) <= 3),
+        axisLock: null,
+        pullTurnDir: null,
+        pullArmed: false,
+        pullRawPx: 0,
+        samples: [{ x: pos.x, y: pos.y, t: performance.now() }]
+      };
+    } else {
+      this._pdfMousePanState = null;
+    }
+  }
+
+  _moveCanvasPan(pos) {
+    if (typeof this._isPdfBoardBoundedCameraActive !== 'function' || !this._isPdfBoardBoundedCameraActive()) {
+      this.panX = pos.x - this.panStart.x;
+      this.panY = pos.y - this.panStart.y;
+      return;
+    }
+    if (!this._pdfMousePanState) {
+      this._beginCanvasPan(pos);
+    }
+    const ms = this._pdfMousePanState;
+    const nowSample = performance.now();
+    if (Array.isArray(ms.samples)) {
+      ms.samples.push({ x: pos.x, y: pos.y, t: nowSample });
+      while (ms.samples.length > 2 && (nowSample - ms.samples[0].t) > 105) {
+        ms.samples.shift();
+      }
+    }
+
+    const dx = pos.x - ms.startPosX;
+    const dy = pos.y - ms.startPosY;
+    const bCur = this._getPdfBoardCameraBounds();
+
+    // 세로 방향: 경계에서 0px 유격으로 탁! 걸리고 반대 방향으로 마우스를 돌리는 즉시 반응하도록 기준점 리베이스
+    const rawCandY = pos.y - this.panStart.y;
+    const nextPanY = Math.max(bCur.minPanY, Math.min(bCur.maxPanY, rawCandY));
+    this.panStart.y = pos.y - nextPanY;
+
+    let pullPx = 0;
+    let pullAnchorX = bCur.centerPanX;
+    let nextPanX = bCur.centerPanX;
+
+    if (!bCur.canScrollX) {
+      if (!ms.axisLock && Math.hypot(dx, dy) >= 10) {
+        ms.axisLock = (Math.abs(dx) > Math.abs(dy) * 1.12) ? 'x' : 'y';
+      }
+      if (ms.axisLock === 'x') {
+        pullPx = dx;
+        pullAnchorX = bCur.centerPanX;
+      } else {
+        nextPanX = bCur.centerPanX;
+      }
+    } else {
+      const candX = ms.startPanX + dx;
+      if (candX < bCur.minPanX) {
+        if (ms.startedAtRightEdge && Math.abs(dx) > Math.abs(dy) * 1.25) {
+          pullPx = candX - bCur.minPanX;
+          pullAnchorX = bCur.minPanX;
+        } else {
+          nextPanX = bCur.minPanX;
+          ms.startPosX = pos.x - (bCur.minPanX - ms.startPanX);
+        }
+      } else if (candX > bCur.maxPanX) {
+        if (ms.startedAtLeftEdge && Math.abs(dx) > Math.abs(dy) * 1.25) {
+          pullPx = candX - bCur.maxPanX;
+          pullAnchorX = bCur.maxPanX;
+        } else {
+          nextPanX = bCur.maxPanX;
+          ms.startPosX = pos.x - (bCur.maxPanX - ms.startPanX);
+        }
+      } else {
+        nextPanX = candX;
+      }
+    }
+
+    if (Math.abs(pullPx) > 0.5) {
+      const wantNext = pullPx < 0;
+      const totalSlides = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides))
+        ? this.lessonPlaylistSlides.length
+        : 1;
+      const curIdx = this.lessonPlaylistIndex || 0;
+      const canTurn = wantNext
+        ? Boolean(this.isLessonPlaylistActive && curIdx < totalSlides - 1)
+        : Boolean(this.isLessonPlaylistActive && curIdx > 0);
+      if (canTurn) {
+        const threshold = bCur.canScrollX ? 80 : 64;
+        const absPull = Math.abs(pullPx);
+        const visShift = Math.sign(pullPx) * Math.min(104, Math.pow(absPull, 0.86) * 1.12);
+        nextPanX = pullAnchorX + visShift;
+        const prog = Math.min(1, absPull / threshold);
+        ms.pullTurnDir = wantNext ? 'next' : 'prev';
+        ms.pullArmed = (prog >= 1);
+        ms.pullRawPx = pullPx;
+        this._syncPdfBoardPullTurnPill(ms.pullTurnDir, prog, wantNext ? (curIdx + 2) : curIdx, totalSlides);
+      } else {
+        const visShift = Math.sign(pullPx) * Math.min(26, Math.abs(pullPx) * 0.16);
+        nextPanX = pullAnchorX + visShift;
+        ms.pullTurnDir = null;
+        ms.pullArmed = false;
+        ms.pullRawPx = 0;
+        this._syncPdfBoardPullTurnPill(null);
+      }
+    } else {
+      ms.pullTurnDir = null;
+      ms.pullArmed = false;
+      ms.pullRawPx = 0;
+      this._syncPdfBoardPullTurnPill(null);
+    }
+
+    this.panX = nextPanX;
+    this.panY = (ms.axisLock === 'x')
+      ? Math.max(bCur.minPanY, Math.min(bCur.maxPanY, ms.startPanY))
+      : nextPanY;
+    this.panOffset = { x: this.panX, y: this.panY };
+    this._inkBakeDirty = true;
+  }
+
+  _finishCanvasPan(isCancel = false) {
+    const ms = this._pdfMousePanState;
+    this._pdfMousePanState = null;
+    if (typeof this._syncPdfBoardPullTurnPill === 'function') {
+      this._syncPdfBoardPullTurnPill(null);
+    }
+    if (!ms || typeof this._isPdfBoardBoundedCameraActive !== 'function' || !this._isPdfBoardBoundedCameraActive()) {
+      return false;
+    }
+
+    if (!isCancel && ms.pullTurnDir) {
+      let vx = 0;
+      const samples = ms.samples;
+      const nowUp = performance.now();
+      if (Array.isArray(samples) && samples.length >= 2) {
+        const last = samples[samples.length - 1];
+        const first = samples[0];
+        const dt = last.t - first.t;
+        if ((nowUp - last.t) <= 95 && dt >= 8) {
+          vx = (last.x - first.x) / dt;
+        }
+      }
+      const isFlickTurn = (ms.pullTurnDir === 'next' && ms.pullRawPx <= -32 && vx <= -0.36) ||
+        (ms.pullTurnDir === 'prev' && ms.pullRawPx >= 32 && vx >= 0.36);
+      if (ms.pullArmed || isFlickTurn) {
+        const totalSlides = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides))
+          ? this.lessonPlaylistSlides.length
+          : 1;
+        const curIdx = this.lessonPlaylistIndex || 0;
+        const deltaIdx = ms.pullTurnDir === 'next' ? 1 : -1;
+        const nextIdx = curIdx + deltaIdx;
+        if (this.isLessonPlaylistActive && nextIdx >= 0 && nextIdx < totalSlides && typeof this.stepLessonPlaylist === 'function') {
+          const turnDir = ms.pullTurnDir;
+          this._clampPdfBoardCamera({ keepZoom: true });
+          this.stepLessonPlaylist(deltaIdx);
+          if (this._isPdfBoardBoundedCameraActive()) {
+            this._clampPdfBoardCamera({ snapDetent: true });
+            const finalZ = this.zoomLevel || 1.0;
+            const finalX = this.panX || 0;
+            const finalY = this.panY || 0;
+            this.panX = finalX + (turnDir === 'next' ? 36 : -36);
+            this.panOffset = { x: this.panX, y: finalY };
+            this.render();
+            this._animatePdfBoardCameraSettle(finalZ, finalX, finalY, 150);
+          }
+          return true;
+        }
+      }
+    }
+
+    const bTgt = this._getPdfBoardCameraBounds();
+    const tgtX = Math.max(bTgt.minPanX, Math.min(bTgt.maxPanX, this.panX || 0));
+    const tgtY = Math.max(bTgt.minPanY, Math.min(bTgt.maxPanY, this.panY || 0));
+    if (Math.hypot(tgtX - (this.panX || 0), tgtY - (this.panY || 0)) > 0.75) {
+      this._animatePdfBoardCameraSettle(this.zoomLevel || bTgt.detentZoom, tgtX, tgtY, 150);
+      return true;
+    }
+    this._clampPdfBoardCamera({ keepZoom: true });
     return false;
   }
 

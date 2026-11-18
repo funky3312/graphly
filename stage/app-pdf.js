@@ -1971,7 +1971,7 @@
       const containW = Math.min(safeBox.availW, safeBox.availH / Math.max(0.1, aspect));
       const isPortraitDoc = aspect > 1.06;
       const isLandscapeScreen = safeBox.availW > safeBox.availH * 1.02;
-      const maxReadableW = Math.max(1340, Math.round(safeBox.availH * 1.20));
+      const maxReadableW = Math.max(1680, Math.round(safeBox.availH * 1.62));
       const targetScreenW = (isPortraitDoc && isLandscapeScreen)
         ? Math.max(containW, Math.min(safeBox.availW, maxReadableW))
         : containW;
@@ -2216,7 +2216,7 @@
       const containZoomRaw = Math.min(sb.availW / wAt1, sb.availH / hAt1);
       const isPortraitDoc = pbd.mathH > pbd.mathW * 1.06;
       const isLandscapeScreen = sb.availW > sb.availH * 1.02;
-      const maxReadableW = Math.max(1340, Math.round(sb.availH * 1.20));
+      const maxReadableW = Math.max(1680, Math.round(sb.availH * 1.62));
       const widthFitZoomRaw = (isPortraitDoc && isLandscapeScreen)
         ? Math.max(containZoomRaw, Math.min(sb.availW, maxReadableW) / wAt1)
         : containZoomRaw;
