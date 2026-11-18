@@ -12435,9 +12435,11 @@ body.theme-light .viewer-top-btn-audio:hover {
   font-weight: 700 !important;
 }
 
-/* 가상 펜 포인터 리플레이 시 카드/메뉴/서랍 위에서도 항상 최상단에 표시 */
+/* 가상 펜 포인터 리플레이 시 카드/메뉴/서랍 위에서도 항상 최상단에 표시 (.main-workspace 원점 기준 일치) */
 body.audio-replay-active #virtualStylusPen {
-  position: fixed !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
   z-index: 2147483640 !important;
   pointer-events: none !important;
 }

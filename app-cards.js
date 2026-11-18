@@ -2522,7 +2522,11 @@
           const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
           if (recT !== undefined) {
             currentStroke.tEnd = recT;
-            this.recordAudioCursorPoint(e.clientX, e.clientY, currentStroke.color, true);
+            this.recordAudioCursorPoint(e.clientX, e.clientY, currentStroke.color, true, {
+              cardKey: this.getAudioCardKey(widget),
+              nx: pos.nx,
+              ny: pos.ny
+            });
           }
 
           if (currentStroke._shapeHoldDetected && currentStroke.cardShape) {
@@ -3660,7 +3664,11 @@
           const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
           if (recT !== undefined) {
             curExtraStroke.tEnd = recT;
-            this.recordAudioCursorPoint(e.clientX, e.clientY, curExtraStroke.color, true);
+            this.recordAudioCursorPoint(e.clientX, e.clientY, curExtraStroke.color, true, {
+              cardKey: this.getAudioCardKey(cardWidgetEl),
+              nx,
+              ny
+            });
           }
 
           if (curExtraStroke._shapeHoldDetected && curExtraStroke.cardShape) {
@@ -6800,7 +6808,11 @@
           const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
           if (recT !== undefined) {
             currentStroke.tEnd = recT;
-            this.recordAudioCursorPoint(e.clientX, e.clientY, currentStroke.color, true);
+            this.recordAudioCursorPoint(e.clientX, e.clientY, currentStroke.color, true, {
+              cardKey: this.getAudioCardKey(widget),
+              nx: pos.nx,
+              ny: pos.ny
+            });
           }
 
           if (currentStroke._shapeHoldDetected && currentStroke.cardShape) {

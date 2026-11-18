@@ -17927,7 +17927,7 @@
             const panTravel = Math.hypot(rawMidX - pinchInitMidX, rawMidY - pinchInitMidY);
             const distDeltaFromInit = Math.abs(rawDist - pinchInitDist);
 
-            if (!pinchPanUnlocked && panTravel >= 10) {
+            if (!pinchPanUnlocked && panTravel >= 6) {
               pinchPanUnlocked = true;
               pinchStartMidX = rawMidX;
               pinchStartMidY = rawMidY;
@@ -17936,11 +17936,11 @@
               pinchStartPanX = this._viewerPanX || 0;
               pinchStartPanY = this._viewerPanY || 0;
             }
-            if (!pinchZoomUnlocked && panTravel >= 26 && distDeltaFromInit < 14) {
+            if (!pinchZoomUnlocked && panTravel >= 26 && distDeltaFromInit < 8) {
               pinchParallelPanLocked = true;
             }
             if (!pinchZoomUnlocked) {
-              const unlockThreshold = pinchParallelPanLocked ? 28 : 14;
+              const unlockThreshold = pinchParallelPanLocked ? 22 : 5;
               if (distDeltaFromInit >= unlockThreshold) {
                 pinchZoomUnlocked = true;
                 pinchPanUnlocked = true;
@@ -17960,7 +17960,7 @@
             }
 
             const jitterMid = Math.hypot(rawMidX - pinchSmoothMidX, rawMidY - pinchSmoothMidY);
-            const alphaMid = (jitterMid < 1.0) ? 0.32 : 0.68;
+            const alphaMid = (jitterMid < 1.0) ? 0.36 : 0.72;
             pinchSmoothMidX = pinchSmoothMidX + (rawMidX - pinchSmoothMidX) * alphaMid;
             pinchSmoothMidY = pinchSmoothMidY + (rawMidY - pinchSmoothMidY) * alphaMid;
 
@@ -17969,7 +17969,7 @@
             let nextZoom = pinchStartZoom;
             if (pinchZoomUnlocked) {
               const jitterDist = Math.abs(rawDist - pinchSmoothDist);
-              const alphaDist = (jitterDist < 1.0) ? 0.32 : 0.68;
+              const alphaDist = (jitterDist < 1.0) ? 0.36 : 0.72;
               pinchSmoothDist = pinchSmoothDist + (rawDist - pinchSmoothDist) * alphaDist;
               nextZoom = (typeof this._computeStandardPinchZoom === 'function')
                 ? this._computeStandardPinchZoom(pinchSmoothDist, pinchStartZoom ? pinchStartDist : rawDist, pinchStartZoom, minZ, maxZ, 1.0)
@@ -17981,10 +17981,16 @@
             const cy = rect.top + rect.height / 2;
             const scaleRatio = nextZoom / Math.max(0.1, pinchStartZoom);
 
+            // 🌟 [핀치 중 화면 끝 터치 걸림·포커스 이동 원천 제거]:
+            // 핀치 제스처 진행 중에는 zoomedH가 화면 높이(vh)에 닿는 순간 발생하는 불연속 경계 클램핑(_clampSmartViewerPan)을 걸지 않고,
+            // 두 손가락 중점(Focal Point)에 이미지 좌표가 100% 연속 고정된 채 매끄럽게 확대/축소되도록 유지한 뒤 손가락을 뗄 때 부드럽게 안착!
+            const rawPanX = (pinchSmoothMidX - cx) - ((pinchStartMidX - cx - pinchStartPanX) * scaleRatio);
+            const rawPanY = (pinchSmoothMidY - cy) - ((pinchStartMidY - cy - pinchStartPanY) * scaleRatio);
+            const safeLimX = Math.max(180, rect.width) * 0.65 + (this._viewerBaseW || 1000) * nextZoom * 0.5;
+            const safeLimY = Math.max(160, rect.height) * 0.65 + (this._viewerBaseH || 700) * nextZoom * 0.5;
             this._viewerZoom = nextZoom;
-            this._viewerPanX = (pinchSmoothMidX - cx) - ((pinchStartMidX - cx - pinchStartPanX) * scaleRatio);
-            this._viewerPanY = (pinchSmoothMidY - cy) - ((pinchStartMidY - cy - pinchStartPanY) * scaleRatio);
-            this._clampSmartViewerPan();
+            this._viewerPanX = Math.max(-safeLimX, Math.min(safeLimX, rawPanX));
+            this._viewerPanY = Math.max(-safeLimY, Math.min(safeLimY, rawPanY));
             this._applySmartViewerTransform();
             return;
           }
@@ -18053,12 +18059,21 @@
             this._isViewerPinching = false;
             pinchId1 = null;
             pinchId2 = null;
+            const prePanX = Number(this._viewerPanX) || 0;
+            const prePanY = Number(this._viewerPanY) || 0;
+            const preZoom = Number(this._viewerZoom) || 1.0;
             const minZ = this._viewerMinZoom || 1.0;
-            if (minZ < 0.96 && Math.abs((this._viewerZoom || 1.0) - 1.0) < 0.025) {
+            if (minZ < 0.96 && Math.abs(preZoom - 1.0) < 0.025) {
               this._viewerZoom = 1.0;
             }
             this._clampSmartViewerPan();
-            this._applySmartViewerTransform();
+            const targetPanX = Number(this._viewerPanX) || 0;
+            const targetPanY = Number(this._viewerPanY) || 0;
+            if (Math.hypot(targetPanX - prePanX, targetPanY - prePanY) > 1.0) {
+              this._animateSmartViewerPinchSettle(prePanX, prePanY, targetPanX, targetPanY);
+            } else {
+              this._applySmartViewerTransform();
+            }
           }
 
           if (activePointers.size > 0) return;
@@ -18552,8 +18567,45 @@
         cancelAnimationFrame(this._viewerInertiaRafId);
         this._viewerInertiaRafId = null;
       }
+      if (this._viewerPinchSettleRafId) {
+        cancelAnimationFrame(this._viewerPinchSettleRafId);
+        this._viewerPinchSettleRafId = null;
+      }
       this._viewerInertiaSpeed = 0;
       return { wasActive, speed };
+    }
+
+    _animateSmartViewerPinchSettle(fromPanX, fromPanY, toPanX, toPanY) {
+      if (this._viewerPinchSettleRafId) {
+        cancelAnimationFrame(this._viewerPinchSettleRafId);
+        this._viewerPinchSettleRafId = null;
+      }
+      const durMs = 185;
+      const startT = performance.now();
+      this._viewerPanX = fromPanX;
+      this._viewerPanY = fromPanY;
+      const stepSettle = (now) => {
+        const overlay = document.getElementById('smartNoteViewerOverlay');
+        if (!overlay || overlay.style.display === 'none' || this._isViewerPinching) {
+          this._viewerPinchSettleRafId = null;
+          return;
+        }
+        const u = Math.max(0, Math.min(1, (now - startT) / durMs));
+        const ease = 1 - Math.pow(1 - u, 3);
+        if (u >= 1) {
+          this._viewerPinchSettleRafId = null;
+          this._viewerPanX = toPanX;
+          this._viewerPanY = toPanY;
+          this._applySmartViewerTransform();
+          return;
+        }
+        this._viewerPanX = fromPanX + (toPanX - fromPanX) * ease;
+        this._viewerPanY = fromPanY + (toPanY - fromPanY) * ease;
+        this._applySmartViewerTransform();
+        this._viewerPinchSettleRafId = requestAnimationFrame(stepSettle);
+      };
+      this._viewerPinchSettleRafId = requestAnimationFrame(stepSettle);
+      this._applySmartViewerTransform();
     }
 
     _computeSmartViewerReleaseVelocity(samples, nowUp) {
@@ -19033,6 +19085,7 @@
       const isViewerBusyAnimating = () => Boolean(
         this._viewerCarouselTimer ||
         this._isViewerPinching ||
+        this._viewerPinchSettleRafId ||
         this._viewerInertiaRafId ||
         this._viewerSwitchingSlide
       );
@@ -19689,11 +19742,17 @@
           imgEl.style.height = `${zoomedH}px`;
         }
         if (stage) {
-          stage.style.willChange = '';
-          const use2dTiledRaster = zoom > 1.35 && !stage.classList.contains('swipe-animating');
-          stage.style.transform = use2dTiledRaster
-            ? `translate(calc(-50% + ${px}px), calc(-50% + ${py}px))`
-            : `translate3d(calc(-50% + ${px}px), calc(-50% + ${py}px), 0)`;
+          stage.style.willChange = this._viewerPinchSettleRafId ? 'transform' : '';
+          if (this._viewerPinchSettleRafId) {
+            const fpx = Number(this._viewerPanX) || 0;
+            const fpy = Number(this._viewerPanY) || 0;
+            stage.style.transform = `translate3d(calc(-50% + ${fpx.toFixed(2)}px), calc(-50% + ${fpy.toFixed(2)}px), 0)`;
+          } else {
+            const use2dTiledRaster = zoom > 1.35 && !stage.classList.contains('swipe-animating');
+            stage.style.transform = use2dTiledRaster
+              ? `translate(calc(-50% + ${px}px), calc(-50% + ${py}px))`
+              : `translate3d(calc(-50% + ${px}px), calc(-50% + ${py}px), 0)`;
+          }
         }
       }
 

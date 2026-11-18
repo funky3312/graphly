@@ -247,6 +247,7 @@
             const curMs = Math.max(0, Number(this.audioPlayCurrentMs) || 0);
             this._audioPlayBaseOffsetMs = curMs;
             this._audioPlayWallStartMs = performance.now();
+            this._lastStepReplayMs = curMs;
           }
           this.audioPlaybackRate = nextRate;
           btnSpeed.textContent = `${this.audioPlaybackRate}x`;
@@ -512,12 +513,15 @@
           const isPointerUp = (sampleMode === 'up');
           if (e.pointerType === 'pen') this._markStylusPenDetected();
           if (!this.isAudioRecording || this.isAudioRecordPaused || this.isPdfModalOpen || this._isAudioWaitingForNextSlideSetup) return;
+          // WebKit pointercancel 및 합성 (0, 0) 오프셋 이벤트가 타임라인 커서를 화면 좌상단으로 튀게 하는 현상 차단
+          if (e.type === 'pointercancel') return;
+          if (sampleMode !== 'move' && e.clientX === 0 && e.clientY === 0) return;
           if (!isPointerUp && (this.isDrawingInk || this._isDrawingCardInk || this.isStylusDrawing || this.isDrawingLaser)) {
             this._lastAudioInkActivePerfMs = performance.now();
           }
           // 필기 또는 레이저 드로잉 중(move)에는 스트로크 자체 점 배열(pt.t)이 정밀 기록되므로 중복 호버 샘플링을 건너뛰어 녹화 중 필기 렉 0% 달성!
           // 단, 펜을 떼는 순간(up)에는 마지막 펜 끝 좌표를 1점 정확히 기록하여 다음 UI 터치/다음 필기로의 비행 시작점을 고정!
-          if (sampleMode === 'move' && (this.isDrawingInk || this.isStylusDrawing || this.isDrawingLaser)) return;
+          if (sampleMode === 'move' && (this.isDrawingInk || this._isDrawingCardInk || this.isStylusDrawing || this.isDrawingLaser)) return;
           if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) return;
           if (e.clientX < 0 || e.clientY < 0 || e.clientX > window.innerWidth || e.clientY > window.innerHeight) {
             if (this._lastRecordedCursorKind !== 'hidden' && Array.isArray(this.audioTimeline)) {
@@ -560,9 +564,10 @@
             : null;
           if (blindStickerHit && !blindStickerHit.closest('#problemCardWidget, #graphCardWidget, .extra-problem-card-widget, .extra-graph-card-widget')) {
             const isDownSticker = isPointerUp ? false : Boolean(forceClickDown || (typeof e.buttons === 'number' && e.buttons > 0));
+            const stPos = this._clientToStageCanvasPos(e.clientX, e.clientY);
             this.recordAudioCursorPoint(
-              e.clientX,
-              e.clientY,
+              stPos.x,
+              stPos.y,
               this.currentInkColor || '#00d2d3',
               isDownSticker,
               { cursorKind: 'pointer', isRelease: isPointerUp }
@@ -762,9 +767,10 @@
               this._isInteractingWithPipCard ||
               (typeof e.buttons === 'number' && e.buttons > 0)
             );
+          const cPos = this._clientToStageCanvasPos(e.clientX, e.clientY);
           this.recordAudioCursorPoint(
-            e.clientX,
-            e.clientY,
+            cPos.x,
+            cPos.y,
             this.currentInkColor || '#00d2d3',
             isDown,
             isPointerUp ? { isRelease: true } : null
@@ -773,7 +779,6 @@
         window.addEventListener('pointermove', (e) => handleAudioPointerSample(e, 'move'), { passive: true, capture: true });
         window.addEventListener('pointerdown', (e) => handleAudioPointerSample(e, 'down'), { passive: true, capture: true });
         window.addEventListener('pointerup', (e) => handleAudioPointerSample(e, 'up'), { passive: true, capture: true });
-        window.addEventListener('pointercancel', (e) => handleAudioPointerSample(e, 'up'), { passive: true, capture: true });
         document.addEventListener('scroll', (e) => {
           if (!this.isAudioRecording || this.isAudioRecordPaused || this.isPdfModalOpen || this._isApplyingAudioTimelineState) return;
           const tEl = e && e.target;
@@ -4940,6 +4945,22 @@
       return null;
     }
 
+    _clientToStageCanvasPos(clientX, clientY) {
+      let rect = this.canvasRect;
+      if (!rect || !rect.width || !rect.height) {
+        rect = (typeof this.updateCanvasRect === 'function' && this.updateCanvasRect())
+          || (this.canvas && typeof this.canvas.getBoundingClientRect === 'function'
+            ? this.canvas.getBoundingClientRect()
+            : { left: 0, top: 0 });
+      } else if (typeof document !== 'undefined' && document.body && document.body.classList.contains('ios-top-guard-active') && rect.top <= 0 && this.canvas && typeof this.canvas.getBoundingClientRect === 'function') {
+        rect = this.updateCanvasRect() || this.canvas.getBoundingClientRect();
+      }
+      return {
+        x: clientX - (rect ? (rect.left || 0) : 0),
+        y: clientY - (rect ? (rect.top || 0) : 0)
+      };
+    }
+
     recordAudioCursorPoint(screenX, screenY, color = null, isDrawing = false, extraMeta = null) {
       if (!this.isAudioRecording || this.isAudioRecordPaused || this.isPdfModalOpen || this._isAudioWaitingForNextSlideSetup) return;
       const t = this.getAudioRecordElapsedMs();
@@ -5691,8 +5712,8 @@
         this._replayViewerPanX = 0;
         this._replayViewerPanY = 0;
       } else {
-        const maxPanX = Math.max(60, Math.abs(scaledW - vw) * 0.5 + Math.min(vw, scaledW) * 0.35);
-        const maxPanY = Math.max(60, Math.abs(scaledH - availH) * 0.5 + Math.min(availH, scaledH) * 0.35);
+        const maxPanX = Math.max(60, Math.max(0, scaledW - vw) * 0.5 + vw * 0.35);
+        const maxPanY = Math.max(60, Math.max(0, scaledH - availH) * 0.5 + availH * 0.35);
         this._replayViewerPanX = Math.max(-maxPanX, Math.min(maxPanX, Number(this._replayViewerPanX) || 0));
         this._replayViewerPanY = Math.max(-maxPanY, Math.min(maxPanY, Number(this._replayViewerPanY) || 0));
       }
@@ -5703,7 +5724,11 @@
       this._replayStageTranslateY = ty;
 
       if (wsEl) {
-        wsEl.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px) scale(${totalScale.toFixed(5)})`;
+        if (userZoom > 1.005) {
+          wsEl.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) scale(${totalScale.toFixed(5)})`;
+        } else {
+          wsEl.style.transform = `translate(${Math.round(tx)}px, ${Math.round(ty)}px) scale(${totalScale.toFixed(5)})`;
+        }
       }
       if (!wasFixedStage || stageResized) {
         if (typeof this.updateProblemCardPosition === 'function') this.updateProblemCardPosition();
@@ -6705,10 +6730,174 @@
       return bestEv;
     }
 
+    _findNextUpcomingStrokeStartAfter(playMs, maxFutureMs = 450) {
+      if (!this.audioSyncData) return null;
+      const maxAllowedT = playMs + Math.max(0, Number(maxFutureMs) || 450);
+      let bestEv = null;
+      let bestT = Infinity;
+
+      const considerCanvasStroke = (s, forceLaser = false) => {
+        if (!s || s.preExisting || s.isGraphStamp || s.isProblemStamp || s._duplicatedInAudio) return;
+        if (typeof s.tStart !== 'number') return;
+        const tStart = s.tStart;
+        if (tStart <= playMs || tStart > maxAllowedT || tStart >= bestT) return;
+        if (typeof s.tAppeared === 'number' && s.tAppeared > tStart + 30) return;
+        let firstPt = null;
+        if (Array.isArray(s.points) && s.points.length > 0) {
+          firstPt = s.points[0];
+        } else if (s.shape && s.shape.start) {
+          firstPt = s.shape.start;
+        }
+        if (!firstPt || typeof firstPt.x !== 'number' || typeof firstPt.y !== 'number') return;
+        const isBoard = (s.target || 'board') === 'board';
+        bestT = tStart;
+        bestEv = {
+          t: tStart,
+          type: 'cursor',
+          color: forceLaser ? '#dc2626' : (s.color || '#00d2d3'),
+          isDrawing: false,
+          isLaser: forceLaser,
+          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : 'pen'),
+          isBoard,
+          bx: isBoard ? firstPt.x : undefined,
+          by: isBoard ? firstPt.y : undefined,
+          mx: !isBoard ? firstPt.x : undefined,
+          my: !isBoard ? firstPt.y : undefined,
+          x: firstPt.x,
+          y: firstPt.y
+        };
+      };
+
+      const considerCardStroke = (s, cardKey, forceLaser = false) => {
+        if (!s || !cardKey || s.preExisting) return;
+        if (typeof s.tStart !== 'number') return;
+        const tStart = s.tStart;
+        if (tStart <= playMs || tStart > maxAllowedT || tStart >= bestT) return;
+        if (!Array.isArray(s.points) || s.points.length === 0) return;
+        const firstPt = s.points[0];
+        if (!firstPt || typeof firstPt.nx !== 'number' || typeof firstPt.ny !== 'number') return;
+        bestT = tStart;
+        bestEv = {
+          t: tStart,
+          type: 'cursor',
+          cardKey,
+          nx: firstPt.nx,
+          ny: firstPt.ny,
+          color: forceLaser ? '#dc2626' : (s.color || '#0f172a'),
+          isDrawing: false,
+          isLaser: forceLaser,
+          cursorKind: forceLaser ? 'laser' : (s.isHighlighter ? 'highlighter' : 'pen')
+        };
+      };
+
+      const liveStrokes = Array.isArray(this.inkStrokes) ? this.inkStrokes : [];
+      for (let i = 0; i < liveStrokes.length; i++) considerCanvasStroke(liveStrokes[i], false);
+      const erasedStrokes = Array.isArray(this.audioSyncData.erasedStrokes) ? this.audioSyncData.erasedStrokes : [];
+      for (let i = 0; i < erasedStrokes.length; i++) considerCanvasStroke(erasedStrokes[i], false);
+      const laserStrokes = Array.isArray(this.audioSyncData.laserStrokes) ? this.audioSyncData.laserStrokes : [];
+      for (let i = 0; i < laserStrokes.length; i++) {
+        const ls = laserStrokes[i];
+        if (!ls) continue;
+        if (ls.cardKey) considerCardStroke(ls, ls.cardKey, true);
+        else considerCanvasStroke(ls, true);
+      }
+      if (this.problemCardData && Array.isArray(this.problemCardData.cardStrokes)) {
+        const pEl = document.getElementById('problemCardWidget');
+        const pKey = pEl ? this.getAudioCardKey(pEl) : 'problemCardWidget';
+        for (let i = 0; i < this.problemCardData.cardStrokes.length; i++) {
+          considerCardStroke(this.problemCardData.cardStrokes[i], pKey, false);
+        }
+      }
+      if (this.graphCardData && Array.isArray(this.graphCardData.cardStrokes)) {
+        const gEl = document.getElementById('graphCardWidget');
+        const gKey = gEl ? this.getAudioCardKey(gEl) : 'graphCardWidget';
+        for (let i = 0; i < this.graphCardData.cardStrokes.length; i++) {
+          considerCardStroke(this.graphCardData.cardStrokes[i], gKey, false);
+        }
+      }
+      if (Array.isArray(this.extraProblemCards)) {
+        for (let cIdx = 0; cIdx < this.extraProblemCards.length; cIdx++) {
+          const c = this.extraProblemCards[cIdx];
+          if (c && c.el && Array.isArray(c.cardStrokes)) {
+            const cKey = this.getAudioCardKey(c.el);
+            for (let i = 0; i < c.cardStrokes.length; i++) considerCardStroke(c.cardStrokes[i], cKey, false);
+          }
+        }
+      }
+      if (Array.isArray(this.extraGraphCards)) {
+        for (let cIdx = 0; cIdx < this.extraGraphCards.length; cIdx++) {
+          const c = this.extraGraphCards[cIdx];
+          if (c && c.el && Array.isArray(c.cardStrokes)) {
+            const cKey = this.getAudioCardKey(c.el);
+            for (let i = 0; i < c.cardStrokes.length; i++) considerCardStroke(c.cardStrokes[i], cKey, false);
+          }
+        }
+      }
+
+      return bestEv;
+    }
+
     _getInterpolatedCursorAt(playMs) {
       if (!this.audioSyncData || !Array.isArray(this.audioSyncData.timeline)) return null;
       this._expandAudioSyncData(this.audioSyncData);
       const timeline = this.audioSyncData.timeline;
+
+      // 🌟 [연속 필기 획 간 0.00px 무결점 브리지]:
+      // 숫자 1·2·3·4, 수식, 한글 등 연속 필기 중 펜을 잠깐 들어 다음 획으로 이동하는 짧은 공중 구간(<= 380ms)에서는
+      // 아이패드 펜슬 틸트 호버 노이즈 및 구버전 상단 가드 오프셋 샘플을 배제하고 직전 획 끝점 ➔ 다음 획 시작점을 직결 보간!
+      const latestTipForBridge = this._findLatestCompletedStrokeTipBefore(playMs, -1);
+      const upcomingStartForBridge = latestTipForBridge
+        ? this._findNextUpcomingStrokeStartAfter(playMs, 380)
+        : null;
+      if (
+        latestTipForBridge &&
+        upcomingStartForBridge &&
+        (upcomingStartForBridge.t - latestTipForBridge.t) <= 380 &&
+        Boolean(latestTipForBridge.cardKey) === Boolean(upcomingStartForBridge.cardKey) &&
+        (!latestTipForBridge.cardKey || latestTipForBridge.cardKey === upcomingStartForBridge.cardKey)
+      ) {
+        let hasInterveningUiOrDrag = false;
+        for (let i = 0; i < timeline.length; i++) {
+          const ev = timeline[i];
+          if (!ev || ev.type !== 'cursor' || typeof ev.t !== 'number') continue;
+          if (ev.t <= latestTipForBridge.t) continue;
+          if (ev.t >= upcomingStartForBridge.t) break;
+          if (
+            ev.uiScreen ||
+            ev.cursorKind === 'pointer' ||
+            ev.cursorKind === 'grabbing' ||
+            ev.cursorKind === 'move' ||
+            ev.cursorKind === 'nwse-resize' ||
+            ev.cursorKind === 'nesw-resize' ||
+            ev.cursorKind === 'eraser'
+          ) {
+            hasInterveningUiOrDrag = true;
+            break;
+          }
+        }
+        if (!hasInterveningUiOrDrag) {
+          const bP1 = this._resolveCursorEventScreenPos(latestTipForBridge);
+          const bP2 = this._resolveCursorEventScreenPos(upcomingStartForBridge);
+          if (bP1 && bP2) {
+            const bGap = Math.max(1, upcomingStartForBridge.t - latestTipForBridge.t);
+            const bU = Math.max(0, Math.min(1, (playMs - latestTipForBridge.t) / bGap));
+            const bRatio = bU * bU * (3 - 2 * bU);
+            const useNextStyle = bU >= 0.65;
+            return {
+              x: bP1.x + (bP2.x - bP1.x) * bRatio,
+              y: bP1.y + (bP2.y - bP1.y) * bRatio,
+              color: (useNextStyle ? upcomingStartForBridge.color : latestTipForBridge.color) || '#00d2d3',
+              isDrawing: false,
+              isLaser: Boolean(useNextStyle ? upcomingStartForBridge.isLaser : latestTipForBridge.isLaser),
+              cursorKind: (useNextStyle ? upcomingStartForBridge.cursorKind : latestTipForBridge.cursorKind) || 'pen',
+              uiScreen: false,
+              uiBarId: '',
+              uiBtnKey: ''
+            };
+          }
+        }
+      }
+
       let prev = null;
       let next = null;
       let recentUiClickEv = null;
@@ -6726,11 +6915,25 @@
         }
       }
 
-      // 필기/레이저 스트로크가 prev 이후에 종료된 경우(필기 중 pointermove 스킵 구간 또는 구버전 녹화본),
-      // 실제 마지막 획의 펜 끝 좌표를 prev로 삼아 다음 UI 터치/다음 필기로 매끄럽게 비행 연결!
-      const strokeTipEv = this._findLatestCompletedStrokeTipBefore(playMs, prev ? (prev.t + 18) : -1);
+      // 필기/레이저 스트로크가 prev 이후(또는 리프팅 직후 36ms 이내)에 종료된 경우,
+      // 실제 마지막 획의 정밀 펜 끝 좌표를 prev로 고정하여 펜을 떼는 순간의 좌표 튐을 원천 차단!
+      const strokeTipMinMs = prev
+        ? ((prev.uiScreen || prev.cursorKind === 'pointer') ? prev.t : (prev.t - 36))
+        : -1;
+      const strokeTipEv = this._findLatestCompletedStrokeTipBefore(playMs, strokeTipMinMs);
       if (strokeTipEv) {
         prev = strokeTipEv;
+      }
+
+      // 다음 필기 시작 직전(36ms 이내)의 착지 오프셋 커서 샘플이 있다면 실제 첫 획 좌표로 정밀 정렬!
+      const upcomingStrokeNear = this._findNextUpcomingStrokeStartAfter(playMs, 480);
+      if (
+        upcomingStrokeNear &&
+        (!next || (!next.uiScreen && next.cursorKind !== 'pointer' && upcomingStrokeNear.t <= next.t + 36))
+      ) {
+        if (!next || upcomingStrokeNear.t <= next.t || (upcomingStrokeNear.t - next.t) <= 36) {
+          next = upcomingStrokeNear;
+        }
       }
 
       if (!prev && !next) return null;
@@ -7132,11 +7335,57 @@
       }
 
       const spanTotal = Math.max(1, tEnd - tStart);
-      const getPtTime = (idx) => {
-        const pt = pts[idx];
-        if (pt && typeof pt.t === 'number') return pt.t;
-        return tStart + spanTotal * (idx / (N - 1));
+      const rawTimes = new Array(N);
+      for (let i = 0; i < N; i++) {
+        const pt = pts[i];
+        const rawT = (pt && typeof pt.t === 'number')
+          ? pt.t
+          : (tStart + spanTotal * (i / (N - 1)));
+        rawTimes[i] = i === 0 ? rawT : Math.max(rawTimes[i - 1], rawT);
+      }
+      if (rawTimes[N - 1] < tEnd) {
+        rawTimes[N - 1] = tEnd;
+      }
+      // 🌟 [WebKit 이벤트 배칭(0~4ms 묶음 도착) & 스트로크 끝단 플러시 호길이(Arc-Length) 시간 정칙화]:
+      // 동일 프레임에 몰려 도착해 0~4ms 간격으로 반올림된 연속 점들을 실제 이동 거리 비율에 맞춰 분배하여 획 중간 튐을 0.0px로 제거!
+      const ptDist = (a, b) => {
+        if (!a || !b) return 0;
+        if (a.nx !== undefined && b.nx !== undefined) return Math.hypot(b.nx - a.nx, b.ny - a.ny);
+        return Math.hypot((b.x || 0) - (a.x || 0), (b.y || 0) - (a.y || 0));
       };
+      let rIdx = 0;
+      while (rIdx < N - 1) {
+        if ((rawTimes[rIdx + 1] - rawTimes[rIdx]) < 5) {
+          let sIdx = rIdx;
+          let eIdx = rIdx + 1;
+          while (eIdx < N - 1 && (rawTimes[eIdx] - rawTimes[sIdx]) < 8) {
+            eIdx++;
+          }
+          while ((rawTimes[eIdx] - rawTimes[sIdx]) < 5 && sIdx > 0) {
+            sIdx--;
+          }
+          const t0 = rawTimes[sIdx];
+          const t1 = Math.max(t0, rawTimes[eIdx]);
+          const winSpan = t1 - t0;
+          if (winSpan > 0 && eIdx - sIdx >= 2) {
+            const cum = new Array(eIdx - sIdx + 1);
+            cum[0] = 0;
+            for (let k = sIdx + 1; k <= eIdx; k++) {
+              cum[k - sIdx] = cum[k - sIdx - 1] + ptDist(pts[k - 1], pts[k]);
+            }
+            const totalLen = cum[cum.length - 1];
+            for (let k = sIdx + 1; k < eIdx; k++) {
+              const ratio = totalLen > 1e-6
+                ? (cum[k - sIdx] / totalLen)
+                : ((k - sIdx) / (eIdx - sIdx));
+              rawTimes[k] = t0 + winSpan * ratio;
+            }
+          }
+          rIdx = eIdx;
+        } else {
+          rIdx++;
+        }
+      }
 
       const slicedPts = [pts[0]];
       let interpTip = pts[0];
@@ -7144,15 +7393,14 @@
       for (let i = 0; i < N - 1; i++) {
         const pA = pts[i];
         const pB = pts[i + 1];
-        const tA = getPtTime(i);
-        const tB = Math.max(tA, getPtTime(i + 1));
+        const tA = rawTimes[i];
+        const tB = Math.max(tA, rawTimes[i + 1]);
 
         if (playMs >= tB) {
           slicedPts.push(pB);
           interpTip = pB;
-          if (playMs === tB) break;
         } else if (playMs > tA) {
-          const segSpan = Math.max(1, tB - tA);
+          const segSpan = Math.max(0.001, tB - tA);
           const alpha = Math.max(0, Math.min(1, (playMs - tA) / segSpan));
           if (pA.nx !== undefined) {
             interpTip = {
@@ -7606,6 +7854,7 @@
 
       this._audioPlayWallStartMs = performance.now();
       this._audioPlayBaseOffsetMs = this.audioPlayCurrentMs || 0;
+      this._lastStepReplayMs = this._audioPlayBaseOffsetMs;
 
       if (this._audioReplayRafId) {
         cancelAnimationFrame(this._audioReplayRafId);
@@ -7625,18 +7874,33 @@
           : 0;
         const curSeg = segs && segs[curSegIdx] ? segs[curSegIdx] : null;
 
+        // 🌟 [120Hz 단조 증가 PLL 오디오-비주얼 클럭]:
+        // iPadOS WebKit AAC(audio/mp4) 재생 시 currentTime이 23~46ms 하드웨어 버퍼 단위로 계단식 갱신되어
+        // 매 프레임 직접 덮어쓰면 펜촉이 멈췄다 튀는 현상이 발생하므로, 평소(±55ms 이내)는 120Hz performance.now()를 그대로 유지하고
+        // 실제 드리프트(55~420ms) 발생 시에만 베이스 오프셋을 부드럽게 위상 보정(Soft PLL)하며 역주행을 원천 차단!
         if (
           this.audioPlayerEl &&
           !this.audioPlayerEl.paused &&
           Number.isFinite(this.audioPlayerEl.currentTime) &&
-          this.audioPlayerEl.currentTime > 0
+          this.audioPlayerEl.currentTime > 0.03
         ) {
           const segBaseMs = curSeg ? (curSeg.startMs || 0) : 0;
           const audioMs = segBaseMs + this.audioPlayerEl.currentTime * 1000;
-          if (Math.abs(audioMs - nextMs) < 350) {
-            nextMs = audioMs;
+          const drift = audioMs - nextMs;
+          if (Math.abs(drift) > 55 && Math.abs(drift) < 420) {
+            const nudge = drift * 0.10;
+            this._audioPlayBaseOffsetMs += nudge;
+            nextMs += nudge;
           }
         }
+        if (
+          typeof this._lastStepReplayMs === 'number' &&
+          nextMs < this._lastStepReplayMs &&
+          (this._lastStepReplayMs - nextMs) < 180
+        ) {
+          nextMs = this._lastStepReplayMs;
+        }
+        this._lastStepReplayMs = nextMs;
 
         // 🌟 [슬라이드 간 왕복(3번 ➔ 2번 ➔ 3번) 세그먼트 경계 자동 전환]:
         // 현재 세그먼트(curSeg)가 끝나는 시각(curSeg.endMs)에 도달했을 때,
@@ -7676,6 +7940,7 @@
             this._syncAudioPlayerToPlayMs(nextMs, true);
             this._audioPlayWallStartMs = performance.now();
             this._audioPlayBaseOffsetMs = nextMs;
+            this._lastStepReplayMs = nextMs;
           }
         }
 
@@ -7964,6 +8229,7 @@
       this.audioPlayCurrentMs = Math.max(0, Math.min(dur, Number(targetMs) || 0));
       this._audioPlayWallStartMs = performance.now();
       this._audioPlayBaseOffsetMs = this.audioPlayCurrentMs;
+      this._lastStepReplayMs = this.audioPlayCurrentMs;
       const visualOnly = Boolean(options && options.visualOnlyWhileScrubbing);
       if (!visualOnly) {
         this._syncAudioPlayerToPlayMs(this.audioPlayCurrentMs, Boolean(this.isAudioPlaying));

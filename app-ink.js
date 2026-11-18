@@ -1266,7 +1266,14 @@
           const clampedX = Math.max(0, Math.min(this.screenWidth || 1920, x));
           const clampedY = Math.max(0, Math.min(this.screenHeight || 1080, y));
           this.stylusPenPos = { x: clampedX, y: clampedY };
-          if (this.isAudioRecording && !this.isDrawingInk) {
+          if (
+            this.isAudioRecording &&
+            e &&
+            (typeof window === 'undefined' || !window.PointerEvent) &&
+            !this.isDrawingInk &&
+            !this._isDrawingCardInk &&
+            !this.isStylusDrawing
+          ) {
             this.recordAudioCursorPoint(clampedX, clampedY, this.currentInkColor, false);
           }
         }
@@ -1358,7 +1365,14 @@
       const clampedY = Math.max(0, Math.min(this.screenHeight || 1080, y));
 
       this.stylusPenPos = { x: clampedX, y: clampedY };
-      if (this.isAudioRecording && !this.isDrawingInk) {
+      if (
+        this.isAudioRecording &&
+        e &&
+        (typeof window === 'undefined' || !window.PointerEvent) &&
+        !this.isDrawingInk &&
+        !this._isDrawingCardInk &&
+        !this.isStylusDrawing
+      ) {
         this.recordAudioCursorPoint(clampedX, clampedY, this.currentInkColor, false);
       }
 
