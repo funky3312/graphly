@@ -1757,6 +1757,7 @@
         this._liveBezierScreenPts = [{ x: pos.x, y: pos.y, p: pressure }];
         this._inkHoldDetected = false;
         this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
+        this._inkHoldTrackState = this._createInkHoldTrackState(pos.x, pos.y);
         this._lastSignificantMoveTime = Date.now();
 
         const useCoveredBoardLayer = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
@@ -2527,20 +2528,16 @@
             return;
           }
 
-          // 🌟 [홀드 감지 정밀 앵커링 (W3C/모바일 표준 8px Slop 적용)]:
-          // 연속 필기 중에는 홀드 타이머가 확실히 리셋되면서도,
-          // 유리면 위에서 선을 긋고 멈출 때 발생하는 미세 손떨림(stepDist <= 2.5px & dHold <= 8px)으로 타이머가 초기화되지 않도록 보호!
-          const prevMovePos = this._lastMoveEventScreenPos || pos;
-          const stepDist = Math.hypot(pos.x - prevMovePos.x, pos.y - prevMovePos.y);
+          // 🌟 [홀드 감지 적응형 앵커링 & 타이머 재무장 (초단거리 데드락 차단 + 유리면 정지 떨림 흡수)]:
           this._lastMoveEventScreenPos = { x: pos.x, y: pos.y };
-          if (this._inkHoldLastScreenPos) {
-            const dHold = Math.hypot(pos.x - this._inkHoldLastScreenPos.x, pos.y - this._inkHoldLastScreenPos.y);
-            if (stepDist > 4.5 || dHold > 8) {
-              this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
-              this._lastSignificantMoveTime = Date.now();
-              if (!this._inkHoldTimer) {
-                this._startInkHoldTimer();
-              }
+          if (!this._inkHoldTrackState && this._inkHoldLastScreenPos) {
+            this._inkHoldTrackState = this._createInkHoldTrackState(this._inkHoldLastScreenPos.x, this._inkHoldLastScreenPos.y);
+          }
+          if (this._inkHoldTrackState && this._shouldResetInkHoldOnMove(this._inkHoldTrackState, pos.x, pos.y, Boolean(this._inkHoldTimer))) {
+            this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
+            this._lastSignificantMoveTime = Date.now();
+            if (!this._inkHoldTimer) {
+              this._startInkHoldTimer();
             }
           }
 
@@ -3770,6 +3767,7 @@
         this._lastInkSampleTs = null;
         this._lastInkAcceptedTs = null;
         this._inkHoldLastScreenPos = null;
+        this._inkHoldTrackState = null;
         this._lastSignificantMoveTime = 0;
         this.isDrawingInk = false;
         const hadSceneFreeze = Boolean(this._hasSceneFreeze && this.sceneFreezeCanvas);

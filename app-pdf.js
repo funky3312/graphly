@@ -2922,10 +2922,17 @@
             }
             if (placedTarget && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides[this.lessonPlaylistIndex]) {
               placedTarget.slideRef = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
-              if (placedTarget.type === 'extra' && Array.isArray(this.extraProblemCards)) {
-                placedTarget.extraIndex = Math.max(0, this.extraProblemCards.indexOf(placedTarget.cardItem));
+              placedTarget.slideIndex = this.lessonPlaylistIndex;
+              if (placedTarget.type === 'primary') {
+                placedTarget.cardUid = this.problemCardUid || null;
+              } else if (placedTarget.type === 'extra') {
+                if (Array.isArray(this.extraProblemCards)) {
+                  placedTarget.extraIndex = Math.max(0, this.extraProblemCards.indexOf(placedTarget.cardItem));
+                }
+                placedTarget.cardUid = (placedTarget.cardItem && (placedTarget.cardItem.uid || (placedTarget.cardItem.el && placedTarget.cardItem.el._cardUid))) || null;
               }
             }
+            this._lastCropFinishedAt = performance.now();
             this.closePdfModal();
             this.togglePdfCropMode(false);
 
@@ -3023,14 +3030,113 @@
       return this.encodeCanvasSmartWebP(canvas, quality, allowJpegFallback);
     }
 
+    _flushPendingCropVectorUpgradeImmediate() {
+      this._forceFlushCropVectorUpgrade = true;
+      if (this._cropVectorUpgradeWaiters instanceof Set && this._cropVectorUpgradeWaiters.size > 0) {
+        const waiters = Array.from(this._cropVectorUpgradeWaiters);
+        this._cropVectorUpgradeWaiters.clear();
+        waiters.forEach((fn) => {
+          try { fn(); } catch (_) { }
+        });
+      }
+    }
+
+    _resolveLatestSlideRefForCropUpgrade(targetRef) {
+      if (!targetRef) return null;
+      const slides = Array.isArray(this.lessonPlaylistSlides) ? this.lessonPlaylistSlides : null;
+      if (!slides || slides.length === 0) return targetRef.slideRef || null;
+      if (targetRef.slideRef && slides.indexOf(targetRef.slideRef) !== -1) {
+        return targetRef.slideRef;
+      }
+      const uid = targetRef.cardUid || null;
+      if (uid) {
+        if (targetRef.type === 'primary') {
+          const found = slides.find(s => s && s.primaryProblemCard && s.primaryProblemCard.cardUid === uid);
+          if (found) {
+            targetRef.slideRef = found;
+            return found;
+          }
+        } else if (targetRef.type === 'extra') {
+          for (let si = 0; si < slides.length; si++) {
+            const s = slides[si];
+            if (!s || !Array.isArray(s.extraProblems)) continue;
+            const eIdx = s.extraProblems.findIndex(ep => ep && ep.cardUid === uid);
+            if (eIdx !== -1) {
+              targetRef.slideRef = s;
+              targetRef.extraIndex = eIdx;
+              return s;
+            }
+          }
+        }
+      }
+      return null;
+    }
+
     async _upgradeCroppedProblemCardToVectorUltraHD(pageNum, normCrop, targetRef = null) {
       const prevUpgrade = this._pendingCropVectorUpgradePromise;
+      const targetDoc = this.pdfDoc;
       const runUpgrade = async () => {
         if (prevUpgrade) {
           try { await prevUpgrade; } catch (_) { }
         }
         try {
-          if (!this.pdfDoc || !normCrop || normCrop.nw <= 0 || normCrop.nh <= 0) return;
+          if (!this.pdfDoc || this.pdfDoc !== targetDoc || !normCrop || normCrop.nw <= 0 || normCrop.nh <= 0) return;
+
+          // 🌟 [영역캡처 직후 우상단 [+] 연타·다음 캡처·즉시 필기 0.00ms 무간섭 유휴 대기]:
+          // 모달 닫힘 직후 0~720ms 황금 조작 구간(및 [+] 메뉴 열림 · PDF 모달 재진입 · 필기 진행 중)에는
+          // 무거운 4.0x~5.0x 초고배율 page.render가 메인 스레드를 얼리지 않도록 조용히 양보합니다!
+          // (내보내기/뷰어 진입 시에는 _flushPendingCropVectorUpgradeImmediate()로 0ms 즉시 깨어남)
+          const waitUntilUserIdleForUpgrade = async () => {
+            const quietWindowMs = 720;
+            if (!(this._cropVectorUpgradeWaiters instanceof Set)) {
+              this._cropVectorUpgradeWaiters = new Set();
+            }
+            while (!this._forceFlushCropVectorUpgrade) {
+              const sinceLastCrop = performance.now() - (this._lastCropFinishedAt || 0);
+              const isUserBusy = Boolean(
+                sinceLastCrop < quietWindowMs ||
+                this.isPdfModalOpen ||
+                this._isAddSlideMenuOpen ||
+                this._isSlideGridOpen ||
+                (typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) ||
+                this.isDrawingInk ||
+                this._isDrawingCardInk ||
+                this.isStylusDrawing ||
+                this.isErasingInk
+              );
+              if (!isUserBusy) break;
+              const waitMs = (sinceLastCrop >= 0 && sinceLastCrop < quietWindowMs)
+                ? Math.min(260, Math.max(60, Math.ceil(quietWindowMs - sinceLastCrop)))
+                : 240;
+              await new Promise((resolve) => {
+                let done = false;
+                const finish = () => {
+                  if (done) return;
+                  done = true;
+                  this._cropVectorUpgradeWaiters.delete(finish);
+                  resolve();
+                };
+                this._cropVectorUpgradeWaiters.add(finish);
+                setTimeout(finish, waitMs);
+              });
+            }
+          };
+          await waitUntilUserIdleForUpgrade();
+
+          if (!this.pdfDoc || this.pdfDoc !== targetDoc) return;
+          if (targetRef) {
+            const resolvedSlideBeforeRender = this._resolveLatestSlideRefForCropUpgrade(targetRef);
+            const isStillLivePrimary = (targetRef.type === 'primary' && this.problemCardData && (
+              this.problemCardData === targetRef.problemCardData ||
+              (targetRef.cardUid && this.problemCardUid === targetRef.cardUid)
+            ));
+            const isStillLiveExtra = (targetRef.type === 'extra' && targetRef.cardItem && Array.isArray(this.extraProblemCards) && this.extraProblemCards.includes(targetRef.cardItem));
+            const isStillStamped = Boolean(targetRef.stampedStroke && Array.isArray(this.inkStrokes) && this.inkStrokes.includes(targetRef.stampedStroke));
+            if (!resolvedSlideBeforeRender && !isStillLivePrimary && !isStillLiveExtra && !isStillStamped) {
+              return;
+            }
+          }
+
           const page = await this.pdfDoc.getPage(pageNum);
           const baseVp = page.getViewport({ scale: 1.0 });
           // 🌟 [뷰어 축소 배율(pdfZoom)과 무관한 4.0x~5.0x 통PDF급 초고해상도 벡터 캡처 보강]:
@@ -3106,19 +3212,21 @@
           }
         };
 
-        // 🌟 [핵심 핀셋 수정: 1페이지 캡처 직후 곧바로 필기하거나 다음 캔버스로 넘어가도 슬라이드 데이터에 초고해상도 벡터 이미지 100% 직결 반영!]
-        if (targetRef && targetRef.slideRef) {
-          const sRef = targetRef.slideRef;
-          if (targetRef.type === 'primary' && sRef.primaryProblemCard) {
-            sRef.primaryProblemCard.imgSrc = ultraDataUrl;
-            if (ultraAspect) sRef.primaryProblemCard.problemCardAspect = ultraAspect;
-          } else if (targetRef.type === 'extra' && Array.isArray(sRef.extraProblems)) {
-            const eIdx = (typeof targetRef.extraIndex === 'number') ? targetRef.extraIndex : (sRef.extraProblems.length - 1);
-            if (sRef.extraProblems[eIdx]) {
-              sRef.extraProblems[eIdx].dataUrl = ultraDataUrl;
+        // 🌟 [핵심 핀셋 수정: 연속 캡처로 슬라이드가 재직렬화(saveCurrentSlideIntoPlaylist)되어도 cardUid 추적으로 100% 직결 반영!]
+        if (targetRef) {
+          const sRef = this._resolveLatestSlideRefForCropUpgrade(targetRef);
+          if (sRef) {
+            if (targetRef.type === 'primary' && sRef.primaryProblemCard) {
+              sRef.primaryProblemCard.imgSrc = ultraDataUrl;
+              if (ultraAspect) sRef.primaryProblemCard.problemCardAspect = ultraAspect;
+            } else if (targetRef.type === 'extra' && Array.isArray(sRef.extraProblems)) {
+              const eIdx = (typeof targetRef.extraIndex === 'number') ? targetRef.extraIndex : (sRef.extraProblems.length - 1);
+              if (sRef.extraProblems[eIdx]) {
+                sRef.extraProblems[eIdx].dataUrl = ultraDataUrl;
+              }
             }
+            delete sRef.viewerSnapshotDataUrl;
           }
-          delete sRef.viewerSnapshotDataUrl;
         }
 
         const isBusyWritingNow = () => Boolean(
@@ -3227,6 +3335,7 @@
       } finally {
         if (this._pendingCropVectorUpgradePromise === task) {
           this._pendingCropVectorUpgradePromise = null;
+          this._forceFlushCropVectorUpgrade = false;
         }
       }
     }

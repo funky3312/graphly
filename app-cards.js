@@ -2457,6 +2457,12 @@
               configurable: true,
               enumerable: false
             });
+            Object.defineProperty(currentStroke, '_holdTrackState', {
+              value: this._createInkHoldTrackState(startPxX, startPxY),
+              writable: true,
+              configurable: true,
+              enumerable: false
+            });
           } catch (_) { }
           if (isShiftLine) {
             const shiftShapeP = this._initShiftLinePressure(
@@ -2560,13 +2566,19 @@
 
           const curPxX = pos.nx * pos.w;
           const curPxY = pos.ny * pos.h;
-          const prevMovePx = currentStroke._lastMovePx || { x: curPxX, y: curPxY };
-          const moveStepDist = Math.hypot(curPxX - prevMovePx.x, curPxY - prevMovePx.y);
           currentStroke._lastMovePx = { x: curPxX, y: curPxY };
-
-          const holdAnchor = currentStroke._holdAnchorPx || { x: curPxX, y: curPxY };
-          const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
-          if (moveStepDist > 4.5 || dHold > 8) {
+          if (!currentStroke._holdTrackState) {
+            const initAnchor = currentStroke._holdAnchorPx || { x: curPxX, y: curPxY };
+            try {
+              Object.defineProperty(currentStroke, '_holdTrackState', {
+                value: this._createInkHoldTrackState(initAnchor.x, initAnchor.y),
+                writable: true,
+                configurable: true,
+                enumerable: false
+              });
+            } catch (_) { }
+          }
+          if (this._shouldResetInkHoldOnMove(currentStroke._holdTrackState, curPxX, curPxY, Boolean(holdTimer))) {
             currentStroke._holdAnchorPx = { x: curPxX, y: curPxY };
             restartProblemHoldTimer(pos.w, pos.h);
           }
@@ -3621,6 +3633,12 @@
               configurable: true,
               enumerable: false
             });
+            Object.defineProperty(curExtraStroke, '_holdTrackState', {
+              value: this._createInkHoldTrackState(startPxX, startPxY),
+              writable: true,
+              configurable: true,
+              enumerable: false
+            });
           } catch (_) { }
           if (isShiftLine) {
             const shiftShapeP = this._initShiftLinePressure(
@@ -3729,13 +3747,19 @@
 
           const curPxX = nx * rw;
           const curPxY = ny * rh;
-          const prevMovePx = curExtraStroke._lastMovePx || { x: curPxX, y: curPxY };
-          const moveStepDist = Math.hypot(curPxX - prevMovePx.x, curPxY - prevMovePx.y);
           curExtraStroke._lastMovePx = { x: curPxX, y: curPxY };
-
-          const holdAnchor = curExtraStroke._holdAnchorPx || { x: curPxX, y: curPxY };
-          const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
-          if (moveStepDist > 4.5 || dHold > 8) {
+          if (!curExtraStroke._holdTrackState) {
+            const initAnchor = curExtraStroke._holdAnchorPx || { x: curPxX, y: curPxY };
+            try {
+              Object.defineProperty(curExtraStroke, '_holdTrackState', {
+                value: this._createInkHoldTrackState(initAnchor.x, initAnchor.y),
+                writable: true,
+                configurable: true,
+                enumerable: false
+              });
+            } catch (_) { }
+          }
+          if (this._shouldResetInkHoldOnMove(curExtraStroke._holdTrackState, curPxX, curPxY, Boolean(extraHoldTimer))) {
             curExtraStroke._holdAnchorPx = { x: curPxX, y: curPxY };
             restartExtraHoldTimer(rw, rh);
           }
@@ -6792,6 +6816,12 @@
               configurable: true,
               enumerable: false
             });
+            Object.defineProperty(currentStroke, '_holdTrackState', {
+              value: this._createInkHoldTrackState(startPxX, startPxY),
+              writable: true,
+              configurable: true,
+              enumerable: false
+            });
           } catch (_) { }
           if (isShiftLine) {
             const shiftShapeP = this._initShiftLinePressure(
@@ -6899,13 +6929,19 @@
 
           const curPxX = pos.nx * pos.w;
           const curPxY = pos.ny * pos.h;
-          const prevMovePx = currentStroke._lastMovePx || { x: curPxX, y: curPxY };
-          const moveStepDist = Math.hypot(curPxX - prevMovePx.x, curPxY - prevMovePx.y);
           currentStroke._lastMovePx = { x: curPxX, y: curPxY };
-
-          const holdAnchor = currentStroke._holdAnchorPx || { x: curPxX, y: curPxY };
-          const dHold = Math.hypot(curPxX - holdAnchor.x, curPxY - holdAnchor.y);
-          if (moveStepDist > 4.5 || dHold > 8) {
+          if (!currentStroke._holdTrackState) {
+            const initAnchor = currentStroke._holdAnchorPx || { x: curPxX, y: curPxY };
+            try {
+              Object.defineProperty(currentStroke, '_holdTrackState', {
+                value: this._createInkHoldTrackState(initAnchor.x, initAnchor.y),
+                writable: true,
+                configurable: true,
+                enumerable: false
+              });
+            } catch (_) { }
+          }
+          if (this._shouldResetInkHoldOnMove(currentStroke._holdTrackState, curPxX, curPxY, Boolean(graphHoldTimer))) {
             currentStroke._holdAnchorPx = { x: curPxX, y: curPxY };
             restartGraphCardHoldTimer(pos.w, pos.h);
           }
