@@ -19348,6 +19348,8 @@
       const hiResCv = (typeof document !== 'undefined') ? document.getElementById('smartNoteViewerPdfHiResCanvas') : null;
       if (hiResCv && releaseBuffer) {
         hiResCv._tileKey = '';
+        hiResCv._renderedStageW = 0;
+        hiResCv._renderedStageH = 0;
         hiResCv.style.display = 'none';
         try { hiResCv.width = 0; hiResCv.height = 0; } catch (_) { }
       }
@@ -19656,10 +19658,11 @@
         const visT = Math.max(vpRect.top, stRect.top);
         const visR = Math.min(vpRect.right, stRect.right);
         const visB = Math.min(vpRect.bottom, stRect.bottom);
-        const localX = Math.max(0, Math.floor(visL - stRect.left));
-        const localY = Math.max(0, Math.floor(visT - stRect.top));
-        const localR = Math.min(zoomedW, Math.ceil(visR - stRect.left));
-        const localB = Math.min(zoomedH, Math.ceil(visB - stRect.top));
+        const tilePad = 128;
+        const localX = Math.max(0, Math.floor(visL - stRect.left) - tilePad);
+        const localY = Math.max(0, Math.floor(visT - stRect.top) - tilePad);
+        const localR = Math.min(zoomedW, Math.ceil(visR - stRect.left) + tilePad);
+        const localB = Math.min(zoomedH, Math.ceil(visB - stRect.top) + tilePad);
         const localW = localR - localX;
         const localH = localB - localY;
         if (localW < 12 || localH < 12) return;
@@ -19718,6 +19721,12 @@
             hiResCv.style.height = `${localH}px`;
             hiResCv.style.display = 'block';
             hiResCv._tileKey = tileKey;
+            hiResCv._renderedStageW = zoomedW;
+            hiResCv._renderedStageH = zoomedH;
+            hiResCv._renderedLocalX = localX;
+            hiResCv._renderedLocalY = localY;
+            hiResCv._renderedLocalW = localW;
+            hiResCv._renderedLocalH = localH;
             return;
           }
 
@@ -19762,6 +19771,12 @@
           hiResCv.style.height = `${localH}px`;
           hiResCv.style.display = 'block';
           hiResCv._tileKey = tileKey;
+          hiResCv._renderedStageW = zoomedW;
+          hiResCv._renderedStageH = zoomedH;
+          hiResCv._renderedLocalX = localX;
+          hiResCv._renderedLocalY = localY;
+          hiResCv._renderedLocalW = localW;
+          hiResCv._renderedLocalH = localH;
         } catch (_) {
         } finally {
           if (stagingCv) {
@@ -21478,7 +21493,6 @@
       const prevZoom = this._viewerZoom || 1.0;
       const minZoom = this._viewerMinZoom || 1.0;
       const maxZoom = this._viewerMaxZoom || 3.5;
-      const { maxPanY: prevMaxPanY } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, prevZoom, viewport);
       let clampedZoom = Math.max(minZoom, Math.min(maxZoom, nextZoom));
 
       if (Math.abs(clampedZoom - 1.0) < 0.02 && Math.abs(nextZoom - minZoom) > 0.02) {
@@ -21493,16 +21507,9 @@
         this._viewerPanX = (focalClientX - cx) - ((focalClientX - cx - (this._viewerPanX || 0)) * ratio);
         this._viewerPanY = (focalClientY - cy) - ((focalClientY - cy - (this._viewerPanY || 0)) * ratio);
       } else if (prevZoom > 0.05) {
-        const { maxPanY: nextMaxPanY } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, clampedZoom, viewport);
-        const wasAtTopEdge = prevMaxPanY > 0.5 && Math.abs((this._viewerPanY || 0) - prevMaxPanY) <= 2;
-        if ((prevMaxPanY <= 0.5 || wasAtTopEdge) && nextMaxPanY > 0.5) {
-          this._viewerPanX = (this._viewerPanX || 0) * (clampedZoom / prevZoom);
-          this._viewerPanY = nextMaxPanY;
-        } else {
-          const ratio = clampedZoom / prevZoom;
-          this._viewerPanX = (this._viewerPanX || 0) * ratio;
-          this._viewerPanY = (this._viewerPanY || 0) * ratio;
-        }
+        const ratio = clampedZoom / prevZoom;
+        this._viewerPanX = (this._viewerPanX || 0) * ratio;
+        this._viewerPanY = (this._viewerPanY || 0) * ratio;
       }
 
       this._viewerZoom = clampedZoom;
@@ -21631,6 +21638,23 @@
           }
           // 캐러셀 슬라이드 중에는 메인 스테이지에 아직 직전 슬라이드가 떠 있으므로 커밋 직후에만 종이·잉크 갱신!
           if (!isSwipeAnim) {
+            const hiResCv = document.getElementById('smartNoteViewerPdfHiResCanvas');
+            if (hiResCv && hiResCv.style.display === 'block') {
+              if (zoom <= 1.05) {
+                this._clearSmartViewerPdfHiResTile(true);
+              } else if (
+                hiResCv._renderedStageW > 0 &&
+                hiResCv._renderedStageH > 0 &&
+                (hiResCv._renderedStageW !== zoomedW || hiResCv._renderedStageH !== zoomedH)
+              ) {
+                const sx = zoomedW / hiResCv._renderedStageW;
+                const sy = zoomedH / hiResCv._renderedStageH;
+                hiResCv.style.left = `${(hiResCv._renderedLocalX * sx).toFixed(2)}px`;
+                hiResCv.style.top = `${(hiResCv._renderedLocalY * sy).toFixed(2)}px`;
+                hiResCv.style.width = `${(hiResCv._renderedLocalW * sx).toFixed(2)}px`;
+                hiResCv.style.height = `${(hiResCv._renderedLocalH * sy).toFixed(2)}px`;
+              }
+            }
             // 기본 종이 캔버스(mainPaper)는 100% 기준 크기(baseW x baseH)로 고정하여 확대 중 불필요한 44MB 재할당을 0회로 차단!
             this._paintViewerPaperCanvas(mainPaper, curSlide, baseW, baseH, false);
             this._renderViewerPdfInkCanvas(mainInk, curSlide, zoomedW, zoomedH, false);
