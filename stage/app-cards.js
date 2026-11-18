@@ -1231,9 +1231,9 @@
       }
       const pCanvas = document.getElementById('problemCardCanvas');
       if (!pCanvas) return;
-      const dpr = this.getCanvasDpr();
-      const w = pCanvas.width / dpr;
-      const h = pCanvas.height / dpr;
+      const dpr = (pCanvas._renderDpr > 0) ? pCanvas._renderDpr : this.getCanvasDpr();
+      const w = (pCanvas._logicalW > 0) ? pCanvas._logicalW : (pCanvas.width / dpr);
+      const h = (pCanvas._logicalH > 0) ? pCanvas._logicalH : (pCanvas.height / dpr);
       const sizeScale = Math.max(0.6, w / 520);
       this._renderCardInkWithBakeCache(
         pCanvas,
@@ -2634,8 +2634,8 @@
             if (recT !== undefined) {
               finishedCardStroke.tEnd = recT;
             }
-            const rw = Math.max(1, (endRect && endRect.width) || (pCanvas.width / this.getCanvasDpr()) || 400);
-            const rh = Math.max(1, (endRect && endRect.height) || (pCanvas.height / this.getCanvasDpr()) || 300);
+            const rw = Math.max(1, (endRect && endRect.width) || pCanvas._logicalW || (pCanvas.width / (pCanvas._renderDpr || this.getCanvasDpr())) || 400);
+            const rh = Math.max(1, (endRect && endRect.height) || pCanvas._logicalH || (pCanvas.height / (pCanvas._renderDpr || this.getCanvasDpr())) || 300);
             if (finishedCardStroke._isShiftLine) {
               delete finishedCardStroke._isShiftLine;
               const sh = finishedCardStroke.cardShape;
@@ -2873,9 +2873,12 @@
           if (hasProbInk) {
             const pCanvas = document.getElementById('problemCardCanvas');
             if (pCanvas && !widget.classList.contains('minimized')) {
-              const dpr = this.getCanvasDpr();
+              const dpr = this._getEffectiveCardRenderDpr(widget, newW, newH);
               const tw = Math.round(newW * dpr);
               const th = Math.round(newH * dpr);
+              pCanvas._logicalW = newW;
+              pCanvas._logicalH = newH;
+              pCanvas._renderDpr = dpr;
               if (pCanvas.width !== tw || pCanvas.height !== th) {
                 pCanvas.width = tw;
                 pCanvas.height = th;
@@ -3437,25 +3440,41 @@
         cardWidgetEl._cardInkStrokes = [];
 
         const renderExtraCardInk = (activeStroke = null, commitStroke = false) => {
-          const dpr = this.getCanvasDpr();
+          const baseDpr = this.getCanvasDpr();
           if (extraInkCanvas._skipLayoutMeasureOnce) {
             extraInkCanvas._skipLayoutMeasureOnce = false;
           } else if (!cardWidgetEl.classList.contains('minimized') && (!activeStroke || extraInkCanvas._needsSizeSync || !extraInkCanvas.width || !extraInkCanvas.height)) {
-            const rect = typeof this._getStageElementRect === 'function'
-              ? this._getStageElementRect(bodyEl)
-              : bodyEl.getBoundingClientRect();
-            if (rect.width >= 10 && rect.height >= 10) {
+            const visScale = (typeof this._getCardCurrentStageScale === 'function')
+              ? Math.max(0.2, this._getCardCurrentStageScale(cardWidgetEl))
+              : 1.0;
+            let logicalW = parseFloat(cardWidgetEl.style.width) || parseFloat(cardWidgetEl._savedExpandedWidth) || bodyEl.clientWidth || 0;
+            let logicalH = parseFloat(bodyEl.style.height) || bodyEl.clientHeight || 0;
+            if (logicalW < 10 || logicalH < 10) {
+              const rect = typeof this._getStageElementRect === 'function'
+                ? this._getStageElementRect(bodyEl)
+                : bodyEl.getBoundingClientRect();
+              if (rect.width >= 10 && rect.height >= 10) {
+                if (logicalW < 10) logicalW = rect.width / visScale;
+                if (logicalH < 10) logicalH = rect.height / visScale;
+              }
+            }
+            if (logicalW >= 10 && logicalH >= 10) {
               extraInkCanvas._needsSizeSync = false;
-              const tw = Math.round(rect.width * dpr);
-              const th = Math.round(rect.height * dpr);
+              const effDpr = this._getEffectiveCardRenderDpr(cardWidgetEl, logicalW, logicalH);
+              const tw = Math.round(logicalW * effDpr);
+              const th = Math.round(logicalH * effDpr);
+              extraInkCanvas._logicalW = logicalW;
+              extraInkCanvas._logicalH = logicalH;
+              extraInkCanvas._renderDpr = effDpr;
               if (extraInkCanvas.width !== tw || extraInkCanvas.height !== th) {
                 extraInkCanvas.width = tw;
                 extraInkCanvas.height = th;
               }
             }
           }
-          const w = Math.max(1, (extraInkCanvas.width || 520 * dpr) / dpr);
-          const h = Math.max(1, (extraInkCanvas.height || 360 * dpr) / dpr);
+          const dpr = (extraInkCanvas._renderDpr > 0) ? extraInkCanvas._renderDpr : baseDpr;
+          const w = Math.max(1, extraInkCanvas._logicalW || ((extraInkCanvas.width || 520 * dpr) / dpr));
+          const h = Math.max(1, extraInkCanvas._logicalH || ((extraInkCanvas.height || 360 * dpr) / dpr));
           const isProbExtra = cardWidgetEl.classList.contains('extra-problem-card-widget');
           const extraGraphRef = (!isProbExtra && Array.isArray(this.extraGraphCards))
             ? this.extraGraphCards.find(c => c && c.el === cardWidgetEl)
@@ -3813,8 +3832,8 @@
           if (finishedSt && finishedSt.points && finishedSt.points.length > 0) {
             const recT = this.isAudioRecording ? this.getAudioRecordElapsedMs() : undefined;
             if (recT !== undefined) finishedSt.tEnd = recT;
-            const rw = Math.max(1, (endRect && endRect.width) || (extraInkCanvas.width / this.getCanvasDpr()) || 430);
-            const rh = Math.max(1, (endRect && endRect.height) || (extraInkCanvas.height / this.getCanvasDpr()) || 353);
+            const rw = Math.max(1, (endRect && endRect.width) || extraInkCanvas._logicalW || (extraInkCanvas.width / (extraInkCanvas._renderDpr || this.getCanvasDpr())) || 430);
+            const rh = Math.max(1, (endRect && endRect.height) || extraInkCanvas._logicalH || (extraInkCanvas.height / (extraInkCanvas._renderDpr || this.getCanvasDpr())) || 353);
             if (finishedSt._isShiftLine) {
               delete finishedSt._isShiftLine;
               const sh = finishedSt.cardShape;
@@ -6490,6 +6509,40 @@
       }
     }
 
+    _getCardCurrentStageScale(widget) {
+      if (!widget || !this.isGraphCovered || this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode) {
+        return 1.0;
+      }
+      if (this.pdfPageBoardData) {
+        const anchor = widget._pdfAnchor;
+        const curUS = (typeof this.getCurrentMathUnitScale === 'function') ? this.getCurrentMathUnitScale() : 0;
+        if (anchor && anchor.unitScale > 0 && curUS > 0) {
+          return Math.max(0.2, Math.min(4.0, curUS / anchor.unitScale));
+        }
+        return 1.0;
+      }
+      return Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0));
+    }
+
+    _getEffectiveCardRenderDpr(widget, logicalW = 400, logicalH = 320) {
+      const baseDpr = this.getCanvasDpr();
+      if (!widget || this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode) {
+        return baseDpr;
+      }
+      const boost = (typeof widget._settledZoomBoost === 'number' && widget._settledZoomBoost > 1.02)
+        ? Math.min(3.5, widget._settledZoomBoost)
+        : 1.0;
+      if (boost <= 1.02) return baseDpr;
+      const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+      const maxSide = isIOS ? 2160 : 3072;
+      const maxArea = isIOS ? 2800000 : 5600000;
+      const safeW = Math.max(1, Number(logicalW) || 400);
+      const safeH = Math.max(1, Number(logicalH) || 320);
+      const sideCap = maxSide / Math.max(safeW, safeH);
+      const areaCap = Math.sqrt(maxArea / (safeW * safeH));
+      return Math.max(baseDpr, Math.min(baseDpr * boost, sideCap, areaCap));
+    }
+
     syncGraphCardRectFromWidget(rectOnly = false) {
       const widget = document.getElementById('graphCardWidget');
       const body = document.getElementById('graphCardBody');
@@ -6530,9 +6583,12 @@
       }
 
       if (gCanvas && !isMin) {
-        const dpr = this.getCanvasDpr();
+        const dpr = this._getEffectiveCardRenderDpr(widget, effW, h);
         const targetW = Math.round(effW * dpr);
         const targetH = Math.round(h * dpr);
+        gCanvas._logicalW = effW;
+        gCanvas._logicalH = h;
+        gCanvas._renderDpr = dpr;
         if (gCanvas.width !== targetW || gCanvas.height !== targetH) {
           gCanvas.width = targetW;
           gCanvas.height = targetH;
@@ -6574,9 +6630,9 @@
     renderGraphCardCanvas(activeStroke = null, commitStroke = false) {
       const gCanvas = document.getElementById('graphCardCanvas');
       if (!gCanvas) return;
-      const dpr = this.getCanvasDpr();
-      const w = gCanvas.width / dpr;
-      const h = gCanvas.height / dpr;
+      const dpr = (gCanvas._renderDpr > 0) ? gCanvas._renderDpr : this.getCanvasDpr();
+      const w = (gCanvas._logicalW > 0) ? gCanvas._logicalW : (gCanvas.width / dpr);
+      const h = (gCanvas._logicalH > 0) ? gCanvas._logicalH : (gCanvas.height / dpr);
       const sizeScale = this.getPipCardFinePenScale('primary', w, h);
       this._renderCardInkWithBakeCache(
         gCanvas,
@@ -6998,8 +7054,8 @@
             if (recT !== undefined) {
               finishedCardStroke.tEnd = recT;
             }
-            const rw = Math.max(1, (endRect && endRect.width) || (gCanvas.width / this.getCanvasDpr()) || 430);
-            const rh = Math.max(1, (endRect && endRect.height) || (gCanvas.height / this.getCanvasDpr()) || 353);
+            const rw = Math.max(1, (endRect && endRect.width) || gCanvas._logicalW || (gCanvas.width / (gCanvas._renderDpr || this.getCanvasDpr())) || 430);
+            const rh = Math.max(1, (endRect && endRect.height) || gCanvas._logicalH || (gCanvas.height / (gCanvas._renderDpr || this.getCanvasDpr())) || 353);
             if (finishedCardStroke._isShiftLine) {
               delete finishedCardStroke._isShiftLine;
               const sh = finishedCardStroke.cardShape;
@@ -9483,7 +9539,7 @@
       const aspect = isPrimary ? (this.graphCardAspect || 0.82) : (cardRef.aspect || 0.82);
       const cardW = Math.max(160, Math.round(parseFloat(widget.style.width) || bodyEl.clientWidth || 430));
       const cardH = Math.max(60, Math.round(parseFloat(bodyEl.style.height) || (cardW * aspect)));
-      const dpr = this.getCanvasDpr();
+      const dpr = this._getEffectiveCardRenderDpr(widget, cardW, cardH);
       const targetW = Math.round(cardW * dpr);
       const targetH = Math.round(cardH * dpr);
       if (liveCanvas.width !== targetW || liveCanvas.height !== targetH) {

@@ -1622,12 +1622,18 @@
         this.pdfPageBoardData.canvas = null;
         this._ensurePdfBoardCanvasFromDataUrl(this.pdfPageBoardData);
       }
+      const hasExportOverride = Boolean(
+        isExport &&
+        this._exportPdfHiResOverride &&
+        this._exportPdfHiResOverride.canvas &&
+        this._exportPdfHiResOverride.canvas.width > 2
+      );
       const pageCanvas = this.pdfPageBoardData && (
         (this._isValidPdfBoardCanvas(this.pdfPageBoardData.canvas) ? this.pdfPageBoardData.canvas : null) ||
         (this.pdfPageBoardData.img && this.pdfPageBoardData.img.complete && this.pdfPageBoardData.img.naturalWidth > 0 ? this.pdfPageBoardData.img : null)
       );
-      if (!this.pdfPageBoardData || !pageCanvas) {
-        if (this.pdfPageBoardData && !this.pdfPageBoardData.canvas && this.pdfPageBoardData.dataUrl) {
+      if (!this.pdfPageBoardData || (!pageCanvas && !hasExportOverride)) {
+        if (this.pdfPageBoardData && !this.pdfPageBoardData.canvas && (this.pdfPageBoardData.dataUrl || this.pdfPageBoardData.pdfDocUid)) {
           this._ensurePdfBoardCanvasFromDataUrl(this.pdfPageBoardData);
         }
         this._lastPdfPageScreenRect = null;
@@ -1665,6 +1671,7 @@
         : Math.min(2.5, Math.max(1.5, window.devicePixelRatio || 2.0));
       const canUseMipWithoutBlur = Boolean(
         isActivelyMovingCamera &&
+        pageCanvas &&
         pageCanvas._mipCanvas &&
         pageCanvas._mipCanvas.width > 4 &&
         (drawW * effDpr) <= (pageCanvas._mipCanvas.width * 1.15)
@@ -1690,7 +1697,27 @@
 
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(sourceTex, drawX, drawY, drawW, drawH);
+      if (sourceTex) {
+        ctx.drawImage(sourceTex, drawX, drawY, drawW, drawH);
+      }
+
+      if (isExport && this._exportPdfHiResOverride && this._exportPdfHiResOverride.canvas && this._exportPdfHiResOverride.canvas.width > 2) {
+        const ov = this._exportPdfHiResOverride;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(drawX, drawY, drawW, drawH);
+        ctx.clip();
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(
+          ov.canvas,
+          drawX + ov.normL * drawW,
+          drawY + ov.normT * drawH,
+          ov.normW * drawW,
+          ov.normH * drawH
+        );
+        ctx.restore();
+      }
 
       // 🌟 [고배율(132%~350%) 정지 시 현재 화면 영역만 1:1 원본 벡터 타일로 선명화]:
       // 전체 페이지 캔버스(2,800px)는 그대로 유지해 기본 100%~132% 이동 중 재렌더링을 0회로 차단하면서,
@@ -3839,9 +3866,14 @@
       }
 
       if (pCanvas && !isMin) {
-        const dpr = this.getCanvasDpr();
+        const dpr = (typeof this._getEffectiveCardRenderDpr === 'function')
+          ? this._getEffectiveCardRenderDpr(widget, effW, h)
+          : this.getCanvasDpr();
         const targetW = Math.round(effW * dpr);
         const targetH = Math.round(h * dpr);
+        pCanvas._logicalW = effW;
+        pCanvas._logicalH = h;
+        pCanvas._renderDpr = dpr;
         if (pCanvas.width !== targetW || pCanvas.height !== targetH) {
           pCanvas.width = targetW;
           pCanvas.height = targetH;
@@ -3954,6 +3986,7 @@
         ? this.getCurrentMathUnitScale()
         : 60;
       const bz = Math.max(0.2, Math.min(4.0, this.boardZoom || 1.0));
+      let needCardHiDpiSchedule = false;
 
       const applyCardTransform = (el, baseX, baseY, savedAnchorOwner) => {
         if (!el || el.style.display === 'none') return;
@@ -4032,6 +4065,13 @@
             : (parseFloat(el.style.width) || el.offsetWidth || 480);
           const screenRight = screenLeft + cssCardW * effScale;
           const viewW = this.screenWidth || (typeof window !== 'undefined' ? window.innerWidth : 1440);
+          const viewH = this.screenHeight || (typeof window !== 'undefined' ? window.innerHeight : 900);
+          const desiredBoost = (this.isGraphCovered && screenRight >= -40 && screenLeft <= viewW + 40 && screenTop <= viewH + 40)
+            ? Math.max(1.0, Math.min(3.5, Math.round(effScale * 20) / 20))
+            : 1.0;
+          if (Math.abs((el._settledZoomBoost || 1.0) - desiredBoost) > 0.04) {
+            needCardHiDpiSchedule = true;
+          }
           const dockSpanPx = 42 * effScale;
           const flipLeft = (screenRight + dockSpanPx > viewW - 6) && (screenLeft >= dockSpanPx);
           if (el._probSideDockLeft !== flipLeft) {
@@ -4091,11 +4131,19 @@
         }
       }
       const widget = document.getElementById('problemCardWidget');
-      if (!widget || (singleEl && singleEl !== widget)) return;
+      if (!widget || (singleEl && singleEl !== widget)) {
+        if (needCardHiDpiSchedule && !singleEl) {
+          this._scheduleSettledCardHiDpiRefresh();
+        }
+        return;
+      }
       if (!this.problemCardData || widget.style.display === 'none') {
         this.problemCardRect = null;
         if (!this.problemCardData) {
           widget.style.transform = '';
+        }
+        if (needCardHiDpiSchedule && !singleEl) {
+          this._scheduleSettledCardHiDpiRefresh();
         }
         return;
       }
@@ -4107,6 +4155,92 @@
       applyCardTransform(widget, px, py, null);
       if (widget._pdfAnchor) this.problemCardPdfAnchor = widget._pdfAnchor;
       if (!transformOnly) this.syncProblemCardRectFromWidget();
+      if (needCardHiDpiSchedule && !singleEl) {
+        this._scheduleSettledCardHiDpiRefresh();
+      }
+    }
+
+    _scheduleSettledCardHiDpiRefresh() {
+      if (this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode || this._isDeserializingSlide) return;
+      if (typeof this._isSmartNoteViewerOverlayOpen === 'function' && this._isSmartNoteViewerOverlayOpen()) return;
+      if (this._settledCardHiDpiTimer) {
+        clearTimeout(this._settledCardHiDpiTimer);
+        this._settledCardHiDpiTimer = null;
+      }
+      this._settledCardHiDpiTimer = setTimeout(() => {
+        this._settledCardHiDpiTimer = null;
+        if (this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode || this._isDeserializingSlide) return;
+        if (typeof this._isSmartNoteViewerOverlayOpen === 'function' && this._isSmartNoteViewerOverlayOpen()) return;
+        const isBusy = Boolean(
+          this.isPanning ||
+          this.isBoardPanning ||
+          this._pinchState ||
+          this._isZoomAnimating ||
+          this._isWheelZooming ||
+          this._isDraggingOrResizingAnyCard ||
+          this.isDrawingInk
+        );
+        if (isBusy) {
+          this._scheduleSettledCardHiDpiRefresh();
+          return;
+        }
+        const viewW = this.screenWidth || (typeof window !== 'undefined' ? window.innerWidth : 1440);
+        const viewH = this.screenHeight || (typeof window !== 'undefined' ? window.innerHeight : 900);
+        const updateOne = (el, onChanged) => {
+          if (!el || el.style.display === 'none' || el.classList.contains('minimized')) return;
+          const r = el.getBoundingClientRect();
+          const inView = r.width > 4 && r.height > 4 && r.right >= -40 && r.left <= viewW + 40 && r.bottom >= -40 && r.top <= viewH + 40;
+          const rawScale = (typeof this._getCardCurrentStageScale === 'function')
+            ? this._getCardCurrentStageScale(el)
+            : 1.0;
+          const desired = (this.isGraphCovered && inView)
+            ? Math.max(1.0, Math.min(3.5, Math.round(rawScale * 20) / 20))
+            : 1.0;
+          if (Math.abs((el._settledZoomBoost || 1.0) - desired) <= 0.03) return;
+          el._settledZoomBoost = desired;
+          onChanged();
+        };
+
+        const gWidget = document.getElementById('graphCardWidget');
+        if (gWidget && this.graphCardData) {
+          updateOne(gWidget, () => {
+            this.syncGraphCardRectFromWidget();
+          });
+        }
+        if (Array.isArray(this.extraGraphCards)) {
+          this.extraGraphCards.forEach((c) => {
+            if (!c || !c.el) return;
+            updateOne(c.el, () => {
+              this.renderPipGraphCard(c);
+              const extraCvs = c.el.querySelector('.problem-card-canvas');
+              if (extraCvs) extraCvs._needsSizeSync = true;
+              if (c.el._cardInkStrokes && c.el._cardInkStrokes.length > 0 && typeof c.el._renderCardInkCanvas === 'function') {
+                c.el._renderCardInkCanvas();
+              }
+            });
+          });
+        }
+        const pWidget = document.getElementById('problemCardWidget');
+        if (pWidget && this.problemCardData) {
+          updateOne(pWidget, () => {
+            if (this.problemInkStrokes && this.problemInkStrokes.length > 0) {
+              this.syncProblemCardRectFromWidget();
+            }
+          });
+        }
+        if (Array.isArray(this.extraProblemCards)) {
+          this.extraProblemCards.forEach((c) => {
+            if (!c || !c.el) return;
+            updateOne(c.el, () => {
+              const extraCvs = c.el.querySelector('.problem-card-canvas');
+              if (extraCvs) extraCvs._needsSizeSync = true;
+              if (c.el._cardInkStrokes && c.el._cardInkStrokes.length > 0 && typeof c.el._renderCardInkCanvas === 'function') {
+                c.el._renderCardInkCanvas();
+              }
+            });
+          });
+        }
+      }, 150);
     }
 
     // 문제 카드는 이제 전용 독립 캔버스(#problemCardCanvas)를 가진 독립 위젯으로 렌더링되므로

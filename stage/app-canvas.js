@@ -10819,7 +10819,9 @@
           ctx.clip();
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
-          const bzCard = Math.max(0.25, this.boardZoom || 1.0);
+          const bzCard = (typeof this._getCardCurrentStageScale === 'function')
+            ? Math.max(0.25, this._getCardCurrentStageScale(el))
+            : Math.max(0.25, this.boardZoom || 1.0);
           const unzoomedW = Math.max(1, bw / bzCard);
           const unzoomedH = Math.max(1, bh / bzCard);
           const exportCardRef = isGraphCard
@@ -10840,7 +10842,7 @@
                 }
               }
               const pipScale = Math.min(
-                5.0,
+                8.5,
                 3840 / Math.max(1, unzoomedW, unzoomedH),
                 Math.max(3.0, ctxExportScale * bzCard)
               );

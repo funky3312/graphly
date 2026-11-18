@@ -8391,6 +8391,8 @@
     // 직렬화된 슬라이드 JSON 객체를 현재 워크스페이스에 100% 무손실 복원
     deserializeFullSlideState(slideData) {
       if (!slideData) return;
+      this._viewerCompositeMountedSlide = null;
+      this._viewerCompositeSmartBounds = null;
       this._isDeserializingSlide = true;
       try {
 
@@ -15085,11 +15087,12 @@
       return slides.map(s => this._applyExportFilterToSlideData(s, effFilter));
     }
 
-    async _waitForSlideImagesReady() {
+    async _waitForSlideImagesReady(opts = null) {
+      const skipPdfRaster = Boolean(opts && opts.skipPdfBoardRaster);
       if (this._pendingCropVectorUpgradePromise) {
         try { await this._pendingCropVectorUpgradePromise; } catch (_) { }
       }
-      if (this.pdfPageBoardData && (!this.pdfPageBoardData.canvas || this.pdfPageBoardData.canvas._evicted || this.pdfPageBoardData.canvas.width <= 4) && (this.pdfPageBoardData.dataUrl || (typeof this._hasLivePdfSourceForBoard === 'function' && this._hasLivePdfSourceForBoard(this.pdfPageBoardData)))) {
+      if (!skipPdfRaster && this.pdfPageBoardData && (!this.pdfPageBoardData.canvas || this.pdfPageBoardData.canvas._evicted || this.pdfPageBoardData.canvas.width <= 4) && (this.pdfPageBoardData.dataUrl || (typeof this._hasLivePdfSourceForBoard === 'function' && this._hasLivePdfSourceForBoard(this.pdfPageBoardData)))) {
         if (typeof this._ensurePdfBoardCanvasFromDataUrl === 'function') {
           await this._ensurePdfBoardCanvasFromDataUrl(this.pdfPageBoardData);
         }
@@ -15153,7 +15156,7 @@
       this.renderProblemCardCanvas();
       this.syncGraphCardRectFromWidget();
       this.renderGraphCardCanvas();
-      if (this.pdfPageBoardData && (!this.pdfPageBoardData.canvas || this.pdfPageBoardData.canvas._evicted || this.pdfPageBoardData.canvas.width <= 4)) {
+      if (!skipPdfRaster && this.pdfPageBoardData && (!this.pdfPageBoardData.canvas || this.pdfPageBoardData.canvas._evicted || this.pdfPageBoardData.canvas.width <= 4)) {
         if (typeof this._ensurePdfBoardCanvasFromDataUrl === 'function') {
           await this._ensurePdfBoardCanvasFromDataUrl(this.pdfPageBoardData).catch(() => null);
         }
@@ -19350,6 +19353,220 @@
       }
     }
 
+    async _renderCompositeViewerVectorTile(slide, effFilter, zoomedW, zoomedH, localX, localY, localW, localH, tileDpr, token) {
+      if (!slide) return null;
+      return await this._runExclusiveViewerSnapshotTask(async () => {
+        if (this._viewerPdfHiResToken !== token || !this._isSmartNoteViewerOverlayOpen()) return null;
+        const slides = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides : null;
+        if (!slides || slides[this._viewerSlideIdx || 0] !== slide) return null;
+
+        const curScreenSig = `${this.screenWidth || 0}x${this.screenHeight || 0}`;
+        let sb = (this._viewerCompositeMountedSlide === slide && this._viewerCompositeScreenSig === curScreenSig)
+          ? this._viewerCompositeSmartBounds
+          : null;
+        const targetIsLight = this._resolveSlideViewerIsLightTheme(slide);
+
+        if (!sb || !(sb.width > 0 && sb.height > 0)) {
+          this._viewerDidMutateLiveWorkspace = true;
+          const canDirectVectorPdf = Boolean(
+            slide.pdfPageBoardData &&
+            slide.pdfPageBoardData.pdfDocUid &&
+            typeof this._hasLivePdfSourceForBoard === 'function' &&
+            this._hasLivePdfSourceForBoard(slide.pdfPageBoardData)
+          );
+          this.deserializeFullSlideState(slide);
+          await this._waitForSlideImagesReady({ skipPdfBoardRaster: canDirectVectorPdf });
+          if (this._viewerPdfHiResToken !== token || !this._isSmartNoteViewerOverlayOpen()) {
+            this._syncSmartViewerThemeForSlide(slides[this._viewerSlideIdx || 0] || slide);
+            return null;
+          }
+          if (typeof document !== 'undefined' && document.body) {
+            document.body.classList.toggle('theme-light', targetIsLight);
+          }
+          const activeFilter = effFilter || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+          sb = this.getSmartExportBounds(activeFilter);
+          this._viewerCompositeMountedSlide = slide;
+          this._viewerCompositeSmartBounds = sb;
+          this._viewerCompositeScreenSig = `${this.screenWidth || 0}x${this.screenHeight || 0}`;
+        }
+        if (!sb || !(sb.width > 0 && sb.height > 0)) return null;
+
+        const tilePxW = Math.max(2, Math.round(localW * tileDpr));
+        const tilePxH = Math.max(2, Math.round(localH * tileDpr));
+        const effDprX = tilePxW / Math.max(1, localW);
+        const effDprY = tilePxH / Math.max(1, localH);
+        const vecScaleX = (zoomedW / Math.max(1, sb.width)) * effDprX;
+        const vecScaleY = (zoomedH / Math.max(1, sb.height)) * effDprY;
+
+        const activeFilter = effFilter || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+        const prevFilter = this._activeExportFilter;
+        const prevOmitStickers = this._omitStickersForViewerSnapshot;
+        const prevTransparent = this.exportTransparent;
+        const prevBodyLight = (typeof document !== 'undefined' && document.body)
+          ? document.body.classList.contains('theme-light')
+          : targetIsLight;
+
+        const cropX = sb.x;
+        const cropY = sb.y;
+        const sw = sb.width;
+        const sh = sb.height;
+        const baseSpanX = Math.abs(this.screenToMath(this.screenWidth, 0).x - this.screenToMath(0, 0).x);
+        const backup = {
+          sw: this.screenWidth,
+          sh: this.screenHeight,
+          panX: this.panX,
+          panY: this.panY,
+          xSpan: this.xSpan,
+          ySpan: this.ySpan,
+          lockAspect: this.lockAspect,
+          boardPanX: this.boardPanX,
+          boardPanY: this.boardPanY,
+          boardZoom: this.boardZoom,
+          boardZoomOffsetX: this.boardZoomOffsetX,
+          boardZoomOffsetY: this.boardZoomOffsetY,
+          exportCropOffset: this._exportCropOffset,
+          exportBaseSpanX: this._exportBaseSpanX
+        };
+
+        let pdfOverrideCv = null;
+        let stagingCv = null;
+        try {
+          if (typeof document !== 'undefined' && document.body) {
+            document.body.classList.toggle('theme-light', targetIsLight);
+          }
+          this._activeExportFilter = activeFilter;
+          this._omitStickersForViewerSnapshot = true;
+          this.exportTransparent = false;
+
+          const origX = backup.sw / 2 + backup.panX;
+          const origY = backup.sh / 2 + backup.panY;
+          this.screenWidth = sw;
+          this.screenHeight = sh;
+          this.panX = (origX - cropX) - sw / 2;
+          this.panY = (origY - cropY) - sh / 2;
+          this.ySpan = backup.ySpan * (sh / Math.max(1, backup.sh));
+          if (!backup.lockAspect) {
+            this.xSpan = backup.xSpan * (sw / Math.max(1, backup.sw));
+          }
+          this.lockAspect = backup.lockAspect;
+          this.boardPanX = (backup.boardPanX || 0) - cropX;
+          this.boardPanY = (backup.boardPanY || 0) - cropY;
+          this._exportCropOffset = { x: cropX, y: cropY };
+          this._exportBaseSpanX = baseSpanX;
+
+          // 복합 슬라이드에 통PDF가 포함된 경우: 가시 교집합만 PDF.js 원본 벡터로 고해상도 선행 렌더링하여 주입!
+          const pbd = this.pdfPageBoardData;
+          if (pbd && activeFilter.includeProblem !== false && pbd.pdfDocUid && typeof this._getOrWaitLivePdfDocForUid === 'function') {
+            const liveDoc = await this._getOrWaitLivePdfDocForUid(pbd.pdfDocUid);
+            if (this._viewerPdfHiResToken !== token || !this._isSmartNoteViewerOverlayOpen()) return null;
+            if (liveDoc && typeof liveDoc.getPage === 'function' && pbd.mathW > 0 && pbd.mathH > 0) {
+              const cx = pbd.centerX || 0;
+              const cy = pbd.centerY || 0;
+              const tl = this.mathToScreen(cx - pbd.mathW / 2, cy + pbd.mathH / 2);
+              const br = this.mathToScreen(cx + pbd.mathW / 2, cy - pbd.mathH / 2);
+              const pdfX = Math.min(tl.x, br.x);
+              const pdfY = Math.min(tl.y, br.y);
+              const pdfW = Math.abs(br.x - tl.x);
+              const pdfH = Math.abs(br.y - tl.y);
+              const visL = (localX / Math.max(1, zoomedW)) * sw;
+              const visT = (localY / Math.max(1, zoomedH)) * sh;
+              const visR = ((localX + localW) / Math.max(1, zoomedW)) * sw;
+              const visB = ((localY + localH) / Math.max(1, zoomedH)) * sh;
+              const ix0 = Math.max(pdfX, visL);
+              const iy0 = Math.max(pdfY, visT);
+              const ix1 = Math.min(pdfX + pdfW, visR);
+              const iy1 = Math.min(pdfY + pdfH, visB);
+              if (pdfW > 4 && pdfH > 4 && (ix1 - ix0) > 2 && (iy1 - iy0) > 2) {
+                const normL = Math.max(0, Math.min(1, (ix0 - pdfX) / pdfW));
+                const normT = Math.max(0, Math.min(1, (iy0 - pdfY) / pdfH));
+                const normW = Math.max(0.001, Math.min(1 - normL, (ix1 - ix0) / pdfW));
+                const normH = Math.max(0.001, Math.min(1 - normT, (iy1 - iy0) / pdfH));
+                const fullPdfPxW = pdfW * vecScaleX;
+                const fullPdfPxH = pdfH * vecScaleY;
+                const subPxW = Math.max(2, Math.min(3400, Math.round(normW * fullPdfPxW)));
+                const subPxH = Math.max(2, Math.min(3400, Math.round(normH * fullPdfPxH)));
+                const srcPageNum = pbd.pdfSourcePageNum || pbd.pageNum || 1;
+                const page = await liveDoc.getPage(srcPageNum);
+                if (this._viewerPdfHiResToken !== token || !this._isSmartNoteViewerOverlayOpen()) return null;
+                const baseVp = page.getViewport({ scale: 1.0 });
+                const effFullW = subPxW / normW;
+                const effFullH = subPxH / normH;
+                const pdfScale = effFullW / Math.max(1, baseVp.width);
+                const pdfVp = page.getViewport({
+                  scale: pdfScale,
+                  offsetX: -normL * effFullW,
+                  offsetY: -normT * effFullH
+                });
+                pdfOverrideCv = document.createElement('canvas');
+                pdfOverrideCv.width = subPxW;
+                pdfOverrideCv.height = subPxH;
+                const pCtx = pdfOverrideCv.getContext('2d', { alpha: false }) || pdfOverrideCv.getContext('2d');
+                if (pCtx) {
+                  pCtx.fillStyle = '#ffffff';
+                  pCtx.fillRect(0, 0, subPxW, subPxH);
+                  const pdfTask = page.render({ canvasContext: pCtx, viewport: pdfVp });
+                  this._viewerPdfHiResRenderTask = pdfTask;
+                  await pdfTask.promise;
+                  if (this._viewerPdfHiResToken !== token || !this._isSmartNoteViewerOverlayOpen()) return null;
+                  this._exportPdfHiResOverride = {
+                    canvas: pdfOverrideCv,
+                    normL,
+                    normT,
+                    normW,
+                    normH
+                  };
+                }
+              }
+            }
+          }
+
+          stagingCv = document.createElement('canvas');
+          stagingCv.width = tilePxW;
+          stagingCv.height = tilePxH;
+          const sCtx = stagingCv.getContext('2d', { alpha: false }) || stagingCv.getContext('2d');
+          if (!sCtx) return null;
+
+          sCtx.save();
+          sCtx.translate(-localX * effDprX, -localY * effDprY);
+          sCtx.scale(vecScaleX, vecScaleY);
+          this.render(sCtx, sw, sh, true);
+          sCtx.restore();
+
+          const outCv = stagingCv;
+          stagingCv = null;
+          return { canvas: outCv, width: tilePxW, height: tilePxH };
+        } finally {
+          this._exportPdfHiResOverride = null;
+          if (pdfOverrideCv) {
+            try { pdfOverrideCv.width = 0; pdfOverrideCv.height = 0; } catch (_) { }
+          }
+          if (stagingCv) {
+            try { stagingCv.width = 0; stagingCv.height = 0; } catch (_) { }
+          }
+          this.screenWidth = backup.sw;
+          this.screenHeight = backup.sh;
+          this.panX = backup.panX;
+          this.panY = backup.panY;
+          this.xSpan = backup.xSpan;
+          this.ySpan = backup.ySpan;
+          this.lockAspect = backup.lockAspect;
+          this.boardPanX = backup.boardPanX;
+          this.boardPanY = backup.boardPanY;
+          this.boardZoom = backup.boardZoom;
+          this.boardZoomOffsetX = backup.boardZoomOffsetX;
+          this.boardZoomOffsetY = backup.boardZoomOffsetY;
+          this._exportCropOffset = backup.exportCropOffset;
+          this._exportBaseSpanX = backup.exportBaseSpanX;
+          this._activeExportFilter = prevFilter;
+          this._omitStickersForViewerSnapshot = prevOmitStickers;
+          this.exportTransparent = prevTransparent;
+          if (typeof document !== 'undefined' && document.body) {
+            document.body.classList.toggle('theme-light', prevBodyLight);
+          }
+        }
+      });
+    }
+
     _scheduleSmartViewerPdfHiResTile() {
       const zoom = this._viewerZoom || 1.0;
       const slides = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides : null;
@@ -19360,8 +19577,9 @@
         ? this._getLivePdfDocForUid(docUid)
         : ((this.pdfDoc && this.pdfDoc._graphlyDocUid === docUid) ? this.pdfDoc : null);
       const effFilter = (this._viewerPkg && this._viewerPkg.exportFilter) || null;
-      // 🛡️ [핵심 보호]: 그래프 카드·그래프 도장·문제 카드·텍스트·스티커 등이 함께 합성된 슬라이드(!hasSplitPaperLayer)나
-      // 기존에 통합 이미지로 베이킹된 슬라이드에서는 백지 PDF 벡터 타일이 하단 필기·그래프를 절대 덮지 않도록 100% 차단!
+      // 🛡️ [핵심 보호]: 순수 통PDF 분리 레이어(hasSplitPaperLayer)는 백지 PDF 벡터 타일 + 상위 InkCanvas로 구동하고,
+      // 그래프 카드·그래프 도장·문제 카드·텍스트·일반 칠판이 포함된 슬라이드(!canOverlayRawPdfVectorTile)는
+      // [배경 + 그래프 + 필기] 전체를 뷰포트 교집합 단위로 합성하는 통합 벡터 타일(canOverlayCompositeVectorTile)로 구동합니다!
       const hasSplitPaperLayer = Boolean(slide && (slide._viewerPaperCanvas || slide._viewerPaperBlobUrl));
       const canOverlayRawPdfVectorTile = Boolean(
         slide && (
@@ -19369,19 +19587,39 @@
           (!slide._viewerDynamicSnapGenerated && this._isPureUnannotatedPdfPageSlide(slide, effFilter))
         )
       );
-      const canRenderLiveVector = Boolean(
+      const canOverlayCompositeVectorTile = Boolean(
+        slide &&
+        !canOverlayRawPdfVectorTile &&
+        (
+          slide.historyJson ||
+          (Array.isArray(slide.graphs) && slide.graphs.length > 0) ||
+          slide.primaryGraphCard ||
+          (Array.isArray(slide.extraGraphs) && slide.extraGraphs.length > 0) ||
+          slide.pdfPageBoardData ||
+          slide.primaryProblemCard ||
+          (Array.isArray(slide.extraProblems) && slide.extraProblems.length > 0)
+        )
+      );
+      const isViewerReadyForTile = Boolean(
         zoom > 1.05 &&
-        canOverlayRawPdfVectorTile &&
         !this._isViewerPinching &&
         !this._viewerBlankRiffleActive &&
         !this._viewerBlankRiffleRafId &&
-        this._isSmartNoteViewerOverlayOpen() &&
+        this._isSmartNoteViewerOverlayOpen()
+      );
+      const canRenderRawPdfVector = Boolean(
+        isViewerReadyForTile &&
+        canOverlayRawPdfVectorTile &&
         pbd &&
         liveVecDoc &&
         typeof liveVecDoc.getPage === 'function'
       );
-      if (!canRenderLiveVector) {
-        if (zoom <= 1.05 || !canOverlayRawPdfVectorTile || !pbd || !liveVecDoc) {
+      const canRenderCompositeVector = Boolean(
+        isViewerReadyForTile &&
+        canOverlayCompositeVectorTile
+      );
+      if (!canRenderRawPdfVector && !canRenderCompositeVector) {
+        if (zoom <= 1.05 || (!canOverlayRawPdfVectorTile && !canOverlayCompositeVectorTile) || (canOverlayRawPdfVectorTile && (!pbd || !liveVecDoc))) {
           this._clearSmartViewerPdfHiResTile(true);
         }
         return;
@@ -19393,7 +19631,8 @@
       }
       const token = (this._viewerPdfHiResToken = (this._viewerPdfHiResToken || 0) + 1);
       const targetSlideIdx = this._viewerSlideIdx || 0;
-      const srcPageNum = pbd.pdfSourcePageNum || pbd.pageNum || 1;
+      const srcPageNum = (pbd && (pbd.pdfSourcePageNum || pbd.pageNum)) || 1;
+      const useCompositePath = Boolean(canRenderCompositeVector && !canRenderRawPdfVector);
 
       this._viewerPdfHiResTileTimer = setTimeout(async () => {
         this._viewerPdfHiResTileTimer = null;
@@ -19430,13 +19669,58 @@
         const maxAreaScale = Math.sqrt(9200000 / Math.max(1, localW * localH));
         tileDpr = Math.max(1.0, Math.min(tileDpr, maxSideScale, maxAreaScale));
 
-        const tileKey = `${docUid}|${srcPageNum}|${zoomedW}x${zoomedH}|${localX},${localY},${localW},${localH}|${Math.round(tileDpr * 100)}`;
+        if (!slide._viewerRuntimeUid) {
+          const uid = 'vsl_' + (++this._viewerSlideRuntimeSeq || (this._viewerSlideRuntimeSeq = 1));
+          try {
+            Object.defineProperty(slide, '_viewerRuntimeUid', { value: uid, writable: true, configurable: true, enumerable: false });
+          } catch (_) {
+            slide._viewerRuntimeUid = uid;
+          }
+        }
+        const tileKey = useCompositePath
+          ? `comp|${slide._viewerRuntimeUid}|${zoomedW}x${zoomedH}|${localX},${localY},${localW},${localH}|${Math.round(tileDpr * 100)}`
+          : `${docUid}|${srcPageNum}|${zoomedW}x${zoomedH}|${localX},${localY},${localW},${localH}|${Math.round(tileDpr * 100)}`;
         if (hiResCv._tileKey === tileKey && hiResCv.style.display === 'block' && hiResCv.width > 4) return;
         if (this._viewerPdfHiResInFlightKey === tileKey) return;
         this._viewerPdfHiResInFlightKey = tileKey;
 
         let stagingCv = null;
         try {
+          if (useCompositePath) {
+            const compRes = await this._renderCompositeViewerVectorTile(
+              slide,
+              effFilter,
+              zoomedW,
+              zoomedH,
+              localX,
+              localY,
+              localW,
+              localH,
+              tileDpr,
+              token
+            );
+            if (!compRes || !compRes.canvas || this._viewerPdfHiResToken !== token || !this._isSmartNoteViewerOverlayOpen()) {
+              if (compRes && compRes.canvas) {
+                try { compRes.canvas.width = 0; compRes.canvas.height = 0; } catch (_) { }
+              }
+              return;
+            }
+            stagingCv = compRes.canvas;
+            hiResCv.width = compRes.width;
+            hiResCv.height = compRes.height;
+            const dstCtx = hiResCv.getContext('2d', { alpha: false }) || hiResCv.getContext('2d');
+            if (dstCtx) {
+              dstCtx.drawImage(stagingCv, 0, 0);
+            }
+            hiResCv.style.left = `${localX}px`;
+            hiResCv.style.top = `${localY}px`;
+            hiResCv.style.width = `${localW}px`;
+            hiResCv.style.height = `${localH}px`;
+            hiResCv.style.display = 'block';
+            hiResCv._tileKey = tileKey;
+            return;
+          }
+
           const activeDoc = (typeof this._getOrWaitLivePdfDocForUid === 'function')
             ? await this._getOrWaitLivePdfDocForUid(docUid)
             : liveVecDoc;
@@ -19488,7 +19772,7 @@
             this._viewerPdfHiResInFlightKey = null;
           }
         }
-      }, 60);
+      }, useCompositePath ? 75 : 60);
     }
 
     _startSmartViewerBlankRiffle(dir, pagesToAdvance) {
@@ -19715,6 +19999,8 @@
         this._isViewerPinching ||
         this._viewerPinchSettleRafId ||
         this._viewerSwitchingSlide ||
+        this._viewerPdfHiResTileTimer ||
+        this._viewerPdfHiResInFlightKey ||
         this._isSmartViewerActivelyScrolling()
       ) {
         return true;
@@ -20349,7 +20635,7 @@
             }
           }
         }
-        const blobOrDataUrl = await this._canvasToViewerBlobUrl(snap.canvas, 0.88);
+        const blobOrDataUrl = await this._canvasToViewerBlobUrl(snap.canvas, 0.92);
         if (blobOrDataUrl && blobOrDataUrl.startsWith('blob:')) {
           this._setSlideViewerBlobUrl(slide, blobOrDataUrl);
         } else {
@@ -20362,6 +20648,11 @@
         slide.viewerSmartBounds = snap.smartBounds;
         slide._viewerHiResRendered = true;
         slide._viewerDynamicSnapGenerated = true;
+        if (!isBackgroundBake) {
+          this._viewerCompositeMountedSlide = slide;
+          this._viewerCompositeSmartBounds = snap.smartBounds;
+          this._viewerCompositeScreenSig = `${this.screenWidth || 0}x${this.screenHeight || 0}`;
+        }
       }
     }
 
@@ -21496,6 +21787,10 @@
       if (!hotspot || !hotspot.graphSnapshot) return;
       this._commitPendingViewerCarouselImmediately();
       this._setSmartViewerCarouselAnimating(false);
+      this._clearSmartViewerPdfHiResTile(true);
+      this._viewerCompositeMountedSlide = null;
+      this._viewerCompositeSmartBounds = null;
+      this._viewerDidMutateLiveWorkspace = true;
       try {
         const parsed = typeof hotspot.graphSnapshot === 'string' ? JSON.parse(hotspot.graphSnapshot) : hotspot.graphSnapshot;
         if (parsed && parsed.isNAxisStudioCard && parsed.nAxisStudioState) {
@@ -21782,6 +22077,8 @@
       }
       this._stopSmartViewerBlankRiffle(false);
       this._clearSmartViewerPdfHiResTile(true);
+      this._viewerCompositeMountedSlide = null;
+      this._viewerCompositeSmartBounds = null;
       this._viewerNeighborsSyncedIdx = -1;
       this._viewerActivePointerCount = 0;
       this._stopSmartViewerInertia(true);
