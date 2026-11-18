@@ -716,6 +716,11 @@
       const standardFontDataUrl = isFileProtocol
         ? 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/'
         : new URL('standard_fonts/', pdfLibBaseHref).href;
+      if (!isFileProtocol && typeof window !== 'undefined' && window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        try {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdf.worker.min.js', pdfLibBaseHref).href;
+        } catch (_) { }
+      }
       return { isFileProtocol, pdfLibBaseHref, cMapUrl, standardFontDataUrl };
     }
 

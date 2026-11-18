@@ -8,7 +8,7 @@
   <meta http-equiv="Expires" content="0">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="robots" content="noindex, nofollow">
-  <title>[TEST 벡터PDF내장: 초저용량·230%~350%칼화질] Graphly.net</title>
+  <title>[TEST 네이티브PDF뷰어완성: 무렉넘김·100%~350%필기칼화질] Graphly.net</title>
   <meta name="description" content="PDF 필기 · 인터랙티브 그래프 · 무료 음성 노트">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Graphly">
@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261119_stage_vecpdf1">
+  <link rel="stylesheet" href="style.css?v=20261119_stage_vecpdf2">
   <script>
     (function () {
       try {
@@ -2453,10 +2453,12 @@
       <div id="smartNoteViewerPrevStage" class="smart-viewer-stage smart-viewer-neighbor-stage" style="display: none;"
         aria-hidden="true">
         <img id="smartNoteViewerPrevImg" class="smart-viewer-img" alt="" draggable="false" decoding="async" />
+        <canvas id="smartNoteViewerPrevPaperCanvas" class="smart-viewer-paper-canvas" style="display: none;"></canvas>
         <canvas id="smartNoteViewerPrevInkCanvas" class="smart-viewer-ink-canvas" style="display: none;"></canvas>
       </div>
       <div id="smartNoteViewerStage" class="smart-viewer-stage">
         <img id="smartNoteViewerImg" class="smart-viewer-img" alt="Graphly 페이지" draggable="false" />
+        <canvas id="smartNoteViewerPaperCanvas" class="smart-viewer-paper-canvas" style="display: none;"></canvas>
         <canvas id="smartNoteViewerPdfHiResCanvas" class="smart-viewer-pdf-hires-canvas" style="display: none;"></canvas>
         <canvas id="smartNoteViewerInkCanvas" class="smart-viewer-ink-canvas" style="display: none;"></canvas>
         <div id="smartNoteViewerHotspots" class="smart-viewer-hotspots"></div>
@@ -2465,6 +2467,7 @@
       <div id="smartNoteViewerNextStage" class="smart-viewer-stage smart-viewer-neighbor-stage" style="display: none;"
         aria-hidden="true">
         <img id="smartNoteViewerNextImg" class="smart-viewer-img" alt="" draggable="false" decoding="async" />
+        <canvas id="smartNoteViewerNextPaperCanvas" class="smart-viewer-paper-canvas" style="display: none;"></canvas>
         <canvas id="smartNoteViewerNextInkCanvas" class="smart-viewer-ink-canvas" style="display: none;"></canvas>
       </div>
       <!-- 다중 페이지 좌·우 사이드 빠른 넘김 화살표 (마우스 오버 시 은은하게 노출) -->
@@ -3881,8 +3884,12 @@
 
   <div id="toastMsg" class="toast-msg"></div>
 
-  <!-- 스크립트 로드 -->
-  <script src="lib/pdf.worker.min.js"></script>
+  <!-- 스크립트 로드 (http/https 정식 환경에서는 PDF.js 전용 백그라운드 Web Worker 분리 구동 · file: 로컬 실행 시에만 인라인 폴백) -->
+  <script>
+    if (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:') {
+      document.write('<script src="lib/pdf.worker.min.js"><\/script>');
+    }
+  </script>
   <script src="lib/pdf.min.js"></script>
   <!-- Toss Payments SDK (Standard Card Checkout) -->
   <script src="https://js.tosspayments.com/v1/payment" defer></script>
@@ -3890,15 +3897,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261119_stage_vecpdf1"></script>
-  <script src="app-core.js?v=20261119_stage_vecpdf1"></script>
-  <script src="app-ink.js?v=20261119_stage_vecpdf1"></script>
-  <script src="app-pdf.js?v=20261119_stage_vecpdf1"></script>
-  <script src="app-cards.js?v=20261119_stage_vecpdf1"></script>
-  <script src="app-cloud.js?v=20261119_stage_vecpdf1"></script>
-  <script src="app-canvas.js?v=20261119_stage_vecpdf1"></script>
-  <script src="app-toolkit.js?v=20261119_stage_vecpdf1"></script>
-  <script src="app.js?v=20261119_stage_vecpdf1"></script>
+  <script src="engine.js?v=20261119_stage_vecpdf2"></script>
+  <script src="app-core.js?v=20261119_stage_vecpdf2"></script>
+  <script src="app-ink.js?v=20261119_stage_vecpdf2"></script>
+  <script src="app-pdf.js?v=20261119_stage_vecpdf2"></script>
+  <script src="app-cards.js?v=20261119_stage_vecpdf2"></script>
+  <script src="app-cloud.js?v=20261119_stage_vecpdf2"></script>
+  <script src="app-canvas.js?v=20261119_stage_vecpdf2"></script>
+  <script src="app-toolkit.js?v=20261119_stage_vecpdf2"></script>
+  <script src="app.js?v=20261119_stage_vecpdf2"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4142,7 +4149,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261119_stage_vecpdf1"></script>
+  <script src="app-intro.js?v=20261119_stage_vecpdf2"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
