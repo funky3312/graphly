@@ -3135,7 +3135,7 @@
         ? 'image/png'
         : (canWebP ? 'image/webp' : (allowJpegFallback !== false ? 'image/jpeg' : 'image/png'));
       const effQuality = (mime === 'image/jpeg')
-        ? Math.min(0.92, Math.max(0.82, quality + 0.06))
+        ? Math.min(0.80, Math.max(0.72, quality - 0.13))
         : quality;
       if (typeof canvas.toBlob === 'function' && typeof FileReader !== 'undefined') {
         try {

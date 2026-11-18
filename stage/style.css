@@ -10467,13 +10467,80 @@ body.theme-light .smart-viewer-stage {
 #smartNoteViewerStage {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  contain: layout paint;
+  contain: layout style;
 }
 
 .smart-viewer-neighbor-stage {
   z-index: 1;
   pointer-events: none;
-  contain: layout paint;
+  contain: layout style;
+}
+
+.smart-viewer-pdf-hires-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.smart-viewer-ink-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.smart-viewer-hotspots {
+  z-index: 3;
+}
+
+.smart-viewer-stage.is-riffle-blank .smart-viewer-img,
+.smart-viewer-stage.is-riffle-blank .smart-viewer-pdf-hires-canvas,
+.smart-viewer-stage.is-riffle-blank .smart-viewer-ink-canvas,
+.smart-viewer-stage.is-riffle-blank .smart-viewer-hotspots {
+  visibility: hidden !important;
+}
+
+.smart-viewer-riffle-badge {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 18px 30px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  z-index: 5;
+}
+
+body:not(.theme-light) .smart-viewer-riffle-badge {
+  background: rgba(248, 250, 252, 0.08);
+  border-color: rgba(248, 250, 252, 0.14);
+  color: #f8fafc;
+}
+
+.smart-viewer-riffle-badge .riffle-page-main {
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.smart-viewer-riffle-badge .riffle-page-sub {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.62;
 }
 
 .smart-viewer-stage.swipe-animating {
