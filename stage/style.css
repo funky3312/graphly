@@ -10428,7 +10428,11 @@ body.theme-light .viewer-top-btn-share.is-copied {
   height: 100%;
   overflow: hidden;
   display: block;
-  touch-action: none;
+  touch-action: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
   cursor: default;
 }
 
@@ -10447,6 +10451,11 @@ body.theme-light .viewer-top-btn-share.is-copied {
   border-radius: 8px;
   overflow: hidden;
   background: #1e293b;
+  touch-action: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
   z-index: 2;
 }
 
@@ -10563,8 +10572,11 @@ body.theme-light .viewer-floating-page-toast {
 .smart-viewer-img {
   display: block;
   max-width: none;
-  user-select: none;
-  -webkit-user-drag: none;
+  touch-action: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
   pointer-events: none;
 }
 
