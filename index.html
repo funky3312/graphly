@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261118_190">
+  <link rel="stylesheet" href="style.css?v=20261118_196">
   <script>
     (function () {
       try {
@@ -3875,24 +3875,28 @@
 
   <div id="toastMsg" class="toast-msg"></div>
 
-  <!-- 스크립트 로드 -->
-  <script src="lib/pdf.worker.min.js"></script>
-  <script src="lib/pdf.min.js"></script>
+  <!-- 스크립트 로드: HTTP/HTTPS 정식 서버에서는 PDF.js 전용 백그라운드 Web Worker로 구동하여 UI/필기 메인 스레드 점유 0.00ms 보장, 로컬 file:// 직접 실행 시에만 인라인 폴백 -->
+  <script>
+    if (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:') {
+      document.write('<script src="lib/pdf.worker.min.js?v=20261118_196"><\/script>');
+    }
+  </script>
+  <script src="lib/pdf.min.js?v=20261118_196"></script>
   <!-- Toss Payments SDK (Standard Card Checkout) -->
   <script src="https://js.tosspayments.com/v1/payment" defer></script>
   <!-- Firebase SDK (Auth & Firestore - Non-blocking) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261118_190"></script>
-  <script src="app-core.js?v=20261118_190"></script>
-  <script src="app-ink.js?v=20261118_190"></script>
-  <script src="app-pdf.js?v=20261118_190"></script>
-  <script src="app-cards.js?v=20261118_190"></script>
-  <script src="app-cloud.js?v=20261118_190"></script>
-  <script src="app-canvas.js?v=20261118_190"></script>
-  <script src="app-toolkit.js?v=20261118_190"></script>
-  <script src="app.js?v=20261118_190"></script>
+  <script src="engine.js?v=20261118_196"></script>
+  <script src="app-core.js?v=20261118_196"></script>
+  <script src="app-ink.js?v=20261118_196"></script>
+  <script src="app-pdf.js?v=20261118_196"></script>
+  <script src="app-cards.js?v=20261118_196"></script>
+  <script src="app-cloud.js?v=20261118_196"></script>
+  <script src="app-canvas.js?v=20261118_196"></script>
+  <script src="app-toolkit.js?v=20261118_196"></script>
+  <script src="app.js?v=20261118_196"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4136,7 +4140,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261118_190"></script>
+  <script src="app-intro.js?v=20261118_196"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

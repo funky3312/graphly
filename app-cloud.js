@@ -17815,6 +17815,7 @@
       }
 
       const syncFullscreenIcons = () => {
+        this._invalidateSmartViewerViewportMetrics();
         const isFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement || (overlay && overlay.classList.contains('viewer-immersive-fullscreen')));
         const icEnter = document.getElementById('iconViewerFullscreenEnter');
         const icExit = document.getElementById('iconViewerFullscreenExit');
@@ -17827,12 +17828,15 @@
       document.addEventListener('fullscreenchange', syncFullscreenIcons);
       document.addEventListener('webkitfullscreenchange', syncFullscreenIcons);
       window.addEventListener('resize', () => {
+        this._invalidateSmartViewerViewportMetrics();
         if (overlay && overlay.style.display !== 'none' && !this._viewerSwitchingSlide) {
           this.fitSmartViewerStageToScreen(false, null, { preserveViewState: true });
         }
       });
       window.addEventListener('orientationchange', () => {
+        this._invalidateSmartViewerViewportMetrics();
         setTimeout(() => {
+          this._invalidateSmartViewerViewportMetrics();
           if (overlay && overlay.style.display !== 'none') {
             this.fitSmartViewerStageToScreen(false);
           }
@@ -17861,11 +17865,10 @@
           const { maxPanY } = this._getSmartViewerMaxPan();
           if (maxPanY > 1) {
             e.preventDefault();
-            this._stopSmartViewerInertia();
+            this._markSmartViewerScrollInput();
+            this._stopSmartViewerInertia(false);
             this._setSmartViewerCarouselAnimating(false);
-            this._viewerPanY = (this._viewerPanY || 0) + (e.key === 'ArrowUp' ? 140 : -140);
-            this._clampSmartViewerPan();
-            this._applySmartViewerTransform();
+            this._startOrAddSmartViewerWheelGlide(0, e.key === 'ArrowUp' ? 160 : -160);
           }
         } else if (e.key === '+' || e.key === '=') {
           e.preventDefault();
@@ -17938,11 +17941,15 @@
 
         viewport.addEventListener('wheel', (e) => {
           e.preventDefault();
-          this._commitPendingViewerCarouselImmediately();
+          this._markSmartViewerScrollInput();
+          if (this._viewerPendingCarouselCommit || this._viewerRiffleRafId || this._viewerSnapBackTimer) {
+            this._commitPendingViewerCarouselImmediately(false, true);
+          }
           this._setSmartViewerCarouselAnimating(false);
           // 1) Ctrl/Cmd + 휠 (트랙패드 두 손가락 핀치 포함): 언제나 커서 중심 부드러운 확대/축소
           if (e.ctrlKey || e.metaKey) {
             if (!e.deltaY) return;
+            this._stopSmartViewerWheelGlide();
             const isSmoothPinch = (e.deltaMode === 0 && Math.abs(e.deltaY) < 40);
             const factor = isSmoothPinch
               ? Math.exp(-e.deltaY * 0.01)
@@ -17950,21 +17957,28 @@
             this.setSmartViewerZoom((this._viewerZoom || 1.0) * factor, e.clientX, e.clientY);
             return;
           }
-          // 2) 가로 화면의 세로 문서(가로폭 맞춤 슬라이드): 표준 PDF 뷰어와 동일하게 일반 마우스 휠 = 상하(및 확대 시 좌우) 스크롤!
+          // 2) 가로 화면의 세로 문서(가로폭 맞춤 슬라이드): 표준 PDF 뷰어와 동일하게 일반 마우스 휠 = 120Hz 스무스 상하(및 확대 시 좌우) 스크롤!
           if (this._viewerIsWidthFitScrollable) {
             const { maxPanX, maxPanY, vh } = this._getSmartViewerMaxPan();
             const unitScale = e.deltaMode === 1 ? 36 : (e.deltaMode === 2 ? Math.max(240, vh * 0.85) : 1);
             const dxPx = (e.deltaX || 0) * unitScale;
             const dyPx = (e.deltaY || 0) * unitScale;
             if (maxPanY > 0.5 || maxPanX > 0.5) {
-              if (maxPanX > 0.5) {
-                this._viewerPanX = (this._viewerPanX || 0) - dxPx;
+              const addX = maxPanX > 0.5 ? -dxPx : 0;
+              const addY = maxPanY > 0.5 ? -dyPx : 0;
+              const isDiscreteMouseWheel = (e.deltaMode === 1) || (e.deltaMode === 2) ||
+                (e.deltaMode === 0 && Math.abs(dxPx) < 0.01 && Math.abs(dyPx) >= 48 && Math.abs(dyPx % 4) < 0.05);
+              if (isDiscreteMouseWheel) {
+                if (this._viewerInertiaRafId) this._stopSmartViewerInertia(false);
+                this._startOrAddSmartViewerWheelGlide(addX, addY);
+              } else {
+                this._stopSmartViewerWheelGlide();
+                if (this._viewerInertiaRafId) this._stopSmartViewerInertia(false);
+                if (maxPanX > 0.5) this._viewerPanX = (this._viewerPanX || 0) + addX;
+                if (maxPanY > 0.5) this._viewerPanY = (this._viewerPanY || 0) + addY;
+                this._clampSmartViewerPan();
+                this._scheduleSmartViewerPanFrame();
               }
-              if (maxPanY > 0.5) {
-                this._viewerPanY = (this._viewerPanY || 0) - dyPx;
-              }
-              this._clampSmartViewerPan();
-              this._applySmartViewerTransform();
             }
             return;
           }
@@ -17974,13 +17988,15 @@
               const { maxPanX } = this._getSmartViewerMaxPan();
               if (maxPanX > 0.5) {
                 const unitScale = e.deltaMode === 1 ? 36 : 1;
+                this._stopSmartViewerWheelGlide();
                 this._viewerPanX = (this._viewerPanX || 0) - (e.deltaX * unitScale);
                 this._clampSmartViewerPan();
-                this._applySmartViewerTransform();
+                this._scheduleSmartViewerPanFrame();
               }
             }
             return;
           }
+          this._stopSmartViewerWheelGlide();
           const isSmoothTrackpad = (e.deltaMode === 0 && Math.abs(e.deltaY) < 40);
           const factor = isSmoothTrackpad
             ? Math.exp(-e.deltaY * 0.0045)
@@ -17990,6 +18006,9 @@
 
         let wasBrakingRiffle = false;
         let stoppedRiffleInfo = null;
+        let lastHorizSwipeUpTime = 0;
+        let lastHorizSwipeDir = null;
+        let horizSwipeChainCount = 0;
 
         viewport.addEventListener('pointerdown', (e) => {
           // 좌우 가장자리 화살표 버튼 클릭만 예외 처리하고, 그래프/스티커 핫스팟 위에서도 스와이프·핀치 줌 100% 허용!
@@ -18218,10 +18237,11 @@
                   dragAxisLock = (Math.abs(dx) > Math.abs(dy) * 1.06) ? 'x' : 'y';
                 }
                 if (dragAxisLock === 'y') {
+                  this._markSmartViewerScrollInput();
                   this._viewerPanX = 0;
                   this._viewerPanY = panStartY + dy;
                   this._clampSmartViewerPan();
-                  this._applySmartViewerTransform();
+                  this._scheduleSmartViewerPanFrame();
                 } else if (dragAxisLock === 'x') {
                   const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
                   const rawX = (Math.abs(panStartX) > 1 ? panStartX : 0) + dx;
@@ -18241,10 +18261,11 @@
               }
             } else {
               // 문서 가로폭이 화면보다 넓게 확대된 상태(maxPanX > 1): 경계 이탈 없는 부드러운 2D 패닝
+              this._markSmartViewerScrollInput();
               this._viewerPanX = panStartX + dx;
               this._viewerPanY = panStartY + dy;
               this._clampSmartViewerPan();
-              this._applySmartViewerTransform();
+              this._scheduleSmartViewerPanFrame();
             }
           }
         });
@@ -18321,6 +18342,8 @@
             // 관성 스크롤/다중 페이지 주행 도중 화면을 툭 눌러 멈춘 경우(Touch-to-Stop):
             // 상단 바 토글·더블탭 줌·핫스팟 오작동을 모두 건너뛰고 현재 페이지 정중앙에 즉시 안착 후 그 페이지를 읽음!
             if (isPointerCancel || didBrakeInertia) {
+              horizSwipeChainCount = 0;
+              lastHorizSwipeDir = null;
               if (didBrakeRiffle || Math.abs(this._viewerPanX || 0) > 0.5) {
                 const { maxPanX: brakeMaxPanX } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, this._viewerZoom || 1.0, viewport);
                 if (brakeMaxPanX <= 1) {
@@ -18392,14 +18415,15 @@
 
           const total = (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) ? this._viewerPkg.playlistSlides.length : 1;
           const isHorizSwipe = Math.abs(totalDx) > Math.abs(totalDy) * 0.92;
-          const effHorizVx = Math.abs(releaseVx) >= Math.abs(velocityX) ? releaseVx : velocityX;
-          const isFastFlickNext = (totalDx <= -18 && effHorizVx <= -0.22);
-          const isFastFlickPrev = (totalDx >= 18 && effHorizVx >= 0.22);
+          const isFastFlickNext = (totalDx <= -18 && releaseVx <= -0.22);
+          const isFastFlickPrev = (totalDx >= 18 && releaseVx >= 0.22);
           const { maxPanX: finishMaxPanX, maxPanY: finishMaxPanY } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, this._viewerZoom || 1.0, viewport);
 
-          // 2) 문서 가로폭이 화면 안에 다 들어온 상태(축소 ~ 100% 및 PC 소폭 확대)에서 상하 관성 스크롤 & 좌우 스와이프(1장 또는 다중 관성 주행)!
+          // 2) 문서 가로폭이 화면 안에 다 들어온 상태(축소 ~ 100% 및 PC 소폭 확대)에서 상하 관성 스크롤 & 좌우 스와이프(1회=무조건 1장 / 연속=브레이크 다중 주행)!
           if (finishMaxPanX <= 1) {
             if (finishedAxisLock === 'y' || (!finishedAxisLock && !isHorizSwipe && finishMaxPanY > 1 && Math.abs(totalDy) >= 10)) {
+              horizSwipeChainCount = 0;
+              lastHorizSwipeDir = null;
               this._viewerPanX = 0;
               this._clampSmartViewerPan();
               this._applySmartViewerTransform();
@@ -18410,19 +18434,45 @@
               return;
             }
             if (!isPointerCancel && isHorizSwipe && (totalDx <= -26 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
-              if (typeof this._startSmartViewerRiffle === 'function' && this._startSmartViewerRiffle('next', effHorizVx, prevRiffleInfo)) {
+              const isConsecutiveNext = Boolean(
+                (prevRiffleInfo && prevRiffleInfo.wasActive && prevRiffleInfo.dir === 'next') ||
+                (lastHorizSwipeDir === 'next' && lastHorizSwipeUpTime > 0 && (pointerDownTime - lastHorizSwipeUpTime) <= 460)
+              );
+              horizSwipeChainCount = isConsecutiveNext ? Math.min(6, horizSwipeChainCount + 1) : 1;
+              lastHorizSwipeDir = 'next';
+              lastHorizSwipeUpTime = nowUp;
+              if (
+                horizSwipeChainCount >= 2 &&
+                totalDx <= -42 &&
+                typeof this._startSmartViewerRiffle === 'function' &&
+                this._startSmartViewerRiffle('next', releaseVx, horizSwipeChainCount)
+              ) {
                 return;
               }
-              this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next', effHorizVx);
+              this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next', releaseVx);
               return;
             }
             if (!isPointerCancel && isHorizSwipe && (totalDx >= 26 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
-              if (typeof this._startSmartViewerRiffle === 'function' && this._startSmartViewerRiffle('prev', effHorizVx, prevRiffleInfo)) {
+              const isConsecutivePrev = Boolean(
+                (prevRiffleInfo && prevRiffleInfo.wasActive && prevRiffleInfo.dir === 'prev') ||
+                (lastHorizSwipeDir === 'prev' && lastHorizSwipeUpTime > 0 && (pointerDownTime - lastHorizSwipeUpTime) <= 460)
+              );
+              horizSwipeChainCount = isConsecutivePrev ? Math.min(6, horizSwipeChainCount + 1) : 1;
+              lastHorizSwipeDir = 'prev';
+              lastHorizSwipeUpTime = nowUp;
+              if (
+                horizSwipeChainCount >= 2 &&
+                totalDx >= 42 &&
+                typeof this._startSmartViewerRiffle === 'function' &&
+                this._startSmartViewerRiffle('prev', releaseVx, horizSwipeChainCount)
+              ) {
                 return;
               }
-              this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev', effHorizVx);
+              this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev', releaseVx);
               return;
             }
+            horizSwipeChainCount = 0;
+            lastHorizSwipeDir = null;
             if (Math.abs(this._viewerPanX || 0) > 0.5) {
               this._setSmartViewerCarouselAnimating(true, 260);
               if (this._viewerSnapBackTimer) clearTimeout(this._viewerSnapBackTimer);
@@ -18446,11 +18496,11 @@
           // 3) 확대 상태(>100%)에서도 좌/우 끝단에 닿은 채로 한 번 더 밀면(Edge Swipe) 다음/이전 페이지로 전환!
           if (!isPointerCancel && isHorizSwipe) {
             if (startAtRightEdge && (totalDx <= -44 || isFastFlickNext) && this._viewerSlideIdx < total - 1) {
-              this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next', effHorizVx);
+              this.switchSmartViewerSlide(this._viewerSlideIdx + 1, 'next', releaseVx);
               return;
             }
             if (startAtLeftEdge && (totalDx >= 44 || isFastFlickPrev) && this._viewerSlideIdx > 0) {
-              this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev', effHorizVx);
+              this.switchSmartViewerSlide(this._viewerSlideIdx - 1, 'prev', releaseVx);
               return;
             }
           }
@@ -18470,6 +18520,9 @@
           wasBrakingInertia = false;
           wasBrakingRiffle = false;
           stoppedRiffleInfo = null;
+          horizSwipeChainCount = 0;
+          lastHorizSwipeDir = null;
+          lastHorizSwipeUpTime = 0;
           dragAxisLock = null;
           pinchId1 = null;
           pinchId2 = null;
@@ -18925,12 +18978,17 @@
       };
     }
 
-    _startSmartViewerRiffle(swipeDir, releaseVx, prevRiffleInfo = null) {
+    _startSmartViewerRiffle(swipeDir, releaseVx, chainCount = 1) {
       if (!this._viewerPkg || !Array.isArray(this._viewerPkg.playlistSlides)) return false;
       const slides = this._viewerPkg.playlistSlides;
       const total = slides.length;
       if (total < 3) return false;
       if (swipeDir !== 'next' && swipeDir !== 'prev') return false;
+
+      // 🛡️ [1회 스와이프 = 무조건 1장 고정 원칙]:
+      // 단발 스와이프(chainCount < 2)에서는 아무리 세게 밀어도 다중 넘김을 발동하지 않고 100% 1페이지씩만 이동!
+      const effChain = Number(chainCount) || 1;
+      if (effChain < 2) return false;
 
       const startIdx = typeof this._viewerSlideIdx === 'number' ? this._viewerSlideIdx : 0;
       const availPages = swipeDir === 'next' ? (total - 1 - startIdx) : startIdx;
@@ -18941,16 +18999,15 @@
         return false;
       }
       const absVx = Math.abs(signedVx);
-      const wasSameDirRiffle = Boolean(prevRiffleInfo && prevRiffleInfo.wasActive && prevRiffleInfo.dir === swipeDir);
-      const minTriggerVx = wasSameDirRiffle ? 0.68 : 1.28;
-      if (absVx < minTriggerVx) return false;
+      // 연속 스와이프라도 살살 밀면(1.15 px/ms 미만) 1장씩만 경쾌하게 이동
+      if (absVx < 1.15) return false;
 
-      const boost = wasSameDirRiffle
-        ? Math.min(2.8, (prevRiffleInfo.boost || 1.0) + 0.65)
-        : 1.0;
-      const effV = Math.max(0.18, absVx - (wasSameDirRiffle ? 0.52 : 1.02)) * boost;
-      let pages = Math.round(1.65 + Math.pow(effV, 1.38) * 3.35);
-      pages = Math.max(2, Math.min(availPages, pages));
+      // 🛑 [강한 브레이크 & 절제된 장수 제한]:
+      // 2회차 연속 스와이프 = 2~3장, 3회차+ 연속 스와이프 = 3~최대 5장 상한으로 제한하여 과속 원천 차단!
+      const speedTier = Math.min(1.0, Math.max(0, (absVx - 1.15) / 2.4));
+      const chainBonus = Math.min(2, Math.max(0, effChain - 2));
+      let pages = Math.round(2 + speedTier * 1.0 + chainBonus * 0.85);
+      pages = Math.max(2, Math.min(5, availPages, pages));
       if (pages <= 1) return false;
 
       this._stopSmartViewerInertia();
@@ -18977,7 +19034,7 @@
       const dirSign = swipeDir === 'next' ? -1 : 1;
       const startPanX = Number(this._viewerPanX) || 0;
       const totalTravelPx = Math.max(stride * 1.15, pages * stride - (dirSign * startPanX));
-      const durationMs = Math.round(Math.min(1240, Math.max(410, 300 + Math.sqrt(pages) * 210)));
+      const durationMs = Math.round(Math.min(1260, Math.max(660, 390 + pages * 165)));
       const targetIdx = startIdx + (swipeDir === 'next' ? pages : -pages);
       const startT = performance.now();
 
@@ -18986,7 +19043,7 @@
 
       const riffleState = {
         dir: swipeDir,
-        boost,
+        boost: 1.0,
         startIdx,
         targetIdx,
         stride
@@ -19008,7 +19065,7 @@
         }
 
         const u = Math.max(0, Math.min(1, (now - startT) / durationMs));
-        const ease = 1 - Math.pow(1 - u, 3.6);
+        const ease = 1 - Math.pow(1 - u, 2.75);
         const progressedPx = totalTravelPx * ease;
         const trackPx = startPanX + dirSign * progressedPx;
         const stepCount = Math.max(0, Math.min(pages, Math.round(Math.abs(trackPx) / Math.max(1, stride))));
@@ -19076,7 +19133,99 @@
       return true;
     }
 
-    _stopSmartViewerInertia() {
+    _markSmartViewerScrollInput() {
+      this._viewerLastScrollInputAt = performance.now();
+    }
+
+    _stopSmartViewerWheelGlide() {
+      if (this._viewerWheelGlideRafId) {
+        cancelAnimationFrame(this._viewerWheelGlideRafId);
+        this._viewerWheelGlideRafId = null;
+      }
+      this._viewerWheelTargetPanX = null;
+      this._viewerWheelTargetPanY = null;
+    }
+
+    _scheduleSmartViewerPanFrame() {
+      if (this._viewerDragPanRafId) return;
+      this._viewerDragPanRafId = requestAnimationFrame(() => {
+        this._viewerDragPanRafId = null;
+        const overlay = document.getElementById('smartNoteViewerOverlay');
+        if (!overlay || overlay.style.display === 'none') return;
+        this._applySmartViewerTransform({
+          panOnly: true,
+          subpixelPan: Boolean((this._viewerActivePointerCount || 0) > 0)
+        });
+      });
+    }
+
+    _startOrAddSmartViewerWheelGlide(addPanX = 0, addPanY = 0) {
+      const viewport = document.getElementById('smartNoteViewerViewport');
+      const { maxPanX, maxPanY } = this._getSmartViewerMaxPan(
+        this._viewerBaseW,
+        this._viewerBaseH,
+        this._viewerZoom || 1.0,
+        viewport
+      );
+      const curX = Number(this._viewerPanX) || 0;
+      const curY = Number(this._viewerPanY) || 0;
+      const baseTargetX = (this._viewerWheelGlideRafId && typeof this._viewerWheelTargetPanX === 'number')
+        ? this._viewerWheelTargetPanX
+        : curX;
+      const baseTargetY = (this._viewerWheelGlideRafId && typeof this._viewerWheelTargetPanY === 'number')
+        ? this._viewerWheelTargetPanY
+        : curY;
+
+      this._viewerWheelTargetPanX = maxPanX <= 0.5
+        ? 0
+        : Math.max(-maxPanX, Math.min(maxPanX, baseTargetX + (Number(addPanX) || 0)));
+      this._viewerWheelTargetPanY = maxPanY <= 0.5
+        ? 0
+        : Math.max(-maxPanY, Math.min(maxPanY, baseTargetY + (Number(addPanY) || 0)));
+
+      if (this._viewerWheelGlideRafId) return;
+      let prevT = performance.now();
+      const stepGlide = (now) => {
+        const overlay = document.getElementById('smartNoteViewerOverlay');
+        if (
+          !overlay ||
+          overlay.style.display === 'none' ||
+          this._isViewerPinching ||
+          document.body.classList.contains('viewer-graph-touch-mode') ||
+          this._isAudioReplayActive
+        ) {
+          this._stopSmartViewerWheelGlide();
+          return;
+        }
+        const dt = Math.min(34, Math.max(4, now - prevT));
+        prevT = now;
+        this._markSmartViewerScrollInput();
+
+        const tx = typeof this._viewerWheelTargetPanX === 'number' ? this._viewerWheelTargetPanX : (Number(this._viewerPanX) || 0);
+        const ty = typeof this._viewerWheelTargetPanY === 'number' ? this._viewerWheelTargetPanY : (Number(this._viewerPanY) || 0);
+        const cx = Number(this._viewerPanX) || 0;
+        const cy = Number(this._viewerPanY) || 0;
+        const remX = tx - cx;
+        const remY = ty - cy;
+        if (Math.hypot(remX, remY) < 0.45) {
+          this._viewerPanX = tx;
+          this._viewerPanY = ty;
+          this._viewerWheelGlideRafId = null;
+          this._viewerWheelTargetPanX = null;
+          this._viewerWheelTargetPanY = null;
+          this._applySmartViewerTransform({ panOnly: true, subpixelPan: false });
+          return;
+        }
+        const alpha = 1 - Math.pow(0.0012, dt / 155);
+        this._viewerPanX = cx + remX * alpha;
+        this._viewerPanY = cy + remY * alpha;
+        this._applySmartViewerTransform({ panOnly: true, subpixelPan: true });
+        this._viewerWheelGlideRafId = requestAnimationFrame(stepGlide);
+      };
+      this._viewerWheelGlideRafId = requestAnimationFrame(stepGlide);
+    }
+
+    _stopSmartViewerInertia(stopWheelGlide = true) {
       const wasActive = Boolean(this._viewerInertiaRafId);
       const speed = wasActive ? (this._viewerInertiaSpeed || 0) : 0;
       if (this._viewerInertiaRafId) {
@@ -19086,6 +19235,13 @@
       if (this._viewerPinchSettleRafId) {
         cancelAnimationFrame(this._viewerPinchSettleRafId);
         this._viewerPinchSettleRafId = null;
+      }
+      if (this._viewerDragPanRafId) {
+        cancelAnimationFrame(this._viewerDragPanRafId);
+        this._viewerDragPanRafId = null;
+      }
+      if (stopWheelGlide) {
+        this._stopSmartViewerWheelGlide();
       }
       this._viewerInertiaSpeed = 0;
       return { wasActive, speed };
@@ -19217,8 +19373,7 @@
           }
         }
 
-        this._applySmartViewerTransform();
-
+        this._markSmartViewerScrollInput();
         const decay = Math.pow(0.925, dt / 16.667);
         vx *= decay;
         vy *= decay;
@@ -19227,16 +19382,18 @@
         if (nextSpeed < 0.05) {
           this._viewerInertiaRafId = null;
           this._viewerInertiaSpeed = 0;
+          this._applySmartViewerTransform({ panOnly: true, subpixelPan: false });
           return;
         }
+        this._applySmartViewerTransform({ panOnly: true, subpixelPan: true });
         this._viewerInertiaRafId = requestAnimationFrame(step);
       };
 
       this._viewerInertiaRafId = requestAnimationFrame(step);
     }
 
-    _commitPendingViewerCarouselImmediately(superseded = false) {
-      this._stopSmartViewerInertia();
+    _commitPendingViewerCarouselImmediately(superseded = false, lightweightScrollInterrupt = false) {
+      this._stopSmartViewerInertia(!lightweightScrollInterrupt);
       this._stopSmartViewerRiffle(true);
       if (this._viewerSnapBackTimer) {
         clearTimeout(this._viewerSnapBackTimer);
@@ -19249,16 +19406,33 @@
       if (typeof this._viewerPendingCarouselCommit === 'function') {
         const fn = this._viewerPendingCarouselCommit;
         this._viewerPendingCarouselCommit = null;
-        fn(Boolean(superseded));
+        fn(Boolean(superseded), Boolean(lightweightScrollInterrupt));
       }
     }
 
-    _calcSmartViewerFitSize(iw, ih, viewport = null, slide = null) {
+    _invalidateSmartViewerViewportMetrics() {
+      this._viewerCachedViewportMetrics = null;
+    }
+
+    _getSmartViewerViewportMetrics(viewport = null) {
+      const c = this._viewerCachedViewportMetrics;
+      if (c && c.rawW > 0 && c.rawH > 0) {
+        return c;
+      }
       const vp = viewport || document.getElementById('smartNoteViewerViewport');
-      const isMobileViewport = (typeof window !== 'undefined') && (window.innerWidth <= 768 || window.innerHeight <= 500);
+      const winW = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1280;
+      const winH = (typeof window !== 'undefined' && window.innerHeight) ? window.innerHeight : 800;
+      const isMobileViewport = Boolean(winW <= 768 || winH <= 500);
       const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
-      const rawW = (vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth;
-      const rawH = (vp && vp.clientHeight) ? vp.clientHeight : Math.max(160, window.innerHeight - topGuard);
+      const rawW = Math.max(180, (vp && vp.clientWidth) ? vp.clientWidth : winW);
+      const rawH = Math.max(160, (vp && vp.clientHeight) ? vp.clientHeight : Math.max(160, winH - topGuard));
+      const metrics = { rawW, rawH, isMobileViewport };
+      this._viewerCachedViewportMetrics = metrics;
+      return metrics;
+    }
+
+    _calcSmartViewerFitSize(iw, ih, viewport = null, slide = null) {
+      const { rawW, rawH, isMobileViewport } = this._getSmartViewerViewportMetrics(viewport);
       const padX = isMobileViewport ? 0 : 24;
       const padY = isMobileViewport ? 0 : 56;
       const vw = Math.max(180, rawW - padX);
@@ -19315,11 +19489,7 @@
     }
 
     _getSmartViewerMaxPan(baseW = this._viewerBaseW, baseH = this._viewerBaseH, zoom = (this._viewerZoom || 1.0), viewport = null) {
-      const vp = viewport || document.getElementById('smartNoteViewerViewport');
-      const isMobileViewport = (typeof window !== 'undefined') && (window.innerWidth <= 768 || window.innerHeight <= 500);
-      const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
-      const vw = Math.max(180, (vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth);
-      const vh = Math.max(160, (vp && vp.clientHeight) ? vp.clientHeight : Math.max(160, window.innerHeight - topGuard));
+      const { rawW: vw, rawH: vh, isMobileViewport } = this._getSmartViewerViewportMetrics(viewport);
       const zoomedW = Math.max(2, (baseW || 1000) * zoom);
       const zoomedH = Math.max(2, (baseH || 700) * zoom);
       const maxPanX = zoomedW > vw + 1 ? Math.max(0, (zoomedW - vw) / 2) : 0;
@@ -19344,8 +19514,7 @@
       // 2) 소폭 확대(100% < currZ)였으나 종이가 아직 화면 폭 안에 들어와 있었던 경우(예: PC 와이드 모니터 112~136%):
       // 옆 페이지도 그 배율에서 가로 넘침이 없다면 그대로 유지, 넘치면(예: 16:9 슬라이드) 100%로 맞춤!
       if (currZ > 1.02) {
-        const vp = viewport || document.getElementById('smartNoteViewerViewport');
-        const vw = Math.max(180, (vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth);
+        const { rawW: vw } = this._getSmartViewerViewportMetrics(viewport);
         const nbW = neighborBaseW || this._viewerBaseW || vw;
         if (nbW * currZ <= vw + 1) {
           return Math.min(maxZ, currZ);
@@ -19364,12 +19533,12 @@
     }
 
     _getSmartViewerSlideStride(viewport = null, neighborWOverride = null, currVisualWOverride = null) {
-      const vp = viewport || document.getElementById('smartNoteViewerViewport');
-      const vw = Math.max(280, (vp && vp.clientWidth) ? vp.clientWidth : window.innerWidth);
+      const { rawW, isMobileViewport } = this._getSmartViewerViewportMetrics(viewport);
+      const vw = Math.max(280, rawW);
       const zoom = this._viewerZoom || 1.0;
       const currW = Math.max(200, currVisualWOverride || Math.round((this._viewerBaseW || vw) * zoom));
       const neighborW = Math.max(200, neighborWOverride || currW);
-      const pageGap = ((typeof window !== 'undefined') && window.innerWidth <= 768) ? 14 : 22;
+      const pageGap = isMobileViewport ? 14 : 22;
       // 정지 상태(px=0)에서는 옆 페이지가 뷰포트 가장자리 바로 4px 밖에 숨어 대기하고,
       // 손가락을 5px만 밀어도 즉시 화면 끝에서부터 부드럽게 고개를 내밀도록 최소 간격으로 밀착 배치!
       const minByPages = Math.round((currW + neighborW) / 2) + pageGap;
@@ -19499,7 +19668,14 @@
     }
 
     _isSmartViewerBusyMoving() {
+      const now = performance.now();
+      const recentScrollInput = Boolean(
+        this._viewerLastScrollInputAt && (now - this._viewerLastScrollInputAt) < 340
+      );
       return Boolean(
+        recentScrollInput ||
+        this._viewerWheelGlideRafId ||
+        this._viewerDragPanRafId ||
         this._viewerRiffleRafId ||
         this._viewerCarouselTimer ||
         this._viewerSnapBackTimer ||
@@ -19540,11 +19716,27 @@
           return;
         }
         if (this._viewerSlideIdx !== targetIdx) return;
-        if (this._isSmartViewerBusyMoving()) {
+        const stageCheck = document.getElementById('smartNoteViewerStage');
+        const isCurrentStageBlank = Boolean(stageCheck && stageCheck.classList.contains('is-blank-paper'));
+        const nowCheck = performance.now();
+        const isActivelyScrollingCurrent = Boolean(
+          this._viewerWheelGlideRafId ||
+          this._viewerDragPanRafId ||
+          this._viewerRiffleRafId ||
+          this._viewerCarouselTimer ||
+          this._viewerSnapBackTimer ||
+          this._isViewerPinching ||
+          this._viewerPinchSettleRafId ||
+          this._viewerInertiaRafId ||
+          this._viewerSwitchingSlide ||
+          (this._viewerActivePointerCount || 0) > 0 ||
+          (this._viewerLastScrollInputAt && (nowCheck - this._viewerLastScrollInputAt) < (isCurrentStageBlank ? 180 : 340))
+        );
+        if (isActivelyScrollingCurrent) {
           this._viewerSettleReadTimer = setTimeout(() => {
             this._viewerSettleReadTimer = null;
             runSettleRead();
-          }, 65);
+          }, 75);
           return;
         }
 
@@ -19617,10 +19809,24 @@
 
         this._syncSmartViewerThemeForSlide(slide);
         this._renderSmartViewerHotspots(slide, targetIdx);
-        this._preloadSmartViewerSlides(this._viewerPkg, targetIdx);
-        this._syncSmartViewerNeighborStages(targetIdx, { forceBlank: false });
-        this._evictDistantViewerSlideSnapshots(targetIdx, 6);
-        this._prewarmNeighborSlideSnapshots(targetIdx);
+
+        // 현재 페이지 표시 직후 사용자가 곧바로 위아래 스크롤 중이면, 이웃 스테이지 동기화·원거리 해제·백그라운드 프리웜은 스크롤 정지 후로 완벽히 연기!
+        const deferNeighborsUntilQuiet = () => {
+          if (this._viewerSettleReadToken !== token || this._viewerSlideIdx !== targetIdx) return;
+          if (!this._isSmartNoteViewerOverlayOpen() || document.body.classList.contains('viewer-graph-touch-mode') || this._isAudioReplayActive) return;
+          if (this._isSmartViewerBusyMoving()) {
+            this._viewerSettleReadTimer = setTimeout(() => {
+              this._viewerSettleReadTimer = null;
+              deferNeighborsUntilQuiet();
+            }, 90);
+            return;
+          }
+          this._preloadSmartViewerSlides(this._viewerPkg, targetIdx);
+          this._syncSmartViewerNeighborStages(targetIdx, { forceBlank: false });
+          this._evictDistantViewerSlideSnapshots(targetIdx, 6);
+          this._prewarmNeighborSlideSnapshots(targetIdx);
+        };
+        deferNeighborsUntilQuiet();
       };
 
       if (waitMs <= 0) {
@@ -19712,6 +19918,10 @@
               this._syncSmartViewerThemeForSlide(activeSlide);
             }
             await this._waitForSlideImagesReady();
+            if (isBackgroundBake) {
+              // 이벤트 루프에 1회 양보하여 대기 중인 휠/터치 스크롤 이벤트가 먼저 처리되도록 보장 (스크롤 시작 즉시 무거운 4K 합성 중단!)
+              await new Promise(r => setTimeout(r, 0));
+            }
             if (typeof shouldAbortFn === 'function' && shouldAbortFn()) {
               if (isBackgroundBake && activeSlide) {
                 this._syncSmartViewerThemeForSlide(activeSlide);
@@ -19838,12 +20048,14 @@
       const missing = neighborIndices.filter(i => slides[i] && !this._getSlideViewerImageSrc(slides[i]));
       if (!missing.length) return;
 
-      const waitIdleStep = () => new Promise((resolve) => {
-        if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
-          window.requestIdleCallback(() => resolve(), { timeout: 140 });
-        } else {
-          setTimeout(resolve, 65);
-        }
+      const waitIdleStep = (minQuietMs = 180) => new Promise((resolve) => {
+        setTimeout(() => {
+          if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(() => resolve(), { timeout: 220 });
+          } else {
+            resolve();
+          }
+        }, minQuietMs);
       });
 
       const shouldAbortPrewarm = () => Boolean(
@@ -19855,9 +20067,9 @@
       );
 
       const prewarmTask = (async () => {
-        await waitIdleStep();
+        await waitIdleStep(150);
         while (this._viewerPrewarmToken === token && this._isSmartViewerBusyMoving()) {
-          await new Promise(r => setTimeout(r, 85));
+          await new Promise(r => setTimeout(r, 90));
         }
         if (this._viewerPrewarmToken !== token) return;
         const overlay = document.getElementById('smartNoteViewerOverlay');
@@ -20168,6 +20380,7 @@
           }
         }
         if (typeof this._syncIosTopGuardColor === 'function') this._syncIosTopGuardColor();
+        this._invalidateSmartViewerViewportMetrics();
 
         await this.switchSmartViewerSlide(startIdx, null, 0, { immediateRead: true });
       } finally {
@@ -20187,7 +20400,7 @@
       const total = this._viewerPkg.playlistSlides.length;
 
       const nowSwitch = performance.now();
-      const isRapidStep = !immediateRead && Boolean(this._lastViewerSwitchAt && (nowSwitch - this._lastViewerSwitchAt) < 260);
+      const isRapidStep = !immediateRead && Boolean(this._lastViewerSwitchAt && (nowSwitch - this._lastViewerSwitchAt) < 460);
       this._lastViewerSwitchAt = nowSwitch;
 
       // 0.00ms 동기 바인딩이 가능한 순수 PDF 슬라이드는 즉시 매핑
@@ -20286,7 +20499,7 @@
           this._syncSmartViewerHeaderControls(idx, total, slide);
         }
 
-        const commitCarousel = (superseded = false) => {
+        const commitCarousel = (superseded = false, lightweightScrollInterrupt = false) => {
           this._setSmartViewerCarouselAnimating(false);
           const commitNat = this._getSlideViewerNaturalSize(slide, imgEl);
           const finalFit = this._calcSmartViewerFitSize(commitNat.iw, commitNat.ih, viewport, slide);
@@ -20321,8 +20534,25 @@
             });
           }
           if (superseded) return;
+          if (lightweightScrollInterrupt) {
+            // 휠 스크롤로 캐러셀 끝자락에 진입한 첫 프레임: 무거운 칩 목록·이웃 패널 재계산을 건너뛰고 즉시 120Hz 스크롤 출발!
+            const zwStr = `${Math.max(2, Math.round((finalFit.displayW * committedZoom) / 2) * 2)}px`;
+            const zhStr = `${Math.max(2, Math.round((finalFit.displayH * committedZoom) / 2) * 2)}px`;
+            if (imgEl) {
+              if (imgEl.style.width !== zwStr) imgEl.style.width = zwStr;
+              if (imgEl.style.height !== zhStr) imgEl.style.height = zhStr;
+            }
+            if (!canCommitImgNow) {
+              const hsEl = document.getElementById('smartNoteViewerHotspots');
+              if (hsEl) hsEl.innerHTML = '';
+            }
+            this._scheduleViewerSlideSettleRead(idx, 120);
+            return;
+          }
           this._syncSmartViewerThemeForSlide(slide);
-          this._syncSmartViewerHeaderControls(idx, total, slide);
+          if (isRapidStep) {
+            this._syncSmartViewerHeaderControls(idx, total, slide);
+          }
           if (canCommitImgNow) {
             this._renderSmartViewerHotspots(slide, idx);
           } else {
@@ -20400,6 +20630,7 @@
 
     fitSmartViewerStageToScreen(preserveZoomResetOnly = false, swipeDir = null, options = null) {
       this._commitPendingViewerCarouselImmediately();
+      this._invalidateSmartViewerViewportMetrics();
       const viewport = document.getElementById('smartNoteViewerViewport');
       const stage = document.getElementById('smartNoteViewerStage');
       const imgEl = document.getElementById('smartNoteViewerImg');
@@ -20537,9 +20768,41 @@
       this._applySmartViewerTransform();
     }
 
-    _applySmartViewerTransform() {
-      const viewport = document.getElementById('smartNoteViewerViewport');
+    _applySmartViewerTransform(opts = null) {
       const stage = document.getElementById('smartNoteViewerStage');
+      const isPanOnlyFastPath = Boolean(
+        opts &&
+        opts.panOnly &&
+        stage &&
+        !this._isViewerPinching &&
+        !this._viewerPinchSettleRafId &&
+        !this._viewerRiffleRafId
+      );
+      if (isPanOnlyFastPath) {
+        const useSubpixel = Boolean(
+          opts.subpixelPan ||
+          this._viewerWheelGlideRafId ||
+          this._viewerInertiaRafId ||
+          this._viewerDragPanRafId ||
+          (this._viewerActivePointerCount || 0) > 0
+        );
+        if (useSubpixel) {
+          const fpx = Number(this._viewerPanX) || 0;
+          const fpy = Number(this._viewerPanY) || 0;
+          stage.style.transform = `translate3d(calc(-50% + ${fpx.toFixed(2)}px), calc(-50% + ${fpy.toFixed(2)}px), 0)`;
+        } else {
+          const pxFast = Math.round(this._viewerPanX || 0);
+          const pyFast = Math.round(this._viewerPanY || 0);
+          const zoomFast = this._viewerZoom || 1.0;
+          const use2dRest = zoomFast > 1.35 && !stage.classList.contains('swipe-animating');
+          stage.style.transform = use2dRest
+            ? `translate(calc(-50% + ${pxFast}px), calc(-50% + ${pyFast}px))`
+            : `translate3d(calc(-50% + ${pxFast}px), calc(-50% + ${pyFast}px), 0)`;
+        }
+        return;
+      }
+
+      const viewport = document.getElementById('smartNoteViewerViewport');
       const prevStage = document.getElementById('smartNoteViewerPrevStage');
       const nextStage = document.getElementById('smartNoteViewerNextStage');
       const prevImg = document.getElementById('smartNoteViewerPrevImg');
@@ -20571,7 +20834,6 @@
         const fpx = Number(this._viewerPanX) || 0;
         const fpy = Number(this._viewerPanY) || 0;
         if (stage) {
-          stage.style.willChange = 'transform';
           stage.style.transform = `translate3d(calc(-50% + ${fpx.toFixed(2)}px), calc(-50% + ${fpy.toFixed(2)}px), 0) scale(${sX.toFixed(5)}, ${sY.toFixed(5)})`;
         }
       } else {
@@ -20582,9 +20844,15 @@
           if (imgEl.style.height !== zhStr) imgEl.style.height = zhStr;
         }
         if (stage) {
-          const isGpuMoving = Boolean(this._viewerPinchSettleRafId || this._viewerRiffleRafId);
-          stage.style.willChange = isGpuMoving ? 'transform' : '';
-          if (this._viewerPinchSettleRafId || this._viewerRiffleRafId) {
+          const isGpuMoving = Boolean(
+            this._viewerPinchSettleRafId ||
+            this._viewerRiffleRafId ||
+            this._viewerWheelGlideRafId ||
+            this._viewerInertiaRafId ||
+            this._viewerDragPanRafId ||
+            (this._viewerActivePointerCount || 0) > 0
+          );
+          if (isGpuMoving) {
             const fpx = Number(this._viewerPanX) || 0;
             const fpy = Number(this._viewerPanY) || 0;
             stage.style.transform = `translate3d(calc(-50% + ${fpx.toFixed(2)}px), calc(-50% + ${fpy.toFixed(2)}px), 0)`;

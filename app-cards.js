@@ -2346,19 +2346,20 @@
           currentStroke._holdW = w;
           currentStroke._holdH = h;
           if (holdTimer) return;
+          const holdMs = (typeof this.getShapeHoldDelayMs === 'function') ? this.getShapeHoldDelayMs() : 600;
           const checkHold = () => {
             holdTimer = null;
             if (!isDrawingOnProblem || !currentStroke || currentStroke._shapeHoldDetected) return;
             const elapsed = Date.now() - (currentStroke._lastHoldMoveTime || 0);
-            if (elapsed < 340) {
-              holdTimer = setTimeout(checkHold, Math.max(16, 340 - elapsed));
+            if (elapsed < holdMs - 5) {
+              holdTimer = setTimeout(checkHold, Math.max(16, holdMs - elapsed));
               return;
             }
             if (this.recognizeAndApplyCardStrokeShape(currentStroke, currentStroke._holdW || w, currentStroke._holdH || h)) {
               this.renderProblemCardCanvas(currentStroke);
             }
           };
-          holdTimer = setTimeout(checkHold, 340);
+          holdTimer = setTimeout(checkHold, holdMs);
         };
 
         const getNormPos = (e, useCachedRect = false) => {
@@ -3535,12 +3536,13 @@
           curExtraStroke._holdW = rw;
           curExtraStroke._holdH = rh;
           if (extraHoldTimer) return;
+          const holdMs = (typeof this.getShapeHoldDelayMs === 'function') ? this.getShapeHoldDelayMs() : 600;
           const checkExtraHold = () => {
             extraHoldTimer = null;
             if (!isDrawingExtraInk || !curExtraStroke || curExtraStroke._shapeHoldDetected) return;
             const elapsed = Date.now() - (curExtraStroke._lastHoldMoveTime || 0);
-            if (elapsed < 340) {
-              extraHoldTimer = setTimeout(checkExtraHold, Math.max(16, 340 - elapsed));
+            if (elapsed < holdMs - 5) {
+              extraHoldTimer = setTimeout(checkExtraHold, Math.max(16, holdMs - elapsed));
               return;
             }
             if (this.recognizeAndApplyCardStrokeShape(curExtraStroke, curExtraStroke._holdW || rw, curExtraStroke._holdH || rh)) {
@@ -3550,7 +3552,7 @@
               renderExtraCardInk(curExtraStroke);
             }
           };
-          extraHoldTimer = setTimeout(checkExtraHold, 340);
+          extraHoldTimer = setTimeout(checkExtraHold, holdMs);
         };
 
         const startExtraCardStroke = (e) => {
@@ -6704,12 +6706,13 @@
           currentStroke._holdW = w;
           currentStroke._holdH = h;
           if (graphHoldTimer) return;
+          const holdMs = (typeof this.getShapeHoldDelayMs === 'function') ? this.getShapeHoldDelayMs() : 600;
           const checkGraphHold = () => {
             graphHoldTimer = null;
             if (!isDrawingOnGraphCard || !currentStroke || currentStroke._shapeHoldDetected) return;
             const elapsed = Date.now() - (currentStroke._lastHoldMoveTime || 0);
-            if (elapsed < 340) {
-              graphHoldTimer = setTimeout(checkGraphHold, Math.max(16, 340 - elapsed));
+            if (elapsed < holdMs - 5) {
+              graphHoldTimer = setTimeout(checkGraphHold, Math.max(16, holdMs - elapsed));
               return;
             }
             if (this.recognizeAndApplyCardStrokeShape(currentStroke, currentStroke._holdW || w, currentStroke._holdH || h)) {
@@ -6719,7 +6722,7 @@
               this.renderGraphCardCanvas(currentStroke);
             }
           };
-          graphHoldTimer = setTimeout(checkGraphHold, 340);
+          graphHoldTimer = setTimeout(checkGraphHold, holdMs);
         };
 
         const getNormPos = (e, useCachedRect = false) => {
