@@ -11972,9 +11972,11 @@
     try {
       for (let i = 0; i < slides.length; i++) {
         const sl = slides[i];
-        let dataUrl = (sl && sl.viewerSnapshotDataUrl === '__SAME_AS_PDF_BOARD__' && sl.pdfPageBoardData)
-          ? sl.pdfPageBoardData.dataUrl
-          : (sl ? sl.viewerSnapshotDataUrl : '');
+        let dataUrl = (sl && sl._viewerBlobUrl)
+          ? sl._viewerBlobUrl
+          : ((sl && sl.viewerSnapshotDataUrl === '__SAME_AS_PDF_BOARD__' && sl.pdfPageBoardData)
+            ? sl.pdfPageBoardData.dataUrl
+            : (sl ? sl.viewerSnapshotDataUrl : ''));
         let tempGeneratedForPdf = false;
         if (!dataUrl && sl) {
           if (typeof this._isPureUnannotatedPdfPageSlide === 'function' && this._isPureUnannotatedPdfPageSlide(sl, pkg.exportFilter || null)) {
