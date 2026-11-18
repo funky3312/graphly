@@ -2372,13 +2372,15 @@
           this.audioArchivedPdfBoards = {};
         }
         const pNum = pbd.pageNum || 1;
+        const hasLiveVec = Boolean(typeof this._hasLivePdfSourceForBoard === 'function' && this._hasLivePdfSourceForBoard(pbd));
         const dataUrl = pbd.dataUrl ||
           (pbd.canvas && pbd.canvas._cachedDataUrl) ||
-          (pbd.canvas && !pbd.canvas._evicted && pbd.canvas.width > 4 && typeof this.encodeCanvasSmartWebP === 'function'
+          (!hasLiveVec && pbd.canvas && !pbd.canvas._evicted && pbd.canvas.width > 4 && typeof this.encodeCanvasSmartWebP === 'function'
             ? (pbd.dataUrl = (pbd.canvas._cachedDataUrl = this.encodeCanvasSmartWebP(pbd.canvas, 0.88)))
             : '');
         this.audioArchivedPdfBoards[pNum] = {
           pageNum: pNum,
+          pdfSourcePageNum: pbd.pdfSourcePageNum || pNum,
           totalPages: pbd.totalPages || 1,
           dataUrl: dataUrl || '',
           pixelW: pbd.pixelW || (pbd.canvas && pbd.canvas.width) || 1200,
@@ -3335,7 +3337,7 @@
               if (!this._replayArchivedPdfCache) this._replayArchivedPdfCache = {};
               if (!this._replayArchivedPdfCache[pl.pageNum || 1]) {
                 const clonedPbd = { ...archEntry };
-                if (clonedPbd.dataUrl && typeof this._ensurePdfBoardCanvasFromDataUrl === 'function') {
+                if ((clonedPbd.dataUrl || clonedPbd.pdfDocUid) && typeof this._ensurePdfBoardCanvasFromDataUrl === 'function') {
                   this._ensurePdfBoardCanvasFromDataUrl(clonedPbd);
                 } else if (clonedPbd.dataUrl && typeof Image !== 'undefined') {
                   const imgObj = new Image();

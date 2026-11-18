@@ -11979,7 +11979,7 @@
             : (sl ? sl.viewerSnapshotDataUrl : ''));
         let tempGeneratedForPdf = false;
         if (!dataUrl && sl) {
-          if (typeof this._isPureUnannotatedPdfPageSlide === 'function' && this._isPureUnannotatedPdfPageSlide(sl, pkg.exportFilter || null)) {
+          if (typeof this._isPureUnannotatedPdfPageSlide === 'function' && this._isPureUnannotatedPdfPageSlide(sl, pkg.exportFilter || null) && sl.pdfPageBoardData && sl.pdfPageBoardData.dataUrl) {
             dataUrl = sl.pdfPageBoardData.dataUrl;
             sl.viewerSnapshotDataUrl = dataUrl;
           } else {

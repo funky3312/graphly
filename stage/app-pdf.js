@@ -610,19 +610,7 @@
       }
 
       this.showToast('⏳ PDF 문서를 불러오는 중입니다...');
-      const isFileProtocol = typeof window !== 'undefined' && window.location && window.location.protocol === 'file:';
-      const pdfLibScriptEl = (!isFileProtocol && typeof document !== 'undefined')
-        ? document.querySelector('script[src*="lib/pdf.min.js"]')
-        : null;
-      const pdfLibBaseHref = (pdfLibScriptEl && pdfLibScriptEl.src)
-        ? pdfLibScriptEl.src
-        : ((typeof window !== 'undefined' && window.location) ? new URL('lib/', window.location.href).href : 'lib/');
-      const cMapUrl = isFileProtocol
-        ? 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/'
-        : new URL('cmaps/', pdfLibBaseHref).href;
-      const standardFontDataUrl = isFileProtocol
-        ? 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/'
-        : new URL('standard_fonts/', pdfLibBaseHref).href;
+      const { cMapUrl, standardFontDataUrl } = this._getPdfJsFontResourceUrls();
       const loadingTask = window.pdfjsLib.getDocument({
         data: clonedBytes.slice(),
         cMapUrl,
@@ -633,6 +621,9 @@
       return loadingTask.promise.then(async pdf => {
         if (pdf && !pdf._graphlyDocUid) {
           pdf._graphlyDocUid = `pdfdoc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        }
+        if (pdf && pdf._graphlyDocUid) {
+          this._registerPdfBytesForDocUid(pdf._graphlyDocUid, clonedBytes, pdf);
         }
         this._invalidatePdfBoardHiResTile(true);
         this.pdfDoc = pdf;
@@ -701,9 +692,389 @@
         return pdf;
       }).catch(err => {
         console.error('PDF 로드 실패:', err);
-        this.showToast('❌ PDF 파일을 파싱하는 데 실패했습니다: ' + err.message);
+        const errMsg = String((err && err.message) || '');
+        if ((err && err.name === 'PasswordException') || /password/i.test(errMsg)) {
+          this.showToast('🔒 암호가 설정된 PDF 파일은 지원하지 않습니다. 암호를 해제한 뒤 열어주세요.');
+        } else {
+          this.showToast('❌ PDF 파일을 파싱하는 데 실패했습니다: ' + errMsg);
+        }
         throw err;
       });
+    }
+
+    _getPdfJsFontResourceUrls() {
+      const isFileProtocol = typeof window !== 'undefined' && window.location && window.location.protocol === 'file:';
+      const pdfLibScriptEl = (!isFileProtocol && typeof document !== 'undefined')
+        ? document.querySelector('script[src*="lib/pdf.min.js"]')
+        : null;
+      const pdfLibBaseHref = (pdfLibScriptEl && pdfLibScriptEl.src)
+        ? pdfLibScriptEl.src
+        : ((typeof window !== 'undefined' && window.location) ? new URL('lib/', window.location.href).href : 'lib/');
+      const cMapUrl = isFileProtocol
+        ? 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/'
+        : new URL('cmaps/', pdfLibBaseHref).href;
+      const standardFontDataUrl = isFileProtocol
+        ? 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/'
+        : new URL('standard_fonts/', pdfLibBaseHref).href;
+      return { isFileProtocol, pdfLibBaseHref, cMapUrl, standardFontDataUrl };
+    }
+
+    _uint8ArrayToBase64Fast(bytes) {
+      if (!bytes || !bytes.length) return '';
+      const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      const CHUNK = 0x8000;
+      const parts = [];
+      for (let i = 0; i < u8.length; i += CHUNK) {
+        parts.push(String.fromCharCode.apply(null, u8.subarray(i, i + CHUNK)));
+      }
+      return btoa(parts.join(''));
+    }
+
+    _base64ToUint8ArrayFast(b64) {
+      if (!b64 || typeof b64 !== 'string') return null;
+      const commaIdx = b64.indexOf(',');
+      const clean = commaIdx >= 0 ? b64.slice(commaIdx + 1).trim() : b64.trim();
+      if (!clean) return null;
+      const bin = atob(clean);
+      const len = bin.length;
+      const u8 = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        u8[i] = bin.charCodeAt(i);
+      }
+      return u8;
+    }
+
+    _collectProtectedPdfDocUids() {
+      const keep = new Set();
+      if (this.pdfDoc && this.pdfDoc._graphlyDocUid) keep.add(this.pdfDoc._graphlyDocUid);
+      if (this.pdfPageBoardData && this.pdfPageBoardData.pdfDocUid) keep.add(this.pdfPageBoardData.pdfDocUid);
+      if (this._suspendedPdfBoardState && this._suspendedPdfBoardState.pdfPageBoardData && this._suspendedPdfBoardState.pdfPageBoardData.pdfDocUid) {
+        keep.add(this._suspendedPdfBoardState.pdfPageBoardData.pdfDocUid);
+      }
+      const scanSlides = (arr) => {
+        if (!Array.isArray(arr)) return;
+        for (let i = 0; i < arr.length; i++) {
+          const s = arr[i];
+          if (!s) continue;
+          if (s.pdfPageBoardData && s.pdfPageBoardData.pdfDocUid) keep.add(s.pdfPageBoardData.pdfDocUid);
+          if (s.suspendedPdfBoardState && s.suspendedPdfBoardState.pdfPageBoardData && s.suspendedPdfBoardState.pdfPageBoardData.pdfDocUid) {
+            keep.add(s.suspendedPdfBoardState.pdfPageBoardData.pdfDocUid);
+          }
+        }
+      };
+      scanSlides(this.lessonPlaylistSlides);
+      if (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) {
+        scanSlides(this._viewerPkg.playlistSlides);
+      }
+      return keep;
+    }
+
+    _registerPdfBytesForDocUid(docUid, bytes, pdfDocProxy = null) {
+      if (!docUid || !bytes) return;
+      if (!this._pdfBytesByDocUid) this._pdfBytesByDocUid = new Map();
+      if (!this._embeddedPdfDocs) this._embeddedPdfDocs = new Map();
+      const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      this._pdfBytesByDocUid.delete(docUid);
+      this._pdfBytesByDocUid.set(docUid, u8);
+      if (pdfDocProxy) {
+        pdfDocProxy._graphlyDocUid = docUid;
+        this._embeddedPdfDocs.delete(docUid);
+        this._embeddedPdfDocs.set(docUid, pdfDocProxy);
+      }
+      if (this._pdfBytesByDocUid.size > 10) {
+        const keep = this._collectProtectedPdfDocUids();
+        keep.add(docUid);
+        for (const k of Array.from(this._pdfBytesByDocUid.keys())) {
+          if (this._pdfBytesByDocUid.size <= 8) break;
+          if (keep.has(k)) continue;
+          this._pdfBytesByDocUid.delete(k);
+          const oldDoc = this._embeddedPdfDocs.get(k);
+          this._embeddedPdfDocs.delete(k);
+          if (oldDoc && oldDoc !== this.pdfDoc && typeof oldDoc.destroy === 'function') {
+            try { oldDoc.destroy(); } catch (_) { }
+          }
+        }
+      }
+    }
+
+    _getLivePdfDocForUid(docUid) {
+      if (!docUid) return null;
+      if (this.pdfDoc && this.pdfDoc._graphlyDocUid === docUid && typeof this.pdfDoc.getPage === 'function') {
+        return this.pdfDoc;
+      }
+      if (this._embeddedPdfDocs && this._embeddedPdfDocs.has(docUid)) {
+        const emb = this._embeddedPdfDocs.get(docUid);
+        if (emb && typeof emb.getPage === 'function') return emb;
+      }
+      return null;
+    }
+
+    _hasLivePdfSourceForBoard(pbd) {
+      if (!pbd || !pbd.pdfDocUid) return false;
+      const uid = pbd.pdfDocUid;
+      if (this._getLivePdfDocForUid(uid)) return true;
+      if (this._pdfBytesByDocUid && this._pdfBytesByDocUid.has(uid)) return true;
+      if (this._embeddedPdfDocPromises && this._embeddedPdfDocPromises.has(uid)) return true;
+      return false;
+    }
+
+    async _mountEmbeddedPdfBytes(docUid, rawBytes) {
+      if (!docUid || !rawBytes || typeof window === 'undefined' || !window.pdfjsLib) return null;
+      const existing = this._getLivePdfDocForUid(docUid);
+      if (existing) {
+        this._registerPdfBytesForDocUid(docUid, rawBytes, existing);
+        return existing;
+      }
+      if (!this._embeddedPdfDocPromises) this._embeddedPdfDocPromises = new Map();
+      if (this._embeddedPdfDocPromises.has(docUid)) {
+        return this._embeddedPdfDocPromises.get(docUid);
+      }
+      const u8 = rawBytes instanceof Uint8Array ? rawBytes : new Uint8Array(rawBytes);
+      this._registerPdfBytesForDocUid(docUid, u8, null);
+      const { cMapUrl, standardFontDataUrl } = this._getPdfJsFontResourceUrls();
+      const mountPromise = window.pdfjsLib.getDocument({
+        data: u8.slice(),
+        cMapUrl,
+        cMapPacked: true,
+        standardFontDataUrl
+      }).promise.then((pdf) => {
+        if (pdf) {
+          pdf._graphlyDocUid = docUid;
+          if (!this._embeddedPdfDocs) this._embeddedPdfDocs = new Map();
+          this._embeddedPdfDocs.set(docUid, pdf);
+        }
+        return pdf || null;
+      }).catch((err) => {
+        console.warn('내장 PDF 마운트 실패:', err);
+        return null;
+      }).finally(() => {
+        if (this._embeddedPdfDocPromises) this._embeddedPdfDocPromises.delete(docUid);
+      });
+      this._embeddedPdfDocPromises.set(docUid, mountPromise);
+      return mountPromise;
+    }
+
+    async _getOrWaitLivePdfDocForUid(docUid) {
+      if (!docUid) return null;
+      const live = this._getLivePdfDocForUid(docUid);
+      if (live) return live;
+      if (this._embeddedPdfDocPromises && this._embeddedPdfDocPromises.has(docUid)) {
+        return await this._embeddedPdfDocPromises.get(docUid);
+      }
+      if (this._pdfBytesByDocUid && this._pdfBytesByDocUid.has(docUid)) {
+        return await this._mountEmbeddedPdfBytes(docUid, this._pdfBytesByDocUid.get(docUid));
+      }
+      return null;
+    }
+
+    _extractAndQueueEmbeddedPdfFromSlidesSync(slides) {
+      if (!Array.isArray(slides) || !slides.length) return;
+      const inspectPbd = (pbd) => {
+        if (!pbd || typeof pbd !== 'object') return;
+        if (typeof pbd._embeddedPdfBase64 === 'string' && pbd._embeddedPdfBase64.length > 32 && pbd.pdfDocUid) {
+          try {
+            if (!this._pdfBytesByDocUid || !this._pdfBytesByDocUid.has(pbd.pdfDocUid)) {
+              const u8 = this._base64ToUint8ArrayFast(pbd._embeddedPdfBase64);
+              if (u8 && u8.byteLength > 64) {
+                this._registerPdfBytesForDocUid(pbd.pdfDocUid, u8, null);
+                this._mountEmbeddedPdfBytes(pbd.pdfDocUid, u8);
+              }
+            } else if (!this._getLivePdfDocForUid(pbd.pdfDocUid)) {
+              this._mountEmbeddedPdfBytes(pbd.pdfDocUid, this._pdfBytesByDocUid.get(pbd.pdfDocUid));
+            }
+            delete pbd._embeddedPdfBase64;
+          } catch (_) { }
+        } else if (pbd.pdfDocUid && this._pdfBytesByDocUid && this._pdfBytesByDocUid.has(pbd.pdfDocUid) && !this._getLivePdfDocForUid(pbd.pdfDocUid)) {
+          this._mountEmbeddedPdfBytes(pbd.pdfDocUid, this._pdfBytesByDocUid.get(pbd.pdfDocUid));
+        }
+      };
+      for (let i = 0; i < slides.length; i++) {
+        const s = slides[i];
+        if (!s) continue;
+        inspectPbd(s.pdfPageBoardData);
+        if (s.suspendedPdfBoardState && s.suspendedPdfBoardState.pdfPageBoardData) {
+          inspectPbd(s.suspendedPdfBoardState.pdfPageBoardData);
+        }
+      }
+    }
+
+    async _mountEmbeddedPdfFromSlidesIfPresent(slides) {
+      if (!Array.isArray(slides) || !slides.length) return;
+      this._extractAndQueueEmbeddedPdfFromSlidesSync(slides);
+      const uids = new Set();
+      for (let i = 0; i < slides.length; i++) {
+        const s = slides[i];
+        if (!s) continue;
+        if (s.pdfPageBoardData && s.pdfPageBoardData.pdfDocUid) uids.add(s.pdfPageBoardData.pdfDocUid);
+        if (s.suspendedPdfBoardState && s.suspendedPdfBoardState.pdfPageBoardData && s.suspendedPdfBoardState.pdfPageBoardData.pdfDocUid) {
+          uids.add(s.suspendedPdfBoardState.pdfPageBoardData.pdfDocUid);
+        }
+      }
+      if (uids.size > 0) {
+        await Promise.all(Array.from(uids).map((u) => this._getOrWaitLivePdfDocForUid(u)));
+      }
+    }
+
+    async _ensurePdfLibLoaded() {
+      if (typeof window !== 'undefined' && window.PDFLib && window.PDFLib.PDFDocument) {
+        return window.PDFLib;
+      }
+      if (this._pdfLibLoadPromise) return this._pdfLibLoadPromise;
+      const { isFileProtocol, pdfLibBaseHref } = this._getPdfJsFontResourceUrls();
+      const scriptUrl = isFileProtocol
+        ? 'https://cdn.jsdelivr.net/npm/@cantoo/pdf-lib@2.11.1/dist/pdf-lib.min.js'
+        : new URL('pdf-lib.min.js', pdfLibBaseHref).href;
+      this._pdfLibLoadPromise = new Promise((resolve, reject) => {
+        const sc = document.createElement('script');
+        sc.src = scriptUrl;
+        sc.async = true;
+        sc.onload = () => {
+          if (window.PDFLib && window.PDFLib.PDFDocument) resolve(window.PDFLib);
+          else reject(new Error('PDFLib_MISSING'));
+        };
+        sc.onerror = () => reject(new Error('PDFLib_LOAD_FAILED'));
+        document.head.appendChild(sc);
+      }).catch((err) => {
+        this._pdfLibLoadPromise = null;
+        throw err;
+      });
+      return this._pdfLibLoadPromise;
+    }
+
+    async _renderPdfDocPageToCanvas(pdfDocProxy, srcPageNum, targetMinPxW = 2800) {
+      if (!pdfDocProxy || typeof pdfDocProxy.getPage !== 'function') return null;
+      const safePage = Math.max(1, Math.min(pdfDocProxy.numPages || 1, Number(srcPageNum) || 1));
+      const page = await pdfDocProxy.getPage(safePage);
+      const baseVp = page.getViewport({ scale: 1.0 });
+      const maxSidePx = 4032;
+      const maxAreaPx = 15500000;
+      const rawScale = Math.max(2.0, Math.min(4.7, targetMinPxW / Math.max(1, baseVp.width)));
+      const maxSideScale = maxSidePx / Math.max(1, baseVp.width, baseVp.height);
+      const maxAreaScale = Math.sqrt(maxAreaPx / Math.max(1, baseVp.width * baseVp.height));
+      const renderScale = Math.max(1.0, Math.min(rawScale, maxSideScale, maxAreaScale));
+      const vp = page.getViewport({ scale: renderScale });
+      const offC = document.createElement('canvas');
+      offC.width = Math.round(vp.width);
+      offC.height = Math.round(vp.height);
+      const ctx = offC.getContext('2d', { alpha: false }) || offC.getContext('2d');
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, offC.width, offC.height);
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      }
+      return offC;
+    }
+
+    async _embedSubsetPdfIntoSlidesIfAvailable(slides, effFilter = null) {
+      if (!Array.isArray(slides) || !slides.length) return slides;
+      if (effFilter && effFilter.includeProblem === false) return slides;
+      this._extractAndQueueEmbeddedPdfFromSlidesSync(slides);
+
+      const pbdTargets = [];
+      let carrierPbd = null;
+      for (let i = 0; i < slides.length; i++) {
+        const s = slides[i];
+        if (!s) continue;
+        const addIfBacked = (pbd, allowCarrier) => {
+          if (!pbd || !pbd.pdfDocUid) return;
+          if (!this._pdfBytesByDocUid || !this._pdfBytesByDocUid.has(pbd.pdfDocUid)) return;
+          pbdTargets.push(pbd);
+          if (allowCarrier && !carrierPbd) carrierPbd = pbd;
+        };
+        addIfBacked(s.pdfPageBoardData, true);
+        if (s.suspendedPdfBoardState && s.suspendedPdfBoardState.pdfPageBoardData) {
+          addIfBacked(s.suspendedPdfBoardState.pdfPageBoardData, !carrierPbd);
+        }
+        if (s.audioSyncData && s.audioSyncData.archivedPdfBoards && typeof s.audioSyncData.archivedPdfBoards === 'object') {
+          Object.values(s.audioSyncData.archivedPdfBoards).forEach((ap) => addIfBacked(ap, false));
+        }
+      }
+      if (!pbdTargets.length || !carrierPbd) return slides;
+
+      try {
+        const PDFLib = await this._ensurePdfLibLoaded();
+        const subDoc = await PDFLib.PDFDocument.create();
+        const loadedSrcDocs = new Map();
+        const pageMap = new Map(); // `${uid}:${srcPage}` -> 1-based page in subDoc
+        const orderedRequests = [];
+
+        for (let i = 0; i < pbdTargets.length; i++) {
+          const pbd = pbdTargets[i];
+          const uid = pbd.pdfDocUid;
+          const srcPage = Math.max(1, Number(pbd.pdfSourcePageNum) || Number(pbd.pageNum) || 1);
+          const mapKey = `${uid}:${srcPage}`;
+          if (!pageMap.has(mapKey)) {
+            pageMap.set(mapKey, 0);
+            orderedRequests.push({ uid, srcPage, mapKey });
+          }
+        }
+
+        let nextSubPageNum = 1;
+        // 동일 원본 문서 단위로 묶어 copyPages 배치 실행
+        const byUid = new Map();
+        for (let i = 0; i < orderedRequests.length; i++) {
+          const req = orderedRequests[i];
+          if (!byUid.has(req.uid)) byUid.set(req.uid, []);
+          byUid.get(req.uid).push(req);
+        }
+
+        for (const [uid, reqList] of byUid.entries()) {
+          const srcBytes = this._pdfBytesByDocUid.get(uid);
+          if (!srcBytes) throw new Error('MISSING_SRC_PDF_BYTES');
+          let srcDoc = loadedSrcDocs.get(uid);
+          if (!srcDoc) {
+            srcDoc = await PDFLib.PDFDocument.load(srcBytes, { password: '', ignoreEncryption: true });
+            loadedSrcDocs.set(uid, srcDoc);
+          }
+          const maxP = srcDoc.getPageCount();
+          const zeroBasedIndices = reqList.map((r) => Math.max(0, Math.min(maxP - 1, r.srcPage - 1)));
+          const copiedPages = await subDoc.copyPages(srcDoc, zeroBasedIndices);
+          for (let j = 0; j < copiedPages.length; j++) {
+            subDoc.addPage(copiedPages[j]);
+            pageMap.set(reqList[j].mapKey, nextSubPageNum++);
+          }
+        }
+
+        const subBytes = await subDoc.save();
+        if (!subBytes || subBytes.byteLength < 64) throw new Error('EMPTY_SUBSET_PDF');
+
+        const newSubDocUid = `pdfsub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        // 저장 전 PDF.js 파싱 가능 여부 자가 검증 (무결성 100% 보장)
+        const verifiedProxy = await this._mountEmbeddedPdfBytes(newSubDocUid, subBytes);
+        if (!verifiedProxy || !verifiedProxy.numPages) throw new Error('SUBSET_VERIFY_FAILED');
+        const testPage1 = await verifiedProxy.getPage(1);
+        if (!testPage1) throw new Error('SUBSET_PAGE1_FAILED');
+
+        const b64Str = this._uint8ArrayToBase64Fast(subBytes);
+        for (let i = 0; i < pbdTargets.length; i++) {
+          const pbd = pbdTargets[i];
+          const oldKey = `${pbd.pdfDocUid}:${Math.max(1, Number(pbd.pdfSourcePageNum) || Number(pbd.pageNum) || 1)}`;
+          const mappedSubPage = pageMap.get(oldKey) || 1;
+          pbd.pdfDocUid = newSubDocUid;
+          pbd.pdfSourcePageNum = mappedSubPage;
+          pbd.dataUrl = '';
+          delete pbd._embeddedPdfBase64;
+        }
+        carrierPbd._embeddedPdfBase64 = b64Str;
+        return slides;
+      } catch (err) {
+        console.warn('PDF 벡터 발췌 폴백(고해상도 이미지 저장 전환):', err);
+        for (let i = 0; i < pbdTargets.length; i++) {
+          const pbd = pbdTargets[i];
+          if (pbd.dataUrl) continue;
+          const liveDoc = await this._getOrWaitLivePdfDocForUid(pbd.pdfDocUid);
+          if (liveDoc) {
+            const cv = await this._renderPdfDocPageToCanvas(liveDoc, pbd.pdfSourcePageNum || pbd.pageNum || 1, 2800);
+            if (cv) {
+              pbd.dataUrl = this.encodeCanvasSmartWebP(cv, 0.88, true);
+              try { cv.width = 1; cv.height = 1; } catch (_) { }
+            }
+          }
+        }
+        return slides;
+      }
     }
 
     setLessonTeachingMode(mode) {
@@ -1034,7 +1405,10 @@
       return Boolean(cv && typeof cv.getContext === 'function' && !cv._evicted && cv.width > 4 && cv.height > 4);
     }
 
-    _getPdfBoardCacheKey(pageNum, dataUrl = '') {
+    _getPdfBoardCacheKey(pageNum, dataUrl = '', pdfDocUid = '', srcPageNum = 0) {
+      if (pdfDocUid) {
+        return `uid_${pdfDocUid}_${srcPageNum || pageNum || 1}`;
+      }
       if (this._pdfPageCanvasCacheDoc && this.pdfDoc && this._pdfPageCanvasCacheDoc === this.pdfDoc && pageNum) {
         return `doc_${pageNum}`;
       }
@@ -1047,14 +1421,14 @@
       return '';
     }
 
-    _getPdfPageCanvasFromCache(pageNum, dataUrl = '') {
+    _getPdfPageCanvasFromCache(pageNum, dataUrl = '', pdfDocUid = '', srcPageNum = 0) {
       if (!this._pdfPageCanvasCache) return null;
-      const key = this._getPdfBoardCacheKey(pageNum, dataUrl);
+      const key = this._getPdfBoardCacheKey(pageNum, dataUrl, pdfDocUid, srcPageNum);
       let cv = (key && this._pdfPageCanvasCache[key]) ||
-        ((this._pdfPageCanvasCacheDoc && this.pdfDoc && this._pdfPageCanvasCacheDoc === this.pdfDoc && pageNum) ? this._pdfPageCanvasCache[pageNum] : null);
+        ((!pdfDocUid && this._pdfPageCanvasCacheDoc && this.pdfDoc && this._pdfPageCanvasCacheDoc === this.pdfDoc && pageNum) ? this._pdfPageCanvasCache[pageNum] : null);
       if (!this._isValidPdfBoardCanvas(cv)) {
         if (key && this._pdfPageCanvasCache[key]) delete this._pdfPageCanvasCache[key];
-        if (pageNum && this._pdfPageCanvasCache[pageNum] === cv) delete this._pdfPageCanvasCache[pageNum];
+        if (!pdfDocUid && pageNum && this._pdfPageCanvasCache[pageNum] === cv) delete this._pdfPageCanvasCache[pageNum];
         return null;
       }
       if (key) {
@@ -1066,19 +1440,20 @@
       return cv;
     }
 
-    _putPdfPageCanvasInCache(pageNum, pageCanvas, dataUrl = '') {
+    _putPdfPageCanvasInCache(pageNum, pageCanvas, dataUrl = '', pdfDocUid = '', srcPageNum = 0) {
       if (!this._isValidPdfBoardCanvas(pageCanvas)) return;
       if (!this._pdfPageCanvasCache) this._pdfPageCanvasCache = {};
       if (!Array.isArray(this._pdfPageCanvasCacheOrder)) this._pdfPageCanvasCacheOrder = [];
+      const hasLiveVec = Boolean(pdfDocUid && this._hasLivePdfSourceForBoard({ pdfDocUid }));
       if (!pageCanvas._cachedDataUrl) {
         pageCanvas._cachedDataUrl = (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/'))
           ? dataUrl
-          : this.encodeCanvasSmartWebP(pageCanvas, 0.88);
+          : (hasLiveVec ? '' : this.encodeCanvasSmartWebP(pageCanvas, 0.88));
       }
-      const key = this._getPdfBoardCacheKey(pageNum, pageCanvas._cachedDataUrl);
+      const key = this._getPdfBoardCacheKey(pageNum, pageCanvas._cachedDataUrl, pdfDocUid, srcPageNum);
       if (!key) return;
       this._pdfPageCanvasCache[key] = pageCanvas;
-      if (this._pdfPageCanvasCacheDoc && this.pdfDoc && this._pdfPageCanvasCacheDoc === this.pdfDoc && pageNum) {
+      if (this._pdfPageCanvasCacheDoc && this.pdfDoc && this._pdfPageCanvasCacheDoc === this.pdfDoc && (!pdfDocUid || this.pdfDoc._graphlyDocUid === pdfDocUid) && pageNum) {
         this._pdfPageCanvasCache[pageNum] = pageCanvas;
       }
       const existingIdx = this._pdfPageCanvasCacheOrder.indexOf(key);
@@ -1133,15 +1508,67 @@
         return Promise.resolve(pbd.canvas);
       }
       pbd.canvas = null;
-      const cached = this._getPdfPageCanvasFromCache(pbd.pageNum, pbd.dataUrl);
+      const srcPageNum = pbd.pdfSourcePageNum || pbd.pageNum || 1;
+      const cached = this._getPdfPageCanvasFromCache(pbd.pageNum, pbd.dataUrl, pbd.pdfDocUid || '', srcPageNum);
       if (cached) {
         pbd.canvas = cached;
         return Promise.resolve(cached);
       }
+      if (pbd._loadingPromise) return pbd._loadingPromise;
+
+      if (pbd.pdfDocUid && this._hasLivePdfSourceForBoard(pbd)) {
+        const inflightKey = `uid_${pbd.pdfDocUid}_${srcPageNum}`;
+        if (!this._pdfPageInflightRenderMap) this._pdfPageInflightRenderMap = new Map();
+        pbd._loadingPromise = (async () => {
+          try {
+            let sharedPromise = this._pdfPageInflightRenderMap.get(inflightKey);
+            if (!sharedPromise) {
+              sharedPromise = (async () => {
+                const liveDoc = await this._getOrWaitLivePdfDocForUid(pbd.pdfDocUid);
+                if (!liveDoc) return null;
+                const existingCv = this._getPdfPageCanvasFromCache(pbd.pageNum, pbd.dataUrl, pbd.pdfDocUid || '', srcPageNum);
+                if (existingCv) return existingCv;
+                const offC = await this._renderPdfDocPageToCanvas(liveDoc, srcPageNum, 2800);
+                if (offC) {
+                  offC._cachedDataUrl = pbd.dataUrl || '';
+                  try {
+                    const mipC = document.createElement('canvas');
+                    mipC.width = Math.max(1, Math.round(offC.width * 0.5));
+                    mipC.height = Math.max(1, Math.round(offC.height * 0.5));
+                    const mipCtx = mipC.getContext('2d');
+                    if (mipCtx) {
+                      mipCtx.imageSmoothingEnabled = true;
+                      mipCtx.imageSmoothingQuality = 'high';
+                      mipCtx.drawImage(offC, 0, 0, mipC.width, mipC.height);
+                    }
+                    offC._mipCanvas = mipC;
+                  } catch (_) { }
+                  this._putPdfPageCanvasInCache(pbd.pageNum, offC, pbd.dataUrl || '', pbd.pdfDocUid || '', srcPageNum);
+                }
+                return offC || null;
+              })().finally(() => {
+                if (this._pdfPageInflightRenderMap) this._pdfPageInflightRenderMap.delete(inflightKey);
+              });
+              this._pdfPageInflightRenderMap.set(inflightKey, sharedPromise);
+            }
+            const resolvedCv = await sharedPromise;
+            if (resolvedCv && !this._isValidPdfBoardCanvas(pbd.canvas)) {
+              pbd.canvas = resolvedCv;
+              pbd.pixelW = resolvedCv.width;
+              pbd.pixelH = resolvedCv.height;
+            }
+            this.requestRender();
+            return pbd.canvas || null;
+          } finally {
+            pbd._loadingPromise = null;
+          }
+        })();
+        return pbd._loadingPromise;
+      }
+
       if (!pbd.dataUrl || typeof Image === 'undefined') {
         return Promise.resolve(null);
       }
-      if (pbd._loadingPromise) return pbd._loadingPromise;
       pbd._loadingPromise = new Promise((resolve) => {
         const imgObj = new Image();
         imgObj.onload = () => {
@@ -1170,7 +1597,7 @@
             pbd.canvas = offC;
             pbd.pixelW = offC.width;
             pbd.pixelH = offC.height;
-            this._putPdfPageCanvasInCache(pbd.pageNum, offC, pbd.dataUrl);
+            this._putPdfPageCanvasInCache(pbd.pageNum, offC, pbd.dataUrl, pbd.pdfDocUid || '', srcPageNum);
           }
           this.requestRender();
           resolve(pbd.canvas);
@@ -1264,13 +1691,9 @@
       // 전체 페이지 캔버스(2,800px)는 그대로 유지해 저장 용량·메모리를 보호하면서,
       // 줌/패닝이 멈춘 즉시 화면에 보이는 교집합(최대 뷰포트 크기, ~3.8MP)만 pdf.js 벡터로 덮어 그려 350%에서도 인쇄물급 칼화질을 보장합니다!
       if (!isExport && !isActivelyMovingCamera && ctx === this.ctx && !this._isRenderingGraphSnapshot) {
-        const docUid = (this.pdfDoc && this.pdfDoc._graphlyDocUid) || '';
-        const hasLiveVectorDoc = Boolean(
-          this.pdfDoc &&
-          docUid &&
-          this.pdfPageBoardData.pdfDocUid === docUid &&
-          typeof this.pdfDoc.getPage === 'function'
-        );
+        const docUid = this.pdfPageBoardData.pdfDocUid || '';
+        const liveVecDoc = docUid ? this._getLivePdfDocForUid(docUid) : null;
+        const hasLiveVectorDoc = Boolean(liveVecDoc && typeof liveVecDoc.getPage === 'function');
         const baseTexW = pageCanvas.width || pageCanvas.naturalWidth || 2800;
         if (hasLiveVectorDoc && (drawW * effDpr) > (baseTexW * 1.15)) {
           const sw = Math.max(1, this.screenWidth || window.innerWidth || 1280);
@@ -1283,7 +1706,8 @@
           const visH = visB - visT;
           if (visW > 8 && visH > 8) {
             const pageNum = this.pdfPageBoardData.pageNum || 1;
-            const tileKey = `${docUid}|${pageNum}|${Math.round(drawX * 2)}|${Math.round(drawY * 2)}|${Math.round(drawW * 2)}|${Math.round(drawH * 2)}|${visL}|${visT}|${visW}|${visH}|${Math.round(effDpr * 100)}`;
+            const srcPageNum = this.pdfPageBoardData.pdfSourcePageNum || pageNum;
+            const tileKey = `${docUid}|${srcPageNum}|${Math.round(drawX * 2)}|${Math.round(drawY * 2)}|${Math.round(drawW * 2)}|${Math.round(drawH * 2)}|${visL}|${visT}|${visW}|${visH}|${Math.round(effDpr * 100)}`;
             const readyTile = this._pdfBoardHiResTile;
             if (readyTile && readyTile.key === tileKey && readyTile.canvas && readyTile.canvas.width > 2 && readyTile.canvas.height > 2) {
               ctx.save();
@@ -1299,6 +1723,7 @@
                 key: tileKey,
                 docUid,
                 pageNum,
+                srcPageNum,
                 drawX,
                 drawY,
                 drawW,
@@ -1397,12 +1822,19 @@
         this._pdfPageCanvasCache = {};
         this._pdfPageCanvasCacheOrder = [];
       }
-      let pageCanvas = this._getPdfPageCanvasFromCache(targetPage);
+      if (this.pdfDoc && !this.pdfDoc._graphlyDocUid) {
+        this.pdfDoc._graphlyDocUid = `pdfdoc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      }
+      const activeDocUid = (this.pdfDoc && this.pdfDoc._graphlyDocUid) || '';
+      if (activeDocUid && this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0 && (!this._pdfBytesByDocUid || !this._pdfBytesByDocUid.has(activeDocUid))) {
+        this._registerPdfBytesForDocUid(activeDocUid, this._cachedPdfBytes, this.pdfDoc);
+      }
+      const hasBackedVecPdf = Boolean(activeDocUid && this._hasLivePdfSourceForBoard({ pdfDocUid: activeDocUid }));
+      let pageCanvas = this._getPdfPageCanvasFromCache(targetPage, '', activeDocUid, targetPage);
       if (!pageCanvas) {
         const page = await this.pdfDoc.getPage(targetPage);
         const baseVp = page.getViewport({ scale: 1.0 });
-        const canWebP = (typeof this._canEncodeCanvasWebP === 'function') && this._canEncodeCanvasWebP();
-        const targetMinPxW = canWebP ? 2800 : 2340;
+        const targetMinPxW = 2800;
         const maxSidePx = 4032;
         const maxAreaPx = 15500000;
         const rawScale = Math.max(2.0, Math.min(4.7, targetMinPxW / Math.max(1, baseVp.width)));
@@ -1431,9 +1863,9 @@
           pageCanvas._mipCanvas = mipCanvas;
         } catch (e) { }
 
-        pageCanvas._cachedDataUrl = this.encodeCanvasSmartWebP(pageCanvas, 0.88);
-        this._putPdfPageCanvasInCache(targetPage, pageCanvas, pageCanvas._cachedDataUrl);
-      } else if (!pageCanvas._cachedDataUrl) {
+        pageCanvas._cachedDataUrl = hasBackedVecPdf ? '' : this.encodeCanvasSmartWebP(pageCanvas, 0.88);
+        this._putPdfPageCanvasInCache(targetPage, pageCanvas, pageCanvas._cachedDataUrl, activeDocUid, targetPage);
+      } else if (!pageCanvas._cachedDataUrl && !hasBackedVecPdf) {
         pageCanvas._cachedDataUrl = this.encodeCanvasSmartWebP(pageCanvas, 0.88);
       }
 
@@ -1464,15 +1896,13 @@
       const centerX = 0;
       const centerY = yTopMath - mathH / 2;
 
-      if (this.pdfDoc && !this.pdfDoc._graphlyDocUid) {
-        this.pdfDoc._graphlyDocUid = `pdfdoc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      }
       this._invalidatePdfBoardHiResTile(false);
 
       this.pdfPageBoardData = {
         pageNum: targetPage,
+        pdfSourcePageNum: targetPage,
         totalPages: total,
-        pdfDocUid: (this.pdfDoc && this.pdfDoc._graphlyDocUid) || '',
+        pdfDocUid: activeDocUid,
         canvas: pageCanvas,
         dataUrl: pageCanvas._cachedDataUrl || '',
         pixelW: pageCanvas.width,
@@ -1657,6 +2087,7 @@
 
       this._pdfBoardHiResTileTimer = setTimeout(async () => {
         this._pdfBoardHiResTileTimer = null;
+        const liveVecDoc = req.docUid ? this._getLivePdfDocForUid(req.docUid) : null;
         if (
           this._pdfBoardHiResTileToken !== token ||
           this.isPdfModalOpen ||
@@ -1664,8 +2095,8 @@
           this.isPanning ||
           this._pinchState ||
           this._isZoomAnimating ||
-          !this.pdfDoc ||
-          this.pdfDoc._graphlyDocUid !== req.docUid ||
+          !liveVecDoc ||
+          this.pdfPageBoardData.pdfDocUid !== req.docUid ||
           (this.pdfPageBoardData.pageNum || 1) !== req.pageNum
         ) {
           if (this._pdfBoardHiResTileInFlightKey === req.key) {
@@ -1675,7 +2106,7 @@
         }
 
         try {
-          const page = await this.pdfDoc.getPage(req.pageNum);
+          const page = await liveVecDoc.getPage(req.srcPageNum || req.pageNum || 1);
           if (this._pdfBoardHiResTileToken !== token || !this.pdfPageBoardData) {
             if (this._pdfBoardHiResTileInFlightKey === req.key) {
               this._pdfBoardHiResTileInFlightKey = null;
@@ -3136,7 +3567,7 @@
         ? 'image/png'
         : (canWebP ? 'image/webp' : (allowJpegFallback !== false ? 'image/jpeg' : 'image/png'));
       const effQuality = (mime === 'image/jpeg')
-        ? Math.min(0.76, Math.max(0.68, quality - 0.20))
+        ? Math.min(0.80, Math.max(0.74, quality - 0.12))
         : quality;
       if (typeof canvas.toBlob === 'function' && typeof FileReader !== 'undefined') {
         try {
