@@ -1689,18 +1689,18 @@
       ctx.shadowOffsetY = 0;
 
       ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = isActivelyMovingCamera ? 'medium' : 'high';
+      ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(sourceTex, drawX, drawY, drawW, drawH);
 
-      // 🌟 [고배율(145%~350%) 정지 시 현재 화면 영역만 1:1 원본 벡터 타일로 선명화]:
-      // 전체 페이지 캔버스(2,800px)는 그대로 유지해 저장 용량·메모리를 보호하면서,
-      // 줌/패닝이 멈춘 즉시 화면에 보이는 교집합(최대 뷰포트 크기, ~3.8MP)만 pdf.js 벡터로 덮어 그려 350%에서도 인쇄물급 칼화질을 보장합니다!
-      if (!isExport && !isActivelyMovingCamera && ctx === this.ctx && !this._isRenderingGraphSnapshot) {
+      // 🌟 [고배율(132%~350%) 정지 시 현재 화면 영역만 1:1 원본 벡터 타일로 선명화]:
+      // 전체 페이지 캔버스(2,800px)는 그대로 유지해 기본 100%~132% 이동 중 재렌더링을 0회로 차단하면서,
+      // 고배율 줌/패닝이 멈춘 즉시 화면에 보이는 교집합만 백그라운드 Web Worker로 덮어 그려 350%에서도 칼화질을 보장합니다!
+      if (!isExport && !isActivelyMovingCamera && !this.isDrawingInk && ctx === this.ctx && !this._isRenderingGraphSnapshot) {
         const docUid = this.pdfPageBoardData.pdfDocUid || '';
         const liveVecDoc = docUid ? this._getLivePdfDocForUid(docUid) : null;
         const hasLiveVectorDoc = Boolean(liveVecDoc && typeof liveVecDoc.getPage === 'function');
         const baseTexW = pageCanvas.width || pageCanvas.naturalWidth || 2800;
-        if (hasLiveVectorDoc && (drawW * effDpr) > (baseTexW * 1.15)) {
+        if (hasLiveVectorDoc && (this.zoomLevel || 1.0) > 1.32 && (drawW * effDpr) > (baseTexW * 1.28)) {
           const sw = Math.max(1, this.screenWidth || window.innerWidth || 1280);
           const sh = Math.max(1, this.screenHeight || window.innerHeight || 720);
           const visL = Math.max(0, Math.floor(drawX));

@@ -19344,8 +19344,17 @@
       const liveVecDoc = (docUid && typeof this._getLivePdfDocForUid === 'function')
         ? this._getLivePdfDocForUid(docUid)
         : ((this.pdfDoc && this.pdfDoc._graphlyDocUid === docUid) ? this.pdfDoc : null);
+      const effFilter = (this._viewerPkg && this._viewerPkg.exportFilter) || null;
+      const isDirectSplitPdfSlide = Boolean(
+        slide && (
+          slide._viewerPaperCanvas ||
+          slide._viewerPaperBlobUrl ||
+          this._canBakeAnnotatedPdfBoardDirect(slide, effFilter)
+        )
+      );
       const canRenderLiveVector = Boolean(
         zoom > 1.06 &&
+        isDirectSplitPdfSlide &&
         !this._isViewerPinching &&
         !this._viewerBlankRiffleActive &&
         !this._viewerBlankRiffleRafId &&
