@@ -610,7 +610,25 @@
       }
 
       this.showToast('⏳ PDF 문서를 불러오는 중입니다...');
-      const loadingTask = window.pdfjsLib.getDocument({ data: clonedBytes.slice() });
+      const isFileProtocol = typeof window !== 'undefined' && window.location && window.location.protocol === 'file:';
+      const pdfLibScriptEl = (!isFileProtocol && typeof document !== 'undefined')
+        ? document.querySelector('script[src*="lib/pdf.min.js"]')
+        : null;
+      const pdfLibBaseHref = (pdfLibScriptEl && pdfLibScriptEl.src)
+        ? pdfLibScriptEl.src
+        : ((typeof window !== 'undefined' && window.location) ? new URL('lib/', window.location.href).href : 'lib/');
+      const cMapUrl = isFileProtocol
+        ? 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/'
+        : new URL('cmaps/', pdfLibBaseHref).href;
+      const standardFontDataUrl = isFileProtocol
+        ? 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/'
+        : new URL('standard_fonts/', pdfLibBaseHref).href;
+      const loadingTask = window.pdfjsLib.getDocument({
+        data: clonedBytes.slice(),
+        cMapUrl,
+        cMapPacked: true,
+        standardFontDataUrl
+      });
 
       return loadingTask.promise.then(async pdf => {
         if (pdf && !pdf._graphlyDocUid) {
