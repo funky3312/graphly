@@ -10467,13 +10467,11 @@ body.theme-light .smart-viewer-stage {
 #smartNoteViewerStage {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  contain: layout style;
 }
 
 .smart-viewer-neighbor-stage {
   z-index: 1;
   pointer-events: none;
-  contain: layout style;
 }
 
 .smart-viewer-pdf-hires-canvas {

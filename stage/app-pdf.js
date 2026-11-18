@@ -1401,7 +1401,8 @@
       if (!pageCanvas) {
         const page = await this.pdfDoc.getPage(targetPage);
         const baseVp = page.getViewport({ scale: 1.0 });
-        const targetMinPxW = 2800;
+        const canWebP = (typeof this._canEncodeCanvasWebP === 'function') && this._canEncodeCanvasWebP();
+        const targetMinPxW = canWebP ? 2800 : 2340;
         const maxSidePx = 4032;
         const maxAreaPx = 15500000;
         const rawScale = Math.max(2.0, Math.min(4.7, targetMinPxW / Math.max(1, baseVp.width)));
@@ -3135,7 +3136,7 @@
         ? 'image/png'
         : (canWebP ? 'image/webp' : (allowJpegFallback !== false ? 'image/jpeg' : 'image/png'));
       const effQuality = (mime === 'image/jpeg')
-        ? Math.min(0.80, Math.max(0.72, quality - 0.13))
+        ? Math.min(0.76, Math.max(0.68, quality - 0.20))
         : quality;
       if (typeof canvas.toBlob === 'function' && typeof FileReader !== 'undefined') {
         try {

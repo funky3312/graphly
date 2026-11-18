@@ -17753,6 +17753,7 @@
         let lastMoveX = 0, lastMoveTime = 0, velocityX = 0;
         let moveSamples = [];
         let wasBrakingInertia = false;
+        let wasBrakingRiffle = false;
         let stoppedInertiaVx = 0, stoppedInertiaVy = 0;
         let lastManualHotspotTapAt = 0;
         let wasMultiTouch = false;
@@ -17903,10 +17904,11 @@
             wasMultiTouch = false;
             dragAxisLock = null;
             pointerDownTime = performance.now();
-            if ((pointerDownTime - lastHorizSwipeUpTime) > 480) {
+            if (!stoppedRiffle.wasActive && (pointerDownTime - lastHorizSwipeUpTime) > 380) {
               horizSwipeChainCount = 0;
               lastHorizSwipeDir = null;
             }
+            wasBrakingRiffle = Boolean(stoppedRiffle.wasActive);
             wasBrakingInertia = Boolean(
               stoppedRiffle.wasActive ||
               (stoppedInertia.wasActive && stoppedInertia.speed >= 0.14)
@@ -17940,6 +17942,7 @@
             });
             wasMultiTouch = true;
             wasBrakingInertia = false;
+            wasBrakingRiffle = false;
             stoppedInertiaVx = 0;
             stoppedInertiaVy = 0;
             moveSamples = [];
@@ -18169,12 +18172,14 @@
           const elapsed = nowUp - pointerDownTime;
           const finishedAxisLock = dragAxisLock;
           const didBrakeInertia = wasBrakingInertia;
+          const didBrakeRiffle = wasBrakingRiffle;
           const prevBrakeVx = stoppedInertiaVx;
           const prevBrakeVy = stoppedInertiaVy;
           const downTargetSnap = pointerDownTarget;
           pointerDownTarget = null;
           dragAxisLock = null;
           wasBrakingInertia = false;
+          wasBrakingRiffle = false;
           stoppedInertiaVx = 0;
           stoppedInertiaVy = 0;
 
@@ -18206,6 +18211,13 @@
           if (moveDist < 8 && elapsed < 380) {
             horizSwipeChainCount = 0;
             lastHorizSwipeDir = null;
+            const { maxPanX: tapMaxPanX } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, this._viewerZoom || 1.0, viewport);
+            if (tapMaxPanX <= 1 && Math.abs(this._viewerPanX || 0) > 0.5) {
+              this._setSmartViewerCarouselAnimating(false);
+              this._viewerPanX = 0;
+              this._clampSmartViewerPan();
+              this._applySmartViewerTransform();
+            }
             // 관성 스크롤 도중 화면을 툭 눌러 멈춘 경우(Touch-to-Stop)에는 상단 바 토글·더블탭 줌·핫스팟 오작동을 모두 건너뛰고 즉시 정지만 수행!
             if (isPointerCancel || didBrakeInertia) {
               return;
@@ -18264,14 +18276,11 @@
             ? { vx: 0, vy: 0 }
             : this._computeSmartViewerReleaseVelocity(samplesSnap, nowUp);
 
-          // 🚀 [UIScrollView급 연속 플릭(휙휙휙) 관성 가속 스태킹]:
-          // 관성 주행 도중 같은 방향으로 재차 빠르게 플릭하면 기존 관성 속도의 45%를 부드럽게 중첩!
+          // 🚀 [UIScrollView급 연속 플릭(휙휙휙) 세로 관성 가속 스태킹]:
+          // 세로 관성 주행 도중 같은 방향으로 재차 빠르게 플릭하면 기존 세로 관성 속도의 45%를 부드럽게 중첩! (가로 페이지 넘김은 과속 방지를 위해 제외)
           if (!isPointerCancel && didBrakeInertia && elapsed < 280) {
             if (prevBrakeVy * releaseVy > 0 && Math.abs(releaseVy) >= 0.14) {
               releaseVy = Math.max(-5.4, Math.min(5.4, releaseVy + prevBrakeVy * 0.45));
-            }
-            if (prevBrakeVx * releaseVx > 0 && Math.abs(releaseVx) >= 0.14) {
-              releaseVx = Math.max(-5.4, Math.min(5.4, releaseVx + prevBrakeVx * 0.45));
             }
           }
 
@@ -18287,18 +18296,22 @@
             const remain = isNext ? (total - 1 - curIdx) : curIdx;
             if (remain <= 0) return false;
 
-            const isConsecutiveChain = (lastHorizSwipeDir === dir) && ((pointerDownTime - lastHorizSwipeUpTime) <= 460);
+            const isConsecutiveChain = (lastHorizSwipeDir === dir) && (
+              didBrakeRiffle ||
+              ((pointerDownTime - lastHorizSwipeUpTime) <= 360)
+            );
             horizSwipeChainCount = isConsecutiveChain ? (horizSwipeChainCount + 1) : 1;
             lastHorizSwipeDir = dir;
             lastHorizSwipeUpTime = nowUp;
 
             const absVx = Math.abs(releaseVx || 0);
-            // 1회 단발 스와이프는 세기와 무관하게 무조건 1장 고정! 연속 스와이프(<=460ms) + 빠른 속도(>=1.32px/ms)일 때만 절제된 백지 가속(2~5장 상한) 진입!
-            if (horizSwipeChainCount >= 2 && absVx >= 1.32 && remain >= 2) {
-              const rawPages = Math.round(absVx * (horizSwipeChainCount === 2 ? 1.35 : 1.80));
-              const capPages = (horizSwipeChainCount === 2) ? 3 : 5;
-              const stepPages = Math.max(2, Math.min(remain, Math.min(capPages, rawPages)));
-              this._startSmartViewerBlankRiffle(dir, stepPages);
+            const riffleSpeedMin = didBrakeRiffle ? 1.42 : 1.68;
+            // 1회 단발 스와이프는 무조건 1장 고정! 의도적인 빠른 연속 스와이프(<=360ms & >=1.68px/ms)일 때만 절제된 2~3장 백지 가속 진입!
+            if (horizSwipeChainCount >= 2 && absVx >= riffleSpeedMin && remain >= 2) {
+              const stepPages = (horizSwipeChainCount === 2)
+                ? 2
+                : Math.max(2, Math.min(remain, Math.min(3, Math.round(absVx * 1.05))));
+              this._startSmartViewerBlankRiffle(dir, Math.min(remain, stepPages));
               return true;
             }
             const nextTargetIdx = isNext ? (curIdx + 1) : (curIdx - 1);
@@ -18387,6 +18400,7 @@
           this._isViewerPinching = false;
           wasMultiTouch = false;
           wasBrakingInertia = false;
+          wasBrakingRiffle = false;
           stoppedInertiaVx = 0;
           stoppedInertiaVy = 0;
           dragAxisLock = null;
@@ -19174,23 +19188,30 @@
 
       const sign = dir === 'next' ? 1 : -1;
       const curIdx = this._viewerSlideIdx || 0;
-      const baseFrom = this._viewerBlankRiffleRafId && typeof this._viewerBlankRiffleFloatIdx === 'number'
+      const baseFrom = this._viewerBlankRiffleActive && typeof this._viewerBlankRiffleFloatIdx === 'number'
         ? this._viewerBlankRiffleFloatIdx
         : curIdx;
-      const baseTarget = this._viewerBlankRiffleRafId && typeof this._viewerBlankRiffleTargetIdx === 'number'
-        ? this._viewerBlankRiffleTargetIdx
-        : curIdx;
-      const targetIdx = Math.max(0, Math.min(total - 1, baseTarget + sign * Math.max(1, pagesToAdvance)));
-      if (targetIdx === curIdx && !this._viewerBlankRiffleRafId) return;
+      const targetIdx = Math.max(0, Math.min(total - 1, Math.round(baseFrom) + sign * Math.max(1, pagesToAdvance)));
+      if (targetIdx === curIdx && !this._viewerBlankRiffleActive) return;
 
+      // 직전 비동기 switchSmartViewerSlide 대기열 무효화 및 가로 오프셋(dx) 즉시 정중앙(0px) 복원!
+      this._viewerSwitchSeq = (this._viewerSwitchSeq || 0) + 1;
+      if (!this._viewerBlankRiffleActive) {
+        this._viewerBlankRiffleOriginIdx = curIdx;
+      }
       this._commitPendingViewerCarouselImmediately(true);
       this._setSmartViewerCarouselAnimating(false);
+      if (this._viewerSnapBackTimer) {
+        clearTimeout(this._viewerSnapBackTimer);
+        this._viewerSnapBackTimer = null;
+      }
       this._stopSmartViewerInertia(true);
       this._clearSmartViewerPdfHiResTile(true);
       if (this._viewerBlankRiffleRafId) {
         cancelAnimationFrame(this._viewerBlankRiffleRafId);
         this._viewerBlankRiffleRafId = null;
       }
+      this._viewerBlankRiffleActive = true;
 
       const stage = document.getElementById('smartNoteViewerStage');
       const badge = document.getElementById('smartNoteViewerRiffleBadge');
@@ -19199,6 +19220,11 @@
       if (prevStage) prevStage.style.display = 'none';
       if (nextStage) nextStage.style.display = 'none';
       this._viewerPanX = 0;
+      this._clampSmartViewerPan();
+      if (stage) {
+        stage.classList.add('is-riffle-blank');
+      }
+      this._applySmartViewerTransform();
 
       const renderRiffleBadge = (idxVal) => {
         if (!badge) return;
@@ -19209,11 +19235,8 @@
         badge.style.display = 'flex';
       };
 
-      if (stage) {
-        stage.classList.add('is-riffle-blank');
-      }
       const distPages = Math.max(1, Math.abs(targetIdx - baseFrom));
-      const durMs = Math.min(780, Math.round(350 + distPages * 115));
+      const durMs = Math.min(900, Math.round(420 + distPages * 160));
       const startT = performance.now();
       this._viewerBlankRiffleStartIdx = baseFrom;
       this._viewerBlankRiffleTargetIdx = targetIdx;
@@ -19226,7 +19249,7 @@
           return;
         }
         const u = Math.max(0, Math.min(1, (now - startT) / durMs));
-        const ease = 1 - Math.pow(1 - u, 2.75);
+        const ease = 1 - Math.pow(1 - u, 1.85);
         const curFloat = baseFrom + (targetIdx - baseFrom) * ease;
         this._viewerBlankRiffleFloatIdx = curFloat;
         const roundedIdx = Math.max(0, Math.min(total - 1, Math.round(curFloat)));
@@ -19238,7 +19261,6 @@
           renderRiffleBadge(roundedIdx);
         }
         if (u >= 1) {
-          this._viewerBlankRiffleRafId = null;
           this._viewerSlideIdx = targetIdx;
           this._stopSmartViewerBlankRiffle(true);
           return;
@@ -19249,19 +19271,34 @@
     }
 
     _stopSmartViewerBlankRiffle(renderFinal = true) {
-      const wasActive = Boolean(this._viewerBlankRiffleRafId);
+      const wasActive = Boolean(this._viewerBlankRiffleActive || this._viewerBlankRiffleRafId);
+      this._viewerBlankRiffleActive = false;
       if (this._viewerBlankRiffleRafId) {
         cancelAnimationFrame(this._viewerBlankRiffleRafId);
         this._viewerBlankRiffleRafId = null;
       }
+      const originIdx = this._viewerBlankRiffleOriginIdx;
+      this._viewerBlankRiffleOriginIdx = null;
       const stage = (typeof document !== 'undefined') ? document.getElementById('smartNoteViewerStage') : null;
       const badge = (typeof document !== 'undefined') ? document.getElementById('smartNoteViewerRiffleBadge') : null;
       if (badge) badge.style.display = 'none';
       if (stage) stage.classList.remove('is-riffle-blank');
       this._viewerBlankRiffleTargetIdx = null;
       this._viewerBlankRiffleFloatIdx = null;
+      if (wasActive && this._isSmartNoteViewerOverlayOpen()) {
+        const viewport = (typeof document !== 'undefined') ? document.getElementById('smartNoteViewerViewport') : null;
+        const { maxPanX } = this._getSmartViewerMaxPan(this._viewerBaseW, this._viewerBaseH, this._viewerZoom || 1.0, viewport);
+        if (maxPanX <= 1) {
+          this._viewerPanX = 0;
+        }
+        this._clampSmartViewerPan();
+        this._applySmartViewerTransform();
+      }
       if (wasActive && renderFinal && this._isSmartNoteViewerOverlayOpen() && this._viewerPkg) {
         const settleIdx = Math.max(0, Math.min((this._viewerPkg.playlistSlides.length || 1) - 1, this._viewerSlideIdx || 0));
+        if (typeof originIdx === 'number' && originIdx !== settleIdx) {
+          this._viewerSlideIdx = originIdx;
+        }
         this.switchSmartViewerSlide(settleIdx, null, 0);
       }
       return { wasActive };
@@ -21614,7 +21651,7 @@
         }
         if (allowJpegFallback !== false) {
           try {
-            const jpegQuality = Math.min(0.80, Math.max(0.72, quality - 0.13));
+            const jpegQuality = Math.min(0.76, Math.max(0.68, quality - 0.20));
             const jpeg = canvas.toDataURL('image/jpeg', jpegQuality);
             if (jpeg && jpeg.startsWith('data:image/jpeg')) return jpeg;
           } catch (e) { }
