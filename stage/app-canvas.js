@@ -1757,6 +1757,7 @@
         this._liveBezierScreenPts = [{ x: pos.x, y: pos.y, p: pressure }];
         this._inkHoldDetected = false;
         this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
+        this._inkHoldTrackState = this._createInkHoldTrackState(pos.x, pos.y);
         this._lastSignificantMoveTime = Date.now();
 
         const useCoveredBoardLayer = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
@@ -1836,8 +1837,6 @@
         this._startInkHoldTimer();
         if (isHighlighterStroke) {
           this.render();
-        } else {
-          this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
         }
         return;
       }
@@ -2527,20 +2526,16 @@
             return;
           }
 
-          // 🌟 [홀드 감지 정밀 앵커링 (W3C/모바일 표준 8px Slop 적용)]:
-          // 연속 필기 중에는 홀드 타이머가 확실히 리셋되면서도,
-          // 유리면 위에서 선을 긋고 멈출 때 발생하는 미세 손떨림(stepDist <= 2.5px & dHold <= 8px)으로 타이머가 초기화되지 않도록 보호!
-          const prevMovePos = this._lastMoveEventScreenPos || pos;
-          const stepDist = Math.hypot(pos.x - prevMovePos.x, pos.y - prevMovePos.y);
+          // 🌟 [홀드 감지 적응형 앵커링 & 타이머 재무장 (초단거리 데드락 차단 + 유리면 정지 떨림 흡수)]:
           this._lastMoveEventScreenPos = { x: pos.x, y: pos.y };
-          if (this._inkHoldLastScreenPos) {
-            const dHold = Math.hypot(pos.x - this._inkHoldLastScreenPos.x, pos.y - this._inkHoldLastScreenPos.y);
-            if (stepDist > 4.5 || dHold > 8) {
-              this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
-              this._lastSignificantMoveTime = Date.now();
-              if (!this._inkHoldTimer) {
-                this._startInkHoldTimer();
-              }
+          if (!this._inkHoldTrackState && this._inkHoldLastScreenPos) {
+            this._inkHoldTrackState = this._createInkHoldTrackState(this._inkHoldLastScreenPos.x, this._inkHoldLastScreenPos.y);
+          }
+          if (this._inkHoldTrackState && this._shouldResetInkHoldOnMove(this._inkHoldTrackState, pos.x, pos.y, Boolean(this._inkHoldTimer))) {
+            this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
+            this._lastSignificantMoveTime = Date.now();
+            if (!this._inkHoldTimer) {
+              this._startInkHoldTimer();
             }
           }
 
@@ -2578,6 +2573,32 @@
             const lastRaw = this._lastRawInkScreenPos;
             if (lastRaw) {
               const rawDist = Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y);
+              if (
+                e.pointerType === 'pen' &&
+                inkProfile.touchDownSettleDist > 0 &&
+                this.currentInkStroke &&
+                !this.currentInkStroke.isHighlighter &&
+                Array.isArray(this.currentInkStroke.points) &&
+                this.currentInkStroke.points.length === 1 &&
+                rawDist < inkProfile.touchDownSettleDist
+              ) {
+                const rawPress0 = (typeof ev.pressure === 'number') ? ev.pressure : 0.5;
+                if (rawPress0 <= 0.24 && this._liveBezierScreenPts && this._liveBezierScreenPts.length === 1) {
+                  const sx0 = lastRaw.x * 0.55 + pPos.x * 0.45;
+                  const sy0 = lastRaw.y * 0.55 + pPos.y * 0.45;
+                  this._lastRawInkScreenPos = { x: sx0, y: sy0 };
+                  this._prevRawInkScreenPos = { x: sx0, y: sy0 };
+                  this._lastInkScreenPos = { x: sx0, y: sy0 };
+                  this._liveBezierScreenPts[0].x = sx0;
+                  this._liveBezierScreenPts[0].y = sy0;
+                  const c0 = (this.currentInkStroke.target === 'graph')
+                    ? this.screenToMath(sx0, sy0)
+                    : this.screenToBoard(sx0, sy0);
+                  this.currentInkStroke.points[0].x = c0.x;
+                  this.currentInkStroke.points[0].y = c0.y;
+                }
+                continue;
+              }
               if (rawDist < minRawDist) continue;
 
               // 🛡️ [역주행 점프 컷오프 (Monotonic Forward Guard)]:
@@ -3728,7 +3749,19 @@
           } else {
             const lastSmoothed = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
             const tailDist = Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y);
-            if (tailDist >= 0.15) {
+            let isLiftOffKick = false;
+            if (!this.currentInkStroke.isHighlighter && this._liveBezierScreenPts.length >= 2 && tailDist < 2.2) {
+              const prevEndPt = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 2];
+              const vxPrev = lastSmoothed.x - prevEndPt.x;
+              const vyPrev = lastSmoothed.y - prevEndPt.y;
+              const lenPrev = Math.hypot(vxPrev, vyPrev);
+              if (lenPrev > 0.35 && tailDist > 1e-4) {
+                const cosTail = (vxPrev * (rawEnd.x - lastSmoothed.x) + vyPrev * (rawEnd.y - lastSmoothed.y)) / (lenPrev * tailDist);
+                if (cosTail < 0.25) isLiftOffKick = true;
+              }
+            }
+            const minTailDist = (this._liveBezierScreenPts.length === 1 && !this.currentInkStroke.isHighlighter) ? 1.35 : 0.15;
+            if (tailDist >= minTailDist && !isLiftOffKick) {
               const isShortStroke = (this._liveBezierScreenPts.length <= 2);
               const tailKeep = 0.25;
               const endX = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.x : (lastSmoothed.x * tailKeep + rawEnd.x * (1 - tailKeep));
@@ -3770,6 +3803,7 @@
         this._lastInkSampleTs = null;
         this._lastInkAcceptedTs = null;
         this._inkHoldLastScreenPos = null;
+        this._inkHoldTrackState = null;
         this._lastSignificantMoveTime = 0;
         this.isDrawingInk = false;
         const hadSceneFreeze = Boolean(this._hasSceneFreeze && this.sceneFreezeCanvas);

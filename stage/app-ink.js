@@ -597,12 +597,13 @@
           useCoalescedEvents: (() => {
             try { return localStorage.getItem('graphly_ipad_coalesced') === '1'; } catch (_) { return false; }
           })(),
-          minRawDistPen: 0.2,            // ink-diag 100% 동일 기준: 단획(ㄴ, ㅡ, ㅣ, 받침, 점) pointermove 누락 원천 차단
+          minRawDistPen: 0.55,           // 유리면 정지 센서 노이즈 차단 + 소수점·단획 보존 (와콤원 동급 정밀도)
           minRawDistMouse: 1.5,
-          minCardDistPen: 0.2,           // 카드 내부 아이패드 필기 최소 점 간격 (px)
+          minCardDistPen: 0.50,          // 카드 내부 아이패드 필기 최소 점 간격 (px)
           minCardDistMouse: 1.2,
-          forwardGuardMaxDist: 0,        // 아이패드는 단일 확정 이벤트([e])만 사용하므로 역주행 컷오프 비활성화 (작은 꺾임 획 증발 원천 차단)
-          forwardGuardMinCos: -1.0,
+          touchDownSettleDist: 1.35,     // 입필 첫 1.35px 유리면 착지 미끄러짐 흡수 (첫머리 구슬·콩나물 대가리 원천 제거)
+          forwardGuardMaxDist: 1.50,     // 와콤원과 동일하게 1.5px 이내 미세 역주행 스파이크 차단 (직각·예각 코너 100% 보존)
+          forwardGuardMinCos: -0.50,
           streamlineWeight: 0.14,        // 아이패드 강화유리 맞춤 1차 EMA 보정 강도 (단획 축소 방지)
           streamlineDecayDist: 16.0      // 빠른 원/곡선에서 보정이 0으로 감쇠되는 거리 (px)
         };
@@ -2839,6 +2840,236 @@
       return Boolean(modified || stickerErased);
     }
 
+    // 🌟 [아이패드 애플펜슬 입필·종필 삐침(Hook) 및 제자리 뭉침(Cluster) 무결점 정밀 분리 직선 추출기]:
+    // - 반듯하게 그은 직선은 양 끝을 단 0.0px도 축소하지 않고 100% 보존(Zero-Shrinkage Extension)하며,
+    // - 강화유리 착지 순간 발생하는 사선/수직/역방향 첫 시작점 삐침·뭉침과 정지 감속 갈고리만 정확히 꼭짓점까지 도려냅니다.
+    // - 원·사각형·삼각형·포물선·삼차함수·'ㄴ'·'ㄱ'·'3' 등 곡선/다변 도형은 주축 비율(>=0.66) 및 이탈 한도로 100% 배제합니다.
+    _extractOptimalLineEndpoints(rawScreenPts) {
+      if (!Array.isArray(rawScreenPts) || rawScreenPts.length < 2) return null;
+      const L = rawScreenPts.length;
+
+      let rawMinX = rawScreenPts[0].x, rawMaxX = rawScreenPts[0].x;
+      let rawMinY = rawScreenPts[0].y, rawMaxY = rawScreenPts[0].y;
+      const cumArc = new Float64Array(L);
+      cumArc[0] = 0;
+      for (let i = 1; i < L; i++) {
+        const pPrev = rawScreenPts[i - 1];
+        const rp = rawScreenPts[i];
+        if (rp.x < rawMinX) rawMinX = rp.x;
+        if (rp.x > rawMaxX) rawMaxX = rp.x;
+        if (rp.y < rawMinY) rawMinY = rp.y;
+        if (rp.y > rawMaxY) rawMaxY = rp.y;
+        cumArc[i] = cumArc[i - 1] + Math.hypot(rp.x - pPrev.x, rp.y - pPrev.y);
+      }
+
+      const totalArc = cumArc[L - 1];
+      const rawW = rawMaxX - rawMinX;
+      const rawH = rawMaxY - rawMinY;
+      const rawMaxDim = Math.max(1, rawW, rawH);
+      const rawDiag = Math.hypot(rawW, rawH);
+      if (totalArc < 6.5 || rawDiag < 6.5) return null;
+
+      // 시작점·끝점 갈고리/뭉침 탐색 허용 반경 (단거리 분수선 2~5px 착지 삐침 커버 + 'ㄴ'/'ㄱ' 제2변 보호 상한)
+      const maxStartHookDist = Math.min(7.0, Math.max(3.4, rawMaxDim * 0.34));
+      const maxEndHookDist = Math.min(7.5, Math.max(3.5, rawMaxDim * 0.35));
+
+      const rawFirst = rawScreenPts[0];
+      const rawLast = rawScreenPts[L - 1];
+
+      // 1) 시작 후보 수집 (첫 접촉 반경 클러스터 내부에서만 수집 후 본선 이탈 시 즉시 중단 -> 닫힌 루프 끝점 혼입 차단)
+      const startRawCands = [0];
+      for (let i = 1; i < L - 1; i++) {
+        const d0 = Math.hypot(rawScreenPts[i].x - rawFirst.x, rawScreenPts[i].y - rawFirst.y);
+        if (d0 <= maxStartHookDist) {
+          startRawCands.push(i);
+        } else if (d0 > maxStartHookDist + 3.0) {
+          break;
+        }
+      }
+      const startCands = (startRawCands.length <= 18) ? startRawCands : [0];
+      if (startRawCands.length > 18) {
+        const tailKeepFrom = startRawCands.length - 6;
+        for (let c = 1; c < startRawCands.length; c++) {
+          const idx = startRawCands[c];
+          const prevKept = rawScreenPts[startCands[startCands.length - 1]];
+          const curPt = rawScreenPts[idx];
+          if (c >= tailKeepFrom || Math.hypot(curPt.x - prevKept.x, curPt.y - prevKept.y) >= 0.70) {
+            startCands.push(idx);
+          }
+        }
+      }
+
+      // 2) 끝 후보 수집 (종필 정지 클러스터 내부에서만 역순 수집 후 본선 진입 시 즉시 중단)
+      const endRawCands = [L - 1];
+      for (let j = L - 2; j > 0; j--) {
+        const dEnd = Math.hypot(rawScreenPts[j].x - rawLast.x, rawScreenPts[j].y - rawLast.y);
+        if (dEnd <= maxEndHookDist) {
+          endRawCands.push(j);
+        } else if (dEnd > maxEndHookDist + 3.0) {
+          break;
+        }
+      }
+      const endCands = (endRawCands.length <= 18) ? endRawCands : [L - 1];
+      if (endRawCands.length > 18) {
+        const tailKeepFrom = endRawCands.length - 6;
+        for (let c = 1; c < endRawCands.length; c++) {
+          const idx = endRawCands[c];
+          const prevKept = rawScreenPts[endCands[endCands.length - 1]];
+          const curPt = rawScreenPts[idx];
+          if (c >= tailKeepFrom || Math.hypot(curPt.x - prevKept.x, curPt.y - prevKept.y) >= 0.70) {
+            endCands.push(idx);
+          }
+        }
+      }
+
+      // 3) 후보 쌍 (i, j) 중 직선 불변 조건을 만족하면서 기하 오차 비용이 최소인 코어 본선 탐색
+      let best = null;
+      const minDominantChord = Math.max(6.5, rawMaxDim * 0.66);
+
+      for (let si = 0; si < startCands.length; si++) {
+        const i = startCands[si];
+        const pA = rawScreenPts[i];
+        const trimStartDist = (i === 0) ? 0 : Math.hypot(pA.x - rawFirst.x, pA.y - rawFirst.y);
+
+        for (let ej = 0; ej < endCands.length; ej++) {
+          const j = endCands[ej];
+          if (j <= i) continue;
+          const pB = rawScreenPts[j];
+          const chord = Math.hypot(pB.x - pA.x, pB.y - pA.y);
+          if (chord < minDominantChord) continue;
+
+          const rStep = (chord < 30) ? 1.5 : 2.5;
+          let resampledArc = 0;
+          let lastR = pA;
+          let maxDev = 0;
+          for (let k = i + 1; k < j; k++) {
+            const pk = rawScreenPts[k];
+            const dev = this.distToSegment(pk, pA, pB);
+            if (dev > maxDev) maxDev = dev;
+            const dR = Math.hypot(pk.x - lastR.x, pk.y - lastR.y);
+            if (dR >= rStep) {
+              resampledArc += dR;
+              lastR = pk;
+            }
+          }
+          resampledArc += Math.hypot(pB.x - lastR.x, pB.y - lastR.y);
+          const straightness = chord / Math.max(chord, resampledArc);
+
+          // 단거리(6.5~30px) <-> 장거리(30px+) 절벽 없는 연속 허용 오차 곡선
+          const isShort = (chord < 30);
+          const devLimit = isShort
+            ? Math.max(2.4, 1.8 + chord * 0.10)
+            : Math.max(4.8, chord * 0.085);
+
+          const passesLine = isShort
+            ? (straightness >= 0.885 && maxDev <= devLimit)
+            : (maxDev <= devLimit &&
+              (straightness >= 0.90 || (straightness >= 0.85 && maxDev <= Math.max(3.8, chord * 0.065))));
+
+          if (!passesLine) continue;
+
+          const trimEndDist = (j === L - 1) ? 0 : Math.hypot(rawLast.x - pB.x, rawLast.y - pB.y);
+          const trimSpan = trimStartDist + trimEndDist;
+          const normDev = maxDev / Math.max(10.0, chord * 0.25);
+          const cost = normDev * 10.0 + (1.0 - straightness) * 20.0 + trimSpan * 0.16;
+
+          if (!best || cost < best.cost) {
+            best = { i, j, chord, cost };
+          }
+        }
+      }
+
+      if (!best) return null;
+
+      // 4) Zero-Shrinkage Extension: 코어 본선의 국소 진행 방향과 일직선상에 놓인 정방향 감속 양 끝점은 100% 길이 복원!
+      let finalI = best.i;
+      let finalJ = best.j;
+
+      if (finalI > 0 || finalJ < L - 1) {
+        const coreA = rawScreenPts[finalI];
+        const coreB = rawScreenPts[finalJ];
+        const coreDx = coreB.x - coreA.x;
+        const coreDy = coreB.y - coreA.y;
+        const coreLen = Math.max(1e-6, Math.hypot(coreDx, coreDy));
+        const globalUx = coreDx / coreLen;
+        const globalUy = coreDy / coreLen;
+
+        // 시작부 국소 접선 벡터 (완만한 긴 밑줄 양끝 복원 지원)
+        let refStartIdx = finalI + 1;
+        while (refStartIdx < finalJ && Math.hypot(rawScreenPts[refStartIdx].x - coreA.x, rawScreenPts[refStartIdx].y - coreA.y) < Math.min(12.0, coreLen * 0.5)) {
+          refStartIdx++;
+        }
+        const sVecX = rawScreenPts[refStartIdx].x - coreA.x;
+        const sVecY = rawScreenPts[refStartIdx].y - coreA.y;
+        const sVecLen = Math.hypot(sVecX, sVecY);
+        const startUx = sVecLen > 0.5 ? (sVecX / sVecLen) : globalUx;
+        const startUy = sVecLen > 0.5 ? (sVecY / sVecLen) : globalUy;
+        const maxExtPerp = Math.max(1.25, Math.min(2.4, coreLen * 0.022));
+
+        while (finalI > 0) {
+          const candPt = rawScreenPts[finalI - 1];
+          const curStart = rawScreenPts[finalI];
+          const segX = curStart.x - candPt.x;
+          const segY = curStart.y - candPt.y;
+          const segLen = Math.hypot(segX, segY);
+          if (segLen < 0.08) {
+            finalI--;
+            continue;
+          }
+          const cosLocal = (segX * startUx + segY * startUy) / segLen;
+          const perpFromLocal = Math.abs((candPt.x - coreA.x) * startUy - (candPt.y - coreA.y) * startUx);
+          if (cosLocal >= 0.89 && perpFromLocal <= maxExtPerp) {
+            finalI--;
+          } else {
+            break;
+          }
+        }
+
+        // 종료부 국소 접선 벡터
+        let refEndIdx = finalJ - 1;
+        while (refEndIdx > finalI && Math.hypot(coreB.x - rawScreenPts[refEndIdx].x, coreB.y - rawScreenPts[refEndIdx].y) < Math.min(12.0, coreLen * 0.5)) {
+          refEndIdx--;
+        }
+        const eVecX = coreB.x - rawScreenPts[refEndIdx].x;
+        const eVecY = coreB.y - rawScreenPts[refEndIdx].y;
+        const eVecLen = Math.hypot(eVecX, eVecY);
+        const endUx = eVecLen > 0.5 ? (eVecX / eVecLen) : globalUx;
+        const endUy = eVecLen > 0.5 ? (eVecY / eVecLen) : globalUy;
+
+        while (finalJ < L - 1) {
+          const candPt = rawScreenPts[finalJ + 1];
+          const curEnd = rawScreenPts[finalJ];
+          const segX = candPt.x - curEnd.x;
+          const segY = candPt.y - curEnd.y;
+          const segLen = Math.hypot(segX, segY);
+          if (segLen < 0.08) {
+            finalJ++;
+            continue;
+          }
+          const cosLocal = (segX * endUx + segY * endUy) / segLen;
+          const perpFromLocal = Math.abs((candPt.x - coreB.x) * endUy - (candPt.y - coreB.y) * endUx);
+          if (cosLocal >= 0.89 && perpFromLocal <= maxExtPerp) {
+            finalJ++;
+          } else {
+            break;
+          }
+        }
+      }
+
+      const pStart = rawScreenPts[finalI];
+      const pEnd = rawScreenPts[finalJ];
+      const finalChord = Math.hypot(pEnd.x - pStart.x, pEnd.y - pStart.y);
+      if (finalChord < 6.5) return null;
+
+      return {
+        pStart,
+        pEnd,
+        chordLen: finalChord,
+        startIdx: finalI,
+        endIdx: finalJ
+      };
+    }
+
     // 🌟 Draw & Hold 기하 도형 & 수학 함수 개형 인식 엔진 (Line, Circle, Ellipse, Rect, Triangle, Parabola, Cubic/Sine Wave) 🌟
     recognizeInkShape(stroke) {
       if (!stroke || !stroke.points || stroke.points.length < 2) return null;
@@ -2863,9 +3094,57 @@
         return { x: m.x, y: m.y };
       };
 
-      // 🌟 [PaleoSketch / ShortStraw 표준 양 끝단 Dehooking (정지 갈고리 정밀 제거 & 직선 무수축 보존)]:
-      // 펜을 대거나 멈출 때 양 끝 반경 내에 뭉친 정지 노이즈를 분리하되,
-      // 실제 직선 진행 방향에서 옆으로 꺾인 갈고리(Hook)는 완전히 버리고 일직선 감속 끝점은 길이를 100% 보존합니다.
+      // --- [1. 직선 판별 (Straight Line & Axis Magnet Snap — 6.5px+ 초단거리 분수선 & 입·종필 삐침/뭉침 정밀 제거)] ---
+      const lineMatch = this._extractOptimalLineEndpoints(rawScreenPts);
+      if (lineMatch) {
+        const lStart = lineMatch.pStart;
+        let endX = lineMatch.pEnd.x;
+        let endY = lineMatch.pEnd.y;
+        const lChord = lineMatch.chordLen;
+
+        const dx = endX - lStart.x;
+        const dy = endY - lStart.y;
+        const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+        const absAngle = Math.abs(angleDeg);
+
+        const snapAngleThresh = 4.5;
+        const diagAngleThresh = 2.0;
+        const isShortHorizSnap = (lChord < 32 && Math.abs(dy) <= 2.6 && Math.abs(dx) >= 5.5);
+        const isShortVertSnap = (lChord < 32 && Math.abs(dx) <= 2.6 && Math.abs(dy) >= 5.5);
+
+        let snapped = null;
+        if (absAngle < snapAngleThresh || absAngle > (180 - snapAngleThresh) || isShortHorizSnap) {
+          endY = lStart.y;
+          snapped = 'horizontal';
+        } else if (Math.abs(absAngle - 90) < snapAngleThresh || isShortVertSnap) {
+          endX = lStart.x;
+          snapped = 'vertical';
+        } else if (Math.abs(absAngle - 45) < diagAngleThresh || Math.abs(absAngle - 135) < diagAngleThresh) {
+          const dist = Math.hypot(dx, dy);
+          const signX = dx >= 0 ? 1 : -1;
+          const signY = dy >= 0 ? 1 : -1;
+          endX = lStart.x + signX * dist * Math.SQRT1_2;
+          endY = lStart.y + signY * dist * Math.SQRT1_2;
+          snapped = 'diagonal';
+        }
+
+        const lineShape = {
+          type: 'line',
+          start: toTargetCoord(lStart),
+          end: toTargetCoord({ x: endX, y: endY }),
+          snapped: snapped
+        };
+        try {
+          Object.defineProperty(lineShape, '_coreRange', {
+            value: [lineMatch.startIdx, lineMatch.endIdx],
+            enumerable: false,
+            configurable: true
+          });
+        } catch (_) { }
+        return lineShape;
+      }
+
+      // 🌟 [직선 외 곡선·닫힌 도형(삼차개형, 포물선, 삼각형, 원, 타원, 직사각형) 판별 경로 — 기존 로직 100% 원형 유지]:
       let rawMinX = rawScreenPts[0].x, rawMaxX = rawScreenPts[0].x;
       let rawMinY = rawScreenPts[0].y, rawMaxY = rawScreenPts[0].y;
       for (let i = 1; i < rawScreenPts.length; i++) {
@@ -2887,7 +3166,6 @@
       const rawLast = rawScreenPts[rawScreenPts.length - 1];
       let trimEndIdx = rawScreenPts.length - 1;
       while (trimEndIdx > trimStartIdx + 1 && Math.hypot(rawScreenPts[trimEndIdx - 1].x - rawLast.x, rawScreenPts[trimEndIdx - 1].y - rawLast.y) <= endTrimRadius) {
-        // 작은 'ㄴ'·'ㄱ'의 정상적인 두 번째 변이 통째로 잘리지 않도록, 주 진행 방향과 수직으로 3px 이상 뻗은 코너 변은 보존
         if (rawMaxDim < 24 && trimEndIdx - 1 > trimStartIdx) {
           const cand = rawScreenPts[trimEndIdx - 1];
           const dFromStart = Math.hypot(cand.x - rawFirst.x, cand.y - rawFirst.y);
@@ -2936,7 +3214,6 @@
         ...(trimEndIdx === rawScreenPts.length - 1 ? [rawLast] : (keepRawLast ? [coreLast, rawLast] : [coreLast]))
       ];
 
-      // 2) 공간 거리(단거리 <30px는 1.5px, 일반은 2.5px) 기준으로 균일 리샘플링하여 240Hz 중복 점 부풀림 차단 및 작은 글씨 굴곡 보존
       const resampleStep = rawMaxDim < 30 ? 1.5 : 2.5;
       const screenPts = [trimmedPts[0]];
       for (let i = 1; i < trimmedPts.length - 1; i++) {
@@ -2967,267 +3244,419 @@
         if (screenPts[i + 1].y > maxY) maxY = screenPts[i + 1].y;
       }
 
-      if (arcLen < 7) return null;
-
       const W = Math.max(1, maxX - minX);
       const H = Math.max(1, maxY - minY);
       const maxDim = Math.max(W, H);
       const minDim = Math.min(W, H);
-      const straightness = chordLen / Math.max(1, arcLen);
 
-      // 시작점-끝점 직선으로부터의 최대 수직 이탈 거리 계산
-      let maxLineDev = 0;
-      for (let i = 1; i < N - 1; i++) {
-        const dev = this.distToSegment(screenPts[i], pStart, pEnd);
-        if (dev > maxLineDev) maxLineDev = dev;
-      }
-
-      // --- [1. 직선 판별 (Straight Line & Axis Magnet Snap — 7px+ 초단거리 분수선 지원)] ---
-      // 🌟 아이패드·액정타블렛 물리 ~1.8mm(7px) 짧은 분수선(`2/3`)까지 직선 인식을 허용하되,
-      // 단거리(7~30px)에서는 PaleoSketch 직선도(>= 0.90)와 엄격한 수직 이탈 한도를 적용해 작은 글씨(`3`, `ㄴ`) 오인식을 0%로 차단!
-      const isShortLineCand = (chordLen >= 7 && chordLen < 30);
-      const isLongLineCand = (chordLen >= 30);
-      const isStraightLine = isShortLineCand
-        ? (straightness >= 0.90 && maxLineDev <= Math.max(2.2, chordLen * 0.085))
-        : (isLongLineCand &&
-          (maxLineDev <= Math.max(4.8, chordLen * 0.085)) &&
-          (straightness >= 0.90 || (straightness >= 0.85 && maxLineDev <= Math.max(3.8, chordLen * 0.065))));
-
-      if (isStraightLine) {
-        let endX = pEnd.x;
-        let endY = pEnd.y;
-
-        const dx = endX - pStart.x;
-        const dy = endY - pStart.y;
-        const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-        const absAngle = Math.abs(angleDeg);
-
-        const snapAngleThresh = 4.5;
-        const diagAngleThresh = 2.0;
-        const isShortHorizSnap = (chordLen < 28 && Math.abs(dy) <= 2.2 && Math.abs(dx) >= 5.5);
-        const isShortVertSnap = (chordLen < 28 && Math.abs(dx) <= 2.2 && Math.abs(dy) >= 5.5);
-
-        let snapped = null;
-        if (absAngle < snapAngleThresh || absAngle > (180 - snapAngleThresh) || isShortHorizSnap) {
-          endY = pStart.y;
-          snapped = 'horizontal';
-        } else if (Math.abs(absAngle - 90) < snapAngleThresh || isShortVertSnap) {
-          endX = pStart.x;
-          snapped = 'vertical';
-        } else if (Math.abs(absAngle - 45) < diagAngleThresh || Math.abs(absAngle - 135) < diagAngleThresh) {
-          const dist = Math.hypot(dx, dy);
-          const signX = dx >= 0 ? 1 : -1;
-          const signY = dy >= 0 ? 1 : -1;
-          endX = pStart.x + signX * dist * Math.SQRT1_2;
-          endY = pStart.y + signY * dist * Math.SQRT1_2;
-          snapped = 'diagonal';
-        }
-
-        return {
-          type: 'line',
-          start: toTargetCoord(pStart),
-          end: toTargetCoord({ x: endX, y: endY }),
-          snapped: snapped
-        };
-      }
-
-      // 직선 외 곡선·닫힌 도형(삼차개형, 포물선, 삼각형, 원, 타원, 직사각형)은 기존 최소 크기(점 4개 · 30px) 100% 그대로 유지
+      // 직선 외 곡선·닫힌 도형(삼차개형, 포물선, 삼각형, 원, 타원, 직사각형)은 최소 크기(점 4개 · 30px) 유지
       if (stroke.points.length < 4 || arcLen < 30) return null;
 
-      // --- [2. 열린 수학 함수 곡선 판별: 삼차함수(Cubic Wave) & 이차함수 포물선(Parabola)] ---
+      // 🌟 [PaleoSketch + CALI 표준 위상 기하학 분석기: 자기교차 · 회전수 · 볼록 껍질 충실도(Solidity)]
+      // 1) 몸통 자기교차 검사 (양 끝 18% 여밈 오버랩 꼬리는 허용하고, '8'·'∞'·'α' 등 내부 X자 교차는 100% 검출)
+      const cumScreenArc = new Float64Array(N);
+      cumScreenArc[0] = 0;
+      for (let i = 1; i < N; i++) {
+        cumScreenArc[i] = cumScreenArc[i - 1] + Math.hypot(screenPts[i].x - screenPts[i - 1].x, screenPts[i].y - screenPts[i - 1].y);
+      }
+      const totalScreenArc = Math.max(1, cumScreenArc[N - 1]);
+      const ccw = (A, B, C) => (B.x - A.x) * (C.y - A.y) - (B.y - A.y) * (C.x - A.x);
+      const segProperIntersect = (A, B, C, D) => {
+        const d1 = ccw(A, B, C);
+        const d2 = ccw(A, B, D);
+        const d3 = ccw(C, D, A);
+        const d4 = ccw(C, D, B);
+        return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+      };
+      let hasBodySelfIntersection = false;
+      for (let i = 0; i < N - 3 && !hasBodySelfIntersection; i++) {
+        const sA = cumScreenArc[i + 1];
+        for (let j = i + 2; j < N - 1; j++) {
+          const sB = cumScreenArc[j];
+          // 원·사각형을 한 획으로 닫을 때 생기는 정상적인 시작(<=18%)↔끝(>=82%) 여밈 교차는 허용
+          if (sA <= totalScreenArc * 0.18 && sB >= totalScreenArc * 0.82) continue;
+          if (segProperIntersect(screenPts[i], screenPts[i + 1], screenPts[j], screenPts[j + 1])) {
+            hasBodySelfIntersection = true;
+            break;
+          }
+        }
+      }
+      if (hasBodySelfIntersection) return null;
+
       const horizSpan = Math.abs(pEnd.x - pStart.x);
       const gap = chordLen;
-      // 진짜 닫힌 도형은 시작점과 끝점이 전체 궤적 길이의 16% 이내로 만나는 루프일 때만 해당!
-      const isActuallyClosedLoop = (gap <= arcLen * 0.16) || (gap <= 24);
+      const closedGapRatioLimit = stroke.isHighlighter ? 0.36 : 0.28;
+      const closedArcRatioLimit = stroke.isHighlighter ? 0.24 : 0.22;
+      const isClosedCandidate = (
+        gap <= Math.max(10.5, maxDim * closedGapRatioLimit) &&
+        gap <= totalScreenArc * closedArcRatioLimit
+      );
 
-      if (!isActuallyClosedLoop && W >= 24 && H >= 24 && maxDim >= 34 && horizSpan >= W * 0.28) {
+      // --- [2. 열린 수학 함수 곡선 판별: 삼차함수(Cubic Wave) & 이차함수/반원 아치(Parabola)] ---
+      if (!isClosedCandidate && W >= 24 && H >= 22 && maxDim >= 34 && horizSpan >= W * 0.52) {
         // 필기 진행 방향을 좌->우로 정렬한 점열 생성
         const ptsLR = (pStart.x <= pEnd.x) ? screenPts : screenPts.slice().reverse();
         const pLeft = ptsLR[0];
         const pRight = ptsLR[N - 1];
 
-        // (A) 극점 2개짜리 삼차함수 개형 (100% 완벽한 변곡점 점대칭 도형) 판별
-        // 🌟 이차함수 끝단 미세 갈고리가 삼차함수로 오판되지 않도록 3개 구간 스윙(sw1, sw2, sw3) 모두 최소 0.22*H 이상 요구!
-        let bestUpDownUp = { swing: -1, i1: -1, i2: -1 };
-        let bestDownUpDown = { swing: -1, i1: -1, i2: -1 };
+        // 🛡️ [함수 그래프 필수 조건: X축 단조 전진성 (y = f(x) 검증 — '2', '3', '5', 'S', 'Z', 'ㄷ', 'ㄹ', '?' 100% 차단)]
+        const trimMargin = Math.max(1, Math.floor(N * 0.08));
+        let backwardXSum = 0;
+        let maxBacktrackX = 0;
+        let runningMaxX = ptsLR[trimMargin].x;
+        for (let i = trimMargin; i < N - trimMargin; i++) {
+          const curX = ptsLR[i].x;
+          if (curX > runningMaxX) {
+            runningMaxX = curX;
+          } else if (runningMaxX - curX > maxBacktrackX) {
+            maxBacktrackX = runningMaxX - curX;
+          }
+          if (i > trimMargin && ptsLR[i].x < ptsLR[i - 1].x) {
+            backwardXSum += (ptsLR[i - 1].x - ptsLR[i].x);
+          }
+        }
+        const isMonotonicXFunction = (
+          backwardXSum <= W * 0.10 &&
+          maxBacktrackX <= Math.max(4.0, W * 0.09)
+        );
 
-        if (horizSpan >= W * 0.40) {
-          let minYIdxSoFar = 1;
-          let maxYIdxSoFar = 1;
-          for (let i2 = 2; i2 < N - 1; i2++) {
-            if (ptsLR[i2 - 1].y < ptsLR[minYIdxSoFar].y) minYIdxSoFar = i2 - 1;
-            if (ptsLR[i2 - 1].y > ptsLR[maxYIdxSoFar].y) maxYIdxSoFar = i2 - 1;
-
-            // 1) ↗ ↘ ↗ (최고차항 양수 삼차함수: 극대 minYIdxSoFar -> 극소 i2)
-            const e1U = ptsLR[minYIdxSoFar];
-            const e2U = ptsLR[i2];
-            const sw1U = pLeft.y - e1U.y;
-            const sw2U = e2U.y - e1U.y;
-            const sw3U = e2U.y - pRight.y;
-            if (sw1U >= 0.22 * H && sw2U >= 0.25 * H && sw3U >= 0.22 * H && (e2U.x - e1U.x) >= -0.55 * W) {
-              const totalSw = sw1U + sw2U + sw3U;
-              if (totalSw > bestUpDownUp.swing) {
-                bestUpDownUp = { swing: totalSw, i1: minYIdxSoFar, i2: i2 };
+        if (isMonotonicXFunction) {
+          // 유의미한 Y 방향 스윙(진폭 >= 0.18*H) 구간 수 카운트 (4차 W자·다중 물결 오인식 방지)
+          const countSignificantYSwings = (minSwingH) => {
+            let dir = 0;
+            let anchorY = ptsLR[0].y;
+            let extremumY = ptsLR[0].y;
+            let swings = 0;
+            for (let i = 1; i < N; i++) {
+              const y = ptsLR[i].y;
+              if (dir === 0) {
+                if (y - anchorY >= minSwingH) {
+                  dir = 1;
+                  extremumY = y;
+                  swings = 1;
+                } else if (anchorY - y >= minSwingH) {
+                  dir = -1;
+                  extremumY = y;
+                  swings = 1;
+                }
+              } else if (dir === 1) {
+                if (y > extremumY) extremumY = y;
+                else if (extremumY - y >= minSwingH) {
+                  dir = -1;
+                  extremumY = y;
+                  swings++;
+                }
+              } else {
+                if (y < extremumY) extremumY = y;
+                else if (y - extremumY >= minSwingH) {
+                  dir = 1;
+                  extremumY = y;
+                  swings++;
+                }
               }
             }
+            return swings;
+          };
+          const ySwingCount = countSignificantYSwings(0.18 * H);
 
-            // 2) ↘ ↗ ↘ (최고차항 음수 삼차함수: 극소 maxYIdxSoFar -> 극대 i2)
-            const e1D = ptsLR[maxYIdxSoFar];
-            const e2D = ptsLR[i2];
-            const sw1D = e1D.y - pLeft.y;
-            const sw2D = e1D.y - e2D.y;
-            const sw3D = pRight.y - e2D.y;
-            if (sw1D >= 0.22 * H && sw2D >= 0.25 * H && sw3D >= 0.22 * H && (e2D.x - e1D.x) >= -0.55 * W) {
-              const totalSw = sw1D + sw2D + sw3D;
-              if (totalSw > bestDownUpDown.swing) {
-                bestDownUpDown = { swing: totalSw, i1: maxYIdxSoFar, i2: i2 };
+          // (A) 극점 2개짜리 삼차함수 개형 (변곡점 점대칭 도형: ↗↘↗ 또는 ↘↗↘) 판별
+          let bestUpDownUp = { swing: -1, i1: -1, i2: -1 };
+          let bestDownUpDown = { swing: -1, i1: -1, i2: -1 };
+
+          if (horizSpan >= W * 0.55 && ySwingCount === 3) {
+            let minYIdxSoFar = 1;
+            let maxYIdxSoFar = 1;
+            for (let i2 = 2; i2 < N - 1; i2++) {
+              if (ptsLR[i2 - 1].y < ptsLR[minYIdxSoFar].y) minYIdxSoFar = i2 - 1;
+              if (ptsLR[i2 - 1].y > ptsLR[maxYIdxSoFar].y) maxYIdxSoFar = i2 - 1;
+
+              // 1) ↗ ↘ ↗ (최고차항 양수 삼차함수: 극대 minYIdxSoFar -> 극소 i2, 좌->우 순서 필수!)
+              const e1U = ptsLR[minYIdxSoFar];
+              const e2U = ptsLR[i2];
+              const sw1U = pLeft.y - e1U.y;
+              const sw2U = e2U.y - e1U.y;
+              const sw3U = e2U.y - pRight.y;
+              if (sw1U >= 0.22 * H && sw2U >= 0.26 * H && sw3U >= 0.22 * H && (e2U.x - e1U.x) >= 0.14 * W) {
+                const totalSw = sw1U + sw2U + sw3U;
+                if (totalSw > bestUpDownUp.swing) {
+                  bestUpDownUp = { swing: totalSw, i1: minYIdxSoFar, i2: i2 };
+                }
+              }
+
+              // 2) ↘ ↗ ↘ (최고차항 음수 삼차함수: 극소 maxYIdxSoFar -> 극대 i2, 좌->우 순서 필수!)
+              const e1D = ptsLR[maxYIdxSoFar];
+              const e2D = ptsLR[i2];
+              const sw1D = e1D.y - pLeft.y;
+              const sw2D = e1D.y - e2D.y;
+              const sw3D = pRight.y - e2D.y;
+              if (sw1D >= 0.22 * H && sw2D >= 0.26 * H && sw3D >= 0.22 * H && (e2D.x - e1D.x) >= 0.14 * W) {
+                const totalSw = sw1D + sw2D + sw3D;
+                if (totalSw > bestDownUpDown.swing) {
+                  bestDownUpDown = { swing: totalSw, i1: maxYIdxSoFar, i2: i2 };
+                }
               }
             }
           }
-        }
 
-        const isUpDownUp = (bestUpDownUp.swing > 0 && bestUpDownUp.swing >= bestDownUpDown.swing);
-        const isDownUpDown = (!isUpDownUp && bestDownUpDown.swing > 0);
+          const isUpDownUp = (bestUpDownUp.swing > 0 && bestUpDownUp.swing >= bestDownUpDown.swing);
+          const isDownUpDown = (!isUpDownUp && bestDownUpDown.swing > 0);
 
-        if (isUpDownUp || isDownUpDown) {
-          const chosen = isUpDownUp ? bestUpDownUp : bestDownUpDown;
-          const e1 = ptsLR[chosen.i1];
-          const e2 = ptsLR[chosen.i2];
+          if (isUpDownUp || isDownUpDown) {
+            const chosen = isUpDownUp ? bestUpDownUp : bestDownUpDown;
+            const e1 = ptsLR[chosen.i1];
+            const e2 = ptsLR[chosen.i2];
 
-          const cy = (e1.y + e2.y) / 2;
-          const amp = Math.max(H * 0.28, Math.abs(e2.y - e1.y) / 2);
-          const dir = isUpDownUp ? 1 : -1;
+            const cy = (e1.y + e2.y) / 2;
+            const amp = Math.max(H * 0.28, Math.abs(e2.y - e1.y) / 2);
+            const dir = isUpDownUp ? 1 : -1;
 
-          const leftTailRatio = Math.abs(pLeft.y - cy) / Math.max(1, amp);
-          const rightTailRatio = Math.abs(pRight.y - cy) / Math.max(1, amp);
-          const avgTailRatio = (leftTailRatio + rightTailRatio) / 2;
-          const sMax = (avgTailRatio < 0.35) ? 1.75 : Math.min(2.02, Math.max(1.85, 1.75 + avgTailRatio * 0.22));
+            const leftTailRatio = Math.abs(pLeft.y - cy) / Math.max(1, amp);
+            const rightTailRatio = Math.abs(pRight.y - cy) / Math.max(1, amp);
+            const avgTailRatio = (leftTailRatio + rightTailRatio) / 2;
+            const sMax = (avgTailRatio < 0.35) ? 1.75 : Math.min(2.02, Math.max(1.85, 1.75 + avgTailRatio * 0.22));
 
-          const sampleCount = 64;
-          const waveScreenPts = [];
-          for (let k = 0; k <= sampleCount; k++) {
-            const u = k / sampleCount;
-            const s = -sMax + 2 * sMax * u;
-            const sx = minX + W * u;
-            const gVal = (3 * s - s * s * s) / 2;
-            const sy = cy + dir * amp * gVal;
-            waveScreenPts.push({ x: sx, y: sy });
+            const sampleCount = 64;
+            const waveScreenPts = [];
+            for (let k = 0; k <= sampleCount; k++) {
+              const u = k / sampleCount;
+              const s = -sMax + 2 * sMax * u;
+              const sx = minX + W * u;
+              const gVal = (3 * s - s * s * s) / 2;
+              const sy = cy + dir * amp * gVal;
+              waveScreenPts.push({ x: sx, y: sy });
+            }
+            return {
+              type: 'cubic_wave',
+              closed: false,
+              pts: waveScreenPts.map(toTargetCoord)
+            };
           }
-          return {
-            type: 'cubic_wave',
-            closed: false,
-            pts: waveScreenPts.map(toTargetCoord)
-          };
-        }
 
-        // (B) 이차함수 포물선 (Parabola: 아래로 볼록 U / 위로 볼록 ∩) 판별
-        // 🌟 아이패드에서 삼차함수가 100% 잘 인식된 것과 동일한 '필기 순서 극점 스윙(↘↗ 또는 ↗↘)' 알고리즘 적용!
-        // (손으로 그린 둥근 U자/∩자 개형이 u^2 템플릿 오차나 좌우 비대칭 때문에 탈락하지 않도록 직관화)
-        let botIdx = 1;
-        let topIdx = 1;
-        for (let i = 1; i < N - 1; i++) {
-          if (ptsLR[i].y > ptsLR[botIdx].y) botIdx = i;
-          if (ptsLR[i].y < ptsLR[topIdx].y) topIdx = i;
-        }
-        const botPeak = ptsLR[botIdx];
-        const topPeak = ptsLR[topIdx];
+          // (B) 이차함수 포물선 및 반원 아치 (Parabola: 아래로 볼록 U / 위로 볼록 ∩) 판별
+          if (ySwingCount === 2) {
+            let botIdx = 1;
+            let topIdx = 1;
+            for (let i = 1; i < N - 1; i++) {
+              if (ptsLR[i].y > ptsLR[botIdx].y) botIdx = i;
+              if (ptsLR[i].y < ptsLR[topIdx].y) topIdx = i;
+            }
+            const botPeak = ptsLR[botIdx];
+            const topPeak = ptsLR[topIdx];
 
-        // botIdx 전후의 최고점(최소 y) 탐색 -> 아래로 볼록(U) 스윙 측정
-        let preBotMinY = ptsLR[0].y;
-        for (let i = 0; i < botIdx; i++) {
-          if (ptsLR[i].y < preBotMinY) preBotMinY = ptsLR[i].y;
-        }
-        let postBotMinY = ptsLR[N - 1].y;
-        for (let i = botIdx + 1; i < N; i++) {
-          if (ptsLR[i].y < postBotMinY) postBotMinY = ptsLR[i].y;
-        }
+            let preBotMinY = ptsLR[0].y;
+            for (let i = 0; i < botIdx; i++) {
+              if (ptsLR[i].y < preBotMinY) preBotMinY = ptsLR[i].y;
+            }
+            let postBotMinY = ptsLR[N - 1].y;
+            for (let i = botIdx + 1; i < N; i++) {
+              if (ptsLR[i].y < postBotMinY) postBotMinY = ptsLR[i].y;
+            }
 
-        // topIdx 전후의 최저점(최대 y) 탐색 -> 위로 볼록(∩) 스윙 측정
-        let preTopMaxY = ptsLR[0].y;
-        for (let i = 0; i < topIdx; i++) {
-          if (ptsLR[i].y > preTopMaxY) preTopMaxY = ptsLR[i].y;
-        }
-        let postTopMaxY = ptsLR[N - 1].y;
-        for (let i = topIdx + 1; i < N; i++) {
-          if (ptsLR[i].y > postTopMaxY) postTopMaxY = ptsLR[i].y;
-        }
+            let preTopMaxY = ptsLR[0].y;
+            for (let i = 0; i < topIdx; i++) {
+              if (ptsLR[i].y > preTopMaxY) preTopMaxY = ptsLR[i].y;
+            }
+            let postTopMaxY = ptsLR[N - 1].y;
+            for (let i = topIdx + 1; i < N; i++) {
+              if (ptsLR[i].y > postTopMaxY) postTopMaxY = ptsLR[i].y;
+            }
 
-        const botInsideX = (botPeak.x >= minX + 0.08 * W && botPeak.x <= maxX - 0.08 * W);
-        const topInsideX = (topPeak.x >= minX + 0.08 * W && topPeak.x <= maxX - 0.08 * W);
+            // 꼭짓점이 한쪽 끝에 쏠린 'L', 'J', 체크('✓') 차단 (가로 중앙 16%~84% 이내)
+            const botInsideX = (botPeak.x >= minX + 0.16 * W && botPeak.x <= maxX - 0.16 * W);
+            const topInsideX = (topPeak.x >= minX + 0.16 * W && topPeak.x <= maxX - 0.16 * W);
 
-        const cupDownSwing = botPeak.y - preBotMinY;
-        const cupUpSwing = botPeak.y - postBotMinY;
-        const capUpSwing = preTopMaxY - topPeak.y;
-        const capDownSwing = postTopMaxY - topPeak.y;
+            const cupDownSwing = botPeak.y - preBotMinY;
+            const cupUpSwing = botPeak.y - postBotMinY;
+            const capUpSwing = preTopMaxY - topPeak.y;
+            const capDownSwing = postTopMaxY - topPeak.y;
 
-        // 열린 포물선 조건: 양쪽 날개가 모두 꼭짓점 대비 42% 이상 뻗어 올라가거나(U) 내려가고(∩),
-        // 원/타원처럼 입구가 좁게 오므라든 도형이 아닐 것(gap > maxDim * 0.30 또는 horizSpan >= W * 0.45)
-        const isOpenArch = (gap > maxDim * 0.30) || (horizSpan >= W * 0.45);
-        const isCupParabola = isOpenArch && botInsideX &&
-          (cupDownSwing >= 0.42 * H) && (cupUpSwing >= 0.42 * H) &&
-          (Math.max(cupDownSwing, cupUpSwing) >= 0.65 * H);
+            const isCupCand = botInsideX &&
+              (cupDownSwing >= 0.45 * H) && (cupUpSwing >= 0.45 * H) &&
+              (Math.max(cupDownSwing, cupUpSwing) >= 0.70 * H);
+            const isCapCand = topInsideX &&
+              (capUpSwing >= 0.45 * H) && (capDownSwing >= 0.45 * H) &&
+              (Math.max(capUpSwing, capDownSwing) >= 0.70 * H);
 
-        const isCapParabola = isOpenArch && topInsideX &&
-          (capUpSwing >= 0.42 * H) && (capDownSwing >= 0.42 * H) &&
-          (Math.max(capUpSwing, capDownSwing) >= 0.65 * H);
+            if (isCupCand || isCapCand) {
+              const peakPt = isCupCand ? botPeak : topPeak;
+              const vy = isCupCand ? maxY : minY;
+              const endY = isCupCand ? Math.min(preBotMinY, postBotMinY) : Math.max(preTopMaxY, postTopMaxY);
+              const vx = (minX + maxX) / 2;
+              const halfW = Math.max(1, W / 2);
+              const evalCleanParaY = (x) => {
+                const u = (x - vx) / halfW;
+                return vy + (endY - vy) * (u * u);
+              };
 
-        if (isCupParabola || isCapParabola) {
-          // 사각형(ㄷ자/ㅁ자)과 구분하기 위해 꼭짓점 부근이 평평한 직선 바닥인지 간단히 체크 (타원/포물선은 매끄럽게 통과)
-          const vy = isCupParabola ? maxY : minY;
-          const endY = isCupParabola ? Math.min(preBotMinY, postBotMinY) : Math.max(preTopMaxY, postTopMaxY);
-          const vx = (minX + maxX) / 2;
-          const halfW = Math.max(1, W / 2);
-          const evalCleanParaY = (x) => {
-            const u = (x - vx) / halfW;
-            return vy + (endY - vy) * (u * u);
-          };
-          const sampleCount = 48;
-          const paraScreenPts = [];
-          for (let s = 0; s <= sampleCount; s++) {
-            const sx = minX + W * (s / sampleCount);
-            const sy = evalCleanParaY(sx);
-            paraScreenPts.push({ x: sx, y: sy });
+              // 1) 각진 사각 그릇('凵' / '冂' — 평평한 바닥이 가로 폭의 50% 이상 지속) 차단
+              let flatMinX = Infinity, flatMaxX = -Infinity;
+              for (let i = 0; i < N; i++) {
+                if (Math.abs(ptsLR[i].y - vy) <= 0.08 * H) {
+                  if (ptsLR[i].x < flatMinX) flatMinX = ptsLR[i].x;
+                  if (ptsLR[i].x > flatMaxX) flatMaxX = ptsLR[i].x;
+                }
+              }
+              const isFlatBottomBox = (flatMaxX > flatMinX) && ((flatMaxX - flatMinX) >= 0.50 * W);
+
+              // 2) 뾰족한 'V'자 / '∧'자(절댓값 꺾은선) 차단 & 포물선/반원 피팅 오차 검증
+              const sampleCount = 48;
+              const paraScreenPts = [];
+              for (let s = 0; s <= sampleCount; s++) {
+                const sx = minX + W * (s / sampleCount);
+                const sy = evalCleanParaY(sx);
+                paraScreenPts.push({ x: sx, y: sy });
+              }
+              let distToParaSum = 0;
+              let distToVSum = 0;
+              for (let i = 0; i < N; i++) {
+                const p = ptsLR[i];
+                // 포물선 폴리라인까지의 최단 거리
+                let bestDP = Infinity;
+                for (let s = 0; s < sampleCount; s++) {
+                  const d = this.distToSegment(p, paraScreenPts[s], paraScreenPts[s + 1]);
+                  if (d < bestDP) bestDP = d;
+                }
+                distToParaSum += bestDP;
+                const dV = Math.min(
+                  this.distToSegment(p, pLeft, peakPt),
+                  this.distToSegment(p, peakPt, pRight)
+                );
+                distToVSum += dV;
+              }
+              const avgDistToPara = distToParaSum / N;
+              const avgDistToV = distToVSum / N;
+              const isSharpVShape = (avgDistToV < maxDim * 0.032) && (avgDistToV < avgDistToPara * 0.68);
+
+              if (!isFlatBottomBox && !isSharpVShape && avgDistToPara <= Math.max(4.5, 0.15 * H)) {
+                return {
+                  type: 'parabola',
+                  closed: false,
+                  pts: paraScreenPts.map(toTargetCoord)
+                };
+              }
+            }
           }
-          return {
-            type: 'parabola',
-            closed: false,
-            pts: paraScreenPts.map(toTargetCoord)
-          };
         }
       }
 
-      // --- [3. 닫힌 도형 판별: 삼각형(Triangle), 정원(Circle), 타원(Ellipse), 직사각형(Rect)] ---
-      const closedRatioLimit = stroke.isHighlighter ? 0.56 : 0.44;
-      const isClosed = (gap / maxDim <= closedRatioLimit);
+      // --- [3. 닫힌 도형 판별: 단순 볼록 폐곡선 게이트 + 삼각형 · 정원 · 타원 · 직사각형] ---
+      if (isClosedCandidate && arcLen >= 45 && minDim >= 18) {
+        // 🛡️ [위상 게이트 A: PaleoSketch 누적 회전각(Winding Angle) 검사 — '8'자(순회전 ~0°), '3'자(역회전 유턴), 2바퀴 나선 차단]
+        const turnStep = Math.max(3.5, maxDim * 0.065);
+        const turnPts = [screenPts[0]];
+        for (let i = 1; i < N - 1; i++) {
+          const prev = turnPts[turnPts.length - 1];
+          if (Math.hypot(screenPts[i].x - prev.x, screenPts[i].y - prev.y) >= turnStep) {
+            turnPts.push(screenPts[i]);
+          }
+        }
+        if (Math.hypot(pEnd.x - turnPts[turnPts.length - 1].x, pEnd.y - turnPts[turnPts.length - 1].y) >= turnStep * 0.45) {
+          turnPts.push(pEnd);
+        }
+        if (turnPts.length < 4) return null;
 
-      if (isClosed && arcLen >= 45 && minDim >= 18) {
+        let signedTurnSum = 0;
+        let absTurnSum = 0;
+        for (let i = 1; i < turnPts.length - 1; i++) {
+          const vx1 = turnPts[i].x - turnPts[i - 1].x;
+          const vy1 = turnPts[i].y - turnPts[i - 1].y;
+          const vx2 = turnPts[i + 1].x - turnPts[i].x;
+          const vy2 = turnPts[i + 1].y - turnPts[i].y;
+          const l1 = Math.hypot(vx1, vy1);
+          const l2 = Math.hypot(vx2, vy2);
+          if (l1 < 0.5 || l2 < 0.5) continue;
+          const dTheta = Math.atan2(vx1 * vy2 - vy1 * vx2, vx1 * vx2 + vy1 * vy2);
+          signedTurnSum += dTheta;
+          absTurnSum += Math.abs(dTheta);
+        }
+        const absNetTurn = Math.abs(signedTurnSum);
+        // 삼각형(2꼭짓점 경유 ~225~240° = 3.9~4.2rad), 사각형(3꼭짓점 ~270° = 4.71rad), 원(~360° = 6.28rad) 허용 / '8'자(~0rad) 및 역회전('3') 차단
+        if (absNetTurn < 3.30 || absNetTurn > 8.40) return null;
+        if (absTurnSum > absNetTurn * 1.48 + 0.65) return null;
+
+        // 🛡️ [위상 게이트 B: CALI 볼록 껍질(Convex Hull) 면적 충실도(Solidity) — 오목하게 파인 닫힌 '3', 'B', 'ㄷ', 하트, 초승달 100% 차단]
+        let polyArea2 = 0;
+        for (let i = 0; i < N; i++) {
+          const p1 = screenPts[i];
+          const p2 = screenPts[(i + 1) % N];
+          polyArea2 += (p1.x * p2.y - p2.x * p1.y);
+        }
+        const polyArea = Math.abs(polyArea2) * 0.5;
+
+        const sortedPts = screenPts.slice().sort((a, b) => (a.x !== b.x ? a.x - b.x : a.y - b.y));
+        const lower = [];
+        for (let i = 0; i < sortedPts.length; i++) {
+          while (lower.length >= 2 && ccw(lower[lower.length - 2], lower[lower.length - 1], sortedPts[i]) <= 0) {
+            lower.pop();
+          }
+          lower.push(sortedPts[i]);
+        }
+        const upper = [];
+        for (let i = sortedPts.length - 1; i >= 0; i--) {
+          while (upper.length >= 2 && ccw(upper[upper.length - 2], upper[upper.length - 1], sortedPts[i]) <= 0) {
+            upper.pop();
+          }
+          upper.push(sortedPts[i]);
+        }
+        lower.pop();
+        upper.pop();
+        const hull = lower.concat(upper);
+        if (hull.length < 3) return null;
+
+        let hullArea2 = 0;
+        let hullPerim = 0;
+        for (let i = 0; i < hull.length; i++) {
+          const h1 = hull[i];
+          const h2 = hull[(i + 1) % hull.length];
+          hullArea2 += (h1.x * h2.y - h2.x * h1.y);
+          hullPerim += Math.hypot(h2.x - h1.x, h2.y - h1.y);
+        }
+        const hullArea = Math.max(1, Math.abs(hullArea2) * 0.5);
+        const solidity = polyArea / hullArea;
+        if (solidity < 0.78) return null;
+        if (arcLen < hullPerim * 0.78 || arcLen > hullPerim * 1.35) return null;
+
         const cx = (minX + maxX) / 2;
         const cy = (minY + maxY) / 2;
         const aspect = minDim / maxDim;
+        const boxArea = W * H;
+        const boxFillRatio = hullArea / Math.max(1, boxArea);
 
-        // (A) 타원/원 오차 계산
+        // (A) 타원/원 오차 및 360° 8방위 커버리지 계산
         const rx = Math.max(1, W / 2);
         const ry = Math.max(1, H / 2);
         let rSum = 0;
         let uSum = 0;
         const radii = [];
         const uVals = [];
+        let octantMask = 0;
         for (let i = 0; i < N; i++) {
-          const r = Math.hypot(screenPts[i].x - cx, screenPts[i].y - cy);
+          const dxC = screenPts[i].x - cx;
+          const dyC = screenPts[i].y - cy;
+          const r = Math.hypot(dxC, dyC);
           radii.push(r);
           rSum += r;
-          const u = Math.hypot((screenPts[i].x - cx) / rx, (screenPts[i].y - cy) / ry);
+          const u = Math.hypot(dxC / rx, dyC / ry);
           uVals.push(u);
           uSum += u;
+          const oct = Math.floor(((Math.atan2(dyC, dxC) + Math.PI) / (Math.PI * 2)) * 8) & 7;
+          octantMask |= (1 << oct);
+        }
+        let coveredOctants = 0;
+        for (let b = 0; b < 8; b++) {
+          if (octantMask & (1 << b)) coveredOctants++;
         }
         const avgR = rSum / N;
         const avgU = uSum / N;
         let varSum = 0;
         let uVarSum = 0;
+        let maxUDev = 0;
         let distToEllipseSum = 0;
         for (let i = 0; i < N; i++) {
           varSum += (radii[i] - avgR) ** 2;
-          uVarSum += (uVals[i] - avgU) ** 2;
+          const uDiff = Math.abs(uVals[i] - avgU);
+          if (uDiff > maxUDev) maxUDev = uDiff;
+          uVarSum += uDiff * uDiff;
           distToEllipseSum += Math.abs(uVals[i] - 1.0) * ((rx + ry) / 2);
         }
         const stdDev = Math.sqrt(varSum / N);
@@ -3235,8 +3664,32 @@
         const ellipseStd = Math.sqrt(uVarSum / N) / (avgU || 1);
         const avgDistToEllipse = distToEllipseSum / N;
 
-        // (B) 직사각형 오차(네 변 밀착도) 계산
+        // (B) 직사각형 양방향 검증 (평균·최대 이탈 + 상·하·좌·우 4변 실제 커버리지 + 4모서리 근접도)
         let distToBoxSum = 0;
+        let maxDistToBox = 0;
+        const edgeBand = Math.max(5.0, minDim * 0.18);
+        let topBuckets = 0, botBuckets = 0, leftBuckets = 0, rightBuckets = 0;
+        let minCornerTL = Infinity, minCornerTR = Infinity, minCornerBR = Infinity, minCornerBL = Infinity;
+
+        const markRectEdgeSample = (sx, sy) => {
+          const dL = Math.abs(sx - minX);
+          const dR = Math.abs(sx - maxX);
+          const dT = Math.abs(sy - minY);
+          const dB = Math.abs(sy - maxY);
+          const uX = (sx - minX) / W;
+          const uY = (sy - minY) / H;
+          if (uX >= 0.18 && uX <= 0.82) {
+            const bIdx = Math.min(2, Math.floor(((uX - 0.18) / 0.64) * 3));
+            if (dT <= edgeBand) topBuckets |= (1 << bIdx);
+            if (dB <= edgeBand) botBuckets |= (1 << bIdx);
+          }
+          if (uY >= 0.18 && uY <= 0.82) {
+            const bIdx = Math.min(2, Math.floor(((uY - 0.18) / 0.64) * 3));
+            if (dL <= edgeBand) leftBuckets |= (1 << bIdx);
+            if (dR <= edgeBand) rightBuckets |= (1 << bIdx);
+          }
+        };
+
         for (let i = 0; i < N; i++) {
           const px = screenPts[i].x;
           const py = screenPts[i].y;
@@ -3244,20 +3697,70 @@
           const dRight = Math.abs(px - maxX);
           const dTop = Math.abs(py - minY);
           const dBottom = Math.abs(py - maxY);
-          distToBoxSum += Math.min(dLeft, dRight, dTop, dBottom);
+          const dMin = Math.min(dLeft, dRight, dTop, dBottom);
+          distToBoxSum += dMin;
+          if (dMin > maxDistToBox) maxDistToBox = dMin;
+
+          markRectEdgeSample(px, py);
+          if (i < N - 1) {
+            const nx = screenPts[i + 1].x;
+            const ny = screenPts[i + 1].y;
+            const segLen = Math.hypot(nx - px, ny - py);
+            if (segLen > 4.0) {
+              const subSteps = Math.min(24, Math.ceil(segLen / 4.0));
+              for (let s = 1; s < subSteps; s++) {
+                const t = s / subSteps;
+                const ix = px + (nx - px) * t;
+                const iy = py + (ny - py) * t;
+                markRectEdgeSample(ix, iy);
+                const idMin = Math.min(Math.abs(ix - minX), Math.abs(ix - maxX), Math.abs(iy - minY), Math.abs(iy - maxY));
+                if (idMin > maxDistToBox) maxDistToBox = idMin;
+              }
+            }
+          }
+
+          const dTL = Math.hypot(px - minX, py - minY);
+          const dTR = Math.hypot(px - maxX, py - minY);
+          const dBR = Math.hypot(px - maxX, py - maxY);
+          const dBL = Math.hypot(px - minX, py - maxY);
+          if (dTL < minCornerTL) minCornerTL = dTL;
+          if (dTR < minCornerTR) minCornerTR = dTR;
+          if (dBR < minCornerBR) minCornerBR = dBR;
+          if (dBL < minCornerBL) minCornerBL = dBL;
         }
         const avgDistToBox = distToBoxSum / N;
+        const countBits3 = (m) => (m & 1) + ((m >> 1) & 1) + ((m >> 2) & 1);
+        const hasAllFourRectEdges = (
+          countBits3(topBuckets) >= 2 &&
+          countBits3(botBuckets) >= 2 &&
+          countBits3(leftBuckets) >= 2 &&
+          countBits3(rightBuckets) >= 2
+        );
+        const cornerLimit = Math.max(7.5, minDim * 0.30);
+        const hasAllFourCorners = (
+          Math.max(minCornerTL, minCornerTR, minCornerBR, minCornerBL) <= cornerLimit
+        );
+        const isValidAxisRect = (
+          boxFillRatio >= 0.78 &&
+          hasAllFourRectEdges &&
+          hasAllFourCorners &&
+          avgDistToBox < maxDim * 0.085 &&
+          maxDistToBox <= Math.max(6.5, minDim * 0.24)
+        );
 
-        // (C) 삼각형(Triangle) 3꼭짓점 추출 및 세 변 밀착도 계산
-        const calcTriError = (v0, v1, v2) => {
+        // (C) 삼각형(Triangle) 3꼭짓점 추출 + CALI 면적비(triArea/hullArea) + 세 변 밀착도 계산
+        const calcTriStats = (v0, v1, v2) => {
           let sum = 0;
+          let maxD = 0;
           for (let i = 0; i < N; i++) {
             const d0 = this.distToSegment(screenPts[i], v0, v1);
             const d1 = this.distToSegment(screenPts[i], v1, v2);
             const d2 = this.distToSegment(screenPts[i], v2, v0);
-            sum += Math.min(d0, d1, d2);
+            const dm = Math.min(d0, d1, d2);
+            sum += dm;
+            if (dm > maxD) maxD = dm;
           }
-          return sum / N;
+          return { avg: sum / N, max: maxD };
         };
 
         const findTriFromSeed = (seedPt) => {
@@ -3288,17 +3791,28 @@
 
         const triA = findTriFromSeed(seedStart);
         const triB = findTriFromSeed(farFromCenter);
-        const errTriA = calcTriError(triA[0], triA[1], triA[2]);
-        const errTriB = calcTriError(triB[0], triB[1], triB[2]);
-        const bestTri = (errTriA <= errTriB) ? triA : triB;
-        const avgDistToTri = Math.min(errTriA, errTriB);
+        const stTriA = calcTriStats(triA[0], triA[1], triA[2]);
+        const stTriB = calcTriStats(triB[0], triB[1], triB[2]);
+        const bestTri = (stTriA.avg <= stTriB.avg) ? triA : triB;
+        const bestTriStats = (stTriA.avg <= stTriB.avg) ? stTriA : stTriB;
+        const avgDistToTri = bestTriStats.avg;
+        const maxDistToTri = bestTriStats.max;
 
+        const triArea = Math.abs(ccw(bestTri[0], bestTri[1], bestTri[2])) * 0.5;
+        const triHullFill = triArea / hullArea;
         const s01 = Math.hypot(bestTri[1].x - bestTri[0].x, bestTri[1].y - bestTri[0].y);
         const s12 = Math.hypot(bestTri[2].x - bestTri[1].x, bestTri[2].y - bestTri[1].y);
         const s20 = Math.hypot(bestTri[0].x - bestTri[2].x, bestTri[0].y - bestTri[2].y);
         const triValidSides = (Math.min(s01, s12, s20) >= maxDim * 0.34);
 
-        if (triValidSides && avgDistToTri < maxDim * 0.068 && avgDistToTri < avgDistToBox * 0.82 && avgDistToTri < avgDistToEllipse * 0.82) {
+        if (
+          triValidSides &&
+          triHullFill >= 0.80 &&
+          avgDistToTri < maxDim * 0.064 &&
+          maxDistToTri < maxDim * 0.16 &&
+          avgDistToTri < avgDistToBox * 0.82 &&
+          avgDistToTri < avgDistToEllipse * 0.82
+        ) {
           const snappedTri = bestTri.map(p => ({ x: p.x, y: p.y }));
           for (let k = 0; k < 3; k++) {
             const pA = snappedTri[k];
@@ -3323,10 +3837,36 @@
           };
         }
 
-        const isBetterRectThanCircle = (avgDistToBox < maxDim * 0.085) && (avgDistToBox < stdDev * 0.95) && (avgDistToBox < avgDistToEllipse * 0.92);
+        // 비회전 정책: 마름모(◇)나 회전된 각진 사각형(바운딩 4극점 직선 사각형에 밀착)이 원/타원으로 뭉개지지 않도록 보호
+        let pTopExt = screenPts[0], pBotExt = screenPts[0], pLeftExt = screenPts[0], pRightExt = screenPts[0];
+        for (let i = 1; i < N; i++) {
+          const sp = screenPts[i];
+          if (sp.y < pTopExt.y) pTopExt = sp;
+          if (sp.y > pBotExt.y) pBotExt = sp;
+          if (sp.x < pLeftExt.x) pLeftExt = sp;
+          if (sp.x > pRightExt.x) pRightExt = sp;
+        }
+        let distToDiamondSum = 0;
+        for (let i = 0; i < N; i++) {
+          const sp = screenPts[i];
+          distToDiamondSum += Math.min(
+            this.distToSegment(sp, pTopExt, pRightExt),
+            this.distToSegment(sp, pRightExt, pBotExt),
+            this.distToSegment(sp, pBotExt, pLeftExt),
+            this.distToSegment(sp, pLeftExt, pTopExt)
+          );
+        }
+        const avgDistToDiamond = distToDiamondSum / N;
+        const isSharpTiltedQuad = !isValidAxisRect &&
+          (avgDistToDiamond < maxDim * 0.038) &&
+          (avgDistToDiamond < avgDistToEllipse * 0.58);
 
-        if (!isBetterRectThanCircle && ellipseStd < 0.21) {
-          if (aspect >= 0.76 && roundness < 0.22) {
+        const isBetterRectThanCircle = isValidAxisRect &&
+          (avgDistToBox < stdDev * 0.95) &&
+          (avgDistToBox < avgDistToEllipse * 0.92);
+
+        if (!isBetterRectThanCircle && !isSharpTiltedQuad && coveredOctants >= 7 && ellipseStd < 0.175 && maxUDev <= 0.36) {
+          if (aspect >= 0.76 && roundness < 0.19) {
             if (isCardPixel) {
               return {
                 type: 'circle',
@@ -3380,7 +3920,7 @@
           }
         }
 
-        if (avgDistToBox < maxDim * 0.14) {
+        if (isValidAxisRect) {
           if (isCardPixel) {
             return {
               type: 'rect',
@@ -3702,6 +4242,72 @@
       }
     }
 
+    _createInkHoldTrackState(startX, startY) {
+      const sx = Number(startX) || 0;
+      const sy = Number(startY) || 0;
+      return {
+        startX: sx,
+        startY: sy,
+        lastMoveX: sx,
+        lastMoveY: sy,
+        anchorX: sx,
+        anchorY: sy,
+        maxReach: 0
+      };
+    }
+
+    _shouldResetInkHoldOnMove(holdState, curX, curY, isTimerActive) {
+      if (!holdState) return false;
+      const stepDist = Math.hypot(curX - holdState.lastMoveX, curY - holdState.lastMoveY);
+      holdState.lastMoveX = curX;
+      holdState.lastMoveY = curY;
+
+      const reach = Math.hypot(curX - holdState.startX, curY - holdState.startY);
+      if (reach > holdState.maxReach) {
+        holdState.maxReach = reach;
+      }
+
+      const dHold = Math.hypot(curX - holdState.anchorX, curY - holdState.anchorY);
+      const slopRadius = !isTimerActive ? 1.8 : (holdState.maxReach < 16.0 ? 3.2 : 5.8);
+      if (stepDist > 4.5 || dHold > slopRadius) {
+        holdState.anchorX = curX;
+        holdState.anchorY = curY;
+        return true;
+      }
+      return false;
+    }
+
+    _isCleanRawTipForwardExtension(points, toScreenFn, rawTip) {
+      if (!rawTip || !Array.isArray(points) || points.length === 0) return false;
+      const sLast = toScreenFn(points[points.length - 1]);
+      const tailGap = Math.hypot(rawTip.x - sLast.x, rawTip.y - sLast.y);
+      if (tailGap < 0.25) return false;
+      if (points.length === 1) {
+        return tailGap <= 5.0;
+      }
+      if (tailGap > 3.5) return false;
+      let backIdx = points.length - 2;
+      while (backIdx > 0) {
+        const cand = toScreenFn(points[backIdx]);
+        if (Math.hypot(sLast.x - cand.x, sLast.y - cand.y) >= 4.0) break;
+        backIdx--;
+      }
+      const sBack = toScreenFn(points[backIdx]);
+      const vx = sLast.x - sBack.x;
+      const vy = sLast.y - sBack.y;
+      const vLen = Math.hypot(vx, vy);
+      if (vLen < 0.5) return false;
+      const tx = rawTip.x - sLast.x;
+      const ty = rawTip.y - sLast.y;
+      const cosAng = (vx * tx + vy * ty) / (vLen * tailGap);
+      const perp = Math.abs(vx * ty - vy * tx) / vLen;
+      return cosAng >= 0.88 && perp <= 1.1;
+    }
+
+    getShapeHoldDelayMs() {
+      return 600;
+    }
+
     _startInkHoldTimer() {
       if (this._inkHoldTimer) {
         clearTimeout(this._inkHoldTimer);
@@ -3709,58 +4315,83 @@
       }
       if (!this.isDrawingInk || !this.currentInkStroke) return;
 
+      const holdMs = this.getShapeHoldDelayMs();
       const checkHold = () => {
         this._inkHoldTimer = null;
         if (!this.isDrawingInk || !this.currentInkStroke || this._inkHoldDetected) return;
         const idleMs = Date.now() - (this._lastSignificantMoveTime || 0);
-        if (idleMs < 335) {
-          this._inkHoldTimer = setTimeout(checkHold, Math.max(16, 340 - idleMs));
+        if (idleMs < holdMs - 5) {
+          this._inkHoldTimer = setTimeout(checkHold, Math.max(16, holdMs - idleMs));
           return;
         }
         this._onInkHoldTriggered();
       };
 
-      this._inkHoldTimer = setTimeout(checkHold, 340);
+      this._inkHoldTimer = setTimeout(checkHold, holdMs);
     }
 
-    // 🌟 [아이패드 강화유리 홀드 대기(340ms) 중 애플펜슬 미세 미끄러짐·틸트 흔들림 점 정밀 분리]:
-    // 정지 홀드 타이머(340ms)가 시작되기 전 실제 필기 구간(ageMs >= 330ms)의 궤적과 코너('ㄴ', '3')는 100% 보존하고,
-    // 멈춰서 대기하는 홀드 구간(ageMs < 330ms) 동안 정지 지점 주변(6.5px 이내)에서 맴돈 떨림·틸트 점열만 통째로 제거합니다.
+    // 🌟 [아이패드 강화유리 홀드 대기(600ms) 중 애플펜슬 미세 미끄러짐·틸트 흔들림 점 정밀 분리]:
+    // 정지 홀드 타이머가 시작되기 전 실제 필기 구간의 궤적과 코너('ㄴ', '3')는 100% 보존하고,
+    // 멈춰서 대기하는 홀드 구간(ageMs < holdMs - 5) 동안 정지 지점 주변(6.5px 이내)에서 맴돈 떨림·대각선 틸트 점열만 제거합니다.
     _stripHoldDwellTailPoints(points, ptTimes, toScreenFn, nowPerf) {
       if (!Array.isArray(points) || points.length < 3 || !Array.isArray(ptTimes) || ptTimes.length !== points.length) {
         return { points, trimmedDwell: false };
       }
       const M = points.length;
-      if (typeof ptTimes[M - 1] !== 'number' || (nowPerf - ptTimes[M - 1]) >= 330) {
+      const holdMs = this.getShapeHoldDelayMs();
+      const dwellWindowMs = holdMs - 5;
+      if (typeof ptTimes[M - 1] !== 'number' || (nowPerf - ptTimes[M - 1]) >= holdMs + 15) {
         return { points, trimmedDwell: false };
       }
       const sPts = points.map(toScreenFn);
 
-      // 홀드 대기 구간(ageMs < 330ms) 진입 직전의 마지막 실제 필기 인덱스 탐색
+      // 홀드 대기 구간 진입 직전의 마지막 실제 필기 인덱스 탐색
       let splitIdx = M - 1;
-      while (splitIdx > 1 && typeof ptTimes[splitIdx] === 'number' && (nowPerf - ptTimes[splitIdx]) < 330) {
+      while (splitIdx > 1 && typeof ptTimes[splitIdx] === 'number' && (nowPerf - ptTimes[splitIdx]) < dwellWindowMs) {
         splitIdx--;
       }
 
-      // 만약 홀드 진입 직후 짧은 관성으로 직선 정방향 전진만 한 점이 있다면 그 끝점까지는 실제 획으로 인정
+      // 초단거리 획 전체가 통째로 잘리지 않도록 시작점 기준 최소 5.0px 전진 이후 지점만 홀드 꼬리 후보로 검사
+      while (splitIdx < M - 1 && Math.hypot(sPts[splitIdx].x - sPts[0].x, sPts[splitIdx].y - sPts[0].y) < 5.0) {
+        splitIdx++;
+      }
+
+      // 홀드 진입 직후 일직선 정방향 관성 전진만 한 끝점은 보존하고, 대각선/수직 틸트 흔들림 및 지그재그 뭉침은 제거
       while (splitIdx < M - 1) {
         const anchor = sPts[splitIdx];
-        const cDx = anchor.x - sPts[0].x;
-        const cDy = anchor.y - sPts[0].y;
+        let backIdx = splitIdx - 1;
+        while (backIdx > 0 && Math.hypot(anchor.x - sPts[backIdx].x, anchor.y - sPts[backIdx].y) < 4.5) {
+          backIdx--;
+        }
+        const refPt = sPts[backIdx];
+        const cDx = anchor.x - refPt.x;
+        const cDy = anchor.y - refPt.y;
         const cLen = Math.hypot(cDx, cDy);
+
         let maxClusterR = 0;
         let maxForwardProj = 0;
+        let maxPerpDev = 0;
+        let tailArc = 0;
         for (let j = splitIdx + 1; j < M; j++) {
           const dx = sPts[j].x - anchor.x;
           const dy = sPts[j].y - anchor.y;
           const d = Math.hypot(dx, dy);
           if (d > maxClusterR) maxClusterR = d;
-          if (cLen > 1.0) {
+          tailArc += Math.hypot(sPts[j].x - sPts[j - 1].x, sPts[j].y - sPts[j - 1].y);
+          if (cLen > 0.8) {
             const proj = (dx * cDx + dy * cDy) / cLen;
+            const perp = Math.abs(dx * cDy - dy * cDx) / cLen;
             if (proj > maxForwardProj) maxForwardProj = proj;
+            if (perp > maxPerpDev) maxPerpDev = perp;
           }
         }
-        if (maxClusterR <= 6.5 && maxForwardProj <= 1.8) {
+        const isCleanForwardInertia = (
+          cLen > 0.8 &&
+          maxForwardProj > 1.5 &&
+          maxPerpDev <= 1.25 &&
+          tailArc <= Math.max(1.8, maxForwardProj * 1.22)
+        );
+        if (maxClusterR <= 6.5 && !isCleanForwardInertia) {
           return {
             points: points.slice(0, splitIdx + 1),
             trimmedDwell: true
@@ -3791,7 +4422,7 @@
           strokeForHold = { ...this.currentInkStroke, points: mergedPts };
         }
       } else if (Array.isArray(this.currentInkStroke.points) && this.currentInkStroke.points.length >= 1) {
-        // 아이패드(비-Fairer) 경로: 홀드 대기 중 쌓인 유리면 미세 떨림 제거 + 스트림라인으로 뒤처진 전진 끝점 복원
+        // 아이패드(비-Fairer) 경로: 홀드 대기 중 쌓인 유리면 미세 떨림 제거 + 스트림라인으로 뒤처진 일직선 전진 끝점 복원
         const stripped = this._stripHoldDwellTailPoints(
           this.currentInkStroke.points,
           this.currentInkStroke._ptTimes,
@@ -3799,18 +4430,10 @@
           nowPerf
         );
         let cleanPts = stripped.points;
-        if (!stripped.trimmedDwell && this._lastRawInkScreenPos && cleanPts.length >= 1) {
-          const sFirst = toScr(cleanPts[0]);
-          const sLast = toScr(cleanPts[cleanPts.length - 1]);
-          const rawTip = this._lastRawInkScreenPos;
-          const tailGap = Math.hypot(rawTip.x - sLast.x, rawTip.y - sLast.y);
-          const isForwardExt = (cleanPts.length === 1) ||
-            (((sLast.x - sFirst.x) * (rawTip.x - sLast.x) + (sLast.y - sFirst.y) * (rawTip.y - sLast.y)) >= 0);
-          if (tailGap >= 0.25 && tailGap <= 5.0 && isForwardExt) {
-            const cEnd = fromScr(rawTip);
-            const lastPtObj = cleanPts[cleanPts.length - 1];
-            cleanPts = cleanPts.concat([{ x: cEnd.x, y: cEnd.y, p: lastPtObj.p, t: lastPtObj.t }]);
-          }
+        if (!stripped.trimmedDwell && this._isCleanRawTipForwardExtension(cleanPts, toScr, this._lastRawInkScreenPos)) {
+          const cEnd = fromScr(this._lastRawInkScreenPos);
+          const lastPtObj = cleanPts[cleanPts.length - 1];
+          cleanPts = cleanPts.concat([{ x: cEnd.x, y: cEnd.y, p: lastPtObj.p, t: lastPtObj.t }]);
         }
         if (cleanPts !== this.currentInkStroke.points) {
           strokeForHold = { ...this.currentInkStroke, points: cleanPts };
@@ -3818,8 +4441,15 @@
       }
       const shape = this.recognizeInkShape(strokeForHold);
       if (shape) {
+        const ptsForPressure = (
+          shape.type === 'line' &&
+          Array.isArray(shape._coreRange) &&
+          shape._coreRange[1] > shape._coreRange[0]
+        )
+          ? strokeForHold.points.slice(shape._coreRange[0], shape._coreRange[1] + 1)
+          : strokeForHold.points;
         const shapeP = this._computeRepresentativeShapePressure(
-          strokeForHold.points,
+          ptsForPressure,
           strokeForHold.penStyle || 'ballpen',
           {
             hasHwP: Boolean(this._strokeHasRealPressure),
@@ -4025,16 +4655,10 @@
           nowPerf
         );
         ptsForHold = stripped.points;
-        if (!stripped.trimmedDwell && cardStroke._lastRawPx && ptsForHold.length >= 1) {
-          const sFirst = ptsForHold[0];
+        if (!stripped.trimmedDwell && this._isCleanRawTipForwardExtension(ptsForHold, (pt) => pt, cardStroke._lastRawPx)) {
           const sLast = ptsForHold[ptsForHold.length - 1];
           const rawTip = cardStroke._lastRawPx;
-          const tailGap = Math.hypot(rawTip.x - sLast.x, rawTip.y - sLast.y);
-          const isForwardExt = (ptsForHold.length === 1) ||
-            (((sLast.x - sFirst.x) * (rawTip.x - sLast.x) + (sLast.y - sFirst.y) * (rawTip.y - sLast.y)) >= 0);
-          if (tailGap >= 0.25 && tailGap <= 5.0 && isForwardExt) {
-            ptsForHold = ptsForHold.concat([{ x: rawTip.x, y: rawTip.y, p: sLast.p }]);
-          }
+          ptsForHold = ptsForHold.concat([{ x: rawTip.x, y: rawTip.y, p: sLast.p }]);
         }
       }
       if (ptsForHold.length < 2) return false;
@@ -4045,8 +4669,15 @@
       };
       const shape = this.recognizeInkShape(pixelStroke);
       if (!shape) return false;
+      const cardPtsForPressure = (
+        shape.type === 'line' &&
+        Array.isArray(shape._coreRange) &&
+        shape._coreRange[1] > shape._coreRange[0]
+      )
+        ? ptsForHold.slice(shape._coreRange[0], shape._coreRange[1] + 1)
+        : ptsForHold;
       const shapeP = this._computeRepresentativeShapePressure(
-        ptsForHold,
+        cardPtsForPressure,
         cardStroke.penStyle || 'ballpen',
         { hasHwP: Boolean(cardStroke._hasHwP) }
       );
@@ -6123,6 +6754,24 @@
         const lastRaw = stroke._lastRawPx || (prevPt ? { x: prevPt.nx * rw, y: prevPt.ny * rh } : null);
         if (lastRaw) {
           const rawStepDist = Math.hypot(rawPxX - lastRaw.x, rawPxY - lastRaw.y);
+          if (
+            e.pointerType === 'pen' &&
+            inkProfile.touchDownSettleDist > 0 &&
+            stroke.points.length === 1 &&
+            !stroke.isHighlighter &&
+            rawStepDist < inkProfile.touchDownSettleDist
+          ) {
+            const rawPress0 = (typeof ev.pressure === 'number') ? ev.pressure : 0.5;
+            if (rawPress0 <= 0.24 && stroke.points[0]) {
+              const sx0 = lastRaw.x * 0.55 + rawPxX * 0.45;
+              const sy0 = lastRaw.y * 0.55 + rawPxY * 0.45;
+              stroke.points[0].nx = Math.max(0, Math.min(1, sx0 / rw));
+              stroke.points[0].ny = Math.max(0, Math.min(1, sy0 / rh));
+              stroke._lastRawPx = { x: sx0, y: sy0 };
+              stroke._prevRawPx = { x: sx0, y: sy0 };
+            }
+            continue;
+          }
           if (rawStepDist < minDist) continue;
           if (stroke._prevRawPx && rawStepDist < inkProfile.forwardGuardMaxDist) {
             const vxPrev = lastRaw.x - stroke._prevRawPx.x;
@@ -6284,7 +6933,19 @@
         const lastX = lastPt.nx * rw;
         const lastY = lastPt.ny * rh;
         const tailDist = Math.hypot(rawEnd.x - lastX, rawEnd.y - lastY);
-        if (tailDist >= 0.25) {
+        let isLiftOffKick = false;
+        if (!stroke.isHighlighter && stroke.points.length >= 2 && tailDist < 2.2) {
+          const prevEndPt = stroke.points[stroke.points.length - 2];
+          const vxPrev = lastX - prevEndPt.nx * rw;
+          const vyPrev = lastY - prevEndPt.ny * rh;
+          const lenPrev = Math.hypot(vxPrev, vyPrev);
+          if (lenPrev > 0.35 && tailDist > 1e-4) {
+            const cosTail = (vxPrev * (rawEnd.x - lastX) + vyPrev * (rawEnd.y - lastY)) / (lenPrev * tailDist);
+            if (cosTail < 0.25) isLiftOffKick = true;
+          }
+        }
+        const minCardTailDist = (stroke.points.length === 1 && !stroke.isHighlighter) ? 1.25 : 0.25;
+        if (tailDist >= minCardTailDist && !isLiftOffKick) {
           const tailKeep = 0.18;
           const endX = stroke.isHighlighter ? rawEnd.x : (lastX * tailKeep + rawEnd.x * (1 - tailKeep));
           const endY = stroke.isHighlighter ? rawEnd.y : (lastY * tailKeep + rawEnd.y * (1 - tailKeep));
@@ -6435,22 +7096,11 @@
         const my = (p0.y + p1.y) * 0.5;
         if (penStyle === 'ballpen' || penStyle === 'flat') {
           const lineW = this.computePenStyleWidth(effBaseSize, p0.p, penStyle);
-          ctx.lineWidth = lineW;
+          const tipW = (penStyle === 'ballpen') ? Math.max(0.75, lineW * 0.78) : lineW;
+          ctx.lineWidth = tipW;
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
-          if (blurVal > 0 || (typeof ctx.globalAlpha === 'number' && ctx.globalAlpha < 0.999)) {
-            ctx.beginPath();
-            ctx.arc(p0.x / nibX, p0.y / nibY, lineW / 2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.moveTo(p0.x / nibX, p0.y / nibY);
-            ctx.lineTo(mx / nibX, my / nibY);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(p0.x / nibX, p0.y / nibY);
-            ctx.lineTo(p1.x / nibX, p1.y / nibY);
-            ctx.stroke();
-          } else if (Math.hypot(p1.x - p0.x, p1.y - p0.y) < 0.05) {
+          if (Math.hypot(p1.x - p0.x, p1.y - p0.y) < 0.05) {
             ctx.beginPath();
             ctx.arc(p0.x / nibX, p0.y / nibY, lineW / 2, 0, Math.PI * 2);
             ctx.fill();
@@ -6475,6 +7125,7 @@
       }
       if (penStyle === 'ballpen' || penStyle === 'flat') {
         const lineW = this.computePenStyleWidth(effBaseSize, pts[pts.length - 1].p, penStyle);
+        const tipW = (penStyle === 'ballpen') ? Math.max(0.75, lineW * 0.78) : lineW;
         ctx.lineWidth = lineW;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
@@ -6482,13 +7133,12 @@
         const firstMidY = (pts[0].y + pts[1].y) * 0.5;
         const last = pts[pts.length - 1];
         if (blurVal > 0 || (typeof ctx.globalAlpha === 'number' && ctx.globalAlpha < 0.999)) {
-          ctx.beginPath();
-          ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.lineWidth = tipW;
           ctx.beginPath();
           ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
           ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
           ctx.stroke();
+          ctx.lineWidth = lineW;
           let prevMidX = firstMidX;
           let prevMidY = firstMidY;
           for (let i = 1; i < pts.length - 1; i++) {
@@ -6501,13 +7151,14 @@
             prevMidX = midX;
             prevMidY = midY;
           }
+          ctx.lineWidth = tipW;
           ctx.beginPath();
           ctx.moveTo(prevMidX / nibX, prevMidY / nibY);
           ctx.lineTo(last.x / nibX, last.y / nibY);
           ctx.stroke();
         } else {
-          // 🌟 [드로우콜 35배 압축 패스트패스]: 불투명 균일 굵기(ballpen / flat, blurVal === 0) 획을
-          // 점 단위 ctx.stroke() 대신 단 1회의 연속 2차 베지어 Path로 일괄 렌더링!
+          // 🌟 [드로우콜 35배 압축 패스트패스 + 굿노트 기본 선명도 무구슬 입·종필]:
+          // 본선 전체는 단 1회의 연속 2차 베지어 Path로 초고속 렌더링하고, 시작·끝 캡만 0.78x로 정돈해 볼펜 구슬을 원천 제거!
           let hasMotion = (Math.hypot(last.x - pts[0].x, last.y - pts[0].y) >= 0.05);
           if (!hasMotion) {
             for (let i = 1; i < pts.length; i++) {
@@ -6521,6 +7172,33 @@
             ctx.beginPath();
             ctx.arc(pts[0].x / nibX, pts[0].y / nibY, lineW / 2, 0, Math.PI * 2);
             ctx.fill();
+          } else if (penStyle === 'ballpen') {
+            const preLast = pts[pts.length - 2];
+            const lastMidX = (preLast.x + last.x) * 0.5;
+            const lastMidY = (preLast.y + last.y) * 0.5;
+            ctx.lineWidth = tipW;
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
+            ctx.lineTo(firstMidX / nibX, firstMidY / nibY);
+            ctx.stroke();
+
+            ctx.lineWidth = lineW;
+            ctx.beginPath();
+            ctx.moveTo(firstMidX / nibX, firstMidY / nibY);
+            for (let i = 1; i < pts.length - 1; i++) {
+              const pCur = pts[i];
+              const pNext = pts[i + 1];
+              const midX = (pCur.x + pNext.x) * 0.5;
+              const midY = (pCur.y + pNext.y) * 0.5;
+              ctx.quadraticCurveTo(pCur.x / nibX, pCur.y / nibY, midX / nibX, midY / nibY);
+            }
+            ctx.stroke();
+
+            ctx.lineWidth = tipW;
+            ctx.beginPath();
+            ctx.moveTo(lastMidX / nibX, lastMidY / nibY);
+            ctx.lineTo(last.x / nibX, last.y / nibY);
+            ctx.stroke();
           } else {
             ctx.beginPath();
             ctx.moveTo(pts[0].x / nibX, pts[0].y / nibY);
@@ -6621,24 +7299,44 @@
         }
 
         if (L === 1) {
-          ctx.beginPath();
-          ctx.arc(lastPt.x / nibX, lastPt.y / nibY, lineW / 2, 0, Math.PI * 2);
-          ctx.fill();
+          if (isFinalTail) {
+            ctx.beginPath();
+            ctx.arc(lastPt.x / nibX, lastPt.y / nibY, lineW / 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
         } else if (L === 2) {
           const p0 = screenPts[0];
           const p1 = screenPts[1];
-          const mx = isFinalTail ? p1.x : (p0.x + p1.x) * 0.5;
-          const my = isFinalTail ? p1.y : (p0.y + p1.y) * 0.5;
+          const midX = (p0.x + p1.x) * 0.5;
+          const midY = (p0.y + p1.y) * 0.5;
+          const fromX = (isFinalTail && stroke._drewLiveFirstHalf) ? midX : p0.x;
+          const fromY = (isFinalTail && stroke._drewLiveFirstHalf) ? midY : p0.y;
+          const toX = isFinalTail ? p1.x : midX;
+          const toY = isFinalTail ? p1.y : midY;
+          if (!isFinalTail) {
+            try {
+              Object.defineProperty(stroke, '_drewLiveFirstHalf', {
+                value: true,
+                writable: true,
+                configurable: true,
+                enumerable: false
+              });
+            } catch (_) { }
+          }
           if (penStyle === 'ballpen' || penStyle === 'flat') {
+            ctx.lineWidth = (penStyle === 'ballpen') ? Math.max(0.75, lineW * 0.78) : lineW;
             ctx.beginPath();
-            ctx.moveTo(p0.x / nibX, p0.y / nibY);
-            ctx.lineTo(mx / nibX, my / nibY);
+            ctx.moveTo(fromX / nibX, fromY / nibY);
+            ctx.lineTo(toX / nibX, toY / nibY);
             ctx.stroke();
           } else {
             const pOf = (pt) => (pt && typeof pt.p === 'number' && !isNaN(pt.p)) ? pt.p : 0.5;
             const w0 = this.computePenStyleWidth(baseSize, pOf(p0), penStyle);
-            const w1 = this.computePenStyleWidth(baseSize, isFinalTail ? pOf(p1) : (pOf(p0) + pOf(p1)) * 0.5, penStyle);
-            this.drawVariableWidthLineSegment(ctx, p0.x, p0.y, mx, my, w0, w1);
+            const wMid = this.computePenStyleWidth(baseSize, (pOf(p0) + pOf(p1)) * 0.5, penStyle);
+            const w1 = this.computePenStyleWidth(baseSize, pOf(p1), penStyle);
+            const startW = (isFinalTail && stroke._drewLiveFirstHalf) ? wMid : w0;
+            const endW = isFinalTail ? w1 : wMid;
+            this.drawVariableWidthLineSegment(ctx, fromX, fromY, toX, toY, startW, endW);
           }
         } else {
           const pA = screenPts[L - 3];
@@ -6651,9 +7349,11 @@
           if (penStyle === 'ballpen' || penStyle === 'flat') {
             ctx.beginPath();
             if (isFinalTail) {
+              ctx.lineWidth = (penStyle === 'ballpen') ? Math.max(0.75, lineW * 0.78) : lineW;
               ctx.moveTo(mid2X / nibX, mid2Y / nibY);
               ctx.lineTo(pC.x / nibX, pC.y / nibY);
             } else {
+              ctx.lineWidth = lineW;
               ctx.moveTo(mid1X / nibX, mid1Y / nibY);
               ctx.quadraticCurveTo(pB.x / nibX, pB.y / nibY, mid2X / nibX, mid2Y / nibY);
             }
