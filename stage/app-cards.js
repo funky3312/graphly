@@ -12059,31 +12059,41 @@
           }))
         : [];
 
-      const snapScale = 2.5;
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = Math.round(cardW * snapScale);
-      tempCanvas.height = Math.round(cardH * snapScale);
-      const tctx = tempCanvas.getContext('2d');
-      tctx.save();
-      tctx.scale(snapScale, snapScale);
-      this._withPipCardGraphState(clonedSnap, cardW, cardH, () => {
-        const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
-        tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
-        tctx.fillRect(0, 0, cardW, cardH);
-        if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
-        if (this.showInverseGuide) this.drawInverseGuide(tctx);
-        if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
-        if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
-        if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
-        this.drawAllCurves(tctx);
-        if (this.usePiecewise && this.graphs.length >= 1) {
-          this.drawPiecewiseBoundaries(tctx);
-        }
-        this.drawDropLines(tctx, true);
-        this.drawTextLabels(tctx);
-      });
-      tctx.restore();
-      const dataUrl = tempCanvas.toDataURL('image/png');
+      const useVecPlaceholderDup = (typeof this._hasPureVectorGraphsInSnap === 'function')
+        ? this._hasPureVectorGraphsInSnap(clonedSnap)
+        : Boolean(clonedSnap && !clonedSnap.isNAxisStudioCard && Array.isArray(clonedSnap.graphs) && clonedSnap.graphs.length > 0);
+      let tempCanvas;
+      let dataUrl;
+      if (useVecPlaceholderDup) {
+        dataUrl = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        tempCanvas = { width: Math.max(1, Math.round(cardW)), height: Math.max(1, Math.round(cardH)) };
+      } else {
+        const snapScale = 2.5;
+        tempCanvas = document.createElement('canvas');
+        tempCanvas.width = Math.round(cardW * snapScale);
+        tempCanvas.height = Math.round(cardH * snapScale);
+        const tctx = tempCanvas.getContext('2d');
+        tctx.save();
+        tctx.scale(snapScale, snapScale);
+        this._withPipCardGraphState(clonedSnap, cardW, cardH, () => {
+          const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
+          tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
+          tctx.fillRect(0, 0, cardW, cardH);
+          if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
+          if (this.showInverseGuide) this.drawInverseGuide(tctx);
+          if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
+          if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
+          if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
+          this.drawAllCurves(tctx);
+          if (this.usePiecewise && this.graphs.length >= 1) {
+            this.drawPiecewiseBoundaries(tctx);
+          }
+          this.drawDropLines(tctx, true);
+          this.drawTextLabels(tctx);
+        });
+        tctx.restore();
+        dataUrl = tempCanvas.toDataURL('image/png');
+      }
 
       const diagPos = this._computeDiagonalOffsetCardBasePos(cardRef, cardW, cardH);
       const createdRef = this.setGraphCard(
@@ -12326,31 +12336,41 @@
       updatedSnap._pipCardW = cardW;
       updatedSnap._pipCardH = cardH;
 
-      const snapScale = 2.5;
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = Math.round(cardW * snapScale);
-      tempCanvas.height = Math.round(cardH * snapScale);
-      const tctx = tempCanvas.getContext('2d');
-      tctx.save();
-      tctx.scale(snapScale, snapScale);
-      this._withPipCardGraphState(updatedSnap, cardW, cardH, () => {
-        const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
-        tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
-        tctx.fillRect(0, 0, cardW, cardH);
-        if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
-        if (this.showInverseGuide) this.drawInverseGuide(tctx);
-        if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
-        if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
-        if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
-        this.drawAllCurves(tctx);
-        if (this.usePiecewise && this.graphs.length >= 1) {
-          this.drawPiecewiseBoundaries(tctx);
-        }
-        this.drawDropLines(tctx, true);
-        this.drawTextLabels(tctx);
-      });
-      tctx.restore();
-      const dataUrl = tempCanvas.toDataURL('image/png');
+      const useVecPlaceholderNew = (typeof this._hasPureVectorGraphsInSnap === 'function')
+        ? this._hasPureVectorGraphsInSnap(updatedSnap)
+        : Boolean(updatedSnap && !updatedSnap.isNAxisStudioCard && Array.isArray(updatedSnap.graphs) && updatedSnap.graphs.length > 0);
+      let tempCanvas;
+      let dataUrl;
+      if (useVecPlaceholderNew) {
+        dataUrl = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        tempCanvas = { width: Math.max(1, Math.round(cardW)), height: Math.max(1, Math.round(cardH)) };
+      } else {
+        const snapScale = 2.5;
+        tempCanvas = document.createElement('canvas');
+        tempCanvas.width = Math.round(cardW * snapScale);
+        tempCanvas.height = Math.round(cardH * snapScale);
+        const tctx = tempCanvas.getContext('2d');
+        tctx.save();
+        tctx.scale(snapScale, snapScale);
+        this._withPipCardGraphState(updatedSnap, cardW, cardH, () => {
+          const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
+          tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
+          tctx.fillRect(0, 0, cardW, cardH);
+          if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
+          if (this.showInverseGuide) this.drawInverseGuide(tctx);
+          if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
+          if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
+          if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
+          this.drawAllCurves(tctx);
+          if (this.usePiecewise && this.graphs.length >= 1) {
+            this.drawPiecewiseBoundaries(tctx);
+          }
+          this.drawDropLines(tctx, true);
+          this.drawTextLabels(tctx);
+        });
+        tctx.restore();
+        dataUrl = tempCanvas.toDataURL('image/png');
+      }
 
       // 즉시 판서(필기) 모드로 복귀한 뒤, 기존 카드 기준 우하단 45도(+38px, +38px) 위치에 최상단(Top z-index)으로 새 카드 배치
       this._restoreBoardModeStateAfterGraph();
@@ -12939,31 +12959,41 @@
       }
       const centerY = Math.round(Math.max(64, (vh - cardH) * 0.5 - 24 + cascade));
 
-      const snapScale = 2.5;
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = Math.round(cardW * snapScale);
-      tempCanvas.height = Math.round(cardH * snapScale);
-      const tctx = tempCanvas.getContext('2d');
-      tctx.save();
-      tctx.scale(snapScale, snapScale);
-      this._withPipCardGraphState(snapObj, cardW, cardH, () => {
-        const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
-        tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
-        tctx.fillRect(0, 0, cardW, cardH);
-        if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
-        if (this.showInverseGuide) this.drawInverseGuide(tctx);
-        if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
-        if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
-        if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
-        this.drawAllCurves(tctx);
-        if (this.usePiecewise && this.graphs.length >= 1) {
-          this.drawPiecewiseBoundaries(tctx);
-        }
-        this.drawDropLines(tctx, true);
-        this.drawTextLabels(tctx);
-      });
-      tctx.restore();
-      const dataUrl = tempCanvas.toDataURL('image/png');
+      const useVecPlaceholderSpawn = (typeof this._hasPureVectorGraphsInSnap === 'function')
+        ? this._hasPureVectorGraphsInSnap(snapObj)
+        : Boolean(snapObj && !snapObj.isNAxisStudioCard && Array.isArray(snapObj.graphs) && snapObj.graphs.length > 0);
+      let tempCanvas;
+      let dataUrl;
+      if (useVecPlaceholderSpawn) {
+        dataUrl = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        tempCanvas = { width: Math.max(1, Math.round(cardW)), height: Math.max(1, Math.round(cardH)) };
+      } else {
+        const snapScale = 2.5;
+        tempCanvas = document.createElement('canvas');
+        tempCanvas.width = Math.round(cardW * snapScale);
+        tempCanvas.height = Math.round(cardH * snapScale);
+        const tctx = tempCanvas.getContext('2d');
+        tctx.save();
+        tctx.scale(snapScale, snapScale);
+        this._withPipCardGraphState(snapObj, cardW, cardH, () => {
+          const curTheme = (this.canvasThemes && this.canvasThemes[this.currentThemeKey]) || { bg: '#ffffff', isLight: true };
+          tctx.fillStyle = this.isMonochromeMode ? '#ffffff' : (curTheme.bg || '#ffffff');
+          tctx.fillRect(0, 0, cardW, cardH);
+          if (this.showGuides) this.drawGuides(tctx, this._snapshotCropBounds);
+          if (this.showInverseGuide) this.drawInverseGuide(tctx);
+          if (this.showAsymptotes) this.drawAllAsymptotes(tctx);
+          if (this.showAxes) this.drawAxes(tctx, this._snapshotCropBounds);
+          if (this.showAxes && this.showGridNumbers) this.drawGridNumbers(tctx, this._snapshotCropBounds);
+          this.drawAllCurves(tctx);
+          if (this.usePiecewise && this.graphs.length >= 1) {
+            this.drawPiecewiseBoundaries(tctx);
+          }
+          this.drawDropLines(tctx, true);
+          this.drawTextLabels(tctx);
+        });
+        tctx.restore();
+        dataUrl = tempCanvas.toDataURL('image/png');
+      }
 
       const createdRef = this.setGraphCard(
         dataUrl,

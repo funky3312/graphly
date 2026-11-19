@@ -1793,7 +1793,7 @@
           this._hasSceneFreeze = false;
           this._hasLiveTipPatch = false;
           if (hadSelectedGraphHandleOrCurve) {
-            this._inkBakeDirty = true;
+            this._needPostStrokeSceneRefresh = true;
           }
         }
 
@@ -4163,6 +4163,13 @@
           // 절대 전체 화면 render(), rebuildInkCache(), 오프스크린 베이킹, DOM 버튼 갱신을 동기 실행하지 않고,
           // 현재 획 끝점만 즉시 캔버스에 그린 뒤(0.01ms) 증분 베이킹 큐에 위임하여 연속 필기(`ㄴ` 받침 등) 씹힘을 원천 차단합니다!
           if (!finishedStroke.isHighlighter && !finishedStroke.isDashed && !finishedStroke.isShape && !this._inkBakeDirty) {
+            if (this._needPostStrokeSceneRefresh) {
+              this._needPostStrokeSceneRefresh = false;
+              this._liveBezierScreenPts = null;
+              this.updateUndoRedoUI();
+              this.render();
+              return;
+            }
             if (this._liveBezierScreenPts && this._liveBezierScreenPts.length >= 1) {
               this.drawLiveBezierStep(this._liveBezierScreenPts, finishedStroke, true);
             } else {
@@ -4216,7 +4223,6 @@
           this.selectedHandleIdx = this.downInfo.hitHandleIdx;
           this.isCurveSelected = true;
           this.startPulseLoop();
-          this.render();
         } else if (this.downInfo.hitCurveIdx !== null || wasDraggingCurve) {
           // 🌟 [대표님 절대 규칙 100% 구현]:
           // 1. 선을 먼저 클릭하면 핸들러가 나온다.
@@ -4225,7 +4231,6 @@
           this.isCurveSelected = true;
           this.selectedHandleIdx = null;
           this.renderLayerList();
-          this.render();
         } else {
           // 🌟 [대표님 핵심 기획]:
           // 1) 손날이나 손가락(touch)으로 화면을 건드리거나 이동할 때는 핸들러가 절대 사라지지 않음!
@@ -4244,10 +4249,7 @@
             }
             this.renderLayerList();
           }
-          this.render();
         }
-      } else if (wasDraggingPwBoundary || wasDraggingHandle || wasDraggingCurve) {
-        this.render();
       }
 
       if (this.isBoardPanning) {
@@ -7769,8 +7771,8 @@
     }
 
     // [📍 종속 보조 수선 자동 정화]: 원그래프 삭제 시 종속 수선 삭제, 단 교점은 남은 부모 그래프가 이어받기!
-    this.dropLines = this.dropLines.filter(item => {
-      if (!item.binding) return true;
+    const shouldKeepDropLine = (item) => {
+      if (!item || !item.binding) return Boolean(item);
       const b = item.binding;
 
       // 교점 수선인 경우
@@ -7795,7 +7797,54 @@
         return false;
       }
       return true;
-    });
+    };
+    let hasOrphanDropLine = false;
+    for (let i = 0; i < this.dropLines.length; i++) {
+      if (!shouldKeepDropLine(this.dropLines[i])) {
+        hasOrphanDropLine = true;
+        break;
+      }
+    }
+    if (hasOrphanDropLine) {
+      this.dropLines = this.dropLines.filter(shouldKeepDropLine);
+    }
+    if (this.dropLines.length === 0) return;
+
+    const isFastDrag = Boolean(
+      !this._isRenderingGraphSnapshot &&
+      (this.isDraggingCurve || this.draggedHandleIdx !== null || this.activePwDragIdx !== null)
+    );
+    const sigParts = [
+      isFastDrag ? 1 : 0,
+      this.usePiecewise ? 1 : 0,
+      this.isPiecewisePeriodic ? 1 : 0,
+      this.periodicStepY || 0,
+      (this.piecewiseBoundaries || []).join(','),
+      (this.piecewiseFuncMap || []).join(',')
+    ];
+    for (let i = 0; i < this.graphs.length; i++) {
+      const g = this.graphs[i];
+      if (!g) continue;
+      const ox = (g.freezeOffset && typeof g.freezeOffset.x === 'number') ? g.freezeOffset.x : 0;
+      const oy = (g.freezeOffset && typeof g.freezeOffset.y === 'number') ? g.freezeOffset.y : 0;
+      const hSig = (g.handles || []).map(h => `${h.x.toFixed(4)}:${h.y.toFixed(4)}:${h.type}:${h.hidden ? 1 : 0}`).join(';');
+      const tSig = (g.transforms || []).map(t => `${t.type || ''}:${t.offset ? t.offset.x : 0}:${t.offset ? t.offset.y : 0}:${t.invertH ? 1 : 0}:${t.invertV ? 1 : 0}:${(t.abs || t.absolute) ? 1 : 0}`).join(';');
+      sigParts.push(`${g.id}|${g.type}|${g.generalExpr || ''}|${g.isTransposedYX ? 1 : 0}|${g.isAbsolute ? 1 : 0}|${g.isFrozen ? 1 : 0}|${g.frozenInvertH ? 1 : 0}|${g.frozenInvertV ? 1 : 0}|${g.frozenAbsolute ? 1 : 0}|${g.isIndependent ? 1 : 0}|${ox.toFixed(4)},${oy.toFixed(4)}|${hSig}|${tSig}`);
+    }
+    for (let i = 0; i < this.dropLines.length; i++) {
+      const dl = this.dropLines[i];
+      if (!dl) continue;
+      const b = dl.binding;
+      if (!b) {
+        sigParts.push(`${dl.id || i}:free`);
+      } else {
+        sigParts.push(`${dl.id || i}:${b.type || ''}:${b.layerId || ''}:${Array.isArray(b.layerIds) ? b.layerIds.join(',') : ''}:${b.handleIndex ?? ''}:${b.name || ''}:${b.candKey || ''}:${b.anchorX ?? ''}:${b.anchorBaseX ?? ''}:${b.anchorAngle ?? ''}:${b.edgeIdx ?? ''}:${b.edgeT ?? ''}:${b.isIntersection ? 1 : 0}`);
+      }
+    }
+    const trackSig = sigParts.join('||');
+    if (this.dropLines._lastTrackSig === trackSig) {
+      return;
+    }
 
     const offCurveCenterTypes = new Set(['exp_basic', 'log_basic', 'rational_basic', 'killer_log_frac', 'geom_circle', 'general_expr']);
 
@@ -7814,7 +7863,8 @@
             this._wrapGraphForScreenIntersections(gA),
             this._wrapGraphForScreenIntersections(gB),
             { xmin: item.sourceX - 30, xmax: item.sourceX + 30 },
-            { xmin: item.sourceX - 30, xmax: item.sourceX + 30, ymin: item.sourceY - 30, ymax: item.sourceY + 30 }
+            { xmin: item.sourceX - 30, xmax: item.sourceX + 30, ymin: item.sourceY - 30, ymax: item.sourceY + 30 },
+            isFastDrag
           ) || [];
           const validRoots = roots.filter(r => {
             if (!this.usePiecewise) return true;
@@ -7928,7 +7978,8 @@
             this._wrapGraphForScreenIntersections(g),
             null,
             { xmin: item.sourceX - 30, xmax: item.sourceX + 30 },
-            null
+            null,
+            isFastDrag
           ) || [];
           const validRoots = roots.filter(r => (!this.usePiecewise || g.isIndependent || this.isInsidePiece(gIdx, r.x)));
           if (validRoots.length > 0) {
@@ -8085,7 +8136,7 @@
             item.sourceY = this.engine.getHandleWorldPos(g, g.handles[0]).y;
           } else if (isTrans) {
             const nG = { ...g, isTransposedYX: false };
-            const yRoots = this.engine.findFunctionIntersections(nG, null, { xmin: item.sourceY - 30, xmax: item.sourceY + 30 }, null) || [];
+            const yRoots = this.engine.findFunctionIntersections(nG, null, { xmin: item.sourceY - 30, xmax: item.sourceY + 30 }, null, isFastDrag) || [];
             if (yRoots.length > 0) {
               let best = yRoots[0];
               let bestDist = Math.abs(best.x - item.sourceY);
@@ -8109,7 +8160,7 @@
       else if (b.type === 'candidate' && b.name === 'y절편') {
         if (isTrans) {
           const nG = { ...g, isTransposedYX: false };
-          const yRoots = this.engine.findFunctionIntersections(nG, null, { xmin: item.sourceY - 30, xmax: item.sourceY + 30 }, null) || [];
+          const yRoots = this.engine.findFunctionIntersections(nG, null, { xmin: item.sourceY - 30, xmax: item.sourceY + 30 }, null, isFastDrag) || [];
           if (yRoots.length > 0) {
             let best = yRoots[0];
             let bestDist = Math.abs(best.x - item.sourceY);
@@ -8172,6 +8223,16 @@
         }
       }
     });
+    try {
+      Object.defineProperty(this.dropLines, '_lastTrackSig', {
+        value: trackSig,
+        writable: true,
+        configurable: true,
+        enumerable: false
+      });
+    } catch (_) {
+      this.dropLines._lastTrackSig = trackSig;
+    }
   }
 
   addDropLineAtPoint(x, y, target = null) {
@@ -10852,13 +10913,20 @@
 
   startPulseLoop() {
     if (this.pulseAnimId) return;
-    const loop = () => {
+    let lastIdlePulseMs = 0;
+    const loop = (nowTs) => {
       if (this.selectedHandleIdx !== null) {
-        this.render();
+        if (!this.isActivelyWritingOrInteracting()) {
+          const ts = typeof nowTs === 'number' ? nowTs : performance.now();
+          if (ts - lastIdlePulseMs >= 30) {
+            lastIdlePulseMs = ts;
+            this.requestRender();
+          }
+        }
         this.pulseAnimId = requestAnimationFrame(loop);
       } else {
         this.pulseAnimId = null;
-        this.render();
+        this.requestRender();
       }
     };
     this.pulseAnimId = requestAnimationFrame(loop);

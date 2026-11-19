@@ -1070,7 +1070,7 @@ class GraphApp {
       pdfSavedPageStates: this.pdfSavedPageStates ? { ...this.pdfSavedPageStates } : {},
       pdfWorkedPages: Array.isArray(this.pdfWorkedPages) ? [...this.pdfWorkedPages] : [],
       isLessonPlaylistActive: Boolean(this.isLessonPlaylistActive),
-      lessonPlaylistSlides: Array.isArray(this.lessonPlaylistSlides) ? JSON.parse(JSON.stringify(this.lessonPlaylistSlides)) : [],
+      lessonPlaylistSlides: Array.isArray(this.lessonPlaylistSlides) ? [...this.lessonPlaylistSlides] : [],
       lessonPlaylistIndex: this.lessonPlaylistIndex || 0,
       suspendedPdfBoardState: this._suspendedPdfBoardState ? { ...this._suspendedPdfBoardState } : null,
       isTempPdfProblemCard: Boolean(this._isTempPdfProblemCard),
@@ -1356,8 +1356,11 @@ class GraphApp {
     this.pdfSavedPageStates = wsSnap.pdfSavedPageStates ? { ...wsSnap.pdfSavedPageStates } : {};
     this.pdfWorkedPages = Array.isArray(wsSnap.pdfWorkedPages) ? [...wsSnap.pdfWorkedPages] : [];
     this.isLessonPlaylistActive = Boolean(wsSnap.isLessonPlaylistActive);
-    this.lessonPlaylistSlides = Array.isArray(wsSnap.lessonPlaylistSlides) ? JSON.parse(JSON.stringify(wsSnap.lessonPlaylistSlides)) : [];
+    this.lessonPlaylistSlides = Array.isArray(wsSnap.lessonPlaylistSlides) ? [...wsSnap.lessonPlaylistSlides] : [];
     this.lessonPlaylistIndex = wsSnap.lessonPlaylistIndex || 0;
+    this._loadedSlideRef = null;
+    this._loadedSlideFastSig = '';
+    this._slideDirty = true;
     this._suspendedPdfBoardState = wsSnap.suspendedPdfBoardState ? { ...wsSnap.suspendedPdfBoardState } : null;
     this._isTempPdfProblemCard = Boolean(wsSnap.isTempPdfProblemCard);
     this._graphSessionArchived = Boolean(wsSnap.graphSessionArchived);
@@ -4453,14 +4456,19 @@ class GraphApp {
 
   startIntersectionLoop() {
     if (this.intersectionAnimId) return;
-    const animate = () => {
+    let lastIdleTickMs = 0;
+    const animate = (nowTs) => {
       if (!this.useIntersectionDetector || this.isGraphCovered) {
         this.intersectionAnimId = null;
         return;
       }
       if (!this.isActivelyWritingOrInteracting()) {
-        this.intersectionAnimPhase = (Date.now() / 250) % (Math.PI * 2);
-        this.render();
+        const ts = typeof nowTs === 'number' ? nowTs : performance.now();
+        if (ts - lastIdleTickMs >= 30) {
+          lastIdleTickMs = ts;
+          this.intersectionAnimPhase = (Date.now() / 250) % (Math.PI * 2);
+          this.requestRender();
+        }
       }
       this.intersectionAnimId = requestAnimationFrame(animate);
     };

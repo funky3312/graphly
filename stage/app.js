@@ -7524,6 +7524,24 @@
       };
     }
 
+    _releaseAudioReplayInkCanvases() {
+      if (!this._replayInkBakeMap || typeof this._replayInkBakeMap !== 'object') {
+        this._replayInkBakeMap = null;
+        return;
+      }
+      Object.keys(this._replayInkBakeMap).forEach((slot) => {
+        const entry = this._replayInkBakeMap[slot];
+        if (entry && entry.canvas) {
+          try {
+            entry.canvas.width = 1;
+            entry.canvas.height = 1;
+          } catch (_) { }
+          entry.canvas = null;
+        }
+      });
+      this._replayInkBakeMap = null;
+    }
+
     _drawAudioReplayInkStrokes(ctx, filterTarget = null) {
       const playMs = this.audioPlayCurrentMs || 0;
       const viewMode = this.audioReplayViewMode || 'video';
@@ -7651,7 +7669,7 @@
         }
       };
 
-      // 🌟 [리플레이 오프스크린 베이크 캐시]: 메인 캔버스와 100% 동일한 초고해상도 DPR(getCanvasDpr = 2.0~2.5x) 및 타깃별 독립 버퍼로 쓰기 완료 후에도 화질 저하 0%!
+      // 🌟 [리플레이 오프스크린 베이크 캐시]: 메인 캔버스와 100% 동일한 초고해상도 DPR(getCanvasDpr = 2.0~2.5x) + 오버스캔 아핀 패닝 + Pass-3 증분 베이킹!
       if (ctx === this.ctx && completedReps.length > 0) {
         const targetSlot = filterTarget || 'all';
         const replayCardRects = (!isLight && !this.isMonochromeMode && typeof this._getVisibleWhiteProblemCardScreenRects === 'function')
@@ -7661,35 +7679,25 @@
           ? replayCardRects.map(r => `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.w)},${Math.round(r.h)}`).join(';')
           : 'none';
         const dpr = this.getCanvasDpr();
-        const bw = (this.canvas && this.canvas.width > 0) ? this.canvas.width : Math.max(1, Math.round(this.screenWidth * dpr));
-        const bh = (this.canvas && this.canvas.height > 0) ? this.canvas.height : Math.max(1, Math.round(this.screenHeight * dpr));
-        let strokesRollHash = 2166136261;
-        for (let rIdx = 0; rIdx < completedReps.length; rIdx++) {
-          const st = completedReps[rIdx] && completedReps[rIdx].stroke;
-          if (!st) continue;
-          const token = `${st.id || st.tStart || rIdx}:${st.color || ''}:${Math.round((st.size || 0) * 10)}:${Math.round((st.softBlur || 0) * 10)}`;
-          for (let cIdx = 0; cIdx < token.length; cIdx++) {
-            strokesRollHash ^= token.charCodeAt(cIdx);
-            strokesRollHash = Math.imul(strokesRollHash, 16777619) >>> 0;
-          }
+        const sw = Math.max(1, this.screenWidth || (this.canvas ? Math.round(this.canvas.width / dpr) : 1280) || 1280);
+        const sh = Math.max(1, this.screenHeight || (this.canvas ? Math.round(this.canvas.height / dpr) : 720) || 720);
+        const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+        let padCss = (targetSlot === 'board' || targetSlot === 'graph')
+          ? (isIOS ? Math.min(160, Math.round(Math.min(sw, sh) * 0.20)) : Math.min(260, Math.round(Math.min(sw, sh) * 0.30)))
+          : 0;
+        const maxSidePx = Math.max(Math.round(sw * dpr) + 64, Math.round(sh * dpr) + 64, isIOS ? 3200 : 3840);
+        if (Math.round((sw + padCss * 2) * dpr) > maxSidePx || Math.round((sh + padCss * 2) * dpr) > maxSidePx) {
+          padCss = Math.max(0, Math.floor((maxSidePx / dpr - Math.max(sw, sh)) * 0.5));
         }
-        const bakeKey = [
-          targetSlot,
-          completedReps.length,
-          strokesRollHash.toString(36),
-          Boolean(this.pdfPageBoardData),
-          Math.round((this.panX || 0) * 10),
-          Math.round((this.panY || 0) * 10),
-          Math.round((this.zoomLevel || 1) * 1000),
-          Math.round((this.boardPanX || 0) * 10),
-          Math.round((this.boardPanY || 0) * 10),
-          Math.round((this.boardZoom || 1) * 1000),
-          bw,
-          bh,
-          this.currentThemeKey,
-          Boolean(this.isMonochromeMode),
-          pRectKey
-        ].join('|');
+        const maxTotalPx = isIOS ? 6000000 : 11000000;
+        let bw = Math.max(1, Math.round((sw + padCss * 2) * dpr));
+        let bh = Math.max(1, Math.round((sh + padCss * 2) * dpr));
+        if (bw * bh > maxTotalPx && padCss > 0) {
+          const scale = Math.sqrt(maxTotalPx / (bw * bh));
+          padCss = Math.max(0, Math.floor((Math.min(bw, bh) * scale / dpr - Math.min(sw, sh)) * 0.5));
+          bw = Math.max(1, Math.round((sw + padCss * 2) * dpr));
+          bh = Math.max(1, Math.round((sh + padCss * 2) * dpr));
+        }
 
         if (!this._replayInkBakeMap) {
           this._replayInkBakeMap = {};
@@ -7697,30 +7705,175 @@
         if (!this._replayInkBakeMap[targetSlot]) {
           this._replayInkBakeMap[targetSlot] = {
             canvas: document.createElement('canvas'),
-            key: ''
+            metaKey: '',
+            count: 0,
+            rollHash: 0,
+            cam: null,
+            lastSeenCamSig: '',
+            lastCamMovePerf: 0
           };
         }
         const bakeEntry = this._replayInkBakeMap[targetSlot];
         const bakeCanvas = bakeEntry.canvas;
-
         if (bakeCanvas.width !== bw || bakeCanvas.height !== bh) {
           bakeCanvas.width = bw;
           bakeCanvas.height = bh;
-          bakeEntry.key = '';
+          bakeEntry.metaKey = '';
+          bakeEntry.count = 0;
+          bakeEntry.cam = null;
         }
-        if (bakeEntry.key !== bakeKey) {
-          const bCtx = bakeCanvas.getContext('2d');
-          if (bCtx) {
-            bCtx.save();
-            bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            bCtx.clearRect(0, 0, this.screenWidth, this.screenHeight);
-            drawRepsBatch(bCtx, completedReps, false);
-            bCtx.restore();
-            bakeEntry.key = bakeKey;
+
+        const prevCount = bakeEntry.count || 0;
+        let strokesRollHash = 2166136261;
+        let prefixHashAtPrevCount = 0;
+        for (let rIdx = 0; rIdx < completedReps.length; rIdx++) {
+          const st = completedReps[rIdx] && completedReps[rIdx].stroke;
+          if (st) {
+            const token = `${st.id || st.tStart || rIdx}:${st.points ? st.points.length : 0}:${st.shape ? (st.shape.type || '1') : ''}:${st.isDashed ? 1 : 0}:${st.color || ''}:${Math.round((st.size || 0) * 10)}:${Math.round((st.softBlur || 0) * 10)}`;
+            for (let cIdx = 0; cIdx < token.length; cIdx++) {
+              strokesRollHash ^= token.charCodeAt(cIdx);
+              strokesRollHash = Math.imul(strokesRollHash, 16777619) >>> 0;
+            }
+          }
+          if (rIdx + 1 === prevCount) {
+            prefixHashAtPrevCount = strokesRollHash >>> 0;
           }
         }
+        strokesRollHash = strokesRollHash >>> 0;
+
+        const metaKey = [
+          targetSlot,
+          Boolean(this.pdfPageBoardData),
+          bw,
+          bh,
+          padCss,
+          this.currentThemeKey,
+          Boolean(this.isMonochromeMode),
+          pRectKey
+        ].join('|');
+        const curCam = {
+          panX: this.panX || 0,
+          panY: this.panY || 0,
+          zoomLevel: this.zoomLevel || 1.0,
+          boardPanX: this.boardPanX || 0,
+          boardPanY: this.boardPanY || 0,
+          boardZoom: this.boardZoom || 1.0,
+          boardZoomOffsetX: this.boardZoomOffsetX || 0,
+          boardZoomOffsetY: this.boardZoomOffsetY || 0,
+          padCss
+        };
+        const curCamSig = (targetSlot === 'board')
+          ? `${Math.round((curCam.boardPanX + curCam.boardZoomOffsetX) * 10)}:${Math.round((curCam.boardPanY + curCam.boardZoomOffsetY) * 10)}:${Math.round(curCam.boardZoom * 1000)}`
+          : `${Math.round(curCam.panX * 10)}:${Math.round(curCam.panY * 10)}:${Math.round(curCam.zoomLevel * 1000)}`;
+        const nowPerf = (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now();
+        if (bakeEntry.lastSeenCamSig !== curCamSig) {
+          bakeEntry.lastSeenCamSig = curCamSig;
+          bakeEntry.lastCamMovePerf = nowPerf;
+        }
+
+        const calcAffineFromBakedCam = (cam) => {
+          if (!cam) return null;
+          if (targetSlot === 'board') {
+            const bz0 = cam.boardZoom || 1.0;
+            const bz1 = curCam.boardZoom || 1.0;
+            const s = bz1 / bz0;
+            const tx = (curCam.boardPanX + curCam.boardZoomOffsetX) - (cam.boardPanX + cam.boardZoomOffsetX) * s;
+            const ty = (curCam.boardPanY + curCam.boardZoomOffsetY) - (cam.boardPanY + cam.boardZoomOffsetY) * s;
+            return { s, tx, ty, pad: cam.padCss || 0 };
+          }
+          if (targetSlot === 'graph') {
+            const z0 = cam.zoomLevel || 1.0;
+            const z1 = curCam.zoomLevel || 1.0;
+            const s = z1 / z0;
+            const tx = (sw * 0.5 + curCam.panX) - (sw * 0.5 + cam.panX) * s;
+            const ty = (sh * 0.5 + curCam.panY) - (sh * 0.5 + cam.panY) * s;
+            return { s, tx, ty, pad: cam.padCss || 0 };
+          }
+          return null;
+        };
+
+        const aff = (bakeEntry.metaKey === metaKey && bakeEntry.cam) ? calcAffineFromBakedCam(bakeEntry.cam) : null;
+        const isExactCam = Boolean(aff && Math.abs(aff.s - 1) < 1e-4 && Math.abs(aff.tx) < 0.05 && Math.abs(aff.ty) < 0.05);
+        const canAffineCoverScreen = Boolean(
+          aff &&
+          !isExactCam &&
+          this.isAudioPlaying &&
+          (nowPerf - (bakeEntry.lastCamMovePerf || 0) < 120) &&
+          aff.pad > 0 &&
+          aff.s >= 0.85 &&
+          aff.s <= 1.18 &&
+          (aff.tx - aff.pad * aff.s) <= 1 &&
+          (aff.ty - aff.pad * aff.s) <= 1 &&
+          (aff.tx + (sw + aff.pad) * aff.s) >= (sw - 1) &&
+          (aff.ty + (sh + aff.pad) * aff.s) >= (sh - 1)
+        );
+
+        const sameStrokes = (bakeEntry.metaKey === metaKey && bakeEntry.count === completedReps.length && bakeEntry.rollHash === strokesRollHash);
+        let didIncremental = false;
+        if (
+          !sameStrokes &&
+          isExactCam &&
+          bakeEntry.metaKey === metaKey &&
+          prevCount > 0 &&
+          completedReps.length > prevCount &&
+          (completedReps.length - prevCount) <= 4 &&
+          prefixHashAtPrevCount === bakeEntry.rollHash
+        ) {
+          let allNewTopPass = true;
+          for (let k = prevCount; k < completedReps.length; k++) {
+            const nSt = completedReps[k] && completedReps[k].stroke;
+            const nPass = nSt
+              ? ((typeof this._getStrokeRenderPass === 'function') ? this._getStrokeRenderPass(nSt) : (nSt.isHighlighter ? 1 : 3))
+              : -1;
+            if (nPass !== 3) {
+              allNewTopPass = false;
+              break;
+            }
+          }
+          if (allNewTopPass) {
+            const bCtx = bakeCanvas.getContext('2d');
+            if (bCtx) {
+              bCtx._isReplayBakeCtx = true;
+              bCtx._cullPadX = padCss;
+              bCtx._cullPadY = padCss;
+              bCtx.save();
+              bCtx.setTransform(dpr, 0, 0, dpr, padCss * dpr, padCss * dpr);
+              drawRepsBatch(bCtx, completedReps.slice(prevCount), false);
+              bCtx.restore();
+              bakeEntry.count = completedReps.length;
+              bakeEntry.rollHash = strokesRollHash;
+              didIncremental = true;
+            }
+          }
+        }
+
+        const needFullRebake = !didIncremental && !(sameStrokes && (isExactCam || canAffineCoverScreen));
+        if (needFullRebake) {
+          const bCtx = bakeCanvas.getContext('2d');
+          if (bCtx) {
+            bCtx._isReplayBakeCtx = true;
+            bCtx._cullPadX = padCss;
+            bCtx._cullPadY = padCss;
+            bCtx.save();
+            bCtx.setTransform(dpr, 0, 0, dpr, padCss * dpr, padCss * dpr);
+            bCtx.clearRect(-padCss, -padCss, sw + padCss * 2, sh + padCss * 2);
+            drawRepsBatch(bCtx, completedReps, false);
+            bCtx.restore();
+            bakeEntry.metaKey = metaKey;
+            bakeEntry.count = completedReps.length;
+            bakeEntry.rollHash = strokesRollHash;
+            bakeEntry.cam = curCam;
+          }
+        }
+
+        const blitAff = (bakeEntry.cam && bakeEntry.cam !== curCam) ? calcAffineFromBakedCam(bakeEntry.cam) : null;
         ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        if (blitAff && (Math.abs(blitAff.s - 1) >= 1e-4 || Math.abs(blitAff.tx) >= 0.05 || Math.abs(blitAff.ty) >= 0.05)) {
+          ctx.setTransform(blitAff.s, 0, 0, blitAff.s, (blitAff.tx - blitAff.pad * blitAff.s) * dpr, (blitAff.ty - blitAff.pad * blitAff.s) * dpr);
+        } else {
+          const bPad = (bakeEntry.cam && typeof bakeEntry.cam.padCss === 'number') ? bakeEntry.cam.padCss : padCss;
+          ctx.setTransform(1, 0, 0, 1, -bPad * dpr, -bPad * dpr);
+        }
         ctx.drawImage(bakeCanvas, 0, 0);
         ctx.restore();
       } else {
@@ -8237,6 +8390,7 @@
         this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
         if (!this._isAudioReplayActive) {
           this._currentAppliedAudioKeyframe = null;
+          this._releaseAudioReplayInkCanvases();
           if (typeof this.syncLassoActionBarUI === 'function') this.syncLassoActionBarUI();
         }
         this.renderProblemCardCanvas();
@@ -8284,6 +8438,7 @@
         this._applyAudioWorkspaceKeyframe(this.audioSyncData.finalState);
       }
       this._currentAppliedAudioKeyframe = null;
+      this._releaseAudioReplayInkCanvases();
       if (typeof this.syncLassoActionBarUI === 'function') {
         this.syncLassoActionBarUI();
       }

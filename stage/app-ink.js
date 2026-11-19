@@ -6295,14 +6295,15 @@
           ? this._currentAppliedAudioKeyframe.lassoState
           : null;
         if (!rLasso || !rLasso.showBar || !Array.isArray(rLasso.bbox) || rLasso.bbox.length < 4) {
-          bar.style.display = 'none';
+          if (bar.style.display !== 'none') bar.style.display = 'none';
           return;
         }
         const [minX, minY, maxX, maxY] = rLasso.bbox;
         const pad = 10;
-        bar.style.display = 'flex';
+        const wasHiddenR = (bar.style.display === 'none');
+        if (wasHiddenR) bar.style.display = 'flex';
         const screenW = this.screenWidth || window.innerWidth || 1280;
-        const barW = Math.max(188, bar.offsetWidth || 226);
+        const barW = Math.max(188, (wasHiddenR || !bar._cachedBarW) ? (bar._cachedBarW = (bar.offsetWidth || 226)) : bar._cachedBarW);
         const minLeft = 64;
         const maxLeft = Math.max(minLeft, screenW - barW - 64);
         const idealLeft = ((minX + maxX) / 2) - (barW / 2);
@@ -6332,7 +6333,7 @@
 
       if (hasCardSelection && this.isInkMode && this.activeInkTool === 'lasso') {
         if (cl.isSelecting || cl.isDragging || cl.isResizing || cl.isRotating || cl.flipAnim) {
-          bar.style.display = 'none';
+          if (bar.style.display !== 'none') bar.style.display = 'none';
           return;
         }
         const bodyEl = cl.widgetEl.querySelector('.problem-card-body') || cl.widgetEl;
@@ -6345,9 +6346,10 @@
           const cardRot = this._getCardLassoRotateHandlePx(cl.bboxNorm, rect.width, rect.height);
           const extraTopGap = (cardRot && cardRot.placement === 'top') ? 32 : 0;
           const pad = 10;
-          bar.style.display = 'flex';
+          const wasHiddenC = (bar.style.display === 'none');
+          if (wasHiddenC) bar.style.display = 'flex';
           const screenW = this.screenWidth || window.innerWidth || 1280;
-          const barW = Math.max(188, bar.offsetWidth || 226);
+          const barW = Math.max(188, (wasHiddenC || !bar._cachedBarW) ? (bar._cachedBarW = (bar.offsetWidth || 226)) : bar._cachedBarW);
           const minLeft = 64;
           const maxLeft = Math.max(minLeft, screenW - barW - 64);
           const idealLeft = ((minX + maxX) / 2) - (barW / 2);
@@ -6381,7 +6383,7 @@
         this.isRotatingLassoSelection ||
         this._lassoFlipAnim
       ) {
-        bar.style.display = 'none';
+        if (bar.style.display !== 'none') bar.style.display = 'none';
         return;
       }
 
@@ -6390,9 +6392,10 @@
       const extraTopGap = (rotHandle && rotHandle.placement === 'top') ? 34 : 0;
       const extraBottomGap = (rotHandle && rotHandle.placement === 'bottom') ? 34 : 0;
       const pad = 10;
-      bar.style.display = 'flex';
+      const wasHiddenM = (bar.style.display === 'none');
+      if (wasHiddenM) bar.style.display = 'flex';
       const screenW = this.screenWidth || window.innerWidth || 1280;
-      const barW = Math.max(188, bar.offsetWidth || 226);
+      const barW = Math.max(188, (wasHiddenM || !bar._cachedBarW) ? (bar._cachedBarW = (bar.offsetWidth || 226)) : bar._cachedBarW);
       const minLeft = 64;
       const maxLeft = Math.max(minLeft, screenW - barW - 64);
       const idealLeft = ((bbox.minX + bbox.maxX) / 2) - (barW / 2);
@@ -7690,6 +7693,8 @@
       this._hasSceneFreeze = false;
       this._hasLiveTipPatch = false;
       this._hasBakedStrokes = false;
+      this._hasBakedBoardStrokes = false;
+      this._hasBakedGraphStrokes = false;
       this._inkBakeDirty = true;
       this._inkBakeCamera = null;
       this._pendingIncrementalBakeStrokes = [];
@@ -7698,6 +7703,8 @@
         this._pendingIncrementalBakeTimer = null;
       }
       const { dpr, padX, padY, width, height } = this._getInkBakeMetrics();
+      this._lastBakePadX = padX;
+      this._lastBakePadY = padY;
       if (this.inkBakeCanvas && this.inkBakeCtx) {
         if (this.inkBakeCanvas.width !== width || this.inkBakeCanvas.height !== height) {
           this.inkBakeCanvas.width = width;
@@ -9109,6 +9116,8 @@
           const targetCtx = isBoard ? this.inkBakeCtx : this.inkGraphBakeCtx;
           if (targetCtx) {
             this.renderSingleStroke(targetCtx, stroke, null, false);
+            if (isBoard) this._hasBakedBoardStrokes = true;
+            else this._hasBakedGraphStrokes = true;
           }
         }
       }
@@ -9383,6 +9392,8 @@
       }
 
       this._hasBakedStrokes = true;
+      this._hasBakedBoardStrokes = Boolean(entry.boardCanvas);
+      this._hasBakedGraphStrokes = Boolean(entry.graphCanvas);
       this._inkBakeDirty = false;
       this._inkBakeCamera = { ...entry.camera };
 
@@ -9533,6 +9544,8 @@
           if (targetCtx) {
             this.renderSingleStroke(targetCtx, st, null, false);
             this._hasBakedStrokes = true;
+            if (isBoard) this._hasBakedBoardStrokes = true;
+            else this._hasBakedGraphStrokes = true;
           }
         }
       } finally {
@@ -9928,12 +9941,17 @@
       const bh = Math.abs(s1.y - s0.y);
       if (!(bw >= 2 && bh >= 2)) return;
 
-      if (targetCtx === this.ctx || targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx) {
+      const isReplayBakeStamp = Boolean(targetCtx && targetCtx._isReplayBakeCtx);
+      if (targetCtx === this.ctx || targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx || isReplayBakeStamp) {
         const isBakeTarget = (targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx);
         const sw = this.screenWidth || 1280;
         const sh = this.screenHeight || 720;
-        const padX = isBakeTarget ? 540 : 0;
-        const padY = isBakeTarget ? 540 : 0;
+        const padX = isReplayBakeStamp
+          ? (targetCtx._cullPadX || 0)
+          : (isBakeTarget ? (this._lastBakePadX || 520) : 0);
+        const padY = isReplayBakeStamp
+          ? (targetCtx._cullPadY || 0)
+          : (isBakeTarget ? (this._lastBakePadY || 520) : 0);
         const margin = 32;
         if (
           bx + bw < -padX - margin ||
@@ -10209,14 +10227,19 @@
       // 🌟 [화면/오버스캔 영역 밖 필기 0.001ms 즉시 스킵 (Viewport Bounding-Box Culling)]:
       // 칠판을 넓게 쓰거나 확대했을 때 현재 화면(또는 오버스캔 베이크 영역) 바깥에 있는 획은
       // 배열 할당 및 베지어 드로우콜을 100% 생략하여 필기가 수백 획 쌓여도 일정한 속도를 보장합니다.
-      if (!isLiveDrawing && !stroke.shape && (targetCtx === this.ctx || targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx)) {
+      const isReplayBake = Boolean(targetCtx && targetCtx._isReplayBakeCtx);
+      if (!isLiveDrawing && !stroke.shape && (targetCtx === this.ctx || targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx || isReplayBake)) {
         const sb = this._getStrokeScreenBounds(stroke, isBoardInk);
         if (sb) {
           const isBakeTarget = (targetCtx === this.inkBakeCtx || targetCtx === this.inkGraphBakeCtx);
           const sw = this.screenWidth || 1280;
           const sh = this.screenHeight || 720;
-          const padX = isBakeTarget ? 540 : 0;
-          const padY = isBakeTarget ? 540 : 0;
+          const padX = isReplayBake
+            ? (targetCtx._cullPadX || 0)
+            : (isBakeTarget ? (this._lastBakePadX || 520) : 0);
+          const padY = isReplayBake
+            ? (targetCtx._cullPadY || 0)
+            : (isBakeTarget ? (this._lastBakePadY || 520) : 0);
           const margin = Math.max(48, baseSize * 4);
           if (
             sb.maxX < -padX - margin ||
@@ -10676,6 +10699,7 @@
       }
 
       // 올가미 드래그/리사이즈/회전/플립이 어떤 경로로든 종료된 경우 제외 집합을 자동 해제하여 누락 가능성을 0%로 차단
+      let hadLassoExcludeReset = false;
       if (
         this._lassoExcludedBakeSet &&
         !this.isDraggingLassoSelection &&
@@ -10685,6 +10709,7 @@
       ) {
         this._lassoExcludedBakeSet = null;
         this._inkBakeDirty = true;
+        hadLassoExcludeReset = true;
       }
 
       // 🌟 [오프스크린 오버스캔(Overscan) 베이크 버퍼 리빌드 & 팬/핀치/줌 중 0.02ms GPU 텍스처 변환 패스트패스] 🌟
@@ -10698,7 +10723,22 @@
         this._isWheelZooming
       );
       const { dpr, sw, sh, padX: curPadX, padY: curPadY } = this._getInkBakeMetrics();
-      const needRebakeNow = Boolean(this._inkBakeDirty && (!isActivelyMovingCamera || !this._hasBakedStrokes || !this._inkBakeCamera));
+      const idleCam = (!hadLassoExcludeReset && this._idleInkCacheRebuildTimer && this._hasBakedStrokes && ctx === this.ctx)
+        ? this._inkBakeCamera
+        : null;
+      const canDeferPanSettleWithinOverscan = Boolean(
+        idleCam &&
+        Math.abs((idleCam.zoomLevel || 1.0) - (this.zoomLevel || 1.0)) < 1e-4 &&
+        Math.abs((idleCam.boardZoom || 1.0) - (this.boardZoom || 1.0)) < 1e-4 &&
+        Math.abs((this.panX || 0) - (idleCam.panX || 0)) <= (idleCam.padX || 0) * 0.85 &&
+        Math.abs((this.panY || 0) - (idleCam.panY || 0)) <= (idleCam.padY || 0) * 0.85 &&
+        Math.abs(((this.boardPanX || 0) + (this.boardZoomOffsetX || 0)) - ((idleCam.boardPanX || 0) + (idleCam.boardZoomOffsetX || 0))) <= (idleCam.padX || 0) * 0.85 &&
+        Math.abs(((this.boardPanY || 0) + (this.boardZoomOffsetY || 0)) - ((idleCam.boardPanY || 0) + (idleCam.boardZoomOffsetY || 0))) <= (idleCam.padY || 0) * 0.85
+      );
+      const needRebakeNow = Boolean(
+        this._inkBakeDirty &&
+        ((!isActivelyMovingCamera && !canDeferPanSettleWithinOverscan) || !this._hasBakedStrokes || !this._inkBakeCamera)
+      );
       if (needRebakeNow) {
         this.rebuildInkCache();
       } else if (this._pendingIncrementalBakeStrokes && this._pendingIncrementalBakeStrokes.length > 0) {
@@ -10719,7 +10759,7 @@
 
       // 🌟 [144Hz 초고속 0.02ms GPU Blit]: 칠판 바깥창 판서 ('board')
       if (!filterTarget || filterTarget === 'board') {
-        if (this.inkBakeCanvas) {
+        if (this.inkBakeCanvas && this._hasBakedBoardStrokes) {
           if (ctx === this.ctx) {
             ctx.save();
             if (bakeCam && this._inkBakeDirty) {
@@ -10764,7 +10804,7 @@
 
       // 🌟 [144Hz 초고속 0.02ms GPU Blit]: 그래프 내부 판서 ('graph')
       if (!filterTarget || filterTarget === 'graph') {
-        if (this.inkGraphBakeCanvas) {
+        if (this.inkGraphBakeCanvas && this._hasBakedGraphStrokes) {
           if (ctx === this.ctx) {
             ctx.save();
             if (bakeCam && this._inkBakeDirty) {

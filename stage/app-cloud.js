@@ -7689,7 +7689,7 @@
     _compactAudioSyncData(syncData) {
       if (!syncData || typeof syncData !== 'object') return null;
       this._expandAudioSyncData(syncData);
-      const out = JSON.parse(JSON.stringify(syncData));
+      const out = this._fastCloneSlideValue(syncData);
       delete out._expanded;
 
       // 1) 오디오 데이터 중복 제거: audioSegments[0].audioDataUrl가 있으면 최상위 audioDataUrl 중복 저장 생략
@@ -8401,6 +8401,9 @@
       this._viewerCompositeSmartBounds = null;
       if (typeof this._invalidatePdfBoardHiResTile === 'function') {
         this._invalidatePdfBoardHiResTile(true);
+      }
+      if (!this._isAudioReplayActive && typeof this._releaseAudioReplayInkCanvases === 'function') {
+        this._releaseAudioReplayInkCanvases();
       }
       this._isDeserializingSlide = true;
       try {
@@ -11521,9 +11524,42 @@
       return await this._compressJsonStringGzipBase64(rawJsonStr);
     }
 
+    async _buildGraphlyDeckBinaryPayload(packObj) {
+      const rawJsonStr = this._stringifyWithDeduplicatedSnapshots(packObj);
+      const inputBytes = new TextEncoder().encode(rawJsonStr);
+      if (typeof CompressionStream === 'undefined' || typeof Response === 'undefined') {
+        return inputBytes;
+      }
+      try {
+        const cs = new CompressionStream('gzip');
+        const writer = cs.writable.getWriter();
+        writer.write(inputBytes);
+        writer.close();
+        const compressedBuf = await new Response(cs.readable).arrayBuffer();
+        const compressedBytes = new Uint8Array(compressedBuf);
+        return (compressedBytes.byteLength > 0 && compressedBytes.byteLength < inputBytes.byteLength)
+          ? compressedBytes
+          : inputBytes;
+      } catch (e) {
+        return inputBytes;
+      }
+    }
+
+    async _decompressGzipBytesToUtf8(bytes) {
+      if (typeof DecompressionStream === 'undefined' || typeof Response === 'undefined') {
+        throw new Error('GZIP_DECOMPRESSION_UNSUPPORTED');
+      }
+      const ds = new DecompressionStream('gzip');
+      const writer = ds.writable.getWriter();
+      writer.write(bytes);
+      writer.close();
+      const decompressedBuf = await new Response(ds.readable).arrayBuffer();
+      return new TextDecoder('utf-8').decode(decompressedBuf);
+    }
+
     async _extractGraphlyPackFromText(text) {
       if (!text || typeof text !== 'string') return null;
-      const trimmed = text.trim();
+      const trimmed = text.replace(/^\uFEFF/, '').trim();
       if (trimmed.startsWith('{')) {
         return this._restoreDeduplicatedSlideSnapshots(JSON.parse(trimmed));
       }
@@ -11533,6 +11569,35 @@
       }
       const fallbackStr = await this._decompressJsonStringGzipBase64(trimmed);
       return this._restoreDeduplicatedSlideSnapshots(JSON.parse(fallbackStr));
+    }
+
+    async _extractGraphlyPackFromInput(input) {
+      if (!input) return null;
+      if (typeof input === 'string') {
+        return await this._extractGraphlyPackFromText(input);
+      }
+      let bytes = null;
+      if (input instanceof Uint8Array) {
+        bytes = input;
+      } else if (typeof ArrayBuffer !== 'undefined' && input instanceof ArrayBuffer) {
+        bytes = new Uint8Array(input);
+      } else if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(input)) {
+        bytes = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+      } else if (typeof input.arrayBuffer === 'function') {
+        const buf = await input.arrayBuffer();
+        bytes = new Uint8Array(buf);
+      } else if (typeof input.text === 'function') {
+        const text = await input.text();
+        return await this._extractGraphlyPackFromText(text);
+      }
+      if (!bytes || bytes.byteLength === 0) return null;
+      // 순수 바이너리 Gzip 매직 헤더(0x1f 0x8b) 감지 시 Base64/atob 없이 하드웨어 직통 복원
+      if (bytes.byteLength >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
+        const jsonStr = await this._decompressGzipBytesToUtf8(bytes);
+        return this._restoreDeduplicatedSlideSnapshots(JSON.parse(jsonStr.replace(/^\uFEFF/, '').trim()));
+      }
+      const decodedText = new TextDecoder('utf-8').decode(bytes);
+      return await this._extractGraphlyPackFromText(decodedText);
     }
 
     loadGraphlyPackObject(pack, fallbackTitle = '불러온 수업 세트', autoPlayIfAudio = false) {
@@ -11598,7 +11663,7 @@
       if (!Array.isArray(slides) || !slides.length) {
         if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0) {
           this.saveCurrentSlideIntoPlaylist();
-          slides = JSON.parse(JSON.stringify(this.lessonPlaylistSlides));
+          slides = this._fastCloneSlideValue(this.lessonPlaylistSlides);
         } else {
           slides = [this.serializeFullSlideState(resolvedTitle)];
         }
@@ -11626,8 +11691,8 @@
         slideData: null
       };
 
-      const payloadStr = await this._buildGraphlyDeckPayload(packObj);
-      const blob = new Blob([payloadStr], { type: 'application/octet-stream' });
+      const payloadBytes = await this._buildGraphlyDeckBinaryPayload(packObj);
+      const blob = new Blob([payloadBytes], { type: 'application/octet-stream' });
       const safeFileName = String(packObj.title)
         .replace(/[\s.]+$/, '')
         .replace(/\.graphly(\.html)?$/i, '')
@@ -11656,8 +11721,7 @@
         return null;
       }
       try {
-        const text = await file.text();
-        const pack = await this._extractGraphlyPackFromText(text);
+        const pack = await this._extractGraphlyPackFromInput(file);
         const cleanName = file.name ? file.name.trim().replace(/\.graphly$/i, '').trim() : '불러온 수업 세트';
         return this.loadGraphlyPackObject(pack, cleanName, false);
       } catch (err) {
@@ -11691,8 +11755,7 @@
           continue;
         }
         try {
-          const text = await file.text();
-          const pack = await this._extractGraphlyPackFromText(text);
+          const pack = await this._extractGraphlyPackFromInput(file);
           if (!pack) continue;
           const slides = Array.isArray(pack.playlistSlides) && pack.playlistSlides.length > 0
             ? pack.playlistSlides
@@ -15270,7 +15333,8 @@
         smartBounds.width > 0 &&
         smartBounds.height > 0
       );
-      let targetScale = isMobileDevice ? 2.6 : (forCloud ? 3.0 : 3.2);
+      const isViewerFitBase = Boolean(opts && opts.forViewerFitBase);
+      let targetScale = isMobileDevice ? (isViewerFitBase ? 2.2 : 2.6) : (forCloud ? 3.0 : (isViewerFitBase ? 2.4 : 3.2));
       if (hasPdfBoardForSnap) {
         const pbd = this.pdfPageBoardData;
         const cx = pbd.centerX || 0;
@@ -15281,10 +15345,17 @@
         const nativePxW = (pbd.canvas && !pbd.canvas._evicted && pbd.canvas.width > 4)
           ? pbd.canvas.width
           : (pbd.pixelW || 2800);
-        const targetPdfPxW = Math.max(2400, Math.min(2850, nativePxW));
+        const rawTargetPdfPxW = Math.max(2400, Math.min(2850, nativePxW));
+        const targetPdfPxW = isViewerFitBase
+          ? Math.min(rawTargetPdfPxW, useWebKitCanvasCap ? 2200 : 2560)
+          : rawTargetPdfPxW;
         const rawPdfScale = targetPdfPxW / pdfScreenW;
-        const maxSnapSide = useWebKitCanvasCap ? 3584 : 4080;
-        const maxSnapArea = useWebKitCanvasCap ? 11500000 : 15800000;
+        const maxSnapSide = isViewerFitBase
+          ? (useWebKitCanvasCap ? 2688 : 3072)
+          : (useWebKitCanvasCap ? 3584 : 4080);
+        const maxSnapArea = isViewerFitBase
+          ? (useWebKitCanvasCap ? 5200000 : 6800000)
+          : (useWebKitCanvasCap ? 11500000 : 15800000);
         const sideCapScale = maxSnapSide / Math.max(1, smartBounds.width, smartBounds.height);
         const areaCapScale = Math.sqrt(maxSnapArea / Math.max(1, smartBounds.width * smartBounds.height));
         targetScale = Math.max(0.2, Math.min(rawPdfScale, sideCapScale, areaCapScale));
@@ -15318,17 +15389,25 @@
           }
         }
         const probBoostScale = minProbScreenW > 0
-          ? Math.min(3.6 / safeBz, 1800 / minProbScreenW)
+          ? Math.min((isViewerFitBase ? 2.8 : 3.6) / safeBz, (isViewerFitBase ? 1480 : 1800) / minProbScreenW)
           : 0;
         const rawBoardScale = Math.max(targetScale / safeBz, probBoostScale);
-        const maxSnapSide = useWebKitCanvasCap ? (isMobileDevice ? 3840 : 4032) : 5760;
-        const maxSnapArea = useWebKitCanvasCap ? (isMobileDevice ? 12800000 : 15500000) : 19500000;
+        const maxSnapSide = isViewerFitBase
+          ? (useWebKitCanvasCap ? 2688 : 3072)
+          : (useWebKitCanvasCap ? (isMobileDevice ? 3840 : 4032) : 5760);
+        const maxSnapArea = isViewerFitBase
+          ? (useWebKitCanvasCap ? 5200000 : 6800000)
+          : (useWebKitCanvasCap ? (isMobileDevice ? 12800000 : 15500000) : 19500000);
         const sideCapScale = maxSnapSide / Math.max(1, smartBounds.width, smartBounds.height);
         const areaCapScale = Math.sqrt(maxSnapArea / Math.max(1, smartBounds.width * smartBounds.height));
         targetScale = Math.max(0.2, Math.min(rawBoardScale, sideCapScale, areaCapScale));
       } else if (smartBounds && smartBounds.width > 0 && smartBounds.height > 0) {
-        const maxSnapSide = useWebKitCanvasCap ? (isMobileDevice ? 3840 : 4032) : 5760;
-        const maxSnapArea = useWebKitCanvasCap ? (isMobileDevice ? 12800000 : 15500000) : 19500000;
+        const maxSnapSide = isViewerFitBase
+          ? (useWebKitCanvasCap ? 2688 : 3072)
+          : (useWebKitCanvasCap ? (isMobileDevice ? 3840 : 4032) : 5760);
+        const maxSnapArea = isViewerFitBase
+          ? (useWebKitCanvasCap ? 5200000 : 6800000)
+          : (useWebKitCanvasCap ? (isMobileDevice ? 12800000 : 15500000) : 19500000);
         const sideCapScale = maxSnapSide / Math.max(1, smartBounds.width, smartBounds.height);
         const areaCapScale = Math.sqrt(maxSnapArea / Math.max(1, smartBounds.width * smartBounds.height));
         targetScale = Math.max(0.2, Math.min(targetScale, sideCapScale, areaCapScale));
@@ -20878,7 +20957,7 @@
         if (typeof document !== 'undefined' && document.body) {
           document.body.classList.toggle('theme-light', bakedIsLight);
         }
-        snap = this.captureCurrentSlideViewerSnapshot(effFilter, false, { skipDataUrl: true });
+        snap = this.captureCurrentSlideViewerSnapshot(effFilter, false, { skipDataUrl: true, forViewerFitBase: true });
       } finally {
         if (isBackgroundBake && activeSlide) {
           this._syncSmartViewerThemeForSlide(activeSlide);
@@ -21197,9 +21276,18 @@
       if (this.inkGraphBakeCanvas && this.inkGraphBakeCanvas.width > 4) {
         try { this.inkGraphBakeCanvas.width = 1; this.inkGraphBakeCanvas.height = 1; } catch (_) { }
       }
+      if (this.sceneFreezeCanvas && this.sceneFreezeCanvas.width > 4) {
+        try { this.sceneFreezeCanvas.width = 1; this.sceneFreezeCanvas.height = 1; } catch (_) { }
+      }
+      this._hasSceneFreeze = false;
       this._hasBakedStrokes = false;
+      this._hasBakedBoardStrokes = false;
+      this._hasBakedGraphStrokes = false;
       this._inkBakeDirty = true;
       this._inkBakeCamera = null;
+      if (typeof this._releaseAudioReplayInkCanvases === 'function') {
+        this._releaseAudioReplayInkCanvases();
+      }
       if (this._pdfBoardHiResTile && this._pdfBoardHiResTile.canvas) {
         try { this._pdfBoardHiResTile.canvas.width = 0; this._pdfBoardHiResTile.canvas.height = 0; } catch (_) { }
         this._pdfBoardHiResTile = null;
