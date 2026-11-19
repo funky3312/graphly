@@ -866,11 +866,36 @@
       return Math.max(0, Math.round(sumMs));
     }
 
+    // 현재 1회 연속 녹화 세션의 경과 시간 반환 (요금제 기준: 1회 연속 녹화 무료 5분 / Pro·Premium 60분)
     getTotalLessonRecordedDurationMs() {
-      const basePriorMs = this.isAudioRecording
-        ? Math.max(0, Number(this._sessionBasePriorRecordedMs) || 0)
-        : this._computeOtherSlidesRecordedDurationMs();
-      return basePriorMs + this.getAudioSessionElapsedMs();
+      return this.getAudioSessionElapsedMs();
+    }
+
+    _estimateOtherSlidesPayloadBytes() {
+      let totalBytes = 0;
+      if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides)) {
+        const curIdx = this.lessonPlaylistIndex || 0;
+        for (let i = 0; i < this.lessonPlaylistSlides.length; i++) {
+          if (i === curIdx) continue; // 현재 슬라이드는 재녹화 시 덮어쓰기되므로 제외
+          const sl = this.lessonPlaylistSlides[i];
+          const aud = sl && sl.audioSyncData;
+          if (aud && typeof aud.audioBase64 === 'string' && aud.audioBase64.length > 0) {
+            totalBytes += Math.floor(aud.audioBase64.length * 0.75);
+          }
+        }
+      }
+      if (this._pdfSourceRegistry && typeof this._pdfSourceRegistry === 'object') {
+        const uids = Object.keys(this._pdfSourceRegistry);
+        for (let k = 0; k < uids.length; k++) {
+          const entry = this._pdfSourceRegistry[uids[k]];
+          if (entry && entry.bytes && entry.bytes.byteLength > 0) {
+            totalBytes += entry.bytes.byteLength;
+          }
+        }
+      } else if (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0) {
+        totalBytes += this._cachedPdfBytes.byteLength;
+      }
+      return totalBytes;
     }
 
     _syncAudioRecPopupHudTime() {
@@ -908,7 +933,7 @@
 
       const maxDurationMs = Math.max(1000, this.getMaxAudioRecordDurationMs());
       const maxMinutes = Math.max(1, Math.round(maxDurationMs / 60000));
-      const totalElapsed = this.getTotalLessonRecordedDurationMs();
+      const totalElapsed = this.getAudioSessionElapsedMs();
 
       // 제한 시간(비로그인·무료 5분 / Pro·Premium 60분) 도달 시 데이터 보호를 위해 안전하게 자동 마감
       if (totalElapsed >= maxDurationMs && !this._isAutoStoppingByLimit) {
@@ -5105,21 +5130,15 @@
       if (this.isAudioRecording || this._isStartingAudioRecording) return;
       this._isStartingAudioRecording = true;
       try {
-        const maxDurationMs = Math.max(1000, this.getMaxAudioRecordDurationMs());
-        const priorOtherSlidesMs = this._computeOtherSlidesRecordedDurationMs();
-        if (priorOtherSlidesMs >= maxDurationMs) {
-          const maxMinutes = Math.max(1, Math.round(maxDurationMs / 60000));
-          const isPaid = (typeof this.isProSubscriber === 'function') ? this.isProSubscriber() : Boolean(this.isProUser);
-          if (!isPaid) {
-            this.showToast(`⚠️ 무료 플랜 녹화 한도(${maxMinutes}분)를 모두 사용했습니다. Pro·Premium 업그레이드 시 60분까지 녹화 가능합니다.`);
-            if (typeof this.openProPricingModal === 'function') this.openProPricingModal('pro');
-          } else {
-            this.showToast(`⚠️ 현재 수업 노트의 최대 녹화 시간(${maxMinutes}분)에 도달했습니다. 새 노트에서 녹화를 이어가 주세요.`);
-          }
+        // 단일 수업 노트 클라우드/공유 상한(150MB) 보호를 위한 누적 용량 사전 안내 가드 (135MB 도달 시 안내)
+        const SAFE_PRE_RECORD_MAX_BYTES = 135 * 1024 * 1024;
+        const estimatedPriorBytes = this._estimateOtherSlidesPayloadBytes();
+        if (estimatedPriorBytes >= SAFE_PRE_RECORD_MAX_BYTES) {
+          this.showToast('⚠️ 현재 노트의 누적 용량이 클라우드·공유 한도(150MB)에 도달했습니다. 쾌적한 저장을 위해 새 노트에서 이어가 주세요.');
           return;
         }
         this.stopAudioPlayback(true);
-        this._sessionBasePriorRecordedMs = priorOtherSlidesMs;
+        this._sessionBasePriorRecordedMs = 0;
         this._warnedEndingSoonInSession = false;
 
         // 녹음 시작 전 이미 그려져 있던 스트로크·스티커들은 배경 요소(preExisting: true)로 마킹하여 재녹음 시에도 유령 애니메이션 없이 처음부터 보이게 유지

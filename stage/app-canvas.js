@@ -13680,19 +13680,20 @@
     const effScope = scope || this.exportScope || 'current';
     const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
 
-    if (effScope === 'all') {
-      const allSlides = this._getFilteredSlidesForExport('수업 노트', 'all', effFilter);
-      if (allSlides.length > 1) {
+    if (effScope === 'all' || effScope === 'range') {
+      const targetSlides = this._getFilteredSlidesForExport('수업 노트', effScope, effFilter);
+      const scopeLabel = (effScope === 'range') ? '선택 캔버스' : '전체 캔버스';
+      if (targetSlides.length > 1) {
         try {
-          const hybridBlob = await this.buildHybridVectorPdfBlobFromSlides(allSlides, effFilter);
+          const hybridBlob = await this.buildHybridVectorPdfBlobFromSlides(targetSlides, effFilter);
           if (hybridBlob && hybridBlob.size > 64) {
             const url = URL.createObjectURL(hybridBlob);
             const link = document.createElement('a');
-            link.download = `Graphly_Note_${allSlides.length}p_${Date.now()}.pdf`;
+            link.download = `Graphly_Note_${targetSlides.length}p_${Date.now()}.pdf`;
             link.href = url;
             link.click();
             setTimeout(() => URL.revokeObjectURL(url), 2000);
-            this.showToast(`📄 전체 캔버스(${allSlides.length}장)가 선명한 벡터 통합 PDF 파일로 저장되었습니다!`);
+            this.showToast(`📄 ${scopeLabel}(${targetSlides.length}장)가 선명한 벡터 통합 PDF 파일로 저장되었습니다!`);
             return hybridBlob;
           }
         } catch (vecErr) {
@@ -13701,8 +13702,8 @@
         const backupCurrent = this.serializeFullSlideState('backup');
         const pageItems = [];
         try {
-          for (let i = 0; i < allSlides.length; i++) {
-            this.deserializeFullSlideState(allSlides[i]);
+          for (let i = 0; i < targetSlides.length; i++) {
+            this.deserializeFullSlideState(targetSlides[i]);
             await this._waitForSlideImagesReady();
             const exp = this.getExportCanvas(effFilter);
             const curTheme = this.canvasThemes[this.currentThemeKey] || this.canvasThemes.white_paper;
@@ -13720,16 +13721,26 @@
           if (pdfBlob) {
             const url = URL.createObjectURL(pdfBlob);
             const link = document.createElement('a');
-            link.download = `Graphly_Note_${allSlides.length}p_${Date.now()}.pdf`;
+            link.download = `Graphly_Note_${targetSlides.length}p_${Date.now()}.pdf`;
             link.href = url;
             link.click();
             setTimeout(() => URL.revokeObjectURL(url), 2000);
-            this.showToast(`📄 전체 캔버스(${allSlides.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
+            this.showToast(`📄 ${scopeLabel}(${targetSlides.length}장)가 단 하나의 통합 PDF 파일로 저장되었습니다!`);
             return pdfBlob;
           }
         } finally {
           try { this.deserializeFullSlideState(backupCurrent); } catch (e) { }
         }
+      } else if (effScope === 'range' && targetSlides.length === 1) {
+        const backupCurrent = this.serializeFullSlideState('backup');
+        try {
+          this.deserializeFullSlideState(targetSlides[0]);
+          await this._waitForSlideImagesReady();
+          await this.downloadPNG(effFilter, `Graphly_스캔_${Date.now()}.png`);
+        } finally {
+          try { this.deserializeFullSlideState(backupCurrent); } catch (e) { }
+        }
+        return null;
       }
     }
     await this._waitForSlideImagesReady();

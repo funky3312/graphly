@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261119_stage_vecstep2pan">
+  <link rel="stylesheet" href="style.css?v=20261120_stage_slide100_range">
   <script>
     (function () {
       try {
@@ -2206,11 +2206,17 @@
           <div class="section-title settings-clean-subtitle">
             <span>범위</span>
           </div>
-          <div class="vf-aspect-chips" style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+          <div class="vf-aspect-chips export-scope-grid-3col">
             <button type="button" id="btnExportScopeCurrent" class="vf-chip export-scope-chip active"
-              data-scope="current">현재 캔버스</button>
-            <button type="button" id="btnExportScopeAll" class="vf-chip export-scope-chip" data-scope="all">전체 캔버스 <span
+              data-scope="current">현재</button>
+            <button type="button" id="btnExportScopeAll" class="vf-chip export-scope-chip" data-scope="all">전체 <span
                 id="lblExportTotalSlidesCount">(1)</span></button>
+            <div id="exportScopeRangeWrap" class="export-scope-range-box" title="특정 캔버스 번호 지정 (예: 5-9, 12)">
+              <input type="text" id="inputExportScopeRangeSpec" class="export-scope-range-input"
+                placeholder="범위 (예: 5-9)" autocomplete="off" autocorrect="off" autocapitalize="off"
+                spellcheck="false" aria-autocomplete="none" data-form-type="other" data-lpignore="true">
+              <span id="lblExportScopeRangeBadge" class="export-scope-range-badge" style="display: none;"></span>
+            </div>
           </div>
         </div>
 
@@ -3941,15 +3947,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261119_stage_vecstep2pan"></script>
-  <script src="app-core.js?v=20261119_stage_vecstep2pan"></script>
-  <script src="app-ink.js?v=20261119_stage_vecstep2pan"></script>
-  <script src="app-pdf.js?v=20261119_stage_vecstep2pan"></script>
-  <script src="app-cards.js?v=20261119_stage_vecstep2pan"></script>
-  <script src="app-cloud.js?v=20261119_stage_vecstep2pan"></script>
-  <script src="app-canvas.js?v=20261119_stage_vecstep2pan"></script>
-  <script src="app-toolkit.js?v=20261119_stage_vecstep2pan"></script>
-  <script src="app.js?v=20261119_stage_vecstep2pan"></script>
+  <script src="engine.js?v=20261120_stage_slide100_range"></script>
+  <script src="app-core.js?v=20261120_stage_slide100_range"></script>
+  <script src="app-ink.js?v=20261120_stage_slide100_range"></script>
+  <script src="app-pdf.js?v=20261120_stage_slide100_range"></script>
+  <script src="app-cards.js?v=20261120_stage_slide100_range"></script>
+  <script src="app-cloud.js?v=20261120_stage_slide100_range"></script>
+  <script src="app-canvas.js?v=20261120_stage_slide100_range"></script>
+  <script src="app-toolkit.js?v=20261120_stage_slide100_range"></script>
+  <script src="app.js?v=20261120_stage_slide100_range"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4193,7 +4199,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261119_stage_vecstep2pan"></script>
+  <script src="app-intro.js?v=20261120_stage_slide100_range"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
