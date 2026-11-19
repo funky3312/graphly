@@ -1728,7 +1728,11 @@
         ? options.cardUid
         : (typeof this._nextAudioStrokeId === 'function' ? this._nextAudioStrokeId('problem_uid') : `problem_uid_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
       el._cardUid = assignedProbUid;
-      const cardItem = { cardUid: assignedProbUid, el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum, sourceCanvas: sourceCanvas || null };
+      const incomingCropRef = (options && options.pdfCropRef && typeof options.pdfCropRef === 'object')
+        ? { ...options.pdfCropRef }
+        : null;
+      if (incomingCropRef) el._pdfCropRef = incomingCropRef;
+      const cardItem = { cardUid: assignedProbUid, el, baseX: Math.round(baseX), baseY: Math.round(baseY), isMin: startMin, isPdfPageCard, pdfPageNum, pdfCropRef: incomingCropRef, sourceCanvas: sourceCanvas || null };
       if (startMin) {
         el.classList.add('minimized', 'pip-locked-mode');
         this.syncProblemCardLockUI(el);
@@ -2161,9 +2165,13 @@
       const widget = document.getElementById('problemCardWidget');
       const isPrimaryActive = widget && widget.style.display !== 'none' && this.problemCardData;
 
+      const incomingCropRef = (options && options.pdfCropRef && typeof options.pdfCropRef === 'object')
+        ? { ...options.pdfCropRef }
+        : null;
+
       // 🌟 [대표님 기획]: 이미 문제 카드가 칠판에 활성화되어 있다면, 기존 문제를 덮어쓰지 않고 추가 문제 카드로 소환!
       if (isPrimaryActive && !keepGraphMode) {
-        const spawned = this.spawnExtraProblemCard(dataUrl, pageNum, initialWidth, sourceCanvas);
+        const spawned = this.spawnExtraProblemCard(dataUrl, pageNum, initialWidth, sourceCanvas, incomingCropRef ? { pdfCropRef: incomingCropRef } : null);
         this._lastPlacedProblemCardTarget = { type: 'extra', cardItem: spawned, pageNum };
         return spawned;
       }
@@ -2176,7 +2184,8 @@
       if (widget) widget._cardUid = nextPrimaryProbUid;
       this.problemCardData = {
         imgUrl: dataUrl,
-        pageNum: pageNum
+        pageNum: pageNum,
+        pdfCropRef: incomingCropRef
       };
       this._lastPlacedProblemCardTarget = { type: 'primary', problemCardData: this.problemCardData, pageNum };
       this.isProblemCardMinimized = false;
@@ -5261,6 +5270,8 @@
       let croppedW = 420;
       let normCropForUpgrade = null;
       const pdfPageNum = (this.pdfPageBoardData && this.pdfPageBoardData.pageNum) || 1;
+      const pdfSrcPageNum = (this.pdfPageBoardData && (this.pdfPageBoardData.pdfSourcePageNum || this.pdfPageBoardData.pageNum)) || pdfPageNum;
+      const pdfDocUidForUpgrade = (this.pdfPageBoardData && this.pdfPageBoardData.pdfDocUid) || (this.pdfDoc && this.pdfDoc._graphlyDocUid) || '';
 
       if (cropRect && cropRect.w >= 25 && cropRect.h >= 25 && this.canvas) {
         // 🌟 [PDF 칠판 배율 확대 시 화면 잘림 없는 수학 좌표 기반 원본 벡터 캔버스 직결 추출] 🌟
@@ -5336,13 +5347,21 @@
 
       // 드래그한 문제 영역이 있으면 좌상단(72px, 18px) 참조 문제 카드로 띄움!
       if (croppedDataUrl) {
+        const tempCropRef = (normCropForUpgrade && pdfDocUidForUpgrade && typeof this._normalizePdfCropRef === 'function')
+          ? this._normalizePdfCropRef({
+            pdfDocUid: pdfDocUidForUpgrade,
+            pageNum: pdfSrcPageNum,
+            normCrop: normCropForUpgrade
+          })
+          : null;
         this.closeProblemCard();
         this.setProblemCard(croppedDataUrl, pdfPageNum, croppedCanvas, croppedW, {
           keepGraphMode: true,
-          isTempPdfCard: true
+          isTempPdfCard: true,
+          pdfCropRef: tempCropRef
         });
         if (normCropForUpgrade) {
-          this._upgradeCroppedProblemCardToVectorUltraHD(pdfPageNum, normCropForUpgrade, this._lastPlacedProblemCardTarget);
+          this._upgradeCroppedProblemCardToVectorUltraHD(pdfSrcPageNum, normCropForUpgrade, this._lastPlacedProblemCardTarget, pdfDocUidForUpgrade);
         }
       }
 
@@ -11146,6 +11165,12 @@
           logicalW,
           logicalH,
           dataUrl: resolvedDataUrl,
+          pdfCropRef: (() => {
+            const rawR = isPrimary
+              ? (this.problemCardData && this.problemCardData.pdfCropRef)
+              : (cardRef && (cardRef.pdfCropRef || (cardRef.el && cardRef.el._pdfCropRef)));
+            return (rawR && typeof rawR === 'object') ? { ...rawR } : null;
+          })(),
           cardStrokes: compactCardStrokes
         }
       };

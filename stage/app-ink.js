@@ -9134,7 +9134,8 @@
         boardZoomOffsetX: this.boardZoomOffsetX || 0,
         boardZoomOffsetY: this.boardZoomOffsetY || 0,
         padX,
-        padY
+        padY,
+        bakedStrokeCount: Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0
       };
     }
 
@@ -9572,8 +9573,11 @@
           boardZoomOffsetX: this.boardZoomOffsetX || 0,
           boardZoomOffsetY: this.boardZoomOffsetY || 0,
           padX,
-          padY
+          padY,
+          bakedStrokeCount: Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0
         };
+      } else if (this._inkBakeCamera) {
+        this._inkBakeCamera.bakedStrokeCount = Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0;
       }
     }
 
@@ -10520,21 +10524,44 @@
       if (hasPrimaryProb || hasExtraProb) {
         const offX = (isExport && this._exportCropOffset && typeof this._exportCropOffset.x === 'number') ? this._exportCropOffset.x : 0;
         const offY = (isExport && this._exportCropOffset && typeof this._exportCropOffset.y === 'number') ? this._exportCropOffset.y : 0;
-        const canvasRect = (this.canvas && typeof this.canvas.getBoundingClientRect === 'function')
-          ? this.canvas.getBoundingClientRect()
-          : { left: 0, top: 0 };
+        const useFastCachedRect = Boolean(
+          !isExport &&
+          (this.isPanning || this.isBoardPanning || this._pinchState || this._isZoomAnimating || this._isWheelZooming)
+        );
+        let canvasRect = null;
+        const getCanvasRectLazy = () => {
+          if (!canvasRect) {
+            canvasRect = (this.canvasRect && this.canvasRect.width > 0)
+              ? this.canvasRect
+              : ((this.canvas && typeof this.canvas.getBoundingClientRect === 'function')
+                ? this.canvas.getBoundingClientRect()
+                : { left: 0, top: 0 });
+          }
+          return canvasRect;
+        };
 
         const addBodyRect = (widgetEl, fallbackRect = null) => {
           if (widgetEl && typeof document !== 'undefined') {
             if (widgetEl.style && widgetEl.style.display === 'none') return;
             if (widgetEl.classList && widgetEl.classList.contains('minimized')) return;
-            const bodyEl = widgetEl.querySelector ? widgetEl.querySelector('.problem-card-body') : null;
+            if (useFastCachedRect && widgetEl._cachedScreenBodyRect && widgetEl._cachedScreenBodyRect.w > 2 && widgetEl._cachedScreenBodyRect.h > 2) {
+              const cr = widgetEl._cachedScreenBodyRect;
+              rects.push({
+                x: cr.x - offX,
+                y: cr.y - offY,
+                w: cr.w,
+                h: cr.h
+              });
+              return;
+            }
+            const bodyEl = widgetEl._cachedBodyEl || (widgetEl.querySelector ? (widgetEl._cachedBodyEl = widgetEl.querySelector('.problem-card-body')) : null);
             if (bodyEl && typeof bodyEl.getBoundingClientRect === 'function') {
               const bRect = bodyEl.getBoundingClientRect();
               if (bRect.width > 2 && bRect.height > 2) {
+                const cRect = getCanvasRectLazy();
                 rects.push({
-                  x: bRect.left - canvasRect.left - offX,
-                  y: bRect.top - canvasRect.top - offY,
+                  x: bRect.left - cRect.left - offX,
+                  y: bRect.top - cRect.top - offY,
                   w: bRect.width,
                   h: bRect.height
                 });
@@ -10728,6 +10755,7 @@
         : null;
       const canDeferPanSettleWithinOverscan = Boolean(
         idleCam &&
+        idleCam.bakedStrokeCount === (Array.isArray(this.inkStrokes) ? this.inkStrokes.length : 0) &&
         Math.abs((idleCam.zoomLevel || 1.0) - (this.zoomLevel || 1.0)) < 1e-4 &&
         Math.abs((idleCam.boardZoom || 1.0) - (this.boardZoom || 1.0)) < 1e-4 &&
         Math.abs((this.panX || 0) - (idleCam.panX || 0)) <= (idleCam.padX || 0) * 0.85 &&

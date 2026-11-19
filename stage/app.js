@@ -2505,12 +2505,16 @@
             ? (typeof document !== 'undefined' ? document.getElementById('problemCardTitle') : null)
             : widget.querySelector('.card-title-text');
           const rawUrl = (imgEl && imgEl.src) || (isPrimary && this.problemCardData && this.problemCardData.imgUrl) || '';
+          const rawCropRef = isPrimary
+            ? (this.problemCardData && this.problemCardData.pdfCropRef)
+            : (cardRef && (cardRef.pdfCropRef || (widget && widget._pdfCropRef)));
           const strokes = isPrimary ? (this.problemInkStrokes || []) : (widget._cardInkStrokes || []);
           this.audioCardAssetPool[uid] = {
             uid,
             kind: 'prob',
             stampRefId,
             dataUrl: stampRefId ? '' : rawUrl,
+            pdfCropRef: (rawCropRef && typeof rawCropRef === 'object') ? { ...rawCropRef } : null,
             aspect: isPrimary ? (this.problemCardAspect || 0.65) : 0.65,
             cardW: parseFloat(widget.style.width) || 480,
             titleText: titleEl ? titleEl.textContent : '문제',
@@ -3021,6 +3025,7 @@
       const extraProbs = (this.extraProblemCards || []).filter(c => c && !c._tempFromProblemStamp && c.el).map(c => {
         const imgEl = c.el.querySelector('.problem-card-img');
         const tEl = c.el.querySelector('.card-title-text');
+        const rawRef = c.pdfCropRef || c.el._pdfCropRef || null;
         return {
           uid: c.cardUid || c.el._cardUid || null,
           dataUrl: imgEl ? imgEl.src : '',
@@ -3029,6 +3034,7 @@
           baseX: c.baseX,
           baseY: c.baseY,
           pdfAnchor: (c.el._pdfAnchor || c.pdfAnchor) ? { ...(c.el._pdfAnchor || c.pdfAnchor) } : null,
+          pdfCropRef: (rawRef && typeof this._normalizePdfCropRef === 'function') ? this._normalizePdfCropRef(rawRef) : rawRef,
           isMin: Boolean(c.isMin),
           pipStealth: Boolean(c.el.classList.contains('pip-stealth-locked')),
           isPdfPageCard: Boolean(c.isPdfPageCard),
@@ -3096,6 +3102,7 @@
           uid: primaryProb.uid,
           kind: 'prob',
           dataUrl: primaryProb.imgSrc || primaryProb.problemCardData.imgUrl || '',
+          pdfCropRef: primaryProb.problemCardData.pdfCropRef || null,
           aspect: primaryProb.problemCardAspect || 0.65,
           titleText: primaryProb.titleText || '문제',
           pdfPageNum: primaryProb.problemCardData.pageNum || 1,
@@ -3108,6 +3115,7 @@
             uid: ep.uid,
             kind: 'prob',
             dataUrl: ep.dataUrl,
+            pdfCropRef: ep.pdfCropRef || null,
             cardW: ep.cardW,
             titleText: ep.titleText,
             isPdfPageCard: ep.isPdfPageCard,
@@ -3258,6 +3266,7 @@
               startMinimized: ep.isMin,
               isPdfPageCard: ep.isPdfPageCard,
               pdfPageNum: ep.pdfPageNum,
+              pdfCropRef: ep.pdfCropRef || null,
               cardUid: ep.uid,
               silentToast: true
             });
@@ -3583,6 +3592,7 @@
                   startMinimized: Boolean(st.min),
                   isPdfPageCard: Boolean(pAsset.isPdfPageCard),
                   pdfPageNum: pAsset.pdfPageNum || 1,
+                  pdfCropRef: pAsset.pdfCropRef || null,
                   cardUid: st.uid,
                   silentToast: true
                 }
@@ -3645,6 +3655,7 @@
                 customX: stCfg && typeof stCfg.baseX === 'number' ? stCfg.baseX : 104,
                 customY: stCfg && typeof stCfg.baseY === 'number' ? stCfg.baseY : 50,
                 startMinimized: Boolean(stCfg && stCfg.min),
+                pdfCropRef: gs.pdfCropRef || null,
                 silentToast: true
               }
             );

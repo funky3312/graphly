@@ -8217,6 +8217,7 @@
             extraProblems.push({
               cardUid: c.cardUid || c.el._cardUid || null,
               dataUrl: imgEl ? imgEl.src : '',
+              pdfCropRef: (c.pdfCropRef || c.el._pdfCropRef) ? { ...(c.pdfCropRef || c.el._pdfCropRef) } : null,
               cardW: parseFloat(c.el.style.width) || 460,
               titleText: titleEl ? titleEl.textContent : '문제',
               baseX: c.baseX,
@@ -8318,7 +8319,13 @@
         })(),
         primaryProblemCard: hasPrimaryProblem ? {
           cardUid: (savedLiveProb && savedLiveProb.uid) || this.problemCardUid || (pWidget && pWidget._cardUid) || null,
-          problemCardData: effProbData ? { pageNum: effProbData.pageNum } : null,
+          pdfCropRef: (effProbData && effProbData.pdfCropRef) ? { ...effProbData.pdfCropRef } : null,
+          problemCardData: effProbData
+            ? {
+              pageNum: effProbData.pageNum,
+              pdfCropRef: effProbData.pdfCropRef ? { ...effProbData.pdfCropRef } : null
+            }
+            : null,
           problemCardAspect: savedLiveProb ? savedLiveProb.problemCardAspect : this.problemCardAspect,
           isProblemCardMinimized: Boolean(this.isProblemCardMinimized),
           problemCardBaseX: this.problemCardBaseX,
@@ -8451,10 +8458,20 @@
       const pToggle = document.getElementById('iconCardToggle');
       if (slideData.primaryProblemCard && pWidget) {
         const pc = slideData.primaryProblemCard;
+        const resolvedPcCropRef = pc.pdfCropRef || (pc.problemCardData && pc.problemCardData.pdfCropRef) || null;
+        let syncCachedCropEntry = null;
+        if (resolvedPcCropRef && this._cropBlobUrlCache && typeof this._getCropRefCacheKey === 'function') {
+          syncCachedCropEntry = this._cropBlobUrlCache.get(this._getCropRefCacheKey(resolvedPcCropRef)) || null;
+        }
+        const effectivePcImgSrc = (pc.imgSrc || (pc.problemCardData && pc.problemCardData.imgUrl) || (syncCachedCropEntry && syncCachedCropEntry.blobUrl) || '');
         this.problemCardUid = pc.cardUid || (typeof this._nextAudioStrokeId === 'function' ? this._nextAudioStrokeId('problem_uid') : 'problem_main');
         pWidget._cardUid = this.problemCardUid;
-        this.problemCardData = { ...(pc.problemCardData || {}), imgUrl: pc.imgSrc || (pc.problemCardData && pc.problemCardData.imgUrl) || '' };
-        this.problemCardAspect = pc.problemCardAspect || 0.65;
+        this.problemCardData = {
+          ...(pc.problemCardData || {}),
+          imgUrl: effectivePcImgSrc,
+          pdfCropRef: resolvedPcCropRef ? { ...resolvedPcCropRef } : null
+        };
+        this.problemCardAspect = pc.problemCardAspect || (resolvedPcCropRef && resolvedPcCropRef.aspect) || (syncCachedCropEntry && syncCachedCropEntry.aspect) || 0.65;
         this.isProblemCardMinimized = Boolean(pc.isProblemCardMinimized);
         this.problemCardBaseX = typeof pc.problemCardBaseX === 'number' ? pc.problemCardBaseX : 72;
         this.problemCardBaseY = typeof pc.problemCardBaseY === 'number' ? pc.problemCardBaseY : 18;
@@ -8464,8 +8481,8 @@
         this.problemCardStickers = this._fastCloneSlideValue(pc.problemCardStickers || []);
         if (typeof pWidget._renderCardStickers === 'function') pWidget._renderCardStickers();
         const safePcImgSrc = (typeof this._sanitizeCardImageUrl === 'function')
-          ? this._sanitizeCardImageUrl(pc.imgSrc || '')
-          : (pc.imgSrc || '');
+          ? this._sanitizeCardImageUrl(effectivePcImgSrc)
+          : effectivePcImgSrc;
         if (safePcImgSrc) {
           const cachedProbImg = this._getOrCreateSlideProblemImageCached(safePcImgSrc);
           if (cachedProbImg) {
@@ -8523,13 +8540,19 @@
       // 2. 추가 문제 카드 복원
       if (Array.isArray(slideData.extraProblems)) {
         slideData.extraProblems.forEach(ep => {
-          this.spawnExtraProblemCard(ep.dataUrl, ep.pdfPageNum || 1, ep.cardW || 460, null, {
+          let syncExtraCrop = null;
+          if (ep && ep.pdfCropRef && this._cropBlobUrlCache && typeof this._getCropRefCacheKey === 'function') {
+            syncExtraCrop = this._cropBlobUrlCache.get(this._getCropRefCacheKey(ep.pdfCropRef)) || null;
+          }
+          const effEpUrl = (ep && ep.dataUrl) || (syncExtraCrop && syncExtraCrop.blobUrl) || '';
+          this.spawnExtraProblemCard(effEpUrl, ep.pdfPageNum || 1, ep.cardW || 460, null, {
             customX: ep.baseX,
             customY: ep.baseY,
             customTitle: ep.titleText || '문제',
             startMinimized: ep.isMin,
             isPdfPageCard: ep.isPdfPageCard,
             pdfPageNum: ep.pdfPageNum,
+            pdfCropRef: ep.pdfCropRef ? { ...ep.pdfCropRef } : null,
             cardUid: ep.cardUid || null,
             silentToast: true
           });
@@ -8861,6 +8884,9 @@
       this.updateIntersections();
       } finally {
         this._isDeserializingSlide = false;
+      }
+      if (!this._isCapturingExportSnapshots && typeof this._hydrateCurrentWorkspacePdfCropRefs === 'function') {
+        this._hydrateCurrentWorkspacePdfCropRefs().catch(() => { });
       }
       this.render();
       if (!this._isCapturingExportSnapshots) {
@@ -15237,6 +15263,9 @@
       if (this._pendingCropVectorUpgradePromise) {
         try { await this._pendingCropVectorUpgradePromise; } catch (_) { }
       }
+      if (typeof this._hydrateCurrentWorkspacePdfCropRefs === 'function') {
+        try { await this._hydrateCurrentWorkspacePdfCropRefs(); } catch (_) { }
+      }
       if (!skipPdfRaster && this.pdfPageBoardData && (!this.pdfPageBoardData.canvas || this.pdfPageBoardData.canvas._evicted || this.pdfPageBoardData.canvas.width <= 4) && (this.pdfPageBoardData.dataUrl || (typeof this._hasLivePdfSourceForBoard === 'function' && this._hasLivePdfSourceForBoard(this.pdfPageBoardData)))) {
         if (typeof this._ensurePdfBoardCanvasFromDataUrl === 'function') {
           await this._ensurePdfBoardCanvasFromDataUrl(this.pdfPageBoardData);
@@ -19686,6 +19715,7 @@
         let pdfOverrideCv = null;
         let stagingCv = null;
         let savedCompositeInkStrokes = null;
+        const tempHiResCropCardEls = [];
         try {
           if (typeof document !== 'undefined' && document.body) {
             document.body.classList.toggle('theme-light', targetIsLight);
@@ -19787,6 +19817,68 @@
           const visCropR = ((localX + localW) / Math.max(1, zoomedW)) * sw;
           const visCropB = ((localY + localH) / Math.max(1, zoomedH)) * sh;
 
+          if (activeFilter.includeProblem !== false && typeof document !== 'undefined' && typeof this._getOrWaitLivePdfDocForUid === 'function') {
+            const cRect = this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0 };
+            const probCandidates = [];
+            const pWidget = document.getElementById('problemCardWidget');
+            if (pWidget && pWidget.style.display !== 'none' && !pWidget.classList.contains('minimized') && this.problemCardData && this.problemCardData.pdfCropRef) {
+              probCandidates.push({ el: pWidget, ref: this.problemCardData.pdfCropRef });
+            }
+            if (Array.isArray(this.extraProblemCards)) {
+              for (let i = 0; i < this.extraProblemCards.length; i++) {
+                const ec = this.extraProblemCards[i];
+                const ref = ec && (ec.pdfCropRef || (ec.el && ec.el._pdfCropRef));
+                if (ec && ec.el && ec.el.style.display !== 'none' && !ec.el.classList.contains('minimized') && ref) {
+                  probCandidates.push({ el: ec.el, ref });
+                }
+              }
+            }
+            for (let i = 0; i < probCandidates.length; i++) {
+              const { el, ref } = probCandidates[i];
+              const bodyEl = el.querySelector('.problem-card-body');
+              const imgEl = el.querySelector('.problem-card-img');
+              if (!bodyEl || !ref || !ref.normCrop) continue;
+              const bRect = bodyEl.getBoundingClientRect();
+              const bx = bRect.left - cRect.left - cropX;
+              const by = bRect.top - cRect.top - cropY;
+              const bw = bRect.width;
+              const bh = bRect.height;
+              if (!(bw > 8 && bh > 8)) continue;
+              if (bx + bw < visCropL - 8 || bx > visCropR + 8 || by + bh < visCropT - 8 || by > visCropB + 8) continue;
+              const reqPxW = Math.round(bw * vecScaleX);
+              const curNatW = (imgEl && imgEl.naturalWidth) || 0;
+              if (reqPxW <= curNatW * 1.12) continue;
+              const cDoc = await this._getOrWaitLivePdfDocForUid(ref.pdfDocUid);
+              if (this._viewerPdfHiResToken !== token || !this._isSmartNoteViewerOverlayOpen()) return null;
+              if (!cDoc || typeof cDoc.getPage !== 'function') continue;
+              const cPage = await cDoc.getPage(Math.max(1, Math.min(cDoc.numPages || 1, ref.pageNum || 1))).catch(() => null);
+              if (!cPage) continue;
+              const baseVp = cPage.getViewport({ scale: 1.0 });
+              const nc = ref.normCrop;
+              const rawW = Math.max(1, nc.nw * baseVp.width);
+              const rawH = Math.max(1, nc.nh * baseVp.height);
+              const sc = Math.min(6.5, 3200 / Math.max(1, rawW, rawH), reqPxW / rawW);
+              const outW = Math.max(2, Math.round(rawW * sc));
+              const outH = Math.max(2, Math.round(rawH * sc));
+              const vp = cPage.getViewport({
+                scale: sc,
+                offsetX: -nc.nx * baseVp.width * sc,
+                offsetY: -nc.ny * baseVp.height * sc
+              });
+              const hiCv = document.createElement('canvas');
+              hiCv.width = outW;
+              hiCv.height = outH;
+              const hCtx = hiCv.getContext('2d', { alpha: false }) || hiCv.getContext('2d');
+              if (hCtx) {
+                hCtx.fillStyle = '#ffffff';
+                hCtx.fillRect(0, 0, outW, outH);
+                await cPage.render({ canvasContext: hCtx, viewport: vp }).promise.catch(() => { });
+                el._exportHiResCropCanvas = hiCv;
+                tempHiResCropCardEls.push(el);
+              }
+            }
+          }
+
           if ((localW < zoomedW - 4 || localH < zoomedH - 4) && Array.isArray(this.inkStrokes) && this.inkStrokes.length > 24) {
             savedCompositeInkStrokes = this.inkStrokes;
             const cullPad = 96;
@@ -19835,6 +19927,13 @@
             savedCompositeInkStrokes = null;
           }
           this._exportPdfHiResOverride = null;
+          for (let i = 0; i < tempHiResCropCardEls.length; i++) {
+            const cEl = tempHiResCropCardEls[i];
+            if (cEl && cEl._exportHiResCropCanvas) {
+              try { cEl._exportHiResCropCanvas.width = 0; cEl._exportHiResCropCanvas.height = 0; } catch (_) { }
+              cEl._exportHiResCropCanvas = null;
+            }
+          }
           if (pdfOverrideCv) {
             try { pdfOverrideCv.width = 0; pdfOverrideCv.height = 0; } catch (_) { }
           }
