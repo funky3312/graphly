@@ -29332,3 +29332,228 @@ body.ios-top-guard-active #graphlyIntroModal.intro-modal-backdrop {
     font-size: 12.5px;
   }
 }
+
+/* ==========================================================================
+   📑 [PDF 다중 페이지(인쇄 범위형) 일괄 삽입 일체형 캡슐 — PC · iPad 가로/세로 완결]
+   ========================================================================== */
+#modalPdfViewer .pdf-page-insert-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+#modalPdfViewer .pdf-page-range-input {
+  width: 114px;
+  min-width: 114px;
+  max-width: 114px;
+  flex: 0 0 114px;
+  height: 34px;
+  padding: 0 9px;
+  box-sizing: border-box;
+  background: rgba(9, 13, 22, 0.88);
+  border: 1.5px solid rgba(248, 250, 252, 0.42);
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  color: #f8fafc;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  letter-spacing: -0.1px;
+  outline: none;
+  box-shadow: none;
+  transition: border-color 0.14s ease, background-color 0.14s ease;
+}
+
+#modalPdfViewer .pdf-page-range-input::placeholder {
+  color: rgba(148, 163, 184, 0.78);
+  font-weight: 500;
+}
+
+#modalPdfViewer .pdf-page-range-input:focus {
+  background: #090d16;
+  border-color: #f8fafc;
+}
+
+#modalPdfViewer .pdf-page-insert-group .pdf-open-page-btn {
+  height: 34px;
+  min-width: 132px;
+  padding: 0 11px;
+  justify-content: center;
+  border-radius: 0 8px 8px 0 !important;
+  font-variant-numeric: tabular-nums;
+}
+
+#modalPdfViewer .pdf-page-insert-group .pdf-open-page-btn.has-range-selection {
+  background: #f8fafc !important;
+  border-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+#modalPdfViewer .pdf-page-insert-group .pdf-open-page-btn.has-range-selection:hover {
+  background: #e2e8f0 !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+#modalPdfViewer .pdf-page-insert-group.has-invalid-range .pdf-page-range-input {
+  border-color: #f87171 !important;
+  color: #fecaca;
+}
+
+#modalPdfViewer .pdf-page-insert-group .pdf-open-page-btn.has-invalid-range {
+  border-color: #f87171 !important;
+  color: #fca5a5 !important;
+  background: rgba(239, 68, 68, 0.14) !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-page-range-input {
+  background: #ffffff;
+  border: 1.5px solid #0f172a;
+  border-right: none;
+  color: #0f172a;
+}
+
+body.theme-light #modalPdfViewer .pdf-page-range-input::placeholder {
+  color: #94a3b8;
+}
+
+body.theme-light #modalPdfViewer .pdf-page-range-input:focus {
+  background: #f8fafc;
+  border-color: #0f172a;
+}
+
+body.theme-light #modalPdfViewer .pdf-page-insert-group .pdf-open-page-btn.has-range-selection {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-page-insert-group .pdf-open-page-btn.has-range-selection:hover {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  color: #ffffff !important;
+}
+
+body.theme-light #modalPdfViewer .pdf-page-insert-group.has-invalid-range .pdf-page-range-input {
+  border-color: #dc2626 !important;
+  color: #b91c1c;
+}
+
+body.theme-light #modalPdfViewer .pdf-page-insert-group .pdf-open-page-btn.has-invalid-range {
+  border-color: #dc2626 !important;
+  color: #dc2626 !important;
+  background: #fef2f2 !important;
+}
+
+/* iPad 가로모드 (1024px ~ 1180px) 여유 수납 */
+@media (max-width: 1180px) {
+  #modalPdfViewer .pdf-file-title {
+    max-width: 130px;
+  }
+
+  #modalPdfViewer .pdf-page-range-input {
+    width: 100px;
+    min-width: 100px;
+    max-width: 100px;
+    flex: 0 0 100px;
+    font-size: 12px;
+    padding: 0 8px;
+  }
+
+  #modalPdfViewer .pdf-page-insert-group .pdf-open-page-btn {
+    min-width: 122px;
+    padding: 0 10px;
+    font-size: 12.5px;
+  }
+}
+
+/* iPad 세로모드 (744px ~ 920px) 상단 바 1줄 무스크롤·무짤림 완벽 수납 */
+@media (max-width: 920px) {
+  #modalPdfViewer .pdf-modal-header {
+    padding: 0 8px !important;
+    gap: 4px !important;
+  }
+
+  #modalPdfViewer .pdf-header-left {
+    gap: 5px !important;
+  }
+
+  #modalPdfViewer .pdf-file-title {
+    max-width: 68px !important;
+    min-width: 36px !important;
+    font-size: 12px !important;
+  }
+
+  #modalPdfViewer .pdf-header-btn-subtle {
+    height: 30px !important;
+    padding: 0 6px !important;
+    font-size: 11px !important;
+  }
+
+  #modalPdfViewer .pdf-header-btn-subtle svg {
+    display: none !important;
+  }
+
+  #modalPdfViewer .pdf-header-center {
+    gap: 3px !important;
+  }
+
+  #modalPdfViewer .pdf-divider {
+    margin: 0 1px !important;
+  }
+
+  #modalPdfViewer .pdf-tool-btn,
+  #modalPdfViewer .pdf-nav-btn {
+    height: 30px !important;
+    padding: 0 6px !important;
+    font-size: 11.5px !important;
+  }
+
+  #modalPdfViewer .pdf-zoom-label {
+    min-width: 34px !important;
+    font-size: 11.5px !important;
+  }
+
+  #modalPdfViewer .pdf-page-indicator {
+    padding: 0 2px !important;
+    gap: 2px !important;
+  }
+
+  #modalPdfViewer .pdf-page-input {
+    width: 34px !important;
+    height: 28px !important;
+    font-size: 11.5px !important;
+  }
+
+  #modalPdfViewer .pdf-total-pages {
+    min-width: 16px !important;
+    font-size: 11.5px !important;
+  }
+
+  #modalPdfViewer .pdf-crop-toggle-btn {
+    height: 30px !important;
+    padding: 0 7px !important;
+    font-size: 11.5px !important;
+    gap: 4px !important;
+  }
+
+  #modalPdfViewer .pdf-page-range-input {
+    width: 80px !important;
+    min-width: 80px !important;
+    max-width: 80px !important;
+    flex: 0 0 80px !important;
+    height: 30px !important;
+    padding: 0 6px !important;
+    font-size: 11.5px !important;
+  }
+
+  #modalPdfViewer .pdf-page-insert-group .pdf-open-page-btn {
+    height: 30px !important;
+    min-width: 106px !important;
+    padding: 0 7px !important;
+    font-size: 11.5px !important;
+    gap: 4px !important;
+  }
+}

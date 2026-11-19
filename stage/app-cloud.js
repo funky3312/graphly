@@ -14316,16 +14316,21 @@
         this.setActiveInkTool('pen');
       }
       this.audioSyncData = null;
-      const nextNum = this.lessonPlaylistSlides.length + 1;
-      const blankSlide = this.serializeFullSlideState(String(nextNum));
-      this.lessonPlaylistSlides.push(blankSlide);
-      this.lessonPlaylistIndex = this.lessonPlaylistSlides.length - 1;
+      const insertIdx = wasRecording
+        ? this.lessonPlaylistSlides.length
+        : Math.min(this.lessonPlaylistSlides.length, (this.lessonPlaylistIndex || 0) + 1);
+      const blankSlide = this.serializeFullSlideState(String(insertIdx + 1));
+      this.lessonPlaylistSlides.splice(insertIdx, 0, blankSlide);
+      this.lessonPlaylistIndex = insertIdx;
+      if (typeof this._renumberDefaultPlaylistSlideTitles === 'function') {
+        this._renumberDefaultPlaylistSlideTitles();
+      }
       this._isAudioWaitingForNextSlideSetup = false;
       if (wasRecording) {
         this._beginNextSlideAudioSegmentAfterSwitch();
       }
       this.syncLessonPlaylistNavBarUI();
-      this.showToast(`✨ 이전 작업을 [${nextNum - 1}번]에 자동 보관하고 깨끗한 [${nextNum}번 캔버스]를 열었습니다!`);
+      this.showToast(`✨ [${insertIdx + 1}번] 위치에 깨끗한 빈 캔버스를 추가했습니다!`);
     }
 
     jumpToPlaylistSlide(targetIdx) {
@@ -14375,6 +14380,9 @@
         this._syncReplayFixedStageLayout();
       }
       this.syncLessonPlaylistNavBarUI();
+      if (typeof this._scheduleNextPdfSlidePrefetch === 'function') {
+        this._scheduleNextPdfSlidePrefetch();
+      }
     }
 
     deletePlaylistSlideAt(delIdx) {
@@ -14765,19 +14773,64 @@
       const btnMenuNextPdfPage = document.getElementById('btnAddSlideMenuNextPdfPage');
       const iconMenuPickPdf = document.getElementById('iconAddSlideMenuPickPdf');
       const lblMenuPickPdf = document.getElementById('lblAddSlideMenuPickPdf');
+      let canOfferNextPdfPage = false;
+      let nextPdfPageNum = 0;
+      if (isPdfPageMode) {
+        let basePage = 0;
+        let refDocUid = (this.pdfDoc && this.pdfDoc._graphlyDocUid) || '';
+        let pdfTotal = this.pdfTotalPages || (this.pdfDoc && this.pdfDoc.numPages) || 0;
+        const activePbd = this.pdfPageBoardData || (this._suspendedPdfBoardState && this._suspendedPdfBoardState.pdfPageBoardData) || null;
+        if (activePbd && typeof activePbd.pageNum === 'number') {
+          basePage = activePbd.pdfSourcePageNum || activePbd.pageNum;
+          if (activePbd.pdfDocUid) refDocUid = activePbd.pdfDocUid;
+          if (activePbd.totalPages) pdfTotal = activePbd.totalPages;
+        } else if (hasPlaylist) {
+          for (let i = Math.min(curIdx, effectiveSlides.length - 1); i >= 0; i--) {
+            const s = effectiveSlides[i];
+            const spbd = s && (s.pdfPageBoardData || (s.suspendedPdfBoardState && s.suspendedPdfBoardState.pdfPageBoardData));
+            if (spbd && typeof spbd.pageNum === 'number') {
+              basePage = spbd.pdfSourcePageNum || spbd.pageNum;
+              if (spbd.pdfDocUid) refDocUid = spbd.pdfDocUid;
+              if (spbd.totalPages) pdfTotal = spbd.totalPages;
+              break;
+            }
+          }
+        }
+        if (!basePage && this.pdfCurrentPage) {
+          basePage = this.pdfCurrentPage;
+        }
+        nextPdfPageNum = basePage > 0 ? (basePage + 1) : 0;
+        const alreadyInPlaylist = Boolean(
+          nextPdfPageNum > 0 &&
+          hasPlaylist &&
+          effectiveSlides.some((sl) => {
+            const spbd = sl && (sl.pdfPageBoardData || (sl.suspendedPdfBoardState && sl.suspendedPdfBoardState.pdfPageBoardData));
+            if (!spbd) return false;
+            if (refDocUid && spbd.pdfDocUid && spbd.pdfDocUid !== refDocUid) return false;
+            return (spbd.pdfSourcePageNum || spbd.pageNum || 0) === nextPdfPageNum;
+          })
+        );
+        canOfferNextPdfPage = Boolean(
+          nextPdfPageNum > 0 &&
+          (!pdfTotal || nextPdfPageNum <= pdfTotal) &&
+          !alreadyInPlaylist
+        );
+      }
       if (btnMenuNextPdfPage) {
-        btnMenuNextPdfPage.style.display = isPdfPageMode ? 'flex' : 'none';
+        btnMenuNextPdfPage.style.display = canOfferNextPdfPage ? 'flex' : 'none';
       }
       if (lblMenuNextPdfPage) {
-        lblMenuNextPdfPage.textContent = '다음 페이지';
+        lblMenuNextPdfPage.textContent = (canOfferNextPdfPage && nextPdfPageNum > 0)
+          ? `다음 페이지 (p.${nextPdfPageNum})`
+          : '다음 페이지';
       }
       if (iconMenuPickPdf) {
         iconMenuPickPdf.innerHTML = isPdfPageMode
-          ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+          ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>'
           : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>';
       }
       if (lblMenuPickPdf) {
-        lblMenuPickPdf.textContent = isPdfPageMode ? '페이지 선택' : '다음 캡처';
+        lblMenuPickPdf.textContent = isPdfPageMode ? 'PDF 페이지 추가' : '다음 캡처';
       }
       if (btnAddSlide) {
         btnAddSlide.title = '캔버스 추가';

@@ -237,12 +237,41 @@
         btnCropToggle.onclick = () => this.togglePdfCropMode();
       }
 
-      // 📄 전체 페이지 캡처 버튼 (개념 설명 · 여러 문제 판서용: 해당 PDF 페이지 전체를 칠판 캔버스로 바로 삽입!)
+      // 📄 페이지 삽입 그룹 (빈칸: 현재 페이지 삽입 ⇄ 입력 시: N페이지 일괄 삽입)
+      const inputRangeSpec = document.getElementById('inputPdfPageRangeSpec');
+      if (inputRangeSpec) {
+        inputRangeSpec.addEventListener('input', () => {
+          this.syncPdfPageRangeInsertUI();
+        });
+        inputRangeSpec.addEventListener('focus', () => {
+          if (this.isPdfCropModeActive) {
+            this.togglePdfCropMode(false);
+          }
+          this.syncPdfPageRangeInsertUI();
+        });
+        inputRangeSpec.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            if (inputRangeSpec.value.trim()) {
+              e.preventDefault();
+              e.stopPropagation();
+              inputRangeSpec.value = '';
+              this.syncPdfPageRangeInsertUI();
+              return;
+            }
+            return;
+          }
+          e.stopPropagation();
+          if (e.key === 'Enter' && !e.isComposing) {
+            e.preventDefault();
+            this.handlePdfInsertPagesAction();
+          }
+        });
+      }
+
       const btnOpenFullPage = document.getElementById('btnPdfOpenFullPage');
       if (btnOpenFullPage) {
         btnOpenFullPage.onclick = () => {
-          this.setLessonTeachingMode('page');
-          this.openPdfPageOnBoard(this.pdfCurrentPage || 1);
+          this.handlePdfInsertPagesAction();
         };
       }
 
@@ -625,6 +654,7 @@
 
         const totalEl = document.getElementById('lblPdfTotalPages');
         if (totalEl) totalEl.textContent = pdf.numPages;
+        this.syncPdfPageRangeInsertUI();
 
         const titleEl = document.getElementById('pdfFileName');
         if (titleEl) { titleEl.textContent = fileName; titleEl.title = fileName; }
@@ -1152,13 +1182,17 @@
       const showCropBtn = (mode !== 'page');
       const showPageBtn = (mode !== 'crop');
       const btnCropToggle = document.getElementById('btnPdfCropToggle');
+      const insertGroup = document.getElementById('pdfPageInsertGroup');
       const btnOpenFullPage = document.getElementById('btnPdfOpenFullPage');
       if (btnCropToggle) {
         btnCropToggle.style.display = showCropBtn ? 'inline-flex' : 'none';
       }
-      if (btnOpenFullPage) {
+      if (insertGroup) {
+        insertGroup.style.display = showPageBtn ? 'inline-flex' : 'none';
+      } else if (btnOpenFullPage) {
         btnOpenFullPage.style.display = showPageBtn ? 'inline-flex' : 'none';
       }
+      this.syncPdfPageRangeInsertUI();
     }
 
     async appendNextPdfPageSlide() {
@@ -1253,6 +1287,10 @@
         document.body.classList.add('pdf-modal-open');
         this.isPdfModalOpen = true;
         this._lastPdfModalOpenAt = performance.now();
+        const inputRangeSpec = document.getElementById('inputPdfPageRangeSpec');
+        if (inputRangeSpec) {
+          inputRangeSpec.value = '';
+        }
         this.syncPdfModalModeUI();
 
         // 🛑 [백그라운드 메인 칠판/그래프 루프 100% 일시정지 (Freeze)]:
@@ -1854,39 +1892,280 @@
       this.showToast(`🗑️ p.${pageNum} 캔버스를 삭제했습니다.`);
     }
 
-    async openPdfPageOnBoard(pageNum, options = {}) {
+    parsePdfPageSelectionSpec(specStr, totalPages = 1) {
+      const maxPage = Math.max(1, Math.floor(Number(totalPages) || 1));
+      const raw = (typeof specStr === 'string') ? specStr.trim() : '';
+      if (!raw) {
+        return { pages: [], hasInput: false, hasInvalidToken: false };
+      }
+
+      if (/^(전체|all|\*)$/i.test(raw)) {
+        const allPages = [];
+        for (let p = 1; p <= maxPage; p++) allPages.push(p);
+        return { pages: allPages, hasInput: true, hasInvalidToken: false };
+      }
+
+      // 공백 포함 구간("3 - 8", "3 ~ 8") 및 전각 기호 정규화
+      const normalized = raw
+        .replace(/[，、；;]/g, ',')
+        .replace(/[～〜–—−]/g, '-')
+        .replace(/(\d+)\s*[-~]\s*(\d+)/g, '$1-$2')
+        .replace(/(\d+)\s*[-~]\s*(?=,|$)/g, '$1-');
+
+      const tokens = normalized.split(/[,\s]+/).filter(Boolean);
+      const pages = [];
+      const seen = new Set();
+      let hasInvalidToken = false;
+
+      const pushValid = (p) => {
+        if (p >= 1 && p <= maxPage && !seen.has(p)) {
+          seen.add(p);
+          pages.push(p);
+        }
+      };
+
+      for (let i = 0; i < tokens.length; i++) {
+        const tk = tokens[i];
+        if (/^\d+$/.test(tk)) {
+          const num = parseInt(tk, 10);
+          if (num >= 1 && num <= maxPage) {
+            pushValid(num);
+          } else {
+            hasInvalidToken = true;
+          }
+          continue;
+        }
+        // 타이핑 도중 미완성 하이픈("3-")은 시작 페이지가 유효하면 에러 깜빡임 없이 시작 페이지만 인정
+        const trailingMatch = tk.match(/^(\d+)[-~]$/);
+        if (trailingMatch) {
+          const startNum = parseInt(trailingMatch[1], 10);
+          if (startNum >= 1 && startNum <= maxPage) {
+            pushValid(startNum);
+          } else {
+            hasInvalidToken = true;
+          }
+          continue;
+        }
+        const rangeMatch = tk.match(/^(\d+)[-~](\d+)$/);
+        if (rangeMatch) {
+          const a = parseInt(rangeMatch[1], 10);
+          const b = parseInt(rangeMatch[2], 10);
+          const lo = Math.min(a, b);
+          const hi = Math.max(a, b);
+          if (hi < 1 || lo > maxPage) {
+            hasInvalidToken = true;
+          } else {
+            const clampedLo = Math.max(1, lo);
+            const clampedHi = Math.min(maxPage, hi);
+            for (let p = clampedLo; p <= clampedHi; p++) {
+              pushValid(p);
+            }
+          }
+          continue;
+        }
+        hasInvalidToken = true;
+      }
+
+      return { pages, hasInput: true, hasInvalidToken };
+    }
+
+    syncPdfPageRangeInsertUI() {
+      const inputEl = document.getElementById('inputPdfPageRangeSpec');
+      const groupEl = document.getElementById('pdfPageInsertGroup');
+      const btnEl = document.getElementById('btnPdfOpenFullPage');
+      const lblEl = document.getElementById('lblPdfOpenFullPage') || (btnEl && btnEl.querySelector('.open-page-btn-text'));
+      const total = this.pdfTotalPages || (this.pdfDoc && this.pdfDoc.numPages) || 1;
+      const rawVal = inputEl ? inputEl.value : '';
+      const { pages, hasInput } = this.parsePdfPageSelectionSpec(rawVal, total);
+
+      const maxSlides = (typeof this.getMaxLessonSlidesLimit === 'function') ? this.getMaxLessonSlidesLimit() : 50;
+      const replaceMode = Boolean(this._isReplacingViaNextCrop || this.hasAnyWorkspaceContent());
+      const existingPlaylistLen = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
+        ? this.lessonPlaylistSlides.length
+        : 0;
+      const occupiedBefore = replaceMode
+        ? Math.max(1, existingPlaylistLen)
+        : (existingPlaylistLen > 1 ? (existingPlaylistLen - 1) : 0);
+      const isOverQuota = Boolean(hasInput && pages.length > 0 && (occupiedBefore + pages.length > maxSlides));
+      const isInvalid = Boolean((hasInput && pages.length === 0) || isOverQuota);
+      const isValidSelection = Boolean(hasInput && pages.length > 0 && !isOverQuota);
+
+      if (inputEl) {
+        inputEl.title = rawVal.trim()
+          ? (isOverQuota
+            ? `최대 ${maxSlides}장 제한 초과 (현재 선택: ${pages.length}장)`
+            : `선택 입력: ${rawVal.trim()} (${pages.length}페이지 인식됨)`)
+          : `비워두면 현재 페이지 1장 삽입 · 구간(예: 1-5) 또는 낱장(예: 3,5,8) 입력 가능`;
+      }
+
+      if (groupEl) {
+        groupEl.classList.toggle('has-invalid-range', isInvalid);
+      }
+      if (btnEl) {
+        btnEl.classList.toggle('has-range-selection', isValidSelection);
+        btnEl.classList.toggle('has-invalid-range', isInvalid);
+      }
+      if (lblEl) {
+        if (!hasInput) {
+          lblEl.textContent = '현재 페이지 삽입';
+        } else if (isOverQuota) {
+          lblEl.textContent = `${maxSlides}장 초과 (${pages.length})`;
+        } else if (pages.length > 0) {
+          lblEl.textContent = `${pages.length}페이지 삽입`;
+        } else {
+          lblEl.textContent = '범위 확인';
+        }
+      }
+    }
+
+    async handlePdfInsertPagesAction() {
       if (!this.pdfDoc) {
         this.showToast('⚠️ 먼저 PDF 문서를 열어주세요.');
         return;
       }
-      this.setLessonTeachingMode('page');
+      if (this.isPdfCropModeActive) {
+        this.togglePdfCropMode(false);
+      }
       const total = this.pdfTotalPages || this.pdfDoc.numPages || 1;
-      const targetPage = Math.max(1, Math.min(pageNum || this.pdfCurrentPage || 1, total));
+      const inputEl = document.getElementById('inputPdfPageRangeSpec');
+      const rawVal = inputEl ? inputEl.value : '';
+      const { pages, hasInput } = this.parsePdfPageSelectionSpec(rawVal, total);
 
-      // 🌟 [대표님 핵심 기획: 슬라이드 완전 일원화 & 자동 다음 슬라이드 오픈]
-      // 슬라이드를 미리 추가(+)하지 않고도 [PDF]를 눌러 [📄 전체 페이지 캡처]를 클릭하면,
-      // 현재 슬라이드에 이미 내용이 있을 경우 자동으로 이전 슬라이드를 보관하고 깨끗한 다음 슬라이드에 삽입합니다!
-      const hasExistingContent = !Boolean(options && options.skipArchiveCurrent) && this.hasAnyWorkspaceContent();
-      const replaceMode = Boolean(this._isReplacingViaNextCrop || hasExistingContent);
-      this._isReplacingViaNextCrop = false;
-      if (replaceMode && typeof this.canAddMoreSlidesWithQuota === 'function' && !this.canAddMoreSlidesWithQuota(1)) {
-        if (this.isAudioRecording) {
-          this._isAudioWaitingForNextSlideSetup = false;
-        }
+      if (!hasInput) {
+        await this.openMultiplePdfPagesOnBoard([this.pdfCurrentPage || 1]);
         return;
       }
-      if (this.isAudioRecording) {
-        this._isAudioWaitingForNextSlideSetup = true;
+      if (pages.length === 0) {
+        this.showToast(`⚠️ 유효한 페이지 번호(1~${total})를 입력해 주세요. (예: 1-5, 8)`);
+        if (inputEl) inputEl.focus();
+        return;
       }
+      await this.openMultiplePdfPagesOnBoard(pages);
+    }
+
+    _renumberDefaultPlaylistSlideTitles() {
+      if (!Array.isArray(this.lessonPlaylistSlides)) return;
+      for (let i = 0; i < this.lessonPlaylistSlides.length; i++) {
+        const s = this.lessonPlaylistSlides[i];
+        if (s && (!s.title || /^\d+$/.test(String(s.title).trim()))) {
+          s.title = String(i + 1);
+        }
+      }
+    }
+
+    _scheduleNextPdfSlidePrefetch() {
+      if (this._nextPdfSlidePrefetchTimer) {
+        clearTimeout(this._nextPdfSlidePrefetchTimer);
+        this._nextPdfSlidePrefetchTimer = null;
+      }
+      // iPad/iOS는 WebKit <canvas> 메모리 한도 보호를 위해 온디맨드 단일 로드만 유지하고, PC에서만 다음 1장을 유휴 프리페치
+      if (typeof this.isIOSOrIPad === 'function' && this.isIOSOrIPad()) return;
+      if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) return;
+      const nextIdx = (this.lessonPlaylistIndex || 0) + 1;
+      if (nextIdx < 0 || nextIdx >= this.lessonPlaylistSlides.length) return;
+      const nextSlide = this.lessonPlaylistSlides[nextIdx];
+      const nextPbd = nextSlide && (nextSlide.pdfPageBoardData || (nextSlide.suspendedPdfBoardState && nextSlide.suspendedPdfBoardState.pdfPageBoardData));
+      if (!nextPbd || !nextPbd.pdfDocUid) return;
+      const srcPageNum = nextPbd.pdfSourcePageNum || nextPbd.pageNum || 1;
+      if (this._getPdfPageCanvasFromCache(nextPbd.pageNum, nextPbd.dataUrl || '', nextPbd.pdfDocUid, srcPageNum)) return;
+
+      this._nextPdfSlidePrefetchTimer = setTimeout(() => {
+        this._nextPdfSlidePrefetchTimer = null;
+        if (this.isPdfModalOpen || this.isDrawingInk || this.isPanning || this.isBoardPanning) return;
+        if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides)) return;
+        const curNext = this.lessonPlaylistSlides[(this.lessonPlaylistIndex || 0) + 1];
+        const pbd = curNext && (curNext.pdfPageBoardData || (curNext.suspendedPdfBoardState && curNext.suspendedPdfBoardState.pdfPageBoardData));
+        if (pbd && pbd.pdfDocUid && typeof this._ensurePdfBoardCanvasFromDataUrl === 'function') {
+          this._ensurePdfBoardCanvasFromDataUrl(pbd).catch(() => null);
+        }
+      }, 180);
+    }
+
+    async openPdfPageOnBoard(pageNum, options = {}) {
+      const target = pageNum || this.pdfCurrentPage || 1;
+      return this.openMultiplePdfPagesOnBoard([target], options);
+    }
+
+    async openMultiplePdfPagesOnBoard(pageNumbers, options = {}) {
+      if (!this.pdfDoc) {
+        this.showToast('⚠️ 먼저 PDF 문서를 열어주세요.');
+        return false;
+      }
+      const total = this.pdfTotalPages || this.pdfDoc.numPages || 1;
+      const rawList = Array.isArray(pageNumbers) ? pageNumbers : [pageNumbers];
+      const validPages = [];
+      const seenPages = new Set();
+      for (let i = 0; i < rawList.length; i++) {
+        const p = Math.round(Number(rawList[i]));
+        if (Number.isFinite(p) && p >= 1 && p <= total && !seenPages.has(p)) {
+          seenPages.add(p);
+          validPages.push(p);
+        }
+      }
+      if (validPages.length === 0) {
+        this.showToast(`⚠️ 유효한 페이지 번호(1~${total})를 입력해 주세요.`);
+        return false;
+      }
+
+      const skipArchive = Boolean(options && options.skipArchiveCurrent);
+      const hasExistingContent = !skipArchive && this.hasAnyWorkspaceContent();
+      const replaceMode = Boolean(this._isReplacingViaNextCrop || hasExistingContent);
+      const maxSlides = (typeof this.getMaxLessonSlidesLimit === 'function') ? this.getMaxLessonSlidesLimit() : 50;
+      const existingPlaylistLen = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
+        ? this.lessonPlaylistSlides.length
+        : 0;
+      const occupiedBefore = replaceMode
+        ? Math.max(1, existingPlaylistLen)
+        : (existingPlaylistLen > 1 ? (existingPlaylistLen - 1) : 0);
+
+      if (occupiedBefore + validPages.length > maxSlides) {
+        const remain = Math.max(0, maxSlides - occupiedBefore);
+        const msg = remain > 0
+          ? `한 파일에는 최대 ${maxSlides}장까지 저장할 수 있습니다. (현재 ${remain}장 더 삽입 가능)`
+          : `한 파일에는 최대 ${maxSlides}장까지 저장할 수 있습니다. 추가 내용은 새 파일에서 이어서 작성해 주세요.`;
+        this.showToast(remain > 0
+          ? `⚠️ 최대 ${maxSlides}장 제한: 현재 ${remain}장까지 추가할 수 있습니다.`
+          : `⚠️ 한 파일에는 최대 ${maxSlides}장까지 추가할 수 있습니다.`);
+        if (typeof this.showTossPaymentResultModal === 'function') {
+          this.showTossPaymentResultModal({
+            status: 'warning',
+            title: `캔버스는 최대 ${maxSlides}장까지 추가할 수 있습니다`,
+            message: msg
+          });
+        }
+        return false;
+      }
+
+      this.setLessonTeachingMode('page');
+      this._isReplacingViaNextCrop = false;
+
+      let insertStartIdx = 0;
       if (replaceMode) {
-        this._archiveCurrentBeforeNextCapture();
+        if (this.isAudioRecording) {
+          this._isAudioWaitingForNextSlideSetup = true;
+          this._archiveCurrentBeforeNextCapture();
+          insertStartIdx = this.lessonPlaylistSlides.length;
+        } else {
+          if (this._isAudioReplayActive || this.isAudioPlaying) {
+            this.stopAudioPlayback(true);
+          }
+          if (!this.isLessonPlaylistActive || !Array.isArray(this.lessonPlaylistSlides) || this.lessonPlaylistSlides.length === 0) {
+            const firstExisting = this.serializeFullSlideState('1');
+            this.lessonPlaylistSlides = [firstExisting];
+            this.lessonPlaylistIndex = 0;
+            this.isLessonPlaylistActive = true;
+          } else {
+            this.saveCurrentSlideIntoPlaylist();
+          }
+          insertStartIdx = Math.min(this.lessonPlaylistSlides.length, (this.lessonPlaylistIndex || 0) + 1);
+        }
+      } else if (this.isAudioRecording) {
+        this._isAudioWaitingForNextSlideSetup = true;
       }
 
       // 현재 캔버스의 이전 문제 카드·그래프 카드·필기·PDF 보드 데이터를 100% 깨끗하게 초기화하여 슬라이드 간 섞임 원천 차단!
       this.resetBoardAndProblemCardsForNext();
 
-      // PDF 페이지 캡처모드급 초선명 마스터 세팅(가로 ~2800px / WebP 0.88 — 태블릿·PC 2.5x 확대 시 네이티브 PDF급 선명도!) 오프스크린 렌더링
-      // + iOS/iPadOS WebKit 하드웨어 캔버스 한계(4096px / 16.77MP) 안전 클램프 + 1/2 Mipmap 가속 + LRU 캐시(iOS 2장 / PC 5장) 보호!
       if (this._pdfPageCanvasCacheDoc !== this.pdfDoc) {
         if (this._pdfPageCanvasCache) {
           Object.keys(this._pdfPageCanvasCache).forEach((k) => {
@@ -1913,6 +2192,9 @@
         this._registerPdfBytesForDocUid(activeDocUid, this._cachedPdfBytes, this.pdfDoc);
       }
       const hasBackedVecPdf = Boolean(activeDocUid && this._hasLivePdfSourceForBoard({ pdfDocUid: activeDocUid }));
+
+      // 🌟 [초고속 온디맨드 설계]: 첫 번째 선택 페이지(validPages[0]) 딱 1장만 즉시 렌더링하고, 나머지 N-1장은 0MB 메타데이터로만 세팅!
+      const targetPage = validPages[0];
       let pageCanvas = this._getPdfPageCanvasFromCache(targetPage, '', activeDocUid, targetPage);
       if (!pageCanvas) {
         const page = await this.pdfDoc.getPage(targetPage);
@@ -1952,7 +2234,6 @@
         pageCanvas._cachedDataUrl = this.encodeCanvasSmartWebP(pageCanvas, 0.88);
       }
 
-      // 🌟 [대표님 피드백 반영: PDF 삽입 시 화면 거의 꽉 차게 확대 삽입 + 그래프 소환 시 아담한 비율 보장!] 🌟
       const baseYSpan = 8.4;
       this.ySpan = baseYSpan;
       this.xSpan = 11.5;
@@ -2012,13 +2293,67 @@
       if (!this.isInkMode) {
         this.toggleInkMode(true);
       }
-      // 패드(두 손가락 이동)·액타(스페이스바 드래그) 중심 설계: 강제 이동 전환 없이 즉시 필기 가능하도록 펜(또는 형광펜) 유지!
       if (this.activeInkTool !== 'highlighter') {
         this.setActiveInkTool('pen');
       }
 
+      // 나머지 2..K번 슬라이드 경량 메타데이터 생성 (<canvas> 할당 및 page.render 0회!)
+      const buildRestSlides = async (templateSlide) => {
+        if (validPages.length <= 1) return [];
+        const restPages = validPages.slice(1);
+        const restVps = await Promise.all(restPages.map((pNum) =>
+          this.pdfDoc.getPage(pNum).then((pg) => pg.getViewport({ scale: 1.0 })).catch(() => null)
+        ));
+        return restPages.map((pNum, idx) => {
+          const vp1 = restVps[idx];
+          const aspect_i = (vp1 && vp1.width > 0) ? (vp1.height / vp1.width) : aspect;
+          const mathW_i = targetScreenW / unitScale;
+          const mathH_i = mathW_i * aspect_i;
+          const centerY_i = yTopMath - mathH_i / 2;
+          const cloned = this._fastCloneSlideValue(templateSlide);
+          cloned.audioSyncData = null;
+          cloned.pdfPageBoardData = {
+            pageNum: pNum,
+            pdfSourcePageNum: pNum,
+            totalPages: total,
+            pdfDocUid: activeDocUid,
+            canvas: null,
+            dataUrl: '',
+            pixelW: 0,
+            pixelH: 0,
+            aspect: aspect_i,
+            mathW: mathW_i,
+            mathH: mathH_i,
+            centerX: 0,
+            centerY: centerY_i,
+            baseYSpan
+          };
+          return cloned;
+        });
+      };
+
       if (replaceMode) {
-        this._finalizeAppendedCaptureSlide('');
+        if (this.isAudioRecording) {
+          this._finalizeAppendedCaptureSlide('');
+          const firstInsertedSlide = this.lessonPlaylistSlides[this.lessonPlaylistIndex];
+          const restSlides = await buildRestSlides(firstInsertedSlide);
+          if (restSlides.length > 0) {
+            this.lessonPlaylistSlides.push(...restSlides);
+            this._renumberDefaultPlaylistSlideTitles();
+            this.syncLessonPlaylistNavBarUI();
+          }
+        } else {
+          this.audioSyncData = null;
+          const firstInsertedSlide = this.serializeFullSlideState(String(insertStartIdx + 1));
+          const restSlides = await buildRestSlides(firstInsertedSlide);
+          this.lessonPlaylistSlides.splice(insertStartIdx, 0, firstInsertedSlide, ...restSlides);
+          this.lessonPlaylistIndex = insertStartIdx;
+          this.isLessonPlaylistActive = true;
+          this._renumberDefaultPlaylistSlideTitles();
+          this._isAudioWaitingForNextSlideSetup = false;
+          this._alreadyArchivedBeforePdfModal = false;
+          this.syncLessonPlaylistNavBarUI();
+        }
       } else {
         this._isAudioWaitingForNextSlideSetup = false;
         if (this.isAudioRecording) {
@@ -2027,18 +2362,22 @@
           }
           this._recordAudioWorkspaceStateIfNeeded(true);
         }
-        if (this.isLessonPlaylistActive) {
-          this.saveCurrentSlideIntoPlaylist();
-          this.syncLessonPlaylistNavBarUI();
+        const firstSlide = this.serializeFullSlideState('1');
+        const restSlides = await buildRestSlides(firstSlide);
+        if (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 1) {
+          const curIdx = Math.max(0, Math.min(this.lessonPlaylistSlides.length - 1, this.lessonPlaylistIndex || 0));
+          this.lessonPlaylistSlides.splice(curIdx, 1, firstSlide, ...restSlides);
+          this.lessonPlaylistIndex = curIdx;
+          this._renumberDefaultPlaylistSlideTitles();
         } else {
-          // PDF 한 페이지를 처음 불러왔을 때도 즉시 상단 슬라이드바(📑 1/1 + [PDF] 버튼)를 활성화하여 다음 페이지 추가가 원클릭으로 가능하도록!
-          const firstSlide = this.serializeFullSlideState('1');
-          this.lessonPlaylistSlides = [firstSlide];
+          this.lessonPlaylistSlides = [firstSlide, ...restSlides];
           this.lessonPlaylistIndex = 0;
           this.isLessonPlaylistActive = true;
-          this.syncLessonPlaylistNavBarUI();
+          this._renumberDefaultPlaylistSlideTitles();
         }
+        this.syncLessonPlaylistNavBarUI();
       }
+
       this.closePdfModal();
 
       this.syncControls();
@@ -2047,6 +2386,12 @@
       this.syncPdfBoardNavBarUI();
       this.syncGraphSnapBarUI();
       this.render();
+      this._scheduleNextPdfSlidePrefetch();
+
+      if (validPages.length >= 2 && !(options && options.silentToast)) {
+        this.showToast(`📑 선택한 ${validPages.length}페이지를 슬라이드로 삽입했습니다!`);
+      }
+      return true;
     }
 
     // 🌟 [PDF 페이지 위에서 패닝/줌 후 첫 그래프 소환 시: 화면 속 PDF·필기는 0px도 움직이지 않고 현재 화면 중앙에 아담한 그래프 소환!] 🌟
