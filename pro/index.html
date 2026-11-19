@@ -33,7 +33,37 @@
       var proPluginSource = '(' + (function (ROOT_BASE_URL) {
         window.__GRAPHLY_PRO_EDITION__ = true;
 
-        // 마우스 / 펜 커서의 최신 캔버스 좌표 추적 (왼쪽 위 모서리 기준점)
+        // Pro 전용 커서 & 가상 펜촉 제어 스타일 주입 (style.css의 cursor: none !important 우회)
+        function ensureProStylesAndOverlay() {
+          if (!document.getElementById('proMathStampStyle') && document.head) {
+            var stEl = document.createElement('style');
+            stEl.id = 'proMathStampStyle';
+            stEl.textContent = [
+              'canvas.pro-hover-math-stamp { cursor: move !important; }',
+              'canvas.pro-dragging-math-stamp { cursor: move !important; }',
+              'body.pro-hide-virtual-stylus #virtualStylusPen { display: none !important; opacity: 0 !important; }',
+              '#proMathStampOverlay {',
+              '  position: fixed;',
+              '  left: 0; top: 0;',
+              '  pointer-events: none !important;',
+              '  z-index: 45;',
+              '  display: none;',
+              '}'
+            ].join('\n');
+            document.head.appendChild(stEl);
+          }
+
+          var ov = document.getElementById('proMathStampOverlay');
+          if (!ov && document.body) {
+            ov = document.createElement('canvas');
+            ov.id = 'proMathStampOverlay';
+            ov.style.display = 'none';
+            document.body.appendChild(ov);
+          }
+          return ov;
+        }
+
+        // 마우스 / 펜 커서의 최신 캔버스 좌표 추적 (F1 붙여넣기 왼쪽 위 모서리 기준점)
         var lastPointer = {
           hasValidCanvasPos: false,
           clientX: 0,
@@ -76,7 +106,7 @@
           return Boolean(themeObj.isLight);
         }
 
-        // 투명 배경 수식 이미지일 경우 밝은 칠판용(먹색) / 어두운 칠판용(백색) 변형을 준비하여 어떤 칠판에서도 100% 시인성 보장
+        // 투명 배경 수식 디코딩 + 밝은/어두운 칠판용 글자색 쌍 + 타이트한 실제 글자 영역(tightBox) 산출
         function decodeAndPrepareMathImage(fileOrBlob) {
           return new Promise(function (resolve, reject) {
             var blobUrl = URL.createObjectURL(fileOrBlob);
@@ -101,28 +131,47 @@
                 var neutralOpaqueCount = 0;
                 var neutralLumSum = 0;
 
-                for (var i = 0; i < data.length; i += 4) {
-                  var a = data[i + 3];
-                  if (a < 245) {
+                var inkMinX = natW, inkMinY = natH, inkMaxX = 0, inkMaxY = 0;
+                var foundInk = false;
+
+                for (var py = 0; py < natH; py++) {
+                  for (var pxIdx = 0; pxIdx < natW; pxIdx++) {
+                    var i = (py * natW + pxIdx) * 4;
+                    var a = data[i + 3];
                     if (a < 32) transparentPx++;
-                  }
-                  if (a >= 40) {
-                    var r = data[i], g = data[i + 1], b = data[i + 2];
-                    var chroma = Math.max(r, g, b) - Math.min(r, g, b);
-                    if (chroma < 55) {
-                      neutralLumSum += (0.299 * r + 0.587 * g + 0.114 * b);
-                      neutralOpaqueCount++;
+                    if (a >= 32) {
+                      foundInk = true;
+                      if (pxIdx < inkMinX) inkMinX = pxIdx;
+                      if (pxIdx > inkMaxX) inkMaxX = pxIdx;
+                      if (py < inkMinY) inkMinY = py;
+                      if (py > inkMaxY) inkMaxY = py;
+                    }
+                    if (a >= 40) {
+                      var r = data[i], g = data[i + 1], b = data[i + 2];
+                      var chroma = Math.max(r, g, b) - Math.min(r, g, b);
+                      if (chroma < 55) {
+                        neutralLumSum += (0.299 * r + 0.587 * g + 0.114 * b);
+                        neutralOpaqueCount++;
+                      }
                     }
                   }
                 }
 
                 var isTransparentMath = (totalPx > 0) && ((transparentPx / totalPx) >= 0.08);
+                var tightBox = (isTransparentMath && foundInk && inkMaxX >= inkMinX && inkMaxY >= inkMinY)
+                  ? {
+                    u0: Math.max(0, (inkMinX - 3) / natW),
+                    v0: Math.max(0, (inkMinY - 3) / natH),
+                    u1: Math.min(1, (inkMaxX + 4) / natW),
+                    v1: Math.min(1, (inkMaxY + 4) / natH)
+                  }
+                  : { u0: 0, v0: 0, u1: 1, v1: 1 };
+
                 var lightSurfaceUrl = rawUrl;
                 var darkSurfaceUrl = rawUrl;
 
                 if (isTransparentMath && neutralOpaqueCount > 0) {
                   var avgLum = neutralLumSum / neutralOpaqueCount;
-                  // 유채색 강조(\color{red} 등)는 보존하고 무채색 수식 획만 자연스럽게 명암 반전한 쌍 생성
                   var invCanvas = document.createElement('canvas');
                   invCanvas.width = natW;
                   invCanvas.height = natH;
@@ -134,7 +183,6 @@
                     var rr = data[j], gg = data[j + 1], bb = data[j + 2], aa = data[j + 3];
                     var ch = Math.max(rr, gg, bb) - Math.min(rr, gg, bb);
                     if (aa > 0 && ch < 65) {
-                      // 살짝 부드러운 먹색(#0f172a 계열) <-> 분필 백색(#f8fafc 계열) 반전
                       dst[j] = Math.max(15, Math.min(248, 255 - rr));
                       dst[j + 1] = Math.max(23, Math.min(250, 255 - gg));
                       dst[j + 2] = Math.max(42, Math.min(252, 255 - bb));
@@ -150,39 +198,11 @@
                   var invertedUrl = invCanvas.toDataURL('image/png');
 
                   if (avgLum < 128) {
-                    // 원본이 어두운 글씨 -> 밝은 칠판엔 원본, 어두운 칠판엔 반전본
                     lightSurfaceUrl = rawUrl;
                     darkSurfaceUrl = invertedUrl;
                   } else {
-                    // 원본이 밝은 흰 글씨 -> 밝은 칠판엔 반전본, 어두운 칠판엔 원본
                     lightSurfaceUrl = invertedUrl;
                     darkSurfaceUrl = rawUrl;
-                  }
-                }
-
-                // 글자 픽셀 히트테스트용 경량 알파 그리드 생성 (64x32 이하 다운샘플 비트맵)
-                var maskW = Math.min(96, Math.max(8, Math.round(natW / 4)));
-                var maskH = Math.min(48, Math.max(4, Math.round(natH / 4)));
-                var hitMask = null;
-                if (isTransparentMath) {
-                  hitMask = new Uint8Array(maskW * maskH);
-                  for (var my = 0; my < maskH; my++) {
-                    var sy0 = Math.floor((my / maskH) * natH);
-                    var sy1 = Math.max(sy0 + 1, Math.floor(((my + 1) / maskH) * natH));
-                    for (var mx = 0; mx < maskW; mx++) {
-                      var sx0 = Math.floor((mx / maskW) * natW);
-                      var sx1 = Math.max(sx0 + 1, Math.floor(((mx + 1) / maskW) * natW));
-                      var hasInk = 0;
-                      for (var yy = sy0; yy < sy1 && !hasInk; yy++) {
-                        for (var xx = sx0; xx < sx1; xx++) {
-                          if (data[(yy * natW + xx) * 4 + 3] > 28) {
-                            hasInk = 1;
-                            break;
-                          }
-                        }
-                      }
-                      hitMask[my * maskW + mx] = hasInk;
-                    }
                   }
                 }
 
@@ -191,11 +211,9 @@
                   natW: natW,
                   natH: natH,
                   isTransparentMath: isTransparentMath,
+                  tightBox: tightBox,
                   lightSurfaceUrl: lightSurfaceUrl,
-                  darkSurfaceUrl: darkSurfaceUrl,
-                  hitMask: hitMask,
-                  maskW: maskW,
-                  maskH: maskH
+                  darkSurfaceUrl: darkSurfaceUrl
                 });
               } catch (err) {
                 URL.revokeObjectURL(blobUrl);
@@ -210,6 +228,130 @@
           });
         }
 
+        // 미세 선택 & 드래그 상태 전역 관리
+        var proSelectedStamp = null;   // '톡' 눌러 선택된 수식 (방향키 이동 가능 + 은은한 미세 테두리 표시)
+        var proHoveredStamp = null;    // 포인터가 글자 영역 위에 올라간 수식
+        var activeStampDrag = null;    // 현재 잡고 끌고 있는 수식 상태
+        var arrowNudgeSession = null;  // 연속 방향키 이동 시 단일 Undo 묶음
+
+        function getStampScreenBounds(appInst, st) {
+          if (!appInst || !st || !Array.isArray(st.points) || st.points.length < 2) return null;
+          var isBoard = (st.target || 'board') === 'board';
+          if (appInst.isGraphCovered && !appInst.pdfPageBoardData && !isBoard) return null;
+          if (!appInst.isGraphCovered && isBoard) return null;
+          if (!isBoard && Boolean(st.onPdfBoard) !== Boolean(appInst.pdfPageBoardData)) return null;
+
+          var s0 = isBoard ? appInst.boardToScreen(st.points[0].x, st.points[0].y) : appInst.mathToScreen(st.points[0].x, st.points[0].y);
+          var s1 = isBoard ? appInst.boardToScreen(st.points[1].x, st.points[1].y) : appInst.mathToScreen(st.points[1].x, st.points[1].y);
+          var minX = Math.min(s0.x, s1.x), maxX = Math.max(s0.x, s1.x);
+          var minY = Math.min(s0.y, s1.y), maxY = Math.max(s0.y, s1.y);
+          var w = maxX - minX, h = maxY - minY;
+          if (!(w >= 2 && h >= 2)) return null;
+
+          var tb = (st.graphStamp && st.graphStamp._proTightBox) || { u0: 0, v0: 0, u1: 1, v1: 1 };
+          return {
+            isBoard: isBoard,
+            x: minX,
+            y: minY,
+            w: w,
+            h: h,
+            gx0: minX + w * tb.u0,
+            gy0: minY + h * tb.v0,
+            gx1: minX + w * tb.u1,
+            gy1: minY + h * tb.v1
+          };
+        }
+
+        // 오버레이 캔버스 렌더링: 드래그 중에는 [수식 실시간 미리보기 + 미세 테두리], 톡 선택 시에는 [은은한 미세 테두리] 표시!
+        function renderProStampOverlay() {
+          var appInst = window.graphApp;
+          var ov = ensureProStylesAndOverlay();
+          if (!ov || !appInst || !appInst.canvas) return;
+
+          var draggingStroke = activeStampDrag && activeStampDrag.stroke;
+          var targetStroke = draggingStroke || proSelectedStamp;
+
+          // 선택된 스탬프가 삭제되었거나 다른 슬라이드로 넘어갔으면 자동 해제
+          if (targetStroke && (!Array.isArray(appInst.inkStrokes) || appInst.inkStrokes.indexOf(targetStroke) === -1)) {
+            if (proSelectedStamp === targetStroke) proSelectedStamp = null;
+            targetStroke = draggingStroke || null;
+          }
+
+          var bounds = targetStroke ? getStampScreenBounds(appInst, targetStroke) : null;
+          if (!targetStroke || !bounds) {
+            if (ov.style.display !== 'none') ov.style.display = 'none';
+            return;
+          }
+
+          var cRect = appInst.canvas.getBoundingClientRect();
+          if (!(cRect.width > 10 && cRect.height > 10)) {
+            ov.style.display = 'none';
+            return;
+          }
+
+          var dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+          var cssW = Math.round(cRect.width);
+          var cssH = Math.round(cRect.height);
+          var physW = Math.round(cssW * dpr);
+          var physH = Math.round(cssH * dpr);
+
+          if (ov.style.display !== 'block') ov.style.display = 'block';
+          ov.style.left = cRect.left + 'px';
+          ov.style.top = cRect.top + 'px';
+          ov.style.width = cssW + 'px';
+          ov.style.height = cssH + 'px';
+          if (ov.width !== physW) ov.width = physW;
+          if (ov.height !== physH) ov.height = physH;
+
+          var scaleX = appInst.screenWidth ? (cssW / appInst.screenWidth) : 1;
+          var scaleY = appInst.screenHeight ? (cssH / appInst.screenHeight) : 1;
+
+          var ctx = ov.getContext('2d');
+          ctx.setTransform(dpr * scaleX, 0, 0, dpr * scaleY, 0, 0);
+          ctx.clearRect(0, 0, appInst.screenWidth || cssW, appInst.screenHeight || cssH);
+
+          // 1) 드래그 이동 중일 때는 원래 베이크에서 잠시 빠져 있으므로 오버레이에서 수식 이미지를 실시간 좌표에 직접 그림!
+          if (draggingStroke) {
+            var cache = draggingStroke._stampCache;
+            var drawImg = (cache && cache.img && cache.img.complete && cache.img.naturalWidth > 0)
+              ? cache.img
+              : (cache && cache.liveDrawable);
+            if (drawImg) {
+              ctx.save();
+              ctx.imageSmoothingEnabled = true;
+              try { ctx.imageSmoothingQuality = 'high'; } catch (_) { }
+              ctx.drawImage(drawImg, bounds.x, bounds.y, bounds.w, bounds.h);
+              ctx.restore();
+            }
+          }
+
+          // 2) 눈 아프지 않고 위치·줄맞춤 가늠이 정확히 되는 미세 점선 테두리 표시
+          var isLight = isCurrentSurfaceLight(appInst, Boolean(targetStroke.onPdfBoard));
+          var strokeCol = isLight
+            ? (draggingStroke ? 'rgba(37, 99, 235, 0.52)' : 'rgba(37, 99, 235, 0.38)')
+            : (draggingStroke ? 'rgba(56, 189, 248, 0.62)' : 'rgba(56, 189, 248, 0.45)');
+
+          ctx.save();
+          ctx.strokeStyle = strokeCol;
+          ctx.lineWidth = 1.1;
+          ctx.setLineDash([4, 3]);
+          ctx.strokeRect(
+            Math.round(bounds.x) - 1.5,
+            Math.round(bounds.y) - 1.5,
+            Math.round(bounds.w) + 3,
+            Math.round(bounds.h) + 3
+          );
+          ctx.restore();
+        }
+
+        function clearProSelectedStamp() {
+          arrowNudgeSession = null;
+          if (proSelectedStamp) {
+            proSelectedStamp = null;
+            renderProStampOverlay();
+          }
+        }
+
         function syncAllProMathStampsToCurrentTheme(app) {
           if (!app || !Array.isArray(app.inkStrokes)) return;
           var changed = false;
@@ -222,9 +364,12 @@
             if (desiredUrl && gs.dataUrl !== desiredUrl) {
               gs.dataUrl = desiredUrl;
               if (st._stampCache) {
+                var newIm = new Image();
+                newIm.src = desiredUrl;
                 st._stampCache.key = '';
-                st._stampCache.img = null;
-                st._stampCache.imgUrl = '';
+                st._stampCache.img = newIm;
+                st._stampCache.imgUrl = desiredUrl;
+                st._stampCache.liveDrawable = newIm;
               }
               changed = true;
             }
@@ -234,9 +379,10 @@
             if (typeof app.requestRender === 'function') app.requestRender();
             else if (typeof app.render === 'function') app.render();
           }
+          renderProStampOverlay();
         }
 
-        // Pro 핵심: 클립보드 이미지 붙여넣기 시 창모드/슬라이드 분리를 차단하고 커서 좌상단에 원본 크기(1:1) 그대로 즉시 부착
+        // Pro 핵심: 클립보드 이미지 붙여넣기 시 테두리 없이(박힌 듯 감쪽같이!) 커서 좌상단에 원본 크기(1:1) 그대로 즉시 부착
         var pasteQueuePromise = Promise.resolve();
 
         window.addEventListener('paste', function (e) {
@@ -271,14 +417,15 @@
 
           if (imageFiles.length === 0) return;
 
-          // 본서버의 기본 붙여넣기(문제 카드 창모드 + 슬라이드 자동 넘김) 원천 차단!
           e.preventDefault();
           e.stopPropagation();
           if (typeof e.stopImmediatePropagation === 'function') {
             e.stopImmediatePropagation();
           }
 
-          // F1을 누른 그 순간의 마우스 커서 위치를 스냅샷으로 고정 (연속 연타 시에도 각각의 커서 위치 보장)
+          // 새 수식을 붙일 때는 이전 톡 선택 테두리를 해제하여 방금 붙인 수식은 티 안 나게 깔끔히 들어가도록 유지
+          clearProSelectedStamp();
+
           var cRect = app.canvas.getBoundingClientRect();
           var snapClientX = lastPointer.hasValidCanvasPos
             ? lastPointer.clientX
@@ -292,11 +439,9 @@
             var scaleCssX = (app.screenWidth && curRect.width > 0) ? (app.screenWidth / curRect.width) : 1;
             var scaleCssY = (app.screenHeight && curRect.height > 0) ? (app.screenHeight / curRect.height) : 1;
 
-            // 왼쪽 위 모서리(Top-Left) = 마우스 커서 위치
             var baseBx = (snapClientX - curRect.left) * scaleCssX;
             var baseBy = (snapClientY - curRect.top) * scaleCssY;
 
-            // 캔버스 영역 밖으로 완전히 벗어나지 않도록 최소 안전 클램프
             var swMax = app.screenWidth || curRect.width || 1280;
             var shMax = app.screenHeight || curRect.height || 720;
             baseBx = Math.max(4, Math.min(swMax - 24, baseBx));
@@ -309,7 +454,6 @@
               var isBoardTarget = Boolean(app.isGraphCovered && !app.pdfPageBoardData);
               var isPdfBoard = Boolean(app.pdfPageBoardData && !isBoardTarget);
 
-              // 원본 픽셀 크기 1:1 (칠판/용지 100% 기준 natW x natH 고정 스케일)
               var activeZoom = isBoardTarget
                 ? (app.boardZoom || 1.0)
                 : (app.zoomLevel || 1.0);
@@ -368,6 +512,7 @@
                   logicalH: info.natH,
                   dataUrl: chosenDataUrl,
                   _proIsTransparentMath: info.isTransparentMath,
+                  _proTightBox: info.tightBox,
                   _proLightUrl: info.isTransparentMath ? info.lightSurfaceUrl : undefined,
                   _proDarkUrl: info.isTransparentMath ? info.darkSurfaceUrl : undefined
                 }
@@ -380,10 +525,7 @@
                     key: '',
                     img: readyImg,
                     imgUrl: chosenDataUrl,
-                    liveDrawable: readyImg,
-                    hitMask: info.hitMask || null,
-                    maskW: info.maskW || 0,
-                    maskH: info.maskH || 0
+                    liveDrawable: readyImg
                   },
                   writable: true,
                   configurable: true,
@@ -417,8 +559,10 @@
           });
         }, true);
 
-        // GraphApp 초기화 완료 후 훅 연결 (PDF Worker 경로 고정 + 올가미 이동 지원 + 테마 반전 + 공유 링크 정화)
+        // GraphApp 초기화 완료 후 훅 연결
         function installGraphAppProHooks() {
+          ensureProStylesAndOverlay();
+
           if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
             window.pdfjsLib.GlobalWorkerOptions.workerSrc = ROOT_BASE_URL + 'lib/pdf.worker.min.js';
           }
@@ -429,29 +573,20 @@
           if (!proto || proto.__proHooksInstalled) return true;
           proto.__proHooksInstalled = true;
 
-          // 1) 지우개로 문지를 땐 수식이 보호되고, 올가미(L)로 감쌌을 땐 자유롭게 이동/크기조절/복제/삭제 가능하도록 연결
+          // 1) 올가미(L) 연동
           if (typeof proto.isStrokeInLasso === 'function') {
             var origIsStrokeInLasso = proto.isStrokeInLasso;
             proto.isStrokeInLasso = function (stroke, lassoPoly) {
               if (stroke && (stroke._isProMathStamp || (stroke.isGraphStamp && !stroke.isProblemStamp && stroke.graphStamp && stroke.graphStamp.kind === 'image')) && Array.isArray(stroke.points) && stroke.points.length >= 2 && lassoPoly && lassoPoly.length >= 3) {
-                var isBoard = (stroke.target || 'board') === 'board';
-                if (this.isGraphCovered && !this.pdfPageBoardData && !isBoard) return false;
-                if (!this.isGraphCovered && isBoard) return false;
-                if (!isBoard && Boolean(stroke.onPdfBoard) !== Boolean(this.pdfPageBoardData)) return false;
-
-                var s0 = isBoard ? this.boardToScreen(stroke.points[0].x, stroke.points[0].y) : this.mathToScreen(stroke.points[0].x, stroke.points[0].y);
-                var s1 = isBoard ? this.boardToScreen(stroke.points[1].x, stroke.points[1].y) : this.mathToScreen(stroke.points[1].x, stroke.points[1].y);
-                var minX = Math.min(s0.x, s1.x), maxX = Math.max(s0.x, s1.x);
-                var minY = Math.min(s0.y, s1.y), maxY = Math.max(s0.y, s1.y);
-                var cx = (minX + maxX) * 0.5, cy = (minY + maxY) * 0.5;
+                var b = getStampScreenBounds(this, stroke);
+                if (!b) return false;
+                var cx = b.x + b.w * 0.5, cy = b.y + b.h * 0.5;
                 var testPts = [
                   { x: cx, y: cy },
-                  { x: minX, y: minY },
-                  { x: maxX, y: minY },
-                  { x: maxX, y: maxY },
-                  { x: minX, y: maxY },
-                  { x: (minX + cx) * 0.5, y: cy },
-                  { x: (maxX + cx) * 0.5, y: cy }
+                  { x: b.x, y: b.y },
+                  { x: b.x + b.w, y: b.y },
+                  { x: b.x + b.w, y: b.y + b.h },
+                  { x: b.x, y: b.y + b.h }
                 ];
                 for (var k = 0; k < testPts.length; k++) {
                   if (this.isPointInPolygon(testPts[k], lassoPoly)) return true;
@@ -462,7 +597,7 @@
             };
           }
 
-          // 2) 칠판 테마(화이트 <-> 다크) 변경 및 렌더링/인쇄 시 투명 수식 글자색 자동 동기화
+          // 2) 칠판 테마 변경 및 렌더링 시 동기화 + 카메라 이동/줌 시 오버레이 테두리 실시간 위치 동기화
           ['setCanvasTheme', '_applyReplayVisualThemeAndPaper', 'toggleMonochromeMode'].forEach(function (fnName) {
             if (typeof proto[fnName] === 'function') {
               var origFn = proto[fnName];
@@ -473,6 +608,17 @@
               };
             }
           });
+
+          if (typeof proto.render === 'function') {
+            var origRender = proto.render;
+            proto.render = function () {
+              var r = origRender.apply(this, arguments);
+              if (proSelectedStamp || activeStampDrag) {
+                renderProStampOverlay();
+              }
+              return r;
+            };
+          }
 
           if (typeof proto._renderGraphStampStroke === 'function') {
             var origRenderStamp = proto._renderGraphStampStroke;
@@ -507,105 +653,16 @@
             };
           }
 
-          // 3) 무테두리 글자 그립 이동 (붙여넣으면 박힌 듯 티 안 나게 있다가, 글자 부분을 잡으면 테두리 없이 즉시 위치 조정!)
-          function ensureStampHitMask(stroke) {
-            if (!stroke || !stroke.graphStamp) return null;
-            var cache = stroke._stampCache;
-            if (!cache) return null;
-            if (cache.hitMask && cache.maskW > 0 && cache.maskH > 0) return cache;
-            var img = cache.img;
-            if (!img || !img.complete || !(img.naturalWidth > 1 && img.naturalHeight > 1)) return null;
-            try {
-              var nw = img.naturalWidth, nh = img.naturalHeight;
-              var mw = Math.min(96, Math.max(8, Math.round(nw / 4)));
-              var mh = Math.min(48, Math.max(4, Math.round(nh / 4)));
-              var tc = document.createElement('canvas');
-              tc.width = nw; tc.height = nh;
-              var tctx = tc.getContext('2d', { willReadFrequently: true });
-              tctx.drawImage(img, 0, 0, nw, nh);
-              var px = tctx.getImageData(0, 0, nw, nh).data;
-              var transparentCnt = 0;
-              var total = nw * nh;
-              for (var i = 3; i < px.length; i += 4) {
-                if (px[i] < 32) transparentCnt++;
-              }
-              if ((transparentCnt / Math.max(1, total)) < 0.08) {
-                cache.isOpaqueBox = true;
-                return cache;
-              }
-              var mask = new Uint8Array(mw * mh);
-              for (var my = 0; my < mh; my++) {
-                var sy0 = Math.floor((my / mh) * nh);
-                var sy1 = Math.max(sy0 + 1, Math.floor(((my + 1) / mh) * nh));
-                for (var mx = 0; mx < mw; mx++) {
-                  var sx0 = Math.floor((mx / mw) * nw);
-                  var sx1 = Math.max(sx0 + 1, Math.floor(((mx + 1) / mw) * nw));
-                  var ink = 0;
-                  for (var yy = sy0; yy < sy1 && !ink; yy++) {
-                    for (var xx = sx0; xx < sx1; xx++) {
-                      if (px[(yy * nw + xx) * 4 + 3] > 28) { ink = 1; break; }
-                    }
-                  }
-                  mask[my * mw + mx] = ink;
-                }
-              }
-              cache.hitMask = mask;
-              cache.maskW = mw;
-              cache.maskH = mh;
-              return cache;
-            } catch (_) {
-              return null;
-            }
-          }
-
+          // 3) 펜/마우스 구분 없이 수식 글자 영역 위에 올리면 자동으로 이동 아이콘 표시 + 드래그 시 미세 테두리와 함께 이동 + 톡 클릭 시 방향키 이동!
           function findProMathStampAt(appInst, sx, sy) {
             if (!appInst || !Array.isArray(appInst.inkStrokes)) return null;
             for (var i = appInst.inkStrokes.length - 1; i >= 0; i--) {
               var st = appInst.inkStrokes[i];
               if (!st || !st.isGraphStamp || st.isProblemStamp || !st.graphStamp || st.graphStamp.kind !== 'image') continue;
-              if (!Array.isArray(st.points) || st.points.length < 2) continue;
-
-              var isBoard = (st.target || 'board') === 'board';
-              if (appInst.isGraphCovered && !appInst.pdfPageBoardData && !isBoard) continue;
-              if (!appInst.isGraphCovered && isBoard) continue;
-              if (!isBoard && Boolean(st.onPdfBoard) !== Boolean(appInst.pdfPageBoardData)) continue;
-
-              var s0 = isBoard ? appInst.boardToScreen(st.points[0].x, st.points[0].y) : appInst.mathToScreen(st.points[0].x, st.points[0].y);
-              var s1 = isBoard ? appInst.boardToScreen(st.points[1].x, st.points[1].y) : appInst.mathToScreen(st.points[1].x, st.points[1].y);
-              var minX = Math.min(s0.x, s1.x), maxX = Math.max(s0.x, s1.x);
-              var minY = Math.min(s0.y, s1.y), maxY = Math.max(s0.y, s1.y);
-              var w = maxX - minX, h = maxY - minY;
-              if (w < 2 || h < 2) continue;
-
-              var pad = 6;
-              if (sx < minX - pad || sx > maxX + pad || sy < minY - pad || sy > maxY + pad) continue;
-
-              var cInfo = ensureStampHitMask(st);
-              if (cInfo && cInfo.hitMask && cInfo.maskW > 0 && cInfo.maskH > 0) {
-                // 포인터 주변 반경 10px 이내에 실제 수식 글자 획이 있는지 정밀 검사
-                var radX = Math.max(1, Math.ceil((10 / w) * cInfo.maskW));
-                var radY = Math.max(1, Math.ceil((10 / h) * cInfo.maskH));
-                var cxIdx = Math.floor(((sx - minX) / w) * cInfo.maskW);
-                var cyIdx = Math.floor(((sy - minY) / h) * cInfo.maskH);
-                var hitGlyph = false;
-                for (var dy = -radY; dy <= radY && !hitGlyph; dy++) {
-                  var ty = cyIdx + dy;
-                  if (ty < 0 || ty >= cInfo.maskH) continue;
-                  for (var dx = -radX; dx <= radX; dx++) {
-                    var tx = cxIdx + dx;
-                    if (tx < 0 || tx >= cInfo.maskW) continue;
-                    if (cInfo.hitMask[ty * cInfo.maskW + tx]) {
-                      hitGlyph = true;
-                      break;
-                    }
-                  }
-                }
-                if (hitGlyph) return st;
-              } else {
-                // 단색 배경 수식이거나 마스크 미준비 시 수식 박스 내부 히트
-                if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
-                  return st;
-                }
+              var b = getStampScreenBounds(appInst, st);
+              if (!b) continue;
+              if (sx >= b.gx0 - 3 && sx <= b.gx1 + 3 && sy >= b.gy0 - 3 && sy <= b.gy1 + 3) {
+                return st;
               }
             }
             return null;
@@ -621,25 +678,31 @@
             };
           }
 
-          function canGrabStampWithEvent(appInst, ev) {
+          function canInteractWithProStamp(appInst, ev, isHover) {
             if (!appInst || (typeof appInst._isViewerOrReplayBlockingEdit === 'function' && appInst._isViewerOrReplayBlockingEdit())) return false;
             var tool = appInst.activeInkTool || 'pen';
             if (tool === 'lasso' || tool === 'eraser' || appInst.isDrawingSticker || appInst.isPdfToGraphCropMode || appInst.isGraphSnapMode) {
               return false;
             }
-            // 우클릭 드래그 또는 Alt 조합은 어떤 도구에서든 즉시 이동 허용
-            if (ev.button === 2 || ev.altKey) return true;
-            if (ev.button !== 0 && ev.button !== undefined) return false;
-            // [↖ 이동](select) 모드 또는 비필기 모드에서는 펜/마우스 모두 수식 잡고 이동 허용
-            if (!appInst.isInkMode || tool === 'select') return true;
-            // 펜 모드일 때: 타블렛 펜(pen)은 수식 위 필기를 100% 보장하고, 마우스(mouse)로 글자를 잡았을 때는 즉시 위치 미세 조정 허용!
-            var pType = ev.pointerType || 'mouse';
-            return pType === 'mouse';
+            if (!isHover && ev && ev.button !== undefined && ev.button !== -1 && ev.button !== 0 && ev.button !== 2) return false;
+            // 아이패드 스타일러스 태블릿에서의 손바닥 오터치만 방어 (마우스, 타블렛 펜, 전자칠판 터치 모두 허용!)
+            if (ev && ev.pointerType === 'touch' && appInst._hasDetectedStylusPen) return false;
+            return true;
           }
 
-          var activeStampDrag = null;
+          function applyHoverCursorState(appInst, hovering, dragging) {
+            if (!appInst || !appInst.canvas) return;
+            appInst.canvas.classList.toggle('pro-hover-math-stamp', Boolean(hovering && !dragging));
+            appInst.canvas.classList.toggle('pro-dragging-math-stamp', Boolean(dragging));
+            if (document.body) {
+              document.body.classList.toggle('pro-hide-virtual-stylus', Boolean(hovering || dragging));
+            }
+            if ((hovering || dragging) && appInst.virtualStylusEl) {
+              appInst.virtualStylusEl.style.display = 'none';
+            }
+          }
+
           var suppressNextContextMenu = false;
-          var isHoveringProStamp = false;
 
           if (app.canvas && !app.canvas.__proDirectDragBound) {
             app.canvas.__proDirectDragBound = true;
@@ -647,15 +710,33 @@
             app.canvas.addEventListener('pointerdown', function (ev) {
               var curApp = window.graphApp;
               if (!curApp || !curApp.canvas) return;
-              if (!canGrabStampWithEvent(curApp, ev)) return;
+
+              if (!canInteractWithProStamp(curApp, ev)) {
+                clearProSelectedStamp();
+                return;
+              }
 
               var pos = getCanvasPosFromEvent(curApp, ev);
               var hitStamp = findProMathStampAt(curApp, pos.x, pos.y);
-              if (!hitStamp) return;
+              if (!hitStamp) {
+                // 글자 영역 바깥을 건드리면 선택 테두리를 즉시 해제하고 원래 필기/이동이 자연스럽게 진행!
+                clearProSelectedStamp();
+                applyHoverCursorState(curApp, false, false);
+                return;
+              }
 
               ev.preventDefault();
               ev.stopPropagation();
               if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+
+              arrowNudgeSession = null;
+              proSelectedStamp = hitStamp;
+              try {
+                var act = document.activeElement;
+                if (act && (act.tagName === 'INPUT' || act.tagName === 'TEXTAREA' || act.isContentEditable) && typeof act.blur === 'function') {
+                  act.blur();
+                }
+              } catch (_) { }
 
               var isBoard = (hitStamp.target || 'board') === 'board';
               var s0 = isBoard ? curApp.boardToScreen(hitStamp.points[0].x, hitStamp.points[0].y) : curApp.mathToScreen(hitStamp.points[0].x, hitStamp.points[0].y);
@@ -673,16 +754,16 @@
                   { ...hitStamp.points[0] },
                   { ...hitStamp.points[1] }
                 ],
-                moved: false,
-                prevCursor: curApp.canvas.style.cursor || ''
+                moved: false
               };
 
+              // 배경 베이크에서 원래 잔상을 숨기고, 오버레이에서 실시간 수식 + 미세 테두리를 즉시 그림
               curApp._lassoExcludedBakeSet = new Set([hitStamp]);
               curApp._inkBakeDirty = true;
-              if (curApp.virtualStylusEl) curApp.virtualStylusEl.style.display = 'none';
-              curApp.canvas.style.cursor = 'grabbing';
+              applyHoverCursorState(curApp, true, true);
               try { curApp.canvas.setPointerCapture(ev.pointerId); } catch (_) { }
-              if (typeof curApp.requestRender === 'function') curApp.requestRender();
+              if (typeof curApp.render === 'function') curApp.render();
+              renderProStampOverlay();
             }, true);
 
             window.addEventListener('pointermove', function (ev) {
@@ -698,7 +779,7 @@
                 var pos = getCanvasPosFromEvent(curApp, ev);
                 var dx = pos.x - activeStampDrag.startPos.x;
                 var dy = pos.y - activeStampDrag.startPos.y;
-                if (Math.hypot(dx, dy) >= 1.0) {
+                if (Math.hypot(dx, dy) >= 1.5) {
                   activeStampDrag.moved = true;
                   if (activeStampDrag.button === 2) suppressNextContextMenu = true;
                 }
@@ -716,24 +797,33 @@
                 activeStampDrag.stroke.points[1].x = np1.x;
                 activeStampDrag.stroke.points[1].y = np1.y;
 
-                if (curApp.virtualStylusEl) curApp.virtualStylusEl.style.display = 'none';
-                if (typeof curApp.requestRender === 'function') curApp.requestRender();
-                else if (typeof curApp.render === 'function') curApp.render();
+                applyHoverCursorState(curApp, true, true);
+                renderProStampOverlay();
                 return;
               }
 
-              // 평소 마우스 호버 시 글자 위에 올라오면 잡고 옮길 수 있음을 알리는 깔끔한 이동 커서 표시 (테두리 없음!)
-              if ((ev.pointerType || 'mouse') === 'mouse' && ev.buttons === 0 && ev.target === curApp.canvas && canGrabStampWithEvent(curApp, { pointerType: 'mouse', button: 0 })) {
+              // 펜이든 마우스든 글자 영역 위에 올라오면 즉시 이동 아이콘(cursor: move !important) 표시!
+              if (ev.buttons === 0 && ev.target === curApp.canvas && canInteractWithProStamp(curApp, ev, true)) {
                 var hPos = getCanvasPosFromEvent(curApp, ev);
-                var overStamp = Boolean(findProMathStampAt(curApp, hPos.x, hPos.y));
-                if (overStamp) {
-                  isHoveringProStamp = true;
-                  curApp.canvas.style.cursor = 'move';
-                  if (curApp.virtualStylusEl) curApp.virtualStylusEl.style.display = 'none';
-                } else if (isHoveringProStamp) {
-                  isHoveringProStamp = false;
-                  curApp.canvas.style.cursor = '';
+                var hovered = findProMathStampAt(curApp, hPos.x, hPos.y);
+                if (hovered) {
+                  proHoveredStamp = hovered;
+                  applyHoverCursorState(curApp, true, false);
+                } else if (proHoveredStamp) {
+                  proHoveredStamp = null;
+                  applyHoverCursorState(curApp, false, false);
                 }
+              } else if (proHoveredStamp && ev.target !== curApp.canvas) {
+                proHoveredStamp = null;
+                applyHoverCursorState(curApp, false, false);
+              }
+            }, true);
+
+            window.addEventListener('pointerdown', function (ev) {
+              var curApp = window.graphApp;
+              if (!curApp || !proSelectedStamp) return;
+              if (ev.target !== curApp.canvas) {
+                clearProSelectedStamp();
               }
             }, true);
 
@@ -755,7 +845,14 @@
                 try { if (ev && ev.pointerId !== undefined) curApp.canvas.releasePointerCapture(ev.pointerId); } catch (_) { }
                 curApp._lassoExcludedBakeSet = null;
                 curApp._inkBakeDirty = true;
-                curApp.canvas.style.cursor = isHoveringProStamp ? 'move' : '';
+
+                var stillHovering = false;
+                if (ev && typeof ev.clientX === 'number') {
+                  var endPos = getCanvasPosFromEvent(curApp, ev);
+                  stillHovering = Boolean(findProMathStampAt(curApp, endPos.x, endPos.y));
+                }
+                proHoveredStamp = stillHovering ? dragInfo.stroke : null;
+                applyHoverCursorState(curApp, stillHovering, false);
 
                 if (dragInfo.moved) {
                   var toPts = [
@@ -777,8 +874,10 @@
                   }
                 }
 
-                if (typeof curApp.requestRender === 'function') curApp.requestRender();
-                else if (typeof curApp.render === 'function') curApp.render();
+                // 톡 눌렀거나 드래그를 마친 직후에는 화살표(↑↓←→) 미세 조정이 가능하도록 은은한 테두리 선택 상태 유지!
+                proSelectedStamp = dragInfo.stroke;
+                if (typeof curApp.render === 'function') curApp.render();
+                renderProStampOverlay();
               }
             }
 
@@ -791,12 +890,120 @@
                 ev.stopPropagation();
               }
             }, true);
+
+            // 4) '톡' 눌러 선택된 상태에서 키보드 화살표(↑↓←→)로 1px 단위(Shift는 8px) 정밀 이동 + Delete 삭제 + Esc 해제!
+            window.addEventListener('keydown', function (ev) {
+              var curApp = window.graphApp;
+              if (!curApp || !proSelectedStamp) return;
+              if (typeof curApp._isViewerOrReplayBlockingEdit === 'function' && curApp._isViewerOrReplayBlockingEdit()) return;
+
+              var activeEl = document.activeElement;
+              var isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
+              if (isInput) return;
+
+              if (!Array.isArray(curApp.inkStrokes) || curApp.inkStrokes.indexOf(proSelectedStamp) === -1) {
+                clearProSelectedStamp();
+                return;
+              }
+
+              var rawK = ev.key || '';
+              var codeK = ev.code || '';
+              var key = (rawK === 'ArrowLeft' || rawK === 'ArrowRight' || rawK === 'ArrowUp' || rawK === 'ArrowDown' || rawK === 'Escape' || rawK === 'Delete' || rawK === 'Backspace')
+                ? rawK
+                : ((codeK === 'ArrowLeft' || codeK === 'ArrowRight' || codeK === 'ArrowUp' || codeK === 'ArrowDown' || codeK === 'Escape' || codeK === 'Delete' || codeK === 'Backspace')
+                  ? codeK
+                  : (ev.keyCode === 37 ? 'ArrowLeft' : ev.keyCode === 39 ? 'ArrowRight' : ev.keyCode === 38 ? 'ArrowUp' : ev.keyCode === 40 ? 'ArrowDown' : ev.keyCode === 27 ? 'Escape' : ev.keyCode === 46 ? 'Delete' : ev.keyCode === 8 ? 'Backspace' : rawK));
+              if (key === 'Escape') {
+                ev.preventDefault();
+                ev.stopPropagation();
+                if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+                clearProSelectedStamp();
+                return;
+              }
+
+              if ((key === 'Delete' || key === 'Backspace') && !ev.ctrlKey && !ev.metaKey) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+                var delTarget = proSelectedStamp;
+                var delIdx = curApp.inkStrokes.indexOf(delTarget);
+                if (delIdx !== -1) {
+                  curApp.inkStrokes.splice(delIdx, 1);
+                  if (!Array.isArray(curApp.undoStack)) curApp.undoStack = [];
+                  curApp.undoStack.push({ type: 'pro_stamp_delete', stroke: delTarget, index: delIdx });
+                  curApp.redoStack = [];
+                  clearProSelectedStamp();
+                  curApp._inkBakeDirty = true;
+                  if (typeof curApp.updateUndoRedoUI === 'function') curApp.updateUndoRedoUI();
+                  if (curApp.isAudioRecording && typeof curApp._archiveStrokeRemovedDuringRecording === 'function') {
+                    curApp._archiveStrokeRemovedDuringRecording(delTarget);
+                  }
+                  if (curApp.isAudioRecording && typeof curApp._recordAudioWorkspaceStateIfNeeded === 'function') {
+                    curApp._recordAudioWorkspaceStateIfNeeded(true);
+                  }
+                  curApp.render();
+                }
+                return;
+              }
+
+              if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown') return;
+              if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
+
+              // 본서버의 슬라이드 넘김(좌/우 화살표) 등을 차단하고 선택된 수식만 정밀 이동!
+              ev.preventDefault();
+              ev.stopPropagation();
+              if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+
+              var stepPx = ev.shiftKey ? 8 : 2;
+              var dx = (key === 'ArrowLeft') ? -stepPx : (key === 'ArrowRight' ? stepPx : 0);
+              var dy = (key === 'ArrowUp') ? -stepPx : (key === 'ArrowDown' ? stepPx : 0);
+
+              var st = proSelectedStamp;
+              if (!arrowNudgeSession || arrowNudgeSession.stroke !== st) {
+                arrowNudgeSession = {
+                  stroke: st,
+                  undoEntry: {
+                    type: 'pro_stamp_move',
+                    stroke: st,
+                    strokeId: st.id,
+                    fromPts: [{ ...st.points[0] }, { ...st.points[1] }],
+                    toPts: null
+                  }
+                };
+                if (!Array.isArray(curApp.undoStack)) curApp.undoStack = [];
+                curApp.undoStack.push(arrowNudgeSession.undoEntry);
+                curApp.redoStack = [];
+                if (typeof curApp.updateUndoRedoUI === 'function') curApp.updateUndoRedoUI();
+              }
+
+              var isBoard = (st.target || 'board') === 'board';
+              var s0 = isBoard ? curApp.boardToScreen(st.points[0].x, st.points[0].y) : curApp.mathToScreen(st.points[0].x, st.points[0].y);
+              var s1 = isBoard ? curApp.boardToScreen(st.points[1].x, st.points[1].y) : curApp.mathToScreen(st.points[1].x, st.points[1].y);
+
+              var np0 = isBoard ? curApp.screenToBoard(s0.x + dx, s0.y + dy) : curApp.screenToMath(s0.x + dx, s0.y + dy);
+              var np1 = isBoard ? curApp.screenToBoard(s1.x + dx, s1.y + dy) : curApp.screenToMath(s1.x + dx, s1.y + dy);
+
+              st.points[0].x = np0.x;
+              st.points[0].y = np0.y;
+              st.points[1].x = np1.x;
+              st.points[1].y = np1.y;
+
+              arrowNudgeSession.undoEntry.toPts = [{ ...st.points[0] }, { ...st.points[1] }];
+
+              curApp._inkBakeDirty = true;
+              if (curApp.isAudioRecording && typeof curApp._recordAudioWorkspaceStateIfNeeded === 'function') {
+                curApp._recordAudioWorkspaceStateIfNeeded(true);
+              }
+              curApp.render();
+              renderProStampOverlay();
+            }, true);
           }
 
-          // 수식 위치 이동에 대한 0ms 경량 Undo / Redo 연동
+          // 수식 위치 이동 및 삭제에 대한 0ms 경량 Undo / Redo 연동
           if (typeof proto.undo === 'function') {
             var origUndo = proto.undo;
             proto.undo = function () {
+              arrowNudgeSession = null;
               var top = Array.isArray(this.undoStack) && this.undoStack.length > 0 ? this.undoStack[this.undoStack.length - 1] : null;
               if (top && top.type === 'pro_stamp_move') {
                 this.undoStack.pop();
@@ -813,20 +1020,41 @@
                   this._recordAudioWorkspaceStateIfNeeded(true);
                 }
                 this.render();
+                renderProStampOverlay();
                 return;
               }
-              return origUndo.apply(this, arguments);
+              if (top && top.type === 'pro_stamp_delete') {
+                this.undoStack.pop();
+                if (!Array.isArray(this.inkStrokes)) this.inkStrokes = [];
+                var insIdx = Math.min(this.inkStrokes.length, Math.max(0, top.index || 0));
+                this.inkStrokes.splice(insIdx, 0, top.stroke);
+                if (!Array.isArray(this.redoStack)) this.redoStack = [];
+                this.redoStack.push(top);
+                proSelectedStamp = top.stroke;
+                this._inkBakeDirty = true;
+                if (typeof this.updateUndoRedoUI === 'function') this.updateUndoRedoUI();
+                if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+                  this._recordAudioWorkspaceStateIfNeeded(true);
+                }
+                this.render();
+                renderProStampOverlay();
+                return;
+              }
+              var res = origUndo.apply(this, arguments);
+              renderProStampOverlay();
+              return res;
             };
           }
 
           if (typeof proto.redo === 'function') {
             var origRedo = proto.redo;
             proto.redo = function () {
+              arrowNudgeSession = null;
               var top = Array.isArray(this.redoStack) && this.redoStack.length > 0 ? this.redoStack[this.redoStack.length - 1] : null;
               if (top && top.type === 'pro_stamp_move') {
                 this.redoStack.pop();
                 var target = (this.inkStrokes || []).find(function (s) { return s === top.stroke || (s && top.strokeId && s.id === top.strokeId); });
-                if (target && Array.isArray(target.points) && target.points.length >= 2) {
+                if (target && Array.isArray(target.points) && target.points.length >= 2 && top.toPts) {
                   target.points[0].x = top.toPts[0].x; target.points[0].y = top.toPts[0].y;
                   target.points[1].x = top.toPts[1].x; target.points[1].y = top.toPts[1].y;
                 }
@@ -838,13 +1066,34 @@
                   this._recordAudioWorkspaceStateIfNeeded(true);
                 }
                 this.render();
+                renderProStampOverlay();
                 return;
               }
-              return origRedo.apply(this, arguments);
+              if (top && top.type === 'pro_stamp_delete') {
+                this.redoStack.pop();
+                if (Array.isArray(this.inkStrokes)) {
+                  var idx = this.inkStrokes.indexOf(top.stroke);
+                  if (idx !== -1) this.inkStrokes.splice(idx, 1);
+                }
+                if (proSelectedStamp === top.stroke) proSelectedStamp = null;
+                if (!Array.isArray(this.undoStack)) this.undoStack = [];
+                this.undoStack.push(top);
+                this._inkBakeDirty = true;
+                if (typeof this.updateUndoRedoUI === 'function') this.updateUndoRedoUI();
+                if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
+                  this._recordAudioWorkspaceStateIfNeeded(true);
+                }
+                this.render();
+                renderProStampOverlay();
+                return;
+              }
+              var res = origRedo.apply(this, arguments);
+              renderProStampOverlay();
+              return res;
             };
           }
 
-          // 4) 학생용 공유 링크 복사 및 QR 생성 시 /pro 경로가 노출되지 않도록 정식 본서버 주소(https://graphly.net/#...)로 자동 정화
+          // 5) 학생용 공유 링크 복사 및 QR 생성 시 /pro 경로가 노출되지 않도록 정식 본서버 주소(https://graphly.net/#...)로 자동 정화
           function sanitizeProUrlInText(text) {
             if (typeof text !== 'string') return text;
             return text.replace(/(\/pro\/?)(?=(?:\?[^#\s]*)?#(cloud|share|student)=)/gi, '/');
