@@ -11147,19 +11147,22 @@
         ? bodyEl.querySelector('.graph-card-live-canvas, .pip-graph-live-canvas')
         : null;
       const hasValidLiveGraphCvs = Boolean(liveGraphCvs && liveGraphCvs.width > 0 && liveGraphCvs.height > 0);
+      const hasValidExportCropCvs = Boolean(el._exportHiResCropCanvas && el._exportHiResCropCanvas.width > 4 && el._exportHiResCropCanvas.height > 4);
       const hasValidImg = Boolean(imgEl && imgEl.complete && imgEl.naturalWidth > 0);
 
-      if (!isMin && bodyEl && (hasValidLiveGraphCvs || hasValidImg)) {
+      if (!isMin && bodyEl && (hasValidLiveGraphCvs || hasValidExportCropCvs || hasValidImg)) {
         const bRect = bodyEl.getBoundingClientRect();
         if (bRect.width > 0 && bRect.height > 0) {
           const bx = bRect.left - canvasRect.left - offX;
           const by = bRect.top - canvasRect.top - offY;
           const bw = bRect.width;
-          const natAspect = hasValidLiveGraphCvs
-            ? (bRect.height / bRect.width)
-            : ((imgEl.naturalHeight > 4 && imgEl.naturalWidth > 4)
-              ? (imgEl.naturalHeight / imgEl.naturalWidth)
-              : (bRect.height / bRect.width));
+          const natAspect = hasValidExportCropCvs
+            ? (el._exportHiResCropCanvas._fullCropAspect || (bRect.height / bRect.width))
+            : (hasValidLiveGraphCvs
+              ? (bRect.height / bRect.width)
+              : ((imgEl && imgEl.naturalHeight > 4 && imgEl.naturalWidth > 4)
+                ? (imgEl.naturalHeight / imgEl.naturalWidth)
+                : (bRect.height / bRect.width)));
           const bh = Math.max(1, Math.round(bw * natAspect));
 
           ctx.save();
@@ -11262,7 +11265,21 @@
           if (this.isMonochromeMode && !cleanPipCanvas) {
             ctx.filter = 'grayscale(100%) contrast(108%)';
           }
-          ctx.drawImage(hiResSource, bx, by, bw, bh);
+          const subRect = (hasValidExportCropCvs && el._exportHiResCropCanvas._subRect) ? el._exportHiResCropCanvas._subRect : null;
+          if (subRect) {
+            if (hasValidImg) {
+              ctx.drawImage(imgEl, bx, by, bw, bh);
+            }
+            ctx.drawImage(
+              el._exportHiResCropCanvas,
+              bx + subRect.uL * bw,
+              by + subRect.uT * bh,
+              subRect.uW * bw,
+              subRect.uH * bh
+            );
+          } else if (hiResSource) {
+            ctx.drawImage(hiResSource, bx, by, bw, bh);
+          }
           ctx.restore();
           if (cleanPipCanvas) {
             try { cleanPipCanvas.width = 1; cleanPipCanvas.height = 1; } catch (e) { }

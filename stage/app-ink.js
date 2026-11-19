@@ -10106,12 +10106,17 @@
         (typeof this.isIOSOrIPad === 'function' && this.isIOSOrIPad()) ||
         (typeof window !== 'undefined' && (window.innerWidth <= 768 || window.innerHeight <= 500))
       );
+      const isViewerCompositePass = Boolean(this._isRenderingViewerCompositeTile);
       const effScale = Math.min(isExportPass ? 5.0 : 4.0, Math.max(2.0, ctxScale));
       const rawPxW = Math.max(4, bw * effScale);
       const rawPxH = Math.max(4, bh * effScale);
       const liveMaxArea = isIOSMobile ? 6800000 : 10000000;
-      const MAX_STAMP_SIDE = isExportPass ? (isIOSMobile ? 3840 : 4096) : (isIOSMobile ? 2880 : 3584);
-      const MAX_STAMP_AREA = isExportPass ? (isIOSMobile ? 12500000 : 15500000) : liveMaxArea;
+      const MAX_STAMP_SIDE = isViewerCompositePass
+        ? (isIOSMobile ? 2688 : 3400)
+        : (isExportPass ? (isIOSMobile ? 3840 : 4096) : (isIOSMobile ? 2880 : 3584));
+      const MAX_STAMP_AREA = isViewerCompositePass
+        ? (isIOSMobile ? 5600000 : 9200000)
+        : (isExportPass ? (isIOSMobile ? 12500000 : 15500000) : liveMaxArea);
       let clampRatio = 1.0;
       if (rawPxW > MAX_STAMP_SIDE || rawPxH > MAX_STAMP_SIDE) {
         clampRatio = Math.min(clampRatio, MAX_STAMP_SIDE / Math.max(rawPxW, rawPxH));
@@ -10151,7 +10156,8 @@
 
       const gs = stroke.graphStamp;
       const omitStampCardInk = Boolean(isExportPass && this._activeExportFilter && this._activeExportFilter.includeInk === false);
-      const useTempExportCanvas = Boolean(isExportPass && (pxW * pxH > liveMaxArea) && typeof document !== 'undefined');
+      const hasTempStampOverride = Boolean(isExportPass && stroke._exportHiResStampCanvas && stroke._exportHiResStampCanvas.width > 4 && stroke._exportHiResStampCanvas.height > 4);
+      const useTempExportCanvas = Boolean((hasTempStampOverride || (isExportPass && (pxW * pxH > liveMaxArea))) && typeof document !== 'undefined');
       const workCanvas = useTempExportCanvas ? document.createElement('canvas') : cache.canvas;
       const cacheKey = `${pxW}x${pxH}|${effThemeKey}|${this.isMonochromeMode ? 1 : 0}|${forceLightSurface ? 1 : 0}|${omitStampCardInk ? 0 : (Array.isArray(gs.cardStrokes) ? gs.cardStrokes.length : 0)}`;
       if (useTempExportCanvas || cache.key !== cacheKey || workCanvas.width !== pxW || workCanvas.height !== pxH) {
@@ -10231,7 +10237,25 @@
                 (cache.liveDrawable.complete && cache.liveDrawable.naturalWidth > 0))
             );
             const drawSrc = decodedImgReady ? cache.img : (liveFallbackReady ? cache.liveDrawable : null);
-            if (drawSrc) {
+            if (hasTempStampOverride) {
+              sCtx.save();
+              if (this.isMonochromeMode) {
+                sCtx.filter = 'grayscale(100%) contrast(108%)';
+              }
+              sCtx.imageSmoothingEnabled = true;
+              try { sCtx.imageSmoothingQuality = 'high'; } catch (_) { }
+              const ovCv = stroke._exportHiResStampCanvas;
+              const sr = ovCv._subRect || null;
+              if (sr) {
+                if (drawSrc) {
+                  sCtx.drawImage(drawSrc, 0, 0, logicalW, logicalH);
+                }
+                sCtx.drawImage(ovCv, sr.uL * logicalW, sr.uT * logicalH, sr.uW * logicalW, sr.uH * logicalH);
+              } else {
+                sCtx.drawImage(ovCv, 0, 0, logicalW, logicalH);
+              }
+              sCtx.restore();
+            } else if (drawSrc) {
               sCtx.save();
               if (this.isMonochromeMode) {
                 sCtx.filter = 'grayscale(100%) contrast(108%)';
