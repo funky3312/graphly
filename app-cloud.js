@@ -2265,7 +2265,7 @@
       }
     }
 
-    async downloadCloudItemAsFile(item) {
+    async downloadCloudItemAsFile(item, customTitle = '') {
       if (!item) return null;
       const resolved = await this._resolveChunkedItem(item);
       const slides = Array.isArray(resolved.playlistSlides) && resolved.playlistSlides.length > 0
@@ -2275,7 +2275,7 @@
         this.showToast('⚠️ 내려받을 파일 데이터가 없습니다.');
         return null;
       }
-      const title = resolved.title || 'Graphly_Note';
+      const title = (customTitle && String(customTitle).trim()) || resolved.title || 'Graphly_Note';
       const tags = resolved.tags || '#노트';
       const fullFilter = { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
       return await this.exportGraphlyDeckFile(title, tags, slides, fullFilter);
@@ -2299,32 +2299,38 @@
       if (selectedFiles.length === 1) {
         return await this.downloadCloudItemAsFile(selectedFiles[0]);
       }
-      const combinedSlides = [];
-      for (const it of selectedFiles) {
-        const resolved = await this._resolveChunkedItem(it);
-        if (Array.isArray(resolved.playlistSlides) && resolved.playlistSlides.length > 0) {
-          resolved.playlistSlides.forEach((sl, sIdx) => {
-            const cloneSlide = JSON.parse(JSON.stringify(sl));
-            if (!cloneSlide.slideTitle) {
-              cloneSlide.slideTitle = resolved.playlistSlides.length > 1
-                ? `${resolved.title || '캔버스'} (${sIdx + 1})`
-                : (resolved.title || `캔버스 ${combinedSlides.length + 1}`);
-            }
-            combinedSlides.push(cloneSlide);
-          });
-        } else if (resolved.slideData) {
-          const cloneSlide = JSON.parse(JSON.stringify(resolved.slideData));
-          cloneSlide.slideTitle = resolved.title || cloneSlide.slideTitle || `캔버스 ${combinedSlides.length + 1}`;
-          combinedSlides.push(cloneSlide);
+
+      // 다중 선택 백업 시 단일 합본(100장·150MB 상한 초과 시 복원 불가 위험)으로 합치지 않고 개별 .graphly 파일로 순차 저장
+      const usedLowerNames = new Set();
+      let savedCount = 0;
+      let lastSavedPack = null;
+      for (let idx = 0; idx < selectedFiles.length; idx++) {
+        const it = selectedFiles[idx];
+        const baseTitle = String((it && it.title) || `Graphly_Note_${idx + 1}`).trim() || `Graphly_Note_${idx + 1}`;
+        let uniqueTitle = baseTitle;
+        let seq = 2;
+        while (usedLowerNames.has(uniqueTitle.toLowerCase())) {
+          uniqueTitle = `${baseTitle} (${seq})`;
+          seq++;
+        }
+        usedLowerNames.add(uniqueTitle.toLowerCase());
+        const saved = await this.downloadCloudItemAsFile(it, uniqueTitle);
+        if (saved) {
+          savedCount++;
+          lastSavedPack = saved;
+          if (idx < selectedFiles.length - 1) {
+            await new Promise((r) => setTimeout(r, 220));
+          }
         }
       }
-      if (!combinedSlides.length) {
+      if (!savedCount) {
         this.showToast('⚠️ 내려받을 파일 데이터가 없습니다.');
         return null;
       }
-      const bundleTitle = `${selectedFiles[0].title || 'Graphly_Note'} 외 ${selectedFiles.length - 1}건`;
-      const fullFilter = { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
-      return await this.exportGraphlyDeckFile(bundleTitle, '#노트', combinedSlides, fullFilter);
+      if (savedCount > 1) {
+        this.showToast(`💾 선택한 ${savedCount}개 파일을 내 기기에 개별 저장했습니다!`);
+      }
+      return lastSavedPack;
     }
 
     async handleCloudExplorerOpenSelected() {
@@ -4479,6 +4485,7 @@
       }
 
       if (this._canSyncCustomGraphsToFirestore() && typeof this._firestoreRestReadDoc === 'function') {
+        this._syncingSubUid = targetUid;
         try {
           const idToken = await this._getFirebaseIdTokenForRest(true);
           if (!idToken) {
@@ -4515,6 +4522,10 @@
 
           const applySubMeta = (metaObj) => {
             if (!this.cloudUser || this.cloudUser.uid !== targetUid) return;
+            this._subSyncedOnceUid = targetUid;
+            if (this._syncingSubUid === targetUid) {
+              this._syncingSubUid = '';
+            }
             this._subStateMeta = metaObj;
             const nextTier = this.getUserSubscriptionTier();
             this.cloudUser.tier = nextTier;
@@ -4574,7 +4585,13 @@
                 this._isVerifyingTossSubStatus = false;
               });
           }
-        } catch (e) { }
+        } catch (e) {
+        } finally {
+          if (this._syncingSubUid === targetUid) {
+            this._syncingSubUid = '';
+            this.renderMyLibraryList();
+          }
+        }
       }
       return this.isProSubscriber();
     }
@@ -5082,6 +5099,8 @@
             };
             this._subStateMeta = nextMeta;
             if (targetUid) {
+              this._subSyncedOnceUid = targetUid;
+              if (this._syncingSubUid === targetUid) this._syncingSubUid = '';
               this._writeStoredSubStateForUid(targetUid, nextMeta);
             }
             if (effUid && effUid !== targetUid) {
@@ -6897,6 +6916,8 @@
       this._inflightLibrarySyncPromise = null;
       this._inflightLibraryFetchObj = null;
       this._librarySyncedOnceUid = '';
+      this._subSyncedOnceUid = '';
+      this._syncingSubUid = '';
       this.myLibraryCache = [];
       this._subStateMeta = null;
       this.isProUser = false;
@@ -9113,6 +9134,7 @@
     // 이용권 만료로 현재 등급 용량 한도(무료 100MB / Pro 5GB)를 초과한 경우: 내 기기 다운로드·삭제만 허용하고 열기·공유 잠금
     isCloudLibraryOverQuotaLocked(showNotice = true) {
       if (!this.cloudUser || !this.cloudUser.uid) return false;
+      const uid = String(this.cloudUser.uid);
       const quota = typeof this.getCurrentTierQuota === 'function'
         ? this.getCurrentTierQuota()
         : { tier: 'free', tierLabel: '무료', maxCloudBytes: 100 * 1024 * 1024, maxCloudLabel: '100 MB' };
@@ -9120,6 +9142,24 @@
       const maxBytes = Math.max(1, Number(quota.maxCloudBytes) || (100 * 1024 * 1024));
       const usedBytes = this.getUserCloudLibraryTotalBytes();
       if (usedBytes <= maxBytes) return false;
+
+      // 새 기기 최초 로그인 직후 원격 이용권 상태 조회가 아직 진행 중인 수백 ms 구간에는 오인 모달 차단
+      const hasLocalSubCache = Boolean(typeof this._readStoredSubStateForUid === 'function' && this._readStoredSubStateForUid(uid));
+      if (!hasLocalSubCache && this._subSyncedOnceUid !== uid) {
+        if (this._syncingSubUid === uid) {
+          if (showNotice) {
+            this.showToast('⏳ 이용권 정보를 확인하고 있습니다. 잠시 후 다시 시도해 주세요.');
+          }
+          return true;
+        }
+        if (this._fbAuth && this._fbAuth.currentUser && typeof this.syncUserProSubscriptionFromCloud === 'function') {
+          this.syncUserProSubscriptionFromCloud();
+          if (showNotice) {
+            this.showToast('⏳ 이용권 정보를 확인하고 있습니다. 잠시 후 다시 시도해 주세요.');
+          }
+          return true;
+        }
+      }
 
       if (showNotice) {
         const cfg = typeof this.getSubscriptionQuotaConfig === 'function' ? this.getSubscriptionQuotaConfig() : null;
@@ -13519,7 +13559,14 @@
         }
         if (usageTxtEl) {
           const usedStr = typeof this.formatBytesHuman === 'function' ? this.formatBytesHuman(usedBytes) : `${usedBytes} B`;
-          if (quota.tier !== 'premium' && usedBytes > maxBytes) {
+          const curUid = (this.cloudUser && this.cloudUser.uid) ? String(this.cloudUser.uid) : '';
+          const isInitialSubPending = Boolean(
+            curUid &&
+            this._syncingSubUid === curUid &&
+            this._subSyncedOnceUid !== curUid &&
+            !(typeof this._readStoredSubStateForUid === 'function' && this._readStoredSubStateForUid(curUid))
+          );
+          if (quota.tier !== 'premium' && usedBytes > maxBytes && !isInitialSubPending) {
             const cfg = typeof this.getSubscriptionQuotaConfig === 'function' ? this.getSubscriptionQuotaConfig() : null;
             const retDays = (cfg && Number(cfg.overQuotaRetentionDays) > 0) ? Number(cfg.overQuotaRetentionDays) : 60;
             usageTxtEl.textContent = `${usedStr} / ${quota.maxCloudLabel} (초과 · 만료 ${retDays}일 후 삭제)`;
