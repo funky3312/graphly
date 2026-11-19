@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261120_206">
+  <link rel="stylesheet" href="style.css?v=20261120_stage_promocta1">
   <script>
     (function () {
       try {
@@ -3569,22 +3569,15 @@
           </div>
         </div>
 
-        <!-- 소속/이름 배지 & 연결 버튼 이름 -->
-        <div class="promo-field-grid-two">
-          <div class="promo-field-group">
-            <label class="promo-field-label" for="inputPromoBadgeText">소속 · 이름 <span class="promo-opt-tag">선택 ·
-                <span id="cntPromoBadgeText">0</span> / 16자</span></label>
-            <input type="text" id="inputPromoBadgeText" class="settings-clean-input promo-text-input" maxlength="16"
-              placeholder="예: OO아카데미 · 홍길동" autocomplete="off">
-          </div>
-          <div class="promo-field-group">
-            <label class="promo-field-label" for="inputPromoCtaLabel">연결 버튼 이름 <span class="promo-opt-tag">선택 ·
-                <span id="cntPromoCtaLabel">0</span> / 8자</span></label>
-            <input type="text" id="inputPromoCtaLabel" class="settings-clean-input promo-text-input" maxlength="8"
-              placeholder="예: 상담·블로그" autocomplete="off">
-          </div>
+        <!-- 소속 · 이름 배지 -->
+        <div class="promo-field-group">
+          <label class="promo-field-label" for="inputPromoBadgeText">소속 · 이름 <span class="promo-opt-tag">선택 · <span
+                id="cntPromoBadgeText">0</span> / 16자</span></label>
+          <input type="text" id="inputPromoBadgeText" class="settings-clean-input promo-text-input" maxlength="16"
+            placeholder="예: OO아카데미 · 홍길동" autocomplete="off">
         </div>
 
+        <!-- 한 줄 홍보 문구 -->
         <div class="promo-field-group">
           <label class="promo-field-label" for="inputPromoMessageText">한 줄 홍보 문구 <span class="promo-opt-tag"><span
                 id="cntPromoMessageText">0</span> / 30자</span></label>
@@ -3592,11 +3585,19 @@
             placeholder="예: 신규 클래스 오픈 · 상시 질문 환영" autocomplete="off">
         </div>
 
-        <div class="promo-field-group">
-          <label class="promo-field-label" for="inputPromoCtaUrl">연결 링크 주소 <span class="promo-opt-tag">선택 · 카톡 오픈채팅,
-              블로그, 유튜브, 홈페이지</span></label>
-          <input type="url" id="inputPromoCtaUrl" class="settings-clean-input promo-text-input" maxlength="350"
-            placeholder="https://open.kakao.com/... (비워두면 버튼 없이 깔끔한 공지 배너로 표시)" autocomplete="off">
+        <!-- 연결 버튼 이름 & 연결 링크 주소 (한 줄 나란히 세트 배치) -->
+        <div class="promo-field-grid-two promo-field-grid-cta">
+          <div class="promo-field-group">
+            <label class="promo-field-label" for="inputPromoCtaLabel">연결 버튼 이름 <span class="promo-opt-tag">선택 ·
+                <span id="cntPromoCtaLabel">0</span> / 8자</span></label>
+            <input type="text" id="inputPromoCtaLabel" class="settings-clean-input promo-text-input" maxlength="8"
+              placeholder="예: 상담·블로그" autocomplete="off">
+          </div>
+          <div class="promo-field-group">
+            <label class="promo-field-label" for="inputPromoCtaUrl">연결 링크 주소 <span class="promo-opt-tag">선택 · 카톡·블로그·유튜브 등</span></label>
+            <input type="url" id="inputPromoCtaUrl" class="settings-clean-input promo-text-input" maxlength="350"
+              placeholder="https://... (비워두면 버튼 미표시)" autocomplete="off">
+          </div>
         </div>
 
         <div id="lblPromoValidationHint" class="promo-validation-hint" style="display: none;"></div>
@@ -3964,15 +3965,15 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
-  <script src="engine.js?v=20261120_206"></script>
-  <script src="app-core.js?v=20261120_206"></script>
-  <script src="app-ink.js?v=20261120_206"></script>
-  <script src="app-pdf.js?v=20261120_206"></script>
-  <script src="app-cards.js?v=20261120_206"></script>
-  <script src="app-cloud.js?v=20261120_206"></script>
-  <script src="app-canvas.js?v=20261120_206"></script>
-  <script src="app-toolkit.js?v=20261120_206"></script>
-  <script src="app.js?v=20261120_206"></script>
+  <script src="engine.js?v=20261120_stage_promocta1"></script>
+  <script src="app-core.js?v=20261120_stage_promocta1"></script>
+  <script src="app-ink.js?v=20261120_stage_promocta1"></script>
+  <script src="app-pdf.js?v=20261120_stage_promocta1"></script>
+  <script src="app-cards.js?v=20261120_stage_promocta1"></script>
+  <script src="app-cloud.js?v=20261120_stage_promocta1"></script>
+  <script src="app-canvas.js?v=20261120_stage_promocta1"></script>
+  <script src="app-toolkit.js?v=20261120_stage_promocta1"></script>
+  <script src="app.js?v=20261120_stage_promocta1"></script>
 
   <!-- [📐 수학 시각화 도구 선택 모달 (하위 호환 숨김 유지용 DOM — 좌측 서랍 #panelToolkit으로 일원화됨)] -->
   <div id="modalMathToolkitLauncher" class="n-axis-studio-backdrop math-toolkit-backdrop" style="display: none;">
@@ -4216,7 +4217,7 @@
       </div>
     </div>
   </div>
-  <script src="app-intro.js?v=20261120_206"></script>
+  <script src="app-intro.js?v=20261120_stage_promocta1"></script>
 
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
