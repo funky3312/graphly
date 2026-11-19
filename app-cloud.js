@@ -2295,6 +2295,7 @@
         this.showToast('💾 폴더가 아닌 파일을 선택해 주세요.');
         return null;
       }
+
       if (selectedFiles.length === 1) {
         return await this.downloadCloudItemAsFile(selectedFiles[0]);
       }
@@ -2346,6 +2347,10 @@
         this._collapsedCloudFolders.delete(targetFolder);
         this.syncExportCloudFolderSelect();
         this.renderMyLibraryList();
+        return;
+      }
+
+      if (selectedFiles.length > 0 && typeof this.isCloudLibraryOverQuotaLocked === 'function' && this.isCloudLibraryOverQuotaLocked(true)) {
         return;
       }
 
@@ -4226,6 +4231,7 @@
           premiumShareDailyViewLimit: 300,     // 공유 링크당 일일 최대 열람 인원(기기) 300명
           premiumShareFolderName: '🔗 공유 링크', // 링크 원본 자동 귀속 전용 폴더
           premiumShareGraceDays: 7,            // 만료 시 7일 유예 후 공유 링크 일시잠금 (문서 삭제 금지 · 재구독 시 즉시 복구)
+          overQuotaRetentionDays: 60,          // 이용권 만료 후 클라우드 한도 초과분 60일 보관 뒤 오래된 순 자동 삭제
           premiumPromoBannerEnabled: true,     // 뷰어 상단 홍보배너 제공
           premiumMonthlyPrice: 9900,           // 월간(30일) 할인가 (VAT 포함)
           premiumMonthlyRegularPrice: 19900,   // 월간(30일) 정가 표시용
@@ -9104,6 +9110,41 @@
       return true;
     }
 
+    // 이용권 만료로 현재 등급 용량 한도(무료 100MB / Pro 5GB)를 초과한 경우: 내 기기 다운로드·삭제만 허용하고 열기·공유 잠금
+    isCloudLibraryOverQuotaLocked(showNotice = true) {
+      if (!this.cloudUser || !this.cloudUser.uid) return false;
+      const quota = typeof this.getCurrentTierQuota === 'function'
+        ? this.getCurrentTierQuota()
+        : { tier: 'free', tierLabel: '무료', maxCloudBytes: 100 * 1024 * 1024, maxCloudLabel: '100 MB' };
+      if (quota.tier === 'premium') return false;
+      const maxBytes = Math.max(1, Number(quota.maxCloudBytes) || (100 * 1024 * 1024));
+      const usedBytes = this.getUserCloudLibraryTotalBytes();
+      if (usedBytes <= maxBytes) return false;
+
+      if (showNotice) {
+        const cfg = typeof this.getSubscriptionQuotaConfig === 'function' ? this.getSubscriptionQuotaConfig() : null;
+        const retentionDays = (cfg && Number(cfg.overQuotaRetentionDays) > 0) ? Number(cfg.overQuotaRetentionDays) : 60;
+        const usedStr = typeof this.formatBytesHuman === 'function' ? this.formatBytesHuman(usedBytes) : `${usedBytes} B`;
+        const cleanPlanName = quota.tier === 'pro' ? 'Pro' : '무료';
+        if (typeof this.promptCloudConfirmDialog === 'function') {
+          this.promptCloudConfirmDialog({
+            title: '클라우드 용량 한도 초과',
+            descHtml: `현재 보관함 사용량(<strong>${usedStr}</strong>)이 ${cleanPlanName} 플랜 한도(<strong>${quota.maxCloudLabel}</strong>)를 초과하여 열기 및 공유가 제한됩니다.<br>체크박스 선택 후 <strong>내 기기로 다운로드</strong>하거나 불필요한 파일을 정리해 주세요.<br><span style="display:inline-block;margin-top:5px;font-size:12px;color:#dc2626;">이용권 만료 ${retentionDays}일 경과 시 한도 초과 파일은 오래된 순으로 자동 삭제됩니다.</span>`,
+            confirmLabel: '이용권 연장',
+            cancelLabel: '닫기',
+            isDanger: false
+          }).then((wantUpgrade) => {
+            if (wantUpgrade && typeof this.openProPricingModal === 'function') {
+              this.openProPricingModal(quota.tier === 'pro' ? 'premium' : 'pro');
+            }
+          }).catch(() => { });
+        } else if (typeof this.openProPricingModal === 'function') {
+          this.openProPricingModal(quota.tier === 'pro' ? 'premium' : 'pro');
+        }
+      }
+      return true;
+    }
+
     // Firestore 단일 문서 직접 쓰기 헬퍼 (PATCH 1회 원자적 Upsert 우선 사용 — 실패 시 예외 전파로 가짜 성공 토스트 원천 차단)
     async _firestoreRestWriteSingleDoc(collectionName, docId, jsonStr, options = null) {
       if (typeof window !== 'undefined' && window.location && !/^https?:$/i.test(window.location.protocol)) {
@@ -11517,6 +11558,9 @@
     // 보관함 항목을 불러올 때 먼저 표준 뷰어로 연결 (뷰어에서 [편집] 클릭 시 그래플리 작업 화면으로 전환!)
     async loadCloudItemToWorkspace(item, closeModal = true, openInViewer = true) {
       if (!item) return;
+      if (typeof this.isCloudLibraryOverQuotaLocked === 'function' && this.isCloudLibraryOverQuotaLocked(true)) {
+        return;
+      }
       this._returnToShareModalAfterCloudSave = false;
       this._pendingExportCloudFilter = null;
       const resolved = await this._resolveChunkedItem(item);
@@ -12742,6 +12786,9 @@
 
     openCloudItemSharePopover(item, anchorBtnEl = null) {
       if (!item || !item.id) return;
+      if (typeof this.isCloudLibraryOverQuotaLocked === 'function' && this.isCloudLibraryOverQuotaLocked(true)) {
+        return;
+      }
       const popEl = document.getElementById('cloudShareOptionPopover');
       if (!popEl) {
         this.shareCloudLibraryItemDirect(item, anchorBtnEl);
@@ -12942,6 +12989,9 @@
     // (사본 추가 0바이트 · 선택된 레이어 키만 노출되어 정답 유출 원천 차단 · 덮어쓰기 시 기존 QR 실시간 반영!)
     async shareCloudLibraryItemDirect(item, triggerBtnEl = null, customFilterOpts = null, actionOpts = null) {
       if (!item || !item.id) return null;
+      if (typeof this.isCloudLibraryOverQuotaLocked === 'function' && this.isCloudLibraryOverQuotaLocked(true)) {
+        return null;
+      }
       const effFilter = customFilterOpts
         ? {
           includeProblem: customFilterOpts.includeProblem !== false,
@@ -13469,8 +13519,16 @@
         }
         if (usageTxtEl) {
           const usedStr = typeof this.formatBytesHuman === 'function' ? this.formatBytesHuman(usedBytes) : `${usedBytes} B`;
-          const pctStr = ratioPct < 0.1 && usedBytes > 0 ? '0.1' : ratioPct.toFixed(ratioPct >= 10 ? 0 : 1);
-          usageTxtEl.textContent = `${usedStr} / ${quota.maxCloudLabel} (${pctStr}%)`;
+          if (quota.tier !== 'premium' && usedBytes > maxBytes) {
+            const cfg = typeof this.getSubscriptionQuotaConfig === 'function' ? this.getSubscriptionQuotaConfig() : null;
+            const retDays = (cfg && Number(cfg.overQuotaRetentionDays) > 0) ? Number(cfg.overQuotaRetentionDays) : 60;
+            usageTxtEl.textContent = `${usedStr} / ${quota.maxCloudLabel} (초과 · 만료 ${retDays}일 후 삭제)`;
+            usageTxtEl.style.color = '#dc2626';
+          } else {
+            const pctStr = ratioPct < 0.1 && usedBytes > 0 ? '0.1' : ratioPct.toFixed(ratioPct >= 10 ? 0 : 1);
+            usageTxtEl.textContent = `${usedStr} / ${quota.maxCloudLabel} (${pctStr}%)`;
+            usageTxtEl.style.color = '';
+          }
         }
       }
 
@@ -14135,6 +14193,9 @@
     // 🎯 [수업 슬라이드(PPT) 플레이리스트 모드: 1번 ➔ 2번 ➔ 3번 연속 수업 & 필기 자동 보존]
     // ============================================================================
     async startPlaylistFromSelectedLibraryItems() {
+      if (typeof this.isCloudLibraryOverQuotaLocked === 'function' && this.isCloudLibraryOverQuotaLocked(true)) {
+        return;
+      }
       const selectedSlides = await this._collectSelectedLibrarySlides();
       if (!selectedSlides.length) {
         this.showToast('⚠️ 캔버스로 시작할 문항을 1개 이상 체크해 주세요!');
