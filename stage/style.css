@@ -4597,12 +4597,26 @@ body.pdf-modal-open #lassoActionFloatingBar {
   display: block;
   flex-shrink: 0;
   margin: 0 auto;
+  contain: layout style;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.42);
   border-radius: 4px;
   background: #ffffff;
   user-select: none !important;
   -webkit-user-select: none !important;
   -webkit-user-drag: none !important;
+}
+
+.pdf-viewport.pinching-gpu,
+.pdf-viewport.pinching-gpu .pdf-pages-container,
+.pdf-viewport.pinching-gpu .pdf-page-wrapper,
+.pdf-viewport.pinching-gpu .pdf-page-canvas {
+  touch-action: none !important;
+}
+
+.pdf-viewport.pinching-gpu .pdf-page-wrapper {
+  box-shadow: none !important;
 }
 
 .pdf-page-number-tag {

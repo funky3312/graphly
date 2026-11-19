@@ -608,7 +608,8 @@
       }
 
       // PDF.js Worker가 ArrayBuffer를 transfer(detach)해도 원본이 손실되지 않도록 안전 복제본 보관
-      const clonedBytes = new Uint8Array(arrayBuffer instanceof Uint8Array ? arrayBuffer : new Uint8Array(arrayBuffer)).slice();
+      const srcView = arrayBuffer instanceof Uint8Array ? arrayBuffer : new Uint8Array(arrayBuffer);
+      const clonedBytes = srcView.slice();
       this._cachedPdfBytes = clonedBytes;
       this.pdfFileName = fileName;
       const preserveScroll = Boolean(options && options.preserveScroll);
@@ -618,11 +619,14 @@
         this.savedPdfScrollLeft = 0;
       }
       if (!(options && options.skipIdbSave)) {
+        this._pendingPdfIdbSavePayload = { bytes: clonedBytes, fileName };
         if (this._deferredIdbSaveTimer) clearTimeout(this._deferredIdbSaveTimer);
         this._deferredIdbSaveTimer = setTimeout(() => {
           this._deferredIdbSaveTimer = null;
-          this._saveLastPdfToIndexedDB(clonedBytes, fileName);
-        }, 1500);
+          this._flushPendingPdfIdbSaveIfIdle(false);
+        }, 8000);
+      } else {
+        this._pendingPdfIdbSavePayload = null;
       }
 
       this.showToast('⏳ PDF 문서를 불러오는 중입니다...');
@@ -1697,11 +1701,7 @@
           this.syncAudioRecordUI();
         }
         this._stopPdfViewportInertia();
-        if (this._pdfPinchMoveRaf) {
-          cancelAnimationFrame(this._pdfPinchMoveRaf);
-          this._pdfPinchMoveRaf = null;
-        }
-        this._pdfPinchState = null;
+        this._clearPdfViewerPinchPreviewTransforms();
         if (this._pdfTouchPointers) this._pdfTouchPointers.clear();
         modal.style.display = 'flex';
         document.body.classList.add('pdf-modal-open');
@@ -1751,12 +1751,60 @@
       }
     }
 
+    _flushPendingPdfIdbSaveIfIdle(forceNow = false) {
+      const payload = this._pendingPdfIdbSavePayload;
+      if (!payload || !payload.bytes) return;
+      if (
+        !forceNow &&
+        this.isPdfModalOpen &&
+        (this._pdfPinchState || this._isPdfModalFastScrolling || this._isPdfViewportPanning || this._pdfViewportInertiaRaf)
+      ) {
+        if (this._deferredIdbSaveTimer) clearTimeout(this._deferredIdbSaveTimer);
+        this._deferredIdbSaveTimer = setTimeout(() => {
+          this._deferredIdbSaveTimer = null;
+          this._flushPendingPdfIdbSaveIfIdle(false);
+        }, 3000);
+        return;
+      }
+      this._pendingPdfIdbSavePayload = null;
+      if (this._deferredIdbSaveTimer) {
+        clearTimeout(this._deferredIdbSaveTimer);
+        this._deferredIdbSaveTimer = null;
+      }
+      this._saveLastPdfToIndexedDB(payload.bytes, payload.fileName);
+    }
+
+    _clearPdfViewerPinchPreviewTransforms() {
+      if (this._pdfPinchMoveRaf) {
+        cancelAnimationFrame(this._pdfPinchMoveRaf);
+        this._pdfPinchMoveRaf = null;
+      }
+      const st = this._pdfPinchState;
+      this._pdfPinchState = null;
+      if (st && Array.isArray(st.previewItems)) {
+        for (let i = 0; i < st.previewItems.length; i++) {
+          const el = st.previewItems[i] && st.previewItems[i].el;
+          if (el) {
+            el.style.transform = '';
+            el.style.transformOrigin = '';
+            el.style.willChange = '';
+          }
+        }
+      }
+      const vp = (typeof document !== 'undefined') ? document.getElementById('pdfViewport') : null;
+      if (vp) vp.classList.remove('pinching-gpu');
+    }
+
     _cancelAndTrimHiddenPdfModalPages() {
+      if (typeof this._cancelActivePdfModalRenderJob === 'function') {
+        this._cancelActivePdfModalRenderJob(true);
+      }
       const container = (typeof document !== 'undefined') ? document.getElementById('pdfPagesContainer') : null;
       if (!container) return;
       const keepCenter = this.pdfCurrentPage || 1;
-      const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
-      const releaseAllHidden = Boolean(isIOS || this.lessonTeachingMode === 'page');
+      // 통PDF('page') 모드 진입 시에는 편집 화면 Safari VRAM 보호를 위해 전체 해제하고,
+      // 영역 캡처('crop'/미정) 동선에서는 현재 보던 페이지 딱 1장만 유지하여 재진입 백지 랙·깜빡임 차단!
+      const releaseAllHidden = Boolean(this.lessonTeachingMode === 'page');
       const canvases = container.querySelectorAll('.pdf-page-canvas');
       for (let i = 0; i < canvases.length; i++) {
         const cv = canvases[i];
@@ -1790,11 +1838,7 @@
 
     closePdfModal() {
       this._stopPdfViewportInertia();
-      if (this._pdfPinchMoveRaf) {
-        cancelAnimationFrame(this._pdfPinchMoveRaf);
-        this._pdfPinchMoveRaf = null;
-      }
-      this._pdfPinchState = null;
+      this._clearPdfViewerPinchPreviewTransforms();
       if (this._pdfTouchPointers) this._pdfTouchPointers.clear();
       const viewport = document.getElementById('pdfViewport');
       if (viewport && this.isPdfModalOpen) {
@@ -1810,6 +1854,13 @@
         this.togglePdfCropMode(false);
       }
       this._cancelAndTrimHiddenPdfModalPages();
+      if (this._pendingPdfIdbSavePayload) {
+        if (this._deferredIdbSaveTimer) clearTimeout(this._deferredIdbSaveTimer);
+        this._deferredIdbSaveTimer = setTimeout(() => {
+          this._deferredIdbSaveTimer = null;
+          this._flushPendingPdfIdbSaveIfIdle(true);
+        }, 350);
+      }
       if (this._uiPointerIds) this._uiPointerIds.clear();
       this.updateInkCursor();
       // PDF 뷰어 닫힘 즉시 메인 칠판 루프 및 화면 복원
@@ -3174,8 +3225,68 @@
     //    - 스크롤이 발생하는 즉시 백그라운드 페이지 렌더 작업을 취소(_cancelCurrentPdfRenderJob)하여 메인 스레드를 100% 스크롤에 양보하고,
     //    - 마우스 휠 스무스 스크롤 애니메이션(약 180ms)이 완전히 멈춘 뒤(220ms)에만 조용히 다음 페이지를 준비합니다!
     // ==========================================================================
-    // [📑 순정 표준 PDF 뷰어 엔진: 단일 IntersectionObserver + 기본 <canvas> 단판 렌더링]
+    // [📑 PDF 모달 뷰어 엔진: 중앙 우선 단일 순차 Zero-Copy 렌더링 큐 & iPad VRAM 안전 가드]
     // ==========================================================================
+    _cancelActivePdfModalRenderJob(clearQueue = false) {
+      if (clearQueue) {
+        this._pdfModalRenderQueue = [];
+      }
+      if (this._pdfFastScrollSettleTimer && clearQueue) {
+        clearTimeout(this._pdfFastScrollSettleTimer);
+        this._pdfFastScrollSettleTimer = null;
+        this._isPdfModalFastScrolling = false;
+      }
+      const job = this._activePdfModalRenderJob;
+      if (!job) return;
+      this._activePdfModalRenderJob = null;
+      if (job.renderTask && typeof job.renderTask.cancel === 'function') {
+        try { job.renderTask.cancel(); } catch (e) { }
+      }
+      if (job.stagingCanvas && job.stagingCanvas !== job.frontCanvas) {
+        try {
+          job.stagingCanvas.width = 0;
+          job.stagingCanvas.height = 0;
+        } catch (e) { }
+      }
+      if (job.frontCanvas) {
+        job.frontCanvas._pdfRenderTask = null;
+        job.frontCanvas._pdfStagingCanvas = null;
+        job.frontCanvas._isRenderingPdfPage = false;
+        job.frontCanvas._renderingZoom = null;
+      }
+    }
+
+    _trimFarPdfModalCanvases() {
+      if (!this.pdfPageRenderStates) return;
+      const center = this.pdfCurrentPage || 1;
+      const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+      const keepRadius = isIOS ? 2 : 4;
+      const renderedKeys = Object.keys(this.pdfPageRenderStates);
+      for (let i = 0; i < renderedKeys.length; i++) {
+        const pNum = parseInt(renderedKeys[i], 10);
+        if (!pNum || Math.abs(pNum - center) <= keepRadius) continue;
+        const cv = document.getElementById(`pdfPageCanvas_${pNum}`);
+        if (cv) {
+          if (cv._pdfRenderTask && typeof cv._pdfRenderTask.cancel === 'function') {
+            try { cv._pdfRenderTask.cancel(); } catch (e) { }
+            cv._pdfRenderTask = null;
+          }
+          if (cv._pdfStagingCanvas) {
+            try { cv._pdfStagingCanvas.width = 0; cv._pdfStagingCanvas.height = 0; } catch (e) { }
+            cv._pdfStagingCanvas = null;
+          }
+          cv._isRenderingPdfPage = false;
+          cv._renderingZoom = null;
+          try {
+            cv.width = 1;
+            cv.height = 1;
+          } catch (e) { }
+          cv._renderedZoom = null;
+        }
+        delete this.pdfPageRenderStates[pNum];
+      }
+    }
+
     _setupPdfPageObserver() {
       if (this._pdfPageObserver) {
         this._pdfPageObserver.disconnect();
@@ -3183,6 +3294,7 @@
       }
       const viewport = document.getElementById('pdfViewport');
       if (!viewport || typeof IntersectionObserver === 'undefined') return;
+      const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
 
       this._pdfPageObserver = new IntersectionObserver((entries) => {
         if (!this.pdfDoc || !this.isPdfModalOpen) return;
@@ -3191,38 +3303,32 @@
           wrapper._isIntersectingPdfViewport = Boolean(entry.isIntersecting);
           const pageNum = parseInt(wrapper.dataset.page, 10);
           if (!pageNum) continue;
-          const canvas = document.getElementById(`pdfPageCanvas_${pageNum}`);
+          const canvas = wrapper._canvasEl || document.getElementById(`pdfPageCanvas_${pageNum}`);
           if (!canvas) continue;
 
           if (entry.isIntersecting) {
-            this.renderPdfPageToCanvas(pageNum, canvas, wrapper);
+            if (!this._pdfPinchState && !this._isPdfModalFastScrolling) {
+              this.renderPdfPageToCanvas(pageNum, canvas, wrapper);
+            }
           } else {
-            // 화면 밖으로 벗어난 페이지: 진행 중인 렌더링 및 스테이징 버퍼 즉시 해제 (renderTask.cancel)
-            if (canvas._pdfRenderTask && typeof canvas._pdfRenderTask.cancel === 'function') {
-              try { canvas._pdfRenderTask.cancel(); } catch (e) { }
-              canvas._pdfRenderTask = null;
+            if (this._pdfModalRenderQueue && this._pdfModalRenderQueue.length > 0) {
+              const qIdx = this._pdfModalRenderQueue.indexOf(pageNum);
+              if (qIdx !== -1 && Math.abs(pageNum - (this.pdfCurrentPage || 1)) > 1) {
+                this._pdfModalRenderQueue.splice(qIdx, 1);
+              }
             }
-            if (canvas._pdfStagingCanvas) {
-              try {
-                canvas._pdfStagingCanvas.width = 0;
-                canvas._pdfStagingCanvas.height = 0;
-              } catch (e) { }
-              canvas._pdfStagingCanvas = null;
+            if (this._activePdfModalRenderJob && this._activePdfModalRenderJob.pageNum === pageNum && Math.abs(pageNum - (this.pdfCurrentPage || 1)) > 1) {
+              this._cancelActivePdfModalRenderJob(false);
             }
-            canvas._isRenderingPdfPage = false;
-            canvas._renderingZoom = null;
-            // 멀리 벗어난 페이지(> 6장)는 캔버스를 비워 메모리 관리
-            if (Math.abs(pageNum - (this.pdfCurrentPage || 1)) > 6 && this.pdfPageRenderStates[pageNum]) {
-              canvas.width = 1;
-              canvas.height = 1;
-              canvas._renderedZoom = null;
-              delete this.pdfPageRenderStates[pageNum];
-            }
+            this._trimFarPdfModalCanvases();
           }
+        }
+        if (!this._pdfPinchState && !this._isPdfModalFastScrolling) {
+          this._drainPdfModalRenderQueue();
         }
       }, {
         root: viewport,
-        rootMargin: '100% 0px 100% 0px',
+        rootMargin: isIOS ? '50% 0px 50% 0px' : '85% 0px 85% 0px',
         threshold: 0.01
       });
 
@@ -3243,6 +3349,7 @@
       this._cachedPdfPageCssH = Math.round(parseFloat(defH));
 
       if (resetContainer || container.children.length !== this.pdfTotalPages) {
+        this._cancelActivePdfModalRenderJob(true);
         if (this._pdfPageObserver) {
           this._pdfPageObserver.disconnect();
           this._pdfPageObserver = null;
@@ -3284,6 +3391,7 @@
           canvas.setAttribute('draggable', 'false');
           canvas.addEventListener('dragstart', (e) => e.preventDefault());
           wrapper.appendChild(canvas);
+          wrapper._canvasEl = canvas;
 
           frag.appendChild(wrapper);
         }
@@ -3295,12 +3403,16 @@
         if (!this._pdfPageObserver) {
           this._setupPdfPageObserver();
         }
+        if (this._activePdfModalRenderJob && this._activePdfModalRenderJob.targetZoom !== zoomNow) {
+          this._cancelActivePdfModalRenderJob(true);
+        }
+        this._trimFarPdfModalCanvases();
         this.renderVisiblePdfWindow(currentPageToKeep, false);
         container.querySelectorAll('.pdf-page-wrapper').forEach((w) => {
           if (!w._isIntersectingPdfViewport) return;
           const p = parseInt(w.dataset.page, 10);
           if (!p) return;
-          const c = document.getElementById(`pdfPageCanvas_${p}`);
+          const c = w._canvasEl || document.getElementById(`pdfPageCanvas_${p}`);
           if (c) this.renderPdfPageToCanvas(p, c, w);
         });
         this.updatePdfPageNavUI(currentPageToKeep, true);
@@ -3315,8 +3427,8 @@
       const candidates = [centerPage, centerPage + 1, centerPage - 1];
       for (const p of candidates) {
         if (p < 1 || p > total) continue;
-        const canvas = document.getElementById(`pdfPageCanvas_${p}`);
         const wrapper = document.getElementById(`pdfPageWrapper_${p}`);
+        const canvas = (wrapper && wrapper._canvasEl) || document.getElementById(`pdfPageCanvas_${p}`);
         if (!canvas || !wrapper) continue;
         if (forceReRender) {
           canvas._renderedZoom = null;
@@ -3326,43 +3438,139 @@
     }
 
     renderPdfPageToCanvas(pageNum, canvas, wrapper, onComplete = null) {
-      if (!this.pdfDoc || !canvas || (!this.isPdfModalOpen && !onComplete)) {
+      if (!this.pdfDoc || !pageNum || (!this.isPdfModalOpen && !onComplete)) {
         if (onComplete) onComplete();
         return;
       }
       const targetZoom = this.pdfZoom || 1.75;
-      if (this.pdfPageRenderStates[pageNum] && canvas._renderedZoom === targetZoom && !canvas._isRenderingPdfPage) {
+      const liveWrapper = wrapper || document.getElementById(`pdfPageWrapper_${pageNum}`);
+      const liveCanvas = (liveWrapper && liveWrapper._canvasEl) || canvas || document.getElementById(`pdfPageCanvas_${pageNum}`);
+      if (!liveCanvas) {
         if (onComplete) onComplete();
         return;
       }
-      if (canvas._isRenderingPdfPage && canvas._renderingZoom === targetZoom) {
+      if (this.pdfPageRenderStates && this.pdfPageRenderStates[pageNum] && liveCanvas._renderedZoom === targetZoom && !liveCanvas._isRenderingPdfPage) {
         if (onComplete) onComplete();
         return;
       }
-
-      if (canvas._pdfRenderTask && typeof canvas._pdfRenderTask.cancel === 'function') {
-        try { canvas._pdfRenderTask.cancel(); } catch (e) { }
-        canvas._pdfRenderTask = null;
+      if (this._activePdfModalRenderJob && this._activePdfModalRenderJob.pageNum === pageNum && this._activePdfModalRenderJob.targetZoom === targetZoom) {
+        if (onComplete) {
+          this._activePdfModalRenderJob.callbacks.push(onComplete);
+        }
+        return;
       }
-      if (canvas._pdfStagingCanvas) {
-        try {
-          canvas._pdfStagingCanvas.width = 0;
-          canvas._pdfStagingCanvas.height = 0;
-        } catch (e) { }
-        canvas._pdfStagingCanvas = null;
+      if (!Array.isArray(this._pdfModalRenderQueue)) {
+        this._pdfModalRenderQueue = [];
       }
-      canvas._isRenderingPdfPage = true;
-      canvas._renderingZoom = targetZoom;
-      const renderToken = (canvas._renderToken || 0) + 1;
-      canvas._renderToken = renderToken;
+      if (!this._pdfModalRenderCallbacks) {
+        this._pdfModalRenderCallbacks = {};
+      }
+      if (onComplete) {
+        if (!Array.isArray(this._pdfModalRenderCallbacks[pageNum])) {
+          this._pdfModalRenderCallbacks[pageNum] = [];
+        }
+        this._pdfModalRenderCallbacks[pageNum].push(onComplete);
+      }
+      if (this._pdfModalRenderQueue.indexOf(pageNum) === -1) {
+        this._pdfModalRenderQueue.push(pageNum);
+      }
+      if (!this._pdfPinchState && (!this._isPdfModalFastScrolling || onComplete)) {
+        this._drainPdfModalRenderQueue();
+      }
+    }
 
-      this.pdfDoc.getPage(pageNum).then(page => {
-        if (!this.pdfDoc || canvas._renderToken !== renderToken || (!this.isPdfModalOpen && !onComplete)) {
-          if (canvas._renderToken === renderToken) {
-            canvas._isRenderingPdfPage = false;
-            canvas._renderingZoom = null;
+    _drainPdfModalRenderQueue() {
+      if (!this.pdfDoc || this._activePdfModalRenderJob) return;
+      if (this._pdfPinchState) return;
+      if (!Array.isArray(this._pdfModalRenderQueue) || this._pdfModalRenderQueue.length === 0) return;
+
+      const center = this.pdfCurrentPage || 1;
+      const targetZoom = this.pdfZoom || 1.75;
+      const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+      const maxDist = isIOS ? 2 : 4;
+
+      // 현재 보고 있는 중앙 페이지를 1순위로, 그다음 아래쪽(+1)·위쪽(-1) 순으로 정렬
+      this._pdfModalRenderQueue.sort((a, b) => {
+        const da = Math.abs(a - center);
+        const db = Math.abs(b - center);
+        if (da !== db) return da - db;
+        return b - a;
+      });
+
+      let nextPageNum = null;
+      let nextWrapper = null;
+      let nextCanvas = null;
+      while (this._pdfModalRenderQueue.length > 0) {
+        const candidate = this._pdfModalRenderQueue.shift();
+        const cbs = (this._pdfModalRenderCallbacks && this._pdfModalRenderCallbacks[candidate]) || null;
+        const hasExplicitCb = Boolean(cbs && cbs.length > 0);
+        if (!this.isPdfModalOpen && !hasExplicitCb) {
+          if (cbs) {
+            delete this._pdfModalRenderCallbacks[candidate];
+            cbs.forEach((fn) => { try { fn(); } catch (_) { } });
           }
-          if (onComplete) onComplete();
+          continue;
+        }
+        const w = document.getElementById(`pdfPageWrapper_${candidate}`);
+        const c = (w && w._canvasEl) || document.getElementById(`pdfPageCanvas_${candidate}`);
+        if (!w || !c) {
+          if (cbs) {
+            delete this._pdfModalRenderCallbacks[candidate];
+            cbs.forEach((fn) => { try { fn(); } catch (_) { } });
+          }
+          continue;
+        }
+        if (!hasExplicitCb && Math.abs(candidate - center) > maxDist && !w._isIntersectingPdfViewport) {
+          continue;
+        }
+        if (this.pdfPageRenderStates && this.pdfPageRenderStates[candidate] && c._renderedZoom === targetZoom && c.width > 10) {
+          if (cbs) {
+            delete this._pdfModalRenderCallbacks[candidate];
+            cbs.forEach((fn) => { try { fn(); } catch (_) { } });
+          }
+          continue;
+        }
+        nextPageNum = candidate;
+        nextWrapper = w;
+        nextCanvas = c;
+        break;
+      }
+
+      if (!nextPageNum || !nextCanvas) return;
+
+      const callbacks = (this._pdfModalRenderCallbacks && this._pdfModalRenderCallbacks[nextPageNum]) || [];
+      if (this._pdfModalRenderCallbacks) delete this._pdfModalRenderCallbacks[nextPageNum];
+      const finishCallbacks = () => {
+        for (let i = 0; i < callbacks.length; i++) {
+          try { callbacks[i](); } catch (_) { }
+        }
+      };
+
+      const jobToken = (this._pdfModalJobTokenSeq || 0) + 1;
+      this._pdfModalJobTokenSeq = jobToken;
+      const job = {
+        token: jobToken,
+        pageNum: nextPageNum,
+        targetZoom,
+        frontCanvas: nextCanvas,
+        wrapper: nextWrapper,
+        stagingCanvas: null,
+        renderTask: null,
+        callbacks
+      };
+      this._activePdfModalRenderJob = job;
+      nextCanvas._isRenderingPdfPage = true;
+      nextCanvas._renderingZoom = targetZoom;
+
+      this.pdfDoc.getPage(nextPageNum).then(page => {
+        if (!this.pdfDoc || this._activePdfModalRenderJob !== job || (!this.isPdfModalOpen && callbacks.length === 0)) {
+          if (this._activePdfModalRenderJob === job) {
+            this._activePdfModalRenderJob = null;
+          }
+          nextCanvas._isRenderingPdfPage = false;
+          nextCanvas._renderingZoom = null;
+          finishCallbacks();
+          this._drainPdfModalRenderQueue();
           return;
         }
 
@@ -3371,101 +3579,136 @@
         const cssH = (baseVp.height * targetZoom).toFixed(2);
         this._cachedPdfPageCssH = Math.round(baseVp.height * targetZoom);
 
-        // 표준 Retina 해상도 + iOS/iPadOS WebKit 하드웨어 캔버스 메모리 상한 안전 클램프!
-        const isIOS = (typeof this.isIOSOrIPad === 'function') && this.isIOSOrIPad();
+        // 표준 Retina 해상도 + iPadOS WebKit <canvas> VRAM 안전 예산(5.2MP ≈ 20.8MB/장, 최대 5장 ≈ 104MB) 클램프
         const dpr = Math.min(2.0, Math.max(1.5, window.devicePixelRatio || 1.5));
         const desiredScale = targetZoom * dpr;
-        const maxSideScale = (isIOS ? 2880 : 4032) / Math.max(1, baseVp.width, baseVp.height);
-        const maxAreaScale = Math.sqrt((isIOS ? 6800000 : 15500000) / Math.max(1, baseVp.width * baseVp.height));
+        const maxSideScale = (isIOS ? 2560 : 4032) / Math.max(1, baseVp.width, baseVp.height);
+        const maxAreaScale = Math.sqrt((isIOS ? 5200000 : 15500000) / Math.max(1, baseVp.width * baseVp.height));
         const renderScale = Math.max(1.0, Math.min(desiredScale, maxSideScale, maxAreaScale));
         const viewport = page.getViewport({ scale: renderScale });
         const targetPxW = Math.max(1, Math.round(viewport.width));
         const targetPxH = Math.max(1, Math.round(viewport.height));
 
-        canvas.style.width = `${cssW}px`;
-        canvas.style.height = `${cssH}px`;
-        if (wrapper) {
-          wrapper.style.width = `${cssW}px`;
-          wrapper.style.height = `${cssH}px`;
-          wrapper._basePdfW = baseVp.width;
-          wrapper._basePdfH = baseVp.height;
+        nextCanvas.style.width = `${cssW}px`;
+        nextCanvas.style.height = `${cssH}px`;
+        if (nextWrapper) {
+          nextWrapper.style.width = `${cssW}px`;
+          nextWrapper.style.height = `${cssH}px`;
+          nextWrapper._basePdfW = baseVp.width;
+          nextWrapper._basePdfH = baseVp.height;
         }
 
-        // Mozilla PDF.js 표준 더블 버퍼링(ZoomLayer 원리):
-        // 이미 그려진 페이지의 확대·축소 재렌더링 시에는 화면 <canvas>를 건드리지 않고 유지한 채,
-        // 오프스크린 스테이징 캔버스에 100% 완성된 직후 단 1프레임에 원자적 복사 후 즉시 해제!
-        const hasExistingBitmap = Boolean(this.pdfPageRenderStates[pageNum] && canvas.width > 10 && canvas.height > 10);
-        const targetSurface = hasExistingBitmap ? document.createElement('canvas') : canvas;
+        // 🌟 [Zero-Copy 무깜빡임 원자적 캔버스 스왑]:
+        // 빈 페이지는 직접 렌더링하고, 이미 그려진 페이지의 배율 재렌더링은 단 1장의 오프스크린 캔버스에 완성한 뒤
+        // drawImage(20MB 복사)나 프론트 캔버스 리사이즈 없이 replaceChild로 0.00ms 교체 후 구 버퍼를 즉시 0×0 반환!
+        const hasExistingBitmap = Boolean(this.pdfPageRenderStates && this.pdfPageRenderStates[nextPageNum] && nextCanvas.width > 10 && nextCanvas.height > 10);
+        const targetSurface = hasExistingBitmap ? document.createElement('canvas') : nextCanvas;
         if (hasExistingBitmap) {
-          canvas._pdfStagingCanvas = targetSurface;
+          job.stagingCanvas = targetSurface;
+          nextCanvas._pdfStagingCanvas = targetSurface;
         }
         targetSurface.width = targetPxW;
         targetSurface.height = targetPxH;
 
-        const releaseStaging = () => {
-          if (!hasExistingBitmap) return;
+        const releaseUnusedStaging = () => {
+          if (!hasExistingBitmap || !job.stagingCanvas) return;
           try {
-            targetSurface.width = 0;
-            targetSurface.height = 0;
+            job.stagingCanvas.width = 0;
+            job.stagingCanvas.height = 0;
           } catch (e) { }
-          if (canvas._pdfStagingCanvas === targetSurface) {
-            canvas._pdfStagingCanvas = null;
-          }
+          job.stagingCanvas = null;
+          nextCanvas._pdfStagingCanvas = null;
         };
 
         const renderCtx = targetSurface.getContext('2d', { alpha: false }) || targetSurface.getContext('2d');
         if (!renderCtx) {
-          releaseStaging();
-          if (canvas._renderToken === renderToken) {
-            canvas._pdfRenderTask = null;
-            canvas._isRenderingPdfPage = false;
-            canvas._renderingZoom = null;
+          releaseUnusedStaging();
+          if (this._activePdfModalRenderJob === job) {
+            this._activePdfModalRenderJob = null;
           }
-          if (onComplete) onComplete();
+          nextCanvas._pdfRenderTask = null;
+          nextCanvas._isRenderingPdfPage = false;
+          nextCanvas._renderingZoom = null;
+          finishCallbacks();
+          this._drainPdfModalRenderQueue();
           return;
         }
         renderCtx.fillStyle = '#ffffff';
         renderCtx.fillRect(0, 0, targetPxW, targetPxH);
 
         const renderTask = page.render({ canvasContext: renderCtx, viewport });
-        canvas._pdfRenderTask = renderTask;
+        job.renderTask = renderTask;
+        nextCanvas._pdfRenderTask = renderTask;
 
         renderTask.promise.then(() => {
-          if (canvas._renderToken === renderToken) {
-            if (hasExistingBitmap) {
-              canvas.width = targetPxW;
-              canvas.height = targetPxH;
-              const frontCtx = canvas.getContext('2d', { alpha: false }) || canvas.getContext('2d');
-              if (frontCtx) {
-                frontCtx.drawImage(targetSurface, 0, 0);
-              }
+          if (this._activePdfModalRenderJob === job) {
+            this._activePdfModalRenderJob = null;
+            let activeDomCanvas = nextCanvas;
+            if (hasExistingBitmap && nextWrapper && nextCanvas.parentNode === nextWrapper) {
+              targetSurface.className = 'pdf-page-canvas';
+              targetSurface.id = `pdfPageCanvas_${nextPageNum}`;
+              targetSurface.style.width = `${cssW}px`;
+              targetSurface.style.height = `${cssH}px`;
+              targetSurface.setAttribute('draggable', 'false');
+              targetSurface.addEventListener('dragstart', (e) => e.preventDefault());
+              nextWrapper.replaceChild(targetSurface, nextCanvas);
+              nextWrapper._canvasEl = targetSurface;
+              job.stagingCanvas = null;
+              nextCanvas._pdfStagingCanvas = null;
+              nextCanvas._pdfRenderTask = null;
+              nextCanvas._isRenderingPdfPage = false;
+              nextCanvas._renderingZoom = null;
+              try {
+                nextCanvas.width = 0;
+                nextCanvas.height = 0;
+              } catch (e) { }
+              activeDomCanvas = targetSurface;
+            } else {
+              releaseUnusedStaging();
             }
-            releaseStaging();
-            canvas._pdfRenderTask = null;
-            canvas._isRenderingPdfPage = false;
-            canvas._renderingZoom = null;
-            canvas._renderedZoom = targetZoom;
-            canvas._renderedScale = renderScale;
-            this.pdfPageRenderStates[pageNum] = true;
+            activeDomCanvas._pdfRenderTask = null;
+            activeDomCanvas._isRenderingPdfPage = false;
+            activeDomCanvas._renderingZoom = null;
+            activeDomCanvas._renderedZoom = targetZoom;
+            activeDomCanvas._renderedScale = renderScale;
+            if (!this.pdfPageRenderStates) this.pdfPageRenderStates = {};
+            this.pdfPageRenderStates[nextPageNum] = true;
+            this._trimFarPdfModalCanvases();
           } else {
-            releaseStaging();
+            releaseUnusedStaging();
+            nextCanvas._pdfRenderTask = null;
+            nextCanvas._isRenderingPdfPage = false;
+            nextCanvas._renderingZoom = null;
           }
-          if (onComplete) onComplete();
+          finishCallbacks();
+          if (!this._pdfPinchState && !this._isPdfModalFastScrolling) {
+            this._drainPdfModalRenderQueue();
+          }
         }).catch(err => {
-          releaseStaging();
-          if (canvas._renderToken === renderToken) {
-            canvas._pdfRenderTask = null;
-            canvas._isRenderingPdfPage = false;
-            canvas._renderingZoom = null;
+          releaseUnusedStaging();
+          if (this._activePdfModalRenderJob === job) {
+            this._activePdfModalRenderJob = null;
           }
+          nextCanvas._pdfRenderTask = null;
+          nextCanvas._isRenderingPdfPage = false;
+          nextCanvas._renderingZoom = null;
           if (err && err.name !== 'RenderingCancelledException') {
-            console.error(`p.${pageNum} 렌더링 에러:`, err);
+            console.error(`p.${nextPageNum} 렌더링 에러:`, err);
+          }
+          finishCallbacks();
+          if (!this._pdfPinchState && !this._isPdfModalFastScrolling) {
+            this._drainPdfModalRenderQueue();
           }
         });
       }).catch(() => {
-        if (canvas._renderToken === renderToken) {
-          canvas._isRenderingPdfPage = false;
-          canvas._renderingZoom = null;
+        if (this._activePdfModalRenderJob === job) {
+          this._activePdfModalRenderJob = null;
+        }
+        nextCanvas._isRenderingPdfPage = false;
+        nextCanvas._renderingZoom = null;
+        finishCallbacks();
+        if (!this._pdfPinchState && !this._isPdfModalFastScrolling) {
+          this._drainPdfModalRenderQueue();
         }
       });
     }
@@ -3601,6 +3844,8 @@
       if (target && viewport) {
         viewport.scrollTop = Math.max(0, target.offsetTop - 20);
         this.savedPdfScrollTop = viewport.scrollTop;
+        this._lastPdfScrollSampleTop = viewport.scrollTop;
+        this._lastPdfScrollSampleT = performance.now();
       }
       this.updatePdfPageNavUI(pageNum, false);
     }
@@ -3609,18 +3854,49 @@
       const viewport = document.getElementById('pdfViewport');
       if (!viewport || !this.pdfDoc) return;
 
+      const curTop = viewport.scrollTop;
+      const curLeft = viewport.scrollLeft;
       if (this.isPdfModalOpen) {
-        this.savedPdfScrollTop = viewport.scrollTop;
-        this.savedPdfScrollLeft = viewport.scrollLeft;
+        this.savedPdfScrollTop = curTop;
+        this.savedPdfScrollLeft = curLeft;
       }
+
+      const nowS = performance.now();
+      const prevT = this._lastPdfScrollSampleT || 0;
+      const prevTop = (typeof this._lastPdfScrollSampleTop === 'number') ? this._lastPdfScrollSampleTop : curTop;
+      const dt = nowS - prevT;
+      this._lastPdfScrollSampleT = nowS;
+      this._lastPdfScrollSampleTop = curTop;
 
       const pageH = this._cachedPdfPageCssH || Math.round(((this.pdfDefaultPageSize && this.pdfDefaultPageSize.height) || 842) * (this.pdfZoom || 1.75));
       const stride = Math.max(100, pageH + 28);
-      const approxPage = Math.floor((viewport.scrollTop + viewport.clientHeight * 0.35 - 24) / stride) + 1;
+      const approxPage = Math.floor((curTop + viewport.clientHeight * 0.35 - 24) / stride) + 1;
       const currentVisiblePage = Math.max(1, Math.min(this.pdfTotalPages || 1, approxPage));
 
       if (currentVisiblePage !== this.pdfCurrentPage) {
         this.updatePdfPageNavUI(currentVisiblePage, true);
+      }
+
+      // 고속 플릭 스크롤 중(> 1.8px/ms)에는 스쳐 지나가는 페이지들의 헛렌더링을 유예하고 감속 즉시 중앙 페이지부터 렌더링
+      if (!this._pdfPinchState && dt > 4 && dt < 120) {
+        const speedY = Math.abs(curTop - prevTop) / dt;
+        if (speedY > 1.8) {
+          this._isPdfModalFastScrolling = true;
+          if (this._activePdfModalRenderJob && Math.abs(this._activePdfModalRenderJob.pageNum - currentVisiblePage) > 1) {
+            this._cancelActivePdfModalRenderJob(false);
+          }
+          if (this._pdfFastScrollSettleTimer) {
+            clearTimeout(this._pdfFastScrollSettleTimer);
+          }
+          this._pdfFastScrollSettleTimer = setTimeout(() => {
+            this._pdfFastScrollSettleTimer = null;
+            this._isPdfModalFastScrolling = false;
+            if (!this.isPdfModalOpen || !this.pdfDoc || this._pdfPinchState) return;
+            this._trimFarPdfModalCanvases();
+            this.renderVisiblePdfWindow(this.pdfCurrentPage || 1, false);
+            this._drainPdfModalRenderQueue();
+          }, 85);
+        }
       }
     }
 
@@ -3645,7 +3921,8 @@
       const prevZoom = this.pdfZoom || 1.5;
       const nextZoom = Math.max(0.5, Math.min(zoom, 4.0));
       const isFastPreview = Boolean(options && options.fastPreview);
-      if (!isFastPreview && Math.abs(nextZoom - prevZoom) < 0.002) return;
+      const isImmediateCommit = Boolean(options && options.immediateCommit);
+      if (!isFastPreview && !isImmediateCommit && Math.abs(nextZoom - prevZoom) < 0.002) return;
 
       const viewport = document.getElementById('pdfViewport');
       const ratio = nextZoom / prevZoom;
@@ -3660,7 +3937,7 @@
 
       // 기존 페이지 래퍼 크기를 즉시 비례 스케일링하여 스크롤 위치가 첫 페이지로 튀지 않게 고정!
       document.querySelectorAll('.pdf-page-wrapper').forEach(w => {
-        const c = w.querySelector('canvas');
+        const c = w._canvasEl || w.querySelector('canvas');
         if (!w._basePdfW || !w._basePdfH) {
           const curW = parseFloat(w.style.width) || w.offsetWidth;
           const curH = parseFloat(w.style.height) || w.offsetHeight;
@@ -3700,12 +3977,14 @@
           const newRect = options.anchorPageEl.getBoundingClientRect();
           const ptClientX = newRect.left + options.anchorRelX * newRect.width;
           const ptClientY = newRect.top + options.anchorRelY * newRect.height;
-          const newScrollLeft = Math.max(0, viewport.scrollLeft + (ptClientX - options.currentMidClientX));
+          const newScrollLeft = (viewport.scrollWidth > viewport.clientWidth)
+            ? Math.max(0, viewport.scrollLeft + (ptClientX - options.currentMidClientX))
+            : 0;
           const newScrollTop = Math.max(0, viewport.scrollTop + (ptClientY - options.currentMidClientY));
           viewport.scrollTop = newScrollTop;
           viewport.scrollLeft = newScrollLeft;
-          this.savedPdfScrollTop = newScrollTop;
-          this.savedPdfScrollLeft = newScrollLeft;
+          this.savedPdfScrollTop = viewport.scrollTop;
+          this.savedPdfScrollLeft = viewport.scrollLeft;
         } else if (options && typeof options.anchorContentY === 'number' && typeof options.anchorRatio === 'number') {
           const newScrollTop = Math.max(0, options.anchorContentY * options.anchorRatio - options.currentMidY);
           const newScrollLeft = Math.max(0, options.anchorContentX * options.anchorRatio - options.currentMidX);
@@ -3728,6 +4007,13 @@
             this.savedPdfScrollLeft = 0;
           }
         }
+        this._lastPdfScrollSampleTop = viewport.scrollTop;
+        this._lastPdfScrollSampleT = performance.now();
+        this._isPdfModalFastScrolling = false;
+        if (this._pdfFastScrollSettleTimer) {
+          clearTimeout(this._pdfFastScrollSettleTimer);
+          this._pdfFastScrollSettleTimer = null;
+        }
       }
 
       this._cachedPdfPageCssH = Math.round(((this.pdfDefaultPageSize && this.pdfDefaultPageSize.height) || 842) * nextZoom);
@@ -3735,12 +4021,14 @@
         clearTimeout(this._pdfPinchRenderTimer);
         this._pdfPinchRenderTimer = null;
       }
-      // 핀치 도중(isFastPreview: true)에는 무거운 PDF 전체 재렌더링 타이머를 돌리지 않고 손가락을 뗄 때(endPdfViewerPinch) 단 1회만 고화질 베이크!
-      if (!isFastPreview) {
+      if (isImmediateCommit) {
+        this.onPdfViewportScroll();
+        this.renderAllPdfPages(false);
+      } else if (!isFastPreview) {
         this._pdfPinchRenderTimer = setTimeout(() => {
           this._pdfPinchRenderTimer = null;
           this.renderAllPdfPages(false);
-        }, 110);
+        }, 95);
       }
     }
 
@@ -3758,11 +4046,7 @@
 
     togglePdfCropMode(forceVal = null) {
       this._stopPdfViewportInertia();
-      if (this._pdfPinchMoveRaf) {
-        cancelAnimationFrame(this._pdfPinchMoveRaf);
-        this._pdfPinchMoveRaf = null;
-      }
-      this._pdfPinchState = null;
+      this._clearPdfViewerPinchPreviewTransforms();
       if (this._pdfTouchPointers) this._pdfTouchPointers.clear();
       const prevState = Boolean(this.isPdfCropModeActive);
       let nextState = (forceVal !== null) ? Boolean(forceVal) : !prevState;
@@ -3817,6 +4101,14 @@
 
       viewport.addEventListener('dragstart', (e) => e.preventDefault());
 
+      // Safari 고유 멀티터치 제스처 이벤트 간섭 차단
+      viewport.addEventListener('gesturestart', (e) => {
+        if (e.cancelable) e.preventDefault();
+      }, { passive: false });
+      viewport.addEventListener('gesturechange', (e) => {
+        if (e.cancelable) e.preventDefault();
+      }, { passive: false });
+
       // 마우스 측면 뒤로가기 버튼(버튼 3, 4) 오작동 방지
       window.addEventListener('pointerdown', (e) => {
         if (this.isPdfModalOpen && (e.button === 3 || e.button === 4)) {
@@ -3824,7 +4116,7 @@
         }
       });
 
-      // 🌟 [아이패드 / 태블릿 PDF 모달 뷰어(#pdfViewport) 두 손가락 핀치 줌 & 두 손가락 스크롤] 🌟
+      // 🌟 [아이패드 / 태블릿 PDF 모달 뷰어(#pdfViewport) 120Hz 무리플로우 GPU 핀치 줌 & 2손가락 이동] 🌟
       this._pdfTouchPointers = new Map();
       this._pdfPinchState = null;
       this._pdfPinchMoveRaf = null;
@@ -3832,15 +4124,30 @@
       const capturePdfAnchorAtClientPoint = (midClientX, midClientY) => {
         let anchorPageEl = null;
         let bestDistY = Infinity;
-        const wrappers = document.querySelectorAll('.pdf-page-wrapper');
-        wrappers.forEach(w => {
+        const centerP = this.pdfCurrentPage || 1;
+        const totalP = this.pdfTotalPages || 1;
+        const loP = Math.max(1, centerP - 5);
+        const hiP = Math.min(totalP, centerP + 5);
+        for (let p = loP; p <= hiP; p++) {
+          const w = document.getElementById(`pdfPageWrapper_${p}`);
+          if (!w) continue;
           const r = w.getBoundingClientRect();
           const dy = (midClientY < r.top) ? (r.top - midClientY) : (midClientY > r.bottom ? (midClientY - r.bottom) : 0);
           if (dy < bestDistY) {
             bestDistY = dy;
             anchorPageEl = w;
           }
-        });
+        }
+        if (!anchorPageEl) {
+          document.querySelectorAll('.pdf-page-wrapper').forEach(w => {
+            const r = w.getBoundingClientRect();
+            const dy = (midClientY < r.top) ? (r.top - midClientY) : (midClientY > r.bottom ? (midClientY - r.bottom) : 0);
+            if (dy < bestDistY) {
+              bestDistY = dy;
+              anchorPageEl = w;
+            }
+          });
+        }
         let anchorRelX = 0.5;
         let anchorRelY = 0.5;
         if (anchorPageEl) {
@@ -3851,12 +4158,70 @@
         return { anchorPageEl, anchorRelX, anchorRelY };
       };
 
-      const startPdfViewerPinch = (p1, p2) => {
-        this._stopPdfViewportInertia();
+      const endPdfViewerPinch = (opts = null) => {
         if (this._pdfPinchMoveRaf) {
           cancelAnimationFrame(this._pdfPinchMoveRaf);
           this._pdfPinchMoveRaf = null;
         }
+        const st = this._pdfPinchState;
+        if (!st) return;
+        if (st._hasPendingMove) {
+          applyPdfViewerPinchStep();
+        }
+        this._pdfPinchState = null;
+
+        if (Array.isArray(st.previewItems)) {
+          for (let i = 0; i < st.previewItems.length; i++) {
+            const el = st.previewItems[i].el;
+            if (el) {
+              el.style.transform = '';
+              el.style.transformOrigin = '';
+              el.style.willChange = '';
+            }
+          }
+        }
+        viewport.classList.remove('pinching-gpu');
+
+        if (this._pdfPinchRenderTimer) {
+          clearTimeout(this._pdfPinchRenderTimer);
+          this._pdfPinchRenderTimer = null;
+        }
+
+        const skipReRender = Boolean(opts && opts.skipReRender);
+        if (st.hadZoomChange) {
+          this.setPdfZoom(st.previewZoom, {
+            anchorPageEl: st.anchorPageEl,
+            anchorRelX: st.anchorRelX,
+            anchorRelY: st.anchorRelY,
+            currentMidClientX: st.smoothMidClientX,
+            currentMidClientY: st.smoothMidClientY,
+            immediateCommit: !skipReRender
+          });
+        } else if (st.hadPanChange && st.anchorPageEl) {
+          const pRect = st.anchorPageEl.getBoundingClientRect();
+          const ptClientX = pRect.left + st.anchorRelX * pRect.width;
+          const ptClientY = pRect.top + st.anchorRelY * pRect.height;
+          if (viewport.scrollWidth > viewport.clientWidth) {
+            viewport.scrollLeft = Math.max(0, viewport.scrollLeft + (ptClientX - st.smoothMidClientX));
+          }
+          viewport.scrollTop = Math.max(0, viewport.scrollTop + (ptClientY - st.smoothMidClientY));
+          this.savedPdfScrollLeft = viewport.scrollLeft;
+          this.savedPdfScrollTop = viewport.scrollTop;
+          if (!skipReRender) {
+            this.onPdfViewportScroll();
+            this._drainPdfModalRenderQueue();
+          }
+        } else if (!skipReRender) {
+          this._drainPdfModalRenderQueue();
+        }
+      };
+
+      const startPdfViewerPinch = (p1, p2) => {
+        if (this._pdfPinchState) {
+          endPdfViewerPinch({ skipReRender: true });
+        }
+        this._stopPdfViewportInertia();
+        this._cancelActivePdfModalRenderJob(false);
         this.isPdfCropping = false;
         this._isPdfViewportPanning = false;
         this._pdfViewportPanStart = null;
@@ -3866,25 +4231,54 @@
           try { viewport.releasePointerCapture(this.activeCropPointerId); } catch (err) { }
           this.activeCropPointerId = null;
         }
+
+        // UIScrollView 잔여 관성을 레이아웃 변경 없이 즉시 브레이크
+        const initScrollTop = viewport.scrollTop;
+        const initScrollLeft = viewport.scrollLeft;
+        viewport.scrollTop = initScrollTop;
+        viewport.scrollLeft = initScrollLeft;
+
         const vRect = viewport.getBoundingClientRect();
-        const midClientX = (p1.x + p2.x) / 2;
-        const midClientY = (p1.y + p2.y) / 2;
+        const midClientX = (p1.x + p2.x) * 0.5;
+        const midClientY = (p1.y + p2.y) * 0.5;
         const midX = midClientX - vRect.left;
         const midY = midClientY - vRect.top;
         const dist = Math.max(24, Math.hypot(p2.x - p1.x, p2.y - p1.y));
         const { anchorPageEl, anchorRelX, anchorRelY } = capturePdfAnchorAtClientPoint(midClientX, midClientY);
 
+        const anchorPageNum = (anchorPageEl && parseInt(anchorPageEl.dataset.page, 10)) || this.pdfCurrentPage || 1;
+        const totalP = this.pdfTotalPages || 1;
+        const loP = Math.max(1, anchorPageNum - 4);
+        const hiP = Math.min(totalP, anchorPageNum + 4);
+        const previewItems = [];
+        for (let p = loP; p <= hiP; p++) {
+          const w = document.getElementById(`pdfPageWrapper_${p}`);
+          if (!w) continue;
+          const r = w.getBoundingClientRect();
+          w.style.transformOrigin = '0 0';
+          w.style.willChange = 'transform';
+          previewItems.push({
+            el: w,
+            initLeft: r.left - vRect.left,
+            initTop: r.top - vRect.top
+          });
+        }
+        viewport.classList.add('pinching-gpu');
+
+        const startZoom = this.pdfZoom || 1.5;
         this._pdfPinchState = {
           id1: p1.id,
           id2: p2.id,
-          zoomUnlocked: false,
-          _parallelPanLocked: false,
-          initDist: dist,
-          initMidClientX: midClientX,
-          initMidClientY: midClientY,
           startDist: dist,
           smoothDist: dist,
-          startZoom: this.pdfZoom || 1.5,
+          startZoom,
+          previewZoom: startZoom,
+          hadZoomChange: false,
+          hadPanChange: false,
+          vRectLeft: vRect.left,
+          vRectTop: vRect.top,
+          initScrollLeft,
+          initScrollTop,
           startMidX: midX,
           startMidY: midY,
           smoothMidClientX: midClientX,
@@ -3892,8 +4286,8 @@
           anchorPageEl,
           anchorRelX,
           anchorRelY,
-          contentX: viewport.scrollLeft + midX,
-          contentY: viewport.scrollTop + midY,
+          previewItems,
+          lblEl: document.getElementById('lblPdfZoom'),
           latestP1: { id: p1.id, x: p1.x, y: p1.y },
           latestP2: { id: p2.id, x: p2.x, y: p2.y },
           _hasPendingMove: false
@@ -3906,79 +4300,57 @@
         st._hasPendingMove = false;
         const p1 = st.latestP1;
         const p2 = st.latestP2;
-        const vRect = viewport.getBoundingClientRect();
-        const rawMidClientX = (p1.x + p2.x) / 2;
-        const rawMidClientY = (p1.y + p2.y) / 2;
+        const rawMidClientX = (p1.x + p2.x) * 0.5;
+        const rawMidClientY = (p1.y + p2.y) * 0.5;
         const rawDist = Math.max(24, Math.hypot(p2.x - p1.x, p2.y - p1.y));
-        const panTravelFromInit = Math.hypot(rawMidClientX - st.initMidClientX, rawMidClientY - st.initMidClientY);
-        const distDeltaFromInit = Math.abs(rawDist - st.initDist);
 
-        if (!st.zoomUnlocked && panTravelFromInit >= 26 && distDeltaFromInit < 14) {
-          st._parallelPanLocked = true;
-        }
-
-        // 🛡️ 중점·거리 위상 동기화 EMA 로우패스 필터
+        // 정지 상태 미세 정전식 노이즈만 흡수하고 이동 시 손가락 끝을 1:1 즉각 추종
         const jitterMid = Math.hypot(rawMidClientX - st.smoothMidClientX, rawMidClientY - st.smoothMidClientY);
-        const alphaMid = (jitterMid < 1.0) ? 0.32 : 0.68;
-        st.smoothMidClientX = st.smoothMidClientX + (rawMidClientX - st.smoothMidClientX) * alphaMid;
-        st.smoothMidClientY = st.smoothMidClientY + (rawMidClientY - st.smoothMidClientY) * alphaMid;
-
-        if (!st.zoomUnlocked) {
-          const unlockThreshold = st._parallelPanLocked ? 28 : 14;
-          if (distDeltaFromInit >= unlockThreshold) {
-            st.zoomUnlocked = true;
-            st.startDist = rawDist;
-            st.smoothDist = rawDist;
-            st.startZoom = this.pdfZoom || 1.5;
-            st.smoothMidClientX = rawMidClientX;
-            st.smoothMidClientY = rawMidClientY;
-            const anchored = capturePdfAnchorAtClientPoint(rawMidClientX, rawMidClientY);
-            st.anchorPageEl = anchored.anchorPageEl;
-            st.anchorRelX = anchored.anchorRelX;
-            st.anchorRelY = anchored.anchorRelY;
-            const midX0 = rawMidClientX - vRect.left;
-            const midY0 = rawMidClientY - vRect.top;
-            st.contentX = viewport.scrollLeft + midX0;
-            st.contentY = viewport.scrollTop + midY0;
-          } else {
-            // 줌 임계값 도달 전 두 손가락 평행 이동: 페이지 리플로우 없이 스크롤 위치만 부드럽게 이동
-            if (st.anchorPageEl) {
-              const pRect = st.anchorPageEl.getBoundingClientRect();
-              const ptClientX = pRect.left + st.anchorRelX * pRect.width;
-              const ptClientY = pRect.top + st.anchorRelY * pRect.height;
-              viewport.scrollLeft = Math.max(0, viewport.scrollLeft + (ptClientX - st.smoothMidClientX));
-              viewport.scrollTop = Math.max(0, viewport.scrollTop + (ptClientY - st.smoothMidClientY));
-              this.savedPdfScrollLeft = viewport.scrollLeft;
-              this.savedPdfScrollTop = viewport.scrollTop;
-            }
-            return;
-          }
-        }
+        const alphaMid = (jitterMid < 0.8) ? 0.45 : 0.88;
+        st.smoothMidClientX += (rawMidClientX - st.smoothMidClientX) * alphaMid;
+        st.smoothMidClientY += (rawMidClientY - st.smoothMidClientY) * alphaMid;
 
         const jitterDist = Math.abs(rawDist - st.smoothDist);
-        const alphaDist = (jitterDist < 1.0) ? 0.32 : 0.68;
-        st.smoothDist = st.smoothDist + (rawDist - st.smoothDist) * alphaDist;
+        const alphaDist = (jitterDist < 0.8) ? 0.45 : 0.88;
+        st.smoothDist += (rawDist - st.smoothDist) * alphaDist;
 
-        const nextZoom = (typeof this._computeStandardPinchZoom === 'function')
-          ? this._computeStandardPinchZoom(st.smoothDist, st.startDist, st.startZoom, 0.6, 3.2, 1.0)
-          : Math.max(0.6, Math.min(3.2, st.startZoom * Math.pow((st.smoothDist + 65) / (st.startDist + 65), 0.95)));
-        const actualRatio = nextZoom / st.startZoom;
-        const midX = st.smoothMidClientX - vRect.left;
-        const midY = st.smoothMidClientY - vRect.top;
+        const distDelta = st.smoothDist - st.startDist;
+        const deadzonePx = 2.5;
+        const effDelta = Math.abs(distDelta) <= deadzonePx
+          ? 0
+          : (distDelta - Math.sign(distDelta) * deadzonePx);
+        const effDist = Math.max(24, st.startDist + effDelta);
+        const nextZoom = Math.max(0.6, Math.min(3.2, st.startZoom * (effDist / st.startDist)));
+        const scaleRatio = nextZoom / st.startZoom;
 
-        this.setPdfZoom(nextZoom, {
-          fastPreview: true,
-          anchorPageEl: st.anchorPageEl,
-          anchorRelX: st.anchorRelX,
-          anchorRelY: st.anchorRelY,
-          currentMidClientX: st.smoothMidClientX,
-          currentMidClientY: st.smoothMidClientY,
-          anchorContentX: st.contentX,
-          anchorContentY: st.contentY,
-          anchorRatio: actualRatio,
-          currentMidX: midX,
-          currentMidY: midY
-        });
+        st.previewZoom = nextZoom;
+        if (Math.abs(nextZoom - st.startZoom) > 0.002) {
+          st.hadZoomChange = true;
+        }
+        const curMidX = st.smoothMidClientX - st.vRectLeft;
+        const curMidY = st.smoothMidClientY - st.vRectTop;
+        if (Math.hypot(curMidX - st.startMidX, curMidY - st.startMidY) > 1.5) {
+          st.hadPanChange = true;
+        }
+
+        if (st.lblEl) {
+          st.lblEl.textContent = `${Math.round(nextZoom * 100)}%`;
+        }
+
+        const scrollDriftX = viewport.scrollLeft - st.initScrollLeft;
+        const scrollDriftY = viewport.scrollTop - st.initScrollTop;
+        const panShiftX = (curMidX - st.startMidX) + scrollDriftX;
+        const panShiftY = (curMidY - st.startMidY) + scrollDriftY;
+        const scaleMinusOne = scaleRatio - 1;
+        const scaleStr = scaleRatio.toFixed(5);
+
+        const items = st.previewItems;
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const dx = panShiftX + (item.initLeft - st.startMidX) * scaleMinusOne;
+          const dy = panShiftY + (item.initTop - st.startMidY) * scaleMinusOne;
+          item.el.style.transform = `translate3d(${dx.toFixed(2)}px, ${dy.toFixed(2)}px, 0) scale(${scaleStr})`;
+        }
       };
 
       const movePdfViewerPinch = (p1, p2) => {
@@ -4011,35 +4383,15 @@
         }
       };
 
-      const endPdfViewerPinch = () => {
-        if (this._pdfPinchMoveRaf) {
-          cancelAnimationFrame(this._pdfPinchMoveRaf);
-          this._pdfPinchMoveRaf = null;
-        }
-        if (this._pdfPinchState) {
-          if (this._pdfPinchState._hasPendingMove) {
-            applyPdfViewerPinchStep();
-          }
-          const hadZoomChange = Boolean(this._pdfPinchState.zoomUnlocked);
-          this._pdfPinchState = null;
-          if (this._pdfPinchRenderTimer) {
-            clearTimeout(this._pdfPinchRenderTimer);
-            this._pdfPinchRenderTimer = null;
-          }
-          if (hadZoomChange) {
-            this.renderAllPdfPages(false);
-          }
-        }
-      };
-
       const hasNativeTouchEvents = ('ontouchstart' in window);
 
       // iOS / iPadOS Safari & Android TouchEvents 직결 지원:
-      // touchstart는 passive: true로 등록하여 1손가락 터치 시 JS 대기(0ms) 없이 WebKit 120Hz UIScrollView 관성 스크롤이 즉시 출발하고,
-      // 2손가락 이상 핀치 시에는 identifier 쌍을 잠그어 3번째 손가락/손날 스침에 의한 화면 튐을 0%로 방어합니다!
+      // 1손가락 터치는 preventDefault를 호출하지 않아 WebKit 120Hz 순정 관성 스크롤이 그대로 작동하고,
+      // 2손가락 이상 핀치 시에는 touchstart 즉시 preventDefault()로 네이티브 스크롤 경합(깜빡임·화면 튐)을 원천 차단!
       viewport.addEventListener('touchstart', (e) => {
         this._stopPdfViewportInertia();
         if (e.touches && e.touches.length >= 2) {
+          if (e.cancelable) e.preventDefault();
           if (this._pdfPinchState && this._pdfPinchState.id1 !== undefined && this._pdfPinchState.id2 !== undefined) {
             let has1 = false;
             let has2 = false;
@@ -4054,7 +4406,7 @@
             { id: e.touches[1].identifier, x: e.touches[1].clientX, y: e.touches[1].clientY }
           );
         }
-      }, { passive: true });
+      }, { passive: false });
 
       viewport.addEventListener('touchmove', (e) => {
         if (!e.touches || e.touches.length < 2) return;
