@@ -281,6 +281,9 @@ class GraphApp {
     this.lassoDragStart = null;          // 드래그 시작 좌표 {screenX, screenY, m: {x, y}}
     this.isResizingLassoSelection = false; // 선택된 영역 모서리 크기 조절 플래그
     this.lassoResizeStart = null;          // 크기 조절 시작 스냅샷
+    this.isRotatingLassoSelection = false; // 선택된 영역 하단 손잡이 회전 플래그
+    this.lassoRotateStart = null;          // 회전 시작 스냅샷
+    this._lassoFlipAnim = null;            // 반전 셀로판지 모션 상태 {axis, cx, cy, startPerf, duration, rafId}
     this.boardPaperType = 'blank';         // 칠판 배경 속지 ('blank' | 'grid' | 'lined' | 'dot')
     try {
       const savedPaper = localStorage.getItem('graphly_board_paper_v1');
@@ -2068,6 +2071,9 @@ class GraphApp {
         this.boardStickers = [];
       }
       this._inkBakeDirty = true;
+      if (!this._isApplyingAudioTimelineState && typeof this._rebindLassoSelectionAfterHistoryRestore === 'function') {
+        this._rebindLassoSelectionAfterHistoryRestore(Boolean(this._isDeserializingSlide));
+      }
 
       this.selectedHandleIdx = null;
       this.isCurveSelected = this.graphs.length > 0;
@@ -4437,6 +4443,8 @@ class GraphApp {
       this.isLassoSelecting ||
       this.isDraggingLassoSelection ||
       this.isResizingLassoSelection ||
+      this.isRotatingLassoSelection ||
+      Boolean(this._lassoFlipAnim) ||
       this._isInteractingWithPipCard ||
       this._isDraggingOrResizingAnyCard
     );

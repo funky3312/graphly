@@ -4124,6 +4124,14 @@ canvas.ink-cursor-lasso.is-hover-resize-nesw {
   cursor: nesw-resize !important;
 }
 
+canvas.ink-cursor-lasso.is-hover-rotate {
+  cursor: grab !important;
+}
+
+canvas.ink-cursor-lasso.is-rotating {
+  cursor: grabbing !important;
+}
+
 canvas.ink-cursor-grab {
   cursor: move !important;
 }
@@ -7192,6 +7200,18 @@ body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-curso
 body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="nesw"]:not(.minimized) .problem-card-body,
 body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="nesw"]:not(.minimized) .problem-card-img {
   cursor: nesw-resize !important;
+}
+
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="rotate"]:not(.minimized) .problem-card-canvas,
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="rotate"]:not(.minimized) .problem-card-body,
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="rotate"]:not(.minimized) .problem-card-img {
+  cursor: grab !important;
+}
+
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="rotating"]:not(.minimized) .problem-card-canvas,
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="rotating"]:not(.minimized) .problem-card-body,
+body.ink-lasso-tool-active .problem-card-widget.card-ink-active[data-lasso-cursor="rotating"]:not(.minimized) .problem-card-img {
+  cursor: grabbing !important;
 }
 
 .problem-card-body,

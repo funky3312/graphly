@@ -8172,6 +8172,9 @@
 
     // 현재 워크스페이스(판서 + 문제 카드 + #1,#2 그래프 카드 + 실시간 그래프)를 100% 직렬화 가능한 JSON 객체로 추출
     serializeFullSlideState(title = '') {
+      if (typeof this._finishLassoFlipAnimImmediate === 'function') {
+        this._finishLassoFlipAnimImmediate();
+      }
       const pWidget = document.getElementById('problemCardWidget');
       const pImg = document.getElementById('problemCardImg');
       const pTitle = document.getElementById('problemCardTitle');
@@ -8391,6 +8394,9 @@
     // 직렬화된 슬라이드 JSON 객체를 현재 워크스페이스에 100% 무손실 복원
     deserializeFullSlideState(slideData) {
       if (!slideData) return;
+      if (typeof this._rebindLassoSelectionAfterHistoryRestore === 'function') {
+        this._rebindLassoSelectionAfterHistoryRestore(true);
+      }
       this._viewerCompositeMountedSlide = null;
       this._viewerCompositeSmartBounds = null;
       if (typeof this._invalidatePdfBoardHiResTile === 'function') {
@@ -14475,6 +14481,9 @@
         this.inkStrokes = [];
         this.selectedInkIndices = [];
         this.inkLassoBox = null;
+        if (typeof this._clearMainLassoSelectionSilent === 'function') {
+          this._clearMainLassoSelectionSilent();
+        }
         this._inkBakeDirty = true;
         this.clearInkCache();
         if (this.isLessonPlaylistActive) {

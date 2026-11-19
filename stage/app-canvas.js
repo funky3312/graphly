@@ -1514,12 +1514,59 @@
         }
         // [🪢 올가미(Lasso) 툴 인터랙션]
         if (this.activeInkTool === 'lasso') {
+          if (this._lassoFlipAnim && typeof this._finishLassoFlipAnimImmediate === 'function') {
+            this._finishLassoFlipAnimImmediate();
+          }
           const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
             (this.selectedTextLabels && this.selectedTextLabels.length > 0);
 
           if (hasSelection) {
+            const hitRotate = (typeof this.getLassoRotateHandleAt === 'function') ? this.getLassoRotateHandleAt(pos) : null;
+            if (hitRotate) {
+              if (typeof this._ensureLassoSelectionIds === 'function') {
+                this._ensureLassoSelectionIds();
+              }
+              this.isRotatingLassoSelection = true;
+              this._preDragState = this.getHistorySnapshot();
+              if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
+                this._lassoExcludedBakeSet = new Set(this.selectedInkStrokes);
+                this._inkBakeDirty = true;
+              }
+              const bbox = this._ensureFreshLassoBoundingBox() || this.lassoBoundingBox;
+              const cx = (bbox.minX + bbox.maxX) * 0.5;
+              const cy = (bbox.minY + bbox.maxY) * 0.5;
+              this.lassoRotateStart = {
+                cx,
+                cy,
+                startPointerAngle: Math.atan2(pos.y - cy, pos.x - cx),
+                curAngle: 0,
+                deg: 0,
+                snapped: false,
+                initBBox: { ...bbox },
+                initRotHandle: { ...hitRotate },
+                strokesSnap: (this.selectedInkStrokes || []).map(s => JSON.parse(JSON.stringify(s))),
+                textsSnap: (this.selectedTextLabels || []).map(t => JSON.parse(JSON.stringify(t))),
+                lassoPointsSnap: (this.lassoPoints || []).map(p => ({ x: p.x, y: p.y }))
+              };
+              this.canvas.style.cursor = 'grabbing';
+              this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw', 'is-hover-rotate');
+              this.canvas.classList.add('is-rotating');
+              if (this.isAudioRecording && typeof this._beginAudioLassoTransformOp === 'function') {
+                this._beginAudioLassoTransformOp('rotate', {
+                  anchorX: cx,
+                  anchorY: cy,
+                  initBBox: [bbox.minX, bbox.minY, bbox.maxX, bbox.maxY]
+                });
+              }
+              this.syncLassoActionBarUI();
+              this.render();
+              return;
+            }
             const hitResize = this.getLassoResizeHandleAt(pos);
             if (hitResize) {
+              if (typeof this._ensureLassoSelectionIds === 'function') {
+                this._ensureLassoSelectionIds();
+              }
               this.isResizingLassoSelection = true;
               this._preDragState = this.getHistorySnapshot();
               if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
@@ -1549,7 +1596,7 @@
               };
               const isNwse = (hitResize === 'br' || hitResize === 'tl');
               this.canvas.style.cursor = isNwse ? 'nwse-resize' : 'nesw-resize';
-              this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw');
+              this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw', 'is-hover-rotate', 'is-rotating');
               this.canvas.classList.add(isNwse ? 'is-hover-resize-nwse' : 'is-hover-resize-nesw');
               if (this.isAudioRecording && typeof this._beginAudioLassoTransformOp === 'function') {
                 this._beginAudioLassoTransformOp('resize', { anchorX: info.ax, anchorY: info.ay });
@@ -1561,6 +1608,9 @@
             const hitSelection = this.isPointInLassoSelection(pos);
             if (hitSelection) {
               // 1. 점선 루프 내부 터치 -> 드래그 이동 시작!
+              if (typeof this._ensureLassoSelectionIds === 'function') {
+                this._ensureLassoSelectionIds();
+              }
               this.isDraggingLassoSelection = true;
               this._preDragState = this.getHistorySnapshot();
               if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) {
@@ -1575,7 +1625,7 @@
               if (this.isAudioRecording && typeof this._beginAudioLassoTransformOp === 'function') {
                 this._beginAudioLassoTransformOp('move', { startScreenX: pos.x, startScreenY: pos.y });
               }
-              this.canvas.classList.remove('is-hover-resize-nwse', 'is-hover-resize-nesw');
+              this.canvas.classList.remove('is-hover-resize-nwse', 'is-hover-resize-nesw', 'is-hover-rotate', 'is-rotating');
               this.canvas.style.cursor = 'move';
               this.render();
               return;
@@ -1598,7 +1648,7 @@
               this._lassoStartPos = { x: pos.x, y: pos.y };
               this.lassoPoints = [{ x: pos.x, y: pos.y }];
               this.canvas.style.cursor = 'crosshair';
-              this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw');
+              this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw', 'is-hover-rotate', 'is-rotating');
               if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
                 try { this._recordAudioWorkspaceStateIfNeeded(true); } catch (_) { }
               }
@@ -2040,7 +2090,7 @@
         (e.pointerType === 'mouse' || !e.pointerType) &&
         typeof e.buttons === 'number' &&
         e.buttons === 0 &&
-        (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isLassoSelecting)
+        (this.isDrawingInk || this.isStylusDrawing || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isRotatingLassoSelection || this.isLassoSelecting)
       ) {
         this.isPointerDownOnCanvas = false;
         handleUp(e);
@@ -2240,6 +2290,58 @@
 
       // [🪢 올가미(Lasso) 툴 인터랙션]
       if (this.isInkMode && this.activeInkTool === 'lasso') {
+        // -1. 하단 회전 노브 드래그로 선택된 필기·도형·수식 자유 회전 (+ 스마트 각도 자석 스냅)!
+        if (this.isRotatingLassoSelection && this.lassoRotateStart) {
+          const rs = this.lassoRotateStart;
+          const rawDelta = Math.atan2(pos.y - rs.cy, pos.x - rs.cx) - rs.startPointerAngle;
+          const snapRes = (typeof this._snapLassoRotationAngle === 'function')
+            ? this._snapLassoRotationAngle(rawDelta, Boolean(e && e.shiftKey))
+            : { angle: rawDelta, snapped: false, deg: Math.round((rawDelta * 180) / Math.PI) };
+          rs.curAngle = snapRes.angle;
+          rs.deg = snapRes.deg;
+          rs.snapped = snapRes.snapped;
+
+          const cosA = Math.cos(snapRes.angle);
+          const sinA = Math.sin(snapRes.angle);
+          const rotScreenPt = (sp) => ({
+            x: rs.cx + (sp.x - rs.cx) * cosA - (sp.y - rs.cy) * sinA,
+            y: rs.cy + (sp.x - rs.cx) * sinA + (sp.y - rs.cy) * cosA
+          });
+
+          if (this.selectedInkStrokes && rs.strokesSnap && typeof this._transformSingleStrokeFromSnapshot === 'function') {
+            this.selectedInkStrokes.forEach((stroke, idx) => {
+              const snap = rs.strokesSnap[idx];
+              if (!snap) return;
+              this._transformSingleStrokeFromSnapshot(stroke, snap, rotScreenPt, { angleRad: snapRes.angle });
+            });
+          }
+
+          if (this.selectedTextLabels && rs.textsSnap) {
+            this.selectedTextLabels.forEach((t, idx) => {
+              const snapT = rs.textsSnap[idx];
+              if (!snapT) return;
+              const sp = rotScreenPt(this.mathToScreen(snapT.mathX, snapT.mathY));
+              const nm = this.screenToMath(sp.x, sp.y);
+              t.mathX = nm.x;
+              t.mathY = nm.y;
+            });
+          }
+
+          if (rs.lassoPointsSnap && rs.lassoPointsSnap.length > 0) {
+            this.lassoPoints = rs.lassoPointsSnap.map(pt => rotScreenPt(pt));
+          }
+
+          this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
+          if (this.isAudioRecording && typeof this._updateAudioLassoTransformOp === 'function') {
+            this._updateAudioLassoTransformOp({ angle: snapRes.angle });
+          }
+          if (this.selectedInkStrokes && this.selectedInkStrokes.length > 0 && !this._lassoExcludedBakeSet) {
+            this._inkBakeDirty = true;
+          }
+          this.requestRender();
+          return;
+        }
+
         // 0. 모서리 핸들 드래그로 선택된 필기·도형·수식 비율 크기 조절!
         if (this.isResizingLassoSelection && this.lassoResizeStart) {
           const rs = this.lassoResizeStart;
@@ -2430,21 +2532,26 @@
           return;
         }
 
-        // 3. 점선 루프 위 호버 시 커서 변경 (올가미 내부만 move, 바깥은 crosshair)
+        // 3. 점선 루프 위 호버 시 커서 변경 (회전 노브 grab / 모서리 resize / 내부 move / 바깥 crosshair)
         const hasSelection = (this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
           (this.selectedTextLabels && this.selectedTextLabels.length > 0);
         if (hasSelection) {
-          const hitHandle = this.getLassoResizeHandleAt(pos);
-          if (hitHandle) {
+          const hitRotate = (typeof this.getLassoRotateHandleAt === 'function') ? this.getLassoRotateHandleAt(pos) : null;
+          const hitHandle = hitRotate ? null : this.getLassoResizeHandleAt(pos);
+          if (hitRotate) {
+            this.canvas.style.cursor = 'grab';
+            this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw', 'is-rotating');
+            this.canvas.classList.add('is-hover-rotate');
+          } else if (hitHandle) {
             const isNwse = (hitHandle === 'br' || hitHandle === 'tl');
             this.canvas.style.cursor = isNwse ? 'nwse-resize' : 'nesw-resize';
-            this.canvas.classList.remove('is-hover-selection');
+            this.canvas.classList.remove('is-hover-selection', 'is-hover-rotate', 'is-rotating');
             this.canvas.classList.toggle('is-hover-resize-nwse', isNwse);
             this.canvas.classList.toggle('is-hover-resize-nesw', !isNwse);
           } else {
             const isOver = this.isPointInLassoSelection(pos);
             this.canvas.style.cursor = isOver ? 'move' : 'crosshair';
-            this.canvas.classList.remove('is-hover-resize-nwse', 'is-hover-resize-nesw');
+            this.canvas.classList.remove('is-hover-resize-nwse', 'is-hover-resize-nesw', 'is-hover-rotate', 'is-rotating');
             this.canvas.classList.toggle('is-hover-selection', isOver);
           }
         }
@@ -3598,6 +3705,51 @@
 
       // [🪢 올가미(Lasso) 툴 인터랙션]
       if (this.isInkMode && this.activeInkTool === 'lasso') {
+        const pos = e ? getPos(e) : null;
+        if (this.isRotatingLassoSelection) {
+          this.isRotatingLassoSelection = false;
+          this.lassoRotateStart = null;
+          if (this._lassoExcludedBakeSet) {
+            this._lassoExcludedBakeSet = null;
+            this._inkBakeDirty = true;
+          }
+          if (this._preDragState) {
+            const afterSnap = this.getHistorySnapshot();
+            if (this._preDragState !== afterSnap) {
+              this.undoStack.push(this._preDragState);
+              if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+              this.redoStack = [];
+              this.updateUndoRedoUI();
+            }
+            this._preDragState = null;
+          }
+          if (this.isAudioRecording && typeof this._commitAudioLassoTransformOp === 'function') {
+            this._commitAudioLassoTransformOp();
+          }
+          this.lassoBoundingBox = this.calculateStrokesBoundingBox(this.selectedInkStrokes, this.selectedTextLabels);
+          const hitRotAfter = (typeof this.getLassoRotateHandleAt === 'function') ? this.getLassoRotateHandleAt(pos) : null;
+          const hitAfterResize = hitRotAfter ? null : this.getLassoResizeHandleAt(pos);
+          this.canvas.classList.remove('is-rotating');
+          if (hitRotAfter) {
+            this.canvas.style.cursor = 'grab';
+            this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw');
+            this.canvas.classList.add('is-hover-rotate');
+          } else if (hitAfterResize) {
+            const isNwse = (hitAfterResize === 'br' || hitAfterResize === 'tl');
+            this.canvas.style.cursor = isNwse ? 'nwse-resize' : 'nesw-resize';
+            this.canvas.classList.remove('is-hover-selection', 'is-hover-rotate');
+            this.canvas.classList.toggle('is-hover-resize-nwse', isNwse);
+            this.canvas.classList.toggle('is-hover-resize-nesw', !isNwse);
+          } else {
+            const isOverAfter = this.isPointInLassoSelection(pos);
+            this.canvas.style.cursor = isOverAfter ? 'move' : 'crosshair';
+            this.canvas.classList.remove('is-hover-resize-nwse', 'is-hover-resize-nesw', 'is-hover-rotate');
+            this.canvas.classList.toggle('is-hover-selection', isOverAfter);
+          }
+          this.syncLassoActionBarUI();
+          this.render();
+          return;
+        }
         if (this.isResizingLassoSelection) {
           this.isResizingLassoSelection = false;
           this.lassoResizeStart = null;
@@ -3687,7 +3839,7 @@
             this.selectedTextLabels = [];
             this.lassoBoundingBox = null;
             this.lassoPoints = [];
-            this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw');
+            this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw', 'is-hover-rotate', 'is-rotating');
             this.setActiveInkTool('pen');
             return;
           }
@@ -3703,6 +3855,9 @@
             if (matchedStrokes.length > 0 || matchedTexts.length > 0) {
               this.selectedInkStrokes = matchedStrokes;
               this.selectedTextLabels = matchedTexts;
+              if (typeof this._ensureLassoSelectionIds === 'function') {
+                this._ensureLassoSelectionIds(matchedStrokes, matchedTexts);
+              }
               this.lassoBoundingBox = this.calculateStrokesBoundingBox(matchedStrokes, matchedTexts);
               this.canvas.style.cursor = 'move';
             } else {
@@ -4353,7 +4508,8 @@
           this.isDraggingCurve ||
           this.activePwDragIdx !== null ||
           this.isDraggingLassoSelection ||
-          this.isResizingLassoSelection
+          this.isResizingLassoSelection ||
+          this.isRotatingLassoSelection
         ) {
           const nowT = Date.now();
           lastPointerMoveTime = nowT;
@@ -4412,7 +4568,8 @@
           !this.isDraggingCurve &&
           this.draggedHandleIdx === null &&
           !this.isDraggingLassoSelection &&
-          !this.isResizingLassoSelection
+          !this.isResizingLassoSelection &&
+          !this.isRotatingLassoSelection
         ) {
           const overMenuOrBlockedCard = this.isPointerOverMenu(e);
           if (overMenuOrBlockedCard) {
@@ -4493,6 +4650,7 @@
           this.draggedHandleIdx === null &&
           !this.isDraggingLassoSelection &&
           !this.isResizingLassoSelection &&
+          !this.isRotatingLassoSelection &&
           !this.isLassoSelecting &&
           !this.isResizingStage &&
           !this.isMovingStage
@@ -4528,7 +4686,7 @@
         }
 
         lastPointerUpTime = nowT;
-        if (hasTrackedTouchOrPinch || this.isDrawingInk || this.isStylusDrawing || this.isDrawingSticker || this._tappingBoardSticker || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
+        if (hasTrackedTouchOrPinch || this.isDrawingInk || this.isStylusDrawing || this.isDrawingSticker || this._tappingBoardSticker || this.isPanning || this.isBoardPanning || this.isDraggingCurve || this.draggedHandleIdx !== null || this.isDraggingLassoSelection || this.isResizingLassoSelection || this.isRotatingLassoSelection || this.isLassoSelecting || this.isResizingStage || this.isMovingStage || !isClickableUI(e.target)) {
           handleUp(e);
         }
       };
@@ -4671,12 +4829,19 @@
         }
         if (this.isInkMode && ((this.selectedInkStrokes && this.selectedInkStrokes.length > 0) || (this.selectedTextLabels && this.selectedTextLabels.length > 0))) {
           e.preventDefault();
-          this.selectedInkStrokes = [];
-          this.selectedTextLabels = [];
-          this.lassoBoundingBox = null;
-          this.lassoPoints = [];
-          if (this.canvas && this.canvas.classList) {
-            this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw');
+          if (typeof this._finishLassoFlipAnimImmediate === 'function') {
+            this._finishLassoFlipAnimImmediate();
+          }
+          if (typeof this._clearMainLassoSelectionSilent === 'function') {
+            this._clearMainLassoSelectionSilent();
+          } else {
+            this.selectedInkStrokes = [];
+            this.selectedTextLabels = [];
+            this.lassoBoundingBox = null;
+            this.lassoPoints = [];
+            if (this.canvas && this.canvas.classList) {
+              this.canvas.classList.remove('is-hover-selection', 'is-hover-resize-nwse', 'is-hover-resize-nesw', 'is-hover-rotate', 'is-rotating');
+            }
           }
           this.render();
           return;
@@ -5987,8 +6152,15 @@
   }
 
   _startCanvasTwoFingerPinch(p1, p2) {
-    // 🛡️ 애플펜슬로 필기 중일 때는 어떤 경우에도 획을 취소(pop)하거나 핀치를 시작하지 않음!
-    if (this.isDrawingInk || this.isStylusDrawing || this.isLassoSelecting) {
+    // 🛡️ 애플펜슬 필기 중이거나 올가미 변형(선택/이동/리사이즈/회전) 중일 때는 핀치를 시작하지 않음!
+    if (
+      this.isDrawingInk ||
+      this.isStylusDrawing ||
+      this.isLassoSelecting ||
+      this.isDraggingLassoSelection ||
+      this.isResizingLassoSelection ||
+      this.isRotatingLassoSelection
+    ) {
       return;
     }
     this.draggedHandleIdx = null;

@@ -905,6 +905,10 @@
         const cRect = isAudioReplay
           ? (typeof this._getStageElementRect === 'function' ? this._getStageElementRect(canvas) : canvas.getBoundingClientRect())
           : null;
+        const activeCl = (hasActiveLassoOnCard && this._activeCardLasso && this._activeCardLasso.widgetEl === widgetEl)
+          ? this._activeCardLasso
+          : null;
+        const cardFlipAnim = (activeCl && activeCl.flipAnim) ? activeCl.flipAnim : null;
         for (let i = 0; i < strokeList.length; i++) {
           let st = strokeList[i];
           if (isAudioReplay) {
@@ -920,7 +924,20 @@
               };
             }
           }
-          this._renderSingleCardInkStroke(ctx, st, w, h, sizeScale, options);
+          if (cardFlipAnim && cardFlipAnim.selectedSet && cardFlipAnim.selectedSet.has(st) && typeof this._getLassoFlipVisualScale === 'function') {
+            const fScale = this._getLassoFlipVisualScale(cardFlipAnim);
+            const fcx = cardFlipAnim.cxNorm * w;
+            const fcy = cardFlipAnim.cyNorm * h;
+            ctx.save();
+            ctx.translate(fcx, fcy);
+            if (cardFlipAnim.axis === 'x') ctx.scale(fScale, 1);
+            else ctx.scale(1, fScale);
+            ctx.translate(-fcx, -fcy);
+            this._renderSingleCardInkStroke(ctx, st, w, h, sizeScale, options);
+            ctx.restore();
+          } else {
+            this._renderSingleCardInkStroke(ctx, st, w, h, sizeScale, options);
+          }
         }
         this.drawCardLassoOverlay(ctx, w, h, widgetEl);
         ctx.restore();
@@ -4367,12 +4384,21 @@
         }
       };
 
-      let cardLassoMode = null; // 'drawing' | 'moving' | 'resizing'
+      let cardLassoMode = null; // 'drawing' | 'moving' | 'resizing' | 'rotating'
       let cardLassoLastNorm = null;
       let cardLassoResizeCorner = null;
       let cardLassoResizeAnchor = null;
       let cardLassoResizeInitBox = null;
       let cardLassoResizeSnapshots = null;
+      let cardLassoRotateCenterPx = null;
+      let cardLassoRotateStartAng = 0;
+
+      const hitTestCardLassoRotateHandle = (nx, ny, bbox, rw, rh) => {
+        if (!bbox || typeof this._getCardLassoRotateHandlePx !== 'function') return false;
+        const h = this._getCardLassoRotateHandlePx(bbox, rw, rh);
+        if (!h) return false;
+        return Math.hypot(nx * rw - h.x, ny * rh - h.y) <= 16;
+      };
 
       const hitTestCardLassoHandle = (nx, ny, bbox, rw, rh) => {
         if (!bbox) return null;
@@ -4414,6 +4440,9 @@
         if (e.pointerType === 'touch' && this.isStylusPalmRejectionActive()) return;
         if (e.button && e.button !== 0) return;
 
+        if (typeof this._finishLassoFlipAnimImmediate === 'function') {
+          this._finishLassoFlipAnimImmediate();
+        }
         this.bringCardToFront(cardWidgetEl);
         if (e.cancelable !== false) e.preventDefault();
         e.stopPropagation();
@@ -4421,9 +4450,13 @@
 
         if ((this.selectedInkStrokes && this.selectedInkStrokes.length > 0) ||
           (this.selectedTextLabels && this.selectedTextLabels.length > 0)) {
-          this.selectedInkStrokes = [];
-          this.selectedTextLabels = [];
-          this.lassoPoints = [];
+          if (typeof this._clearMainLassoSelectionSilent === 'function') {
+            this._clearMainLassoSelectionSilent();
+          } else {
+            this.selectedInkStrokes = [];
+            this.selectedTextLabels = [];
+            this.lassoPoints = [];
+          }
           this._inkBakeDirty = true;
           this.clearInkCache();
           this.requestRender();
@@ -4443,6 +4476,29 @@
 
         if (curCl && Array.isArray(curCl.selectedStrokes) && curCl.selectedStrokes.length > 0) {
           const bbox = curCl.bboxNorm || this.computeCardStrokesNormBBox(curCl.selectedStrokes);
+          if (bbox && hitTestCardLassoRotateHandle(pos.nx, pos.ny, bbox, rw, rh)) {
+            cardLassoMode = 'rotating';
+            curCl.isRotating = true;
+            curCl.rotInitBoxNorm = { ...bbox };
+            curCl.rotAngle = 0;
+            curCl.rotDeg = 0;
+            curCl.rotSnapped = false;
+            cardWidgetEl.dataset.lassoCursor = 'rotating';
+            const cxPx = (bbox.minNx + bbox.maxNx) * 0.5 * rw;
+            const cyPx = (bbox.minNy + bbox.maxNy) * 0.5 * rh;
+            cardLassoRotateCenterPx = { x: cxPx, y: cyPx };
+            cardLassoRotateStartAng = Math.atan2(pos.ny * rh - cyPx, pos.nx * rw - cxPx);
+            cardLassoResizeSnapshots = curCl.selectedStrokes.map(st => ({
+              stroke: st,
+              points: (st.points || []).map(p => ({ ...p })),
+              size: st.size || 3.5,
+              cardShape: st.cardShape ? JSON.parse(JSON.stringify(st.cardShape)) : null,
+              lassoPtsSnap: Array.isArray(curCl.lassoPts) ? curCl.lassoPts.map(p => ({ ...p })) : null
+            }));
+            this.syncLassoActionBarUI();
+            renderCardInkForLasso();
+            return;
+          }
           const corner = hitTestCardLassoHandle(pos.nx, pos.ny, bbox, rw, rh);
           if (corner && bbox) {
             cardLassoMode = 'resizing';
@@ -4483,6 +4539,7 @@
           isSelecting: true,
           isDragging: false,
           isResizing: false,
+          isRotating: false,
           renderFn: renderCardInkForLasso
         };
         this.syncLassoActionBarUI();
@@ -4502,8 +4559,11 @@
               const rh = Math.max(1, rect.height);
               const hPos = getNormPos(e);
               const bbox = clHover.bboxNorm || this.computeCardStrokesNormBBox(clHover.selectedStrokes);
-              const hCorner = hitTestCardLassoHandle(hPos.nx, hPos.ny, bbox, rw, rh);
-              if (hCorner) {
+              const hitRot = hitTestCardLassoRotateHandle(hPos.nx, hPos.ny, bbox, rw, rh);
+              const hCorner = hitRot ? null : hitTestCardLassoHandle(hPos.nx, hPos.ny, bbox, rw, rh);
+              if (hitRot) {
+                nextCur = 'rotate';
+              } else if (hCorner) {
                 nextCur = (hCorner === 'tl' || hCorner === 'br') ? 'nwse' : 'nesw';
               } else if (isNormPointInCardLasso(hPos.nx, hPos.ny, clHover, rw, rh)) {
                 nextCur = 'move';
@@ -4529,6 +4589,48 @@
         if (cardLassoMode === 'drawing') {
           cl.lassoPts.push({ nx: pos.nx, ny: pos.ny });
           renderCardInkForLasso();
+          return;
+        }
+
+        if (cardLassoMode === 'rotating' && cardLassoRotateCenterPx && cardLassoResizeSnapshots) {
+          const rect = bodyEl.getBoundingClientRect();
+          const rw = Math.max(1, rect.width);
+          const rh = Math.max(1, rect.height);
+          const cxPx = cardLassoRotateCenterPx.x;
+          const cyPx = cardLassoRotateCenterPx.y;
+          const rawDelta = Math.atan2(pos.ny * rh - cyPx, pos.nx * rw - cxPx) - cardLassoRotateStartAng;
+          const snapRes = (typeof this._snapLassoRotationAngle === 'function')
+            ? this._snapLassoRotationAngle(rawDelta, Boolean(e && e.shiftKey))
+            : { angle: rawDelta, snapped: false, deg: Math.round((rawDelta * 180) / Math.PI) };
+          cl.rotAngle = snapRes.angle;
+          cl.rotDeg = snapRes.deg;
+          cl.rotSnapped = snapRes.snapped;
+
+          const cosA = Math.cos(snapRes.angle);
+          const sinA = Math.sin(snapRes.angle);
+          const rotPxPt = (pp) => ({
+            x: cxPx + (pp.x - cxPx) * cosA - (pp.y - cyPx) * sinA,
+            y: cyPx + (pp.x - cxPx) * sinA + (pp.y - cyPx) * cosA
+          });
+
+          if (typeof this._transformCardStrokeFromSnapshot === 'function') {
+            cardLassoResizeSnapshots.forEach(snapItem => {
+              this._transformCardStrokeFromSnapshot(snapItem.stroke, snapItem, rotPxPt, rw, rh, { angleRad: snapRes.angle });
+            });
+          }
+          const firstSnap = cardLassoResizeSnapshots[0];
+          if (firstSnap && Array.isArray(firstSnap.lassoPtsSnap)) {
+            cl.lassoPts = firstSnap.lassoPtsSnap.map(p => {
+              const rp = rotPxPt({ x: p.nx * rw, y: p.ny * rh });
+              return { nx: rp.x / rw, ny: rp.y / rh };
+            });
+          }
+          cl.bboxNorm = this.computeCardStrokesNormBBox(cl.selectedStrokes);
+          if (cardWidgetEl.classList.contains('graph-card-widget') && typeof this._ensurePipCardInkMathCoordsByWidget === 'function') {
+            this._ensurePipCardInkMathCoordsByWidget(cardWidgetEl, true);
+          }
+          renderCardInkForLasso();
+          this.syncLassoActionBarUI();
           return;
         }
 
@@ -4630,6 +4732,8 @@
         cardLassoResizeAnchor = null;
         cardLassoResizeInitBox = null;
         cardLassoResizeSnapshots = null;
+        cardLassoRotateCenterPx = null;
+        cardLassoRotateStartAng = 0;
         try { if (e && e.pointerId !== undefined) bodyEl.releasePointerCapture(e.pointerId); } catch (_) { }
 
         const cl = (this._activeCardLasso && this._activeCardLasso.widgetEl === cardWidgetEl)
@@ -4640,6 +4744,14 @@
         cl.isSelecting = false;
         cl.isDragging = false;
         cl.isResizing = false;
+        cl.isRotating = false;
+        cl.rotInitBoxNorm = null;
+        cl.rotAngle = 0;
+        cl.rotDeg = 0;
+        cl.rotSnapped = false;
+        if (cardWidgetEl.dataset.lassoCursor === 'rotating') {
+          cardWidgetEl.dataset.lassoCursor = 'rotate';
+        }
 
         if (prevMode === 'drawing') {
           const poly = (cl.lassoPts || []).map(p => ({ x: p.nx, y: p.ny }));

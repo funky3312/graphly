@@ -726,7 +726,9 @@
                       cardBodyKind = 'crosshair';
                     } else if (this.activeInkTool === 'lasso') {
                       const lc = (cardEl.dataset && cardEl.dataset.lassoCursor) || 'crosshair';
-                      cardBodyKind = lc === 'nwse' ? 'nwse-resize' : (lc === 'nesw' ? 'nesw-resize' : (lc === 'move' ? 'move' : 'crosshair'));
+                      cardBodyKind = lc === 'rotating'
+                        ? 'grabbing'
+                        : (lc === 'rotate' ? 'grab' : (lc === 'nwse' ? 'nwse-resize' : (lc === 'nesw' ? 'nesw-resize' : (lc === 'move' ? 'move' : 'crosshair'))));
                     } else {
                       cardBodyKind = this.activeInkTool;
                     }
@@ -2228,10 +2230,13 @@
             st.id = this._nextAudioStrokeId('ink');
           }
         });
+        const allowedModes = new Set(['move', 'resize', 'rotate', 'flipX', 'flipY']);
+        const resolvedMode = allowedModes.has(mode) ? mode : 'move';
+        const r1Init = (v) => Math.round((Number(v) || 0) * 10) / 10;
         this._lassoOpSeq = (this._lassoOpSeq || 0) + 1;
         this._activeRecLassoOp = {
           opId: `lop_${Date.now()}_${this._lassoOpSeq.toString(36)}`,
-          mode: mode === 'resize' ? 'resize' : 'move',
+          mode: resolvedMode,
           startMs: recT,
           startScreenX: Number(meta.startScreenX) || 0,
           startScreenY: Number(meta.startScreenY) || 0,
@@ -2240,6 +2245,11 @@
           anchorX: Number(meta.anchorX) || 0,
           anchorY: Number(meta.anchorY) || 0,
           curScale: 1,
+          curAngle: 0,
+          curFlipScale: 1,
+          initBBox: (Array.isArray(meta.initBBox) && meta.initBBox.length >= 4)
+            ? meta.initBBox.slice(0, 4).map(r1Init)
+            : null,
           origStrokes: selected.map(st => JSON.parse(JSON.stringify(st)))
         };
         this._lastCompletedLassoEndOp = null;
@@ -2258,6 +2268,14 @@
           if (typeof meta.scale === 'number' && Number.isFinite(meta.scale)) {
             op.curScale = meta.scale;
           }
+        } else if (op.mode === 'rotate') {
+          if (typeof meta.angle === 'number' && Number.isFinite(meta.angle)) {
+            op.curAngle = meta.angle;
+          }
+        } else if (op.mode === 'flipX' || op.mode === 'flipY') {
+          if (typeof meta.flipScale === 'number' && Number.isFinite(meta.flipScale)) {
+            op.curFlipScale = meta.flipScale;
+          }
         }
         this._recordAudioWorkspaceStateIfNeeded(false);
       } catch (_) { }
@@ -2269,9 +2287,17 @@
       if (!op || !this.isAudioRecording) return;
       try {
         const endRecT = Math.max(op.startMs, Math.round(this.getAudioRecordElapsedMs()));
-        const changed = (op.mode === 'move')
-          ? (Math.hypot(op.curDx || 0, op.curDy || 0) >= 0.4)
-          : (Math.abs((op.curScale || 1) - 1) >= 0.002);
+        let changed = false;
+        if (op.mode === 'move') {
+          changed = Math.hypot(op.curDx || 0, op.curDy || 0) >= 0.4;
+        } else if (op.mode === 'resize') {
+          changed = Math.abs((op.curScale || 1) - 1) >= 0.002;
+        } else if (op.mode === 'rotate') {
+          changed = Math.abs(op.curAngle || 0) >= 0.005;
+        } else if (op.mode === 'flipX' || op.mode === 'flipY') {
+          op.curFlipScale = -1;
+          changed = true;
+        }
         if (changed) {
           const r1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
           const r3 = (v) => Math.round((Number(v) || 0) * 1000) / 1000;
@@ -2282,7 +2308,10 @@
             dy: r1(op.curDy || 0),
             ax: r1(op.anchorX || 0),
             ay: r1(op.anchorY || 0),
-            scale: r3(op.curScale || 1)
+            scale: r3(op.curScale || 1),
+            angle: r3(op.curAngle || 0),
+            flipScale: r3(typeof op.curFlipScale === 'number' ? op.curFlipScale : 1),
+            initBBox: op.initBBox || undefined
           };
           if (Array.isArray(op.origStrokes)) {
             op.origStrokes.forEach(origSt => {
@@ -2344,7 +2373,14 @@
       if (!bboxObj) return null;
       const bbox = [r1(bboxObj.minX), r1(bboxObj.minY), r1(bboxObj.maxX), r1(bboxObj.maxY)];
       const op = this._activeRecLassoOp;
-      const isBusy = Boolean(this.isLassoSelecting || this.isDraggingLassoSelection || this.isResizingLassoSelection || op);
+      const isBusy = Boolean(
+        this.isLassoSelecting ||
+        this.isDraggingLassoSelection ||
+        this.isResizingLassoSelection ||
+        this.isRotatingLassoSelection ||
+        this._lassoFlipAnim ||
+        op
+      );
       const out = {
         selecting: false,
         pts: null,
@@ -2359,6 +2395,9 @@
         out.ax = r1(op.anchorX || 0);
         out.ay = r1(op.anchorY || 0);
         out.scale = r3(op.curScale || 1);
+        out.angle = r3(op.curAngle || 0);
+        out.flipScale = r3(typeof op.curFlipScale === 'number' ? op.curFlipScale : 1);
+        if (op.initBBox) out.initBBox = op.initBBox;
       } else if (this._lastCompletedLassoEndOp) {
         out.endOp = { ...this._lastCompletedLassoEndOp };
       }
@@ -4506,7 +4545,7 @@
       const inkSizeFlyoutEl = document.getElementById('inkSizeFlyout');
       const quickThemeEl = document.getElementById('panelQuickTheme');
       const popBits = `${Boolean(ctxSymPopEl && ctxSymPopEl.style.display !== 'none') ? 1 : 0}${Boolean(ctxAbsPopEl && ctxAbsPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railAddPopEl && railAddPopEl.style.display !== 'none') ? 1 : 0}${Boolean(railResetPopEl && railResetPopEl.style.display !== 'none') ? 1 : 0}${Boolean(inkSizeFlyoutEl && inkSizeFlyoutEl.style.display !== 'none') ? 1 : 0}${Boolean(quickThemeEl && (quickThemeEl.classList.contains('open') || quickThemeEl.style.display === 'block' || quickThemeEl.style.display === 'flex')) ? 1 : 0}`;
-      const uiDiscreteSig = `${Boolean(this.isGraphCovered)}|${Boolean(this.isAllUIHidden)}|${this.currentThemeKey || ''}|${this.boardPaperType || ''}|${Boolean(this.isMonochromeMode)}|${curDrawerOpen}|${this.activeDrawerPanel || ''}|${this._currentCat || ''}|${Boolean(this.isInkMode)}|${Boolean(this.isBottomInkBarHidden)}|${this.inkDockPosition || 'bottom'}|${this.activeInkTool || ''}|${this.inkPenStyle || ''}|${Boolean(this.isQuickPillRemoteOpen)}|${Boolean(this.isGraphSnapMode)}|${Boolean(this.isPdfToGraphCropMode)}|${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isCurveSelected)}|${Boolean(this.useIntersectionDetector)}|${Boolean(this.showGridNumbers)}|${Boolean(this.showInverseGuide)}|${this._openPwRegionIdx ?? ''}|${popBits}|${hasLassoSel}|${Boolean(this.isLassoSelecting)}|${Boolean(this.isDraggingLassoSelection)}|${Boolean(this.isResizingLassoSelection)}`;
+      const uiDiscreteSig = `${Boolean(this.isGraphCovered)}|${Boolean(this.isAllUIHidden)}|${this.currentThemeKey || ''}|${this.boardPaperType || ''}|${Boolean(this.isMonochromeMode)}|${curDrawerOpen}|${this.activeDrawerPanel || ''}|${this._currentCat || ''}|${Boolean(this.isInkMode)}|${Boolean(this.isBottomInkBarHidden)}|${this.inkDockPosition || 'bottom'}|${this.activeInkTool || ''}|${this.inkPenStyle || ''}|${Boolean(this.isQuickPillRemoteOpen)}|${Boolean(this.isGraphSnapMode)}|${Boolean(this.isPdfToGraphCropMode)}|${Boolean(this._isPdfCropChoiceMenuOpen)}|${Boolean(this.isCurveSelected)}|${Boolean(this.useIntersectionDetector)}|${Boolean(this.showGridNumbers)}|${Boolean(this.showInverseGuide)}|${this._openPwRegionIdx ?? ''}|${popBits}|${hasLassoSel}|${Boolean(this.isLassoSelecting)}|${Boolean(this.isDraggingLassoSelection)}|${Boolean(this.isResizingLassoSelection)}|${Boolean(this.isRotatingLassoSelection)}|${Boolean(this._lassoFlipAnim)}`;
       const uiDiscreteChanged = (uiDiscreteSig !== this._lastRecordedUiDiscreteSig);
 
       const isActivelyDraggingGraph = Boolean(
@@ -4526,6 +4565,8 @@
         this.isLassoSelecting ||
         this.isDraggingLassoSelection ||
         this.isResizingLassoSelection ||
+        this.isRotatingLassoSelection ||
+        Boolean(this._lassoFlipAnim) ||
         this.isDraggingTextLabel
       );
       const dragStartedNow = Boolean(isActivelyDraggingGraph && !this._wasActivelyDraggingGraph);
@@ -4731,6 +4772,8 @@
         if (this.activeInkTool === 'lasso') {
           const cCls = this.canvas && this.canvas.classList;
           const cCur = (this.canvas && this.canvas.style && this.canvas.style.cursor) || '';
+          if (this.isRotatingLassoSelection || (cCls && cCls.contains('is-rotating')) || cCur === 'grabbing') return 'grabbing';
+          if ((cCls && cCls.contains('is-hover-rotate')) || cCur === 'grab') return 'grab';
           if ((cCls && cCls.contains('is-hover-resize-nwse')) || cCur === 'nwse-resize') return 'nwse-resize';
           if ((cCls && cCls.contains('is-hover-resize-nesw')) || cCur === 'nesw-resize') return 'nesw-resize';
           if (this.isDraggingLassoSelection || (cCls && cCls.contains('is-hover-selection')) || cCur === 'move') return 'move';
@@ -6366,7 +6409,13 @@
             dy: lerp(lsA.dy || 0, targetOpB.dy || 0),
             ax: typeof lsA.ax === 'number' ? lsA.ax : (targetOpB.ax || 0),
             ay: typeof lsA.ay === 'number' ? lsA.ay : (targetOpB.ay || 0),
-            scale: lerp(lsA.scale || 1, targetOpB.scale || 1)
+            scale: lerp(lsA.scale || 1, targetOpB.scale || 1),
+            angle: lerp(lsA.angle || 0, targetOpB.angle || 0),
+            flipScale: lerp(
+              typeof lsA.flipScale === 'number' ? lsA.flipScale : 1,
+              typeof targetOpB.flipScale === 'number' ? targetOpB.flipScale : 1
+            ),
+            initBBox: lsA.initBBox || targetOpB.initBBox || undefined
           };
         } else if (
           !lsA.selecting &&
@@ -7514,12 +7563,24 @@
       const isLight = curTheme.isLight || this.isMonochromeMode;
       const applyLassoOpTransform = (targetCtx) => {
         if (!curLassoState || !activeLassoOpId) return;
+        const ax = Number(curLassoState.ax) || 0;
+        const ay = Number(curLassoState.ay) || 0;
         if (curLassoState.mode === 'resize') {
-          const ax = Number(curLassoState.ax) || 0;
-          const ay = Number(curLassoState.ay) || 0;
           const sc = Math.max(0.1, Number(curLassoState.scale) || 1);
           targetCtx.translate(ax, ay);
           targetCtx.scale(sc, sc);
+          targetCtx.translate(-ax, -ay);
+        } else if (curLassoState.mode === 'rotate') {
+          const ang = Number(curLassoState.angle) || 0;
+          targetCtx.translate(ax, ay);
+          targetCtx.rotate(ang);
+          targetCtx.translate(-ax, -ay);
+        } else if (curLassoState.mode === 'flipX' || curLassoState.mode === 'flipY') {
+          const rawFs = typeof curLassoState.flipScale === 'number' ? curLassoState.flipScale : 1;
+          const fs = Math.abs(rawFs) < 0.04 ? (rawFs < 0 ? -0.04 : 0.04) : rawFs;
+          targetCtx.translate(ax, ay);
+          if (curLassoState.mode === 'flipX') targetCtx.scale(fs, 1);
+          else targetCtx.scale(1, fs);
           targetCtx.translate(-ax, -ay);
         } else {
           targetCtx.translate(Number(curLassoState.dx) || 0, Number(curLassoState.dy) || 0);
@@ -9604,7 +9665,8 @@
         case 'ink_color_5': {
           const colorIdx = parseInt(actionId.replace('ink_color_', ''), 10) - 1;
           if (!this.isInkMode) this.toggleInkMode(true);
-          if (this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter') {
+          const hasLassoSel = (typeof this._hasActiveAnyLassoSelection === 'function') && this._hasActiveAnyLassoSelection();
+          if (!hasLassoSel && this.activeInkTool !== 'pen' && this.activeInkTool !== 'highlighter') {
             this.setActiveInkTool('pen');
           }
           const dots = document.querySelectorAll('#inkFloatingToolbar .ink-color-dot');
