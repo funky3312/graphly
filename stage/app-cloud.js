@@ -14608,7 +14608,9 @@
         this._replayViewerPanY = 0;
         this.stopAudioPlayback(true);
       }
-      this.saveCurrentSlideIntoPlaylist();
+      if (!this.isStudentAudioVideoOnlyMode) {
+        this.saveCurrentSlideIntoPlaylist();
+      }
       this.lessonPlaylistIndex = targetIdx;
       this.deserializeFullSlideState(this.lessonPlaylistSlides[this.lessonPlaylistIndex]);
       if (wasRecording) {
@@ -14959,23 +14961,33 @@
       const chipsEl = document.getElementById('playlistSlideChips');
       if (chipsEl) {
         chipsEl.innerHTML = '';
+        const isStudentVideo = Boolean(this.isStudentAudioVideoOnlyMode);
         effectiveSlides.forEach((s, idx) => {
           const isActive = (idx === curIdx);
           const isSelectedForDel = isSelectMode && selectedSet.has(idx);
+          const hasSlideAud = isStudentVideo && Boolean(s && s.audioSyncData && Number(s.audioSyncData.durationMs) > 0);
           const chip = document.createElement('div');
           chip.className = 'slide-chip-item'
+            + (hasSlideAud ? ' has-audio' : '')
             + (isSelectedForDel ? ' selected-for-delete' : (isActive ? ' active' : ''));
           chip.setAttribute('role', 'button');
           chip.dataset.slideIdx = String(idx);
           const shortLabel = String(idx + 1);
           chip.title = isSelectMode
             ? (isSelectedForDel ? `${idx + 1}번 삭제 선택 해제` : `${idx + 1}번 삭제 선택`)
-            : `${idx + 1}번 캔버스로 이동`;
+            : (hasSlideAud ? `${idx + 1}번 (영상 포함)` : `${idx + 1}번 캔버스로 이동`);
 
           const span = document.createElement('span');
           span.className = 'slide-chip-label';
           span.textContent = shortLabel;
           chip.appendChild(span);
+          if (hasSlideAud) {
+            const audMark = document.createElement('span');
+            audMark.className = 'slide-chip-audio-mark';
+            audMark.setAttribute('aria-hidden', 'true');
+            audMark.textContent = '▶';
+            chip.appendChild(audMark);
+          }
 
           chip.onclick = (e) => {
             e.stopPropagation();
@@ -14997,6 +15009,14 @@
           };
           chipsEl.appendChild(chip);
         });
+        if (isStudentVideo && this._isSlideGridOpen) {
+          requestAnimationFrame(() => {
+            const activeChipEl = chipsEl.querySelector('.slide-chip-item.active');
+            if (activeChipEl && typeof activeChipEl.scrollIntoView === 'function') {
+              activeChipEl.scrollIntoView({ block: 'nearest' });
+            }
+          });
+        }
       }
 
       const btnPrev = document.getElementById('btnPlaylistPrev');
@@ -16530,65 +16550,165 @@
       return { ok: copied, method: 'clipboard', url: shareUrl, title: shareTitle };
     }
 
+    _clearAudioEndingCountdown(hideCountdownEl = true) {
+      if (this._audioEndingCountdownInterval) {
+        clearInterval(this._audioEndingCountdownInterval);
+        this._audioEndingCountdownInterval = null;
+      }
+      if (this._audioEndingCountdownTimeout) {
+        clearTimeout(this._audioEndingCountdownTimeout);
+        this._audioEndingCountdownTimeout = null;
+      }
+      this._audioEndingAutoAdvanceSeq = (this._audioEndingAutoAdvanceSeq || 0) + 1;
+      if (hideCountdownEl) {
+        const cdWrap = document.getElementById('audioEndingCountdownWrap');
+        if (cdWrap) cdWrap.style.display = 'none';
+      }
+    }
+
+    _getStudentEndingSlideContext() {
+      const slides = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
+        ? this.lessonPlaylistSlides
+        : ((this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides) && this._viewerPkg.playlistSlides.length > 0)
+          ? this._viewerPkg.playlistSlides
+          : null);
+      const total = slides ? slides.length : 1;
+      const rawIdx = (this.isLessonPlaylistActive && typeof this.lessonPlaylistIndex === 'number')
+        ? this.lessonPlaylistIndex
+        : (this._viewerSlideIdx || 0);
+      const curIdx = Math.max(0, Math.min(total - 1, rawIdx));
+      const nextIdx = curIdx + 1;
+      const hasNextNote = Boolean(slides && nextIdx < total);
+      const nextSlide = hasNextNote ? slides[nextIdx] : null;
+      const hasNextVideo = Boolean(nextSlide && nextSlide.audioSyncData && Number(nextSlide.audioSyncData.durationMs) > 0);
+      return { slides, total, curIdx, nextIdx, hasNextNote, hasNextVideo };
+    }
+
     showAudioLectureEndingOverlay() {
       if (!this.isStudentAudioVideoOnlyMode) return;
       const endingOverlay = document.getElementById('viewerAudioEndingOverlay');
       if (!endingOverlay) return;
 
+      this._clearAudioEndingCountdown(true);
+      const { curIdx, hasNextNote, hasNextVideo } = this._getStudentEndingSlideContext();
+      if (typeof this._setViewerSavedPlayMs === 'function') {
+        this._setViewerSavedPlayMs(curIdx, 0);
+      }
+
       const bannerWrap = document.getElementById('audioEndingPromoBannerWrap');
-      const btnShare = document.getElementById('btnAudioEndingShare');
+      const btnNextNote = document.getElementById('btnAudioEndingNextNote');
+      const btnNextVideo = document.getElementById('btnAudioEndingNextVideo');
+      const cdWrap = document.getElementById('audioEndingCountdownWrap');
+      const cdText = document.getElementById('lblAudioEndingCountdownText');
       const validBanner = this._getValidViewerPromoBanner(this._viewerPkg);
-      const canShare = Boolean(this._getSmartViewerShareableUrl(this._viewerPkg));
+
+      if (btnNextNote) {
+        btnNextNote.classList.toggle('is-unavailable', !hasNextNote);
+        btnNextNote.setAttribute('aria-disabled', hasNextNote ? 'false' : 'true');
+      }
+      if (btnNextVideo) {
+        btnNextVideo.classList.toggle('is-unavailable', !hasNextVideo);
+        btnNextVideo.setAttribute('aria-disabled', hasNextVideo ? 'false' : 'true');
+      }
 
       if (bannerWrap) {
         bannerWrap.innerHTML = '';
         if (validBanner) {
-          bannerWrap.appendChild(this._renderPromoBannerPillDOM(validBanner, 'ending'));
+          const bannerEl = this._renderPromoBannerPillDOM(validBanner, 'ending');
+          bannerEl.addEventListener('pointerdown', () => {
+            this._clearAudioEndingCountdown(true);
+          }, { passive: true });
+          bannerWrap.appendChild(bannerEl);
           bannerWrap.style.display = 'flex';
         } else {
           bannerWrap.style.display = 'none';
         }
       }
 
-      if (btnShare) {
-        this._resetViewerShareBtnFeedback(btnShare, '공유하기');
-        btnShare.style.display = canShare ? 'inline-flex' : 'none';
-      }
-
       endingOverlay.style.display = 'flex';
+
+      if (hasNextVideo && cdWrap && cdText) {
+        const mySeq = (this._audioEndingAutoAdvanceSeq = (this._audioEndingAutoAdvanceSeq || 0) + 1);
+        let remainSec = 3;
+        cdText.textContent = `${remainSec}초 뒤 다음 영상이 재생됩니다`;
+        cdWrap.style.display = 'inline-flex';
+
+        this._audioEndingCountdownInterval = setInterval(() => {
+          if (this._audioEndingAutoAdvanceSeq !== mySeq || !this.isStudentAudioVideoOnlyMode || endingOverlay.style.display === 'none') {
+            this._clearAudioEndingCountdown(true);
+            return;
+          }
+          remainSec -= 1;
+          if (remainSec > 0) {
+            cdText.textContent = `${remainSec}초 뒤 다음 영상이 재생됩니다`;
+          }
+        }, 1000);
+
+        this._audioEndingCountdownTimeout = setTimeout(() => {
+          if (this._audioEndingAutoAdvanceSeq !== mySeq) return;
+          this._clearAudioEndingCountdown(true);
+          if (!this.isStudentAudioVideoOnlyMode || endingOverlay.style.display === 'none') return;
+          this.advanceToNextVideoFromEndingOverlay(true);
+        }, 3000);
+      } else if (cdWrap) {
+        cdWrap.style.display = 'none';
+      }
     }
 
     hideAudioLectureEndingOverlay() {
+      this._clearAudioEndingCountdown(true);
       const endingOverlay = document.getElementById('viewerAudioEndingOverlay');
       if (endingOverlay && endingOverlay.style.display !== 'none') {
         endingOverlay.style.display = 'none';
       }
-      const btnShare = document.getElementById('btnAudioEndingShare');
-      if (btnShare) {
-        this._resetViewerShareBtnFeedback(btnShare, '공유하기');
+    }
+
+    async openNoteViewerFromEndingOverlay(offset = 0) {
+      this._clearAudioEndingCountdown(true);
+      const { curIdx, total, hasNextNote } = this._getStudentEndingSlideContext();
+      if (offset > 0 && !hasNextNote) {
+        this.showToast('다음 노트가 없습니다.');
+        return;
+      }
+      const targetIdx = Math.max(0, Math.min(total - 1, curIdx + offset));
+      this.hideAudioLectureEndingOverlay();
+      this.stopAudioPlayback(true);
+      this.exitStudentAudioVideoOnlyMode();
+      if (this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides) && this._viewerPkg.playlistSlides.length > 0) {
+        this._viewerPkg.currentIndex = Math.max(0, Math.min(this._viewerPkg.playlistSlides.length - 1, targetIdx));
+        await this.openSmartNoteViewer(this._viewerPkg, true);
+      } else {
+        await this.openCurrentWorkspaceInSmartViewer();
       }
     }
 
     replayFromAudioLectureEndingOverlay() {
+      this._clearAudioEndingCountdown(true);
       this.hideAudioLectureEndingOverlay();
-      const targetStartSlide = (
-        this.isLessonPlaylistActive &&
-        Array.isArray(this.lessonPlaylistSlides) &&
-        typeof this._studentLectureStartSlideIdx === 'number' &&
-        this._studentLectureStartSlideIdx >= 0 &&
-        this._studentLectureStartSlideIdx < this.lessonPlaylistSlides.length &&
-        this.lessonPlaylistSlides[this._studentLectureStartSlideIdx] &&
-        this.lessonPlaylistSlides[this._studentLectureStartSlideIdx].audioSyncData &&
-        this.lessonPlaylistSlides[this._studentLectureStartSlideIdx].audioSyncData.durationMs > 0
-      ) ? this._studentLectureStartSlideIdx : this.lessonPlaylistIndex;
+      this.playAudioSync(0, 'video');
+    }
 
-      if (this.isLessonPlaylistActive && typeof targetStartSlide === 'number' && targetStartSlide !== this.lessonPlaylistIndex) {
-        this._isAutoAdvancingAudioSlide = true;
-        try {
-          this.jumpToPlaylistSlide(targetStartSlide);
-        } finally {
-          this._isAutoAdvancingAudioSlide = false;
+    advanceToNextVideoFromEndingOverlay(fromAutoTimer = false) {
+      this._clearAudioEndingCountdown(true);
+      const { nextIdx, hasNextVideo } = this._getStudentEndingSlideContext();
+      if (!hasNextVideo) {
+        if (!fromAutoTimer) {
+          this.showToast('다음 영상이 없습니다.');
         }
+        return;
+      }
+      this.hideAudioLectureEndingOverlay();
+      this._replayViewerZoom = 1.0;
+      this._replayViewerPanX = 0;
+      this._replayViewerPanY = 0;
+      this._isAutoAdvancingAudioSlide = true;
+      try {
+        this.jumpToPlaylistSlide(nextIdx);
+      } finally {
+        this._isAutoAdvancingAudioSlide = false;
+      }
+      if (this._enteredAudioFromViewerSlideIdx !== null) {
+        this._enteredAudioFromViewerSlideIdx = this.lessonPlaylistIndex;
       }
       this.playAudioSync(0, 'video');
     }
@@ -17993,6 +18113,12 @@
             gridPopover.style.left = 'auto';
             gridPopover.style.right = `${Math.round(parentRect.right - (vw - 10))}px`;
           }
+          requestAnimationFrame(() => {
+            const activeChip = gridPopover.querySelector('.viewer-slide-chip.active');
+            if (activeChip && typeof activeChip.scrollIntoView === 'function') {
+              activeChip.scrollIntoView({ block: 'nearest' });
+            }
+          });
         };
         window.addEventListener('pointerdown', (ev) => {
           if (gridPopover.style.display === 'none') return;
@@ -18096,9 +18222,8 @@
             if (p && typeof p.catch === 'function') p.catch(() => { });
           } catch (_) { }
         }
-        // 아이폰 Safari 등 브라우저 네이티브 Fullscreen API 미지원 모바일 환경에서는 상단 바를 접는 몰입 모드로 즉시 전환
-        const useFallbackImmersive = Boolean(shouldReqNativeFs && !hasNativeFsApi && isMobileOrPadGate && !isPromoPreviewGate);
-        this.toggleSmartViewerImmersiveMode(useFallbackImmersive, false);
+        // 아이폰(Safari·카톡·밴드 인앱) 포함 모든 기기에서 게이트 통과 직후 상단 바([▶ 영상보기] · 페이지 번호)를 숨기지 않고 즉시 노출
+        this.toggleSmartViewerImmersiveMode(false, false);
         this.fitSmartViewerStageToScreen(true);
         setTimeout(() => {
           if (overlay && overlay.style.display !== 'none' && (this._viewerZoom || 1.0) <= 1.02) {
@@ -19097,6 +19222,9 @@
 
     exitStudentAudioVideoOnlyMode() {
       this.hideAudioLectureEndingOverlay();
+      if (!this.isAudioRecording && typeof this._releaseAudioRecordWakeLock === 'function') {
+        this._releaseAudioRecordWakeLock();
+      }
       this.isStudentAudioVideoOnlyMode = false;
       this._isAudioSyncPlayerVisible = false;
       document.body.classList.remove('student-audio-video-only');
@@ -21564,18 +21692,42 @@
         btnEdgeNext.disabled = (idx >= total - 1);
       }
       if (chipsBox && this._viewerPkg && Array.isArray(this._viewerPkg.playlistSlides)) {
+        const slidesRef = this._viewerPkg.playlistSlides;
+        const syncChipContent = (chipEl, sIdx) => {
+          const sObj = slidesRef[sIdx];
+          const sTitle = (sObj && sObj.slideTitle) ? String(sObj.slideTitle).trim() : '';
+          const baseLbl = /^p\.\d+$/i.test(sTitle) ? sTitle : String(sIdx + 1);
+          const hasAud = Boolean(sObj && sObj.audioSyncData && Number(sObj.audioSyncData.durationMs) > 0);
+          chipEl.classList.toggle('active', sIdx === idx);
+          chipEl.classList.toggle('has-audio', hasAud);
+          chipEl.title = hasAud ? `${baseLbl} (영상 포함)` : baseLbl;
+          const sig = `${baseLbl}|${hasAud ? 1 : 0}`;
+          if (chipEl._chipSig !== sig) {
+            chipEl._chipSig = sig;
+            chipEl.textContent = '';
+            const numSpan = document.createElement('span');
+            numSpan.textContent = baseLbl;
+            chipEl.appendChild(numSpan);
+            if (hasAud) {
+              const audSpan = document.createElement('span');
+              audSpan.className = 'viewer-slide-chip-audio-mark';
+              audSpan.setAttribute('aria-hidden', 'true');
+              audSpan.textContent = '▶';
+              chipEl.appendChild(audSpan);
+            }
+          }
+        };
         if (chipsBox.children.length === total) {
           for (let i = 0; i < total; i++) {
-            chipsBox.children[i].classList.toggle('active', i === idx);
+            syncChipContent(chipsBox.children[i], i);
           }
         } else {
           chipsBox.innerHTML = '';
           for (let i = 0; i < total; i++) {
             const chip = document.createElement('button');
             chip.type = 'button';
-            chip.className = 'viewer-slide-chip' + (i === idx ? ' active' : '');
-            const sTitle = this._viewerPkg.playlistSlides[i].slideTitle || '';
-            chip.textContent = /^p\.\d+$/i.test(sTitle.trim()) ? sTitle.trim() : String(i + 1);
+            chip.className = 'viewer-slide-chip';
+            syncChipContent(chip, i);
             chip.onclick = (e) => {
               e.stopPropagation();
               if (gridPopover) gridPopover.style.display = 'none';

@@ -10329,6 +10329,28 @@ body.theme-light .viewer-slide-chip.active {
   color: #ffffff !important;
 }
 
+.viewer-slide-chip {
+  position: relative;
+  gap: 2px;
+}
+
+.viewer-slide-chip-audio-mark,
+body.student-audio-video-only #playlistSlideChips .slide-chip-audio-mark {
+  font-size: 8px;
+  line-height: 1;
+  opacity: 0.78;
+  transform: translateY(-0.5px);
+}
+
+.viewer-slide-chip.active .viewer-slide-chip-audio-mark,
+body.student-audio-video-only #playlistSlideChips .slide-chip-item.active .slide-chip-audio-mark {
+  opacity: 0.95;
+}
+
+body.student-audio-video-only #playlistSlideChips .slide-chip-item.has-audio {
+  gap: 2px;
+}
+
 .viewer-title-badge {
   display: none !important;
 }
@@ -13684,6 +13706,15 @@ body.theme-light .audio-btn-zoom.is-zoomed {
   color: #ffffff !important;
 }
 
+body.student-audio-video-only .audio-btn-skip10 {
+  display: inline-flex !important;
+  padding: 0 8px;
+  min-width: 34px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.2px;
+}
+
 @media (max-width: 640px) {
 
   body.replay-fixed-stage #audioSyncFloatingBar,
@@ -13694,20 +13725,48 @@ body.theme-light .audio-btn-zoom.is-zoomed {
     gap: 6px !important;
   }
 
-  body.replay-fixed-stage .audio-sync-scrubber,
-  body.audio-replay-active .audio-sync-scrubber,
-  body.student-audio-video-only .audio-sync-scrubber {
+  body.replay-fixed-stage:not(.student-audio-video-only) .audio-sync-scrubber,
+  body.audio-replay-active:not(.student-audio-video-only) .audio-sync-scrubber {
     width: clamp(110px, 38vw, 260px) !important;
+  }
+
+  body.student-audio-video-only #audioSyncFloatingBar {
+    width: min(376px, calc(100vw - 20px)) !important;
+    padding: 8px 12px 7px !important;
+    border-radius: 16px !important;
+  }
+
+  body.student-audio-video-only #audioSyncPlayerGroup {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    row-gap: 6px;
+    column-gap: 5px;
+  }
+
+  body.student-audio-video-only .audio-sync-scrubber {
+    order: -1;
+    flex: 0 0 100%;
+    width: 100% !important;
+    height: 6px !important;
+    margin: 2px 0 2px;
   }
 
   body.replay-fixed-stage .audio-sync-time {
     font-size: 11px !important;
-    min-width: 70px !important;
+    min-width: 68px !important;
   }
 
   body.replay-fixed-stage .audio-sync-btn {
     padding: 4px 8px !important;
     font-size: 11px !important;
+  }
+
+  body.student-audio-video-only .audio-btn-skip10 {
+    padding: 0 7px !important;
+    min-width: 32px !important;
   }
 }
 
@@ -20939,7 +20998,10 @@ body.theme-light .promo-banner-modal-footer {
 }
 
 /* ============================================================================
-   🎬 [v123: Step 4 — 해설영상 재생 완료 엔딩 명함 & 바이럴 액션 카드 (#viewerAudioEndingOverlay)]
+   🎬 [해설영상 재생 종료 인터미션 배너 & 고정 2×2 이동 매트릭스 (#viewerAudioEndingOverlay)]
+   - 윗줄: 노트 (좌: 현재 노트 / 우: 다음 노트)
+   - 아랫줄: 영상 (좌: 다시 보기 / 우: 다음 영상)
+   - vmin 상대비율 반응형으로 폰 세로·폰 가로·패드·PC 전 해상도 균일 비례 유지
    ============================================================================ */
 .viewer-audio-ending-overlay {
   position: fixed;
@@ -20949,22 +21011,21 @@ body.theme-light .promo-banner-modal-footer {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: clamp(26px, 4.6vmin, 38px);
-  padding: clamp(50px, 7vmin, 64px) clamp(14px, 3vmin, 24px) clamp(76px, 10vmin, 88px);
-  background: rgba(15, 23, 42, 0.28);
+  gap: clamp(14px, 3.2vmin, 26px);
+  padding: clamp(44px, 6.2vmin, 60px) clamp(14px, 3vmin, 24px) clamp(68px, 9.6vmin, 86px);
+  background: rgba(15, 23, 42, 0.30);
   backdrop-filter: blur(2.5px);
   -webkit-backdrop-filter: blur(2.5px);
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
 }
 
-.viewer-audio-ending-actions {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: clamp(9px, 1.8vmin, 13px);
-  max-width: 94vw;
+.viewer-audio-ending-actions.viewer-audio-ending-grid2x2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(clamp(284px, 68vmin, 376px), 90vw);
+  gap: clamp(8px, 1.65vmin, 12px);
   z-index: 2;
 }
 
@@ -20972,68 +21033,102 @@ body.theme-light .promo-banner-modal-footer {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(7px, 1.2vmin, 9px);
-  height: clamp(50px, 6.5vmin, 58px);
-  padding: 0 clamp(22px, 3.4vmin, 32px);
-  border-radius: 999px;
-  font-size: clamp(15px, 2.05vmin, 17px);
+  width: 100%;
+  box-sizing: border-box;
+  gap: clamp(6px, 1.15vmin, 8px);
+  height: clamp(44px, 6.6vmin, 54px);
+  padding: 0 clamp(12px, 2.4vmin, 20px);
+  border-radius: clamp(12px, 2.0vmin, 15px);
+  font-size: clamp(13.5px, 2.05vmin, 16px);
   font-weight: 800;
   letter-spacing: -0.3px;
   white-space: nowrap;
   cursor: pointer;
-  transition: transform 0.15s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.15s ease, background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+  transition: transform 0.15s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.15s ease, opacity 0.14s ease, background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
 }
 
 .viewer-ending-action-btn svg {
-  width: clamp(16px, 2.2vmin, 20px);
-  height: clamp(16px, 2.2vmin, 20px);
+  width: clamp(15px, 2.1vmin, 18px);
+  height: clamp(15px, 2.1vmin, 18px);
   flex-shrink: 0;
 }
 
 .viewer-ending-action-btn:hover {
-  transform: scale(1.025);
+  transform: scale(1.02);
 }
 
 .viewer-ending-action-btn:active {
   transform: scale(0.975);
 }
 
-.viewer-ending-btn-replay {
-  background: rgba(15, 23, 42, 0.96);
-  border: 1.5px solid rgba(255, 255, 255, 0.34);
-  color: #ffffff;
-  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.46);
-}
-
-.viewer-ending-btn-share {
+.viewer-ending-btn-note {
   background: rgba(255, 255, 255, 0.97);
   border: 1.5px solid rgba(255, 255, 255, 0.94);
   color: #0f172a;
-  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.34);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.28);
 }
 
-.viewer-ending-btn-share.is-copied {
-  background: #059669 !important;
-  border-color: #059669 !important;
-  color: #ffffff !important;
+.viewer-ending-btn-video {
+  background: rgba(15, 23, 42, 0.96);
+  border: 1.5px solid rgba(255, 255, 255, 0.34);
+  color: #ffffff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.44);
+}
+
+.viewer-ending-action-btn.is-unavailable {
+  opacity: 0.46;
+}
+
+.viewer-ending-action-btn.is-unavailable:hover {
+  transform: none;
+}
+
+.viewer-audio-ending-countdown {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: clamp(26px, 4.0vmin, 32px);
+  padding: 0 clamp(13px, 2.4vmin, 18px);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.80);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #f8fafc;
+  font-size: clamp(11.5px, 1.75vmin, 13.5px);
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.30);
+  z-index: 2;
 }
 
 @media (max-height: 500px) {
   .viewer-audio-ending-overlay {
-    gap: 15px;
-    padding: 46px 16px 64px;
+    gap: 10px;
+    padding: 38px 14px 58px;
   }
 
-  .viewer-ending-action-btn {
-    height: 44px;
-    padding: 0 20px;
-    font-size: 14px;
+  .viewer-audio-ending-actions.viewer-audio-ending-grid2x2 {
+    width: min(320px, 86vw);
     gap: 7px;
   }
 
+  .viewer-ending-action-btn {
+    height: 39px;
+    padding: 0 12px;
+    border-radius: 11px;
+    font-size: 13px;
+    gap: 6px;
+  }
+
   .viewer-ending-action-btn svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
+  }
+
+  .viewer-audio-ending-countdown {
+    min-height: 24px;
+    padding: 0 12px;
+    font-size: 11.5px;
   }
 }
 
