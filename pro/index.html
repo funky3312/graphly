@@ -29,6 +29,164 @@
       // 2. 상위 본서버 루트 절대 경로 산출 (https://graphly.net/ 또는 http://127.0.0.1:PORT/)
       var rootBaseUrl = new URL('../', window.location.href).href;
 
+      // 2.5. <head> 최상단 선행 격리 스크립트: 본섭·테섭(1번 계정 공유)과 프로섭(2번 이메일 계정 전용)을 한 크롬 안에서 100% 물리 격리!
+      var proPrebootIsolationSource = '(' + (function () {
+        if (window.__GRAPHLY_PRO_STORAGE_ISOLATED__) return;
+        window.__GRAPHLY_PRO_STORAGE_ISOLATED__ = true;
+
+        var LS_PREFIX = 'pro_iso::';
+        var PRO_FB_APP_NAME = 'PRO_STUDIO';
+
+        // (A) localStorage 네임스페이스 칸막이 (본섭·테섭 키와 0% 간섭)
+        try {
+          var origGetItem = Storage.prototype.getItem;
+          var origSetItem = Storage.prototype.setItem;
+          var origRemoveItem = Storage.prototype.removeItem;
+          var origClear = Storage.prototype.clear;
+
+          function toProKey(k) {
+            var s = String(k);
+            if (s.indexOf(LS_PREFIX) === 0) return s;
+            return LS_PREFIX + s;
+          }
+
+          Storage.prototype.getItem = function (k) {
+            if (this === window.localStorage) {
+              return origGetItem.call(this, toProKey(k));
+            }
+            return origGetItem.call(this, k);
+          };
+
+          Storage.prototype.setItem = function (k, v) {
+            if (this === window.localStorage) {
+              return origSetItem.call(this, toProKey(k), v);
+            }
+            return origSetItem.call(this, k, v);
+          };
+
+          Storage.prototype.removeItem = function (k) {
+            if (this === window.localStorage) {
+              return origRemoveItem.call(this, toProKey(k));
+            }
+            return origRemoveItem.call(this, k);
+          };
+
+          Storage.prototype.clear = function () {
+            if (this === window.localStorage) {
+              var toDel = [];
+              for (var i = 0; i < this.length; i++) {
+                var rawK = this.key(i);
+                if (rawK && (rawK.indexOf(LS_PREFIX) === 0 || rawK.indexOf(':' + PRO_FB_APP_NAME) !== -1)) {
+                  toDel.push(rawK);
+                }
+              }
+              for (var j = 0; j < toDel.length; j++) {
+                origRemoveItem.call(this, toDel[j]);
+              }
+              return;
+            }
+            return origClear.call(this);
+          };
+
+          // 프로섭 첫 진입 시 가이드 투어 모달 자동 생략
+          if (!origGetItem.call(window.localStorage, LS_PREFIX + 'graphly_intro_seen_v1')) {
+            origSetItem.call(window.localStorage, LS_PREFIX + 'graphly_intro_seen_v1', '1');
+          }
+        } catch (_) { }
+
+        // (B) IndexedDB 물리 DB 분리 (Firebase 인증 토큰 금고 + 클라우드 보관함 캐시 + 최근 PDF 캐시 모두 별도 DB 사용)
+        try {
+          if (window.IDBFactory && IDBFactory.prototype && typeof IDBFactory.prototype.open === 'function') {
+            var origIdbOpen = IDBFactory.prototype.open;
+            IDBFactory.prototype.open = function (name, version) {
+              var dbName = String(name || '');
+              if (
+                dbName === 'firebaseLocalStorageDb' ||
+                dbName === 'graphly_pdf_cache_db' ||
+                dbName === 'GraphlyCloudCacheDB'
+              ) {
+                dbName = dbName + '__pro_studio';
+              } else if (dbName.indexOf('firestore/') === 0 && dbName.indexOf('__pro_studio') === -1) {
+                dbName = dbName + '__pro_studio';
+              }
+              return version !== undefined
+                ? origIdbOpen.call(this, dbName, version)
+                : origIdbOpen.call(this, dbName);
+            };
+          }
+        } catch (_) { }
+
+        // (C) Firebase Auth / Firestore 인스턴스를 'PRO_STUDIO' 전용 앱으로 자동 라우팅
+        function installFirebaseAppIsolation() {
+          var fb = window.firebase;
+          if (!fb || fb.__proIsolated || typeof fb.initializeApp !== 'function') return false;
+          fb.__proIsolated = true;
+
+          var origInit = fb.initializeApp.bind(fb);
+          var origAuth = typeof fb.auth === 'function' ? fb.auth.bind(fb) : null;
+          var origFs = typeof fb.firestore === 'function' ? fb.firestore.bind(fb) : null;
+          var proApp = null;
+
+          function getOrCreateProApp(cfg) {
+            if (proApp) return proApp;
+            if (Array.isArray(fb.apps)) {
+              for (var i = 0; i < fb.apps.length; i++) {
+                if (fb.apps[i] && fb.apps[i].name === PRO_FB_APP_NAME) {
+                  proApp = fb.apps[i];
+                  return proApp;
+                }
+              }
+            }
+            if (cfg) {
+              proApp = origInit(cfg, PRO_FB_APP_NAME);
+            }
+            return proApp;
+          }
+
+          fb.initializeApp = function (config, name) {
+            if (!name || name === '[DEFAULT]') {
+              return getOrCreateProApp(config);
+            }
+            return origInit(config, name);
+          };
+
+          if (origAuth) {
+            var wrappedAuth = function (appArg) {
+              var target = appArg || proApp || getOrCreateProApp(window.graphApp && window.graphApp._firebaseConfig);
+              return target ? origAuth(target) : origAuth();
+            };
+            Object.keys(origAuth).forEach(function (k) { wrappedAuth[k] = origAuth[k]; });
+            if (origAuth.GoogleAuthProvider) wrappedAuth.GoogleAuthProvider = origAuth.GoogleAuthProvider;
+            if (origAuth.EmailAuthProvider) wrappedAuth.EmailAuthProvider = origAuth.EmailAuthProvider;
+            if (origAuth.Persistence) wrappedAuth.Persistence = origAuth.Persistence;
+            fb.auth = wrappedAuth;
+          }
+
+          if (origFs) {
+            var wrappedFs = function (appArg) {
+              var target = appArg || proApp || getOrCreateProApp(window.graphApp && window.graphApp._firebaseConfig);
+              return target ? origFs(target) : origFs();
+            };
+            Object.keys(origFs).forEach(function (k) { wrappedFs[k] = origFs[k]; });
+            if (origFs.FieldValue) wrappedFs.FieldValue = origFs.FieldValue;
+            if (origFs.Timestamp) wrappedFs.Timestamp = origFs.Timestamp;
+            fb.firestore = wrappedFs;
+          }
+
+          return true;
+        }
+
+        // defer로 로드되는 Firebase SDK 직후 & GraphApp 부팅 직전(capturing DOMContentLoaded)에 즉시 장착
+        document.addEventListener('DOMContentLoaded', installFirebaseAppIsolation, true);
+        var fbWatchCount = 0;
+        var fbTimer = setInterval(function () {
+          fbWatchCount++;
+          if (installFirebaseAppIsolation() || fbWatchCount > 100) {
+            clearInterval(fbTimer);
+          }
+        }, 50);
+      }).toString() + ')();';
+
       // 3. Pro 전용 플러그인 스크립트 (본서버 코어 파일 수정 0바이트 상태에서 런타임 주입)
       var proPluginSource = '(' + (function (ROOT_BASE_URL) {
         window.__GRAPHLY_PRO_EDITION__ = true;
@@ -1155,7 +1313,7 @@
           return res.text();
         })
         .then(function (rawHtml) {
-          var headInject = '<base href="' + rootBaseUrl + '">\n  <meta name="robots" content="noindex, nofollow">';
+          var headInject = '<base href="' + rootBaseUrl + '">\n  <meta name="robots" content="noindex, nofollow">\n  <script>' + proPrebootIsolationSource + '<\/script>';
           var patched = rawHtml.replace(/<head([^>]*)>/i, '<head$1>\n  ' + headInject);
           var scriptTag = '\n  <script>' + proPluginSource + '<\/script>\n</body>';
           if (/<\/body>/i.test(patched)) {
