@@ -1185,6 +1185,9 @@
       if (isStylusEraser) {
         this._restoreLiveTipPatch();
         this._isTemporaryStylusEraser = true;
+        if (typeof this._cancelPdfBoardHiResTilePending === 'function') {
+          this._cancelPdfBoardHiResTilePending();
+        }
         this.isDrawingInk = true;
         this.isStylusDrawing = true;
         this._lastEraserScreenPos = { x: pos.x, y: pos.y };
@@ -1743,6 +1746,9 @@
           }
         }
 
+        if (typeof this._cancelPdfBoardHiResTilePending === 'function') {
+          this._cancelPdfBoardHiResTilePending();
+        }
         this.isDrawingInk = true;
         this.isStylusDrawing = true;
         if (this.virtualStylusEl) this.virtualStylusEl.classList.add('drawing');
@@ -1757,6 +1763,7 @@
         this._liveBezierScreenPts = [{ x: pos.x, y: pos.y, p: pressure }];
         this._inkHoldDetected = false;
         this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
+        this._inkHoldTrackState = this._createInkHoldTrackState(pos.x, pos.y);
         this._lastSignificantMoveTime = Date.now();
 
         const useCoveredBoardLayer = Boolean(this.isGraphCovered && !this.pdfPageBoardData);
@@ -1836,8 +1843,6 @@
         this._startInkHoldTimer();
         if (isHighlighterStroke) {
           this.render();
-        } else {
-          this.drawLiveBezierStep(this._liveBezierScreenPts, this.currentInkStroke, false);
         }
         return;
       }
@@ -2527,20 +2532,16 @@
             return;
           }
 
-          // 🌟 [홀드 감지 정밀 앵커링 (W3C/모바일 표준 8px Slop 적용)]:
-          // 연속 필기 중에는 홀드 타이머가 확실히 리셋되면서도,
-          // 유리면 위에서 선을 긋고 멈출 때 발생하는 미세 손떨림(stepDist <= 2.5px & dHold <= 8px)으로 타이머가 초기화되지 않도록 보호!
-          const prevMovePos = this._lastMoveEventScreenPos || pos;
-          const stepDist = Math.hypot(pos.x - prevMovePos.x, pos.y - prevMovePos.y);
+          // 🌟 [홀드 감지 적응형 앵커링 & 타이머 재무장 (초단거리 데드락 차단 + 유리면 정지 떨림 흡수)]:
           this._lastMoveEventScreenPos = { x: pos.x, y: pos.y };
-          if (this._inkHoldLastScreenPos) {
-            const dHold = Math.hypot(pos.x - this._inkHoldLastScreenPos.x, pos.y - this._inkHoldLastScreenPos.y);
-            if (stepDist > 4.5 || dHold > 8) {
-              this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
-              this._lastSignificantMoveTime = Date.now();
-              if (!this._inkHoldTimer) {
-                this._startInkHoldTimer();
-              }
+          if (!this._inkHoldTrackState && this._inkHoldLastScreenPos) {
+            this._inkHoldTrackState = this._createInkHoldTrackState(this._inkHoldLastScreenPos.x, this._inkHoldLastScreenPos.y);
+          }
+          if (this._inkHoldTrackState && this._shouldResetInkHoldOnMove(this._inkHoldTrackState, pos.x, pos.y, Boolean(this._inkHoldTimer))) {
+            this._inkHoldLastScreenPos = { x: pos.x, y: pos.y };
+            this._lastSignificantMoveTime = Date.now();
+            if (!this._inkHoldTimer) {
+              this._startInkHoldTimer();
             }
           }
 
@@ -2578,10 +2579,37 @@
             const lastRaw = this._lastRawInkScreenPos;
             if (lastRaw) {
               const rawDist = Math.hypot(pPos.x - lastRaw.x, pPos.y - lastRaw.y);
+              if (
+                e.pointerType === 'pen' &&
+                inkProfile.touchDownSettleDist > 0 &&
+                this.currentInkStroke &&
+                !this.currentInkStroke.isHighlighter &&
+                Array.isArray(this.currentInkStroke.points) &&
+                this.currentInkStroke.points.length === 1 &&
+                rawDist < inkProfile.touchDownSettleDist
+              ) {
+                const rawPress0 = (typeof ev.pressure === 'number') ? ev.pressure : 0.5;
+                if (rawPress0 <= 0.24 && this._liveBezierScreenPts && this._liveBezierScreenPts.length === 1) {
+                  const sx0 = lastRaw.x * 0.55 + pPos.x * 0.45;
+                  const sy0 = lastRaw.y * 0.55 + pPos.y * 0.45;
+                  this._lastRawInkScreenPos = { x: sx0, y: sy0 };
+                  this._prevRawInkScreenPos = { x: sx0, y: sy0 };
+                  this._lastInkScreenPos = { x: sx0, y: sy0 };
+                  this._liveBezierScreenPts[0].x = sx0;
+                  this._liveBezierScreenPts[0].y = sy0;
+                  const c0 = (this.currentInkStroke.target === 'graph')
+                    ? this.screenToMath(sx0, sy0)
+                    : this.screenToBoard(sx0, sy0);
+                  this.currentInkStroke.points[0].x = c0.x;
+                  this.currentInkStroke.points[0].y = c0.y;
+                }
+                continue;
+              }
               if (rawDist < minRawDist) continue;
 
-              // 🛡️ [역주행 점프 컷오프 (Monotonic Forward Guard)]:
-              if (this._prevRawInkScreenPos && rawDist < inkProfile.forwardGuardMaxDist) {
+              const rawPressSample = (typeof ev.pressure === 'number') ? ev.pressure : 0.5;
+              // 🛡️ [역주행 점프 및 펜 리프트오프 호버 스파이크 컷오프]:
+              if (this._prevRawInkScreenPos) {
                 const vxPrev = lastRaw.x - this._prevRawInkScreenPos.x;
                 const vyPrev = lastRaw.y - this._prevRawInkScreenPos.y;
                 const vxNew = pPos.x - lastRaw.x;
@@ -2589,8 +2617,63 @@
                 const lenPrev = Math.hypot(vxPrev, vyPrev);
                 if (lenPrev > 0.35) {
                   const cosAngle = (vxPrev * vxNew + vyPrev * vyNew) / (lenPrev * rawDist);
-                  if (cosAngle < inkProfile.forwardGuardMinCos) {
+                  if (rawDist < inkProfile.forwardGuardMaxDist && cosAngle < inkProfile.forwardGuardMinCos) {
                     continue;
+                  }
+                  // 펜을 화면에서 떼는 찰나 압력이 거의 0으로 빠지며 옆/뒤로 튀는 호버 스파이크 차단
+                  if (e.pointerType === 'pen' && rawPressSample > 0 && rawPressSample <= 0.12 && rawDist < 4.2 && cosAngle < 0.65) {
+                    continue;
+                  }
+                }
+              }
+
+              // ✂️ [아이패드 애플펜슬 유리면 입필 삐침(Touch-Down Hook) 1회 정밀 절제]:
+              // 첫 착지 구간(p0 -> p1 <= 4.8px, 아직 캔버스에 미렌더링)이 실제 획 진행 방향(p1 -> p2)과 38° 이상(cos < 0.78) 꺾여 있으면
+              // 유리면 착지 미끄러짐/틸트 수렴 오차로 생긴 p0 꼬리를 도려내고 p1을 깔끔한 새 시작점(points[0])으로 재고정!
+              if (
+                e.pointerType === 'pen' &&
+                inkProfile.touchDownHookMaxLen > 0 &&
+                this.currentInkStroke &&
+                !this.currentInkStroke.isHighlighter &&
+                !this.currentInkStroke._drewLiveFirstHalf &&
+                !this.currentInkStroke._didTouchDownHookTrim &&
+                this._liveBezierScreenPts &&
+                this._liveBezierScreenPts.length === 2 &&
+                Array.isArray(this.currentInkStroke.points) &&
+                this.currentInkStroke.points.length === 2 &&
+                rawDist >= 1.4
+              ) {
+                const sp0 = this._liveBezierScreenPts[0];
+                const sp1 = this._liveBezierScreenPts[1];
+                const v01x = sp1.x - sp0.x;
+                const v01y = sp1.y - sp0.y;
+                const len01 = Math.hypot(v01x, v01y);
+                if (len01 > 0.25 && len01 <= inkProfile.touchDownHookMaxLen) {
+                  const v12x = pPos.x - sp1.x;
+                  const v12y = pPos.y - sp1.y;
+                  const len12 = Math.hypot(v12x, v12y);
+                  if (len12 >= 1.4) {
+                    const cosHook = (v01x * v12x + v01y * v12y) / (len01 * len12);
+                    if (cosHook < 0.78) {
+                      this._liveBezierScreenPts[0] = sp1;
+                      this._liveBezierScreenPts.pop();
+                      this.currentInkStroke.points[0] = this.currentInkStroke.points[1];
+                      this.currentInkStroke.points.pop();
+                      if (Array.isArray(this.currentInkStroke._ptTimes) && this.currentInkStroke._ptTimes.length >= 2) {
+                        this.currentInkStroke._ptTimes[0] = this.currentInkStroke._ptTimes[1];
+                        this.currentInkStroke._ptTimes.pop();
+                      }
+                      this._lastInkScreenPos = { x: sp1.x, y: sp1.y };
+                      this._prevRawInkScreenPos = { x: sp1.x, y: sp1.y };
+                      try {
+                        Object.defineProperty(this.currentInkStroke, '_didTouchDownHookTrim', {
+                          value: true,
+                          writable: true,
+                          configurable: true,
+                          enumerable: false
+                        });
+                      } catch (_) { }
+                    }
                   }
                 }
               }
@@ -3728,7 +3811,19 @@
           } else {
             const lastSmoothed = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 1];
             const tailDist = Math.hypot(rawEnd.x - lastSmoothed.x, rawEnd.y - lastSmoothed.y);
-            if (tailDist >= 0.15) {
+            let isLiftOffKick = false;
+            if (!this.currentInkStroke.isHighlighter && this._liveBezierScreenPts.length >= 2 && tailDist < 4.5) {
+              const prevEndPt = this._liveBezierScreenPts[this._liveBezierScreenPts.length - 2];
+              const vxPrev = lastSmoothed.x - prevEndPt.x;
+              const vyPrev = lastSmoothed.y - prevEndPt.y;
+              const lenPrev = Math.hypot(vxPrev, vyPrev);
+              if (lenPrev > 0.35 && tailDist > 1e-4) {
+                const cosTail = (vxPrev * (rawEnd.x - lastSmoothed.x) + vyPrev * (rawEnd.y - lastSmoothed.y)) / (lenPrev * tailDist);
+                if (cosTail < 0.55) isLiftOffKick = true;
+              }
+            }
+            const minTailDist = (this._liveBezierScreenPts.length === 1 && !this.currentInkStroke.isHighlighter) ? 1.85 : 0.15;
+            if (tailDist >= minTailDist && !isLiftOffKick) {
               const isShortStroke = (this._liveBezierScreenPts.length <= 2);
               const tailKeep = 0.25;
               const endX = (this.currentInkStroke.isHighlighter || isShortStroke) ? rawEnd.x : (lastSmoothed.x * tailKeep + rawEnd.x * (1 - tailKeep));
@@ -3770,6 +3865,7 @@
         this._lastInkSampleTs = null;
         this._lastInkAcceptedTs = null;
         this._inkHoldLastScreenPos = null;
+        this._inkHoldTrackState = null;
         this._lastSignificantMoveTime = 0;
         this.isDrawingInk = false;
         const hadSceneFreeze = Boolean(this._hasSceneFreeze && this.sceneFreezeCanvas);
@@ -10729,7 +10825,9 @@
           ctx.clip();
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
-          const bzCard = Math.max(0.25, this.boardZoom || 1.0);
+          const bzCard = (typeof this._getCardCurrentStageScale === 'function')
+            ? Math.max(0.25, this._getCardCurrentStageScale(el))
+            : Math.max(0.25, this.boardZoom || 1.0);
           const unzoomedW = Math.max(1, bw / bzCard);
           const unzoomedH = Math.max(1, bh / bzCard);
           const exportCardRef = isGraphCard
@@ -10750,7 +10848,7 @@
                 }
               }
               const pipScale = Math.min(
-                5.0,
+                8.5,
                 3840 / Math.max(1, unzoomedW, unzoomedH),
                 Math.max(3.0, ctxExportScale * bzCard)
               );
@@ -11882,12 +11980,14 @@
     try {
       for (let i = 0; i < slides.length; i++) {
         const sl = slides[i];
-        let dataUrl = (sl && sl.viewerSnapshotDataUrl === '__SAME_AS_PDF_BOARD__' && sl.pdfPageBoardData)
-          ? sl.pdfPageBoardData.dataUrl
-          : (sl ? sl.viewerSnapshotDataUrl : '');
+        let dataUrl = (sl && sl._viewerBlobUrl)
+          ? sl._viewerBlobUrl
+          : ((sl && sl.viewerSnapshotDataUrl === '__SAME_AS_PDF_BOARD__' && sl.pdfPageBoardData)
+            ? sl.pdfPageBoardData.dataUrl
+            : (sl ? sl.viewerSnapshotDataUrl : ''));
         let tempGeneratedForPdf = false;
         if (!dataUrl && sl) {
-          if (typeof this._isPureUnannotatedPdfPageSlide === 'function' && this._isPureUnannotatedPdfPageSlide(sl, pkg.exportFilter || null)) {
+          if (typeof this._isPureUnannotatedPdfPageSlide === 'function' && this._isPureUnannotatedPdfPageSlide(sl, pkg.exportFilter || null) && sl.pdfPageBoardData && sl.pdfPageBoardData.dataUrl) {
             dataUrl = sl.pdfPageBoardData.dataUrl;
             sl.viewerSnapshotDataUrl = dataUrl;
           } else {
