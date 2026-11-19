@@ -6990,6 +6990,111 @@
     // - 우측 [✒️ 필기](#btnInkMode) 및 단축키가 직전에 쓰던 모드('bar' | 'pill')를 자동 기억하여 복원
     // - 켜짐 여부 · 선호 모드 · 위치(left, top) · 모듈 폴딩을 localStorage에 자동 기억
     // ==========================================================================
+    _sanitizePillRemotePos(raw) {
+      if (!raw || typeof raw !== 'object' || !raw.userPlaced) return null;
+      const num = (v, def) => (typeof v === 'number' && Number.isFinite(v)) ? v : def;
+      const anchorX = (raw.anchorX === 'left' || raw.anchorX === 'right' || raw.anchorX === 'ratio') ? raw.anchorX : 'right';
+      const anchorY = (raw.anchorY === 'top' || raw.anchorY === 'bottom' || raw.anchorY === 'ratio') ? raw.anchorY : 'top';
+      return {
+        userPlaced: true,
+        anchorX,
+        anchorY,
+        leftGap: Math.max(58, Math.min(4000, Math.round(num(raw.leftGap, 68)))),
+        rightGap: Math.max(58, Math.min(4000, Math.round(num(raw.rightGap, 68)))),
+        topOffset: Math.max(8, Math.min(3000, Math.round(num(raw.topOffset, 76)))),
+        bottomGap: Math.max(8, Math.min(3000, Math.round(num(raw.bottomGap, 48)))),
+        normX: Math.max(0, Math.min(1, Math.round(num(raw.normX, 0.95) * 10000) / 10000)),
+        normY: Math.max(0, Math.min(1, Math.round(num(raw.normY, 0.08) * 10000) / 10000))
+      };
+    }
+
+    _computePillRemotePosFromPx(leftPx, topPx, remoteEl = null) {
+      const el = remoteEl || (typeof document !== 'undefined' ? document.getElementById('quickPillRemote') : null);
+      const vw = Math.max(320, (typeof window !== 'undefined' && window.innerWidth) || 1440);
+      const vh = Math.max(240, (typeof window !== 'undefined' && window.innerHeight) || 900);
+      const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
+      const rect = (el && el.style.display !== 'none' && typeof el.getBoundingClientRect === 'function')
+        ? el.getBoundingClientRect()
+        : null;
+      const pillW = Math.max(98, (rect && rect.width > 20 ? rect.width : 0) || (el && el.offsetWidth > 20 ? el.offsetWidth : 0) || 118);
+      const pillH = Math.max(54, (rect && rect.height > 20 ? rect.height : 0) || (el && el.offsetHeight > 20 ? el.offsetHeight : 0) || 220);
+      const minL = 58;
+      const maxL = Math.max(minL, vw - pillW - 58);
+      const spanW = Math.max(1, maxL - minL);
+      const minT = 8 + topGuard;
+      const maxT = Math.max(minT, vh - pillH - 8);
+      const spanH = Math.max(1, maxT - minT);
+      const clampedL = Math.max(minL, Math.min(maxL, leftPx));
+      const clampedT = Math.max(minT, Math.min(maxT, topPx));
+      const normX = Math.max(0, Math.min(1, Math.round(((clampedL - minL) / spanW) * 10000) / 10000));
+      const normY = Math.max(0, Math.min(1, Math.round(((clampedT - minT) / spanH) * 10000) / 10000));
+      return {
+        userPlaced: true,
+        anchorX: normX <= 0.25 ? 'left' : (normX >= 0.75 ? 'right' : 'ratio'),
+        anchorY: normY <= 0.25 ? 'top' : (normY >= 0.75 ? 'bottom' : 'ratio'),
+        leftGap: Math.max(58, Math.round(clampedL)),
+        rightGap: Math.max(58, Math.round(vw - pillW - clampedL)),
+        topOffset: Math.max(8, Math.round(clampedT - topGuard)),
+        bottomGap: Math.max(8, Math.round(vh - pillH - clampedT)),
+        normX,
+        normY
+      };
+    }
+
+    _resolvePillRemoteDomPx(pos = this.pillRemotePos, remoteEl = null) {
+      const el = remoteEl || (typeof document !== 'undefined' ? document.getElementById('quickPillRemote') : null);
+      const vw = Math.max(320, (typeof window !== 'undefined' && window.innerWidth) || 1440);
+      const vh = Math.max(240, (typeof window !== 'undefined' && window.innerHeight) || 900);
+      const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
+      const rect = (el && el.style.display !== 'none' && typeof el.getBoundingClientRect === 'function')
+        ? el.getBoundingClientRect()
+        : null;
+      const pillW = Math.max(98, (rect && rect.width > 20 ? rect.width : 0) || (el && el.offsetWidth > 20 ? el.offsetWidth : 0) || 118);
+      const pillH = Math.max(54, (rect && rect.height > 20 ? rect.height : 0) || (el && el.offsetHeight > 20 ? el.offsetHeight : 0) || 220);
+      const minL = 58;
+      const maxL = Math.max(minL, vw - pillW - 58);
+      const spanW = Math.max(1, maxL - minL);
+      const minT = 8 + topGuard;
+      const maxT = Math.max(minT, vh - pillH - 8);
+      const spanH = Math.max(1, maxT - minT);
+
+      const validPos = this._sanitizePillRemotePos(pos);
+      let targetL;
+      let targetT;
+      if (!validPos) {
+        targetL = vw - pillW - 68;
+        targetT = topGuard + 76;
+      } else {
+        if (validPos.anchorX === 'left') {
+          targetL = validPos.leftGap;
+        } else if (validPos.anchorX === 'right') {
+          targetL = vw - pillW - validPos.rightGap;
+        } else {
+          targetL = minL + validPos.normX * spanW;
+        }
+        if (validPos.anchorY === 'top') {
+          targetT = topGuard + validPos.topOffset;
+        } else if (validPos.anchorY === 'bottom') {
+          targetT = vh - pillH - validPos.bottomGap;
+        } else {
+          targetT = minT + validPos.normY * spanH;
+        }
+      }
+      return {
+        left: Math.round(Math.max(minL, Math.min(maxL, targetL))),
+        top: Math.round(Math.max(minT, Math.min(maxT, targetT)))
+      };
+    }
+
+    _applyPillRemotePositionToDom(remoteEl = null) {
+      if (this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode || this.isDraggingPillRemote) return;
+      const el = remoteEl || (typeof document !== 'undefined' ? document.getElementById('quickPillRemote') : null);
+      if (!el) return;
+      const { left, top } = this._resolvePillRemoteDomPx(this.pillRemotePos, el);
+      el.style.left = `${left}px`;
+      el.style.top = `${top}px`;
+    }
+
     syncInkUiVisibility(opts = {}) {
       if (this.isQuickPillRemoteOpen) {
         this.isBottomInkBarHidden = true;
@@ -7017,23 +7122,10 @@
       if (remote) {
         remote.style.display = showPill ? 'flex' : 'none';
         if (showPill) {
-          if (opts.clampPillPosition) {
-            const parsedL = parseFloat(remote.style.left);
-            const parsedT = parseFloat(remote.style.top);
-            const rect = remote.getBoundingClientRect();
-            const pillW = Math.max(98, (rect && rect.width) || remote.offsetWidth || 98);
-            const pillH = Math.max(54, (rect && rect.height) || remote.offsetHeight || 220);
-            const rawL = Number.isFinite(parsedL) ? parsedL : ((rect && rect.left > 0) ? rect.left : 605);
-            const rawT = Number.isFinite(parsedT) ? parsedT : ((rect && rect.top > 0) ? rect.top : 76);
-            const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
-            const clampedL = Math.max(58, Math.min((window.innerWidth || 1440) - pillW - 58, rawL));
-            const clampedT = Math.max(12 + topGuard, Math.min((window.innerHeight || 900) - pillH - 12, rawT));
-            remote.style.left = `${Math.round(clampedL)}px`;
-            remote.style.top = `${Math.round(clampedT)}px`;
-          }
           if (typeof this.syncQuickPillRemoteUI === 'function') {
             this.syncQuickPillRemoteUI();
           }
+          this._applyPillRemotePositionToDom(remote);
         }
       }
 
@@ -7188,6 +7280,7 @@
       this.preferredInkUiMode = 'bar';
       this.isQuickPillRemoteOpen = false;
       this.isBottomInkBarHidden = false;
+      this.pillRemotePos = null;
       this.pillModules = {
         tools: true,
         zoom: true,
@@ -7196,12 +7289,10 @@
       };
 
       const saveRemoteSettings = () => {
+        if (this._isAudioReplayActive || this.isStudentAudioVideoOnlyMode) return;
         try {
-          const parsedL = parseFloat(remote.style.left);
-          const parsedT = parseFloat(remote.style.top);
-          const rect = (!Number.isFinite(parsedL) || !Number.isFinite(parsedT)) ? remote.getBoundingClientRect() : null;
-          const savedL = Number.isFinite(parsedL) ? parsedL : ((rect && rect.left > 0) ? rect.left : 605);
-          const savedT = Number.isFinite(parsedT) ? parsedT : ((rect && rect.top > 0) ? rect.top : 76);
+          const cleanPos = this._sanitizePillRemotePos(this.pillRemotePos);
+          const resolvedPx = this._resolvePillRemoteDomPx(cleanPos, remote);
           const payload = {
             preferredUiMode: (this.preferredInkUiMode === 'pill') ? 'pill' : 'bar',
             isOpen: Boolean(this.isQuickPillRemoteOpen),
@@ -7210,15 +7301,16 @@
             modZoom: Boolean(this.pillModules.zoom),
             modColor: Boolean(this.pillModules.color),
             modExtra: Boolean(this.pillModules.extra),
-            left: Math.round(savedL),
-            top: Math.round(savedT)
+            left: resolvedPx.left,
+            top: resolvedPx.top,
+            pillRemotePos: cleanPos
           };
           localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
         } catch (err) { }
       };
       this._saveQuickPillRemoteSettings = saveRemoteSettings;
 
-      // 저장된 세팅 복원 (구버전 동시 열림 세팅도 단일 배타 모드로 자동 마이그레이션)
+      // 저장된 세팅 복원 (구버전 동시 열림 세팅 및 구버전 픽셀 좌표 자동 마이그레이션)
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
@@ -7233,13 +7325,12 @@
           if (typeof saved.hideBottomBar === 'boolean') {
             this.isBottomInkBarHidden = saved.hideBottomBar;
           }
-          if (typeof saved.left === 'number' && typeof saved.top === 'number') {
-            const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
-            const pillW = remote.offsetWidth || 98;
-            const clampedL = Math.max(58, Math.min((window.innerWidth || 1440) - pillW - 58, saved.left));
-            const clampedT = Math.max(12 + topGuard, Math.min((window.innerHeight || 900) - 80, saved.top));
-            remote.style.left = `${clampedL}px`;
-            remote.style.top = `${clampedT}px`;
+          if (saved.pillRemotePos && typeof saved.pillRemotePos === 'object') {
+            this.pillRemotePos = this._sanitizePillRemotePos(saved.pillRemotePos);
+          } else if (typeof saved.left === 'number' && typeof saved.top === 'number') {
+            if (saved.left !== 605 || saved.top !== 76) {
+              this.pillRemotePos = this._computePillRemotePosFromPx(saved.left, saved.top, remote);
+            }
           }
           if (saved.isOpen) {
             this.isQuickPillRemoteOpen = true;
@@ -7249,7 +7340,17 @@
         }
       } catch (err) { }
 
+      this._applyPillRemotePositionToDom(remote);
       this.syncInkUiVisibility({ clampPillPosition: Boolean(this.isQuickPillRemoteOpen) });
+
+      if (!this._pillRemoteResizeBound && typeof window !== 'undefined') {
+        this._pillRemoteResizeBound = true;
+        window.addEventListener('resize', () => {
+          if (this.isQuickPillRemoteOpen && !this.isDraggingPillRemote && !this._isAudioReplayActive && !this.isStudentAudioVideoOnlyMode) {
+            this._applyPillRemotePositionToDom();
+          }
+        });
+      }
 
       if (btnRail) {
         btnRail.onclick = (e) => {
@@ -7534,9 +7635,14 @@
           const dx = e.clientX - startX;
           const dy = e.clientY - startY;
           const topGuard = (typeof this._getIosTopGuardPx === 'function') ? this._getIosTopGuardPx() : 0;
-          const pillW = remote.offsetWidth || 98;
-          const nextL = Math.max(58, Math.min((window.innerWidth || 1920) - pillW - 58, initialLeft + dx));
-          const nextT = Math.max(8 + topGuard, Math.min((window.innerHeight || 1080) - 56, initialTop + dy));
+          const pillW = remote.offsetWidth || 118;
+          const pillH = remote.offsetHeight || 220;
+          const minL = 58;
+          const maxL = Math.max(minL, (window.innerWidth || 1920) - pillW - 58);
+          const minT = 8 + topGuard;
+          const maxT = Math.max(minT, (window.innerHeight || 1080) - pillH - 8);
+          const nextL = Math.max(minL, Math.min(maxL, initialLeft + dx));
+          const nextT = Math.max(minT, Math.min(maxT, initialTop + dy));
           remote.style.left = `${Math.round(nextL)}px`;
           remote.style.top = `${Math.round(nextT)}px`;
           if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
@@ -7553,7 +7659,15 @@
             try { remote.releasePointerCapture(dragPointerId); } catch (err) { }
           }
           dragPointerId = null;
+          const finalL = parseFloat(remote.style.left);
+          const finalT = parseFloat(remote.style.top);
+          if (Number.isFinite(finalL) && Number.isFinite(finalT)) {
+            this.pillRemotePos = this._computePillRemotePosFromPx(finalL, finalT, remote);
+          }
           saveRemoteSettings();
+          if (typeof this.scheduleSaveUserPreferences === 'function') {
+            this.scheduleSaveUserPreferences();
+          }
           if (this.isAudioRecording && typeof this._recordAudioWorkspaceStateIfNeeded === 'function') {
             this._recordAudioWorkspaceStateIfNeeded(true);
           }
@@ -7570,6 +7684,9 @@
       if (!this.pillModules || !(modKey in this.pillModules)) return;
       this.pillModules[modKey] = (forceVal !== null) ? Boolean(forceVal) : !this.pillModules[modKey];
       this.syncQuickPillRemoteUI();
+      if (this.isQuickPillRemoteOpen && this.isInkMode) {
+        this._applyPillRemotePositionToDom();
+      }
       if (typeof this._saveQuickPillRemoteSettings === 'function') {
         this._saveQuickPillRemoteSettings();
       }

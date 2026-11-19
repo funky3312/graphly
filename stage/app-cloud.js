@@ -3484,6 +3484,9 @@
         updatedAt: Date.now(),
         inkDockPosition: this.inkDockPosition || 'bottom',
         preferredInkUiMode: (this.preferredInkUiMode === 'pill') ? 'pill' : 'bar',
+        pillRemotePos: (typeof this._sanitizePillRemotePos === 'function')
+          ? this._sanitizePillRemotePos(this.pillRemotePos)
+          : null,
         pillModules: {
           tools: this.pillModules ? Boolean(this.pillModules.tools) : true,
           zoom: this.pillModules ? Boolean(this.pillModules.zoom) : true,
@@ -3554,6 +3557,18 @@
           if (typeof prefs.pillModules.zoom === 'boolean') this.pillModules.zoom = prefs.pillModules.zoom;
           if (typeof prefs.pillModules.color === 'boolean') this.pillModules.color = prefs.pillModules.color;
           if (typeof prefs.pillModules.extra === 'boolean') this.pillModules.extra = prefs.pillModules.extra;
+        }
+        if (prefs.pillRemotePos && typeof prefs.pillRemotePos === 'object' && typeof this._sanitizePillRemotePos === 'function') {
+          const nextPillPos = this._sanitizePillRemotePos(prefs.pillRemotePos);
+          if (nextPillPos) {
+            this.pillRemotePos = nextPillPos;
+            if (!this._isAudioReplayActive && !this._isApplyingAudioTimelineState && typeof this._applyPillRemotePositionToDom === 'function') {
+              this._applyPillRemotePositionToDom();
+            }
+            if (typeof this._saveQuickPillRemoteSettings === 'function') {
+              this._saveQuickPillRemoteSettings();
+            }
+          }
         }
         if (prefs.preferredInkUiMode === 'pill' || prefs.preferredInkUiMode === 'bar') {
           this.preferredInkUiMode = prefs.preferredInkUiMode;
@@ -4135,10 +4150,15 @@
               : curCollected;
             this._preHydrationBaselinePrefs = syncedSnapshot;
 
+            const needBackfillPillPos = Boolean(
+              !resolvedRemotePrefs.pillRemotePos &&
+              syncedSnapshot.pillRemotePos &&
+              syncedSnapshot.pillRemotePos.userPlaced
+            );
             let needKeepDirtyFlag = false;
-            if (hasMergedLocalChanges || shouldSyncSiblingToPrimary) {
+            if (hasMergedLocalChanges || shouldSyncSiblingToPrimary || needBackfillPillPos) {
               const wroteOk = await this._writeUserPreferencesToFirestoreNow(curUid, syncedSnapshot);
-              if (!wroteOk && hasMergedLocalChanges) {
+              if (!wroteOk && (hasMergedLocalChanges || needBackfillPillPos)) {
                 needKeepDirtyFlag = true;
               }
             }
