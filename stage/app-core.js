@@ -4193,8 +4193,8 @@ class GraphApp {
     // --- [우측 줌 인/아웃 버튼 바인딩 (대표님 기획: 줌 다다익선)] ---
     const btnQuickZoomIn = document.getElementById('btnQuickZoomIn');
     const btnQuickZoomOut = document.getElementById('btnQuickZoomOut');
-    if (btnQuickZoomIn) btnQuickZoomIn.onclick = () => { this.zoomByStep(0.12); };
-    if (btnQuickZoomOut) btnQuickZoomOut.onclick = () => { this.zoomByStep(-0.12); };
+    this.bindRepeatableStepButton(btnQuickZoomIn, () => { this.zoomByStep(0.12); }, { minIntervalMs: 85 });
+    this.bindRepeatableStepButton(btnQuickZoomOut, () => { this.zoomByStep(-0.12); }, { minIntervalMs: 85 });
 
     // 좌측 서랍 패널(#panelStyle) 내 필기 펜 스타일(볼펜/만년필/붓펜) 칩 바인딩
     document.querySelectorAll('.ink-pen-style-chip').forEach(chip => {
@@ -8106,5 +8106,96 @@ class GraphApp {
         }
       }
     }, 120);
+  }
+
+  // 🛡️ [연타 허용 & 1클릭 2회 적용(채터링 · 펜촉 바운스 · 합성 유령 클릭 · 스톨 큐 중첩) 원천 차단 공용 바인더]
+  bindRepeatableStepButton(btnEl, actionFn, options = null) {
+    if (!btnEl || typeof actionFn !== 'function') return;
+    const minIntervalMs = (options && typeof options.minIntervalMs === 'number') ? options.minIntervalMs : 95;
+    let hasSeenPointerDown = false;
+    let armedByPointerDown = false;
+    let lastPointerDownAt = 0;
+    let lastExecEndAt = 0;
+    let lastExecEventTs = 0;
+    let paintCommitLocked = false;
+    let unlockSafetyTimer = null;
+
+    const unlockPaintCommit = () => {
+      if (unlockSafetyTimer) {
+        clearTimeout(unlockSafetyTimer);
+        unlockSafetyTimer = null;
+      }
+      paintCommitLocked = false;
+    };
+
+    btnEl.addEventListener('pointerdown', (ev) => {
+      if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+      if (ev.stopPropagation) ev.stopPropagation();
+      const now = performance.now();
+      const evTs = (ev && typeof ev.timeStamp === 'number' && ev.timeStamp > 0) ? ev.timeStamp : 0;
+      hasSeenPointerDown = true;
+      if (
+        (lastExecEndAt > 0 && (now - lastExecEndAt) < minIntervalMs) ||
+        (lastExecEventTs > 0 && evTs > 0 && (evTs - lastExecEventTs) >= 0 && (evTs - lastExecEventTs) < minIntervalMs)
+      ) {
+        armedByPointerDown = false;
+        return;
+      }
+      if (lastPointerDownAt > 0 && (now - lastPointerDownAt) < 55) {
+        return;
+      }
+      lastPointerDownAt = now;
+      armedByPointerDown = true;
+    });
+
+    btnEl.addEventListener('pointercancel', () => {
+      armedByPointerDown = false;
+    });
+
+    btnEl.onclick = (ev) => {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      const isNonPointerTrigger = !ev || ev.detail === 0;
+      if (isNonPointerTrigger) {
+        actionFn(ev);
+        return;
+      }
+
+      const now = performance.now();
+      const evTs = (ev && typeof ev.timeStamp === 'number' && ev.timeStamp > 0) ? ev.timeStamp : 0;
+      if (
+        (lastExecEndAt > 0 && (now - lastExecEndAt) < minIntervalMs) ||
+        (lastExecEventTs > 0 && evTs > 0 && (evTs - lastExecEventTs) >= 0 && (evTs - lastExecEventTs) < minIntervalMs)
+      ) {
+        armedByPointerDown = false;
+        return;
+      }
+
+      if (hasSeenPointerDown) {
+        if (!armedByPointerDown) {
+          return;
+        }
+        armedByPointerDown = false;
+      }
+
+      if (paintCommitLocked) {
+        return;
+      }
+
+      lastExecEventTs = evTs;
+      paintCommitLocked = true;
+      unlockSafetyTimer = setTimeout(unlockPaintCommit, 180);
+      try {
+        actionFn(ev);
+      } finally {
+        lastExecEndAt = performance.now();
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => {
+            setTimeout(unlockPaintCommit, 0);
+          });
+        } else {
+          unlockPaintCommit();
+        }
+      }
+    };
   }
 }

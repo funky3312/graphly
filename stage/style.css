@@ -29618,3 +29618,27 @@ canvas.ink-cursor-pen-dashed-fallback {
   cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cg stroke='%23ffffff' stroke-width='2.8' stroke-linecap='round'%3E%3Cline x1='12' y1='3' x2='12' y2='8'/%3E%3Cline x1='12' y1='16' x2='12' y2='21'/%3E%3Cline x1='3' y1='12' x2='8' y2='12'/%3E%3Cline x1='16' y1='12' x2='21' y2='12'/%3E%3C/g%3E%3Cg stroke='%230f172a' stroke-width='1.5' stroke-linecap='round'%3E%3Cline x1='12' y1='3' x2='12' y2='8'/%3E%3Cline x1='12' y1='16' x2='12' y2='21'/%3E%3Cline x1='3' y1='12' x2='8' y2='12'/%3E%3Cline x1='16' y1='12' x2='21' y2='12'/%3E%3C/g%3E%3Cline x1='15' y1='19' x2='23' y2='19' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-dasharray='1.8 2.8'/%3E%3Cline x1='15' y1='19' x2='23' y2='19' stroke='%230f172a' stroke-width='1.6' stroke-linecap='round' stroke-dasharray='1.8 2.8'/%3E%3C/svg%3E") 12 12, crosshair !important;
 }
 
+#lessonPlaylistNavBar button,
+#pdfBoardNavBar button,
+#btnQuickZoomIn,
+#btnQuickZoomOut,
+#btnInkZoomIn,
+#btnInkZoomOut,
+#btnPillZoomIn,
+#btnPillZoomOut,
+#btnRailZoomIn,
+#btnRailZoomOut,
+#btnViewerPrevSlide,
+#btnViewerNextSlide,
+#btnViewerEdgePrev,
+#btnViewerEdgeNext,
+#btnViewerZoomIn,
+#btnViewerZoomOut,
+#btnPdfPrevPage,
+#btnPdfNextPage,
+#btnPdfZoomIn,
+#btnPdfZoomOut {
+  touch-action: manipulation;
+}
+
+

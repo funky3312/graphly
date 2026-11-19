@@ -6420,6 +6420,28 @@
   }
 
   zoomByStep(delta) {
+    const nowStep = performance.now();
+    const isRapidStepBurst = Boolean(this._lastZoomByStepAt && (nowStep - this._lastZoomByStepAt) <= 340);
+    this._lastZoomByStepAt = nowStep;
+    if (isRapidStepBurst) {
+      this._isWheelZooming = true;
+      if (this._wheelZoomIdleTimer) clearTimeout(this._wheelZoomIdleTimer);
+      const finishStepZoomWhenIdle = () => {
+        this._wheelZoomIdleTimer = null;
+        if (
+          (typeof this.isActivelyWritingOrInteracting === 'function' && this.isActivelyWritingOrInteracting()) ||
+          this.isDrawingInk ||
+          this._isDrawingCardInk ||
+          this.isStylusDrawing
+        ) {
+          this._wheelZoomIdleTimer = setTimeout(finishStepZoomWhenIdle, 240);
+          return;
+        }
+        this._isWheelZooming = false;
+        this.requestRender();
+      };
+      this._wheelZoomIdleTimer = setTimeout(finishStepZoomWhenIdle, 240);
+    }
     if (this.isGraphCovered && !this.pdfPageBoardData) {
       const currBZ = this.boardZoom || 1.0;
       let nextBZ = Math.round((currBZ + delta) * 100) / 100;

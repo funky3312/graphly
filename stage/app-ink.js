@@ -338,14 +338,14 @@
       // 🔍 펜 툴바 일체형 큼직한 퀵 줌 [− | +] (판서 모드에서는 판서 글씨만 독립 줌, 그래프 모드에서는 그래프 줌!)
       const btnInkZoomOut = document.getElementById('btnInkZoomOut');
       const btnInkZoomIn = document.getElementById('btnInkZoomIn');
-      if (btnInkZoomOut) btnInkZoomOut.onclick = () => { this.zoomByStep(-0.12); };
-      if (btnInkZoomIn) btnInkZoomIn.onclick = () => { this.zoomByStep(0.12); };
+      this.bindRepeatableStepButton(btnInkZoomOut, () => { this.zoomByStep(-0.12); }, { minIntervalMs: 85 });
+      this.bindRepeatableStepButton(btnInkZoomIn, () => { this.zoomByStep(0.12); }, { minIntervalMs: 85 });
 
       // 🖐️ 좌측 레일 툴바 엄지 전용 큼직한 위/아래 줌 [+] / [−] (양손 멀티태스킹 최적화)
       const btnRailZoomIn = document.getElementById('btnRailZoomIn');
       const btnRailZoomOut = document.getElementById('btnRailZoomOut');
-      if (btnRailZoomIn) btnRailZoomIn.onclick = () => { this.zoomByStep(0.12); };
-      if (btnRailZoomOut) btnRailZoomOut.onclick = () => { this.zoomByStep(-0.12); };
+      this.bindRepeatableStepButton(btnRailZoomIn, () => { this.zoomByStep(0.12); }, { minIntervalMs: 85 });
+      this.bindRepeatableStepButton(btnRailZoomOut, () => { this.zoomByStep(-0.12); }, { minIntervalMs: 85 });
 
       // 독 드래그 이동 및 액정타블렛 전용 알약 리모컨 초기화
       this.initInkDockDraggable();
@@ -7318,12 +7318,28 @@
         };
       }
 
-      // 모듈 2 [줌]: [－] / [＋] 줌 버튼 (단타 클릭 + 0.3초 이상 꾹 누르면 연속 줌!)
+      // 모듈 2 [줌]: [－] / [＋] 줌 버튼 (단타 클릭 채터링·유령클릭 방어 + 빠른 연타 허용 + 0.32초 이상 꾹 누르면 연속 줌!)
       const bindHoldZoom = (btn, delta) => {
         if (!btn) return;
         let holdTimer = null;
         let holdInterval = null;
         let didHold = false;
+        let hasSeenPointerDown = false;
+        let armedByPointerDown = false;
+        let lastPointerDownAt = 0;
+        let lastTapEndAt = 0;
+        let lastTapEventTs = 0;
+        let paintCommitLocked = false;
+        let unlockSafetyTimer = null;
+        const MIN_TAP_INTERVAL_MS = 85;
+
+        const unlockPaintCommit = () => {
+          if (unlockSafetyTimer) {
+            clearTimeout(unlockSafetyTimer);
+            unlockSafetyTimer = null;
+          }
+          paintCommitLocked = false;
+        };
 
         const clearHold = () => {
           if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
@@ -7331,29 +7347,88 @@
         };
 
         btn.addEventListener('pointerdown', (e) => {
-          if (e.button && e.button !== 0) return;
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
           e.stopPropagation();
-          didHold = false;
+          const now = performance.now();
+          const evTs = (e && typeof e.timeStamp === 'number' && e.timeStamp > 0) ? e.timeStamp : 0;
+          hasSeenPointerDown = true;
           clearHold();
+          if (
+            (lastTapEndAt > 0 && (now - lastTapEndAt) < MIN_TAP_INTERVAL_MS) ||
+            (lastTapEventTs > 0 && evTs > 0 && (evTs - lastTapEventTs) >= 0 && (evTs - lastTapEventTs) < MIN_TAP_INTERVAL_MS)
+          ) {
+            didHold = false;
+            armedByPointerDown = false;
+            return;
+          }
+          if (lastPointerDownAt > 0 && (now - lastPointerDownAt) < 55) {
+            return;
+          }
+          lastPointerDownAt = now;
+          didHold = false;
+          armedByPointerDown = true;
           holdTimer = setTimeout(() => {
             didHold = true;
+            armedByPointerDown = false;
             holdInterval = setInterval(() => {
               this.zoomByStep(delta * 0.65);
             }, 55);
-          }, 300);
+          }, 320);
         });
 
         window.addEventListener('pointerup', clearHold, { capture: true });
-        window.addEventListener('pointercancel', clearHold, { capture: true });
+        window.addEventListener('pointercancel', () => {
+          clearHold();
+          armedByPointerDown = false;
+        }, { capture: true });
         btn.addEventListener('pointerleave', clearHold);
 
         btn.onclick = (e) => {
-          e.stopPropagation();
+          if (e && e.stopPropagation) e.stopPropagation();
+          clearHold();
           if (didHold) {
             didHold = false;
+            armedByPointerDown = false;
             return;
           }
-          this.zoomByStep(delta);
+          const isNonPointerTrigger = !e || e.detail === 0;
+          if (isNonPointerTrigger) {
+            this.zoomByStep(delta);
+            return;
+          }
+          const now = performance.now();
+          const evTs = (e && typeof e.timeStamp === 'number' && e.timeStamp > 0) ? e.timeStamp : 0;
+          if (
+            (lastTapEndAt > 0 && (now - lastTapEndAt) < MIN_TAP_INTERVAL_MS) ||
+            (lastTapEventTs > 0 && evTs > 0 && (evTs - lastTapEventTs) >= 0 && (evTs - lastTapEventTs) < MIN_TAP_INTERVAL_MS)
+          ) {
+            armedByPointerDown = false;
+            return;
+          }
+          if (hasSeenPointerDown) {
+            if (!armedByPointerDown) {
+              return;
+            }
+            armedByPointerDown = false;
+          }
+          if (paintCommitLocked) {
+            return;
+          }
+          lastTapEventTs = evTs;
+          paintCommitLocked = true;
+          unlockSafetyTimer = setTimeout(unlockPaintCommit, 180);
+          try {
+            this.zoomByStep(delta);
+          } finally {
+            lastTapEndAt = performance.now();
+            if (typeof requestAnimationFrame === 'function') {
+              requestAnimationFrame(() => {
+                setTimeout(unlockPaintCommit, 0);
+              });
+            } else {
+              unlockPaintCommit();
+            }
+          }
         };
       };
 
@@ -7649,6 +7724,14 @@
     // 필기 도중(pointermove)에는 520단계 함수 수식 계산, 격자, 축, 수선 렌더링을 100% 생략하고 이 텍스처만 0.01ms 만에 Blit합니다.
     captureSceneFreeze() {
       if (!this.canvas || !this.sceneFreezeCanvas || !this.sceneFreezeCtx) return;
+      if (this._isWheelZooming) {
+        this._isWheelZooming = false;
+        if (this._wheelZoomIdleTimer) {
+          clearTimeout(this._wheelZoomIdleTimer);
+          this._wheelZoomIdleTimer = null;
+        }
+        this._canvasHasLowResCameraFrame = true;
+      }
       if (this._canvasHasLowResCameraFrame) {
         this._hasSceneFreeze = false;
         this.render();

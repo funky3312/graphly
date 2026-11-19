@@ -1216,8 +1216,8 @@
       }
 
       const btnPlaylistDelCur = document.getElementById('btnPlaylistDeleteCurrent');
-      if (btnPrev) btnPrev.onclick = () => this.stepLessonPlaylist(-1);
-      if (btnNext) btnNext.onclick = () => this.stepLessonPlaylist(1);
+      this.bindRepeatableStepButton(btnPrev, () => this.stepLessonPlaylist(-1), { minIntervalMs: 105 });
+      this.bindRepeatableStepButton(btnNext, () => this.stepLessonPlaylist(1), { minIntervalMs: 105 });
       if (btnInfo) {
         btnInfo.onclick = (e) => {
           e.stopPropagation();
@@ -17631,10 +17631,10 @@
         }
       };
 
-      if (btnPrev) btnPrev.onclick = goPrevSlide;
-      if (btnNext) btnNext.onclick = goNextSlide;
-      if (btnEdgePrev) btnEdgePrev.onclick = goPrevSlide;
-      if (btnEdgeNext) btnEdgeNext.onclick = goNextSlide;
+      this.bindRepeatableStepButton(btnPrev, goPrevSlide, { minIntervalMs: 105 });
+      this.bindRepeatableStepButton(btnNext, goNextSlide, { minIntervalMs: 105 });
+      this.bindRepeatableStepButton(btnEdgePrev, goPrevSlide, { minIntervalMs: 105 });
+      this.bindRepeatableStepButton(btnEdgeNext, goNextSlide, { minIntervalMs: 105 });
       if (btnCounter && gridPopover) {
         btnCounter.onclick = (e) => {
           e.stopPropagation();
@@ -17666,26 +17666,22 @@
           gridPopover.style.display = 'none';
         }, { capture: true });
       }
-      if (btnZoomIn) {
-        btnZoomIn.onclick = () => {
-          const currZ = this._viewerZoom || 1.0;
-          const maxZ = this._viewerMaxZoom || 3.5;
-          let nextZ = Math.round((currZ + 0.12) * 100) / 100;
-          // 축소 구간에서 확대해 올라올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
-          if (currZ < 0.99 && nextZ >= 0.96) nextZ = 1.0;
-          this.setSmartViewerZoom(Math.min(maxZ, nextZ));
-        };
-      }
-      if (btnZoomOut) {
-        btnZoomOut.onclick = () => {
-          const currZ = this._viewerZoom || 1.0;
-          const minZ = this._viewerMinZoom || 1.0;
-          let nextZ = Math.round((currZ - 0.12) * 100) / 100;
-          // 확대 구간에서 축소해 내려올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
-          if (currZ > 1.01 && nextZ <= 1.04) nextZ = 1.0;
-          this.setSmartViewerZoom(Math.max(minZ, nextZ));
-        };
-      }
+      this.bindRepeatableStepButton(btnZoomIn, () => {
+        const currZ = this._viewerZoom || 1.0;
+        const maxZ = this._viewerMaxZoom || 3.5;
+        let nextZ = Math.round((currZ + 0.12) * 100) / 100;
+        // 축소 구간에서 확대해 올라올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
+        if (currZ < 0.99 && nextZ >= 0.96) nextZ = 1.0;
+        this.setSmartViewerZoom(Math.min(maxZ, nextZ));
+      }, { minIntervalMs: 85 });
+      this.bindRepeatableStepButton(btnZoomOut, () => {
+        const currZ = this._viewerZoom || 1.0;
+        const minZ = this._viewerMinZoom || 1.0;
+        let nextZ = Math.round((currZ - 0.12) * 100) / 100;
+        // 확대 구간에서 축소해 내려올 때 100%를 지나치거나 근접하면 정확히 100%에 안착
+        if (currZ > 1.01 && nextZ <= 1.04) nextZ = 1.0;
+        this.setSmartViewerZoom(Math.max(minZ, nextZ));
+      }, { minIntervalMs: 85 });
       if (btnZoomFit) {
         btnZoomFit.onclick = () => {
           this._stopSmartViewerInertia();

@@ -284,8 +284,8 @@
       const btnBoardClose = document.getElementById('btnPdfBoardClose');
       const btnBoardClearAll = document.getElementById('btnPdfBoardClearAll');
       const btnBoardHideBar = document.getElementById('btnPdfBoardHideBar');
-      if (btnBoardPrev) btnBoardPrev.onclick = () => this.navigatePdfBoardPage(-1);
-      if (btnBoardNext) btnBoardNext.onclick = () => this.navigatePdfBoardPage(1);
+      this.bindRepeatableStepButton(btnBoardPrev, () => this.navigatePdfBoardPage(-1), { minIntervalMs: 105 });
+      this.bindRepeatableStepButton(btnBoardNext, () => this.navigatePdfBoardPage(1), { minIntervalMs: 105 });
       if (btnBoardInfo) {
         btnBoardInfo.onclick = (e) => {
           e.stopPropagation();
@@ -309,8 +309,8 @@
       const btnNext = document.getElementById('btnPdfNextPage');
       const inputPage = document.getElementById('inputPdfCurrentPage');
 
-      if (btnPrev) btnPrev.onclick = () => this.scrollToPdfPage(this.pdfCurrentPage - 1);
-      if (btnNext) btnNext.onclick = () => this.scrollToPdfPage(this.pdfCurrentPage + 1);
+      this.bindRepeatableStepButton(btnPrev, () => this.scrollToPdfPage(this.pdfCurrentPage - 1), { minIntervalMs: 105 });
+      this.bindRepeatableStepButton(btnNext, () => this.scrollToPdfPage(this.pdfCurrentPage + 1), { minIntervalMs: 105 });
       if (inputPage) {
         inputPage.onchange = () => {
           const p = parseInt(inputPage.value, 10);
@@ -329,8 +329,8 @@
       const btnZoomOut = document.getElementById('btnPdfZoomOut');
       const btnZoomFit = document.getElementById('btnPdfZoomFit');
 
-      if (btnZoomIn) btnZoomIn.onclick = () => this.setPdfZoom(this.pdfZoom + 0.15);
-      if (btnZoomOut) btnZoomOut.onclick = () => this.setPdfZoom(Math.max(0.6, this.pdfZoom - 0.15));
+      this.bindRepeatableStepButton(btnZoomIn, () => this.setPdfZoom(this.pdfZoom + 0.15), { minIntervalMs: 85 });
+      this.bindRepeatableStepButton(btnZoomOut, () => this.setPdfZoom(Math.max(0.6, this.pdfZoom - 0.15)), { minIntervalMs: 85 });
       if (btnZoomFit) btnZoomFit.onclick = () => this.fitPdfWidth();
 
       // 뷰포트 스크롤 감지: 현재 화면 중앙에 있는 페이지 번호 실시간 계산 (passive: true로 브라우저 C++ 컴포지터 스레드 100% 직결)
