@@ -29641,4 +29641,431 @@ canvas.ink-cursor-pen-dashed-fallback {
   touch-action: manipulation;
 }
 
+/* ============================================================================
+   📤 내보내기 모달 (#modalShare) 컴팩트 다이어트 & 3칸 범위 입력(2안) Pure Ink Charcoal 정돈
+   - 기존 과대 확대(480px) -> 424px 단정한 비례 축소 (PC · iPad 가로 · iPad 세로 전 뷰포트 무짤림)
+   ============================================================================ */
+#modalShare .unified-export-modal-card {
+  max-width: 424px !important;
+  width: min(424px, 92vw) !important;
+  max-height: calc(100vh - 28px) !important;
+  max-height: calc(100dvh - 28px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+}
+
+#modalShare .smart-modal-header {
+  flex: 0 0 auto !important;
+  padding: 10px 15px !important;
+}
+
+#modalShare .modal-title-text {
+  font-size: 14.5px !important;
+}
+
+#modalShare .btn-modal-close {
+  width: 26px !important;
+  height: 26px !important;
+}
+
+#modalShare .unified-export-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  padding: 11px 15px 14px !important;
+}
+
+#modalShare .settings-clean-divider-block {
+  margin-top: 10px !important;
+  padding-top: 10px !important;
+}
+
+#modalShare .settings-clean-subtitle {
+  margin-bottom: 5px !important;
+  font-size: 12px !important;
+}
+
+#modalShare .vf-aspect-chips {
+  gap: 5px !important;
+}
+
+#modalShare .export-scope-grid-3col {
+  display: grid !important;
+  grid-template-columns: 0.78fr 0.94fr 1.42fr !important;
+  gap: 5px !important;
+  align-items: stretch !important;
+}
+
+#modalShare .vf-chip {
+  min-height: 33px !important;
+  height: 33px !important;
+  padding: 0 8px !important;
+  gap: 2.5px !important;
+  font-size: 12.5px !important;
+  border-radius: 8px !important;
+  white-space: nowrap !important;
+}
+
+#modalShare .export-layer-chip {
+  gap: 4px !important;
+  padding: 0 5px !important;
+}
+
+#modalShare .settings-clean-divider-block > div[style*="grid"],
+#modalShare .settings-clean-divider-block > div[style*="flex"] {
+  gap: 5px !important;
+}
+
+#modalShare .settings-clean-divider-block > div[style*="margin-top"] {
+  margin-top: 5px !important;
+}
+
+#modalShare .settings-clean-btn {
+  height: 35px !important;
+  padding: 0 11px !important;
+  border-radius: 8px !important;
+  font-size: 12.5px !important;
+  gap: 5px !important;
+}
+
+#modalShare .settings-clean-input {
+  height: 35px !important;
+  padding: 0 10px !important;
+  border-radius: 8px !important;
+  font-size: 12.5px !important;
+}
+
+#modalShare .share-link-tier-notice {
+  margin-top: 7px !important;
+  padding: 7px 10px !important;
+  border-radius: 8px !important;
+}
+
+#modalShare .share-promo-banner-quick-row {
+  margin-top: 6px !important;
+  padding: 6px 10px !important;
+  min-height: 32px !important;
+  border-radius: 8px !important;
+}
+
+/* 3번째 칸: 일체형 범위 입력 박스 (고정 가로폭 · Pure Ink Charcoal 키라인 동기화) */
+#modalShare .export-scope-range-box {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 33px;
+  padding: 0 7px 0 9px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  transition: background 0.14s ease, border-color 0.14s ease;
+  box-sizing: border-box;
+}
+
+#modalShare .export-scope-range-box:hover:not(.is-disabled):not(.active):not(.is-invalid) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+#modalShare .export-scope-range-box.active {
+  background: #ffffff;
+  border: 1.5px solid #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+#modalShare .export-scope-range-box.is-invalid {
+  background: #fef2f2 !important;
+  border: 1.5px solid #ef4444 !important;
+}
+
+#modalShare .export-scope-range-box.is-disabled {
+  opacity: 0.48;
+  pointer-events: none;
+}
+
+#modalShare .export-scope-range-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-family: inherit;
+  font-size: 12.2px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+#modalShare .export-scope-range-input::placeholder {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+#modalShare .export-scope-range-badge {
+  flex: 0 0 auto;
+  margin-left: 5px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  font-size: 10.8px;
+  font-weight: 700;
+  line-height: 1.35;
+  background: #0f172a;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+#modalShare .export-scope-range-box:not(.active) .export-scope-range-badge {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+#modalShare .export-scope-range-box.is-invalid .export-scope-range-badge {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+body:not(.theme-light) #modalShare .export-scope-range-box {
+  background: rgba(30, 41, 59, 0.5);
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+body:not(.theme-light) #modalShare .export-scope-range-box:hover:not(.is-disabled):not(.active):not(.is-invalid) {
+  background: rgba(51, 65, 85, 0.72);
+  border-color: rgba(203, 213, 225, 0.45);
+}
+
+body:not(.theme-light) #modalShare .export-scope-range-box.active {
+  background: rgba(30, 41, 59, 0.95);
+  border: 1.5px solid #f8fafc;
+}
+
+body:not(.theme-light) #modalShare .export-scope-range-box.is-invalid {
+  background: rgba(127, 29, 29, 0.35) !important;
+  border: 1.5px solid #f87171 !important;
+}
+
+body:not(.theme-light) #modalShare .export-scope-range-input {
+  color: #f8fafc;
+}
+
+body:not(.theme-light) #modalShare .export-scope-range-input::placeholder {
+  color: #64748b;
+}
+
+body:not(.theme-light) #modalShare .export-scope-range-badge {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+body:not(.theme-light) #modalShare .export-scope-range-box:not(.active) .export-scope-range-badge {
+  background: rgba(148, 163, 184, 0.22);
+  color: #cbd5e1;
+}
+
+body:not(.theme-light) #modalShare .export-scope-range-box.is-invalid .export-scope-range-badge {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+@media (max-width: 420px) {
+  #modalShare .export-scope-grid-3col {
+    grid-template-columns: 0.74fr 0.92fr 1.44fr !important;
+  }
+  #modalShare .vf-chip,
+  #modalShare .settings-clean-btn,
+  #modalShare .settings-clean-input {
+    font-size: 12px !important;
+  }
+}
+
+/* ============================================================================
+   🔗 내보내기 모달 (#modalShare) [이미지·공유] 강약 위계 개편
+   - 보조(이미지 복사 / PDF·PNG 저장): 슬림 32px
+   - 메인(공유 링크 복사 + 유효기간 내장 / QR 저장): 큼직한 48px 히어로 버튼
+   - 하단 카드: 영구 링크 생성 (Premium) -> [보관함 >] + 전 등급 자동반영 안내
+   ============================================================================ */
+#modalShare .share-secondary-action-grid {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 5px !important;
+}
+
+#modalShare .share-slim-sub-btn {
+  height: 32px !important;
+  font-size: 12.2px !important;
+  font-weight: 600 !important;
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  color: #334155 !important;
+}
+
+#modalShare .share-slim-sub-btn:hover {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare .share-slim-sub-btn {
+  background: rgba(30, 41, 59, 0.45) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  color: #cbd5e1 !important;
+}
+
+body:not(.theme-light) #modalShare .share-slim-sub-btn:hover {
+  background: rgba(51, 65, 85, 0.72) !important;
+  border-color: rgba(203, 213, 225, 0.45) !important;
+  color: #ffffff !important;
+}
+
+#modalShare .share-primary-action-grid {
+  display: grid !important;
+  grid-template-columns: 1.65fr 1fr !important;
+  gap: 5px !important;
+  margin-top: 5px !important;
+}
+
+#modalShare .share-hero-copy-btn {
+  height: 48px !important;
+  padding: 4px 12px !important;
+  border-radius: 9px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  background: #ffffff !important;
+  border: 1.5px solid #0f172a !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
+}
+
+#modalShare .share-hero-copy-btn:hover {
+  background: #f8fafc !important;
+  border-color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare .share-hero-copy-btn {
+  background: rgba(30, 41, 59, 0.92) !important;
+  border: 1.5px solid #f8fafc !important;
+  color: #ffffff !important;
+}
+
+body:not(.theme-light) #modalShare .share-hero-copy-btn:hover {
+  background: rgba(51, 65, 85, 0.98) !important;
+}
+
+#modalShare .share-hero-main-line {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5.5px;
+  font-size: 13.3px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+#modalShare .share-btn-sub-meta {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: #64748b;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+body:not(.theme-light) #modalShare .share-btn-sub-meta {
+  color: #94a3b8;
+}
+
+#modalShare .share-hero-copy-btn.export-btn-success-fx .share-btn-sub-meta {
+  display: none !important;
+}
+
+#modalShare .share-hero-qr-btn {
+  height: 48px !important;
+  padding: 0 12px !important;
+  border-radius: 9px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+body:not(.theme-light) #modalShare .share-hero-qr-btn {
+  background: rgba(30, 41, 59, 0.72) !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  color: #f8fafc !important;
+}
+
+#modalShare .share-link-tier-notice {
+  margin-top: 6px !important;
+  padding: 7px 10px 8px !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+}
+
+#modalShare .share-vault-perm-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#modalShare .share-vault-perm-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+#modalShare .share-vault-perm-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+body:not(.theme-light) #modalShare .share-vault-perm-icon {
+  color: #94a3b8;
+}
+
+#modalShare .share-vault-perm-title {
+  font-size: 12.4px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+body:not(.theme-light) #modalShare .share-vault-perm-title {
+  color: #f8fafc;
+}
+
+#modalShare .share-vault-perm-desc {
+  font-size: 11.2px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  color: #475569;
+}
+
+body:not(.theme-light) #modalShare .share-vault-perm-desc {
+  color: #cbd5e1;
+}
+
+
+
 

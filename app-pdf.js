@@ -2465,7 +2465,7 @@
       const rawVal = inputEl ? inputEl.value : '';
       const { pages, hasInput } = this.parsePdfPageSelectionSpec(rawVal, total);
 
-      const maxSlides = (typeof this.getMaxLessonSlidesLimit === 'function') ? this.getMaxLessonSlidesLimit() : 50;
+      const maxSlides = (typeof this.getMaxLessonSlidesLimit === 'function') ? this.getMaxLessonSlidesLimit() : 100;
       const replaceMode = Boolean(this._isReplacingViaNextCrop || this.hasAnyWorkspaceContent());
       const existingPlaylistLen = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
         ? this.lessonPlaylistSlides.length
@@ -2597,7 +2597,7 @@
       const skipArchive = Boolean(options && options.skipArchiveCurrent);
       const hasExistingContent = !skipArchive && this.hasAnyWorkspaceContent();
       const replaceMode = Boolean(this._isReplacingViaNextCrop || hasExistingContent);
-      const maxSlides = (typeof this.getMaxLessonSlidesLimit === 'function') ? this.getMaxLessonSlidesLimit() : 50;
+      const maxSlides = (typeof this.getMaxLessonSlidesLimit === 'function') ? this.getMaxLessonSlidesLimit() : 100;
       const existingPlaylistLen = (this.isLessonPlaylistActive && Array.isArray(this.lessonPlaylistSlides) && this.lessonPlaylistSlides.length > 0)
         ? this.lessonPlaylistSlides.length
         : 0;

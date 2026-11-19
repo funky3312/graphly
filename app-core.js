@@ -7405,6 +7405,7 @@ class GraphApp {
 
   initShareModal() {
     this.exportScope = 'current';
+    this.exportRangeSpec = '';
     this.exportFilter = {
       includeProblem: true,
       includeGraph: true,
@@ -7431,6 +7432,9 @@ class GraphApp {
     const btnScopeCur = document.getElementById('btnExportScopeCurrent');
     const btnScopeAll = document.getElementById('btnExportScopeAll');
     const lblTotalCount = document.getElementById('lblExportTotalSlidesCount');
+    const wrapScopeRange = document.getElementById('exportScopeRangeWrap');
+    const inpScopeRange = document.getElementById('inputExportScopeRangeSpec');
+    const lblScopeRangeBadge = document.getElementById('lblExportScopeRangeBadge');
     const chkProblem = document.getElementById('chkExportLayerProblem');
     const chkGraph = document.getElementById('chkExportLayerGraph');
     const chkInk = document.getElementById('chkExportLayerInk');
@@ -7452,6 +7456,31 @@ class GraphApp {
     const btnPreviewViewer = document.getElementById('btnPreviewSmartViewer');
 
     this._initSmartNoteViewerEvents();
+
+    const resolveEffectiveSlideCountNow = (allSlidesArr) => {
+      const total = Array.isArray(allSlidesArr) ? allSlidesArr.length : 1;
+      if (this.exportScope === 'all') return total;
+      if (this.exportScope === 'range' && typeof this.parseExportSlideRangeSpec === 'function') {
+        const { pages } = this.parseExportSlideRangeSpec(this.exportRangeSpec || '', total);
+        return pages.length;
+      }
+      return 1;
+    };
+
+    const ensureValidExportScopeBeforeAction = () => {
+      if (this.exportScope !== 'range') return true;
+      const allSlidesNow = this._getActiveSlidesForExport('수업 노트');
+      const total = Math.max(1, allSlidesNow.length);
+      const parsed = (typeof this.parseExportSlideRangeSpec === 'function')
+        ? this.parseExportSlideRangeSpec(this.exportRangeSpec || '', total)
+        : { pages: [], hasInput: false };
+      if (!parsed.hasInput || parsed.pages.length === 0) {
+        this.showToast(`⚠️ 유효한 캔버스 번호(1~${total})를 입력해 주세요. (예: 5-9)`);
+        if (inpScopeRange && !inpScopeRange.disabled) inpScopeRange.focus();
+        return false;
+      }
+      return true;
+    };
 
     const triggerExportBtnSuccess = (btnEl, labelEl, tempText, origText, ms = 1850) => {
       const targetBtn = btnEl || (labelEl && labelEl.closest ? labelEl.closest('button') : null);
@@ -7475,8 +7504,8 @@ class GraphApp {
         }
         if (targetLbl === lblModalSavePng) {
           const allSlidesNow = this._getActiveSlidesForExport('수업 노트');
-          const isMultiNow = (this.exportScope === 'all' && allSlidesNow.length > 1);
-          targetLbl.textContent = isMultiNow ? `PDF 저장 (${allSlidesNow.length}장)` : 'PNG 저장';
+          const effCntNow = resolveEffectiveSlideCountNow(allSlidesNow);
+          targetLbl.textContent = effCntNow > 1 ? `PDF 저장 (${effCntNow}장)` : 'PNG 저장';
         } else {
           targetLbl.textContent = origText;
         }
@@ -7490,9 +7519,43 @@ class GraphApp {
     const syncFilterUI = () => {
       const allSlides = this._getActiveSlidesForExport('수업 노트');
       const totalCnt = allSlides.length;
+      if (totalCnt <= 1 && this.exportScope === 'range') {
+        this.exportScope = 'current';
+      }
       if (lblTotalCount) lblTotalCount.textContent = `(${totalCnt})`;
       if (btnScopeCur) btnScopeCur.classList.toggle('active', this.exportScope === 'current');
       if (btnScopeAll) btnScopeAll.classList.toggle('active', this.exportScope === 'all');
+
+      const rangeRes = (typeof this.parseExportSlideRangeSpec === 'function')
+        ? this.parseExportSlideRangeSpec(this.exportRangeSpec || '', totalCnt)
+        : { pages: [], hasInput: Boolean((this.exportRangeSpec || '').trim()) };
+      const isRangeDisabled = (totalCnt <= 1);
+      const isRangeActive = (!isRangeDisabled && this.exportScope === 'range');
+      const isRangeInvalid = (!isRangeDisabled && rangeRes.hasInput && rangeRes.pages.length === 0);
+      if (wrapScopeRange) {
+        wrapScopeRange.classList.toggle('is-disabled', isRangeDisabled);
+        wrapScopeRange.classList.toggle('active', isRangeActive && !isRangeInvalid);
+        wrapScopeRange.classList.toggle('is-invalid', isRangeInvalid);
+        wrapScopeRange.title = isRangeDisabled
+          ? '캔버스가 2장 이상일 때 범위를 지정할 수 있습니다'
+          : (rangeRes.hasInput
+            ? (isRangeInvalid
+              ? `유효한 번호(1~${totalCnt})를 입력해 주세요`
+              : `선택됨: ${rangeRes.pages.length}장 (${this.exportRangeSpec.trim()})`)
+            : `특정 캔버스 번호 지정 (예: 1-${Math.min(5, totalCnt)})`);
+      }
+      if (inpScopeRange) {
+        inpScopeRange.disabled = isRangeDisabled;
+      }
+      if (lblScopeRangeBadge) {
+        if (!isRangeDisabled && rangeRes.hasInput) {
+          lblScopeRangeBadge.style.display = 'inline-block';
+          lblScopeRangeBadge.textContent = isRangeInvalid ? '확인' : `${rangeRes.pages.length}장`;
+        } else {
+          lblScopeRangeBadge.style.display = 'none';
+          lblScopeRangeBadge.textContent = '';
+        }
+      }
 
       const incP = Boolean(this.exportFilter.includeProblem);
       const incG = Boolean(this.exportFilter.includeGraph);
@@ -7522,13 +7585,16 @@ class GraphApp {
       if (incG) parts.push('그래프');
       if (incI) parts.push('필기');
       if (incA) parts.push('음성');
-      const isMultiSlideAll = (this.exportScope === 'all' && totalCnt > 1);
-      const scopeText = isMultiSlideAll
+      const effSlideCnt = resolveEffectiveSlideCountNow(allSlides);
+      const isMultiSlideSelected = (effSlideCnt > 1);
+      const scopeText = (this.exportScope === 'all' && totalCnt > 1)
         ? `전체 캔버스(${totalCnt}장)`
-        : '현재 캔버스';
+        : (this.exportScope === 'range'
+          ? `선택 캔버스(${effSlideCnt}장)`
+          : '현재 캔버스');
       if (lblModalSavePng) {
-        lblModalSavePng.textContent = isMultiSlideAll
-          ? `PDF 저장 (${totalCnt}장)`
+        lblModalSavePng.textContent = isMultiSlideSelected
+          ? `PDF 저장 (${effSlideCnt}장)`
           : 'PNG 저장';
       }
       if (lblSummary) {
@@ -7536,7 +7602,7 @@ class GraphApp {
       }
       const syncShareTierNoticeUI = () => {
         const lblTierNotice = document.getElementById('lblShareLinkTierNotice');
-        if (!lblTierNotice) return;
+        const lblCopySubMeta = document.getElementById('lblBtnCopyShareSubMeta');
         const usage = (typeof this.getShareDailyUsageStatus === 'function')
           ? this.getShareDailyUsageStatus()
           : null;
@@ -7546,36 +7612,35 @@ class GraphApp {
           ? ((typeof this.getUserSubscriptionTier === 'function') ? this.getUserSubscriptionTier() : (this.isProUser ? 'pro' : 'free'))
           : 'guest';
 
-        let mainText = '';
-        let subText = '';
-        if (!isLoggedIn) {
-          const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 3;
-          const limit = (usage && usage.dailyLimit) ? usage.dailyLimit : 5;
-          const rem = (usage && typeof usage.remainingCount === 'number') ? usage.remainingCount : limit;
-          mainText = `기간 제한 링크 (${days}일) · 오늘 ${rem}/${limit}회 남음`;
-          subText = '수정 시 자동 반영 · 영구 링크는 보관함에서 생성';
-        } else if (tier === 'premium') {
+        let quickShareSubMeta = '';
+        if (tier === 'premium' || tier === 'pro') {
           const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 7;
-          mainText = `기간 제한 링크 (${days}일) · 무제한`;
-          subText = '수정 시 자동 반영 · 영구 링크는 보관함에서 생성';
-        } else if (tier === 'pro') {
-          const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 7;
-          mainText = `기간 제한 링크 (${days}일) · 무제한`;
-          subText = '수정 시 자동 반영 · 영구 링크(Premium)는 보관함에서 생성';
+          quickShareSubMeta = `유효기간 ${days}일 · 무제한`;
         } else {
           const days = (quota && Number(quota.shareExpiryDays) > 0) ? Number(quota.shareExpiryDays) : 3;
           const limit = (usage && usage.dailyLimit) ? usage.dailyLimit : 5;
           const rem = (usage && typeof usage.remainingCount === 'number') ? usage.remainingCount : limit;
-          mainText = `기간 제한 링크 (${days}일) · 오늘 ${rem}/${limit}회 남음`;
-          subText = '수정 시 자동 반영 · 영구 링크(Premium)는 보관함에서 생성';
+          quickShareSubMeta = `유효기간 ${days}일 · 오늘 ${rem}/${limit}회`;
+        }
+        if (lblCopySubMeta) {
+          lblCopySubMeta.textContent = quickShareSubMeta;
         }
 
+        if (!lblTierNotice) return;
+        const permTitleText = (tier === 'premium')
+          ? '영구 링크 생성'
+          : '영구 링크 생성 (Premium)';
+        const permLinkIconSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
+
         lblTierNotice.innerHTML = `
-          <div class="share-tier-notice-main">${mainText}</div>
-          <div class="share-tier-notice-sub">
-            <span class="share-tier-notice-sub-text">${subText}</span>
+          <div class="share-vault-perm-top">
+            <div class="share-vault-perm-left">
+              <span class="share-vault-perm-icon">${permLinkIconSvg}</span>
+              <span class="share-vault-perm-title">${permTitleText}</span>
+            </div>
             <button type="button" id="btnShareNoticeOpenVault" class="share-tier-vault-link-btn"><span>보관함</span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg></button>
           </div>
+          <div class="share-vault-perm-desc">보관함에서 생성된 링크는 등급과 상관없이 파일 수정 시 자동 반영됩니다</div>
         `;
         const btnVault = lblTierNotice.querySelector('#btnShareNoticeOpenVault');
         if (btnVault) {
@@ -7622,7 +7687,8 @@ class GraphApp {
     const getShareFilterSig = () => {
       const f = this.exportFilter || {};
       const promoSig = typeof this._getPromoBannerSignature === 'function' ? this._getPromoBannerSignature() : 'nopromo';
-      return `${this.exportScope}|${Boolean(f.includeProblem)}|${Boolean(f.includeGraph)}|${Boolean(f.includeInk)}|${f.includeAudio !== false}|${promoSig}`;
+      const rangeSig = (this.exportScope === 'range') ? String(this.exportRangeSpec || '').trim().replace(/\s+/g, '') : '';
+      return `${this.exportScope}:${rangeSig}|${Boolean(f.includeProblem)}|${Boolean(f.includeGraph)}|${Boolean(f.includeInk)}|${f.includeAudio !== false}|${promoSig}`;
     };
 
     // ⚡ 체크박스·범위 변경 시에는 0.00초 만에 UI만 즉시 갱신 (무거운 스캔·클라우드 업로드·QR 렌더링 전혀 안 함!)
@@ -7683,6 +7749,47 @@ class GraphApp {
         syncFilterAndInvalidateCache();
       };
     }
+    if (wrapScopeRange && inpScopeRange) {
+      wrapScopeRange.addEventListener('click', (e) => {
+        if (inpScopeRange.disabled) return;
+        if (e.target !== inpScopeRange) inpScopeRange.focus();
+      });
+      inpScopeRange.addEventListener('focus', () => {
+        if (inpScopeRange.disabled) return;
+        inpScopeRange.setAttribute('name', 'graphly_exprange_' + Date.now());
+        if (String(inpScopeRange.value || '').trim()) {
+          this.exportRangeSpec = inpScopeRange.value;
+          this.exportScope = 'range';
+          syncFilterAndInvalidateCache();
+        }
+      });
+      inpScopeRange.addEventListener('input', () => {
+        const val = String(inpScopeRange.value || '');
+        this.exportRangeSpec = val;
+        if (val.trim()) {
+          this.exportScope = 'range';
+        } else {
+          const allNow = this._getActiveSlidesForExport('수업 노트');
+          this.exportScope = (allNow && allNow.length > 1) ? 'all' : 'current';
+        }
+        syncFilterAndInvalidateCache();
+      });
+      inpScopeRange.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          inpScopeRange.blur();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          inpScopeRange.value = '';
+          this.exportRangeSpec = '';
+          const allNow = this._getActiveSlidesForExport('수업 노트');
+          this.exportScope = (allNow && allNow.length > 1) ? 'all' : 'current';
+          syncFilterAndInvalidateCache();
+          inpScopeRange.blur();
+        }
+      });
+    }
 
     const onLayerToggle = (key, chkEl) => {
       if (!chkEl) return;
@@ -7736,9 +7843,10 @@ class GraphApp {
 
     if (btnModalSavePng) {
       btnModalSavePng.onclick = async () => {
+        if (!ensureValidExportScopeBeforeAction()) return;
         const allSlides = this._getActiveSlidesForExport('수업 노트');
-        const isMulti = (this.exportScope === 'all' && allSlides.length > 1);
-        const origLabel = isMulti ? `PDF 저장 (${allSlides.length}장)` : 'PNG 저장';
+        const effCnt = resolveEffectiveSlideCountNow(allSlides);
+        const origLabel = effCnt > 1 ? `PDF 저장 (${effCnt}장)` : 'PNG 저장';
         await this.downloadExportImages(this.exportScope, this.exportFilter);
         triggerExportBtnSuccess(btnModalSavePng, lblModalSavePng, '저장 완료', origLabel);
       };
@@ -7746,6 +7854,7 @@ class GraphApp {
 
     if (btnPreviewViewer) {
       btnPreviewViewer.onclick = async () => {
+        if (!ensureValidExportScopeBeforeAction()) return;
         if (modal) modal.classList.remove('show');
         if ((this.isAudioRecording || this._stoppingAudioRecordingPromise) && typeof this.stopAudioRecording === 'function') {
           await (this._stoppingAudioRecordingPromise || this.stopAudioRecording()).catch(() => { });
@@ -7759,7 +7868,7 @@ class GraphApp {
         const f = this.exportFilter || {};
         const isFiltered = (f.includeProblem === false || f.includeGraph === false || f.includeInk === false || f.includeAudio === false);
         const isPartialSingleScopeOnPlaylist = Boolean(
-          this.exportScope === 'current' &&
+          (this.exportScope === 'current' || this.exportScope === 'range') &&
           this.isLessonPlaylistActive &&
           Array.isArray(this.lessonPlaylistSlides) &&
           this.lessonPlaylistSlides.length > 1
@@ -7792,6 +7901,8 @@ class GraphApp {
     }
 
     const openModal = (defaultScope = null) => {
+      this.exportRangeSpec = '';
+      if (inpScopeRange) inpScopeRange.value = '';
       if (defaultScope === 'all' || defaultScope === 'current') {
         this.exportScope = defaultScope;
       } else {
@@ -7848,6 +7959,7 @@ class GraphApp {
 
     if (btnCopyShare) {
       btnCopyShare.onclick = async () => {
+        if (!ensureValidExportScopeBeforeAction()) return;
         if (lblBtnCopyShare) lblBtnCopyShare.textContent = '링크 생성 중...';
         const finalUrl = await ensureCloudShareLinkOnDemand();
         if (!finalUrl) {
@@ -7855,12 +7967,14 @@ class GraphApp {
           return;
         }
         await copyTextToClipboard(finalUrl);
+        if (typeof this.refreshShareTierNoticeUI === 'function') this.refreshShareTierNoticeUI();
         triggerExportBtnSuccess(btnCopyShare, lblBtnCopyShare, '링크 복사 완료', '공유 링크 복사');
       };
     }
 
     if (btnCopyStudent) {
       btnCopyStudent.onclick = async () => {
+        if (!ensureValidExportScopeBeforeAction()) return;
         const finalUrl = await ensureCloudShareLinkOnDemand();
         if (!finalUrl) return;
         await copyTextToClipboard(finalUrl);
@@ -7871,6 +7985,7 @@ class GraphApp {
     if (btnDownloadQr) {
       btnDownloadQr.onclick = async () => {
         if (!qrCanvas) return;
+        if (!ensureValidExportScopeBeforeAction()) return;
         if (lblBtnDownloadQr) lblBtnDownloadQr.textContent = 'QR 생성 중...';
         const finalUrl = await ensureCloudShareLinkOnDemand();
         if (!finalUrl) {
@@ -7883,6 +7998,7 @@ class GraphApp {
         link.download = `Graphly_QR_${Date.now()}.png`;
         link.href = dataUrl;
         link.click();
+        if (typeof this.refreshShareTierNoticeUI === 'function') this.refreshShareTierNoticeUI();
         triggerExportBtnSuccess(btnDownloadQr, lblBtnDownloadQr, 'QR 저장 완료', 'QR 저장');
       };
     }
@@ -7963,6 +8079,7 @@ class GraphApp {
     if (btnShareToLib) {
       btnShareToLib.onclick = async () => {
         if (this._isPromptingPartialSave) return;
+        if (!ensureValidExportScopeBeforeAction()) return;
         let useFullOriginal = true;
         if (!isExportFilterFullChecked() && typeof this.promptPartialFilterSaveResolution === 'function') {
           this._isPromptingPartialSave = true;
@@ -7989,7 +8106,14 @@ class GraphApp {
               includeInk: !this.exportFilter || this.exportFilter.includeInk !== false,
               includeAudio: !this.exportFilter || this.exportFilter.includeAudio !== false
             };
-        this._cloudExplorerSaveScope = (this.exportScope === 'current') ? 'current' : 'all';
+        this._cloudExplorerSaveScope = (this.exportScope === 'current' || this.exportScope === 'range') ? this.exportScope : 'all';
+        this._cloudExplorerSaveRangeSpec = (this.exportScope === 'range') ? String(this.exportRangeSpec || '') : '';
+        const isPartialSlideScope = Boolean(
+          (this.exportScope === 'current' || this.exportScope === 'range') &&
+          this.isLessonPlaylistActive &&
+          Array.isArray(this.lessonPlaylistSlides) &&
+          this.lessonPlaylistSlides.length > 1
+        );
         const inpCloudTitle = document.getElementById('inputCloudSaveTitle');
         if (inpCloudTitle && carryTitle) {
           inpCloudTitle.value = carryTitle;
@@ -7997,7 +8121,7 @@ class GraphApp {
         this.openCloudHubModal({
           fromExportModal: true,
           prefillTitle: carryTitle,
-          skipLoadedMetaTitlePrefill: Boolean(!useFullOriginal && !carryTitle)
+          skipLoadedMetaTitlePrefill: Boolean((!useFullOriginal || isPartialSlideScope) && !carryTitle)
         });
       };
     }
@@ -8005,6 +8129,7 @@ class GraphApp {
     if (btnShareExportFile) {
       btnShareExportFile.onclick = async () => {
         if (this._isPromptingPartialSave || this._isExportingShareFile) return;
+        if (!ensureValidExportScopeBeforeAction()) return;
         let useFullOriginal = true;
         if (!isExportFilterFullChecked() && typeof this.promptPartialFilterSaveResolution === 'function') {
           this._isPromptingPartialSave = true;

@@ -696,8 +696,9 @@
 
       this._selectedCloudExplorerKeys = new Set();
       this._cloudExplorerSaveScope = 'all';
+      this._cloudExplorerSaveRangeSpec = '';
       const setCloudExplorerScope = (scope) => {
-        this._cloudExplorerSaveScope = (scope === 'current') ? 'current' : 'all';
+        this._cloudExplorerSaveScope = (scope === 'current' || scope === 'range') ? scope : 'all';
         if (btnScopeAll) btnScopeAll.classList.toggle('active', this._cloudExplorerSaveScope === 'all');
         if (btnScopeCur) btnScopeCur.classList.toggle('active', this._cloudExplorerSaveScope === 'current');
       };
@@ -1303,6 +1304,8 @@
       if (!(options && options.fromExportModal)) {
         this._returnToShareModalAfterCloudSave = false;
         this._pendingExportCloudFilter = null;
+        this._cloudExplorerSaveScope = 'all';
+        this._cloudExplorerSaveRangeSpec = '';
       }
       if (this.isLessonPlaylistActive) {
         this.saveCurrentSlideIntoPlaylist();
@@ -4169,11 +4172,11 @@
         const GB = 1024 * 1024 * 1024;
         this.SUBSCRIPTION_QUOTA_CONFIG = {
           enforceCustomGraphLimit: true,
-          maxLessonSlides: 50,
-          freeMaxSlides: 50,
-          proMaxSlides: 50,
-          premiumMaxSlides: 50,
-          maxSingleSharePayloadBytes: 150 * MB, // 단일 수업 노트/공유 패키지 최대 용량 가드 (150 MB — 아이패드 50장 필기+60분 녹음 여유 수용)
+          maxLessonSlides: 100,
+          freeMaxSlides: 100,
+          proMaxSlides: 100,
+          premiumMaxSlides: 100,
+          maxSingleSharePayloadBytes: 150 * MB, // 단일 수업 노트/공유 패키지 최대 용량 가드 (150 MB — 아이패드 100장 필기+장시간 녹음 여유 수용)
           shareBurstLimitPerMin: 15,           // 매크로 폭주 방지 분당 신규 공유 링크 상한
 
           // [1] Free (무료 회원 · 비로그인 공통 기준 / 클라우드·프리셋은 로그인 전용)
@@ -4232,7 +4235,7 @@
 
     getMaxLessonSlidesLimit() {
       const cfg = this.getSubscriptionQuotaConfig();
-      return (cfg && Number(cfg.maxLessonSlides) > 0) ? Number(cfg.maxLessonSlides) : 50;
+      return (cfg && Number(cfg.maxLessonSlides) > 0) ? Number(cfg.maxLessonSlides) : 100;
     }
 
     canAddMoreSlidesWithQuota(addCount = 1) {
@@ -11291,32 +11294,63 @@
         const inpTitle = document.getElementById('inputCloudSaveTitle');
         const inpTags = document.getElementById('inputCloudSaveTags');
 
-        const useCurrentOnly = (!customSlidesArray && this._cloudExplorerSaveScope === 'current');
+        const effCloudScope = !customSlidesArray
+          ? ((this._cloudExplorerSaveScope === 'current' || this._cloudExplorerSaveScope === 'range') ? this._cloudExplorerSaveScope : 'all')
+          : 'all';
+        const useCurrentOnly = (effCloudScope === 'current');
+        const useRangeScope = (effCloudScope === 'range');
         const activePendingFilter = (!customSlidesArray && this._pendingExportCloudFilter)
           ? { ...this._pendingExportCloudFilter }
           : null;
-        const autoSlides = (!customSlidesArray)
-          ? (activePendingFilter
-            ? this._getFilteredSlidesForExport((inpTitle && inpTitle.value.trim()) || '수업 세팅', useCurrentOnly ? 'current' : 'all', activePendingFilter)
-            : (useCurrentOnly ? [this.serializeFullSlideState('현재 캔버스')] : this._getActiveSlidesForExport()))
-          : null;
+        const prevExportRangeSpec = this.exportRangeSpec;
+        if (useRangeScope && this._cloudExplorerSaveRangeSpec) {
+          this.exportRangeSpec = this._cloudExplorerSaveRangeSpec;
+        }
+        let autoSlides = null;
+        try {
+          if (!customSlidesArray) {
+            if (activePendingFilter || useRangeScope) {
+              autoSlides = this._getFilteredSlidesForExport(
+                (inpTitle && inpTitle.value.trim()) || '수업 세팅',
+                effCloudScope,
+                activePendingFilter || { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true }
+              );
+            } else if (useCurrentOnly) {
+              autoSlides = [this.serializeFullSlideState('현재 캔버스')];
+            } else {
+              autoSlides = this._getActiveSlidesForExport();
+            }
+          }
+        } finally {
+          if (useRangeScope) {
+            this.exportRangeSpec = prevExportRangeSpec;
+          }
+        }
         let slides = Array.isArray(customSlidesArray) && customSlidesArray.length > 0
           ? JSON.parse(JSON.stringify(customSlidesArray))
           : (autoSlides && autoSlides.length > 0 ? JSON.parse(JSON.stringify(autoSlides)) : [this.serializeFullSlideState('수업 세팅')]);
 
-        const maxSlides = typeof this.getMaxLessonSlidesLimit === 'function' ? this.getMaxLessonSlidesLimit() : 50;
+        const maxSlides = typeof this.getMaxLessonSlidesLimit === 'function' ? this.getMaxLessonSlidesLimit() : 100;
         if (Array.isArray(slides) && slides.length > maxSlides) {
           this.showToast(`⚠️ 한 수업 노트에는 최대 ${maxSlides}문항까지만 저장할 수 있습니다. (현재 ${slides.length}문항)`);
           return null;
         }
 
         const isDeck = Boolean(slides && slides.length > 1);
+        const isPartialSlideSave = Boolean(
+          !customSlidesArray &&
+          (useCurrentOnly || useRangeScope) &&
+          this.isLessonPlaylistActive &&
+          Array.isArray(this.lessonPlaylistSlides) &&
+          this.lessonPlaylistSlides.length > slides.length
+        );
         const isPartialFilteredCloudSave = Boolean(
-          activePendingFilter &&
-          (activePendingFilter.includeProblem === false ||
-            activePendingFilter.includeGraph === false ||
-            activePendingFilter.includeInk === false ||
-            activePendingFilter.includeAudio === false)
+          isPartialSlideSave ||
+          (activePendingFilter &&
+            (activePendingFilter.includeProblem === false ||
+              activePendingFilter.includeGraph === false ||
+              activePendingFilter.includeInk === false ||
+              activePendingFilter.includeAudio === false))
         );
         const typedCloudTitle = (inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : '';
         const hasExplicitTitle = Boolean(customTitle || typedCloudTitle);
@@ -11637,7 +11671,7 @@
         return null;
       }
       this._activeLoadedCloudLibraryMeta = null;
-      const maxSlides = typeof this.getMaxLessonSlidesLimit === 'function' ? this.getMaxLessonSlidesLimit() : 50;
+      const maxSlides = typeof this.getMaxLessonSlidesLimit === 'function' ? this.getMaxLessonSlidesLimit() : 100;
       if (slides.length > maxSlides) {
         this.showToast(`⚠️ 한 수업 노트는 최대 ${maxSlides}문항까지 지원되어 앞 ${maxSlides}문항만 불러왔습니다. (원본 ${slides.length}문항)`);
         slides = slides.slice(0, maxSlides);
@@ -11770,7 +11804,7 @@
         : String(this._activeCloudFolder || '').trim();
       const destFolder = (rawDest === '__ALL_RECENT__' || rawDest === '__UNCATEGORIZED__') ? '' : rawDest;
 
-      const maxSlides = typeof this.getMaxLessonSlidesLimit === 'function' ? this.getMaxLessonSlidesLimit() : 50;
+      const maxSlides = typeof this.getMaxLessonSlidesLimit === 'function' ? this.getMaxLessonSlidesLimit() : 100;
       const parsedCandidates = [];
       let skippedOverSlideLimit = 0;
       let skippedInvalidExt = 0;
@@ -12969,7 +13003,7 @@
       try {
         this._purgeExpiredSharedWorkspaces().catch(() => { });
 
-        const maxSlides = typeof this.getMaxLessonSlidesLimit === 'function' ? this.getMaxLessonSlidesLimit() : 50;
+        const maxSlides = typeof this.getMaxLessonSlidesLimit === 'function' ? this.getMaxLessonSlidesLimit() : 100;
         let hasVaultKeys = Boolean(cacheTarget._isVaultLayered && cacheTarget.vaultKeys && cacheTarget.vaultKeys.skeletonKey);
         let fallbackResolvedSlides = null;
 
@@ -15240,12 +15274,72 @@
         : expanded;
     }
 
+    parseExportSlideRangeSpec(rawSpec, maxSlideCount) {
+      const total = Math.max(1, Math.floor(Number(maxSlideCount) || 1));
+      if (typeof this.parsePdfPageSelectionSpec === 'function') {
+        const res = this.parsePdfPageSelectionSpec(rawSpec, total);
+        const pages = Array.isArray(res && res.pages) ? res.pages : [];
+        return {
+          pages,
+          indices: pages.map((p) => p - 1),
+          hasInput: Boolean(res && res.hasInput),
+          hasInvalidToken: Boolean(res && res.hasInvalidToken)
+        };
+      }
+      const trimmed = String(rawSpec || '').trim();
+      if (!trimmed) {
+        return { pages: [], indices: [], hasInput: false, hasInvalidToken: false };
+      }
+      if (/^(전체|all|\*)$/i.test(trimmed)) {
+        const allP = Array.from({ length: total }, (_, i) => i + 1);
+        return { pages: allP, indices: allP.map((p) => p - 1), hasInput: true, hasInvalidToken: false };
+      }
+      const seen = new Set();
+      const pages = [];
+      let hasInvalidToken = false;
+      const tokens = trimmed.split(/[\s,;]+/).filter(Boolean);
+      for (const tok of tokens) {
+        if (/^\d+$/.test(tok)) {
+          const p = parseInt(tok, 10);
+          if (p >= 1 && p <= total) {
+            if (!seen.has(p)) { seen.add(p); pages.push(p); }
+          } else {
+            hasInvalidToken = true;
+          }
+          continue;
+        }
+        const m = tok.match(/^(\d+)\s*[-~–—]\s*(\d+)$/);
+        if (m) {
+          const a = parseInt(m[1], 10);
+          const b = parseInt(m[2], 10);
+          const lo = Math.min(a, b);
+          const hi = Math.max(a, b);
+          if (hi < 1 || lo > total) {
+            hasInvalidToken = true;
+          } else {
+            const cLo = Math.max(1, lo);
+            const cHi = Math.min(total, hi);
+            for (let p = cLo; p <= cHi; p++) {
+              if (!seen.has(p)) { seen.add(p); pages.push(p); }
+            }
+          }
+          continue;
+        }
+        hasInvalidToken = true;
+      }
+      return { pages, indices: pages.map((p) => p - 1), hasInput: true, hasInvalidToken };
+    }
+
     _getFilteredSlidesForExport(fallbackTitle = '공유된 수업 노트', scope = 'current', filterOpts = null) {
       const effScope = scope || this.exportScope || 'current';
       const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
       let slides = [];
       if (effScope === 'all') {
         slides = this._getActiveSlidesForExport(fallbackTitle);
+      } else if (effScope === 'range') {
+        const allSlides = this._getActiveSlidesForExport(fallbackTitle);
+        const { indices } = this.parseExportSlideRangeSpec(this.exportRangeSpec || '', allSlides.length);
+        slides = indices.map((idx) => allSlides[idx]).filter(Boolean);
       } else if (this._isCapturingExportSnapshots && this._exportSnapshotLoopBackupCurrent) {
         slides = [JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent))];
       } else {
@@ -16380,12 +16474,11 @@
       }
       const effScope = scope || this.exportScope || 'current';
       const effFilter = filterOpts || this.exportFilter || { includeProblem: true, includeGraph: true, includeInk: true, includeAudio: true };
-      const rawSlides = (effScope === 'all')
-        ? this._getActiveSlidesForExport('공유 노트')
+      const filteredSlides = (effScope === 'all' || effScope === 'range')
+        ? this._getFilteredSlidesForExport('공유 노트', effScope, effFilter)
         : (this._isCapturingExportSnapshots && this._exportSnapshotLoopBackupCurrent
-          ? [JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent))]
-          : [this.serializeFullSlideState('공유 노트')]);
-      const filteredSlides = rawSlides.map(s => this._applyExportFilterToSlideData(s, effFilter));
+          ? [this._applyExportFilterToSlideData(JSON.parse(JSON.stringify(this._exportSnapshotLoopBackupCurrent)), effFilter)]
+          : [this._applyExportFilterToSlideData(this.serializeFullSlideState('공유 노트'), effFilter)]);
 
       await this._populateSlideViewerSnapshotsForExport(filteredSlides, effFilter, true);
 
@@ -16765,20 +16858,25 @@
 
     _computeShareNoteSessionKey(scope, slides, filterOpts = null) {
       const effScope = scope || 'current';
+      const rangeTag = (effScope === 'range') ? String(this.exportRangeSpec || '').trim().replace(/\s+/g, '') : '';
       const filterSig = this._getExportFilterSignatureKey(filterOpts);
       const arr = Array.isArray(slides) ? slides : [];
       const first = arr[0] || {};
       const probSrc = (first.primaryProblemCard && first.primaryProblemCard.imgSrc) ? String(first.primaryProblemCard.imgSrc) : '';
       const pdfSrc = (first.pdfPageBoardData && first.pdfPageBoardData.dataUrl) ? String(first.pdfPageBoardData.dataUrl) : '';
+      const pdfVecSig = (first.pdfPageBoardData && first.pdfPageBoardData.pdfDocUid)
+        ? `${first.pdfPageBoardData.pdfDocUid}:p${first.pdfPageBoardData.pdfSourcePageNum || first.pdfPageBoardData.pageNum || 1}`
+        : '';
       const probSig = probSrc ? `${probSrc.length}:${probSrc.slice(0, 48)}:${probSrc.slice(-48)}` : 'noprob';
-      const pdfSig = pdfSrc ? `${pdfSrc.length}:${pdfSrc.slice(0, 48)}:${pdfSrc.slice(-48)}` : 'nopdf';
-      return `${effScope}|flt:${filterSig}|cnt:${arr.length}|${probSig}|${pdfSig}`;
+      const pdfSig = pdfSrc ? `${pdfSrc.length}:${pdfSrc.slice(0, 48)}:${pdfSrc.slice(-48)}` : (pdfVecSig || 'nopdf');
+      return `${effScope}:${rangeTag}|flt:${filterSig}|cnt:${arr.length}|${probSig}|${pdfSig}`;
     }
 
     _computeShareContentSignature(scope, filterOpts, slides) {
       const f = filterOpts || {};
       const promoSig = typeof this._getPromoBannerSignature === 'function' ? this._getPromoBannerSignature() : 'nopromo';
-      const filterKey = `${scope || 'current'}|${Boolean(f.includeProblem)}|${Boolean(f.includeGraph)}|${Boolean(f.includeInk)}|${f.includeAudio !== false}|${promoSig}`;
+      const rangeTag = (scope === 'range') ? String(this.exportRangeSpec || '').trim().replace(/\s+/g, '') : '';
+      const filterKey = `${scope || 'current'}:${rangeTag}|${Boolean(f.includeProblem)}|${Boolean(f.includeGraph)}|${Boolean(f.includeInk)}|${f.includeAudio !== false}|${promoSig}`;
       const arr = Array.isArray(slides) ? slides : [];
       const slideSigs = arr.map((s, idx) => {
         if (!s) return String(idx);
@@ -16839,7 +16937,7 @@
       const effFilter = filterOpts || this.exportFilter;
       const pkg = await this.buildExportSharePackageObject(effScope, effFilter);
 
-      const maxSlides = typeof this.getMaxLessonSlidesLimit === 'function' ? this.getMaxLessonSlidesLimit() : 50;
+      const maxSlides = typeof this.getMaxLessonSlidesLimit === 'function' ? this.getMaxLessonSlidesLimit() : 100;
       if (Array.isArray(pkg.playlistSlides) && pkg.playlistSlides.length > maxSlides) {
         this.showToast(`⚠️ 공유 링크는 한 번에 최대 ${maxSlides}문항까지만 생성할 수 있습니다. (현재 ${pkg.playlistSlides.length}문항)`);
         return null;
