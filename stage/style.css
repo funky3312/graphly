@@ -4611,7 +4611,8 @@ body.pdf-modal-open #lassoActionFloatingBar {
 .pdf-viewport.pinching-gpu,
 .pdf-viewport.pinching-gpu .pdf-pages-container,
 .pdf-viewport.pinching-gpu .pdf-page-wrapper,
-.pdf-viewport.pinching-gpu .pdf-page-canvas {
+.pdf-viewport.pinching-gpu .pdf-page-canvas,
+.pdf-viewport.pinching-gpu .pdf-modal-hires-tile {
   touch-action: none !important;
 }
 
@@ -4640,6 +4641,16 @@ body.pdf-modal-open #lassoActionFloatingBar {
   display: block;
   background: #ffffff;
   border-radius: 4px;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-user-drag: none !important;
+}
+
+.pdf-modal-hires-tile {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  pointer-events: none !important;
   user-select: none !important;
   -webkit-user-select: none !important;
   -webkit-user-drag: none !important;
