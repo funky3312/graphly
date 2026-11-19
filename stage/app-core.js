@@ -7640,7 +7640,7 @@ class GraphApp {
             </div>
             <button type="button" id="btnShareNoticeOpenVault" class="share-tier-vault-link-btn"><span>보관함</span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg></button>
           </div>
-          <div class="share-vault-perm-desc">보관함에서 생성된 링크는 등급과 상관없이 파일 변경 시 자동 반영됩니다.</div>
+          <div class="share-vault-perm-desc">보관함에서 생성된 링크는 등급과 상관없이 파일 수정 시 자동 반영됩니다.</div>
         `;
         const btnVault = lblTierNotice.querySelector('#btnShareNoticeOpenVault');
         if (btnVault) {
